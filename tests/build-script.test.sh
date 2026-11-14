@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/build-script.test.sh
 # Behavioral tests for build.sh argument parsing, error paths, and static pattern checks.
-# Does NOT require Wails, Docker, or mingw-w64.
+# Does NOT require Wails.
 #
 # Run: bash tests/build-script.test.sh    (from project root)
 
@@ -130,6 +130,13 @@ assert_exit_nonzero "--platform bogus exits non-zero" bash "$BUILD_SH" --platfor
 assert_output_contains "--platform bogus output contains 'Usage:'" "Usage:" bash "$BUILD_SH" --platform bogus
 assert_output_contains "--platform bogus output contains 'Invalid platform'" "Invalid platform" bash "$BUILD_SH" --platform bogus
 
+# macOS is the only build target: linux, windows and --all are rejected.
+for _p in linux windows; do
+  assert_exit_nonzero "--platform $_p exits non-zero" bash "$BUILD_SH" --platform "$_p"
+  assert_output_contains "--platform $_p output contains 'Invalid platform'" "Invalid platform" bash "$BUILD_SH" --platform "$_p"
+done
+assert_output_contains "--all is an unknown flag" "Unknown flag" bash "$BUILD_SH" --all
+
 # ---------------------------------------------------------------------------
 # Section 5: --platform with no value prints error and exits non-zero
 # ---------------------------------------------------------------------------
@@ -216,12 +223,6 @@ echo "=== Section 8: Static pattern checks — function names ==="
 assert_file_contains_regex "contains build_macos function" \
   "^build_macos\(\)" "$BUILD_SH"
 
-assert_file_contains_regex "contains build_windows function" \
-  "^build_windows\(\)" "$BUILD_SH"
-
-assert_file_contains_regex "contains build_linux function" \
-  "^build_linux\(\)" "$BUILD_SH"
-
 assert_file_contains_regex "contains sign_and_notarize function" \
   "^sign_and_notarize\(\)" "$BUILD_SH"
 
@@ -238,12 +239,6 @@ assert_file_contains_literal "contains 'darwin/universal'" \
 
 assert_file_contains_literal "contains wails build -clean (macOS path)" \
   "build -platform darwin/universal -clean" "$BUILD_SH"
-
-assert_file_contains_literal "contains x86_64-w64-mingw32-gcc reference" \
-  "x86_64-w64-mingw32-gcc" "$BUILD_SH"
-
-assert_file_contains_regex "contains docker run invocation" \
-  "docker run" "$BUILD_SH"
 
 # ---------------------------------------------------------------------------
 # Section 10: Static pattern checks — notarization pipeline
@@ -272,13 +267,6 @@ assert_file_contains_literal "contains stapler staple" \
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== Section 11: Static pattern checks — prerequisite guards ==="
-
-assert_file_contains_literal "contains docker info check" \
-  "docker info" "$BUILD_SH"
-
-# command -v check: the variable holds the compiler name; check the check pattern
-assert_file_contains_literal "contains command -v prerequisite check for compiler" \
-  'command -v "$MINGW_CC"' "$BUILD_SH"
 
 assert_file_contains_regex "contains wails binary path from go env GOPATH" \
   'WAILS=.*go env GOPATH' "$BUILD_SH"

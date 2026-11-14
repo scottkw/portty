@@ -4,6 +4,8 @@
 /agenthub-cli
 /agenthub-cli.exe
 *.exe
+/bin/
+/playwright-fixture
 
 # Node / frontend
 frontend/node_modules/
