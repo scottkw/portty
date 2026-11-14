@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User changes the terminal theme and toggles xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) in Settings, and open terminals pick up the change
   4. User chats on a session from the desktop app and from a browser web share, and both sides see the messages; nothing typed in chat (including `@session`) is ever written into the terminal
   5. On macOS the Go build, Go tests, Vitest, and lint all pass with no Windows/Linux sources, packaging, or CI jobs left; the daemon no longer serves a files API or files capability; the security fuzz harness still runs against relay and webserver
-**Plans**: 9 plans (sequential waves 1-9; shared hot files and TESTING.md force serial order)
+**Plans**: 10 plans (sequential waves 1-10; shared hot files and TESTING.md force serial order)
 
 Plans:
 - [ ] 01-01-PLAN.md — Windows/Linux strip: Go sources, packaging, CI on macOS, portable traceability check
@@ -42,9 +42,10 @@ Plans:
 - [ ] 01-04-PLAN.md — New sessions are login shells end to end (`$SHELL -l`, `new [dir]` CLI, UI-SPEC New Session modal); OpenCode/theme broadcast removed
 - [ ] 01-05-PLAN.md — One shell resolver; agent-CLI detection and shell discovery removed; Settings → Paths = shell + tailscale
 - [ ] 01-06-PLAN.md — Status model running/exited/errored (daemon-derived) on tabs, exit toast and Hub; pill group removed
-- [ ] 01-07-PLAN.md — Agent identity removed from all surfaces and wire formats; explicit 404 contract; one-time web-share warning ("Keep sharing off")
-- [ ] 01-08-PLAN.md — Chat @session inject bridge removed on both paths; relay/webserver fuzz targets added
-- [ ] 01-09-PLAN.md — Bell/OSC 9 notifications, exit events for long-lived/relaunched sessions, Settings copy, full phase gate
+- [ ] 01-07-PLAN.md — Agent identity removed from every UI surface; one-time web-share warning for any session ("Keep sharing off")
+- [ ] 01-08-PLAN.md — Agent identity removed from daemon, webserver, peer and CLI wire; explicit webserver 404 contract
+- [ ] 01-09-PLAN.md — Chat @session inject bridge removed on both paths; relay/webserver fuzz targets added
+- [ ] 01-10-PLAN.md — Bell/OSC 9 notifications, exit events for long-lived/relaunched sessions, Settings copy, full phase gate
 **UI hint**: yes
 
 ### Phase 2: Tabs + Sidebar Navigation
