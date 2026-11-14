@@ -1,0 +1,80 @@
+# Phase 1: Plain macOS Terminal - Context
+
+**Gathered:** 2026-11-14
+**Status:** Ready for planning
+
+<domain>
+## Phase Boundary
+
+Turn the forked AgentHub codebase into a plain macOS terminal. New sessions run the user's login shell. All agent-CLI code, the file browser/editor, and Windows/Linux code/packaging/CI are removed. Every kept feature (daemon persistence, tabs, themes/plugins, chat, web share, Funnel, Tailscale remote attach, notifications, tray, auto-update) keeps working. The Hub UI, branding/paths rename, and Share redesign are NOT in this phase (Phases 2, 3, 4).
+
+</domain>
+
+<decisions>
+## Implementation Decisions
+
+### Session status & notifications
+- Status model shrinks to running / exited / errored. Delete the agent output heuristics (`internal/status` pattern sets for claude/agy, the working/waiting/idle classification).
+- Replace awaiting-input notifications with a generic trigger: when a session's PTY output contains a terminal bell (BEL `\x07` outside OSC strings) or an OSC 9 notification (`ESC ] 9 ; <text>`, excluding OSC 9;4 progress) AND the app window is hidden, fire one native macOS notification (de-duplicated or rate-limited per session). Keep the existing Settings → Behavior toggle (default OFF).
+- Keep shell-exit behavior: clean exit gives a 5s countdown, toast, and Keep Open. Non-zero exit stays open with the error state.
+- Keep OSC 9;4 progress (tab underline + tray quartile glyph) unchanged.
+
+### New session & CLI
+- New sessions start `$SHELL` as a login shell. No shell picker and no arguments field.
+- Starting directory defaults to the last-used directory, picked with the native folder picker (existing behavior).
+- CLI `new [dir]` starts a shell. Drop the agent argument and the `--` arg passthrough. Keep the other CLI commands (list, attach, kill, daemon, etc.).
+- Keep the "web-sharing a raw shell" warning as a one-time warning, re-enableable in Settings. It must not fire on every share.
+
+### Removal boundaries
+- Remove the agent/CLI field from the session API, daemon state, and persisted session data. Old persisted sessions must still load, with the unknown field ignored (no crash).
+- CI: delete the Windows and Linux build/release jobs and the winget distribute job. Keep the Playwright browser e2e on its ubuntu runner (it tests web pages, not a Linux app). macOS build/test jobs stay.
+- Delete `packaging/winget`. Leave `packaging/homebrew` untouched (v2 distribution).
+- Do NOT rename paths, socket, port, module path, or binary in this phase (Phase 3). While testing Portty builds in Phases 1-2, quit any installed AgentHub, because they share config paths, socket, and port 7443.
+- Chat: remove the `@session` pinned target and the chat→PTY inject bridge, including its server-side endpoint. Keep `@alias` mentions, presence, typing, export, and unread badges.
+- Remove: CLI detection/PATH discovery for agents (`internal/pty/detect.go` known CLIs), agent picker, agent badges/icons, per-agent args persistence, per-agent theme broadcast (OpenCode SIGUSR2), Antigravity, agent status UI (filter counts and dots that mean working/waiting).
+- Remove the file browser/editor everywhere: `internal/files`, its daemon/webserver routes, the files capability, `FileBrowser*`/`Editor` components, remote-browse UI (`RemoteBrowseDNSWarning`), and web-share file panels.
+- Remove Windows/Linux sources: `tray_{linux,windows}.go`, `notification_{linux,windows}.go`, `*_windows.go`/`*_linux.go` in internal packages (e.g. `internal/pty/win32input.go`, `notify_theme_windows.go`), and Windows/Linux-only dependencies (go-winio, godbus, etc.) if they become unused (`go mod tidy`).
+
+### Claude's Discretion
+- Order and granularity of removal plans, as long as every plan leaves the build and tests green.
+- Whether the Hub keeps rendering in Phase 1 with agent bits stripped (expected: yes, minimal edits, since Phase 2 deletes it), or which Hub pieces are simply simplified.
+- Exact BEL/OSC 9 rate-limit window.
+
+</decisions>
+
+<code_context>
+## Existing Code Insights
+
+### Reusable Assets
+- `GetShellPath()` (Go App binding) plus the single "Shell" row in `frontend/src/components/NewSessionModal.tsx`, which already supports bare `'shell'` sessions (SHELL-10).
+- Native notification plumbing: `notification_darwin.go` (UNUserNotificationCenter), edge-triggered/de-duplicated logic from v4.2 #110. Re-point it from status transitions to BEL/OSC 9 events.
+- OSC parsing regexes in `internal/daemon/engine.go` (~line 655-705) already distinguish BEL-terminated and ST-terminated OSC sequences, so BEL-inside-OSC must not count as a bell.
+
+### Established Patterns
+- Go/Wails app: `app.go` (1742 lines) binds Go to the frontend. The daemon is in `internal/daemon` (`engine.go` 1448 lines, `api.go` 2090 lines, `client.go`). The web server is `internal/webserver`, the relay `internal/relay`, the capability model `internal/capability`.
+- Platform splits use `_darwin.go` / `_linux.go` / `_windows.go` file suffixes plus build tags. Delete non-darwin files and fix any shared code that referenced them.
+- The test suite is large: Go tests, Vitest (`frontend/src/**/__tests__`, `*.test.tsx`), Playwright (`frontend/playwright.config.ts`, `playwright-fixture`), and the `.security-review/` fuzz harness for relay and webserver. Tests for removed features are deleted along with them.
+
+### Integration Points
+- Agent-specific Go files: `app.go`, `internal/pty/detect.go`, `internal/status/detector.go`, `internal/daemon/{engine,api,client}.go`, `internal/daemon/notify_theme_{unix,windows}.go`.
+- Frontend: `App.tsx` (passes `detectedShells`, agent lists), `NewSessionModal.tsx`, `components/Hub/*` (agent badges, status filter `HubFilterBar`, `MentionPopover` @session), `ShellWebShareBanner.tsx`, `SessionShare/`.
+- CI: `.github/workflows/{build,release,distribute,e2e}.yml`.
+
+</code_context>
+
+<specifics>
+## Specific Ideas
+
+- The user runs Claude Code inside Portty shells. The BEL/OSC 9 notification exists so "Claude needs input" still reaches them without agent-specific code.
+- Chesterton's Fence (project CLAUDE.md): read why each piece exists before deleting, especially daemon/relay/capability code shared between kept and removed features.
+
+</specifics>
+
+<deferred>
+## Deferred Ideas
+
+- Path/socket/port/module/binary rename → Phase 3 (BRND-03).
+- Hub removal and sidebar → Phase 2.
+- Homebrew packaging → v2 (DIST).
+
+</deferred>
