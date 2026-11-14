@@ -54,13 +54,14 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Goal**: Everything a user sees or types says Portty: app, CLI, paths, icons, docs, notifications, and update feed
 **Mode:** mvp
 **Depends on**: Phase 2
-**Requirements**: BRND-01, BRND-02, BRND-03, BRND-04, NOTF-01
+**Requirements**: BRND-01, BRND-02, BRND-03, BRND-04, BRND-05, BRND-06, NOTF-01
 **Success Criteria** (what must be TRUE):
   1. The built app is Portty.app with a Portty bundle ID, and the window title, menu bar, About box, and tray tooltip all say Portty
   2. The app icon, tray icons (progress quartiles and error state), and title logos (light and dark) are the `portty-brand/` assets
   3. The CLI is `portty` (`portty daemon`, `portty attach`), the Go module path is portty, and Portty keeps its config, data, and daemon socket in portty-named locations, never reading or writing AgentHub's
   4. The README, Help tab, Settings, and other user-facing text contain no "AgentHub" or agent-CLI wording and describe Portty as a terminal with remote access
   5. Native macOS notifications appear under the Portty name, and the update check queries Portty's release feed and handles "no release published yet" without an error
+  6. A case-insensitive search for "agenthub" over tracked files (excluding `.planning/`) returns zero hits, and every website/repo link points to https://portty.app or github.com/scottkw/portty
 **Plans**: TBD
 **UI hint**: yes
 

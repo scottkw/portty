@@ -26,7 +26,8 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 
 ### Active
 
-- [ ] Rebrand AgentHub to Portty everywhere: binary names, Go module path, app/bundle ID, UI strings, docs, and icons/logos from `portty-brand/`
+- [ ] Rebrand AgentHub to Portty everywhere: binary names, Go module path, app/bundle ID, UI strings, docs, comments, tests, CI, and icons/logos from `portty-brand/`. Zero "agenthub" references left in tracked files.
+- [ ] Website https://portty.app and repo github.com/scottkw/portty (private) are the canonical links
 - [ ] Remove all agent-CLI-specific code: CLI detection/picker, agent badges, per-agent arguments/themes (e.g. the OpenCode SIGUSR2 path), Antigravity, agent status detection, and the `@session` chat→PTY bridge
 - [ ] New sessions start the user's login shell (no agent picker)
 - [ ] Remove the Hub session grid and replace it with tabs plus a sidebar that lists local sessions and remote tailnet peers' sessions. Clicking one opens it in a tab.
@@ -75,6 +76,7 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 | One Share action = tailnet peers + web link | User wants sharing to automatically cover both desktop and browser | — Pending |
 | Keep CLI `attach` | Fallback from Warp or any terminal; code already exists | — Pending |
 | Keep chat, themes/plugins, notifications/updates; drop file browser | User's explicit choice | — Pending |
+| Website portty.app; private repo scottkw/portty | User decision 2026-11-14 | — Pending |
 
 ## Evolution
 
