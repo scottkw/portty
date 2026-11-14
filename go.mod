@@ -7,7 +7,7 @@ require (
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20260615092913-2399af76d5b1
 	github.com/charmbracelet/x/ansi v0.11.7
-	github.com/charmbracelet/x/vt v0.0.0-20260615092313-b57e5e6d29bb
+	github.com/charmbracelet/x/vt v0.1.0
 	github.com/chromedp/cdproto v0.0.0-20260405000525-47a8ff65b46a
 	github.com/chromedp/chromedp v0.15.1
 	github.com/coder/websocket v1.8.15
