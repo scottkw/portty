@@ -579,7 +579,15 @@ a.lastBellSeq[s.ID] = seq
 | A7 | Calling `runtime.WindowIsMinimised(ctx)` from the tray-poller goroutine is safe in Wails v2.10 | Notification | Possible main-thread assertion. Fall back to `windowVisible` only (hidden-to-tray), which matches the locked decision's "hidden" |
 | A8 | "Window hidden" = hidden to tray (and optionally minimised), not "app not frontmost" or Cmd-H | Notification | The user expects notifications while Portty is merely in the background. Confirm in discuss/UAT |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+Resolved by the orchestrator on 2026-11-14 and given to the planner as locked decisions:
+- **Q1:** Keep `capability.FuzzVerify` and add small relay and webserver fuzz targets (plan 08).
+- **Q2:** Ignore OSC 9 payloads matching `^\d+(;|$)`, which covers 9;4 and the other ConEmu numeric subcommands.
+- **Q3:** Fix it in this phase. The 5 s tray poller emits exit events for long-lived sessions and for sessions reopened after a relaunch (plan 09).
+- **Q4:** Remove the trivial `GOOS == "windows"` test guards in plan 01.
+- **Q5:** Drop `new shell [dir]` and keep only `new [dir]`.
+- **Q6:** Untrack the committed binaries and gitignore them (plan 01).
 
 1. **What does "security fuzz harness" mean in STRP-04?**
    - What we know: no `.security-review/` in the checkout. No `Fuzz*` targets in relay/webserver. The file-sandbox fuzzers are deleted with the feature.
