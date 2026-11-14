@@ -141,7 +141,6 @@ export namespace main {
 	export class RemoteSession {
 	    id: string;
 	    name: string;
-	    cliType: string;
 	    status: string;
 	    url: string;
 	
@@ -153,7 +152,6 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
-	        this.cliType = source["cliType"];
 	        this.status = source["status"];
 	        this.url = source["url"];
 	    }
@@ -195,7 +193,6 @@ export namespace main {
 	
 	export class SessionInfo {
 	    id: string;
-	    cli: string;
 	    name: string;
 	    state: string;
 	    status: string;
@@ -216,7 +213,6 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
-	        this.cli = source["cli"];
 	        this.name = source["name"];
 	        this.state = source["state"];
 	        this.status = source["status"];

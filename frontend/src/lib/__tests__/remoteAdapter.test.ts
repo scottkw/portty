@@ -26,7 +26,6 @@ function makeSession(overrides?: Partial<RemoteSession>): RemoteSession {
   return {
     id: 'sess-x',
     name: 'Test Session',
-    cliType: 'claude',
     status: 'running',
     url: 'https://peer-host.ts.net:9443/sessions/sess-x',
     ...overrides,
@@ -36,11 +35,10 @@ function makeSession(overrides?: Partial<RemoteSession>): RemoteSession {
 // ─── Existing contract (CARD-04 / CR-01) ─────────────────────────────────────
 
 describe('adaptRemoteSession — existing contract', () => {
-  it('maps id, name, cli, status from the remote session', () => {
+  it('maps id, name, status from the remote session', () => {
     const adapted = adaptRemoteSession(makePeer(), makeSession())
     expect(adapted.id).toBe('sess-x')
     expect(adapted.name).toBe('Test Session')
-    expect(adapted.cli).toBe('claude')
     expect(adapted.status).toBe('running')
   })
 

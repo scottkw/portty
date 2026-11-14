@@ -21,7 +21,6 @@ function makePreviewLines(lines: string[]): daemon.StyledSpan[][] {
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'sess-1',
-    cli: 'claude',
     name: 'Test Session',
     state: 'running',
     status: 'running',
@@ -193,17 +192,12 @@ describe('SessionCard', () => {
     expect(origin!.textContent).toContain('remote-peer.tail')
   })
 
-  // ---- CLI badge ----
+  // ---- No agent identity (STRP-01) ----
 
-  it('renders CLI badge with cli name as text', () => {
-    const { container } = renderCard(makeSession({ cli: 'claude' }))
-    // Phase 172: agent chip is now .hub-card__chip--agent (was .hub-card__badge,
-    // superseded — .hub-card__badge itself is kept in style.css only because
-    // HubModal.tsx's session picker chip still consumes it).
-    const badge = container.querySelector('.hub-card__chip--agent')
-    expect(badge).not.toBeNull()
-    // CLI name should be visible text
-    expect(badge!.textContent).toContain('claude')
+  it('renders no agent chip and no data-agent attribute', () => {
+    const { container } = renderCard(makeSession())
+    expect(container.querySelector('.hub-card__chip--agent')).toBeNull()
+    expect(container.querySelector('[data-agent]')).toBeNull()
   })
 
   // ---- Uptime / duration ----
@@ -228,13 +222,12 @@ describe('SessionCard', () => {
 
   // ---- Aria-label on card ----
 
-  it('card has aria-label containing name, status, cli, and origin', () => {
+  it('card has aria-label containing name, status, and origin', () => {
     const { container } = renderCard(makeSession({ hostname: '' }))
     const card = container.querySelector('.hub-card')
     expect(card).not.toBeNull()
     const label = card!.getAttribute('aria-label') ?? ''
     expect(label).toContain('Test Session')
-    expect(label).toContain('claude')
     expect(label).toContain('Local')
   })
 
@@ -249,7 +242,7 @@ describe('SessionCard', () => {
 
   function renderCardWithOpen(
     session: SessionInfo,
-    onOpenSession?: (id: string, name: string, cli: string) => void,
+    onOpenSession?: (id: string, name: string) => void,
   ) {
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -260,10 +253,10 @@ describe('SessionCard', () => {
     return { container, root }
   }
 
-  it('renders an Open button for a live (running) session and calls onOpenSession with id/name/cli', () => {
+  it('renders an Open button for a live (running) session and calls onOpenSession with id/name', () => {
     const onOpen = vi.fn()
     const { container } = renderCardWithOpen(
-      makeSession({ id: 'sess-9', name: 'My Shell', cli: '/bin/zsh', state: 'running' }),
+      makeSession({ id: 'sess-9', name: 'My Shell', state: 'running' }),
       onOpen,
     )
     const btn = container.querySelector('.hub-card__open') as HTMLButtonElement | null
@@ -271,7 +264,7 @@ describe('SessionCard', () => {
     expect(btn!.textContent).toContain('Open')
     act(() => { btn!.click() })
     expect(onOpen).toHaveBeenCalledTimes(1)
-    expect(onOpen).toHaveBeenCalledWith('sess-9', 'My Shell', '/bin/zsh')
+    expect(onOpen).toHaveBeenCalledWith('sess-9', 'My Shell')
   })
 
   it('does NOT render the Open button for a stopped session (no live PTY to attach)', () => {
@@ -297,7 +290,7 @@ describe('SessionCard', () => {
     act(() => {
       root.render(
         <SessionCard
-          session={makeSession({ id: 'r-sess', name: 'Regression', cli: 'claude', state: 'running' })}
+          session={makeSession({ id: 'r-sess', name: 'Regression', state: 'running' })}
           onOpenSession={onOpen}
           previewLines={makePreviewLines(['line1', 'line2'])}
           groupDefs={makeGroupDefs()}
@@ -308,7 +301,7 @@ describe('SessionCard', () => {
     const btn = container.querySelector('.hub-card__open') as HTMLButtonElement | null
     expect(btn).not.toBeNull()
     act(() => { btn!.click() })
-    expect(onOpen).toHaveBeenCalledWith('r-sess', 'Regression', 'claude')
+    expect(onOpen).toHaveBeenCalledWith('r-sess', 'Regression')
   })
 
   // ---- ROW 6: MiniPreview (CARD-07) ----
@@ -805,7 +798,7 @@ describe('SessionCard attention (ATTN-01)', () => {
   })
 })
 
-// ---- Phase 172: consolidated chip row (agent · origin · exposure) ----
+// ---- Phase 172: consolidated chip row (origin · exposure) ----
 // Structural assertions only (class presence + text content) — this is a jsdom
 // render, not a visual check. The pixel-level contract (border-radius: 7px,
 // exposure forced onto its own line via flex-basis: 100%, etc.) is the Sketch
@@ -832,13 +825,6 @@ describe('SessionCard chip row (Phase 172)', () => {
     })
     return { container, root }
   }
-
-  it('renders an agent chip (.hub-card__chip--agent) with the cli text', () => {
-    const { container } = renderCardWithProps(makeSession({ cli: 'claude' }))
-    const chip = container.querySelector('.hub-card__chip--agent')
-    expect(chip).not.toBeNull()
-    expect(chip!.textContent).toContain('claude')
-  })
 
   it('local session renders an origin chip (.hub-card__chip--origin) with "Local"', () => {
     const { container } = renderCardWithProps(

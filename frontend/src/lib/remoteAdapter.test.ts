@@ -16,7 +16,6 @@ function makeSession(overrides?: Partial<RemoteSession>): RemoteSession {
   return {
     id: 'sess-001',
     name: 'my-claude',
-    cliType: 'claude',
     status: 'running',
     url: 'https://dev-box.local/session/sess-001',
     ...overrides,
@@ -24,13 +23,13 @@ function makeSession(overrides?: Partial<RemoteSession>): RemoteSession {
 }
 
 describe('adaptRemoteSession', () => {
-  it('maps id → id, name → name, cliType → cli, status → status', () => {
+  it('maps id → id, name → name, status → status (no cli field)', () => {
     const peer = makePeer()
     const session = makeSession()
     const adapted = adaptRemoteSession(peer, session)
     expect(adapted.id).toBe('sess-001')
     expect(adapted.name).toBe('my-claude')
-    expect(adapted.cli).toBe('claude')
+    expect('cli' in adapted).toBe(false)
     expect(adapted.status).toBe('running')
   })
 

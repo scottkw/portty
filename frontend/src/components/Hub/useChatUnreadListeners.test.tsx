@@ -58,7 +58,6 @@ type MockRelayInstance = {
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'sess-1',
-    cli: 'claude',
     name: 'Test Session',
     state: 'running',
     status: 'running',

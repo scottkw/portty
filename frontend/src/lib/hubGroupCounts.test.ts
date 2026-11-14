@@ -11,7 +11,6 @@ function makeSession(
 ): SessionInfo {
   return {
     id: 'test-id',
-    cli: '/bin/zsh',
     name: overrides.name,
     state: overrides.state,
     status: overrides.status,

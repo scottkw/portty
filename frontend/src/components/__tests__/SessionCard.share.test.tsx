@@ -35,7 +35,6 @@ import type { SessionInfo } from '../../wailsjs/go/main/App'
 const localSession: SessionInfo = {
   id: 'sess-1',
   name: 'My Session',
-  cli: 'claude',
   state: 'running',
   status: 'idle',
   createdAt: '2026-01-01T00:00:00Z',
@@ -77,7 +76,7 @@ interface RenderOpts {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onOpenInBrowser?: (session: any) => void
   // Phase 131/134 re-attach affordance — local-only after CARD-04 gating (WR-01)
-  onOpenSession?: (id: string, name: string, cli: string) => void
+  onOpenSession?: (id: string, name: string) => void
 }
 
 let container: HTMLElement | undefined

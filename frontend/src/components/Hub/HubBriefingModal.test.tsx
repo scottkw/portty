@@ -80,7 +80,6 @@ const STUB_THEME: ITheme = { foreground: '#c0caf5', background: '#1a1b26' }
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'sess-1',
-    cli: 'claude',
     name: 'Test Session',
     state: 'running',
     status: 'errored',

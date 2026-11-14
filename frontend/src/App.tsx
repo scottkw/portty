@@ -76,25 +76,17 @@ const THEME_STORAGE_KEY = 'agenthub:terminalTheme'
 const DEFAULT_THEME_NAME = 'Tomorrow_Night'
 const UI_THEME_STORAGE_KEY = 'agenthub:uiTheme'
 
-// Phase 101-03 (SHELL-07/SHELL-08) — shell cli identifiers that route through
-// the one-time security-warning banner now live in lib/shellCli (imported at
-// top). Phase 150 SET-01 gap-closure: extracted to that shared module (the
-// predicted "third call-site" — Hub SessionShareModal — now exists) and made
-// path-aware, because a shell session's cli is its full path ('/bin/zsh'), not
-// a bare name. Must stay in sync with the daemon's isShellSession check
-// (internal/daemon/engine.go).
-
 /**
  * App is the root component — it owns all tab state and wires
  * the Wails-generated TypeScript bindings to the child components.
  */
 function App(): React.ReactElement {
-  const WELCOME_TAB: Tab = { id: '__welcome__', name: 'Welcome', sessionId: '', cli: '', type: 'welcome' }
-const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '', cli: '', type: 'settings' }
+  const WELCOME_TAB: Tab = { id: '__welcome__', name: 'Welcome', sessionId: '', type: 'welcome' }
+const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '', type: 'settings' }
   // Phase 131 — Hub top-level surface tab.
-  const HUB_TAB: Tab = { id: '__hub__', name: 'Hub', sessionId: '', cli: '', type: 'hub' }
+  const HUB_TAB: Tab = { id: '__hub__', name: 'Hub', sessionId: '', type: 'hub' }
   // Phase 147 — In-app Help page tab.
-  const HELP_TAB: Tab = { id: '__help__', name: 'Help', sessionId: '', cli: '', type: 'help' }
+  const HELP_TAB: Tab = { id: '__help__', name: 'Help', sessionId: '', type: 'help' }
   // Phase 120-06 — single source of truth for "is this React shell running in
   // a regular browser under /app/ vs inside the Wails desktop runtime?" Used
   // to gate the Wails RPC suite (init, retryInit, sessions polls) so the SPA
@@ -552,9 +544,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         if (sessions.length > 0) {
           const restoredTabs: Tab[] = sessions.map((s) => ({
             id: s.id,
-            name: s.name || s.cli,
+            name: s.name || 'shell',
             sessionId: s.id,
-            cli: s.cli,
           }))
           setTabs(restoredTabs)
           setActiveId(restoredTabs[0].id)
@@ -722,7 +713,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         ListSessions().then(sessions => {
           const activeSessions = sessions
             .filter((s: SessionInfo) => s.state !== 'stopped')
-            .map((s: SessionInfo) => ({ id: s.id, name: s.name || s.cli, status: s.state || 'running' }))
+            .map((s: SessionInfo) => ({ id: s.id, name: s.name || 'shell', status: s.state || 'running' }))
           setQuitSessions(activeSessions)
           setShowQuitModal(true)
         }).catch(() => {
@@ -771,7 +762,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         id: sessionId,
         name: defaultName,
         sessionId,
-        cli: 'shell',
       }
       setTabs((prev) => [...prev, tab])
       // Phase 168 UX-01: when stayOnHubAfterCreate is ON, skip the
@@ -794,7 +784,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         ...prev,
         {
           id: sessionId,
-          cli: 'shell',
           name: defaultName,
           state: 'running',
           status: 'running',
@@ -1133,7 +1122,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       id: tabId,
       name: 'Session',
       sessionId,
-      cli: '',
       type: 'web-session',
       baseURL,
       capToken,
@@ -1145,12 +1133,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // Phase 131 UAT follow-up — re-attach to an already-running session.
   // Opens (or focuses) a terminal tab for an existing session id. Mirrors the
   // startup-restore path (SESS-02): a terminal tab is { id: sessionId, name,
-  // sessionId, cli } with no `type`, and the Terminal component attaches to the
+  // sessionId } with no `type`, and the Terminal component attaches to the
   // live PTY by sessionId. Wired to both the Hub cards and the Sessions panel so
   // a session created in another window (or whose tab was closed) can be reopened.
   // NOTE: the Hub surfaces this via an explicit "Open" button rather than a
   // whole-card click — card-click is reserved for the Phase 134 modal gesture.
-  const handleOpenSessionTab = useCallback((sessionId: string, name: string, cli: string) => {
+  const handleOpenSessionTab = useCallback((sessionId: string, name: string) => {
     const existing = tabs.find((t) => t.id === sessionId)
     if (existing) {
       setActiveId(existing.id)
@@ -1158,9 +1146,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
     const newTab: Tab = {
       id: sessionId,
-      name: name || cli,
+      name: name || 'shell',
       sessionId,
-      cli,
     }
     setTabs((prev) => [...prev, newTab])
     setActiveId(newTab.id)
@@ -1338,9 +1325,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       if (sessions.length > 0) {
         const restoredTabs: Tab[] = sessions.map((s) => ({
           id: s.id,
-          name: s.name || s.cli,
+          name: s.name || 'shell',
           sessionId: s.id,
-          cli: s.cli,
         }))
         setTabs(restoredTabs)
         setActiveId(restoredTabs[0].id)

@@ -62,7 +62,6 @@ import { GetSessionStyledTailLines } from '../../wailsjs/go/main/App'
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'sess-1',
-    cli: 'claude',
     name: 'Test Session',
     state: 'running',
     status: 'running',
@@ -88,7 +87,6 @@ function typeSearch(container: HTMLElement, text: string) {
 function makeRemoteSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'remote-1',
-    cli: 'claude',
     name: 'Remote Session',
     state: 'running',
     status: 'running',
@@ -266,8 +264,8 @@ describe('HubPanel', () => {
 
   it('case-insensitively filters sessions by name', () => {
     const sessions = [
-      makeSession({ id: 's1', name: 'My Unique Task', cli: 'opencode', status: 'running', state: 'running' }),
-      makeSession({ id: 's2', name: 'Other Work', cli: 'gemini', status: 'running', state: 'running' }),
+      makeSession({ id: 's1', name: 'My Unique Task', status: 'running', state: 'running' }),
+      makeSession({ id: 's2', name: 'Other Work', status: 'running', state: 'running' }),
     ]
     const { container } = renderPanel({ sessions })
     const searchInput = container.querySelector<HTMLInputElement>('.hub-filter__search')!
@@ -710,7 +708,6 @@ import { filterSessions } from './HubPanel'
 describe('filterSessions', () => {
   const makeS = (overrides: Partial<SessionInfo> = {}): SessionInfo => ({
     id: 's1',
-    cli: 'claude',
     name: 'Test',
     state: 'running',
     status: 'running',

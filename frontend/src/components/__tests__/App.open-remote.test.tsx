@@ -64,7 +64,6 @@ import type { SessionInfo } from '../../wailsjs/go/main/App'
 const remoteSession: SessionInfo = {
   id: 'sess-remote-1',
   name: 'Remote Session',
-  cli: 'claude',
   state: 'running',
   status: 'idle',
   createdAt: '2026-01-01T00:00:00Z',

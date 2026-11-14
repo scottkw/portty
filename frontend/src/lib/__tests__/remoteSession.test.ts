@@ -20,14 +20,12 @@ const peers: RemotePeerSessions[] = [
       {
         id: 'sess-A1',
         name: 'claude 1',
-        cliType: 'claude',
         status: 'running',
         url: 'https://hub-a.tailnet.ts.net:9443/sessions/sess-A1',
       },
       {
         id: 'sess-A2',
         name: 'codex',
-        cliType: 'codex',
         status: 'idle',
         url: 'https://hub-a.tailnet.ts.net:9443/sessions/sess-A2',
       },
@@ -40,7 +38,6 @@ const peers: RemotePeerSessions[] = [
       {
         id: 'sess-B1',
         name: 'aider',
-        cliType: 'aider',
         status: 'running',
         url: 'https://hub-b.tailnet.ts.net:9443/sessions/sess-B1',
       },

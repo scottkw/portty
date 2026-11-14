@@ -196,7 +196,6 @@ export function HubModal({
           <StatusIcon className="hub-modal__status-icon" aria-hidden="true" />
           <span className="sr-only">{statusLabel}</span>
           <span className="hub-modal__session-name">{session.name}</span>
-          <span className="hub-card__badge">{session.cli}</span>
           {isLocal ? (
             <ComputerDesktopIcon className="hub-modal__origin-icon" aria-hidden="true" />
           ) : (

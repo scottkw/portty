@@ -15,9 +15,6 @@ import { ShareSegmentedControl, type ShareTab } from './ShareSegmentedControl'
 import { TailnetTab } from '../SessionShare/TailnetTab'
 import { InternetReadOnlyTab } from '../SessionShare/InternetReadOnlyTab'
 import { InternetFullAccessTab } from '../SessionShare/InternetFullAccessTab'
-// Phase 150 SET-01 — shared shell-detection authority. `cli` may be a full path
-// ('/bin/zsh'), so isShellCli() normalizes to basename before matching.
-import { isShellCli } from '../../lib/shellCli'
 
 // Phase 173 (D-07/SM-07) — colorblind-safe toggle state text. Owner is
 // colorblind (project memory): every toggle must read its state as text, not
@@ -33,7 +30,6 @@ function toggleStateLabel(checked: boolean, disabled: boolean): string {
 interface ShareSession {
   id: string
   name: string
-  cli: string          // Phase 150 SET-01: needed to check SHELL_CLIS gate
   webEnabled: boolean
   // Phase 166 FUI-05: seeds the Internet-section state consumed in Plan 05.
   funnelActive: boolean
@@ -246,12 +242,12 @@ export function SessionShareModal({
   // "Share the session" toggle handler.
   async function handleShareToggle(): Promise<void> {
     const next = !shareEnabled
-    // Phase 150 SET-01 (D-09): intercept ON-toggles for shell sessions when
-    // the warning is enabled and the user hasn't yet acknowledged it on this
-    // machine. AI-CLI toggles, shell OFF-toggles, and shell ON-toggles with
-    // warned=true fall through unchanged. Single warned authority from App.tsx
-    // (pitfall 4 — do NOT fork into local state).
-    if (next && isShellCli(session.cli) && shellWebShareWarningEnabled && !shellWebShareWarned) {
+    // Phase 150 SET-01 (D-09): every session is a shell, so intercept the first
+    // ON-toggle while the warning is enabled and not yet acknowledged on this
+    // machine. OFF-toggles and ON-toggles with warned=true fall through
+    // unchanged. Single warned authority from App.tsx (pitfall 4 — do NOT fork
+    // into local state).
+    if (next && shellWebShareWarningEnabled && !shellWebShareWarned) {
       setPendingShellShare(true)
       return
     }

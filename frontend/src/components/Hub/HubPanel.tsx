@@ -35,12 +35,11 @@ export function filterSessions(
 ): SessionInfo[] {
   const needle = search.toLowerCase()
   return sessions.filter((s) => {
-    // Search filter — case-insensitive substring on name, cli, and hostname
+    // Search filter — case-insensitive substring on name and hostname
     if (needle) {
       const inName = s.name.toLowerCase().includes(needle)
-      const inCli = s.cli.toLowerCase().includes(needle)
       const inHost = s.hostname.toLowerCase().includes(needle)
-      if (!inName && !inCli && !inHost) return false
+      if (!inName && !inHost) return false
     }
 
     return true
@@ -140,7 +139,7 @@ export interface HubPanelProps {
   /** Fired when the user commits an inline rename. */
   onRename: (id: string, name: string) => void
   /** Opens (or focuses) the session's terminal tab. Phase 131 UAT follow-up. */
-  onOpenSession?: (sessionId: string, name: string, cli: string) => void
+  onOpenSession?: (sessionId: string, name: string) => void
   /** Phase 132 / GRID-07 — remote sessions from App.tsx (already adapted to SessionInfo[]) */
   remoteSessions?: SessionInfo[]
   /** Phase 132 / CARD-07 — true when Hub tab is active (gates usePreviewPoller interval) */

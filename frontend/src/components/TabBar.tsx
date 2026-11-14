@@ -1,16 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { GlobeAltIcon, LockOpenIcon } from '@heroicons/react/24/outline'
-// WR/POL: agentBadgeModifier extracted to a shared lib so the Hub card left
-// spine (.hub-card[data-agent]) and this tab dot (.tab__agent-badge--*) derive
-// the per-CLI "session type" color from one source and cannot drift.
-import { agentBadgeModifier } from '../lib/agentBadge'
 import { normalizeStatus, statusLabel } from '../lib/hubStatus'
 
 export interface Tab {
   id: string
   name: string
   sessionId: string
-  cli: string
   type?: 'terminal' | 'welcome' | 'settings' | 'hub' | 'help' | 'web-session'
   /** Phase 168-03 (FIX-03) — per-tab remote peer origin for 'web-session' tabs
    *  opened via handleOpenRemoteSession. undefined for the app's own web-share
@@ -19,31 +14,6 @@ export interface Tab {
   /** Phase 168-03 (FIX-03) — per-tab capability token, paired with baseURL. */
   capToken?: string
 }
-// Phase 101-02 — human-readable agent label for the tab tooltip suffix.
-// Locked copy: shells use "Shell — DISPLAYNAME" (em-dash U+2014); AI CLIs
-// use the same product names the new-session modal shows. Unknown CLIs
-// fall through to the raw cli string so the tab still renders a useful
-// hover tip.
-function agentDisplayName(cli: string): string {
-  const shellMap: Record<string, string> = {
-    shell: 'system default',
-    bash: 'bash',
-    zsh: 'zsh',
-    pwsh: 'PowerShell',
-    powershell: 'Windows PowerShell',
-  }
-  if (shellMap[cli] !== undefined) return 'Shell — ' + shellMap[cli]
-  const cliMap: Record<string, string> = {
-    claude: 'Claude Code',
-    opencode: 'OpenCode',
-    codex: 'OpenAI Codex',
-    gemini: 'Gemini CLI',
-    cursor: 'Cursor',
-    aider: 'Aider',
-  }
-  return cliMap[cli] ?? cli
-}
-
 interface TabBarProps {
   tabs: Tab[]
   activeId: string | null
@@ -210,21 +180,6 @@ export function TabBar({
       )}
       <div className="tab-list" ref={listRef}>
         {tabs.map((tab) => {
-          // Phase 101-02 (SHELL-06 GUI half) — agent badge between status dot
-          // and tab name. Decorative (aria-hidden); the same info is exposed
-          // textually in the tab-name tooltip suffix.
-          const badgeModifier = agentBadgeModifier(tab.cli)
-          const badgeClass = badgeModifier
-            ? `tab__agent-badge tab__agent-badge--${badgeModifier}`
-            : 'tab__agent-badge'
-          // Tab tooltip carries both the rename hint AND the agent-type
-          // suffix — e.g., "Double-click or right-click to rename · Shell — bash".
-          // For unknown CLIs (cli=""), omit the suffix so welcome / daemon /
-          // settings tabs don't render a meaningless "()" string.
-          const agentLabel = tab.cli ? agentDisplayName(tab.cli) : ''
-          const titleText = agentLabel
-            ? `Double-click or right-click to rename · ${agentLabel}`
-            : 'Double-click or right-click to rename'
           const status = normalizeStatus(sessionStatuses?.[tab.sessionId])
           return (
           <div
@@ -240,7 +195,6 @@ export function TabBar({
               title={statusLabel(status)}
               aria-label={statusLabel(status)}
             />
-            <span className={badgeClass} aria-hidden="true" />
             {/* Phase 166 / FUI-03 — tab internet exposure indicator.
                 COLORBLIND-SAFE: GlobeAltIcon shape carries state; color is reinforcement only.
                 Text label is in aria-label + title — not rendered visually (D-09). */}
@@ -285,7 +239,7 @@ export function TabBar({
                   e.stopPropagation()
                   setContextMenu({ tabId: tab.id, x: e.clientX, y: e.clientY })
                 }}
-                title={titleText}
+                title="Double-click or right-click to rename"
               >
                 {tab.name}
               </span>

@@ -17,7 +17,6 @@ export function adaptRemoteSession(
   return {
     id: session.id,
     name: session.name,
-    cli: session.cliType,
     state: 'running',          // conservative default — remote status is not granular
     status: session.status || 'running',
     createdAt: new Date().toISOString(),

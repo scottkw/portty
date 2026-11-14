@@ -22,9 +22,6 @@ import { InlineSessionName } from './InlineSessionName'
 // WR-01: deriveHubStatus extracted to shared util (was triplicated across SessionCard/HubFilterBar/HubPanel)
 import { deriveHubStatus } from '../../lib/hubStatus'
 import type { HubStatus } from '../../lib/hubStatus'
-// Session-type (agent/CLI) color identity — same source the tab agent-badge dot uses,
-// so the card's left spine matches the dot on the tab. data-agent drives the CSS border-left.
-import { agentBadgeModifier } from '../../lib/agentBadge'
 import { memberKey, type HubGroupDef } from '../../lib/hubGroups'
 import { MiniPreview } from './MiniPreview'
 import { ChatBadge } from './ChatBadge'
@@ -122,7 +119,7 @@ export interface SessionCardProps {
    * Surfaced as an explicit "Open" button (not whole-card click — card-click is
    * reserved for the Phase 134 modal gesture). Only shown for live sessions.
    */
-  onOpenSession?: (sessionId: string, name: string, cli: string) => void
+  onOpenSession?: (sessionId: string, name: string) => void
   /** CARD-07/CARD-05: styled tail lines from usePreviewPoller; undefined = loading. Phase 139: StyledSpan[][] */
   previewLines?: daemon.StyledSpan[][]
   /** Phase 139 / CARD-05: active xterm ITheme for color resolution in MiniPreview */
@@ -207,7 +204,6 @@ export function SessionCard({
 }: SessionCardProps): React.ReactElement {
   const {
     id,
-    cli,
     name,
     hostname,
     viewerCount,
@@ -245,7 +241,7 @@ export function SessionCard({
   // Card aria-label per Accessibility Contract
   // ATTN-01: append ", needs attention" suffix when attention is active (Accessibility Contract item 3)
   // CARD-03: append ", connected" or ", available" for remote cards
-  const cardAriaLabel = `${name}, ${displayLabel}, ${cli}, ${originText}${isAttention ? ', needs attention' : ''}${isRemote ? (isConnected ? ', connected' : ', available') : ''}`
+  const cardAriaLabel = `${name}, ${displayLabel}, ${originText}${isAttention ? ', needs attention' : ''}${isRemote ? (isConnected ? ', connected' : ', available') : ''}`
 
   /* GROUP-04: membership key = "${session.name}:::${session.workDir}" — survives session-id churn */
   const memberKeyForSession = memberKey(name, session.workDir)
@@ -337,9 +333,6 @@ export function SessionCard({
         isDragging ? 'hub-card--dragging' : '',
         isAttention ? 'hub-card--attention' : '',
       ].filter(Boolean).join(' ')}
-      /* Left spine colored by session type (agent/CLI), matching the tab agent-badge dot.
-         Colorblind-safe: reinforcement only — the agent is also shown as the `{cli}` text chip. */
-      data-agent={agentBadgeModifier(cli) ?? 'unknown'}
       draggable="true"
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', memberKeyForSession)
@@ -492,16 +485,11 @@ export function SessionCard({
         </div>
       )}
 
-      {/* Phase 172 / D-01/D-04/D-05 — consolidated chip row: agent · origin · exposure.
-          Sketch 001 Variant B (winner): rounded-rect quiet chips for agent + origin,
+      {/* Phase 172 / D-01/D-04/D-05 — consolidated chip row: origin · exposure.
+          Sketch 001 Variant B (winner): rounded-rect quiet chip for origin,
           the exposure cluster (INTERNET / FULL ACCESS) is the only FILLED chips and is
           forced onto its own right-aligned line by .hub-card__exposure. */}
       <div className="hub-card__chiprow">
-        {/* Agent chip — colored by session type; the card's data-agent drives the chip
-            tint so it matches the left spine + tab dot. COLORBLIND-SAFE: chip text is
-            the cli name; color is reinforcement only. */}
-        <span className="hub-card__chip hub-card__chip--agent">{cli}</span>
-
         {/* Origin chip — fully muted (D-01/Sketch pin, no green-local/blue-remote color
             coding). COLORBLIND-SAFE: the ComputerDesktopIcon/GlobeAltIcon shape + text
             label carry the Local/Remote meaning; this chip carries no color signal. */}
@@ -574,7 +562,7 @@ export function SessionCard({
           <button
             type="button"
             className="hub-card__open"
-            onClick={(e) => { e.stopPropagation(); onOpenSession(id, name, cli) }}
+            onClick={(e) => { e.stopPropagation(); onOpenSession(id, name) }}
             aria-label={`Open ${name}`}
           >
             Open

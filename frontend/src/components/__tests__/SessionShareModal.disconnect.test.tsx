@@ -48,7 +48,6 @@ function makeSession(opts: ModalOpts = {}) {
   return {
     id: 'sess-1',
     name: 'Test Session',
-    cli: 'claude',
     webEnabled: opts.webEnabled ?? true,
     funnelActive: false,
     funnelWriteActive: false,

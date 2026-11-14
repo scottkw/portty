@@ -164,7 +164,6 @@ describe('HubModal (A11Y-04: focus trap via inert)', () => {
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'sess-1',
-    cli: 'claude',
     name: 'Test Session',
     state: 'stopped',
     status: 'exited',

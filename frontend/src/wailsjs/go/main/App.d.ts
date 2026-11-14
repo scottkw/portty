@@ -5,7 +5,6 @@ import { daemon } from '../models'
 
 export interface SessionInfo {
   id: string
-  cli: string
   name: string
   state: string
   status: string
@@ -102,7 +101,6 @@ export function GetTailscaleStatus(): Promise<{
 export interface RemoteSession {
   id: string
   name: string
-  cliType: string
   status: string
   url: string
   // broadcast join-code fields REMOVED — D-10: discovery carries no codes (out-of-band design)

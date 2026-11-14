@@ -136,7 +136,7 @@ export interface SessionCardGridProps {
   /** Passed through to each SessionCard for inline rename. */
   onRename: (id: string, name: string) => void
   /** Passed through to each SessionCard's Open button. Phase 131 UAT follow-up. */
-  onOpenSession?: (sessionId: string, name: string, cli: string) => void
+  onOpenSession?: (sessionId: string, name: string) => void
   /** Phase 132 — named group definitions; when non-empty overrides workDir grouping */
   groupDefs?: HubGroupDef[]
   /** Phase 132/139 — styled tail lines map from usePreviewPoller, keyed by session ID (CARD-05: StyledSpan[][] since Plan 04) */

@@ -70,7 +70,6 @@ interface ModalOpts {
   webServerMode?: 'local' | 'tailscale'
   webServerRunning?: boolean
   // Phase 150 SET-01 shell-warn props
-  cli?: string
   shellWebShareWarned?: boolean
   shellWebShareWarningEnabled?: boolean
   onShellWebShareConfirm?: () => Promise<boolean>
@@ -85,7 +84,6 @@ function makeSession(opts: ModalOpts = {}) {
   return {
     id: 'sess-1',
     name: 'Test Session',
-    cli: opts.cli ?? 'claude',
     webEnabled: opts.webEnabled ?? false,
     funnelActive: opts.funnelActive ?? false,
     funnelWriteActive: opts.funnelWriteActive ?? false,
@@ -264,9 +262,8 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
     vi.clearAllMocks()
   })
 
-  it('shell session + warningEnabled + !warned → banner shown, ToggleWebServing NOT called', async () => {
+  it('first web-share of any session (warningEnabled + !warned) → banner shown, ToggleWebServing NOT called', async () => {
     const { container: c } = renderModal({
-      cli: 'bash',
       shellWebShareWarningEnabled: true,
       shellWebShareWarned: false,
       onShellWebShareConfirm: vi.fn().mockResolvedValue(true),
@@ -283,28 +280,8 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
     expect(mockedToggleWebServing).not.toHaveBeenCalled()
   })
 
-  it('shell session whose cli is a FULL PATH (/bin/zsh) → banner shown (gap-closure: live UAT)', async () => {
-    // Regression: sessions created via "New session" carry the shell's full
-    // path as cli (e.g. "/bin/zsh"), but the gate matched a bare-name set, so
-    // the banner never fired in the real app. All prior tests used bare names.
+  it('warning disabled in Settings (warningEnabled=false) → banner NOT shown; ToggleWebServing called', async () => {
     const { container: c } = renderModal({
-      cli: '/bin/zsh',
-      shellWebShareWarningEnabled: true,
-      shellWebShareWarned: false,
-      onShellWebShareConfirm: vi.fn().mockResolvedValue(true),
-      onShellWebShareCancel: vi.fn(),
-    })
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
-    expect(shareToggle).not.toBeNull()
-    await flushSync(() => { shareToggle!.click() })
-    const text = c.textContent ?? ''
-    expect(text).toMatch(/web sharing this shell|expose.*command execution/i)
-    expect(mockedToggleWebServing).not.toHaveBeenCalled()
-  })
-
-  it('shell session + warningEnabled=false → banner NOT shown; ToggleWebServing called', async () => {
-    const { container: c } = renderModal({
-      cli: 'zsh',
       shellWebShareWarningEnabled: false,
       shellWebShareWarned: false,
       onShellWebShareConfirm: vi.fn().mockResolvedValue(true),
@@ -321,28 +298,8 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
     expect(mockedToggleWebServing).toHaveBeenCalled()
   })
 
-  it('non-shell (claude) session → banner NOT shown; ToggleWebServing called immediately', async () => {
+  it('later share after acknowledgement (warned=true) → banner NOT shown; ToggleWebServing called', async () => {
     const { container: c } = renderModal({
-      cli: 'claude',
-      shellWebShareWarningEnabled: true,
-      shellWebShareWarned: false,
-      onShellWebShareConfirm: vi.fn().mockResolvedValue(true),
-      onShellWebShareCancel: vi.fn(),
-    })
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
-    expect(shareToggle).not.toBeNull()
-    await flushSync(() => { shareToggle!.click() })
-    await new Promise<void>((r) => setTimeout(r, 0))
-    // No shell-warning banner
-    const text = c.textContent ?? ''
-    expect(text).not.toMatch(/expose.*command execution/i)
-    // ToggleWebServing called (non-shell passes through)
-    expect(mockedToggleWebServing).toHaveBeenCalled()
-  })
-
-  it('shell session already warned → banner NOT shown; ToggleWebServing called', async () => {
-    const { container: c } = renderModal({
-      cli: 'shell',
       shellWebShareWarningEnabled: true,
       shellWebShareWarned: true,  // already acknowledged
       onShellWebShareConfirm: vi.fn().mockResolvedValue(true),
@@ -361,7 +318,6 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
   it('cancelling the banner leaves share OFF and calls onShellWebShareCancel', async () => {
     const onCancel = vi.fn()
     const { container: c } = renderModal({
-      cli: 'bash',
       shellWebShareWarningEnabled: true,
       shellWebShareWarned: false,
       onShellWebShareConfirm: vi.fn().mockResolvedValue(true),
@@ -385,7 +341,6 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
   it('confirming the banner calls onShellWebShareConfirm then enables share on success', async () => {
     const onConfirm = vi.fn().mockResolvedValue(true)
     const { container: c } = renderModal({
-      cli: 'zsh',
       shellWebShareWarningEnabled: true,
       shellWebShareWarned: false,
       onShellWebShareConfirm: onConfirm,
@@ -415,7 +370,6 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
   it('WR-01: confirming the banner does NOT enable share when onShellWebShareConfirm resolves false (failure)', async () => {
     const onConfirm = vi.fn().mockResolvedValue(false)
     const { container: c } = renderModal({
-      cli: 'zsh',
       shellWebShareWarningEnabled: true,
       shellWebShareWarned: false,
       onShellWebShareConfirm: onConfirm,
@@ -723,7 +677,6 @@ describe('SessionShareModal — Phase 168-08 (gap): onShareEnabledChange notifie
   it('warned shell path: toggling ON calls ToggleWebServing(id, true) and onShareEnabledChange(id, true); no banner', async () => {
     const onShareEnabledChange = vi.fn()
     const { container: c } = renderModal({
-      cli: '/bin/zsh',
       shellWebShareWarned: true,
       shellWebShareWarningEnabled: true,
       webEnabled: false,
@@ -745,7 +698,6 @@ describe('SessionShareModal — Phase 168-08 (gap): onShareEnabledChange notifie
   it('warned shell path: toggling OFF (already shared) calls ToggleWebServing(id, false) and onShareEnabledChange(id, false)', async () => {
     const onShareEnabledChange = vi.fn()
     const { container: c } = renderModal({
-      cli: '/bin/zsh',
       shellWebShareWarned: true,
       shellWebShareWarningEnabled: true,
       webEnabled: true, // already shared
@@ -764,7 +716,6 @@ describe('SessionShareModal — Phase 168-08 (gap): onShareEnabledChange notifie
   it('un-warned first-time shell path: toggling ON shows the banner and does NOT call onShareEnabledChange (no double-set with handleShellWebShareConfirm)', async () => {
     const onShareEnabledChange = vi.fn()
     const { container: c } = renderModal({
-      cli: '/bin/zsh',
       shellWebShareWarned: false,
       shellWebShareWarningEnabled: true,
       onShellWebShareConfirm: vi.fn().mockResolvedValue(true),
