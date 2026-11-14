@@ -14,6 +14,5 @@
 package main
 
 import (
-	_ "github.com/goreleaser/nfpm/v2"
 	_ "github.com/wailsapp/wails/v2"
 )

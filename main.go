@@ -13,7 +13,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	goruntime "runtime"
 	"strings"
 
 	"github.com/scottkw/agenthub/internal/daemon"
@@ -64,15 +63,6 @@ func main() {
 }
 
 func runGUI() {
-	// Linux/Wayland only: WebKit2GTK's DMABUF GPU renderer hangs on first
-	// interaction under Wayland compositors (BUG-05 / #124). Respect any
-	// user-supplied value — never overwrite an existing setting.
-	if goruntime.GOOS == "linux" {
-		if _, ok := os.LookupEnv("WEBKIT_DISABLE_DMABUF_RENDERER"); !ok {
-			os.Setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
-		}
-	}
-
 	daemon.AugmentServicePath() // Ensure CLIs in /usr/local/bin, Homebrew, volta, nvm are on PATH
 	app := NewApp()
 
@@ -108,28 +98,16 @@ func runGUI() {
 func appMenu() *menu.Menu {
 	m := menu.NewMenu()
 	// 1. AppMenu MUST be first on macOS (STATE.md pitfall)
-	// Guarded off on Linux only: Wails' GTK backend dereferences a nil SubMenu
-	// on this role menu and segfaults on launch (BUG-05 / #124). macOS needs it,
-	// and Windows (WebView2) is unaffected and received it before this fix — so
-	// exclude only Linux rather than narrowing to darwin (avoids Windows scope creep).
-	if goruntime.GOOS != "linux" {
-		m.Append(menu.AppMenu())
-	}
+	m.Append(menu.AppMenu())
 	// 2. File menu (custom — FileMenuRole is commented out in v2.10.2)
 	fileMenu := m.AddSubmenu("File")
 	fileMenu.AddText("New Session", keys.CmdOrCtrl("n"), nil)
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Close Tab", keys.CmdOrCtrl("w"), nil)
 	// 3. EditMenu — enables Cmd+C/V/X/Z via native NSMenu (MENU-02)
-	// Guarded off on Linux only: same nil-SubMenu segfault as AppMenu (BUG-05 / #124).
-	if goruntime.GOOS != "linux" {
-		m.Append(menu.EditMenu())
-	}
+	m.Append(menu.EditMenu())
 	// 4. Window menu
-	// Guarded off on Linux only: same nil-SubMenu segfault as AppMenu (BUG-05 / #124).
-	if goruntime.GOOS != "linux" {
-		m.Append(menu.WindowMenu())
-	}
+	m.Append(menu.WindowMenu())
 	// 5. Help menu (custom — HelpSubMenuRole is commented out in v2.10.2)
 	helpMenu := m.AddSubmenu("Help")
 	helpMenu.AddText("AgentHub on GitHub", nil, openGitHubCallback)

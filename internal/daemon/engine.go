@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -1200,8 +1199,7 @@ func (e *SessionEngine) SetShellWebShareWarningEnabled(val bool) error {
 //  2. pty.DiscoverShells() — first entry whose Name is "shell" (synthetic
 //     system-default entry). This covers POSIX hosts where $SHELL may be unset
 //     but a real shell was discovered.
-//  3. Platform hard-fallback: /bin/zsh (darwin), /bin/bash (linux),
-//     pwsh.exe (windows).
+//  3. Hard-fallback: /bin/zsh (macOS default shell).
 //
 // NEVER returns an empty string. Phase 107 SHELL-11.
 func resolveDefaultShellPath() string {
@@ -1215,15 +1213,8 @@ func resolveDefaultShellPath() string {
 			return sh.Path
 		}
 	}
-	// (3) Platform hard-fallback.
-	switch runtime.GOOS {
-	case "windows":
-		return "pwsh.exe"
-	case "linux":
-		return "/bin/bash"
-	default: // darwin and others
-		return "/bin/zsh"
-	}
+	// (3) macOS hard-fallback.
+	return "/bin/zsh"
 }
 
 // GetShellPath returns the persisted shell binary path. When no path has been

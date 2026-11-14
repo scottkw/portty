@@ -103,11 +103,6 @@ func (a *App) setDockVisible(visible bool) {
 // Error precedence (Pitfall #8): when connected=false, always returns
 // trayIconErrorBytes regardless of a.lastTrayQuartile to ensure daemon-
 // disconnect is not masked by a progress glyph.
-//
-// This helper is defined verbatim in tray.go (darwin), tray_linux.go, and
-// tray_windows.go — three identical copies required because each file has its
-// own //go:build tag and the trayIconProgress* byte slices embedded in each
-// file are not visible across build-tag boundaries.
 func (a *App) trayIconBytesForState(connected bool) []byte {
 	if !connected {
 		return trayIconErrorBytes

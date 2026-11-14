@@ -3,15 +3,11 @@ package daemon
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestAugmentServicePath_AddsExistingDirs(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix PATH separator")
-	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	original := "/usr/bin:/bin"
@@ -116,9 +112,6 @@ func TestNvmActiveBin_NoNvm(t *testing.T) {
 }
 
 func TestAugmentServicePath_AddsLocalBin(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix PATH separator")
-	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	original := "/usr/bin:/bin"
@@ -141,9 +134,6 @@ func TestAugmentServicePath_AddsLocalBin(t *testing.T) {
 }
 
 func TestAugmentServicePath_PrependsNotAppends(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix PATH separator")
-	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	original := "/usr/bin:/bin"
@@ -172,9 +162,6 @@ func TestAugmentServicePath_PrependsNotAppends(t *testing.T) {
 }
 
 func TestAugmentServicePath_Cargo(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix PATH separator")
-	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	original := "/usr/bin:/bin"
@@ -190,37 +177,5 @@ func TestAugmentServicePath_Cargo(t *testing.T) {
 	got := os.Getenv("PATH")
 	if !strings.Contains(got, cargoBin) {
 		t.Errorf("PATH should contain %s, got %s", cargoBin, got)
-	}
-}
-
-func TestAugmentServicePath_FlatpakUser(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix PATH separator")
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	original := "/usr/bin:/bin"
-	t.Setenv("PATH", original)
-
-	flatpakBin := filepath.Join(home, ".local", "share", "flatpak", "exports", "bin")
-	if err := os.MkdirAll(flatpakBin, 0755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-
-	AugmentServicePath()
-
-	got := os.Getenv("PATH")
-	if !strings.Contains(got, flatpakBin) {
-		t.Errorf("PATH should contain %s, got %s", flatpakBin, got)
-	}
-}
-
-func TestPlatformExtraBins_NonWindows(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test is for non-Windows only")
-	}
-	got := platformExtraBins()
-	if got != nil {
-		t.Errorf("platformExtraBins on non-Windows should return nil, got %v", got)
 	}
 }

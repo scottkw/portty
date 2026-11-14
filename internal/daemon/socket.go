@@ -5,20 +5,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"time"
 )
 
-// DefaultSocketPath returns the platform-appropriate Unix socket path for the
-// agenthub daemon. On Windows it returns a named pipe path; on all other
-// platforms it returns a path under the user config directory.
+// DefaultSocketPath returns the Unix socket path for the agenthub daemon,
+// under the user config directory.
 //
 // The parent directory is created if it does not already exist.
 func DefaultSocketPath() string {
-	if runtime.GOOS == "windows" {
-		return `\\.\pipe\agenthub-daemon`
-	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		base = os.TempDir()
@@ -29,22 +23,13 @@ func DefaultSocketPath() string {
 }
 
 // ValidateSocketPath returns an error if path is too long for a Unix socket.
-// The macOS/Linux sun_path limit is 104 bytes including the null terminator,
+// The macOS sun_path limit is 104 bytes including the null terminator,
 // so the maximum usable length is 103 characters.
 func ValidateSocketPath(path string) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
 	if len(path) > 103 {
 		return fmt.Errorf("socket path too long (%d chars, max 103): %s", len(path), path)
 	}
 	return nil
-}
-
-// isWindowsNamedPipe reports whether path is a Windows named pipe path.
-// Named pipe paths start with \\ (double backslash).
-func isWindowsNamedPipe(path string) bool {
-	return strings.HasPrefix(path, `\\`)
 }
 
 // CleanupStaleSocket probes whether anything is listening on path.
@@ -55,9 +40,6 @@ func isWindowsNamedPipe(path string) bool {
 //   - If something is actively listening: returns an error containing
 //     "already running" so callers can surface a helpful message.
 func CleanupStaleSocket(path string) error {
-	if isWindowsNamedPipe(path) {
-		return cleanupStaleWindowsPipe(path)
-	}
 	conn, err := net.DialTimeout("unix", path, 500*time.Millisecond)
 	if err != nil {
 		// Could not connect — either no file or nothing listening.
