@@ -22,9 +22,6 @@ export interface FixtureEnv {
   baseURL: string
   cap: string
   viewerCap: string
-  /** Phase 125-01 — files.write cap for web-share write + 412 e2e scenarios (EDIT-13). */
-  writeCap: string
-  sessionCwd: string
   adminURL: string
   // Phase 122-05 — mock "remote peer" webserver URL used by scenarios 16+17
   // to exercise the remote-session file-browse contract. Listens on a second
@@ -137,8 +134,6 @@ export default async function globalSetup() {
     let baseURL = ''
     let cap = ''
     let viewerCap = ''
-    let writeCap = ''
-    let sessionCwd = ''
     let adminURL = ''
     let remotePeerURL = ''
 
@@ -146,12 +141,9 @@ export default async function globalSetup() {
       stdoutBuf += chunk.toString()
       for (const line of stdoutBuf.split('\n')) {
         if (line.startsWith('BASE_URL=')) baseURL = line.slice('BASE_URL='.length).trim()
-        // Match CAP= but NOT VIEWER_CAP= or WRITE_CAP= — exact prefix check.
+        // Match CAP= but NOT VIEWER_CAP= — exact prefix check.
         if (line.startsWith('CAP=')) cap = line.slice('CAP='.length).trim()
         if (line.startsWith('VIEWER_CAP=')) viewerCap = line.slice('VIEWER_CAP='.length).trim()
-        // Phase 125-01: files.write cap for write + 412 e2e scenarios.
-        if (line.startsWith('WRITE_CAP=')) writeCap = line.slice('WRITE_CAP='.length).trim()
-        if (line.startsWith('SESSION_CWD=')) sessionCwd = line.slice('SESSION_CWD='.length).trim()
         if (line.startsWith('ADMIN_URL=')) adminURL = line.slice('ADMIN_URL='.length).trim()
         if (line.startsWith('REMOTE_PEER_URL=')) {
           remotePeerURL = line.slice('REMOTE_PEER_URL='.length).trim()
@@ -162,8 +154,6 @@ export default async function globalSetup() {
             baseURL,
             cap,
             viewerCap,
-            writeCap,
-            sessionCwd,
             adminURL,
             remotePeerURL,
             pid: fixtureProc!.pid!,

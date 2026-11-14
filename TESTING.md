@@ -26,11 +26,13 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
 | Go unit/integration | **132** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, files, status, tailnet |
-| vitest (frontend) | **148** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts, UI state, CSS token source gates, lib adapters (relay, remote, hub, status) |
-| Playwright e2e | **9** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: file browser cap gate, file write/upload/delete, CSP, web-links toggle, plugin hot-swap, vendored xterm addons, cross-surface chat parity gate (PARITY-01/EXPORT-01), web-share guest scope (WEBCHAT-03) |
+| vitest (frontend) | **127** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts, UI state, CSS token source gates, lib adapters (relay, remote, hub, status) |
+| Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, cross-surface chat parity gate (PARITY-01/EXPORT-01), web-share guest scope (WEBCHAT-03) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **290** | — | — | — |
+| **Total** | **267** | — | — | — |
 
+> Note: Portty Phase 1 plan 01-02 (STRP-02/04, file browser/editor UI removed): counts from `git ls-files` — Go **132** (unchanged; the files API goes in plan 01-03), vitest **127** (−21: `FileBrowser/__tests__/` ×11 — `BreadcrumbBar`, `EnableWebSharingTakeover`, `FileBrowserTab.no-base64`, `FileBrowserTab.no-rehype-raw`, `FileBrowserTab.remoteAuth`, `FileBrowserTab.singleton`, `FileListPane`, `FileRowActions`, `PreviewPane`, `Upload`, `sortEntries` — plus `App.fileBrowserMode`, `App.remoteFileBrowser`, `Editor.save`, `Editor`, `EditorComponents`, `HomeDirWriteWarning`, `filesApi`, `humanSize`, `useFilesCapability`, `useFilesWrite`), Playwright **7** (−2: `files-browser.spec.ts`, `files-write.spec.ts`), build-script **1**. Total 267. Category E (File Browser / Editor, M-09..M-11) removed from Section 5.
+>
 > Note: Portty Phase 1 plan 01-01 (STRP-03/04, macOS-only): counts recomputed from `git ls-files` — Go **132** (`git ls-files '*_test.go'`; 140 tracked before this plan, the manifest's 139 was 1 stale; −8 Windows/Linux test files deleted with their sources: `tray_linux_test.go`, `tray_windows_test.go`, `path_windows_test.go`, `socket_windows_test.go`, `exit_linux_test.go`, `kill_windows_test.go`, `win32input_test.go`, `concurrent_read_windows_test.go`), vitest **148** (unchanged), Playwright **9** (unchanged), build-script **1** (`install-sh.test.sh` deleted with `scripts/install.sh`). Total 290. Category F (Windows CI), N (Linux install), O (WinGet) and M-52 (Linux/Wayland launch) removed from Section 5.
 >
 
@@ -314,9 +316,9 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | WEBCHAT-01 | internal/webserver/server_test.go | Go | Phase 159-01: TestTerminalPageRedirect — GET /sessions/{id}?cap=TOKEN returns 302 with Location /app/?session=&cap=; cap token URL-encoded round-trip (+,/,= survive); RO and RW redirect identically (D-06). TestWebServerToggle updated: enabled session → 302 to /app/ (no-redirect client). |
 | WEBCHAT-02 | internal/webserver/server_test.go | Go | Phase 159-01: redirect asserted on the actually-shared /sessions/{id}?cap= route (not /app/ directly); missing/invalid cap still 401/403 before any redirect — requireCapability precedes handleTerminalPage. End-to-end live verification is manual M-31. |
 | WEBCHAT-03 | frontend/e2e/web-share-scope.spec.ts | Playwright | Phase 159-02 (gap-closure): on /app/?session=&cap= the desktop Sidebar nav[aria-label="Main navigation"] is absent (web-share guest scope) while the chat toggle + xterm terminal render; Hub/Settings nav buttons unreachable. Guards the App.tsx `mode !== 'web'` gate that hides Home/Hub/Settings from remote guests. |
-| WEBCHAT-04 | frontend/e2e/web-share-scope.spec.ts | Playwright | Phase 159-03 (gap-closure): the file-browser tab auto-opens ONLY when the cap grants files.read — owner cap → "— Files" tab present (background); viewer cap (no files.read) → no file tab AND no "files.read permission required" takeover. Guards the App.tsx web-bootstrap /api/sessions/{id}/info perms probe. |
+| WEBCHAT-04 | frontend/e2e/web-share-scope.spec.ts | Playwright | Portty 01-02: the file-browser tab is gone — owner and viewer caps both get no "— Files" tab (the web bootstrap opens only the session view). Phase 159-03 file-tab gating tests deleted with the file browser. |
 | WEBCHAT-06 | frontend/src/components/__tests__/style.hub.test.ts | vitest | Phase 159-05 (gap-closure): chat author header truncation — .chat-msg__alias and .chat-msg__tailnet-id use white-space:nowrap + overflow:hidden + text-overflow:ellipsis (alias min-width:0; tailnet-id flex-shrink:1000 so the long nodekey gives up space first); .chat-msg__header min-width:0. Long names truncate on one line instead of char-wrapping. |
-| WEBCHAT-05 | frontend/e2e/web-share-scope.spec.ts | Playwright | Phase 159-04 (gap-closure): a web-share guest cannot rename the session tab — Rename/Save-Terminal-As menu items hidden and double-click does not open the rename input. A files.read guest keeps a chevron whose only item is "Browse files" (re-open the file browser); a no-files guest gets no chevron. Guards the TabBar `webMode` + `webFilesEnabled` props. |
+| WEBCHAT-05 | frontend/e2e/web-share-scope.spec.ts | Playwright | Phase 159-04, updated Portty 01-02: a web-share guest cannot rename the session tab (double-click does not open the rename input) and gets no session-menu chevron for either the owner or the viewer cap (Rename / Save Terminal As are Wails-only and "Browse files" is removed). Guards the TabBar `webMode` prop. |
 | NOTIF-01 | frontend/src/components/Hub/useChatUnreadListeners.test.tsx | vitest | Phase 160-01: background unread WS listener — backgrounded sessions (chat closed) accrue per-session unread count and hasMention flag when messages arrive; switching sessions clears the unread for the now-active session; ChatPanel receives the count via the onUnreadChange callback path (NOTIF-01 hub-card badge wiring). |
 | IN-02 | internal/relay/server_inject_test.go | Go | Phase 160-03: TestInject_ControlOnlyInput — control-only MsgSessionInject payload (bytes all ≤ 0x1F) is sanitized to empty string and produces zero PTY writes; relay server inject gate rejects control-byte-only payloads without broadcasting a chat frame (IN-02 control-input guard). |
 | ALIAS-UI-01 | frontend/src/components/Hub/ChatPanel.test.tsx | vitest | Phase 161-03: alias control renders in shared ChatPanel header (all surfaces via single un-forked component); alias label button NOT disabled when isReadOnly (D-06 exception — alias-set is available to RO guests); pre-fill from local:local roster entry (desktop) and from onSelf MsgSelf callback (web); global scope conveyed via title attribute; 8 alias control tests (TDD GREEN). |
@@ -393,7 +395,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | FNL-09 | frontend/src/components/__tests__/InternetFullAccessTab.test.tsx | vitest | Phase 171-03 (v4.2): `.hub-funnel-write-gate` Danger-section hold-to-confirm gate — R1: releasing the hold before 3s issues zero `onGateConfirm` calls and resets the visual fill to 0%; completing the >=3s hold (timer-authoritative, not `pointerup`) fires exactly one `onGateConfirm(expirySeconds)`; keyboard Space/Enter equivalent drives the same timer; post-gate result block renders the write URL/`<CodeDisplay label="Single-use write code:">`/countdown/disable button; `writeGateUsed` collapses the URL/code rows to "Write code used — one writer connected" while keeping the countdown+disable button; consent-copy compliance asserts the locked copy contains "command execution" and "anyone with the link" verbatim (SPEC Prohibition #4); the hold control is disabled until `funnelActive && !warmingUp`; the 15m/30m/1h expiry `<select>` defaults to 900s with no "Until I disable" option (D-11/R5). Path corrected Phase 173-06 (v4.2): coverage moved from the deleted `SessionSharePanel.test.tsx` to `InternetFullAccessTab.test.tsx` (three-tab segmented redesign, per-tab test decomposition — Idle→Gate-open→Armed state machine added in 173-05, additive over this original always-visible-hold flow). |
 | FNL-09 | frontend/src/components/__tests__/SessionCard.share.test.tsx | vitest | Phase 171-03 (v4.2): R7 — `.hub-fullaccess-badge` renders `LockOpenIcon` + the literal "FULL ACCESS" label, colorblind-safe-distinct from the read `.hub-internet-badge` (different icon import, label string, and `clip-path` notch shape vs. the read badge's pill `border-radius`, never color alone, D-09); coexistence — both the read and FULL ACCESS badges render together (read-then-write order, D-10); RW-only teardown clears `.hub-fullaccess-badge` while leaving the read `.hub-internet-badge` in place (`funnelWriteActive` and `funnelActive` clear independently). |
 | FNL-09 | app_test.go | Go | Phase 177 (v4.2): `TestSessionInfo_MirrorsDaemonFunnelFields` (reflection-based daemon<->app.go funnel-field parity guard: fails if `app.SessionInfo` drops a daemon funnel-exposure field, `FunnelActive`/`FunnelWriteActive`, or its json tag diverges) and `TestListSessions_PropagatesFunnelWriteActive` (real `ListSessions` + `json.Marshal` round trip proving the serialized JSON carries `"funnelWriteActive":true`/`:false`) — closes the `funnelBinding.contract.test.tsx` stub-text blind spot (asserts the real Go struct/conversion, not stub text) that let the FNL-09 native-GUI FULL ACCESS indicator wiring gap ship silently dead. |
-| SM-01 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Phase 173-06 (v4.2): fixed control strip — toggling the Share/Browse/Internet controls never changes the DOM position of the control-strip toggles (structural stability assertion; SM-01's "toggling never reflows" guarantee). |
+| SM-01 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Phase 173-06 (v4.2): fixed control strip — toggling the Share/Internet controls never changes the DOM position of the control-strip toggles (structural stability assertion; SM-01's "toggling never reflows" guarantee). |
 | SM-02 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Phase 173-06 (v4.2): single scroll region — `.hub-share-modal__tabpanel` (not `.hub-share-modal__body`) is the sole scrolling region across all tab/state combinations. |
 | SM-03 | frontend/src/components/__tests__/ShareSegmentedControl.test.tsx | vitest | Phase 173-03 (v4.2, new file): ARIA tablist contract — `role="tablist"` with exactly three `role="tab"` children; `aria-selected` true on the active tab and false on all others. |
 | SM-03 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Phase 173-06 (v4.2): `ShareSegmentedControl` renders as a real tablist inside `.hub-share-modal__tabpanel`, wired to the shell's tab state. |
@@ -402,7 +404,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | SM-04 | frontend/src/components/__tests__/InternetFullAccessTab.test.tsx | vitest | Phase 173-05 (v4.2): positive containment — the `.hub-funnel-write-gate` Danger-section hold-to-confirm flow (Idle → Gate-open → Armed) lives only in this tab; nothing about public write appears elsewhere. |
 | SM-05 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Phase 173-06 (v4.2): tab-availability/default/reset state machine — Internet tabs `aria-disabled` until internet risk confirmed; default tab after confirm = Internet·Read-only; disabling internet resets to Tailnet. |
 | SM-06 | frontend/src/components/__tests__/ShareLinkCard.test.tsx | vitest | Phase 173-04 (v4.2, new file): structure contract — title, CSS-truncated URL (`title=` carries the full URL), Copy/Open/QR actions, join code (`CodeDisplay`) + scope description positioned directly beneath the link. |
-| SM-06 | frontend/src/components/__tests__/TailnetTab.test.tsx | vitest | Phase 173-05 (v4.2): renders exactly two `ShareLinkCard`s (Read-Only Link, Full Access Link) with scope text reflecting `browseEnabled`. |
+| SM-06 | frontend/src/components/__tests__/TailnetTab.test.tsx | vitest | Phase 173-05 (v4.2): renders exactly two `ShareLinkCard`s (Read-Only Link, Full Access Link) with the UI-SPEC scope text ("Watch the live session only — cannot send input." / "Full control of the live session (send input)."; Portty 01-02 dropped the `browseEnabled` variants). |
 | SM-06 | frontend/src/components/__tests__/InternetReadOnlyTab.test.tsx | vitest | Phase 173-05 (v4.2): the public URL renders as a `ShareLinkCard` using the reusable `/join` entry URL (never the raw capability token). |
 | SM-07 | frontend/src/components/__tests__/HoldToConfirmButton.test.tsx | vitest | Phase 173-02 (v4.2, new file): `prefers-reduced-motion` fallback — renders a plain single-click confirm (no timed fill) under reduced motion; the timed 3s hold is unchanged otherwise (byte-behavior preserved, D-07/D-09). |
 | SM-07 | frontend/src/components/__tests__/ShareSegmentedControl.test.tsx | vitest | Phase 173-03 (v4.2): roving tabindex (active tab `tabIndex=0`, others `-1`), ArrowLeft/ArrowRight navigation (wraps, skips disabled), and the danger tab's `is-danger` class + ⚠ glyph (colorblind-safe, not hue); arrow-key nav moves `document.activeElement` to the newly-active tab (roving-tabindex focus-follow, gap-closure 173-08). |
@@ -426,7 +428,7 @@ Human-intervention items that cannot be automated. Run before each tagged releas
 
 ### Category A — Share Modal (SHARE-01..06)
 
-- **M-01** Share modal opens with RO + RW link rows in the live native webview. Home-dir write warning banner renders before the browse toggle when the session's workDir is the home directory.
+- **M-01** Share modal opens with RO + RW link rows in the live native webview.
   - _Why not automatable:_ Wails native webview is not accessible to Playwright or headless browser automation.
   - _Source:_ 137-HUMAN-UAT.md item 4
 
@@ -440,7 +442,7 @@ Human-intervention items that cannot be automated. Run before each tagged releas
   - _Why not automatable:_ Requires a live reachable Tailscale remote peer on a separate machine; cross-machine join-code exchange cannot be simulated in headless vitest.
   - _Source:_ 138-HUMAN-UAT.md item 3 (updated Phase 146 — out-of-band flow; needs office second machine)
 
-- **M-04** Remote card overflow menu shows only "Open in browser" and "Browse files" — no Kill option on remote sessions.
+- **M-04** Remote card overflow menu shows only "Open in tab" — no Kill option on remote sessions.
   - _Why not automatable:_ Requires live reachable Tailscale peer.
   - _Source:_ 138-HUMAN-UAT.md item 5, remote half
 
@@ -463,20 +465,6 @@ Human-intervention items that cannot be automated. Run before each tagged releas
 - **M-08** AirDrop'd signed macOS build passes Gatekeeper (`spctl --assess --verbose /Applications/AgentHub.app`) on a separate machine without quarantine prompts.
   - _Why not automatable:_ Requires code signing and two physical machines.
   - _Source:_ General release protocol; macOS signing cert shared across repos (re-exported 2026-04-08)
-
-### Category E — File Browser / Editor (Deferred Live UATs)
-
-- **M-09** Phase 125 editor on-screen render: CodeMirror file opens, Tab key indents, and Cmd-V pastes in the native WebView.
-  - _Why not automatable:_ Wails native webview; CodeMirror keyboard events not reproducible in a headless browser.
-  - _Source:_ STATE.md deferred items (pending live app)
-
-- **M-10** Phase 126 `$EDITOR` shell-out: suspend-resume terminal restore works — the session terminal restores correctly after the spawned editor exits.
-  - _Why not automatable:_ PTY interaction requires a real shell and editor launch.
-  - _Source:_ STATE.md deferred items (pending live app)
-
-- **M-11** Phase 124 home-dir warning banner on-screen in the live native WebView: the file write warning renders before the browse toggle when the session's workDir is the home directory.
-  - _Why not automatable:_ Wails native webview required; the banner render path is not exercised by the headless browser.
-  - _Source:_ STATE.md deferred items (pending live app)
 
 ### Category G — Live Tailnet Remote Session Open (FIX-03)
 

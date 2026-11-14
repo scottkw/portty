@@ -2,7 +2,7 @@
 //
 // WEBCHAT-03: a remote web-share guest who lands on /app/?session=&cap= (via the
 // 159-01 redirect) must see ONLY the scoped session surface — the terminal + chat
-// (+ file-browser tab) — and NOT the desktop app chrome (the Sidebar with
+// — and NOT the desktop app chrome (the Sidebar with
 // Home / Hub / Settings / session groups).
 //
 // Discovered during 159 live UAT: /app/ rendered the full desktop shell because
@@ -17,10 +17,6 @@
 
 import { test, expect } from '@playwright/test'
 import { appUrl, viewerAppUrl, loadFixtureEnv } from './fixture-env'
-
-// Close-button aria-label for the auto-opened file-browser tab. The web
-// bootstrap opens it as `${sessionId} — Files` (App.tsx handleOpenFileBrowser).
-const FILES_TAB_CLOSE = 'Close playwright-test-session — Files'
 
 test.describe('Phase 159-02 — web-share guest scope (WEBCHAT-03)', () => {
   test('web-share /app/ guest sees the scoped session surface, NOT the desktop Sidebar', async ({ browser }) => {
@@ -45,84 +41,28 @@ test.describe('Phase 159-02 — web-share guest scope (WEBCHAT-03)', () => {
     }
   })
 
-  // WEBCHAT-04: the file-browser tab auto-opens ONLY when the cap grants
-  // files.read. A guest whose share lacks file access must not be left with a
-  // dead "files.read permission required" tab.
-  test('owner cap (files.read) → file-browser tab auto-opens in the background', async ({ browser }) => {
-    const env = loadFixtureEnv()
-    const ctx = await browser.newContext({ ignoreHTTPSErrors: true })
-    try {
-      const page = await ctx.newPage()
-      await page.goto(appUrl(env), { waitUntil: 'domcontentloaded' })
-      await expect(page.locator('.hub-modal__chat-toggle')).toBeVisible({ timeout: 15_000 })
-      // The owner cap includes files.read, so /info gates the tab open.
-      await expect(page.getByRole('button', { name: FILES_TAB_CLOSE })).toHaveCount(1, { timeout: 15_000 })
-      // The session view (not the file tab) remains the active surface.
-      await expect(page.locator('.xterm').first()).toBeVisible()
-    } finally {
-      await ctx.close()
-    }
-  })
+  // WEBCHAT-05 + Phase 01-02: a web-share guest gets no session-menu chevron and
+  // no file tab, whatever perms the cap carries. Rename / Save Terminal As are
+  // Wails RPCs with no browser bridge, and the file browser is gone, so the menu
+  // has nothing to offer. Double-click rename is disabled too.
+  for (const [label, urlFor] of [['owner', appUrl], ['viewer', viewerAppUrl]] as const) {
+    test(`${label} cap: no session-menu chevron, no file tab, no double-click rename`, async ({ browser }) => {
+      const env = loadFixtureEnv()
+      const ctx = await browser.newContext({ ignoreHTTPSErrors: true })
+      try {
+        const page = await ctx.newPage()
+        await page.goto(urlFor(env), { waitUntil: 'domcontentloaded' })
+        await expect(page.locator('.hub-modal__chat-toggle')).toBeVisible({ timeout: 15_000 })
+        await page.waitForTimeout(2_000) // let any late bootstrap work settle
+        await expect(page.locator('[data-testid="tab-chevron"]')).toHaveCount(0)
+        await expect(page.getByRole('button', { name: /— Files$/ })).toHaveCount(0)
 
-  test('viewer cap (no files.read) → NO file-browser tab (no dead permission-denied tab)', async ({ browser }) => {
-    const env = loadFixtureEnv()
-    const ctx = await browser.newContext({ ignoreHTTPSErrors: true })
-    try {
-      const page = await ctx.newPage()
-      await page.goto(viewerAppUrl(env), { waitUntil: 'domcontentloaded' })
-      // Boot completes (chat surface renders) — proves the bootstrap ran.
-      await expect(page.locator('.hub-modal__chat-toggle')).toBeVisible({ timeout: 15_000 })
-      // Give the /info perms probe time to resolve; it must NOT open a file tab.
-      await page.waitForTimeout(2_000)
-      await expect(page.getByRole('button', { name: FILES_TAB_CLOSE })).toHaveCount(0)
-      // The permission-denied takeover must never render for this guest.
-      await expect(page.getByText('files.read permission required')).toHaveCount(0)
-    } finally {
-      await ctx.close()
-    }
-  })
-
-  // WEBCHAT-05: a web-share guest cannot rename the session tab. Rename / Save
-  // Terminal As are Wails RPCs with no bridge in a browser (they fail silently and
-  // only relabel the local tab), so they are hidden in web mode and double-click
-  // rename is disabled. A file-enabled guest still gets a chevron whose only item
-  // is "Browse files" (so they can re-open the file browser).
-  test('files.read guest: tab menu offers only Browse files — no Rename/Save, no double-click rename', async ({ browser }) => {
-    const env = loadFixtureEnv()
-    const ctx = await browser.newContext({ ignoreHTTPSErrors: true })
-    try {
-      const page = await ctx.newPage()
-      await page.goto(appUrl(env), { waitUntil: 'domcontentloaded' })
-      await expect(page.locator('.hub-modal__chat-toggle')).toBeVisible({ timeout: 15_000 })
-      // Owner cap has files.read → the chevron is present for re-opening files.
-      const chevron = page.locator('[data-testid="tab-chevron"]').first()
-      await expect(chevron).toBeVisible({ timeout: 15_000 })
-      await chevron.click()
-      // The menu offers Browse files but NOT Rename / Save Terminal As.
-      await expect(page.getByRole('menuitem', { name: 'Browse files' })).toBeVisible()
-      await expect(page.getByRole('menuitem', { name: 'Rename' })).toHaveCount(0)
-      await expect(page.getByRole('menuitem', { name: 'Save Terminal As…' })).toHaveCount(0)
-
-      // Double-clicking the tab name must NOT open the rename input.
-      await page.locator('.tab__name', { hasText: 'Session' }).first().dblclick()
-      await page.waitForTimeout(300)
-      await expect(page.locator('.tab__rename-input')).toHaveCount(0)
-    } finally {
-      await ctx.close()
-    }
-  })
-
-  test('viewer cap (no files.read): no session-menu chevron at all', async ({ browser }) => {
-    const env = loadFixtureEnv()
-    const ctx = await browser.newContext({ ignoreHTTPSErrors: true })
-    try {
-      const page = await ctx.newPage()
-      await page.goto(viewerAppUrl(env), { waitUntil: 'domcontentloaded' })
-      await expect(page.locator('.hub-modal__chat-toggle')).toBeVisible({ timeout: 15_000 })
-      await page.waitForTimeout(2_000) // let the /info probe resolve
-      await expect(page.locator('[data-testid="tab-chevron"]')).toHaveCount(0)
-    } finally {
-      await ctx.close()
-    }
-  })
+        await page.locator('.tab__name', { hasText: 'Session' }).first().dblclick()
+        await page.waitForTimeout(300)
+        await expect(page.locator('.tab__rename-input')).toHaveCount(0)
+      } finally {
+        await ctx.close()
+      }
+    })
+  }
 })
