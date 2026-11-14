@@ -122,9 +122,6 @@ export const SetImageConfig          = (cfg)                => Call('main.App.Se
 // Save terminal session (Phase 97 SER-01).
 export const SaveTerminalSession    = (defaultDir, defaultName, content) => Call('main.App.SaveTerminalSession', [defaultDir, defaultName, content])
 
-// Phase 120 UAT-1 — server-side file download bypassing webview <a download>.
-export const DownloadFile           = (url, suggestedName)   => Call('main.App.DownloadFile', [url, suggestedName])
-
 // Set tray progress quartile (Phase 98 PRG-03).
 export const SetTrayProgress        = (quartile)                => Call('main.App.SetTrayProgress', [quartile])
 
@@ -139,7 +136,6 @@ export const RegenerateSigningKey    = ()                   => Call('main.App.Re
 export const GetCapabilityQRCode     = (joinURL)            => Call('main.App.GetCapabilityQRCode', [joinURL])
 
 // Phase 137 / SHARE-03: per-session browse toggle (owner binding). Replaces SetSessionFilesWrite (D-02/D-07).
-export const SetSessionBrowse        = (sessionID, enabled) => Call('main.App.SetSessionBrowse', [sessionID, enabled])
 
 // Phase 165 / FNL-01 — Funnel enable/disable with auto-expiry (expiresIn=0 = no expiry).
 export const SetSessionFunnel = (sessionID, enabled, expiresIn) => Call('main.App.SetSessionFunnel', [sessionID, enabled, expiresIn])

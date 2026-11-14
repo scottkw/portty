@@ -42,8 +42,6 @@ const localSession: SessionInfo = {
   hostname: '', // local: empty hostname
   webEnabled: false,
   viewerCount: 0,
-  homeDir: false,
-  browseEnabled: false,
   funnelActive: false,
   funnelWriteActive: false,
   workDir: '/home/user',

@@ -30,8 +30,6 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     hostname: '',
     webEnabled: false,
     viewerCount: 0,
-    homeDir: false,
-    browseEnabled: false,
     funnelActive: false,
     funnelWriteActive: false,
     workDir: '/home/user/project',

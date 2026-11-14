@@ -21,8 +21,6 @@ function makeSession(
     viewerCount: 0,
     exitCode: overrides.exitCode,
     duration: 0,
-    homeDir: false,
-    browseEnabled: false,
     funnelActive: false,
     funnelWriteActive: false,
     workDir: overrides.workDir,

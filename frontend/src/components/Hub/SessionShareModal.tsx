@@ -3,14 +3,12 @@ import { XMarkIcon } from '@heroicons/react/24/outline'
 import {
   IssueCapabilities,
   ToggleWebServing,
-  SetSessionBrowse,
   SetSessionFunnel,
   SetSessionFunnelWrite,
   DisableSessionFunnelWrite,
   GetLocalNetworkPassword,
   DisconnectViewers,
 } from '../../wailsjs/go/main/App'
-import { HomeDirWriteWarning } from '../HomeDirWriteWarning'
 import { ShellWebShareBanner } from '../ShellWebShareBanner'
 import { FunnelRiskPanel } from './FunnelRiskPanel'
 import { ShareSegmentedControl, type ShareTab } from './ShareSegmentedControl'
@@ -24,7 +22,7 @@ import { isShellCli } from '../../lib/shellCli'
 // Phase 173 (D-07/SM-07) — colorblind-safe toggle state text. Owner is
 // colorblind (project memory): every toggle must read its state as text, not
 // just knob position/track color. 'N/A' covers the not-applicable/disabled
-// case (Browse toggle when !shareEnabled; Internet toggle when funnelDisabled).
+// case (Internet toggle when funnelDisabled).
 function toggleStateLabel(checked: boolean, disabled: boolean): string {
   if (disabled) return 'N/A'
   return checked ? 'On' : 'Off'
@@ -37,8 +35,6 @@ interface ShareSession {
   name: string
   cli: string          // Phase 150 SET-01: needed to check SHELL_CLIS gate
   webEnabled: boolean
-  homeDir: boolean
-  browseEnabled: boolean
   // Phase 166 FUI-05: seeds the Internet-section state consumed in Plan 05.
   funnelActive: boolean
   // Phase 171-02 / FNL-09: true when the gate-minted public write cap is
@@ -91,20 +87,17 @@ export interface SessionShareModalProps {
 /**
  * SessionShareModal — per-card Share modal for the Hub (Phase 137 / SHARE-01/02/04/05/06).
  *
- * Two-toggle design (D-10):
- *   1. "Share the session" — calls ToggleWebServing; on ON, issues caps + reveals the
- *      three-tab segmented panel (Phase 173: TailnetTab/InternetReadOnlyTab/InternetFullAccessTab)
- *   2. "Enable remote file browsing" — disabled when sharing OFF; calls SetSessionBrowse then
- *      re-issues caps so the RO/RW URLs reflect the new browse perm matrix (D-03/D-04).
+ * "Share the session" toggle — calls ToggleWebServing; on ON, issues caps + reveals the
+ * three-tab segmented panel (Phase 173: TailnetTab/InternetReadOnlyTab/InternetFullAccessTab).
  *
  * Lifecycle (SHARE-05):
- *   - Seeds shareEnabled from session.webEnabled and browseEnabled from session.browseEnabled on open.
+ *   - Seeds shareEnabled from session.webEnabled on open.
  *   - If webEnabled=true on open and no cached share, IssueCapabilities is called once.
  *   - When webServerRunning transitions false→true (restart), cached URLs are cleared so stale caps
  *     are not displayed. The seeding effect then re-issues on next render.
  *
  * Security: LockClosedIcon on remote peer cards (D-13, implemented in SessionCard — this modal is
- * only reachable for local cards). HomeDir warning (D-09) rendered before browse toggle.
+ * only reachable for local cards).
  *
  * Phase machine: entering → open → exiting (fade in/out). prefers-reduced-motion: skip animation.
  * Focus return: returns focus to the Share button that opened the modal on unmount.
@@ -160,12 +153,8 @@ export function SessionShareModal({
   // Phase 150 SET-01 (D-09): true when the shell-warning banner is shown
   // and awaiting user confirm/cancel. Pending = ToggleWebServing intercepted.
   const [pendingShellShare, setPendingShellShare] = useState(false)
-  // Seeds from session.browseEnabled (Plan 02 SessionInfo field).
-  const [browseEnabled, setBrowseEnabled] = useState(session.browseEnabled)
   // Cached capability URLs + codes (cleared on server restart, re-issued on seeding).
   const [cachedShare, setCachedShare] = useState<CachedShare | null>(null)
-  // Whether the home-dir warning has been dismissed by the user this session.
-  const [homeDirDismissed, setHomeDirDismissed] = useState(false)
   // Ref mirror of cachedShare for the seeding effect to read without depending on it
   // (avoids adding cachedShare to seeding effect deps, which interacts poorly with flushSync).
   const cachedShareRef = useRef<CachedShare | null>(null)
@@ -280,36 +269,6 @@ export function SessionShareModal({
       onShareEnabledChange?.(session.id, next)
     } catch {
       // ToggleWebServing failed — revert (shareEnabled unchanged).
-    }
-  }
-
-  // "Enable remote file browsing" toggle handler.
-  // Disabled when sharing is OFF (see JSX below).
-  // Pitfall 1: MUST re-issue caps after SetSessionBrowse when sharing ON,
-  // or the cached RO URL still lacks files.read (stale cap).
-  async function handleBrowseToggle(): Promise<void> {
-    if (!shareEnabled) return // guard — should not be clickable, but defense-in-depth
-    const next = !browseEnabled
-    try {
-      await SetSessionBrowse(session.id, next)
-      setBrowseEnabled(next)
-      // Re-issue caps so URLs reflect the new browse perm matrix (D-03/D-04).
-      if (shareEnabled) {
-        try {
-          const resp = await IssueCapabilities(session.id)
-          setCachedShare({
-            readURL: resp.readUrl,
-            writeURL: resp.writeUrl,
-            readCode: resp.readCode,
-            writeCode: resp.writeCode,
-          })
-        } catch {
-          // IssueCapabilities failed — clear stale cache so seeding effect refetches.
-          setCachedShare(null)
-        }
-      }
-    } catch {
-      // SetSessionBrowse failed — revert (browseEnabled unchanged).
     }
   }
 
@@ -642,37 +601,6 @@ export function SessionShareModal({
             </div>
           )}
 
-          {/* HomeDirWriteWarning (D-09): rendered when session.homeDir is true */}
-          {session.homeDir && !homeDirDismissed && (
-            <HomeDirWriteWarning
-              onDismiss={() => setHomeDirDismissed(true)}
-            />
-          )}
-
-          {/* SHARE-02: "Enable remote file browsing" toggle.
-              Disabled/no-op when sharing is OFF (Pitfall 1 guard). */}
-          <div className="hub-share-modal__toggle-wrap" aria-disabled={!shareEnabled}>
-            <label
-              className={`settings-panel__toggle-row${browseEnabled ? ' settings-panel__toggle-row--checked' : ''}`}
-            >
-              <input
-                type="checkbox"
-                className="settings-panel__toggle-input"
-                role="switch"
-                aria-checked={browseEnabled}
-                aria-label="Enable remote file browsing"
-                checked={browseEnabled}
-                disabled={!shareEnabled}
-                onChange={() => void handleBrowseToggle()}
-              />
-              <span className="settings-panel__toggle-track">
-                <span className="settings-panel__toggle-thumb" />
-              </span>
-              <span className="settings-panel__toggle-label">Enable remote file browsing</span>
-              <span className="settings-panel__toggle-state">{toggleStateLabel(browseEnabled, !shareEnabled)}</span>
-            </label>
-          </div>
-
           {/* Phase 168 FIX-02 (#117): owner-only "Disconnect all viewers" escape hatch.
               Shown only when there are remote (web-origin) viewers (D-04/D-05). Reuses
               the reversible ghost/outline .hub-share-internet-section__disable style —
@@ -810,7 +738,6 @@ export function SessionShareModal({
                     writeURL={cachedShare.writeURL}
                     readCode={cachedShare.readCode}
                     writeCode={cachedShare.writeCode}
-                    browseEnabled={browseEnabled}
                   />
                 )}
                 {tab === 'internet-ro' && (

@@ -14,13 +14,9 @@ In addition to AI coding CLIs, AgentHub supports plain shell sessions (bash, zsh
 
 Open sessions appear as tabs along the top of the window. Click any tab to switch to that session. The **Hub** view (Home icon in the sidebar) shows all sessions as cards grouped by working directory — click a card to open or expand that session.
 
-### Using the File Browser
-
-Click the file-browser icon on a session card or use the Share modal to browse the session's working directory. You can view, edit, create, and delete files via the built-in CodeMirror editor. Remote sessions require web sharing to be enabled first.
-
 ### Sharing Sessions Over the Network
 
-AgentHub serves sessions over your Tailscale network with automatic HTTPS. In the Hub, click the **Share** button on any session card. Toggle "Share the session" to generate read-only and read/write links. Toggle "Enable remote file browsing" to grant file-access permissions alongside the share.
+AgentHub serves sessions over your Tailscale network with automatic HTTPS. In the Hub, click the **Share** button on any session card. Toggle "Share the session" to generate read-only and read/write links.
 
 ### Settings Overview
 

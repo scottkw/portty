@@ -15,10 +15,6 @@ export interface SessionInfo {
   viewerCount: number
   exitCode?: number
   duration?: number
-  /** Phase 124 / CAP-06: true when the session cwd equals EvalSymlinks($HOME). Server-side source of truth for the home-dir write warning on both GUI and TUI. */
-  homeDir: boolean
-  /** Phase 137 / SHARE-03: true when the per-session browse toggle is ON. Server-side source of truth (replaces filesWrite — D-07). */
-  browseEnabled: boolean
   /** Phase 165 / FNL-01: true when Tailscale Funnel is active. NOT omitempty — false must serialize. */
   funnelActive: boolean
   /** Phase 131 / GRID-02: EvalSymlinks-resolved session working directory. Used by the Hub to group session cards by working directory. */
@@ -193,10 +189,6 @@ export function SetImageConfig(arg1: daemon.ImageConfig): Promise<void>
 // Save terminal session (Phase 97 SER-01).
 export function SaveTerminalSession(defaultDir: string, defaultName: string, content: string): Promise<void>
 
-// Phase 120 UAT-1 — server-side file download with native SaveFileDialog,
-// bypassing the Wails WKWebView's ignore-the-<a-download>-attribute behavior.
-export function DownloadFile(url: string, suggestedName: string): Promise<void>
-
 // Set tray progress quartile (Phase 98 PRG-03).
 export function SetTrayProgress(quartile: number): Promise<void>
 
@@ -210,16 +202,12 @@ export interface IssueCapabilitiesResponse {
   writeUrl: string
   readCode: string
   writeCode: string
-  homeDir: boolean  // Phase 124 / CAP-06: true when session cwd == EvalSymlinks($HOME)
   publicReadCode: string  // Phase 170 / FNL-08: reusable public read join code; "" when not a Funnel session
 }
 export function IssueCapabilities(sessionID: string): Promise<IssueCapabilitiesResponse>
 export function ExchangeJoinCode(code: string): Promise<string>
 export function RegenerateSigningKey(): Promise<void>
 export function GetCapabilityQRCode(joinURL: string): Promise<string>
-
-// Phase 137 / SHARE-03: per-session browse toggle (owner binding). Replaces SetSessionFilesWrite (D-02/D-07).
-export function SetSessionBrowse(sessionID: string, enabled: boolean): Promise<void>
 
 // Phase 165 / FNL-01 — Funnel on/off; expiresIn=0 means no auto-expiry (FNL-07).
 export function SetSessionFunnel(sessionID: string, enabled: boolean, expiresIn: number): Promise<void>

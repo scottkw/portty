@@ -118,7 +118,6 @@ const MIGRATED_SURFACE_SELECTORS = [
   '.tab-bar',
   '.tab-status-bar',
   '.terminal-container',
-  '.file-browser',
   '.settings-panel',
   '.settings-jump-bar',
   '.settings-search',

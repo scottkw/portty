@@ -60,16 +60,6 @@ describe('adaptRemoteSession', () => {
     expect(adapted.viewerCount).toBe(0)
   })
 
-  it('sets homeDir to false', () => {
-    const adapted = adaptRemoteSession(makePeer(), makeSession())
-    expect(adapted.homeDir).toBe(false)
-  })
-
-  it('sets browseEnabled to false', () => {
-    const adapted = adaptRemoteSession(makePeer(), makeSession())
-    expect(adapted.browseEnabled).toBe(false)
-  })
-
   it('carries session.url through so "Open in browser" can resolve it (CR-01)', () => {
     const session = makeSession({ url: 'https://dev-box.local/session/sess-001' })
     const adapted = adaptRemoteSession(makePeer(), session)

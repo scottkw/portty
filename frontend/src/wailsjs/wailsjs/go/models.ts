@@ -35,7 +35,6 @@ export namespace daemon {
 	    writeUrl: string;
 	    readCode: string;
 	    writeCode: string;
-	    homeDir: boolean;
 	    publicReadCode: string;
 	
 	    static createFrom(source: any = {}) {
@@ -48,7 +47,6 @@ export namespace daemon {
 	        this.writeUrl = source["writeUrl"];
 	        this.readCode = source["readCode"];
 	        this.writeCode = source["writeCode"];
-	        this.homeDir = source["homeDir"];
 	        this.publicReadCode = source["publicReadCode"];
 	    }
 	}
@@ -222,8 +220,6 @@ export namespace main {
 	    createdAt: string;
 	    hostname: string;
 	    webEnabled: boolean;
-	    homeDir: boolean;
-	    browseEnabled: boolean;
 	    funnelActive: boolean;
 	    funnelWriteActive: boolean;
 	    viewerCount: number;
@@ -245,8 +241,6 @@ export namespace main {
 	        this.createdAt = source["createdAt"];
 	        this.hostname = source["hostname"];
 	        this.webEnabled = source["webEnabled"];
-	        this.homeDir = source["homeDir"];
-	        this.browseEnabled = source["browseEnabled"];
 	        this.funnelActive = source["funnelActive"];
 	        this.funnelWriteActive = source["funnelWriteActive"];
 	        this.viewerCount = source["viewerCount"];

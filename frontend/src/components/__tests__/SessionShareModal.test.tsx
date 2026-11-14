@@ -6,13 +6,10 @@
  *
  * Verifies:
  *   SHARE-01: "Share the session" toggle present; toggling ON reveals share content
- *   SHARE-02: "Enable remote file browsing" toggle present; disabled when sharing OFF
- *   SHARE-03: browse toggle calls SetSessionBrowse then IssueCapabilities (server-truth)
+ *   No file-browsing toggle and no home-dir warning (file browser removed, Phase 01-02)
  *   SHARE-04: local-mode fixture surfaces LAN Basic Auth password via GetLocalNetworkPassword
  *   SHARE-05: server-truth seeding — opening with webEnabled=true calls IssueCapabilities once
  *   SHARE-05: stale-URL clear — when webServerRunning flips false then true, cached URLs cleared
- *   SHARE-06: browse toggle calls SetSessionBrowse + re-issues caps (Pitfall 1 mitigation)
- *   D-09: homeDir fixture shows home-dir warning before browse is enabled
  *   SET-01 D-09: shell session + warningEnabled + !warned → banner shown, ToggleWebServing NOT called
  *   SET-01: shell session + warningEnabled=false → banner NOT shown; ToggleWebServing called
  *   SET-01: non-shell session → banner NOT shown; ToggleWebServing called immediately
@@ -50,28 +47,23 @@ vi.mock('../../wailsjs/go/main/App', () => ({
     writeUrl: 'https://example.com/w?cap=WRITE_TOKEN',
     readCode: 'rc',
     writeCode: 'wc',
-    homeDir: false,
   }),
   ToggleWebServing: vi.fn().mockResolvedValue(undefined),
-  SetSessionBrowse: vi.fn().mockResolvedValue(undefined),
   SetSessionFunnel: vi.fn().mockResolvedValue(undefined),
   GetLocalNetworkPassword: vi.fn().mockResolvedValue('lan-pass-secret'),
   DisconnectViewers: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Import mocked bindings for assertion
-import { IssueCapabilities, SetSessionBrowse, SetSessionFunnel, GetLocalNetworkPassword, ToggleWebServing } from '../../wailsjs/go/main/App'
+import { IssueCapabilities, SetSessionFunnel, GetLocalNetworkPassword, ToggleWebServing } from '../../wailsjs/go/main/App'
 // Import the component under test
 import { SessionShareModal } from '../Hub/SessionShareModal'
 
 const mockedIssueCapabilities = IssueCapabilities as ReturnType<typeof vi.fn>
-const mockedSetSessionBrowse = SetSessionBrowse as ReturnType<typeof vi.fn>
 const mockedGetLocalNetworkPassword = GetLocalNetworkPassword as ReturnType<typeof vi.fn>
 
 interface ModalOpts {
   webEnabled?: boolean
-  homeDir?: boolean
-  browseEnabled?: boolean
   funnelActive?: boolean
   funnelWriteActive?: boolean
   viewerCount?: number
@@ -95,8 +87,6 @@ function makeSession(opts: ModalOpts = {}) {
     name: 'Test Session',
     cli: opts.cli ?? 'claude',
     webEnabled: opts.webEnabled ?? false,
-    homeDir: opts.homeDir ?? false,
-    browseEnabled: opts.browseEnabled ?? false,
     funnelActive: opts.funnelActive ?? false,
     funnelWriteActive: opts.funnelWriteActive ?? false,
     viewerCount: opts.viewerCount ?? 0,
@@ -173,48 +163,11 @@ describe('SessionShareModal — SHARE-01: share toggle', () => {
   })
 })
 
-describe('SessionShareModal — SHARE-02: browse toggle', () => {
-  it('renders "Enable remote file browsing" toggle', () => {
+describe('SessionShareModal — file browsing removed (Phase 01-02)', () => {
+  it('has no file-browsing toggle and no home-dir warning, even with sharing ON', () => {
     const { container: c } = renderModal({ webEnabled: true })
-    const text = c.textContent ?? ''
-    expect(text).toMatch(/browse|file browsing/i)
-  })
-
-  it('browse toggle is disabled when sharing is OFF', () => {
-    const { container: c } = renderModal({ webEnabled: false })
-    // Any browse-related toggle must be disabled or absent while sharing is OFF
-    const browseRow = Array.from(c.querySelectorAll('[role="switch"], input[type="checkbox"]')).find(
-      el => {
-        const label = el.getAttribute('aria-label') ?? ''
-        const parentText = el.closest('label, div')?.textContent ?? ''
-        return label.match(/browse/i) || parentText.match(/browse/i)
-      }
-    ) as HTMLElement | null
-    if (browseRow) {
-      const isDisabled =
-        browseRow.getAttribute('aria-disabled') === 'true' ||
-        (browseRow as HTMLInputElement).disabled === true ||
-        browseRow.getAttribute('disabled') !== null
-      expect(isDisabled).toBe(true)
-    }
-    // If no browse toggle rendered at all, that also satisfies "disabled when sharing OFF"
-  })
-
-  it('toggling browse ON calls SetSessionBrowse then IssueCapabilities (SHARE-06 / Pitfall 1)', async () => {
-    const { container: c } = renderModal({ webEnabled: true })
-    const browseToggle = Array.from(c.querySelectorAll('[role="switch"], input[type="checkbox"]')).find(
-      el => {
-        const label = el.getAttribute('aria-label') ?? ''
-        const parentText = el.closest('label, div')?.textContent ?? ''
-        return label.match(/browse/i) || parentText.match(/browse|file browsing/i)
-      }
-    ) as HTMLElement | null
-    if (browseToggle) {
-      await flushSync(() => { browseToggle.click() })
-      // SetSessionBrowse must be called before (or as part of) cap re-issuance
-      expect(mockedSetSessionBrowse).toHaveBeenCalled()
-      expect(mockedIssueCapabilities).toHaveBeenCalled()
-    }
+    expect(c.textContent ?? '').not.toMatch(/brows|home directory/i)
+    expect(c.querySelector('.hub-share-modal__toggle-wrap')).toBeNull()
   })
 })
 
@@ -231,15 +184,6 @@ describe('SessionShareModal — SHARE-04: LAN password', () => {
     // GetLocalNetworkPassword should have been called
     expect(mockedGetLocalNetworkPassword).toHaveBeenCalled()
     void c
-  })
-})
-
-describe('SessionShareModal — D-09: homeDir warning', () => {
-  it('homeDir fixture shows home-dir warning before browse is enabled', () => {
-    const { container: c } = renderModal({ homeDir: true, webEnabled: true })
-    const text = c.textContent ?? ''
-    // Should show some kind of home directory / security warning
-    expect(text).toMatch(/home|directory|warning|caution/i)
   })
 })
 
@@ -891,14 +835,13 @@ function findToggleRow(c: HTMLElement, label: string): HTMLElement {
 }
 
 describe('SessionShareModal — SM-01: fixed control strip does not reflow on toggle', () => {
-  it('the three toggle rows keep their DOM order across a "Share the session" toggle flip', async () => {
+  it('the two toggle rows keep their DOM order across a "Share the session" toggle flip', async () => {
     const { container: c } = renderModal({ webServerMode: 'tailscale' })
     const labelsBefore = Array.from(c.querySelectorAll('.settings-panel__toggle-label')).map(
       (el) => el.textContent,
     )
     expect(labelsBefore).toEqual([
       'Share the session',
-      'Enable remote file browsing',
       'Enable internet sharing',
     ])
     const shareToggle = findToggleRow(c, 'Share the session').querySelector('input') as HTMLElement
@@ -911,7 +854,7 @@ describe('SessionShareModal — SM-01: fixed control strip does not reflow on to
     const labelsAfter = Array.from(c.querySelectorAll('.settings-panel__toggle-label')).map(
       (el) => el.textContent,
     )
-    // Same three rows, same order — toggling never reflows the control strip.
+    // Same rows, same order — toggling never reflows the control strip.
     expect(labelsAfter).toEqual(labelsBefore)
   })
 })
@@ -1049,13 +992,6 @@ describe('SessionShareModal — SM-07: On/Off/N-A toggle state labels', () => {
     expect(findToggleRow(c, 'Share the session').querySelector('.settings-panel__toggle-state')?.textContent).toBe(
       'On',
     )
-  })
-
-  it('"Enable remote file browsing" reads N/A while sharing is off', () => {
-    const { container: c } = renderModal({ webEnabled: false })
-    expect(
-      findToggleRow(c, 'Enable remote file browsing').querySelector('.settings-panel__toggle-state')?.textContent,
-    ).toBe('N/A')
   })
 
   it('"Enable internet sharing" reads N/A in local (non-Tailscale) mode', () => {
