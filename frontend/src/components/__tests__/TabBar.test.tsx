@@ -586,3 +586,30 @@ describe('TabBar funnelActiveSessions (FUI-03)', () => {
     expect(raw).toContain('tab__internet-icon')
   })
 })
+
+// STRP-01 / UI-SPEC section 2: three-state tab dot; legacy and unknown values render as Running.
+describe('TabBar status dot', () => {
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+
+  afterEach(() => {
+    root.unmount()
+    container.remove()
+  })
+
+  it.each([
+    ['running', 'running', 'Running'],
+    ['exited', 'exited', 'Exited'],
+    ['errored', 'errored', 'Error'],
+    ['idle', 'running', 'Running'],
+    ['waiting', 'running', 'Running'],
+    ['', 'running', 'Running'],
+    ['bogus', 'running', 'Running'],
+  ])('status %j renders tab__status--%s labeled %s', (raw, cls, label) => {
+    ;({ container, root } = renderTabBarWithTabs({ sessionStatuses: { sess1: raw } }))
+    const dot = container.querySelector('.tab__status') as HTMLElement
+    expect(dot.className).toBe(`tab__status tab__status--${cls}`)
+    expect(dot.getAttribute('title')).toBe(label)
+    expect(dot.getAttribute('aria-label')).toBe(label)
+  })
+})

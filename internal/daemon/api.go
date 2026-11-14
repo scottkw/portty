@@ -478,7 +478,7 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	ws.SetSessionResolver(func(sessionID string) (name, cliType, status, hostname string) {
 		for _, s := range a.engine.ListSessions() {
 			if s.ID == sessionID {
-				return s.Name, s.CLI, a.engine.GetSessionStatus(sessionID), s.Hostname
+				return s.Name, s.CLI, s.Status, s.Hostname
 			}
 		}
 		return sessionID, "", "", ""
@@ -1161,7 +1161,7 @@ func (a *API) handleWebServerStart(w http.ResponseWriter, r *http.Request) {
 	ws.SetSessionResolver(func(sessionID string) (name, cliType, status, hostname string) {
 		for _, s := range a.engine.ListSessions() {
 			if s.ID == sessionID {
-				return s.Name, s.CLI, a.engine.GetSessionStatus(sessionID), s.Hostname
+				return s.Name, s.CLI, s.Status, s.Hostname
 			}
 		}
 		return sessionID, "", "", ""

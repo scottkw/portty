@@ -27,6 +27,19 @@ export function deriveHubStatus(s: SessionInfo): HubStatus {
   return s.status as HubStatus
 }
 
+/** Wire status the tabs render. Anything not exited/errored (legacy idle/waiting, '', unknown) is running. */
+export type SessionStatus = 'running' | 'exited' | 'errored'
+
+export function normalizeStatus(raw: string | undefined): SessionStatus {
+  return raw === 'exited' || raw === 'errored' ? raw : 'running'
+}
+
+const STATUS_LABELS: Record<SessionStatus, string> = { running: 'Running', exited: 'Exited', errored: 'Error' }
+
+export function statusLabel(status: SessionStatus): string {
+  return STATUS_LABELS[status]
+}
+
 /* ATTN-01: canonical attention predicate — waiting, errored, or non-zero-exit sessions need attention */
 export function isAttentionStatus(status: HubStatus): boolean {
   return status === 'waiting' || status === 'errored' || status === 'stopped-err'

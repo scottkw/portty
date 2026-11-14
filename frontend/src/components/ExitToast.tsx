@@ -4,10 +4,8 @@ import { XMarkIcon } from '@heroicons/react/20/solid'
 export interface ExitState {
   sessionId: string
   sessionName: string
-  cli: string
   exitCode: number
   duration: number
-  finalStatus: string
   countdown: number    // seconds remaining (5 -> 0), -1 if no countdown
   cancelled: boolean   // true = user clicked "Keep Open"
 }
@@ -43,7 +41,7 @@ export function ExitToast({ exits, onKeepOpen, onDismiss }: ExitToastProps): Rea
             </button>
           </div>
           <span className="exit-toast__meta">
-            {exit.cli} &middot; {exit.exitCode === 0 ? 'exited' : 'exited with error'} &middot; {exit.finalStatus}
+            {exit.exitCode === 0 ? 'Exited' : 'Exited with error'}
           </span>
           <span className="exit-toast__codes">
             <span className={exit.exitCode === 0 ? 'exit-toast__exit-code--ok' : 'exit-toast__exit-code--err'}>

@@ -8,11 +8,9 @@ import type { ExitState } from '../ExitToast'
 function makeExitState(overrides: Partial<ExitState> = {}): ExitState {
   return {
     sessionId: 'sess-1',
-    sessionName: 'claude 1',
-    cli: 'claude',
+    sessionName: 'zsh 1',
     exitCode: 0,
     duration: 120,
-    finalStatus: 'idle',
     countdown: 5,
     cancelled: false,
     ...overrides,
@@ -68,13 +66,16 @@ describe('ExitToast', () => {
     expect(container.textContent).toContain('my-session')
   })
 
-  it('displays CLI, exit status, and final status in meta line', () => {
-    const exits = { 'sess-1': makeExitState({ cli: 'opencode', finalStatus: 'idle' }) }
+  it('meta line reads "Exited" for a clean exit, with no agent or status segment', () => {
+    const exits = { 'sess-1': makeExitState({ exitCode: 0 }) }
     ;({ container, root } = renderToast(exits))
-    const meta = container.querySelector('.exit-toast__meta')
-    expect(meta?.textContent).toContain('opencode')
-    expect(meta?.textContent).toContain('exited')
-    expect(meta?.textContent).toContain('idle')
+    expect(container.querySelector('.exit-toast__meta')?.textContent).toBe('Exited')
+  })
+
+  it('meta line reads "Exited with error" for a non-zero exit', () => {
+    const exits = { 'sess-1': makeExitState({ exitCode: 3 }) }
+    ;({ container, root } = renderToast(exits))
+    expect(container.querySelector('.exit-toast__meta')?.textContent).toBe('Exited with error')
   })
 
   it('displays exit code and duration', () => {
@@ -136,12 +137,5 @@ describe('ExitToast', () => {
     ;({ container, root } = renderToast(exits))
     const btn = container.querySelector('.exit-toast__dismiss')
     expect(btn?.getAttribute('aria-label')).toBe('Dismiss exit notification for test-sess')
-  })
-
-  it('shows "exited with error" for non-zero exit code meta line', () => {
-    const exits = { 'sess-1': makeExitState({ exitCode: 2 }) }
-    ;({ container, root } = renderToast(exits))
-    const meta = container.querySelector('.exit-toast__meta')
-    expect(meta?.textContent).toContain('exited with error')
   })
 })

@@ -18,11 +18,10 @@ import (
 	xvt "github.com/charmbracelet/x/vt"
 	"github.com/scottkw/agenthub/internal/pty"
 	"github.com/scottkw/agenthub/internal/relay"
-	"github.com/scottkw/agenthub/internal/status"
 )
 
 // SessionEngine owns all session state: registry, backend, hub manager,
-// tab names, CLI path overrides, and per-session status.
+// tab names and CLI path overrides.
 // It is intentionally free of Wails imports — callers supply an onExit
 // callback if they need exit notification.
 type SessionEngine struct {
@@ -61,9 +60,6 @@ type SessionEngine struct {
 	// spawnCommand returns the binary and argv every new session runs.
 	// Defaults to (GetShellPath(), ["-l"]); tests override via SetSpawnCommandForTest.
 	spawnCommand func() (string, []string)
-
-	statusMu        sync.RWMutex
-	sessionStatuses map[string]status.SessionStatus // sessionID -> current status
 }
 
 // daemonConfigDir returns ~/.config/agenthub/, creating it if needed.
@@ -275,7 +271,6 @@ func NewSessionEngine() *SessionEngine {
 		tabNames:        make(map[string]string),
 		sessionWorkDirs: make(map[string]string),
 		cliPaths:        make(map[string]string),
-		sessionStatuses: make(map[string]status.SessionStatus),
 		chatStores:      make(map[string]*ChatStore), // Phase 151 / PERSIST-01
 		chatsBaseDir:    chatsDir(),                  // Phase 151: production path = daemonConfigDir()/chats
 		aliasStore:      aliasStore,                  // Phase 152 / IDENT-01: global per-person alias persistence
@@ -446,14 +441,6 @@ func (e *SessionEngine) ListSessions() []SessionInfo {
 			viewerCount = hub.RemoteViewerCount()
 		}
 
-		// Heuristic status from detector (running/idle/waiting/errored).
-		heuristicStatus := string(status.StatusRunning) // conservative default
-		e.statusMu.RLock()
-		if hs, ok := e.sessionStatuses[s.ID]; ok {
-			heuristicStatus = string(hs)
-		}
-		e.statusMu.RUnlock()
-
 		var exitCodePtr *int
 		var durationPtr *int
 		if state == "stopped" && !s.IsKilled() {
@@ -468,13 +455,14 @@ func (e *SessionEngine) ListSessions() []SessionInfo {
 			dur := int(time.Since(s.CreatedAt).Seconds())
 			durationPtr = &dur
 		}
+		sessionStatus := deriveStatus(state == "stopped", exitCodePtr)
 
 		result = append(result, SessionInfo{
 			ID:          s.ID,
 			CLI:         s.CLI,
 			Name:        name,
 			State:       state,
-			Status:      heuristicStatus,
+			Status:      sessionStatus,
 			CreatedAt:   s.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			Hostname:    e.hostname,
 			ViewerCount: viewerCount,
@@ -521,23 +509,31 @@ func (e *SessionEngine) KillSession(id string) error {
 	}
 	e.mu.Unlock()
 
-	e.statusMu.Lock()
-	delete(e.sessionStatuses, id)
-	e.statusMu.Unlock()
-
 	return nil
 }
 
-// GetSessionStatus returns the current heuristic status of the session.
+// deriveStatus maps process state to the wire status: running, exited (code 0
+// or killed, which has no exit code) or errored (non-zero exit code).
+func deriveStatus(stopped bool, exitCode *int) string {
+	switch {
+	case !stopped:
+		return "running"
+	case exitCode != nil && *exitCode != 0:
+		return "errored"
+	default:
+		return "exited"
+	}
+}
+
+// GetSessionStatus returns running/exited/errored for the session.
 // Returns "running" if the session is not found (conservative default).
 func (e *SessionEngine) GetSessionStatus(sessionID string) string {
-	e.statusMu.RLock()
-	s, ok := e.sessionStatuses[sessionID]
-	e.statusMu.RUnlock()
-	if !ok {
-		return string(status.StatusRunning)
+	for _, s := range e.ListSessions() {
+		if s.ID == sessionID {
+			return s.Status
+		}
 	}
-	return string(s)
+	return "running"
 }
 
 // ansiEscape matches CSI sequences (e.g. \x1b[32m) and OSC sequences

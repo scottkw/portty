@@ -12,7 +12,6 @@ import (
 
 	"github.com/scottkw/agenthub/internal/pty"
 	"github.com/scottkw/agenthub/internal/relay"
-	"github.com/scottkw/agenthub/internal/status"
 )
 
 func TestNewSessionEngine(t *testing.T) {
@@ -34,9 +33,6 @@ func TestNewSessionEngine(t *testing.T) {
 	}
 	if e.cliPaths == nil {
 		t.Error("cliPaths is nil")
-	}
-	if e.sessionStatuses == nil {
-		t.Error("sessionStatuses is nil")
 	}
 }
 
@@ -162,7 +158,7 @@ func TestEngineGetSessionStatus(t *testing.T) {
 
 	// Known session returns a valid status.
 	status := e.GetSessionStatus(id)
-	valid := map[string]bool{"running": true, "waiting": true, "idle": true, "errored": true}
+	valid := map[string]bool{"running": true, "exited": true, "errored": true}
 	if !valid[status] {
 		t.Errorf("GetSessionStatus returned invalid status %q", status)
 	}
@@ -429,37 +425,18 @@ func TestCreateSession_ShellEmptyWorkDirHome(t *testing.T) {
 	}
 }
 
-// TestCreateSession_ShellSkipsStatusWatch (SHELL-09): status.Watch is not
-// invoked for shell sessions, so sessionStatuses[id] is never populated.
-func TestCreateSession_ShellSkipsStatusWatch(t *testing.T) {
-	e, _ := newShellTestEngine(t)
-	id, err := e.CreateSession(context.Background(), "tab", "", 80, 24, nil)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	// Give any unintended goroutine a chance to populate the map.
-	time.Sleep(50 * time.Millisecond)
-
-	got := e.GetSessionStatus(id)
-	if got != "running" {
-		t.Errorf("GetSessionStatus = %q, want %q (no watcher should populate)", got, "running")
-	}
-
-	e.statusMu.RLock()
-	_, exists := e.sessionStatuses[id]
-	e.statusMu.RUnlock()
-	if exists {
-		t.Errorf("expected no entry in sessionStatuses for shell session, but found one")
-	}
-}
-
 // TestListSessions_ShellStatusRunning (SHELL-09): ListSessions returns
-// Status=="running" for shell sessions (falls through conservative default).
+// Status=="running" for a live shell session.
 func TestListSessions_ShellStatusRunning(t *testing.T) {
-	e, _ := newShellTestEngine(t)
+	e := newCatEngine() // real live PTY: a spy session hits EOF at once and reads as exited
+	e.configDir = t.TempDir()
 	id, err := e.CreateSession(context.Background(), "tab", "", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
+	}
+	t.Cleanup(func() { _ = e.KillSession(id) })
+	if got := e.GetSessionStatus(id); got != "running" {
+		t.Errorf("GetSessionStatus = %q, want running", got)
 	}
 	sessions := e.ListSessions()
 	var found bool
@@ -785,13 +762,12 @@ func newKilledShell12Session(id string) *pty.Session {
 func newBareEngine(t *testing.T, sessions ...*pty.Session) *SessionEngine {
 	t.Helper()
 	e := &SessionEngine{
-		registry:        pty.NewSessionRegistry(),
-		backend:         &spyBackend{},
-		manager:         relay.NewHubManager(),
-		tabNames:        make(map[string]string),
-		cliPaths:        make(map[string]string),
-		sessionStatuses: make(map[string]status.SessionStatus),
-		configDir:       t.TempDir(),
+		registry:  pty.NewSessionRegistry(),
+		backend:   &spyBackend{},
+		manager:   relay.NewHubManager(),
+		tabNames:  make(map[string]string),
+		cliPaths:  make(map[string]string),
+		configDir: t.TempDir(),
 	}
 	for _, s := range sessions {
 		e.registry.Add(s)

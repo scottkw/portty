@@ -59,3 +59,44 @@ func TestCreateSession_NaturalExit_CapturesNonZeroExitCode(t *testing.T) {
 		t.Errorf("ListSessions ExitCode = %d, want 1", *got)
 	}
 }
+
+// TestDerivedStatus_ExitedErrored (STRP-01): status comes from process state —
+// exited after code 0, errored after non-zero (running: TestListSessions_ShellStatusRunning).
+func TestDerivedStatus_ExitedErrored(t *testing.T) {
+	shPath, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skipf("sh not found: %v", err)
+	}
+	cases := []struct {
+		script, want string
+	}{
+		{"exit 0", "exited"},
+		{"exit 3", "errored"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			e := NewSessionEngine()
+			e.configDir = t.TempDir()
+			e.SetSpawnCommandForTest(shPath, []string{"-c", tc.script})
+			done := make(chan struct{}, 1)
+			id, err := e.CreateSession(context.Background(), "tab", "", 80, 24, func(string, int) { done <- struct{}{} })
+			if err != nil {
+				t.Fatalf("CreateSession: %v", err)
+			}
+			t.Cleanup(func() { _ = e.KillSession(id) })
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("timeout waiting for exit")
+			}
+			if got := e.GetSessionStatus(id); got != tc.want {
+				t.Errorf("GetSessionStatus = %q, want %q", got, tc.want)
+			}
+			for _, s := range e.ListSessions() {
+				if s.ID == id && s.Status != tc.want {
+					t.Errorf("ListSessions Status = %q, want %q", s.Status, tc.want)
+				}
+			}
+		})
+	}
+}

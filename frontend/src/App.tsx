@@ -684,9 +684,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         sessionId: string
         exitCode: number
         sessionName: string
-        cli: string
         duration: number
-        finalStatus: string
       }) => {
         // SHELL-12: on clean exit (code 0), respect the user's "Auto-close tab
         // on exit" preference (autoCloseRef, loaded from GetAutoCloseSession()).
@@ -708,10 +706,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         const exitState: ExitState = {
           sessionId: data.sessionId,
           sessionName: data.sessionName,
-          cli: data.cli,
           exitCode: data.exitCode,
           duration: data.duration,
-          finalStatus: data.finalStatus,
           countdown: -1,
           cancelled: false,
         }

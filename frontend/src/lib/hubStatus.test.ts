@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isAttentionStatus } from './hubStatus'
+import { isAttentionStatus, normalizeStatus, statusLabel } from './hubStatus'
 import type { HubStatus } from './hubStatus'
 
 describe('isAttentionStatus', () => {
@@ -31,5 +31,22 @@ describe('isAttentionStatus', () => {
   it('returns false for stopped-ok', () => {
     const status: HubStatus = 'stopped-ok'
     expect(isAttentionStatus(status)).toBe(false)
+  })
+})
+
+describe('normalizeStatus / statusLabel', () => {
+  it.each([
+    ['running', 'running', 'Running'],
+    ['exited', 'exited', 'Exited'],
+    ['errored', 'errored', 'Error'],
+    ['idle', 'running', 'Running'],
+    ['waiting', 'running', 'Running'],
+    ['', 'running', 'Running'],
+    [undefined, 'running', 'Running'],
+    ['bogus', 'running', 'Running'],
+  ])('%j → %s (%s)', (raw, want, label) => {
+    const s = normalizeStatus(raw)
+    expect(s).toBe(want)
+    expect(statusLabel(s)).toBe(label)
   })
 })

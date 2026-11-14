@@ -25,11 +25,13 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **121** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet |
+| Go unit/integration | **120** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet |
 | vitest (frontend) | **127** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts, UI state, CSS token source gates, lib adapters (relay, remote, hub, status) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, cross-surface chat parity gate (PARITY-01/EXPORT-01), web-share guest scope (WEBCHAT-03) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **256** | — | — | — |
+| **Total** | **255** | — | — | — |
+
+> Note: Portty Phase 1 plan 01-06 (STRP-01 status half, STRP-04): counts from `git ls-files` — Go **120** (−1: `internal/status/detector_test.go` deleted with the agent output heuristics), vitest **127** (unchanged), Playwright **7**, build-script **1**, total **255**.
 
 > Note: Portty Phase 1 plan 01-05 (STRP-01 detection half, TERM-01 single shell resolver): counts from `git ls-files` — Go **121** (−2: `internal/pty/detect_test.go` and `internal/pty/shells_test.go` deleted with agent-CLI detection and shell discovery), vitest **127** (unchanged), Playwright **7**, build-script **1**. Total 256. Removed test functions (no other file deleted): `TestEngineResolveCLI` (now `TestEngineUpdateCLIPath`, tailscale override), `TestGetShellPath_DefaultResolvesPlatformDefault` (replaced by `TestResolveDefaultShellPath_*`), `TestHandleListShells_*`, app `TestDetectCLIs`, and the volta/nvm/cargo/`~/.local/bin` `AugmentServicePath` tests (now one `TestAugmentServicePath_HomebrewTailscaleOnly`).
 
@@ -203,6 +205,10 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | TERM-01 | internal/daemon/engine_test.go | Go | Portty 01-05: `TestResolveDefaultShellPath_*` — the spawned binary equals `GetShellPath()` with argv `["-l"]` for: Settings shellPath set (wins), absolute `$SHELL`, and `/bin/zsh` when `$SHELL` is relative, nonexistent, a directory, not executable, or unset (T-01-18) |
 | STRP-01 | frontend/src/components/__tests__/SettingsTab.shellPath.test.tsx | vitest | Portty 01-05: Settings → Paths has "Program" / "Path" headers and exactly the `shell` and `tailscale` rows (a legacy `claude` cliPaths key adds no row), no "No CLIs detected" text; Save Paths saves only the tailscale override and the shell path |
 | STRP-01 | internal/daemon/engine_settings_test.go | Go | Portty 01-05: `TestLoadSettingsDropsStaleShellPaths` — stale shell-valued overrides for non-shell keys (claude, opencode, tailscale → `/bin/zsh`) are dropped on load (T-01-19) |
+| STRP-01 | internal/daemon/engine_natural_exit_test.go | Go | Portty 01-06: `TestDerivedStatus_ExitedErrored` — `sh -c "exit 0"` reads `exited`, `sh -c "exit 3"` reads `errored` in both `GetSessionStatus` and `ListSessions` |
+| STRP-01 | internal/daemon/engine_test.go | Go | Portty 01-06: `TestListSessions_ShellStatusRunning` — a live PTY session reads `running` (status derived from process state, no heuristic) |
+| STRP-01 | frontend/src/components/__tests__/TabBar.test.tsx | vitest | Portty 01-06: tab dot is `tab__status--running/exited/errored` with title + aria-label Running/Exited/Error; legacy `idle`/`waiting`, `""` and `bogus` render as Running (T-01-21) |
+| STRP-01 | frontend/src/lib/hubStatus.test.ts | vitest | Portty 01-06: `normalizeStatus`/`statusLabel` table — exited/errored pass through, everything else (incl. undefined) → running |
 | STRP-01 | frontend/src/components/__tests__/NewSessionModal.test.tsx | vitest | Portty 01-04: no agent list / Extra Arguments; Working Directory then Shell sections; "Home directory (default)"; Create Session passes only the directory; "Browsing…" disabled while the picker is open |
 | TERM-04 | frontend/src/components/__tests__/App.test.tsx | vitest | Portty 01-04: "TERM-04: terminal theme change re-themes open terminals" — `handleThemeChange` persists the theme and calls `setTerminalThemeName(name)`; no `NotifyThemeChange` (OpenCode SIGUSR2) broadcast remains |
 | SHARE-04 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Copyable links, QR, LAN Basic Auth password surface |
@@ -271,7 +277,6 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | HELP-01 | frontend/src/components/__tests__/HelpSectionNav.test.tsx | vitest | Phase 147: section nav renders buttons per section; aria-current + active class + onSectionChange on click (RED in Plan 01; GREEN in Plan 03) |
 | HELP-01 | frontend/src/components/__tests__/HelpContent.test.tsx | vitest | Phase 147: react-markdown import gate; BrowserOpenURL called on link click; no raw `<a href` in output (RED in Plan 01; GREEN in Plan 03) |
 | HELP-01 | frontend/src/components/__tests__/HelpTab.integration.test.tsx | vitest | Phase 147 code-review fix (CR-01): real render-based test — section anchor ids (`#help-getting-started`/`#help-faq`) exist, nav click calls scrollIntoView + sets aria-current, search jump resolves a non-null section (fails against pre-fix concatenated render) |
-| AGENT-01 | internal/status/detector_test.go | Go | TestDetector_AgyIdle (idle pattern `> `), TestDetector_AgyWaiting (`[y/n]`); PatternsForCLI("agy") not Fallback |
 | AGENT-01 | frontend/src/lib/agentBadge.test.ts | vitest | agentBadgeModifier('agy') === 'agy' |
 | AGENT-01 | frontend/src/components/__tests__/style.hub.test.ts | vitest | agy three CSS color sites all contain #ff9e64; WCAG comment present (dark 8.72:1 / light 2.03:1) |
 | SET-01 | internal/daemon/engine_shell_warn_test.go | Go | TestShellWebShareWarningEnabled_Default (nil ptr → true), _Persists (Set(false)/reload, Set(true)/reload), _ReArm (D-03: Set(true) resets shellWebShareWarned), _OffBehavior (Set(false) does not reset warned) |

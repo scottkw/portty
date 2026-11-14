@@ -299,7 +299,7 @@ func TestAPIGetSessionStatus(t *testing.T) {
 	if err := json.Unmarshal(body, &sr); err != nil {
 		t.Fatalf("decode status response: %v", err)
 	}
-	valid := map[string]bool{"running": true, "waiting": true, "idle": true, "errored": true}
+	valid := map[string]bool{"running": true, "exited": true, "errored": true}
 	if !valid[sr.Status] {
 		t.Errorf("invalid status %q", sr.Status)
 	}
@@ -681,11 +681,7 @@ func TestAPI_ListSessionsViewerCount(t *testing.T) {
 	}
 	t.Cleanup(func() { rawDelete(t, socketPath, fmt.Sprintf("/sessions/%s", cr.ID)) })
 
-	// CreateSession starts a status.Watch goroutine that subscribes to the hub
-	// asynchronously (the status detector). Capturing the baseline before that
-	// subscription lands races the detector and makes the delta assertions flake
-	// by +1 under load (observed on CI). Resolve the hub up front and read the
-	// ViewerCount via the API helper below.
+	// Resolve the hub up front and read the ViewerCount via the API helper below.
 	hub, ok := api.engine.Manager().Get(cr.ID)
 	if !ok {
 		t.Fatalf("hub for session %s not found in manager", cr.ID)

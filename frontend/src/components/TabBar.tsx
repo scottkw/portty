@@ -4,6 +4,7 @@ import { GlobeAltIcon, LockOpenIcon } from '@heroicons/react/24/outline'
 // spine (.hub-card[data-agent]) and this tab dot (.tab__agent-badge--*) derive
 // the per-CLI "session type" color from one source and cannot drift.
 import { agentBadgeModifier } from '../lib/agentBadge'
+import { normalizeStatus, statusLabel } from '../lib/hubStatus'
 
 export interface Tab {
   id: string
@@ -224,6 +225,7 @@ export function TabBar({
           const titleText = agentLabel
             ? `Double-click or right-click to rename · ${agentLabel}`
             : 'Double-click or right-click to rename'
+          const status = normalizeStatus(sessionStatuses?.[tab.sessionId])
           return (
           <div
             key={tab.id}
@@ -231,9 +233,12 @@ export function TabBar({
             onClick={() => onSelect(tab.id)}
             title={tab.name}
           >
+            {/* COLORBLIND-SAFE: dot shape carries state (filled circle / hollow circle / rounded square). */}
             <span
-              className={`tab__status tab__status--${sessionStatuses?.[tab.sessionId] || 'running'}`}
-              title={sessionStatuses?.[tab.sessionId] || 'running'}
+              className={`tab__status tab__status--${status}`}
+              role="img"
+              title={statusLabel(status)}
+              aria-label={statusLabel(status)}
             />
             <span className={badgeClass} aria-hidden="true" />
             {/* Phase 166 / FUI-03 — tab internet exposure indicator.
