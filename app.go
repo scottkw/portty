@@ -52,11 +52,10 @@ type SessionInfo struct {
 
 // RemoteSession is a session on a remote tailnet peer.
 type RemoteSession struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	CLIType string `json:"cliType"`
-	Status  string `json:"status"`
-	URL     string `json:"url"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	URL    string `json:"url"`
 }
 
 // RemotePeerSessions groups sessions by peer hostname.
@@ -1248,11 +1247,10 @@ func (a *App) GetRemoteSessions() []RemotePeerSessions {
 		sessions := make([]RemoteSession, 0, len(g.Sessions))
 		for _, s := range g.Sessions {
 			sessions = append(sessions, RemoteSession{
-				ID:      s.ID,
-				Name:    s.Name,
-				CLIType: s.CLIType,
-				Status:  s.Status,
-				URL:     s.URL,
+				ID:     s.ID,
+				Name:   s.Name,
+				Status: s.Status,
+				URL:    s.URL,
 			})
 		}
 		// Every group returned by FetchAllPeerSessions answered the cap-gated
@@ -1292,11 +1290,10 @@ func (a *App) GetRemoteSessionsWithMeta() []RemotePeerSessions {
 		sessions := make([]RemoteSession, 0, len(g.Sessions))
 		for _, s := range g.Sessions {
 			sessions = append(sessions, RemoteSession{
-				ID:      s.ID,
-				Name:    s.Name,
-				CLIType: s.CLIType,
-				Status:  s.Status,
-				URL:     s.URL,
+				ID:     s.ID,
+				Name:   s.Name,
+				Status: s.Status,
+				URL:    s.URL,
 			})
 		}
 		results = append(results, RemotePeerSessions{

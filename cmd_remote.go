@@ -12,7 +12,6 @@ import (
 type CLIRemoteSession struct {
 	ID       string // session ID (without hostname prefix)
 	Name     string
-	CLIType  string
 	Status   string
 	Hostname string // peer hostname (for display)
 	FQDN     string // peer FQDN stripped of trailing dot (for URL construction)
@@ -61,7 +60,6 @@ func peerSessionsToCLI(sessions []tailnet.PeerSession) []CLIRemoteSession {
 		result = append(result, CLIRemoteSession{
 			ID:       s.ID,
 			Name:     s.Name,
-			CLIType:  s.CLIType,
 			Status:   s.Status,
 			Hostname: s.Hostname,
 			FQDN:     s.FQDN,

@@ -129,7 +129,6 @@ func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
 					cliSessions = append(cliSessions, CLIRemoteSession{
 						ID:       s.ID,
 						Name:     s.Name,
-						CLIType:  s.CLIType,
 						Status:   s.Status,
 						Hostname: s.Hostname,
 						FQDN:     s.FQDN,

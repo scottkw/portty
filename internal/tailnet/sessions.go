@@ -19,7 +19,6 @@ import (
 type PeerSession struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	CLIType  string `json:"cli_type"`
 	Status   string `json:"status"`
 	Hostname string `json:"hostname"` // peer hostname (for display)
 	FQDN     string `json:"fqdn"`     // peer FQDN (for URL construction)
@@ -117,11 +116,10 @@ func FetchAllPeerSessions(ctx context.Context, peers []Peer) []PeerSessionGroup 
 // Broadcast join-code fields removed: design rejected per CONTEXT.md D-10.
 // Credentials are delivered out of band by the owner; this struct carries no creds.
 type ShareableSessionMeta struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	CLIType string `json:"cli_type"`
-	Status  string `json:"status"`
-	URL     string `json:"url"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	URL    string `json:"url"`
 }
 
 // PeerSessionMetaGroup groups shareable-session metadata by peer hostname.
@@ -289,7 +287,6 @@ func doFetchSessions(ctx context.Context, url string, client *http.Client, host 
 	var items []struct {
 		ID       string `json:"id"`
 		Name     string `json:"name"`
-		CLIType  string `json:"cli_type"`
 		Status   string `json:"status"`
 		Hostname string `json:"hostname"`
 	}
@@ -299,10 +296,9 @@ func doFetchSessions(ctx context.Context, url string, client *http.Client, host 
 	sessions := make([]PeerSession, 0, len(items))
 	for _, item := range items {
 		sessions = append(sessions, PeerSession{
-			ID:      item.ID,
-			Name:    item.Name,
-			CLIType: item.CLIType,
-			Status:  item.Status,
+			ID:     item.ID,
+			Name:   item.Name,
+			Status: item.Status,
 		})
 	}
 	return sessions
