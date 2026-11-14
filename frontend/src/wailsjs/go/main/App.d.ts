@@ -146,7 +146,6 @@ export function GetWebServerMode(): Promise<string>
 export function GetCLIPaths(): Promise<Record<string, string>>
 
 // Theme notification bound method
-export function NotifyThemeChange(): Promise<void>
 
 // Start-minimized bound methods (TRAY-02/03)
 export function GetStartMinimized(): Promise<boolean>

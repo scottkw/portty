@@ -213,18 +213,19 @@ describe('App', () => {
   })
 })
 
-describe('THM-05: NotifyThemeChange wiring', () => {
-  it('imports NotifyThemeChange from wailsjs bindings', () => {
-    expect(raw).toContain('NotifyThemeChange')
+describe('TERM-04: terminal theme change re-themes open terminals', () => {
+  const handler = () => {
+    const start = raw.indexOf('const handleThemeChange = useCallback')
+    return raw.slice(start, raw.indexOf('}, [])', start))
+  }
+
+  it('handleThemeChange persists the theme and updates the terminal theme state', () => {
+    expect(handler()).toContain('localStorage.setItem(THEME_STORAGE_KEY, name)')
+    expect(handler()).toContain('setTerminalThemeName(name)')
   })
 
-  it('handleThemeChange calls NotifyThemeChange', () => {
-    const themeHandler = raw.slice(raw.indexOf('handleThemeChange'))
-    expect(themeHandler).toContain('NotifyThemeChange()')
-  })
-
-  it('NotifyThemeChange call has .catch for error handling', () => {
-    expect(raw).toContain("NotifyThemeChange().catch")
+  it('no per-agent (OpenCode SIGUSR2) theme broadcast remains', () => {
+    expect(raw).not.toContain('NotifyThemeChange')
   })
 })
 

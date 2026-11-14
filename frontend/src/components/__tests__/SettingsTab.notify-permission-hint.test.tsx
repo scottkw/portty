@@ -50,7 +50,6 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   SetWebLinksConfig: vi.fn().mockResolvedValue(undefined),
   SetImageConfig: vi.fn().mockResolvedValue(undefined),
   GetTailscaleStatus: vi.fn().mockResolvedValue(null),
-  NotifyThemeChange: vi.fn().mockResolvedValue(undefined),
   GetShellPath: vi.fn().mockResolvedValue('/bin/zsh'),
   SetShellPath: vi.fn().mockResolvedValue(undefined),
   GetShellWebShareWarningEnabled: vi.fn().mockResolvedValue(true),

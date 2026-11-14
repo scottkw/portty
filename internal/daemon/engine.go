@@ -23,12 +23,11 @@ import (
 
 // SessionEngine owns all session state: registry, backend, hub manager,
 // tab names, CLI path overrides, and per-session status.
-// It is intentionally free of Wails imports — callers supply an onStatus
-// callback if they need event emission.
+// It is intentionally free of Wails imports — callers supply an onExit
+// callback if they need exit notification.
 type SessionEngine struct {
-	hostname          string // machine hostname, captured at startup
-	opencodeTUIConfig string // path to managed opencode-tui.json (set at init)
-	configDir         string // cached config dir for settings persistence
+	hostname  string // machine hostname, captured at startup
+	configDir string // cached config dir for settings persistence
 
 	registry *pty.SessionRegistry
 	backend  pty.SessionBackend
@@ -36,7 +35,6 @@ type SessionEngine struct {
 
 	mu              sync.RWMutex
 	tabNames        map[string]string     // sessionID -> display name
-	sessionCLIs     map[string]string     // sessionID -> raw CLI name (e.g. "opencode")
 	sessionWorkDirs map[string]string     // sessionID -> EvalSymlinks-resolved absolute WorkDir (Phase 118 / FS-02)
 	cliPaths        map[string]string     // cli name -> custom path override
 	chatStores      map[string]*ChatStore // Phase 151 / PERSIST-01,PERSIST-03: per-session chat store (guarded by e.mu)
@@ -78,17 +76,6 @@ func daemonConfigDir() string {
 	dir := filepath.Join(base, "agenthub")
 	_ = os.MkdirAll(dir, 0700)
 	return dir
-}
-
-// ensureOpenCodeTUIConfig writes a managed tui.json that forces OpenCode's
-// "system" theme. The system theme uses ANSI palette colors (0-15), making
-// OpenCode respect xterm.js theme remapping. The file is overwritten on every
-// call (content is a hardcoded constant, no user data). Returns the file path.
-func ensureOpenCodeTUIConfig(dir string) string {
-	path := filepath.Join(dir, "opencode-tui.json")
-	content := []byte("{\"$schema\":\"https://opencode.ai/tui.json\",\"theme\":\"system\"}\n")
-	_ = os.WriteFile(path, content, 0644)
-	return path
 }
 
 // daemonSettings is the persisted settings structure.
@@ -280,7 +267,6 @@ func (e *SessionEngine) ChatStoreFor(sessionID string) (*ChatStore, bool) {
 func NewSessionEngine() *SessionEngine {
 	hostname, _ := os.Hostname()
 	cfgDir := daemonConfigDir()
-	tuiConfig := ensureOpenCodeTUIConfig(cfgDir)
 	// Phase 152 / IDENT-01: construct the global AliasStore. A failed load
 	// (e.g. corrupt aliases.json) must not crash daemon startup — tolerate
 	// the error here and leave aliasStore nil; identity stamping falls back
@@ -288,20 +274,18 @@ func NewSessionEngine() *SessionEngine {
 	// OS failures are non-fatal (first-run scenario).
 	aliasStore, _ := NewAliasStore(cfgDir)
 	e := &SessionEngine{
-		hostname:          hostname,
-		configDir:         cfgDir,
-		opencodeTUIConfig: tuiConfig,
-		registry:          pty.NewSessionRegistry(),
-		backend:           pty.NewNativePTYBackend(),
-		manager:           relay.NewHubManager(),
-		tabNames:          make(map[string]string),
-		sessionCLIs:       make(map[string]string),
-		sessionWorkDirs:   make(map[string]string),
-		cliPaths:          make(map[string]string),
-		sessionStatuses:   make(map[string]status.SessionStatus),
-		chatStores:        make(map[string]*ChatStore), // Phase 151 / PERSIST-01
-		chatsBaseDir:      chatsDir(),                  // Phase 151: production path = daemonConfigDir()/chats
-		aliasStore:        aliasStore,                  // Phase 152 / IDENT-01: global per-person alias persistence
+		hostname:        hostname,
+		configDir:       cfgDir,
+		registry:        pty.NewSessionRegistry(),
+		backend:         pty.NewNativePTYBackend(),
+		manager:         relay.NewHubManager(),
+		tabNames:        make(map[string]string),
+		sessionWorkDirs: make(map[string]string),
+		cliPaths:        make(map[string]string),
+		sessionStatuses: make(map[string]status.SessionStatus),
+		chatStores:      make(map[string]*ChatStore), // Phase 151 / PERSIST-01
+		chatsBaseDir:    chatsDir(),                  // Phase 151: production path = daemonConfigDir()/chats
+		aliasStore:      aliasStore,                  // Phase 152 / IDENT-01: global per-person alias persistence
 	}
 	// -l because go-pty discards Args[0], so the argv0 "-zsh" login trick is impossible.
 	e.spawnCommand = func() (string, []string) { return e.GetShellPath(), []string{"-l"} }
@@ -532,7 +516,6 @@ func (e *SessionEngine) KillSession(id string) error {
 
 	e.mu.Lock()
 	delete(e.tabNames, id)
-	delete(e.sessionCLIs, id)
 	delete(e.sessionWorkDirs, id) // Phase 118 / FS-02
 	// Phase 151 / PERSIST-03: delete the ChatStore under e.mu so a recycled
 	// session ID never inherits a stale thread (T-151-07 mitigation) and no
@@ -566,7 +549,7 @@ func (e *SessionEngine) GetSessionStatus(sessionID string) string {
 
 // ansiEscape matches CSI sequences (e.g. \x1b[32m) and OSC sequences
 // (e.g. \x1b]0;title\x07 or \x1b]8;;url\x1b\).
-// Covers the full ANSI vocabulary emitted by Claude Code, opencode, Gemini CLI.
+// Covers the ANSI vocabulary emitted by common terminal programs.
 // Pattern mirrors frontend/src/lib/stripAnsi.ts extended to include OSC.
 //
 // CR-01 fix: OSC sequences come in two forms:
@@ -1125,28 +1108,4 @@ func (e *SessionEngine) Registry() *pty.SessionRegistry {
 // Backend returns the session backend (needed for resize in relay).
 func (e *SessionEngine) Backend() pty.SessionBackend {
 	return e.backend
-}
-
-// NotifyThemeChange signals all active OpenCode sessions to re-query the
-// terminal palette. On POSIX this sends SIGUSR2; on Windows this is a no-op.
-// Errors on individual sessions are logged and do not abort the broadcast.
-// Safe to call when no opencode sessions exist (returns nil).
-func (e *SessionEngine) NotifyThemeChange(ctx context.Context) error {
-	sessions := e.registry.List()
-
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
-	for _, sess := range sessions {
-		if e.sessionCLIs[sess.ID] != "opencode" {
-			continue
-		}
-		if sess.GetState() != pty.StateRunning {
-			continue
-		}
-		if err := signalThemeChange(sess); err != nil {
-			log.Printf("[warn] NotifyThemeChange: session %s: %v", sess.ID, err)
-		}
-	}
-	return nil
 }

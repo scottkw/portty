@@ -985,22 +985,6 @@ func TestAutoInstallTailscale(t *testing.T) {
 	})
 }
 
-func TestNotifyThemeChange(t *testing.T) {
-	app := testApp(t)
-	err := app.NotifyThemeChange()
-	if err != nil {
-		t.Errorf("NotifyThemeChange: want nil, got %v", err)
-	}
-}
-
-func TestNilClientNotifyThemeChange(t *testing.T) {
-	app := testAppNoDaemon(t)
-	err := app.NotifyThemeChange()
-	if err != nil {
-		t.Errorf("NotifyThemeChange with nil client: want nil (no-op), got %v", err)
-	}
-}
-
 // -----------------------------------------------------------------------
 // Wave 0 RED test for Phase 130 RB-01 — GetRemoteSessionsWithMeta Wails RPC.
 //

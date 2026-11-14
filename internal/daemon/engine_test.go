@@ -251,44 +251,6 @@ func (s *spyBackend) Resize(string, int, int) error { return nil }
 func (s *spyBackend) Kill(string) error             { return nil }
 func (s *spyBackend) List() []*pty.Session          { return nil }
 
-// TestNotifyThemeChange_EmptyEngine verifies no-op on fresh engine with no sessions.
-func TestNotifyThemeChange_EmptyEngine(t *testing.T) {
-	e := NewSessionEngine()
-	err := e.NotifyThemeChange(context.Background())
-	if err != nil {
-		t.Errorf("NotifyThemeChange on empty engine: want nil, got %v", err)
-	}
-}
-
-// TestOpenCodeTUIConfig asserts that ensureOpenCodeTUIConfig writes a managed
-// opencode-tui.json with the correct content (theme set to "system" for terminal passthrough).
-func TestOpenCodeTUIConfig(t *testing.T) {
-	dir := t.TempDir()
-	path := ensureOpenCodeTUIConfig(dir)
-
-	// Verify path is correct
-	expected := filepath.Join(dir, "opencode-tui.json")
-	if path != expected {
-		t.Errorf("path = %q, want %q", path, expected)
-	}
-
-	// Verify file content
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("managed opencode-tui.json not found: %v", err)
-	}
-	want := `{"$schema":"https://opencode.ai/tui.json","theme":"system"}` + "\n"
-	if string(data) != want {
-		t.Errorf("content = %q, want %q", string(data), want)
-	}
-
-	// Verify idempotent (second call does not error)
-	path2 := ensureOpenCodeTUIConfig(dir)
-	if path2 != path {
-		t.Errorf("second call path = %q, want %q", path2, path)
-	}
-}
-
 // hubReadUntil subscribes to the session's relay hub and waits until the
 // marker string appears in the output frames, or the timeout elapses.
 // Returns true if the marker was found within the timeout.
@@ -789,8 +751,7 @@ func newKilledShell12Session(id string) *pty.Session {
 
 // newBareEngine creates a SessionEngine with no real backend (uses spyBackend),
 // isolated configDir, and injects the given pre-built sessions into its
-// registry. tabNames and sessionCLIs are auto-populated from each session's
-// ID and CLI fields. Returns the engine ready for ListSessions assertions.
+// registry. tabNames is auto-populated from each session's ID. Returns the engine ready for ListSessions assertions.
 func newBareEngine(t *testing.T, sessions ...*pty.Session) *SessionEngine {
 	t.Helper()
 	e := &SessionEngine{
@@ -798,7 +759,6 @@ func newBareEngine(t *testing.T, sessions ...*pty.Session) *SessionEngine {
 		backend:         &spyBackend{},
 		manager:         relay.NewHubManager(),
 		tabNames:        make(map[string]string),
-		sessionCLIs:     make(map[string]string),
 		cliPaths:        make(map[string]string),
 		sessionStatuses: make(map[string]status.SessionStatus),
 		configDir:       t.TempDir(),
@@ -807,7 +767,6 @@ func newBareEngine(t *testing.T, sessions ...*pty.Session) *SessionEngine {
 		e.registry.Add(s)
 		e.mu.Lock()
 		e.tabNames[s.ID] = s.ID
-		e.sessionCLIs[s.ID] = s.CLI
 		e.mu.Unlock()
 	}
 	return e

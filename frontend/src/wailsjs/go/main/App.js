@@ -88,7 +88,6 @@ export const GetWebServerMode        = ()                   => Call('main.App.Ge
 export const GetCLIPaths             = ()                   => Call('main.App.GetCLIPaths', [])
 
 // Theme notification bound method
-export const NotifyThemeChange       = ()                   => Call('main.App.NotifyThemeChange', [])
 
 // Start-minimized bound methods (TRAY-02/03)
 export const GetStartMinimized       = ()                   => Call('main.App.GetStartMinimized', [])

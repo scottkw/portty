@@ -23,7 +23,6 @@ import {
   GetDaemonError,
   GetRemoteSessionsWithMeta,
   GetWebServerMode,
-  NotifyThemeChange,
   GetLastUpdateInfo,
   GetAutoCloseSession,
   GetStayOnHubAfterCreate,
@@ -291,9 +290,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   const handleThemeChange = useCallback((name: string) => {
     localStorage.setItem(THEME_STORAGE_KEY, name)
     setTerminalThemeName(name)
-    // Signal active OpenCode sessions to re-query terminal palette (SIGUSR2).
-    // Fire-and-forget: errors logged to console, never block UI.
-    NotifyThemeChange().catch(err => console.warn('NotifyThemeChange failed:', err))
   }, [])
 
   // UI theme (light/dark whole-app appearance) — distinct from terminal color theme.

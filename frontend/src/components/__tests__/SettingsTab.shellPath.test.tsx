@@ -43,7 +43,6 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   // Tailscale
   GetTailscaleStatus: vi.fn().mockResolvedValue(null),
   // Theme
-  NotifyThemeChange: vi.fn().mockResolvedValue(undefined),
   // Shell path — SHELL-11 new bindings
   GetShellPath: vi.fn().mockResolvedValue('/bin/zsh'),
   SetShellPath: vi.fn().mockResolvedValue(undefined),
