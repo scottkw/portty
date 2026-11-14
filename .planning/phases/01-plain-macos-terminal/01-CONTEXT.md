@@ -95,3 +95,15 @@ The user decided this mid-execution, after plans 01-01..01-05 had landed. It sup
 - Keep LocalAPI use for peer discovery, HTTPS certs and Funnel. Those features need it.
 - When not connected (LocalAPI unreachable, or backend state not Running/logged in): show a persistent in-app banner, "Tailscale isn't connected. Remote access and sharing are off until it is.", and disable the Share and remote/peer controls with the same reason. Local terminals work normally. Re-check automatically (on launch, periodically, and on window focus), and clear the banner when the connection is back.
 </amendment>
+
+<amendment date="2026-11-14" n="2">
+## Amendment 2: No status or exit UI, no bell notifications
+
+The user decided this after plan 01-06 landed. It supersedes the "Session status & notifications" decisions above and the UI-SPEC status/exit sections.
+
+- **No status indicators.** Remove the running/exited/errored tab dot, the Hub card status labels/icons, the status part of the exit toast, and any UI that shows session status. 01-06's derived status may stay in the daemon only where something still needs it (for example to know a session ended). It is not shown to the user.
+- **No exit handling UI.** Remove the 5 s auto-close countdown, the "Keep Open" button, the exit toast/banner and the error-state tab. New behavior: when a session's shell exits, for any reason or exit code, its tab closes immediately and the session is removed. Exit detection must still be reliable for long-lived shells (the >300 s exit-window fix stays in scope, because tabs must close for shells that exit after hours).
+- **No bell/OSC 9 notifications.** Drop the planned BEL/OSC 9 → native notification feature and the "awaiting input" notification toggle plus its settings key handling (old settings keys load and are ignored). Keep the native notification plumbing (`notification_darwin.go`) only if something else still uses it. Phase 6 update notifications will use it, so keep a minimal path for that.
+- **Kept:** OSC 9;4 progress (tab underline + tray quartile glyph). It is terminal progress, not session status.
+- Implemented by the re-planned plan 01-10 and the new follow-up plans, together with Amendment 1.
+</amendment>
