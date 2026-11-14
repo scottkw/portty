@@ -82,8 +82,7 @@ vi.mock('../../wailsjs/wailsjs/runtime/runtime', () => ({
 // Minimal stub props satisfying all required SettingsTabProps fields.
 function makeProps(overrides: { uiTheme?: 'dark' | 'light'; onUiThemeChange?: (t: 'dark' | 'light') => void } = {}) {
   return {
-    clis: [],
-    tailscaleHealth: null,
+      tailscaleHealth: null,
     webServerMode: null as null,
     onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
     selectedTheme: 'Tomorrow_Night',

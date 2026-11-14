@@ -92,8 +92,7 @@ vi.mock('../../wailsjs/wailsjs/runtime/runtime', () => ({
 
 function makeProps(overrides: Partial<Parameters<typeof SettingsTab>[0]> = {}) {
   return {
-    clis: [],
-    tailscaleHealth: null,
+      tailscaleHealth: null,
     webServerMode: null as null,
     onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
     selectedTheme: 'Tomorrow_Night',

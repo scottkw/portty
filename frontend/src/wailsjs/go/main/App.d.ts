@@ -23,18 +23,10 @@ export interface SessionInfo {
   funnelWriteActive: boolean
 }
 
-export interface DetectedCLI {
-  Name: string
-  Path: string
-}
-
 export function CreateSession(name: string, workDir: string, cols: number, rows: number): Promise<string>
 export function ListSessions(): Promise<SessionInfo[]>
 export function RenameSession(id: string, name: string): Promise<void>
 export function KillSession(id: string): Promise<void>
-export function DetectCLIs(): Promise<DetectedCLI[]>
-// Phase 101-01 prerequisite — shell discovery via daemon /shells route.
-export function ListShells(): Promise<daemon.DetectedShell[]>
 // Phase 101-01 — persisted "user has been warned about shell web-share" flag.
 export function GetShellWebShareWarned(): Promise<boolean>
 export function SetShellWebShareWarned(v: boolean): Promise<void>

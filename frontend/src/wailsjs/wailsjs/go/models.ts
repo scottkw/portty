@@ -1,23 +1,5 @@
 export namespace daemon {
 	
-	export class DetectedShell {
-	    name: string;
-	    displayName: string;
-	    path: string;
-	    argv: string[];
-	
-	    static createFrom(source: any = {}) {
-	        return new DetectedShell(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.displayName = source["displayName"];
-	        this.path = source["path"];
-	        this.argv = source["argv"];
-	    }
-	}
 	export class ImageConfig {
 	    storageLimit: number;
 	
@@ -252,26 +234,6 @@ export namespace main {
 
 }
 
-export namespace pty {
-	
-	export class DetectedCLI {
-	    Name: string;
-	    DisplayName: string;
-	    Path: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new DetectedCLI(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Name = source["Name"];
-	        this.DisplayName = source["DisplayName"];
-	        this.Path = source["Path"];
-	    }
-	}
-
-}
 
 export namespace updater {
 	

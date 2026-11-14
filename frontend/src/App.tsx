@@ -13,7 +13,6 @@ import {
   ListSessions,
   KillSession,
   RenameSession,
-  DetectCLIs,
   GetRelayPort,
   ToggleWebServing,
   IsWebServerRunning,
@@ -36,7 +35,7 @@ import {
   SetTrayProgress,
 } from './wailsjs/go/main/App'
 import { aggregateProgress } from './lib/aggregateProgress'
-import type { DetectedCLI, SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
+import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
 import type { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
 import { EventsOn, BrowserOpenURL } from './wailsjs/wailsjs/runtime/runtime'
@@ -117,7 +116,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     mode === 'web' ? null : WELCOME_TAB.id,
   )
   const [relayPort, setRelayPort] = useState<number | null>(null)
-  const [detectedCLIs, setDetectedCLIs] = useState<DetectedCLI[]>([])
   const [tabCounter, setTabCounter] = useState(1)
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   // Track web serving state per session: sessionId -> enabled
@@ -479,15 +477,13 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         return
       }
       try {
-        const [port, clis, sessions, running, health] = await Promise.all([
+        const [port, sessions, running, health] = await Promise.all([
           GetRelayPort(),
-          DetectCLIs(),
           ListSessions(),
           IsWebServerRunning(),
           GetTailscaleStatus(),
         ])
         setRelayPort(port)
-        setDetectedCLIs(clis)
         setWebServerRunning(running)
         setTailscaleHealth(health)
         // Phase 168-05 (UX-02): seed hubSessions from the same ListSessions() call used
@@ -1326,15 +1322,13 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       return
     }
     try {
-      const [port, clis, sessions, running, health] = await Promise.all([
+      const [port, sessions, running, health] = await Promise.all([
         GetRelayPort(),
-        DetectCLIs(),
         ListSessions(),
         IsWebServerRunning(),
         GetTailscaleStatus(),
       ])
       setRelayPort(port)
-      setDetectedCLIs(clis)
       setWebServerRunning(running)
       setTailscaleHealth(health)
       // Phase 168-05 (UX-02): mirror the mount-time hubSessions seed (see init above).
@@ -1400,7 +1394,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
             <LocalNetworkBanner
               visible={true}
               tailscaleConnected={!!(tailscaleHealth?.connected && tailscaleHealth?.hasCerts && tailscaleHealth?.ip)}
-              tailscaleInstalled={!!(tailscaleHealth?.installed || detectedCLIs.some(c => c.Name === 'tailscale'))}
+              tailscaleInstalled={!!tailscaleHealth?.installed}
               tailscaleBinaryFound={!!(tailscaleHealth?.binaryFound)}
               tailscaleDaemonUp={!!(tailscaleHealth?.daemonUp)}
               platformHint={tailscaleHealth?.platformHint || ''}
@@ -1605,7 +1599,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         {mode !== 'web' && (
         <div style={{ display: activeId === SETTINGS_TAB.id ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
           <SettingsTab
-            clis={detectedCLIs}
             tailscaleHealth={tailscaleHealth}
             webServerMode={webServerMode}
             selectedTheme={terminalThemeName}

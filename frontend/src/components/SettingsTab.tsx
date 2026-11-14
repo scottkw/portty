@@ -30,7 +30,6 @@ import {
   GetShellWebShareWarningEnabled,
   SetShellWebShareWarningEnabled,
 } from '../wailsjs/go/main/App'
-import type { DetectedCLI } from '../wailsjs/go/main/App'
 import { BrowserOpenURL, ClipboardSetText, EventsOn } from '../wailsjs/wailsjs/runtime/runtime'
 import {
   ArrowTopRightOnSquareIcon,
@@ -47,7 +46,6 @@ import { SettingsSearch } from './SettingsSearch'
 const THEME_NAMES = ALLOWED_THEMES
 
 interface SettingsTabProps {
-  clis: DetectedCLI[]
   tailscaleHealth: {
     installed: boolean
     connected: boolean
@@ -75,20 +73,13 @@ interface SettingsTabProps {
 }
 
 /**
- * Inline settings tab for configuring custom CLI executable paths and web serving.
- * Lists all detected CLIs with an input field for path overrides, plus a Web Server
- * section for CT disclosure and server start/stop.
+ * Inline settings tab: shell and tailscale path overrides, web serving and
+ * the other app preferences.
  * Renders as a sidebar tab — no modal shell. Single scrollable page with section headers.
  */
-export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerStateChange, selectedTheme, onThemeChange, uiTheme, onUiThemeChange, onPluginToggleSideEffect, onShellWarnEnabledChange }: SettingsTabProps): React.ReactElement {
-  // Track custom path overrides keyed by CLI name.
-  const [customPaths, setCustomPaths] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {}
-    for (const cli of clis) {
-      initial[cli.Name] = cli.Path
-    }
-    return initial
-  })
+export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateChange, selectedTheme, onThemeChange, uiTheme, onUiThemeChange, onPluginToggleSideEffect, onShellWarnEnabledChange }: SettingsTabProps): React.ReactElement {
+  // Custom path overrides keyed by program name (only 'tailscale' is shown).
+  const [customPaths, setCustomPaths] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -323,17 +314,6 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
     setSaving(true)
     setError(null)
     try {
-      // Save ALL non-empty paths unconditionally. The previous logic only
-      // saved paths that differed from the detected value, which meant
-      // correcting a stale stored override (e.g. "/bin/sh") back to the
-      // detected path was silently skipped — the stale value persisted.
-      for (const cli of clis) {
-        const path = (customPaths[cli.Name] ?? '').trim()
-        if (path !== '') {
-          await UpdateCLIPath(cli.Name, path)
-        }
-      }
-      // Save tailscale path even if not in detected CLIs list
       const tsCustom = (customPaths['tailscale'] ?? '').trim()
       if (tsCustom !== '') {
         await UpdateCLIPath('tailscale', tsCustom)
@@ -945,46 +925,15 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
 
         {/* Paths section (SET-01 fix: single unified table) */}
         <h3 id="settings-paths">Paths</h3>
-        {clis.length === 0 && (
-          <p className="settings-panel__empty">
-            No CLIs detected. Install claude, opencode, or another supported CLI
-            and restart AgentHub. A manual tailscale path can still be configured below.
-          </p>
-        )}
         <table className="settings-panel__table">
           <thead>
             <tr>
-              <th>CLI</th>
+              <th>Program</th>
               <th>Path</th>
             </tr>
           </thead>
           <tbody>
-            {clis.map((cli) => (
-              <tr key={cli.Name}>
-                <td className="settings-panel__cli-name">{cli.Name}</td>
-                <td>
-                  <div className="settings-panel__path-row">
-                    <input
-                      className="settings-panel__path-input"
-                      type="text"
-                      value={customPaths[cli.Name] ?? cli.Path}
-                      onChange={(e) =>
-                        setCustomPaths((prev) => ({ ...prev, [cli.Name]: e.target.value }))
-                      }
-                      placeholder={cli.Path || `Path to ${cli.Name}`}
-                    />
-                    <button
-                      className="settings-panel__browse-btn"
-                      onClick={() => void handleBrowse(cli.Name)}
-                      title="Browse for executable"
-                    >
-                      Browse
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {/* Phase 107-03 SHELL-11: Shell binary path row — after AI CLI rows, before tailscale.
+            {/* Phase 107-03 SHELL-11: Shell binary path row, before tailscale.
                 Participates in the existing Save Paths flow. Error renders inline below field. */}
             <tr key="shell">
               <td className="settings-panel__cli-name">shell</td>
@@ -1015,31 +964,29 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
                 )}
               </td>
             </tr>
-            {!clis.find(c => c.Name === 'tailscale') && (
-              <tr key="tailscale">
-                <td className="settings-panel__cli-name">tailscale</td>
-                <td>
-                  <div className="settings-panel__path-row">
-                    <input
-                      className="settings-panel__path-input"
-                      type="text"
-                      value={customPaths['tailscale'] ?? ''}
-                      onChange={(e) =>
-                        setCustomPaths((prev) => ({ ...prev, tailscale: e.target.value }))
-                      }
-                      placeholder="Path to tailscale (leave blank to auto-detect)"
-                    />
-                    <button
-                      className="settings-panel__browse-btn"
-                      onClick={() => void handleBrowse('tailscale')}
-                      title="Browse for executable"
-                    >
-                      Browse
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            )}
+            <tr key="tailscale">
+              <td className="settings-panel__cli-name">tailscale</td>
+              <td>
+                <div className="settings-panel__path-row">
+                  <input
+                    className="settings-panel__path-input"
+                    type="text"
+                    value={customPaths['tailscale'] ?? ''}
+                    onChange={(e) =>
+                      setCustomPaths((prev) => ({ ...prev, tailscale: e.target.value }))
+                    }
+                    placeholder="Path to tailscale (leave blank to auto-detect)"
+                  />
+                  <button
+                    className="settings-panel__browse-btn"
+                    onClick={() => void handleBrowse('tailscale')}
+                    title="Browse for executable"
+                  >
+                    Browse
+                  </button>
+                </div>
+              </td>
+            </tr>
           </tbody>
         </table>
 

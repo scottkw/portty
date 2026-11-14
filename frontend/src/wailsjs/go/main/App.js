@@ -8,9 +8,6 @@ export const CreateSession  = (name, workDir, cols, rows) => Call('main.App.Crea
 export const ListSessions   = ()             => Call('main.App.ListSessions', [])
 export const RenameSession  = (id, name)     => Call('main.App.RenameSession', [id, name])
 export const KillSession    = (id)           => Call('main.App.KillSession', [id])
-export const DetectCLIs     = ()             => Call('main.App.DetectCLIs', [])
-// Phase 101-01 prerequisite — shell discovery via daemon /shells route.
-export const ListShells              = ()    => Call('main.App.ListShells', [])
 // Phase 101-01 — persisted "user has been warned about shell web-share" flag.
 export const GetShellWebShareWarned  = ()    => Call('main.App.GetShellWebShareWarned', [])
 export const SetShellWebShareWarned  = (v)   => Call('main.App.SetShellWebShareWarned', [v])

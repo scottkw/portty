@@ -106,8 +106,7 @@ function makeHealth(overrides: Partial<TailscaleHealth> = {}): TailscaleHealth {
 
 function makeProps(overrides: Partial<Parameters<typeof SettingsTab>[0]> = {}) {
   return {
-    clis: [],
-    tailscaleHealth: null as TailscaleHealth | null,
+      tailscaleHealth: null as TailscaleHealth | null,
     webServerMode: null as null,
     onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
     selectedTheme: 'Tomorrow_Night',

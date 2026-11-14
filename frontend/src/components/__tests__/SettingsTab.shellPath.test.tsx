@@ -76,9 +76,6 @@ vi.mock('../../wailsjs/wailsjs/runtime/runtime', () => ({
 }))
 
 const defaultProps = {
-  clis: [
-    { Name: 'claude', Path: '/usr/local/bin/claude' },
-  ],
   tailscaleHealth: null,
   webServerMode: null as null,
   onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
@@ -313,5 +310,52 @@ describe('SHELL-11: Settings → Paths "Shell binary" row', () => {
     const allButtons = Array.from(container.querySelectorAll('button'))
     const savedBtn = allButtons.find((b) => b.textContent?.includes('Saved!'))
     expect(savedBtn).not.toBeUndefined()
+  })
+})
+
+describe('STRP-01: Settings → Paths shows exactly the shell and tailscale rows', () => {
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(AppMock.GetShellPath).mockResolvedValue('/bin/zsh')
+    vi.mocked(AppMock.SetShellPath).mockResolvedValue(undefined)
+    // A legacy AgentHub agent key must not turn into a row or be re-saved.
+    vi.mocked(AppMock.GetCLIPaths).mockResolvedValue({
+      claude: '/usr/local/bin/claude',
+      tailscale: '/opt/homebrew/bin/tailscale',
+    })
+    vi.mocked(AppMock.UpdateCLIPath).mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    root?.unmount()
+    container?.remove()
+  })
+
+  it('renders Program/Path headers, shell + tailscale rows only, and no agent-CLI empty state', async () => {
+    ;({ container, root } = renderSettings())
+    await act(async () => { await Promise.resolve() })
+    const table = container.querySelector('.settings-panel__table') as HTMLTableElement
+    expect(table).not.toBeNull()
+    const headers = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent)
+    expect(headers).toEqual(['Program', 'Path'])
+    const rows = Array.from(table.querySelectorAll('tbody tr')).map(
+      (tr) => tr.querySelector('.settings-panel__cli-name')?.textContent,
+    )
+    expect(rows).toEqual(['shell', 'tailscale'])
+    expect(container.textContent).not.toContain('No CLIs detected')
+    const inputs = table.querySelectorAll('tbody input')
+    expect((inputs[1] as HTMLInputElement).value).toBe('/opt/homebrew/bin/tailscale')
+  })
+
+  it('Save Paths saves only the tailscale override and the shell path', async () => {
+    ;({ container, root } = renderSettings())
+    await act(async () => { await Promise.resolve() })
+    const save = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Save Paths')!
+    await act(async () => { save.click() })
+    expect(vi.mocked(AppMock.UpdateCLIPath).mock.calls).toEqual([['tailscale', '/opt/homebrew/bin/tailscale']])
+    expect(AppMock.SetShellPath).toHaveBeenCalledWith('/bin/zsh')
   })
 })

@@ -13,8 +13,8 @@ describe('UI-02 Gap 1: SettingsTab exports', () => {
 })
 
 describe('UI-02 Gap 2: SettingsTab props interface', () => {
-  it('props include clis', () => {
-    expect(raw).toContain('clis')
+  it('props do NOT include clis (STRP-01: no CLI detection)', () => {
+    expect(raw).not.toMatch(/\bclis\b/)
   })
 
   it('props include tailscaleHealth', () => {
@@ -301,12 +301,12 @@ describe('SET-01: Unified path table (single table for CLI + tailscale rows)', (
     expect(tableMatches.length).toBe(1)
   })
 
-  it('tailscale path row is inside the same table as detected CLI rows', () => {
+  it('tailscale path row is inside the same table as the shell row', () => {
     const tableStart = raw.indexOf('className="settings-panel__table"')
     const tableEnd = raw.indexOf('</table>', tableStart)
     expect(tableStart).toBeGreaterThan(-1)
     const tableBlock = raw.slice(tableStart, tableEnd)
-    expect(tableBlock).toContain('clis.map')
+    expect(tableBlock).toContain('<tr key="shell">')
     expect(tableBlock).toContain("'tailscale'")
   })
 
@@ -314,12 +314,12 @@ describe('SET-01: Unified path table (single table for CLI + tailscale rows)', (
     expect(raw).not.toContain("className=\"settings-panel__table\" style={{ marginTop: '0.75rem' }}")
   })
 
-  it('merged table uses CLI as column header (not Tool)', () => {
+  it('merged table uses Program / Path column headers (UI-SPEC)', () => {
     const tableStart = raw.indexOf('className="settings-panel__table"')
     const tableEnd = raw.indexOf('</table>', tableStart)
     const tableBlock = raw.slice(tableStart, tableEnd)
-    expect(tableBlock).toContain('<th>CLI</th>')
-    expect(tableBlock).not.toContain('<th>Tool</th>')
+    expect(tableBlock).toContain('<th>Program</th>')
+    expect(tableBlock).not.toContain('<th>CLI</th>')
   })
 })
 
