@@ -79,12 +79,37 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| BRND-01 | Phase 3 | Pending |
+| BRND-02 | Phase 3 | Pending |
+| BRND-03 | Phase 3 | Pending |
+| BRND-04 | Phase 3 | Pending |
+| TERM-01 | Phase 1 | Pending |
+| TERM-02 | Phase 1 | Pending |
+| TERM-03 | Phase 2 | Pending |
+| TERM-04 | Phase 1 | Pending |
+| NAV-01 | Phase 2 | Pending |
+| NAV-02 | Phase 2 | Pending |
+| NAV-03 | Phase 2 | Pending |
+| SHAR-01 | Phase 4 | Pending |
+| SHAR-02 | Phase 4 | Pending |
+| SHAR-03 | Phase 4 | Pending |
+| SHAR-04 | Phase 4 | Pending |
+| SHAR-05 | Phase 4 | Pending |
+| SHAR-06 | Phase 4 | Pending |
+| SHAR-07 | Phase 5 | Pending |
+| CHAT-01 | Phase 1 | Pending |
+| NOTF-01 | Phase 3 | Pending |
+| STRP-01 | Phase 1 | Pending |
+| STRP-02 | Phase 1 | Pending |
+| STRP-03 | Phase 1 | Pending |
+| STRP-04 | Phase 1 | Pending |
+| VERF-01 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 25 total
-- Mapped to phases: 0
-- Unmapped: 25 ⚠️
+- Mapped to phases: 25
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-11-14*
-*Last updated: 2026-11-14 after initial definition*
+*Last updated: 2026-11-14 after roadmap creation (traceability mapped)*
