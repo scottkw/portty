@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Plain macOS Terminal
 status: executing
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-11-14T22:17:04.770Z"
+stopped_at: Completed 01-05-PLAN.md
+last_updated: "2026-11-14T22:27:51.711Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 1 execution started
-state_head: f5677026e930d0184d6e47210a8aed4b91b84234
+state_head: 7f6ee33e147a26f2d321868522564db84e10fe34
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 10
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 ## Current Position
 
 Phase: 1 (Plain macOS Terminal) — EXECUTING
-Plan: 5 of 10
+Plan: 6 of 10
 Status: Ready to execute
 Last activity: 2026-11-14 — Phase 1 execution started
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P02 | 26 min | 3 tasks | 103 files |
 | Phase 01 P03 | 21 min | 3 tasks | 54 files |
 | Phase 01 P04 | 17 min | 3 tasks | 35 files |
+| Phase 01 P05 | 9 min | 3 tasks | 32 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,8 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-04: CreateRequest drops cli/args; legacy keys are ignored by the plain json.Decoder (T-01-15, asserted by TestHandleCreateSession_LegacyBodyIgnored)
 - [Phase 01]: 01-04: Remaining non-test 'opencode' strings (app.go displayNameForCLI, internal/pty/detect.go) left for 01-06 / 01-05 which delete those symbols
 - [Phase 01]: 01-04: Tab and hubSessions seed keep cli: 'shell' until 01-07 removes SessionInfo.cli / Tab.cli
+- [Phase 1]: 01-05: resolveDefaultShellPath = $SHELL only if absolute, existing, executable, non-directory; else /bin/zsh; shared by GetShellPath display and spawn
+- [Phase 1]: 01-05: kept knownShells stale-path filter (drops shell-valued overrides for non-shell keys incl. tailscale), minus Windows names; legacy agent cliPaths keys load as inert data
 
 ### Pending Todos
 
@@ -112,6 +115,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-14T22:17:04.726Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-11-14T22:27:51.681Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
