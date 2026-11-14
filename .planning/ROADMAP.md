@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 3: Portty Brand** - Rename app, CLI, module, paths, icons, docs, notifications, and update feed to Portty
 - [ ] **Phase 4: One-Click Share** - One Share action publishes to peers' sidebars and a tailnet web link; stop, Funnel, and CLI attach work
 - [ ] **Phase 5: Overnight Survival** - Remote attaches survive 12+ hour idle gaps and the overnight end-to-end test passes
+- [ ] **Phase 6: Release Updates** - Portty checks GitHub releases, notifies, supports a forced check, and downloads, verifies and reveals the DMG (GIFsmith flow)
 
 ## Phase Details
 
@@ -85,14 +86,16 @@ Plans:
 **Goal**: Everything a user sees or types says Portty: app, CLI, paths, icons, docs, notifications, and update feed
 **Mode:** mvp
 **Depends on**: Phase 2
-**Requirements**: BRND-01, BRND-02, BRND-03, BRND-04, BRND-05, BRND-06, NOTF-01
+**Requirements**: BRND-01, BRND-02, BRND-03, BRND-04, BRND-05, BRND-06, NOTF-01, DIST-03
 **Success Criteria** (what must be TRUE):
   1. The built app is Portty.app with a Portty bundle ID, and the window title, menu bar, About box, and tray tooltip all say Portty
   2. The app icon, tray icons (progress quartiles and error state), and title logos (light and dark) are the `portty-brand/` assets
   3. The CLI is `portty` (`portty daemon`, `portty attach`), the Go module path is portty, and Portty keeps its config, data, and daemon socket in portty-named locations, never reading or writing AgentHub's
   4. The README, Help tab, Settings, and other user-facing text contain no "AgentHub" or agent-CLI wording and describe Portty as a terminal with remote access
   5. Native macOS notifications appear under the Portty name, and the update check queries Portty's release feed and handles "no release published yet" without an error
-  6. A case-insensitive search for "agenthub" over tracked files (excluding `.planning/`) returns zero hits, and every website/repo link points to https://portty.app or github.com/scottkw/portty
+  6. The root `LICENSE` is still MIT, and README plus `frontend/package.json` declare the MIT license
+  7. `packaging/homebrew` is gone, and no docs, scripts or workflows mention Homebrew
+  8. A case-insensitive search for "agenthub" over tracked files (excluding `.planning/`) returns zero hits, and every website/repo link points to https://portty.app or github.com/scottkw/portty
 **Plans**: TBD
 **UI hint**: yes
 
@@ -123,10 +126,23 @@ Plans:
   5. The next morning the same session also opens from a browser on the tailnet and works
 **Plans**: TBD
 
+### Phase 6: Release Updates
+**Goal**: Installed copies of Portty find out about new GitHub releases on their own or on demand, and the user can download, verify and open an update in a couple of clicks, using the same flow as GIFsmith
+**Mode:** mvp
+**Depends on**: Phase 3
+**Requirements**: UPD-01, UPD-02, UPD-03, UPD-04
+**Success Criteria** (what must be TRUE):
+  1. With a newer release published (or a fake GitHub API serving one), Portty shows an update notice and a native notification shortly after launch, and again on its periodic check, without the user doing anything
+  2. "Check for Updates…" runs a check immediately and tells the user they are up to date, that version X is available, or what went wrong
+  3. Clicking Download in the notice fetches the release DMG, rejects it if the SHA-256 digest or Developer ID Team signature doesn't match, and otherwise reveals the verified DMG in Finder
+  4. With no release published, or the repo returning 404, Portty reports "up to date" or stays silent, never a false update or repeated error popups
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -135,3 +151,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
+| 6. Release Updates | 0/TBD | Not started | - |

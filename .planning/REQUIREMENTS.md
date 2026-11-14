@@ -40,7 +40,15 @@
 ### Chat & Notifications
 
 - [ ] **CHAT-01**: The per-session human chat works across desktop and web surfaces, with the `@session` agent-inject bridge removed
-- [ ] **NOTF-01**: Native macOS notifications and the auto-update check keep working under the Portty name and release feed
+- [ ] **NOTF-01**: Native macOS notifications appear under the Portty name
+
+### Updates & Distribution
+
+- [ ] **UPD-01**: Portty checks the latest GitHub release of scottkw/portty (public Releases API, no login) shortly after launch and then periodically, and shows an in-app notice plus a native notification when a newer version than the running one is published
+- [ ] **UPD-02**: The user can force an immediate check from a "Check for Updates…" menu item. It reports "Portty is up to date", "Version X is available", or a readable error
+- [ ] **UPD-03**: From the update notice, one click downloads the release DMG, verifies its SHA-256 digest and Developer ID Team signature, and reveals it in Finder. This matches the GIFsmith flow (port of `~/dev/gifsmith/internal/update`)
+- [ ] **UPD-04**: No published release, a 404, drafts, prereleases, network failures, and rate limits are all handled quietly: no false "update available", no repeated error popups, and periodic checks keep running
+- [ ] **DIST-03**: No Homebrew distribution. `packaging/homebrew` and every Homebrew reference (docs, scripts, release workflow) are removed. Releases ship only as GitHub release DMGs, linked from https://portty.app
 
 ### Strip-down
 
@@ -58,7 +66,6 @@
 ### Distribution
 
 - **DIST-01**: Signed and notarized Portty DMG published as a GitHub release
-- **DIST-02**: Auto-update pulls from the Portty releases feed
 
 ### Convenience
 
@@ -74,6 +81,7 @@
 | File browser/editor | Not needed for remote terminal control |
 | Windows / Linux | Both target machines are Macs. Cuts maintenance. |
 | Claude Code Remote Control | User needs a full terminal, not just the Claude session |
+| Homebrew distribution | Releases ship only as GitHub release DMGs linked from portty.app (user decision 2026-11-14) |
 | Warp "tickler" | Warp's idle timeout is server-side and not configurable, and fake activity would type into the live terminal |
 | New relay/cloud services | Tailnet (plus opt-in Funnel) only |
 
@@ -103,6 +111,11 @@
 | SHAR-07 | Phase 5 | Pending |
 | CHAT-01 | Phase 1 | Pending |
 | NOTF-01 | Phase 3 | Pending |
+| DIST-03 | Phase 3 | Pending |
+| UPD-01 | Phase 6 | Pending |
+| UPD-02 | Phase 6 | Pending |
+| UPD-03 | Phase 6 | Pending |
+| UPD-04 | Phase 6 | Pending |
 | STRP-01 | Phase 1 | Pending |
 | STRP-02 | Phase 1 | Complete |
 | STRP-03 | Phase 1 | Complete |
@@ -110,10 +123,10 @@
 | VERF-01 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 27 total
-- Mapped to phases: 27
+- v1 requirements: 32 total
+- Mapped to phases: 32
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-11-14*
-*Last updated: 2026-11-14 after roadmap creation (traceability mapped)*
+*Last updated: 2026-11-14 after adding UPD-01..04 and DIST-03 (GitHub-release updates, no Homebrew)*

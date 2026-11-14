@@ -27,7 +27,8 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 ### Active
 
 - [ ] Rebrand AgentHub to Portty everywhere: binary names, Go module path, app/bundle ID, UI strings, docs, comments, tests, CI, and icons/logos from `portty-brand/`. Zero "agenthub" references left in tracked files.
-- [ ] Website https://portty.app and repo github.com/scottkw/portty (private) are the canonical links
+- [ ] Website https://portty.app and repo github.com/scottkw/portty are the canonical links. The repo is private during development and becomes public before the first release
+- [ ] Releases ship only as GitHub release DMGs (linked from portty.app). Portty checks them on launch, periodically, and on demand ("Check for Updates…"), notifies the user, and downloads, verifies and reveals the DMG. Same flow as GIFsmith/TransomWM
 - [ ] Remove all agent-CLI-specific code: CLI detection/picker, agent badges, per-agent arguments/themes (e.g. the OpenCode SIGUSR2 path), Antigravity, agent status detection, and the `@session` chat→PTY bridge
 - [ ] New sessions start the user's login shell (no agent picker)
 - [ ] Remove the Hub session grid and replace it with tabs plus a sidebar that lists local sessions and remote tailnet peers' sessions. Clicking one opens it in a tab.
@@ -46,6 +47,7 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 - Claude Code Remote Control as the solution: needs a full terminal, not just the Claude session
 - Warp session-sharing "tickler": Warp's idle timeout is server-side and not configurable (warpdotdev/warp#11972), and fake activity would type into the live terminal
 - Signed/notarized DMG release: not required for v1 "done". Can follow later, reusing AgentHub's pipeline.
+- Homebrew distribution: releases ship only as GitHub release DMGs linked from portty.app (user decision 2026-11-14)
 
 ## Context
 
@@ -59,6 +61,7 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 
 ## Constraints
 
+- **License**: MIT. Keep the root `LICENSE` (MIT, "Copyright (c) 2026 Ken Scott"). README and package metadata (e.g. `frontend/package.json` `license`) state MIT — the user requires the code to be MIT licensed
 - **Platform**: macOS only (Apple Silicon MacBook Airs). Both target machines are Macs.
 - **Tech stack**: Keep AgentHub's stack (Go/Wails/React/tsnet). This is a strip-down, not a rewrite.
 - **Network**: Remote access only over the user's tailnet (plus opt-in Funnel). No new relay servers or cloud dependencies.
@@ -77,6 +80,8 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 | Keep CLI `attach` | Fallback from Warp or any terminal; code already exists | — Pending |
 | Keep chat, themes/plugins, notifications/updates; drop file browser | User's explicit choice | — Pending |
 | Website portty.app; private repo scottkw/portty | User decision 2026-11-14 | — Pending |
+| No Homebrew. GitHub release DMGs plus a GIFsmith-style update check, download and verify | Same distribution model as GIFsmith/TransomWM | — Pending |
+| Make scottkw/portty public before the first release | The anonymous Releases API returns 404 for private repos, so update checks would never see a release | — Pending |
 
 ## Evolution
 
