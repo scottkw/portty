@@ -169,8 +169,6 @@ export interface SessionCardProps {
   onKill?: (sessionId: string) => void
   /** Phase 138 / CARD-04: Open remote session in system browser (Phase 146: receives session object for cap exchange). */
   onOpenInBrowser?: (session: AdaptedRemoteSessionInfo) => void
-  /** Phase 138 / CARD-04: Browse remote files (join-code cap flow). */
-  onBrowseFiles?: (sessionId: string, sessionName: string) => void
   /** NOTIF-01 / D-10: unread chat message count for this session.
    *  Rendered as a ChatBadge on the card header. 0 = no badge. */
   unreadCount?: number
@@ -214,7 +212,6 @@ export function SessionCard({
   isConnected,
   onKill,
   onOpenInBrowser,
-  onBrowseFiles,
   unreadCount,
   hasChatMention,
 }: SessionCardProps): React.ReactElement {
@@ -448,14 +445,6 @@ export function SessionCard({
               >
                 <WindowIcon className="hub-card__conn-icon" aria-hidden="true" />
                 Open in tab
-              </button>
-              <button
-                type="button"
-                className="hub-card__menu-item"
-                role="menuitem"
-                onClick={(e) => { e.stopPropagation(); onBrowseFiles?.(id, name); setMenuOpen(false) }}
-              >
-                Browse files
               </button>
             </>
           )}

@@ -10,7 +10,7 @@ export interface Tab {
   name: string
   sessionId: string
   cli: string
-  type?: 'terminal' | 'welcome' | 'settings' | 'file-browser' | 'hub' | 'help' | 'web-session'
+  type?: 'terminal' | 'welcome' | 'settings' | 'hub' | 'help' | 'web-session'
   /** Phase 168-03 (FIX-03) — per-tab remote peer origin for 'web-session' tabs
    *  opened via handleOpenRemoteSession. undefined for the app's own web-share
    *  bootstrap tab (which falls back to the mount-stable webParams). */
@@ -67,26 +67,13 @@ interface TabBarProps {
    */
   tabProgress?: Record<string, number>
   /**
-   * Phase 120-04 UI-01 — open (or focus) the FileBrowserTab for a session via
-   * the tab's right-click context menu. Shown only for terminal tabs (those
-   * with a truthy sessionId).
-   */
-  onBrowseFiles?: (sessionId: string, sessionName: string) => void
-  /**
    * Phase 159-04 (WEBCHAT-05) — web-share guest mode. When true, the desktop-only
    * tab affordances are suppressed: no double-click/right-click rename and no
    * Rename / Save Terminal As menu items (both are Wails RPCs with no bridge in a
    * browser — they fail silently and only relabel the local tab). The × close
-   * button stays.
+   * button stays. Guests get no session-menu chevron.
    */
   webMode?: boolean
-  /**
-   * Phase 159-04 (WEBCHAT-05) — when in webMode, whether the guest's cap grants
-   * files.read. Only then is the session-menu chevron shown (its sole web-mode
-   * item is "Browse files", letting a file-enabled guest re-open the file
-   * browser if they closed it). A guest without file access gets no chevron.
-   */
-  webFilesEnabled?: boolean
   /**
    * Phase 166 / FUI-03 — per-session internet exposure state, keyed by sessionId.
    * When funnelActiveSessions[tab.sessionId] is true, the tab renders a globe icon
@@ -119,9 +106,7 @@ export function TabBar({
   sessionStatuses,
   exitCountdowns,
   tabProgress,
-  onBrowseFiles,
   webMode = false,
-  webFilesEnabled = false,
   funnelActiveSessions,
   funnelWriteActiveSessions,
 }: TabBarProps): React.ReactElement {
@@ -303,7 +288,7 @@ export function TabBar({
             {exitCountdowns?.[tab.sessionId] && (
               <span className="tab__countdown">{exitCountdowns[tab.sessionId]}s</span>
             )}
-            {tab.sessionId && (!webMode || webFilesEnabled) && (
+            {tab.sessionId && !webMode && (
               <button
                 className="tab__chevron"
                 data-testid="tab-chevron"
@@ -396,27 +381,6 @@ export function TabBar({
             Save Terminal As…
           </button>
           )}
-          {/* Phase 120-04 UI-01 — Browse files menu item, gated on terminal
-              tabs (those with a truthy sessionId). Welcome / Settings /
-              file-browser tabs do not get this item. */}
-          {(() => {
-            const tab = tabs.find((t) => t.id === contextMenu.tabId)
-            if (!tab?.sessionId) return null
-            if (!onBrowseFiles) return null
-            return (
-              <button
-                role="menuitem"
-                className="tab__context-menu__item"
-                data-testid="tab-context-browse-files"
-                onClick={() => {
-                  onBrowseFiles(tab.sessionId, tab.name)
-                  setContextMenu(null)
-                }}
-              >
-                Browse files
-              </button>
-            )
-          })()}
         </div>
       )}
     </div>

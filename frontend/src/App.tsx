@@ -45,12 +45,10 @@ import { EventsOn, BrowserOpenURL } from './wailsjs/wailsjs/runtime/runtime'
 import { StatusBar } from './components/StatusBar'
 import { NewSessionModal } from './components/NewSessionModal'
 import { WelcomeTab } from './components/WelcomeTab'
-import { FileBrowserTab, fileBrowserTabId } from './components/FileBrowserTab'
 import { RemoteJoinCodeModal } from './components/RemoteJoinCodeModal'
 import { HubPanel } from './components/Hub/HubPanel'
 import { SessionShareModal } from './components/Hub/SessionShareModal'
 import { HelpTab } from './components/HelpTab'
-import { EnableWebSharingTakeover } from './components/FileBrowser/EnableWebSharingTakeover'
 import { findRemoteSession, remoteBaseURLFor } from './lib/remoteSession'
 import { adaptAllRemoteSessions } from './lib/remoteAdapter'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
@@ -58,7 +56,6 @@ import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from '
 import { LocalNetworkBanner } from './components/LocalNetworkBanner'
 import { WebShareSessionView } from './components/Hub/WebShareSessionView'
 import { TerminalChatHost } from './components/Hub/TerminalChatHost'
-import { RemoteBrowseDNSWarning } from './components/RemoteBrowseDNSWarning'
 import { UpdateBanner } from './components/UpdateBanner'
 import type { UpdateInfo } from './components/UpdateBanner'
 import { WebGLRecoveryBanner } from './components/WebGLRecoveryBanner'
@@ -111,13 +108,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // the lifetime of the SPA. useMemo keeps the reference stable so dependency
   // arrays of downstream effects never see false re-evaluations.
   const webParams = useMemo(() => readWebModeParams(), [])
-  // Phase 159-04 (WEBCHAT-05) — in web mode, whether the guest's cap grants
-  // files.read (resolved from the /api/sessions/{id}/info probe in the web
-  // bootstrap). Gates the TabBar session-menu chevron so a file-enabled guest
-  // can re-open the file browser, while a no-files guest gets no menu at all.
-  const [webFilesEnabled, setWebFilesEnabled] = useState(false)
   // Phase 120-06 — web-mode initial state: no Welcome tab, no Sidebar focus.
-  // The auto-open effect below will populate the file-browser tab from the
+  // The auto-open effect below will open the session view from the
   // ?session= URL param. Starting empty keeps WelcomeTab (which calls
   // GetVersion + references the absolute /agenthub-title-logo.png path that
   // 404s under /app/) from briefly mounting before the auto-open fires.
@@ -218,7 +210,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // across the 30s interval's lifetime.
   const remoteHasLoadedRef = useRef(false)
 
-  // Phase 122-03 — remote-session file-browse state.
+  // Phase 122-03 — remote-session cap state (open-session / hub-modal).
   //   remoteCapsCached: sessionIds whose caps are already deposited in the
   //     local daemon's RemoteCapStore. Per locked decision D-03, the modal is
   //     skipped for cached sessions.
@@ -231,13 +223,13 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     id: string
     name: string
     hostname: string
-    intent?: 'files' | 'hub-modal' | 'open-session'
+    intent?: 'hub-modal' | 'open-session'
     /** Pre-computed for open-session intent; avoids re-deriving in the modal exchange handler. */
     baseURL?: string
   } | null>(null)
 
   // Phase 134 — holds the HubPanel's cap-acquired callback (registered via onRegisterCapAcquired).
-  // Using a ref avoids stale closure issues in the modal exchange callback (which has handleOpenFileBrowser dep).
+  // Using a ref avoids stale closure issues in the modal exchange callback (which has openWebSessionTab dep).
   const capAcquiredRef = useRef<((sessionId: string) => void) | null>(null)
 
   // Phase 134 — WR-01: holds HubPanel's cap-cancelled callback (registered via onRegisterCapCancelled).
@@ -482,8 +474,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       // Phase 120-06 — skip the entire Wails RPC suite when running in web
       // mode (regular browser under /app/?session=…&cap=…). Wails RPCs are
       // unreachable from a browser; session+cap come from URL params and the
-      // file-browser tab is auto-opened by a separate effect below that runs
-      // AFTER handleOpenFileBrowser is declared. We return early here before
+      // session view is auto-opened by a separate effect below that runs
+      // AFTER openWebSessionTab is declared. We return early here before
       // any Wails-bound call to avoid the partially-functional shell flagged
       // in 120-VERIFICATION.md Human Verification #2.
       if (mode === 'web') {
@@ -1146,11 +1138,11 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   }, [webServerMode])
 
   // Phase 155-03 — stable tab id for the web-session view. One view per
-  // session (find-or-focus semantics, same pattern as fileBrowserTabId).
+  // session (find-or-focus semantics).
   const webSessionTabId = (sessionId: string) => `__websession__${sessionId}`
 
   // Phase 155-03 — open (or focus) the WebShareSessionView tab for a web-share
-  // session. Mirrors handleOpenFileBrowser in structure.
+  // session.
   //
   // Phase 168-03 (FIX-03) — extended to (sessionId, baseURL?, capToken?). The
   // app's own web-share bootstrap tab (mode==='web') still omits baseURL/
@@ -1178,30 +1170,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     setActiveId(newTab.id)
   }, [tabs])
 
-  // Phase 120-04 UI-01 — per-session FileBrowserTab find-or-add. Opens the
-  // file browser for a session, either focusing the existing tab if one is
-  // open or creating a new one keyed by fileBrowserTabId(sessionId).
-  // `activate` defaults true (focus the tab). Phase 159-03 (WEBCHAT-04) passes
-  // false so the web-share bootstrap can open the file-browser tab in the
-  // BACKGROUND — the WebShareSessionView (terminal + chat) stays the active tab.
-  const handleOpenFileBrowser = useCallback((sessionId: string, sessionName: string, activate = true) => {
-    const tabId = fileBrowserTabId(sessionId)
-    const existing = tabs.find((t) => t.id === tabId)
-    if (existing) {
-      if (activate) setActiveId(existing.id)
-      return
-    }
-    const newTab: Tab = {
-      id: tabId,
-      name: `${sessionName} — Files`,
-      sessionId,
-      cli: '',
-      type: 'file-browser',
-    }
-    setTabs((prev) => [...prev, newTab])
-    if (activate) setActiveId(newTab.id)
-  }, [tabs])
-
   // Phase 131 UAT follow-up — re-attach to an already-running session.
   // Opens (or focuses) a terminal tab for an existing session id. Mirrors the
   // startup-restore path (SESS-02): a terminal tab is { id: sessionId, name,
@@ -1227,45 +1195,13 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   }, [tabs])
 
   // Phase 120-06 / 155-03 — web-mode bootstrap: when the SPA loads under /app/
-  // with a ?session=<id> param, open both the session view and the file-browser
-  // tab. The session view (WebShareSessionView) is the active/primary tab.
-  // The file-browser tab is opened first (background) so the session tab ends
-  // up as the last setActiveId call and is therefore active on mount.
-  // The cap cannot be decoded client-side, so the file tab is always opened and
-  // PermissionDeniedTakeover handles a missing files.read perm (RESEARCH Pattern 5a).
+  // with a ?session=<id> param, open the session view (WebShareSessionView:
+  // terminal + chat) as the active tab.
   // Effect runs exactly once because mode + webParams are mount-stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (mode === 'web' && webParams.sessionId) {
-      const sid = webParams.sessionId
-      // The WebShareSessionView (terminal + chat) is the primary surface —
-      // open it immediately as the active tab.
-      openWebSessionTab(sid)
-      // Phase 159-03 (WEBCHAT-04) — the file-browser tab is opened in the
-      // BACKGROUND only when the cap actually grants files.read. The cap is
-      // opaque client-side, but GET /api/sessions/{id}/info returns the
-      // server-verified perms (same endpoint ChatPanel uses for read-only
-      // state). Previously the tab was always opened, leaving a guest whose
-      // share lacks file access staring at a dead "files.read permission
-      // required" takeover. Fail-safe: on any error or missing perm, no file tab.
-      const cap = webParams.capToken ?? ''
-      const base = window.location.origin
-      const ctrl = new AbortController()
-      fetch(`${base}/api/sessions/${encodeURIComponent(sid)}/info?cap=${encodeURIComponent(cap)}`, {
-        signal: ctrl.signal,
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((info: { perms?: string } | null) => {
-          const perms = (info?.perms ?? '').split(',').map((s) => s.trim())
-          if (perms.includes('files.read')) {
-            setWebFilesEnabled(true)
-            handleOpenFileBrowser(sid, sid, false)
-          }
-        })
-        .catch(() => {
-          /* fail-safe: do not open a file-browser tab the guest can't use */
-        })
-      return () => ctrl.abort()
+      openWebSessionTab(webParams.sessionId)
     }
   }, [])
 
@@ -1311,55 +1247,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     [remoteCapsCached, setSaveBanner, openWebSessionTab],
   )
 
-  // Phase 122-03 — remote-session file-browse entry point. If the cap is
-  // already cached (D-03), open the file-browser tab immediately. Otherwise
-  // open the join-code modal for the chosen session.
-  const handleBrowseFilesRemote = useCallback(
-    async (sessionId: string, sessionName: string) => {
-      if (remoteCapsCached.has(sessionId)) {
-        handleOpenFileBrowser(sessionId, sessionName)
-        return
-      }
-      let remote = findRemoteSession(sessionId, remotePeers)
-      // WR-02: a peer can drop out of remotePeers between the 30s poll that
-      // populated the panel and the user clicking "Browse files". Rather than
-      // silently no-op'ing (a reachable-looking button that does nothing),
-      // re-poll once to self-heal a transient drop, then surface a banner if
-      // the session is genuinely gone.
-      if (!remote) {
-        try {
-          const peers = (await GetRemoteSessionsWithMeta()) ?? []
-          setRemotePeers(peers)
-          remote = findRemoteSession(sessionId, peers)
-        } catch {
-          /* fall through to the not-available banner below */
-        }
-      }
-      if (!remote) {
-        setSaveBanner({
-          kind: 'error',
-          text: 'Remote session is no longer available — refresh peers and try again.',
-        })
-        return
-      }
-      setJoinModalForSession({
-        id: sessionId,
-        name: sessionName,
-        hostname: remote.hostname,
-      })
-    },
-    [remoteCapsCached, remotePeers, handleOpenFileBrowser, setRemotePeers, setSaveBanner],
-  )
-
   // Phase 122-03 — modal-exchange handler. Two-step: exchange join code for a
   // cap against the REMOTE peer's /join/exchange endpoint, then deposit the
   // cap into the local daemon's RemoteCapStore. On success, mark the session
-  // as cap-cached and open the file-browser tab. The cap token never enters
-  // React state (T-122-03-01).
+  // as cap-cached. The cap token never enters React state (T-122-03-01).
   //
-  // Phase 146 FIX-03 (out-of-band): 'open-session' branch runs BEFORE hub-modal/files.
-  // For open-session: skip RegisterRemoteCap's file-browser path (T-146-04: cap goes
-  // straight into the open URL, not into a stored-then-browsed file session).
+  // Phase 146 FIX-03 (out-of-band): 'open-session' branch runs BEFORE hub-modal.
   //
   // Phase 168-03 (D-17) — the open-session branch now opens the in-app web-session
   // tab (openWebSessionTab) rather than an external browser window.
@@ -1409,15 +1302,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         next.add(pending.id)
         return next
       })
-      // Phase 134 — MODAL-06 intent discriminator: route to hub-modal callback or file browser
+      // Phase 134 — MODAL-06: signal HubPanel to open the modal for the pending session
       if (pending.intent === 'hub-modal') {
-        // Signal HubPanel to open the modal for the pending session
         capAcquiredRef.current?.(pending.id)
-      } else {
-        handleOpenFileBrowser(pending.id, pending.name)
       }
     },
-    [joinModalForSession, remotePeers, handleOpenFileBrowser, openWebSessionTab],
+    [joinModalForSession, remotePeers, openWebSessionTab],
   )
 
   // Phase 131 — open the Hub tab. HUB-02: coexists
@@ -1523,7 +1413,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           true but whose trigger is missing here will never mount (the whole stack is
           conditionally rendered). Phase 129 DNS-03 regressed exactly this way. */}
       {((webServerMode === 'local' && !localBannerDismissed) ||
-        (tailscaleHealth?.connected === true && tailscaleHealth?.acceptDns === false) ||
         update ||
         ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
         saveBanner !== null ||
@@ -1547,10 +1436,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
               className={localBannerExiting ? 'banner-exit' : undefined}
             />
           )}
-          <RemoteBrowseDNSWarning
-            connected={!!(tailscaleHealth?.connected)}
-            acceptDns={tailscaleHealth?.acceptDns}
-          />
           {update && (
             <UpdateBanner
               update={update}
@@ -1628,9 +1513,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           }
           onRequestSave={handleRequestSave}
           tabProgress={tabProgress}
-          onBrowseFiles={handleOpenFileBrowser}
           webMode={mode === 'web'}
-          webFilesEnabled={webFilesEnabled}
           funnelActiveSessions={/* Phase 166 / FUI-03: derived from hubSessions 3s poll; no new interval */
             hubSessions.reduce<Record<string, boolean>>(
               (acc, s) => ({ ...acc, [s.id]: s.funnelActive }),
@@ -1649,7 +1532,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         {activeId === WELCOME_TAB.id && (
           <WelcomeTab />
         )}
-        {/* Phase 131 — Hub surface. Phase 138 — wired with onKill/onOpenInBrowser/onBrowseFiles/remotePeers. */}
+        {/* Phase 131 — Hub surface. Phase 138 — wired with onKill/onOpenInBrowser/remotePeers. */}
         {activeId === HUB_TAB.id && (
           <HubPanel
             sessions={hubSessions}
@@ -1664,8 +1547,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
             pluginConfig={pluginConfig}
             remoteCapsCached={remoteCapsCached}
             onRequestRemoteCap={(s) => {
-              // WR-02: do NOT overwrite an in-flight joinModalForSession (e.g. a file-browse
-              // intent already open for a different session). Preserves the in-flight request
+              // WR-02: do NOT overwrite an in-flight joinModalForSession (e.g. an
+              // open-session intent already open for a different session). Preserves the in-flight request
               // rather than silently redirecting the cap exchange to a different consumer.
               // Fire the cancel ref so HubPanel resets pendingModalSessionId immediately —
               // without this, the card click appears to do nothing and the pending id is
@@ -1679,7 +1562,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
             onFontSizeChange={handleFontSizeChange}
             onKill={(id) => void handleCloseTab(id)}
             onOpenInBrowser={handleOpenRemoteSession}
-            onBrowseFiles={handleBrowseFilesRemote}
             remotePeers={remotePeers}
             activeGroupId={activeGroupId}
             groupDefs={groupDefs}
@@ -1741,82 +1623,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           )
         })()}
 
-        {/* Phase 120-04 — per-session FileBrowserTab. Activated when activeId
-            begins with the __files__ prefix; the tab id encodes the sessionId
-            after the prefix so we can resolve which session to browse.
-
-            Phase 120-06 — mode-aware fbBaseURL + capToken selection for the
-            local + web-share paths.
-
-            Phase 122-03 — remote-on-desktop branch: when the sessionId is a
-            REMOTE (tailnet-peer) session, route through the local-daemon
-            proxy at /api/files/remote/{sid}/... (D-02 — no cross-origin
-            browser fetches). The cap lives in the daemon's RemoteCapStore,
-            NOT in React state (T-122-03-01); FilesApiClient sends no cap on
-            the same-origin proxy URL. */}
-        {activeId !== null && activeId.startsWith('__files__') && (() => {
-          const fbSessionId = activeId.slice('__files__'.length)
-          const remote = findRemoteSession(fbSessionId, remotePeers)
-
-          if (remote) {
-            const reopenJoinModal = () => {
-              setRemoteCapsCached((prev) => {
-                const next = new Set(prev)
-                next.delete(fbSessionId)
-                return next
-              })
-              setJoinModalForSession({
-                id: fbSessionId,
-                name: remote.name,
-                hostname: remote.hostname,
-              })
-            }
-            // Defensive guard: if the user landed on the file-browser tab
-            // for a remote session without going through the modal (e.g.
-            // they reloaded after closing the modal), show the takeover so
-            // they can re-enter the join code.
-            if (!remoteCapsCached.has(fbSessionId)) {
-              return <EnableWebSharingTakeover onReenterJoinCode={reopenJoinModal} />
-            }
-            return (
-              <FileBrowserTab
-                sessionId={fbSessionId}
-                sessionName={remote.name}
-                isActive={true}
-                isRemote={true}
-                baseURL={`http://127.0.0.1:${relayPort ?? 0}`}
-                pathPrefix={`/api/files/remote/${fbSessionId}`}
-                onReenterJoinCode={reopenJoinModal}
-              />
-            )
-          }
-
-          // Local-session path: UNCHANGED from Phase 120-06.
-          // Phase 138: use hubSessions (was panelSessions for the deleted Sessions panel).
-          const fbSession = hubSessions.find((s) => s.id === fbSessionId)
-          const fbName =
-            fbSession?.name ||
-            tabs.find((t) => t.id === activeId)?.name?.replace(/ — Files$/, '') ||
-            fbSessionId ||
-            'Session'
-          const isWeb = mode === 'web'
-          const fbBaseURL = isWeb
-            ? window.location.origin
-            : `http://127.0.0.1:${relayPort ?? 0}`
-          const fbCapToken: string | undefined = isWeb
-            ? (webParams.capToken ?? undefined)
-            : undefined
-          return (
-            <FileBrowserTab
-              sessionId={fbSessionId}
-              sessionName={fbName}
-              isActive={true}
-              isRemote={isWeb}
-              baseURL={fbBaseURL}
-              capToken={fbCapToken}
-            />
-          )
-        })()}
         {/* Phase 120-06 — SettingsTab is Wails-bound (calls IsWebServerRunning,
             HasCTDisclosure, GetCLIPaths, etc. unconditionally on mount). In
             web mode none of those RPCs are reachable; rather than gate each
@@ -1911,7 +1717,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         )}
         {relayPort != null && relayPort > 0 &&
           tabs.map((tab) => {
-            if (tab.type === 'welcome' || tab.type === 'settings' || tab.type === 'file-browser' || tab.type === 'hub' || tab.type === 'help' || tab.type === 'web-session') return null
+            if (tab.type === 'welcome' || tab.type === 'settings' || tab.type === 'hub' || tab.type === 'help' || tab.type === 'web-session') return null
             const isActive = tab.id === activeId
             return (
               <div
@@ -2000,10 +1806,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         />
       )}
 
-      {/* Phase 122-03 — paste-join-code modal for remote-session file browse.
+      {/* Phase 122-03 — paste-join-code modal for remote-session open.
           WR-01: when the intent is 'hub-modal', also invoke capCancelledRef to reset
-          HubPanel's pending state (pendingModalSessionId / pendingSourceRectRef).
-          File-browse intent does not need a reset (no HubPanel pending state). */}
+          HubPanel's pending state (pendingModalSessionId / pendingSourceRectRef). */}
       {joinModalForSession && (
         <RemoteJoinCodeModal
           remoteSession={joinModalForSession}

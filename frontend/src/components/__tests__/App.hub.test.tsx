@@ -113,17 +113,14 @@ describe('NAV-03/04: DaemonManagerPanel and RemoteSessionsPanel are removed (Pha
 })
 
 // Phase 138 / CARD-01: HubPanel receives new affordance props; header-less.
-// These assertions are RED until Plan 02 wires onKill/onOpenInBrowser/onBrowseFiles in App.tsx
+// These assertions are RED until Plan 02 wires onKill/onOpenInBrowser in App.tsx
 // and Plan 03 removes the .hub__header block from HubPanel.tsx.
-describe('CARD-01: HubPanel receives onKill, onOpenInBrowser, onBrowseFiles (Phase 138)', () => {
+describe('CARD-01: HubPanel receives onKill, onOpenInBrowser (Phase 138)', () => {
   it('wires onKill to handleCloseTab', () => {
     expect(raw).toContain('onKill=')
   })
   it('wires onOpenInBrowser to handleOpenRemoteSession', () => {
     expect(raw).toContain('onOpenInBrowser=')
-  })
-  it('wires onBrowseFiles to handleBrowseFilesRemote', () => {
-    expect(raw).toContain('onBrowseFiles=')
   })
   it('HubPanel source does NOT contain hub__header (header removed)', () => {
     expect(hubRaw).not.toContain('hub__header')

@@ -176,8 +176,6 @@ export interface HubPanelProps {
   onKill?: (sessionId: string) => void
   /** Phase 138 — Open remote session in system browser (Phase 146: receives session object for cap exchange) */
   onOpenInBrowser?: (session: AdaptedRemoteSessionInfo) => void
-  /** Phase 138 — Browse remote session files (join-code flow) */
-  onBrowseFiles?: (sessionId: string, sessionName: string) => void
   /** Phase 138 — remotePeers raw data for unreachable-peer hints */
   remotePeers?: import('../../lib/remoteSession').RemotePeerSessions[]
   /** POL-05 — active group filter driven by Sidebar selection (state lifted to App.tsx) */
@@ -243,7 +241,6 @@ export function HubPanel({
   onFontSizeChange,
   onKill,
   onOpenInBrowser,
-  onBrowseFiles,
   remotePeers,
   activeGroupId: activeGroupIdProp = null,
   groupDefs: groupDefsProp = [],
@@ -508,7 +505,6 @@ export function HubPanel({
         remoteIdSet={remoteIdSet}
         onKill={onKill}
         onOpenInBrowser={onOpenInBrowser}
-        onBrowseFiles={onBrowseFiles}
         unreadBySessionId={unreadMap}
       />
     )

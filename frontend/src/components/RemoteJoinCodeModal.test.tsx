@@ -3,9 +3,8 @@ import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { RemoteJoinCodeModal } from './RemoteJoinCodeModal'
 
-// GAP-134-E: the join-code modal title must reflect the cap's intent. The Phase 122
-// file-browse flow says "— Files"; the Phase 134 hub-modal flow opens the interactive/
-// briefing terminal and must NOT be mislabelled "Files".
+// GAP-134-E: the join-code modal title must reflect the cap's intent. The Phase 134
+// hub-modal flow opens the interactive/briefing terminal and must NOT be labelled "Files".
 
 let container: HTMLDivElement | null = null
 let root: Root | null = null
@@ -17,7 +16,7 @@ afterEach(() => {
   root = null
 })
 
-function renderModal(intent?: 'files' | 'hub-modal'): HTMLDivElement {
+function renderModal(intent?: 'hub-modal'): HTMLDivElement {
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -40,12 +39,6 @@ describe('RemoteJoinCodeModal — title reflects intent (GAP-134-E)', () => {
     const title = c.querySelector('.remote-join-modal__title')
     expect(title?.textContent?.trim()).toBe('Join Remote Session')
     expect(title?.textContent).not.toContain('Files')
-  })
-
-  it('files intent shows the "— Files" title', () => {
-    const c = renderModal('files')
-    const title = c.querySelector('.remote-join-modal__title')
-    expect(title?.textContent?.trim()).toBe('Join Remote Session — Files')
   })
 
   it('defaults to the generic title when intent is omitted', () => {

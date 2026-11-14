@@ -1,7 +1,7 @@
 // Phase 122-03 Task 1 — remoteSession.ts
 //
 // Pure-function helpers translating the RemoteSessionsPanel session model into
-// the URL/base-URL shape consumed by App.tsx for the daemon-proxy file-browser
+// the URL/base-URL shape consumed by App.tsx for the remote-session open
 // path. All functions are stateless and side-effect-free; tests live in
 // frontend/src/lib/__tests__/remoteSession.test.ts.
 

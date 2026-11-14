@@ -9,8 +9,8 @@
  *       the old StatusBar.test.tsx ("Enable Web"/"Disable Web" + onToggleWeb) is
  *       retired; this file supersedes it (see StatusBar.tsx doc comment).
  * D-15 (SECURITY, STRIDE-EoP): the button/StatusBar must never render on a
- *       non-shareable surface (Hub, Settings, Help, Welcome, web-session,
- *       file-browser tabs). StatusBar itself has no tab-type awareness — the gate
+ *       non-shareable surface (Hub, Settings, Help, Welcome, web-session
+ *       tabs). StatusBar itself has no tab-type awareness — the gate
  *       lives in App.tsx's tab.map() filter, which is asserted here via source
  *       inspection (App.tsx is not fully mounted in this codebase's established
  *       test convention — see App.shellWebShare.test.tsx / App.createTab.stayOnHub.test.tsx).
@@ -185,12 +185,12 @@ describe('App.tsx wiring — footer "Share Session" opens the lifted Share modal
 })
 
 describe('App.tsx tab-type gate — footer Share affordance hidden on non-shareable tabs (D-15, T-168-06)', () => {
-  it('excludes welcome/settings/file-browser/hub/help/web-session tab types from the StatusBar-bearing wrapper', () => {
+  it('excludes welcome/settings/hub/help/web-session tab types from the StatusBar-bearing wrapper', () => {
     const idx = raw.indexOf("tabs.map((tab) => {")
     expect(idx).toBeGreaterThan(-1)
     const block = raw.slice(idx, idx + 300)
     // Gate must check tab TYPE, not just sessionId presence (STRIDE-EoP).
-    for (const t of ['welcome', 'settings', 'file-browser', 'hub', 'help', 'web-session']) {
+    for (const t of ['welcome', 'settings', 'hub', 'help', 'web-session']) {
       expect(block).toContain(`tab.type === '${t}'`)
     }
   })
