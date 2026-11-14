@@ -889,27 +889,17 @@ func (e *SessionEngine) SetShellWebShareWarningEnabled(val bool) error {
 	return nil
 }
 
-// resolveDefaultShellPath returns a non-empty shell path to use when no
-// explicit shellPath setting has been configured. Resolution order:
-//  1. $SHELL environment variable (POSIX).
-//  2. pty.DiscoverShells() — first entry whose Name is "shell" (synthetic
-//     system-default entry). This covers POSIX hosts where $SHELL may be unset
-//     but a real shell was discovered.
-//  3. Hard-fallback: /bin/zsh (macOS default shell).
-//
-// NEVER returns an empty string. Phase 107 SHELL-11.
+// resolveDefaultShellPath returns the shell to use when no shellPath setting
+// is configured: $SHELL when it is an absolute path to an existing,
+// executable, non-directory file; otherwise /bin/zsh (the macOS default).
+// NEVER returns an empty string. GetShellPath (display) and the spawn command
+// both go through here, so the shell shown is the shell that runs.
 func resolveDefaultShellPath() string {
-	// (1) $SHELL env var.
-	if s := os.Getenv("SHELL"); s != "" {
-		return s
-	}
-	// (2) DiscoverShells — look for the synthetic "shell" system-default entry.
-	for _, sh := range pty.DiscoverShells() {
-		if sh.Name == "shell" {
-			return sh.Path
+	if s := os.Getenv("SHELL"); filepath.IsAbs(s) {
+		if info, err := os.Stat(s); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+			return s
 		}
 	}
-	// (3) macOS hard-fallback.
 	return "/bin/zsh"
 }
 

@@ -583,32 +583,67 @@ func TestSetShellWebShareWarned_RoundTripJSON(t *testing.T) {
 
 // --- Phase 107 Plan 01: shellPath persistence (SHELL-11) -------------------
 
-// TestGetShellPath_DefaultResolvesPlatformDefault verifies that a fresh engine
-// with no shellPath set returns a non-empty string from GetShellPath() that
-// matches $SHELL or one of the platform hardcoded defaults.
-func TestGetShellPath_DefaultResolvesPlatformDefault(t *testing.T) {
-	e := NewSessionEngine()
-	e.configDir = t.TempDir()
-	e.cliPaths = make(map[string]string)
+// assertSpawnMatchesDisplay creates a session on a spy-backed engine and
+// checks the spawned binary is want, equals GetShellPath(), and runs with
+// exactly ["-l"] (TERM-01: the shell shown is the shell that spawns).
+func assertSpawnMatchesDisplay(t *testing.T, shellPath, want string) {
+	t.Helper()
+	e, spy := newShellTestEngine(t)
+	e.mu.Lock()
+	e.shellPath = shellPath // isolate from the real settings.json
+	e.mu.Unlock()
+	if _, err := e.CreateSession(context.Background(), "tab", "/tmp", 80, 24, nil); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if got := e.GetShellPath(); got != want {
+		t.Errorf("GetShellPath() = %q, want %q", got, want)
+	}
+	if spy.lastReq.CLI != want {
+		t.Errorf("spawned CLI = %q, want %q (same as GetShellPath)", spy.lastReq.CLI, want)
+	}
+	if len(spy.lastReq.Args) != 1 || spy.lastReq.Args[0] != "-l" {
+		t.Errorf("Args = %v, want exactly [-l]", spy.lastReq.Args)
+	}
+}
 
-	got := e.GetShellPath()
-	if got == "" {
-		t.Fatal("GetShellPath() returned empty string for fresh engine; want platform default")
+func TestResolveDefaultShellPath_SettingWins(t *testing.T) {
+	t.Setenv("SHELL", "/bin/zsh")
+	assertSpawnMatchesDisplay(t, "/bin/sh", "/bin/sh")
+}
+
+func TestResolveDefaultShellPath_AbsoluteShell(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
+	assertSpawnMatchesDisplay(t, "", "/bin/bash")
+}
+
+func TestResolveDefaultShellPath_RelativeShell(t *testing.T) {
+	t.Setenv("SHELL", "bash")
+	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
+}
+
+func TestResolveDefaultShellPath_NonexistentShell(t *testing.T) {
+	t.Setenv("SHELL", "/nonexistent/sh")
+	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
+}
+
+func TestResolveDefaultShellPath_DirectoryShell(t *testing.T) {
+	t.Setenv("SHELL", t.TempDir())
+	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
+}
+
+func TestResolveDefaultShellPath_NonExecutableShell(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "sh")
+	if err := os.WriteFile(f, []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	// Must match $SHELL or one of the platform hardcodes.
-	shellEnv := os.Getenv("SHELL")
-	validDefaults := map[string]bool{
-		"/bin/zsh":  true,
-		"/bin/bash": true,
-		"pwsh.exe":  true,
-	}
-	if got != shellEnv && !validDefaults[got] {
-		// It's acceptable if it came from DiscoverShells() "shell" entry.
-		// Just assert it's a non-empty reasonable path.
-		if got == "" {
-			t.Errorf("GetShellPath() = %q, want non-empty platform default", got)
-		}
-	}
+	t.Setenv("SHELL", f)
+	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
+}
+
+func TestResolveDefaultShellPath_UnsetShell(t *testing.T) {
+	t.Setenv("SHELL", "")
+	os.Unsetenv("SHELL") // t.Setenv restores the original value on cleanup
+	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
 }
 
 // TestSetShellPath_RejectsMissingPath verifies that SetShellPath returns an

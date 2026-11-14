@@ -27,7 +27,7 @@ type Session struct {
 	// ID is the unique identifier for this session.
 	ID string
 
-	// CLI is the name of the CLI binary that was launched (e.g. "claude").
+	// CLI is the path of the binary that was launched (e.g. "/bin/zsh").
 	CLI string
 
 	// State is the current lifecycle state of the session.
