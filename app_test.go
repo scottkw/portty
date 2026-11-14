@@ -255,32 +255,20 @@ func TestCreateSession(t *testing.T) {
 	}
 }
 
-// TestListSessions_PropagatesHomeDirAndFilesWrite is the regression guard for the
-// Phase 137 (updated from Phase 124): propagation test for HomeDir + BrowseEnabled.
-// The daemon's SessionInfo carries HomeDir + BrowseEnabled, and the App.ListSessions
-// binding must propagate both. Phase 124 originally tested FilesWrite; Phase 137
-// replaces the per-session write gate with the per-session browse toggle (D-02/D-07).
-func TestListSessions_PropagatesHomeDirAndBrowseEnabled(t *testing.T) {
+// TestListSessions_PropagatesWorkDir guards the App.ListSessions binding against
+// silently dropping daemon SessionInfo fields (the UAT class of bug that once hit
+// HomeDir/BrowseEnabled, both removed with the file browser). WorkDir drives Hub
+// card grouping (GRID-02).
+func TestListSessions_PropagatesWorkDir(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		t.Skipf("no usable home dir: %v", err)
 	}
 
 	app := testApp(t)
-	// Create a session whose working directory IS the home directory so the
-	// daemon may compute HomeDir=true (sessionCwdIsHome). Whether it actually
-	// resolves to true is env-dependent (symlinked homes, temp HOME on CI), so
-	// the assertions below test PROPAGATION against the daemon's own value
-	// rather than hardcoding true for HomeDir.
 	id, err := app.CreateSession("cat", "home-session", home, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
-	}
-
-	// Enable the per-session browse toggle so BrowseEnabled=true on the daemon —
-	// this one we control, so we can assert true propagates end-to-end.
-	if err := app.SetSessionBrowse(id, true); err != nil {
-		t.Fatalf("SetSessionBrowse: %v", err)
 	}
 
 	// The daemon's own view (source of truth) for the same session.
@@ -312,27 +300,17 @@ func TestListSessions_PropagatesHomeDirAndBrowseEnabled(t *testing.T) {
 		t.Fatalf("session %q not found in App.ListSessions", id)
 	}
 
-	// The bug: the binding dropped these fields to false. Assert it now mirrors
-	// the daemon's source of truth, env-independently.
-	if got.HomeDir != raw.HomeDir {
-		t.Errorf("ListSessions dropped HomeDir: binding=%v daemon=%v (home-dir banner would never show)", got.HomeDir, raw.HomeDir)
+	if raw.WorkDir == "" {
+		t.Fatal("daemon recorded empty WorkDir for a session created in the home dir")
 	}
-	if got.BrowseEnabled != raw.BrowseEnabled {
-		t.Errorf("ListSessions dropped BrowseEnabled: binding=%v daemon=%v", got.BrowseEnabled, raw.BrowseEnabled)
-	}
-	// BrowseEnabled we forced ON, so it must be true on both sides — proves the
-	// true value survives the binding (not just a false==false coincidence).
-	if !raw.BrowseEnabled {
-		t.Error("daemon did not record BrowseEnabled=true after SetSessionBrowse(true)")
-	}
-	if !got.BrowseEnabled {
-		t.Error("App.ListSessions dropped BrowseEnabled=true (cross-surface browse-state parity broken)")
+	if got.WorkDir != raw.WorkDir {
+		t.Errorf("ListSessions dropped WorkDir: binding=%q daemon=%q", got.WorkDir, raw.WorkDir)
 	}
 }
 
 // TestApp_SetSessionFunnel_NilClient asserts that App.SetSessionFunnel returns
-// the "daemon not connected" error when a.client is nil (mirrors ToggleWebServing /
-// SetSessionBrowse nil-guard). Phase 165 / T-165-14.
+// the "daemon not connected" error when a.client is nil (mirrors ToggleWebServing
+// nil-guard). Phase 165 / T-165-14.
 func TestApp_SetSessionFunnel_NilClient(t *testing.T) {
 	app := &App{} // no client wired
 	err := app.SetSessionFunnel("sess-1", true, 3600)

@@ -202,10 +202,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /webserver/local-password", a.handleGetLocalPassword)
 	// Phase 87 capability-based authorization endpoints (D-06, D-09, D-16).
 	a.mux.HandleFunc("POST /sessions/{id}/capabilities", a.handleIssueCapabilities)
-	// Phase 137 / SHARE-03: per-session browse toggle.
-	// Loopback-trust (daemon socket): no auth gate — the owner's GUI is the only caller.
-	// Toggle-off clears grants (ClearGrants) — stale-cap threat mitigation (SHARE-05).
-	a.mux.HandleFunc("POST /sessions/{id}/browse", a.handleSetSessionBrowse)
 	// Phase 165 / FNL-01: per-session Tailscale Funnel toggle.
 	// Loopback-trust (daemon socket): no auth gate — only the owner's GUI calls this.
 	// Disable path routes through disableFunnelForSession (ref-count gate, T-165-09).
@@ -1563,8 +1559,7 @@ func (a *API) handleIssueCapabilities(w http.ResponseWriter, r *http.Request) {
 		WriteURL:       writeURL,
 		ReadCode:       readCode,
 		WriteCode:      writeCode,
-		HomeDir:        a.engine.sessionCwdIsHome(id), // Phase 124 / CAP-06: EvalSymlinks-normalized home-dir signal for the GUI warning banner
-		PublicReadCode: publicReadCode,                // Phase 170-02 / FNL-08: "" for non-Funnel sessions
+		PublicReadCode: publicReadCode, // Phase 170-02 / FNL-08: "" for non-Funnel sessions
 	})
 }
 
@@ -1772,9 +1767,8 @@ const funnelWriteExpiryMax = 3600 * time.Second
 // (ws.SetRWGate), mints a single-use join code bound to the write token
 // (joinCodes.IssueSingleUseWithTTL), and starts an expiry timer that
 // revokes exactly this write cap on fire (disableFunnelWriteForSession,
-// added in Task 3). Perms is hardcoded to "read,write" — NEVER derived
-// from the session's browse toggle (T-171-06/D-05, Pitfall 5): this
-// handler never calls a.engine.browseEnabledFor.
+// added in Task 3). Perms is hardcoded to "read,write" (terminal-only,
+// T-171-06/D-05).
 //
 // Loopback-trust (daemon socket): no auth gate — same access-control model
 // as the existing POST /sessions/{id}/funnel toggle registered above.
@@ -1821,9 +1815,7 @@ func (a *API) handleSetSessionFunnelWrite(w http.ResponseWriter, r *http.Request
 	}
 	grantID := hex.EncodeToString(gid[:])
 
-	// T-171-06/D-05 (Pitfall 5): Perms hardcoded "read,write" — terminal-only,
-	// NEVER derived from a.engine.browseEnabledFor. This cap must never carry
-	// files.write regardless of the session's local browse setting.
+	// T-171-06/D-05 (Pitfall 5): Perms hardcoded "read,write" — terminal-only.
 	claims := capability.Claims{SID: id, Perms: "read,write", IAT: time.Now().Unix(), GrantID: grantID, V: 1}
 	wTok, err := capability.Sign(claims, key)
 	if err != nil {
@@ -1979,32 +1971,4 @@ func (a *API) disableFunnelWriteForSession(_ context.Context, sessionID string) 
 	ws := a.webServer
 	a.revokeFunnelWriteLocked(sessionID, ws)
 	a.mu.Unlock()
-}
-
-// handleSetSessionBrowse handles POST /sessions/{id}/browse.
-// It toggles the per-session browse flag for the given session.
-// Phase 137 / SHARE-03. Loopback-trust (daemon socket): no auth gate needed.
-//
-// Browse toggle-off clears outstanding grants for the session (parity with
-// handleWebServe ClearGrants on toggle-off, SHARE-05 stale-cap threat):
-// a browse-off cannot leave a stale files.read cap live. The next call to
-// IssueCapabilities re-mints tokens with the updated (browse-OFF) perm set.
-func (a *API) handleSetSessionBrowse(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var req SessionBrowseRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	a.engine.SetSessionBrowse(id, req.Enabled)
-	// Stale-cap mitigation (SHARE-05 / stale-cap threat): clear outstanding grants
-	// on any browse toggle so a toggle-off cannot leave a live files.read cap.
-	// Mirrors the handleWebServe ClearGrants pattern (api.go:1056).
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws != nil {
-		ws.ClearGrants(id)
-	}
-	w.WriteHeader(http.StatusNoContent)
 }

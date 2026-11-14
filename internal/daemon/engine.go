@@ -50,8 +50,6 @@ type SessionEngine struct {
 	shellWebShareWarningEnabled *bool           // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
 	shellPath                   string          // Phase 107 SHELL-11: user-configured shell binary path; empty = use platform default
 	autoCloseSession            *bool           // nil = default (true); persisted pointer
-	filesWriteDefault           bool            // Phase 124 / CAP-08: persisted default for per-session write default; retained for settings migration tests (TestSettingsMigration_FilesWriteDefaultsFalse); NOT wired to perm injection (D-07: global filesRead kill-switch removed in Phase 137)
-	sessionBrowse               map[string]bool // Phase 137 / SHARE-03: per-session browse toggle (ephemeral in-memory, default OFF per D-06/D-08); sole driver of file-perm injection (D-02)
 	pluginSettings              PluginSettings  // populated by loadSettingsFromDisk via defaults-merge
 
 	// pluginSettingsListener (if non-nil) is invoked synchronously by
@@ -96,19 +94,8 @@ func ensureOpenCodeTUIConfig(dir string) string {
 // block + schemaVersion to always serialize so future loads observe them
 // even when every plugin is at its zero value (all-false).
 //
-// Phase 137 / D-07: The global FilesRead kill-switch (*bool, Phase 118 / FS-14)
-// has been deliberately removed from both this struct and the engine fields.
-// The per-session browse toggle (sessionBrowse map, browseEnabledFor) replaces it
-// as the sole driver of file-perm injection. This is Reversal 3 in 137-RESEARCH.md
-// — the global flag is gone; per-session default OFF (D-06) replaces it.
-// Audit: secure-phase reviews Reversal 1 and Reversal 3 in 137-RESEARCH.md.
-//
-// FilesWrite is additive (Phase 124 / CAP-08) and tagged `omitempty`:
-// it is a plain bool (NOT *bool) with zero-value false. Retained for settings
-// migration test parity (TestSettingsMigration_FilesWriteDefaultsFalse); NOT
-// wired to perm injection (perm injection is driven by sessionBrowse only).
-// Do NOT pre-populate a true default in the defaults-merge literal; zero-value
-// IS the correct opt-in default (T-124-06 mitigation).
+// Legacy AgentHub keys that are no longer struct fields (e.g. the removed
+// files write default) are ignored by json.Unmarshal and dropped on save.
 type daemonSettings struct {
 	CLIPaths                    map[string]string `json:"cliPaths,omitempty"`
 	StartMinimized              bool              `json:"startMinimized,omitempty"`
@@ -118,7 +105,6 @@ type daemonSettings struct {
 	ShellPath                   string            `json:"shellPath,omitempty"`
 	AutoCloseSession            *bool             `json:"autoCloseSession,omitempty"`
 	ShellWebShareWarningEnabled *bool             `json:"shellWebShareWarningEnabled,omitempty"` // Phase 150 SET-01: *bool so omitempty omits false; nil → default true (D-08)
-	FilesWrite                  bool              `json:"filesWrite,omitempty"`                  // Phase 124: write default; retained for migration test; NOT wired to perm injection (D-07)
 	Plugins                     PluginSettings    `json:"plugins"`
 	SchemaVersion               int               `json:"schemaVersion"`
 }
@@ -187,10 +173,6 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 	// SchemaVersion intentionally NOT pre-populated: it must remain 0 for a
 	// v3.1 file (no schemaVersion key) so the needsUpgradeWrite check below
 	// correctly detects that an upgrade re-write is required.
-	//
-	// Phase 137 / D-07: FilesRead (*bool) pre-populate removed — the global
-	// filesRead kill-switch is gone. Per-session browse default is always OFF
-	// (absent from sessionBrowse map = OFF per D-06). No defaults-merge needed.
 	s := daemonSettings{
 		Plugins: defaultPluginSettings(),
 	}
@@ -225,7 +207,6 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 		t := true
 		e.shellWebShareWarningEnabled = &t
 	}
-	e.filesWriteDefault = s.FilesWrite // Phase 124 / CAP-08: zero-value false is the opt-in default; retained for migration tests
 	e.pluginSettings = s.Plugins
 	// Detect upgrade-path: the on-disk schemaVersion was below
 	// CurrentSchemaVersion (e.g. v3.1 file with no key → 0). Re-save so
@@ -255,7 +236,6 @@ func (e *SessionEngine) saveSettingsToDisk() {
 		ShellPath:                   e.shellPath,
 		AutoCloseSession:            e.autoCloseSession,
 		ShellWebShareWarningEnabled: e.shellWebShareWarningEnabled,
-		FilesWrite:                  e.filesWriteDefault, // Phase 124 / CAP-08: retained for migration tests (NOT wired to perm injection per D-07)
 		Plugins:                     e.pluginSettings,
 		SchemaVersion:               CurrentSchemaVersion,
 	}
@@ -329,7 +309,6 @@ func NewSessionEngine() *SessionEngine {
 		tabNames:          make(map[string]string),
 		sessionCLIs:       make(map[string]string),
 		sessionWorkDirs:   make(map[string]string),
-		sessionBrowse:     make(map[string]bool), // Phase 137 / SHARE-03: per-session browse toggle (default OFF, D-06/D-08)
 		cliPaths:          make(map[string]string),
 		sessionStatuses:   make(map[string]status.SessionStatus),
 		chatStores:        make(map[string]*ChatStore), // Phase 151 / PERSIST-01
@@ -419,13 +398,11 @@ func (e *SessionEngine) CreateSession(ctx context.Context, cli, name, workDir st
 	}
 	hub := e.manager.Create(id, sess, sess, resizeFn)
 
-	// Phase 118 / FS-02: resolve workDir ONCE here so the file browser handler
-	// (Plan 05) can construct a per-session Sandbox rooted at the resolved
-	// absolute path. EvalSymlinks runs OUTSIDE the lock — it does filesystem
-	// I/O — and we cache the result alongside tabNames/sessionCLIs. Fallback
-	// to raw workDir on resolution error so session creation never fails
-	// because of resolution; the file browser will surface a 400 if the user
-	// later attempts to list a non-existent cwd.
+	// Phase 118 / FS-02: resolve workDir ONCE here (the Hub groups cards by
+	// SessionInfo.WorkDir, GRID-02). EvalSymlinks runs OUTSIDE the lock — it
+	// does filesystem I/O — and we cache the result alongside
+	// tabNames/sessionCLIs. Fallback to raw workDir on resolution error so
+	// session creation never fails because of resolution.
 	resolvedWD := ""
 	if workDir != "" {
 		if r, err := filepath.EvalSymlinks(workDir); err == nil {
@@ -581,13 +558,6 @@ func (e *SessionEngine) ListSessions() []SessionInfo {
 			ViewerCount: viewerCount,
 			ExitCode:    exitCodePtr,
 			Duration:    durationPtr,
-			// Phase 137 / SHARE-03 + CAP-06: single server-side source of truth for
-			// GUI browse-enabled seeding (SHARE-05) and home-dir warning.
-			// Note: sessionCwdIsHomeUnlocked + browseEnabledForUnlocked both
-			// read e.mu-guarded maps; ListSessions already holds e.mu.RLock via defer.
-			// Call the lock-free variants directly to avoid a deadlock.
-			HomeDir:       e.sessionCwdIsHomeUnlocked(s.ID),
-			BrowseEnabled: e.browseEnabledForUnlocked(s.ID),
 			// Phase 131 / GRID-02: e.mu.RLock is already held via defer at the top
 			// of this function — map read is safe without acquiring a new lock.
 			WorkDir: e.sessionWorkDirs[s.ID],
@@ -619,7 +589,6 @@ func (e *SessionEngine) KillSession(id string) error {
 	delete(e.tabNames, id)
 	delete(e.sessionCLIs, id)
 	delete(e.sessionWorkDirs, id) // Phase 118 / FS-02
-	delete(e.sessionBrowse, id)   // Phase 137 / CR-01: clear stale browse entry so a recycled session ID defaults OFF (D-06 stale-cap mitigation)
 	// Phase 151 / PERSIST-03: delete the ChatStore under e.mu so a recycled
 	// session ID never inherits a stale thread (T-151-07 mitigation) and no
 	// orphaned JSONL file remains (T-151-06 mitigation).
@@ -844,88 +813,11 @@ func (e *SessionEngine) GetSessionStyledTailLines(id string, n int) [][]StyledSp
 }
 
 // GetSessionWorkDir returns the EvalSymlinks-resolved absolute WorkDir for
-// a session, or empty string if the session is unknown. Used by the file
-// browser handler in Phase 118 to construct a per-session Sandbox.
-// Phase 118 / FS-02.
+// a session, or empty string if the session is unknown. Phase 118 / FS-02.
 func (e *SessionEngine) GetSessionWorkDir(id string) string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.sessionWorkDirs[id]
-}
-
-// browseEnabledFor reports whether file-browse capability issuance is enabled
-// for the given session. Absent from the map = OFF (D-06: default OFF).
-//
-// Phase 137 / D-07: This is the SOLE driver of file-perm injection. The old
-// global filesReadEnabled() kill-switch (Phase 118 / FS-14) has been
-// deliberately removed (Reversal 3 in 137-RESEARCH.md). Per-session default
-// OFF replaces the global flag. Audit: secure-phase reviews Reversal 1 and
-// Reversal 3 in 137-RESEARCH.md.
-func (e *SessionEngine) browseEnabledFor(sessionID string) bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.browseEnabledForUnlocked(sessionID)
-}
-
-// browseEnabledForUnlocked is the lock-free body of browseEnabledFor.
-// Caller must hold at least e.mu.RLock.
-// Used by ListSessions which already holds e.mu.RLock via defer.
-func (e *SessionEngine) browseEnabledForUnlocked(sessionID string) bool {
-	return e.sessionBrowse[sessionID] // false for absent keys (D-06: default OFF)
-}
-
-// SetSessionBrowse sets the per-session browse toggle for sessionID.
-// Called by the GUI binding when the owner flips the file-browse toggle.
-// Phase 137 / SHARE-03 / D-02. Toggle-off: the API handler clears grants
-// (ClearGrants) so stale caps are invalidated (stale-cap threat mitigation).
-func (e *SessionEngine) SetSessionBrowse(sessionID string, enabled bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.sessionBrowse == nil {
-		e.sessionBrowse = make(map[string]bool)
-	}
-	e.sessionBrowse[sessionID] = enabled
-}
-
-// sessionCwdIsHome reports whether the session's working directory is the
-// user's home directory. Uses filepath.EvalSymlinks on os.UserHomeDir() to
-// handle the macOS /var→/private/var symlink trap (Pitfall 4 / T-124-08).
-// GetSessionWorkDir already returns an EvalSymlinks-resolved path (engine.go:502),
-// so comparing against the resolved home is the correct apples-to-apples check.
-// Phase 124 / CAP-06.
-func (e *SessionEngine) sessionCwdIsHome(sessionID string) bool {
-	cwd := e.GetSessionWorkDir(sessionID)
-	if cwd == "" {
-		return false
-	}
-	return cwdEqualsHome(cwd)
-}
-
-// sessionCwdIsHomeUnlocked is the lock-free body of sessionCwdIsHome.
-// Caller must hold at least e.mu.RLock.
-func (e *SessionEngine) sessionCwdIsHomeUnlocked(sessionID string) bool {
-	cwd := e.sessionWorkDirs[sessionID]
-	if cwd == "" {
-		return false
-	}
-	return cwdEqualsHome(cwd)
-}
-
-// cwdEqualsHome reports whether cwd (already EvalSymlinks-resolved) equals the
-// user's home directory after EvalSymlinks normalization.
-// Extracted to share between sessionCwdIsHome and sessionCwdIsHomeUnlocked
-// without duplicating the EvalSymlinks call.
-func cwdEqualsHome(cwd string) bool {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false
-	}
-	// EvalSymlinks resolves /var/folders/... → /private/var/folders/... on macOS
-	// so that cwd (already resolved) and home compare correctly (T-124-08).
-	if resolved, err := filepath.EvalSymlinks(home); err == nil {
-		home = resolved
-	}
-	return cwd == home
 }
 
 // ResolveCLI returns the executable path for the named CLI.

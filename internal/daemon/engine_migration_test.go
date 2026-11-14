@@ -197,12 +197,6 @@ func copyV32FixtureToTempDir(t *testing.T, dir string) string {
 	return dst
 }
 
-// NOTE: Two FilesRead migration tests (the DefaultsTrue and ExplicitFalse variants)
-// were retired in Phase 137 / D-07. They pinned the e.filesRead field and the
-// FilesRead settings.json key, both of which are removed in Plan 02 as part of
-// the global-kill-switch removal (D-07).
-// The browse toggle is now per-session (sessionBrowse map) with no global flag.
-
 // TestSettingsMigration_FilesReadSchemaVersionRewrite verifies that loading a
 // v3.2 settings.json (schemaVersion=2) triggers the needsUpgradeWrite path so
 // the on-disk file is rewritten with schemaVersion=3 (CurrentSchemaVersion).
@@ -230,14 +224,24 @@ func TestSettingsMigration_FilesReadSchemaVersionRewrite(t *testing.T) {
 	}
 }
 
-// TestSettingsMigration_FilesWriteDefaultsFalse verifies that a v3.2
-// settings.json (no filesWrite key) loads with FilesWrite = false (opt-in for
-// all). This is the INVERSION of the (retired) FilesRead defaults-true behavior:
-// files.write is an explicit opt-in, so the absence of the key must yield false,
-// not true. T-124-06 mitigation.
-func TestSettingsMigration_FilesWriteDefaultsFalse(t *testing.T) {
+// TestSettingsMigration_LegacyAgentHubV42 loads a real-shaped AgentHub v4.2
+// settings.json that still carries the removed "filesWrite" key (plus agent
+// cliPaths and notifyOnWaiting). Old settings must load without error, the
+// unknown key is ignored, the kept values survive, and the next save drops
+// "filesWrite".
+func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	dir := t.TempDir()
-	copyV32FixtureToTempDir(t, dir)
+	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "settings_agenthub_v4.2.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	var probe daemonSettings
+	if err := json.Unmarshal(data, &probe); err != nil {
+		t.Fatalf("legacy fixture must unmarshal into daemonSettings: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), data, 0600); err != nil {
+		t.Fatalf("write fixture into temp: %v", err)
+	}
 
 	e := &SessionEngine{
 		configDir: dir,
@@ -245,38 +249,31 @@ func TestSettingsMigration_FilesWriteDefaultsFalse(t *testing.T) {
 	}
 	e.loadSettingsFromDisk(dir)
 
-	// FilesWrite must default to false on a v3 file with no filesWrite key.
-	// Zero-value false is the correct opt-in default (CAP-08); do NOT pre-populate
-	// a true default as filesRead does.
-	if e.filesWriteDefault {
-		t.Errorf("e.filesWriteDefault = true after loading v3 fixture with no filesWrite key; want false (opt-in for all)")
+	if got := e.GetCLIPaths()["tailscale"]; got != "/opt/homebrew/bin/tailscale" {
+		t.Errorf("tailscale override = %q, want /opt/homebrew/bin/tailscale", got)
 	}
-}
-
-// TestSettingsMigration_FilesWriteSchemaVersionRewrite verifies that loading a
-// v3.2 settings.json (schemaVersion=2) triggers the needsUpgradeWrite path so
-// the on-disk file is rewritten with schemaVersion=4 (CurrentSchemaVersion after
-// Phase 124 bump). Mirrors TestSettingsMigration_FilesReadSchemaVersionRewrite
-// with the updated target version.
-func TestSettingsMigration_FilesWriteSchemaVersionRewrite(t *testing.T) {
-	dir := t.TempDir()
-	copyV32FixtureToTempDir(t, dir)
-
-	e := &SessionEngine{
-		configDir: dir,
-		cliPaths:  make(map[string]string),
+	if got := e.GetShellPath(); got != "/bin/zsh" {
+		t.Errorf("shellPath = %q, want /bin/zsh", got)
 	}
-	e.loadSettingsFromDisk(dir)
+	if !e.GetNotifyOnWaiting() {
+		t.Error("notifyOnWaiting = false, want true (toggle must survive)")
+	}
 
+	e.mu.Lock()
+	e.saveSettingsToDisk()
+	e.mu.Unlock()
 	raw, err := os.ReadFile(filepath.Join(dir, "settings.json"))
 	if err != nil {
 		t.Fatalf("re-read settings.json: %v", err)
 	}
-	var s daemonSettings
-	if err := json.Unmarshal(raw, &s); err != nil {
-		t.Fatalf("unmarshal rewritten settings: %v", err)
+	var onDisk map[string]any
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("unmarshal saved settings: %v", err)
 	}
-	if s.SchemaVersion != 4 {
-		t.Errorf("on-disk schemaVersion = %d, want 4 (v3→v4 upgrade re-write should fire after Phase 124 bump)", s.SchemaVersion)
+	if _, ok := onDisk["filesWrite"]; ok {
+		t.Error("saved settings.json still contains filesWrite; the removed key should be dropped on save")
+	}
+	if onDisk["shellPath"] != "/bin/zsh" {
+		t.Errorf("saved shellPath = %v, want /bin/zsh", onDisk["shellPath"])
 	}
 }

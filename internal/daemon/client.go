@@ -386,17 +386,8 @@ func (c *DaemonClient) DisconnectViewers(sessionID string) error {
 	return c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/disconnect-viewers", nil, nil)
 }
 
-// SetSessionBrowse sets the per-session browse toggle for a session.
-// Phase 137 / SHARE-03. Mirrors ToggleWebServing but routes to the engine's
-// per-session browse map (not a global flag). Toggle-off clears grants on the
-// daemon side (stale-cap threat mitigation per SHARE-05).
-func (c *DaemonClient) SetSessionBrowse(sessionID string, enabled bool) error {
-	return c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/browse",
-		SessionBrowseRequest{Enabled: enabled}, nil)
-}
-
 // SetSessionFunnel enables or disables Tailscale Funnel for a session.
-// Phase 165 / FNL-01. Mirrors ToggleWebServing / SetSessionBrowse — thin
+// Phase 165 / FNL-01. Mirrors ToggleWebServing — thin
 // delegation, no Funnel logic here. expiresIn is the auto-expiry duration in
 // seconds; 0 = no auto-expiry (FNL-07). The response body (FunnelURL) is
 // discarded here; the GUI retrieves it from IssueCapabilities.

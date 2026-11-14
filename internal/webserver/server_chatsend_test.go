@@ -173,14 +173,14 @@ func TestChatSend_RWBroadcasts_WebPath(t *testing.T) {
 // TestChatSend_ROCanPost_WebPath verifies D-06 (Phase 163) on the webserver path:
 // a RO JWT client sending MsgChatSend DOES receive a MsgChat broadcast and must
 // NOT receive a MsgInjectError NAK. PTY write count must remain zero.
-// Both "read" and "read,files.read" perm shapes are exercised (mirrors TestInjectRO_WebPath).
+// Both "read" and the legacy "read,files.read" perm shapes are exercised (mirrors TestInjectRO_WebPath).
 func TestChatSend_ROCanPost_WebPath(t *testing.T) {
 	roPerms := []struct {
 		name  string
 		perms string
 	}{
-		{"browse_off", "read"},
-		{"browse_on", "read,files.read"},
+		{"read", "read"},
+		{"legacy_files_read", "read,files.read"},
 	}
 
 	for _, tc := range roPerms {

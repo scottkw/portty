@@ -71,12 +71,13 @@ func waitForMsgInjectError(t *testing.T, conn *websocket.Conn, timeout time.Dura
 // the signed JWT (not a URL param — D-24/SEC-04), making this test distinct
 // from TestInject_ROCap_RelayPath which uses ?readonly=1 (Pitfall 5).
 //
-// Table-driven over BOTH read-only perm shapes the daemon mints:
-//   - "read"            — browse OFF (D-03)
-//   - "read,files.read" — browse ON  (D-04)
+// Table-driven over BOTH read-only perm shapes a viewer can present:
+//   - "read"            — what the daemon mints today
+//   - "read,files.read" — legacy token minted before the file browser was
+//                         removed (T-01-11); still in circulation until expiry
 //
 // The "read,files.read" case is the regression guard for the SEC-01 web-path
-// bypass: an exact `claims.Perms == "read"` gate treats a browse-ON RO viewer
+// bypass: an exact `claims.Perms == "read"` gate treats that legacy RO viewer
 // as read-write and lets their inject reach the PTY. Only a whole-token
 // HasPerm("write") gate holds for both shapes. A bare-"read"-only test would
 // pass against the broken gate and silently mask the hole.
@@ -85,8 +86,8 @@ func TestInjectRO_WebPath(t *testing.T) {
 		name  string
 		perms string
 	}{
-		{"browse_off", "read"},
-		{"browse_on", "read,files.read"},
+		{"read", "read"},
+		{"legacy_files_read", "read,files.read"},
 	}
 
 	for _, tc := range roPerms {

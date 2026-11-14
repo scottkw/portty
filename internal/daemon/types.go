@@ -2,25 +2,23 @@ package daemon
 
 // SessionInfo is the JSON-serialisable representation of a session.
 type SessionInfo struct {
-	ID            string `json:"id"`
-	CLI           string `json:"cli"`
-	Name          string `json:"name"`
-	State         string `json:"state"`
-	Status        string `json:"status"` // heuristic status: running/idle/waiting/errored
-	CreatedAt     string `json:"createdAt"`
-	Hostname      string `json:"hostname"`
-	WebEnabled    bool   `json:"webEnabled"`
-	ViewerCount   int    `json:"viewerCount"`        // Phase 168 / FIX-04, D-03: number of remote (web-origin) viewers only — excludes the app's own internal Origin=="local" WebSocket subscribers
-	ExitCode      *int   `json:"exitCode,omitempty"` // nil while running; set when State is "stopped"
-	Duration      *int   `json:"duration,omitempty"` // seconds since CreatedAt; set when State is "stopped"
-	HomeDir       bool   `json:"homeDir"`            // Phase 124 / CAP-06: true when the session cwd equals EvalSymlinks($HOME); drives the home-write warning on both GUI and TUI
-	BrowseEnabled bool   `json:"browseEnabled"`      // Phase 137 / SHARE-05: true when per-session browse toggle is ON; NOT omitempty (false must serialize so modal can seed on open)
-	FunnelActive  bool   `json:"funnelActive"`       // Phase 165 / FNL-01: true when Tailscale Funnel is active for this session; NOT omitempty (false must serialize so frontend poll detects expiry)
-	WorkDir       string `json:"workDir"`            // Phase 131 / GRID-02: EvalSymlinks-resolved session working directory; populated from engine.sessionWorkDirs map; enables Hub card grouping by directory
+	ID           string `json:"id"`
+	CLI          string `json:"cli"`
+	Name         string `json:"name"`
+	State        string `json:"state"`
+	Status       string `json:"status"` // heuristic status: running/idle/waiting/errored
+	CreatedAt    string `json:"createdAt"`
+	Hostname     string `json:"hostname"`
+	WebEnabled   bool   `json:"webEnabled"`
+	ViewerCount  int    `json:"viewerCount"`        // Phase 168 / FIX-04, D-03: number of remote (web-origin) viewers only — excludes the app's own internal Origin=="local" WebSocket subscribers
+	ExitCode     *int   `json:"exitCode,omitempty"` // nil while running; set when State is "stopped"
+	Duration     *int   `json:"duration,omitempty"` // seconds since CreatedAt; set when State is "stopped"
+	FunnelActive bool   `json:"funnelActive"`       // Phase 165 / FNL-01: true when Tailscale Funnel is active for this session; NOT omitempty (false must serialize so frontend poll detects expiry)
+	WorkDir      string `json:"workDir"`            // Phase 131 / GRID-02: EvalSymlinks-resolved session working directory; populated from engine.sessionWorkDirs map; enables Hub card grouping by directory
 	// FunnelWriteActive is true when the gate-minted public write cap (FNL-09)
 	// is currently active for this session. NOT omitempty — false must
 	// serialize so the frontend poll detects a true->false teardown flip
-	// (mirrors FunnelActive/BrowseEnabled, Phase 171 / FNL-09).
+	// (mirrors FunnelActive, Phase 171 / FNL-09).
 	FunnelWriteActive bool `json:"funnelWriteActive"`
 }
 
@@ -134,12 +132,6 @@ type WebServeRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
-// SessionBrowseRequest is the request body for
-// POST /sessions/{id}/browse (Phase 137 / SHARE-03).
-type SessionBrowseRequest struct {
-	Enabled bool `json:"enabled"`
-}
-
 // SetSessionFunnelRequest is the request body for POST /sessions/{id}/funnel.
 // Phase 165 / FNL-01/FNL-07.
 type SetSessionFunnelRequest struct {
@@ -185,10 +177,6 @@ type SetSessionFunnelWriteResponse struct {
 // one read-only link and one read-write link. Each capability is paired with
 // a single-use 5-minute join code (D-09/D-11).
 //
-// HomeDir (Phase 124 / CAP-06): true when the session's cwd equals
-// EvalSymlinks($HOME). The frontend reads this field to decide whether to show
-// the home-write warning banner. Populated from engine.sessionCwdIsHome.
-//
 // PublicReadCode (Phase 170-02 / FNL-08): populated ONLY for Funnel (public
 // internet) sessions. Unlike ReadCode/WriteCode (single-use, 5-minute), this
 // is a reusable join code minted once from the read-only token and cached
@@ -200,7 +188,6 @@ type IssueCapabilitiesResponse struct {
 	WriteURL       string `json:"writeUrl"`
 	ReadCode       string `json:"readCode"`
 	WriteCode      string `json:"writeCode"`
-	HomeDir        bool   `json:"homeDir"`        // Phase 124 / CAP-06: true when session cwd == EvalSymlinks($HOME)
 	PublicReadCode string `json:"publicReadCode"` // Phase 170-02 / FNL-08: reusable share-lifetime read code; "" when not a Funnel session
 }
 

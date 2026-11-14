@@ -5,10 +5,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,27 +35,18 @@ type SessionInfo struct {
 	CreatedAt  string `json:"createdAt"`
 	Hostname   string `json:"hostname"`
 	WebEnabled bool   `json:"webEnabled"`
-	// Phase 124 / CAP-06: true when the session cwd equals EvalSymlinks($HOME).
-	// Server-side source of truth for the home-dir write warning banner (GUI +
-	// TUI parity). Must be propagated from daemon.SessionInfo or the GUI banner
-	// never fires (UAT finding).
-	HomeDir bool `json:"homeDir"`
-	// Phase 137 / SHARE-05: true when the per-session browse toggle is ON.
-	// Single server-side source of truth for GUI modal seeding (NOT omitempty:
-	// false must serialize so the modal can seed on open per RESEARCH open question 2).
-	BrowseEnabled bool `json:"browseEnabled"`
 	// Phase 165 / FNL-01: true when Tailscale Funnel is active for this session.
 	// NOT omitempty: false must serialize so the frontend poll detects expiry
-	// (same rule as BrowseEnabled / HomeDir — silent false-drop is a UAT-class bug).
+	// (silent false-drop is a UAT-class bug).
 	FunnelActive bool `json:"funnelActive"`
 	// Phase 171 / FNL-09: true when the gate-minted public write cap (consent-gated
 	// Full Access write-share) is active for this session. NOT omitempty: false must
 	// serialize so the frontend poll detects a write-share teardown flip (same rule
-	// as FunnelActive / BrowseEnabled / HomeDir — silent false-drop is a UAT-class bug).
+	// as FunnelActive — silent false-drop is a UAT-class bug).
 	FunnelWriteActive bool `json:"funnelWriteActive"`
 	// Phase 131 — Hub card fields (CARD-04, CARD-05, CARD-06, GRID-02).
 	// Omitting any of these silently drops them to zero in the Wails RPC
-	// response — same class of UAT bug documented on HomeDir above.
+	// response — same class of UAT bug documented on FunnelActive above.
 	ViewerCount int    `json:"viewerCount"`
 	ExitCode    *int   `json:"exitCode,omitempty"`
 	Duration    *int   `json:"duration,omitempty"`
@@ -516,11 +505,6 @@ func (a *App) ListSessions() []SessionInfo {
 			CreatedAt:  s.CreatedAt,
 			Hostname:   s.Hostname,
 			WebEnabled: s.WebEnabled,
-			// Phase 137 / SHARE-05 + CAP-06: propagate browse-enabled and home-dir
-			// flags so the GUI's Share modal seeds from daemon source of truth.
-			// Omitting these silently drops them to false (same UAT class as FilesWrite bug).
-			HomeDir:       s.HomeDir,
-			BrowseEnabled: s.BrowseEnabled,
 			// Phase 165 / FNL-01: propagate Funnel state so the frontend poll
 			// can detect expiry. Omitting silently drops to false (T-165-15).
 			FunnelActive: s.FunnelActive,
@@ -530,7 +514,7 @@ func (a *App) ListSessions() []SessionInfo {
 			FunnelWriteActive: s.FunnelWriteActive,
 			// Phase 131 / CARD-04..06, GRID-02: propagate Hub card fields from
 			// daemon source of truth. Omitting these silently drops them to zero
-			// — the same class of silent-corruption bug documented on HomeDir above.
+			// — the same class of silent-corruption bug documented on FunnelActive above.
 			ViewerCount: s.ViewerCount,
 			ExitCode:    s.ExitCode,
 			Duration:    s.Duration,
@@ -1090,18 +1074,6 @@ func (a *App) DisconnectViewers(sessionID string) error {
 	return a.client.DisconnectViewers(sessionID)
 }
 
-// SetSessionBrowse enables or disables the per-session file-browse capability
-// for a specific session. Phase 137 / SHARE-03. Mirrors ToggleWebServing but
-// targets the engine's per-session browse map (sole driver of file-perm
-// injection per D-02/D-03/D-04). Toggle-off clears outstanding grants on the
-// daemon (stale-cap threat mitigation per SHARE-05).
-func (a *App) SetSessionBrowse(sessionID string, enabled bool) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.SetSessionBrowse(sessionID, enabled)
-}
-
 // SetSessionFunnel enables or disables Tailscale Funnel for a session.
 // Phase 165 / FNL-01. Thin bridge — all Funnel logic lives in the daemon
 // (165-02). expiresIn is the auto-expiry in seconds (0 = no expiry, FNL-07)
@@ -1318,62 +1290,6 @@ func (a *App) SaveTerminalSession(defaultDir, defaultName, content string) error
 	return nil
 }
 
-// DownloadFile opens a native Save File dialog and writes bytes fetched from
-// the given URL (typically the local relay's /api/files/read endpoint) to
-// the user-chosen path. Cancellation is silent success.
-//
-// Phase 120 UAT-1: the React <a download> attribute is ignored by Wails'
-// WKWebView — clicking a download link just navigates the webview to the
-// URL, replacing the React app with raw file content. This method bridges
-// the gap by performing the save server-side with a native dialog.
-//
-// url MUST be a loopback URL (the relay at 127.0.0.1 or the daemon's
-// local /api/files/remote/{sid}/* proxy). The URL is fetched without auth
-// because both endpoints are bound to 127.0.0.1 and trust the loopback
-// transport (or, for the remote proxy, the cap is injected server-side
-// from RemoteCapStore).
-func (a *App) DownloadFile(url, suggestedName string) error {
-	defaultDir := ""
-	if home, err := os.UserHomeDir(); err == nil {
-		defaultDir = filepath.Join(home, "Downloads")
-		if _, statErr := os.Stat(defaultDir); statErr != nil {
-			defaultDir = home
-		}
-	}
-	path, err := a.saveFileDialogFunc(a.ctx, runtime.SaveDialogOptions{
-		Title:                "Save File As…",
-		DefaultDirectory:     defaultDir,
-		DefaultFilename:      suggestedName,
-		CanCreateDirectories: true,
-	})
-	if err != nil {
-		return fmt.Errorf("DownloadFile: dialog: %w", err)
-	}
-	if path == "" {
-		return nil // user cancelled — silent success per SaveTerminalSession precedent
-	}
-	// Loopback fetch with a generous timeout sized for the 5 MiB cap +
-	// network slack. The relay/daemon-proxy never blocks longer than this.
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	resp, err := httpClient.Get(url)
-	if err != nil {
-		return fmt.Errorf("DownloadFile: fetch: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("DownloadFile: server returned %d", resp.StatusCode)
-	}
-	out, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("DownloadFile: create: %w", err)
-	}
-	defer out.Close()
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		return fmt.Errorf("DownloadFile: write: %w", err)
-	}
-	return nil
-}
-
 // SetTrayProgress sets the cross-session aggregate progress quartile and
 // refreshes the system tray icon if the quartile changed.
 //
@@ -1517,9 +1433,9 @@ func (a *App) ExchangeJoinCodeAtURL(remoteBaseURL, code string) (string, error) 
 }
 
 // RegisterRemoteCap deposits a (sessionID, remote baseURL, cap token) tuple
-// into the local daemon's RemoteCapStore. Subsequent file-browser fetches
-// through the local-daemon proxy route /api/files/remote/{sid}/... use this
-// cap. Phase 122-03 / REMOTE-01.
+// into the local daemon's RemoteCapStore. OpenRemoteSessionURL and the relay
+// remote terminal WS proxy (/api/relay/remote/{sid}/ws) use this cap.
+// Phase 122-03 / REMOTE-01.
 func (a *App) RegisterRemoteCap(sessionID, baseURL, capToken string) error {
 	if a.client == nil {
 		return fmt.Errorf("daemon not connected")
