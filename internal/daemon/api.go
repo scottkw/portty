@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/files"
 	"github.com/scottkw/agenthub/internal/relay"
 	"github.com/scottkw/agenthub/internal/tailnet"
 	"github.com/scottkw/agenthub/internal/webserver"
@@ -47,21 +46,13 @@ type API struct {
 	// manager via ws.SetJoinCodes.
 	joinCodes *capability.JoinCodeManager
 
-	// filesHandler serves /api/files/{list,stat,read} on the daemon socket.
-	// Phase 118 / FS-03..FS-07: the resolver closes over engine.GetSessionWorkDir
-	// + files.NewSandbox so each request reconstructs a fresh per-session
-	// Sandbox (no shared mutable state across requests). Loopback transport
-	// is the trust boundary — no auth gate here; the webserver mount
-	// (Phase 119) adds requireFilesRead.
-	filesHandler *files.Handler
-
-	// remoteCaps caches per-session (baseURL, capToken) tuples used by the
-	// /api/files/remote/{sessionID}/... proxy routes. In-memory only;
+	// remoteCaps caches per-session (baseURL, capToken) tuples used to open
+	// remote sessions and by the remote terminal WS proxy. In-memory only;
 	// daemon restart wipes the cache (Phase 122-01 / REMOTE-01).
 	remoteCaps *RemoteCapStore
 
 	// remoteFilesClientForTest, when non-nil, overrides the outbound HTTPS
-	// client used by the remote-files proxy. Tests inject httptest.NewTLSServer's
+	// client used by the remote terminal WS proxy. Tests inject httptest.NewTLSServer's
 	// Client() here so they can drive the proxy without setting up a real
 	// trusted-cert chain. Production code leaves this nil and the proxy
 	// builds a fresh client per request via newRemoteFilesHTTPClient().
@@ -152,20 +143,6 @@ func NewAPI(engine *SessionEngine) *API {
 		tailnetCache: &tailnetCache{},
 		remoteCaps:   NewRemoteCapStore(),
 	}
-	// Phase 118 / FS-03..FS-07: construct the file Handler BEFORE registerRoutes
-	// so the route registrations have a non-nil target. The resolver closes
-	// over a.engine.GetSessionWorkDir + files.NewSandbox — each request gets
-	// a freshly-constructed Sandbox rooted at the session's resolved workDir.
-	a.filesHandler = files.NewHandler(func(sessionID string) (*files.Sandbox, error) {
-		if sessionID == "" {
-			return nil, errors.New("missing session parameter")
-		}
-		wd := a.engine.GetSessionWorkDir(sessionID)
-		if wd == "" {
-			return nil, errors.New("session not found or has no working directory")
-		}
-		return files.NewSandbox(wd)
-	})
 	a.registerRoutes()
 	return a
 }
@@ -244,47 +221,17 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("DELETE /sessions/{id}/funnel-write", a.handleDisableSessionFunnelWrite)
 	a.mux.HandleFunc("POST /join/exchange", a.handleExchangeJoinCode)
 	a.mux.HandleFunc("POST /capability/regenerate-key", a.handleRegenerateSigningKey)
-	// Phase 118 / FS-03..FS-07: read-only file API on the daemon-local socket.
-	// No auth here — the loopback transport (Unix socket / Windows named pipe)
-	// is the trust boundary (ARCHITECTURE.md Decision 2 + REQUIREMENTS.md WEB-01).
-	// The webserver mounts the same Handler under requireFilesRead in Phase 119.
-	// Method-prefixed routes per Go 1.22+ mux semantics: POST and other verbs
-	// auto-return 405 (Pitfall 8 — do not register a fallback handler that
-	// would mask this).
-	// Phase 123-03 / FSW-08: write routes added on the same loopback-trust basis.
-	a.mux.HandleFunc("GET /api/files/list", a.filesHandler.List)
-	a.mux.HandleFunc("GET /api/files/stat", a.filesHandler.Stat)
-	a.mux.HandleFunc("GET /api/files/read", a.filesHandler.Read)
-	a.mux.HandleFunc("HEAD /api/files/read", a.filesHandler.Read)
-	a.mux.HandleFunc("PUT /api/files/write", a.filesHandler.Write)
-	a.mux.HandleFunc("POST /api/files/upload", a.filesHandler.Upload)
-	a.mux.HandleFunc("DELETE /api/files/delete", a.filesHandler.Delete)
-	a.mux.HandleFunc("POST /api/files/rename", a.filesHandler.Rename)
-	a.mux.HandleFunc("POST /api/files/mkdir", a.filesHandler.Mkdir)
-	// Phase 122-01 / REMOTE-01: remote-files proxy + cap deposit.
+	// Phase 122-01 / REMOTE-01: remote cap deposit.
 	// POST /api/remote-files/caps accepts (sessionId, baseUrl, capToken) from
-	// the GUI/TUI after a successful join-code exchange; the four GET/HEAD
-	// routes proxy file ops to the remote peer's webserver using that cap.
-	// Loopback transport (Unix socket / Windows named pipe) is the trust
-	// boundary; no auth gate here.
+	// the GUI after a successful join-code exchange; the open-url route and the
+	// relay remote terminal WS proxy use that cap. Loopback transport is the
+	// trust boundary; no auth gate here.
 	a.mux.HandleFunc("POST /api/remote-files/caps", a.handleRegisterRemoteCap)
 	// Phase 146-05 / GAP-146-A: read-only open-url endpoint. Returns the cap-bearing
 	// open URL from RemoteCapStore so the frontend can open a remote session without
 	// re-prompting for a join code (held-cap reuse path). No cap is minted; the cap
 	// enters only the returned URL string (T-146-05-01 / T-146-05-04 accept).
 	a.mux.HandleFunc("GET /api/remote-files/caps/{sessionID}/open-url", a.handleRemoteSessionOpenURL)
-	a.mux.HandleFunc("GET /api/files/remote/{sessionID}/list", a.handleRemoteFilesList)
-	a.mux.HandleFunc("GET /api/files/remote/{sessionID}/stat", a.handleRemoteFilesStat)
-	a.mux.HandleFunc("GET /api/files/remote/{sessionID}/read", a.handleRemoteFilesRead)
-	a.mux.HandleFunc("HEAD /api/files/remote/{sessionID}/read", a.handleRemoteFilesRead)
-	// Phase 124-03 / CAP-10: five remote write proxy routes.
-	// These are daemon-socket loopback routes (WEB-01) — no auth middleware or
-	// Origin check; the remote peer's requireFilesWrite enforces cap+CSRF.
-	a.mux.HandleFunc("PUT /api/files/remote/{sessionID}/write", a.handleRemoteFilesWrite)
-	a.mux.HandleFunc("POST /api/files/remote/{sessionID}/upload", a.handleRemoteFilesUpload)
-	a.mux.HandleFunc("DELETE /api/files/remote/{sessionID}/delete", a.handleRemoteFilesDelete)
-	a.mux.HandleFunc("POST /api/files/remote/{sessionID}/rename", a.handleRemoteFilesRename)
-	a.mux.HandleFunc("POST /api/files/remote/{sessionID}/mkdir", a.handleRemoteFilesMkdir)
 }
 
 // Handler returns the API's underlying http.Handler (the registered mux).
@@ -298,11 +245,11 @@ func (a *API) Handler() http.Handler {
 }
 
 // SetRemoteFilesClientForTest overrides the daemon's outbound HTTPS client
-// used by the /api/files/remote/{sid}/... proxy with the supplied client.
+// used by the remote terminal WS proxy with the supplied client.
 // Test-only — wraps the unexported remoteFilesClientForTest field so that
 // external test packages can inject httptest.NewTLSServer's Client() and
 // have the proxy trust the upstream's self-signed certificate. Production
-// code must never call this; the field stays nil and proxyRemoteFiles
+// code must never call this; the field stays nil and remoteFilesClient
 // builds a fresh client per request via newRemoteFilesHTTPClient.
 func (a *API) SetRemoteFilesClientForTest(c *http.Client) {
 	a.remoteFilesClientForTest = c
@@ -350,20 +297,15 @@ func (a *API) JoinCodes() *capability.JoinCodeManager {
 
 // RelayHandler returns the http.Handler served on the relay loopback TCP port
 // — the surface the Wails desktop GUI reaches over 127.0.0.1:<relayPort> (it
-// cannot reach the daemon Unix socket). This is the relay server (sessions WS +
-// local /api/files/*) wrapped first with the remote-files proxy routes
-// (/api/files/remote/{sid}/...) and then with the chat history/export routes
+// cannot reach the daemon Unix socket). This is the relay server (sessions WS)
+// wrapped first with the remote terminal WS proxy route
+// (/api/relay/remote/{sid}/ws) and then with the chat history/export routes
 // (/api/chat/{id}/history, /api/chat/{id}/export). Both wrap layers use *API
 // methods that cannot live in the relay package without an import cycle. Exposed
 // so external tests can drive the relay surface exactly as the webview does
 // (mirrors Handler()).
 func (a *API) RelayHandler() http.Handler {
-	// Phase 120 CR-01: mount /api/files/* on the relay HTTP server so the Wails
-	// desktop GUI can reach the read-only file API. The Wails webview hits
-	// 127.0.0.1:<relayPort> (TCP) — it cannot reach the daemon's Unix socket,
-	// where /api/files/* is also registered. Both surfaces share the same
-	// *files.Handler instance, so sandbox + 5 MiB cap behaviour is identical.
-	server := relay.NewServer(a.engine.Manager(), a.engine.Backend(), a.filesHandler)
+	server := relay.NewServer(a.engine.Manager(), a.engine.Backend())
 	// Phase 152 / IDENT-01: wire identity providers so handleSession stamps the
 	// owner's alias from the global AliasStore. Callback pattern breaks the
 	// relay→daemon import cycle (mirrors setChatProviders). Guard on nil so a
@@ -377,12 +319,12 @@ func (a *API) RelayHandler() http.Handler {
 	} else {
 		server.SetIdentityProviders(a.engine.hostname, nil, nil)
 	}
-	withFiles := a.wrapRelayWithRemoteFiles(server)
+	withRemote := a.wrapRelayWithRemoteFiles(server)
 	// Phase 151-03 / PERSIST-01..02: chat history + export routes mounted
 	// in the outer wrap layer (most-specific wins in Go 1.22+ mux). Like the
-	// remote-files layer, these are *API methods that need a.engine and cannot
+	// remote WS layer, these are *API methods that need a.engine and cannot
 	// live in relay.NewServer without an import cycle.
-	return a.wrapRelayWithChat(withFiles)
+	return a.wrapRelayWithChat(withRemote)
 }
 
 // StartRelay creates the relay HTTP server and starts it on a random TCP port.
@@ -578,7 +520,6 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	key := a.signingKey
 	a.signingKeyMu.RUnlock()
 	ws.SetSigningKey(key)
-	ws.SetFilesHandler(a.filesHandler)
 	// Phase 151-03 / PERSIST-01..02: wire the chat provider so the webserver's
 	// cap-gated /api/chat/{id}/history and /api/chat/{id}/export routes can
 	// reach the session's ChatStore without importing the daemon package
@@ -1287,7 +1228,6 @@ func (a *API) handleWebServerStart(w http.ResponseWriter, r *http.Request) {
 	key := a.signingKey
 	a.signingKeyMu.RUnlock()
 	ws.SetSigningKey(key)
-	ws.SetFilesHandler(a.filesHandler)
 	// Phase 151-03 / PERSIST-01..02: wire the chat provider (mirrors AutoStartWebServer).
 	a.setChatProviders(ws)
 	ws.SetStaticAppFS(getStaticAppFS())
@@ -1453,30 +1393,10 @@ func (a *API) issueCapabilitiesForSession(sessionID string) (readURL, writeURL, 
 	}
 
 	now := time.Now().Unix()
-	// Phase 137 / SHARE-03: perm injection driven solely by the per-session browse
-	// toggle (browseEnabledFor). No global kill-switch (D-07 deliberate removal of
-	// the Phase 118 filesReadEnabled / FilesRead global flag — Reversal 3 in
-	// 137-RESEARCH.md).
-	//
-	// D-03: Browse OFF (default): RO="read", RW="read,write"
-	// D-04: Browse ON:            RO="read,files.read", RW="read,write,files.read,files.write"
-	//
-	// Security invariants (T-137-02 / Pitfall 2): files.write NEVER appears in
-	// rPerms (the RO token). The RO code holder gains read-only filesystem access
-	// when browse is ON — this is intentional (D-05).
-	//
-	// Deliberate reversals vs Phase 118/124:
-	//   Reversal 1: The dual RO/RW issuance replaces the single owner-only token
-	//               (T-124-07: write is no longer separately gated per-session).
-	//   Reversal 3: Global filesReadEnabled kill-switch removed; per-session default
-	//               OFF (D-06) is the new gate.
-	// Audit: secure-phase to review Reversal 1 and Reversal 3 in 137-RESEARCH.md.
+	// RO link mints "read", full-access link mints "read,write". No other perm
+	// is ever minted (the files perms left with the file browser).
 	rPerms := "read"
 	wPerms := "read,write"
-	if a.engine.browseEnabledFor(sessionID) {
-		rPerms = "read," + capability.PermFilesRead
-		wPerms = "read,write," + capability.PermFilesRead + "," + capability.PermFilesWrite
-	}
 	rClaims := capability.Claims{SID: sessionID, Perms: rPerms, IAT: now, GrantID: hex.EncodeToString(rgid[:]), V: 1}
 	wClaims := capability.Claims{SID: sessionID, Perms: wPerms, IAT: now, GrantID: hex.EncodeToString(wgid[:]), V: 1}
 

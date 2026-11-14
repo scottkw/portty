@@ -1785,192 +1785,14 @@ func TestHandleUpdateShellPath_OversizedBody(t *testing.T) {
 }
 
 // -------------------------------------------------------------------------
-// Phase 118 / Plan 05: file routes wired on the daemon mux.
-//
-// The tests below assert the integration seam between Plan 02 (files.Handler)
-// and the daemon API: the API constructor builds a sandboxResolver that closes
-// over engine.GetSessionWorkDir + files.NewSandbox, then registers four
-// method-prefixed routes (GET list/stat/read, HEAD read). Go 1.22+ mux auto-
-// returns 405 for non-registered verbs (Pitfall 8) — no explicit POST handler.
-// -------------------------------------------------------------------------
-
-// newFilesAPI builds an API + tempdir-backed session and returns the API,
-// socket path, and the live session ID. The session is created via the
-// spyBackend path so no real PTY spawns; the engine populates sessionWorkDirs
-// from the provided workDir, which the file routes consume via the resolver.
-func newFilesAPI(t *testing.T, workDir string) (*API, string, string) {
-	t.Helper()
-	engine := NewSessionEngine()
-	engine.configDir = t.TempDir()
-	engine.cliPaths = make(map[string]string)
-	engine.backend = &spyBackend{}
-	api := NewAPI(engine)
-	socketPath := shortSocketPath(t, "files-api.sock")
-	if err := api.Start(socketPath); err != nil {
-		t.Fatalf("api.Start: %v", err)
-	}
-	t.Cleanup(func() { api.Stop() })
-	time.Sleep(10 * time.Millisecond)
-
-	sid, err := engine.CreateSession(context.Background(), "cat", "files-test", workDir, nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	t.Cleanup(func() { _ = engine.KillSession(sid) })
-	return api, socketPath, sid
-}
-
-// rawDo issues an arbitrary-method request to the daemon socket and returns
-// status + body. Used to assert 405 / HEAD behaviour the rawGet helper cannot.
-func rawDo(t *testing.T, socketPath, method, path string) (int, http.Header, []byte) {
-	t.Helper()
-	client := &http.Client{Transport: &http.Transport{DialContext: dialUnix(socketPath)}}
-	req, err := http.NewRequest(method, "http://daemon"+path, nil)
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("%s %s: %v", method, path, err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, resp.Header, body
-}
-
-func TestAPI_FilesList_RealSession(t *testing.T) {
-	tmp := t.TempDir()
-	for _, name := range []string{"a.txt", "b.go", "c.md"} {
-		if err := os.WriteFile(filepath.Join(tmp, name), []byte("x"), 0600); err != nil {
-			t.Fatalf("WriteFile %s: %v", name, err)
-		}
-	}
-	_, sock, sid := newFilesAPI(t, tmp)
-
-	status, body := rawGet(t, sock, "/api/files/list?session="+sid+"&path=.")
-	if status != http.StatusOK {
-		t.Fatalf("GET /api/files/list = %d, body=%s; want 200", status, string(body))
-	}
-	var out struct {
-		Entries []struct {
-			Name string `json:"name"`
-		} `json:"entries"`
-		Truncated bool `json:"truncated"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		t.Fatalf("decode body: %v; raw=%s", err, string(body))
-	}
-	if len(out.Entries) < 3 {
-		t.Errorf("entries len = %d, want >= 3; got %+v", len(out.Entries), out.Entries)
-	}
-}
-
-func TestAPI_FilesList_UnknownSessionReturns404(t *testing.T) {
-	_, sock, _ := newFilesAPI(t, t.TempDir())
-	status, body := rawGet(t, sock, "/api/files/list?session=does-not-exist&path=.")
-	if status != http.StatusNotFound {
-		t.Fatalf("unknown session: status = %d, body=%s; want 404", status, string(body))
-	}
-	if !strings.Contains(string(body), "session not found") {
-		t.Errorf("404 body = %q; want substring 'session not found'", string(body))
-	}
-}
-
-func TestAPI_FilesRead_ZeroByteReturns200(t *testing.T) {
-	tmp := t.TempDir()
-	empty := filepath.Join(tmp, "empty.txt")
-	if err := os.WriteFile(empty, nil, 0600); err != nil {
-		t.Fatalf("WriteFile empty: %v", err)
-	}
-	_, sock, sid := newFilesAPI(t, tmp)
-
-	// (a) Plain GET, no Range header — use a direct client so we can read headers.
-	client0 := &http.Client{Transport: &http.Transport{DialContext: dialUnix(sock)}}
-	resp0, err0 := client0.Get("http://daemon/api/files/read?session=" + sid + "&path=empty.txt")
-	if err0 != nil {
-		t.Fatalf("0-byte GET: %v", err0)
-	}
-	body0, _ := io.ReadAll(resp0.Body)
-	resp0.Body.Close()
-	if resp0.StatusCode != http.StatusOK {
-		t.Fatalf("0-byte GET = %d, body=%q; want 200 (FS-07)", resp0.StatusCode, string(body0))
-	}
-	if len(body0) != 0 {
-		t.Errorf("0-byte body len = %d, want 0", len(body0))
-	}
-	if cl := resp0.Header.Get("Content-Length"); cl != "" && cl != "0" {
-		t.Errorf("Content-Length = %q; want unset or '0'", cl)
-	}
-
-	// (b) GET with Range: bytes=0- — must still be 200, not 416.
-	client := &http.Client{Transport: &http.Transport{DialContext: dialUnix(sock)}}
-	req, _ := http.NewRequest(http.MethodGet, "http://daemon/api/files/read?session="+sid+"&path=empty.txt", nil)
-	req.Header.Set("Range", "bytes=0-")
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("Range GET: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
-		t.Fatalf("0-byte + Range returned 416 — FS-07 violation (golang/go#54794)")
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("0-byte + Range status = %d, want 200", resp.StatusCode)
-	}
-}
-
-func TestAPI_FilesRead_TraversalReturns403(t *testing.T) {
-	_, sock, sid := newFilesAPI(t, t.TempDir())
-	status, body := rawGet(t, sock, "/api/files/read?session="+sid+"&path=../../etc/passwd")
-	if status != http.StatusForbidden {
-		t.Fatalf("traversal: status = %d, body=%s; want 403", status, string(body))
-	}
-}
-
-func TestAPI_FilesList_POSTReturns405(t *testing.T) {
-	_, sock, sid := newFilesAPI(t, t.TempDir())
-	status, _, body := rawDo(t, sock, http.MethodPost, "/api/files/list?session="+sid+"&path=.")
-	if status != http.StatusMethodNotAllowed {
-		t.Fatalf("POST /api/files/list = %d, body=%s; want 405 (Go 1.22+ mux auto-405)", status, string(body))
-	}
-}
-
-func TestAPI_FilesHeadRead_ReturnsContentLengthNoBody(t *testing.T) {
-	tmp := t.TempDir()
-	payload := bytes.Repeat([]byte{'A'}, 100)
-	if err := os.WriteFile(filepath.Join(tmp, "p.bin"), payload, 0600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	_, sock, sid := newFilesAPI(t, tmp)
-
-	status, hdr, body := rawDo(t, sock, http.MethodHead, "/api/files/read?session="+sid+"&path=p.bin")
-	if status != http.StatusOK {
-		t.Fatalf("HEAD /api/files/read = %d; want 200", status)
-	}
-	if cl := hdr.Get("Content-Length"); cl != "100" {
-		t.Errorf("HEAD Content-Length = %q, want '100'", cl)
-	}
-	if len(body) != 0 {
-		t.Errorf("HEAD body len = %d, want 0", len(body))
-	}
-}
-
-// -------------------------------------------------------------------------
-// Phase 137 / SHARE-03: issueCapabilitiesForSession browse-matrix tests.
-//
-// The D-03/D-04 perm matrix is driven solely by the per-session browse
-// toggle (SetSessionBrowse). No global kill-switch (D-07 deliberate removal).
-//   D-03: Browse OFF: RO="read", RW="read,write"
-//   D-04: Browse ON:  RO="read,files.read", RW="read,write,files.read,files.write"
+// SHARE-03: issueCapabilitiesForSession mints exactly "read" (read-only link)
+// and "read,write" (full-access link). The files perms and the per-session
+// browse toggle that added them were removed with the file browser.
 //
 // We verify the post-issuance tokens by decoding them with capability.Verify
 // against the synthetic test signing key. The webserver dependency is real
 // but the listener is not started — issueCapabilitiesForSession only needs
 // ws.AddGrant + ws.BaseURL which work without a live listener.
-//
-// NOTE: Four global-flag tests (the OwnerHasFilesRead/ViewerNoFilesRead/OwnerNoFilesReadWhenDisabled
-// /OwnerHasFilesReadWhenExplicitTrue variants) were retired in Phase 137 / D-07.
-// They pinned the old global filesRead field removed in Plan 02.
 // -------------------------------------------------------------------------
 
 func issueCapsTestSetup(t *testing.T) (*API, *webserver.WebServer, []byte) {
@@ -2004,89 +1826,26 @@ func extractClaimsFromURL(t *testing.T, urlStr string, key []byte) capability.Cl
 	return claims
 }
 
-// TestIssueCapabilities_BrowseOff_NoFilesPerms asserts the D-03 matrix:
-// with browse OFF (default), RO token Perms == "read" exactly, and
-// RW token Perms == "read,write" exactly. No files.read or files.write.
-// RED until Plan 02 removes filesReadEnabled() and wires browseEnabledFor().
-func TestIssueCapabilities_BrowseOff_NoFilesPerms(t *testing.T) {
+// TestIssueCapabilities_ExactPerms asserts the RO token Perms == "read" and
+// the RW token Perms == "read,write" exactly. No other perm is ever minted.
+func TestIssueCapabilities_ExactPerms(t *testing.T) {
 	api, _, key := issueCapsTestSetup(t)
 
-	sid, err := api.engine.CreateSession(context.Background(), "cat", "browse-off", "", nil, 80, 24, nil, nil)
+	sid, err := api.engine.CreateSession(context.Background(), "cat", "exact-perms", "", nil, 80, 24, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	t.Cleanup(func() { _ = api.engine.KillSession(sid) })
 
-	// browse is OFF by default (D-06: absent from map = OFF)
-	readURL, writeURL, _, _, _, err := api.issueCapabilitiesForSession(sid)
+	roURL, rwURL, _, _, _, err := api.issueCapabilitiesForSession(sid)
 	if err != nil {
 		t.Fatalf("issueCapabilitiesForSession: %v", err)
 	}
-
-	roClaims := extractClaimsFromURL(t, readURL, key)
-	if roClaims.Perms != "read" {
-		t.Errorf("browse OFF: RO Perms = %q; want exact \"read\" (D-03)", roClaims.Perms)
+	if got := extractClaimsFromURL(t, roURL, key).Perms; got != "read" {
+		t.Errorf("RO Perms = %q; want exact \"read\"", got)
 	}
-
-	rwClaims := extractClaimsFromURL(t, writeURL, key)
-	if rwClaims.Perms != "read,write" {
-		t.Errorf("browse OFF: RW Perms = %q; want exact \"read,write\" (D-03)", rwClaims.Perms)
-	}
-}
-
-// TestIssueCapabilities_BrowseOn_ROPermsExact asserts the D-04 RO half:
-// with browse ON, RO token Perms == "read,files.read" exactly (files.write absent).
-// RED until Plan 02 adds SetSessionBrowse + browseEnabledFor().
-func TestIssueCapabilities_BrowseOn_ROPermsExact(t *testing.T) {
-	api, _, key := issueCapsTestSetup(t)
-
-	sid, err := api.engine.CreateSession(context.Background(), "cat", "browse-on-ro", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	t.Cleanup(func() { _ = api.engine.KillSession(sid) })
-
-	api.engine.SetSessionBrowse(sid, true)
-
-	readURL, _, _, _, _, err := api.issueCapabilitiesForSession(sid)
-	if err != nil {
-		t.Fatalf("issueCapabilitiesForSession: %v", err)
-	}
-
-	roClaims := extractClaimsFromURL(t, readURL, key)
-	wantRO := "read," + capability.PermFilesRead
-	if roClaims.Perms != wantRO {
-		t.Errorf("browse ON: RO Perms = %q; want exact %q (D-04)", roClaims.Perms, wantRO)
-	}
-	// Security delta T-137-02: files.write must NEVER appear in the RO token.
-	if capability.HasPerm(roClaims.Perms, capability.PermFilesWrite) {
-		t.Errorf("browse ON: RO Perms = %q; must NOT contain files.write (T-137-02 Pitfall 2)", roClaims.Perms)
-	}
-}
-
-// TestIssueCapabilities_BrowseOn_RWPermsExact asserts the D-04 RW half:
-// with browse ON, RW token Perms == "read,write,files.read,files.write" exactly.
-// RED until Plan 02 adds SetSessionBrowse + browseEnabledFor().
-func TestIssueCapabilities_BrowseOn_RWPermsExact(t *testing.T) {
-	api, _, key := issueCapsTestSetup(t)
-
-	sid, err := api.engine.CreateSession(context.Background(), "cat", "browse-on-rw", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	t.Cleanup(func() { _ = api.engine.KillSession(sid) })
-
-	api.engine.SetSessionBrowse(sid, true)
-
-	_, writeURL, _, _, _, err := api.issueCapabilitiesForSession(sid)
-	if err != nil {
-		t.Fatalf("issueCapabilitiesForSession: %v", err)
-	}
-
-	rwClaims := extractClaimsFromURL(t, writeURL, key)
-	wantRW := "read,write," + capability.PermFilesRead + "," + capability.PermFilesWrite
-	if rwClaims.Perms != wantRW {
-		t.Errorf("browse ON: RW Perms = %q; want exact %q (D-04)", rwClaims.Perms, wantRW)
+	if got := extractClaimsFromURL(t, rwURL, key).Perms; got != "read,write" {
+		t.Errorf("RW Perms = %q; want exact \"read,write\"", got)
 	}
 }
 
@@ -2097,16 +1856,15 @@ func TestIssueCapabilities_BrowseOn_RWPermsExact(t *testing.T) {
 // return value (publicReadCode). The comprehensive teardown-trigger and
 // read-only-scope regression suite lives in funnel_test.go (Task 2); this
 // test exercises the mint site directly (white-box, same package) without
-// spinning up a real Funnel client, mirroring the existing browse-matrix
-// tests' issueCapsTestSetup pattern.
+// spinning up a real Funnel client, mirroring TestIssueCapabilities_ExactPerms'
+// issueCapsTestSetup pattern.
 // -------------------------------------------------------------------------
 
 // TestIssueCapabilitiesForSession_FunnelPublicReadCode asserts:
 //   - A Funnel session (a.funnelSessions[sid]=true) gets a non-empty
 //     PublicReadCode from issueCapabilitiesForSession, minted from rTok only.
 //   - A second call returns the IDENTICAL code (idempotent — no rotation).
-//   - The code's token (via Exchange + Verify) carries read-only Perms —
-//     never "write" or capability.PermFilesWrite.
+//   - The code's token (via Exchange + Verify) carries exactly "read".
 //   - A non-Funnel session gets PublicReadCode == "".
 //   - disableFunnelForSession revokes the code: a later Exchange returns
 //     capability.ErrCodeNotFound.
@@ -2161,8 +1919,8 @@ func TestIssueCapabilitiesForSession_FunnelPublicReadCode(t *testing.T) {
 	if capability.HasPerm(claims.Perms, "write") {
 		t.Errorf("T-170-01: public read code token Perms = %q must NOT contain write", claims.Perms)
 	}
-	if capability.HasPerm(claims.Perms, capability.PermFilesWrite) {
-		t.Errorf("T-170-01: public read code token Perms = %q must NOT contain files.write", claims.Perms)
+	if claims.Perms != "read" {
+		t.Errorf("T-170-01: public read code token Perms = %q, want exactly \"read\"", claims.Perms)
 	}
 
 	// A non-Funnel session must get an empty PublicReadCode.
@@ -2215,158 +1973,6 @@ func TestKillSession_ClearsStaleBrowseEntry(t *testing.T) {
 	}
 }
 
-func TestAPI_FilesStat_ReturnsFileEntry(t *testing.T) {
-	tmp := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tmp, "hello.txt"), []byte("world"), 0600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	_, sock, sid := newFilesAPI(t, tmp)
-
-	status, body := rawGet(t, sock, "/api/files/stat?session="+sid+"&path=hello.txt")
-	if status != http.StatusOK {
-		t.Fatalf("GET /api/files/stat = %d; body=%s", status, string(body))
-	}
-	var entry struct {
-		Name  string `json:"name"`
-		Size  int64  `json:"size"`
-		IsDir bool   `json:"isDir"`
-		MIME  string `json:"mime"`
-	}
-	if err := json.Unmarshal(body, &entry); err != nil {
-		t.Fatalf("decode: %v; raw=%s", err, string(body))
-	}
-	if entry.Name != "hello.txt" {
-		t.Errorf("Name = %q, want 'hello.txt'", entry.Name)
-	}
-	if entry.Size != 5 {
-		t.Errorf("Size = %d, want 5", entry.Size)
-	}
-	if entry.IsDir {
-		t.Errorf("IsDir = true; want false")
-	}
-}
-
-// -------------------------------------------------------------------------
-// Plan 123-03 — Write route tests (FSW-08, FSW-12)
-// These tests verify the five auth-less method-prefixed write routes on the
-// daemon socket: PUT write, POST upload, DELETE delete, POST rename, POST
-// mkdir. Go 1.22+ mux auto-returns 405 for the wrong verb.
-// -------------------------------------------------------------------------
-
-// rawPut performs PUT http://daemon{path} with the given body and Content-Type.
-func rawPut(t *testing.T, socketPath, path string, body []byte, contentType string) (int, []byte) {
-	t.Helper()
-	client := &http.Client{Transport: &http.Transport{DialContext: dialUnix(socketPath)}}
-	req, err := http.NewRequest(http.MethodPut, "http://daemon"+path, bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("NewRequest PUT %s: %v", path, err)
-	}
-	if contentType != "" {
-		req.Header.Set("Content-Type", contentType)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("PUT %s: %v", path, err)
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, respBody
-}
-
-// TestFilesWriteRoutes_WrongVerb405: GET /api/files/write → 405; POST /api/files/read → 405.
-// (FSW-08, Pitfall 6 — method-prefixed mux auto-405)
-func TestFilesWriteRoutes_WrongVerb405(t *testing.T) {
-	_, sock, sid := newFilesAPI(t, t.TempDir())
-
-	// GET on a PUT-only route → 405
-	status, _, body := rawDo(t, sock, http.MethodGet, "/api/files/write?session="+sid+"&path=f.txt")
-	if status != http.StatusMethodNotAllowed {
-		t.Errorf("GET /api/files/write = %d, body=%s; want 405", status, string(body))
-	}
-
-	// POST on a GET-only route → 405
-	status, _, body = rawDo(t, sock, http.MethodPost, "/api/files/read?session="+sid+"&path=.")
-	if status != http.StatusMethodNotAllowed {
-		t.Errorf("POST /api/files/read = %d, body=%s; want 405", status, string(body))
-	}
-}
-
-// TestFilesWriteRoutes_Registered: each of the five routes resolves to its handler.
-func TestFilesWriteRoutes_Registered(t *testing.T) {
-	tmp := t.TempDir()
-	_, sock, sid := newFilesAPI(t, tmp)
-
-	// PUT /api/files/write with a valid session and path → 200 (not 404/405)
-	payload := []byte("test content from route test")
-	status, body := rawPut(t, sock, "/api/files/write?session="+sid+"&path=routetest.txt",
-		payload, "application/octet-stream")
-	if status != http.StatusOK {
-		t.Errorf("PUT /api/files/write = %d, body=%s; want 200", status, string(body))
-	}
-
-	// DELETE /api/files/delete → 200 (file we just created)
-	status, body = rawDelete(t, sock, "/api/files/delete?session="+sid+"&path=routetest.txt")
-	if status != http.StatusOK {
-		t.Errorf("DELETE /api/files/delete = %d, body=%s; want 200", status, string(body))
-	}
-
-	// POST /api/files/mkdir → 200
-	status, body = rawPost(t, sock, "/api/files/mkdir?session="+sid+"&path=newroute-dir", "")
-	if status != http.StatusOK {
-		t.Errorf("POST /api/files/mkdir = %d, body=%s; want 200", status, string(body))
-	}
-
-	// POST /api/files/rename → 200 (rename the mkdir we just created)
-	renameBody := `{"oldRel":"newroute-dir","newRel":"renamed-dir"}`
-	status, body = rawPost(t, sock, "/api/files/rename?session="+sid, renameBody)
-	if status != http.StatusOK {
-		t.Errorf("POST /api/files/rename = %d, body=%s; want 200", status, string(body))
-	}
-
-	// POST /api/files/upload → needs multipart; just check it returns non-405 for valid content.
-	// (Full upload behavior tested in TestHandlerUpload_* handler tests)
-	status, _, _ = rawDo(t, sock, http.MethodPost, "/api/files/upload?session="+sid)
-	if status == http.StatusMethodNotAllowed {
-		t.Errorf("POST /api/files/upload returned 405 — route not registered")
-	}
-}
-
-// TestFilesWriteRoutes_WriteRoundTrip: PUT write then GET read returns identical bytes.
-// (FSW-08 success criterion #2 — byte-identical round-trip over the daemon socket)
-func TestFilesWriteRoutes_WriteRoundTrip(t *testing.T) {
-	tmp := t.TempDir()
-	_, sock, sid := newFilesAPI(t, tmp)
-
-	payload := []byte("round-trip payload content")
-	status, body := rawPut(t, sock, "/api/files/write?session="+sid+"&path=rt.txt",
-		payload, "application/octet-stream")
-	if status != http.StatusOK {
-		t.Fatalf("PUT /api/files/write = %d, body=%s; want 200", status, string(body))
-	}
-	var wr struct {
-		Path string `json:"path"`
-		Size int64  `json:"size"`
-	}
-	if err := json.Unmarshal(body, &wr); err != nil {
-		t.Fatalf("decode write response: %v; raw=%s", err, string(body))
-	}
-	if wr.Size != int64(len(payload)) {
-		t.Errorf("write Size = %d; want %d", wr.Size, len(payload))
-	}
-
-	// Read back.
-	status, readBody := rawGet(t, sock, "/api/files/read?session="+sid+"&path=rt.txt")
-	if status != http.StatusOK {
-		t.Fatalf("GET /api/files/read after write = %d, body=%s", status, string(readBody))
-	}
-	if string(readBody) != string(payload) {
-		t.Errorf("read body = %q; want %q", string(readBody), string(payload))
-	}
-}
-
-// TestHandleGetSessionTailLines_ClampN: CR-02 — the HTTP handler must clamp n to [1..20]
-// regardless of what the caller sends. Without the clamp any local Unix socket caller
-// could bypass the spec's documented limit.
 func TestHandleGetSessionTailLines_ClampN(t *testing.T) {
 	_, _, sock := testDaemon(t)
 

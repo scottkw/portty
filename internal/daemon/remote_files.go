@@ -1,29 +1,22 @@
 package daemon
 
-// Phase 122-01 — Remote-files proxy on the daemon socket.
+// Remote session caps on the daemon socket.
 //
-// The desktop GUI (Phase 122-03) and TUI (Phase 122-04) fetch a remote
-// session's files through a same-origin local-daemon URL so the Wails
-// webview never has to deal with CORS preflights (Pitfall 1 in 122-RESEARCH).
-// This file implements that proxy layer:
+// After a successful join-code exchange the desktop GUI deposits the remote
+// peer's (sessionID, baseURL, capToken) here so it can open the remote session
+// (and reuse the held cap) without re-prompting for a join code:
 //
-//   POST /api/remote-files/caps              — deposit (sessionID, baseURL, capToken)
-//   GET  /api/files/remote/{sessionID}/list  — proxy GET ${baseURL}/api/files/list?...
-//   GET  /api/files/remote/{sessionID}/stat  — proxy GET ${baseURL}/api/files/stat?...
-//   GET  /api/files/remote/{sessionID}/read  — proxy GET ${baseURL}/api/files/read?...
-//   HEAD /api/files/remote/{sessionID}/read  — proxy HEAD for ranged byte preview
+//   POST /api/remote-files/caps                          — deposit the cap
+//   GET  /api/remote-files/caps/{sessionID}/open-url     — cap-bearing open URL
 //
-// The outbound HTTPS client mirrors the tailnet client pattern in
-// internal/tailnet/sessions.go (TLS 1.2 minimum, modest timeout) and accepts
-// the tailnet peer's self-signed cert via InsecureSkipVerify — the same shape
-// that Phase 122-03's client_remote_files.go uses for the join-code exchange.
+// The "remote-files" name is historical (the store was built for the removed
+// remote file browser); the wire paths are kept so existing clients still work.
+// The outbound HTTPS client below is used by the remote terminal WS proxy
+// (remote_ws_proxy.go) and accepts the tailnet peer's self-signed cert.
 
 import (
 	"crypto/tls"
 	"encoding/json"
-	"errors"
-	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -42,7 +35,7 @@ import (
 //
 //	200 + {"url": "https://peer.../sessions/{id}?cap=TOKEN"}  — cap found
 //	400 + plain text                                          — missing sessionID path value
-//	404 + {"error": "no cap registered for session"}          — no stored cap (mirror proxyRemoteFiles)
+//	404 + {"error": "no cap registered for session"}          — no stored cap
 //	500 + plain text                                          — store not initialised
 func (a *API) handleRemoteSessionOpenURL(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("sessionID")
@@ -56,7 +49,6 @@ func (a *API) handleRemoteSessionOpenURL(w http.ResponseWriter, r *http.Request)
 	}
 	baseURL, capToken, ok := a.remoteCaps.Get(sessionID)
 	if !ok {
-		// Mirror the exact 404 shape used by proxyRemoteFiles at remote_files.go:191.
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no cap registered for session"})
 		return
 	}
@@ -69,7 +61,7 @@ func (a *API) handleRemoteSessionOpenURL(w http.ResponseWriter, r *http.Request)
 }
 
 // newRemoteFilesHTTPClient constructs the outbound HTTPS client used by the
-// remote-files proxy. Mirrors internal/tailnet/sessions.go's shape:
+// remote terminal WS proxy. Mirrors internal/tailnet/sessions.go's shape:
 // TLS 1.2 minimum, 10-second timeout. InsecureSkipVerify is acceptable here
 // because the peer is a tailnet host with a self-signed cert (Tailscale itself
 // guarantees the transport-layer authenticity).
@@ -85,7 +77,7 @@ func newRemoteFilesHTTPClient() *http.Client {
 	}
 }
 
-// remoteFilesClient returns the HTTP client the proxy uses for outbound
+// remoteFilesClient returns the HTTP client the WS proxy uses for outbound
 // requests. Tests override this by setting a.remoteFilesClientForTest before
 // issuing requests; production code falls back to newRemoteFilesHTTPClient().
 func (a *API) remoteFilesClient() *http.Client {
@@ -97,8 +89,8 @@ func (a *API) remoteFilesClient() *http.Client {
 
 // handleRegisterRemoteCap accepts the (sessionID, baseURL, capToken) tuple
 // from the desktop GUI / TUI after a successful join-code exchange and stores
-// it in the RemoteCapStore. Subsequent /api/files/remote/{sid}/... proxy
-// requests look up the cap from this store.
+// it in the RemoteCapStore. handleRemoteSessionOpenURL and the remote terminal
+// WS proxy look up the cap from this store.
 //
 // Request body: JSON {sessionId, baseUrl, capToken}.
 // Responses:
@@ -134,223 +126,6 @@ func (a *API) handleRegisterRemoteCap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-}
-
-// handleRemoteFilesList proxies GET /api/files/remote/{sessionID}/list to the
-// remote peer's /api/files/list endpoint using the cap stored by
-// handleRegisterRemoteCap.
-func (a *API) handleRemoteFilesList(w http.ResponseWriter, r *http.Request) {
-	a.proxyRemoteFiles(w, r, "list")
-}
-
-// handleRemoteFilesStat proxies /stat.
-func (a *API) handleRemoteFilesStat(w http.ResponseWriter, r *http.Request) {
-	a.proxyRemoteFiles(w, r, "stat")
-}
-
-// handleRemoteFilesRead proxies /read (GET and HEAD).
-func (a *API) handleRemoteFilesRead(w http.ResponseWriter, r *http.Request) {
-	a.proxyRemoteFiles(w, r, "read")
-}
-
-// Phase 124-03 / CAP-10: remote write proxy routes.
-//
-// These five handlers forward write verbs to the remote peer's webserver
-// using the cap stored by handleRegisterRemoteCap.  proxyRemoteFiles now
-// forwards r.Body + Content-Type for PUT/POST/PATCH (Task 1 fix) so the
-// payloads reach the peer's files.Handler write methods intact.
-//
-// Daemon-socket routes are loopback-trusted (WEB-01); no auth middleware or
-// Origin check is applied here.  The remote peer's webserver enforces
-// requireFilesWrite (including its own CSRF Origin check) on the upstream side.
-
-// handleRemoteFilesWrite proxies PUT /api/files/remote/{sessionID}/write.
-func (a *API) handleRemoteFilesWrite(w http.ResponseWriter, r *http.Request) {
-	a.proxyRemoteFiles(w, r, "write")
-}
-
-// handleRemoteFilesUpload proxies POST /api/files/remote/{sessionID}/upload.
-func (a *API) handleRemoteFilesUpload(w http.ResponseWriter, r *http.Request) {
-	a.proxyRemoteFiles(w, r, "upload")
-}
-
-// handleRemoteFilesDelete proxies DELETE /api/files/remote/{sessionID}/delete.
-func (a *API) handleRemoteFilesDelete(w http.ResponseWriter, r *http.Request) {
-	a.proxyRemoteFiles(w, r, "delete")
-}
-
-// handleRemoteFilesRename proxies POST /api/files/remote/{sessionID}/rename.
-func (a *API) handleRemoteFilesRename(w http.ResponseWriter, r *http.Request) {
-	a.proxyRemoteFiles(w, r, "rename")
-}
-
-// handleRemoteFilesMkdir proxies POST /api/files/remote/{sessionID}/mkdir.
-func (a *API) handleRemoteFilesMkdir(w http.ResponseWriter, r *http.Request) {
-	a.proxyRemoteFiles(w, r, "mkdir")
-}
-
-// proxyRemoteFiles is the shared body for all /api/files/remote/...
-// routes. It looks up the cap, builds the upstream URL with `?cap=<token>`
-// (mirroring the webserver's requireFilesRead pattern from Phase 119), issues
-// the upstream request with the same HTTP method (so HEAD → HEAD survives),
-// and copies upstream status + selected headers + body back to the caller.
-//
-// Concurrency contract (WR-02): multiple concurrent write proxies for the same
-// path are serialized at the remote peer's WriteFileAtomic per-path lock —
-// exactly one writer wins and the loser receives a clean HTTP 412 /
-// ErrPreconditionFailed response. The proxy forwards If-Match,
-// If-Unmodified-Since, and If-None-Match so the peer's optimistic-concurrency
-// check is reachable end-to-end. The remote peer DOES enforce these
-// preconditions via WriteFileAtomic's single-winner per-path lock (RACE-01).
-//
-// Per-status behavior:
-//
-//	no cap registered locally    → 404 + JSON {"error": "no cap registered for session"}
-//	upstream 401                 → 401 (frontend treats as "cap rejected" — re-prompt for join code)
-//	upstream 403                 → 403 verbatim (frontend's PermissionDeniedTakeover already handles)
-//	upstream 2xx                 → 2xx verbatim
-//	upstream dial / TLS failure  → 502 + plain text (cap token redacted)
-//	malformed baseURL in store   → 500 (upstream request build failed; deposit-time validation in Put prevents this in steady state)
-func (a *API) proxyRemoteFiles(w http.ResponseWriter, r *http.Request, op string) {
-	sessionID := r.PathValue("sessionID")
-	if sessionID == "" {
-		http.Error(w, "missing sessionID", http.StatusBadRequest)
-		return
-	}
-	if a.remoteCaps == nil {
-		http.Error(w, "remote cap store not initialised", http.StatusInternalServerError)
-		return
-	}
-
-	baseURL, capToken, ok := a.remoteCaps.Get(sessionID)
-	if !ok {
-		// No cap deposited for this sessionID. Frontend treats 404 as
-		// "user needs to paste a join code" and pops the modal.
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no cap registered for session"})
-		return
-	}
-
-	// Build the upstream URL. Carry through whichever query params the
-	// caller sent (the remote /api/files/* endpoints accept `session`,
-	// `path`, optional `offset`/`limit`, etc.) AND append the daemon-side
-	// `cap` so the remote's requireFilesRead lets us through. Strip any
-	// caller-supplied `cap` first so a malicious caller cannot smuggle a
-	// different token through this proxy (defense in depth — the daemon
-	// socket is already loopback-trusted but we trust nothing from the
-	// query string).
-	q := url.Values{}
-	for k, v := range r.URL.Query() {
-		if strings.EqualFold(k, "cap") {
-			continue
-		}
-		// IN-03: copy the slice so q[k] has its own backing array. The original
-		// r.URL.Query() map shares backing arrays with the URL's raw form; a
-		// future caller that mutates q[k] in place would silently corrupt it.
-		q[k] = append([]string(nil), v...)
-	}
-	// Ensure the session param matches the path param. The remote webserver
-	// uses ?session=<id> for the sandbox lookup; force-set it from the URL
-	// path so a caller cannot point at one session while listing another.
-	q.Set("session", sessionID)
-	q.Set("cap", capToken)
-
-	upstreamURL := strings.TrimRight(baseURL, "/") + "/api/files/" + op + "?" + q.Encode()
-
-	// Forward the request body for write verbs (PUT, POST, PATCH). GET and HEAD
-	// reads are body-less; passing nil is correct for those. Forwarding r.Body
-	// opaquely (as a byte pipe) preserves multipart boundaries and
-	// application/json payloads without re-parsing them (CAP-10 / Pitfall 3).
-	var body io.Reader
-	if r.Method == http.MethodPut || r.Method == http.MethodPost || r.Method == http.MethodPatch {
-		body = r.Body
-	}
-
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL, body)
-	if err != nil {
-		http.Error(w, "build upstream request: "+redactCapTokenFromError(err, capToken), http.StatusInternalServerError)
-		return
-	}
-
-	// Forward the inbound Content-Type request header for write verbs so
-	// multipart boundaries and application/json payloads survive transit.
-	// The response-header forwarding (below) already handles response Content-Type;
-	// this block covers the request side which was previously not copied.
-	if body != nil {
-		if ct := r.Header.Get("Content-Type"); ct != "" {
-			req.Header.Set("Content-Type", ct)
-		}
-		// WR-02: Forward conditional-write headers. The remote peer enforces
-		// these preconditions via WriteFileAtomic's single-winner per-path lock,
-		// so forwarding If-Match/If-Unmodified-Since/If-None-Match is required
-		// for conflict-safe writes (not future-proofing — it is live behavior).
-		for _, h := range []string{"If-Match", "If-Unmodified-Since", "If-None-Match"} {
-			if v := r.Header.Get(h); v != "" {
-				req.Header.Set(h, v)
-			}
-		}
-	}
-
-	client := a.remoteFilesClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		if isUnresolvableMagicDNS(err, baseURL) {
-			// DNS-01: emit ONLY the fixed actionable string — no hostname, no raw
-			// error, no cap token (Information Disclosure mitigation T-129-06/07).
-			http.Error(w, "Enable Tailscale DNS (accept-dns) to browse remote sessions", http.StatusBadGateway)
-			return
-		}
-		http.Error(w, "remote unreachable: "+redactCapTokenFromError(err, capToken), http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Forward selected headers from the upstream response. We deliberately
-	// do not blindly copy every header (Set-Cookie, Server, etc. should
-	// stay scoped to the daemon socket) — but content-type / -length /
-	// -range / last-modified are required for the frontend to render
-	// images, PDFs, and binary blobs correctly through HEAD on /read.
-	for _, h := range []string{
-		"Content-Type",
-		"Content-Length",
-		"Content-Range",
-		"Last-Modified",
-		"ETag",
-		"Accept-Ranges",
-	} {
-		if v := resp.Header.Get(h); v != "" {
-			w.Header().Set(h, v)
-		}
-	}
-	w.WriteHeader(resp.StatusCode)
-	// HEAD has no body to copy by definition (net/http strips it), but we
-	// still call io.Copy so the standard mechanism handles it uniformly.
-	_, _ = io.Copy(w, resp.Body)
-}
-
-// isUnresolvableMagicDNS reports whether err is a DNS resolution failure for a
-// MagicDNS hostname (*.ts.net or *.tailscale.net), indicating the client likely
-// has accept-dns=false in Tailscale prefs. Only returns true when BOTH the
-// hostname is MagicDNS AND the error is a DNS resolution failure — connection-
-// refused, TLS, and other network errors must not trigger the actionable DNS
-// message (DNS-02 discrimination, RESEARCH Pitfall 3, T-129-09).
-func isUnresolvableMagicDNS(err error, baseURL string) bool {
-	var dnsErr *net.DNSError
-	if !errors.As(err, &dnsErr) {
-		return false
-	}
-	// WR-01: check the hostname suffix, not a whole-URL substring. A substring
-	// test against baseURL over-matches paths, query strings, userinfo, and
-	// hosts that merely contain ".ts.net" (e.g. foo.ts.network or
-	// notreally.ts.net.evil.com). Parse the URL and match only the hostname
-	// suffix so the actionable accept-dns message fires solely for genuine
-	// MagicDNS hosts (DNS-02 discrimination preserved — still gated on DNSError).
-	u, perr := url.Parse(baseURL)
-	if perr != nil {
-		return false
-	}
-	host := u.Hostname() // strips port + userinfo
-	return strings.HasSuffix(host, ".ts.net") ||
-		strings.HasSuffix(host, ".tailscale.net")
 }
 
 // redactCapTokenFromError removes the cap-token substring from an error's

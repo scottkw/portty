@@ -61,7 +61,7 @@ func setupInjectTestServer(t *testing.T) (*httptest.Server, *HubManager, string,
 		return msg, nil
 	})
 
-	srv := NewServer(manager, nil, nil)
+	srv := NewServer(manager, nil)
 	ts := httptest.NewServer(srv)
 	t.Cleanup(func() {
 		ts.Close()

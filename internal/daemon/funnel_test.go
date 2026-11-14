@@ -332,10 +332,9 @@ func TestFunnelAutoExpiry(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestFunnelPublicCode_ReadOnlyScope verifies T-170-01: the public read
-// code's token (resolved via Exchange + Verify) carries read-only Perms —
-// never "write" or capability.PermFilesWrite — in BOTH perm-matrix states
-// (browse OFF and browse ON), proving the read-only invariant holds
-// regardless of the browse toggle.
+// code's token (resolved via Exchange + Verify) carries exactly "read" in
+// BOTH perm-matrix states (browse OFF and browse ON), proving the read-only
+// invariant holds regardless of the browse toggle.
 func TestFunnelPublicCode_ReadOnlyScope(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires TLS listener")
@@ -376,8 +375,8 @@ func TestFunnelPublicCode_ReadOnlyScope(t *testing.T) {
 		if capability.HasPerm(claims.Perms, "write") {
 			t.Errorf("T-170-01: Perms = %q must NOT contain write (browseOn=%v)", claims.Perms, browseOn)
 		}
-		if capability.HasPerm(claims.Perms, capability.PermFilesWrite) {
-			t.Errorf("T-170-01: Perms = %q must NOT contain files.write (browseOn=%v)", claims.Perms, browseOn)
+		if claims.Perms != "read" {
+			t.Errorf("T-170-01: Perms = %q, want exactly \"read\" (browseOn=%v)", claims.Perms, browseOn)
 		}
 	}
 
@@ -1330,9 +1329,6 @@ func TestFunnelWriteGate_TerminalOnlyScope(t *testing.T) {
 		}
 		if claims.Perms != "read,write" {
 			t.Errorf("T-171-06/D-05: Perms = %q, want exactly \"read,write\" (browseOn=%v)", claims.Perms, browseOn)
-		}
-		if capability.HasPerm(claims.Perms, capability.PermFilesWrite) {
-			t.Errorf("T-171-06/D-05: Perms = %q must NOT contain files.write (browseOn=%v, Pitfall 5)", claims.Perms, browseOn)
 		}
 
 		// The mint's ws.AddGrant side effect must reach the real enforcement

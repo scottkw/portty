@@ -208,15 +208,6 @@ func TestHasPerm(t *testing.T) {
 	}
 }
 
-// TestPermFilesRead_Constant pins the wire value of PermFilesRead so a future
-// refactor cannot silently change the token string and de-couple it from the
-// owner-token issuance in internal/daemon/api.go (Plan 05).
-func TestPermFilesRead_Constant(t *testing.T) {
-	if capability.PermFilesRead != "files.read" {
-		t.Fatalf("PermFilesRead = %q, want %q", capability.PermFilesRead, "files.read")
-	}
-}
-
 // TestHasPerm_NoStringsContains is a source-inspection guard: the HasPerm
 // implementation must not use strings.Contains for the whole-token check
 // (Pitfall 4). This pairs with the "no-files.read false-positive guard"

@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/files"
 	"github.com/scottkw/agenthub/internal/pty"
 )
 
@@ -28,25 +27,13 @@ type Server struct {
 // and registers routes. backend is used to forward resize events from connected
 // WebSocket clients to the underlying PTY.
 //
-// filesHandler, if non-nil, is mounted under /api/files/{list,stat,read} so the
-// Wails desktop GUI (which reaches the daemon over TCP at 127.0.0.1:<relayPort>,
-// NOT the Unix socket) can hit the read-only file API. The daemon's mux already
-// registers the same routes for the Unix-socket transport; both surfaces share
-// the same *files.Handler instance, so behaviour (sandbox enforcement, 5 MiB
-// cap, etc.) is identical. Pass nil in tests that do not need file API coverage.
-//
-// Phase 120 CR-01 (REVIEW.md): before this change, FileBrowserTab in Wails mode
-// 404'd on every /api/files/* call because the relay mux only knew /sessions/*.
-//
-// Phase 120.1 hotfix (CORS): the relay listens on 127.0.0.1 only, but a Wails
-// webview's own origin (typically http://wails.localhost on macOS) is cross-
-// origin from 127.0.0.1:<relayPort>. The browser sends a CORS preflight OPTIONS
-// before the GET; without Access-Control-Allow-* headers the browser blocks
-// the actual request. WebSocket relay traffic bypasses CORS preflight, which is
-// why this gap was invisible until the first HTTP fetch (FileBrowserTab) was
-// added. We allow loopback / Wails / Tauri origins only; relay is bound to
-// 127.0.0.1 so the network boundary is already loopback-trusted.
-func NewServer(manager *HubManager, backend pty.SessionBackend, filesHandler *files.Handler) *Server {
+// Cross-origin HTTP from the Wails webview: the relay listens on 127.0.0.1
+// only, but the webview's own origin (typically wails://wails on macOS) is
+// cross-origin from 127.0.0.1:<relayPort>. HTTP routes the daemon mounts on
+// this surface (chat history/export) wrap themselves in FilesCORS and register
+// FilesPreflight. WebSocket traffic bypasses CORS preflight. We allow loopback /
+// Wails / Tauri origins only (isAllowedFilesOrigin).
+func NewServer(manager *HubManager, backend pty.SessionBackend) *Server {
 	s := &Server{
 		manager: manager,
 		backend: backend,
@@ -54,33 +41,6 @@ func NewServer(manager *HubManager, backend pty.SessionBackend, filesHandler *fi
 	}
 	s.mux.HandleFunc("GET /sessions/{id}/ws", s.handleSession)
 	s.mux.HandleFunc("GET /sessions", s.handleListSessions)
-	if filesHandler != nil {
-		s.mux.HandleFunc("GET /api/files/list", withCORS(filesHandler.List))
-		s.mux.HandleFunc("GET /api/files/stat", withCORS(filesHandler.Stat))
-		s.mux.HandleFunc("GET /api/files/read", withCORS(filesHandler.Read))
-		s.mux.HandleFunc("HEAD /api/files/read", withCORS(filesHandler.Read))
-		s.mux.HandleFunc("OPTIONS /api/files/list", handleFilesPreflight)
-		s.mux.HandleFunc("OPTIONS /api/files/stat", handleFilesPreflight)
-		s.mux.HandleFunc("OPTIONS /api/files/read", handleFilesPreflight)
-		// Write verbs (v3.5 Phases 123-125). These ride the same loopback-trusted
-		// surface as the read routes above — the desktop GUI owner has full local
-		// FS access, identical to the daemon unix socket (the opt-in files.write
-		// capability gate is a webserver-only concern for web-share viewers, not
-		// the local owner; internal/webserver/server.go). Omitting these is the
-		// bug that made every desktop-GUI local save/upload/delete/rename/mkdir
-		// 404 — see TestServer_FilesWriteAPI_MountedOnRelay.
-		s.mux.HandleFunc("PUT /api/files/write", withCORS(filesHandler.Write))
-		s.mux.HandleFunc("HEAD /api/files/write", withCORS(filesHandler.Write))
-		s.mux.HandleFunc("POST /api/files/upload", withCORS(filesHandler.Upload))
-		s.mux.HandleFunc("DELETE /api/files/delete", withCORS(filesHandler.Delete))
-		s.mux.HandleFunc("POST /api/files/rename", withCORS(filesHandler.Rename))
-		s.mux.HandleFunc("POST /api/files/mkdir", withCORS(filesHandler.Mkdir))
-		s.mux.HandleFunc("OPTIONS /api/files/write", handleFilesPreflight)
-		s.mux.HandleFunc("OPTIONS /api/files/upload", handleFilesPreflight)
-		s.mux.HandleFunc("OPTIONS /api/files/delete", handleFilesPreflight)
-		s.mux.HandleFunc("OPTIONS /api/files/rename", handleFilesPreflight)
-		s.mux.HandleFunc("OPTIONS /api/files/mkdir", handleFilesPreflight)
-	}
 	return s
 }
 
@@ -108,6 +68,8 @@ func (s *Server) SetIdentityProviders(
 
 // isAllowedFilesOrigin returns true for loopback / Wails / Tauri webview
 // origins. The relay listens on 127.0.0.1 only so this is defense-in-depth.
+// The "Files" name is historical (first used by the removed file API); it now
+// guards the chat history/export routes.
 func isAllowedFilesOrigin(origin string) bool {
 	if origin == "" {
 		// Same-origin or non-browser caller (curl, Go HTTP client). Allow —
@@ -153,7 +115,7 @@ func withCORS(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// handleFilesPreflight responds to CORS preflight (OPTIONS) for /api/files/*.
+// handleFilesPreflight responds to CORS preflight (OPTIONS) for relay HTTP routes.
 func handleFilesPreflight(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
 	if !isAllowedFilesOrigin(origin) {
@@ -164,9 +126,8 @@ func handleFilesPreflight(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 	}
 	w.Header().Set("Vary", "Origin")
-	// Read verbs (GET/HEAD) plus the v3.5 write verbs (PUT/POST/DELETE). If-Match
-	// is the optimistic-concurrency validator the editor sends on write (EDIT-05/08);
-	// it must be advertised here or the browser blocks the PUT after preflight.
+	// Advertised verb/header set unchanged from the removed file API (it used
+	// write verbs + If-Match); harmless for the GET-only chat routes.
 	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, PUT, POST, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Range, If-Modified-Since, If-Match")
 	w.Header().Set("Access-Control-Max-Age", "600")
@@ -175,19 +136,16 @@ func handleFilesPreflight(w http.ResponseWriter, r *http.Request) {
 
 // FilesCORS wraps a handler with the relay's loopback-origin CORS policy
 // (Access-Control-Allow-Origin for allow-listed Wails/loopback origins).
-// Exported so the daemon can apply identical CORS to the remote-files proxy
-// routes it mounts on the relay surface — those handlers are *daemon.API
-// methods and cannot live in this package without an import cycle, but they
-// ride the same cross-origin webview→127.0.0.1:<relayPort> boundary as the
-// local file routes and so need the same CORS treatment.
+// Exported so the daemon can apply it to the chat history/export routes it
+// mounts on the relay surface — those handlers are *daemon.API methods and
+// cannot live in this package without an import cycle, but they ride the
+// cross-origin webview→127.0.0.1:<relayPort> boundary.
 func FilesCORS(next http.HandlerFunc) http.HandlerFunc {
 	return withCORS(next)
 }
 
-// FilesPreflight responds to a CORS preflight (OPTIONS) for /api/files/* on the
-// relay surface. Exported for the daemon's remote-files proxy routes; advertises
-// the same verb/header set as the local file routes (GET/HEAD/PUT/POST/DELETE,
-// If-Match), so the cross-origin webview can issue remote writes.
+// FilesPreflight responds to a CORS preflight (OPTIONS) for daemon-mounted
+// HTTP routes on the relay surface (chat history/export).
 func FilesPreflight(w http.ResponseWriter, r *http.Request) {
 	handleFilesPreflight(w, r)
 }

@@ -18,7 +18,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/files"
 	"github.com/scottkw/agenthub/internal/relay"
 	webfs "github.com/scottkw/agenthub/web"
 	qrcode "github.com/skip2/go-qrcode"
@@ -136,15 +135,6 @@ type WebServer struct {
 	// webserver→daemon circular import (see 93-RESEARCH Q1).
 	pluginSettingsProvider func() []byte
 
-	// filesHandler is the *files.Handler injected by the daemon via
-	// SetFilesHandler before ws.Start() runs. Stateless; the same instance
-	// is shared with the daemon-local mux (internal/daemon/api.go::NewAPI).
-	// Read at request time inside the route closure (Pitfall 2 — must NOT
-	// be captured at registration time, since setupRoutes runs BEFORE the
-	// daemon can wire it). Set once before Start(); not mutex-protected
-	// (mirrors sessionResolver pattern, server.go:82-83).
-	filesHandler *files.Handler
-
 	// staticAppFS is the embedded React frontend bundle served under /app/.
 	// Wired from the daemon at web-start sites (api.go AutoStartWebServer +
 	// handleWebServerStart) via SetStaticAppFS. Read at request time inside
@@ -158,7 +148,7 @@ type WebServer struct {
 	// split (IN-04) so each route does only the work it serves — the history
 	// route never runs Export() and the export route never marshals history.
 	// Set once before Start() via SetChatHistoryProvider / SetChatExportProvider;
-	// not mutex-protected (mirrors SetSessionResolver / SetFilesHandler).
+	// not mutex-protected (mirrors SetSessionResolver).
 	//
 	// Return contract (WR-03 — distinguish "no store" from "internal error"):
 	//   - err != nil           → internal failure on an existing session; the
@@ -222,21 +212,6 @@ func (ws *WebServer) SetPluginSettingsProvider(fn func() []byte) {
 	ws.pluginSettingsProvider = fn
 }
 
-// SetFilesHandler installs the *files.Handler used to serve the
-// /api/files/{list,stat,read} routes on the webserver mux. Must be
-// called before the first HTTPS request reaches /api/files/* — production
-// callers (AutoStartWebServer, handleWebServerStart) invoke this before
-// Start() to satisfy that contract; tests may invoke it after Start()
-// because the TLS handshake establishes happens-before synchronization
-// before any request handler reads ws.filesHandler. The handler must
-// already be constructed with its sandbox resolver closure (the daemon's
-// NewAPI does this — Phase 119 reuses a.filesHandler verbatim, no new
-// construction). Mirrors SetSessionResolver — single setter, no mutex,
-// set once.
-func (ws *WebServer) SetFilesHandler(h *files.Handler) {
-	ws.filesHandler = h
-}
-
 // SetAliasProviders wires the global AliasStore read/write callbacks into the
 // webserver so handleWSSRelay can look up and persist per-person aliases without
 // importing the daemon package (T-151-09 circular-import prevention). Must be
@@ -258,13 +233,13 @@ func (ws *WebServer) SetAliasProviders(
 
 // SetStaticAppFS installs the React frontend bundle fs.FS used to serve the
 // /app/ route. Phase 120-04 wires this from the daemon at both web-start
-// sites (mirrors SetFilesHandler). nil → /app/ returns 503; that is the
+// sites. nil → /app/ returns 503; that is the
 // expected state under `go build` (no wailsassets tag → assets_stub.go's
 // nil StaticAppFS). Production builds (`wails build` / `go build -tags
 // wailsassets`) get the real embed.FS.
 //
 // Single setter, set once before Start(). Not mutex-protected — mirrors
-// SetFilesHandler pattern.
+// SetSessionResolver pattern.
 func (ws *WebServer) SetStaticAppFS(appFS fs.FS) {
 	ws.staticAppFS = appFS
 }
@@ -373,7 +348,7 @@ func (ws *WebServer) SetRWGate(sessionID string, active bool) {
 
 // isRWGated reports whether sessionID has passed the public-write consent
 // gate. Read-only; uses the RLock path to avoid blocking concurrent
-// requireCapability/originAllowedForWrite calls against other sessions.
+// requireCapability calls against other sessions.
 func (ws *WebServer) isRWGated(sessionID string) bool {
 	ws.mu.RLock()
 	defer ws.mu.RUnlock()
@@ -915,53 +890,6 @@ func (ws *WebServer) setupRoutes() {
 	// Capability-gated like the read endpoint above.
 	mux.HandleFunc("GET /api/plugin-config/stream", ws.requireCapability(ws.handleStreamPluginConfig))
 
-	// Phase 119 / WEB-02..WEB-04: capability-gated read-only file API. The
-	// closure captures ws (not ws.filesHandler) so the handler instance is
-	// read at request time, AFTER the daemon has called SetFilesHandler.
-	// Pitfall 2 — registering ws.filesHandler.List directly would bind nil
-	// at setupRoutes() time. The same closure body is reused for all four
-	// routes via a small helper to avoid four near-identical literal
-	// blocks. Method-prefixed (GET/HEAD) per Go 1.22+ mux semantics — any
-	// other verb returns 405 automatically without registering an
-	// explicit handler (Pitfall 8 / WEB-02 SC#3). HEAD /api/files/read is
-	// registered explicitly even though Go 1.22's ServeMux dispatches HEAD
-	// to the GET handler when no HEAD-specific pattern is registered —
-	// explicit registration documents the FS-06 intent (HEAD must hit
-	// ServeContent for Content-Length without body) and locks the
-	// behavior against any future mux semantics change. The /list and
-	// /stat routes intentionally rely on the GET→HEAD auto-dispatch
-	// because their JSON responses do not need the explicit guard.
-	filesDispatch := func(op func(*files.Handler) http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			h := ws.filesHandler
-			if h == nil {
-				http.Error(w, "files handler not configured", http.StatusServiceUnavailable)
-				return
-			}
-			op(h)(w, r)
-		}
-	}
-	mux.HandleFunc("GET /api/files/list", ws.requireFilesRead(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.List })))
-	mux.HandleFunc("GET /api/files/stat", ws.requireFilesRead(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Stat })))
-	mux.HandleFunc("GET /api/files/read", ws.requireFilesRead(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Read })))
-	mux.HandleFunc("HEAD /api/files/read", ws.requireFilesRead(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Read })))
-
-	// Five write routes: requireFilesWrite (capability + HasPerm(files.write) +
-	// CSRF Origin check) wraps the same filesDispatch closure used for reads.
-	// Verb-prefixed for Go 1.22+ auto-405 on wrong verbs (WEB-02 / CAP-07).
-	// Verbs are frozen by the daemon socket side (internal/daemon/api.go:149-153)
-	// — the webserver tier adds only the requireFilesWrite gate (Phase 124).
-	mux.HandleFunc("PUT /api/files/write", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Write })))
-	// CR-02: HEAD on the write route lets probeWrite (useFilesCapability) reach
-	// the requireFilesWrite middleware so a 403-with-"files.write" is returned
-	// when the cap lacks the perm. Without this, Go's mux returns 405 before
-	// the middleware fires, making the probe fail-open to canWrite=true.
-	mux.HandleFunc("HEAD /api/files/write", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Write })))
-	mux.HandleFunc("POST /api/files/upload", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Upload })))
-	mux.HandleFunc("DELETE /api/files/delete", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Delete })))
-	mux.HandleFunc("POST /api/files/rename", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Rename })))
-	mux.HandleFunc("POST /api/files/mkdir", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Mkdir })))
-
 	// Phase 151-03 / PERSIST-01..02: capability-gated chat history and export.
 	// The {id} path wildcard causes requireCapability's path-ID check
 	// (capability_mw.go:57) to enforce claims.SID == {id}, so a cap for
@@ -1013,11 +941,10 @@ func (ws *WebServer) setupRoutes() {
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/",
 		assetsNoStore(http.FileServerFS(assetsFS))))
 
-	// Phase 120-04 — /app/ serves the React frontend (FileBrowserTab and the
-	// rest of the SPA) for remote/web-share viewers. The fs.FS is wired from
+	// Phase 120-04 — /app/ serves the React frontend SPA for remote/web-share viewers. The fs.FS is wired from
 	// the daemon at web-start time via SetStaticAppFS; the closure reads
 	// ws.staticAppFS at request time so a missing wiring surfaces as a 503
-	// instead of a nil-deref panic (mirrors filesHandler pattern). Public
+	// instead of a nil-deref panic. Public
 	// tier: no capability gate here — the React bundle is static client code,
 	// and any /api/ call it makes is independently gated.
 	//
@@ -1359,12 +1286,12 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	// ?readonly=1 to the URL.
 	//
 	// SEC-01: gate on the whole "write" token, NOT an exact-string match.
-	// When per-session file browsing is ON (D-04) the daemon mints the RO
-	// token as "read,files.read" — an exact `== "read"` check would treat
-	// that read-only viewer as read-write and let them inject to the PTY
-	// (and send raw MsgInput keystrokes). HasPerm uses whole-token semantics,
-	// so both "read" and "read,files.read" are read-only while "read,write"
-	// (and "read,write,files.read,files.write") are not.
+	// The daemon now mints only "read" / "read,write", but tokens minted
+	// before the file browser was removed may still carry legacy files perms
+	// (e.g. "read,files.read") — an exact `== "read"` check would treat that
+	// read-only viewer as read-write and let them inject to the PTY. HasPerm
+	// uses whole-token semantics, so both "read" and "read,files.read" are
+	// read-only while "read,write" is not.
 	claims, _ := capability.ClaimsFromContext(r.Context())
 	readonly := !capability.HasPerm(claims.Perms, "write")
 
