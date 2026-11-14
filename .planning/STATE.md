@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Plain macOS Terminal
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-11-14T21:55:33.894Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-11-14T22:17:04.770Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 1 execution started
-state_head: 758911c1a1e73d4e50a4f1324e02d0631accea79
+state_head: f5677026e930d0184d6e47210a8aed4b91b84234
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 0
   total_plans: 10
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 ## Current Position
 
 Phase: 1 (Plain macOS Terminal) — EXECUTING
-Plan: 4 of 10
+Plan: 5 of 10
 Status: Ready to execute
 Last activity: 2026-11-14 — Phase 1 execution started
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 1 P01 | 8 min | 3 tasks | 103 files |
 | Phase 01 P02 | 26 min | 3 tasks | 103 files |
 | Phase 01 P03 | 21 min | 3 tasks | 54 files |
+| Phase 01 P04 | 17 min | 3 tasks | 35 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,10 @@ Recent decisions affecting current work:
 - [Phase 01]: Kept FilesCORS/FilesPreflight/isAllowedFilesOrigin names (chat CORS), RemoteCapStore + /api/remote-files/caps routes + wrapRelayWithRemoteFiles (remote attach); only comments updated
 - [Phase 01]: isRWGated now has no production reader after originAllowedForWrite removal; SetRWGate still written by funnel-write handlers — flagged for later cleanup
 - [Phase 01]: wailsapp/mimetype stays in go.mod as // indirect (wails/v2 assetserver imports it)
+- [Phase 01]: 01-04: Every session spawns GetShellPath() with exactly -l via an unexported spawnCommand field; tests override with SetSpawnCommandForTest("/bin/cat", nil)
+- [Phase 01]: 01-04: CreateRequest drops cli/args; legacy keys are ignored by the plain json.Decoder (T-01-15, asserted by TestHandleCreateSession_LegacyBodyIgnored)
+- [Phase 01]: 01-04: Remaining non-test 'opencode' strings (app.go displayNameForCLI, internal/pty/detect.go) left for 01-06 / 01-05 which delete those symbols
+- [Phase 01]: 01-04: Tab and hubSessions seed keep cli: 'shell' until 01-07 removes SessionInfo.cli / Tab.cli
 
 ### Pending Todos
 
@@ -105,6 +110,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-14T21:55:33.867Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-11-14T22:17:04.726Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None

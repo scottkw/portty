@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User changes the terminal theme and toggles xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) in Settings, and open terminals pick up the change
   4. User chats on a session from the desktop app and from a browser web share, and both sides see the messages; nothing typed in chat (including `@session`) is ever written into the terminal
   5. On macOS the Go build, Go tests, Vitest, and lint all pass with no Windows/Linux sources, packaging, or CI jobs left; the daemon no longer serves a files API or files capability; the security fuzz harness still runs against relay and webserver
-**Plans**: 3/10 plans executed (sequential waves 1-10; shared hot files and TESTING.md force serial order)
+**Plans**: 4/10 plans executed (sequential waves 1-10; shared hot files and TESTING.md force serial order)
 
 Plans:
 **Wave 1**
@@ -47,7 +47,7 @@ Plans:
 - [x] 01-03-PLAN.md — Files API, files capability, browse/home-dir/filesWrite state removed; remote attach + chat CORS kept
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 01-04-PLAN.md — New sessions are login shells end to end (`$SHELL -l`, `new [dir]` CLI, UI-SPEC New Session modal); OpenCode/theme broadcast removed
+- [x] 01-04-PLAN.md — New sessions are login shells end to end (`$SHELL -l`, `new [dir]` CLI, UI-SPEC New Session modal); OpenCode/theme broadcast removed
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 01-05-PLAN.md — One shell resolver; agent-CLI detection and shell discovery removed; Settings → Paths = shell + tailscale
@@ -146,7 +146,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Plain macOS Terminal | 3/10 | In Progress | - |
+| 1. Plain macOS Terminal | 4/10 | In Progress | - |
 | 2. Tabs + Sidebar Navigation | 0/TBD | Not started | - |
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |

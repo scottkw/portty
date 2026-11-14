@@ -16,10 +16,10 @@
 
 ### Terminal
 
-- [ ] **TERM-01**: User can open a new local terminal session, which starts their login shell in a chosen (or last-used) directory
+- [x] **TERM-01**: User can open a new local terminal session, which starts their login shell in a chosen (or last-used) directory
 - [ ] **TERM-02**: Sessions keep running in the daemon when the GUI window is closed or the app restarts, and reopen with scrollback intact
 - [ ] **TERM-03**: User can run multiple sessions as tabs, and rename and close them
-- [ ] **TERM-04**: Themes and xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) keep working, controllable from Settings
+- [x] **TERM-04**: Themes and xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) keep working, controllable from Settings
 
 ### Navigation
 
@@ -52,7 +52,7 @@
 
 ### Strip-down
 
-- [ ] **STRP-01**: All agent-CLI code is removed: CLI detection and PATH discovery, agent picker, agent badges, per-agent args and theme broadcast, Antigravity, and agent working/waiting status detection
+- [x] **STRP-01**: All agent-CLI code is removed: CLI detection and PATH discovery, agent picker, agent badges, per-agent args and theme broadcast, Antigravity, and agent working/waiting status detection
 - [x] **STRP-02**: The file browser/editor (local and remote, GUI and web) is removed, including its daemon API and capability
 - [x] **STRP-03**: Windows and Linux code paths, packaging, and CI jobs are removed. Build, test, and lint pass on macOS.
 - [x] **STRP-04**: Tests for removed features are deleted, tests for kept features still pass, and the security fuzz harness still covers relay and webserver
@@ -95,10 +95,10 @@
 | BRND-04 | Phase 3 | Pending |
 | BRND-05 | Phase 3 | Pending |
 | BRND-06 | Phase 3 | Pending |
-| TERM-01 | Phase 1 | Pending |
+| TERM-01 | Phase 1 | Complete |
 | TERM-02 | Phase 1 | Pending |
 | TERM-03 | Phase 2 | Pending |
-| TERM-04 | Phase 1 | Pending |
+| TERM-04 | Phase 1 | Complete |
 | NAV-01 | Phase 2 | Pending |
 | NAV-02 | Phase 2 | Pending |
 | NAV-03 | Phase 2 | Pending |
@@ -116,7 +116,7 @@
 | UPD-02 | Phase 6 | Pending |
 | UPD-03 | Phase 6 | Pending |
 | UPD-04 | Phase 6 | Pending |
-| STRP-01 | Phase 1 | Pending |
+| STRP-01 | Phase 1 | Complete |
 | STRP-02 | Phase 1 | Complete |
 | STRP-03 | Phase 1 | Complete |
 | STRP-04 | Phase 1 | Complete |

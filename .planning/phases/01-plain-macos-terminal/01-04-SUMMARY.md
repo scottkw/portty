@@ -198,3 +198,7 @@ None.
 
 - 01-05 can delete `ResolveCLI` (no callers remain), `DiscoverShells`, `internal/pty/detect.go`/`shells.go`, `DetectCLIs`/`ListShells` and App.tsx `detectedCLIs` (now used only by SettingsTab).
 - `sessionStatuses` and its `internal/status` type are still on the engine. Nothing writes to them now (status.Watch is gone), so `ListSessions` always reports "running" for live sessions. Plan 01-06 owns that cleanup.
+
+## Self-Check: PASSED
+
+All modified files present, deleted files gone, task commits 5559ee45 / e26df137 / 410445d1 are ancestors of HEAD.
