@@ -36,15 +36,34 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 10 plans (sequential waves 1-10; shared hot files and TESTING.md force serial order)
 
 Plans:
+**Wave 1**
 - [ ] 01-01-PLAN.md — Windows/Linux strip: Go sources, packaging, CI on macOS, portable traceability check
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — File browser/editor UI removed from desktop and web share (incl. CodeMirror, e2e)
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 01-03-PLAN.md — Files API, files capability, browse/home-dir/filesWrite state removed; remote attach + chat CORS kept
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 01-04-PLAN.md — New sessions are login shells end to end (`$SHELL -l`, `new [dir]` CLI, UI-SPEC New Session modal); OpenCode/theme broadcast removed
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 01-05-PLAN.md — One shell resolver; agent-CLI detection and shell discovery removed; Settings → Paths = shell + tailscale
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 01-06-PLAN.md — Status model running/exited/errored (daemon-derived) on tabs, exit toast and Hub; pill group removed
+
+**Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 01-07-PLAN.md — Agent identity removed from every UI surface; one-time web-share warning for any session ("Keep sharing off")
+
+**Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 01-08-PLAN.md — Agent identity removed from daemon, webserver, peer and CLI wire; explicit webserver 404 contract
+
+**Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 01-09-PLAN.md — Chat @session inject bridge removed on both paths; relay/webserver fuzz targets added
+
+**Wave 10** *(blocked on Wave 9 completion)*
 - [ ] 01-10-PLAN.md — Bell/OSC 9 notifications, exit events for long-lived/relaunched sessions, Settings copy, full phase gate
 **UI hint**: yes
 
