@@ -159,7 +159,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /sessions/{id}/tail", a.handleGetSessionTailLines)
 	a.mux.HandleFunc("GET /sessions/{id}/styled-tail", a.handleGetSessionStyledTailLines)
 	a.mux.HandleFunc("GET /settings/cli-paths", a.handleGetCLIPaths)
-	a.mux.HandleFunc("GET /shells", a.handleListShells)
 	a.mux.HandleFunc("PATCH /settings/cli-paths/{name}", a.handleUpdateCLIPath)
 	a.mux.HandleFunc("GET /settings/start-minimized", a.handleGetStartMinimized)
 	a.mux.HandleFunc("PATCH /settings/start-minimized", a.handleSetStartMinimized)
@@ -835,30 +834,6 @@ func (a *API) handleGetCLIPaths(w http.ResponseWriter, r *http.Request) {
 		paths = map[string]string{}
 	}
 	writeJSON(w, http.StatusOK, paths)
-}
-
-// handleListShells returns the daemon's view of installed shells per
-// pty.DiscoverShells. Read-only; no engine state mutated.
-//
-// The response always serialises to `{"shells":[...]}` — never
-// `{"shells":null}` — because the slice is constructed via `make([]T, 0, n)`.
-// Argv is defensively copied per entry so callers cannot mutate
-// pty.knownShellSpecs via the response (T-100-09 in the plan's threat model).
-func (a *API) handleListShells(w http.ResponseWriter, r *http.Request) {
-	// IN-03: route through the engine wrapper (SessionEngine.DiscoverShells)
-	// rather than calling pty.DiscoverShells directly, so HTTP tests can
-	// substitute a fake engine and future engine-level caching applies.
-	discovered := a.engine.DiscoverShells()
-	out := make([]DetectedShell, 0, len(discovered))
-	for _, s := range discovered {
-		out = append(out, DetectedShell{
-			Name:        s.Name,
-			DisplayName: s.DisplayName,
-			Path:        s.Path,
-			Argv:        append([]string(nil), s.Argv...),
-		})
-	}
-	writeJSON(w, http.StatusOK, ShellsResponse{Shells: out})
 }
 
 func (a *API) handleUpdateCLIPath(w http.ResponseWriter, r *http.Request) {

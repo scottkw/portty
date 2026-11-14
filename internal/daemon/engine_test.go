@@ -209,25 +209,20 @@ func TestEngineListSessionsHostname(t *testing.T) {
 	}
 }
 
-func TestEngineResolveCLI(t *testing.T) {
+func TestEngineUpdateCLIPath(t *testing.T) {
 	e := NewSessionEngine()
 	// Isolate from real settings.json that NewSessionEngine may have loaded.
 	e.configDir = t.TempDir()
 	e.cliPaths = make(map[string]string)
 
-	// By default: returns name as-is.
-	got := e.ResolveCLI("claude")
-	if got != "claude" {
-		t.Errorf("ResolveCLI default: got %q, want %q", got, "claude")
+	if _, ok := e.GetCLIPaths()["tailscale"]; ok {
+		t.Fatal("tailscale override set on a fresh engine")
 	}
-
-	// After UpdateCLIPath: returns custom path.
-	if err := e.UpdateCLIPath("claude", "/bin/cat"); err != nil {
+	if err := e.UpdateCLIPath("tailscale", "/bin/cat"); err != nil {
 		t.Fatalf("UpdateCLIPath: %v", err)
 	}
-	got = e.ResolveCLI("claude")
-	if got != "/bin/cat" {
-		t.Errorf("ResolveCLI after update: got %q, want %q", got, "/bin/cat")
+	if got := e.GetCLIPaths()["tailscale"]; got != "/bin/cat" {
+		t.Errorf("GetCLIPaths()[tailscale] = %q, want /bin/cat", got)
 	}
 }
 
@@ -317,7 +312,7 @@ func hubReadUntil(t *testing.T, e *SessionEngine, id, marker string, timeout tim
 // ========================================================================
 
 // newShellTestEngine returns an engine wired to a spyBackend with the
-// mandatory settings isolation. Mirrors TestEngineResolveCLI's setup.
+// mandatory settings isolation. Mirrors TestEngineUpdateCLIPath's setup.
 func newShellTestEngine(t *testing.T) (*SessionEngine, *spyBackend) {
 	t.Helper()
 	spy := &spyBackend{}

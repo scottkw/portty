@@ -107,17 +107,10 @@ func settingsPath(dir string) string {
 
 // knownShells maps basenames of common shell interpreters. A stored CLI path
 // whose basename is a shell and whose key is NOT that shell is almost certainly
-// stale/wrong (e.g. "claude" → "/bin/sh") and should be discarded on load.
-//
-// Phase 100-02 (Pitfall 6 mitigation): pwsh/powershell + .exe forms added so
-// stale "claude → pwsh.exe" overrides are filtered on load. On Windows
-// filepath.Base("/path/to/pwsh.exe") yields "pwsh.exe" (not "pwsh"), so both
-// bare and .exe basenames must be present.
+// stale/wrong (e.g. "tailscale" → "/bin/sh") and should be discarded on load.
 var knownShells = map[string]bool{
 	"sh": true, "bash": true, "zsh": true, "fish": true,
 	"csh": true, "tcsh": true, "dash": true, "ksh": true,
-	"pwsh": true, "pwsh.exe": true,
-	"powershell": true, "powershell.exe": true,
 }
 
 // loadSettingsFromDisk reads settings.json and populates engine state.
@@ -746,26 +739,6 @@ func (e *SessionEngine) GetSessionWorkDir(id string) string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.sessionWorkDirs[id]
-}
-
-// ResolveCLI returns the executable path for the named CLI.
-// Checks custom overrides first, then returns the name as-is.
-func (e *SessionEngine) ResolveCLI(name string) string {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	if path, ok := e.cliPaths[name]; ok {
-		return path
-	}
-	return name
-}
-
-// DiscoverShells is a thin engine-mediated wrapper around pty.DiscoverShells.
-// IN-03 / PATTERNS.md line 508: route the GET /shells handler through the
-// engine so HTTP tests can DI a fake without coupling to the filesystem,
-// and so future engine-level caching or rate-limiting can be applied
-// without restructuring callers. The wrapper is currently a passthrough.
-func (e *SessionEngine) DiscoverShells() []pty.DetectedShell {
-	return pty.DiscoverShells()
 }
 
 // UpdateCLIPath stores a custom executable path for the named CLI.

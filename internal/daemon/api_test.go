@@ -1336,117 +1336,7 @@ func newLoopbackTLSListener(t *testing.T) *tls.Config {
 	return cfg
 }
 
-// --- Phase 100 Plan 04: GET /shells + shell-session lifecycle ---------------
-
-// TestHandleListShells_EmptyPATH (SHELL-04 wire format).
-// With PATH pointing at an empty temp dir AND $SHELL unset, DiscoverShells
-// must produce a non-nil empty slice, and the JSON wire body must be
-// `{"shells":[]}` — never `{"shells":null}`.
-func TestHandleListShells_EmptyPATH(t *testing.T) {
-	// Empty PATH so no known shell is discovered via exec.LookPath.
-	t.Setenv("PATH", t.TempDir())
-	// POSIX synthetic-default entry is keyed on $SHELL; empty $SHELL suppresses
-	// the synthetic "shell" entry per Plan 01 H4 contract
-	// (TestDiscoverShells_EmptySHELLEnv_NoSyntheticEntry).
-	t.Setenv("SHELL", "")
-
-	_, client, socketPath := testDaemon(t)
-
-	// Wire-format assertion: status + raw body shape.
-	status, body := rawGet(t, socketPath, "/shells")
-	if status != 200 {
-		t.Fatalf("GET /shells: want 200, got %d; body: %s", status, body)
-	}
-
-	// SHELL-04 must-have: empty discovery returns `"shells":[]`, not null.
-	if bytes.Contains(body, []byte(`"shells":null`)) {
-		t.Errorf("GET /shells body must not contain \"shells\":null when empty; got: %s", body)
-	}
-	if !bytes.Contains(body, []byte(`"shells":[]`)) {
-		t.Errorf("GET /shells body must contain \"shells\":[] when empty; got: %s", body)
-	}
-
-	var resp ShellsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("decode ShellsResponse: %v; body: %s", err, body)
-	}
-	if resp.Shells == nil {
-		t.Error("ShellsResponse.Shells must be non-nil (initialised empty slice), got nil")
-	}
-	if len(resp.Shells) != 0 {
-		t.Errorf("expected 0 shells with empty PATH+SHELL, got %d: %+v", len(resp.Shells), resp.Shells)
-	}
-
-	// Sanity: client.ListShells round-trips the same wire body.
-	shells, err := client.ListShells()
-	if err != nil {
-		t.Fatalf("client.ListShells: %v", err)
-	}
-	if shells == nil {
-		t.Error("client.ListShells() must return a non-nil slice, got nil")
-	}
-	if len(shells) != 0 {
-		t.Errorf("client.ListShells empty-PATH: want 0, got %d", len(shells))
-	}
-}
-
-// TestHandleListShells_PopulatedPATH (SHELL-04 wire format, dev-host smoke).
-// Uses the real host PATH; asserts at least one shell is discovered and each
-// entry has the required wire fields populated.
-func TestHandleListShells_PopulatedPATH(t *testing.T) {
-	_, client, socketPath := testDaemon(t)
-
-	status, body := rawGet(t, socketPath, "/shells")
-	if status != 200 {
-		t.Fatalf("GET /shells: want 200, got %d; body: %s", status, body)
-	}
-
-	var resp ShellsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("decode ShellsResponse: %v; body: %s", err, body)
-	}
-	if len(resp.Shells) < 1 {
-		t.Fatalf("expected at least one shell on dev host PATH, got 0; body: %s", body)
-	}
-
-	knownNames := map[string]bool{
-		"bash":       true,
-		"zsh":        true,
-		"pwsh":       true,
-		"powershell": true,
-		"shell":      true,
-	}
-	sawKnown := false
-	for i, s := range resp.Shells {
-		if s.Name == "" {
-			t.Errorf("Shells[%d].Name is empty", i)
-		}
-		if s.Path == "" {
-			t.Errorf("Shells[%d].Path is empty (name=%q)", i, s.Name)
-		}
-		if s.DisplayName == "" {
-			t.Errorf("Shells[%d].DisplayName is empty (name=%q)", i, s.Name)
-		}
-		if len(s.Argv) < 1 {
-			t.Errorf("Shells[%d].Argv must have len >= 1; got %v (name=%q)", i, s.Argv, s.Name)
-		}
-		if knownNames[s.Name] {
-			sawKnown = true
-		}
-	}
-	if !sawKnown {
-		t.Errorf("expected at least one shell in {bash,zsh,pwsh,powershell,shell}, got %+v", resp.Shells)
-	}
-
-	// Client-side round-trip parity: same count, same first entry.
-	clientShells, err := client.ListShells()
-	if err != nil {
-		t.Fatalf("client.ListShells: %v", err)
-	}
-	if len(clientShells) != len(resp.Shells) {
-		t.Errorf("client.ListShells len mismatch: client=%d, raw=%d", len(clientShells), len(resp.Shells))
-	}
-}
+// --- Phase 100 Plan 04: shell-session lifecycle ---------------------------
 
 // TestShellSessionLifecycle_StatusOnlyRunningOrStopped (SHELL-09 end-to-end).
 // Drives a full create→list-poll→kill cycle for a bash session and asserts
@@ -1548,12 +1438,6 @@ func TestShellSessionLifecycle_StatusOnlyRunningOrStopped(t *testing.T) {
 	}
 	if !terminated {
 		t.Errorf("session %s did not terminate (state=stopped or removed) within 2s of KillSession", id)
-	}
-
-	// Final SHELL-04 anchor: client.ListShells must still answer cleanly even
-	// after a session lifecycle (no engine state corruption).
-	if _, err := client.ListShells(); err != nil {
-		t.Errorf("client.ListShells after session lifecycle: %v", err)
 	}
 }
 

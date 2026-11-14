@@ -249,6 +249,11 @@ func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	}
 	e.loadSettingsFromDisk(dir)
 
+	// The leftover agent key ("claude") loads as inert data and must not
+	// disturb the Tailscale override.
+	if got := e.GetCLIPaths()["claude"]; got != "/usr/local/bin/claude" {
+		t.Errorf("legacy claude cliPaths key = %q, want it loaded unchanged", got)
+	}
 	if got := e.GetCLIPaths()["tailscale"]; got != "/opt/homebrew/bin/tailscale" {
 		t.Errorf("tailscale override = %q, want /opt/homebrew/bin/tailscale", got)
 	}

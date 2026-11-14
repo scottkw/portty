@@ -593,14 +593,6 @@ func TestKillSession(t *testing.T) {
 	}
 }
 
-func TestDetectCLIs(t *testing.T) {
-	app := testApp(t)
-	clis := app.DetectCLIs()
-	if clis == nil {
-		t.Fatal("DetectCLIs returned nil, want non-nil slice")
-	}
-}
-
 func TestUpdateCLIPath(t *testing.T) {
 	app := testApp(t)
 

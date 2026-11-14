@@ -167,7 +167,7 @@ func TestLoadSettingsDropsStaleShellPaths(t *testing.T) {
 	dir := t.TempDir()
 
 	// Write settings.json with stale shell paths (e.g. "claude" → "/bin/sh")
-	data := []byte(`{"cliPaths":{"claude":"/bin/sh","opencode":"/bin/sh","sh":"/bin/sh"},"startMinimized":true}`)
+	data := []byte(`{"cliPaths":{"claude":"/bin/sh","opencode":"/bin/sh","tailscale":"/bin/zsh","sh":"/bin/sh"},"startMinimized":true}`)
 	if err := os.WriteFile(filepath.Join(dir, "settings.json"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -185,6 +185,10 @@ func TestLoadSettingsDropsStaleShellPaths(t *testing.T) {
 	// opencode=/bin/sh should be dropped (basename "sh" ≠ "opencode")
 	if _, ok := e.cliPaths["opencode"]; ok {
 		t.Errorf("expected stale opencode=/bin/sh to be dropped, got %q", e.cliPaths["opencode"])
+	}
+	// tailscale=/bin/zsh should be dropped (a shell is never the tailscale binary)
+	if _, ok := e.cliPaths["tailscale"]; ok {
+		t.Errorf("expected stale tailscale=/bin/zsh to be dropped, got %q", e.cliPaths["tailscale"])
 	}
 	// sh=/bin/sh should be KEPT (basename "sh" == "sh")
 	if e.cliPaths["sh"] != "/bin/sh" {
