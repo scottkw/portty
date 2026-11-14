@@ -144,7 +144,6 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 		}
 		bar = statusbar.New(stdout, statusbar.Options{
 			SessionName: session.Name,
-			AgentType:   session.CLI,
 			Hostname:    session.Hostname,
 			CreatedAt:   createdAt,
 			Position:    pos,
@@ -154,7 +153,7 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 		defer bar.Stop()
 	} else {
 		// Non-TTY path: show one-shot banner on stderr (bar is suppressed).
-		printAttachBanner(os.Stderr, session.Name, session.CLI, session.Hostname)
+		printAttachBanner(os.Stderr, session.Name, session.Hostname)
 	}
 
 	// Put terminal in raw mode. Restore on every exit path.
@@ -279,7 +278,6 @@ func cmdAttachRemoteWithClient(hostname, sessionID, fqdn, baseURL string, httpCl
 		}
 		bar = statusbar.New(stdout, statusbar.Options{
 			SessionName: session.Name,
-			AgentType:   session.CLIType,
 			Hostname:    hostname,
 			CreatedAt:   time.Now(), // CLIRemoteSession has no CreatedAt
 			Position:    pos,
@@ -288,7 +286,7 @@ func cmdAttachRemoteWithClient(hostname, sessionID, fqdn, baseURL string, httpCl
 		bar.Start()
 		defer bar.Stop()
 	} else {
-		printAttachBanner(os.Stderr, session.Name, session.CLIType, hostname)
+		printAttachBanner(os.Stderr, session.Name, hostname)
 	}
 
 	// Put terminal in raw mode (same as local attach).
@@ -362,17 +360,14 @@ func buildUnknownHostError(hostname string, peers []tailnet.Peer) error {
 }
 
 // printAttachBanner writes the connection banner to w (typically os.Stderr).
-// It shows session name, CLI type, hostname, and detach key hint.
-func printAttachBanner(w io.Writer, name, cli, hostname string) {
+// It shows session name, hostname, and detach key hint.
+func printAttachBanner(w io.Writer, name, hostname string) {
 	displayName := name
 	if displayName == "" {
 		displayName = "unnamed"
 	}
 	fmt.Fprintf(w, "───────────────────────────────────\n")
 	fmt.Fprintf(w, " %s", displayName)
-	if cli != "" {
-		fmt.Fprintf(w, " │ %s", cli)
-	}
 	if hostname != "" {
 		fmt.Fprintf(w, " │ %s", hostname)
 	}

@@ -32,11 +32,11 @@ import (
 func TestSessionsMeta_NoJoinCodesInResponse(t *testing.T) {
 	ws, client := testServer(t)
 	ws.SetSigningKey(ssExtTestKey)
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == "sess-rb03" {
-			return "RB03 Session", "claude", "running", "host.ts.net"
+			return "RB03 Session", "running", "host.ts.net", true
 		}
-		return "", "", "", ""
+		return "", "", "", false
 	})
 	ws.EnableSession("sess-rb03")
 	// No join-code issuer is wired — RB-03 requires cap-free discovery
@@ -69,8 +69,8 @@ func TestSessionsMeta_NoJoinCodesInResponse(t *testing.T) {
 		t.Error("RB-03 violation: rw_join_code must not appear in cap-free meta response — codes are delivered out of band only")
 	}
 
-	// Assert the cap-free fields ARE present (RB-01 contract: id, name, cli_type, status, url).
-	for _, key := range []string{"id", "name", "cli_type", "status", "url"} {
+	// Assert the cap-free fields ARE present (RB-01 contract: id, name, status, url).
+	for _, key := range []string{"id", "name", "status", "url"} {
 		if _, ok := item[key]; !ok {
 			t.Errorf("expected cap-free field %q to be present in meta response, but it was absent", key)
 		}

@@ -418,6 +418,14 @@ func TestAPIListSessionsHostname(t *testing.T) {
 	if sessions[0].Hostname == "" {
 		t.Error("SessionInfo.Hostname is empty — want non-empty hostname")
 	}
+	// STRP-01: sessions no longer carry an agent/CLI identity on the wire.
+	var raw []map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Fatalf("decode raw sessions: %v", err)
+	}
+	if _, ok := raw[0]["cli"]; ok {
+		t.Errorf("GET /sessions JSON still has a \"cli\" key: %s", body)
+	}
 }
 
 func TestAutoStartWebServer_AlreadyRunning(t *testing.T) {
@@ -927,8 +935,8 @@ func TestHandleWebServe_ToggleOffClearsGrants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWebServer for test: %v", err)
 	}
-	ws.SetSessionResolver(func(sid string) (string, string, string, string) {
-		return "probe", "cat", "running", "localhost"
+	ws.SetSessionResolver(func(sid string) (string, string, string, bool) {
+		return "probe", "running", "localhost", true
 	})
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
@@ -994,8 +1002,8 @@ func TestOnExit_ClearsGrants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWebServer for test: %v", err)
 	}
-	ws.SetSessionResolver(func(sid string) (string, string, string, string) {
-		return "exit-test", "cat", "running", "localhost"
+	ws.SetSessionResolver(func(sid string) (string, string, string, bool) {
+		return "exit-test", "running", "localhost", true
 	})
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)

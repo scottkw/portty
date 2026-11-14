@@ -459,7 +459,6 @@ func (e *SessionEngine) ListSessions() []SessionInfo {
 
 		result = append(result, SessionInfo{
 			ID:          s.ID,
-			CLI:         s.CLI,
 			Name:        name,
 			State:       state,
 			Status:      sessionStatus,

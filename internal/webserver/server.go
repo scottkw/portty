@@ -52,11 +52,10 @@ type Config struct {
 // Broadcast join-code fields removed per CONTEXT.md D-10.
 // RB-03 restored: cap-free discovery — no credentials in this payload.
 type sessionMetaItem struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	CLIType string `json:"cli_type"`
-	Status  string `json:"status"`
-	URL     string `json:"url"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	URL    string `json:"url"`
 }
 
 // sessionListItem is the JSON shape returned by GET /api/sessions and GET /api/sessions/{id}/info.
@@ -68,7 +67,6 @@ type sessionMetaItem struct {
 type sessionListItem struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	CLIType  string `json:"cli_type"`
 	Status   string `json:"status"`
 	Hostname string `json:"hostname"`
 	Perms    string `json:"perms,omitempty"`
@@ -125,7 +123,7 @@ type WebServer struct {
 	joinCodes *capability.JoinCodeManager
 
 	// sessionResolver is set once before Start() and is not mutex-protected.
-	sessionResolver func(sessionID string) (name, cliType, status, hostname string)
+	sessionResolver func(sessionID string) (name, status, hostname string, ok bool)
 
 	// pluginSettingsProvider returns pre-marshaled JSON for the daemon's
 	// current plugin settings. Set once before Start() via
@@ -197,9 +195,9 @@ func NewWebServer(cfg Config, manager *relay.HubManager) (*WebServer, error) {
 }
 
 // SetSessionResolver sets the callback used by handleListSessions and
-// handleSessionInfo to resolve session metadata (name, CLI type, status,
-// hostname). Must be called before Start().
-func (ws *WebServer) SetSessionResolver(fn func(string) (string, string, string, string)) {
+// handleSessionInfo to resolve session metadata (name, status, hostname) and
+// whether the session exists (ok). Must be called before Start().
+func (ws *WebServer) SetSessionResolver(fn func(string) (string, string, string, bool)) {
 	ws.sessionResolver = fn
 }
 
@@ -855,7 +853,7 @@ func (ws *WebServer) setupRoutes() {
 	mux.HandleFunc("POST /join/exchange", ws.handleJoinExchange)
 
 	// GET /api/sessions/meta — open (no capability required). Returns shareable-session
-	// metadata (id, name, cli_type, status, url) for all web-enabled sessions to
+	// metadata (id, name, status, url) for all web-enabled sessions to
 	// tailnet-trusted callers. Never returns cap tokens, grants, or session content (RB-03).
 	//
 	// Trust model (WR-03 invariant):
@@ -1137,15 +1135,15 @@ func (ws *WebServer) handleListSessions(w http.ResponseWriter, r *http.Request) 
 	}
 	items := make([]sessionListItem, 0, 1)
 	if ws.IsSessionEnabled(claims.SID) {
-		name, cliType, st, hostname := "", "", "", ""
+		name, st, hostname := "", "", ""
 		if ws.sessionResolver != nil {
-			name, cliType, st, hostname = ws.sessionResolver(claims.SID)
+			name, st, hostname, _ = ws.sessionResolver(claims.SID)
 		}
 		if name == "" {
 			name = claims.SID
 		}
 		items = append(items, sessionListItem{
-			ID: claims.SID, Name: name, CLIType: cliType, Status: st, Hostname: hostname,
+			ID: claims.SID, Name: name, Status: st, Hostname: hostname,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1156,7 +1154,7 @@ func (ws *WebServer) handleListSessions(w http.ResponseWriter, r *http.Request) 
 // Returns metadata for all web-enabled sessions to tailnet-trusted callers.
 // Open — no capability required. Trust boundary: the webserver is bound to the
 // Tailscale IP (network-layer trust per resolved #86 decision). This endpoint
-// returns ONLY metadata (id, name, cli_type, status, url) — never cap tokens,
+// returns ONLY metadata (id, name, status, url) — never cap tokens,
 // grants, session content, or signing keys (RB-03 no-enumeration contract).
 // handleSessionsMeta handles GET /api/sessions/meta.
 // Returns cap-free metadata for all web-enabled sessions (RB-03 restored).
@@ -1166,20 +1164,19 @@ func (ws *WebServer) handleSessionsMeta(w http.ResponseWriter, r *http.Request) 
 	ids := ws.webEnabledSessions()
 	items := make([]sessionMetaItem, 0, len(ids))
 	for _, id := range ids {
-		name, cliType, st := "", "", ""
+		name, st := "", ""
 		if ws.sessionResolver != nil {
-			name, cliType, st, _ = ws.sessionResolver(id)
+			name, st, _, _ = ws.sessionResolver(id)
 		}
 		if name == "" {
 			name = id
 		}
 		sessionURL := fmt.Sprintf("%s/sessions/%s", ws.BaseURL(), id)
 		items = append(items, sessionMetaItem{
-			ID:      id,
-			Name:    name,
-			CLIType: cliType,
-			Status:  st,
-			URL:     sessionURL,
+			ID:     id,
+			Name:   name,
+			Status: st,
+			URL:    sessionURL,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1208,8 +1205,8 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	name, cliType, status, hostname := ws.sessionResolver(id)
-	if name == id && cliType == "" {
+	name, status, hostname, found := ws.sessionResolver(id)
+	if !found {
 		http.NotFound(w, r)
 		return
 	}
@@ -1217,7 +1214,6 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(sessionListItem{
 		ID:       id,
 		Name:     name,
-		CLIType:  cliType,
 		Status:   status,
 		Hostname: hostname,
 		Perms:    claims.Perms,

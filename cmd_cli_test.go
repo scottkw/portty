@@ -56,6 +56,9 @@ func TestCmdList_Empty(t *testing.T) {
 	if !strings.Contains(out, "ID") {
 		t.Errorf("expected header row with %q, got %q", "ID", out)
 	}
+	if strings.Contains(out, "AGENT") {
+		t.Errorf("header must not have an AGENT column, got %q", out)
+	}
 }
 
 // TestCmdList_WithSessions verifies that sessions appear in the list output.
@@ -203,8 +206,8 @@ func testSetupWithWebServer(t *testing.T) *daemon.DaemonClient {
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
-		return id, "", "", ""
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
+		return "", "", "", false
 	})
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)

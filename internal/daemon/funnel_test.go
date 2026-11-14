@@ -1066,8 +1066,8 @@ func TestIssueCapabilities_ClearGrantsRebindsPublicCode(t *testing.T) {
 	// probeGrant hits /api/sessions/{id}/info, which 404s (not 200) when no
 	// session resolver is set even for a live grant — supply one so a 200
 	// unambiguously means "grant active".
-	ws.SetSessionResolver(func(string) (string, string, string, string) {
-		return "clear-grants-rebind", "cat", "running", "localhost"
+	ws.SetSessionResolver(func(string) (string, string, string, bool) {
+		return "clear-grants-rebind", "running", "localhost", true
 	})
 
 	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"clear-grants-rebind","workDir":""}`)
@@ -1275,8 +1275,8 @@ func TestFunnelWriteGate_TerminalOnlyScope(t *testing.T) {
 	// probeGrant hits /api/sessions/{id}/info, which 404s (not 200) when no
 	// session resolver is set even for a live grant — supply one so a 200
 	// unambiguously means "grant active" (precedent: TestIssueCapabilities_ClearGrantsRebindsPublicCode).
-	ws.SetSessionResolver(func(string) (string, string, string, string) {
-		return "write-gate-scope", "cat", "running", "localhost"
+	ws.SetSessionResolver(func(string) (string, string, string, bool) {
+		return "write-gate-scope", "running", "localhost", true
 	})
 
 	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"write-gate-scope","workDir":""}`)
@@ -1393,8 +1393,8 @@ func TestDisableFunnelWrite_RevokesGrantOnly(t *testing.T) {
 	api, _, socketPath := testDaemon(t)
 	ws, fake := makeFunnelTestWebServer(t, api, "test.ts.net")
 	key := configureCapabilityStateForTest(t, api, ws)
-	ws.SetSessionResolver(func(string) (string, string, string, string) {
-		return "rw-disable-grant-only", "cat", "running", "localhost"
+	ws.SetSessionResolver(func(string) (string, string, string, bool) {
+		return "rw-disable-grant-only", "running", "localhost", true
 	})
 
 	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"rw-disable-grant-only","workDir":""}`)
@@ -1478,8 +1478,8 @@ func TestFunnelWriteTeardown_AllTriggers(t *testing.T) {
 		api, _, socketPath = testDaemon(t)
 		ws, fake = makeFunnelTestWebServer(t, api, "test.ts.net")
 		key = configureCapabilityStateForTest(t, api, ws)
-		ws.SetSessionResolver(func(string) (string, string, string, string) {
-			return "write-teardown", "cat", "running", "localhost"
+		ws.SetSessionResolver(func(string) (string, string, string, bool) {
+			return "write-teardown", "running", "localhost", true
 		})
 
 		_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"write-teardown","workDir":""}`)

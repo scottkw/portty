@@ -3,7 +3,6 @@ package daemon
 // SessionInfo is the JSON-serialisable representation of a session.
 type SessionInfo struct {
 	ID           string `json:"id"`
-	CLI          string `json:"cli"`
 	Name         string `json:"name"`
 	State        string `json:"state"`
 	Status       string `json:"status"` // running/exited/errored, derived from State + ExitCode

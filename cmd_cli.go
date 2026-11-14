@@ -152,13 +152,13 @@ func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	}
 
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "HOST\tID\tNAME\tAGENT\tSTATUS")
+	fmt.Fprintln(w, "HOST\tID\tNAME\tSTATUS")
 	for _, s := range sessions {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", "(local)", s.ID, s.Name, s.CLI, s.State)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", "(local)", s.ID, s.Name, s.State)
 	}
 	for _, group := range remoteGroups {
 		for _, s := range group.Sessions {
-			fmt.Fprintf(w, "%s\t%s:%s\t%s\t%s\t%s\n", s.Hostname, s.Hostname, s.ID, s.Name, s.CLIType, s.Status)
+			fmt.Fprintf(w, "%s\t%s:%s\t%s\t%s\n", s.Hostname, s.Hostname, s.ID, s.Name, s.Status)
 		}
 	}
 	w.Flush()

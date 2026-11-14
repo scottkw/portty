@@ -199,11 +199,11 @@ func TestWebServerSessionListAPIWithResolver(t *testing.T) {
 	ws.SetSigningKey(ssExtTestKey)
 	baseURL := ws.BaseURL()
 
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == "sess1" {
-			return "My Session", "claude", "running", "test-host.local"
+			return "My Session", "running", "test-host.local", true
 		}
-		return "", "", "", ""
+		return "", "", "", false
 	})
 	ws.EnableSession("sess1")
 	token := capForSession(t, ws, "sess1")
@@ -217,10 +217,9 @@ func TestWebServerSessionListAPIWithResolver(t *testing.T) {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 	var items []struct {
-		ID      string `json:"id"`
-		Name    string `json:"name"`
-		CLIType string `json:"cli_type"`
-		Status  string `json:"status"`
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
 		t.Fatalf("decode sessions: %v", err)
@@ -230,9 +229,6 @@ func TestWebServerSessionListAPIWithResolver(t *testing.T) {
 	}
 	if items[0].Name != "My Session" {
 		t.Errorf("expected name 'My Session', got %q", items[0].Name)
-	}
-	if items[0].CLIType != "claude" {
-		t.Errorf("expected cli_type 'claude', got %q", items[0].CLIType)
 	}
 	if items[0].Status != "running" {
 		t.Errorf("expected status 'running', got %q", items[0].Status)
@@ -611,11 +607,11 @@ func TestSessionListIncludesHostname(t *testing.T) {
 	ws.SetSigningKey(ssExtTestKey)
 	baseURL := ws.BaseURL()
 
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == "sess1" {
-			return "My Session", "claude", "running", "test-host.local"
+			return "My Session", "running", "test-host.local", true
 		}
-		return "", "", "", ""
+		return "", "", "", false
 	})
 	ws.EnableSession("sess1")
 	token := capForSession(t, ws, "sess1")
@@ -651,11 +647,11 @@ func TestSessionInfoEndpoint(t *testing.T) {
 	ws.SetSigningKey(ssExtTestKey)
 	baseURL := ws.BaseURL()
 
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == "sess1" {
-			return "My Session", "claude", "running", "test-host.local"
+			return "My Session", "running", "test-host.local", true
 		}
-		return id, "", "", ""
+		return "", "", "", false
 	})
 	ws.EnableSession("sess1")
 	token := capForSession(t, ws, "sess1")
@@ -671,7 +667,6 @@ func TestSessionInfoEndpoint(t *testing.T) {
 	var item struct {
 		ID       string `json:"id"`
 		Name     string `json:"name"`
-		CLIType  string `json:"cli_type"`
 		Status   string `json:"status"`
 		Hostname string `json:"hostname"`
 	}
@@ -683,9 +678,6 @@ func TestSessionInfoEndpoint(t *testing.T) {
 	}
 	if item.Name != "My Session" {
 		t.Errorf("expected name 'My Session', got %q", item.Name)
-	}
-	if item.CLIType != "claude" {
-		t.Errorf("expected cli_type 'claude', got %q", item.CLIType)
 	}
 	if item.Status != "running" {
 		t.Errorf("expected status 'running', got %q", item.Status)
@@ -704,8 +696,8 @@ func TestSessionInfoEndpoint_NotEnabled(t *testing.T) {
 	ws.SetSigningKey(ssExtTestKey)
 	baseURL := ws.BaseURL()
 
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
-		return "test", "claude", "running", "testhost"
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
+		return "test", "running", "testhost", true
 	})
 	// Mint a cap for sess1, but do NOT call EnableSession. The AddGrant is
 	// still performed so the grant-list check passes — the rejection comes
@@ -724,18 +716,18 @@ func TestSessionInfoEndpoint_NotEnabled(t *testing.T) {
 }
 
 // TestSessionInfoEndpoint_NotFound verifies that GET /api/sessions/{id}/info
-// returns 404 for a session whose resolver returns defaults (i.e. the
+// returns 404 for a session the resolver reports as not found (i.e. the
 // session ID isn't registered with the engine), even when the session is
 // web-enabled and has a valid cap. The 404 comes from handleSessionInfo's
-// resolver-defaults check, not from requireCapability.
+// resolver found flag, not from requireCapability.
 func TestSessionInfoEndpoint_NotFound(t *testing.T) {
 	ws, client := testServer(t)
 	ws.SetSigningKey(ssExtTestKey)
 	baseURL := ws.BaseURL()
 
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
-		// Return default values — session not found in resolver
-		return id, "", "", ""
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
+		// Session not found in resolver
+		return "", "", "", false
 	})
 	ws.EnableSession("nonexistent")
 	token := capForSession(t, ws, "nonexistent")
@@ -747,6 +739,56 @@ func TestSessionInfoEndpoint_NotFound(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404 for nonexistent session, got %d", resp.StatusCode)
+	}
+}
+
+// TestSessionInfo_UnknownID404KnownID200 guards the resolver's explicit found
+// flag (it replaced the empty-cliType "not found" sentinel): an unknown id
+// returns 404, a known id returns 200, and no session JSON carries cli_type.
+func TestSessionInfo_UnknownID404KnownID200(t *testing.T) {
+	ws, client := testServer(t)
+	ws.SetSigningKey(ssExtTestKey)
+	baseURL := ws.BaseURL()
+
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
+		if id == "known" {
+			return "Known Session", "running", "known-host", true
+		}
+		return "", "", "", false
+	})
+	ws.EnableSession("known")
+	ws.EnableSession("unknown")
+	knownCap := capForSession(t, ws, "known")
+	unknownCap := capForSession(t, ws, "unknown")
+
+	get := func(path string) (int, map[string]any, string) {
+		t.Helper()
+		resp, err := client.Get(baseURL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		var item map[string]any
+		_ = json.Unmarshal(body, &item)
+		return resp.StatusCode, item, string(body)
+	}
+
+	if code, _, _ := get("/api/sessions/unknown/info?cap=" + unknownCap); code != http.StatusNotFound {
+		t.Errorf("unknown id: expected 404, got %d", code)
+	}
+
+	code, item, body := get("/api/sessions/known/info?cap=" + knownCap)
+	if code != http.StatusOK {
+		t.Fatalf("known id: expected 200, got %d", code)
+	}
+	if item["name"] != "Known Session" || item["status"] != "running" || item["hostname"] != "known-host" {
+		t.Errorf("known id: unexpected body %s", body)
+	}
+	for _, path := range []string{"/api/sessions/known/info?cap=" + knownCap, "/api/sessions?cap=" + knownCap, "/api/sessions/meta"} {
+		if _, _, body := get(path); strings.Contains(body, "cli_type") {
+			t.Errorf("%s: response still carries cli_type: %s", path, body)
+		}
 	}
 }
 

@@ -271,11 +271,11 @@ func TestCapability_RevokedGrantReturns403(t *testing.T) {
 func TestCapability_ValidCapReturnsSession(t *testing.T) {
 	ws, client := testServer(t)
 	ws.SetSigningKey(capTestKey)
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == "sess-ok" {
-			return "OK Session", "claude", "running", "host-1"
+			return "OK Session", "running", "host-1", true
 		}
-		return id, "", "", ""
+		return "", "", "", false
 	})
 	ws.EnableSession("sess-ok")
 	// Enable an extra session so a broken implementation that enumerates all
@@ -330,11 +330,11 @@ func TestEndToEnd_CapabilityFlow(t *testing.T) {
 
 	sid := "e2e-sess"
 	ws.EnableSession(sid)
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == sid {
-			return "E2E Session", "claude", "running", "host-e2e"
+			return "E2E Session", "running", "host-e2e", true
 		}
-		return id, "", "", ""
+		return "", "", "", false
 	})
 
 	// Issue a read-only cap and a read,write cap, both bound to sid.

@@ -124,8 +124,8 @@ func testAppWithDirectWebServer(t *testing.T, tlsCfg *tls.Config) (*App, func(se
 		if err != nil {
 			return fmt.Errorf("NewWebServer: %w", err)
 		}
-		ws.SetSessionResolver(func(id string) (string, string, string, string) {
-			return id, "", "", ""
+		ws.SetSessionResolver(func(id string) (string, string, string, bool) {
+			return "", "", "", false
 		})
 		if err := ws.Start(); err != nil {
 			return fmt.Errorf("ws.Start: %w", err)

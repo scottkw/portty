@@ -475,13 +475,13 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	if err != nil {
 		return err
 	}
-	ws.SetSessionResolver(func(sessionID string) (name, cliType, status, hostname string) {
+	ws.SetSessionResolver(func(sessionID string) (name, status, hostname string, ok bool) {
 		for _, s := range a.engine.ListSessions() {
 			if s.ID == sessionID {
-				return s.Name, s.CLI, s.Status, s.Hostname
+				return s.Name, s.Status, s.Hostname, true
 			}
 		}
-		return sessionID, "", "", ""
+		return "", "", "", false
 	})
 	// Phase 93 PLUG-04: provide the daemon's current plugin settings as
 	// pre-marshaled JSON to the webserver's /api/plugin-config handler.
@@ -1158,13 +1158,13 @@ func (a *API) handleWebServerStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set session resolver so the web server can look up session metadata.
-	ws.SetSessionResolver(func(sessionID string) (name, cliType, status, hostname string) {
+	ws.SetSessionResolver(func(sessionID string) (name, status, hostname string, ok bool) {
 		for _, s := range a.engine.ListSessions() {
 			if s.ID == sessionID {
-				return s.Name, s.CLI, s.Status, s.Hostname
+				return s.Name, s.Status, s.Hostname, true
 			}
 		}
-		return sessionID, "", "", ""
+		return "", "", "", false
 	})
 
 	// Phase 93 PLUG-04: provide the daemon's current plugin settings as

@@ -35,7 +35,6 @@ const (
 // Options configures the status bar content and placement.
 type Options struct {
 	SessionName  string
-	AgentType    string
 	Hostname     string
 	CreatedAt    time.Time // session creation time for elapsed display
 	Position     Position  // Bottom (default) or Top
@@ -192,7 +191,6 @@ func (b *Bar) format(viewerCount int, connState string, cols int) string {
 
 	parts := []string{
 		sanitize(b.opts.SessionName),
-		sanitize(b.opts.AgentType),
 		sanitize(b.opts.Hostname),
 		`Ctrl-\ to detach`,
 	}

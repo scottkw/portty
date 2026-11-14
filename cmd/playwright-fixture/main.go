@@ -63,10 +63,9 @@ import (
 )
 
 const (
-	sessionID    = "playwright-test-session"
-	sessionName  = "Playwright Test Session"
-	sessionAgent = "claude"
-	sessionHost  = "fixture-host"
+	sessionID   = "playwright-test-session"
+	sessionName = "Playwright Test Session"
+	sessionHost = "fixture-host"
 )
 
 // fixedTestKey is a 32-byte deterministic HMAC signing key for the fixture.
@@ -121,11 +120,11 @@ func main() {
 	// stub case.
 	ws.SetStaticAppFS(staticAppFixture())
 	ws.EnableSession(sessionID)
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == sessionID {
-			return sessionName, sessionAgent, "running", sessionHost
+			return sessionName, "running", sessionHost, true
 		}
-		return id, "", "", ""
+		return "", "", "", false
 	})
 
 	// 4. Plugin settings: atomic.Value holding pre-marshaled JSON. Default
@@ -317,9 +316,9 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		_ = enc.Encode(map[string]any{
-			"subscriberCount": subCount,
+			"subscriberCount":   subCount,
 			"chatAppendFnWired": fnWired,
-			"hubFound": ok,
+			"hubFound":          ok,
 		})
 	})
 	adminSrv := &http.Server{

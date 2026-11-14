@@ -9,7 +9,7 @@ package webserver_test
 // The handler (handleSessionsMeta) does NOT exist yet; these tests are
 // intentionally RED until Plan 130-03 creates the handler and registers the
 // route in setupRoutes(). They encode:
-//   - RB-01: returns web-enabled sessions as metadata (id, name, cli_type, status, url)
+//   - RB-01: returns web-enabled sessions as metadata (id, name, status, url)
 //   - RB-03: response contains NO cap, grant, content, or signing-key fields
 
 import (
@@ -21,17 +21,17 @@ import (
 
 // TestSessionsMeta_ReturnsWebEnabledSessions verifies that GET /api/sessions/meta
 // returns 200 + a JSON array with one item per web-enabled session, each with
-// id, name, cli_type, status, and url fields populated by the sessionResolver.
+// id, name, status, and url fields populated by the sessionResolver.
 func TestSessionsMeta_ReturnsWebEnabledSessions(t *testing.T) {
 	ws, client := testServer(t)
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		switch id {
 		case "sess-a":
-			return "Session Alpha", "claude", "running", "host-a.ts.net"
+			return "Session Alpha", "running", "host-a.ts.net", true
 		case "sess-b":
-			return "Session Beta", "codex", "idle", "host-b.ts.net"
+			return "Session Beta", "idle", "host-b.ts.net", true
 		}
-		return "", "", "", ""
+		return "", "", "", false
 	})
 	ws.EnableSession("sess-a")
 	ws.EnableSession("sess-b")
@@ -65,9 +65,6 @@ func TestSessionsMeta_ReturnsWebEnabledSessions(t *testing.T) {
 	if a["name"] != "Session Alpha" {
 		t.Errorf("expected name='Session Alpha', got %q", a["name"])
 	}
-	if a["cli_type"] != "claude" {
-		t.Errorf("expected cli_type=claude, got %q", a["cli_type"])
-	}
 	if a["status"] != "running" {
 		t.Errorf("expected status=running, got %q", a["status"])
 	}
@@ -81,9 +78,6 @@ func TestSessionsMeta_ReturnsWebEnabledSessions(t *testing.T) {
 	}
 	if b["name"] != "Session Beta" {
 		t.Errorf("expected name='Session Beta', got %q", b["name"])
-	}
-	if b["cli_type"] != "codex" {
-		t.Errorf("expected cli_type=codex, got %q", b["cli_type"])
 	}
 	if b["status"] != "idle" {
 		t.Errorf("expected status=idle, got %q", b["status"])
@@ -149,19 +143,19 @@ func TestSessionsMeta_EmptyWhenNoneEnabled(t *testing.T) {
 
 // TestSessionsMeta_NoCapInResponse encodes the RB-03 no-enumeration security
 // guarantee: the /api/sessions/meta response must contain ONLY the allowed
-// metadata fields {id, name, cli_type, status, url}. It MUST NOT contain any
+// metadata fields {id, name, status, url}. It MUST NOT contain any
 // cap, token, grant, grants, content, or signing-key field.
 //
 // The test decodes each item into map[string]any and asserts the key set
-// equals exactly {id, name, cli_type, status, url}.
+// equals exactly {id, name, status, url}.
 func TestSessionsMeta_NoCapInResponse(t *testing.T) {
 	ws, client := testServer(t)
 	ws.SetSigningKey(ssExtTestKey) // signing key is present (simulate production state)
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == "secure-sess" {
-			return "Secure Session", "claude", "running", "host.ts.net"
+			return "Secure Session", "running", "host.ts.net", true
 		}
-		return "", "", "", ""
+		return "", "", "", false
 	})
 	ws.EnableSession("secure-sess")
 
@@ -188,11 +182,10 @@ func TestSessionsMeta_NoCapInResponse(t *testing.T) {
 	// RB-03: assert the EXACT allowed key set — any extra key is a violation.
 	// Cap-free discovery restored (CONTEXT.md D-10): no join codes, no credentials.
 	allowed := map[string]bool{
-		"id":       true,
-		"name":     true,
-		"cli_type": true,
-		"status":   true,
-		"url":      true,
+		"id":     true,
+		"name":   true,
+		"status": true,
+		"url":    true,
 	}
 	for k := range item {
 		if !allowed[k] {
