@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Plain macOS Terminal
 status: executing
-stopped_at: Completed 01-06-PLAN.md
-last_updated: "2026-11-14T22:43:04.928Z"
+stopped_at: Completed 01-07-PLAN.md
+last_updated: "2026-11-14T22:52:34.226Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 1 execution started
-state_head: 9582873444d6cea367aa6145dd1297ada3e4c6a6
+state_head: 39af68128f5f7035df895ca15093efce8aa2104d
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 10
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 ## Current Position
 
 Phase: 1 (Plain macOS Terminal) — EXECUTING
-Plan: 7 of 10
+Plan: 8 of 10
 Status: Ready to execute
 Last activity: 2026-11-14 — Phase 1 execution started
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P04 | 17 min | 3 tasks | 35 files |
 | Phase 01 P05 | 9 min | 3 tasks | 32 files |
 | Phase 01 P06 | 14m | 2 tasks | 40 files |
+| Phase 01 P07 | 15m | 2 tasks | 40 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,8 @@ Recent decisions affecting current work:
 - [Phase 01]: Status is derived from process state only: running / exited (code 0 or killed) / errored (non-zero); the TS normalizer maps any other value to running
 - [Phase 01]: GroupCounts drops the waiting field; Hub attention means errored only
 - [Phase 01]: KillSession emits session:status exited (killed sessions read as exited)
+- [Phase 01]: 01-07: Frontend reads no cli/cliType; session names fall back to 'shell'; web-share warning gated on enabled && !warned for every session
+- [Phase 01]: 01-07: Deleted all agent CSS palettes plus the consumerless .hub-card__chip--agent and .hub-card__badge rules
 
 ### Pending Todos
 
@@ -119,6 +122,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-14T22:43:04.898Z
-Stopped at: Completed 01-06-PLAN.md
+Last session: 2026-11-14T22:52:34.194Z
+Stopped at: Completed 01-07-PLAN.md
 Resume file: None
