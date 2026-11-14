@@ -326,14 +326,13 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
     // Trigger banner
     const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
     await flushSync(() => { shareToggle!.click() })
-    // Find the Cancel button and click it
+    // Find the "Keep sharing off" button and click it
     const cancelBtn = Array.from(c.querySelectorAll('button')).find(
-      (btn) => btn.textContent?.trim() === 'Cancel'
+      (btn) => btn.textContent?.trim() === 'Keep sharing off'
     ) as HTMLElement | null
-    if (cancelBtn) {
-      await flushSync(() => { cancelBtn.click() })
-      expect(onCancel).toHaveBeenCalled()
-    }
+    expect(cancelBtn).not.toBeNull()
+    await flushSync(() => { cancelBtn!.click() })
+    expect(onCancel).toHaveBeenCalled()
     // ToggleWebServing should NOT have been called
     expect(mockedToggleWebServing).not.toHaveBeenCalled()
   })

@@ -135,7 +135,6 @@ const MIGRATED_SURFACE_SELECTORS = [
  * below tells you exactly which selector to consider.
  */
 const D03_FENCE_SELECTOR_SUBSTRINGS = [
-  '.tab__agent-badge--', // per-agent semantic identifier
   '.tab-status-bar__state--', // WEB ON/OFF/NOT-RUNNING status; text label is primary
 ]
 

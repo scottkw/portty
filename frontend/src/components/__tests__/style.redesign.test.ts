@@ -185,9 +185,9 @@ describe('Phase 141-07: comp type scale tokens applied', () => {
 
 // ─── D-03 colorblind fences — MUST remain unchanged ──────────────────────────
 
-describe('Phase 141-07: D-03 colorblind-safe fences — agent-badge + status-state', () => {
-  it('.tab__agent-badge--claude is still present (D-03 fence — per-agent semantic hex)', () => {
-    expect(cssRaw).toContain('.tab__agent-badge--claude')
+describe('Phase 141-07: D-03 colorblind-safe fences — status-state', () => {
+  it('agent-badge palette is gone (01-07 STRP-01 — no agent identity)', () => {
+    expect(cssRaw).not.toContain('.tab__agent-badge')
   })
 
   it('.tab-status-bar__state--on is still present (D-03 fence — tmux state color)', () => {

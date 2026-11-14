@@ -1689,40 +1689,6 @@ textarea {
   border-radius: 2px;
 }
 
-/*
- * Phase 101-02 (SHELL-06 GUI half) — per-tab agent badge.
- * 8px dot rendered between the status dot and the tab name. Decorative
- * (aria-hidden); the agent type is communicated textually via the tab-name
- * tooltip. Default color (muted #9aa5ce) applies for unknown CLIs.
- *
- * Per-CLI colors mirror the TUI dark-mode badge palette (UI-SPEC §Color);
- * shells (bash/zsh/pwsh/powershell/system-default) all collapse to
- * .--shell (#89ddff) because the user needs to know "this is a shell",
- * not which specific shell.
- */
-.tab__agent-badge {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 4px;
-  flex-shrink: 0;
-  background: #9aa5ce;
-}
-.tab__agent-badge--claude   { background: #7aa2f7; }
-.tab__agent-badge--opencode { background: #9ece6a; }
-.tab__agent-badge--codex    { background: #bb9af7; }
-.tab__agent-badge--gemini   { background: #2ac3de; }
-.tab__agent-badge--cursor   { background: #e0af68; }
-.tab__agent-badge--aider    { background: #f7768e; }
-.tab__agent-badge--shell    { background: #89ddff; }
-/* agy — orange #ff9e64. Contrast of the chip TEXT against its rendered surface
-   --hub-surface-elevated (#1c1e28 dark / #ececf0 light): dark 8.16:1 AA PASS;
-   light 1.73:1 FAIL (same gap as all existing agents — the chip text is the cli
-   name; color is reinforcement only). The earlier 8.72:1/2.03:1 figures measured
-   against the wrong reference (pure black/white), corrected in Phase 149 WR-02. */
-.tab__agent-badge--agy      { background: #ff9e64; }
-
 /* Phase 98 PRG-02 — per-tab progress underline.
    Uses transform: scaleX(0..1) instead of width for GPU compositor (Pitfall #4).
    Color matches .tab--active border-bottom (TokyoNight accent #7aa2f7).
@@ -3732,22 +3698,6 @@ textarea {
   transition: border-color 100ms ease, background 100ms ease;
 }
 
-/* --- Session-type (agent/CLI) left spine ---------------------------------
-   Colors the card's left border by the agent type, matching the per-CLI
-   .tab__agent-badge--* dot on the tab (single source: lib/agentBadge.ts).
-   COLORBLIND-SAFE: reinforcement only — the agent is also shown as the
-   `{cli}` text chip in the card header; the spine is a secondary identity cue.
-   Hex values are authoritative — verify at source, not by eye (user is colorblind). */
-.hub-card[data-agent="claude"]   { border-left: 3px solid #7aa2f7; } /* claude   — periwinkle */
-.hub-card[data-agent="opencode"] { border-left: 3px solid #9ece6a; } /* opencode — green */
-.hub-card[data-agent="codex"]    { border-left: 3px solid #bb9af7; } /* codex    — purple */
-.hub-card[data-agent="gemini"]   { border-left: 3px solid #2ac3de; } /* gemini   — cyan */
-.hub-card[data-agent="cursor"]   { border-left: 3px solid #e0af68; } /* cursor   — gold */
-.hub-card[data-agent="aider"]    { border-left: 3px solid #f7768e; } /* aider    — red/pink */
-.hub-card[data-agent="shell"]    { border-left: 3px solid #89ddff; } /* shell    — light blue */
-.hub-card[data-agent="unknown"]  { border-left: 3px solid #9aa5ce; } /* unknown  — muted (matches tab fallback) */
-.hub-card[data-agent="agy"]      { border-left: 3px solid #ff9e64; } /* agy — orange */
-
 .hub-card:hover {
   border-color: var(--hub-border-hover);
   background: var(--hub-surface-elevated);
@@ -3813,7 +3763,7 @@ textarea {
 }
 
 /* ============================================================
-   Phase 172 — Hub card consolidated chip row (agent · origin · exposure)
+   Phase 172 — Hub card consolidated chip row (origin · exposure)
    Consolidates the previous three inconsistent metadata treatments (status
    icon+text, `/bin/zsh` outlined pill, `Local` colored text, `INTERNET` filled
    pill on its own row) into ONE consistent chip row with tighter vertical
@@ -3823,9 +3773,7 @@ textarea {
    Status (D-03) is NOT chipified — it stays the primary top-line signal above
    this row (.hub-card__row1, unchanged). All new rules resolve through
    --hub-* tokens so they are correct in both dark (:root) and light
-   ([data-ui-theme="light"]) themes without a per-theme override — the agent
-   chip tint hexes below are the sole intentional exception (mirrors the
-   pre-existing .hub-card__badge palette, which also has no light override).
+   ([data-ui-theme="light"]) themes without a per-theme override.
    ============================================================ */
 
 .hub-card__chiprow {
@@ -3839,7 +3787,7 @@ textarea {
 /* Base quiet chip — rounded-rect 7px (NOT --hub-radius-pill; the load-bearing
    shape distinction from the pill/notch exposure badges, Sketch 001 D-07 pin).
    COLORBLIND-SAFE: each chip's icon shape + text label are the primary
-   carriers; any color (agent tint) is reinforcement only. */
+   carriers. */
 .hub-card__chip {
   display: inline-flex;
   align-items: center;
@@ -3859,28 +3807,9 @@ textarea {
   flex-shrink: 0;
 }
 
-.hub-card__chip--agent {
-  font-family: var(--hub-font-mono);
-}
-
-/* Session-type colored chip tint (migrated from .hub-card__badge, D-01): the
-   card's data-agent tints the agent chip text + border so the type reads as a
-   colored chip, matching the left spine + tab dot. COLORBLIND-SAFE: chip text
-   is the cli name; color is reinforcement only. Same hex values as the legacy
-   .hub-card__badge palette below (kept in place — still consumed by
-   HubModal.tsx's session picker chip). */
-.hub-card[data-agent="claude"]   .hub-card__chip--agent { color: #7aa2f7; border-color: rgba(122, 162, 247, 0.45); }
-.hub-card[data-agent="opencode"] .hub-card__chip--agent { color: #9ece6a; border-color: rgba(158, 206, 106, 0.45); }
-.hub-card[data-agent="codex"]    .hub-card__chip--agent { color: #bb9af7; border-color: rgba(187, 154, 247, 0.45); }
-.hub-card[data-agent="gemini"]   .hub-card__chip--agent { color: #2ac3de; border-color: rgba(42, 195, 222, 0.45); }
-.hub-card[data-agent="cursor"]   .hub-card__chip--agent { color: #e0af68; border-color: rgba(224, 175, 104, 0.45); }
-.hub-card[data-agent="aider"]    .hub-card__chip--agent { color: #f7768e; border-color: rgba(247, 118, 142, 0.45); }
-.hub-card[data-agent="shell"]    .hub-card__chip--agent { color: #89ddff; border-color: rgba(137, 221, 255, 0.45); }
-.hub-card[data-agent="agy"]      .hub-card__chip--agent { color: #ff9e64; border-color: rgba(255, 158, 100, 0.45); }
-
 /* Origin chip — D-01/Sketch pin: fully muted, NO green-local/blue-remote color
    coding (the sketch rejected color-coded origin). Color reinforcement now
-   lives only on the filled exposure badges + the agent chip tint above.
+   lives only on the filled exposure badges.
    COLORBLIND-SAFE: icon shape (ComputerDesktopIcon vs GlobeAltIcon) + text
    label carry the meaning; this chip carries no color signal at all. */
 .hub-card__chip--origin {
@@ -3891,7 +3820,7 @@ textarea {
 /* Exposure cluster — the only FILLED chips in the row (INTERNET / FULL ACCESS,
    .hub-internet-badge / .hub-fullaccess-badge below, reused verbatim). Variant
    B (Sketch 001 winner) forces the cluster onto its own right-aligned line
-   below `agent · origin` so a long remote hostname or both badges coexisting
+   below the origin chip so a long remote hostname or both badges coexisting
    never wrap unpredictably or clip. */
 .hub-card__exposure {
   display: inline-flex;
@@ -4008,31 +3937,6 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-/* --- Agent CLI badge (reuses tab__agent-badge hex palette) --- */
-.hub-card__badge {
-  font-size: 11px;
-  font-family: var(--hub-font-mono);
-  padding: 1px 7px;
-  border-radius: var(--hub-radius-pill);
-  background: var(--hub-surface-elevated);
-  color: var(--hub-text-muted);
-  border: 1px solid var(--hub-border);
-  flex-shrink: 0;
-  margin-left: auto; /* push the session-type chip to the right edge of row1 */
-}
-
-/* Session-type colored chip (#3): the card's data-agent tints the chip text +
-   border so the type reads as a colored chip, matching the left spine + tab dot.
-   COLORBLIND-SAFE: the chip text is the cli name; color is reinforcement only. */
-.hub-card[data-agent="claude"]   .hub-card__badge { color: #7aa2f7; border-color: rgba(122, 162, 247, 0.45); }
-.hub-card[data-agent="opencode"] .hub-card__badge { color: #9ece6a; border-color: rgba(158, 206, 106, 0.45); }
-.hub-card[data-agent="codex"]    .hub-card__badge { color: #bb9af7; border-color: rgba(187, 154, 247, 0.45); }
-.hub-card[data-agent="gemini"]   .hub-card__badge { color: #2ac3de; border-color: rgba(42, 195, 222, 0.45); }
-.hub-card[data-agent="cursor"]   .hub-card__badge { color: #e0af68; border-color: rgba(224, 175, 104, 0.45); }
-.hub-card[data-agent="aider"]    .hub-card__badge { color: #f7768e; border-color: rgba(247, 118, 142, 0.45); }
-.hub-card[data-agent="shell"]    .hub-card__badge { color: #89ddff; border-color: rgba(137, 221, 255, 0.45); }
-.hub-card[data-agent="agy"]      .hub-card__badge { color: #ff9e64; border-color: rgba(255, 158, 100, 0.45); }
 
 /* --- Connection indicator chip (CARD-03) --- */
 /* Phase 138: remote card connection state — Connected (join code exchanged) vs Available.

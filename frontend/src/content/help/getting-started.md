@@ -1,14 +1,14 @@
 ## Getting Started
 
-AgentHub launches AI coding CLIs — Claude Code, OpenCode, Codex, Gemini CLI, and others — in tabbed terminal sessions. Sessions persist across app restarts via a background daemon, so you can close and reopen the window without losing your work.
+AgentHub runs shell sessions in terminal tabs. Sessions persist across app restarts via a background daemon, so you can close and reopen the window without losing your work.
 
 ### Creating a Session
 
-Click the **+ New Session** button in the Hub toolbar to open the session creation modal. Choose an agent (Claude Code, OpenCode, Codex, Gemini CLI, or a raw shell), select a working directory, and optionally pass extra arguments to the agent. The session opens in a new terminal tab.
+Click the **+ New Session** button in the Hub toolbar to open the session creation modal. Pick a working directory and the session starts a shell there, in a new terminal tab.
 
 ### Running Shell Sessions
 
-In addition to AI coding CLIs, AgentHub supports plain shell sessions (bash, zsh, or your configured default). Choose **Shell** from the agent picker. The shell binary can be changed in **Settings → Paths**. Shell sessions auto-close when the shell exits naturally.
+Every session is a plain shell session. Shell sessions auto-close when the shell exits naturally.
 
 ### Switching Between Sessions
 
