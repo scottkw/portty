@@ -27,13 +27,15 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Goal**: The app is a plain macOS terminal: new sessions run the user's login shell, no agent-CLI, file-browser, or Windows/Linux code remains, and every kept feature still works
 **Mode:** mvp
 **Depends on**: Nothing (first phase)
-**Requirements**: STRP-01, STRP-02, STRP-03, STRP-04, TERM-01, TERM-02, TERM-04, CHAT-01
+**Requirements**: STRP-01, STRP-02, STRP-03, STRP-04, TERM-01, TERM-02, TERM-04, TERM-05, NET-01, CHAT-01
 **Success Criteria** (what must be TRUE):
-  1. User opens a new session, picks a directory (defaulting to the last-used one), and gets their login shell there; no agent picker, agent badges, agent working/waiting status, or file browser/editor appears in the desktop app or the web share view
+  1. User opens a new session, picks a directory (defaulting to the last-used one), and gets `/bin/zsh -l` there, with no shell choice anywhere and no Settings → Paths section; no agent picker, agent badges, agent working/waiting status, or file browser/editor appears in the desktop app or the web share view
   2. User quits and relaunches the app (or closes and reopens the window) and every running session is still there with its scrollback
   3. User changes the terminal theme and toggles xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) in Settings, and open terminals pick up the change
   4. User chats on a session from the desktop app and from a browser web share, and both sides see the messages; nothing typed in chat (including `@session`) is ever written into the terminal
   5. On macOS the Go build, Go tests, Vitest, and lint all pass with no Windows/Linux sources, packaging, or CI jobs left; the daemon no longer serves a files API or files capability; the security fuzz harness still runs against relay and webserver
+  6. When a shell exits, its tab closes immediately, with no status dot, exit countdown, toast or banner, including for shells that exit hours later
+  7. With Tailscale disconnected, a banner says remote access and sharing are off, and the Share and remote controls are disabled. Reconnecting clears the banner without a restart. Portty never installs or configures Tailscale
 **Plans**: 9/10 plans executed (sequential waves 1-10; shared hot files and TESTING.md force serial order)
 
 Plans:
