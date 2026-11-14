@@ -22,14 +22,13 @@ type SessionInfo struct {
 	FunnelWriteActive bool `json:"funnelWriteActive"`
 }
 
-// CreateRequest is the request body for POST /sessions.
+// CreateRequest is the request body for POST /sessions. Legacy "cli" and
+// "args" keys from older clients are ignored: every session is a login shell.
 type CreateRequest struct {
-	CLI     string   `json:"cli"`
-	Name    string   `json:"name"`
-	WorkDir string   `json:"workDir"`
-	Args    []string `json:"args,omitempty"`
-	Cols    int      `json:"cols,omitempty"`
-	Rows    int      `json:"rows,omitempty"`
+	Name    string `json:"name"`
+	WorkDir string `json:"workDir"`
+	Cols    int    `json:"cols,omitempty"`
+	Rows    int    `json:"rows,omitempty"`
 }
 
 // CreateResponse is the response body for POST /sessions.

@@ -126,19 +126,16 @@ describe('SHELL-10: Single Shell row in NewSessionModal', () => {
     expect(container.textContent).not.toContain('Loading shells')
   })
 
-  // Assertion 5: Clicking the row then confirming calls onConfirm with bare 'shell'.
-  it('clicking the row then confirming calls onConfirm with bare "shell" (no prefix)', () => {
+  // Assertion 5: Clicking the row then confirming calls onConfirm with only the directory.
+  it('clicking the row then confirming calls onConfirm with only the directory', () => {
     const onConfirm = vi.fn()
     ;({ container, root } = renderModal({ clis: [], onConfirm }))
     const shellBtn = container.querySelector('.new-session-modal__agent-btn--shell') as HTMLButtonElement
     flushSync(() => shellBtn.click())
     const createBtn = container.querySelector('.new-session-modal__btn--create') as HTMLButtonElement
     flushSync(() => createBtn.click())
-    expect(onConfirm).toHaveBeenCalledWith('shell', expect.any(String), [])
-    // Confirm: NOT prefixed with 'shell:' or any other prefix.
-    const firstArg = onConfirm.mock.calls[0][0] as string
-    expect(firstArg).toBe('shell')
-    expect(firstArg.startsWith('shell:')).toBe(false)
+    expect(onConfirm).toHaveBeenCalledWith(expect.any(String))
+    expect(onConfirm.mock.calls[0]).toHaveLength(1)
   })
 
   // Assertion 6: Existing AI CLI rows are unchanged.

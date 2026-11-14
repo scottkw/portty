@@ -46,6 +46,7 @@ func testApp(t *testing.T) *App {
 
 	// Start an in-process daemon API for tests (no real subprocess).
 	engine := daemon.NewSessionEngine()
+	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := daemon.NewAPI(engine)
 
 	seq := testSockSeq.Add(1)
@@ -90,6 +91,7 @@ func testAppWithDirectWebServer(t *testing.T, tlsCfg *tls.Config) (*App, func(se
 	}
 
 	engine := daemon.NewSessionEngine()
+	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := daemon.NewAPI(engine)
 
 	seq := testSockSeq.Add(1)
@@ -157,6 +159,7 @@ func testAppWithAPI(t *testing.T) (*App, *daemon.API, *daemon.SessionEngine) {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	}
 	engine := daemon.NewSessionEngine()
+	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := daemon.NewAPI(engine)
 	seq := testSockSeq.Add(1)
 	socketPath := fmt.Sprintf("/tmp/aht%d_%d.sock", os.Getpid(), seq)
@@ -232,7 +235,7 @@ func TestListSessionsEmpty(t *testing.T) {
 
 func TestCreateSession(t *testing.T) {
 	app := testApp(t)
-	id, err := app.CreateSession("cat", "test-tab", "", nil, 0, 0)
+	id, err := app.CreateSession("test-tab", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession returned error: %v", err)
 	}
@@ -266,7 +269,7 @@ func TestListSessions_PropagatesWorkDir(t *testing.T) {
 	}
 
 	app := testApp(t)
-	id, err := app.CreateSession("cat", "home-session", home, nil, 0, 0)
+	id, err := app.CreateSession("home-session", home, 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -355,7 +358,7 @@ func TestListSessions_PropagatesFunnelActive(t *testing.T) {
 	api.SetWebServerForTest(ws)
 
 	// Create a session to work with.
-	id, err := app.CreateSession("cat", "funnel-propagation-session", "", nil, 0, 0)
+	id, err := app.CreateSession("funnel-propagation-session", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -487,7 +490,7 @@ func TestListSessions_PropagatesFunnelWriteActive(t *testing.T) {
 	t.Cleanup(func() { _ = ws.Stop() })
 	api.SetWebServerForTest(ws)
 
-	id, err := app.CreateSession("cat", "funnel-write-propagation-session", "", nil, 0, 0)
+	id, err := app.CreateSession("funnel-write-propagation-session", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -550,7 +553,7 @@ func TestListSessions_PropagatesFunnelWriteActive(t *testing.T) {
 
 func TestRenameSession(t *testing.T) {
 	app := testApp(t)
-	id, err := app.CreateSession("cat", "original", "", nil, 0, 0)
+	id, err := app.CreateSession("original", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -570,7 +573,7 @@ func TestRenameSession(t *testing.T) {
 
 func TestKillSession(t *testing.T) {
 	app := testApp(t)
-	id, err := app.CreateSession("cat", "kill-me", "", nil, 0, 0)
+	id, err := app.CreateSession("kill-me", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -604,24 +607,6 @@ func TestUpdateCLIPath(t *testing.T) {
 	// /bin/cat is a guaranteed path on macOS/Linux.
 	if err := app.UpdateCLIPath("claude", "/bin/cat"); err != nil {
 		t.Fatalf("UpdateCLIPath: %v", err)
-	}
-
-	// Now create a session with "claude" — it should resolve to /bin/cat.
-	id, err := app.CreateSession("claude", "custom-path-tab", "", nil, 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession with custom path: %v", err)
-	}
-
-	sessions := app.ListSessions()
-	var found SessionInfo
-	for _, s := range sessions {
-		if s.ID == id {
-			found = s
-			break
-		}
-	}
-	if found.ID == "" {
-		t.Fatal("session not found in ListSessions after CreateSession")
 	}
 }
 
@@ -765,7 +750,7 @@ func TestHealthPollerStops(t *testing.T) {
 func TestGetSessionStatus(t *testing.T) {
 	app := testApp(t)
 
-	id, err := app.CreateSession("cat", "status-test-tab", "", nil, 0, 0)
+	id, err := app.CreateSession("status-test-tab", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -786,11 +771,11 @@ func TestGetSessionStatus(t *testing.T) {
 func TestStatusMap(t *testing.T) {
 	app := testApp(t)
 
-	id1, err := app.CreateSession("cat", "tab-1", "", nil, 0, 0)
+	id1, err := app.CreateSession("tab-1", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession tab-1: %v", err)
 	}
-	id2, err := app.CreateSession("cat", "tab-2", "", nil, 0, 0)
+	id2, err := app.CreateSession("tab-2", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession tab-2: %v", err)
 	}
@@ -845,7 +830,7 @@ func TestNilClientGetRelayPort(t *testing.T) {
 // when the daemon client is nil.
 func TestNilClientCreateSession(t *testing.T) {
 	app := testAppNoDaemon(t)
-	_, err := app.CreateSession("cat", "tab", "", nil, 0, 0)
+	_, err := app.CreateSession("tab", "", 0, 0)
 	if err == nil {
 		t.Error("expected CreateSession to return error with nil client")
 	}
@@ -893,7 +878,7 @@ func TestNilClientGetRemoteSessions(t *testing.T) {
 func TestPollSessionStatus_ImmediateFirstCall(t *testing.T) {
 	app := testApp(t)
 
-	id, err := app.CreateSession("cat", "poll-test", "", nil, 0, 0)
+	id, err := app.CreateSession("poll-test", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

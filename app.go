@@ -353,16 +353,16 @@ func (a *App) QuitAll() {
 
 // --- Wails-bound methods ---
 
-// CreateSession spawns a new CLI session and returns its ID.
-// args are passed to the CLI process; pass nil if no extra arguments are needed.
+// CreateSession spawns a new login-shell session and returns its ID.
+// Empty workDir starts in the home directory.
 // cols and rows specify the initial PTY dimensions; pass 0 for defaults (80x24).
 // Creates the session through the daemon client, then polls for status updates
 // and emits Wails events (replaces the onStatus callback used in earlier phases).
-func (a *App) CreateSession(cli, name, workDir string, args []string, cols, rows int) (string, error) {
+func (a *App) CreateSession(name, workDir string, cols, rows int) (string, error) {
 	if a.client == nil {
 		return "", fmt.Errorf("daemon not connected")
 	}
-	id, err := a.client.CreateSession(cli, name, workDir, args, cols, rows)
+	id, err := a.client.CreateSession(name, workDir, cols, rows)
 	if err != nil {
 		return "", err
 	}

@@ -29,7 +29,7 @@ export interface NewSessionModalProps {
    * is rendered in the collapsed single-row design. Pending removal (SHELL-10).
    */
   shellsLoading?: boolean
-  onConfirm: (cli: string, workDir: string, args: string[]) => void
+  onConfirm: (workDir: string) => void
   onClose: () => void
 }
 
@@ -104,7 +104,7 @@ export function NewSessionModal({
     setCreating(true)
     if (isShellSelected) {
       // SHELL-10: Agent id is already bare 'shell' — pass directly.
-      onConfirm('shell', selectedDir, [])
+      onConfirm(selectedDir)
       return
     }
     if (argsText.trim()) {
@@ -112,8 +112,7 @@ export function NewSessionModal({
     } else {
       localStorage.removeItem(ARGS_KEY(selectedAgent))
     }
-    const args = argsText.trim().split(/\s+/).filter(Boolean)
-    onConfirm(selectedAgent, selectedDir, args)
+    onConfirm(selectedDir)
   }
 
   return (

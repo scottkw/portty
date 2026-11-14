@@ -24,8 +24,7 @@ func usage() {
 Run with no arguments to launch the desktop GUI.
 
 Commands:
-  new <agent> <path> [-- <extra-args>...]     Create a new terminal session
-  new shell [<path>]                          Create a new raw shell session
+  new [<path>]                                Create a new login-shell session (default: home directory)
   list [--json] [--local]                     List local and remote sessions
   kill <id>                                   Kill a session
   rename <id> <name>                          Rename a session
@@ -53,69 +52,34 @@ Run 'agenthub <command> --help' for command-specific flags.
 `)
 }
 
-// cmdNew creates a new session. On success it writes the session UUID to out.
-// extraArgs are forwarded to the agent process (tokens after "--" on the command line).
-func cmdNew(client *daemon.DaemonClient, args []string, extraArgs []string, out io.Writer) error {
-	if len(args) < 2 {
-		return fmt.Errorf("usage: agenthub new <agent> <path>")
-	}
-	agent, workDir := args[0], args[1]
-	name := filepath.Base(workDir)
-	id, err := client.CreateSession(agent, name, workDir, extraArgs, 0, 0)
-	if err != nil {
-		return fmt.Errorf("agenthub new: %w", err)
-	}
-	fmt.Fprintln(out, id)
-	return nil
-}
-
-// cmdNewShell creates a new raw shell session (Phase 101 SHELL-02).
+// cmdNew creates a new login-shell session and writes its UUID to out.
 //
-// Argv shape:
+//	agenthub new [<path>]
 //
-//		agenthub new shell [<path>]
+// <path> is optional; if omitted, workDir is "" and the daemon resolves it to
+// the home directory. The shell binary comes from Settings shellPath.
 //
-//	  - `<path>` is optional; if omitted, workDir is "" and the daemon resolves to $HOME.
-//	  - The daemon resolves the spawned shell binary from the Settings-stored
-//	    shellPath (engine.go:500-530, GetShellPath/SetShellPath at 670-705).
-//	  - `extraArgs` (the `--` tail) is intentionally NOT forwarded to shells
-//	    (per Phase 100 Anti-Pattern A6); a non-fatal stderr warning is emitted instead.
-//
-// Phase 108 PARITY-CLI-01: The --shell=bash|zsh|pwsh|powershell flag was
-// removed in Phase 108 (hard removal, no deprecation period). The daemon
-// resolves the shell binary via Settings shellPath (engine.go:500-530), so the
-// per-shell CLI override is redundant. Passing --shell=anything now produces
-// the Go flag package's default `flag provided but not defined: -shell`
-// stderr and a non-zero exit.
-//
-// Locked stderr error strings (remaining after Phase 108):
-//   - extra args after --:   `agenthub new shell: extra arguments are not forwarded to shell sessions; ignoring [...]`
-//   - daemon unreachable:    `agenthub new shell: daemon unreachable: <err>`
-func cmdNewShell(client *daemon.DaemonClient, args []string, extraArgs []string, out io.Writer) error {
-	fs := flag.NewFlagSet("new shell", flag.ContinueOnError)
+// Locked stderr error string: `agenthub new: daemon unreachable: <err>`
+func cmdNew(client *daemon.DaemonClient, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // we emit our own error copy
 	if err := fs.Parse(args); err != nil {
-		fmt.Fprintf(os.Stderr, "agenthub new shell: %v\n", err)
+		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
 		return err
 	}
-	const cli = "shell"
 	workDir := ""
-	positionals := fs.Args()
-	if len(positionals) > 0 {
+	if positionals := fs.Args(); len(positionals) > 0 {
 		workDir = positionals[0]
 	}
-	if len(extraArgs) > 0 {
-		fmt.Fprintf(os.Stderr, "agenthub new shell: extra arguments are not forwarded to shell sessions; ignoring %v\n", extraArgs)
-	}
-	// Session name mirrors cmdNew: basename of workDir, or the cli name when workDir is empty
-	// (daemon resolves "" → $HOME, but the CLI doesn't know $HOME at this layer).
-	name := cli
+	// Name is the basename of workDir, or "shell" when workDir is empty
+	// (the daemon resolves "" to $HOME; the CLI doesn't know $HOME at this layer).
+	name := "shell"
 	if workDir != "" {
 		name = filepath.Base(workDir)
 	}
-	id, err := client.CreateSession(cli, name, workDir, nil, 0, 0)
+	id, err := client.CreateSession(name, workDir, 0, 0)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "agenthub new shell: daemon unreachable: %v\n", err)
+		fmt.Fprintf(os.Stderr, "agenthub new: daemon unreachable: %v\n", err)
 		return err
 	}
 	fmt.Fprintln(out, id)

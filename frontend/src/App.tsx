@@ -777,8 +777,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
   }, [])
 
-  const createTab = useCallback(async (cliName: string, workDir: string, args: string[]) => {
-    const defaultName = `${cliName} ${tabCounter}`
+  const createTab = useCallback(async (workDir: string) => {
+    const defaultName = `shell ${tabCounter}`
     setTabCounter((n) => n + 1)
 
     // Estimate initial PTY dimensions from the terminal container.
@@ -792,12 +792,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
 
     try {
-      const sessionId = await CreateSession(cliName, defaultName, workDir, args, cols, rows)
+      const sessionId = await CreateSession(defaultName, workDir, cols, rows)
       const tab: Tab = {
         id: sessionId,
         name: defaultName,
         sessionId,
-        cli: cliName,
+        cli: 'shell',
       }
       setTabs((prev) => [...prev, tab])
       // Phase 168 UX-01: when stayOnHubAfterCreate is ON, skip the
@@ -820,7 +820,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         ...prev,
         {
           id: sessionId,
-          cli: cliName,
+          cli: 'shell',
           name: defaultName,
           state: 'running',
           status: 'running',
@@ -1786,9 +1786,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           clis={detectedCLIs}
           shells={detectedShells}
           shellsLoading={shellsLoading}
-          onConfirm={(cli, workDir, args) => {
+          onConfirm={(workDir) => {
             setShowNewSessionModal(false)
-            void createTab(cli, workDir, args)
+            void createTab(workDir)
           }}
           onClose={() => setShowNewSessionModal(false)}
         />

@@ -47,11 +47,11 @@ func TestHideWindowSessionsAlive(t *testing.T) {
 	app := testApp(t)
 
 	// Create two sessions using the always-available "cat" binary.
-	_, err := app.CreateSession("cat", "tab-1", "", nil, 0, 0)
+	_, err := app.CreateSession("tab-1", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession tab-1: %v", err)
 	}
-	_, err = app.CreateSession("cat", "tab-2", "", nil, 0, 0)
+	_, err = app.CreateSession("tab-2", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession tab-2: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestBeforeCloseEmitsEvent(t *testing.T) {
 	}
 
 	// --- 2. Sessions survive beforeClose (no hidden kill side-effects) ---
-	_, err := app.CreateSession("cat", "tab-emit-1", "", nil, 0, 0)
+	_, err := app.CreateSession("tab-emit-1", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

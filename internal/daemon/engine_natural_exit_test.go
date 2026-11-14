@@ -18,18 +18,18 @@ import (
 // A process that exits non-zero (here /usr/bin/false → 1) must surface its real
 // exit code via both the onExit callback and ListSessions.ExitCode.
 func TestCreateSession_NaturalExit_CapturesNonZeroExitCode(t *testing.T) {
-	if _, err := exec.LookPath("false"); err != nil {
+	falsePath, err := exec.LookPath("false")
+	if err != nil {
 		t.Skip("false binary not available")
 	}
 	e := NewSessionEngine()
+	e.SetSpawnCommandForTest(falsePath, nil) // exits 1
 	done := make(chan int, 1)
 	id, err := e.CreateSession(
 		context.Background(),
-		"false", // exits 1; not a shell, so SHELL-05 argv substitution does not apply
 		"exit-nonzero",
 		"",
-		nil, 0, 0,
-		nil,
+		0, 0,
 		func(_ string, code int) { done <- code },
 	)
 	if err != nil {

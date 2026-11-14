@@ -300,13 +300,16 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
   })
 })
 
-// ARGS-02: Args threading from modal to CreateSession
-describe('ARGS-02: args threading', () => {
-  it('onConfirm passes args to createTab', () => {
-    expect(raw).toContain('createTab(cli, workDir, args)')
+// TERM-01: the modal passes only the directory; sessions are always the login shell
+describe('TERM-01: createTab threading', () => {
+  it('onConfirm passes only the directory to createTab', () => {
+    expect(raw).toContain('createTab(workDir)')
   })
-  it('createTab passes args to CreateSession', () => {
-    expect(raw).toContain('CreateSession(cliName, defaultName, workDir, args, cols, rows)')
+  it('createTab calls CreateSession without cli or args', () => {
+    expect(raw).toContain('CreateSession(defaultName, workDir, cols, rows)')
+  })
+  it('default tab name is shell {n}', () => {
+    expect(raw).toContain('const defaultName = `shell ${tabCounter}`')
   })
 })
 

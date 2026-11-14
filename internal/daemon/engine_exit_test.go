@@ -94,7 +94,7 @@ func TestExitEvent_AutoCloseSession_Persistence(t *testing.T) {
 // Uses the spy backend: Read returns EOF immediately, so hub.Done() fires quickly.
 func TestExitEvent_ExitWatcher_TransitionsToStopped(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 
 	var (
@@ -112,7 +112,7 @@ func TestExitEvent_ExitWatcher_TransitionsToStopped(t *testing.T) {
 		close(called)
 	}
 
-	id, err := e.CreateSession(context.Background(), "cat", "exit-test", "", nil, 80, 24, nil, onExit)
+	id, err := e.CreateSession(context.Background(), "exit-test", "", 80, 24, onExit)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -161,10 +161,10 @@ func TestExitEvent_ExitWatcher_TransitionsToStopped(t *testing.T) {
 // does not cause a panic when the exit watcher fires.
 func TestExitEvent_ExitWatcher_NilOnExitNoIsPanic(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 
-	id, err := e.CreateSession(context.Background(), "cat", "nil-exit-test", "", nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "nil-exit-test", "", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -188,11 +188,11 @@ func TestExitEvent_ExitWatcher_NilOnExitNoIsPanic(t *testing.T) {
 // and leaves ExitCode nil for running sessions.
 func TestExitEvent_ListSessions_ExitCodePopulatedForStopped(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 
 	// Create a session and manually transition it to stopped state.
-	id, err := e.CreateSession(context.Background(), "cat", "stopped-session", "", nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "stopped-session", "", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

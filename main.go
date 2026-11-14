@@ -131,32 +131,19 @@ func checkForUpdatesCallback(_ *menu.CallbackData) {
 	}
 }
 
-// splitDashDash partitions a command-line args slice at the first "--" element.
-// Returns (before, nil) if "--" is not present.
-// Returns (before, after) where after may be empty if "--" is the last element.
-func splitDashDash(args []string) (before, after []string) {
-	for i, a := range args {
-		if a == "--" {
-			return args[:i], args[i+1:]
-		}
-	}
-	return args, nil
-}
-
 func runCLI(args []string) {
-	before, extraArgs := splitDashDash(args)
-	if len(before) == 0 {
+	if len(args) == 0 {
 		usage()
 		return
 	}
-	cmd := before[0]
+	cmd := args[0]
 
 	// Daemon sub-command: run daemon mode without EnsureDaemon, or manage service lifecycle.
 	// daemon status needs a running daemon — fall through to EnsureDaemon path.
-	if cmd == "daemon" && len(before) > 1 && before[1] == "status" {
+	if cmd == "daemon" && len(args) > 1 && args[1] == "status" {
 		// handled below in switch after EnsureDaemon
 	} else if cmd == "daemon" {
-		if err := cmdDaemon(before[1:], os.Stdout); err != nil {
+		if err := cmdDaemon(args[1:], os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
@@ -171,18 +158,12 @@ func runCLI(args []string) {
 	}
 	client := daemon.NewDaemonClient(socketPath)
 
-	cmdArgs := before[1:]
+	cmdArgs := args[1:]
 	var err error
 
 	switch cmd {
 	case "new":
-		// Phase 101 SHELL-02: `agenthub new shell ...` routes to cmdNewShell.
-		// Any other `new <agent> ...` falls through to the existing cmdNew dispatch.
-		if len(cmdArgs) > 0 && cmdArgs[0] == "shell" {
-			err = cmdNewShell(client, cmdArgs[1:], extraArgs, os.Stdout)
-		} else {
-			err = cmdNew(client, cmdArgs, extraArgs, os.Stdout)
-		}
+		err = cmdNew(client, cmdArgs, os.Stdout)
 	case "list":
 		err = cmdList(client, cmdArgs, os.Stdout)
 	case "kill":

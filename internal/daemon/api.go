@@ -697,7 +697,7 @@ func (a *API) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	// Use background context — the PTY must outlive the HTTP request.
 	// r.Context() would kill the session when the response is sent.
-	id, err := a.engine.CreateSession(context.Background(), req.CLI, req.Name, req.WorkDir, req.Args, req.Cols, req.Rows, nil, onExit)
+	id, err := a.engine.CreateSession(context.Background(), req.Name, req.WorkDir, req.Cols, req.Rows, onExit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

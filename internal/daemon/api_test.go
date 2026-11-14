@@ -44,6 +44,7 @@ func testDaemon(t *testing.T) (*API, *DaemonClient, string) {
 	engine.autoCloseSession = nil
 	engine.notifyOnWaiting = false // Phase 167 NTF-04: default OFF; reset so the real on-disk settings.json cannot leak in
 	engine.pluginSettings = defaultPluginSettings()
+	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := NewAPI(engine)
 	// Use short socket path — macOS t.TempDir() paths exceed the 103-char limit.
 	socketPath := shortSocketPath(t, "api.sock")
@@ -174,6 +175,33 @@ func TestAPICreateSession(t *testing.T) {
 	}
 	if resp.ID == "" {
 		t.Error("create response: empty ID")
+	}
+}
+
+// TestHandleCreateSession_LegacyBodyIgnored (T-01-15): an old client posting
+// cli/args still gets the login shell with exactly ["-l"]; caller-supplied
+// args never reach the spawned process.
+func TestHandleCreateSession_LegacyBodyIgnored(t *testing.T) {
+	spy := &spyBackend{}
+	engine := NewSessionEngine()
+	engine.configDir = t.TempDir()
+	engine.backend = spy
+	api := NewAPI(engine)
+	socketPath := shortSocketPath(t, "legacy.sock")
+	if err := api.Start(socketPath); err != nil {
+		t.Fatalf("api.Start: %v", err)
+	}
+	t.Cleanup(func() { api.Stop() })
+
+	status, body := rawPost(t, socketPath, "/sessions", `{"cli":"claude","args":["--evil"],"name":"legacy","workDir":"/tmp"}`)
+	if status != 201 {
+		t.Fatalf("POST /sessions: want 201, got %d; body: %s", status, body)
+	}
+	if len(spy.lastReq.Args) != 1 || spy.lastReq.Args[0] != "-l" {
+		t.Errorf("spawned Args = %v, want exactly [-l]", spy.lastReq.Args)
+	}
+	if spy.lastReq.CLI != engine.GetShellPath() {
+		t.Errorf("spawned CLI = %q, want GetShellPath() = %q", spy.lastReq.CLI, engine.GetShellPath())
 	}
 }
 
@@ -389,17 +417,6 @@ func TestAPIListSessionsHostname(t *testing.T) {
 	}
 	if sessions[0].Hostname == "" {
 		t.Error("SessionInfo.Hostname is empty — want non-empty hostname")
-	}
-}
-
-func TestClientCreateSessionWithArgs(t *testing.T) {
-	_, client, _ := testDaemon(t)
-	id, err := client.CreateSession("cat", "client-args-test", "", []string{"--extra", "arg"}, 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession with args: %v", err)
-	}
-	if id == "" {
-		t.Fatal("CreateSession with args returned empty ID")
 	}
 }
 
@@ -1478,9 +1495,9 @@ func TestShellSessionLifecycle_StatusOnlyRunningOrStopped(t *testing.T) {
 
 	_, client, _ := testDaemon(t)
 
-	id, err := client.CreateSession("bash", "lifecycle-test", "", nil, 80, 24)
+	id, err := client.CreateSession("lifecycle-test", "", 80, 24)
 	if err != nil {
-		t.Fatalf("client.CreateSession(bash): %v", err)
+		t.Fatalf("client.CreateSession: %v", err)
 	}
 	if id == "" {
 		t.Fatal("CreateSession returned empty ID")
@@ -1831,7 +1848,7 @@ func extractClaimsFromURL(t *testing.T, urlStr string, key []byte) capability.Cl
 func TestIssueCapabilities_ExactPerms(t *testing.T) {
 	api, _, key := issueCapsTestSetup(t)
 
-	sid, err := api.engine.CreateSession(context.Background(), "cat", "exact-perms", "", nil, 80, 24, nil, nil)
+	sid, err := api.engine.CreateSession(context.Background(), "exact-perms", "", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -1871,7 +1888,7 @@ func TestIssueCapabilities_ExactPerms(t *testing.T) {
 func TestIssueCapabilitiesForSession_FunnelPublicReadCode(t *testing.T) {
 	api, _, key := issueCapsTestSetup(t)
 
-	sid, err := api.engine.CreateSession(context.Background(), "cat", "funnel-public-code", "", nil, 80, 24, nil, nil)
+	sid, err := api.engine.CreateSession(context.Background(), "funnel-public-code", "", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -1924,7 +1941,7 @@ func TestIssueCapabilitiesForSession_FunnelPublicReadCode(t *testing.T) {
 	}
 
 	// A non-Funnel session must get an empty PublicReadCode.
-	sid2, err := api.engine.CreateSession(context.Background(), "cat", "non-funnel", "", nil, 80, 24, nil, nil)
+	sid2, err := api.engine.CreateSession(context.Background(), "non-funnel", "", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession (non-funnel): %v", err)
 	}

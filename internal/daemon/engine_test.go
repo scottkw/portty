@@ -40,9 +40,17 @@ func TestNewSessionEngine(t *testing.T) {
 	}
 }
 
-func TestEngineCreateSession(t *testing.T) {
+// newCatEngine returns an engine whose sessions spawn /bin/cat instead of the
+// login shell, giving tests a deterministic echo process.
+func newCatEngine() *SessionEngine {
 	e := NewSessionEngine()
-	id, err := e.CreateSession(context.Background(), "cat", "test", "", nil, 0, 0, nil, nil)
+	e.SetSpawnCommandForTest("/bin/cat", nil)
+	return e
+}
+
+func TestEngineCreateSession(t *testing.T) {
+	e := newCatEngine()
+	id, err := e.CreateSession(context.Background(), "test", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession returned error: %v", err)
 	}
@@ -53,13 +61,13 @@ func TestEngineCreateSession(t *testing.T) {
 }
 
 func TestEngineListSessions(t *testing.T) {
-	e := NewSessionEngine()
+	e := newCatEngine()
 
-	id1, err := e.CreateSession(context.Background(), "cat", "tab-1", "", nil, 0, 0, nil, nil)
+	id1, err := e.CreateSession(context.Background(), "tab-1", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession tab-1: %v", err)
 	}
-	id2, err := e.CreateSession(context.Background(), "cat", "tab-2", "", nil, 0, 0, nil, nil)
+	id2, err := e.CreateSession(context.Background(), "tab-2", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession tab-2: %v", err)
 	}
@@ -86,9 +94,9 @@ func TestEngineListSessions(t *testing.T) {
 }
 
 func TestEngineKillSession(t *testing.T) {
-	e := NewSessionEngine()
+	e := newCatEngine()
 
-	id, err := e.CreateSession(context.Background(), "cat", "kill-me", "", nil, 0, 0, nil, nil)
+	id, err := e.CreateSession(context.Background(), "kill-me", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -109,9 +117,9 @@ func TestEngineKillSession(t *testing.T) {
 }
 
 func TestEngineRenameSession(t *testing.T) {
-	e := NewSessionEngine()
+	e := newCatEngine()
 
-	id, err := e.CreateSession(context.Background(), "cat", "original", "", nil, 0, 0, nil, nil)
+	id, err := e.CreateSession(context.Background(), "original", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -138,7 +146,7 @@ func TestEngineRenameSession(t *testing.T) {
 }
 
 func TestEngineGetSessionStatus(t *testing.T) {
-	e := NewSessionEngine()
+	e := newCatEngine()
 
 	// Unknown session returns "running" conservative default.
 	s := e.GetSessionStatus("nonexistent-id")
@@ -146,7 +154,7 @@ func TestEngineGetSessionStatus(t *testing.T) {
 		t.Errorf("unknown session status: got %q, want %q", s, "running")
 	}
 
-	id, err := e.CreateSession(context.Background(), "cat", "status-test", "", nil, 0, 0, nil, nil)
+	id, err := e.CreateSession(context.Background(), "status-test", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -160,21 +168,9 @@ func TestEngineGetSessionStatus(t *testing.T) {
 	}
 }
 
-func TestEngineCreateSessionWithArgs(t *testing.T) {
-	e := NewSessionEngine()
-	id, err := e.CreateSession(context.Background(), "cat", "args-test", "", []string{"--version"}, 0, 0, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession with args: %v", err)
-	}
-	if id == "" {
-		t.Fatal("CreateSession with args returned empty ID")
-	}
-	t.Cleanup(func() { _ = e.KillSession(id) })
-}
-
 func TestEngineCreateSessionWithDimensions(t *testing.T) {
-	e := NewSessionEngine()
-	id, err := e.CreateSession(context.Background(), "cat", "dims-test", "", nil, 120, 40, nil, nil)
+	e := newCatEngine()
+	id, err := e.CreateSession(context.Background(), "dims-test", "", 120, 40, nil)
 	if err != nil {
 		t.Fatalf("CreateSession with dimensions: %v", err)
 	}
@@ -185,8 +181,8 @@ func TestEngineCreateSessionWithDimensions(t *testing.T) {
 }
 
 func TestEngineCreateSessionDefaultDimensions(t *testing.T) {
-	e := NewSessionEngine()
-	id, err := e.CreateSession(context.Background(), "cat", "default-dims", "", nil, 0, 0, nil, nil)
+	e := newCatEngine()
+	id, err := e.CreateSession(context.Background(), "default-dims", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession with zero dims: %v", err)
 	}
@@ -197,8 +193,8 @@ func TestEngineCreateSessionDefaultDimensions(t *testing.T) {
 }
 
 func TestEngineListSessionsHostname(t *testing.T) {
-	e := NewSessionEngine()
-	id, err := e.CreateSession(context.Background(), "cat", "h-eng", "", nil, 0, 0, nil, nil)
+	e := newCatEngine()
+	id, err := e.CreateSession(context.Background(), "h-eng", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -255,149 +251,12 @@ func (s *spyBackend) Resize(string, int, int) error { return nil }
 func (s *spyBackend) Kill(string) error             { return nil }
 func (s *spyBackend) List() []*pty.Session          { return nil }
 
-// TestCreateSession_OpenCodeEnv asserts that CreateSession injects
-// OPENCODE_TUI_CONFIG into the PTY environment when cli == "opencode",
-// and that non-opencode CLIs do NOT receive the env var.
-func TestCreateSession_OpenCodeEnv(t *testing.T) {
-	spy := &spyBackend{}
-	e := NewSessionEngine()
-	e.backend = spy
-
-	_, err := e.CreateSession(context.Background(), "opencode", "test-oc", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession(opencode): %v", err)
-	}
-
-	// Assert OPENCODE_TUI_CONFIG was injected into the env.
-	var found bool
-	for _, entry := range spy.lastReq.Env {
-		if strings.HasPrefix(entry, "OPENCODE_TUI_CONFIG=") {
-			found = true
-			// Verify the value matches the engine's config path.
-			wantEnv := "OPENCODE_TUI_CONFIG=" + e.opencodeTUIConfig
-			if entry != wantEnv {
-				t.Errorf("env var = %q, want %q", entry, wantEnv)
-			}
-			break
-		}
-	}
-	if !found {
-		t.Errorf("CreateSession(opencode): expected OPENCODE_TUI_CONFIG in Env, got %v", spy.lastReq.Env)
-	}
-
-	// Also verify that non-opencode CLIs do NOT get the env var.
-	spy2 := &spyBackend{}
-	e2 := NewSessionEngine()
-	e2.backend = spy2
-
-	_, err = e2.CreateSession(context.Background(), "claude", "test-claude", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession(claude): %v", err)
-	}
-
-	for _, entry := range spy2.lastReq.Env {
-		if strings.HasPrefix(entry, "OPENCODE_TUI_CONFIG=") {
-			t.Errorf("CreateSession(claude): OPENCODE_TUI_CONFIG should NOT be in Env for non-opencode CLIs")
-		}
-	}
-
-	// Verify codex also does NOT get the env var.
-	spy3 := &spyBackend{}
-	e3 := NewSessionEngine()
-	e3.backend = spy3
-
-	_, err = e3.CreateSession(context.Background(), "codex", "test-codex", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession(codex): %v", err)
-	}
-
-	for _, entry := range spy3.lastReq.Env {
-		if strings.HasPrefix(entry, "OPENCODE_TUI_CONFIG=") {
-			t.Errorf("CreateSession(codex): OPENCODE_TUI_CONFIG should NOT be in Env for non-opencode CLIs")
-		}
-	}
-}
-
-// TestNotifyThemeChange_BroadcastsToOpenCodeOnly verifies that NotifyThemeChange
-// only attempts to signal sessions where sessionCLIs[id] == "opencode".
-func TestNotifyThemeChange_BroadcastsToOpenCodeOnly(t *testing.T) {
-	spy := &spyBackend{}
-	e := NewSessionEngine()
-	e.backend = spy
-
-	// Create an opencode session and a claude session.
-	_, err := e.CreateSession(context.Background(), "opencode", "oc-tab", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession(opencode): %v", err)
-	}
-	_, err = e.CreateSession(context.Background(), "claude", "cl-tab", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession(claude): %v", err)
-	}
-
-	// NotifyThemeChange should not panic even though spy sessions have nil cmd.
-	// The Signal call will fail (nil process), which is logged and skipped.
-	err = e.NotifyThemeChange(context.Background())
-	if err != nil {
-		t.Errorf("NotifyThemeChange: want nil error, got %v", err)
-	}
-}
-
-// TestNotifyThemeChange_NoOpenCodeSessions verifies no-op when no opencode sessions exist.
-func TestNotifyThemeChange_NoOpenCodeSessions(t *testing.T) {
-	spy := &spyBackend{}
-	e := NewSessionEngine()
-	e.backend = spy
-
-	// Create only non-opencode sessions.
-	_, _ = e.CreateSession(context.Background(), "claude", "cl", "", nil, 80, 24, nil, nil)
-	_, _ = e.CreateSession(context.Background(), "codex", "cx", "", nil, 80, 24, nil, nil)
-
-	err := e.NotifyThemeChange(context.Background())
-	if err != nil {
-		t.Errorf("NotifyThemeChange with no opencode: want nil, got %v", err)
-	}
-}
-
 // TestNotifyThemeChange_EmptyEngine verifies no-op on fresh engine with no sessions.
 func TestNotifyThemeChange_EmptyEngine(t *testing.T) {
 	e := NewSessionEngine()
 	err := e.NotifyThemeChange(context.Background())
 	if err != nil {
 		t.Errorf("NotifyThemeChange on empty engine: want nil, got %v", err)
-	}
-}
-
-// TestSessionCLIs_TrackedAndCleanedUp verifies sessionCLIs map is populated
-// in CreateSession and cleaned up in KillSession.
-func TestSessionCLIs_TrackedAndCleanedUp(t *testing.T) {
-	spy := &spyBackend{}
-	e := NewSessionEngine()
-	e.backend = spy
-
-	id, err := e.CreateSession(context.Background(), "opencode", "oc", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-
-	// Check sessionCLIs populated.
-	e.mu.RLock()
-	cli, ok := e.sessionCLIs[id]
-	e.mu.RUnlock()
-	if !ok {
-		t.Fatal("sessionCLIs not populated for session")
-	}
-	if cli != "opencode" {
-		t.Errorf("sessionCLIs[%s] = %q, want %q", id, cli, "opencode")
-	}
-
-	// Kill and verify cleanup.
-	_ = e.KillSession(id)
-	e.mu.RLock()
-	_, ok = e.sessionCLIs[id]
-	e.mu.RUnlock()
-	if ok {
-		t.Error("sessionCLIs not cleaned up after KillSession")
 	}
 }
 
@@ -488,63 +347,9 @@ func hubReadUntil(t *testing.T, e *SessionEngine, id, marker string, timeout tim
 	}
 }
 
-// TestNotifyThemeChange_RealProcess_Integration spawns a real shell process
-// that traps SIGUSR2 and writes a marker to stdout. NotifyThemeChange is then
-// called and the test verifies the marker appears, proving end-to-end signal
-// delivery through the PTY layer.
-//
-// Gated: POSIX only (SIGUSR2 does not exist on Windows).
-// Gated: Skipped in -short mode (spawns real PTY, takes ~2s).
-func TestNotifyThemeChange_RealProcess_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test: skipped in -short mode")
-	}
-
-	e := NewSessionEngine()
-
-	// Map "opencode" -> /bin/sh so ResolveCLI returns a valid executable.
-	if err := e.UpdateCLIPath("opencode", "/bin/sh"); err != nil {
-		t.Fatalf("UpdateCLIPath: %v", err)
-	}
-
-	// Create session with cli="opencode" (stored in sessionCLIs as "opencode").
-	// Args: -c with a script that traps SIGUSR2 and prints a marker.
-	script := `trap 'echo SIGUSR2_RECEIVED' USR2; echo READY; while true; do sleep 0.1; done`
-	id, err := e.CreateSession(
-		context.Background(),
-		"opencode",
-		"sigusr2-test",
-		"",
-		[]string{"-c", script},
-		80, 24,
-		nil, nil,
-	)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	t.Cleanup(func() { _ = e.KillSession(id) })
-
-	// Wait for READY marker (process started and trap is installed).
-	if !hubReadUntil(t, e, id, "READY", 5*time.Second) {
-		t.Fatal("process did not print READY within 5s")
-	}
-
-	// Send SIGUSR2 via NotifyThemeChange.
-	if err := e.NotifyThemeChange(context.Background()); err != nil {
-		t.Fatalf("NotifyThemeChange: %v", err)
-	}
-
-	// Read output and look for SIGUSR2_RECEIVED marker.
-	if !hubReadUntil(t, e, id, "SIGUSR2_RECEIVED", 5*time.Second) {
-		t.Error("SIGUSR2 marker not found in output after NotifyThemeChange")
-	}
-}
-
 // ========================================================================
-// Phase 100 Plan 02 — Shell session dispatch tests (SHELL-05 + SHELL-09).
-//
-// These tests exercise the engine's per-CLI shell-resolution branch and
-// the status.Watch bypass guard. They use the existing spyBackend harness
+// Shell session spawn tests (TERM-01 login shell, SHELL-05 WorkDir, SHELL-09
+// status). They use the existing spyBackend harness
 // to assert on the pty.CreateRequest that the engine constructs, without
 // launching a real PTY.
 // ========================================================================
@@ -561,74 +366,76 @@ func newShellTestEngine(t *testing.T) (*SessionEngine, *spyBackend) {
 	return e, spy
 }
 
-// argsContains reports whether arg `flag` appears in the captured argv slice.
-func argsContains(args []string, flag string) bool {
-	for _, a := range args {
-		if a == flag {
-			return true
-		}
-	}
-	return false
-}
-
-// TestCreateSession_ShellArgv_Interactive (SHELL-05): bash spawns
-// interactively, non-login, with an absolute path and WorkDir honored.
-func TestCreateSession_ShellArgv_Interactive(t *testing.T) {
+// TestCreateSession_LoginShellArgv (TERM-01): every session spawns the
+// resolved shell (GetShellPath) with exactly ["-l"].
+func TestCreateSession_LoginShellArgv(t *testing.T) {
 	e, spy := newShellTestEngine(t)
-	_, err := e.CreateSession(context.Background(), "bash", "tab", "/tmp", nil, 80, 24, nil, nil)
+	_, err := e.CreateSession(context.Background(), "tab", "/tmp", 80, 24, nil)
 	if err != nil {
-		t.Fatalf("CreateSession(bash): %v", err)
+		t.Fatalf("CreateSession: %v", err)
 	}
-	if !strings.HasSuffix(spy.lastReq.CLI, "/bash") {
-		t.Errorf("CLI = %q, want absolute path ending in /bash", spy.lastReq.CLI)
+	if spy.lastReq.CLI != e.GetShellPath() {
+		t.Errorf("CLI = %q, want GetShellPath() = %q", spy.lastReq.CLI, e.GetShellPath())
 	}
-	if !argsContains(spy.lastReq.Args, "-i") {
-		t.Errorf("Args missing -i: %v", spy.lastReq.Args)
-	}
-	if argsContains(spy.lastReq.Args, "-l") || argsContains(spy.lastReq.Args, "--login") {
-		t.Errorf("Args has login flag (must be non-login): %v", spy.lastReq.Args)
+	if len(spy.lastReq.Args) != 1 || spy.lastReq.Args[0] != "-l" {
+		t.Errorf("Args = %v, want exactly [-l]", spy.lastReq.Args)
 	}
 	if spy.lastReq.WorkDir != "/tmp" {
 		t.Errorf("WorkDir = %q, want /tmp", spy.lastReq.WorkDir)
 	}
 }
 
-// TestCreateSession_ZshArgv_Interactive (SHELL-05): zsh same shape as bash.
-func TestCreateSession_ZshArgv_Interactive(t *testing.T) {
-	if _, err := exec.LookPath("zsh"); err != nil {
-		t.Skip("zsh not installed")
-	}
+// TestCreateSession_ShellPathSettingUsed: the Settings → Paths shell override
+// is the spawned binary.
+func TestCreateSession_ShellPathSettingUsed(t *testing.T) {
 	e, spy := newShellTestEngine(t)
-	_, err := e.CreateSession(context.Background(), "zsh", "tab", "/tmp", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession(zsh): %v", err)
+	e.mu.Lock()
+	e.shellPath = "/opt/custom/bin/zsh"
+	e.mu.Unlock()
+	if _, err := e.CreateSession(context.Background(), "tab", "/tmp", 80, 24, nil); err != nil {
+		t.Fatalf("CreateSession: %v", err)
 	}
-	if !strings.HasSuffix(spy.lastReq.CLI, "/zsh") {
-		t.Errorf("CLI = %q, want absolute path ending in /zsh", spy.lastReq.CLI)
-	}
-	if !argsContains(spy.lastReq.Args, "-i") {
-		t.Errorf("Args missing -i: %v", spy.lastReq.Args)
-	}
-	if argsContains(spy.lastReq.Args, "-l") || argsContains(spy.lastReq.Args, "--login") {
-		t.Errorf("Args has login flag: %v", spy.lastReq.Args)
+	if spy.lastReq.CLI != "/opt/custom/bin/zsh" {
+		t.Errorf("CLI = %q, want the shellPath setting", spy.lastReq.CLI)
 	}
 }
 
-// TestCreateSession_PwshArgv (SHELL-05): pwsh spawns with -NoLogo, no login flags.
-func TestCreateSession_PwshArgv(t *testing.T) {
-	if _, err := exec.LookPath("pwsh"); err != nil {
-		t.Skip("pwsh not installed")
+// TestCreateSession_LoginShell (TERM-01, real PTY): the spawned zsh reports
+// itself as a login shell. The typed echo shows the unexpanded $((40+2)), so
+// only real command output can contain LOGIN_OK_42.
+func TestCreateSession_LoginShell(t *testing.T) {
+	if _, err := os.Stat("/bin/zsh"); err != nil {
+		t.Skip("/bin/zsh not present")
 	}
-	e, spy := newShellTestEngine(t)
-	_, err := e.CreateSession(context.Background(), "pwsh", "tab", "/tmp", nil, 80, 24, nil, nil)
+	t.Setenv("SHELL", "/bin/zsh")
+	zdot := t.TempDir()
+	// An empty .zshrc keeps zsh-newuser-install from swallowing the input.
+	if err := os.WriteFile(filepath.Join(zdot, ".zshrc"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZDOTDIR", zdot)
+
+	e := NewSessionEngine()
+	e.configDir = t.TempDir()
+	e.mu.Lock()
+	e.shellPath = "" // isolate from the real settings.json; resolve via $SHELL
+	e.mu.Unlock()
+
+	id, err := e.CreateSession(context.Background(), "login", t.TempDir(), 80, 24, nil)
 	if err != nil {
-		t.Fatalf("CreateSession(pwsh): %v", err)
+		t.Fatalf("CreateSession: %v", err)
 	}
-	if !argsContains(spy.lastReq.Args, "-NoLogo") {
-		t.Errorf("Args missing -NoLogo: %v", spy.lastReq.Args)
+	t.Cleanup(func() { _ = e.KillSession(id) })
+
+	hub, ok := e.manager.Get(id)
+	if !ok {
+		t.Fatal("hub not found")
 	}
-	if argsContains(spy.lastReq.Args, "-l") || argsContains(spy.lastReq.Args, "--login") {
-		t.Errorf("Args has login flag: %v", spy.lastReq.Args)
+	if err := hub.WriteInput([]byte("[[ -o login ]] && echo LOGIN_OK_$((40+2))\n")); err != nil {
+		t.Fatalf("WriteInput: %v", err)
+	}
+	if !hubReadUntil(t, e, id, "LOGIN_OK_42", 10*time.Second) {
+		t.Fatal("shell did not report a login shell (LOGIN_OK_42 never appeared)")
 	}
 }
 
@@ -636,9 +443,9 @@ func TestCreateSession_PwshArgv(t *testing.T) {
 // reaches the backend unchanged.
 func TestCreateSession_ShellWorkDirHonored(t *testing.T) {
 	e, spy := newShellTestEngine(t)
-	_, err := e.CreateSession(context.Background(), "bash", "tab", "/home/user/project", nil, 80, 24, nil, nil)
+	_, err := e.CreateSession(context.Background(), "tab", "/home/user/project", 80, 24, nil)
 	if err != nil {
-		t.Fatalf("CreateSession(bash): %v", err)
+		t.Fatalf("CreateSession: %v", err)
 	}
 	if spy.lastReq.WorkDir != "/home/user/project" {
 		t.Errorf("WorkDir = %q, want %q", spy.lastReq.WorkDir, "/home/user/project")
@@ -649,9 +456,9 @@ func TestCreateSession_ShellWorkDirHonored(t *testing.T) {
 // for shell sessions resolves to os.UserHomeDir().
 func TestCreateSession_ShellEmptyWorkDirHome(t *testing.T) {
 	e, spy := newShellTestEngine(t)
-	_, err := e.CreateSession(context.Background(), "bash", "tab", "", nil, 80, 24, nil, nil)
+	_, err := e.CreateSession(context.Background(), "tab", "", 80, 24, nil)
 	if err != nil {
-		t.Fatalf("CreateSession(bash): %v", err)
+		t.Fatalf("CreateSession: %v", err)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -665,26 +472,13 @@ func TestCreateSession_ShellEmptyWorkDirHome(t *testing.T) {
 	}
 }
 
-// TestCreateSession_AICLIEmptyWorkDirUnchanged (SHELL-05 negative case):
-// empty WorkDir for AI CLI sessions stays empty (no $HOME substitution).
-func TestCreateSession_AICLIEmptyWorkDirUnchanged(t *testing.T) {
-	e, spy := newShellTestEngine(t)
-	_, err := e.CreateSession(context.Background(), "claude", "tab", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession(claude): %v", err)
-	}
-	if spy.lastReq.WorkDir != "" {
-		t.Errorf("AI CLI WorkDir = %q, want empty (existing behavior)", spy.lastReq.WorkDir)
-	}
-}
-
 // TestCreateSession_ShellSkipsStatusWatch (SHELL-09): status.Watch is not
 // invoked for shell sessions, so sessionStatuses[id] is never populated.
 func TestCreateSession_ShellSkipsStatusWatch(t *testing.T) {
 	e, _ := newShellTestEngine(t)
-	id, err := e.CreateSession(context.Background(), "bash", "tab", "", nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "tab", "", 80, 24, nil)
 	if err != nil {
-		t.Fatalf("CreateSession(bash): %v", err)
+		t.Fatalf("CreateSession: %v", err)
 	}
 	// Give any unintended goroutine a chance to populate the map.
 	time.Sleep(50 * time.Millisecond)
@@ -706,9 +500,9 @@ func TestCreateSession_ShellSkipsStatusWatch(t *testing.T) {
 // Status=="running" for shell sessions (falls through conservative default).
 func TestListSessions_ShellStatusRunning(t *testing.T) {
 	e, _ := newShellTestEngine(t)
-	id, err := e.CreateSession(context.Background(), "bash", "tab", "", nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "tab", "", 80, 24, nil)
 	if err != nil {
-		t.Fatalf("CreateSession(bash): %v", err)
+		t.Fatalf("CreateSession: %v", err)
 	}
 	sessions := e.ListSessions()
 	var found bool
@@ -726,195 +520,6 @@ func TestListSessions_ShellStatusRunning(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("session %s not in ListSessions output", id)
-	}
-}
-
-// TestShell_NoStatusMapEntry (SHELL-09 defensive): shell session IDs never
-// land in sessionStatuses regardless of whether other AI-CLI sessions exist.
-func TestShell_NoStatusMapEntry(t *testing.T) {
-	e, _ := newShellTestEngine(t)
-	bashID, err := e.CreateSession(context.Background(), "bash", "bash-tab", "", nil, 80, 24, nil, nil)
-	if err != nil {
-		t.Fatalf("CreateSession(bash): %v", err)
-	}
-	shellIDs := []string{bashID}
-	if _, err := exec.LookPath("zsh"); err == nil {
-		id, err := e.CreateSession(context.Background(), "zsh", "zsh-tab", "", nil, 80, 24, nil, nil)
-		if err != nil {
-			t.Fatalf("CreateSession(zsh): %v", err)
-		}
-		shellIDs = append(shellIDs, id)
-	}
-	shellSysID, err := e.CreateSession(context.Background(), "shell", "sys-tab", "", nil, 80, 24, nil, nil)
-	if err == nil {
-		shellIDs = append(shellIDs, shellSysID)
-	}
-	// Create an AI CLI session as a control (no assertion against its presence).
-	_, _ = e.CreateSession(context.Background(), "claude", "claude-tab", "", nil, 80, 24, nil, nil)
-
-	time.Sleep(50 * time.Millisecond)
-	for _, id := range shellIDs {
-		e.statusMu.RLock()
-		_, exists := e.sessionStatuses[id]
-		e.statusMu.RUnlock()
-		if exists {
-			t.Errorf("expected no sessionStatuses entry for shell session %s, but found one", id)
-		}
-	}
-}
-
-// TestIsShellSession_AllShellNames (unit test for the helper).
-//
-// Phase 150 SET-01 follow-up: a shell session's cli is its resolved binary
-// PATH ('/bin/zsh'), not a bare key — so isShellSession must normalize to the
-// basename (minus .exe, case-insensitive) before matching, mirroring the
-// frontend lib/shellCli.isShellCli. Previously full-path shells returned false,
-// which mis-classified them for status.Watch (SHELL-09).
-func TestIsShellSession_AllShellNames(t *testing.T) {
-	cases := map[string]bool{
-		// Bare keys (unchanged).
-		"shell":      true,
-		"bash":       true,
-		"zsh":        true,
-		"pwsh":       true,
-		"powershell": true,
-		// Non-shell agent CLIs.
-		"claude":         false,
-		"opencode":       false,
-		"":               false,
-		"/usr/bin/claude": false,
-		// Full paths — the real-app case (was incorrectly false).
-		"/bin/bash":            true,
-		"/bin/zsh":             true,
-		"/usr/local/bin/bash":  true,
-		// Case-insensitive on the basename.
-		"Bash":    true,
-		"/bin/ZSH": true,
-		// Windows path + .exe strip (deterministic across platforms).
-		"powershell.exe": true,
-		`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`: true,
-		// Shells outside the warning set stay false.
-		"/bin/sh": false,
-		"fish":    false,
-	}
-	for name, want := range cases {
-		got := isShellSession(name)
-		if got != want {
-			t.Errorf("isShellSession(%q) = %v, want %v", name, got, want)
-		}
-	}
-}
-
-// TestResolveShellSpawn_KnownShell (unit test for the helper).
-func TestResolveShellSpawn_KnownShell(t *testing.T) {
-	e, _ := newShellTestEngine(t)
-	path, args, ok := e.resolveShellSpawn("bash")
-	if !ok {
-		t.Fatal("resolveShellSpawn(bash) returned ok=false")
-	}
-	if !strings.HasSuffix(path, "/bash") {
-		t.Errorf("path = %q, want absolute path ending in /bash", path)
-	}
-	if !argsContains(args, "-i") {
-		t.Errorf("args missing -i: %v", args)
-	}
-
-	// Non-shell cli returns ok=false.
-	_, _, ok = e.resolveShellSpawn("claude")
-	if ok {
-		t.Error("resolveShellSpawn(claude) returned ok=true, want false")
-	}
-}
-
-// TestResolveShellSpawn_SystemDefault (POSIX-only): cli="shell" resolves
-// to $SHELL.
-func TestResolveShellSpawn_SystemDefault(t *testing.T) {
-	// Pick a real shell that exists on the test host.
-	candidates := []string{"/bin/zsh", "/bin/bash", "/bin/sh"}
-	var pick string
-	for _, c := range candidates {
-		if _, err := exec.LookPath(c); err == nil {
-			pick = c
-			break
-		}
-	}
-	if pick == "" {
-		t.Skip("no POSIX shell at standard paths")
-	}
-	t.Setenv("SHELL", pick)
-	e, _ := newShellTestEngine(t)
-	path, args, ok := e.resolveShellSpawn("shell")
-	if !ok {
-		t.Fatalf("resolveShellSpawn(shell) returned ok=false (SHELL=%s)", pick)
-	}
-	if path != pick {
-		t.Errorf("path = %q, want %q (from $SHELL)", path, pick)
-	}
-	if !argsContains(args, "-i") {
-		t.Errorf("args missing -i: %v", args)
-	}
-}
-
-// TestResolveShellSpawn_PowerShellOverride (M2 lock-in): cliPaths["powershell"]
-// override resolves cleanly via knownShellSpecs without falling through to
-// discovery. This locks the Plan 01 M2 contract.
-func TestResolveShellSpawn_PowerShellOverride(t *testing.T) {
-	e, _ := newShellTestEngine(t)
-	// Direct map mutation under the engine mutex — the public UpdateCLIPath
-	// would call os.Stat on the override path and fail for our synthetic
-	// non-existent path. The override-branch logic matches by basename, not
-	// by file existence, so the unit test only needs the map populated.
-	e.mu.Lock()
-	e.cliPaths["powershell"] = "/usr/local/bin/pwsh-stub"
-	e.mu.Unlock()
-
-	path, args, ok := e.resolveShellSpawn("powershell")
-	if !ok {
-		t.Fatal("resolveShellSpawn(powershell) with override returned ok=false")
-	}
-	if path != "/usr/local/bin/pwsh-stub" {
-		t.Errorf("path = %q, want override path", path)
-	}
-	if !argsContains(args, "-NoLogo") {
-		t.Errorf("args missing -NoLogo (from powershell spec): %v", args)
-	}
-}
-
-// TestResolveShellSpawn_FreshInstallFallback (v3.3.1 Phase 109 UAT finding)
-// locks the fix for the fresh-install Windows path: when cli="shell",
-// shellPath setting is empty, cliPaths["shell"] is empty, and DiscoverShells
-// returns only specific-name shells (no synthetic "shell"), branch (4) MUST
-// pick the first discovered shell rather than returning isShell=false.
-//
-// Pre-fix behavior: resolveShellSpawn returned ("", nil, false) and the
-// caller exec'd the literal string "shell", which failed as "executable file
-// not found in %PATH%" on Windows.
-//
-// We exercise this on POSIX with $SHELL deliberately UNSET — that suppresses
-// DiscoverShells's synthetic "shell" entry (which is the existing path
-// covered by TestResolveShellSpawn_SystemDefault) and forces resolution to
-// reach branch (4).
-func TestResolveShellSpawn_FreshInstallFallback(t *testing.T) {
-	// Unset $SHELL so DiscoverShells does NOT append the synthetic "shell"
-	// entry — otherwise branch (2) would match and branch (4) would never
-	// be exercised.
-	t.Setenv("SHELL", "")
-	e, _ := newShellTestEngine(t)
-	// e.shellPath is empty by default; e.cliPaths is empty by default.
-	// At least one of bash/zsh must be on PATH for the test host to exercise
-	// this branch — every CI / dev box should satisfy this.
-	path, args, ok := e.resolveShellSpawn("shell")
-	if !ok {
-		t.Fatal("resolveShellSpawn(shell) returned ok=false on fresh install; " +
-			"branch (4) fallback did not engage. v3.3.1 Phase 109 UAT regressed.")
-	}
-	if path == "" || path == "shell" {
-		t.Errorf("resolveShellSpawn(shell) returned bogus path %q; expected a "+
-			"real binary path from DiscoverShells", path)
-	}
-	if len(args) == 0 {
-		t.Errorf("resolveShellSpawn(shell) returned empty args; expected the " +
-			"discovered shell's spec.Argv (e.g. [-i] for bash/zsh)")
 	}
 }
 
@@ -1318,9 +923,8 @@ func TestListSessions_KilledSession_ExitCodeNil(t *testing.T) {
 // reports -1. This exercises the ALREADY-CORRECT goroutine path
 // (engine.go:333-340) to prevent future refactors from breaking the contract
 // that both ListSessions AND onExit rely on.
-// Strategy: use a real short-lived command routed through the non-shell
-// AI-CLI path by pointing a synthetic CLI name at /bin/sh; sh -c "exit 0"
-// exits immediately with code 0. The goroutine normalizes -1→0 before calling
+// Strategy: spawn a real short-lived sh -c "exit 0" via SetSpawnCommandForTest;
+// it exits immediately with code 0. The goroutine normalizes -1→0 before calling
 // onExit, so the callback must receive 0 regardless of PTY behavior.
 func TestListSessions_OnExitCallback_ReceivesNormalized(t *testing.T) {
 	shPath, err := exec.LookPath("sh")
@@ -1330,21 +934,15 @@ func TestListSessions_OnExitCallback_ReceivesNormalized(t *testing.T) {
 
 	e := NewSessionEngine()
 	e.configDir = t.TempDir()
-	e.cliPaths = make(map[string]string)
-
-	// Route "fakecli" to /bin/sh so CreateSession does NOT enter the
-	// isShellSession() branch (which hardcodes argv=[-i]). This lets us
-	// pass -c "exit 0" as args to get a clean natural exit.
-	e.mu.Lock()
-	e.cliPaths["fakecli"] = shPath
-	e.mu.Unlock()
+	// sh -c "exit 0" gives a clean natural exit.
+	e.SetSpawnCommandForTest(shPath, []string{"-c", "exit 0"})
 
 	codeCh := make(chan int, 1)
 	onExit := func(_ string, code int) {
 		codeCh <- code
 	}
 
-	_, err = e.CreateSession(context.Background(), "fakecli", "tab", "", []string{"-c", "exit 0"}, 80, 24, nil, onExit)
+	_, err = e.CreateSession(context.Background(), "tab", "", 80, 24, onExit)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -1371,11 +969,11 @@ func TestListSessions_OnExitCallback_ReceivesNormalized(t *testing.T) {
 //  5. FallbackOnEvalSymlinksError: bad workDir does not fail CreateSession;
 //     GetSessionWorkDir returns the raw (unresolved) workDir.
 //
-// These tests use spyBackend (see TestCreateSession_OpenCodeEnv) to avoid
+// These tests use spyBackend (see newShellTestEngine) to avoid
 // spawning a real PTY — only the engine-internal map plumbing is under test.
 func TestEngine_SessionWorkDirsPopulated(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 	e.configDir = t.TempDir()
 
@@ -1387,7 +985,7 @@ func TestEngine_SessionWorkDirsPopulated(t *testing.T) {
 		t.Fatalf("EvalSymlinks(%q): %v", tmpDir, err)
 	}
 
-	id, err := e.CreateSession(context.Background(), "cat", "wd-test", tmpDir, nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "wd-test", tmpDir, 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -1401,7 +999,7 @@ func TestEngine_SessionWorkDirsPopulated(t *testing.T) {
 
 func TestEngine_SessionWorkDirsResolvesSymlink(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 	e.configDir = t.TempDir()
 
@@ -1418,7 +1016,7 @@ func TestEngine_SessionWorkDirsResolvesSymlink(t *testing.T) {
 		t.Fatalf("Symlink(%q, %q): %v", realDir, linkPath, err)
 	}
 
-	id, err := e.CreateSession(context.Background(), "cat", "sym-test", linkPath, nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "sym-test", linkPath, 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -1432,12 +1030,12 @@ func TestEngine_SessionWorkDirsResolvesSymlink(t *testing.T) {
 
 func TestEngine_SessionWorkDirsClearedOnKill(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 	e.configDir = t.TempDir()
 
 	tmpDir := t.TempDir()
-	id, err := e.CreateSession(context.Background(), "cat", "kill-wd", tmpDir, nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "kill-wd", tmpDir, 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -1464,12 +1062,12 @@ func TestEngine_SessionWorkDirsEmptyForUnknown(t *testing.T) {
 
 func TestEngine_SessionWorkDirsFallbackOnEvalSymlinksError(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 	e.configDir = t.TempDir()
 
 	badPath := "/this/path/definitely/does/not/exist/xyz123"
-	id, err := e.CreateSession(context.Background(), "cat", "bad-wd", badPath, nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "bad-wd", badPath, 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession with bad workDir should not fail (fallback path): %v", err)
 	}
@@ -1496,7 +1094,7 @@ func TestEngine_SessionWorkDirsFallbackOnEvalSymlinksError(t *testing.T) {
 // equal to e.sessionWorkDirs[sessionID].
 func TestListSessions_WorkDir_Populated(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 	e.configDir = t.TempDir()
 
@@ -1506,7 +1104,7 @@ func TestListSessions_WorkDir_Populated(t *testing.T) {
 		t.Fatalf("EvalSymlinks(%q): %v", tmpDir, err)
 	}
 
-	id, err := e.CreateSession(context.Background(), "cat", "wd-list-test", tmpDir, nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "wd-list-test", tmpDir, 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -1537,11 +1135,11 @@ func TestListSessions_WorkDir_Populated(t *testing.T) {
 // count as viewers; only Origin=="web" (remote/shared) subscribers do.
 func TestListSessions_ViewerCount(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 	e.configDir = t.TempDir()
 
-	id, err := e.CreateSession(context.Background(), "cat", "viewer-count-test", t.TempDir(), nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "viewer-count-test", t.TempDir(), 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -2057,10 +1655,10 @@ func TestEngineNewSessionEngine_ChatStoresInit(t *testing.T) {
 // TestEngineChatStoreFor_AfterCreate verifies that after CreateSession returns,
 // ChatStoreFor(id) reports ok==true.
 func TestEngineChatStoreFor_AfterCreate(t *testing.T) {
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.ChatsBaseDirForTest(t.TempDir())
 
-	id, err := e.CreateSession(context.Background(), "cat", "chat-create", "", nil, 0, 0, nil, nil)
+	id, err := e.CreateSession(context.Background(), "chat-create", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -2077,10 +1675,10 @@ func TestEngineChatStoreFor_AfterCreate(t *testing.T) {
 // is absent from the temp chatsBaseDir.
 func TestEngineChatStoreFor_AfterKill(t *testing.T) {
 	tempDir := t.TempDir()
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.ChatsBaseDirForTest(tempDir)
 
-	id, err := e.CreateSession(context.Background(), "cat", "chat-kill", "", nil, 0, 0, nil, nil)
+	id, err := e.CreateSession(context.Background(), "chat-kill", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -2121,7 +1719,7 @@ func TestEngineChatStoreFor_AfterKill(t *testing.T) {
 // fails (chatsBaseDir points at an uncreatable location), CreateSession still
 // returns a usable session ID and ChatStoreFor returns ok==false.
 func TestEngineChatStoreFor_FailedNewChatStore(t *testing.T) {
-	e := NewSessionEngine()
+	e := newCatEngine()
 
 	// Point chatsBaseDir at a path whose parent is a regular file so MkdirAll
 	// fails — the directory can never be created.
@@ -2133,7 +1731,7 @@ func TestEngineChatStoreFor_FailedNewChatStore(t *testing.T) {
 	// filepath.Join(tmpFile.Name(), "chats") has a file as its parent component.
 	e.ChatsBaseDirForTest(filepath.Join(tmpFile.Name(), "chats"))
 
-	id, err := e.CreateSession(context.Background(), "cat", "chat-fail", "", nil, 0, 0, nil, nil)
+	id, err := e.CreateSession(context.Background(), "chat-fail", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession must succeed even when ChatStore fails: %v", err)
 	}
@@ -2155,10 +1753,10 @@ func TestEngineChatStoreFor_FailedNewChatStore(t *testing.T) {
 // real chats dir has not gained any .jsonl file for the test session.
 func TestEngineNoRealDirChatFiles(t *testing.T) {
 	tempDir := t.TempDir()
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.ChatsBaseDirForTest(tempDir)
 
-	id, err := e.CreateSession(context.Background(), "cat", "isolation-test", "", nil, 0, 0, nil, nil)
+	id, err := e.CreateSession(context.Background(), "isolation-test", "", 0, 0, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

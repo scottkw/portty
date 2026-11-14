@@ -43,14 +43,14 @@ type SessionEngine struct {
 	chatsBaseDir    string                // Phase 151: base directory for chat JSONL files; init from chatsDir() in NewSessionEngine, overrideable via ChatsBaseDirForTest
 	aliasStore      *AliasStore           // Phase 152 / IDENT-01,IDENT-02: global alias store (per-person, not per-session); constructed over daemonConfigDir in NewSessionEngine
 
-	startMinimized              bool            // persisted start-minimized preference
-	notifyOnWaiting             bool            // Phase 167 NTF-04: persisted native-notification-on-waiting preference (default OFF)
-	stayOnHubAfterCreate        bool            // Phase 168 UX-01: persisted "stay on Hub after creating a session" preference (default OFF)
-	shellWebShareWarned         bool            // Phase 101 SHELL-08: user has acknowledged the shell web-share security banner
-	shellWebShareWarningEnabled *bool           // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
-	shellPath                   string          // Phase 107 SHELL-11: user-configured shell binary path; empty = use platform default
-	autoCloseSession            *bool           // nil = default (true); persisted pointer
-	pluginSettings              PluginSettings  // populated by loadSettingsFromDisk via defaults-merge
+	startMinimized              bool           // persisted start-minimized preference
+	notifyOnWaiting             bool           // Phase 167 NTF-04: persisted native-notification-on-waiting preference (default OFF)
+	stayOnHubAfterCreate        bool           // Phase 168 UX-01: persisted "stay on Hub after creating a session" preference (default OFF)
+	shellWebShareWarned         bool           // Phase 101 SHELL-08: user has acknowledged the shell web-share security banner
+	shellWebShareWarningEnabled *bool          // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
+	shellPath                   string         // Phase 107 SHELL-11: user-configured shell binary path; empty = use platform default
+	autoCloseSession            *bool          // nil = default (true); persisted pointer
+	pluginSettings              PluginSettings // populated by loadSettingsFromDisk via defaults-merge
 
 	// pluginSettingsListener (if non-nil) is invoked synchronously by
 	// SetPluginSettings AFTER the new value is persisted, while the engine
@@ -59,6 +59,10 @@ type SessionEngine struct {
 	// change. The listener MUST be non-blocking (BroadcastPluginConfig uses
 	// non-blocking channel sends with drop-on-slow-consumer).
 	pluginSettingsListener func()
+
+	// spawnCommand returns the binary and argv every new session runs.
+	// Defaults to (GetShellPath(), ["-l"]); tests override via SetSpawnCommandForTest.
+	spawnCommand func() (string, []string)
 
 	statusMu        sync.RWMutex
 	sessionStatuses map[string]status.SessionStatus // sessionID -> current status
@@ -127,29 +131,6 @@ var knownShells = map[string]bool{
 	"csh": true, "tcsh": true, "dash": true, "ksh": true,
 	"pwsh": true, "pwsh.exe": true,
 	"powershell": true, "powershell.exe": true,
-}
-
-// isShellSession returns true if cli refers to a shell-type session (vs an
-// AI CLI). Used by CreateSession to (1) bypass status.Watch (SHELL-09) and
-// (2) gate the shell-specific argv / WorkDir resolution branch (SHELL-05).
-//
-// cli may be a bare key ("shell"/"zsh") OR a full binary path ("/bin/zsh",
-// `C:\...\powershell.exe`) — a shell session stores its resolved path. Normalize
-// to the basename (across both separators, minus a .exe suffix, case-insensitive)
-// before matching, mirroring the frontend lib/shellCli.isShellCli (Phase 150).
-// Separators are handled explicitly rather than via filepath.Base so a Windows
-// path is classified consistently regardless of the daemon's GOOS.
-func isShellSession(cli string) bool {
-	base := strings.ToLower(cli)
-	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
-		base = base[i+1:]
-	}
-	base = strings.TrimSuffix(base, ".exe")
-	switch base {
-	case "shell", "bash", "zsh", "pwsh", "powershell":
-		return true
-	}
-	return false
 }
 
 // loadSettingsFromDisk reads settings.json and populates engine state.
@@ -276,6 +257,13 @@ func (e *SessionEngine) ChatsBaseDirForTest(dir string) {
 	e.mu.Unlock()
 }
 
+// SetSpawnCommandForTest makes every subsequent CreateSession spawn path with
+// args instead of the login shell (e.g. "/bin/cat" for a deterministic echo
+// process). Test-only; production code must never call this.
+func (e *SessionEngine) SetSpawnCommandForTest(path string, args []string) {
+	e.spawnCommand = func() (string, []string) { return path, args }
+}
+
 // ChatStoreFor returns the ChatStore for the given session ID. It is safe to
 // call concurrently with CreateSession and KillSession. Returns ok==false if
 // no store exists for the session (either the session does not exist, or
@@ -315,6 +303,8 @@ func NewSessionEngine() *SessionEngine {
 		chatsBaseDir:      chatsDir(),                  // Phase 151: production path = daemonConfigDir()/chats
 		aliasStore:        aliasStore,                  // Phase 152 / IDENT-01: global per-person alias persistence
 	}
+	// -l because go-pty discards Args[0], so the argv0 "-zsh" login trick is impossible.
+	e.spawnCommand = func() (string, []string) { return e.GetShellPath(), []string{"-l"} }
 	e.loadSettingsFromDisk(cfgDir)
 	return e
 }
@@ -326,42 +316,21 @@ func (e *SessionEngine) Aliases() *AliasStore {
 	return e.aliasStore
 }
 
-// CreateSession spawns a new CLI session and returns its ID.
-// args are passed to the CLI process; pass nil if no extra arguments are needed.
-// onStatus is called on each status transition; pass nil if not needed.
+// CreateSession spawns the user's login shell in workDir and returns its ID.
+// Empty workDir starts in the home directory.
 // onExit is called with (sessionID, exitCode) when the process exits naturally; pass nil if not needed.
-func (e *SessionEngine) CreateSession(ctx context.Context, cli, name, workDir string, args []string, cols, rows int, onStatus func(string, status.SessionStatus), onExit func(string, int)) (string, error) {
-	cliPath := e.ResolveCLI(cli)
+func (e *SessionEngine) CreateSession(ctx context.Context, name, workDir string, cols, rows int, onExit func(string, int)) (string, error) {
+	// Fixed argv: callers never supply process arguments (T-01-15).
+	cliPath, args := e.spawnCommand()
 
-	// Phase 100 SHELL-05: shell-session dispatch. For cli in
-	// {shell, bash, zsh, pwsh, powershell}, replace cliPath + args with the
-	// resolved shell path + non-login interactive argv from Plan 01's
-	// pty.DiscoverShells() / pty.KnownShellSpecs(). Empty workDir for shells
-	// resolves to $HOME (Pitfall 4 mitigation) — AI CLI sessions retain
-	// existing behavior (no $HOME substitution; empty WorkDir falls through
-	// to backend / go-pty default).
-	//
-	// req.Args (caller-supplied) is INTENTIONALLY IGNORED for shells in
-	// Phase 100 (RESEARCH Anti-Pattern + Assumption A6, T-100-08 mitigation):
-	// we overwrite, not merge. AI CLI sessions continue to pass req.Args
-	// through unchanged.
-	if path, shellArgs, isShell := e.resolveShellSpawn(cli); isShell {
-		cliPath = path
-		args = shellArgs
-		if workDir == "" {
-			// WR-01: validate $HOME against known-useless values. On
-			// service-mode daemons (RESEARCH.md Pitfall 4) $HOME is often
-			// "/" or "."; writing shell history at those locations would
-			// either fail (read-only root) or pollute the filesystem root.
-			// The corresponding test (TestCreateSession_ShellEmptyWorkDirHome)
-			// already skips on these values — production code must apply
-			// the same guard.
-			if home, err := os.UserHomeDir(); err == nil && home != "" && home != "/" && home != "." {
-				workDir = home
-			}
-			// If UserHomeDir fails, returns empty, or returns an unreliable
-			// value ("/", "."), fall through with the original empty workDir
-			// (matches the AI-CLI path's behavior on missing $HOME).
+	if workDir == "" {
+		// WR-01: validate $HOME against known-useless values. On
+		// service-mode daemons (RESEARCH.md Pitfall 4) $HOME is often
+		// "/" or "."; writing shell history at those locations would
+		// either fail (read-only root) or pollute the filesystem root.
+		// If UserHomeDir fails or is unreliable, keep the empty workDir.
+		if home, err := os.UserHomeDir(); err == nil && home != "" && home != "/" && home != "." {
+			workDir = home
 		}
 	}
 
@@ -372,16 +341,9 @@ func (e *SessionEngine) CreateSession(ctx context.Context, cli, name, workDir st
 		rows = 24
 	}
 
-	// Per-agent environment configuration.
-	var env []string
-	if cli == "opencode" && e.opencodeTUIConfig != "" {
-		env = append(env, "OPENCODE_TUI_CONFIG="+e.opencodeTUIConfig)
-	}
-
 	sess, err := e.backend.Create(ctx, pty.CreateRequest{
 		CLI:     cliPath,
 		Args:    args,
-		Env:     env,
 		Cols:    cols,
 		Rows:    rows,
 		WorkDir: workDir,
@@ -401,7 +363,7 @@ func (e *SessionEngine) CreateSession(ctx context.Context, cli, name, workDir st
 	// Phase 118 / FS-02: resolve workDir ONCE here (the Hub groups cards by
 	// SessionInfo.WorkDir, GRID-02). EvalSymlinks runs OUTSIDE the lock — it
 	// does filesystem I/O — and we cache the result alongside
-	// tabNames/sessionCLIs. Fallback to raw workDir on resolution error so
+	// tabNames. Fallback to raw workDir on resolution error so
 	// session creation never fails because of resolution.
 	resolvedWD := ""
 	if workDir != "" {
@@ -427,7 +389,6 @@ func (e *SessionEngine) CreateSession(ctx context.Context, cli, name, workDir st
 
 	e.mu.Lock()
 	e.tabNames[id] = name
-	e.sessionCLIs[id] = cli // raw CLI name, NOT cliPath
 	e.sessionWorkDirs[id] = resolvedWD
 	if chatStoreErr != nil {
 		log.Printf("chat: NewChatStore for session %q: %v (chat unavailable for this session)", id, chatStoreErr)
@@ -442,22 +403,6 @@ func (e *SessionEngine) CreateSession(ctx context.Context, cli, name, workDir st
 	if chatStore != nil {
 		hub.SetChatAppendFn(func(msg relay.ChatMessage) (relay.ChatMessage, error) {
 			return chatStore.AppendMessage(msg)
-		})
-	}
-
-	// SHELL-09: shell sessions have no AI-agent state model. Skip status.Watch
-	// so sessionStatuses[id] stays empty and ListSessions falls through to its
-	// conservative "running" default (see engine.go ListSessions branch). The
-	// session State (running/stopped) transitions via the natural-exit
-	// goroutine below — unchanged from AI-CLI behavior.
-	if !isShellSession(cli) {
-		go status.Watch(hub, id, cli, func(sid string, s status.SessionStatus) {
-			e.statusMu.Lock()
-			e.sessionStatuses[sid] = s
-			e.statusMu.Unlock()
-			if onStatus != nil {
-				onStatus(sid, s)
-			}
 		})
 	}
 
@@ -838,130 +783,6 @@ func (e *SessionEngine) ResolveCLI(name string) string {
 // without restructuring callers. The wrapper is currently a passthrough.
 func (e *SessionEngine) DiscoverShells() []pty.DetectedShell {
 	return pty.DiscoverShells()
-}
-
-// resolveShellSpawn maps an abstract shell name (shell|bash|zsh|pwsh|powershell)
-// to (absolute path, interactive non-login argv, ok=true). Returns
-// ("", nil, false) when cli is not a shell name.
-//
-// Resolution order:
-//  1. Caller's settings.json override (e.cliPaths[cli]) — basename is matched
-//     against pty.KnownShellSpecs() to derive the argv. Per Plan 01 M2,
-//     "powershell" is a first-class knownShellSpec alongside "pwsh", so a
-//     cliPaths["powershell"] override resolves cleanly via this branch without
-//     falling through to discovery.
-//  2. Live discovery via pty.DiscoverShells() — returns the first entry whose
-//     Name matches cli (which includes the synthetic "shell" system-default
-//     entry on POSIX).
-//  3. Safety net for cli="pwsh" on legacy Windows hosts: if only powershell.exe
-//     is discoverable, accept the "powershell" spec entry.
-//
-// Locking: e.cliPaths is read under e.mu.RLock via ResolveCLI; pty.DiscoverShells
-// does filesystem I/O via exec.LookPath and must run outside any mutex (it is
-// already lock-free).
-func (e *SessionEngine) resolveShellSpawn(cli string) (string, []string, bool) {
-	if !isShellSession(cli) {
-		return "", nil, false
-	}
-
-	// (0) Phase 107 SHELL-11: shellPath setting override for the bare "shell"
-	// key. This fires ONLY when:
-	//   - cli == "shell" (the generic system-default key; per-binary keys like
-	//     "bash"/"zsh" fall through to branch (1) unchanged — cliPaths["bash"]
-	//     overrides continue to take precedence over the catch-all shellPath).
-	//   - cliPaths["shell"] is NOT set (branch (1) wins if both are set,
-	//     preserving per-binary cliPaths[bash] overrides).
-	//   - e.shellPath is non-empty (user has configured a specific binary).
-	//
-	// When the basename of e.shellPath matches a known shell spec, borrow that
-	// spec's argv (e.g. /opt/homebrew/bin/zsh → zsh spec → ["-i"]). If the
-	// basename is unrecognised, fall through to branch (1) and let discovery
-	// handle it — the binary may be a custom shell that still accepts -i.
-	e.mu.RLock()
-	settingsShellPath := e.shellPath
-	_, cliPathSet := e.cliPaths["shell"]
-	e.mu.RUnlock()
-	if cli == "shell" && !cliPathSet && settingsShellPath != "" {
-		baseNoExt := strings.TrimSuffix(filepath.Base(settingsShellPath), ".exe")
-		for _, spec := range pty.KnownShellSpecs() {
-			if spec.Name == baseNoExt {
-				argv := append([]string(nil), spec.Argv...)
-				return settingsShellPath, argv, true
-			}
-		}
-		// Basename not in KnownShellSpecs — fall through to discovery.
-		// Do NOT error; the user may have set a custom shell binary.
-	}
-
-	// (1) Settings override path. ResolveCLI returns the override if present,
-	// otherwise the bare cli name.
-	override := e.ResolveCLI(cli)
-	if override != cli {
-		// IN-02: match on cli or the override path's basename with any
-		// ".exe" suffix stripped. The prior implementation also compared
-		// against the un-trimmed basename, but that branch was redundant —
-		// none of knownShellSpecs (bash/zsh/pwsh/powershell) have names
-		// ending in ".exe", so any spec.Name match against a ".exe"-suffixed
-		// basename must come from the trimmed form.
-		baseNoExt := strings.TrimSuffix(filepath.Base(override), ".exe")
-		for _, spec := range pty.KnownShellSpecs() {
-			if spec.Name == cli || spec.Name == baseNoExt {
-				argv := append([]string(nil), spec.Argv...)
-				return override, argv, true
-			}
-		}
-		// Override basename doesn't match any known shell — fall through to
-		// discovery (caller may have set an override to a path that does not
-		// look like a known shell binary).
-	}
-
-	// (2) Live discovery. WR-02: cache the result so the legacy-Windows
-	// safety net below reuses the same scan rather than re-running PATH
-	// lookups + /etc/shells read. Beyond the I/O savings, this also
-	// guarantees the two passes agree under PATH-mutating tests
-	// (t.Setenv("PATH", ...) between scans could otherwise produce
-	// inconsistent results).
-	discovered := pty.DiscoverShells()
-	for _, sh := range discovered {
-		if sh.Name == cli {
-			argv := append([]string(nil), sh.Argv...)
-			return sh.Path, argv, true
-		}
-	}
-
-	// (3) Legacy Windows safety net: cli="pwsh" but only "powershell" is
-	// discoverable (Windows host with only PowerShell 5.x installed).
-	if cli == "pwsh" {
-		for _, sh := range discovered {
-			if sh.Name == "powershell" {
-				argv := append([]string(nil), sh.Argv...)
-				return sh.Path, argv, true
-			}
-		}
-	}
-
-	// (4) Phase 107 SHELL-11 fallback for the generic "shell" key on
-	// fresh installs (v3.3.1 Windows UAT finding). When the user has not
-	// yet visited Settings → Paths → Shell binary, both the e.shellPath
-	// setting and the cliPaths["shell"] override are empty. Branches (0)
-	// and (1) skip. Branch (2)'s exact-name loop never matches because
-	// knownShellSpecs contains specific shell names (bash/zsh/pwsh/
-	// powershell), not the generic key "shell". Without this fallback,
-	// resolveShellSpawn returns isShell=false and the caller execs the
-	// literal string "shell" — which fails as "executable file not found
-	// in %PATH%" on Windows (Issue surfaced during Phase 109 IPC-05 UAT).
-	//
-	// Pick the FIRST discovered shell so platform defaults are sensible:
-	// Windows boxes typically discover powershell.exe (Windows PowerShell
-	// 5.x ships in-box on every Win10+ install); macOS/Linux typically
-	// discover bash and zsh in knownShellSpecs order.
-	if cli == "shell" && len(discovered) > 0 {
-		sh := discovered[0]
-		argv := append([]string(nil), sh.Argv...)
-		return sh.Path, argv, true
-	}
-
-	return "", nil, false
 }
 
 // UpdateCLIPath stores a custom executable path for the named CLI.
