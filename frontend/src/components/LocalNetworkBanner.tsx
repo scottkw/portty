@@ -85,9 +85,7 @@ export function LocalNetworkBanner({ visible, tailscaleConnected, tailscaleInsta
         </span>
         <span className="local-network-banner__sub">
           {platformHint === 'darwin' && 'Open Tailscale from Applications or the menu bar.'}
-          {platformHint === 'linux' && 'Run: sudo systemctl start tailscaled'}
-          {platformHint === 'windows' && 'Open Tailscale from the Start menu or system tray.'}
-          {!['darwin', 'linux', 'windows'].includes(platformHint) && 'Start the Tailscale daemon.'}
+          {platformHint !== 'darwin' && 'Start the Tailscale daemon.'}
         </span>
         {onDismiss && (
           <button

@@ -124,28 +124,6 @@ describe('LocalNetworkBanner', () => {
     expect(buttons.length).toBe(0) // D-06: no action buttons
   })
 
-  it('shows Linux daemon instruction when platformHint is linux', () => {
-    ;({ container, root } = renderBanner({
-      visible: true,
-      tailscaleBinaryFound: true,
-      tailscaleDaemonUp: false,
-      platformHint: 'linux',
-      onOpenURL: vi.fn(),
-    }))
-    expect(container.textContent).toContain('sudo systemctl start tailscaled')
-  })
-
-  it('shows Windows daemon instruction when platformHint is windows', () => {
-    ;({ container, root } = renderBanner({
-      visible: true,
-      tailscaleBinaryFound: true,
-      tailscaleDaemonUp: false,
-      platformHint: 'windows',
-      onOpenURL: vi.fn(),
-    }))
-    expect(container.textContent).toContain('Start menu or system tray')
-  })
-
   it('renders dismiss button when onDismiss is provided', () => {
     const onDismiss = vi.fn()
     ;({ container, root } = renderBanner({ visible: true, onOpenURL: vi.fn(), onDismiss }))

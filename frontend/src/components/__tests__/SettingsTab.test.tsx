@@ -283,14 +283,6 @@ describe('TS-01/TS-02: 4-state Tailscale detection', () => {
     expect(raw).toContain('open Tailscale from Applications or the menu bar')
   })
 
-  it('has platform-specific instruction for Linux', () => {
-    expect(raw).toContain('sudo systemctl start tailscaled')
-  })
-
-  it('has platform-specific instruction for Windows', () => {
-    expect(raw).toContain('open Tailscale from the Start menu or system tray')
-  })
-
   it('tailscale path placeholder includes auto-detect hint', () => {
     expect(raw).toContain('leave blank to auto-detect')
   })

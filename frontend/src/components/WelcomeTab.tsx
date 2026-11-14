@@ -37,14 +37,6 @@ export function WelcomeTab(): React.ReactElement {
               <span className="welcome-tab__install-label">macOS</span>
               <code className="welcome-tab__code">brew tap scottkw/agenthub && brew install --cask agenthub</code>
             </div>
-            <div className="welcome-tab__install-item">
-              <span className="welcome-tab__install-label">Linux</span>
-              <code className="welcome-tab__code">curl -fsSL https://raw.githubusercontent.com/scottkw/agenthub/main/scripts/install.sh | sh</code>
-            </div>
-            <div className="welcome-tab__install-item">
-              <span className="welcome-tab__install-label">Windows</span>
-              <code className="welcome-tab__code">winget install scottkw.agenthub</code>
-            </div>
           </div>
         </div>
 

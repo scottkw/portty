@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"encoding/json"
-	"runtime"
 	"testing"
 )
 
@@ -11,9 +10,6 @@ import (
 // TestAPIGetShellWebShareWarningEnabled_Default verifies GET returns
 // {"value": true} on a fresh engine (default-ON per D-08).
 func TestAPIGetShellWebShareWarningEnabled_Default(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, _, socketPath := testDaemon(t)
 	status, body := rawGet(t, socketPath, "/settings/shell-web-share-warning-enabled")
 	if status != 200 {
@@ -31,9 +27,6 @@ func TestAPIGetShellWebShareWarningEnabled_Default(t *testing.T) {
 // TestAPIPatchShellWebShareWarningEnabled_FlipsFalse verifies that PATCH
 // {"value": false} returns 204 and a subsequent GET returns false.
 func TestAPIPatchShellWebShareWarningEnabled_FlipsFalse(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, _, socketPath := testDaemon(t)
 	status, body := rawPatch(t, socketPath, "/settings/shell-web-share-warning-enabled", `{"value":false}`)
 	if status != 204 {
@@ -56,9 +49,6 @@ func TestAPIPatchShellWebShareWarningEnabled_FlipsFalse(t *testing.T) {
 // TestAPIPatchShellWebShareWarningEnabled_BadBody verifies that a malformed
 // body produces a 400 response.
 func TestAPIPatchShellWebShareWarningEnabled_BadBody(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, _, socketPath := testDaemon(t)
 	status, _ := rawPatch(t, socketPath, "/settings/shell-web-share-warning-enabled", `not-json`)
 	if status != 400 {
@@ -69,9 +59,6 @@ func TestAPIPatchShellWebShareWarningEnabled_BadBody(t *testing.T) {
 // TestDaemonClient_GetSetShellWebShareWarningEnabled_RoundTrip verifies that
 // the DaemonClient wrapper round-trips through the HTTP API.
 func TestDaemonClient_GetSetShellWebShareWarningEnabled_RoundTrip(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, client, _ := testDaemon(t)
 
 	// Default should be true (D-08).

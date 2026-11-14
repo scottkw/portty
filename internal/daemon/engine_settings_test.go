@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -217,9 +216,6 @@ func TestLoadSettingsDropsStaleShellPaths(t *testing.T) {
 // (every POSIX directory has its execute bit set, so the Mode()&0111 check alone
 // is insufficient — IsDir() must be checked first).
 func TestSetShellPathValidation(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows file-mode semantics differ; IsDir check is still applied but exec-bit test is skipped")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -288,9 +284,6 @@ func containsSubstr(s, sub string) bool {
 }
 
 func TestSettingsFilePermissions(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows does not support Unix file permissions")
-	}
 	dir := t.TempDir()
 
 	fakeBin := filepath.Join(dir, "fake-bin")

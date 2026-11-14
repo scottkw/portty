@@ -15,7 +15,7 @@ This document is the single source of truth for AgentHub's regression test progr
 4. **Manual Regression Checklist** — human-intervention behaviors that cannot be automated
 5. **Standing Convention** — the per-phase rule every executor must follow
 
-The traceability table is machine-validated by `tests/check-traceability-paths.sh`, which runs in CI as part of the `build (agenthub, linux/amd64, ubuntu-latest, ...)` job and exits 1 if any mapped path no longer exists on disk.
+The traceability table is machine-validated by `tests/check-traceability-paths.sh`, which runs in CI as part of the `build (agenthub, darwin/universal, macos-latest)` job and exits 1 if any mapped path no longer exists on disk.
 
 ---
 
@@ -25,11 +25,14 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **139** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, files, status, tailnet |
+| Go unit/integration | **132** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, files, status, tailnet |
 | vitest (frontend) | **148** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts, UI state, CSS token source gates, lib adapters (relay, remote, hub, status) |
 | Playwright e2e | **9** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: file browser cap gate, file write/upload/delete, CSP, web-links toggle, plugin hot-swap, vendored xterm addons, cross-surface chat parity gate (PARITY-01/EXPORT-01), web-share guest scope (WEBCHAT-03) |
-| build-script | **2** `build-script.test.sh, install-sh.test.sh` | `tests/` | `bash tests/build-script.test.sh && bash tests/install-sh.test.sh` | Go build + Wails asset embedding |
-| **Total** | **298** | — | — | — |
+| build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
+| **Total** | **290** | — | — | — |
+
+> Note: Portty Phase 1 plan 01-01 (STRP-03/04, macOS-only): counts recomputed from `git ls-files` — Go **132** (`git ls-files '*_test.go'`; 140 tracked before this plan, the manifest's 139 was 1 stale; −8 Windows/Linux test files deleted with their sources: `tray_linux_test.go`, `tray_windows_test.go`, `path_windows_test.go`, `socket_windows_test.go`, `exit_linux_test.go`, `kill_windows_test.go`, `win32input_test.go`, `concurrent_read_windows_test.go`), vitest **148** (unchanged), Playwright **9** (unchanged), build-script **1** (`install-sh.test.sh` deleted with `scripts/install.sh`). Total 290. Category F (Windows CI), N (Linux install), O (WinGet) and M-52 (Linux/Wayland launch) removed from Section 5.
+>
 
 > Note: Phase 177-02 (FNL-09, v4.2 — Go struct-parity/serialization regression guard for the app.go funnelWriteActive Wails seam, D-05): counts **unchanged** — net +0 new test files. Both new Go test functions — `TestSessionInfo_MirrorsDaemonFunnelFields` (reflection-based parity: every `daemon.SessionInfo` field named `Funnel*` must have a matching json-tagged field on `main.SessionInfo`) and `TestListSessions_PropagatesFunnelWriteActive` (full daemon→`App.ListSessions` round trip asserting the SERIALIZED JSON carries `"funnelWriteActive":true`/`:false`, not just the Go bool) — were added to the EXISTING repo-root `app_test.go`, not a new file. The optional D-05b assertion was likewise added in place to the EXISTING `frontend/src/components/__tests__/funnelBinding.contract.test.tsx` (no new vitest file). Verified via `find internal -name '*_test.go' | wc -l` (124) + repo-root `*_test.go` (15) = 139 Go, and `find frontend/src -name '*.test.ts*' | wc -l` = 148 vitest — both unchanged from the pre-phase counts. Total stays **298** (139 Go / 148 vitest / 9 Playwright / 2 build-script).
 >
@@ -109,16 +112,18 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 ### CI Workflow Mapping
 
-- `build.yml` (runs on push + PR): Go tests (all matrix platforms), vitest + build-script tests (ubuntu-latest only), and the traceability path-check step
+- `build.yml` (runs on push + PR): a single macOS job (`macos-latest`) running Go tests (race detector), vitest, build-script tests, and the traceability path-check step, then the Wails build
 - `e2e.yml` (runs on push/PR to `main`): Playwright cross-browser (chromium, firefox, webkit)
 
 ---
 
 ## 3. Merge Gate: How to Apply Branch Protection
 
-Branch protection requires all five CI check contexts to pass before a PR can merge. Admin direct push to `main` is allowed (preserves the GSD `.planning/` doc-commit flow). No PR review requirement.
+Branch protection requires both CI check contexts to pass before a PR can merge. Admin direct push to `main` is allowed (preserves the GSD `.planning/` doc-commit flow). No PR review requirement.
 
 ### Apply Protection
+
+CI is currently disabled on the repository; the user must re-apply this protection (with the two contexts below) when CI is re-enabled.
 
 ```bash
 gh api repos/scottkw/agenthub/branches/main/protection \
@@ -129,10 +134,7 @@ gh api repos/scottkw/agenthub/branches/main/protection \
   "required_status_checks": {
     "strict": false,
     "checks": [
-      {"context": "build (agenthub, linux/amd64, ubuntu-latest, webkit2_41, libwebkit2gtk-4.1-dev)", "app_id": 15368},
-      {"context": "build (agenthub, linux/amd64, ubuntu-22.04, libwebkit2gtk-4.0-dev)", "app_id": 15368},
       {"context": "build (agenthub, darwin/universal, macos-latest)", "app_id": 15368},
-      {"context": "build (agenthub, windows/amd64, windows-latest)", "app_id": 15368},
       {"context": "playwright", "app_id": 15368}
     ]
   },
@@ -297,7 +299,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | PARITY-01 | frontend/src/components/Hub/WebShareSessionView.test.tsx | vitest | Phase 155-03: WebShareSessionView component — wsURL=wss://{host}/sessions/{id}/ws?cap= forwarded to both TerminalPanel and ChatPanel; parity CSS classes (hub-modal__body--interactive, hub-modal__chat-toggle) present; capToken and apiBaseURL wired to ChatPanel; renders without error (11 tests). |
 | PARITY-01 | frontend/e2e/chat-parity.spec.ts | Playwright | Phase 155-04 (updated Phase 163 D-06): cross-surface parity gate (release-blocking) — PARITY-01 SC-1 broadcast between two RW web-share clients, presence roster, unread badge, typing indicator slot, @mention highlight (.chat-msg--mention); PARITY-01 SC-3 rewritten in Phase 163 as ROCHAT-01/02 (RO viewer Send NOT disabled + RO message appears end-to-end; see ROCHAT-01 row); PARITY-01 SC-4 inject indicator (.chat-msg--inject) renders from seeded history. |
 | PARITY-01 | internal/relay/hub_subscribe_race_test.go | Go | Phase 155-05 (server-side broadcast race, post-sign-off): two-phase subscribe invariant for the WSS WhoIs window — a subscriber added to the broadcast fan-out set before its identity/presence is resolved (empty PersonKey) still receives broadcast chat frames (delivery is not gated behind identity); Hub.RegisterPresence registers the roster entry afterward with correct Alias/TailnetID and ref-counts ConnCount; Unsubscribe with an empty PersonKey (drop inside the WhoIs window) is clean. Backs the handleWSSRelay Subscribe-before-WhoIs reorder that closes the missed-live-message race. |
-| INSTALL-02 | frontend/src/components/__tests__/WelcomeTab.install.test.tsx | vitest | Source-gate: raw GitHub URL (raw.githubusercontent.com/scottkw/agenthub/main/scripts/install.sh), scottkw.agenthub winget id, github.com/scottkw/agenthub repo link present in WelcomeTab.tsx; negative-asserts agenthub.dev, bare agenthub id, agenthub-dev org |
+| INSTALL-02 | frontend/src/components/__tests__/WelcomeTab.install.test.tsx | vitest | Source-gate (2 tests): github.com/scottkw/agenthub repo link present in WelcomeTab.tsx; negative-asserts the wrong agenthub-dev org |
 | VIEW-01 | internal/relay/hub_test.go | Go | Phase 157: broadcastResize fan-out — TestHub_ResizeBroadcastsToSubscribers proves MsgResize 0x02 with correct cols/rows reaches all subscribers after every host resize; TestHub_RowsFallback proves Rows() returns 50 before first resize. |
 | VIEW-02 | internal/relay/hub_test.go | Go | Phase 157: web-origin gate — TestHub_ResizeIgnoresWebOrigin proves non-local Origin never updates PTY grid (VIEW-02 / T-157-01 primary enforcement); TestHub_ResizeFreezeLastHostSize proves D-01 freeze (last host grid persists after host disconnect). |
 | VIEW-02 | internal/webserver/server_test.go | Go | Phase 157: defense-in-depth drop — TestWebReadPump_DropsGuestResize proves web guest MsgResize2 (0x11) leaves hub.Cols()/hub.Rows() unchanged at 100×40 (VIEW-02 / T-157-02 call-site guard). |
@@ -476,12 +478,6 @@ Human-intervention items that cannot be automated. Run before each tagged releas
   - _Why not automatable:_ Wails native webview required; the banner render path is not exercised by the headless browser.
   - _Source:_ STATE.md deferred items (pending live app)
 
-### Category F — CI-Gated Go Portability (Windows)
-
-- **M-12** FIX-02 (#101): `TestHandlerUpload_FilenameSanitized`, `TestDenylist_NonHomeRootedUnaffected`, and `TestWriteFileAtomic_ConcurrentReadNeverPartial` pass on Windows — verify the `build (agenthub, windows/amd64, windows-latest)` job is green in GitHub Actions after pushing (no local Windows env available).
-  - _Why not automatable:_ Development is on macOS; Windows file-share semantics (FILE_SHARE_DELETE requirement for POSIX-semantics rename) cannot be observed locally. The CI Windows runner is the only ground truth.
-  - _Source:_ Phase 145 windows-files-test-fixes; FIX-02 (#101)
-
 ### Category G — Live Tailnet Remote Session Open (FIX-03)
 
 - **M-13** FIX-03 (#98/#118, out-of-band cap exchange + in-app tab open, GAP-146-A + Phase 168-03 D-17): Two sub-scenarios on a live two-Mac tailnet. **Phase 168-03 (#118) update: the session now opens in an IN-APP web-session tab (terminal + chat, streaming the relay) instead of launching an external browser window** — the out-of-band join-code/cap-exchange step is unchanged, only the destination of the open changed:
@@ -562,32 +558,6 @@ Human-intervention items that cannot be automated. Run before each tagged releas
   3. A second web-share browser window (opened with the RW cap) also shows the `.chat-msg--inject` row, confirming the inject broadcast reaches other observers.
   - _Why not automatable:_ The Playwright fixture uses a stub PTY (io.Pipe, no real shell); confirming that PTY write + terminal echo actually reached a real process requires a live daemon session. The `.chat-msg--inject` presence from seeded history is verified in `chat-parity.spec.ts` (PARITY-01 SC-4), but the live end-to-end PTY write + broadcast path requires a real session.
   - _Source:_ Phase 155 PARITY-01 SC-4; 155-RESEARCH.md "What Must Remain Manual UAT" item 1; Phase 153-02 MENTION-02 (server-side PTY write proof, relay path)
-
-### Category N — Linux Install End-to-End (INSTALL-01)
-
-- **M-25** Linux install end-to-end on a clean amd64 box (or `docker run --rm ubuntu:22.04`):
-  1. Run: `curl -fsSL https://raw.githubusercontent.com/scottkw/agenthub/main/scripts/install.sh | sh`
-  2. Verify: binary installed to `/usr/local/bin/agenthub` (root) or `~/.local/bin/agenthub` (non-root).
-  3. Verify: `agenthub --help` exits 0 and prints usage.
-  4. Verify: the install output contains the line "SHA256 verified."
-  5. Run again (idempotent test): confirm no error on overwrite.
-  6. Run as non-root without `~/.local/bin` in PATH: confirm PATH warning is printed.
-  - _Docker alternative:_ `docker run --rm ubuntu:22.04 bash -c "apt-get update -qq && apt-get install -y -qq curl && curl -fsSL https://raw.githubusercontent.com/scottkw/agenthub/main/scripts/install.sh | sh"`
-  - _Why not automatable:_ Requires a real Linux amd64 machine or container; the download step needs a live GitHub release asset present at the tagged URL.
-  - _Source:_ Phase 156 INSTALL-01; 156-02-PLAN.md
-
-### Category O — WinGet First Submission Dry-Run (INSTALL-03)
-
-- **M-26** winget first-submission dry-run + operator runbook (INSTALL-03):
-  1. (**Phase gate**) Run: `bash packaging/winget/dry-run-first-submission.sh` — confirm output ends with `PASS: winget first-submission dry-run complete` and all 3 manifests parsed.
-  2. (**Phase gate**) Verify generated `packaging/winget/output/<VERSION>/scottkw.agenthub.installer.yaml` contains `PackageIdentifier: scottkw.agenthub` and a `windows-amd64-installer.exe` URL.
-  3. (**Phase gate**) Confirm `WINGET_TOKEN` secret is provisioned: `gh secret list | grep WINGET_TOKEN` (see `packaging/winget/FIRST-SUBMISSION-RUNBOOK.md` Step 2 for token scope requirements).
-  4. (_Not a phase blocker_) When ready for live submission: confirm `WINGET_FIRST_SUBMISSION=true` repo variable is set (`gh variable set WINGET_FIRST_SUBMISSION --body "true"`), then trigger `distribute.yml` with a real (non-rc) release tag.
-  5. (_Not a phase blocker_) After the `microsoft/winget-pkgs` PR is merged: remove `continue-on-error: true` from the `submit-winget` job in `distribute.yml` and reset `WINGET_FIRST_SUBMISSION` to false or delete the variable.
-  6. (_Not a phase blocker_) Verify `winget install scottkw.agenthub` on Windows succeeds.
-  - _Note:_ INSTALL-03 has no automated test file — verified by this manual checklist only. Steps 1–3 are the phase-completion gate; steps 4–6 are post-phase operator follow-ups gated on Microsoft's external PR review.
-  - _Why steps 4–6 are not automatable:_ Requires Windows machine for `wingetcreate` execution; requires Microsoft's external PR review and catalog ingestion to complete.
-  - _Source:_ Phase 156 INSTALL-03; 156-03-PLAN.md; `packaging/winget/FIRST-SUBMISSION-RUNBOOK.md`
 
 ### Category P — Terminal Screen-Share Garble (Issue #109, Phase 157)
 
@@ -841,13 +811,6 @@ The alias-set wire contract, client-side validateAlias, alias-control component 
   - _Source:_ Phase 175-04 (BUG-04, #119 Problem 2); 175-04-SUMMARY.md D4 rationale (`human_judgment: true`); 175-VALIDATION.md Manual-Only Verifications.
 
 ### Category AA — Platform & Hardening Bug Fixes (BUG-05..07)
-
-- **M-52** Live Linux/Wayland GUI launch — no segfault, working menu bar, no DMABUF freeze (BUG-05, #124): confirm the darwin-guarded role menus and the Linux-only `WEBKIT_DISABLE_DMABUF_RENDERER` env guard (176-01) actually fix the reporter's dead-on-arrival Linux desktop bug on a real Linux/Wayland box.
-  1. On the reporter's environment class (Pop!_OS 24.04 / COSMIC / Wayland / x86_64 / WebKit2GTK 4.1, `.deb` install), launch the GUI and confirm it starts with NO segfault (previously: Wails' GTK backend dereferenced a nil SubMenu from the unconditional macOS role menus).
-  2. Confirm the File and Help menu bar is present and functional (these submenus are unconditional, unaffected by the darwin guard).
-  3. Confirm hamburger/UI interactions do NOT freeze — the WebKit2GTK DMABUF GPU-renderer freeze under Wayland should no longer occur with `WEBKIT_DISABLE_DMABUF_RENDERER=1` set (unless the user already had the var set, which is respected and left alone).
-  - _Why not automatable:_ requires a real Linux/Wayland compositor to exercise the GTK backend menu construction and the WebKit2GTK renderer; this macOS dev box cannot cross-run the Linux desktop path. Per D-11, the reporter's own from-source verification on Pop!_OS 24.04/COSMIC/Wayland is accepted as sufficient to ship — this item is OPPORTUNISTIC (not release-blocking), tracked for a future confirmation pass.
-  - _Source:_ Phase 176-01 (BUG-05, #124); 176-01-SUMMARY.md D3 rationale (`human_judgment: true`).
 
 - **M-53** Production-build `/app/` CSP console sweep (BUG-06, #123, D-06): confirm the newly-added `ws.cspHeaders` wrap on `/app/` (176-02) does not break the public guest SPA in a real browser.
   1. Produce a production build: `wails build -tags "webkit2_41,wailsassets"` (see M-34 for the same build-tag precedent — `/app/` 503s under `wails dev`/plain `go build` since no SPA bundle is embedded).

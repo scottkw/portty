@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"encoding/json"
-	"runtime"
 	"testing"
 )
 
@@ -11,9 +10,6 @@ import (
 // TestAPIGetNotifyOnWaiting_Default verifies GET returns {"notifyOnWaiting":
 // false} on a fresh engine (default OFF per NTF-04).
 func TestAPIGetNotifyOnWaiting_Default(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, _, socketPath := testDaemon(t)
 	status, body := rawGet(t, socketPath, "/settings/notify-on-waiting")
 	if status != 200 {
@@ -31,9 +27,6 @@ func TestAPIGetNotifyOnWaiting_Default(t *testing.T) {
 // TestAPIPatchNotifyOnWaiting_FlipsTrue verifies that PATCH
 // {"notifyOnWaiting": true} returns 204 and a subsequent GET returns true.
 func TestAPIPatchNotifyOnWaiting_FlipsTrue(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, _, socketPath := testDaemon(t)
 	status, body := rawPatch(t, socketPath, "/settings/notify-on-waiting", `{"notifyOnWaiting":true}`)
 	if status != 204 {
@@ -56,9 +49,6 @@ func TestAPIPatchNotifyOnWaiting_FlipsTrue(t *testing.T) {
 // TestAPIPatchNotifyOnWaiting_BadBody verifies that a malformed body produces
 // a 400 response and does not mutate state.
 func TestAPIPatchNotifyOnWaiting_BadBody(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	api, _, socketPath := testDaemon(t)
 	status, _ := rawPatch(t, socketPath, "/settings/notify-on-waiting", `not-json`)
 	if status != 400 {
@@ -72,9 +62,6 @@ func TestAPIPatchNotifyOnWaiting_BadBody(t *testing.T) {
 // TestDaemonClient_GetSetNotifyOnWaiting_RoundTrip verifies that the
 // DaemonClient wrapper round-trips through the HTTP API.
 func TestDaemonClient_GetSetNotifyOnWaiting_RoundTrip(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, client, _ := testDaemon(t)
 
 	// Default should be false (NTF-04).

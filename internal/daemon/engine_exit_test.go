@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -188,9 +187,6 @@ func TestExitEvent_ExitWatcher_NilOnExitNoIsPanic(t *testing.T) {
 // populates ExitCode and Duration for sessions that are in the StateStopped state,
 // and leaves ExitCode nil for running sessions.
 func TestExitEvent_ListSessions_ExitCodePopulatedForStopped(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("relies on the spawned `cat` staying alive to observe a running session; `cat` is not a valid Windows command, so the process exits and is reaped immediately, populating ExitCode before the first assertion. The StateStopped population logic is platform-independent and covered on macOS/Linux.")
-	}
 	spy := &spyBackend{}
 	e := NewSessionEngine()
 	e.backend = spy

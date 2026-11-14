@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -215,9 +214,6 @@ func TestEngineListSessionsHostname(t *testing.T) {
 }
 
 func TestEngineResolveCLI(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix path /bin/cat")
-	}
 	e := NewSessionEngine()
 	// Isolate from real settings.json that NewSessionEngine may have loaded.
 	e.configDir = t.TempDir()
@@ -500,9 +496,6 @@ func hubReadUntil(t *testing.T, e *SessionEngine, id, marker string, timeout tim
 // Gated: POSIX only (SIGUSR2 does not exist on Windows).
 // Gated: Skipped in -short mode (spawns real PTY, takes ~2s).
 func TestNotifyThemeChange_RealProcess_Integration(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("SIGUSR2 not available on Windows")
-	}
 	if testing.Short() {
 		t.Skip("integration test: skipped in -short mode")
 	}
@@ -581,9 +574,6 @@ func argsContains(args []string, flag string) bool {
 // TestCreateSession_ShellArgv_Interactive (SHELL-05): bash spawns
 // interactively, non-login, with an absolute path and WorkDir honored.
 func TestCreateSession_ShellArgv_Interactive(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX shell binaries")
-	}
 	e, spy := newShellTestEngine(t)
 	_, err := e.CreateSession(context.Background(), "bash", "tab", "/tmp", nil, 80, 24, nil, nil)
 	if err != nil {
@@ -605,9 +595,6 @@ func TestCreateSession_ShellArgv_Interactive(t *testing.T) {
 
 // TestCreateSession_ZshArgv_Interactive (SHELL-05): zsh same shape as bash.
 func TestCreateSession_ZshArgv_Interactive(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX shell binaries")
-	}
 	if _, err := exec.LookPath("zsh"); err != nil {
 		t.Skip("zsh not installed")
 	}
@@ -648,9 +635,6 @@ func TestCreateSession_PwshArgv(t *testing.T) {
 // TestCreateSession_ShellWorkDirHonored (SHELL-05): caller-supplied WorkDir
 // reaches the backend unchanged.
 func TestCreateSession_ShellWorkDirHonored(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX shell binaries")
-	}
 	e, spy := newShellTestEngine(t)
 	_, err := e.CreateSession(context.Background(), "bash", "tab", "/home/user/project", nil, 80, 24, nil, nil)
 	if err != nil {
@@ -664,9 +648,6 @@ func TestCreateSession_ShellWorkDirHonored(t *testing.T) {
 // TestCreateSession_ShellEmptyWorkDirHome (SHELL-05, Pitfall 4): empty WorkDir
 // for shell sessions resolves to os.UserHomeDir().
 func TestCreateSession_ShellEmptyWorkDirHome(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX shell binaries")
-	}
 	e, spy := newShellTestEngine(t)
 	_, err := e.CreateSession(context.Background(), "bash", "tab", "", nil, 80, 24, nil, nil)
 	if err != nil {
@@ -700,9 +681,6 @@ func TestCreateSession_AICLIEmptyWorkDirUnchanged(t *testing.T) {
 // TestCreateSession_ShellSkipsStatusWatch (SHELL-09): status.Watch is not
 // invoked for shell sessions, so sessionStatuses[id] is never populated.
 func TestCreateSession_ShellSkipsStatusWatch(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX shell binaries")
-	}
 	e, _ := newShellTestEngine(t)
 	id, err := e.CreateSession(context.Background(), "bash", "tab", "", nil, 80, 24, nil, nil)
 	if err != nil {
@@ -727,9 +705,6 @@ func TestCreateSession_ShellSkipsStatusWatch(t *testing.T) {
 // TestListSessions_ShellStatusRunning (SHELL-09): ListSessions returns
 // Status=="running" for shell sessions (falls through conservative default).
 func TestListSessions_ShellStatusRunning(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX shell binaries")
-	}
 	e, _ := newShellTestEngine(t)
 	id, err := e.CreateSession(context.Background(), "bash", "tab", "", nil, 80, 24, nil, nil)
 	if err != nil {
@@ -757,9 +732,6 @@ func TestListSessions_ShellStatusRunning(t *testing.T) {
 // TestShell_NoStatusMapEntry (SHELL-09 defensive): shell session IDs never
 // land in sessionStatuses regardless of whether other AI-CLI sessions exist.
 func TestShell_NoStatusMapEntry(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX shell binaries")
-	}
 	e, _ := newShellTestEngine(t)
 	bashID, err := e.CreateSession(context.Background(), "bash", "bash-tab", "", nil, 80, 24, nil, nil)
 	if err != nil {
@@ -835,9 +807,6 @@ func TestIsShellSession_AllShellNames(t *testing.T) {
 
 // TestResolveShellSpawn_KnownShell (unit test for the helper).
 func TestResolveShellSpawn_KnownShell(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX shell binaries")
-	}
 	e, _ := newShellTestEngine(t)
 	path, args, ok := e.resolveShellSpawn("bash")
 	if !ok {
@@ -860,9 +829,6 @@ func TestResolveShellSpawn_KnownShell(t *testing.T) {
 // TestResolveShellSpawn_SystemDefault (POSIX-only): cli="shell" resolves
 // to $SHELL.
 func TestResolveShellSpawn_SystemDefault(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX SHELL env semantics")
-	}
 	// Pick a real shell that exists on the test host.
 	candidates := []string{"/bin/zsh", "/bin/bash", "/bin/sh"}
 	var pick string
@@ -1119,9 +1085,6 @@ func TestSetShellPath_RejectsNonExecutable(t *testing.T) {
 // TestSetShellPath_AcceptsExecutable verifies that SetShellPath accepts /bin/sh
 // and that the value round-trips through a settings.json reload.
 func TestSetShellPath_AcceptsExecutable(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test uses /bin/sh which is POSIX-only")
-	}
 	dir := t.TempDir()
 
 	e1 := NewSessionEngine()
@@ -1149,9 +1112,6 @@ func TestSetShellPath_AcceptsExecutable(t *testing.T) {
 // TestSetShellPath_EmptyClears verifies that SetShellPath("") clears the
 // persisted override and GetShellPath() falls back to the platform default.
 func TestSetShellPath_EmptyClears(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test uses /bin/sh which is POSIX-only")
-	}
 	dir := t.TempDir()
 
 	e := NewSessionEngine()
@@ -1363,9 +1323,6 @@ func TestListSessions_KilledSession_ExitCodeNil(t *testing.T) {
 // exits immediately with code 0. The goroutine normalizes -1→0 before calling
 // onExit, so the callback must receive 0 regardless of PTY behavior.
 func TestListSessions_OnExitCallback_ReceivesNormalized(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX sh")
-	}
 	shPath, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skipf("sh not found: %v", err)
@@ -1443,9 +1400,6 @@ func TestEngine_SessionWorkDirsPopulated(t *testing.T) {
 }
 
 func TestEngine_SessionWorkDirsResolvesSymlink(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("symlink semantics differ on Windows; covered by *_Populated for non-symlink case")
-	}
 	spy := &spyBackend{}
 	e := NewSessionEngine()
 	e.backend = spy

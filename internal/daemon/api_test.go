@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -28,9 +27,6 @@ import (
 // Returns the API, a DaemonClient connected to it, and the socket path.
 func testDaemon(t *testing.T) (*API, *DaemonClient, string) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	engine := NewSessionEngine()
 	// Isolate from real settings.json that NewSessionEngine may have loaded.
 	// NewSessionEngine() unconditionally reads ~/.config/agenthub/settings.json
@@ -1256,9 +1252,6 @@ func TestIPCHandlers_ExpiredCodeReturns410(t *testing.T) {
 // /capability/regenerate-key replaces the on-disk key AND the in-memory key,
 // and updates ws.signingKey via SetSigningKey.
 func TestIPCHandlers_RegenerateSigningKey_SwapsKey(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix domain sockets via api.Start(/tmp/...); production uses named pipes")
-	}
 	tmpDir := t.TempDir()
 	engine := NewSessionEngine()
 	engine.configDir = tmpDir
@@ -1368,9 +1361,6 @@ func newLoopbackTLSListener(t *testing.T) *tls.Config {
 // must produce a non-nil empty slice, and the JSON wire body must be
 // `{"shells":[]}` — never `{"shells":null}`.
 func TestHandleListShells_EmptyPATH(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	// Empty PATH so no known shell is discovered via exec.LookPath.
 	t.Setenv("PATH", t.TempDir())
 	// POSIX synthetic-default entry is keyed on $SHELL; empty $SHELL suppresses
@@ -1422,9 +1412,6 @@ func TestHandleListShells_EmptyPATH(t *testing.T) {
 // Uses the real host PATH; asserts at least one shell is discovered and each
 // entry has the required wire fields populated.
 func TestHandleListShells_PopulatedPATH(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, client, socketPath := testDaemon(t)
 
 	status, body := rawGet(t, socketPath, "/shells")
@@ -1485,9 +1472,6 @@ func TestHandleListShells_PopulatedPATH(t *testing.T) {
 // "waiting"/"error"/"errored"/"idle". POSIX-only because cli="bash" requires
 // a POSIX shell binary on PATH.
 func TestShellSessionLifecycle_StatusOnlyRunningOrStopped(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("requires POSIX shell (bash)")
-	}
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not installed on PATH")
 	}
@@ -1690,9 +1674,6 @@ func TestHandleGetShellPath_ReturnsDefault(t *testing.T) {
 // TestHandleUpdateShellPath_ValidPath_Persists verifies PATCH /settings/shell-path
 // with a valid executable returns 204; a subsequent GET returns the new value.
 func TestHandleUpdateShellPath_ValidPath_Persists(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test uses /bin/sh which is POSIX-only")
-	}
 	_, _, socketPath := testDaemon(t)
 
 	patchStatus, patchBody := rawPatch(t, socketPath, "/settings/shell-path", `{"value":"/bin/sh"}`)
@@ -1731,9 +1712,6 @@ func TestHandleUpdateShellPath_InvalidPath_Returns400(t *testing.T) {
 // empty value clears the override and GET returns the resolved default (not
 // the previously set value).
 func TestHandleUpdateShellPath_Empty_ClearsOverride(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test uses /bin/sh which is POSIX-only")
-	}
 	_, _, socketPath := testDaemon(t)
 
 	// Set a specific path first.
@@ -1767,9 +1745,6 @@ func TestHandleUpdateShellPath_Empty_ClearsOverride(t *testing.T) {
 // message. On POSIX, directories have the execute bit set, so without the
 // IsDir() check the path would be incorrectly accepted.
 func TestHandleUpdateShellPath_Directory_Returns400(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test uses POSIX directory semantics")
-	}
 	_, _, socketPath := testDaemon(t)
 
 	// Use /tmp — always present, always a directory, always has execute bit set.
@@ -1786,9 +1761,6 @@ func TestHandleUpdateShellPath_Directory_Returns400(t *testing.T) {
 // reject bodies that exceed MaxBytesReader's 8192-byte cap to match peer
 // handlers (handleSetPluginSettings, handleSetSearchConfig, etc.).
 func TestHandleUpdateShellPath_OversizedBody(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test uses Unix domain sockets")
-	}
 	_, _, socketPath := testDaemon(t)
 
 	// Build a body just over the 8192-byte limit.
@@ -1828,9 +1800,6 @@ func TestHandleUpdateShellPath_OversizedBody(t *testing.T) {
 // from the provided workDir, which the file routes consume via the resolver.
 func newFilesAPI(t *testing.T, workDir string) (*API, string, string) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("file route tests use Unix domain sockets")
-	}
 	engine := NewSessionEngine()
 	engine.configDir = t.TempDir()
 	engine.cliPaths = make(map[string]string)
@@ -2399,9 +2368,6 @@ func TestFilesWriteRoutes_WriteRoundTrip(t *testing.T) {
 // regardless of what the caller sends. Without the clamp any local Unix socket caller
 // could bypass the spec's documented limit.
 func TestHandleGetSessionTailLines_ClampN(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Unix socket test")
-	}
 	_, _, sock := testDaemon(t)
 
 	// Create a session with enough content to observe clamping.

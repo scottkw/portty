@@ -4,16 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
 // TestNotifyOnWaiting_Default verifies that a fresh engine with no
 // settings.json reports NotifyOnWaiting as false (default OFF, NTF-04).
 func TestNotifyOnWaiting_Default(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -27,9 +23,6 @@ func TestNotifyOnWaiting_Default(t *testing.T) {
 // TestNotifyOnWaiting_Persists verifies that SetNotifyOnWaiting(true) writes
 // to settings.json and survives a reload from the same path.
 func TestNotifyOnWaiting_Persists(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -63,9 +56,6 @@ func TestNotifyOnWaiting_Persists(t *testing.T) {
 // TestNotifyOnWaiting_RoundTrip verifies SetNotifyOnWaiting(true) then
 // SetNotifyOnWaiting(false) reports false and rewrites disk.
 func TestNotifyOnWaiting_RoundTrip(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -100,9 +90,6 @@ func TestNotifyOnWaiting_RoundTrip(t *testing.T) {
 // (already at CurrentSchemaVersion, no notifyOnWaiting key) does not trigger
 // an unnecessary defaults-merge rewrite — RESEARCH Pitfall 4.
 func TestNotifyOnWaiting_NoSchemaBump(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	existing := daemonSettings{
 		Plugins:       defaultPluginSettings(),

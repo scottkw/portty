@@ -19,9 +19,6 @@ import (
 // testSetup creates a real daemon API on a short socket path and returns a DaemonClient.
 func testSetup(t *testing.T) *daemon.DaemonClient {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("testSetup uses Unix domain sockets")
-	}
 	// Isolate config directory so settings.json from other tests doesn't leak.
 	tmpCfg := t.TempDir()
 	if runtime.GOOS == "darwin" {
@@ -216,9 +213,6 @@ func TestCmdRename_MissingArgs(t *testing.T) {
 // Used for cmdServe/cmdUnserve tests that require a running web server.
 func testSetupWithWebServer(t *testing.T) *daemon.DaemonClient {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("testSetupWithWebServer uses Unix domain sockets")
-	}
 	if runtime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
 	} else {

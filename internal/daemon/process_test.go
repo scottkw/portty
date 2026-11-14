@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -23,9 +22,6 @@ func shortProcTestSocket(t *testing.T, name string) string {
 }
 
 func TestEnsureDaemon_AlreadyRunning(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix domain sockets")
-	}
 	// Start an in-process daemon API to simulate a running daemon.
 	socketPath := shortProcTestSocket(t, "already")
 	engine := NewSessionEngine()
@@ -105,9 +101,6 @@ func TestRunDaemon_Exports(t *testing.T) {
 }
 
 func TestRestartWebServer_StopsAndStarts(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix domain sockets")
-	}
 	socketPath := shortProcTestSocket(t, "restart")
 	engine := NewSessionEngine()
 	engine.configDir = t.TempDir()
@@ -144,9 +137,6 @@ func TestRestartWebServer_StopsAndStarts(t *testing.T) {
 }
 
 func TestUpgradeToTailscale_ExitsOnCancel(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix domain sockets")
-	}
 	// upgradeToTailscale must exit promptly when ctx is cancelled.
 	socketPath := shortProcTestSocket(t, "upgrade")
 	engine := NewSessionEngine()

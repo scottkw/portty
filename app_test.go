@@ -37,9 +37,6 @@ var testSockSeq atomic.Int64
 // and wires the client, simulating what startup() does without the subprocess.
 func testApp(t *testing.T) *App {
 	t.Helper()
-	if goruntime.GOOS == "windows" {
-		t.Skip("testApp uses Unix domain sockets")
-	}
 	// Isolate config directory so settings.json doesn't leak between tests.
 	if goruntime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
@@ -86,9 +83,6 @@ func testApp(t *testing.T) *App {
 // web server without a real Tailscale connection.
 func testAppWithDirectWebServer(t *testing.T, tlsCfg *tls.Config) (*App, func(sessionID string) error) {
 	t.Helper()
-	if goruntime.GOOS == "windows" {
-		t.Skip("testAppWithDirectWebServer uses Unix domain sockets")
-	}
 	if goruntime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
 	} else {
@@ -157,9 +151,6 @@ func testAppWithDirectWebServer(t *testing.T, tlsCfg *tls.Config) (*App, func(se
 // (e.g. SetWebServerForTest). Phase 165 / T-165-15.
 func testAppWithAPI(t *testing.T) (*App, *daemon.API, *daemon.SessionEngine) {
 	t.Helper()
-	if goruntime.GOOS == "windows" {
-		t.Skip("testAppWithAPI uses Unix domain sockets")
-	}
 	if goruntime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
 	} else {
@@ -361,9 +352,6 @@ func TestApp_SetSessionFunnel_NilClient(t *testing.T) {
 // Uses a real daemon + WebServer with an injected fake funnelClient so
 // App.SetSessionFunnel can succeed without a live tailscaled daemon.
 func TestListSessions_PropagatesFunnelActive(t *testing.T) {
-	if goruntime.GOOS == "windows" {
-		t.Skip("TestListSessions_PropagatesFunnelActive uses Unix domain sockets")
-	}
 	app, api, engine := testAppWithAPI(t)
 
 	// Wire a WebServer with a fake funnel client so EnableFunnel can succeed.
@@ -492,9 +480,6 @@ func TestSessionInfo_MirrorsDaemonFunnelFields(t *testing.T) {
 // what the frontend consumers (FULL ACCESS badge, tab icon, share-modal
 // resync) receive over the wire.
 func TestListSessions_PropagatesFunnelWriteActive(t *testing.T) {
-	if goruntime.GOOS == "windows" {
-		t.Skip("TestListSessions_PropagatesFunnelWriteActive uses Unix domain sockets")
-	}
 	app, api, engine := testAppWithAPI(t)
 
 	if err := api.BootstrapCapabilityState(); err != nil {

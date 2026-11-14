@@ -4,16 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
 // TestStayOnHubAfterCreate_Default verifies that a fresh engine with no
 // settings.json reports StayOnHubAfterCreate as false (default OFF, D-09).
 func TestStayOnHubAfterCreate_Default(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -27,9 +23,6 @@ func TestStayOnHubAfterCreate_Default(t *testing.T) {
 // TestStayOnHubAfterCreate_Persists verifies that SetStayOnHubAfterCreate(true)
 // writes to settings.json and survives a reload from the same path.
 func TestStayOnHubAfterCreate_Persists(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -63,9 +56,6 @@ func TestStayOnHubAfterCreate_Persists(t *testing.T) {
 // TestStayOnHubAfterCreate_RoundTrip verifies SetStayOnHubAfterCreate(true)
 // then SetStayOnHubAfterCreate(false) reports false and rewrites disk.
 func TestStayOnHubAfterCreate_RoundTrip(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -101,9 +91,6 @@ func TestStayOnHubAfterCreate_RoundTrip(t *testing.T) {
 // stayOnHubAfterCreate key) does not trigger an unnecessary defaults-merge
 // rewrite.
 func TestStayOnHubAfterCreate_NoSchemaBump(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	existing := daemonSettings{
 		Plugins:       defaultPluginSettings(),

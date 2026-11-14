@@ -4,16 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
 // TestShellWebShareWarningEnabled_Default verifies that a fresh engine reports
 // the warning-enabled switch as ON (true) by default — D-08 requirement.
 func TestShellWebShareWarningEnabled_Default(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix socket testDaemon helpers")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -28,9 +24,6 @@ func TestShellWebShareWarningEnabled_Default(t *testing.T) {
 // TestShellWebShareWarningEnabled_Persists verifies that Set(false) round-trips
 // through settings.json (reload observes false), and Set(true) round-trips as true.
 func TestShellWebShareWarningEnabled_Persists(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -74,9 +67,6 @@ func TestShellWebShareWarningEnabled_Persists(t *testing.T) {
 // calling SetShellWebShareWarningEnabled(true) atomically resets shellWebShareWarned
 // to false (re-arm).
 func TestShellWebShareWarningEnabled_ReArm(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
@@ -103,9 +93,6 @@ func TestShellWebShareWarningEnabled_ReArm(t *testing.T) {
 // TestShellWebShareWarningEnabled_OffBehavior verifies that Set(false) does NOT
 // reset shellWebShareWarned — only enabling (true) triggers re-arm.
 func TestShellWebShareWarningEnabled_OffBehavior(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,

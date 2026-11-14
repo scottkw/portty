@@ -754,11 +754,7 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
                       : tailscaleHealth.binaryFound
                         ? (tailscaleHealth.platformHint === 'darwin'
                             ? 'Installed but not running \u2014 open Tailscale from Applications or the menu bar'
-                            : tailscaleHealth.platformHint === 'linux'
-                              ? 'Installed but not running \u2014 run: sudo systemctl start tailscaled'
-                              : tailscaleHealth.platformHint === 'windows'
-                                ? 'Installed but not running \u2014 open Tailscale from the Start menu or system tray'
-                                : 'Installed but daemon is not running')
+                            : 'Installed but daemon is not running')
                         : 'Not detected \u2014 install from tailscale.com')
               : 'Checking\u2026'}
           </p>

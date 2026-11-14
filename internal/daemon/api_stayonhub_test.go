@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"encoding/json"
-	"runtime"
 	"testing"
 )
 
@@ -11,9 +10,6 @@ import (
 // TestAPIGetStayOnHubAfterCreate_Default verifies GET returns
 // {"stayOnHubAfterCreate": false} on a fresh engine (default OFF per D-09).
 func TestAPIGetStayOnHubAfterCreate_Default(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, _, socketPath := testDaemon(t)
 	status, body := rawGet(t, socketPath, "/settings/stay-on-hub-after-create")
 	if status != 200 {
@@ -32,9 +28,6 @@ func TestAPIGetStayOnHubAfterCreate_Default(t *testing.T) {
 // {"stayOnHubAfterCreate": true} returns 204 and a subsequent GET returns
 // true.
 func TestAPIPatchStayOnHubAfterCreate_FlipsTrue(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, _, socketPath := testDaemon(t)
 	status, body := rawPatch(t, socketPath, "/settings/stay-on-hub-after-create", `{"stayOnHubAfterCreate":true}`)
 	if status != 204 {
@@ -57,9 +50,6 @@ func TestAPIPatchStayOnHubAfterCreate_FlipsTrue(t *testing.T) {
 // TestAPIPatchStayOnHubAfterCreate_BadBody verifies that a malformed body
 // produces a 400 response and does not mutate state.
 func TestAPIPatchStayOnHubAfterCreate_BadBody(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	api, _, socketPath := testDaemon(t)
 	status, _ := rawPatch(t, socketPath, "/settings/stay-on-hub-after-create", `not-json`)
 	if status != 400 {
@@ -73,9 +63,6 @@ func TestAPIPatchStayOnHubAfterCreate_BadBody(t *testing.T) {
 // TestDaemonClient_GetSetStayOnHubAfterCreate_RoundTrip verifies that the
 // DaemonClient wrapper round-trips through the HTTP API.
 func TestDaemonClient_GetSetStayOnHubAfterCreate_RoundTrip(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("testDaemon uses Unix domain sockets")
-	}
 	_, client, _ := testDaemon(t)
 
 	// Default should be false (D-09).
