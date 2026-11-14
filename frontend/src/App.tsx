@@ -14,7 +14,6 @@ import {
   KillSession,
   RenameSession,
   DetectCLIs,
-  ListShells,
   GetRelayPort,
   ToggleWebServing,
   IsWebServerRunning,
@@ -120,10 +119,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   )
   const [relayPort, setRelayPort] = useState<number | null>(null)
   const [detectedCLIs, setDetectedCLIs] = useState<DetectedCLI[]>([])
-  // Phase 101-02 (SHELL-01 GUI half) — discovered shells from the daemon.
-  // Threaded into NewSessionModal so the user can pick a shell session.
-  const [detectedShells, setDetectedShells] = useState<daemon.DetectedShell[]>([])
-  const [shellsLoading, setShellsLoading] = useState(true)
   const [tabCounter, setTabCounter] = useState(1)
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   // Track web serving state per session: sessionId -> enabled
@@ -504,15 +499,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         // user ever visits the Hub tab (the 3s Hub poll below only runs while Hub is
         // active — SESS-02 restore can land the user directly on a session tab).
         setHubSessions(sessions)
-
-        // Phase 101-02 (SHELL-01 GUI half) — call ListShells() on mount.
-        // Loaded in parallel via a separate promise so a slow daemon response
-        // doesn't delay the rest of the init flow. Failures fall through to
-        // an empty shell list (silent absence per UI-SPEC §Edge Cases).
-        ListShells()
-          .then((s) => setDetectedShells(s ?? []))
-          .catch(() => setDetectedShells([]))
-          .finally(() => setShellsLoading(false))
 
         // Fetch web server mode for local-network-fallback UI
         GetWebServerMode().then(mode => {
@@ -1358,13 +1344,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       // Phase 168-05 (UX-02): mirror the mount-time hubSessions seed (see init above).
       setHubSessions(sessions)
 
-      // Phase 101-02 (SHELL-01 GUI half) — re-discover shells on daemon retry.
-      setShellsLoading(true)
-      ListShells()
-        .then((s) => setDetectedShells(s ?? []))
-        .catch(() => setDetectedShells([]))
-        .finally(() => setShellsLoading(false))
-
       // Fetch web server mode for local-network-fallback UI
       GetWebServerMode().then(mode => {
         setWebServerMode(mode === 'tailscale' || mode === 'local' ? mode : null)
@@ -1783,9 +1762,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       {showNewSessionModal && (
         <NewSessionModal
           isOpen={showNewSessionModal}
-          clis={detectedCLIs}
-          shells={detectedShells}
-          shellsLoading={shellsLoading}
           onConfirm={(workDir) => {
             setShowNewSessionModal(false)
             void createTab(workDir)

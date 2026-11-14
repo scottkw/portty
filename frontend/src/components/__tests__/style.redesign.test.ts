@@ -202,3 +202,28 @@ describe('Phase 141-07: D-03 colorblind-safe fences — agent-badge + status-sta
     expect(cssRaw).toContain('.tab-status-bar__state--inactive')
   })
 })
+
+// ─── 01-04: New Session modal (01-UI-SPEC section 1) ────────────────────────
+
+describe('01-04: New Session modal CSS', () => {
+  const rule = (selector: string) => {
+    const m = cssRaw.match(new RegExp(selector.replace(/[.-]/g, '\\$&') + '\\s*\\{([^}]*)\\}'))
+    return m ? m[1] : ''
+  }
+
+  it('folder display (also the shell line) truncates on one line and can shrink in the flex row', () => {
+    const body = rule('.new-session-modal__folder-display')
+    expect(body).toMatch(/overflow:\s*hidden/)
+    expect(body).toMatch(/text-overflow:\s*ellipsis/)
+    expect(body).toMatch(/white-space:\s*nowrap/)
+    expect(body).toMatch(/min-width:\s*0/)
+  })
+
+  it('--mono modifier sets only the mono font family', () => {
+    expect(rule('.new-session-modal__folder-display--mono').trim()).toBe('font-family: var(--hub-font-mono);')
+  })
+
+  it('agent-button and args rule families are gone', () => {
+    expect(cssRaw).not.toMatch(/new-session-modal__(agent|args)/)
+  })
+})

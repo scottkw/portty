@@ -1,6 +1,7 @@
 /**
- * SHELL-10 test contract — UI-SPEC §4 (six assertions).
- * Locks the single static Shell row behavior introduced in Phase 107-03.
+ * New Session modal Shell line (01-UI-SPEC section 1 + UI Considerations):
+ * read-only, non-focusable, mono; shows the GetShellPath() result, falling back
+ * to "Default login shell" while pending, on rejection and on an empty result.
  */
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import React from 'react'
@@ -10,48 +11,30 @@ import { act } from 'react-dom/test-utils'
 import { NewSessionModal } from '../NewSessionModal'
 import * as AppMock from '../../wailsjs/go/main/App'
 
-// Mock Wails bindings — GetShellPath must resolve to the daemon-resolved path.
 vi.mock('../../wailsjs/go/main/App', () => ({
   OpenDirectoryDialog: vi.fn().mockResolvedValue(''),
   GetShellPath: vi.fn().mockResolvedValue('/bin/zsh'),
-  SetShellPath: vi.fn().mockResolvedValue(undefined),
 }))
 
-interface RenderOpts {
-  clis?: Array<{ Name: string; Path: string; DisplayName?: string }>
-  shells?: Array<{ name: string; displayName: string; path: string; argv: string[] }>
-  shellsLoading?: boolean
-  onConfirm?: (cli: string, workDir: string, args: string[]) => void
-  onClose?: () => void
-}
-
-function renderModal(opts: RenderOpts = {}) {
+function renderModal() {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
-  const props: any = {
-    isOpen: true,
-    clis: opts.clis ?? [
-      { Name: 'claude', Path: '/usr/local/bin/claude', DisplayName: 'Claude Code' },
-    ],
-    shells: opts.shells ?? [],
-    shellsLoading: opts.shellsLoading ?? false,
-    onConfirm: opts.onConfirm ?? vi.fn(),
-    onClose: opts.onClose ?? vi.fn(),
-  }
   flushSync(() => {
-    root.render(React.createElement(NewSessionModal, props))
+    root.render(React.createElement(NewSessionModal, { isOpen: true, onConfirm: vi.fn(), onClose: vi.fn() }))
   })
   return { container, root }
 }
 
-describe('SHELL-10: Single Shell row in NewSessionModal', () => {
+const shellLine = (container: HTMLElement) =>
+  container.querySelector('.new-session-modal__folder-display--mono') as HTMLElement
+
+describe('New Session modal — Shell line', () => {
   let container: HTMLElement
   let root: ReturnType<typeof createRoot>
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(AppMock.GetShellPath).mockResolvedValue('/bin/zsh')
   })
 
   afterEach(() => {
@@ -60,97 +43,55 @@ describe('SHELL-10: Single Shell row in NewSessionModal', () => {
     localStorage.clear()
   })
 
-  // Assertion 1: Exactly ONE shell button regardless of shells prop length.
-  it('renders exactly ONE shell button regardless of shells prop length (empty)', () => {
-    ;({ container, root } = renderModal({ shells: [] }))
-    const shellBtns = container.querySelectorAll('.new-session-modal__agent-btn--shell')
-    expect(shellBtns.length).toBe(1)
-  })
-
-  it('renders exactly ONE shell button regardless of shells prop length (2 shells)', () => {
-    ;({ container, root } = renderModal({
-      shells: [
-        { name: 'zsh', displayName: 'zsh', path: '/bin/zsh', argv: ['-i'] },
-        { name: 'bash', displayName: 'bash', path: '/bin/bash', argv: ['-i'] },
-      ],
-    }))
-    const shellBtns = container.querySelectorAll('.new-session-modal__agent-btn--shell')
-    expect(shellBtns.length).toBe(1)
-  })
-
-  it('renders exactly ONE shell button regardless of shells prop length (3 shells)', () => {
-    ;({ container, root } = renderModal({
-      shells: [
-        { name: 'zsh', displayName: 'zsh', path: '/bin/zsh', argv: ['-i'] },
-        { name: 'bash', displayName: 'bash', path: '/bin/bash', argv: ['-i'] },
-        { name: 'fish', displayName: 'fish', path: '/usr/bin/fish', argv: ['-i'] },
-      ],
-    }))
-    const shellBtns = container.querySelectorAll('.new-session-modal__agent-btn--shell')
-    expect(shellBtns.length).toBe(1)
-  })
-
-  // Assertion 2: aria-pressed=true when selectedAgent === 'shell'.
-  it('shell button has aria-pressed=true when shell is selected', () => {
-    ;({ container, root } = renderModal({ clis: [] }))
-    // With no clis, the modal defaults to selecting nothing or the first clis entry.
-    // Click the shell button to select it.
-    const shellBtn = container.querySelector('.new-session-modal__agent-btn--shell') as HTMLButtonElement
-    expect(shellBtn).not.toBeNull()
-    flushSync(() => shellBtn.click())
-    expect(shellBtn.getAttribute('aria-pressed')).toBe('true')
-  })
-
-  // Assertion 3: Button contains "Shell" span and detail span with resolved path.
-  it('button contains a span with text "Shell" and a detail span with resolved path', async () => {
+  it('shows "Default login shell" while GetShellPath is pending, then the resolved path', async () => {
+    let resolve: (v: string) => void = () => {}
+    vi.mocked(AppMock.GetShellPath).mockReturnValue(new Promise<string>((r) => { resolve = r }))
     ;({ container, root } = renderModal())
-    // Wait for GetShellPath() promise to resolve.
+    expect(shellLine(container).textContent).toBe('Default login shell')
+    await act(async () => { resolve('/opt/homebrew/bin/zsh') })
+    expect(shellLine(container).textContent).toBe('/opt/homebrew/bin/zsh')
+  })
+
+  it('shows "Default login shell" and keeps Create Session enabled when GetShellPath rejects', async () => {
+    vi.mocked(AppMock.GetShellPath).mockRejectedValue(new Error('daemon down'))
+    await act(async () => { ({ container, root } = renderModal()) })
+    expect(shellLine(container).textContent).toBe('Default login shell')
+    const create = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Create Session')!
+    expect(create.disabled).toBe(false)
+  })
+
+  it('shows "Default login shell" when GetShellPath resolves to ""', async () => {
+    vi.mocked(AppMock.GetShellPath).mockResolvedValue('')
+    await act(async () => { ({ container, root } = renderModal()) })
+    expect(shellLine(container).textContent).toBe('Default login shell')
+  })
+
+  it('is a read-only, non-focusable line (no button or textbox) in the folder-display box', async () => {
+    vi.mocked(AppMock.GetShellPath).mockResolvedValue('/bin/zsh')
+    await act(async () => { ({ container, root } = renderModal()) })
+    const line = shellLine(container)
+    expect(line.tagName).toBe('DIV')
+    expect(line.className).toContain('new-session-modal__folder-display')
+    expect(line.className).not.toContain('--active')
+    expect(line.hasAttribute('tabindex')).toBe(false)
+    expect(line.getAttribute('role')).toBeNull()
+    const section = line.closest('.new-session-modal__section') as HTMLElement
+    expect(section.querySelector('button, input, textarea, [role="button"], [role="textbox"]')).toBeNull()
+    expect(section.querySelector('.new-session-modal__helper')?.textContent)
+      .toBe('Starts as a login shell. Change it in Settings → Paths.')
+  })
+
+  it('re-fetches the shell path on every open', async () => {
+    vi.mocked(AppMock.GetShellPath).mockResolvedValue('/bin/zsh')
+    await act(async () => { ({ container, root } = renderModal()) })
     await act(async () => {
-      await Promise.resolve()
+      root.render(React.createElement(NewSessionModal, { isOpen: false, onConfirm: vi.fn(), onClose: vi.fn() }))
     })
-    const shellBtn = container.querySelector('.new-session-modal__agent-btn--shell')
-    expect(shellBtn).not.toBeNull()
-    // Label span.
-    const spans = shellBtn!.querySelectorAll('span')
-    const labelSpan = Array.from(spans).find((s) => s.textContent === 'Shell')
-    expect(labelSpan).not.toBeUndefined()
-    // Detail span.
-    const detailSpan = shellBtn!.querySelector('.new-session-modal__agent-btn__detail')
-    expect(detailSpan).not.toBeNull()
-    expect(detailSpan!.textContent).toBe('/bin/zsh')
-  })
-
-  // Assertion 4: No "Loading shells…" skeleton even when shellsLoading=true.
-  it('does NOT render Loading shells skeleton when shellsLoading=true', () => {
-    ;({ container, root } = renderModal({ shells: [], shellsLoading: true }))
-    expect(container.textContent).not.toContain('Loading shells')
-  })
-
-  // Assertion 5: Clicking the row then confirming calls onConfirm with only the directory.
-  it('clicking the row then confirming calls onConfirm with only the directory', () => {
-    const onConfirm = vi.fn()
-    ;({ container, root } = renderModal({ clis: [], onConfirm }))
-    const shellBtn = container.querySelector('.new-session-modal__agent-btn--shell') as HTMLButtonElement
-    flushSync(() => shellBtn.click())
-    const createBtn = container.querySelector('.new-session-modal__btn--create') as HTMLButtonElement
-    flushSync(() => createBtn.click())
-    expect(onConfirm).toHaveBeenCalledWith(expect.any(String))
-    expect(onConfirm.mock.calls[0]).toHaveLength(1)
-  })
-
-  // Assertion 6: Existing AI CLI rows are unchanged.
-  it('existing AI CLI rows still render and are clickable', () => {
-    const onConfirm = vi.fn()
-    ;({ container, root } = renderModal({
-      clis: [{ Name: 'claude', Path: '/usr/local/bin/claude', DisplayName: 'Claude Code' }],
-      onConfirm,
-    }))
-    const claudeBtn = container.querySelector(
-      '.new-session-modal__agent-btn:not(.new-session-modal__agent-btn--shell)'
-    ) as HTMLButtonElement
-    expect(claudeBtn).not.toBeNull()
-    expect(claudeBtn.textContent).toContain('Claude Code')
-    flushSync(() => claudeBtn.click())
-    expect(claudeBtn.getAttribute('aria-pressed')).toBe('true')
+    vi.mocked(AppMock.GetShellPath).mockResolvedValue('/bin/bash')
+    await act(async () => {
+      root.render(React.createElement(NewSessionModal, { isOpen: true, onConfirm: vi.fn(), onClose: vi.fn() }))
+    })
+    expect(AppMock.GetShellPath).toHaveBeenCalledTimes(2)
+    expect(shellLine(container).textContent).toBe('/bin/bash')
   })
 })

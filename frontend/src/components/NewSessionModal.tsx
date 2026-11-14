@@ -1,71 +1,32 @@
 import { useEffect, useState } from 'react'
 import { GetShellPath, OpenDirectoryDialog } from '../wailsjs/go/main/App'
-import type { daemon } from '../wailsjs/go/models'
 
 const LAST_DIR_KEY = 'agenthub:lastWorkDir'
-const ARGS_KEY = (cli: string) => `agenthub:args:${cli}`
-const SHELL_ARGS_KEY = (name: string) => `agenthub:args:shell:${name}`
-const SHELL_ARGS_PLACEHOLDER = 'Arguments are not passed to shell sessions'
-
-interface DetectedCLI {
-  Name: string
-  Path: string
-  DisplayName?: string
-}
+const SHELL_FALLBACK = 'Default login shell'
 
 export interface NewSessionModalProps {
   isOpen: boolean
-  clis: DetectedCLI[]
-  /**
-   * Phase 101-02 (SHELL-01 GUI half) — shell list formerly used to render
-   * per-binary rows. Kept for backwards compat with App.tsx call site
-   * (App.tsx:1217 passes `shells={detectedShells}`); the modal no longer
-   * renders multiple shell rows. Pending removal in a future cleanup (SHELL-10).
-   */
-  shells?: daemon.DetectedShell[]
-  /**
-   * Phase 101-02 — formerly triggered a loading skeleton when true AND shells
-   * was empty. Kept for backwards compat with App.tsx call site; no skeleton
-   * is rendered in the collapsed single-row design. Pending removal (SHELL-10).
-   */
-  shellsLoading?: boolean
+  /** Called with the chosen working directory ("" = home directory). */
   onConfirm: (workDir: string) => void
   onClose: () => void
 }
 
-export function NewSessionModal({
-  isOpen,
-  clis,
-  // shells / shellsLoading are kept as accepted (but unused) props for
-  // backwards compat with the App.tsx call site. They will be removed once
-  // App.tsx is updated to stop passing them in a future cleanup.
-  shells: _shells = [],
-  shellsLoading: _shellsLoading = false,
-  onConfirm,
-  onClose,
-}: NewSessionModalProps) {
-  const [selectedAgent, setSelectedAgent] = useState(clis[0]?.Name ?? '')
+export function NewSessionModal({ isOpen, onConfirm, onClose }: NewSessionModalProps) {
   const [selectedDir, setSelectedDir] = useState(() => localStorage.getItem(LAST_DIR_KEY) ?? '')
   const [browseLoading, setBrowseLoading] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [argsText, setArgsText] = useState(() =>
-    localStorage.getItem(ARGS_KEY(clis[0]?.Name ?? '')) ?? ''
-  )
 
-  // SHELL-10: Resolved shell binary path shown in the single static Shell row.
-  // Fetched from daemon via GetShellPath() on every modal open so that changes
-  // made in Settings → Paths are reflected immediately without a full reload.
+  // Resolved shell path, re-fetched on every open so Settings → Paths changes
+  // show immediately. "" while pending, on error, or on an empty result.
   const [resolvedShellPath, setResolvedShellPath] = useState('')
 
   useEffect(() => {
     if (!isOpen) return
+    setResolvedShellPath('')
     GetShellPath()
-      .then(setResolvedShellPath)
+      .then((p) => setResolvedShellPath(p ?? ''))
       .catch(() => setResolvedShellPath(''))
   }, [isOpen])
-
-  // SHELL-10: Shell selection is now bare 'shell' — no "shell:" prefix scheme.
-  const isShellSelected = selectedAgent === 'shell'
 
   if (!isOpen) return null
 
@@ -82,36 +43,8 @@ export function NewSessionModal({
     }
   }
 
-  function handleSelectCLI(name: string) {
-    setSelectedAgent(name)
-    setArgsText(localStorage.getItem(ARGS_KEY(name)) ?? '')
-  }
-
-  function handleSelectShell(name: string) {
-    // SHELL-10: agent id is bare 'shell' — no prefix.
-    setSelectedAgent(name)
-    setArgsText(localStorage.getItem(SHELL_ARGS_KEY(name)) ?? '')
-  }
-
-  function handleClearArgs() {
-    setArgsText('')
-    if (!isShellSelected) {
-      localStorage.removeItem(ARGS_KEY(selectedAgent))
-    }
-  }
-
   function handleConfirm() {
     setCreating(true)
-    if (isShellSelected) {
-      // SHELL-10: Agent id is already bare 'shell' — pass directly.
-      onConfirm(selectedDir)
-      return
-    }
-    if (argsText.trim()) {
-      localStorage.setItem(ARGS_KEY(selectedAgent), argsText)
-    } else {
-      localStorage.removeItem(ARGS_KEY(selectedAgent))
-    }
     onConfirm(selectedDir)
   }
 
@@ -123,39 +56,6 @@ export function NewSessionModal({
           <button className="new-session-modal__close" aria-label="Close" onClick={onClose}>&times;</button>
         </div>
         <div className="new-session-modal__body">
-          <div className="new-session-modal__section">
-            <label className="new-session-modal__section-label">Select Agent</label>
-            <div className="new-session-modal__agent-list">
-              {clis.map((cli) => {
-                const selected = selectedAgent === cli.Name
-                return (
-                  <button
-                    key={cli.Name}
-                    className={`new-session-modal__agent-btn${selected ? ' new-session-modal__agent-btn--selected' : ''}`}
-                    aria-pressed={selected}
-                    onClick={() => handleSelectCLI(cli.Name)}
-                  >
-                    {cli.DisplayName || cli.Name}
-                  </button>
-                )
-              })}
-              {/* SHELL-10: Single static Shell row — replaces the Phase 101 sortedShells.map loop.
-                  Agent id is bare 'shell'. Detail line shows daemon-resolved path from GetShellPath().
-                  Selected state uses --selected-shell (cyan #89ddff) per UI-SPEC §2. */}
-              <button
-                className={[
-                  'new-session-modal__agent-btn',
-                  'new-session-modal__agent-btn--shell',
-                  selectedAgent === 'shell' ? 'new-session-modal__agent-btn--selected-shell' : '',
-                ].filter(Boolean).join(' ')}
-                aria-pressed={selectedAgent === 'shell'}
-                onClick={() => handleSelectShell('shell')}
-              >
-                <span>Shell</span>
-                <span className="new-session-modal__agent-btn__detail">{resolvedShellPath}</span>
-              </button>
-            </div>
-          </div>
           <div className="new-session-modal__section">
             <label className="new-session-modal__section-label">Working Directory</label>
             <div className="new-session-modal__folder-row">
@@ -172,26 +72,12 @@ export function NewSessionModal({
             </div>
           </div>
           <div className="new-session-modal__section">
-            <label className="new-session-modal__section-label">Extra Arguments</label>
-            <div className="new-session-modal__args-row">
-              <input
-                className="new-session-modal__args-input"
-                type="text"
-                value={isShellSelected ? '' : argsText}
-                onChange={(e) => setArgsText(e.target.value)}
-                placeholder={isShellSelected ? SHELL_ARGS_PLACEHOLDER : 'e.g. --model claude-opus-4-5'}
-                disabled={isShellSelected}
-              />
-              {argsText && !isShellSelected && (
-                <button
-                  className="new-session-modal__args-clear"
-                  onClick={handleClearArgs}
-                  aria-label="Clear arguments"
-                >
-                  Clear Args
-                </button>
-              )}
+            <label className="new-session-modal__section-label">Shell</label>
+            {/* Read-only, non-focusable: the shell is changed in Settings → Paths. */}
+            <div className="new-session-modal__folder-display new-session-modal__folder-display--mono">
+              {resolvedShellPath || SHELL_FALLBACK}
             </div>
+            <p className="new-session-modal__helper">Starts as a login shell. Change it in Settings → Paths.</p>
           </div>
         </div>
         <div className="new-session-modal__footer">
@@ -199,7 +85,7 @@ export function NewSessionModal({
           <button
             className="new-session-modal__btn--create"
             onClick={handleConfirm}
-            disabled={!selectedAgent || creating}
+            disabled={creating}
           >
             {creating ? 'Creating…' : 'Create Session'}
           </button>
