@@ -78,3 +78,20 @@ Turn the forked AgentHub codebase into a plain macOS terminal. New sessions run 
 - Homebrew packaging → v2 (DIST).
 
 </deferred>
+
+<amendment date="2026-11-14">
+## Amendment: Fixed zsh, simple Tailscale check
+
+The user decided this mid-execution, after plans 01-01..01-05 had landed. It supersedes the earlier "$SHELL as a login shell" and "Settings shell path" behavior, and it becomes new plans after 01-10.
+
+### Shell: always macOS zsh
+- Every session runs exactly `/bin/zsh -l`. No shell choice anywhere: `$SHELL` is ignored and there is no Settings shell path. The resolver from 01-05 shrinks to a constant. Remove `GetShellPath` as a user-visible concept, unless a test seam still needs it.
+- New Session dialog: only the working-directory picker remains. Remove the read-only shell line and its helper text.
+- Settings → Paths: delete the whole section (shell row and tailscale row), including the stale-path filter and the `cliPaths` override plumbing. Old settings files with `shellPath`/`cliPaths` keys must still load; the unknown keys are ignored and dropped on the next save.
+
+### Tailscale: detect, don't manage
+- Portty only checks for a working Tailscale connection through the existing LocalAPI (`tailscale.com/client/local`). Managing Tailscale is the user's job.
+- Remove the Tailscale install flow (`brew install --cask tailscale-app`), the custom tailscale binary path override, the `macsys` daemon and permission probes, and the multi-state health UI beyond connected/not connected.
+- Keep LocalAPI use for peer discovery, HTTPS certs and Funnel. Those features need it.
+- When not connected (LocalAPI unreachable, or backend state not Running/logged in): show a persistent in-app banner, "Tailscale isn't connected. Remote access and sharing are off until it is.", and disable the Share and remote/peer controls with the same reason. Local terminals work normally. Re-check automatically (on launch, periodically, and on window focus), and clear the banner when the connection is back.
+</amendment>
