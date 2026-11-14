@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User changes the terminal theme and toggles xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) in Settings, and open terminals pick up the change
   4. User chats on a session from the desktop app and from a browser web share, and both sides see the messages; nothing typed in chat (including `@session`) is ever written into the terminal
   5. On macOS the Go build, Go tests, Vitest, and lint all pass with no Windows/Linux sources, packaging, or CI jobs left; the daemon no longer serves a files API or files capability; the security fuzz harness still runs against relay and webserver
-**Plans**: 7/10 plans executed (sequential waves 1-10; shared hot files and TESTING.md force serial order)
+**Plans**: 8/10 plans executed (sequential waves 1-10; shared hot files and TESTING.md force serial order)
 
 Plans:
 **Wave 1**
@@ -59,7 +59,7 @@ Plans:
 - [x] 01-07-PLAN.md — Agent identity removed from every UI surface; one-time web-share warning for any session ("Keep sharing off")
 
 **Wave 8** *(blocked on Wave 7 completion)*
-- [ ] 01-08-PLAN.md — Agent identity removed from daemon, webserver, peer and CLI wire; explicit webserver 404 contract
+- [x] 01-08-PLAN.md — Agent identity removed from daemon, webserver, peer and CLI wire; explicit webserver 404 contract
 
 **Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 01-09-PLAN.md — Chat @session inject bridge removed on both paths; relay/webserver fuzz targets added
@@ -146,7 +146,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Plain macOS Terminal | 7/10 | In Progress | - |
+| 1. Plain macOS Terminal | 8/10 | In Progress | - |
 | 2. Tabs + Sidebar Navigation | 0/TBD | Not started | - |
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
