@@ -1,34 +1,13 @@
 import type { SessionInfo } from '../wailsjs/go/main/App'
 
-/**
- * HubStatus — the canonical set of display statuses for Hub session cards and filters.
- * Used by SessionCard, HubFilterBar, and HubPanel to derive a consistent status from
- * the raw SessionInfo fields.
- *
- * WR-01: extracted from three duplicate implementations in SessionCard.tsx,
- * HubFilterBar.tsx, and HubPanel.tsx. Single source of truth.
- */
-export type HubStatus = 'running' | 'idle' | 'waiting' | 'errored' | 'stopped-ok' | 'stopped-err'
-
-/**
- * Derive the Hub display status from a SessionInfo.
- * - state === 'stopped' + exitCode non-zero → 'stopped-err'
- * - state === 'stopped' + exitCode 0 (or undefined) → 'stopped-ok'
- * - otherwise: return session.status cast to HubStatus (running/idle/waiting/errored)
- *
- * HubFilter extends HubStatus with 'all', so this function is safe to use
- * for filtering contexts — the returned value is always a valid HubFilter
- * (excluding 'all', which is the identity/no-filter sentinel).
- */
-export function deriveHubStatus(s: SessionInfo): HubStatus {
-  if (s.state === 'stopped') {
-    return (s.exitCode ?? 0) !== 0 ? 'stopped-err' : 'stopped-ok'
-  }
-  return s.status as HubStatus
-}
-
 /** Wire status the tabs render. Anything not exited/errored (legacy idle/waiting, '', unknown) is running. */
 export type SessionStatus = 'running' | 'exited' | 'errored'
+
+/**
+ * HubStatus — display status for Hub session cards (same three states as the tabs).
+ * WR-01: single source of truth for SessionCard, HubPanel and group counts.
+ */
+export type HubStatus = SessionStatus
 
 export function normalizeStatus(raw: string | undefined): SessionStatus {
   return raw === 'exited' || raw === 'errored' ? raw : 'running'
@@ -40,7 +19,19 @@ export function statusLabel(status: SessionStatus): string {
   return STATUS_LABELS[status]
 }
 
-/* ATTN-01: canonical attention predicate — waiting, errored, or non-zero-exit sessions need attention */
+/**
+ * Derive the Hub display status from a SessionInfo.
+ * - state 'stopped' → 'errored' for a non-zero exitCode, else 'exited'
+ * - otherwise the normalized daemon status (errored stays errored; legacy values → running)
+ */
+export function deriveHubStatus(s: SessionInfo): HubStatus {
+  if (s.state === 'stopped') {
+    return (s.exitCode ?? 0) !== 0 ? 'errored' : 'exited'
+  }
+  return normalizeStatus(s.status)
+}
+
+/* ATTN-01: canonical attention predicate — only errored sessions need attention */
 export function isAttentionStatus(status: HubStatus): boolean {
-  return status === 'waiting' || status === 'errored' || status === 'stopped-err'
+  return status === 'errored'
 }

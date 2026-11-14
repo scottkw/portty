@@ -12,8 +12,6 @@ function dotColor(status: string): string {
   switch (status) {
     case 'running': return '#9ece6a'
     case 'errored': return '#f7768e'
-    case 'idle': return '#e0af68'
-    case 'waiting': return '#7aa2f7'
     default: return '#9aa5ce'
   }
 }

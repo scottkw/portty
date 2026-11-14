@@ -83,26 +83,15 @@ describe('SessionCard', () => {
     expect(label!.textContent).toContain('Running')
   })
 
-  it('idle: renders icon with aria-label "Idle" AND visible text label "Idle"', () => {
-    const { container } = renderCard(makeSession({ state: 'idle', status: 'idle' }))
-    const icon = container.querySelector('[aria-label="Idle"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Idle')
+  it.each(['idle', 'waiting', '', 'bogus'])('legacy/unknown status %j renders as Running', (status) => {
+    const { container } = renderCard(makeSession({ state: 'running', status }))
+    expect(container.querySelector('[aria-label="Running"]')).not.toBeNull()
+    expect(container.querySelector('.hub-card__status-label')!.textContent).toBe('Running')
+    expect(container.textContent).not.toContain('Needs input')
   })
 
-  it('waiting: renders icon with aria-label "Needs input" AND visible text label "Needs input"', () => {
-    const { container } = renderCard(makeSession({ state: 'waiting', status: 'waiting' }))
-    const icon = container.querySelector('[aria-label="Needs input"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Needs input')
-  })
-
-  it('errored: renders icon with aria-label "Error" AND visible text label "Error"', () => {
-    const { container } = renderCard(makeSession({ state: 'errored', status: 'errored' }))
+  it('daemon errored with no exit code: renders icon with aria-label "Error" AND visible text label "Error"', () => {
+    const { container } = renderCard(makeSession({ state: 'running', status: 'errored' }))
     const icon = container.querySelector('[aria-label="Error"]')
     expect(icon).not.toBeNull()
     const label = container.querySelector('.hub-card__status-label')
@@ -110,38 +99,26 @@ describe('SessionCard', () => {
     expect(label!.textContent).toContain('Error')
   })
 
-  it('stopped exit-0: renders icon with aria-label "Done" AND visible text label "Done"', () => {
+  it('stopped exit-0: renders icon with aria-label "Exited" AND visible text label "Exited"', () => {
     const exitCode = 0
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 3600 }))
-    const icon = container.querySelector('[aria-label="Done"]')
+    const { container } = renderCard(makeSession({ state: 'stopped', status: 'exited', exitCode, duration: 3600 }))
+    const icon = container.querySelector('[aria-label="Exited"]')
     expect(icon).not.toBeNull()
     const label = container.querySelector('.hub-card__status-label')
     expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Done')
+    expect(label!.textContent).toBe('Exited')
   })
 
-  it('stopped exit-nonzero: renders icon with aria-label containing "Exited" AND visible text label containing "Exited"', () => {
-    const exitCode = 1
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 3600 }))
-    const icon = container.querySelector('[aria-label*="Exited"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Exited')
+  it('stopped exit 3: renders icon with aria-label "Exited 3" AND visible text label "Exited 3"', () => {
+    const exitCode = 3
+    const { container } = renderCard(makeSession({ state: 'stopped', status: 'errored', exitCode, duration: 3600 }))
+    expect(container.querySelector('[aria-label="Exited 3"]')).not.toBeNull()
+    expect(container.querySelector('.hub-card__status-label')!.textContent).toBe('Exited 3')
   })
 
-  // ---- Spin modifier on running only ----
-
-  it('running card icon has hub-card__status-icon--spin class', () => {
+  it('no status icon spins', () => {
     const { container } = renderCard(makeSession({ state: 'running', status: 'running' }))
-    const spinIcon = container.querySelector('.hub-card__status-icon--spin')
-    expect(spinIcon).not.toBeNull()
-  })
-
-  it('idle card icon does NOT have hub-card__status-icon--spin class', () => {
-    const { container } = renderCard(makeSession({ state: 'idle', status: 'idle' }))
-    const spinIcon = container.querySelector('.hub-card__status-icon--spin')
-    expect(spinIcon).toBeNull()
+    expect(container.querySelector('.hub-card__status-icon--spin')).toBeNull()
   })
 
   // ---- Dimming ----
@@ -730,7 +707,7 @@ describe('SessionCard attention (ATTN-01)', () => {
 
   it('isAttention=true: card article has .hub-card--attention class', () => {
     const { container } = renderCardWithAttention(
-      makeSession({ state: 'waiting', status: 'waiting' }),
+      makeSession({ state: 'running', status: 'errored' }),
       true,
     )
     const card = container.querySelector('.hub-card--attention')
@@ -739,7 +716,7 @@ describe('SessionCard attention (ATTN-01)', () => {
 
   it('isAttention=true: renders .hub-card__attn-icon element with aria-label "Needs attention"', () => {
     const { container } = renderCardWithAttention(
-      makeSession({ state: 'waiting', status: 'waiting' }),
+      makeSession({ state: 'running', status: 'errored' }),
       true,
     )
     const attnIcon = container.querySelector('.hub-card__attn-icon')
@@ -749,7 +726,7 @@ describe('SessionCard attention (ATTN-01)', () => {
 
   it('isAttention=true: card article aria-label ends with ", needs attention"', () => {
     const { container } = renderCardWithAttention(
-      makeSession({ state: 'waiting', status: 'waiting' }),
+      makeSession({ state: 'running', status: 'errored' }),
       true,
     )
     const card = container.querySelector('.hub-card')
@@ -778,7 +755,7 @@ describe('SessionCard attention (ATTN-01)', () => {
     act(() => {
       root.render(
         <SessionCard
-          session={makeSession({ state: 'waiting', status: 'waiting' })}
+          session={makeSession({ state: 'running', status: 'errored' })}
           isAttention={true}
           onOpenSession={onOpen}
         />,

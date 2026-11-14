@@ -4,9 +4,7 @@ import type { AdaptedRemoteSessionInfo } from '../../lib/remoteAdapter'
 import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../../wailsjs/go/models'
 import {
-  ArrowPathIcon,
-  CheckCircleIcon,
-  PauseCircleIcon,
+  PlayCircleIcon,
   ExclamationCircleIcon,
   StopCircleIcon,
   ComputerDesktopIcon,
@@ -36,29 +34,21 @@ import { ChatBadge } from './ChatBadge'
 // Hex values are authoritative source of truth — verify at source, not by eye (user is colorblind).
 const STATUS_CONFIG: Record<
   HubStatus,
-  { Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; label: string; spin: boolean }
+  { Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; label: string }
 > = {
-  /* COLORBLIND-SAFE: status dot dark hex #3b82f6 (running) — reinforcement only; ArrowPathIcon carries the state */
-  running: { Icon: ArrowPathIcon, label: 'Running', spin: true },
-  /* COLORBLIND-SAFE: status dot dark hex #22c55e (idle) — reinforcement only; CheckCircleIcon carries the state */
-  idle: { Icon: CheckCircleIcon, label: 'Idle', spin: false },
-  /* COLORBLIND-SAFE: status dot dark hex #f59e0b (waiting) — reinforcement only; PauseCircleIcon carries the state */
-  waiting: { Icon: PauseCircleIcon, label: 'Needs input', spin: false },
-  /* COLORBLIND-SAFE: status dot dark hex #ef4444 (errored) — reinforcement only; ExclamationCircleIcon carries the state */
-  errored: { Icon: ExclamationCircleIcon, label: 'Error', spin: false },
-  /* COLORBLIND-SAFE: status dot dark hex #565f89 (stopped/done) — reinforcement only; StopCircleIcon carries the state */
-  'stopped-ok': { Icon: StopCircleIcon, label: 'Done', spin: false },
-  /* COLORBLIND-SAFE: exit-code dark hex #f7768e (non-zero exit) — reinforcement only; "Exited {code}" text carries the state */
-  /* COLORBLIND-SAFE: status dot dark hex #f7768e (non-zero exit) — reinforcement only; ExclamationCircleIcon carries the state */
+  /* COLORBLIND-SAFE: status dot dark hex #3b82f6 (running) — reinforcement only; PlayCircleIcon carries the state */
   /* COLORBLIND-SAFE: status dot light hex #1d4ed8 (running) — WCAG AA 7.1:1 on white; icon carries state */
-  /* COLORBLIND-SAFE: status dot light hex #1a7f37 (idle) — WCAG AA 5.0:1 on white; icon carries state */
-  /* COLORBLIND-SAFE: status dot light hex #92400e (waiting) — WCAG AA 7.6:1 on white; icon carries state */
+  running: { Icon: PlayCircleIcon, label: 'Running' },
+  /* COLORBLIND-SAFE: status dot dark hex #565f89 (exited) — reinforcement only; StopCircleIcon carries the state */
+  /* COLORBLIND-SAFE: status dot light hex #4b5563 (exited) — WCAG AA 7.0:1 on white; icon carries state */
+  exited: { Icon: StopCircleIcon, label: 'Exited' },
+  /* COLORBLIND-SAFE: status dot dark hex #ef4444 (errored) — reinforcement only; ExclamationCircleIcon carries the state */
+  /* COLORBLIND-SAFE: exit-code dark hex #f7768e (non-zero exit) — reinforcement only; "Exited {code}" text carries the state */
   /* COLORBLIND-SAFE: status dot light hex #b91c1c (errored) — WCAG AA 6.0:1 on white; icon carries state */
-  /* COLORBLIND-SAFE: status dot light hex #4b5563 (stopped/done) — WCAG AA 7.0:1 on white; icon carries state */
   /* COLORBLIND-SAFE: status dot light hex #c0394f (non-zero exit) — WCAG AA 4.7:1 on white; icon carries state */
   /* HUB-04 LIGHT THEME: verified WCAG AA for --hub-accent #3d6fe8 on #ffffff (4.5:1) */
   /* HUB-04 LIGHT THEME: verified WCAG AA for --hub-destructive #c0394f on #ffffff (4.7:1) */
-  'stopped-err': { Icon: ExclamationCircleIcon, label: 'Exited', spin: false },
+  errored: { Icon: ExclamationCircleIcon, label: 'Error' },
 }
 
 // ---- Helpers ----
@@ -186,7 +176,7 @@ export interface SessionCardProps {
  *
  * Layout (Phase 172 — consolidated chip row, Sketch 001 Variant B winner):
  *   HEADER: InlineSessionName + ChatBadge
- *   STATUS ROW: status-indicator (icon + label, spin/attention) — stays the
+ *   STATUS ROW: status-indicator (icon + label, attention) — stays the
  *     primary top-line signal, NOT chipified (D-03)
  *   EXIT CHIP: "Exited {code}" (only when stopped with non-zero exit)
  *   CHIP ROW: agent chip · origin chip · exposure cluster (INTERNET / FULL
@@ -195,7 +185,7 @@ export interface SessionCardProps {
  *   ACTIONS: Open (when live, Phase 131) / Share
  *   PREVIEW: MiniPreview (CARD-07 plain-text snapshot; NO xterm)
  *
- * Dimming (CARD-08): stopped-ok cards get hub-card--dim; stopped-err cards do NOT.
+ * Dimming (CARD-08): exited cards get hub-card--dim; errored cards do NOT.
  */
 export function SessionCard({
   session,
@@ -227,11 +217,11 @@ export function SessionCard({
   } = session
 
   const hubStatus = deriveHubStatus(session)
-  const { Icon, label, spin } = STATUS_CONFIG[hubStatus]
+  const { Icon, label } = STATUS_CONFIG[hubStatus]
 
-  // Stopped-err label shows "Exited {code}" — override the generic label
-  const displayLabel =
-    hubStatus === 'stopped-err' ? `Exited ${exitCode ?? ''}`.trim() : label
+  // A stopped errored session has a known non-zero code: "Exited {code}"; otherwise "Error"
+  const exitedWithCode = hubStatus === 'errored' && session.state === 'stopped'
+  const displayLabel = exitedWithCode ? `Exited ${exitCode}` : label
 
   // Origin marker: provenance-based when isRemote prop is supplied (CARD-02 fix),
   // falls back to hostname-based for callers that do not yet supply the prop.
@@ -343,7 +333,7 @@ export function SessionCard({
     <article
       className={[
         'hub-card',
-        hubStatus === 'stopped-ok' ? 'hub-card--dim' : '',
+        hubStatus === 'exited' ? 'hub-card--dim' : '',
         isDragging ? 'hub-card--dragging' : '',
         isAttention ? 'hub-card--attention' : '',
       ].filter(Boolean).join(' ')}
@@ -486,7 +476,7 @@ export function SessionCard({
         )}
         <span className="hub-card__status-indicator">
           <Icon
-            className={`hub-card__status-icon${spin ? ' hub-card__status-icon--spin' : ''}`}
+            className="hub-card__status-icon"
             aria-label={displayLabel}
           />
           <span className="hub-card__status-label">{displayLabel}</span>
@@ -495,7 +485,7 @@ export function SessionCard({
 
       {/* ROW 4: exit-code chip (only for non-zero exit) */}
       {/* CR-01: hub-card__row4 matches CSS definition (was hub-card__row hub-card__row--exit) */}
-      {hubStatus === 'stopped-err' && (
+      {exitedWithCode && (
         <div className="hub-card__row4">
           {/* IN-02: aria-hidden since exit code is already in card aria-label */}
           <span className="hub-card__exit-chip" aria-hidden="true">Exited {exitCode}</span>

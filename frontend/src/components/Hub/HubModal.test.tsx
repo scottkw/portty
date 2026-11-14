@@ -101,7 +101,7 @@ describe('HubModal (MODAL-03: attention-based routing)', () => {
 })
 
 describe('HubModal (A11Y-01: STATUS_CONFIG mirrors SessionCard — colorblind-safe at source)', () => {
-  // Verify at source that STATUS_CONFIG contains each of the 6 status keys with
+  // Verify at source that STATUS_CONFIG contains each of the 3 status keys with
   // unique icon + text label. Color is reinforcement only (colorblind-safe).
   // Verified at source level (hex constants in code), NEVER by eye.
   it('A11Y-01: STATUS_CONFIG contains running status with "Running" label', () => {
@@ -109,29 +109,18 @@ describe('HubModal (A11Y-01: STATUS_CONFIG mirrors SessionCard — colorblind-sa
     expect(raw).toContain("'Running'")
   })
 
-  it('A11Y-01: STATUS_CONFIG contains idle status with "Idle" label', () => {
-    expect(raw).toContain("idle:")
-    expect(raw).toContain("'Idle'")
-  })
-
-  it('A11Y-01: STATUS_CONFIG contains waiting status with "Needs input" label', () => {
-    expect(raw).toContain("waiting:")
-    expect(raw).toContain("'Needs input'")
-  })
-
   it('A11Y-01: STATUS_CONFIG contains errored status with "Error" label', () => {
     expect(raw).toContain("errored:")
     expect(raw).toContain("'Error'")
   })
 
-  it('A11Y-01: STATUS_CONFIG contains stopped-ok status with "Done" label', () => {
-    expect(raw).toContain("'stopped-ok':")
-    expect(raw).toContain("'Done'")
+  it('A11Y-01: STATUS_CONFIG contains exited status with "Exited" label', () => {
+    expect(raw).toContain("exited:")
+    expect(raw).toContain("'Exited'")
   })
 
-  it('A11Y-01: STATUS_CONFIG contains stopped-err status with "Exited" label (text-differentiator from errored)', () => {
-    expect(raw).toContain("'stopped-err':")
-    expect(raw).toContain("'Exited'")
+  it('A11Y-01: STATUS_CONFIG has no idle/waiting/stopped-* entries', () => {
+    expect(raw).not.toMatch(/\bidle:|\bwaiting:|'stopped-(ok|err)':|'Needs input'/)
   })
 })
 
@@ -177,8 +166,9 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     id: 'sess-1',
     cli: 'claude',
     name: 'Test Session',
-    state: 'idle',
-    status: 'idle',
+    state: 'stopped',
+    status: 'exited',
+    exitCode: 0,
     createdAt: new Date().toISOString(),
     hostname: '',
     webEnabled: false,
@@ -317,13 +307,13 @@ describe('HubModal (A11Y-04 behavioral: inert focus-trap lifecycle — WR-01 reg
     // UI-REVIEW finding: a screen-reader user inside the dialog could not determine the
     // session status — the header icon is decorative (Heroicons hard-code aria-hidden).
     // Status must be conveyed by a text label (not color — colorblind-safe). The icon stays
-    // decorative; an sr-only span carries the STATUS_CONFIG label. Default status 'idle' → 'Idle'.
+    // decorative; an sr-only span carries the STATUS_CONFIG label. Default status 'exited' → 'Exited'.
     renderModal(true) // reduced-motion → 'open'
     const statusIcon = container.querySelector('.hub-modal__status-icon') as HTMLElement
     expect(statusIcon).not.toBeNull()
     expect(statusIcon.getAttribute('aria-hidden')).toBe('true') // icon stays decorative
     const srLabel = container.querySelector('.hub-modal__header .sr-only') as HTMLElement
     expect(srLabel, 'modal header missing AT-readable status label').not.toBeNull()
-    expect(srLabel.textContent).toBe('Idle')
+    expect(srLabel.textContent).toBe('Exited')
   })
 })

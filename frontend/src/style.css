@@ -3486,8 +3486,6 @@ textarea {
   --hub-dim-opacity: 0.45;
   --hub-card-dim-bg: #13141f;
   --hub-group-header-bg: #16161e;
-  --hub-filter-pill-bg: #1e2030;
-  --hub-filter-pill-active-bg: rgba(122, 162, 247, 0.15);
   --hub-empty-icon-color: #3b4261;
   --hub-scrollbar: #3b4261;
   --hub-scrollbar-hover: #565f89;
@@ -3502,9 +3500,6 @@ textarea {
   --hub-sidebar-collapsed-width: 32px;
   --hub-sidebar-item-active-bg: rgba(122,162,247,0.12);
   --hub-sidebar-item-hover-bg: rgba(122,162,247,0.07);
-  /* COLORBLIND-SAFE: needs-input badge dark hex #f59e0b — reinforcement only; PauseCircleIcon carries the state */
-  --hub-needs-input-badge-bg: rgba(245,158,11,0.18);
-  --hub-needs-input-badge-text: #f59e0b;
   /* COLORBLIND-SAFE: drag-over border dark hex #7aa2f7 — border change (shape) is primary non-color cue */
   --hub-drag-over-border: #7aa2f7;
   --hub-drag-over-bg: rgba(122,162,247,0.08);
@@ -3557,8 +3552,6 @@ textarea {
   --hub-dim-opacity: 0.45;
   --hub-card-dim-bg: #ebebef;
   --hub-group-header-bg: #ebebef;
-  --hub-filter-pill-bg: #ececf0;
-  --hub-filter-pill-active-bg: rgba(61, 111, 232, 0.12);
   --hub-empty-icon-color: #c5c5d0;
   --hub-scrollbar: #c5c5d0;
   --hub-scrollbar-hover: #9999b0;
@@ -3573,9 +3566,6 @@ textarea {
   --hub-sidebar-collapsed-width: 32px;
   --hub-sidebar-item-active-bg: rgba(61,111,232,0.10);
   --hub-sidebar-item-hover-bg: rgba(61,111,232,0.05);
-  /* COLORBLIND-SAFE: needs-input badge light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-  --hub-needs-input-badge-bg: rgba(180,83,9,0.15);
-  --hub-needs-input-badge-text: #b45309;
   /* COLORBLIND-SAFE: drag-over border light hex #3d6fe8 — border change (shape) is primary non-color cue */
   --hub-drag-over-border: #3d6fe8;
   --hub-drag-over-bg: rgba(61,111,232,0.06);
@@ -3770,7 +3760,6 @@ textarea {
 
 /* A11Y-02 GAP-135-A: keyboard-only focus rings for all Hub interactive elements */
 /* Colorblind constraint: ring color is var(--hub-accent) token, verified at source */
-.hub-filter__pill:focus-visible,
 .hub-filter__new-session:focus-visible,
 .hub-card__open:focus-visible,
 .hub-card__share:focus-visible,
@@ -3995,32 +3984,14 @@ textarea {
   flex-shrink: 0;
 }
 
-/* Running: spin animation — MUST be inside prefers-reduced-motion guard (Motion Contract) */
-@media (prefers-reduced-motion: no-preference) {
-  .hub-card__status-icon--spin {
-    animation: hub-spin 0.8s linear infinite;
-  }
-}
-
-/* hub-spin keyframes declared at root scope — animation only fires when the
-   class is applied inside the prefers-reduced-motion media query above */
-@keyframes hub-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
 /* --- Status dot color reinforcement (shape + icon + text are PRIMARY differentiators) --- */
-/* COLORBLIND-SAFE: status dot dark hex #3b82f6 (running) — reinforcement only; ArrowPathIcon carries the state */
-/* COLORBLIND-SAFE: status dot dark hex #22c55e (idle) — reinforcement only; CheckCircleIcon carries the state */
-/* COLORBLIND-SAFE: status dot dark hex #f59e0b (waiting) — reinforcement only; PauseCircleIcon carries the state */
+/* COLORBLIND-SAFE: status dot dark hex #3b82f6 (running) — reinforcement only; PlayCircleIcon carries the state */
 /* COLORBLIND-SAFE: status dot dark hex #ef4444 (errored) — reinforcement only; ExclamationCircleIcon carries the state */
-/* COLORBLIND-SAFE: status dot dark hex #565f89 (stopped/done) — reinforcement only; StopCircleIcon carries the state */
+/* COLORBLIND-SAFE: status dot dark hex #565f89 (exited) — reinforcement only; StopCircleIcon carries the state */
 /* COLORBLIND-SAFE: exit-code dark hex #f7768e (non-zero exit) — reinforcement only; "Exited {code}" text carries the state */
 /* COLORBLIND-SAFE: status dot light hex #1d4ed8 (running) — WCAG AA 7.1:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #1a7f37 (idle) — WCAG AA 5.0:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #92400e (waiting) — WCAG AA 7.6:1 on white; icon carries state */
 /* COLORBLIND-SAFE: status dot light hex #b91c1c (errored) — WCAG AA 6.0:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #4b5563 (stopped/done) — WCAG AA 7.0:1 on white; icon carries state */
+/* COLORBLIND-SAFE: status dot light hex #4b5563 (exited) — WCAG AA 7.0:1 on white; icon carries state */
 /* COLORBLIND-SAFE: status dot light hex #c0394f (non-zero exit) — WCAG AA 4.7:1 on white; icon carries state */
 
 /* --- Card session name --- */
@@ -4163,14 +4134,6 @@ textarea {
   flex-wrap: wrap;
 }
 
-/* CR-01: hub-filter__pills — grouping container for filter pill buttons */
-.hub-filter__pills {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
 /* CR-01 / POL-03: hub-filter__new-session — "New session" button in the filter bar */
 /* Restyled to comp's minimal text-link affordance (D-07) — transparent, no border, accent PlusIcon */
 /* Comp parity: prominent filled, glowing accent pill (was a quiet borderless
@@ -4215,31 +4178,6 @@ textarea {
   height: 16px;
   color: var(--hub-bg); /* on accent fill */
   flex-shrink: 0;
-}
-
-.hub-filter__pill {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 10px;
-  font-size: var(--hub-font-size-sm);
-  border-radius: var(--hub-radius-pill);
-  border: 1px solid var(--hub-border);
-  background: var(--hub-filter-pill-bg);
-  color: var(--hub-text-secondary);
-  cursor: pointer;
-  transition: background 100ms ease, border-color 100ms ease;
-}
-
-.hub-filter__pill:hover {
-  border-color: var(--hub-border-hover);
-  background: var(--hub-surface-elevated);
-}
-
-.hub-filter__pill--active {
-  background: var(--hub-filter-pill-active-bg);
-  border-color: var(--hub-accent);
-  color: var(--hub-accent);
 }
 
 .hub-filter__search {
@@ -4445,12 +4383,6 @@ textarea {
   flex-shrink: 0;
 }
 
-.hub__group-sidebar-item__needs-input-badge svg {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
 /* === Phase 133: Attention icon wrapper + badge sizing === */
 .hub-card__attn-icon {
   display: inline-flex;
@@ -4585,21 +4517,6 @@ textarea {
   flex-shrink: 0;
 }
 
-/* COLORBLIND-SAFE: needs-input badge dark hex #f59e0b — reinforcement only; PauseCircleIcon carries the state */
-/* COLORBLIND-SAFE: needs-input badge light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-.hub__group-sidebar-item__needs-input-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  background: var(--hub-needs-input-badge-bg);
-  color: var(--hub-needs-input-badge-text);
-  border-radius: 8px;
-  padding: 0 4px;
-  height: 16px;
-  font-size: 11px;
-  flex-shrink: 0;
-}
-
 /* New group button + inline input */
 .hub__group-sidebar-new {
   display: flex;
@@ -4685,15 +4602,6 @@ textarea {
   .hub-card--attention {
     border-color: var(--hub-attn-static-border);
     box-shadow: none;
-    animation: none;
-  }
-}
-
-/* GAP-135-E: stop running-status spinner under reduced-motion.
-   Running state is still distinguishable: ArrowPathIcon shape is unique among status icons.
-   Text label "Running" is also present. No additional motion cue required. */
-@media (prefers-reduced-motion: reduce) {
-  .hub-card__status-icon--spin {
     animation: none;
   }
 }

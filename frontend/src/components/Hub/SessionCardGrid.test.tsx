@@ -466,10 +466,10 @@ describe('SessionCardGrid', () => {
 
   describe('SessionCardGrid attention (ATTN-02)', () => {
     it('renders attention cards before non-attention cards within a workDir group when debouncedSortKey is set', () => {
-      // Sessions: non-attention, attention (waiting), non-attention
+      // Sessions: non-attention, attention (errored), non-attention
       const sessions = [
         makeSession({ id: 'non-attn-1', name: 'NonAttn1', workDir: '/proj', state: 'running', status: 'running' }),
-        makeSession({ id: 'attn-1', name: 'Attn1', workDir: '/proj', state: 'running', status: 'waiting' }),
+        makeSession({ id: 'attn-1', name: 'Attn1', workDir: '/proj', state: 'running', status: 'errored' }),
         makeSession({ id: 'non-attn-2', name: 'NonAttn2', workDir: '/proj', state: 'running', status: 'idle' }),
       ]
       const attentionIds = new Set(['attn-1'])
@@ -491,7 +491,7 @@ describe('SessionCardGrid', () => {
       // the rendered order must remain unchanged (sortedSessions memo does not re-run).
       const sessionsV1 = [
         makeSession({ id: 'non-attn-1', name: 'NonAttn1', workDir: '/proj', state: 'running', status: 'running' }),
-        makeSession({ id: 'attn-1', name: 'Attn1', workDir: '/proj', state: 'running', status: 'waiting' }),
+        makeSession({ id: 'attn-1', name: 'Attn1', workDir: '/proj', state: 'running', status: 'errored' }),
       ]
       const stableKey = 'key-v1'
       const container = document.createElement('div')
@@ -519,7 +519,7 @@ describe('SessionCardGrid', () => {
       // The sort must NOT re-run — the rendered cards must preserve their V1 order.
       const sessionsV1Updated = [
         makeSession({ id: 'non-attn-1', name: 'NonAttn1', workDir: '/proj', state: 'running', status: 'running' }),
-        makeSession({ id: 'attn-1', name: 'Attn1', workDir: '/proj', state: 'running', status: 'waiting' }),
+        makeSession({ id: 'attn-1', name: 'Attn1', workDir: '/proj', state: 'running', status: 'errored' }),
       ]
       act(() => {
         root.render(
@@ -540,7 +540,7 @@ describe('SessionCardGrid', () => {
       // Now update debouncedSortKey — sort SHOULD re-run and new order applied
       const sessionsV2 = [
         makeSession({ id: 'non-attn-1', name: 'NonAttn1', workDir: '/proj', state: 'running', status: 'running' }),
-        makeSession({ id: 'attn-1', name: 'Attn1', workDir: '/proj', state: 'running', status: 'waiting' }),
+        makeSession({ id: 'attn-1', name: 'Attn1', workDir: '/proj', state: 'running', status: 'errored' }),
       ]
       act(() => {
         root.render(
@@ -562,7 +562,7 @@ describe('SessionCardGrid', () => {
     it('preserves original order for equal-attention sessions (stable sort)', () => {
       // Two attention sessions — should maintain original input order
       const sessions = [
-        makeSession({ id: 'attn-a', name: 'AttnA', workDir: '/proj', state: 'running', status: 'waiting' }),
+        makeSession({ id: 'attn-a', name: 'AttnA', workDir: '/proj', state: 'running', status: 'errored' }),
         makeSession({ id: 'attn-b', name: 'AttnB', workDir: '/proj', state: 'running', status: 'errored' }),
       ]
       const attentionIds = new Set(['attn-a', 'attn-b'])
@@ -580,7 +580,7 @@ describe('SessionCardGrid', () => {
       // Group B (workDir /beta): non-attention only
       const sessions = [
         makeSession({ id: 'a-nonattn', name: 'AlphaNonAttn', workDir: '/alpha', state: 'running', status: 'running' }),
-        makeSession({ id: 'a-attn', name: 'AlphaAttn', workDir: '/alpha', state: 'running', status: 'waiting' }),
+        makeSession({ id: 'a-attn', name: 'AlphaAttn', workDir: '/alpha', state: 'running', status: 'errored' }),
         makeSession({ id: 'b-nonattn', name: 'BetaNonAttn', workDir: '/beta', state: 'running', status: 'running' }),
       ]
       const attentionIds = new Set(['a-attn'])
@@ -602,7 +602,7 @@ describe('SessionCardGrid', () => {
 
     it('each rendered SessionCard for an attention session has .hub-card--attention class', () => {
       const sessions = [
-        makeSession({ id: 'attn-1', name: 'AttnSession', workDir: '/proj', state: 'running', status: 'waiting' }),
+        makeSession({ id: 'attn-1', name: 'AttnSession', workDir: '/proj', state: 'running', status: 'errored' }),
         makeSession({ id: 'non-1', name: 'NonAttnSession', workDir: '/proj', state: 'running', status: 'running' }),
       ]
       const attentionIds = new Set(['attn-1'])
@@ -729,17 +729,17 @@ describe('SessionCardGrid', () => {
     it('sorts attention sessions before non-attention sessions', () => {
       const sessions = [
         makeSession({ id: 's1', state: 'running', status: 'running' }),
-        makeSession({ id: 's2', state: 'running', status: 'waiting' }),
+        makeSession({ id: 's2', state: 'running', status: 'errored' }),
         makeSession({ id: 's3', state: 'running', status: 'idle' }),
       ]
       const result = sortSessionsForDisplay(sessions)
-      // s2 (waiting = attention) should come first
+      // s2 (errored = attention) should come first
       expect(result[0].id).toBe('s2')
     })
 
     it('is stable: equal-attention sessions preserve input order', () => {
       const sessions = [
-        makeSession({ id: 's1', state: 'running', status: 'waiting' }),
+        makeSession({ id: 's1', state: 'running', status: 'errored' }),
         makeSession({ id: 's2', state: 'running', status: 'errored' }),
         makeSession({ id: 's3', state: 'running', status: 'running' }),
       ]
@@ -753,20 +753,20 @@ describe('SessionCardGrid', () => {
     it('does not mutate the original array', () => {
       const sessions = [
         makeSession({ id: 's1', state: 'running', status: 'running' }),
-        makeSession({ id: 's2', state: 'running', status: 'waiting' }),
+        makeSession({ id: 's2', state: 'running', status: 'errored' }),
       ]
       const originalFirst = sessions[0].id
       sortSessionsForDisplay(sessions)
       expect(sessions[0].id).toBe(originalFirst)
     })
 
-    it('handles stopped-err as attention status', () => {
+    it('handles a non-zero exit as attention status', () => {
       const sessions = [
         makeSession({ id: 's1', state: 'running', status: 'running' }),
         makeSession({ id: 's2', state: 'stopped', status: 'stopped', exitCode: 1 }),
       ]
       const result = sortSessionsForDisplay(sessions)
-      expect(result[0].id).toBe('s2') // stopped-err is attention
+      expect(result[0].id).toBe('s2') // non-zero exit is attention
     })
   })
 })

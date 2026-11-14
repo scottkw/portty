@@ -11,7 +11,7 @@ function makeSession(
 ): SessionInfo {
   return {
     id: 'test-id',
-    cli: 'claude',
+    cli: '/bin/zsh',
     name: overrides.name,
     state: overrides.state,
     status: overrides.status,
@@ -29,65 +29,34 @@ function makeSession(
 
 describe('computeGlobalCounts', () => {
   it('returns all-zero counts for an empty session list', () => {
-    expect(computeGlobalCounts([])).toEqual({ running: 0, total: 0, waiting: 0, attention: 0 })
+    expect(computeGlobalCounts([])).toEqual({ running: 0, total: 0, attention: 0 })
   })
 
   it('counts a running session toward running and total', () => {
     const sessions = [makeSession({ name: 's1', workDir: '/proj', status: 'running', state: 'running' })]
-    const counts = computeGlobalCounts(sessions)
-    expect(counts.total).toBe(1)
-    expect(counts.running).toBe(1)
-    expect(counts.waiting).toBe(0)
-    expect(counts.attention).toBe(0)
+    expect(computeGlobalCounts(sessions)).toEqual({ running: 1, total: 1, attention: 0 })
   })
 
-  it('counts an idle session toward running but not waiting or attention', () => {
-    const sessions = [makeSession({ name: 's1', workDir: '/proj', status: 'idle', state: 'running' })]
-    const counts = computeGlobalCounts(sessions)
-    expect(counts.running).toBe(1)
-    expect(counts.waiting).toBe(0)
-    expect(counts.attention).toBe(0)
-  })
-
-  it('counts a waiting session toward running AND waiting AND attention', () => {
-    const sessions = [makeSession({ name: 's1', workDir: '/proj', status: 'waiting', state: 'running' })]
-    const counts = computeGlobalCounts(sessions)
-    expect(counts.running).toBe(1)
-    expect(counts.waiting).toBe(1)
-    expect(counts.attention).toBe(1)
-  })
-
-  it('counts a stopped-err session toward attention but NOT running or waiting', () => {
+  it('counts legacy idle/waiting sessions as running, not attention', () => {
     const sessions = [
-      makeSession({ name: 's1', workDir: '/proj', status: 'running', state: 'stopped', exitCode: 1 }),
-    ]
-    const counts = computeGlobalCounts(sessions)
-    expect(counts.running).toBe(0)
-    expect(counts.waiting).toBe(0)
-    expect(counts.attention).toBe(1)
-    expect(counts.total).toBe(1)
-  })
-
-  it('total equals sessions.length regardless of status', () => {
-    const sessions = [
-      makeSession({ name: 's1', workDir: '/proj', status: 'running', state: 'running' }),
+      makeSession({ name: 's1', workDir: '/proj', status: 'idle', state: 'running' }),
       makeSession({ name: 's2', workDir: '/proj', status: 'waiting', state: 'running' }),
-      makeSession({ name: 's3', workDir: '/proj', status: 'running', state: 'stopped', exitCode: 0 }),
     ]
-    expect(computeGlobalCounts(sessions).total).toBe(3)
+    expect(computeGlobalCounts(sessions)).toEqual({ running: 2, total: 2, attention: 0 })
   })
 
-  it('accumulates multiple sessions: two running + one waiting → running=3, waiting=1, attention=1', () => {
+  it('counts a non-zero exit toward attention but NOT running', () => {
     const sessions = [
-      makeSession({ name: 's1', workDir: '/proj', status: 'running', state: 'running' }),
-      makeSession({ name: 's2', workDir: '/proj', status: 'running', state: 'running' }),
-      makeSession({ name: 's3', workDir: '/proj', status: 'waiting', state: 'running' }),
+      makeSession({ name: 's1', workDir: '/proj', status: 'errored', state: 'stopped', exitCode: 1 }),
     ]
-    const counts = computeGlobalCounts(sessions)
-    expect(counts.running).toBe(3)
-    expect(counts.waiting).toBe(1)
-    expect(counts.attention).toBe(1)
-    expect(counts.total).toBe(3)
+    expect(computeGlobalCounts(sessions)).toEqual({ running: 0, total: 1, attention: 1 })
+  })
+
+  it('a clean exit counts toward neither running nor attention', () => {
+    const sessions = [
+      makeSession({ name: 's1', workDir: '/proj', status: 'exited', state: 'stopped', exitCode: 0 }),
+    ]
+    expect(computeGlobalCounts(sessions)).toEqual({ running: 0, total: 1, attention: 0 })
   })
 })
 
@@ -106,15 +75,11 @@ describe('computeCounts', () => {
     const sessions = [
       makeSession({ name: 's1', workDir: '/proj', status: 'running', state: 'running' }),
       makeSession({ name: 's2', workDir: '/other', status: 'running', state: 'running' }),
-      makeSession({ name: 's3', workDir: '/proj', status: 'waiting', state: 'running' }),
+      makeSession({ name: 's3', workDir: '/proj', status: 'errored', state: 'stopped', exitCode: 2 }),
     ]
     // Only s1 and s3 are members (same workDir group)
     const keys = new Set<string>([memberKey('s1', '/proj'), memberKey('s3', '/proj')])
-    const counts = computeCounts(sessions, keys)
-    expect(counts.total).toBe(2)
-    expect(counts.running).toBe(2) // running + waiting both count toward running
-    expect(counts.waiting).toBe(1)
-    expect(counts.attention).toBe(1)
+    expect(computeCounts(sessions, keys)).toEqual({ running: 1, total: 2, attention: 1 })
   })
 
   it('returns total:2 when a 2-member Set is matched against 3 sessions', () => {

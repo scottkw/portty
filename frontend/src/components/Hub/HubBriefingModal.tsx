@@ -26,7 +26,7 @@ export interface HubBriefingModalProps {
 
 /**
  * HubBriefingModal shows the real terminal tail and a respond input for
- * sessions that need attention (waiting / errored). The Send flow constructs
+ * sessions that need attention (errored). The Send flow constructs
  * a per-send RelayClient and delivers the response inside the onOpen callback
  * to guarantee the WebSocket is OPEN before sendInput fires (Pitfall 5 — race-safe).
  *

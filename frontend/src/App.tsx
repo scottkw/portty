@@ -317,7 +317,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [groupCounts, setGroupCounts] = useState<Record<string, GroupCounts>>({})
   const [globalGroupCounts, setGlobalGroupCounts] = useState<GroupCounts>(
-    { running: 0, total: 0, attention: 0, waiting: 0 }
+    { running: 0, total: 0, attention: 0 }
   )
 
   const handleGroupSelect = useCallback((id: string | null) => {

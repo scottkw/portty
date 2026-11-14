@@ -3,9 +3,7 @@ import type { SessionInfo } from '../../wailsjs/go/main/App'
 import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../../wailsjs/go/models'
 import {
-  ArrowPathIcon,
-  CheckCircleIcon,
-  PauseCircleIcon,
+  PlayCircleIcon,
   ExclamationCircleIcon,
   StopCircleIcon,
   ComputerDesktopIcon,
@@ -24,14 +22,11 @@ type PluginSettings = daemon.PluginSettings
 // COLORBLIND-SAFE: every status has unique icon shape + text label; color is reinforcement only.
 const STATUS_CONFIG: Record<
   HubStatus,
-  { Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; label: string; spin: boolean }
+  { Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; label: string }
 > = {
-  running: { Icon: ArrowPathIcon, label: 'Running', spin: true },
-  idle: { Icon: CheckCircleIcon, label: 'Idle', spin: false },
-  waiting: { Icon: PauseCircleIcon, label: 'Needs input', spin: false },
-  errored: { Icon: ExclamationCircleIcon, label: 'Error', spin: false },
-  'stopped-ok': { Icon: StopCircleIcon, label: 'Done', spin: false },
-  'stopped-err': { Icon: ExclamationCircleIcon, label: 'Exited', spin: false },
+  running: { Icon: PlayCircleIcon, label: 'Running' },
+  exited: { Icon: StopCircleIcon, label: 'Exited' },
+  errored: { Icon: ExclamationCircleIcon, label: 'Error' },
 }
 
 export interface HubModalProps {

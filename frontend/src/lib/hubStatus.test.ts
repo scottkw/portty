@@ -1,36 +1,30 @@
 import { describe, it, expect } from 'vitest'
-import { isAttentionStatus, normalizeStatus, statusLabel } from './hubStatus'
+import { deriveHubStatus, isAttentionStatus, normalizeStatus, statusLabel } from './hubStatus'
+import type { SessionInfo } from '../wailsjs/go/main/App'
 import type { HubStatus } from './hubStatus'
 
 describe('isAttentionStatus', () => {
-  it('returns true for waiting', () => {
-    const status: HubStatus = 'waiting'
-    expect(isAttentionStatus(status)).toBe(true)
+  it.each<[HubStatus, boolean]>([
+    ['errored', true],
+    ['running', false],
+    ['exited', false],
+  ])('%s → %s', (status, want) => {
+    expect(isAttentionStatus(status)).toBe(want)
   })
+})
 
-  it('returns true for errored', () => {
-    const status: HubStatus = 'errored'
-    expect(isAttentionStatus(status)).toBe(true)
-  })
-
-  it('returns true for stopped-err', () => {
-    const status: HubStatus = 'stopped-err'
-    expect(isAttentionStatus(status)).toBe(true)
-  })
-
-  it('returns false for running', () => {
-    const status: HubStatus = 'running'
-    expect(isAttentionStatus(status)).toBe(false)
-  })
-
-  it('returns false for idle', () => {
-    const status: HubStatus = 'idle'
-    expect(isAttentionStatus(status)).toBe(false)
-  })
-
-  it('returns false for stopped-ok', () => {
-    const status: HubStatus = 'stopped-ok'
-    expect(isAttentionStatus(status)).toBe(false)
+describe('deriveHubStatus', () => {
+  const base = { status: 'running', state: 'running' } as SessionInfo
+  it.each<[Partial<SessionInfo>, HubStatus]>([
+    [{ state: 'running', status: 'running' }, 'running'],
+    [{ state: 'running', status: 'idle' }, 'running'],
+    [{ state: 'running', status: 'waiting' }, 'running'],
+    [{ state: 'running', status: 'errored' }, 'errored'],
+    [{ state: 'stopped', status: 'exited', exitCode: 0 }, 'exited'],
+    [{ state: 'stopped', status: 'errored', exitCode: 3 }, 'errored'],
+    [{ state: 'stopped', status: 'running' }, 'exited'],
+  ])('%j → %s', (fields, want) => {
+    expect(deriveHubStatus({ ...base, ...fields } as SessionInfo)).toBe(want)
   })
 })
 

@@ -24,8 +24,8 @@ interface SidebarProps {
   onGroupSelect: (id: string | null) => void
   onCreateGroup: (name: string) => void
   onDropOnGroup: (groupId: string, mKey: string) => void
-  groupCounts: Record<string, { running: number; total: number; attention: number; waiting: number }>
-  globalGroupCounts: { running: number; total: number; attention: number; waiting: number }
+  groupCounts: Record<string, { running: number; total: number; attention: number }>
+  globalGroupCounts: { running: number; total: number; attention: number }
   onOpenHelp: () => void  // Phase 147 / HELP-01
 }
 
@@ -35,7 +35,7 @@ interface SidebarProps {
 interface GroupItemProps {
   id: string | null  // null = "All"
   label: string
-  counts: { running: number; total: number; attention: number; waiting: number }
+  counts: { running: number; total: number; attention: number }
   isActive: boolean
   onGroupSelect: (id: string | null) => void
   onOpenHub: () => void
@@ -252,7 +252,7 @@ export function Sidebar({
               key={g.id}
               id={g.id}
               label={g.name}
-              counts={groupCounts[g.id] ?? { running: 0, total: 0, attention: 0, waiting: 0 }}
+              counts={groupCounts[g.id] ?? { running: 0, total: 0, attention: 0 }}
               isActive={activeGroupId === g.id}
               onGroupSelect={onGroupSelect}
               onOpenHub={onOpenHub}

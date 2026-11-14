@@ -6,7 +6,6 @@ import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../../wailsjs/go/models'
 import { ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import { HubFilterBar } from './HubFilterBar'
-import type { HubFilter } from './HubFilterBar'
 import { SessionCardGrid } from './SessionCardGrid'
 import { HubEmptyState } from './HubEmptyState'
 import { computeCounts, computeGlobalCounts } from '../../lib/hubGroupCounts'
@@ -24,26 +23,18 @@ import {
 type PluginSettings = daemon.PluginSettings
 
 /**
- * filterSessions — apply status filter + case-insensitive substring search.
+ * filterSessions — case-insensitive substring search.
  *
  * @param sessions  - full session list (from prop)
- * @param filter    - active HubFilter key ('all' means no filter)
  * @param search    - trimmed search string ('' means no search)
  * @returns filtered subset, preserving input order
  */
 export function filterSessions(
   sessions: SessionInfo[],
-  filter: HubFilter,
   search: string,
 ): SessionInfo[] {
   const needle = search.toLowerCase()
   return sessions.filter((s) => {
-    // Status filter
-    if (filter !== 'all') {
-      const status = deriveHubStatus(s)
-      if (status !== filter) return false
-    }
-
     // Search filter — case-insensitive substring on name, cli, and hostname
     if (needle) {
       const inName = s.name.toLowerCase().includes(needle)
@@ -248,7 +239,6 @@ export function HubPanel({
   onGroupCountsChange,
   setShareModalSession,
 }: HubPanelProps): React.ReactElement {
-  const [activeFilter, setActiveFilter] = useState<HubFilter>('all')
   const [searchText, setSearchText] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -307,11 +297,8 @@ export function HubPanel({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // Reset both filter and search (used by Clear-filter CTA)
-  const handleClearFilter = useCallback(() => {
-    setActiveFilter('all')
-    setSearchText('')
-  }, [])
+  // Clear search CTA
+  const handleClearSearch = useCallback(() => setSearchText(''), [])
 
   // Phase 132 / GRID-07: merge local + remote sessions into one unified grid
   const allSessions = [...sessions, ...(remoteSessions ?? [])]
@@ -374,8 +361,8 @@ export function HubPanel({
     [attentionSortKey], // attentionSortKey encodes all id:bit changes
   )
 
-  // Apply status filter + search to allSessions
-  const filtered = filterSessions(allSessions, activeFilter, searchText)
+  // Apply search to allSessions
+  const filtered = filterSessions(allSessions, searchText)
 
   // Phase 132 / GRID-03: apply named-group filter when a group is selected
   // When activeGroupId is '__other__', show sessions not in any named group.
@@ -405,7 +392,7 @@ export function HubPanel({
   // allSessions or groupDefs changes. This avoids lifting allSessions to App.tsx.
   useEffect(() => {
     if (!onGroupCountsChange) return
-    const counts: Record<string, { running: number; total: number; attention: number; waiting: number }> = {}
+    const counts: Record<string, { running: number; total: number; attention: number }> = {}
     for (const g of groupDefs) {
       counts[g.id] = computeCounts(allSessions, new Set(g.memberKeys))
     }
@@ -486,7 +473,7 @@ export function HubPanel({
   } else if (allSessions.length === 0) {
     body = <HubEmptyState variant="no-sessions" onNewSession={onNewSession} />
   } else if (visibleSessions.length === 0) {
-    body = <HubEmptyState variant="no-matches" onClearFilter={handleClearFilter} />
+    body = <HubEmptyState variant="no-matches" onClearSearch={handleClearSearch} />
   } else {
     body = (
       <SessionCardGrid
@@ -515,11 +502,8 @@ export function HubPanel({
       <div className="hub">
         {/* CARD-01: Header strip removed — HubFilterBar's New Session button is the sole entry point */}
         <HubFilterBar
-          sessions={allSessions}
-          activeFilter={activeFilter}
           searchText={searchText}
           searchRef={searchRef}
-          onFilterChange={setActiveFilter}
           onSearchChange={setSearchText}
           onNewSession={onNewSession}
         />

@@ -31,10 +31,6 @@ describe('Hub icon sizing CSS contract (no Tailwind)', () => {
     expect(cssRaw).toContain('.hub__group-sidebar-toggle svg')
   })
 
-  it('sizes the needs-input badge svg', () => {
-    expect(cssRaw).toContain('.hub__group-sidebar-item__needs-input-badge svg')
-  })
-
   it('sizes the card drag-handle / menu-btn svg', () => {
     expect(cssRaw).toContain('.hub-card__drag-handle svg')
     expect(cssRaw).toContain('.hub-card__menu-btn svg')
@@ -180,21 +176,9 @@ describe('Hub motion contract — reduced-motion guard (Pitfall 6)', () => {
     expect(cssRaw).toContain('prefers-reduced-motion: no-preference')
   })
 
-  it('hub-spin animation is declared inside the reduced-motion guard', () => {
-    // The spin class and keyframes must appear only inside the media query guard
-    const mediaIdx = cssRaw.indexOf('prefers-reduced-motion: no-preference')
-    expect(mediaIdx).toBeGreaterThan(-1)
-    // The hub-spin animation class must appear after the media query start
-    const spinIdx = cssRaw.indexOf('hub-card__status-icon--spin')
-    expect(spinIdx).toBeGreaterThan(mediaIdx)
-  })
-
-  it('hub-spin keyframes are declared', () => {
-    expect(cssRaw).toContain('@keyframes hub-spin')
-  })
-
-  it('spin animation has 0.8s linear infinite timing', () => {
-    expect(cssRaw).toContain('0.8s linear infinite')
+  it('STRP-01: no status icon spin rules remain (running uses a static PlayCircleIcon)', () => {
+    expect(cssRaw).not.toContain('hub-card__status-icon--spin')
+    expect(cssRaw).not.toContain('@keyframes hub-spin')
   })
 })
 
@@ -282,8 +266,9 @@ describe('Phase 135 — GAP-135-A: focus-visible rings for Hub interactive eleme
     expect(cssRaw).not.toMatch(/\.hub-card:focus\s*\{[^}]*outline/)
   })
 
-  it('A11Y-02: .hub-filter__pill:focus-visible rule is present', () => {
-    expect(cssRaw).toContain('.hub-filter__pill:focus-visible')
+  it('STRP-01: the status filter pill rules are gone', () => {
+    expect(cssRaw).not.toContain('.hub-filter__pill')
+    expect(cssRaw).not.toContain('hub-needs-input-badge')
   })
 
   it('A11Y-02: .hub-card__open:focus-visible rule is present', () => {
@@ -299,8 +284,8 @@ describe('Phase 135 — GAP-135-A: focus-visible rings for Hub interactive eleme
   })
 
   it('A11Y-02: all new :focus-visible rules use var(--hub-accent) token (colorblind constraint)', () => {
-    // Extract the GAP-135-A grouped rule block — find it by locating .hub-filter__pill:focus-visible
-    const pillIdx = cssRaw.indexOf('.hub-filter__pill:focus-visible')
+    // Extract the GAP-135-A grouped rule block — find it by locating .hub-filter__new-session:focus-visible
+    const pillIdx = cssRaw.indexOf('.hub-filter__new-session:focus-visible')
     expect(pillIdx).toBeGreaterThan(-1)
     // Find the closing brace of the group rule
     const blockEnd = cssRaw.indexOf('}', pillIdx)
@@ -318,23 +303,15 @@ describe('Phase 135 — GAP-135-A: focus-visible rings for Hub interactive eleme
 })
 
 describe('Phase 135 — GAP-135-E/F: prefers-reduced-motion reduce blocks', () => {
-  it('GAP-135-E: prefers-reduced-motion: reduce block targets .hub-card__status-icon--spin with animation: none', () => {
-    expect(cssRaw).toMatch(/\.hub-card__status-icon--spin\s*\{\s*animation:\s*none/)
-  })
-
   it('GAP-135-F: prefers-reduced-motion: reduce block targets .hub-card with transition: none', () => {
     // Must be inside a reduce block — find a reduce block containing .hub-card { transition: none
     expect(cssRaw).toMatch(/prefers-reduced-motion:\s*reduce[^@]*\.hub-card\s*\{\s*transition:\s*none/)
   })
 
-  it('GAP-135-E/F: spin and card-hover reduce blocks appear AFTER the no-preference .hub-card 400ms transition override', () => {
+  it('GAP-135-F: card-hover reduce block appears AFTER the no-preference .hub-card 400ms transition override', () => {
     // The no-preference block sets .hub-card transition to 400ms ease (ATTN-03)
     const noPrefIdx = cssRaw.indexOf('border-color 400ms ease, box-shadow 400ms ease, background 100ms ease')
     expect(noPrefIdx).toBeGreaterThan(-1)
-
-    // GAP-135-E spin reduce block must come after no-preference
-    const spinReduceIdx = cssRaw.indexOf('.hub-card__status-icon--spin {\n    animation: none')
-    expect(spinReduceIdx).toBeGreaterThan(noPrefIdx)
 
     // GAP-135-F card hover reduce block must also come after no-preference
     const cardTransitionNoneIdx = cssRaw.indexOf('.hub-card {\n    transition: none')

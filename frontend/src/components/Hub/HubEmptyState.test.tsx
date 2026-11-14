@@ -14,7 +14,7 @@ function renderEmptyState(
   const defaultProps: React.ComponentProps<typeof HubEmptyState> = {
     variant: 'no-sessions',
     onNewSession: vi.fn(),
-    onClearFilter: vi.fn(),
+    onClearSearch: vi.fn(),
   }
   const props = { ...defaultProps, ...overrides }
   act(() => {
@@ -45,11 +45,11 @@ describe('HubEmptyState — no-sessions variant', () => {
     expect(heading?.textContent).toBe('No sessions yet')
   })
 
-  it('renders the exact body "Create a session to start an AI coding agent."', () => {
+  it('renders the exact body "Create a session to open a shell."', () => {
     ;({ container, root } = renderEmptyState({ variant: 'no-sessions' }))
     const body = container.querySelector('.hub__empty-body')
     expect(body).not.toBeNull()
-    expect(body?.textContent).toBe('Create a session to start an AI coding agent.')
+    expect(body?.textContent).toBe('Create a session to open a shell.')
   })
 
   it('renders a "New session" CTA button', () => {
@@ -69,11 +69,11 @@ describe('HubEmptyState — no-sessions variant', () => {
     expect(onNewSession).toHaveBeenCalledTimes(1)
   })
 
-  it('does NOT render a "Clear filter" button in the no-sessions variant', () => {
+  it('does NOT render a "Clear search" button in the no-sessions variant', () => {
     ;({ container, root } = renderEmptyState({ variant: 'no-sessions' }))
     const buttons = container.querySelectorAll('button')
     const clearBtn = Array.from(buttons).find(
-      (b) => b.textContent?.trim() === 'Clear filter',
+      (b) => b.textContent?.trim() === 'Clear search',
     )
     expect(clearBtn).toBeUndefined()
   })
@@ -101,28 +101,28 @@ describe('HubEmptyState — no-matches variant', () => {
     expect(heading?.textContent).toBe('No matching sessions')
   })
 
-  it('renders the exact body "Clear the filter or search to see all sessions."', () => {
+  it('renders the exact body "Clear the search to see all sessions."', () => {
     ;({ container, root } = renderEmptyState({ variant: 'no-matches' }))
     const body = container.querySelector('.hub__empty-body')
     expect(body).not.toBeNull()
-    expect(body?.textContent).toBe('Clear the filter or search to see all sessions.')
+    expect(body?.textContent).toBe('Clear the search to see all sessions.')
   })
 
-  it('renders a "Clear filter" CTA button', () => {
+  it('renders a "Clear search" CTA button', () => {
     ;({ container, root } = renderEmptyState({ variant: 'no-matches' }))
     const cta = container.querySelector('.hub__empty-cta')
     expect(cta).not.toBeNull()
-    expect(cta?.textContent?.trim()).toBe('Clear filter')
+    expect(cta?.textContent?.trim()).toBe('Clear search')
   })
 
-  it('clicking "Clear filter" CTA fires onClearFilter', () => {
-    const onClearFilter = vi.fn()
-    ;({ container, root } = renderEmptyState({ variant: 'no-matches', onClearFilter }))
+  it('clicking "Clear search" CTA fires onClearSearch', () => {
+    const onClearSearch = vi.fn()
+    ;({ container, root } = renderEmptyState({ variant: 'no-matches', onClearSearch }))
     const cta = container.querySelector('.hub__empty-cta') as HTMLButtonElement
     act(() => {
       cta.click()
     })
-    expect(onClearFilter).toHaveBeenCalledTimes(1)
+    expect(onClearSearch).toHaveBeenCalledTimes(1)
   })
 
   it('does NOT render a "New session" button in the no-matches variant', () => {
