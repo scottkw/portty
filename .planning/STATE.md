@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Plain macOS Terminal
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-11-14T21:04:22.774Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-11-14T21:32:11.800Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 1 execution started
-state_head: 707e24aa8616b39cb5a7c0e5f04f14fbcfc135ea
+state_head: d7646de0ba8bfe913128997c53b4cd5c376cbfa1
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 10
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 ## Current Position
 
 Phase: 1 (Plain macOS Terminal) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 Status: Ready to execute
 Last activity: 2026-11-14 — Phase 1 execution started
 
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 1 P01 | 8 min | 3 tasks | 103 files |
+| Phase 01 P02 | 26 min | 3 tasks | 103 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,10 @@ Recent decisions affecting current work:
 - [Phase 1]: 01-01: Renamed internal/daemon/ipc_nonwindows.go to ipc.go so no *nonwindows* file stays tracked
 - [Phase 1]: 01-01: godbus and tailscale/go-winio stay in go.mod as indirect transitive deps (wails linux backend, tailscale safesocket); only direct requires removed
 - [Phase 1]: 01-01: release.yml publishes only the signed DMG + checksums.txt; user must re-apply branch protection (build (agenthub, darwin/universal, macos-latest) + playwright) when CI is re-enabled
+- [Phase 01]: Web-share guests get no session-menu chevron for any cap; the webFilesEnabled prop and the web bootstrap /info perms probe are removed
+- [Phase 01]: RemoteJoinCodeModal and App joinModalForSession keep only 'open-session' and 'hub-modal' intents (dead 'files' intent dropped)
+- [Phase 01]: IssueCapabilitiesResponse.homeDir removed from hand-maintained bindings with SessionInfo.homeDir/browseEnabled; Go keeps sending them until 01-03
+- [Phase 01]: CodeMirror removed with local pnpm 12; lockfile stays lockfileVersion 9.0, removal-only, frozen install passes
 
 ### Pending Todos
 
@@ -95,6 +100,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-14T21:04:22.755Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-11-14T21:32:11.773Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
