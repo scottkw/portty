@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/agenthub/internal/capability"
@@ -1550,6 +1551,12 @@ func assetsNoStore(next http.Handler) http.Handler {
 		// Block directory listing: any request whose (already-stripped) path
 		// is empty or ends with "/" is a directory index request — return 404.
 		if r.URL.Path == "" || r.URL.Path == "/" || len(r.URL.Path) > 0 && r.URL.Path[len(r.URL.Path)-1] == '/' {
+			http.NotFound(w, r)
+			return
+		}
+		// fs.Sub rejects non-UTF-8 names with fs.ErrInvalid, which FileServerFS
+		// turns into a 500; a client-supplied bad path is a 404 (found by FuzzWebServerRoutes).
+		if !utf8.ValidString(r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}
