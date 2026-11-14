@@ -30,7 +30,6 @@ const mocks = vi.hoisted(() => ({
   lastCallbacks: null as Record<string, unknown> | null,
   mockClose: vi.fn(),
   mockSendChat: vi.fn(),
-  mockSendSessionInject: vi.fn(),
   mockSendAliasSet: vi.fn(),
 }))
 
@@ -53,7 +52,6 @@ vi.mock('../../lib/relayClient', async (importActual) => {
       }
       close() { mocks.mockClose() }
       sendChat(content: string) { mocks.mockSendChat(content) }
-      sendSessionInject(text: string) { mocks.mockSendSessionInject(text) }
       sendAliasSet(alias: string) { mocks.mockSendAliasSet(alias) }
     } as unknown as (typeof actual)['RelayClient'],
   }
@@ -131,7 +129,6 @@ beforeEach(() => {
   mocks.lastCallbacks = null
   mocks.mockClose.mockClear()
   mocks.mockSendChat.mockClear()
-  mocks.mockSendSessionInject.mockClear()
   mocks.mockSendAliasSet.mockClear()
   mockFetch.mockReset()
   // Default: history endpoint returns empty list
@@ -561,7 +558,7 @@ describe('validateAlias — client mirror of Go ValidateAlias (Array.from code-p
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TASK 1 (154-06) — inject gesture, composer keyboard, sec-03 integration
+// TASK 1 (154-06) — composer keyboard, sec-03 integration; @session is plain chat (CHAT-01)
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Helper: set the value of a textarea via the native setter (React picks it up)
@@ -580,60 +577,31 @@ function setTextareaValue(el: HTMLTextAreaElement | null, value: string) {
   el.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
-// ── inject button — press-and-hold gesture (D-08, Pitfall 7) ──────────────
+// ── @session is ordinary chat (CHAT-01) ───────────────────────────────────
 
-describe('inject button — press-and-hold gesture (D-08, Pitfall 7)', () => {
-  it('-t inject: tap < 600ms fires nothing (pointerup before threshold)', () => {
-    vi.useFakeTimers()
+describe('@session is ordinary chat — no inject path (CHAT-01)', () => {
+  it('-t chat-01: typing "@session ls" and clicking Send calls sendChat with the text', () => {
     const { container, unmount } = mountPanel()
 
     const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null
-    act(() => { setTextareaValue(textarea, '@session hello') })
+    act(() => { setTextareaValue(textarea, '@session ls') })
 
-    const injectBtn = container.querySelector('.chat-composer__inject-btn')
-    act(() => {
-      injectBtn?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
-    })
-    // Release before 600ms
-    act(() => { vi.advanceTimersByTime(400) })
-    act(() => {
-      injectBtn?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }))
-    })
+    expect(container.querySelector('.chat-composer__inject-btn')).toBeNull()
+    const sendBtn = container.querySelector('[data-chat-send]') as HTMLButtonElement | null
+    expect(sendBtn?.textContent).toBe('Send')
+    act(() => { sendBtn?.click() })
 
-    expect(mocks.mockSendSessionInject).not.toHaveBeenCalled()
+    expect(mocks.mockSendChat).toHaveBeenCalledOnce()
+    expect(mocks.mockSendChat).toHaveBeenCalledWith('@session ls')
 
-    vi.useRealTimers()
     unmount()
   })
 
-  it('-t inject: hold >= 600ms fires exactly one inject frame', () => {
-    vi.useFakeTimers()
+  it('-t chat-01: Enter with "@session hello" sends chat', () => {
     const { container, unmount } = mountPanel()
 
     const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null
     act(() => { setTextareaValue(textarea, '@session hello') })
-
-    const injectBtn = container.querySelector('.chat-composer__inject-btn')
-    act(() => {
-      injectBtn?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
-    })
-    // Advance to threshold
-    act(() => { vi.advanceTimersByTime(600) })
-
-    expect(mocks.mockSendSessionInject).toHaveBeenCalledOnce()
-    expect(mocks.mockSendChat).not.toHaveBeenCalled()
-
-    vi.useRealTimers()
-    unmount()
-  })
-
-  it('-t inject: Enter with @session fires chat-send, NOT inject (Pitfall 7)', () => {
-    const { container, unmount } = mountPanel()
-
-    const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null
-    act(() => { setTextareaValue(textarea, '@session hello') })
-
-    // Press Enter — must always route to chat-send, never inject
     act(() => {
       textarea?.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
@@ -641,8 +609,19 @@ describe('inject button — press-and-hold gesture (D-08, Pitfall 7)', () => {
     })
 
     expect(mocks.mockSendChat).toHaveBeenCalledOnce()
-    expect(mocks.mockSendSessionInject).not.toHaveBeenCalled()
+    expect(mocks.mockSendChat).toHaveBeenCalledWith('@session hello')
 
+    unmount()
+  })
+
+  it('-t chat-01: the send button reads "Send" for every draft', () => {
+    const { container, unmount } = mountPanel()
+    const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null
+    for (const text of ['', 'hello', '@session', '@session run tests']) {
+      act(() => { setTextareaValue(textarea, text) })
+      const btn = container.querySelector('.chat-panel__composer button')
+      expect(btn?.textContent).toBe('Send')
+    }
     unmount()
   })
 })
@@ -690,6 +669,10 @@ describe('composer — Enter send, Shift+Enter newline, @-mention popover', () =
 
   it('-t composer: typing @ opens MentionPopover', () => {
     const { container, unmount } = mountPanel()
+    act(() => {
+      const onPresence = mocks.lastCallbacks?.onPresence as ((p: PresenceEntry[]) => void) | undefined
+      onPresence?.([{ personKey: 'node:alice:web', tailnetID: 'node:alice', origin: 'web', alias: 'alice', connCount: 1 }])
+    })
 
     const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null
     act(() => { setTextareaValue(textarea, '@ali') })
@@ -701,26 +684,44 @@ describe('composer — Enter send, Shift+Enter newline, @-mention popover', () =
     unmount()
   })
 
-  it('-t composer: Enter in popover selects @session (index 0) and closes popover', () => {
+  it('-t composer: Enter in popover selects the first participant (index 0) and closes popover', () => {
     const { container, unmount } = mountPanel()
+    act(() => {
+      const onPresence = mocks.lastCallbacks?.onPresence as ((p: PresenceEntry[]) => void) | undefined
+      onPresence?.([{ personKey: 'node:alice:web', tailnetID: 'node:alice', origin: 'web', alias: 'alice', connCount: 1 }])
+    })
 
     const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null
     act(() => { setTextareaValue(textarea, '@') })
-
-    // Popover should be open with @session as first item
     expect(container.querySelector('.mention-popover')).not.toBeNull()
+    expect(container.querySelector('.mention-popover')?.textContent).not.toContain('@session')
 
-    // Press Enter to select active item (index 0 = @session)
     act(() => {
       textarea?.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
       )
     })
 
-    // Popover should be closed after selection
     expect(container.querySelector('.mention-popover')).toBeNull()
-    // Draft should contain @session
-    expect(container.querySelector('textarea')?.value ?? '').toContain('@session')
+    expect(container.querySelector('textarea')?.value ?? '').toBe('@alice ')
+    expect(mocks.mockSendChat).not.toHaveBeenCalled()
+
+    unmount()
+  })
+
+  it('-t composer: no popover renders when no participant matches; Enter sends chat', () => {
+    const { container, unmount } = mountPanel()
+
+    const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null
+    act(() => { setTextareaValue(textarea, '@nobody') })
+    expect(container.querySelector('.mention-popover')).toBeNull()
+
+    act(() => {
+      textarea?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      )
+    })
+    expect(mocks.mockSendChat).toHaveBeenCalledWith('@nobody')
 
     unmount()
   })
@@ -789,23 +790,22 @@ describe('alias control — Phase 161 ALIAS-UI-01/02 (render + RO-enable + commi
     unmount()
   })
 
-  it('-t alias: alias label button is NOT disabled when isReadOnly (D-06 exception)', async () => {
-    // Mount with capToken; default mockFetch returns [] → /info perms="" → isReadOnly=true
+  it('-t alias: alias label button is NOT disabled for a web-share guest (D-06 exception)', async () => {
     const { container, unmount } = mountPanel({ capToken: 'test-cap' })
 
-    // Flush all pending effects including the /info fetch
+    // Flush all pending effects
     await act(async () => { /* flush */ })
 
     const aliasBtn = container.querySelector('.chat-panel__alias-label') as HTMLButtonElement | null
     expect(aliasBtn).not.toBeNull()
-    // The alias control must NOT be disabled even though isReadOnly is true (D-06 exception)
+    // The alias control must NOT be disabled for guests (D-06 exception)
     expect(aliasBtn?.disabled).toBe(false)
 
     unmount()
   })
 
   it('-t alias: valid commit calls sendAliasSet exactly once with the validated alias', () => {
-    const { container, unmount } = mountPanel() // no capToken → isReadOnly=false
+    const { container, unmount } = mountPanel()
 
     // Open the alias edit input
     const aliasBtn = container.querySelector('.chat-panel__alias-label') as HTMLButtonElement | null
@@ -983,18 +983,15 @@ describe('alias control — Phase 161 ALIAS-UI-01/02 (render + RO-enable + commi
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Phase 163-02 — ROCHAT-01 / ROCHAT-02: RO can post chat; inject still gated
+// Phase 163-02 — ROCHAT-01: RO can post chat
 //
-// Default mockFetch returns [] for history; capToken triggers /info fetch which
-// also resolves to [] → info.perms undefined → isReadOnly stays true (fail-safe).
-// await act(async () => {}) flushes all pending microtasks + useEffect chains.
+// A capToken marks a web-share guest. await act(async () => {}) flushes all
+// pending microtasks + useEffect chains.
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('ROCHAT-01/02 — RO chat-send enabled; inject gesture stays gated', () => {
+describe('ROCHAT-01 — RO chat-send enabled', () => {
   it('-t rochat-01: RO viewer Send button is NOT disabled (ROCHAT-01)', async () => {
-    // capToken → /info returns [] → isReadOnly=true (fail-safe path)
     const { container, unmount } = mountPanel({ capToken: 'test-ro-cap' })
-    // Flush /info fetch promise
     await act(async () => { /* flush */ })
 
     const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null
@@ -1045,36 +1042,13 @@ describe('ROCHAT-01/02 — RO chat-send enabled; inject gesture stays gated', ()
     unmount()
   })
 
-  it('-t rochat-01: no "Read only" label renders when isReadOnly (ROCHAT-01)', async () => {
+  it('-t rochat-01: no "Read only" label renders for a web-share guest (ROCHAT-01)', async () => {
     const { container, unmount } = mountPanel({ capToken: 'test-ro-cap' })
     await act(async () => { /* flush */ })
 
     // The blanket "Read only" label was removed in Phase 163-02
     expect(container.textContent).not.toContain('Read only')
 
-    unmount()
-  })
-
-  it('-t rochat-02: RO viewer press-and-hold does NOT call sendSessionInject (ROCHAT-02 inject gate)', async () => {
-    vi.useFakeTimers()
-    const { container, unmount } = mountPanel({ capToken: 'test-ro-cap' })
-    // Flush /info fetch → isReadOnly=true
-    await act(async () => { /* flush */ })
-
-    const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null
-    act(() => { setTextareaValue(textarea, '@session inject attempt') })
-
-    // Drive the press-and-hold to completion (>= 600ms)
-    const injectBtn = container.querySelector('.chat-composer__inject-btn')
-    act(() => {
-      injectBtn?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
-    })
-    act(() => { vi.advanceTimersByTime(600) })
-
-    // RO inject must NOT fire — handleInjectPointerDown returns early when isReadOnly
-    expect(mocks.mockSendSessionInject).not.toHaveBeenCalled()
-
-    vi.useRealTimers()
     unmount()
   })
 })
@@ -1166,8 +1140,7 @@ describe('ChatPanel — resize drag handle (CHAT-LAYOUT-02)', () => {
     localStorage.clear()
     document.documentElement.style.removeProperty('--chat-panel-width')
     mocks.mockSendChat.mockClear()
-    mocks.mockSendSessionInject.mockClear()
-  })
+    })
 
   afterEach(() => {
     localStorage.clear()
@@ -1231,7 +1204,7 @@ describe('ChatPanel — resize drag handle (CHAT-LAYOUT-02)', () => {
     unmount()
   })
 
-  it('resize drag does NOT call sendChat or sendSessionInject (D-02 overlay preserved)', () => {
+  it('resize drag does NOT call sendChat (D-02 overlay preserved)', () => {
     const { container, unmount } = mountPanel()
     const handle = container.querySelector('.chat-panel__resize-handle') as HTMLElement
 
@@ -1247,7 +1220,6 @@ describe('ChatPanel — resize drag handle (CHAT-LAYOUT-02)', () => {
 
     // D-02: resizing the drawer must NOT send any relay frames
     expect(mocks.mockSendChat).not.toHaveBeenCalled()
-    expect(mocks.mockSendSessionInject).not.toHaveBeenCalled()
     unmount()
   })
 })

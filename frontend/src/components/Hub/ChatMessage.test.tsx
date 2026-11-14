@@ -5,7 +5,6 @@
  *   - First-in-group render (avatar, alias, tailnet ID, timestamp with ISO title)
  *   - Consecutive collapse (no header, chat-msg__body--consecutive applied)
  *   - @mention-of-me three-signal treatment (NOTIF-02, D-05, colorblind-safe)
- *   - Session-inject indicator (D-06)
  *   - SEC-03: XSS payloads render inert (no script element, no onerror attribute)
  *   - Helper exports: tailnetIdToHue, formatHHMM
  *
@@ -274,44 +273,6 @@ describe('ChatMessage — isMentionOfMe (colorblind-safe three-signal)', () => {
   it('does NOT render .chat-msg__you-chip when isMentionOfMe=false', () => {
     ;({ container, root } = renderMessage(makeMessage(), { isMentionOfMe: false }))
     expect(container.querySelector('.chat-msg__you-chip')).toBeNull()
-  })
-})
-
-// ── Session-inject indicator (D-06) ───────────────────────────────────────
-
-describe('ChatMessage — sessionInject indicator', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-  })
-
-  it('renders .chat-msg__inject-indicator when sessionInject=true', () => {
-    const message = makeMessage({ sessionInject: true })
-    ;({ container, root } = renderMessage(message))
-    expect(container.querySelector('.chat-msg__inject-indicator')).not.toBeNull()
-  })
-
-  it('renders the exact caption "→ injected into terminal"', () => {
-    const message = makeMessage({ sessionInject: true })
-    ;({ container, root } = renderMessage(message))
-    const caption = container.querySelector('.chat-msg__inject-caption')
-    expect(caption?.textContent).toContain('→ injected into terminal')
-  })
-
-  it('sets aria-label "Injected into terminal by {alias}" on the indicator', () => {
-    const message = makeMessage({ alias: 'Alice', sessionInject: true })
-    ;({ container, root } = renderMessage(message))
-    const indicator = container.querySelector('.chat-msg__inject-indicator')
-    expect(indicator?.getAttribute('aria-label')).toBe('Injected into terminal by Alice')
-  })
-
-  it('does NOT render .chat-msg__inject-indicator when sessionInject is absent', () => {
-    const message = makeMessage() // no sessionInject
-    ;({ container, root } = renderMessage(message))
-    expect(container.querySelector('.chat-msg__inject-indicator')).toBeNull()
   })
 })
 

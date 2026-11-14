@@ -4,8 +4,8 @@
 //
 // This is the release-blocking spec: it proves that the web-share chat surface
 // matches the desktop chat experience end-to-end, that the read-only server
-// gate holds regardless of client behavior, that export downloads a valid .md
-// file, and that the @session inject indicator renders from seeded history.
+// gate holds regardless of client behavior, and that export downloads a valid
+// .md file.
 //
 // Selector contract (UI-SPEC §5 — FROZEN; do not rename):
 //   .hub-modal__chat-toggle   — chat toggle button
@@ -15,7 +15,6 @@
 //   [data-chat-send]          — send button (enabled for RO — ROCHAT-01)
 //   [data-chat-export]        — export button
 //   .chat-presence            — presence roster
-//   .chat-msg--inject         — inject indicator row
 //   .chat-badge               — unread badge on chat toggle
 //   .chat-typing              — typing indicator slot
 
@@ -281,16 +280,14 @@ test.describe('Phase 155 — chat parity gate', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────────────
-  // ROCHAT-01 / ROCHAT-02: RO viewer CAN post chat; @session inject stays gated
+  // ROCHAT-01: RO viewer CAN post chat
   //
   // Phase 163-02 reconciles D-06: RO clients are full chat participants.
   // The viewer cap has Perms="read" (no write). The Send button must now be
   // ENABLED in the UI, and the server MsgChatSend gate no longer rejects RO
-  // (removed ErrChatReadOnly in Phase 163-01). The @session inject gesture
-  // remains RO-gated client-side (handleInjectPointerDown early-return) and
-  // server-side (HandleInject ErrReadOnly unchanged).
+  // (removed ErrChatReadOnly in Phase 163-01).
   // ─────────────────────────────────────────────────────────────────────────
-  test('ROCHAT-01 — RO viewer CAN post chat; ROCHAT-02 — @session inject stays gated', async ({ browser }) => {
+  test('ROCHAT-01 — RO viewer CAN post chat', async ({ browser }) => {
     const env = loadFixtureEnv()
     const ctx = await browser.newContext({ ignoreHTTPSErrors: true })
     try {
@@ -429,25 +426,5 @@ test.describe('Phase 155 — chat parity gate', () => {
     expect(content).toContain('---')       // YAML frontmatter fence
     expect(content).toContain('session:')  // YAML session field
     expect(content).toContain('exported_at:')
-  })
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // PARITY-01 SC-4: @session inject indicator renders from seeded history
-  //
-  // The fixture pre-seeds a message with SessionInject=true. ChatPanel renders
-  // such messages with the .chat-msg--inject class (Phase 155 Rule-1 fix to
-  // add the frozen selector to ChatMessage.tsx). No real PTY needed.
-  // ─────────────────────────────────────────────────────────────────────────
-  test('PARITY-01 SC-4 — @session inject indicator (.chat-msg--inject) renders from history', async ({ page }) => {
-    const env = loadFixtureEnv()
-    await page.goto(appUrl(env), { waitUntil: 'domcontentloaded' })
-    await page.locator('.hub-modal__chat-toggle').click()
-
-    // Wait for chat history to load (the seeded inject message).
-    await expect(page.locator('.chat-panel__composer textarea')).toBeVisible({ timeout: 8_000 })
-
-    // The fixture seeds a message with SessionInject=true. ChatMessage renders
-    // it with class "chat-msg chat-msg--inject" (UI-SPEC §5 frozen selector).
-    await expect(page.locator('.chat-msg--inject')).toBeVisible({ timeout: 5_000 })
   })
 })

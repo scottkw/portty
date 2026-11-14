@@ -4834,7 +4834,7 @@ textarea {
 
 /* CHAT-FIX-01 + CHAT-LAYOUT-02: relocate the toggle clear of the open chat drawer.
    CHAT-FIX-01: prevents the z-index:6 toggle from obscuring the z-index:5 drawer
-   bottom-right corner (Send/Inject button). Uses the general-sibling combinator:
+   bottom-right corner (Send button). Uses the general-sibling combinator:
    ChatPanel (.chat-panel--open) renders BEFORE the toggle as a same-parent sibling in
    HubInteractiveModal.tsx, WebShareSessionView.tsx, and TerminalChatHost.tsx.
    CHAT-LAYOUT-02: offset now tracks the live drawer width via --chat-panel-width
@@ -5178,11 +5178,10 @@ textarea {
 }
 
 /* Reduced-motion: share modal appears/disappears instantly.
-   NOTE: the chat-panel slide + inject fill reduced-motion overrides live in a
+   NOTE: the chat-panel slide reduced-motion overrides live in a
    SECOND @media block placed AFTER the chat base rules (below) — placing them
    here is ineffective because the later, equal/higher-specificity base rules
-   (.hub-modal__body--interactive .chat-panel, .chat-composer__inject-btn::before)
-   would win the cascade. */
+   (.hub-modal__body--interactive .chat-panel) would win the cascade. */
 @media (prefers-reduced-motion: reduce) {
   .hub-share-modal {
     animation: none;
@@ -5456,34 +5455,6 @@ textarea {
   padding-bottom: 2px;
 }
 
-/* Session-inject indicator (D-06): system row below the body */
-.chat-msg__inject-indicator {
-  background: var(--hub-surface);
-  padding: 4px 0 2px;
-  margin-top: 4px;
-}
-
-.chat-msg__inject-rule {
-  border: none;
-  border-top: 1px solid var(--hub-border);
-  margin: 0 0 4px;
-}
-
-.chat-msg__inject-caption {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--hub-font-size-sm);
-  color: var(--hub-text-muted);
-}
-
-/* CommandLineIcon at 14×14px — shape is the primary signal for inject state (D-06) */
-.chat-msg__inject-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
 /* ═══════════════════════════════════════════════════════════════════════════
    Phase 154 — Chat UI: ChatDaySeparator (chat-day-sep__*) BEM classes
    ══════════════════════════════════════════════════════════════════════════ */
@@ -5572,16 +5543,6 @@ textarea {
   z-index: 10;
 }
 
-/* Section label: micro text, all-caps, de-emphasized */
-.mention-popover__section-label {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--hub-text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 6px 12px 4px;
-}
-
 /* Each option row */
 .mention-popover__item {
   display: flex;
@@ -5601,39 +5562,12 @@ textarea {
   background: var(--hub-sidebar-item-hover-bg);
 }
 
-/* @session row: slightly taller, pinned in its own section */
-.mention-popover__item--session {
-  min-height: 44px;
-}
-
-/* CommandLineIcon in @session row: --hub-accent color, 16×16px */
-.mention-popover__session-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--hub-accent);
-  flex-shrink: 0;
-}
-
 /* Alias text */
 .mention-popover__alias {
   font-size: var(--hub-font-size-base);
   font-weight: 600;
   color: var(--hub-text-primary);
   flex-shrink: 0;
-}
-
-/* Description text (e.g. "Inject into terminal") */
-.mention-popover__desc {
-  font-size: 11px;
-  color: var(--hub-text-muted);
-  margin-left: auto;
-}
-
-/* Divider between sections */
-.mention-popover__divider {
-  border: none;
-  border-top: 1px solid var(--hub-border);
-  margin: 0;
 }
 
 /* Participant rows: 40px minimum height */
@@ -6022,75 +5956,11 @@ textarea {
   height: 16px;
 }
 
-/* Inject button — press-and-hold gesture (D-08)
-   COLORBLIND-SAFE: CommandLineIcon (shape) + "Inject" text are primary signals;
-   --hub-accent fill is reinforcement only. */
-.chat-composer__inject-btn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 0 12px;
-  height: 36px;
-  border: 1px solid var(--hub-accent);
-  border-radius: var(--hub-radius-sm);
-  background: transparent;
-  color: var(--hub-accent);
-  font-family: var(--hub-font-ui);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  position: relative;
-  overflow: hidden;
-  /* Prevent text selection on long-press and block default touch actions */
-  user-select: none;
-  touch-action: none;
-}
-
-/* Fill animation: scaleX(0→1) over 600ms (GPU-composited via transform)
-   Mirrors the .tab__progress fill pattern.
-   The ::before fills behind the button content via z-index layering. */
-.chat-composer__inject-btn::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--hub-accent);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 600ms linear;
-  border-radius: inherit;
-  z-index: 0;
-}
-
-.chat-composer__inject-btn--holding::before {
-  transform: scaleX(1);
-}
-
-/* Flip label color when the fill covers the button */
-.chat-composer__inject-btn--holding {
-  color: var(--hub-bg);
-}
-
-/* Button content above fill layer */
-.chat-composer__inject-btn > * {
-  position: relative;
-  z-index: 1;
-}
-
-.chat-composer__inject-icon {
-  width: 16px;
-  height: 16px;
-}
-
 /* Reduced-motion suppression for the Phase 154 chat UI — placed AFTER the base
    rules so it wins the cascade. The earlier @media block (~line 6275) cannot
    suppress these because the base rules below it (.hub-modal__body--interactive
-   .chat-panel at 200ms, .chat-composer__inject-btn::before at 600ms) are later
-   and of equal-or-higher specificity. Selectors here match that specificity and
-   come last, so transition:none applies. The 600ms inject hold threshold is
-   JS-driven (setTimeout) and is unaffected — the inject still fires. */
+   .chat-panel at 200ms) are later and of equal-or-higher specificity. Selectors
+   here match that specificity and come last, so transition:none applies. */
 @media (prefers-reduced-motion: reduce) {
   .hub-modal__body--interactive .chat-panel {
     transition: none;
@@ -6098,9 +5968,6 @@ textarea {
   /* Phase 158 — CHAT-PARITY-01: honor reduced-motion for the tab drawer, mirroring
      the modal rule above. Specificity matches the unscoped base .chat-panel rule. */
   .terminal-chat-host .chat-panel {
-    transition: none;
-  }
-  .chat-composer__inject-btn::before {
     transition: none;
   }
 }

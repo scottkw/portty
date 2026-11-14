@@ -8,8 +8,6 @@
  *       1. Left accent bar (3 px) via CSS ::before on .chat-msg--mention
  *       2. Background tint via .chat-msg--mention class
  *       3. @you chip inline after the alias glyph
- *   - Session-inject: system-style indicator below the body (D-06):
- *       a horizontal rule + CommandLineIcon + descriptive caption text.
  *
  * Markdown rendering: react-markdown v10 + remark-gfm + rehype-sanitize.
  * Raw HTML passthrough is disabled — react-markdown v10 does not enable it
@@ -23,7 +21,6 @@
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
-import { CommandLineIcon } from '@heroicons/react/24/outline'
 import type { ChatMessage as ChatMessageData } from '../../lib/relayClient'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -93,7 +90,7 @@ export interface ChatMessageProps {
  * Renders one ChatMessage row. See file JSDoc for rendering modes.
  */
 export function ChatMessage({ message, isFirstInGroup, isMentionOfMe }: ChatMessageProps) {
-  const { authorID, alias, ts, content, sessionInject } = message
+  const { authorID, alias, ts, content } = message
   // CRITICAL: hue and mention matching use the FULL, unchanged authorID (CHAT-LAYOUT-01).
   // Only the displayed secondary label uses the short fingerprint.
   const hue = tailnetIdToHue(authorID)
@@ -102,7 +99,7 @@ export function ChatMessage({ message, isFirstInGroup, isMentionOfMe }: ChatMess
 
   return (
     <div
-      className={`chat-msg${isMentionOfMe ? ' chat-msg--mention' : ''}${sessionInject ? ' chat-msg--inject' : ''}`}
+      className={`chat-msg${isMentionOfMe ? ' chat-msg--mention' : ''}`}
       role="listitem"
       aria-label={isMentionOfMe ? `${alias} mentioned you: ${content}` : undefined}
     >
@@ -136,22 +133,6 @@ export function ChatMessage({ message, isFirstInGroup, isMentionOfMe }: ChatMess
           {content}
         </Markdown>
       </div>
-
-      {/* Session-inject indicator (D-06): system row shown below the message body
-          when the message was also injected into the terminal.
-          CommandLineIcon shape is the primary signal; caption text is secondary. */}
-      {sessionInject && (
-        <div
-          className="chat-msg__inject-indicator"
-          aria-label={`Injected into terminal by ${alias}`}
-        >
-          <hr className="chat-msg__inject-rule" />
-          <span className="chat-msg__inject-caption">
-            <CommandLineIcon className="chat-msg__inject-icon" aria-hidden="true" />
-            → injected into terminal
-          </span>
-        </div>
-      )}
     </div>
   )
 }

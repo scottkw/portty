@@ -106,7 +106,7 @@ export function TerminalChatHost({
       {/* Chat toggle button — floats over the bottom-right of the terminal area.
           Renders AFTER ChatPanel so the .chat-panel--open ~ .hub-modal__chat-toggle
           general-sibling combinator (158-01) correctly relocates the toggle when
-          the drawer is open, clearing the Send/Inject overlap (CHAT-FIX-01).
+          the drawer is open, clearing the Send button overlap (CHAT-FIX-01).
           COLORBLIND-SAFE: ChatBubbleLeftRightIcon (shape) + aria-label are primary signals. */}
       <button
         type="button"
