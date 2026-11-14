@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: Plain macOS Terminal
-**Goal**: The app is a plain macOS terminal: new sessions run the user's login shell, no agent-CLI, file-browser, or Windows/Linux code remains, and every kept feature still works
+**Goal**: The app is a plain macOS terminal: new sessions run macOS zsh (`/bin/zsh -l`), no agent-CLI, file-browser, or Windows/Linux code remains, and every kept feature still works
 **Mode:** mvp
 **Depends on**: Nothing (first phase)
 **Requirements**: STRP-01, STRP-02, STRP-03, STRP-04, TERM-01, TERM-02, TERM-04, TERM-05, NET-01, CHAT-01
