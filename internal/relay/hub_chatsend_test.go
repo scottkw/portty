@@ -4,8 +4,8 @@ package relay
 //
 // These tests cover the required behaviors:
 //   1. RO subscriber CAN post chat (D-06 reconciliation, Phase 163): err is nil,
-//      appendCount == 1, MsgChat broadcast arrives. HandleInject still returns
-//      ErrReadOnly for RO (SEC-RO-01 regression guard: TestHandleChatSend_ROCanPostInjectStillGated).
+//      appendCount == 1, MsgChat broadcast arrives, and the PTY is never written
+//      (SEC-RO-01 regression guard: TestHandleChatSend_ROCanPost_NoPTYWrite).
 //   2. Empty-after-sanitize content → nil return, no persist, no broadcast (silent no-op).
 //   3. RW subscriber + non-empty content → chatAppendFn called once + BroadcastChat once.
 //   4. HandleChatSend NEVER calls WriteInput (no PTY write).
@@ -14,7 +14,6 @@ package relay
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"sync/atomic"
 	"testing"
@@ -133,12 +132,12 @@ func TestHandleChatSend_ROCanPost(t *testing.T) {
 	}
 }
 
-// TestHandleChatSend_ROCanPostInjectStillGated is the SEC-RO-01 regression guard.
-// With a RO subscriber it proves in a single test that:
-//   (a) HandleChatSend succeeds (D-06: RO may post chat), and
-//   (b) HandleInject returns ErrReadOnly (SEC-01: @session inject stays gated), and
-//   (c) the PTY write counter remains exactly 0 (neither chat-send nor inject reached the terminal).
-func TestHandleChatSend_ROCanPostInjectStillGated(t *testing.T) {
+// TestHandleChatSend_ROCanPost_NoPTYWrite is the SEC-RO-01 regression guard.
+// With a RO subscriber it proves that:
+//
+//	(a) HandleChatSend succeeds (D-06: RO may post chat), and
+//	(b) the PTY write counter remains exactly 0 (chat never reaches the terminal).
+func TestHandleChatSend_ROCanPost_NoPTYWrite(t *testing.T) {
 	hub, sub, ptyWriteCount := makePTYCountingHub(t)
 
 	// Wire chatAppendFn on the counting hub so HandleChatSend can persist.
@@ -155,16 +154,11 @@ func TestHandleChatSend_ROCanPostInjectStillGated(t *testing.T) {
 		t.Errorf("HandleChatSend RO: got err = %v, want nil (D-06)", err)
 	}
 
-	// (b) RO HandleInject must return ErrReadOnly.
-	if err := hub.HandleInject(sub, "inject text from RO"); !errors.Is(err, ErrReadOnly) {
-		t.Errorf("HandleInject RO: got err = %v, want ErrReadOnly (SEC-01 inject gate must stay)", err)
-	}
-
-	// (c) Give any async path time to fire — none should touch the PTY.
+	// (b) Give any async path time to fire — none should touch the PTY.
 	time.Sleep(50 * time.Millisecond)
 
 	if count := ptyWriteCount.Load(); count != 0 {
-		t.Errorf("PTY write count = %d after RO chat-send + inject attempt, want 0 (SEC-RO-01)", count)
+		t.Errorf("PTY write count = %d after RO chat-send, want 0 (SEC-RO-01)", count)
 	}
 }
 
@@ -196,7 +190,6 @@ func TestHandleChatSend_EmptyAfterSanitize(t *testing.T) {
 // a RW subscriber with non-empty content causes chatAppendFn to be called
 // exactly once and a MsgChat frame to be broadcast to all subscribers.
 // AuthorID and AuthorAlias must match the subscriber's identity fields.
-// SessionInject must be false (this is chat-send, not inject).
 func TestHandleChatSend_RWPersistsAndBroadcasts(t *testing.T) {
 	hub, sub, appendCount, rxCh := makeChatSendTestHub(t)
 
@@ -239,9 +232,6 @@ func TestHandleChatSend_RWPersistsAndBroadcasts(t *testing.T) {
 	}
 	if msg.AuthorAlias != sub.Alias {
 		t.Errorf("ChatMessage.AuthorAlias = %q, want %q", msg.AuthorAlias, sub.Alias)
-	}
-	if msg.SessionInject {
-		t.Error("ChatMessage.SessionInject = true, want false (this is chat-send, not inject)")
 	}
 	if msg.Content == "" {
 		t.Error("ChatMessage.Content is empty, want non-empty sanitized content")

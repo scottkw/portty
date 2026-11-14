@@ -1,30 +1,16 @@
 package webserver
 
-// Phase 153 Plan 03 — web-share path adversarial inject test.
-//
-// TestInjectRO_WebPath (SEC-01 web path): proves that a client holding a
-// read-only capability JWT (claims.Perms == "read") is rejected server-side
-// when it sends a hand-crafted relay.MsgSessionInject frame directly over the
-// WebSocket. The rejection must be a relay.MsgInjectError NAK frame AND the
-// PTY write counter must read exactly zero.
-//
-// The RO status under test originates from claims.Perms == "read" on the
-// signed JWT — the web-path derivation (server.go line ~1008). This is
-// distinct from the relay-path adversarial test (TestInject_ROCap_RelayPath)
-// which exercises the ?readonly=1 query param. Testing both entry points is
-// required to close Pitfall 5: the relay path being gated while the web path
-// is silently left open.
-//
-// No UI affordance is involved — the frame is sent directly over the WS,
-// proving the gate is server-side and cannot be bypassed by client-side
-// suppression (SEC-01 / D-04).
+// CHAT-01 web-path guard: the chat→PTY inject frame (0x35) is retired. A client
+// holding a read-only OR read-write capability JWT that still sends a raw 0x35
+// frame over the webserver WebSocket must cause zero PTY writes, the socket must
+// stay open, and a following chat send must still be persisted and broadcast.
+// The relay-path twin lives in internal/relay/server_inject_test.go; testing both
+// entry points keeps one path from silently regaining a PTY write.
 
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,148 +18,64 @@ import (
 	"github.com/scottkw/agenthub/internal/relay"
 )
 
-// writerFuncInj is a func([]byte)(int,error) adapter that implements io.Writer.
-// Used to back the hub with a counting PTY writer without importing the relay
-// package's unexported writerFunc (package relay, server_inject_test.go).
-type writerFuncInj func(p []byte) (int, error)
+// retiredInjectFrameType is the byte value of the retired inject frame; the
+// relay constant is gone, so the test sends the raw byte an old client would.
+const retiredInjectFrameType byte = 0x35
 
-func (f writerFuncInj) Write(p []byte) (int, error) { return f(p) }
-
-// waitForMsgInjectError reads frames from conn, skipping all non-MsgInjectError
-// frames, and returns true when a relay.MsgInjectError frame (first byte ==
-// relay.MsgInjectError) arrives. Returns false if the context deadline passes
-// without seeing the target frame type.
-func waitForMsgInjectError(t *testing.T, conn *websocket.Conn, timeout time.Duration) bool {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	for {
-		_, rawMsg, err := conn.Read(ctx)
-		if err != nil {
-			// Deadline expired or connection closed before NAK arrived.
-			return false
-		}
-		if len(rawMsg) > 0 && rawMsg[0] == relay.MsgInjectError {
-			return true
-		}
-		// Skip non-MsgInjectError frames (e.g. MsgMeta, MsgPresence, scrollback).
-	}
-}
-
-// TestInjectRO_WebPath verifies SEC-01 (web path): a client holding a RO JWT
-// that sends a hand-crafted relay.MsgSessionInject frame directly over the
-// WebSocket:
-//  1. receives a relay.MsgInjectError NAK frame within a short timeout, AND
-//  2. causes exactly zero PTY writes.
-//
-// This proves the gate holds server-side on the web entry path regardless of
-// any client-side suppression. The RO status originates from claims.Perms in
-// the signed JWT (not a URL param — D-24/SEC-04), making this test distinct
-// from TestInject_ROCap_RelayPath which uses ?readonly=1 (Pitfall 5).
-//
-// Table-driven over BOTH read-only perm shapes a viewer can present:
-//   - "read"            — what the daemon mints today
-//   - "read,files.read" — legacy token minted before the file browser was
-//                         removed (T-01-11); still in circulation until expiry
-//
-// The "read,files.read" case is the regression guard for the SEC-01 web-path
-// bypass: an exact `claims.Perms == "read"` gate treats that legacy RO viewer
-// as read-write and lets their inject reach the PTY. Only a whole-token
-// HasPerm("write") gate holds for both shapes. A bare-"read"-only test would
-// pass against the broken gate and silently mask the hole.
-func TestInjectRO_WebPath(t *testing.T) {
-	roPerms := []struct {
+// TestInjectFrame_WebPath_NoPTYWrite is table-driven over RO perm shapes (the
+// daemon's "read" and the legacy "read,files.read") and RW ("read,write").
+func TestInjectFrame_WebPath_NoPTYWrite(t *testing.T) {
+	cases := []struct {
 		name  string
 		perms string
 	}{
-		{"read", "read"},
-		{"legacy_files_read", "read,files.read"},
+		{"RO_read", "read"},
+		{"RO_legacy_files_read", "read,files.read"},
+		{"RW", "read,write"},
 	}
 
-	for _, tc := range roPerms {
+	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			sessionID := "inject-ro-web-" + tc.name
-
-			// --- Set up hub manager with a counting PTY writer ---
-			var ptyWriteCount atomic.Int32
-			countingWriter := writerFuncInj(func(p []byte) (int, error) {
-				ptyWriteCount.Add(1)
-				return len(p), nil
-			})
-
-			manager := relay.NewHubManager()
-			ptyOutputR, ptyOutputW := io.Pipe()
-			manager.Create(sessionID, ptyOutputR, countingWriter, nil)
-
-			// --- Build a WebServer backed by the manager ---
-			tlsCfg, client := selfSignedTLSForTest(t)
-			cfg := Config{
-				BindIP:    "127.0.0.1",
-				Port:      0,
-				FQDN:      "127.0.0.1",
-				Mode:      "tailscale",
-				TLSConfig: tlsCfg,
-			}
-			ws, err := NewWebServer(cfg, manager)
-			if err != nil {
-				t.Fatalf("NewWebServer: %v", err)
-			}
-			if err := ws.Start(); err != nil {
-				t.Fatalf("ws.Start: %v", err)
-			}
-			ws.SetSigningKey(capTestKey)
-			ws.EnableSession(sessionID)
-
-			t.Cleanup(func() {
-				_ = ws.Stop()
-				manager.Shutdown()
-				_ = ptyOutputW.Close()
-			})
-
-			// --- Mint a read-only capability JWT (claims.Perms == tc.perms) ---
-			// issueCapFor is the standard helper from capability_test_helpers.go.
-			// handleWSSRelay maps any token lacking the whole "write" token to
-			// sub.ReadOnly == true (server.go: readonly := !HasPerm(perms,"write")).
+			ws, client, sessionID, ptyWriteCount := setupChatSendTestServer(t)
 			token := issueCapFor(t, ws, sessionID, tc.perms)
 
-			// --- Dial the WebSocket with the RO cap (Origin required by mw) ---
 			headers := http.Header{}
 			headers.Set("Origin", ws.BaseURL())
 			conn := dialWebServerWS(t, client, ws.BaseURL(),
 				"/sessions/"+sessionID+"/ws?cap="+token, headers)
-
-			// Allow the server time to process the WS upgrade, Subscribe, and
-			// send the initial MsgMeta + MsgPresence frames.
 			time.Sleep(50 * time.Millisecond)
 
-			// --- Hand-craft a relay.MsgSessionInject frame and send it ---
-			// Bypasses any client-side suppression, proving server-side gating.
-			injectPayload, _ := json.Marshal(relay.InjectPayload{Text: "evil command"})
-			frame := append([]byte{relay.MsgSessionInject}, injectPayload...)
-
 			ctx := context.Background()
-			if err := conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
-				t.Fatalf("write inject frame: %v", err)
+			injectFrame := append([]byte{retiredInjectFrameType}, []byte(`{"text":"evil command"}`)...)
+			if err := conn.Write(ctx, websocket.MessageBinary, injectFrame); err != nil {
+				t.Fatalf("perms=%q: write 0x35 frame: %v", tc.perms, err)
 			}
 
-			// --- Assert (1): relay.MsgInjectError NAK received within timeout ---
-			// hub.HandleInject returns ErrReadOnly for a RO subscriber; the web
-			// read pump sends MakeInjectErrorFrame(err.Error()) to the
-			// subscriber's Msgs channel and the write pump forwards it.
-			if !waitForMsgInjectError(t, conn, 3*time.Second) {
-				t.Errorf("perms=%q: expected relay.MsgInjectError NAK from RO-JWT "+
-					"inject attempt; none received within timeout (SEC-01 web path "+
-					"not enforced)", tc.perms)
+			chatPayload, _ := json.Marshal(relay.ChatSendPayload{Content: "after inject frame"})
+			if err := conn.Write(ctx, websocket.MessageBinary, append([]byte{relay.MsgChatSend}, chatPayload...)); err != nil {
+				t.Fatalf("perms=%q: write chat-send after 0x35 (socket closed?): %v", tc.perms, err)
 			}
 
-			// --- Assert (2): PTY write counter is exactly 0 ---
-			// hub.HandleInject returns ErrReadOnly before reaching WriteInput, so
-			// the counting PTY writer must record zero calls.
+			// The read pump handles frames in order, so the chat broadcast proves
+			// the 0x35 frame was already processed and the socket stayed open.
+			chatFrame := waitForMsgChatWebServer(t, conn, 3*time.Second)
+			if chatFrame == nil {
+				t.Fatalf("perms=%q: no MsgChat broadcast after 0x35 + chat send", tc.perms)
+			}
+			_, payload, err := relay.ParseFrame(chatFrame)
+			if err != nil {
+				t.Fatalf("perms=%q: ParseFrame: %v", tc.perms, err)
+			}
+			var msg relay.ChatMessage
+			if err := json.Unmarshal(payload, &msg); err != nil {
+				t.Fatalf("perms=%q: unmarshal ChatMessage: %v", tc.perms, err)
+			}
+			if msg.Content != "after inject frame" {
+				t.Errorf("perms=%q: Content = %q, want %q", tc.perms, msg.Content, "after inject frame")
+			}
 			if count := ptyWriteCount.Load(); count != 0 {
-				t.Errorf("perms=%q: PTY write count = %d after RO-JWT inject attempt, "+
-					"want 0 (SEC-01 gate failed on web path; HandleInject must return "+
-					"ErrReadOnly before WriteInput)", tc.perms, count)
+				t.Errorf("perms=%q: PTY write count = %d after 0x35 frame + chat send, want 0 (CHAT-01)", tc.perms, count)
 			}
 		})
 	}

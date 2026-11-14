@@ -1496,8 +1496,8 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 			case relay.MsgChatSend:
 				// Phase 154 / CHAT-01 / D-06 (Phase 163): wire the MsgChatSend (0x31) dispatch.
 				// Per D-06, RO clients are full chat participants and may post chat messages;
-				// only MsgInput (PTY keystrokes) and MsgSessionInject (@session) remain RO-gated.
-				// Chat send NEVER writes to PTY stdin — only MsgSessionInject (0x35) does.
+				// only MsgInput (PTY keystrokes) remains RO-gated. Chat send NEVER writes to
+				// PTY stdin. 0x35 (the retired inject frame) has no case here and is dropped.
 				// Content sanitization lives inside hub.HandleChatSend (T-154-02 / D-02).
 				// sub.ReadOnly is derived from the signed JWT HasPerm("write") check (cannot be
 				// bypassed by URL params — D-24/SEC-04). On HandleChatSend error, log server-side
@@ -1509,30 +1509,6 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 				}
 				if err := hub.HandleChatSend(sub, cp.Content); err != nil {
 					slog.Warn("webserver: chat send rejected", "err", err)
-				}
-			case relay.MsgSessionInject:
-				// Phase 153 / SEC-01: RW cap required to inject text into PTY stdin.
-				// The gate is server-side in hub.HandleInject — must hold against a
-				// hand-crafted WS frame regardless of any client-side suppression (D-04).
-				// sub.ReadOnly here is derived from the signed JWT via the whole-token
-				// HasPerm "write" check (set at line ~1008) and cannot be bypassed by
-				// URL params (D-24/SEC-04) or by a "read,files.read" RO token (SEC-01).
-				// NOTE: MsgChatSend (0x31) is chat-only and NEVER writes to PTY (D-02).
-				var ip relay.InjectPayload
-				if json.Unmarshal(payload, &ip) != nil || ip.Text == "" {
-					continue // malformed or empty frame: ignore silently (same as MsgTyping/MsgAliasSet)
-				}
-				if err := hub.HandleInject(sub, ip.Text); err != nil {
-					// IN-01: never forward the raw internal error to the remote
-					// web client — a PTY write failure would leak plumbing detail
-					// (e.g. "io: read/write on closed pipe"). Log the detail
-					// server-side and NAK with a stable, user-facing reason.
-					slog.Warn("webserver: inject rejected", "err", err)
-					select {
-					case sub.Msgs <- relay.MakeInjectErrorFrame(relay.InjectErrorReason(err)):
-					default:
-						go sub.CloseSlow()
-					}
 				}
 			}
 		}

@@ -369,9 +369,10 @@ func (e *SessionEngine) CreateSession(ctx context.Context, name, workDir string,
 	}
 	e.mu.Unlock()
 
-	// Phase 153: wire the inject persist callback so the relay read pump can
-	// append SessionInject messages without importing daemon (import-cycle break).
-	// Nil-guard: chatStore is nil when NewChatStore failed (non-fatal; PTY write still occurs).
+	// Wire the chat-send persist callback so the relay read pump can append chat
+	// messages without importing daemon (import-cycle break). HandleChatSend fails
+	// with "chatAppendFn not wired" without it — never remove this call.
+	// Nil-guard: chatStore is nil when NewChatStore failed (non-fatal; chat is unavailable).
 	if chatStore != nil {
 		hub.SetChatAppendFn(func(msg relay.ChatMessage) (relay.ChatMessage, error) {
 			return chatStore.AppendMessage(msg)

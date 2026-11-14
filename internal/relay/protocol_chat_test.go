@@ -24,7 +24,6 @@ func TestChatMessageRoundTrip(t *testing.T) {
 		AuthorAlias:   "alice",
 		Content:       "Hello, world!",
 		Mentions:      []string{"bob", "carol"},
-		SessionInject: true,
 		TimestampMs:   1700000000000,
 	}
 
@@ -53,7 +52,6 @@ func TestChatMessageJSONKeys(t *testing.T) {
 		AuthorAlias:   "Bob",
 		Content:       "hi",
 		Mentions:      []string{"alice"},
-		SessionInject: true,
 		TimestampMs:   12345,
 	}
 
@@ -69,15 +67,14 @@ func TestChatMessageJSONKeys(t *testing.T) {
 
 	// Verify exact key names are present.
 	expectedKeys := map[string]bool{
-		"v":             true,
-		"id":            true,
-		"sessionID":     true,
-		"authorID":      true,
-		"alias":         true,
-		"content":       true,
-		"mentions":      true,
-		"sessionInject": true,
-		"ts":            true,
+		"v":         true,
+		"id":        true,
+		"sessionID": true,
+		"authorID":  true,
+		"alias":     true,
+		"content":   true,
+		"mentions":  true,
+		"ts":        true,
 	}
 	for key := range expectedKeys {
 		if _, ok := raw[key]; !ok {
@@ -93,7 +90,7 @@ func TestChatMessageJSONKeys(t *testing.T) {
 	}
 }
 
-// TestChatMessageOmitempty verifies that Mentions and SessionInject are absent
+// TestChatMessageOmitempty verifies that Mentions is absent
 // from the JSON when they are zero values.
 func TestChatMessageOmitempty(t *testing.T) {
 	msg := ChatMessage{
@@ -104,7 +101,6 @@ func TestChatMessageOmitempty(t *testing.T) {
 		AuthorAlias:   "Bob",
 		Content:       "hi",
 		// Mentions is nil (zero value)
-		// SessionInject is false (zero value)
 		TimestampMs: 12345,
 	}
 
@@ -120,9 +116,6 @@ func TestChatMessageOmitempty(t *testing.T) {
 
 	if _, ok := raw["mentions"]; ok {
 		t.Error("expected 'mentions' to be absent (omitempty) when nil, but it was present")
-	}
-	if _, ok := raw["sessionInject"]; ok {
-		t.Error("expected 'sessionInject' to be absent (omitempty) when false, but it was present")
 	}
 }
 

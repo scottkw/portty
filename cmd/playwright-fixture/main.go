@@ -150,11 +150,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("NewChatStore: %v", err)
 	}
-	// Seed 4 messages so e2e assertions have data in the loaded history:
+	// Seed 3 messages so e2e assertions have data in the loaded history:
 	//   1. Normal RW message (broadcast test baseline)
 	//   2. Normal viewer message (participant deduplication in Export)
-	//   3. SessionInject=true (SC-4 inject indicator test)
-	//   4. Mentions=["local"] (PARITY-01 @mention test; "local" is the
+	//   3. Mentions=["local"] (PARITY-01 @mention test; "local" is the
 	//      default currentUserTailnetID in ChatPanel for web-share clients
 	//      whose self-identity is not set by the WebShareSessionView).
 	seedMessages := []relay.ChatMessage{
@@ -175,16 +174,6 @@ func main() {
 			AuthorAlias:   "playwright-viewer",
 			Content:       "Hello from the fixture (viewer).",
 			TimestampMs:   1000000001000,
-		},
-		{
-			SchemaVersion: relay.ChatSchemaVersion,
-			ID:            "fixture-msg-3",
-			SessionID:     sessionID,
-			AuthorID:      "fixture-author-rw",
-			AuthorAlias:   "playwright-rw",
-			Content:       "@session inject message fixture.",
-			TimestampMs:   1000000002000,
-			SessionInject: true,
 		},
 		{
 			SchemaVersion: relay.ChatSchemaVersion,

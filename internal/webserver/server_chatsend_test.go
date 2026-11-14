@@ -10,8 +10,7 @@ package webserver
 //   3. A MsgChatSend frame with malformed/empty-content JSON is silently ignored.
 //
 // The RO status derives from claims.Perms in the signed JWT (same as
-// TestInjectRO_WebPath). The SEC-01 inject gate remains in hub.HandleInject;
-// only the chat-send gate was loosened per D-06.
+// TestInjectFrame_WebPath_NoPTYWrite). Chat send never writes to the PTY.
 //
 // TESTING.md registration is deferred to plan 154-06.
 
@@ -29,8 +28,7 @@ import (
 )
 
 // writerFuncChat is a func([]byte)(int,error) adapter that implements io.Writer.
-// Used to back the hub with a counting PTY writer; distinct from writerFuncInj
-// (inject_test.go) to avoid duplicate identifier in the same test binary.
+// Used to back the hub with a counting PTY writer.
 type writerFuncChat func(p []byte) (int, error)
 
 func (f writerFuncChat) Write(p []byte) (int, error) { return f(p) }
@@ -148,7 +146,7 @@ func TestChatSend_RWBroadcasts_WebPath(t *testing.T) {
 		t.Errorf("frame type = 0x%02x, want 0x%02x (MsgChat)", chatFrame[0], relay.MsgChat)
 	}
 
-	// Decode and verify: SessionInject must be false.
+	// Decode and verify.
 	_, chatPayload, err := relay.ParseFrame(chatFrame)
 	if err != nil {
 		t.Fatalf("ParseFrame MsgChat: %v", err)
@@ -156,9 +154,6 @@ func TestChatSend_RWBroadcasts_WebPath(t *testing.T) {
 	var msg relay.ChatMessage
 	if err := json.Unmarshal(chatPayload, &msg); err != nil {
 		t.Fatalf("unmarshal ChatMessage: %v", err)
-	}
-	if msg.SessionInject {
-		t.Error("ChatMessage.SessionInject = true, want false (chat-send is not inject)")
 	}
 	if msg.Content != "webserver chat send test" {
 		t.Errorf("ChatMessage.Content = %q, want %q", msg.Content, "webserver chat send test")
@@ -171,9 +166,9 @@ func TestChatSend_RWBroadcasts_WebPath(t *testing.T) {
 }
 
 // TestChatSend_ROCanPost_WebPath verifies D-06 (Phase 163) on the webserver path:
-// a RO JWT client sending MsgChatSend DOES receive a MsgChat broadcast and must
-// NOT receive a MsgInjectError NAK. PTY write count must remain zero.
-// Both "read" and the legacy "read,files.read" perm shapes are exercised (mirrors TestInjectRO_WebPath).
+// a RO JWT client sending MsgChatSend DOES receive a MsgChat broadcast. PTY
+// write count must remain zero. Both "read" and the legacy "read,files.read"
+// perm shapes are exercised (mirrors TestInjectFrame_WebPath_NoPTYWrite).
 func TestChatSend_ROCanPost_WebPath(t *testing.T) {
 	roPerms := []struct {
 		name  string
@@ -206,26 +201,12 @@ func TestChatSend_ROCanPost_WebPath(t *testing.T) {
 				t.Fatalf("perms=%q: write MsgChatSend: %v", tc.perms, err)
 			}
 
-			// A MsgChat broadcast MUST arrive within timeout; no MsgInjectError NAK.
+			// A MsgChat broadcast MUST arrive within timeout.
 			chatFrame := waitForMsgChatWebServer(t, conn, 3*time.Second)
 			if chatFrame == nil {
 				t.Errorf("perms=%q: expected MsgChat broadcast after RO chat send (D-06 web path), got none", tc.perms)
 			} else if chatFrame[0] != relay.MsgChat {
 				t.Errorf("perms=%q: frame type = 0x%02x, want 0x%02x (MsgChat)", tc.perms, chatFrame[0], relay.MsgChat)
-			}
-
-			// Drain for NAK check — no MsgInjectError should arrive.
-			drainCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-			defer cancel()
-			for {
-				_, rawMsg, err := conn.Read(drainCtx)
-				if err != nil {
-					break // deadline
-				}
-				if len(rawMsg) > 0 && rawMsg[0] == relay.MsgInjectError {
-					t.Errorf("perms=%q: received unexpected MsgInjectError NAK after MsgChatSend (chat send must not NAK)", tc.perms)
-					break
-				}
 			}
 
 			if count := ptyWriteCount.Load(); count != 0 {
@@ -264,7 +245,7 @@ func TestChatSend_MalformedIgnored_WebPath(t *testing.T) {
 		t.Fatalf("write empty-content frame: %v", err)
 	}
 
-	// Drain frames for 300ms — no MsgChat or MsgInjectError must appear.
+	// Drain frames for 300ms — no MsgChat must appear.
 	drainCtx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	for {
@@ -274,9 +255,6 @@ func TestChatSend_MalformedIgnored_WebPath(t *testing.T) {
 		}
 		if len(rawMsg) > 0 && rawMsg[0] == relay.MsgChat {
 			t.Error("received unexpected MsgChat broadcast after malformed/empty MsgChatSend")
-		}
-		if len(rawMsg) > 0 && rawMsg[0] == relay.MsgInjectError {
-			t.Error("received unexpected MsgInjectError after MsgChatSend (chat send must not NAK)")
 		}
 	}
 
