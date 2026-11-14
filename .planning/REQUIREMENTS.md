@@ -39,7 +39,7 @@
 
 ### Chat & Notifications
 
-- [ ] **CHAT-01**: The per-session human chat works across desktop and web surfaces, with the `@session` agent-inject bridge removed
+- [x] **CHAT-01**: The per-session human chat works across desktop and web surfaces, with the `@session` agent-inject bridge removed
 - [ ] **NOTF-01**: Native macOS notifications appear under the Portty name
 
 ### Updates & Distribution
@@ -109,7 +109,7 @@
 | SHAR-05 | Phase 4 | Pending |
 | SHAR-06 | Phase 4 | Pending |
 | SHAR-07 | Phase 5 | Pending |
-| CHAT-01 | Phase 1 | Pending |
+| CHAT-01 | Phase 1 | Complete |
 | NOTF-01 | Phase 3 | Pending |
 | DIST-03 | Phase 3 | Pending |
 | UPD-01 | Phase 6 | Pending |
