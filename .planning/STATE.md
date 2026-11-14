@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Plain macOS Terminal
 status: executing
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-11-14T20:52:09.060Z"
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-11-14T21:04:22.774Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 1 execution started
-state_head: aaedd8c2ff5c1e30c24add8668b4ebc3448b1480
+state_head: 707e24aa8616b39cb5a7c0e5f04f14fbcfc135ea
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 10
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 ## Current Position
 
 Phase: 1 (Plain macOS Terminal) — EXECUTING
-Plan: 1 of 10
-Status: Executing Phase 1
+Plan: 2 of 10
+Status: Ready to execute
 Last activity: 2026-11-14 — Phase 1 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -52,6 +52,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 1 P01 | 8 min | 3 tasks | 103 files |
 
 ## Accumulated Context
 
@@ -64,6 +69,9 @@ Recent decisions affecting current work:
 - [Roadmap]: Navigation before rebrand, so help and in-app text are rewritten once against the final UI
 - [Roadmap]: NAV-02 (peer sessions in sidebar) ships with Hub removal so GUI remote attach never regresses (it currently lives in Hub remote cards)
 - [Roadmap]: Overnight survival is its own phase so the overnight-length test doesn't hold up same-day share verification
+- [Phase 1]: 01-01: Renamed internal/daemon/ipc_nonwindows.go to ipc.go so no *nonwindows* file stays tracked
+- [Phase 1]: 01-01: godbus and tailscale/go-winio stay in go.mod as indirect transitive deps (wails linux backend, tailscale safesocket); only direct requires removed
+- [Phase 1]: 01-01: release.yml publishes only the signed DMG + checksums.txt; user must re-apply branch protection (build (agenthub, darwin/universal, macos-latest) + playwright) when CI is re-enabled
 
 ### Pending Todos
 
@@ -87,6 +95,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-14T19:31:19.590Z
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: .planning/phases/01-plain-macos-terminal/01-UI-SPEC.md
+Last session: 2026-11-14T21:04:22.755Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None

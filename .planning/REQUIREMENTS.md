@@ -46,7 +46,7 @@
 
 - [ ] **STRP-01**: All agent-CLI code is removed: CLI detection and PATH discovery, agent picker, agent badges, per-agent args and theme broadcast, Antigravity, and agent working/waiting status detection
 - [ ] **STRP-02**: The file browser/editor (local and remote, GUI and web) is removed, including its daemon API and capability
-- [ ] **STRP-03**: Windows and Linux code paths, packaging, and CI jobs are removed. Build, test, and lint pass on macOS.
+- [x] **STRP-03**: Windows and Linux code paths, packaging, and CI jobs are removed. Build, test, and lint pass on macOS.
 - [ ] **STRP-04**: Tests for removed features are deleted, tests for kept features still pass, and the security fuzz harness still covers relay and webserver
 
 ### Verification
@@ -105,7 +105,7 @@
 | NOTF-01 | Phase 3 | Pending |
 | STRP-01 | Phase 1 | Pending |
 | STRP-02 | Phase 1 | Pending |
-| STRP-03 | Phase 1 | Pending |
+| STRP-03 | Phase 1 | Complete |
 | STRP-04 | Phase 1 | Pending |
 | VERF-01 | Phase 5 | Pending |
 

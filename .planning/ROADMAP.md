@@ -33,11 +33,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User changes the terminal theme and toggles xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) in Settings, and open terminals pick up the change
   4. User chats on a session from the desktop app and from a browser web share, and both sides see the messages; nothing typed in chat (including `@session`) is ever written into the terminal
   5. On macOS the Go build, Go tests, Vitest, and lint all pass with no Windows/Linux sources, packaging, or CI jobs left; the daemon no longer serves a files API or files capability; the security fuzz harness still runs against relay and webserver
-**Plans**: 10 plans (sequential waves 1-10; shared hot files and TESTING.md force serial order)
+**Plans**: 1/10 plans executed (sequential waves 1-10; shared hot files and TESTING.md force serial order)
 
 Plans:
 **Wave 1**
-- [ ] 01-01-PLAN.md — Windows/Linux strip: Go sources, packaging, CI on macOS, portable traceability check
+- [x] 01-01-PLAN.md — Windows/Linux strip: Go sources, packaging, CI on macOS, portable traceability check
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — File browser/editor UI removed from desktop and web share (incl. CodeMirror, e2e)
@@ -130,7 +130,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Plain macOS Terminal | 0/TBD | Not started | - |
+| 1. Plain macOS Terminal | 1/10 | In Progress | - |
 | 2. Tabs + Sidebar Navigation | 0/TBD | Not started | - |
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
