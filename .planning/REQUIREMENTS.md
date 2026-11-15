@@ -17,11 +17,11 @@
 ### Terminal
 
 - [ ] **TERM-01**: User can open a new local terminal session, which always starts macOS zsh as a login shell (`/bin/zsh -l`, no shell choice) in a chosen (or last-used) directory
-- [ ] **TERM-02**: Sessions keep running in the daemon when the GUI window is closed or the app restarts, and reopen with scrollback intact
+- [x] **TERM-02**: Sessions keep running in the daemon when the GUI window is closed or the app restarts, and reopen with scrollback intact
 - [ ] **TERM-03**: User can run multiple sessions as tabs, and rename and close them
 - [x] **TERM-04**: Themes and xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) keep working, controllable from Settings
 
-- [ ] **TERM-05**: When a session's shell exits, for any reason, its tab closes immediately. There is no status indicator, exit countdown, toast or banner, and this works for shells that exit hours after they started
+- [x] **TERM-05**: When a session's shell exits, for any reason, its tab closes immediately. There is no status indicator, exit countdown, toast or banner, and this works for shells that exit hours after they started
 - [ ] **NET-01**: Portty checks for a working Tailscale connection (LocalAPI). When there isn't one, it shows a banner, "Tailscale isn't connected. Remote access and sharing are off until it is.", and disables the share and remote controls. It rechecks automatically and never installs or configures Tailscale
 
 ### Navigation
@@ -99,10 +99,10 @@
 | BRND-05 | Phase 3 | Pending |
 | BRND-06 | Phase 3 | Pending |
 | TERM-01 | Phase 1 | Pending |
-| TERM-02 | Phase 1 | Pending |
+| TERM-02 | Phase 1 | Complete |
 | TERM-03 | Phase 2 | Pending |
 | TERM-04 | Phase 1 | Complete |
-| TERM-05 | Phase 1 | Pending |
+| TERM-05 | Phase 1 | Complete |
 | NET-01 | Phase 1 | Pending |
 | NAV-01 | Phase 2 | Pending |
 | NAV-02 | Phase 2 | Pending |

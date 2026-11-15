@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Plain macOS Terminal
 status: executing
-stopped_at: Completed 01-09-PLAN.md
-last_updated: "2026-11-14T23:58:17.110Z"
+stopped_at: Completed 01-10-PLAN.md
+last_updated: "2026-11-15T00:19:36.262Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 1 execution started
-state_head: 66d04b2aa822e9558d6cbd6aa6280868b5a976cb
+state_head: 0d87f528b190606839657d44ce3d88804ec0c127
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P07 | 15m | 2 tasks | 40 files |
 | Phase 01 P08 | 8m | 2 tasks | 25 files |
 | Phase 01 P09 | 20 min | 3 tasks | 33 files |
+| Phase 01 P10 | 19min | 3 tasks | 60 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,10 @@ Recent decisions affecting current work:
 - [Phase 01]: ChatPanel isReadOnly state and its /info fetch removed with the inject gesture (sole reader); server-side PTY input gating unchanged
 - [Phase 01]: Security fuzz harness (STRP-04): FuzzParseFrame, FuzzInputAbsorberFilter, FuzzSanitizeChatContent, FuzzRequireCapability, FuzzWebServerRoutes plus FuzzVerify; crashers that pin a fixed bug are committed under testdata/fuzz
 - [Phase 01]: assetsNoStore returns 404 for non-UTF-8 /assets/ paths (was 500 via fs.Sub ErrInvalid; found by FuzzWebServerRoutes)
+- [Phase 01]: 01-10: Exit detection is one app-wide 500 ms watcher (app.go startExitWatcher/checkExits) with no deadline and no cold-start baseline; every session:exit closes the tab and KillSession removes the session, also for tab-less sessions
+- [Phase 01]: 01-10: init/retryInit remove sessions already stopped at restore instead of restoring them as tabs
+- [Phase 01]: 01-10: SessionCardGrid sort and FLIP reorder deleted with the attention key; the Hub keeps arrival order and group counts are { total } only
+- [Phase 01]: 01-10: Daemon derived status and its GetSessionStatus route stay for CLI/web/peers; only the GUI binding and all status display are gone
 
 ### Pending Todos
 
@@ -130,6 +135,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-14T23:23:37.501Z
-Stopped at: Completed 01-09-PLAN.md
+Last session: 2026-11-15T00:19:36.243Z
+Stopped at: Completed 01-10-PLAN.md
 Resume file: None
