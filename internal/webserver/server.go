@@ -454,9 +454,7 @@ func (ws *WebServer) startTailscale() error {
 	tlsCfg := ws.config.TLSConfig
 	if tlsCfg == nil {
 		// Use the promoted ws.lc (zero-value usable) instead of a stack-local
-		// var to make the field available to EnableFunnel/DisableFunnel. The
-		// handleWSSRelay local var lc (~line 1135) is left unchanged — that one
-		// is used only for WhoIs calls and need not be shared.
+		// var to make the field available to EnableFunnel/DisableFunnel.
 		tlsCfg = &tls.Config{
 			GetCertificate: ws.lc.GetCertificate,
 			MinVersion:     tls.VersionTLS12,
@@ -1324,88 +1322,25 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Phase 155-05 (PARITY-01) — TWO-PHASE SUBSCRIBE (anti-race ordering).
-	//
-	// The WhoIs IPC below has real production latency. Chat history is served
-	// by a SEPARATE HTTP endpoint, so a joining viewer can render history (and
-	// believe its socket is live) while the server is still blocked inside
-	// WhoIs and has NOT yet added this connection to the broadcast set. A chat
-	// message sent in that window would fan out to current subscribers only —
-	// missing this viewer until reload. That is the PARITY-01 broadcast race.
-	//
-	// Fix: register in the broadcast fan-out set IMMEDIATELY (empty PersonKey ⇒
-	// delivery only, no roster entry yet), BEFORE WhoIs. Then resolve identity,
-	// set the immutable identity fields, and register the presence roster entry
-	// via hub.RegisterPresence. This is race-free because: (1) BroadcastChat
-	// fan-out reads only sub.Msgs (immutable); (2) the presence snapshot reads
-	// roster entries (a copy made under lock at RegisterPresence), not the live
-	// sub; (3) the read pump that reads sub's identity fields starts only AFTER
-	// identity is set. So no concurrent reader observes the identity fields
-	// during the window in which they transition from empty to resolved.
 	sub := &relay.Subscriber{
 		Msgs:     make(chan []byte, 256),
 		ReadOnly: readonly,
 		Name:     clientName,
-		Origin:   "web",
-		// TailnetID / PersonKey / Alias are set AFTER WhoIs (below).
+		Origin:   "web", // read by the host-authority resize arbiter
 	}
 	sub.CloseSlow = func() {
 		conn.Close(websocket.StatusPolicyViolation, "too slow")
 	}
-	sub.AliasSetFn = func(key, a string) {
-		if ws.aliasSet != nil {
-			ws.aliasSet(key, a)
-		}
-	}
 
-	// Phase 1: subscribe NOW — delivery is live from this point. Empty
-	// PersonKey ⇒ no presence-roster entry yet (registered in Phase 2).
+	// Subscribe FIRST — frames arrive in Msgs from now on, so the snapshot
+	// replayed below cannot leave a gap in the output stream.
 	hub.Subscribe(sub)
+	relay.NotifyViewerCount(hub) // push updated viewer count to all clients
 	defer func() {
-		// Unsubscribe reads sub.PersonKey at close time: set by Phase 2 below
-		// for normal connections, still empty if the conn drops inside the
-		// WhoIs window (symmetric — cleanly removes from subscribers, skips
-		// roster, returns presenceChanged=false).
-		presenceChanged := hub.Unsubscribe(sub) // Phase 152: Unsubscribe returns bool
+		hub.Unsubscribe(sub)
 		relay.NotifyViewerCount(hub)
-		if presenceChanged {
-			relay.NotifyPresence(hub) // Phase 152 / PRESENCE-01: broadcast leave event
-		}
 	}()
 	defer conn.CloseNow()
-
-	// Phase 152 / IDENT-01: resolve the peer's Tailscale identity via WhoIs.
-	// Must be called AFTER websocket.Accept (Pitfall: WhoIs on the wrong
-	// pre-upgrade address). On failure (no live tailnet, loopback test, dev
-	// path) we fall back to a non-"local" sentinel so a web client is never
-	// silently merged with the desktop owner's "local:local" entry (D-04).
-	var lc local.Client
-	tailnetID := "unknown"
-	defaultAlias := ""
-	if who, err := lc.WhoIs(ctx, r.RemoteAddr); err == nil && who != nil && who.Node != nil {
-		tailnetID = who.Node.Key.String()
-		if who.Node.ComputedName != "" {
-			defaultAlias = who.Node.ComputedName
-		} else if who.UserProfile != nil && who.UserProfile.LoginName != "" {
-			defaultAlias = strings.SplitN(who.UserProfile.LoginName, "@", 2)[0]
-		}
-	}
-	personKey := tailnetID + ":web"
-	alias := defaultAlias
-	if ws.aliasGet != nil {
-		alias = ws.aliasGet(personKey, defaultAlias)
-	}
-
-	// Phase 2: identity resolved — set the immutable identity fields, THEN
-	// register the presence roster entry. The read pump (which reads these
-	// fields) is not started until below, so this assignment has no concurrent
-	// reader. Presence/viewer-count notifications move here, after identity.
-	sub.TailnetID = tailnetID
-	sub.PersonKey = personKey
-	sub.Alias = alias
-	hub.RegisterPresence(sub)    // Phase 155-05: two-phase presence registration
-	relay.NotifyViewerCount(hub) // push updated viewer count to all clients
-	relay.NotifyPresence(hub)    // Phase 152 / PRESENCE-01: broadcast join event
 
 	// VIEW-03: push authoritative host grid BEFORE scrollback replay so that
 	// replayed raw bytes land in a correctly-sized terminal grid. Direct conn.Write
@@ -1414,15 +1349,6 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 		if err := conn.Write(ctx, websocket.MessageBinary, relay.MakeResizeFrame(uint16(c), uint16(r))); err != nil {
 			return
 		}
-	}
-
-	// Phase 161 / ALIAS-UI-01: emit self-identity hint so the client learns its
-	// own personKey + resolved alias (approach d — web-guest pre-fill). Direct
-	// conn.Write (not sub.Msgs) guarantees ordering before scrollback replay.
-	// sub.PersonKey (tailnetID:web) and sub.Alias are resolved at lines 1142-1144.
-	// Emitted for every connection including read-only caps (not gated).
-	if err := conn.Write(ctx, websocket.MessageBinary, relay.MakeSelfFrame(relay.SelfPayload{PersonKey: sub.PersonKey, Alias: sub.Alias})); err != nil {
-		return
 	}
 
 	// Phase 175 (BUG-04, #119): replay a catch-up preamble. ReconnectPreamble
@@ -1454,6 +1380,8 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				continue
 			}
+			// 0x30-0x37 are RETIRED (chat, presence, typing, alias, inject, self):
+			// no case and no default arm, so old clients' frames are dropped.
 			switch msgType {
 			case relay.MsgInput:
 				if !sub.ReadOnly { // MC-03: discard input for read-only clients
@@ -1469,48 +1397,6 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 				// intent explicit: a remote web client never drives the shared PTY size.
 			case relay.MsgPing:
 				// Keep-alive — no-op.
-			case relay.MsgTyping:
-				// Phase 152 / PRESENCE-02: typing-start/stop indicator.
-				// NOT gated on sub.ReadOnly — D-06: RO clients are full chat
-				// participants; only MsgInput remains ReadOnly-gated.
-				var tp relay.TypingPayload
-				if json.Unmarshal(payload, &tp) == nil {
-					hub.UpdateTyping(sub, tp.Typing)
-				}
-			case relay.MsgAliasSet:
-				// Phase 152 / IDENT-02: alias update — validate, persist, and
-				// broadcast a fresh presence roster to all clients.
-				// NOT gated on sub.ReadOnly (D-06 — same reasoning as MsgTyping).
-				// T-152-01 mitigation: ValidateAlias rejects control chars and
-				// over-length input identically to the relay surface.
-				var ap relay.AliasPayload
-				if json.Unmarshal(payload, &ap) == nil {
-					if newAlias := relay.ValidateAlias(ap.Alias); newAlias != "" {
-						sub.Alias = newAlias
-						if sub.AliasSetFn != nil {
-							sub.AliasSetFn(sub.PersonKey, newAlias)
-						}
-						hub.UpdateAlias(sub.PersonKey, newAlias)
-						relay.NotifyPresence(hub)
-					}
-				}
-			case relay.MsgChatSend:
-				// Phase 154 / CHAT-01 / D-06 (Phase 163): wire the MsgChatSend (0x31) dispatch.
-				// Per D-06, RO clients are full chat participants and may post chat messages;
-				// only MsgInput (PTY keystrokes) remains RO-gated. Chat send NEVER writes to
-				// PTY stdin. 0x35 (the retired inject frame) has no case here and is dropped.
-				// Content sanitization lives inside hub.HandleChatSend (T-154-02 / D-02).
-				// sub.ReadOnly is derived from the signed JWT HasPerm("write") check (cannot be
-				// bypassed by URL params — D-24/SEC-04). On HandleChatSend error, log server-side
-				// and drop silently — no per-message NAK (RESEARCH Open Q1).
-				// Malformed or empty-content frames are silently ignored (continue).
-				var cp relay.ChatSendPayload
-				if json.Unmarshal(payload, &cp) != nil || cp.Content == "" {
-					continue
-				}
-				if err := hub.HandleChatSend(sub, cp.Content); err != nil {
-					slog.Warn("webserver: chat send rejected", "err", err)
-				}
 			}
 		}
 	}()

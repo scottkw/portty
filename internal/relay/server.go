@@ -2,7 +2,6 @@ package relay
 
 import (
 	"encoding/json"
-	"log"
 	"net"
 	"net/http"
 
@@ -211,41 +210,15 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		conn.Close(websocket.StatusPolicyViolation, "too slow")
 	}
 
-	// Phase 152 / IDENT-01: stamp owner identity for the loopback relay path.
-	// The relay is bound to 127.0.0.1 only (T-152-11: spoofing accept), so
-	// every connection here is the desktop owner — stamped "local".
-	// Alias resolution: use the persisted value if available, otherwise fall
-	// back to ownerDefaultAlias (engine hostname). Wire AliasSetFn so a
-	// MsgAliasSet frame can persist via AliasStore.Set (avoids import cycle
-	// with daemon — callback pattern mirrors setChatProviders in api.go).
-	sub.TailnetID = "local"
-	sub.Origin = "local"
-	sub.PersonKey = "local:local"
-	alias := s.ownerDefaultAlias
-	if s.getAlias != nil {
-		alias = s.getAlias("local:local", s.ownerDefaultAlias)
-	}
-	sub.Alias = alias
-	sub.AliasSetFn = func(key, a string) {
-		if s.setAlias != nil {
-			s.setAlias(key, a)
-		}
-	}
+	sub.Origin = "local" // read by the host-authority resize arbiter
 
 	// Subscribe FIRST — anti-race pattern. Frames arrive in Msgs from now on,
 	// so the snapshot taken below cannot cause a gap in the output stream.
 	hub.Subscribe(sub)
 	NotifyViewerCount(hub) // push updated viewer count to all clients
-	NotifyPresence(hub)    // Phase 152 / PRESENCE-01: broadcast join event to all clients
 	defer func() {
-		// Phase 152: Unsubscribe now returns (presenceChanged bool).
-		// Only broadcast presence when the last connection for this person key
-		// drops — ConnCount > 0 after removal means another connection remains.
-		presenceChanged := hub.Unsubscribe(sub)
+		hub.Unsubscribe(sub)
 		NotifyViewerCount(hub)
-		if presenceChanged {
-			NotifyPresence(hub) // Phase 152 / PRESENCE-01: broadcast leave event
-		}
 	}()
 	defer conn.CloseNow()
 
@@ -256,14 +229,6 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		if err := conn.Write(ctx, websocket.MessageBinary, MakeResizeFrame(uint16(c), uint16(r))); err != nil {
 			return
 		}
-	}
-
-	// Phase 161 / ALIAS-UI-01: emit self-identity hint so the client learns its
-	// own personKey + resolved alias (approach d — web-guest pre-fill). Direct
-	// conn.Write (not sub.Msgs) guarantees ordering before scrollback replay.
-	// sub.PersonKey ("local:local") and sub.Alias are resolved at lines 263-270.
-	if err := conn.Write(ctx, websocket.MessageBinary, MakeSelfFrame(SelfPayload{PersonKey: sub.PersonKey, Alias: sub.Alias})); err != nil {
-		return
 	}
 
 	// Phase 175 (BUG-04, #119): replay a catch-up preamble. ReconnectPreamble
@@ -304,6 +269,8 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				continue
 			}
+			// 0x30-0x37 are RETIRED (chat, presence, typing, alias, inject, self):
+			// no case and no default arm, so old clients' frames are dropped.
 			switch msgType {
 			case MsgInput:
 				if !sub.ReadOnly { // MC-03: discard input for read-only clients
@@ -320,48 +287,6 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 				}
 			case MsgPing:
 				// Keep-alive — no-op.
-			case MsgTyping:
-				// Phase 152 / PRESENCE-02: typing-start/stop indicator.
-				// NOT gated on sub.ReadOnly — D-06: RO clients are full chat
-				// participants; only MsgInput remains ReadOnly-gated.
-				var tp TypingPayload
-				if json.Unmarshal(payload, &tp) == nil {
-					hub.UpdateTyping(sub, tp.Typing)
-				}
-			case MsgAliasSet:
-				// Phase 152 / IDENT-02: alias update — validate, persist, and
-				// broadcast a fresh presence roster to all clients.
-				// NOT gated on sub.ReadOnly (D-06 — same reasoning as MsgTyping).
-				// T-152-01 mitigation: ValidateAlias rejects control chars and
-				// over-length input identically to the web surface.
-				var ap AliasPayload
-				if json.Unmarshal(payload, &ap) == nil {
-					if newAlias := ValidateAlias(ap.Alias); newAlias != "" {
-						sub.Alias = newAlias
-						if sub.AliasSetFn != nil {
-							sub.AliasSetFn(sub.PersonKey, newAlias)
-						}
-						hub.UpdateAlias(sub.PersonKey, newAlias)
-						NotifyPresence(hub)
-					}
-				}
-			case MsgChatSend:
-				// Phase 154 / CHAT-01 / D-06 (Phase 163): wire the MsgChatSend (0x31) dispatch.
-				// Per D-06, RO clients are full chat participants and may post chat messages;
-				// only MsgInput (PTY keystrokes) remains RO-gated. Chat send NEVER writes to
-				// PTY stdin. 0x35 (the retired inject frame) has no case here and is dropped.
-				// Content sanitization lives inside hub.HandleChatSend (T-154-02 / D-02).
-				// Malformed or empty-content frames are silently ignored (continue),
-				// matching MsgTyping/MsgAliasSet behavior. On HandleChatSend error,
-				// log server-side and drop silently — chat send has no client error
-				// display path, per RESEARCH Open Question 1.
-				var cp ChatSendPayload
-				if json.Unmarshal(payload, &cp) != nil || cp.Content == "" {
-					continue
-				}
-				if err := hub.HandleChatSend(sub, cp.Content); err != nil {
-					log.Printf("relay: chat send rejected: %v", err)
-				}
 			}
 		}
 	}()
