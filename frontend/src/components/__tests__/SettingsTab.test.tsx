@@ -1,7 +1,18 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { act } from 'react'
 import raw from '../../components/SettingsTab.tsx?raw'
-import appRaw from '../../App.tsx?raw'
-import themesRaw from '../../themes.ts?raw'
+import { SettingsTab } from '../SettingsTab'
+
+// Every Wails binding resolves to undefined; the DOM case only checks static copy.
+vi.mock('../../wailsjs/go/main/App', async (importOriginal) => {
+  const mod = await importOriginal<Record<string, unknown>>()
+  return Object.fromEntries(Object.keys(mod).map((k) => [k, vi.fn().mockResolvedValue(undefined)]))
+})
+vi.mock('../PluginsSection', () => ({ PluginsSection: () => null }))
+vi.mock('../SettingsJumpBar', () => ({ SettingsJumpBar: () => null, SETTINGS_JUMP_LINKS: [] }))
+vi.mock('../SettingsSearch', () => ({ SettingsSearch: () => null }))
 
 // Source-inspection tests for SettingsTab.tsx (UI-02: Settings as sidebar tab).
 // Verifies the component was refactored from a modal into an inline sidebar tab.
@@ -76,41 +87,33 @@ describe('UI-02 Gap 5: Mount-based useEffect', () => {
   })
 })
 
-describe('THM-01: Appearance section with theme selector', () => {
-  it('imports ALLOWED_THEMES from themes module', () => {
-    expect(raw).toContain("import { ALLOWED_THEMES } from '../themes'")
+describe('THM-01: Appearance follows the system (no theme picker)', () => {
+  it('has no theme props or theme list import', () => {
+    expect(raw).not.toContain('ALLOWED_THEMES')
+    expect(raw).not.toContain('selectedTheme')
+    expect(raw).not.toContain('onThemeChange')
+    expect(raw).not.toContain('uiTheme')
   })
 
-  it('defines ALLOWED_THEMES constant at module level in themes.ts', () => {
-    expect(themesRaw).toContain('ALLOWED_THEMES: string[]')
-  })
-
-  it('sets THEME_NAMES to ALLOWED_THEMES', () => {
-    expect(raw).toContain('THEME_NAMES = ALLOWED_THEMES')
-  })
-
-  it('props include selectedTheme', () => {
-    expect(raw).toContain('selectedTheme: string')
-  })
-
-  it('props include onThemeChange callback', () => {
-    expect(raw).toContain('onThemeChange: (name: string) => void')
-  })
-
-  it('renders theme select with THEME_NAMES options', () => {
-    expect(raw).toContain('THEME_NAMES.map')
-  })
-
-  it('select value is bound to selectedTheme prop', () => {
-    expect(raw).toContain('value={selectedTheme}')
-  })
-
-  it('select onChange calls onThemeChange', () => {
-    expect(raw).toContain('onThemeChange(e.target.value)')
-  })
-
-  it('displays theme names with underscores replaced by spaces', () => {
-    expect(raw).toContain("name.replace(/_/g, ' ')")
+  it('renders "Automatic" and no Interface Theme / Terminal Theme control', async () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(React.createElement(SettingsTab, {
+        tailscaleHealth: null,
+        webServerMode: null,
+        onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
+      }))
+    })
+    expect(container.textContent).toContain('Automatic')
+    expect(container.textContent).toContain("Follows your Mac's Light or Dark setting in System Settings.")
+    const names = Array.from(container.querySelectorAll('button, select, input, [role="switch"]'))
+      .map((el) => `${el.getAttribute('aria-label') ?? ''} ${el.closest('.settings-panel__field-group')?.querySelector('label')?.textContent ?? ''}`)
+    expect(names.some((n) => /Interface Theme|Terminal Theme/.test(n))).toBe(false)
+    expect(container.textContent).not.toMatch(/Interface Theme|Terminal Theme/)
+    await act(async () => root.unmount())
+    container.remove()
   })
 })
 
@@ -165,8 +168,8 @@ describe('SETT-02: Section headers present', () => {
 })
 
 describe('SETT-03: All content groups present simultaneously', () => {
-  it('contains theme selector (Appearance group)', () => {
-    expect(raw).toContain('settings-panel__theme-select')
+  it('contains the Appearance row (Appearance group)', () => {
+    expect(raw).toContain('settings-panel__appearance-value')
   })
 
   it('contains CT disclosure (Web Server group)', () => {
@@ -196,42 +199,6 @@ describe('TAILSCALE-PATH-01: Tailscale status in Settings', () => {
 
   it('has no tailscale path override input (Portty 01-11)', () => {
     expect(raw).not.toContain('Path to tailscale')
-  })
-})
-
-describe('THM-04: Allowlist-only theme picker', () => {
-  it('ALLOWED_THEMES contains Tomorrow_Night (default theme survives audit)', () => {
-    expect(themesRaw).toContain('"Tomorrow_Night"')
-  })
-
-  it('ALLOWED_THEMES contains at least one light-background theme (Novel)', () => {
-    expect(themesRaw).toContain('"Novel"')
-  })
-
-  it('ALLOWED_THEMES contains at least one dark-background theme (Dracula)', () => {
-    expect(themesRaw).toContain('"Dracula"')
-  })
-
-  it('does NOT contain "default" in ALLOWED_THEMES (namespace artifact excluded)', () => {
-    const allowlistStart = themesRaw.indexOf('ALLOWED_THEMES: string[]')
-    const allowlistEnd = themesRaw.indexOf(']', allowlistStart)
-    expect(allowlistStart).toBeGreaterThan(-1)
-    const allowlistBlock = themesRaw.slice(allowlistStart, allowlistEnd + 1)
-    expect(allowlistBlock).not.toContain('"default"')
-  })
-
-  it('does NOT derive theme names from Object.keys(xtermThemes)', () => {
-    expect(raw).not.toContain('Object.keys(xtermThemes).sort()')
-  })
-})
-
-describe('THM-04: localStorage fallback guard in App.tsx', () => {
-  it('validates stored theme against ALLOWED_THEMES before using it', () => {
-    expect(appRaw).toContain('ALLOWED_THEMES.includes(stored)')
-  })
-
-  it('imports ALLOWED_THEMES from themes module', () => {
-    expect(appRaw).toContain('ALLOWED_THEMES')
   })
 })
 

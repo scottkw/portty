@@ -1,7 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import type { IProgressState } from '@xterm/addon-progress'
-import * as xtermThemes from 'xterm-theme'
-import type { ITheme } from '@xterm/xterm'
 import { TabBar, type Tab } from './components/TabBar'
 import { Sidebar } from './components/Sidebar'
 import { SettingsTab } from './components/SettingsTab'
@@ -57,7 +55,8 @@ import type { UpdateInfo } from './components/UpdateBanner'
 import { WebGLRecoveryBanner } from './components/WebGLRecoveryBanner'
 import { PluginToggleBanner } from './components/PluginToggleBanner'
 import { QuitConfirmModal } from './components/QuitConfirmModal'
-import { ALLOWED_THEMES } from './themes'
+import { useColorScheme } from './lib/useColorScheme'
+import { LIGHT_PALETTE, DARK_PALETTE } from './lib/terminalPalettes'
 import {
   loadGroups,
   createGroup,
@@ -68,9 +67,6 @@ import {
 import type { GroupCounts } from './lib/hubGroupCounts'
 
 const DEFAULT_FONT_SIZE = 14
-const THEME_STORAGE_KEY = 'agenthub:terminalTheme'
-const DEFAULT_THEME_NAME = 'Tomorrow_Night'
-const UI_THEME_STORAGE_KEY = 'agenthub:uiTheme'
 
 /**
  * App is the root component — it owns all tab state and wires
@@ -248,39 +244,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // GetTailscaleStatus reply only if no event arrived while it was pending.
   const healthEventSeqRef = useRef(0)
 
-  // Terminal theme (global — same theme for all sessions)
-  const [terminalThemeName, setTerminalThemeName] = useState<string>(() => {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY) ?? DEFAULT_THEME_NAME
-    if (ALLOWED_THEMES.includes(stored)) return stored
-    if (ALLOWED_THEMES.includes(DEFAULT_THEME_NAME)) return DEFAULT_THEME_NAME
-    return ALLOWED_THEMES[0] ?? DEFAULT_THEME_NAME
-  })
-  const terminalTheme: ITheme = (xtermThemes as Record<string, ITheme>)[terminalThemeName]
-    ?? (xtermThemes as Record<string, ITheme>)[DEFAULT_THEME_NAME]
-
-  const handleThemeChange = useCallback((name: string) => {
-    localStorage.setItem(THEME_STORAGE_KEY, name)
-    setTerminalThemeName(name)
-  }, [])
-
-  // UI theme (light/dark whole-app appearance) — distinct from terminal color theme.
-  // Default is dark (attribute absent). Light is opt-in via localStorage.
-  const [uiTheme, setUiTheme] = useState<'dark' | 'light'>(() =>
-    localStorage.getItem(UI_THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark'
-  )
-  useEffect(() => {
-    if (uiTheme === 'light') {
-      document.documentElement.setAttribute('data-ui-theme', 'light')
-      document.documentElement.style.colorScheme = 'light'
-    } else {
-      document.documentElement.removeAttribute('data-ui-theme')
-      document.documentElement.style.colorScheme = 'dark'
-    }
-  }, [uiTheme])
-  const handleUiThemeChange = useCallback((t: 'dark' | 'light') => {
-    localStorage.setItem(UI_THEME_STORAGE_KEY, t)
-    setUiTheme(t)
-  }, [])
+  // THEM-01: follow the system appearance. Palettes are module constants, so
+  // the TerminalPanel theme effect only re-runs on a real scheme change.
+  const terminalTheme = useColorScheme() === 'dark' ? DARK_PALETTE : LIGHT_PALETTE
 
   // POL-05: Group state lifted from HubPanel to App.tsx
   // groupDefs + activeGroupId drive both Sidebar (render+select+create+drag-drop)
@@ -1487,10 +1453,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           <SettingsTab
             tailscaleHealth={tailscaleHealth}
             webServerMode={webServerMode}
-            selectedTheme={terminalThemeName}
-            onThemeChange={handleThemeChange}
-            uiTheme={uiTheme}
-            onUiThemeChange={handleUiThemeChange}
             onPluginToggleSideEffect={handlePluginToggleSideEffect}
             onWebServerStateChange={async () => {
               try {

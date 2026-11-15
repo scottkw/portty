@@ -118,47 +118,28 @@ describe('App', () => {
     })
   })
 
-  describe('THM-02/03: terminal theme state', () => {
-    it('imports xterm-theme library', () => {
-      expect(raw).toContain("from 'xterm-theme'")
+  describe('THM-01: terminal palette follows the system appearance', () => {
+    it('imports useColorScheme and both built-in palettes', () => {
+      expect(raw).toContain("import { useColorScheme } from './lib/useColorScheme'")
+      expect(raw).toContain("import { LIGHT_PALETTE, DARK_PALETTE } from './lib/terminalPalettes'")
     })
 
-    it('imports ITheme type from @xterm/xterm', () => {
-      expect(raw).toContain('ITheme')
-    })
-
-    it('defines THEME_STORAGE_KEY constant', () => {
-      expect(raw).toContain("THEME_STORAGE_KEY = 'agenthub:terminalTheme'")
-    })
-
-    it('defines DEFAULT_THEME_NAME constant as Tomorrow_Night', () => {
-      expect(raw).toContain("DEFAULT_THEME_NAME = 'Tomorrow_Night'")
-    })
-
-    it('initializes terminalThemeName from localStorage', () => {
-      expect(raw).toContain('localStorage.getItem(THEME_STORAGE_KEY)')
-    })
-
-    it('derives terminalTheme ITheme object from theme name', () => {
-      expect(raw).toContain('terminalTheme')
-      expect(raw).toContain('xtermThemes')
-    })
-
-    it('handleThemeChange writes to localStorage and updates state', () => {
-      expect(raw).toContain('localStorage.setItem(THEME_STORAGE_KEY, name)')
-      expect(raw).toContain('setTerminalThemeName(name)')
+    it('derives terminalTheme from the colour scheme', () => {
+      expect(raw).toContain("const terminalTheme = useColorScheme() === 'dark' ? DARK_PALETTE : LIGHT_PALETTE")
     })
 
     it('passes theme prop to TerminalPanel', () => {
       expect(raw).toContain('theme={terminalTheme}')
     })
 
-    it('passes selectedTheme prop to SettingsTab', () => {
-      expect(raw).toContain('selectedTheme={terminalThemeName}')
-    })
-
-    it('passes onThemeChange prop to SettingsTab', () => {
-      expect(raw).toContain('onThemeChange={handleThemeChange}')
+    it('has no theme library, theme storage keys or data-ui-theme writes', () => {
+      expect(raw).not.toContain("from 'xterm-theme'")
+      expect(raw).not.toContain('agenthub:terminalTheme')
+      expect(raw).not.toContain('agenthub:uiTheme')
+      expect(raw).not.toContain('THEME_STORAGE_KEY')
+      expect(raw).not.toContain('data-ui-theme')
+      expect(raw).not.toContain('style.colorScheme')
+      expect(raw).not.toContain('selectedTheme=')
     })
   })
 
@@ -207,17 +188,7 @@ describe('App', () => {
   })
 })
 
-describe('TERM-04: terminal theme change re-themes open terminals', () => {
-  const handler = () => {
-    const start = raw.indexOf('const handleThemeChange = useCallback')
-    return raw.slice(start, raw.indexOf('}, [])', start))
-  }
-
-  it('handleThemeChange persists the theme and updates the terminal theme state', () => {
-    expect(handler()).toContain('localStorage.setItem(THEME_STORAGE_KEY, name)')
-    expect(handler()).toContain('setTerminalThemeName(name)')
-  })
-
+describe('TERM-04: no per-agent theme broadcast', () => {
   it('no per-agent (OpenCode SIGUSR2) theme broadcast remains', () => {
     expect(raw).not.toContain('NotifyThemeChange')
   })

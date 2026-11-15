@@ -28,7 +28,6 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
   { label: 'Start minimized to system tray', target: 'settings-behavior' },
   // Phase 150 SET-01 — must byte-match the SettingsTab toggle label (trailing period included).
   { label: 'Warn before web-sharing a shell session.', target: 'settings-session-behavior' },
-  { label: 'Terminal Theme', target: 'settings-appearance' },
   { label: 'Tailscale Status', target: 'settings-web-server' },
   { label: 'Certificate Transparency', target: 'settings-web-server' },
   { label: 'Port', target: 'settings-web-server' },

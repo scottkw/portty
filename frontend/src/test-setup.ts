@@ -33,6 +33,21 @@ if (typeof globalThis.IntersectionObserver === 'undefined') {
   } as unknown as typeof IntersectionObserver
 }
 
+// Portty 02-03 (THEM-01): jsdom has no matchMedia; useColorScheme reads it on
+// every App render. Inert stub reporting Light; tests that need changes stub it.
+if (typeof window !== 'undefined' && typeof window.matchMedia === 'undefined') {
+  window.matchMedia = ((media: string) => ({
+    matches: false,
+    media,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia
+}
+
 if (typeof globalThis.localStorage === 'undefined' && typeof window !== 'undefined') {
   const store = new Map<string, string>()
   const fallback: Storage = {

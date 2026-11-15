@@ -11,7 +11,7 @@
  *
  * Uses the source-inspection pattern (like SettingsTab.start-minimized.test.tsx) for
  * state/import checks, and the createRoot + flushSync DOM render pattern (like
- * SettingsTab.appearance-theme.test.tsx) for interaction tests.
+ * the other SettingsTab DOM tests) for interaction tests.
  */
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import React from 'react'
@@ -92,10 +92,6 @@ function makeProps(overrides: Partial<Parameters<typeof SettingsTab>[0]> = {}) {
       tailscaleHealth: null,
     webServerMode: null as null,
     onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
-    selectedTheme: 'Tomorrow_Night',
-    onThemeChange: vi.fn(),
-    uiTheme: 'dark' as const,
-    onUiThemeChange: vi.fn(),
     onPluginToggleSideEffect: undefined,
     ...overrides,
   }

@@ -86,10 +86,6 @@ function makeProps(overrides: Partial<Parameters<typeof SettingsTab>[0]> = {}) {
     tailscaleHealth: null as TailscaleHealth | null,
     webServerMode: null as null,
     onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
-    selectedTheme: 'Tomorrow_Night',
-    onThemeChange: vi.fn(),
-    uiTheme: 'dark' as const,
-    onUiThemeChange: vi.fn(),
     onPluginToggleSideEffect: undefined,
     ...overrides,
   }

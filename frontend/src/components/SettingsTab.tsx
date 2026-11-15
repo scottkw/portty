@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react'
-import { ALLOWED_THEMES } from '../themes'
 import {
   StartWebServer,
   StopWebServer,
@@ -24,8 +23,6 @@ import {
   ArrowTopRightOnSquareIcon,
   ClipboardDocumentIcon,
   QrCodeIcon,
-  SunIcon,
-  MoonIcon,
 } from '@heroicons/react/24/outline'
 import { RegenerateKeyModal } from './RegenerateKeyModal'
 import { PluginsSection, type PluginToggleKind } from './PluginsSection'
@@ -33,17 +30,10 @@ import { SettingsJumpBar } from './SettingsJumpBar'
 import { SettingsSearch } from './SettingsSearch'
 import { TAILSCALE_OFF_REASON, type TailscaleHealth } from '../lib/tailscale'
 
-const THEME_NAMES = ALLOWED_THEMES
-
 interface SettingsTabProps {
   tailscaleHealth: TailscaleHealth | null
   webServerMode?: 'tailscale' | 'local' | null
   onWebServerStateChange: () => Promise<void>
-  selectedTheme: string
-  onThemeChange: (name: string) => void
-  // Phase 141-08: whole-app UI theme (light/dark), distinct from terminal color theme.
-  uiTheme: 'dark' | 'light'
-  onUiThemeChange: (t: 'dark' | 'light') => void
   // Phase 99 PUI-02: forwarded to PluginsSection for post-save banner triggers.
   onPluginToggleSideEffect?: (kinds: PluginToggleKind[]) => void
   // Phase 150 SET-01: notifies App.tsx after warning-enabled toggle changes (D-03 re-arm sync).
@@ -55,7 +45,7 @@ interface SettingsTabProps {
  * the other app preferences.
  * Renders as a sidebar tab — no modal shell. Single scrollable page with section headers.
  */
-export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateChange, selectedTheme, onThemeChange, uiTheme, onUiThemeChange, onPluginToggleSideEffect, onShellWarnEnabledChange }: SettingsTabProps): React.ReactElement {
+export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateChange, onPluginToggleSideEffect, onShellWarnEnabledChange }: SettingsTabProps): React.ReactElement {
   // Web serving state
   const [selectedPort, setSelectedPort] = useState<number>(7443)
   const [isServerRunning, setIsServerRunning] = useState(false)
@@ -429,41 +419,12 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
           cancelLabel="Keep warning"
         />
 
-        {/* Appearance section (SETT-02) — POL-02: single role=switch toggle (D-06 colorblind-safe) */}
+        {/* Appearance section (THEM-01): follows the system, no picker */}
         <h3 id="settings-appearance">Appearance</h3>
         <div className="settings-panel__field-group">
-          <label className="settings-panel__label">Interface Theme</label>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={uiTheme === 'light'}
-            aria-label={uiTheme === 'light' ? 'Light mode — click to switch to dark' : 'Dark mode — click to switch to light'}
-            className={`settings-panel__theme-toggle${uiTheme === 'light' ? ' settings-panel__theme-toggle--light' : ''}`}
-            onClick={() => onUiThemeChange(uiTheme === 'light' ? 'dark' : 'light')}
-          >
-            <span className="settings-panel__theme-toggle-track">
-              <span className="settings-panel__theme-toggle-knob" aria-hidden="true">
-                {uiTheme === 'light'
-                  ? <><SunIcon className="settings-panel__theme-toggle-icon" /><span>{'Light'}</span></>
-                  : <><MoonIcon className="settings-panel__theme-toggle-icon" /><span>{'Dark'}</span></>
-                }
-              </span>
-            </span>
-          </button>
-          <p className="settings-panel__description" style={{ marginTop: '0.5rem' }}>Switches the whole app between light and dark appearance. Default is dark.</p>
-        </div>
-        <div className="settings-panel__field-group">
-          <label className="settings-panel__label">Terminal Theme</label>
-          <select
-            className="settings-panel__path-input settings-panel__theme-select"
-            value={selectedTheme}
-            onChange={(e) => onThemeChange(e.target.value)}
-          >
-            {THEME_NAMES.map(name => (
-              <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-          <p className="settings-panel__description" style={{ marginTop: '0.5rem' }}>Themes may not apply correctly to existing sessions. Only sessions created after selecting a new theme will display as intended.</p>
+          <span className="settings-panel__label">Appearance</span>
+          <p className="settings-panel__description">Follows your Mac's Light or Dark setting in System Settings.</p>
+          <span className="settings-panel__appearance-value">Automatic</span>
         </div>
 
         {/* Web Server section (SETT-02) */}
