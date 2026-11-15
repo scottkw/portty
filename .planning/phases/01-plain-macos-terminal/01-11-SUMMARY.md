@@ -168,4 +168,8 @@ None.
 2. **M-41 (kept notification path):** on a Developer-ID-signed build, Settings → Behavior shows only "Start minimized to system tray"; "Quit GUI only" posts one "AgentHub is still running in the background. N session(s) active." notification and the tray icon stays.
 3. **Settings visual check:** no Paths section, no Paths jump-bar link, and settings search for "path" or "notify" finds nothing from the removed rows.
 
+## State notes
+
+`state.advance-plan` declined (`reason: plans_outstanding`, 01-12-PLAN.md has no SUMMARY yet), so STATE.md's plan counter was left as is, per the orchestrator's instruction not to hand-edit it. `roadmap.update-plan-progress` recorded 11/12 summaries; metrics, decisions, session and TERM-01 completion were recorded (STRP-01 and STRP-04 were already marked complete).
+
 ## Self-Check: PASSED

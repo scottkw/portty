@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Plain macOS Terminal
 status: executing
-stopped_at: Completed 01-10-PLAN.md
-last_updated: "2026-11-15T00:19:36.262Z"
+stopped_at: Completed 01-11-PLAN.md
+last_updated: "2026-11-15T00:34:36.527Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 1 execution started
-state_head: 0d87f528b190606839657d44ce3d88804ec0c127
+state_head: 53653f79427bf8603eeeaa18b96ab2ad88b08b62
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -66,6 +66,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P08 | 8m | 2 tasks | 25 files |
 | Phase 01 P09 | 20 min | 3 tasks | 33 files |
 | Phase 01 P10 | 19min | 3 tasks | 60 files |
+| Phase 01 P11 | 12min | 3 tasks | 53 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,9 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-10: init/retryInit remove sessions already stopped at restore instead of restoring them as tabs
 - [Phase 01]: 01-10: SessionCardGrid sort and FLIP reorder deleted with the attention key; the Hub keeps arrival order and group counts are { total } only
 - [Phase 01]: 01-10: Daemon derived status and its GetSessionStatus route stay for CLI/web/peers; only the GUI binding and all status display are gone
+- [Phase 01]: Every session spawns the constant /bin/zsh -l (sessionShell); $SHELL and legacy shellPath are ignored
+- [Phase 01]: loadSettingsFromDisk rewrites settings.json only on an old schemaVersion now that the stale-path filter is gone
+- [Phase 01]: sendNotification is the single native notification path; QuitGUIOnly calls it through a.sendNotificationFunc (Phase 6 reuses it)
 
 ### Pending Todos
 
@@ -135,6 +139,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-15T00:19:36.243Z
-Stopped at: Completed 01-10-PLAN.md
+Last session: 2026-11-15T00:34:36.507Z
+Stopped at: Completed 01-11-PLAN.md
 Resume file: None
