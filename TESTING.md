@@ -26,10 +26,12 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
 | Go unit/integration | **109** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
-| vitest (frontend) | **117** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts, UI state, CSS token source gates, lib adapters (relay, remote, hub, status) |
-| Playwright e2e | **6** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (WEBCHAT-03) |
+| vitest (frontend) | **118** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts, UI state, CSS token source gates, lib adapters (relay, remote, hub, status) |
+| Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (WEBCHAT-03), live light/dark (THEM-01) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **233** | — | — | — |
+| **Total** | **235** | — | — | — |
+
+> Note: Portty Phase 2 plan 02-03 (THEM-01): counts from `git ls-files` — Go **109** (unchanged), vitest **118** (+3 −2: added `frontend/src/lib/__tests__/useColorScheme.test.tsx`, `frontend/src/lib/__tests__/terminalPalettes.test.ts`, `frontend/src/__tests__/style.tokens.test.ts`; deleted `frontend/src/__tests__/themeTokens.test.ts` and `frontend/src/components/__tests__/SettingsTab.appearance-theme.test.tsx` with the theme picker), Playwright **7** (+1: `frontend/e2e/web-color-scheme.spec.ts`), build-script **1**, total **235**. Edited in place: `App.test.tsx` (THM-02/03 and TERM-04 theme-library blocks replaced by THEM-01 palette assertions; `DEFAULT_FONT_SIZE = 13`), `SettingsTab.test.tsx` ("Automatic" row, no Interface/Terminal Theme control), three SettingsTab DOM tests (theme props dropped), `TerminalPanel.test.tsx` (token background class, system mono font), `style.hub.test.ts` / `style.redesign.test.ts` / `style.contrast.test.ts` / `HelpTab.test.tsx` (light-block and old-hex pins retargeted to the `--color-*` tokens and aliases; no `@font-face`), FindBar theme-matrix/visual comments. Section 4: THEM-01 and LOOK-01 rows added, rows for the deleted files removed. Section 5: M-07 rewritten, M-60 added.
 
 > Note: Portty Phase 2 plan 02-02 (CHAT-01 Go): counts from `git ls-files` — Go **109** (−15 +2), vitest **117** (unchanged; chat UI tests go with the UI in 02-07), Playwright **6** (−1: `frontend/e2e/chat-parity.spec.ts`), build-script **1**, total **233**. Deleted Go test files: `internal/daemon/chat_test.go`, `internal/daemon/chat_routes_test.go`, `internal/daemon/alias_store_test.go`, `internal/webserver/chat_test.go`, `internal/webserver/server_chatsend_test.go`, `internal/webserver/identity_test.go`, `internal/relay/sanitize_test.go`, `internal/relay/hub_chatsend_test.go`, `internal/relay/hub_presence_test.go`, `internal/relay/protocol_chat_test.go`, `internal/relay/protocol_presence_test.go`, `internal/relay/server_chatsend_test.go`, `internal/relay/server_identity_test.go`, `internal/relay/server_cors_test.go`, `internal/relay/hub_subscribe_race_test.go` (all three tests covered the WhoIs two-phase presence registration). Added: `internal/daemon/chat_removed_test.go`, `internal/webserver/chat_removed_test.go`. Rewritten in place: `internal/relay/server_inject_test.go` and `internal/webserver/inject_test.go` now hold `TestRetiredFrames_*` (0x30-0x37 dropped on both paths, RO and RW, socket survives, no retired frame sent back); `engine_test.go` lost its five ChatStore tests. **Security fuzz harness now:** `FuzzParseFrame`, `FuzzInputAbsorberFilter` (relay), `FuzzRequireCapability`, `FuzzWebServerRoutes` (webserver) and `capability.FuzzVerify`; `FuzzSanitizeChatContent` went with the sanitizer. Section 4: rows for the deleted files removed (including STRP-02 `server_cors_test.go`), four CHAT-01 rows for the retired-frame and removed-route tests. Section 5 chat categories are removed with the UI in 02-07.
 
@@ -242,6 +244,12 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | NET-01 | frontend/src/components/__tests__/App.tailscale.test.tsx | vitest | Portty 01-12: focus and `visibilitychange` listeners call `GetTailscaleStatus` (desktop only) and are removed in cleanup; the remote poll calls `setRemotePeers([])` and returns while `tailscaleOff`, with `tailscaleOff` in its deps; StatusBar and HubPanel receive `shareDisabledReason`; the Share dialog closes on disconnect; no `AutoInstallTailscale`. |
 | NET-01 | frontend/src/components/__tests__/SettingsTab.test.tsx | vitest | Portty 01-12: "NET-01: two-state Tailscale status" (replaces the TS-01/TS-02 4-state source checks) — shared `TailscaleHealth` type, no multi-state fields, labels or diagnostics checklist, "Connected"/"Not connected" only. |
 | LOOK-01 | menu_test.go | Go | Portty 02-01: `TestMacWindowOptions` (hidden-inset title bar flags, transparent webview, translucent window, system appearance), `TestAppMenu_Structure` (custom first app submenu starting with Settings…, File, Edit role, View, Window role, Help = Portty Help / Check for Updates / AgentHub on GitHub), `TestAppMenu_Accelerators` (⌘, ⌘H ⌘Q ⌘T ⌘W ⌃⌘S), `TestAppMenu_EventsEmitted` / `TestAppMenu_NewSessionEmitsEvent` (`menu:settings`, `menu:new-session`, `menu:close-tab`, `menu:toggle-sidebar`), `TestAppMenu_HelpOpensPorttyURL` (`https://portty.app`) |
+| THEM-01 | frontend/src/lib/__tests__/useColorScheme.test.tsx | vitest | Portty 02-03: initial value follows `matchMedia`, a change event flips light→dark, rapid changes leave the last value, unmount removes the same handler |
+| THEM-01 | frontend/src/lib/__tests__/terminalPalettes.test.ts | vitest | Portty 02-03: every UI-SPEC value of `LIGHT_PALETTE` and `DARK_PALETTE` (21 keys each, colour-blind-safe proof), stable module identity |
+| THEM-01 | frontend/src/__tests__/style.tokens.test.ts | vitest | Portty 02-03: Light `:root` and Dark `prefers-color-scheme` blocks declare the same token names with UI-SPEC values; no `data-ui-theme`; `color-scheme: light dark` |
+| THEM-01 | frontend/e2e/web-color-scheme.spec.ts | Playwright | Portty 02-03: web share page terminal background is rgb(28, 28, 30) in dark and rgb(255, 255, 255) after `emulateMedia` light, and `--color-window` follows, with no reload |
+| THEM-01 | frontend/src/components/__tests__/SettingsTab.test.tsx | vitest | Portty 02-03: Appearance shows "Automatic" and the follows-your-Mac description; no Interface Theme or Terminal Theme control |
+| LOOK-01 | frontend/src/__tests__/style.tokens.test.ts | vitest | Portty 02-03: no `--hub-*` declaration carries a literal colour, no `@font-face`, desktop `--color-sidebar: transparent`; RDS-02 migrated-surface hex scan and reduced-motion checks carried over from `themeTokens.test.ts` |
 | LOOK-01 | frontend/src/components/__tests__/App.test.tsx | vitest | Portty 02-01: `menu:new-session` and `menu:settings` listeners (Settings through a ref to `handleOpenSettings`), no `menu:close-tab` listener yet (T-02-04), banner stack under the tab bar; "desktop window chrome CSS" — collapsed-sidebar tab bar clears the 80px traffic-light reserve and the drag strips are not text-selectable |
 | SHARE-04 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Copyable links, QR, LAN Basic Auth password surface |
 | SHARE-05 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Cap/URL/QR lifecycle (off→on cache-clear, stale-URL cleanup) |
@@ -260,10 +268,8 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | RDS-01 | frontend/src/components/__tests__/style.redesign.test.ts | vitest | Design direction documented; redesign token source gate |
 | RDS-02 | frontend/src/components/__tests__/style.hub.test.ts | vitest | Hub-page redesign tokens: hex/var source gates |
 | RDS-02 | frontend/src/components/__tests__/style.hub.modal.test.ts | vitest | Share modal redesign tokens |
-| RDS-02 | frontend/src/components/__tests__/SettingsTab.appearance-theme.test.tsx | vitest | Settings redesign: hex/var source gates |
-| RDS-02 | frontend/src/__tests__/themeTokens.test.ts | vitest | Theme token palette source gates |
+| RDS-02 | frontend/src/__tests__/style.tokens.test.ts | vitest | Migrated-surface raw-hex scan (carried over from the deleted `themeTokens.test.ts` in Portty 02-03) |
 | RDS-04 | frontend/src/components/__tests__/style.redesign.test.ts | vitest | Colorblind-safe semantics: `prefers-reduced-motion` |
-| POL-02 | frontend/src/components/__tests__/SettingsTab.appearance-theme.test.tsx | vitest | Settings toggle: `role="switch"`, `aria-checked` |
 | POL-03 | frontend/src/components/__tests__/style.hub.test.ts | vitest | "New session" button token source gate |
 | POL-04 | frontend/src/components/__tests__/TerminalPanel.contextLoss.test.tsx | vitest | Terminal repaint after theme switch / tab switch |
 | POL-05 | frontend/src/components/__tests__/Sidebar.test.tsx | vitest | Group sub-list ARIA structure; Hub group navigation in sidebar |
@@ -458,7 +464,7 @@ Human-intervention items that cannot be automated. Run before each tagged releas
 
 ### Category C — Terminal / Theme (POL-04)
 
-- **M-07** Terminal repaints cleanly after a theme switch on an active session; after a tab switch away and back; CMD+/- font resize does not garble the output.
+- **M-07** Terminal repaints cleanly when macOS switches Light/Dark (Portty 02-03: there is no theme picker) on an active session; a hidden tab shows the new palette as soon as it is selected; after a tab switch away and back; CMD+/- font resize does not garble the output.
   - _Why not automatable:_ Wails native webview required for the GPU atlas paint path; Playwright cannot exercise the native rendering path.
   - _Source:_ 142-VERIFICATION.md (PASS recorded 2026-06-21; standing check for each release)
 - **M-54** New Session modal (Portty 01-04/01-11): the modal shows only the Working Directory picker (no Shell line, no helper text); with a long working directory chosen the path truncates with an ellipsis on one line and the modal stays 460px wide. Create Session opens a tab whose shell answers `[[ -o login ]] && echo login; echo $ZSH_VERSION` with `login` and a zsh version, even when the account login shell is bash (`chsh -s /bin/bash`). Quit any installed AgentHub and stop its daemon first (a stale daemon still expects a `cli` field).
@@ -823,6 +829,17 @@ The alias-set wire contract, client-side validateAlias, alias-control component 
   6. ⌘W and ⌃⌘S do nothing yet (their listeners arrive in plans 02-08 and 02-04); ⌘W must not close or kill a session.
   - _Why not automatable:_ native NSMenu accelerators and Wails event delivery need the built app. Menu structure, accelerators and emitted events are unit-tested in `menu_test.go`; the frontend listeners in `App.test.tsx`.
   - _Source:_ 02-01-PLAN.md Task 2; 02-UI-SPEC.md "Interaction Contract ▸ Menu bar".
+
+### Category AD — Live Light/Dark (THEM-01)
+
+- **M-60** THEM-01 live appearance switch (Portty 02-03 Task 3). Quit any installed AgentHub and stop its daemon first.
+  1. In the built app open two terminal tabs: one with WebGL on, one after turning WebGL off in Settings. Run `ls -la /usr/bin` in each and leave one tab hidden. Open Settings.
+  2. Toggle System Settings ▸ Appearance Light → Dark → Light. Each toggle repaints the chrome, both terminals and Settings within a second, with no restart and no garbled or overlapping glyphs. Selecting the hidden tab shows the new palette at once. No dark surface remains in Light mode.
+  3. Settings ▸ Appearance reads "Automatic" with "Follows your Mac's Light or Dark setting in System Settings." and has no theme switch or theme list.
+  4. Open the web share link of a shared session in Safari and toggle macOS appearance again: the browser terminal follows.
+  5. The menu bar tray glyph stays legible in both modes; an OSC 9;4 run (`printf '\e]9;4;1;50\a'`) shows a legible progress indicator in both modes.
+  - _Why not automatable:_ live NSAppearance propagation into WKWebView, WebGL atlas repaint and tray template rendering only happen in the native app. The palettes, the hook and the token blocks are unit-tested (`terminalPalettes.test.ts`, `useColorScheme.test.tsx`, `style.tokens.test.ts`); the browser switch is covered in Chromium by `web-color-scheme.spec.ts`.
+  - _Source:_ 02-03-PLAN.md Task 3; 02-UI-SPEC.md "Color" and "Terminal palettes (THEM-01)".
 
 ---
 

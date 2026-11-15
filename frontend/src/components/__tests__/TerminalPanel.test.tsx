@@ -154,8 +154,8 @@ describe('PAD-01 terminal padding', () => {
     expect(cssRaw).toMatch(/\.terminal-session-container\s*\{[^}]*padding:\s*8px/)
   })
 
-  it('.terminal-session-container does NOT have hardcoded background-color (dynamic via inline style)', () => {
-    expect(cssRaw).not.toMatch(/\.terminal-session-container\s*\{[^}]*background-color:/)
+  it('.terminal-session-container paints the --color-terminal-bg token (Portty 02-03)', () => {
+    expect(cssRaw).toMatch(/\.terminal-session-container\s*\{[^}]*background:\s*var\(--color-terminal-bg\)/)
   })
 
   it('container div has terminal-session-container class', () => {
@@ -203,8 +203,14 @@ describe('THM-03: live theme application', () => {
     expect(raw).toMatch(/\},\s*\[theme(,\s*isActive)?\]\)/)
   })
 
-  it('sets backgroundColor from theme.background in inline style', () => {
-    expect(raw).toContain("theme.background ?? '#1a1b26'")
+  it('container has no inline background colour (token class instead, Portty 02-03)', () => {
+    expect(raw).not.toContain('#1a1b26')
+    expect(raw).not.toMatch(/backgroundColor:\s*theme\.background/)
+  })
+
+  it('uses the system monospace font (Portty 02-03, UI-SPEC)', () => {
+    expect(raw).toContain(`fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace'`)
+    expect(raw).not.toContain('Cascadia')
   })
 })
 

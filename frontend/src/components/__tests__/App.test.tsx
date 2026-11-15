@@ -49,8 +49,8 @@ describe('App', () => {
       expect(raw).toContain('fontSizes')
     })
 
-    it('defines DEFAULT_FONT_SIZE = 14', () => {
-      expect(raw).toContain('DEFAULT_FONT_SIZE = 14')
+    it('defines DEFAULT_FONT_SIZE = 13 (UI-SPEC terminal font)', () => {
+      expect(raw).toContain('DEFAULT_FONT_SIZE = 13')
     })
 
     it('defines handleFontSizeChange callback', () => {

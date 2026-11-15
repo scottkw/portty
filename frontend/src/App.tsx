@@ -66,7 +66,7 @@ import {
 } from './lib/hubGroups'
 import type { GroupCounts } from './lib/hubGroupCounts'
 
-const DEFAULT_FONT_SIZE = 14
+const DEFAULT_FONT_SIZE = 13
 
 /**
  * App is the root component — it owns all tab state and wires

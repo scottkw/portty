@@ -147,7 +147,7 @@ export function WebShareSessionView({
         sessionId={sessionId}
         isActive={true}
         relayPort={relayPort}
-        fontSize={14}
+        fontSize={13}
         onFontSizeChange={() => {}}
         theme={theme ?? {}}
         pluginConfig={effectivePluginConfig}

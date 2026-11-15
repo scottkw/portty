@@ -1,44 +1,5 @@
 @import '@xterm/xterm/css/xterm.css';
 
-/* ─── Vendored fonts (Phase 141-06) ─────────────────────────────── */
-/* Plus Jakarta Sans + JetBrains Mono — committed as woff2 binaries,  */
-/* served same-origin via Vite. No CDN / Google Fonts URL.             */
-@font-face {
-  font-family: 'Plus Jakarta Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./assets/fonts/PlusJakartaSans-Regular.woff2") format("woff2");
-}
-@font-face {
-  font-family: 'Plus Jakarta Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("./assets/fonts/PlusJakartaSans-Medium.woff2") format("woff2");
-}
-@font-face {
-  font-family: 'Plus Jakarta Sans';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("./assets/fonts/PlusJakartaSans-SemiBold.woff2") format("woff2");
-}
-@font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
-}
-@font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("./assets/fonts/JetBrainsMono-Medium.woff2") format("woff2");
-}
-
 /* ─── xterm overrides ───────────────────────────────────────────── */
 /* Hide native scrollbar so FitAddon uses full container width.
    xterm.js handles scroll internally via mouse wheel / touchpad. */
@@ -65,10 +26,10 @@
    is position:absolute and would cover .xterm padding.  fitTerminal()
    reads the parent's content-box width/height which already excludes
    this padding — no JS changes needed.
-   background-color is set dynamically by TerminalPanel via inline style
-   to match the active terminal theme. Fallback is #1a1b26. */
+   The background token equals the active palette's background (UI-SPEC). */
 .terminal-session-container {
   padding: 8px;
+  background: var(--color-terminal-bg);
   overflow: hidden;
   /* Phase 94 SRC-01: anchor for the absolutely-positioned .find-bar overlay
      (UI-SPEC §"Layout and Positioning" — find bar floats inside this

@@ -274,7 +274,7 @@ export function TerminalPanel({
       scrollback: 10000,         // TERM-04
       allowProposedApi: true,    // required for unicode11
       cursorBlink: true,
-      fontFamily: '"Cascadia Code", "MesloLGS NF", "Fira Code", monospace',
+      fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
       fontSize,
       theme,
     })
@@ -959,7 +959,6 @@ export function TerminalPanel({
         flex: 1,
         width: '100%',
         minHeight: 0,
-        backgroundColor: theme.background ?? '#1a1b26',
       }}
     >
       {isGuestRef.current && sessionEnded.ended && (

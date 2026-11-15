@@ -144,6 +144,10 @@ describe('LOOK-01 / THEM-01: two-block colour tokens', () => {
     expect(lightBody!).toMatch(/color-scheme:\s*light dark\s*;/)
   })
 
+  it('(f) style.css has no @font-face (system fonts only)', () => {
+    expect(rawCss).not.toContain('@font-face')
+  })
+
   it('desktop app makes the sidebar token transparent for vibrancy (plan 02-01)', () => {
     expect(extractBlockBody(cleanCss, /(^|\n)html\.is-desktop\s*\{/)).toMatch(/--color-sidebar:\s*transparent/)
   })

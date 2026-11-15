@@ -11,17 +11,15 @@ import { resolve } from 'path'
 // User is colorblind: all color and font verification is done at source hex/var level, not by eye.
 const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
-// ─── Font infrastructure: @font-face must be vendored, not CDN ───────────────
+// ─── Font infrastructure: system fonts only, no bundled or CDN fonts ─────────
 
-describe('Phase 141-07: @font-face — vendored fonts, no CDN', () => {
-  it('declares at least 5 @font-face rules for Plus Jakarta Sans + JetBrains Mono', () => {
-    const matches = cssRaw.match(/@font-face\s*\{/g) ?? []
-    expect(matches.length).toBeGreaterThanOrEqual(5)
+describe('Portty 02-03: no bundled or CDN fonts', () => {
+  it('declares no @font-face rule', () => {
+    expect(cssRaw).not.toMatch(/@font-face/)
   })
 
-  it('@font-face src URLs reference ./assets/fonts/ (same-origin, not CDN)', () => {
-    // All @font-face src lines must use the vendored path
-    expect(cssRaw).toContain('./assets/fonts/')
+  it('references no ./assets/fonts/ path', () => {
+    expect(cssRaw).not.toContain('./assets/fonts/')
   })
 
   it('no Google Fonts CDN URL present (fonts.googleapis.com)', () => {

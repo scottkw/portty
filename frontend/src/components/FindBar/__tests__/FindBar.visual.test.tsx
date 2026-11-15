@@ -4,7 +4,7 @@
  * Verifies the verbatim aria-labels, structural classes, and the
  * "no decorations:" invariant via source-inspection (component must NOT
  * pass a `decorations` field to SearchAddon — SRC-04 theme.selectionBackground
- * compliance across all 138 themes).
+ * compliance across both built-in palettes).
  *
  * UI-SPEC §"Find Bar CSS Classes" + §"Copywriting Contract".
  */
