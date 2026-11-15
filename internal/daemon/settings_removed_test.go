@@ -45,3 +45,19 @@ func TestSettingsRemoved_NotifyOnWaitingRoutes(t *testing.T) {
 	assertRouteGone(t, h, http.MethodGet, "/settings/notify-on-waiting")
 	assertRouteGone(t, h, http.MethodPatch, "/settings/notify-on-waiting")
 }
+
+// Portty 02-06 (NAV-03, T-02-19): the Hub is gone, so the "stay on Hub after
+// creating a session" preference and its routes are gone too.
+func TestSettingsRemoved_StayOnHubAfterCreateRoutes(t *testing.T) {
+	h := newRemovedRoutesAPI(t).Handler()
+	assertRouteGone(t, h, http.MethodGet, "/settings/stay-on-hub-after-create")
+	assertRouteGone(t, h, http.MethodPatch, "/settings/stay-on-hub-after-create")
+
+	// The sibling start-minimized route still answers, so the 404/405 above is
+	// the removal and not a broken handler.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/settings/start-minimized", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /settings/start-minimized = %d; want 200", rec.Code)
+	}
+}

@@ -257,3 +257,24 @@ describe('Portty 01-11: Behavior has only the start-minimized toggle', () => {
     expect(raw).not.toMatch(/NotifyOnWaiting|notification:permission|not allowed to send notifications/)
   })
 })
+
+// Portty 02-06 (NAV-03): the Hub is gone, so the stay-on-Hub preference is too.
+describe('NAV-03: no stay-on-Hub toggle', () => {
+  it('renders no "Stay on Hub" text and has no stay-on-Hub bindings', async () => {
+    expect(raw).not.toMatch(/StayOnHub/i)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(React.createElement(SettingsTab, {
+        tailscaleHealth: null,
+        webServerMode: null,
+        onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
+      }))
+    })
+    expect(container.textContent).toContain('Session Behavior')
+    expect(container.textContent).not.toMatch(/Stay on Hub/i)
+    await act(async () => root.unmount())
+    container.remove()
+  })
+})

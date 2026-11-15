@@ -85,8 +85,9 @@ const altScreenEnterSeq = "\x1b[?1049h"
 // internal scrollback buffer (T-175-04-01). The emulator exists solely to
 // produce a current-screen RenderSnapshot() — it does not need real
 // scrollback depth — so this is deliberately small, mirroring the
-// emuRows=50 row bound GetSessionStyledTailLines (internal/daemon/engine.go)
-// uses for its own headless emulator.
+// emuRows=50 row bound the daemon's styled-tail renderer
+// (internal/daemon/engine.go, GET /sessions/{id}/styled-tail) uses for its
+// own headless emulator.
 const liveEmulatorScrollbackLines = 50
 
 // liveEmuQueryStripPattern mirrors internal/daemon/engine.go's
@@ -515,8 +516,8 @@ func (h *Hub) RenderSnapshot() []byte {
 	// (non-alt-screen) session's preamble is byte-identical to what raw PTY
 	// output would have produced, matching the pre-existing scrollback-replay
 	// contract for ordinary (non-wrapped, non-full-screen) sessions. Mirrors
-	// GetSessionStyledTailLines' own "trim trailing blank rows" convention
-	// (internal/daemon/engine.go).
+	// the daemon styled-tail renderer's own "trim trailing blank rows"
+	// convention (internal/daemon/engine.go).
 	content := strings.TrimRight(h.liveEmu.Render(), "\n")
 	altScreen := h.liveEmu.IsAltScreen()
 	if content == "" && !altScreen {

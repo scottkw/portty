@@ -13,7 +13,7 @@
  *       tabs). StatusBar itself has no tab-type awareness — the gate
  *       lives in App.tsx's tab.map() filter, which is asserted here via source
  *       inspection (App.tsx is not fully mounted in this codebase's established
- *       test convention — see App.shellWebShare.test.tsx / App.createTab.stayOnHub.test.tsx).
+ *       test convention — see App.shellWebShare.test.tsx / App.createTab.sessionsSeed.test.tsx).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import React from 'react'

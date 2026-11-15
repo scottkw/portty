@@ -112,15 +112,6 @@ export namespace daemon {
 	    }
 	}
 
-	// Phase 139 / CARD-05: one styled cell in the VT grid returned by
-	// GetSessionStyledTailLines. Color values are "#rrggbb", "ansi:N", or "".
-	export interface StyledSpan {
-		c: string;         // Unicode grapheme cluster
-		fg?: string;       // "#rrggbb", "ansi:N", or "" (default fg)
-		bg?: string;       // "#rrggbb", "ansi:N", or "" (default bg)
-		b?: boolean;       // true when bold attribute set
-	}
-
 	// Phase 171-02 / FNL-09: response body for (*App).SetSessionFunnelWrite —
 	// mirrors internal/daemon/types.go SetSessionFunnelWriteResponse. WriteURL
 	// is the Funnel-base public entry point for the gate-minted write cap;
