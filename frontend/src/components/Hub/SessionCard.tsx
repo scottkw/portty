@@ -110,6 +110,8 @@ export interface SessionCardProps {
    * D-13: colorblind-safe disabled state uses LockClosedIcon + tooltip, not color alone.
    */
   onShare?: (session: SessionInfo) => void
+  /** NET-01: when set, a local card's Share button is disabled with this reason. */
+  shareDisabledReason?: string
   /**
    * Phase 138 / CARD-02: explicit provenance flag — true when session came from
    * remoteSessions prop (not local sessions). Replaces hostname-based isLocal heuristic.
@@ -157,6 +159,7 @@ export function SessionCard({
   onAssignGroup,
   onCardClick,
   onShare,
+  shareDisabledReason,
   isRemote,
   isConnected,
   onKill,
@@ -495,11 +498,11 @@ export function SessionCard({
           type="button"
           className="hub-card__share"
           onClick={(e) => { e.stopPropagation(); onShare?.(session) }}
-          disabled={!isLocal}
-          aria-label={isLocal ? `Share ${name}` : 'Only the session owner can share'}
-          title={isLocal ? 'Share session' : 'Only the session owner can share'}
+          disabled={!isLocal || !!shareDisabledReason}
+          aria-label={!isLocal ? 'Only the session owner can share' : shareDisabledReason ?? `Share ${name}`}
+          title={!isLocal ? 'Only the session owner can share' : shareDisabledReason ?? 'Share session'}
         >
-          {!isLocal && <LockClosedIcon aria-hidden="true" className="hub-card__share-lock" />}
+          {(!isLocal || shareDisabledReason) && <LockClosedIcon aria-hidden="true" className="hub-card__share-lock" />}
           Share
         </button>
       </div>

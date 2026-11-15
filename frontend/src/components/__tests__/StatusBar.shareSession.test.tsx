@@ -118,6 +118,32 @@ describe('StatusBar — "Share Session" button (Phase 168-05 UX-02)', () => {
     expect(onShareSession).toHaveBeenCalledTimes(1)
   })
 
+  // NET-01: while Tailscale is not connected the button is disabled with the reason.
+  it('is disabled with shareDisabledReason as its title, and clicking does not call onShareSession', () => {
+    const onShareSession = vi.fn()
+    const reason = "Tailscale isn't connected. Remote access and sharing are off until it is."
+    ;({ container, root } = renderStatusBar({
+      webServerRunning: true,
+      webEnabled: true,
+      onShareSession,
+      shareDisabledReason: reason,
+    }))
+    const btn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Share Session')!
+    expect(btn.disabled).toBe(true)
+    expect(btn.title).toBe(reason)
+    expect(btn.getAttribute('aria-label')).toBe(reason)
+    btn.click()
+    expect(onShareSession).not.toHaveBeenCalled()
+    // The WEB ON pill is unchanged.
+    expect(container.querySelector('.tab-status-bar__state--on')).not.toBeNull()
+  })
+
+  it('without shareDisabledReason the button stays enabled with its usual title', () => {
+    ;({ container, root } = renderStatusBar({ webServerRunning: true }))
+    const btn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Share Session')!
+    expect(btn.disabled).toBe(false)
+    expect(btn.title).toBe('Share this session')
+  })
 })
 
 describe('StatusBar.tsx source — direct-toggle path fully removed (D-14)', () => {

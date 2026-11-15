@@ -49,7 +49,7 @@ import { adaptAllRemoteSessions } from './lib/remoteAdapter'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
 import { TailscaleBanner } from './components/TailscaleBanner'
-import { TailscaleHealth } from './lib/tailscale'
+import { TAILSCALE_OFF_REASON, TailscaleHealth } from './lib/tailscale'
 import { WebShareSessionView } from './components/Hub/WebShareSessionView'
 import { TerminalChatHost } from './components/Hub/TerminalChatHost'
 import { UpdateBanner } from './components/UpdateBanner'
@@ -925,6 +925,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (mode === 'web') return // Phase 120-06: no Wails RPC in browser mode.
+    // NET-01: while Tailscale is off, list no remote cards, peer hints or join-code
+    // entry points; tailscaleOff is a dep so polling resumes on reconnect.
+    if (tailscaleOff) {
+      setRemotePeers([])
+      return
+    }
     if (activeId !== HUB_TAB.id) return
     let cancelled = false
     async function refresh() {
@@ -946,7 +952,32 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       cancelled = true
       clearInterval(interval)
     }
-  }, [activeId])
+  }, [activeId, tailscaleOff])
+
+  // NET-01: a disconnect closes an open Share dialog (its controls are disabled too).
+  useEffect(() => {
+    if (tailscaleOff) setShareModalSession(null)
+  }, [tailscaleOff])
+
+  // NET-01: recheck Tailscale when the window gains focus or becomes visible
+  // (launch and the 10 s poller cover the other triggers). Desktop only.
+  useEffect(() => {
+    if (mode === 'web') return
+    const recheck = () => {
+      GetTailscaleStatus()
+        .then(setTailscaleHealth)
+        .catch(() => { /* keep the last value */ })
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') recheck()
+    }
+    window.addEventListener('focus', recheck)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', recheck)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [mode])
 
   // Lift update:available subscription from WelcomeTab (Phase 81 D-06)
   useEffect(() => {
@@ -1359,6 +1390,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
             onDropOnGroup={handleDropOnGroup}
             onGroupCountsChange={handleGroupCountsChange}
             setShareModalSession={setShareModalSession}
+            shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}
           />
         )}
         {/* Phase 155-03 — WebShareSessionView render branch. Activated when
@@ -1532,6 +1564,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
                   webServerRunning={webServerRunning}
                   webEnabled={!!webEnabled[tab.sessionId]}
                   onShareSession={openShareModalForActiveSession}
+                  shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}
                 />
               </div>
             )

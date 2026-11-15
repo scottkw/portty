@@ -5,6 +5,8 @@ export interface StatusBarProps {
   webServerRunning: boolean
   webEnabled: boolean
   onShareSession: () => void
+  /** NET-01: when set, Share Session is disabled and this is its tooltip. */
+  shareDisabledReason?: string
 }
 
 /**
@@ -27,6 +29,7 @@ export function StatusBar({
   webServerRunning,
   webEnabled,
   onShareSession,
+  shareDisabledReason,
 }: StatusBarProps): React.ReactElement {
   return (
     <div className="tab-status-bar">
@@ -48,7 +51,9 @@ export function StatusBar({
         <button
           className="tab-status-bar__btn"
           onClick={onShareSession}
-          title="Share this session"
+          disabled={!!shareDisabledReason}
+          title={shareDisabledReason ?? 'Share this session'}
+          aria-label={shareDisabledReason}
         >
           Share Session
         </button>

@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1264,60 +1261,6 @@ func (a *App) CheckForUpdates() *updater.UpdateInfo {
 		}
 	}
 	return info
-}
-
-// findBrew returns the path to the Homebrew binary, checking both Apple Silicon
-// and Intel Mac install locations.
-func findBrew() (string, error) {
-	if _, err := os.Stat("/opt/homebrew/bin/brew"); err == nil {
-		return "/opt/homebrew/bin/brew", nil
-	}
-	if _, err := os.Stat("/usr/local/bin/brew"); err == nil {
-		return "/usr/local/bin/brew", nil
-	}
-	return "", fmt.Errorf("Homebrew not found; install from https://brew.sh")
-}
-
-// AutoInstallTailscale runs `brew install --cask tailscale-app` on macOS,
-// streaming stdout/stderr lines via tailscale:install:progress events and
-// emitting tailscale:install:done on completion.
-func (a *App) AutoInstallTailscale() error {
-	if goruntime.GOOS != "darwin" {
-		return fmt.Errorf("auto-install is only supported on macOS")
-	}
-	brewPath, err := findBrew()
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(brewPath, "install", "--cask", "tailscale-app")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	cmd.Stderr = cmd.Stdout
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "tailscale:install:progress", line)
-			}
-		}
-		exitErr := cmd.Wait()
-		if exitErr != nil {
-			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "tailscale:install:done", map[string]interface{}{"success": false, "error": exitErr.Error()})
-			}
-		} else {
-			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "tailscale:install:done", map[string]interface{}{"success": true})
-			}
-		}
-	}()
-	return nil
 }
 
 // checkTailscaleHealth runs one health check and emits "tailscale:health" when

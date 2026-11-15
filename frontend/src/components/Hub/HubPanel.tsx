@@ -170,6 +170,8 @@ export interface HubPanelProps {
   // moved with the modal render to App.tsx (single render site — see App.tsx).
   /** Opens the (App.tsx-owned) Share modal for the given session — the card's Share button. */
   setShareModalSession?: (session: SessionInfo | null) => void
+  /** NET-01: disables every local card's Share button with this reason. */
+  shareDisabledReason?: string
 }
 
 // POL-05: SIDEBAR_COLLAPSED_KEY removed — hub-group-sidebar-collapsed localStorage key no longer used.
@@ -219,6 +221,7 @@ export function HubPanel({
   onDropOnGroup: onDropOnGroupProp,
   onGroupCountsChange,
   setShareModalSession,
+  shareDisabledReason,
 }: HubPanelProps): React.ReactElement {
   const [searchText, setSearchText] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
@@ -446,6 +449,7 @@ export function HubPanel({
         onOpenSession={onOpenSession}
         onCardClick={handleCardClick}
         onShare={handleShare}
+        shareDisabledReason={shareDisabledReason}
         groupDefs={groupDefs.length > 0 ? groupDefs : undefined}
         previewTails={previewTails}
         previewTheme={terminalTheme}

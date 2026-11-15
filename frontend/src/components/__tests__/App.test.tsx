@@ -81,7 +81,7 @@ describe('App', () => {
 
     it('imports TailscaleBanner and the shared TailscaleHealth type', () => {
       expect(raw).toContain("import { TailscaleBanner } from './components/TailscaleBanner'")
-      expect(raw).toContain("import { TailscaleHealth } from './lib/tailscale'")
+      expect(raw).toMatch(/import \{ [^}]*\bTailscaleHealth\b[^}]*\} from '\.\/lib\/tailscale'/)
     })
 
     it('no longer references the multi-state LocalNetworkBanner', () => {

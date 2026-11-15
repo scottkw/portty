@@ -865,36 +865,6 @@ func TestRetryDaemonFail(t *testing.T) {
 	}
 }
 
-func TestAutoInstallTailscale(t *testing.T) {
-	app := &App{}
-
-	t.Run("returns error on non-darwin", func(t *testing.T) {
-		// This test validates the method exists and compiles.
-		// On darwin (dev machine), it may not return the non-darwin error,
-		// so we just verify the method signature and basic behavior.
-		err := app.AutoInstallTailscale()
-		// On darwin without ctx, it should either succeed starting or fail gracefully.
-		// The key validation is that the method exists and is callable.
-		_ = err
-	})
-
-	t.Run("findBrew resolves a path on macOS", func(t *testing.T) {
-		path, err := findBrew()
-		if goruntime.GOOS == "darwin" {
-			// On macOS dev machine, brew should be findable
-			if err != nil {
-				t.Skipf("brew not installed: %v", err)
-			}
-			if path == "" {
-				t.Fatal("findBrew returned empty path")
-			}
-			if _, statErr := os.Stat(path); statErr != nil {
-				t.Fatalf("findBrew path does not exist: %s", path)
-			}
-		}
-	})
-}
-
 // -----------------------------------------------------------------------
 // Wave 0 RED test for Phase 130 RB-01 — GetRemoteSessionsWithMeta Wails RPC.
 //

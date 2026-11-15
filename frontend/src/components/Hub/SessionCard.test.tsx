@@ -774,4 +774,51 @@ describe('SessionCard chip row (Phase 172)', () => {
     expect(conn).not.toBeNull()
     expect(conn!.textContent).toContain('Connected')
   })
+
+  // ---- NET-01: Share disabled while Tailscale is not connected ----
+
+  function renderShareCard(props: { shareDisabledReason?: string; isRemote?: boolean } = {}) {
+    const onShare = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    act(() => {
+      root.render(
+        <SessionCard
+          session={makeSession(props.isRemote ? { hostname: 'peer.tail' } : {})}
+          onShare={onShare}
+          isRemote={props.isRemote ?? false}
+          shareDisabledReason={props.shareDisabledReason}
+        />,
+      )
+    })
+    const btn = container.querySelector('.hub-card__share') as HTMLButtonElement
+    return { btn, onShare }
+  }
+
+  it('NET-01: a local card with shareDisabledReason has a disabled Share button with the reason and a lock icon', () => {
+    const reason = "Tailscale isn't connected. Remote access and sharing are off until it is."
+    const { btn, onShare } = renderShareCard({ shareDisabledReason: reason })
+    expect(btn.disabled).toBe(true)
+    expect(btn.getAttribute('aria-label')).toBe(reason)
+    expect(btn.title).toBe(reason)
+    expect(btn.querySelector('.hub-card__share-lock')).not.toBeNull()
+    act(() => btn.click())
+    expect(onShare).not.toHaveBeenCalled()
+  })
+
+  it('NET-01: a local card without shareDisabledReason has an enabled Share button and no lock', () => {
+    const { btn, onShare } = renderShareCard()
+    expect(btn.disabled).toBe(false)
+    expect(btn.getAttribute('aria-label')).toBe('Share Test Session')
+    expect(btn.querySelector('.hub-card__share-lock')).toBeNull()
+    act(() => btn.click())
+    expect(onShare).toHaveBeenCalledTimes(1)
+  })
+
+  it('NET-01: a remote card keeps its owner-only lock reason even when shareDisabledReason is set', () => {
+    const { btn } = renderShareCard({ isRemote: true, shareDisabledReason: 'off' })
+    expect(btn.disabled).toBe(true)
+    expect(btn.getAttribute('aria-label')).toBe('Only the session owner can share')
+  })
 })

@@ -67,7 +67,6 @@ export const RegisterRemoteCap     = (sessionID, baseURL, capToken) => Call('mai
 export const OpenRemoteSessionURL  = (sessionID)            => Call('main.App.OpenRemoteSessionURL', [sessionID])
 
 // Auto-install Tailscale bound method
-export const AutoInstallTailscale = ()                      => Call('main.App.AutoInstallTailscale', [])
 
 // Local network mode bound methods
 export const GetLocalNetworkPassword = ()                   => Call('main.App.GetLocalNetworkPassword', [])

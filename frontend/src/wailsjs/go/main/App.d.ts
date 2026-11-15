@@ -114,9 +114,6 @@ export function RegisterRemoteCap(sessionID: string, baseURL: string, capToken: 
 // Phase 146-05 — held-cap reuse: read cap-bearing open URL from daemon RemoteCapStore.
 export function OpenRemoteSessionURL(sessionID: string): Promise<string>
 
-// Auto-install Tailscale bound method
-export function AutoInstallTailscale(): Promise<void>
-
 // Local network mode bound methods
 export function GetLocalNetworkPassword(): Promise<string>
 export function GetWebServerMode(): Promise<string>

@@ -93,6 +93,8 @@ export interface SessionCardGridProps {
   onCardClick?: (session: SessionInfo, rect: DOMRect) => void
   /** Phase 137 / D-12 — threaded to each SessionCard Share button */
   onShare?: (session: SessionInfo) => void
+  /** NET-01 — threaded to each SessionCard; disables local Share buttons */
+  shareDisabledReason?: string
   /** Phase 138 — Set of session IDs with a cached cap (isConnected signal) */
   connectedRemoteIds?: Set<string>
   /** Phase 138 — Set of remote session IDs (provenance-based isRemote signal) */
@@ -138,6 +140,7 @@ export function SessionCardGrid({
   onAssignGroup,
   onCardClick,
   onShare,
+  shareDisabledReason,
   connectedRemoteIds,
   remoteIdSet,
   onKill,
@@ -168,6 +171,7 @@ export function SessionCardGrid({
                     onOpenSession={onOpenSession}
                     onCardClick={onCardClick}
                     onShare={onShare}
+                    shareDisabledReason={shareDisabledReason}
                     previewLines={previewTails?.get(s.id)}
                     previewTheme={previewTheme}
                     groupDefs={groupDefs}
@@ -214,6 +218,7 @@ export function SessionCardGrid({
                     onOpenSession={onOpenSession}
                     onCardClick={onCardClick}
                     onShare={onShare}
+                    shareDisabledReason={shareDisabledReason}
                     previewLines={previewTails?.get(s.id)}
                     previewTheme={previewTheme}
                     groupDefs={groupDefs}

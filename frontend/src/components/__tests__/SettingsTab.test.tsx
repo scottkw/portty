@@ -190,12 +190,8 @@ describe('TAILSCALE-PATH-01: Tailscale status in Settings', () => {
     expect(raw).toContain('tailscaleHealth.domain || tailscaleHealth.ip')
   })
 
-  it('shows installed-but-not-connected message', () => {
-    expect(raw).toContain('Daemon running but not connected to a Tailscale network')
-  })
-
-  it('shows not detected message', () => {
-    expect(raw).toContain('Not detected')
+  it('shows the NET-01 sentence when not connected (Portty 01-12)', () => {
+    expect(raw).toContain(': TAILSCALE_OFF_REASON)')
   })
 
   it('has no tailscale path override input (Portty 01-11)', () => {
@@ -239,47 +235,22 @@ describe('THM-04: localStorage fallback guard in App.tsx', () => {
   })
 })
 
-describe('TS-01/TS-02: 4-state Tailscale detection', () => {
-  it('tailscaleHealth type includes binaryFound field', () => {
-    expect(raw).toContain('binaryFound: boolean')
+// NET-01 (Portty 01-12, CONTEXT Amendment 1): two states only, no diagnostics.
+describe('NET-01: two-state Tailscale status (replaces TS-01/TS-02 4-state detection)', () => {
+  it('uses the shared TailscaleHealth type with no multi-state fields', () => {
+    expect(raw).toContain('tailscaleHealth: TailscaleHealth | null')
+    expect(raw).not.toMatch(/binaryFound|daemonUp|platformHint|permissionLimited/)
   })
 
-  it('tailscaleHealth type includes daemonUp field', () => {
-    expect(raw).toContain('daemonUp: boolean')
+  it('has no multi-state labels or diagnostics checklist', () => {
+    for (const s of ['Daemon Stopped', 'Not Installed', 'Permission Limited', 'Show diagnostics', 'Binary detected', 'TLS certificates ready']) {
+      expect(raw).not.toContain(s)
+    }
   })
 
-  it('tailscaleHealth type includes platformHint field', () => {
-    expect(raw).toContain('platformHint: string')
+  it('shows Connected or Not connected', () => {
+    expect(raw).toContain("h.connected ? 'Connected' : 'Not connected'")
   })
-
-  it('shows Daemon Stopped status text', () => {
-    expect(raw).toContain("'Daemon Stopped'")
-  })
-
-  it('has Show diagnostics collapsible section', () => {
-    expect(raw).toContain('Show diagnostics')
-  })
-
-  it('diagnostics includes Binary detected step', () => {
-    expect(raw).toContain('Binary detected')
-  })
-
-  it('diagnostics includes Daemon running step', () => {
-    expect(raw).toContain('Daemon running')
-  })
-
-  it('diagnostics includes Connected to Tailscale step', () => {
-    expect(raw).toContain('Connected to Tailscale')
-  })
-
-  it('diagnostics includes TLS certificates ready step', () => {
-    expect(raw).toContain('TLS certificates ready')
-  })
-
-  it('has platform-specific instruction for macOS', () => {
-    expect(raw).toContain('open Tailscale from Applications or the menu bar')
-  })
-
 })
 
 describe('SET-02: No inline fontSize override on description elements', () => {
