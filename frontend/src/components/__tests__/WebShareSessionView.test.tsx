@@ -4,13 +4,11 @@
  * Tests:
  *   1. Component renders without throwing given minimal props.
  *   2. wsURL construction: wss://{host}/sessions/{id}/ws?cap={encoded} is
- *      forwarded to BOTH TerminalPanel and ChatPanel (Pitfall 6 guard).
- *   3. capToken is forwarded to ChatPanel's capToken prop.
- *   4. apiBaseURL=window.location.origin is forwarded to ChatPanel.
- *   5. Root element carries hub-modal__body--interactive CSS class (parity gate).
- *   6. Chat toggle button carries hub-modal__chat-toggle class (parity gate).
+ *      forwarded to TerminalPanel (Pitfall 6 guard).
+ *   3. Root element carries hub-modal__body--interactive CSS class (layout).
+ *   4. No chat control renders on either path (Portty 02-07, CHAT-01).
  *
- * Architecture: TerminalPanel and ChatPanel are mocked so xterm / WebSocket side
+ * Architecture: TerminalPanel is mocked so xterm / WebSocket side
  * effects do not run in jsdom. Props are captured via module-level variables so
  * assertions run after render without needing react-testing-library.
  */
@@ -41,40 +39,9 @@ vi.mock('../TerminalPanel', () => ({
   },
 }))
 
-// ── Mock ChatPanel ─────────────────────────────────────────────────────────────
-// Captures all props so we can assert wsURL, capToken, and apiBaseURL wiring.
-
-interface CapturedChatPanelProps {
-  sessionId?: string
-  relayPort?: number
-  open?: boolean
-  wsURL?: string
-  apiBaseURL?: string
-  capToken?: string
-  onUnreadChange?: (count: number, hasMention: boolean) => void
-  [key: string]: unknown
-}
-
-let capturedChatPanelProps: CapturedChatPanelProps | null = null
-
-vi.mock('./ChatPanel', () => ({
-  ChatPanel: (props: CapturedChatPanelProps) => {
-    capturedChatPanelProps = props
-    return React.createElement('div', {
-      'data-testid': 'mock-chat-panel',
-      'data-open': String(props.open),
-    })
-  },
-}))
-
-// ── Mock ChatBadge ─────────────────────────────────────────────────────────────
-vi.mock('./ChatBadge', () => ({
-  ChatBadge: () => React.createElement('span', { 'data-testid': 'mock-chat-badge' }),
-}))
-
 // ── Import under test (after vi.mock — vitest hoists vi.mock automatically) ──
 
-import { WebShareSessionView } from './WebShareSessionView'
+import { WebShareSessionView } from '../WebShareSessionView'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -114,7 +81,6 @@ function mountView(
 
 afterEach(() => {
   capturedTerminalProps = null
-  capturedChatPanelProps = null
   vi.clearAllMocks()
 })
 
@@ -132,10 +98,11 @@ describe('WebShareSessionView — renders without error', () => {
     unmount()
   })
 
-  it('renders the hub-modal__chat-toggle button (parity gate)', () => {
+  it('renders no chat control: only the terminal (CHAT-01)', () => {
     const { container, unmount } = mountView()
-    const toggle = container.querySelector('.hub-modal__chat-toggle')
-    expect(toggle).not.toBeNull()
+    expect(container.querySelector('[data-testid="mock-terminal-panel"]')).not.toBeNull()
+    expect(container.querySelector('button')).toBeNull()
+    expect(container.textContent ?? '').not.toMatch(/chat/i)
     unmount()
   })
 })
@@ -153,20 +120,11 @@ describe('WebShareSessionView — wsURL construction (Pitfall 6 guard)', () => {
     unmount()
   })
 
-  it('constructs the same wsURL and forwards it to ChatPanel (Pitfall 6: both children need it)', () => {
-    const { unmount } = mountView({ sessionId: 'sess-123', capToken: 'tok-abc' })
-    const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const expectedURL = `${wsScheme}://${window.location.host}/sessions/${encodeURIComponent('sess-123')}/ws?cap=${encodeURIComponent('tok-abc')}`
-    expect(capturedChatPanelProps?.wsURL).toBe(expectedURL)
-    unmount()
-  })
-
   it('percent-encodes special characters in sessionId and capToken', () => {
     const { unmount } = mountView({ sessionId: 'sess/123', capToken: 'tok=abc&x=1' })
     const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const expectedURL = `${wsScheme}://${window.location.host}/sessions/${encodeURIComponent('sess/123')}/ws?cap=${encodeURIComponent('tok=abc&x=1')}`
     expect(capturedTerminalProps?.wsURL).toBe(expectedURL)
-    expect(capturedChatPanelProps?.wsURL).toBe(expectedURL)
     unmount()
   })
 
@@ -176,57 +134,13 @@ describe('WebShareSessionView — wsURL construction (Pitfall 6 guard)', () => {
     expect(wsURL).toMatch(/^wss?:\/\//)
     expect(wsURL).toContain('/sessions/')
     expect(wsURL).toContain('/ws?cap=')
-    expect(wsURL).toBe(capturedChatPanelProps?.wsURL)
-    unmount()
-  })
-})
-
-describe('WebShareSessionView — ChatPanel prop wiring', () => {
-  it('forwards capToken to ChatPanel', () => {
-    const { unmount } = mountView({ capToken: 'tok-abc' })
-    expect(capturedChatPanelProps?.capToken).toBe('tok-abc')
-    unmount()
-  })
-
-  it('forwards apiBaseURL=window.location.origin to ChatPanel', () => {
-    const { unmount } = mountView()
-    // Derive expected origin from window.location so the test is hermetic.
-    expect(capturedChatPanelProps?.apiBaseURL).toBe(window.location.origin)
-    unmount()
-  })
-
-  it('forwards sessionId to both TerminalPanel and ChatPanel', () => {
-    const { unmount } = mountView({ sessionId: 'my-session' })
-    expect(capturedTerminalProps?.sessionId).toBe('my-session')
-    expect(capturedChatPanelProps?.sessionId).toBe('my-session')
-    unmount()
-  })
-})
-
-describe('WebShareSessionView — chat toggle interaction', () => {
-  it('chat toggle opens/closes the drawer (ChatPanel open prop flips)', () => {
-    const { container, unmount } = mountView()
-    // Initially closed
-    const chatPanel = container.querySelector('[data-testid="mock-chat-panel"]') as HTMLElement
-    expect(chatPanel?.getAttribute('data-open')).toBe('false')
-
-    // Click the toggle to open
-    const toggle = container.querySelector('.hub-modal__chat-toggle') as HTMLElement
-    expect(toggle).not.toBeNull()
-    act(() => {
-      toggle.click()
-    })
-
-    // ChatPanel should now be open
-    expect(container.querySelector('[data-open="true"]')).not.toBeNull()
     unmount()
   })
 })
 
 // Phase 168-09 (FIX-03 RC-A): remote in-app tabs MUST route the terminal through
 // the daemon proxy (remote:true, NO wsURL) rather than the direct cross-origin peer
-// wss the peer's byte-exact Origin allowlist 403s. Chat is hidden for remote tabs
-// (no cross-origin chat proxy route). The native web-guest path is unchanged.
+// wss the peer's byte-exact Origin allowlist 403s. The native web-guest path is unchanged.
 describe('WebShareSessionView — remote-tab daemon-proxy transport (FIX-03 RC-A)', () => {
   it('remote={true}: TerminalPanel gets remote:true AND no wsURL (daemon proxy, not direct peer wss)', () => {
     const { unmount } = mountView({ remote: true, relayPort: 42, baseURL: 'https://peer.example.ts.net' })
@@ -246,17 +160,10 @@ describe('WebShareSessionView — remote-tab daemon-proxy transport (FIX-03 RC-A
     unmount()
   })
 
-  it('remote={true}: chat toggle button and ChatPanel are NOT rendered (terminal-only)', () => {
+  it('remote={true}: renders the terminal and no chat control (CHAT-01)', () => {
     const { container, unmount } = mountView({ remote: true, relayPort: 42, baseURL: 'https://peer.example.ts.net' })
-    expect(container.querySelector('.hub-modal__chat-toggle')).toBeNull()
-    expect(container.querySelector('[data-testid="mock-chat-panel"]')).toBeNull()
-    unmount()
-  })
-
-  it('no remote: chat toggle button and ChatPanel ARE rendered (native web-guest parity)', () => {
-    const { container, unmount } = mountView()
-    expect(container.querySelector('.hub-modal__chat-toggle')).not.toBeNull()
-    expect(container.querySelector('[data-testid="mock-chat-panel"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="mock-terminal-panel"]')).not.toBeNull()
+    expect(container.querySelector('button')).toBeNull()
     unmount()
   })
 })

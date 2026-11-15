@@ -303,8 +303,7 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
 
   // CR-03 (168-REVIEW): the WebShareSessionView render site had no `key`, so
   // switching between two remote-peer tabs did NOT unmount/remount the
-  // component — its local useState (chatOpen/unreadCount/hasMention/
-  // livePluginConfig) leaked from session A into session B's render. Fixed
+  // component — its local useState (livePluginConfig) leaked from session A into session B's render. Fixed
   // by keying on the same wsSessionId used to resolve this render's own
   // sessionId prop, forcing a clean remount whenever the active
   // __websession__ tab changes to a different session.

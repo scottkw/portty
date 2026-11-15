@@ -1,8 +1,8 @@
 // Phase 159 Plan 02 (gap-closure) — web-share-scope.spec.ts
 //
 // WEBCHAT-03: a remote web-share guest who lands on /app/?session=&cap= (via the
-// 159-01 redirect) must see ONLY the scoped session surface — the terminal + chat
-// — and NOT the desktop app chrome (the Sidebar with
+// 159-01 redirect) must see ONLY the scoped session surface — the terminal (chat
+// was removed in Portty 02-07, CHAT-01) — and NOT the desktop app chrome (the Sidebar with
 // Home / Hub / Settings / session groups).
 //
 // Discovered during 159 live UAT: /app/ rendered the full desktop shell because
@@ -13,8 +13,8 @@
 // Selector contract:
 //   nav[aria-label="Sessions"]         — the desktop Sidebar since Portty 02-04 (MUST be absent in web mode)
 //   nav[aria-label="Main navigation"]  — the pre-02-04 Sidebar label (kept as a regression guard)
-//   .hub-modal__chat-toggle            — chat toggle (scoped surface present)
 //   .xterm                             — xterm terminal (session surface present)
+//   button named /chat/i               — MUST be absent (Portty 02-07, CHAT-01)
 
 import { test, expect } from '@playwright/test'
 import { appUrl, viewerAppUrl, loadFixtureEnv } from './fixture-env'
@@ -27,9 +27,9 @@ test.describe('Phase 159-02 — web-share guest scope (WEBCHAT-03)', () => {
       const page = await ctx.newPage()
       await page.goto(appUrl(env), { waitUntil: 'domcontentloaded' })
 
-      // Scoped surface IS present: chat toggle + terminal mount.
-      await expect(page.locator('.hub-modal__chat-toggle')).toBeVisible({ timeout: 15_000 })
+      // Scoped surface IS present: the terminal mount, and no chat control (CHAT-01).
       await expect(page.locator('.xterm').first()).toBeVisible({ timeout: 15_000 })
+      await expect(page.getByRole('button', { name: /chat/i })).toHaveCount(0)
 
       // Desktop chrome is NOT present: the Sidebar nav must not render in web mode.
       await expect(page.locator('nav[aria-label="Sessions"]')).toHaveCount(0)
@@ -56,7 +56,8 @@ test.describe('Phase 159-02 — web-share guest scope (WEBCHAT-03)', () => {
       try {
         const page = await ctx.newPage()
         await page.goto(urlFor(env), { waitUntil: 'domcontentloaded' })
-        await expect(page.locator('.hub-modal__chat-toggle')).toBeVisible({ timeout: 15_000 })
+        await expect(page.locator('.xterm').first()).toBeVisible({ timeout: 15_000 })
+        await expect(page.getByRole('button', { name: /chat/i })).toHaveCount(0)
         await page.waitForTimeout(2_000) // let any late bootstrap work settle
         await expect(page.locator('[data-testid="tab-chevron"]')).toHaveCount(0)
         await expect(page.getByRole('button', { name: /— Files$/ })).toHaveCount(0)

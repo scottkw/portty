@@ -5,46 +5,13 @@ export const MSG_INPUT   = 0x10  // client → server: keyboard input
 export const MSG_RESIZE2 = 0x11  // client → server: resize request
 export const MSG_PING    = 0x12  // client → server: keep-alive
 
-// Chat/presence frame types — 0x30–0x3F range (Phase 152/154)
-export const MSG_CHAT            = 0x30  // server → client: chat message broadcast
-export const MSG_CHAT_SEND       = 0x31  // client → server: post chat message
-export const MSG_PRESENCE        = 0x32  // server → client: full presence roster (JSON PresencePayload)
-export const MSG_TYPING          = 0x33  // bidirectional: typing-start/stop (JSON TypingPayload)
-export const MSG_ALIAS_SET       = 0x34  // client → server: set/update alias (JSON AliasPayload)
-// 0x35/0x36 are RETIRED (the old chat→PTY inject frame and its NAK, CHAT-01). Never reuse them.
-export const MSG_SELF            = 0x37  // server → client: own identity on WS connect (Phase 161)
-
-// PresenceEntry describes one participant in the presence roster.
-// Field names match the Go json tags in internal/relay/protocol.go exactly.
-export interface PresenceEntry {
-  personKey: string  // TailnetID + ":" + origin — stable collapse key
-  tailnetID: string  // "local" for desktop owner, node pubkey for web
-  origin: string     // "local" (relay loopback) or "web" (webserver Tailscale)
-  alias: string
-  connCount: number  // active connections for this person key
-}
-
-// ChatMessage mirrors the Go ChatMessage struct json tags in internal/relay/protocol.go exactly.
-// CRITICAL: AuthorAlias has json tag "alias" in Go — this field MUST be named `alias` here.
-export interface ChatMessage {
-  v: number             // schema version (always 1)
-  id: string
-  sessionID: string
-  authorID: string      // "local" for desktop owner, node pubkey for web
-  alias: string         // json:"alias" in Go (NOT authorAlias)
-  content: string
-  mentions?: string[]   // AuthorIDs of mentioned participants; omitted when empty
-  ts: number            // UNIX milliseconds
-}
+// 0x30-0x37 are RETIRED (chat, presence, typing, alias, inject, self). parseServerFrame
+// returns {type:'unknown'} for them; never reuse these bytes.
 
 // ServerFrame union type for parsed server messages
 export type ServerFrame =
   | { type: 'output'; payload: Uint8Array }
   | { type: 'resize'; cols: number; rows: number }
-  | { type: 'presence'; participants: PresenceEntry[] }
-  | { type: 'typing'; personKey: string; alias: string; typing: boolean }
-  | { type: 'chat'; message: ChatMessage }
-  | { type: 'self'; personKey: string; alias: string }
   | { type: 'unknown' }
 
 /**
@@ -74,43 +41,6 @@ export function encodeResizeFrame(cols: number, rows: number): Uint8Array {
 }
 
 /**
- * Encode a typing-start or typing-stop notification for the server.
- * Format: [MSG_TYPING, ...UTF-8 bytes of JSON {typing}]
- * Server fills personKey and alias from the Subscriber before broadcast.
- */
-export function encodeTypingFrame(typing: boolean): Uint8Array {
-  const encoded = new TextEncoder().encode(JSON.stringify({ typing }))
-  const frame = new Uint8Array(1 + encoded.length)
-  frame[0] = MSG_TYPING
-  frame.set(encoded, 1)
-  return frame
-}
-
-/**
- * Encode an alias-set request for the server.
- * Format: [MSG_ALIAS_SET, ...UTF-8 bytes of JSON {alias}]
- */
-export function encodeAliasSetFrame(alias: string): Uint8Array {
-  const encoded = new TextEncoder().encode(JSON.stringify({ alias }))
-  const frame = new Uint8Array(1 + encoded.length)
-  frame[0] = MSG_ALIAS_SET
-  frame.set(encoded, 1)
-  return frame
-}
-
-/**
- * Encode a chat send request for the server.
- * Format: [MSG_CHAT_SEND, ...UTF-8 bytes of JSON {content}]
- */
-export function encodeChatSendFrame(content: string): Uint8Array {
-  const encoded = new TextEncoder().encode(JSON.stringify({ content }))
-  const frame = new Uint8Array(1 + encoded.length)
-  frame[0] = MSG_CHAT_SEND
-  frame.set(encoded, 1)
-  return frame
-}
-
-/**
  * Parse a server-sent binary frame into a typed union.
  */
 export function parseServerFrame(data: Uint8Array): ServerFrame {
@@ -131,46 +61,6 @@ export function parseServerFrame(data: Uint8Array): ServerFrame {
       return { type: 'resize', cols, rows }
     }
 
-    case MSG_PRESENCE: {
-      try {
-        const json = new TextDecoder().decode(data.slice(1))
-        const parsed = JSON.parse(json) as { participants?: PresenceEntry[] }
-        return { type: 'presence', participants: parsed.participants ?? [] }
-      } catch {
-        return { type: 'unknown' }
-      }
-    }
-
-    case MSG_TYPING: {
-      try {
-        const json = new TextDecoder().decode(data.slice(1))
-        const parsed = JSON.parse(json) as { personKey: string; alias: string; typing: boolean }
-        return { type: 'typing', personKey: parsed.personKey, alias: parsed.alias, typing: parsed.typing }
-      } catch {
-        return { type: 'unknown' }
-      }
-    }
-
-    case MSG_CHAT: {
-      try {
-        const json = new TextDecoder().decode(data.slice(1))
-        const message = JSON.parse(json) as ChatMessage
-        return { type: 'chat', message }
-      } catch {
-        return { type: 'unknown' }
-      }
-    }
-
-    case MSG_SELF: {
-      try {
-        const json = new TextDecoder().decode(data.slice(1))
-        const parsed = JSON.parse(json) as { personKey: string; alias: string }
-        return { type: 'self', personKey: parsed.personKey, alias: parsed.alias }
-      } catch {
-        return { type: 'unknown' }
-      }
-    }
-
     default:
       return { type: 'unknown' }
   }
@@ -189,21 +79,12 @@ export interface RelayClientCallbacks {
    * existing () => void-shaped callers keep working unchanged.
    */
   onClose?: (code?: number, reason?: string) => void
-  onPresence?: (participants: PresenceEntry[]) => void
-  onTyping?: (personKey: string, alias: string, typing: boolean) => void
-  onChat?: (message: ChatMessage) => void
   /**
    * Phase 157 VIEW-04: called when the server pushes a 0x02 MsgResize frame.
    * Guest viewers (remote || wsURL) use this to honor the host-authority grid.
    * Optional so host-path callers (no remote, no wsURL) can omit it without change.
    */
   onResize?: (cols: number, rows: number) => void
-  /**
-   * Phase 161: called once on WS connect when the server sends a 0x37 MsgSelf frame
-   * carrying the client's own personKey and server-resolved alias.
-   * Optional — TerminalPanel hosts that omit chat callbacks are unaffected.
-   */
-  onSelf?: (personKey: string, alias: string) => void
 }
 
 /**
@@ -250,24 +131,11 @@ export class RelayClient {
         case 'output':
           this.callbacks.onOutput(frame.payload)
           break
-        case 'presence':
-          this.callbacks.onPresence?.(frame.participants)
-          break
-        case 'typing':
-          this.callbacks.onTyping?.(frame.personKey, frame.alias, frame.typing)
-          break
-        case 'chat':
-          this.callbacks.onChat?.(frame.message)
-          break
         case 'resize':
           // VIEW-04 (Phase 157): the server is the host-authority for the PTY grid.
           // Guest viewers (remote || wsURL) pass onResize to honor the server-pushed
           // grid; host-path callers omit it so 0x02 is a no-op for local sessions.
           this.callbacks.onResize?.(frame.cols, frame.rows)
-          break
-        case 'self':
-          // Phase 161: server sends the client's own personKey+alias once on connect.
-          this.callbacks.onSelf?.(frame.personKey, frame.alias)
           break
         // 'unknown' frames are silently dropped
       }
@@ -294,20 +162,6 @@ export class RelayClient {
   sendResize(cols: number, rows: number): void {
     if (this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(encodeResizeFrame(cols, rows))
-    }
-  }
-
-  /** Send a chat message to the relay. */
-  sendChat(content: string): void {
-    if (this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(encodeChatSendFrame(content))
-    }
-  }
-
-  /** Set or update the client's display alias via the relay (Phase 161). */
-  sendAliasSet(alias: string): void {
-    if (this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(encodeAliasSetFrame(alias))
     }
   }
 

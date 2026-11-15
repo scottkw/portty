@@ -15,7 +15,7 @@
  *   4. On unmount, the fetch AbortController aborts and the EventSource
  *      closes.
  *
- * Architecture: TerminalPanel and ChatPanel are mocked (same technique as
+ * Architecture: TerminalPanel is mocked (same technique as
  * WebShareSessionView.test.tsx) so xterm / WebSocket side effects never run
  * in jsdom. global.fetch and global.EventSource are stubbed per-test.
  */
@@ -35,21 +35,11 @@ interface CapturedTerminalProps {
 
 let capturedTerminalProps: CapturedTerminalProps | null = null
 
-vi.mock('../../TerminalPanel', () => ({
+vi.mock('../TerminalPanel', () => ({
   TerminalPanel: (props: CapturedTerminalProps) => {
     capturedTerminalProps = props
     return React.createElement('div', { 'data-testid': 'mock-terminal-panel' })
   },
-}))
-
-// ── Mock ChatPanel / ChatBadge ───────────────────────────────────────────────
-
-vi.mock('../ChatPanel', () => ({
-  ChatPanel: () => React.createElement('div', { 'data-testid': 'mock-chat-panel' }),
-}))
-
-vi.mock('../ChatBadge', () => ({
-  ChatBadge: () => React.createElement('span', { 'data-testid': 'mock-chat-badge' }),
 }))
 
 // ── Import under test (after vi.mock — vitest hoists vi.mock automatically) ─

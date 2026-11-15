@@ -54,9 +54,6 @@ vi.mock('../../lib/relayClient', async () => {
     }
     sendInput() {}
     sendResize(cols: number, rows: number) { hoisted.sendResizeCalls.push([cols, rows]) }
-    sendChat() {}
-    sendTyping() {}
-    sendAliasSet() {}
     close() {}
   }
   return {
@@ -66,16 +63,8 @@ vi.mock('../../lib/relayClient', async () => {
     MSG_INPUT: 0x10,
     MSG_RESIZE2: 0x11,
     MSG_PING: 0x12,
-    MSG_CHAT: 0x30,
-    MSG_CHAT_SEND: 0x31,
-    MSG_PRESENCE: 0x32,
-    MSG_TYPING: 0x33,
-    MSG_ALIAS_SET: 0x34,
     encodeInputFrame: () => new Uint8Array(),
     encodeResizeFrame: () => new Uint8Array(),
-    encodeTypingFrame: () => new Uint8Array(),
-    encodeAliasSetFrame: () => new Uint8Array(),
-    encodeChatSendFrame: () => new Uint8Array(),
     parseServerFrame: () => ({ type: 'unknown' }),
   }
 })

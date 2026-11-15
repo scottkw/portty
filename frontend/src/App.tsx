@@ -46,8 +46,8 @@ import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
 import { TailscaleBanner } from './components/TailscaleBanner'
 import { TAILSCALE_OFF_REASON, TailscaleHealth } from './lib/tailscale'
-import { WebShareSessionView } from './components/Hub/WebShareSessionView'
-import { TerminalChatHost } from './components/Hub/TerminalChatHost'
+import { WebShareSessionView } from './components/WebShareSessionView'
+import { TerminalPanel } from './components/TerminalPanel'
 import { UpdateBanner } from './components/UpdateBanner'
 import type { UpdateInfo } from './components/UpdateBanner'
 import { WebGLRecoveryBanner } from './components/WebGLRecoveryBanner'
@@ -911,7 +911,7 @@ function App(): React.ReactElement {
 
   // Phase 120-06 / 155-03 — web-mode bootstrap: when the SPA loads under /app/
   // with a ?session=<id> param, open the session view (WebShareSessionView:
-  // terminal + chat) as the active tab.
+  // terminal) as the active tab.
   // Effect runs exactly once because mode + webParams are mount-stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -1167,7 +1167,7 @@ function App(): React.ReactElement {
         <div className="terminal-container">
         {/* Phase 155-03 — WebShareSessionView render branch. Activated when
             the active tab id starts with __websession__. This is the primary
-            surface for web-share viewers: TerminalPanel + ChatPanel overlay
+            surface for web-share viewers: TerminalPanel
             connected to the webserver WS (not the loopback relay). relayPort
             is 0 on web-share; wsURL inside WebShareSessionView overrides the
             loopback construction so the sentinel 0 is never used for socket
@@ -1202,7 +1202,7 @@ function App(): React.ReactElement {
             // shared Hub-modal classes (still used by HubInteractiveModal).
             <div className="terminal-wrapper" style={{ display: 'flex' }}>
               {/* CR-03: key on wsSessionId so React remounts (drops stale
-                  chat/unread/plugin-config useState) when the active tab switches
+                  plugin-config useState) when the active tab switches
                   to a different remote session. */}
               <WebShareSessionView
                 key={wsSessionId}
@@ -1307,7 +1307,7 @@ function App(): React.ReactElement {
                 className="terminal-wrapper"
                 style={{ display: isActive ? 'flex' : 'none' }}
               >
-                <TerminalChatHost
+                <TerminalPanel
                   sessionId={tab.sessionId}
                   isActive={isActive}
                   relayPort={relayPort}

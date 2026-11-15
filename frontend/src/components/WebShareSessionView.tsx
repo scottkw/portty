@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import type { ITheme } from '@xterm/xterm'
-import { daemon } from '../../wailsjs/go/models'
-import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
-import { TerminalPanel } from '../TerminalPanel'
-import { ChatPanel } from './ChatPanel'
-import { ChatBadge } from './ChatBadge'
+import { daemon } from '../wailsjs/go/models'
+import { TerminalPanel } from './TerminalPanel'
 
 type PluginSettings = daemon.PluginSettings
 
@@ -25,7 +22,7 @@ export interface WebShareSessionViewProps {
    * the terminal through the daemon WS proxy (remote:true, NO wsURL) — the same
    * transport the working Phase 134 HubInteractiveModal uses — instead of a
    * direct cross-origin `wss://<peer>/sessions/{id}/ws?cap=` the peer's byte-exact
-   * Origin allowlist 403s. Also hides chat (no cross-origin chat proxy route).
+   * Origin allowlist 403s.
    */
   remote?: boolean
   /** Terminal colour theme (pass terminalTheme from App.tsx). */
@@ -43,16 +40,10 @@ export interface WebShareSessionViewProps {
 }
 
 /**
- * WebShareSessionView mounts TerminalPanel + ChatPanel for the web-share browser
- * surface. Both panels connect via the webserver WS endpoint (`wss://`) rather
- * than the loopback relay, using the wsURL override introduced in Phase 155.
- *
- * Layout mirrors HubInteractiveModal (D-02 overlay mode): the chat drawer
- * position:absolute over the terminal; the terminal is never resized when the
- * drawer opens (isActive is always true here — no grow animation).
- *
- * CSS class names are verbatim copies of HubInteractiveModal so Playwright
- * parity selectors work identically on both surfaces (PARITY-01).
+ * WebShareSessionView mounts the TerminalPanel for the web-share browser surface
+ * and for in-app remote-peer tabs. The native web-guest path connects via the
+ * webserver WS endpoint (`wss://`) using the wsURL override (Phase 155); remote
+ * tabs go through the daemon proxy. Terminal only: chat was removed (CHAT-01).
  */
 export function WebShareSessionView({
   sessionId,
@@ -64,18 +55,8 @@ export function WebShareSessionView({
   remote,
 }: WebShareSessionViewProps): React.ReactElement {
   // FIX-03 (plan 09) RC-A transport switch. When true, the terminal routes
-  // through the daemon proxy (remote:true, wsURL undefined) and chat is hidden.
+  // through the daemon proxy (remote:true, wsURL undefined).
   const useProxy = remote === true
-  // D-02 overlay drawer state — same hooks as HubInteractiveModal
-  const [chatOpen, setChatOpen] = useState(false)
-  // NOTIF-01 / D-10: unread badge state driven by ChatPanel's onUnreadChange callback
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [hasMention, setHasMention] = useState(false)
-
-  function handleUnreadChange(count: number, mention: boolean) {
-    setUnreadCount(count)
-    setHasMention(mention)
-  }
 
   // Phase 168 FIX-01/FIX-03 — baseURL seam. Defaults to window.location.origin
   // (today's native web-share guest behavior, unchanged). FIX-03 (plan 03)
@@ -88,9 +69,8 @@ export function WebShareSessionView({
   // (replaces the old hardcoded `wss://${window.location.host}`).
   const wsOrigin = resolvedOrigin.replace(/^http/, 'ws')
 
-  // Phase 155 — webserver WS URL. Both TerminalPanel and ChatPanel connect
-  // via this URL (Pitfall 6: forgetting wsURL on TerminalPanel leaves the
-  // terminal on ws://127.0.0.1:0 while chat works).
+  // Phase 155 — webserver WS URL (Pitfall 6: forgetting wsURL on TerminalPanel
+  // leaves the terminal on ws://127.0.0.1:0).
   const wsURL = `${wsOrigin}/sessions/${encodeURIComponent(sessionId)}/ws?cap=${encodeURIComponent(capToken)}`
 
   // Phase 168 FIX-01 (#112) — web-guest plugin-config self-fetch + SSE
@@ -139,10 +119,7 @@ export function WebShareSessionView({
 
   return (
     <div className="hub-modal__body hub-modal__body--interactive">
-      {/* D-02: TerminalPanel is full-bleed; no column-shrink wrapper.
-          isActive={true} — constant on web-share (no grow animation here,
-          unlike the modal's animated isActive={open}). Toggling the chat
-          drawer never triggers a PTY sendResize (D-02). */}
+      {/* isActive={true}: constant on web-share (no grow animation). */}
       <TerminalPanel
         sessionId={sessionId}
         isActive={true}
@@ -154,43 +131,6 @@ export function WebShareSessionView({
         remote={useProxy}
         wsURL={useProxy ? undefined : wsURL}
       />
-
-      {/* FIX-03 (plan 09) RC-A: chat is hidden for remote in-app tabs. A working
-          remote chat would need an analogous daemon chat proxy (backend, out of
-          scope for this frontend gap closure); the working Phase 134 modal's
-          ChatPanel has no remote proxy route either, so hiding chat matches the
-          modal's effective behavior and keeps the terminal (the priority) working.
-          The native web-guest path (!useProxy) keeps chat + toggle unchanged. */}
-      {!useProxy && (
-        <>
-          {/* D-09: ChatPanel is always-mounted (open prop controls visibility only).
-              Unread messages accrue in ChatPanel state even while the drawer is closed.
-              Phase 155: wsURL, apiBaseURL, and capToken are forwarded so ChatPanel
-              connects via webserver and can fetch history/export with the cap. */}
-          <ChatPanel
-            sessionId={sessionId}
-            relayPort={relayPort}
-            open={chatOpen}
-            wsURL={wsURL}
-            apiBaseURL={apiBaseURL}
-            capToken={capToken}
-            onUnreadChange={handleUnreadChange}
-          />
-
-          {/* Chat toggle button — floats over the bottom-right of the terminal body.
-              COLORBLIND-SAFE: ChatBubbleLeftRightIcon (shape) + aria-label are primary signals.
-              ChatBadge provides the unread count / mention glyph. */}
-          <button
-            type="button"
-            className="hub-modal__chat-toggle"
-            aria-label={chatOpen ? 'Close chat' : 'Open chat'}
-            onClick={() => setChatOpen((prev) => !prev)}
-          >
-            <ChatBubbleLeftRightIcon className="hub-modal__chat-toggle-icon" aria-hidden="true" />
-            <ChatBadge count={unreadCount} hasMention={hasMention} />
-          </button>
-        </>
-      )}
     </div>
   )
 }

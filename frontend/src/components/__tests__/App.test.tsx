@@ -374,3 +374,11 @@ describe('Share dialog lives in components/Share (Portty 02-05)', () => {
     expect(raw.match(/<SessionShareModal\b/g)).toHaveLength(1)
   })
 })
+
+// Portty 02-07 (CHAT-01): WebShareSessionView moved out of components/Hub/.
+describe('WebShareSessionView lives in components/ (Portty 02-07)', () => {
+  it('imports WebShareSessionView from components/WebShareSessionView', () => {
+    expect(raw).toContain("import { WebShareSessionView } from './components/WebShareSessionView'")
+    expect(raw).not.toContain('components/Hub/')
+  })
+})

@@ -4,20 +4,10 @@ import {
   MSG_OUTPUT,
   MSG_RESIZE,
   MSG_RESIZE2,
-  MSG_PRESENCE,
-  MSG_TYPING,
-  MSG_ALIAS_SET,
-  MSG_CHAT,
-  MSG_CHAT_SEND,
-  MSG_SELF,
   encodeInputFrame,
   encodeResizeFrame,
-  encodeTypingFrame,
-  encodeAliasSetFrame,
-  encodeChatSendFrame,
   parseServerFrame,
   RelayClient,
-  type ChatMessage,
   type RelayClientCallbacks,
 } from './relayClient'
 
@@ -109,134 +99,6 @@ describe('parseServerFrame', () => {
   })
 })
 
-// Phase 152 presence/typing/alias wire protocol tests
-describe('MSG_PRESENCE / MSG_TYPING / MSG_ALIAS_SET constants', () => {
-  it('MSG_PRESENCE is 0x32', () => {
-    expect(MSG_PRESENCE).toBe(0x32)
-  })
-  it('MSG_TYPING is 0x33', () => {
-    expect(MSG_TYPING).toBe(0x33)
-  })
-  it('MSG_ALIAS_SET is 0x34', () => {
-    expect(MSG_ALIAS_SET).toBe(0x34)
-  })
-})
-
-describe('parseServerFrame — presence/typing/alias frame decoding', () => {
-  it('decodes a MsgPresence (0x32) frame into a presence variant with participants', () => {
-    const body = JSON.stringify({
-      participants: [
-        { personKey: 'local:local', tailnetID: 'local', origin: 'local', alias: 'ken', connCount: 1 },
-      ],
-    })
-    const encoded = new TextEncoder().encode(body)
-    const data = new Uint8Array([0x32, ...encoded])
-    const result = parseServerFrame(data)
-    expect(result.type).toBe('presence')
-    if (result.type === 'presence') {
-      expect(result.participants).toHaveLength(1)
-      expect(result.participants[0].personKey).toBe('local:local')
-      expect(result.participants[0].tailnetID).toBe('local')
-      expect(result.participants[0].origin).toBe('local')
-      expect(result.participants[0].alias).toBe('ken')
-      expect(result.participants[0].connCount).toBe(1)
-    }
-  })
-
-  it('decodes a MsgTyping (0x33) frame into a typing variant', () => {
-    const body = JSON.stringify({ personKey: 'k:web', alias: 'sam', typing: true })
-    const encoded = new TextEncoder().encode(body)
-    const data = new Uint8Array([0x33, ...encoded])
-    const result = parseServerFrame(data)
-    expect(result.type).toBe('typing')
-    if (result.type === 'typing') {
-      expect(result.personKey).toBe('k:web')
-      expect(result.alias).toBe('sam')
-      expect(result.typing).toBe(true)
-    }
-  })
-
-  it('decodes a MsgChat (0x30) frame into a chat variant (Phase 154 wired)', () => {
-    const msg: ChatMessage = {
-      v: 1, id: 'id1', sessionID: 'sess', authorID: 'local',
-      alias: 'ken', content: 'hello', ts: 1_700_000_000_000,
-    }
-    const body = JSON.stringify(msg)
-    const encoded = new TextEncoder().encode(body)
-    const data = new Uint8Array([0x30, ...encoded])
-    const result = parseServerFrame(data)
-    expect(result.type).toBe('chat')
-    if (result.type === 'chat') {
-      expect(result.message.alias).toBe('ken')
-      expect(result.message.content).toBe('hello')
-    }
-  })
-
-  it('returns unknown for MsgChatSend (0x31) — client-to-server frame; not parsed', () => {
-    const body = JSON.stringify({ content: 'hello' })
-    const encoded = new TextEncoder().encode(body)
-    const data = new Uint8Array([0x31, ...encoded])
-    const result = parseServerFrame(data)
-    expect(result.type).toBe('unknown')
-  })
-
-  it('returns unknown for a malformed presence body (invalid JSON after 0x32)', () => {
-    const data = new Uint8Array([0x32, ...new TextEncoder().encode('not-json{')])
-    const result = parseServerFrame(data)
-    expect(result.type).toBe('unknown')
-  })
-
-  it('presence frame with missing participants field returns empty array', () => {
-    const body = JSON.stringify({})
-    const encoded = new TextEncoder().encode(body)
-    const data = new Uint8Array([0x32, ...encoded])
-    const result = parseServerFrame(data)
-    expect(result.type).toBe('presence')
-    if (result.type === 'presence') {
-      expect(result.participants).toEqual([])
-    }
-  })
-})
-
-describe('encodeTypingFrame', () => {
-  it('produces frame with leading byte 0x33', () => {
-    const frame = encodeTypingFrame(true)
-    expect(frame[0]).toBe(0x33)
-  })
-
-  it('JSON body parses to {typing:true}', () => {
-    const frame = encodeTypingFrame(true)
-    const json = new TextDecoder().decode(frame.slice(1))
-    expect(JSON.parse(json)).toEqual({ typing: true })
-  })
-
-  it('JSON body parses to {typing:false} for typing stop', () => {
-    const frame = encodeTypingFrame(false)
-    const json = new TextDecoder().decode(frame.slice(1))
-    expect(JSON.parse(json)).toEqual({ typing: false })
-  })
-})
-
-describe('encodeAliasSetFrame', () => {
-  it('produces frame with leading byte 0x34', () => {
-    const frame = encodeAliasSetFrame('ken')
-    expect(frame[0]).toBe(0x34)
-  })
-
-  it('JSON body parses to {alias:"ken"}', () => {
-    const frame = encodeAliasSetFrame('ken')
-    const json = new TextDecoder().decode(frame.slice(1))
-    expect(JSON.parse(json)).toEqual({ alias: 'ken' })
-  })
-
-  it('handles alias with unicode characters', () => {
-    const frame = encodeAliasSetFrame('café')
-    const json = new TextDecoder().decode(frame.slice(1))
-    expect(JSON.parse(json)).toEqual({ alias: 'café' })
-  })
-})
-
-// FE-URL-01: RelayClient URL construction — local-direct vs daemon-proxy paths
 describe('RelayClient URL construction', () => {
   let capturedUrl: string | null = null
 
@@ -295,193 +157,62 @@ describe('RelayClient URL construction', () => {
   })
 })
 
-// ─── Phase 154: new constants, encoders, parse cases, dispatch ────────────────
+// ─── Portty 02-07 (CHAT-01): retired 0x30-0x37 bytes parse as unknown ─────────
 
-describe('Phase 154 constants', () => {
-  it('MSG_CHAT is 0x30', () => { expect(MSG_CHAT).toBe(0x30) })
-  it('MSG_CHAT_SEND is 0x31', () => { expect(MSG_CHAT_SEND).toBe(0x31) })
-})
-
-describe('encodeChatSendFrame (Phase 154 behavior)', () => {
-  it('byte[0] === MSG_CHAT_SEND (0x31)', () => {
-    const frame = encodeChatSendFrame('hi')
-    expect(frame[0]).toBe(0x31)
-  })
-
-  it('remaining bytes JSON-decode to { content: "hi" }', () => {
-    const frame = encodeChatSendFrame('hi')
-    const body = new TextDecoder().decode(frame.slice(1))
-    expect(JSON.parse(body)).toEqual({ content: 'hi' })
-  })
-})
-
-// Helper: build a binary MSG_CHAT frame from a partial ChatMessage
-function buildChatFrame(msg: Partial<ChatMessage>): Uint8Array {
-  const defaults: ChatMessage = {
-    v: 1,
-    id: 'test-id',
-    sessionID: 'sess-1',
-    authorID: 'local',
-    alias: 'Alice',   // mirrors Go json:"alias" tag — NOT authorAlias
-    content: 'Hello',
-    ts: 1_700_000_000_000,
-  }
-  const json = JSON.stringify({ ...defaults, ...msg })
-  const encoded = new TextEncoder().encode(json)
-  const frame = new Uint8Array(1 + encoded.length)
-  frame[0] = MSG_CHAT
-  frame.set(encoded, 1)
-  return frame
+function retiredFrame(byte: number): Uint8Array {
+  const body = new TextEncoder().encode(JSON.stringify({ personKey: 'tn:web', alias: 'guest', content: 'hi', typing: true }))
+  return new Uint8Array([byte, ...body])
 }
 
-describe('parseServerFrame — Phase 154 chat behaviors', () => {
-  // Behavior 3: MSG_CHAT (0x30) decodes and exposes message.alias (proves alias not authorAlias)
-  it('decodes 0x30 frame → { type:"chat", message } with message.alias populated', () => {
-    const frame = buildChatFrame({ alias: 'Bob', content: 'hey there' })
-    const result = parseServerFrame(frame)
-    expect(result.type).toBe('chat')
-    if (result.type === 'chat') {
-      expect(result.message.alias).toBe('Bob')
-      expect(result.message.content).toBe('hey there')
-      // Explicitly confirm the field name — alias (not authorAlias)
-      expect('alias' in result.message).toBe(true)
+describe('parseServerFrame — retired chat/presence bytes (CHAT-01)', () => {
+  for (let byte = 0x30; byte <= 0x37; byte++) {
+    it(`0x${byte.toString(16)} with a JSON payload parses to unknown, and a following output frame still parses`, () => {
+      expect(parseServerFrame(retiredFrame(byte))).toEqual({ type: 'unknown' })
+      const out = parseServerFrame(new Uint8Array([MSG_OUTPUT, 0x41]))
+      expect(out.type).toBe('output')
+      if (out.type === 'output') expect(Array.from(out.payload)).toEqual([0x41])
+    })
+  }
+})
+
+describe('RelayClient — an old peer sending retired frames does not stop output (CHAT-01)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let lastMockWS: any
+
+  beforeEach(() => {
+    lastMockWS = null
+    const MockWS = vi.fn(function (this: Record<string, unknown>) {
+      this.binaryType = 'arraybuffer'
+      this.readyState = 1 // OPEN
+      this.onopen = null
+      this.onmessage = null
+      this.onclose = null
+      this.onerror = null
+      this.send = vi.fn()
+      this.close = vi.fn()
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
+      lastMockWS = this
+    }) as unknown as typeof WebSocket
+    vi.stubGlobal('WebSocket', MockWS)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('drops 0x30-0x37 frames silently and still delivers the next output frame', () => {
+    const onOutput = vi.fn()
+    const client = new RelayClient(34115, 'sess-1', { onOutput })
+    for (let byte = 0x30; byte <= 0x37; byte++) {
+      expect(() => lastMockWS.onmessage?.({ data: retiredFrame(byte).buffer as ArrayBuffer })).not.toThrow()
     }
-  })
-
-  // Behavior 4: malformed 0x30 body → { type:'unknown' } (try/catch guard — T-154-05)
-  it('returns { type:"unknown" } when 0x30 body is malformed JSON', () => {
-    const garbage = new Uint8Array(5)
-    garbage[0] = MSG_CHAT
-    // bytes 1-4 are 0x00 — not valid JSON
-    const result = parseServerFrame(garbage)
-    expect(result.type).toBe('unknown')
-  })
-
-  // Behavior 5: 0x36 (the retired inject NAK, CHAT-01) is no longer decoded
-  it('returns { type:"unknown" } for a retired 0x36 frame', () => {
-    const encoded = new TextEncoder().encode(JSON.stringify({ reason: 'read only' }))
-    const frame = new Uint8Array(1 + encoded.length)
-    frame[0] = 0x36
-    frame.set(encoded, 1)
-    expect(parseServerFrame(frame).type).toBe('unknown')
-  })
-})
-
-// Behavior 6: backward compat — RelayClient with only onOutput does not throw when a chat frame arrives
-describe('RelayClient Phase 154 backward compatibility', () => {
-  // Track the most recently constructed mock WS instance so we can fire onmessage
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let lastMockWS: any
-
-  beforeEach(() => {
-    lastMockWS = null
-    // Use a regular function (not arrow) so `new MockWS(url)` works as a constructor
-    const MockWS = vi.fn(function (this: Record<string, unknown>) {
-      this.binaryType = 'arraybuffer'
-      this.readyState = 1 // OPEN
-      this.onopen = null
-      this.onmessage = null
-      this.onclose = null
-      this.onerror = null
-      this.send = vi.fn()
-      this.close = vi.fn()
-      // eslint-disable-next-line @typescript-eslint/no-this-alias
-      lastMockWS = this
-    }) as unknown as typeof WebSocket
-    vi.stubGlobal('WebSocket', MockWS)
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('constructs successfully when only onOutput provided (TerminalPanel pattern)', () => {
-    // All chat callbacks are intentionally omitted — this is TerminalPanel's usage pattern
-    const callbacks: RelayClientCallbacks = { onOutput: vi.fn() }
-    expect(() => new RelayClient(34115, 'sess-1', callbacks)).not.toThrow()
-  })
-
-  it('does not throw when a chat frame arrives and onChat is not provided', () => {
-    const callbacks: RelayClientCallbacks = { onOutput: vi.fn() }
-    const client = new RelayClient(34115, 'sess-1', callbacks)
-
-    const chatFrame = buildChatFrame({ content: 'test backward compat' })
-    const buf = chatFrame.buffer.slice(
-      chatFrame.byteOffset,
-      chatFrame.byteOffset + chatFrame.byteLength,
-    ) as ArrayBuffer
-
-    // onmessage is set by RelayClient constructor; simulate incoming chat frame
-    expect(() => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      lastMockWS.onmessage?.({ data: buf })
-    }).not.toThrow()
-
+    expect(onOutput).not.toHaveBeenCalled()
+    lastMockWS.onmessage?.({ data: new Uint8Array([MSG_OUTPUT, 0x41]).buffer as ArrayBuffer })
+    expect(onOutput).toHaveBeenCalledTimes(1)
+    expect(Array.from(onOutput.mock.calls[0][0] as Uint8Array)).toEqual([0x41])
     client.close()
   })
 })
-
-// ─── Phase 161 Plan 02: RelayClient.sendAliasSet ─────────────────────────────
-
-describe('RelayClient.sendAliasSet (Phase 161-02)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let lastMockWS: any
-
-  beforeEach(() => {
-    lastMockWS = null
-    const MockWS = vi.fn(function (this: Record<string, unknown>) {
-      this.binaryType = 'arraybuffer'
-      this.readyState = 1 // OPEN
-      this.onopen = null
-      this.onmessage = null
-      this.onclose = null
-      this.onerror = null
-      this.send = vi.fn()
-      this.close = vi.fn()
-      // eslint-disable-next-line @typescript-eslint/no-this-alias
-      lastMockWS = this
-    }) as unknown as typeof WebSocket
-    // WebSocket.OPEN === 1 — set on the mock so the readyState guard resolves correctly
-    ;(MockWS as any).OPEN = 1
-    vi.stubGlobal('WebSocket', MockWS)
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('calls ws.send once with a Uint8Array [0x34, ...JSON] where body parses to {alias:"ken"}', () => {
-    const client = new RelayClient(34115, 'sess-1', { onOutput: vi.fn() })
-    client.sendAliasSet('ken')
-    expect(lastMockWS.send).toHaveBeenCalledTimes(1)
-    const arg = lastMockWS.send.mock.calls[0][0] as Uint8Array
-    expect(arg).toBeInstanceOf(Uint8Array)
-    expect(arg[0]).toBe(0x34)
-    const body = new TextDecoder().decode(arg.slice(1))
-    expect(JSON.parse(body)).toEqual({ alias: 'ken' })
-    client.close()
-  })
-
-  it('does not call ws.send when readyState is not OPEN (CONNECTING = 0)', () => {
-    const client = new RelayClient(34115, 'sess-1', { onOutput: vi.fn() })
-    lastMockWS.readyState = 0 // CONNECTING
-    client.sendAliasSet('ken')
-    expect(lastMockWS.send).not.toHaveBeenCalled()
-    client.close()
-  })
-
-  it('sends unicode aliases through encodeAliasSetFrame unchanged', () => {
-    const client = new RelayClient(34115, 'sess-1', { onOutput: vi.fn() })
-    client.sendAliasSet('café 🦊')
-    expect(lastMockWS.send).toHaveBeenCalledTimes(1)
-    const arg = lastMockWS.send.mock.calls[0][0] as Uint8Array
-    const body = new TextDecoder().decode(arg.slice(1))
-    expect(JSON.parse(body)).toEqual({ alias: 'café 🦊' })
-    client.close()
-  })
-})
-
-// ─── Phase 157 VIEW-04: 0x02 MsgResize dispatch → onResize callback ───────────
 
 describe('RelayClient Phase 157 — 0x02 MsgResize dispatch', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -562,91 +293,6 @@ describe('RelayClient Phase 157 — 0x02 MsgResize dispatch', () => {
     const client = new RelayClient(34115, 'sess-host', callbacks)
 
     const frame = new Uint8Array([0x02, 0, 80, 0, 24])
-    expect(() => {
-      lastMockWS.onmessage?.({ data: frame.buffer as ArrayBuffer })
-    }).not.toThrow()
-
-    client.close()
-  })
-})
-
-// ─── Phase 161 Plan 02: MSG_SELF (0x37) / onSelf callback ─────────────────────
-
-describe('MSG_SELF constant (Phase 161-02)', () => {
-  it('MSG_SELF is 0x37', () => {
-    expect(MSG_SELF).toBe(0x37)
-  })
-})
-
-describe('parseServerFrame — MsgSelf (0x37) (Phase 161-02)', () => {
-  it('decodes a MsgSelf (0x37) frame into a self variant with personKey and alias', () => {
-    const body = JSON.stringify({ personKey: 'tn:web', alias: 'guest' })
-    const encoded = new TextEncoder().encode(body)
-    const data = new Uint8Array([0x37, ...encoded])
-    const result = parseServerFrame(data)
-    expect(result.type).toBe('self')
-    if (result.type === 'self') {
-      expect(result.personKey).toBe('tn:web')
-      expect(result.alias).toBe('guest')
-    }
-  })
-
-  it('returns unknown for a malformed/short 0x37 body (invalid JSON)', () => {
-    const data = new Uint8Array([0x37, ...new TextEncoder().encode('bad{')])
-    const result = parseServerFrame(data)
-    expect(result.type).toBe('unknown')
-  })
-})
-
-describe('RelayClient onSelf callback dispatch (Phase 161-02)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let lastMockWS: any
-
-  beforeEach(() => {
-    lastMockWS = null
-    const MockWS = vi.fn(function (this: Record<string, unknown>) {
-      this.binaryType = 'arraybuffer'
-      this.readyState = 1 // OPEN
-      this.onopen = null
-      this.onmessage = null
-      this.onclose = null
-      this.onerror = null
-      this.send = vi.fn()
-      this.close = vi.fn()
-      // eslint-disable-next-line @typescript-eslint/no-this-alias
-      lastMockWS = this
-    }) as unknown as typeof WebSocket
-    ;(MockWS as any).OPEN = 1
-    vi.stubGlobal('WebSocket', MockWS)
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('fires onSelf(personKey, alias) exactly once when a 0x37 frame arrives', () => {
-    const onSelfFn = vi.fn()
-    const client = new RelayClient(34115, 'sess-self', { onOutput: vi.fn(), onSelf: onSelfFn })
-
-    const body = JSON.stringify({ personKey: 'tn:web', alias: 'guest' })
-    const encoded = new TextEncoder().encode(body)
-    const frame = new Uint8Array([0x37, ...encoded])
-    lastMockWS.onmessage?.({ data: frame.buffer as ArrayBuffer })
-
-    expect(onSelfFn).toHaveBeenCalledTimes(1)
-    expect(onSelfFn).toHaveBeenCalledWith('tn:web', 'guest')
-
-    client.close()
-  })
-
-  it('does not throw when onSelf is omitted and a 0x37 frame arrives', () => {
-    const callbacks: RelayClientCallbacks = { onOutput: vi.fn() }
-    const client = new RelayClient(34115, 'sess-noself', callbacks)
-
-    const body = JSON.stringify({ personKey: 'tn:web', alias: 'guest' })
-    const encoded = new TextEncoder().encode(body)
-    const frame = new Uint8Array([0x37, ...encoded])
-
     expect(() => {
       lastMockWS.onmessage?.({ data: frame.buffer as ArrayBuffer })
     }).not.toThrow()
