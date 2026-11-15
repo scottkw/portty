@@ -112,6 +112,8 @@ export function ExchangeJoinCodeAtURL(remoteBaseURL: string, code: string): Prom
 export function RegisterRemoteCap(sessionID: string, baseURL: string, capToken: string): Promise<void>
 // Phase 146-05 — held-cap reuse: read cap-bearing open URL from daemon RemoteCapStore.
 export function OpenRemoteSessionURL(sessionID: string): Promise<string>
+// Portty 02-10 — NET-01 banner action: open -a Tailscale, else the download page.
+export function OpenTailscale(): Promise<void>
 
 // Local network mode bound methods
 export function GetLocalNetworkPassword(): Promise<string>

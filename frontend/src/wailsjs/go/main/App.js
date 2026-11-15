@@ -45,6 +45,8 @@ export const OpenDirectoryDialog  = (defaultDir)            => Call('main.App.Op
 
 // Tailscale health bound method
 export const GetTailscaleStatus   = ()                      => Call('main.App.GetTailscaleStatus', [])
+// Portty 02-10 — NET-01 banner action (fixed argv in Go).
+export const OpenTailscale        = ()                      => Call('main.App.OpenTailscale', [])
 
 // Version bound method
 export const GetVersion           = ()                      => Call('main.App.GetVersion', [])

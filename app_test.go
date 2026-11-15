@@ -1006,3 +1006,39 @@ func TestGetRemoteSessionsWithMeta_ReachableField(t *testing.T) {
 		_ = p.Reachable
 	}
 }
+
+// TestOpenTailscale_OpensApp: the app is opened by its fixed name and the
+// download page is not touched (NET-01, T-02-30).
+func TestOpenTailscale_OpensApp(t *testing.T) {
+	var gotName string
+	urlCalled := false
+	app := &App{
+		openAppFunc: func(name string) error { gotName = name; return nil },
+		openURLFunc: func(string) { urlCalled = true },
+	}
+	if err := app.OpenTailscale(); err != nil {
+		t.Fatalf("OpenTailscale: %v", err)
+	}
+	if gotName != "Tailscale" {
+		t.Errorf("app name = %q, want %q", gotName, "Tailscale")
+	}
+	if urlCalled {
+		t.Error("download URL opened although the app opened")
+	}
+}
+
+// TestOpenTailscale_FallsBackToDownloadURL: when the app cannot be opened,
+// the fixed download URL opens instead and no error reaches the frontend.
+func TestOpenTailscale_FallsBackToDownloadURL(t *testing.T) {
+	var gotURL string
+	app := &App{
+		openAppFunc: func(string) error { return fmt.Errorf("Unable to find application named 'Tailscale'") },
+		openURLFunc: func(url string) { gotURL = url },
+	}
+	if err := app.OpenTailscale(); err != nil {
+		t.Fatalf("OpenTailscale: %v", err)
+	}
+	if gotURL != "https://tailscale.com/download/mac" {
+		t.Errorf("fallback URL = %q, want the Tailscale download page", gotURL)
+	}
+}

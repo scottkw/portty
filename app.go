@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -105,6 +106,11 @@ type App struct {
 	tailscaleCheckFunc func(context.Context) webserver.TailscaleHealth
 	healthMu           sync.Mutex
 	lastHealth         *webserver.TailscaleHealth
+
+	// openAppFunc and openURLFunc are the OpenTailscale seams; nil means
+	// `open -a <name>` and runtime.BrowserOpenURL.
+	openAppFunc func(name string) error
+	openURLFunc func(url string)
 
 	// seenSessions is every id the exit watcher has listed and not yet
 	// reported via session:exit. Owned by the exit watcher goroutine.
@@ -974,6 +980,29 @@ func (a *App) SetTrayProgress(quartile int) error {
 // frontend has seen and emits the recovery from a transient failure.
 func (a *App) GetTailscaleStatus() webserver.TailscaleHealth {
 	return a.checkTailscaleHealth(context.Background())
+}
+
+// OpenTailscale launches the installed Tailscale app, or opens its download
+// page if that fails (NET-01: it never installs or configures anything). The
+// argv and URL are fixed; no frontend value reaches exec (T-02-30).
+func (a *App) OpenTailscale() error {
+	openApp := a.openAppFunc
+	if openApp == nil {
+		openApp = func(name string) error { return exec.Command("open", "-a", name).Run() }
+	}
+	if err := openApp("Tailscale"); err == nil {
+		return nil
+	}
+	openURL := a.openURLFunc
+	if openURL == nil {
+		openURL = func(url string) {
+			if a.ctx != nil {
+				runtime.BrowserOpenURL(a.ctx, url)
+			}
+		}
+	}
+	openURL("https://tailscale.com/download/mac")
+	return nil
 }
 
 func (a *App) tailscaleCheck(ctx context.Context) webserver.TailscaleHealth {
