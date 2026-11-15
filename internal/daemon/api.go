@@ -172,8 +172,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("PATCH /settings/shell-web-share-warning-enabled", a.handleSetShellWebShareWarningEnabled)
 	a.mux.HandleFunc("GET /settings/shell-path", a.handleGetShellPath)
 	a.mux.HandleFunc("PATCH /settings/shell-path", a.handleUpdateShellPath)
-	a.mux.HandleFunc("GET /settings/auto-close-session", a.handleGetAutoCloseSession)
-	a.mux.HandleFunc("PATCH /settings/auto-close-session", a.handleSetAutoCloseSession)
 	a.mux.HandleFunc("GET /settings/plugins", a.handleGetPluginSettings)
 	a.mux.HandleFunc("PATCH /settings/plugins", a.handleSetPluginSettings)
 	a.mux.HandleFunc("PATCH /settings/search-config", a.handleSetSearchConfig)
@@ -973,22 +971,6 @@ func (a *API) handleUpdateShellPath(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) handleGetAutoCloseSession(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"autoCloseSession": a.engine.GetAutoCloseSession()})
-}
-
-func (a *API) handleSetAutoCloseSession(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		AutoCloseSession bool `json:"autoCloseSession"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	a.engine.SetAutoCloseSession(req.AutoCloseSession)
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // handleGetPluginSettings returns the engine's current PluginSettings as a
 // JSON object (direct struct shape — no wrapper map).
 func (a *API) handleGetPluginSettings(w http.ResponseWriter, r *http.Request) {
@@ -1024,8 +1006,8 @@ func (a *API) handleSetPluginSettings(w http.ResponseWriter, r *http.Request) {
 // mirrors handleSetPluginSettings: 8 KiB body cap + DisallowUnknownFields.
 //
 // The route is PATCH /settings/search-config — sibling to /settings/plugins —
-// chosen for symmetry with /settings/auto-close-session (sub-key-style PATCH
-// routes elsewhere in this API).
+// chosen for symmetry with the other sub-key-style PATCH /settings/* routes
+// (e.g. /settings/shell-web-share-warning-enabled).
 func (a *API) handleSetSearchConfig(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 

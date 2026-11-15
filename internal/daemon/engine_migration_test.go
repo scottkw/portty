@@ -225,10 +225,10 @@ func TestSettingsMigration_FilesReadSchemaVersionRewrite(t *testing.T) {
 }
 
 // TestSettingsMigration_LegacyAgentHubV42 loads a real-shaped AgentHub v4.2
-// settings.json that still carries the removed "filesWrite" key (plus agent
-// cliPaths and notifyOnWaiting). Old settings must load without error, the
-// unknown key is ignored, the kept values survive, and the next save drops
-// "filesWrite".
+// settings.json that still carries the removed "filesWrite" and
+// "autoCloseSession" keys (plus agent cliPaths and notifyOnWaiting). Old
+// settings must load without error, the unknown keys are ignored, the kept
+// values survive, and the next save drops both removed keys.
 func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	dir := t.TempDir()
 	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "settings_agenthub_v4.2.json"))
@@ -277,6 +277,11 @@ func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	}
 	if _, ok := onDisk["filesWrite"]; ok {
 		t.Error("saved settings.json still contains filesWrite; the removed key should be dropped on save")
+	}
+	// Portty 01-10 (CONTEXT Amendment 2): the auto-close toggle is gone; the
+	// legacy key loads without error and is dropped on save.
+	if _, ok := onDisk["autoCloseSession"]; ok {
+		t.Error("saved settings.json still contains autoCloseSession; the removed key should be dropped on save")
 	}
 	if onDisk["shellPath"] != "/bin/zsh" {
 		t.Errorf("saved shellPath = %v, want /bin/zsh", onDisk["shellPath"])

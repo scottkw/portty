@@ -48,8 +48,8 @@ export interface TerminalChatHostProps {
  *
  * D-09: ChatPanel is always-mounted so unread messages accrue while drawer is closed.
  *
- * The host wraps ONLY TerminalPanel — ExitCountdownBanner and StatusBar stay as
- * siblings in App.tsx so the absolute drawer (top:0; bottom:0) does not cover them.
+ * The host wraps ONLY TerminalPanel — StatusBar stays as a
+ * sibling in App.tsx so the absolute drawer (top:0; bottom:0) does not cover it.
  */
 export function TerminalChatHost({
   sessionId,

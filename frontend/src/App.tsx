@@ -16,14 +16,12 @@ import {
   GetRelayPort,
   ToggleWebServing,
   IsWebServerRunning,
-  GetSessionStatus,
   GetTailscaleStatus,
   RetryDaemon,
   GetDaemonError,
   GetRemoteSessionsWithMeta,
   GetWebServerMode,
   GetLastUpdateInfo,
-  GetAutoCloseSession,
   GetStayOnHubAfterCreate,
   GetPluginSettings,
   GetShellWebShareWarned,
@@ -57,9 +55,6 @@ import { UpdateBanner } from './components/UpdateBanner'
 import type { UpdateInfo } from './components/UpdateBanner'
 import { WebGLRecoveryBanner } from './components/WebGLRecoveryBanner'
 import { PluginToggleBanner } from './components/PluginToggleBanner'
-import { ExitToast } from './components/ExitToast'
-import type { ExitState } from './components/ExitToast'
-import { ExitCountdownBanner } from './components/ExitCountdownBanner'
 import { QuitConfirmModal } from './components/QuitConfirmModal'
 import { ALLOWED_THEMES } from './themes'
 import {
@@ -128,8 +123,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   const [webServerRunning, setWebServerRunning] = useState(false)
   // Track web server mode: 'tailscale' | 'local' | null
   const [webServerMode, setWebServerMode] = useState<'tailscale' | 'local' | null>(null)
-  // Track live status per session: sessionId -> status string
-  const [sessionStatuses, setSessionStatuses] = useState<Record<string, string>>({})
   // Track which session's QR modal is open (null = none)
   // Track font size per session: sessionId -> fontSize (pixels)
   const [fontSizes, setFontSizes] = useState<Record<string, number>>({})
@@ -247,20 +240,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     setPluginToggleBanners((prev) => Array.from(new Set([...prev, ...kinds])))
   }, [])
 
-  // Session exit state: per-session exit info for toast/banner/countdown (Phase 84)
-  const [sessionExits, setSessionExits] = useState<Record<string, ExitState>>({})
   // Quit confirmation modal state (Phase 85)
   const [showQuitModal, setShowQuitModal] = useState(false)
-  const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string; status: string }>>([])
-  const countdownTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
-  // Auto-close setting (D-11): loaded on mount, default true
-  // Stored as a ref (not state) because it's only read inside the EventsOn callback
-  // which runs in a [] deps useEffect — a ref avoids stale closures without the
-  // setAutoCloseEnabled(current => ...) trick that triggers TS6133.
-  const autoCloseRef = useRef(true)
+  const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string }>>([])
   // Stay-on-hub-after-create setting (Phase 168 UX-01): loaded on mount,
   // default false (auto-switch, today's behavior). Stored as a ref (not
-  // state) — same rationale as autoCloseRef, avoids stale closures inside
+  // state) — avoids stale closures inside
   // createTab without needing to add it to the useCallback deps array.
   const stayOnHubAfterCreateRef = useRef(false)
   // Ref to handleCloseTab so the session:exit event handler (with [] deps) can call
@@ -519,9 +504,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           }, 500)
         }
 
-        // Load auto-close preference (Phase 84 D-11)
-        GetAutoCloseSession().then(val => { autoCloseRef.current = val }).catch(() => {})
-
         // Load stay-on-hub-after-create preference (Phase 168 UX-01)
         GetStayOnHubAfterCreate().then(val => { stayOnHubAfterCreateRef.current = val }).catch(() => {})
 
@@ -555,15 +537,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           setTabs(restoredTabs)
           setActiveId(restoredTabs[0].id)
 
-          // Seed initial status for each restored session.
-          sessions.forEach((s) => {
-            GetSessionStatus(s.id)
-              .then((st) => {
-                setSessionStatuses((prev) => ({ ...prev, [s.id]: st }))
-              })
-              .catch(() => { /* status unavailable — leave unset */ })
-          })
-
           // Seed webEnabled state from daemon's SessionInfo.webEnabled field (SERVE-02 restore).
           if (running) {
             const enabledMap: Record<string, boolean> = {}
@@ -583,14 +556,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       }
     }
     void init()
-
-    // Subscribe to live session:status events from the Go backend.
-    const offStatus = EventsOn(
-      'session:status',
-      (data: { sessionId: string; status: string }) => {
-        setSessionStatuses((prev) => ({ ...prev, [data.sessionId]: data.status }))
-      },
-    )
 
     const offHealth = EventsOn('tailscale:health', (h: {
       installed: boolean
@@ -691,7 +656,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         ListSessions().then(sessions => {
           const activeSessions = sessions
             .filter((s: SessionInfo) => s.state !== 'stopped')
-            .map((s: SessionInfo) => ({ id: s.id, name: s.name || 'shell', status: s.state || 'running' }))
+            .map((s: SessionInfo) => ({ id: s.id, name: s.name || 'shell' }))
           setQuitSessions(activeSessions)
           setShowQuitModal(true)
         }).catch(() => {
@@ -703,16 +668,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     })
 
     return () => {
-      offStatus()
       offHealth()
       offDaemonError()
       offPlugins()
       cancelTrayFocus()
       offExit()
       offQuit()
-      // Clear all countdown timers
-      Object.values(countdownTimers.current).forEach(clearInterval)
-      countdownTimers.current = {}
       if (upgradePollerRef.current !== null) {
         clearInterval(upgradePollerRef.current)
         upgradePollerRef.current = null
@@ -816,10 +777,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
 
   const handleCloseTab = useCallback(async (id: string) => {
     // Disable web serving for this session before closing.
-    // For naturally-exited sessions (in sessionExits), skip immediate disable —
-    // the daemon's exit watcher already started a 10-second grace period (D-12)
-    // so web viewers can see the final output before serving stops.
-    if (webEnabled[id] && !sessionExits[id]) {
+    if (webEnabled[id]) {
       try { await ToggleWebServing(id, false) } catch (_) { /* ignore */ }
       setWebEnabled((prev) => { const n = { ...prev }; delete n[id]; return n })
     }
@@ -838,17 +796,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       }
       return remaining
     })
-    // Clean up session status for the closed session.
-    setSessionStatuses((prev) => { const n = { ...prev }; delete n[id]; return n })
     // Clean up font size for the closed session.
     setFontSizes((prev) => { const n = { ...prev }; delete n[id]; return n })
-    // Clean up exit state and countdown timer (Phase 84)
-    if (countdownTimers.current[id]) {
-      clearInterval(countdownTimers.current[id])
-      delete countdownTimers.current[id]
-    }
-    setSessionExits(prev => { const n = { ...prev }; delete n[id]; return n })
-  }, [activeId, webEnabled, sessionExits])
+  }, [activeId, webEnabled])
   // Keep the ref in sync so the session:exit event handler ([] deps) always calls the latest version
   handleCloseTabRef.current = handleCloseTab
 
@@ -922,31 +872,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       const current = prev[sessionId] ?? DEFAULT_FONT_SIZE
       const next = Math.max(6, Math.min(32, current + delta))
       return { ...prev, [sessionId]: next }
-    })
-  }, [])
-
-  const handleKeepOpen = useCallback((sessionId: string) => {
-    // Cancel countdown (D-02)
-    if (countdownTimers.current[sessionId]) {
-      clearInterval(countdownTimers.current[sessionId])
-      delete countdownTimers.current[sessionId]
-    }
-    setSessionExits(prev => {
-      const entry = prev[sessionId]
-      if (!entry) return prev
-      return { ...prev, [sessionId]: { ...entry, cancelled: true, countdown: -1 } }
-    })
-  }, [])
-
-  const handleDismissExit = useCallback((sessionId: string) => {
-    // Remove toast entry
-    if (countdownTimers.current[sessionId]) {
-      clearInterval(countdownTimers.current[sessionId])
-      delete countdownTimers.current[sessionId]
-    }
-    setSessionExits(prev => {
-      const { [sessionId]: _, ...rest } = prev
-      return rest
     })
   }, [])
 
@@ -1313,11 +1238,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         }))
         setTabs(restoredTabs)
         setActiveId(restoredTabs[0].id)
-        sessions.forEach((s) => {
-          GetSessionStatus(s.id)
-            .then((st) => setSessionStatuses((prev) => ({ ...prev, [s.id]: st })))
-            .catch(() => {})
-        })
 
         // Seed webEnabled state from daemon's SessionInfo.webEnabled field (SERVE-02 restore).
         if (running) {
@@ -1435,14 +1355,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           onSelect={setActiveId}
           onClose={handleCloseTab}
           onRename={handleRenameTab}
-          sessionStatuses={sessionStatuses}
-          exitCountdowns={
-            Object.fromEntries(
-              Object.entries(sessionExits)
-                .filter(([, e]) => e.exitCode === 0 && !e.cancelled && e.countdown > 0)
-                .map(([id, e]) => [id, e.countdown])
-            )
-          }
           onRequestSave={handleRequestSave}
           tabProgress={tabProgress}
           webMode={mode === 'web'}
@@ -1668,12 +1580,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
                   onRegisterSaver={handleRegisterSaver}
                   onProgressChange={handleProgressChange}
                 />
-                {sessionExits[tab.sessionId] && sessionExits[tab.sessionId].exitCode === 0 && !sessionExits[tab.sessionId].cancelled && sessionExits[tab.sessionId].countdown > 0 && (
-                  <ExitCountdownBanner
-                    countdown={sessionExits[tab.sessionId].countdown}
-                    onKeepOpen={() => handleKeepOpen(tab.sessionId)}
-                  />
-                )}
                 <StatusBar
                   sessionId={tab.sessionId}
                   webServerRunning={webServerRunning}
@@ -1750,11 +1656,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           }}
         />
       )}
-      <ExitToast
-        exits={sessionExits}
-        onKeepOpen={handleKeepOpen}
-        onDismiss={handleDismissExit}
-      />
     </div>
   )
 }

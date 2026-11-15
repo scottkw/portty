@@ -422,31 +422,7 @@ func (a *App) KillSession(id string) error {
 	if a.client == nil {
 		return fmt.Errorf("daemon not connected")
 	}
-	err := a.client.KillSession(id)
-	if err != nil {
-		return err
-	}
-	// Emit the status event for the frontend (same payload shape as before).
-	if a.ctx != nil && a.ctx.Value("frontend") != nil {
-		runtime.EventsEmit(a.ctx, "session:status", map[string]string{
-			"sessionId": id,
-			"status":    "exited", // killed sessions read as exited
-		})
-	}
-	return nil
-}
-
-// GetSessionStatus returns the session status ("running", "exited" or "errored").
-// Returns "running" if the session is not found (conservative default).
-func (a *App) GetSessionStatus(sessionID string) string {
-	if a.client == nil {
-		return "running"
-	}
-	s, err := a.client.GetSessionStatus(sessionID)
-	if err != nil {
-		return "running" // conservative default
-	}
-	return s
+	return a.client.KillSession(id)
 }
 
 // GetSessionTailLines returns the last n plain-text lines from the session's
@@ -671,27 +647,6 @@ func (a *App) SetNotifyOnWaiting(val bool) error {
 		return fmt.Errorf("daemon not connected")
 	}
 	return a.client.SetNotifyOnWaiting(val)
-}
-
-// GetAutoCloseSession returns the persisted auto-close-on-exit preference.
-// Returns true (enabled) when daemon is not connected (conservative default per D-11).
-func (a *App) GetAutoCloseSession() bool {
-	if a.client == nil {
-		return true
-	}
-	val, err := a.client.GetAutoCloseSession()
-	if err != nil {
-		return true // default: enabled
-	}
-	return val
-}
-
-// SetAutoCloseSession persists the auto-close-on-exit preference.
-func (a *App) SetAutoCloseSession(val bool) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.SetAutoCloseSession(val)
 }
 
 // GetPluginSettings returns the persisted plugin enable/disable preferences.

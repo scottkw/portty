@@ -36,7 +36,6 @@ export const AcknowledgeCTDisclosure = ()                   => Call('main.App.Ac
 // QR code and status bound methods
 export const GetSessionQRCode     = (sessionID)             => Call('main.App.GetSessionQRCode', [sessionID])
 export const GetWebServerQRCode   = ()                      => Call('main.App.GetWebServerQRCode', [])
-export const GetSessionStatus     = (sessionID)             => Call('main.App.GetSessionStatus', [sessionID])
 // Phase 132 / CARD-07 — throttled tail snapshot for Hub mini-preview. n clamped to [1..20].
 export const GetSessionTailLines  = (id, n)                 => Call('main.App.GetSessionTailLines', [id, n])
 // Phase 139 / CARD-05 — VT-emulator styled tail: per-cell color+bold grid. n clamped to [1..20].
@@ -89,10 +88,6 @@ export const GetCLIPaths             = ()                   => Call('main.App.Ge
 // Start-minimized bound methods (TRAY-02/03)
 export const GetStartMinimized       = ()                   => Call('main.App.GetStartMinimized', [])
 export const SetStartMinimized       = (val)                => Call('main.App.SetStartMinimized', [val])
-
-// Auto-close session bound methods (SESS-01/02)
-export const GetAutoCloseSession     = ()                   => Call('main.App.GetAutoCloseSession', [])
-export const SetAutoCloseSession     = (val)                => Call('main.App.SetAutoCloseSession', [val])
 
 // Notify-on-waiting bound methods (Phase 167 / NTF-04)
 export const GetNotifyOnWaiting      = ()                   => Call('main.App.GetNotifyOnWaiting', [])

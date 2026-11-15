@@ -8,7 +8,7 @@ Click the **+ New Session** button in the Hub toolbar to open the session creati
 
 ### Running Shell Sessions
 
-Every session is a plain shell session. Shell sessions auto-close when the shell exits naturally.
+Every session is a plain shell session. When the shell exits, for any reason, its tab closes and the session is removed.
 
 ### Switching Between Sessions
 

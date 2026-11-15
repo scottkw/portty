@@ -46,7 +46,6 @@ type SessionEngine struct {
 	shellWebShareWarned         bool           // Phase 101 SHELL-08: user has acknowledged the shell web-share security banner
 	shellWebShareWarningEnabled *bool          // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
 	shellPath                   string         // Phase 107 SHELL-11: user-configured shell binary path; empty = use platform default
-	autoCloseSession            *bool          // nil = default (true); persisted pointer
 	pluginSettings              PluginSettings // populated by loadSettingsFromDisk via defaults-merge
 
 	// pluginSettingsListener (if non-nil) is invoked synchronously by
@@ -90,7 +89,6 @@ type daemonSettings struct {
 	StayOnHubAfterCreate        bool              `json:"stayOnHubAfterCreate,omitempty"` // Phase 168 UX-01: default OFF; zero-value is the correct default (no defaults-merge needed)
 	ShellWebShareWarned         bool              `json:"shellWebShareWarned,omitempty"`
 	ShellPath                   string            `json:"shellPath,omitempty"`
-	AutoCloseSession            *bool             `json:"autoCloseSession,omitempty"`
 	ShellWebShareWarningEnabled *bool             `json:"shellWebShareWarningEnabled,omitempty"` // Phase 150 SET-01: *bool so omitempty omits false; nil → default true (D-08)
 	Plugins                     PluginSettings    `json:"plugins"`
 	SchemaVersion               int               `json:"schemaVersion"`
@@ -155,7 +153,6 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 	e.stayOnHubAfterCreate = s.StayOnHubAfterCreate
 	e.shellWebShareWarned = s.ShellWebShareWarned
 	e.shellPath = s.ShellPath
-	e.autoCloseSession = s.AutoCloseSession
 	e.shellWebShareWarningEnabled = s.ShellWebShareWarningEnabled
 	// nil pointer = not set in settings.json = fresh install → default ON (D-08).
 	// Unlike shellWebShareWarned (plain bool, default false), this new field defaults
@@ -191,7 +188,6 @@ func (e *SessionEngine) saveSettingsToDisk() {
 		StayOnHubAfterCreate:        e.stayOnHubAfterCreate,
 		ShellWebShareWarned:         e.shellWebShareWarned,
 		ShellPath:                   e.shellPath,
-		AutoCloseSession:            e.autoCloseSession,
 		ShellWebShareWarningEnabled: e.shellWebShareWarningEnabled,
 		Plugins:                     e.pluginSettings,
 		SchemaVersion:               CurrentSchemaVersion,
@@ -909,25 +905,6 @@ func (e *SessionEngine) SetShellPath(path string) error {
 	e.saveSettingsToDisk()
 	e.mu.Unlock()
 	return nil
-}
-
-// GetAutoCloseSession returns the auto-close-on-exit preference.
-// Returns true when the setting is absent (nil pointer = default enabled per D-11).
-func (e *SessionEngine) GetAutoCloseSession() bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	if e.autoCloseSession == nil {
-		return true // default: enabled
-	}
-	return *e.autoCloseSession
-}
-
-// SetAutoCloseSession updates and persists the auto-close-on-exit preference.
-func (e *SessionEngine) SetAutoCloseSession(val bool) {
-	e.mu.Lock()
-	e.autoCloseSession = &val
-	e.saveSettingsToDisk()
-	e.mu.Unlock()
 }
 
 // GetPluginSettings returns the current plugin enable/disable preferences.

@@ -472,7 +472,6 @@ func TestSetShellWebShareWarned_Default(t *testing.T) {
 	e.startMinimized = false
 	e.shellWebShareWarned = false
 	e.shellPath = ""
-	e.autoCloseSession = nil
 	e.pluginSettings = defaultPluginSettings()
 
 	if v := e.GetShellWebShareWarned(); v != false {

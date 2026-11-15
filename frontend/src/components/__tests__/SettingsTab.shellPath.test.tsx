@@ -30,8 +30,6 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   // Toggles
   GetStartMinimized: vi.fn().mockResolvedValue(false),
   SetStartMinimized: vi.fn().mockResolvedValue(undefined),
-  GetAutoCloseSession: vi.fn().mockResolvedValue(true),
-  SetAutoCloseSession: vi.fn().mockResolvedValue(undefined),
   // Security
   RegenerateSigningKey: vi.fn().mockResolvedValue(undefined),
   // Plugins
@@ -107,7 +105,6 @@ describe('SHELL-11: Settings → Paths "Shell binary" row', () => {
     vi.mocked(AppMock.IsWebServerRunning).mockResolvedValue(false)
     vi.mocked(AppMock.HasCTDisclosure).mockResolvedValue(true)
     vi.mocked(AppMock.GetStartMinimized).mockResolvedValue(false)
-    vi.mocked(AppMock.GetAutoCloseSession).mockResolvedValue(true)
     vi.mocked(AppMock.OpenFileDialog).mockResolvedValue('')
   })
 

@@ -2,89 +2,12 @@ package daemon
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/scottkw/agenthub/internal/pty"
 )
-
-// TestExitEvent_AutoCloseSession_DefaultIsTrue verifies that GetAutoCloseSession
-// returns true when the setting has never been set (nil pointer = default enabled per D-11).
-func TestExitEvent_AutoCloseSession_DefaultIsTrue(t *testing.T) {
-	e := &SessionEngine{}
-	// autoCloseSession field is nil (zero value)
-	got := e.GetAutoCloseSession()
-	if !got {
-		t.Errorf("GetAutoCloseSession with nil pointer: got false, want true (default enabled)")
-	}
-}
-
-// TestExitEvent_AutoCloseSession_RoundTrip verifies that SetAutoCloseSession
-// persists the value and GetAutoCloseSession returns it correctly.
-func TestExitEvent_AutoCloseSession_RoundTrip(t *testing.T) {
-	e := NewSessionEngine()
-	e.configDir = t.TempDir() // isolate from real settings.json
-
-	// Default is true.
-	if !e.GetAutoCloseSession() {
-		t.Error("initial GetAutoCloseSession: want true, got false")
-	}
-
-	// Set to false.
-	e.SetAutoCloseSession(false)
-	if got := e.GetAutoCloseSession(); got {
-		t.Error("after SetAutoCloseSession(false): want false, got true")
-	}
-
-	// Set back to true.
-	e.SetAutoCloseSession(true)
-	if got := e.GetAutoCloseSession(); !got {
-		t.Error("after SetAutoCloseSession(true): want true, got false")
-	}
-}
-
-// TestExitEvent_AutoCloseSession_Persistence verifies that the auto-close-session
-// setting survives a save/load cycle through settings.json.
-func TestExitEvent_AutoCloseSession_Persistence(t *testing.T) {
-	dir := t.TempDir()
-
-	// Write setting via engine 1, isolated to temp dir.
-	e1 := NewSessionEngine()
-	e1.configDir = dir
-	e1.cliPaths = make(map[string]string) // isolate from real cliPaths
-
-	e1.SetAutoCloseSession(false)
-
-	// Reload via a fresh engine pointed at the same dir.
-	e2 := NewSessionEngine()
-	e2.configDir = dir
-	e2.cliPaths = make(map[string]string)
-	e2.loadSettingsFromDisk(dir)
-
-	if got := e2.GetAutoCloseSession(); got {
-		t.Error("after persist false + reload: want false, got true")
-	}
-
-	// Also verify JSON on disk directly.
-	data, err := os.ReadFile(filepath.Join(dir, "settings.json"))
-	if err != nil {
-		t.Fatalf("read settings.json: %v", err)
-	}
-	var s daemonSettings
-	if err := json.Unmarshal(data, &s); err != nil {
-		t.Fatalf("unmarshal settings.json: %v", err)
-	}
-	if s.AutoCloseSession == nil {
-		t.Fatal("settings.json AutoCloseSession: want *false, got nil")
-	}
-	if *s.AutoCloseSession != false {
-		t.Errorf("settings.json AutoCloseSession: want false, got %v", *s.AutoCloseSession)
-	}
-}
 
 // TestExitEvent_ExitWatcher_TransitionsToStopped verifies that when a session's
 // process exits naturally (hub.Done() fires), the exit watcher goroutine transitions

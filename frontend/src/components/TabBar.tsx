@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { GlobeAltIcon, LockOpenIcon } from '@heroicons/react/24/outline'
-import { normalizeStatus, statusLabel } from '../lib/hubStatus'
 
 export interface Tab {
   id: string
@@ -27,8 +26,6 @@ interface TabBarProps {
    * filename, and calls the SaveTerminalSession Wails RPC.
    */
   onRequestSave?: (tabId: string) => void
-  sessionStatuses?: Record<string, string>
-  exitCountdowns?: Record<string, number>  // sessionId -> seconds remaining
   /**
    * Phase 98 PRG-02 — per-tab progress value (0-100) keyed by sessionId.
    * Populated by App.tsx handleProgressChange; consumed in Wave 3 (Plan 04)
@@ -74,8 +71,6 @@ export function TabBar({
   onClose,
   onRename,
   onRequestSave,
-  sessionStatuses,
-  exitCountdowns,
   tabProgress,
   webMode = false,
   funnelActiveSessions,
@@ -180,21 +175,13 @@ export function TabBar({
       )}
       <div className="tab-list" ref={listRef}>
         {tabs.map((tab) => {
-          const status = normalizeStatus(sessionStatuses?.[tab.sessionId])
           return (
           <div
             key={tab.id}
-            className={`tab${tab.id === activeId ? ' tab--active' : ''}${exitCountdowns?.[tab.sessionId] ? ' tab--exiting' : ''}`}
+            className={`tab${tab.id === activeId ? ' tab--active' : ''}`}
             onClick={() => onSelect(tab.id)}
             title={tab.name}
           >
-            {/* COLORBLIND-SAFE: dot shape carries state (filled circle / hollow circle / rounded square). */}
-            <span
-              className={`tab__status tab__status--${status}`}
-              role="img"
-              title={statusLabel(status)}
-              aria-label={statusLabel(status)}
-            />
             {/* Phase 166 / FUI-03 — tab internet exposure indicator.
                 COLORBLIND-SAFE: GlobeAltIcon shape carries state; color is reinforcement only.
                 Text label is in aria-label + title — not rendered visually (D-09). */}
@@ -243,9 +230,6 @@ export function TabBar({
               >
                 {tab.name}
               </span>
-            )}
-            {exitCountdowns?.[tab.sessionId] && (
-              <span className="tab__countdown">{exitCountdowns[tab.sessionId]}s</span>
             )}
             {tab.sessionId && !webMode && (
               <button

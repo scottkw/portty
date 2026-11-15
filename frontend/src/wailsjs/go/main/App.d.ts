@@ -54,7 +54,6 @@ export function AcknowledgeCTDisclosure(): Promise<void>
 // QR code and status bound methods
 export function GetSessionQRCode(sessionID: string): Promise<string>
 export function GetWebServerQRCode(): Promise<string>
-export function GetSessionStatus(sessionID: string): Promise<string>
 // Phase 132 / CARD-07 — throttled tail snapshot for Hub mini-preview. n clamped to [1..20].
 export function GetSessionTailLines(id: string, n: number): Promise<string[]>
 // Phase 139 / CARD-05 — VT-emulator styled tail: per-cell color+bold grid. n clamped to [1..20].
@@ -140,10 +139,6 @@ export function GetCLIPaths(): Promise<Record<string, string>>
 // Start-minimized bound methods (TRAY-02/03)
 export function GetStartMinimized(): Promise<boolean>
 export function SetStartMinimized(val: boolean): Promise<void>
-
-// Auto-close session bound methods (SESS-01/02)
-export function GetAutoCloseSession(): Promise<boolean>
-export function SetAutoCloseSession(val: boolean): Promise<void>
 
 // Notify-on-waiting bound methods (Phase 167 / NTF-04)
 export function GetNotifyOnWaiting(): Promise<boolean>

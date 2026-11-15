@@ -337,3 +337,12 @@ describe('SET-02: No inline fontSize override on description elements', () => {
     expect(nearStatus).not.toContain("marginTop: '0.25rem'")
   })
 })
+
+// CONTEXT Amendment 2: tabs always close on exit, so there is no auto-close toggle.
+describe('TERM-05: no auto-close toggle', () => {
+  it('Session Behavior has no auto-close toggle or bindings', () => {
+    expect(raw).not.toContain('Auto-close tab on exit')
+    expect(raw).not.toContain('AutoCloseSession')
+    expect(raw).toContain('id="settings-session-behavior"')
+  })
+})

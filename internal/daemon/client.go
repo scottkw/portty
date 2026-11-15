@@ -234,21 +234,6 @@ func (c *DaemonClient) SetShellPath(path string) error {
 		map[string]string{"value": path}, nil)
 }
 
-// GetAutoCloseSession returns the auto-close-on-exit preference.
-func (c *DaemonClient) GetAutoCloseSession() (bool, error) {
-	var resp map[string]bool
-	if err := c.doJSON(http.MethodGet, "/settings/auto-close-session", nil, &resp); err != nil {
-		return true, err // default true on error
-	}
-	return resp["autoCloseSession"], nil
-}
-
-// SetAutoCloseSession persists the auto-close-on-exit preference.
-func (c *DaemonClient) SetAutoCloseSession(val bool) error {
-	return c.doJSON(http.MethodPatch, "/settings/auto-close-session",
-		map[string]bool{"autoCloseSession": val}, nil)
-}
-
 // GetPluginSettings fetches the persisted plugin enable/disable preferences.
 func (c *DaemonClient) GetPluginSettings() (PluginSettings, error) {
 	var resp PluginSettings

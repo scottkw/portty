@@ -41,7 +41,6 @@ func testDaemon(t *testing.T) (*API, *DaemonClient, string) {
 	engine.shellWebShareWarned = false
 	engine.shellWebShareWarningEnabled = nil // nil → default true per D-08 (GetShellWebShareWarningEnabled returns true on nil)
 	engine.shellPath = ""
-	engine.autoCloseSession = nil
 	engine.notifyOnWaiting = false // Phase 167 NTF-04: default OFF; reset so the real on-disk settings.json cannot leak in
 	engine.pluginSettings = defaultPluginSettings()
 	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell

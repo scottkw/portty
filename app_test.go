@@ -745,53 +745,6 @@ func TestHealthPollerStops(t *testing.T) {
 	// on test cleanup. No explicit assertion needed beyond "no hang, no panic".
 }
 
-func TestGetSessionStatus(t *testing.T) {
-	app := testApp(t)
-
-	id, err := app.CreateSession("status-test-tab", "", 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-
-	// GetSessionStatus should return a valid non-empty status string.
-	s := app.GetSessionStatus(id)
-	if s == "" {
-		t.Error("GetSessionStatus returned empty string for active session")
-	}
-
-	// Valid status values.
-	valid := map[string]bool{"running": true, "waiting": true, "idle": true, "errored": true}
-	if !valid[s] {
-		t.Errorf("GetSessionStatus returned invalid status %q", s)
-	}
-}
-
-func TestStatusMap(t *testing.T) {
-	app := testApp(t)
-
-	id1, err := app.CreateSession("tab-1", "", 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession tab-1: %v", err)
-	}
-	id2, err := app.CreateSession("tab-2", "", 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession tab-2: %v", err)
-	}
-
-	s1 := app.GetSessionStatus(id1)
-	s2 := app.GetSessionStatus(id2)
-
-	if s1 == "" || s2 == "" {
-		t.Errorf("expected non-empty statuses; s1=%q s2=%q", s1, s2)
-	}
-
-	// Unknown session returns "running" default.
-	sUnknown := app.GetSessionStatus("nonexistent-id")
-	if sUnknown != "running" {
-		t.Errorf("unknown session status: got %q, want %q", sUnknown, "running")
-	}
-}
-
 // testAppNoDaemon returns an App with no daemon client — simulates a startup
 // failure where EnsureDaemon returned an error before the client was created.
 func testAppNoDaemon(t *testing.T) *App {
@@ -841,16 +794,6 @@ func TestNilClientKillSession(t *testing.T) {
 	err := app.KillSession("any-id")
 	if err == nil {
 		t.Error("expected KillSession to return error with nil client")
-	}
-}
-
-// TestNilClientGetSessionStatus verifies GetSessionStatus returns "running"
-// (no panic) when the daemon client is nil.
-func TestNilClientGetSessionStatus(t *testing.T) {
-	app := testAppNoDaemon(t)
-	s := app.GetSessionStatus("any-id")
-	if s != "running" {
-		t.Errorf("expected GetSessionStatus to return %q with nil client, got %q", "running", s)
 	}
 }
 

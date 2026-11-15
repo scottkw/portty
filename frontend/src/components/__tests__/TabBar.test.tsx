@@ -491,8 +491,9 @@ describe('TabBar funnelActiveSessions (FUI-03)', () => {
   })
 })
 
-// STRP-01 / UI-SPEC section 2: three-state tab dot; legacy and unknown values render as Running.
-describe('TabBar status dot', () => {
+// TERM-05 / CONTEXT Amendment 2: tabs show no session status; the OSC 9;4
+// progress underline stays.
+describe('TabBar shows no session status', () => {
   let container: HTMLElement
   let root: ReturnType<typeof createRoot>
 
@@ -501,19 +502,14 @@ describe('TabBar status dot', () => {
     container.remove()
   })
 
-  it.each([
-    ['running', 'running', 'Running'],
-    ['exited', 'exited', 'Exited'],
-    ['errored', 'errored', 'Error'],
-    ['idle', 'running', 'Running'],
-    ['waiting', 'running', 'Running'],
-    ['', 'running', 'Running'],
-    ['bogus', 'running', 'Running'],
-  ])('status %j renders tab__status--%s labeled %s', (raw, cls, label) => {
-    ;({ container, root } = renderTabBarWithTabs({ sessionStatuses: { sess1: raw } }))
-    const dot = container.querySelector('.tab__status') as HTMLElement
-    expect(dot.className).toBe(`tab__status tab__status--${cls}`)
-    expect(dot.getAttribute('title')).toBe(label)
-    expect(dot.getAttribute('aria-label')).toBe(label)
+  it('renders no status dot or status label inside a tab, while the progress underline still renders', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabProgress: { sess1: 50 } }))
+    const tab = container.querySelector('.tab') as HTMLElement
+    expect(tab.querySelector('[role="img"]')).toBeNull()
+    expect(tab.textContent).not.toMatch(/Running|Exited|Error/)
+    expect(tab.querySelector('[aria-label="Running"], [aria-label="Exited"], [aria-label="Error"]')).toBeNull()
+    const bar = container.querySelector('[data-testid="tab-progress-tab1"]') as HTMLElement
+    expect(bar).not.toBeNull()
+    expect(bar.style.transform).toBe('scaleX(0.5)')
   })
 })

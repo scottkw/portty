@@ -42,8 +42,6 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   GetWebServerQRCode: vi.fn().mockResolvedValue(''),
   GetStartMinimized: vi.fn().mockResolvedValue(false),
   SetStartMinimized: vi.fn().mockResolvedValue(undefined),
-  GetAutoCloseSession: vi.fn().mockResolvedValue(true),
-  SetAutoCloseSession: vi.fn().mockResolvedValue(undefined),
   RegenerateSigningKey: vi.fn().mockResolvedValue(undefined),
   GetPluginSettings: vi.fn().mockResolvedValue({ searchConfig: {}, webLinksConfig: {}, imageConfig: {} }),
   SetPluginSettings: vi.fn().mockResolvedValue(undefined),

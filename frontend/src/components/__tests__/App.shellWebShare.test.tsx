@@ -55,8 +55,7 @@ describe('App.tsx shell web-share warned state (Phase 101-03 SHELL-07/SHELL-08)'
 
   it('calls GetShellWebShareWarned in a mount useEffect to seed shellWebShareWarned', () => {
     // The mount-time hydration must invoke GetShellWebShareWarned() and feed
-    // the result into setShellWebShareWarned via a .then() chain (matching
-    // the Phase 81 D-11 GetAutoCloseSession precedent).
+    // the result into setShellWebShareWarned via a .then() chain.
     expect(raw).toContain('GetShellWebShareWarned()')
     // The call-site (NOT the doc comment) must be followed within ~250 chars
     // by a .then(...) that invokes setShellWebShareWarned.

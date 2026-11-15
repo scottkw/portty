@@ -14,8 +14,6 @@ import {
   GetWebServerQRCode,
   GetStartMinimized,
   SetStartMinimized,
-  GetAutoCloseSession,
-  SetAutoCloseSession,
   // Phase 167 NTF-04 — awaiting-input native notification toggle
   GetNotifyOnWaiting,
   SetNotifyOnWaiting,
@@ -108,12 +106,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
   const [toggleSaving, setToggleSaving] = useState(false)
   const [toggleError, setToggleError] = useState<string | null>(null)
 
-  // Auto-close-on-exit toggle state (Phase 84 D-11)
-  const [autoCloseSession, setAutoCloseSession] = useState(true) // default enabled
-  const [autoCloseLoaded, setAutoCloseLoaded] = useState(false)
-  const [autoCloseSaving, setAutoCloseSaving] = useState(false)
-  const [autoCloseError, setAutoCloseError] = useState<string | null>(null)
-
   // Notify-on-waiting toggle state (Phase 167 NTF-04) — default OFF (D-04 locked decision).
   const [notifyOnWaiting, setNotifyOnWaiting] = useState(false)
   const [notifyOnWaitingLoaded, setNotifyOnWaitingLoaded] = useState(false)
@@ -203,14 +195,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
       setStartMinimized(val)
       setToggleLoaded(true)
     }).catch(() => setToggleLoaded(true))
-  }, [])
-
-  // Load auto-close preference on mount (Phase 84 D-11)
-  useEffect(() => {
-    GetAutoCloseSession().then(val => {
-      setAutoCloseSession(val)
-      setAutoCloseLoaded(true)
-    }).catch(() => setAutoCloseLoaded(true))
   }, [])
 
   // Load notify-on-waiting preference on mount (Phase 167 NTF-04).
@@ -382,20 +366,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
       setToggleError('Could not save preference \u2014 ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setToggleSaving(false)
-    }
-  }
-
-  async function handleToggleAutoClose() {
-    const next = !autoCloseSession
-    setAutoCloseSaving(true)
-    setAutoCloseError(null)
-    try {
-      await SetAutoCloseSession(next)
-      setAutoCloseSession(next)
-    } catch (err) {
-      setAutoCloseError('Could not save preference \u2014 ' + (err instanceof Error ? err.message : String(err)))
-    } finally {
-      setAutoCloseSaving(false)
     }
   }
 
@@ -576,34 +546,8 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
           )}
         </div>
 
-        {/* Session Behavior section (Phase 84 D-11) */}
+        {/* Session Behavior section */}
         <h3 id="settings-session-behavior">Session Behavior</h3>
-        <div className="settings-panel__field-group">
-          {autoCloseLoaded && (
-            <label
-              className={`settings-panel__toggle-row${autoCloseSession ? ' settings-panel__toggle-row--checked' : ''}`}
-              htmlFor="autoCloseSession"
-              style={autoCloseSaving ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-            >
-              <span className="settings-panel__toggle-track">
-                <span className="settings-panel__toggle-thumb" />
-              </span>
-              <span className="settings-panel__toggle-label">Auto-close tab on exit</span>
-            </label>
-          )}
-          <input
-            type="checkbox"
-            id="autoCloseSession"
-            className="settings-panel__toggle-input"
-            checked={autoCloseSession}
-            onChange={() => void handleToggleAutoClose()}
-          />
-          <p className="settings-panel__description">
-            Automatically close the tab 5 seconds after an agent exits with code 0.
-          </p>
-          {autoCloseError && <p className="settings-panel__error">{autoCloseError}</p>}
-        </div>
-
         {/* Phase 168 UX-01 — stay-on-hub-after-create toggle (Session Behavior, D-08/D-09) */}
         <div className="settings-panel__field-group">
           {stayOnHubAfterCreateLoaded && (
