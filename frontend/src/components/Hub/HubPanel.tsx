@@ -514,27 +514,23 @@ export function HubPanel({
           The card's Share button still opens it via the setShareModalSession
           controlled prop. */}
 
-      {modalState && relayPort !== undefined && relayPort > 0 && (() => {
-        // Compute isRemote at render time (same rule as handleCardClick).
-        // GAP-134-A: provenance (remoteIdSet), NOT hostname — local sessions carry the
-        // machine hostname. This discriminator routes remote sessions through the daemon
-        // WS proxy seam added in Plan 07 (RelayClient opts.remote → /api/relay/remote/{id}/ws).
-        const isRemote = remoteIdSet.has(modalState.session.id)
-        return (
-          <HubModal
-            session={modalState.session}
-            sourceRect={modalState.sourceRect}
-            relayPort={relayPort}
-            fontSize={fontSizes?.[modalState.session.id] ?? DEFAULT_FONT_SIZE}
-            theme={terminalTheme}
-            pluginConfig={pluginConfig}
-            remote={isRemote}
-            onFontSizeChange={onFontSizeChange ? (delta) => onFontSizeChange(modalState.session.id, delta) : undefined}
-            onClose={() => setModalState(null)}
-            onUnreadChange={handleUnreadChange}
-          />
-        )
-      })()}
+      {/* Route by the provenance recorded at open (GAP-134-A: not hostname). The
+          remote list is best-effort, so it must not flip an open remote modal to
+          local; remote sessions go through the daemon WS proxy seam (Plan 07). */}
+      {modalState && relayPort !== undefined && relayPort > 0 && (
+        <HubModal
+          session={modalState.session}
+          sourceRect={modalState.sourceRect}
+          relayPort={relayPort}
+          fontSize={fontSizes?.[modalState.session.id] ?? DEFAULT_FONT_SIZE}
+          theme={terminalTheme}
+          pluginConfig={pluginConfig}
+          remote={modalState.isRemote}
+          onFontSizeChange={onFontSizeChange ? (delta) => onFontSizeChange(modalState.session.id, delta) : undefined}
+          onClose={() => setModalState(null)}
+          onUnreadChange={handleUnreadChange}
+        />
+      )}
     </>
   )
 }

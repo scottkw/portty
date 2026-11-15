@@ -43,7 +43,9 @@ vi.mock('./HubModal', () => ({
       | undefined
     return React.createElement(
       'div',
-      { className: 'hub-modal-overlay hub-modal-overlay--open' },
+      // data-remote exposes the routing prop (drives HubModal's header and
+      // TerminalPanel's guest-only session-ended banner).
+      { className: 'hub-modal-overlay hub-modal-overlay--open', 'data-remote': String(props.remote) },
       React.createElement('button', {
         className: 'hub-modal__close',
         type: 'button',
@@ -821,10 +823,12 @@ describe('HubPanel FE-ROUTE-01: remote routing gate (behavioral)', () => {
     act(() => {
       modalContainer.querySelector('article.hub-card')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
-    expect(modalContainer.querySelector('.hub-modal-overlay')).not.toBeNull()
+    expect(modalContainer.querySelector('.hub-modal-overlay')?.getAttribute('data-remote')).toBe('true')
 
     render([])
-    expect(modalContainer.querySelector('.hub-modal-overlay')).not.toBeNull()
+    // Iteration-3 WR-01: still open AND still routed as remote (provenance from
+    // open time), so the header stays remote and the session-ended banner applies.
+    expect(modalContainer.querySelector('.hub-modal-overlay')?.getAttribute('data-remote')).toBe('true')
   })
 
   it('FE-ROUTE-01c: local card with a non-empty MACHINE hostname opens the modal (provenance, not hostname)', () => {
