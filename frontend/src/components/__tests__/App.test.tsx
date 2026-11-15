@@ -74,13 +74,18 @@ describe('App', () => {
     })
   })
 
-  describe('Tailscale health and local network integration', () => {
+  describe('Tailscale health integration (NET-01)', () => {
     it('imports GetTailscaleStatus from wailsjs bindings', () => {
       expect(raw).toContain('GetTailscaleStatus')
     })
 
-    it('imports LocalNetworkBanner component', () => {
-      expect(raw).toContain("import { LocalNetworkBanner } from './components/LocalNetworkBanner'")
+    it('imports TailscaleBanner and the shared TailscaleHealth type', () => {
+      expect(raw).toContain("import { TailscaleBanner } from './components/TailscaleBanner'")
+      expect(raw).toContain("import { TailscaleHealth } from './lib/tailscale'")
+    })
+
+    it('no longer references the multi-state LocalNetworkBanner', () => {
+      expect(raw).not.toContain('LocalNetworkBanner')
     })
 
     it('calls GetTailscaleStatus in Promise.all init', () => {
@@ -95,32 +100,17 @@ describe('App', () => {
       expect(raw).toContain('offHealth()')
     })
 
-    it('renders LocalNetworkBanner in JSX', () => {
-      expect(raw).toContain('<LocalNetworkBanner')
+    it('derives tailscaleOff from a non-null health that is not connected', () => {
+      expect(raw).toContain('const tailscaleOff = tailscaleHealth !== null && !tailscaleHealth.connected')
     })
 
     it('passes tailscaleHealth prop to SettingsTab', () => {
       expect(raw).toContain('tailscaleHealth={tailscaleHealth}')
     })
 
-    it('passes tailscaleBinaryFound prop to LocalNetworkBanner', () => {
-      expect(raw).toContain('tailscaleBinaryFound={')
-    })
-
-    it('passes tailscaleDaemonUp prop to LocalNetworkBanner', () => {
-      expect(raw).toContain('tailscaleDaemonUp={')
-    })
-
-    it('passes platformHint prop to LocalNetworkBanner', () => {
-      expect(raw).toContain('platformHint={')
-    })
-
-    it('tailscaleHealth state includes binaryFound', () => {
-      expect(raw).toContain('binaryFound: boolean')
-    })
-
-    it('tailscaleHealth state includes daemonUp', () => {
-      expect(raw).toContain('daemonUp: boolean')
+    it('types tailscaleHealth with the slim shared type', () => {
+      expect(raw).toContain('useState<TailscaleHealth | null>(null)')
+      expect(raw).not.toMatch(/binaryFound|daemonUp|platformHint|permissionLimited/)
     })
   })
 
@@ -246,20 +236,13 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(raw).toContain('useState<UpdateInfo | null>(null)')
   })
 
-  it('declares localBannerDismissed state', () => {
-    expect(raw).toContain('localBannerDismissed')
-  })
-
-  it('declares localBannerExiting state', () => {
-    expect(raw).toContain('localBannerExiting')
-  })
-
   it('declares updateExiting state', () => {
     expect(raw).toContain('updateExiting')
   })
 
-  it('defines handleDismissLocalBanner callback', () => {
-    expect(raw).toContain('handleDismissLocalBanner')
+  it('has no dismiss path for the Tailscale banner (persistent, NET-01)', () => {
+    expect(raw).not.toContain('localBannerDismissed')
+    expect(raw).not.toContain('handleDismissLocalBanner')
   })
 
   it('defines handleDismissUpdate callback', () => {
@@ -270,9 +253,15 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(raw).toContain('banner-stack')
   })
 
-  it('renders LocalNetworkBanner inside banner-stack', () => {
+  it('renders TailscaleBanner inside banner-stack, gated on tailscaleOff', () => {
     const stackBlock = raw.slice(raw.indexOf('banner-stack'))
-    expect(stackBlock).toContain('<LocalNetworkBanner')
+    expect(stackBlock).toContain('{tailscaleOff && <TailscaleBanner />}')
+  })
+
+  it('includes tailscaleOff in the banner-stack gating expression (INVARIANT)', () => {
+    const invariant = raw.indexOf('INVARIANT: this gating expression')
+    const gate = raw.slice(invariant, raw.indexOf('<div className="banner-stack">', invariant))
+    expect(gate).toContain('tailscaleOff ||')
   })
 
   it('renders UpdateBanner inside banner-stack', () => {
@@ -284,21 +273,14 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(raw).toContain("EventsOn('update:available'")
   })
 
-  it('passes onDismiss to LocalNetworkBanner', () => {
-    expect(raw).toContain('onDismiss={handleDismissLocalBanner}')
-  })
-
   it('passes onDismiss to UpdateBanner', () => {
     expect(raw).toContain('onDismiss={handleDismissUpdate}')
   })
 
   it('passes className with banner-exit for exit animation', () => {
-    expect(raw).toContain("localBannerExiting ? 'banner-exit' : undefined")
+    expect(raw).toContain("updateExiting ? 'banner-exit' : undefined")
   })
 
-  it('resets localBannerDismissed when webServerMode changes', () => {
-    expect(raw).toContain('setLocalBannerDismissed(false)')
-  })
 })
 
 // TERM-01: the modal passes only the directory; sessions are always the login shell

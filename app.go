@@ -101,6 +101,12 @@ type App struct {
 	// sendNotificationFunc injection pattern.
 	emitEventFunc func(name string, data any)
 
+	// tailscaleCheckFunc is the Tailscale health check seam; nil means
+	// webserver.CheckHealth. lastHealth is the last result the poller emitted
+	// (nil until the first check). Both are owned by the poller goroutine.
+	tailscaleCheckFunc func(context.Context) webserver.TailscaleHealth
+	lastHealth         *webserver.TailscaleHealth
+
 	// exitEmitted records sessions already reported via session:exit, so each
 	// stopped session is reported once. Owned by the exit watcher goroutine.
 	exitEmitted     map[string]bool
@@ -1018,6 +1024,13 @@ func (a *App) SetTrayProgress(quartile int) error {
 func (a *App) GetTailscaleStatus() webserver.TailscaleHealth {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	return a.tailscaleCheck(ctx)
+}
+
+func (a *App) tailscaleCheck(ctx context.Context) webserver.TailscaleHealth {
+	if a.tailscaleCheckFunc != nil {
+		return a.tailscaleCheckFunc(ctx)
+	}
 	return webserver.CheckHealth(ctx)
 }
 
@@ -1307,26 +1320,32 @@ func (a *App) AutoInstallTailscale() error {
 	return nil
 }
 
-// startHealthPoller starts a background goroutine that polls Tailscale health
-// every 10 seconds and emits "tailscale:health" events when the state changes.
-// The goroutine exits when ctx is cancelled (Wails shutdown).
+// checkTailscaleHealth runs one health check and emits "tailscale:health" when
+// it is the first result or differs from the last one. The first result is
+// always emitted: "not connected" is the zero value, so comparing against a
+// zero starting point would never report a launch-time disconnect.
+func (a *App) checkTailscaleHealth(ctx context.Context) {
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	h := a.tailscaleCheck(checkCtx)
+	cancel()
+	if a.lastHealth != nil && *a.lastHealth == h {
+		return
+	}
+	a.lastHealth = &h
+	a.emitEvent("tailscale:health", h)
+}
+
+// startHealthPoller checks Tailscale health once immediately and then every
+// 10 seconds. The goroutine exits when ctx is cancelled (Wails shutdown).
 func (a *App) startHealthPoller(ctx context.Context) {
 	go func() {
+		a.checkTailscaleHealth(ctx)
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
-		var last webserver.TailscaleHealth
 		for {
 			select {
 			case <-ticker.C:
-				checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				h := webserver.CheckHealth(checkCtx)
-				cancel()
-				if h != last {
-					last = h
-					if a.ctx != nil && a.ctx.Value("frontend") != nil {
-						runtime.EventsEmit(a.ctx, "tailscale:health", h)
-					}
-				}
+				a.checkTailscaleHealth(ctx)
 			case <-ctx.Done():
 				return
 			}

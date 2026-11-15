@@ -714,18 +714,58 @@ func TestGetWebServerQRCode_NoServer(t *testing.T) {
 func TestGetTailscaleStatus(t *testing.T) {
 	app := testApp(t)
 	h := app.GetTailscaleStatus()
-	// On machines without tailscaled, Installed will be false.
+	// On machines without tailscaled, Connected will be false.
 	// On machines with tailscaled, any combination is valid.
 	// The key assertion is that the method doesn't panic and returns a struct.
-	_ = h.Installed
 	_ = h.Connected
 	_ = h.HasCerts
 	_ = h.IP
 	_ = h.Domain
 }
 
+// TestCheckTailscaleHealth_EmitsFirstResultAndChanges: the first result is
+// emitted even when it is the zero value (not connected), an unchanged result
+// is not re-emitted, and every change (connect, disconnect) is emitted (NET-01).
+func TestCheckTailscaleHealth_EmitsFirstResultAndChanges(t *testing.T) {
+	var next webserver.TailscaleHealth
+	var emitted []webserver.TailscaleHealth
+	app := &App{
+		tailscaleCheckFunc: func(context.Context) webserver.TailscaleHealth { return next },
+		emitEventFunc: func(name string, data any) {
+			if name != "tailscale:health" {
+				t.Errorf("unexpected event %q", name)
+			}
+			emitted = append(emitted, data.(webserver.TailscaleHealth))
+		},
+	}
+	connected := webserver.TailscaleHealth{Connected: true, HasCerts: true, IP: "100.64.0.1", Domain: "h.ts.net"}
+
+	steps := []struct {
+		name      string
+		h         webserver.TailscaleHealth
+		wantEmits int
+	}{
+		{"first not-connected result emits", webserver.TailscaleHealth{}, 1},
+		{"identical result does not emit", webserver.TailscaleHealth{}, 1},
+		{"connected emits", connected, 2},
+		{"identical connected does not emit", connected, 2},
+		{"not connected again emits", webserver.TailscaleHealth{}, 3},
+	}
+	for _, st := range steps {
+		next = st.h
+		app.checkTailscaleHealth(context.Background())
+		if len(emitted) != st.wantEmits {
+			t.Fatalf("%s: got %d emits, want %d", st.name, len(emitted), st.wantEmits)
+		}
+		if emitted[len(emitted)-1] != st.h {
+			t.Fatalf("%s: last emit %+v, want %+v", st.name, emitted[len(emitted)-1], st.h)
+		}
+	}
+}
+
 func TestHealthPollerStops(t *testing.T) {
 	app := testApp(t)
+	app.tailscaleCheckFunc = func(context.Context) webserver.TailscaleHealth { return webserver.TailscaleHealth{} }
 	ctx, cancel := context.WithCancel(context.Background())
 	app.startHealthPoller(ctx)
 	// Cancel immediately -- the goroutine should exit without blocking.

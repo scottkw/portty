@@ -255,16 +255,11 @@ export namespace updater {
 export namespace webserver {
 	
 	export class TailscaleHealth {
-	    installed: boolean;
 	    connected: boolean;
 	    hasCerts: boolean;
 	    ip: string;
 	    domain: string;
-	    binaryFound: boolean;
-	    daemonUp: boolean;
-	    platformHint: string;
 	    acceptDns: boolean;
-	    permissionLimited: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new TailscaleHealth(source);
@@ -272,16 +267,11 @@ export namespace webserver {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.installed = source["installed"];
 	        this.connected = source["connected"];
 	        this.hasCerts = source["hasCerts"];
 	        this.ip = source["ip"];
 	        this.domain = source["domain"];
-	        this.binaryFound = source["binaryFound"];
-	        this.daemonUp = source["daemonUp"];
-	        this.platformHint = source["platformHint"];
 	        this.acceptDns = source["acceptDns"];
-	        this.permissionLimited = source["permissionLimited"];
 	    }
 	}
 

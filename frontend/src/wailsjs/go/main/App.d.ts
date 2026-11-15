@@ -79,14 +79,11 @@ export function CheckForUpdates(): Promise<{
 
 // Tailscale health bound method
 export function GetTailscaleStatus(): Promise<{
-  installed: boolean
   connected: boolean
   hasCerts: boolean
   ip: string
   domain: string
-  binaryFound: boolean
-  daemonUp: boolean
-  platformHint: string
+  acceptDns: boolean
 }>
 
 // Remote sessions bound method

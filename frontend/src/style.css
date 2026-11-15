@@ -1797,7 +1797,6 @@ textarea {
   flex-shrink: 0;
 }
 .ts-status__dot--ok    { background: #9ece6a; }
-.ts-status__dot--warn  { background: #f59e0b; }
 .ts-status__dot--error { background: #f7768e; }
 .ts-status__text {
   color: #a9b1d6;
@@ -2065,8 +2064,8 @@ textarea {
   color: #7aa2f7;
 }
 
-/* ─── Local Network Banner (Phase 60 — NET-04) ───────────────────── */
-.local-network-banner {
+/* ─── Tailscale banner (NET-01; persistent, no dismiss) ──────────── */
+.tailscale-banner {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2077,62 +2076,15 @@ textarea {
   flex-shrink: 0;
 }
 
-.local-network-banner__icon {
+.tailscale-banner__icon {
   color: #f59e0b;
   font-size: 14px;
   flex-shrink: 0;
 }
 
-.local-network-banner__message {
+.tailscale-banner__message {
   color: #a9b1d6;
   font-size: 13px;
-}
-
-.local-network-banner__sub {
-  color: #9aa5ce;
-  font-size: 12px;
-}
-
-.local-network-banner__cta {
-  margin-left: auto;
-  background: #7aa2f7;
-  color: #1a1b26;
-  border: none;
-  border-radius: 4px;
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.local-network-banner__cta:hover {
-  background: #89b4fa;
-}
-
-.local-network-banner__dismiss {
-  margin-left: auto;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: #9aa5ce;
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  min-height: 24px;
-  flex-shrink: 0;
-}
-.local-network-banner__dismiss:hover {
-  color: #c0caf5;
-  border-color: #3b4261;
-}
-.local-network-banner__dismiss:focus-visible {
-  outline: 2px solid #7aa2f7;
-  outline-offset: 2px;
 }
 
 /* ─── Banner stack container (Phase 81 — BAN-01/BAN-02) ─────────── */

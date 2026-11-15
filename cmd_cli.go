@@ -278,7 +278,7 @@ func cmdUnserve(client *daemon.DaemonClient, args []string) error {
 	return nil
 }
 
-// cmdHealth prints a 5-line Tailscale health key-value block, or JSON with --json.
+// cmdHealth prints a 4-line Tailscale health key-value block, or JSON with --json.
 func cmdHealth(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("health", flag.ContinueOnError)
 	jsonOut := fs.Bool("json", false, "output as JSON")
@@ -291,7 +291,6 @@ func cmdHealth(args []string, out io.Writer) error {
 	if *jsonOut {
 		return json.NewEncoder(out).Encode(h)
 	}
-	fmt.Fprintf(out, "%-12s%v\n", "installed:", h.Installed)
 	fmt.Fprintf(out, "%-12s%v\n", "connected:", h.Connected)
 	fmt.Fprintf(out, "%-12s%v\n", "has-certs:", h.HasCerts)
 	fmt.Fprintf(out, "%-12s%v\n", "ip:", h.IP)

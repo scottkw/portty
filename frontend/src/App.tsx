@@ -36,7 +36,7 @@ import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
 import type { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
-import { EventsOn, BrowserOpenURL } from './wailsjs/wailsjs/runtime/runtime'
+import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
 import { StatusBar } from './components/StatusBar'
 import { NewSessionModal } from './components/NewSessionModal'
 import { WelcomeTab } from './components/WelcomeTab'
@@ -48,7 +48,8 @@ import { findRemoteSession, remoteBaseURLFor } from './lib/remoteSession'
 import { adaptAllRemoteSessions } from './lib/remoteAdapter'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
-import { LocalNetworkBanner } from './components/LocalNetworkBanner'
+import { TailscaleBanner } from './components/TailscaleBanner'
+import { TailscaleHealth } from './lib/tailscale'
 import { WebShareSessionView } from './components/Hub/WebShareSessionView'
 import { TerminalChatHost } from './components/Hub/TerminalChatHost'
 import { UpdateBanner } from './components/UpdateBanner'
@@ -127,20 +128,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // Track font size per session: sessionId -> fontSize (pixels)
   const [fontSizes, setFontSizes] = useState<Record<string, number>>({})
   // Tailscale health state
-  const [tailscaleHealth, setTailscaleHealth] = useState<{
-    installed: boolean
-    connected: boolean
-    hasCerts: boolean
-    ip: string
-    domain: string
-    binaryFound: boolean
-    daemonUp: boolean
-    platformHint: string
-    acceptDns?: boolean
-    // Phase 169-02 (FIX-05): honest permission-aware macsys detection (169-01) —
-    // daemon confirmed alive but this account can't read its status.
-    permissionLimited?: boolean
-  } | null>(null)
+  const [tailscaleHealth, setTailscaleHealth] = useState<TailscaleHealth | null>(null)
+  // NET-01: null means "not checked yet" (and always in web mode), which is not "off".
+  const tailscaleOff = tailscaleHealth !== null && !tailscaleHealth.connected
   const [daemonError, setDaemonError] = useState<string | null>(null)
   // Plugin settings state (PLUG-03): updated by GetPluginSettings on mount
   // and by the EventsOn('settings:plugins') subscription. Threaded into every
@@ -217,8 +207,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // Update notification state (lifted from WelcomeTab — Phase 81 D-06)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
   // Local network banner dismiss state (session-only, D-04)
-  const [localBannerDismissed, setLocalBannerDismissed] = useState(false)
-  const [localBannerExiting, setLocalBannerExiting] = useState(false)
   const [updateExiting, setUpdateExiting] = useState(false)
 
   // Phase 93 WGL-02 / WGL-03: WebGL recovery banner state. One-shot per
@@ -389,14 +377,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     [tabs, serializerRegistry]
   )
 
-  const handleDismissLocalBanner = useCallback(() => {
-    setLocalBannerExiting(true)
-    setTimeout(() => {
-      setLocalBannerDismissed(true)
-      setLocalBannerExiting(false)
-    }, 200)
-  }, [])
-
   const handleDismissUpdate = useCallback(() => {
     setUpdateExiting(true)
     setTimeout(() => {
@@ -555,19 +535,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
     void init()
 
-    const offHealth = EventsOn('tailscale:health', (h: {
-      installed: boolean
-      connected: boolean
-      hasCerts: boolean
-      ip: string
-      domain: string
-      binaryFound: boolean
-      daemonUp: boolean
-      platformHint: string
-      acceptDns?: boolean
-      // Phase 169-02 (FIX-05): honest permission-aware macsys detection (169-01).
-      permissionLimited?: boolean
-    }) => {
+    const offHealth = EventsOn('tailscale:health', (h: TailscaleHealth) => {
       setTailscaleHealth(h)
       // If Tailscale just became fully healthy, poll for the backend to upgrade
       // from local mode to tailscale mode (daemon's upgradeToTailscale goroutine).
@@ -992,13 +960,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     return () => { offUpdate() }
   }, [])
 
-  // Reset dismissed state when entering local mode (D-04: reappear if conditions change)
-  useEffect(() => {
-    if (webServerMode === 'local') {
-      setLocalBannerDismissed(false)
-    }
-  }, [webServerMode])
-
   // Phase 155-03 — stable tab id for the web-session view. One view per
   // session (find-or-focus semantics).
   const webSessionTabId = (sessionId: string) => `__websession__${sessionId}`
@@ -1262,7 +1223,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           rendered inside .banner-stack below. A banner whose own render condition is
           true but whose trigger is missing here will never mount (the whole stack is
           conditionally rendered). Phase 129 DNS-03 regressed exactly this way. */}
-      {((webServerMode === 'local' && !localBannerDismissed) ||
+      {(tailscaleOff ||
         update ||
         ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
         saveBanner !== null ||
@@ -1273,19 +1234,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
               toggle. Phase 168-05 (D-14): the footer no longer toggles directly —
               the equivalent banner (ShellWebShareBanner, same shared warned/
               warningEnabled authority) now lives inside SessionShareModal only. */}
-          {webServerMode === 'local' && !localBannerDismissed && (
-            <LocalNetworkBanner
-              visible={true}
-              tailscaleConnected={!!(tailscaleHealth?.connected && tailscaleHealth?.hasCerts && tailscaleHealth?.ip)}
-              tailscaleInstalled={!!tailscaleHealth?.installed}
-              tailscaleBinaryFound={!!(tailscaleHealth?.binaryFound)}
-              tailscaleDaemonUp={!!(tailscaleHealth?.daemonUp)}
-              platformHint={tailscaleHealth?.platformHint || ''}
-              onOpenURL={BrowserOpenURL}
-              onDismiss={handleDismissLocalBanner}
-              className={localBannerExiting ? 'banner-exit' : undefined}
-            />
-          )}
+          {tailscaleOff && <TailscaleBanner />}
           {update && (
             <UpdateBanner
               update={update}

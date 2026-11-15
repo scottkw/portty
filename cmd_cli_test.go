@@ -302,7 +302,7 @@ func TestCmdUnserve_Success(t *testing.T) {
 	}
 }
 
-// TestCmdHealth_OutputFormat verifies cmdHealth prints exactly 5 key-value lines.
+// TestCmdHealth_OutputFormat verifies cmdHealth prints exactly 4 key-value lines.
 func TestCmdHealth_OutputFormat(t *testing.T) {
 	var buf bytes.Buffer
 	err := cmdHealth(nil, &buf)
@@ -310,16 +310,16 @@ func TestCmdHealth_OutputFormat(t *testing.T) {
 		t.Fatalf("cmdHealth returned error: %v", err)
 	}
 	out := buf.String()
-	// Verify all 5 labels are present.
-	for _, label := range []string{"installed:", "connected:", "has-certs:", "ip:", "domain:"} {
+	// Verify all 4 labels are present.
+	for _, label := range []string{"connected:", "has-certs:", "ip:", "domain:"} {
 		if !strings.Contains(out, label) {
 			t.Errorf("expected output to contain %q, got:\n%s", label, out)
 		}
 	}
-	// Count non-empty lines — should be exactly 5.
+	// Count non-empty lines — should be exactly 4.
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 5 {
-		t.Errorf("expected 5 output lines, got %d:\n%s", len(lines), out)
+	if len(lines) != 4 {
+		t.Errorf("expected 4 output lines, got %d:\n%s", len(lines), out)
 	}
 }
 

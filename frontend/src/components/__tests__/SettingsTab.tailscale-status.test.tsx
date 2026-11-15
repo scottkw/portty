@@ -1,21 +1,9 @@
 /**
- * Phase 169-02 (FIX-05, #120, v4.2) — SettingsTab permission-limited Tailscale
- * status tests.
+ * NET-01 (Portty 01-12) — SettingsTab two-state Tailscale status.
  *
- * Covers (per 169-02-PLAN.md Task 1 <behavior>):
- *   - Rendering with tailscaleHealth.permissionLimited=true (connected=false):
- *     the status text reads a distinct label ("Permission Limited"), NOT
- *     "Connected" and NOT "Not Connected"; the description contains the
- *     grant-admin / Homebrew-build guidance; the status dot does NOT carry
- *     the 'ok' modifier class.
- *   - Rendering with connected=true (permissionLimited absent/false): the
- *     status text still reads "Connected" (regression — healthy path intact).
- *   - The word "Connected" is not present anywhere in the permission-limited
- *     render output (guards against a false-positive impression — SC3).
- *
- * Mirrors SettingsTab.notify-permission-hint.test.tsx for the render harness
- * + wails-mock idiom (GetTailscaleStatus is unused here — the health object
- * is passed directly via the tailscaleHealth prop, not fetched).
+ * Tailscale is either Connected (via its domain or IP) or Not connected (the
+ * NET-01 sentence); "Checking…" while the first check is pending. The old
+ * multi-state labels and the diagnostics checklist never render.
  */
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import React from 'react'
@@ -23,6 +11,7 @@ import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { act } from 'react-dom/test-utils'
 import { SettingsTab } from '../SettingsTab'
+import { TAILSCALE_OFF_REASON, type TailscaleHealth } from '../../lib/tailscale'
 
 // --- Wails mock -----------------------------------------------------------
 // Every binding SettingsTab currently imports, mirroring
@@ -86,25 +75,15 @@ vi.mock('../SettingsSearch', () => ({
 // Helpers
 // --------------------------------------------------------------------------
 
-type TailscaleHealth = NonNullable<Parameters<typeof SettingsTab>[0]['tailscaleHealth']>
-
 function makeHealth(overrides: Partial<TailscaleHealth> = {}): TailscaleHealth {
-  return {
-    installed: true,
-    connected: false,
-    hasCerts: false,
-    ip: '',
-    domain: '',
-    binaryFound: true,
-    daemonUp: false,
-    platformHint: 'darwin',
-    ...overrides,
-  }
+  return { connected: false, hasCerts: false, ip: '', domain: '', ...overrides }
 }
+
+const REMOVED_STATES = ['Permission Limited', 'Daemon Stopped', 'Not Installed', 'Show diagnostics']
 
 function makeProps(overrides: Partial<Parameters<typeof SettingsTab>[0]> = {}) {
   return {
-      tailscaleHealth: null as TailscaleHealth | null,
+    tailscaleHealth: null as TailscaleHealth | null,
     webServerMode: null as null,
     onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
     selectedTheme: 'Tomorrow_Night',
@@ -132,7 +111,7 @@ async function flushEffects() {
   })
 }
 
-describe('FIX-05/169-02: SettingsTab permission-limited Tailscale status', () => {
+describe('NET-01: SettingsTab two-state Tailscale status', () => {
   let container: HTMLElement
   let root: ReturnType<typeof createRoot>
 
@@ -146,84 +125,58 @@ describe('FIX-05/169-02: SettingsTab permission-limited Tailscale status', () =>
     vi.clearAllMocks()
   })
 
-  it('shows a distinct "Permission Limited" label with actionable guidance, and never the ok dot', async () => {
-    const props = makeProps({
-      tailscaleHealth: makeHealth({ daemonUp: true, permissionLimited: true }),
-    })
-    ;({ container, root } = renderSettingsTab(props))
+  function fieldGroupText(): string {
+    const group = container.querySelector('.ts-status')!.closest('.settings-panel__field-group') as HTMLElement
+    return group.textContent ?? ''
+  }
+
+  function expectNoRemovedStates() {
+    for (const label of REMOVED_STATES) {
+      expect(container.textContent).not.toContain(label)
+    }
+    expect(container.querySelector('.ts-status__dot--warn')).toBeNull()
+  }
+
+  it('shows Connected via the domain with the ok dot', async () => {
+    ;({ container, root } = renderSettingsTab(makeProps({
+      tailscaleHealth: makeHealth({ connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'my-node.ts.net' }),
+    })))
     await flushEffects()
 
-    const statusText = container.querySelector('.ts-status__text')
-    expect(statusText).not.toBeNull()
-    expect(statusText!.textContent).toBe('Permission Limited')
-
-    const dot = container.querySelector('.ts-status__dot')
-    expect(dot).not.toBeNull()
-    expect(dot!.className).not.toContain('ts-status__dot--ok')
-    expect(dot!.className).toContain('ts-status__dot--warn')
-
-    // Actionable guidance: grant admin, or the Homebrew build remedy.
-    expect(container.textContent).toContain('admin')
-    expect(container.textContent).toContain('Homebrew')
+    expect(container.querySelector('.ts-status__text')!.textContent).toBe('Connected')
+    expect(container.querySelector('.ts-status__dot')!.className).toContain('ts-status__dot--ok')
+    expect(fieldGroupText()).toContain('Connected via my-node.ts.net')
+    expectNoRemovedStates()
   })
 
-  it('never renders the word "Connected" in the permission-limited status/description copy (SC3)', async () => {
-    // Scoped to the Tailscale status field-group's status text + description
-    // (the pre-existing "Show diagnostics" step-cascade below it unconditionally
-    // labels its 3rd step "Connected to Tailscale" for every non-connected state
-    // — that generic step label predates this plan and is not "the
-    // permission-limited copy" the plan's hard truth is guarding).
-    const props = makeProps({
-      tailscaleHealth: makeHealth({ daemonUp: true, permissionLimited: true }),
-    })
-    ;({ container, root } = renderSettingsTab(props))
+  it('falls back to the IP when there is no domain', async () => {
+    ;({ container, root } = renderSettingsTab(makeProps({
+      tailscaleHealth: makeHealth({ connected: true, ip: '100.64.0.1' }),
+    })))
     await flushEffects()
 
-    const fieldGroup = container.querySelector('.ts-status')!.closest('.settings-panel__field-group') as HTMLElement
-    expect(fieldGroup).not.toBeNull()
-    const clone = fieldGroup.cloneNode(true) as HTMLElement
-    clone.querySelector('details')?.remove()
-
-    expect(clone.textContent).not.toContain('Connected')
+    expect(fieldGroupText()).toContain('Connected via 100.64.0.1')
   })
 
-  it('still renders "Connected" on the healthy path (regression, permissionLimited absent)', async () => {
-    const props = makeProps({
-      tailscaleHealth: makeHealth({
-        connected: true,
-        hasCerts: true,
-        ip: '100.64.0.1',
-        domain: 'my-node.ts.net',
-        daemonUp: true,
-      }),
-    })
-    ;({ container, root } = renderSettingsTab(props))
+  it('shows Not connected with the error dot and the NET-01 sentence', async () => {
+    ;({ container, root } = renderSettingsTab(makeProps({ tailscaleHealth: makeHealth() })))
     await flushEffects()
 
-    const statusText = container.querySelector('.ts-status__text')
-    expect(statusText).not.toBeNull()
-    expect(statusText!.textContent).toBe('Connected')
-
-    const dot = container.querySelector('.ts-status__dot')
-    expect(dot).not.toBeNull()
-    expect(dot!.className).toContain('ts-status__dot--ok')
+    expect(container.querySelector('.ts-status__text')!.textContent).toBe('Not connected')
+    const dot = container.querySelector('.ts-status__dot')!
+    expect(dot.className).toContain('ts-status__dot--error')
+    expect(dot.className).not.toContain('ts-status__dot--ok')
+    expect(fieldGroupText()).toContain(TAILSCALE_OFF_REASON)
+    expect(container.querySelector('details')).toBeNull()
+    expectNoRemovedStates()
   })
 
-  it('still renders "Connected" when permissionLimited is explicitly false (regression)', async () => {
-    const props = makeProps({
-      tailscaleHealth: makeHealth({
-        connected: true,
-        hasCerts: true,
-        ip: '100.64.0.1',
-        domain: 'my-node.ts.net',
-        daemonUp: true,
-        permissionLimited: false,
-      }),
-    })
-    ;({ container, root } = renderSettingsTab(props))
+  it('shows Checking… with no dot while health is null', async () => {
+    ;({ container, root } = renderSettingsTab(makeProps({ tailscaleHealth: null })))
     await flushEffects()
 
-    const statusText = container.querySelector('.ts-status__text')
-    expect(statusText!.textContent).toBe('Connected')
+    expect(container.querySelector('.ts-status__text')!.textContent).toBe('Checking\u2026')
+    expect(container.querySelector('.ts-status__dot')).toBeNull()
+    expectNoRemovedStates()
   })
 })
