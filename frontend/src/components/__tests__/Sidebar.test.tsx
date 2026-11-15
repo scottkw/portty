@@ -6,6 +6,8 @@ import { resolve } from 'path'
 import { Sidebar } from '../Sidebar'
 import type { Tab } from '../TabBar'
 import type { SessionInfo } from '../../wailsjs/go/main/App'
+import type { RemotePeerSessions } from '../../lib/remoteSession'
+import { peerView } from '../../lib/sidebarPeers'
 
 // Portty 02-04 (NAV-01..03): the sidebar is a macOS source list.
 
@@ -39,6 +41,9 @@ function render(overrides: Partial<Props> = {}) {
     sessions: [],
     activeTab: null,
     onOpenLocal: vi.fn(),
+    peerView: { kind: 'none' },
+    onOpenPeer: vi.fn(),
+    tailscaleHealth: { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'office-air.tail1.ts.net' },
     ...overrides,
   }
   act(() => root!.render(<Sidebar {...props} />))
@@ -140,6 +145,99 @@ describe('Sidebar: This Mac (NAV-01)', () => {
       (b) => b.getAttribute('aria-label') ?? b.textContent,
     )
     for (const n of ['Home', 'Hub', 'Help', 'Settings']) expect(names).not.toContain(n)
+  })
+})
+
+const peer = (hostname: string, reachable: boolean, sessions: [string, string][] = []): RemotePeerSessions => ({
+  hostname,
+  reachable,
+  sessions: sessions.map(([id, name]) => ({ id, name, status: 'running', url: `https://${hostname}:8443/sessions/${id}` })),
+})
+const mutedText = (c: HTMLElement) => Array.from(c.querySelectorAll('li.sidebar__muted')).map((l) => l.textContent)
+
+describe('Sidebar: peer groups (NAV-02)', () => {
+  it.each([
+    ['off', 'Peers appear when Tailscale is connected.'],
+    ['loading', 'Looking for other Macs…'],
+    ['none', 'No shared sessions on other Macs.'],
+  ] as const)('%s: one "Other Macs" section with the muted line', (kind, line) => {
+    const { c } = render({ peerView: { kind } })
+    expect(Array.from(c.querySelectorAll('h2')).map((h) => h.textContent)).toEqual(['This Mac', 'Other Macs'])
+    expect(mutedText(c)).toContain(line)
+  })
+
+  it('a reachable peer renders its short host header and one row per session, no "Other Macs"', () => {
+    const p = peer('home-air.tail1.ts.net', true, [['p1', 'shell'], ['p2', 'logs']])
+    const { c } = render({ peerView: peerView(false, true, [p]) })
+    const header = Array.from(c.querySelectorAll('h2')).find((h) => h.textContent === 'home-air')
+    expect(header?.getAttribute('title')).toBe('home-air.tail1.ts.net')
+    expect(Array.from(c.querySelectorAll('h2')).map((h) => h.textContent)).not.toContain('Other Macs')
+    const r = rows(c, 'home-air')
+    expect(r.map((b) => b.textContent)).toEqual(['shell', 'logs'])
+    expect(r[0].querySelector('[role="img"]')).toBeNull()
+  })
+
+  it('clicking a peer row calls onOpenPeer(peer, session)', () => {
+    const onOpenPeer = vi.fn()
+    const p = peer('home-air.tail1.ts.net', true, [['p1', 'shell'], ['p2', 'logs']])
+    const { c } = render({ peerView: peerView(false, true, [p]), onOpenPeer })
+    act(() => rows(c, 'home-air')[1].click())
+    expect(onOpenPeer).toHaveBeenCalledWith(p, p.sessions[1])
+  })
+
+  it('an unreachable peer shows its header and the can\'t-reach line, no rows', () => {
+    const { c } = render({ peerView: peerView(false, true, [peer('down.tail1.ts.net', false)]) })
+    expect(rows(c, 'down')).toHaveLength(0)
+    expect(mutedText(c)).toContain("Can't reach this Mac. Check that it's awake and on your tailnet.")
+  })
+
+  it('two peers sharing a first label render as two groups', () => {
+    const v = peerView(false, true, [
+      peer('air.tail-a.ts.net', true, [['a1', 'one']]),
+      peer('air.tail-b.ts.net', true, [['b1', 'two']]),
+    ])
+    const { c } = render({ peerView: v })
+    expect(Array.from(c.querySelectorAll('h2')).filter((h) => h.textContent === 'air')).toHaveLength(2)
+  })
+
+  it('aria-current marks the peer row of an active web-session tab, and only that row', () => {
+    const p = peer('home-air.tail1.ts.net', true, [['p1', 'shell'], ['p2', 'logs']])
+    const sessions = [session('l1', 'local')]
+    const { c } = render({
+      sessions,
+      peerView: peerView(false, true, [p]),
+      activeTab: { id: '__websession__p2', name: 'home-air › logs', sessionId: 'p2', type: 'web-session', baseURL: 'https://h', capToken: 'x' },
+    })
+    const current = c.querySelectorAll('[aria-current="page"]')
+    expect(current.length).toBe(1)
+    expect(current[0].textContent).toBe('logs')
+  })
+})
+
+describe('Sidebar: Tailscale footer', () => {
+  const footer = (c: HTMLElement) => c.querySelector('[role="status"]')
+
+  it('connected: dot plus "Tailscale connected · <short host>"', () => {
+    const { c } = render()
+    expect(footer(c)?.textContent).toBe('Tailscale connected · office-air')
+    expect(footer(c)?.querySelector('.sidebar__dot--on')).not.toBeNull()
+  })
+
+  it('connected with no domain falls back to the IP', () => {
+    const { c } = render({ tailscaleHealth: { connected: true, hasCerts: false, ip: '100.64.0.9', domain: '' } })
+    expect(footer(c)?.textContent).toBe('Tailscale connected · 100.64.0.9')
+  })
+
+  it('not connected', () => {
+    const { c } = render({ tailscaleHealth: { connected: false, hasCerts: false, ip: '', domain: '' } })
+    expect(footer(c)?.textContent).toBe('Tailscale not connected')
+    expect(footer(c)?.querySelector('.sidebar__dot')).not.toBeNull()
+    expect(footer(c)?.querySelector('.sidebar__dot--on')).toBeNull()
+  })
+
+  it('health unknown', () => {
+    const { c } = render({ tailscaleHealth: null })
+    expect(footer(c)?.textContent).toBe('Checking Tailscale…')
   })
 })
 

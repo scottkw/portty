@@ -43,7 +43,8 @@ import { HubPanel } from './components/Hub/HubPanel'
 import { SessionShareModal } from './components/Hub/SessionShareModal'
 import { HelpTab } from './components/HelpTab'
 import { findRemoteSession, remoteBaseURLFor } from './lib/remoteSession'
-import { adaptAllRemoteSessions } from './lib/remoteAdapter'
+import { adaptAllRemoteSessions, adaptRemoteSession } from './lib/remoteAdapter'
+import { peerView, shortHost } from './lib/sidebarPeers'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
 import { TailscaleBanner } from './components/TailscaleBanner'
@@ -151,13 +152,10 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // card click AND the footer "Share Session" button drive a single SessionShareModal
   // instance (RESEARCH Pattern 4). null = closed; non-null = open for this session.
   const [shareModalSession, setShareModalSession] = useState<SessionInfo | null>(null)
-  // Remote peers for Hub remote cards (polled when the Hub tab is active — Phase 138 T-138-08)
+  // NAV-02: remote peers for the sidebar peer groups (30 s poll while Tailscale is connected).
   const [remotePeers, setRemotePeers] = useState<RemotePeerSessions[]>([])
-  // WR-01: tracks whether the remote-sessions poll has completed at least
-  // once. A ref (not a closed-over remotePeers snapshot) so the spinner gate
-  // reflects the current fetch rather than a stale render-time value frozen
-  // across the 30s interval's lifetime.
-  const remoteHasLoadedRef = useRef(false)
+  // True after the first successful peer poll; clears the "Looking for other Macs…" line.
+  const [remoteLoaded, setRemoteLoaded] = useState(false)
 
   // Phase 122-03 — remote-session cap state (open-session / hub-modal).
   //   remoteCapsCached: sessionIds whose caps are already deposited in the
@@ -820,36 +818,27 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions, shareModalSession?.id])
 
-  // Poll remote sessions when the Hub tab is active (Phase 138 — only the
-  // HUB_TAB guard is retained; Hub still needs remote data — T-138-08).
-  // WR-01: the spinner gate uses remoteHasLoadedRef (a ref) rather than the
-  // closed-over remotePeers snapshot, so setRemoteLoading(true) fires only
-  // on the genuine first load and not on every 30s poll. mode and remotePeers
-  // are intentionally omitted from deps (mode is mount-stable; the loaded
-  // gate is now ref-based), matching the eslint-disable on the sibling
-  // mount-effect below.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // NAV-02: poll remote peers every 30 s whenever the desktop app is open and
+  // Tailscale is connected; not gated on any tab. Errors keep the last list.
   useEffect(() => {
     if (mode === 'web') return // Phase 120-06: no Wails RPC in browser mode.
-    // NET-01: while Tailscale is off, list no remote cards, peer hints or join-code
-    // entry points; tailscaleOff is a dep so polling resumes on reconnect.
+    // NET-01: while Tailscale is off, list no peers; tailscaleOff is a dep so
+    // polling resumes (and "Looking for other Macs…" shows again) on reconnect.
     if (tailscaleOff) {
       setRemotePeers([])
+      setRemoteLoaded(false)
       return
     }
-    if (activeId !== HUB_TAB.id) return
     let cancelled = false
     async function refresh() {
       try {
         const peers = await GetRemoteSessionsWithMeta()
         if (!cancelled) {
           setRemotePeers(peers ?? [])
-          remoteHasLoadedRef.current = true
+          setRemoteLoaded(true)
         }
       } catch {
-        // Remote poll errors are silently absorbed — Hub cards simply remain
-        // stale until the next 30s poll succeeds. Error display is handled by
-        // the Hub's existing empty-state messaging.
+        // Absorbed: the sidebar keeps its last state until the next poll succeeds.
       }
     }
     void refresh()
@@ -858,7 +847,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       cancelled = true
       clearInterval(interval)
     }
-  }, [activeId, tailscaleOff])
+  }, [tailscaleOff])
 
   // NET-01: a disconnect closes an open Share dialog (its controls are disabled too).
   useEffect(() => {
@@ -910,7 +899,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // (unchanged behavior). Remote-peer tabs (opened via the remote-open action)
   // pass a baseURL + capToken that are carried PER-TAB on the Tab object, so
   // two different remote sessions never share params (RESEARCH Pitfall 3).
-  const openWebSessionTab = useCallback((sessionId: string, baseURL?: string, capToken?: string) => {
+  // Portty 02-04: name is the tab label; peer tabs pass '<host> › <session>'.
+  const openWebSessionTab = useCallback((sessionId: string, baseURL?: string, capToken?: string, name = 'Session') => {
     const tabId = webSessionTabId(sessionId)
     const existing = tabs.find((t) => t.id === tabId)
     if (existing) {
@@ -919,7 +909,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
     const newTab: Tab = {
       id: tabId,
-      name: 'Session',
+      name,
       sessionId,
       type: 'web-session',
       baseURL,
@@ -982,7 +972,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         try {
           const url = await OpenRemoteSessionURL(session.id)
           const parsed = new URL(url)
-          openWebSessionTab(session.id, parsed.origin, parsed.searchParams.get('cap') ?? '')
+          openWebSessionTab(session.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(session.hostname)} › ${session.name}`)
           return
         } catch {
           // Stale/evicted cap — fall through to modal for self-heal.
@@ -1041,7 +1031,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         // then open it in-app (D-17).
         const url = await OpenRemoteSessionURL(pending.id)
         const parsed = new URL(url)
-        openWebSessionTab(pending.id, parsed.origin, parsed.searchParams.get('cap') ?? '')
+        openWebSessionTab(pending.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(pending.hostname)} › ${pending.name}`)
         return
       }
 
@@ -1147,6 +1137,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         sessions={sessions}
         activeTab={tabs.find((t) => t.id === activeId) ?? null}
         onOpenLocal={handleOpenSessionTab}
+        peerView={peerView(tailscaleOff, remoteLoaded, remotePeers)}
+        onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}
+        tailscaleHealth={tailscaleHealth}
       />
       )}
       <div className="app__content">

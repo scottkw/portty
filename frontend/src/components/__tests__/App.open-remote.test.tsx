@@ -48,52 +48,38 @@ import { flushSync } from 'react-dom'
 // Source-inspection via App.tsx?raw (established pattern — no Wails mock needed).
 import raw from '../../App.tsx?raw'
 
-// Mock Wails bindings needed transitively by SessionCard.
-vi.mock('../../wailsjs/go/main/App', () => ({
-  RenameSession: vi.fn().mockResolvedValue(undefined),
-  GetSessionTailLines: vi.fn().mockResolvedValue([]),
-}))
-
 import { RemoteJoinCodeModal } from '../RemoteJoinCodeModal'
 
-import { SessionCard } from '../Hub/SessionCard'
-import type { SessionInfo } from '../../wailsjs/go/main/App'
+// Portty 02-04: GUI remote attach moved from the Hub remote cards to sidebar peer rows.
+import { Sidebar } from '../Sidebar'
+import { peerView } from '../../lib/sidebarPeers'
+import { adaptRemoteSession } from '../../lib/remoteAdapter'
+import type { RemotePeerSessions } from '../../lib/remoteSession'
 
-// Minimal remote session fixture — intentionally has NO roJoinCode / rwJoinCode
-// (the out-of-band design carries no codes in the discovery payload).
-const remoteSession: SessionInfo = {
-  id: 'sess-remote-1',
-  name: 'Remote Session',
-  state: 'running',
-  status: 'idle',
-  createdAt: '2026-01-01T00:00:00Z',
-  hostname: 'remote.host',
-  webEnabled: true,
-  viewerCount: 0,
-  funnelActive: false,
-  funnelWriteActive: false,
-  workDir: '/home/user',
+// Peer fixture: discovery carries no join codes (out-of-band design).
+const remotePeer: RemotePeerSessions = {
+  hostname: 'remote.host.ts.net',
+  reachable: true,
+  sessions: [{ id: 'sess-remote-1', name: 'Remote Session', status: 'idle', url: 'https://remote.host.ts.net:8443/sessions/sess-remote-1' }],
 }
 
 let container: HTMLElement | undefined
 let root: Root | undefined
 
-function renderRemoteCard(opts: {
-  session?: SessionInfo
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onOpenInBrowser?: (session: any) => void
-}) {
+function renderPeerSidebar(onOpenPeer: Parameters<typeof Sidebar>[0]['onOpenPeer']) {
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
-  const session = opts.session ?? remoteSession
   flushSync(() => {
     root!.render(
-      React.createElement(SessionCard, {
-        session,
-        isRemote: true,
-        onOpenInBrowser: opts.onOpenInBrowser,
-      } as Parameters<typeof SessionCard>[0])
+      React.createElement(Sidebar, {
+        sessions: [],
+        activeTab: null,
+        onOpenLocal: vi.fn(),
+        peerView: peerView(false, true, [remotePeer]),
+        onOpenPeer,
+        tailscaleHealth: { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'me.ts.net' },
+      }),
     )
   })
   return { container: container! }
@@ -165,51 +151,38 @@ describe('App.tsx — handleModalExchange open-session branch (FIX-03)', () => {
   })
 })
 
-// ─── Behavior: remote SessionCard "Open in tab" exercises the open entry point ─
+// ─── Behavior: a sidebar peer row exercises the open entry point (Portty 02-04) ─
 //
-// This is the cross-path assertion the prior test suite lacked. The previous suite
-// only inspected source text in isolation — none of the tests exercised whether the
-// button actually fires the handler. A green source-only suite cannot certify a
-// working feature (it certified the dead-on-arrival broadcast approach too).
-//
-// Per D-03 (out-of-band model): the button must NOT be disabled — even when the
-// session carries no roJoinCode — because the modal is how the viewer obtains the
-// code. Gating the button on roJoinCode was the broadcast-era behavior (removed).
-describe('SessionCard — "Open in tab" behavior (FIX-03 behavior-level assertion)', () => {
-  it('"Open in tab" is present and enabled on a remote card with no roJoinCode (D-03: modal replaces dead-end)', () => {
-    // Session fixture intentionally has NO roJoinCode — the out-of-band design
-    // does not broadcast codes; the modal guides the viewer to obtain one.
-    const { container: c } = renderRemoteCard({ session: remoteSession })
-    const menuBtn = c.querySelector('.hub-card__menu-btn') as HTMLButtonElement
-    expect(menuBtn).not.toBeNull()
-    flushSync(() => { menuBtn.click() })
-    const openBtn = Array.from(c.querySelectorAll('.hub-card__menu-item')).find(
-      (el) => el.textContent?.includes('Open in tab')
-    ) as HTMLButtonElement | undefined
-    expect(openBtn, '"Open in tab" menu item must be present on a remote card').toBeDefined()
-    // KEY ASSERTION: button must NOT be disabled — the modal replaces the dead-end 401 (D-03).
-    // RED: current SessionCard has disabled={!roJoinCode}; this fails because roJoinCode is absent.
-    expect(openBtn!.disabled, '"Open in tab" must not be disabled when roJoinCode is absent — modal guides user').toBe(false)
+// Replaces the Hub SessionCard "Open in tab" assertions. The peer row is the GUI
+// entry point; App routes it through handleOpenRemoteSession unchanged, so the
+// cached-cap and join-code branches below still own the capability handshake.
+describe('Sidebar peer row — open entry point (NAV-02)', () => {
+  it('a peer row is an enabled button even though discovery carries no join code', () => {
+    const { container: c } = renderPeerSidebar(vi.fn())
+    const row = Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find(
+      (b) => b.textContent === 'Remote Session',
+    )
+    expect(row).toBeDefined()
+    expect(row!.disabled).toBe(false)
   })
 
-  it('clicking "Open in tab" calls onOpenInBrowser with the session object', () => {
-    const onOpenInBrowser = vi.fn()
-    const { container: c } = renderRemoteCard({ session: remoteSession, onOpenInBrowser })
-    const menuBtn = c.querySelector('.hub-card__menu-btn') as HTMLButtonElement
-    flushSync(() => { menuBtn.click() })
-    const openBtn = Array.from(c.querySelectorAll('.hub-card__menu-item')).find(
-      (el) => el.textContent?.includes('Open in tab')
-    ) as HTMLButtonElement | undefined
-    // Skip click if button is disabled (don't double-fail on the same broken state)
-    if (openBtn && !openBtn.disabled) {
-      flushSync(() => { openBtn.click() })
-      expect(onOpenInBrowser).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'sess-remote-1' })
-      )
-    } else {
-      // Button disabled means the D-03 gate still exists — assert it is enabled first
-      expect(openBtn?.disabled, '"Open in tab" must not be disabled (D-03)').toBe(false)
-    }
+  it('clicking the row calls onOpenPeer with the peer and session; adapting it keeps the peer URL', () => {
+    const onOpenPeer = vi.fn()
+    const { container: c } = renderPeerSidebar(onOpenPeer)
+    const row = c.querySelector<HTMLButtonElement>('button.sidebar__row')!
+    flushSync(() => { row.click() })
+    expect(onOpenPeer).toHaveBeenCalledWith(remotePeer, remotePeer.sessions[0])
+    const adapted = adaptRemoteSession(remotePeer, remotePeer.sessions[0])
+    expect(adapted).toMatchObject({ id: 'sess-remote-1', hostname: 'remote.host.ts.net', url: remotePeer.sessions[0].url })
+  })
+
+  it('App wires onOpenPeer through handleOpenRemoteSession(adaptRemoteSession(peer, s))', () => {
+    expect(raw).toContain('onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}')
+  })
+
+  it("both open branches label the tab '<short host> › <name>' (U+203A)", () => {
+    expect(raw).toContain("openWebSessionTab(session.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(session.hostname)} › ${session.name}`)")
+    expect(raw).toContain("openWebSessionTab(pending.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(pending.hostname)} › ${pending.name}`)")
   })
 })
 

@@ -52,13 +52,21 @@ describe('App.tsx NET-01: focus and visibility recheck', () => {
 
 describe('App.tsx NET-01: remote/peer controls while disconnected', () => {
   it('the remote poll clears remotePeers and returns before polling while tailscaleOff', () => {
-    expect(remotePollStart()).toMatch(/if \(tailscaleOff\) \{\s*setRemotePeers\(\[\]\)\s*return\s*\}/)
+    expect(remotePollStart()).toMatch(/if \(tailscaleOff\) \{\s*setRemotePeers\(\[\]\)\s*setRemoteLoaded\(false\)\s*return\s*\}/)
+  })
+
+  it('the remote poll has no tab gate (Portty 02-04 NAV-02)', () => {
+    expect(remotePollStart()).not.toContain('activeId')
+    expect(remotePollStart()).not.toContain('HUB_TAB')
+    expect(slice('const peers = await GetRemoteSessionsWithMeta()', '}, [tailscaleOff])')).toContain('30_000')
   })
 
   it('the remote poll re-runs when tailscaleOff changes (resumes on reconnect)', () => {
     const body = slice('const peers = await GetRemoteSessionsWithMeta()', 'clearInterval(interval)')
     expect(body).toContain('setRemotePeers(peers ?? [])')
-    expect(raw).toContain('}, [activeId, tailscaleOff])')
+    expect(body).toContain('setRemoteLoaded(true)')
+    expect(raw).toContain('}, [tailscaleOff])')
+    expect(raw).not.toContain('}, [activeId, tailscaleOff])')
   })
 })
 

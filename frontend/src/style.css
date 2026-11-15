@@ -375,6 +375,38 @@ textarea {
   color: var(--color-text-secondary);
 }
 
+.sidebar__footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 16px;
+  border-top: 1px solid var(--color-separator);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+
+.sidebar__dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-status-off);
+}
+
+.sidebar__dot--on {
+  background: var(--color-status-on);
+}
+
+.sidebar__footer-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ─── Terminal container ─────────────────────────────────────────── */
 .terminal-container {
   flex: 1;
