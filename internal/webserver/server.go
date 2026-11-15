@@ -142,33 +142,6 @@ type WebServer struct {
 	// expected dev-build state (assets stub).
 	staticAppFS fs.FS
 
-	// chatHistoryProvider returns the pre-serialized chat history (JSON bytes)
-	// for a session; chatExportProvider returns its Markdown export. They are
-	// split (IN-04) so each route does only the work it serves — the history
-	// route never runs Export() and the export route never marshals history.
-	// Set once before Start() via SetChatHistoryProvider / SetChatExportProvider;
-	// not mutex-protected (mirrors SetSessionResolver).
-	//
-	// Return contract (WR-03 — distinguish "no store" from "internal error"):
-	//   - err != nil           → internal failure on an existing session; the
-	//                            route returns 500 (do NOT mask as 404).
-	//   - err == nil, !found    → session has no chat store; route returns 404.
-	//   - err == nil, found     → history/markdown is valid; route returns 200.
-	//
-	// They use plain func(...) signatures — NOT a daemon.ChatStore type — to
-	// avoid the webserver→daemon→webserver import cycle (T-151-09). The daemon
-	// wires both at its webserver construction sites (AutoStartWebServer and
-	// handleWebServerStart).
-	chatHistoryProvider func(sessionID string) (history []byte, found bool, err error)
-	chatExportProvider  func(sessionID string) (markdown string, found bool, err error)
-
-	// Phase 152 / IDENT-01: alias provider callbacks, wired by the daemon via
-	// SetAliasProviders at both web-start sites. Plain func signatures avoid the
-	// webserver→daemon import cycle (mirrors setChatProviders in api.go / T-151-09).
-	// Both may be nil — handleWSSRelay guards defensively before calling.
-	aliasGet func(personKey, def string) string // AliasStore.GetOrDefault
-	aliasSet func(personKey, alias string)      // wraps AliasStore.Set (error discarded)
-
 	// pluginConfigSubscribers is the set of active SSE subscribers for
 	// /api/plugin-config/stream. Each subscriber gets a buffered channel;
 	// BroadcastPluginConfig non-blocking-sends to each. Drop-on-slow-consumer.
@@ -209,25 +182,6 @@ func (ws *WebServer) SetSessionResolver(fn func(string) (string, string, string,
 // daemon. Phase 93 PLUG-04.
 func (ws *WebServer) SetPluginSettingsProvider(fn func() []byte) {
 	ws.pluginSettingsProvider = fn
-}
-
-// SetAliasProviders wires the global AliasStore read/write callbacks into the
-// webserver so handleWSSRelay can look up and persist per-person aliases without
-// importing the daemon package (T-151-09 circular-import prevention). Must be
-// called before the first WebSocket connection is accepted. Both parameters may
-// be nil — handleWSSRelay guards before calling. Phase 152 / IDENT-01.
-//
-//   - getAlias: looks up the persisted alias for a personKey, returning def when
-//     absent. Mirrors AliasStore.GetOrDefault.
-//   - setAlias: persists a new alias for a personKey. The error from AliasStore.Set
-//     is intentionally discarded in the wrapper the daemon supplies — alias
-//     persistence failure must not close the connection.
-func (ws *WebServer) SetAliasProviders(
-	getAlias func(personKey, def string) string,
-	setAlias func(personKey, alias string),
-) {
-	ws.aliasGet = getAlias
-	ws.aliasSet = setAlias
 }
 
 // SetStaticAppFS installs the React frontend bundle fs.FS used to serve the
@@ -886,16 +840,6 @@ func (ws *WebServer) setupRoutes() {
 	// Closes ROADMAP SC#4 ("no manual page reload for hot-swappable plugins").
 	// Capability-gated like the read endpoint above.
 	mux.HandleFunc("GET /api/plugin-config/stream", ws.requireCapability(ws.handleStreamPluginConfig))
-
-	// Phase 151-03 / PERSIST-01..02: capability-gated chat history and export.
-	// The {id} path wildcard causes requireCapability's path-ID check
-	// (capability_mw.go:57) to enforce claims.SID == {id}, so a cap for
-	// session A cannot read session B's thread (T-151-04 mitigation).
-	// Both routes accept any valid cap (read-only or read-write) — chat
-	// read/export is allowed for any cap holder of that session;
-	// write-posting enforcement is deferred to Phase 153.
-	mux.HandleFunc("GET /api/chat/{id}/history", ws.requireCapability(ws.handleChatHistory))
-	mux.HandleFunc("GET /api/chat/{id}/export", ws.requireCapability(ws.handleChatExport))
 
 	// GET /sessions/{id} — capability-gated terminal HTML page. The old
 	// webEnabled-only pre-check is removed — requireCapability's grant-list

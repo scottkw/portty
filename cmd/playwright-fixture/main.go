@@ -57,7 +57,6 @@ import (
 	"time"
 
 	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/daemon"
 	"github.com/scottkw/agenthub/internal/relay"
 	"github.com/scottkw/agenthub/internal/webserver"
 )
@@ -139,86 +138,6 @@ func main() {
 		return v.([]byte)
 	})
 
-	// 4b. Phase 155-04 — seed a ChatStore with test messages and wire the
-	// chat history + export providers. Without these the e2e shows an empty
-	// thread (Pitfall 7 in 155-RESEARCH.md).
-	chatBaseDir, err := os.MkdirTemp("", "playwright-fixture-chat-*")
-	if err != nil {
-		log.Fatalf("MkdirTemp chatBaseDir: %v", err)
-	}
-	chatStore, err := daemon.NewChatStore(chatBaseDir, sessionID)
-	if err != nil {
-		log.Fatalf("NewChatStore: %v", err)
-	}
-	// Seed 3 messages so e2e assertions have data in the loaded history:
-	//   1. Normal RW message (broadcast test baseline)
-	//   2. Normal viewer message (participant deduplication in Export)
-	//   3. Mentions=["local"] (PARITY-01 @mention test; "local" is the
-	//      default currentUserTailnetID in ChatPanel for web-share clients
-	//      whose self-identity is not set by the WebShareSessionView).
-	seedMessages := []relay.ChatMessage{
-		{
-			SchemaVersion: relay.ChatSchemaVersion,
-			ID:            "fixture-msg-1",
-			SessionID:     sessionID,
-			AuthorID:      "fixture-author-rw",
-			AuthorAlias:   "playwright-rw",
-			Content:       "Hello from the fixture (RW).",
-			TimestampMs:   1000000000000,
-		},
-		{
-			SchemaVersion: relay.ChatSchemaVersion,
-			ID:            "fixture-msg-2",
-			SessionID:     sessionID,
-			AuthorID:      "fixture-author-viewer",
-			AuthorAlias:   "playwright-viewer",
-			Content:       "Hello from the fixture (viewer).",
-			TimestampMs:   1000000001000,
-		},
-		{
-			SchemaVersion: relay.ChatSchemaVersion,
-			ID:            "fixture-msg-4",
-			SessionID:     sessionID,
-			AuthorID:      "fixture-author-rw",
-			AuthorAlias:   "playwright-rw",
-			Content:       "Hey @local, this mentions you.",
-			TimestampMs:   1000000003000,
-			Mentions:      []string{"local"},
-		},
-	}
-	for _, msg := range seedMessages {
-		if _, err := chatStore.AppendMessage(msg); err != nil {
-			log.Fatalf("chatStore.AppendMessage: %v", err)
-		}
-	}
-	ws.SetChatHistoryProvider(func(sid string) ([]byte, bool, error) {
-		if sid != sessionID {
-			return nil, false, nil
-		}
-		b, err := json.Marshal(chatStore.Messages())
-		if err != nil {
-			return nil, true, err
-		}
-		return b, true, nil
-	})
-	ws.SetChatExportProvider(func(sid string) (string, bool, error) {
-		if sid != sessionID {
-			return "", false, nil
-		}
-		md, err := chatStore.Export()
-		return md, true, err
-	})
-	// Wire chatAppendFn on the hub so HandleChatSend can persist + broadcast.
-	// Without this, sending a chat message returns "chatAppendFn not wired"
-	// and BroadcastChat never fires — the parity test would see empty page2.
-	if hub, ok := manager.Get(sessionID); ok {
-		hub.SetChatAppendFn(func(msg relay.ChatMessage) (relay.ChatMessage, error) {
-			return chatStore.AppendMessage(msg)
-		})
-	} else {
-		log.Fatalf("manager.Get(%q) not found after Create", sessionID)
-	}
-
 	// 5. Start the WebServer's HTTPS listener.
 	if err := ws.Start(); err != nil {
 		log.Fatalf("ws.Start: %v", err)
@@ -291,24 +210,6 @@ func main() {
 	adminMux.HandleFunc("/__test__/ready", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
-	})
-	// /__test__/hub-status — diagnostic: reports current subscriber count and
-	// chatAppendFn wired status. Used by broadcast e2e tests to confirm hub state.
-	adminMux.HandleFunc("/__test__/hub-status", func(w http.ResponseWriter, _ *http.Request) {
-		h, ok := manager.Get(sessionID)
-		var subCount int
-		var fnWired bool
-		if ok {
-			subCount = h.SubscriberCount()
-			fnWired = h.ChatAppendFnWired()
-		}
-		w.Header().Set("Content-Type", "application/json")
-		enc := json.NewEncoder(w)
-		_ = enc.Encode(map[string]any{
-			"subscriberCount":   subCount,
-			"chatAppendFnWired": fnWired,
-			"hubFound":          ok,
-		})
 	})
 	adminSrv := &http.Server{
 		Handler:           adminMux,

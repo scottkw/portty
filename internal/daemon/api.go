@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -282,33 +281,13 @@ func (a *API) JoinCodes() *capability.JoinCodeManager {
 // RelayHandler returns the http.Handler served on the relay loopback TCP port
 // — the surface the Wails desktop GUI reaches over 127.0.0.1:<relayPort> (it
 // cannot reach the daemon Unix socket). This is the relay server (sessions WS)
-// wrapped first with the remote terminal WS proxy route
-// (/api/relay/remote/{sid}/ws) and then with the chat history/export routes
-// (/api/chat/{id}/history, /api/chat/{id}/export). Both wrap layers use *API
-// methods that cannot live in the relay package without an import cycle. Exposed
-// so external tests can drive the relay surface exactly as the webview does
-// (mirrors Handler()).
+// wrapped with the remote terminal WS proxy route (/api/relay/remote/{sid}/ws),
+// an *API method that cannot live in the relay package without an import
+// cycle. Exposed so external tests can drive the relay surface exactly as the
+// webview does (mirrors Handler()).
 func (a *API) RelayHandler() http.Handler {
 	server := relay.NewServer(a.engine.Manager(), a.engine.Backend())
-	// Phase 152 / IDENT-01: wire identity providers so handleSession stamps the
-	// owner's alias from the global AliasStore. Callback pattern breaks the
-	// relay→daemon import cycle (mirrors setChatProviders). Guard on nil so a
-	// failed AliasStore construction at startup doesn't prevent relay operation.
-	if aliases := a.engine.Aliases(); aliases != nil {
-		server.SetIdentityProviders(
-			a.engine.hostname,
-			aliases.GetOrDefault,
-			func(key, alias string) { _ = aliases.Set(key, alias) },
-		)
-	} else {
-		server.SetIdentityProviders(a.engine.hostname, nil, nil)
-	}
-	withRemote := a.wrapRelayWithRemoteFiles(server)
-	// Phase 151-03 / PERSIST-01..02: chat history + export routes mounted
-	// in the outer wrap layer (most-specific wins in Go 1.22+ mux). Like the
-	// remote WS layer, these are *API methods that need a.engine and cannot
-	// live in relay.NewServer without an import cycle.
-	return a.wrapRelayWithChat(withRemote)
+	return a.wrapRelayWithRemoteFiles(server)
 }
 
 // StartRelay creates the relay HTTP server and starts it on a random TCP port.
@@ -504,11 +483,6 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	key := a.signingKey
 	a.signingKeyMu.RUnlock()
 	ws.SetSigningKey(key)
-	// Phase 151-03 / PERSIST-01..02: wire the chat provider so the webserver's
-	// cap-gated /api/chat/{id}/history and /api/chat/{id}/export routes can
-	// reach the session's ChatStore without importing the daemon package
-	// (T-151-09 — no webserver→daemon import cycle; provider callback only).
-	a.setChatProviders(ws)
 	ws.SetStaticAppFS(getStaticAppFS())
 	ws.SetJoinCodes(a.joinCodes)
 	if err := ws.Start(); err != nil {
@@ -522,72 +496,6 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	_ = ws.ClearLingeringFunnel(context.Background())
 	a.webServer = ws
 	return nil
-}
-
-// setChatProviders wires the webserver's cap-gated chat routes to the session
-// engine's ChatStore via two narrow callbacks (IN-04): a history-only provider
-// that marshals the thread and an export-only provider that renders Markdown.
-// Splitting them means each request does only the work it serves — the history
-// route never runs Export() and the export route never marshals history. Both
-// preserve WR-03 semantics: a missing store is (false, nil) → 404, while an
-// internal failure on an existing session is (true, err) → 500 (never masked as
-// 404). Shared by AutoStartWebServer and handleWebServerStart; the closure form
-// keeps the webserver→daemon import cycle broken (T-151-09).
-//
-// Also wires SetAliasProviders (Phase 152 / IDENT-01) so the web read pump can
-// look up and persist per-person aliases from the same global AliasStore as the
-// relay path. Guarded for nil store so early-startup or test scenarios where
-// aliasStore failed to construct do not crash.
-func (a *API) setChatProviders(ws *webserver.WebServer) {
-	ws.SetChatHistoryProvider(func(sessionID string) (history []byte, found bool, err error) {
-		store, storeOK := a.engine.ChatStoreFor(sessionID)
-		if !storeOK {
-			// Session has no chat store — genuine not-found (404), not an error.
-			return nil, false, nil
-		}
-		// Messages() never returns nil (make([]…, len)), so an empty thread
-		// already marshals to `[]` not `null` (IN-01).
-		b, mErr := json.Marshal(store.Messages())
-		if mErr != nil {
-			// Internal failure on an existing session — surface it (500), never
-			// mask it as 404 (WR-03 / CLAUDE.md no silent fallbacks).
-			log.Printf("chat: marshal history for session %q: %v", sessionID, mErr)
-			return nil, true, fmt.Errorf("chat: marshal history: %w", mErr)
-		}
-		return b, true, nil
-	})
-	ws.SetChatExportProvider(func(sessionID string) (markdown string, found bool, err error) {
-		store, storeOK := a.engine.ChatStoreFor(sessionID)
-		if !storeOK {
-			return "", false, nil
-		}
-		md, eErr := store.Export()
-		if eErr != nil {
-			log.Printf("chat: export for session %q: %v", sessionID, eErr)
-			return "", true, fmt.Errorf("chat: export: %w", eErr)
-		}
-		return md, true, nil
-	})
-	// Phase 152 / IDENT-01: wire alias persistence callbacks.
-	// Plain func closures avoid the webserver→daemon import cycle (T-151-09).
-	// aliasStore may be nil when AliasStore construction failed at startup;
-	// SetAliasProviders accepts nil-guarded callbacks — handleWSSRelay will
-	// operate with no alias persistence (empty alias fallback) rather than panic.
-	aliasStore := a.engine.Aliases()
-	ws.SetAliasProviders(
-		func(personKey, def string) string {
-			if aliasStore == nil {
-				return def
-			}
-			return aliasStore.GetOrDefault(personKey, def)
-		},
-		func(personKey, alias string) {
-			if aliasStore == nil {
-				return
-			}
-			_ = aliasStore.Set(personKey, alias) // error intentionally discarded
-		},
-	)
 }
 
 // writeJSON writes v as a JSON response with the given status code.
@@ -1092,8 +1000,6 @@ func (a *API) handleWebServerStart(w http.ResponseWriter, r *http.Request) {
 	key := a.signingKey
 	a.signingKeyMu.RUnlock()
 	ws.SetSigningKey(key)
-	// Phase 151-03 / PERSIST-01..02: wire the chat provider (mirrors AutoStartWebServer).
-	a.setChatProviders(ws)
 	ws.SetStaticAppFS(getStaticAppFS())
 	ws.SetJoinCodes(a.joinCodes)
 

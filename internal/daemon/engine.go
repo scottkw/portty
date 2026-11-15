@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/color"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,11 +32,8 @@ type SessionEngine struct {
 	manager  *relay.HubManager
 
 	mu              sync.RWMutex
-	tabNames        map[string]string     // sessionID -> display name
-	sessionWorkDirs map[string]string     // sessionID -> EvalSymlinks-resolved absolute WorkDir (Phase 118 / FS-02)
-	chatStores      map[string]*ChatStore // Phase 151 / PERSIST-01,PERSIST-03: per-session chat store (guarded by e.mu)
-	chatsBaseDir    string                // Phase 151: base directory for chat JSONL files; init from chatsDir() in NewSessionEngine, overrideable via ChatsBaseDirForTest
-	aliasStore      *AliasStore           // Phase 152 / IDENT-01,IDENT-02: global alias store (per-person, not per-session); constructed over daemonConfigDir in NewSessionEngine
+	tabNames        map[string]string // sessionID -> display name
+	sessionWorkDirs map[string]string // sessionID -> EvalSymlinks-resolved absolute WorkDir (Phase 118 / FS-02)
 
 	startMinimized              bool           // persisted start-minimized preference
 	stayOnHubAfterCreate        bool           // Phase 168 UX-01: persisted "stay on Hub after creating a session" preference (default OFF)
@@ -173,28 +169,8 @@ func (e *SessionEngine) saveSettingsToDisk() {
 // packages (e.g. the Phase 122-05 parity test in package daemon_test) need
 // a public setter. Production code must never call this; configDir is
 // derived from daemonConfigDir() during NewSessionEngine.
-//
-// Phase 152: also reconstructs aliasStore over the new dir so tests that
-// call ConfigDirForTest get isolated alias persistence (analogous to how
-// ChatsBaseDirForTest isolates chat JSONL storage). A failed NewAliasStore
-// in the test dir leaves aliasStore nil — test isolation takes precedence
-// over the alias feature.
 func (e *SessionEngine) ConfigDirForTest(dir string) {
 	e.configDir = dir
-	if store, err := NewAliasStore(dir); err == nil {
-		e.aliasStore = store
-	}
-}
-
-// ChatsBaseDirForTest overrides the engine's chatsBaseDir so that chat JSONL
-// files created during tests land under a t.TempDir() instead of the real
-// daemonConfigDir()/chats path. This mirrors ConfigDirForTest (which only
-// affects settings persistence and does NOT affect chatsDir()). Test-only;
-// production code must never call this.
-func (e *SessionEngine) ChatsBaseDirForTest(dir string) {
-	e.mu.Lock()
-	e.chatsBaseDir = dir
-	e.mu.Unlock()
 }
 
 // SetSpawnCommandForTest makes every subsequent CreateSession spawn path with
@@ -204,18 +180,6 @@ func (e *SessionEngine) SetSpawnCommandForTest(path string, args []string) {
 	e.spawnCommand = func() (string, []string) { return path, args }
 }
 
-// ChatStoreFor returns the ChatStore for the given session ID. It is safe to
-// call concurrently with CreateSession and KillSession. Returns ok==false if
-// no store exists for the session (either the session does not exist, or
-// NewChatStore failed non-fatally during CreateSession).
-// Used by the Plan 03 REST endpoints to read/append/export chat messages.
-func (e *SessionEngine) ChatStoreFor(sessionID string) (*ChatStore, bool) {
-	e.mu.RLock()
-	store, ok := e.chatStores[sessionID]
-	e.mu.RUnlock()
-	return store, ok
-}
-
 // sessionShell is the binary every session runs; $SHELL and settings are ignored.
 const sessionShell = "/bin/zsh"
 
@@ -223,12 +187,6 @@ const sessionShell = "/bin/zsh"
 func NewSessionEngine() *SessionEngine {
 	hostname, _ := os.Hostname()
 	cfgDir := daemonConfigDir()
-	// Phase 152 / IDENT-01: construct the global AliasStore. A failed load
-	// (e.g. corrupt aliases.json) must not crash daemon startup — tolerate
-	// the error here and leave aliasStore nil; identity stamping falls back
-	// to the engine hostname as the default alias. Mirror loadSettingsFromDisk:
-	// OS failures are non-fatal (first-run scenario).
-	aliasStore, _ := NewAliasStore(cfgDir)
 	e := &SessionEngine{
 		hostname:        hostname,
 		configDir:       cfgDir,
@@ -237,21 +195,11 @@ func NewSessionEngine() *SessionEngine {
 		manager:         relay.NewHubManager(),
 		tabNames:        make(map[string]string),
 		sessionWorkDirs: make(map[string]string),
-		chatStores:      make(map[string]*ChatStore), // Phase 151 / PERSIST-01
-		chatsBaseDir:    chatsDir(),                  // Phase 151: production path = daemonConfigDir()/chats
-		aliasStore:      aliasStore,                  // Phase 152 / IDENT-01: global per-person alias persistence
 	}
 	// -l because go-pty discards Args[0], so the argv0 "-zsh" login trick is impossible.
 	e.spawnCommand = func() (string, []string) { return sessionShell, []string{"-l"} }
 	e.loadSettingsFromDisk(cfgDir)
 	return e
-}
-
-// Aliases returns the engine's global AliasStore. May be nil if AliasStore
-// construction failed at startup (disk error). Callers must nil-guard.
-// Phase 152 / IDENT-01.
-func (e *SessionEngine) Aliases() *AliasStore {
-	return e.aliasStore
 }
 
 // CreateSession spawns the user's login shell in workDir and returns its ID.
@@ -312,38 +260,10 @@ func (e *SessionEngine) CreateSession(ctx context.Context, name, workDir string,
 		}
 	}
 
-	// Phase 151 / PERSIST-01: construct the ChatStore BEFORE taking e.mu. The
-	// constructor does os.MkdirAll plus, on a pre-existing file, a full
-	// loadFromDisk scan — holding the engine-wide lock across that filesystem I/O
-	// would block every concurrent ChatStoreFor/ListSessions reader (IN-03).
-	// Snapshot chatsBaseDir under the lock first so the read stays race-free with
-	// ChatsBaseDirForTest (which writes it under e.mu).
-	e.mu.Lock()
-	chatsBaseDir := e.chatsBaseDir
-	e.mu.Unlock()
-	// Failure is non-fatal — the session still starts; chat is a side channel.
-	// Log only metadata (sessionID + error), never message content (T-151-05).
-	chatStore, chatStoreErr := NewChatStore(chatsBaseDir, id)
-
 	e.mu.Lock()
 	e.tabNames[id] = name
 	e.sessionWorkDirs[id] = resolvedWD
-	if chatStoreErr != nil {
-		log.Printf("chat: NewChatStore for session %q: %v (chat unavailable for this session)", id, chatStoreErr)
-	} else {
-		e.chatStores[id] = chatStore
-	}
 	e.mu.Unlock()
-
-	// Wire the chat-send persist callback so the relay read pump can append chat
-	// messages without importing daemon (import-cycle break). HandleChatSend fails
-	// with "chatAppendFn not wired" without it — never remove this call.
-	// Nil-guard: chatStore is nil when NewChatStore failed (non-fatal; chat is unavailable).
-	if chatStore != nil {
-		hub.SetChatAppendFn(func(msg relay.ChatMessage) (relay.ChatMessage, error) {
-			return chatStore.AppendMessage(msg)
-		})
-	}
 
 	// Watch for natural process exit (PTY EOF -> hub.Done closes).
 	// Transitions session state to StateStopped and captures exit code.
@@ -464,15 +384,6 @@ func (e *SessionEngine) KillSession(id string) error {
 	e.mu.Lock()
 	delete(e.tabNames, id)
 	delete(e.sessionWorkDirs, id) // Phase 118 / FS-02
-	// Phase 151 / PERSIST-03: delete the ChatStore under e.mu so a recycled
-	// session ID never inherits a stale thread (T-151-07 mitigation) and no
-	// orphaned JSONL file remains (T-151-06 mitigation).
-	if store, ok := e.chatStores[id]; ok {
-		if delErr := store.Delete(); delErr != nil {
-			log.Printf("chat: Delete for session %q: %v", id, delErr)
-		}
-		delete(e.chatStores, id)
-	}
 	e.mu.Unlock()
 
 	return nil
