@@ -88,7 +88,44 @@ Plans:
   6. Session chat is gone from the desktop app, the web share page, the daemon/webserver API and the relay protocol; no chat button, badge, or endpoint remains, and old clients that send chat frames do not crash anything
   7. Switching macOS between Light and Dark changes the whole app and every open terminal at once, with no restart; there is no theme picker, and the web share page follows the browser's light/dark setting
   8. The window looks like a native macOS app: system font and accent color, a source-list sidebar, a unified title bar/toolbar, and native-style controls; no custom dark chrome or hardcoded colors remain (LOOK-01)
-**Plans**: TBD
+**Plans**: 12 plans (sequential waves 1-12; App.tsx, style.css and TESTING.md are shared hot files)
+
+Plans:
+**Wave 1**
+- [ ] 02-01-PLAN.md — Native chrome spike: hidden-inset title bar, vibrancy, drag strip (human click-through check, Hidden fallback); menu bar with ⌘T, ⌘,, ⌘W, ⌃⌘S, Help ▸ Portty Help
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 02-02-PLAN.md — CHAT-01 Go: retire 0x30-0x37 on both WebSocket paths; delete daemon/webserver chat store, routes, aliases, WhoIs identity, relay presence/sanitizer/chat CORS; fixture and fuzz updated
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 02-03-PLAN.md — THEM-01: useColorScheme + two built-in palettes, live switch on desktop and web; two-block light/dark tokens; system fonts; theme library, picker and bundled fonts removed
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 02-04-PLAN.md — Source-list sidebar: This Mac (always-on poll), peer groups with attach in '<host> › <session>' tabs, Tailscale footer, Hide/Show Sidebar; App stops rendering Hub/Welcome/Help
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 02-05-PLAN.md — Share dialog moved to components/Share/; orphaned Hub grid, Welcome and Help deleted (frontend only); SM-02 flake fixed
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 02-06-PLAN.md — Stay-on-Hub preference removed end to end (Settings, App, bindings, daemon); key dropped on save, migration test flipped, removed routes 404
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 02-07-PLAN.md — CHAT-01 UI: chat components, frontend chat frames and chat-only deps removed; WebShareSessionView moved; components/Hub gone
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 02-08-PLAN.md — Unified toolbar: pill tabs, close = detach, End Session… confirm, rename in tab and sidebar, context menu, empty state, toolbar Share with aria-described disabled state; status bar removed
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [ ] 02-09-PLAN.md — Every dialog as a macOS sheet with a focus trap (useDialogFocus); Share dialog Done footer (Funnel kept)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [ ] 02-10-PLAN.md — Unified banners in UI-SPEC order; Open Tailscale action (fixed-argv OpenTailscale binding); no inline colours in App
+
+**Wave 11** *(blocked on Wave 10 completion)*
+- [ ] 02-11-PLAN.md — Settings sheet (General / Sharing / Security), native switches, inline disabled reasons; Settings tab, jump bar and search removed
+
+**Wave 12** *(blocked on Wave 11 completion)*
+- [ ] 02-12-PLAN.md — CSS sweep onto tokens with the LOOK-01 source gate; join/dashboard light/dark; final TESTING.md reconciliation and full phase gate
 **UI hint**: yes
 
 ### Phase 3: Portty Brand
@@ -152,7 +189,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
-| 2. Tabs + Sidebar Navigation | 0/TBD | Not started | - |
+| 2. Tabs + Sidebar Navigation | 0/12 | Planned | - |
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |

@@ -521,15 +521,17 @@ Use refs for `activeId` and other values read inside these handlers to avoid sta
 | A6 | `helpURL` should be `https://portty.app` (docs come in Phase 3) | Pattern 3 | The link may 404 until Phase 3. User may prefer the GitHub README |
 | A7 | A 3 s always-on `ListSessions` poll is acceptable load | Pattern 5 | Negligible. Local Unix socket |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Spike outcome: HiddenInset vs Hidden.** We know the risk report is real for macOS 26. Nobody has tested 27 with Wails. Recommendation: Plan 1 Task 1 = spike plus a `checkpoint:human-verify` (the native click test cannot run headless). Record the result in the plan summary and the UI-SPEC deviation table.
-2. **About item.** UI-SPEC lists "About". Today there is none. Recommend deferring the About box to Phase 3 (BRND-01) and noting it as a UI-SPEC deviation, or adding a minimal `runtime.MessageDialog`.
-3. **"Hide Sidebar" / "Show Sidebar" label swap.** Wails v2 menu labels are static unless the app menu is rebuilt. Recommend "Toggle Sidebar", or rebuild the menu via `runtime.MenuUpdateApplicationMenu`. Planner decides.
-4. **Help URL target before Phase 3 docs exist.** Recommend a single Go constant, `https://portty.app`.
-5. **"Open Tailscale" banner action** needs `open -a Tailscale` with a URL fallback. This is a new Go binding with fixed argv (no user input). Alternative: just `BrowserOpenURL('https://tailscale.com/download/mac')`, which is simpler. UI-SPEC locks the `open -a` behavior, so implement as specced unless the planner flags it.
-6. **join/dashboard pages light/dark.** Not strictly "the web share page". Cheap to tokenize. Recommend including them.
-7. **Wails bump to v2.17.1.** Only if the spike or UAT hits macOS-26-class WebView crashes.
+All seven resolved by the orchestrator on 2026-11-15 (cited in plans as "orchestrator resolved defaults").
+
+1. **Spike outcome: HiddenInset vs Hidden.** We know the risk report is real for macOS 26. Nobody has tested 27 with Wails. Recommendation: Plan 1 Task 1 = spike plus a `checkpoint:human-verify` (the native click test cannot run headless). Record the result in the plan summary and the UI-SPEC deviation table. **RESOLVED:** spike + human-verify checkpoint in 02-01 Task 1; fallback `mac.TitleBarHidden()`.
+2. **About item.** UI-SPEC lists "About". Today there is none. Recommend deferring the About box to Phase 3 (BRND-01) and noting it as a UI-SPEC deviation, or adding a minimal `runtime.MessageDialog`. **RESOLVED:** About deferred to Phase 3 (BRND-01), recorded as a UI-SPEC deviation (02-01).
+3. **"Hide Sidebar" / "Show Sidebar" label swap.** Wails v2 menu labels are static unless the app menu is rebuilt. Recommend "Toggle Sidebar", or rebuild the menu via `runtime.MenuUpdateApplicationMenu`. Planner decides. **RESOLVED:** static "Toggle Sidebar" label (02-01).
+4. **Help URL target before Phase 3 docs exist.** Recommend a single Go constant, `https://portty.app`. **RESOLVED:** single constant `https://portty.app` (02-01 `helpURL`, 02-04 `HELP_URL`).
+5. **"Open Tailscale" banner action** needs `open -a Tailscale` with a URL fallback. This is a new Go binding with fixed argv (no user input). Alternative: just `BrowserOpenURL('https://tailscale.com/download/mac')`, which is simpler. UI-SPEC locks the `open -a` behavior, so implement as specced unless the planner flags it. **RESOLVED:** implement as UI-SPEC locks it — fixed-argv Go binding `OpenTailscale` (`open -a Tailscale`, URL fallback) in 02-08.
+6. **join/dashboard pages light/dark.** Not strictly "the web share page". Cheap to tokenize. Recommend including them. **RESOLVED:** included; join/dashboard pages adopt the light/dark tokens in 02-10.
+7. **Wails bump to v2.17.1.** Only if the spike or UAT hits macOS-26-class WebView crashes. **RESOLVED:** no bump unless the spike or UAT hits WebView crashes (02-01).
 
 ## Environment Availability
 
