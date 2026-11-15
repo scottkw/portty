@@ -60,19 +60,13 @@ describe('PluginToggleBanner', () => {
     expect(statusEl?.getAttribute('aria-live')).toBe('polite')
   })
 
-  it('dismiss button has aria-label="Dismiss notification" and fires onDismiss when clicked', () => {
+  it('dismiss button has aria-label="Dismiss" and fires onDismiss when clicked', () => {
     const onDismiss = vi.fn()
     ;({ container, root } = render('unicode11', onDismiss))
-    const btn = container.querySelector('[aria-label="Dismiss notification"]') as HTMLButtonElement | null
+    const btn = container.querySelector('[aria-label="Dismiss"]') as HTMLButtonElement | null
     expect(btn).not.toBeNull()
     flushSync(() => { btn!.click() })
     expect(onDismiss).toHaveBeenCalledTimes(1)
-  })
-
-  it('outer element has className containing "webgl-recovery-banner" (BEM reuse for visual continuity)', () => {
-    ;({ container, root } = render('unicode11', vi.fn()))
-    const el = container.firstElementChild as HTMLElement | null
-    expect(el?.className).toContain('webgl-recovery-banner')
   })
 
   describe('auto-dismiss timing', () => {
@@ -106,5 +100,17 @@ describe('PluginToggleBanner', () => {
       // onDismiss should NOT have been called by the timer after unmount
       expect(onDismiss).not.toHaveBeenCalled()
     })
+  })
+
+  it('is the info variant of the shared banner with an svg icon and an XMarkIcon Dismiss (Portty 02-10)', () => {
+    ;({ container, root } = render('unicode11', vi.fn()))
+    const banner = container.querySelector('.banner')!
+    expect(banner.classList.contains('banner--info')).toBe(true)
+    expect(banner.querySelector('svg.banner__icon')?.getAttribute('aria-hidden')).toBe('true')
+    const dismiss = banner.querySelector('.banner__dismiss')!
+    expect(dismiss.getAttribute('aria-label')).toBe('Dismiss')
+    expect(dismiss.querySelector('svg')).not.toBeNull()
+    expect(dismiss.textContent).toBe('')
+    expect(container.textContent).not.toContain('×')
   })
 })

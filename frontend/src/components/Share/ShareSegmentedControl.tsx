@@ -1,4 +1,5 @@
 import React from 'react'
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 
 /**
  * ShareSegmentedControl — the three-way access-tier tablist for the Hub Share
@@ -14,8 +15,9 @@ import React from 'react'
  *
  * Colorblind-safe danger cue (SM-07, owner is colorblind — verify at source,
  * never by eye): the Full-access tab is distinguished by the `is-danger`
- * class (drives the inset ring in style.css) AND a "⚠" glyph the component
- * itself prefixes onto the sub label whenever `danger` is true — belt and
+ * class (drives the inset ring in style.css) AND an ExclamationTriangleIcon the
+ * component itself puts before the sub label whenever `danger` is true (it
+ * replaced the "⚠" glyph in Portty 02-10, UI-SPEC "Icons") — belt and
  * suspenders with the CSS ring, independent of what the caller passes in
  * `sub`.
  */
@@ -71,7 +73,7 @@ export function ShareSegmentedControl({
     <div className="share-segbar" role="tablist" aria-label="Share access tier">
       {tabs.map((t) => {
         const isActive = active === t.id
-        const subText = t.disabled ? 'N/A' : t.danger ? `⚠ ${t.sub}` : t.sub
+        const subText = t.disabled ? 'N/A' : t.sub
         return (
           <button
             key={t.id}
@@ -103,6 +105,9 @@ export function ShareSegmentedControl({
             }}
           >
             <span className="share-seg__main">{t.main}</span>
+            {t.danger && !t.disabled && (
+              <ExclamationTriangleIcon className="share-seg__icon" aria-hidden="true" />
+            )}
             <span className="share-seg__sub">{subText}</span>
           </button>
         )

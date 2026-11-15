@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { XMarkIcon } from '@heroicons/react/20/solid'
+import { ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 /**
  * WebGLRecoveryBanner — Phase 93 WGL-02 / WGL-03.
@@ -44,18 +44,19 @@ export function WebGLRecoveryBanner({
       ? 'Hardware-accelerated rendering recovered — your terminal is now using the standard renderer. Scrollback is intact.'
       : 'Hardware acceleration is unavailable on this device. Your terminal is using the standard renderer for the best experience.'
 
-  const cls = ['webgl-recovery-banner', className].filter(Boolean).join(' ')
+  const cls = ['banner', 'banner--warning', className].filter(Boolean).join(' ')
 
   return (
     <div className={cls} role="status" aria-live="polite">
-      <span className="webgl-recovery-banner__message">{message}</span>
+      <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
+      <span className="banner__message">{message}</span>
       <button
         type="button"
-        className="webgl-recovery-banner__dismiss"
-        aria-label="Dismiss notification"
+        className="banner__dismiss"
+        aria-label="Dismiss"
         onClick={onDismiss}
       >
-        <XMarkIcon style={{ width: 16, height: 16 }} aria-hidden="true" />
+        <XMarkIcon aria-hidden="true" />
       </button>
     </div>
   )

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { XMarkIcon } from '@heroicons/react/20/solid'
+import { InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 /**
  * PluginToggleBanner — Phase 99 PUI-02.
@@ -11,9 +11,7 @@ import { XMarkIcon } from '@heroicons/react/20/solid'
  * where 'software-rasterized' is persistent).
  *
  * Verbatim copy locked by 99-RESEARCH.md "Claude's Discretion" — DO NOT
- * paraphrase. Reuses `.webgl-recovery-banner` BEM class verbatim for visual
- * continuity (same TokyoNight info palette, same 53px height, same × button).
- * Zero new CSS introduced — Phase 99 inherits the Phase 92 CSS discipline.
+ * paraphrase. Portty 02-10: the shared `.banner` style, info variant.
  */
 export interface PluginToggleBannerProps {
   kind: 'unicode11' | 'image'
@@ -36,18 +34,19 @@ export function PluginToggleBanner({
       ? 'Open a new terminal session to apply the Unicode 11 change.'
       : 'Open a new terminal session to apply the Inline Images change.'
 
-  const cls = ['webgl-recovery-banner', className].filter(Boolean).join(' ')
+  const cls = ['banner', 'banner--info', className].filter(Boolean).join(' ')
 
   return (
     <div className={cls} role="status" aria-live="polite">
-      <span className="webgl-recovery-banner__message">{message}</span>
+      <InformationCircleIcon className="banner__icon" aria-hidden="true" />
+      <span className="banner__message">{message}</span>
       <button
         type="button"
-        className="webgl-recovery-banner__dismiss"
-        aria-label="Dismiss notification"
+        className="banner__dismiss"
+        aria-label="Dismiss"
         onClick={onDismiss}
       >
-        <XMarkIcon style={{ width: 16, height: 16 }} aria-hidden="true" />
+        <XMarkIcon aria-hidden="true" />
       </button>
     </div>
   )

@@ -20,3 +20,10 @@ Out-of-scope discoveries logged during plan execution (not fixed).
 - The Share dialog's "Share the session" and "Enable internet sharing" rows still use the old `.settings-panel__toggle-*` checkbox look. The UI-SPEC switch lands with the Settings sheet (02-11).
 - `LinkConfirmPopover` is a click-point popover, not a sheet. It now uses the light/dark tokens but keeps its own Esc and Cancel-first focus, with no Tab trap (not in 02-09's dialog list).
 - Only the Share dialog plays the 100ms close fade (it owns its close through the phase machine). The other dialogs are unmounted by their parent at once, so they close without a fade.
+
+**Resolved in 02-10:** the "⚠" glyph in `ShareSegmentedControl.tsx` is now an `ExclamationTriangleIcon` (SM-07 cue kept: `is-danger` ring plus icon), and the duplicate "⚠" in the Funnel write-gate heading (`InternetFullAccessTab.tsx`, which already had the icon) is gone. No "⚠" remains in frontend source.
+
+## From 02-10
+
+- `ShellWebShareBanner` (inside the Share dialog) still uses the old `.webgl-recovery-banner` / `--shell-warning` / `__dismiss` rules, which keep their TokyoNight hex. 02-10 kept those rules because that component still uses them. 02-12's no-hex sweep of `style.css` has to retoken or migrate them.
+- `.banner-stack` still caps at `calc(3 * 53px)`, sized for the old 53px banners. The new banners are about 33px, so the cap now fits about four banners before it scrolls. Harmless; tidy it if the stack ever overflows.

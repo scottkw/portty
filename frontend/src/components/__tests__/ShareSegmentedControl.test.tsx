@@ -209,11 +209,14 @@ describe('ShareSegmentedControl — arrow-key navigation (SM-07)', () => {
 })
 
 describe('ShareSegmentedControl — colorblind-safe danger cue (SM-07)', () => {
-  it('gives the danger tab the is-danger class and a warning glyph in its rendered text', () => {
+  // Portty 02-10: an ExclamationTriangleIcon replaces the ⚠ glyph (UI-SPEC "Icons").
+  it('gives the danger tab the is-danger class and a warning icon, not the ⚠ glyph', () => {
     const c = renderControl({ tabs: TABS_POST_CONFIRM, active: 'internet-fa' })
     const tabs = Array.from(c.querySelectorAll('[role="tab"]')) as HTMLButtonElement[]
     const dangerTab = tabs.find((t) => t.className.includes('is-danger'))
     expect(dangerTab).toBeDefined()
-    expect(dangerTab!.textContent).toContain('⚠')
+    expect(dangerTab!.querySelector('svg.share-seg__icon')?.getAttribute('aria-hidden')).toBe('true')
+    expect(c.textContent).not.toContain('⚠')
+    expect(tabs.filter((t) => t.querySelector('svg.share-seg__icon'))).toHaveLength(1)
   })
 })

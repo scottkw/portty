@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { XMarkIcon } from '@heroicons/react/20/solid'
+import { InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 /**
  * SessionEndedBanner — Phase 175-06 (BUG-02 / #125).
@@ -51,20 +51,21 @@ export function SessionEndedBanner({
     }
   }, [reason])
 
-  const cls = ['session-ended-banner', className].filter(Boolean).join(' ')
+  const cls = ['banner', 'banner--info', 'session-ended-banner', className].filter(Boolean).join(' ')
 
   return (
     <div className={cls} role="status" aria-live="polite">
-      <span className="session-ended-banner__message">
+      <InformationCircleIcon className="banner__icon" aria-hidden="true" />
+      <span className="banner__message">
         Session ended — the owner stopped this session.
       </span>
       <button
         type="button"
-        className="session-ended-banner__dismiss"
-        aria-label="Dismiss notification"
+        className="banner__dismiss"
+        aria-label="Dismiss"
         onClick={onDismiss}
       >
-        <XMarkIcon style={{ width: 16, height: 16 }} aria-hidden="true" />
+        <XMarkIcon aria-hidden="true" />
       </button>
     </div>
   )

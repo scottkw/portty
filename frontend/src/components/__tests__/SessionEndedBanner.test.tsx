@@ -50,10 +50,10 @@ describe('SessionEndedBanner', () => {
     expect(statusEl?.getAttribute('aria-live')).toBe('polite')
   })
 
-  it('dismiss button has aria-label="Dismiss notification" and fires onDismiss when clicked', () => {
+  it('dismiss button has aria-label="Dismiss" and fires onDismiss when clicked', () => {
     const onDismiss = vi.fn()
     ;({ container, root } = render(onDismiss))
-    const btn = container.querySelector('[aria-label="Dismiss notification"]') as HTMLButtonElement | null
+    const btn = container.querySelector('[aria-label="Dismiss"]') as HTMLButtonElement | null
     expect(btn).not.toBeNull()
     flushSync(() => { btn!.click() })
     expect(onDismiss).toHaveBeenCalledTimes(1)
@@ -86,5 +86,17 @@ describe('SessionEndedBanner', () => {
     expect(() => {
       ;({ container, root } = render(vi.fn()))
     }).not.toThrow()
+  })
+
+  it('is the info variant of the shared banner with an svg icon and an XMarkIcon Dismiss (Portty 02-10)', () => {
+    ;({ container, root } = render(vi.fn()))
+    const banner = container.querySelector('.banner')!
+    expect(banner.classList.contains('banner--info')).toBe(true)
+    expect(banner.querySelector('svg.banner__icon')?.getAttribute('aria-hidden')).toBe('true')
+    const dismiss = banner.querySelector('.banner__dismiss')!
+    expect(dismiss.getAttribute('aria-label')).toBe('Dismiss')
+    expect(dismiss.querySelector('svg')).not.toBeNull()
+    expect(dismiss.textContent).toBe('')
+    expect(container.textContent).not.toContain('×')
   })
 })

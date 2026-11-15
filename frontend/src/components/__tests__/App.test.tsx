@@ -289,6 +289,59 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(raw).toContain("updateExiting ? 'banner-exit' : undefined")
   })
 
+  // Portty 02-10 (UI-SPEC "Banner"): Tailscale, WebGL recovery, update, plugin toggle, then save feedback.
+  it('renders the banner stack in the UI-SPEC order', () => {
+    const start = raw.indexOf('<div className="banner-stack">')
+    const block = raw.slice(start, raw.indexOf('<div className="terminal-container">', start))
+    const order = [
+      '<TailscaleBanner />',
+      '<WebGLRecoveryBanner',
+      '<UpdateBanner',
+      '<PluginToggleBanner',
+      '{saveBanner && (',
+    ].map((marker) => block.indexOf(marker))
+    expect(order.every((i) => i > -1)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+
+  it('the gating expression still covers every banner trigger (INVARIANT, T-02-41)', () => {
+    const invariant = raw.indexOf('INVARIANT: this gating expression')
+    const gate = raw.slice(invariant, raw.indexOf('<div className="banner-stack">', invariant))
+    for (const trigger of [
+      'tailscaleOff',
+      'update',
+      '(webglContextLost || webglSoftwareDetected) && !webglBannerDismissed',
+      'saveBanner !== null',
+      'pluginToggleBanners.length > 0',
+    ]) {
+      expect(gate).toContain(trigger)
+    }
+  })
+
+  it('the save-feedback banner uses the shared style with an XMarkIcon Dismiss', () => {
+    const start = raw.indexOf('{saveBanner && (')
+    const block = raw.slice(start, raw.indexOf('</div>', start))
+    expect(block).toContain("'banner banner--warning' : 'banner banner--info'")
+    expect(block).toContain('className="banner__dismiss"')
+    expect(block).toContain('<XMarkIcon aria-hidden="true" />')
+    expect(block).not.toContain('>×<')
+  })
+
+  it('the daemon error notice is a warning banner keeping its message and Retry action', () => {
+    const start = raw.indexOf("{daemonError && tabs.filter((t) => t.type !== 'settings').length === 0 && (")
+    const block = raw.slice(start, raw.indexOf('Retry Connection', start))
+    expect(block).toContain('className="banner banner--warning"')
+    expect(block).toContain('<ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />')
+    expect(block).toContain('{daemonError}')
+    expect(block).toContain('onClick={retryInit}')
+  })
+
+  it('has no inline style with a hex colour and no hover colour handler (LOOK-01)', () => {
+    expect(raw).not.toMatch(/style=\{\{[^}]*#[0-9a-fA-F]{3,6}/)
+    expect(raw).not.toMatch(/#[0-9a-fA-F]{6}\b/)
+    expect(raw).not.toContain('onMouseEnter')
+  })
+
 })
 
 // TERM-01: the modal passes only the directory; sessions are always the login shell

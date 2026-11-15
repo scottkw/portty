@@ -156,7 +156,7 @@ export function InternetFullAccessTab({
 
         <div className="hub-funnel-write-gate__warning">
           <ExclamationTriangleIcon className="hub-funnel-write-gate__icon" aria-hidden="true" />
-          <div className="hub-funnel-write-gate__warning-heading">⚠ You are exposing a terminal to the internet</div>
+          <div className="hub-funnel-write-gate__warning-heading">You are exposing a terminal to the internet</div>
           <p className="hub-funnel-write-gate__warning-body">
             Anyone with the link and code gets full command execution on this machine, running
             as your account, until you disable it or it expires (max 1 hour). A leaked link =

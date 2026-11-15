@@ -46,22 +46,22 @@ describe('UpdateBanner', () => {
 
   it('renders Download Update button', () => {
     ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
-    const downloadBtn = container.querySelector('.update-banner__btn--download')
+    const downloadBtn = container.querySelector('.banner__action')
     expect(downloadBtn).not.toBeNull()
     expect(downloadBtn?.textContent).toContain('Download Update')
   })
 
   it('renders Dismiss button with correct aria-label', () => {
     ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
-    const dismissBtn = container.querySelector('.update-banner__btn--dismiss')
+    const dismissBtn = container.querySelector('.banner__dismiss')
     expect(dismissBtn).not.toBeNull()
-    expect(dismissBtn?.getAttribute('aria-label')).toBe('Dismiss update notification')
+    expect(dismissBtn?.getAttribute('aria-label')).toBe('Dismiss')
   })
 
   it('calls onDismiss when Dismiss button clicked', () => {
     const onDismiss = vi.fn()
     ;({ container, root } = renderUpdateBanner(mockUpdate, onDismiss))
-    const dismissBtn = container.querySelector('.update-banner__btn--dismiss') as HTMLButtonElement
+    const dismissBtn = container.querySelector('.banner__dismiss') as HTMLButtonElement
     flushSync(() => { dismissBtn.click() })
     expect(onDismiss).toHaveBeenCalledOnce()
   })
@@ -80,13 +80,13 @@ describe('UpdateBanner', () => {
 
   it('applies className when provided (for banner-exit animation)', () => {
     ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn(), 'banner-exit'))
-    const banner = container.querySelector('.update-banner')
+    const banner = container.querySelector('.banner')
     expect(banner?.classList.contains('banner-exit')).toBe(true)
   })
 
   it('calls BrowserOpenURL with releaseURL on download click', () => {
     ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
-    const downloadBtn = container.querySelector('.update-banner__btn--download') as HTMLButtonElement
+    const downloadBtn = container.querySelector('.banner__action') as HTMLButtonElement
     flushSync(() => { downloadBtn.click() })
     expect(BrowserOpenURL).toHaveBeenCalledWith(mockUpdate.releaseURL)
   })
@@ -94,5 +94,19 @@ describe('UpdateBanner', () => {
   it('renders "Update available:" message text', () => {
     ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
     expect(container.textContent).toContain('Update available:')
+  })
+
+  it('is the info variant of the shared banner with an InformationCircleIcon (Portty 02-10)', () => {
+    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
+    const banner = container.querySelector('.banner')!
+    expect(banner.classList.contains('banner--info')).toBe(true)
+    expect(banner.querySelector('svg.banner__icon')?.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('dismisses with an XMarkIcon button, not a text label or ×', () => {
+    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
+    const dismiss = container.querySelector('.banner__dismiss')!
+    expect(dismiss.querySelector('svg')).not.toBeNull()
+    expect(dismiss.textContent).toBe('')
   })
 })

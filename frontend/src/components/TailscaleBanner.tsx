@@ -8,7 +8,7 @@ import { OpenTailscale } from '../wailsjs/go/main/App'
  * dismiss button: it clears only when a recheck finds the connection back.
  * Portty 02-08: the toolbar Share button points aria-describedby at
  * #ts-off-reason, so the reason is visible and announced (UI-REVIEW 01 #2/#3).
- * Portty 02-10: "Open Tailscale" launches the installed app, or its download
+ * Portty 02-10: the action button launches the installed app, or its download
  * page; it never installs or configures anything.
  */
 export function TailscaleBanner(): React.ReactElement {

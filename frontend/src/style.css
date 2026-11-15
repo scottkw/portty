@@ -1179,73 +1179,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   margin-top: 8px;
 }
 
-/* -- Update Banner ------------------------------------------------- */
-
-.update-banner {
-  background: #16161e;
-  border: 1px solid #292e42;
-  border-left: 3px solid #7aa2f7;
-  border-radius: 4px;
-  padding: 12px 16px;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.update-banner__message {
-  font-size: 13px;
-  color: #a9b1d6;
-  line-height: 1.5;
-}
-
-.update-banner__version {
-  color: #c0caf5;
-}
-
-.update-banner__arrow {
-  color: #9aa5ce;
-}
-
-.update-banner__actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.update-banner__btn--download {
-  background-color: #7aa2f7;
-  color: #1a1b26;
-  font-weight: 600;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-size: 13px;
-  border: none;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.update-banner__btn--download:hover {
-  background-color: #89b4fa;
-}
-
-.update-banner__btn--dismiss {
-  background-color: transparent;
-  color: #9aa5ce;
-  border: 1px solid #292e42;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.update-banner__btn--dismiss:hover {
-  color: #c0caf5;
-  border-color: #3b4261;
-}
-
 /* ── Tailscale Status Indicator ──────────────────────────── */
 .ts-status {
   display: flex;
@@ -1415,18 +1348,13 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   transition: opacity 150ms ease, max-height 200ms ease, padding 200ms ease;
 }
 
-.banner-stack .update-banner {
-  margin-bottom: 0;
-}
-
 /* ─── Phase 93 U11-01 — italic caption modifier under Unicode 11 row ──── */
 .settings-panel__description--italic {
   font-style: italic;
 }
 
-/* ─── Phase 93 WGL-02/WGL-03 — WebGL recovery banner ───────────────────
-   Parallel to .update-banner — same TokyoNight palette, same accent
-   border (#7aa2f7) for the info tone, same banner-stack height (53px). */
+/* ─── Phase 93 WGL-02/WGL-03 base, now used only by ShellWebShareBanner
+   (the WebGL, plugin toggle and update banners use .banner, Portty 02-10). */
 .webgl-recovery-banner {
   background: #16161e;
   border: 1px solid #292e42;
@@ -1442,13 +1370,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 .banner-stack .webgl-recovery-banner {
   margin-bottom: 0;
-}
-.webgl-recovery-banner__message {
-  flex: 1 1 auto;
-  font-size: 13px;
-  color: #a9b1d6;
-  line-height: 1.5;
-  padding-right: 12px;
 }
 .webgl-recovery-banner__dismiss {
   background: transparent;
@@ -1478,58 +1399,15 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 
 /* ─── Phase 175-06 (BUG-02 / #125) — Session-ended guest disconnect banner ──
-   Rendered by TerminalPanel (not the App.tsx banner-stack — this overlays
-   the terminal viewport itself, mirroring .find-bar's absolute-positioned
-   overlay anchored on .terminal-session-container's position:relative) when
-   the guest's WebSocket closes because the owner ended/stopped the shared
-   session. Colorblind-safe (MEMORY: user is colorblind): meaning is carried
-   by the text + role="status"/aria-live="polite" contract, never by the
-   destructive-red (#f7768e) left accent alone — that border is decoration
-   only, same convention as .webgl-recovery-banner--shell-warning. */
+   Rendered by TerminalPanel over the top of the terminal viewport (anchored on
+   .terminal-session-container's position:relative). Look comes from .banner
+   (info variant, Portty 02-10); this rule only places it. */
 .session-ended-banner {
   position: absolute;
-  top: 8px;
-  left: 16px;
-  right: 16px;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 10;
-  background: #16161e;
-  border: 1px solid #292e42;
-  border-left: 3px solid #f7768e;
-  border-radius: 4px;
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.session-ended-banner__message {
-  flex: 1 1 auto;
-  font-size: 13px;
-  font-weight: 600;
-  color: #c0caf5;
-  line-height: 1.5;
-  padding-right: 12px;
-}
-.session-ended-banner__dismiss {
-  background: transparent;
-  border: none;
-  color: #9aa5ce;
-  cursor: pointer;
-  padding: 4px;
-  min-width: 24px;
-  min-height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-}
-.session-ended-banner__dismiss:hover {
-  color: #c0caf5;
-  background: #1e2030;
-}
-.session-ended-banner__dismiss:focus-visible {
-  outline: 2px solid #7aa2f7;
-  outline-offset: 2px;
 }
 
 /* ─── Phase 101-03 SHELL-08 — Shell web-share security banner ──────────
@@ -2506,7 +2384,7 @@ html.is-desktop {
 /* =====================================================================
    Phase 173 (SM-03/SM-07) — Share segmented control (.share-segbar/.share-seg*)
    All colors via var(--hub-*) tokens only. Colorblind-safe: the Full-access
-   segment's "danger" state is an inset box-shadow ring + the ⚠ glyph/text in
+   segment's "danger" state is an inset box-shadow ring + a warning icon/text in
    the label (rendered by the component), never a hue swap. Owner is
    colorblind (see project memory) — verify at source, not by eye.
    ===================================================================== */
@@ -2549,13 +2427,19 @@ html.is-desktop {
 }
 
 /* COLORBLIND-SAFE (SM-07): inset ring is the primary non-color cue for the
-   active Full-access segment — reinforces the ⚠ glyph + "Full access" text
+   active Full-access segment — reinforces the warning icon + "Full access" text
    rendered by the component, not a hue swap on the active background. */
 .share-seg.is-active.is-danger {
   box-shadow: inset 0 0 0 1px var(--color-error-text);
 }
 
-.share-seg.is-active.is-danger .share-seg__sub {
+.share-seg__icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.share-seg.is-active.is-danger :is(.share-seg__sub, .share-seg__icon) {
   color: var(--color-error-text);
 }
 

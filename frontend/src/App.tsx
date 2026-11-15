@@ -46,6 +46,7 @@ import { HELP_URL } from './lib/helpUrl'
 import { peerView, shortHost } from './lib/sidebarPeers'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
+import { ExclamationTriangleIcon, InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { TailscaleBanner } from './components/TailscaleBanner'
 import type { TailscaleHealth } from './lib/tailscale'
 import { WebShareSessionView } from './components/WebShareSessionView'
@@ -1125,6 +1126,12 @@ function App(): React.ReactElement {
                 the equivalent banner (ShellWebShareBanner, same shared warned/
                 warningEnabled authority) now lives inside SessionShareModal only. */}
             {tailscaleOff && <TailscaleBanner />}
+            {(webglContextLost || webglSoftwareDetected) && !webglBannerDismissed && (
+              <WebGLRecoveryBanner
+                reason={webglSoftwareDetected ? 'software-rasterized' : 'context-loss'}
+                onDismiss={() => setWebglBannerDismissed(true)}
+              />
+            )}
             {update && (
               <UpdateBanner
                 update={update}
@@ -1132,25 +1139,8 @@ function App(): React.ReactElement {
                 className={updateExiting ? 'banner-exit' : undefined}
               />
             )}
-            {(webglContextLost || webglSoftwareDetected) && !webglBannerDismissed && (
-              <WebGLRecoveryBanner
-                reason={webglSoftwareDetected ? 'software-rasterized' : 'context-loss'}
-                onDismiss={() => setWebglBannerDismissed(true)}
-              />
-            )}
-            {/* Phase 97 SER-01: save-feedback banner (info = Serialize disabled,
-                error = write/dialog failure). Mirrors localBanner one-shot pattern. */}
-            {saveBanner && (
-              <div
-                className={saveBanner.kind === 'error' ? 'banner banner--error' : 'banner banner--info'}
-                role="status"
-              >
-                <span>{saveBanner.text}</span>
-                <button onClick={() => setSaveBanner(null)} aria-label="Dismiss">×</button>
-              </div>
-            )}
             {/* Phase 99 PUI-02: one-shot toggle-change banners for unicode11 / image.
-                Both auto-dismiss after 6000ms; user can also dismiss via × button. */}
+                Both auto-dismiss after 6000ms; user can also dismiss via the Dismiss button. */}
             {pluginToggleBanners.map((kind) => (
               <PluginToggleBanner
                 key={kind}
@@ -1160,6 +1150,22 @@ function App(): React.ReactElement {
                 }
               />
             ))}
+            {/* Phase 97 SER-01: save-feedback banner (info = Serialize disabled,
+                warning = write/dialog failure). Mirrors localBanner one-shot pattern. */}
+            {saveBanner && (
+              <div
+                className={saveBanner.kind === 'error' ? 'banner banner--warning' : 'banner banner--info'}
+                role="status"
+              >
+                {saveBanner.kind === 'error'
+                  ? <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
+                  : <InformationCircleIcon className="banner__icon" aria-hidden="true" />}
+                <span className="banner__message">{saveBanner.text}</span>
+                <button type="button" className="banner__dismiss" onClick={() => setSaveBanner(null)} aria-label="Dismiss">
+                  <XMarkIcon aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </div>
         )}
         <div className="terminal-container">
@@ -1263,38 +1269,14 @@ function App(): React.ReactElement {
           <EmptyState onNewSession={() => setShowNewSessionModal(true)} />
         )}
         {daemonError && tabs.filter((t) => t.type !== 'settings').length === 0 && (
-          <div style={{
-            background: '#16161e',
-            borderLeft: '3px solid #f7768e',
-            border: '1px solid #292e42',
-            borderLeftWidth: '3px',
-            borderLeftColor: '#f7768e',
-            borderRadius: '4px',
-            padding: '12px 16px',
-            margin: '16px',
-            color: '#a9b1d6',
-            fontSize: '13px',
-          }}>
-            <div style={{ fontWeight: 600, marginBottom: '8px', color: '#c0caf5' }}>
-              Unable to connect to session daemon
-            </div>
-            <div style={{ marginBottom: '12px' }}>
+          <div className="banner banner--warning" role="alert">
+            <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
+            <span className="banner__message">
+              <strong>Unable to connect to session daemon</strong>
+              <br />
               {daemonError}
-            </div>
-            <button
-              onClick={retryInit}
-              style={{
-                border: '1px solid #292e42',
-                background: 'transparent',
-                color: '#a9b1d6',
-                padding: '4px 12px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '13px',
-              }}
-              onMouseEnter={(e) => { (e.target as HTMLElement).style.background = '#1e2030' }}
-              onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent' }}
-            >
+            </span>
+            <button type="button" className="banner__action" onClick={retryInit}>
               Retry Connection
             </button>
           </div>

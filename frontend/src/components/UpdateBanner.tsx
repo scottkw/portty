@@ -1,4 +1,5 @@
 import React from 'react'
+import { InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { BrowserOpenURL } from '../wailsjs/wailsjs/runtime/runtime'
 
 export interface UpdateInfo {
@@ -16,35 +17,24 @@ interface UpdateBannerProps {
 export function UpdateBanner({ update, onDismiss, className }: UpdateBannerProps): React.ReactElement {
   return (
     <div
-      className={`update-banner${className ? ' ' + className : ''}`}
+      className={`banner banner--info${className ? ' ' + className : ''}`}
       role="alert"
       aria-live="polite"
     >
-      <span className="update-banner__message">
-        Update available:{' '}
-        <span className="update-banner__version">{update.currentVersion}</span>
-        {' '}
-        <span className="update-banner__arrow">&rarr;</span>
-        {' '}
-        <span className="update-banner__version">{update.latestVersion}</span>
+      <InformationCircleIcon className="banner__icon" aria-hidden="true" />
+      <span className="banner__message">
+        Update available: {update.currentVersion} &rarr; {update.latestVersion}
       </span>
-      <div className="update-banner__actions">
-        <button
-          type="button"
-          className="update-banner__btn--download"
-          onClick={() => BrowserOpenURL(update.releaseURL)}
-        >
-          Download Update
-        </button>
-        <button
-          type="button"
-          className="update-banner__btn--dismiss"
-          aria-label="Dismiss update notification"
-          onClick={onDismiss}
-        >
-          Dismiss
-        </button>
-      </div>
+      <button
+        type="button"
+        className="banner__action"
+        onClick={() => BrowserOpenURL(update.releaseURL)}
+      >
+        Download Update
+      </button>
+      <button type="button" className="banner__dismiss" aria-label="Dismiss" onClick={onDismiss}>
+        <XMarkIcon aria-hidden="true" />
+      </button>
     </div>
   )
 }
