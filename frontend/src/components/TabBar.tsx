@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { GlobeAltIcon, LockOpenIcon } from '@heroicons/react/24/outline'
+import { GlobeAltIcon, LockOpenIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { SidebarToggleIcon } from './Sidebar'
 
 export interface Tab {
@@ -62,11 +62,14 @@ interface TabBarProps {
   /** Portty 02-04: the sidebar is hidden, so the bar takes the 80px traffic-light inset and a Show Sidebar button. */
   sidebarHidden?: boolean
   onShowSidebar?: () => void
+  /** Portty 02-08: the toolbar "+" button (desktop only). */
+  onNewSession?: () => void
 }
 
 /**
- * Horizontal tab bar with add/rename/close controls.
- * Double-clicking or right-clicking a tab name enables inline editing.
+ * Portty 02-08: the macOS unified toolbar. Pill tabs in a tablist, then the
+ * New Session button. Double-clicking or right-clicking a tab name enables
+ * inline editing.
  */
 export function TabBar({
   tabs,
@@ -81,6 +84,7 @@ export function TabBar({
   funnelWriteActiveSessions,
   sidebarHidden = false,
   onShowSidebar,
+  onNewSession,
 }: TabBarProps): React.ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -135,6 +139,18 @@ export function TabBar({
       ro.disconnect()
     }
   }, [])
+  // Adding or removing a tab changes scrollWidth, not the list's box, so the observer misses it.
+  useEffect(checkScroll, [tabs.length])
+
+  // ARIA tabs pattern: Left/Right move focus between tabs.
+  function handleTabKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    const all = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])
+    const i = all.indexOf(e.currentTarget)
+    const next = all[(i + (e.key === 'ArrowRight' ? 1 : all.length - 1)) % all.length]
+    e.preventDefault()
+    next?.focus()
+  }
 
   function startEdit(tab: Tab, e: React.MouseEvent) {
     e.stopPropagation()
@@ -190,13 +206,13 @@ export function TabBar({
           tabIndex={0}
         >&#8249;</button>
       )}
-      <div className="tab-list" ref={listRef}>
+      <div className="tab-list" role="tablist" aria-label="Open sessions" ref={listRef}>
         {tabs.map((tab) => {
+          const active = tab.id === activeId
           return (
           <div
             key={tab.id}
-            className={`tab${tab.id === activeId ? ' tab--active' : ''}`}
-            onClick={() => onSelect(tab.id)}
+            className={`tab${active ? ' tab--active' : ''}`}
             title={tab.name}
           >
             {/* Phase 166 / FUI-03 — tab internet exposure indicator.
@@ -235,6 +251,16 @@ export function TabBar({
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
+              <button
+                type="button"
+                role="tab"
+                className="tab__label"
+                aria-selected={active}
+                aria-controls={`tabpanel-${tab.id}`}
+                tabIndex={active ? 0 : -1}
+                onClick={() => onSelect(tab.id)}
+                onKeyDown={handleTabKeyDown}
+              >
               <span
                 className="tab__name"
                 onDoubleClick={webMode ? undefined : (e) => startEdit(tab, e)}
@@ -247,6 +273,7 @@ export function TabBar({
               >
                 {tab.name}
               </span>
+              </button>
             )}
             {tab.sessionId && !webMode && (
               <button
@@ -274,17 +301,18 @@ export function TabBar({
                 ▾
               </button>
             )}
-            <button
-              className="tab__close"
-              onClick={(e) => {
-                e.stopPropagation()
-                onClose(tab.id)
-              }}
-              title="Close tab"
-              aria-label={`Close ${tab.name}`}
-            >
-              ×
-            </button>
+            {/* Web share page: one static pill, no close (UI-SPEC "Web share page"). */}
+            {!webMode && (
+              <button
+                type="button"
+                className="tab__close"
+                onClick={() => onClose(tab.id)}
+                title="Close Tab"
+                aria-label={`Close ${tab.name}`}
+              >
+                <XMarkIcon aria-hidden="true" />
+              </button>
+            )}
             {/* Phase 98 PRG-02 — per-tab progress underline. transform (not width) for GPU
                 compositor smoothness (Pitfall #4); transform-origin: left grows L→R; transition
                 in style.css handles the 200ms ease-out animation on value changes. */}
@@ -306,6 +334,17 @@ export function TabBar({
           aria-label="Scroll tabs right"
           tabIndex={0}
         >&#8250;</button>
+      )}
+      {!webMode && (
+        <button
+          type="button"
+          className="tab-bar__icon-button"
+          aria-label="New Session"
+          title="New Session (⌘T)"
+          onClick={onNewSession}
+        >
+          <PlusIcon aria-hidden="true" />
+        </button>
       )}
 
       {contextMenu && tabs.some(t => t.id === contextMenu.tabId) && (

@@ -71,10 +71,9 @@ describe('App', () => {
     })
 
     it('cleans up fontSizes entry on tab close', () => {
-      expect(raw).toContain('setFontSizes')
-      // Cleanup pattern: delete n[id] in handleCloseTab
-      const closeSection = raw.slice(raw.indexOf('handleCloseTab'))
-      expect(closeSection).toContain('setFontSizes')
+      // removeTabState backs both closeTab and session:exit.
+      const body = raw.slice(raw.indexOf('const removeTabState = useCallback('), raw.indexOf('removeTabStateRef.current = removeTabState'))
+      expect(body).toContain('setFontSizes')
     })
   })
 
@@ -242,8 +241,15 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(raw).toContain('offMenuSettings()')
   })
 
-  it('does not wire menu:close-tab yet: closing a tab still kills the shell (T-02-04)', () => {
-    expect(raw).not.toContain("EventsOn('menu:close-tab'")
+  it('subscribes to menu:close-tab: closes the active tab through activeIdRef, no-op with none (Portty 02-08)', () => {
+    const start = raw.indexOf("EventsOn('menu:close-tab'")
+    expect(start).toBeGreaterThan(-1)
+    const handler = raw.slice(start, raw.indexOf('})', start))
+    expect(handler).toContain('activeIdRef.current')
+    expect(handler).toContain('if (id !== null) removeTabStateRef.current?.(id)')
+    expect(handler).not.toMatch(/KillSession|ToggleWebServing/)
+    expect(raw).toContain('offMenuCloseTab()')
+    expect(raw).toContain('activeIdRef.current = activeId')
   })
 
   it('renders TailscaleBanner inside banner-stack, gated on tailscaleOff', () => {
@@ -380,5 +386,41 @@ describe('WebShareSessionView lives in components/ (Portty 02-07)', () => {
   it('imports WebShareSessionView from components/WebShareSessionView', () => {
     expect(raw).toContain("import { WebShareSessionView } from './components/WebShareSessionView'")
     expect(raw).not.toContain('components/Hub/')
+  })
+})
+
+// Portty 02-08 (TERM-03): closing a tab only detaches.
+describe('closeTab is detach-only (TERM-03, T-02-27)', () => {
+  const closeTabBody = () => {
+    const start = raw.indexOf('const closeTab = useCallback(')
+    expect(start).toBeGreaterThan(-1)
+    return raw.slice(start, raw.indexOf('}, [', start))
+  }
+
+  it('closeTab makes no session RPC', () => {
+    expect(closeTabBody()).not.toMatch(/KillSession|ToggleWebServing|RenameSession/)
+    expect(closeTabBody()).toContain('removeTabState(id)')
+  })
+
+  it('TabBar onClose is closeTab', () => {
+    const tabBar = raw.slice(raw.indexOf('<TabBar'), raw.indexOf('/>', raw.indexOf('<TabBar')))
+    expect(tabBar).toContain('onClose={closeTab}')
+  })
+
+  it('removeTabState picks the next tab with nextActiveTabId', () => {
+    const body = raw.slice(raw.indexOf('const removeTabState = useCallback('), raw.indexOf('removeTabStateRef.current = removeTabState'))
+    expect(body).toContain('setActiveId((cur) => nextActiveTabId(prev, id, cur))')
+  })
+
+  it('createTab no longer subtracts a status bar height from the row estimate', () => {
+    expect(raw).not.toContain('statusBarHeight')
+  })
+})
+
+describe('empty state (LOOK-01)', () => {
+  it('renders EmptyState in desktop mode once init has run and no tab is open', () => {
+    expect(raw).toContain("import { EmptyState } from './components/EmptyState'")
+    expect(raw).toContain("{mode !== 'web' && relayPort !== null && tabs.length === 0 && (")
+    expect(raw).toContain('<EmptyState onNewSession={() => setShowNewSessionModal(true)} />')
   })
 })

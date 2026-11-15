@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import type { IProgressState } from '@xterm/addon-progress'
 import { TabBar, type Tab } from './components/TabBar'
+import { EmptyState } from './components/EmptyState'
+import { nextActiveTabId } from './lib/tabs'
 import { Sidebar } from './components/Sidebar'
 import { SettingsTab } from './components/SettingsTab'
 import { stripAnsi } from './lib/stripAnsi'
@@ -199,6 +201,9 @@ function App(): React.ReactElement {
   // Ref to removeTabState so the session:exit event handler (with [] deps) can call
   // the latest version without a stale closure
   const removeTabStateRef = useRef<((id: string) => void) | undefined>(undefined)
+  // The menu:close-tab listener ([] deps) reads the active tab through this ref.
+  const activeIdRef = useRef<string | null>(null)
+  activeIdRef.current = activeId
   // Same pattern for the menu:settings listener (Settings… ⌘,).
   const openSettingsRef = useRef<(() => void) | undefined>(undefined)
   // Every session:exit id, so createTab and the init/retryInit restore skip a
@@ -522,8 +527,12 @@ function App(): React.ReactElement {
 
     // Native menu: File > New Session (Cmd+T).
     const offMenuNewSession = EventsOn('menu:new-session', () => setShowNewSessionModal(true))
-    // Native menu: Settings… (Cmd+,). menu:close-tab gets its listener in 02-08;
-    // closing a tab still kills its shell today.
+    // Native menu: File > Close Tab (Cmd+W). Detach only; with no tab open it does nothing.
+    const offMenuCloseTab = EventsOn('menu:close-tab', () => {
+      const id = activeIdRef.current
+      if (id !== null) removeTabStateRef.current?.(id)
+    })
+    // Native menu: Settings… (Cmd+,).
     const offMenuSettings = EventsOn('menu:settings', () => openSettingsRef.current?.())
     // Native menu: View > Hide/Show Sidebar (Ctrl+Cmd+S). Functional update: no stale closure.
     const offMenuToggleSidebar = EventsOn('menu:toggle-sidebar', () => setSidebarHidden((h) => !h))
@@ -554,6 +563,7 @@ function App(): React.ReactElement {
       offExit()
       offQuit()
       offMenuNewSession()
+      offMenuCloseTab()
       offMenuSettings()
       offMenuToggleSidebar()
       if (upgradePollerRef.current !== null) {
@@ -572,9 +582,8 @@ function App(): React.ReactElement {
     const container = document.querySelector('.terminal-container') as HTMLElement | null
     let cols = 220, rows = 50  // Reasonable fallback for large screens
     if (container && container.clientWidth > 0 && container.clientHeight > 0) {
-      const statusBarHeight = 32  // .tab-status-bar fixed height
       cols = Math.max(80, Math.floor(container.clientWidth / 8))
-      rows = Math.max(24, Math.floor((container.clientHeight - statusBarHeight) / 17))
+      rows = Math.max(24, Math.floor(container.clientHeight / 17))
     }
 
     try {
@@ -629,38 +638,25 @@ function App(): React.ReactElement {
   openSettingsRef.current = handleOpenSettings
 
   // UI-only removal of a session's tab state. session:exit calls it directly
-  // (the daemon already removed the session); handleCloseTab calls it after
-  // its kill.
+  // (the daemon already removed the session); closeTab is nothing more.
   const removeTabState = useCallback((id: string) => {
     setWebEnabled((prev) => { const n = { ...prev }; delete n[id]; return n })
     setTabs((prev) => {
-      const remaining = prev.filter((t) => t.id !== id)
-      // Activate an adjacent tab if the closed one was active.
-      if (activeId === id) {
-        const idx = prev.findIndex((t) => t.id === id)
-        const next = remaining[Math.max(0, idx - 1)]
-        setActiveId(next?.id ?? null)
-      }
-      return remaining
+      // Right neighbour, else left, else the empty state (TERM-03).
+      setActiveId((cur) => nextActiveTabId(prev, id, cur))
+      return prev.filter((t) => t.id !== id)
     })
     // Clean up font size for the closed session.
     setFontSizes((prev) => { const n = { ...prev }; delete n[id]; return n })
-  }, [activeId])
+  }, [])
   // Keep the ref in sync so the session:exit event handler ([] deps) always calls the latest version
   removeTabStateRef.current = removeTabState
 
-  const handleCloseTab = useCallback(async (id: string) => {
-    // Disable web serving for this session before closing.
-    if (webEnabled[id]) {
-      try { await ToggleWebServing(id, false) } catch (_) { /* ignore */ }
-    }
-    try {
-      await KillSession(id)
-    } catch (err) {
-      console.warn('[App] KillSession failed:', err)
-    }
+  // Closing a tab only detaches (TERM-03): no session RPC, the shell keeps
+  // running in the daemon and stays in the sidebar.
+  const closeTab = useCallback((id: string) => {
     removeTabState(id)
-  }, [webEnabled, removeTabState])
+  }, [removeTabState])
 
   const handleRenameTab = useCallback(async (id: string, name: string) => {
     try {
@@ -1090,13 +1086,14 @@ function App(): React.ReactElement {
           tabs={tabs}
           activeId={activeId}
           onSelect={setActiveId}
-          onClose={handleCloseTab}
+          onClose={closeTab}
           onRename={handleRenameTab}
           onRequestSave={handleRequestSave}
           tabProgress={tabProgress}
           webMode={mode === 'web'}
           sidebarHidden={mode !== 'web' && sidebarHidden}
           onShowSidebar={() => setSidebarHidden(false)}
+          onNewSession={() => setShowNewSessionModal(true)}
           funnelActiveSessions={/* Phase 166 / FUI-03: derived from the sessions 3s poll; no new interval */
             sessions.reduce<Record<string, boolean>>(
               (acc, s) => ({ ...acc, [s.id]: s.funnelActive }),
@@ -1200,7 +1197,7 @@ function App(): React.ReactElement {
             // terminal tabs use — so flex:1 fills the pane. Fixes both the remote
             // tab and the native web-guest bootstrap tab without touching the
             // shared Hub-modal classes (still used by HubInteractiveModal).
-            <div className="terminal-wrapper" style={{ display: 'flex' }}>
+            <div className="terminal-wrapper" id={`tabpanel-${activeId}`} role="tabpanel" style={{ display: 'flex' }}>
               {/* CR-03: key on wsSessionId so React remounts (drops stale
                   plugin-config useState) when the active tab switches
                   to a different remote session. */}
@@ -1225,7 +1222,7 @@ function App(): React.ReactElement {
             Settings surface has no meaning for a web-share viewer (no daemon
             to configure). */}
         {mode !== 'web' && (
-        <div style={{ display: activeId === SETTINGS_TAB.id ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
+        <div id={`tabpanel-${SETTINGS_TAB.id}`} role="tabpanel" style={{ display: activeId === SETTINGS_TAB.id ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
           <SettingsTab
             tailscaleHealth={tailscaleHealth}
             webServerMode={webServerMode}
@@ -1259,6 +1256,10 @@ function App(): React.ReactElement {
             }}
           />
         </div>
+        )}
+        {/* relayPort is set with the restored tabs, so launch never flashes this. */}
+        {mode !== 'web' && relayPort !== null && tabs.length === 0 && (
+          <EmptyState onNewSession={() => setShowNewSessionModal(true)} />
         )}
         {daemonError && tabs.filter((t) => t.type !== 'settings').length === 0 && (
           <div style={{
@@ -1304,6 +1305,8 @@ function App(): React.ReactElement {
             return (
               <div
                 key={tab.sessionId}
+                id={`tabpanel-${tab.id}`}
+                role="tabpanel"
                 className="terminal-wrapper"
                 style={{ display: isActive ? 'flex' : 'none' }}
               >

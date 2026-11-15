@@ -535,3 +535,83 @@ describe('TabBar shows no session status', () => {
     expect(bar.style.transform).toBe('scaleX(0.5)')
   })
 })
+
+// Portty 02-08 (TERM-03, LOOK-01): unified toolbar, pill tabs, detach-only close.
+describe('TabBar toolbar (Portty 02-08)', () => {
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+
+  afterEach(() => {
+    flushSync(() => root.unmount())
+    container.remove()
+  })
+
+  it('renders a tablist labelled "Open sessions" with one role=tab per pill; the active one is aria-selected', () => {
+    ;({ container, root } = renderTabBarWithTabs())
+    const list = container.querySelector('[role="tablist"]') as HTMLElement
+    expect(list.getAttribute('aria-label')).toBe('Open sessions')
+    const tabs = Array.from(list.querySelectorAll('[role="tab"]'))
+    expect(tabs).toHaveLength(2)
+    expect(tabs.map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false'])
+    expect(tabs[0].getAttribute('aria-controls')).toBe('tabpanel-tab1')
+    expect(tabs.map((t) => t.getAttribute('tabindex'))).toEqual(['0', '-1'])
+    expect(container.querySelectorAll('.tab.tab--active')).toHaveLength(1)
+  })
+
+  it('clicking a tab calls onSelect(id)', () => {
+    const onSelect = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ onSelect }))
+    flushSync(() => (container.querySelectorAll('[role="tab"]')[1] as HTMLElement).click())
+    expect(onSelect).toHaveBeenCalledWith('tab2')
+  })
+
+  it('ArrowRight / ArrowLeft move focus between tabs, wrapping', () => {
+    ;({ container, root } = renderTabBarWithTabs())
+    const tabs = Array.from(container.querySelectorAll<HTMLElement>('[role="tab"]'))
+    tabs[0].focus()
+    flushSync(() => tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+    expect(document.activeElement).toBe(tabs[1])
+    flushSync(() => tabs[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+    expect(document.activeElement).toBe(tabs[0])
+    flushSync(() => tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })))
+    expect(document.activeElement).toBe(tabs[1])
+  })
+
+  it('the close button is labelled "Close <name>" and calls onClose(id) only (detach, no select)', () => {
+    const onClose = vi.fn()
+    const onSelect = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ onClose, onSelect }))
+    const close = container.querySelector('button[aria-label="Close shell 2"]') as HTMLButtonElement
+    expect(close).not.toBeNull()
+    flushSync(() => close.click())
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledWith('tab2')
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('the New Session button is labelled, titled with ⌘T, and calls onNewSession', () => {
+    const onNewSession = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ onNewSession }))
+    const btn = container.querySelector('button[aria-label="New Session"]') as HTMLButtonElement
+    expect(btn.getAttribute('title')).toBe('New Session (⌘T)')
+    flushSync(() => btn.click())
+    expect(onNewSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('with no tabs the tablist is empty and "+" stays', () => {
+    ;({ container, root } = renderTabBar())
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(0)
+    expect(container.querySelector('button[aria-label="New Session"]')).not.toBeNull()
+  })
+
+  it('web mode: one static pill with no close button and no "+"', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      webMode: true,
+      tabs: [{ id: '__websession__s', name: 'Session', sessionId: 's', type: 'web-session' }],
+      activeId: '__websession__s',
+    }))
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(1)
+    expect(container.querySelector('.tab__close')).toBeNull()
+    expect(container.querySelector('button[aria-label="New Session"]')).toBeNull()
+  })
+})

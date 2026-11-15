@@ -23,7 +23,6 @@ const exitHandler = () => slice("'session:exit'", '\n    )')
 const initBody = () => slice('async function init()', 'void init()')
 const retryInitBody = () => slice('const retryInit = useCallback(', '}, [])')
 const removeTabBody = () => slice('const removeTabState = useCallback(', 'removeTabStateRef.current = removeTabState')
-const closeTabBody = () => slice('const handleCloseTab = useCallback(', '}, [webEnabled, removeTabState])')
 
 describe('App.tsx TERM-05: session:exit closes the tab', () => {
   // Iteration-2 WR-03: the Go watcher already removed the session, so the exit
@@ -32,7 +31,7 @@ describe('App.tsx TERM-05: session:exit closes the tab', () => {
   it('calls the UI-only removeTabStateRef.current with data.sessionId (no kill)', () => {
     const h = exitHandler()
     expect(h).toContain('removeTabStateRef.current?.(data.sessionId)')
-    expect(h).not.toContain('handleCloseTab')
+    expect(h).not.toContain('closeTab')
     expect(h).not.toContain('KillSession')
     expect(h).not.toContain('ToggleWebServing')
   })
@@ -66,27 +65,16 @@ describe('App.tsx TERM-05: session:exit closes the tab', () => {
     expect(raw).toContain('removeTabStateRef.current = removeTabState')
   })
 
-  it('removeTabState is UI-only and shifts focus to the adjacent tab', () => {
+  it('removeTabState is UI-only and shifts focus to the neighbour tab', () => {
     const body = removeTabBody()
     expect(body).not.toContain('KillSession')
     expect(body).not.toContain('ToggleWebServing')
     expect(body).toContain('setTabs(')
-    expect(body).toContain('setWebEnabled(')
     expect(body).toContain('setFontSizes(')
-    expect(body).toContain('activeId === id')
-    expect(body).toContain('setActiveId(next?.id ?? null)')
+    expect(body).toContain('nextActiveTabId(prev, id, cur)')
   })
-
-  // A user close (tab x, Hub kill) must still kill the session, unconditionally
-  // and before the UI removal, with no early return that skips the kill.
-  it('handleCloseTab kills unconditionally, then calls removeTabState(id)', () => {
-    const body = closeTabBody()
-    const killIdx = body.indexOf('await KillSession(id)')
-    expect(killIdx).toBeGreaterThan(-1)
-    expect(body.indexOf('removeTabState(id)')).toBeGreaterThan(killIdx)
-    expect(body).toContain("console.warn('[App] KillSession failed:', err)")
-    expect(body.slice(0, killIdx)).not.toMatch(/^\s*return\b/m)
-  })
+  // Portty 02-08 (TERM-03): a user close only detaches; App.test.tsx asserts
+  // closeTab makes no session RPC. Only End Session… kills.
 })
 
 describe.each([
