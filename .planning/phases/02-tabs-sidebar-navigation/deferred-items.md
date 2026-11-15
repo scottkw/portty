@@ -27,3 +27,10 @@ Out-of-scope discoveries logged during plan execution (not fixed).
 
 - `ShellWebShareBanner` (inside the Share dialog) still uses the old `.webgl-recovery-banner` / `--shell-warning` / `__dismiss` rules, which keep their TokyoNight hex. 02-10 kept those rules because that component still uses them. 02-12's no-hex sweep of `style.css` has to retoken or migrate them.
 - `.banner-stack` still caps at `calc(3 * 53px)`, sized for the old 53px banners. The new banners are about 33px, so the cap now fits about four banners before it scrolls. Harmless; tidy it if the stack ever overflows.
+
+**Resolved in 02-11:** the Share dialog's "Share the session" and "Enable internet sharing" rows now use the shared `Switch` (classes `share-toggle-row*`); the Funnel toggle still only opens the risk panel, and its committed-state "On/Off/N/A/Confirm…" text is unchanged.
+
+## From 02-11
+
+- The plugin disclosure sub-options (Search defaults, Link click behavior) stay native checkboxes rather than switches; UI-SPEC lists them as native controls. The class names `settings-panel__details` and `settings-panel__description--italic` were kept (retokened) because PluginsSection tests pin them.
+- ⌘, opens Settings even while another dialog (New Session, Share) is open. Both render; `useDialogFocus` gives keys to whichever is later in the DOM. Not reproduced or ruled out in the VM yet (see 02-11-SUMMARY "Needs VM check").
