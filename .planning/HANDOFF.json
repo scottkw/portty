@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-11-15T15:38:21.530Z",
+  "phase": "1",
+  "phase_name": "Plain macOS Terminal",
+  "phase_dir": ".planning/phases/01-plain-macos-terminal",
+  "plan": 12,
+  "task": null,
+  "total_tasks": null,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "Plans 01-01..01-12 executed", "status": "done"},
+    {"id": 2, "name": "Code review + 15 fixes", "status": "done"},
+    {"id": 3, "name": "Verifier (human_needed) + Start Web Server gate", "status": "done", "commit": "452cf7d4"},
+    {"id": 4, "name": "Human UAT 7/7 (01-UAT.md)", "status": "done", "commit": "184f6722"},
+    {"id": 5, "name": "Scope changes recorded: chat removal, system light/dark, one on/off share", "status": "done", "commit": "042d19ad"}
+  ],
+  "remaining_tasks": [
+    {"id": 6, "name": "Re-run verifier (VERIFICATION stale after 452cf7d4), then query phase.complete 1", "status": "not_started"},
+    {"id": 7, "name": "verify:post hooks: gsd-secure-phase 1, gsd-ui-review 1", "status": "not_started"},
+    {"id": 8, "name": "Continue /gsd-autonomous with Phase 2", "status": "not_started"}
+  ],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [
+    {"action": "Decide when to merge gsd/phase-01-plain-macos-terminal into main", "context": "branch-per-phase; user decides", "blocking": false},
+    {"action": "Answer remaining cut candidates during Phase 2 discuss", "context": "plugin toggles, sixel, OSC 9;4 glyphs, key regen + CT notice, extra CLI cmds, launchd install, tray menu, join codes/QR — unanswered", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "Remove session chat entirely (CHAT-01 -> Phase 2)", "rationale": "user 2026-11-15: not needed", "phase": "2"},
+    {"decision": "Replace 138 themes with macOS light/dark following system, app + terminals + web page (THEM-01 -> Phase 2)", "rationale": "user 2026-11-15", "phase": "2"},
+    {"decision": "Sharing = one on/off state (web + app), always full control, tailnet only; drop Funnel and read-only (SHAR-01/02/05 -> Phase 4)", "rationale": "user 2026-11-15: make Portty MUCH simpler", "phase": "4"}
+  ],
+  "uncommitted_files": ["?? .ignore", "?? .planning/state.json"],
+  "next_action": "Run /gsd-autonomous; it resumes Phase 1 at the verifier, completes it, then starts Phase 2",
+  "context_notes": "User wants radical simplicity: propose cuts by default. VERIFICATION.md status was hand-set to passed but GSD digest says stale; verifier must regenerate it."
+}
