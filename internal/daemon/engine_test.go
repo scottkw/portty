@@ -319,16 +319,16 @@ func newShellTestEngine(t *testing.T) (*SessionEngine, *spyBackend) {
 	return e, spy
 }
 
-// TestCreateSession_LoginShellArgv (TERM-01): every session spawns the
-// resolved shell (GetShellPath) with exactly ["-l"].
+// TestCreateSession_LoginShellArgv (TERM-01): every session spawns /bin/zsh
+// with exactly ["-l"].
 func TestCreateSession_LoginShellArgv(t *testing.T) {
 	e, spy := newShellTestEngine(t)
 	_, err := e.CreateSession(context.Background(), "tab", "/tmp", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
-	if spy.lastReq.CLI != e.GetShellPath() {
-		t.Errorf("CLI = %q, want GetShellPath() = %q", spy.lastReq.CLI, e.GetShellPath())
+	if spy.lastReq.CLI != "/bin/zsh" {
+		t.Errorf("CLI = %q, want /bin/zsh", spy.lastReq.CLI)
 	}
 	if len(spy.lastReq.Args) != 1 || spy.lastReq.Args[0] != "-l" {
 		t.Errorf("Args = %v, want exactly [-l]", spy.lastReq.Args)
@@ -338,29 +338,34 @@ func TestCreateSession_LoginShellArgv(t *testing.T) {
 	}
 }
 
-// TestCreateSession_ShellPathSettingUsed: the Settings → Paths shell override
-// is the spawned binary.
-func TestCreateSession_ShellPathSettingUsed(t *testing.T) {
+// TestCreateSession_IgnoresShellEnvAndLegacySetting (TERM-01, T-01-36):
+// neither $SHELL nor a legacy settings.json shellPath changes the spawn.
+func TestCreateSession_IgnoresShellEnvAndLegacySetting(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
 	e, spy := newShellTestEngine(t)
-	e.mu.Lock()
-	e.shellPath = "/opt/custom/bin/zsh"
-	e.mu.Unlock()
+	if err := os.WriteFile(filepath.Join(e.configDir, "settings.json"), []byte(`{"shellPath":"/bin/sh"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.loadSettingsFromDisk(e.configDir)
 	if _, err := e.CreateSession(context.Background(), "tab", "/tmp", 80, 24, nil); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
-	if spy.lastReq.CLI != "/opt/custom/bin/zsh" {
-		t.Errorf("CLI = %q, want the shellPath setting", spy.lastReq.CLI)
+	if spy.lastReq.CLI != "/bin/zsh" {
+		t.Errorf("CLI = %q, want /bin/zsh", spy.lastReq.CLI)
+	}
+	if len(spy.lastReq.Args) != 1 || spy.lastReq.Args[0] != "-l" {
+		t.Errorf("Args = %v, want exactly [-l]", spy.lastReq.Args)
 	}
 }
 
-// TestCreateSession_LoginShell (TERM-01, real PTY): the spawned zsh reports
-// itself as a login shell. The typed echo shows the unexpanded $((40+2)), so
-// only real command output can contain LOGIN_OK_42.
+// TestCreateSession_LoginShell (TERM-01, real PTY): the spawned shell is a zsh
+// login shell even when $SHELL says bash. The typed echo shows the unexpanded
+// $((40+2)), so only real command output can contain LOGIN_OK_42.
 func TestCreateSession_LoginShell(t *testing.T) {
 	if _, err := os.Stat("/bin/zsh"); err != nil {
 		t.Skip("/bin/zsh not present")
 	}
-	t.Setenv("SHELL", "/bin/zsh")
+	t.Setenv("SHELL", "/bin/bash")
 	zdot := t.TempDir()
 	// An empty .zshrc keeps zsh-newuser-install from swallowing the input.
 	if err := os.WriteFile(filepath.Join(zdot, ".zshrc"), nil, 0o600); err != nil {
@@ -370,9 +375,6 @@ func TestCreateSession_LoginShell(t *testing.T) {
 
 	e := NewSessionEngine()
 	e.configDir = t.TempDir()
-	e.mu.Lock()
-	e.shellPath = "" // isolate from the real settings.json; resolve via $SHELL
-	e.mu.Unlock()
 
 	id, err := e.CreateSession(context.Background(), "login", t.TempDir(), 80, 24, nil)
 	if err != nil {
@@ -384,11 +386,11 @@ func TestCreateSession_LoginShell(t *testing.T) {
 	if !ok {
 		t.Fatal("hub not found")
 	}
-	if err := hub.WriteInput([]byte("[[ -o login ]] && echo LOGIN_OK_$((40+2))\n")); err != nil {
+	if err := hub.WriteInput([]byte("[[ -o login ]] && [[ -n $ZSH_VERSION ]] && echo LOGIN_OK_$((40+2))\n")); err != nil {
 		t.Fatalf("WriteInput: %v", err)
 	}
 	if !hubReadUntil(t, e, id, "LOGIN_OK_42", 10*time.Second) {
-		t.Fatal("shell did not report a login shell (LOGIN_OK_42 never appeared)")
+		t.Fatal("shell did not report a zsh login shell (LOGIN_OK_42 never appeared)")
 	}
 }
 
@@ -553,69 +555,6 @@ func TestSetShellWebShareWarned_RoundTripJSON(t *testing.T) {
 }
 
 // --- Phase 107 Plan 01: shellPath persistence (SHELL-11) -------------------
-
-// assertSpawnMatchesDisplay creates a session on a spy-backed engine and
-// checks the spawned binary is want, equals GetShellPath(), and runs with
-// exactly ["-l"] (TERM-01: the shell shown is the shell that spawns).
-func assertSpawnMatchesDisplay(t *testing.T, shellPath, want string) {
-	t.Helper()
-	e, spy := newShellTestEngine(t)
-	e.mu.Lock()
-	e.shellPath = shellPath // isolate from the real settings.json
-	e.mu.Unlock()
-	if _, err := e.CreateSession(context.Background(), "tab", "/tmp", 80, 24, nil); err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	if got := e.GetShellPath(); got != want {
-		t.Errorf("GetShellPath() = %q, want %q", got, want)
-	}
-	if spy.lastReq.CLI != want {
-		t.Errorf("spawned CLI = %q, want %q (same as GetShellPath)", spy.lastReq.CLI, want)
-	}
-	if len(spy.lastReq.Args) != 1 || spy.lastReq.Args[0] != "-l" {
-		t.Errorf("Args = %v, want exactly [-l]", spy.lastReq.Args)
-	}
-}
-
-func TestResolveDefaultShellPath_SettingWins(t *testing.T) {
-	t.Setenv("SHELL", "/bin/zsh")
-	assertSpawnMatchesDisplay(t, "/bin/sh", "/bin/sh")
-}
-
-func TestResolveDefaultShellPath_AbsoluteShell(t *testing.T) {
-	t.Setenv("SHELL", "/bin/bash")
-	assertSpawnMatchesDisplay(t, "", "/bin/bash")
-}
-
-func TestResolveDefaultShellPath_RelativeShell(t *testing.T) {
-	t.Setenv("SHELL", "bash")
-	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
-}
-
-func TestResolveDefaultShellPath_NonexistentShell(t *testing.T) {
-	t.Setenv("SHELL", "/nonexistent/sh")
-	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
-}
-
-func TestResolveDefaultShellPath_DirectoryShell(t *testing.T) {
-	t.Setenv("SHELL", t.TempDir())
-	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
-}
-
-func TestResolveDefaultShellPath_NonExecutableShell(t *testing.T) {
-	f := filepath.Join(t.TempDir(), "sh")
-	if err := os.WriteFile(f, []byte("#!/bin/sh\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("SHELL", f)
-	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
-}
-
-func TestResolveDefaultShellPath_UnsetShell(t *testing.T) {
-	t.Setenv("SHELL", "")
-	os.Unsetenv("SHELL") // t.Setenv restores the original value on cleanup
-	assertSpawnMatchesDisplay(t, "", "/bin/zsh")
-}
 
 // TestSetShellPath_RejectsMissingPath verifies that SetShellPath returns an
 // error when the path does not exist on disk.

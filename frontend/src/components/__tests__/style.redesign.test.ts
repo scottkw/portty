@@ -211,7 +211,7 @@ describe('01-04: New Session modal CSS', () => {
     return m ? m[1] : ''
   }
 
-  it('folder display (also the shell line) truncates on one line and can shrink in the flex row', () => {
+  it('folder display truncates on one line and can shrink in the flex row', () => {
     const body = rule('.new-session-modal__folder-display')
     expect(body).toMatch(/overflow:\s*hidden/)
     expect(body).toMatch(/text-overflow:\s*ellipsis/)
@@ -219,8 +219,8 @@ describe('01-04: New Session modal CSS', () => {
     expect(body).toMatch(/min-width:\s*0/)
   })
 
-  it('--mono modifier sets only the mono font family', () => {
-    expect(rule('.new-session-modal__folder-display--mono').trim()).toBe('font-family: var(--hub-font-mono);')
+  it('shell-line rules (--mono display, helper text) are gone', () => {
+    expect(cssRaw).not.toMatch(/new-session-modal__(folder-display--mono|helper)/)
   })
 
   it('agent-button and args rule families are gone', () => {

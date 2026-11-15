@@ -1568,15 +1568,6 @@ textarea {
 .new-session-modal__folder-display--active {
   color: #7aa2f7;
 }
-.new-session-modal__folder-display--mono {
-  font-family: var(--hub-font-mono);
-}
-.new-session-modal__helper {
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #9aa5ce;
-}
 .new-session-modal__browse-btn {
   padding: 4px 8px;
   border: 1px solid #292e42;

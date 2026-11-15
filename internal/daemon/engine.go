@@ -57,7 +57,7 @@ type SessionEngine struct {
 	pluginSettingsListener func()
 
 	// spawnCommand returns the binary and argv every new session runs.
-	// Defaults to (GetShellPath(), ["-l"]); tests override via SetSpawnCommandForTest.
+	// Defaults to (sessionShell, ["-l"]); tests override via SetSpawnCommandForTest.
 	spawnCommand func() (string, []string)
 }
 
@@ -248,6 +248,9 @@ func (e *SessionEngine) ChatStoreFor(sessionID string) (*ChatStore, bool) {
 	return store, ok
 }
 
+// sessionShell is the binary every session runs; $SHELL and settings are ignored.
+const sessionShell = "/bin/zsh"
+
 // NewSessionEngine creates a SessionEngine with all subsystems initialised.
 func NewSessionEngine() *SessionEngine {
 	hostname, _ := os.Hostname()
@@ -272,7 +275,7 @@ func NewSessionEngine() *SessionEngine {
 		aliasStore:      aliasStore,                  // Phase 152 / IDENT-01: global per-person alias persistence
 	}
 	// -l because go-pty discards Args[0], so the argv0 "-zsh" login trick is impossible.
-	e.spawnCommand = func() (string, []string) { return e.GetShellPath(), []string{"-l"} }
+	e.spawnCommand = func() (string, []string) { return sessionShell, []string{"-l"} }
 	e.loadSettingsFromDisk(cfgDir)
 	return e
 }

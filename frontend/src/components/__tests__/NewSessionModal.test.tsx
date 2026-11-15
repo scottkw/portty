@@ -1,7 +1,7 @@
 /**
- * New Session modal contract (01-UI-SPEC section 1): Working Directory section,
- * read-only Shell line, Close / Create Session footer. No agent list and no
- * Extra Arguments field. Shell-line states live in NewSessionModal.shellRow.test.tsx.
+ * New Session modal contract (01-UI-SPEC section 1, CONTEXT Amendment 1):
+ * Working Directory section only, Close / Create Session footer. No shell line,
+ * no agent list and no Extra Arguments field.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import React from 'react'
@@ -14,7 +14,6 @@ import * as AppMock from '../../wailsjs/go/main/App'
 
 vi.mock('../../wailsjs/go/main/App', () => ({
   OpenDirectoryDialog: vi.fn().mockResolvedValue(''),
-  GetShellPath: vi.fn().mockResolvedValue('/bin/zsh'),
 }))
 
 function renderModal(onConfirm = vi.fn(), onClose = vi.fn()) {
@@ -37,6 +36,9 @@ describe('NewSessionModal source contract', () => {
   it('has no agent picker, args field or per-agent args persistence', () => {
     expect(raw).not.toMatch(/ARGS_KEY|SHELL_ARGS_KEY|Extra Arguments|Select Agent|DetectedCLI|DetectedShell/)
   })
+  it('has no shell lookup or Settings → Paths reference', () => {
+    expect(raw).not.toMatch(/GetShellPath|Settings → Paths/)
+  })
 })
 
 describe('NewSessionModal rendering and behavior', () => {
@@ -45,7 +47,6 @@ describe('NewSessionModal rendering and behavior', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(AppMock.GetShellPath).mockResolvedValue('/bin/zsh')
     vi.mocked(AppMock.OpenDirectoryDialog).mockResolvedValue('')
   })
 
@@ -64,12 +65,13 @@ describe('NewSessionModal rendering and behavior', () => {
     expect(container.innerHTML).toBe('')
   })
 
-  it('renders title, both section labels in order, helper text and footer buttons', () => {
+  it('renders title, only the Working Directory section and footer buttons', () => {
     ;({ container, root } = renderModal())
     expect(container.querySelector('h2')?.textContent).toBe('New Session')
     const labels = Array.from(container.querySelectorAll('.new-session-modal__section-label')).map((l) => l.textContent)
-    expect(labels).toEqual(['Working Directory', 'Shell'])
-    expect(container.textContent).toContain('Starts as a login shell. Change it in Settings → Paths.')
+    expect(labels).toEqual(['Working Directory'])
+    expect(container.textContent).not.toContain('Shell')
+    expect(container.textContent).not.toContain('login shell')
     expect(byText(container, 'Close')).toBeDefined()
     expect(byText(container, 'Create Session')).toBeDefined()
     expect(container.textContent).not.toContain('Select Agent')
