@@ -390,7 +390,7 @@ General pane:
 
 | Group | Row | Control |
 |-------|-----|---------|
-| (none) | **Appearance**: "Follows your Mac's Light or Dark setting in System Settings." | Static text "Automatic" (`--color-text-secondary`) |
+| (none) | **Appearance**: "Automatic follows your Mac's Light or Dark setting in System Settings." (amended 2026-11-15, see Deviations) | Three-segment control **Automatic** / **Light** / **Dark** (`role="radiogroup"`, Share-dialog segmented styling), default Automatic. Plan 02-11 ships the interim static "Automatic" text; plan 02-13 replaces it |
 | (none) | **Start hidden in the menu bar**: "Opens with no window. Click the menu bar icon to show it." (`startMinimized`) | Switch |
 | Terminal Plugins | One row per existing plugin (WebGL renderer, Unicode 11 widths, Find in scrollback, Clickable web links, Inline images, Save terminal as text, Clipboard (OSC 52), Progress (OSC 9;4)), with label and description copy unchanged | Switch |
 | Terminal Plugins | Search defaults, Link click behavior, Storage limit (existing `<details>` disclosures) | Native `<select>` / input |
@@ -544,6 +544,7 @@ Hub grid, Hub nav item and Hub tab · Home and Welcome tab · Help tab, help sea
 | App menu: About, Settings…, then the standard items (Interaction Contract ▸ Menu bar) | No About item yet | Orchestrator resolved default 2: About deferred to Phase 3 (BRND-01). 02-01 |
 | App menu standard items | Hide ⌘H and Quit ⌘Q only; Hide Others and Show All dropped | A custom first submenu replaces the `menu.AppMenu()` role so Settings… can sit in it, and Wails v2 has no Go API for Hide Others or Show All. 02-01 |
 | View ▸ "Hide Sidebar" / "Show Sidebar" | Static "Toggle Sidebar" ⌃⌘S | Orchestrator resolved default 3: Wails v2 menu labels only change on a menu rebuild. 02-01 |
+| Settings ▸ General Appearance: static "Automatic" (this contract, 2026-11-15 morning) | Appearance control (amended 2026-11-15): three segments Automatic / Light / Dark, default Automatic; styled like the Share dialog segmented control (`--color-segment-bg`, `--color-segment-selected`, `--shadow-tab-active`, selected 13/600); `role="radiogroup"` aria-label "Appearance", arrow keys move the selection; description "Automatic follows your Mac's Light or Dark setting in System Settings." Light/Dark set the native app appearance, so tokens, terminals and vibrancy follow; the web share page keeps following the browser | User decision 2026-11-15: "The light/dark mode should follow macOS, but the user should have the ability to override it with an option in Settings." (REQUIREMENTS THEM-01, 02-CONTEXT.md amended). Implemented in plan 02-13 |
 
 ---
 

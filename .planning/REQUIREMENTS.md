@@ -20,7 +20,7 @@
 - [x] **TERM-02**: Sessions keep running in the daemon when the GUI window is closed or the app restarts, and reopen with scrollback intact
 - [ ] **TERM-03**: User can run multiple sessions as tabs, and rename and close them
 - [x] **TERM-04**: xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) keep working, controllable from Settings
-- [ ] **THEM-01**: The app and every terminal use one standard macOS light or dark appearance that follows the system setting live. The 138 terminal themes, the theme picker and its settings key are removed (old settings files still load). The web share page follows the browser's light/dark preference the same way (user decision 2026-11-15)
+- [ ] **THEM-01**: The app and every terminal use one standard macOS light or dark appearance that follows the system setting live by default; Settings ▸ Appearance offers Automatic / Light / Dark to override it (user decision 2026-11-15, later the same day). The 138 terminal themes, the theme picker and its settings key are removed (old settings files still load). The web share page follows the browser's light/dark preference the same way (user decision 2026-11-15)
 - [ ] **LOOK-01**: The desktop GUI is redesigned to look and behave like a native macOS app: system font, system accent color, a source-list style sidebar, a unified title bar and toolbar, native-style controls and icons, and no leftover custom dark chrome or hardcoded colors (user decision 2026-11-15)
 
 - [x] **TERM-05**: When a session's shell exits, for any reason, its tab closes immediately. There is no status indicator, exit countdown, toast or banner, and this works for shells that exit hours after they started

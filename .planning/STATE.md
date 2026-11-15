@@ -135,6 +135,13 @@ None yet.
 - [Phase 4]: Remote attach today uses a join-code/capability handshake (`RemoteJoinCodeModal`). SHAR-01's "one action, no separate toggles" must define how peers get capabilities without weakening the capability model.
 - [Phase 4]: Since 01-03, the public-write consent gate state (`SetRWGate`/`isRWGated`) is still written by the funnel-write handlers, but no production code reads it (its only reader, `originAllowedForWrite`, was removed). WebSocket write is still enforced by grants. The Share redesign must decide whether to keep or remove the gate.
 - [Phase 6]: The update check uses the anonymous GitHub Releases API, which returns 404 for private repos. `scottkw/portty` must be made public before the first release, or installed copies never see an update.
+- [Phase 5]: User (2026-11-15) finds the real overnight test excessive. At Phase 5 discuss, propose replacing the 12h-idle criteria with accelerated tests:
+  - forced connection drop and auto-reconnect
+  - VM sleep/wake
+  - shortened token TTLs, noting `funnelReadCodeMaxTTL = 8h` in `internal/daemon/api.go`
+  - daemon restart
+  - scrollback diff
+  Rewrite VERF-01 as a short two-Mac sleep/wake check. Real overnight use becomes an informal check, not a gate. The requirement wording is the user's, so confirm at discuss before changing it.
 - [Phase 5]: The office Mac must not sleep overnight. Keep-awake (CONV-01) is v2, so the overnight test needs manual `caffeinate`/Energy settings. The home Mac sleeping overnight needs reconnect-on-wake.
 
 ## Deferred Items
