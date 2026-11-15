@@ -25,7 +25,6 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Phase 1: Plain macOS Terminal
 **Goal**: The app is a plain macOS terminal: new sessions run macOS zsh (`/bin/zsh -l`), no agent-CLI, file-browser, or Windows/Linux code remains, and every kept feature still works
-**Mode:** mvp
 **Depends on**: Nothing (first phase)
 **Requirements**: STRP-01, STRP-02, STRP-03, STRP-04, TERM-01, TERM-02, TERM-04, TERM-05, NET-01, CHAT-01
 **Success Criteria** (what must be TRUE):
@@ -34,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User changes the terminal theme and toggles xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) in Settings, and open terminals pick up the change
   4. User chats on a session from the desktop app and from a browser web share, and both sides see the messages; nothing typed in chat (including `@session`) is ever written into the terminal
   5. On macOS the Go build, Go tests, Vitest, and lint all pass with no Windows/Linux sources, packaging, or CI jobs left; the daemon no longer serves a files API or files capability; the security fuzz harness still runs against relay and webserver
-  6. When a shell exits, its tab closes immediately, with no status dot, exit countdown, toast or banner, including for shells that exit hours later
+  6. When a local shell exits, its tab closes immediately, with no status dot, exit countdown, toast or banner, including for shells that exit hours later
   7. With Tailscale disconnected, a banner says remote access and sharing are off, and the Share and remote controls are disabled. Reconnecting clears the banner without a restart. Portty never installs or configures Tailscale
 **Plans**: 12/12 plans executed (sequential waves 1-12; shared hot files and TESTING.md force serial order)
 
@@ -78,7 +77,6 @@ Plans:
 
 ### Phase 2: Tabs + Sidebar Navigation
 **Goal**: Users navigate everything from tabs plus a sidebar: the Hub grid is gone, and the sidebar lists local sessions and tailnet peers' sessions, each opening in a tab
-**Mode:** mvp
 **Depends on**: Phase 1
 **Requirements**: NAV-01, NAV-02, NAV-03, TERM-03
 **Success Criteria** (what must be TRUE):
@@ -92,7 +90,6 @@ Plans:
 
 ### Phase 3: Portty Brand
 **Goal**: Everything a user sees or types says Portty: app, CLI, paths, icons, docs, notifications, and update feed
-**Mode:** mvp
 **Depends on**: Phase 2
 **Requirements**: BRND-01, BRND-02, BRND-03, BRND-04, BRND-05, BRND-06, NOTF-01, DIST-03
 **Success Criteria** (what must be TRUE):
@@ -109,7 +106,6 @@ Plans:
 
 ### Phase 4: One-Click Share
 **Goal**: One Share action publishes a session to tailnet peers and a tailnet web link at the same time, with capability-gated access, a clean stop, Funnel as a separate step, and CLI attach from any terminal
-**Mode:** mvp
 **Depends on**: Phase 3
 **Requirements**: SHAR-01, SHAR-02, SHAR-03, SHAR-04, SHAR-05, SHAR-06
 **Success Criteria** (what must be TRUE):
@@ -123,7 +119,6 @@ Plans:
 
 ### Phase 5: Overnight Survival
 **Goal**: A session attached from another Mac or a browser survives an overnight idle gap and picks up where it left off, proving the core value end to end
-**Mode:** mvp
 **Depends on**: Phase 4
 **Requirements**: SHAR-07, VERF-01
 **Success Criteria** (what must be TRUE):
@@ -136,7 +131,6 @@ Plans:
 
 ### Phase 6: Release Updates
 **Goal**: Installed copies of Portty find out about new GitHub releases on their own or on demand, and the user can download, verify and open an update in a couple of clicks, using the same flow as GIFsmith
-**Mode:** mvp
 **Depends on**: Phase 3
 **Requirements**: UPD-01, UPD-02, UPD-03, UPD-04
 **Success Criteria** (what must be TRUE):

@@ -107,3 +107,11 @@ The user decided this after plan 01-06 landed. It supersedes the "Session status
 - **Kept:** OSC 9;4 progress (tab underline + tray quartile glyph). It is terminal progress, not session status.
 - Implemented by the re-planned plan 01-10 and the new follow-up plans, together with Amendment 1.
 </amendment>
+
+<amendment date="2026-11-15" n="3">
+## Amendment 3: Decisions taken at verification
+
+- **Remote tabs keep the "session ended" banner.** TERM-05 and SC6 apply to local sessions. When a session the user is viewing on another Mac ends, its tab stays open with the viewer-side "Session ended" banner so the user knows the other side ended.
+- **"Start Web Server" is disabled while Tailscale is off**, with the NET-01 banner sentence as its reason. This closes review IN-04 in Phase 1 rather than deferring it to Phase 4. The Share buttons are already disabled.
+- **MVP mode dropped.** Phase goals are not written as user stories; the `**Mode:** mvp` tags were removed from ROADMAP.md.
+</amendment>
