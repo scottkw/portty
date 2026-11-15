@@ -21,18 +21,6 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   }
 }
 
-// Phase 147-01: IntersectionObserver is not implemented in jsdom; provide a no-op
-// polyfill so Help components that wire IntersectionObserver (e.g. HelpSectionNav
-// scroll-spy) mount without throwing. The cast is required because the stub omits
-// the callback+options constructor signature — same approach as ResizeObserver above.
-if (typeof globalThis.IntersectionObserver === 'undefined') {
-  globalThis.IntersectionObserver = class IntersectionObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  } as unknown as typeof IntersectionObserver
-}
-
 // Portty 02-03 (THEM-01): jsdom has no matchMedia; useColorScheme reads it on
 // every App render. Inert stub reporting Light; tests that need changes stub it.
 if (typeof window !== 'undefined' && typeof window.matchMedia === 'undefined') {

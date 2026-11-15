@@ -253,11 +253,9 @@ describe('Sidebar: Tailscale footer', () => {
   })
 })
 
-// Source gates carried over from the old Sidebar test file; they guard other
-// components and stay until those components change (02-05 deletes the Hub ones).
+// Source gate carried over from the old Sidebar test file; it guards another
+// component and stays until that component changes.
 const terminalPanelRaw = readFileSync(resolve(__dirname, '../TerminalPanel.tsx'), 'utf-8')
-const hubFilterBarRaw = readFileSync(resolve(__dirname, '../Hub/HubFilterBar.tsx'), 'utf-8')
-const hubEmptyStateRaw = readFileSync(resolve(__dirname, '../Hub/HubEmptyState.tsx'), 'utf-8')
 
 describe('Source-gate: POL-04 pendingThemeRef in TerminalPanel.tsx', () => {
   it('TerminalPanel.tsx contains pendingThemeRef', () => {
@@ -269,15 +267,5 @@ describe('Source-gate: POL-04 pendingThemeRef in TerminalPanel.tsx', () => {
     const fitIdx = terminalPanelRaw.indexOf('fitTerminal', clearIdx)
     expect(clearIdx).toBeGreaterThan(-1)
     expect(fitIdx).toBeGreaterThan(clearIdx)
-  })
-})
-
-describe('Source-gate: POL-03 PlusIcon in HubFilterBar.tsx and HubEmptyState.tsx', () => {
-  it('HubFilterBar.tsx contains PlusIcon', () => {
-    expect(hubFilterBarRaw).toContain('PlusIcon')
-  })
-
-  it('HubEmptyState.tsx contains PlusIcon', () => {
-    expect(hubEmptyStateRaw).toContain('PlusIcon')
   })
 })

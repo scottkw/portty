@@ -384,7 +384,7 @@ export function SessionShareModal({
   }
 
   // Warm-up completion: once the daemon confirms Funnel is live (session.funnelActive,
-  // delivered by HubPanel's 3s-poll sync), re-issue caps to get the Funnel-base read URL
+  // delivered by App's 3s session-poll sync), re-issue caps to get the Funnel-base read URL
   // (the daemon swaps the cap base once Funnel is active — RESEARCH) and clear warm-up.
   // Gated on !funnelUrl so it fires exactly once, and also covers reopening a modal for a
   // session that was already Funnel-active. Cancelled-async pattern (mirrors the seeding effect).

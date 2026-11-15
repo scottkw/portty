@@ -27,18 +27,14 @@
 //   - handleModalExchange: has an 'open-session' branch that builds
 //     /sessions/{id}?cap= URL and calls BrowserOpenURL after exchange.
 //   - Dead code removed: isPeerSelf and rwJoinCode selection logic are gone (D-06/WR-01).
-//   - Behavior assertion: the "Open in tab" menu item on a remote SessionCard is NOT
-//     disabled and clicking it calls the open handler with the session object — exercises
-//     the actual open entry point rather than inspecting source in isolation.
+//   - Behavior assertion: a remote session's open entry point (since Portty 02-04,
+//     a sidebar peer row) is NOT disabled and clicking it calls the open handler with
+//     the session object — exercises the actual open entry point rather than
+//     inspecting source in isolation.
 //
 // Source-inspection tests use the App.tsx?raw import pattern (established by
 // App.fileBrowserMode.test.tsx and App.wiring.test.tsx). Behavior tests render
-// SessionCard using the pattern from SessionCard.share.test.tsx.
-//
-// RED state now: App.tsx still has isPeerSelf / rwJoinCode / direct ExchangeJoinCodeAtURL
-// call in handleOpenRemoteSession; SessionCard still gates the button on roJoinCode.
-// All assertions below FAIL against current code.
-// They go GREEN when Plans 02 (Go) and 03 (frontend) rewrite the production code.
+// the Sidebar with a peer fixture.
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import React, { act } from 'react'

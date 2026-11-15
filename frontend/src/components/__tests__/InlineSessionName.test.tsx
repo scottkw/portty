@@ -31,14 +31,14 @@ describe('InlineSessionName', () => {
 
   it('renders a span with the session name in display mode', () => {
     const { container } = renderName({ id: 'sess-1', name: 'My Session' })
-    const span = container.querySelector('.hub-card__name')
+    const span = container.querySelector('.inline-session-name')
     expect(span).not.toBeNull()
     expect(span!.textContent).toBe('My Session')
   })
 
   it('enters edit mode and shows input when name span is clicked', () => {
     const { container } = renderName({ id: 'sess-1', name: 'My Session' })
-    const span = container.querySelector('.hub-card__name')!
+    const span = container.querySelector('.inline-session-name')!
     act(() => {
       span.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
@@ -51,7 +51,7 @@ describe('InlineSessionName', () => {
     const onRenamed = vi.fn()
     const { container } = renderName({ id: 'sess-1', name: 'My Session', onRenamed })
     // Enter edit mode
-    const span = container.querySelector('.hub-card__name')!
+    const span = container.querySelector('.inline-session-name')!
     act(() => {
       span.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
@@ -92,7 +92,7 @@ describe('InlineSessionName', () => {
   it('pressing Escape restores original name and exits edit mode without calling onRenamed', () => {
     const onRenamed = vi.fn()
     const { container } = renderName({ id: 'sess-1', name: 'My Session', onRenamed })
-    const span = container.querySelector('.hub-card__name')!
+    const span = container.querySelector('.inline-session-name')!
     act(() => {
       span.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
@@ -104,7 +104,7 @@ describe('InlineSessionName', () => {
     expect(RenameSession).not.toHaveBeenCalled()
     expect(onRenamed).not.toHaveBeenCalled()
     // Should exit edit mode and show original name
-    const nameSpan = container.querySelector('.hub-card__name')
+    const nameSpan = container.querySelector('.inline-session-name')
     expect(nameSpan).not.toBeNull()
     expect(nameSpan!.textContent).toBe('My Session')
   })
@@ -112,7 +112,7 @@ describe('InlineSessionName', () => {
   it('blur with unchanged value does NOT call onRenamed', async () => {
     const onRenamed = vi.fn()
     const { container } = renderName({ id: 'sess-1', name: 'My Session', onRenamed })
-    const span = container.querySelector('.hub-card__name')!
+    const span = container.querySelector('.inline-session-name')!
     act(() => {
       span.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })

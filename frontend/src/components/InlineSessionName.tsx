@@ -82,7 +82,7 @@ export function InlineSessionName({ id: _id, name, onRenamed }: InlineSessionNam
 
   return (
     <span
-      className="hub-card__name"
+      className="inline-session-name"
       onClick={() => {
         setEditValue(name)
         setEditing(true)

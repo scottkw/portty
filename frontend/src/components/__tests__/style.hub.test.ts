@@ -8,35 +8,6 @@ import { resolve } from 'path'
 // The user is colorblind: hex constants are verified in source, never by eye.
 const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
-// Phase 131 UAT follow-up — Open button (re-attach) must be styled, not bare.
-// Guards against the CR-01 class of bug (TSX emits a class CSS never defines).
-describe('Hub card Open button CSS contract (re-attach)', () => {
-  it('defines .hub-card__row5 (actions row)', () => {
-    expect(cssRaw).toContain('.hub-card__row5')
-  })
-
-  it('defines .hub-card__open button rule', () => {
-    expect(cssRaw).toContain('.hub-card__open')
-  })
-
-  it('defines .hub-card__open:hover state', () => {
-    expect(cssRaw).toContain('.hub-card__open:hover')
-  })
-})
-
-// Phase 132 UAT fix — no Tailwind in this project, so Heroicon w-N/h-N classes are
-// no-ops; Hub SVG icons must be sized explicitly or they render oversized.
-describe('Hub icon sizing CSS contract (no Tailwind)', () => {
-  it('sizes the group-sidebar collapse-toggle chevron svg', () => {
-    expect(cssRaw).toContain('.hub__group-sidebar-toggle svg')
-  })
-
-  it('sizes the card drag-handle / menu-btn svg', () => {
-    expect(cssRaw).toContain('.hub-card__drag-handle svg')
-    expect(cssRaw).toContain('.hub-card__menu-btn svg')
-  })
-})
-
 describe('Hub CSS tokens (aliases of the UI-SPEC colour tokens)', () => {
   it('declares --hub-bg custom property', () => {
     expect(cssRaw).toContain('--hub-bg')
@@ -67,44 +38,6 @@ describe('Hub CSS tokens (aliases of the UI-SPEC colour tokens)', () => {
   })
 })
 
-describe('Hub layout — responsive grid (GRID-01)', () => {
-  it('grid uses repeat(auto-fill, minmax(240px, 1fr)) (GRID-01)', () => {
-    expect(cssRaw).toContain('repeat(auto-fill, minmax(240px, 1fr))')
-  })
-
-  it('.hub__card-row declares display: grid', () => {
-    const hubCardRowIdx = cssRaw.indexOf('.hub__card-row')
-    expect(hubCardRowIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', hubCardRowIdx)
-    const block = cssRaw.slice(hubCardRowIdx, blockEnd)
-    expect(block).toContain('display: grid')
-  })
-
-  it('.hub__card-row has gap: 8px', () => {
-    const hubCardRowIdx = cssRaw.indexOf('.hub__card-row')
-    expect(hubCardRowIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', hubCardRowIdx)
-    const block = cssRaw.slice(hubCardRowIdx, blockEnd)
-    expect(block).toContain('gap: 8px')
-  })
-
-  it('.hub__card-row has max-width: 1440px', () => {
-    const hubCardRowIdx = cssRaw.indexOf('.hub__card-row')
-    expect(hubCardRowIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', hubCardRowIdx)
-    const block = cssRaw.slice(hubCardRowIdx, blockEnd)
-    expect(block).toContain('max-width: 1440px')
-  })
-
-  it('.hub-card has min-width: 240px', () => {
-    expect(cssRaw).toContain('min-width: 240px')
-  })
-
-  it('.hub-card has max-width: 360px', () => {
-    expect(cssRaw).toContain('max-width: 360px')
-  })
-})
-
 // CONTEXT Amendment 2: no session status, dimming or attention styling on Hub cards.
 describe('Hub cards show no session status (TERM-05)', () => {
   it('status, exit-code, dim and attention rules and the --hub-attn-* / dim tokens are gone', () => {
@@ -130,44 +63,6 @@ describe('Hub motion contract — reduced-motion guard (Pitfall 6)', () => {
   })
 })
 
-describe('Hub group header (mirrors .remote-panel__peer-header)', () => {
-  it('.hub__group-header is declared', () => {
-    expect(cssRaw).toContain('.hub__group-header')
-  })
-
-  it('.hub__group-header has font-size: 11px', () => {
-    const headerIdx = cssRaw.indexOf('.hub__group-header')
-    expect(headerIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', headerIdx)
-    const block = cssRaw.slice(headerIdx, blockEnd)
-    expect(block).toContain('font-size: 11px')
-  })
-
-  it('.hub__group-header has font-weight: 600', () => {
-    const headerIdx = cssRaw.indexOf('.hub__group-header')
-    expect(headerIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', headerIdx)
-    const block = cssRaw.slice(headerIdx, blockEnd)
-    expect(block).toContain('font-weight: 600')
-  })
-
-  it('.hub__group-header has text-transform: uppercase', () => {
-    const headerIdx = cssRaw.indexOf('.hub__group-header')
-    expect(headerIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', headerIdx)
-    const block = cssRaw.slice(headerIdx, blockEnd)
-    expect(block).toContain('text-transform: uppercase')
-  })
-
-  it('.hub__group-header has letter-spacing: 0.08em', () => {
-    const headerIdx = cssRaw.indexOf('.hub__group-header')
-    expect(headerIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', headerIdx)
-    const block = cssRaw.slice(headerIdx, blockEnd)
-    expect(block).toContain('letter-spacing: 0.08em')
-  })
-})
-
 describe('Hub colorblind-safe source comments (source-level UAT verification)', () => {
   it('has COLORBLIND-SAFE comment for running status dot dark hex #3b82f6', () => {
     expect(cssRaw).toContain('#3b82f6')
@@ -185,115 +80,23 @@ describe('Hub colorblind-safe source comments (source-level UAT verification)', 
 
 // Phase 135 CSS contract — GAP-135-A focus-visible rings + GAP-135-E/F reduced-motion
 describe('Phase 135 — GAP-135-A: focus-visible rings for Hub interactive elements', () => {
-  it('A11Y-02: .hub-card:focus-visible rule is present (upgraded from :focus)', () => {
-    expect(cssRaw).toContain('.hub-card:focus-visible')
-  })
-
-  it('A11Y-02: .hub-card:focus (bare, without -visible) outline rule is NOT present (Pitfall 2 guard)', () => {
-    // The only :focus without -visible on hub-card must be :focus-within (structural, not outline)
-    // Assert no standalone .hub-card:focus { outline rule exists
-    expect(cssRaw).not.toMatch(/\.hub-card:focus\s*\{[^}]*outline/)
-  })
 
   it('STRP-01: the status filter pill rules are gone', () => {
     expect(cssRaw).not.toContain('.hub-filter__pill')
     expect(cssRaw).not.toContain('hub-needs-input-badge')
   })
 
-  it('A11Y-02: .hub-card__open:focus-visible rule is present', () => {
-    expect(cssRaw).toContain('.hub-card__open:focus-visible')
-  })
-
   it('A11Y-02: .hub-modal__close:focus-visible rule is present', () => {
     expect(cssRaw).toContain('.hub-modal__close:focus-visible')
   })
 
-  it('A11Y-02: .hub__group-sidebar-item:focus-visible rule is present', () => {
-    expect(cssRaw).toContain('.hub__group-sidebar-item:focus-visible')
-  })
-
-  it('A11Y-02: all new :focus-visible rules use var(--hub-accent) token (colorblind constraint)', () => {
-    // Extract the GAP-135-A grouped rule block — find it by locating .hub-filter__new-session:focus-visible
-    const pillIdx = cssRaw.indexOf('.hub-filter__new-session:focus-visible')
-    expect(pillIdx).toBeGreaterThan(-1)
-    // Find the closing brace of the group rule
-    const blockEnd = cssRaw.indexOf('}', pillIdx)
-    const block = cssRaw.slice(pillIdx, blockEnd)
+  it('A11Y-02: the remaining :focus-visible ring uses var(--hub-accent) token (colorblind constraint)', () => {
+    const idx = cssRaw.indexOf('.hub-modal__close:focus-visible')
+    expect(idx).toBeGreaterThan(-1)
+    const block = cssRaw.slice(idx, cssRaw.indexOf('}', idx))
     expect(block).toContain('var(--hub-accent)')
   })
 
-  it('A11Y-02: .hub-filter__search:focus is still present and unchanged (inputs keep :focus per WCAG 2.4.7)', () => {
-    expect(cssRaw).toContain('.hub-filter__search:focus')
-  })
-})
-
-describe('Phase 135 — GAP-135-E/F: prefers-reduced-motion reduce blocks', () => {
-  it('GAP-135-F: prefers-reduced-motion: reduce block targets .hub-card with transition: none', () => {
-    // Must be inside a reduce block — find a reduce block containing .hub-card { transition: none
-    expect(cssRaw).toMatch(/prefers-reduced-motion:\s*reduce[^@]*\.hub-card\s*\{\s*transition:\s*none/)
-  })
-
-  it('GAP-135-F: card-hover reduce block appears AFTER the no-preference .hub-card 400ms transition override', () => {
-    // The no-preference block sets .hub-card transition to 400ms ease (ATTN-03)
-    const noPrefIdx = cssRaw.indexOf('border-color 400ms ease, box-shadow 400ms ease, background 100ms ease')
-    expect(noPrefIdx).toBeGreaterThan(-1)
-
-    // GAP-135-F card hover reduce block must also come after no-preference
-    const cardTransitionNoneIdx = cssRaw.indexOf('.hub-card {\n    transition: none')
-    expect(cardTransitionNoneIdx).toBeGreaterThan(noPrefIdx)
-  })
-
-  it('GAP-135-E/F: existing no-preference 400ms hub-card transition override is still present (not overwritten)', () => {
-    expect(cssRaw).toContain('border-color 400ms ease, box-shadow 400ms ease, background 100ms ease')
-  })
-})
-
-// Phase 133 CSS contract (IN-01)
-describe('Hub Phase 133 CSS contract', () => {
-  it('IN-01: .hub-card has position: relative (anchor for drag-handle/menu-btn)', () => {
-    const cardIdx = cssRaw.indexOf('.hub-card {')
-    expect(cardIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', cardIdx)
-    const block = cssRaw.slice(cardIdx, blockEnd)
-    expect(block).toContain('position: relative')
-  })
-})
-
-// Phase 138 / CARD-03: Connection indicator CSS — remote card connected/available states.
-// These assertions are RED until Plan 03 adds the CSS classes to style.css.
-// COLORBLIND-SAFE: icon shape + text carry the state; color is reinforcement only.
-describe('CARD-03: Connection indicator CSS (hub-card__conn)', () => {
-  it('defines .hub-card__conn class', () => {
-    expect(cssRaw).toContain('.hub-card__conn')
-  })
-  it('defines .hub-card__conn--connected modifier', () => {
-    expect(cssRaw).toContain('.hub-card__conn--connected')
-  })
-  it('defines .hub-card__conn-icon class', () => {
-    expect(cssRaw).toContain('.hub-card__conn-icon')
-  })
-})
-
-// Phase 138 / CARD-04: Preserved grid CSS — anti-regression against accidental deletion.
-// These must PASS against current style.css (they already exist).
-describe('CARD-04: Preserved grid CSS (anti-regression)', () => {
-  it('preserves .hub__card-row grid definition', () => {
-    expect(cssRaw).toContain('.hub__card-row')
-  })
-  it('preserves hub-card min-width 240px constraint', () => {
-    expect(cssRaw).toContain('240px')
-  })
-})
-
-// Phase 138 / CARD-04: Kill menu item CSS — destructive action styling.
-// These assertions are RED until Plan 03 adds the CSS classes to style.css.
-describe('CARD-04: Kill menu item CSS', () => {
-  it('defines .hub-card__menu-item--destructive modifier', () => {
-    expect(cssRaw).toContain('.hub-card__menu-item--destructive')
-  })
-  it('destructive color uses --hub-destructive custom property', () => {
-    expect(cssRaw).toContain('--hub-destructive')
-  })
 })
 
 // ============================================================
@@ -303,15 +106,6 @@ describe('CARD-04: Kill menu item CSS', () => {
 // ============================================================
 
 describe('Phase 142 comp-fidelity CSS tokens (GAP-04 anti-regression)', () => {
-  // (a) .hub-card block contains border-radius: 16px
-  it('GAP-04: .hub-card block contains border-radius: 16px (pronounced rounded corners)', () => {
-    // Find the .hub-card { rule block and assert border-radius is present
-    const hubCardIdx = cssRaw.indexOf('.hub-card {')
-    expect(hubCardIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', hubCardIdx)
-    const block = cssRaw.slice(hubCardIdx, blockEnd)
-    expect(block).toContain('border-radius: 16px')
-  })
 
   // (b)/(c) session-type spine and badge chip removed in 01-07 (STRP-01 — no agent identity)
   it('01-07: no data-agent spine/chip rules and no .hub-card__badge / .hub-card__chip--agent remain', () => {
@@ -320,16 +114,6 @@ describe('Phase 142 comp-fidelity CSS tokens (GAP-04 anti-regression)', () => {
     expect(cssRaw).not.toContain('.hub-card__chip--agent')
   })
 
-  // (d) mini-preview window: height: 150px (note: height, not min-height — per interfaces block)
-  it('GAP-04: .hub-card__preview block declares height: 150px (not min-height)', () => {
-    const previewIdx = cssRaw.indexOf('.hub-card__preview {')
-    expect(previewIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', previewIdx)
-    const block = cssRaw.slice(previewIdx, blockEnd)
-    expect(block).toContain('height: 150px')
-    // Negative: must not be min-height only (the interface block specifies `height`)
-    expect(block).not.toMatch(/min-height:\s*150px/)
-  })
 })
 
 // Phase 159 (WEBCHAT-06) — chat author header layout. A long author name (e.g. a

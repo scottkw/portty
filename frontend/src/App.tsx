@@ -143,8 +143,8 @@ function App(): React.ReactElement {
   const upgradePollerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // NAV-01: every daemon session, from the always-on 3 s poll (desktop only).
   const [sessions, setSessions] = useState<SessionInfo[]>([])
-  // Phase 168-05 (UX-02) — Share modal open-state, lifted from HubPanel so both the Hub
-  // card click AND the footer "Share Session" button drive a single SessionShareModal
+  // Phase 168-05 (UX-02) — Share modal open-state, lifted to App so every share entry
+  // point (e.g. the footer "Share Session" button) drives a single SessionShareModal
   // instance (RESEARCH Pattern 4). null = closed; non-null = open for this session.
   const [shareModalSession, setShareModalSession] = useState<SessionInfo | null>(null)
   // NAV-02: remote peers for the sidebar peer groups (30 s poll while Tailscale is connected).
@@ -170,7 +170,7 @@ function App(): React.ReactElement {
     baseURL: string
   } | null>(null)
 
-  // Update notification state (lifted from WelcomeTab — Phase 81 D-06)
+  // Update notification state (lifted to App — Phase 81 D-06)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
   // Local network banner dismiss state (session-only, D-04)
   const [updateExiting, setUpdateExiting] = useState(false)
@@ -773,9 +773,8 @@ function App(): React.ReactElement {
   // open-time (either from a Hub card click or the footer's openShareModalForActiveSession);
   // without this effect a server-side flip (e.g. funnelActive completing, viewerCount
   // changing) never reaches an already-open modal. This is the single sync instance —
-  // SessionShareModal itself is now rendered once, here, at the App.tsx level (not inside
-  // HubPanel, which unmounts on non-Hub tabs — the footer button must work from any local
-  // session tab). Keyed on shareModalSession?.id (not the whole object) to avoid re-running
+  // SessionShareModal itself is rendered once, here, at the App.tsx level so the footer
+  // button works from any local session tab. Keyed on shareModalSession?.id (not the whole object) to avoid re-running
   // from its own setState.
   useEffect(() => {
     if (!shareModalSession) return
@@ -857,7 +856,7 @@ function App(): React.ReactElement {
     }
   }, [mode])
 
-  // Lift update:available subscription from WelcomeTab (Phase 81 D-06)
+  // update:available subscription, lifted to App (Phase 81 D-06)
   useEffect(() => {
     if (mode === 'web') return // Phase 120-06: update poller is Wails-only.
     GetLastUpdateInfo()

@@ -370,15 +370,15 @@ describe('Phase 148 TAB-04: TabBar session-tab chevron', () => {
   })
 
   it('tab-chevron: special tab (no sessionId) renders NO .tab__chevron', () => {
-    // A tab with no sessionId (Welcome/Settings/Hub/Help/File-browser) must NOT get a chevron.
+    // A tab with no sessionId (Settings/File-browser) must NOT get a chevron.
     const container2 = document.createElement('div')
     document.body.appendChild(container2)
     const root2 = createRoot(container2)
     flushSync(() => {
       root2.render(
         React.createElement(TabBar, {
-          tabs: [{ id: 'welcome', name: 'Welcome', sessionId: '' }],
-          activeId: 'welcome',
+          tabs: [{ id: 'settings', name: 'Settings', sessionId: '' }],
+          activeId: 'settings',
           onSelect: () => {},
           onClose: () => {},
           onRename: () => {},
