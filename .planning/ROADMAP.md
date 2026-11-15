@@ -78,7 +78,7 @@ Plans:
 ### Phase 2: Tabs + Sidebar Navigation
 **Goal**: Users navigate everything from tabs plus a sidebar: the Hub grid is gone, and the sidebar lists local sessions and tailnet peers' sessions, each opening in a tab
 **Depends on**: Phase 1
-**Requirements**: NAV-01, NAV-02, NAV-03, TERM-03, CHAT-01, THEM-01
+**Requirements**: NAV-01, NAV-02, NAV-03, TERM-03, CHAT-01, THEM-01, LOOK-01
 **Success Criteria** (what must be TRUE):
   1. The app launches straight into tabs plus a sidebar; there is no Hub grid view or Hub entry anywhere
   2. The sidebar lists every local session; clicking one focuses its tab if it is open, or opens it in a new tab
@@ -87,6 +87,7 @@ Plans:
   5. The Share dialog (including the Funnel risk panel) is still reachable from any session tab now that the Hub is gone
   6. Session chat is gone from the desktop app, the web share page, the daemon/webserver API and the relay protocol; no chat button, badge, or endpoint remains, and old clients that send chat frames do not crash anything
   7. Switching macOS between Light and Dark changes the whole app and every open terminal at once, with no restart; there is no theme picker, and the web share page follows the browser's light/dark setting
+  8. The window looks like a native macOS app: system font and accent color, a source-list sidebar, a unified title bar/toolbar, and native-style controls; no custom dark chrome or hardcoded colors remain (LOOK-01)
 **Plans**: TBD
 **UI hint**: yes
 
