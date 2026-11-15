@@ -963,10 +963,10 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // (launch and the 10 s poller cover the other triggers). Desktop only.
   useEffect(() => {
     if (mode === 'web') return
+    // The check emits tailscale:health on change; the response is not applied,
+    // so a late reply cannot overwrite a newer event.
     const recheck = () => {
-      GetTailscaleStatus()
-        .then(setTailscaleHealth)
-        .catch(() => { /* keep the last value */ })
+      GetTailscaleStatus().catch(() => { /* keep the last value */ })
     }
     const onVisibility = () => {
       if (document.visibilityState === 'visible') recheck()

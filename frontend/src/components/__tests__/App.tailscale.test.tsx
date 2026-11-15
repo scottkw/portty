@@ -29,8 +29,10 @@ describe('App.tsx NET-01: focus and visibility recheck', () => {
   it('registers focus and visibilitychange listeners that call GetTailscaleStatus', () => {
     const body = recheckEffectFull()
     expect(body).toContain('GetTailscaleStatus()')
-    expect(body).toContain('.then(setTailscaleHealth)')
     expect(body).toContain('.catch(')
+    // CR-01: the Go side emits tailscale:health; applying the reply here could
+    // overwrite a newer event with a stale value.
+    expect(body).not.toContain('setTailscaleHealth')
     expect(body).toContain("window.addEventListener('focus', recheck)")
     expect(body).toContain("document.addEventListener('visibilitychange', onVisibility)")
     expect(body).toContain("document.visibilityState === 'visible'")

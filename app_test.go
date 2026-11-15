@@ -763,6 +763,39 @@ func TestCheckTailscaleHealth_EmitsFirstResultAndChanges(t *testing.T) {
 	}
 }
 
+// TestGetTailscaleStatus_SharesPollerState (CR-01): a transient not-connected
+// result from GetTailscaleStatus (focus recheck) is recorded and emitted, so
+// the next connected poll is a change and emits the recovery.
+func TestGetTailscaleStatus_SharesPollerState(t *testing.T) {
+	connected := webserver.TailscaleHealth{Connected: true, HasCerts: true, IP: "100.64.0.1", Domain: "h.ts.net"}
+	next := connected
+	var emitted []webserver.TailscaleHealth
+	app := &App{
+		tailscaleCheckFunc: func(context.Context) webserver.TailscaleHealth { return next },
+		emitEventFunc: func(_ string, data any) {
+			emitted = append(emitted, data.(webserver.TailscaleHealth))
+		},
+	}
+	app.checkTailscaleHealth(context.Background()) // poller: connected
+
+	next = webserver.TailscaleHealth{}
+	if got := app.GetTailscaleStatus(); got.Connected {
+		t.Fatalf("GetTailscaleStatus = %+v, want not connected", got)
+	}
+	next = connected
+	app.checkTailscaleHealth(context.Background()) // poller: recovered
+
+	want := []webserver.TailscaleHealth{connected, {}, connected}
+	if len(emitted) != len(want) {
+		t.Fatalf("emitted %+v, want %+v", emitted, want)
+	}
+	for i := range want {
+		if emitted[i] != want[i] {
+			t.Fatalf("emit %d = %+v, want %+v", i, emitted[i], want[i])
+		}
+	}
+}
+
 func TestHealthPollerStops(t *testing.T) {
 	app := testApp(t)
 	app.tailscaleCheckFunc = func(context.Context) webserver.TailscaleHealth { return webserver.TailscaleHealth{} }

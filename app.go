@@ -99,9 +99,10 @@ type App struct {
 	emitEventFunc func(name string, data any)
 
 	// tailscaleCheckFunc is the Tailscale health check seam; nil means
-	// webserver.CheckHealth. lastHealth is the last result the poller emitted
-	// (nil until the first check). Both are owned by the poller goroutine.
+	// webserver.CheckHealth. lastHealth is the last emitted result (nil until
+	// the first check); the poller and GetTailscaleStatus share it under healthMu.
 	tailscaleCheckFunc func(context.Context) webserver.TailscaleHealth
+	healthMu           sync.Mutex
 	lastHealth         *webserver.TailscaleHealth
 
 	// exitEmitted records sessions already reported via session:exit, so each
@@ -1016,12 +1017,11 @@ func (a *App) SetTrayProgress(quartile int) error {
 	return nil
 }
 
-// GetTailscaleStatus returns the current Tailscale health state.
-// Called by the frontend on-demand; also available as a Wails-bound method.
+// GetTailscaleStatus runs a fresh Tailscale health check and returns it.
+// It goes through checkTailscaleHealth so the poller knows every value the
+// frontend has seen and emits the recovery from a transient failure.
 func (a *App) GetTailscaleStatus() webserver.TailscaleHealth {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	return a.tailscaleCheck(ctx)
+	return a.checkTailscaleHealth(context.Background())
 }
 
 func (a *App) tailscaleCheck(ctx context.Context) webserver.TailscaleHealth {
@@ -1266,16 +1266,19 @@ func (a *App) CheckForUpdates() *updater.UpdateInfo {
 // checkTailscaleHealth runs one health check and emits "tailscale:health" when
 // it is the first result or differs from the last one. The first result is
 // always emitted: "not connected" is the zero value, so comparing against a
-// zero starting point would never report a launch-time disconnect.
-func (a *App) checkTailscaleHealth(ctx context.Context) {
+// zero starting point would never report a launch-time disconnect. The emit
+// happens under healthMu so events reach the frontend in lastHealth order.
+func (a *App) checkTailscaleHealth(ctx context.Context) webserver.TailscaleHealth {
 	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	h := a.tailscaleCheck(checkCtx)
 	cancel()
-	if a.lastHealth != nil && *a.lastHealth == h {
-		return
+	a.healthMu.Lock()
+	defer a.healthMu.Unlock()
+	if a.lastHealth == nil || *a.lastHealth != h {
+		a.lastHealth = &h
+		a.emitEvent("tailscale:health", h)
 	}
-	a.lastHealth = &h
-	a.emitEvent("tailscale:health", h)
+	return h
 }
 
 // startHealthPoller checks Tailscale health once immediately and then every
