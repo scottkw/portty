@@ -13,3 +13,10 @@ Out-of-scope discoveries logged during plan execution (not fixed).
 - `lib/remoteAdapter.ts` `adaptAllRemoteSessions` and `lib/remoteSession.ts` `findRemoteSession` (listed as orphans in 02-04-SUMMARY) were not in 02-05's delete list and are still there. Only their own tests use them.
 - `frontend/src/assets/agenthub-title-logo.png` has no frontend importer but `scripts/verify-icons.sh` (SC5) checks that it exists, so it was kept. Delete it together with that check when Phase 3 rebrands the icons.
 - `frontend/src/components/Hub/` now holds only the chat components and `WebShareSessionView` (plan 02-07). The Share dialog's classes are still named `hub-share-modal*` / `hub-modal-overlay` / `hub-modal__close`. A rename could go with the 02-12 restyle.
+
+## From 02-09
+
+- `ShareSegmentedControl.tsx` still prefixes "⚠" onto the Full-access sub label (the SM-07 colorblind cue, pinned by `ShareSegmentedControl.test.tsx`). UI-SPEC "Removed UI" bans the glyph at phase end; plan 02-10 owns the remaining ⚠ glyphs.
+- The Share dialog's "Share the session" and "Enable internet sharing" rows still use the old `.settings-panel__toggle-*` checkbox look. The UI-SPEC switch lands with the Settings sheet (02-11).
+- `LinkConfirmPopover` is a click-point popover, not a sheet. It now uses the light/dark tokens but keeps its own Esc and Cancel-first focus, with no Tab trap (not in 02-09's dialog list).
+- Only the Share dialog plays the 100ms close fade (it owns its close through the phase machine). The other dialogs are unmounted by their parent at once, so they close without a fade.
