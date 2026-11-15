@@ -113,6 +113,7 @@ jobs:
   sign-macos:
     needs: [build-macos]
     runs-on: macos-latest
+    timeout-minutes: 90 # notarization wait is capped at 60m below
     environment: release
     permissions:
       contents: read
@@ -190,7 +191,7 @@ jobs:
           ditto -c -k --keepParent build/bin/AgentHub.app build/bin/agenthub-notarize.zip
           xcrun notarytool submit build/bin/agenthub-notarize.zip \
             --keychain-profile "agenthub-notarize" \
-            --wait
+            --wait --timeout 60m
           xcrun stapler staple build/bin/AgentHub.app
 
       - name: Create and sign DMG
@@ -221,6 +222,7 @@ jobs:
   publish:
     needs: [build-macos, sign-macos]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write          # create/update release
       id-token: write          # release attestation OIDC
