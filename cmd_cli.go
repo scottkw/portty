@@ -57,9 +57,10 @@ Run 'agenthub <command> --help' for command-specific flags.
 //	agenthub new [<path>]
 //
 // <path> is optional; if omitted, workDir is "" and the daemon resolves it to
-// the home directory. New sessions always run /bin/zsh -l.
+// the home directory. A relative <path> is resolved against the CLI's cwd (the
+// daemon's cwd is unrelated). New sessions always run /bin/zsh -l.
 //
-// Locked stderr error string: `agenthub new: daemon unreachable: <err>`
+// Errors go to stderr as `agenthub new: <err>`.
 func cmdNew(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // we emit our own error copy
@@ -67,9 +68,20 @@ func cmdNew(client *daemon.DaemonClient, args []string, out io.Writer) error {
 		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
 		return err
 	}
+	positionals := fs.Args()
+	if len(positionals) > 1 { // e.g. the removed agent-plus-path form
+		err := fmt.Errorf("usage: agenthub new [<path>] (got %d arguments)", len(positionals))
+		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
+		return err
+	}
 	workDir := ""
-	if positionals := fs.Args(); len(positionals) > 0 {
-		workDir = positionals[0]
+	if len(positionals) == 1 {
+		abs, err := filepath.Abs(positionals[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
+			return err
+		}
+		workDir = abs
 	}
 	// Name is the basename of workDir, or "shell" when workDir is empty
 	// (the daemon resolves "" to $HOME; the CLI doesn't know $HOME at this layer).
@@ -79,7 +91,7 @@ func cmdNew(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	}
 	id, err := client.CreateSession(name, workDir, 0, 0)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "agenthub new: daemon unreachable: %v\n", err)
+		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
 		return err
 	}
 	fmt.Fprintln(out, id)

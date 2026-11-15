@@ -622,8 +622,8 @@ func TestCmdNew_RejectsUnknownFlag(t *testing.T) {
 	}
 }
 
-// TestCmdNew_DaemonError: a daemon-unreachable error surfaces with the locked
-// stderr prefix and a non-nil return.
+// TestCmdNew_DaemonError: a daemon-unreachable error surfaces on stderr with
+// the underlying error and a non-nil return.
 func TestCmdNew_DaemonError(t *testing.T) {
 	client := daemon.NewDaemonClient("/tmp/agenthub-nonexistent-socket-test.sock")
 	var buf bytes.Buffer
@@ -634,8 +634,44 @@ func TestCmdNew_DaemonError(t *testing.T) {
 	if callErr == nil {
 		t.Fatal("expected error when daemon socket is unreachable, got nil")
 	}
-	if !strings.Contains(stderr, "agenthub new: daemon unreachable:") {
-		t.Errorf("expected stderr to contain 'agenthub new: daemon unreachable:', got %q", stderr)
+	if !strings.HasPrefix(stderr, "agenthub new: ") || !strings.Contains(stderr, callErr.Error()) {
+		t.Errorf("expected stderr 'agenthub new: %v', got %q", callErr, stderr)
+	}
+}
+
+// TestCmdNew_RelativeDir (WR-07): a relative path resolves against the CLI's
+// cwd, not the daemon's.
+func TestCmdNew_RelativeDir(t *testing.T) {
+	client := testSetup(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	var buf bytes.Buffer
+	if err := cmdNew(client, []string{"."}, &buf); err != nil {
+		t.Fatalf("cmdNew: %v", err)
+	}
+	want, _ := filepath.EvalSymlinks(dir)
+	if info := newSessionInfo(t, client); info.WorkDir != want {
+		t.Errorf("session WorkDir = %q, want %q", info.WorkDir, want)
+	}
+}
+
+// TestCmdNew_RejectsExtraArgs (WR-07): the removed `new <agent> <path>` form
+// fails loudly instead of starting in a directory named after the agent.
+func TestCmdNew_RejectsExtraArgs(t *testing.T) {
+	client := testSetup(t)
+	var buf bytes.Buffer
+	var callErr error
+	stderr := captureStderr(t, func() {
+		callErr = cmdNew(client, []string{"claude", t.TempDir()}, &buf)
+	})
+	if callErr == nil {
+		t.Fatal("expected an error for two positional arguments, got nil")
+	}
+	if !strings.Contains(stderr, "usage: agenthub new [<path>]") {
+		t.Errorf("unexpected stderr %q", stderr)
+	}
+	if sessions, _ := client.ListSessions(); len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
 	}
 }
 
