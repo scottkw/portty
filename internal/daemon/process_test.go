@@ -26,7 +26,6 @@ func TestEnsureDaemon_AlreadyRunning(t *testing.T) {
 	socketPath := shortProcTestSocket(t, "already")
 	engine := NewSessionEngine()
 	engine.configDir = t.TempDir()
-	engine.cliPaths = make(map[string]string)
 	api := NewAPI(engine)
 	if err := api.Start(socketPath); err != nil {
 		t.Fatalf("api.Start: %v", err)
@@ -104,7 +103,6 @@ func TestRestartWebServer_StopsAndStarts(t *testing.T) {
 	socketPath := shortProcTestSocket(t, "restart")
 	engine := NewSessionEngine()
 	engine.configDir = t.TempDir()
-	engine.cliPaths = make(map[string]string)
 	api := NewAPI(engine)
 	if err := api.Start(socketPath); err != nil {
 		t.Fatalf("api.Start: %v", err)
@@ -141,7 +139,6 @@ func TestUpgradeToTailscale_ExitsOnCancel(t *testing.T) {
 	socketPath := shortProcTestSocket(t, "upgrade")
 	engine := NewSessionEngine()
 	engine.configDir = t.TempDir()
-	engine.cliPaths = make(map[string]string)
 	api := NewAPI(engine)
 	if err := api.Start(socketPath); err != nil {
 		t.Fatalf("api.Start: %v", err)

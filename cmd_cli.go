@@ -57,7 +57,7 @@ Run 'agenthub <command> --help' for command-specific flags.
 //	agenthub new [<path>]
 //
 // <path> is optional; if omitted, workDir is "" and the daemon resolves it to
-// the home directory. The shell binary comes from Settings shellPath.
+// the home directory. New sessions always run /bin/zsh -l.
 //
 // Locked stderr error string: `agenthub new: daemon unreachable: <err>`
 func cmdNew(client *daemon.DaemonClient, args []string, out io.Writer) error {
@@ -309,21 +309,6 @@ func cmdSettings(client *daemon.DaemonClient, out io.Writer) error {
 		fmt.Fprintf(out, "%-14s%s\n", "relay-port:", "(unavailable)")
 	} else {
 		fmt.Fprintf(out, "%-14s%d\n", "relay-port:", port)
-	}
-
-	paths, err := client.GetCLIPaths()
-	if err != nil || len(paths) == 0 {
-		fmt.Fprintf(out, "%-14s%s\n", "cli-paths:", "(none)")
-	} else {
-		first := true
-		for name, p := range paths {
-			if first {
-				fmt.Fprintf(out, "%-14s%s=%s\n", "cli-paths:", name, p)
-				first = false
-			} else {
-				fmt.Fprintf(out, "%-14s%s=%s\n", "", name, p)
-			}
-		}
 	}
 	return nil
 }

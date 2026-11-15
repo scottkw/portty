@@ -74,14 +74,6 @@ type HealthResponse struct {
 	Version string `json:"version,omitempty"`
 }
 
-// CLIPathsResponse maps CLI name to custom path override.
-type CLIPathsResponse map[string]string
-
-// UpdateCLIPathRequest is the request body for PATCH /settings/cli-paths/{name}.
-type UpdateCLIPathRequest struct {
-	Path string `json:"path"`
-}
-
 // RelayPortResponse is the response body for GET /relay-port.
 type RelayPortResponse struct {
 	Port int `json:"port"`

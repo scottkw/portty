@@ -13,7 +13,6 @@ func TestStayOnHubAfterCreate_Default(t *testing.T) {
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	if got := e.GetStayOnHubAfterCreate(); got != false {
 		t.Errorf("default GetStayOnHubAfterCreate: got %v, want false", got)
@@ -26,7 +25,6 @@ func TestStayOnHubAfterCreate_Persists(t *testing.T) {
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 
 	e.SetStayOnHubAfterCreate(true)
@@ -46,7 +44,7 @@ func TestStayOnHubAfterCreate_Persists(t *testing.T) {
 		t.Errorf("schemaVersion after SetStayOnHubAfterCreate: got %d, want unchanged %d", s.SchemaVersion, CurrentSchemaVersion)
 	}
 
-	e2 := &SessionEngine{configDir: dir, cliPaths: make(map[string]string)}
+	e2 := &SessionEngine{configDir: dir}
 	e2.loadSettingsFromDisk(dir)
 	if got := e2.GetStayOnHubAfterCreate(); got != true {
 		t.Errorf("reload after SetStayOnHubAfterCreate(true): got %v, want true", got)
@@ -59,7 +57,6 @@ func TestStayOnHubAfterCreate_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 
 	e.SetStayOnHubAfterCreate(true)
@@ -109,7 +106,7 @@ func TestStayOnHubAfterCreate_NoSchemaBump(t *testing.T) {
 		t.Fatalf("stat before load: %v", err)
 	}
 
-	e := &SessionEngine{configDir: dir, cliPaths: make(map[string]string)}
+	e := &SessionEngine{configDir: dir}
 	e.loadSettingsFromDisk(dir)
 	if got := e.GetStayOnHubAfterCreate(); got != false {
 		t.Errorf("StayOnHubAfterCreate on pre-existing settings.json (no key): got %v, want false", got)

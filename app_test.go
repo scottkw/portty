@@ -599,15 +599,6 @@ func TestKillSession(t *testing.T) {
 	}
 }
 
-func TestUpdateCLIPath(t *testing.T) {
-	app := testApp(t)
-
-	// /bin/cat is a guaranteed path on macOS/Linux.
-	if err := app.UpdateCLIPath("claude", "/bin/cat"); err != nil {
-		t.Fatalf("UpdateCLIPath: %v", err)
-	}
-}
-
 func TestGetRelayPort(t *testing.T) {
 	app := testApp(t)
 	port := app.GetRelayPort()

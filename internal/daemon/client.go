@@ -116,20 +116,6 @@ func (c *DaemonClient) GetSessionStyledTailLines(id string, n int) ([][]StyledSp
 	return resp.Lines, nil
 }
 
-// GetCLIPaths returns the current CLI path override map.
-func (c *DaemonClient) GetCLIPaths() (map[string]string, error) {
-	var paths map[string]string
-	if err := c.doJSON(http.MethodGet, "/settings/cli-paths", nil, &paths); err != nil {
-		return nil, err
-	}
-	return paths, nil
-}
-
-// UpdateCLIPath sets a custom executable path for the named CLI.
-func (c *DaemonClient) UpdateCLIPath(name, path string) error {
-	return c.doJSON(http.MethodPatch, "/settings/cli-paths/"+name, UpdateCLIPathRequest{Path: path}, nil)
-}
-
 // GetStartMinimized returns the persisted start-minimized preference.
 func (c *DaemonClient) GetStartMinimized() (bool, error) {
 	var resp map[string]bool
@@ -212,26 +198,6 @@ func (c *DaemonClient) GetShellWebShareWarningEnabled() (bool, error) {
 func (c *DaemonClient) SetShellWebShareWarningEnabled(val bool) error {
 	return c.doJSON(http.MethodPatch, "/settings/shell-web-share-warning-enabled",
 		map[string]bool{"value": val}, nil)
-}
-
-// GetShellPath returns the persisted shell binary path from the daemon.
-// When no path has been configured, the daemon returns the platform default.
-// Phase 107 SHELL-11.
-func (c *DaemonClient) GetShellPath() (string, error) {
-	var resp map[string]string
-	if err := c.doJSON(http.MethodGet, "/settings/shell-path", nil, &resp); err != nil {
-		return "", err
-	}
-	return resp["value"], nil
-}
-
-// SetShellPath persists the shell binary path via the daemon API. An empty
-// path clears the override (restores platform default). A non-empty path that
-// does not exist or is not executable causes the daemon to return 400, which
-// is surfaced as an error here. Phase 107 SHELL-11.
-func (c *DaemonClient) SetShellPath(path string) error {
-	return c.doJSON(http.MethodPatch, "/settings/shell-path",
-		map[string]string{"value": path}, nil)
 }
 
 // GetPluginSettings fetches the persisted plugin enable/disable preferences.

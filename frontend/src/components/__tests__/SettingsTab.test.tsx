@@ -159,9 +159,8 @@ describe('SETT-02: Section headers present', () => {
     expect(raw).toMatch(/<h3[^>]*>Web Server<\/h3>/)
   })
 
-  it('has Paths section header', () => {
-    // Phase 104: header carries id="settings-paths" anchor for the jump-bar.
-    expect(raw).toMatch(/<h3[^>]*>Paths<\/h3>/)
+  it('has no Paths section header (Portty 01-11)', () => {
+    expect(raw).not.toMatch(/<h3[^>]*>Paths<\/h3>/)
   })
 })
 
@@ -174,17 +173,15 @@ describe('SETT-03: All content groups present simultaneously', () => {
     expect(raw).toContain('ct-disclosure')
   })
 
-  it('contains CLI paths table (Paths group)', () => {
-    expect(raw).toContain('settings-panel__table')
-  })
-
-  it('contains Save Paths button (Paths group)', () => {
-    expect(raw).toContain('Save Paths')
+  it('has no Paths section: no settings-paths anchor and no Save Paths button (Portty 01-11)', () => {
+    expect(raw).not.toContain('settings-paths')
+    expect(raw).not.toContain('Save Paths')
+    expect(raw).not.toContain('settings-panel__table')
   })
 })
 
-describe('TAILSCALE-PATH-01: Tailscale status in Paths section', () => {
-  it('renders Tailscale label in Paths section', () => {
+describe('TAILSCALE-PATH-01: Tailscale status in Settings', () => {
+  it('renders Tailscale label', () => {
     expect(raw).toContain('Tailscale')
   })
 
@@ -201,8 +198,8 @@ describe('TAILSCALE-PATH-01: Tailscale status in Paths section', () => {
     expect(raw).toContain('Not detected')
   })
 
-  it('has tailscale path input', () => {
-    expect(raw).toContain('Path to tailscale')
+  it('has no tailscale path override input (Portty 01-11)', () => {
+    expect(raw).not.toContain('Path to tailscale')
   })
 })
 
@@ -283,44 +280,6 @@ describe('TS-01/TS-02: 4-state Tailscale detection', () => {
     expect(raw).toContain('open Tailscale from Applications or the menu bar')
   })
 
-  it('tailscale path placeholder includes auto-detect hint', () => {
-    expect(raw).toContain('leave blank to auto-detect')
-  })
-})
-
-describe('SET-01: Unified path table (single table for CLI + tailscale rows)', () => {
-  it('has exactly one settings-panel__table in the Paths section', () => {
-    // Phase 104: header carries id="settings-paths" — use regex match to locate it.
-    const pathsHeaderMatch = raw.match(/<h3[^>]*>Paths<\/h3>/)
-    expect(pathsHeaderMatch).not.toBeNull()
-    const pathsStart = raw.indexOf(pathsHeaderMatch![0])
-    const saveRow = raw.indexOf('settings-panel__save-paths-row', pathsStart)
-    expect(pathsStart).toBeGreaterThan(-1)
-    const pathsBlock = raw.slice(pathsStart, saveRow)
-    const tableMatches = pathsBlock.match(/className="settings-panel__table"/g) ?? []
-    expect(tableMatches.length).toBe(1)
-  })
-
-  it('tailscale path row is inside the same table as the shell row', () => {
-    const tableStart = raw.indexOf('className="settings-panel__table"')
-    const tableEnd = raw.indexOf('</table>', tableStart)
-    expect(tableStart).toBeGreaterThan(-1)
-    const tableBlock = raw.slice(tableStart, tableEnd)
-    expect(tableBlock).toContain('<tr key="shell">')
-    expect(tableBlock).toContain("'tailscale'")
-  })
-
-  it('does NOT render a second table for tailscale with marginTop style', () => {
-    expect(raw).not.toContain("className=\"settings-panel__table\" style={{ marginTop: '0.75rem' }}")
-  })
-
-  it('merged table uses Program / Path column headers (UI-SPEC)', () => {
-    const tableStart = raw.indexOf('className="settings-panel__table"')
-    const tableEnd = raw.indexOf('</table>', tableStart)
-    const tableBlock = raw.slice(tableStart, tableEnd)
-    expect(tableBlock).toContain('<th>Program</th>')
-    expect(tableBlock).not.toContain('<th>CLI</th>')
-  })
 })
 
 describe('SET-02: No inline fontSize override on description elements', () => {

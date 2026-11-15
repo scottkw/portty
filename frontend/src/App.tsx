@@ -1466,7 +1466,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         })()}
 
         {/* Phase 120-06 — SettingsTab is Wails-bound (calls IsWebServerRunning,
-            HasCTDisclosure, GetCLIPaths, etc. unconditionally on mount). In
+            HasCTDisclosure, GetStartMinimized, etc. unconditionally on mount). In
             web mode none of those RPCs are reachable; rather than gate each
             call inside the component, we skip mounting it entirely. The
             Settings surface has no meaning for a web-share viewer (no daemon

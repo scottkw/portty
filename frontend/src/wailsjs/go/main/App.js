@@ -14,11 +14,7 @@ export const SetShellWebShareWarned  = (v)   => Call('main.App.SetShellWebShareW
 // Phase 150 SET-01 — warning-enabled master switch (default ON).
 export const GetShellWebShareWarningEnabled = ()  => Call('main.App.GetShellWebShareWarningEnabled', [])
 export const SetShellWebShareWarningEnabled = (v) => Call('main.App.SetShellWebShareWarningEnabled', [v])
-// Phase 107-01 SHELL-11 — persisted shell binary path setting.
-export const GetShellPath            = ()    => Call('main.App.GetShellPath', [])
-export const SetShellPath            = (v)   => Call('main.App.SetShellPath', [v])
 export const GetRelayPort            = ()    => Call('main.App.GetRelayPort', [])
-export const UpdateCLIPath  = (name, path)   => Call('main.App.UpdateCLIPath', [name, path])
 
 // Web serving bound methods
 export const StartWebServer       = (port)                  => Call('main.App.StartWebServer', [port])
@@ -48,9 +44,6 @@ export const RetryDaemon          = ()                      => Call('main.App.Re
 // Directory dialog bound method
 export const OpenDirectoryDialog  = (defaultDir)            => Call('main.App.OpenDirectoryDialog', [defaultDir])
 
-// File dialog bound method (SET-04)
-export const OpenFileDialog       = (defaultDir)            => Call('main.App.OpenFileDialog', [defaultDir])
-
 // Tailscale health bound method
 export const GetTailscaleStatus   = ()                      => Call('main.App.GetTailscaleStatus', [])
 
@@ -79,9 +72,6 @@ export const AutoInstallTailscale = ()                      => Call('main.App.Au
 // Local network mode bound methods
 export const GetLocalNetworkPassword = ()                   => Call('main.App.GetLocalNetworkPassword', [])
 export const GetWebServerMode        = ()                   => Call('main.App.GetWebServerMode', [])
-
-// CLI paths getter bound method (SET-01/02)
-export const GetCLIPaths             = ()                   => Call('main.App.GetCLIPaths', [])
 
 // Theme notification bound method
 

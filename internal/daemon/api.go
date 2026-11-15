@@ -158,8 +158,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /sessions/{id}/status", a.handleGetSessionStatus)
 	a.mux.HandleFunc("GET /sessions/{id}/tail", a.handleGetSessionTailLines)
 	a.mux.HandleFunc("GET /sessions/{id}/styled-tail", a.handleGetSessionStyledTailLines)
-	a.mux.HandleFunc("GET /settings/cli-paths", a.handleGetCLIPaths)
-	a.mux.HandleFunc("PATCH /settings/cli-paths/{name}", a.handleUpdateCLIPath)
 	a.mux.HandleFunc("GET /settings/start-minimized", a.handleGetStartMinimized)
 	a.mux.HandleFunc("PATCH /settings/start-minimized", a.handleSetStartMinimized)
 	a.mux.HandleFunc("GET /settings/notify-on-waiting", a.handleGetNotifyOnWaiting)
@@ -170,8 +168,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("PATCH /settings/shell-web-share-warned", a.handleUpdateShellWebShareWarned)
 	a.mux.HandleFunc("GET /settings/shell-web-share-warning-enabled", a.handleGetShellWebShareWarningEnabled)
 	a.mux.HandleFunc("PATCH /settings/shell-web-share-warning-enabled", a.handleSetShellWebShareWarningEnabled)
-	a.mux.HandleFunc("GET /settings/shell-path", a.handleGetShellPath)
-	a.mux.HandleFunc("PATCH /settings/shell-path", a.handleUpdateShellPath)
 	a.mux.HandleFunc("GET /settings/plugins", a.handleGetPluginSettings)
 	a.mux.HandleFunc("PATCH /settings/plugins", a.handleSetPluginSettings)
 	a.mux.HandleFunc("PATCH /settings/search-config", a.handleSetSearchConfig)
@@ -826,28 +822,6 @@ func (a *API) handleGetSessionStyledTailLines(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, StyledTailLinesResponse{Lines: spans})
 }
 
-func (a *API) handleGetCLIPaths(w http.ResponseWriter, r *http.Request) {
-	paths := a.engine.GetCLIPaths()
-	if paths == nil {
-		paths = map[string]string{}
-	}
-	writeJSON(w, http.StatusOK, paths)
-}
-
-func (a *API) handleUpdateCLIPath(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	var req UpdateCLIPathRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if err := a.engine.UpdateCLIPath(name, req.Path); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (a *API) handleGetStartMinimized(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"startMinimized": a.engine.GetStartMinimized()})
 }
@@ -938,34 +912,6 @@ func (a *API) handleSetShellWebShareWarningEnabled(w http.ResponseWriter, r *htt
 	}
 	if err := a.engine.SetShellWebShareWarningEnabled(req.Value); err != nil {
 		http.Error(w, fmt.Sprintf("persist: %v", err), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleGetShellPath returns the persisted shell binary path wrapped in
-// `{"value": "<string>"}`. When no path has been configured by the user,
-// the engine resolves and returns the platform default (never empty).
-// Phase 107 SHELL-11.
-func (a *API) handleGetShellPath(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"value": a.engine.GetShellPath()})
-}
-
-// handleUpdateShellPath accepts `{"value": "<path>"}` and persists the shell
-// binary path. An empty value clears the override (restores platform default).
-// A non-empty path that does not exist or is not executable returns 400.
-// Phase 107 SHELL-11.
-func (a *API) handleUpdateShellPath(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 8192) // match peer handlers (handleSetPluginSettings etc.)
-	var req struct {
-		Value string `json:"value"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if err := a.engine.SetShellPath(req.Value); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -32,11 +32,7 @@ export function SetShellWebShareWarned(v: boolean): Promise<void>
 // Phase 150 SET-01 — warning-enabled master switch (default ON).
 export function GetShellWebShareWarningEnabled(): Promise<boolean>
 export function SetShellWebShareWarningEnabled(v: boolean): Promise<void>
-// Phase 107-01 SHELL-11 — persisted shell binary path setting.
-export function GetShellPath(): Promise<string>
-export function SetShellPath(v: string): Promise<void>
 export function GetRelayPort(): Promise<number>
-export function UpdateCLIPath(name: string, path: string): Promise<void>
 
 // Web serving bound methods
 export function StartWebServer(port: number): Promise<void>
@@ -65,9 +61,6 @@ export function RetryDaemon(): Promise<void>
 
 // Directory dialog bound method
 export function OpenDirectoryDialog(defaultDir: string): Promise<string>
-
-// File dialog bound method (SET-04)
-export function OpenFileDialog(defaultDir: string): Promise<string>
 
 // Version bound method
 export function GetVersion(): Promise<string>
@@ -130,9 +123,6 @@ export function AutoInstallTailscale(): Promise<void>
 // Local network mode bound methods
 export function GetLocalNetworkPassword(): Promise<string>
 export function GetWebServerMode(): Promise<string>
-
-// CLI paths getter bound method (SET-01/02)
-export function GetCLIPaths(): Promise<Record<string, string>>
 
 // Theme notification bound method
 

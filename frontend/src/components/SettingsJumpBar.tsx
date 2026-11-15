@@ -24,7 +24,6 @@ export const SETTINGS_JUMP_LINKS: ReadonlyArray<JumpBarLink> = [
   { label: 'Appearance', id: 'settings-appearance' },
   { label: 'Web Server', id: 'settings-web-server' },
   { label: 'Security', id: 'settings-security' },
-  { label: 'Paths', id: 'settings-paths' },
   { label: 'Terminal Plugins', id: 'settings-plugins' },
 ]
 

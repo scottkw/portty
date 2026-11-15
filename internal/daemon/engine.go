@@ -35,7 +35,6 @@ type SessionEngine struct {
 	mu              sync.RWMutex
 	tabNames        map[string]string     // sessionID -> display name
 	sessionWorkDirs map[string]string     // sessionID -> EvalSymlinks-resolved absolute WorkDir (Phase 118 / FS-02)
-	cliPaths        map[string]string     // cli name -> custom path override
 	chatStores      map[string]*ChatStore // Phase 151 / PERSIST-01,PERSIST-03: per-session chat store (guarded by e.mu)
 	chatsBaseDir    string                // Phase 151: base directory for chat JSONL files; init from chatsDir() in NewSessionEngine, overrideable via ChatsBaseDirForTest
 	aliasStore      *AliasStore           // Phase 152 / IDENT-01,IDENT-02: global alias store (per-person, not per-session); constructed over daemonConfigDir in NewSessionEngine
@@ -45,7 +44,6 @@ type SessionEngine struct {
 	stayOnHubAfterCreate        bool           // Phase 168 UX-01: persisted "stay on Hub after creating a session" preference (default OFF)
 	shellWebShareWarned         bool           // Phase 101 SHELL-08: user has acknowledged the shell web-share security banner
 	shellWebShareWarningEnabled *bool          // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
-	shellPath                   string         // Phase 107 SHELL-11: user-configured shell binary path; empty = use platform default
 	pluginSettings              PluginSettings // populated by loadSettingsFromDisk via defaults-merge
 
 	// pluginSettingsListener (if non-nil) is invoked synchronously by
@@ -83,28 +81,18 @@ func daemonConfigDir() string {
 // Legacy AgentHub keys that are no longer struct fields (e.g. the removed
 // files write default) are ignored by json.Unmarshal and dropped on save.
 type daemonSettings struct {
-	CLIPaths                    map[string]string `json:"cliPaths,omitempty"`
-	StartMinimized              bool              `json:"startMinimized,omitempty"`
-	NotifyOnWaiting             bool              `json:"notifyOnWaiting,omitempty"`      // Phase 167 NTF-04: default OFF; zero-value is the correct default (no defaults-merge needed)
-	StayOnHubAfterCreate        bool              `json:"stayOnHubAfterCreate,omitempty"` // Phase 168 UX-01: default OFF; zero-value is the correct default (no defaults-merge needed)
-	ShellWebShareWarned         bool              `json:"shellWebShareWarned,omitempty"`
-	ShellPath                   string            `json:"shellPath,omitempty"`
-	ShellWebShareWarningEnabled *bool             `json:"shellWebShareWarningEnabled,omitempty"` // Phase 150 SET-01: *bool so omitempty omits false; nil → default true (D-08)
-	Plugins                     PluginSettings    `json:"plugins"`
-	SchemaVersion               int               `json:"schemaVersion"`
+	StartMinimized              bool           `json:"startMinimized,omitempty"`
+	NotifyOnWaiting             bool           `json:"notifyOnWaiting,omitempty"`      // Phase 167 NTF-04: default OFF; zero-value is the correct default (no defaults-merge needed)
+	StayOnHubAfterCreate        bool           `json:"stayOnHubAfterCreate,omitempty"` // Phase 168 UX-01: default OFF; zero-value is the correct default (no defaults-merge needed)
+	ShellWebShareWarned         bool           `json:"shellWebShareWarned,omitempty"`
+	ShellWebShareWarningEnabled *bool          `json:"shellWebShareWarningEnabled,omitempty"` // Phase 150 SET-01: *bool so omitempty omits false; nil → default true (D-08)
+	Plugins                     PluginSettings `json:"plugins"`
+	SchemaVersion               int            `json:"schemaVersion"`
 }
 
 // settingsPath returns the path to settings.json inside the config dir.
 func settingsPath(dir string) string {
 	return filepath.Join(dir, "settings.json")
-}
-
-// knownShells maps basenames of common shell interpreters. A stored CLI path
-// whose basename is a shell and whose key is NOT that shell is almost certainly
-// stale/wrong (e.g. "tailscale" → "/bin/sh") and should be discarded on load.
-var knownShells = map[string]bool{
-	"sh": true, "bash": true, "zsh": true, "fish": true,
-	"csh": true, "tcsh": true, "dash": true, "ksh": true,
 }
 
 // loadSettingsFromDisk reads settings.json and populates engine state.
@@ -135,24 +123,10 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 		return
 	}
 	e.mu.Lock()
-	dirty := false
-	if s.CLIPaths != nil {
-		for k, v := range s.CLIPaths {
-			base := filepath.Base(v)
-			if knownShells[base] && base != k {
-				log.Printf("daemon: dropping stale CLI path override %q=%q (shell mismatch)", k, v)
-				delete(s.CLIPaths, k)
-				dirty = true
-				continue
-			}
-			e.cliPaths[k] = v
-		}
-	}
 	e.startMinimized = s.StartMinimized
 	e.notifyOnWaiting = s.NotifyOnWaiting
 	e.stayOnHubAfterCreate = s.StayOnHubAfterCreate
 	e.shellWebShareWarned = s.ShellWebShareWarned
-	e.shellPath = s.ShellPath
 	e.shellWebShareWarningEnabled = s.ShellWebShareWarningEnabled
 	// nil pointer = not set in settings.json = fresh install → default ON (D-08).
 	// Unlike shellWebShareWarned (plain bool, default false), this new field defaults
@@ -168,8 +142,8 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 	// Idempotent: on second start s.SchemaVersion == CurrentSchemaVersion
 	// and this branch does not fire.
 	needsUpgradeWrite := s.SchemaVersion < CurrentSchemaVersion
-	if dirty || needsUpgradeWrite {
-		// Rewrite settings.json without stale entries / with new schema.
+	if needsUpgradeWrite {
+		// Rewrite settings.json with the new schema.
 		// saveSettingsToDisk runs INSIDE e.mu.Lock() per its contract
 		// ("Caller holds e.mu.Lock()."). Mirrors the existing
 		// SetStartMinimized pattern.
@@ -182,12 +156,10 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 // Caller holds e.mu.Lock().
 func (e *SessionEngine) saveSettingsToDisk() {
 	s := daemonSettings{
-		CLIPaths:                    e.cliPaths,
 		StartMinimized:              e.startMinimized,
 		NotifyOnWaiting:             e.notifyOnWaiting,
 		StayOnHubAfterCreate:        e.stayOnHubAfterCreate,
 		ShellWebShareWarned:         e.shellWebShareWarned,
-		ShellPath:                   e.shellPath,
 		ShellWebShareWarningEnabled: e.shellWebShareWarningEnabled,
 		Plugins:                     e.pluginSettings,
 		SchemaVersion:               CurrentSchemaVersion,
@@ -269,7 +241,6 @@ func NewSessionEngine() *SessionEngine {
 		manager:         relay.NewHubManager(),
 		tabNames:        make(map[string]string),
 		sessionWorkDirs: make(map[string]string),
-		cliPaths:        make(map[string]string),
 		chatStores:      make(map[string]*ChatStore), // Phase 151 / PERSIST-01
 		chatsBaseDir:    chatsDir(),                  // Phase 151: production path = daemonConfigDir()/chats
 		aliasStore:      aliasStore,                  // Phase 152 / IDENT-01: global per-person alias persistence
@@ -736,30 +707,6 @@ func (e *SessionEngine) GetSessionWorkDir(id string) string {
 	return e.sessionWorkDirs[id]
 }
 
-// UpdateCLIPath stores a custom executable path for the named CLI.
-// The path must exist on disk. Persists to settings.json.
-func (e *SessionEngine) UpdateCLIPath(name, path string) error {
-	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("custom CLI path %q: %w", path, err)
-	}
-	e.mu.Lock()
-	e.cliPaths[name] = path
-	e.saveSettingsToDisk()
-	e.mu.Unlock()
-	return nil
-}
-
-// GetCLIPaths returns a copy of the current CLI path overrides map.
-func (e *SessionEngine) GetCLIPaths() map[string]string {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	out := make(map[string]string, len(e.cliPaths))
-	for k, v := range e.cliPaths {
-		out[k] = v
-	}
-	return out
-}
-
 // GetStartMinimized returns the persisted start-minimized preference.
 func (e *SessionEngine) GetStartMinimized() bool {
 	e.mu.RLock()
@@ -852,59 +799,6 @@ func (e *SessionEngine) SetShellWebShareWarningEnabled(val bool) error {
 		// Re-arm (D-03): reset the one-time acknowledged flag.
 		e.shellWebShareWarned = false
 	}
-	e.saveSettingsToDisk()
-	e.mu.Unlock()
-	return nil
-}
-
-// resolveDefaultShellPath returns the shell to use when no shellPath setting
-// is configured: $SHELL when it is an absolute path to an existing,
-// executable, non-directory file; otherwise /bin/zsh (the macOS default).
-// NEVER returns an empty string. GetShellPath (display) and the spawn command
-// both go through here, so the shell shown is the shell that runs.
-func resolveDefaultShellPath() string {
-	if s := os.Getenv("SHELL"); filepath.IsAbs(s) {
-		if info, err := os.Stat(s); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
-			return s
-		}
-	}
-	return "/bin/zsh"
-}
-
-// GetShellPath returns the persisted shell binary path. When no path has been
-// set by the user (shellPath is empty), it resolves and returns the platform
-// default via resolveDefaultShellPath(). NEVER returns an empty string.
-// Phase 107 SHELL-11.
-func (e *SessionEngine) GetShellPath() string {
-	e.mu.RLock()
-	path := e.shellPath
-	e.mu.RUnlock()
-	if path == "" {
-		return resolveDefaultShellPath()
-	}
-	return path
-}
-
-// SetShellPath updates and persists the shell binary path override.
-// When path is empty, the override is cleared (subsequent GetShellPath calls
-// will return the platform default). When path is non-empty, it must point to
-// an existing executable file; otherwise an error is returned and the field is
-// left unchanged. Phase 107 SHELL-11.
-func (e *SessionEngine) SetShellPath(path string) error {
-	if path != "" {
-		info, err := os.Stat(path)
-		if err != nil {
-			return fmt.Errorf("path %q does not exist or is not executable", path)
-		}
-		if info.IsDir() {
-			return fmt.Errorf("path %q is a directory, not an executable", path)
-		}
-		if info.Mode()&0111 == 0 {
-			return fmt.Errorf("path %q does not exist or is not executable", path)
-		}
-	}
-	e.mu.Lock()
-	e.shellPath = path
 	e.saveSettingsToDisk()
 	e.mu.Unlock()
 	return nil

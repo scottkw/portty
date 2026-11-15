@@ -376,7 +376,7 @@ func TestCmdWeb_MissingSubcommand(t *testing.T) {
 	}
 }
 
-// TestCmdSettings_Basic verifies cmdSettings prints all three label lines.
+// TestCmdSettings_Basic verifies cmdSettings prints both label lines and no cli-paths block.
 func TestCmdSettings_Basic(t *testing.T) {
 	client := testSetup(t)
 	var buf bytes.Buffer
@@ -385,10 +385,13 @@ func TestCmdSettings_Basic(t *testing.T) {
 		t.Fatalf("cmdSettings returned error: %v", err)
 	}
 	out := buf.String()
-	for _, label := range []string{"socket-path:", "relay-port:", "cli-paths:"} {
+	for _, label := range []string{"socket-path:", "relay-port:"} {
 		if !strings.Contains(out, label) {
 			t.Errorf("expected output to contain %q, got:\n%s", label, out)
 		}
+	}
+	if strings.Contains(out, "cli-paths:") {
+		t.Errorf("cli-paths block should be gone, got:\n%s", out)
 	}
 }
 
@@ -415,35 +418,6 @@ func TestCmdSettings_RelayPort(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "relay-port:") {
 		t.Errorf("expected 'relay-port:' in output, got:\n%s", out)
-	}
-}
-
-// TestCmdSettings_CLIPaths_None verifies that when no CLI paths are set, output contains "(none)".
-func TestCmdSettings_CLIPaths_None(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	if err := cmdSettings(client, &buf); err != nil {
-		t.Fatalf("cmdSettings error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "(none)") {
-		t.Errorf("expected '(none)' for empty CLI paths, got:\n%s", buf.String())
-	}
-}
-
-// TestCmdSettings_CLIPaths_Set verifies that after setting a CLI path, output contains the path name and value.
-func TestCmdSettings_CLIPaths_Set(t *testing.T) {
-	client := testSetup(t)
-	// Use /bin/sh as the CLI binary — it always exists on macOS and Linux.
-	if err := client.UpdateCLIPath("claude", "/bin/sh"); err != nil {
-		t.Fatalf("UpdateCLIPath: %v", err)
-	}
-	var buf bytes.Buffer
-	if err := cmdSettings(client, &buf); err != nil {
-		t.Fatalf("cmdSettings error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "claude=/bin/sh") {
-		t.Errorf("expected CLI path in output, got:\n%s", out)
 	}
 }
 

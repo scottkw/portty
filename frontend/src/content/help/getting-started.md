@@ -20,4 +20,4 @@ AgentHub serves sessions over your Tailscale network with automatic HTTPS. In th
 
 ### Settings Overview
 
-Open **Settings** from the sidebar (or press the gear icon). Settings is divided into sections: Plugins (feature toggles), Web Server (URL, QR code, copy link), Paths (CLI and shell binary locations), and Appearance (terminal theme, font size). Changes take effect immediately or after saving, depending on the setting.
+Open **Settings** from the sidebar (or press the gear icon). Settings is divided into sections: Plugins (feature toggles), Web Server (URL, QR code, copy link), and Appearance (terminal theme, font size). Changes take effect immediately or after saving, depending on the setting.

@@ -204,10 +204,3 @@ func CheckHealth(ctx context.Context) TailscaleHealth {
 	var lc local.Client
 	return checkHealth(ctx, lc.StatusWithoutPeers, "", realPrefsFunc(&lc), realPermProbe())
 }
-
-// CheckHealthWithCustomPath queries tailscaled and returns TailscaleHealth,
-// checking customPath first for the tailscale binary before well-known paths.
-func CheckHealthWithCustomPath(ctx context.Context, customPath string) TailscaleHealth {
-	var lc local.Client
-	return checkHealth(ctx, lc.StatusWithoutPeers, customPath, realPrefsFunc(&lc), realPermProbe())
-}

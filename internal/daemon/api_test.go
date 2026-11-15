@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -36,12 +35,10 @@ func testDaemon(t *testing.T) (*API, *DaemonClient, string) {
 	// touches must appear in this reset block. Future engine fields require an
 	// addition here OR a refactor that decouples NewSessionEngine from disk.
 	engine.configDir = t.TempDir()
-	engine.cliPaths = make(map[string]string)
 	engine.startMinimized = false
 	engine.shellWebShareWarned = false
 	engine.shellWebShareWarningEnabled = nil // nil → default true per D-08 (GetShellWebShareWarningEnabled returns true on nil)
-	engine.shellPath = ""
-	engine.notifyOnWaiting = false // Phase 167 NTF-04: default OFF; reset so the real on-disk settings.json cannot leak in
+	engine.notifyOnWaiting = false           // Phase 167 NTF-04: default OFF; reset so the real on-disk settings.json cannot leak in
 	engine.pluginSettings = defaultPluginSettings()
 	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := NewAPI(engine)
@@ -199,8 +196,8 @@ func TestHandleCreateSession_LegacyBodyIgnored(t *testing.T) {
 	if len(spy.lastReq.Args) != 1 || spy.lastReq.Args[0] != "-l" {
 		t.Errorf("spawned Args = %v, want exactly [-l]", spy.lastReq.Args)
 	}
-	if spy.lastReq.CLI != engine.GetShellPath() {
-		t.Errorf("spawned CLI = %q, want GetShellPath() = %q", spy.lastReq.CLI, engine.GetShellPath())
+	if spy.lastReq.CLI != "/bin/zsh" {
+		t.Errorf("spawned CLI = %q, want /bin/zsh", spy.lastReq.CLI)
 	}
 }
 
@@ -301,39 +298,6 @@ func TestAPIGetSessionStatus(t *testing.T) {
 	valid := map[string]bool{"running": true, "exited": true, "errored": true}
 	if !valid[sr.Status] {
 		t.Errorf("invalid status %q", sr.Status)
-	}
-}
-
-func TestAPIGetCLIPaths(t *testing.T) {
-	_, _, socketPath := testDaemon(t)
-	status, body := rawGet(t, socketPath, "/settings/cli-paths")
-	if status != 200 {
-		t.Errorf("GET /settings/cli-paths: want 200, got %d", status)
-	}
-	var paths map[string]string
-	if err := json.Unmarshal(body, &paths); err != nil {
-		t.Fatalf("decode cli paths: %v", err)
-	}
-	if len(paths) != 0 {
-		t.Errorf("expected empty map, got %v", paths)
-	}
-}
-
-func TestAPIUpdateCLIPath(t *testing.T) {
-	_, _, socketPath := testDaemon(t)
-	status, _ := rawPatch(t, socketPath, "/settings/cli-paths/claude", `{"path":"/bin/cat"}`)
-	if status != 204 {
-		t.Errorf("PATCH /settings/cli-paths/claude: want 204, got %d", status)
-	}
-
-	// Subsequent GET shows the entry.
-	_, body := rawGet(t, socketPath, "/settings/cli-paths")
-	var paths map[string]string
-	if err := json.Unmarshal(body, &paths); err != nil {
-		t.Fatalf("decode cli paths: %v", err)
-	}
-	if paths["claude"] != "/bin/cat" {
-		t.Errorf("cli path for 'claude': got %q, want %q", paths["claude"], "/bin/cat")
 	}
 }
 
@@ -1043,7 +1007,6 @@ func TestStartup_LoadsOrGeneratesSigningKey(t *testing.T) {
 	tmpDir := t.TempDir()
 	engine := NewSessionEngine()
 	engine.configDir = tmpDir
-	engine.cliPaths = make(map[string]string)
 	engine.startMinimized = false
 	api := NewAPI(engine)
 
@@ -1240,7 +1203,6 @@ func TestIPCHandlers_RegenerateSigningKey_SwapsKey(t *testing.T) {
 	tmpDir := t.TempDir()
 	engine := NewSessionEngine()
 	engine.configDir = tmpDir
-	engine.cliPaths = make(map[string]string)
 	api := NewAPI(engine)
 	if err := api.BootstrapCapabilityState(); err != nil {
 		t.Fatalf("BootstrapCapabilityState: %v", err)
@@ -1521,138 +1483,6 @@ func TestDaemonClient_GetSetShellWebShareWarned_RoundTrip(t *testing.T) {
 	}
 }
 
-// --- Phase 107 Plan 01: shell-path route (SHELL-11) -----------------------
-
-// TestHandleGetShellPath_ReturnsDefault verifies GET /settings/shell-path
-// returns 200 with a non-empty "value" field on a fresh engine.
-func TestHandleGetShellPath_ReturnsDefault(t *testing.T) {
-	_, _, socketPath := testDaemon(t)
-	status, body := rawGet(t, socketPath, "/settings/shell-path")
-	if status != 200 {
-		t.Errorf("GET /settings/shell-path: want 200, got %d (body=%s)", status, string(body))
-	}
-	var resp map[string]string
-	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("decode body: %v (body=%s)", err, string(body))
-	}
-	if resp["value"] == "" {
-		t.Errorf("GET /settings/shell-path: value is empty, want non-empty platform default")
-	}
-}
-
-// TestHandleUpdateShellPath_ValidPath_Persists verifies PATCH /settings/shell-path
-// with a valid executable returns 204; a subsequent GET returns the new value.
-func TestHandleUpdateShellPath_ValidPath_Persists(t *testing.T) {
-	_, _, socketPath := testDaemon(t)
-
-	patchStatus, patchBody := rawPatch(t, socketPath, "/settings/shell-path", `{"value":"/bin/sh"}`)
-	if patchStatus != 204 {
-		t.Errorf("PATCH /settings/shell-path: want 204, got %d (body=%s)", patchStatus, patchBody)
-	}
-
-	getStatus, getBody := rawGet(t, socketPath, "/settings/shell-path")
-	if getStatus != 200 {
-		t.Errorf("GET after PATCH: want 200, got %d", getStatus)
-	}
-	var resp map[string]string
-	if err := json.Unmarshal(getBody, &resp); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if resp["value"] != "/bin/sh" {
-		t.Errorf("value after PATCH: got %q, want /bin/sh", resp["value"])
-	}
-}
-
-// TestHandleUpdateShellPath_InvalidPath_Returns400 verifies PATCH
-// /settings/shell-path with a non-existent path returns 400.
-func TestHandleUpdateShellPath_InvalidPath_Returns400(t *testing.T) {
-	_, _, socketPath := testDaemon(t)
-
-	status, body := rawPatch(t, socketPath, "/settings/shell-path", `{"value":"/no/such/path/does/not/exist"}`)
-	if status != 400 {
-		t.Errorf("PATCH /settings/shell-path (invalid): want 400, got %d", status)
-	}
-	if !strings.Contains(string(body), "does not exist") {
-		t.Errorf("400 body missing 'does not exist'; got: %s", string(body))
-	}
-}
-
-// TestHandleUpdateShellPath_Empty_ClearsOverride verifies that PATCH with
-// empty value clears the override and GET returns the resolved default (not
-// the previously set value).
-func TestHandleUpdateShellPath_Empty_ClearsOverride(t *testing.T) {
-	_, _, socketPath := testDaemon(t)
-
-	// Set a specific path first.
-	patchStatus, patchBody := rawPatch(t, socketPath, "/settings/shell-path", `{"value":"/bin/sh"}`)
-	if patchStatus != 204 {
-		t.Errorf("PATCH /settings/shell-path (/bin/sh): want 204, got %d (body=%s)", patchStatus, patchBody)
-	}
-
-	// Clear it.
-	clearStatus, clearBody := rawPatch(t, socketPath, "/settings/shell-path", `{"value":""}`)
-	if clearStatus != 204 {
-		t.Errorf("PATCH /settings/shell-path (empty clear): want 204, got %d (body=%s)", clearStatus, clearBody)
-	}
-
-	// GET must return a non-empty resolved default.
-	getStatus, getBody := rawGet(t, socketPath, "/settings/shell-path")
-	if getStatus != 200 {
-		t.Errorf("GET after clear: want 200, got %d", getStatus)
-	}
-	var resp map[string]string
-	if err := json.Unmarshal(getBody, &resp); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if resp["value"] == "" {
-		t.Errorf("GET after clear: value is empty, want platform default")
-	}
-}
-
-// TestHandleUpdateShellPath_Directory_Returns400 verifies WR-01: PATCH
-// /settings/shell-path with a directory path returns 400 with a clear error
-// message. On POSIX, directories have the execute bit set, so without the
-// IsDir() check the path would be incorrectly accepted.
-func TestHandleUpdateShellPath_Directory_Returns400(t *testing.T) {
-	_, _, socketPath := testDaemon(t)
-
-	// Use /tmp — always present, always a directory, always has execute bit set.
-	status, body := rawPatch(t, socketPath, "/settings/shell-path", `{"value":"/tmp"}`)
-	if status != 400 {
-		t.Errorf("PATCH /settings/shell-path(/tmp): want 400 for directory, got %d (body=%s)", status, string(body))
-	}
-	if !strings.Contains(string(body), "is a directory") {
-		t.Errorf("400 body missing 'is a directory'; got: %s", string(body))
-	}
-}
-
-// TestHandleUpdateShellPath_OversizedBody verifies WR-03: the handler must
-// reject bodies that exceed MaxBytesReader's 8192-byte cap to match peer
-// handlers (handleSetPluginSettings, handleSetSearchConfig, etc.).
-func TestHandleUpdateShellPath_OversizedBody(t *testing.T) {
-	_, _, socketPath := testDaemon(t)
-
-	// Build a body just over the 8192-byte limit.
-	padding := strings.Repeat("x", 8300)
-	oversized := `{"value":"` + padding + `"}`
-
-	client := &http.Client{Transport: &http.Transport{DialContext: dialUnix(socketPath)}}
-	req, err := http.NewRequest(http.MethodPatch, "http://daemon/settings/shell-path",
-		bytes.NewBufferString(oversized))
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("PATCH oversized: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == 204 {
-		t.Error("PATCH with oversized body returned 204; want 400 or 413")
-	}
-}
-
 // -------------------------------------------------------------------------
 // SHARE-03: issueCapabilitiesForSession mints exactly "read" (read-only link)
 // and "read,write" (full-access link). The files perms and the per-session
@@ -1841,7 +1671,6 @@ func TestHandleGetSessionTailLines_ClampN(t *testing.T) {
 
 	// Use a second API server wired to our engine (testDaemon creates its own engine).
 	engine.configDir = t.TempDir()
-	engine.cliPaths = make(map[string]string)
 	engine.pluginSettings = defaultPluginSettings()
 	api2 := NewAPI(engine)
 	sock2 := shortSocketPath(t, "clamp.sock")

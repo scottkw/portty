@@ -21,3 +21,19 @@ func TestSettingsRemoved_AutoCloseSessionRoutes(t *testing.T) {
 		t.Errorf("GET /settings/plugins = %d; want 200", rec.Code)
 	}
 }
+
+// Portty 01-11 (CONTEXT Amendment 1, T-01-37): every session runs /bin/zsh -l,
+// so the shell-path setting and its routes are gone.
+func TestSettingsRemoved_ShellPathRoutes(t *testing.T) {
+	h := newRemovedRoutesAPI(t).Handler()
+	assertRouteGone(t, h, http.MethodGet, "/settings/shell-path")
+	assertRouteGone(t, h, http.MethodPatch, "/settings/shell-path")
+}
+
+// Portty 01-11 (CONTEXT Amendment 1, T-01-37): the Settings → Paths CLI path
+// overrides (including the tailscale binary override) are gone.
+func TestSettingsRemoved_CLIPathsRoutes(t *testing.T) {
+	h := newRemovedRoutesAPI(t).Handler()
+	assertRouteGone(t, h, http.MethodGet, "/settings/cli-paths")
+	assertRouteGone(t, h, http.MethodPatch, "/settings/cli-paths/tailscale")
+}

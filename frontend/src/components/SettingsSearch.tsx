@@ -37,7 +37,6 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
   { label: 'Start Web Server', target: 'settings-web-server' },
   { label: 'Stop Web Server', target: 'settings-web-server' },
   { label: 'Regenerate Signing Key', target: 'settings-security' },
-  { label: 'CLI Paths', target: 'settings-paths' },
 ]
 
 export function SettingsSearch(): React.ReactElement {

@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { ALLOWED_THEMES } from '../themes'
 import {
-  UpdateCLIPath,
-  GetCLIPaths,
-  OpenFileDialog,
   StartWebServer,
   StopWebServer,
   GetWebServerURL,
@@ -21,9 +18,6 @@ import {
   GetStayOnHubAfterCreate,
   SetStayOnHubAfterCreate,
   RegenerateSigningKey,
-  // Phase 107-03 SHELL-11 — shell binary path setting
-  GetShellPath,
-  SetShellPath,
   // Phase 150 SET-01 — shell web-share warning enabled master switch
   GetShellWebShareWarningEnabled,
   SetShellWebShareWarningEnabled,
@@ -76,12 +70,6 @@ interface SettingsTabProps {
  * Renders as a sidebar tab — no modal shell. Single scrollable page with section headers.
  */
 export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateChange, selectedTheme, onThemeChange, uiTheme, onUiThemeChange, onPluginToggleSideEffect, onShellWarnEnabledChange }: SettingsTabProps): React.ReactElement {
-  // Custom path overrides keyed by program name (only 'tailscale' is shown).
-  const [customPaths, setCustomPaths] = useState<Record<string, string>>({})
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
   // Web serving state
   const [selectedPort, setSelectedPort] = useState<number>(7443)
   const [isServerRunning, setIsServerRunning] = useState(false)
@@ -134,10 +122,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
   const [showRegenModal, setShowRegenModal] = useState(false)
   const [regenError, setRegenError] = useState<string | null>(null)
 
-  // Phase 107-03 SHELL-11 — shell binary path setting (Settings → Paths row).
-  const [shellPath, setShellPath] = useState('')
-  const [shellPathError, setShellPathError] = useState('')
-
   // Load web serving state on mount.
   useEffect(() => {
     async function loadWebState() {
@@ -158,17 +142,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
       }
     }
     void loadWebState()
-  }, [])
-
-  // Load stored CLI path overrides from daemon on mount.
-  // Phase 107-03 SHELL-11: also load shell binary path in parallel.
-  useEffect(() => {
-    GetCLIPaths().then(paths => {
-      if (paths && Object.keys(paths).length > 0) {
-        setCustomPaths(prev => ({ ...prev, ...paths }))
-      }
-    }).catch(() => {})
-    GetShellPath().then(setShellPath).catch(() => setShellPath(''))
   }, [])
 
   // Fetch LAN password when in local mode and server is running.
@@ -292,57 +265,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
     if (h.daemonUp) return 'Not Connected'
     if (h.binaryFound) return 'Daemon Stopped'
     return 'Not Installed'
-  }
-
-  async function handleSaveCLIPaths() {
-    setSaving(true)
-    setError(null)
-    try {
-      const tsCustom = (customPaths['tailscale'] ?? '').trim()
-      if (tsCustom !== '') {
-        await UpdateCLIPath('tailscale', tsCustom)
-      }
-      // Phase 107-03 SHELL-11: save shell binary path via daemon PATCH.
-      // Runs inside try/catch so a validation error (daemon 400) surfaces
-      // inline below the field without blocking the other paths from saving.
-      // WR-02 fix: track whether the shell-path save succeeded so we can
-      // suppress the false "Saved!" indicator when validation fails.
-      let shellPathOk = true
-      try {
-        await SetShellPath(shellPath.trim())
-        setShellPathError('')
-      } catch (err) {
-        shellPathOk = false
-        setShellPathError(err instanceof Error ? err.message : String(err))
-        // Continue — partial save is acceptable per existing tailscale pattern.
-      }
-      if (shellPathOk) {
-        setSaved(true)
-        setTimeout(() => setSaved(false), 1500)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleBrowse(cliName: string) {
-    const current = customPaths[cliName] ?? ''
-    const dir = current ? current.replace(/[/\\][^/\\]*$/, '') : ''
-    const selected = await OpenFileDialog(dir)
-    if (selected) {
-      setCustomPaths(prev => ({ ...prev, [cliName]: selected }))
-    }
-  }
-
-  // Phase 107-03 SHELL-11 — Browse handler for the shell binary path field.
-  async function handleShellBrowse() {
-    const dir = shellPath ? shellPath.replace(/[/\\][^/\\]*$/, '') : ''
-    const selected = await OpenFileDialog(dir)
-    if (selected) {
-      setShellPath(selected)
-    }
   }
 
   async function handleAcknowledgeCT() {
@@ -866,85 +788,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
           onConfirm={handleRegenerateSigningKey}
           onCancel={() => setShowRegenModal(false)}
         />
-
-        {/* Paths section (SET-01 fix: single unified table) */}
-        <h3 id="settings-paths">Paths</h3>
-        <table className="settings-panel__table">
-          <thead>
-            <tr>
-              <th>Program</th>
-              <th>Path</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* Phase 107-03 SHELL-11: Shell binary path row, before tailscale.
-                Participates in the existing Save Paths flow. Error renders inline below field. */}
-            <tr key="shell">
-              <td className="settings-panel__cli-name">shell</td>
-              <td>
-                <div className="settings-panel__path-row">
-                  <input
-                    id="settings-shell-path"
-                    className="settings-panel__path-input"
-                    type="text"
-                    value={shellPath}
-                    onChange={(e) => setShellPath(e.target.value)}
-                    placeholder="e.g. /bin/zsh"
-                    aria-label="Shell binary path"
-                    aria-describedby="settings-shell-path-desc"
-                  />
-                  <button
-                    className="settings-panel__browse-btn"
-                    onClick={() => void handleShellBrowse()}
-                    title="Browse for shell executable"
-                  >
-                    Browse
-                  </button>
-                </div>
-                {shellPathError && (
-                  <p id="settings-shell-path-desc" className="settings-panel__error" role="alert">
-                    {shellPathError}
-                  </p>
-                )}
-              </td>
-            </tr>
-            <tr key="tailscale">
-              <td className="settings-panel__cli-name">tailscale</td>
-              <td>
-                <div className="settings-panel__path-row">
-                  <input
-                    className="settings-panel__path-input"
-                    type="text"
-                    value={customPaths['tailscale'] ?? ''}
-                    onChange={(e) =>
-                      setCustomPaths((prev) => ({ ...prev, tailscale: e.target.value }))
-                    }
-                    placeholder="Path to tailscale (leave blank to auto-detect)"
-                  />
-                  <button
-                    className="settings-panel__browse-btn"
-                    onClick={() => void handleBrowse('tailscale')}
-                    title="Browse for executable"
-                  >
-                    Browse
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        {error && <p className="settings-panel__error">{error}</p>}
-
-        <div className="settings-panel__save-paths-row">
-          <button
-            className={`settings-panel__btn ${saved ? 'settings-panel__btn--saved' : 'settings-panel__btn--save'}`}
-            onClick={handleSaveCLIPaths}
-            disabled={saving || saved}
-          >
-            {saving ? 'Saving\u2026' : saved ? 'Saved!' : 'Save Paths'}
-          </button>
-        </div>
 
         {/* Plugins section (Phase 92 PUI-01, Phase 99 PUI-02) \u2014 last section per UI-SPEC layout */}
         <PluginsSection onPluginToggleSideEffect={onPluginToggleSideEffect} />

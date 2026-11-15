@@ -13,7 +13,6 @@ func TestNotifyOnWaiting_Default(t *testing.T) {
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	if got := e.GetNotifyOnWaiting(); got != false {
 		t.Errorf("default GetNotifyOnWaiting: got %v, want false", got)
@@ -26,7 +25,6 @@ func TestNotifyOnWaiting_Persists(t *testing.T) {
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 
 	e.SetNotifyOnWaiting(true)
@@ -46,7 +44,7 @@ func TestNotifyOnWaiting_Persists(t *testing.T) {
 		t.Errorf("schemaVersion after SetNotifyOnWaiting: got %d, want unchanged %d", s.SchemaVersion, CurrentSchemaVersion)
 	}
 
-	e2 := &SessionEngine{configDir: dir, cliPaths: make(map[string]string)}
+	e2 := &SessionEngine{configDir: dir}
 	e2.loadSettingsFromDisk(dir)
 	if got := e2.GetNotifyOnWaiting(); got != true {
 		t.Errorf("reload after SetNotifyOnWaiting(true): got %v, want true", got)
@@ -59,7 +57,6 @@ func TestNotifyOnWaiting_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 
 	e.SetNotifyOnWaiting(true)
@@ -108,7 +105,7 @@ func TestNotifyOnWaiting_NoSchemaBump(t *testing.T) {
 		t.Fatalf("stat before load: %v", err)
 	}
 
-	e := &SessionEngine{configDir: dir, cliPaths: make(map[string]string)}
+	e := &SessionEngine{configDir: dir}
 	e.loadSettingsFromDisk(dir)
 	if got := e.GetNotifyOnWaiting(); got != false {
 		t.Errorf("NotifyOnWaiting on pre-existing settings.json (no key): got %v, want false", got)

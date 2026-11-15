@@ -36,15 +36,14 @@ func copyFixtureToTempDir(t *testing.T, dir string) string {
 //  1. Load with the 8 v3.2 plugin defaults (7 ON, Progress OFF) populated.
 //  2. Trigger a re-write so the on-disk settings.json now contains both the
 //     plugins block and schemaVersion: 2.
-//  3. Preserve existing v3.1 keys (cliPaths) — defaults-merge must not zero
-//     existing data.
+//  3. Drop the removed cliPaths key on that re-write (Portty 01-11: the
+//     CLI path override plumbing is gone).
 func TestSettingsMigrationV3_1ToV3_2(t *testing.T) {
 	dir := t.TempDir()
 	copyFixtureToTempDir(t, dir)
 
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e.loadSettingsFromDisk(dir)
 
@@ -107,11 +106,6 @@ func TestSettingsMigrationV3_1ToV3_2(t *testing.T) {
 		t.Errorf("ImageConfig defaults: got %+v, want %+v (v3.2 overrides upstream 100 MB to 16 MB to prevent tab OOM)", got.ImageConfig, wantImage)
 	}
 
-	// Pre-existing v3.1 data must survive the migration.
-	if cli := e.GetCLIPaths(); cli["claude"] != "/usr/local/bin/claude" {
-		t.Errorf("cliPaths not preserved through migration: got %v", cli)
-	}
-
 	// On-disk: the upgrade re-write fired, so the file now contains both the
 	// plugins block AND schemaVersion: 2.
 	raw, err := os.ReadFile(filepath.Join(dir, "settings.json"))
@@ -128,6 +122,13 @@ func TestSettingsMigrationV3_1ToV3_2(t *testing.T) {
 	if !s.Plugins.WebGL {
 		t.Errorf("on-disk plugins.webgl = false, want true (proves the upgrade re-write fired)")
 	}
+	var onDisk map[string]any
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("unmarshal rewritten settings as map: %v", err)
+	}
+	if _, ok := onDisk["cliPaths"]; ok {
+		t.Error("rewritten settings.json still contains cliPaths; the removed key should be dropped")
+	}
 }
 
 // TestSettingsMigrationIdempotent asserts that loading a settings.json that is
@@ -141,7 +142,6 @@ func TestSettingsMigrationIdempotent(t *testing.T) {
 
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e.loadSettingsFromDisk(dir) // first load: upgrade re-write fires
 
@@ -157,7 +157,6 @@ func TestSettingsMigrationIdempotent(t *testing.T) {
 
 	e2 := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e2.loadSettingsFromDisk(dir) // second load: should be a no-op (idempotent)
 
@@ -207,7 +206,6 @@ func TestSettingsMigration_FilesReadSchemaVersionRewrite(t *testing.T) {
 
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e.loadSettingsFromDisk(dir)
 
@@ -226,9 +224,9 @@ func TestSettingsMigration_FilesReadSchemaVersionRewrite(t *testing.T) {
 
 // TestSettingsMigration_LegacyAgentHubV42 loads a real-shaped AgentHub v4.2
 // settings.json that still carries the removed "filesWrite" and
-// "autoCloseSession" keys (plus agent cliPaths and notifyOnWaiting). Old
-// settings must load without error, the unknown keys are ignored, the kept
-// values survive, and the next save drops both removed keys.
+// "autoCloseSession", "cliPaths" and "shellPath" keys (plus notifyOnWaiting).
+// Old settings must load without error, the unknown keys are ignored, the
+// kept values survive, and the next save drops every removed key.
 func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	dir := t.TempDir()
 	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "settings_agenthub_v4.2.json"))
@@ -245,20 +243,14 @@ func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e.loadSettingsFromDisk(dir)
 
-	// The leftover agent key ("claude") loads as inert data and must not
-	// disturb the Tailscale override.
-	if got := e.GetCLIPaths()["claude"]; got != "/usr/local/bin/claude" {
-		t.Errorf("legacy claude cliPaths key = %q, want it loaded unchanged", got)
+	if !e.GetStayOnHubAfterCreate() {
+		t.Error("stayOnHubAfterCreate = false, want true (kept value must survive)")
 	}
-	if got := e.GetCLIPaths()["tailscale"]; got != "/opt/homebrew/bin/tailscale" {
-		t.Errorf("tailscale override = %q, want /opt/homebrew/bin/tailscale", got)
-	}
-	if got := e.GetShellPath(); got != "/bin/zsh" {
-		t.Errorf("shellPath = %q, want /bin/zsh", got)
+	if !e.GetShellWebShareWarned() {
+		t.Error("shellWebShareWarned = false, want true (kept value must survive)")
 	}
 	if !e.GetNotifyOnWaiting() {
 		t.Error("notifyOnWaiting = false, want true (toggle must survive)")
@@ -283,7 +275,17 @@ func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	if _, ok := onDisk["autoCloseSession"]; ok {
 		t.Error("saved settings.json still contains autoCloseSession; the removed key should be dropped on save")
 	}
-	if onDisk["shellPath"] != "/bin/zsh" {
-		t.Errorf("saved shellPath = %v, want /bin/zsh", onDisk["shellPath"])
+	// Portty 01-11 (CONTEXT Amendment 1): the shell and CLI path overrides
+	// are gone; the legacy keys load without error and are dropped on save.
+	for _, k := range []string{"cliPaths", "shellPath"} {
+		if _, ok := onDisk[k]; ok {
+			t.Errorf("saved settings.json still contains %s; the removed key should be dropped on save", k)
+		}
+	}
+	if onDisk["stayOnHubAfterCreate"] != true || onDisk["shellWebShareWarned"] != true {
+		t.Errorf("kept keys lost on save: stayOnHubAfterCreate=%v shellWebShareWarned=%v", onDisk["stayOnHubAfterCreate"], onDisk["shellWebShareWarned"])
+	}
+	if _, ok := onDisk["plugins"].(map[string]any); !ok {
+		t.Errorf("saved settings.json lost the plugins block: %v", onDisk["plugins"])
 	}
 }

@@ -32,7 +32,6 @@ func newChatRouteEngine(t *testing.T, chatsDir string) *SessionEngine {
 		manager:         relay.NewHubManager(),
 		tabNames:        make(map[string]string),
 		sessionWorkDirs: make(map[string]string),
-		cliPaths:        make(map[string]string),
 		configDir:       t.TempDir(),
 		chatStores:      make(map[string]*ChatStore),
 		chatsBaseDir:    chatsDir,

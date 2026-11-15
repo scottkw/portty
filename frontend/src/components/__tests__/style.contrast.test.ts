@@ -62,12 +62,8 @@ describe('UI-01: settings panel contrast — no failing #565f89 text color', () 
     expect(css).not.toMatch(/\.settings-panel__description\s*\{[^}]*color:\s*#565f89/)
   })
 
-  it('.settings-panel__empty does not use #565f89', () => {
-    expect(css).not.toMatch(/\.settings-panel__empty\s*\{[^}]*color:\s*#565f89/)
-  })
-
-  it('.settings-panel__table th does not use #565f89', () => {
-    expect(css).not.toMatch(/\.settings-panel__table\s+th\s*\{[^}]*color:\s*#565f89/)
+  it('the removed Settings → Paths table and empty-state rules are gone (Portty 01-11)', () => {
+    expect(css).not.toMatch(/\.settings-panel__(empty|table)\b/)
   })
 
   it('.settings-panel__url does not use #565f89', () => {

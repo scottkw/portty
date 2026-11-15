@@ -18,7 +18,6 @@ describe('Phase 104 SETUI-01: section header anchor IDs', () => {
     { label: 'Appearance', id: 'settings-appearance', file: 'SettingsTab.tsx', raw: settingsRaw },
     { label: 'Web Server', id: 'settings-web-server', file: 'SettingsTab.tsx', raw: settingsRaw },
     { label: 'Security', id: 'settings-security', file: 'SettingsTab.tsx', raw: settingsRaw },
-    { label: 'Paths', id: 'settings-paths', file: 'SettingsTab.tsx', raw: settingsRaw },
   ]
 
   for (const s of sections) {
@@ -45,7 +44,7 @@ describe('Phase 104 SETUI-01: SettingsJumpBar component', () => {
     expect(typeof mod.SettingsJumpBar).toBe('function')
   })
 
-  it('renders 7 anchor links pointing at the section IDs', async () => {
+  it('renders 6 anchor links pointing at the section IDs (no Paths)', async () => {
     const React = await import('react')
     const { createRoot } = await import('react-dom/client')
     const { flushSync } = await import('react-dom')
@@ -65,10 +64,10 @@ describe('Phase 104 SETUI-01: SettingsJumpBar component', () => {
       '#settings-appearance',
       '#settings-web-server',
       '#settings-security',
-      '#settings-paths',
     ]
     const links = container.querySelectorAll('a[href^="#settings-"]')
-    expect(links.length).toBe(7)
+    expect(links.length).toBe(6)
+    expect(container.querySelector('a[href="#settings-paths"]')).toBeNull()
     const hrefs = Array.from(links).map((a) => a.getAttribute('href'))
     for (const t of expectedTargets) {
       expect(hrefs).toContain(t)

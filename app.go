@@ -519,33 +519,6 @@ func (a *App) SetShellWebShareWarningEnabled(v bool) error {
 	return a.client.SetShellWebShareWarningEnabled(v)
 }
 
-// GetShellPath returns the persisted shell binary path. When no path has been
-// set by the user, the daemon returns the platform default. Called by the
-// Settings → Paths "Shell binary" field (plan 107-03) on mount.
-// Phase 107 SHELL-11.
-func (a *App) GetShellPath() string {
-	if a.client == nil {
-		return ""
-	}
-	path, err := a.client.GetShellPath()
-	if err != nil {
-		return ""
-	}
-	return path
-}
-
-// SetShellPath persists the shell binary path. An empty path clears the
-// override (restores platform default). A non-empty path that does not exist
-// or is not executable causes the daemon to return an error. Called by the
-// Settings → Paths "Shell binary" field Save Paths click (plan 107-03).
-// Phase 107 SHELL-11.
-func (a *App) SetShellPath(v string) error {
-	if a.client == nil {
-		return nil
-	}
-	return a.client.SetShellPath(v)
-}
-
 // GetRelayPort returns the TCP port the daemon's relay HTTP server is listening on.
 func (a *App) GetRelayPort() int {
 	if a.client == nil {
@@ -556,24 +529,6 @@ func (a *App) GetRelayPort() int {
 		return 0
 	}
 	return port
-}
-
-// UpdateCLIPath stores a custom executable path for the named CLI.
-// The path must exist on disk.
-func (a *App) UpdateCLIPath(name, path string) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.UpdateCLIPath(name, path)
-}
-
-// GetCLIPaths returns all stored CLI path overrides. Used by Settings tab to
-// populate path inputs with persisted values on mount.
-func (a *App) GetCLIPaths() (map[string]string, error) {
-	if a.client == nil {
-		return nil, fmt.Errorf("daemon not connected")
-	}
-	return a.client.GetCLIPaths()
 }
 
 // GetStartMinimized returns the persisted start-minimized preference.
@@ -1045,28 +1000,11 @@ func (a *App) OpenDirectoryDialog(defaultDir string) (string, error) {
 	})
 }
 
-// OpenFileDialog opens a native OS file picker and returns the selected path.
-// Returns "" if the user cancels. Falls back to the user's home directory when
-// defaultDir is empty. Used by Settings > Paths browse buttons (SET-04).
-func (a *App) OpenFileDialog(defaultDir string) (string, error) {
-	if defaultDir == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			defaultDir = home
-		}
-	}
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:            "Select Executable",
-		DefaultDirectory: defaultDir,
-		ShowHiddenFiles:  true,
-	})
-}
-
 // SaveTerminalSession opens a native Save File dialog and writes the supplied
 // terminal scrollback content to the user-chosen path. Cancellation is silent
 // success. Returns wrapped errors for dialog setup or write failures.
 //
-// Phase 97 SER-01. Mirrors OpenFileDialog (lines 815-829) for the cancel=""
-// pattern. Uses saveFileDialogFunc indirection (function-injection per
+// Phase 97 SER-01. Follows the Wails dialog cancel="" pattern. Uses saveFileDialogFunc indirection (function-injection per
 // PROJECT.md "Key Decisions") so unit tests can mock the Wails runtime.
 func (a *App) SaveTerminalSession(defaultDir, defaultName, content string) error {
 	if defaultDir == "" {
@@ -1087,7 +1025,7 @@ func (a *App) SaveTerminalSession(defaultDir, defaultName, content string) error
 		return fmt.Errorf("SaveTerminalSession: dialog: %w", err)
 	}
 	if path == "" {
-		return nil // user cancelled — silent success per OpenFileDialog precedent
+		return nil // user cancelled — silent success, like OpenDirectoryDialog
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("SaveTerminalSession: write: %w", err)
@@ -1131,13 +1069,7 @@ func (a *App) SetTrayProgress(quartile int) error {
 func (a *App) GetTailscaleStatus() webserver.TailscaleHealth {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	customPath := ""
-	if a.client != nil {
-		if paths, err := a.client.GetCLIPaths(); err == nil {
-			customPath = paths["tailscale"]
-		}
-	}
-	return webserver.CheckHealthWithCustomPath(ctx, customPath)
+	return webserver.CheckHealth(ctx)
 }
 
 // GetRemoteSessions discovers tailnet peers and fetches their session lists.
@@ -1437,14 +1369,8 @@ func (a *App) startHealthPoller(ctx context.Context) {
 		for {
 			select {
 			case <-ticker.C:
-				customPath := ""
-				if a.client != nil {
-					if paths, err := a.client.GetCLIPaths(); err == nil {
-						customPath = paths["tailscale"]
-					}
-				}
 				checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				h := webserver.CheckHealthWithCustomPath(checkCtx, customPath)
+				h := webserver.CheckHealth(checkCtx)
 				cancel()
 				if h != last {
 					last = h

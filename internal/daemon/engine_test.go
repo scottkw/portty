@@ -31,9 +31,6 @@ func TestNewSessionEngine(t *testing.T) {
 	if e.tabNames == nil {
 		t.Error("tabNames is nil")
 	}
-	if e.cliPaths == nil {
-		t.Error("cliPaths is nil")
-	}
 }
 
 // newCatEngine returns an engine whose sessions spawn /bin/cat instead of the
@@ -205,23 +202,6 @@ func TestEngineListSessionsHostname(t *testing.T) {
 	}
 }
 
-func TestEngineUpdateCLIPath(t *testing.T) {
-	e := NewSessionEngine()
-	// Isolate from real settings.json that NewSessionEngine may have loaded.
-	e.configDir = t.TempDir()
-	e.cliPaths = make(map[string]string)
-
-	if _, ok := e.GetCLIPaths()["tailscale"]; ok {
-		t.Fatal("tailscale override set on a fresh engine")
-	}
-	if err := e.UpdateCLIPath("tailscale", "/bin/cat"); err != nil {
-		t.Fatalf("UpdateCLIPath: %v", err)
-	}
-	if got := e.GetCLIPaths()["tailscale"]; got != "/bin/cat" {
-		t.Errorf("GetCLIPaths()[tailscale] = %q, want /bin/cat", got)
-	}
-}
-
 // spyBackend records the CreateRequest from the most recent Create call.
 // Used by Wave 0 tests to assert on env injection without launching a real PTY.
 type spyBackend struct {
@@ -308,13 +288,12 @@ func hubReadUntil(t *testing.T, e *SessionEngine, id, marker string, timeout tim
 // ========================================================================
 
 // newShellTestEngine returns an engine wired to a spyBackend with the
-// mandatory settings isolation. Mirrors TestEngineUpdateCLIPath's setup.
+// mandatory settings isolation.
 func newShellTestEngine(t *testing.T) (*SessionEngine, *spyBackend) {
 	t.Helper()
 	spy := &spyBackend{}
 	e := NewSessionEngine()
 	e.configDir = t.TempDir()
-	e.cliPaths = make(map[string]string)
 	e.backend = spy
 	return e, spy
 }
@@ -470,10 +449,8 @@ func TestListSessions_ShellStatusRunning(t *testing.T) {
 func TestSetShellWebShareWarned_Default(t *testing.T) {
 	e := NewSessionEngine()
 	e.configDir = t.TempDir()
-	e.cliPaths = make(map[string]string)
 	e.startMinimized = false
 	e.shellWebShareWarned = false
-	e.shellPath = ""
 	e.pluginSettings = defaultPluginSettings()
 
 	if v := e.GetShellWebShareWarned(); v != false {
@@ -487,7 +464,6 @@ func TestSetShellWebShareWarned_Persists(t *testing.T) {
 
 	e1 := NewSessionEngine()
 	e1.configDir = dir
-	e1.cliPaths = make(map[string]string)
 
 	if err := e1.SetShellWebShareWarned(true); err != nil {
 		t.Fatalf("SetShellWebShareWarned(true): %v", err)
@@ -496,7 +472,6 @@ func TestSetShellWebShareWarned_Persists(t *testing.T) {
 	// Second engine, same configDir → should observe the persisted value.
 	e2 := NewSessionEngine()
 	e2.configDir = dir
-	e2.cliPaths = make(map[string]string)
 	// Re-load explicitly: NewSessionEngine() already called loadSettingsFromDisk()
 	// against the real config dir; we need to reload from our temp dir.
 	e2.loadSettingsFromDisk(dir)
@@ -513,7 +488,6 @@ func TestSetShellWebShareWarned_PersistsFalseAfterTrue(t *testing.T) {
 
 	e1 := NewSessionEngine()
 	e1.configDir = dir
-	e1.cliPaths = make(map[string]string)
 
 	if err := e1.SetShellWebShareWarned(true); err != nil {
 		t.Fatalf("SetShellWebShareWarned(true): %v", err)
@@ -524,7 +498,6 @@ func TestSetShellWebShareWarned_PersistsFalseAfterTrue(t *testing.T) {
 
 	e2 := NewSessionEngine()
 	e2.configDir = dir
-	e2.cliPaths = make(map[string]string)
 	e2.loadSettingsFromDisk(dir)
 
 	if v := e2.GetShellWebShareWarned(); v != false {
@@ -539,7 +512,6 @@ func TestSetShellWebShareWarned_RoundTripJSON(t *testing.T) {
 
 	e := NewSessionEngine()
 	e.configDir = dir
-	e.cliPaths = make(map[string]string)
 
 	if err := e.SetShellWebShareWarned(true); err != nil {
 		t.Fatalf("SetShellWebShareWarned(true): %v", err)
@@ -551,106 +523,6 @@ func TestSetShellWebShareWarned_RoundTripJSON(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"shellWebShareWarned":true`) {
 		t.Errorf("settings.json missing expected key/value; got:\n%s", string(data))
-	}
-}
-
-// --- Phase 107 Plan 01: shellPath persistence (SHELL-11) -------------------
-
-// TestSetShellPath_RejectsMissingPath verifies that SetShellPath returns an
-// error when the path does not exist on disk.
-func TestSetShellPath_RejectsMissingPath(t *testing.T) {
-	e := NewSessionEngine()
-	e.configDir = t.TempDir()
-	e.cliPaths = make(map[string]string)
-
-	err := e.SetShellPath("/no/such/path/does/not/exist")
-	if err == nil {
-		t.Fatal("SetShellPath(/no/such/path): expected error, got nil")
-	}
-	if e.shellPath != "" {
-		t.Errorf("e.shellPath should be unchanged after rejected SetShellPath; got %q", e.shellPath)
-	}
-}
-
-// TestSetShellPath_RejectsNonExecutable verifies that SetShellPath returns an
-// error when the file exists but is not executable.
-func TestSetShellPath_RejectsNonExecutable(t *testing.T) {
-	dir := t.TempDir()
-	nonExec := filepath.Join(dir, "not-a-shell")
-	if err := os.WriteFile(nonExec, []byte("#!/bin/sh\n"), 0644); err != nil {
-		t.Fatalf("create non-exec file: %v", err)
-	}
-
-	e := NewSessionEngine()
-	e.configDir = dir
-	e.cliPaths = make(map[string]string)
-
-	err := e.SetShellPath(nonExec)
-	if err == nil {
-		t.Fatalf("SetShellPath(non-exec): expected error, got nil")
-	}
-	if e.shellPath != "" {
-		t.Errorf("e.shellPath should be unchanged after rejected SetShellPath; got %q", e.shellPath)
-	}
-}
-
-// TestSetShellPath_AcceptsExecutable verifies that SetShellPath accepts /bin/sh
-// and that the value round-trips through a settings.json reload.
-func TestSetShellPath_AcceptsExecutable(t *testing.T) {
-	dir := t.TempDir()
-
-	e1 := NewSessionEngine()
-	e1.configDir = dir
-	e1.cliPaths = make(map[string]string)
-
-	if err := e1.SetShellPath("/bin/sh"); err != nil {
-		t.Fatalf("SetShellPath(/bin/sh): %v", err)
-	}
-	if e1.shellPath != "/bin/sh" {
-		t.Errorf("e1.shellPath = %q, want /bin/sh", e1.shellPath)
-	}
-
-	// Round-trip: second engine, same configDir, reload from disk.
-	e2 := NewSessionEngine()
-	e2.configDir = dir
-	e2.cliPaths = make(map[string]string)
-	e2.loadSettingsFromDisk(dir)
-
-	if e2.GetShellPath() != "/bin/sh" {
-		t.Errorf("after reload: GetShellPath() = %q, want /bin/sh", e2.GetShellPath())
-	}
-}
-
-// TestSetShellPath_EmptyClears verifies that SetShellPath("") clears the
-// persisted override and GetShellPath() falls back to the platform default.
-func TestSetShellPath_EmptyClears(t *testing.T) {
-	dir := t.TempDir()
-
-	e := NewSessionEngine()
-	e.configDir = dir
-	e.cliPaths = make(map[string]string)
-
-	// Set a specific path first.
-	if err := e.SetShellPath("/bin/sh"); err != nil {
-		t.Fatalf("SetShellPath(/bin/sh): %v", err)
-	}
-
-	// Clear it.
-	if err := e.SetShellPath(""); err != nil {
-		t.Fatalf("SetShellPath(): %v", err)
-	}
-
-	got := e.GetShellPath()
-	if got == "/bin/sh" {
-		// Should have fallen back to platform default (not the cleared value).
-		// Note: on this machine /bin/sh might be the platform default via $SHELL —
-		// so we verify via e.shellPath being empty (the cleared field).
-	}
-	if e.shellPath != "" {
-		t.Errorf("e.shellPath after clear: got %q, want empty", e.shellPath)
-	}
-	if got == "" {
-		t.Errorf("GetShellPath() after clear: returned empty, want platform default")
 	}
 }
 
@@ -704,7 +576,6 @@ func newBareEngine(t *testing.T, sessions ...*pty.Session) *SessionEngine {
 		backend:   &spyBackend{},
 		manager:   relay.NewHubManager(),
 		tabNames:  make(map[string]string),
-		cliPaths:  make(map[string]string),
 		configDir: t.TempDir(),
 	}
 	for _, s := range sessions {

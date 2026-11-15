@@ -47,7 +47,6 @@ func TestSetImageConfigPreservesSiblings(t *testing.T) {
 
 	e := &SessionEngine{
 		configDir:      dir,
-		cliPaths:       make(map[string]string),
 		pluginSettings: baseline,
 	}
 
@@ -109,7 +108,6 @@ func TestSetImageConfigPreservesSiblings(t *testing.T) {
 	// Persistence: reload via a fresh engine pointed at the same configDir.
 	e2 := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e2.loadSettingsFromDisk(dir)
 
