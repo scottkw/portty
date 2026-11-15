@@ -88,14 +88,14 @@ Plans:
   6. Session chat is gone from the desktop app, the web share page, the daemon/webserver API and the relay protocol; no chat button, badge, or endpoint remains, and old clients that send chat frames do not crash anything
   7. Switching macOS between Light and Dark changes the whole app and every open terminal at once, with no restart; there is no theme picker, and the web share page follows the browser's light/dark setting
   8. The window looks like a native macOS app: system font and accent color, a source-list sidebar, a unified title bar/toolbar, and native-style controls; no custom dark chrome or hardcoded colors remain (LOOK-01)
-**Plans**: 1/12 plans executed (sequential waves 1-12; App.tsx, style.css and TESTING.md are shared hot files)
+**Plans**: 2/12 plans executed (sequential waves 1-12; App.tsx, style.css and TESTING.md are shared hot files)
 
 Plans:
 **Wave 1**
 - [x] 02-01-PLAN.md — Native chrome spike: hidden-inset title bar, vibrancy, drag strip (human click-through check, Hidden fallback); menu bar with ⌘T, ⌘,, ⌘W, ⌃⌘S, Help ▸ Portty Help
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 02-02-PLAN.md — CHAT-01 Go: retire 0x30-0x37 on both WebSocket paths; delete daemon/webserver chat store, routes, aliases, WhoIs identity, relay presence/sanitizer/chat CORS; fixture and fuzz updated
+- [x] 02-02-PLAN.md — CHAT-01 Go: retire 0x30-0x37 on both WebSocket paths; delete daemon/webserver chat store, routes, aliases, WhoIs identity, relay presence/sanitizer/chat CORS; fixture and fuzz updated
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 02-03-PLAN.md — THEM-01: useColorScheme + two built-in palettes, live switch on desktop and web; two-block light/dark tokens; system fonts; theme library, picker and bundled fonts removed
@@ -189,7 +189,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
-| 2. Tabs + Sidebar Navigation | 1/12 | In Progress | - |
+| 2. Tabs + Sidebar Navigation | 2/12 | In Progress | - |
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
