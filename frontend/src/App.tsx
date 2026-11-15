@@ -625,6 +625,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       }
     )
 
+    // Native menu: File > New Session (Cmd+T).
+    const offMenuNewSession = EventsOn('menu:new-session', () => setShowNewSessionModal(true))
+
     // Subscribe to quit-requested event from Go backend (Phase 85)
     const offQuit = EventsOn('app:quit-requested', () => {
       setShowQuitModal(prev => {
@@ -650,6 +653,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       cancelTrayFocus()
       offExit()
       offQuit()
+      offMenuNewSession()
       if (upgradePollerRef.current !== null) {
         clearInterval(upgradePollerRef.current)
         upgradePollerRef.current = null
@@ -1269,59 +1273,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
 
   return (
     <div className="app">
-      {/* INVARIANT: this gating expression must include the trigger of EVERY banner
-          rendered inside .banner-stack below. A banner whose own render condition is
-          true but whose trigger is missing here will never mount (the whole stack is
-          conditionally rendered). Phase 129 DNS-03 regressed exactly this way. */}
-      {(tailscaleOff ||
-        update ||
-        ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
-        saveBanner !== null ||
-        pluginToggleBanners.length > 0) && (
-        <div className="banner-stack">
-          {/* Phase 101-03 SHELL-08 — the action-blocking shell web-share security
-              banner used to render here (top priority) for the footer's direct
-              toggle. Phase 168-05 (D-14): the footer no longer toggles directly —
-              the equivalent banner (ShellWebShareBanner, same shared warned/
-              warningEnabled authority) now lives inside SessionShareModal only. */}
-          {tailscaleOff && <TailscaleBanner />}
-          {update && (
-            <UpdateBanner
-              update={update}
-              onDismiss={handleDismissUpdate}
-              className={updateExiting ? 'banner-exit' : undefined}
-            />
-          )}
-          {(webglContextLost || webglSoftwareDetected) && !webglBannerDismissed && (
-            <WebGLRecoveryBanner
-              reason={webglSoftwareDetected ? 'software-rasterized' : 'context-loss'}
-              onDismiss={() => setWebglBannerDismissed(true)}
-            />
-          )}
-          {/* Phase 97 SER-01: save-feedback banner (info = Serialize disabled,
-              error = write/dialog failure). Mirrors localBanner one-shot pattern. */}
-          {saveBanner && (
-            <div
-              className={saveBanner.kind === 'error' ? 'banner banner--error' : 'banner banner--info'}
-              role="status"
-            >
-              <span>{saveBanner.text}</span>
-              <button onClick={() => setSaveBanner(null)} aria-label="Dismiss">×</button>
-            </div>
-          )}
-          {/* Phase 99 PUI-02: one-shot toggle-change banners for unicode11 / image.
-              Both auto-dismiss after 6000ms; user can also dismiss via × button. */}
-          {pluginToggleBanners.map((kind) => (
-            <PluginToggleBanner
-              key={kind}
-              kind={kind}
-              onDismiss={() =>
-                setPluginToggleBanners((prev) => prev.filter((k) => k !== kind))
-              }
-            />
-          ))}
-        </div>
-      )}
       <div className="app__row">
       {/* Phase 159-02 (WEBCHAT-03) — web-share guest scope. In web mode the SPA
           is served to a remote guest holding a capability for ONE session; the
@@ -1369,6 +1320,59 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           }
         />
 
+        {/* INVARIANT: this gating expression must include the trigger of EVERY banner
+            rendered inside .banner-stack below. A banner whose own render condition is
+            true but whose trigger is missing here will never mount (the whole stack is
+            conditionally rendered). Phase 129 DNS-03 regressed exactly this way. */}
+        {(tailscaleOff ||
+          update ||
+          ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
+          saveBanner !== null ||
+          pluginToggleBanners.length > 0) && (
+          <div className="banner-stack">
+            {/* Phase 101-03 SHELL-08 — the action-blocking shell web-share security
+                banner used to render here (top priority) for the footer's direct
+                toggle. Phase 168-05 (D-14): the footer no longer toggles directly —
+                the equivalent banner (ShellWebShareBanner, same shared warned/
+                warningEnabled authority) now lives inside SessionShareModal only. */}
+            {tailscaleOff && <TailscaleBanner />}
+            {update && (
+              <UpdateBanner
+                update={update}
+                onDismiss={handleDismissUpdate}
+                className={updateExiting ? 'banner-exit' : undefined}
+              />
+            )}
+            {(webglContextLost || webglSoftwareDetected) && !webglBannerDismissed && (
+              <WebGLRecoveryBanner
+                reason={webglSoftwareDetected ? 'software-rasterized' : 'context-loss'}
+                onDismiss={() => setWebglBannerDismissed(true)}
+              />
+            )}
+            {/* Phase 97 SER-01: save-feedback banner (info = Serialize disabled,
+                error = write/dialog failure). Mirrors localBanner one-shot pattern. */}
+            {saveBanner && (
+              <div
+                className={saveBanner.kind === 'error' ? 'banner banner--error' : 'banner banner--info'}
+                role="status"
+              >
+                <span>{saveBanner.text}</span>
+                <button onClick={() => setSaveBanner(null)} aria-label="Dismiss">×</button>
+              </div>
+            )}
+            {/* Phase 99 PUI-02: one-shot toggle-change banners for unicode11 / image.
+                Both auto-dismiss after 6000ms; user can also dismiss via × button. */}
+            {pluginToggleBanners.map((kind) => (
+              <PluginToggleBanner
+                key={kind}
+                kind={kind}
+                onDismiss={() =>
+                  setPluginToggleBanners((prev) => prev.filter((k) => k !== kind))
+                }
+              />
+            ))}
+          </div>
+        )}
         <div className="terminal-container">
         {activeId === WELCOME_TAB.id && (
           <WelcomeTab />

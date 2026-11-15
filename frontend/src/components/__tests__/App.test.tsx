@@ -253,6 +253,14 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(raw).toContain('banner-stack')
   })
 
+  it('renders banner-stack inside the main column after the TabBar (Portty 02-01)', () => {
+    expect(raw.indexOf('<div className="banner-stack">')).toBeGreaterThan(raw.indexOf('<TabBar'))
+  })
+
+  it('subscribes to menu:new-session and opens the New Session dialog (Portty 02-01)', () => {
+    expect(raw).toContain("EventsOn('menu:new-session', () => setShowNewSessionModal(true))")
+  })
+
   it('renders TailscaleBanner inside banner-stack, gated on tailscaleOff', () => {
     const stackBlock = raw.slice(raw.indexOf('banner-stack'))
     expect(stackBlock).toContain('{tailscaleOff && <TailscaleBanner />}')

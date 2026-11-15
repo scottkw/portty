@@ -21,6 +21,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -74,8 +75,10 @@ func runGUI() {
 		MinHeight:         600,
 		HideWindowOnClose: true,
 		StartHidden:       true,
-		BackgroundColour:  &options.RGBA{R: 0x1a, G: 0x1b, B: 0x26, A: 0xff},
-		Menu:              appMenu(),
+		// Alpha 0 so the native vibrancy shows through; nil would default to white.
+		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},
+		Mac:              macWindowOptions(),
+		Menu:             appMenu(),
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -92,6 +95,36 @@ func runGUI() {
 	}
 }
 
+// macWindowOptions: hidden-inset title bar (traffic lights over the sidebar
+// strip), translucent window behind a transparent webview for sidebar vibrancy.
+// Appearance is left unset so the window follows the system.
+func macWindowOptions() *mac.Options {
+	return &mac.Options{
+		TitleBar:             mac.TitleBarHiddenInset(),
+		WebviewIsTransparent: true,
+		WindowIsTranslucent:  true,
+	}
+}
+
+// menuEmit and menuOpenURL are seams so tests can record menu actions
+// without a Wails runtime.
+var menuEmit = func(event string) {
+	if appCtx != nil {
+		runtime.EventsEmit(appCtx, event)
+	}
+}
+
+var menuOpenURL = func(url string) {
+	if appCtx != nil {
+		runtime.BrowserOpenURL(appCtx, url)
+	}
+}
+
+// emitMenuEvent returns a menu callback that emits event to the frontend.
+func emitMenuEvent(event string) menu.Callback {
+	return func(_ *menu.CallbackData) { menuEmit(event) }
+}
+
 // appMenu constructs the macOS application menu bar.
 // Ordering is critical on macOS: AppMenu must be first, then EditMenu, then
 // custom submenus. See STATE.md accumulated context for the ordering pitfall.
@@ -101,7 +134,7 @@ func appMenu() *menu.Menu {
 	m.Append(menu.AppMenu())
 	// 2. File menu (custom — FileMenuRole is commented out in v2.10.2)
 	fileMenu := m.AddSubmenu("File")
-	fileMenu.AddText("New Session", keys.CmdOrCtrl("n"), nil)
+	fileMenu.AddText("New Session", keys.CmdOrCtrl("t"), emitMenuEvent("menu:new-session"))
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Close Tab", keys.CmdOrCtrl("w"), nil)
 	// 3. EditMenu — enables Cmd+C/V/X/Z via native NSMenu (MENU-02)

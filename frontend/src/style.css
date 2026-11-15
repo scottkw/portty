@@ -5720,3 +5720,50 @@ textarea {
   color: var(--hub-fullaccess-badge-text);
   flex-shrink: 0;
 }
+
+/* ─── Desktop window chrome (Portty 02-01) ──────────────────────────
+   Desktop only: main.tsx sets html.is-desktop. The webview is transparent
+   over a native NSVisualEffectView, so anything left transparent shows
+   vibrancy. Only the sidebar is meant to; the main column paints opaque.
+   --wails-draggable inherits, so every interactive descendant of a drag
+   region must opt back out with no-drag or its clicks become window drags. */
+html.is-desktop,
+html.is-desktop body,
+html.is-desktop #root,
+html.is-desktop .app,
+html.is-desktop .sidebar {
+  background: transparent;
+}
+
+html.is-desktop .app__content {
+  background-color: var(--hub-bg);
+}
+
+html.is-desktop .tab-bar {
+  /* fixed, not min-height: .tab-list and .tab size off height: 100% */
+  height: 52px;
+  --wails-draggable: drag;
+}
+
+html.is-desktop .tab-bar :is(button, [role="tab"], input, a, .tab),
+html.is-desktop .sidebar * {
+  --wails-draggable: no-drag;
+}
+
+/* 52px top strip: drag region whose left 80px stay empty for the traffic
+   lights. The strip is the sidebar's own padding, so a mousedown there
+   targets .sidebar (drag); every child opts out above. */
+html.is-desktop .sidebar {
+  position: relative;
+  padding-top: 52px;
+  --wails-draggable: drag;
+}
+
+html.is-desktop .sidebar:not(.sidebar--collapsed) .sidebar__toggle {
+  position: absolute;
+  top: 12px;
+  left: 80px;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+}
