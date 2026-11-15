@@ -62,6 +62,29 @@ describe('App.tsx NET-01: remote/peer controls while disconnected', () => {
   })
 })
 
+// Iteration-2 WR-01: a tailscale:health event that lands while init/retryInit's
+// Promise.all is pending is newer than the reply, so the reply must not win.
+describe.each([
+  ['init', () => slice('async function init()', 'void init()')],
+  ['retryInit', () => slice('const retryInit = useCallback(', '}, [])')],
+])('App.tsx NET-01: %s does not overwrite a newer health event', (_name, body) => {
+  it('captures the event sequence before Promise.all and applies the reply only if unchanged', () => {
+    const b = body()
+    const seq = b.indexOf('const healthSeq = healthEventSeqRef.current')
+    expect(seq).toBeGreaterThan(-1)
+    expect(seq).toBeLessThan(b.indexOf('await Promise.all('))
+    expect(b).toContain('if (healthEventSeqRef.current === healthSeq) setTailscaleHealth(health)')
+    expect(b).not.toMatch(/^\s*setTailscaleHealth\(health\)/m)
+  })
+})
+
+describe('App.tsx NET-01: tailscale:health handler', () => {
+  it('bumps the event sequence before applying the event', () => {
+    const h = slice("EventsOn('tailscale:health'", 'setTailscaleHealth(h)')
+    expect(h).toContain('healthEventSeqRef.current++')
+  })
+})
+
 describe('App.tsx NET-01: Share controls', () => {
   it('StatusBar receives shareDisabledReason from tailscaleOff', () => {
     const idx = raw.indexOf('<StatusBar')

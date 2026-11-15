@@ -242,6 +242,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // Every session:exit id, so createTab skips a shell that exited before
   // CreateSession resolved (the exit is reported only once).
   const exitedIdsRef = useRef(new Set<string>())
+  // Bumped on every tailscale:health event; init/retryInit apply their
+  // GetTailscaleStatus reply only if no event arrived while it was pending.
+  const healthEventSeqRef = useRef(0)
 
   // Terminal theme (global — same theme for all sessions)
   const [terminalThemeName, setTerminalThemeName] = useState<string>(() => {
@@ -435,6 +438,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         return
       }
       try {
+        const healthSeq = healthEventSeqRef.current
         const [port, allSessions, running, health] = await Promise.all([
           GetRelayPort(),
           ListSessions(),
@@ -448,7 +452,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         })
         setRelayPort(port)
         setWebServerRunning(running)
-        setTailscaleHealth(health)
+        if (healthEventSeqRef.current === healthSeq) setTailscaleHealth(health)
         // Phase 168-05 (UX-02): seed hubSessions from the same ListSessions() call used
         // for tab restoration, so openShareModalForActiveSession works even before the
         // user ever visits the Hub tab (the 3s Hub poll below only runs while Hub is
@@ -539,6 +543,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     void init()
 
     const offHealth = EventsOn('tailscale:health', (h: TailscaleHealth) => {
+      healthEventSeqRef.current++
       setTailscaleHealth(h)
       // If Tailscale just became fully healthy, poll for the backend to upgrade
       // from local mode to tailscale mode (daemon's upgradeToTailscale goroutine).
@@ -1204,6 +1209,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       return
     }
     try {
+      const healthSeq = healthEventSeqRef.current
       const [port, allSessions, running, health] = await Promise.all([
         GetRelayPort(),
         ListSessions(),
@@ -1217,7 +1223,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       })
       setRelayPort(port)
       setWebServerRunning(running)
-      setTailscaleHealth(health)
+      if (healthEventSeqRef.current === healthSeq) setTailscaleHealth(health)
       // Phase 168-05 (UX-02): mirror the mount-time hubSessions seed (see init above).
       setHubSessions(sessions)
 
