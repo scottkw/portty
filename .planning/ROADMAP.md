@@ -14,7 +14,7 @@ Ordering rationale: strip before rebrand so the rename (Go module path, strings,
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Plain macOS Terminal** - Remove agent-CLI, file browser, and Windows/Linux code; new sessions run the login shell; kept features still work
+- [x] **Phase 1: Plain macOS Terminal** - Remove agent-CLI, file browser, and Windows/Linux code; new sessions run the login shell; kept features still work (completed 2026-11-15)
 - [ ] **Phase 2: Tabs + Sidebar Navigation** - Replace the Hub grid with tabs and a sidebar listing local and tailnet-peer sessions
 - [ ] **Phase 3: Portty Brand** - Rename app, CLI, module, paths, icons, docs, notifications, and update feed to Portty
 - [ ] **Phase 4: One-Click Share** - One Share action publishes to peers' sidebars and a tailnet web link; stop, Funnel, and CLI attach work
@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. On macOS the Go build, Go tests, Vitest, and lint all pass with no Windows/Linux sources, packaging, or CI jobs left; the daemon no longer serves a files API or files capability; the security fuzz harness still runs against relay and webserver
   6. When a local shell exits, its tab closes immediately, with no status dot, exit countdown, toast or banner, including for shells that exit hours later
   7. With Tailscale disconnected, a banner says remote access and sharing are off, and the Share and remote controls are disabled. Reconnecting clears the banner without a restart. Portty never installs or configures Tailscale
-**Plans**: 12/12 plans executed (sequential waves 1-12; shared hot files and TESTING.md force serial order)
+**Plans**: 12/12 plans complete (sequential waves 1-12; shared hot files and TESTING.md force serial order)
 
 Plans:
 **Wave 1**
@@ -151,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Plain macOS Terminal | 12/12 | In Progress | - |
+| 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
 | 2. Tabs + Sidebar Navigation | 0/TBD | Not started | - |
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
