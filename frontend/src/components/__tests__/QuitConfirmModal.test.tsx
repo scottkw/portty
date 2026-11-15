@@ -1,17 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { createRoot } from 'react-dom/client'
+import { act } from 'react-dom/test-utils'
 import raw from '../QuitConfirmModal.tsx?raw'
 import appRaw from '../../App.tsx?raw'
+import { QuitConfirmModal } from '../QuitConfirmModal'
 
 describe('QuitConfirmModal source inspection', () => {
   describe('APP-01: modal structure', () => {
-    it('uses quit-modal-overlay class', () => {
-      expect(raw).toContain('quit-modal-overlay')
-    })
-    it('uses quit-modal class with stopPropagation', () => {
-      expect(raw).toContain('stopPropagation')
-    })
-    it('handles Escape key via keydown listener', () => {
-      expect(raw).toContain('Escape')
+    it('uses the shared sheet shell and the dialog focus hook (Portty 02-09)', () => {
+      expect(raw).toContain('dialog-scrim')
+      expect(raw).toContain('useDialogFocus(')
     })
     it('sets role dialog and aria-modal', () => {
       expect(raw).toContain('role="dialog"')
@@ -20,8 +18,9 @@ describe('QuitConfirmModal source inspection', () => {
     it('sets aria-labelledby pointing to title', () => {
       expect(raw).toContain('aria-labelledby="quit-modal-title"')
     })
-    it('has close button with aria-label', () => {
-      expect(raw).toContain('aria-label="Close"')
+    it('has no header close button (Portty 02-09)', () => {
+      expect(raw).not.toContain('aria-label="Close"')
+      expect(raw).not.toContain('&times;')
     })
     it('displays modal title "Quit AgentHub?"', () => {
       expect(raw).toContain('Quit AgentHub?')
@@ -37,15 +36,6 @@ describe('QuitConfirmModal source inspection', () => {
     })
     it('renders Quit Everything button', () => {
       expect(raw).toContain('Quit Everything')
-    })
-    it('renders quit-modal__btn--cancel class', () => {
-      expect(raw).toContain('quit-modal__btn--cancel')
-    })
-    it('renders quit-modal__btn--quit-gui class', () => {
-      expect(raw).toContain('quit-modal__btn--quit-gui')
-    })
-    it('renders quit-modal__btn--quit-all class', () => {
-      expect(raw).toContain('quit-modal__btn--quit-all')
     })
     it('disables buttons after click (acting state)', () => {
       expect(raw).toContain('acting')
@@ -98,5 +88,46 @@ describe('App.tsx quit-modal wiring (Phase 85)', () => {
   })
   it('imports QuitAll bound method', () => {
     expect(appRaw).toContain('QuitAll')
+  })
+})
+
+describe('QuitConfirmModal behaviour (Portty 02-09, LOOK-01)', () => {
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+  afterEach(() => {
+    act(() => root?.unmount())
+    container?.remove()
+  })
+  function mount(onCancel = vi.fn()) {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    act(() => {
+      root.render(
+        <QuitConfirmModal isOpen sessions={[{ id: 'a', name: 'shell 1' }]} onQuitGUI={vi.fn()} onQuitAll={vi.fn()} onCancel={onCancel} />,
+      )
+    })
+    return onCancel
+  }
+
+  it('is a labelled modal dialog with Keep Running focused and the buttons in order', () => {
+    mount()
+    const dialog = container.querySelector('[role="dialog"]')!
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent).toBe('Quit AgentHub?')
+    expect(document.activeElement?.textContent).toBe('Keep Running')
+    const buttons = Array.from(container.querySelectorAll('.dialog__buttons button'))
+    expect(buttons.map((b) => b.textContent)).toEqual(['Keep Running', 'Quit GUI Only', 'Quit Everything'])
+    expect(buttons[2].classList.contains('button--primary')).toBe(true)
+  })
+
+  it('Esc cancels; a scrim click does not', () => {
+    const onCancel = mount()
+    act(() => (container.querySelector('.dialog-scrim') as HTMLElement).click())
+    expect(onCancel).not.toHaveBeenCalled()
+    act(() => {
+      document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })

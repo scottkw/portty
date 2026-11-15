@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useDialogFocus } from '../lib/useDialogFocus'
 
 interface QuitConfirmModalProps {
   isOpen: boolean
@@ -10,21 +11,9 @@ interface QuitConfirmModalProps {
 
 function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: QuitConfirmModalProps): React.ReactElement | null {
   const [acting, setActing] = useState(false)
-  const cancelBtnRef = useRef<HTMLButtonElement>(null)
-
-  // Close on Escape key
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onCancel])
-
-  // Focus "Keep Running" button on open
-  useEffect(() => {
-    if (isOpen) cancelBtnRef.current?.focus()
-  }, [isOpen])
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // "Keep Running" first: both other choices end the GUI.
+  useDialogFocus(dialogRef, { onCancel, initialFocus: 'cancel', active: isOpen })
 
   // Reset acting state when modal reopens
   useEffect(() => {
@@ -44,20 +33,17 @@ function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: 
         : `You have ${sessions.length} active sessions running.`
 
   return (
-    <div className="quit-modal-overlay" onClick={onCancel}>
+    <div className="dialog-scrim">
       <div
-        className="quit-modal"
+        ref={dialogRef}
+        className="dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="quit-modal-title"
-        onClick={(e) => e.stopPropagation()}
       >
-        <div className="quit-modal__header">
-          <h2 className="quit-modal__title" id="quit-modal-title">Quit AgentHub?</h2>
-          <button className="quit-modal__close" aria-label="Close" onClick={onCancel}>&times;</button>
-        </div>
-        <div className="quit-modal__body">
-          <p className="quit-modal__subtitle">{subtitleText}</p>
+        <h2 className="dialog__title" id="quit-modal-title">Quit AgentHub?</h2>
+        <div className="dialog__body">
+          <p>{subtitleText}</p>
           {sessions.length > 0 && (
             <div className="quit-modal__session-list">
               {visible.map((s) => (
@@ -66,32 +52,33 @@ function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: 
                 </div>
               ))}
               {overflow > 0 && (
-                <span className="quit-modal__overflow">...and {overflow} more</span>
+                <span className="quit-modal__overflow dialog__secondary">...and {overflow} more</span>
               )}
             </div>
           )}
           {sessions.length === 0 && (
-            <p className="quit-modal__no-sessions">No active sessions.</p>
+            <p className="quit-modal__no-sessions dialog__secondary">No active sessions.</p>
           )}
         </div>
-        <div className="quit-modal__footer">
+        <div className="dialog__buttons">
           <button
-            className="quit-modal__btn--cancel"
-            ref={cancelBtnRef}
+            className="button button--secondary"
+            data-dialog-cancel=""
             disabled={acting}
             onClick={onCancel}
           >
             Keep Running
           </button>
           <button
-            className="quit-modal__btn--quit-gui"
+            className="button button--secondary"
             disabled={acting}
             onClick={() => { setActing(true); onQuitGUI() }}
           >
             Quit GUI Only
           </button>
           <button
-            className="quit-modal__btn--quit-all"
+            className="button button--primary"
+            data-dialog-primary=""
             disabled={acting}
             onClick={() => { setActing(true); onQuitAll() }}
           >

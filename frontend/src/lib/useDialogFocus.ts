@@ -50,9 +50,10 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, options: Dial
 
     function onKeyDown(e: KeyboardEvent): void {
       if (!dialog) return
-      // Only the topmost modal handles keys (a confirm opened from a sheet sits later in the DOM).
+      // Only the topmost modal handles keys (a confirm opened from a sheet sits
+      // later in the DOM). ref must point at the aria-modal="true" element.
       const modals = document.querySelectorAll('[aria-modal="true"]')
-      if (modals.length > 0 && modals[modals.length - 1] !== dialog) return
+      if (modals[modals.length - 1] !== dialog) return
       if (e.key === 'Escape') {
         e.preventDefault()
         onCancelRef.current()
@@ -77,9 +78,9 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, options: Dial
       }
     }
 
-    document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown)
     return () => {
-      document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keydown', onKeyDown)
       invoker?.focus?.()
     }
   }, [active, initialFocus, ref])

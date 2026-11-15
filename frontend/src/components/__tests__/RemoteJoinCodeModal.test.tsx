@@ -10,6 +10,8 @@
  *   - Error mapping: 'expired' / 'invalid' / 'not-found' / 'session-gone' →
  *     specific user-facing strings; anything else → raw message.
  *   - Cancel + Escape both call onClose; successful submit auto-closes.
+ *   - Portty 02-09 (LOOK-01): "Cancel" / "Join Session" ("Joining…"), no header ×,
+ *     initial focus on the code input, a scrim click does nothing.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -82,6 +84,16 @@ describe('RemoteJoinCodeModal — a11y + structure', () => {
     expect(cancel).toBeTruthy()
   })
 
+  it('has the Cancel / Join Session buttons in order, no header ×, and focuses the code input (Portty 02-09)', () => {
+    const { container } = renderModal()
+    const buttons = Array.from(container.querySelectorAll('.dialog__buttons button'))
+    expect(buttons.map((b) => b.textContent)).toEqual(['Cancel', 'Join Session'])
+    expect(buttons[1].classList.contains('button--primary')).toBe(true)
+    expect(container.querySelector('[aria-label="Close"]')).toBeNull()
+    expect(container.innerHTML).not.toContain('×')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Join code')
+  })
+
   it('mentions the remote session name and hostname in the body copy', () => {
     const { container } = renderModal({
       remoteSession: { id: 'x', name: 'codex-A', hostname: 'hub-zeta' },
@@ -148,7 +160,7 @@ describe('RemoteJoinCodeModal — submit flow', () => {
       // microtask flush for the setState before the await
       await Promise.resolve()
     })
-    expect(submit.textContent).toMatch(/Joining/i)
+    expect(submit.textContent).toBe('Joining…')
     expect(submit.disabled).toBe(true)
     await act(async () => {
       resolve()
@@ -249,6 +261,13 @@ describe('RemoteJoinCodeModal — dismissal', () => {
     ) as HTMLButtonElement
     cancel.click()
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('a scrim click does not close (Portty 02-09)', () => {
+    const onClose = vi.fn()
+    const { container } = renderModal({ onClose })
+    ;(container.querySelector('.dialog-scrim') as HTMLElement).click()
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('calls onClose on Escape key', () => {

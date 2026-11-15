@@ -55,7 +55,9 @@ describe('SETT-02: Section header CSS', () => {
   })
 
   it('h3 rule includes section divider border', () => {
-    expect(css).toContain('border-top: 1px solid #292e42')
+    // Portty 02-09: read the h3 rule itself (the old hex substring matched an unrelated, now-deleted rule).
+    const h3 = css.match(/\.settings-panel__body h3\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(h3).toMatch(/border-top:\s*1px solid var\(--hub-border\)/)
   })
 })
 

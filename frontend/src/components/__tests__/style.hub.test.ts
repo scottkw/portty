@@ -72,10 +72,6 @@ describe('Hub colorblind-safe source comments (source-level UAT verification)', 
   it('has COLORBLIND-SAFE comment for idle status dark hex #22c55e', () => {
     expect(cssRaw).toContain('#22c55e')
   })
-
-  it('has COLORBLIND-SAFE comment for stopped/done dark hex #565f89', () => {
-    expect(cssRaw).toContain('#565f89')
-  })
 })
 
 // Phase 135 CSS contract — GAP-135-A focus-visible rings + GAP-135-E/F reduced-motion
@@ -86,15 +82,13 @@ describe('Phase 135 — GAP-135-A: focus-visible rings for Hub interactive eleme
     expect(cssRaw).not.toContain('hub-needs-input-badge')
   })
 
-  it('A11Y-02: .hub-modal__close:focus-visible rule is present', () => {
-    expect(cssRaw).toContain('.hub-modal__close:focus-visible')
-  })
-
-  it('A11Y-02: the remaining :focus-visible ring uses var(--hub-accent) token (colorblind constraint)', () => {
-    const idx = cssRaw.indexOf('.hub-modal__close:focus-visible')
+  // Portty 02-09: the Share dialog's header close button is gone; dialog buttons carry the ring.
+  it('A11Y-02: dialog buttons have a :focus-visible ring on the focus-ring token (colorblind constraint)', () => {
+    expect(cssRaw).not.toContain('.hub-modal__close')
+    const idx = cssRaw.indexOf('.button:focus-visible')
     expect(idx).toBeGreaterThan(-1)
     const block = cssRaw.slice(idx, cssRaw.indexOf('}', idx))
-    expect(block).toContain('var(--hub-accent)')
+    expect(block).toContain('var(--color-focus-ring)')
   })
 
 })

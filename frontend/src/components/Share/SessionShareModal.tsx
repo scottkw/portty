@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { XMarkIcon } from '@heroicons/react/24/outline'
 import {
   IssueCapabilities,
   ToggleWebServing,
@@ -13,6 +12,7 @@ import { ShellWebShareBanner } from '../ShellWebShareBanner'
 import { FunnelRiskPanel } from './FunnelRiskPanel'
 import { ShareSegmentedControl, type ShareTab } from './ShareSegmentedControl'
 import { TailnetTab } from '../SessionShare/TailnetTab'
+import { useDialogFocus } from '../../lib/useDialogFocus'
 import { InternetReadOnlyTab } from '../SessionShare/InternetReadOnlyTab'
 import { InternetFullAccessTab } from '../SessionShare/InternetFullAccessTab'
 
@@ -96,8 +96,9 @@ export interface SessionShareModalProps {
  * only reachable for local cards).
  *
  * Phase machine: entering → open → exiting (fade in/out). prefers-reduced-motion: skip animation.
- * Focus return: returns focus to the Share button that opened the modal on unmount.
- * No inert background trap (leaner than HubModal — no terminal inside).
+ * Portty 02-09: the shared sheet style (.dialog--share, 560px) with a footer "Done";
+ * useDialogFocus focuses Done, traps Tab, maps Esc to handleClose and returns
+ * focus to the invoker on unmount. A scrim click does nothing.
  */
 export function SessionShareModal({
   session,
@@ -131,17 +132,9 @@ export function SessionShareModal({
     setPhase('exiting')
   }, [prefersReducedMotion, onClose])
 
-  // ---- Focus return on unmount (MODAL-02) ----
-  const openerFocusRef = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    openerFocusRef.current = document.activeElement as HTMLElement
-    return () => {
-      openerFocusRef.current?.focus()
-    }
-  }, [])
-
-  // ---- Escape key (dialog-scoped via onKeyDown, same as HubModal pattern) ----
-  // The Escape handler is on the dialog role="dialog" element (see JSX below).
+  // ---- Focus: initial focus on Done, Tab trap, Esc, focus return (MODAL-02) ----
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef, { onCancel: handleClose, initialFocus: 'primary' })
 
   // ---- Share state ----
   // Seeds from server truth (session.webEnabled); overridden by user toggle.
@@ -506,40 +499,21 @@ export function SessionShareModal({
 
   // ---- Render ----
   return (
-    <div
-      className={`hub-modal-overlay hub-modal-overlay--${phase}`}
-      onClick={handleClose}
-    >
+    <div className={`dialog-scrim${phase === 'exiting' ? ' dialog-scrim--exiting' : ''}`}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Share ${session.name}`}
-        className={`hub-share-modal hub-share-modal--${phase}`}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.preventDefault()
-            e.stopPropagation()
-            handleClose()
-          }
-        }}
-        onAnimationEnd={() => {
+        aria-labelledby="share-dialog-title"
+        className={`dialog dialog--share hub-share-modal${phase === 'exiting' ? ' dialog--exiting' : ''}`}
+        onAnimationEnd={(e) => {
+          // Only the dialog's own fade drives the phase machine, not a child's animation.
+          if (e.target !== e.currentTarget) return
           if (phase === 'entering') setPhase('open')
           if (phase === 'exiting') onClose()
         }}
       >
-        {/* ---- Header ---- */}
-        <div className="hub-share-modal__header">
-          <span className="hub-share-modal__title">Share — {session.name}</span>
-          <button
-            type="button"
-            className="hub-modal__close"
-            aria-label="Close share modal"
-            onClick={handleClose}
-          >
-            <XMarkIcon aria-hidden="true" />
-          </button>
-        </div>
+        <h2 className="dialog__title" id="share-dialog-title">Share “{session.name}”</h2>
 
         {/* ---- Body ---- */}
         <div className="hub-share-modal__body">
@@ -761,6 +735,10 @@ export function SessionShareModal({
               </div>
             </>
           )}
+        </div>
+
+        <div className="dialog__buttons">
+          <button type="button" className="button button--primary" data-dialog-primary="" onClick={handleClose}>Done</button>
         </div>
       </div>
     </div>

@@ -88,12 +88,12 @@ export function FunnelRiskPanel({
       </button>
 
       <div className="hub-funnel-risk-panel__actions">
-        <button type="button" className="hub-share-internet-section__disable" onClick={onCancel}>
+        <button type="button" className="button button--secondary" onClick={onCancel}>
           Keep local only
         </button>
         <button
           type="button"
-          className="link-confirm-popover__btn link-confirm-popover__btn--continue"
+          className="button button--primary"
           onClick={onEnable}
         >
           Enable internet share

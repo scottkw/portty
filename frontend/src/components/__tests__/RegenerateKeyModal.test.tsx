@@ -111,12 +111,47 @@ describe('RegenerateKeyModal: ReactNode body and destructive confirm (Portty 02-
     expect(container.querySelector('#end-session-title')?.textContent).toBe('End “shell”?')
     expect(container.querySelector('.end-session__note')?.textContent).toBe('Anyone attached will be disconnected.')
     const confirm = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'End Session')!
-    expect(confirm.classList.contains('quit-modal__btn--destructive')).toBe(true)
+    expect(confirm.classList.contains('button--destructive')).toBe(true)
     expect(document.activeElement?.textContent).toBe('Cancel')
   })
 
   it('is not destructive by default', () => {
     mount(<RegenerateKeyModal isOpen onConfirm={noop} onCancel={() => {}} />)
-    expect(container.querySelector('.quit-modal__btn--destructive')).toBeNull()
+    expect(container.querySelector('.button--destructive')).toBeNull()
+    expect(container.querySelector('[data-dialog-primary]')?.classList.contains('button--primary')).toBe(true)
+  })
+})
+
+// Portty 02-09 (LOOK-01): the sheet shell shared by Regenerate, the disable-warning confirm and End Session.
+describe('RegenerateKeyModal: sheet shell and focus (Portty 02-09)', () => {
+  it('is a labelled modal dialog with no header ×, Cancel focused, buttons [Cancel, confirm]', () => {
+    mount(<RegenerateKeyModal isOpen onConfirm={noop} onCancel={() => {}} />)
+    const dialog = container.querySelector('[role="dialog"]')!
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent).toBe('Regenerate Signing Key?')
+    expect(container.querySelector('[aria-label="Close"]')).toBeNull()
+    expect(container.innerHTML).not.toContain('×')
+    expect(document.activeElement?.textContent).toBe('Keep Links')
+    const buttons = Array.from(container.querySelectorAll('.dialog__buttons button')).map((b) => b.textContent)
+    expect(buttons).toEqual(['Keep Links', 'Invalidate All Links'])
+  })
+
+  it('Esc cancels; a scrim click does not', () => {
+    const onCancel = vi.fn()
+    mount(<RegenerateKeyModal isOpen onConfirm={noop} onCancel={onCancel} />)
+    act(() => (container.querySelector('.dialog-scrim') as HTMLElement).click())
+    expect(onCancel).not.toHaveBeenCalled()
+    act(() => {
+      document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a rejected onConfirm inline and stays open', async () => {
+    mount(<RegenerateKeyModal isOpen onConfirm={() => Promise.reject(new Error('boom'))} onCancel={() => {}} />)
+    const confirm = container.querySelector<HTMLButtonElement>('[data-dialog-primary]')!
+    await act(async () => { confirm.click() })
+    expect(container.querySelector('.dialog__error')?.textContent).toBe('boom')
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
   })
 })

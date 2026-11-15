@@ -25,7 +25,8 @@
  *   SM-05: Internet tabs aria-disabled until confirmed; default tab = Internet·Read-only
  *          on confirm; disabling internet resets the active tab to Tailnet
  *   SM-07: On/Off/N-A toggle state text labels
- *   SM-08: modal width source string (min(520px, calc(100vw - 48px)))
+ *   SM-08: modal width source string (Portty 02-09: .dialog--share is 560px)
+ *   Portty 02-09 (LOOK-01): sheet shell, title Share “<name>”, footer Done, no header ×
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import React from 'react'
@@ -186,10 +187,10 @@ describe('SessionShareModal — SHARE-04: LAN password', () => {
 })
 
 describe('SessionShareModal — S-07 render smoke (hub-share-modal structure)', () => {
-  it('renders .hub-share-modal__header element', () => {
+  it('renders the .dialog__title heading (the old header strip is gone, Portty 02-09)', () => {
     const { container: c } = renderModal({ webEnabled: true })
-    const header = c.querySelector('.hub-share-modal__header')
-    expect(header).not.toBeNull()
+    expect(c.querySelector('.hub-share-modal__header')).toBeNull()
+    expect(c.querySelector('.dialog__title')).not.toBeNull()
   })
 
   it('renders .hub-share-modal__body element', () => {
@@ -958,8 +959,73 @@ describe('SessionShareModal — SM-07: On/Off/N-A toggle state labels', () => {
 })
 
 describe('SessionShareModal — SM-08: modal width source string', () => {
-  it('style.css documents the widened .hub-share-modal clamp (min(520px, calc(100vw - 48px)))', () => {
+  it('style.css sizes the Share sheet at 560px, clamped to the window (Portty 02-09)', () => {
     const css = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
-    expect(css).toMatch(/width:\s*min\(520px,\s*calc\(100vw - 48px\)\)/)
+    expect(css).toMatch(/\.dialog--share\s*\{[^}]*width:\s*560px/)
+    expect(css).toMatch(/\.dialog\s*\{[^}]*max-width:\s*calc\(100% - 48px\)/)
+  })
+})
+
+describe('SessionShareModal — sheet shell and Done footer (Portty 02-09, LOOK-01)', () => {
+  function renderWithClose() {
+    const onClose = vi.fn()
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    flushSync(() => {
+      root!.render(
+        React.createElement(SessionShareModal, {
+          session: { ...makeSession(), name: 'build' },
+          webServerMode: null,
+          webServerRunning: true,
+          onClose,
+        }),
+      )
+    })
+    return { c: container!, onClose }
+  }
+
+  it('is a modal dialog labelled by the title Share “<name>”', () => {
+    const { c } = renderWithClose()
+    const dialog = c.querySelector('[role="dialog"]')!
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent).toBe('Share “build”')
+    expect(dialog.classList.contains('dialog--share')).toBe(true)
+  })
+
+  it('has no header close button and one primary Done button, focused on open', () => {
+    const { c } = renderWithClose()
+    expect(c.querySelector('[aria-label="Close share modal"]')).toBeNull()
+    const footer = Array.from(c.querySelectorAll('.dialog__buttons button'))
+    expect(footer.map((b) => b.textContent)).toEqual(['Done'])
+    expect(footer[0].classList.contains('button--primary')).toBe(true)
+    expect(document.activeElement).toBe(footer[0])
+  })
+
+  it('Done fades the sheet out, then calls onClose when its own animation ends', () => {
+    const { c, onClose } = renderWithClose()
+    const done = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Done')!
+    flushSync(() => done.click())
+    const dialog = c.querySelector('[role="dialog"]') as HTMLElement
+    expect(dialog.classList.contains('dialog--exiting')).toBe(true)
+    // React picks one of these names for onAnimationEnd (jsdom has WebkitAnimation, no AnimationEvent).
+    const animationEnd = (el: Element) => flushSync(() => {
+      for (const type of ['animationend', 'webkitAnimationEnd']) el.dispatchEvent(new Event(type, { bubbles: true }))
+    })
+    // A child's animationend must not close the dialog.
+    animationEnd(c.querySelector('.dialog__title')!)
+    expect(onClose).not.toHaveBeenCalled()
+    animationEnd(dialog)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('Esc starts the close; a scrim click does nothing', () => {
+    const { c } = renderWithClose()
+    flushSync(() => (c.querySelector('.dialog-scrim') as HTMLElement).click())
+    expect(c.querySelector('.dialog--exiting')).toBeNull()
+    flushSync(() => {
+      document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(c.querySelector('.dialog--exiting')).not.toBeNull()
   })
 })

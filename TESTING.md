@@ -26,10 +26,12 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
 | Go unit/integration | **107** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
-| vitest (frontend) | **91** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts, UI state, CSS token source gates, lib adapters (relay, remote, sidebar peers) |
+| vitest (frontend) | **92** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts, UI state, CSS token source gates, lib adapters (relay, remote, sidebar peers) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope, terminal only (WEBCHAT-03, CHAT-01), live light/dark (THEM-01) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **206** | — | — | — |
+| **Total** | **207** | — | — | — |
+
+> Note: Portty Phase 2 plan 02-09 (LOOK-01 dialogs): counts from `git ls-files` — Go **107** (unchanged), vitest **92** (+1: `frontend/src/lib/__tests__/useDialogFocus.test.tsx` — initial focus per mode, Tab/Shift+Tab wrap, Esc, focus return, topmost-modal only), Playwright **7** (unchanged), build-script **1**, total **207**. Edited in place: `NewSessionModal.test.tsx` (sheet, Cancel, Esc, scrim does nothing, inline create error), `RegenerateKeyModal.test.tsx` / `QuitConfirmModal.test.tsx` / `RemoteJoinCodeModal.test.tsx` (both copies) (sheet shell, no header ×, initial focus, Esc, scrim does nothing; "Join Session" / "Joining…"), `SessionShareModal.test.tsx` (title `Share “<name>”`, footer Done, no "Close share modal", 560px sheet; every Funnel consent-gate case unchanged), `style.hub.modal.test.ts` (Hub overlay pins → `.dialog-scrim` and dialog motion contract), `style.hub.test.ts` (`.hub-modal__close` focus pin → `.button:focus-visible`; a stray `#565f89` presence pin dropped with the orphan rules that held it), `style.settings.test.ts` (h3 divider pin reads the h3 rule itself), `style.tokens.test.ts` (dialog motion gate; dialogs and Share content join the no-hex gate).
 
 > Note: Portty Phase 2 plan 02-08 (TERM-03): counts from `git ls-files` — Go **107** (unchanged), vitest **91** (+3 −1), Playwright **7** (unchanged), build-script **1**, total **206**. Added (3): `frontend/src/lib/__tests__/tabs.test.ts` (detach neighbour rule, single-source tab labels, rename helper), `frontend/src/components/__tests__/EmptyState.test.tsx`, `frontend/src/components/__tests__/ContextMenu.test.tsx`. Deleted (1): `frontend/src/components/__tests__/StatusBar.shareSession.test.tsx`, with the bottom status bar it covered; its NET-01 disabled-Share intent moved to `TabBar.test.tsx` (now `aria-disabled` + `aria-describedby="ts-off-reason"`, UI-REVIEW 01 #2/#3) and its App wiring checks to `App.test.tsx`. Edited in place: `TabBar.test.tsx` (chevron and old rename cases replaced by pill, menu, rename, Share and chip cases), `Sidebar.test.tsx`, `InlineSessionName.test.tsx`, `RegenerateKeyModal.test.tsx`, `TailscaleBanner.test.tsx`, `App.test.tsx`, `App.shellExit.test.tsx` (close no longer kills), `App.tailscale.test.tsx`, `App.open-remote.test.tsx`, `App.saver.test.tsx`, `style.redesign.test.ts`, `style.contrast.test.ts`, `style.tokens.test.ts` (status-bar fences retired; new toolbar rules join the no-hex gate) and `e2e/web-share-scope.spec.ts` (rename input selector).
 
@@ -272,6 +274,10 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | THEM-01 | frontend/src/components/__tests__/SettingsTab.test.tsx | vitest | Portty 02-03: Appearance shows "Automatic" and the follows-your-Mac description; no Interface Theme or Terminal Theme control |
 | LOOK-01 | frontend/src/__tests__/style.tokens.test.ts | vitest | Portty 02-03: no `--hub-*` declaration carries a literal colour, no `@font-face`, desktop `--color-sidebar: transparent`; RDS-02 migrated-surface hex scan and reduced-motion checks carried over from `themeTokens.test.ts` |
 | LOOK-01 | frontend/src/components/__tests__/App.test.tsx | vitest | Portty 02-01: `menu:new-session` and `menu:settings` listeners (Settings through a ref to `handleOpenSettings`), `menu:close-tab` closes the active tab through `activeIdRef` (02-08), banner stack under the tab bar; 02-08: `EmptyState` renders once init has run with no tab open; "desktop window chrome CSS" — collapsed-sidebar tab bar clears the 80px traffic-light reserve and the drag strips are not text-selectable |
+| LOOK-01 | frontend/src/lib/__tests__/useDialogFocus.test.tsx | vitest | Portty 02-09: `useDialogFocus` initial focus (first input, else primary, else Cancel), Tab/Shift+Tab wrap skipping `tabindex=-1`, Tab from outside moves back in, Esc calls `onCancel`, focus returns to the invoker on unmount, only the topmost `aria-modal` dialog handles keys |
+| LOOK-01 | frontend/src/components/__tests__/NewSessionModal.test.tsx | vitest | Portty 02-09: sheet dialog (`role="dialog"`, `aria-modal`, labelled "New Session"), no header ×, "Cancel" (no "Close"), Create Session focused, Esc cancels, the scrim click does nothing, a rejected create keeps the dialog open with "Couldn't create the session: <detail>. Check that the folder exists, then try again." |
+| LOOK-01 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Portty 02-09: title `Share “<name>”` labels the dialog, no "Close share modal" ×, one primary footer "Done" focused on open, Done and Esc start the 100ms fade and only the dialog's own animationend calls `onClose`, the scrim click does nothing, `.dialog--share` is 560px; Funnel consent-gate cases unchanged (T-02-32) |
+| LOOK-01 | frontend/src/components/__tests__/style.hub.modal.test.ts | vitest | Portty 02-09: `.dialog-scrim` fixed full-window on `--color-scrim` under the 52px toolbar; 150ms `dialog-in` with `translateY(-8px)`, 100ms `dialog-out`, `animation: none` under reduced motion; the Hub overlay is gone |
 | SHARE-04 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Copyable links, QR, LAN Basic Auth password surface |
 | SHARE-05 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Cap/URL/QR lifecycle (off→on cache-clear, stale-URL cleanup) |
 | CARD-04 | frontend/src/lib/remoteAdapter.test.ts | vitest | `adaptRemoteSession` hostname/URL mapping; card layout carries all fields |
@@ -409,7 +415,7 @@ Human-intervention items that cannot be automated. Run before each tagged releas
 
 ### Category A — Share Modal (SHARE-01..06)
 
-- **M-01** Share modal opens with RO + RW link rows in the live native webview.
+- **M-01** Share modal opens with RO + RW link rows in the live native webview. Portty 02-09: it opens as a 560px sheet attached under the toolbar, titled `Share “<name>”`, with no header ×; the footer "Done" closes it (Esc too, the scrim does not). The segmented control looks like NSSegmentedControl and the Funnel risk panel sits on the warning banner colours with a triangle icon.
   - _Why not automatable:_ Wails native webview is not accessible to Playwright or headless browser automation.
   - _Source:_ 137-HUMAN-UAT.md item 4
 
@@ -746,6 +752,17 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
   6. Hide the sidebar: the first tab sits clear of the traffic lights (80px inset), and dragging the toolbar's empty space moves the window while tabs and buttons still click.
   - _Why not automatable:_ native layout in WKWebView, VoiceOver's reading of `aria-describedby`/`aria-disabled`, window dragging and a real daemon's detach/kill behaviour exist only in the built app. The logic is covered by `tabs.test.ts`, `TabBar.test.tsx`, `ContextMenu.test.tsx`, `Sidebar.test.tsx` and `App.test.tsx`.
   - _Source:_ 02-08-PLAN.md Task 3 human-check; REQUIREMENTS TERM-03, LOOK-01; 02-UI-SPEC "Toolbar and tabs", "Share button (toolbar)".
+
+### Category AH — Dialogs and Sheets (LOOK-01)
+
+- **M-64** Every dialog in the sheet style (Portty 02-09). In the built app, open each dialog in Light, then Dark: New Session (⌘T), End Session… (tab menu), Join Remote Session (a peer row with no cached cap), Share (toolbar), Regenerate Signing Key and the disable-warning confirm (Settings), Quit (⌘Q with sessions running), and also the link confirm popover (⌘-click an OSC 8 link whose text and target differ).
+  1. Each dialog attaches under the toolbar, centred on the window, on the window colour with a thin border, 12px corners and a soft shadow, over a light (Light) or darker (Dark) scrim. No dark-only dialog remains in Light mode. The link confirm popover uses the same colours at the click point.
+  2. No dialog has a header ×. Buttons sit bottom-right, the primary on the accent fill; End Session's confirm is red.
+  3. Focus starts on the first input (Join), the primary button (New Session, Share) or Cancel (End Session, Regenerate, disable-warning, Quit). Tab and Shift+Tab stay inside the dialog. Esc cancels. A scrim click does nothing. On close, focus returns to the control that opened it.
+  4. The dialog fades in with a small downward slide; Share fades out on Done. With System Settings ▸ Accessibility ▸ Display ▸ Reduce motion on, dialogs appear and disappear with no animation.
+  5. If creating a session fails (try a folder deleted after choosing it; whether that fails depends on the daemon), the New Session dialog stays open with "Couldn't create the session: … Check that the folder exists, then try again." in red.
+  - _Why not automatable:_ the WKWebView rendering of the light/dark tokens, the native `<select>`, and the reduced-motion system setting exist only in the built app. The focus and dismissal logic is covered by `useDialogFocus.test.tsx` and the dialog tests listed under LOOK-01 in Section 4.
+  - _Source:_ 02-09-PLAN.md Task 2; REQUIREMENTS LOOK-01; 02-UI-SPEC "Dialogs and sheets", "Share dialog".
 
 ---
 

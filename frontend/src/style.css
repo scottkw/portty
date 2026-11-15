@@ -1153,70 +1153,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   pointer-events: none;
 }
 
-/* ─── QR modal ───────────────────────────────────────────────────── */
-.qr-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.qr-modal {
-  background: #1e1e2e;
-  border-radius: 12px;
-  padding: 24px;
-  text-align: center;
-  color: #cdd6f4;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-
-.qr-modal img {
-  border-radius: 8px;
-  margin-bottom: 12px;
-  display: block;
-}
-
-.qr-modal__url {
-  font-size: 12px;
-  color: #a6adc8;
-  word-break: break-all;
-  margin-bottom: 16px;
-  max-width: 280px;
-}
-
-.qr-modal__close {
-  background: #45475a;
-  color: #cdd6f4;
-  border: none;
-  padding: 8px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-}
-
-.qr-modal__close:hover {
-  background: #585b70;
-}
-
-.qr-modal__loading,
-.qr-modal__error {
-  color: #a6adc8;
-  font-size: 13px;
-  margin-bottom: 16px;
-  min-width: 200px;
-}
-
-.qr-modal__error {
-  color: #f38ba8;
-}
-
 /* ─── CT Disclosure Banner ──────────────────────────────────────── */
 .ct-disclosure {
   background: #16161e;
@@ -1444,42 +1380,21 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 
 .daemon-panel__btn {
-  padding: 4px 10px;
-  border-radius: 4px;
-  border: 1px solid #292e42;
-  background: transparent;
-  color: #a9b1d6;
-  cursor: pointer;
-  font-size: 11px;
+  /* Portty 02-09: Share dialog push button (Copy / Open / QR), tokens only. */
+  height: 24px;
+  padding: 0 12px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 6px;
+  background: var(--color-button);
+  color: var(--color-text);
   font-family: inherit;
+  font-size: 13px;
   white-space: nowrap;
-}
-
-.daemon-panel__btn:hover {
-  background-color: #1e2030;
-  color: #c0caf5;
+  cursor: default;
 }
 
 .daemon-panel__btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.daemon-panel__btn--kill:hover:not(:disabled) {
-  border-color: #f7768e;
-  color: #f7768e;
-}
-
-.daemon-panel__btn--web:hover:not(:disabled) {
-  border-color: #7aa2f7;
-  color: #7aa2f7;
-}
-
-/* Phase 120-04 — Browse files action button (reuses .daemon-panel__btn base;
-   accent hover matches the Web variant since both are non-destructive). */
-.daemon-panel__btn--browse:hover:not(:disabled) {
-  border-color: #7aa2f7;
-  color: #7aa2f7;
+  opacity: var(--opacity-disabled);
 }
 
 /* ─── Tailscale banner (NET-01; persistent, no dismiss) ──────────── */
@@ -1919,157 +1834,28 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   height: 200px;
 }
 
-/* ── Quit Confirmation Modal (Phase 85) ───────────────────────── */
-.quit-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.quit-modal {
-  background: #1e2030;
-  border: 1px solid #292e42;
-  border-radius: 8px;
-  width: 420px;
-  max-width: 95vw;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-.quit-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid #292e42;
-}
-.quit-modal__header h2 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #c0caf5;
-  line-height: 1.2;
-}
-.quit-modal__close {
-  background: transparent;
-  border: none;
-  color: #9aa5ce;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-  border-radius: 4px;
-}
-.quit-modal__close:hover {
-  color: #f7768e;
-  background: #3b4261;
-}
-.quit-modal__body {
-  padding: 20px;
-}
-.quit-modal__subtitle {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 400;
-  color: #a9b1d6;
-  line-height: 1.5;
-}
+/* ── Quit dialog content (Phase 85; Portty 02-09: sheet shell in .dialog*) ── */
 .quit-modal__session-list {
-  margin-top: 16px;
+  margin-top: 8px;
 }
 .quit-modal__session-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   padding: 4px 0;
-  font-size: 13px;
-  color: #c0caf5;
-}
-.quit-modal__session-name {
-  font-weight: 400;
 }
 .quit-modal__overflow {
   display: block;
-  font-size: 13px;
-  color: #9aa5ce;
-  padding: 4px 0;
-  padding-left: 16px;
+  padding: 4px 0 4px 16px;
 }
 .quit-modal__no-sessions {
-  margin: 16px 0 0;
-  font-size: 13px;
-  color: #9aa5ce;
-  font-style: italic;
-}
-.quit-modal__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid #292e42;
-}
-.quit-modal__btn--cancel {
-  background: transparent;
-  border: 1px solid #292e42;
-  color: #9aa5ce;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-}
-.quit-modal__btn--cancel:hover:not(:disabled) {
-  background: #3b4261;
-}
-.quit-modal__btn--quit-gui {
-  background: #7aa2f7;
-  color: #1a1b26;
-  font-weight: 600;
-  padding: 8px 16px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-}
-.quit-modal__btn--quit-gui:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-.quit-modal__btn--quit-all {
-  background: #f7768e;
-  color: #1a1b26;
-  font-weight: 600;
-  padding: 8px 16px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-}
-/* Portty 02-08: End Session confirm. Plan 02-09 restyles every dialog button. */
-.quit-modal__btn--quit-all.quit-modal__btn--destructive {
-  background: var(--color-destructive);
-  color: var(--color-on-accent);
+  margin-top: 8px;
 }
 
+/* End Session confirm (Portty 02-08): the web-shared warning line. */
 .end-session__note {
   display: block;
   margin-top: 8px;
   font-size: 12px;
   line-height: 16px;
-}
-
-.quit-modal__btn--quit-all:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-.quit-modal__btn--cancel:disabled,
-.quit-modal__btn--quit-gui:disabled,
-.quit-modal__btn--quit-all:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  color: var(--color-text-secondary);
 }
 
 /* === Phase 87: Session share panel (UI-SPEC Surface 1) === */
@@ -2092,7 +1878,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .session-share-panel__label {
   font-size: 13px;
   font-weight: 600;
-  color: #a9b1d6;
+  color: var(--color-text-secondary);
   min-width: 120px;
   flex-shrink: 0;
 }
@@ -2100,7 +1886,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .session-share-panel__url {
   flex: 1;
   font-size: 12px;
-  color: #7aa2f7;
+  color: var(--color-accent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2121,47 +1907,31 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 
 .session-share-panel__error {
   font-size: 12px;
-  color: #f7768e;
+  color: var(--color-error-text);
   margin-top: 4px;
 }
 
-/* === Phase 124 / CAP-05 (WR-01): web-share write opt-in (second consent gate) === */
-.session-share-panel__write-optin {
-  padding: 8px 0;
-  border-top: 1px solid #292e42;
-  margin-top: 4px;
-}
-
-.session-share-panel__write-confirm {
-  margin: 8px 0 0 46px;
-  padding: 8px 12px;
-  background: #24283b;
-  border-left: 3px solid #f59e0b;
-  border-radius: 6px;
-}
-
-.session-share-panel__write-confirm-body {
-  font-size: 12px;
-  color: #a9b1d6;
-  margin: 0 0 8px 0;
-  line-height: 1.4;
-}
-
-.session-share-panel__write-confirm-actions {
+/* Labelled read-only code field (SessionShare/shared.tsx CodeDisplay, Portty 02-09). */
+.session-share-panel__code-display {
   display: flex;
+  align-items: center;
   gap: 8px;
+  margin: 4px 0 8px;
+  font-size: 13px;
 }
-
-/* Locked placeholder: the full-access link row before both consent gates pass.
-   Dimmed + muted text (instructional copy carries the meaning — colorblind-safe,
-   not color-dependent). */
-.session-share-panel__link-row--locked {
-  opacity: 0.7;
+.share-field__label {
+  color: var(--color-text-secondary);
 }
-
-.session-share-panel__url--locked {
-  color: #565f89;
-  font-style: italic;
+.share-field__value {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-field);
+  color: var(--color-text);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  user-select: all;
 }
 
 /* === Phase 87: Destructive variant for Settings panel button (UI-SPEC Surface 2, D-16) === */
@@ -2318,42 +2088,45 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 
 /* ─── Phase 95 — Link confirm popover (LNK-03) ─── */
 .link-confirm-popover {
+  /* Portty 02-09: a popover at the click point, on the dialog tokens. */
   z-index: 9999;
   max-width: 420px;
   min-width: 280px;
-  padding: 16px 20px;
-  background: #1f2335;
-  color: #c0caf5;
-  border: 1px solid #565f89;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 16px;
+  background: var(--color-popover);
+  color: var(--color-text);
+  border: 1px solid var(--color-control-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-popover);
   font-family: var(--hub-font-ui);
+  font-size: 13px;
+  line-height: 18px;
   animation: link-confirm-popover-slide-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .link-confirm-popover__title {
   margin: 0 0 8px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .link-confirm-popover__reason {
   margin: 0 0 12px;
-  font-size: 13px;
-  line-height: 1.4;
-  color: #a9b1d6;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
 }
 
 .link-confirm-popover__url {
   display: block;
   margin: 0 0 16px;
-  padding: 8px 10px;
+  padding: 8px;
   font-family: var(--hub-font-mono);
   font-size: 12px;
   word-break: break-all;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--color-field);
   border-radius: 4px;
-  color: #c0caf5;
+  color: var(--color-text);
 }
 
 .link-confirm-popover__actions {
@@ -2363,27 +2136,30 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 
 .link-confirm-popover__btn {
-  padding: 6px 12px;
-  font-size: 13px;
-  border-radius: 4px;
+  height: 28px;
+  min-width: 80px;
+  padding: 0 16px;
   border: 1px solid transparent;
-  cursor: pointer;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  cursor: default;
 }
 
 .link-confirm-popover__btn--cancel {
-  background: transparent;
-  border-color: var(--hub-scrollbar-hover);
-  color: var(--hub-text-primary);
+  background: var(--color-button);
+  border-color: var(--color-control-border);
+  color: var(--color-text);
 }
 
 .link-confirm-popover__btn--continue {
-  background: var(--hub-accent);
-  color: var(--hub-bg);
+  background: var(--color-selection-fill);
+  color: var(--color-on-accent);
 }
 
 .link-confirm-popover__btn:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 2px;
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2416,122 +2192,23 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   border: 0;
 }
 
-/* ─── Phase 122-03 — Remote Join Code Modal ─── */
-
-.remote-join-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.remote-join-modal {
-  background: #1e2030;
-  border: 1px solid #292e42;
-  border-radius: 8px;
-  width: 440px;
-  max-width: 95vw;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-.remote-join-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid #292e42;
-}
-.remote-join-modal__title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #c0caf5;
-  line-height: 1.2;
-}
-.remote-join-modal__close {
-  background: transparent;
-  border: none;
-  color: #9aa5ce;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-  border-radius: 4px;
-}
-.remote-join-modal__close:hover {
-  color: #f7768e;
-  background: #3b4261;
-}
-.remote-join-modal__body {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.remote-join-modal__body-text {
-  margin: 0;
-  color: #a9b1d6;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.remote-join-modal__body-text strong {
-  color: #c0caf5;
-}
+/* ─── Remote Join Code dialog content (Portty 02-09: sheet shell in .dialog*) ─── */
 .remote-join-modal__input {
-  background: #1a1b26;
-  border: 1px solid #292e42;
-  border-radius: 4px;
-  padding: 8px 12px;
-  color: #c0caf5;
+  width: 100%;
+  height: 28px;
+  margin-top: 12px;
+  padding: 0 8px;
+  background: var(--color-field);
+  border: 1px solid var(--color-control-border);
+  border-radius: 6px;
+  color: var(--color-text);
   font-family: var(--hub-font-mono);
-  font-size: 14px;
+  font-size: 13px;
   letter-spacing: 2px;
 }
-.remote-join-modal__input:focus {
-  outline: none;
-  border-color: #7aa2f7;
-}
-.remote-join-modal__error {
-  margin: 0;
-  padding: 8px 12px;
-  background: #2d1f24;
-  border: 1px solid #5a3a44;
-  border-radius: 4px;
-  color: #f7768e;
-  font-size: 12px;
-}
-.remote-join-modal__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid #292e42;
-}
-.remote-join-modal__btn {
-  padding: 6px 14px;
-  border-radius: 4px;
-  border: 1px solid #292e42;
-  background: transparent;
-  color: #a9b1d6;
-  font-family: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.remote-join-modal__btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.remote-join-modal__btn--submit {
-  background: #7aa2f7;
-  color: #1a1b26;
-  font-weight: 600;
-  border: none;
-}
-.remote-join-modal__btn--submit:hover:not(:disabled) {
-  background: #89b4fa;
+.remote-join-modal__input:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
 }
 
 /* ============================================================
@@ -2699,13 +2376,6 @@ html.is-desktop {
   overflow: hidden;
 }
 
-/* A11Y-02 GAP-135-A: keyboard-only focus rings for all Hub interactive elements */
-/* Colorblind constraint: ring color is var(--hub-accent) token, verified at source */
-.hub-modal__close:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 2px;
-}
-
 /* --- Inline session name (InlineSessionName) --- */
 .inline-session-name {
   font-size: 14px;
@@ -2726,42 +2396,6 @@ html.is-desktop {
    All colors via var(--hub-*) tokens only (rgba() for scrim/shadow OK).
    ===================================================================== */
 
-/* Hub Modal Overlay — full-viewport scrim + centering flex container */
-/* z-index 200: above Hub (0) and card menus (100); below app modals (1000) */
-.hub-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
-}
-
-.hub-modal__close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  min-height: 28px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  color: var(--hub-text-muted);
-  padding: 4px;
-}
-
-.hub-modal__close svg {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-.hub-modal__close:hover {
-  color: var(--hub-accent);
-}
-
 /* Modal Body — flex-grow container */
 .hub-modal__body {
   flex: 1;
@@ -2779,92 +2413,11 @@ html.is-desktop {
   overflow: hidden;
 }
 
-/* hub-modal-overlay-in / hub-modal-overlay-out
-   keyframes declared at ROOT scope — they only animate when the class is applied
-   inside the prefers-reduced-motion media query below.
-*/
-@keyframes hub-modal-overlay-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-@keyframes hub-modal-overlay-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
-}
-
-/* Animation class assignments — inside no-preference guard (template: lines 4927-4939) */
-@media (prefers-reduced-motion: no-preference) {
-  .hub-modal-overlay--entering {
-    animation: hub-modal-overlay-in 220ms ease forwards;
-  }
-  .hub-modal-overlay--exiting {
-    animation: hub-modal-overlay-out 180ms ease forwards;
-  }
-}
-
-/* Reduced-motion: modal appears/disappears instantly — no animation */
-@media (prefers-reduced-motion: reduce) {
-  .hub-modal-overlay {
-    animation: none;
-    transition: none;
-    opacity: 1;
-  }
-}
-
 /* =====================================================================
    Phase 141 Plan 04 — Share Modal CSS (S-07 gap)
-   All colors via var(--hub-*) tokens only (rgba() for box-shadow OK).
-   Analog: .hub-modal / .hub-modal__header / .hub-modal__body above.
+   Portty 02-09: the panel, scrim, title and motion come from .dialog*
+   (.dialog--share is 560px); these rules style only the Share content.
    ===================================================================== */
-
-/* Share Modal Panel — narrower than hub-modal (520px vs 1100px) */
-.hub-share-modal {
-  position: relative;
-  /* Phase 173 (SM-08): widened 480px -> 520px so the three-tab segmented
-     control's stacked two-line labels ("Internet" / "Read-only") and the
-     link-card rows have room to breathe; min() still clamps on narrow
-     viewports (verified: base clamps to (100vw - 48px), independent of the
-     prefers-reduced-motion override below, which is a MOTION guard only). */
-  width: min(520px, calc(100vw - 48px));
-  /* Bound the card height so tall content (RO/RW links +
-     the Funnel INTERNET-PUBLIC section + QR) scrolls inside __body instead of
-     overflowing the viewport and clipping the header/QR. Mirrors .hub-modal's
-     `height: min(750px, calc(100vh - 64px))`; max-height (not height) keeps a
-     short, Funnel-off modal compact. Without this the flex:1/overflow-y:auto on
-     __body has no bounded parent to scroll within (Phase 169 live-UAT fix). */
-  max-height: calc(100vh - 64px);
-  background: var(--hub-surface-elevated);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-lg);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  font-family: var(--hub-font-ui);
-}
-
-/* Share Modal Header Strip */
-.hub-share-modal__header {
-  height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--hub-border);
-  flex-shrink: 0;
-}
-
-/* Share Modal Title */
-.hub-share-modal__title {
-  font-size: var(--hub-font-size-base);
-  font-weight: var(--hub-font-weight-emphasis);
-  color: var(--hub-text-primary);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 /* Share Modal Body — outer flex column (control strip + segbar + tabpanel).
    Phase 173 (SM-02): overflow-y:auto is KEPT here as an outer safety bound
@@ -2877,7 +2430,6 @@ html.is-desktop {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px;
   overflow-y: auto;
   gap: 12px;
 }
@@ -2960,29 +2512,6 @@ html.is-desktop {
   margin-top: 4px;
 }
 
-/* Share modal fade keyframes — root scope (no media query wrapper) */
-@keyframes hub-share-modal-in  { from { opacity: 0; } to { opacity: 1; } }
-@keyframes hub-share-modal-out { from { opacity: 1; } to { opacity: 0; } }
-
-/* Animation assignment — inside no-preference guard */
-@media (prefers-reduced-motion: no-preference) {
-  .hub-share-modal--entering {
-    animation: hub-share-modal-in 150ms ease forwards;
-  }
-  .hub-share-modal--exiting {
-    animation: hub-share-modal-out 120ms ease forwards;
-  }
-}
-
-/* Reduced-motion: share modal appears/disappears instantly. */
-@media (prefers-reduced-motion: reduce) {
-  .hub-share-modal {
-    animation: none;
-    transition: none;
-    opacity: 1;
-  }
-}
-
 /* =====================================================================
    Phase 173 (SM-03/SM-07) — Share segmented control (.share-segbar/.share-seg*)
    All colors via var(--hub-*) tokens only. Colorblind-safe: the Full-access
@@ -2992,64 +2521,60 @@ html.is-desktop {
    ===================================================================== */
 
 .share-segbar {
+  /* Styled like NSSegmentedControl (UI-SPEC "Share dialog"); 2px inset is the native metric. */
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: var(--hub-radius-md);
-  background: var(--hub-surface);
-  border: 1px solid var(--hub-border);
+  height: 28px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--color-segment-bg);
+  flex-shrink: 0;
 }
 
 .share-seg {
   flex: 1;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 1px;
-  padding: 6px 5px;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
   border: none;
-  border-radius: var(--hub-radius-sm);
+  border-radius: 4px;
   background: transparent;
-  color: var(--hub-text-muted);
-  cursor: pointer;
-  line-height: 1.15;
-}
-
-.share-seg__main {
-  font-size: 12.5px;
-  font-weight: 580;
-}
-
-.share-seg__sub {
-  font-size: 10px;
-  opacity: 0.82;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: default;
 }
 
 .share-seg.is-active {
-  background: var(--hub-share-seg-active-bg);
-  color: var(--hub-text-primary);
+  background: var(--color-segment-selected);
+  box-shadow: var(--shadow-tab-active);
+  color: var(--color-text);
+  font-weight: 600;
 }
 
 /* COLORBLIND-SAFE (SM-07): inset ring is the primary non-color cue for the
    active Full-access segment — reinforces the ⚠ glyph + "Full access" text
    rendered by the component, not a hue swap on the active background. */
 .share-seg.is-active.is-danger {
-  box-shadow: inset 0 0 0 1px var(--hub-destructive);
+  box-shadow: inset 0 0 0 1px var(--color-error-text);
 }
 
 .share-seg.is-active.is-danger .share-seg__sub {
-  color: var(--hub-destructive);
-  opacity: 1;
+  color: var(--color-error-text);
 }
 
 .share-seg:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  opacity: var(--opacity-disabled);
 }
 
 .share-seg:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 2px;
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
 }
 
 /* =====================================================================
@@ -3131,31 +2656,27 @@ html.is-desktop {
 
 /* Phase 166 / FUI-01 — inline risk panel (SessionShareModal) */
 .hub-funnel-risk-panel {
-  background: var(--hub-surface-elevated);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-sm);
+  /* Warning banner tokens (UI-SPEC "Share dialog"). */
+  background: var(--color-banner-warning-bg);
+  color: var(--color-banner-warning-fg);
+  border-radius: 6px;
   overflow: hidden;
-  /* The parent .hub-share-modal__body is a height-constrained flex column
-     (since the card gained max-height). This panel's `overflow: hidden` makes
-     its flex min-height resolve to 0, so the default flex-shrink:1 would crush
-     it below its content when the body overflows — clipping the expiry select
-     and the Enable/Cancel CTAs (the whole two-step commit gesture). Pin it so
-     the body scrolls instead. Confirmed: shrinks 202px→39px without this. */
+  /* The parent .hub-share-modal__body is a height-constrained flex column.
+     This panel's `overflow: hidden` makes its flex min-height resolve to 0,
+     so the default flex-shrink:1 would crush it below its content when the
+     body overflows — clipping the expiry select and the Enable/Cancel CTAs
+     (the whole two-step commit gesture). Pin it so the body scrolls instead. */
   flex-shrink: 0;
-  /* Collapsed state: zero the vertical padding + top/bottom border so the panel
-     fully disappears. With box-sizing: border-box, max-height:0 alone still
-     leaves a padding+border strip (16+16+1+1 = 34px) showing the clipped warning
-     even when the toggle is off. --open restores them. */
+  /* Collapsed state: zero the vertical padding so the panel fully disappears
+     (max-height:0 alone still leaves a padding strip). --open restores it. */
   max-height: 0;
   padding: 0 16px;
-  border-top-width: 0;
-  border-bottom-width: 0;
+  font-size: 13px;
+  line-height: 18px;
 }
 .hub-funnel-risk-panel--open {
   max-height: 400px;
   padding: 16px;
-  border-top-width: 1px;
-  border-bottom-width: 1px;
 }
 @media (prefers-reduced-motion: no-preference) {
   .hub-funnel-risk-panel {
@@ -3166,61 +2687,44 @@ html.is-desktop {
   .hub-funnel-risk-panel { transition: none; }
 }
 .hub-funnel-risk-panel__warning {
-  border-left: 3px solid var(--hub-warning);
-  padding-left: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin-bottom: 12px;
 }
 .hub-funnel-risk-panel__icon {
-  color: var(--hub-warning);
   width: 16px;
   height: 16px;
-  vertical-align: middle;
-}
-.hub-funnel-risk-panel__text {
-  font-size: var(--hub-font-size-base);
-  color: var(--hub-text-secondary);
-  line-height: 1.5;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 .hub-funnel-risk-panel__expiry {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 8px 0;
-  font-size: var(--hub-font-size-base);
-  color: var(--hub-text-secondary);
 }
-/* Style the native <select> to match the app (mirrors .settings-panel__select).
-   font-family is handled by the global control reset; this rule carries the
-   dark-theme surface/border/color so it isn't a white native control. */
+/* <select> keeps appearance: auto, so WKWebView draws a native popup button. */
 .hub-funnel-risk-panel__expiry select {
-  font-size: var(--hub-font-size-base);
-  background-color: var(--hub-surface);
-  color: var(--hub-text-primary);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-sm);
-  padding: 4px 8px;
-  outline: none;
+  font-size: 13px;
 }
 .hub-funnel-risk-panel__help-link {
-  font-size: var(--hub-font-size-sm);
-  color: var(--hub-text-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
   padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
-.hub-funnel-risk-panel__help-link:hover {
-  color: var(--hub-accent);
+.hub-funnel-risk-panel__help-link:is(:hover, :focus-visible) {
+  text-decoration: underline;
 }
 .hub-funnel-risk-panel__actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
-  margin-top: 12px;
-}
-/* CTA to UI-SPEC: 14px / 600 (the reused .link-confirm-popover__btn base is 13px/400). */
-.hub-funnel-risk-panel__actions .link-confirm-popover__btn--continue {
-  font-size: var(--hub-font-size-base);
-  font-weight: var(--hub-font-weight-emphasis);
+  margin-top: 16px;
 }
 
 /* Phase 166 / FUI-04/05 — internet public section (SessionSharePanel) */

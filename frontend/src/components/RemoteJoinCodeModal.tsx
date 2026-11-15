@@ -12,7 +12,8 @@
 //   - T-122-03-05: session name + hostname rendered via React text content
 //     (auto-escaped). No raw-HTML injection paths anywhere in this component.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
+import { useDialogFocus } from '../lib/useDialogFocus'
 
 export interface RemoteJoinCodeModalProps {
   remoteSession: { id: string; name: string; hostname: string }
@@ -71,21 +72,9 @@ export function RemoteJoinCodeModal({
   const [code, setCode] = useState<string>('')
   const [pending, setPending] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  // Focus the input on mount.
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  // Escape closes the modal (mirrors QuitConfirmModal).
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent): void {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // Portty 02-09: initial focus on the code input, Tab trap, Esc closes.
+  useDialogFocus(dialogRef, { onCancel: onClose, initialFocus: 'first-input' })
 
   const submitDisabled = pending || code.trim().length === 0
 
@@ -107,42 +96,27 @@ export function RemoteJoinCodeModal({
   const titleId = 'remote-join-code-modal-title'
 
   return (
-    <div
-      className="modal-overlay remote-join-modal-overlay"
-      onClick={onClose}
-      data-testid="remote-join-modal-overlay"
-    >
+    <div className="dialog-scrim" data-testid="remote-join-modal-overlay">
       <div
-        className="modal-dialog remote-join-modal"
+        ref={dialogRef}
+        className="dialog remote-join-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onClick={(e) => e.stopPropagation()}
       >
-        <div className="remote-join-modal__header">
-          <h2 className="remote-join-modal__title" id={titleId}>
-            {title}
-          </h2>
-          <button
-            type="button"
-            className="remote-join-modal__close"
-            aria-label="Close"
-            onClick={onClose}
-            disabled={pending}
-          >
-            &times;
-          </button>
-        </div>
-        <div className="remote-join-modal__body">
+        <h2 className="dialog__title" id={titleId}>
+          {title}
+        </h2>
+        <div className="dialog__body">
           {intent === 'open-session' ? (
-            <p className="remote-join-modal__body-text">
+            <p>
               To open <strong>{remoteSession.name}</strong> on{' '}
               <strong>{remoteSession.hostname}</strong> in your browser, ask
               the owner to share the session and send you the join code or share
               link. Paste the join code (format XXXX-XXXX) below.
             </p>
           ) : (
-            <p className="remote-join-modal__body-text">
+            <p>
               Ask the owner of <strong>{remoteSession.name}</strong> on{' '}
               <strong>{remoteSession.hostname}</strong> for the 8-character join
               code (format XXXX-XXXX). (Owner generates it from the Daemon Manager
@@ -150,7 +124,6 @@ export function RemoteJoinCodeModal({
             </p>
           )}
           <input
-            ref={inputRef}
             type="text"
             className="remote-join-modal__input"
             placeholder="XXXX-XXXX"
@@ -169,7 +142,7 @@ export function RemoteJoinCodeModal({
           />
           {error !== null && (
             <p
-              className="remote-join-modal__error"
+              className="dialog__error"
               role="alert"
               data-testid="remote-join-modal-error"
             >
@@ -177,10 +150,11 @@ export function RemoteJoinCodeModal({
             </p>
           )}
         </div>
-        <div className="remote-join-modal__footer">
+        <div className="dialog__buttons">
           <button
             type="button"
-            className="remote-join-modal__btn remote-join-modal__btn--cancel"
+            className="button button--secondary"
+            data-dialog-cancel=""
             onClick={onClose}
             disabled={pending}
           >
@@ -188,11 +162,12 @@ export function RemoteJoinCodeModal({
           </button>
           <button
             type="button"
-            className="remote-join-modal__btn remote-join-modal__btn--submit"
+            className="button button--primary"
+            data-dialog-primary=""
             onClick={() => void handleSubmit()}
             disabled={submitDisabled}
           >
-            {pending ? 'Joining...' : 'Join'}
+            {pending ? 'Joining…' : 'Join Session'}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useDialogFocus } from '../lib/useDialogFocus'
 
 interface RegenerateKeyModalProps {
   isOpen: boolean
@@ -25,9 +26,10 @@ interface RegenerateKeyModalProps {
 /**
  * Confirmation modal — originally the signing-key rotation prompt (Phase 87
  * UI-SPEC Surface 2, D-16), generalized in Phase 150 to accept copy overrides
- * so other destructive/guarded actions can reuse the same .quit-modal* shell.
+ * so other destructive/guarded actions can reuse the same dialog shell.
  *
- * Structurally mirrors QuitConfirmModal: reuses the .quit-modal* CSS classes.
+ * Portty 02-09: the shared sheet style (.dialog*); useDialogFocus focuses
+ * Cancel first, traps Tab, and maps Esc to onCancel.
  * Defaults preserve the original copy: "Invalidate All Links" is the
  * destructive confirm — rotating the signing key immediately invalidates every
  * outstanding capability across every session (the v3.1 panic button).
@@ -46,22 +48,9 @@ function RegenerateKeyModal({
 }: RegenerateKeyModalProps): React.ReactElement | null {
   const [acting, setActing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const cancelBtnRef = useRef<HTMLButtonElement>(null)
-
-  // Close on Escape (matches QuitConfirmModal convention).
-  useEffect(() => {
-    if (!isOpen) return
-    function handleKeyDown(e: KeyboardEvent): void {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onCancel])
-
-  // Focus the cancel button on open (safer default for a destructive action).
-  useEffect(() => {
-    if (isOpen) cancelBtnRef.current?.focus()
-  }, [isOpen])
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // Cancel first: the safer default for a destructive action.
+  useDialogFocus(dialogRef, { onCancel, initialFocus: 'cancel', active: isOpen })
 
   // Reset transient state when modal (re)opens or closes.
   useEffect(() => {
@@ -87,33 +76,31 @@ function RegenerateKeyModal({
   }
 
   return (
-    <div className="quit-modal-overlay" onClick={onCancel}>
+    <div className="dialog-scrim">
       <div
-        className="quit-modal"
+        ref={dialogRef}
+        className="dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onClick={(e) => e.stopPropagation()}
       >
-        <div className="quit-modal__header">
-          <h2 className="quit-modal__title" id={titleId}>{title}</h2>
-          <button className="quit-modal__close" aria-label="Close" onClick={onCancel}>&times;</button>
+        <h2 className="dialog__title" id={titleId}>{title}</h2>
+        <div className="dialog__body">
+          <p>{body}</p>
+          {error && <p className="dialog__error" role="alert">{error}</p>}
         </div>
-        <div className="quit-modal__body">
-          <p className="quit-modal__subtitle">{body}</p>
-          {error && <p className="settings-panel__error">{error}</p>}
-        </div>
-        <div className="quit-modal__footer">
+        <div className="dialog__buttons">
           <button
-            className="quit-modal__btn--cancel"
-            ref={cancelBtnRef}
+            className="button button--secondary"
+            data-dialog-cancel=""
             disabled={acting}
             onClick={onCancel}
           >
             {cancelLabel}
           </button>
           <button
-            className={`quit-modal__btn--quit-all${destructive ? ' quit-modal__btn--destructive' : ''}`}
+            className={`button ${destructive ? 'button--destructive' : 'button--primary'}`}
+            data-dialog-primary=""
             disabled={acting}
             onClick={() => void handleConfirm()}
           >

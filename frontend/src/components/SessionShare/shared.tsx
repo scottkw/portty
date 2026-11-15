@@ -153,22 +153,10 @@ export function CodeDisplay({
     }
   }
   return (
-    <div
-      className="session-share-panel__code-display"
-      style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 8px', fontSize: 13 }}
-    >
-      <span style={{ color: '#9aa5ce' }}>{label}</span>
+    <div className="session-share-panel__code-display">
+      <span className="share-field__label">{label}</span>
       <code
-        style={{
-          fontFamily: 'monospace',
-          fontWeight: 700,
-          letterSpacing: '0.05em',
-          background: '#16161e',
-          padding: '2px 8px',
-          borderRadius: 3,
-          userSelect: 'all',
-          color: '#c0caf5',
-        }}
+        className="share-field__value"
         data-testid="join-code-text"
       >
         {code}
@@ -178,7 +166,6 @@ export function CodeDisplay({
         className="daemon-panel__btn"
         onClick={() => void handleCopyCode()}
         aria-label={`Copy ${label.toLowerCase()} to clipboard`}
-        style={{ fontSize: 11, padding: '2px 8px' }}
       >
         {copied ? 'Copied!' : 'Copy'}
       </button>

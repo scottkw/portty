@@ -36,14 +36,14 @@ function renderModal(intent?: 'open-session'): HTMLDivElement {
 describe('RemoteJoinCodeModal — title reflects intent (GAP-134-E)', () => {
   it('open-session intent shows its own title (NOT "Files")', () => {
     const c = renderModal('open-session')
-    const title = c.querySelector('.remote-join-modal__title')
+    const title = c.querySelector('.dialog__title')
     expect(title?.textContent?.trim()).toBe('Open Remote Session')
     expect(title?.textContent).not.toContain('Files')
   })
 
   it('defaults to the generic title when intent is omitted', () => {
     const c = renderModal(undefined)
-    const title = c.querySelector('.remote-join-modal__title')
+    const title = c.querySelector('.dialog__title')
     expect(title?.textContent?.trim()).toBe('Join Remote Session')
   })
 })

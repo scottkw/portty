@@ -161,6 +161,9 @@ const MIGRATED_SURFACE_SELECTORS = [
   '.settings-panel', '.settings-jump-bar', '.settings-search', '.hub-share-modal',
   // Portty 02-08: toolbar, tab pills, context menu, empty state, End Session note.
   '.tab__', '.tab-list', '.toolbar-', '.context-menu', '.empty-state', '.end-session',
+  // Portty 02-09: every dialog and the Share dialog's content.
+  '.dialog', '.button', '.new-session-', '.quit-modal', '.remote-join-modal', '.share-seg',
+  '.hub-funnel-risk-panel', '.share-field', '.session-share-panel', '.daemon-panel__btn', '.link-confirm-popover',
 ]
 
 describe('RDS-02 / RDS-04 carry-over', () => {
@@ -188,13 +191,13 @@ describe('RDS-02 / RDS-04 carry-over', () => {
     expect(cleanCss).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/)
   })
 
-  it('share-modal animation is gated by prefers-reduced-motion (S-07)', () => {
+  it('dialog (incl. Share) animation is gated by prefers-reduced-motion (S-07, Portty 02-09)', () => {
     const noPref = extractBlockBody(
       cleanCss,
-      /@media\s*\(prefers-reduced-motion:\s*no-preference\)\s*\{\s*\.hub-share-modal--entering/,
+      /@media\s*\(prefers-reduced-motion:\s*no-preference\)\s*\{\s*\.dialog\s*\{/,
     )
-    expect(noPref).toMatch(/animation:\s*hub-share-modal-in/)
-    const reduce = extractBlockBody(cleanCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.hub-share-modal\b/)
+    expect(noPref).toMatch(/animation:\s*dialog-in/)
+    const reduce = extractBlockBody(cleanCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.dialog,/)
     expect(reduce).toMatch(/animation:\s*none/)
   })
 })
