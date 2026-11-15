@@ -14,24 +14,11 @@ type Server struct {
 	manager *HubManager
 	backend pty.SessionBackend
 	mux     *http.ServeMux
-
-	// Phase 152: identity provider fields — set once via SetIdentityProviders.
-	// All three may be nil (safe: handleSession uses them defensively).
-	ownerDefaultAlias string                             // fallback alias when no persisted alias exists for "local:local"
-	getAlias          func(personKey, def string) string // AliasStore.GetOrDefault or in-memory equivalent
-	setAlias          func(personKey, alias string)      // wraps AliasStore.Set (error discarded by caller)
 }
 
 // NewServer creates a Server backed by the given HubManager and SessionBackend
 // and registers routes. backend is used to forward resize events from connected
 // WebSocket clients to the underlying PTY.
-//
-// Cross-origin HTTP from the Wails webview: the relay listens on 127.0.0.1
-// only, but the webview's own origin (typically wails://wails on macOS) is
-// cross-origin from 127.0.0.1:<relayPort>. HTTP routes the daemon mounts on
-// this surface (chat history/export) wrap themselves in FilesCORS and register
-// FilesPreflight. WebSocket traffic bypasses CORS preflight. We allow loopback /
-// Wails / Tauri origins only (isAllowedFilesOrigin).
 func NewServer(manager *HubManager, backend pty.SessionBackend) *Server {
 	s := &Server{
 		manager: manager,
@@ -41,112 +28,6 @@ func NewServer(manager *HubManager, backend pty.SessionBackend) *Server {
 	s.mux.HandleFunc("GET /sessions/{id}/ws", s.handleSession)
 	s.mux.HandleFunc("GET /sessions", s.handleListSessions)
 	return s
-}
-
-// SetIdentityProviders wires the loopback relay path's identity and alias
-// persistence callbacks. Must be called before the first WebSocket connection
-// is accepted (i.e. before http.Serve). All three parameters may be nil-safe
-// (handleSession guards on nil before calling). Phase 152 / IDENT-01.
-//
-//   - ownerDefaultAlias: display alias used when no persisted alias exists for
-//     "local:local" — typically the daemon machine hostname.
-//   - getAlias: looks up the persisted alias for a personKey, returning def when
-//     absent.  Mirrors AliasStore.GetOrDefault.
-//   - setAlias: persists a new alias for a personKey.  The error from
-//     AliasStore.Set is intentionally discarded in the wrapper the daemon
-//     supplies — alias persistence failure must not close the connection.
-func (s *Server) SetIdentityProviders(
-	ownerDefaultAlias string,
-	getAlias func(personKey, def string) string,
-	setAlias func(personKey, alias string),
-) {
-	s.ownerDefaultAlias = ownerDefaultAlias
-	s.getAlias = getAlias
-	s.setAlias = setAlias
-}
-
-// isAllowedFilesOrigin returns true for loopback / Wails / Tauri webview
-// origins. The relay listens on 127.0.0.1 only so this is defense-in-depth.
-// The "Files" name is historical (first used by the removed file API); it now
-// guards the chat history/export routes.
-func isAllowedFilesOrigin(origin string) bool {
-	if origin == "" {
-		// Same-origin or non-browser caller (curl, Go HTTP client). Allow —
-		// the relay's 127.0.0.1 bind is the actual network boundary.
-		return true
-	}
-	switch origin {
-	case "http://wails.localhost", "https://wails.localhost",
-		"wails://wails", // macOS Wails v2 custom URL scheme (frontend.go:40)
-		"http://tauri.localhost", "https://tauri.localhost",
-		"http://localhost", "https://localhost",
-		"http://127.0.0.1", "https://127.0.0.1",
-		"null": // file:// pages and opaque custom-scheme origins report "null"
-		return true
-	}
-	// Allow any wails:// origin (custom URL scheme on macOS — different Wails
-	// versions/builds may vary the host segment).
-	if len(origin) >= len("wails://") && origin[:len("wails://")] == "wails://" {
-		return true
-	}
-	// Allow http(s)://127.0.0.1:<port> and http(s)://localhost:<port> with any port.
-	for _, prefix := range []string{
-		"http://127.0.0.1:", "https://127.0.0.1:",
-		"http://localhost:", "https://localhost:",
-	} {
-		if len(origin) > len(prefix) && origin[:len(prefix)] == prefix {
-			return true
-		}
-	}
-	return false
-}
-
-// withCORS wraps a handler to emit Access-Control-Allow-Origin on responses
-// when the request Origin is in the loopback allowlist.
-func withCORS(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		if isAllowedFilesOrigin(origin) && origin != "" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-		}
-		next(w, r)
-	}
-}
-
-// handleFilesPreflight responds to CORS preflight (OPTIONS) for relay HTTP routes.
-func handleFilesPreflight(w http.ResponseWriter, r *http.Request) {
-	origin := r.Header.Get("Origin")
-	if !isAllowedFilesOrigin(origin) {
-		http.Error(w, "Origin not allowed", http.StatusForbidden)
-		return
-	}
-	if origin != "" {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-	}
-	w.Header().Set("Vary", "Origin")
-	// Advertised verb/header set unchanged from the removed file API (it used
-	// write verbs + If-Match); harmless for the GET-only chat routes.
-	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, PUT, POST, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Range, If-Modified-Since, If-Match")
-	w.Header().Set("Access-Control-Max-Age", "600")
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// FilesCORS wraps a handler with the relay's loopback-origin CORS policy
-// (Access-Control-Allow-Origin for allow-listed Wails/loopback origins).
-// Exported so the daemon can apply it to the chat history/export routes it
-// mounts on the relay surface — those handlers are *daemon.API methods and
-// cannot live in this package without an import cycle, but they ride the
-// cross-origin webview→127.0.0.1:<relayPort> boundary.
-func FilesCORS(next http.HandlerFunc) http.HandlerFunc {
-	return withCORS(next)
-}
-
-// FilesPreflight responds to a CORS preflight (OPTIONS) for daemon-mounted
-// HTTP routes on the relay surface (chat history/export).
-func FilesPreflight(w http.ResponseWriter, r *http.Request) {
-	handleFilesPreflight(w, r)
 }
 
 // ServeHTTP implements http.Handler by delegating to the internal mux.

@@ -1,12 +1,10 @@
 package relay
 
 import (
-	"fmt"
 	"io"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	xvt "github.com/charmbracelet/x/vt"
 )
@@ -30,21 +28,9 @@ type Subscriber struct {
 	Cols int
 	Rows int
 
-	// Phase 152: identity fields — set once at subscribe time, read by read pump.
-	TailnetID  string                        // "local" or Tailscale node public key string
-	Origin     string                        // "local" (relay loopback) or "web" (webserver Tailscale)
-	PersonKey  string                        // TailnetID + ":" + Origin — the collapse key (D-04)
-	Alias      string                        // current display name (mutable via MsgAliasSet)
-	AliasSetFn func(personKey, alias string) // persistence callback; avoids import cycle with daemon
-}
-
-// presenceState is the per-person collapsed entry in the Hub presence roster.
-// Guarded by hub.mu.
-type presenceState struct {
-	TailnetID string
-	Origin    string
-	Alias     string
-	ConnCount int // number of active Subscriber connections for this PersonKey
+	// Origin: "local" (relay loopback) or "web" (webserver Tailscale). Set once
+	// at subscribe time; the host-authority resize arbiter and RemoteViewerCount read it.
+	Origin string
 }
 
 // Hub manages a single PTY session's output fan-out.
@@ -67,16 +53,6 @@ type Hub struct {
 	// when no local host is connected (D-01). (VIEW-01, VIEW-02)
 	ptyCols int
 	ptyRows int
-
-	// Phase 152: presence/typing state — guarded by mu.
-	presenceRoster  map[string]*presenceState // personKey → collapsed presence state
-	typingRoster    map[string]*time.Timer    // personKey → 5s TTL timer
-	lastTypingBcast map[string]time.Time      // personKey → last typing-start broadcast time (rate limit)
-	typingTTL       time.Duration             // injectable for tests; default 5s
-
-	// Chat-send persist callback. Wired by engine.go after Hub+ChatStore are both
-	// constructed. HandleChatSend returns an error when it is nil. Guarded by mu.
-	chatAppendFn func(ChatMessage) (ChatMessage, error)
 
 	// Phase 175-04 (BUG-04, #119): live per-hub VT emulator + its own guard.
 	// liveEmu is nil until EnsureLiveEmulator's first call (lazy — T-175-04-01:
@@ -141,17 +117,13 @@ var liveEmuQueryStripPattern = regexp.MustCompile(
 // resizeFn is called when a resize event is received; may be nil.
 func NewHub(sessionID string, reader io.Reader, writer io.Writer, scrollbackBytes int, resizeFn func(cols, rows int) error) *Hub {
 	return &Hub{
-		sessionID:       sessionID,
-		reader:          reader,
-		writer:          writer,
-		scrollback:      NewScrollback(scrollbackBytes),
-		resizeFn:        resizeFn,
-		subscribers:     make(map[*Subscriber]struct{}),
-		done:            make(chan struct{}),
-		presenceRoster:  make(map[string]*presenceState), // Pitfall 4 — must init to avoid nil map panic
-		typingRoster:    make(map[string]*time.Timer),
-		lastTypingBcast: make(map[string]time.Time),
-		typingTTL:       5 * time.Second,
+		sessionID:   sessionID,
+		reader:      reader,
+		writer:      writer,
+		scrollback:  NewScrollback(scrollbackBytes),
+		resizeFn:    resizeFn,
+		subscribers: make(map[*Subscriber]struct{}),
+		done:        make(chan struct{}),
 	}
 }
 
@@ -166,87 +138,17 @@ func (h *Hub) Resize(cols, rows int) error {
 
 // Subscribe adds a subscriber to receive future frames.
 // Must be called before Hub.Run or while Run is active under the mu lock.
-// If sub.PersonKey is non-empty, the presence roster is updated (ConnCount
-// incremented or a new entry created). Callers should call NotifyPresence
-// after Subscribe returns to push the updated roster.
 func (h *Hub) Subscribe(sub *Subscriber) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.subscribers[sub] = struct{}{}
-	if sub.PersonKey != "" {
-		if s, ok := h.presenceRoster[sub.PersonKey]; ok {
-			s.ConnCount++
-		} else {
-			h.presenceRoster[sub.PersonKey] = &presenceState{
-				TailnetID: sub.TailnetID,
-				Origin:    sub.Origin,
-				Alias:     sub.Alias,
-				ConnCount: 1,
-			}
-		}
-	}
 }
 
-// RegisterPresence performs ONLY the presence-roster registration that
-// Subscribe's `if sub.PersonKey != ""` block does, decoupled from adding the
-// subscriber to the broadcast set.
-//
-// Phase 155-05 (PARITY-01) two-phase web path: the WSS handler calls Subscribe
-// immediately after the WebSocket Accept (so delivery starts at once, before
-// the latency-bearing WhoIs identity lookup) with an empty PersonKey, then —
-// once WhoIs resolves and sub.TailnetID/PersonKey/Alias are set — calls
-// RegisterPresence to add the roster entry. It MUST be called only after the
-// sub's identity fields are set, and only once per connection.
-//
-// The relay loopback path (server.go) sets identity before Subscribe and keeps
-// registering presence in one shot via Subscribe; it does NOT call this.
-//
-// Callers should call NotifyPresence after RegisterPresence returns to push the
-// updated roster. No-op when sub.PersonKey is empty.
-func (h *Hub) RegisterPresence(sub *Subscriber) {
-	if sub.PersonKey == "" {
-		return
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if s, ok := h.presenceRoster[sub.PersonKey]; ok {
-		s.ConnCount++
-	} else {
-		h.presenceRoster[sub.PersonKey] = &presenceState{
-			TailnetID: sub.TailnetID,
-			Origin:    sub.Origin,
-			Alias:     sub.Alias,
-			ConnCount: 1,
-		}
-	}
-}
-
-// Unsubscribe removes a subscriber and returns true when a presence broadcast
-// is warranted (i.e. the last connection for sub.PersonKey has dropped).
-// Callers should call NotifyPresence when presenceChanged is true.
-//
-// Changed signature from Phase 152: now returns (presenceChanged bool).
-// Existing call sites that discard the return value continue to compile.
-func (h *Hub) Unsubscribe(sub *Subscriber) (presenceChanged bool) {
+// Unsubscribe removes a subscriber.
+func (h *Hub) Unsubscribe(sub *Subscriber) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.subscribers, sub)
-	if sub.PersonKey != "" {
-		if s, ok := h.presenceRoster[sub.PersonKey]; ok {
-			s.ConnCount--
-			if s.ConnCount <= 0 {
-				delete(h.presenceRoster, sub.PersonKey)
-				// Cancel and remove any active typing timer for this person.
-				if t, ok := h.typingRoster[sub.PersonKey]; ok {
-					t.Stop()
-					delete(h.typingRoster, sub.PersonKey)
-				}
-				delete(h.lastTypingBcast, sub.PersonKey)
-				presenceChanged = true
-			}
-		}
-	}
-	return
 }
 
 // SubscriberCount returns the number of currently subscribed clients. (MC-04)
@@ -259,9 +161,8 @@ func (h *Hub) SubscriberCount() int {
 // RemoteViewerCount returns the number of currently subscribed clients whose
 // Origin is "web" — i.e. real remote/shared viewers, excluding the app's own
 // internal Origin=="local" WebSocket subscribers (TerminalPanel, ChatPanel,
-// status watcher, Hub-card preview). Unlike SubscriberCount, this is a raw
-// per-connection count with no PersonKey collapse (D-01, D-02, D-03 — Phase
-// 168 / FIX-04, #121). SubscriberCount itself is left unchanged; it is still
+// status watcher, Hub-card preview). This is a raw per-connection count
+// (D-01, D-02, D-03 — Phase 168 / FIX-04, #121). SubscriberCount itself is left unchanged; it is still
 // consumed by relay/server.go's NotifyViewerCount.
 func (h *Hub) RemoteViewerCount() int {
 	h.mu.Lock()
@@ -546,248 +447,10 @@ func (h *Hub) Shutdown() {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Phase 152: Presence roster methods
-// ---------------------------------------------------------------------------
-
-// BroadcastPresence sends a MsgPresence frame to all subscribers using a
-// non-blocking send. Identical to BroadcastMeta — separated for clarity.
-func (h *Hub) BroadcastPresence(frame []byte) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for sub := range h.subscribers {
-		select {
-		case sub.Msgs <- frame:
-		default:
-			go sub.CloseSlow()
-		}
-	}
-}
-
-// BroadcastExcept sends a frame to all subscribers EXCEPT the excluded one.
-// Used for typing-start broadcasts so the sender does not see their own indicator.
-func (h *Hub) BroadcastExcept(frame []byte, exclude *Subscriber) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for sub := range h.subscribers {
-		if sub == exclude {
-			continue
-		}
-		select {
-		case sub.Msgs <- frame:
-		default:
-			go sub.CloseSlow()
-		}
-	}
-}
-
-// CurrentPresence returns a snapshot of the current presence roster.
-// The returned slice is safe to use after this method returns.
-func (h *Hub) CurrentPresence() []PresenceEntry {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	entries := make([]PresenceEntry, 0, len(h.presenceRoster))
-	for key, s := range h.presenceRoster {
-		entries = append(entries, PresenceEntry{
-			PersonKey: key,
-			TailnetID: s.TailnetID,
-			Origin:    s.Origin,
-			Alias:     s.Alias,
-			ConnCount: s.ConnCount,
-		})
-	}
-	return entries
-}
-
-// UpdateAlias updates the roster entry for personKey so the next CurrentPresence
-// reflects the new alias. No-op if personKey is not in the roster.
-func (h *Hub) UpdateAlias(personKey, alias string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if s, ok := h.presenceRoster[personKey]; ok {
-		s.Alias = alias
-	}
-}
-
-// NotifyPresence pushes a full MsgPresence roster frame to all subscribers.
-// Must be called OUTSIDE hub.mu (it acquires mu internally).
-func NotifyPresence(hub *Hub) {
-	roster := hub.CurrentPresence()
-	frame := MakePresenceFrame(PresencePayload{Participants: roster})
-	hub.BroadcastPresence(frame)
-}
-
-// ---------------------------------------------------------------------------
-// Phase 152: Typing TTL methods
-// ---------------------------------------------------------------------------
-
-// UpdateTyping updates the typing state for sub.PersonKey.
-//   - typing=true: broadcasts typing:true to all OTHER subscribers (sender excluded),
-//     resets the per-person TTL timer, and applies a per-person rate limit of 500ms
-//     to avoid broadcast storms (T-152-03).
-//   - typing=false: cancels the TTL timer and broadcasts typing:false to ALL subscribers.
-//
-// Must be called OUTSIDE hub.mu (acquires and releases mu internally).
-// The h.closed guard prevents post-shutdown panics (Pitfall 2 / T-152-07).
-func (h *Hub) UpdateTyping(sub *Subscriber, typing bool) {
-	personKey := sub.PersonKey
-	alias := sub.Alias
-
-	h.mu.Lock()
-	if h.closed {
-		h.mu.Unlock()
-		return
-	}
-
-	if !typing {
-		// Explicit stop — cancel any live timer.
-		if t, ok := h.typingRoster[personKey]; ok {
-			t.Stop()
-			delete(h.typingRoster, personKey)
-		}
-		delete(h.lastTypingBcast, personKey)
-		h.mu.Unlock()
-		// Broadcast typing:false to ALL subscribers (including the sender).
-		NotifyTyping(h, personKey, alias, false)
-		return
-	}
-
-	// typing=true: apply rate limit — skip re-broadcast if last one was < 500ms ago.
-	now := time.Now()
-	shouldBcast := true
-	if last, ok := h.lastTypingBcast[personKey]; ok && now.Sub(last) < 500*time.Millisecond {
-		shouldBcast = false
-	}
-
-	// Reset (or start) the TTL timer.
-	if t, ok := h.typingRoster[personKey]; ok {
-		t.Stop()
-	}
-	h.typingRoster[personKey] = time.AfterFunc(h.typingTTL, func() {
-		h.mu.Lock()
-		if h.closed {
-			h.mu.Unlock()
-			return // Pitfall 2: do not broadcast after shutdown
-		}
-		delete(h.typingRoster, personKey)
-		delete(h.lastTypingBcast, personKey)
-		h.mu.Unlock()
-		// TTL fired — broadcast typing:false to all (sender already gone or idle).
-		NotifyTyping(h, personKey, alias, false)
-	})
-
-	if shouldBcast {
-		h.lastTypingBcast[personKey] = now
-	}
-	h.mu.Unlock() // release BEFORE broadcasting (ResizeClient discipline)
-
-	if shouldBcast {
-		// Broadcast typing:true to all EXCEPT the sender (Pitfall 5 / T-152-03).
-		frame := MakeTypingFrame(TypingPayload{PersonKey: personKey, Alias: alias, Typing: true})
-		h.BroadcastExcept(frame, sub)
-	}
-}
-
-// NotifyTyping broadcasts a MsgTyping frame to the appropriate audience.
-// For typing=false it fans out to ALL subscribers (sender may be gone).
-// For typing=true the caller (UpdateTyping) uses BroadcastExcept — this
-// function is called only for the typing=false (stop/TTL) case from UpdateTyping.
-func NotifyTyping(hub *Hub, personKey, alias string, typing bool) {
-	frame := MakeTypingFrame(TypingPayload{PersonKey: personKey, Alias: alias, Typing: typing})
-	hub.BroadcastPresence(frame) // reuse the all-subscribers fan-out
-}
-
 // WriteInput writes raw input bytes to the underlying PTY writer (stdin).
 func (h *Hub) WriteInput(data []byte) error {
 	_, err := h.writer.Write(data)
 	return err
-}
-
-// ---------------------------------------------------------------------------
-// Chat-send persistence
-// ---------------------------------------------------------------------------
-
-// SetChatAppendFn wires the persist callback HandleChatSend uses to store chat
-// messages (HandleChatSend fails with "chatAppendFn not wired" without it).
-// Must be called before the first WebSocket connection is accepted for this session
-// (i.e. from engine.go CreateSession). Safe to call concurrently with hub.mu.
-// Mirrors the Subscriber.AliasSetFn assignment pattern.
-func (h *Hub) SetChatAppendFn(fn func(ChatMessage) (ChatMessage, error)) {
-	h.mu.Lock()
-	h.chatAppendFn = fn
-	h.mu.Unlock()
-}
-
-// ChatAppendFnWired reports whether a chatAppendFn has been set.
-// Used by the playwright-fixture admin server for diagnostic assertions only.
-func (h *Hub) ChatAppendFnWired() bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.chatAppendFn != nil
-}
-
-// BroadcastChat sends a MsgChat frame to all subscribers using a non-blocking
-// send. Slow subscribers have CloseSlow called. Identical fan-out to BroadcastMeta
-// — separated for clarity (MsgChat is a different frame type than MsgMeta).
-func (h *Hub) BroadcastChat(frame []byte) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	for sub := range h.subscribers {
-		select {
-		case sub.Msgs <- frame:
-		default:
-			go sub.CloseSlow()
-		}
-	}
-}
-
-// HandleChatSend is called by the read pump when a MsgChatSend frame arrives.
-// It: (1) sanitizes the content via SanitizeChatContent (T-154-01); (2) if the
-// sanitized result is empty, returns nil silently (no-op, matching MsgTyping
-// behavior); (3) persists the message via chatAppendFn and broadcasts a MsgChat
-// frame to all subscribers.
-//
-// D-06 reconciliation (Phase 163): RO clients are full chat participants — they
-// may post chat, set typing indicators, and set their alias. ONLY MsgInput (PTY
-// keystrokes) remains RO-gated. The SEC-01 ErrChatReadOnly gate (T-154-03) has
-// been removed to honor D-06.
-//
-// CRITICAL: HandleChatSend NEVER calls WriteInput — chat send must not touch
-// PTY stdin (T-154-02, D-02). No chat path writes to the PTY (CHAT-01).
-//
-// Unlock-before-IO discipline (Pitfall 4): hub.mu is released before calling
-// chatAppendFn or BroadcastChat.
-// sub.ReadOnly is read without a lock: it is set once at subscribe time and
-// never mutated.
-func (h *Hub) HandleChatSend(sub *Subscriber, content string) error {
-	// T-154-01: sanitize for display-safety (bidi/C0/C1 stripping).
-	sanitized := SanitizeChatContent(content)
-	if sanitized == "" {
-		// Silent no-op: matches MsgTyping behavior for control-char-only input.
-		return nil
-	}
-
-	// Persist and broadcast — read chatAppendFn under mu, then release before calling.
-	h.mu.Lock()
-	fn := h.chatAppendFn
-	h.mu.Unlock()
-
-	if fn == nil {
-		return fmt.Errorf("relay: HandleChatSend: chatAppendFn not wired")
-	}
-
-	msg, err := fn(ChatMessage{
-		AuthorID:    sub.TailnetID,
-		AuthorAlias: sub.Alias,
-		Content:     sanitized,
-	})
-	if err != nil {
-		return fmt.Errorf("relay: HandleChatSend: persist failed: %w", err)
-	}
-	// BroadcastChat acquires its own lock — must not hold hub.mu here.
-	h.BroadcastChat(MakeChatFrame(msg))
-	return nil
 }
 
 // ScrollbackSnapshot returns a copy of the current scrollback buffer contents.

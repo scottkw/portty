@@ -76,7 +76,7 @@ func TestSessionEnd_HubDone_CarriesCloseReason(t *testing.T) {
 		"/sessions/"+sessionID+"/ws?cap="+token, headers)
 
 	// Allow the server time to process the WS upgrade, Subscribe, and send
-	// the initial MsgMeta + MsgPresence frames.
+	// the initial MsgMeta frame.
 	time.Sleep(50 * time.Millisecond)
 
 	// --- Trigger the session-end path: shut down the hub mid-test. ---
@@ -88,7 +88,7 @@ func TestSessionEnd_HubDone_CarriesCloseReason(t *testing.T) {
 
 	// --- Assert the client eventually observes a CloseError carrying the
 	// expected code + reason (not a bare abrupt close). The initial
-	// MsgMeta/MsgPresence frames (sent right after Subscribe, before this
+	// MsgMeta frames (sent right after Subscribe, before this
 	// test ever reads) may still be buffered ahead of the close on the
 	// wire, so drain ordinary data frames (nil err) until Read surfaces the
 	// close itself — a single Read is not guaranteed to observe it directly. ---

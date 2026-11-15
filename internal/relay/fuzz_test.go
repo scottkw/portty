@@ -1,15 +1,14 @@
 package relay
 
 // Security fuzz harness (STRP-04) for the relay's untrusted-input surfaces:
-// WebSocket frame parsing, the browser→PTY input absorber, and chat content
-// sanitization. Run one target at a time, e.g.
+// WebSocket frame parsing and the browser→PTY input absorber. Run one target
+// at a time, e.g.
 //
 //	go test -run='^$' -fuzz='^FuzzParseFrame$' -fuzztime=10s ./internal/relay
 
 import (
 	"bytes"
 	"testing"
-	"unicode/utf8"
 )
 
 func FuzzParseFrame(f *testing.F) {
@@ -17,7 +16,7 @@ func FuzzParseFrame(f *testing.F) {
 	f.Add([]byte{MsgInput})
 	f.Add(append([]byte{0x35}, `{"text":"evil command"}`...)) // retired inject frame
 	f.Add(append([]byte{MsgOutput}, "hello\r\n"...))
-	f.Add(append([]byte{MsgChatSend}, `{"content":"hi"}`...))
+	f.Add(append([]byte{0x31}, `{"content":"hi"}`...)) // retired chat-send frame
 
 	f.Fuzz(func(t *testing.T, frame []byte) {
 		msgType, payload, err := ParseFrame(frame)
@@ -59,30 +58,6 @@ func FuzzInputAbsorberFilter(f *testing.F) {
 			if got := fresh.Filter(in); !bytes.Equal(got, in) {
 				t.Fatalf("ESC-free input changed: in=%q out=%q", in, got)
 			}
-		}
-	})
-}
-
-func FuzzSanitizeChatContent(f *testing.F) {
-	f.Add("hello @alice")
-	f.Add("a\x00b\x1b[2Jc\r\n\t")
-	f.Add("x\u0085y\u009b\u007fz")
-	f.Add("safe‮evil⁦‏")
-	f.Add("\xff\xfe invalid utf8")
-
-	f.Fuzz(func(t *testing.T, in string) {
-		out := SanitizeChatContent(in)
-		for _, r := range out {
-			if r <= 0x1F || r == 0x7F || (r >= 0x80 && r <= 0x9F) || isBidiOverride(r) {
-				t.Fatalf("control/bidi rune U+%04X survived: in=%q out=%q", r, in, out)
-			}
-		}
-		if again := SanitizeChatContent(out); again != out {
-			t.Fatalf("not idempotent: once=%q twice=%q", out, again)
-		}
-		// Invalid UTF-8 bytes become U+FFFD (3 bytes each), so compare rune counts.
-		if utf8.RuneCountInString(out) > utf8.RuneCountInString(in) {
-			t.Fatalf("output has more runes than input: in=%q out=%q", in, out)
 		}
 	})
 }

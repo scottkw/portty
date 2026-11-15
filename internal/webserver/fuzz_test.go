@@ -107,7 +107,7 @@ func FuzzWebServerRoutes(f *testing.F) {
 	f.Add("join", "code=ABCD")
 	f.Add("api/sessions/meta", "")
 	f.Add("api/sessions/s1/info", "cap="+url.QueryEscape(readS1))
-	f.Add("api/chat/s1/history", "cap=bad")
+	f.Add("api/chat/s1/history", "cap=bad") // removed chat route (CHAT-01): must 404, not 500
 	f.Add("api/sessions/s1/qr", "")
 	f.Add("sessions/s1", "cap=x")
 	f.Add("assets/../../etc/passwd", "")

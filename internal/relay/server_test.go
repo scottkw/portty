@@ -72,18 +72,18 @@ func readFrame(t *testing.T, conn *websocket.Conn) (byte, []byte) {
 	return msgType, payload
 }
 
-// readDataFrame reads frames from conn, skipping any MsgMeta, MsgPresence,
-// and MsgResize frames, and returns the first PTY-data frame. Used in tests
-// that predate Phase 157 and only care about PTY output: meta, presence, and
-// join-push resize frames are all server-push housekeeping, not PTY data.
+// readDataFrame reads frames from conn, skipping any MsgMeta and MsgResize
+// frames, and returns the first PTY-data frame. Used in tests that predate
+// Phase 157 and only care about PTY output: meta and join-push resize frames
+// are server-push housekeeping, not PTY data.
 // Tests that must assert the ordering of the join-push resize should use
 // readFrame directly instead.
 func readDataFrame(t *testing.T, conn *websocket.Conn) (byte, []byte) {
 	t.Helper()
 	for {
 		msgType, payload := readFrame(t, conn)
-		if msgType == MsgMeta || msgType == MsgPresence || msgType == MsgResize || msgType == MsgSelf {
-			continue // skip server-push housekeeping frames (Phase 161: MsgSelf added)
+		if msgType == MsgMeta || msgType == MsgResize {
+			continue // skip server-push housekeeping frames
 		}
 		return msgType, payload
 	}
@@ -438,19 +438,19 @@ func TestRelayJoin_PushesResizeBeforeScrollback(t *testing.T) {
 	// Connect the guest.
 	conn := dialWS(t, srv.URL, sessionID)
 
-	// Read non-housekeeping frames in order, skipping MsgMeta/MsgPresence/MsgSelf
+	// Read non-housekeeping frames in order, skipping MsgMeta
 	// but NOT MsgResize so we can verify the ordering (resize arrives before scrollback).
 	readOrdered := func() (byte, []byte) {
 		for {
 			typ, payload := readFrame(t, conn)
-			if typ == MsgMeta || typ == MsgPresence || typ == MsgSelf {
-				continue // skip server-push housekeeping frames (Phase 161: MsgSelf added)
+			if typ == MsgMeta {
+				continue // skip server-push housekeeping frames
 			}
 			return typ, payload
 		}
 	}
 
-	// The first non-meta/non-presence frame must be the VIEW-03 resize push.
+	// The first non-meta frame must be the VIEW-03 resize push.
 	firstType, firstPayload := readOrdered()
 	if firstType != MsgResize {
 		t.Fatalf("first non-meta frame: got type 0x%02x, want MsgResize (0x%02x)", firstType, MsgResize)
