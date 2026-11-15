@@ -11,8 +11,11 @@ package webserver
 import (
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
+
+	webfs "github.com/scottkw/agenthub/web"
 )
 
 // TestAssets_XtermJSServedFromEmbed asserts that GET /assets/xterm/xterm.js
@@ -226,5 +229,33 @@ func TestAssets_VendoredAddons(t *testing.T) {
 			t.Errorf("GET %s: expected javascript content-type, got %q", path, ct)
 		}
 		resp.Body.Close()
+	}
+}
+
+// TestAssets_WebPagesFollowColorScheme asserts that the browser join and
+// dashboard pages follow the browser's light/dark preference with the app's
+// two-block token pattern (Portty 02-12, THEM-01): colour literals live only in
+// the :root blocks, and every rule below reads var(--color-*).
+func TestAssets_WebPagesFollowColorScheme(t *testing.T) {
+	comments := regexp.MustCompile(`(?s)/\*.*?\*/`)
+	rootBlocks := regexp.MustCompile(`:root\s*\{[^}]*\}`)
+	literal := regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(`)
+	for _, name := range []string{"assets/join.css", "assets/dashboard.css"} {
+		data, err := webfs.WebFS.ReadFile(name)
+		if err != nil {
+			t.Fatalf("ReadFile %s: %v", name, err)
+		}
+		css := comments.ReplaceAllString(string(data), "")
+		for _, want := range []string{"color-scheme: light dark", "@media (prefers-color-scheme: dark)"} {
+			if !strings.Contains(css, want) {
+				t.Errorf("%s: missing %q", name, want)
+			}
+		}
+		if n := len(rootBlocks.FindAllString(css, -1)); n != 2 {
+			t.Errorf("%s: want a Light and a Dark :root block, found %d", name, n)
+		}
+		if lit := literal.FindAllString(rootBlocks.ReplaceAllString(css, ""), -1); len(lit) > 0 {
+			t.Errorf("%s: colour literals outside the :root blocks: %v", name, lit)
+		}
 	}
 }
