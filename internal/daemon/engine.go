@@ -40,7 +40,6 @@ type SessionEngine struct {
 	aliasStore      *AliasStore           // Phase 152 / IDENT-01,IDENT-02: global alias store (per-person, not per-session); constructed over daemonConfigDir in NewSessionEngine
 
 	startMinimized              bool           // persisted start-minimized preference
-	notifyOnWaiting             bool           // Phase 167 NTF-04: persisted native-notification-on-waiting preference (default OFF)
 	stayOnHubAfterCreate        bool           // Phase 168 UX-01: persisted "stay on Hub after creating a session" preference (default OFF)
 	shellWebShareWarned         bool           // Phase 101 SHELL-08: user has acknowledged the shell web-share security banner
 	shellWebShareWarningEnabled *bool          // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
@@ -82,7 +81,6 @@ func daemonConfigDir() string {
 // files write default) are ignored by json.Unmarshal and dropped on save.
 type daemonSettings struct {
 	StartMinimized              bool           `json:"startMinimized,omitempty"`
-	NotifyOnWaiting             bool           `json:"notifyOnWaiting,omitempty"`      // Phase 167 NTF-04: default OFF; zero-value is the correct default (no defaults-merge needed)
 	StayOnHubAfterCreate        bool           `json:"stayOnHubAfterCreate,omitempty"` // Phase 168 UX-01: default OFF; zero-value is the correct default (no defaults-merge needed)
 	ShellWebShareWarned         bool           `json:"shellWebShareWarned,omitempty"`
 	ShellWebShareWarningEnabled *bool          `json:"shellWebShareWarningEnabled,omitempty"` // Phase 150 SET-01: *bool so omitempty omits false; nil → default true (D-08)
@@ -124,7 +122,6 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 	}
 	e.mu.Lock()
 	e.startMinimized = s.StartMinimized
-	e.notifyOnWaiting = s.NotifyOnWaiting
 	e.stayOnHubAfterCreate = s.StayOnHubAfterCreate
 	e.shellWebShareWarned = s.ShellWebShareWarned
 	e.shellWebShareWarningEnabled = s.ShellWebShareWarningEnabled
@@ -157,7 +154,6 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 func (e *SessionEngine) saveSettingsToDisk() {
 	s := daemonSettings{
 		StartMinimized:              e.startMinimized,
-		NotifyOnWaiting:             e.notifyOnWaiting,
 		StayOnHubAfterCreate:        e.stayOnHubAfterCreate,
 		ShellWebShareWarned:         e.shellWebShareWarned,
 		ShellWebShareWarningEnabled: e.shellWebShareWarningEnabled,
@@ -718,23 +714,6 @@ func (e *SessionEngine) GetStartMinimized() bool {
 func (e *SessionEngine) SetStartMinimized(val bool) {
 	e.mu.Lock()
 	e.startMinimized = val
-	e.saveSettingsToDisk()
-	e.mu.Unlock()
-}
-
-// GetNotifyOnWaiting returns the persisted native-notification-on-waiting
-// preference. Phase 167 NTF-04; default OFF (zero-value false).
-func (e *SessionEngine) GetNotifyOnWaiting() bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.notifyOnWaiting
-}
-
-// SetNotifyOnWaiting updates and persists the native-notification-on-waiting
-// preference. Phase 167 NTF-04.
-func (e *SessionEngine) SetNotifyOnWaiting(val bool) {
-	e.mu.Lock()
-	e.notifyOnWaiting = val
 	e.saveSettingsToDisk()
 	e.mu.Unlock()
 }

@@ -37,3 +37,11 @@ func TestSettingsRemoved_CLIPathsRoutes(t *testing.T) {
 	assertRouteGone(t, h, http.MethodGet, "/settings/cli-paths")
 	assertRouteGone(t, h, http.MethodPatch, "/settings/cli-paths/tailscale")
 }
+
+// Portty 01-11 (CONTEXT Amendment 2, T-01-37): the awaiting-input notification
+// toggle and its routes are gone.
+func TestSettingsRemoved_NotifyOnWaitingRoutes(t *testing.T) {
+	h := newRemovedRoutesAPI(t).Handler()
+	assertRouteGone(t, h, http.MethodGet, "/settings/notify-on-waiting")
+	assertRouteGone(t, h, http.MethodPatch, "/settings/notify-on-waiting")
+}

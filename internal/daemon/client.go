@@ -131,23 +131,6 @@ func (c *DaemonClient) SetStartMinimized(val bool) error {
 		map[string]bool{"startMinimized": val}, nil)
 }
 
-// GetNotifyOnWaiting returns the persisted native-notification-on-waiting
-// preference. Phase 167 NTF-04.
-func (c *DaemonClient) GetNotifyOnWaiting() (bool, error) {
-	var resp map[string]bool
-	if err := c.doJSON(http.MethodGet, "/settings/notify-on-waiting", nil, &resp); err != nil {
-		return false, err
-	}
-	return resp["notifyOnWaiting"], nil
-}
-
-// SetNotifyOnWaiting persists the native-notification-on-waiting preference.
-// Phase 167 NTF-04.
-func (c *DaemonClient) SetNotifyOnWaiting(val bool) error {
-	return c.doJSON(http.MethodPatch, "/settings/notify-on-waiting",
-		map[string]bool{"notifyOnWaiting": val}, nil)
-}
-
 // GetStayOnHubAfterCreate returns the persisted "stay on Hub after creating
 // a session" preference. Phase 168 UX-01.
 func (c *DaemonClient) GetStayOnHubAfterCreate() (bool, error) {

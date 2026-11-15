@@ -224,7 +224,7 @@ func TestSettingsMigration_FilesReadSchemaVersionRewrite(t *testing.T) {
 
 // TestSettingsMigration_LegacyAgentHubV42 loads a real-shaped AgentHub v4.2
 // settings.json that still carries the removed "filesWrite" and
-// "autoCloseSession", "cliPaths" and "shellPath" keys (plus notifyOnWaiting).
+// "autoCloseSession", "cliPaths", "shellPath" and "notifyOnWaiting" keys.
 // Old settings must load without error, the unknown keys are ignored, the
 // kept values survive, and the next save drops every removed key.
 func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
@@ -252,9 +252,6 @@ func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	if !e.GetShellWebShareWarned() {
 		t.Error("shellWebShareWarned = false, want true (kept value must survive)")
 	}
-	if !e.GetNotifyOnWaiting() {
-		t.Error("notifyOnWaiting = false, want true (toggle must survive)")
-	}
 
 	e.mu.Lock()
 	e.saveSettingsToDisk()
@@ -275,9 +272,10 @@ func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	if _, ok := onDisk["autoCloseSession"]; ok {
 		t.Error("saved settings.json still contains autoCloseSession; the removed key should be dropped on save")
 	}
-	// Portty 01-11 (CONTEXT Amendment 1): the shell and CLI path overrides
-	// are gone; the legacy keys load without error and are dropped on save.
-	for _, k := range []string{"cliPaths", "shellPath"} {
+	// Portty 01-11 (CONTEXT Amendments 1 and 2): the shell and CLI path
+	// overrides and the awaiting-input toggle are gone; the legacy keys load
+	// without error and are dropped on save.
+	for _, k := range []string{"cliPaths", "shellPath", "notifyOnWaiting"} {
 		if _, ok := onDisk[k]; ok {
 			t.Errorf("saved settings.json still contains %s; the removed key should be dropped on save", k)
 		}

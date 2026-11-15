@@ -11,9 +11,6 @@ import {
   GetWebServerQRCode,
   GetStartMinimized,
   SetStartMinimized,
-  // Phase 167 NTF-04 — awaiting-input native notification toggle
-  GetNotifyOnWaiting,
-  SetNotifyOnWaiting,
   // Phase 168 UX-01 — stay-on-hub-after-create toggle
   GetStayOnHubAfterCreate,
   SetStayOnHubAfterCreate,
@@ -22,7 +19,7 @@ import {
   GetShellWebShareWarningEnabled,
   SetShellWebShareWarningEnabled,
 } from '../wailsjs/go/main/App'
-import { BrowserOpenURL, ClipboardSetText, EventsOn } from '../wailsjs/wailsjs/runtime/runtime'
+import { BrowserOpenURL, ClipboardSetText } from '../wailsjs/wailsjs/runtime/runtime'
 import {
   ArrowTopRightOnSquareIcon,
   ClipboardDocumentIcon,
@@ -94,16 +91,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
   const [toggleSaving, setToggleSaving] = useState(false)
   const [toggleError, setToggleError] = useState<string | null>(null)
 
-  // Notify-on-waiting toggle state (Phase 167 NTF-04) — default OFF (D-04 locked decision).
-  const [notifyOnWaiting, setNotifyOnWaiting] = useState(false)
-  const [notifyOnWaitingLoaded, setNotifyOnWaitingLoaded] = useState(false)
-  const [notifyOnWaitingSaving, setNotifyOnWaitingSaving] = useState(false)
-  const [notifyOnWaitingError, setNotifyOnWaitingError] = useState<string | null>(null)
-  // Phase 167-07 (M-41 gap closure) — set true when the backend reports macOS
-  // denied notification authorization (notification:permission-denied event,
-  // emitted by 167-06's onNotificationAuthResult callback).
-  const [notifyPermissionDenied, setNotifyPermissionDenied] = useState(false)
-
   // Stay-on-hub-after-create toggle state (Phase 168 UX-01) — default OFF (D-09).
   const [stayOnHubAfterCreate, setStayOnHubAfterCreate] = useState(false)
   const [stayOnHubAfterCreateLoaded, setStayOnHubAfterCreateLoaded] = useState(false)
@@ -170,14 +157,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
     }).catch(() => setToggleLoaded(true))
   }, [])
 
-  // Load notify-on-waiting preference on mount (Phase 167 NTF-04).
-  useEffect(() => {
-    GetNotifyOnWaiting().then(val => {
-      setNotifyOnWaiting(val)
-      setNotifyOnWaitingLoaded(true)
-    }).catch(() => setNotifyOnWaitingLoaded(true))
-  }, [])
-
   // Load stay-on-hub-after-create preference on mount (Phase 168 UX-01).
   useEffect(() => {
     GetStayOnHubAfterCreate().then(val => {
@@ -192,19 +171,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
       setShellWarnEnabled(val)
       setShellWarnLoaded(true)
     }).catch(() => setShellWarnLoaded(true))
-  }, [])
-
-  // Phase 167-07 (M-41 gap closure) — subscribe to the backend's
-  // notification:permission-denied event so a denied macOS authorization
-  // request surfaces a remediation hint instead of a silent dead end. The
-  // paired permission-granted subscription lets the hint self-heal once the
-  // user fixes permissions and re-toggles (Phase 167 WR-01) — otherwise the
-  // hint stayed stuck for the whole session and its own remediation text
-  // ("toggle off and on again") never cleared it.
-  useEffect(() => {
-    const offDenied = EventsOn('notification:permission-denied', () => setNotifyPermissionDenied(true))
-    const offGranted = EventsOn('notification:permission-granted', () => setNotifyPermissionDenied(false))
-    return () => { offDenied(); offGranted() }
   }, [])
 
   async function handleCopyPassword() {
@@ -291,26 +257,7 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
     }
   }
 
-  // Phase 167 NTF-04 \u2014 instant toggle (no confirm dialog), mirrors handleToggleMinimized.
-  async function handleToggleNotifyOnWaiting() {
-    const next = !notifyOnWaiting
-    setNotifyOnWaitingSaving(true)
-    setNotifyOnWaitingError(null)
-    // Clear any stale permission-denied hint before re-requesting authorization
-    // (Phase 167 WR-01) — the backend re-runs the auth request on enable and
-    // will re-emit denied if it is still denied, or granted to self-heal.
-    if (next) setNotifyPermissionDenied(false)
-    try {
-      await SetNotifyOnWaiting(next)
-      setNotifyOnWaiting(next)
-    } catch (err) {
-      setNotifyOnWaitingError('Could not save preference \u2014 ' + (err instanceof Error ? err.message : String(err)))
-    } finally {
-      setNotifyOnWaitingSaving(false)
-    }
-  }
-
-  // Phase 168 UX-01 — instant toggle (no confirm dialog), mirrors handleToggleNotifyOnWaiting.
+  // Phase 168 UX-01 — instant toggle (no confirm dialog), mirrors handleToggleMinimized.
   async function handleToggleStayOnHub() {
     const next = !stayOnHubAfterCreate
     setStayOnHubAfterCreateSaving(true)
@@ -433,39 +380,6 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
             When enabled, AgentHub launches with the window hidden. Click the tray icon to open it.
           </p>
           {toggleError && <p className="settings-panel__error">{toggleError}</p>}
-        </div>
-
-        {/* Phase 167 NTF-04 — notify-on-waiting toggle (Behavior section, per LOCKED user
-            correction — NOT Session Behavior; default OFF). */}
-        <div className="settings-panel__field-group">
-          {notifyOnWaitingLoaded && (
-            <label
-              className={`settings-panel__toggle-row${notifyOnWaiting ? ' settings-panel__toggle-row--checked' : ''}`}
-              htmlFor="notifyOnWaiting"
-              style={notifyOnWaitingSaving ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-            >
-              <span className="settings-panel__toggle-track">
-                <span className="settings-panel__toggle-thumb" />
-              </span>
-              <span className="settings-panel__toggle-label">Notify me when a session is awaiting input</span>
-            </label>
-          )}
-          <input
-            type="checkbox"
-            id="notifyOnWaiting"
-            className="settings-panel__toggle-input"
-            checked={notifyOnWaiting}
-            onChange={() => void handleToggleNotifyOnWaiting()}
-          />
-          <p className="settings-panel__description">
-            Shows a native OS notification the moment a session starts waiting for your input, even when AgentHub is hidden in the tray. Off by default.
-          </p>
-          {notifyOnWaitingError && <p className="settings-panel__error">{notifyOnWaitingError}</p>}
-          {notifyPermissionDenied && (
-            <p className="settings-panel__error">
-              AgentHub is not allowed to send notifications. Enable it in System Settings {'>'} Notifications {'>'} AgentHub, then toggle this setting off and on again.
-            </p>
-          )}
         </div>
 
         {/* Session Behavior section */}

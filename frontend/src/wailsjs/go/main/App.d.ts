@@ -130,10 +130,6 @@ export function GetWebServerMode(): Promise<string>
 export function GetStartMinimized(): Promise<boolean>
 export function SetStartMinimized(val: boolean): Promise<void>
 
-// Notify-on-waiting bound methods (Phase 167 / NTF-04)
-export function GetNotifyOnWaiting(): Promise<boolean>
-export function SetNotifyOnWaiting(val: boolean): Promise<void>
-
 // Stay-on-hub-after-create bound methods (Phase 168 / UX-01)
 export function GetStayOnHubAfterCreate(): Promise<boolean>
 export function SetStayOnHubAfterCreate(val: boolean): Promise<void>

@@ -79,10 +79,6 @@ export const GetWebServerMode        = ()                   => Call('main.App.Ge
 export const GetStartMinimized       = ()                   => Call('main.App.GetStartMinimized', [])
 export const SetStartMinimized       = (val)                => Call('main.App.SetStartMinimized', [val])
 
-// Notify-on-waiting bound methods (Phase 167 / NTF-04)
-export const GetNotifyOnWaiting      = ()                   => Call('main.App.GetNotifyOnWaiting', [])
-export const SetNotifyOnWaiting      = (val)                => Call('main.App.SetNotifyOnWaiting', [val])
-
 // Stay-on-hub-after-create bound methods (Phase 168 / UX-01)
 export const GetStayOnHubAfterCreate = ()                   => Call('main.App.GetStayOnHubAfterCreate', [])
 export const SetStayOnHubAfterCreate = (val)                => Call('main.App.SetStayOnHubAfterCreate', [val])

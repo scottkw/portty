@@ -4,7 +4,7 @@
  * Covers:
  *   - Toggle renders inside the Session Behavior section
  *     (settings-session-behavior), NOT the Behavior section
- *     (settings-behavior) where notifyOnWaiting lives (D-08).
+ *     (settings-behavior) (D-08).
  *   - Default OFF (unchecked) before/after GetStayOnHubAfterCreate resolves
  *     false (D-09).
  *   - On mount, GetStayOnHubAfterCreate() resolves and sets the checked state.
@@ -13,9 +13,9 @@
  *   - A SetStayOnHubAfterCreate rejection surfaces an inline error and does
  *     not flip the displayed checked state.
  *
- * Mirrors the shape of SettingsTab.notify-toggle.test.tsx (source-inspection
- * + createRoot/flushSync DOM render pattern); the toggle itself is an INSTANT
- * toggle with no confirm dialog, mirroring handleToggleNotifyOnWaiting.
+ * Uses the source-inspection + createRoot/flushSync DOM render pattern; the
+ * toggle itself is an INSTANT toggle with no confirm dialog, mirroring
+ * handleToggleMinimized.
  */
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import React from 'react'

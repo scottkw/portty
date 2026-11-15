@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,22 +91,10 @@ type App struct {
 	// Phase 98 PRG-03 / PROJECT.md "Function injection" pattern.
 	refreshTrayStateFunc func()
 
-	// notifyOnWaiting caches the persisted NotifyOnWaiting preference (Phase
-	// 167 / NTF-04). Atomic because it's written by the Wails RPC goroutine
-	// (SetNotifyOnWaiting) and read by the notification trigger, mirroring
-	// lastTrayQuartile's concurrency pattern.
-	notifyOnWaiting atomic.Bool
-
-	// sendNotificationFunc allows unit tests to mock sendNotification so no
-	// real OS notification fires. Defaults to sendNotification. Phase 167 /
-	// NTF-01..03, mirrors the saveFileDialogFunc injection pattern.
+	// sendNotificationFunc is the one native notification path (quit-to-tray
+	// notice now, Phase 6 update notices later). Defaults to sendNotification;
+	// tests swap it so no real OS notification fires.
 	sendNotificationFunc func(identifier, title, body string)
-
-	// requestNotificationAuthFunc allows unit tests to spy on the proactive
-	// authorization entry point without firing a real OS permission prompt.
-	// Defaults to requestNotificationAuth. Phase 167-06 (M-41 gap closure) —
-	// mirrors the sendNotificationFunc injection pattern.
-	requestNotificationAuthFunc func()
 
 	// emitEventFunc allows unit tests to capture Wails events. nil in
 	// production (emitEvent calls runtime.EventsEmit). Mirrors the
@@ -123,9 +110,8 @@ type App struct {
 // NewApp creates a new App without starting any subsystems.
 func NewApp() *App {
 	a := &App{
-		saveFileDialogFunc:          runtime.SaveFileDialog,
-		sendNotificationFunc:        sendNotification,
-		requestNotificationAuthFunc: requestNotificationAuth,
+		saveFileDialogFunc:   runtime.SaveFileDialog,
+		sendNotificationFunc: sendNotification,
 	}
 	a.lastTrayQuartile.Store(-1) // Phase 98 PRG-03 — ensure first SetTrayProgress call always updates
 	return a
@@ -172,14 +158,6 @@ func (a *App) startup(ctx context.Context) {
 
 	// One app-wide exit watcher closes tabs for every exited session (TERM-05).
 	a.startExitWatcher(ctx)
-
-	// Cache the persisted NotifyOnWaiting preference (Phase 167 / NTF-04).
-	// On error, leave the atomic at its zero value (false — the safe default).
-	if val, err := a.client.GetNotifyOnWaiting(); err == nil {
-		a.notifyOnWaiting.Store(val)
-	} else {
-		log.Printf("notification: initial NotifyOnWaiting cache load failed (%v) — defaulting to false until the toggle is set", err)
-	}
 
 	// Start tray state poller (updates icon, tooltip, session list every 5s).
 	a.startTrayPoller(ctx)
@@ -276,7 +254,7 @@ func (a *App) QuitGUIOnly() {
 	} else {
 		body = fmt.Sprintf("AgentHub is still running in the background. %d sessions active.", count)
 	}
-	sendNotification("agenthub.quit-gui-only", "AgentHub", body)
+	a.sendNotificationFunc("agenthub.quit-gui-only", "AgentHub", body)
 }
 
 // QuitAll shuts down the daemon (terminating all sessions) and quits the
@@ -554,9 +532,7 @@ func (a *App) SetStartMinimized(val bool) error {
 
 // GetStayOnHubAfterCreate returns the persisted "stay on Hub after creating
 // a session" preference (Phase 168 / UX-01). Returns false (auto-switch,
-// today's behavior) when daemon is not connected. Plain client passthrough —
-// no atomic cache needed since there is no background reader (unlike
-// NotifyOnWaiting's tray poller).
+// today's behavior) when daemon is not connected. Plain client passthrough.
 func (a *App) GetStayOnHubAfterCreate() bool {
 	if a.client == nil {
 		return false
@@ -575,33 +551,6 @@ func (a *App) SetStayOnHubAfterCreate(val bool) error {
 		return fmt.Errorf("daemon not connected")
 	}
 	return a.client.SetStayOnHubAfterCreate(val)
-}
-
-// GetNotifyOnWaiting returns the cached native-notification-on-waiting
-// preference (Phase 167 / NTF-04). Reads the atomic cache rather than the
-// daemon so the tray-poller's edge detector and the Settings toggle always
-// agree on the current value without an extra round trip.
-func (a *App) GetNotifyOnWaiting() bool {
-	return a.notifyOnWaiting.Load()
-}
-
-// SetNotifyOnWaiting updates the cached preference immediately and persists it via
-// the daemon client. When notifications are newly enabled, the tray
-// poller's next tick performs a fresh baseline capture (Task 1), preventing
-// a cold-start notification burst for sessions already waiting.
-func (a *App) SetNotifyOnWaiting(val bool) error {
-	a.notifyOnWaiting.Store(val)
-	// Phase 167-06 (M-41 gap closure): proactively surface the macOS
-	// permission prompt the moment the toggle is enabled, regardless of
-	// daemon connectivity — the leading suspected fix (during UAT the app
-	// showed as "Off" in System Settings with NO prompt ever seen).
-	if val && a.requestNotificationAuthFunc != nil {
-		a.requestNotificationAuthFunc()
-	}
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.SetNotifyOnWaiting(val)
 }
 
 // GetPluginSettings returns the persisted plugin enable/disable preferences.

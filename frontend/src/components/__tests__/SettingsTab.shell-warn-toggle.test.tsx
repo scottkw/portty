@@ -79,8 +79,7 @@ vi.mock('../SettingsSearch', () => ({
 vi.mock('../../wailsjs/wailsjs/runtime/runtime', () => ({
   BrowserOpenURL: vi.fn(),
   ClipboardSetText: vi.fn().mockResolvedValue(undefined),
-  // Phase 167-07: SettingsTab now also subscribes to
-  // notification:permission-denied on mount; stub returns a no-op unsubscribe.
+  // Harmless extra stub (the notification-permission subscription was removed in Portty 01-11).
   EventsOn: vi.fn().mockReturnValue(vi.fn()),
 }))
 

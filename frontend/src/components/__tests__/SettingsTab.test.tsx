@@ -305,3 +305,17 @@ describe('TERM-05: no auto-close toggle', () => {
     expect(raw).toContain('id="settings-session-behavior"')
   })
 })
+
+describe('Portty 01-11: Behavior has only the start-minimized toggle', () => {
+  it('Behavior renders exactly one toggle (start minimized) and no awaiting-input toggle', () => {
+    const start = raw.indexOf('id="settings-behavior"')
+    const end = raw.indexOf('id="settings-session-behavior"', start)
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const behavior = raw.slice(start, end)
+    expect(behavior.match(/className="settings-panel__toggle-input"/g) ?? []).toHaveLength(1)
+    expect(behavior).toContain('Start minimized to system tray')
+    expect(raw).not.toContain('Notify me when a session is awaiting input')
+    expect(raw).not.toMatch(/NotifyOnWaiting|notification:permission|not allowed to send notifications/)
+  })
+})

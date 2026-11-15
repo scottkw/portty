@@ -160,8 +160,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /sessions/{id}/styled-tail", a.handleGetSessionStyledTailLines)
 	a.mux.HandleFunc("GET /settings/start-minimized", a.handleGetStartMinimized)
 	a.mux.HandleFunc("PATCH /settings/start-minimized", a.handleSetStartMinimized)
-	a.mux.HandleFunc("GET /settings/notify-on-waiting", a.handleGetNotifyOnWaiting)
-	a.mux.HandleFunc("PATCH /settings/notify-on-waiting", a.handleSetNotifyOnWaiting)
 	a.mux.HandleFunc("GET /settings/stay-on-hub-after-create", a.handleGetStayOnHubAfterCreate)
 	a.mux.HandleFunc("PATCH /settings/stay-on-hub-after-create", a.handleSetStayOnHubAfterCreate)
 	a.mux.HandleFunc("GET /settings/shell-web-share-warned", a.handleGetShellWebShareWarned)
@@ -835,22 +833,6 @@ func (a *API) handleSetStartMinimized(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.engine.SetStartMinimized(req.StartMinimized)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) handleGetNotifyOnWaiting(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"notifyOnWaiting": a.engine.GetNotifyOnWaiting()})
-}
-
-func (a *API) handleSetNotifyOnWaiting(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		NotifyOnWaiting bool `json:"notifyOnWaiting"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	a.engine.SetNotifyOnWaiting(req.NotifyOnWaiting)
 	w.WriteHeader(http.StatusNoContent)
 }
 
