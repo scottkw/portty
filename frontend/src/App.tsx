@@ -609,8 +609,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       'session:exit',
       (data: { sessionId: string }) => {
         // TERM-05: any shell exit, at any age and with any exit code, closes
-        // its tab; handleCloseTab's KillSession removes the session from the
-        // daemon (also for sessions with no open tab, e.g. CLI-created).
+        // its tab. The Go exit watcher has already removed the session from
+        // the daemon, so handleCloseTab's KillSession "not found" is expected.
         void handleCloseTabRef.current?.(data.sessionId)
       }
     )

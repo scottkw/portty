@@ -138,21 +138,20 @@ func TestCheckExits_StoppedAtFirstSight(t *testing.T) {
 	}
 }
 
-func TestCheckExits_PrunesRemovedSessions(t *testing.T) {
+// TestCheckExits_RemovesStoppedSession (WR-02): the watcher removes a stopped
+// session from the daemon itself, so nothing depends on the frontend's kill.
+func TestCheckExits_RemovesStoppedSession(t *testing.T) {
 	app, rec, id := shApp(t, "exit 0")
 	checkUntilExit(t, app, rec, id)
-	if err := app.KillSession(id); err != nil {
-		t.Fatalf("KillSession: %v", err)
-	}
 	if st := sessionState(t, app, id); st != "" {
-		t.Fatalf("session still listed after KillSession (state %q)", st)
+		t.Fatalf("session still listed after its exit was reported (state %q)", st)
 	}
 	app.checkExits()
-	if len(app.exitEmitted) != 0 || len(app.seenSessions) != 0 {
-		t.Fatalf("exitEmitted = %v, seenSessions = %v, want both empty after prune", app.exitEmitted, app.seenSessions)
+	if len(app.seenSessions) != 0 {
+		t.Fatalf("seenSessions = %v, want empty", app.seenSessions)
 	}
 	if n := rec.exitsFor(id); n != 1 {
-		t.Fatalf("session:exit count = %d, want exactly 1 (no re-report on removal)", n)
+		t.Fatalf("session:exit count = %d, want exactly 1", n)
 	}
 }
 

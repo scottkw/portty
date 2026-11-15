@@ -105,11 +105,8 @@ type App struct {
 	healthMu           sync.Mutex
 	lastHealth         *webserver.TailscaleHealth
 
-	// exitEmitted records sessions already reported via session:exit, so each
-	// stopped session is reported once; seenSessions is every id the watcher
-	// has listed, so one that vanishes unseen-as-stopped is reported too.
-	// Both are owned by the exit watcher goroutine.
-	exitEmitted     map[string]bool
+	// seenSessions is every id the exit watcher has listed and not yet
+	// reported via session:exit. Owned by the exit watcher goroutine.
 	seenSessions    map[string]bool
 	exitWatcherOnce sync.Once
 }
@@ -326,11 +323,11 @@ func (a *App) startExitWatcher(ctx context.Context) {
 	})
 }
 
-// checkExits emits session:exit once for every session the daemon reports as
-// stopped, including one already stopped the first time it is seen (the GUI
-// must remove it), and for every previously listed session that is gone
-// without a stopped sighting (CLI kill, daemon restart). Only the watcher
-// goroutine (or a test) calls this, so the maps need no lock.
+// checkExits removes every session the daemon reports as stopped (a failed
+// kill leaves it listed and the next tick retries) and emits session:exit once
+// for every previously listed session that is now gone: one it just removed,
+// or one removed elsewhere (CLI kill, daemon restart). Only the watcher
+// goroutine (or a test) calls this, so seenSessions needs no lock.
 func (a *App) checkExits() {
 	if a.client == nil {
 		return
@@ -339,26 +336,21 @@ func (a *App) checkExits() {
 	if err != nil {
 		return // daemon unreachable; the next tick retries
 	}
-	if a.exitEmitted == nil {
-		a.exitEmitted = make(map[string]bool)
+	if a.seenSessions == nil {
 		a.seenSessions = make(map[string]bool)
 	}
 	listed := make(map[string]bool, len(sessions))
 	for _, s := range sessions {
-		listed[s.ID] = true
 		a.seenSessions[s.ID] = true
-		if s.State == "stopped" && !a.exitEmitted[s.ID] {
-			a.exitEmitted[s.ID] = true
-			a.emitEvent("session:exit", map[string]any{"sessionId": s.ID})
+		if s.State == "stopped" && a.client.KillSession(s.ID) == nil {
+			continue // removed; reported below
 		}
+		listed[s.ID] = true
 	}
 	for id := range a.seenSessions {
 		if !listed[id] {
-			if !a.exitEmitted[id] {
-				a.emitEvent("session:exit", map[string]any{"sessionId": id})
-			}
 			delete(a.seenSessions, id)
-			delete(a.exitEmitted, id)
+			a.emitEvent("session:exit", map[string]any{"sessionId": id})
 		}
 	}
 }
