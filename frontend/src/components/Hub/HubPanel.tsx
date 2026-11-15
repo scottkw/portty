@@ -230,6 +230,8 @@ export function HubPanel({
   interface HubModalState {
     session: SessionInfo
     sourceRect: DOMRect
+    /** Provenance at open time; only local modals auto-close (remote lists are best-effort). */
+    isRemote: boolean
   }
   const [modalState, setModalState] = useState<HubModalState | null>(null)
 
@@ -297,11 +299,13 @@ export function HubPanel({
     [remoteSessions],
   )
 
-  // Close the modal when its session exits or otherwise leaves both lists.
+  // Close a local modal when its session exits. The local list is authoritative;
+  // the remote list empties on any probe failure, so remote modals stay open.
   useEffect(() => {
-    const id = modalState?.session.id
-    if (id && !remoteIdSet.has(id) && !sessions.some((s) => s.id === id)) setModalState(null)
-  }, [sessions, remoteIdSet, modalState])
+    if (modalState && !modalState.isRemote && !sessions.some((s) => s.id === modalState.session.id)) {
+      setModalState(null)
+    }
+  }, [sessions, modalState])
 
   // Phase 138 / CARD-03: derive connected set from remoteCapsCached.
   // Boolean Set threaded to SessionCardGrid as connectedRemoteIds.
@@ -392,7 +396,7 @@ export function HubPanel({
       m.delete(session.id)
       return m
     })
-    setModalState({ session, sourceRect: rect })
+    setModalState({ session, sourceRect: rect, isRemote })
   }, [remoteIdSet, remoteCapsCached, onRequestRemoteCap])
 
   // Phase 134 — MODAL-06: cap-acquired handler — called by App.tsx after successful join-code exchange
@@ -408,10 +412,10 @@ export function HubPanel({
     // Use stored rect or fall back to centered rect
     const sourceRect = pendingSourceRectRef.current ??
       new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0)
-    setModalState({ session, sourceRect })
+    setModalState({ session, sourceRect, isRemote: remoteIdSet.has(sessionId) })
     setPendingModalSessionId(null)
     pendingSourceRectRef.current = null
-  }, [pendingModalSessionId, sessions, remoteSessions])
+  }, [pendingModalSessionId, sessions, remoteSessions, remoteIdSet])
 
   // Phase 134 — register cap-acquired callback with App.tsx
   useEffect(() => {

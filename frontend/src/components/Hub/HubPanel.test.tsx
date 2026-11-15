@@ -668,7 +668,7 @@ describe('HubPanel MODAL-06 source-inspection (Phase 134)', () => {
     expect(hubPanelRaw).toContain('onRequestRemoteCap')
     // The early return must appear before setModalState in the source
     const returnIdx = hubPanelRaw.indexOf('onRequestRemoteCap?.({')
-    const setModalIdx = hubPanelRaw.indexOf('setModalState({ session, sourceRect: rect })')
+    const setModalIdx = hubPanelRaw.indexOf('setModalState({ session, sourceRect: rect, isRemote })')
     expect(returnIdx).toBeGreaterThan(-1)
     expect(setModalIdx).toBeGreaterThan(-1)
     expect(returnIdx).toBeLessThan(setModalIdx)
@@ -793,6 +793,38 @@ describe('HubPanel FE-ROUTE-01: remote routing gate (behavioral)', () => {
 
     render([])
     expect(modalContainer.querySelector('.hub-modal-overlay')).toBeNull()
+  })
+
+  it('iteration-2 WR-04: an open REMOTE modal survives the remote list emptying (probe failure)', () => {
+    const remoteSession = makeRemoteSession({ id: 'r-blip' })
+    const modalContainer = document.createElement('div')
+    document.body.appendChild(modalContainer)
+    const modalRoot = createRoot(modalContainer)
+    const render = (remoteSessions: SessionInfo[]) =>
+      act(() => {
+        modalRoot.render(
+          React.createElement(HubPanel, {
+            sessions: [],
+            remoteSessions,
+            error: false,
+            onNewSession: vi.fn(),
+            onRename: vi.fn(),
+            isActive: false,
+            terminalTheme: STUB_THEME,
+            relayPort: 51234,
+            remoteCapsCached: new Set<string>(['r-blip']),
+          }),
+        )
+      })
+
+    render([remoteSession])
+    act(() => {
+      modalContainer.querySelector('article.hub-card')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(modalContainer.querySelector('.hub-modal-overlay')).not.toBeNull()
+
+    render([])
+    expect(modalContainer.querySelector('.hub-modal-overlay')).not.toBeNull()
   })
 
   it('FE-ROUTE-01c: local card with a non-empty MACHINE hostname opens the modal (provenance, not hostname)', () => {
