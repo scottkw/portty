@@ -89,13 +89,17 @@ func TestDerivedStatus_ExitedErrored(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("timeout waiting for exit")
 			}
-			if got := e.GetSessionStatus(id); got != tc.want {
-				t.Errorf("GetSessionStatus = %q, want %q", got, tc.want)
-			}
+			var found bool
 			for _, s := range e.ListSessions() {
-				if s.ID == id && s.Status != tc.want {
-					t.Errorf("ListSessions Status = %q, want %q", s.Status, tc.want)
+				if s.ID == id {
+					found = true
+					if s.Status != tc.want {
+						t.Errorf("ListSessions Status = %q, want %q", s.Status, tc.want)
+					}
 				}
+			}
+			if !found {
+				t.Fatalf("session %s not in ListSessions output", id)
 			}
 		})
 	}

@@ -138,29 +138,6 @@ func TestEngineRenameSession(t *testing.T) {
 	}
 }
 
-func TestEngineGetSessionStatus(t *testing.T) {
-	e := newCatEngine()
-
-	// Unknown session returns "running" conservative default.
-	s := e.GetSessionStatus("nonexistent-id")
-	if s != "running" {
-		t.Errorf("unknown session status: got %q, want %q", s, "running")
-	}
-
-	id, err := e.CreateSession(context.Background(), "status-test", "", 0, 0, nil)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	t.Cleanup(func() { _ = e.KillSession(id) })
-
-	// Known session returns a valid status.
-	status := e.GetSessionStatus(id)
-	valid := map[string]bool{"running": true, "exited": true, "errored": true}
-	if !valid[status] {
-		t.Errorf("GetSessionStatus returned invalid status %q", status)
-	}
-}
-
 func TestEngineCreateSessionWithDimensions(t *testing.T) {
 	e := newCatEngine()
 	id, err := e.CreateSession(context.Background(), "dims-test", "", 120, 40, nil)
@@ -416,9 +393,6 @@ func TestListSessions_ShellStatusRunning(t *testing.T) {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	t.Cleanup(func() { _ = e.KillSession(id) })
-	if got := e.GetSessionStatus(id); got != "running" {
-		t.Errorf("GetSessionStatus = %q, want running", got)
-	}
 	sessions := e.ListSessions()
 	var found bool
 	for _, s := range sessions {

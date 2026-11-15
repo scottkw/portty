@@ -491,17 +491,6 @@ func deriveStatus(stopped bool, exitCode *int) string {
 	}
 }
 
-// GetSessionStatus returns running/exited/errored for the session.
-// Returns "running" if the session is not found (conservative default).
-func (e *SessionEngine) GetSessionStatus(sessionID string) string {
-	for _, s := range e.ListSessions() {
-		if s.ID == sessionID {
-			return s.Status
-		}
-	}
-	return "running"
-}
-
 // ansiEscape matches CSI sequences (e.g. \x1b[32m) and OSC sequences
 // (e.g. \x1b]0;title\x07 or \x1b]8;;url\x1b\).
 // Covers the ANSI vocabulary emitted by common terminal programs.

@@ -40,11 +40,6 @@ type RenameRequest struct {
 	Name string `json:"name"`
 }
 
-// StatusResponse is the response body for GET /sessions/{id}/status.
-type StatusResponse struct {
-	Status string `json:"status"`
-}
-
 // TailLinesResponse is the response body for GET /sessions/{id}/tail.
 // Phase 132 / CARD-07.
 type TailLinesResponse struct {

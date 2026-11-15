@@ -85,24 +85,6 @@ func TestClientRenameSession(t *testing.T) {
 	}
 }
 
-func TestClientGetSessionStatus(t *testing.T) {
-	_, client, _ := testDaemon(t)
-	id, err := client.CreateSession("status-tab", "", 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	t.Cleanup(func() { client.KillSession(id) })
-
-	status, err := client.GetSessionStatus(id)
-	if err != nil {
-		t.Fatalf("GetSessionStatus: %v", err)
-	}
-	valid := map[string]bool{"running": true, "waiting": true, "idle": true, "errored": true}
-	if !valid[status] {
-		t.Errorf("GetSessionStatus returned invalid status %q", status)
-	}
-}
-
 func TestClientGetRelayPort(t *testing.T) {
 	api, client, _ := testDaemon(t)
 	port, err := api.StartRelay()

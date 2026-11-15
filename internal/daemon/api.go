@@ -155,7 +155,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /sessions/{id}", a.handleGetSession)
 	a.mux.HandleFunc("DELETE /sessions/{id}", a.handleDeleteSession)
 	a.mux.HandleFunc("PATCH /sessions/{id}/name", a.handleRenameSession)
-	a.mux.HandleFunc("GET /sessions/{id}/status", a.handleGetSessionStatus)
 	a.mux.HandleFunc("GET /sessions/{id}/tail", a.handleGetSessionTailLines)
 	a.mux.HandleFunc("GET /sessions/{id}/styled-tail", a.handleGetSessionStyledTailLines)
 	a.mux.HandleFunc("GET /settings/start-minimized", a.handleGetStartMinimized)
@@ -768,12 +767,6 @@ func (a *API) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) handleGetSessionStatus(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	s := a.engine.GetSessionStatus(id)
-	writeJSON(w, http.StatusOK, StatusResponse{Status: s})
 }
 
 // handleGetSessionTailLines returns the last n plain-text lines from the

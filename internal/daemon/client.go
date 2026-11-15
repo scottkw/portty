@@ -85,15 +85,6 @@ func (c *DaemonClient) RenameSession(id, name string) error {
 	return c.doJSON(http.MethodPatch, "/sessions/"+id+"/name", RenameRequest{Name: name}, nil)
 }
 
-// GetSessionStatus returns the current status string for the given session.
-func (c *DaemonClient) GetSessionStatus(id string) (string, error) {
-	var resp StatusResponse
-	if err := c.doJSON(http.MethodGet, "/sessions/"+id+"/status", nil, &resp); err != nil {
-		return "", err
-	}
-	return resp.Status, nil
-}
-
 // GetSessionTailLines returns the last n plain-text lines from the session's
 // scrollback buffer, with ANSI escape sequences and framing bytes stripped.
 // Phase 132 / CARD-07.

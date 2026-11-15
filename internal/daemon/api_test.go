@@ -277,29 +277,6 @@ func TestAPIRenameSession(t *testing.T) {
 	}
 }
 
-func TestAPIGetSessionStatus(t *testing.T) {
-	_, _, socketPath := testDaemon(t)
-	_, createBody := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"st-tab","workDir":""}`)
-	var cr CreateResponse
-	if err := json.Unmarshal(createBody, &cr); err != nil {
-		t.Fatalf("decode create response: %v", err)
-	}
-	t.Cleanup(func() { rawDelete(t, socketPath, fmt.Sprintf("/sessions/%s", cr.ID)) })
-
-	status, body := rawGet(t, socketPath, fmt.Sprintf("/sessions/%s/status", cr.ID))
-	if status != 200 {
-		t.Errorf("GET /sessions/%s/status: want 200, got %d", cr.ID, status)
-	}
-	var sr StatusResponse
-	if err := json.Unmarshal(body, &sr); err != nil {
-		t.Fatalf("decode status response: %v", err)
-	}
-	valid := map[string]bool{"running": true, "exited": true, "errored": true}
-	if !valid[sr.Status] {
-		t.Errorf("invalid status %q", sr.Status)
-	}
-}
-
 func TestAPIRelayPort(t *testing.T) {
 	api, _, socketPath := testDaemon(t)
 	port, err := api.StartRelay()
