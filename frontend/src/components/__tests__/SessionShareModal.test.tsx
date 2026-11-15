@@ -57,7 +57,7 @@ vi.mock('../../wailsjs/go/main/App', () => ({
 // Import mocked bindings for assertion
 import { IssueCapabilities, SetSessionFunnel, GetLocalNetworkPassword, ToggleWebServing } from '../../wailsjs/go/main/App'
 // Import the component under test
-import { SessionShareModal } from '../Hub/SessionShareModal'
+import { SessionShareModal } from '../Share/SessionShareModal'
 
 const mockedIssueCapabilities = IssueCapabilities as ReturnType<typeof vi.fn>
 const mockedGetLocalNetworkPassword = GetLocalNetworkPassword as ReturnType<typeof vi.fn>
@@ -812,13 +812,16 @@ describe('SessionShareModal — SM-01: fixed control strip does not reflow on to
 describe('SessionShareModal — SM-02: single scroll region', () => {
   it('.hub-share-modal__tabpanel is nested inside .hub-share-modal__body, not the same element', async () => {
     const { container: c } = renderModal({ webEnabled: true, webServerMode: 'tailscale' })
-    await tick()
-    const body = c.querySelector('.hub-share-modal__body')
-    const tabpanel = c.querySelector('.hub-share-modal__tabpanel')
-    expect(body).not.toBeNull()
-    expect(tabpanel).not.toBeNull()
-    expect(body!.contains(tabpanel)).toBe(true)
-    expect(tabpanel).not.toBe(body)
+    // The tabpanel renders only once the async IssueCapabilities seed lands in
+    // cachedShare; poll for it instead of trusting one tick (flaked under load).
+    await vi.waitFor(() => {
+      const body = c.querySelector('.hub-share-modal__body')
+      const tabpanel = c.querySelector('.hub-share-modal__tabpanel')
+      expect(body).not.toBeNull()
+      expect(tabpanel).not.toBeNull()
+      expect(body!.contains(tabpanel)).toBe(true)
+      expect(tabpanel).not.toBe(body)
+    })
   })
 
   it('style.css documents .hub-share-modal__tabpanel as the scrolling region (source-level — jsdom has no layout)', () => {
@@ -831,8 +834,7 @@ describe('SessionShareModal — SM-02: single scroll region', () => {
 describe('SessionShareModal — SM-03: segmented control is a real tablist', () => {
   it('renders role="tablist" with three role="tab" segments, exactly one aria-selected', async () => {
     const { container: c } = renderModal({ webEnabled: true, webServerMode: 'tailscale' })
-    await tick()
-    expect(c.querySelector('[role="tablist"]')).not.toBeNull()
+    await vi.waitFor(() => expect(c.querySelector('[role="tablist"]')).not.toBeNull())
     const tabs = Array.from(c.querySelectorAll('[role="tab"]'))
     expect(tabs).toHaveLength(3)
     const selected = tabs.filter((t) => t.getAttribute('aria-selected') === 'true')
@@ -844,14 +846,15 @@ describe('SessionShareModal — SM-03: segmented control is a real tablist', () 
 describe('SessionShareModal — SM-05: tab availability, default, and reset', () => {
   it('Internet tabs are aria-disabled until confirmed; confirming defaults to Internet·Read-only; disabling resets to Tailnet', async () => {
     const { container: c } = renderModal({ webEnabled: true, webServerMode: 'tailscale' })
-    await tick()
 
-    const tabsBefore = Array.from(c.querySelectorAll('[role="tab"]'))
-    const internetTabsBefore = tabsBefore.filter((t) => /Internet/.test(t.textContent ?? ''))
-    expect(internetTabsBefore).toHaveLength(2)
-    for (const t of internetTabsBefore) {
-      expect(t.getAttribute('aria-disabled')).toBe('true')
-    }
+    await vi.waitFor(() => {
+      const tabsBefore = Array.from(c.querySelectorAll('[role="tab"]'))
+      const internetTabsBefore = tabsBefore.filter((t) => /Internet/.test(t.textContent ?? ''))
+      expect(internetTabsBefore).toHaveLength(2)
+      for (const t of internetTabsBefore) {
+        expect(t.getAttribute('aria-disabled')).toBe('true')
+      }
+    })
 
     await enableFunnel(c)
 
@@ -883,18 +886,20 @@ describe('SessionShareModal — SM-05: tab availability, default, and reset', ()
 describe('SessionShareModal — SM-05 residual (WR-01, 173-08): funnelOn resyncs from session.funnelActive', () => {
   it('an out-of-band session.funnelActive flip to false resyncs funnelOn — Internet tabs re-disable, active tab resets to Tailnet, and the toggle-state label drops "On"', async () => {
     const { container: c, root: r } = renderModal({ webEnabled: true, webServerMode: 'tailscale', funnelActive: true })
-    await tick() // seeding + warm-up-completion effect (session.funnelActive already true on mount)
-
     // Sanity: Internet tabs are enabled and the toggle-state label reads 'On' while funnelActive.
-    const internetTabsBefore = Array.from(c.querySelectorAll('[role="tab"]')).filter((t) =>
-      /Internet/.test(t.textContent ?? ''),
-    )
-    for (const t of internetTabsBefore) {
-      expect(t.getAttribute('aria-disabled')).toBe('false')
-    }
-    expect(
-      findToggleRow(c, 'Enable internet sharing').querySelector('.settings-panel__toggle-state')?.textContent,
-    ).toBe('On')
+    // Polled: seeding + warm-up-completion effect are async (session.funnelActive already true on mount).
+    await vi.waitFor(() => {
+      const internetTabsBefore = Array.from(c.querySelectorAll('[role="tab"]')).filter((t) =>
+        /Internet/.test(t.textContent ?? ''),
+      )
+      expect(internetTabsBefore).toHaveLength(2)
+      for (const t of internetTabsBefore) {
+        expect(t.getAttribute('aria-disabled')).toBe('false')
+      }
+      expect(
+        findToggleRow(c, 'Enable internet sharing').querySelector('.settings-panel__toggle-state')?.textContent,
+      ).toBe('On')
+    })
 
     // Out-of-band server-truth change: Funnel disabled/expired externally (new session prop, no user action).
     const session = makeSession({ webEnabled: true, webServerMode: 'tailscale', funnelActive: false })

@@ -12,7 +12,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
-import { FunnelRiskPanel } from '../Hub/FunnelRiskPanel'
+import { FunnelRiskPanel } from '../Share/FunnelRiskPanel'
 
 const RISK_STATEMENT =
   'This makes the session reachable from the public internet. The join code is the only access gate for its lifetime. Prefer short-lived, read-only shares.'

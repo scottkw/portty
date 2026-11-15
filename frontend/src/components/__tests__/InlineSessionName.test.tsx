@@ -10,7 +10,7 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   RenameSession: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { InlineSessionName } from './InlineSessionName'
+import { InlineSessionName } from '../InlineSessionName'
 import { RenameSession } from '../../wailsjs/go/main/App'
 
 function renderName(props: { id: string; name: string; onRenamed?: (name: string) => void }) {

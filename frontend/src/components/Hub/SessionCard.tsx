@@ -14,7 +14,7 @@ import {
   LinkIcon,               // CARD-03: "Connected" state shape signal (colorblind-safe)
   WindowIcon,             // FIX-03 RC-C: "Open in tab" in-app glyph (D-17 opens an in-app tab, not a browser)
 } from '@heroicons/react/24/outline'
-import { InlineSessionName } from './InlineSessionName'
+import { InlineSessionName } from '../InlineSessionName'
 import { memberKey, type HubGroupDef } from '../../lib/hubGroups'
 import { MiniPreview } from './MiniPreview'
 import { ChatBadge } from './ChatBadge'

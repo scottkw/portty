@@ -38,7 +38,7 @@ import { EventsOn, BrowserOpenURL } from './wailsjs/wailsjs/runtime/runtime'
 import { StatusBar } from './components/StatusBar'
 import { NewSessionModal } from './components/NewSessionModal'
 import { RemoteJoinCodeModal } from './components/RemoteJoinCodeModal'
-import { SessionShareModal } from './components/Hub/SessionShareModal'
+import { SessionShareModal } from './components/Share/SessionShareModal'
 import { remoteBaseURLFor } from './lib/remoteSession'
 import { adaptRemoteSession } from './lib/remoteAdapter'
 import { HELP_URL } from './lib/helpUrl'
@@ -1350,14 +1350,12 @@ function App(): React.ReactElement {
       </div>{/* end app__row */}
 
       {/* Phase 168-05 (UX-02) — Share modal: rendered here (App.tsx top level, always
-          mounted regardless of active tab) rather than inside HubPanel (which fully
-          unmounts on non-Hub tabs). This is the SINGLE SessionShareModal instance —
-          both the Hub card click (HubPanel's handleShare, via the setShareModalSession
-          prop) and the footer "Share Session" button (openShareModalForActiveSession)
-          drive this one shareModalSession state (RESEARCH Pattern 4). Do NOT also
-          render the SessionShareModal component from HubPanel.tsx — a second
-          instance reproduces the exact button-modal state-drift bug (#115) this
-          plan exists to fix. */}
+          mounted regardless of active tab). This is the SINGLE SessionShareModal
+          instance — every share entry point (the footer "Share Session" button via
+          openShareModalForActiveSession, tab and sidebar triggers) drives this one
+          shareModalSession state (RESEARCH Pattern 4). Do NOT render a second
+          SessionShareModal anywhere else — a second instance reproduces the exact
+          button-modal state-drift bug (#115) this plan exists to fix. */}
       {shareModalSession && (
         <SessionShareModal
           session={shareModalSession}

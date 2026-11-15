@@ -7,11 +7,11 @@ export interface InlineSessionNameProps {
 }
 
 /**
- * InlineSessionName — inline-editable session name for Hub cards.
+ * InlineSessionName — inline-editable session name (sidebar and tab rename reuse it).
  *
  * CR-02 fix: this component does NOT call RenameSession directly.
- * The RPC is owned by App.handleRenameTab, which is wired as the onRename
- * callback on HubPanel → SessionCardGrid → SessionCard → InlineSessionName.
+ * The RPC is owned by App.handleRenameTab, which the parent wires in as the
+ * onRenamed callback.
  * This component fires onRenamed(trimmed) and lets the parent chain handle
  * the actual RPC + state update. This prevents the double-RPC that occurred
  * when InlineSessionName called RenameSession AND the parent's onRenamed

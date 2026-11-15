@@ -362,3 +362,15 @@ describe('desktop window chrome CSS (LOOK-01)', () => {
     expect(cssRaw).toMatch(/html\.is-desktop :is\(\.sidebar, \.tab-bar\) \{\s*-webkit-user-select: none;\s*user-select: none;/)
   })
 })
+
+// Portty 02-05 (ROADMAP SC5): the Share dialog moved out of components/Hub/ and
+// is still rendered exactly once at App level.
+describe('Share dialog lives in components/Share (Portty 02-05)', () => {
+  it('imports SessionShareModal from components/Share', () => {
+    expect(raw).toContain("import { SessionShareModal } from './components/Share/SessionShareModal'")
+  })
+
+  it('renders exactly one SessionShareModal', () => {
+    expect(raw.match(/<SessionShareModal\b/g)).toHaveLength(1)
+  })
+})

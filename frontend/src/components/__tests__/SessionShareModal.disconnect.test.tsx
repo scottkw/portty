@@ -34,7 +34,7 @@ vi.mock('../../wailsjs/go/main/App', () => ({
 }))
 
 import { ToggleWebServing, DisconnectViewers } from '../../wailsjs/go/main/App'
-import { SessionShareModal } from '../Hub/SessionShareModal'
+import { SessionShareModal } from '../Share/SessionShareModal'
 
 const mockedToggleWebServing = ToggleWebServing as ReturnType<typeof vi.fn>
 const mockedDisconnectViewers = DisconnectViewers as ReturnType<typeof vi.fn>

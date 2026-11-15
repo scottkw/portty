@@ -14,7 +14,7 @@ import { flushSync } from 'react-dom'
 import {
   ShareSegmentedControl,
   type ShareSegmentedControlTab,
-} from '../Hub/ShareSegmentedControl'
+} from '../Share/ShareSegmentedControl'
 
 let container: HTMLElement | undefined
 let root: Root | undefined
