@@ -5,7 +5,7 @@ import { EmptyState } from './components/EmptyState'
 import { nextActiveTabId, renameInList, tabLabel } from './lib/tabs'
 import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
-import { SettingsTab } from './components/SettingsTab'
+import { SettingsSheet } from './components/SettingsSheet'
 import { stripAnsi } from './lib/stripAnsi'
 import { sanitizeFilename } from './lib/sanitizeFilename'
 import { detectMode, readWebModeParams } from './lib/webMode'
@@ -66,8 +66,6 @@ const DEFAULT_FONT_SIZE = 13
  * the Wails-generated TypeScript bindings to the child components.
  */
 function App(): React.ReactElement {
-  // NAV-03: the strip only holds session tabs, plus Settings until plan 02-11.
-  const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '', type: 'settings' }
   // Phase 120-06 — single source of truth for "is this React shell running in
   // a regular browser under /app/ vs inside the Wails desktop runtime?" Used
   // to gate the Wails RPC suite (init, retryInit, sessions polls) so the SPA
@@ -198,6 +196,8 @@ function App(): React.ReactElement {
 
   // Quit confirmation modal state (Phase 85)
   const [showQuitModal, setShowQuitModal] = useState(false)
+  // NAV-03: Settings is a sheet over the window (menu Settings… ⌘,), never a tab.
+  const [showSettings, setShowSettings] = useState(false)
   const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string }>>([])
   // Ref to removeTabState so the session:exit event handler (with [] deps) can call
   // the latest version without a stale closure
@@ -205,8 +205,6 @@ function App(): React.ReactElement {
   // The menu:close-tab listener ([] deps) reads the active tab through this ref.
   const activeIdRef = useRef<string | null>(null)
   activeIdRef.current = activeId
-  // Same pattern for the menu:settings listener (Settings… ⌘,).
-  const openSettingsRef = useRef<(() => void) | undefined>(undefined)
   // Every session:exit id, so createTab and the init/retryInit restore skip a
   // shell that exited while their RPCs were pending (exits are reported once).
   const exitedIdsRef = useRef(new Set<string>())
@@ -521,7 +519,7 @@ function App(): React.ReactElement {
       if (id !== null) removeTabStateRef.current?.(id)
     })
     // Native menu: Settings… (Cmd+,).
-    const offMenuSettings = EventsOn('menu:settings', () => openSettingsRef.current?.())
+    const offMenuSettings = EventsOn('menu:settings', () => setShowSettings(true))
     // Native menu: View > Hide/Show Sidebar (Ctrl+Cmd+S). Functional update: no stale closure.
     const offMenuToggleSidebar = EventsOn('menu:toggle-sidebar', () => setSidebarHidden((h) => !h))
 
@@ -614,17 +612,6 @@ function App(): React.ReactElement {
       throw err // the New Session dialog stays open and shows it
     }
   }, [tabCounter, webServerRunning])
-
-  const handleOpenSettings = useCallback(() => {
-    const existing = tabs.find((t) => t.type === 'settings')
-    if (existing) {
-      setActiveId(existing.id)
-      return
-    }
-    setTabs((prev) => [...prev, SETTINGS_TAB])
-    setActiveId(SETTINGS_TAB.id)
-  }, [tabs])
-  openSettingsRef.current = handleOpenSettings
 
   // UI-only removal of a session's tab state. session:exit calls it directly
   // (the daemon already removed the session); closeTab is nothing more.
@@ -1222,15 +1209,15 @@ function App(): React.ReactElement {
           )
         })()}
 
-        {/* Phase 120-06 — SettingsTab is Wails-bound (calls IsWebServerRunning,
-            HasCTDisclosure, GetStartMinimized, etc. unconditionally on mount). In
-            web mode none of those RPCs are reachable; rather than gate each
-            call inside the component, we skip mounting it entirely. The
+        {/* Phase 120-06 — SettingsSheet is Wails-bound (calls IsWebServerRunning,
+            HasCTDisclosure, GetStartMinimized, etc. on open). In web mode none
+            of those RPCs are reachable, so it is never mounted there. The
             Settings surface has no meaning for a web-share viewer (no daemon
             to configure). */}
         {mode !== 'web' && (
-        <div id={`tabpanel-${SETTINGS_TAB.id}`} role="tabpanel" style={{ display: activeId === SETTINGS_TAB.id ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
-          <SettingsTab
+          <SettingsSheet
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
             tailscaleHealth={tailscaleHealth}
             webServerMode={webServerMode}
             onPluginToggleSideEffect={handlePluginToggleSideEffect}
@@ -1248,7 +1235,7 @@ function App(): React.ReactElement {
             }}
             onShellWarnEnabledChange={(enabled: boolean) => {
               // Phase 150 SET-01 — keep App.tsx warningEnabled in sync with
-              // the SettingsTab toggle. When the user re-enables the warning
+              // the SettingsSheet switch. When the user re-enables the warning
               // (OFF→ON), also re-fetch shellWebShareWarned from the daemon
               // because SetShellWebShareWarningEnabled(true) atomically reset
               // shellWebShareWarned to false on the daemon side (D-03 re-arm).
@@ -1262,13 +1249,12 @@ function App(): React.ReactElement {
               }
             }}
           />
-        </div>
         )}
         {/* relayPort is set with the restored tabs, so launch never flashes this. */}
         {mode !== 'web' && relayPort !== null && tabs.length === 0 && (
           <EmptyState onNewSession={() => setShowNewSessionModal(true)} />
         )}
-        {daemonError && tabs.filter((t) => t.type !== 'settings').length === 0 && (
+        {daemonError && tabs.length === 0 && (
           <div className="banner banner--warning" role="alert">
             <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
             <span className="banner__message">
@@ -1283,7 +1269,7 @@ function App(): React.ReactElement {
         )}
         {relayPort != null && relayPort > 0 &&
           tabs.map((tab) => {
-            if (tab.type === 'settings' || tab.type === 'web-session') return null
+            if (tab.type === 'web-session') return null
             const isActive = tab.id === activeId
             return (
               <div

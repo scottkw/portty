@@ -1,10 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
-import raw from '../../components/SettingsTab.tsx?raw'
+import raw from '../../components/SettingsSheet.tsx?raw'
 import pluginsRaw from '../../components/PluginsSection.tsx?raw'
 
-const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
 // Portty 01-11: Save Plugins is the only Save button left in Settings (the
 // Save Paths flow went with Settings → Paths), so the save-confirmation
@@ -26,18 +23,9 @@ describe('SET-03: Save confirmation feedback', () => {
         expect(pluginsRaw).toContain("'Saved!'")
     })
 
-    it('uses --saved CSS modifier', () => {
-        expect(pluginsRaw).toContain('settings-panel__btn--saved')
-    })
-})
-
-describe('SET-03: Saved button CSS', () => {
-    it('has settings-panel__btn--saved class', () => {
-        expect(cssRaw).toContain('.settings-panel__btn--saved')
-    })
-
-    it('uses green background for saved state', () => {
-        expect(cssRaw).toContain('#9ece6a')
+    it('is the shared secondary push button (Portty 02-11: no green fill)', () => {
+        expect(pluginsRaw).toContain('className="button button--secondary"')
+        expect(pluginsRaw).not.toContain('settings-panel__btn--saved')
     })
 })
 

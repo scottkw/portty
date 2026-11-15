@@ -1,44 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import raw from '../../App.tsx?raw'
 
-// Source-inspection tests for App.tsx modal cleanup (UI-02: Settings as sidebar tab).
-// Verifies the old SettingsPanel modal wiring was removed and replaced with SettingsTab.
+// Source-inspection guard: the retired SettingsPanel modal must not come back.
+// Portty 02-11 intentionally reintroduces a `showSettings` state for the
+// Settings *sheet* (CONTEXT ▸ Settings: "Settings opens as a sheet over the
+// main window"), so this file guards the old component name instead.
 
-describe('UI-02 Gap 6: Dead modal code removed from App.tsx', () => {
-  it('does NOT contain showSettings state (old modal)', () => {
-    expect(raw).not.toContain('showSettings')
+describe('UI-02 Gap 6: the old SettingsPanel modal stays gone', () => {
+  it('does NOT reference SettingsPanel (old modal component)', () => {
+    expect(raw).not.toContain('SettingsPanel')
   })
 
   it('does NOT contain handleSettingsClose (old modal handler)', () => {
     expect(raw).not.toContain('handleSettingsClose')
   })
 
-  it('does NOT contain setShowSettings (old modal setter)', () => {
-    expect(raw).not.toContain('setShowSettings')
-  })
-
-  it('does NOT import SettingsPanel (old modal component)', () => {
-    // SettingsPanel is the old modal — should not appear as an import.
-    // We check the import section specifically.
-    const importEnd = raw.indexOf('\nfunction App')
-    expect(importEnd).toBeGreaterThan(-1)
-    const importBlock = raw.slice(0, importEnd)
-    expect(importBlock).not.toContain('SettingsPanel')
-  })
-
-  it('imports SettingsTab component', () => {
-    expect(raw).toContain("from './components/SettingsTab'")
-  })
-
-  it('defines SETTINGS_TAB constant', () => {
-    expect(raw).toContain('SETTINGS_TAB')
-  })
-
-  it('defines handleOpenSettings callback', () => {
-    expect(raw).toContain('handleOpenSettings')
-  })
-
-  it('renders <SettingsTab> inline (not as modal)', () => {
-    expect(raw).toContain('<SettingsTab')
+  it('imports the SettingsSheet component (Portty 02-11)', () => {
+    expect(raw).toContain("from './components/SettingsSheet'")
   })
 })

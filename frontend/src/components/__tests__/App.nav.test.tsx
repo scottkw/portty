@@ -180,22 +180,10 @@ describe('Portty 02-04: sidebar hide/show and inactive window', () => {
   })
 })
 
-// The Settings tab stays (opened from the menu) until plan 02-11 replaces it with a sheet.
-describe('Settings tab (menu:settings) until plan 02-11', () => {
+// Portty 02-11: Settings is a sheet opened from the menu, never a tab.
+describe('Settings sheet (menu:settings)', () => {
   it('does not wire Settings through the Sidebar', () => {
     expect(slice('<Sidebar', '/>')).not.toContain('onSettings')
-  })
-
-  it('find-or-create pattern checks t.type === settings', () => {
-    expect(raw).toContain("t.type === 'settings'")
-  })
-
-  it('uses SETTINGS_TAB constant', () => {
-    expect(raw).toContain('SETTINGS_TAB')
-  })
-
-  it('renders SettingsTab component', () => {
-    expect(raw).toContain('<SettingsTab')
   })
 })
 

@@ -550,17 +550,8 @@ describe('TabBar Share button and "On <host>" chip (Portty 02-08)', () => {
     expect(container.querySelector('.toolbar-chip')?.textContent).toBe('On home-air')
   })
 
-  it('neither Share nor the chip shows with no tabs, on a Settings tab, or in web mode', () => {
+  it('neither Share nor the chip shows with no tabs or in web mode', () => {
     ;({ container, root } = renderTabBarWithTabs({ tabs: [], activeId: null, onShare: vi.fn() }))
-    expect(share()).toHaveLength(0)
-    expect(container.querySelector('.toolbar-chip')).toBeNull()
-    flushSync(() => root.unmount())
-    container.remove()
-    ;({ container, root } = renderTabBarWithTabs({
-      tabs: [{ id: '__settings__', name: 'Settings', sessionId: '', type: 'settings' }],
-      activeId: '__settings__',
-      onShare: vi.fn(),
-    }))
     expect(share()).toHaveLength(0)
     expect(container.querySelector('.toolbar-chip')).toBeNull()
     flushSync(() => root.unmount())

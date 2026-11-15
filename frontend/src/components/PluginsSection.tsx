@@ -7,6 +7,7 @@ import {
   SetImageConfig,
 } from '../wailsjs/go/main/App'
 import { daemon } from '../wailsjs/go/models'
+import { Switch } from './Switch'
 
 type PluginSettings = daemon.PluginSettings
 const PluginSettings = daemon.PluginSettings
@@ -14,7 +15,7 @@ const PluginSettings = daemon.PluginSettings
 /**
  * PluginsSection — Phase 92 (PUI-01), Phase 99 (PUI-02)
  *
- * Renders the 8-plugin enable/disable section in the Settings tab. Persists
+ * Renders the 8-plugin enable/disable section in the Settings sheet (General pane). Persists
  * via the Wails Get/Set plugin-settings bindings; the GUI layer
  * (app.go) emits 'settings:plugins' on a successful save which propagates the
  * new pluginConfig into every open TerminalPanel via App.tsx prop drilling.
@@ -48,7 +49,7 @@ export function PluginsSection({
     }
   }, [])
 
-  // Three-state Save (mirrors SettingsTab.tsx Save Paths cadence)
+  // Three-state Save ("Saving…" / "Saved!")
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -111,10 +112,8 @@ export function PluginsSection({
     })
   }
 
-  // Helper to render one toggle row. Mirrors SettingsTab Behavior toggle markup
-  // verbatim — only label + description + key change. The <input> renders
-  // unconditionally (test selectors find it); only the visible <label> is
-  // gated by pluginsLoaded (Pitfall #3 — flicker guard).
+  // One grouped-form row per plugin (UI-SPEC "General pane"): label,
+  // description and optional caption/disclosure on the left, Switch on the right.
   function renderRow(
     key: PluginBooleanKey,
     label: string,
@@ -122,35 +121,26 @@ export function PluginsSection({
     caption?: string,
     disclosure?: React.ReactNode,
   ): React.ReactElement {
-    const checked = pluginConfig?.[key] ?? false
     return (
-      <div className="settings-panel__field-group" key={key as string}>
-        {pluginsLoaded && pluginConfig && (
-          <label
-            className={`settings-panel__toggle-row${checked ? ' settings-panel__toggle-row--checked' : ''}`}
-            htmlFor={`plugin-${key as string}`}
-            style={saving ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-          >
-            <span className="settings-panel__toggle-track">
-              <span className="settings-panel__toggle-thumb" />
-            </span>
-            <span className="settings-panel__toggle-label">{label}</span>
-          </label>
-        )}
-        <input
-          type="checkbox"
-          id={`plugin-${key as string}`}
-          className="settings-panel__toggle-input"
-          checked={checked}
-          onChange={toggle(key)}
-        />
-        <p className="settings-panel__description">{description}</p>
-        {caption && (
-          <p className="settings-panel__description settings-panel__description--italic">
-            {caption}
-          </p>
-        )}
-        {disclosure}
+      <div className="settings-row" key={key as string}>
+        <div className="settings-row__text">
+          <label className="settings-row__label" htmlFor={`plugin-${key as string}`}>{label}</label>
+          <p className="settings-row__description">{description}</p>
+          {caption && (
+            <p className="settings-row__description settings-panel__description--italic">
+              {caption}
+            </p>
+          )}
+          {disclosure}
+        </div>
+        <div className="settings-row__control">
+          <Switch
+            id={`plugin-${key as string}`}
+            checked={pluginConfig?.[key] ?? false}
+            saving={saving}
+            onChange={toggle(key)}
+          />
+        </div>
       </div>
     )
   }
@@ -168,32 +158,32 @@ export function PluginsSection({
     return (
       <details className="settings-panel__details">
         <summary>Search defaults</summary>
-        <label className="settings-panel__toggle-row" htmlFor="search-default-regex">
+        <label className="settings-check" htmlFor="search-default-regex">
           <input
             type="checkbox"
             id="search-default-regex"
             checked={sc.regex}
             onChange={(e) => dispatch(new daemon.SearchConfig({ ...sc, regex: e.target.checked }))}
           />
-          <span className="settings-panel__toggle-label">Regex</span>
+          <span>Regex</span>
         </label>
-        <label className="settings-panel__toggle-row" htmlFor="search-default-case">
+        <label className="settings-check" htmlFor="search-default-case">
           <input
             type="checkbox"
             id="search-default-case"
             checked={sc.caseSensitive}
             onChange={(e) => dispatch(new daemon.SearchConfig({ ...sc, caseSensitive: e.target.checked }))}
           />
-          <span className="settings-panel__toggle-label">Case sensitive</span>
+          <span>Case sensitive</span>
         </label>
-        <label className="settings-panel__toggle-row" htmlFor="search-default-word">
+        <label className="settings-check" htmlFor="search-default-word">
           <input
             type="checkbox"
             id="search-default-word"
             checked={sc.wholeWord}
             onChange={(e) => dispatch(new daemon.SearchConfig({ ...sc, wholeWord: e.target.checked }))}
           />
-          <span className="settings-panel__toggle-label">Whole word</span>
+          <span>Whole word</span>
         </label>
       </details>
     )
@@ -208,8 +198,8 @@ export function PluginsSection({
     return (
       <details className="settings-panel__details">
         <summary>Link click behavior</summary>
-        <label className="settings-panel__field-group">
-          <span className="settings-panel__description">Modifier</span>
+        <label className="settings-field">
+          <span className="settings-row__description">Modifier</span>
           <select
             value={wc.modifier}
             onChange={(e) => dispatch(new daemon.WebLinksConfig({ ...wc, modifier: e.target.value }))}
@@ -220,29 +210,29 @@ export function PluginsSection({
             <option value="none">No modifier (plain click)</option>
           </select>
         </label>
-        <label className="settings-panel__toggle-row">
+        <label className="settings-check">
           <input
             type="checkbox"
             checked={wc.confirmOSC8}
             onChange={(e) => dispatch(new daemon.WebLinksConfig({ ...wc, confirmOSC8: e.target.checked }))}
           />
-          <span className="settings-panel__toggle-label">Confirm OSC 8 hyperlinks (mismatched display vs href)</span>
+          <span>Confirm OSC 8 hyperlinks (mismatched display vs href)</span>
         </label>
-        <label className="settings-panel__toggle-row">
+        <label className="settings-check">
           <input
             type="checkbox"
             checked={wc.confirmIDN}
             onChange={(e) => dispatch(new daemon.WebLinksConfig({ ...wc, confirmIDN: e.target.checked }))}
           />
-          <span className="settings-panel__toggle-label">Confirm IDN / Punycode URLs</span>
+          <span>Confirm IDN / Punycode URLs</span>
         </label>
-        <label className="settings-panel__toggle-row">
+        <label className="settings-check">
           <input
             type="checkbox"
             checked={wc.confirmTyposquat}
             onChange={(e) => dispatch(new daemon.WebLinksConfig({ ...wc, confirmTyposquat: e.target.checked }))}
           />
-          <span className="settings-panel__toggle-label">Confirm typosquat patterns</span>
+          <span>Confirm typosquat patterns</span>
         </label>
       </details>
     )
@@ -254,9 +244,10 @@ export function PluginsSection({
     return (
       <details className="settings-panel__details">
         <summary>Storage limit</summary>
-        <label className="settings-panel__field-group">
-          <span className="settings-panel__description">Per-terminal decoded image storage cap (default 16 MB; max 1000 MB).</span>
+        <label className="settings-field">
+          <span className="settings-row__description">Per-terminal decoded image storage cap (default 16 MB; max 1000 MB).</span>
           <input
+            className="settings-input settings-input--number"
             type="number"
             min={1}
             max={1000}
@@ -286,14 +277,17 @@ export function PluginsSection({
 
   return (
     <>
-      <h3 id="settings-plugins">Terminal Plugins</h3>
+      <h3 className="settings-section">Terminal Plugins</h3>
       {loadError && (
-        <p className="settings-panel__error">
+        <p className="settings-sheet__error" role="alert">
           Could not load plugin settings — {loadError}
         </p>
       )}
-      {/* Order is non-negotiable per UI-SPEC: webgl → unicode11 → search →
+      {/* Rows render only after the values load (Pitfall #3 flicker guard).
+          Order is non-negotiable per UI-SPEC: webgl → unicode11 → search →
           webLinks → image → serialize → clipboard → progress (Pitfall #5). */}
+      {pluginsLoaded && pluginConfig && (
+      <div className="settings-group">
       {renderRow('webgl', 'WebGL renderer',
         'GPU-accelerated terminal rendering with automatic DOM fallback if the GPU context is lost.')}
       {renderRow('unicode11', 'Unicode 11 widths',
@@ -319,17 +313,21 @@ export function PluginsSection({
       {renderRow('progress', 'Progress (OSC 9;4)',
         'Show a per-tab progress underline when the running CLI emits OSC 9;4 progress updates.',
         'Default OFF in v3.2 — flips ON in v3.3 after field validation.')}
+      </div>
+      )}
 
       {error && (
-        <p className="settings-panel__error">
+        <p className="settings-sheet__error" role="alert">
           Could not save plugin settings — {error}
         </p>
       )}
-      <div className="settings-panel__save-paths-row">
+      <div className="settings-sheet__save-row">
+        {/* "Saved!" stays enabled so the confirmation isn't drawn dimmed like a disabled control. */}
         <button
-          className={`settings-panel__btn ${saved ? 'settings-panel__btn--saved' : 'settings-panel__btn--save'}`}
+          type="button"
+          className="button button--secondary"
           onClick={() => void handleSavePlugins()}
-          disabled={saving || saved || !pluginsLoaded}
+          disabled={saving || !pluginsLoaded}
         >
           {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Plugins'}
         </button>

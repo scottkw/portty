@@ -18,8 +18,8 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { act } from 'react-dom/test-utils'
-import { SettingsTab } from '../SettingsTab'
-import raw from '../SettingsTab.tsx?raw'
+import { SettingsSheet as SettingsTab } from '../SettingsSheet'
+import raw from '../SettingsSheet.tsx?raw'
 import * as AppBindings from '../../wailsjs/go/main/App'
 
 // --- Wails mock -----------------------------------------------------------
@@ -87,7 +87,9 @@ vi.mock('../../wailsjs/wailsjs/runtime/runtime', () => ({
 
 function makeProps(overrides: Partial<Parameters<typeof SettingsTab>[0]> = {}) {
   return {
-      tailscaleHealth: null,
+    isOpen: true,
+    onClose: vi.fn(),
+    tailscaleHealth: null,
     webServerMode: null as null,
     onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
     onPluginToggleSideEffect: undefined,
@@ -232,7 +234,7 @@ describe('SET-01: SettingsTab shell-warn toggle — DOM render (initial value tr
     })
 
     // Confirm dialog should appear (role=dialog or data-testid on our mock)
-    const dialog = container.querySelector('[role="dialog"], [data-testid="regen-modal"]')
+    const dialog = container.querySelector('[data-testid="regen-modal"]')
     expect(dialog).not.toBeNull()
 
     // SetShellWebShareWarningEnabled must NOT have been called yet
@@ -327,7 +329,7 @@ describe('SET-01: SettingsTab shell-warn toggle — DOM render (initial value fa
     expect(AppBindings.SetShellWebShareWarningEnabled).toHaveBeenCalledWith(true)
 
     // No confirm dialog should be open
-    const dialog = container.querySelector('[role="dialog"], [data-testid="regen-modal"]')
+    const dialog = container.querySelector('[data-testid="regen-modal"]')
     expect(dialog).toBeNull()
   })
 })

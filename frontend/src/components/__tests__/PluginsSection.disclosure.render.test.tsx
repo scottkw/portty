@@ -113,16 +113,15 @@ describe('Phase 99 gap-closure: disclosure checkboxes render with class hygiene'
     expect(allClean).toBe(true)
   })
 
-  it('the renderRow main toggles (outside .settings-panel__details) DO carry .settings-panel__toggle-input', async () => {
-    // Differential guardrail: assert the iOS-pill anchor pattern is still in
-    // use for the 8 main plugin rows. This prevents an over-zealous future
-    // refactor from stripping the class from renderRow.
-    const allToggleInputs = container.querySelectorAll(
-      'input[type="checkbox"].settings-panel__toggle-input',
-    )
-    const mainRowOnly = Array.from(allToggleInputs).filter(
+  it('the 8 main plugin rows (outside .settings-panel__details) are role="switch" buttons with a <label for> (Portty 02-11)', async () => {
+    const switches = Array.from(container.querySelectorAll('[role="switch"]')).filter(
       (el) => !el.closest('.settings-panel__details'),
     )
-    expect(mainRowOnly.length).toBe(8)
+    expect(switches.length).toBe(8)
+    for (const sw of switches) {
+      expect(sw.tagName).toBe('BUTTON')
+      expect(sw.getAttribute('aria-checked')).toMatch(/^(true|false)$/)
+      expect(container.querySelector(`label[for="${sw.id}"]`)).not.toBeNull()
+    }
   })
 })

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
-import raw from '../../components/SettingsTab.tsx?raw'
+import raw from '../../components/SettingsSheet.tsx?raw'
 
 // Use fs.readFileSync for CSS — vitest/jsdom does not support ?raw imports for CSS.
 const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')

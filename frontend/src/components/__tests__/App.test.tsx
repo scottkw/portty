@@ -33,6 +33,27 @@ describe('App', () => {
     })
   })
 
+  // Portty 02-11 (NAV-03, LOOK-01): Settings is a sheet, never a tab.
+  describe('Settings sheet replaces the Settings tab (NAV-03)', () => {
+    it('has no settings tab id, constant or tab type', () => {
+      expect(raw).not.toMatch(/SETTINGS_TAB|__settings__|type === 'settings'|type !== 'settings'/)
+    })
+
+    it('menu:settings sets showSettings', () => {
+      expect(raw).toContain('const [showSettings, setShowSettings] = useState(false)')
+      expect(raw).toContain("EventsOn('menu:settings', () => setShowSettings(true))")
+    })
+
+    it('renders exactly one SettingsSheet, desktop only, closed by onClose', () => {
+      expect(raw.match(/<SettingsSheet\b/g)).toHaveLength(1)
+      const start = raw.indexOf('<SettingsSheet')
+      expect(raw.slice(start - 40, start)).toContain("mode !== 'web' && (")
+      const props = raw.slice(start, start + 200)
+      expect(props).toContain('isOpen={showSettings}')
+      expect(props).toContain('onClose={() => setShowSettings(false)}')
+    })
+  })
+
   // UILAY-03: Old web-serving-bar overlay has been removed from App.tsx
   describe('old overlay removed (UILAY-03)', () => {
     it('does not contain web-serving-bar class', () => {
@@ -116,7 +137,7 @@ describe('App', () => {
       expect(raw).toContain('const tailscaleOff = tailscaleHealth !== null && !tailscaleHealth.connected')
     })
 
-    it('passes tailscaleHealth prop to SettingsTab', () => {
+    it('passes tailscaleHealth prop to SettingsSheet', () => {
       expect(raw).toContain('tailscaleHealth={tailscaleHealth}')
     })
 
@@ -244,9 +265,8 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(raw).toContain("EventsOn('menu:new-session', () => setShowNewSessionModal(true))")
   })
 
-  it('subscribes to menu:settings through a ref to handleOpenSettings (Portty 02-01)', () => {
-    expect(raw).toContain("EventsOn('menu:settings', () => openSettingsRef.current?.())")
-    expect(raw).toContain('openSettingsRef.current = handleOpenSettings')
+  it('subscribes to menu:settings and opens the Settings sheet (Portty 02-01, 02-11)', () => {
+    expect(raw).toContain("EventsOn('menu:settings', () => setShowSettings(true))")
     expect(raw).toContain('offMenuSettings()')
   })
 
@@ -328,7 +348,7 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
   })
 
   it('the daemon error notice is a warning banner keeping its message and Retry action', () => {
-    const start = raw.indexOf("{daemonError && tabs.filter((t) => t.type !== 'settings').length === 0 && (")
+    const start = raw.indexOf("{daemonError && tabs.length === 0 && (")
     const block = raw.slice(start, raw.indexOf('Retry Connection', start))
     expect(block).toContain('className="banner banner--warning"')
     expect(block).toContain('<ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />')

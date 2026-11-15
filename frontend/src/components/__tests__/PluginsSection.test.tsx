@@ -46,8 +46,8 @@ describe('PUI-01: Three-state Save button', () => {
     expect(raw).toMatch(/Saving…|Saving…/)
     expect(raw).toContain("'Saved!'")
   })
-  it('reuses settings-panel__btn--saved class', () => {
-    expect(raw).toContain('settings-panel__btn--saved')
+  it('is a secondary push button (Portty 02-11)', () => {
+    expect(raw).toContain('className="button button--secondary"')
   })
   it('uses 1500ms timeout (matches Save Paths cadence)', () => {
     expect(raw).toContain('1500')

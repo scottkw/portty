@@ -16,7 +16,7 @@ export interface Tab {
   id: string
   name: string
   sessionId: string
-  type?: 'terminal' | 'settings' | 'web-session'
+  type?: 'terminal' | 'web-session'
   /** Phase 168-03 (FIX-03) — per-tab remote peer origin for 'web-session' tabs
    *  opened via handleOpenRemoteSession. undefined for the app's own web-share
    *  bootstrap tab (which falls back to the mount-stable webParams). */

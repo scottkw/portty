@@ -10,7 +10,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { act } from 'react-dom/test-utils'
-import { SettingsTab } from '../SettingsTab'
+import { SettingsSheet as SettingsTab } from '../SettingsSheet'
 import { TAILSCALE_OFF_REASON, type TailscaleHealth } from '../../lib/tailscale'
 
 // --- Wails mock -----------------------------------------------------------
@@ -81,6 +81,8 @@ const REMOVED_STATES = ['Permission Limited', 'Daemon Stopped', 'Not Installed',
 
 function makeProps(overrides: Partial<Parameters<typeof SettingsTab>[0]> = {}) {
   return {
+    isOpen: true,
+    onClose: vi.fn(),
     tailscaleHealth: null as TailscaleHealth | null,
     webServerMode: null as null,
     onWebServerStateChange: vi.fn().mockResolvedValue(undefined),

@@ -117,7 +117,8 @@ describe('Sidebar: This Mac (NAV-01)', () => {
     const sessions = [session('a', 'alpha')]
     const { c } = render({
       sessions,
-      activeTab: { id: '__settings__', name: 'Settings', sessionId: '', type: 'settings' },
+      // A peer tab that happens to share the local session's id still selects no local row.
+      activeTab: { id: '__websession__a', name: 'peer › alpha', sessionId: 'a', type: 'web-session' },
     })
     expect(c.querySelectorAll('[aria-current="page"]').length).toBe(0)
   })

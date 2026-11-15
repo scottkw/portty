@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
-import raw from '../../components/SettingsTab.tsx?raw'
-
-const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
+import raw from '../../components/SettingsSheet.tsx?raw'
 
 describe('TRAY-01: Start-minimized toggle — Wails bindings', () => {
     it('imports GetStartMinimized from Wails bindings', () => {
@@ -62,57 +58,23 @@ describe('TRAY-01: Start-minimized toggle — handler', () => {
     })
 })
 
-describe('TRAY-01: Start-minimized toggle — JSX structure', () => {
-    it('renders Behavior section heading', () => {
-        // Phase 104: header carries id="settings-behavior" anchor for the jump-bar.
-        expect(raw).toMatch(/<h3[^>]*>Behavior<\/h3>/)
+describe('TRAY-01: Start-minimized switch — JSX structure (Portty 02-11)', () => {
+    it('labels the switch "Start hidden in the menu bar"', () => {
+        expect(raw).toContain('label="Start hidden in the menu bar"')
+        expect(raw).toContain('htmlFor="startMinimized"')
     })
 
-    it('has "Start minimized to system tray" toggle label text', () => {
-        expect(raw).toContain('Start minimized to system tray')
+    it('renders it as a Switch bound to startMinimized, shown only after load', () => {
+        const start = raw.indexOf('{toggleLoaded && (')
+        expect(start).toBeGreaterThan(-1)
+        const block = raw.slice(start, raw.indexOf('</Row>', start))
+        expect(block).toContain('<Switch')
+        expect(block).toContain('id="startMinimized"')
+        expect(block).toContain('checked={startMinimized}')
+        expect(block).toContain('saving={toggleSaving}')
     })
 
-    it('has toggle-row CSS class on label', () => {
-        expect(raw).toContain('settings-panel__toggle-row')
-    })
-
-    it('has toggle-track CSS class', () => {
-        expect(raw).toContain('settings-panel__toggle-track')
-    })
-
-    it('has toggle-thumb CSS class', () => {
-        expect(raw).toContain('settings-panel__toggle-thumb')
-    })
-
-    it('has toggle-input class on hidden checkbox', () => {
-        expect(raw).toContain('settings-panel__toggle-input')
-    })
-
-    it('has toggle description text', () => {
-        expect(raw).toContain('When enabled, AgentHub launches with the window hidden.')
-    })
-
-    it('has toggle-row--checked modifier for checked state', () => {
-        expect(raw).toContain('settings-panel__toggle-row--checked')
-    })
-
-    it('has toggle-label class', () => {
-        expect(raw).toContain('settings-panel__toggle-label')
-    })
-})
-
-describe('TRAY-01: Start-minimized toggle — CSS rules', () => {
-    it('has .settings-panel__toggle-track with correct dimensions', () => {
-        expect(cssRaw).toContain('.settings-panel__toggle-track')
-        expect(cssRaw).toContain('width: 36px')
-        expect(cssRaw).toContain('height: 20px')
-    })
-
-    it('has .settings-panel__toggle-row--checked modifier', () => {
-        expect(cssRaw).toContain('.settings-panel__toggle-row--checked')
-    })
-
-    it('has .settings-panel__toggle-label class', () => {
-        expect(cssRaw).toContain('.settings-panel__toggle-label')
+    it('has the UI-SPEC description', () => {
+        expect(raw).toContain('Opens with no window. Click the menu bar icon to show it.')
     })
 })
