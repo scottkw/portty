@@ -85,7 +85,9 @@ describe.each([
 ])('App.tsx TERM-05: %s restore filters stopped sessions', (_name, body) => {
   it("restores only sessions whose state is not 'stopped'", () => {
     const b = body()
-    expect(b).toContain("const sessions = allSessions.filter((s) => s.state !== 'stopped')")
+    // Iteration-2 WR-02: a session that exited while Promise.all was pending
+    // (its one session:exit already handled) must not come back as a tab.
+    expect(b).toContain("const sessions = allSessions.filter((s) => s.state !== 'stopped' && !exitedIdsRef.current.has(s.id))")
     // Tabs and hubSessions are built from the filtered list.
     expect(b).toContain('setHubSessions(sessions)')
     expect(b).toContain('sessions.map((s) => ({')

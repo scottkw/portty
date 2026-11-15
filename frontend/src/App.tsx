@@ -239,8 +239,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // Ref to handleCloseTab so the session:exit event handler (with [] deps) can call
   // the latest version without a stale closure
   const handleCloseTabRef = useRef<((id: string) => Promise<void>) | undefined>(undefined)
-  // Every session:exit id, so createTab skips a shell that exited before
-  // CreateSession resolved (the exit is reported only once).
+  // Every session:exit id, so createTab and the init/retryInit restore skip a
+  // shell that exited while their RPCs were pending (exits are reported once).
   const exitedIdsRef = useRef(new Set<string>())
   // Bumped on every tailscale:health event; init/retryInit apply their
   // GetTailscaleStatus reply only if no event arrived while it was pending.
@@ -446,7 +446,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           GetTailscaleStatus(),
         ])
         // A shell that exited while no GUI was watching is removed, not restored (TERM-05).
-        const sessions = allSessions.filter((s) => s.state !== 'stopped')
+        const sessions = allSessions.filter((s) => s.state !== 'stopped' && !exitedIdsRef.current.has(s.id))
         allSessions.filter((s) => s.state === 'stopped').forEach((s) => {
           KillSession(s.id).catch((err) => console.warn('[App] KillSession of stopped session failed:', err))
         })
@@ -1217,7 +1217,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         GetTailscaleStatus(),
       ])
       // Mirror init: stopped sessions are removed, not restored (TERM-05).
-      const sessions = allSessions.filter((s) => s.state !== 'stopped')
+      const sessions = allSessions.filter((s) => s.state !== 'stopped' && !exitedIdsRef.current.has(s.id))
       allSessions.filter((s) => s.state === 'stopped').forEach((s) => {
         KillSession(s.id).catch((err) => console.warn('[App] KillSession of stopped session failed:', err))
       })
