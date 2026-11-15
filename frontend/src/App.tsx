@@ -615,6 +615,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         // its tab. The Go exit watcher has already removed the session from
         // the daemon, so handleCloseTab's KillSession "not found" is expected.
         exitedIdsRef.current.add(data.sessionId)
+        setHubSessions((prev) => prev.filter((s) => s.id !== data.sessionId))
         void handleCloseTabRef.current?.(data.sessionId)
       }
     )

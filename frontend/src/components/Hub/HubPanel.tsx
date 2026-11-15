@@ -297,6 +297,12 @@ export function HubPanel({
     [remoteSessions],
   )
 
+  // Close the modal when its session exits or otherwise leaves both lists.
+  useEffect(() => {
+    const id = modalState?.session.id
+    if (id && !remoteIdSet.has(id) && !sessions.some((s) => s.id === id)) setModalState(null)
+  }, [sessions, remoteIdSet, modalState])
+
   // Phase 138 / CARD-03: derive connected set from remoteCapsCached.
   // Boolean Set threaded to SessionCardGrid as connectedRemoteIds.
   const connectedRemoteIds = React.useMemo(

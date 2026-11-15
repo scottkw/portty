@@ -49,6 +49,11 @@ describe('App.tsx TERM-05: session:exit closes the tab', () => {
     expect(guard).toBeLessThan(body.indexOf('setHubSessions('))
   })
 
+  // WR-04: the Hub reflects the exit at once (and its open modal closes).
+  it('removes the exited session from hubSessions', () => {
+    expect(exitHandler()).toContain('setHubSessions((prev) => prev.filter((s) => s.id !== data.sessionId))')
+  })
+
   it('handleCloseTabRef stays in sync with handleCloseTab', () => {
     expect(raw).toContain('handleCloseTabRef.current = handleCloseTab')
   })

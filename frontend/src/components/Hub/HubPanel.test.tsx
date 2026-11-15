@@ -763,6 +763,38 @@ describe('HubPanel FE-ROUTE-01: remote routing gate (behavioral)', () => {
     expect(overlay).not.toBeNull()
   })
 
+  it('WR-04: the open modal closes when its session leaves the sessions list (shell exited)', () => {
+    const localSession = makeSession({ id: 'loc-exit' })
+    const modalContainer = document.createElement('div')
+    document.body.appendChild(modalContainer)
+    const modalRoot = createRoot(modalContainer)
+    const render = (sessions: SessionInfo[]) =>
+      act(() => {
+        modalRoot.render(
+          React.createElement(HubPanel, {
+            sessions,
+            remoteSessions: [],
+            error: false,
+            onNewSession: vi.fn(),
+            onRename: vi.fn(),
+            isActive: false,
+            terminalTheme: STUB_THEME,
+            relayPort: 51234,
+            remoteCapsCached: new Set<string>(),
+          }),
+        )
+      })
+
+    render([localSession])
+    act(() => {
+      modalContainer.querySelector('article.hub-card')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(modalContainer.querySelector('.hub-modal-overlay')).not.toBeNull()
+
+    render([])
+    expect(modalContainer.querySelector('.hub-modal-overlay')).toBeNull()
+  })
+
   it('FE-ROUTE-01c: local card with a non-empty MACHINE hostname opens the modal (provenance, not hostname)', () => {
     // GAP-134-A regression: local sessions carry os.Hostname(), so a hostname-based
     // remote check misroutes EVERY local session to the remote-cap join flow. Local vs
