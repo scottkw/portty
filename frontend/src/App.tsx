@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import type { IProgressState } from '@xterm/addon-progress'
 import { TabBar, type Tab } from './components/TabBar'
 import { EmptyState } from './components/EmptyState'
-import { nextActiveTabId } from './lib/tabs'
+import { nextActiveTabId, renameInList, tabLabel } from './lib/tabs'
+import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
 import { SettingsTab } from './components/SettingsTab'
 import { stripAnsi } from './lib/stripAnsi'
@@ -86,8 +87,8 @@ function App(): React.ReactElement {
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   // Hide/Show Sidebar (button, toolbar button, View menu ⌃⌘S). Not persisted.
   const [sidebarHidden, setSidebarHidden] = useState(false)
-  // Track web serving state per session: sessionId -> enabled
-  const [webEnabled, setWebEnabled] = useState<Record<string, boolean>>({})
+  // Session id the End Session… confirm is open for (TERM-03); null = closed.
+  const [endSessionTarget, setEndSessionTarget] = useState<string | null>(null)
   // Phase 101-03 SHELL-07/SHELL-08 — one-time security-warning gate for shell
   // sessions. `shellWebShareWarned` is hydrated from the daemon settings via
   // GetShellWebShareWarned() on mount; once the user confirms the banner, both
@@ -279,14 +280,14 @@ function App(): React.ReactElement {
       }
       const plainText = stripAnsi(fn())
       const stamp = new Date().toISOString().replace(/[:T]/g, '-').replace(/\..+/, '')
-      const fname = sanitizeFilename(tab.name) + '-' + stamp + '.txt'
+      const fname = sanitizeFilename(tabLabel(tab, sessions)) + '-' + stamp + '.txt'
       try {
         await SaveTerminalSession('', fname, plainText)
       } catch (err) {
         setSaveBanner({ kind: 'error', text: 'Could not save terminal: ' + String(err) })
       }
     },
-    [tabs, serializerRegistry]
+    [tabs, sessions, serializerRegistry]
   )
 
   const handleDismissUpdate = useCallback(() => {
@@ -421,19 +422,6 @@ function App(): React.ReactElement {
           }))
           setTabs(restoredTabs)
           setActiveId(restoredTabs[0].id)
-
-          // Seed webEnabled state from daemon's SessionInfo.webEnabled field (SERVE-02 restore).
-          if (running) {
-            const enabledMap: Record<string, boolean> = {}
-            sessions.forEach((s) => {
-              if (s.webEnabled) {
-                enabledMap[s.id] = true
-              }
-            })
-            if (Object.keys(enabledMap).length > 0) {
-              setWebEnabled(enabledMap)
-            }
-          }
         }
       } catch (err) {
         console.error('[App] init failed:', err)
@@ -640,7 +628,6 @@ function App(): React.ReactElement {
   // UI-only removal of a session's tab state. session:exit calls it directly
   // (the daemon already removed the session); closeTab is nothing more.
   const removeTabState = useCallback((id: string) => {
-    setWebEnabled((prev) => { const n = { ...prev }; delete n[id]; return n })
     setTabs((prev) => {
       // Right neighbour, else left, else the empty state (TERM-03).
       setActiveId((cur) => nextActiveTabId(prev, id, cur))
@@ -658,15 +645,36 @@ function App(): React.ReactElement {
     removeTabState(id)
   }, [removeTabState])
 
-  const handleRenameTab = useCallback(async (id: string, name: string) => {
+  // End Session… after its confirm (TERM-03): stop sharing first so attached
+  // viewers are cut off, then kill. Errors reach the confirm dialog. The exit
+  // watcher and the poll agree with the instant removal below.
+  const endSession = useCallback(async (id: string) => {
+    if (sessions.find((s) => s.id === id)?.webEnabled) {
+      try { await ToggleWebServing(id, false) } catch (err) { console.warn('[App] ToggleWebServing(false) failed:', err) }
+    }
+    await KillSession(id)
+    removeTabState(id)
+    setSessions((prev) => prev.filter((s) => s.id !== id))
+  }, [sessions, removeTabState])
+
+  // Rename from the tab or the sidebar row. Tab labels derive from sessions
+  // (tabLabel), so the optimistic rename shows in both places at once; a
+  // failed RPC puts the old name back in both (RESEARCH Pitfall 6).
+  const renameSession = useCallback(async (id: string, name: string) => {
+    const previous = sessions.find((s) => s.id === id)?.name ?? ''
+    setSessions((prev) => renameInList(prev, id, name))
     try {
       await RenameSession(id, name)
     } catch (err) {
       console.warn('[App] RenameSession failed:', err)
+      setSessions((prev) => renameInList(prev, id, previous))
     }
-    setTabs((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, name } : t))
-    )
+  }, [sessions])
+
+  // Share state lives on the session list; the Share dialog reports a toggle
+  // here so the toolbar and sidebar show it before the next poll.
+  const setSessionWebEnabled = useCallback((id: string, enabled: boolean) => {
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, webEnabled: enabled } : s)))
   }, [])
 
   // Phase 168-05 (UX-02 / D-14): the footer no longer toggles web sharing
@@ -707,7 +715,7 @@ function App(): React.ReactElement {
         SetShellWebShareWarned(true),
         ToggleWebServing(sessionId, true),
       ])
-      setWebEnabled((prev) => ({ ...prev, [sessionId]: true }))
+      setSessionWebEnabled(sessionId, true)
       return true
     } catch (err) {
       console.warn('[App] shell web-share confirm failed:', err)
@@ -717,7 +725,7 @@ function App(): React.ReactElement {
       setShellWebShareWarned(false)
       return false
     }
-  }, [shareModalSession])
+  }, [shareModalSession, setSessionWebEnabled])
 
   // Phase 168-05: the modal owns its own pendingShellShare local state and
   // already resets it before calling this — no App-level state to clear.
@@ -1041,19 +1049,6 @@ function App(): React.ReactElement {
         }))
         setTabs(restoredTabs)
         setActiveId(restoredTabs[0].id)
-
-        // Seed webEnabled state from daemon's SessionInfo.webEnabled field (SERVE-02 restore).
-        if (running) {
-          const enabledMap: Record<string, boolean> = {}
-          sessions.forEach((s) => {
-            if (s.webEnabled) {
-              enabledMap[s.id] = true
-            }
-          })
-          if (Object.keys(enabledMap).length > 0) {
-            setWebEnabled(enabledMap)
-          }
-        }
       }
     } catch (err) {
       console.error('[App] retry init failed:', err)
@@ -1079,16 +1074,19 @@ function App(): React.ReactElement {
         onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}
         tailscaleHealth={tailscaleHealth}
         onHide={() => setSidebarHidden(true)}
+        onRename={(id, name) => void renameSession(id, name)}
+        onEndSession={setEndSessionTarget}
       />
       )}
       <div className="app__content">
         <TabBar
-          tabs={tabs}
+          tabs={tabs.map((t) => ({ ...t, name: tabLabel(t, sessions) }))}
           activeId={activeId}
           onSelect={setActiveId}
           onClose={closeTab}
-          onRename={handleRenameTab}
-          onRequestSave={handleRequestSave}
+          onRename={(id, name) => void renameSession(id, name)}
+          onEndSession={setEndSessionTarget}
+          onRequestSave={pluginConfig?.serialize ? handleRequestSave : undefined}
           tabProgress={tabProgress}
           webMode={mode === 'web'}
           sidebarHidden={mode !== 'web' && sidebarHidden}
@@ -1325,7 +1323,7 @@ function App(): React.ReactElement {
                 <StatusBar
                   sessionId={tab.sessionId}
                   webServerRunning={webServerRunning}
-                  webEnabled={!!webEnabled[tab.sessionId]}
+                  webEnabled={!!sessions.find((s) => s.id === tab.sessionId)?.webEnabled}
                   onShareSession={openShareModalForActiveSession}
                   shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}
                 />
@@ -1354,11 +1352,37 @@ function App(): React.ReactElement {
           onShellWebShareConfirm={handleShellWebShareConfirm}
           onShellWebShareCancel={handleShellWebShareCancel}
           onOpenHelp={() => BrowserOpenURL(HELP_URL)}
-          onShareEnabledChange={(sessionId, enabled) =>
-            setWebEnabled((prev) => ({ ...prev, [sessionId]: enabled }))
-          }
+          onShareEnabledChange={setSessionWebEnabled}
         />
       )}
+
+      {(() => {
+        const target = sessions.find((s) => s.id === endSessionTarget)
+        return (
+          <RegenerateKeyModal
+            isOpen={!!target}
+            titleId="end-session-title"
+            title={`End “${target?.name || 'shell'}”?`}
+            body={
+              <>
+                {"The shell and everything running in it will stop. This can't be undone."}
+                {target?.webEnabled && (
+                  <span className="end-session__note">Anyone attached from another Mac or a browser will be disconnected.</span>
+                )}
+              </>
+            }
+            confirmLabel="End Session"
+            actingLabel="Ending…"
+            cancelLabel="Cancel"
+            destructive
+            onConfirm={async () => {
+              await endSession(endSessionTarget!)
+              setEndSessionTarget(null)
+            }}
+            onCancel={() => setEndSessionTarget(null)}
+          />
+        )
+      })()}
 
       {showNewSessionModal && (
         <NewSessionModal

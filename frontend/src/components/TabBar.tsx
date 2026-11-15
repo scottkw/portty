@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { GlobeAltIcon, LockOpenIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { SidebarToggleIcon } from './Sidebar'
+import { ContextMenu, isMenuKey, type ContextMenuItem } from './ContextMenu'
+import { InlineSessionName } from './InlineSessionName'
 
 export interface Tab {
   id: string
@@ -20,11 +22,15 @@ interface TabBarProps {
   onSelect: (id: string) => void
   onClose: (id: string) => void
   onRename: (id: string, name: string) => void
+  /** Portty 02-08 (TERM-03): End Session… on a local tab; App confirms, then kills. */
+  onEndSession?: (id: string) => void
   /**
    * Phase 97 SER-01: invoked when user picks the save menu item from
    * the right-click context menu. The handler in App.tsx looks up the
    * tab's session, runs the saver closure, strips ANSI, sanitizes the
-   * filename, and calls the SaveTerminalSession Wails RPC.
+   * filename, and calls the SaveTerminalSession Wails RPC. Portty 02-08:
+   * App passes it only while the serialize plugin is on, and the menu item
+   * shows only when it is set.
    */
   onRequestSave?: (tabId: string) => void
   /**
@@ -36,11 +42,9 @@ interface TabBarProps {
    */
   tabProgress?: Record<string, number>
   /**
-   * Phase 159-04 (WEBCHAT-05) — web-share guest mode. When true, the desktop-only
-   * tab affordances are suppressed: no double-click/right-click rename and no
-   * Rename / Save Terminal As menu items (both are Wails RPCs with no bridge in a
-   * browser — they fail silently and only relabel the local tab). The × close
-   * button stays. Guests get no session-menu chevron.
+   * Phase 159-04 (WEBCHAT-05) — web-share guest mode. The one session shows as
+   * a static pill: no rename, no context menu (its items are Wails RPCs with no
+   * browser bridge), no close button and no "+" (UI-SPEC "Web share page").
    */
   webMode?: boolean
   /**
@@ -66,10 +70,15 @@ interface TabBarProps {
   onNewSession?: () => void
 }
 
+/** A local terminal tab (no type, or 'terminal'): the only kind with Rename and End Session…. */
+function isLocal(tab: Tab): boolean {
+  return !tab.type || tab.type === 'terminal'
+}
+
 /**
  * Portty 02-08: the macOS unified toolbar. Pill tabs in a tablist, then the
- * New Session button. Double-clicking or right-clicking a tab name enables
- * inline editing.
+ * New Session button. Right-click or Shift+F10 opens the tab menu;
+ * double-clicking a local tab's name renames it in place.
  */
 export function TabBar({
   tabs,
@@ -77,6 +86,7 @@ export function TabBar({
   onSelect,
   onClose,
   onRename,
+  onEndSession,
   onRequestSave,
   tabProgress,
   webMode = false,
@@ -87,37 +97,10 @@ export function TabBar({
   onNewSession,
 }: TabBarProps): React.ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{ tab: Tab; x: number; y: number; invoker: HTMLElement } | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
-
-  // Focus the rename input as soon as it appears.
-  useEffect(() => {
-    if (editingId !== null) {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    }
-  }, [editingId])
-
-  // Dismiss context menu on outside click or Escape.
-  useEffect(() => {
-    if (contextMenu === null) return
-    function handleOutsideClick(_e: MouseEvent) {
-      setContextMenu(null)
-    }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setContextMenu(null)
-    }
-    document.addEventListener('mousedown', handleOutsideClick)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [contextMenu])
 
   // D-09: scroll-position-aware chevron state — ResizeObserver + scroll listener
   function checkScroll() {
@@ -152,37 +135,16 @@ export function TabBar({
     next?.focus()
   }
 
-  function startEdit(tab: Tab, e: React.MouseEvent) {
-    e.stopPropagation()
-    setEditingId(tab.id)
-    setEditValue(tab.name)
-  }
-
-  function startEditById(tabId: string) {
-    const tab = tabs.find(t => t.id === tabId)
-    if (tab) {
-      setEditingId(tab.id)
-      setEditValue(tab.name)
-    }
-  }
-
-  function commitEdit() {
-    if (editingId !== null) {
-      const trimmed = editValue.trim()
-      if (trimmed.length > 0) {
-        onRename(editingId, trimmed)
-      }
-      setEditingId(null)
-    }
-  }
-
-  function cancelEdit() {
-    setEditingId(null)
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') commitEdit()
-    if (e.key === 'Escape') cancelEdit()
+  // UI-SPEC "Context menus": a local tab gets the full menu, any other tab only Close Tab.
+  function menuItems(tab: Tab): ContextMenuItem[] {
+    const close = { label: 'Close Tab', onSelect: () => onClose(tab.id) }
+    if (!isLocal(tab)) return [close]
+    return [
+      { label: 'Rename', onSelect: () => setEditingId(tab.id) },
+      ...(onRequestSave ? [{ label: 'Save Terminal As…', onSelect: () => onRequestSave(tab.id) }] : []),
+      close,
+      ...(onEndSession ? [{ label: 'End Session…', onSelect: () => onEndSession(tab.id), separatorBefore: true }] : []),
+    ]
   }
 
   return (
@@ -241,14 +203,12 @@ export function TabBar({
               </span>
             )}
             {editingId === tab.id ? (
-              <input
-                ref={inputRef}
-                className="tab__rename-input"
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={commitEdit}
-                onKeyDown={handleKeyDown}
-                onClick={(e) => e.stopPropagation()}
+              <InlineSessionName
+                id={tab.id}
+                name={tab.name}
+                editing
+                onEditingChange={(on) => { if (!on) setEditingId(null) }}
+                onRenamed={(n) => onRename(tab.id, n)}
               />
             ) : (
               <button
@@ -259,46 +219,26 @@ export function TabBar({
                 aria-controls={`tabpanel-${tab.id}`}
                 tabIndex={active ? 0 : -1}
                 onClick={() => onSelect(tab.id)}
-                onKeyDown={handleTabKeyDown}
-              >
-              <span
-                className="tab__name"
-                onDoubleClick={webMode ? undefined : (e) => startEdit(tab, e)}
-                onContextMenu={webMode ? undefined : (e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setContextMenu({ tabId: tab.id, x: e.clientX, y: e.clientY })
-                }}
-                title="Double-click or right-click to rename"
-              >
-                {tab.name}
-              </span>
-              </button>
-            )}
-            {tab.sessionId && !webMode && (
-              <button
-                className="tab__chevron"
-                data-testid="tab-chevron"
-                title="Session menu"
-                aria-label="Session menu"
-                aria-haspopup="menu"
-                aria-expanded={contextMenu?.tabId === tab.id}
-                // WR-02 a11y: advertise the popup + reflect open state.
-                // IN-01: stop mousedown so the document outside-click handler
-                // doesn't pre-close the menu before this click can toggle it.
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  // Toggle: a click on the already-open chevron dismisses the menu.
-                  if (contextMenu?.tabId === tab.id) {
-                    setContextMenu(null)
+                onKeyDown={(e) => {
+                  if (!webMode && isMenuKey(e)) {
+                    e.preventDefault()
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setMenu({ tab, x: r.left, y: r.bottom, invoker: e.currentTarget })
                     return
                   }
-                  const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
-                  setContextMenu({ tabId: tab.id, x: rect.left, y: rect.bottom })
+                  handleTabKeyDown(e)
+                }}
+                onContextMenu={webMode ? undefined : (e) => {
+                  e.preventDefault()
+                  setMenu({ tab, x: e.clientX, y: e.clientY, invoker: e.currentTarget })
                 }}
               >
-                ▾
+                <span
+                  className="tab__name"
+                  onDoubleClick={webMode || !isLocal(tab) ? undefined : () => setEditingId(tab.id)}
+                >
+                  {tab.name}
+                </span>
               </button>
             )}
             {/* Web share page: one static pill, no close (UI-SPEC "Web share page"). */}
@@ -347,40 +287,14 @@ export function TabBar({
         </button>
       )}
 
-      {contextMenu && tabs.some(t => t.id === contextMenu.tabId) && (
-        <div
-          className="tab__context-menu"
-          role="menu"
-          style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {/* Rename + Save Terminal As are Wails RPCs with no browser bridge —
-              hidden for web-share guests (WEBCHAT-05). */}
-          {!webMode && (
-          <button
-            role="menuitem"
-            className="tab__context-menu__item"
-            onClick={() => {
-              startEditById(contextMenu.tabId)
-              setContextMenu(null)
-            }}
-          >
-            Rename
-          </button>
-          )}
-          {!webMode && (
-          <button
-            role="menuitem"
-            className="tab__context-menu__item"
-            onClick={() => {
-              onRequestSave?.(contextMenu.tabId)
-              setContextMenu(null)
-            }}
-          >
-            Save Terminal As…
-          </button>
-          )}
-        </div>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          invoker={menu.invoker}
+          onClose={() => setMenu(null)}
+          items={menuItems(menu.tab)}
+        />
       )}
     </div>
   )

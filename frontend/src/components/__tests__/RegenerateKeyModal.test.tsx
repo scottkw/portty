@@ -91,3 +91,32 @@ describe('RegenerateKeyModal copy', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 })
+
+// Portty 02-08 (TERM-03): third consumer, the End Session confirm.
+describe('RegenerateKeyModal: ReactNode body and destructive confirm (Portty 02-08)', () => {
+  it('renders a ReactNode body, marks the confirm destructive, and still focuses Cancel first', () => {
+    mount(
+      <RegenerateKeyModal
+        isOpen
+        onConfirm={noop}
+        onCancel={() => {}}
+        title="End “shell”?"
+        titleId="end-session-title"
+        body={<>The shell will stop.<span className="end-session__note">Anyone attached will be disconnected.</span></>}
+        confirmLabel="End Session"
+        cancelLabel="Cancel"
+        destructive
+      />,
+    )
+    expect(container.querySelector('#end-session-title')?.textContent).toBe('End “shell”?')
+    expect(container.querySelector('.end-session__note')?.textContent).toBe('Anyone attached will be disconnected.')
+    const confirm = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'End Session')!
+    expect(confirm.classList.contains('quit-modal__btn--destructive')).toBe(true)
+    expect(document.activeElement?.textContent).toBe('Cancel')
+  })
+
+  it('is not destructive by default', () => {
+    mount(<RegenerateKeyModal isOpen onConfirm={noop} onCancel={() => {}} />)
+    expect(container.querySelector('.quit-modal__btn--destructive')).toBeNull()
+  })
+})

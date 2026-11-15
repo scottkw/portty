@@ -44,6 +44,8 @@ function render(overrides: Partial<Props> = {}) {
     peerView: { kind: 'none' },
     onOpenPeer: vi.fn(),
     onHide: vi.fn(),
+    onRename: vi.fn(),
+    onEndSession: vi.fn(),
     tailscaleHealth: { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'office-air.tail1.ts.net' },
     ...overrides,
   }
@@ -267,5 +269,68 @@ describe('Source-gate: POL-04 pendingThemeRef in TerminalPanel.tsx', () => {
     const fitIdx = terminalPanelRaw.indexOf('fitTerminal', clearIdx)
     expect(clearIdx).toBeGreaterThan(-1)
     expect(fitIdx).toBeGreaterThan(clearIdx)
+  })
+})
+
+// Portty 02-08 (TERM-03): local rows get Rename · ─ · End Session… and in-place rename.
+describe('Sidebar: local row menu and rename (Portty 02-08)', () => {
+  const items = () => Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]')).map((b) => b.textContent)
+  const clickItem = (label: string) =>
+    act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find((b) => b.textContent === label)!.click())
+
+  it('right-click on a local row opens Rename · ─ · End Session…; End Session… calls onEndSession(id)', () => {
+    const onEndSession = vi.fn()
+    const { c } = render({ sessions: [session('a', 'shell 1')], onEndSession })
+    act(() => { rows(c, 'This Mac')[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })) })
+    expect(items()).toEqual(['Rename', 'End Session…'])
+    expect(document.querySelector('[role="menu"] [role="separator"]')).not.toBeNull()
+    clickItem('End Session…')
+    expect(onEndSession).toHaveBeenCalledWith('a')
+  })
+
+  it('Shift+F10 on a focused local row opens the same menu', () => {
+    const { c } = render({ sessions: [session('a', 'shell 1')] })
+    const row = rows(c, 'This Mac')[0]
+    act(() => { row.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true })) })
+    expect(items()).toEqual(['Rename', 'End Session…'])
+  })
+
+  it('double-clicking the name renames in place; Enter commits onRename(id, name); a single click still opens', () => {
+    const onRename = vi.fn()
+    const onOpenLocal = vi.fn()
+    const { c } = render({ sessions: [session('a', 'shell 1')], onRename, onOpenLocal })
+    act(() => rows(c, 'This Mac')[0].click())
+    expect(onOpenLocal).toHaveBeenCalledWith('a', 'shell 1')
+    act(() => { c.querySelector('.sidebar__row-name')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })
+    const input = c.querySelector<HTMLInputElement>('input[aria-label="Session name"]')!
+    expect(input).not.toBeNull()
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'logs')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    act(() => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
+    expect(onRename).toHaveBeenCalledWith('a', 'logs')
+    expect(c.querySelector('input')).toBeNull()
+  })
+
+  it('the Rename menu item starts the in-place edit', () => {
+    const { c } = render({ sessions: [session('a', 'shell 1')] })
+    act(() => { rows(c, 'This Mac')[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })) })
+    clickItem('Rename')
+    expect(c.querySelector('input[aria-label="Session name"]')).not.toBeNull()
+  })
+
+  it('peer rows have no menu and no rename', () => {
+    const peer: RemotePeerSessions = {
+      hostname: 'home-air.tail1.ts.net',
+      reachable: true,
+      sessions: [{ id: 'p1', name: 'remote', status: 'running', url: 'https://home-air.tail1.ts.net:8443/sessions/p1' }],
+    }
+    const { c } = render({ peerView: peerView(false, true, [peer]) })
+    const peerRow = rows(c, 'home-air')[0]
+    act(() => { peerRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })) })
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+    act(() => { peerRow.querySelector('.sidebar__row-name')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })
+    expect(c.querySelector('input')).toBeNull()
   })
 })

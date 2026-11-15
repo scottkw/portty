@@ -75,6 +75,8 @@ function renderPeerSidebar(onOpenPeer: Parameters<typeof Sidebar>[0]['onOpenPeer
         peerView: peerView(false, true, [remotePeer]),
         onOpenPeer,
         onHide: vi.fn(),
+        onRename: vi.fn(),
+        onEndSession: vi.fn(),
         tailscaleHealth: { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'me.ts.net' },
       }),
     )

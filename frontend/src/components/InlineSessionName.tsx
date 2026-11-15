@@ -4,6 +4,9 @@ export interface InlineSessionNameProps {
   id: string
   name: string
   onRenamed?: (name: string) => void
+  /** Controlled edit mode, so a menu item or a parent double-click can start it. */
+  editing?: boolean
+  onEditingChange?: (editing: boolean) => void
 }
 
 /**
@@ -17,22 +20,36 @@ export interface InlineSessionNameProps {
  * when InlineSessionName called RenameSession AND the parent's onRenamed
  * callback also propagated up to App.handleRenameTab which called it again.
  *
- * Mirrors the TabBar rename pattern (TabBar.tsx lines 140-172 and 203-225):
- * - Click the name span to enter edit mode
+ * - Click the name span to enter edit mode (uncontrolled), or set `editing`
+ *   from the parent (TabBar and Sidebar: double-click or the Rename menu item)
  * - Enter commits the rename — fires onRenamed, exits edit mode
  * - Escape cancels and restores the original name
  * - Blur with unchanged or empty-trimmed value does NOT fire onRenamed
- *
- * CSS reuse: tab__rename-input (style.css ~line 142) — no new rename-input CSS authored.
  */
-export function InlineSessionName({ id: _id, name, onRenamed }: InlineSessionNameProps): React.ReactElement {
-  const [editing, setEditing] = useState(false)
+export function InlineSessionName({
+  id: _id,
+  name,
+  onRenamed,
+  editing: editingProp,
+  onEditingChange,
+}: InlineSessionNameProps): React.ReactElement {
+  const [localEditing, setLocalEditing] = useState(false)
+  const editing = editingProp ?? localEditing
   const [editValue, setEditValue] = useState(name)
   const inputRef = useRef<HTMLInputElement>(null)
+  // One commit or cancel per edit: unmounting the focused input can also blur it.
+  const doneRef = useRef(false)
 
-  // When entering edit mode, select all text in the input
+  function setEditing(next: boolean): void {
+    if (editingProp === undefined) setLocalEditing(next)
+    onEditingChange?.(next)
+  }
+
+  // When entering edit mode, focus and select all text in the input
   useEffect(() => {
     if (editing) {
+      doneRef.current = false
+      inputRef.current?.focus()
       inputRef.current?.select()
     }
   }, [editing])
@@ -45,6 +62,8 @@ export function InlineSessionName({ id: _id, name, onRenamed }: InlineSessionNam
   }, [name, editing])
 
   function commitEdit(): void {
+    if (doneRef.current) return
+    doneRef.current = true
     const trimmed = editValue.trim()
     if (trimmed.length > 0 && trimmed !== name) {
       // CR-02: fire callback only — App.handleRenameTab owns the RenameSession RPC
@@ -60,6 +79,8 @@ export function InlineSessionName({ id: _id, name, onRenamed }: InlineSessionNam
       commitEdit()
     }
     if (e.key === 'Escape') {
+      if (doneRef.current) return
+      doneRef.current = true
       setEditValue(name)
       setEditing(false)
     }
@@ -71,7 +92,7 @@ export function InlineSessionName({ id: _id, name, onRenamed }: InlineSessionNam
         ref={inputRef}
         className="tab__rename-input"
         value={editValue}
-        placeholder="Session name"
+        aria-label="Session name"
         onChange={(e) => setEditValue(e.target.value)}
         onBlur={commitEdit}
         onKeyDown={handleKeyDown}

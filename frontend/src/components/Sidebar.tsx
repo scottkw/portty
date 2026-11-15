@@ -1,10 +1,12 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { CommandLineIcon, ComputerDesktopIcon, SignalIcon } from '@heroicons/react/24/outline'
 import type { Tab } from './TabBar'
 import type { SessionInfo } from '../wailsjs/go/main/App'
 import type { RemotePeerSessions, RemoteSession } from '../lib/remoteSession'
 import type { TailscaleHealth } from '../lib/tailscale'
 import { shortHost, type PeerView } from '../lib/sidebarPeers'
+import { ContextMenu, isMenuKey } from './ContextMenu'
+import { InlineSessionName } from './InlineSessionName'
 
 const PEER_PLACEHOLDER: Record<'off' | 'loading' | 'none', string> = {
   off: 'Peers appear when Tailscale is connected.',
@@ -36,6 +38,9 @@ interface SidebarProps {
   /** null until the first Tailscale check answers. */
   tailscaleHealth: TailscaleHealth | null
   onHide: () => void
+  /** Portty 02-08 (TERM-03): local rows only. App owns the RPCs. */
+  onRename: (sessionId: string, name: string) => void
+  onEndSession: (sessionId: string) => void
 }
 
 export function Sidebar({
@@ -46,7 +51,11 @@ export function Sidebar({
   onOpenPeer,
   tailscaleHealth,
   onHide,
+  onRename,
+  onEndSession,
 }: SidebarProps): React.ReactElement {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number; invoker: HTMLElement } | null>(null)
   // Local terminal tabs carry no type (or 'terminal'); other tab kinds never select a local row.
   const activeLocalId =
     activeTab && (!activeTab.type || activeTab.type === 'terminal') ? activeTab.sessionId : null
@@ -73,6 +82,22 @@ export function Sidebar({
             {sessions.length === 0 && <li className="sidebar__muted">No sessions</li>}
             {sessions.map((s) => {
               const name = s.name || 'shell'
+              if (editingId === s.id) {
+                return (
+                  <li key={s.id}>
+                    <div className="sidebar__row sidebar__row--editing">
+                      <CommandLineIcon className="sidebar__row-icon" aria-hidden="true" />
+                      <InlineSessionName
+                        id={s.id}
+                        name={name}
+                        editing
+                        onEditingChange={(on) => { if (!on) setEditingId(null) }}
+                        onRenamed={(n) => onRename(s.id, n)}
+                      />
+                    </div>
+                  </li>
+                )
+              }
               return (
                 <li key={s.id}>
                   <button
@@ -80,9 +105,19 @@ export function Sidebar({
                     className="sidebar__row"
                     aria-current={s.id === activeLocalId ? 'page' : undefined}
                     onClick={() => onOpenLocal(s.id, s.name)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      setMenu({ id: s.id, x: e.clientX, y: e.clientY, invoker: e.currentTarget })
+                    }}
+                    onKeyDown={(e) => {
+                      if (!isMenuKey(e)) return
+                      e.preventDefault()
+                      const r = e.currentTarget.getBoundingClientRect()
+                      setMenu({ id: s.id, x: r.left, y: r.bottom, invoker: e.currentTarget })
+                    }}
                   >
                     <CommandLineIcon className="sidebar__row-icon" aria-hidden="true" />
-                    <span className="sidebar__row-name" title={name}>{name}</span>
+                    <span className="sidebar__row-name" title={name} onDoubleClick={() => setEditingId(s.id)}>{name}</span>
                     {s.webEnabled && (
                       <SignalIcon className="sidebar__row-icon" role="img" aria-hidden={false} aria-label="Shared" />
                     )}
@@ -124,6 +159,19 @@ export function Sidebar({
           ))
         )}
       </div>
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          invoker={menu.invoker}
+          onClose={() => setMenu(null)}
+          items={[
+            { label: 'Rename', onSelect: () => setEditingId(menu.id) },
+            { label: 'End Session…', onSelect: () => onEndSession(menu.id), separatorBefore: true },
+          ]}
+        />
+      )}
 
       <div className="sidebar__footer" role="status">
         <span

@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
+import { act } from 'react'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
@@ -91,92 +92,12 @@ describe('TabBar', () => {
 })
 
 
-describe('TabBar context menu', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-    // Clean up any leftover event listeners by dispatching a mousedown to body
-  })
-
-  it('right-clicking tab name shows context menu', () => {
-    ;({ container, root } = renderTabBarWithTabs())
-    const tabName = container.querySelector('.tab__name') as HTMLElement
-    expect(tabName).not.toBeNull()
-    flushSync(() => {
-      tabName.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
-    })
-    expect(container.querySelector('.tab__context-menu')).not.toBeNull()
-  })
-
-  it('context menu has role="menu" and contains Rename menuitem', () => {
-    ;({ container, root } = renderTabBarWithTabs())
-    const tabName = container.querySelector('.tab__name') as HTMLElement
-    flushSync(() => {
-      tabName.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
-    })
-    const menu = container.querySelector('.tab__context-menu') as HTMLElement
-    expect(menu).not.toBeNull()
-    expect(menu.getAttribute('role')).toBe('menu')
-    const renameBtn = menu.querySelector('button[role="menuitem"]') as HTMLButtonElement
-    expect(renameBtn).not.toBeNull()
-    expect(renameBtn.textContent).toBe('Rename')
-  })
-
-  it('clicking Rename starts inline editing', () => {
-    ;({ container, root } = renderTabBarWithTabs())
-    const tabName = container.querySelector('.tab__name') as HTMLElement
-    flushSync(() => {
-      tabName.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
-    })
-    const renameBtn = container.querySelector('button[role="menuitem"]') as HTMLButtonElement
-    expect(renameBtn).not.toBeNull()
-    flushSync(() => {
-      renameBtn.click()
-    })
-    expect(container.querySelector('.tab__rename-input')).not.toBeNull()
-  })
-
-  it('tab name title includes right-click', () => {
-    ;({ container, root } = renderTabBarWithTabs())
-    const tabName = container.querySelector('.tab__name') as HTMLElement
-    expect(tabName).not.toBeNull()
-    expect(tabName.getAttribute('title')).toContain('right-click')
-  })
-})
-
-describe('Phase 97 SER-01: TabBar Save Terminal As… menu item — Plan 97-04 implementation', () => {
-  it('Save Terminal As menu-item label appears in TabBar source (with U+2026 ellipsis)', () => {
-    // The literal string must contain U+2026 HORIZONTAL ELLIPSIS, not "..."
-    expect(raw).toContain('Save Terminal As…')
-  })
-
-  it('TabBar.tsx props interface declares onRequestSave?: (tabId: string) => void', () => {
-    expect(raw).toMatch(/onRequestSave\?:\s*\(\s*tabId:\s*string\s*\)\s*=>\s*void/)
-  })
-
-  it('Save menu-item onClick invokes onRequestSave?.(contextMenu.tabId) and closes the menu', () => {
-    // Source must contain a click handler that calls both onRequestSave and setContextMenu(null).
-    expect(raw).toMatch(/onRequestSave\?\.\(\s*contextMenu\.tabId\s*\)/)
-    // The "Save Terminal As…" button must be near a setContextMenu(null) call.
-    const saveIdx = raw.indexOf('Save Terminal As…')
-    expect(saveIdx).toBeGreaterThan(-1)
-    // Walk back ~300 chars from the button label and look for setContextMenu(null) — the
-    // entire button JSX (handler + label) fits in this window.
-    const window = raw.slice(Math.max(0, saveIdx - 300), saveIdx + 100)
-    expect(window).toMatch(/setContextMenu\(\s*null\s*\)/)
-  })
-})
-
 // STRP-01: tabs carry no agent identity — no badge, no agent tooltip suffix.
 describe('TabBar shows no agent identity (STRP-01)', () => {
-  it('renders no .tab__agent-badge and the name tooltip has no agent suffix', () => {
+  it('renders no .tab__agent-badge and the pill tooltip is just the name', () => {
     const { container, root } = renderTabBarWithTabs()
     expect(container.querySelector('.tab__agent-badge')).toBeNull()
-    const tabName = container.querySelector('.tab__name') as HTMLElement
-    expect(tabName.getAttribute('title')).toBe('Double-click or right-click to rename')
+    expect(container.querySelector('.tab')?.getAttribute('title')).toBe('shell 1')
     root.unmount()
     container.remove()
   })
@@ -254,63 +175,6 @@ describe('Phase 139 TAB-02: TabBar chevron overflow — RED until Plan 02', () =
   })
 })
 
-describe('Phase 139 TAB-03: TabBar rename-at-floor via context menu — RED until Plan 02', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-  })
-
-  it('right-click context menu Rename fires onRename without requiring tab__name double-click', () => {
-    // Simulate: render with 2 tabs, right-click the .tab element (outer div, not .tab__name),
-    // click Rename in the context menu, confirm onRename is called.
-    // At icon-only floor, .tab__name may be hidden by CSS; the context menu must still work.
-    let renamedId: string | null = null
-    ;({ container, root } = renderTabBarWithTabs({
-      onRename: (id) => {
-        renamedId = id
-      },
-    }))
-
-    // Right-click the first tab's .tab__name to open the context menu.
-    // (The context menu trigger is on .tab__name contextmenu event.)
-    const tabName = container.querySelector('.tab__name') as HTMLElement
-    expect(tabName).not.toBeNull()
-    flushSync(() => {
-      tabName.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
-    })
-
-    // Find and click the Rename button in the context menu.
-    const renameBtn = container.querySelector('button[role="menuitem"]') as HTMLButtonElement
-    expect(renameBtn).not.toBeNull()
-    expect(renameBtn.textContent).toBe('Rename')
-    flushSync(() => {
-      renameBtn.click()
-    })
-
-    // The rename input should appear.
-    const renameInput = container.querySelector('.tab__rename-input') as HTMLInputElement
-    expect(renameInput).not.toBeNull()
-
-    // Simulate typing a new name and pressing Enter to commit.
-    flushSync(() => {
-      Object.defineProperty(renameInput, 'value', { value: 'new-name', configurable: true })
-      renameInput.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    flushSync(() => {
-      renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    })
-
-    // onRename must have been called.
-    expect(renamedId).toBe('tab1')
-    // If name change didn't propagate in jsdom, at least assert the flow ran without error.
-    // (actual rename value assertion may need Plan 02 updates)
-    expect(renamedId).not.toBeNull()
-  })
-})
-
 describe('Phase 139 TAB-03: TabBar title on outer .tab div — RED until Plan 02', () => {
   let container: HTMLElement
   let root: ReturnType<typeof createRoot>
@@ -345,115 +209,6 @@ describe('Phase 139 TAB-03: TabBar title on outer .tab div — RED until Plan 02
     // Note: The existing title on .tab__name contains the rename hint, not the name.
     // Plan 02 must put the full name in the outer div's title attribute.
     expect(outerTitle).toContain('shell 1')
-  })
-})
-
-// ============================================================================
-// Phase 148 TAB-04 — Session tab chevron (down-chevron button for menu discoverability)
-// ============================================================================
-
-describe('Phase 148 TAB-04: TabBar session-tab chevron', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-  })
-
-  it('tab-chevron: session tab renders button[data-testid="tab-chevron"] with aria-label="Session menu"', () => {
-    // A session tab (truthy sessionId) must render the chevron button.
-    ;({ container, root } = renderTabBarWithTabs())
-    const chevron = container.querySelector('button[data-testid="tab-chevron"]') as HTMLButtonElement
-    expect(chevron).not.toBeNull()
-    expect(chevron.getAttribute('aria-label')).toBe('Session menu')
-  })
-
-  it('tab-chevron: special tab (no sessionId) renders NO .tab__chevron', () => {
-    // A tab with no sessionId (Settings/File-browser) must NOT get a chevron.
-    const container2 = document.createElement('div')
-    document.body.appendChild(container2)
-    const root2 = createRoot(container2)
-    flushSync(() => {
-      root2.render(
-        React.createElement(TabBar, {
-          tabs: [{ id: 'settings', name: 'Settings', sessionId: '' }],
-          activeId: 'settings',
-          onSelect: () => {},
-          onClose: () => {},
-          onRename: () => {},
-        })
-      )
-    })
-    const chevron = container2.querySelector('.tab__chevron')
-    expect(chevron).toBeNull()
-    root2.unmount()
-    container2.remove()
-  })
-
-  it('tab-chevron: clicking the chevron opens .tab__context-menu', () => {
-    // Clicking the chevron button must open the context menu.
-    ;({ container, root } = renderTabBarWithTabs())
-    const chevron = container.querySelector('button[data-testid="tab-chevron"]') as HTMLButtonElement
-    expect(chevron).not.toBeNull()
-    flushSync(() => {
-      chevron.click()
-    })
-    expect(container.querySelector('.tab__context-menu')).not.toBeNull()
-  })
-
-  it('tab-chevron: right-click on .tab__name still opens .tab__context-menu (D-02 regression guard)', () => {
-    // Right-click on the tab name must still open the context menu (D-02 preserved).
-    ;({ container, root } = renderTabBarWithTabs())
-    const tabName = container.querySelector('.tab__name') as HTMLElement
-    expect(tabName).not.toBeNull()
-    flushSync(() => {
-      tabName.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
-    })
-    expect(container.querySelector('.tab__context-menu')).not.toBeNull()
-  })
-
-  it('tab-chevron: source contains getBoundingClientRect on chevron path (D-01 rect-anchored)', () => {
-    // jsdom returns zeroed rects, so we assert at source level that the chevron
-    // onClick uses getBoundingClientRect (not clientX/clientY) for positioning.
-    expect(raw).toContain('getBoundingClientRect')
-    expect(raw).toContain('rect.left')
-    expect(raw).toContain('rect.bottom')
-  })
-
-  it('tab-chevron: exposes aria-haspopup="menu" and reflects aria-expanded (WR-02)', () => {
-    ;({ container, root } = renderTabBarWithTabs())
-    const chevron = container.querySelector('button[data-testid="tab-chevron"]') as HTMLButtonElement
-    expect(chevron.getAttribute('aria-haspopup')).toBe('menu')
-    expect(chevron.getAttribute('aria-expanded')).toBe('false')
-    flushSync(() => { chevron.click() })
-    const opened = container.querySelector('button[data-testid="tab-chevron"]') as HTMLButtonElement
-    expect(opened.getAttribute('aria-expanded')).toBe('true')
-  })
-
-  it('tab-chevron: clicking an open chevron toggles the menu closed (IN-01)', () => {
-    ;({ container, root } = renderTabBarWithTabs())
-    const chevron = container.querySelector('button[data-testid="tab-chevron"]') as HTMLButtonElement
-    flushSync(() => { chevron.click() })
-    expect(container.querySelector('.tab__context-menu')).not.toBeNull()
-    const reopened = container.querySelector('button[data-testid="tab-chevron"]') as HTMLButtonElement
-    flushSync(() => { reopened.click() })
-    expect(container.querySelector('.tab__context-menu')).toBeNull()
-  })
-
-  it('tab-chevron: opened menu is anchored at the chevron rect, not the cursor (D-01 behavioral, IN-04)', () => {
-    // jsdom zeroes getBoundingClientRect, so stub a concrete rect and assert the
-    // menu lands at {left: rect.left, top: rect.bottom} — proves rect-anchoring
-    // behaviorally, not just by source-string match.
-    ;({ container, root } = renderTabBarWithTabs())
-    const chevron = container.querySelector('button[data-testid="tab-chevron"]') as HTMLButtonElement
-    chevron.getBoundingClientRect = () =>
-      ({ left: 120, bottom: 40, right: 136, top: 24, x: 120, y: 24, width: 16, height: 16, toJSON: () => ({}) }) as DOMRect
-    flushSync(() => { chevron.click() })
-    const menu = container.querySelector('.tab__context-menu') as HTMLElement
-    expect(menu).not.toBeNull()
-    expect(menu.style.left).toBe('120px')
-    expect(menu.style.top).toBe('40px')
   })
 })
 
@@ -613,5 +368,121 @@ describe('TabBar toolbar (Portty 02-08)', () => {
     expect(container.querySelectorAll('[role="tab"]')).toHaveLength(1)
     expect(container.querySelector('.tab__close')).toBeNull()
     expect(container.querySelector('button[aria-label="New Session"]')).toBeNull()
+  })
+})
+
+// Portty 02-08 (TERM-03): one shared context menu, in-place rename, End Session….
+describe('TabBar context menu and rename (Portty 02-08)', () => {
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+
+  afterEach(() => {
+    flushSync(() => root.unmount())
+    container.remove()
+    document.querySelectorAll('.context-menu').forEach((m) => m.remove())
+  })
+
+  const items = () => Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]')).map((b) => b.textContent)
+  const clickItem = (label: string) => {
+    const btn = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find((b) => b.textContent === label)
+    expect(btn, label).toBeDefined()
+    flushSync(() => btn!.click())
+  }
+  const rightClick = (el: Element) =>
+    flushSync(() => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
+
+  it('renders no session-menu chevron', () => {
+    ;({ container, root } = renderTabBarWithTabs())
+    expect(container.querySelector('[data-testid="tab-chevron"], .tab__chevron')).toBeNull()
+    expect(raw).not.toContain('tab__chevron')
+  })
+
+  it('right-click on a local tab: Rename · Save Terminal As… · Close Tab · ─ · End Session…', () => {
+    ;({ container, root } = renderTabBarWithTabs({ onEndSession: vi.fn(), onRequestSave: vi.fn() }))
+    rightClick(container.querySelector('[role="tab"]')!)
+    expect(items()).toEqual(['Rename', 'Save Terminal As…', 'Close Tab', 'End Session…'])
+    const sep = document.querySelector('[role="menu"] [role="separator"]')
+    expect(sep?.nextElementSibling?.textContent).toBe('End Session…')
+  })
+
+  it('Save Terminal As… is absent while the serialize plugin is off (no onRequestSave)', () => {
+    ;({ container, root } = renderTabBarWithTabs({ onEndSession: vi.fn() }))
+    rightClick(container.querySelector('[role="tab"]')!)
+    expect(items()).toEqual(['Rename', 'Close Tab', 'End Session…'])
+  })
+
+  it('Shift+F10 on a focused tab opens the same menu, anchored under the tab', () => {
+    ;({ container, root } = renderTabBarWithTabs({ onEndSession: vi.fn() }))
+    const tab = container.querySelector<HTMLElement>('[role="tab"]')!
+    tab.getBoundingClientRect = () => ({ left: 40, bottom: 44, right: 200, top: 16, x: 40, y: 16, width: 160, height: 28, toJSON: () => ({}) }) as DOMRect
+    flushSync(() => tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true })))
+    const menu = document.querySelector<HTMLElement>('[role="menu"]')!
+    expect(menu).not.toBeNull()
+    expect(menu.style.left).toBe('40px')
+    expect(menu.style.top).toBe('44px')
+    expect(document.activeElement?.textContent).toBe('Rename')
+  })
+
+  it('End Session… calls onEndSession(id) and never onClose', () => {
+    const onEndSession = vi.fn()
+    const onClose = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ onEndSession, onClose }))
+    rightClick(container.querySelectorAll('[role="tab"]')[1])
+    clickItem('End Session…')
+    expect(onEndSession).toHaveBeenCalledWith('tab2')
+    expect(onClose).not.toHaveBeenCalled()
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+  })
+
+  it('Close Tab in the menu calls onClose(id)', () => {
+    const onClose = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ onClose }))
+    rightClick(container.querySelector('[role="tab"]')!)
+    clickItem('Close Tab')
+    expect(onClose).toHaveBeenCalledWith('tab1')
+  })
+
+  it('a peer tab offers only Close Tab, and its name does not rename on double-click', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      onEndSession: vi.fn(),
+      tabs: [{ id: '__websession__p', name: 'home-air › shell', sessionId: 'p', type: 'web-session' }],
+      activeId: '__websession__p',
+    }))
+    rightClick(container.querySelector('[role="tab"]')!)
+    expect(items()).toEqual(['Close Tab'])
+    flushSync(() => container.querySelector('.tab__name')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+    expect(container.querySelector('input[aria-label="Session name"]')).toBeNull()
+  })
+
+  it('web mode: no context menu and no double-click rename', () => {
+    ;({ container, root } = renderTabBarWithTabs({ webMode: true }))
+    rightClick(container.querySelector('[role="tab"]')!)
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+    flushSync(() => container.querySelector('.tab__name')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+    expect(container.querySelector('input')).toBeNull()
+  })
+
+  it('double-clicking a local tab name renames in place; Enter commits onRename(id, trimmed)', () => {
+    const onRename = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ onRename }))
+    act(() => { container.querySelector('.tab__name')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Session name"]')!
+    expect(input).not.toBeNull()
+    expect(input.value).toBe('shell 1')
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '  build  ')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    act(() => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
+    expect(onRename).toHaveBeenCalledTimes(1)
+    expect(onRename).toHaveBeenCalledWith('tab1', 'build')
+    expect(container.querySelector('input')).toBeNull()
+  })
+
+  it('the Rename menu item starts the same in-place edit', () => {
+    ;({ container, root } = renderTabBarWithTabs())
+    rightClick(container.querySelector('[role="tab"]')!)
+    act(() => clickItem('Rename'))
+    expect(container.querySelector('input[aria-label="Session name"]')).not.toBeNull()
   })
 })

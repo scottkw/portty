@@ -11,12 +11,15 @@ interface RegenerateKeyModalProps {
    * sites that omit them are unchanged.
    */
   title?: string
-  body?: string
+  /** Rendered inside a <p>: inline content only (End Session adds a block-styled span). */
+  body?: React.ReactNode
   confirmLabel?: string
   /** Label shown while onConfirm is in flight (defaults to "Invalidating…"). */
   actingLabel?: string
   cancelLabel?: string
   titleId?: string
+  /** Portty 02-08: the confirm button uses the destructive fill (End Session). */
+  destructive?: boolean
 }
 
 /**
@@ -39,6 +42,7 @@ function RegenerateKeyModal({
   actingLabel = 'Invalidating…',
   cancelLabel = 'Keep Links',
   titleId = 'regen-key-title',
+  destructive = false,
 }: RegenerateKeyModalProps): React.ReactElement | null {
   const [acting, setActing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -109,7 +113,7 @@ function RegenerateKeyModal({
             {cancelLabel}
           </button>
           <button
-            className="quit-modal__btn--quit-all"
+            className={`quit-modal__btn--quit-all${destructive ? ' quit-modal__btn--destructive' : ''}`}
             disabled={acting}
             onClick={() => void handleConfirm()}
           >

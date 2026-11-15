@@ -43,8 +43,9 @@ describe('Phase 97 SER-01: App.tsx saver-registry round-trip — Plan 97-03 impl
     expect(raw).toMatch(/onRegisterSaver\s*=\s*\{handleRegisterSaver/)
   })
 
-  it('App.tsx passes onRequestSave={handleRequestSave} to TabBar', () => {
-    expect(raw).toMatch(/onRequestSave\s*=\s*\{handleRequestSave/)
+  // Portty 02-08 (UI-SPEC "Context menus"): the menu item shows only while the serialize plugin is on.
+  it('App.tsx passes handleRequestSave to TabBar while the serialize plugin is on', () => {
+    expect(raw).toContain('onRequestSave={pluginConfig?.serialize ? handleRequestSave : undefined}')
   })
 
   // Defensive: TerminalPanel + TabBar source files exist and contain expected

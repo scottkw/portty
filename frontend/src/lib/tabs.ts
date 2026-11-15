@@ -13,3 +13,20 @@ export function nextActiveTabId(tabs: { id: string }[], closingId: string, activ
   if (idx === -1) return activeId
   return (tabs[idx + 1] ?? tabs[idx - 1])?.id ?? null
 }
+
+type Named = { id: string; name: string }
+
+/**
+ * A tab's label, with the session list as the one source of truth for local
+ * names: a renamed session relabels its tab in the same render. Peer and other
+ * tabs keep their own name ('<host> › <session>' for a peer).
+ */
+export function tabLabel(tab: { name: string; sessionId: string; type?: string }, sessions: Named[]): string {
+  if (tab.type && tab.type !== 'terminal') return tab.name
+  return sessions.find((s) => s.id === tab.sessionId)?.name || tab.name
+}
+
+/** A copy of `sessions` with session `id` renamed. */
+export function renameInList<T extends Named>(sessions: T[], id: string, name: string): T[] {
+  return sessions.map((s) => (s.id === id ? { ...s, name } : s))
+}

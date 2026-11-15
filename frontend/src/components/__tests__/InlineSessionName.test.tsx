@@ -125,3 +125,53 @@ describe('InlineSessionName', () => {
     expect(onRenamed).not.toHaveBeenCalled()
   })
 })
+
+// Portty 02-08 (TERM-03): accessible name and an external edit trigger.
+describe('InlineSessionName: controlled editing (Portty 02-08)', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('the input is labelled "Session name"', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    act(() => root.render(<InlineSessionName id="s" name="shell" editing />))
+    expect(container.querySelector('input')?.getAttribute('aria-label')).toBe('Session name')
+    act(() => root.unmount())
+  })
+
+  it('editing={true} from the parent shows the input focused; Escape reports onEditingChange(false) with no rename', () => {
+    const onEditingChange = vi.fn()
+    const onRenamed = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    act(() => root.render(<InlineSessionName id="s" name="shell" editing onEditingChange={onEditingChange} onRenamed={onRenamed} />))
+    const input = container.querySelector('input')!
+    expect(document.activeElement).toBe(input)
+    act(() => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    expect(onEditingChange).toHaveBeenCalledWith(false)
+    // A blur after Escape (the parent unmounting the input) must not commit.
+    act(() => { input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
+    expect(onRenamed).not.toHaveBeenCalled()
+    expect(onEditingChange).toHaveBeenCalledTimes(1)
+    act(() => root.unmount())
+  })
+
+  it('an unchanged or blank value reverts with no onRenamed', () => {
+    const onRenamed = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    act(() => root.render(<InlineSessionName id="s" name="shell" editing onRenamed={onRenamed} />))
+    const input = container.querySelector('input')!
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '   ')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    act(() => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
+    expect(onRenamed).not.toHaveBeenCalled()
+    act(() => root.unmount())
+  })
+})

@@ -219,8 +219,7 @@ textarea {
   outline: none;
 }
 
-.tab__close,
-.tab__chevron {
+.tab__close {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -238,8 +237,7 @@ textarea {
   width: 12px;
   height: 12px;
 }
-.tab__close:hover,
-.tab__chevron:hover {
+.tab__close:hover {
   background-color: var(--color-control-hover);
 }
 
@@ -1111,35 +1109,50 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   cursor: not-allowed;
 }
 
-/* ─── Tab context menu ─────────────────────────────────────────── */
-/* Phase 148 D-07: hardcoded dark hex values → --hub-* tokens for light/dark correctness */
-.tab__context-menu {
-  background: var(--hub-surface-elevated);
-  border: 1px solid var(--hub-border);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  min-width: 120px;
-  z-index: 500;
-  padding: 4px 0;
+/* ─── Context menu (Portty 02-08, UI-SPEC "Context menus") ────────── */
+.context-menu {
+  position: fixed;
+  z-index: 1100; /* above dialogs (End Session opens from it, after it closes) */
+  min-width: 160px;
+  padding: 4px;
+  background: var(--color-popover);
+  border: 1px solid var(--color-control-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-popover);
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-.tab__context-menu__item {
-  display: block;
+.context-menu__item {
+  display: flex;
+  align-items: center;
   width: 100%;
-  padding: 8px 12px;
+  height: 24px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
   font-size: 13px;
   font-weight: 400;
-  color: var(--hub-text-secondary);
-  background: none;
-  border: none;
+  line-height: 18px;
   text-align: left;
-  cursor: pointer;
-  font-family: inherit;
+  white-space: nowrap;
+  cursor: default;
 }
 
-.tab__context-menu__item:hover {
-  color: var(--hub-text-primary);
-  background: var(--hub-border-hover);
+/* Hover moves focus to the item, so one rule covers mouse and arrow keys. */
+.context-menu__item:focus {
+  outline: none;
+  background: var(--color-selection-fill);
+  color: var(--color-on-accent);
+}
+
+.context-menu__separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--color-separator);
 }
 
 /* Phase 98 PRG-02 — per-tab progress underline.
@@ -2055,6 +2068,19 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   font: inherit;
   font-size: 13px;
 }
+/* Portty 02-08: End Session confirm. Plan 02-09 restyles every dialog button. */
+.quit-modal__btn--quit-all.quit-modal__btn--destructive {
+  background: var(--color-destructive);
+  color: var(--color-on-accent);
+}
+
+.end-session__note {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
 .quit-modal__btn--quit-all:hover:not(:disabled) {
   filter: brightness(1.1);
 }

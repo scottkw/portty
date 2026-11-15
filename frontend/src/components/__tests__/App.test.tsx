@@ -20,7 +20,7 @@ describe('App', () => {
 
     it('passes required props to StatusBar', () => {
       expect(raw).toContain('webServerRunning={webServerRunning}')
-      expect(raw).toContain('webEnabled={!!webEnabled[tab.sessionId]}')
+      expect(raw).toContain('webEnabled={!!sessions.find((s) => s.id === tab.sessionId)?.webEnabled}')
     })
   })
 
@@ -422,5 +422,49 @@ describe('empty state (LOOK-01)', () => {
     expect(raw).toContain("import { EmptyState } from './components/EmptyState'")
     expect(raw).toContain("{mode !== 'web' && relayPort !== null && tabs.length === 0 && (")
     expect(raw).toContain('<EmptyState onNewSession={() => setShowNewSessionModal(true)} />')
+  })
+})
+
+// Portty 02-08 (TERM-03): rename is optimistic on the session list and reverts on failure.
+describe('renameSession and End Session (TERM-03)', () => {
+  const body = (marker: string) => {
+    const start = raw.indexOf(marker)
+    expect(start, marker).toBeGreaterThan(-1)
+    return raw.slice(start, raw.indexOf('}, [', start))
+  }
+
+  it('renameSession renames optimistically and restores the old name in its catch', () => {
+    const b = body('const renameSession = useCallback(')
+    expect(b).toContain('setSessions((prev) => renameInList(prev, id, name))')
+    const catchIdx = b.indexOf('catch')
+    expect(catchIdx).toBeGreaterThan(b.indexOf('await RenameSession(id, name)'))
+    expect(b.slice(catchIdx)).toContain('setSessions((prev) => renameInList(prev, id, previous))')
+  })
+
+  it('TabBar labels come from the session list (tabLabel)', () => {
+    expect(raw).toContain('tabs={tabs.map((t) => ({ ...t, name: tabLabel(t, sessions) }))}')
+  })
+
+  it('endSession stops web serving when shared, then kills, then removes the tab', () => {
+    const b = body('const endSession = useCallback(')
+    const toggle = b.indexOf('ToggleWebServing(id, false)')
+    const kill = b.indexOf('await KillSession(id)')
+    expect(toggle).toBeGreaterThan(-1)
+    expect(kill).toBeGreaterThan(toggle)
+    expect(b.indexOf('removeTabState(id)')).toBeGreaterThan(kill)
+  })
+
+  it('End Session… opens a destructive confirm with the UI-SPEC copy', () => {
+    expect(raw).toContain('title={`End “${target?.name || \'shell\'}”?`}')
+    expect(raw).toContain("The shell and everything running in it will stop. This can't be undone.")
+    expect(raw).toContain('Anyone attached from another Mac or a browser will be disconnected.')
+    expect(raw).toContain('confirmLabel="End Session"')
+    expect(raw).toContain('titleId="end-session-title"')
+    expect(raw).toMatch(/cancelLabel="Cancel"\s+destructive/)
+  })
+
+  it('the separate webEnabled map is gone; share state reads from sessions', () => {
+    expect(raw).not.toContain('setWebEnabled')
+    expect(raw).toContain('onShareEnabledChange={setSessionWebEnabled}')
   })
 })

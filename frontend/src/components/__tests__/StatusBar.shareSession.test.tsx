@@ -206,7 +206,7 @@ describe('App.tsx wiring — footer "Share Session" opens the lifted Share modal
     expect(idx).toBeGreaterThan(-1)
     const block = raw.slice(idx, idx + 600)
     expect(block).toContain('onShareEnabledChange')
-    expect(block).toContain('setWebEnabled')
+    expect(block).toContain('setSessionWebEnabled')
   })
 })
 
