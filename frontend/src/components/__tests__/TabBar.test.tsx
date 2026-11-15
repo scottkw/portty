@@ -486,3 +486,102 @@ describe('TabBar context menu and rename (Portty 02-08)', () => {
     expect(container.querySelector('input[aria-label="Session name"]')).not.toBeNull()
   })
 })
+
+// Portty 02-08 (ROADMAP SC5, NET-01): toolbar Share button and peer chip.
+// Carries the NET-01 intent of the deleted StatusBar.shareSession.test.tsx,
+// fixed per UI-REVIEW 01 #2/#3: aria-disabled + aria-describedby, stable name.
+describe('TabBar Share button and "On <host>" chip (Portty 02-08)', () => {
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+
+  afterEach(() => {
+    flushSync(() => root.unmount())
+    container.remove()
+  })
+
+  const share = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.toolbar-share'))
+  const peerTabs = {
+    tabs: [
+      { id: 'tab1', name: 'shell 1', sessionId: 'sess1' },
+      { id: '__websession__p', name: 'home-air › logs', sessionId: 'p', type: 'web-session' as const },
+    ],
+  }
+
+  it('a local active tab shows "Share"; clicking opens the dialog via onShare', () => {
+    const onShare = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ onShare }))
+    expect(share()).toHaveLength(1)
+    expect(share()[0].textContent).toBe('Share')
+    expect(share()[0].querySelector('svg')).not.toBeNull()
+    expect(share()[0].hasAttribute('aria-disabled')).toBe(false)
+    expect(share()[0].hasAttribute('aria-describedby')).toBe(false)
+    flushSync(() => share()[0].click())
+    expect(onShare).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads "Shared" on the accent fill when the active session is web-shared', () => {
+    const onShare = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ onShare, shared: true }))
+    expect(share()[0].textContent).toBe('Shared')
+    expect(share()[0].classList.contains('toolbar-share--shared')).toBe(true)
+    flushSync(() => share()[0].click())
+    expect(onShare).toHaveBeenCalledTimes(1)
+  })
+
+  it('Tailscale off: aria-disabled="true" (not disabled), aria-describedby="ts-off-reason", name stays "Share", click and Enter do nothing', () => {
+    const onShare = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ onShare, shareDisabled: true, shared: true }))
+    const btn = share()[0]
+    expect(btn.getAttribute('aria-disabled')).toBe('true')
+    expect(btn.disabled).toBe(false)
+    expect(btn.getAttribute('aria-describedby')).toBe('ts-off-reason')
+    expect(btn.hasAttribute('aria-label')).toBe(false)
+    expect(btn.textContent).toBe('Share')
+    btn.focus()
+    expect(document.activeElement).toBe(btn)
+    flushSync(() => btn.click())
+    flushSync(() => btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(onShare).not.toHaveBeenCalled()
+  })
+
+  it('a peer active tab shows the "On <host>" chip instead of Share', () => {
+    ;({ container, root } = renderTabBarWithTabs({ ...peerTabs, activeId: '__websession__p', onShare: vi.fn() }))
+    expect(share()).toHaveLength(0)
+    expect(container.querySelector('.toolbar-chip')?.textContent).toBe('On home-air')
+  })
+
+  it('neither Share nor the chip shows with no tabs, on a Settings tab, or in web mode', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs: [], activeId: null, onShare: vi.fn() }))
+    expect(share()).toHaveLength(0)
+    expect(container.querySelector('.toolbar-chip')).toBeNull()
+    flushSync(() => root.unmount())
+    container.remove()
+    ;({ container, root } = renderTabBarWithTabs({
+      tabs: [{ id: '__settings__', name: 'Settings', sessionId: '', type: 'settings' }],
+      activeId: '__settings__',
+      onShare: vi.fn(),
+    }))
+    expect(share()).toHaveLength(0)
+    expect(container.querySelector('.toolbar-chip')).toBeNull()
+    flushSync(() => root.unmount())
+    container.remove()
+    ;({ container, root } = renderTabBarWithTabs({
+      webMode: true,
+      tabs: [{ id: '__websession__s', name: 'Session', sessionId: 's', type: 'web-session' }],
+      activeId: '__websession__s',
+      onShare: vi.fn(),
+    }))
+    expect(share()).toHaveLength(0)
+    expect(container.querySelector('.toolbar-chip')).toBeNull()
+  })
+
+  it('TabBar never toggles sharing itself', () => {
+    expect(raw).not.toContain('ToggleWebServing')
+  })
+
+  it('scroll buttons are chevron icon buttons, not ‹ › entities', () => {
+    expect(raw).not.toMatch(/&#8249;|&#8250;/)
+    expect(raw).toContain('<ChevronLeftIcon aria-hidden="true" />')
+    expect(raw).toContain('<ChevronRightIcon aria-hidden="true" />')
+  })
+})

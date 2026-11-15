@@ -127,16 +127,9 @@ describe('Phase 141-07: D-03 colorblind-safe fences — status-state', () => {
     expect(cssRaw).not.toContain('.tab__agent-badge')
   })
 
-  it('.tab-status-bar__state--on is still present (D-03 fence — tmux state color)', () => {
-    expect(cssRaw).toContain('.tab-status-bar__state--on')
-  })
-
-  it('.tab-status-bar__state--off is still present (D-03 fence)', () => {
-    expect(cssRaw).toContain('.tab-status-bar__state--off')
-  })
-
-  it('.tab-status-bar__state--inactive is still present (D-03 fence)', () => {
-    expect(cssRaw).toContain('.tab-status-bar__state--inactive')
+  // Portty 02-08: the status bar (and its WEB ON/OFF state colours) is removed.
+  it('the bottom status bar rules are gone (Portty 02-08)', () => {
+    expect(cssRaw).not.toContain('.tab-status-bar')
   })
 })
 

@@ -48,13 +48,6 @@ describe('UI-01: tab bar contrast — no failing #565f89 text color', () => {
     expect(css).not.toMatch(/\.tab__close\s*\{[^}]*color:\s*#565f89/)
   })
 
-  it('.tab-status-bar rule does not use #565f89', () => {
-    expect(css).not.toMatch(/\.tab-status-bar\s*\{[^}]*color:\s*#565f89/)
-  })
-
-  it('.tab-status-bar__state--off does not use #565f89', () => {
-    expect(css).not.toMatch(/\.tab-status-bar__state--off\s*\{[^}]*color:\s*#565f89/)
-  })
 })
 
 describe('UI-01: settings panel contrast — no failing #565f89 text color', () => {
@@ -92,7 +85,8 @@ describe('UI-01: modal contrast — no failing #565f89 text color', () => {
 })
 
 describe('UI-01: intentionally-dim elements preserved', () => {
-  it('.tab-status-bar__state--inactive STILL uses #414868 (must NOT be changed to #9aa5ce)', () => {
-    expect(css).toMatch(/\.tab-status-bar__state--inactive\s*\{[^}]*color:\s*#414868/)
+  // Portty 02-08: the status bar and its dim "WEB SERVER NOT RUNNING" state are removed.
+  it('the status bar rules are gone', () => {
+    expect(css).not.toContain('.tab-status-bar')
   })
 })

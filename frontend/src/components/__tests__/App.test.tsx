@@ -6,21 +6,30 @@ import { resolve } from 'path'
 const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
 describe('App', () => {
-  // UILAY-02: App.tsx imports and renders <StatusBar> inside terminal-wrapper
-  describe('StatusBar integration (UILAY-02)', () => {
-    it('imports StatusBar from components/StatusBar', () => {
-      expect(raw).toContain("import { StatusBar } from './components/StatusBar'")
+  // Portty 02-08: the bottom status bar is gone; Share lives in the toolbar.
+  describe('toolbar Share replaces the status bar (ROADMAP SC5)', () => {
+    it('neither imports nor renders StatusBar', () => {
+      expect(raw).not.toContain('StatusBar')
     })
 
-    it('renders <StatusBar inside terminal-wrapper', () => {
-      // Both TerminalPanel and StatusBar must appear inside the terminal-wrapper block
-      const wrapperBlock = raw.slice(raw.indexOf('terminal-wrapper'))
-      expect(wrapperBlock).toContain('<StatusBar')
+    it('TabBar opens the lifted Share modal and gets the share and NET-01 state', () => {
+      const tabBar = raw.slice(raw.indexOf('<TabBar'), raw.indexOf('/>', raw.indexOf('<TabBar')))
+      expect(tabBar).toContain('onShare={openShareModalForActiveSession}')
+      expect(tabBar).toContain('shared={!!sessions.find((s) => s.id === activeId)?.webEnabled}')
+      expect(tabBar).toContain('shareDisabled={tailscaleOff}')
     })
 
-    it('passes required props to StatusBar', () => {
-      expect(raw).toContain('webServerRunning={webServerRunning}')
-      expect(raw).toContain('webEnabled={!!sessions.find((s) => s.id === tab.sessionId)?.webEnabled}')
+    it('openShareModalForActiveSession picks the active session from the session list', () => {
+      const start = raw.indexOf('const openShareModalForActiveSession = useCallback(')
+      const body = raw.slice(start, raw.indexOf('}, [sessions, activeId])', start))
+      expect(body).toContain('sessions.find((s) => s.id === activeId)')
+      expect(body).toContain('setShareModalSession(session)')
+      expect(body).not.toContain('ToggleWebServing')
+    })
+
+    it('the Share dialog reports toggles back into the session list', () => {
+      const idx = raw.indexOf('<SessionShareModal')
+      expect(raw.slice(idx, idx + 800)).toContain('onShareEnabledChange={setSessionWebEnabled}')
     })
   })
 
@@ -84,7 +93,7 @@ describe('App', () => {
 
     it('imports TailscaleBanner and the shared TailscaleHealth type', () => {
       expect(raw).toContain("import { TailscaleBanner } from './components/TailscaleBanner'")
-      expect(raw).toMatch(/import \{ [^}]*\bTailscaleHealth\b[^}]*\} from '\.\/lib\/tailscale'/)
+      expect(raw).toMatch(/import (type )?\{ [^}]*\bTailscaleHealth\b[^}]*\} from '\.\/lib\/tailscale'/)
     })
 
     it('no longer references the multi-state LocalNetworkBanner', () => {

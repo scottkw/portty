@@ -157,14 +157,14 @@ describe('LOOK-01 / THEM-01: two-block colour tokens', () => {
 // migrated to tokens must not regain raw hex. Token blocks sit under :root, which
 // is out of scope, so they are never flagged.
 const MIGRATED_SURFACE_SELECTORS = [
-  '.sidebar', '.welcome-tab', '.tab-bar', '.tab-status-bar', '.terminal-container',
+  '.sidebar', '.welcome-tab', '.tab-bar', '.terminal-container',
   '.settings-panel', '.settings-jump-bar', '.settings-search', '.hub-share-modal',
+  // Portty 02-08: toolbar, tab pills, context menu, empty state, End Session note.
+  '.tab__', '.tab-list', '.toolbar-', '.context-menu', '.empty-state', '.end-session',
 ]
-// D-03 fence: status text carries the meaning, colour is reinforcement only.
-const D03_FENCE_SELECTOR_SUBSTRINGS = ['.tab-status-bar__state--']
 
 describe('RDS-02 / RDS-04 carry-over', () => {
-  it('migrated surfaces contain no raw hex outside the D-03 fence', () => {
+  it('migrated surfaces contain no raw hex', () => {
     const lines = cleanCss.split('\n')
     const nearestSelector = (i: number) => {
       for (let j = i; j >= 0; j--) {
@@ -178,7 +178,6 @@ describe('RDS-02 / RDS-04 carry-over', () => {
       if (!hex) return
       const sel = nearestSelector(i)
       if (!MIGRATED_SURFACE_SELECTORS.some((s) => sel.includes(s))) return
-      if (D03_FENCE_SELECTOR_SUBSTRINGS.some((s) => sel.includes(s))) return
       offenders.push(`style.css:${i + 1} ${sel} -> ${hex.join(', ')}`)
     })
     expect(offenders).toEqual([])

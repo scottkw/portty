@@ -71,7 +71,7 @@ export interface SessionShareModalProps {
   onOpenHelp?: () => void
   // Phase 168-08 (UX-02 / #115 gap closure): notifies the host (App.tsx) that the
   // modal's own "Share the session" toggle changed server-truth share state, so
-  // App-level webEnabled — which drives the footer StatusBar pill — stays in sync.
+  // App's session list (webEnabled drives the toolbar "Shared" state) stays in sync.
   // Invoked from handleShareToggle on BOTH the ON and OFF transitions, only after
   // ToggleWebServing resolves successfully (preserves the WR-01 success-gate).
   // Not invoked on the un-warned first-time shell path — that path is covered by

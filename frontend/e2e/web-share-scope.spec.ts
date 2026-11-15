@@ -64,7 +64,7 @@ test.describe('Phase 159-02 — web-share guest scope (WEBCHAT-03)', () => {
 
         await page.locator('.tab__name', { hasText: 'Session' }).first().dblclick()
         await page.waitForTimeout(300)
-        await expect(page.locator('.tab__rename-input')).toHaveCount(0)
+        await expect(page.locator('input[aria-label="Session name"]')).toHaveCount(0)
       } finally {
         await ctx.close()
       }

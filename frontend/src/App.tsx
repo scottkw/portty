@@ -37,7 +37,6 @@ import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
 import type { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
 import { EventsOn, BrowserOpenURL } from './wailsjs/wailsjs/runtime/runtime'
-import { StatusBar } from './components/StatusBar'
 import { NewSessionModal } from './components/NewSessionModal'
 import { RemoteJoinCodeModal } from './components/RemoteJoinCodeModal'
 import { SessionShareModal } from './components/Share/SessionShareModal'
@@ -48,7 +47,7 @@ import { peerView, shortHost } from './lib/sidebarPeers'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
 import { TailscaleBanner } from './components/TailscaleBanner'
-import { TAILSCALE_OFF_REASON, TailscaleHealth } from './lib/tailscale'
+import type { TailscaleHealth } from './lib/tailscale'
 import { WebShareSessionView } from './components/WebShareSessionView'
 import { TerminalPanel } from './components/TerminalPanel'
 import { UpdateBanner } from './components/UpdateBanner'
@@ -146,7 +145,7 @@ function App(): React.ReactElement {
   // NAV-01: every daemon session, from the always-on 3 s poll (desktop only).
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   // Phase 168-05 (UX-02) — Share modal open-state, lifted to App so every share entry
-  // point (e.g. the footer "Share Session" button) drives a single SessionShareModal
+  // point (the toolbar Share button) drives a single SessionShareModal
   // instance (RESEARCH Pattern 4). null = closed; non-null = open for this session.
   const [shareModalSession, setShareModalSession] = useState<SessionInfo | null>(null)
   // NAV-02: remote peers for the sidebar peer groups (30 s poll while Tailscale is connected).
@@ -586,7 +585,7 @@ function App(): React.ReactElement {
       setActiveId(sessionId)
 
       // CR-01 fix: seed sessions synchronously so the sidebar row and the
-      // footer "Share Session" button work for a just-created session before
+      // toolbar Share button work for a just-created session before
       // the next 3 s poll; that poll reconciles the fields we guess here.
       setSessions((prev) => [
         ...prev,
@@ -677,12 +676,12 @@ function App(): React.ReactElement {
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, webEnabled: enabled } : s)))
   }, [])
 
-  // Phase 168-05 (UX-02 / D-14): the footer no longer toggles web sharing
-  // directly — it opens the (lifted) Share modal for the active session.
+  // Phase 168-05 (UX-02 / D-14), Portty 02-08: the toolbar Share button opens
+  // the (lifted) Share modal for the active session; it never toggles sharing.
   // Toggling now happens exclusively inside SessionShareModal, which owns
   // its own self-contained shell-warning gate (SET-01, D-10 cross-surface
   // parity) — the App-level pendingShellWebToggle/ShellWebShareBanner path
-  // that used to back the footer's direct toggle is retired below.
+  // that used to back the old footer's direct toggle is retired below.
   const openShareModalForActiveSession = useCallback(() => {
     const session = sessions.find((s) => s.id === activeId)
     if (session) setShareModalSession(session)
@@ -759,11 +758,11 @@ function App(): React.ReactElement {
 
   // Phase 168-05 (UX-02, RESEARCH Pitfall 3 / Pattern 4): keep the lifted Share modal's
   // session prop in sync with sessions. shareModalSession is a snapshot taken at
-  // open-time (either from a Hub card click or the footer's openShareModalForActiveSession);
+  // open-time (by openShareModalForActiveSession);
   // without this effect a server-side flip (e.g. funnelActive completing, viewerCount
   // changing) never reaches an already-open modal. This is the single sync instance —
-  // SessionShareModal itself is rendered once, here, at the App.tsx level so the footer
-  // button works from any local session tab. Keyed on shareModalSession?.id (not the whole object) to avoid re-running
+  // SessionShareModal itself is rendered once, here, at the App.tsx level so the toolbar
+  // Share button works from any local session tab. Keyed on shareModalSession?.id (not the whole object) to avoid re-running
   // from its own setState.
   useEffect(() => {
     if (!shareModalSession) return
@@ -1092,6 +1091,9 @@ function App(): React.ReactElement {
           sidebarHidden={mode !== 'web' && sidebarHidden}
           onShowSidebar={() => setSidebarHidden(false)}
           onNewSession={() => setShowNewSessionModal(true)}
+          onShare={openShareModalForActiveSession}
+          shared={!!sessions.find((s) => s.id === activeId)?.webEnabled}
+          shareDisabled={tailscaleOff}
           funnelActiveSessions={/* Phase 166 / FUI-03: derived from the sessions 3s poll; no new interval */
             sessions.reduce<Record<string, boolean>>(
               (acc, s) => ({ ...acc, [s.id]: s.funnelActive }),
@@ -1320,13 +1322,6 @@ function App(): React.ReactElement {
                   onRegisterSaver={handleRegisterSaver}
                   onProgressChange={handleProgressChange}
                 />
-                <StatusBar
-                  sessionId={tab.sessionId}
-                  webServerRunning={webServerRunning}
-                  webEnabled={!!sessions.find((s) => s.id === tab.sessionId)?.webEnabled}
-                  onShareSession={openShareModalForActiveSession}
-                  shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}
-                />
               </div>
             )
           })}
@@ -1336,8 +1331,8 @@ function App(): React.ReactElement {
 
       {/* Phase 168-05 (UX-02) — Share modal: rendered here (App.tsx top level, always
           mounted regardless of active tab). This is the SINGLE SessionShareModal
-          instance — every share entry point (the footer "Share Session" button via
-          openShareModalForActiveSession, tab and sidebar triggers) drives this one
+          instance — every share entry point (the toolbar Share button via
+          openShareModalForActiveSession) drives this one
           shareModalSession state (RESEARCH Pattern 4). Do NOT render a second
           SessionShareModal anywhere else — a second instance reproduces the exact
           button-modal state-drift bug (#115) this plan exists to fix. */}

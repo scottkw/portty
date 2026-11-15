@@ -1,5 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { GlobeAltIcon, LockOpenIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  GlobeAltIcon,
+  LockOpenIcon,
+  PlusIcon,
+  SignalIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline'
 import { SidebarToggleIcon } from './Sidebar'
 import { ContextMenu, isMenuKey, type ContextMenuItem } from './ContextMenu'
 import { InlineSessionName } from './InlineSessionName'
@@ -68,6 +76,12 @@ interface TabBarProps {
   onShowSidebar?: () => void
   /** Portty 02-08: the toolbar "+" button (desktop only). */
   onNewSession?: () => void
+  /** Portty 02-08 (ROADMAP SC5): opens the Share dialog for the active local session. */
+  onShare?: () => void
+  /** The active local session is web-shared: the button reads "Shared". */
+  shared?: boolean
+  /** NET-01: Tailscale is off. Share stays focusable with aria-disabled and the banner's reason. */
+  shareDisabled?: boolean
 }
 
 /** A local terminal tab (no type, or 'terminal'): the only kind with Rename and End Session…. */
@@ -95,6 +109,9 @@ export function TabBar({
   sidebarHidden = false,
   onShowSidebar,
   onNewSession,
+  onShare,
+  shared = false,
+  shareDisabled = false,
 }: TabBarProps): React.ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ tab: Tab; x: number; y: number; invoker: HTMLElement } | null>(null)
@@ -135,6 +152,9 @@ export function TabBar({
     next?.focus()
   }
 
+  const activeTab = tabs.find((t) => t.id === activeId) ?? null
+  const shareIcon = <SignalIcon className="toolbar-share__icon" aria-hidden="true" />
+
   // UI-SPEC "Context menus": a local tab gets the full menu, any other tab only Close Tab.
   function menuItems(tab: Tab): ContextMenuItem[] {
     const close = { label: 'Close Tab', onSelect: () => onClose(tab.id) }
@@ -162,11 +182,13 @@ export function TabBar({
       )}
       {canScrollLeft && (
         <button
-          className="tab-bar__chevron tab-bar__chevron--left"
+          type="button"
+          className="tab-bar__icon-button"
           onClick={() => { listRef.current?.scrollBy({ left: -160, behavior: 'smooth' }) }}
           aria-label="Scroll tabs left"
-          tabIndex={0}
-        >&#8249;</button>
+        >
+          <ChevronLeftIcon aria-hidden="true" />
+        </button>
       )}
       <div className="tab-list" role="tablist" aria-label="Open sessions" ref={listRef}>
         {tabs.map((tab) => {
@@ -269,11 +291,13 @@ export function TabBar({
       </div>
       {canScrollRight && (
         <button
-          className="tab-bar__chevron tab-bar__chevron--right"
+          type="button"
+          className="tab-bar__icon-button"
           onClick={() => { listRef.current?.scrollBy({ left: 160, behavior: 'smooth' }) }}
           aria-label="Scroll tabs right"
-          tabIndex={0}
-        >&#8250;</button>
+        >
+          <ChevronRightIcon aria-hidden="true" />
+        </button>
       )}
       {!webMode && (
         <button
@@ -285,6 +309,21 @@ export function TabBar({
         >
           <PlusIcon aria-hidden="true" />
         </button>
+      )}
+      {/* Share for a local session, "On <host>" for a peer tab, nothing otherwise.
+          Tailscale off: aria-disabled (not disabled) keeps it focusable with a stable
+          name, the reason is the visible banner sentence, and there is no handler. */}
+      {!webMode && activeTab && isLocal(activeTab) && onShare && (shareDisabled ? (
+        <button type="button" className="toolbar-share" aria-disabled="true" aria-describedby="ts-off-reason">
+          {shareIcon}Share
+        </button>
+      ) : (
+        <button type="button" className={`toolbar-share${shared ? ' toolbar-share--shared' : ''}`} onClick={onShare}>
+          {shareIcon}{shared ? 'Shared' : 'Share'}
+        </button>
+      ))}
+      {!webMode && activeTab?.type === 'web-session' && (
+        <span className="toolbar-chip">On {activeTab.name.split(' › ')[0]}</span>
       )}
 
       {menu && (

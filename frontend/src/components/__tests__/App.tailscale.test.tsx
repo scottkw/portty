@@ -94,18 +94,20 @@ describe('App.tsx NET-01: tailscale:health handler', () => {
 })
 
 describe('App.tsx NET-01: Share controls', () => {
-  it('StatusBar receives shareDisabledReason from tailscaleOff', () => {
-    const idx = raw.indexOf('<StatusBar')
-    expect(raw.slice(idx, raw.indexOf('/>', idx))).toContain('shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}')
+  // Portty 02-08: the toolbar Share button takes aria-disabled from tailscaleOff
+  // (TabBar.test.tsx covers aria-describedby="ts-off-reason").
+  it('TabBar receives shareDisabled from tailscaleOff', () => {
+    const idx = raw.indexOf('<TabBar')
+    expect(raw.slice(idx, raw.indexOf('/>', idx))).toContain('shareDisabled={tailscaleOff}')
   })
 
   it('closes an open Share dialog when tailscaleOff becomes true', () => {
     expect(raw).toMatch(/useEffect\(\(\) => \{\s*if \(tailscaleOff\) setShareModalSession\(null\)\s*\}, \[tailscaleOff\]\)/)
   })
 
-  it('imports the shared NET-01 reason rather than restating it', () => {
-    expect(raw).toContain("import { TAILSCALE_OFF_REASON, TailscaleHealth } from './lib/tailscale'")
+  it('does not restate the NET-01 reason (TailscaleBanner renders the shared constant)', () => {
     expect(raw).not.toContain("Tailscale isn't connected")
+    expect(raw).toContain('{tailscaleOff && <TailscaleBanner />}')
   })
 })
 

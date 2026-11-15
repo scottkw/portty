@@ -32,6 +32,20 @@ describe('NET-01: TailscaleBanner', () => {
     expect(container.querySelector('.tailscale-banner')!.getAttribute('role')).toBe('status')
   })
 
+  // Portty 02-08: the toolbar Share button's aria-describedby target.
+  it('the sentence carries id="ts-off-reason"', () => {
+    render()
+    expect(container.querySelector('#ts-off-reason')?.textContent).toBe(
+      "Tailscale isn't connected. Remote access and sharing are off until it is."
+    )
+  })
+
+  it('uses an aria-hidden svg warning icon, not the ⚠ glyph', () => {
+    render()
+    expect(container.textContent).not.toContain('⚠')
+    expect(container.querySelector('svg.tailscale-banner__icon')?.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('has no dismiss (or any other) button', () => {
     render()
     expect(container.querySelector('button')).toBeNull()

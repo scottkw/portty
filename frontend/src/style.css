@@ -268,23 +268,54 @@ textarea {
   outline-offset: 1px;
 }
 
-/* Scroll buttons appear only when the strip overflows (canScrollLeft/Right). */
-.tab-bar__chevron {
+/* Share button (UI-SPEC "Share button (toolbar)") and the peer "On <host>" chip. */
+.toolbar-share {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
   flex-shrink: 0;
-  width: 28px;
   height: 28px;
-  padding: 0;
-  border: none;
+  padding: 0 12px;
+  border: 1px solid var(--color-separator);
   border-radius: 6px;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
   cursor: default;
 }
-.tab-bar__chevron:hover {
-  background-color: var(--color-control-hover);
+.toolbar-share__icon {
+  width: 16px;
+  height: 16px;
+}
+.toolbar-share--shared {
+  background: var(--color-selection-fill);
+  border-color: var(--color-selection-fill);
+  color: var(--color-on-accent);
+}
+.toolbar-share[aria-disabled="true"] {
+  opacity: var(--opacity-disabled);
+}
+.toolbar-share:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.toolbar-chip {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 220px;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--color-chip);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --- Sidebar: macOS source list (Portty 02-04, UI-SPEC "Sidebar") ------- */
@@ -522,65 +553,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   font-size: 12px;
   line-height: 16px;
   color: var(--color-text-secondary);
-}
-
-/* --- Per-tab status bar (Phase 8) ---------------------------------- */
-.tab-status-bar {
-  flex-shrink: 0;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
-  background-color: var(--hub-surface);
-  border-top: 1px solid var(--hub-border);
-  overflow: hidden;
-  font-size: 12px;
-  color: var(--hub-text-muted);
-  font-family: inherit;
-}
-
-.tab-status-bar__state {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  flex-shrink: 0;
-}
-.tab-status-bar__state--on     { color: #9ece6a; }
-.tab-status-bar__state--off    { color: #9aa5ce; }
-.tab-status-bar__state--inactive { color: #414868; }
-
-.tab-status-bar__hint {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--hub-text-dim);
-  font-size: var(--hub-font-size-sm);
-  font-style: italic;
-  min-width: 0;
-}
-
-.tab-status-bar__btn {
-  flex-shrink: 0;
-  padding: 4px 8px;
-  border-radius: var(--hub-radius-sm);
-  border: 1px solid var(--hub-border);
-  background: transparent;
-  color: var(--hub-text-secondary);
-  cursor: pointer;
-  font-size: var(--hub-font-size-sm);
-  font-family: inherit;
-  white-space: nowrap;
-}
-.tab-status-bar__btn:hover {
-  background-color: var(--hub-surface-elevated);
-  color: var(--hub-text-primary);
-}
-.tab-status-bar__btn--active {
-  border-color: var(--hub-accent);
-  color: var(--hub-accent);
 }
 
 .settings-panel {
@@ -1157,7 +1129,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 
 /* Phase 98 PRG-02 — per-tab progress underline.
    Uses transform: scaleX(0..1) instead of width for GPU compositor (Pitfall #4).
-   Color matches .tab--active border-bottom (TokyoNight accent #7aa2f7).
+   Portty 02-08: accent fill, clipped to the pill radius by .tab's overflow.
    transform-origin: left grows the underline left-to-right.
    transition: 200ms ease-out animates value changes smoothly. */
 .tab__progress {
@@ -1166,7 +1138,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   left: 0;
   width: 100%;
   height: 2px;
-  background: #7aa2f7;
+  background: var(--color-selection-fill);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform 200ms ease-out;
@@ -1515,8 +1487,9 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 
 .tailscale-banner__icon {
+  width: 16px;
+  height: 16px;
   color: #f59e0b;
-  font-size: 14px;
   flex-shrink: 0;
 }
 
@@ -2690,11 +2663,6 @@ html.is-desktop {
   --hub-sidebar-item-hover-bg: var(--color-control-hover);
   --hub-drag-over-border: var(--color-accent);
   --hub-drag-over-bg: var(--color-control-hover);
-  /* Exposure badges: icon shape + text carry the state; colour is reinforcement only. */
-  --hub-internet-badge-bg: var(--color-chip);
-  --hub-internet-badge-text: var(--color-accent);
-  --hub-fullaccess-badge-bg: var(--color-chip);
-  --hub-fullaccess-badge-text: var(--color-error-text);
   --hub-search-highlight-bg: var(--color-selection-inactive);
   --hub-share-seg-active-bg: var(--color-segment-selected);
   /* Fonts (UI-SPEC Design System): system UI font and SF Mono */
@@ -3146,9 +3114,10 @@ html.is-desktop {
 
 /* Phase 166 / FUI-03 — tab internet icon (TabBar) */
 .tab__internet-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--hub-internet-badge-text);
+  display: flex;
+  width: 12px;
+  height: 12px;
+  color: var(--color-text-secondary);
   flex-shrink: 0;
 }
 
@@ -3434,9 +3403,10 @@ html.is-desktop {
 
 /* FULL ACCESS icon — session tab (TabBar) */
 .tab__fullaccess-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--hub-fullaccess-badge-text);
+  display: flex;
+  width: 12px;
+  height: 12px;
+  color: var(--color-error-text);
   flex-shrink: 0;
 }
 
