@@ -99,11 +99,6 @@ describe('App.tsx NET-01: Share controls', () => {
     expect(raw.slice(idx, raw.indexOf('/>', idx))).toContain('shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}')
   })
 
-  it('HubPanel receives shareDisabledReason from tailscaleOff', () => {
-    const idx = raw.indexOf('<HubPanel')
-    expect(raw.slice(idx, raw.indexOf('/>', idx))).toContain('shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}')
-  })
-
   it('closes an open Share dialog when tailscaleOff becomes true', () => {
     expect(raw).toMatch(/useEffect\(\(\) => \{\s*if \(tailscaleOff\) setShareModalSession\(null\)\s*\}, \[tailscaleOff\]\)/)
   })

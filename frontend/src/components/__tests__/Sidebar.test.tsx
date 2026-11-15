@@ -43,6 +43,7 @@ function render(overrides: Partial<Props> = {}) {
     onOpenLocal: vi.fn(),
     peerView: { kind: 'none' },
     onOpenPeer: vi.fn(),
+    onHide: vi.fn(),
     tailscaleHealth: { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'office-air.tail1.ts.net' },
     ...overrides,
   }
@@ -211,6 +212,17 @@ describe('Sidebar: peer groups (NAV-02)', () => {
     const current = c.querySelectorAll('[aria-current="page"]')
     expect(current.length).toBe(1)
     expect(current[0].textContent).toBe('logs')
+  })
+})
+
+describe('Sidebar: Hide Sidebar button', () => {
+  it('calls onHide', () => {
+    const onHide = vi.fn()
+    const { c } = render({ onHide })
+    const btn = c.querySelector<HTMLButtonElement>('button[aria-label="Hide Sidebar"]')
+    expect(btn?.querySelector('svg')).not.toBeNull()
+    act(() => btn!.click())
+    expect(onHide).toHaveBeenCalledTimes(1)
   })
 })
 

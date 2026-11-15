@@ -31,6 +31,8 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
 | **Total** | **235** | — | — | — |
 
+> Note: Portty Phase 2 plan 02-04 (NAV-01..03): counts from `git ls-files` — Go **109** (unchanged), vitest **118** (+1 −1: added `frontend/src/lib/__tests__/sidebarPeers.test.ts`; deleted `frontend/src/components/__tests__/App.hub.test.tsx`, which only covered App's Hub tab wiring), Playwright **7** (unchanged; `web-share-scope.spec.ts` also asserts `nav[aria-label="Sessions"]` is absent), build-script **1**, total **235**. Rewritten: `Sidebar.test.tsx` (source-list sidebar: This Mac, peer groups, footer, Hide Sidebar; the POL-03/POL-04 source gates carried over), `App.nav.test.tsx` (always-on poll, launch state, no Hub/Welcome/Help, hide/show, inactive window). Edited in place: `App.test.tsx` (launch state; 80px hidden-sidebar inset and `html.is-inactive` CSS), `App.open-remote.test.tsx` (Hub card → sidebar peer row; tab label), `App.tailscale.test.tsx` (peer poll ungated), `TabBar.test.tsx` (Show Sidebar), `RemoteJoinCodeModal.test.tsx` (hub-modal case → open-session), `HelpTab.test.tsx` (App `HELP_TAB` gates dropped), `App.shellWebShare.test.tsx` / `StatusBar.shareSession.test.tsx` / `App.shellExit.test.tsx` / `App.createTab.hubSessionsSeed.test.tsx` (`hubSessions` → `sessions`, no HubPanel, no welcome/hub/help tab types), `style.hub.test.ts` (old `.sidebar__item--active` pin removed). Section 4: Portty NAV-01/02/03 rows replace the v4.0 NAV-02..05 rows; CARD-01/POL-05/CARRY-01/TEST-03 sidebar rows dropped. Section 5: Category B rewritten as "Sidebar peer attach", Category H deleted (no Help tab), M-61 added, M-58/M-59 updated.
+
 > Note: Portty Phase 2 plan 02-03 (THEM-01): counts from `git ls-files` — Go **109** (unchanged), vitest **118** (+3 −2: added `frontend/src/lib/__tests__/useColorScheme.test.tsx`, `frontend/src/lib/__tests__/terminalPalettes.test.ts`, `frontend/src/__tests__/style.tokens.test.ts`; deleted `frontend/src/__tests__/themeTokens.test.ts` and `frontend/src/components/__tests__/SettingsTab.appearance-theme.test.tsx` with the theme picker), Playwright **7** (+1: `frontend/e2e/web-color-scheme.spec.ts`), build-script **1**, total **235**. Edited in place: `App.test.tsx` (THM-02/03 and TERM-04 theme-library blocks replaced by THEM-01 palette assertions; `DEFAULT_FONT_SIZE = 13`), `SettingsTab.test.tsx` ("Automatic" row, no Interface/Terminal Theme control), three SettingsTab DOM tests (theme props dropped), `TerminalPanel.test.tsx` (token background class, system mono font), `style.hub.test.ts` / `style.redesign.test.ts` / `style.contrast.test.ts` / `HelpTab.test.tsx` (light-block and old-hex pins retargeted to the `--color-*` tokens and aliases; no `@font-face`), FindBar theme-matrix/visual comments. Section 4: THEM-01 and LOOK-01 rows added, rows for the deleted files removed. Section 5: M-07 rewritten, M-60 added.
 
 > Note: Portty Phase 2 plan 02-02 (CHAT-01 Go): counts from `git ls-files` — Go **109** (−15 +2), vitest **117** (unchanged; chat UI tests go with the UI in 02-07), Playwright **6** (−1: `frontend/e2e/chat-parity.spec.ts`), build-script **1**, total **233**. Deleted Go test files: `internal/daemon/chat_test.go`, `internal/daemon/chat_routes_test.go`, `internal/daemon/alias_store_test.go`, `internal/webserver/chat_test.go`, `internal/webserver/server_chatsend_test.go`, `internal/webserver/identity_test.go`, `internal/relay/sanitize_test.go`, `internal/relay/hub_chatsend_test.go`, `internal/relay/hub_presence_test.go`, `internal/relay/protocol_chat_test.go`, `internal/relay/protocol_presence_test.go`, `internal/relay/server_chatsend_test.go`, `internal/relay/server_identity_test.go`, `internal/relay/server_cors_test.go`, `internal/relay/hub_subscribe_race_test.go` (all three tests covered the WhoIs two-phase presence registration). Added: `internal/daemon/chat_removed_test.go`, `internal/webserver/chat_removed_test.go`. Rewritten in place: `internal/relay/server_inject_test.go` and `internal/webserver/inject_test.go` now hold `TestRetiredFrames_*` (0x30-0x37 dropped on both paths, RO and RW, socket survives, no retired frame sent back); `engine_test.go` lost its five ChatStore tests. **Security fuzz harness now:** `FuzzParseFrame`, `FuzzInputAbsorberFilter` (relay), `FuzzRequireCapability`, `FuzzWebServerRoutes` (webserver) and `capability.FuzzVerify`; `FuzzSanitizeChatContent` went with the sanitizer. Section 4: rows for the deleted files removed (including STRP-02 `server_cors_test.go`), four CHAT-01 rows for the retired-frame and removed-route tests. Section 5 chat categories are removed with the UI in 02-07.
@@ -203,12 +205,16 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 
 | Requirement | Test File | Suite Group | Notes |
 |-------------|-----------|-------------|-------|
-| NAV-01 | internal/daemon/engine_test.go | Go | TUI removal: `go build ./...` passes post-Phase-136; Go test suite runs without TUI packages |
-| NAV-02 | frontend/src/components/__tests__/App.nav.test.tsx | vitest | "NAV-02: Remote sidebar item is removed" — asserts no `onOpenRemoteSessions` prop |
-| NAV-03 | frontend/src/components/__tests__/App.nav.test.tsx | vitest | "NAV-03: Sessions sidebar item is removed" — asserts no `onOpenDaemonManager` prop |
-| NAV-04 | frontend/src/components/__tests__/App.nav.test.tsx | vitest | "NAV-04: Remote page is removed" — asserts absence of remote page routing |
-| NAV-05 | frontend/src/components/__tests__/App.nav.test.tsx | vitest | "NAV-05: sidebar has no standalone New Session item" — asserts no `onAdd={handleAddTab}` prop |
-| NAV-05 | frontend/src/components/__tests__/Sidebar.test.tsx | vitest | GAP-03: 3-item positive render contract with groupDefs present; `button.sidebar__item` count === 3 |
+| NAV-01 (v4.0) | internal/daemon/engine_test.go | Go | v4.0 TUI removal: `go build ./...` passes post-Phase-136; Go test suite runs without TUI packages |
+| NAV-01 | frontend/src/components/__tests__/Sidebar.test.tsx | vitest | Portty 02-04: "This Mac" rows in the daemon's order (no client sort), keyed by session id; a click calls `onOpenLocal(id, name)`; two sessions named "shell" give two rows that each open their own id; `aria-current="page"` only on the active local tab's row; "No sessions" when empty; Shared `role=img` only for web-enabled sessions; full name in `title`; no Home/Hub/Help/Settings button |
+| NAV-01 | frontend/src/components/__tests__/App.nav.test.tsx | vitest | Portty 02-04: "Portty NAV-01" — one desktop-only `ListSessions` poll every 3000 ms with no tab gate (`setSessions`), no `hubSessions`; `<Sidebar sessions activeTab onOpenLocal={handleOpenSessionTab}>` gated on `mode !== 'web'`; `handleOpenSessionTab` focuses an open tab or appends and activates one |
+| NAV-02 | frontend/src/lib/__tests__/sidebarPeers.test.ts | vitest | Portty 02-04: `peerView` — Tailscale off, first poll in flight, connected with nothing shared, reachable-empty peer hidden, unreachable peer kept, sessions in peer order, groups A→Z by short host, two hosts sharing a first label stay two groups keyed by full hostname; `shortHost` |
+| NAV-02 | frontend/src/components/__tests__/Sidebar.test.tsx | vitest | Portty 02-04: "Other Macs" muted lines for off/loading/none, short-host group headers with full hostname in `title`, peer row click → `onOpenPeer(peer, session)`, the can't-reach line, same-label hosts as two groups, `aria-current` on the active web-session tab's peer row; footer "Tailscale connected · <host>" / IP fallback / "Tailscale not connected" / "Checking Tailscale…" in `role=status` |
+| NAV-02 | frontend/src/components/__tests__/App.open-remote.test.tsx | vitest | Portty 02-04: a sidebar peer row is the open entry point; App wires `onOpenPeer` through the unchanged `handleOpenRemoteSession(adaptRemoteSession(peer, s))` (cached cap via `OpenRemoteSessionURL`, else the join-code exchange; no hand-built `?cap=` URL); both branches label the tab `<short host> › <name>`; only the `'open-session'` intent remains |
+| NAV-02 | frontend/src/components/__tests__/App.tailscale.test.tsx | vitest | Portty 02-04: the peer poll clears `remotePeers` and `remoteLoaded` and returns while Tailscale is off, re-runs on `[tailscaleOff]`, polls every 30 s and has no tab gate |
+| NAV-03 | frontend/src/components/__tests__/App.nav.test.tsx | vitest | Portty 02-04: no Welcome tab at launch (`useState<Tab[]>([])`, init still restores running sessions); no `__hub__`/`__welcome__`/`__help__` ids, no HubPanel/WelcomeTab/HelpTab import or render, no group state or Hub cap refs; Share dialog help opens `HELP_URL`; `menu:toggle-sidebar` subscribed with a functional update; Sidebar unrendered while hidden and TabBar gets the inset; `html.is-inactive` toggled on window blur/focus. Phase 138 Remote/Sessions/New Session item absence still asserted |
+| NAV-03 | frontend/src/components/__tests__/TabBar.test.tsx | vitest | Portty 02-04: with `sidebarHidden` a Show Sidebar button renders, calls `onShowSidebar` and the bar gets `.tab-bar--sidebar-hidden` (80px inset in `style.css`, asserted in `App.test.tsx`); without it, neither |
+| NAV-03 | frontend/e2e/web-share-scope.spec.ts | Playwright | Portty 02-04 / WEBCHAT-03: a web-share guest gets no `nav[aria-label="Sessions"]` (or the old `Main navigation` nav), no "This Mac" group and no Hub/Settings buttons |
 | SHARE-01 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Share modal per-session render |
 | SHARE-02 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | "Share the session" toggle reveals RO + RW rows |
 | SHARE-03 | internal/daemon/api_test.go | Go | Portty 01-03: `TestIssueCapabilities_ExactPerms` — the RO link token perms are exactly `"read"` and the RW link token perms exactly `"read,write"` (no files perms are ever minted; the browse matrix was removed with the file browser). `TestBrowseRoute_Removed` — `POST /sessions/{id}/browse` is 404/405 |
@@ -233,7 +239,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | STRP-04 | frontend/src/components/__tests__/SettingsTab.test.tsx | vitest | Portty 01-11: Settings has no Paths section — no `<h3>Paths</h3>`, no `settings-paths` anchor, no "Save Paths" button, no `settings-panel__table` and no tailscale path input; `SettingsTab.hyperlinked-index.test.tsx` expects six jump-bar links with no `#settings-paths`; `SettingsTab.persistence.test.tsx` checks no file-picker / CLI-path / shell-path plumbing remains. "Behavior has only the start-minimized toggle" — exactly one toggle input in Behavior, no awaiting-input toggle, no `notification:permission` subscription or denied hint (CONTEXT Amendment 2) |
 | TERM-05 | frontend/src/components/Hub/SessionCard.test.tsx | vitest | Portty 01-10: a stopped session with a non-zero exit code renders no Running/Exited/Error text, no exit code, no attention icon and no dim/attention class; live sessions with any daemon status render no status label (CONTEXT Amendment 2) |
 | TERM-05 | frontend/src/components/Hub/HubModal.test.tsx | vitest | Portty 01-10: a stopped session with a non-zero exit code opens the interactive modal (no briefing view) with no status or attention in the header; `HubBriefingModal`, `STATUS_CONFIG` and the status helpers are gone from the source |
-| TERM-05 | frontend/src/lib/hubGroupCounts.test.ts | vitest | Portty 01-10: group counts are membership only (`{ total }`), regardless of state or exit code; the sidebar group aria-label reads `${label} group, N sessions` (Sidebar.test.tsx) |
+| TERM-05 | frontend/src/lib/hubGroupCounts.test.ts | vitest | Portty 01-10: group counts are membership only (`{ total }`), regardless of state or exit code |
 | NET-01 | internal/webserver/tailscale_test.go | Go | Portty 01-12 (CONTEXT Amendment 1, LocalAPI only): `TestCheckHealth_LocalAPIUnreachable` (status error → zero value, prefs not probed; fail closed T-01-40); `TestCheckHealth_BackendState` (Stopped/NeedsLogin/NeedsMachineAuth/Starting → not connected, zero value; Running → connected); `TestCheckHealth_CertDomains` / `TestCheckHealth_FullyHealthy` / `TestCheckHealth_AcceptDNS` on the slim five-field struct. Replaces the removed binary-detection, custom-path and permission-limited (FIX-05) tests. |
 | NET-01 | app_test.go | Go | Portty 01-12: `TestCheckTailscaleHealth_EmitsFirstResultAndChanges` — fake check + fake emitter: a first not-connected (zero-value) result emits `tailscale:health`; an identical result does not; connected emits; not-connected again emits. Amendment 3: `TestStartWebServerRefusedWhileTailscaleOff` — with a not-connected check, `StartWebServer` returns the NET-01 sentence and no server starts (no LAN fallback). |
 | NET-01 | frontend/src/components/__tests__/TailscaleBanner.test.tsx | vitest | Portty 01-12: the banner shows exactly "Tailscale isn't connected. Remote access and sharing are off until it is.", has role=status and no button (persistent, no dismiss). Replaces the deleted LocalNetworkBanner.test.tsx. |
@@ -254,8 +260,6 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | SHARE-04 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Copyable links, QR, LAN Basic Auth password surface |
 | SHARE-05 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Cap/URL/QR lifecycle (off→on cache-clear, stale-URL cleanup) |
 | SHARE-06 | frontend/src/components/__tests__/SessionCard.share.test.tsx | vitest | Remote peer card: `isRemote` prop disables Share affordance (LockClosedIcon) |
-| CARD-01 | frontend/src/components/__tests__/App.hub.test.tsx | vitest | Asserts `HUB_TAB` wiring; no `.hub__header` rendered |
-| CARD-01 | frontend/src/components/__tests__/Sidebar.test.tsx | vitest | Asserts no `hub__header` inside Sidebar render |
 | CARD-02 | frontend/src/components/__tests__/SessionCard.share.test.tsx | vitest | Local/remote origin indicator rendered per `isRemote` prop |
 | CARD-03 | frontend/src/components/__tests__/SessionCard.share.test.tsx | vitest | Remote Available (GlobeAltIcon) vs Connected (LinkIcon) indicator |
 | CARD-04 | frontend/src/lib/remoteAdapter.test.ts | vitest | `adaptRemoteSession` hostname/URL mapping; card layout carries all fields |
@@ -272,12 +276,9 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | RDS-04 | frontend/src/components/__tests__/style.redesign.test.ts | vitest | Colorblind-safe semantics: `prefers-reduced-motion` |
 | POL-03 | frontend/src/components/__tests__/style.hub.test.ts | vitest | "New session" button token source gate |
 | POL-04 | frontend/src/components/__tests__/TerminalPanel.contextLoss.test.tsx | vitest | Terminal repaint after theme switch / tab switch |
-| POL-05 | frontend/src/components/__tests__/Sidebar.test.tsx | vitest | Group sub-list ARIA structure; Hub group navigation in sidebar |
-| CARRY-01 | frontend/src/components/__tests__/Sidebar.test.tsx | vitest | ARIA fix: `listbox`/`option` roles or roving-tabindex pattern |
 | CARRY-02 | frontend/src/components/__tests__/style.hub.test.ts | vitest | Hub card layout tokens post-#93 triage |
 | TEST-01 | tests/check-traceability-paths.sh | build-script | Path-check script: verifies every mapped path exists on disk |
 | TEST-03 | frontend/src/lib/hubGroupCounts.test.ts | vitest | GAP-01: `computeCounts` / `computeGlobalCounts` — group count badges and "All" group totals |
-| TEST-03 | frontend/src/components/__tests__/Sidebar.test.tsx | vitest | GAP-03: 3-item positive render contract (see NAV-05 row above) |
 | TEST-03 | frontend/src/components/__tests__/style.hub.test.ts | vitest | GAP-04: Phase 142 comp-fidelity CSS tokens (border-radius, preview height); Portty 01-07: asserts the agent spine/chip palette (`data-agent`, `.hub-card__badge`, `.hub-card__chip--agent`) is gone |
 | Cross-surface relay contract | frontend/src/lib/relayClient.test.ts | vitest | Wire framing: `encodeInputFrame`, `encodeResizeFrame`, `parseServerFrame` |
 | Cross-surface relay contract | internal/relay/hub_test.go | Go | Relay hub-side wire protocol |
@@ -308,7 +309,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | FIX-02 | internal/relay/hub_test.go | Go | Phase 168-06 (#117, v4.2): `TestDisconnectWebViewers` — `Hub.DisconnectWebViewers()` closes exactly the `Origin=="web"` subscribers (via the same `CloseSlow` mechanism as `broadcastResize`, collect-then-unlock-then-close per T-157-04), leaves `Origin=="local"` untouched, and the local subscriber keeps receiving broadcast frames afterward. `TestHub_TwoWebOriginSubscribers_NoEviction` — regression guard: subscribing a second web-origin viewer never closes the first (#117 Part A does not reproduce). NOTE: this row's `FIX-02` is a v4.2 Phase 168 requirement ID, distinct from the Phase ~101 `FIX-02` rows above (#101 Windows concurrent-read) — requirement IDs are scoped per-milestone, not globally unique. |
 | FIX-02 | internal/daemon/api_disconnect_test.go | Go | Phase 168-06 (#117, v4.2): `TestAPIDisconnectViewers_ClosesOnlyWebOrigin` — `POST /sessions/{id}/disconnect-viewers` (daemon-local mux only, T-168-07) resolves the session's hub and drives `DisconnectWebViewers()`, closing the web-origin subscriber and leaving the local-origin one untouched. `TestAPIDisconnectViewers_UnknownSession` — 404 for a session ID with no active hub. |
 | FIX-02 | frontend/src/components/__tests__/SessionShareModal.disconnect.test.tsx | vitest | Phase 168-06 (#117, v4.2): "Disconnect all viewers" button renders only when `session.viewerCount > 0` (D-04/D-05); clicking calls the bound `DisconnectViewers(session.id)` and never `ToggleWebServing` (D-06, does not revoke the share cap); RPC failure surfaces the inline error "Couldn't disconnect viewers — try again."; button reuses the `.hub-share-internet-section__disable` reversible ghost/outline class, not a destructive style (UI-SPEC Color ruling). |
-| HELP-01 | frontend/src/components/__tests__/HelpTab.test.tsx | vitest | Phase 147: HELP_TAB constant in App.tsx + --hub-search-highlight-bg CSS token source gates (RED in Plan 01; GREEN in Plans 02/03) |
+| HELP-01 | frontend/src/components/__tests__/HelpTab.test.tsx | vitest | Phase 147: `--hub-search-highlight-bg` CSS token source gate. Portty 02-04 dropped the App.tsx `HELP_TAB` gates (App renders no Help tab; Help opens https://portty.app); HelpTab itself goes in plan 02-05 |
 | HELP-01 | frontend/src/components/__tests__/HelpSearch.test.tsx | vitest | Phase 147: search label, clear button, empty-state, and mark highlight assertions (RED in Plan 01; GREEN in Plan 03) |
 | HELP-01 | frontend/src/components/__tests__/HelpSectionNav.test.tsx | vitest | Phase 147: section nav renders buttons per section; aria-current + active class + onSectionChange on click (RED in Plan 01; GREEN in Plan 03) |
 | HELP-01 | frontend/src/components/__tests__/HelpContent.test.tsx | vitest | Phase 147: react-markdown import gate; BrowserOpenURL called on link click; no raw `<a href` in output (RED in Plan 01; GREEN in Plan 03) |
@@ -444,23 +445,20 @@ Human-intervention items that cannot be automated. Run before each tagged releas
   - _Why not automatable:_ Same as M-01 — native webview only.
   - _Source:_ 137-HUMAN-UAT.md item 5
 
-### Category B — Hub Navigation / Remote Peer (NAV, CARD)
+### Category B — Sidebar Peer Attach (NAV-02)
 
-- **M-03** Remote card "Open in browser" opens the `RemoteJoinCodeModal` (not a raw 401 page); after the owner shares and the viewer pastes the join code, the session opens in the browser at `baseURL/sessions/{id}?cap=TOKEN` (FIX-03 out-of-band flow, Phase 146).
-  - _Why not automatable:_ Requires a live reachable Tailscale remote peer on a separate machine; cross-machine join-code exchange cannot be simulated in headless vitest.
-  - _Source:_ 138-HUMAN-UAT.md item 3 (updated Phase 146 — out-of-band flow; needs office second machine)
+Portty 02-04 moved GUI remote attach from the Hub remote cards to sidebar peer rows. Setup for all items: the built app on this Mac with Tailscale connected, and a second Mac on the same tailnet sharing one session.
 
-- **M-04** Remote card overflow menu shows only "Open in tab" — no Kill option on remote sessions.
-  - _Why not automatable:_ Requires live reachable Tailscale peer.
-  - _Source:_ 138-HUMAN-UAT.md item 5, remote half
-
-- **M-05** Remote Connected chip (LinkIcon) and remote Available chip (GlobeAltIcon) render with icon + text on a live remote card.
-  - _Why not automatable:_ Requires live reachable Tailscale peer.
-  - _Source:_ 138-HUMAN-UAT.md item 6, remote half
-
-- **M-06** Kill two-step confirm on a live local session: first click reveals "Confirm kill" button; second click terminates the session.
-  - _Why not automatable:_ PTY session requires real daemon; PTY interaction has no TTY in the wails-dev `:34115` bridge.
-  - _Source:_ 138-HUMAN-UAT.md (PASS recorded 2026-06-20; re-verify after Hub restructure)
+- **M-03** First open: the second Mac's short hostname appears as a sidebar group with its shared session as a row. Clicking the row opens the Join Remote Session dialog (`RemoteJoinCodeModal`, not a raw 401 page). After the owner sends a join code and it is pasted, a `<host> › <session>` tab opens, streams the session, and its sidebar row shows as selected.
+  - _Why not automatable:_ needs a live reachable peer on a second machine; the cross-machine join-code exchange cannot be simulated in vitest or Playwright. The routing is source- and render-tested in `App.open-remote.test.tsx` and `Sidebar.test.tsx`.
+  - _Source:_ 02-04-PLAN.md Task 3 human-check (replaces 138-HUMAN-UAT items 3, 5 and 6, Hub remote cards).
+- **M-04** Cached cap: close the peer tab, then click the same peer row again. The tab reopens at once with no join-code prompt (the cap deposited by M-03 is reused through `OpenRemoteSessionURL`). Clicking the row while its tab is open just activates that tab.
+  - _Why not automatable:_ needs the live peer and the daemon's RemoteCapStore.
+  - _Source:_ 02-04-PLAN.md Task 3; GAP-146-A Plan 05 held-cap reuse.
+- **M-05** Peer states: put the second Mac to sleep (or quit its app); within 30 s its group shows "Can't reach this Mac. Check that it's awake and on your tailnet." Turn off sharing on it: its group disappears and, with no other peer sharing, "Other Macs" reads "No shared sessions on other Macs." Disconnect Tailscale on this Mac: the peer area reads "Peers appear when Tailscale is connected." and the footer "Tailscale not connected"; open peer tabs stay.
+  - _Why not automatable:_ needs a live tailnet and a second Mac.
+  - _Source:_ 02-UI-SPEC.md "Peer group states".
+- **M-06** Retired in Portty 02-04: it covered the Hub card's two-step kill confirm. The End Session confirm arrives in plan 02-08.
 
 ### Category C — Terminal / Theme (POL-04)
 
@@ -485,18 +483,12 @@ Human-intervention items that cannot be automated. Run before each tagged releas
 
 ### Category G — Live Tailnet Remote Session Open (FIX-03)
 
-- **M-13** FIX-03 (#98/#118, out-of-band cap exchange + in-app tab open, GAP-146-A + Phase 168-03 D-17): Two sub-scenarios on a live two-Mac tailnet. **Phase 168-03 (#118) update: the session now opens in an IN-APP web-session tab (terminal + chat, streaming the relay) instead of launching an external browser window** — the out-of-band join-code/cap-exchange step is unchanged, only the destination of the open changed:
+- **M-13** FIX-03 (#98/#118, out-of-band cap exchange + in-app tab open, GAP-146-A + Phase 168-03 D-17): **Portty 02-04: the entry point is now a sidebar peer row (Category B), not a Hub card; read "Open in browser" below as "click the peer row".** Two sub-scenarios on a live two-Mac tailnet. **Phase 168-03 (#118) update: the session now opens in an IN-APP web-session tab (terminal + chat, streaming the relay) instead of launching an external browser window** — the out-of-band join-code/cap-exchange step is unchanged, only the destination of the open changed:
   - **First open (no held cap):** "Open in browser" on a remote session card opens `RemoteJoinCodeModal` (not a raw 401/error). After the owner shares and delivers a join code out of band, the viewer pastes the code; the app opens a new in-app tab (`openWebSessionTab`) that streams the session terminal+chat over `baseURL/sessions/{id}?cap=TOKEN` — no external browser window opens. RO code → RO-scoped tab; RW code → RW-scoped tab. No "capability required" page.
   - **Second open (held-cap reuse, Plan 05):** Once the viewer has already connected in-app (which deposited the cap into RemoteCapStore), clicking "Open in browser" a SECOND time on the same session must open WITHOUT prompting for a fresh join code — the app reuses the held cap directly (the single-use code is already consumed — D-11) and opens directly into an in-app tab. Steps: (1) On Mac A, start a session, enable Share, deliver join code to Mac B out of band. (2) On Mac B, connect in-app (cap deposited). (3) On Mac B, click "Open in browser" — expect an in-app tab to open directly WITHOUT a modal and WITHOUT an external browser window. (4) Verify the tab's terminal is live (streams real PTY output) and its chat panel is scoped to the correct session. No join-code prompt on the second open.
   - **Two-session isolation (Phase 168-03, D3, T-168-04):** open two different remote sessions from the Hub in the same window — confirm they produce two independent tabs, each streaming its own session (correct terminal content, correct chat scope, no cross-contamination of baseURL/cap between tabs). This sub-scenario is source-inspection-verified only (`App.open-remote.test.tsx`); live UAT is the first end-to-end proof.
   - _Why not automatable:_ Requires two real Macs on the same tailnet; the `:34115` wails-dev bridge has no real tailnet peer; web-share WebSocket blocks automated terminal input (see live-UAT-daemon-gotchas memory).
   - _Source:_ 146-VALIDATION.md Manual-Only Verifications table; FIX-03 (#98) — Phase 146 out-of-band redesign (D-02/D-04); GAP-146-A Plan 05 held-cap reuse; Phase 168-03 (#118) in-app-tab reversal (D-17)
-
-### Category H — In-App Help Page (HELP-01)
-
-- **M-14** Help page opens in the live native WebView via the sidebar Help button: search input, left section-nav ("Getting Started", "FAQ"), and Markdown content all render. Clicking an FAQ answer's GitHub Issues link opens the system browser (not in-app webview). Search for "DevTools" shows at least one highlighted result with a `<mark>` span.
-  - _Why not automatable:_ Wails native webview required for the BrowserOpenURL external-browser path and IntersectionObserver scroll-spy active-section tracking.
-  - _Source:_ Phase 147 HELP-01 (#69); add when Plans 02/03 complete
 
 ### Category J — Shell Web-Share Warning Toggle (SET-01)
 
@@ -815,7 +807,7 @@ The alias-set wire contract, client-side validateAlias, alias-control component 
   1. Quit any installed AgentHub and stop its daemon (shared socket and port 7443), then open the built app with two sessions open.
   2. Top-left corner: the native traffic lights sit over the sidebar's top strip and no window title shows.
   3. Click each tab in the 52px top bar, a tab's ×, and the new-tab control: each acts on the first click and none starts a window drag.
-  4. Click the sidebar's Toggle sidebar button right of the traffic lights: the sidebar collapses and expands. Collapsed, the first tab starts clear of the traffic lights.
+  4. Click the sidebar's Hide Sidebar button at the right end of its top strip, then the tab bar's Show Sidebar button: the sidebar hides and shows. Hidden, the first tab starts clear of the traffic lights (80px inset; Portty 02-04, see M-61).
   5. Drag empty top-bar space and the empty sidebar strip: the window moves, and no sidebar label gets text-selected.
   6. Vibrancy: put a colourful wallpaper or window behind the app. The sidebar shows a translucent desktop tint; the tab bar and terminal stay opaque and readable. (Not verifiable in the Tart VM, where sidebar pixels sample identical with or without content behind; check on a real host.)
   - _Why not automatable:_ native NSToolbar hit-testing, native window drag and NSVisualEffectView vibrancy are outside vitest, Go tests and Playwright. The window flags are unit-tested in `menu_test.go` (`TestMacWindowOptions`) and the CSS in `App.test.tsx`.
@@ -826,7 +818,7 @@ The alias-set wire contract, client-side validateAlias, alias-control component 
   3. Help ▸ Portty Help opens https://portty.app in the default browser.
   4. ⌘H hides the app.
   5. ⌘Q shows the quit-confirm dialog (it does not quit straight away).
-  6. ⌘W and ⌃⌘S do nothing yet (their listeners arrive in plans 02-08 and 02-04); ⌘W must not close or kill a session.
+  6. ⌘W does nothing yet (its listener arrives in plan 02-08) and must not close or kill a session. ⌃⌘S hides and shows the sidebar (Portty 02-04, M-61).
   - _Why not automatable:_ native NSMenu accelerators and Wails event delivery need the built app. Menu structure, accelerators and emitted events are unit-tested in `menu_test.go`; the frontend listeners in `App.test.tsx`.
   - _Source:_ 02-01-PLAN.md Task 2; 02-UI-SPEC.md "Interaction Contract ▸ Menu bar".
 
@@ -840,6 +832,18 @@ The alias-set wire contract, client-side validateAlias, alias-control component 
   5. The menu bar tray glyph stays legible in both modes; an OSC 9;4 run (`printf '\e]9;4;1;50\a'`) shows a legible progress indicator in both modes.
   - _Why not automatable:_ live NSAppearance propagation into WKWebView, WebGL atlas repaint and tray template rendering only happen in the native app. The palettes, the hook and the token blocks are unit-tested (`terminalPalettes.test.ts`, `useColorScheme.test.tsx`, `style.tokens.test.ts`); the browser switch is covered in Chromium by `web-color-scheme.spec.ts`.
   - _Source:_ 02-03-PLAN.md Task 3; 02-UI-SPEC.md "Color" and "Terminal palettes (THEM-01)".
+
+### Category AE — Sidebar & Navigation (NAV-01..03)
+
+- **M-61** NAV-01..03 sidebar in the built app (Portty 02-04 Task 3 human check). Quit any installed AgentHub and stop its daemon first.
+  1. Launch the app: it opens straight into sidebar plus tabs, with no Welcome, Hub or Help tab; running sessions come back as tabs.
+  2. Run `agenthub new ~` from a terminal: the session appears under "This Mac" within 3 s. Clicking a row focuses its tab, or opens one at the end of the strip; the row turns blue (selected).
+  3. Press ⌃⌘S twice, then click the sidebar's Hide Sidebar button and the tab bar's Show Sidebar button: the sidebar hides and shows each time, and while hidden the first tab sits clear of the traffic lights (80px inset). Relaunch: the sidebar is shown again (not persisted).
+  4. With a row selected, switch to Finder: the selected row turns gray; switch back: it turns blue again.
+  5. Vibrancy: with a colourful wallpaper behind the window, the sidebar is translucent and its text (rows, group headers, footer) is readable in both Light and Dark mode.
+  6. Footer: "Tailscale connected · <this Mac's short name>" with a green dot; disconnect Tailscale: "Tailscale not connected" with a gray dot, and the peer area reads "Peers appear when Tailscale is connected."
+  - _Why not automatable:_ native window key status, NSVisualEffectView vibrancy, the native menu accelerator and a CLI-created session against the live daemon only exist in the built app. Rows, states, footer and wiring are covered by `Sidebar.test.tsx`, `sidebarPeers.test.ts`, `App.nav.test.tsx` and `TabBar.test.tsx`.
+  - _Source:_ 02-04-PLAN.md Task 3 human-check; 02-UI-SPEC.md "Sidebar" and "Interaction Contract".
 
 ---
 

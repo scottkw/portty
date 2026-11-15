@@ -407,6 +407,38 @@ textarea {
   text-overflow: ellipsis;
 }
 
+/* Hide Sidebar (strip) and Show Sidebar (tab bar): 28x28 icon buttons. */
+.sidebar__hide,
+.tab-bar__show-sidebar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: default;
+}
+
+.tab-bar__show-sidebar {
+  margin-right: 8px;
+}
+
+:is(.sidebar__hide, .tab-bar__show-sidebar):focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+/* Window not key: the selected row turns gray (UI-SPEC "Selected row"). */
+html.is-inactive .sidebar__row[aria-current="page"] {
+  background: var(--color-selection-inactive);
+  color: var(--color-text);
+}
+
 /* ─── Terminal container ─────────────────────────────────────────── */
 .terminal-container {
   flex: 1;
@@ -5590,6 +5622,19 @@ html.is-desktop .sidebar {
   position: relative;
   padding-top: 52px;
   --wails-draggable: drag;
+}
+
+/* Hide Sidebar sits at the right end of the 52px strip. */
+html.is-desktop .sidebar__hide {
+  position: absolute;
+  top: 12px;
+  right: 8px;
+}
+
+/* Sidebar hidden: the tab bar takes the 80px traffic-light reserve so the
+   first tab never slides under the traffic lights. Padding stays draggable. */
+html.is-desktop .tab-bar--sidebar-hidden {
+  padding-left: 80px;
 }
 
 /* Dragging a strip must not text-select labels. WebKit needs the prefix;

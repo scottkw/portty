@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { GlobeAltIcon, LockOpenIcon } from '@heroicons/react/24/outline'
+import { SidebarToggleIcon } from './Sidebar'
 
 export interface Tab {
   id: string
   name: string
   sessionId: string
-  type?: 'terminal' | 'welcome' | 'settings' | 'hub' | 'help' | 'web-session'
+  type?: 'terminal' | 'settings' | 'web-session'
   /** Phase 168-03 (FIX-03) — per-tab remote peer origin for 'web-session' tabs
    *  opened via handleOpenRemoteSession. undefined for the app's own web-share
    *  bootstrap tab (which falls back to the mount-stable webParams). */
@@ -45,7 +46,7 @@ interface TabBarProps {
   /**
    * Phase 166 / FUI-03 — per-session internet exposure state, keyed by sessionId.
    * When funnelActiveSessions[tab.sessionId] is true, the tab renders a globe icon
-   * with aria-label/title "Internet exposed". Derived from hubSessions in App.tsx
+   * with aria-label/title "Internet exposed". Derived from sessions in App.tsx
    * (rides the existing 3s poll — no new interval added).
    */
   funnelActiveSessions?: Record<string, boolean>
@@ -55,9 +56,12 @@ interface TabBarProps {
    * is true, the tab renders a LockOpenIcon after the internet icon (D-10
    * read-then-write order) with aria-label/title "Full access exposed —
    * command execution". Mirrors funnelActiveSessions exactly — derived from
-   * the same hubSessions 3s poll in App.tsx, no new interval.
+   * the same sessions 3s poll in App.tsx, no new interval.
    */
   funnelWriteActiveSessions?: Record<string, boolean>
+  /** Portty 02-04: the sidebar is hidden, so the bar takes the 80px traffic-light inset and a Show Sidebar button. */
+  sidebarHidden?: boolean
+  onShowSidebar?: () => void
 }
 
 /**
@@ -75,6 +79,8 @@ export function TabBar({
   webMode = false,
   funnelActiveSessions,
   funnelWriteActiveSessions,
+  sidebarHidden = false,
+  onShowSidebar,
 }: TabBarProps): React.ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -164,7 +170,18 @@ export function TabBar({
   }
 
   return (
-    <div className="tab-bar">
+    <div className={`tab-bar${sidebarHidden ? ' tab-bar--sidebar-hidden' : ''}`}>
+      {sidebarHidden && (
+        <button
+          type="button"
+          className="tab-bar__show-sidebar"
+          aria-label="Show Sidebar"
+          title="Show Sidebar"
+          onClick={onShowSidebar}
+        >
+          <SidebarToggleIcon />
+        </button>
+      )}
       {canScrollLeft && (
         <button
           className="tab-bar__chevron tab-bar__chevron--left"

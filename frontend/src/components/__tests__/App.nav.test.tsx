@@ -50,7 +50,7 @@ describe('Portty NAV-01: always-on session poll feeds the sidebar', () => {
 
   it('gates the Sidebar on mode !== web (WEBCHAT-03 guest scope)', () => {
     const idx = raw.indexOf('<Sidebar')
-    expect(raw.slice(idx - 40, idx)).toMatch(/\{mode !== 'web' && \(\s*$/)
+    expect(raw.slice(idx - 60, idx)).toMatch(/\{mode !== 'web' && [^(]*\(\s*$/)
   })
 
   it('handleOpenSessionTab focuses an open tab or appends and activates one', () => {
@@ -118,6 +118,65 @@ describe('NAV-04: New Session sidebar item is removed (Phase 138)', () => {
 
   it('does NOT define handleAddTab callback', () => {
     expect(raw).not.toContain('const handleAddTab')
+  })
+})
+
+// Portty 02-04 NAV-03: App renders only session tabs (plus Settings until 02-11).
+describe('Portty NAV-03: no Hub, Welcome or Help tabs', () => {
+  it('has no __hub__, __welcome__ or __help__ tab ids', () => {
+    for (const id of ['__hub__', '__welcome__', '__help__']) expect(raw).not.toContain(id)
+  })
+
+  it('does not import or render HubPanel, WelcomeTab or HelpTab', () => {
+    for (const c of ['HubPanel', 'WelcomeTab', 'HelpTab']) {
+      expect(raw).not.toMatch(new RegExp(`import \\{ ${c} \\}`))
+      expect(raw).not.toContain(`<${c}`)
+    }
+  })
+
+  it('has no Hub group state or Hub cap callbacks', () => {
+    for (const s of ['groupDefs', 'activeGroupId', 'capAcquiredRef', 'capCancelledRef', 'hubError', "'hub-modal'"]) {
+      expect(raw).not.toContain(s)
+    }
+  })
+
+  it("the Share dialog's help link opens HELP_URL in the browser", () => {
+    expect(raw).toContain("import { HELP_URL } from './lib/helpUrl'")
+    expect(raw).toContain('onOpenHelp={() => BrowserOpenURL(HELP_URL)}')
+    expect(raw).not.toContain('handleOpenHelp')
+  })
+})
+
+// Portty 02-04: Hide/Show Sidebar and the inactive-window selection colour.
+describe('Portty 02-04: sidebar hide/show and inactive window', () => {
+  it('subscribes menu:toggle-sidebar with a functional update and unsubscribes', () => {
+    expect(raw).toContain("EventsOn('menu:toggle-sidebar', () => setSidebarHidden((h) => !h))")
+    expect(raw).toContain('offMenuToggleSidebar()')
+  })
+
+  it('does not render the Sidebar while hidden; TabBar gets the inset and Show Sidebar', () => {
+    const idx = raw.indexOf('<Sidebar')
+    expect(raw.slice(idx - 60, idx)).toContain("mode !== 'web' && !sidebarHidden && (")
+    expect(slice('<Sidebar', '/>')).toContain('onHide={() => setSidebarHidden(true)}')
+    const tabBar = slice('<TabBar', '/>')
+    expect(tabBar).toContain("sidebarHidden={mode !== 'web' && sidebarHidden}")
+    expect(tabBar).toContain('onShowSidebar={() => setSidebarHidden(false)}')
+  })
+
+  it('sidebarHidden is plain state, not persisted', () => {
+    expect(raw).toContain('const [sidebarHidden, setSidebarHidden] = useState(false)')
+    expect(raw).not.toMatch(/localStorage\.[a-zA-Z]+\([^)]*sidebar/i)
+  })
+
+  it('toggles html.is-inactive on window blur/focus and removes both listeners (desktop only)', () => {
+    const body = slice("const onBlur = () => root.classList.add('is-inactive')", '}, [mode])')
+    expect(body).toContain("const onFocus = () => root.classList.remove('is-inactive')")
+    expect(body).toContain("window.addEventListener('blur', onBlur)")
+    expect(body).toContain("window.addEventListener('focus', onFocus)")
+    expect(body).toContain("window.removeEventListener('blur', onBlur)")
+    expect(body).toContain("window.removeEventListener('focus', onFocus)")
+    const start = raw.lastIndexOf('useEffect(() => {', raw.indexOf("const onBlur = () =>"))
+    expect(raw.slice(start, raw.indexOf("const onBlur = () =>"))).toContain("if (mode === 'web') return")
   })
 })
 

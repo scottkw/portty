@@ -178,19 +178,7 @@ describe('App.tsx SessionShareModal render site receives the shell-warn authorit
     expect(block).toContain('onShellWebShareCancel={handleShellWebShareCancel}')
   })
 
-  it('HubPanel no longer receives the shell-warn / SessionShareModal props (moved off HubPanel)', () => {
-    const hubIdx = raw.indexOf('<HubPanel')
-    expect(hubIdx).toBeGreaterThan(-1)
-    const nextCloseIdx = raw.indexOf('/>', hubIdx)
-    const hubBlock = raw.slice(hubIdx, nextCloseIdx)
-    expect(hubBlock).not.toContain('shellWebShareWarned=')
-    expect(hubBlock).not.toContain('shellWebShareWarningEnabled=')
-    expect(hubBlock).not.toContain('onShellWebShareConfirm=')
-    expect(hubBlock).not.toContain('onShellWebShareCancel=')
-    expect(hubBlock).not.toContain('webServerMode=')
-    expect(hubBlock).not.toContain('webServerRunning=')
-    expect(hubBlock).not.toContain('onOpenHelp=')
-    // HubPanel now drives the lifted state via setShareModalSession only.
-    expect(hubBlock).toContain('setShareModalSession=')
+  it('no HubPanel render site remains to receive the shell-warn props (Portty 02-04)', () => {
+    expect(raw).not.toContain('<HubPanel')
   })
 })

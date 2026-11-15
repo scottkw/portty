@@ -350,6 +350,14 @@ describe('desktop window chrome CSS (LOOK-01)', () => {
     expect(cssRaw).not.toMatch(/(^|\s)\.sidebar--collapsed/m)
   })
 
+  it('hidden sidebar: tab bar takes the 80px traffic-light inset (Portty 02-04)', () => {
+    expect(cssRaw).toMatch(/html\.is-desktop \.tab-bar--sidebar-hidden \{\s*padding-left: 80px;/)
+  })
+
+  it('inactive window: selected sidebar row uses the inactive selection colour with text colour', () => {
+    expect(cssRaw).toMatch(/html\.is-inactive \.sidebar__row\[aria-current="page"\] \{\s*background: var\(--color-selection-inactive\);\s*color: var\(--color-text\);/)
+  })
+
   it('drag strips do not text-select (WebKit prefix included)', () => {
     expect(cssRaw).toMatch(/html\.is-desktop :is\(\.sidebar, \.tab-bar\) \{\s*-webkit-user-select: none;\s*user-select: none;/)
   })

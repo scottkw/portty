@@ -78,6 +78,7 @@ function renderPeerSidebar(onOpenPeer: Parameters<typeof Sidebar>[0]['onOpenPeer
         onOpenLocal: vi.fn(),
         peerView: peerView(false, true, [remotePeer]),
         onOpenPeer,
+        onHide: vi.fn(),
         tailscaleHealth: { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'me.ts.net' },
       }),
     )
@@ -122,11 +123,12 @@ describe('App.tsx — handleOpenRemoteSession (out-of-band, FIX-03)', () => {
 
 // ─── Source-inspection: handleModalExchange open-session branch ───────────────
 describe('App.tsx — handleModalExchange open-session branch (FIX-03)', () => {
-  it("has an 'open-session' intent branch in handleModalExchange", () => {
-    const idx = raw.indexOf('handleModalExchange')
+  it("handles only the sidebar's 'open-session' intent (the Hub's hub-modal intent is gone)", () => {
+    const idx = raw.indexOf('const handleModalExchange')
     expect(idx, 'handleModalExchange must be present in App.tsx').toBeGreaterThan(-1)
-    const slice = raw.slice(idx, idx + 1000)
-    expect(slice).toContain('open-session')
+    expect(raw).toContain("intent: 'open-session'")
+    expect(raw).not.toContain("'hub-modal'")
+    expect(raw).not.toContain('findRemoteSession')
   })
 
   it('open-session branch uses OpenRemoteSessionURL to get the cap-bearing URL (WR-01 fix, preserved by FIX-03)', () => {

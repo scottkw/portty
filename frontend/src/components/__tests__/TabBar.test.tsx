@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
@@ -47,6 +47,28 @@ function renderTabBarWithTabs(overrides: TabBarOverrides = {}) {
   })
   return { container, root }
 }
+
+describe('TabBar: Show Sidebar (Portty 02-04)', () => {
+  it('with sidebarHidden, renders a Show Sidebar button that calls onShowSidebar, and takes the inset class', () => {
+    const onShowSidebar = vi.fn()
+    const { container, root } = renderTabBarWithTabs({ sidebarHidden: true, onShowSidebar })
+    const btn = container.querySelector<HTMLButtonElement>('button[aria-label="Show Sidebar"]')
+    expect(btn).not.toBeNull()
+    expect(container.querySelector('.tab-bar')?.classList.contains('tab-bar--sidebar-hidden')).toBe(true)
+    flushSync(() => btn!.click())
+    expect(onShowSidebar).toHaveBeenCalledTimes(1)
+    flushSync(() => root.unmount())
+    container.remove()
+  })
+
+  it('without sidebarHidden, no Show Sidebar button and no inset class', () => {
+    const { container, root } = renderTabBarWithTabs()
+    expect(container.querySelector('button[aria-label="Show Sidebar"]')).toBeNull()
+    expect(container.querySelector('.tab-bar--sidebar-hidden')).toBeNull()
+    flushSync(() => root.unmount())
+    container.remove()
+  })
+})
 
 describe('TabBar', () => {
   let container: HTMLElement

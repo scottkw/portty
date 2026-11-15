@@ -9,30 +9,10 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
-const appSrc = readFileSync(resolve(__dirname, '../../App.tsx'), 'utf-8')
 const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
-// ============================================================
-// App.tsx source gates — HELP_TAB wiring (RED until Plan 02)
-// ============================================================
-
-describe('HelpTab source gate: HELP_TAB constant in App.tsx (Phase 147)', () => {
-  it("App.tsx declares HELP_TAB with id '__help__'", () => {
-    expect(appSrc).toContain("id: '__help__'")
-  })
-
-  it("App.tsx declares HELP_TAB with type 'help'", () => {
-    expect(appSrc).toContain("type: 'help'")
-  })
-
-  it('App.tsx declares HELP_TAB constant', () => {
-    expect(appSrc).toContain('HELP_TAB')
-  })
-
-  it('App.tsx declares handleOpenHelp callback', () => {
-    expect(appSrc).toContain('handleOpenHelp')
-  })
-})
+// Portty 02-04: App no longer renders a Help tab (Help opens the docs site);
+// the App.tsx HELP_TAB gates were dropped. HelpTab itself goes in plan 02-05.
 
 // ============================================================
 // style.css source gates — --hub-search-highlight-bg token (RED until Plan 03)

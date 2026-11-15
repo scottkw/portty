@@ -211,12 +211,13 @@ describe('App.tsx wiring — footer "Share Session" opens the lifted Share modal
 })
 
 describe('App.tsx tab-type gate — footer Share affordance hidden on non-shareable tabs (D-15, T-168-06)', () => {
-  it('excludes welcome/settings/hub/help/web-session tab types from the StatusBar-bearing wrapper', () => {
+  it('excludes settings/web-session tab types from the StatusBar-bearing wrapper', () => {
     const idx = raw.indexOf("tabs.map((tab) => {")
     expect(idx).toBeGreaterThan(-1)
     const block = raw.slice(idx, idx + 300)
     // Gate must check tab TYPE, not just sessionId presence (STRIDE-EoP).
-    for (const t of ['welcome', 'settings', 'hub', 'help', 'web-session']) {
+    // Portty 02-04: welcome/hub/help tab types no longer exist (Tab['type']).
+    for (const t of ['settings', 'web-session']) {
       expect(block).toContain(`tab.type === '${t}'`)
     }
   })

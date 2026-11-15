@@ -13,6 +13,16 @@ const PEER_PLACEHOLDER: Record<'off' | 'loading' | 'none', string> = {
 }
 const PEER_UNREACHABLE = "Can't reach this Mac. Check that it's awake and on your tailnet."
 
+/** UI-SPEC Iconography: the one non-Heroicons glyph (Hide/Show Sidebar). */
+export function SidebarToggleIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true">
+      <rect x="3" y="4.5" width="18" height="15" rx="3" />
+      <path d="M9 4.5v15" />
+    </svg>
+  )
+}
+
 // Portty 02-04 (NAV-01): macOS source-list sidebar. Desktop only: App does not
 // render it in web mode (Phase 159 WEBCHAT-03 guest scope).
 interface SidebarProps {
@@ -25,6 +35,7 @@ interface SidebarProps {
   onOpenPeer: (peer: RemotePeerSessions, session: RemoteSession) => void
   /** null until the first Tailscale check answers. */
   tailscaleHealth: TailscaleHealth | null
+  onHide: () => void
 }
 
 export function Sidebar({
@@ -34,6 +45,7 @@ export function Sidebar({
   peerView,
   onOpenPeer,
   tailscaleHealth,
+  onHide,
 }: SidebarProps): React.ReactElement {
   // Local terminal tabs carry no type (or 'terminal'); other tab kinds never select a local row.
   const activeLocalId =
@@ -50,6 +62,10 @@ export function Sidebar({
 
   return (
     <nav aria-label="Sessions" className="sidebar">
+      {/* Sits in the 52px top strip, clear of the 80px traffic-light reserve. */}
+      <button type="button" className="sidebar__hide" aria-label="Hide Sidebar" title="Hide Sidebar" onClick={onHide}>
+        <SidebarToggleIcon />
+      </button>
       <div className="sidebar__list">
         <section className="sidebar__group" aria-labelledby="sidebar-group-local">
           <h2 id="sidebar-group-local" className="sidebar__group-header">This Mac</h2>

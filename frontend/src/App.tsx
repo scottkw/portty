@@ -34,16 +34,14 @@ import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
 import type { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
-import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
+import { EventsOn, BrowserOpenURL } from './wailsjs/wailsjs/runtime/runtime'
 import { StatusBar } from './components/StatusBar'
 import { NewSessionModal } from './components/NewSessionModal'
-import { WelcomeTab } from './components/WelcomeTab'
 import { RemoteJoinCodeModal } from './components/RemoteJoinCodeModal'
-import { HubPanel } from './components/Hub/HubPanel'
 import { SessionShareModal } from './components/Hub/SessionShareModal'
-import { HelpTab } from './components/HelpTab'
-import { findRemoteSession, remoteBaseURLFor } from './lib/remoteSession'
-import { adaptAllRemoteSessions, adaptRemoteSession } from './lib/remoteAdapter'
+import { remoteBaseURLFor } from './lib/remoteSession'
+import { adaptRemoteSession } from './lib/remoteAdapter'
+import { HELP_URL } from './lib/helpUrl'
 import { peerView, shortHost } from './lib/sidebarPeers'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
@@ -66,12 +64,8 @@ const DEFAULT_FONT_SIZE = 13
  * the Wails-generated TypeScript bindings to the child components.
  */
 function App(): React.ReactElement {
-  const WELCOME_TAB: Tab = { id: '__welcome__', name: 'Welcome', sessionId: '', type: 'welcome' }
-const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '', type: 'settings' }
-  // Phase 131 — Hub top-level surface tab.
-  const HUB_TAB: Tab = { id: '__hub__', name: 'Hub', sessionId: '', type: 'hub' }
-  // Phase 147 — In-app Help page tab.
-  const HELP_TAB: Tab = { id: '__help__', name: 'Help', sessionId: '', type: 'help' }
+  // NAV-03: the strip only holds session tabs, plus Settings until plan 02-11.
+  const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '', type: 'settings' }
   // Phase 120-06 — single source of truth for "is this React shell running in
   // a regular browser under /app/ vs inside the Wails desktop runtime?" Used
   // to gate the Wails RPC suite (init, retryInit, sessions polls) so the SPA
@@ -89,6 +83,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   const [relayPort, setRelayPort] = useState<number | null>(null)
   const [tabCounter, setTabCounter] = useState(1)
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
+  // Hide/Show Sidebar (button, toolbar button, View menu ⌃⌘S). Not persisted.
+  const [sidebarHidden, setSidebarHidden] = useState(false)
   // Track web serving state per session: sessionId -> enabled
   const [webEnabled, setWebEnabled] = useState<Record<string, boolean>>({})
   // Phase 101-03 SHELL-07/SHELL-08 — one-time security-warning gate for shell
@@ -147,7 +143,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   const upgradePollerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // NAV-01: every daemon session, from the always-on 3 s poll (desktop only).
   const [sessions, setSessions] = useState<SessionInfo[]>([])
-  const [hubError, setHubError] = useState(false)
   // Phase 168-05 (UX-02) — Share modal open-state, lifted from HubPanel so both the Hub
   // card click AND the footer "Share Session" button drive a single SessionShareModal
   // instance (RESEARCH Pattern 4). null = closed; non-null = open for this session.
@@ -157,7 +152,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // True after the first successful peer poll; clears the "Looking for other Macs…" line.
   const [remoteLoaded, setRemoteLoaded] = useState(false)
 
-  // Phase 122-03 — remote-session cap state (open-session / hub-modal).
+  // Phase 122-03 — remote-session cap state.
   //   remoteCapsCached: sessionIds whose caps are already deposited in the
   //     local daemon's RemoteCapStore. Per locked decision D-03, the modal is
   //     skipped for cached sessions.
@@ -170,19 +165,10 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     id: string
     name: string
     hostname: string
-    intent?: 'hub-modal' | 'open-session'
-    /** Pre-computed for open-session intent; avoids re-deriving in the modal exchange handler. */
-    baseURL?: string
+    intent: 'open-session'
+    /** Pre-computed when the dialog opens; the exchange handler uses it as is. */
+    baseURL: string
   } | null>(null)
-
-  // Phase 134 — holds the HubPanel's cap-acquired callback (registered via onRegisterCapAcquired).
-  // Using a ref avoids stale closure issues in the modal exchange callback (which has openWebSessionTab dep).
-  const capAcquiredRef = useRef<((sessionId: string) => void) | null>(null)
-
-  // Phase 134 — WR-01: holds HubPanel's cap-cancelled callback (registered via onRegisterCapCancelled).
-  // Invoked from RemoteJoinCodeModal onClose (hub-modal intent path only) so a dismissed modal
-  // resets HubPanel's pendingModalSessionId / pendingSourceRectRef and does not strand pending state.
-  const capCancelledRef = useRef<(() => void) | null>(null)
 
   // Update notification state (lifted from WelcomeTab — Phase 81 D-06)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
@@ -545,9 +531,11 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
 
     // Native menu: File > New Session (Cmd+T).
     const offMenuNewSession = EventsOn('menu:new-session', () => setShowNewSessionModal(true))
-    // Native menu: Settings… (Cmd+,). menu:close-tab and menu:toggle-sidebar get
-    // listeners in 02-08 / 02-04; closing a tab still kills its shell today.
+    // Native menu: Settings… (Cmd+,). menu:close-tab gets its listener in 02-08;
+    // closing a tab still kills its shell today.
     const offMenuSettings = EventsOn('menu:settings', () => openSettingsRef.current?.())
+    // Native menu: View > Hide/Show Sidebar (Ctrl+Cmd+S). Functional update: no stale closure.
+    const offMenuToggleSidebar = EventsOn('menu:toggle-sidebar', () => setSidebarHidden((h) => !h))
 
     // Subscribe to quit-requested event from Go backend (Phase 85)
     const offQuit = EventsOn('app:quit-requested', () => {
@@ -576,6 +564,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       offQuit()
       offMenuNewSession()
       offMenuSettings()
+      offMenuToggleSidebar()
       if (upgradePollerRef.current !== null) {
         clearInterval(upgradePollerRef.current)
         upgradePollerRef.current = null
@@ -653,26 +642,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     setActiveId(SETTINGS_TAB.id)
   }, [tabs])
   openSettingsRef.current = handleOpenSettings
-
-  // Phase 147 — find-or-add help tab (mirrors handleOpenSettings exactly).
-  // Phase 166 FUI-06 — optional sectionId scrolls the Help tab to a specific section
-  // (e.g. 'help-sharing' from the Funnel risk-panel cross-link). HelpTab is mounted with
-  // a display-toggle (not conditional), so the section element exists in the DOM; defer
-  // the scroll until the tab is visible.
-  const handleOpenHelp = useCallback((sectionId?: string) => {
-    const existing = tabs.find((t) => t.type === 'help')
-    if (existing) {
-      setActiveId(existing.id)
-    } else {
-      setTabs((prev) => [...prev, HELP_TAB])
-      setActiveId(HELP_TAB.id)
-    }
-    if (sectionId) {
-      setTimeout(() => {
-        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 50)
-    }
-  }, [tabs])
 
   // UI-only removal of a session's tab state. session:exit calls it directly
   // (the daemon already removed the session); handleCloseTab calls it after
@@ -783,16 +752,15 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
 
   // NAV-01: always-on session poll, so the sidebar lists every daemon session
   // (including ones created from the CLI) and the open Share dialog stays live.
-  // hubError still feeds the Hub branch until it is removed.
   useEffect(() => {
     if (mode === 'web') return // Phase 120-06: no Wails RPC in browser mode.
     let cancelled = false
     async function refresh() {
       try {
         const list = await ListSessions()
-        if (!cancelled) { setSessions(list); setHubError(false) }
+        if (!cancelled) setSessions(list)
       } catch {
-        if (!cancelled) setHubError(true)
+        // Keep the last list until the next tick succeeds.
       }
     }
     void refresh()
@@ -871,6 +839,21 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     return () => {
       window.removeEventListener('focus', recheck)
       document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [mode])
+
+  // UI-SPEC: while the window is not key, the selected sidebar row dims
+  // (html.is-inactive in style.css). Desktop only.
+  useEffect(() => {
+    if (mode === 'web') return
+    const root = document.documentElement
+    const onBlur = () => root.classList.add('is-inactive')
+    const onFocus = () => root.classList.remove('is-inactive')
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
     }
   }, [mode])
 
@@ -1000,62 +983,37 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // cap into the local daemon's RemoteCapStore. On success, mark the session
   // as cap-cached. The cap token never enters React state (T-122-03-01).
   //
-  // Phase 146 FIX-03 (out-of-band): 'open-session' branch runs BEFORE hub-modal.
-  //
-  // Phase 168-03 (D-17) — the open-session branch now opens the in-app web-session
-  // tab (openWebSessionTab) rather than an external browser window.
+  // Phase 168-03 (D-17) — on success it opens the in-app web-session tab
+  // (openWebSessionTab) rather than an external browser window. Portty 02-04:
+  // 'open-session' (a sidebar peer row) is the only intent; the Hub's went with it.
   const handleModalExchange = useCallback(
     async (code: string): Promise<void> => {
       const pending = joinModalForSession
       if (!pending) throw new Error('no session pending')
 
-      // Phase 146: open-session intent — use pre-computed baseURL, open cap-bearing URL.
-      // GAP-146-A WR-01 fix (Plan 05): deposit the cap so RemoteCapStore holds the
-      // SID-correct entry, then build the open URL via OpenRemoteSessionURL (daemon-
-      // composed) — eliminating the mismatch-prone hand-built URL that could produce
-      // /sessions/A with the cap for B when the clicked-session id mismatches cap SID.
-      if (pending.intent === 'open-session') {
-        const baseURL = pending.baseURL ?? ''
-        if (!baseURL) throw new Error('session-gone')
-        const cap = await ExchangeJoinCodeAtURL(baseURL, code)
-        // Deposit the cap so the daemon's RemoteCapStore holds the keyed entry.
-        await RegisterRemoteCap(pending.id, baseURL, cap)
-        // Mark session as cap-cached so future opens reuse it (held-cap branch above).
-        setRemoteCapsCached((prev) => {
-          const next = new Set(prev)
-          next.add(pending.id)
-          return next
-        })
-        // Build the SID-correct cap-bearing URL from the daemon's stored entry
-        // (keyed by the cap just deposited — daemon ensures path SID = lookup key),
-        // then open it in-app (D-17).
-        const url = await OpenRemoteSessionURL(pending.id)
-        const parsed = new URL(url)
-        openWebSessionTab(pending.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(pending.hostname)} › ${pending.name}`)
-        return
-      }
-
-      const remote = findRemoteSession(pending.id, remotePeers)
-      if (!remote) throw new Error('session-gone')
-      const baseURL = remoteBaseURLFor(remote)
-      // WR-05: remoteBaseURLFor returns '' when the peer-supplied url is
-      // malformed/empty. Treat that as a recoverable session-gone error so
-      // the modal renders user-facing copy instead of attempting an exchange
-      // against an empty base URL.
+      // Use the pre-computed baseURL. GAP-146-A WR-01 fix (Plan 05): deposit the cap
+      // so RemoteCapStore holds the SID-correct entry, then build the open URL via
+      // OpenRemoteSessionURL (daemon-composed), never a hand-built URL that could
+      // pair /sessions/A with the cap for B.
+      const baseURL = pending.baseURL
       if (!baseURL) throw new Error('session-gone')
       const cap = await ExchangeJoinCodeAtURL(baseURL, code)
+      // Deposit the cap so the daemon's RemoteCapStore holds the keyed entry.
       await RegisterRemoteCap(pending.id, baseURL, cap)
+      // Mark session as cap-cached so future opens reuse it (held-cap branch above).
       setRemoteCapsCached((prev) => {
         const next = new Set(prev)
         next.add(pending.id)
         return next
       })
-      // Phase 134 — MODAL-06: signal HubPanel to open the modal for the pending session
-      if (pending.intent === 'hub-modal') {
-        capAcquiredRef.current?.(pending.id)
-      }
+      // Build the SID-correct cap-bearing URL from the daemon's stored entry
+      // (keyed by the cap just deposited — daemon ensures path SID = lookup key),
+      // then open it in-app (D-17).
+      const url = await OpenRemoteSessionURL(pending.id)
+      const parsed = new URL(url)
+      openWebSessionTab(pending.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(pending.hostname)} › ${pending.name}`)
     },
-    [joinModalForSession, remotePeers, openWebSessionTab],
+    [joinModalForSession, openWebSessionTab],
   )
 
   const retryInit = useCallback(async () => {
@@ -1132,7 +1090,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           NOT be rendered, or the guest could navigate away from the scoped
           session and reach the open /api/sessions/meta enumeration surface.
           Mirrors the existing `mode !== 'web'` gates on the Settings surface. */}
-      {mode !== 'web' && (
+      {mode !== 'web' && !sidebarHidden && (
       <Sidebar
         sessions={sessions}
         activeTab={tabs.find((t) => t.id === activeId) ?? null}
@@ -1140,6 +1098,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         peerView={peerView(tailscaleOff, remoteLoaded, remotePeers)}
         onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}
         tailscaleHealth={tailscaleHealth}
+        onHide={() => setSidebarHidden(true)}
       />
       )}
       <div className="app__content">
@@ -1152,6 +1111,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           onRequestSave={handleRequestSave}
           tabProgress={tabProgress}
           webMode={mode === 'web'}
+          sidebarHidden={mode !== 'web' && sidebarHidden}
+          onShowSidebar={() => setSidebarHidden(false)}
           funnelActiveSessions={/* Phase 166 / FUI-03: derived from the sessions 3s poll; no new interval */
             sessions.reduce<Record<string, boolean>>(
               (acc, s) => ({ ...acc, [s.id]: s.funnelActive }),
@@ -1220,44 +1181,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           </div>
         )}
         <div className="terminal-container">
-        {activeId === WELCOME_TAB.id && (
-          <WelcomeTab />
-        )}
-        {/* Phase 131 — Hub surface. Phase 138 — wired with onKill/onOpenInBrowser/remotePeers. */}
-        {activeId === HUB_TAB.id && (
-          <HubPanel
-            sessions={sessions}
-            error={hubError}
-            onNewSession={() => setShowNewSessionModal(true)}
-            onRename={handleRenameTab}
-            onOpenSession={handleOpenSessionTab}
-            remoteSessions={adaptAllRemoteSessions(remotePeers)}
-            isActive={activeId === HUB_TAB.id}
-            relayPort={relayPort ?? undefined}
-            terminalTheme={terminalTheme}
-            pluginConfig={pluginConfig}
-            remoteCapsCached={remoteCapsCached}
-            onRequestRemoteCap={(s) => {
-              // WR-02: do NOT overwrite an in-flight joinModalForSession (e.g. an
-              // open-session intent already open for a different session). Preserves the in-flight request
-              // rather than silently redirecting the cap exchange to a different consumer.
-              // Fire the cancel ref so HubPanel resets pendingModalSessionId immediately —
-              // without this, the card click appears to do nothing and the pending id is
-              // stranded until the next modal close.
-              if (joinModalForSession) { capCancelledRef.current?.(); return }
-              setJoinModalForSession({ id: s.id, name: s.name, hostname: s.hostname, intent: 'hub-modal' })
-            }}
-            onRegisterCapAcquired={(fn) => { capAcquiredRef.current = fn }}
-            onRegisterCapCancelled={(fn) => { capCancelledRef.current = fn }}
-            fontSizes={fontSizes}
-            onFontSizeChange={handleFontSizeChange}
-            onKill={(id) => void handleCloseTab(id)}
-            onOpenInBrowser={handleOpenRemoteSession}
-            remotePeers={remotePeers}
-            setShareModalSession={setShareModalSession}
-            shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}
-          />
-        )}
         {/* Phase 155-03 — WebShareSessionView render branch. Activated when
             the active tab id starts with __websession__. This is the primary
             surface for web-share viewers: TerminalPanel + ChatPanel overlay
@@ -1285,14 +1208,14 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           const wsSessionId = activeWebTab?.sessionId ?? webParams.sessionId ?? activeId.slice('__websession__'.length)
           const wsCapToken = isRemoteWebTab ? (activeWebTab?.capToken ?? '') : (webParams.capToken ?? '')
           return (
-            // FIX-03 (plan 09) RC-B: WebShareSessionView's flex:1 root
-            // (.hub-modal__body--interactive) is inert under the block-context
+            // FIX-03 (plan 09) RC-B: WebShareSessionView's flex:1 root (its
+            // interactive Hub-modal body class) is inert under the block-context
             // .terminal-container, collapsing to content height (--hub-bg dead
             // band). Wrap in .terminal-wrapper (height:100%; display:flex;
             // flex-direction:column) — the same full-height chain normal
             // terminal tabs use — so flex:1 fills the pane. Fixes both the remote
             // tab and the native web-guest bootstrap tab without touching the
-            // shared .hub-modal__* classes (still used by HubInteractiveModal).
+            // shared Hub-modal classes (still used by HubInteractiveModal).
             <div className="terminal-wrapper" style={{ display: 'flex' }}>
               {/* CR-03: key on wsSessionId so React remounts (drops stale
                   chat/unread/plugin-config useState) when the active tab switches
@@ -1353,15 +1276,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           />
         </div>
         )}
-        {/* Phase 147 — HelpTab mounted with display-toggle (not conditional) to
-            preserve scroll position and activeSection state across tab switches.
-            Mirrors the SettingsTab display-toggle mount pattern above. */}
-        {mode !== 'web' && (
-        <div style={{ display: activeId === HELP_TAB.id ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
-          <HelpTab />
-        </div>
-        )}
-        {daemonError && tabs.filter((t) => t.type !== 'welcome' && t.type !== 'settings' && t.type !== 'hub').length === 0 && (
+        {daemonError && tabs.filter((t) => t.type !== 'settings').length === 0 && (
           <div style={{
             background: '#16161e',
             borderLeft: '3px solid #f7768e',
@@ -1400,7 +1315,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         )}
         {relayPort != null && relayPort > 0 &&
           tabs.map((tab) => {
-            if (tab.type === 'welcome' || tab.type === 'settings' || tab.type === 'hub' || tab.type === 'help' || tab.type === 'web-session') return null
+            if (tab.type === 'settings' || tab.type === 'web-session') return null
             const isActive = tab.id === activeId
             return (
               <div
@@ -1453,7 +1368,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           shellWebShareWarningEnabled={shellWebShareWarningEnabled}
           onShellWebShareConfirm={handleShellWebShareConfirm}
           onShellWebShareCancel={handleShellWebShareCancel}
-          onOpenHelp={() => handleOpenHelp('help-sharing')}
+          onOpenHelp={() => BrowserOpenURL(HELP_URL)}
           onShareEnabledChange={(sessionId, enabled) =>
             setWebEnabled((prev) => ({ ...prev, [sessionId]: enabled }))
           }
@@ -1481,20 +1396,13 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         />
       )}
 
-      {/* Phase 122-03 — paste-join-code modal for remote-session open.
-          WR-01: when the intent is 'hub-modal', also invoke capCancelledRef to reset
-          HubPanel's pending state (pendingModalSessionId / pendingSourceRectRef). */}
+      {/* Phase 122-03 — paste-join-code modal for remote-session open. */}
       {joinModalForSession && (
         <RemoteJoinCodeModal
           remoteSession={joinModalForSession}
           intent={joinModalForSession.intent}
           onExchange={handleModalExchange}
-          onClose={() => {
-            if (joinModalForSession?.intent === 'hub-modal') {
-              capCancelledRef.current?.()
-            }
-            setJoinModalForSession(null)
-          }}
+          onClose={() => setJoinModalForSession(null)}
         />
       )}
     </div>

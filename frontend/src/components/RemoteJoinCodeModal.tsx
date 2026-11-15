@@ -19,9 +19,10 @@ export interface RemoteJoinCodeModalProps {
   /**
    * GAP-134-E: what the cap is being acquired for. Drives the title. Defaults to
    * the generic title.
-   * Phase 146 FIX-03: 'open-session' intent is for opening a remote session in the browser.
+   * Phase 146 FIX-03: 'open-session' intent is for opening a remote session.
+   * Portty 02-04: the only intent (the Hub's intent went with the Hub).
    */
-  intent?: 'hub-modal' | 'open-session'
+  intent?: 'open-session'
   /**
    * Exchange the entered code for a cap (typically: ExchangeJoinCodeAtURL →
    * RegisterRemoteCap two-step in App.tsx). Resolves on success; rejects with
