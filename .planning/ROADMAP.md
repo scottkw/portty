@@ -88,7 +88,7 @@ Plans:
   6. Session chat is gone from the desktop app, the web share page, the daemon/webserver API and the relay protocol; no chat button, badge, or endpoint remains, and old clients that send chat frames do not crash anything
   7. Switching macOS between Light and Dark changes the whole app and every open terminal at once, with no restart; there is no theme picker, and the web share page follows the browser's light/dark setting
   8. The window looks like a native macOS app: system font and accent color, a source-list sidebar, a unified title bar/toolbar, and native-style controls; no custom dark chrome or hardcoded colors remain (LOOK-01)
-**Plans**: 11/13 plans executed (sequential waves 1-13; App.tsx, style.css and TESTING.md are shared hot files)
+**Plans**: 12/13 plans executed (sequential waves 1-13; App.tsx, style.css and TESTING.md are shared hot files)
 
 Plans:
 **Wave 1**
@@ -125,7 +125,7 @@ Plans:
 - [x] 02-11-PLAN.md — Settings sheet (General / Sharing / Security), native switches, inline disabled reasons; Settings tab, jump bar and search removed
 
 **Wave 12** *(blocked on Wave 11 completion)*
-- [ ] 02-12-PLAN.md — CSS sweep onto tokens with the LOOK-01 source gate; join/dashboard light/dark; final TESTING.md reconciliation and full phase gate
+- [x] 02-12-PLAN.md — CSS sweep onto tokens with the LOOK-01 source gate; join/dashboard light/dark; final TESTING.md reconciliation and full phase gate
 
 **Wave 13** *(blocked on Wave 12 completion)*
 - [ ] 02-13-PLAN.md — Appearance override: Settings ▸ Appearance Automatic / Light / Dark; native app appearance; settings.json key; startup apply; full gate re-run (added 2026-11-15, user request)
@@ -192,7 +192,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
-| 2. Tabs + Sidebar Navigation | 11/13 | In Progress | - |
+| 2. Tabs + Sidebar Navigation | 12/13 | In Progress | - |
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
