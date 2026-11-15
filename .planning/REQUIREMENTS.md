@@ -33,11 +33,11 @@
 
 ### Remote & Sharing
 
-- [ ] **SHAR-01**: One "Share" action on a session makes it visible to the user's tailnet peers (shows in their Portty sidebar) AND produces a tailnet-only web link. No separate toggles.
-- [ ] **SHAR-02**: User can choose read-only or read/write for a share. The capability-gated access model from AgentHub is kept.
+- [ ] **SHAR-01**: Sharing is one on/off state per session. Shared means BOTH: visible to the user's tailnet peers (in their Portty sidebar) AND reachable through a tailnet-only web link. No share tabs, modes, or separate toggles.
+- [ ] **SHAR-02**: A share always grants full control (read/write). The read-only link type and its UI are removed; links stay token-gated and tailnet-only (user decision 2026-11-15)
 - [ ] **SHAR-03**: Opening the web link in a browser on the tailnet gives a working interactive terminal for the session
 - [ ] **SHAR-04**: User can stop sharing a session, which disconnects remote viewers and removes it from peers' sidebars
-- [ ] **SHAR-05**: Tailscale Funnel public sharing stays available as a separate, risk-gated step (read-only and consent-gated read/write)
+- [ ] **SHAR-05**: Tailscale Funnel public sharing is removed: risk panel, consent gates, hold-to-confirm, public links, Funnel config and their tests (user decision 2026-11-15)
 - [ ] **SHAR-06**: From any terminal (e.g. Warp), `portty attach <host>:<session>` attaches to a remote shared session with the tmux-style status bar
 - [ ] **SHAR-07**: A remote attach left idle for 12+ hours stays connected or reconnects automatically. Detaching and reattaching restores scrollback.
 
@@ -89,6 +89,8 @@
 | Warp "tickler" | Warp's idle timeout is server-side and not configurable, and fake activity would type into the live terminal |
 | New relay/cloud services | Tailnet (plus opt-in Funnel) only |
 | Terminal theme library (138 themes) | Replaced by system light/dark (THEM-01, 2026-11-15) |
+| Funnel public sharing | Tailnet-only is enough; removed (SHAR-05, 2026-11-15) |
+| Read-only share links | A share is always full control (SHAR-02, 2026-11-15) |
 | Session chat | Not needed; removed in Phase 2 (user decision 2026-11-15) |
 
 ## Traceability

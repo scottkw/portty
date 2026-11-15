@@ -107,14 +107,14 @@ Plans:
 **UI hint**: yes
 
 ### Phase 4: One-Click Share
-**Goal**: One Share action publishes a session to tailnet peers and a tailnet web link at the same time, with capability-gated access, a clean stop, Funnel as a separate step, and CLI attach from any terminal
+**Goal**: Sharing is one on/off switch per session: shared means tailnet peers and a tailnet web link at once, always full control, with a clean stop and CLI attach from any terminal. Funnel and read-only links are gone
 **Depends on**: Phase 3
 **Requirements**: SHAR-01, SHAR-02, SHAR-03, SHAR-04, SHAR-05, SHAR-06
 **Success Criteria** (what must be TRUE):
-  1. User clicks Share on a session and picks read-only or read/write. In that one step the session shows up in the other Mac's Portty sidebar and a tailnet-only web link appears, ready to copy, with no separate peer and web toggles
-  2. Opening the link in a browser on another tailnet device gives a working interactive terminal; with a read-only share, browser and peer viewers can watch but their keystrokes never reach the shell
-  3. User stops sharing, every remote viewer (peer GUI, browser, CLI) is disconnected, and the session disappears from peers' sidebars
-  4. Public Funnel sharing is available only as a separate step from the Share dialog, behind the risk gate. It auto-expires, and read/write requires explicit consent
+  1. User turns Share on for a session. In that one step the session shows up in the other Mac's Portty sidebar and a tailnet-only web link appears, ready to copy. There are no share tabs, modes, or separate peer/web toggles
+  2. Opening the link in a browser on another tailnet device gives a working interactive terminal with full control
+  3. User turns Share off, every remote viewer (peer GUI, browser, CLI) is disconnected, and the session disappears from peers' sidebars
+  4. No Funnel, public-link, risk-panel, or read-only code, UI, settings, or tests remain
   5. From Warp or any terminal, `portty attach <host>:<session>` attaches to a session shared from another Mac and shows the tmux-style status bar
 **Plans**: TBD
 **UI hint**: yes

@@ -19,7 +19,6 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 - ✓ Tailscale integration: tailnet peer discovery, browser-trusted TLS over Tailscale HTTPS. (existing)
 - ✓ Remote attach to sessions on other tailnet machines, from the GUI and from the CLI (`attach host:id`, WSS relay, tmux-style status bar). (existing)
 - ✓ Per-session web share with read-only and read/write capability links, multiple simultaneous clients, and PTY resize arbitration. (existing)
-- ✓ Tailscale Funnel public sharing: risk-gated, auto-expiring, consent-gated write. (existing)
 - ✓ Vendored xterm.js plugin suite (GPU render, search, links, sixel, OSC 52, OSC 9;4). (existing)
 - ✓ Native notifications and auto-update checks. (existing)
 
@@ -35,7 +34,7 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 - [ ] Replace the 138 terminal themes with system light/dark for the app and terminals
 - [ ] Remove session chat entirely (desktop, web, daemon API, relay frames)
 - [ ] Remove Windows and Linux code paths, packaging, and CI. macOS only.
-- [ ] One "Share" action publishes a session to BOTH tailnet peers (shows in their sidebar) AND a tailnet web link. Funnel public sharing stays a separate risk-gated step.
+- [ ] Sharing is one on/off state: shared = tailnet peers (sidebar) AND a tailnet web link, always full control. Funnel and read-only links are removed.
 - [ ] CLI keeps `attach host:id` (renamed `portty attach`) for use from Warp or any terminal
 - [ ] Overnight test passes: start a shell running Claude Code on the office Mac, attach from the home Mac, leave it idle overnight, reattach the next morning with scrollback intact. Attaching from a browser works too.
 
@@ -67,7 +66,7 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 - **Platform**: macOS only (Apple Silicon MacBook Airs). Both target machines are Macs.
 - **Tech stack**: Keep AgentHub's stack (Go/Wails/React/tsnet). This is a strip-down, not a rewrite.
 - **Network**: Remote access only over the user's tailnet (plus opt-in Funnel). No new relay servers or cloud dependencies.
-- **Security**: Keep AgentHub's capability-gated share model, CSP, and Funnel consent gates intact through the refactor. Remote write access to a shell is powerful.
+- **Security**: Keep token-gated, tailnet-only share links and the CSP intact through the refactor. Remote write access to a shell is powerful.
 - **Deletion discipline**: Chesterton's Fence. Read each piece and know why it exists before removing it, especially in daemon, relay, and capability code shared between kept and removed features.
 
 ## Key Decisions
@@ -82,6 +81,7 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 | Keep CLI `attach` | Fallback from Warp or any terminal; code already exists | — Pending |
 | Keep themes/plugins, notifications/updates; drop file browser | User's explicit choice | — Pending |
 | Only macOS light/dark, following the system (drops the theme library) | Simpler, consistent look across app and terminals (user decision 2026-11-15) | — Pending |
+| Radical simplicity: one share state, full control, tailnet only; no Funnel, no read-only links | User wants Portty MUCH simpler than AgentHub (2026-11-15) | — Pending |
 | Remove session chat (reverses the earlier "keep chat") | Not needed for remote terminal control (user decision 2026-11-15) | — Pending |
 | Website portty.app; private repo scottkw/portty | User decision 2026-11-14 | — Pending |
 | No Homebrew. GitHub release DMGs plus a GIFsmith-style update check, download and verify | Same distribution model as GIFsmith/TransomWM | — Pending |
