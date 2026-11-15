@@ -13,6 +13,7 @@ import { FunnelRiskPanel } from './FunnelRiskPanel'
 import { ShareSegmentedControl, type ShareTab } from './ShareSegmentedControl'
 import { TailnetTab } from '../SessionShare/TailnetTab'
 import { useDialogFocus } from '../../lib/useDialogFocus'
+import { Switch } from '../Switch'
 import { InternetReadOnlyTab } from '../SessionShare/InternetReadOnlyTab'
 import { InternetFullAccessTab } from '../SessionShare/InternetFullAccessTab'
 
@@ -542,24 +543,16 @@ export function SessionShareModal({
             />
           )}
           {/* SHARE-01: "Share the session" toggle */}
-          <label
-            className={`settings-panel__toggle-row${shareEnabled ? ' settings-panel__toggle-row--checked' : ''}`}
-          >
-            <input
-              type="checkbox"
-              className="settings-panel__toggle-input"
-              role="switch"
-              aria-checked={shareEnabled}
+          <div className="share-toggle-row">
+            <label className="share-toggle-row__label" htmlFor="share-session-switch">Share the session</label>
+            <span className="share-toggle-row__state">{toggleStateLabel(shareEnabled, false)}</span>
+            <Switch
+              id="share-session-switch"
               aria-label="Share the session"
               checked={shareEnabled}
               onChange={() => void handleShareToggle()}
             />
-            <span className="settings-panel__toggle-track">
-              <span className="settings-panel__toggle-thumb" />
-            </span>
-            <span className="settings-panel__toggle-label">Share the session</span>
-            <span className="settings-panel__toggle-state">{toggleStateLabel(shareEnabled, false)}</span>
-          </label>
+          </div>
 
           {/* LAN password (SHARE-04): shown in local mode */}
           {webServerMode === 'local' && webServerRunning && lanPassword && (
@@ -600,35 +593,27 @@ export function SessionShareModal({
             aria-disabled={funnelDisabled}
             data-funnel-warming={warmingUp ? 'true' : undefined}
           >
-            <label
-              className={`settings-panel__toggle-row${funnelOn || riskPanelOpen ? ' settings-panel__toggle-row--checked' : ''}`}
-            >
-              <input
-                type="checkbox"
-                className="settings-panel__toggle-input"
-                role="switch"
-                aria-checked={funnelOn || riskPanelOpen}
-                aria-label="Enable internet sharing"
-                checked={funnelOn || riskPanelOpen}
-                disabled={funnelDisabled}
-                onChange={() => handleFunnelToggle()}
-              />
-              <span className="settings-panel__toggle-track">
-                <span className="settings-panel__toggle-thumb" />
-              </span>
-              <span className="settings-panel__toggle-label">Enable internet sharing</span>
+            <div className="share-toggle-row">
+              <label className="share-toggle-row__label" htmlFor="share-funnel-switch">Enable internet sharing</label>
               {/* SM-07 gap #2 / WR-02 (173-08, T-173-08-01): the 'On' text is the
                   colorblind ground-truth signal and must reflect committed state,
                   not pending intent — gate it strictly on funnelOn. The pending,
                   uncommitted risk-panel window renders a distinct 'Confirm…' label
                   instead of reusing toggleStateLabel's On/Off/N-A pair, so it can
-                  never be mistaken for 'On'. Checkbox checked/aria-checked above
+                  never be mistaken for 'On'. The switch's aria-checked below
                   intentionally still reflects funnelOn || riskPanelOpen (the
                   "about to enable" affordance) — only this text label changes. */}
-              <span className="settings-panel__toggle-state">
+              <span className="share-toggle-row__state">
                 {funnelDisabled ? 'N/A' : funnelOn ? 'On' : riskPanelOpen ? 'Confirm…' : 'Off'}
               </span>
-            </label>
+              <Switch
+                id="share-funnel-switch"
+                aria-label="Enable internet sharing"
+                checked={funnelOn || riskPanelOpen}
+                disabled={funnelDisabled}
+                onChange={() => handleFunnelToggle()}
+              />
+            </div>
             {funnelDisabled && (
               <div className="hub-funnel-toggle-section__note">
                 Internet sharing requires Tailscale

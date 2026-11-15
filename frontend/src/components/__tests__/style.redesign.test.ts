@@ -103,8 +103,9 @@ describe('Phase 141-07: comp radii tokens applied to surfaces', () => {
     expect(cssRaw).toContain('border-radius: var(--hub-radius-sm)')
   })
 
-  it('--hub-radius-lg is consumed by at least one selector (large modal containers)', () => {
-    expect(cssRaw).toContain('border-radius: var(--hub-radius-lg)')
+  // Portty 02-11: its only consumer, the old .settings-panel modal, is gone; sheets use 12px.
+  it('--hub-radius-lg is retired with the old Settings panel', () => {
+    expect(cssRaw).not.toContain('--hub-radius-lg')
   })
 })
 

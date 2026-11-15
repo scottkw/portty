@@ -120,8 +120,8 @@ function renderModal(opts: ModalOpts = {}) {
 }
 
 // Phase 166 helpers: locate the Funnel toggle and risk-panel buttons.
-function findFunnelToggle(c: HTMLElement): HTMLInputElement | null {
-  return c.querySelector('input[aria-label="Enable internet sharing"]') as HTMLInputElement | null
+function findFunnelToggle(c: HTMLElement): HTMLButtonElement | null {
+  return c.querySelector('[role="switch"][aria-label="Enable internet sharing"]') as HTMLButtonElement | null
 }
 function findByText(c: HTMLElement, text: string): HTMLElement | null {
   return (Array.from(c.querySelectorAll('button')).find(
@@ -152,7 +152,7 @@ describe('SessionShareModal — SHARE-01: share toggle', () => {
   it('toggling share ON reveals RO + RW link rows', async () => {
     const { container: c } = renderModal()
     // Find the share toggle
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     expect(shareToggle).not.toBeNull()
     // Toggle it ON
     await flushSync(() => { shareToggle!.click() })
@@ -271,7 +271,7 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
       onShellWebShareCancel: vi.fn(),
     })
     // Find the share toggle and click it (toggle share ON)
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     expect(shareToggle).not.toBeNull()
     await flushSync(() => { shareToggle!.click() })
     // Banner should be shown (ShellWebShareBanner text)
@@ -288,7 +288,7 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
       onShellWebShareConfirm: vi.fn().mockResolvedValue(true),
       onShellWebShareCancel: vi.fn(),
     })
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     expect(shareToggle).not.toBeNull()
     await flushSync(() => { shareToggle!.click() })
     await new Promise<void>((r) => setTimeout(r, 0))
@@ -306,7 +306,7 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
       onShellWebShareConfirm: vi.fn().mockResolvedValue(true),
       onShellWebShareCancel: vi.fn(),
     })
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     expect(shareToggle).not.toBeNull()
     await flushSync(() => { shareToggle!.click() })
     await new Promise<void>((r) => setTimeout(r, 0))
@@ -325,7 +325,7 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
       onShellWebShareCancel: onCancel,
     })
     // Trigger banner
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     await flushSync(() => { shareToggle!.click() })
     // Find the "Keep sharing off" button and click it
     const cancelBtn = Array.from(c.querySelectorAll('button')).find(
@@ -347,7 +347,7 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
       onShellWebShareCancel: vi.fn(),
     })
     // Trigger banner
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     await flushSync(() => { shareToggle!.click() })
     // Find the "Enable web sharing" button and click it
     const enableBtn = Array.from(c.querySelectorAll('button')).find(
@@ -359,8 +359,8 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
       // onShellWebShareConfirm should have been called
       expect(onConfirm).toHaveBeenCalled()
       // WR-01: on success, the toggle should now read "on"
-      const toggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLInputElement | null
-      expect(toggle?.checked).toBe(true)
+      const toggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
+      expect(toggle?.getAttribute('aria-checked')).toBe('true')
     }
   })
 
@@ -375,7 +375,7 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
       onShellWebShareConfirm: onConfirm,
       onShellWebShareCancel: vi.fn(),
     })
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     await flushSync(() => { shareToggle!.click() })
     const enableBtn = Array.from(c.querySelectorAll('button')).find(
       (btn) => btn.textContent?.match(/Enable web sharing/i)
@@ -385,8 +385,8 @@ describe('SessionShareModal — SET-01: shell warning interception on Hub Share 
       await new Promise<void>((r) => setTimeout(r, 0))
       expect(onConfirm).toHaveBeenCalled()
       // The toggle must remain OFF — the backend call failed.
-      const toggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLInputElement | null
-      expect(toggle?.checked).toBe(false)
+      const toggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
+      expect(toggle?.getAttribute('aria-checked')).toBe('false')
     }
   })
 })
@@ -453,7 +453,7 @@ describe('SessionShareModal — FUI-01: risk panel on every enable (Tailscale mo
     expect(c.querySelector('.hub-funnel-risk-panel--open')).not.toBeNull()
     expect(mockedSetSessionFunnel).not.toHaveBeenCalled()
     const stateText = findToggleRow(c, 'Enable internet sharing').querySelector(
-      '.settings-panel__toggle-state',
+      '.share-toggle-row__state',
     )?.textContent
     expect(stateText).not.toBe('On')
     expect(stateText).toBe('Confirm…')
@@ -466,7 +466,7 @@ describe('SessionShareModal — FUI-01: risk panel on every enable (Tailscale mo
     })
     expect(mockedSetSessionFunnel).toHaveBeenCalledWith('sess-1', true, 3600)
     expect(
-      findToggleRow(c, 'Enable internet sharing').querySelector('.settings-panel__toggle-state')?.textContent,
+      findToggleRow(c, 'Enable internet sharing').querySelector('.share-toggle-row__state')?.textContent,
     ).toBe('On')
   })
 })
@@ -682,7 +682,7 @@ describe('SessionShareModal — Phase 168-08 (gap): onShareEnabledChange notifie
       webEnabled: false,
       onShareEnabledChange,
     })
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     expect(shareToggle).not.toBeNull()
     await flushSync(() => { shareToggle!.click() })
     await new Promise<void>((r) => setTimeout(r, 0))
@@ -703,7 +703,7 @@ describe('SessionShareModal — Phase 168-08 (gap): onShareEnabledChange notifie
       webEnabled: true, // already shared
       onShareEnabledChange,
     })
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     expect(shareToggle).not.toBeNull()
     await flushSync(() => { shareToggle!.click() })
     await new Promise<void>((r) => setTimeout(r, 0))
@@ -722,7 +722,7 @@ describe('SessionShareModal — Phase 168-08 (gap): onShareEnabledChange notifie
       onShellWebShareCancel: vi.fn(),
       onShareEnabledChange,
     })
-    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"], input[type="checkbox"]') as HTMLElement | null
+    const shareToggle = c.querySelector('[role="switch"][aria-label*="Share"]') as HTMLElement | null
     expect(shareToggle).not.toBeNull()
     await flushSync(() => { shareToggle!.click() })
     await new Promise<void>((r) => setTimeout(r, 0))
@@ -778,8 +778,8 @@ describe('SessionShareModal — WR-03: single issuance for Funnel sessions', () 
 // ---------------------------------------------------------------------------
 
 function findToggleRow(c: HTMLElement, label: string): HTMLElement {
-  const row = Array.from(c.querySelectorAll('.settings-panel__toggle-row')).find(
-    (r) => r.querySelector('.settings-panel__toggle-label')?.textContent === label,
+  const row = Array.from(c.querySelectorAll('.share-toggle-row')).find(
+    (r) => r.querySelector('.share-toggle-row__label')?.textContent === label,
   ) as HTMLElement | undefined
   if (!row) throw new Error(`toggle row not found: ${label}`)
   return row
@@ -788,21 +788,21 @@ function findToggleRow(c: HTMLElement, label: string): HTMLElement {
 describe('SessionShareModal — SM-01: fixed control strip does not reflow on toggle', () => {
   it('the two toggle rows keep their DOM order across a "Share the session" toggle flip', async () => {
     const { container: c } = renderModal({ webServerMode: 'tailscale' })
-    const labelsBefore = Array.from(c.querySelectorAll('.settings-panel__toggle-label')).map(
+    const labelsBefore = Array.from(c.querySelectorAll('.share-toggle-row__label')).map(
       (el) => el.textContent,
     )
     expect(labelsBefore).toEqual([
       'Share the session',
       'Enable internet sharing',
     ])
-    const shareToggle = findToggleRow(c, 'Share the session').querySelector('input') as HTMLElement
+    const shareToggle = findToggleRow(c, 'Share the session').querySelector('[role="switch"]') as HTMLElement
     // handleShareToggle awaits ToggleWebServing before setShareEnabled — wrap
     // in React.act() so the state update is deterministically flushed.
     await React.act(async () => {
       shareToggle.click()
       await tick()
     })
-    const labelsAfter = Array.from(c.querySelectorAll('.settings-panel__toggle-label')).map(
+    const labelsAfter = Array.from(c.querySelectorAll('.share-toggle-row__label')).map(
       (el) => el.textContent,
     )
     // Same rows, same order — toggling never reflows the control strip.
@@ -898,7 +898,7 @@ describe('SessionShareModal — SM-05 residual (WR-01, 173-08): funnelOn resyncs
         expect(t.getAttribute('aria-disabled')).toBe('false')
       }
       expect(
-        findToggleRow(c, 'Enable internet sharing').querySelector('.settings-panel__toggle-state')?.textContent,
+        findToggleRow(c, 'Enable internet sharing').querySelector('.share-toggle-row__state')?.textContent,
       ).toBe('On')
     })
 
@@ -917,7 +917,7 @@ describe('SessionShareModal — SM-05 residual (WR-01, 173-08): funnelOn resyncs
     })
 
     expect(
-      findToggleRow(c, 'Enable internet sharing').querySelector('.settings-panel__toggle-state')?.textContent,
+      findToggleRow(c, 'Enable internet sharing').querySelector('.share-toggle-row__state')?.textContent,
     ).not.toBe('On')
     const internetTabsAfter = Array.from(c.querySelectorAll('[role="tab"]')).filter((t) =>
       /Internet/.test(t.textContent ?? ''),
@@ -935,17 +935,17 @@ describe('SessionShareModal — SM-05 residual (WR-01, 173-08): funnelOn resyncs
 describe('SessionShareModal — SM-07: On/Off/N-A toggle state labels', () => {
   it('"Share the session" reads Off, then On after toggling', async () => {
     const { container: c } = renderModal({ webServerMode: 'tailscale' })
-    expect(findToggleRow(c, 'Share the session').querySelector('.settings-panel__toggle-state')?.textContent).toBe(
+    expect(findToggleRow(c, 'Share the session').querySelector('.share-toggle-row__state')?.textContent).toBe(
       'Off',
     )
-    const shareToggle = findToggleRow(c, 'Share the session').querySelector('input') as HTMLElement
+    const shareToggle = findToggleRow(c, 'Share the session').querySelector('[role="switch"]') as HTMLElement
     // handleShareToggle awaits ToggleWebServing before setShareEnabled — wrap
     // in React.act() so the state update is deterministically flushed.
     await React.act(async () => {
       shareToggle.click()
       await tick()
     })
-    expect(findToggleRow(c, 'Share the session').querySelector('.settings-panel__toggle-state')?.textContent).toBe(
+    expect(findToggleRow(c, 'Share the session').querySelector('.share-toggle-row__state')?.textContent).toBe(
       'On',
     )
   })
@@ -953,7 +953,7 @@ describe('SessionShareModal — SM-07: On/Off/N-A toggle state labels', () => {
   it('"Enable internet sharing" reads N/A in local (non-Tailscale) mode', () => {
     const { container: c } = renderModal({ webServerMode: 'local' })
     expect(
-      findToggleRow(c, 'Enable internet sharing').querySelector('.settings-panel__toggle-state')?.textContent,
+      findToggleRow(c, 'Enable internet sharing').querySelector('.share-toggle-row__state')?.textContent,
     ).toBe('N/A')
   })
 })

@@ -158,7 +158,9 @@ describe('LOOK-01 / THEM-01: two-block colour tokens', () => {
 // is out of scope, so they are never flagged.
 const MIGRATED_SURFACE_SELECTORS = [
   '.sidebar', '.welcome-tab', '.tab-bar', '.terminal-container',
-  '.settings-panel', '.settings-jump-bar', '.settings-search', '.hub-share-modal',
+  '.hub-share-modal',
+  // Portty 02-11: the Settings sheet, its rows, the Switch and the Share dialog switch rows.
+  '.settings-', '.switch', '.share-toggle-row', '.ts-status',
   // Portty 02-08: toolbar, tab pills, context menu, empty state, End Session note.
   '.tab__', '.tab-list', '.toolbar-', '.context-menu', '.empty-state', '.end-session',
   // Portty 02-09: every dialog and the Share dialog's content.

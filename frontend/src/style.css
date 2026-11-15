@@ -555,383 +555,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   color: var(--color-text-secondary);
 }
 
-.settings-panel {
-  background-color: var(--hub-surface-elevated);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-lg);
-  width: 520px;
-  max-width: 95vw;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  font-family: var(--hub-font-ui);
-}
-
-.settings-tab {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.settings-panel__body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 20px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--hub-scrollbar) transparent;
-}
-.settings-panel__body::-webkit-scrollbar {
-  width: 6px;
-}
-.settings-panel__body::-webkit-scrollbar-track {
-  background: transparent;
-}
-.settings-panel__body::-webkit-scrollbar-thumb {
-  background-color: var(--hub-scrollbar);
-  border-radius: 3px;
-}
-.settings-panel__body::-webkit-scrollbar-thumb:hover {
-  background-color: var(--hub-scrollbar-hover);
-}
-.settings-panel__body h3 {
-  font-size: var(--hub-font-size-sm);
-  font-weight: var(--hub-font-weight-emphasis);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--hub-text-muted);
-  margin-bottom: 12px;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--hub-border);
-  /* Phase 104 SETUI-01: clear the sticky jump-bar when an anchor scrolls
-     a section header to the top of the scroll container. */
-  scroll-margin-top: 80px;
-}
-
-/* Phase 104 SETUI-01/02: enable native smooth-scroll for hash anchors
-   inside the settings body. */
-.settings-panel__body {
-  scroll-behavior: smooth;
-}
-
-/* Phase 104 SETUI-01: sticky jump-bar at the top of the Settings tab.
-   Flex row of anchor links; remains visible while the body scrolls. */
-.settings-jump-bar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-  padding: 10px 0;
-  margin: 0 0 12px 0;
-  background-color: var(--hub-bg);
-  border-bottom: 1px solid var(--hub-border);
-}
-.settings-jump-bar__link {
-  color: var(--hub-accent);
-  font-size: 12px;
-  text-decoration: none;
-  padding: 4px 8px;
-  border-radius: var(--hub-radius-sm);
-}
-.settings-jump-bar__link:hover {
-  background-color: var(--hub-border);
-  color: var(--hub-text-primary);
-}
-.settings-jump-bar__link:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 2px;
-}
-
-/* Phase 104 SETUI-03: settings search box + autocomplete dropdown. */
-.settings-search {
-  position: relative;
-  max-width: 320px;
-  margin: 0 0 16px 0;
-}
-.settings-search__input {
-  width: 100%;
-  background-color: var(--hub-surface);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-sm);
-  color: var(--hub-text-primary);
-  font-size: var(--hub-font-size-base);
-  padding: 6px 10px;
-  outline: none;
-}
-.settings-search__input:focus {
-  border-color: var(--hub-accent);
-}
-.settings-search__results {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 10;
-  list-style: none;
-  margin: 0;
-  padding: 4px 0;
-  background-color: var(--hub-bg);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-sm);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-  max-height: 240px;
-  overflow-y: auto;
-}
-.settings-search__result {
-  padding: 6px 12px;
-  font-size: 12px;
-  color: var(--hub-text-primary);
-  cursor: pointer;
-}
-.settings-search__result:hover,
-.settings-search__result:focus {
-  background-color: var(--hub-border);
-  color: var(--hub-accent);
-  outline: none;
-}
-.settings-panel__body h3:first-child {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: none;
-}
-
-.settings-panel__path-input {
-  width: 100%;
-  background-color: var(--hub-surface);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-sm);
-  color: var(--hub-text-primary);
-  font-size: 12px;
-  padding: 6px 8px;
-  outline: none;
-  font-family: var(--hub-font-mono);
-}
-.settings-panel__path-input:focus {
-  border-color: var(--hub-accent);
-}
-.settings-panel__error {
-  margin-top: 12px;
-  color: var(--hub-destructive);
-  font-size: 12px;
-}
-
-.settings-panel__save-paths-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-.settings-panel__btn {
-  padding: 6px 16px;
-  border-radius: var(--hub-radius-sm);
-  font-size: var(--hub-font-size-base);
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-}
-.settings-panel__btn--cancel {
-  background-color: transparent;
-  color: var(--hub-text-muted);
-  border: 1px solid var(--hub-border);
-}
-.settings-panel__btn--cancel:hover {
-  color: var(--hub-text-primary);
-  border-color: var(--hub-border-hover);
-}
-.settings-panel__btn--save {
-  background-color: var(--hub-accent);
-  color: var(--hub-bg);
-  font-weight: 600;
-}
-.settings-panel__btn--save:hover:not(:disabled) {
-  background-color: var(--hub-accent-hover);
-}
-.settings-panel__btn--save:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.settings-panel__btn--saved {
-  background-color: var(--hub-success);
-  color: var(--hub-bg);
-  font-weight: 600;
-  cursor: default;
-}
-.settings-panel__btn--saved:disabled {
-  opacity: 1;
-}
-
-.settings-panel__appearance-value {
-  color: var(--color-text-secondary);
-}
-
-/* ─── Field groups & form elements ───────────────────────────────── */
-.settings-panel__field-group {
-  margin-bottom: 16px;
-}
-.settings-panel__field-group:last-child {
-  margin-bottom: 0;
-}
-.settings-panel__label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--hub-text-secondary);
-  margin-bottom: 6px;
-}
-.settings-panel__description {
-  font-size: 12px;
-  color: var(--hub-text-muted);
-  line-height: 1.5;
-  margin-bottom: 10px;
-}
-.settings-panel__select {
-  width: 100%;
-  background-color: var(--hub-surface);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-sm);
-  color: var(--hub-text-primary);
-  font-size: 12px;
-  padding: 6px 8px;
-  outline: none;
-  font-family: inherit;
-}
-.settings-panel__select:focus {
-  border-color: var(--hub-accent);
-}
-.settings-panel__port-input {
-  width: 120px;
-}
-.settings-panel__row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.settings-panel__row .settings-panel__path-input {
-  flex: 1;
-}
-.settings-panel__url {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--hub-text-muted);
-}
-.settings-panel__url a {
-  color: var(--hub-accent);
-  text-decoration: none;
-}
-.settings-panel__url a:hover {
-  text-decoration: underline;
-}
-.settings-panel__check {
-  color: var(--hub-success);
-}
-.settings-panel__code {
-  font-family: var(--hub-font-mono);
-  font-size: 11px;
-  color: var(--hub-text-secondary);
-  background-color: var(--hub-surface);
-  padding: 2px 6px;
-  border-radius: var(--hub-radius-sm);
-}
-.settings-panel__code--block {
-  display: block;
-  padding: 10px 12px;
-  margin-top: 8px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-.settings-panel__details {
-  margin-top: 10px;
-}
-.settings-panel__details summary {
-  font-size: 12px;
-  color: var(--hub-accent);
-  cursor: pointer;
-}
-.settings-panel__details summary:hover {
-  color: var(--hub-accent-hover);
-}
-
-/* Toggle / switch control (Phase 82) */
-.settings-panel__toggle-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-.settings-panel__toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  min-height: 44px;
-  user-select: none;
-}
-.settings-panel__toggle-track {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  border-radius: 10px;
-  background-color: var(--hub-surface);
-  border: 1px solid var(--hub-border);
-  flex-shrink: 0;
-}
-.settings-panel__toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background-color: var(--hub-scrollbar-hover);
-}
-.settings-panel__toggle-row--checked .settings-panel__toggle-track {
-  background-color: var(--hub-accent);
-  border-color: var(--hub-accent);
-}
-.settings-panel__toggle-row--checked .settings-panel__toggle-thumb {
-  transform: translateX(16px);
-  background-color: var(--hub-bg);
-}
-.settings-panel__toggle-label {
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--hub-text-primary);
-  line-height: 1.5;
-}
-
-/* Motion guard for settings hover/toggle transitions (Phase 141 token migration).
-   No-preference: smooth transitions for buttons, links, toggle controls.
-   Reduce: no transitions (instant repaint). */
-@media (prefers-reduced-motion: no-preference) {
-  .settings-jump-bar__link,
-  .settings-panel__btn--cancel,
-  .settings-panel__btn--save,
-  .settings-panel__btn--saved,
-  .settings-panel__toggle-track,
-  .settings-panel__toggle-thumb {
-    transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .settings-jump-bar__link,
-  .settings-panel__btn--cancel,
-  .settings-panel__btn--save,
-  .settings-panel__btn--saved,
-  .settings-panel__toggle-track,
-  .settings-panel__toggle-thumb {
-    transition: none;
-  }
-}
-
 /* ─── Dialogs and sheets (Portty 02-09, UI-SPEC "Dialogs and sheets") ──
    One macOS sheet style for every modal: attached under the 52px toolbar,
    tokens only. A scrim click does nothing; useDialogFocus owns Esc and Tab. */
@@ -1175,6 +798,16 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .settings-field select {
   appearance: auto;
 }
+/* Plugin <details> disclosures (Phase 99 PUI-03) inside a plugin row. */
+.settings-panel__details {
+  margin-top: 8px;
+}
+.settings-panel__details summary {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-accent);
+  cursor: default;
+}
 .settings-sheet__tab:focus-visible,
 .switch:focus-visible {
   outline: 3px solid var(--color-focus-ring);
@@ -1409,32 +1042,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   transform-origin: left;
   transition: transform 200ms ease-out;
   pointer-events: none;
-}
-
-/* ─── CT Disclosure Banner ──────────────────────────────────────── */
-.ct-disclosure {
-  background: #16161e;
-  border: 1px solid #292e42;
-  border-left: 3px solid #7aa2f7;
-  border-radius: 4px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-}
-
-.ct-disclosure--acknowledged {
-  border-left-color: #9ece6a;
-}
-
-.ct-disclosure__text {
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
-  color: #a9b1d6;
-  margin-bottom: 8px;
-}
-
-.ct-disclosure__btn {
-  margin-top: 8px;
 }
 
 /* ── Tailscale Status Indicator ──────────────────────────── */
@@ -1848,121 +1455,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   min-height: 0;
 }
 
-/* ─── Settings password field (Phase 60 — NET-05) ─────────────────── */
-.settings-web-server__password-label {
-  font-size: 12px;
-  color: #9aa5ce;
-  margin-bottom: 4px;
-}
-
-.settings-web-server__credential-hint {
-  font-size: 12px;
-  color: #9aa5ce;
-  margin-bottom: 8px;
-}
-
-.settings-web-server__credential-value {
-  color: #7a88b0;
-  font-style: italic;
-}
-
-.settings-web-server__password-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #1e2030;
-  border: 1px solid #292e42;
-  border-radius: 4px;
-  padding: 6px 10px;
-  font-size: 13px;
-  color: #c0caf5;
-  font-family: inherit;
-  letter-spacing: 0.05em;
-  width: 100%;
-  cursor: pointer;
-  user-select: text;
-}
-
-.settings-web-server__password-field:hover {
-  border-color: #414868;
-}
-
-.settings-web-server__mode-indicator {
-  font-size: 12px;
-  color: #a9b1d6;
-  margin-bottom: 8px;
-}
-
-.settings-web-server__copy-hint {
-  font-size: 11px;
-  color: #414868;
-  margin-left: auto;
-}
-
-.settings-web-server__copy-hint--copied {
-  color: #9ece6a;
-}
-
-/* --- Settings web server URL action row (Phase 66 -- WEB-01/02/03) --- */
-.settings-web-server__url-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  min-width: 0;
-}
-
-.settings-web-server__url-text {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  font-size: 13px;
-  color: #7aa2f7;
-  text-decoration: none;
-}
-
-.settings-web-server__action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid #292e42;
-  background: transparent;
-  color: #9aa5ce;
-  font-size: 11px;
-  cursor: pointer;
-  flex-shrink: 0;
-  font-family: inherit;
-  gap: 4px;
-}
-
-.settings-web-server__action-btn:hover {
-  color: #c0caf5;
-  border-color: #3b4261;
-}
-
-.settings-web-server__action-btn--active {
-  background-color: rgba(122, 162, 247, 0.12);
-  border-color: #7aa2f7;
-  color: #7aa2f7;
-}
-
-.settings-web-server__action-btn--copy-done {
-  color: #9ece6a;
-  border-color: #9ece6a;
-}
-
-.settings-web-server__qr {
-  display: block;
-  margin-top: 16px;
-  border-radius: 8px;
-  width: 200px;
-  height: 200px;
-}
-
 /* ── Quit dialog content (Phase 85; Portty 02-09: sheet shell in .dialog*) ── */
 .quit-modal__session-list {
   margin-top: 8px;
@@ -2061,22 +1553,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   font-weight: 600;
   letter-spacing: 0.05em;
   user-select: all;
-}
-
-/* === Phase 87: Destructive variant for Settings panel button (UI-SPEC Surface 2, D-16) === */
-.settings-panel__btn--destructive {
-  background: var(--hub-destructive);
-  color: var(--hub-bg);
-  font-weight: 600;
-}
-
-.settings-panel__btn--destructive:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-
-.settings-panel__btn--destructive:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 /* ─── Phase 94 — Find bar (SRC-01/SRC-04) ─────────────────────────────
@@ -2467,8 +1943,6 @@ html.is-desktop {
   --hub-success: var(--color-success-text);
   --hub-warning: var(--color-banner-warning-fg);
   --hub-group-header-bg: var(--color-toolbar);
-  --hub-scrollbar: var(--color-switch-off);
-  --hub-scrollbar-hover: var(--color-text-secondary);
   --hub-preview-bg: var(--color-terminal-bg);
   --hub-preview-text: var(--color-text-secondary);
   --hub-preview-border: var(--color-separator);
@@ -2485,7 +1959,6 @@ html.is-desktop {
   /* Radii tokens (panels/cards/inputs 8–11px) */
   --hub-radius-sm: 8px;
   --hub-radius-md: 10px;
-  --hub-radius-lg: 11px;
   /* Type scale — 14px base / 12.5px small; weight 600 emphasis */
   --hub-font-size-base: 14px;
   --hub-font-size-sm: 12.5px;
@@ -2610,19 +2083,27 @@ html.is-desktop {
   font-family: var(--hub-font-mono);
 }
 
-/* Phase 173 (SM-07) — On/Off/N-A toggle state label. Scoped to the Share
-   modal's control-strip toggle rows only (label gets flex:1 here so the
-   state text sits at the row's trailing edge; other .settings-panel__toggle-row
-   consumers — SettingsTab/PluginsSection — are unaffected outside .hub-share-modal). */
-.hub-share-modal .settings-panel__toggle-label {
-  flex: 1;
+/* Share dialog control-strip switch rows (Portty 02-11: the shared Switch).
+   Phase 173 (SM-07): the On/Off/N-A state text sits beside the switch as the
+   colorblind ground-truth signal. */
+.share-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
 }
-.settings-panel__toggle-state {
+.share-toggle-row__label {
+  flex: 1;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-text);
+}
+.share-toggle-row__state {
   font-size: 11px;
   font-weight: 600;
-  color: var(--hub-text-muted);
+  line-height: 14px;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
   flex-shrink: 0;
 }
 
@@ -2631,9 +2112,6 @@ html.is-desktop {
 .hub-funnel-toggle-section[aria-disabled='true'] {
   opacity: 0.6;
   pointer-events: none;
-}
-.hub-funnel-toggle-section[aria-disabled='true'] .settings-panel__toggle-row {
-  cursor: not-allowed;
 }
 .hub-funnel-toggle-section__note {
   font-size: var(--hub-font-size-sm);
