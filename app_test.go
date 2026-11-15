@@ -898,6 +898,47 @@ func TestRetryDaemonFail(t *testing.T) {
 	}
 }
 
+// TestRetryDaemonSuccess_KeepsClientAndPollers (WR-05): a successful retry
+// while the pollers run must not replace a.client (a data race under -race)
+// or start more pollers.
+func TestRetryDaemonSuccess_KeepsClientAndPollers(t *testing.T) {
+	home, err := os.MkdirTemp("/tmp", "rd") // short: the socket path must fit sun_path
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+
+	engine := daemon.NewSessionEngine()
+	engine.ConfigDirForTest(t.TempDir())
+	api := daemon.NewAPI(engine)
+	socketPath := daemon.DefaultSocketPath()
+	if err := api.Start(socketPath); err != nil {
+		t.Fatalf("api.Start: %v", err)
+	}
+	if _, err := api.StartRelay(); err != nil {
+		t.Fatalf("StartRelay: %v", err)
+	}
+	t.Cleanup(func() { api.Stop() })
+
+	client := daemon.NewDaemonClient(socketPath)
+	app := &App{client: client}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	app.startExitWatcher(ctx) // reads a.client concurrently with the retry
+
+	if err := app.RetryDaemon(); err != nil {
+		t.Fatalf("RetryDaemon: %v", err)
+	}
+	if app.client != client {
+		t.Fatal("RetryDaemon replaced a.client")
+	}
+	if app.daemonErr != nil {
+		t.Fatalf("daemonErr = %v, want nil", app.daemonErr)
+	}
+}
+
 // -----------------------------------------------------------------------
 // Wave 0 RED test for Phase 130 RB-01 — GetRemoteSessionsWithMeta Wails RPC.
 //

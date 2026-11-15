@@ -107,8 +107,7 @@ type App struct {
 
 	// seenSessions is every id the exit watcher has listed and not yet
 	// reported via session:exit. Owned by the exit watcher goroutine.
-	seenSessions    map[string]bool
-	exitWatcherOnce sync.Once
+	seenSessions map[string]bool
 }
 
 // NewApp creates a new App without starting any subsystems.
@@ -149,16 +148,15 @@ func (a *App) startup(ctx context.Context) {
 	a.trayInit = true
 
 	socketPath := daemon.DefaultSocketPath()
+	// Set once, before any poller starts, and never reassigned: the client only
+	// dials on use, so the pollers read it lock-free and RetryDaemon only has
+	// to bring the daemon up. While it is down, calls fail and pollers retry.
+	a.client = daemon.NewDaemonClient(socketPath)
 	if err := daemon.EnsureDaemon(socketPath); err != nil {
 		a.daemonErr = err
 		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
 		runtime.EventsEmit(ctx, "daemon:error", err.Error())
-		// Start tray poller even on failure — it will show error icon state.
-		a.startTrayPoller(ctx)
-		a.startUpdatePoller(ctx) // update checks don't depend on daemon
-		return
 	}
-	a.client = daemon.NewDaemonClient(socketPath)
 
 	// One app-wide exit watcher closes tabs for every exited session (TERM-05).
 	a.startExitWatcher(ctx)
@@ -190,19 +188,14 @@ func (a *App) GetVersion() string {
 }
 
 // RetryDaemon re-attempts daemon spawn after a startup failure.
-// Called by the frontend "Retry Connection" button.
+// Called by the frontend "Retry Connection" button. It neither replaces
+// a.client nor starts pollers: startup did both once (WR-05).
 func (a *App) RetryDaemon() error {
-	socketPath := daemon.DefaultSocketPath()
-	if err := daemon.EnsureDaemon(socketPath); err != nil {
+	if err := daemon.EnsureDaemon(daemon.DefaultSocketPath()); err != nil {
 		a.daemonErr = err
 		return err
 	}
 	a.daemonErr = nil
-	a.client = daemon.NewDaemonClient(socketPath)
-	if a.ctx != nil {
-		a.startExitWatcher(a.ctx)
-		a.startHealthPoller(a.ctx)
-	}
 	return nil
 }
 
@@ -304,23 +297,21 @@ func (a *App) emitEvent(name string, data any) {
 // startExitWatcher starts the single app-wide exit watcher: checkExits runs
 // immediately and then every 500 ms until ctx is done. There is no deadline,
 // so a shell that exits hours after it started is still reported (TERM-05).
-// Safe to call more than once (startup and RetryDaemon); only the first starts.
+// startup is the only caller.
 func (a *App) startExitWatcher(ctx context.Context) {
-	a.exitWatcherOnce.Do(func() {
-		go func() {
-			a.checkExits()
-			ticker := time.NewTicker(500 * time.Millisecond)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					a.checkExits()
-				case <-ctx.Done():
-					return
-				}
+	go func() {
+		a.checkExits()
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				a.checkExits()
+			case <-ctx.Done():
+				return
 			}
-		}()
-	})
+		}
+	}()
 }
 
 // checkExits removes every session the daemon reports as stopped (a failed
