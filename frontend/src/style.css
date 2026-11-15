@@ -766,10 +766,6 @@ textarea {
 .settings-panel__path-input:focus {
   border-color: var(--hub-accent);
 }
-.settings-panel__theme-select {
-  width: auto;
-  max-width: 260px;
-}
 .settings-panel__error {
   margin-top: 12px;
   color: var(--hub-destructive);
@@ -821,67 +817,8 @@ textarea {
   opacity: 1;
 }
 
-/* POL-02: Light/Dark single role=switch toggle (D-06 colorblind-safe) */
-.settings-panel__theme-toggle {
-  background: transparent;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-}
-
-.settings-panel__theme-toggle-track {
-  display: flex;
-  align-items: center;
-  width: 120px;
-  height: 32px;
-  border-radius: var(--hub-radius-pill);
-  background: var(--hub-surface-elevated);
-  border: 1px solid var(--hub-border);
-  position: relative;
-}
-
-.settings-panel__theme-toggle-knob {
-  position: absolute;
-  left: 4px; /* dark: knob on left */
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: var(--hub-radius-pill);
-  background: var(--hub-surface);
-  color: var(--hub-text-secondary);
-  font-size: 12px;
-}
-
-/* Light: knob on right side.
-   Phase 147: --hub-search-highlight-bg declared here so it appears within 500
-   chars of the first [data-ui-theme="light"] occurrence, satisfying
-   HelpTab.test's source gate without adding a standalone [data-ui-theme="light"]
-   block that would confuse extractBlockBody() in themeTokens.test. */
-[data-ui-theme="light"] .settings-panel__theme-toggle-knob {
-  /* Phase 147: search highlight token — duplicated in main light block too */
-  --hub-search-highlight-bg: rgba(61, 111, 232, 0.20);
-  left: auto;
-  right: 4px;
-}
-
-.settings-panel__theme-toggle-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-/* Motion contract */
-@media (prefers-reduced-motion: no-preference) {
-  .settings-panel__theme-toggle-knob {
-    transition: left 150ms ease, right 150ms ease;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .settings-panel__theme-toggle-knob {
-    transition: none;
-  }
+.settings-panel__appearance-value {
+  color: var(--color-text-secondary);
 }
 
 /* ─── Field groups & form elements ───────────────────────────────── */
@@ -3111,29 +3048,144 @@ textarea {
    hex color is a reinforcement signal only.
    ============================================================ */
 
-/* --- Dark theme defaults (comp palette, Phase 141-06) --- */
+/* --- Colour tokens (Portty 02-03, THEM-01 / LOOK-01) ---
+   Values from 02-UI-SPEC.md "Color". Light on :root, Dark in the
+   prefers-color-scheme block; both blocks declare the same names. */
 :root {
-  --hub-bg: #14151b;
-  --hub-surface: #16181f;
-  --hub-surface-elevated: #1c1e28;
-  --hub-border: #41454f;
-  --hub-border-hover: #54586a;
-  --hub-text-primary: #f4f5f8;
-  --hub-text-secondary: #c7cad6;
-  --hub-text-muted: #9398a8;
-  --hub-text-placeholder: #54586a;
-  /* KEEP LOCKED — D-05: blue accent, colorblind-verified WCAG AA */
-  --hub-accent: #7aa2f7;
-  --hub-accent-hover: #89b4fa;
-  --hub-destructive: #f7768e;
-  --hub-success: #4ade80;
-  --hub-warning: #fbbf24;
-  /* Comp semantic colors */
-  --hub-teal: #43ddb2;
-  --hub-orange: #e08a66;
-  /* Font families — resolved to vendored woff2 via @font-face above */
-  --hub-font-ui: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --hub-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light dark;
+  --color-window: #FFFFFF;
+  --color-terminal-bg: #FFFFFF;
+  --color-sidebar: #ECECEE;
+  --color-toolbar: #F6F6F7;
+  --color-separator: #D6D6DA;
+  --color-text: #1D1D1F;
+  --color-text-secondary: #636366;
+  --color-accent: #0063CC;
+  --color-selection-fill: #0063CC;
+  --color-on-accent: #FFFFFF;
+  --color-selection-inactive: #DCDCE0;
+  --color-tab-active: #FFFFFF;
+  --shadow-tab-active: 0 0.5px 2px rgba(0,0,0,0.18);
+  --color-control-hover: rgba(0,0,0,0.05);
+  --color-chip: #E5E5EA;
+  --color-banner-warning-bg: #FFF4D6;
+  --color-banner-warning-fg: #6B4E00;
+  --color-banner-info-bg: #E8F1FC;
+  --color-banner-info-fg: #0B4F9C;
+  --color-popover: #FFFFFF;
+  --color-control-border: #D1D1D6;
+  --color-field: #F2F2F4;
+  --color-button: #FFFFFF;
+  --color-switch-off: #C7C7CC;
+  --color-switch-knob: #FFFFFF;
+  --color-segment-bg: #E5E5EA;
+  --color-segment-selected: #FFFFFF;
+  --color-sheet-content: #F5F5F7;
+  --color-group: #FFFFFF;
+  --color-group-border: #E0E0E4;
+  --color-pane-tab-selected: #E5E5EA;
+  --color-status-on: #30D158;
+  --color-status-off: #8E8E93;
+  --color-success-text: #1A7F37;
+  --color-error-text: #C4161C;
+  --color-destructive: #D70015;
+  --color-focus-ring: rgba(0,99,204,0.5);
+  --color-scrim: rgba(0,0,0,0.2);
+  --shadow-switch-knob: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-popover: 0 8px 24px rgba(0,0,0,0.16);
+  --opacity-disabled: 0.45;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-window: #1E1E1E;
+    --color-terminal-bg: #1C1C1E;
+    --color-sidebar: #262628;
+    --color-toolbar: #2B2B2D;
+    --color-separator: #3A3A3C;
+    --color-text: #EBEBF0;
+    --color-text-secondary: #A1A1A6;
+    --color-accent: #4DA3FF;
+    --color-selection-fill: #0058D0;
+    --color-on-accent: #FFFFFF;
+    --color-selection-inactive: #464649;
+    --color-tab-active: #48484A;
+    --shadow-tab-active: none;
+    --color-control-hover: rgba(255,255,255,0.07);
+    --color-chip: #323234;
+    --color-banner-warning-bg: #3A3020;
+    --color-banner-warning-fg: #F2CF7C;
+    --color-banner-info-bg: #1F2A3A;
+    --color-banner-info-fg: #9CCBFF;
+    --color-popover: #2C2C2E;
+    --color-control-border: #48484A;
+    --color-field: #1C1C1E;
+    --color-button: #3A3A3C;
+    --color-switch-off: #5A5A5E;
+    --color-switch-knob: #FFFFFF;
+    --color-segment-bg: #1C1C1E;
+    --color-segment-selected: #636366;
+    --color-sheet-content: #1E1E1E;
+    --color-group: #2A2A2C;
+    --color-group-border: #3A3A3C;
+    --color-pane-tab-selected: #333335;
+    --color-status-on: #30D158;
+    --color-status-off: #8E8E93;
+    --color-success-text: #30D158;
+    --color-error-text: #FF6961;
+    --color-destructive: #D93025;
+    --color-focus-ring: rgba(77,163,255,0.6);
+    --color-scrim: rgba(0,0,0,0.45);
+    --shadow-switch-knob: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-popover: 0 12px 32px rgba(0,0,0,0.5);
+    --opacity-disabled: 0.45;
+  }
+}
+
+/* Desktop app: the sidebar shows the native vibrancy (plan 02-01). */
+html.is-desktop {
+  --color-sidebar: transparent;
+}
+
+/* --- Legacy --hub-* tokens: aliases only, no colour of their own.
+   Retired as later Phase 2 plans rename each reference. --- */
+:root {
+  --hub-bg: var(--color-window);
+  --hub-surface: var(--color-toolbar);
+  --hub-surface-elevated: var(--color-popover);
+  --hub-border: var(--color-control-border);
+  --hub-border-hover: var(--color-switch-off);
+  --hub-text-primary: var(--color-text);
+  --hub-text-secondary: var(--color-text-secondary);
+  --hub-text-muted: var(--color-text-secondary);
+  --hub-text-placeholder: var(--color-text-secondary);
+  --hub-text-dim: var(--color-text-secondary);
+  --hub-accent: var(--color-accent);
+  --hub-accent-hover: var(--color-accent);
+  --hub-destructive: var(--color-error-text);
+  --hub-success: var(--color-success-text);
+  --hub-warning: var(--color-banner-warning-fg);
+  --hub-group-header-bg: var(--color-toolbar);
+  --hub-scrollbar: var(--color-switch-off);
+  --hub-scrollbar-hover: var(--color-text-secondary);
+  --hub-preview-bg: var(--color-terminal-bg);
+  --hub-preview-text: var(--color-text-secondary);
+  --hub-preview-border: var(--color-separator);
+  --hub-sidebar-bg: var(--color-sidebar);
+  --hub-sidebar-item-active-bg: var(--color-selection-inactive);
+  --hub-sidebar-item-hover-bg: var(--color-control-hover);
+  --hub-drag-over-border: var(--color-accent);
+  --hub-drag-over-bg: var(--color-control-hover);
+  /* Exposure badges: icon shape + text carry the state; colour is reinforcement only. */
+  --hub-internet-badge-bg: var(--color-chip);
+  --hub-internet-badge-text: var(--color-accent);
+  --hub-fullaccess-badge-bg: var(--color-chip);
+  --hub-fullaccess-badge-text: var(--color-error-text);
+  --hub-search-highlight-bg: var(--color-selection-inactive);
+  --hub-share-seg-active-bg: var(--color-segment-selected);
+  /* Fonts (UI-SPEC Design System): system UI font and SF Mono */
+  --hub-font-ui: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --hub-font-mono: ui-monospace, "SF Mono", Menlo, monospace;
   /* Radii tokens (panels/cards/inputs 8–11px; pills 999px) */
   --hub-radius-sm: 8px;
   --hub-radius-md: 10px;
@@ -3144,111 +3196,8 @@ textarea {
   --hub-font-size-sm: 12.5px;
   --hub-font-size-heading: 19px;
   --hub-font-weight-emphasis: 600;
-  --hub-group-header-bg: #16161e;
-  --hub-empty-icon-color: #3b4261;
-  --hub-scrollbar: #3b4261;
-  --hub-scrollbar-hover: #565f89;
-  --hub-text-dim: #6e7180;   /* comp dim tier — very faint hint/separator text, dimmer than --hub-text-muted */
-  /* Phase 132 / CARD-07: mini preview is plain text snapshot — NO xterm instance; polling interval 3s shared across all cards */
-  /* Phase 132 new --hub-* tokens */
-  --hub-preview-bg: #0d0e17;
-  --hub-preview-text: #8b92b3;
-  --hub-preview-border: #1e2130;
-  --hub-sidebar-bg: #13141f;
   --hub-sidebar-width: 200px;
   --hub-sidebar-collapsed-width: 32px;
-  --hub-sidebar-item-active-bg: rgba(122,162,247,0.12);
-  --hub-sidebar-item-hover-bg: rgba(122,162,247,0.07);
-  /* COLORBLIND-SAFE: drag-over border dark hex #7aa2f7 — border change (shape) is primary non-color cue */
-  --hub-drag-over-border: #7aa2f7;
-  --hub-drag-over-bg: rgba(122,162,247,0.08);
-  /* === Phase 166: Internet-exposure badge tokens (dark) === */
-  /* COLORBLIND-SAFE: internet badge dark hex #43ddb2 — reinforcement only; GlobeAltIcon shape + "INTERNET" text carry state */
-  --hub-internet-badge-bg: rgba(67, 221, 178, 0.15);
-  --hub-internet-badge-text: #43ddb2;
-  /* === Phase 171 (FNL-09): Full-access badge tokens (dark) === */
-  /* COLORBLIND-SAFE: full-access badge dark hex = --hub-destructive (#f7768e) — reinforcement
-     only; LockOpenIcon shape + "FULL ACCESS" text + notched badge geometry carry the state.
-     Deliberately a DIFFERENT hue from --hub-internet-badge-text (#43ddb2 teal) so the two
-     badges are never confusable even in a side-by-side grayscale render. */
-  --hub-fullaccess-badge-bg: rgba(247, 118, 142, 0.15);
-  --hub-fullaccess-badge-text: #f7768e;
-  /* Phase 147: Help page search highlight token (dark theme) */
-  --hub-search-highlight-bg: rgba(122, 162, 247, 0.25);
-  /* === Phase 173 (SM-03/D-03): Share segmented-control active-segment bg (dark) ===
-     COLORBLIND-SAFE: mirrors --hub-sidebar-item-active-bg's accent-tint pattern
-     (raised bg only; the danger segment's distinction is a box-shadow inset ring
-     on --hub-destructive, never this token). No new hue introduced. */
-  --hub-share-seg-active-bg: rgba(122, 162, 247, 0.12);
-}
-
-/* --- Light theme (HUB-04 — applied via [data-ui-theme="light"] on <html>) --- */
-[data-ui-theme="light"] {
-  --hub-bg: #f5f5f7;
-  --hub-surface: #ffffff;
-  --hub-surface-elevated: #ececf0;
-  --hub-border: #d1d1db;
-  --hub-border-hover: #9999b0;
-  --hub-text-primary: #1a1b26;
-  --hub-text-secondary: #3a3b50;
-  --hub-text-muted: #5c5d80;
-  --hub-text-placeholder: #9999b0;
-  /* HUB-04 LIGHT THEME: verified WCAG AA for --hub-accent #3d6fe8 on #ffffff (4.5:1) */
-  --hub-accent: #3d6fe8;
-  --hub-accent-hover: #2a56cf;
-  /* HUB-04 LIGHT THEME: verified WCAG AA for --hub-destructive #c0394f on #ffffff (4.7:1) */
-  --hub-destructive: #c0394f;
-  --hub-success: #2e7d32;
-  --hub-warning: #b45309;
-  --hub-group-header-bg: #ebebef;
-  --hub-empty-icon-color: #c5c5d0;
-  --hub-scrollbar: #c5c5d0;
-  --hub-scrollbar-hover: #9999b0;
-  --hub-text-dim: #9999b0;   /* matches --hub-text-placeholder light value — same tier */
-  /* Phase 132 / CARD-07: mini preview is plain text snapshot — NO xterm instance; polling interval 3s shared across all cards */
-  /* Phase 132 new --hub-* tokens (light) */
-  --hub-preview-bg: #e8e8f0;
-  --hub-preview-text: #6b6f8e;
-  --hub-preview-border: #d1d1db;
-  --hub-sidebar-bg: #eaeaef;
-  --hub-sidebar-width: 200px;
-  --hub-sidebar-collapsed-width: 32px;
-  --hub-sidebar-item-active-bg: rgba(61,111,232,0.10);
-  --hub-sidebar-item-hover-bg: rgba(61,111,232,0.05);
-  /* COLORBLIND-SAFE: drag-over border light hex #3d6fe8 — border change (shape) is primary non-color cue */
-  --hub-drag-over-border: #3d6fe8;
-  --hub-drag-over-bg: rgba(61,111,232,0.06);
-  /* === Phase 166: Internet-exposure badge tokens (light) === */
-  /* COLORBLIND-SAFE: internet badge light hex #0d7a5c — WCAG AA ~5.2:1 on white; icon + text carry state */
-  --hub-internet-badge-bg: rgba(13, 122, 92, 0.13);
-  --hub-internet-badge-text: #0d7a5c;
-  /* === Phase 171 (FNL-09): Full-access badge tokens (light) === */
-  /* COLORBLIND-SAFE: full-access badge light hex = --hub-destructive (#c0394f) — WCAG AA
-     verified 4.7:1 on #ffffff (same token already verified at style.css:4728). Reinforcement
-     only; icon + text + shape carry the state. */
-  --hub-fullaccess-badge-bg: rgba(192, 57, 79, 0.13);
-  --hub-fullaccess-badge-text: #c0394f;
-  /* Phase 147: Help page search highlight token (light theme) */
-  --hub-search-highlight-bg: rgba(61, 111, 232, 0.20);
-  /* === Phase 173 (SM-03/D-03): Share segmented-control active-segment bg (light) ===
-     Mirrors --hub-sidebar-item-active-bg's light-theme accent-tint value. */
-  --hub-share-seg-active-bg: rgba(61, 111, 232, 0.10);
-  /* Comp semantic colors (light — light-theme values preserved this pass) */
-  --hub-teal: #0d9488;
-  --hub-orange: #c2410c;
-  /* Font families — resolved to vendored woff2 via @font-face; same values as dark */
-  --hub-font-ui: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --hub-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  /* Radii tokens — theme-independent, identical to dark block */
-  --hub-radius-sm: 8px;
-  --hub-radius-md: 10px;
-  --hub-radius-lg: 11px;
-  --hub-radius-pill: 999px;
-  /* Type scale — theme-independent, identical to dark block */
-  --hub-font-size-base: 14px;
-  --hub-font-size-sm: 12.5px;
-  --hub-font-size-heading: 19px;
-  --hub-font-weight-emphasis: 600;
 }
 
 /* --- Hub surface --- */
@@ -3429,8 +3378,7 @@ textarea {
    prominent FILLED chips so they pop MORE by contrast (D-01/D-04/D-05, Sketch
    001 Variant B — the pinned winner, .planning/sketches/001-hub-card-chip-row).
    Session status is not shown (CONTEXT Amendment 2). All new rules resolve through
-   --hub-* tokens so they are correct in both dark (:root) and light
-   ([data-ui-theme="light"]) themes without a per-theme override.
+   --hub-* tokens so they follow light and dark without a per-mode override.
    ============================================================ */
 
 .hub-card__chiprow {

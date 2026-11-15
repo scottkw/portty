@@ -24,4 +24,26 @@ test.describe('Portty 02-03 — web share page follows prefers-color-scheme (THE
       await ctx.close()
     }
   })
+
+  test('--color-window token switches dark -> light without a reload', async ({ browser }) => {
+    const env = loadFixtureEnv()
+    const ctx = await browser.newContext({ ignoreHTTPSErrors: true, colorScheme: 'dark' })
+    try {
+      const page = await ctx.newPage()
+      await page.goto(appUrl(env), { waitUntil: 'domcontentloaded' })
+      await expect(page.locator('.xterm').first()).toBeVisible({ timeout: 15_000 })
+      // The production CSS minifier may shorten #FFFFFF to #fff, so expand 3-digit hex.
+      const token = () =>
+        page.evaluate(() => {
+          const v = getComputedStyle(document.documentElement).getPropertyValue('--color-window').trim().toUpperCase()
+          return /^#[0-9A-F]{3}$/.test(v) ? '#' + [...v.slice(1)].map((c) => c + c).join('') : v
+        })
+
+      await expect.poll(token).toBe('#1E1E1E')
+      await page.emulateMedia({ colorScheme: 'light' })
+      await expect.poll(token).toBe('#FFFFFF')
+    } finally {
+      await ctx.close()
+    }
+  })
 })

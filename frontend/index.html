@@ -1,29 +1,21 @@
 <!DOCTYPE html>
-<html lang="en" style="color-scheme: dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AgentHub</title>
     <style>
+      :root { color-scheme: light dark; }
       #splash-static {
         position: fixed;
         inset: 0;
-        background: #1a1b26;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        background: Canvas;
         z-index: 9999;
-      }
-      #splash-static img {
-        width: 320px;
-        max-width: 80%;
       }
     </style>
   </head>
   <body>
-    <div id="splash-static">
-      <img src="/agenthub-title-logo.png" alt="AgentHub" />
-    </div>
+    <div id="splash-static"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

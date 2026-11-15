@@ -44,11 +44,7 @@ describe('HelpTab source gate: --hub-search-highlight-bg CSS token (Phase 147)',
     expect(cssRaw).toContain('--hub-search-highlight-bg')
   })
 
-  it('style.css declares --hub-search-highlight-bg in [data-ui-theme="light"]', () => {
-    // Token must also be overridden in the light-theme block
-    const lightThemeIdx = cssRaw.indexOf('[data-ui-theme="light"]')
-    expect(lightThemeIdx).toBeGreaterThan(-1)
-    const lightThemeSection = cssRaw.slice(lightThemeIdx, lightThemeIdx + 500)
-    expect(lightThemeSection).toContain('--hub-search-highlight-bg')
+  it('--hub-search-highlight-bg aliases a two-mode token (Portty 02-03)', () => {
+    expect(cssRaw).toMatch(/--hub-search-highlight-bg:\s*var\(--color-[a-z-]+\)/)
   })
 })

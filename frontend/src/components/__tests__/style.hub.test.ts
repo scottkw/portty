@@ -37,7 +37,7 @@ describe('Hub icon sizing CSS contract (no Tailwind)', () => {
   })
 })
 
-describe('Hub CSS tokens — dark theme (default :root)', () => {
+describe('Hub CSS tokens (aliases of the UI-SPEC colour tokens)', () => {
   it('declares --hub-bg custom property', () => {
     expect(cssRaw).toContain('--hub-bg')
   })
@@ -54,52 +54,16 @@ describe('Hub CSS tokens — dark theme (default :root)', () => {
     expect(cssRaw).toContain('--hub-destructive')
   })
 
-  it('dark theme --hub-bg has correct hex #14151b (comp dark surface)', () => {
-    expect(cssRaw).toContain('--hub-bg: #14151b')
+  it('--hub-bg aliases --color-window', () => {
+    expect(cssRaw).toContain('--hub-bg: var(--color-window)')
   })
 
-  it('dark theme --hub-accent has correct hex #7aa2f7', () => {
-    expect(cssRaw).toContain('--hub-accent: #7aa2f7')
-  })
-})
-
-describe('Hub CSS tokens — light theme ([data-ui-theme="light"])', () => {
-  it('[data-ui-theme="light"] block is present', () => {
-    expect(cssRaw).toContain('[data-ui-theme="light"]')
+  it('--hub-accent aliases --color-accent', () => {
+    expect(cssRaw).toContain('--hub-accent: var(--color-accent)')
   })
 
-  it('light theme --hub-accent is declared inside [data-ui-theme="light"] block', () => {
-    // Target the token-defining block opener (selector + ` {`), not a later
-    // light-theme override rule (Phase 142 POL-02 added one earlier in the file).
-    const lightIdx = cssRaw.indexOf('[data-ui-theme="light"] {')
-    expect(lightIdx).toBeGreaterThan(-1)
-    // Find the closing brace of the light block
-    const blockEnd = cssRaw.indexOf('}', lightIdx + 1)
-    const lightBlock = cssRaw.slice(lightIdx, blockEnd)
-    expect(lightBlock).toContain('--hub-accent')
-  })
-
-  it('light theme --hub-destructive is declared inside [data-ui-theme="light"] block', () => {
-    const lightIdx = cssRaw.indexOf('[data-ui-theme="light"] {')
-    expect(lightIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', lightIdx + 1)
-    const lightBlock = cssRaw.slice(lightIdx, blockEnd)
-    expect(lightBlock).toContain('--hub-destructive')
-  })
-
-  it('HUB-04 WCAG AA comment for --hub-accent in light theme (#3d6fe8 on #ffffff = 4.5:1)', () => {
-    // Source-level verification: hex constant + contrast comment must be present
-    expect(cssRaw).toContain('#3d6fe8')
-    expect(cssRaw).toContain('4.5:1')
-  })
-
-  it('HUB-04 WCAG AA comment for --hub-destructive in light theme (#c0394f on #ffffff = 4.7:1)', () => {
-    expect(cssRaw).toContain('#c0394f')
-    expect(cssRaw).toContain('4.7:1')
-  })
-
-  it('light theme --hub-bg has correct hex #f5f5f7', () => {
-    expect(cssRaw).toContain('--hub-bg: #f5f5f7')
+  it('--hub-destructive aliases --color-error-text', () => {
+    expect(cssRaw).toContain('--hub-destructive: var(--color-error-text)')
   })
 })
 

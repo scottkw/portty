@@ -33,91 +33,38 @@ describe('Phase 141-07: @font-face — vendored fonts, no CDN', () => {
   })
 })
 
-// ─── Font tokens: declared in BOTH :root and [data-ui-theme="light"] ─────────
+// ─── Font tokens: system fonts (Portty 02-03, LOOK-01) ───────────────────────
 
-describe('Phase 141-07: font tokens declared in :root (dark theme)', () => {
-  it('--hub-font-ui is declared in :root', () => {
-    // The :root block comes before the light block
-    const rootIdx = cssRaw.indexOf(':root')
-    // Target the token-defining block opener (selector + ` {`), not a later
-    // light-theme override rule like `[data-ui-theme="light"] .foo { ... }`
-    // (Phase 142 POL-02 added such an override earlier in the file).
-    const lightIdx = cssRaw.indexOf('[data-ui-theme="light"] {')
-    const rootBlock = cssRaw.slice(rootIdx, lightIdx)
-    expect(rootBlock).toContain('--hub-font-ui')
+describe('Portty 02-03: font tokens use the system fonts', () => {
+  it('--hub-font-ui is the system UI stack', () => {
+    expect(cssRaw).toContain('--hub-font-ui: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;')
   })
 
-  it('--hub-font-mono is declared in :root', () => {
-    const rootIdx = cssRaw.indexOf(':root')
-    const lightIdx = cssRaw.indexOf('[data-ui-theme="light"] {')
-    const rootBlock = cssRaw.slice(rootIdx, lightIdx)
-    expect(rootBlock).toContain('--hub-font-mono')
+  it('--hub-font-mono is ui-monospace / SF Mono', () => {
+    expect(cssRaw).toContain('--hub-font-mono: ui-monospace, "SF Mono", Menlo, monospace;')
   })
 })
 
-describe('Phase 141-07: font tokens declared in [data-ui-theme="light"]', () => {
-  it('[data-ui-theme="light"] block is present', () => {
-    expect(cssRaw).toContain('[data-ui-theme="light"]')
+// ─── Colour aliases (Portty 02-03): --hub-* resolve to the --color-* tokens ──
+
+describe('Portty 02-03: legacy --hub-* colour tokens alias the UI-SPEC tokens', () => {
+  it('surfaces alias window / toolbar / popover', () => {
+    expect(cssRaw).toContain('--hub-bg: var(--color-window);')
+    expect(cssRaw).toContain('--hub-surface: var(--color-toolbar);')
+    expect(cssRaw).toContain('--hub-surface-elevated: var(--color-popover);')
   })
 
-  it('--hub-font-ui is declared inside [data-ui-theme="light"] block', () => {
-    const lightIdx = cssRaw.indexOf('[data-ui-theme="light"] {')
-    expect(lightIdx).toBeGreaterThan(-1)
-    // Find the closing brace — the light block is long so look for the next top-level block
-    const blockEnd = cssRaw.indexOf('\n}', lightIdx + 1)
-    const lightBlock = cssRaw.slice(lightIdx, blockEnd)
-    expect(lightBlock).toContain('--hub-font-ui')
-  })
-
-  it('--hub-font-mono is declared inside [data-ui-theme="light"] block', () => {
-    const lightIdx = cssRaw.indexOf('[data-ui-theme="light"] {')
-    expect(lightIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('\n}', lightIdx + 1)
-    const lightBlock = cssRaw.slice(lightIdx, blockEnd)
-    expect(lightBlock).toContain('--hub-font-mono')
-  })
-})
-
-// ─── Dark palette — comp values, NOT TokyoNight ──────────────────────────────
-
-describe('Phase 141-07: dark palette — comp surface values (not TokyoNight)', () => {
-  it('dark --hub-bg is comp value #14151b (not TokyoNight #1a1b26)', () => {
-    expect(cssRaw).toContain('--hub-bg: #14151b')
-    // TokyoNight bg must NOT appear as a --hub-bg token value
-    expect(cssRaw).not.toMatch(/--hub-bg:\s*#1a1b26/)
-  })
-
-  it('dark --hub-surface is comp value #16181f', () => {
-    expect(cssRaw).toContain('--hub-surface: #16181f')
-  })
-
-  it('dark --hub-surface-elevated is comp value #1c1e28', () => {
-    expect(cssRaw).toContain('--hub-surface-elevated: #1c1e28')
-  })
-})
-
-// ─── Locked blue accent + violet rejection ────────────────────────────────────
-
-describe('Phase 141-07: locked blue accent D-05 (colorblind constraint)', () => {
-  it('--hub-accent: #7aa2f7 is present (comp blue)', () => {
-    expect(cssRaw).toContain('--hub-accent: #7aa2f7')
+  it('accent aliases the macOS-blue --color-accent', () => {
+    expect(cssRaw).toContain('--hub-accent: var(--color-accent);')
   })
 
   it('#7C8CFF (rejected violet accent) is absent', () => {
-    // Case-insensitive: reject both uppercase and lowercase
     expect(cssRaw.toLowerCase()).not.toContain('#7c8cff')
   })
-})
 
-// ─── Semantic colors ──────────────────────────────────────────────────────────
-
-describe('Phase 141-07: comp semantic color tokens', () => {
-  it('--hub-success: #4ade80 (comp green, not TokyoNight #9ece6a)', () => {
-    expect(cssRaw).toContain('--hub-success: #4ade80')
-  })
-
-  it('--hub-warning: #fbbf24 (comp amber)', () => {
-    expect(cssRaw).toContain('--hub-warning: #fbbf24')
+  it('semantic success / warning alias the UI-SPEC text tokens', () => {
+    expect(cssRaw).toContain('--hub-success: var(--color-success-text);')
+    expect(cssRaw).toContain('--hub-warning: var(--color-banner-warning-fg);')
   })
 })
 
