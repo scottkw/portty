@@ -15,6 +15,7 @@ jobs:
             os: macos-latest
 
     runs-on: ${{ matrix.build.os }}
+    timeout-minutes: 30 # a hung PTY test must not hold a macOS runner for 6 h
 
     steps:
       - name: Checkout
