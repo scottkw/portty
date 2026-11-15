@@ -305,7 +305,8 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   // T-02-34: aria-disabled (not `disabled`) keeps Start focusable so its reason is announced;
   // the click returns early, and the daemon keeps its own CT/mode checks.
   const startBlocked = !isServerRunning && (tailscaleOff || !ctDisclosed)
-  const webServerReason: React.ReactNode = serverError
+  // A blocked reason outranks a stale start error, which the blocked click can no longer clear.
+  const webServerReason: React.ReactNode = serverError && !startBlocked
     ? <span className="settings-row__error" role="alert">{serverError}</span>
     : isServerRunning
       ? (serverURL ? `Running on ${serverURL}` : 'Running')
