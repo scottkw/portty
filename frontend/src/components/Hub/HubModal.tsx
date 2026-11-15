@@ -3,36 +3,13 @@ import type { SessionInfo } from '../../wailsjs/go/main/App'
 import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../../wailsjs/go/models'
 import {
-  ArrowPathIcon,
-  CheckCircleIcon,
-  PauseCircleIcon,
-  ExclamationCircleIcon,
-  StopCircleIcon,
   ComputerDesktopIcon,
   GlobeAltIcon,
-  BellAlertIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { deriveHubStatus, isAttentionStatus } from '../../lib/hubStatus'
-import type { HubStatus } from '../../lib/hubStatus'
 import { HubInteractiveModal } from './HubInteractiveModal'
-import { HubBriefingModal } from './HubBriefingModal'
 
 type PluginSettings = daemon.PluginSettings
-
-// ---- STATUS_CONFIG ----
-// COLORBLIND-SAFE: every status has unique icon shape + text label; color is reinforcement only.
-const STATUS_CONFIG: Record<
-  HubStatus,
-  { Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; label: string; spin: boolean }
-> = {
-  running: { Icon: ArrowPathIcon, label: 'Running', spin: true },
-  idle: { Icon: CheckCircleIcon, label: 'Idle', spin: false },
-  waiting: { Icon: PauseCircleIcon, label: 'Needs input', spin: false },
-  errored: { Icon: ExclamationCircleIcon, label: 'Error', spin: false },
-  'stopped-ok': { Icon: StopCircleIcon, label: 'Done', spin: false },
-  'stopped-err': { Icon: ExclamationCircleIcon, label: 'Exited', spin: false },
-}
 
 export interface HubModalProps {
   session: SessionInfo
@@ -47,21 +24,19 @@ export interface HubModalProps {
   /** Plan 07 seam: when true, routes through the daemon WS proxy for remote sessions (CR-01 fix). */
   remote?: boolean
   onClose: () => void
-  /** NOTIF-01: threaded to HubInteractiveModal so ChatPanel unread state lifts to HubPanel.
-   *  Optional — HubBriefingModal has no chat panel and must not be affected. */
+  /** NOTIF-01: threaded to HubInteractiveModal so ChatPanel unread state lifts to HubPanel. */
   onUnreadChange?: (sessionId: string, count: number, hasMention: boolean) => void
 }
 
 /**
- * HubModal — modal shell that composes HubInteractiveModal / HubBriefingModal.
+ * HubModal — modal shell around HubInteractiveModal.
  *
  * Owns:
  * - Overlay (z-index 200) + click-outside dismissal
  * - Grow/shrink animation phase machine: entering → open → exiting
  * - Escape key handler (dialog-scoped onKeyDown with stopPropagation — WR-05)
  * - Focus return to originating card on unmount (cardFocusRef)
- * - Header strip with status icon, session name, CLI badge, origin marker, attention badge
- * - Routing to HubInteractiveModal (non-attention) or HubBriefingModal (attention)
+ * - Header strip with session name and origin marker (no session status, CONTEXT Amendment 2)
  * - transformOrigin set from sourceRect center (MODAL-01 grow-animation origin)
  *
  * Security: session.name / hostname rendered as React text content — no dangerouslySetInnerHTML (T-134-04-01).
@@ -83,10 +58,6 @@ export function HubModal({
   onClose,
   onUnreadChange,
 }: HubModalProps): React.ReactElement {
-  const hubStatus = deriveHubStatus(session)
-  const isBriefing = isAttentionStatus(hubStatus)
-  const { Icon: StatusIcon, label: statusLabel } = STATUS_CONFIG[hubStatus]
-
   // ---- Animation phase machine ----
   // entering → (animationEnd) → open; exiting → (animationEnd) → onClose()
   //
@@ -165,9 +136,7 @@ export function HubModal({
   const originText = isLocal ? 'Local' : session.hostname
 
   // ---- ARIA label — copywriting contract ----
-  const ariaLabel = isBriefing
-    ? `Briefing: ${session.name} needs input`
-    : `Session terminal: ${session.name}`
+  const ariaLabel = `Session terminal: ${session.name}`
 
   return (
     <div
@@ -178,7 +147,7 @@ export function HubModal({
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
-        className={`hub-modal hub-modal--${isBriefing ? 'briefing' : 'interactive'} hub-modal--${phase}`}
+        className={`hub-modal hub-modal--interactive hub-modal--${phase}`}
         style={{ transformOrigin }}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
@@ -195,25 +164,13 @@ export function HubModal({
       >
         {/* ---- Header strip ---- */}
         <div className="hub-modal__header">
-          {/* A11Y-01: the heroicon is decorative (Heroicons hard-code aria-hidden),
-              so status is conveyed to AT by a visually-hidden text label — mirrors
-              SessionCard's visible status-label span. Colorblind-safe: text, not color. */}
-          <StatusIcon className="hub-modal__status-icon" aria-hidden="true" />
-          <span className="sr-only">{statusLabel}</span>
           <span className="hub-modal__session-name">{session.name}</span>
-          <span className="hub-card__badge">{session.cli}</span>
           {isLocal ? (
             <ComputerDesktopIcon className="hub-modal__origin-icon" aria-hidden="true" />
           ) : (
             <GlobeAltIcon className="hub-modal__origin-icon" aria-hidden="true" />
           )}
           <span className="hub-modal__origin-text">{originText}</span>
-          {isBriefing && (
-            <span className="hub-modal__attn-badge">
-              <BellAlertIcon className="hub-modal__attn-icon" aria-hidden="true" />
-              <span>Needs attention</span>
-            </span>
-          )}
           <span style={{ flex: 1 }} />
           <button
             ref={closeBtnRef}
@@ -226,31 +183,19 @@ export function HubModal({
           </button>
         </div>
 
-        {/* ---- Body: route to leaf component by attention status ----
-            remote prop threads the Plan 07 isRemote discriminator to both branches:
-            - HubBriefingModal: remote tail via proxied WS scrollback (CR-02) + remote send (CR-01)
-            - HubInteractiveModal: routes TerminalPanel through /api/relay/remote/{id}/ws (CR-01) */}
-        {isBriefing ? (
-          <HubBriefingModal
-            session={session}
-            relayPort={relayPort}
-            remote={remote}
-            theme={theme}
-            onClose={handleClose}
-          />
-        ) : (
-          <HubInteractiveModal
-            session={session}
-            isOpen={phase === 'open'}
-            relayPort={relayPort}
-            fontSize={fontSize}
-            theme={theme}
-            pluginConfig={pluginConfig}
-            remote={remote}
-            onFontSizeChange={onFontSizeChange}
-            onUnreadChange={onUnreadChange}
-          />
-        )}
+        {/* ---- Body ----
+            remote prop routes TerminalPanel through /api/relay/remote/{id}/ws (CR-01) */}
+        <HubInteractiveModal
+          session={session}
+          isOpen={phase === 'open'}
+          relayPort={relayPort}
+          fontSize={fontSize}
+          theme={theme}
+          pluginConfig={pluginConfig}
+          remote={remote}
+          onFontSizeChange={onFontSizeChange}
+          onUnreadChange={onUnreadChange}
+        />
       </div>
     </div>
   )

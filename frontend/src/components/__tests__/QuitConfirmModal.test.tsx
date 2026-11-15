@@ -60,11 +60,10 @@ describe('QuitConfirmModal source inspection', () => {
     it('renders session name', () => {
       expect(raw).toContain('quit-modal__session-name')
     })
-    it('renders session status', () => {
-      expect(raw).toContain('quit-modal__session-status')
-    })
-    it('renders session dot', () => {
-      expect(raw).toContain('quit-modal__session-dot')
+    it('shows no session status dot or text (CONTEXT Amendment 2)', () => {
+      expect(raw).not.toContain('quit-modal__session-status')
+      expect(raw).not.toContain('quit-modal__session-dot')
+      expect(raw).not.toContain('dotColor')
     })
     it('shows no-sessions text when empty (D-02)', () => {
       expect(raw).toContain('No active sessions')

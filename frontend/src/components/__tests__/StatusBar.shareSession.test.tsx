@@ -9,8 +9,8 @@
  *       the old StatusBar.test.tsx ("Enable Web"/"Disable Web" + onToggleWeb) is
  *       retired; this file supersedes it (see StatusBar.tsx doc comment).
  * D-15 (SECURITY, STRIDE-EoP): the button/StatusBar must never render on a
- *       non-shareable surface (Hub, Settings, Help, Welcome, web-session,
- *       file-browser tabs). StatusBar itself has no tab-type awareness — the gate
+ *       non-shareable surface (Hub, Settings, Help, Welcome, web-session
+ *       tabs). StatusBar itself has no tab-type awareness — the gate
  *       lives in App.tsx's tab.map() filter, which is asserted here via source
  *       inspection (App.tsx is not fully mounted in this codebase's established
  *       test convention — see App.shellWebShare.test.tsx / App.createTab.stayOnHub.test.tsx).
@@ -118,6 +118,32 @@ describe('StatusBar — "Share Session" button (Phase 168-05 UX-02)', () => {
     expect(onShareSession).toHaveBeenCalledTimes(1)
   })
 
+  // NET-01: while Tailscale is not connected the button is disabled with the reason.
+  it('is disabled with shareDisabledReason as its title, and clicking does not call onShareSession', () => {
+    const onShareSession = vi.fn()
+    const reason = "Tailscale isn't connected. Remote access and sharing are off until it is."
+    ;({ container, root } = renderStatusBar({
+      webServerRunning: true,
+      webEnabled: true,
+      onShareSession,
+      shareDisabledReason: reason,
+    }))
+    const btn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Share Session')!
+    expect(btn.disabled).toBe(true)
+    expect(btn.title).toBe(reason)
+    expect(btn.getAttribute('aria-label')).toBe(reason)
+    btn.click()
+    expect(onShareSession).not.toHaveBeenCalled()
+    // The WEB ON pill is unchanged.
+    expect(container.querySelector('.tab-status-bar__state--on')).not.toBeNull()
+  })
+
+  it('without shareDisabledReason the button stays enabled with its usual title', () => {
+    ;({ container, root } = renderStatusBar({ webServerRunning: true }))
+    const btn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Share Session')!
+    expect(btn.disabled).toBe(false)
+    expect(btn.title).toBe('Share this session')
+  })
 })
 
 describe('StatusBar.tsx source — direct-toggle path fully removed (D-14)', () => {
@@ -185,12 +211,12 @@ describe('App.tsx wiring — footer "Share Session" opens the lifted Share modal
 })
 
 describe('App.tsx tab-type gate — footer Share affordance hidden on non-shareable tabs (D-15, T-168-06)', () => {
-  it('excludes welcome/settings/file-browser/hub/help/web-session tab types from the StatusBar-bearing wrapper', () => {
+  it('excludes welcome/settings/hub/help/web-session tab types from the StatusBar-bearing wrapper', () => {
     const idx = raw.indexOf("tabs.map((tab) => {")
     expect(idx).toBeGreaterThan(-1)
     const block = raw.slice(idx, idx + 300)
     // Gate must check tab TYPE, not just sessionId presence (STRIDE-EoP).
-    for (const t of ['welcome', 'settings', 'file-browser', 'hub', 'help', 'web-session']) {
+    for (const t of ['welcome', 'settings', 'hub', 'help', 'web-session']) {
       expect(block).toContain(`tab.type === '${t}'`)
     }
   })

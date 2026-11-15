@@ -22,7 +22,7 @@ import (
 // SetChatHistoryProvider installs the callback that the cap-gated history route
 // uses to fetch a session's message thread as pre-marshaled JSON. Must be
 // called before Start(); not mutex-protected (single setter, set once —
-// mirrors SetSessionResolver / SetFilesHandler).
+// mirrors SetSessionResolver).
 //
 // Split from the export provider (IN-04) so the history route never runs the
 // Markdown export it does not serve.

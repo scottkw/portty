@@ -6,7 +6,8 @@
  * D-14 removed the footer's direct `ToggleWebServing` call entirely — the footer
  * "Share Session" button only opens the (lifted) Share modal now. That modal already
  * had its OWN complete, independent shell-warning gate (Phase 150 SET-01,
- * `SessionShareModal.tsx` — `isShellCli`/`pendingShellShare`/`ShellWebShareBanner`,
+ * `SessionShareModal.tsx` — `pendingShellShare`/`ShellWebShareBanner`, gated on
+ * `shellWebShareWarningEnabled && !shellWebShareWarned` for every session (01-07),
  * covered by `SessionShareModal.test.tsx`). With the footer no longer toggling
  * directly, App.tsx's footer-only interception mechanism — `handleToggleWeb`,
  * `pendingShellWebToggle` state, and the App-level `<ShellWebShareBanner>` slot in
@@ -48,13 +49,13 @@ describe('App.tsx shell web-share warned state (Phase 101-03 SHELL-07/SHELL-08)'
     // gate now lives entirely inside SessionShareModal.tsx (imports there, tested
     // by SessionShareModal.test.tsx).
     expect(raw).not.toContain("from './components/ShellWebShareBanner'")
-    expect(raw).not.toContain("from './lib/shellCli'")
+    // lib/shellCli was deleted in 01-07 (every session is a shell).
+    expect(raw).not.toContain('isShellCli')
   })
 
   it('calls GetShellWebShareWarned in a mount useEffect to seed shellWebShareWarned', () => {
     // The mount-time hydration must invoke GetShellWebShareWarned() and feed
-    // the result into setShellWebShareWarned via a .then() chain (matching
-    // the Phase 81 D-11 GetAutoCloseSession precedent).
+    // the result into setShellWebShareWarned via a .then() chain.
     expect(raw).toContain('GetShellWebShareWarned()')
     // The call-site (NOT the doc comment) must be followed within ~250 chars
     // by a .then(...) that invokes setShellWebShareWarned.

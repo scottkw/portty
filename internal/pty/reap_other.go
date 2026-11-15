@@ -1,14 +1,11 @@
-//go:build !linux && !windows
-
 package pty
 
 // ReapNaturalExit reaps a naturally-exited child (PTY master EOF already
 // observed) and caches its real exit code from ProcessState.
 //
-// On macOS/BSD go-pty installs NO waitOnContext goroutine — that exists only on
-// Windows (see go-pty cmd_windows.go) — and these platforms run no exit detector
-// (reap is driven by master EOF; exit_other.go is a no-op). So nothing calls
-// cmd.Wait() on the natural-exit path and ProcessState is never populated. The
+// On Unix go-pty installs no waitOnContext goroutine and there is no exit
+// detector (reap is driven by PTY master EOF). So nothing calls cmd.Wait() on
+// the natural-exit path and ProcessState is never populated. The
 // engine would then read a cached -1 and normalize it to 0 (D-10), making the
 // Hub's CARD-08 stopped-err state unreachable for any non-zero natural exit.
 //

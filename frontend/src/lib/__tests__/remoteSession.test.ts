@@ -1,7 +1,7 @@
 // Phase 122-03 Task 1 — remoteSession.ts pure-function helpers.
 //
 // These helpers translate between the RemoteSessionsPanel session model and
-// the URL/base-URL shape consumed by App.tsx for the daemon-proxy file-browser
+// the URL/base-URL shape consumed by App.tsx for the remote-session open
 // path. Pure-function tests; no DOM, no React.
 
 import { describe, it, expect } from 'vitest'
@@ -20,14 +20,12 @@ const peers: RemotePeerSessions[] = [
       {
         id: 'sess-A1',
         name: 'claude 1',
-        cliType: 'claude',
         status: 'running',
         url: 'https://hub-a.tailnet.ts.net:9443/sessions/sess-A1',
       },
       {
         id: 'sess-A2',
         name: 'codex',
-        cliType: 'codex',
         status: 'idle',
         url: 'https://hub-a.tailnet.ts.net:9443/sessions/sess-A2',
       },
@@ -40,7 +38,6 @@ const peers: RemotePeerSessions[] = [
       {
         id: 'sess-B1',
         name: 'aider',
-        cliType: 'aider',
         status: 'running',
         url: 'https://hub-b.tailnet.ts.net:9443/sessions/sess-B1',
       },

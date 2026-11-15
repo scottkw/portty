@@ -4,20 +4,15 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
 // TestShellWebShareWarningEnabled_Default verifies that a fresh engine reports
 // the warning-enabled switch as ON (true) by default — D-08 requirement.
 func TestShellWebShareWarningEnabled_Default(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses Unix socket testDaemon helpers")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	// No settings.json → nil pointer → must default to true.
 	if got := e.GetShellWebShareWarningEnabled(); got != true {
@@ -28,13 +23,9 @@ func TestShellWebShareWarningEnabled_Default(t *testing.T) {
 // TestShellWebShareWarningEnabled_Persists verifies that Set(false) round-trips
 // through settings.json (reload observes false), and Set(true) round-trips as true.
 func TestShellWebShareWarningEnabled_Persists(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 
 	// Set false, verify settings.json, reload, verify.
@@ -53,7 +44,7 @@ func TestShellWebShareWarningEnabled_Persists(t *testing.T) {
 		t.Errorf("settings.json after Set(false): got %v, want pointer-to-false", s.ShellWebShareWarningEnabled)
 	}
 
-	e2 := &SessionEngine{configDir: dir, cliPaths: make(map[string]string)}
+	e2 := &SessionEngine{configDir: dir}
 	e2.loadSettingsFromDisk(dir)
 	if got := e2.GetShellWebShareWarningEnabled(); got != false {
 		t.Errorf("reload after Set(false): got %v, want false", got)
@@ -63,7 +54,7 @@ func TestShellWebShareWarningEnabled_Persists(t *testing.T) {
 	if err := e2.SetShellWebShareWarningEnabled(true); err != nil {
 		t.Fatalf("SetShellWebShareWarningEnabled(true): %v", err)
 	}
-	e3 := &SessionEngine{configDir: dir, cliPaths: make(map[string]string)}
+	e3 := &SessionEngine{configDir: dir}
 	e3.loadSettingsFromDisk(dir)
 	if got := e3.GetShellWebShareWarningEnabled(); got != true {
 		t.Errorf("reload after Set(true): got %v, want true", got)
@@ -74,13 +65,9 @@ func TestShellWebShareWarningEnabled_Persists(t *testing.T) {
 // calling SetShellWebShareWarningEnabled(true) atomically resets shellWebShareWarned
 // to false (re-arm).
 func TestShellWebShareWarningEnabled_ReArm(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 
 	// Simulate user having acknowledged the warning.
@@ -103,13 +90,9 @@ func TestShellWebShareWarningEnabled_ReArm(t *testing.T) {
 // TestShellWebShareWarningEnabled_OffBehavior verifies that Set(false) does NOT
 // reset shellWebShareWarned — only enabling (true) triggers re-arm.
 func TestShellWebShareWarningEnabled_OffBehavior(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses temp file paths")
-	}
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 
 	// User has acknowledged the warning.

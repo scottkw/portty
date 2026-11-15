@@ -3,7 +3,7 @@
  *
  * Single source of truth for "is this React shell running in a regular browser
  * via /app/ (web-share viewer) vs inside the Wails desktop runtime?" Every
- * mode-conditional code path in App.tsx (Wails RPC suite, file-browser tab
+ * mode-conditional code path in App.tsx (Wails RPC suite, session view
  * baseURL, capability token sourcing) MUST consult `detectMode()` rather than
  * inlining its own `window.location.pathname.startsWith(...)` check.
  *

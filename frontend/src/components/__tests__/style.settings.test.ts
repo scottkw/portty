@@ -59,9 +59,9 @@ describe('SETT-02: Section header CSS', () => {
   })
 })
 
-describe('SET-01: No duplicate settings-panel__table margin override', () => {
-  it('does NOT contain settings-panel__table--tailscale modifier class', () => {
-    expect(css).not.toContain('settings-panel__table--tailscale')
+describe('Portty 01-11: Settings → Paths CSS removed', () => {
+  it('has no settings-panel__table, cli-name, path-row or browse-btn rules', () => {
+    expect(css).not.toMatch(/settings-panel__(table|cli-name|path-row|browse-btn)/)
   })
 })
 

@@ -26,7 +26,9 @@
 //
 //	BASE_URL=https://127.0.0.1:PORT
 //	CAP=<token>
+//	VIEWER_CAP=<token>
 //	ADMIN_URL=http://127.0.0.1:ADMIN_PORT
+//	REMOTE_PEER_URL=https://127.0.0.1:PEER_PORT
 //	READY=1
 //
 // The Playwright config's webServer.url field is used to wait for readiness.
@@ -54,20 +56,16 @@ import (
 	"syscall"
 	"time"
 
-	"path/filepath"
-
 	"github.com/scottkw/agenthub/internal/capability"
 	"github.com/scottkw/agenthub/internal/daemon"
-	"github.com/scottkw/agenthub/internal/files"
 	"github.com/scottkw/agenthub/internal/relay"
 	"github.com/scottkw/agenthub/internal/webserver"
 )
 
 const (
-	sessionID    = "playwright-test-session"
-	sessionName  = "Playwright Test Session"
-	sessionAgent = "claude"
-	sessionHost  = "fixture-host"
+	sessionID   = "playwright-test-session"
+	sessionName = "Playwright Test Session"
+	sessionHost = "fixture-host"
 )
 
 // fixedTestKey is a 32-byte deterministic HMAC signing key for the fixture.
@@ -122,11 +120,11 @@ func main() {
 	// stub case.
 	ws.SetStaticAppFS(staticAppFixture())
 	ws.EnableSession(sessionID)
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == sessionID {
-			return sessionName, sessionAgent, "running", sessionHost
+			return sessionName, "running", sessionHost, true
 		}
-		return id, "", "", ""
+		return "", "", "", false
 	})
 
 	// 4. Plugin settings: atomic.Value holding pre-marshaled JSON. Default
@@ -141,32 +139,6 @@ func main() {
 		return v.([]byte)
 	})
 
-	// 4a. Phase 120-05 — seed a deterministic test tree in a tempdir and
-	// wire the files.Handler against a sandbox rooted there. The tree is
-	// the canonical set described in Plan 01's <interfaces>:
-	//   hello.txt     14 bytes plain text
-	//   notes.md      GFM markdown with table + task list
-	//   image.png     valid 1x1 PNG
-	//   binary.bin    64 bytes of alternating 0x00 0xFF (binary)
-	//   large.txt     5*1024*1024+1 bytes of 'A' (1 byte over 5 MiB cap)
-	//   empty.txt     0 bytes
-	//   subdir/nested.txt  "nested\n"
-	sessionCwd, err := seedFixtureFiles()
-	if err != nil {
-		log.Fatalf("seedFixtureFiles: %v", err)
-	}
-	sandbox, err := files.NewSandbox(sessionCwd)
-	if err != nil {
-		log.Fatalf("files.NewSandbox: %v", err)
-	}
-	filesHandler := files.NewHandler(func(sid string) (*files.Sandbox, error) {
-		if sid != sessionID {
-			return nil, fmt.Errorf("unknown session: %s", sid)
-		}
-		return sandbox, nil
-	})
-	ws.SetFilesHandler(filesHandler)
-
 	// 4b. Phase 155-04 — seed a ChatStore with test messages and wire the
 	// chat history + export providers. Without these the e2e shows an empty
 	// thread (Pitfall 7 in 155-RESEARCH.md).
@@ -178,11 +150,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("NewChatStore: %v", err)
 	}
-	// Seed 4 messages so e2e assertions have data in the loaded history:
+	// Seed 3 messages so e2e assertions have data in the loaded history:
 	//   1. Normal RW message (broadcast test baseline)
 	//   2. Normal viewer message (participant deduplication in Export)
-	//   3. SessionInject=true (SC-4 inject indicator test)
-	//   4. Mentions=["local"] (PARITY-01 @mention test; "local" is the
+	//   3. Mentions=["local"] (PARITY-01 @mention test; "local" is the
 	//      default currentUserTailnetID in ChatPanel for web-share clients
 	//      whose self-identity is not set by the WebShareSessionView).
 	seedMessages := []relay.ChatMessage{
@@ -203,16 +174,6 @@ func main() {
 			AuthorAlias:   "playwright-viewer",
 			Content:       "Hello from the fixture (viewer).",
 			TimestampMs:   1000000001000,
-		},
-		{
-			SchemaVersion: relay.ChatSchemaVersion,
-			ID:            "fixture-msg-3",
-			SessionID:     sessionID,
-			AuthorID:      "fixture-author-rw",
-			AuthorAlias:   "playwright-rw",
-			Content:       "@session inject message fixture.",
-			TimestampMs:   1000000002000,
-			SessionInject: true,
 		},
 		{
 			SchemaVersion: relay.ChatSchemaVersion,
@@ -263,13 +224,11 @@ func main() {
 		log.Fatalf("ws.Start: %v", err)
 	}
 
-	// 6. Mint two capabilities for the test session:
-	//   - OWNER cap: read,write,files.read (full file browser access)
-	//   - VIEWER cap: read only (no files.read → /api/files/* returns 403
-	//     with the "files.read capability required" body)
+	// 6. Mint two capabilities for the test session, matching what the daemon
+	//    mints for a share: OWNER cap "read,write", VIEWER cap "read".
 	ownerClaims := capability.Claims{
 		SID:     sessionID,
-		Perms:   "read,write,files.read",
+		Perms:   "read,write",
 		IAT:     time.Now().Unix(),
 		GrantID: "grant-playwright-fixture-owner",
 		V:       1,
@@ -293,31 +252,10 @@ func main() {
 	}
 	ws.AddGrant(sessionID, viewerClaims.GrantID)
 
-	// Phase 125-01 — third cap with files.write for the web-share write + 412
-	// e2e scenarios (EDIT-13). The viewer read-only cap (no files.write) covers
-	// the 403-without-cap scenario; this write cap covers the write-enabled path.
-	writeClaims := capability.Claims{
-		SID:     sessionID,
-		Perms:   "read,files.read,files.write",
-		IAT:     time.Now().Unix(),
-		GrantID: "grant-playwright-fixture-write",
-		V:       1,
-	}
-	writeToken, err := capability.Sign(writeClaims, fixedTestKey)
-	if err != nil {
-		log.Fatalf("capability.Sign write: %v", err)
-	}
-	ws.AddGrant(sessionID, writeClaims.GrantID)
-
 	// 6b. Phase 122-05 — mock "remote peer" webserver on a second TLS port.
-	//     Mimics a peer AgentHub on the tailnet for the remote-session
-	//     file-browse e2e scenarios (16+17). Serves:
+	//     Mimics a peer on the tailnet for remote-session join scenarios. Serves:
 	//        POST /join/exchange → 303 Location: /sessions/peer-sid?cap=FIXTURE_CAP
-	//        GET /api/files/list?session=peer-sid&path=.&cap=FIXTURE_CAP → 200 canned
-	//        GET /api/files/list (no cap or wrong cap)                  → 401
-	//        GET /api/files/stat / read (with cap)                      → 200 canned
-	//     Listener address is published via the REMOTE_PEER_URL line so
-	//     specs and the e2e/fixtures/remote-peer-setup.ts helper can read it.
+	//     Listener address is published via the REMOTE_PEER_URL line.
 	remotePeerURL, remotePeerStop := startRemotePeerFixture(tlsCfg)
 	defer remotePeerStop()
 
@@ -367,9 +305,9 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		_ = enc.Encode(map[string]any{
-			"subscriberCount": subCount,
+			"subscriberCount":   subCount,
 			"chatAppendFnWired": fnWired,
-			"hubFound": ok,
+			"hubFound":          ok,
 		})
 	})
 	adminSrv := &http.Server{
@@ -389,8 +327,6 @@ func main() {
 	fmt.Printf("BASE_URL=%s\n", baseURL)
 	fmt.Printf("CAP=%s\n", token)
 	fmt.Printf("VIEWER_CAP=%s\n", viewerToken)
-	fmt.Printf("WRITE_CAP=%s\n", writeToken)
-	fmt.Printf("SESSION_CWD=%s\n", sessionCwd)
 	fmt.Printf("ADMIN_URL=%s\n", adminURL)
 	fmt.Printf("REMOTE_PEER_URL=%s\n", remotePeerURL)
 	fmt.Println("READY=1")
@@ -407,90 +343,6 @@ func main() {
 	manager.Shutdown()
 	_ = ptyOutW.Close()
 	_ = inputCaptureW.Close()
-}
-
-// seedFixtureFiles creates the deterministic test tree described in
-// Plan 120-01's <interfaces> block, in a fresh tempdir. Returns the
-// absolute path to the dir so it can be passed to files.NewSandbox AND
-// printed on stdout (SESSION_CWD=) so specs can correlate.
-//
-// The dir is NOT cleaned up on shutdown — Playwright's harness reruns
-// reuse the same fixture binary across runs in this session, and the
-// dir is small (<6 MiB) and lives under os.TempDir() which the system
-// reaps on its own schedule.
-func seedFixtureFiles() (string, error) {
-	dir, err := os.MkdirTemp("", "playwright-fixture-cwd-*")
-	if err != nil {
-		return "", fmt.Errorf("MkdirTemp: %w", err)
-	}
-	// 1. hello.txt — 14 bytes plain text
-	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("Hello, world!\n"), 0o644); err != nil {
-		return "", fmt.Errorf("write hello.txt: %w", err)
-	}
-	// 2. notes.md — GFM markdown with table + task list
-	notesMD := "# Notes\n\n" +
-		"A GFM document used by the file browser e2e suite.\n\n" +
-		"## Table\n\n" +
-		"| Header A | Header B |\n" +
-		"| --- | --- |\n" +
-		"| cell 1 | cell 2 |\n" +
-		"| cell 3 | cell 4 |\n\n" +
-		"## Task list\n\n" +
-		"- [x] First task done\n" +
-		"- [ ] Second task open\n"
-	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte(notesMD), 0o644); err != nil {
-		return "", fmt.Errorf("write notes.md: %w", err)
-	}
-	// 3. image.png — valid 1×1 transparent PNG (literal byte sequence)
-	pngBytes := []byte{
-		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // signature
-		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR
-		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-		0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89,
-		0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, // IDAT
-		0x78, 0x9C, 0x62, 0x00, 0x01, 0x00, 0x00, 0x05,
-		0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4,
-		0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND
-		0xAE, 0x42, 0x60, 0x82,
-	}
-	if err := os.WriteFile(filepath.Join(dir, "image.png"), pngBytes, 0o644); err != nil {
-		return "", fmt.Errorf("write image.png: %w", err)
-	}
-	// 4. binary.bin — 64 bytes of alternating 0x00 0xFF
-	binBytes := make([]byte, 64)
-	for i := range binBytes {
-		if i%2 == 1 {
-			binBytes[i] = 0xFF
-		}
-	}
-	if err := os.WriteFile(filepath.Join(dir, "binary.bin"), binBytes, 0o644); err != nil {
-		return "", fmt.Errorf("write binary.bin: %w", err)
-	}
-	// 5. large.txt — 5*1024*1024+1 bytes of 'A' (1 byte over 5 MiB cap)
-	largeBytes := make([]byte, 5*1024*1024+1)
-	for i := range largeBytes {
-		largeBytes[i] = 'A'
-	}
-	if err := os.WriteFile(filepath.Join(dir, "large.txt"), largeBytes, 0o644); err != nil {
-		return "", fmt.Errorf("write large.txt: %w", err)
-	}
-	// 6. empty.txt — 0 bytes
-	if err := os.WriteFile(filepath.Join(dir, "empty.txt"), []byte{}, 0o644); err != nil {
-		return "", fmt.Errorf("write empty.txt: %w", err)
-	}
-	// 7. subdir/nested.txt
-	subdir := filepath.Join(dir, "subdir")
-	if err := os.Mkdir(subdir, 0o755); err != nil {
-		return "", fmt.Errorf("mkdir subdir: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(subdir, "nested.txt"), []byte("nested\n"), 0o644); err != nil {
-		return "", fmt.Errorf("write subdir/nested.txt: %w", err)
-	}
-	// 8. emptydir — an empty subdirectory for the empty-state test
-	if err := os.Mkdir(filepath.Join(dir, "emptydir"), 0o755); err != nil {
-		return "", fmt.Errorf("mkdir emptydir: %w", err)
-	}
-	return dir, nil
 }
 
 func defaultPluginSettings() map[string]bool {
@@ -515,202 +367,28 @@ func mustMarshal(v any) []byte {
 }
 
 // startRemotePeerFixture stands up a second TLS listener that mimics a remote
-// AgentHub peer on the tailnet for the Phase 122-05 remote-session e2e
-// scenarios. Returns the base URL ("https://127.0.0.1:PORT") and a stop
-// closure the caller defers.
+// peer on the tailnet for remote-session join scenarios. Returns the base URL
+// ("https://127.0.0.1:PORT") and a stop closure the caller defers.
 //
-// Endpoints (all under fixtureRemoteCap="FIXTURE_CAP", fixtureRemoteSession="peer-sid"):
-//
-//	POST /join/exchange                                          → 303 Location: /sessions/peer-sid?cap=FIXTURE_CAP
-//	GET  /api/files/list?session=peer-sid&path=.&cap=FIXTURE_CAP → 200 canned FileListResponse
-//	GET  /api/files/list (no/wrong cap)                          → 401 "cap rejected"
-//	GET  /api/files/stat?session=peer-sid&path=a.txt&cap=...     → 200 canned FileEntry
-//	GET  /api/files/read?session=peer-sid&path=a.txt&cap=...     → 200 "hello world"
-//
-// The canned shape matches the Go cross-surface parity test
-// (internal/daemon/remote_files_parity_test.go) so both observers agree on
-// the byte-identical expected response.
+//	POST /join/exchange → 303 Location: /sessions/peer-sid?cap=FIXTURE_CAP
 //
 // We reuse the same self-signed TLS config as the main webserver because
 // (a) it's already valid for 127.0.0.1 and (b) the e2e specs use
 // ignoreHTTPSErrors anyway. The shared config is fine — TLS handshake is
 // stateless per connection.
-//
-// Phase 128-03 (RMW-01/02/03): write verbs are backed by a real files.Sandbox
-// rooted at a temp directory so write-then-read round-trips actual bytes
-// (Pitfall 2 — NOT canned responses). The canned read handlers for list/stat
-// remain for backward-compat with scenarios 16+17.
 func startRemotePeerFixture(tlsCfg *tls.Config) (baseURL string, stop func()) {
 	const (
 		fixtureRemoteCap     = "FIXTURE_CAP"
 		fixtureRemoteSession = "peer-sid"
 	)
 
-	// Phase 128-03: real sandbox so writes genuinely persist (Pitfall 2).
-	sandboxDir, mkErr := os.MkdirTemp("", "remote-peer-fixture-*")
-	if mkErr != nil {
-		log.Fatalf("remote-peer sandbox dir: %v", mkErr)
-	}
-	sandbox, sbErr := files.NewSandbox(sandboxDir)
-	if sbErr != nil {
-		log.Fatalf("remote-peer sandbox: %v", sbErr)
-	}
-
-	canonicalList := map[string]any{
-		"entries": []map[string]any{
-			{"name": "a.txt", "size": 100, "isDir": false},
-			{"name": "sub", "size": 0, "isDir": true},
-		},
-		"truncated": false,
-	}
-	canonicalStat := map[string]any{
-		"name":  "a.txt",
-		"size":  100,
-		"isDir": false,
-	}
-
 	mux := http.NewServeMux()
-
-	guard := func(handler http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Query().Get("cap") != fixtureRemoteCap {
-				http.Error(w, "cap rejected", http.StatusUnauthorized)
-				return
-			}
-			if got := r.URL.Query().Get("session"); got != fixtureRemoteSession {
-				http.Error(w, "wrong session", http.StatusNotFound)
-				return
-			}
-			handler(w, r)
-		}
-	}
-
 	mux.HandleFunc("POST /join/exchange", func(w http.ResponseWriter, r *http.Request) {
 		// Accept any code (the fixture isn't validating the code itself —
 		// the test asserts on the redirect contract).
 		w.Header().Set("Location", "/sessions/"+fixtureRemoteSession+"?cap="+fixtureRemoteCap)
 		w.WriteHeader(http.StatusSeeOther)
 	})
-	mux.HandleFunc("GET /api/files/list", guard(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(canonicalList)
-	}))
-	mux.HandleFunc("GET /api/files/stat", guard(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(canonicalStat)
-	}))
-
-	// GET /api/files/read: serves from the persisted sandbox first (for
-	// files written by the write verbs); falls back to canned "hello world"
-	// for backward-compat with scenarios 16+17 which read the canonical a.txt.
-	mux.HandleFunc("GET /api/files/read", guard(func(w http.ResponseWriter, r *http.Request) {
-		rel := r.URL.Query().Get("path")
-		if rel == "" {
-			rel = "a.txt"
-		}
-		f, openErr := sandbox.Open(rel)
-		if openErr == nil {
-			defer f.Close()
-			fi, statErr := f.Stat()
-			if statErr == nil && !fi.IsDir() {
-				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-				w.WriteHeader(http.StatusOK)
-				if r.Method != http.MethodHead {
-					_, _ = io.Copy(w, f)
-				}
-				return
-			}
-		}
-		// Fallback: canned "hello world" (backward-compat with scenarios 16+17).
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("Content-Length", "11")
-		w.WriteHeader(http.StatusOK)
-		if r.Method == http.MethodHead {
-			return
-		}
-		_, _ = w.Write([]byte("hello world"))
-	}))
-	mux.HandleFunc("HEAD /api/files/read", guard(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("Content-Length", "11")
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	// PUT /api/files/write: persist body via WriteFileAtomic so read-back
-	// returns actual written bytes (Phase 128-03 RMW-01 persistence).
-	mux.HandleFunc("PUT /api/files/write", guard(func(w http.ResponseWriter, r *http.Request) {
-		rel := r.URL.Query().Get("path")
-		if rel == "" {
-			http.Error(w, "path is required", http.StatusBadRequest)
-			return
-		}
-		body, readErr := io.ReadAll(io.LimitReader(r.Body, 5<<20))
-		if readErr != nil {
-			http.Error(w, "read body: "+readErr.Error(), http.StatusBadRequest)
-			return
-		}
-		if writeErr := sandbox.WriteFileAtomic(rel, body); writeErr != nil {
-			http.Error(w, "write: "+writeErr.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"path": rel,
-			"size": len(body),
-		})
-	}))
-
-	// DELETE /api/files/delete: remove a file from the sandbox.
-	mux.HandleFunc("DELETE /api/files/delete", guard(func(w http.ResponseWriter, r *http.Request) {
-		rel := r.URL.Query().Get("path")
-		if rel == "" {
-			http.Error(w, "path is required", http.StatusBadRequest)
-			return
-		}
-		if delErr := sandbox.Delete(rel); delErr != nil {
-			http.Error(w, "delete: "+delErr.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	}))
-
-	// POST /api/files/rename: rename a file inside the sandbox.
-	mux.HandleFunc("POST /api/files/rename", guard(func(w http.ResponseWriter, r *http.Request) {
-		oldRel := r.URL.Query().Get("path")
-		newRel := r.URL.Query().Get("newPath")
-		if oldRel == "" || newRel == "" {
-			http.Error(w, "path and newPath are required", http.StatusBadRequest)
-			return
-		}
-		if renErr := sandbox.Rename(oldRel, newRel); renErr != nil {
-			http.Error(w, "rename: "+renErr.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	}))
-
-	// POST /api/files/mkdir: create a directory inside the sandbox.
-	mux.HandleFunc("POST /api/files/mkdir", guard(func(w http.ResponseWriter, r *http.Request) {
-		rel := r.URL.Query().Get("path")
-		if rel == "" {
-			http.Error(w, "path is required", http.StatusBadRequest)
-			return
-		}
-		if mkdirErr := sandbox.Mkdir(rel); mkdirErr != nil {
-			http.Error(w, "mkdir: "+mkdirErr.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	}))
 
 	ln, err := tls.Listen("tcp", "127.0.0.1:0", tlsCfg)
 	if err != nil {
@@ -731,7 +409,6 @@ func startRemotePeerFixture(tlsCfg *tls.Config) (baseURL string, stop func()) {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
-		_ = os.RemoveAll(sandboxDir)
 	}
 }
 

@@ -78,3 +78,40 @@ Turn the forked AgentHub codebase into a plain macOS terminal. New sessions run 
 - Homebrew packaging → v2 (DIST).
 
 </deferred>
+
+<amendment date="2026-11-14">
+## Amendment: Fixed zsh, simple Tailscale check
+
+The user decided this mid-execution, after plans 01-01..01-05 had landed. It supersedes the earlier "$SHELL as a login shell" and "Settings shell path" behavior, and it becomes new plans after 01-10.
+
+### Shell: always macOS zsh
+- Every session runs exactly `/bin/zsh -l`. No shell choice anywhere: `$SHELL` is ignored and there is no Settings shell path. The resolver from 01-05 shrinks to a constant. Remove `GetShellPath` as a user-visible concept, unless a test seam still needs it.
+- New Session dialog: only the working-directory picker remains. Remove the read-only shell line and its helper text.
+- Settings → Paths: delete the whole section (shell row and tailscale row), including the stale-path filter and the `cliPaths` override plumbing. Old settings files with `shellPath`/`cliPaths` keys must still load; the unknown keys are ignored and dropped on the next save.
+
+### Tailscale: detect, don't manage
+- Portty only checks for a working Tailscale connection through the existing LocalAPI (`tailscale.com/client/local`). Managing Tailscale is the user's job.
+- Remove the Tailscale install flow (`brew install --cask tailscale-app`), the custom tailscale binary path override, the `macsys` daemon and permission probes, and the multi-state health UI beyond connected/not connected.
+- Keep LocalAPI use for peer discovery, HTTPS certs and Funnel. Those features need it.
+- When not connected (LocalAPI unreachable, or backend state not Running/logged in): show a persistent in-app banner, "Tailscale isn't connected. Remote access and sharing are off until it is.", and disable the Share and remote/peer controls with the same reason. Local terminals work normally. Re-check automatically (on launch, periodically, and on window focus), and clear the banner when the connection is back.
+</amendment>
+
+<amendment date="2026-11-14" n="2">
+## Amendment 2: No status or exit UI, no bell notifications
+
+The user decided this after plan 01-06 landed. It supersedes the "Session status & notifications" decisions above and the UI-SPEC status/exit sections.
+
+- **No status indicators.** Remove the running/exited/errored tab dot, the Hub card status labels/icons, the status part of the exit toast, and any UI that shows session status. 01-06's derived status may stay in the daemon only where something still needs it (for example to know a session ended). It is not shown to the user.
+- **No exit handling UI.** Remove the 5 s auto-close countdown, the "Keep Open" button, the exit toast/banner and the error-state tab. New behavior: when a session's shell exits, for any reason or exit code, its tab closes immediately and the session is removed. Exit detection must still be reliable for long-lived shells (the >300 s exit-window fix stays in scope, because tabs must close for shells that exit after hours).
+- **No bell/OSC 9 notifications.** Drop the planned BEL/OSC 9 → native notification feature and the "awaiting input" notification toggle plus its settings key handling (old settings keys load and are ignored). Keep the native notification plumbing (`notification_darwin.go`) only if something else still uses it. Phase 6 update notifications will use it, so keep a minimal path for that.
+- **Kept:** OSC 9;4 progress (tab underline + tray quartile glyph). It is terminal progress, not session status.
+- Implemented by the re-planned plan 01-10 and the new follow-up plans, together with Amendment 1.
+</amendment>
+
+<amendment date="2026-11-15" n="3">
+## Amendment 3: Decisions taken at verification
+
+- **Remote tabs keep the "session ended" banner.** TERM-05 and SC6 apply to local sessions. When a session the user is viewing on another Mac ends, its tab stays open with the viewer-side "Session ended" banner so the user knows the other side ended.
+- **"Start Web Server" is disabled while Tailscale is off**, with the NET-01 banner sentence as its reason. This closes review IN-04 in Phase 1 rather than deferring it to Phase 4. The Share buttons are already disabled.
+- **MVP mode dropped.** Phase goals are not written as user stories; the `**Mode:** mvp` tags were removed from ROADMAP.md.
+</amendment>

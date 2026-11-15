@@ -332,64 +332,50 @@ func TestFunnelAutoExpiry(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestFunnelPublicCode_ReadOnlyScope verifies T-170-01: the public read
-// code's token (resolved via Exchange + Verify) carries read-only Perms —
-// never "write" or capability.PermFilesWrite — in BOTH perm-matrix states
-// (browse OFF and browse ON), proving the read-only invariant holds
-// regardless of the browse toggle.
+// code's token (resolved via Exchange + Verify) carries exactly "read".
 func TestFunnelPublicCode_ReadOnlyScope(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires TLS listener")
 	}
 
-	run := func(t *testing.T, browseOn bool) {
-		api, _, socketPath := testDaemon(t)
-		_, _ = makeFunnelTestWebServer(t, api, "test.ts.net")
-		key := configureCapabilityStateForTest(t, api, api.webServer)
+	api, _, socketPath := testDaemon(t)
+	_, _ = makeFunnelTestWebServer(t, api, "test.ts.net")
+	key := configureCapabilityStateForTest(t, api, api.webServer)
 
-		_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"public-code-scope","workDir":""}`)
-		var cr CreateResponse
-		if err := json.Unmarshal(body, &cr); err != nil {
-			t.Fatalf("decode create: %v", err)
-		}
-		if browseOn {
-			api.engine.SetSessionBrowse(cr.ID, true)
-		}
-		rawPost(t, socketPath, fmt.Sprintf("/sessions/%s/web-serve", cr.ID), `{"enabled":true}`)
-		enableFunnelViaHTTP(t, socketPath, cr.ID)
+	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"public-code-scope","workDir":""}`)
+	var cr CreateResponse
+	if err := json.Unmarshal(body, &cr); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	rawPost(t, socketPath, fmt.Sprintf("/sessions/%s/web-serve", cr.ID), `{"enabled":true}`)
+	enableFunnelViaHTTP(t, socketPath, cr.ID)
 
-		_, _, _, _, publicReadCode, err := api.issueCapabilitiesForSession(cr.ID)
-		if err != nil {
-			t.Fatalf("issueCapabilitiesForSession: %v", err)
-		}
-		if publicReadCode == "" {
-			t.Fatal("PublicReadCode must be non-empty for a Funnel session")
-		}
-
-		tok, err := api.joinCodes.Exchange(publicReadCode)
-		if err != nil {
-			t.Fatalf("Exchange(publicReadCode): %v", err)
-		}
-		claims, err := capability.Verify(tok, key)
-		if err != nil {
-			t.Fatalf("Verify: %v", err)
-		}
-		if capability.HasPerm(claims.Perms, "write") {
-			t.Errorf("T-170-01: Perms = %q must NOT contain write (browseOn=%v)", claims.Perms, browseOn)
-		}
-		if capability.HasPerm(claims.Perms, capability.PermFilesWrite) {
-			t.Errorf("T-170-01: Perms = %q must NOT contain files.write (browseOn=%v)", claims.Perms, browseOn)
-		}
+	_, _, _, _, publicReadCode, err := api.issueCapabilitiesForSession(cr.ID)
+	if err != nil {
+		t.Fatalf("issueCapabilitiesForSession: %v", err)
+	}
+	if publicReadCode == "" {
+		t.Fatal("PublicReadCode must be non-empty for a Funnel session")
 	}
 
-	t.Run("browse_off", func(t *testing.T) { run(t, false) })
-	t.Run("browse_on", func(t *testing.T) { run(t, true) })
+	tok, err := api.joinCodes.Exchange(publicReadCode)
+	if err != nil {
+		t.Fatalf("Exchange(publicReadCode): %v", err)
+	}
+	claims, err := capability.Verify(tok, key)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if claims.Perms != "read" {
+		t.Errorf("T-170-01: Perms = %q, want exactly \"read\"", claims.Perms)
+	}
 }
 
 // TestIssueCapabilities_FunnelPublicCode_Idempotent verifies T-170-04: two
 // consecutive issueCapabilitiesForSession calls for the same active Funnel
 // session return the IDENTICAL PublicReadCode — a code already handed to a
-// viewer must not silently rotate on a repeat capability re-issue (browse
-// toggle, warm-up re-issue, modal reopen).
+// viewer must not silently rotate on a repeat capability re-issue (warm-up
+// re-issue, modal reopen).
 func TestIssueCapabilities_FunnelPublicCode_Idempotent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires TLS listener")
@@ -1061,16 +1047,16 @@ func grantIDBehindPublicCode(t *testing.T, api *API, key []byte, code string) st
 	return claims.GrantID
 }
 
-// TestIssueCapabilities_BrowseToggleRebindsPublicCode is the CR-01 regression:
+// TestIssueCapabilities_ClearGrantsRebindsPublicCode is the CR-01 regression:
 // a reusable public-share code already handed to viewers must keep resolving to
-// a LIVE grant after the owner toggles "Enable remote file browsing" — which
-// calls ws.ClearGrants and then re-issues a NEW underlying read token. Before
-// the fix the code stayed pinned to the first token, whose grant ClearGrants
-// wiped, so every public viewer hit 403 ("capability has been revoked") while
-// the UI still displayed the (dead) code. After the fix
-// issueCapabilitiesForSession rebinds the stable code onto the freshly-granted
-// token (T-170-04 keeps the code string; CR-01 keeps it live).
-func TestIssueCapabilities_BrowseToggleRebindsPublicCode(t *testing.T) {
+// a LIVE grant after the session's grants are cleared (ws.ClearGrants) and
+// capabilities are re-issued with a NEW underlying read token. Before the fix
+// the code stayed pinned to the first token, whose grant ClearGrants wiped, so
+// every public viewer hit 403 ("capability has been revoked") while the UI
+// still displayed the (dead) code. issueCapabilitiesForSession rebinds the
+// stable code onto the freshly-granted token (T-170-04 keeps the code string;
+// CR-01 keeps it live). (Originally triggered by the removed browse toggle.)
+func TestIssueCapabilities_ClearGrantsRebindsPublicCode(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires TLS listener")
 	}
@@ -1080,11 +1066,11 @@ func TestIssueCapabilities_BrowseToggleRebindsPublicCode(t *testing.T) {
 	// probeGrant hits /api/sessions/{id}/info, which 404s (not 200) when no
 	// session resolver is set even for a live grant — supply one so a 200
 	// unambiguously means "grant active".
-	ws.SetSessionResolver(func(string) (string, string, string, string) {
-		return "browse-toggle-rebind", "cat", "running", "localhost"
+	ws.SetSessionResolver(func(string) (string, string, string, bool) {
+		return "clear-grants-rebind", "running", "localhost", true
 	})
 
-	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"browse-toggle-rebind","workDir":""}`)
+	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"clear-grants-rebind","workDir":""}`)
 	var cr CreateResponse
 	if err := json.Unmarshal(body, &cr); err != nil {
 		t.Fatalf("decode create: %v", err)
@@ -1105,25 +1091,23 @@ func TestIssueCapabilities_BrowseToggleRebindsPublicCode(t *testing.T) {
 		t.Fatal("precondition: grant behind the fresh public code is not active")
 	}
 
-	// Browse toggle: the real handleSetSessionBrowse clears the session's grants
-	// before the frontend re-issues capabilities. Drive that clear directly.
+	// Clear the session's grants, then re-issue capabilities.
 	ws.ClearGrants(cr.ID)
 	if probeGrant(t, ws, key, cr.ID, grant1) {
 		t.Fatal("precondition: ClearGrants did not revoke the original grant")
 	}
 
-	// Re-issue (what the frontend does immediately after the toggle). The public
-	// code must NOT rotate (T-170-04) AND must now resolve to a LIVE grant.
+	// Re-issue. The public code must NOT rotate (T-170-04) AND must now resolve to a LIVE grant.
 	_, _, _, _, code2, err := api.issueCapabilitiesForSession(cr.ID)
 	if err != nil {
 		t.Fatalf("issueCapabilitiesForSession (2nd): %v", err)
 	}
 	if code2 != code1 {
-		t.Errorf("T-170-04: public code rotated across browse-toggle re-issue: %q != %q", code1, code2)
+		t.Errorf("T-170-04: public code rotated across ClearGrants re-issue: %q != %q", code1, code2)
 	}
 	grant2 := grantIDBehindPublicCode(t, api, key, code2)
 	if !probeGrant(t, ws, key, cr.ID, grant2) {
-		t.Error("CR-01: after browse toggle + re-issue the public code still resolves to a revoked grant — " +
+		t.Error("CR-01: after ClearGrants + re-issue the public code still resolves to a revoked grant — " +
 			"public viewers would 403; issueCapabilitiesForSession must Rebind it onto the fresh token")
 	}
 }
@@ -1277,8 +1261,7 @@ func enableFunnelWriteViaHTTP(t *testing.T, socketPath, sessionID string, expire
 }
 
 // TestFunnelWriteGate_TerminalOnlyScope verifies T-171-06/D-05 (Pitfall 5):
-// the gate-minted write cap's Perms is EXACTLY "read,write" — never
-// files.write — regardless of the session's browse toggle. It also proves
+// the gate-minted write cap's Perms is EXACTLY "read,write". It also proves
 // the mint's side effects reach the real enforcement boundary: the exchanged
 // token's grant is active (ws.AddGrant applied) via a probeGrant round-trip.
 func TestFunnelWriteGate_TerminalOnlyScope(t *testing.T) {
@@ -1286,64 +1269,53 @@ func TestFunnelWriteGate_TerminalOnlyScope(t *testing.T) {
 		t.Skip("requires TLS listener")
 	}
 
-	run := func(t *testing.T, browseOn bool) {
-		api, _, socketPath := testDaemon(t)
-		ws, _ := makeFunnelTestWebServer(t, api, "test.ts.net")
-		key := configureCapabilityStateForTest(t, api, ws)
-		// probeGrant hits /api/sessions/{id}/info, which 404s (not 200) when no
-		// session resolver is set even for a live grant — supply one so a 200
-		// unambiguously means "grant active" (precedent: TestIssueCapabilities_BrowseToggleRebindsPublicCode).
-		ws.SetSessionResolver(func(string) (string, string, string, string) {
-			return "write-gate-scope", "cat", "running", "localhost"
-		})
+	api, _, socketPath := testDaemon(t)
+	ws, _ := makeFunnelTestWebServer(t, api, "test.ts.net")
+	key := configureCapabilityStateForTest(t, api, ws)
+	// probeGrant hits /api/sessions/{id}/info, which 404s (not 200) when no
+	// session resolver is set even for a live grant — supply one so a 200
+	// unambiguously means "grant active" (precedent: TestIssueCapabilities_ClearGrantsRebindsPublicCode).
+	ws.SetSessionResolver(func(string) (string, string, string, bool) {
+		return "write-gate-scope", "running", "localhost", true
+	})
 
-		_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"write-gate-scope","workDir":""}`)
-		var cr CreateResponse
-		if err := json.Unmarshal(body, &cr); err != nil {
-			t.Fatalf("decode create: %v", err)
-		}
-		if browseOn {
-			api.engine.SetSessionBrowse(cr.ID, true)
-		}
-		rawPost(t, socketPath, fmt.Sprintf("/sessions/%s/web-serve", cr.ID), `{"enabled":true}`)
-		enableFunnelViaHTTP(t, socketPath, cr.ID)
+	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"write-gate-scope","workDir":""}`)
+	var cr CreateResponse
+	if err := json.Unmarshal(body, &cr); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	rawPost(t, socketPath, fmt.Sprintf("/sessions/%s/web-serve", cr.ID), `{"enabled":true}`)
+	enableFunnelViaHTTP(t, socketPath, cr.ID)
 
-		status, resp := enableFunnelWriteViaHTTP(t, socketPath, cr.ID, 900)
-		if status != http.StatusOK {
-			t.Fatalf("POST funnel-write: want 200, got %d", status)
-		}
-		if resp.WriteURL == "" || resp.WriteCode == "" || resp.ExpiresAt == 0 {
-			t.Fatalf("SetSessionFunnelWriteResponse incomplete: %+v", resp)
-		}
-		funnelBase := ws.FunnelBaseURL()
-		if !strings.HasPrefix(resp.WriteURL, funnelBase) {
-			t.Errorf("WriteURL %q must start with FunnelBaseURL %q", resp.WriteURL, funnelBase)
-		}
-
-		wTok, err := api.joinCodes.Exchange(resp.WriteCode)
-		if err != nil {
-			t.Fatalf("Exchange(WriteCode): %v", err)
-		}
-		claims, err := capability.Verify(wTok, key)
-		if err != nil {
-			t.Fatalf("Verify: %v", err)
-		}
-		if claims.Perms != "read,write" {
-			t.Errorf("T-171-06/D-05: Perms = %q, want exactly \"read,write\" (browseOn=%v)", claims.Perms, browseOn)
-		}
-		if capability.HasPerm(claims.Perms, capability.PermFilesWrite) {
-			t.Errorf("T-171-06/D-05: Perms = %q must NOT contain files.write (browseOn=%v, Pitfall 5)", claims.Perms, browseOn)
-		}
-
-		// The mint's ws.AddGrant side effect must reach the real enforcement
-		// boundary: a token bearing this exact grantID must be accepted.
-		if !probeGrant(t, ws, key, cr.ID, claims.GrantID) {
-			t.Error("expected the gate-minted grant to be active (ws.AddGrant applied)")
-		}
+	status, resp := enableFunnelWriteViaHTTP(t, socketPath, cr.ID, 900)
+	if status != http.StatusOK {
+		t.Fatalf("POST funnel-write: want 200, got %d", status)
+	}
+	if resp.WriteURL == "" || resp.WriteCode == "" || resp.ExpiresAt == 0 {
+		t.Fatalf("SetSessionFunnelWriteResponse incomplete: %+v", resp)
+	}
+	funnelBase := ws.FunnelBaseURL()
+	if !strings.HasPrefix(resp.WriteURL, funnelBase) {
+		t.Errorf("WriteURL %q must start with FunnelBaseURL %q", resp.WriteURL, funnelBase)
 	}
 
-	t.Run("browse_off", func(t *testing.T) { run(t, false) })
-	t.Run("browse_on", func(t *testing.T) { run(t, true) })
+	wTok, err := api.joinCodes.Exchange(resp.WriteCode)
+	if err != nil {
+		t.Fatalf("Exchange(WriteCode): %v", err)
+	}
+	claims, err := capability.Verify(wTok, key)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if claims.Perms != "read,write" {
+		t.Errorf("T-171-06/D-05: Perms = %q, want exactly \"read,write\"", claims.Perms)
+	}
+
+	// The mint's ws.AddGrant side effect must reach the real enforcement
+	// boundary: a token bearing this exact grantID must be accepted.
+	if !probeGrant(t, ws, key, cr.ID, claims.GrantID) {
+		t.Error("expected the gate-minted grant to be active (ws.AddGrant applied)")
+	}
 }
 
 // TestHandleSetSessionFunnelWrite_ExpiryClamp verifies R5/D-11 (Pitfall 6):
@@ -1421,8 +1393,8 @@ func TestDisableFunnelWrite_RevokesGrantOnly(t *testing.T) {
 	api, _, socketPath := testDaemon(t)
 	ws, fake := makeFunnelTestWebServer(t, api, "test.ts.net")
 	key := configureCapabilityStateForTest(t, api, ws)
-	ws.SetSessionResolver(func(string) (string, string, string, string) {
-		return "rw-disable-grant-only", "cat", "running", "localhost"
+	ws.SetSessionResolver(func(string) (string, string, string, bool) {
+		return "rw-disable-grant-only", "running", "localhost", true
 	})
 
 	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"rw-disable-grant-only","workDir":""}`)
@@ -1506,8 +1478,8 @@ func TestFunnelWriteTeardown_AllTriggers(t *testing.T) {
 		api, _, socketPath = testDaemon(t)
 		ws, fake = makeFunnelTestWebServer(t, api, "test.ts.net")
 		key = configureCapabilityStateForTest(t, api, ws)
-		ws.SetSessionResolver(func(string) (string, string, string, string) {
-			return "write-teardown", "cat", "running", "localhost"
+		ws.SetSessionResolver(func(string) (string, string, string, bool) {
+			return "write-teardown", "running", "localhost", true
 		})
 
 		_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"write-teardown","workDir":""}`)

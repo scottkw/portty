@@ -21,7 +21,6 @@ function makePreviewLines(lines: string[]): daemon.StyledSpan[][] {
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'sess-1',
-    cli: 'claude',
     name: 'Test Session',
     state: 'running',
     status: 'running',
@@ -32,8 +31,6 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     hostname: '',
     webEnabled: false,
     viewerCount: 0,
-    homeDir: false,
-    browseEnabled: false,
     funnelActive: false,
     funnelWriteActive: false,
     workDir: '/home/user/project',
@@ -58,123 +55,28 @@ function renderCard(session: SessionInfo, onRename?: (id: string, name: string) 
   return { container, root }
 }
 
-function renderCardWithAttention(session: SessionInfo, isAttention: boolean) {
-  const container = document.createElement('div')
-  document.body.appendChild(container)
-  const root = createRoot(container)
-  act(() => {
-    root.render(<SessionCard session={session} isAttention={isAttention} />)
-  })
-  return { container, root }
-}
-
 describe('SessionCard', () => {
   afterEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
   })
 
-  // ---- Status rendering: icon + text label for every status ----
+  // ---- No session status (TERM-05, CONTEXT Amendment 2) ----
 
-  it('running: renders icon with aria-label "Running" AND visible text label "Running"', () => {
-    const { container } = renderCard(makeSession({ state: 'running', status: 'running' }))
-    const icon = container.querySelector('[aria-label="Running"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Running')
+  it('a stopped session with a non-zero exit code renders no status text, no exit code and no attention icon', () => {
+    const { container } = renderCard(makeSession({ state: 'stopped', status: 'errored', exitCode: 3, duration: 120 }))
+    const card = container.querySelector('.hub-card') as HTMLElement
+    expect(card.textContent).not.toMatch(/Running|Exited|Error/)
+    expect(container.querySelector('[aria-label="Running"], [aria-label="Exited"], [aria-label="Error"], [aria-label="Needs attention"]')).toBeNull()
+    expect(container.querySelector('.hub-card__exit-chip, .hub-card__attn-icon, .hub-card__status-indicator')).toBeNull()
+    expect(card.className).not.toMatch(/hub-card--(dim|attention)/)
+    expect(card.getAttribute('aria-label')).not.toMatch(/Exited|Error|Running|attention|\b3\b/)
   })
 
-  it('idle: renders icon with aria-label "Idle" AND visible text label "Idle"', () => {
-    const { container } = renderCard(makeSession({ state: 'idle', status: 'idle' }))
-    const icon = container.querySelector('[aria-label="Idle"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Idle')
-  })
-
-  it('waiting: renders icon with aria-label "Needs input" AND visible text label "Needs input"', () => {
-    const { container } = renderCard(makeSession({ state: 'waiting', status: 'waiting' }))
-    const icon = container.querySelector('[aria-label="Needs input"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Needs input')
-  })
-
-  it('errored: renders icon with aria-label "Error" AND visible text label "Error"', () => {
-    const { container } = renderCard(makeSession({ state: 'errored', status: 'errored' }))
-    const icon = container.querySelector('[aria-label="Error"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Error')
-  })
-
-  it('stopped exit-0: renders icon with aria-label "Done" AND visible text label "Done"', () => {
-    const exitCode = 0
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 3600 }))
-    const icon = container.querySelector('[aria-label="Done"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Done')
-  })
-
-  it('stopped exit-nonzero: renders icon with aria-label containing "Exited" AND visible text label containing "Exited"', () => {
-    const exitCode = 1
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 3600 }))
-    const icon = container.querySelector('[aria-label*="Exited"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Exited')
-  })
-
-  // ---- Spin modifier on running only ----
-
-  it('running card icon has hub-card__status-icon--spin class', () => {
-    const { container } = renderCard(makeSession({ state: 'running', status: 'running' }))
-    const spinIcon = container.querySelector('.hub-card__status-icon--spin')
-    expect(spinIcon).not.toBeNull()
-  })
-
-  it('idle card icon does NOT have hub-card__status-icon--spin class', () => {
-    const { container } = renderCard(makeSession({ state: 'idle', status: 'idle' }))
-    const spinIcon = container.querySelector('.hub-card__status-icon--spin')
-    expect(spinIcon).toBeNull()
-  })
-
-  // ---- Dimming ----
-
-  it('stopped exit-0 card gets hub-card--dim class', () => {
-    const exitCode = 0
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 120 }))
-    const card = container.querySelector('.hub-card--dim')
-    expect(card).not.toBeNull()
-  })
-
-  it('stopped non-zero exit card does NOT get hub-card--dim class', () => {
-    const exitCode = 1
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 120 }))
-    const card = container.querySelector('.hub-card--dim')
-    expect(card).toBeNull()
-  })
-
-  it('stopped non-zero exit card shows exit-code chip with "Exited {code}"', () => {
-    const exitCode = 2
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 120 }))
-    const chip = container.querySelector('.hub-card__exit-chip')
-    expect(chip).not.toBeNull()
-    expect(chip!.textContent).toContain('2')
-  })
-
-  it('stopped exit-0 card does NOT show exit-code chip', () => {
-    const exitCode = 0
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 120 }))
-    const chip = container.querySelector('.hub-card__exit-chip')
-    expect(chip).toBeNull()
+  it.each(['running', 'idle', 'errored', ''])('a live session with status %j renders no status label', (status) => {
+    const { container } = renderCard(makeSession({ state: 'running', status }))
+    expect(container.querySelector('.hub-card__status-label, .hub-card__status-icon')).toBeNull()
+    expect(container.querySelector('.hub-card')!.textContent).not.toMatch(/Running|Exited|Error/)
   })
 
   // ---- Viewer count ----
@@ -218,17 +120,12 @@ describe('SessionCard', () => {
     expect(origin!.textContent).toContain('remote-peer.tail')
   })
 
-  // ---- CLI badge ----
+  // ---- No agent identity (STRP-01) ----
 
-  it('renders CLI badge with cli name as text', () => {
-    const { container } = renderCard(makeSession({ cli: 'claude' }))
-    // Phase 172: agent chip is now .hub-card__chip--agent (was .hub-card__badge,
-    // superseded — .hub-card__badge itself is kept in style.css only because
-    // HubModal.tsx's session picker chip still consumes it).
-    const badge = container.querySelector('.hub-card__chip--agent')
-    expect(badge).not.toBeNull()
-    // CLI name should be visible text
-    expect(badge!.textContent).toContain('claude')
+  it('renders no agent chip and no data-agent attribute', () => {
+    const { container } = renderCard(makeSession())
+    expect(container.querySelector('.hub-card__chip--agent')).toBeNull()
+    expect(container.querySelector('[data-agent]')).toBeNull()
   })
 
   // ---- Uptime / duration ----
@@ -253,13 +150,12 @@ describe('SessionCard', () => {
 
   // ---- Aria-label on card ----
 
-  it('card has aria-label containing name, status, cli, and origin', () => {
+  it('card has aria-label containing name and origin', () => {
     const { container } = renderCard(makeSession({ hostname: '' }))
     const card = container.querySelector('.hub-card')
     expect(card).not.toBeNull()
     const label = card!.getAttribute('aria-label') ?? ''
     expect(label).toContain('Test Session')
-    expect(label).toContain('claude')
     expect(label).toContain('Local')
   })
 
@@ -274,7 +170,7 @@ describe('SessionCard', () => {
 
   function renderCardWithOpen(
     session: SessionInfo,
-    onOpenSession?: (id: string, name: string, cli: string) => void,
+    onOpenSession?: (id: string, name: string) => void,
   ) {
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -285,10 +181,10 @@ describe('SessionCard', () => {
     return { container, root }
   }
 
-  it('renders an Open button for a live (running) session and calls onOpenSession with id/name/cli', () => {
+  it('renders an Open button for a live (running) session and calls onOpenSession with id/name', () => {
     const onOpen = vi.fn()
     const { container } = renderCardWithOpen(
-      makeSession({ id: 'sess-9', name: 'My Shell', cli: '/bin/zsh', state: 'running' }),
+      makeSession({ id: 'sess-9', name: 'My Shell', state: 'running' }),
       onOpen,
     )
     const btn = container.querySelector('.hub-card__open') as HTMLButtonElement | null
@@ -296,7 +192,7 @@ describe('SessionCard', () => {
     expect(btn!.textContent).toContain('Open')
     act(() => { btn!.click() })
     expect(onOpen).toHaveBeenCalledTimes(1)
-    expect(onOpen).toHaveBeenCalledWith('sess-9', 'My Shell', '/bin/zsh')
+    expect(onOpen).toHaveBeenCalledWith('sess-9', 'My Shell')
   })
 
   it('does NOT render the Open button for a stopped session (no live PTY to attach)', () => {
@@ -322,7 +218,7 @@ describe('SessionCard', () => {
     act(() => {
       root.render(
         <SessionCard
-          session={makeSession({ id: 'r-sess', name: 'Regression', cli: 'claude', state: 'running' })}
+          session={makeSession({ id: 'r-sess', name: 'Regression', state: 'running' })}
           onOpenSession={onOpen}
           previewLines={makePreviewLines(['line1', 'line2'])}
           groupDefs={makeGroupDefs()}
@@ -333,7 +229,7 @@ describe('SessionCard', () => {
     const btn = container.querySelector('.hub-card__open') as HTMLButtonElement | null
     expect(btn).not.toBeNull()
     act(() => { btn!.click() })
-    expect(onOpen).toHaveBeenCalledWith('r-sess', 'Regression', 'claude')
+    expect(onOpen).toHaveBeenCalledWith('r-sess', 'Regression')
   })
 
   // ---- ROW 6: MiniPreview (CARD-07) ----
@@ -724,55 +620,13 @@ describe('SessionCard Phase 134 source-inspection (onCardClick + stopPropagation
   })
 })
 
-describe('SessionCard attention (ATTN-01)', () => {
+describe('SessionCard chat badge and Open button', () => {
   afterEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
   })
 
-  it('isAttention=true: card article has .hub-card--attention class', () => {
-    const { container } = renderCardWithAttention(
-      makeSession({ state: 'waiting', status: 'waiting' }),
-      true,
-    )
-    const card = container.querySelector('.hub-card--attention')
-    expect(card).not.toBeNull()
-  })
-
-  it('isAttention=true: renders .hub-card__attn-icon element with aria-label "Needs attention"', () => {
-    const { container } = renderCardWithAttention(
-      makeSession({ state: 'waiting', status: 'waiting' }),
-      true,
-    )
-    const attnIcon = container.querySelector('.hub-card__attn-icon')
-    expect(attnIcon).not.toBeNull()
-    expect(attnIcon!.getAttribute('aria-label')).toBe('Needs attention')
-  })
-
-  it('isAttention=true: card article aria-label ends with ", needs attention"', () => {
-    const { container } = renderCardWithAttention(
-      makeSession({ state: 'waiting', status: 'waiting' }),
-      true,
-    )
-    const card = container.querySelector('.hub-card')
-    expect(card).not.toBeNull()
-    const label = card!.getAttribute('aria-label') ?? ''
-    expect(label).toMatch(/, needs attention$/)
-  })
-
-  it('isAttention=false: no .hub-card--attention, no .hub-card__attn-icon, aria-label does NOT contain "needs attention"', () => {
-    const { container } = renderCardWithAttention(
-      makeSession({ state: 'running', status: 'running' }),
-      false,
-    )
-    expect(container.querySelector('.hub-card--attention')).toBeNull()
-    expect(container.querySelector('.hub-card__attn-icon')).toBeNull()
-    const card = container.querySelector('.hub-card')
-    const label = card!.getAttribute('aria-label') ?? ''
-    expect(label).not.toContain('needs attention')
-  })
-
-  it('REGRESSION(Phase 131/132): isAttention=true still renders .hub-card__status-indicator and Open button for a live session', () => {
+  it('REGRESSION(Phase 131/132): a live session whose daemon status is errored still renders the Open button', () => {
     const onOpen = vi.fn()
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -780,15 +634,12 @@ describe('SessionCard attention (ATTN-01)', () => {
     act(() => {
       root.render(
         <SessionCard
-          session={makeSession({ state: 'waiting', status: 'waiting' })}
-          isAttention={true}
+          session={makeSession({ state: 'running', status: 'errored' })}
           onOpenSession={onOpen}
         />,
       )
     })
-    // Status indicator preserved
-    expect(container.querySelector('.hub-card__status-indicator')).not.toBeNull()
-    // Open button preserved for live session
+    // Open button preserved for live session (state !== 'stopped' guard is behavior, not display)
     expect(container.querySelector('.hub-card__open')).not.toBeNull()
   })
 
@@ -830,7 +681,7 @@ describe('SessionCard attention (ATTN-01)', () => {
   })
 })
 
-// ---- Phase 172: consolidated chip row (agent · origin · exposure) ----
+// ---- Phase 172: consolidated chip row (origin · exposure) ----
 // Structural assertions only (class presence + text content) — this is a jsdom
 // render, not a visual check. The pixel-level contract (border-radius: 7px,
 // exposure forced onto its own line via flex-basis: 100%, etc.) is the Sketch
@@ -857,13 +708,6 @@ describe('SessionCard chip row (Phase 172)', () => {
     })
     return { container, root }
   }
-
-  it('renders an agent chip (.hub-card__chip--agent) with the cli text', () => {
-    const { container } = renderCardWithProps(makeSession({ cli: 'claude' }))
-    const chip = container.querySelector('.hub-card__chip--agent')
-    expect(chip).not.toBeNull()
-    expect(chip!.textContent).toContain('claude')
-  })
 
   it('local session renders an origin chip (.hub-card__chip--origin) with "Local"', () => {
     const { container } = renderCardWithProps(
@@ -929,5 +773,52 @@ describe('SessionCard chip row (Phase 172)', () => {
     const conn = meta!.querySelector('.hub-card__conn--connected')
     expect(conn).not.toBeNull()
     expect(conn!.textContent).toContain('Connected')
+  })
+
+  // ---- NET-01: Share disabled while Tailscale is not connected ----
+
+  function renderShareCard(props: { shareDisabledReason?: string; isRemote?: boolean } = {}) {
+    const onShare = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    act(() => {
+      root.render(
+        <SessionCard
+          session={makeSession(props.isRemote ? { hostname: 'peer.tail' } : {})}
+          onShare={onShare}
+          isRemote={props.isRemote ?? false}
+          shareDisabledReason={props.shareDisabledReason}
+        />,
+      )
+    })
+    const btn = container.querySelector('.hub-card__share') as HTMLButtonElement
+    return { btn, onShare }
+  }
+
+  it('NET-01: a local card with shareDisabledReason has a disabled Share button with the reason and a lock icon', () => {
+    const reason = "Tailscale isn't connected. Remote access and sharing are off until it is."
+    const { btn, onShare } = renderShareCard({ shareDisabledReason: reason })
+    expect(btn.disabled).toBe(true)
+    expect(btn.getAttribute('aria-label')).toBe(reason)
+    expect(btn.title).toBe(reason)
+    expect(btn.querySelector('.hub-card__share-lock')).not.toBeNull()
+    act(() => btn.click())
+    expect(onShare).not.toHaveBeenCalled()
+  })
+
+  it('NET-01: a local card without shareDisabledReason has an enabled Share button and no lock', () => {
+    const { btn, onShare } = renderShareCard()
+    expect(btn.disabled).toBe(false)
+    expect(btn.getAttribute('aria-label')).toBe('Share Test Session')
+    expect(btn.querySelector('.hub-card__share-lock')).toBeNull()
+    act(() => btn.click())
+    expect(onShare).toHaveBeenCalledTimes(1)
+  })
+
+  it('NET-01: a remote card keeps its owner-only lock reason even when shareDisabledReason is set', () => {
+    const { btn } = renderShareCard({ isRemote: true, shareDisabledReason: 'off' })
+    expect(btn.disabled).toBe(true)
+    expect(btn.getAttribute('aria-label')).toBe('Only the session owner can share')
   })
 })

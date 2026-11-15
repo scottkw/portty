@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { ALLOWED_THEMES } from '../themes'
 import {
-  UpdateCLIPath,
-  GetCLIPaths,
-  OpenFileDialog,
   StartWebServer,
   StopWebServer,
   GetWebServerURL,
@@ -14,24 +11,15 @@ import {
   GetWebServerQRCode,
   GetStartMinimized,
   SetStartMinimized,
-  GetAutoCloseSession,
-  SetAutoCloseSession,
-  // Phase 167 NTF-04 — awaiting-input native notification toggle
-  GetNotifyOnWaiting,
-  SetNotifyOnWaiting,
   // Phase 168 UX-01 — stay-on-hub-after-create toggle
   GetStayOnHubAfterCreate,
   SetStayOnHubAfterCreate,
   RegenerateSigningKey,
-  // Phase 107-03 SHELL-11 — shell binary path setting
-  GetShellPath,
-  SetShellPath,
   // Phase 150 SET-01 — shell web-share warning enabled master switch
   GetShellWebShareWarningEnabled,
   SetShellWebShareWarningEnabled,
 } from '../wailsjs/go/main/App'
-import type { DetectedCLI } from '../wailsjs/go/main/App'
-import { BrowserOpenURL, ClipboardSetText, EventsOn } from '../wailsjs/wailsjs/runtime/runtime'
+import { BrowserOpenURL, ClipboardSetText } from '../wailsjs/wailsjs/runtime/runtime'
 import {
   ArrowTopRightOnSquareIcon,
   ClipboardDocumentIcon,
@@ -43,24 +31,12 @@ import { RegenerateKeyModal } from './RegenerateKeyModal'
 import { PluginsSection, type PluginToggleKind } from './PluginsSection'
 import { SettingsJumpBar } from './SettingsJumpBar'
 import { SettingsSearch } from './SettingsSearch'
+import { TAILSCALE_OFF_REASON, type TailscaleHealth } from '../lib/tailscale'
 
 const THEME_NAMES = ALLOWED_THEMES
 
 interface SettingsTabProps {
-  clis: DetectedCLI[]
-  tailscaleHealth: {
-    installed: boolean
-    connected: boolean
-    hasCerts: boolean
-    ip: string
-    domain: string
-    binaryFound: boolean
-    daemonUp: boolean
-    platformHint: string
-    // Phase 169-02 (FIX-05): honest permission-aware macsys detection (169-01) —
-    // daemon confirmed alive but this account can't read its status.
-    permissionLimited?: boolean
-  } | null
+  tailscaleHealth: TailscaleHealth | null
   webServerMode?: 'tailscale' | 'local' | null
   onWebServerStateChange: () => Promise<void>
   selectedTheme: string
@@ -75,24 +51,11 @@ interface SettingsTabProps {
 }
 
 /**
- * Inline settings tab for configuring custom CLI executable paths and web serving.
- * Lists all detected CLIs with an input field for path overrides, plus a Web Server
- * section for CT disclosure and server start/stop.
+ * Inline settings tab: shell and tailscale path overrides, web serving and
+ * the other app preferences.
  * Renders as a sidebar tab — no modal shell. Single scrollable page with section headers.
  */
-export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerStateChange, selectedTheme, onThemeChange, uiTheme, onUiThemeChange, onPluginToggleSideEffect, onShellWarnEnabledChange }: SettingsTabProps): React.ReactElement {
-  // Track custom path overrides keyed by CLI name.
-  const [customPaths, setCustomPaths] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {}
-    for (const cli of clis) {
-      initial[cli.Name] = cli.Path
-    }
-    return initial
-  })
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
+export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateChange, selectedTheme, onThemeChange, uiTheme, onUiThemeChange, onPluginToggleSideEffect, onShellWarnEnabledChange }: SettingsTabProps): React.ReactElement {
   // Web serving state
   const [selectedPort, setSelectedPort] = useState<number>(7443)
   const [isServerRunning, setIsServerRunning] = useState(false)
@@ -117,22 +80,6 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
   const [toggleSaving, setToggleSaving] = useState(false)
   const [toggleError, setToggleError] = useState<string | null>(null)
 
-  // Auto-close-on-exit toggle state (Phase 84 D-11)
-  const [autoCloseSession, setAutoCloseSession] = useState(true) // default enabled
-  const [autoCloseLoaded, setAutoCloseLoaded] = useState(false)
-  const [autoCloseSaving, setAutoCloseSaving] = useState(false)
-  const [autoCloseError, setAutoCloseError] = useState<string | null>(null)
-
-  // Notify-on-waiting toggle state (Phase 167 NTF-04) — default OFF (D-04 locked decision).
-  const [notifyOnWaiting, setNotifyOnWaiting] = useState(false)
-  const [notifyOnWaitingLoaded, setNotifyOnWaitingLoaded] = useState(false)
-  const [notifyOnWaitingSaving, setNotifyOnWaitingSaving] = useState(false)
-  const [notifyOnWaitingError, setNotifyOnWaitingError] = useState<string | null>(null)
-  // Phase 167-07 (M-41 gap closure) — set true when the backend reports macOS
-  // denied notification authorization (notification:permission-denied event,
-  // emitted by 167-06's onNotificationAuthResult callback).
-  const [notifyPermissionDenied, setNotifyPermissionDenied] = useState(false)
-
   // Stay-on-hub-after-create toggle state (Phase 168 UX-01) — default OFF (D-09).
   const [stayOnHubAfterCreate, setStayOnHubAfterCreate] = useState(false)
   const [stayOnHubAfterCreateLoaded, setStayOnHubAfterCreateLoaded] = useState(false)
@@ -150,10 +97,6 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
   // capability signing key, invalidating every outstanding shared link.
   const [showRegenModal, setShowRegenModal] = useState(false)
   const [regenError, setRegenError] = useState<string | null>(null)
-
-  // Phase 107-03 SHELL-11 — shell binary path setting (Settings → Paths row).
-  const [shellPath, setShellPath] = useState('')
-  const [shellPathError, setShellPathError] = useState('')
 
   // Load web serving state on mount.
   useEffect(() => {
@@ -175,17 +118,6 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
       }
     }
     void loadWebState()
-  }, [])
-
-  // Load stored CLI path overrides from daemon on mount.
-  // Phase 107-03 SHELL-11: also load shell binary path in parallel.
-  useEffect(() => {
-    GetCLIPaths().then(paths => {
-      if (paths && Object.keys(paths).length > 0) {
-        setCustomPaths(prev => ({ ...prev, ...paths }))
-      }
-    }).catch(() => {})
-    GetShellPath().then(setShellPath).catch(() => setShellPath(''))
   }, [])
 
   // Fetch LAN password when in local mode and server is running.
@@ -214,22 +146,6 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
     }).catch(() => setToggleLoaded(true))
   }, [])
 
-  // Load auto-close preference on mount (Phase 84 D-11)
-  useEffect(() => {
-    GetAutoCloseSession().then(val => {
-      setAutoCloseSession(val)
-      setAutoCloseLoaded(true)
-    }).catch(() => setAutoCloseLoaded(true))
-  }, [])
-
-  // Load notify-on-waiting preference on mount (Phase 167 NTF-04).
-  useEffect(() => {
-    GetNotifyOnWaiting().then(val => {
-      setNotifyOnWaiting(val)
-      setNotifyOnWaitingLoaded(true)
-    }).catch(() => setNotifyOnWaitingLoaded(true))
-  }, [])
-
   // Load stay-on-hub-after-create preference on mount (Phase 168 UX-01).
   useEffect(() => {
     GetStayOnHubAfterCreate().then(val => {
@@ -244,19 +160,6 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
       setShellWarnEnabled(val)
       setShellWarnLoaded(true)
     }).catch(() => setShellWarnLoaded(true))
-  }, [])
-
-  // Phase 167-07 (M-41 gap closure) — subscribe to the backend's
-  // notification:permission-denied event so a denied macOS authorization
-  // request surfaces a remediation hint instead of a silent dead end. The
-  // paired permission-granted subscription lets the hint self-heal once the
-  // user fixes permissions and re-toggles (Phase 167 WR-01) — otherwise the
-  // hint stayed stuck for the whole session and its own remediation text
-  // ("toggle off and on again") never cleared it.
-  useEffect(() => {
-    const offDenied = EventsOn('notification:permission-denied', () => setNotifyPermissionDenied(true))
-    const offGranted = EventsOn('notification:permission-granted', () => setNotifyPermissionDenied(false))
-    return () => { offDenied(); offGranted() }
   }, [])
 
   async function handleCopyPassword() {
@@ -295,90 +198,14 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
     setShowDashQR(true)
   }
 
-  function tailscaleStatusClass(h: SettingsTabProps['tailscaleHealth']): string {
+  function tailscaleStatusClass(h: TailscaleHealth | null): string {
     if (!h) return ''
-    if (h.connected) return 'ok'
-    // Phase 169-02 (FIX-05): permission-limited is a distinct caution state \u2014
-    // never 'ok' (would falsely imply Connected). Checked before daemonUp/
-    // binaryFound so it pre-empts the generic "Not Connected"/"Daemon Stopped"
-    // classification once the backend has confirmed the daemon is alive but
-    // this account can't read its status.
-    if (h.permissionLimited) return 'warn'
-    if (h.daemonUp) return 'warn'
-    if (h.binaryFound) return 'warn'
-    return 'error'
+    return h.connected ? 'ok' : 'error'
   }
 
-  function tailscaleStatusText(h: SettingsTabProps['tailscaleHealth']): string {
+  function tailscaleStatusText(h: TailscaleHealth | null): string {
     if (!h) return 'Checking\u2026'
-    if (h.connected) return 'Connected'
-    // Phase 169-02 (FIX-05): distinct label \u2014 must never contain "Connected".
-    if (h.permissionLimited) return 'Permission Limited'
-    if (h.daemonUp) return 'Not Connected'
-    if (h.binaryFound) return 'Daemon Stopped'
-    return 'Not Installed'
-  }
-
-  async function handleSaveCLIPaths() {
-    setSaving(true)
-    setError(null)
-    try {
-      // Save ALL non-empty paths unconditionally. The previous logic only
-      // saved paths that differed from the detected value, which meant
-      // correcting a stale stored override (e.g. "/bin/sh") back to the
-      // detected path was silently skipped — the stale value persisted.
-      for (const cli of clis) {
-        const path = (customPaths[cli.Name] ?? '').trim()
-        if (path !== '') {
-          await UpdateCLIPath(cli.Name, path)
-        }
-      }
-      // Save tailscale path even if not in detected CLIs list
-      const tsCustom = (customPaths['tailscale'] ?? '').trim()
-      if (tsCustom !== '') {
-        await UpdateCLIPath('tailscale', tsCustom)
-      }
-      // Phase 107-03 SHELL-11: save shell binary path via daemon PATCH.
-      // Runs inside try/catch so a validation error (daemon 400) surfaces
-      // inline below the field without blocking the other paths from saving.
-      // WR-02 fix: track whether the shell-path save succeeded so we can
-      // suppress the false "Saved!" indicator when validation fails.
-      let shellPathOk = true
-      try {
-        await SetShellPath(shellPath.trim())
-        setShellPathError('')
-      } catch (err) {
-        shellPathOk = false
-        setShellPathError(err instanceof Error ? err.message : String(err))
-        // Continue — partial save is acceptable per existing tailscale pattern.
-      }
-      if (shellPathOk) {
-        setSaved(true)
-        setTimeout(() => setSaved(false), 1500)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleBrowse(cliName: string) {
-    const current = customPaths[cliName] ?? ''
-    const dir = current ? current.replace(/[/\\][^/\\]*$/, '') : ''
-    const selected = await OpenFileDialog(dir)
-    if (selected) {
-      setCustomPaths(prev => ({ ...prev, [cliName]: selected }))
-    }
-  }
-
-  // Phase 107-03 SHELL-11 — Browse handler for the shell binary path field.
-  async function handleShellBrowse() {
-    const dir = shellPath ? shellPath.replace(/[/\\][^/\\]*$/, '') : ''
-    const selected = await OpenFileDialog(dir)
-    if (selected) {
-      setShellPath(selected)
-    }
+    return h.connected ? 'Connected' : 'Not connected'
   }
 
   async function handleAcknowledgeCT() {
@@ -405,40 +232,7 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
     }
   }
 
-  async function handleToggleAutoClose() {
-    const next = !autoCloseSession
-    setAutoCloseSaving(true)
-    setAutoCloseError(null)
-    try {
-      await SetAutoCloseSession(next)
-      setAutoCloseSession(next)
-    } catch (err) {
-      setAutoCloseError('Could not save preference \u2014 ' + (err instanceof Error ? err.message : String(err)))
-    } finally {
-      setAutoCloseSaving(false)
-    }
-  }
-
-  // Phase 167 NTF-04 \u2014 instant toggle (no confirm dialog), mirrors handleToggleMinimized.
-  async function handleToggleNotifyOnWaiting() {
-    const next = !notifyOnWaiting
-    setNotifyOnWaitingSaving(true)
-    setNotifyOnWaitingError(null)
-    // Clear any stale permission-denied hint before re-requesting authorization
-    // (Phase 167 WR-01) — the backend re-runs the auth request on enable and
-    // will re-emit denied if it is still denied, or granted to self-heal.
-    if (next) setNotifyPermissionDenied(false)
-    try {
-      await SetNotifyOnWaiting(next)
-      setNotifyOnWaiting(next)
-    } catch (err) {
-      setNotifyOnWaitingError('Could not save preference \u2014 ' + (err instanceof Error ? err.message : String(err)))
-    } finally {
-      setNotifyOnWaitingSaving(false)
-    }
-  }
-
-  // Phase 168 UX-01 — instant toggle (no confirm dialog), mirrors handleToggleNotifyOnWaiting.
+  // Phase 168 UX-01 — instant toggle (no confirm dialog), mirrors handleToggleMinimized.
   async function handleToggleStayOnHub() {
     const next = !stayOnHubAfterCreate
     setStayOnHubAfterCreateSaving(true)
@@ -505,6 +299,9 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
     }
   }
 
+  // NET-01 / Amendment 3: Start is gated like Share; Stop stays available.
+  const tailscaleOff = !!tailscaleHealth && !tailscaleHealth.connected
+
   async function handleToggleServer() {
     setServerError(null)
     setServerLoading(true)
@@ -563,67 +360,8 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
           {toggleError && <p className="settings-panel__error">{toggleError}</p>}
         </div>
 
-        {/* Phase 167 NTF-04 — notify-on-waiting toggle (Behavior section, per LOCKED user
-            correction — NOT Session Behavior; default OFF). */}
-        <div className="settings-panel__field-group">
-          {notifyOnWaitingLoaded && (
-            <label
-              className={`settings-panel__toggle-row${notifyOnWaiting ? ' settings-panel__toggle-row--checked' : ''}`}
-              htmlFor="notifyOnWaiting"
-              style={notifyOnWaitingSaving ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-            >
-              <span className="settings-panel__toggle-track">
-                <span className="settings-panel__toggle-thumb" />
-              </span>
-              <span className="settings-panel__toggle-label">Notify me when a session is awaiting input</span>
-            </label>
-          )}
-          <input
-            type="checkbox"
-            id="notifyOnWaiting"
-            className="settings-panel__toggle-input"
-            checked={notifyOnWaiting}
-            onChange={() => void handleToggleNotifyOnWaiting()}
-          />
-          <p className="settings-panel__description">
-            Shows a native OS notification the moment a session starts waiting for your input, even when AgentHub is hidden in the tray. Off by default.
-          </p>
-          {notifyOnWaitingError && <p className="settings-panel__error">{notifyOnWaitingError}</p>}
-          {notifyPermissionDenied && (
-            <p className="settings-panel__error">
-              AgentHub is not allowed to send notifications. Enable it in System Settings {'>'} Notifications {'>'} AgentHub, then toggle this setting off and on again.
-            </p>
-          )}
-        </div>
-
-        {/* Session Behavior section (Phase 84 D-11) */}
+        {/* Session Behavior section */}
         <h3 id="settings-session-behavior">Session Behavior</h3>
-        <div className="settings-panel__field-group">
-          {autoCloseLoaded && (
-            <label
-              className={`settings-panel__toggle-row${autoCloseSession ? ' settings-panel__toggle-row--checked' : ''}`}
-              htmlFor="autoCloseSession"
-              style={autoCloseSaving ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-            >
-              <span className="settings-panel__toggle-track">
-                <span className="settings-panel__toggle-thumb" />
-              </span>
-              <span className="settings-panel__toggle-label">Auto-close tab on exit</span>
-            </label>
-          )}
-          <input
-            type="checkbox"
-            id="autoCloseSession"
-            className="settings-panel__toggle-input"
-            checked={autoCloseSession}
-            onChange={() => void handleToggleAutoClose()}
-          />
-          <p className="settings-panel__description">
-            Automatically close the tab 5 seconds after an agent exits with code 0.
-          </p>
-          {autoCloseError && <p className="settings-panel__error">{autoCloseError}</p>}
-        </div>
-
         {/* Phase 168 UX-01 — stay-on-hub-after-create toggle (Session Behavior, D-08/D-09) */}
         <div className="settings-panel__field-group">
           {stayOnHubAfterCreateLoaded && (
@@ -747,56 +485,9 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
             {tailscaleHealth
               ? (tailscaleHealth.connected
                   ? `Connected via ${tailscaleHealth.domain || tailscaleHealth.ip}`
-                  : tailscaleHealth.permissionLimited
-                    ? "Tailscale is running, but AgentHub can't read its status on this macOS account. Grant this account admin access, or install the Homebrew tailscale build (which uses a different socket path)."
-                    : tailscaleHealth.daemonUp
-                      ? 'Daemon running but not connected to a Tailscale network'
-                      : tailscaleHealth.binaryFound
-                        ? (tailscaleHealth.platformHint === 'darwin'
-                            ? 'Installed but not running \u2014 open Tailscale from Applications or the menu bar'
-                            : tailscaleHealth.platformHint === 'linux'
-                              ? 'Installed but not running \u2014 run: sudo systemctl start tailscaled'
-                              : tailscaleHealth.platformHint === 'windows'
-                                ? 'Installed but not running \u2014 open Tailscale from the Start menu or system tray'
-                                : 'Installed but daemon is not running')
-                        : 'Not detected \u2014 install from tailscale.com')
+                  : TAILSCALE_OFF_REASON)
               : 'Checking\u2026'}
           </p>
-          {tailscaleHealth && !tailscaleHealth.connected && (
-            <details className="settings-panel__details" style={{ marginTop: '0.5rem' }}>
-              <summary style={{ cursor: 'pointer', color: '#7aa2f7', fontSize: '0.8rem' }}>Show diagnostics</summary>
-              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
-                {/* Step 1: Binary detected */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{ color: tailscaleHealth.binaryFound ? '#9ece6a' : '#f7768e', fontFamily: 'monospace' }}>
-                    {tailscaleHealth.binaryFound ? '\u2713' : '\u2717'}
-                  </span>
-                  <span style={{ color: tailscaleHealth.binaryFound ? '#c0caf5' : '#f7768e' }}>Binary detected</span>
-                </div>
-                {/* Step 2: Daemon running */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{ color: !tailscaleHealth.binaryFound ? '#414868' : tailscaleHealth.daemonUp ? '#9ece6a' : '#f7768e', fontFamily: 'monospace' }}>
-                    {!tailscaleHealth.binaryFound ? '\u2500' : tailscaleHealth.daemonUp ? '\u2713' : '\u2717'}
-                  </span>
-                  <span style={{ color: !tailscaleHealth.binaryFound ? '#414868' : tailscaleHealth.daemonUp ? '#c0caf5' : '#f7768e' }}>Daemon running</span>
-                </div>
-                {/* Step 3: Connected to Tailscale */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{ color: !tailscaleHealth.daemonUp ? '#414868' : tailscaleHealth.connected ? '#9ece6a' : '#f7768e', fontFamily: 'monospace' }}>
-                    {!tailscaleHealth.daemonUp ? '\u2500' : tailscaleHealth.connected ? '\u2713' : '\u2717'}
-                  </span>
-                  <span style={{ color: !tailscaleHealth.daemonUp ? '#414868' : '#c0caf5' }}>Connected to Tailscale</span>
-                </div>
-                {/* Step 4: TLS certificates ready */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: !tailscaleHealth.connected ? '#414868' : tailscaleHealth.hasCerts ? '#9ece6a' : '#f59e0b', fontFamily: 'monospace' }}>
-                    {!tailscaleHealth.connected ? '\u2500' : tailscaleHealth.hasCerts ? '\u2713' : '\u2717'}
-                  </span>
-                  <span style={{ color: !tailscaleHealth.connected ? '#414868' : '#c0caf5' }}>TLS certificates ready</span>
-                </div>
-              </div>
-            </details>
-          )}
         </div>
 
         {/* CT Disclosure Banner */}
@@ -844,11 +535,15 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
           <button
             className={`settings-panel__btn ${isServerRunning ? 'settings-panel__btn--cancel' : 'settings-panel__btn--save'}`}
             onClick={handleToggleServer}
-            disabled={serverLoading || (!isServerRunning && !ctDisclosed)}
+            disabled={serverLoading || (!isServerRunning && (!ctDisclosed || tailscaleOff))}
             title={
-              !ctDisclosed && !isServerRunning
-                ? 'Acknowledge the Certificate Transparency disclosure first'
-                : undefined
+              isServerRunning
+                ? undefined
+                : tailscaleOff
+                  ? TAILSCALE_OFF_REASON
+                  : !ctDisclosed
+                    ? 'Acknowledge the Certificate Transparency disclosure first'
+                    : undefined
             }
           >
             {serverLoading
@@ -946,118 +641,6 @@ export function SettingsTab({ clis, tailscaleHealth, webServerMode, onWebServerS
           onConfirm={handleRegenerateSigningKey}
           onCancel={() => setShowRegenModal(false)}
         />
-
-        {/* Paths section (SET-01 fix: single unified table) */}
-        <h3 id="settings-paths">Paths</h3>
-        {clis.length === 0 && (
-          <p className="settings-panel__empty">
-            No CLIs detected. Install claude, opencode, or another supported CLI
-            and restart AgentHub. A manual tailscale path can still be configured below.
-          </p>
-        )}
-        <table className="settings-panel__table">
-          <thead>
-            <tr>
-              <th>CLI</th>
-              <th>Path</th>
-            </tr>
-          </thead>
-          <tbody>
-            {clis.map((cli) => (
-              <tr key={cli.Name}>
-                <td className="settings-panel__cli-name">{cli.Name}</td>
-                <td>
-                  <div className="settings-panel__path-row">
-                    <input
-                      className="settings-panel__path-input"
-                      type="text"
-                      value={customPaths[cli.Name] ?? cli.Path}
-                      onChange={(e) =>
-                        setCustomPaths((prev) => ({ ...prev, [cli.Name]: e.target.value }))
-                      }
-                      placeholder={cli.Path || `Path to ${cli.Name}`}
-                    />
-                    <button
-                      className="settings-panel__browse-btn"
-                      onClick={() => void handleBrowse(cli.Name)}
-                      title="Browse for executable"
-                    >
-                      Browse
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {/* Phase 107-03 SHELL-11: Shell binary path row — after AI CLI rows, before tailscale.
-                Participates in the existing Save Paths flow. Error renders inline below field. */}
-            <tr key="shell">
-              <td className="settings-panel__cli-name">shell</td>
-              <td>
-                <div className="settings-panel__path-row">
-                  <input
-                    id="settings-shell-path"
-                    className="settings-panel__path-input"
-                    type="text"
-                    value={shellPath}
-                    onChange={(e) => setShellPath(e.target.value)}
-                    placeholder="e.g. /bin/zsh"
-                    aria-label="Shell binary path"
-                    aria-describedby="settings-shell-path-desc"
-                  />
-                  <button
-                    className="settings-panel__browse-btn"
-                    onClick={() => void handleShellBrowse()}
-                    title="Browse for shell executable"
-                  >
-                    Browse
-                  </button>
-                </div>
-                {shellPathError && (
-                  <p id="settings-shell-path-desc" className="settings-panel__error" role="alert">
-                    {shellPathError}
-                  </p>
-                )}
-              </td>
-            </tr>
-            {!clis.find(c => c.Name === 'tailscale') && (
-              <tr key="tailscale">
-                <td className="settings-panel__cli-name">tailscale</td>
-                <td>
-                  <div className="settings-panel__path-row">
-                    <input
-                      className="settings-panel__path-input"
-                      type="text"
-                      value={customPaths['tailscale'] ?? ''}
-                      onChange={(e) =>
-                        setCustomPaths((prev) => ({ ...prev, tailscale: e.target.value }))
-                      }
-                      placeholder="Path to tailscale (leave blank to auto-detect)"
-                    />
-                    <button
-                      className="settings-panel__browse-btn"
-                      onClick={() => void handleBrowse('tailscale')}
-                      title="Browse for executable"
-                    >
-                      Browse
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-
-        {error && <p className="settings-panel__error">{error}</p>}
-
-        <div className="settings-panel__save-paths-row">
-          <button
-            className={`settings-panel__btn ${saved ? 'settings-panel__btn--saved' : 'settings-panel__btn--save'}`}
-            onClick={handleSaveCLIPaths}
-            disabled={saving || saved}
-          >
-            {saving ? 'Saving\u2026' : saved ? 'Saved!' : 'Save Paths'}
-          </button>
-        </div>
 
         {/* Plugins section (Phase 92 PUI-01, Phase 99 PUI-02) \u2014 last section per UI-SPEC layout */}
         <PluginsSection onPluginToggleSideEffect={onPluginToggleSideEffect} />

@@ -85,8 +85,8 @@ func (a *API) handleChatExport(w http.ResponseWriter, r *http.Request) {
 
 // wrapRelayWithChat returns a handler that serves the chat read routes (with
 // relay CORS) and falls through to the given handler for all other paths. See
-// relay_remote_files.go for the canonical import-cycle rationale and the CORS
-// requirement: the relay surface is cross-origin from the Wails webview
+// relay_remote_files.go for the import-cycle rationale. CORS is required
+// because the relay surface is cross-origin from the Wails webview
 // (wails://… → 127.0.0.1:<relayPort>).
 func (a *API) wrapRelayWithChat(next http.Handler) http.Handler {
 	mux := http.NewServeMux()
@@ -97,12 +97,11 @@ func (a *API) wrapRelayWithChat(next http.Handler) http.Handler {
 	// OPTIONS preflight for the GET routes. Although simple GET requests
 	// without custom headers do not trigger a browser preflight, a custom
 	// Accept header or a future POST verb would. Registering the preflight
-	// handler now prevents a silent breakage and matches the pattern used by
-	// the remote-files wrap routes.
+	// handler now prevents a silent breakage.
 	mux.HandleFunc("OPTIONS /api/chat/{id}/history", relay.FilesPreflight)
 	mux.HandleFunc("OPTIONS /api/chat/{id}/export", relay.FilesPreflight)
 
-	// All other paths (sessions WS, /api/files/*, /api/files/remote/*, etc.)
+	// All other paths (sessions WS, remote WS proxy, etc.)
 	// fall through to the wrapped handler. Go 1.22+ mux: "/" is the
 	// least-specific match so the explicit chat routes above always win.
 	mux.Handle("/", next)

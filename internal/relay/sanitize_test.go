@@ -2,136 +2,20 @@ package relay
 
 import "testing"
 
-func TestSanitizePTYText(t *testing.T) {
+func TestSanitizeChatContent(t *testing.T) {
 	cases := []struct {
-		name  string
-		input string
-		want  string
+		name, in, want string
 	}{
-		// Plain passthrough — printable text passes through unchanged.
-		{
-			name:  "plain passthrough",
-			input: "hello world",
-			want:  "hello world\n",
-		},
-		// Trailing spaces trimmed before the single newline.
-		{
-			name:  "trailing spaces trimmed",
-			input: "hello  ",
-			want:  "hello\n",
-		},
-		// LF collapses to single space.
-		{
-			name:  "LF collapses to space",
-			input: "hello\nworld",
-			want:  "hello world\n",
-		},
-		// CR collapses to single space.
-		{
-			name:  "CR collapses to space",
-			input: "hello\rworld",
-			want:  "hello world\n",
-		},
-		// CRLF collapses to exactly one space (Pitfall 1: must not yield two spaces).
-		{
-			name:  "CRLF collapses to single space",
-			input: "hello\r\nworld",
-			want:  "hello world\n",
-		},
-		// Null byte stripped.
-		{
-			name:  "null byte stripped",
-			input: "hel\x00lo",
-			want:  "hello\n",
-		},
-		// C0 BEL (0x07) stripped.
-		{
-			name:  "C0 BEL stripped",
-			input: "hel\x07lo",
-			want:  "hello\n",
-		},
-		// DEL (0x7F) stripped.
-		{
-			name:  "DEL stripped",
-			input: "hel\x7flo",
-			want:  "hello\n",
-		},
-		// C1 NEL (U+0085) stripped.
-		{
-			name:  "C1 NEL stripped",
-			input: "hello",
-			want:  "hello\n",
-		},
-		// C1 U+0080 stripped.
-		{
-			name:  "C1 U+0080 stripped",
-			input: "hello",
-			want:  "hello\n",
-		},
-		// CSI clear-screen sequence stripped.
-		{
-			name:  "CSI clear screen stripped",
-			input: "hello\x1b[2Jworld",
-			want:  "helloworld\n",
-		},
-		// CSI SGR color sequence stripped.
-		{
-			name:  "CSI color code stripped",
-			input: "hel\x1b[31mlo",
-			want:  "hello\n",
-		},
-		// OSC BEL-terminated sequence stripped.
-		{
-			name:  "OSC BEL-terminated stripped",
-			input: "hi\x1b]0;title\x07there",
-			want:  "hithere\n",
-		},
-		// OSC ST-terminated sequence stripped (ESC \ = String Terminator).
-		{
-			name:  "OSC ST-terminated stripped",
-			input: "hi\x1b]0;title\x1b\\there",
-			want:  "hithere\n",
-		},
-		// Bidi RLO (U+202E) stripped — CVE-2021-42574 class.
-		{
-			name:  "bidi RLO stripped",
-			input: "hel‮lo",
-			want:  "hello\n",
-		},
-		// Bidi LRM (U+200E) stripped.
-		{
-			name:  "bidi LRM stripped",
-			input: "hel‎lo",
-			want:  "hello\n",
-		},
-		// Empty input yields bare newline.
-		{
-			name:  "empty input",
-			input: "",
-			want:  "\n",
-		},
-		// Only-newlines collapse to bare newline (spaces trimmed).
-		{
-			name:  "only newlines",
-			input: "\n\n\n",
-			want:  "\n",
-		},
-		// Mixed attack vector: CSI + null + CRLF — only control chars stripped.
-		// ';' (0x3B) is printable and must pass through unchanged; the
-		// plan's expected value "cmd evil\n" dropped it incorrectly (Rule 1 fix).
-		{
-			name:  "mixed attack vector",
-			input: "cmd\x1b[A\x00\r\n;evil",
-			want:  "cmd ;evil\n",
-		},
+		{"plain text unchanged", "hello @alice", "hello @alice"},
+		{"C0 controls and ESC stripped", "a\x00b\x1b[2Jc\r\n", "ab[2Jc"},
+		{"DEL stripped", "x\x7fy", "xy"},
+		{"C1 stripped", "x\u0085y\u009bz", "xyz"},
+		{"bidi overrides stripped", "safe‮evil⁦", "safeevil"},
+		{"non-control unicode kept", "café ✓", "café ✓"},
 	}
-
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := SanitizePTYText(tc.input)
-			if got != tc.want {
-				t.Errorf("SanitizePTYText(%q) = %q, want %q", tc.input, got, tc.want)
-			}
-		})
+		if got := SanitizeChatContent(tc.in); got != tc.want {
+			t.Errorf("%s: SanitizeChatContent(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
 	}
 }

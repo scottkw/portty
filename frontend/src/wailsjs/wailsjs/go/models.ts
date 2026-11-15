@@ -1,23 +1,5 @@
 export namespace daemon {
 	
-	export class DetectedShell {
-	    name: string;
-	    displayName: string;
-	    path: string;
-	    argv: string[];
-	
-	    static createFrom(source: any = {}) {
-	        return new DetectedShell(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.displayName = source["displayName"];
-	        this.path = source["path"];
-	        this.argv = source["argv"];
-	    }
-	}
 	export class ImageConfig {
 	    storageLimit: number;
 	
@@ -35,7 +17,6 @@ export namespace daemon {
 	    writeUrl: string;
 	    readCode: string;
 	    writeCode: string;
-	    homeDir: boolean;
 	    publicReadCode: string;
 	
 	    static createFrom(source: any = {}) {
@@ -48,7 +29,6 @@ export namespace daemon {
 	        this.writeUrl = source["writeUrl"];
 	        this.readCode = source["readCode"];
 	        this.writeCode = source["writeCode"];
-	        this.homeDir = source["homeDir"];
 	        this.publicReadCode = source["publicReadCode"];
 	    }
 	}
@@ -161,7 +141,6 @@ export namespace main {
 	export class RemoteSession {
 	    id: string;
 	    name: string;
-	    cliType: string;
 	    status: string;
 	    url: string;
 	
@@ -173,7 +152,6 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
-	        this.cliType = source["cliType"];
 	        this.status = source["status"];
 	        this.url = source["url"];
 	    }
@@ -215,15 +193,12 @@ export namespace main {
 	
 	export class SessionInfo {
 	    id: string;
-	    cli: string;
 	    name: string;
 	    state: string;
 	    status: string;
 	    createdAt: string;
 	    hostname: string;
 	    webEnabled: boolean;
-	    homeDir: boolean;
-	    browseEnabled: boolean;
 	    funnelActive: boolean;
 	    funnelWriteActive: boolean;
 	    viewerCount: number;
@@ -238,15 +213,12 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
-	        this.cli = source["cli"];
 	        this.name = source["name"];
 	        this.state = source["state"];
 	        this.status = source["status"];
 	        this.createdAt = source["createdAt"];
 	        this.hostname = source["hostname"];
 	        this.webEnabled = source["webEnabled"];
-	        this.homeDir = source["homeDir"];
-	        this.browseEnabled = source["browseEnabled"];
 	        this.funnelActive = source["funnelActive"];
 	        this.funnelWriteActive = source["funnelWriteActive"];
 	        this.viewerCount = source["viewerCount"];
@@ -258,26 +230,6 @@ export namespace main {
 
 }
 
-export namespace pty {
-	
-	export class DetectedCLI {
-	    Name: string;
-	    DisplayName: string;
-	    Path: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new DetectedCLI(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Name = source["Name"];
-	        this.DisplayName = source["DisplayName"];
-	        this.Path = source["Path"];
-	    }
-	}
-
-}
 
 export namespace updater {
 	
@@ -303,16 +255,11 @@ export namespace updater {
 export namespace webserver {
 	
 	export class TailscaleHealth {
-	    installed: boolean;
 	    connected: boolean;
 	    hasCerts: boolean;
 	    ip: string;
 	    domain: string;
-	    binaryFound: boolean;
-	    daemonUp: boolean;
-	    platformHint: string;
 	    acceptDns: boolean;
-	    permissionLimited: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new TailscaleHealth(source);
@@ -320,16 +267,11 @@ export namespace webserver {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.installed = source["installed"];
 	        this.connected = source["connected"];
 	        this.hasCerts = source["hasCerts"];
 	        this.ip = source["ip"];
 	        this.domain = source["domain"];
-	        this.binaryFound = source["binaryFound"];
-	        this.daemonUp = source["daemonUp"];
-	        this.platformHint = source["platformHint"];
 	        this.acceptDns = source["acceptDns"];
-	        this.permissionLimited = source["permissionLimited"];
 	    }
 	}
 

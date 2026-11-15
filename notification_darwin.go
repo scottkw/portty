@@ -10,15 +10,12 @@ package main
 
 int hasValidBundleIdentifier(void);
 void sendNotification(const char *identifier, const char *title, const char *body);
-void requestNotificationAuthorization(void);
 */
 import "C"
 
 import (
 	"log"
 	"unsafe"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // hasAppBundleID reports whether the running process has a valid app-bundle
@@ -30,8 +27,10 @@ func hasAppBundleID() bool {
 }
 
 // sendNotification sends a macOS notification using UNUserNotificationCenter.
-// Called by QuitGUIOnly (fixed identifier) and, from Plan 03, per-session
-// waiting notifications. The identifier is threaded through to
+// It is the one native notification path: QuitGUIOnly's quit-to-tray notice
+// (via App.sendNotificationFunc) now, Phase 6 update notices later. The
+// macOS permission prompt is requested lazily on first send. The identifier
+// is threaded through to
 // UNNotificationRequest so concurrent notifications don't collapse into one
 // another (RESEARCH Pitfall 2).
 //
@@ -52,33 +51,4 @@ func sendNotification(identifier, title, body string) {
 	C.free(unsafe.Pointer(cid))
 	C.free(unsafe.Pointer(ctitle))
 	C.free(unsafe.Pointer(cbody))
-}
-
-// requestNotificationAuth is the darwin implementation of the cross-platform
-// proactive-authorization seam (app.go's requestNotificationAuthFunc). Called
-// when the user enables the NotifyOnWaiting toggle (Phase 167-06, M-41 gap
-// closure) so the macOS permission prompt surfaces at toggle-time instead of
-// only lazily on the first waiting transition.
-func requestNotificationAuth() {
-	log.Printf("notification: requesting proactive native authorization")
-	C.requestNotificationAuthorization()
-}
-
-//export onNotificationAuthResult
-func onNotificationAuthResult(granted C.int) {
-	log.Printf("notification: proactive authorization result granted=%d", int(granted))
-	// Emit denied OR granted so the Settings hint can self-heal (Phase 167 WR-01):
-	// a bare return on grant left a stale denied-hint stuck for the session after
-	// the user fixed permissions and re-toggled. Hand off to a goroutine — the
-	// completion-handler thread is not safe for all Wails calls (mirrors
-	// onTraySession in tray.go).
-	event := "notification:permission-granted"
-	if granted == 0 {
-		event = "notification:permission-denied"
-	}
-	go func() {
-		if appInstance != nil && appInstance.ctx != nil {
-			runtime.EventsEmit(appInstance.ctx, event, nil)
-		}
-	}()
 }

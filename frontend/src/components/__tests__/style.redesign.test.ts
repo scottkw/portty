@@ -185,9 +185,9 @@ describe('Phase 141-07: comp type scale tokens applied', () => {
 
 // ─── D-03 colorblind fences — MUST remain unchanged ──────────────────────────
 
-describe('Phase 141-07: D-03 colorblind-safe fences — agent-badge + status-state', () => {
-  it('.tab__agent-badge--claude is still present (D-03 fence — per-agent semantic hex)', () => {
-    expect(cssRaw).toContain('.tab__agent-badge--claude')
+describe('Phase 141-07: D-03 colorblind-safe fences — status-state', () => {
+  it('agent-badge palette is gone (01-07 STRP-01 — no agent identity)', () => {
+    expect(cssRaw).not.toContain('.tab__agent-badge')
   })
 
   it('.tab-status-bar__state--on is still present (D-03 fence — tmux state color)', () => {
@@ -200,5 +200,30 @@ describe('Phase 141-07: D-03 colorblind-safe fences — agent-badge + status-sta
 
   it('.tab-status-bar__state--inactive is still present (D-03 fence)', () => {
     expect(cssRaw).toContain('.tab-status-bar__state--inactive')
+  })
+})
+
+// ─── 01-04: New Session modal (01-UI-SPEC section 1) ────────────────────────
+
+describe('01-04: New Session modal CSS', () => {
+  const rule = (selector: string) => {
+    const m = cssRaw.match(new RegExp(selector.replace(/[.-]/g, '\\$&') + '\\s*\\{([^}]*)\\}'))
+    return m ? m[1] : ''
+  }
+
+  it('folder display truncates on one line and can shrink in the flex row', () => {
+    const body = rule('.new-session-modal__folder-display')
+    expect(body).toMatch(/overflow:\s*hidden/)
+    expect(body).toMatch(/text-overflow:\s*ellipsis/)
+    expect(body).toMatch(/white-space:\s*nowrap/)
+    expect(body).toMatch(/min-width:\s*0/)
+  })
+
+  it('shell-line rules (--mono display, helper text) are gone', () => {
+    expect(cssRaw).not.toMatch(/new-session-modal__(folder-display--mono|helper)/)
+  })
+
+  it('agent-button and args rule families are gone', () => {
+    expect(cssRaw).not.toMatch(/new-session-modal__(agent|args)/)
   })
 })

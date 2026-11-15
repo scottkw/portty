@@ -2,9 +2,9 @@ package daemon
 
 // Phase 122-01 — Remote capability store.
 //
-// RemoteCapStore caches per-session (baseURL, capToken) tuples that the local
-// daemon's `/api/files/remote/{sessionID}/...` proxy uses to reach a remote
-// peer's webserver. The store lives in process memory only — there is no disk
+// RemoteCapStore caches per-session (baseURL, capToken) tuples the local
+// daemon uses to open a remote session (open-url) and to reach a remote
+// peer's webserver through the remote terminal WS proxy. The store lives in process memory only — there is no disk
 // persistence (matches JoinCodeManager invariant). A daemon restart wipes the
 // cache and the GUI/TUI must re-exchange the join code to repopulate.
 //

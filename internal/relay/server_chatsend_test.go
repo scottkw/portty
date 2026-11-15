@@ -52,7 +52,7 @@ func TestChatSend_RWBroadcasts_RelayPath(t *testing.T) {
 		t.Errorf("broadcast frame type = 0x%02x, want 0x%02x (MsgChat)", chatFrame[0], MsgChat)
 	}
 
-	// Decode and verify: SessionInject must be false (chat-send, not inject).
+	// Decode and verify the content.
 	_, chatPayload, err := ParseFrame(chatFrame)
 	if err != nil {
 		t.Fatalf("ParseFrame MsgChat: %v", err)
@@ -60,9 +60,6 @@ func TestChatSend_RWBroadcasts_RelayPath(t *testing.T) {
 	var msg ChatMessage
 	if err := json.Unmarshal(chatPayload, &msg); err != nil {
 		t.Fatalf("unmarshal ChatMessage: %v", err)
-	}
-	if msg.SessionInject {
-		t.Error("ChatMessage.SessionInject = true, want false (chat-send must not mark as inject)")
 	}
 	if msg.Content != "relay chat send test" {
 		t.Errorf("ChatMessage.Content = %q, want %q", msg.Content, "relay chat send test")
@@ -161,7 +158,7 @@ func TestChatSend_MalformedIgnored_RelayPath(t *testing.T) {
 		t.Fatalf("write empty-content frame: %v", err)
 	}
 
-	// Wait briefly — no MsgChat or MsgInjectError should arrive.
+	// Wait briefly — no MsgChat should arrive.
 	time.Sleep(150 * time.Millisecond)
 
 	// Drain any remaining frames looking for unexpected MsgChat.
@@ -174,9 +171,6 @@ func TestChatSend_MalformedIgnored_RelayPath(t *testing.T) {
 		}
 		if len(rawMsg) > 0 && rawMsg[0] == MsgChat {
 			t.Error("received unexpected MsgChat broadcast after malformed/empty MsgChatSend")
-		}
-		if len(rawMsg) > 0 && rawMsg[0] == MsgInjectError {
-			t.Error("received unexpected MsgInjectError NAK after MsgChatSend (chat send must not NAK per RESEARCH Open Question 1)")
 		}
 	}
 

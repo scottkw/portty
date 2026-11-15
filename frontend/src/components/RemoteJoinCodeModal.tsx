@@ -17,11 +17,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 export interface RemoteJoinCodeModalProps {
   remoteSession: { id: string; name: string; hostname: string }
   /**
-   * GAP-134-E: what the cap is being acquired for. Drives the title so a Phase 134
-   * hub-modal cap request is not mislabelled "Files". Defaults to the generic title.
+   * GAP-134-E: what the cap is being acquired for. Drives the title. Defaults to
+   * the generic title.
    * Phase 146 FIX-03: 'open-session' intent is for opening a remote session in the browser.
    */
-  intent?: 'files' | 'hub-modal' | 'open-session'
+  intent?: 'hub-modal' | 'open-session'
   /**
    * Exchange the entered code for a cap (typically: ExchangeJoinCodeAtURL →
    * RegisterRemoteCap two-step in App.tsx). Resolves on success; rejects with
@@ -63,11 +63,8 @@ export function RemoteJoinCodeModal({
   onExchange,
   onClose,
 }: RemoteJoinCodeModalProps): React.ReactElement {
-  // GAP-134-E: only the file-browse flow is about "Files"; the Phase 134 hub-modal
-  // flow opens the interactive/briefing terminal, so don't mislabel it.
   // Phase 146 FIX-03: 'open-session' has its own title.
   const title =
-    intent === 'files' ? 'Join Remote Session — Files' :
     intent === 'open-session' ? 'Open Remote Session' :
     'Join Remote Session'
   const [code, setCode] = useState<string>('')

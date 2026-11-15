@@ -54,7 +54,6 @@ import { HubInteractiveModal } from './HubInteractiveModal'
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'sess-1',
-    cli: 'claude',
     name: 'Test Session',
     state: 'running',
     status: 'running',
@@ -62,8 +61,6 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     hostname: '',
     webEnabled: false,
     viewerCount: 0,
-    homeDir: false,
-    browseEnabled: false,
     funnelActive: false,
     funnelWriteActive: false,
     workDir: '/home/user',

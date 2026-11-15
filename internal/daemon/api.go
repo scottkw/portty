@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/files"
 	"github.com/scottkw/agenthub/internal/relay"
 	"github.com/scottkw/agenthub/internal/tailnet"
 	"github.com/scottkw/agenthub/internal/webserver"
@@ -47,21 +46,13 @@ type API struct {
 	// manager via ws.SetJoinCodes.
 	joinCodes *capability.JoinCodeManager
 
-	// filesHandler serves /api/files/{list,stat,read} on the daemon socket.
-	// Phase 118 / FS-03..FS-07: the resolver closes over engine.GetSessionWorkDir
-	// + files.NewSandbox so each request reconstructs a fresh per-session
-	// Sandbox (no shared mutable state across requests). Loopback transport
-	// is the trust boundary — no auth gate here; the webserver mount
-	// (Phase 119) adds requireFilesRead.
-	filesHandler *files.Handler
-
-	// remoteCaps caches per-session (baseURL, capToken) tuples used by the
-	// /api/files/remote/{sessionID}/... proxy routes. In-memory only;
+	// remoteCaps caches per-session (baseURL, capToken) tuples used to open
+	// remote sessions and by the remote terminal WS proxy. In-memory only;
 	// daemon restart wipes the cache (Phase 122-01 / REMOTE-01).
 	remoteCaps *RemoteCapStore
 
 	// remoteFilesClientForTest, when non-nil, overrides the outbound HTTPS
-	// client used by the remote-files proxy. Tests inject httptest.NewTLSServer's
+	// client used by the remote terminal WS proxy. Tests inject httptest.NewTLSServer's
 	// Client() here so they can drive the proxy without setting up a real
 	// trusted-cert chain. Production code leaves this nil and the proxy
 	// builds a fresh client per request via newRemoteFilesHTTPClient().
@@ -152,20 +143,6 @@ func NewAPI(engine *SessionEngine) *API {
 		tailnetCache: &tailnetCache{},
 		remoteCaps:   NewRemoteCapStore(),
 	}
-	// Phase 118 / FS-03..FS-07: construct the file Handler BEFORE registerRoutes
-	// so the route registrations have a non-nil target. The resolver closes
-	// over a.engine.GetSessionWorkDir + files.NewSandbox — each request gets
-	// a freshly-constructed Sandbox rooted at the session's resolved workDir.
-	a.filesHandler = files.NewHandler(func(sessionID string) (*files.Sandbox, error) {
-		if sessionID == "" {
-			return nil, errors.New("missing session parameter")
-		}
-		wd := a.engine.GetSessionWorkDir(sessionID)
-		if wd == "" {
-			return nil, errors.New("session not found or has no working directory")
-		}
-		return files.NewSandbox(wd)
-	})
 	a.registerRoutes()
 	return a
 }
@@ -178,26 +155,16 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /sessions/{id}", a.handleGetSession)
 	a.mux.HandleFunc("DELETE /sessions/{id}", a.handleDeleteSession)
 	a.mux.HandleFunc("PATCH /sessions/{id}/name", a.handleRenameSession)
-	a.mux.HandleFunc("GET /sessions/{id}/status", a.handleGetSessionStatus)
 	a.mux.HandleFunc("GET /sessions/{id}/tail", a.handleGetSessionTailLines)
 	a.mux.HandleFunc("GET /sessions/{id}/styled-tail", a.handleGetSessionStyledTailLines)
-	a.mux.HandleFunc("GET /settings/cli-paths", a.handleGetCLIPaths)
-	a.mux.HandleFunc("GET /shells", a.handleListShells)
-	a.mux.HandleFunc("PATCH /settings/cli-paths/{name}", a.handleUpdateCLIPath)
 	a.mux.HandleFunc("GET /settings/start-minimized", a.handleGetStartMinimized)
 	a.mux.HandleFunc("PATCH /settings/start-minimized", a.handleSetStartMinimized)
-	a.mux.HandleFunc("GET /settings/notify-on-waiting", a.handleGetNotifyOnWaiting)
-	a.mux.HandleFunc("PATCH /settings/notify-on-waiting", a.handleSetNotifyOnWaiting)
 	a.mux.HandleFunc("GET /settings/stay-on-hub-after-create", a.handleGetStayOnHubAfterCreate)
 	a.mux.HandleFunc("PATCH /settings/stay-on-hub-after-create", a.handleSetStayOnHubAfterCreate)
 	a.mux.HandleFunc("GET /settings/shell-web-share-warned", a.handleGetShellWebShareWarned)
 	a.mux.HandleFunc("PATCH /settings/shell-web-share-warned", a.handleUpdateShellWebShareWarned)
 	a.mux.HandleFunc("GET /settings/shell-web-share-warning-enabled", a.handleGetShellWebShareWarningEnabled)
 	a.mux.HandleFunc("PATCH /settings/shell-web-share-warning-enabled", a.handleSetShellWebShareWarningEnabled)
-	a.mux.HandleFunc("GET /settings/shell-path", a.handleGetShellPath)
-	a.mux.HandleFunc("PATCH /settings/shell-path", a.handleUpdateShellPath)
-	a.mux.HandleFunc("GET /settings/auto-close-session", a.handleGetAutoCloseSession)
-	a.mux.HandleFunc("PATCH /settings/auto-close-session", a.handleSetAutoCloseSession)
 	a.mux.HandleFunc("GET /settings/plugins", a.handleGetPluginSettings)
 	a.mux.HandleFunc("PATCH /settings/plugins", a.handleSetPluginSettings)
 	a.mux.HandleFunc("PATCH /settings/search-config", a.handleSetSearchConfig)
@@ -217,18 +184,12 @@ func (a *API) registerRoutes() {
 	// may reconnect with the same join code.
 	a.mux.HandleFunc("POST /sessions/{id}/disconnect-viewers", a.handleDisconnectViewers)
 	a.mux.HandleFunc("POST /shutdown", a.handleShutdown)
-	// Theme change notification — signals active OpenCode sessions.
-	a.mux.HandleFunc("POST /theme/notify", a.handleNotifyThemeChange)
 	// Tailnet peer discovery.
 	a.mux.HandleFunc("GET /tailnet/peers", a.handleTailnetPeers)
 	// Local mode password endpoint.
 	a.mux.HandleFunc("GET /webserver/local-password", a.handleGetLocalPassword)
 	// Phase 87 capability-based authorization endpoints (D-06, D-09, D-16).
 	a.mux.HandleFunc("POST /sessions/{id}/capabilities", a.handleIssueCapabilities)
-	// Phase 137 / SHARE-03: per-session browse toggle.
-	// Loopback-trust (daemon socket): no auth gate — the owner's GUI is the only caller.
-	// Toggle-off clears grants (ClearGrants) — stale-cap threat mitigation (SHARE-05).
-	a.mux.HandleFunc("POST /sessions/{id}/browse", a.handleSetSessionBrowse)
 	// Phase 165 / FNL-01: per-session Tailscale Funnel toggle.
 	// Loopback-trust (daemon socket): no auth gate — only the owner's GUI calls this.
 	// Disable path routes through disableFunnelForSession (ref-count gate, T-165-09).
@@ -244,47 +205,17 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("DELETE /sessions/{id}/funnel-write", a.handleDisableSessionFunnelWrite)
 	a.mux.HandleFunc("POST /join/exchange", a.handleExchangeJoinCode)
 	a.mux.HandleFunc("POST /capability/regenerate-key", a.handleRegenerateSigningKey)
-	// Phase 118 / FS-03..FS-07: read-only file API on the daemon-local socket.
-	// No auth here — the loopback transport (Unix socket / Windows named pipe)
-	// is the trust boundary (ARCHITECTURE.md Decision 2 + REQUIREMENTS.md WEB-01).
-	// The webserver mounts the same Handler under requireFilesRead in Phase 119.
-	// Method-prefixed routes per Go 1.22+ mux semantics: POST and other verbs
-	// auto-return 405 (Pitfall 8 — do not register a fallback handler that
-	// would mask this).
-	// Phase 123-03 / FSW-08: write routes added on the same loopback-trust basis.
-	a.mux.HandleFunc("GET /api/files/list", a.filesHandler.List)
-	a.mux.HandleFunc("GET /api/files/stat", a.filesHandler.Stat)
-	a.mux.HandleFunc("GET /api/files/read", a.filesHandler.Read)
-	a.mux.HandleFunc("HEAD /api/files/read", a.filesHandler.Read)
-	a.mux.HandleFunc("PUT /api/files/write", a.filesHandler.Write)
-	a.mux.HandleFunc("POST /api/files/upload", a.filesHandler.Upload)
-	a.mux.HandleFunc("DELETE /api/files/delete", a.filesHandler.Delete)
-	a.mux.HandleFunc("POST /api/files/rename", a.filesHandler.Rename)
-	a.mux.HandleFunc("POST /api/files/mkdir", a.filesHandler.Mkdir)
-	// Phase 122-01 / REMOTE-01: remote-files proxy + cap deposit.
+	// Phase 122-01 / REMOTE-01: remote cap deposit.
 	// POST /api/remote-files/caps accepts (sessionId, baseUrl, capToken) from
-	// the GUI/TUI after a successful join-code exchange; the four GET/HEAD
-	// routes proxy file ops to the remote peer's webserver using that cap.
-	// Loopback transport (Unix socket / Windows named pipe) is the trust
-	// boundary; no auth gate here.
+	// the GUI after a successful join-code exchange; the open-url route and the
+	// relay remote terminal WS proxy use that cap. Loopback transport is the
+	// trust boundary; no auth gate here.
 	a.mux.HandleFunc("POST /api/remote-files/caps", a.handleRegisterRemoteCap)
 	// Phase 146-05 / GAP-146-A: read-only open-url endpoint. Returns the cap-bearing
 	// open URL from RemoteCapStore so the frontend can open a remote session without
 	// re-prompting for a join code (held-cap reuse path). No cap is minted; the cap
 	// enters only the returned URL string (T-146-05-01 / T-146-05-04 accept).
 	a.mux.HandleFunc("GET /api/remote-files/caps/{sessionID}/open-url", a.handleRemoteSessionOpenURL)
-	a.mux.HandleFunc("GET /api/files/remote/{sessionID}/list", a.handleRemoteFilesList)
-	a.mux.HandleFunc("GET /api/files/remote/{sessionID}/stat", a.handleRemoteFilesStat)
-	a.mux.HandleFunc("GET /api/files/remote/{sessionID}/read", a.handleRemoteFilesRead)
-	a.mux.HandleFunc("HEAD /api/files/remote/{sessionID}/read", a.handleRemoteFilesRead)
-	// Phase 124-03 / CAP-10: five remote write proxy routes.
-	// These are daemon-socket loopback routes (WEB-01) — no auth middleware or
-	// Origin check; the remote peer's requireFilesWrite enforces cap+CSRF.
-	a.mux.HandleFunc("PUT /api/files/remote/{sessionID}/write", a.handleRemoteFilesWrite)
-	a.mux.HandleFunc("POST /api/files/remote/{sessionID}/upload", a.handleRemoteFilesUpload)
-	a.mux.HandleFunc("DELETE /api/files/remote/{sessionID}/delete", a.handleRemoteFilesDelete)
-	a.mux.HandleFunc("POST /api/files/remote/{sessionID}/rename", a.handleRemoteFilesRename)
-	a.mux.HandleFunc("POST /api/files/remote/{sessionID}/mkdir", a.handleRemoteFilesMkdir)
 }
 
 // Handler returns the API's underlying http.Handler (the registered mux).
@@ -298,11 +229,11 @@ func (a *API) Handler() http.Handler {
 }
 
 // SetRemoteFilesClientForTest overrides the daemon's outbound HTTPS client
-// used by the /api/files/remote/{sid}/... proxy with the supplied client.
+// used by the remote terminal WS proxy with the supplied client.
 // Test-only — wraps the unexported remoteFilesClientForTest field so that
 // external test packages can inject httptest.NewTLSServer's Client() and
 // have the proxy trust the upstream's self-signed certificate. Production
-// code must never call this; the field stays nil and proxyRemoteFiles
+// code must never call this; the field stays nil and remoteFilesClient
 // builds a fresh client per request via newRemoteFilesHTTPClient.
 func (a *API) SetRemoteFilesClientForTest(c *http.Client) {
 	a.remoteFilesClientForTest = c
@@ -350,20 +281,15 @@ func (a *API) JoinCodes() *capability.JoinCodeManager {
 
 // RelayHandler returns the http.Handler served on the relay loopback TCP port
 // — the surface the Wails desktop GUI reaches over 127.0.0.1:<relayPort> (it
-// cannot reach the daemon Unix socket). This is the relay server (sessions WS +
-// local /api/files/*) wrapped first with the remote-files proxy routes
-// (/api/files/remote/{sid}/...) and then with the chat history/export routes
+// cannot reach the daemon Unix socket). This is the relay server (sessions WS)
+// wrapped first with the remote terminal WS proxy route
+// (/api/relay/remote/{sid}/ws) and then with the chat history/export routes
 // (/api/chat/{id}/history, /api/chat/{id}/export). Both wrap layers use *API
 // methods that cannot live in the relay package without an import cycle. Exposed
 // so external tests can drive the relay surface exactly as the webview does
 // (mirrors Handler()).
 func (a *API) RelayHandler() http.Handler {
-	// Phase 120 CR-01: mount /api/files/* on the relay HTTP server so the Wails
-	// desktop GUI can reach the read-only file API. The Wails webview hits
-	// 127.0.0.1:<relayPort> (TCP) — it cannot reach the daemon's Unix socket,
-	// where /api/files/* is also registered. Both surfaces share the same
-	// *files.Handler instance, so sandbox + 5 MiB cap behaviour is identical.
-	server := relay.NewServer(a.engine.Manager(), a.engine.Backend(), a.filesHandler)
+	server := relay.NewServer(a.engine.Manager(), a.engine.Backend())
 	// Phase 152 / IDENT-01: wire identity providers so handleSession stamps the
 	// owner's alias from the global AliasStore. Callback pattern breaks the
 	// relay→daemon import cycle (mirrors setChatProviders). Guard on nil so a
@@ -377,12 +303,12 @@ func (a *API) RelayHandler() http.Handler {
 	} else {
 		server.SetIdentityProviders(a.engine.hostname, nil, nil)
 	}
-	withFiles := a.wrapRelayWithRemoteFiles(server)
+	withRemote := a.wrapRelayWithRemoteFiles(server)
 	// Phase 151-03 / PERSIST-01..02: chat history + export routes mounted
 	// in the outer wrap layer (most-specific wins in Go 1.22+ mux). Like the
-	// remote-files layer, these are *API methods that need a.engine and cannot
+	// remote WS layer, these are *API methods that need a.engine and cannot
 	// live in relay.NewServer without an import cycle.
-	return a.wrapRelayWithChat(withFiles)
+	return a.wrapRelayWithChat(withRemote)
 }
 
 // StartRelay creates the relay HTTP server and starts it on a random TCP port.
@@ -540,13 +466,13 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	if err != nil {
 		return err
 	}
-	ws.SetSessionResolver(func(sessionID string) (name, cliType, status, hostname string) {
+	ws.SetSessionResolver(func(sessionID string) (name, status, hostname string, ok bool) {
 		for _, s := range a.engine.ListSessions() {
 			if s.ID == sessionID {
-				return s.Name, s.CLI, a.engine.GetSessionStatus(sessionID), s.Hostname
+				return s.Name, s.Status, s.Hostname, true
 			}
 		}
-		return sessionID, "", "", ""
+		return "", "", "", false
 	})
 	// Phase 93 PLUG-04: provide the daemon's current plugin settings as
 	// pre-marshaled JSON to the webserver's /api/plugin-config handler.
@@ -578,7 +504,6 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	key := a.signingKey
 	a.signingKeyMu.RUnlock()
 	ws.SetSigningKey(key)
-	ws.SetFilesHandler(a.filesHandler)
 	// Phase 151-03 / PERSIST-01..02: wire the chat provider so the webserver's
 	// cap-gated /api/chat/{id}/history and /api/chat/{id}/export routes can
 	// reach the session's ChatStore without importing the daemon package
@@ -687,14 +612,6 @@ func (a *API) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-func (a *API) handleNotifyThemeChange(w http.ResponseWriter, r *http.Request) {
-	if err := a.engine.NotifyThemeChange(r.Context()); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (a *API) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := a.engine.ListSessions()
 	if sessions == nil {
@@ -760,7 +677,7 @@ func (a *API) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	// Use background context — the PTY must outlive the HTTP request.
 	// r.Context() would kill the session when the response is sent.
-	id, err := a.engine.CreateSession(context.Background(), req.CLI, req.Name, req.WorkDir, req.Args, req.Cols, req.Rows, nil, onExit)
+	id, err := a.engine.CreateSession(context.Background(), req.Name, req.WorkDir, req.Cols, req.Rows, onExit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -852,12 +769,6 @@ func (a *API) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) handleGetSessionStatus(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	s := a.engine.GetSessionStatus(id)
-	writeJSON(w, http.StatusOK, StatusResponse{Status: s})
-}
-
 // handleGetSessionTailLines returns the last n plain-text lines from the
 // session's scrollback buffer. Phase 132 / CARD-07.
 // CR-02: clamp n to [1..20] at the HTTP layer, mirroring the app.go Wails binding.
@@ -902,52 +813,6 @@ func (a *API) handleGetSessionStyledTailLines(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, StyledTailLinesResponse{Lines: spans})
 }
 
-func (a *API) handleGetCLIPaths(w http.ResponseWriter, r *http.Request) {
-	paths := a.engine.GetCLIPaths()
-	if paths == nil {
-		paths = map[string]string{}
-	}
-	writeJSON(w, http.StatusOK, paths)
-}
-
-// handleListShells returns the daemon's view of installed shells per
-// pty.DiscoverShells. Read-only; no engine state mutated.
-//
-// The response always serialises to `{"shells":[...]}` — never
-// `{"shells":null}` — because the slice is constructed via `make([]T, 0, n)`.
-// Argv is defensively copied per entry so callers cannot mutate
-// pty.knownShellSpecs via the response (T-100-09 in the plan's threat model).
-func (a *API) handleListShells(w http.ResponseWriter, r *http.Request) {
-	// IN-03: route through the engine wrapper (SessionEngine.DiscoverShells)
-	// rather than calling pty.DiscoverShells directly, so HTTP tests can
-	// substitute a fake engine and future engine-level caching applies.
-	discovered := a.engine.DiscoverShells()
-	out := make([]DetectedShell, 0, len(discovered))
-	for _, s := range discovered {
-		out = append(out, DetectedShell{
-			Name:        s.Name,
-			DisplayName: s.DisplayName,
-			Path:        s.Path,
-			Argv:        append([]string(nil), s.Argv...),
-		})
-	}
-	writeJSON(w, http.StatusOK, ShellsResponse{Shells: out})
-}
-
-func (a *API) handleUpdateCLIPath(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	var req UpdateCLIPathRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if err := a.engine.UpdateCLIPath(name, req.Path); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (a *API) handleGetStartMinimized(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"startMinimized": a.engine.GetStartMinimized()})
 }
@@ -961,22 +826,6 @@ func (a *API) handleSetStartMinimized(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.engine.SetStartMinimized(req.StartMinimized)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) handleGetNotifyOnWaiting(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"notifyOnWaiting": a.engine.GetNotifyOnWaiting()})
-}
-
-func (a *API) handleSetNotifyOnWaiting(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		NotifyOnWaiting bool `json:"notifyOnWaiting"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	a.engine.SetNotifyOnWaiting(req.NotifyOnWaiting)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1043,50 +892,6 @@ func (a *API) handleSetShellWebShareWarningEnabled(w http.ResponseWriter, r *htt
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleGetShellPath returns the persisted shell binary path wrapped in
-// `{"value": "<string>"}`. When no path has been configured by the user,
-// the engine resolves and returns the platform default (never empty).
-// Phase 107 SHELL-11.
-func (a *API) handleGetShellPath(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"value": a.engine.GetShellPath()})
-}
-
-// handleUpdateShellPath accepts `{"value": "<path>"}` and persists the shell
-// binary path. An empty value clears the override (restores platform default).
-// A non-empty path that does not exist or is not executable returns 400.
-// Phase 107 SHELL-11.
-func (a *API) handleUpdateShellPath(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 8192) // match peer handlers (handleSetPluginSettings etc.)
-	var req struct {
-		Value string `json:"value"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if err := a.engine.SetShellPath(req.Value); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) handleGetAutoCloseSession(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"autoCloseSession": a.engine.GetAutoCloseSession()})
-}
-
-func (a *API) handleSetAutoCloseSession(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		AutoCloseSession bool `json:"autoCloseSession"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	a.engine.SetAutoCloseSession(req.AutoCloseSession)
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // handleGetPluginSettings returns the engine's current PluginSettings as a
 // JSON object (direct struct shape — no wrapper map).
 func (a *API) handleGetPluginSettings(w http.ResponseWriter, r *http.Request) {
@@ -1122,8 +927,8 @@ func (a *API) handleSetPluginSettings(w http.ResponseWriter, r *http.Request) {
 // mirrors handleSetPluginSettings: 8 KiB body cap + DisallowUnknownFields.
 //
 // The route is PATCH /settings/search-config — sibling to /settings/plugins —
-// chosen for symmetry with /settings/auto-close-session (sub-key-style PATCH
-// routes elsewhere in this API).
+// chosen for symmetry with the other sub-key-style PATCH /settings/* routes
+// (e.g. /settings/shell-web-share-warning-enabled).
 func (a *API) handleSetSearchConfig(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 
@@ -1256,13 +1061,13 @@ func (a *API) handleWebServerStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set session resolver so the web server can look up session metadata.
-	ws.SetSessionResolver(func(sessionID string) (name, cliType, status, hostname string) {
+	ws.SetSessionResolver(func(sessionID string) (name, status, hostname string, ok bool) {
 		for _, s := range a.engine.ListSessions() {
 			if s.ID == sessionID {
-				return s.Name, s.CLI, a.engine.GetSessionStatus(sessionID), s.Hostname
+				return s.Name, s.Status, s.Hostname, true
 			}
 		}
-		return sessionID, "", "", ""
+		return "", "", "", false
 	})
 
 	// Phase 93 PLUG-04: provide the daemon's current plugin settings as
@@ -1287,7 +1092,6 @@ func (a *API) handleWebServerStart(w http.ResponseWriter, r *http.Request) {
 	key := a.signingKey
 	a.signingKeyMu.RUnlock()
 	ws.SetSigningKey(key)
-	ws.SetFilesHandler(a.filesHandler)
 	// Phase 151-03 / PERSIST-01..02: wire the chat provider (mirrors AutoStartWebServer).
 	a.setChatProviders(ws)
 	ws.SetStaticAppFS(getStaticAppFS())
@@ -1453,30 +1257,10 @@ func (a *API) issueCapabilitiesForSession(sessionID string) (readURL, writeURL, 
 	}
 
 	now := time.Now().Unix()
-	// Phase 137 / SHARE-03: perm injection driven solely by the per-session browse
-	// toggle (browseEnabledFor). No global kill-switch (D-07 deliberate removal of
-	// the Phase 118 filesReadEnabled / FilesRead global flag — Reversal 3 in
-	// 137-RESEARCH.md).
-	//
-	// D-03: Browse OFF (default): RO="read", RW="read,write"
-	// D-04: Browse ON:            RO="read,files.read", RW="read,write,files.read,files.write"
-	//
-	// Security invariants (T-137-02 / Pitfall 2): files.write NEVER appears in
-	// rPerms (the RO token). The RO code holder gains read-only filesystem access
-	// when browse is ON — this is intentional (D-05).
-	//
-	// Deliberate reversals vs Phase 118/124:
-	//   Reversal 1: The dual RO/RW issuance replaces the single owner-only token
-	//               (T-124-07: write is no longer separately gated per-session).
-	//   Reversal 3: Global filesReadEnabled kill-switch removed; per-session default
-	//               OFF (D-06) is the new gate.
-	// Audit: secure-phase to review Reversal 1 and Reversal 3 in 137-RESEARCH.md.
+	// RO link mints "read", full-access link mints "read,write". No other perm
+	// is ever minted (the files perms left with the file browser).
 	rPerms := "read"
 	wPerms := "read,write"
-	if a.engine.browseEnabledFor(sessionID) {
-		rPerms = "read," + capability.PermFilesRead
-		wPerms = "read,write," + capability.PermFilesRead + "," + capability.PermFilesWrite
-	}
 	rClaims := capability.Claims{SID: sessionID, Perms: rPerms, IAT: now, GrantID: hex.EncodeToString(rgid[:]), V: 1}
 	wClaims := capability.Claims{SID: sessionID, Perms: wPerms, IAT: now, GrantID: hex.EncodeToString(wgid[:]), V: 1}
 
@@ -1643,8 +1427,7 @@ func (a *API) handleIssueCapabilities(w http.ResponseWriter, r *http.Request) {
 		WriteURL:       writeURL,
 		ReadCode:       readCode,
 		WriteCode:      writeCode,
-		HomeDir:        a.engine.sessionCwdIsHome(id), // Phase 124 / CAP-06: EvalSymlinks-normalized home-dir signal for the GUI warning banner
-		PublicReadCode: publicReadCode,                // Phase 170-02 / FNL-08: "" for non-Funnel sessions
+		PublicReadCode: publicReadCode, // Phase 170-02 / FNL-08: "" for non-Funnel sessions
 	})
 }
 
@@ -1852,9 +1635,8 @@ const funnelWriteExpiryMax = 3600 * time.Second
 // (ws.SetRWGate), mints a single-use join code bound to the write token
 // (joinCodes.IssueSingleUseWithTTL), and starts an expiry timer that
 // revokes exactly this write cap on fire (disableFunnelWriteForSession,
-// added in Task 3). Perms is hardcoded to "read,write" — NEVER derived
-// from the session's browse toggle (T-171-06/D-05, Pitfall 5): this
-// handler never calls a.engine.browseEnabledFor.
+// added in Task 3). Perms is hardcoded to "read,write" (terminal-only,
+// T-171-06/D-05).
 //
 // Loopback-trust (daemon socket): no auth gate — same access-control model
 // as the existing POST /sessions/{id}/funnel toggle registered above.
@@ -1901,9 +1683,7 @@ func (a *API) handleSetSessionFunnelWrite(w http.ResponseWriter, r *http.Request
 	}
 	grantID := hex.EncodeToString(gid[:])
 
-	// T-171-06/D-05 (Pitfall 5): Perms hardcoded "read,write" — terminal-only,
-	// NEVER derived from a.engine.browseEnabledFor. This cap must never carry
-	// files.write regardless of the session's local browse setting.
+	// T-171-06/D-05 (Pitfall 5): Perms hardcoded "read,write" — terminal-only.
 	claims := capability.Claims{SID: id, Perms: "read,write", IAT: time.Now().Unix(), GrantID: grantID, V: 1}
 	wTok, err := capability.Sign(claims, key)
 	if err != nil {
@@ -2059,32 +1839,4 @@ func (a *API) disableFunnelWriteForSession(_ context.Context, sessionID string) 
 	ws := a.webServer
 	a.revokeFunnelWriteLocked(sessionID, ws)
 	a.mu.Unlock()
-}
-
-// handleSetSessionBrowse handles POST /sessions/{id}/browse.
-// It toggles the per-session browse flag for the given session.
-// Phase 137 / SHARE-03. Loopback-trust (daemon socket): no auth gate needed.
-//
-// Browse toggle-off clears outstanding grants for the session (parity with
-// handleWebServe ClearGrants on toggle-off, SHARE-05 stale-cap threat):
-// a browse-off cannot leave a stale files.read cap live. The next call to
-// IssueCapabilities re-mints tokens with the updated (browse-OFF) perm set.
-func (a *API) handleSetSessionBrowse(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var req SessionBrowseRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	a.engine.SetSessionBrowse(id, req.Enabled)
-	// Stale-cap mitigation (SHARE-05 / stale-cap threat): clear outstanding grants
-	// on any browse toggle so a toggle-off cannot leave a live files.read cap.
-	// Mirrors the handleWebServe ClearGrants pattern (api.go:1056).
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws != nil {
-		ws.ClearGrants(id)
-	}
-	w.WriteHeader(http.StatusNoContent)
 }

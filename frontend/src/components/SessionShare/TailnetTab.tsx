@@ -14,13 +14,6 @@ export interface TailnetTabProps {
   writeURL: string
   readCode: string
   writeCode: string
-  /**
-   * Phase 137 / D-11: optional display hint for scope text only — no gating
-   * logic. true → "Watch + browse files" / "…plus file browsing and editing."
-   * false → "Watch only — no file access" / "…Use the toggle above to also
-   * allow file editing."
-   */
-  browseEnabled?: boolean
 }
 
 /**
@@ -34,7 +27,6 @@ export function TailnetTab({
   writeURL,
   readCode,
   writeCode,
-  browseEnabled = false,
 }: TailnetTabProps): React.ReactElement {
   return (
     <div className="session-share-panel__tab session-share-panel__tab--tailnet">
@@ -42,21 +34,13 @@ export function TailnetTab({
         title="Read-Only Link"
         url={readURL}
         code={readCode}
-        description={
-          browseEnabled
-            ? 'Watch the live session and browse files read-only — cannot send input.'
-            : 'Watch the live session only — cannot send input or browse files.'
-        }
+        description="Watch the live session only — cannot send input."
       />
       <ShareLinkCard
         title="Full Access Link"
         url={writeURL}
         code={writeCode}
-        description={
-          browseEnabled
-            ? 'Full control of the live session (send input) plus file browsing and editing.'
-            : 'Full control of the live session (send input) plus file browsing. Use the toggle above to also allow file editing.'
-        }
+        description="Full control of the live session (send input)."
       />
     </div>
   )

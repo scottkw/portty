@@ -2,90 +2,12 @@ package daemon
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/scottkw/agenthub/internal/pty"
 )
-
-// TestExitEvent_AutoCloseSession_DefaultIsTrue verifies that GetAutoCloseSession
-// returns true when the setting has never been set (nil pointer = default enabled per D-11).
-func TestExitEvent_AutoCloseSession_DefaultIsTrue(t *testing.T) {
-	e := &SessionEngine{}
-	// autoCloseSession field is nil (zero value)
-	got := e.GetAutoCloseSession()
-	if !got {
-		t.Errorf("GetAutoCloseSession with nil pointer: got false, want true (default enabled)")
-	}
-}
-
-// TestExitEvent_AutoCloseSession_RoundTrip verifies that SetAutoCloseSession
-// persists the value and GetAutoCloseSession returns it correctly.
-func TestExitEvent_AutoCloseSession_RoundTrip(t *testing.T) {
-	e := NewSessionEngine()
-	e.configDir = t.TempDir() // isolate from real settings.json
-
-	// Default is true.
-	if !e.GetAutoCloseSession() {
-		t.Error("initial GetAutoCloseSession: want true, got false")
-	}
-
-	// Set to false.
-	e.SetAutoCloseSession(false)
-	if got := e.GetAutoCloseSession(); got {
-		t.Error("after SetAutoCloseSession(false): want false, got true")
-	}
-
-	// Set back to true.
-	e.SetAutoCloseSession(true)
-	if got := e.GetAutoCloseSession(); !got {
-		t.Error("after SetAutoCloseSession(true): want true, got false")
-	}
-}
-
-// TestExitEvent_AutoCloseSession_Persistence verifies that the auto-close-session
-// setting survives a save/load cycle through settings.json.
-func TestExitEvent_AutoCloseSession_Persistence(t *testing.T) {
-	dir := t.TempDir()
-
-	// Write setting via engine 1, isolated to temp dir.
-	e1 := NewSessionEngine()
-	e1.configDir = dir
-	e1.cliPaths = make(map[string]string) // isolate from real cliPaths
-
-	e1.SetAutoCloseSession(false)
-
-	// Reload via a fresh engine pointed at the same dir.
-	e2 := NewSessionEngine()
-	e2.configDir = dir
-	e2.cliPaths = make(map[string]string)
-	e2.loadSettingsFromDisk(dir)
-
-	if got := e2.GetAutoCloseSession(); got {
-		t.Error("after persist false + reload: want false, got true")
-	}
-
-	// Also verify JSON on disk directly.
-	data, err := os.ReadFile(filepath.Join(dir, "settings.json"))
-	if err != nil {
-		t.Fatalf("read settings.json: %v", err)
-	}
-	var s daemonSettings
-	if err := json.Unmarshal(data, &s); err != nil {
-		t.Fatalf("unmarshal settings.json: %v", err)
-	}
-	if s.AutoCloseSession == nil {
-		t.Fatal("settings.json AutoCloseSession: want *false, got nil")
-	}
-	if *s.AutoCloseSession != false {
-		t.Errorf("settings.json AutoCloseSession: want false, got %v", *s.AutoCloseSession)
-	}
-}
 
 // TestExitEvent_ExitWatcher_TransitionsToStopped verifies that when a session's
 // process exits naturally (hub.Done() fires), the exit watcher goroutine transitions
@@ -95,7 +17,7 @@ func TestExitEvent_AutoCloseSession_Persistence(t *testing.T) {
 // Uses the spy backend: Read returns EOF immediately, so hub.Done() fires quickly.
 func TestExitEvent_ExitWatcher_TransitionsToStopped(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 
 	var (
@@ -113,7 +35,7 @@ func TestExitEvent_ExitWatcher_TransitionsToStopped(t *testing.T) {
 		close(called)
 	}
 
-	id, err := e.CreateSession(context.Background(), "cat", "exit-test", "", nil, 80, 24, nil, onExit)
+	id, err := e.CreateSession(context.Background(), "exit-test", "", 80, 24, onExit)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -162,10 +84,10 @@ func TestExitEvent_ExitWatcher_TransitionsToStopped(t *testing.T) {
 // does not cause a panic when the exit watcher fires.
 func TestExitEvent_ExitWatcher_NilOnExitNoIsPanic(t *testing.T) {
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 
-	id, err := e.CreateSession(context.Background(), "cat", "nil-exit-test", "", nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "nil-exit-test", "", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -188,15 +110,12 @@ func TestExitEvent_ExitWatcher_NilOnExitNoIsPanic(t *testing.T) {
 // populates ExitCode and Duration for sessions that are in the StateStopped state,
 // and leaves ExitCode nil for running sessions.
 func TestExitEvent_ListSessions_ExitCodePopulatedForStopped(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("relies on the spawned `cat` staying alive to observe a running session; `cat` is not a valid Windows command, so the process exits and is reaped immediately, populating ExitCode before the first assertion. The StateStopped population logic is platform-independent and covered on macOS/Linux.")
-	}
 	spy := &spyBackend{}
-	e := NewSessionEngine()
+	e := newCatEngine()
 	e.backend = spy
 
 	// Create a session and manually transition it to stopped state.
-	id, err := e.CreateSession(context.Background(), "cat", "stopped-session", "", nil, 80, 24, nil, nil)
+	id, err := e.CreateSession(context.Background(), "stopped-session", "", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

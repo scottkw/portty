@@ -13,8 +13,8 @@ describe('UI-02 Gap 1: SettingsTab exports', () => {
 })
 
 describe('UI-02 Gap 2: SettingsTab props interface', () => {
-  it('props include clis', () => {
-    expect(raw).toContain('clis')
+  it('props do NOT include clis (STRP-01: no CLI detection)', () => {
+    expect(raw).not.toMatch(/\bclis\b/)
   })
 
   it('props include tailscaleHealth', () => {
@@ -159,9 +159,8 @@ describe('SETT-02: Section headers present', () => {
     expect(raw).toMatch(/<h3[^>]*>Web Server<\/h3>/)
   })
 
-  it('has Paths section header', () => {
-    // Phase 104: header carries id="settings-paths" anchor for the jump-bar.
-    expect(raw).toMatch(/<h3[^>]*>Paths<\/h3>/)
+  it('has no Paths section header (Portty 01-11)', () => {
+    expect(raw).not.toMatch(/<h3[^>]*>Paths<\/h3>/)
   })
 })
 
@@ -174,17 +173,15 @@ describe('SETT-03: All content groups present simultaneously', () => {
     expect(raw).toContain('ct-disclosure')
   })
 
-  it('contains CLI paths table (Paths group)', () => {
-    expect(raw).toContain('settings-panel__table')
-  })
-
-  it('contains Save Paths button (Paths group)', () => {
-    expect(raw).toContain('Save Paths')
+  it('has no Paths section: no settings-paths anchor and no Save Paths button (Portty 01-11)', () => {
+    expect(raw).not.toContain('settings-paths')
+    expect(raw).not.toContain('Save Paths')
+    expect(raw).not.toContain('settings-panel__table')
   })
 })
 
-describe('TAILSCALE-PATH-01: Tailscale status in Paths section', () => {
-  it('renders Tailscale label in Paths section', () => {
+describe('TAILSCALE-PATH-01: Tailscale status in Settings', () => {
+  it('renders Tailscale label', () => {
     expect(raw).toContain('Tailscale')
   })
 
@@ -193,16 +190,12 @@ describe('TAILSCALE-PATH-01: Tailscale status in Paths section', () => {
     expect(raw).toContain('tailscaleHealth.domain || tailscaleHealth.ip')
   })
 
-  it('shows installed-but-not-connected message', () => {
-    expect(raw).toContain('Daemon running but not connected to a Tailscale network')
+  it('shows the NET-01 sentence when not connected (Portty 01-12)', () => {
+    expect(raw).toContain(': TAILSCALE_OFF_REASON)')
   })
 
-  it('shows not detected message', () => {
-    expect(raw).toContain('Not detected')
-  })
-
-  it('has tailscale path input', () => {
-    expect(raw).toContain('Path to tailscale')
+  it('has no tailscale path override input (Portty 01-11)', () => {
+    expect(raw).not.toContain('Path to tailscale')
   })
 })
 
@@ -242,92 +235,21 @@ describe('THM-04: localStorage fallback guard in App.tsx', () => {
   })
 })
 
-describe('TS-01/TS-02: 4-state Tailscale detection', () => {
-  it('tailscaleHealth type includes binaryFound field', () => {
-    expect(raw).toContain('binaryFound: boolean')
+// NET-01 (Portty 01-12, CONTEXT Amendment 1): two states only, no diagnostics.
+describe('NET-01: two-state Tailscale status (replaces TS-01/TS-02 4-state detection)', () => {
+  it('uses the shared TailscaleHealth type with no multi-state fields', () => {
+    expect(raw).toContain('tailscaleHealth: TailscaleHealth | null')
+    expect(raw).not.toMatch(/binaryFound|daemonUp|platformHint|permissionLimited/)
   })
 
-  it('tailscaleHealth type includes daemonUp field', () => {
-    expect(raw).toContain('daemonUp: boolean')
+  it('has no multi-state labels or diagnostics checklist', () => {
+    for (const s of ['Daemon Stopped', 'Not Installed', 'Permission Limited', 'Show diagnostics', 'Binary detected', 'TLS certificates ready']) {
+      expect(raw).not.toContain(s)
+    }
   })
 
-  it('tailscaleHealth type includes platformHint field', () => {
-    expect(raw).toContain('platformHint: string')
-  })
-
-  it('shows Daemon Stopped status text', () => {
-    expect(raw).toContain("'Daemon Stopped'")
-  })
-
-  it('has Show diagnostics collapsible section', () => {
-    expect(raw).toContain('Show diagnostics')
-  })
-
-  it('diagnostics includes Binary detected step', () => {
-    expect(raw).toContain('Binary detected')
-  })
-
-  it('diagnostics includes Daemon running step', () => {
-    expect(raw).toContain('Daemon running')
-  })
-
-  it('diagnostics includes Connected to Tailscale step', () => {
-    expect(raw).toContain('Connected to Tailscale')
-  })
-
-  it('diagnostics includes TLS certificates ready step', () => {
-    expect(raw).toContain('TLS certificates ready')
-  })
-
-  it('has platform-specific instruction for macOS', () => {
-    expect(raw).toContain('open Tailscale from Applications or the menu bar')
-  })
-
-  it('has platform-specific instruction for Linux', () => {
-    expect(raw).toContain('sudo systemctl start tailscaled')
-  })
-
-  it('has platform-specific instruction for Windows', () => {
-    expect(raw).toContain('open Tailscale from the Start menu or system tray')
-  })
-
-  it('tailscale path placeholder includes auto-detect hint', () => {
-    expect(raw).toContain('leave blank to auto-detect')
-  })
-})
-
-describe('SET-01: Unified path table (single table for CLI + tailscale rows)', () => {
-  it('has exactly one settings-panel__table in the Paths section', () => {
-    // Phase 104: header carries id="settings-paths" — use regex match to locate it.
-    const pathsHeaderMatch = raw.match(/<h3[^>]*>Paths<\/h3>/)
-    expect(pathsHeaderMatch).not.toBeNull()
-    const pathsStart = raw.indexOf(pathsHeaderMatch![0])
-    const saveRow = raw.indexOf('settings-panel__save-paths-row', pathsStart)
-    expect(pathsStart).toBeGreaterThan(-1)
-    const pathsBlock = raw.slice(pathsStart, saveRow)
-    const tableMatches = pathsBlock.match(/className="settings-panel__table"/g) ?? []
-    expect(tableMatches.length).toBe(1)
-  })
-
-  it('tailscale path row is inside the same table as detected CLI rows', () => {
-    const tableStart = raw.indexOf('className="settings-panel__table"')
-    const tableEnd = raw.indexOf('</table>', tableStart)
-    expect(tableStart).toBeGreaterThan(-1)
-    const tableBlock = raw.slice(tableStart, tableEnd)
-    expect(tableBlock).toContain('clis.map')
-    expect(tableBlock).toContain("'tailscale'")
-  })
-
-  it('does NOT render a second table for tailscale with marginTop style', () => {
-    expect(raw).not.toContain("className=\"settings-panel__table\" style={{ marginTop: '0.75rem' }}")
-  })
-
-  it('merged table uses CLI as column header (not Tool)', () => {
-    const tableStart = raw.indexOf('className="settings-panel__table"')
-    const tableEnd = raw.indexOf('</table>', tableStart)
-    const tableBlock = raw.slice(tableStart, tableEnd)
-    expect(tableBlock).toContain('<th>CLI</th>')
-    expect(tableBlock).not.toContain('<th>Tool</th>')
+  it('shows Connected or Not connected', () => {
+    expect(raw).toContain("h.connected ? 'Connected' : 'Not connected'")
   })
 })
 
@@ -343,5 +265,28 @@ describe('SET-02: No inline fontSize override on description elements', () => {
     expect(statusIdx).toBeGreaterThan(-1)
     const nearStatus = raw.slice(statusIdx, statusIdx + 500)
     expect(nearStatus).not.toContain("marginTop: '0.25rem'")
+  })
+})
+
+// CONTEXT Amendment 2: tabs always close on exit, so there is no auto-close toggle.
+describe('TERM-05: no auto-close toggle', () => {
+  it('Session Behavior has no auto-close toggle or bindings', () => {
+    expect(raw).not.toContain('Auto-close tab on exit')
+    expect(raw).not.toContain('AutoCloseSession')
+    expect(raw).toContain('id="settings-session-behavior"')
+  })
+})
+
+describe('Portty 01-11: Behavior has only the start-minimized toggle', () => {
+  it('Behavior renders exactly one toggle (start minimized) and no awaiting-input toggle', () => {
+    const start = raw.indexOf('id="settings-behavior"')
+    const end = raw.indexOf('id="settings-session-behavior"', start)
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const behavior = raw.slice(start, end)
+    expect(behavior.match(/className="settings-panel__toggle-input"/g) ?? []).toHaveLength(1)
+    expect(behavior).toContain('Start minimized to system tray')
+    expect(raw).not.toContain('Notify me when a session is awaiting input')
+    expect(raw).not.toMatch(/NotifyOnWaiting|notification:permission|not allowed to send notifications/)
   })
 })

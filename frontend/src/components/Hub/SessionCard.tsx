@@ -4,62 +4,20 @@ import type { AdaptedRemoteSessionInfo } from '../../lib/remoteAdapter'
 import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../../wailsjs/go/models'
 import {
-  ArrowPathIcon,
-  CheckCircleIcon,
-  PauseCircleIcon,
-  ExclamationCircleIcon,
-  StopCircleIcon,
   ComputerDesktopIcon,
   GlobeAltIcon,
   EyeIcon,
   Bars3Icon,
   EllipsisHorizontalIcon,
-  BellAlertIcon,          // ATTN-01: attention icon — colorblind-safe shape carrier
   LockClosedIcon,         // D-13: shape signal for disabled Share button on remote peer cards
   LockOpenIcon,           // Phase 171 / FNL-09: FULL ACCESS badge shape carrier (colorblind-safe, distinct from GlobeAltIcon)
   LinkIcon,               // CARD-03: "Connected" state shape signal (colorblind-safe)
   WindowIcon,             // FIX-03 RC-C: "Open in tab" in-app glyph (D-17 opens an in-app tab, not a browser)
 } from '@heroicons/react/24/outline'
 import { InlineSessionName } from './InlineSessionName'
-// WR-01: deriveHubStatus extracted to shared util (was triplicated across SessionCard/HubFilterBar/HubPanel)
-import { deriveHubStatus } from '../../lib/hubStatus'
-import type { HubStatus } from '../../lib/hubStatus'
-// Session-type (agent/CLI) color identity — same source the tab agent-badge dot uses,
-// so the card's left spine matches the dot on the tab. data-agent drives the CSS border-left.
-import { agentBadgeModifier } from '../../lib/agentBadge'
 import { memberKey, type HubGroupDef } from '../../lib/hubGroups'
 import { MiniPreview } from './MiniPreview'
 import { ChatBadge } from './ChatBadge'
-
-// ---- STATUS_CONFIG ----
-// COLORBLIND-SAFE: every status has unique icon shape + text label; color is reinforcement only.
-// Hex values are authoritative source of truth — verify at source, not by eye (user is colorblind).
-const STATUS_CONFIG: Record<
-  HubStatus,
-  { Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; label: string; spin: boolean }
-> = {
-  /* COLORBLIND-SAFE: status dot dark hex #3b82f6 (running) — reinforcement only; ArrowPathIcon carries the state */
-  running: { Icon: ArrowPathIcon, label: 'Running', spin: true },
-  /* COLORBLIND-SAFE: status dot dark hex #22c55e (idle) — reinforcement only; CheckCircleIcon carries the state */
-  idle: { Icon: CheckCircleIcon, label: 'Idle', spin: false },
-  /* COLORBLIND-SAFE: status dot dark hex #f59e0b (waiting) — reinforcement only; PauseCircleIcon carries the state */
-  waiting: { Icon: PauseCircleIcon, label: 'Needs input', spin: false },
-  /* COLORBLIND-SAFE: status dot dark hex #ef4444 (errored) — reinforcement only; ExclamationCircleIcon carries the state */
-  errored: { Icon: ExclamationCircleIcon, label: 'Error', spin: false },
-  /* COLORBLIND-SAFE: status dot dark hex #565f89 (stopped/done) — reinforcement only; StopCircleIcon carries the state */
-  'stopped-ok': { Icon: StopCircleIcon, label: 'Done', spin: false },
-  /* COLORBLIND-SAFE: exit-code dark hex #f7768e (non-zero exit) — reinforcement only; "Exited {code}" text carries the state */
-  /* COLORBLIND-SAFE: status dot dark hex #f7768e (non-zero exit) — reinforcement only; ExclamationCircleIcon carries the state */
-  /* COLORBLIND-SAFE: status dot light hex #1d4ed8 (running) — WCAG AA 7.1:1 on white; icon carries state */
-  /* COLORBLIND-SAFE: status dot light hex #1a7f37 (idle) — WCAG AA 5.0:1 on white; icon carries state */
-  /* COLORBLIND-SAFE: status dot light hex #92400e (waiting) — WCAG AA 7.6:1 on white; icon carries state */
-  /* COLORBLIND-SAFE: status dot light hex #b91c1c (errored) — WCAG AA 6.0:1 on white; icon carries state */
-  /* COLORBLIND-SAFE: status dot light hex #4b5563 (stopped/done) — WCAG AA 7.0:1 on white; icon carries state */
-  /* COLORBLIND-SAFE: status dot light hex #c0394f (non-zero exit) — WCAG AA 4.7:1 on white; icon carries state */
-  /* HUB-04 LIGHT THEME: verified WCAG AA for --hub-accent #3d6fe8 on #ffffff (4.5:1) */
-  /* HUB-04 LIGHT THEME: verified WCAG AA for --hub-destructive #c0394f on #ffffff (4.7:1) */
-  'stopped-err': { Icon: ExclamationCircleIcon, label: 'Exited', spin: false },
-}
 
 // ---- Helpers ----
 
@@ -132,7 +90,7 @@ export interface SessionCardProps {
    * Surfaced as an explicit "Open" button (not whole-card click — card-click is
    * reserved for the Phase 134 modal gesture). Only shown for live sessions.
    */
-  onOpenSession?: (sessionId: string, name: string, cli: string) => void
+  onOpenSession?: (sessionId: string, name: string) => void
   /** CARD-07/CARD-05: styled tail lines from usePreviewPoller; undefined = loading. Phase 139: StyledSpan[][] */
   previewLines?: daemon.StyledSpan[][]
   /** Phase 139 / CARD-05: active xterm ITheme for color resolution in MiniPreview */
@@ -141,8 +99,6 @@ export interface SessionCardProps {
   groupDefs?: HubGroupDef[]
   /** GROUP-02: fires when user assigns this card to a group via menu */
   onAssignGroup?: (memberKey: string, groupId: string) => void
-  /** ATTN-01: true when isAttentionStatus(deriveHubStatus(session)) is true */
-  isAttention?: boolean
   /**
    * Phase 134 — fires when card body is clicked (not Open/menu/drag-handle/rename input).
    * Receives the session and the card's bounding rect (used for grow animation origin).
@@ -154,6 +110,8 @@ export interface SessionCardProps {
    * D-13: colorblind-safe disabled state uses LockClosedIcon + tooltip, not color alone.
    */
   onShare?: (session: SessionInfo) => void
+  /** NET-01: when set, a local card's Share button is disabled with this reason. */
+  shareDisabledReason?: string
   /**
    * Phase 138 / CARD-02: explicit provenance flag — true when session came from
    * remoteSessions prop (not local sessions). Replaces hostname-based isLocal heuristic.
@@ -169,8 +127,6 @@ export interface SessionCardProps {
   onKill?: (sessionId: string) => void
   /** Phase 138 / CARD-04: Open remote session in system browser (Phase 146: receives session object for cap exchange). */
   onOpenInBrowser?: (session: AdaptedRemoteSessionInfo) => void
-  /** Phase 138 / CARD-04: Browse remote files (join-code cap flow). */
-  onBrowseFiles?: (sessionId: string, sessionName: string) => void
   /** NOTIF-01 / D-10: unread chat message count for this session.
    *  Rendered as a ChatBadge on the card header. 0 = no badge. */
   unreadCount?: number
@@ -183,21 +139,15 @@ export interface SessionCardProps {
 /**
  * SessionCard — presentational card for the Hub session grid.
  *
- * Colorblind-safe: every status renders icon + text label.
- * Color is reinforcement only (see STATUS_CONFIG hex comments above).
- *
  * Layout (Phase 172 — consolidated chip row, Sketch 001 Variant B winner):
  *   HEADER: InlineSessionName + ChatBadge
- *   STATUS ROW: status-indicator (icon + label, spin/attention) — stays the
- *     primary top-line signal, NOT chipified (D-03)
- *   EXIT CHIP: "Exited {code}" (only when stopped with non-zero exit)
  *   CHIP ROW: agent chip · origin chip · exposure cluster (INTERNET / FULL
  *     ACCESS filled badges forced onto their own right-aligned line, D-01/D-04/D-05)
  *   META LINE: uptime · viewer count · Connected/Available, muted (D-06)
  *   ACTIONS: Open (when live, Phase 131) / Share
  *   PREVIEW: MiniPreview (CARD-07 plain-text snapshot; NO xterm)
  *
- * Dimming (CARD-08): stopped-ok cards get hub-card--dim; stopped-err cards do NOT.
+ * No session status, dimming or attention styling (CONTEXT Amendment 2).
  */
 export function SessionCard({
   session,
@@ -207,34 +157,24 @@ export function SessionCard({
   previewTheme,
   groupDefs,
   onAssignGroup,
-  isAttention,
   onCardClick,
   onShare,
+  shareDisabledReason,
   isRemote,
   isConnected,
   onKill,
   onOpenInBrowser,
-  onBrowseFiles,
   unreadCount,
   hasChatMention,
 }: SessionCardProps): React.ReactElement {
   const {
     id,
-    cli,
     name,
     hostname,
     viewerCount,
-    exitCode,
     duration,
     createdAt,
   } = session
-
-  const hubStatus = deriveHubStatus(session)
-  const { Icon, label, spin } = STATUS_CONFIG[hubStatus]
-
-  // Stopped-err label shows "Exited {code}" — override the generic label
-  const displayLabel =
-    hubStatus === 'stopped-err' ? `Exited ${exitCode ?? ''}`.trim() : label
 
   // Origin marker: provenance-based when isRemote prop is supplied (CARD-02 fix),
   // falls back to hostname-based for callers that do not yet supply the prop.
@@ -255,10 +195,9 @@ export function SessionCard({
       ? formatDuration(duration)
       : formatUptime(createdAt)
 
-  // Card aria-label per Accessibility Contract
-  // ATTN-01: append ", needs attention" suffix when attention is active (Accessibility Contract item 3)
+  // Card aria-label per Accessibility Contract (no session status, CONTEXT Amendment 2)
   // CARD-03: append ", connected" or ", available" for remote cards
-  const cardAriaLabel = `${name}, ${displayLabel}, ${cli}, ${originText}${isAttention ? ', needs attention' : ''}${isRemote ? (isConnected ? ', connected' : ', available') : ''}`
+  const cardAriaLabel = `${name}, ${originText}${isRemote ? (isConnected ? ', connected' : ', available') : ''}`
 
   /* GROUP-04: membership key = "${session.name}:::${session.workDir}" — survives session-id churn */
   const memberKeyForSession = memberKey(name, session.workDir)
@@ -346,13 +285,8 @@ export function SessionCard({
     <article
       className={[
         'hub-card',
-        hubStatus === 'stopped-ok' ? 'hub-card--dim' : '',
         isDragging ? 'hub-card--dragging' : '',
-        isAttention ? 'hub-card--attention' : '',
       ].filter(Boolean).join(' ')}
-      /* Left spine colored by session type (agent/CLI), matching the tab agent-badge dot.
-         Colorblind-safe: reinforcement only — the agent is also shown as the `{cli}` text chip. */
-      data-agent={agentBadgeModifier(cli) ?? 'unknown'}
       draggable="true"
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', memberKeyForSession)
@@ -449,14 +383,6 @@ export function SessionCard({
                 <WindowIcon className="hub-card__conn-icon" aria-hidden="true" />
                 Open in tab
               </button>
-              <button
-                type="button"
-                className="hub-card__menu-item"
-                role="menuitem"
-                onClick={(e) => { e.stopPropagation(); onBrowseFiles?.(id, name); setMenuOpen(false) }}
-              >
-                Browse files
-              </button>
             </>
           )}
 
@@ -485,44 +411,11 @@ export function SessionCard({
         <ChatBadge count={unreadCount ?? 0} hasMention={hasChatMention ?? false} />
       </div>
 
-      {/* STATUS ROW: status indicator — stays the primary top-line signal, NOT
-          chipified (D-03). CR-01: hub-card__row1 matches CSS definition. */}
-      <div className="hub-card__row1">
-        {/* ATTN-01: attention icon — inline left of status icon; COLORBLIND-SAFE: BellAlertIcon carries state */}
-        {isAttention && (
-          <span className="hub-card__attn-icon" aria-label="Needs attention">
-            {/* CRITICAL: NO Tailwind w-4 h-4 — size via .hub-card__attn-icon svg in style.css (Plan 02) */}
-            <BellAlertIcon aria-hidden="true" />
-          </span>
-        )}
-        <span className="hub-card__status-indicator">
-          <Icon
-            className={`hub-card__status-icon${spin ? ' hub-card__status-icon--spin' : ''}`}
-            aria-label={displayLabel}
-          />
-          <span className="hub-card__status-label">{displayLabel}</span>
-        </span>
-      </div>
-
-      {/* ROW 4: exit-code chip (only for non-zero exit) */}
-      {/* CR-01: hub-card__row4 matches CSS definition (was hub-card__row hub-card__row--exit) */}
-      {hubStatus === 'stopped-err' && (
-        <div className="hub-card__row4">
-          {/* IN-02: aria-hidden since exit code is already in card aria-label */}
-          <span className="hub-card__exit-chip" aria-hidden="true">Exited {exitCode}</span>
-        </div>
-      )}
-
-      {/* Phase 172 / D-01/D-04/D-05 — consolidated chip row: agent · origin · exposure.
-          Sketch 001 Variant B (winner): rounded-rect quiet chips for agent + origin,
+      {/* Phase 172 / D-01/D-04/D-05 — consolidated chip row: origin · exposure.
+          Sketch 001 Variant B (winner): rounded-rect quiet chip for origin,
           the exposure cluster (INTERNET / FULL ACCESS) is the only FILLED chips and is
           forced onto its own right-aligned line by .hub-card__exposure. */}
       <div className="hub-card__chiprow">
-        {/* Agent chip — colored by session type; the card's data-agent drives the chip
-            tint so it matches the left spine + tab dot. COLORBLIND-SAFE: chip text is
-            the cli name; color is reinforcement only. */}
-        <span className="hub-card__chip hub-card__chip--agent">{cli}</span>
-
         {/* Origin chip — fully muted (D-01/Sketch pin, no green-local/blue-remote color
             coding). COLORBLIND-SAFE: the ComputerDesktopIcon/GlobeAltIcon shape + text
             label carry the Local/Remote meaning; this chip carries no color signal. */}
@@ -595,7 +488,7 @@ export function SessionCard({
           <button
             type="button"
             className="hub-card__open"
-            onClick={(e) => { e.stopPropagation(); onOpenSession(id, name, cli) }}
+            onClick={(e) => { e.stopPropagation(); onOpenSession(id, name) }}
             aria-label={`Open ${name}`}
           >
             Open
@@ -605,11 +498,11 @@ export function SessionCard({
           type="button"
           className="hub-card__share"
           onClick={(e) => { e.stopPropagation(); onShare?.(session) }}
-          disabled={!isLocal}
-          aria-label={isLocal ? `Share ${name}` : 'Only the session owner can share'}
-          title={isLocal ? 'Share session' : 'Only the session owner can share'}
+          disabled={!isLocal || !!shareDisabledReason}
+          aria-label={!isLocal ? 'Only the session owner can share' : shareDisabledReason ?? `Share ${name}`}
+          title={!isLocal ? 'Only the session owner can share' : shareDisabledReason ?? 'Share session'}
         >
-          {!isLocal && <LockClosedIcon aria-hidden="true" className="hub-card__share-lock" />}
+          {(!isLocal || shareDisabledReason) && <LockClosedIcon aria-hidden="true" className="hub-card__share-lock" />}
           Share
         </button>
       </div>

@@ -2,20 +2,10 @@ import React, { useEffect, useRef, useState } from 'react'
 
 interface QuitConfirmModalProps {
   isOpen: boolean
-  sessions: Array<{ id: string; name: string; status: string }>
+  sessions: Array<{ id: string; name: string }>
   onQuitGUI: () => void
   onQuitAll: () => void
   onCancel: () => void
-}
-
-function dotColor(status: string): string {
-  switch (status) {
-    case 'running': return '#9ece6a'
-    case 'errored': return '#f7768e'
-    case 'idle': return '#e0af68'
-    case 'waiting': return '#7aa2f7'
-    default: return '#9aa5ce'
-  }
 }
 
 function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: QuitConfirmModalProps): React.ReactElement | null {
@@ -72,13 +62,7 @@ function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: 
             <div className="quit-modal__session-list">
               {visible.map((s) => (
                 <div className="quit-modal__session-item" key={s.id}>
-                  <span
-                    className="quit-modal__session-dot"
-                    aria-hidden="true"
-                    style={{ backgroundColor: dotColor(s.status) }}
-                  />
                   <span className="quit-modal__session-name">{s.name}</span>
-                  <span className="quit-modal__session-status">({s.status})</span>
                 </div>
               ))}
               {overflow > 0 && (

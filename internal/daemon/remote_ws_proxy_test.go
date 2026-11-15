@@ -7,18 +7,18 @@
 // wss://<baseURL>/sessions/{sid}/ws?cap=T (injecting the Origin the peer
 // requires), and copies opaque WS frames both ways.
 //
-// They mirror the structure of relay_remote_files_test.go (fixture TLS peer +
-// newDaemonAPIWithUpstreamCert + depositCapOnSocket) but the fixture peer here
-// serves a cap-guarded WS echo endpoint at /sessions/{id}/ws that asserts the
+// They use a fixture TLS peer + newDaemonAPIWithUpstreamCert +
+// depositCapOnSocket (defined below); the fixture peer here serves a cap-guarded WS echo endpoint at /sessions/{id}/ws that asserts the
 // ?cap= query param AND a non-empty Origin equal to its own base URL.
 //
-// Lives in package daemon_test and reuses fixtureCap / newDaemonAPIWithUpstreamCert
-// / depositCapOnSocket from the existing remote-files test files.
+// Lives in package daemon_test.
 
 package daemon_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,7 +27,45 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/scottkw/agenthub/internal/daemon"
 )
+
+// fixtureCap is the canonical cap token the fixture peer accepts.
+const fixtureCap = "FIXTURE_CAP"
+
+// newDaemonAPIWithUpstreamCert constructs a daemon API with a tempdir configDir
+// and injects the upstream's self-signed cert via SetRemoteFilesClientForTest
+// so the proxy's outbound HTTPS/WSS dials succeed.
+func newDaemonAPIWithUpstreamCert(t *testing.T, upstream *httptest.Server) *daemon.API {
+	t.Helper()
+	engine := daemon.NewSessionEngine()
+	engine.ConfigDirForTest(t.TempDir())
+	api := daemon.NewAPI(engine)
+	api.SetRemoteFilesClientForTest(upstream.Client())
+	return api
+}
+
+// depositCapOnSocket deposits the (sessionID, baseURL, capToken) tuple via the
+// Unix-socket mux's POST /api/remote-files/caps. The desktop GUI does this
+// through the Wails Go binding (App.RegisterRemoteCap → DaemonClient over the
+// socket), NOT the webview — so the deposit route is intentionally socket-only
+// and is exercised here through api.Handler() rather than the relay surface.
+func depositCapOnSocket(t *testing.T, socketSrv *httptest.Server, sessionID, baseURL, cap string) {
+	t.Helper()
+	raw, _ := json.Marshal(map[string]string{
+		"sessionId": sessionID,
+		"baseUrl":   baseURL,
+		"capToken":  cap,
+	})
+	resp, err := http.Post(socketSrv.URL+"/api/remote-files/caps", "application/json", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("cap deposit: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("cap deposit status: want 200, got %d", resp.StatusCode)
+	}
+}
 
 // fixtureWSPeer is a cap-guarded WebSocket echo peer that mimics the remote
 // webserver's /sessions/{id}/ws contract for the proxy tests. It records the
@@ -162,8 +200,8 @@ func TestRemoteSessionWS_MountedOnRelay(t *testing.T) {
 }
 
 // TestRemoteSessionWS_NoCap (WS-PROXY-02): with no cap deposited the handler is
-// still reached and returns the "no cap registered" 404 contract (the same as
-// proxyRemoteFiles), distinguishable from a bare route-miss 404.
+// still reached and returns the "no cap registered" 404 contract,
+// distinguishable from a bare route-miss 404.
 func TestRemoteSessionWS_NoCap(t *testing.T) {
 	peer := newFixtureRemotePeerWithWS(t)
 	api := newDaemonAPIWithUpstreamCert(t, peer.srv) // no cap deposited

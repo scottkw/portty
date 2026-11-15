@@ -48,8 +48,8 @@ export interface TerminalChatHostProps {
  *
  * D-09: ChatPanel is always-mounted so unread messages accrue while drawer is closed.
  *
- * The host wraps ONLY TerminalPanel — ExitCountdownBanner and StatusBar stay as
- * siblings in App.tsx so the absolute drawer (top:0; bottom:0) does not cover them.
+ * The host wraps ONLY TerminalPanel — StatusBar stays as a
+ * sibling in App.tsx so the absolute drawer (top:0; bottom:0) does not cover it.
  */
 export function TerminalChatHost({
   sessionId,
@@ -106,7 +106,7 @@ export function TerminalChatHost({
       {/* Chat toggle button — floats over the bottom-right of the terminal area.
           Renders AFTER ChatPanel so the .chat-panel--open ~ .hub-modal__chat-toggle
           general-sibling combinator (158-01) correctly relocates the toggle when
-          the drawer is open, clearing the Send/Inject overlap (CHAT-FIX-01).
+          the drawer is open, clearing the Send button overlap (CHAT-FIX-01).
           COLORBLIND-SAFE: ChatBubbleLeftRightIcon (shape) + aria-label are primary signals. */}
       <button
         type="button"

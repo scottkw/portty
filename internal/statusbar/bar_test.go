@@ -33,7 +33,6 @@ func (s *safeBuf) String() string {
 func testOpts() statusbar.Options {
 	return statusbar.Options{
 		SessionName:  "test",
-		AgentType:    "claude",
 		Hostname:     "host",
 		CreatedAt:    time.Now(),
 		Position:     statusbar.Bottom,
@@ -44,13 +43,12 @@ func testOpts() statusbar.Options {
 }
 
 // TestBar_FormatContainsRequiredFields verifies SB-01: all required fields appear
-// in the bar output (session name, agent type, hostname, detach hint, elapsed time,
+// in the bar output (session name, hostname, detach hint, elapsed time,
 // and reverse video ANSI code).
 func TestBar_FormatContainsRequiredFields(t *testing.T) {
 	var buf safeBuf
 	opts := testOpts()
 	opts.SessionName = "my-session"
-	opts.AgentType = "claude"
 	opts.Hostname = "macbook-pro"
 	opts.CreatedAt = time.Now().Add(-65 * time.Second) // 1:05 elapsed
 	bar := statusbar.New(&buf, opts)
@@ -63,7 +61,6 @@ func TestBar_FormatContainsRequiredFields(t *testing.T) {
 	output := buf.String()
 	checks := []string{
 		"my-session",
-		"claude",
 		"macbook-pro",
 		`Ctrl-\ to detach`,
 		"1:0", // elapsed time starts with 1:0x

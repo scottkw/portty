@@ -10,7 +10,7 @@ Sessions can be shared over the web on a per-session basis: browser-trusted TLS 
 
 The terminal core is extended by a curated, vendored xterm.js plugin suite — GPU-accelerated rendering with software-fallback detection, Cmd-F scrollback search with regex/case/word toggles, clickable web links with strict scheme allowlist and IDN/typosquat confirmation, inline sixel images, Unicode 11 width tables, "Save Terminal As…" via the serialize addon, OSC 52 system clipboard, and OSC 9;4 progress reporting (per-tab progress underlines plus a tray quartile glyph) — all user-controlled from Settings → Plugins. Sessions support 138 WCAG-audited color themes with live switching across the AI CLIs (including OpenCode, via SIGUSR2 broadcast); all non-terminal GUI text meets WCAG AA 4.5:1 contrast.
 
-Sessions auto-close when the agent process exits — 5-second countdown, toast notification, and Keep Open cancel — and closing the GUI prompts a quit confirmation showing active session count. The system tray is native on each platform: NSStatusBar on macOS, D-Bus StatusNotifierItem on Linux, and Shell_NotifyIcon on Windows. Auto-update notifications keep you on the latest release. Built with Go/Wails and React.
+Sessions auto-close when the agent process exits — 5-second countdown, toast notification, and Keep Open cancel — and closing the GUI prompts a quit confirmation showing active session count. The system tray is a native macOS NSStatusBar item. Auto-update notifications keep you on the latest release. Built with Go/Wails and React.
 
 ## Latest Release
 
@@ -68,7 +68,7 @@ Older releases (v3.3 and earlier) are on the [Releases page](https://github.com/
 - **Collapsible sidebar** — Left sidebar with Heroicons SVG icons for navigation: Home, Hub (top); Help, Settings (bottom). Toggle between collapsed (icons only, 48px) and expanded (icons + labels, 200px) via hamburger button; icons stay in fixed horizontal position during transitions; state persists in localStorage. *(v4.0: the separate Remote/Sessions pages and the New Session item were folded into the Hub.)*
 - **Tabbed terminals** — Run multiple AI coding sessions side-by-side with full xterm.js terminals (ANSI 256-color, Unicode, emoji, 10K+ line scrollback, full-width viewport fill)
 - **Background daemon** — Sessions live in a standalone daemon process; closing the GUI hides the window while sessions and the system tray remain active
-- **CLI auto-detection** — Detects Claude Code, Codex, Gemini CLI, OpenCode, and Google Antigravity (`agy`) on startup — including when launched from Finder/Dock (augments PATH with `~/.local/bin`, Homebrew, nvm, Volta, snap, flatpak, cargo, pipx, and platform-specific install locations on macOS, Linux, and Windows); supports custom CLI path overrides. Google Antigravity is currently waitlist-gated; detection is fully wired and the agent appears in the picker when `agy` is installed.
+- **CLI auto-detection** — Detects Claude Code, Codex, Gemini CLI, OpenCode, and Google Antigravity (`agy`) on startup — including when launched from Finder/Dock (augments PATH with `~/.local/bin`, Homebrew, nvm, Volta, cargo, and pipx); supports custom CLI path overrides. Google Antigravity is currently waitlist-gated; detection is fully wired and the agent appears in the picker when `agy` is installed.
 - **New session modal** — Select a CLI and pick a working directory with a native folder browser; remembers your last-used directory
 - **CLI argument passing** — Pass extra arguments to CLIs with `--` separator syntax (e.g., `agenthub new claude ~/dir -- --arg1`); arguments are remembered per CLI
 - **Terminal theming** — 138 curated color themes (WCAG-audited for readability across all 4 CLIs); select in Settings > Appearance, applies live to all open sessions including OpenCode (via SIGUSR2 broadcast), persists across restarts with localStorage fallback guard for removed themes
@@ -85,7 +85,7 @@ Older releases (v3.3 and earlier) are on the [Releases page](https://github.com/
 - **Settings → Plugins** — 8 enable/disable toggles in the order: WebGL, Unicode 11, Search, Web Links, Inline Images, Serialize, Clipboard, Progress. Three plugins (Search, Web Links, Inline Images) include inline `<details>` disclosures for per-plugin sub-config (regex/case/word defaults; modifier-key + risk policy; image storage limit). Non-hot-swappable plugins (Unicode 11, Inline Images) show "Applies to new sessions you create" inline plus a one-shot toast after Save
 - **WebGL renderer** — GPU-accelerated rendering with automatic DOM fallback on context loss (banner toast with 8-second auto-dismiss) and proactive software-rasterizer detection (SwiftShader / llvmpipe / ANGLE-software / iPad Safari fall back at startup)
 - **Scrollback search (Cmd-F)** — Focus-conditioned find bar on desktop + web with regex / case-sensitive / whole-word toggles, persisted defaults, next-match (Enter / Cmd-G), previous-match (Shift-Enter / Cmd-Shift-G), match count display, 200ms slide animation matching the BannerStack vocabulary, theme-aware highlight, and a 10,000-line scrollback perf budget
-- **Web Links** — Clickable URLs with a strict scheme allowlist (`https`, `http`, `mailto` only — never `file://`, `javascript:`, or custom protocols). Cmd-click activation on macOS / Ctrl-click on Linux + Windows by default; single-click never activates a link. OSC 8 hyperlink href is shown in the hover tooltip. A risk-aware confirmation popover catches IDN/Punycode spoofs and a 30-entry typosquat list before navigation. Desktop routes through Wails `BrowserOpenURL`; web opens in a new tab with `_blank` + `noopener,noreferrer` (current-tab navigation is never possible)
+- **Web Links** — Clickable URLs with a strict scheme allowlist (`https`, `http`, `mailto` only — never `file://`, `javascript:`, or custom protocols). Cmd-click activation on macOS (Ctrl-click for web guests on other OSes) by default; single-click never activates a link. OSC 8 hyperlink href is shown in the hover tooltip. A risk-aware confirmation popover catches IDN/Punycode spoofs and a 30-entry typosquat list before navigation. Desktop routes through Wails `BrowserOpenURL`; web opens in a new tab with `_blank` + `noopener,noreferrer` (current-tab navigation is never possible)
 - **Inline images (sixel)** — Render sixel-encoded images directly in the terminal via `@xterm/addon-image`. CSP includes a minimal, audited `'wasm-unsafe-eval'` carve-out (the addon's sixel decoder uses inline WASM). `storageLimit` defaults to 16 MB per-tab (overrides the upstream 100 MB default to prevent OOM with many concurrent tabs); configurable in the Settings disclosure. Multi-client byte-fidelity is preserved across the relay
 - **Unicode 11 width tables** — Correct wide-character and emoji handling. Buffer-interpretation plugin: applies to new sessions only (toggling on a live session would re-flow existing scrollback); web-served clients share the daemon-side setting so multi-client scrollback wrap stays identical across viewers
 - **Save Terminal As…** — Right-click a tab to save its current scrollback as a `.txt` file via a native `SaveFileDialog`. Backed by `@xterm/addon-serialize`; explicit secrets-warning tooltip; no auto-save / no on-disk capture without an explicit gesture
@@ -115,8 +115,8 @@ Older releases (v3.3 and earlier) are on the [Releases page](https://github.com/
 - **Help menu trigger** — Manual check via Help > Check for Updates
 
 ### System Tray
-- **Cross-platform tray** — macOS (native cgo NSStatusBar), Linux (D-Bus StatusNotifierItem for GNOME/KDE/XFCE), Windows (Shell_NotifyIcon Win32 API) — all sharing menu construction via common helpers
-- **Menu bar icon** — Monochrome template icon adapts to light/dark mode (macOS); embedded PNG icon (Linux/Windows)
+- **Native tray** — macOS NSStatusBar via cgo, with menu construction in common helpers
+- **Menu bar icon** — Monochrome template icon adapts to light/dark mode
 - **Session menu** — Dynamic menu listing all active sessions; click to activate
 - **Session count tooltip** — Shows active session count (e.g., "AgentHub — 3 sessions")
 - **Error state** — Tray icon switches to error state when daemon is unreachable
@@ -125,7 +125,7 @@ Older releases (v3.3 and earlier) are on the [Releases page](https://github.com/
 - **Dock hiding** — App hides from Dock and Cmd+Tab via LSUIElement (macOS)
 
 ### Notifications (v4.2)
-- **Awaiting-input alerts** — When a session transitions into the waiting-for-input state while AgentHub is hidden to the tray, you get a native OS notification so you don't have to watch the tray. Native macOS `UNUserNotificationCenter` on macOS; beeep-backed notifications on Windows and Linux
+- **Awaiting-input alerts** — When a session transitions into the waiting-for-input state while AgentHub is hidden to the tray, you get a native OS notification so you don't have to watch the tray. Native macOS `UNUserNotificationCenter`
 - **Edge-triggered & de-duplicated** — Exactly one notification per non-waiting→waiting transition (cold-start baseline suppressed, per-session de-dup), so a session sitting at a prompt never re-nags
 - **Opt-in** — Default **OFF**; enable with the "Notify when a session needs input" toggle in Settings → Behavior
 
@@ -135,7 +135,7 @@ Older releases (v3.3 and earlier) are on the [Releases page](https://github.com/
 - **Status bar** — Persistent tmux-style bottom bar during attach showing session name, agent type, hostname, detach hint, elapsed time, and live viewer count; refreshes without corrupting output (DECSTBM scroll region); suppressed when stdout is not a TTY; `--status-top` flag for top placement; clean teardown on detach
 - **Connection banner** — Attach displays session name, CLI type, and hostname before entering raw mode
 - **Machine-readable output** — `--json` flag on list, web status, health, and daemon status commands
-- **Daemon management** — `agenthub daemon install/uninstall/start/stop` registers with platform service managers (launchd, systemd, Windows SCM)
+- **Daemon management** — `agenthub daemon install/uninstall/start/stop` registers with launchd
 
 ### Shell sessions
 AgentHub supports raw PTY shell sessions alongside AI CLI sessions (Claude Code, Codex, Gemini CLI, OpenCode). Both surfaces — the GUI new-session modal and the CLI `new shell` subcommand — expose this as exactly one entry labelled "Shell". There is no per-surface picker for the spawned binary; the daemon resolves it from a single Settings value.
@@ -143,7 +143,7 @@ AgentHub supports raw PTY shell sessions alongside AI CLI sessions (Claude Code,
 - **GUI** — The New Session modal shows one static "Shell" row beneath the detected AI CLIs. Pressing Create launches a raw PTY using the binary configured in Settings → Paths.
 - **CLI** — `agenthub new shell [<path>]`. No selection flag — the spawned binary is whatever Settings → Paths resolves to (the same value used by the GUI). The optional positional path sets the working directory; omit it to launch in `$HOME`. Extra tokens after `--` are NOT forwarded to shell sessions (a stderr warning is emitted if present, matching the GUI's no-args behavior).
 
-**Binary selection.** Open the desktop app, go to Settings → Paths, and set the shell binary path. If no shellPath is configured, the daemon falls back to `$SHELL` (or the platform default — `zsh` on macOS, `bash` on Linux, `powershell.exe` on Windows).
+**Binary selection.** Open the desktop app, go to Settings → Paths, and set the shell binary path. If no shellPath is configured, the daemon falls back to `$SHELL` (or `/bin/zsh`).
 
 **Cross-surface parity.** Both surfaces use the same shellPath value. Change it once in Settings → Paths and the new choice applies to every shell session you start, regardless of which surface launched it.
 
@@ -155,7 +155,7 @@ AgentHub supports raw PTY shell sessions alongside AI CLI sessions (Claude Code,
 - **Web dashboard** — Dark-themed dashboard with session cards, live status dots, CLI badges, QR code thumbnails, and direct connect links
 - **Web terminal status bar** — Live session info with name, CLI type, hostname, and three-state connection indicator (connecting/connected/disconnected)
 - **QR codes** — Every web-served session gets a scannable QR code in the desktop app and CLI
-- **Health checks** — 4-state Tailscale health cascade (binary found → daemon running → connected → certs ready) across Homebrew, system package managers, Snap, Flatpak, and Windows default paths (`agenthub health` CLI command)
+- **Health checks** — 4-state Tailscale health cascade (binary found → daemon running → connected → certs ready) across the Tailscale.app bundle and Homebrew paths (`agenthub health` CLI command)
 - **Nudge banner** — Context-aware in-app banner with 4-state detection: recommends Tailscale installation when binary not found; shows daemon-stopped instructions (platform-specific) when binary exists but daemon isn't running; shows "upgrading to Tailscale..." when Tailscale connects and the server is restarting; each banner is independently dismissible with fade-out animation
 
 ### Security
@@ -163,9 +163,9 @@ AgentHub supports raw PTY shell sessions alongside AI CLI sessions (Claude Code,
 - **Server-bound read-only enforcement** — Read-only is a property of the capability claims, not a client-supplied query string. Clients reconnecting without `?readonly` cannot bypass; the relay rejects `MsgInput` from read-only subscribers regardless of how the connection was opened.
 - **No auto-expose** — Creating a new session while the web server is running does not automatically expose it. Sessions become reachable only after explicit grant via the GUI/CLI; the daemon then returns a signed capability-bearing URL.
 - **Signing-key rotation panic button** — "Regenerate Signing Key" in Settings invalidates every outstanding capability across all sessions in one click; useful if a share link is suspected leaked.
-- **Strict WebSocket Origin allowlist** — Cross-site WebSocket hijacking is blocked at the handshake. Allowlist covers Tailscale FQDN (`<host>.<tailnet>.ts.net:<port>`), local-mode bind host (`<lan-ip>:<port>`), and the Wails desktop webview (production `wails://wails`, dev `wails://wails.localhost:<port>`, Windows `http://wails.localhost`). All other origins return 403.
+- **Strict WebSocket Origin allowlist** — Cross-site WebSocket hijacking is blocked at the handshake. Allowlist covers Tailscale FQDN (`<host>.<tailnet>.ts.net:<port>`), local-mode bind host (`<lan-ip>:<port>`), and the Wails desktop webview (production `wails://wails`, dev `wails://wails.localhost:<port>`). All other origins return 403.
 - **Vendored terminal assets + Content-Security-Policy** — xterm.js, addons, and themes are embedded in the binary at `web/vendor/xterm/`. Zero runtime CDN fetches. All three embedded HTML routes (`/dashboard`, `/join`, `/sessions/{id}`) enforce a strict CSP: `script-src 'self'`, `connect-src 'self' wss://<host>`, `style-src 'self' 'unsafe-inline'` (the last only to accommodate xterm's runtime style injection — see Phase 89 D-09).
-- **Signed + notarized releases with SLSA L2 build provenance** — All third-party GitHub Actions are 40-character SHA-pinned (`scripts/grep-gate.sh` enforces this in CI). Build-tool versions (Wails, nfpm) pinned via `tools.go`. The release pipeline is split into `validate` → `build-{macos,windows,linux}` (no secrets) → `sign-macos` (gated by a required-reviewer rule, holds notarization credentials) → `publish`. Sigstore build-provenance attestation is verified BEFORE codesigning runs, so a compromised build job cannot inject a malicious binary into the signing flow.
+- **Signed + notarized releases with SLSA L2 build provenance** — All third-party GitHub Actions are 40-character SHA-pinned (`scripts/grep-gate.sh` enforces this in CI). Build-tool versions (Wails) pinned via `tools.go`. The release pipeline is split into `validate` → `build-macos` (no secrets) → `sign-macos` (gated by a required-reviewer rule, holds notarization credentials) → `publish`. Sigstore build-provenance attestation is verified BEFORE codesigning runs, so a compromised build job cannot inject a malicious binary into the signing flow.
 - **Reproducibility** — `release.yml` and `distribute.yml` produce SHA256 checksums alongside artifacts; every published release includes a `checksums.txt`. Dependabot is configured for both `gomod` and `github-actions` ecosystems with no auto-merge — every dependency change goes through manual review.
 
 ### Settings
@@ -177,14 +177,14 @@ AgentHub supports raw PTY shell sessions alongside AI CLI sessions (Claude Code,
 - **Behavior section** — "Start minimized to system tray" toggle; a "Stay on Hub after creating a session" toggle (v4.2) that keeps you on the Hub instead of auto-switching to the new session's tab; and a "Notify when a session needs input" toggle (v4.2, default off) for native awaiting-input notifications — each with non-optimistic save, loading state, and error feedback
 - **Session Behavior section** — "Auto-close tab on exit" toggle controls whether session tabs auto-close when the agent process exits; and a re-enableable "Shell web-share warning" toggle (v4.0) controls the one-time warning shown before web-sharing a raw shell session, firing consistently across both share surfaces; preferences persist via daemon settings
 - **Paths section** — Override auto-detected CLI paths per agent; each path has a native browse button that opens a file picker; save confirmation shows a green "Saved!" indicator for 1.5 seconds
-- **Tailscale status indicator** — Color-coded dot with a text label (Connected / Permission Limited / Not Connected / Daemon Stopped / Not Installed) and a collapsible diagnostics checklist showing binary detection, daemon status, connection state, and TLS readiness; platform-specific troubleshooting instructions for macOS, Linux, and Windows. The **Permission Limited** state (v4.2) honestly distinguishes "the daemon is running but this non-admin macOS account can't read its status file" from "not connected", with guidance to grant admin access or install the Homebrew build — instead of silently misreporting a live daemon as disconnected ([#120](https://github.com/scottkw/agenthub/issues/120))
+- **Tailscale status indicator** — Color-coded dot with a text label (Connected / Permission Limited / Not Connected / Daemon Stopped / Not Installed) and a collapsible diagnostics checklist showing binary detection, daemon status, connection state, and TLS readiness; macOS troubleshooting instructions. The **Permission Limited** state (v4.2) honestly distinguishes "the daemon is running but this non-admin macOS account can't read its status file" from "not connected", with guidance to grant admin access or install the Homebrew build — instead of silently misreporting a live daemon as disconnected ([#120](https://github.com/scottkw/agenthub/issues/120))
 - **Certificate Transparency disclosure** — Acknowledgment flow for CT log requirements
 
 ### Platform
-- **Cross-platform** — macOS (universal, signed + notarized), Linux (Ubuntu 22.04 + 24.04), Windows (NSIS installer)
+- **macOS only** — universal binary, signed + notarized
 - **Single binary** — `agenthub` launches GUI; `agenthub <command>` runs CLI
 - **Custom app icons** — Branded AgentHub logomark across all platforms
-- **Build script** — `build.sh` for local cross-platform builds with optional macOS code signing
+- **Build script** — `build.sh` for local macOS builds with optional code signing
 
 ## Architecture
 
@@ -268,25 +268,13 @@ brew tap scottkw/agenthub
 brew install --cask agenthub
 ```
 
-### Windows (WinGet)
-
-```powershell
-winget install scottkw.agenthub
-```
-
-> WinGet availability depends on the first submission being accepted by Microsoft. Check [Releases](https://github.com/scottkw/agenthub/releases) for direct download in the meantime.
-
 ### GitHub Releases
 
-Download the latest release for your platform from [Releases](https://github.com/scottkw/agenthub/releases):
+Download the latest release from [Releases](https://github.com/scottkw/agenthub/releases):
 
 | Platform | File | Notes |
 |----------|------|-------|
 | macOS (universal) | `agenthub-v*-darwin-universal.dmg` | Signed and notarized |
-| Windows | `agenthub-v*-windows-amd64-installer.exe` | NSIS installer |
-| Windows | `agenthub-v*-windows-amd64.exe` | Standalone executable |
-| Linux (deb) | `agenthub-v*-linux-amd64.deb` | Ubuntu/Debian package |
-| Linux (tar.gz) | `agenthub-v*-linux-amd64.tar.gz` | Generic archive |
 
 All releases include a `checksums.txt` with SHA256 hashes for verification.
 
@@ -297,23 +285,7 @@ All releases include a `checksums.txt` with SHA256 hashes for verification.
 - **Wails CLI** v2 (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
 - **Tailscale** (optional) — enables zero-config web serving with browser-trusted TLS; without it, local network mode uses self-signed TLS + password auth ([tailscale.com](https://tailscale.com))
 
-### Platform-specific
-
-**macOS:**
-- Xcode Command Line Tools: `xcode-select --install`
-
-**Linux (Ubuntu/Debian):**
-```bash
-# Ubuntu 24.04 / Debian 13+
-sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
-
-# Ubuntu 22.04
-sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev
-```
-
-**Windows:**
-- [WebView2 runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (included in Windows 11; install manually on Windows 10)
-- A C compiler — MSYS2 with MinGW-w64 or TDM-GCC
+- **Xcode Command Line Tools**: `xcode-select --install`
 
 ## Development
 
@@ -346,13 +318,7 @@ cd frontend && pnpm test
 ### Using `build.sh` (recommended)
 
 ```bash
-# Build for the current platform
 ./build.sh --platform macos    # macOS universal binary (.app)
-./build.sh --platform linux    # Linux amd64 via Docker
-./build.sh --platform windows  # Windows amd64 via cross-compile
-
-# Build all platforms
-./build.sh --all
 
 # Build + sign and notarize macOS (requires Apple Developer credentials)
 ./build.sh --platform macos --sign
@@ -360,38 +326,18 @@ cd frontend && pnpm test
 
 ### Manual builds
 
-#### Local build (current platform)
+#### Local build
 
 ```bash
 wails build -tags wailsassets
 ```
 
-Output: `build/bin/agenthub` (or `agenthub.exe` on Windows, `agenthub.app` on macOS)
+Output: `build/bin/agenthub.app`
 
 #### macOS (universal binary)
 
 ```bash
 wails build -platform darwin/universal -tags wailsassets
-```
-
-#### Linux
-
-```bash
-# Ubuntu 24.04 (WebKitGTK 4.1)
-wails build -tags webkit2_41,wailsassets
-
-# Ubuntu 22.04 (WebKitGTK 4.0)
-wails build -tags wailsassets
-```
-
-#### Windows
-
-```bash
-# Standard build
-wails build -tags wailsassets
-
-# With NSIS installer
-wails build -nsis -tags wailsassets
 ```
 
 ### CI/CD
@@ -400,18 +346,15 @@ GitHub Actions automates building, releasing, and distributing AgentHub:
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `build.yml` | Push/PR | 4-runner matrix build with race detector (no signing) |
-| `release.yml` | Tag push (v*) | Multi-platform release builds with macOS signing/notarization (gated by required-reviewer on the `release` environment) |
-| `distribute.yml` | Release published | Updates Homebrew tap + submits WinGet manifest PR |
+| `build.yml` | Push/PR | macOS build with race detector, frontend tests, build-script tests and traceability check (no signing) |
+| `release.yml` | Tag push (v*) | macOS release build with signing/notarization (gated by required-reviewer on the `release` environment) |
+| `distribute.yml` | Release published | Updates Homebrew tap |
 
 **Build matrix:**
 
 | Runner | Platform | Notes |
 |--------|----------|-------|
 | `macos-latest` | `darwin/universal` | Signing + notarization in release.yml |
-| `ubuntu-latest` | `linux/amd64` | WebKitGTK 4.1 (`-tags webkit2_41`) |
-| `ubuntu-22.04` | `linux/amd64` | WebKitGTK 4.0 |
-| `windows-latest` | `windows/amd64` | NSIS installer + WebView2 embedded |
 
 ## Usage
 

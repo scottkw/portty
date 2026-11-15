@@ -19,9 +19,6 @@ import (
 // testSetup creates a real daemon API on a short socket path and returns a DaemonClient.
 func testSetup(t *testing.T) *daemon.DaemonClient {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("testSetup uses Unix domain sockets")
-	}
 	// Isolate config directory so settings.json from other tests doesn't leak.
 	tmpCfg := t.TempDir()
 	if runtime.GOOS == "darwin" {
@@ -30,6 +27,7 @@ func testSetup(t *testing.T) *daemon.DaemonClient {
 		t.Setenv("XDG_CONFIG_HOME", tmpCfg)
 	}
 	engine := daemon.NewSessionEngine()
+	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := daemon.NewAPI(engine)
 	// Use short socket path to avoid macOS 103-char sun_path limit.
 	socketPath := fmt.Sprintf("/tmp/aht%d_%d.sock", os.Getpid(), time.Now().UnixNano()%10000)
@@ -41,40 +39,6 @@ func testSetup(t *testing.T) *daemon.DaemonClient {
 	// Brief sleep to let server goroutine start accepting.
 	time.Sleep(10 * time.Millisecond)
 	return daemon.NewDaemonClient(socketPath)
-}
-
-// TestCmdNew_Success creates a session and verifies a UUID is printed to stdout.
-// Uses "cat" as the CLI since it is always present on macOS/Linux.
-func TestCmdNew_Success(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	err := cmdNew(client, []string{"cat", "/tmp"}, nil, &buf)
-	if err != nil {
-		t.Fatalf("cmdNew returned error: %v", err)
-	}
-	out := strings.TrimSpace(buf.String())
-	// Session IDs are 32-char lowercase hex strings (16 random bytes).
-	if len(out) != 32 {
-		t.Errorf("expected 32-char hex session ID, got %q (len=%d)", out, len(out))
-	}
-	for _, c := range out {
-		if !strings.ContainsRune("0123456789abcdef", c) {
-			t.Errorf("session ID contains non-hex character %q: %q", c, out)
-			break
-		}
-	}
-}
-
-// TestCmdNew_MissingArgs verifies that missing args returns an error with "usage".
-func TestCmdNew_MissingArgs(t *testing.T) {
-	client := testSetup(t)
-	err := cmdNew(client, []string{}, nil, &bytes.Buffer{})
-	if err == nil {
-		t.Fatal("expected error for missing args, got nil")
-	}
-	if !strings.Contains(err.Error(), "usage") {
-		t.Errorf("expected error to contain %q, got %q", "usage", err.Error())
-	}
 }
 
 // TestCmdList_Empty verifies that the header row is printed even when no sessions exist.
@@ -92,13 +56,16 @@ func TestCmdList_Empty(t *testing.T) {
 	if !strings.Contains(out, "ID") {
 		t.Errorf("expected header row with %q, got %q", "ID", out)
 	}
+	if strings.Contains(out, "AGENT") {
+		t.Errorf("header must not have an AGENT column, got %q", out)
+	}
 }
 
 // TestCmdList_WithSessions verifies that sessions appear in the list output.
 func TestCmdList_WithSessions(t *testing.T) {
 	client := testSetup(t)
 	// Create a session via the client directly.
-	id, err := client.CreateSession("cat", "mytest", "/tmp", nil, 0, 0)
+	id, err := client.CreateSession("mytest", "/tmp", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -135,7 +102,7 @@ func TestCmdList_JSON_Empty(t *testing.T) {
 // TestCmdList_JSON_WithSessions verifies that --json with sessions produces valid JSON.
 func TestCmdList_JSON_WithSessions(t *testing.T) {
 	client := testSetup(t)
-	id, err := client.CreateSession("cat", "jsontest", "/tmp", nil, 0, 0)
+	id, err := client.CreateSession("jsontest", "/tmp", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -161,7 +128,7 @@ func TestCmdList_JSON_WithSessions(t *testing.T) {
 // TestCmdKill_Success creates a session, kills it, and verifies it is removed.
 func TestCmdKill_Success(t *testing.T) {
 	client := testSetup(t)
-	id, err := client.CreateSession("cat", "killtest", "/tmp", nil, 0, 0)
+	id, err := client.CreateSession("killtest", "/tmp", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -180,7 +147,7 @@ func TestCmdKill_Success(t *testing.T) {
 // TestCmdRename_Success creates a session, renames it, and verifies the new name.
 func TestCmdRename_Success(t *testing.T) {
 	client := testSetup(t)
-	id, err := client.CreateSession("cat", "oldname", "/tmp", nil, 0, 0)
+	id, err := client.CreateSession("oldname", "/tmp", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -216,15 +183,13 @@ func TestCmdRename_MissingArgs(t *testing.T) {
 // Used for cmdServe/cmdUnserve tests that require a running web server.
 func testSetupWithWebServer(t *testing.T) *daemon.DaemonClient {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("testSetupWithWebServer uses Unix domain sockets")
-	}
 	if runtime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
 	} else {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	}
 	engine := daemon.NewSessionEngine()
+	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := daemon.NewAPI(engine)
 	socketPath := fmt.Sprintf("/tmp/aht%d_%d.sock", os.Getpid(), time.Now().UnixNano()%10000)
 	t.Cleanup(func() { os.Remove(socketPath) })
@@ -241,8 +206,8 @@ func testSetupWithWebServer(t *testing.T) *daemon.DaemonClient {
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
-		return id, "", "", ""
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
+		return "", "", "", false
 	})
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
@@ -304,7 +269,7 @@ func TestCmdWebStop(t *testing.T) {
 // TestCmdServe_Success creates a session and enables web serving for it.
 func TestCmdServe_Success(t *testing.T) {
 	client := testSetupWithWebServer(t)
-	id, err := client.CreateSession("cat", "servetest", "/tmp", nil, 0, 0)
+	id, err := client.CreateSession("servetest", "/tmp", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -328,7 +293,7 @@ func TestCmdServe_MissingArgs(t *testing.T) {
 // TestCmdUnserve_Success creates a session and disables web serving for it.
 func TestCmdUnserve_Success(t *testing.T) {
 	client := testSetupWithWebServer(t)
-	id, err := client.CreateSession("cat", "unservetest", "/tmp", nil, 0, 0)
+	id, err := client.CreateSession("unservetest", "/tmp", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -337,7 +302,7 @@ func TestCmdUnserve_Success(t *testing.T) {
 	}
 }
 
-// TestCmdHealth_OutputFormat verifies cmdHealth prints exactly 5 key-value lines.
+// TestCmdHealth_OutputFormat verifies cmdHealth prints exactly 4 key-value lines.
 func TestCmdHealth_OutputFormat(t *testing.T) {
 	var buf bytes.Buffer
 	err := cmdHealth(nil, &buf)
@@ -345,16 +310,16 @@ func TestCmdHealth_OutputFormat(t *testing.T) {
 		t.Fatalf("cmdHealth returned error: %v", err)
 	}
 	out := buf.String()
-	// Verify all 5 labels are present.
-	for _, label := range []string{"installed:", "connected:", "has-certs:", "ip:", "domain:"} {
+	// Verify all 4 labels are present.
+	for _, label := range []string{"connected:", "has-certs:", "ip:", "domain:"} {
 		if !strings.Contains(out, label) {
 			t.Errorf("expected output to contain %q, got:\n%s", label, out)
 		}
 	}
-	// Count non-empty lines — should be exactly 5.
+	// Count non-empty lines — should be exactly 4.
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 5 {
-		t.Errorf("expected 5 output lines, got %d:\n%s", len(lines), out)
+	if len(lines) != 4 {
+		t.Errorf("expected 4 output lines, got %d:\n%s", len(lines), out)
 	}
 }
 
@@ -411,7 +376,7 @@ func TestCmdWeb_MissingSubcommand(t *testing.T) {
 	}
 }
 
-// TestCmdSettings_Basic verifies cmdSettings prints all three label lines.
+// TestCmdSettings_Basic verifies cmdSettings prints both label lines and no cli-paths block.
 func TestCmdSettings_Basic(t *testing.T) {
 	client := testSetup(t)
 	var buf bytes.Buffer
@@ -420,10 +385,13 @@ func TestCmdSettings_Basic(t *testing.T) {
 		t.Fatalf("cmdSettings returned error: %v", err)
 	}
 	out := buf.String()
-	for _, label := range []string{"socket-path:", "relay-port:", "cli-paths:"} {
+	for _, label := range []string{"socket-path:", "relay-port:"} {
 		if !strings.Contains(out, label) {
 			t.Errorf("expected output to contain %q, got:\n%s", label, out)
 		}
+	}
+	if strings.Contains(out, "cli-paths:") {
+		t.Errorf("cli-paths block should be gone, got:\n%s", out)
 	}
 }
 
@@ -453,39 +421,10 @@ func TestCmdSettings_RelayPort(t *testing.T) {
 	}
 }
 
-// TestCmdSettings_CLIPaths_None verifies that when no CLI paths are set, output contains "(none)".
-func TestCmdSettings_CLIPaths_None(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	if err := cmdSettings(client, &buf); err != nil {
-		t.Fatalf("cmdSettings error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "(none)") {
-		t.Errorf("expected '(none)' for empty CLI paths, got:\n%s", buf.String())
-	}
-}
-
-// TestCmdSettings_CLIPaths_Set verifies that after setting a CLI path, output contains the path name and value.
-func TestCmdSettings_CLIPaths_Set(t *testing.T) {
-	client := testSetup(t)
-	// Use /bin/sh as the CLI binary — it always exists on macOS and Linux.
-	if err := client.UpdateCLIPath("claude", "/bin/sh"); err != nil {
-		t.Fatalf("UpdateCLIPath: %v", err)
-	}
-	var buf bytes.Buffer
-	if err := cmdSettings(client, &buf); err != nil {
-		t.Fatalf("cmdSettings error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "claude=/bin/sh") {
-		t.Errorf("expected CLI path in output, got:\n%s", out)
-	}
-}
-
 // TestCmdList_WithHostColumn creates a session and verifies "(local)" and "HOST" appear in output.
 func TestCmdList_WithHostColumn(t *testing.T) {
 	client := testSetup(t)
-	_, err := client.CreateSession("cat", "hosttest", "/tmp", nil, 0, 0)
+	_, err := client.CreateSession("hosttest", "/tmp", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -505,7 +444,7 @@ func TestCmdList_WithHostColumn(t *testing.T) {
 // TestCmdList_LocalFlag verifies --local skips remote discovery.
 func TestCmdList_LocalFlag(t *testing.T) {
 	client := testSetup(t)
-	_, err := client.CreateSession("cat", "localtest", "/tmp", nil, 0, 0)
+	_, err := client.CreateSession("localtest", "/tmp", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -526,7 +465,7 @@ func TestCmdList_LocalFlag(t *testing.T) {
 // TestCmdList_JSON_WithHostField verifies JSON output has local array with session objects.
 func TestCmdList_JSON_WithHostField(t *testing.T) {
 	client := testSetup(t)
-	id, err := client.CreateSession("cat", "jsonhost", "/tmp", nil, 0, 0)
+	id, err := client.CreateSession("jsonhost", "/tmp", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -578,82 +517,8 @@ func TestUsage_RemoteSessionDocs(t *testing.T) {
 	}
 }
 
-// TestSplitDashDash verifies all boundary cases for the -- separator.
-func TestSplitDashDash(t *testing.T) {
-	cases := []struct {
-		name   string
-		input  []string
-		before []string
-		after  []string
-	}{
-		{"no separator", []string{"new", "cat", "/tmp"}, []string{"new", "cat", "/tmp"}, nil},
-		{"with args after", []string{"new", "cat", "/tmp", "--", "--model", "foo"}, []string{"new", "cat", "/tmp"}, []string{"--model", "foo"}},
-		{"trailing separator", []string{"new", "cat", "/tmp", "--"}, []string{"new", "cat", "/tmp"}, []string{}},
-		{"leading separator", []string{"--", "--model", "foo"}, []string{}, []string{"--model", "foo"}},
-		{"empty input", []string{}, []string{}, nil},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			b, a := splitDashDash(tc.input)
-			if len(b) != len(tc.before) {
-				t.Fatalf("before: got %v, want %v", b, tc.before)
-			}
-			for i := range b {
-				if b[i] != tc.before[i] {
-					t.Fatalf("before[%d]: got %q, want %q", i, b[i], tc.before[i])
-				}
-			}
-			if tc.after == nil {
-				if a != nil {
-					t.Fatalf("after: got %v, want nil", a)
-				}
-			} else {
-				if a == nil {
-					t.Fatalf("after: got nil, want %v", tc.after)
-				}
-				if len(a) != len(tc.after) {
-					t.Fatalf("after: got %v, want %v", a, tc.after)
-				}
-				for i := range a {
-					if a[i] != tc.after[i] {
-						t.Fatalf("after[%d]: got %q, want %q", i, a[i], tc.after[i])
-					}
-				}
-			}
-		})
-	}
-}
-
-// TestCmdNew_WithExtraArgs verifies that args after "--" are forwarded via CreateSession.
-func TestCmdNew_WithExtraArgs(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	err := cmdNew(client, []string{"cat", "/tmp"}, []string{"--model", "opus"}, &buf)
-	if err != nil {
-		t.Fatalf("cmdNew with extraArgs: %v", err)
-	}
-	out := strings.TrimSpace(buf.String())
-	if len(out) != 32 {
-		t.Errorf("expected 32-char hex session ID, got %q", out)
-	}
-}
-
-// TestCmdNew_NoSeparator verifies that nil extraArgs still works (backward compat).
-func TestCmdNew_NoSeparator(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	err := cmdNew(client, []string{"cat", "/tmp"}, nil, &buf)
-	if err != nil {
-		t.Fatalf("cmdNew without extraArgs: %v", err)
-	}
-	out := strings.TrimSpace(buf.String())
-	if len(out) != 32 {
-		t.Errorf("expected 32-char hex session ID, got %q", out)
-	}
-}
-
 // captureStderr redirects os.Stderr to a pipe, runs fn, and returns captured output.
-// Restores os.Stderr on completion. Used by Plan 101-04 cmdNewShell tests to assert
+// Restores os.Stderr on completion. Used by the cmdNew tests to assert
 // locked stderr error strings (per UI-SPEC §CLI).
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
@@ -676,10 +541,8 @@ func captureStderr(t *testing.T, fn func()) string {
 	return captured.String()
 }
 
-// shellSessionCLI returns sessions[0].CLI from a fresh ListSessions call.
-// Fails the test if exactly one session is not present. Used by cmdNewShell tests
-// to verify the resolved shell path the daemon ran.
-func shellSessionCLI(t *testing.T, client *daemon.DaemonClient) string {
+// newSessionInfo returns the single session the daemon holds.
+func newSessionInfo(t *testing.T, client *daemon.DaemonClient) daemon.SessionInfo {
 	t.Helper()
 	sessions, err := client.ListSessions()
 	if err != nil {
@@ -688,189 +551,144 @@ func shellSessionCLI(t *testing.T, client *daemon.DaemonClient) string {
 	if len(sessions) != 1 {
 		t.Fatalf("expected exactly 1 session, got %d: %+v", len(sessions), sessions)
 	}
-	return sessions[0].CLI
+	return sessions[0]
 }
 
-// assertShellCLI verifies the resolved CLI path matches one of the basename
-// alternatives (e.g. "zsh" matches /bin/zsh, /usr/bin/zsh, /opt/homebrew/bin/zsh).
-// We cannot assert raw "zsh" because the daemon resolves it to an absolute path
-// (Phase 100 SHELL-05 dispatch via resolveShellSpawn) before storing on the session.
-func assertShellCLI(t *testing.T, gotPath string, wantBasename string) {
+// assertSessionID fails unless out is a 32-char lowercase hex session ID.
+func assertSessionID(t *testing.T, out string) {
 	t.Helper()
-	base := filepath.Base(gotPath)
-	if wantBasename == "shell" {
-		// "shell" = $SHELL resolution. Accept any endorsed shell basename.
-		switch base {
-		case "bash", "zsh", "sh", "pwsh", "powershell":
-			return
-		}
-		t.Errorf("expected resolved CLI basename to be an endorsed shell, got %q (full path %q)", base, gotPath)
-		return
-	}
-	if base != wantBasename {
-		t.Errorf("expected resolved CLI basename %q, got %q (full path %q)", wantBasename, base, gotPath)
-	}
-}
-
-// TestCmdNewShell_NoArgs_UsesSystemDefault verifies that `agenthub new shell` with no
-// flags or positional args creates a session with cli="shell" (resolved to $SHELL by
-// the daemon) and prints a 32-char hex UUID.
-func TestCmdNewShell_NoArgs_UsesSystemDefault(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	err := cmdNewShell(client, nil, nil, &buf)
-	if err != nil {
-		t.Fatalf("cmdNewShell returned error: %v", err)
-	}
-	id := strings.TrimSpace(buf.String())
+	id := strings.TrimSpace(out)
 	if len(id) != 32 {
-		t.Errorf("expected 32-char hex session ID, got %q", id)
+		t.Fatalf("expected 32-char hex session ID, got %q (len=%d)", id, len(id))
 	}
-	assertShellCLI(t, shellSessionCLI(t, client), "shell")
+	for _, c := range id {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			t.Fatalf("session ID contains non-hex character %q: %q", c, id)
+		}
+	}
 }
 
-// TestCmdNewShell_PositionalPath_UsesShell verifies a positional path is accepted
-// and the daemon receives cli="shell".
-func TestCmdNewShell_PositionalPath_UsesShell(t *testing.T) {
+// TestCmdNew_WithDir: `agenthub new <dir>` creates a session in dir named
+// after its basename and prints the ID.
+func TestCmdNew_WithDir(t *testing.T) {
+	client := testSetup(t)
+	dir := t.TempDir()
+	var buf bytes.Buffer
+	if err := cmdNew(client, []string{dir}, &buf); err != nil {
+		t.Fatalf("cmdNew: %v", err)
+	}
+	assertSessionID(t, buf.String())
+	info := newSessionInfo(t, client)
+	if info.Name != filepath.Base(dir) {
+		t.Errorf("session name = %q, want %q", info.Name, filepath.Base(dir))
+	}
+	want, _ := filepath.EvalSymlinks(dir)
+	if info.WorkDir != want {
+		t.Errorf("session WorkDir = %q, want %q", info.WorkDir, want)
+	}
+}
+
+// TestCmdNew_NoDir: `agenthub new` creates a session named "shell"; the daemon
+// starts it in the home directory.
+func TestCmdNew_NoDir(t *testing.T) {
 	client := testSetup(t)
 	var buf bytes.Buffer
-	err := cmdNewShell(client, []string{"/tmp"}, nil, &buf)
-	if err != nil {
-		t.Fatalf("cmdNewShell: %v", err)
+	if err := cmdNew(client, nil, &buf); err != nil {
+		t.Fatalf("cmdNew: %v", err)
 	}
-	assertShellCLI(t, shellSessionCLI(t, client), "shell")
+	assertSessionID(t, buf.String())
+	if info := newSessionInfo(t, client); info.Name != "shell" {
+		t.Errorf("session name = %q, want %q", info.Name, "shell")
+	}
 }
 
-// TestCmdNewShell_RejectsRemovedFlag verifies that the --shell flag, removed in
-// Phase 108 (PARITY-CLI-01), produces the Go flag package's default
-// `flag provided but not defined: -shell` stderr and a non-nil return. The
-// daemon must NOT be reached when fs.Parse fails (no session created).
-func TestCmdNewShell_RejectsRemovedFlag(t *testing.T) {
+// TestCmdNew_RejectsUnknownFlag: an unknown flag (including the long-removed
+// --shell) fails before the daemon is called.
+func TestCmdNew_RejectsUnknownFlag(t *testing.T) {
 	client := testSetup(t)
 	var buf bytes.Buffer
 	var callErr error
 	stderr := captureStderr(t, func() {
-		callErr = cmdNewShell(client, []string{"--shell=zsh"}, nil, &buf)
+		callErr = cmdNew(client, []string{"--shell=zsh"}, &buf)
 	})
 	if callErr == nil {
-		t.Fatal("expected non-nil error for removed --shell flag, got nil")
+		t.Fatal("expected non-nil error for unknown flag, got nil")
 	}
-	if !strings.Contains(stderr, "flag provided but not defined: -shell") {
-		t.Errorf("expected stderr to contain Go flag package default error %q, got %q",
-			"flag provided but not defined: -shell", stderr)
+	if !strings.Contains(stderr, "agenthub new: flag provided but not defined: -shell") {
+		t.Errorf("unexpected stderr %q", stderr)
 	}
-	// Assert daemon was NOT called (no session created on fs.Parse failure).
-	sessions, _ := client.ListSessions()
-	if len(sessions) != 0 {
-		t.Errorf("expected 0 sessions (daemon should not be called when fs.Parse fails), got %d", len(sessions))
+	if sessions, _ := client.ListSessions(); len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
 	}
 }
 
-// TestCmdNewShell_SettingsShellPathSpawned verifies PARITY-CLI-02: when the
-// daemon's shellPath is set to a known executable (e.g. /bin/bash), a CLI
-// `agenthub new shell` invocation records that exact binary as the spawned
-// CLI on the session. The CLI itself contains no per-shell selection logic;
-// resolution flows entirely through engine.go:500-530.
-func TestCmdNewShell_SettingsShellPathSpawned(t *testing.T) {
-	if _, err := os.Stat("/bin/bash"); err != nil {
-		t.Skip("/bin/bash not available on this host")
-	}
-	client := testSetup(t)
-	if err := client.SetShellPath("/bin/bash"); err != nil {
-		t.Fatalf("SetShellPath(/bin/bash): %v", err)
-	}
-	var buf bytes.Buffer
-	if err := cmdNewShell(client, nil, nil, &buf); err != nil {
-		t.Fatalf("cmdNewShell: %v", err)
-	}
-	assertShellCLI(t, shellSessionCLI(t, client), "bash")
-}
-
-// TestCmdNewShell_InvalidShellPathSilentFallback verifies PARITY-CLI-03: when
-// the daemon's persisted shellPath points to a missing/non-executable binary,
-// `agenthub new shell` exits 0 with empty CLI-side stderr. The CLI does NOT
-// stat the path, emit a warning, or run an executable-existence check —
-// downstream daemon spawn errors surface via session lifecycle, not the CLI
-// command.
-//
-// SKIPPED at the harness level: `client.SetShellPath` (and the underlying
-// `engine.SetShellPath` at engine.go:670-705) rejects nonexistent paths on
-// the write path (Phase 107 SHELL-11 hardening). Bypassing the validation
-// requires direct assignment to the unexported `e.shellPath` field, which
-// is not reachable from the `main` package test (the field lives in
-// `internal/daemon`). Plan 108-02 scope explicitly forbids modifying
-// `internal/daemon/engine.go`, so a `SetShellPathForTest` export cannot be
-// added here.
-//
-// Follow-up (separate phase): expose a test-only setter in `internal/daemon`
-// (e.g. `(*SessionEngine).SetShellPathForTest(path string)` mirroring the
-// existing `(*API).SetWebServerForTest` pattern at api.go:209-212) so this
-// SPEC acceptance can be locked end-to-end.
-func TestCmdNewShell_InvalidShellPathSilentFallback(t *testing.T) {
-	t.Skip("PARITY-CLI-03 acceptance: harness limitation — SetShellPath validates path existence; " +
-		"bypass requires a SetShellPathForTest export in internal/daemon, out of 108-02 scope. " +
-		"Follow-up: add unexported-field test setter mirroring api.go SetWebServerForTest pattern.")
-}
-
-// TestCmdNewShell_ExtraArgsWarning verifies that args after "--" emit a non-fatal
-// stderr warning, the command still succeeds, and CreateSession receives args=nil.
-func TestCmdNewShell_ExtraArgsWarning(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	var callErr error
-	stderr := captureStderr(t, func() {
-		callErr = cmdNewShell(client, []string{"/tmp"}, []string{"--foo", "bar"}, &buf)
-	})
-	if callErr != nil {
-		t.Fatalf("cmdNewShell should not error on extra args; got %v", callErr)
-	}
-	expected := "agenthub new shell: extra arguments are not forwarded to shell sessions; ignoring [--foo bar]"
-	if !strings.Contains(stderr, expected) {
-		t.Errorf("expected stderr to contain warning %q, got %q", expected, stderr)
-	}
-	// Session should still be created (warning is non-fatal).
-	id := strings.TrimSpace(buf.String())
-	if len(id) != 32 {
-		t.Errorf("expected session UUID on stdout, got %q", id)
-	}
-}
-
-// TestCmdNewShell_DaemonError verifies that a daemon-unreachable error is surfaced
-// with the locked stderr prefix and a non-nil return.
-func TestCmdNewShell_DaemonError(t *testing.T) {
-	// Use a DaemonClient pointing at a non-existent socket so the underlying
-	// HTTP-over-unix-socket call fails. This exercises the daemon-unreachable
-	// branch of cmdNewShell without needing a fake client.
+// TestCmdNew_DaemonError: a daemon-unreachable error surfaces on stderr with
+// the underlying error and a non-nil return.
+func TestCmdNew_DaemonError(t *testing.T) {
 	client := daemon.NewDaemonClient("/tmp/agenthub-nonexistent-socket-test.sock")
 	var buf bytes.Buffer
 	var callErr error
 	stderr := captureStderr(t, func() {
-		callErr = cmdNewShell(client, nil, nil, &buf)
+		callErr = cmdNew(client, nil, &buf)
 	})
 	if callErr == nil {
 		t.Fatal("expected error when daemon socket is unreachable, got nil")
 	}
-	if !strings.Contains(stderr, "agenthub new shell: daemon unreachable:") {
-		t.Errorf("expected stderr to contain 'daemon unreachable:' prefix, got %q", stderr)
+	if !strings.HasPrefix(stderr, "agenthub new: ") || !strings.Contains(stderr, callErr.Error()) {
+		t.Errorf("expected stderr 'agenthub new: %v', got %q", callErr, stderr)
 	}
 }
 
-// TestUsage_IncludesNewShell verifies the usage() output documents the new shell subcommand.
-// Phase 108 PARITY-CLI-01: the `--shell=bash|zsh|pwsh|powershell` needle has been
-// dropped — the flag was removed entirely in this phase. Plan 108-03 will
-// further rewrite the help-block line, but the `new shell [<path>]` substring
-// is preserved so this assertion remains valid end-to-end.
-func TestUsage_IncludesNewShell(t *testing.T) {
+// TestCmdNew_RelativeDir (WR-07): a relative path resolves against the CLI's
+// cwd, not the daemon's.
+func TestCmdNew_RelativeDir(t *testing.T) {
+	client := testSetup(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	var buf bytes.Buffer
+	if err := cmdNew(client, []string{"."}, &buf); err != nil {
+		t.Fatalf("cmdNew: %v", err)
+	}
+	want, _ := filepath.EvalSymlinks(dir)
+	if info := newSessionInfo(t, client); info.WorkDir != want {
+		t.Errorf("session WorkDir = %q, want %q", info.WorkDir, want)
+	}
+}
+
+// TestCmdNew_RejectsExtraArgs (WR-07): the removed `new <agent> <path>` form
+// fails loudly instead of starting in a directory named after the agent.
+func TestCmdNew_RejectsExtraArgs(t *testing.T) {
+	client := testSetup(t)
+	var buf bytes.Buffer
+	var callErr error
+	stderr := captureStderr(t, func() {
+		callErr = cmdNew(client, []string{"claude", t.TempDir()}, &buf)
+	})
+	if callErr == nil {
+		t.Fatal("expected an error for two positional arguments, got nil")
+	}
+	if !strings.Contains(stderr, "usage: agenthub new [<path>]") {
+		t.Errorf("unexpected stderr %q", stderr)
+	}
+	if sessions, _ := client.ListSessions(); len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
+	}
+}
+
+// TestUsage_DocumentsNewDir: usage shows `new [<path>]` and no agent or
+// `new shell` / `--` passthrough forms.
+func TestUsage_DocumentsNewDir(t *testing.T) {
 	src, err := os.ReadFile("cmd_cli.go")
 	if err != nil {
 		t.Fatalf("read cmd_cli.go: %v", err)
 	}
 	content := string(src)
-	for _, needle := range []string{
-		"new shell [<path>]",
-	} {
-		if !strings.Contains(content, needle) {
-			t.Errorf("usage() should contain %q, but it does not", needle)
+	if !strings.Contains(content, "new [<path>]") {
+		t.Error("usage() should document `new [<path>]`")
+	}
+	for _, gone := range []string{"new <agent>", "new shell", "<extra-args>"} {
+		if strings.Contains(content, gone) {
+			t.Errorf("usage() still contains removed form %q", gone)
 		}
 	}
 }

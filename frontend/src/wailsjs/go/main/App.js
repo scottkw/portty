@@ -4,24 +4,17 @@
 
 import { Call } from '../../runtime/runtime.js'
 
-export const CreateSession  = (cli, name, workDir, args, cols, rows) => Call('main.App.CreateSession', [cli, name, workDir, args, cols, rows])
+export const CreateSession  = (name, workDir, cols, rows) => Call('main.App.CreateSession', [name, workDir, cols, rows])
 export const ListSessions   = ()             => Call('main.App.ListSessions', [])
 export const RenameSession  = (id, name)     => Call('main.App.RenameSession', [id, name])
 export const KillSession    = (id)           => Call('main.App.KillSession', [id])
-export const DetectCLIs     = ()             => Call('main.App.DetectCLIs', [])
-// Phase 101-01 prerequisite — shell discovery via daemon /shells route.
-export const ListShells              = ()    => Call('main.App.ListShells', [])
 // Phase 101-01 — persisted "user has been warned about shell web-share" flag.
 export const GetShellWebShareWarned  = ()    => Call('main.App.GetShellWebShareWarned', [])
 export const SetShellWebShareWarned  = (v)   => Call('main.App.SetShellWebShareWarned', [v])
 // Phase 150 SET-01 — warning-enabled master switch (default ON).
 export const GetShellWebShareWarningEnabled = ()  => Call('main.App.GetShellWebShareWarningEnabled', [])
 export const SetShellWebShareWarningEnabled = (v) => Call('main.App.SetShellWebShareWarningEnabled', [v])
-// Phase 107-01 SHELL-11 — persisted shell binary path setting.
-export const GetShellPath            = ()    => Call('main.App.GetShellPath', [])
-export const SetShellPath            = (v)   => Call('main.App.SetShellPath', [v])
 export const GetRelayPort            = ()    => Call('main.App.GetRelayPort', [])
-export const UpdateCLIPath  = (name, path)   => Call('main.App.UpdateCLIPath', [name, path])
 
 // Web serving bound methods
 export const StartWebServer       = (port)                  => Call('main.App.StartWebServer', [port])
@@ -39,7 +32,6 @@ export const AcknowledgeCTDisclosure = ()                   => Call('main.App.Ac
 // QR code and status bound methods
 export const GetSessionQRCode     = (sessionID)             => Call('main.App.GetSessionQRCode', [sessionID])
 export const GetWebServerQRCode   = ()                      => Call('main.App.GetWebServerQRCode', [])
-export const GetSessionStatus     = (sessionID)             => Call('main.App.GetSessionStatus', [sessionID])
 // Phase 132 / CARD-07 — throttled tail snapshot for Hub mini-preview. n clamped to [1..20].
 export const GetSessionTailLines  = (id, n)                 => Call('main.App.GetSessionTailLines', [id, n])
 // Phase 139 / CARD-05 — VT-emulator styled tail: per-cell color+bold grid. n clamped to [1..20].
@@ -51,9 +43,6 @@ export const RetryDaemon          = ()                      => Call('main.App.Re
 
 // Directory dialog bound method
 export const OpenDirectoryDialog  = (defaultDir)            => Call('main.App.OpenDirectoryDialog', [defaultDir])
-
-// File dialog bound method (SET-04)
-export const OpenFileDialog       = (defaultDir)            => Call('main.App.OpenFileDialog', [defaultDir])
 
 // Tailscale health bound method
 export const GetTailscaleStatus   = ()                      => Call('main.App.GetTailscaleStatus', [])
@@ -78,29 +67,16 @@ export const RegisterRemoteCap     = (sessionID, baseURL, capToken) => Call('mai
 export const OpenRemoteSessionURL  = (sessionID)            => Call('main.App.OpenRemoteSessionURL', [sessionID])
 
 // Auto-install Tailscale bound method
-export const AutoInstallTailscale = ()                      => Call('main.App.AutoInstallTailscale', [])
 
 // Local network mode bound methods
 export const GetLocalNetworkPassword = ()                   => Call('main.App.GetLocalNetworkPassword', [])
 export const GetWebServerMode        = ()                   => Call('main.App.GetWebServerMode', [])
 
-// CLI paths getter bound method (SET-01/02)
-export const GetCLIPaths             = ()                   => Call('main.App.GetCLIPaths', [])
-
 // Theme notification bound method
-export const NotifyThemeChange       = ()                   => Call('main.App.NotifyThemeChange', [])
 
 // Start-minimized bound methods (TRAY-02/03)
 export const GetStartMinimized       = ()                   => Call('main.App.GetStartMinimized', [])
 export const SetStartMinimized       = (val)                => Call('main.App.SetStartMinimized', [val])
-
-// Auto-close session bound methods (SESS-01/02)
-export const GetAutoCloseSession     = ()                   => Call('main.App.GetAutoCloseSession', [])
-export const SetAutoCloseSession     = (val)                => Call('main.App.SetAutoCloseSession', [val])
-
-// Notify-on-waiting bound methods (Phase 167 / NTF-04)
-export const GetNotifyOnWaiting      = ()                   => Call('main.App.GetNotifyOnWaiting', [])
-export const SetNotifyOnWaiting      = (val)                => Call('main.App.SetNotifyOnWaiting', [val])
 
 // Stay-on-hub-after-create bound methods (Phase 168 / UX-01)
 export const GetStayOnHubAfterCreate = ()                   => Call('main.App.GetStayOnHubAfterCreate', [])
@@ -122,9 +98,6 @@ export const SetImageConfig          = (cfg)                => Call('main.App.Se
 // Save terminal session (Phase 97 SER-01).
 export const SaveTerminalSession    = (defaultDir, defaultName, content) => Call('main.App.SaveTerminalSession', [defaultDir, defaultName, content])
 
-// Phase 120 UAT-1 — server-side file download bypassing webview <a download>.
-export const DownloadFile           = (url, suggestedName)   => Call('main.App.DownloadFile', [url, suggestedName])
-
 // Set tray progress quartile (Phase 98 PRG-03).
 export const SetTrayProgress        = (quartile)                => Call('main.App.SetTrayProgress', [quartile])
 
@@ -139,7 +112,6 @@ export const RegenerateSigningKey    = ()                   => Call('main.App.Re
 export const GetCapabilityQRCode     = (joinURL)            => Call('main.App.GetCapabilityQRCode', [joinURL])
 
 // Phase 137 / SHARE-03: per-session browse toggle (owner binding). Replaces SetSessionFilesWrite (D-02/D-07).
-export const SetSessionBrowse        = (sessionID, enabled) => Call('main.App.SetSessionBrowse', [sessionID, enabled])
 
 // Phase 165 / FNL-01 — Funnel enable/disable with auto-expiry (expiresIn=0 = no expiry).
 export const SetSessionFunnel = (sessionID, enabled, expiresIn) => Call('main.App.SetSessionFunnel', [sessionID, enabled, expiresIn])

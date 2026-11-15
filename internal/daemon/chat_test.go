@@ -485,8 +485,7 @@ func TestChatCapEnforcement(t *testing.T) {
 // --------------------------------------------------------------------------
 
 // TestChatExportFields verifies that Export() renders every ChatMessage field:
-// AuthorAlias, AuthorID, an RFC3339 timestamp derived from TimestampMs, Content,
-// and — when SessionInject == true — an explicit inject marker.
+// AuthorAlias, AuthorID, an RFC3339 timestamp derived from TimestampMs, and Content.
 func TestChatExportFields(t *testing.T) {
 	baseDir := t.TempDir()
 	store, err := NewChatStore(baseDir, "sess-export")
@@ -496,25 +495,22 @@ func TestChatExportFields(t *testing.T) {
 
 	msgs := []relay.ChatMessage{
 		{
-			AuthorAlias:   "alice",
-			AuthorID:      "node-aaa",
-			Content:       "first message",
-			TimestampMs:   1000000000000, // 2001-09-09T01:46:40Z
-			SessionInject: false,
+			AuthorAlias: "alice",
+			AuthorID:    "node-aaa",
+			Content:     "first message",
+			TimestampMs: 1000000000000, // 2001-09-09T01:46:40Z
 		},
 		{
-			AuthorAlias:   "bob",
-			AuthorID:      "node-bbb",
-			Content:       "second message",
-			TimestampMs:   1000000060000, // 2001-09-09T01:47:40Z
-			SessionInject: true,
+			AuthorAlias: "bob",
+			AuthorID:    "node-bbb",
+			Content:     "second message",
+			TimestampMs: 1000000060000, // 2001-09-09T01:47:40Z
 		},
 		{
-			AuthorAlias:   "alice",
-			AuthorID:      "node-aaa",
-			Content:       "third message",
-			TimestampMs:   1000000120000,
-			SessionInject: false,
+			AuthorAlias: "alice",
+			AuthorID:    "node-aaa",
+			Content:     "third message",
+			TimestampMs: 1000000120000,
 		},
 	}
 	for _, m := range msgs {
@@ -548,10 +544,41 @@ func TestChatExportFields(t *testing.T) {
 			t.Errorf("Export() missing RFC3339 timestamp %q", ts)
 		}
 	}
+}
 
-	// The inject marker must appear exactly once (for the second message).
-	if !strings.Contains(out, "injected into terminal") {
-		t.Error("Export() missing inject marker for SessionInject=true message")
+// TestChatStore_LegacySessionInjectLine: history written before CHAT-01 may
+// carry "sessionInject":true. Such lines must still load, and Export must not
+// render the retired inject marker.
+func TestChatStore_LegacySessionInjectLine(t *testing.T) {
+	baseDir := t.TempDir()
+	const sessionID = "sess-legacy"
+	legacy := `{"v":1,"id":"m1","sessionID":"sess-legacy","authorID":"local","alias":"alice","content":"run the thing","sessionInject":true,"ts":1000}` + "\n" +
+		`{"v":1,"id":"m2","sessionID":"sess-legacy","authorID":"local","alias":"alice","content":"plain chat","ts":2000}` + "\n"
+	if err := os.WriteFile(filepath.Join(baseDir, sessionID+".jsonl"), []byte(legacy), 0o600); err != nil {
+		t.Fatalf("write legacy history: %v", err)
+	}
+
+	store, err := NewChatStore(baseDir, sessionID)
+	if err != nil {
+		t.Fatalf("NewChatStore: %v", err)
+	}
+	msgs := store.Messages()
+	if len(msgs) != 2 {
+		t.Fatalf("loaded %d messages, want 2", len(msgs))
+	}
+	if msgs[0].Content != "run the thing" || msgs[0].ID != "m1" {
+		t.Errorf("legacy inject line loaded as %+v, want ID m1 content %q", msgs[0], "run the thing")
+	}
+
+	out, err := store.Export()
+	if err != nil {
+		t.Fatalf("Export(): %v", err)
+	}
+	if !strings.Contains(out, "run the thing") {
+		t.Errorf("Export() missing legacy message content; got: %.400q", out)
+	}
+	if strings.Contains(out, "inject") {
+		t.Errorf("Export() renders an inject marker for a legacy line; got: %.400q", out)
 	}
 }
 
@@ -647,12 +674,11 @@ func TestChatDeleteOnNeverWrittenStore(t *testing.T) {
 }
 
 // TestChatStore_Export verifies the YAML-frontmatter export format (EXPORT-01,
-// SC-2). Five behaviors are exercised:
+// SC-2). Four behaviors are exercised:
 //  1. Empty thread → frontmatter-only document with zero participants.
 //  2. Single message → one participant entry; correct message header.
 //  3. Two messages from the same AuthorID → participants deduplicated to one.
-//  4. SessionInject==true → `_injected into terminal_` marker present.
-//  5. Alias containing `:` → participant value is double-quoted in YAML.
+//  4. Alias containing `:` → participant value is double-quoted in YAML.
 func TestChatStore_Export(t *testing.T) {
 	t.Run("EmptyThread", func(t *testing.T) {
 		baseDir := t.TempDir()
@@ -734,30 +760,6 @@ func TestChatStore_Export(t *testing.T) {
 		if strings.Count(out, `"alice (local)"`) != 1 {
 			t.Errorf("alice (local) deduplicated incorrectly; count = %d; got: %.400q",
 				strings.Count(out, `"alice (local)"`), out)
-		}
-	})
-
-	t.Run("SessionInjectMarker", func(t *testing.T) {
-		baseDir := t.TempDir()
-		store, err := NewChatStore(baseDir, "sess-inject")
-		if err != nil {
-			t.Fatalf("NewChatStore: %v", err)
-		}
-		if _, err := store.AppendMessage(relay.ChatMessage{
-			AuthorAlias:   "alice",
-			AuthorID:      "local",
-			Content:       "run the thing",
-			TimestampMs:   1000,
-			SessionInject: true,
-		}); err != nil {
-			t.Fatalf("AppendMessage: %v", err)
-		}
-		out, err := store.Export()
-		if err != nil {
-			t.Fatalf("Export(): %v", err)
-		}
-		if !strings.Contains(out, "_injected into terminal_") {
-			t.Errorf("Export() missing '_injected into terminal_' marker; got: %.400q", out)
 		}
 	})
 

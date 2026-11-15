@@ -2,28 +2,32 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import raw from '../../components/SettingsTab.tsx?raw'
+import pluginsRaw from '../../components/PluginsSection.tsx?raw'
 
 const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
+// Portty 01-11: Save Plugins is the only Save button left in Settings (the
+// Save Paths flow went with Settings → Paths), so the save-confirmation
+// contract is checked on PluginsSection.
 describe('SET-03: Save confirmation feedback', () => {
     it('has saved state variable', () => {
-        expect(raw).toContain('setSaved')
+        expect(pluginsRaw).toContain('setSaved')
     })
 
     it('sets saved true after successful save', () => {
-        expect(raw).toContain('setSaved(true)')
+        expect(pluginsRaw).toContain('setSaved(true)')
     })
 
     it('resets saved after timeout', () => {
-        expect(raw).toContain('setSaved(false)')
+        expect(pluginsRaw).toContain('setSaved(false)')
     })
 
     it('displays Saved! text', () => {
-        expect(raw).toContain("'Saved!'")
+        expect(pluginsRaw).toContain("'Saved!'")
     })
 
     it('uses --saved CSS modifier', () => {
-        expect(raw).toContain('settings-panel__btn--saved')
+        expect(pluginsRaw).toContain('settings-panel__btn--saved')
     })
 })
 
@@ -37,62 +41,12 @@ describe('SET-03: Saved button CSS', () => {
     })
 })
 
-describe('SET-04: Browse button per path row', () => {
-    it('imports OpenFileDialog from Wails', () => {
-        expect(raw).toContain('OpenFileDialog')
+describe('Portty 01-11: Settings → Paths removed', () => {
+    it('has no file picker, CLI path or shell path plumbing', () => {
+        expect(raw).not.toMatch(/OpenFileDialog|GetCLIPaths|UpdateCLIPath|GetShellPath|SetShellPath/)
     })
 
-    it('has handleBrowse function', () => {
-        expect(raw).toContain('handleBrowse')
-    })
-
-    it('has browse button with correct class', () => {
-        expect(raw).toContain('settings-panel__browse-btn')
-    })
-
-    it('has path-row container class', () => {
-        expect(raw).toContain('settings-panel__path-row')
-    })
-
-    it('has browse button title for accessibility', () => {
-        expect(raw).toContain('Browse for executable')
-    })
-})
-
-describe('SET-04: Browse button CSS', () => {
-    it('has settings-panel__browse-btn class', () => {
-        expect(cssRaw).toContain('.settings-panel__browse-btn')
-    })
-
-    it('has settings-panel__path-row class', () => {
-        expect(cssRaw).toContain('.settings-panel__path-row')
-    })
-})
-
-describe('SET-05: Browse result populates input', () => {
-    it('calls OpenFileDialog and checks result', () => {
-        expect(raw).toContain('await OpenFileDialog(')
-    })
-
-    it('guards against empty selection (cancelled dialog)', () => {
-        expect(raw).toContain('if (selected)')
-    })
-
-    it('sets custom paths from selection', () => {
-        expect(raw).toContain('setCustomPaths')
-    })
-})
-
-describe('SET-01/02: Stored paths loaded on mount', () => {
-    it('imports GetCLIPaths from Wails', () => {
-        expect(raw).toContain('GetCLIPaths')
-    })
-
-    it('calls GetCLIPaths in useEffect', () => {
-        expect(raw).toContain('GetCLIPaths()')
-    })
-
-    it('catches errors silently (daemon may not be connected)', () => {
-        expect(raw).toContain('.catch(() => {})')
+    it('has no Paths state, handlers or anchor', () => {
+        expect(raw).not.toMatch(/setCustomPaths|handleBrowse|handleShellBrowse|handleSaveCLIPaths|settings-paths/)
     })
 })

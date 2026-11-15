@@ -2,43 +2,24 @@ package daemon
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 )
 
-// AugmentServicePath prepends well-known user tool directories to the process
-// PATH so that CLIs installed via nvm, volta, Homebrew, snap, flatpak, cargo,
-// or native installers are found when the daemon runs as a launchd/systemd
-// user service (or when the GUI app is launched from Finder/Dock), which do
-// not source shell init files. On Windows, also adds npm, pnpm, and Tailscale
-// default install paths. Called once at startup before any exec.LookPath or
-// session is created.
+// AugmentServicePath prepends the Homebrew and Tailscale binary directories to
+// the process PATH so that tools such as the tailscale CLI are found when the
+// daemon runs as a launchd user service (or when the GUI app is launched from
+// Finder/Dock), which do not source shell init files. Sessions are login
+// shells and rebuild the user's own PATH from /etc/zprofile and dotfiles.
+// Called once at startup before any exec.LookPath or session is created.
 func AugmentServicePath() {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return
-	}
-
 	candidates := []string{
-		filepath.Join(home, ".local", "bin"), // Anthropic native installer (macOS/Linux)
-		filepath.Join(home, ".volta", "bin"), // Volta (any platform)
-		"/opt/homebrew/bin",                  // macOS ARM Homebrew
-		"/usr/local/bin",                     // macOS Intel Homebrew, Tailscale
-		"/home/linuxbrew/.linuxbrew/bin",     // Linux Homebrew
-		nvmActiveBin(home),                   // nvm active version
-		filepath.Join(home, ".cargo", "bin"), // cargo (any platform)
-		"/snap/bin",                          // snap (Linux)
-		"/var/lib/flatpak/exports/bin",       // flatpak system (Linux)
-		filepath.Join(home, ".local", "share", "flatpak", "exports", "bin"), // flatpak user (Linux)
+		"/opt/homebrew/bin", // macOS ARM Homebrew
+		"/usr/local/bin",    // macOS Intel Homebrew, Tailscale
 	}
-	candidates = append(candidates, platformExtraBins()...)
 
 	current := os.Getenv("PATH")
 	var extra []string
 	for _, dir := range candidates {
-		if dir == "" {
-			continue
-		}
 		if _, err := os.Stat(dir); err == nil {
 			extra = append(extra, dir)
 		}
@@ -46,32 +27,4 @@ func AugmentServicePath() {
 	if len(extra) > 0 {
 		_ = os.Setenv("PATH", strings.Join(extra, string(os.PathListSeparator))+string(os.PathListSeparator)+current)
 	}
-}
-
-// nvmActiveBin reads ~/.nvm/alias/default to find the active node version
-// and returns the bin directory path, or "" if nvm is not installed.
-func nvmActiveBin(home string) string {
-	aliasFile := filepath.Join(home, ".nvm", "alias", "default")
-	data, err := os.ReadFile(aliasFile)
-	if err != nil {
-		return ""
-	}
-	version := strings.TrimSpace(string(data))
-	if version == "" {
-		return ""
-	}
-	if !strings.HasPrefix(version, "v") {
-		version = "v" + version
-	}
-	nvmDir := filepath.Join(home, ".nvm", "versions", "node")
-	entries, err := os.ReadDir(nvmDir)
-	if err != nil {
-		return ""
-	}
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), version) {
-			return filepath.Join(nvmDir, e.Name(), "bin")
-		}
-	}
-	return ""
 }

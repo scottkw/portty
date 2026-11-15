@@ -24,8 +24,7 @@ func usage() {
 Run with no arguments to launch the desktop GUI.
 
 Commands:
-  new <agent> <path> [-- <extra-args>...]     Create a new terminal session
-  new shell [<path>]                          Create a new raw shell session
+  new [<path>]                                Create a new login-shell session (default: home directory)
   list [--json] [--local]                     List local and remote sessions
   kill <id>                                   Kill a session
   rename <id> <name>                          Rename a session
@@ -53,69 +52,46 @@ Run 'agenthub <command> --help' for command-specific flags.
 `)
 }
 
-// cmdNew creates a new session. On success it writes the session UUID to out.
-// extraArgs are forwarded to the agent process (tokens after "--" on the command line).
-func cmdNew(client *daemon.DaemonClient, args []string, extraArgs []string, out io.Writer) error {
-	if len(args) < 2 {
-		return fmt.Errorf("usage: agenthub new <agent> <path>")
-	}
-	agent, workDir := args[0], args[1]
-	name := filepath.Base(workDir)
-	id, err := client.CreateSession(agent, name, workDir, extraArgs, 0, 0)
-	if err != nil {
-		return fmt.Errorf("agenthub new: %w", err)
-	}
-	fmt.Fprintln(out, id)
-	return nil
-}
-
-// cmdNewShell creates a new raw shell session (Phase 101 SHELL-02).
+// cmdNew creates a new login-shell session and writes its UUID to out.
 //
-// Argv shape:
+//	agenthub new [<path>]
 //
-//		agenthub new shell [<path>]
+// <path> is optional; if omitted, workDir is "" and the daemon resolves it to
+// the home directory. A relative <path> is resolved against the CLI's cwd (the
+// daemon's cwd is unrelated). New sessions always run /bin/zsh -l.
 //
-//	  - `<path>` is optional; if omitted, workDir is "" and the daemon resolves to $HOME.
-//	  - The daemon resolves the spawned shell binary from the Settings-stored
-//	    shellPath (engine.go:500-530, GetShellPath/SetShellPath at 670-705).
-//	  - `extraArgs` (the `--` tail) is intentionally NOT forwarded to shells
-//	    (per Phase 100 Anti-Pattern A6); a non-fatal stderr warning is emitted instead.
-//
-// Phase 108 PARITY-CLI-01: The --shell=bash|zsh|pwsh|powershell flag was
-// removed in Phase 108 (hard removal, no deprecation period). The daemon
-// resolves the shell binary via Settings shellPath (engine.go:500-530), so the
-// per-shell CLI override is redundant. Passing --shell=anything now produces
-// the Go flag package's default `flag provided but not defined: -shell`
-// stderr and a non-zero exit.
-//
-// Locked stderr error strings (remaining after Phase 108):
-//   - extra args after --:   `agenthub new shell: extra arguments are not forwarded to shell sessions; ignoring [...]`
-//   - daemon unreachable:    `agenthub new shell: daemon unreachable: <err>`
-func cmdNewShell(client *daemon.DaemonClient, args []string, extraArgs []string, out io.Writer) error {
-	fs := flag.NewFlagSet("new shell", flag.ContinueOnError)
+// Errors go to stderr as `agenthub new: <err>`.
+func cmdNew(client *daemon.DaemonClient, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // we emit our own error copy
 	if err := fs.Parse(args); err != nil {
-		fmt.Fprintf(os.Stderr, "agenthub new shell: %v\n", err)
+		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
 		return err
 	}
-	const cli = "shell"
-	workDir := ""
 	positionals := fs.Args()
-	if len(positionals) > 0 {
-		workDir = positionals[0]
+	if len(positionals) > 1 { // e.g. the removed agent-plus-path form
+		err := fmt.Errorf("usage: agenthub new [<path>] (got %d arguments)", len(positionals))
+		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
+		return err
 	}
-	if len(extraArgs) > 0 {
-		fmt.Fprintf(os.Stderr, "agenthub new shell: extra arguments are not forwarded to shell sessions; ignoring %v\n", extraArgs)
+	workDir := ""
+	if len(positionals) == 1 {
+		abs, err := filepath.Abs(positionals[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
+			return err
+		}
+		workDir = abs
 	}
-	// Session name mirrors cmdNew: basename of workDir, or the cli name when workDir is empty
-	// (daemon resolves "" → $HOME, but the CLI doesn't know $HOME at this layer).
-	name := cli
+	// Name is the basename of workDir, or "shell" when workDir is empty
+	// (the daemon resolves "" to $HOME; the CLI doesn't know $HOME at this layer).
+	name := "shell"
 	if workDir != "" {
 		name = filepath.Base(workDir)
 	}
-	id, err := client.CreateSession(cli, name, workDir, nil, 0, 0)
+	id, err := client.CreateSession(name, workDir, 0, 0)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "agenthub new shell: daemon unreachable: %v\n", err)
+		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
 		return err
 	}
 	fmt.Fprintln(out, id)
@@ -165,7 +141,6 @@ func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
 					cliSessions = append(cliSessions, CLIRemoteSession{
 						ID:       s.ID,
 						Name:     s.Name,
-						CLIType:  s.CLIType,
 						Status:   s.Status,
 						Hostname: s.Hostname,
 						FQDN:     s.FQDN,
@@ -188,13 +163,13 @@ func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	}
 
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "HOST\tID\tNAME\tAGENT\tSTATUS")
+	fmt.Fprintln(w, "HOST\tID\tNAME\tSTATUS")
 	for _, s := range sessions {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", "(local)", s.ID, s.Name, s.CLI, s.State)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", "(local)", s.ID, s.Name, s.State)
 	}
 	for _, group := range remoteGroups {
 		for _, s := range group.Sessions {
-			fmt.Fprintf(w, "%s\t%s:%s\t%s\t%s\t%s\n", s.Hostname, s.Hostname, s.ID, s.Name, s.CLIType, s.Status)
+			fmt.Fprintf(w, "%s\t%s:%s\t%s\t%s\n", s.Hostname, s.Hostname, s.ID, s.Name, s.Status)
 		}
 	}
 	w.Flush()
@@ -315,7 +290,7 @@ func cmdUnserve(client *daemon.DaemonClient, args []string) error {
 	return nil
 }
 
-// cmdHealth prints a 5-line Tailscale health key-value block, or JSON with --json.
+// cmdHealth prints a 4-line Tailscale health key-value block, or JSON with --json.
 func cmdHealth(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("health", flag.ContinueOnError)
 	jsonOut := fs.Bool("json", false, "output as JSON")
@@ -328,7 +303,6 @@ func cmdHealth(args []string, out io.Writer) error {
 	if *jsonOut {
 		return json.NewEncoder(out).Encode(h)
 	}
-	fmt.Fprintf(out, "%-12s%v\n", "installed:", h.Installed)
 	fmt.Fprintf(out, "%-12s%v\n", "connected:", h.Connected)
 	fmt.Fprintf(out, "%-12s%v\n", "has-certs:", h.HasCerts)
 	fmt.Fprintf(out, "%-12s%v\n", "ip:", h.IP)
@@ -346,21 +320,6 @@ func cmdSettings(client *daemon.DaemonClient, out io.Writer) error {
 		fmt.Fprintf(out, "%-14s%s\n", "relay-port:", "(unavailable)")
 	} else {
 		fmt.Fprintf(out, "%-14s%d\n", "relay-port:", port)
-	}
-
-	paths, err := client.GetCLIPaths()
-	if err != nil || len(paths) == 0 {
-		fmt.Fprintf(out, "%-14s%s\n", "cli-paths:", "(none)")
-	} else {
-		first := true
-		for name, p := range paths {
-			if first {
-				fmt.Fprintf(out, "%-14s%s=%s\n", "cli-paths:", name, p)
-				first = false
-			} else {
-				fmt.Fprintf(out, "%-14s%s=%s\n", "", name, p)
-			}
-		}
 	}
 	return nil
 }

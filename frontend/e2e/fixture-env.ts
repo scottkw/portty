@@ -1,12 +1,7 @@
 // Phase 93 Plan 05 — fixture-env loader for Playwright specs.
 // Reads .playwright/fixture-env.json (written by global-setup.ts) and
-// returns the BASE_URL / CAP / VIEWER_CAP / SESSION_CWD / ADMIN_URL the
-// test fixture exposed.
-//
-// Phase 120-05 extended: VIEWER_CAP (read-only, no files.read) and
-// SESSION_CWD (absolute path to the seeded test tree) added so the
-// files-browser.spec.ts suite can exercise the capability-denied path
-// (UI-13) and correlate seeded fixtures with API responses.
+// returns the BASE_URL / CAP / VIEWER_CAP / ADMIN_URL the test fixture
+// exposed. VIEWER_CAP is the read-only cap.
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -15,15 +10,6 @@ export interface FixtureEnv {
   baseURL: string
   cap: string
   viewerCap: string
-  /**
-   * Phase 125-01 — files.write cap for web-share write + 412 e2e scenarios
-   * (EDIT-13). Minted by cmd/playwright-fixture/main.go with
-   * Perms="read,files.read,files.write". Use writeAppUrl(env) to build the
-   * /app/ URL with this cap; use viewerAppUrl(env) for the 403-without-cap
-   * scenario (viewer has no files.write).
-   */
-  writeCap: string
-  sessionCwd: string
   adminURL: string
   /**
    * Phase 122-05 — mock "remote peer" webserver URL used by remote-session
@@ -51,31 +37,6 @@ export function sessionURL(env: FixtureEnv = loadFixtureEnv()): string {
 }
 
 /**
- * filesApiURL builds an absolute URL to one of the /api/files/{list,stat,read}
- * routes, including session + cap query params. Used by the Phase 120-05
- * files-browser spec to exercise the real capability-gated API surface.
- *
- * @param env  Fixture env (auto-loaded if omitted)
- * @param op   One of 'list' | 'stat' | 'read'
- * @param path Relative path inside the seeded session cwd; omit / pass "." for the root
- * @param cap  Cap token to use; defaults to the owner cap (env.cap). Pass env.viewerCap for the denied path.
- */
-export function filesApiURL(
-  op: 'list' | 'stat' | 'read',
-  path: string = '.',
-  cap?: string,
-  env: FixtureEnv = loadFixtureEnv(),
-): string {
-  const useCap = cap ?? env.cap
-  const params = new URLSearchParams({
-    session: 'playwright-test-session',
-    path,
-    cap: useCap,
-  })
-  return `${env.baseURL}/api/files/${op}?${params.toString()}`
-}
-
-/**
  * appUrl builds the /app/ entry URL with session + cap query params. Phase
  * 120-06 wired App.tsx to consult lib/webMode.detectMode() and, when the
  * pathname starts with `/app/`, skip the Wails RPC suite and source
@@ -89,15 +50,7 @@ export function appUrl(env: FixtureEnv = loadFixtureEnv()): string {
   return `${env.baseURL}/app/?session=playwright-test-session&cap=${encodeURIComponent(env.cap)}`
 }
 
-/** Same as appUrl but with the read-only viewer cap (no files.read perm). */
+/** Same as appUrl but with the read-only viewer cap. */
 export function viewerAppUrl(env: FixtureEnv = loadFixtureEnv()): string {
   return `${env.baseURL}/app/?session=playwright-test-session&cap=${encodeURIComponent(env.viewerCap)}`
-}
-
-/**
- * Same as appUrl but with the files.write cap (read,files.read,files.write).
- * Use this for Phase 125 write + 412 web-share e2e scenarios (EDIT-13).
- */
-export function writeAppUrl(env: FixtureEnv = loadFixtureEnv()): string {
-  return `${env.baseURL}/app/?session=playwright-test-session&cap=${encodeURIComponent(env.writeCap)}`
 }

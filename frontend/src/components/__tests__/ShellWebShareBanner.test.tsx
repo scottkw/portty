@@ -8,11 +8,11 @@
  *   Body line 2:    "Read-only viewers cannot type, but commands you run remain visible to them."
  *   Primary CTA:    "Enable web sharing"
  *   Confirming:     "Enabling…" (U+2026 ellipsis)
- *   Secondary CTA:  "Cancel"
+ *   Secondary CTA:  "Keep sharing off"
  *   Dismiss aria:   "Dismiss security warning"
  *
  * Differs from PluginToggleBanner: role="alert" + aria-live="assertive" (action-blocking,
- * not informational). Focus moves to Cancel on mount (safe action per QuitConfirmModal precedent).
+ * not informational). Focus moves to "Keep sharing off" on mount (safe action per QuitConfirmModal precedent).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import React from 'react'
@@ -89,14 +89,14 @@ describe('ShellWebShareBanner', () => {
     expect(primary).toBeTruthy()
   })
 
-  it("secondary CTA reads 'Cancel' verbatim", () => {
+  it("secondary CTA reads 'Keep sharing off' verbatim", () => {
     ;({ container, root } = render({
       sessionName: 'scratch-bash',
       onConfirm: vi.fn(),
       onCancel: vi.fn(),
     }))
     const buttons = Array.from(container.querySelectorAll('button'))
-    const secondary = buttons.find((b) => b.textContent === 'Cancel')
+    const secondary = buttons.find((b) => b.textContent === 'Keep sharing off')
     expect(secondary).toBeTruthy()
   })
 
@@ -121,13 +121,13 @@ describe('ShellWebShareBanner', () => {
     expect(el?.getAttribute('aria-live')).toBe('assertive')
   })
 
-  it('focuses Cancel button on mount (safe action per QuitConfirmModal precedent)', () => {
+  it('focuses the Keep sharing off button on mount (safe action per QuitConfirmModal precedent)', () => {
     ;({ container, root } = render({
       sessionName: 'scratch-bash',
       onConfirm: vi.fn(),
       onCancel: vi.fn(),
     }))
-    expect(document.activeElement?.textContent).toBe('Cancel')
+    expect(document.activeElement?.textContent).toBe('Keep sharing off')
   })
 
   it('Esc keydown fires onCancel and not onConfirm', () => {
@@ -141,12 +141,12 @@ describe('ShellWebShareBanner', () => {
     expect(onConfirm).not.toHaveBeenCalled()
   })
 
-  it('clicking Cancel fires onCancel and not onConfirm', () => {
+  it('clicking Keep sharing off fires onCancel and not onConfirm', () => {
     const onCancel = vi.fn()
     const onConfirm = vi.fn()
     ;({ container, root } = render({ sessionName: 's', onConfirm, onCancel }))
     const buttons = Array.from(container.querySelectorAll('button'))
-    const cancel = buttons.find((b) => b.textContent === 'Cancel') as HTMLButtonElement
+    const cancel = buttons.find((b) => b.textContent === 'Keep sharing off') as HTMLButtonElement
     flushSync(() => cancel.click())
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(onConfirm).not.toHaveBeenCalled()
@@ -185,8 +185,8 @@ describe('ShellWebShareBanner', () => {
     expect(primaryAfter).toBeTruthy()
     expect(primaryAfter!.disabled).toBe(true)
 
-    // Cancel button is also disabled while enabling.
-    const cancelAfter = buttons().find((b) => b.textContent === 'Cancel') as HTMLButtonElement | undefined
+    // "Keep sharing off" button is also disabled while enabling.
+    const cancelAfter = buttons().find((b) => b.textContent === 'Keep sharing off') as HTMLButtonElement | undefined
     expect(cancelAfter).toBeTruthy()
     expect(cancelAfter!.disabled).toBe(true)
 

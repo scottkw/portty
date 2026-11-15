@@ -46,7 +46,7 @@ func setupIdentityTestServer(t *testing.T) (*httptest.Server, *HubManager, strin
 	manager := NewHubManager()
 	manager.Create(sessionID, ptyOutputR, io.Discard, nil)
 
-	srv := NewServer(manager, nil, nil)
+	srv := NewServer(manager, nil)
 	srv.SetIdentityProviders("host", getAlias, setAlias)
 
 	ts := httptest.NewServer(srv)

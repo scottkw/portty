@@ -325,8 +325,6 @@ func (s *ChatStore) AppendMessage(msg relay.ChatMessage) (relay.ChatMessage, err
 //
 //	{content}
 //
-//	_injected into terminal_   (only when SessionInject==true)
-//
 //	---
 //
 // Security (T-155-02): every participant value is double-quoted so that aliases
@@ -368,9 +366,6 @@ func (s *ChatStore) Export() (string, error) {
 		ts := time.UnixMilli(msg.TimestampMs).UTC().Format(time.RFC3339)
 		fmt.Fprintf(&b, "## %s (%s) — %s\n\n", msg.AuthorAlias, msg.AuthorID, ts)
 		fmt.Fprintf(&b, "%s\n\n", msg.Content)
-		if msg.SessionInject {
-			fmt.Fprintf(&b, "_injected into terminal_\n\n")
-		}
 		fmt.Fprintf(&b, "---\n\n")
 	}
 	return b.String(), nil

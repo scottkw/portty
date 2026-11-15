@@ -36,15 +36,14 @@ func copyFixtureToTempDir(t *testing.T, dir string) string {
 //  1. Load with the 8 v3.2 plugin defaults (7 ON, Progress OFF) populated.
 //  2. Trigger a re-write so the on-disk settings.json now contains both the
 //     plugins block and schemaVersion: 2.
-//  3. Preserve existing v3.1 keys (cliPaths) — defaults-merge must not zero
-//     existing data.
+//  3. Drop the removed cliPaths key on that re-write (Portty 01-11: the
+//     CLI path override plumbing is gone).
 func TestSettingsMigrationV3_1ToV3_2(t *testing.T) {
 	dir := t.TempDir()
 	copyFixtureToTempDir(t, dir)
 
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e.loadSettingsFromDisk(dir)
 
@@ -107,11 +106,6 @@ func TestSettingsMigrationV3_1ToV3_2(t *testing.T) {
 		t.Errorf("ImageConfig defaults: got %+v, want %+v (v3.2 overrides upstream 100 MB to 16 MB to prevent tab OOM)", got.ImageConfig, wantImage)
 	}
 
-	// Pre-existing v3.1 data must survive the migration.
-	if cli := e.GetCLIPaths(); cli["claude"] != "/usr/local/bin/claude" {
-		t.Errorf("cliPaths not preserved through migration: got %v", cli)
-	}
-
 	// On-disk: the upgrade re-write fired, so the file now contains both the
 	// plugins block AND schemaVersion: 2.
 	raw, err := os.ReadFile(filepath.Join(dir, "settings.json"))
@@ -128,6 +122,13 @@ func TestSettingsMigrationV3_1ToV3_2(t *testing.T) {
 	if !s.Plugins.WebGL {
 		t.Errorf("on-disk plugins.webgl = false, want true (proves the upgrade re-write fired)")
 	}
+	var onDisk map[string]any
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("unmarshal rewritten settings as map: %v", err)
+	}
+	if _, ok := onDisk["cliPaths"]; ok {
+		t.Error("rewritten settings.json still contains cliPaths; the removed key should be dropped")
+	}
 }
 
 // TestSettingsMigrationIdempotent asserts that loading a settings.json that is
@@ -141,7 +142,6 @@ func TestSettingsMigrationIdempotent(t *testing.T) {
 
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e.loadSettingsFromDisk(dir) // first load: upgrade re-write fires
 
@@ -157,7 +157,6 @@ func TestSettingsMigrationIdempotent(t *testing.T) {
 
 	e2 := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e2.loadSettingsFromDisk(dir) // second load: should be a no-op (idempotent)
 
@@ -197,12 +196,6 @@ func copyV32FixtureToTempDir(t *testing.T, dir string) string {
 	return dst
 }
 
-// NOTE: Two FilesRead migration tests (the DefaultsTrue and ExplicitFalse variants)
-// were retired in Phase 137 / D-07. They pinned the e.filesRead field and the
-// FilesRead settings.json key, both of which are removed in Plan 02 as part of
-// the global-kill-switch removal (D-07).
-// The browse toggle is now per-session (sessionBrowse map) with no global flag.
-
 // TestSettingsMigration_FilesReadSchemaVersionRewrite verifies that loading a
 // v3.2 settings.json (schemaVersion=2) triggers the needsUpgradeWrite path so
 // the on-disk file is rewritten with schemaVersion=3 (CurrentSchemaVersion).
@@ -213,7 +206,6 @@ func TestSettingsMigration_FilesReadSchemaVersionRewrite(t *testing.T) {
 
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e.loadSettingsFromDisk(dir)
 
@@ -230,53 +222,68 @@ func TestSettingsMigration_FilesReadSchemaVersionRewrite(t *testing.T) {
 	}
 }
 
-// TestSettingsMigration_FilesWriteDefaultsFalse verifies that a v3.2
-// settings.json (no filesWrite key) loads with FilesWrite = false (opt-in for
-// all). This is the INVERSION of the (retired) FilesRead defaults-true behavior:
-// files.write is an explicit opt-in, so the absence of the key must yield false,
-// not true. T-124-06 mitigation.
-func TestSettingsMigration_FilesWriteDefaultsFalse(t *testing.T) {
+// TestSettingsMigration_LegacyAgentHubV42 loads a real-shaped AgentHub v4.2
+// settings.json that still carries the removed "filesWrite" and
+// "autoCloseSession", "cliPaths", "shellPath" and "notifyOnWaiting" keys.
+// Old settings must load without error, the unknown keys are ignored, the
+// kept values survive, and the next save drops every removed key.
+func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	dir := t.TempDir()
-	copyV32FixtureToTempDir(t, dir)
+	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "settings_agenthub_v4.2.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	var probe daemonSettings
+	if err := json.Unmarshal(data, &probe); err != nil {
+		t.Fatalf("legacy fixture must unmarshal into daemonSettings: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), data, 0600); err != nil {
+		t.Fatalf("write fixture into temp: %v", err)
+	}
 
 	e := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e.loadSettingsFromDisk(dir)
 
-	// FilesWrite must default to false on a v3 file with no filesWrite key.
-	// Zero-value false is the correct opt-in default (CAP-08); do NOT pre-populate
-	// a true default as filesRead does.
-	if e.filesWriteDefault {
-		t.Errorf("e.filesWriteDefault = true after loading v3 fixture with no filesWrite key; want false (opt-in for all)")
+	if !e.GetStayOnHubAfterCreate() {
+		t.Error("stayOnHubAfterCreate = false, want true (kept value must survive)")
 	}
-}
-
-// TestSettingsMigration_FilesWriteSchemaVersionRewrite verifies that loading a
-// v3.2 settings.json (schemaVersion=2) triggers the needsUpgradeWrite path so
-// the on-disk file is rewritten with schemaVersion=4 (CurrentSchemaVersion after
-// Phase 124 bump). Mirrors TestSettingsMigration_FilesReadSchemaVersionRewrite
-// with the updated target version.
-func TestSettingsMigration_FilesWriteSchemaVersionRewrite(t *testing.T) {
-	dir := t.TempDir()
-	copyV32FixtureToTempDir(t, dir)
-
-	e := &SessionEngine{
-		configDir: dir,
-		cliPaths:  make(map[string]string),
+	if !e.GetShellWebShareWarned() {
+		t.Error("shellWebShareWarned = false, want true (kept value must survive)")
 	}
-	e.loadSettingsFromDisk(dir)
 
+	e.mu.Lock()
+	e.saveSettingsToDisk()
+	e.mu.Unlock()
 	raw, err := os.ReadFile(filepath.Join(dir, "settings.json"))
 	if err != nil {
 		t.Fatalf("re-read settings.json: %v", err)
 	}
-	var s daemonSettings
-	if err := json.Unmarshal(raw, &s); err != nil {
-		t.Fatalf("unmarshal rewritten settings: %v", err)
+	var onDisk map[string]any
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("unmarshal saved settings: %v", err)
 	}
-	if s.SchemaVersion != 4 {
-		t.Errorf("on-disk schemaVersion = %d, want 4 (v3→v4 upgrade re-write should fire after Phase 124 bump)", s.SchemaVersion)
+	if _, ok := onDisk["filesWrite"]; ok {
+		t.Error("saved settings.json still contains filesWrite; the removed key should be dropped on save")
+	}
+	// Portty 01-10 (CONTEXT Amendment 2): the auto-close toggle is gone; the
+	// legacy key loads without error and is dropped on save.
+	if _, ok := onDisk["autoCloseSession"]; ok {
+		t.Error("saved settings.json still contains autoCloseSession; the removed key should be dropped on save")
+	}
+	// Portty 01-11 (CONTEXT Amendments 1 and 2): the shell and CLI path
+	// overrides and the awaiting-input toggle are gone; the legacy keys load
+	// without error and are dropped on save.
+	for _, k := range []string{"cliPaths", "shellPath", "notifyOnWaiting"} {
+		if _, ok := onDisk[k]; ok {
+			t.Errorf("saved settings.json still contains %s; the removed key should be dropped on save", k)
+		}
+	}
+	if onDisk["stayOnHubAfterCreate"] != true || onDisk["shellWebShareWarned"] != true {
+		t.Errorf("kept keys lost on save: stayOnHubAfterCreate=%v shellWebShareWarned=%v", onDisk["stayOnHubAfterCreate"], onDisk["shellWebShareWarned"])
+	}
+	if _, ok := onDisk["plugins"].(map[string]any); !ok {
+		t.Errorf("saved settings.json lost the plugins block: %v", onDisk["plugins"])
 	}
 }

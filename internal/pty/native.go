@@ -5,9 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
@@ -15,7 +13,7 @@ import (
 )
 
 // NativePTYBackend implements SessionBackend using the host OS PTY facilities.
-// On POSIX systems it uses Unix PTYs via go-pty; on Windows it uses ConPTY.
+// It uses Unix PTYs via go-pty.
 type NativePTYBackend struct {
 	registry *SessionRegistry
 }
@@ -56,16 +54,11 @@ func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Sess
 		return nil, fmt.Errorf("start process: %w", err)
 	}
 
-	// Set initial terminal dimensions. On Windows this may silently fail if
-	// ConPTY is not fully initialised yet; log but do not abort.
+	// Set initial terminal dimensions.
 	if err := p.Resize(req.Cols, req.Rows); err != nil {
-		if runtime.GOOS == "windows" {
-			log.Printf("[warn] pty resize on Windows after Start: %v", err)
-		} else {
-			cancel()
-			_ = p.Close()
-			return nil, fmt.Errorf("initial resize: %w", err)
-		}
+		cancel()
+		_ = p.Close()
+		return nil, fmt.Errorf("initial resize: %w", err)
 	}
 
 	id, err := generateID()
@@ -86,19 +79,7 @@ func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Sess
 		exitCode:  -1,
 	}
 
-	// On Windows, assign the process to a Job Object for reliable cleanup.
-	// On POSIX this is a no-op; process groups handle cleanup instead.
-	if cmd.Process != nil {
-		assignJobObject(sess, cmd.Process)
-	}
-
 	b.registry.Add(sess)
-
-	// Phase 110 / PTY-02: on Linux only, spawn a Wait4-polling exit-detector
-	// goroutine that closes the PTY when the child exits — unblocks Hub.Run.Read
-	// on Linux where master EOF does not surface. No-op on macOS (EOF works)
-	// and Windows (ConPTY out of scope). See internal/pty/exit_linux.go.
-	startExitDetector(sess)
 
 	return sess, nil
 }

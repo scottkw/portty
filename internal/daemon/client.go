@@ -6,14 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/files"
 	"github.com/scottkw/agenthub/internal/tailnet"
 )
 
@@ -67,11 +63,11 @@ func (c *DaemonClient) ListSessions() ([]SessionInfo, error) {
 	return sessions, nil
 }
 
-// CreateSession creates a new session and returns its ID.
-// args are passed to the CLI process; pass nil if no extra arguments are needed.
+// CreateSession creates a new login-shell session and returns its ID.
+// Empty workDir starts in the home directory.
 // cols and rows specify the initial PTY dimensions; pass 0 for defaults (80x24).
-func (c *DaemonClient) CreateSession(cli, name, workDir string, args []string, cols, rows int) (string, error) {
-	req := CreateRequest{CLI: cli, Name: name, WorkDir: workDir, Args: args, Cols: cols, Rows: rows}
+func (c *DaemonClient) CreateSession(name, workDir string, cols, rows int) (string, error) {
+	req := CreateRequest{Name: name, WorkDir: workDir, Cols: cols, Rows: rows}
 	var resp CreateResponse
 	if err := c.doJSON(http.MethodPost, "/sessions", req, &resp); err != nil {
 		return "", err
@@ -87,15 +83,6 @@ func (c *DaemonClient) KillSession(id string) error {
 // RenameSession changes the display name of a session.
 func (c *DaemonClient) RenameSession(id, name string) error {
 	return c.doJSON(http.MethodPatch, "/sessions/"+id+"/name", RenameRequest{Name: name}, nil)
-}
-
-// GetSessionStatus returns the current status string for the given session.
-func (c *DaemonClient) GetSessionStatus(id string) (string, error) {
-	var resp StatusResponse
-	if err := c.doJSON(http.MethodGet, "/sessions/"+id+"/status", nil, &resp); err != nil {
-		return "", err
-	}
-	return resp.Status, nil
 }
 
 // GetSessionTailLines returns the last n plain-text lines from the session's
@@ -120,34 +107,6 @@ func (c *DaemonClient) GetSessionStyledTailLines(id string, n int) ([][]StyledSp
 	return resp.Lines, nil
 }
 
-// GetCLIPaths returns the current CLI path override map.
-func (c *DaemonClient) GetCLIPaths() (map[string]string, error) {
-	var paths map[string]string
-	if err := c.doJSON(http.MethodGet, "/settings/cli-paths", nil, &paths); err != nil {
-		return nil, err
-	}
-	return paths, nil
-}
-
-// ListShells returns the daemon's discovery of installed shells via
-// GET /shells. The returned slice mirrors the wire body's `shells` field —
-// always non-nil; empty slice (not nil) when no shells are installed.
-func (c *DaemonClient) ListShells() ([]DetectedShell, error) {
-	var resp ShellsResponse
-	if err := c.doJSON(http.MethodGet, "/shells", nil, &resp); err != nil {
-		return nil, err
-	}
-	if resp.Shells == nil {
-		resp.Shells = []DetectedShell{}
-	}
-	return resp.Shells, nil
-}
-
-// UpdateCLIPath sets a custom executable path for the named CLI.
-func (c *DaemonClient) UpdateCLIPath(name, path string) error {
-	return c.doJSON(http.MethodPatch, "/settings/cli-paths/"+name, UpdateCLIPathRequest{Path: path}, nil)
-}
-
 // GetStartMinimized returns the persisted start-minimized preference.
 func (c *DaemonClient) GetStartMinimized() (bool, error) {
 	var resp map[string]bool
@@ -161,23 +120,6 @@ func (c *DaemonClient) GetStartMinimized() (bool, error) {
 func (c *DaemonClient) SetStartMinimized(val bool) error {
 	return c.doJSON(http.MethodPatch, "/settings/start-minimized",
 		map[string]bool{"startMinimized": val}, nil)
-}
-
-// GetNotifyOnWaiting returns the persisted native-notification-on-waiting
-// preference. Phase 167 NTF-04.
-func (c *DaemonClient) GetNotifyOnWaiting() (bool, error) {
-	var resp map[string]bool
-	if err := c.doJSON(http.MethodGet, "/settings/notify-on-waiting", nil, &resp); err != nil {
-		return false, err
-	}
-	return resp["notifyOnWaiting"], nil
-}
-
-// SetNotifyOnWaiting persists the native-notification-on-waiting preference.
-// Phase 167 NTF-04.
-func (c *DaemonClient) SetNotifyOnWaiting(val bool) error {
-	return c.doJSON(http.MethodPatch, "/settings/notify-on-waiting",
-		map[string]bool{"notifyOnWaiting": val}, nil)
 }
 
 // GetStayOnHubAfterCreate returns the persisted "stay on Hub after creating
@@ -230,41 +172,6 @@ func (c *DaemonClient) GetShellWebShareWarningEnabled() (bool, error) {
 func (c *DaemonClient) SetShellWebShareWarningEnabled(val bool) error {
 	return c.doJSON(http.MethodPatch, "/settings/shell-web-share-warning-enabled",
 		map[string]bool{"value": val}, nil)
-}
-
-// GetShellPath returns the persisted shell binary path from the daemon.
-// When no path has been configured, the daemon returns the platform default.
-// Phase 107 SHELL-11.
-func (c *DaemonClient) GetShellPath() (string, error) {
-	var resp map[string]string
-	if err := c.doJSON(http.MethodGet, "/settings/shell-path", nil, &resp); err != nil {
-		return "", err
-	}
-	return resp["value"], nil
-}
-
-// SetShellPath persists the shell binary path via the daemon API. An empty
-// path clears the override (restores platform default). A non-empty path that
-// does not exist or is not executable causes the daemon to return 400, which
-// is surfaced as an error here. Phase 107 SHELL-11.
-func (c *DaemonClient) SetShellPath(path string) error {
-	return c.doJSON(http.MethodPatch, "/settings/shell-path",
-		map[string]string{"value": path}, nil)
-}
-
-// GetAutoCloseSession returns the auto-close-on-exit preference.
-func (c *DaemonClient) GetAutoCloseSession() (bool, error) {
-	var resp map[string]bool
-	if err := c.doJSON(http.MethodGet, "/settings/auto-close-session", nil, &resp); err != nil {
-		return true, err // default true on error
-	}
-	return resp["autoCloseSession"], nil
-}
-
-// SetAutoCloseSession persists the auto-close-on-exit preference.
-func (c *DaemonClient) SetAutoCloseSession(val bool) error {
-	return c.doJSON(http.MethodPatch, "/settings/auto-close-session",
-		map[string]bool{"autoCloseSession": val}, nil)
 }
 
 // GetPluginSettings fetches the persisted plugin enable/disable preferences.
@@ -390,17 +297,8 @@ func (c *DaemonClient) DisconnectViewers(sessionID string) error {
 	return c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/disconnect-viewers", nil, nil)
 }
 
-// SetSessionBrowse sets the per-session browse toggle for a session.
-// Phase 137 / SHARE-03. Mirrors ToggleWebServing but routes to the engine's
-// per-session browse map (not a global flag). Toggle-off clears grants on the
-// daemon side (stale-cap threat mitigation per SHARE-05).
-func (c *DaemonClient) SetSessionBrowse(sessionID string, enabled bool) error {
-	return c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/browse",
-		SessionBrowseRequest{Enabled: enabled}, nil)
-}
-
 // SetSessionFunnel enables or disables Tailscale Funnel for a session.
-// Phase 165 / FNL-01. Mirrors ToggleWebServing / SetSessionBrowse — thin
+// Phase 165 / FNL-01. Mirrors ToggleWebServing — thin
 // delegation, no Funnel logic here. expiresIn is the auto-expiry duration in
 // seconds; 0 = no auto-expiry (FNL-07). The response body (FunnelURL) is
 // discarded here; the GUI retrieves it from IssueCapabilities.
@@ -458,12 +356,6 @@ func (c *DaemonClient) RegenerateSigningKey() error {
 	return c.doJSON(http.MethodPost, "/capability/regenerate-key", nil, nil)
 }
 
-// NotifyThemeChange tells the daemon to signal active OpenCode sessions
-// to re-query the terminal palette. Returns nil on success (204 No Content).
-func (c *DaemonClient) NotifyThemeChange() error {
-	return c.doJSON(http.MethodPost, "/theme/notify", nil, nil)
-}
-
 // ListTailnetPeers returns discovered tailnet peers running AgentHub.
 func (c *DaemonClient) ListTailnetPeers() ([]tailnet.Peer, error) {
 	var peers []tailnet.Peer
@@ -474,306 +366,6 @@ func (c *DaemonClient) ListTailnetPeers() ([]tailnet.Peer, error) {
 		peers = []tailnet.Peer{}
 	}
 	return peers, nil
-}
-
-// -------------------------------------------------------------------------
-// Phase 118 / Plan 05: file-browser DaemonClient methods.
-//
-// All four methods use the existing c.http transport (Unix socket / Windows
-// named pipe). url.Values.Encode() handles path quoting so special characters
-// (spaces, '#', '?') do not break the URL. Non-2xx responses surface as
-// errors containing the status code so callers can branch on 403/404/413
-// without re-issuing the request.
-// -------------------------------------------------------------------------
-
-// filesURL builds /api/files/<op>?session=<sid>&path=<rel>. relPath empty
-// is normalised to "." so callers can pass "" for "list the root".
-func (c *DaemonClient) filesURL(op, sessionID, relPath string) string {
-	if relPath == "" {
-		relPath = "."
-	}
-	q := url.Values{}
-	q.Set("session", sessionID)
-	q.Set("path", relPath)
-	return c.base + "/api/files/" + op + "?" + q.Encode()
-}
-
-// ListFiles fetches a directory listing for the given session via the
-// daemon-local socket. The loopback transport is the trust boundary — no
-// cap-token is sent. Returns entries, truncated flag, and any non-2xx
-// status surfaced as a typed error.
-// Phase 118 / FS-03.
-func (c *DaemonClient) ListFiles(ctx context.Context, sessionID, relPath string) ([]files.FileEntry, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.filesURL("list", sessionID, relPath), nil)
-	if err != nil {
-		return nil, false, fmt.Errorf("files list: new request: %w", err)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, false, fmt.Errorf("files list: do request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, false, fmt.Errorf("files list: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var out files.FileListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, false, fmt.Errorf("files list: decode response: %w", err)
-	}
-	return out.Entries, out.Truncated, nil
-}
-
-// StatFile fetches metadata for a single path inside the session's sandbox.
-// Phase 118 / FS-04.
-func (c *DaemonClient) StatFile(ctx context.Context, sessionID, relPath string) (files.FileEntry, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.filesURL("stat", sessionID, relPath), nil)
-	if err != nil {
-		return files.FileEntry{}, fmt.Errorf("files stat: new request: %w", err)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return files.FileEntry{}, fmt.Errorf("files stat: do request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return files.FileEntry{}, fmt.Errorf("files stat: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var out files.FileEntry
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return files.FileEntry{}, fmt.Errorf("files stat: decode response: %w", err)
-	}
-	return out, nil
-}
-
-// ReadFile fetches file bytes via the daemon socket. The daemon enforces the
-// 5 MiB preview cap server-side (Pitfall 5 / FS-05); a 413 surfaces here as
-// a typed error so callers can distinguish "too large" from "not found"
-// without re-issuing the request.
-// Phase 118 / FS-05.
-func (c *DaemonClient) ReadFile(ctx context.Context, sessionID, relPath string) ([]byte, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.filesURL("read", sessionID, relPath), nil)
-	if err != nil {
-		return nil, "", fmt.Errorf("files read: new request: %w", err)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, "", fmt.Errorf("files read: do request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, "", fmt.Errorf("files read: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", fmt.Errorf("files read: read body: %w", err)
-	}
-	return data, resp.Header.Get("Content-Type"), nil
-}
-
-// HeadFile preflights size + Content-Type + modtime without transferring the
-// body. Phase 120 (GUI) uses this for cap-aware previews — query the size
-// before deciding to fetch. Phase 118 / FS-06.
-func (c *DaemonClient) HeadFile(ctx context.Context, sessionID, relPath string) (int64, string, time.Time, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, c.filesURL("read", sessionID, relPath), nil)
-	if err != nil {
-		return 0, "", time.Time{}, fmt.Errorf("files head: new request: %w", err)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return 0, "", time.Time{}, fmt.Errorf("files head: do request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return 0, "", time.Time{}, fmt.Errorf("files head: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	// Content-Length parsing — http.Response.ContentLength is already int64;
-	// -1 means absent. HEAD responses on a known-size body always populate it.
-	size := resp.ContentLength
-	if size < 0 {
-		size = 0
-	}
-	// Last-Modified header — parse with http.ParseTime so RFC1123/RFC850 are
-	// both handled. On parse failure the zero time is returned so callers see
-	// "no usable mtime" rather than a stale value.
-	var mtime time.Time
-	if lm := resp.Header.Get("Last-Modified"); lm != "" {
-		if t, err := http.ParseTime(lm); err == nil {
-			mtime = t
-		}
-	}
-	return size, resp.Header.Get("Content-Type"), mtime, nil
-}
-
-// -------------------------------------------------------------------------
-// Phase 123 / Plan 04: DaemonClient write methods (FSW-09).
-//
-// All five methods mirror the read-method patterns established in Plan 118/05:
-//   - filesURL helper for URL construction (op, sessionID, relPath)
-//   - http.NewRequestWithContext for context-aware requests
-//   - non-2xx status surfaced as a typed error: "files <op>: %d %s"
-//   - doJSON for JSON-bodied ops (RenameFile, MkdirFile)
-//
-// Auth-less by design — the daemon Unix socket is the trust boundary (WEB-01).
-// DaemonClient implements the files write surface for all surviving surfaces
-// (GUI, CLI, web); the TUI surface was removed in Phase 136.
-// -------------------------------------------------------------------------
-
-// WriteFile writes data to relPath inside the session sandbox via PUT
-// /api/files/write. Uses Content-Type application/octet-stream with the
-// raw bytes as the body. Non-2xx responses surface as a typed error.
-// Phase 123 / FSW-09 / T-123-18 (ctx cancellation closes the hang risk).
-func (c *DaemonClient) WriteFile(ctx context.Context, sessionID, relPath string, data []byte) (files.FileWriteResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.filesURL("write", sessionID, relPath), bytes.NewReader(data))
-	if err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files write: new request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files write: do request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return files.FileWriteResponse{}, fmt.Errorf("files write: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var out files.FileWriteResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files write: decode response: %w", err)
-	}
-	return out, nil
-}
-
-// UploadFile sends data as a multipart/form-data POST to /api/files/upload.
-// dir is the sandbox-relative target directory ("." for root). filename is
-// the base name of the file part; the server applies filepath.Base for an
-// additional traversal defence. Phase 123 / FSW-09.
-func (c *DaemonClient) UploadFile(ctx context.Context, sessionID, dir, filename string, data []byte) (files.FileWriteResponse, error) {
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	if err := mw.WriteField("dir", dir); err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files upload: write dir field: %w", err)
-	}
-	fw, err := mw.CreateFormFile("file", filename)
-	if err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files upload: create form file: %w", err)
-	}
-	if _, err := fw.Write(data); err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files upload: write file data: %w", err)
-	}
-	if err := mw.Close(); err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files upload: close multipart writer: %w", err)
-	}
-
-	// filesURL adds session+path query params; path is unused for upload (dir
-	// comes from the form field) but we pass "." to satisfy the helper signature.
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.filesURL("upload", sessionID, "."), &buf)
-	if err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files upload: new request: %w", err)
-	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files upload: do request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return files.FileWriteResponse{}, fmt.Errorf("files upload: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var out files.FileWriteResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return files.FileWriteResponse{}, fmt.Errorf("files upload: decode response: %w", err)
-	}
-	return out, nil
-}
-
-// DeleteFile removes relPath inside the session sandbox via DELETE
-// /api/files/delete. Returns FileOpResponse{OK: true} on success.
-// Phase 123 / FSW-09.
-func (c *DaemonClient) DeleteFile(ctx context.Context, sessionID, relPath string) (files.FileOpResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.filesURL("delete", sessionID, relPath), nil)
-	if err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files delete: new request: %w", err)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files delete: do request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return files.FileOpResponse{}, fmt.Errorf("files delete: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var out files.FileOpResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files delete: decode response: %w", err)
-	}
-	return out, nil
-}
-
-// renameRequest is the JSON body sent to POST /api/files/rename.
-type renameRequest struct {
-	OldRel string `json:"oldRel"`
-	NewRel string `json:"newRel"`
-}
-
-// RenameFile moves oldRel to newRel inside the session sandbox via POST
-// /api/files/rename with a JSON body. Both paths are validated server-side
-// (T-123-01 destination traversal risk). Phase 123 / FSW-09.
-func (c *DaemonClient) RenameFile(ctx context.Context, sessionID, oldRel, newRel string) (files.FileOpResponse, error) {
-	body := renameRequest{OldRel: oldRel, NewRel: newRel}
-	b, err := json.Marshal(body)
-	if err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files rename: marshal request: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.filesURL("rename", sessionID, "."), bytes.NewReader(b))
-	if err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files rename: new request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files rename: do request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body2, _ := io.ReadAll(resp.Body)
-		return files.FileOpResponse{}, fmt.Errorf("files rename: %d %s", resp.StatusCode, strings.TrimSpace(string(body2)))
-	}
-	var out files.FileOpResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files rename: decode response: %w", err)
-	}
-	return out, nil
-}
-
-// MkdirFile creates relPath (and all missing parent directories) inside the
-// session sandbox via POST /api/files/mkdir. Uses the path query parameter —
-// relPath is passed via filesURL. Phase 123 / FSW-09.
-func (c *DaemonClient) MkdirFile(ctx context.Context, sessionID, relPath string) (files.FileOpResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.filesURL("mkdir", sessionID, relPath), nil)
-	if err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files mkdir: new request: %w", err)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files mkdir: do request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return files.FileOpResponse{}, fmt.Errorf("files mkdir: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var out files.FileOpResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return files.FileOpResponse{}, fmt.Errorf("files mkdir: decode response: %w", err)
-	}
-	return out, nil
 }
 
 // doJSON is a shared request/response helper. It marshals body (if non-nil),

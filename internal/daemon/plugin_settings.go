@@ -3,9 +3,9 @@ package daemon
 // CurrentSchemaVersion is the on-disk daemonSettings schema version.
 // v3.1 settings.json files have no schemaVersion field (treated as 0);
 // v3.2 introduces the plugins block and bumps to 2; v3.4 (Phase 118)
-// adds the daemon-wide FilesRead flag and bumps to 3; Phase 124 adds the
-// per-session FilesWrite opt-in default (plain bool, zero-value false) and
-// bumps to 4.
+// adds a daemon-wide files flag and bumps to 3; Phase 124 adds a files
+// write default and bumps to 4. Both files keys have since been removed
+// (ignored on load, dropped on save); the version stays 4.
 const CurrentSchemaVersion = 4
 
 // SearchConfig persists per-flag default state for the find-bar toggle row.
@@ -65,8 +65,8 @@ type ImageConfig struct {
 
 // PluginSettings is the persisted user choice for each xterm.js addon
 // shipped by the v3.2 plugin suite. Field names match UI-SPEC ordering.
-// JSON tags are camelCase to match daemonSettings vocabulary (cliPaths,
-// startMinimized).
+// JSON tags are camelCase to match daemonSettings vocabulary (startMinimized,
+// stayOnHubAfterCreate).
 //
 // NO omitempty: missing keys must round-trip as the user's saved choice
 // (which may legitimately be `false`), and Pitfall #14 mandates the

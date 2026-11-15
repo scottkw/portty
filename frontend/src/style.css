@@ -752,32 +752,6 @@ textarea {
   border-top: none;
 }
 
-.settings-panel__empty {
-  color: var(--hub-text-muted);
-  font-size: 13px;
-}
-
-.settings-panel__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.settings-panel__table th {
-  text-align: left;
-  color: var(--hub-text-muted);
-  font-weight: 500;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--hub-border);
-}
-.settings-panel__table td {
-  padding: 8px 8px;
-  border-bottom: 1px solid var(--hub-bg);
-}
-.settings-panel__cli-name {
-  color: var(--hub-accent);
-  white-space: nowrap;
-  padding-right: 16px;
-}
 .settings-panel__path-input {
   width: 100%;
   background-color: var(--hub-surface);
@@ -908,29 +882,6 @@ textarea {
   .settings-panel__theme-toggle-knob {
     transition: none;
   }
-}
-
-.settings-panel__path-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.settings-panel__browse-btn {
-  padding: 4px 8px;
-  border-radius: var(--hub-radius-sm);
-  font-size: var(--hub-font-size-sm);
-  cursor: pointer;
-  border: 1px solid var(--hub-border);
-  background: transparent;
-  color: var(--hub-text-muted);
-  font-family: inherit;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.settings-panel__browse-btn:hover {
-  color: var(--hub-text-primary);
-  border-color: var(--hub-border-hover);
 }
 
 /* ─── Field groups & form elements ───────────────────────────────── */
@@ -1078,7 +1029,6 @@ textarea {
   .settings-panel__btn--cancel,
   .settings-panel__btn--save,
   .settings-panel__btn--saved,
-  .settings-panel__browse-btn,
   .settings-panel__toggle-track,
   .settings-panel__toggle-thumb {
     transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
@@ -1089,7 +1039,6 @@ textarea {
   .settings-panel__btn--cancel,
   .settings-panel__btn--save,
   .settings-panel__btn--saved,
-  .settings-panel__browse-btn,
   .settings-panel__toggle-track,
   .settings-panel__toggle-thumb {
     transition: none;
@@ -1545,71 +1494,6 @@ textarea {
   color: #9aa5ce;
   margin-bottom: 8px;
 }
-.new-session-modal__agent-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.new-session-modal__agent-btn {
-  display: block;
-  width: 100%;
-  height: 36px;
-  text-align: left;
-  background: transparent;
-  border: 1px solid #292e42;
-  color: #a9b1d6;
-  font-size: 13px;
-  padding: 0 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.new-session-modal__agent-btn:hover {
-  background: #1e2030;
-  color: #c0caf5;
-}
-.new-session-modal__agent-btn--selected {
-  border-color: #7aa2f7;
-  color: #c0caf5;
-  background: #1e2030;
-}
-/*
- * Phase 101-02 (SHELL-01 GUI half) — shell row styling.
- * Shell rows grow to 56px to fit the locked 2-line layout (primary label
- * + mono detail). Selected shell row uses border #89ddff (shell cyan)
- * instead of #7aa2f7 (AI-CLI accent blue) per UI-SPEC §Locked Visual
- * Constants. The mono detail line uses TokyoNight muted #565f89.
- */
-.new-session-modal__agent-btn--shell {
-  height: auto;
-  min-height: 56px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 4px;
-  padding: 8px 12px;
-}
-.new-session-modal__agent-btn--selected-shell {
-  border-color: #89ddff;
-  color: #c0caf5;
-  background: #1e2030;
-}
-.new-session-modal__agent-btn__detail {
-  display: block;
-  font-family: var(--hub-font-mono);
-  font-size: 11px;
-  color: #565f89;
-  line-height: 1.3;
-}
-.new-session-modal__agent-btn--loading {
-  color: #565f89;
-  font-size: 11px;
-  opacity: 0.7;
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-}
 .new-session-modal__folder-row {
   display: flex;
   gap: 8px;
@@ -1626,6 +1510,7 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0; /* let a long path shrink in the flex row and ellipsize instead of widening the modal */
   min-height: 32px;
   line-height: 20px;
 }
@@ -1650,45 +1535,6 @@ textarea {
 .new-session-modal__browse-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-.new-session-modal__args-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.new-session-modal__args-input {
-  flex: 1;
-  background: #16161e;
-  border: 1px solid #292e42;
-  border-radius: 4px;
-  color: #c0caf5;
-  font-size: 13px;
-  padding: 8px 16px;
-  outline: none;
-  font-family: inherit;
-  min-height: 32px;
-  box-sizing: border-box;
-}
-.new-session-modal__args-input:focus {
-  border-color: #7aa2f7;
-}
-.new-session-modal__args-input::placeholder {
-  color: #414868;
-}
-.new-session-modal__args-clear {
-  padding: 4px 8px;
-  border: 1px solid #292e42;
-  border-radius: 4px;
-  font-size: 11px;
-  background: transparent;
-  color: #a9b1d6;
-  cursor: pointer;
-  white-space: nowrap;
-  font-family: inherit;
-}
-.new-session-modal__args-clear:hover {
-  background: #1e2030;
-  color: #c0caf5;
 }
 .new-session-modal__footer {
   display: flex;
@@ -1760,62 +1606,6 @@ textarea {
   color: var(--hub-text-primary);
   background: var(--hub-border-hover);
 }
-
-/* ─── Tab status dots ────────────────────────────────────────────── */
-.tab__status {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 6px;
-  flex-shrink: 0;
-}
-.tab__status--running {
-  background: #3b82f6;
-}
-.tab__status--idle {
-  background: #22c55e;
-}
-.tab__status--waiting {
-  background: #f59e0b;
-}
-.tab__status--errored {
-  background: #ef4444;
-}
-
-/*
- * Phase 101-02 (SHELL-06 GUI half) — per-tab agent badge.
- * 8px dot rendered between the status dot and the tab name. Decorative
- * (aria-hidden); the agent type is communicated textually via the tab-name
- * tooltip. Default color (muted #9aa5ce) applies for unknown CLIs.
- *
- * Per-CLI colors mirror the TUI dark-mode badge palette (UI-SPEC §Color);
- * shells (bash/zsh/pwsh/powershell/system-default) all collapse to
- * .--shell (#89ddff) because the user needs to know "this is a shell",
- * not which specific shell.
- */
-.tab__agent-badge {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 4px;
-  flex-shrink: 0;
-  background: #9aa5ce;
-}
-.tab__agent-badge--claude   { background: #7aa2f7; }
-.tab__agent-badge--opencode { background: #9ece6a; }
-.tab__agent-badge--codex    { background: #bb9af7; }
-.tab__agent-badge--gemini   { background: #2ac3de; }
-.tab__agent-badge--cursor   { background: #e0af68; }
-.tab__agent-badge--aider    { background: #f7768e; }
-.tab__agent-badge--shell    { background: #89ddff; }
-/* agy — orange #ff9e64. Contrast of the chip TEXT against its rendered surface
-   --hub-surface-elevated (#1c1e28 dark / #ececf0 light): dark 8.16:1 AA PASS;
-   light 1.73:1 FAIL (same gap as all existing agents — the chip text is the cli
-   name; color is reinforcement only). The earlier 8.72:1/2.03:1 figures measured
-   against the wrong reference (pure black/white), corrected in Phase 149 WR-02. */
-.tab__agent-badge--agy      { background: #ff9e64; }
 
 /* Phase 98 PRG-02 — per-tab progress underline.
    Uses transform: scaleX(0..1) instead of width for GPU compositor (Pitfall #4).
@@ -2007,7 +1797,6 @@ textarea {
   flex-shrink: 0;
 }
 .ts-status__dot--ok    { background: #9ece6a; }
-.ts-status__dot--warn  { background: #f59e0b; }
 .ts-status__dot--error { background: #f7768e; }
 .ts-status__text {
   color: #a9b1d6;
@@ -2275,8 +2064,8 @@ textarea {
   color: #7aa2f7;
 }
 
-/* ─── Local Network Banner (Phase 60 — NET-04) ───────────────────── */
-.local-network-banner {
+/* ─── Tailscale banner (NET-01; persistent, no dismiss) ──────────── */
+.tailscale-banner {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2287,62 +2076,15 @@ textarea {
   flex-shrink: 0;
 }
 
-.local-network-banner__icon {
+.tailscale-banner__icon {
   color: #f59e0b;
   font-size: 14px;
   flex-shrink: 0;
 }
 
-.local-network-banner__message {
+.tailscale-banner__message {
   color: #a9b1d6;
   font-size: 13px;
-}
-
-.local-network-banner__sub {
-  color: #9aa5ce;
-  font-size: 12px;
-}
-
-.local-network-banner__cta {
-  margin-left: auto;
-  background: #7aa2f7;
-  color: #1a1b26;
-  border: none;
-  border-radius: 4px;
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.local-network-banner__cta:hover {
-  background: #89b4fa;
-}
-
-.local-network-banner__dismiss {
-  margin-left: auto;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: #9aa5ce;
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  min-height: 24px;
-  flex-shrink: 0;
-}
-.local-network-banner__dismiss:hover {
-  color: #c0caf5;
-  border-color: #3b4261;
-}
-.local-network-banner__dismiss:focus-visible {
-  outline: 2px solid #7aa2f7;
-  outline-offset: 2px;
 }
 
 /* ─── Banner stack container (Phase 81 — BAN-01/BAN-02) ─────────── */
@@ -2511,31 +2253,6 @@ textarea {
   justify-content: flex-end;
 }
 
-/* ─── Phase 124 CAP-06 — Home-directory write warning banner ────────────
-   Modifier on .webgl-recovery-banner: overrides the info-blue left accent
-   with warning amber (#f59e0b — already used by local-network-banner;
-   no new hex). The ⚠ glyph + "Warning:" text carry the meaning;
-   the amber border is decoration only (colorblind-safe, CAP-06/T-124-16). */
-.webgl-recovery-banner--home-write-warning {
-  border-left: 3px solid #f59e0b;
-  align-items: flex-start;
-}
-.webgl-recovery-banner__home-write-heading {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.5;
-  color: #c0caf5;
-  margin-bottom: 4px;
-}
-.webgl-recovery-banner__home-write-body {
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.5;
-  color: #a9b1d6;
-}
 .webgl-recovery-banner__shell-body {
   flex: 1 1 auto;
   display: flex;
@@ -2783,171 +2500,6 @@ textarea {
   height: 200px;
 }
 
-/* === Exit Toast (Phase 84) === */
-.exit-toast {
-  position: fixed;
-  bottom: 16px;
-  right: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 9999;
-  pointer-events: none;
-}
-
-.exit-toast__item {
-  pointer-events: all;
-  background: #1e2030;
-  border: 1px solid #292e42;
-  border-radius: 6px;
-  padding: 10px 14px;
-  min-width: 280px;
-  max-width: 380px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: #c0caf5;
-  font-size: 13px;
-}
-
-.exit-toast__item--clean {
-  border-left: 3px solid #9ece6a;
-}
-
-.exit-toast__item--error {
-  border-left: 3px solid #f7768e;
-}
-
-.exit-toast__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.exit-toast__session-name {
-  font-weight: 600;
-  font-size: 13px;
-  color: #c0caf5;
-}
-
-.exit-toast__dismiss {
-  background: transparent;
-  border: none;
-  color: #9aa5ce;
-  padding: 2px;
-  border-radius: 2px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.exit-toast__dismiss:hover {
-  color: #c0caf5;
-}
-
-.exit-toast__meta {
-  font-size: 12px;
-  color: #9aa5ce;
-}
-
-.exit-toast__codes {
-  font-size: 12px;
-  color: #9aa5ce;
-}
-
-.exit-toast__exit-code--ok {
-  color: #9ece6a;
-}
-
-.exit-toast__exit-code--err {
-  color: #f7768e;
-}
-
-.exit-toast__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 2px;
-}
-
-.exit-toast__countdown {
-  font-size: 11px;
-  color: #9ece6a;
-  font-variant-numeric: tabular-nums;
-  min-width: 18px;
-}
-
-.exit-toast__keep-open {
-  background: #7aa2f7;
-  color: #1a1b26;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  border: none;
-  cursor: pointer;
-}
-
-.exit-toast__keep-open:hover {
-  background: #89b4fa;
-}
-
-/* === Exit Countdown Banner (Phase 84) === */
-.exit-countdown-banner {
-  background: #16161e;
-  border-top: 1px solid #292e42;
-  border-left: 3px solid #9ece6a;
-  padding: 10px 16px;
-  font-size: 13px;
-  color: #a9b1d6;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.exit-countdown-banner__message {
-  flex: 1;
-}
-
-.exit-countdown-banner__countdown {
-  font-size: 11px;
-  color: #9ece6a;
-  font-variant-numeric: tabular-nums;
-}
-
-.exit-countdown-banner__keep-open {
-  background: #7aa2f7;
-  color: #1a1b26;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  border: none;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.exit-countdown-banner__keep-open:hover {
-  background: #89b4fa;
-}
-
-/* === Tab Countdown (Phase 84) === */
-.tab--exiting {
-  opacity: 0.5;
-  transition: opacity 150ms ease;
-}
-
-.tab__countdown {
-  font-size: 11px;
-  color: #9ece6a;
-  font-variant-numeric: tabular-nums;
-  min-width: 18px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
 /* ── Quit Confirmation Modal (Phase 85) ───────────────────────── */
 .quit-modal-overlay {
   position: fixed;
@@ -3017,18 +2569,8 @@ textarea {
   font-size: 13px;
   color: #c0caf5;
 }
-.quit-modal__session-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
 .quit-modal__session-name {
   font-weight: 400;
-}
-.quit-modal__session-status {
-  font-size: 13px;
-  color: #9aa5ce;
 }
 .quit-modal__overflow {
   display: block;
@@ -3429,790 +2971,7 @@ textarea {
   }
 }
 
-/* ─── File Browser Tab (Phase 120) ─── */
-
-/* Breadcrumb bar — top chrome of the file browser tab.
-   Reuses --hub-* tokens declared in the Hub token block. */
-.file-browser__breadcrumb {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 40px;
-  padding: 0 16px;
-  background: var(--hub-surface);
-  border-bottom: 1px solid var(--hub-border);
-  font-size: 13px;
-  color: var(--hub-text-primary);
-}
-
-.file-browser__breadcrumb-list {
-  display: flex;
-  flex-wrap: wrap;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  gap: 4px;
-}
-
-.file-browser__breadcrumb-item {
-  display: inline-flex;
-  align-items: center;
-}
-
-.file-browser__breadcrumb-item + .file-browser__breadcrumb-item::before {
-  content: '/';
-  margin: 0 6px;
-  color: var(--hub-text-dim);
-}
-
-.file-browser__breadcrumb-root {
-  color: var(--hub-text-secondary);
-}
-
-/* Clickable root (rendered when user is in a subdirectory — navigates back
-   to session cwd root). Mirrors __breadcrumb-segment but kept distinct so
-   the root can be styled independently if needed. */
-.file-browser__breadcrumb-root--clickable {
-  background: transparent;
-  border: 0;
-  padding: 2px 4px;
-  cursor: pointer;
-  font: inherit;
-  border-radius: 3px;
-}
-
-.file-browser__breadcrumb-root--clickable:hover {
-  color: var(--hub-accent);
-  background: var(--hub-surface-elevated);
-}
-
-.file-browser__breadcrumb-root--clickable:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 2px;
-}
-
-.file-browser__breadcrumb-segment {
-  background: transparent;
-  border: 0;
-  padding: 2px 4px;
-  color: var(--hub-text-secondary);
-  cursor: pointer;
-  font: inherit;
-  border-radius: 3px;
-}
-
-.file-browser__breadcrumb-segment:hover {
-  color: var(--hub-accent);
-  background: var(--hub-surface-elevated);
-}
-
-.file-browser__breadcrumb-segment:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 2px;
-}
-
-.file-browser__breadcrumb-current {
-  color: var(--hub-accent);
-  font-weight: 600;
-  padding: 2px 4px;
-}
-
-.file-browser__breadcrumb-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.file-browser__breadcrumb-refreshed {
-  color: var(--hub-text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.file-browser__breadcrumb-refresh {
-  background: transparent;
-  border: 0;
-  padding: 4px;
-  color: var(--hub-text-secondary);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 3px;
-}
-
-.file-browser__breadcrumb-refresh:hover {
-  color: var(--hub-accent);
-  background: var(--hub-surface-elevated);
-}
-
-.file-browser__breadcrumb-refresh:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 2px;
-}
-
-.file-browser__breadcrumb-refresh-icon {
-  width: 14px;
-  height: 14px;
-}
-
-/* Status line — bottom chrome with item count + filter input. */
-.file-browser__status {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 28px;
-  padding: 0 16px;
-  background: var(--hub-surface);
-  border-top: 1px solid var(--hub-border);
-  color: var(--hub-text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.file-browser__status-count {
-  white-space: nowrap;
-}
-
-.file-browser__status-filter {
-  flex: 0 1 240px;
-  height: 20px;
-  padding: 0 6px;
-  background: var(--hub-bg);
-  border: 1px solid var(--hub-border);
-  border-radius: 3px;
-  color: var(--hub-text-primary);
-  font: inherit;
-  font-size: 12px;
-  letter-spacing: normal;
-}
-
-.file-browser__status-filter:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 1px;
-  border-color: transparent;
-}
-
-.file-browser__status-filter-info {
-  color: var(--hub-text-secondary);
-  white-space: nowrap;
-}
-
-/* File list pane — left side of the file browser body row. */
-.file-browser {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--hub-bg);
-  font-family: var(--hub-font-ui);
-}
-
-.file-browser__body {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-/* Phase 120 UAT-1: list pane width is now controlled by an inline `width`
-   set by FileBrowserTab (resizable via the file-browser__divider handle).
-   The container provides the min-width / overflow boundary; the inner
-   FileListPane fills it. */
-.file-browser__list-container {
-  min-width: 0;
-  background: var(--hub-bg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.file-browser__list {
-  min-width: 0;
-  background: var(--hub-bg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  flex: 1 1 auto;
-}
-
-/* Vertical resize handle between list and preview panes. 4px wide hit area
-   with a 1px visible separator centered; expands the apparent grip on hover.
-   Cursor change tells the user it's draggable. */
-.file-browser__divider {
-  flex: 0 0 4px;
-  background: var(--hub-border);
-  cursor: col-resize;
-  position: relative;
-}
-
-.file-browser__divider:hover,
-.file-browser__divider:active {
-  background: var(--hub-accent);
-}
-
-.file-browser__divider:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: -2px;
-}
-
-.file-browser__list:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: -2px;
-}
-
-.file-browser__truncated-banner {
-  padding: 8px 12px;
-  border-left: 3px solid var(--hub-warning);
-  background: var(--hub-surface-elevated);
-  color: var(--hub-text-primary);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.file-browser__truncated-banner > strong {
-  display: block;
-}
-
-.file-browser__list-header {
-  display: grid;
-  /* Phase 120 UAT-1: 5 cells = NAME | divider | SIZE | divider | MODIFIED.
-     Widths come from CSS custom properties set on .file-browser__list
-     (the wrapper); the FileRow grid mirrors this with an extra 22px icon
-     column at the start. */
-  grid-template-columns:
-    1fr 4px var(--fb-size-col, 80px) 4px var(--fb-mtime-col, 110px);
-  gap: 8px;
-  height: 28px;
-  align-items: stretch;
-  padding: 0 12px;
-  background: var(--hub-surface);
-  border-bottom: 1px solid var(--hub-border);
-  position: sticky;
-  top: 0;
-}
-
-/* Vertical resize handle between header columns. 4px hit area, 1px visible
-   separator centered. Hover/active turn it accent blue. */
-.file-browser__col-divider {
-  width: 4px;
-  background: var(--hub-border);
-  cursor: col-resize;
-  align-self: stretch;
-}
-
-.file-browser__col-divider:hover,
-.file-browser__col-divider:active {
-  background: var(--hub-accent);
-}
-
-.file-browser__col {
-  background: transparent;
-  border: 0;
-  padding: 0;
-  text-align: left;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--hub-text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.file-browser__col--size,
-.file-browser__col--modified {
-  justify-content: flex-start;
-}
-
-.file-browser__col--active {
-  color: var(--hub-accent);
-}
-
-.file-browser__col:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 2px;
-}
-
-.file-browser__col-chevron {
-  color: var(--hub-accent);
-}
-
-.file-browser__list-scroll {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  flex: 1 1 auto;
-}
-
-.file-browser__list-row {
-  display: grid;
-  /* Phase 120 UAT-1: mirror the header grid with leading 22px icon column.
-     The 4px slots replace the divider hit areas so cell content lines up
-     under the corresponding header column. */
-  grid-template-columns:
-    22px 1fr 4px var(--fb-size-col, 80px) 4px var(--fb-mtime-col, 110px);
-  gap: 8px;
-  align-items: center;
-  height: 32px;
-  padding: 0 12px;
-  font-size: 13px;
-  color: var(--hub-text-primary);
-  cursor: pointer;
-  border-left: 3px solid transparent;
-  /* Positioning context for the absolutely-placed row-actions overlay (below). */
-  position: relative;
-}
-
-.file-browser__list-row:hover {
-  background: var(--hub-surface-elevated);
-}
-
-.file-browser__list-row--selected {
-  background: var(--hub-surface-elevated);
-  border-left-color: var(--hub-accent);
-}
-
-.file-browser__list-row--selected .file-browser__row-name {
-  font-weight: 600;
-}
-
-.file-browser__row-icon {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--hub-text-secondary);
-  width: 14px;
-  height: 14px;
-}
-
-.file-browser__row-icon-overlay {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  color: var(--hub-destructive);
-}
-
-.file-browser__row-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-browser__row-size {
-  color: var(--hub-text-secondary);
-  font-size: 12px;
-  text-align: right;
-}
-
-.file-browser__row-mtime {
-  color: var(--hub-text-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.file-browser__list-empty {
-  list-style: none;
-  padding: 24px 16px;
-  color: var(--hub-text-muted);
-  text-align: center;
-  font-size: 12px;
-}
-
-/* Skeleton shimmer animation (used by Plan 04 when listing is loading).
-   Gated by prefers-reduced-motion per UI-SPEC §Motion. */
-@media (prefers-reduced-motion: no-preference) {
-  @keyframes file-browser-shimmer {
-    from {
-      background-color: var(--hub-surface-elevated);
-    }
-    to {
-      background-color: var(--hub-border);
-    }
-  }
-  .file-browser__list-row--skeleton {
-    animation: file-browser-shimmer 1.2s ease-in-out infinite alternate;
-  }
-}
-
-/* ─── File Browser Preview Pane (Phase 120-04) ─── */
-.file-browser__preview {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  background: var(--hub-surface);
-  border-left: 1px solid var(--hub-border);
-  min-width: 0;
-  min-height: 0;
-}
-
-.file-browser__preview-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  background: var(--hub-surface);
-  border-bottom: 1px solid var(--hub-border);
-  font-size: 13px;
-  color: var(--hub-text-primary);
-  flex: 0 0 auto;
-}
-
-.file-browser__preview-name {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.file-browser__preview-size {
-  color: var(--hub-text-muted);
-  font-size: 11px;
-  flex: 0 0 auto;
-}
-
-.file-browser__preview-body {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  overflow: auto;
-  min-height: 0;
-  padding: 16px;
-}
-
-.file-browser__preview-body-muted {
-  color: var(--hub-text-muted);
-}
-
-.file-browser__preview-heading {
-  margin: 0 0 8px 0;
-  color: var(--hub-text-primary);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.file-browser__preview--idle {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--hub-text-muted);
-  font-style: italic;
-  font-size: 13px;
-}
-
-.file-browser__preview--loading {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--hub-text-muted);
-  font-size: 13px;
-}
-
-.file-browser__preview--text {
-  margin: 0;
-  font-family: var(--hub-font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--hub-text-primary);
-  white-space: pre;
-  word-break: normal;
-  overflow: auto;
-  flex: 1 1 auto;
-}
-
-.file-browser__preview--markdown {
-  flex: 1 1 auto;
-  font-family: var(--hub-font-ui);
-  font-size: var(--hub-font-size-base);
-  line-height: 1.6;
-  color: var(--hub-text-primary);
-  overflow: auto;
-}
-
-.file-browser__preview--markdown h1 {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 12px 0;
-}
-
-.file-browser__preview--markdown h2 {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 16px 0 8px 0;
-}
-
-.file-browser__preview--markdown h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 12px 0 8px 0;
-}
-
-.file-browser__preview--markdown h4,
-.file-browser__preview--markdown h5,
-.file-browser__preview--markdown h6 {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 12px 0 8px 0;
-}
-
-.file-browser__preview--markdown a {
-  color: var(--hub-accent);
-  text-decoration: underline;
-}
-
-.file-browser__preview--markdown code {
-  background: var(--hub-surface-elevated);
-  padding: 1px 4px;
-  border-radius: var(--hub-radius-sm);
-  font-family: var(--hub-font-mono);
-  font-size: 13px;
-}
-
-.file-browser__preview--markdown pre {
-  background: var(--hub-surface-elevated);
-  padding: 12px;
-  border-radius: 4px;
-  overflow: auto;
-}
-
-.file-browser__preview--markdown pre code {
-  background: transparent;
-  padding: 0;
-}
-
-.file-browser__preview--markdown table {
-  border-collapse: collapse;
-  margin: 12px 0;
-}
-
-.file-browser__preview--markdown th,
-.file-browser__preview--markdown td {
-  border: 1px solid var(--hub-border);
-  padding: 4px 8px;
-}
-
-.file-browser__preview--image {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-}
-
-.file-browser__preview--unsupported,
-.file-browser__preview--empty,
-.file-browser__preview--broken-symlink,
-.file-browser__preview--forbidden {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 8px;
-  color: var(--hub-text-primary);
-}
-
-.file-browser__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--hub-border);
-  background: transparent;
-  color: var(--hub-text-primary);
-  font-size: 12px;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  text-decoration: none;
-  font-family: inherit;
-}
-
-.file-browser__btn:hover {
-  background: var(--hub-surface-elevated);
-}
-
-.file-browser__btn--primary {
-  background: var(--hub-accent);
-  color: var(--hub-bg);
-  border-color: var(--hub-accent);
-}
-
-.file-browser__btn--primary:hover {
-  background: var(--hub-accent);
-  filter: brightness(1.1);
-}
-
-.file-browser__btn--secondary {
-  border-color: var(--hub-border);
-}
-
-.file-browser__btn--icon {
-  padding: 4px;
-  border-radius: 3px;
-}
-
-.file-browser__btn:focus-visible,
-.file-browser__btn--primary:focus-visible,
-.file-browser__btn--icon:focus-visible {
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 2px;
-}
-
-/* Full-tab takeover (replaces breadcrumb + list + preview entirely) — used
-   for files.read denial. Border-left destructive accent visually matches
-   .banner--error. */
-.file-browser__takeover {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 32px;
-  gap: 12px;
-}
-
-.file-browser__takeover--permission-denied {
-  border-left: 3px solid var(--hub-destructive);
-}
-
-.file-browser__takeover-heading {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--hub-text-primary);
-}
-
-.file-browser__takeover-body {
-  margin: 0;
-  font-size: 13px;
-  color: var(--hub-text-secondary);
-  max-width: 480px;
-}
-
-/* Centered empty-directory placeholder (rendered inside list pane in place
-   of rows). */
-.file-browser__empty {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 16px;
-  gap: 4px;
-  color: var(--hub-text-primary);
-}
-
-.file-browser__empty-heading {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.file-browser__empty-path {
-  margin: 0;
-  color: var(--hub-text-muted);
-  font-size: 12px;
-}
-
-/* Inline error region (NetworkErrorState, used inside list or preview). */
-.file-browser__error {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 24px;
-  gap: 8px;
-  border-left: 3px solid var(--hub-destructive);
-}
-
-.file-browser__error-heading {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--hub-text-primary);
-}
-
-.file-browser__error-body {
-  margin: 0;
-  font-size: 13px;
-  color: var(--hub-text-secondary);
-}
-
-/* Loading spinner used inside preview loading body. Static dots under
-   prefers-reduced-motion (UI-SPEC §Motion). */
-.file-browser__spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--hub-border);
-  border-top-color: var(--hub-accent);
-  border-radius: 50%;
-  animation: file-browser-spin 0.75s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .file-browser__spinner {
-    animation: none;
-    border: none;
-    width: auto;
-    height: auto;
-  }
-  .file-browser__spinner::before {
-    content: '…';
-    color: var(--hub-text-muted);
-  }
-}
-
-@keyframes file-browser-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Motion guard for file browser hover/focus transitions (Phase 141 token migration).
-   No-preference: enable smooth background/color transitions on interactive rows and
-   divider handles. Reduce: no transitions (instant repaint). */
-@media (prefers-reduced-motion: no-preference) {
-  .file-browser__list-row,
-  .file-browser__btn,
-  .file-browser__breadcrumb-root--clickable,
-  .file-browser__breadcrumb-segment,
-  .file-browser__breadcrumb-refresh,
-  .file-browser__divider,
-  .file-browser__col-divider {
-    transition: background-color 0.1s, color 0.1s, background 0.1s;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .file-browser__list-row,
-  .file-browser__btn,
-  .file-browser__breadcrumb-root--clickable,
-  .file-browser__breadcrumb-segment,
-  .file-browser__breadcrumb-refresh,
-  .file-browser__divider,
-  .file-browser__col-divider {
-    transition: none;
-  }
-}
-
-/* sr-only utility — used by FileBrowserTab to announce "Previewing {filename}"
-   to screen readers without showing the text visually (UI-SPEC §Accessibility). */
+/* sr-only utility — screen-reader-only text (UI-SPEC §Accessibility). */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -4225,7 +2984,7 @@ textarea {
   border: 0;
 }
 
-/* ─── Phase 122-03 — Remote Join Code Modal + EnableWebSharing takeover ─── */
+/* ─── Phase 122-03 — Remote Join Code Modal ─── */
 
 .remote-join-modal-overlay {
   position: fixed;
@@ -4343,361 +3102,6 @@ textarea {
   background: #89b4fa;
 }
 
-.file-browser__takeover--enable-web-sharing {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 32px;
-  text-align: center;
-}
-
-/* ─── Phase 125 — Editor + Write Affordance CSS ─────────────────────────────
-   All rules below correspond 1:1 to BEM classNames emitted by the Phase 125
-   components. Zero new color values — every hex reuses an existing TokyoNight
-   token from this file. */
-
-/* ── Editor notices (large-file warning banner, syntax-disabled caption) ── */
-.file-browser__editor-notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 16px;
-  background: var(--hub-surface-elevated);
-  border-bottom: 1px solid var(--hub-border);
-  font-size: 12px;
-  color: var(--hub-text-secondary);
-  flex: 0 0 auto;
-}
-
-/* --info variant: no dismiss button — just a single-line caption */
-.file-browser__editor-notice--info {
-  justify-content: flex-start;
-  color: var(--hub-text-muted);
-  font-style: italic;
-}
-
-/* CM6 mount host — flex fill; CM6 sets its own width/height internally */
-.file-browser__editor-mount {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* Inline save-error bar — non-takeover; sits below the editor, above status */
-.file-browser__editor-error {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 16px;
-  background: var(--hub-surface-elevated);
-  border-top: 1px solid var(--hub-border);
-  border-left: 3px solid var(--hub-destructive);
-  font-size: 12px;
-  color: var(--hub-destructive);
-  flex: 0 0 auto;
-}
-
-/* ── Editor header (EditorHeader.tsx) ──────────────────────────────────────── */
-
-/* Wraps filename + dirty marker as a flex group that acts as the single flex
-   child taking up remaining header space (replaces the old lone preview-name
-   as a direct flex child). */
-.file-browser__preview-name-group {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-width: 0;
-  gap: 2px;
-}
-
-/* Dirty bullet — accent color, no extra spacing (gap on the sibling handles it).
-   The ● glyph + aria-label carry the signal; color is reinforcement only. */
-.file-browser__dirty-marker {
-  color: var(--hub-accent);
-  flex: 0 0 auto;
-  font-size: 13px;
-  line-height: 1;
-}
-
-/* Path sub-caption under the filename */
-.file-browser__preview-path {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--hub-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.4;
-}
-
-/* Right cluster: save indicator + Save button + Cancel button */
-.file-browser__preview-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-
-/* ── Save indicator (SaveIndicator.tsx) ──────────────────────────────────── */
-
-/* The live region wrapper; flex so icon and text sit side by side */
-.file-browser__save-indicator {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--hub-text-muted);
-  flex: 0 0 auto;
-}
-
-.file-browser__save-indicator-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-}
-
-/* Saving state: amber icon, spin animation */
-.file-browser__save-indicator-icon--saving {
-  color: var(--hub-warning);
-  animation: file-browser-spin 0.75s linear infinite;
-}
-
-/* Saved state: green icon */
-.file-browser__save-indicator-icon--saved {
-  color: var(--hub-success);
-}
-
-/* Error state: destructive red icon */
-.file-browser__save-indicator-icon--error {
-  color: var(--hub-destructive);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .file-browser__save-indicator-icon--saving {
-    animation: none;
-  }
-}
-
-.file-browser__save-indicator-text {
-  font-size: 12px;
-  color: var(--hub-text-muted);
-  line-height: 1.5;
-}
-
-/* ── Inline name input (InlineNameInput.tsx) ──────────────────────────────── */
-
-/* Row that hosts the inline create/rename input. It reuses .file-browser__list-row
-   for height/padding/border, but MUST override the 6-column grid: the input is the
-   row's only child and under the grid it lands in the 22px icon column (~1 char
-   wide — UAT finding). Switch to flex so the input's `flex: 1 1 auto` fills the row. */
-.file-browser__list-row--inline-input {
-  display: flex;
-  align-items: center;
-  background: var(--hub-surface-elevated);
-  border-left-color: var(--hub-accent);
-}
-
-/* The text input itself */
-.file-browser__inline-name-input {
-  background: var(--hub-bg);
-  border: 1px solid var(--hub-accent);
-  border-radius: 3px;
-  color: var(--hub-text-primary);
-  font-size: 13px;
-  font-family: inherit;
-  padding: 2px 6px;
-  flex: 1 1 auto;
-  min-width: 0;
-  outline: none;
-}
-
-.file-browser__inline-name-input:focus {
-  border-color: var(--hub-accent);
-  outline: 2px solid var(--hub-accent);
-  outline-offset: 1px;
-}
-
-/* ── Per-row action cluster (FileRow.tsx / FileRowActions) ─────────────────── */
-
-/* Hidden by default; revealed on row hover or keyboard focus within the row.
-   Also stays visible when the row is selected (--selected covers both mouse
-   and keyboard selection). SPEC §1 behavioral contract. */
-.file-browser__row-actions {
-  /* Absolutely positioned overlay anchored to the row's right edge. The row is a
-     6-column grid; rendering the action cluster as a 7th grid child pushed it onto
-     an implicit second line that overflowed onto the next row (UAT finding).
-     Overlaying it removes the cluster from grid flow so the row stays 32px tall. */
-  position: absolute;
-  right: 12px;
-  top: 0;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  /* Cover the size/mtime cells beneath on hover/selected (both are
-     --hub-surface-elevated); the left fade avoids an abrupt edge over the mtime text. */
-  padding-left: 28px;
-  background: linear-gradient(to right, transparent 0, var(--hub-surface-elevated) 28px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.1s ease;
-}
-
-.file-browser__list-row:hover .file-browser__row-actions,
-.file-browser__list-row:focus-within .file-browser__row-actions,
-.file-browser__list-row--selected .file-browser__row-actions {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* ── Destructive icon button variant ──────────────────────────────────────── */
-
-/* Red icon — used for the per-row Delete button and can be applied to any
-   btn--icon to signal a destructive action. The TrashIcon glyph carries the
-   meaning; color is reinforcement only (colorblind contract preserved). */
-.file-browser__btn--destructive {
-  color: var(--hub-destructive);
-  border-color: transparent;
-}
-
-.file-browser__btn--destructive:hover {
-  color: var(--hub-destructive);
-  background: rgba(247, 118, 142, 0.1);
-  border-color: var(--hub-destructive);
-}
-
-/* ── Move-to picker tree (MoveToPickerModal.tsx) ──────────────────────────── */
-
-/* Node wrapper: holds the indented row + its children */
-.file-browser__move-tree-node {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Clickable directory row inside the picker */
-.file-browser__move-tree-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border-radius: 3px;
-  font-size: 13px;
-  color: var(--hub-text-primary);
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: background 0.1s ease;
-}
-
-.file-browser__move-tree-row:hover {
-  background: var(--hub-surface-elevated);
-}
-
-/* Selected target directory */
-.file-browser__move-tree-row--selected {
-  background: var(--hub-surface-elevated);
-  border-color: var(--hub-accent);
-  color: var(--hub-text-primary);
-}
-
-/* Disabled directory (e.g. the source dir or a child of it) */
-.file-browser__move-tree-row--disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-/* ── Upload queue panel (UploadQueuePanel.tsx) ──────────────────────────────
-   The panel reuses .new-session-modal* for its chrome; these rules cover the
-   per-file row contents and the progress-bar structure within the body. */
-
-/* Supplement: new-session-modal__title on an h3 — the existing rule only
-   styles h2; this ensures the panel heading inherits the same appearance. */
-.new-session-modal__header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--hub-text-primary);
-  line-height: 1.2;
-}
-
-/* Panel overlay — reuses quit-modal-overlay stacking context */
-.new-session-modal__overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Upload drop overlay — full-list drag target */
-.file-browser__upload-drop-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: rgba(26, 27, 38, 0.85);
-  border: 2px dashed var(--hub-accent);
-  border-radius: 4px;
-  z-index: 10;
-  pointer-events: none;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--hub-accent);
-}
-
-/* Per-file upload row */
-.file-browser__upload-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  font-size: 13px;
-  color: var(--hub-text-primary);
-  border-bottom: 1px solid var(--hub-border);
-}
-
-.file-browser__upload-row:last-child {
-  border-bottom: none;
-}
-
-/* Upload progress bar track */
-.file-browser__upload-progress {
-  flex: 1 1 auto;
-  height: 4px;
-  background: var(--hub-border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-/* Upload progress bar fill */
-.file-browser__upload-progress-fill {
-  height: 100%;
-  background: var(--hub-accent);
-  border-radius: 2px;
-  transition: width 0.1s linear;
-}
-
-/* Upload status text (Done / Failed / percentage) */
-.file-browser__upload-status {
-  font-size: 11px;
-  color: var(--hub-text-muted);
-  flex: 0 0 auto;
-  min-width: 48px;
-  text-align: right;
-}
-
 /* ============================================================
    Phase 131 — Hub Surface
    All Hub components use var(--hub-*) tokens.
@@ -4740,11 +3144,7 @@ textarea {
   --hub-font-size-sm: 12.5px;
   --hub-font-size-heading: 19px;
   --hub-font-weight-emphasis: 600;
-  --hub-dim-opacity: 0.45;
-  --hub-card-dim-bg: #13141f;
   --hub-group-header-bg: #16161e;
-  --hub-filter-pill-bg: #1e2030;
-  --hub-filter-pill-active-bg: rgba(122, 162, 247, 0.15);
   --hub-empty-icon-color: #3b4261;
   --hub-scrollbar: #3b4261;
   --hub-scrollbar-hover: #565f89;
@@ -4759,20 +3159,9 @@ textarea {
   --hub-sidebar-collapsed-width: 32px;
   --hub-sidebar-item-active-bg: rgba(122,162,247,0.12);
   --hub-sidebar-item-hover-bg: rgba(122,162,247,0.07);
-  /* COLORBLIND-SAFE: needs-input badge dark hex #f59e0b — reinforcement only; PauseCircleIcon carries the state */
-  --hub-needs-input-badge-bg: rgba(245,158,11,0.18);
-  --hub-needs-input-badge-text: #f59e0b;
   /* COLORBLIND-SAFE: drag-over border dark hex #7aa2f7 — border change (shape) is primary non-color cue */
   --hub-drag-over-border: #7aa2f7;
   --hub-drag-over-bg: rgba(122,162,247,0.08);
-  /* === Phase 133: Attention + Pulse tokens === */
-  /* COLORBLIND-SAFE: attn border dark hex #e0af68 — reinforcement only; BellAlertIcon + pulse shape carries state */
-  --hub-attn-border: #e0af68;
-  --hub-attn-border-glow: rgba(224,175,104,0.35);
-  --hub-attn-icon-color: #e0af68;
-  --hub-attn-badge-bg: rgba(224,175,104,0.18);
-  --hub-attn-badge-text: #e0af68;
-  --hub-attn-static-border: #e0af68;
   /* === Phase 166: Internet-exposure badge tokens (dark) === */
   /* COLORBLIND-SAFE: internet badge dark hex #43ddb2 — reinforcement only; GlobeAltIcon shape + "INTERNET" text carry state */
   --hub-internet-badge-bg: rgba(67, 221, 178, 0.15);
@@ -4811,11 +3200,7 @@ textarea {
   --hub-destructive: #c0394f;
   --hub-success: #2e7d32;
   --hub-warning: #b45309;
-  --hub-dim-opacity: 0.45;
-  --hub-card-dim-bg: #ebebef;
   --hub-group-header-bg: #ebebef;
-  --hub-filter-pill-bg: #ececf0;
-  --hub-filter-pill-active-bg: rgba(61, 111, 232, 0.12);
   --hub-empty-icon-color: #c5c5d0;
   --hub-scrollbar: #c5c5d0;
   --hub-scrollbar-hover: #9999b0;
@@ -4830,20 +3215,9 @@ textarea {
   --hub-sidebar-collapsed-width: 32px;
   --hub-sidebar-item-active-bg: rgba(61,111,232,0.10);
   --hub-sidebar-item-hover-bg: rgba(61,111,232,0.05);
-  /* COLORBLIND-SAFE: needs-input badge light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-  --hub-needs-input-badge-bg: rgba(180,83,9,0.15);
-  --hub-needs-input-badge-text: #b45309;
   /* COLORBLIND-SAFE: drag-over border light hex #3d6fe8 — border change (shape) is primary non-color cue */
   --hub-drag-over-border: #3d6fe8;
   --hub-drag-over-bg: rgba(61,111,232,0.06);
-  /* === Phase 133: Attention + Pulse tokens (light) === */
-  /* COLORBLIND-SAFE: attn border light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-  --hub-attn-border: #b45309;
-  --hub-attn-border-glow: rgba(180,83,9,0.25);
-  --hub-attn-icon-color: #b45309;
-  --hub-attn-badge-bg: rgba(180,83,9,0.14);
-  --hub-attn-badge-text: #b45309;
-  --hub-attn-static-border: #b45309;
   /* === Phase 166: Internet-exposure badge tokens (light) === */
   /* COLORBLIND-SAFE: internet badge light hex #0d7a5c — WCAG AA ~5.2:1 on white; icon + text carry state */
   --hub-internet-badge-bg: rgba(13, 122, 92, 0.13);
@@ -4999,22 +3373,6 @@ textarea {
   transition: border-color 100ms ease, background 100ms ease;
 }
 
-/* --- Session-type (agent/CLI) left spine ---------------------------------
-   Colors the card's left border by the agent type, matching the per-CLI
-   .tab__agent-badge--* dot on the tab (single source: lib/agentBadge.ts).
-   COLORBLIND-SAFE: reinforcement only — the agent is also shown as the
-   `{cli}` text chip in the card header; the spine is a secondary identity cue.
-   Hex values are authoritative — verify at source, not by eye (user is colorblind). */
-.hub-card[data-agent="claude"]   { border-left: 3px solid #7aa2f7; } /* claude   — periwinkle */
-.hub-card[data-agent="opencode"] { border-left: 3px solid #9ece6a; } /* opencode — green */
-.hub-card[data-agent="codex"]    { border-left: 3px solid #bb9af7; } /* codex    — purple */
-.hub-card[data-agent="gemini"]   { border-left: 3px solid #2ac3de; } /* gemini   — cyan */
-.hub-card[data-agent="cursor"]   { border-left: 3px solid #e0af68; } /* cursor   — gold */
-.hub-card[data-agent="aider"]    { border-left: 3px solid #f7768e; } /* aider    — red/pink */
-.hub-card[data-agent="shell"]    { border-left: 3px solid #89ddff; } /* shell    — light blue */
-.hub-card[data-agent="unknown"]  { border-left: 3px solid #9aa5ce; } /* unknown  — muted (matches tab fallback) */
-.hub-card[data-agent="agy"]      { border-left: 3px solid #ff9e64; } /* agy — orange */
-
 .hub-card:hover {
   border-color: var(--hub-border-hover);
   background: var(--hub-surface-elevated);
@@ -5027,27 +3385,17 @@ textarea {
 
 /* A11Y-02 GAP-135-A: keyboard-only focus rings for all Hub interactive elements */
 /* Colorblind constraint: ring color is var(--hub-accent) token, verified at source */
-.hub-filter__pill:focus-visible,
 .hub-filter__new-session:focus-visible,
 .hub-card__open:focus-visible,
 .hub-card__share:focus-visible,
 .hub-card__menu-btn:focus-visible,
 .hub-card__menu-item:focus-visible,
 .hub-modal__close:focus-visible,
-.hub-modal__send-btn:focus-visible,
-.hub-modal__close-btn:focus-visible,
 .hub__group-sidebar-toggle:focus-visible,
 .hub__group-sidebar-item:focus-visible,
 .hub__group-sidebar-item__btn:focus-visible {
   outline: 2px solid var(--hub-accent);
   outline-offset: 2px;
-}
-
-/* CARD-08: Stopped/exited (exit 0) cards are dimmed.
-   Error-exit cards are NOT dimmed — full opacity + ExclamationCircleIcon carries that state. */
-.hub-card--dim {
-  opacity: var(--hub-dim-opacity);
-  background: var(--hub-card-dim-bg);
 }
 
 /* --- Card row layouts --- */
@@ -5063,15 +3411,7 @@ textarea {
   margin-bottom: 10px;
 }
 
-.hub-card__row1 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.hub-card__row3,
-.hub-card__row4 {
+.hub-card__row3 {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -5081,19 +3421,16 @@ textarea {
 }
 
 /* ============================================================
-   Phase 172 — Hub card consolidated chip row (agent · origin · exposure)
+   Phase 172 — Hub card consolidated chip row (origin · exposure)
    Consolidates the previous three inconsistent metadata treatments (status
    icon+text, `/bin/zsh` outlined pill, `Local` colored text, `INTERNET` filled
    pill on its own row) into ONE consistent chip row with tighter vertical
    rhythm — while keeping the INTERNET / FULL ACCESS exposure badges the
    prominent FILLED chips so they pop MORE by contrast (D-01/D-04/D-05, Sketch
    001 Variant B — the pinned winner, .planning/sketches/001-hub-card-chip-row).
-   Status (D-03) is NOT chipified — it stays the primary top-line signal above
-   this row (.hub-card__row1, unchanged). All new rules resolve through
+   Session status is not shown (CONTEXT Amendment 2). All new rules resolve through
    --hub-* tokens so they are correct in both dark (:root) and light
-   ([data-ui-theme="light"]) themes without a per-theme override — the agent
-   chip tint hexes below are the sole intentional exception (mirrors the
-   pre-existing .hub-card__badge palette, which also has no light override).
+   ([data-ui-theme="light"]) themes without a per-theme override.
    ============================================================ */
 
 .hub-card__chiprow {
@@ -5107,7 +3444,7 @@ textarea {
 /* Base quiet chip — rounded-rect 7px (NOT --hub-radius-pill; the load-bearing
    shape distinction from the pill/notch exposure badges, Sketch 001 D-07 pin).
    COLORBLIND-SAFE: each chip's icon shape + text label are the primary
-   carriers; any color (agent tint) is reinforcement only. */
+   carriers. */
 .hub-card__chip {
   display: inline-flex;
   align-items: center;
@@ -5127,28 +3464,9 @@ textarea {
   flex-shrink: 0;
 }
 
-.hub-card__chip--agent {
-  font-family: var(--hub-font-mono);
-}
-
-/* Session-type colored chip tint (migrated from .hub-card__badge, D-01): the
-   card's data-agent tints the agent chip text + border so the type reads as a
-   colored chip, matching the left spine + tab dot. COLORBLIND-SAFE: chip text
-   is the cli name; color is reinforcement only. Same hex values as the legacy
-   .hub-card__badge palette below (kept in place — still consumed by
-   HubModal.tsx's session picker chip). */
-.hub-card[data-agent="claude"]   .hub-card__chip--agent { color: #7aa2f7; border-color: rgba(122, 162, 247, 0.45); }
-.hub-card[data-agent="opencode"] .hub-card__chip--agent { color: #9ece6a; border-color: rgba(158, 206, 106, 0.45); }
-.hub-card[data-agent="codex"]    .hub-card__chip--agent { color: #bb9af7; border-color: rgba(187, 154, 247, 0.45); }
-.hub-card[data-agent="gemini"]   .hub-card__chip--agent { color: #2ac3de; border-color: rgba(42, 195, 222, 0.45); }
-.hub-card[data-agent="cursor"]   .hub-card__chip--agent { color: #e0af68; border-color: rgba(224, 175, 104, 0.45); }
-.hub-card[data-agent="aider"]    .hub-card__chip--agent { color: #f7768e; border-color: rgba(247, 118, 142, 0.45); }
-.hub-card[data-agent="shell"]    .hub-card__chip--agent { color: #89ddff; border-color: rgba(137, 221, 255, 0.45); }
-.hub-card[data-agent="agy"]      .hub-card__chip--agent { color: #ff9e64; border-color: rgba(255, 158, 100, 0.45); }
-
 /* Origin chip — D-01/Sketch pin: fully muted, NO green-local/blue-remote color
    coding (the sketch rejected color-coded origin). Color reinforcement now
-   lives only on the filled exposure badges + the agent chip tint above.
+   lives only on the filled exposure badges.
    COLORBLIND-SAFE: icon shape (ComputerDesktopIcon vs GlobeAltIcon) + text
    label carry the meaning; this chip carries no color signal at all. */
 .hub-card__chip--origin {
@@ -5159,7 +3477,7 @@ textarea {
 /* Exposure cluster — the only FILLED chips in the row (INTERNET / FULL ACCESS,
    .hub-internet-badge / .hub-fullaccess-badge below, reused verbatim). Variant
    B (Sketch 001 winner) forces the cluster onto its own right-aligned line
-   below `agent · origin` so a long remote hostname or both badges coexisting
+   below the origin chip so a long remote hostname or both badges coexisting
    never wrap unpredictably or clip. */
 .hub-card__exposure {
   display: inline-flex;
@@ -5245,41 +3563,6 @@ textarea {
   flex-shrink: 0;
 }
 
-/* --- Status icon --- */
-.hub-card__status-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-/* Running: spin animation — MUST be inside prefers-reduced-motion guard (Motion Contract) */
-@media (prefers-reduced-motion: no-preference) {
-  .hub-card__status-icon--spin {
-    animation: hub-spin 0.8s linear infinite;
-  }
-}
-
-/* hub-spin keyframes declared at root scope — animation only fires when the
-   class is applied inside the prefers-reduced-motion media query above */
-@keyframes hub-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-/* --- Status dot color reinforcement (shape + icon + text are PRIMARY differentiators) --- */
-/* COLORBLIND-SAFE: status dot dark hex #3b82f6 (running) — reinforcement only; ArrowPathIcon carries the state */
-/* COLORBLIND-SAFE: status dot dark hex #22c55e (idle) — reinforcement only; CheckCircleIcon carries the state */
-/* COLORBLIND-SAFE: status dot dark hex #f59e0b (waiting) — reinforcement only; PauseCircleIcon carries the state */
-/* COLORBLIND-SAFE: status dot dark hex #ef4444 (errored) — reinforcement only; ExclamationCircleIcon carries the state */
-/* COLORBLIND-SAFE: status dot dark hex #565f89 (stopped/done) — reinforcement only; StopCircleIcon carries the state */
-/* COLORBLIND-SAFE: exit-code dark hex #f7768e (non-zero exit) — reinforcement only; "Exited {code}" text carries the state */
-/* COLORBLIND-SAFE: status dot light hex #1d4ed8 (running) — WCAG AA 7.1:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #1a7f37 (idle) — WCAG AA 5.0:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #92400e (waiting) — WCAG AA 7.6:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #b91c1c (errored) — WCAG AA 6.0:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #4b5563 (stopped/done) — WCAG AA 7.0:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #c0394f (non-zero exit) — WCAG AA 4.7:1 on white; icon carries state */
-
 /* --- Card session name --- */
 .hub-card__name {
   font-size: 14px;
@@ -5294,31 +3577,6 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-/* --- Agent CLI badge (reuses tab__agent-badge hex palette) --- */
-.hub-card__badge {
-  font-size: 11px;
-  font-family: var(--hub-font-mono);
-  padding: 1px 7px;
-  border-radius: var(--hub-radius-pill);
-  background: var(--hub-surface-elevated);
-  color: var(--hub-text-muted);
-  border: 1px solid var(--hub-border);
-  flex-shrink: 0;
-  margin-left: auto; /* push the session-type chip to the right edge of row1 */
-}
-
-/* Session-type colored chip (#3): the card's data-agent tints the chip text +
-   border so the type reads as a colored chip, matching the left spine + tab dot.
-   COLORBLIND-SAFE: the chip text is the cli name; color is reinforcement only. */
-.hub-card[data-agent="claude"]   .hub-card__badge { color: #7aa2f7; border-color: rgba(122, 162, 247, 0.45); }
-.hub-card[data-agent="opencode"] .hub-card__badge { color: #9ece6a; border-color: rgba(158, 206, 106, 0.45); }
-.hub-card[data-agent="codex"]    .hub-card__badge { color: #bb9af7; border-color: rgba(187, 154, 247, 0.45); }
-.hub-card[data-agent="gemini"]   .hub-card__badge { color: #2ac3de; border-color: rgba(42, 195, 222, 0.45); }
-.hub-card[data-agent="cursor"]   .hub-card__badge { color: #e0af68; border-color: rgba(224, 175, 104, 0.45); }
-.hub-card[data-agent="aider"]    .hub-card__badge { color: #f7768e; border-color: rgba(247, 118, 142, 0.45); }
-.hub-card[data-agent="shell"]    .hub-card__badge { color: #89ddff; border-color: rgba(137, 221, 255, 0.45); }
-.hub-card[data-agent="agy"]      .hub-card__badge { color: #ff9e64; border-color: rgba(255, 158, 100, 0.45); }
 
 /* --- Connection indicator chip (CARD-03) --- */
 /* Phase 138: remote card connection state — Connected (join code exchanged) vs Available.
@@ -5382,32 +3640,6 @@ textarea {
   color: var(--hub-text-muted);
 }
 
-/* --- Exit code chip (stopped/errored only) --- */
-.hub-card__exit-chip {
-  font-size: 11px;
-  font-family: var(--hub-font-mono);
-  padding: 1px 5px;
-  border-radius: var(--hub-radius-sm);
-  background: var(--hub-surface-elevated);
-  color: var(--hub-destructive);
-  border: 1px solid var(--hub-border);
-}
-
-/* --- Status indicator wrapper (icon + label, row 1) --- */
-/* CR-01: these rules were missing — added to pair with TSX hub-card__status-indicator usage */
-.hub-card__status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.hub-card__status-label {
-  font-size: 11px;
-  color: var(--hub-text-secondary);
-  white-space: nowrap;
-}
-
 /* --- Filter bar --- */
 /* CR-01: .hub__filter-bar is the canonical wrapper (TSX was using hub-filter, now corrected) */
 .hub__filter-bar {
@@ -5420,19 +3652,11 @@ textarea {
   flex-wrap: wrap;
 }
 
-/* CR-01: hub-filter__pills — grouping container for filter pill buttons */
-.hub-filter__pills {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
 /* CR-01 / POL-03: hub-filter__new-session — "New session" button in the filter bar */
 /* Restyled to comp's minimal text-link affordance (D-07) — transparent, no border, accent PlusIcon */
 /* Comp parity: prominent filled, glowing accent pill (was a quiet borderless
-   text affordance). Mirrors the primary-CTA treatment (.hub-modal__send-btn:
-   accent fill + --hub-bg text), with a soft accent glow. */
+   text affordance). Primary-CTA treatment: accent fill + --hub-bg text, with a
+   soft accent glow. */
 .hub-filter__new-session {
   background: var(--hub-accent);
   border: none;
@@ -5472,31 +3696,6 @@ textarea {
   height: 16px;
   color: var(--hub-bg); /* on accent fill */
   flex-shrink: 0;
-}
-
-.hub-filter__pill {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 10px;
-  font-size: var(--hub-font-size-sm);
-  border-radius: var(--hub-radius-pill);
-  border: 1px solid var(--hub-border);
-  background: var(--hub-filter-pill-bg);
-  color: var(--hub-text-secondary);
-  cursor: pointer;
-  transition: background 100ms ease, border-color 100ms ease;
-}
-
-.hub-filter__pill:hover {
-  border-color: var(--hub-border-hover);
-  background: var(--hub-surface-elevated);
-}
-
-.hub-filter__pill--active {
-  background: var(--hub-filter-pill-active-bg);
-  border-color: var(--hub-accent);
-  color: var(--hub-accent);
 }
 
 .hub-filter__search {
@@ -5702,59 +3901,6 @@ textarea {
   flex-shrink: 0;
 }
 
-.hub__group-sidebar-item__needs-input-badge svg {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-/* === Phase 133: Attention icon wrapper + badge sizing === */
-.hub-card__attn-icon {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  color: var(--hub-attn-icon-color);
-}
-/* CRITICAL: size the icon with explicit CSS — no Tailwind in this project */
-/* Phase 132 UAT confirmed: w-N h-N utility classes are no-ops in this project */
-.hub-card__attn-icon svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-/* ATTN-06: collapsed-group attention badge */
-/* COLORBLIND-SAFE: attn badge dark hex #e0af68 — reinforcement only; BellAlertIcon carries state */
-/* COLORBLIND-SAFE: attn badge light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-.hub__group-sidebar-item__attn-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 4px;
-  height: 16px;
-  border-radius: 8px;
-  background: var(--hub-attn-badge-bg);
-  color: var(--hub-attn-badge-text);
-  font-size: 11px;
-  line-height: 1.0;
-  font-family: var(--hub-font-ui);
-  flex-shrink: 0;
-}
-/* CRITICAL: explicit CSS sizing — no Tailwind in this project */
-.hub__group-sidebar-item__attn-badge svg {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-/* ATTN-06: count digit inside the collapsed-group attention badge */
-.hub__group-sidebar-item__attn-badge--count {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--hub-attn-badge-text);
-}
-
 .hub-card__drag-handle svg,
 .hub-card__menu-btn svg {
   width: 16px;
@@ -5842,21 +3988,6 @@ textarea {
   flex-shrink: 0;
 }
 
-/* COLORBLIND-SAFE: needs-input badge dark hex #f59e0b — reinforcement only; PauseCircleIcon carries the state */
-/* COLORBLIND-SAFE: needs-input badge light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-.hub__group-sidebar-item__needs-input-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  background: var(--hub-needs-input-badge-bg);
-  color: var(--hub-needs-input-badge-text);
-  border-radius: 8px;
-  padding: 0 4px;
-  height: 16px;
-  font-size: 11px;
-  flex-shrink: 0;
-}
-
 /* New group button + inline input */
 .hub__group-sidebar-new {
   display: flex;
@@ -5906,57 +4037,15 @@ textarea {
   cursor: grabbing;
 }
 
-/* ATTN-01: attention card — pulsing border + glow (colorblind-safe: BellAlertIcon carries state) */
-/* COLORBLIND-SAFE: attn border dark hex #e0af68 — reinforcement only; BellAlertIcon + pulse shape carries state */
-/* COLORBLIND-SAFE: attn border light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-.hub-card--attention {
-  border-color: var(--hub-attn-border);
-  opacity: 1; /* attention always wins — dim modifier is suppressed for cards needing action */
-}
-
-/* A11Y-03: pulse wrapped in @media (prefers-reduced-motion: no-preference); static border fallback */
+/* Card hover transition for motion-enabled users only */
 @media (prefers-reduced-motion: no-preference) {
-  .hub-card--attention {
-    animation: hub-attn-pulse 2s ease-in-out infinite;
-  }
-  /* ATTN-03: attention clear — override 100ms base transition for motion-enabled users only */
   .hub-card {
     transition: border-color 400ms ease, box-shadow 400ms ease, background 100ms ease;
-  }
-  /* Keep amber border on hover — prevents .hub-card:hover from overriding attention border */
-  .hub-card--attention:hover {
-    border-color: var(--hub-attn-border);
-  }
-}
-
-/* hub-attn-pulse keyframes declared at root scope — animation only fires when the
-   class is applied inside the prefers-reduced-motion media query above */
-@keyframes hub-attn-pulse {
-  0%   { border-color: var(--hub-attn-border); box-shadow: 0 0 0 0 var(--hub-attn-border-glow); }
-  50%  { border-color: var(--hub-attn-border); box-shadow: 0 0 0 4px var(--hub-attn-border-glow); }
-  100% { border-color: var(--hub-attn-border); box-shadow: 0 0 0 0 var(--hub-attn-border-glow); }
-}
-
-/* Reduced-motion: static attention border only — no animation, no glow */
-@media (prefers-reduced-motion: reduce) {
-  .hub-card--attention {
-    border-color: var(--hub-attn-static-border);
-    box-shadow: none;
-    animation: none;
-  }
-}
-
-/* GAP-135-E: stop running-status spinner under reduced-motion.
-   Running state is still distinguishable: ArrowPathIcon shape is unique among status icons.
-   Text label "Running" is also present. No additional motion cue required. */
-@media (prefers-reduced-motion: reduce) {
-  .hub-card__status-icon--spin {
-    animation: none;
   }
 }
 
 /* GAP-135-F: suppress card hover border/background transition under reduced-motion.
-   Must come AFTER the no-preference block (line 4944) so cascade resolves correctly. */
+   Must come AFTER the no-preference block above so cascade resolves correctly. */
 @media (prefers-reduced-motion: reduce) {
   .hub-card {
     transition: none;
@@ -6101,7 +4190,6 @@ textarea {
 /* =====================================================================
    Phase 134 — Hub Modal CSS
    All colors via var(--hub-*) tokens only (rgba() for scrim/shadow OK).
-   Template: Phase 133 hub-attn-pulse block (lines 4926–4956).
    ===================================================================== */
 
 /* Hub Modal Overlay — full-viewport scrim + centering flex container */
@@ -6131,7 +4219,7 @@ textarea {
   font-family: var(--hub-font-ui);
 }
 
-/* Modal Header Strip — present in both interactive and briefing modals */
+/* Modal Header Strip */
 .hub-modal__header {
   height: 48px;
   display: flex;
@@ -6157,21 +4245,9 @@ textarea {
 }
 
 /* GAP-134-B: header icons MUST be sized with explicit CSS — Heroicons ship with no
-   intrinsic width/height and this project has no Tailwind (w-N/h-N are no-ops, see the
-   hub-card__attn-icon note). Without these rules the icons balloon to fill the header. */
-.hub-modal__status-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
+   intrinsic width/height and this project has no Tailwind (w-N/h-N are no-ops).
+   Without these rules the icons balloon to fill the header. */
 .hub-modal__origin-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.hub-modal__attn-icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
@@ -6201,18 +4277,7 @@ textarea {
   color: var(--hub-accent);
 }
 
-.hub-modal__attn-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--hub-attn-badge-bg);
-  color: var(--hub-attn-badge-text);
-  font-size: 11px;
-  border-radius: 4px;
-  padding: 2px 6px;
-}
-
-/* Modal Body — flex-grow container for interactive and briefing */
+/* Modal Body — flex-grow container */
 .hub-modal__body {
   flex: 1;
   min-height: 0;
@@ -6279,7 +4344,7 @@ textarea {
 
 /* CHAT-FIX-01 + CHAT-LAYOUT-02: relocate the toggle clear of the open chat drawer.
    CHAT-FIX-01: prevents the z-index:6 toggle from obscuring the z-index:5 drawer
-   bottom-right corner (Send/Inject button). Uses the general-sibling combinator:
+   bottom-right corner (Send button). Uses the general-sibling combinator:
    ChatPanel (.chat-panel--open) renders BEFORE the toggle as a same-parent sibling in
    HubInteractiveModal.tsx, WebShareSessionView.tsx, and TerminalChatHost.tsx.
    CHAT-LAYOUT-02: offset now tracks the live drawer width via --chat-panel-width
@@ -6295,119 +4360,10 @@ textarea {
   flex-shrink: 0;
 }
 
-.hub-modal__body--briefing {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 16px;
-  gap: 12px;
-  overflow: hidden;
-}
-
-/* Tail display — monospace scrollable output block */
-.hub-modal__tail {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  background: var(--hub-preview-bg);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-md);
-  padding: 12px;
-  font-family: var(--hub-font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--hub-text-secondary);
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.hub-modal__tail--empty,
-.hub-modal__tail--loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--hub-text-muted);
-  font-size: 14px;
-}
-
-/* Respond section — brief input + send controls */
-.hub-modal__respond {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.hub-modal__respond-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--hub-text-muted);
-}
-
-.hub-modal__respond-input {
-  width: 100%;
-  min-height: 64px;
-  max-height: 160px;
-  background: var(--hub-surface);
-  border: 1px solid var(--hub-border);
-  border-radius: 6px;
-  color: var(--hub-text-primary);
-  font-family: var(--hub-font-ui);
-  font-size: var(--hub-font-size-base);
-  line-height: 1.5;
-  padding: 8px 12px;
-  resize: vertical;
-  outline: none;
-}
-
-.hub-modal__respond-input:focus {
-  border-color: var(--hub-accent);
-  outline: none;
-}
-
-.hub-modal__respond-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.hub-modal__send-btn {
-  background: var(--hub-accent);
-  color: var(--hub-bg);
-  font-weight: 600;
-  font-size: 14px;
-  padding: 8px 16px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-}
-
-.hub-modal__send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.hub-modal__close-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--hub-text-muted);
-  font-size: 14px;
-}
-
-.hub-modal__error-banner {
-  color: var(--hub-destructive);
-  font-size: 14px;
-  padding: 8px;
-}
-
 /* hub-modal-grow / hub-modal-shrink / hub-modal-overlay-in / hub-modal-overlay-out
    keyframes declared at ROOT scope — they only animate when the class is applied
    inside the prefers-reduced-motion media query below.
-   Template: hub-attn-pulse keyframes (lines 4941-4947). */
+*/
 @keyframes hub-modal-grow {
   from { opacity: 0; transform: scale(0.05); }
   to   { opacity: 1; transform: scale(1); }
@@ -6445,7 +4401,6 @@ textarea {
 }
 
 /* Reduced-motion: modal appears/disappears instantly — no animation */
-/* Template: lines 4950-4956 hub-card--attention reduced-motion guard */
 @media (prefers-reduced-motion: reduce) {
   .hub-modal {
     animation: none;
@@ -6475,7 +4430,7 @@ textarea {
      viewports (verified: base clamps to (100vw - 48px), independent of the
      prefers-reduced-motion override below, which is a MOTION guard only). */
   width: min(520px, calc(100vw - 48px));
-  /* Bound the card height so tall content (home-dir warning + RO/RW links +
+  /* Bound the card height so tall content (RO/RW links +
      the Funnel INTERNET-PUBLIC section + QR) scrolls inside __body instead of
      overflowing the viewport and clipping the header/QR. Mirrors .hub-modal's
      `height: min(750px, calc(100vh - 64px))`; max-height (not height) keeps a
@@ -6593,17 +4548,6 @@ textarea {
   flex-shrink: 0;
 }
 
-/* Phase 173 (SM-01) — "Enable remote file browsing" disabled wrapper.
-   Migrated from inline style={{opacity,pointerEvents}} (D-08 no behavior
-   change, structure only). */
-.hub-share-modal__toggle-wrap[aria-disabled='true'] {
-  opacity: 0.6;
-  pointer-events: none;
-}
-.hub-share-modal__toggle-wrap[aria-disabled='true'] .settings-panel__toggle-row {
-  cursor: not-allowed;
-}
-
 /* Phase 173 (D-15) — Funnel toggle disabled wrapper + note. Migrated from
    inline style. */
 .hub-funnel-toggle-section[aria-disabled='true'] {
@@ -6634,11 +4578,10 @@ textarea {
 }
 
 /* Reduced-motion: share modal appears/disappears instantly.
-   NOTE: the chat-panel slide + inject fill reduced-motion overrides live in a
+   NOTE: the chat-panel slide reduced-motion overrides live in a
    SECOND @media block placed AFTER the chat base rules (below) — placing them
    here is ineffective because the later, equal/higher-specificity base rules
-   (.hub-modal__body--interactive .chat-panel, .chat-composer__inject-btn::before)
-   would win the cascade. */
+   (.hub-modal__body--interactive .chat-panel) would win the cascade. */
 @media (prefers-reduced-motion: reduce) {
   .hub-share-modal {
     animation: none;
@@ -6912,34 +4855,6 @@ textarea {
   padding-bottom: 2px;
 }
 
-/* Session-inject indicator (D-06): system row below the body */
-.chat-msg__inject-indicator {
-  background: var(--hub-surface);
-  padding: 4px 0 2px;
-  margin-top: 4px;
-}
-
-.chat-msg__inject-rule {
-  border: none;
-  border-top: 1px solid var(--hub-border);
-  margin: 0 0 4px;
-}
-
-.chat-msg__inject-caption {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--hub-font-size-sm);
-  color: var(--hub-text-muted);
-}
-
-/* CommandLineIcon at 14×14px — shape is the primary signal for inject state (D-06) */
-.chat-msg__inject-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
 /* ═══════════════════════════════════════════════════════════════════════════
    Phase 154 — Chat UI: ChatDaySeparator (chat-day-sep__*) BEM classes
    ══════════════════════════════════════════════════════════════════════════ */
@@ -7028,16 +4943,6 @@ textarea {
   z-index: 10;
 }
 
-/* Section label: micro text, all-caps, de-emphasized */
-.mention-popover__section-label {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--hub-text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 6px 12px 4px;
-}
-
 /* Each option row */
 .mention-popover__item {
   display: flex;
@@ -7057,39 +4962,12 @@ textarea {
   background: var(--hub-sidebar-item-hover-bg);
 }
 
-/* @session row: slightly taller, pinned in its own section */
-.mention-popover__item--session {
-  min-height: 44px;
-}
-
-/* CommandLineIcon in @session row: --hub-accent color, 16×16px */
-.mention-popover__session-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--hub-accent);
-  flex-shrink: 0;
-}
-
 /* Alias text */
 .mention-popover__alias {
   font-size: var(--hub-font-size-base);
   font-weight: 600;
   color: var(--hub-text-primary);
   flex-shrink: 0;
-}
-
-/* Description text (e.g. "Inject into terminal") */
-.mention-popover__desc {
-  font-size: 11px;
-  color: var(--hub-text-muted);
-  margin-left: auto;
-}
-
-/* Divider between sections */
-.mention-popover__divider {
-  border: none;
-  border-top: 1px solid var(--hub-border);
-  margin: 0;
 }
 
 /* Participant rows: 40px minimum height */
@@ -7478,75 +5356,11 @@ textarea {
   height: 16px;
 }
 
-/* Inject button — press-and-hold gesture (D-08)
-   COLORBLIND-SAFE: CommandLineIcon (shape) + "Inject" text are primary signals;
-   --hub-accent fill is reinforcement only. */
-.chat-composer__inject-btn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 0 12px;
-  height: 36px;
-  border: 1px solid var(--hub-accent);
-  border-radius: var(--hub-radius-sm);
-  background: transparent;
-  color: var(--hub-accent);
-  font-family: var(--hub-font-ui);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  position: relative;
-  overflow: hidden;
-  /* Prevent text selection on long-press and block default touch actions */
-  user-select: none;
-  touch-action: none;
-}
-
-/* Fill animation: scaleX(0→1) over 600ms (GPU-composited via transform)
-   Mirrors the .tab__progress fill pattern.
-   The ::before fills behind the button content via z-index layering. */
-.chat-composer__inject-btn::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--hub-accent);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 600ms linear;
-  border-radius: inherit;
-  z-index: 0;
-}
-
-.chat-composer__inject-btn--holding::before {
-  transform: scaleX(1);
-}
-
-/* Flip label color when the fill covers the button */
-.chat-composer__inject-btn--holding {
-  color: var(--hub-bg);
-}
-
-/* Button content above fill layer */
-.chat-composer__inject-btn > * {
-  position: relative;
-  z-index: 1;
-}
-
-.chat-composer__inject-icon {
-  width: 16px;
-  height: 16px;
-}
-
 /* Reduced-motion suppression for the Phase 154 chat UI — placed AFTER the base
    rules so it wins the cascade. The earlier @media block (~line 6275) cannot
    suppress these because the base rules below it (.hub-modal__body--interactive
-   .chat-panel at 200ms, .chat-composer__inject-btn::before at 600ms) are later
-   and of equal-or-higher specificity. Selectors here match that specificity and
-   come last, so transition:none applies. The 600ms inject hold threshold is
-   JS-driven (setTimeout) and is unaffected — the inject still fires. */
+   .chat-panel at 200ms) are later and of equal-or-higher specificity. Selectors
+   here match that specificity and come last, so transition:none applies. */
 @media (prefers-reduced-motion: reduce) {
   .hub-modal__body--interactive .chat-panel {
     transition: none;
@@ -7554,9 +5368,6 @@ textarea {
   /* Phase 158 — CHAT-PARITY-01: honor reduced-motion for the tab drawer, mirroring
      the modal rule above. Specificity matches the unscoped base .chat-panel rule. */
   .terminal-chat-host .chat-panel {
-    transition: none;
-  }
-  .chat-composer__inject-btn::before {
     transition: none;
   }
 }

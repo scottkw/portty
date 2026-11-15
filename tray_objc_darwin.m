@@ -13,15 +13,9 @@
 extern void onTrayShow(void);
 extern void onTrayQuit(void);
 extern void onTraySession(int idx);
-// onNotificationAuthResult reports the outcome of a proactive
-// UNUserNotificationCenter authorization request back to Go (Phase 167-06,
-// M-41 gap closure) so the frontend can be told when the user denies
-// permission (notification_darwin.go //export onNotificationAuthResult).
-extern void onNotificationAuthResult(int granted);
 
 // Forward-declare hasValidBundleIdentifier (defined below, near sendNotification)
-// so the delegate-registration/authorization helpers declared earlier in this
-// file (which run before its definition point) can call it.
+// so registerNotificationDelegate, which comes before that definition, can call it.
 int hasValidBundleIdentifier(void);
 
 NSStatusItem *statusItem = nil;
@@ -108,33 +102,6 @@ void registerNotificationDelegate(void) {
     } @catch (NSException *e) {
         NSLog(@"AgentHub: swallowed exception registering notification delegate: %@", e);
     }
-}
-
-// requestNotificationAuthorization proactively surfaces the macOS
-// notification-permission prompt (Phase 167-06, M-41 gap closure — the
-// leading suspected fix: during UAT the app showed as "Off" in System
-// Settings with NO prompt ever seen). Called from Go when the user enables
-// the NotifyOnWaiting toggle, instead of waiting for the first lazy
-// sendNotification call. Bundle-guarded + dispatched to the main queue,
-// mirroring sendNotification's fail-safe contract.
-void requestNotificationAuthorization(void) {
-    if (!hasValidBundleIdentifier()) {
-        NSLog(@"AgentHub: skipping notification authorization request — no valid app-bundle identifier (unbundled/unsigned process)");
-        return;
-    }
-    dispatch_async(dispatch_get_main_queue(), ^{
-        @try {
-            registerNotificationDelegate();
-            [[UNUserNotificationCenter currentNotificationCenter]
-                requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
-                completionHandler:^(BOOL granted, NSError *error) {
-                NSLog(@"AgentHub: proactive notification authorization result granted=%d error=%@", granted, error);
-                onNotificationAuthResult(granted ? 1 : 0);
-            }];
-        } @catch (NSException *e) {
-            NSLog(@"AgentHub: swallowed exception requesting proactive notification authorization: %@", e);
-        }
-    });
 }
 
 // initStatusItem creates a macOS status bar item with a dynamic menu delegate.

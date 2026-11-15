@@ -112,28 +112,6 @@ export namespace daemon {
 	    }
 	}
 
-	// Phase 101-01 prerequisite — JSON-serialisable representation of a
-	// discovered shell. Mirrors internal/daemon/types.go DetectedShell.
-	// Surfaced through (*App).ListShells().
-	export class DetectedShell {
-	    name: string;          // "bash" | "zsh" | "pwsh" | "powershell" | "shell"
-	    displayName: string;   // "bash" | "zsh" | "PowerShell" | "Windows PowerShell" | "system default"
-	    path: string;          // absolute resolved path
-	    argv: string[];        // ["-i"] or ["-NoLogo"]
-
-	    static createFrom(source: any = {}) {
-	        return new DetectedShell(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.displayName = source["displayName"];
-	        this.path = source["path"];
-	        this.argv = source["argv"];
-	    }
-	}
-
 	// Phase 139 / CARD-05: one styled cell in the VT grid returned by
 	// GetSessionStyledTailLines. Color values are "#rrggbb", "ansi:N", or "".
 	export interface StyledSpan {

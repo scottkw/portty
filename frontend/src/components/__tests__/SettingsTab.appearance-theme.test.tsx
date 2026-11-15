@@ -40,8 +40,6 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   GetWebServerQRCode: vi.fn().mockResolvedValue(''),
   GetStartMinimized: vi.fn().mockResolvedValue(false),
   SetStartMinimized: vi.fn().mockResolvedValue(undefined),
-  GetAutoCloseSession: vi.fn().mockResolvedValue(true),
-  SetAutoCloseSession: vi.fn().mockResolvedValue(undefined),
   RegenerateSigningKey: vi.fn().mockResolvedValue(undefined),
   GetPluginSettings: vi.fn().mockResolvedValue({ searchConfig: {}, webLinksConfig: {}, imageConfig: {} }),
   SetPluginSettings: vi.fn().mockResolvedValue(undefined),
@@ -49,7 +47,6 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   SetWebLinksConfig: vi.fn().mockResolvedValue(undefined),
   SetImageConfig: vi.fn().mockResolvedValue(undefined),
   GetTailscaleStatus: vi.fn().mockResolvedValue(null),
-  NotifyThemeChange: vi.fn().mockResolvedValue(undefined),
   GetShellPath: vi.fn().mockResolvedValue('/bin/zsh'),
   SetShellPath: vi.fn().mockResolvedValue(undefined),
   GetShellWebShareWarningEnabled: vi.fn().mockResolvedValue(true),
@@ -75,16 +72,14 @@ vi.mock('../SettingsSearch', () => ({
 vi.mock('../../wailsjs/wailsjs/runtime/runtime', () => ({
   BrowserOpenURL: vi.fn(),
   ClipboardSetText: vi.fn().mockResolvedValue(undefined),
-  // Phase 167-07: SettingsTab now also subscribes to
-  // notification:permission-denied on mount; stub returns a no-op unsubscribe.
+  // Harmless extra stub (the notification-permission subscription was removed in Portty 01-11).
   EventsOn: vi.fn().mockReturnValue(vi.fn()),
 }))
 
 // Minimal stub props satisfying all required SettingsTabProps fields.
 function makeProps(overrides: { uiTheme?: 'dark' | 'light'; onUiThemeChange?: (t: 'dark' | 'light') => void } = {}) {
   return {
-    clis: [],
-    tailscaleHealth: null,
+      tailscaleHealth: null,
     webServerMode: null as null,
     onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
     selectedTheme: 'Tomorrow_Night',

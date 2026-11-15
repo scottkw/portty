@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build.sh — Cross-platform build script for AgentHub (Wails v2)
-# Usage: build.sh --platform macos|linux|windows | --all [--sign]
+# build.sh — macOS build script for AgentHub (Wails v2)
+# Usage: build.sh --platform macos [--sign]
 
 PLATFORM=""
 SIGN="false"
 
 usage() {
-  echo "Usage: build.sh --platform macos|linux|windows | --all [--sign]"
+  echo "Usage: build.sh --platform macos [--sign]"
   echo ""
   echo "  --platform macos     Build macOS universal binary (.app bundle)"
-  echo "  --platform linux     Build Linux amd64 binary via Docker"
-  echo "  --platform windows   Build Windows amd64 binary via cross-compile"
-  echo "  --all                Build all three platforms sequentially"
   echo "  --sign               Code-sign and notarize the macOS build (requires credentials)"
   exit 1
 }
@@ -23,15 +20,11 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --platform)
       if [[ $# -lt 2 ]]; then
-        echo "ERROR: --platform requires a value (macos|linux|windows)"
+        echo "ERROR: --platform requires a value (macos)"
         usage
       fi
       PLATFORM="$2"
       shift 2
-      ;;
-    --all)
-      PLATFORM="all"
-      shift
       ;;
     --sign)
       SIGN="true"
@@ -50,7 +43,7 @@ fi
 
 # Validate platform value
 case "$PLATFORM" in
-  macos|linux|windows|all)
+  macos)
     ;;
   *)
     echo "ERROR: Invalid platform: $PLATFORM"
@@ -89,52 +82,6 @@ build_macos() {
   if [[ "$SIGN" == "true" ]]; then
     sign_and_notarize "build/bin/agenthub.app"
   fi
-}
-
-build_windows() {
-  local MINGW_CC="x86_64-w64-mingw32-gcc"
-  if ! command -v "$MINGW_CC" &>/dev/null; then
-    echo "ERROR: $MINGW_CC not found. Install: brew install mingw-w64"
-    exit 1
-  fi
-
-  local VERSION="${BUILD_VERSION:-dev}"
-  echo "==> Building Windows (windows/amd64) version=${VERSION}"
-  CC="$MINGW_CC" CGO_ENABLED=1 "$WAILS" build -platform windows/amd64 -clean \
-    -ldflags "-X main.Version=${VERSION}"
-  echo "==> Windows build complete: build/bin/agenthub.exe"
-}
-
-build_linux() {
-  if ! docker info &>/dev/null; then
-    echo "ERROR: Docker is not running. Linux builds require Docker."
-    echo "Start Docker Desktop and try again."
-    exit 1
-  fi
-
-  local VERSION="${BUILD_VERSION:-dev}"
-
-  # Pre-build frontend assets (Docker container won't have Node/pnpm)
-  echo "==> Building frontend assets for Linux"
-  (cd frontend && pnpm install --frozen-lockfile && pnpm run build)
-
-  echo "==> Building Linux (linux/amd64) via Docker version=${VERSION}"
-  docker run --rm \
-    --platform linux/amd64 \
-    -e VERSION="${VERSION}" \
-    -v "$(pwd)":/app \
-    -w /app \
-    golang:1.26-bookworm \
-    bash -c "
-      apt-get update -qq && \
-      apt-get install -y --no-install-recommends \
-        gcc libgtk-3-dev libwebkit2gtk-4.0-dev pkg-config && \
-      CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-        go build -tags production \
-        -ldflags \"-w -s -X main.Version=\${VERSION}\" \
-        -o build/bin/agenthub .
-    "
-  echo "==> Linux build complete: build/bin/agenthub"
 }
 
 sign_and_notarize() {
@@ -220,8 +167,5 @@ sign_and_notarize() {
 
 case "$PLATFORM" in
   macos)   build_macos ;;
-  linux)   build_linux ;;
-  windows) build_windows ;;
-  all)     build_macos && build_windows && build_linux ;;
   *)       usage ;;
 esac

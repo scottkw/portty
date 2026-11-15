@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -11,30 +10,6 @@ import (
 
 	xvt "github.com/charmbracelet/x/vt"
 )
-
-// ErrReadOnly is returned by HandleInject when the subscriber has the read-only
-// cap and is therefore not permitted to write to PTY stdin (SEC-01, D-04).
-var ErrReadOnly = errors.New("relay: inject rejected: read-only capability")
-
-// ErrInjectNotRecorded is returned by HandleInject when the PTY write succeeded
-// but persisting/broadcasting the chat record failed (e.g. the chat cap was
-// reached or the line was too large). It signals a deliberate divergence: the
-// inject reached the live terminal but no chat record exists. The read pump
-// turns this into a NAK so the originating client is informed rather than the
-// failure being silently swallowed (WR-02 — "let it crash", not silent fallback).
-var ErrInjectNotRecorded = errors.New("relay: inject delivered to terminal but not recorded in chat")
-
-// MaxInjectTextBytes is the explicit upper bound on the raw text of a single
-// MsgSessionInject frame, enforced in HandleInject before any PTY write. It
-// makes the inject bound intentional rather than implicitly relying on the
-// coder/websocket default read limit (IN-03). 64 KiB is generous for a pasted
-// command line yet well under the chat-layer maxChatLineBytes (1 MiB).
-const MaxInjectTextBytes = 64 * 1024
-
-// ErrInjectTooLarge is returned by HandleInject when the raw inject text exceeds
-// MaxInjectTextBytes. The read pump turns it into a NAK, so the bound is enforced
-// before the PTY write and independent of the WS library default (IN-03).
-var ErrInjectTooLarge = errors.New("relay: inject rejected: text exceeds maximum size")
 
 // Subscriber represents a single WebSocket connection subscribed to a session's output.
 type Subscriber struct {
@@ -99,9 +74,8 @@ type Hub struct {
 	lastTypingBcast map[string]time.Time      // personKey → last typing-start broadcast time (rate limit)
 	typingTTL       time.Duration             // injectable for tests; default 5s
 
-	// Phase 153: persist+broadcast callback. Wired by engine.go after Hub+ChatStore
-	// are both constructed. Nil-safe: HandleInject skips persist+broadcast when nil.
-	// Guarded by mu.
+	// Chat-send persist callback. Wired by engine.go after Hub+ChatStore are both
+	// constructed. HandleChatSend returns an error when it is nil. Guarded by mu.
 	chatAppendFn func(ChatMessage) (ChatMessage, error)
 
 	// Phase 175-04 (BUG-04, #119): live per-hub VT emulator + its own guard.
@@ -730,10 +704,11 @@ func (h *Hub) WriteInput(data []byte) error {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 153: inject machinery
+// Chat-send persistence
 // ---------------------------------------------------------------------------
 
-// SetChatAppendFn wires the persist+broadcast callback for SessionInject messages.
+// SetChatAppendFn wires the persist callback HandleChatSend uses to store chat
+// messages (HandleChatSend fails with "chatAppendFn not wired" without it).
 // Must be called before the first WebSocket connection is accepted for this session
 // (i.e. from engine.go CreateSession). Safe to call concurrently with hub.mu.
 // Mirrors the Subscriber.AliasSetFn assignment pattern.
@@ -767,82 +742,6 @@ func (h *Hub) BroadcastChat(frame []byte) {
 	}
 }
 
-// HandleInject is called by the read pump when a MsgSessionInject frame arrives.
-// It: (1) gates on !sub.ReadOnly (SEC-01, D-04), returning ErrReadOnly for RO clients;
-// (2) sanitizes the text via SanitizePTYText (SEC-02, D-03); (3) writes the sanitized
-// bytes to PTY stdin via WriteInput; (4) if chatAppendFn is non-nil, persists a
-// DISPLAY-SAFE form of the text (SanitizeChatContent — bidi/C0/C1 stripped) as a
-// ChatMessage{SessionInject:true} and broadcasts a MsgChat frame to all subs.
-//
-// WR-01: stored/broadcast content is display-safe text, NOT raw keystrokes. The
-// PTY sanitizer protects stdin, but chat.jsonl / BroadcastChat / Export() are
-// renderer-level surfaces subject to the same Trojan-Source (CVE-2021-42574)
-// spoofing, so the dangerous bytes must be stripped before persistence too.
-//
-// CRITICAL: HandleInject does NOT hold hub.mu during WriteInput, chatAppendFn, or
-// BroadcastChat — follows the ResizeClient unlock-before-IO discipline (Pitfall 4).
-// sub.ReadOnly is read without a lock: it is set once at subscribe time and never mutated.
-func (h *Hub) HandleInject(sub *Subscriber, text string) error {
-	// Gate: RO clients may never write to PTY stdin (SEC-01).
-	// sub.ReadOnly is set once at subscribe time; no lock required.
-	if sub.ReadOnly {
-		return ErrReadOnly
-	}
-
-	// IN-03: enforce an explicit, intentional size cap on the raw inject text
-	// before any PTY write, so the bound does not silently depend on the
-	// coder/websocket default read limit. Oversize frames are NAK'd, not written.
-	if len(text) > MaxInjectTextBytes {
-		return ErrInjectTooLarge
-	}
-
-	sanitized := SanitizePTYText(text)
-	// IN-02: control-only input (e.g. "\x1b[2J" or "\x00") is non-empty and so
-	// survives the read-pump ip.Text != "" guard, but SanitizePTYText collapses
-	// it to a bare "\n". Treat a whitespace-only post-sanitize result as empty:
-	// skip BOTH the PTY write (no spurious Enter keystroke) and the chat
-	// persist/broadcast. Returning nil yields no NAK — there is no error, the
-	// inject was simply a no-op.
-	if strings.TrimSpace(sanitized) == "" {
-		return nil
-	}
-	if err := h.WriteInput([]byte(sanitized)); err != nil {
-		return err
-	}
-
-	// Persist and broadcast — read chatAppendFn under mu, then release before calling.
-	h.mu.Lock()
-	fn := h.chatAppendFn
-	h.mu.Unlock()
-
-	if fn != nil {
-		// Persist a DISPLAY-SAFE form of the text (WR-01): the PTY already
-		// received the SanitizePTYText output above, but chat.jsonl /
-		// BroadcastChat / Export() render content, so strip the bidi/C0/C1
-		// spoofing vectors here too (CVE-2021-42574, SEC-02).
-		msg, err := fn(ChatMessage{
-			AuthorID:      sub.TailnetID,
-			AuthorAlias:   sub.Alias,
-			Content:       SanitizeChatContent(text), // display-safe, not raw keystrokes
-			SessionInject: true,
-		})
-		if err != nil {
-			// WR-02: the PTY write above ALREADY succeeded, but the chat record
-			// failed (ErrChatCapReached / ErrChatMessageTooLarge under normal
-			// operation). Do NOT swallow it — surface a NAK so the originating
-			// client learns the terminal and chat thread diverged. The PTY write
-			// is deliberately NOT rolled back: the inject's primary job (reach the
-			// terminal) succeeded; only the chat mirror failed. Returning the
-			// error lets the read pump emit MakeInjectErrorFrame to the sender.
-			return fmt.Errorf("%w: %v", ErrInjectNotRecorded, err)
-		}
-		// BroadcastChat acquires its own lock — must not hold hub.mu here.
-		h.BroadcastChat(MakeChatFrame(msg))
-	}
-
-	return nil
-}
-
 // HandleChatSend is called by the read pump when a MsgChatSend frame arrives.
 // It: (1) sanitizes the content via SanitizeChatContent (T-154-01); (2) if the
 // sanitized result is empty, returns nil silently (no-op, matching MsgTyping
@@ -851,19 +750,18 @@ func (h *Hub) HandleInject(sub *Subscriber, text string) error {
 //
 // D-06 reconciliation (Phase 163): RO clients are full chat participants — they
 // may post chat, set typing indicators, and set their alias. ONLY MsgInput (PTY
-// keystrokes) and MsgSessionInject (@session) remain RO-gated. The SEC-01
-// ErrChatReadOnly gate (T-154-03) has been removed to honor D-06.
+// keystrokes) remains RO-gated. The SEC-01 ErrChatReadOnly gate (T-154-03) has
+// been removed to honor D-06.
 //
 // CRITICAL: HandleChatSend NEVER calls WriteInput — chat send must not touch
-// PTY stdin. Only MsgSessionInject (0x35) writes to PTY (T-154-02, D-02).
+// PTY stdin (T-154-02, D-02). No chat path writes to the PTY (CHAT-01).
 //
 // Unlock-before-IO discipline (Pitfall 4): hub.mu is released before calling
-// chatAppendFn or BroadcastChat, mirroring HandleInject (hub.go:520–522).
+// chatAppendFn or BroadcastChat.
 // sub.ReadOnly is read without a lock: it is set once at subscribe time and
 // never mutated.
 func (h *Hub) HandleChatSend(sub *Subscriber, content string) error {
-	// T-154-01: sanitize for display-safety (bidi/C0/C1 stripping). Do NOT
-	// use SanitizePTYText — that function is for PTY stdin, not chat content.
+	// T-154-01: sanitize for display-safety (bidi/C0/C1 stripping).
 	sanitized := SanitizeChatContent(content)
 	if sanitized == "" {
 		// Silent no-op: matches MsgTyping behavior for control-char-only input.
@@ -883,7 +781,6 @@ func (h *Hub) HandleChatSend(sub *Subscriber, content string) error {
 		AuthorID:    sub.TailnetID,
 		AuthorAlias: sub.Alias,
 		Content:     sanitized,
-		// SessionInject is deliberately false: this is chat-send, not inject.
 	})
 	if err != nil {
 		return fmt.Errorf("relay: HandleChatSend: persist failed: %w", err)
@@ -891,26 +788,6 @@ func (h *Hub) HandleChatSend(sub *Subscriber, content string) error {
 	// BroadcastChat acquires its own lock — must not hold hub.mu here.
 	h.BroadcastChat(MakeChatFrame(msg))
 	return nil
-}
-
-// InjectErrorReason maps a HandleInject error to a stable, client-safe reason
-// string for MakeInjectErrorFrame. Internal plumbing detail — e.g. a PTY
-// "io: read/write on closed pipe" surfaced by WriteInput — must never reach a
-// remote client, so unrecognized (write) errors collapse to a generic
-// "inject failed" string. Callers log the detailed error server-side (IN-01).
-func InjectErrorReason(err error) string {
-	switch {
-	case err == nil:
-		return ""
-	case errors.Is(err, ErrReadOnly):
-		return "inject rejected: read-only access"
-	case errors.Is(err, ErrInjectTooLarge):
-		return "inject rejected: text too large"
-	case errors.Is(err, ErrInjectNotRecorded):
-		return "inject delivered to terminal but not recorded in chat"
-	default:
-		return "inject failed"
-	}
 }
 
 // ScrollbackSnapshot returns a copy of the current scrollback buffer contents.

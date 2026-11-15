@@ -471,7 +471,7 @@ func metaPeerServer(t *testing.T, items []ShareableSessionMeta) *httptest.Server
 			if i > 0 {
 				out += ","
 			}
-			out += `{"id":"` + s.ID + `","name":"` + s.Name + `","cli_type":"` + s.CLIType + `","status":"` + s.Status + `","url":"` + s.URL + `"}`
+			out += `{"id":"` + s.ID + `","name":"` + s.Name + `","status":"` + s.Status + `","url":"` + s.URL + `"}`
 		}
 		out += `]`
 		_, _ = w.Write([]byte(out))
@@ -570,8 +570,8 @@ func TestFetchAllPeerSessionsMeta_EmptySessionsNotDropped(t *testing.T) {
 // with all fields populated.
 func TestFetchAllPeerSessionsMeta_PopulatedPeer(t *testing.T) {
 	items := []ShareableSessionMeta{
-		{ID: "s1", Name: "Alpha", CLIType: "claude", Status: "running", URL: "https://peer/sessions/s1"},
-		{ID: "s2", Name: "Beta", CLIType: "codex", Status: "idle", URL: "https://peer/sessions/s2"},
+		{ID: "s1", Name: "Alpha", Status: "running", URL: "https://peer/sessions/s1"},
+		{ID: "s2", Name: "Beta", Status: "idle", URL: "https://peer/sessions/s2"},
 	}
 	srv := metaPeerServer(t, items)
 	defer srv.Close()
@@ -596,6 +596,26 @@ func TestFetchAllPeerSessionsMeta_PopulatedPeer(t *testing.T) {
 	}
 }
 
+// TestFetchPeerSessionsMeta_LegacyAgentHubPeer verifies that a peer still on
+// AgentHub, which sends cli_type and agent statuses like "waiting", decodes
+// without error and keeps id, name, status and url (STRP-01).
+func TestFetchPeerSessionsMeta_LegacyAgentHubPeer(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":"old1","name":"Old Peer Session","cli_type":"claude","status":"waiting","url":"https://old-peer/sessions/old1"}]`))
+	}))
+	defer srv.Close()
+
+	sessions, reachable := FetchPeerSessionsMetaWithClient(context.Background(), srv.URL, redirectingClient(srv))
+	if !reachable {
+		t.Fatal("expected Reachable=true for a legacy peer")
+	}
+	want := ShareableSessionMeta{ID: "old1", Name: "Old Peer Session", Status: "waiting", URL: "https://old-peer/sessions/old1"}
+	if len(sessions) != 1 || sessions[0] != want {
+		t.Fatalf("got %+v, want [%+v]", sessions, want)
+	}
+}
+
 // TestFetchPeerSessionsMeta_IPFallback verifies that when the DNS-based fetch
 // fails but a TailscaleIP is present, FetchPeerSessionsMeta falls back to the
 // IP path and returns the served metas.
@@ -604,7 +624,7 @@ func TestFetchAllPeerSessionsMeta_PopulatedPeer(t *testing.T) {
 // makes both DNS and IP path attempts resolve to the test server.
 func TestFetchPeerSessionsMeta_IPFallback(t *testing.T) {
 	items := []ShareableSessionMeta{
-		{ID: "fallback-sess", Name: "Fallback Session", CLIType: "claude", Status: "running", URL: "https://host/sessions/fallback-sess"},
+		{ID: "fallback-sess", Name: "Fallback Session", Status: "running", URL: "https://host/sessions/fallback-sess"},
 	}
 	srv := metaPeerServer(t, items)
 	defer srv.Close()

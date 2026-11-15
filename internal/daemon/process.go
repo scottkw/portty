@@ -119,8 +119,8 @@ func runDaemonCore(ctx context.Context) {
 		h := webserver.CheckHealth(ctx5s)
 		cancel()
 		fmt.Fprintf(os.Stderr,
-			"daemon: tailscale health: binaryFound=%v daemonUp=%v connected=%v hasCerts=%v ip=%q domain=%q\n",
-			h.BinaryFound, h.DaemonUp, h.Connected, h.HasCerts, h.IP, h.Domain)
+			"daemon: tailscale health: connected=%v hasCerts=%v ip=%q domain=%q\n",
+			h.Connected, h.HasCerts, h.IP, h.Domain)
 		if h.Connected && h.HasCerts && h.IP != "" {
 			if err := api.AutoStartWebServer(h.IP, 7443, h.Domain, "tailscale", ""); err != nil {
 				fmt.Fprintf(os.Stderr, "daemon: auto-start web server: %v\n", err)

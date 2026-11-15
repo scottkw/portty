@@ -21,7 +21,6 @@ vi.mock('../../wailsjs/go/main/App', () => ({
 }))
 
 interface RenderOpts {
-  browseEnabled?: boolean
   readURL?: string
   writeURL?: string
   readCode?: string
@@ -39,7 +38,6 @@ function renderTab(opts: RenderOpts = {}) {
         writeURL: opts.writeURL ?? 'https://example.com/w',
         readCode: opts.readCode ?? 'read-code',
         writeCode: opts.writeCode ?? 'write-code',
-        browseEnabled: opts.browseEnabled ?? false,
       }),
     )
   })
@@ -85,18 +83,12 @@ describe('TailnetTab', () => {
     expect(container!.textContent).toContain('write-code-y')
   })
 
-  it('browseEnabled=false shows "watch only" / no-file-access scope text for both cards', () => {
-    ;({ container, root } = renderTab({ browseEnabled: false }))
+  it('shows the UI-SPEC scope text for both cards, with no file-browsing wording', () => {
+    ;({ container, root } = renderTab())
     const text = container!.textContent ?? ''
-    expect(text).toContain('cannot send input or browse files')
-    expect(text).toContain('Full control of the live session (send input) plus file browsing. Use the toggle above to also allow file editing.')
-  })
-
-  it('browseEnabled=true reflects file browsing in both cards\' scope text', () => {
-    ;({ container, root } = renderTab({ browseEnabled: true }))
-    const text = container!.textContent ?? ''
-    expect(text).toContain('Watch the live session and browse files read-only — cannot send input.')
-    expect(text).toContain('Full control of the live session (send input) plus file browsing and editing.')
+    expect(text).toContain('Watch the live session only — cannot send input.')
+    expect(text).toContain('Full control of the live session (send input).')
+    expect(text).not.toMatch(/brows|file/i)
   })
 
   // SM-04 / T-173-01 negative wall-off assertion — the write-gate markup and

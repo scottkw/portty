@@ -13,20 +13,15 @@ import {
   ListSessions,
   KillSession,
   RenameSession,
-  DetectCLIs,
-  ListShells,
   GetRelayPort,
   ToggleWebServing,
   IsWebServerRunning,
-  GetSessionStatus,
   GetTailscaleStatus,
   RetryDaemon,
   GetDaemonError,
   GetRemoteSessionsWithMeta,
   GetWebServerMode,
-  NotifyThemeChange,
   GetLastUpdateInfo,
-  GetAutoCloseSession,
   GetStayOnHubAfterCreate,
   GetPluginSettings,
   GetShellWebShareWarned,
@@ -38,34 +33,29 @@ import {
   SetTrayProgress,
 } from './wailsjs/go/main/App'
 import { aggregateProgress } from './lib/aggregateProgress'
-import type { DetectedCLI, SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
+import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
 import type { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
-import { EventsOn, BrowserOpenURL } from './wailsjs/wailsjs/runtime/runtime'
+import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
 import { StatusBar } from './components/StatusBar'
 import { NewSessionModal } from './components/NewSessionModal'
 import { WelcomeTab } from './components/WelcomeTab'
-import { FileBrowserTab, fileBrowserTabId } from './components/FileBrowserTab'
 import { RemoteJoinCodeModal } from './components/RemoteJoinCodeModal'
 import { HubPanel } from './components/Hub/HubPanel'
 import { SessionShareModal } from './components/Hub/SessionShareModal'
 import { HelpTab } from './components/HelpTab'
-import { EnableWebSharingTakeover } from './components/FileBrowser/EnableWebSharingTakeover'
 import { findRemoteSession, remoteBaseURLFor } from './lib/remoteSession'
 import { adaptAllRemoteSessions } from './lib/remoteAdapter'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
-import { LocalNetworkBanner } from './components/LocalNetworkBanner'
+import { TailscaleBanner } from './components/TailscaleBanner'
+import { TAILSCALE_OFF_REASON, TailscaleHealth } from './lib/tailscale'
 import { WebShareSessionView } from './components/Hub/WebShareSessionView'
 import { TerminalChatHost } from './components/Hub/TerminalChatHost'
-import { RemoteBrowseDNSWarning } from './components/RemoteBrowseDNSWarning'
 import { UpdateBanner } from './components/UpdateBanner'
 import type { UpdateInfo } from './components/UpdateBanner'
 import { WebGLRecoveryBanner } from './components/WebGLRecoveryBanner'
 import { PluginToggleBanner } from './components/PluginToggleBanner'
-import { ExitToast } from './components/ExitToast'
-import type { ExitState } from './components/ExitToast'
-import { ExitCountdownBanner } from './components/ExitCountdownBanner'
 import { QuitConfirmModal } from './components/QuitConfirmModal'
 import { ALLOWED_THEMES } from './themes'
 import {
@@ -82,25 +72,17 @@ const THEME_STORAGE_KEY = 'agenthub:terminalTheme'
 const DEFAULT_THEME_NAME = 'Tomorrow_Night'
 const UI_THEME_STORAGE_KEY = 'agenthub:uiTheme'
 
-// Phase 101-03 (SHELL-07/SHELL-08) — shell cli identifiers that route through
-// the one-time security-warning banner now live in lib/shellCli (imported at
-// top). Phase 150 SET-01 gap-closure: extracted to that shared module (the
-// predicted "third call-site" — Hub SessionShareModal — now exists) and made
-// path-aware, because a shell session's cli is its full path ('/bin/zsh'), not
-// a bare name. Must stay in sync with the daemon's isShellSession check
-// (internal/daemon/engine.go).
-
 /**
  * App is the root component — it owns all tab state and wires
  * the Wails-generated TypeScript bindings to the child components.
  */
 function App(): React.ReactElement {
-  const WELCOME_TAB: Tab = { id: '__welcome__', name: 'Welcome', sessionId: '', cli: '', type: 'welcome' }
-const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '', cli: '', type: 'settings' }
+  const WELCOME_TAB: Tab = { id: '__welcome__', name: 'Welcome', sessionId: '', type: 'welcome' }
+const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '', type: 'settings' }
   // Phase 131 — Hub top-level surface tab.
-  const HUB_TAB: Tab = { id: '__hub__', name: 'Hub', sessionId: '', cli: '', type: 'hub' }
+  const HUB_TAB: Tab = { id: '__hub__', name: 'Hub', sessionId: '', type: 'hub' }
   // Phase 147 — In-app Help page tab.
-  const HELP_TAB: Tab = { id: '__help__', name: 'Help', sessionId: '', cli: '', type: 'help' }
+  const HELP_TAB: Tab = { id: '__help__', name: 'Help', sessionId: '', type: 'help' }
   // Phase 120-06 — single source of truth for "is this React shell running in
   // a regular browser under /app/ vs inside the Wails desktop runtime?" Used
   // to gate the Wails RPC suite (init, retryInit, sessions polls) so the SPA
@@ -111,13 +93,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // the lifetime of the SPA. useMemo keeps the reference stable so dependency
   // arrays of downstream effects never see false re-evaluations.
   const webParams = useMemo(() => readWebModeParams(), [])
-  // Phase 159-04 (WEBCHAT-05) — in web mode, whether the guest's cap grants
-  // files.read (resolved from the /api/sessions/{id}/info probe in the web
-  // bootstrap). Gates the TabBar session-menu chevron so a file-enabled guest
-  // can re-open the file browser, while a no-files guest gets no menu at all.
-  const [webFilesEnabled, setWebFilesEnabled] = useState(false)
   // Phase 120-06 — web-mode initial state: no Welcome tab, no Sidebar focus.
-  // The auto-open effect below will populate the file-browser tab from the
+  // The auto-open effect below will open the session view from the
   // ?session= URL param. Starting empty keeps WelcomeTab (which calls
   // GetVersion + references the absolute /agenthub-title-logo.png path that
   // 404s under /app/) from briefly mounting before the auto-open fires.
@@ -127,11 +104,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     mode === 'web' ? null : WELCOME_TAB.id,
   )
   const [relayPort, setRelayPort] = useState<number | null>(null)
-  const [detectedCLIs, setDetectedCLIs] = useState<DetectedCLI[]>([])
-  // Phase 101-02 (SHELL-01 GUI half) — discovered shells from the daemon.
-  // Threaded into NewSessionModal so the user can pick a shell session.
-  const [detectedShells, setDetectedShells] = useState<daemon.DetectedShell[]>([])
-  const [shellsLoading, setShellsLoading] = useState(true)
   const [tabCounter, setTabCounter] = useState(1)
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   // Track web serving state per session: sessionId -> enabled
@@ -152,26 +124,13 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   const [webServerRunning, setWebServerRunning] = useState(false)
   // Track web server mode: 'tailscale' | 'local' | null
   const [webServerMode, setWebServerMode] = useState<'tailscale' | 'local' | null>(null)
-  // Track live status per session: sessionId -> status string
-  const [sessionStatuses, setSessionStatuses] = useState<Record<string, string>>({})
   // Track which session's QR modal is open (null = none)
   // Track font size per session: sessionId -> fontSize (pixels)
   const [fontSizes, setFontSizes] = useState<Record<string, number>>({})
   // Tailscale health state
-  const [tailscaleHealth, setTailscaleHealth] = useState<{
-    installed: boolean
-    connected: boolean
-    hasCerts: boolean
-    ip: string
-    domain: string
-    binaryFound: boolean
-    daemonUp: boolean
-    platformHint: string
-    acceptDns?: boolean
-    // Phase 169-02 (FIX-05): honest permission-aware macsys detection (169-01) —
-    // daemon confirmed alive but this account can't read its status.
-    permissionLimited?: boolean
-  } | null>(null)
+  const [tailscaleHealth, setTailscaleHealth] = useState<TailscaleHealth | null>(null)
+  // NET-01: null means "not checked yet" (and always in web mode), which is not "off".
+  const tailscaleOff = tailscaleHealth !== null && !tailscaleHealth.connected
   const [daemonError, setDaemonError] = useState<string | null>(null)
   // Plugin settings state (PLUG-03): updated by GetPluginSettings on mount
   // and by the EventsOn('settings:plugins') subscription. Threaded into every
@@ -218,7 +177,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // across the 30s interval's lifetime.
   const remoteHasLoadedRef = useRef(false)
 
-  // Phase 122-03 — remote-session file-browse state.
+  // Phase 122-03 — remote-session cap state (open-session / hub-modal).
   //   remoteCapsCached: sessionIds whose caps are already deposited in the
   //     local daemon's RemoteCapStore. Per locked decision D-03, the modal is
   //     skipped for cached sessions.
@@ -231,13 +190,13 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     id: string
     name: string
     hostname: string
-    intent?: 'files' | 'hub-modal' | 'open-session'
+    intent?: 'hub-modal' | 'open-session'
     /** Pre-computed for open-session intent; avoids re-deriving in the modal exchange handler. */
     baseURL?: string
   } | null>(null)
 
   // Phase 134 — holds the HubPanel's cap-acquired callback (registered via onRegisterCapAcquired).
-  // Using a ref avoids stale closure issues in the modal exchange callback (which has handleOpenFileBrowser dep).
+  // Using a ref avoids stale closure issues in the modal exchange callback (which has openWebSessionTab dep).
   const capAcquiredRef = useRef<((sessionId: string) => void) | null>(null)
 
   // Phase 134 — WR-01: holds HubPanel's cap-cancelled callback (registered via onRegisterCapCancelled).
@@ -248,8 +207,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // Update notification state (lifted from WelcomeTab — Phase 81 D-06)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
   // Local network banner dismiss state (session-only, D-04)
-  const [localBannerDismissed, setLocalBannerDismissed] = useState(false)
-  const [localBannerExiting, setLocalBannerExiting] = useState(false)
   const [updateExiting, setUpdateExiting] = useState(false)
 
   // Phase 93 WGL-02 / WGL-03: WebGL recovery banner state. One-shot per
@@ -271,25 +228,23 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     setPluginToggleBanners((prev) => Array.from(new Set([...prev, ...kinds])))
   }, [])
 
-  // Session exit state: per-session exit info for toast/banner/countdown (Phase 84)
-  const [sessionExits, setSessionExits] = useState<Record<string, ExitState>>({})
   // Quit confirmation modal state (Phase 85)
   const [showQuitModal, setShowQuitModal] = useState(false)
-  const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string; status: string }>>([])
-  const countdownTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
-  // Auto-close setting (D-11): loaded on mount, default true
-  // Stored as a ref (not state) because it's only read inside the EventsOn callback
-  // which runs in a [] deps useEffect — a ref avoids stale closures without the
-  // setAutoCloseEnabled(current => ...) trick that triggers TS6133.
-  const autoCloseRef = useRef(true)
+  const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string }>>([])
   // Stay-on-hub-after-create setting (Phase 168 UX-01): loaded on mount,
   // default false (auto-switch, today's behavior). Stored as a ref (not
-  // state) — same rationale as autoCloseRef, avoids stale closures inside
+  // state) — avoids stale closures inside
   // createTab without needing to add it to the useCallback deps array.
   const stayOnHubAfterCreateRef = useRef(false)
-  // Ref to handleCloseTab so the session:exit event handler (with [] deps) can call
+  // Ref to removeTabState so the session:exit event handler (with [] deps) can call
   // the latest version without a stale closure
-  const handleCloseTabRef = useRef<((id: string) => Promise<void>) | undefined>(undefined)
+  const removeTabStateRef = useRef<((id: string) => void) | undefined>(undefined)
+  // Every session:exit id, so createTab and the init/retryInit restore skip a
+  // shell that exited while their RPCs were pending (exits are reported once).
+  const exitedIdsRef = useRef(new Set<string>())
+  // Bumped on every tailscale:health event; init/retryInit apply their
+  // GetTailscaleStatus reply only if no event arrived while it was pending.
+  const healthEventSeqRef = useRef(0)
 
   // Terminal theme (global — same theme for all sessions)
   const [terminalThemeName, setTerminalThemeName] = useState<string>(() => {
@@ -304,9 +259,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   const handleThemeChange = useCallback((name: string) => {
     localStorage.setItem(THEME_STORAGE_KEY, name)
     setTerminalThemeName(name)
-    // Signal active OpenCode sessions to re-query terminal palette (SIGUSR2).
-    // Fire-and-forget: errors logged to console, never block UI.
-    NotifyThemeChange().catch(err => console.warn('NotifyThemeChange failed:', err))
   }, [])
 
   // UI theme (light/dark whole-app appearance) — distinct from terminal color theme.
@@ -335,9 +287,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   const [groupDefs, setGroupDefs] = useState<HubGroupDef[]>(() => loadGroups())
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [groupCounts, setGroupCounts] = useState<Record<string, GroupCounts>>({})
-  const [globalGroupCounts, setGlobalGroupCounts] = useState<GroupCounts>(
-    { running: 0, total: 0, attention: 0, waiting: 0 }
-  )
+  const [globalGroupCounts, setGlobalGroupCounts] = useState<GroupCounts>({ total: 0 })
 
   const handleGroupSelect = useCallback((id: string | null) => {
     setActiveGroupId(id)
@@ -433,14 +383,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     [tabs, serializerRegistry]
   )
 
-  const handleDismissLocalBanner = useCallback(() => {
-    setLocalBannerExiting(true)
-    setTimeout(() => {
-      setLocalBannerDismissed(true)
-      setLocalBannerExiting(false)
-    }, 200)
-  }, [])
-
   const handleDismissUpdate = useCallback(() => {
     setUpdateExiting(true)
     setTimeout(() => {
@@ -482,8 +424,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       // Phase 120-06 — skip the entire Wails RPC suite when running in web
       // mode (regular browser under /app/?session=…&cap=…). Wails RPCs are
       // unreachable from a browser; session+cap come from URL params and the
-      // file-browser tab is auto-opened by a separate effect below that runs
-      // AFTER handleOpenFileBrowser is declared. We return early here before
+      // session view is auto-opened by a separate effect below that runs
+      // AFTER openWebSessionTab is declared. We return early here before
       // any Wails-bound call to avoid the partially-functional shell flagged
       // in 120-VERIFICATION.md Human Verification #2.
       if (mode === 'web') {
@@ -496,31 +438,26 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         return
       }
       try {
-        const [port, clis, sessions, running, health] = await Promise.all([
+        const healthSeq = healthEventSeqRef.current
+        const [port, allSessions, running, health] = await Promise.all([
           GetRelayPort(),
-          DetectCLIs(),
           ListSessions(),
           IsWebServerRunning(),
           GetTailscaleStatus(),
         ])
+        // A shell that exited while no GUI was watching is removed, not restored (TERM-05).
+        const sessions = allSessions.filter((s) => s.state !== 'stopped' && !exitedIdsRef.current.has(s.id))
+        allSessions.filter((s) => s.state === 'stopped').forEach((s) => {
+          KillSession(s.id).catch((err) => console.warn('[App] KillSession of stopped session failed:', err))
+        })
         setRelayPort(port)
-        setDetectedCLIs(clis)
         setWebServerRunning(running)
-        setTailscaleHealth(health)
+        if (healthEventSeqRef.current === healthSeq) setTailscaleHealth(health)
         // Phase 168-05 (UX-02): seed hubSessions from the same ListSessions() call used
         // for tab restoration, so openShareModalForActiveSession works even before the
         // user ever visits the Hub tab (the 3s Hub poll below only runs while Hub is
         // active — SESS-02 restore can land the user directly on a session tab).
         setHubSessions(sessions)
-
-        // Phase 101-02 (SHELL-01 GUI half) — call ListShells() on mount.
-        // Loaded in parallel via a separate promise so a slow daemon response
-        // doesn't delay the rest of the init flow. Failures fall through to
-        // an empty shell list (silent absence per UI-SPEC §Edge Cases).
-        ListShells()
-          .then((s) => setDetectedShells(s ?? []))
-          .catch(() => setDetectedShells([]))
-          .finally(() => setShellsLoading(false))
 
         // Fetch web server mode for local-network-fallback UI
         GetWebServerMode().then(mode => {
@@ -552,9 +489,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           }, 500)
         }
 
-        // Load auto-close preference (Phase 84 D-11)
-        GetAutoCloseSession().then(val => { autoCloseRef.current = val }).catch(() => {})
-
         // Load stay-on-hub-after-create preference (Phase 168 UX-01)
         GetStayOnHubAfterCreate().then(val => { stayOnHubAfterCreateRef.current = val }).catch(() => {})
 
@@ -582,21 +516,11 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         if (sessions.length > 0) {
           const restoredTabs: Tab[] = sessions.map((s) => ({
             id: s.id,
-            name: s.name || s.cli,
+            name: s.name || 'shell',
             sessionId: s.id,
-            cli: s.cli,
           }))
           setTabs(restoredTabs)
           setActiveId(restoredTabs[0].id)
-
-          // Seed initial status for each restored session.
-          sessions.forEach((s) => {
-            GetSessionStatus(s.id)
-              .then((st) => {
-                setSessionStatuses((prev) => ({ ...prev, [s.id]: st }))
-              })
-              .catch(() => { /* status unavailable — leave unset */ })
-          })
 
           // Seed webEnabled state from daemon's SessionInfo.webEnabled field (SERVE-02 restore).
           if (running) {
@@ -618,27 +542,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
     void init()
 
-    // Subscribe to live session:status events from the Go backend.
-    const offStatus = EventsOn(
-      'session:status',
-      (data: { sessionId: string; status: string }) => {
-        setSessionStatuses((prev) => ({ ...prev, [data.sessionId]: data.status }))
-      },
-    )
-
-    const offHealth = EventsOn('tailscale:health', (h: {
-      installed: boolean
-      connected: boolean
-      hasCerts: boolean
-      ip: string
-      domain: string
-      binaryFound: boolean
-      daemonUp: boolean
-      platformHint: string
-      acceptDns?: boolean
-      // Phase 169-02 (FIX-05): honest permission-aware macsys detection (169-01).
-      permissionLimited?: boolean
-    }) => {
+    const offHealth = EventsOn('tailscale:health', (h: TailscaleHealth) => {
+      healthEventSeqRef.current++
       setTailscaleHealth(h)
       // If Tailscale just became fully healthy, poll for the backend to upgrade
       // from local mode to tailscale mode (daemon's upgradeToTailscale goroutine).
@@ -710,42 +615,13 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
 
     const offExit = EventsOn(
       'session:exit',
-      (data: {
-        sessionId: string
-        exitCode: number
-        sessionName: string
-        cli: string
-        duration: number
-        finalStatus: string
-      }) => {
-        // SHELL-12: on clean exit (code 0), respect the user's "Auto-close tab
-        // on exit" preference (autoCloseRef, loaded from GetAutoCloseSession()).
-        // When auto-close is ON (default): close tab immediately — no toast, no
-        // countdown. When OFF: fall through to setSessionExits so the ExitToast
-        // appears, honoring the user's explicit preference.
-        // The daemon (107-02) normalizes PTY -1 → 0, so this branch covers all
-        // natural-exit cases including shell EOF.
-        if (data.exitCode === 0) {
-          if (autoCloseRef.current) {
-            // Auto-close enabled: close tab immediately (SHELL-12 default path)
-            void handleCloseTabRef.current?.(data.sessionId)
-            return
-          }
-          // Auto-close disabled: fall through to show ExitToast (no countdown)
-        }
-        // Non-zero exit (or zero-exit with auto-close OFF): record exit state
-        // and show ExitToast (existing behavior).
-        const exitState: ExitState = {
-          sessionId: data.sessionId,
-          sessionName: data.sessionName,
-          cli: data.cli,
-          exitCode: data.exitCode,
-          duration: data.duration,
-          finalStatus: data.finalStatus,
-          countdown: -1,
-          cancelled: false,
-        }
-        setSessionExits(prev => ({ ...prev, [data.sessionId]: exitState }))
+      (data: { sessionId: string }) => {
+        // TERM-05: any shell exit, at any age and with any exit code, closes
+        // its tab. The Go exit watcher has already removed the session from
+        // the daemon, so this only updates UI state (no daemon calls).
+        exitedIdsRef.current.add(data.sessionId)
+        setHubSessions((prev) => prev.filter((s) => s.id !== data.sessionId))
+        removeTabStateRef.current?.(data.sessionId)
       }
     )
 
@@ -756,7 +632,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         ListSessions().then(sessions => {
           const activeSessions = sessions
             .filter((s: SessionInfo) => s.state !== 'stopped')
-            .map((s: SessionInfo) => ({ id: s.id, name: s.name || s.cli, status: s.state || 'running' }))
+            .map((s: SessionInfo) => ({ id: s.id, name: s.name || 'shell' }))
           setQuitSessions(activeSessions)
           setShowQuitModal(true)
         }).catch(() => {
@@ -768,16 +644,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     })
 
     return () => {
-      offStatus()
       offHealth()
       offDaemonError()
       offPlugins()
       cancelTrayFocus()
       offExit()
       offQuit()
-      // Clear all countdown timers
-      Object.values(countdownTimers.current).forEach(clearInterval)
-      countdownTimers.current = {}
       if (upgradePollerRef.current !== null) {
         clearInterval(upgradePollerRef.current)
         upgradePollerRef.current = null
@@ -785,8 +657,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
   }, [])
 
-  const createTab = useCallback(async (cliName: string, workDir: string, args: string[]) => {
-    const defaultName = `${cliName} ${tabCounter}`
+  const createTab = useCallback(async (workDir: string) => {
+    const defaultName = `shell ${tabCounter}`
     setTabCounter((n) => n + 1)
 
     // Estimate initial PTY dimensions from the terminal container.
@@ -800,12 +672,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
 
     try {
-      const sessionId = await CreateSession(cliName, defaultName, workDir, args, cols, rows)
+      const sessionId = await CreateSession(defaultName, workDir, cols, rows)
+      if (exitedIdsRef.current.has(sessionId)) return
       const tab: Tab = {
         id: sessionId,
         name: defaultName,
         sessionId,
-        cli: cliName,
       }
       setTabs((prev) => [...prev, tab])
       // Phase 168 UX-01: when stayOnHubAfterCreate is ON, skip the
@@ -828,7 +700,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         ...prev,
         {
           id: sessionId,
-          cli: cliName,
           name: defaultName,
           state: 'running',
           status: 'running',
@@ -836,8 +707,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           hostname: '',
           webEnabled: false,
           viewerCount: 0,
-          homeDir: false,
-          browseEnabled: false,
           funnelActive: false,
           workDir,
         } as SessionInfo,
@@ -883,20 +752,11 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
   }, [tabs])
 
-  const handleCloseTab = useCallback(async (id: string) => {
-    // Disable web serving for this session before closing.
-    // For naturally-exited sessions (in sessionExits), skip immediate disable —
-    // the daemon's exit watcher already started a 10-second grace period (D-12)
-    // so web viewers can see the final output before serving stops.
-    if (webEnabled[id] && !sessionExits[id]) {
-      try { await ToggleWebServing(id, false) } catch (_) { /* ignore */ }
-      setWebEnabled((prev) => { const n = { ...prev }; delete n[id]; return n })
-    }
-    try {
-      await KillSession(id)
-    } catch (err) {
-      console.warn('[App] KillSession failed:', err)
-    }
+  // UI-only removal of a session's tab state. session:exit calls it directly
+  // (the daemon already removed the session); handleCloseTab calls it after
+  // its kill.
+  const removeTabState = useCallback((id: string) => {
+    setWebEnabled((prev) => { const n = { ...prev }; delete n[id]; return n })
     setTabs((prev) => {
       const remaining = prev.filter((t) => t.id !== id)
       // Activate an adjacent tab if the closed one was active.
@@ -907,19 +767,24 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       }
       return remaining
     })
-    // Clean up session status for the closed session.
-    setSessionStatuses((prev) => { const n = { ...prev }; delete n[id]; return n })
     // Clean up font size for the closed session.
     setFontSizes((prev) => { const n = { ...prev }; delete n[id]; return n })
-    // Clean up exit state and countdown timer (Phase 84)
-    if (countdownTimers.current[id]) {
-      clearInterval(countdownTimers.current[id])
-      delete countdownTimers.current[id]
-    }
-    setSessionExits(prev => { const n = { ...prev }; delete n[id]; return n })
-  }, [activeId, webEnabled, sessionExits])
+  }, [activeId])
   // Keep the ref in sync so the session:exit event handler ([] deps) always calls the latest version
-  handleCloseTabRef.current = handleCloseTab
+  removeTabStateRef.current = removeTabState
+
+  const handleCloseTab = useCallback(async (id: string) => {
+    // Disable web serving for this session before closing.
+    if (webEnabled[id]) {
+      try { await ToggleWebServing(id, false) } catch (_) { /* ignore */ }
+    }
+    try {
+      await KillSession(id)
+    } catch (err) {
+      console.warn('[App] KillSession failed:', err)
+    }
+    removeTabState(id)
+  }, [webEnabled, removeTabState])
 
   const handleRenameTab = useCallback(async (id: string, name: string) => {
     try {
@@ -991,31 +856,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       const current = prev[sessionId] ?? DEFAULT_FONT_SIZE
       const next = Math.max(6, Math.min(32, current + delta))
       return { ...prev, [sessionId]: next }
-    })
-  }, [])
-
-  const handleKeepOpen = useCallback((sessionId: string) => {
-    // Cancel countdown (D-02)
-    if (countdownTimers.current[sessionId]) {
-      clearInterval(countdownTimers.current[sessionId])
-      delete countdownTimers.current[sessionId]
-    }
-    setSessionExits(prev => {
-      const entry = prev[sessionId]
-      if (!entry) return prev
-      return { ...prev, [sessionId]: { ...entry, cancelled: true, countdown: -1 } }
-    })
-  }, [])
-
-  const handleDismissExit = useCallback((sessionId: string) => {
-    // Remove toast entry
-    if (countdownTimers.current[sessionId]) {
-      clearInterval(countdownTimers.current[sessionId])
-      delete countdownTimers.current[sessionId]
-    }
-    setSessionExits(prev => {
-      const { [sessionId]: _, ...rest } = prev
-      return rest
     })
   }, [])
 
@@ -1103,6 +943,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (mode === 'web') return // Phase 120-06: no Wails RPC in browser mode.
+    // NET-01: while Tailscale is off, list no remote cards, peer hints or join-code
+    // entry points; tailscaleOff is a dep so polling resumes on reconnect.
+    if (tailscaleOff) {
+      setRemotePeers([])
+      return
+    }
     if (activeId !== HUB_TAB.id) return
     let cancelled = false
     async function refresh() {
@@ -1124,7 +970,32 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       cancelled = true
       clearInterval(interval)
     }
-  }, [activeId])
+  }, [activeId, tailscaleOff])
+
+  // NET-01: a disconnect closes an open Share dialog (its controls are disabled too).
+  useEffect(() => {
+    if (tailscaleOff) setShareModalSession(null)
+  }, [tailscaleOff])
+
+  // NET-01: recheck Tailscale when the window gains focus or becomes visible
+  // (launch and the 10 s poller cover the other triggers). Desktop only.
+  useEffect(() => {
+    if (mode === 'web') return
+    // The check emits tailscale:health on change; the response is not applied,
+    // so a late reply cannot overwrite a newer event.
+    const recheck = () => {
+      GetTailscaleStatus().catch(() => { /* keep the last value */ })
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') recheck()
+    }
+    window.addEventListener('focus', recheck)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', recheck)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [mode])
 
   // Lift update:available subscription from WelcomeTab (Phase 81 D-06)
   useEffect(() => {
@@ -1138,19 +1009,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     return () => { offUpdate() }
   }, [])
 
-  // Reset dismissed state when entering local mode (D-04: reappear if conditions change)
-  useEffect(() => {
-    if (webServerMode === 'local') {
-      setLocalBannerDismissed(false)
-    }
-  }, [webServerMode])
-
   // Phase 155-03 — stable tab id for the web-session view. One view per
-  // session (find-or-focus semantics, same pattern as fileBrowserTabId).
+  // session (find-or-focus semantics).
   const webSessionTabId = (sessionId: string) => `__websession__${sessionId}`
 
   // Phase 155-03 — open (or focus) the WebShareSessionView tab for a web-share
-  // session. Mirrors handleOpenFileBrowser in structure.
+  // session.
   //
   // Phase 168-03 (FIX-03) — extended to (sessionId, baseURL?, capToken?). The
   // app's own web-share bootstrap tab (mode==='web') still omits baseURL/
@@ -1169,7 +1033,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       id: tabId,
       name: 'Session',
       sessionId,
-      cli: '',
       type: 'web-session',
       baseURL,
       capToken,
@@ -1178,39 +1041,15 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     setActiveId(newTab.id)
   }, [tabs])
 
-  // Phase 120-04 UI-01 — per-session FileBrowserTab find-or-add. Opens the
-  // file browser for a session, either focusing the existing tab if one is
-  // open or creating a new one keyed by fileBrowserTabId(sessionId).
-  // `activate` defaults true (focus the tab). Phase 159-03 (WEBCHAT-04) passes
-  // false so the web-share bootstrap can open the file-browser tab in the
-  // BACKGROUND — the WebShareSessionView (terminal + chat) stays the active tab.
-  const handleOpenFileBrowser = useCallback((sessionId: string, sessionName: string, activate = true) => {
-    const tabId = fileBrowserTabId(sessionId)
-    const existing = tabs.find((t) => t.id === tabId)
-    if (existing) {
-      if (activate) setActiveId(existing.id)
-      return
-    }
-    const newTab: Tab = {
-      id: tabId,
-      name: `${sessionName} — Files`,
-      sessionId,
-      cli: '',
-      type: 'file-browser',
-    }
-    setTabs((prev) => [...prev, newTab])
-    if (activate) setActiveId(newTab.id)
-  }, [tabs])
-
   // Phase 131 UAT follow-up — re-attach to an already-running session.
   // Opens (or focuses) a terminal tab for an existing session id. Mirrors the
   // startup-restore path (SESS-02): a terminal tab is { id: sessionId, name,
-  // sessionId, cli } with no `type`, and the Terminal component attaches to the
+  // sessionId } with no `type`, and the Terminal component attaches to the
   // live PTY by sessionId. Wired to both the Hub cards and the Sessions panel so
   // a session created in another window (or whose tab was closed) can be reopened.
   // NOTE: the Hub surfaces this via an explicit "Open" button rather than a
   // whole-card click — card-click is reserved for the Phase 134 modal gesture.
-  const handleOpenSessionTab = useCallback((sessionId: string, name: string, cli: string) => {
+  const handleOpenSessionTab = useCallback((sessionId: string, name: string) => {
     const existing = tabs.find((t) => t.id === sessionId)
     if (existing) {
       setActiveId(existing.id)
@@ -1218,54 +1057,21 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
     const newTab: Tab = {
       id: sessionId,
-      name: name || cli,
+      name: name || 'shell',
       sessionId,
-      cli,
     }
     setTabs((prev) => [...prev, newTab])
     setActiveId(newTab.id)
   }, [tabs])
 
   // Phase 120-06 / 155-03 — web-mode bootstrap: when the SPA loads under /app/
-  // with a ?session=<id> param, open both the session view and the file-browser
-  // tab. The session view (WebShareSessionView) is the active/primary tab.
-  // The file-browser tab is opened first (background) so the session tab ends
-  // up as the last setActiveId call and is therefore active on mount.
-  // The cap cannot be decoded client-side, so the file tab is always opened and
-  // PermissionDeniedTakeover handles a missing files.read perm (RESEARCH Pattern 5a).
+  // with a ?session=<id> param, open the session view (WebShareSessionView:
+  // terminal + chat) as the active tab.
   // Effect runs exactly once because mode + webParams are mount-stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (mode === 'web' && webParams.sessionId) {
-      const sid = webParams.sessionId
-      // The WebShareSessionView (terminal + chat) is the primary surface —
-      // open it immediately as the active tab.
-      openWebSessionTab(sid)
-      // Phase 159-03 (WEBCHAT-04) — the file-browser tab is opened in the
-      // BACKGROUND only when the cap actually grants files.read. The cap is
-      // opaque client-side, but GET /api/sessions/{id}/info returns the
-      // server-verified perms (same endpoint ChatPanel uses for read-only
-      // state). Previously the tab was always opened, leaving a guest whose
-      // share lacks file access staring at a dead "files.read permission
-      // required" takeover. Fail-safe: on any error or missing perm, no file tab.
-      const cap = webParams.capToken ?? ''
-      const base = window.location.origin
-      const ctrl = new AbortController()
-      fetch(`${base}/api/sessions/${encodeURIComponent(sid)}/info?cap=${encodeURIComponent(cap)}`, {
-        signal: ctrl.signal,
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((info: { perms?: string } | null) => {
-          const perms = (info?.perms ?? '').split(',').map((s) => s.trim())
-          if (perms.includes('files.read')) {
-            setWebFilesEnabled(true)
-            handleOpenFileBrowser(sid, sid, false)
-          }
-        })
-        .catch(() => {
-          /* fail-safe: do not open a file-browser tab the guest can't use */
-        })
-      return () => ctrl.abort()
+      openWebSessionTab(webParams.sessionId)
     }
   }, [])
 
@@ -1311,55 +1117,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     [remoteCapsCached, setSaveBanner, openWebSessionTab],
   )
 
-  // Phase 122-03 — remote-session file-browse entry point. If the cap is
-  // already cached (D-03), open the file-browser tab immediately. Otherwise
-  // open the join-code modal for the chosen session.
-  const handleBrowseFilesRemote = useCallback(
-    async (sessionId: string, sessionName: string) => {
-      if (remoteCapsCached.has(sessionId)) {
-        handleOpenFileBrowser(sessionId, sessionName)
-        return
-      }
-      let remote = findRemoteSession(sessionId, remotePeers)
-      // WR-02: a peer can drop out of remotePeers between the 30s poll that
-      // populated the panel and the user clicking "Browse files". Rather than
-      // silently no-op'ing (a reachable-looking button that does nothing),
-      // re-poll once to self-heal a transient drop, then surface a banner if
-      // the session is genuinely gone.
-      if (!remote) {
-        try {
-          const peers = (await GetRemoteSessionsWithMeta()) ?? []
-          setRemotePeers(peers)
-          remote = findRemoteSession(sessionId, peers)
-        } catch {
-          /* fall through to the not-available banner below */
-        }
-      }
-      if (!remote) {
-        setSaveBanner({
-          kind: 'error',
-          text: 'Remote session is no longer available — refresh peers and try again.',
-        })
-        return
-      }
-      setJoinModalForSession({
-        id: sessionId,
-        name: sessionName,
-        hostname: remote.hostname,
-      })
-    },
-    [remoteCapsCached, remotePeers, handleOpenFileBrowser, setRemotePeers, setSaveBanner],
-  )
-
   // Phase 122-03 — modal-exchange handler. Two-step: exchange join code for a
   // cap against the REMOTE peer's /join/exchange endpoint, then deposit the
   // cap into the local daemon's RemoteCapStore. On success, mark the session
-  // as cap-cached and open the file-browser tab. The cap token never enters
-  // React state (T-122-03-01).
+  // as cap-cached. The cap token never enters React state (T-122-03-01).
   //
-  // Phase 146 FIX-03 (out-of-band): 'open-session' branch runs BEFORE hub-modal/files.
-  // For open-session: skip RegisterRemoteCap's file-browser path (T-146-04: cap goes
-  // straight into the open URL, not into a stored-then-browsed file session).
+  // Phase 146 FIX-03 (out-of-band): 'open-session' branch runs BEFORE hub-modal.
   //
   // Phase 168-03 (D-17) — the open-session branch now opens the in-app web-session
   // tab (openWebSessionTab) rather than an external browser window.
@@ -1409,15 +1172,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         next.add(pending.id)
         return next
       })
-      // Phase 134 — MODAL-06 intent discriminator: route to hub-modal callback or file browser
+      // Phase 134 — MODAL-06: signal HubPanel to open the modal for the pending session
       if (pending.intent === 'hub-modal') {
-        // Signal HubPanel to open the modal for the pending session
         capAcquiredRef.current?.(pending.id)
-      } else {
-        handleOpenFileBrowser(pending.id, pending.name)
       }
     },
-    [joinModalForSession, remotePeers, handleOpenFileBrowser, openWebSessionTab],
+    [joinModalForSession, remotePeers, openWebSessionTab],
   )
 
   // Phase 131 — open the Hub tab. HUB-02: coexists
@@ -1456,26 +1216,23 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       return
     }
     try {
-      const [port, clis, sessions, running, health] = await Promise.all([
+      const healthSeq = healthEventSeqRef.current
+      const [port, allSessions, running, health] = await Promise.all([
         GetRelayPort(),
-        DetectCLIs(),
         ListSessions(),
         IsWebServerRunning(),
         GetTailscaleStatus(),
       ])
+      // Mirror init: stopped sessions are removed, not restored (TERM-05).
+      const sessions = allSessions.filter((s) => s.state !== 'stopped' && !exitedIdsRef.current.has(s.id))
+      allSessions.filter((s) => s.state === 'stopped').forEach((s) => {
+        KillSession(s.id).catch((err) => console.warn('[App] KillSession of stopped session failed:', err))
+      })
       setRelayPort(port)
-      setDetectedCLIs(clis)
       setWebServerRunning(running)
-      setTailscaleHealth(health)
+      if (healthEventSeqRef.current === healthSeq) setTailscaleHealth(health)
       // Phase 168-05 (UX-02): mirror the mount-time hubSessions seed (see init above).
       setHubSessions(sessions)
-
-      // Phase 101-02 (SHELL-01 GUI half) — re-discover shells on daemon retry.
-      setShellsLoading(true)
-      ListShells()
-        .then((s) => setDetectedShells(s ?? []))
-        .catch(() => setDetectedShells([]))
-        .finally(() => setShellsLoading(false))
 
       // Fetch web server mode for local-network-fallback UI
       GetWebServerMode().then(mode => {
@@ -1485,17 +1242,11 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       if (sessions.length > 0) {
         const restoredTabs: Tab[] = sessions.map((s) => ({
           id: s.id,
-          name: s.name || s.cli,
+          name: s.name || 'shell',
           sessionId: s.id,
-          cli: s.cli,
         }))
         setTabs(restoredTabs)
         setActiveId(restoredTabs[0].id)
-        sessions.forEach((s) => {
-          GetSessionStatus(s.id)
-            .then((st) => setSessionStatuses((prev) => ({ ...prev, [s.id]: st })))
-            .catch(() => {})
-        })
 
         // Seed webEnabled state from daemon's SessionInfo.webEnabled field (SERVE-02 restore).
         if (running) {
@@ -1522,8 +1273,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           rendered inside .banner-stack below. A banner whose own render condition is
           true but whose trigger is missing here will never mount (the whole stack is
           conditionally rendered). Phase 129 DNS-03 regressed exactly this way. */}
-      {((webServerMode === 'local' && !localBannerDismissed) ||
-        (tailscaleHealth?.connected === true && tailscaleHealth?.acceptDns === false) ||
+      {(tailscaleOff ||
         update ||
         ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
         saveBanner !== null ||
@@ -1534,23 +1284,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
               toggle. Phase 168-05 (D-14): the footer no longer toggles directly —
               the equivalent banner (ShellWebShareBanner, same shared warned/
               warningEnabled authority) now lives inside SessionShareModal only. */}
-          {webServerMode === 'local' && !localBannerDismissed && (
-            <LocalNetworkBanner
-              visible={true}
-              tailscaleConnected={!!(tailscaleHealth?.connected && tailscaleHealth?.hasCerts && tailscaleHealth?.ip)}
-              tailscaleInstalled={!!(tailscaleHealth?.installed || detectedCLIs.some(c => c.Name === 'tailscale'))}
-              tailscaleBinaryFound={!!(tailscaleHealth?.binaryFound)}
-              tailscaleDaemonUp={!!(tailscaleHealth?.daemonUp)}
-              platformHint={tailscaleHealth?.platformHint || ''}
-              onOpenURL={BrowserOpenURL}
-              onDismiss={handleDismissLocalBanner}
-              className={localBannerExiting ? 'banner-exit' : undefined}
-            />
-          )}
-          <RemoteBrowseDNSWarning
-            connected={!!(tailscaleHealth?.connected)}
-            acceptDns={tailscaleHealth?.acceptDns}
-          />
+          {tailscaleOff && <TailscaleBanner />}
           {update && (
             <UpdateBanner
               update={update}
@@ -1618,19 +1352,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           onSelect={setActiveId}
           onClose={handleCloseTab}
           onRename={handleRenameTab}
-          sessionStatuses={sessionStatuses}
-          exitCountdowns={
-            Object.fromEntries(
-              Object.entries(sessionExits)
-                .filter(([, e]) => e.exitCode === 0 && !e.cancelled && e.countdown > 0)
-                .map(([id, e]) => [id, e.countdown])
-            )
-          }
           onRequestSave={handleRequestSave}
           tabProgress={tabProgress}
-          onBrowseFiles={handleOpenFileBrowser}
           webMode={mode === 'web'}
-          webFilesEnabled={webFilesEnabled}
           funnelActiveSessions={/* Phase 166 / FUI-03: derived from hubSessions 3s poll; no new interval */
             hubSessions.reduce<Record<string, boolean>>(
               (acc, s) => ({ ...acc, [s.id]: s.funnelActive }),
@@ -1649,7 +1373,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         {activeId === WELCOME_TAB.id && (
           <WelcomeTab />
         )}
-        {/* Phase 131 — Hub surface. Phase 138 — wired with onKill/onOpenInBrowser/onBrowseFiles/remotePeers. */}
+        {/* Phase 131 — Hub surface. Phase 138 — wired with onKill/onOpenInBrowser/remotePeers. */}
         {activeId === HUB_TAB.id && (
           <HubPanel
             sessions={hubSessions}
@@ -1664,8 +1388,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
             pluginConfig={pluginConfig}
             remoteCapsCached={remoteCapsCached}
             onRequestRemoteCap={(s) => {
-              // WR-02: do NOT overwrite an in-flight joinModalForSession (e.g. a file-browse
-              // intent already open for a different session). Preserves the in-flight request
+              // WR-02: do NOT overwrite an in-flight joinModalForSession (e.g. an
+              // open-session intent already open for a different session). Preserves the in-flight request
               // rather than silently redirecting the cap exchange to a different consumer.
               // Fire the cancel ref so HubPanel resets pendingModalSessionId immediately —
               // without this, the card click appears to do nothing and the pending id is
@@ -1679,13 +1403,13 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
             onFontSizeChange={handleFontSizeChange}
             onKill={(id) => void handleCloseTab(id)}
             onOpenInBrowser={handleOpenRemoteSession}
-            onBrowseFiles={handleBrowseFilesRemote}
             remotePeers={remotePeers}
             activeGroupId={activeGroupId}
             groupDefs={groupDefs}
             onDropOnGroup={handleDropOnGroup}
             onGroupCountsChange={handleGroupCountsChange}
             setShareModalSession={setShareModalSession}
+            shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}
           />
         )}
         {/* Phase 155-03 — WebShareSessionView render branch. Activated when
@@ -1741,84 +1465,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           )
         })()}
 
-        {/* Phase 120-04 — per-session FileBrowserTab. Activated when activeId
-            begins with the __files__ prefix; the tab id encodes the sessionId
-            after the prefix so we can resolve which session to browse.
-
-            Phase 120-06 — mode-aware fbBaseURL + capToken selection for the
-            local + web-share paths.
-
-            Phase 122-03 — remote-on-desktop branch: when the sessionId is a
-            REMOTE (tailnet-peer) session, route through the local-daemon
-            proxy at /api/files/remote/{sid}/... (D-02 — no cross-origin
-            browser fetches). The cap lives in the daemon's RemoteCapStore,
-            NOT in React state (T-122-03-01); FilesApiClient sends no cap on
-            the same-origin proxy URL. */}
-        {activeId !== null && activeId.startsWith('__files__') && (() => {
-          const fbSessionId = activeId.slice('__files__'.length)
-          const remote = findRemoteSession(fbSessionId, remotePeers)
-
-          if (remote) {
-            const reopenJoinModal = () => {
-              setRemoteCapsCached((prev) => {
-                const next = new Set(prev)
-                next.delete(fbSessionId)
-                return next
-              })
-              setJoinModalForSession({
-                id: fbSessionId,
-                name: remote.name,
-                hostname: remote.hostname,
-              })
-            }
-            // Defensive guard: if the user landed on the file-browser tab
-            // for a remote session without going through the modal (e.g.
-            // they reloaded after closing the modal), show the takeover so
-            // they can re-enter the join code.
-            if (!remoteCapsCached.has(fbSessionId)) {
-              return <EnableWebSharingTakeover onReenterJoinCode={reopenJoinModal} />
-            }
-            return (
-              <FileBrowserTab
-                sessionId={fbSessionId}
-                sessionName={remote.name}
-                isActive={true}
-                isRemote={true}
-                baseURL={`http://127.0.0.1:${relayPort ?? 0}`}
-                pathPrefix={`/api/files/remote/${fbSessionId}`}
-                onReenterJoinCode={reopenJoinModal}
-              />
-            )
-          }
-
-          // Local-session path: UNCHANGED from Phase 120-06.
-          // Phase 138: use hubSessions (was panelSessions for the deleted Sessions panel).
-          const fbSession = hubSessions.find((s) => s.id === fbSessionId)
-          const fbName =
-            fbSession?.name ||
-            tabs.find((t) => t.id === activeId)?.name?.replace(/ — Files$/, '') ||
-            fbSessionId ||
-            'Session'
-          const isWeb = mode === 'web'
-          const fbBaseURL = isWeb
-            ? window.location.origin
-            : `http://127.0.0.1:${relayPort ?? 0}`
-          const fbCapToken: string | undefined = isWeb
-            ? (webParams.capToken ?? undefined)
-            : undefined
-          return (
-            <FileBrowserTab
-              sessionId={fbSessionId}
-              sessionName={fbName}
-              isActive={true}
-              isRemote={isWeb}
-              baseURL={fbBaseURL}
-              capToken={fbCapToken}
-            />
-          )
-        })()}
         {/* Phase 120-06 — SettingsTab is Wails-bound (calls IsWebServerRunning,
-            HasCTDisclosure, GetCLIPaths, etc. unconditionally on mount). In
+            HasCTDisclosure, GetStartMinimized, etc. unconditionally on mount). In
             web mode none of those RPCs are reachable; rather than gate each
             call inside the component, we skip mounting it entirely. The
             Settings surface has no meaning for a web-share viewer (no daemon
@@ -1826,7 +1474,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         {mode !== 'web' && (
         <div style={{ display: activeId === SETTINGS_TAB.id ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
           <SettingsTab
-            clis={detectedCLIs}
             tailscaleHealth={tailscaleHealth}
             webServerMode={webServerMode}
             selectedTheme={terminalThemeName}
@@ -1911,7 +1558,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         )}
         {relayPort != null && relayPort > 0 &&
           tabs.map((tab) => {
-            if (tab.type === 'welcome' || tab.type === 'settings' || tab.type === 'file-browser' || tab.type === 'hub' || tab.type === 'help' || tab.type === 'web-session') return null
+            if (tab.type === 'welcome' || tab.type === 'settings' || tab.type === 'hub' || tab.type === 'help' || tab.type === 'web-session') return null
             const isActive = tab.id === activeId
             return (
               <div
@@ -1931,17 +1578,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
                   onRegisterSaver={handleRegisterSaver}
                   onProgressChange={handleProgressChange}
                 />
-                {sessionExits[tab.sessionId] && sessionExits[tab.sessionId].exitCode === 0 && !sessionExits[tab.sessionId].cancelled && sessionExits[tab.sessionId].countdown > 0 && (
-                  <ExitCountdownBanner
-                    countdown={sessionExits[tab.sessionId].countdown}
-                    onKeepOpen={() => handleKeepOpen(tab.sessionId)}
-                  />
-                )}
                 <StatusBar
                   sessionId={tab.sessionId}
                   webServerRunning={webServerRunning}
                   webEnabled={!!webEnabled[tab.sessionId]}
                   onShareSession={openShareModalForActiveSession}
+                  shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}
                 />
               </div>
             )
@@ -1979,12 +1621,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       {showNewSessionModal && (
         <NewSessionModal
           isOpen={showNewSessionModal}
-          clis={detectedCLIs}
-          shells={detectedShells}
-          shellsLoading={shellsLoading}
-          onConfirm={(cli, workDir, args) => {
+          onConfirm={(workDir) => {
             setShowNewSessionModal(false)
-            void createTab(cli, workDir, args)
+            void createTab(workDir)
           }}
           onClose={() => setShowNewSessionModal(false)}
         />
@@ -2000,10 +1639,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         />
       )}
 
-      {/* Phase 122-03 — paste-join-code modal for remote-session file browse.
+      {/* Phase 122-03 — paste-join-code modal for remote-session open.
           WR-01: when the intent is 'hub-modal', also invoke capCancelledRef to reset
-          HubPanel's pending state (pendingModalSessionId / pendingSourceRectRef).
-          File-browse intent does not need a reset (no HubPanel pending state). */}
+          HubPanel's pending state (pendingModalSessionId / pendingSourceRectRef). */}
       {joinModalForSession && (
         <RemoteJoinCodeModal
           remoteSession={joinModalForSession}
@@ -2017,11 +1655,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           }}
         />
       )}
-      <ExitToast
-        exits={sessionExits}
-        onKeepOpen={handleKeepOpen}
-        onDismiss={handleDismissExit}
-      />
     </div>
   )
 }

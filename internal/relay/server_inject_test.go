@@ -14,7 +14,7 @@ import (
 )
 
 // writerFunc is a func([]byte)(int,error) adapter that implements io.Writer.
-// Used to build a counting PTY writer for inject tests without an io.Discard sink.
+// Used to build a counting PTY writer without an io.Discard sink.
 type writerFunc func(p []byte) (int, error)
 
 func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
@@ -24,8 +24,8 @@ func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 // the per-write counter. The counting writer increments on every Write call so
 // tests can assert PTY writes were (or were not) performed.
 //
-// A minimal in-memory chatAppendFn is wired on the hub so that BroadcastChat fires
-// (required for TestInject_RWCap_WritesToPTY to observe the MsgChat broadcast).
+// A minimal in-memory chatAppendFn is wired on the hub so that HandleChatSend can
+// persist and BroadcastChat fires.
 // The function fills in missing ChatMessage fields (ID, TimestampMs, SchemaVersion,
 // SessionID) so the frame round-trips as a well-formed ChatMessage.
 func setupInjectTestServer(t *testing.T) (*httptest.Server, *HubManager, string, *atomic.Int32) {
@@ -61,7 +61,7 @@ func setupInjectTestServer(t *testing.T) (*httptest.Server, *HubManager, string,
 		return msg, nil
 	})
 
-	srv := NewServer(manager, nil, nil)
+	srv := NewServer(manager, nil)
 	ts := httptest.NewServer(srv)
 	t.Cleanup(func() {
 		ts.Close()
@@ -108,144 +108,86 @@ func waitForFrameType(t *testing.T, conn *websocket.Conn, msgType byte, label st
 	}
 }
 
-// TestInject_RWCap_WritesToPTY verifies MENTION-02: a RW client sending a
-// MsgSessionInject frame causes the sanitized text to be written to PTY stdin
-// (ptyWriteCount > 0) and a MsgChat broadcast with SessionInject:true is
-// received by the sender (all subscribers observe the broadcast).
-func TestInject_RWCap_WritesToPTY(t *testing.T) {
-	ts, _, sessionID, ptyWriteCount := setupInjectTestServer(t)
+// retiredInjectFrameType is the byte value of the retired chat→PTY inject frame
+// (0x35, CHAT-01). The constant is gone from protocol.go; old clients may still
+// send it, so tests use the raw byte.
+const retiredInjectFrameType byte = 0x35
 
-	// Dial as a RW client (no readonly param).
-	conn := dialInjectWS(t, ts, sessionID, "")
-
-	// Drain the initial MsgMeta and MsgPresence frames before sending inject.
-	// We drain by discarding non-MsgChat frames until the goroutine is stable.
-	// A short sleep is sufficient here — the hub sends presence synchronously on Subscribe.
-	time.Sleep(50 * time.Millisecond)
-
-	const injectText = "run tests"
-	injectPayload, _ := json.Marshal(InjectPayload{Text: injectText})
-	frame := append([]byte{MsgSessionInject}, injectPayload...)
-
+// assertInjectFrameDropped sends a raw 0x35 frame on conn, then a chat-send
+// frame, and asserts: the chat send is persisted and broadcast back (so the
+// socket stayed open and the read pump moved past the 0x35 frame), and the PTY
+// received zero writes. The read pump handles frames in order, so seeing the
+// chat broadcast proves the 0x35 frame was already processed.
+func assertInjectFrameDropped(t *testing.T, conn *websocket.Conn, ptyWriteCount *atomic.Int32) {
+	t.Helper()
 	ctx := context.Background()
-	if err := conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
-		t.Fatalf("write inject frame: %v", err)
+
+	injectFrame := append([]byte{retiredInjectFrameType}, []byte(`{"text":"evil command"}`)...)
+	if err := conn.Write(ctx, websocket.MessageBinary, injectFrame); err != nil {
+		t.Fatalf("write 0x35 frame: %v", err)
 	}
 
-	// Wait for the MsgChat broadcast — all subscribers receive it (including sender).
-	rawChat := waitForFrameType(t, conn, MsgChat, "RW inject chat broadcast")
-
-	// Assert PTY received a write.
-	if ptyWriteCount.Load() == 0 {
-		t.Error("expected PTY write count > 0 after RW inject")
+	chatPayload, _ := json.Marshal(ChatSendPayload{Content: "after inject frame"})
+	if err := conn.Write(ctx, websocket.MessageBinary, append([]byte{MsgChatSend}, chatPayload...)); err != nil {
+		t.Fatalf("write chat-send after 0x35 frame (socket closed?): %v", err)
 	}
 
-	// Decode the MsgChat payload and verify SessionInject:true.
-	_, chatPayload, err := ParseFrame(rawChat)
+	rawChat := waitForFrameType(t, conn, MsgChat, "chat broadcast after 0x35 frame")
+	_, payload, err := ParseFrame(rawChat)
 	if err != nil {
 		t.Fatalf("ParseFrame MsgChat: %v", err)
 	}
 	var msg ChatMessage
-	if err := json.Unmarshal(chatPayload, &msg); err != nil {
+	if err := json.Unmarshal(payload, &msg); err != nil {
 		t.Fatalf("unmarshal ChatMessage: %v", err)
 	}
-	if !msg.SessionInject {
-		t.Errorf("ChatMessage.SessionInject = false, want true")
+	if msg.Content != "after inject frame" {
+		t.Errorf("chat after 0x35: Content = %q, want %q", msg.Content, "after inject frame")
 	}
-	// The persisted content must be the original text (Pitfall 6 / A1/A3).
-	if msg.Content != injectText {
-		t.Errorf("ChatMessage.Content = %q, want %q (original pre-sanitize text)", msg.Content, injectText)
+	if count := ptyWriteCount.Load(); count != 0 {
+		t.Errorf("PTY write count = %d after 0x35 frame + chat send, want 0 (CHAT-01: no chat path reaches the PTY)", count)
 	}
 }
 
-// TestInject_OnlyDedicatedFrame verifies MENTION-03: sending a MsgChatSend frame
-// (0x31 — normal chat send) does NOT trigger any PTY write. Only the dedicated
-// MsgSessionInject verb (0x35) is capable of writing to PTY stdin (D-02).
-func TestInject_OnlyDedicatedFrame(t *testing.T) {
+// TestInjectFrame_RO_RelayPath_NoPTYWrite: a read-only relay client's 0x35
+// frame writes nothing to the PTY and a following chat send still works.
+func TestInjectFrame_RO_RelayPath_NoPTYWrite(t *testing.T) {
+	ts, _, sessionID, ptyWriteCount := setupInjectTestServer(t)
+	conn := dialInjectWS(t, ts, sessionID, "readonly=1")
+	time.Sleep(50 * time.Millisecond)
+	assertInjectFrameDropped(t, conn, ptyWriteCount)
+}
+
+// TestInjectFrame_RW_RelayPath_NoPTYWrite: a read-write relay client's 0x35
+// frame (which used to reach the PTY) now writes nothing and a following chat
+// send still works.
+func TestInjectFrame_RW_RelayPath_NoPTYWrite(t *testing.T) {
+	ts, _, sessionID, ptyWriteCount := setupInjectTestServer(t)
+	conn := dialInjectWS(t, ts, sessionID, "")
+	time.Sleep(50 * time.Millisecond)
+	assertInjectFrameDropped(t, conn, ptyWriteCount)
+}
+
+// TestInjectFrame_ChatSendAndStrayFrame_NoPTYWrite: a chat-send frame and an
+// unknown frame type never write to the PTY.
+func TestInjectFrame_ChatSendAndStrayFrame_NoPTYWrite(t *testing.T) {
 	ts, _, sessionID, ptyWriteCount := setupInjectTestServer(t)
 
 	conn := dialInjectWS(t, ts, sessionID, "")
 	time.Sleep(50 * time.Millisecond)
 
-	// Send a MsgChatSend frame (chat-only, NEVER writes to PTY per D-02).
 	chatSendPayload, _ := json.Marshal(map[string]string{"content": "hello PTY"})
-	chatSendFrame := append([]byte{MsgChatSend}, chatSendPayload...)
 	ctx := context.Background()
-	if err := conn.Write(ctx, websocket.MessageBinary, chatSendFrame); err != nil {
+	if err := conn.Write(ctx, websocket.MessageBinary, append([]byte{MsgChatSend}, chatSendPayload...)); err != nil {
 		t.Fatalf("write MsgChatSend: %v", err)
 	}
-
-	// Also send a stray/unknown frame type to confirm only the inject verb writes.
-	strayFrame := []byte{0x50, 0x01, 0x02, 0x03}
-	if err := conn.Write(ctx, websocket.MessageBinary, strayFrame); err != nil {
+	if err := conn.Write(ctx, websocket.MessageBinary, []byte{0x50, 0x01, 0x02, 0x03}); err != nil {
 		t.Fatalf("write stray frame: %v", err)
 	}
 
-	// Give the server time to process both frames.
-	time.Sleep(100 * time.Millisecond)
-
-	// PTY write count must be exactly zero.
-	if count := ptyWriteCount.Load(); count != 0 {
-		t.Errorf("PTY write count = %d after MsgChatSend/stray frame, want 0 (only MsgSessionInject writes to PTY)", count)
-	}
-}
-
-// TestInject_ROCap_RelayPath verifies SEC-01 (relay path): a read-only client
-// sending a hand-crafted MsgSessionInject frame receives a MsgInjectError NAK
-// and causes zero PTY writes. The gate holds against a raw frame regardless of
-// any client-side suppression.
-func TestInject_ROCap_RelayPath(t *testing.T) {
-	ts, _, sessionID, ptyWriteCount := setupInjectTestServer(t)
-
-	// Dial as a RO client — sub.ReadOnly will be true.
-	roConn := dialInjectWS(t, ts, sessionID, "readonly=1")
-	time.Sleep(50 * time.Millisecond)
-
-	// Send a hand-crafted MsgSessionInject frame directly, bypassing any client-side check.
-	injectPayload, _ := json.Marshal(InjectPayload{Text: "evil command"})
-	frame := append([]byte{MsgSessionInject}, injectPayload...)
-	ctx := context.Background()
-	if err := roConn.Write(ctx, websocket.MessageBinary, frame); err != nil {
-		t.Fatalf("roConn write inject: %v", err)
-	}
-
-	// Must receive a MsgInjectError NAK frame within timeout.
-	nakFrame := waitForFrameType(t, roConn, MsgInjectError, "RO inject NAK")
-	if len(nakFrame) < 2 {
-		t.Fatalf("MsgInjectError frame too short: %v", nakFrame)
-	}
-	if nakFrame[0] != MsgInjectError {
-		t.Errorf("first byte = 0x%02x, want 0x%02x (MsgInjectError)", nakFrame[0], MsgInjectError)
-	}
-
-	// PTY stdin must have received zero bytes — the gate held.
-	if count := ptyWriteCount.Load(); count != 0 {
-		t.Errorf("PTY write count = %d after RO inject attempt, want 0 (SEC-01 gate failed)", count)
-	}
-}
-
-// TestInject_ControlOnlyInput verifies IN-02: a MsgSessionInject frame carrying
-// control-only text (e.g. "\x1b[2J") results in zero PTY writes.
-// SanitizePTYText collapses the escape sequence to "\n"; strings.TrimSpace
-// then returns "" triggering the early-return guard at hub.go:608.
-func TestInject_ControlOnlyInput(t *testing.T) {
-	ts, _, sessionID, ptyWriteCount := setupInjectTestServer(t)
-
-	conn := dialInjectWS(t, ts, sessionID, "")
-	time.Sleep(50 * time.Millisecond)
-
-	// Control-only text: ESC + CSI clear-screen — SanitizePTYText collapses to "\n",
-	// TrimSpace produces "" triggering the IN-02 guard in hub.go:608.
-	injectPayload, _ := json.Marshal(InjectPayload{Text: "\x1b[2J"})
-	frame := append([]byte{MsgSessionInject}, injectPayload...)
-	ctx := context.Background()
-	if err := conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
-		t.Fatalf("write control-only inject frame: %v", err)
-	}
-
 	time.Sleep(100 * time.Millisecond)
 
 	if count := ptyWriteCount.Load(); count != 0 {
-		t.Errorf("PTY write count = %d after control-only inject, want 0 (IN-02 guard failed)", count)
+		t.Errorf("PTY write count = %d after MsgChatSend/stray frame, want 0", count)
 	}
 }

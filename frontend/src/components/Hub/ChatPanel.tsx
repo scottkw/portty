@@ -39,7 +39,6 @@ import {
   ChatBubbleLeftIcon,
   ExclamationCircleIcon,
   PaperAirplaneIcon,
-  CommandLineIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
 
@@ -370,13 +369,6 @@ export function ChatPanel({
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionFilter, setMentionFilter] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
-  const [isHolding, setIsHolding] = useState(false)
-
-  // ── Phase 155 PARITY-01 SC-3: read-only cap suppression (defense-in-depth) ─
-  // Fail-safe default: true. Resolved from server's /info perms on web-share.
-  // Desktop (no capToken) is always writable — set to false immediately.
-  // Server gating is authoritative (HandleChatSend/HandleInject); this is UX only.
-  const [isReadOnly, setIsReadOnly] = useState(true)
 
   // ── Phase 161 ALIAS-UI-01: alias control state ───────────────────────────
   /** Self-identity set from MsgSelf (0x37) frame on WS connect. Used for web pre-fill. */
@@ -404,11 +396,9 @@ export function ChatPanel({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   /** Relay client ref — lets composer handlers send frames (plan 154-06). */
   const clientRef = useRef<RelayClient | null>(null)
-  /** Stable draft ref for the inject timer closure (D-08). */
+  /** Stable draft ref read by the send handlers. */
   const draftRef = useRef('')
   draftRef.current = draft  // inline sync on every render (liveRef pattern)
-  /** Press-and-hold timer ref (D-08). */
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Previous items.length — used to detect new-message arrivals for auto-scroll. */
   const prevItemCountRef = useRef(0)
   /**
@@ -443,30 +433,6 @@ export function ChatPanel({
     } catch { /* storage full or unavailable — silent degradation */ }
   }, [width])
 
-  // ── Phase 155 PARITY-01 SC-3: resolve RO status from server /info ────────
-  // Precedent: web/assets/terminal.js:73-105 — same endpoint/perms logic.
-  // Desktop (no capToken): always RW. Web-share: fetch once on mount.
-  // NEVER JWT-decode client-side — server's /info response is the authority.
-  useEffect(() => {
-    if (!capToken) {
-      // Desktop owner: always writable
-      setIsReadOnly(false)
-      return
-    }
-    // Web-share: resolve from server's /info perms, fail-safe is read-only (default state)
-    const base = apiBaseURL ?? `http://127.0.0.1:${relayPort}`
-    fetch(`${base}/api/sessions/${encodeURIComponent(sessionId)}/info?cap=${encodeURIComponent(capToken)}`)
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then((info: { perms?: string }) => {
-        // Whole-token membership — matches capability.HasPerm semantics (no substring match)
-        const perms = (info?.perms ?? '').split(',').map((s: string) => s.trim())
-        setIsReadOnly(!perms.includes('write'))
-      })
-      .catch(() => {
-        // Any fetch error → leave isReadOnly=true (fail-safe)
-      })
-  }, [sessionId, capToken, apiBaseURL, relayPort])
-
   // ── Clear unread when drawer is open AND window is focused (D-09) ───────
   useEffect(() => {
     if (open && windowFocused) {
@@ -480,15 +446,6 @@ export function ChatPanel({
   useEffect(() => {
     onUnreadChangeRef.current?.(unread.count, unread.hasMention)
   }, [unread])
-
-  // ── Hold timer cleanup on unmount ───────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      if (holdTimerRef.current) {
-        clearTimeout(holdTimerRef.current)
-      }
-    }
-  }, [])
 
   // ── Phase 155: Export URL builder (component-scoped — captures props) ───
   function buildExportURL(): string {
@@ -539,9 +496,6 @@ export function ChatPanel({
         // Phase 161: store self-identity for alias pre-fill on both surfaces
         setSelfIdentity({ personKey, alias })
       },
-      onInjectError: (reason) => {
-        console.debug('[ChatPanel] inject error:', reason)
-      },
       onOpen: () => {
         // WS connected — fetch history AFTER WS opens to avoid gap (Pitfall 5)
         // Phase 155: pass apiBaseURL+capToken so web-share appends ?cap= (Pitfall 2)
@@ -570,9 +524,6 @@ export function ChatPanel({
   }, [sessionId, relayPort, wsURL, apiBaseURL, capToken]) // handleChat is stable (useCallback with no deps)
 
   // ── Composer derived values ─────────────────────────────────────────────
-  /** True when the draft contains "@session" — switches Send → Inject button. */
-  const hasAtSession = draft.includes('@session')
-
   /** Participants filtered by the mention filter string. */
   const filteredParticipants = useMemo(
     () =>
@@ -583,7 +534,7 @@ export function ChatPanel({
         : participants,
     [participants, mentionFilter],
   )
-  const totalOptions = 1 + filteredParticipants.length
+  const totalOptions = filteredParticipants.length
 
   // ── Composer handlers ───────────────────────────────────────────────────
 
@@ -635,7 +586,8 @@ export function ChatPanel({
   }
 
   function handleTextareaKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (mentionOpen) {
+    // The popover only renders when a participant matches, so only then does it own the keys.
+    if (mentionOpen && totalOptions > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         setActiveIndex(i => (i + 1) % totalOptions)
@@ -648,12 +600,8 @@ export function ChatPanel({
       }
       if (e.key === 'Enter') {
         e.preventDefault()
-        if (activeIndex === 0) {
-          handleMentionSelect('@session')
-        } else {
-          const p = filteredParticipants[activeIndex - 1]
-          if (p) handleMentionSelect(`@${p.alias}`)
-        }
+        const p = filteredParticipants[activeIndex]
+        if (p) handleMentionSelect(`@${p.alias}`)
         return
       }
       if (e.key === 'Escape' || e.key === 'Tab') {
@@ -664,9 +612,8 @@ export function ChatPanel({
       }
     }
 
-    // CRITICAL (Pitfall 7 / D-08): Enter ALWAYS routes to chat-send, NEVER to inject.
-    // The inject path is ONLY reachable through the completed 600ms press-and-hold.
-    // Phase 163-02 ROCHAT-01: RO clients can post chat; isReadOnly guard removed here.
+    // Enter sends chat. Every send goes through sendChat; no chat text reaches the PTY (CHAT-01).
+    // Phase 163-02 ROCHAT-01: RO clients can post chat.
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       const text = draftRef.current
@@ -681,7 +628,7 @@ export function ChatPanel({
   }
 
   function handleSend() {
-    // Phase 163-02 ROCHAT-01: RO clients can post chat; isReadOnly guard removed.
+    // Phase 163-02 ROCHAT-01: RO clients can post chat.
     const text = draftRef.current
     if (text.trim()) {
       clientRef.current?.sendChat(text)
@@ -717,8 +664,7 @@ export function ChatPanel({
    * Commit the alias edit: validate via validateAlias (client mirror of Go ValidateAlias),
    * show a client-side error on null, or call sendAliasSet on success.
    *
-   * CRITICAL: NO isReadOnly early-return — the alias control is the D-06 RO exception.
-   * Only handleSend/handleInjectPointerDown remain RO-gated. (RESEARCH Pitfall 1)
+   * No read-only gate — RO clients may set their alias (D-06).
    */
   function handleAliasCommit() {
     const validated = validateAlias(aliasDraft)
@@ -733,7 +679,7 @@ export function ChatPanel({
 
   // ── CHAT-LAYOUT-02: resize drag handle ────────────────────────────────────
   // setPointerCapture routes all subsequent pointer events to the handle even
-  // after the pointer leaves the element (mirrors handleInjectPointerDown pattern).
+  // after the pointer leaves the element.
   // CRITICAL (D-02): these handlers ONLY update drawer width / --chat-panel-width.
   // They NEVER call sendResize and NEVER alter the terminal grid.
 
@@ -752,32 +698,6 @@ export function ChatPanel({
 
   function handleResizePointerUp() {
     resizeDragRef.current = null
-  }
-
-  function handleInjectPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
-    // Phase 155 PARITY-01 SC-3: short-circuit inject gesture when read-only
-    if (isReadOnly) return
-    // setPointerCapture keeps tracking the pointer even after it leaves the button
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* jsdom fallback */ }
-    setIsHolding(true)
-    holdTimerRef.current = setTimeout(() => {
-      holdTimerRef.current = null
-      setIsHolding(false)
-      const text = draftRef.current
-      if (text.trim()) {
-        clientRef.current?.sendSessionInject(text)
-        setDraft('')
-        draftRef.current = ''
-      }
-    }, 600)
-  }
-
-  function resetInjectHold() {
-    if (holdTimerRef.current) {
-      clearTimeout(holdTimerRef.current)
-      holdTimerRef.current = null
-    }
-    setIsHolding(false)
   }
 
   // ── Virtualizer setup ───────────────────────────────────────────────────
@@ -879,7 +799,7 @@ export function ChatPanel({
         <span className="chat-panel__title">Chat</span>
         {/* Phase 161 ALIAS-UI-01: global display-name control.
             Enabled on ALL surfaces (GUI tab, Hub modal, web-share guest).
-            NOT disabled when isReadOnly — D-06 exception: alias set ≠ chat send.
+            Not gated on read-only access (D-06).
             title conveys global scope: "Your global display name across all sessions". */}
         <div
           className="chat-panel__alias"
@@ -1104,49 +1024,23 @@ export function ChatPanel({
             onKeyDown={handleTextareaKeyDown}
             minRows={1}
             maxRows={6}
-            placeholder={
-              hasAtSession
-                ? '@session — hold Send to inject'
-                : 'Message…'
-            }
+            placeholder="Message…"
             aria-label="Type a message"
           />
 
-          {/* Send button (normal) / Inject button (@session in draft) */}
-          {hasAtSession ? (
-            /* CRITICAL (D-08 / Pitfall 7): inject button has NO form association
-               and NO keyboard shortcut. The only path to inject is the completed
-               600ms press-and-hold. Enter always routes to handleTextareaKeyDown
-               → sendChat on a strictly separate code path. */
-            <button
-              type="button"
-              className={`chat-composer__inject-btn${isHolding ? ' chat-composer__inject-btn--holding' : ''}`}
-              aria-label="Hold to inject into terminal"
-              onPointerDown={handleInjectPointerDown}
-              onPointerUp={resetInjectHold}
-              onPointerCancel={resetInjectHold}
-            >
-              <CommandLineIcon className="chat-composer__inject-icon" aria-hidden="true" />
-              <span>Inject</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="chat-composer__send-btn"
-              // Phase 163-02 ROCHAT-01: data-chat-send present so Playwright can query it.
-              // RO clients can now post chat; only inject remains RO-gated.
-              data-chat-send
-              aria-label="Send message"
-              onClick={handleSend}
-              disabled={!draft.trim()}
-            >
-              <PaperAirplaneIcon className="chat-composer__send-icon" aria-hidden="true" />
-              <span>Send</span>
-            </button>
-          )}
+          <button
+            type="button"
+            className="chat-composer__send-btn"
+            // Phase 163-02 ROCHAT-01: data-chat-send present so Playwright can query it.
+            data-chat-send
+            aria-label="Send message"
+            onClick={handleSend}
+            disabled={!draft.trim()}
+          >
+            <PaperAirplaneIcon className="chat-composer__send-icon" aria-hidden="true" />
+            <span>Send</span>
+          </button>
         </div>
-        {/* Phase 163-02 ROCHAT-01: Read-only label removed — RO clients are chat participants.
-            isReadOnly is retained to gate the inject gesture (handleInjectPointerDown). */}
       </div>
     </div>
   )

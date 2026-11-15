@@ -101,23 +101,16 @@ describe('Hub modal animation guard (MODAL-01: reduced-motion compliance)', () =
   })
 })
 
-describe('Hub modal send button (MODAL-04: accent token)', () => {
-  it('.hub-modal__send-btn block contains var(--hub-accent)', () => {
-    const idx = cssRaw.indexOf('.hub-modal__send-btn')
-    expect(idx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', idx)
-    const block = cssRaw.slice(idx, blockEnd)
-    expect(block).toContain('var(--hub-accent)')
-  })
-})
-
-describe('Hub modal tail section (MODAL-04: preview background token)', () => {
-  it('.hub-modal__tail block contains var(--hub-preview-bg)', () => {
-    const idx = cssRaw.indexOf('.hub-modal__tail')
-    expect(idx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', idx)
-    const block = cssRaw.slice(idx, blockEnd)
-    expect(block).toContain('var(--hub-preview-bg)')
+// The briefing view (send button, tail, respond input) and the status/attention
+// header icons were removed with HubBriefingModal (CONTEXT Amendment 2).
+describe('Hub modal has no briefing or status CSS (TERM-05)', () => {
+  it('briefing and status rules are gone', () => {
+    for (const sel of [
+      '.hub-modal__send-btn', '.hub-modal__tail', '.hub-modal__respond', '.hub-modal__body--briefing',
+      '.hub-modal__status-icon', '.hub-modal__attn-icon', '.hub-modal__attn-badge',
+    ]) {
+      expect(cssRaw, sel).not.toContain(sel)
+    }
   })
 })
 
@@ -125,9 +118,7 @@ describe('Hub modal header icons (GAP-134-B: explicit icon sizing — Heroicons 
   // Without explicit width/height the header icons balloon to fill the strip (no Tailwind
   // in this project; w-N/h-N are no-ops). Each header icon class must declare a size.
   const sizedSelectors = [
-    '.hub-modal__status-icon',
     '.hub-modal__origin-icon',
-    '.hub-modal__attn-icon',
     '.hub-modal__close svg',
   ]
   for (const sel of sizedSelectors) {

@@ -43,7 +43,9 @@ vi.mock('./HubModal', () => ({
       | undefined
     return React.createElement(
       'div',
-      { className: 'hub-modal-overlay hub-modal-overlay--open' },
+      // data-remote exposes the routing prop (drives HubModal's header and
+      // TerminalPanel's guest-only session-ended banner).
+      { className: 'hub-modal-overlay hub-modal-overlay--open', 'data-remote': String(props.remote) },
       React.createElement('button', {
         className: 'hub-modal__close',
         type: 'button',
@@ -62,7 +64,6 @@ import { GetSessionStyledTailLines } from '../../wailsjs/go/main/App'
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'sess-1',
-    cli: 'claude',
     name: 'Test Session',
     state: 'running',
     status: 'running',
@@ -70,8 +71,6 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     hostname: '',
     webEnabled: false,
     viewerCount: 0,
-    homeDir: false,
-    browseEnabled: false,
     funnelActive: false,
     funnelWriteActive: false,
     workDir: '/home/user/project',
@@ -79,10 +78,17 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   }
 }
 
+function typeSearch(container: HTMLElement, text: string) {
+  const input = container.querySelector<HTMLInputElement>('.hub-filter__search')!
+  act(() => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, text)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+
 function makeRemoteSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
     id: 'remote-1',
-    cli: 'claude',
     name: 'Remote Session',
     state: 'running',
     status: 'running',
@@ -90,8 +96,6 @@ function makeRemoteSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     hostname: 'remote-host',
     webEnabled: true,
     viewerCount: 0,
-    homeDir: false,
-    browseEnabled: false,
     funnelActive: false,
     funnelWriteActive: false,
     workDir: '',
@@ -113,8 +117,8 @@ function renderPanel(overrides: {
   groupDefs?: HubGroupDef[]
   onDropOnGroup?: (groupId: string, mKey: string) => void
   onGroupCountsChange?: (
-    counts: Record<string, { running: number; total: number; attention: number; waiting: number }>,
-    global: { running: number; total: number; attention: number; waiting: number }
+    counts: Record<string, { total: number }>,
+    global: { total: number }
   ) => void
   // Phase 168-05 (UX-02) — shareModalSession is a controlled prop lifted to App.tsx;
   // HubPanel only calls the setter (the Share modal itself renders in App.tsx now).
@@ -165,7 +169,7 @@ describe('HubPanel', () => {
   it('renders the no-sessions empty state when sessions is empty', () => {
     const { container } = renderPanel({ sessions: [] })
     expect(container.textContent).toContain('No sessions yet')
-    expect(container.textContent).toContain('Create a session to start an AI coding agent.')
+    expect(container.textContent).toContain('Create a session to open a shell.')
   })
 
   it('does not render SessionCardGrid when sessions is empty', () => {
@@ -222,7 +226,7 @@ describe('HubPanel', () => {
 
   // ---- Filter narrows the grid ----
 
-  it('shows all sessions when filter is "all"', () => {
+  it('shows all sessions (legacy idle status included) when search is empty', () => {
     const sessions = [
       makeSession({ id: 's1', status: 'running', state: 'running' }),
       makeSession({ id: 's2', status: 'idle', state: 'running' }),
@@ -230,27 +234,6 @@ describe('HubPanel', () => {
     const { container } = renderPanel({ sessions })
     const listitems = container.querySelectorAll('[role="listitem"]')
     expect(listitems.length).toBe(2)
-  })
-
-  it('filters sessions by status when filter pill is clicked', () => {
-    const sessions = [
-      makeSession({ id: 's1', status: 'running', state: 'running', name: 'Running Session' }),
-      makeSession({ id: 's2', status: 'idle', state: 'running', name: 'Idle Session' }),
-    ]
-    const { container } = renderPanel({ sessions })
-
-    // Click "Idle" filter pill (label "Idle")
-    const pills = container.querySelectorAll('.hub-filter__pill')
-    const idlePill = Array.from(pills).find((p) => p.textContent?.includes('Idle'))
-    expect(idlePill).not.toBeUndefined()
-
-    act(() => {
-      idlePill!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-
-    // Only the idle session should remain
-    const listitems = container.querySelectorAll('[role="listitem"]')
-    expect(listitems.length).toBe(1)
   })
 
   // ---- Search narrows the grid ----
@@ -283,8 +266,8 @@ describe('HubPanel', () => {
 
   it('case-insensitively filters sessions by name', () => {
     const sessions = [
-      makeSession({ id: 's1', name: 'My Unique Task', cli: 'opencode', status: 'running', state: 'running' }),
-      makeSession({ id: 's2', name: 'Other Work', cli: 'gemini', status: 'running', state: 'running' }),
+      makeSession({ id: 's1', name: 'My Unique Task', status: 'running', state: 'running' }),
+      makeSession({ id: 's2', name: 'Other Work', status: 'running', state: 'running' }),
     ]
     const { container } = renderPanel({ sessions })
     const searchInput = container.querySelector<HTMLInputElement>('.hub-filter__search')!
@@ -305,63 +288,30 @@ describe('HubPanel', () => {
 
   // ---- No-matches empty state ----
 
-  it('renders the no-matches empty state when filter narrows to zero results', () => {
-    const sessions = [
-      makeSession({ id: 's1', status: 'running', state: 'running' }),
-    ]
-    const { container } = renderPanel({ sessions })
-
-    // Click "Idle" pill — no idle sessions exist
-    const pills = container.querySelectorAll('.hub-filter__pill')
-    const idlePill = Array.from(pills).find((p) => p.textContent?.includes('Idle'))!
-
-    act(() => {
-      idlePill.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-
-    expect(container.textContent).toContain('No matching sessions')
-  })
-
-  it('does not render the grid when filter yields no matches', () => {
+  it('renders the no-matches empty state when a search matches nothing', () => {
     const sessions = [makeSession({ id: 's1', status: 'running', state: 'running' })]
     const { container } = renderPanel({ sessions })
-
-    const pills = container.querySelectorAll('.hub-filter__pill')
-    const idlePill = Array.from(pills).find((p) => p.textContent?.includes('Idle'))!
-    act(() => {
-      idlePill.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-
-    const groups = container.querySelectorAll('.hub__group')
-    expect(groups.length).toBe(0)
+    typeSearch(container, 'zzz-no-match')
+    expect(container.textContent).toContain('No matching sessions')
+    expect(container.textContent).toContain('Clear the search to see all sessions.')
+    expect(container.querySelectorAll('.hub__group').length).toBe(0)
   })
 
-  it('Clear-filter CTA in no-matches state resets filter and shows the grid again', () => {
+  it('Clear search CTA in no-matches state clears the search and shows the grid again', () => {
     const sessions = [makeSession({ id: 's1', status: 'running', state: 'running' })]
     const { container } = renderPanel({ sessions })
+    typeSearch(container, 'zzz-no-match')
 
-    // 1. Trigger a zero-match filter
-    const pills = container.querySelectorAll('.hub-filter__pill')
-    const idlePill = Array.from(pills).find((p) => p.textContent?.includes('Idle'))!
-    act(() => {
-      idlePill.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-
-    // Confirm no-matches state
-    expect(container.textContent).toContain('No matching sessions')
-
-    // 2. Click "Clear filter"
     const clearBtn = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent === 'Clear filter',
+      (b) => b.textContent === 'Clear search',
     )
     expect(clearBtn).not.toBeUndefined()
     act(() => {
       clearBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
-    // Grid should be visible again
-    const groups = container.querySelectorAll('.hub__group')
-    expect(groups.length).toBeGreaterThanOrEqual(1)
+    expect(container.querySelectorAll('.hub__group').length).toBeGreaterThanOrEqual(1)
+    expect(container.querySelector<HTMLInputElement>('.hub-filter__search')!.value).toBe('')
   })
 
   // ---- "/" shortcut focuses search ----
@@ -591,7 +541,7 @@ describe('HubPanel', () => {
   })
 
   // POL-05 RED: onGroupCountsChange callback is called after mount with per-group+global counts shape
-  it('POL-05 RED: HubPanel calls onGroupCountsChange at least once after mount with {running,total,attention,waiting} shape', async () => {
+  it('POL-05: HubPanel calls onGroupCountsChange after mount with member-only {total} counts', async () => {
     vi.useFakeTimers()
     const onGroupCountsChange = vi.fn()
     const groupDef: HubGroupDef = {
@@ -619,23 +569,17 @@ describe('HubPanel', () => {
 
     // The first call should receive (counts, globalCounts) where globalCounts has the expected shape
     const [countsArg, globalArg] = onGroupCountsChange.mock.calls[0]
-    // counts is a Record<string, {running, total, attention, waiting}>
-    expect(typeof countsArg).toBe('object')
-    // globalCounts must have running, total, attention, waiting keys
-    expect(globalArg).toMatchObject({
-      running: expect.any(Number),
-      total: expect.any(Number),
-      attention: expect.any(Number),
-      waiting: expect.any(Number),
-    })
+    // Membership counts only: no running or attention count (CONTEXT Amendment 2)
+    expect(countsArg).toEqual({ 'grp-1': { total: 1 } })
+    expect(globalArg).toEqual({ total: 1 })
 
     vi.useRealTimers()
   })
 })
 
-// ---- Phase 133: attention live vs debounced behavior (ATTN-02/03/04/05) ----
+// ---- No session status in the Hub (CONTEXT Amendment 2) ----
 
-describe('HubPanel attention (ATTN-02/03/04/05)', () => {
+describe('HubPanel shows no session status', () => {
   afterEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
@@ -643,79 +587,16 @@ describe('HubPanel attention (ATTN-02/03/04/05)', () => {
     vi.useRealTimers()
   })
 
-  it('attention card shows .hub-card--attention immediately (live, not debounced)', async () => {
-    vi.useFakeTimers()
-    // Session starts as waiting (attention)
+  it('errored and non-zero-exit sessions get no attention class and keep their order', () => {
     const sessions = [
-      makeSession({ id: 'attn-sess', name: 'Attn Session', status: 'waiting', state: 'running', workDir: '/proj' }),
+      makeSession({ id: 's1', name: 'Session1', status: 'running', state: 'running', workDir: '/proj' }),
+      makeSession({ id: 's2', name: 'Session2', status: 'errored', state: 'running', workDir: '/proj' }),
+      makeSession({ id: 's3', name: 'Session3', status: 'errored', state: 'stopped', exitCode: 3, workDir: '/proj' }),
     ]
     const { container } = renderPanel({ sessions, isActive: false })
-
-    // Even without advancing timers, the live isAttention prop should be applied immediately
-    const cards = container.querySelectorAll('article.hub-card')
-    expect(cards.length).toBe(1)
-    expect(cards[0].classList.contains('hub-card--attention')).toBe(true)
-  })
-
-  it('ATTN-03/05: session transitioning from waiting to running loses .hub-card--attention with no remount', async () => {
-    vi.useFakeTimers()
-    const sessions = [
-      makeSession({ id: 'sess-clear', name: 'ClearSession', status: 'waiting', state: 'running', workDir: '/proj' }),
-    ]
-    const { container, root } = renderPanel({ sessions, isActive: false })
-
-    // Verify attention is shown initially
-    let card = container.querySelector('article.hub-card')
-    expect(card).not.toBeNull()
-    expect(card!.classList.contains('hub-card--attention')).toBe(true)
-
-    // Re-render with the session now in 'running' state (attention clears)
-    const updatedSessions = [
-      makeSession({ id: 'sess-clear', name: 'ClearSession', status: 'running', state: 'running', workDir: '/proj' }),
-    ]
-    act(() => {
-      root.render(
-        <HubPanel
-          sessions={updatedSessions}
-          error={false}
-          onNewSession={vi.fn()}
-          onRename={vi.fn()}
-          isActive={false}
-          terminalTheme={STUB_THEME}
-        />
-      )
-    })
-
-    // The card should still be present (no remount) but WITHOUT the attention class
-    card = container.querySelector('article.hub-card')
-    expect(card).not.toBeNull()
-    expect(card!.classList.contains('hub-card--attention')).toBe(false)
-  })
-
-  it('debounced sort key settles after ~1000ms (reorder only after debounce)', async () => {
-    vi.useFakeTimers()
-    // Two sessions: first is non-attention, second is attention
-    // After render, attention card should float to top after 1s debounce
-    const sessions = [
-      makeSession({ id: 'non-attn', name: 'NonAttnFirst', status: 'running', state: 'running', workDir: '/proj' }),
-      makeSession({ id: 'attn', name: 'AttnSecond', status: 'waiting', state: 'running', workDir: '/proj' }),
-    ]
-    const { container } = renderPanel({ sessions, isActive: false })
-
-    // Before debounce settles: we should still see both cards (grid is rendered)
-    let cards = container.querySelectorAll('article.hub-card')
-    expect(cards.length).toBe(2)
-
-    // After advancing 1100ms (debounce settles), attention card should be first
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1100)
-    })
-
-    cards = container.querySelectorAll('article.hub-card')
-    expect(cards.length).toBe(2)
-    // The attention card should now be first in DOM order within its group
-    const firstLabel = cards[0].getAttribute('aria-label') ?? ''
-    expect(firstLabel).toContain('AttnSecond')
+    const cards = Array.from(container.querySelectorAll('article.hub-card'))
+    expect(cards.map((c) => (c.getAttribute('aria-label') ?? '').split(',')[0])).toEqual(['Session1', 'Session2', 'Session3'])
+    expect(container.querySelector('.hub-card--attention, .hub-card__attn-icon')).toBeNull()
   })
 
   it('single setInterval invariant: only one interval created (CARD-07 preserved)', async () => {
@@ -733,23 +614,10 @@ describe('HubPanel attention (ATTN-02/03/04/05)', () => {
     })
 
     // Count setInterval calls — must be exactly 1 (the preview poller)
-    // useDebouncedValue uses setTimeout, not setInterval
     const intervalCalls = setIntervalSpy.mock.calls.length
     expect(intervalCalls).toBe(1)
 
     setIntervalSpy.mockRestore()
-  })
-
-  it('needs attention: multiple attention sessions all show hub-card--attention', () => {
-    const sessions = [
-      makeSession({ id: 's1', name: 'Session1', status: 'waiting', state: 'running', workDir: '/proj' }),
-      makeSession({ id: 's2', name: 'Session2', status: 'errored', state: 'running', workDir: '/proj' }),
-      makeSession({ id: 's3', name: 'Session3', status: 'running', state: 'running', workDir: '/proj' }),
-    ]
-    const { container } = renderPanel({ sessions, isActive: false })
-
-    const attentionCards = container.querySelectorAll('article.hub-card--attention')
-    expect(attentionCards.length).toBe(2)
   })
 })
 
@@ -759,7 +627,6 @@ import { filterSessions } from './HubPanel'
 describe('filterSessions', () => {
   const makeS = (overrides: Partial<SessionInfo> = {}): SessionInfo => ({
     id: 's1',
-    cli: 'claude',
     name: 'Test',
     state: 'running',
     status: 'running',
@@ -767,34 +634,25 @@ describe('filterSessions', () => {
     hostname: '',
     webEnabled: false,
     viewerCount: 0,
-    homeDir: false,
-    browseEnabled: false,
     funnelActive: false,
     funnelWriteActive: false,
     workDir: '',
     ...overrides,
   })
 
-  it('returns all sessions when filter is "all" and no search', () => {
+  it('returns all sessions when search is empty', () => {
     const sessions = [makeS({ id: 's1' }), makeS({ id: 's2', status: 'idle' })]
-    expect(filterSessions(sessions, 'all', '')).toHaveLength(2)
-  })
-
-  it('filters by status', () => {
-    const sessions = [makeS({ id: 's1', status: 'running' }), makeS({ id: 's2', status: 'idle' })]
-    const result = filterSessions(sessions, 'idle', '')
-    expect(result).toHaveLength(1)
-    expect(result[0].id).toBe('s2')
+    expect(filterSessions(sessions, '')).toHaveLength(2)
   })
 
   it('filters by search (name)', () => {
     const sessions = [makeS({ id: 's1', name: 'Alpha' }), makeS({ id: 's2', name: 'Beta' })]
-    expect(filterSessions(sessions, 'all', 'alpha')).toHaveLength(1)
+    expect(filterSessions(sessions, 'alpha')).toHaveLength(1)
   })
 
   it('filters by search (hostname)', () => {
     const sessions = [makeS({ id: 's1', hostname: 'server-a' }), makeS({ id: 's2', hostname: '' })]
-    expect(filterSessions(sessions, 'all', 'server-a')).toHaveLength(1)
+    expect(filterSessions(sessions, 'server-a')).toHaveLength(1)
   })
 })
 
@@ -812,7 +670,7 @@ describe('HubPanel MODAL-06 source-inspection (Phase 134)', () => {
     expect(hubPanelRaw).toContain('onRequestRemoteCap')
     // The early return must appear before setModalState in the source
     const returnIdx = hubPanelRaw.indexOf('onRequestRemoteCap?.({')
-    const setModalIdx = hubPanelRaw.indexOf('setModalState({ session, sourceRect: rect })')
+    const setModalIdx = hubPanelRaw.indexOf('setModalState({ session, sourceRect: rect, isRemote })')
     expect(returnIdx).toBeGreaterThan(-1)
     expect(setModalIdx).toBeGreaterThan(-1)
     expect(returnIdx).toBeLessThan(setModalIdx)
@@ -905,6 +763,72 @@ describe('HubPanel FE-ROUTE-01: remote routing gate (behavioral)', () => {
     // The hub-modal-overlay MUST appear (setModalState was called → HubModal rendered)
     const overlay = modalContainer.querySelector('.hub-modal-overlay')
     expect(overlay).not.toBeNull()
+  })
+
+  it('WR-04: the open modal closes when its session leaves the sessions list (shell exited)', () => {
+    const localSession = makeSession({ id: 'loc-exit' })
+    const modalContainer = document.createElement('div')
+    document.body.appendChild(modalContainer)
+    const modalRoot = createRoot(modalContainer)
+    const render = (sessions: SessionInfo[]) =>
+      act(() => {
+        modalRoot.render(
+          React.createElement(HubPanel, {
+            sessions,
+            remoteSessions: [],
+            error: false,
+            onNewSession: vi.fn(),
+            onRename: vi.fn(),
+            isActive: false,
+            terminalTheme: STUB_THEME,
+            relayPort: 51234,
+            remoteCapsCached: new Set<string>(),
+          }),
+        )
+      })
+
+    render([localSession])
+    act(() => {
+      modalContainer.querySelector('article.hub-card')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(modalContainer.querySelector('.hub-modal-overlay')).not.toBeNull()
+
+    render([])
+    expect(modalContainer.querySelector('.hub-modal-overlay')).toBeNull()
+  })
+
+  it('iteration-2 WR-04: an open REMOTE modal survives the remote list emptying (probe failure)', () => {
+    const remoteSession = makeRemoteSession({ id: 'r-blip' })
+    const modalContainer = document.createElement('div')
+    document.body.appendChild(modalContainer)
+    const modalRoot = createRoot(modalContainer)
+    const render = (remoteSessions: SessionInfo[]) =>
+      act(() => {
+        modalRoot.render(
+          React.createElement(HubPanel, {
+            sessions: [],
+            remoteSessions,
+            error: false,
+            onNewSession: vi.fn(),
+            onRename: vi.fn(),
+            isActive: false,
+            terminalTheme: STUB_THEME,
+            relayPort: 51234,
+            remoteCapsCached: new Set<string>(['r-blip']),
+          }),
+        )
+      })
+
+    render([remoteSession])
+    act(() => {
+      modalContainer.querySelector('article.hub-card')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(modalContainer.querySelector('.hub-modal-overlay')?.getAttribute('data-remote')).toBe('true')
+
+    render([])
+    // Iteration-3 WR-01: still open AND still routed as remote (provenance from
+    // open time), so the header stays remote and the session-ended banner applies.
+    expect(modalContainer.querySelector('.hub-modal-overlay')?.getAttribute('data-remote')).toBe('true')
   })
 
   it('FE-ROUTE-01c: local card with a non-empty MACHINE hostname opens the modal (provenance, not hostname)', () => {

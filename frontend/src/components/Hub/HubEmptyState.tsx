@@ -6,14 +6,14 @@ import { PlusIcon } from '@heroicons/react/24/outline'
 export interface HubEmptyStateProps {
   /**
    * 'no-sessions' — the session list is empty; offer to create one.
-   * 'no-matches' — sessions exist but none match the current filter/search;
-   *                offer to clear the filter.
+   * 'no-matches' — sessions exist but none match the current search;
+   *                offer to clear the search.
    */
   variant: 'no-sessions' | 'no-matches'
   /** Fired when the user clicks "New session" (no-sessions variant only). */
   onNewSession?: () => void
-  /** Fired when the user clicks "Clear filter" (no-matches variant only). */
-  onClearFilter?: () => void
+  /** Fired when the user clicks "Clear search" (no-matches variant only). */
+  onClearSearch?: () => void
 }
 
 // ---- Component ----
@@ -22,8 +22,8 @@ export interface HubEmptyStateProps {
  * HubEmptyState — two-variant empty state component for the Hub grid.
  *
  * All copy is from the UI-SPEC Copywriting Contract:
- *   no-sessions: "No sessions yet" / "Create a session to start an AI coding agent." / "New session"
- *   no-matches:  "No matching sessions" / "Clear the filter or search to see all sessions." / "Clear filter"
+ *   no-sessions: "No sessions yet" / "Create a session to open a shell." / "New session"
+ *   no-matches:  "No matching sessions" / "Clear the search to see all sessions." / "Clear search"
  *
  * CSS class names:
  *   .hub__empty-state   — container
@@ -34,13 +34,13 @@ export interface HubEmptyStateProps {
 export function HubEmptyState({
   variant,
   onNewSession,
-  onClearFilter,
+  onClearSearch,
 }: HubEmptyStateProps): React.ReactElement {
   if (variant === 'no-sessions') {
     return (
       <div className="hub__empty-state">
         <h2 className="hub__empty-heading">No sessions yet</h2>
-        <p className="hub__empty-body">Create a session to start an AI coding agent.</p>
+        <p className="hub__empty-body">Create a session to open a shell.</p>
         <button className="hub__empty-cta" onClick={onNewSession} type="button">
           <PlusIcon className="hub__empty-cta-icon" aria-hidden="true" />
           New session
@@ -53,9 +53,9 @@ export function HubEmptyState({
   return (
     <div className="hub__empty-state">
       <h2 className="hub__empty-heading">No matching sessions</h2>
-      <p className="hub__empty-body">Clear the filter or search to see all sessions.</p>
-      <button className="hub__empty-cta" onClick={onClearFilter} type="button">
-        Clear filter
+      <p className="hub__empty-body">Clear the search to see all sessions.</p>
+      <button className="hub__empty-cta" onClick={onClearSearch} type="button">
+        Clear search
       </button>
     </div>
   )

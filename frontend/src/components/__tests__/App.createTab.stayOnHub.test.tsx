@@ -25,7 +25,7 @@ describe('UX-01 (#116): createTab auto-switch gating — source contract', () =>
     expect(raw).toContain('GetStayOnHubAfterCreate')
   })
 
-  it('loads stayOnHubAfterCreate into a ref on mount (same pattern as autoCloseRef)', () => {
+  it('loads stayOnHubAfterCreate into a ref on mount', () => {
     expect(raw).toContain('stayOnHubAfterCreateRef')
     expect(raw).toContain('GetStayOnHubAfterCreate().then(val => { stayOnHubAfterCreateRef.current = val })')
   })

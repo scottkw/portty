@@ -33,14 +33,6 @@ describe('WelcomeTab (BRND-02)', () => {
     expect(raw).toContain('brew tap scottkw/agenthub && brew install --cask agenthub')
   })
 
-  it('includes installation instructions for Linux', () => {
-    expect(raw).toContain('install.sh')
-  })
-
-  it('includes installation instructions for Windows', () => {
-    expect(raw).toContain('winget install scottkw.agenthub')
-  })
-
   it('includes a GitHub link', () => {
     expect(raw).toContain('github.com/scottkw/agenthub')
   })

@@ -1,7 +1,7 @@
 // Phase 139 / CARD-05 — ITheme color-resolution utility.
 //
 // resolveColor maps StyledSpan color values (from the VT cell grid) through
-// the active xterm ITheme. This keeps MiniPreview and HubBriefingModal
+// the active xterm ITheme. This keeps MiniPreview
 // colorblind-safe: colors come from the agent's OWN output, not app-level
 // status encoding. Plan 04.
 

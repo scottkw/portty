@@ -37,9 +37,12 @@ var testSockSeq atomic.Int64
 // and wires the client, simulating what startup() does without the subprocess.
 func testApp(t *testing.T) *App {
 	t.Helper()
-	if goruntime.GOOS == "windows" {
-		t.Skip("testApp uses Unix domain sockets")
-	}
+	return testAppWithSpawn(t, "/bin/cat", nil) // deterministic echo process instead of a login shell
+}
+
+// testAppWithSpawn is testApp with every session spawning path with args.
+func testAppWithSpawn(t *testing.T, path string, args []string) *App {
+	t.Helper()
 	// Isolate config directory so settings.json doesn't leak between tests.
 	if goruntime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
@@ -49,6 +52,7 @@ func testApp(t *testing.T) *App {
 
 	// Start an in-process daemon API for tests (no real subprocess).
 	engine := daemon.NewSessionEngine()
+	engine.SetSpawnCommandForTest(path, args)
 	api := daemon.NewAPI(engine)
 
 	seq := testSockSeq.Add(1)
@@ -86,9 +90,6 @@ func testApp(t *testing.T) *App {
 // web server without a real Tailscale connection.
 func testAppWithDirectWebServer(t *testing.T, tlsCfg *tls.Config) (*App, func(sessionID string) error) {
 	t.Helper()
-	if goruntime.GOOS == "windows" {
-		t.Skip("testAppWithDirectWebServer uses Unix domain sockets")
-	}
 	if goruntime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
 	} else {
@@ -96,6 +97,7 @@ func testAppWithDirectWebServer(t *testing.T, tlsCfg *tls.Config) (*App, func(se
 	}
 
 	engine := daemon.NewSessionEngine()
+	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := daemon.NewAPI(engine)
 
 	seq := testSockSeq.Add(1)
@@ -128,8 +130,8 @@ func testAppWithDirectWebServer(t *testing.T, tlsCfg *tls.Config) (*App, func(se
 		if err != nil {
 			return fmt.Errorf("NewWebServer: %w", err)
 		}
-		ws.SetSessionResolver(func(id string) (string, string, string, string) {
-			return id, "", "", ""
+		ws.SetSessionResolver(func(id string) (string, string, string, bool) {
+			return "", "", "", false
 		})
 		if err := ws.Start(); err != nil {
 			return fmt.Errorf("ws.Start: %w", err)
@@ -157,15 +159,13 @@ func testAppWithDirectWebServer(t *testing.T, tlsCfg *tls.Config) (*App, func(se
 // (e.g. SetWebServerForTest). Phase 165 / T-165-15.
 func testAppWithAPI(t *testing.T) (*App, *daemon.API, *daemon.SessionEngine) {
 	t.Helper()
-	if goruntime.GOOS == "windows" {
-		t.Skip("testAppWithAPI uses Unix domain sockets")
-	}
 	if goruntime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
 	} else {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	}
 	engine := daemon.NewSessionEngine()
+	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := daemon.NewAPI(engine)
 	seq := testSockSeq.Add(1)
 	socketPath := fmt.Sprintf("/tmp/aht%d_%d.sock", os.Getpid(), seq)
@@ -241,7 +241,7 @@ func TestListSessionsEmpty(t *testing.T) {
 
 func TestCreateSession(t *testing.T) {
 	app := testApp(t)
-	id, err := app.CreateSession("cat", "test-tab", "", nil, 0, 0)
+	id, err := app.CreateSession("test-tab", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession returned error: %v", err)
 	}
@@ -264,32 +264,20 @@ func TestCreateSession(t *testing.T) {
 	}
 }
 
-// TestListSessions_PropagatesHomeDirAndFilesWrite is the regression guard for the
-// Phase 137 (updated from Phase 124): propagation test for HomeDir + BrowseEnabled.
-// The daemon's SessionInfo carries HomeDir + BrowseEnabled, and the App.ListSessions
-// binding must propagate both. Phase 124 originally tested FilesWrite; Phase 137
-// replaces the per-session write gate with the per-session browse toggle (D-02/D-07).
-func TestListSessions_PropagatesHomeDirAndBrowseEnabled(t *testing.T) {
+// TestListSessions_PropagatesWorkDir guards the App.ListSessions binding against
+// silently dropping daemon SessionInfo fields (the UAT class of bug that once hit
+// HomeDir/BrowseEnabled, both removed with the file browser). WorkDir drives Hub
+// card grouping (GRID-02).
+func TestListSessions_PropagatesWorkDir(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		t.Skipf("no usable home dir: %v", err)
 	}
 
 	app := testApp(t)
-	// Create a session whose working directory IS the home directory so the
-	// daemon may compute HomeDir=true (sessionCwdIsHome). Whether it actually
-	// resolves to true is env-dependent (symlinked homes, temp HOME on CI), so
-	// the assertions below test PROPAGATION against the daemon's own value
-	// rather than hardcoding true for HomeDir.
-	id, err := app.CreateSession("cat", "home-session", home, nil, 0, 0)
+	id, err := app.CreateSession("home-session", home, 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
-	}
-
-	// Enable the per-session browse toggle so BrowseEnabled=true on the daemon —
-	// this one we control, so we can assert true propagates end-to-end.
-	if err := app.SetSessionBrowse(id, true); err != nil {
-		t.Fatalf("SetSessionBrowse: %v", err)
 	}
 
 	// The daemon's own view (source of truth) for the same session.
@@ -321,27 +309,17 @@ func TestListSessions_PropagatesHomeDirAndBrowseEnabled(t *testing.T) {
 		t.Fatalf("session %q not found in App.ListSessions", id)
 	}
 
-	// The bug: the binding dropped these fields to false. Assert it now mirrors
-	// the daemon's source of truth, env-independently.
-	if got.HomeDir != raw.HomeDir {
-		t.Errorf("ListSessions dropped HomeDir: binding=%v daemon=%v (home-dir banner would never show)", got.HomeDir, raw.HomeDir)
+	if raw.WorkDir == "" {
+		t.Fatal("daemon recorded empty WorkDir for a session created in the home dir")
 	}
-	if got.BrowseEnabled != raw.BrowseEnabled {
-		t.Errorf("ListSessions dropped BrowseEnabled: binding=%v daemon=%v", got.BrowseEnabled, raw.BrowseEnabled)
-	}
-	// BrowseEnabled we forced ON, so it must be true on both sides — proves the
-	// true value survives the binding (not just a false==false coincidence).
-	if !raw.BrowseEnabled {
-		t.Error("daemon did not record BrowseEnabled=true after SetSessionBrowse(true)")
-	}
-	if !got.BrowseEnabled {
-		t.Error("App.ListSessions dropped BrowseEnabled=true (cross-surface browse-state parity broken)")
+	if got.WorkDir != raw.WorkDir {
+		t.Errorf("ListSessions dropped WorkDir: binding=%q daemon=%q", got.WorkDir, raw.WorkDir)
 	}
 }
 
 // TestApp_SetSessionFunnel_NilClient asserts that App.SetSessionFunnel returns
-// the "daemon not connected" error when a.client is nil (mirrors ToggleWebServing /
-// SetSessionBrowse nil-guard). Phase 165 / T-165-14.
+// the "daemon not connected" error when a.client is nil (mirrors ToggleWebServing
+// nil-guard). Phase 165 / T-165-14.
 func TestApp_SetSessionFunnel_NilClient(t *testing.T) {
 	app := &App{} // no client wired
 	err := app.SetSessionFunnel("sess-1", true, 3600)
@@ -361,9 +339,6 @@ func TestApp_SetSessionFunnel_NilClient(t *testing.T) {
 // Uses a real daemon + WebServer with an injected fake funnelClient so
 // App.SetSessionFunnel can succeed without a live tailscaled daemon.
 func TestListSessions_PropagatesFunnelActive(t *testing.T) {
-	if goruntime.GOOS == "windows" {
-		t.Skip("TestListSessions_PropagatesFunnelActive uses Unix domain sockets")
-	}
 	app, api, engine := testAppWithAPI(t)
 
 	// Wire a WebServer with a fake funnel client so EnableFunnel can succeed.
@@ -389,7 +364,7 @@ func TestListSessions_PropagatesFunnelActive(t *testing.T) {
 	api.SetWebServerForTest(ws)
 
 	// Create a session to work with.
-	id, err := app.CreateSession("cat", "funnel-propagation-session", "", nil, 0, 0)
+	id, err := app.CreateSession("funnel-propagation-session", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -492,9 +467,6 @@ func TestSessionInfo_MirrorsDaemonFunnelFields(t *testing.T) {
 // what the frontend consumers (FULL ACCESS badge, tab icon, share-modal
 // resync) receive over the wire.
 func TestListSessions_PropagatesFunnelWriteActive(t *testing.T) {
-	if goruntime.GOOS == "windows" {
-		t.Skip("TestListSessions_PropagatesFunnelWriteActive uses Unix domain sockets")
-	}
 	app, api, engine := testAppWithAPI(t)
 
 	if err := api.BootstrapCapabilityState(); err != nil {
@@ -524,7 +496,7 @@ func TestListSessions_PropagatesFunnelWriteActive(t *testing.T) {
 	t.Cleanup(func() { _ = ws.Stop() })
 	api.SetWebServerForTest(ws)
 
-	id, err := app.CreateSession("cat", "funnel-write-propagation-session", "", nil, 0, 0)
+	id, err := app.CreateSession("funnel-write-propagation-session", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -587,7 +559,7 @@ func TestListSessions_PropagatesFunnelWriteActive(t *testing.T) {
 
 func TestRenameSession(t *testing.T) {
 	app := testApp(t)
-	id, err := app.CreateSession("cat", "original", "", nil, 0, 0)
+	id, err := app.CreateSession("original", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -607,7 +579,7 @@ func TestRenameSession(t *testing.T) {
 
 func TestKillSession(t *testing.T) {
 	app := testApp(t)
-	id, err := app.CreateSession("cat", "kill-me", "", nil, 0, 0)
+	id, err := app.CreateSession("kill-me", "", 0, 0)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -624,41 +596,6 @@ func TestKillSession(t *testing.T) {
 		if s.ID == id {
 			t.Errorf("killed session %q still appears in ListSessions", id)
 		}
-	}
-}
-
-func TestDetectCLIs(t *testing.T) {
-	app := testApp(t)
-	clis := app.DetectCLIs()
-	if clis == nil {
-		t.Fatal("DetectCLIs returned nil, want non-nil slice")
-	}
-}
-
-func TestUpdateCLIPath(t *testing.T) {
-	app := testApp(t)
-
-	// /bin/cat is a guaranteed path on macOS/Linux.
-	if err := app.UpdateCLIPath("claude", "/bin/cat"); err != nil {
-		t.Fatalf("UpdateCLIPath: %v", err)
-	}
-
-	// Now create a session with "claude" — it should resolve to /bin/cat.
-	id, err := app.CreateSession("claude", "custom-path-tab", "", nil, 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession with custom path: %v", err)
-	}
-
-	sessions := app.ListSessions()
-	var found SessionInfo
-	for _, s := range sessions {
-		if s.ID == id {
-			found = s
-			break
-		}
-	}
-	if found.ID == "" {
-		t.Fatal("session not found in ListSessions after CreateSession")
 	}
 }
 
@@ -683,9 +620,9 @@ func TestStartWebServerLocalModeFallback(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	app := testApp(t)
-	// StartWebServer tries Tailscale first; if unavailable, falls back to local
-	// mode which requires a daemon-generated password. In CI (no Tailscale, no
-	// daemon password), a "password" error is expected and correct behavior.
+	// StartWebServer uses Tailscale mode with certs, local mode when connected
+	// without certs, and refuses when Tailscale is not connected (NET-01). In CI
+	// any of these errors is expected and correct behavior.
 	err := app.StartWebServer(0)
 	if err == nil {
 		// Tailscale is connected and server started — clean up.
@@ -695,6 +632,20 @@ func TestStartWebServerLocalModeFallback(t *testing.T) {
 	// Any error is acceptable — Tailscale not found or local mode password
 	// missing are both valid outcomes in a test environment.
 	t.Logf("StartWebServer error (expected in CI): %s", err.Error())
+}
+
+// NET-01 / Amendment 3: a start request while Tailscale is not connected is
+// refused with the NET-01 sentence instead of falling back to LAN mode.
+func TestStartWebServerRefusedWhileTailscaleOff(t *testing.T) {
+	app := testApp(t)
+	app.tailscaleCheckFunc = func(context.Context) webserver.TailscaleHealth { return webserver.TailscaleHealth{} }
+	err := app.StartWebServer(0)
+	if err == nil || err.Error() != "Tailscale isn't connected. Remote access and sharing are off until it is." {
+		t.Fatalf("StartWebServer err = %v, want the NET-01 sentence", err)
+	}
+	if app.IsWebServerRunning() {
+		t.Fatal("web server started while Tailscale was not connected")
+	}
 }
 
 func TestIsWebServerRunning(t *testing.T) {
@@ -777,18 +728,91 @@ func TestGetWebServerQRCode_NoServer(t *testing.T) {
 func TestGetTailscaleStatus(t *testing.T) {
 	app := testApp(t)
 	h := app.GetTailscaleStatus()
-	// On machines without tailscaled, Installed will be false.
+	// On machines without tailscaled, Connected will be false.
 	// On machines with tailscaled, any combination is valid.
 	// The key assertion is that the method doesn't panic and returns a struct.
-	_ = h.Installed
 	_ = h.Connected
 	_ = h.HasCerts
 	_ = h.IP
 	_ = h.Domain
 }
 
+// TestCheckTailscaleHealth_EmitsFirstResultAndChanges: the first result is
+// emitted even when it is the zero value (not connected), an unchanged result
+// is not re-emitted, and every change (connect, disconnect) is emitted (NET-01).
+func TestCheckTailscaleHealth_EmitsFirstResultAndChanges(t *testing.T) {
+	var next webserver.TailscaleHealth
+	var emitted []webserver.TailscaleHealth
+	app := &App{
+		tailscaleCheckFunc: func(context.Context) webserver.TailscaleHealth { return next },
+		emitEventFunc: func(name string, data any) {
+			if name != "tailscale:health" {
+				t.Errorf("unexpected event %q", name)
+			}
+			emitted = append(emitted, data.(webserver.TailscaleHealth))
+		},
+	}
+	connected := webserver.TailscaleHealth{Connected: true, HasCerts: true, IP: "100.64.0.1", Domain: "h.ts.net"}
+
+	steps := []struct {
+		name      string
+		h         webserver.TailscaleHealth
+		wantEmits int
+	}{
+		{"first not-connected result emits", webserver.TailscaleHealth{}, 1},
+		{"identical result does not emit", webserver.TailscaleHealth{}, 1},
+		{"connected emits", connected, 2},
+		{"identical connected does not emit", connected, 2},
+		{"not connected again emits", webserver.TailscaleHealth{}, 3},
+	}
+	for _, st := range steps {
+		next = st.h
+		app.checkTailscaleHealth(context.Background())
+		if len(emitted) != st.wantEmits {
+			t.Fatalf("%s: got %d emits, want %d", st.name, len(emitted), st.wantEmits)
+		}
+		if emitted[len(emitted)-1] != st.h {
+			t.Fatalf("%s: last emit %+v, want %+v", st.name, emitted[len(emitted)-1], st.h)
+		}
+	}
+}
+
+// TestGetTailscaleStatus_SharesPollerState (CR-01): a transient not-connected
+// result from GetTailscaleStatus (focus recheck) is recorded and emitted, so
+// the next connected poll is a change and emits the recovery.
+func TestGetTailscaleStatus_SharesPollerState(t *testing.T) {
+	connected := webserver.TailscaleHealth{Connected: true, HasCerts: true, IP: "100.64.0.1", Domain: "h.ts.net"}
+	next := connected
+	var emitted []webserver.TailscaleHealth
+	app := &App{
+		tailscaleCheckFunc: func(context.Context) webserver.TailscaleHealth { return next },
+		emitEventFunc: func(_ string, data any) {
+			emitted = append(emitted, data.(webserver.TailscaleHealth))
+		},
+	}
+	app.checkTailscaleHealth(context.Background()) // poller: connected
+
+	next = webserver.TailscaleHealth{}
+	if got := app.GetTailscaleStatus(); got.Connected {
+		t.Fatalf("GetTailscaleStatus = %+v, want not connected", got)
+	}
+	next = connected
+	app.checkTailscaleHealth(context.Background()) // poller: recovered
+
+	want := []webserver.TailscaleHealth{connected, {}, connected}
+	if len(emitted) != len(want) {
+		t.Fatalf("emitted %+v, want %+v", emitted, want)
+	}
+	for i := range want {
+		if emitted[i] != want[i] {
+			t.Fatalf("emit %d = %+v, want %+v", i, emitted[i], want[i])
+		}
+	}
+}
+
 func TestHealthPollerStops(t *testing.T) {
 	app := testApp(t)
+	app.tailscaleCheckFunc = func(context.Context) webserver.TailscaleHealth { return webserver.TailscaleHealth{} }
 	ctx, cancel := context.WithCancel(context.Background())
 	app.startHealthPoller(ctx)
 	// Cancel immediately -- the goroutine should exit without blocking.
@@ -797,53 +821,6 @@ func TestHealthPollerStops(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	// If the goroutine leaked, the race detector (run with -race) will catch it
 	// on test cleanup. No explicit assertion needed beyond "no hang, no panic".
-}
-
-func TestGetSessionStatus(t *testing.T) {
-	app := testApp(t)
-
-	id, err := app.CreateSession("cat", "status-test-tab", "", nil, 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-
-	// GetSessionStatus should return a valid non-empty status string.
-	s := app.GetSessionStatus(id)
-	if s == "" {
-		t.Error("GetSessionStatus returned empty string for active session")
-	}
-
-	// Valid status values.
-	valid := map[string]bool{"running": true, "waiting": true, "idle": true, "errored": true}
-	if !valid[s] {
-		t.Errorf("GetSessionStatus returned invalid status %q", s)
-	}
-}
-
-func TestStatusMap(t *testing.T) {
-	app := testApp(t)
-
-	id1, err := app.CreateSession("cat", "tab-1", "", nil, 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession tab-1: %v", err)
-	}
-	id2, err := app.CreateSession("cat", "tab-2", "", nil, 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession tab-2: %v", err)
-	}
-
-	s1 := app.GetSessionStatus(id1)
-	s2 := app.GetSessionStatus(id2)
-
-	if s1 == "" || s2 == "" {
-		t.Errorf("expected non-empty statuses; s1=%q s2=%q", s1, s2)
-	}
-
-	// Unknown session returns "running" default.
-	sUnknown := app.GetSessionStatus("nonexistent-id")
-	if sUnknown != "running" {
-		t.Errorf("unknown session status: got %q, want %q", sUnknown, "running")
-	}
 }
 
 // testAppNoDaemon returns an App with no daemon client — simulates a startup
@@ -882,7 +859,7 @@ func TestNilClientGetRelayPort(t *testing.T) {
 // when the daemon client is nil.
 func TestNilClientCreateSession(t *testing.T) {
 	app := testAppNoDaemon(t)
-	_, err := app.CreateSession("cat", "tab", "", nil, 0, 0)
+	_, err := app.CreateSession("tab", "", 0, 0)
 	if err == nil {
 		t.Error("expected CreateSession to return error with nil client")
 	}
@@ -895,16 +872,6 @@ func TestNilClientKillSession(t *testing.T) {
 	err := app.KillSession("any-id")
 	if err == nil {
 		t.Error("expected KillSession to return error with nil client")
-	}
-}
-
-// TestNilClientGetSessionStatus verifies GetSessionStatus returns "running"
-// (no panic) when the daemon client is nil.
-func TestNilClientGetSessionStatus(t *testing.T) {
-	app := testAppNoDaemon(t)
-	s := app.GetSessionStatus("any-id")
-	if s != "running" {
-		t.Errorf("expected GetSessionStatus to return %q with nil client, got %q", "running", s)
 	}
 }
 
@@ -922,68 +889,6 @@ func TestNilClientGetRemoteSessions(t *testing.T) {
 }
 
 // --- RetryDaemon tests ---
-
-// TestPollSessionStatus_ImmediateFirstCall verifies that pollSessionStatus
-// makes its first HTTP call immediately, without sleeping first. The test
-// creates a session and then checks that GetSessionStatus returns a non-empty
-// status within 200ms — well before the old 2-second sleep would have elapsed.
-func TestPollSessionStatus_ImmediateFirstCall(t *testing.T) {
-	app := testApp(t)
-
-	id, err := app.CreateSession("cat", "poll-test", "", nil, 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-
-	// Start polling in a background goroutine (mirrors production usage).
-	go app.pollSessionStatus(id)
-
-	// Wait 200ms — well under the 2-second sleep that exists in the buggy code.
-	time.Sleep(200 * time.Millisecond)
-
-	// The first HTTP call must have been made by now. GetSessionStatus
-	// independently polls the daemon so it always returns a fresh value; the
-	// important thing is that the session exists and has a valid status, proving
-	// the daemon is reachable and the session was created.
-	s := app.GetSessionStatus(id)
-	if s == "" {
-		t.Error("GetSessionStatus returned empty string within 200ms — first poll may not have fired yet")
-	}
-	valid := map[string]bool{"running": true, "waiting": true, "idle": true, "errored": true}
-	if !valid[s] {
-		t.Errorf("GetSessionStatus returned invalid status %q", s)
-	}
-}
-
-// TestPollSessionStatus_StopsOnHTTPError verifies that pollSessionStatus exits
-// promptly when the daemon is unreachable, rather than blocking until the
-// 300-second deadline expires. The circuit breaker exits after 5 consecutive
-// errors (5 x 500ms sleep = ~2.5s plus dial attempts).
-func TestPollSessionStatus_StopsOnHTTPError(t *testing.T) {
-	// Point the client at a socket path that has no listener — every HTTP call
-	// will fail immediately with "connection refused". This simulates a daemon
-	// that has gone away and exercises the error-circuit-breaker path.
-	seq := testSockSeq.Add(1)
-	deadSocketPath := fmt.Sprintf("/tmp/aht_dead_%d_%d.sock", os.Getpid(), seq)
-	_ = os.Remove(deadSocketPath) // Ensure nothing is listening there.
-
-	client := daemon.NewDaemonClient(deadSocketPath)
-	app := &App{
-		ctx:    context.Background(),
-		client: client,
-	}
-
-	start := time.Now()
-	app.pollSessionStatus("any-session-id")
-	elapsed := time.Since(start)
-
-	// Circuit breaker: 5 consecutive errors x 500ms sleep = ~2.5s plus dial
-	// overhead. Allow 10s headroom. The key assertion is it doesn't loop for
-	// 300 seconds.
-	if elapsed > 10*time.Second {
-		t.Errorf("pollSessionStatus took %v with no daemon — expected < 10s (circuit breaker should exit after 5 consecutive errors)", elapsed)
-	}
-}
 
 // TestRetryDaemonFail verifies RetryDaemon returns a non-nil error, leaves
 // a.client nil, and sets a.daemonErr when the daemon cannot start.
@@ -1007,49 +912,44 @@ func TestRetryDaemonFail(t *testing.T) {
 	}
 }
 
-func TestAutoInstallTailscale(t *testing.T) {
-	app := &App{}
-
-	t.Run("returns error on non-darwin", func(t *testing.T) {
-		// This test validates the method exists and compiles.
-		// On darwin (dev machine), it may not return the non-darwin error,
-		// so we just verify the method signature and basic behavior.
-		err := app.AutoInstallTailscale()
-		// On darwin without ctx, it should either succeed starting or fail gracefully.
-		// The key validation is that the method exists and is callable.
-		_ = err
-	})
-
-	t.Run("findBrew resolves a path on macOS", func(t *testing.T) {
-		path, err := findBrew()
-		if goruntime.GOOS == "darwin" {
-			// On macOS dev machine, brew should be findable
-			if err != nil {
-				t.Skipf("brew not installed: %v", err)
-			}
-			if path == "" {
-				t.Fatal("findBrew returned empty path")
-			}
-			if _, statErr := os.Stat(path); statErr != nil {
-				t.Fatalf("findBrew path does not exist: %s", path)
-			}
-		}
-	})
-}
-
-func TestNotifyThemeChange(t *testing.T) {
-	app := testApp(t)
-	err := app.NotifyThemeChange()
+// TestRetryDaemonSuccess_KeepsClientAndPollers (WR-05): a successful retry
+// while the pollers run must not replace a.client (a data race under -race)
+// or start more pollers.
+func TestRetryDaemonSuccess_KeepsClientAndPollers(t *testing.T) {
+	home, err := os.MkdirTemp("/tmp", "rd") // short: the socket path must fit sun_path
 	if err != nil {
-		t.Errorf("NotifyThemeChange: want nil, got %v", err)
+		t.Fatal(err)
 	}
-}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
 
-func TestNilClientNotifyThemeChange(t *testing.T) {
-	app := testAppNoDaemon(t)
-	err := app.NotifyThemeChange()
-	if err != nil {
-		t.Errorf("NotifyThemeChange with nil client: want nil (no-op), got %v", err)
+	engine := daemon.NewSessionEngine()
+	engine.ConfigDirForTest(t.TempDir())
+	api := daemon.NewAPI(engine)
+	socketPath := daemon.DefaultSocketPath()
+	if err := api.Start(socketPath); err != nil {
+		t.Fatalf("api.Start: %v", err)
+	}
+	if _, err := api.StartRelay(); err != nil {
+		t.Fatalf("StartRelay: %v", err)
+	}
+	t.Cleanup(func() { api.Stop() })
+
+	client := daemon.NewDaemonClient(socketPath)
+	app := &App{client: client}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	app.startExitWatcher(ctx) // reads a.client concurrently with the retry
+
+	if err := app.RetryDaemon(); err != nil {
+		t.Fatalf("RetryDaemon: %v", err)
+	}
+	if app.client != client {
+		t.Fatal("RetryDaemon replaced a.client")
+	}
+	if app.daemonErr != nil {
+		t.Fatalf("daemonErr = %v, want nil", app.daemonErr)
 	}
 }
 
@@ -1104,227 +1004,5 @@ func TestGetRemoteSessionsWithMeta_ReachableField(t *testing.T) {
 	for _, p := range livePeers {
 		// Accessing p.Reachable compiles only if the field exists.
 		_ = p.Reachable
-	}
-}
-
-// -----------------------------------------------------------------------
-// Phase 167 / NTF-01..04 — maybeNotifyWaiting edge-detection trigger.
-//
-// These tests drive maybeNotifyWaiting through the injected
-// sendNotificationFunc seam so no real OS notification fires (per LOCKED
-// decision #8). No daemon/client wiring is needed — maybeNotifyWaiting
-// operates purely on the []SessionInfo slice passed in.
-// -----------------------------------------------------------------------
-
-// notificationCall records a single sendNotificationFunc invocation for
-// assertions in the tests below.
-type notificationCall struct {
-	identifier string
-	title      string
-	body       string
-}
-
-// notifyTestApp returns an App with notifications enabled and a recorder
-// wired in place of the real sendNotificationFunc.
-func notifyTestApp() (*App, *[]notificationCall) {
-	var calls []notificationCall
-	a := &App{
-		sendNotificationFunc: func(identifier, title, body string) {
-			calls = append(calls, notificationCall{identifier, title, body})
-		},
-	}
-	a.notifyOnWaiting.Store(true)
-	return a, &calls
-}
-
-// TestMaybeNotifyWaiting verifies a session going running->waiting between
-// two calls fires exactly one notification, and a session held in waiting
-// across subsequent calls fires nothing more (NTF-02 transition-once).
-func TestMaybeNotifyWaiting(t *testing.T) {
-	a, calls := notifyTestApp()
-
-	// Tick 1: baseline capture (session running) — no notification yet.
-	a.maybeNotifyWaiting([]SessionInfo{{ID: "s1", CLI: "claude", Name: "sess-1", Status: "running"}})
-	if len(*calls) != 0 {
-		t.Fatalf("tick 1 (baseline): expected 0 notifications, got %d", len(*calls))
-	}
-
-	// Tick 2: transition running -> waiting — exactly one notification.
-	a.maybeNotifyWaiting([]SessionInfo{{ID: "s1", CLI: "claude", Name: "sess-1", Status: "waiting"}})
-	if len(*calls) != 1 {
-		t.Fatalf("tick 2 (transition): expected 1 notification, got %d", len(*calls))
-	}
-
-	// Tick 3: still waiting — no additional notification.
-	a.maybeNotifyWaiting([]SessionInfo{{ID: "s1", CLI: "claude", Name: "sess-1", Status: "waiting"}})
-	if len(*calls) != 1 {
-		t.Fatalf("tick 3 (held waiting): expected still 1 notification, got %d", len(*calls))
-	}
-
-	// Tick 4: still waiting again — confirm no unbounded growth.
-	a.maybeNotifyWaiting([]SessionInfo{{ID: "s1", CLI: "claude", Name: "sess-1", Status: "waiting"}})
-	if len(*calls) != 1 {
-		t.Fatalf("tick 4 (held waiting): expected still 1 notification, got %d", len(*calls))
-	}
-}
-
-// TestMaybeNotifyWaiting_FirstTickNoNotify verifies the cold-start baseline:
-// on the very first call, a session already "waiting" fires nothing; a
-// subsequent tick's new transition (a different session) does fire.
-func TestMaybeNotifyWaiting_FirstTickNoNotify(t *testing.T) {
-	a, calls := notifyTestApp()
-
-	// First call ever (lastWaitingStatus nil): s1 already waiting.
-	a.maybeNotifyWaiting([]SessionInfo{{ID: "s1", CLI: "claude", Name: "sess-1", Status: "waiting"}})
-	if len(*calls) != 0 {
-		t.Fatalf("cold-start tick: expected 0 notifications for already-waiting session, got %d", len(*calls))
-	}
-
-	// Second call: s1 stays waiting (no fire), s2 is new and transitions
-	// running -> waiting is not observable in one tick, so introduce it
-	// running first, then waiting on a third tick.
-	a.maybeNotifyWaiting([]SessionInfo{
-		{ID: "s1", CLI: "claude", Name: "sess-1", Status: "waiting"},
-		{ID: "s2", CLI: "codex", Name: "sess-2", Status: "running"},
-	})
-	if len(*calls) != 0 {
-		t.Fatalf("second tick: expected 0 notifications, got %d", len(*calls))
-	}
-
-	// Third tick: s2 transitions running -> waiting — fires.
-	a.maybeNotifyWaiting([]SessionInfo{
-		{ID: "s1", CLI: "claude", Name: "sess-1", Status: "waiting"},
-		{ID: "s2", CLI: "codex", Name: "sess-2", Status: "waiting"},
-	})
-	if len(*calls) != 1 {
-		t.Fatalf("third tick: expected 1 notification (s2 transition), got %d", len(*calls))
-	}
-	if (*calls)[0].identifier != "agenthub.session-waiting.s2" {
-		t.Errorf("expected notification for s2, got identifier %q", (*calls)[0].identifier)
-	}
-}
-
-// TestMaybeNotifyWaiting_BodyFormat verifies the notification body contains
-// the session Name and displayNameForCLI(CLI) (NTF-03).
-func TestMaybeNotifyWaiting_BodyFormat(t *testing.T) {
-	a, calls := notifyTestApp()
-
-	a.maybeNotifyWaiting([]SessionInfo{{ID: "s1", CLI: "claude", Name: "My Session", Status: "running"}})
-	a.maybeNotifyWaiting([]SessionInfo{{ID: "s1", CLI: "claude", Name: "My Session", Status: "waiting"}})
-
-	if len(*calls) != 1 {
-		t.Fatalf("expected 1 notification, got %d", len(*calls))
-	}
-	call := (*calls)[0]
-	if call.title != "AgentHub" {
-		t.Errorf("title = %q, want %q", call.title, "AgentHub")
-	}
-	if !strings.Contains(call.body, "My Session") {
-		t.Errorf("body %q does not contain session name %q", call.body, "My Session")
-	}
-	if !strings.Contains(call.body, "Claude Code") {
-		t.Errorf("body %q does not contain agent display name %q", call.body, "Claude Code")
-	}
-	if call.identifier != "agenthub.session-waiting.s1" {
-		t.Errorf("identifier = %q, want %q", call.identifier, "agenthub.session-waiting.s1")
-	}
-}
-
-// TestMaybeNotifyWaiting_DisabledNoop verifies that with notifyOnWaiting
-// false, no call to sendNotificationFunc occurs regardless of transitions
-// (NTF-04).
-func TestMaybeNotifyWaiting_DisabledNoop(t *testing.T) {
-	a, calls := notifyTestApp()
-	a.notifyOnWaiting.Store(false)
-
-	a.maybeNotifyWaiting([]SessionInfo{{ID: "s1", CLI: "claude", Name: "sess-1", Status: "running"}})
-	a.maybeNotifyWaiting([]SessionInfo{{ID: "s1", CLI: "claude", Name: "sess-1", Status: "waiting"}})
-
-	if len(*calls) != 0 {
-		t.Fatalf("expected 0 notifications with toggle disabled, got %d", len(*calls))
-	}
-}
-
-// TestMaybeNotifyWaiting_Pruning verifies a session absent from the latest
-// slice is dropped from lastWaitingStatus (no unbounded growth).
-func TestMaybeNotifyWaiting_Pruning(t *testing.T) {
-	a, _ := notifyTestApp()
-
-	a.maybeNotifyWaiting([]SessionInfo{
-		{ID: "s1", CLI: "claude", Name: "sess-1", Status: "running"},
-		{ID: "s2", CLI: "codex", Name: "sess-2", Status: "running"},
-	})
-	if len(a.lastWaitingStatus) != 2 {
-		t.Fatalf("after tick 1: expected 2 tracked sessions, got %d", len(a.lastWaitingStatus))
-	}
-
-	// s2 disappears (killed/exited) on tick 2.
-	a.maybeNotifyWaiting([]SessionInfo{
-		{ID: "s1", CLI: "claude", Name: "sess-1", Status: "running"},
-	})
-	if len(a.lastWaitingStatus) != 1 {
-		t.Fatalf("after tick 2: expected 1 tracked session (s2 pruned), got %d", len(a.lastWaitingStatus))
-	}
-	if _, ok := a.lastWaitingStatus["s2"]; ok {
-		t.Error("s2 should have been pruned from lastWaitingStatus")
-	}
-}
-
-// TestDisplayNameForCLI is a table test for the static CLI->display-name
-// mirror of internal/pty/detect.go's knownCLIs table (NTF-03).
-func TestDisplayNameForCLI(t *testing.T) {
-	tests := []struct {
-		cli  string
-		want string
-	}{
-		{"claude", "Claude Code"},
-		{"codex", "OpenAI Codex"},
-		{"gemini", "Gemini CLI"},
-		{"opencode", "OpenCode"},
-		{"agy", "Google Antigravity"},
-		{"bash", "bash"},
-		{"unknown-thing", "unknown-thing"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.cli, func(t *testing.T) {
-			got := displayNameForCLI(tc.cli)
-			if got != tc.want {
-				t.Errorf("displayNameForCLI(%q) = %q, want %q", tc.cli, got, tc.want)
-			}
-		})
-	}
-}
-
-// TestSetNotifyOnWaiting_RequestsAuthorizationWhenEnabled locks in the
-// leading suspected M-41 fix (Phase 167-06 gap closure): enabling the
-// NotifyOnWaiting toggle proactively drives native authorization via the
-// requestNotificationAuthFunc seam, and disabling it does not. This is the
-// load-bearing assertion for the toggle-time behavior; real
-// UNUserNotificationCenter authorization + delivery can only be proven on a
-// signed build (M-41), not under `go test`.
-func TestSetNotifyOnWaiting_RequestsAuthorizationWhenEnabled(t *testing.T) {
-	var calls int
-	a := &App{
-		requestNotificationAuthFunc: func() { calls++ },
-	}
-
-	// Enable: spy called exactly once, cache flips true. Ignore the returned
-	// daemon-not-connected error — the assertion is on the spy + cache.
-	_ = a.SetNotifyOnWaiting(true)
-	if calls != 1 {
-		t.Fatalf("SetNotifyOnWaiting(true): expected requestNotificationAuthFunc called once, got %d", calls)
-	}
-	if !a.notifyOnWaiting.Load() {
-		t.Error("SetNotifyOnWaiting(true): expected notifyOnWaiting cache to be true")
-	}
-
-	// Disable: spy must NOT be called again, cache flips false.
-	calls = 0
-	_ = a.SetNotifyOnWaiting(false)
-	if calls != 0 {
-		t.Fatalf("SetNotifyOnWaiting(false): expected requestNotificationAuthFunc NOT called, got %d calls", calls)
-	}
-	if a.notifyOnWaiting.Load() {
-		t.Error("SetNotifyOnWaiting(false): expected notifyOnWaiting cache to be false")
 	}
 }

@@ -15,7 +15,6 @@ func TestSetPluginSettingsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	e := &SessionEngine{
 		configDir:      dir,
-		cliPaths:       make(map[string]string),
 		pluginSettings: defaultPluginSettings(),
 	}
 
@@ -41,7 +40,6 @@ func TestSetPluginSettingsRoundTrip(t *testing.T) {
 	// configDir must observe the persisted values via loadSettingsFromDisk.
 	e2 := &SessionEngine{
 		configDir: dir,
-		cliPaths:  make(map[string]string),
 	}
 	e2.loadSettingsFromDisk(dir)
 
@@ -60,7 +58,6 @@ func newPluginAPIForTest(t *testing.T, dir string) *API {
 	t.Helper()
 	e := &SessionEngine{
 		configDir:      dir,
-		cliPaths:       make(map[string]string),
 		pluginSettings: defaultPluginSettings(),
 	}
 	a := &API{

@@ -15,10 +15,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/files"
 	"github.com/scottkw/agenthub/internal/relay"
 	webfs "github.com/scottkw/agenthub/web"
 	qrcode "github.com/skip2/go-qrcode"
@@ -53,11 +53,10 @@ type Config struct {
 // Broadcast join-code fields removed per CONTEXT.md D-10.
 // RB-03 restored: cap-free discovery — no credentials in this payload.
 type sessionMetaItem struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	CLIType string `json:"cli_type"`
-	Status  string `json:"status"`
-	URL     string `json:"url"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	URL    string `json:"url"`
 }
 
 // sessionListItem is the JSON shape returned by GET /api/sessions and GET /api/sessions/{id}/info.
@@ -69,7 +68,6 @@ type sessionMetaItem struct {
 type sessionListItem struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	CLIType  string `json:"cli_type"`
 	Status   string `json:"status"`
 	Hostname string `json:"hostname"`
 	Perms    string `json:"perms,omitempty"`
@@ -126,7 +124,7 @@ type WebServer struct {
 	joinCodes *capability.JoinCodeManager
 
 	// sessionResolver is set once before Start() and is not mutex-protected.
-	sessionResolver func(sessionID string) (name, cliType, status, hostname string)
+	sessionResolver func(sessionID string) (name, status, hostname string, ok bool)
 
 	// pluginSettingsProvider returns pre-marshaled JSON for the daemon's
 	// current plugin settings. Set once before Start() via
@@ -135,15 +133,6 @@ type WebServer struct {
 	// Uses func() []byte (not daemon.PluginSettings) to avoid the daemon→
 	// webserver→daemon circular import (see 93-RESEARCH Q1).
 	pluginSettingsProvider func() []byte
-
-	// filesHandler is the *files.Handler injected by the daemon via
-	// SetFilesHandler before ws.Start() runs. Stateless; the same instance
-	// is shared with the daemon-local mux (internal/daemon/api.go::NewAPI).
-	// Read at request time inside the route closure (Pitfall 2 — must NOT
-	// be captured at registration time, since setupRoutes runs BEFORE the
-	// daemon can wire it). Set once before Start(); not mutex-protected
-	// (mirrors sessionResolver pattern, server.go:82-83).
-	filesHandler *files.Handler
 
 	// staticAppFS is the embedded React frontend bundle served under /app/.
 	// Wired from the daemon at web-start sites (api.go AutoStartWebServer +
@@ -158,7 +147,7 @@ type WebServer struct {
 	// split (IN-04) so each route does only the work it serves — the history
 	// route never runs Export() and the export route never marshals history.
 	// Set once before Start() via SetChatHistoryProvider / SetChatExportProvider;
-	// not mutex-protected (mirrors SetSessionResolver / SetFilesHandler).
+	// not mutex-protected (mirrors SetSessionResolver).
 	//
 	// Return contract (WR-03 — distinguish "no store" from "internal error"):
 	//   - err != nil           → internal failure on an existing session; the
@@ -207,9 +196,9 @@ func NewWebServer(cfg Config, manager *relay.HubManager) (*WebServer, error) {
 }
 
 // SetSessionResolver sets the callback used by handleListSessions and
-// handleSessionInfo to resolve session metadata (name, CLI type, status,
-// hostname). Must be called before Start().
-func (ws *WebServer) SetSessionResolver(fn func(string) (string, string, string, string)) {
+// handleSessionInfo to resolve session metadata (name, status, hostname) and
+// whether the session exists (ok). Must be called before Start().
+func (ws *WebServer) SetSessionResolver(fn func(string) (string, string, string, bool)) {
 	ws.sessionResolver = fn
 }
 
@@ -220,21 +209,6 @@ func (ws *WebServer) SetSessionResolver(fn func(string) (string, string, string,
 // daemon. Phase 93 PLUG-04.
 func (ws *WebServer) SetPluginSettingsProvider(fn func() []byte) {
 	ws.pluginSettingsProvider = fn
-}
-
-// SetFilesHandler installs the *files.Handler used to serve the
-// /api/files/{list,stat,read} routes on the webserver mux. Must be
-// called before the first HTTPS request reaches /api/files/* — production
-// callers (AutoStartWebServer, handleWebServerStart) invoke this before
-// Start() to satisfy that contract; tests may invoke it after Start()
-// because the TLS handshake establishes happens-before synchronization
-// before any request handler reads ws.filesHandler. The handler must
-// already be constructed with its sandbox resolver closure (the daemon's
-// NewAPI does this — Phase 119 reuses a.filesHandler verbatim, no new
-// construction). Mirrors SetSessionResolver — single setter, no mutex,
-// set once.
-func (ws *WebServer) SetFilesHandler(h *files.Handler) {
-	ws.filesHandler = h
 }
 
 // SetAliasProviders wires the global AliasStore read/write callbacks into the
@@ -258,13 +232,13 @@ func (ws *WebServer) SetAliasProviders(
 
 // SetStaticAppFS installs the React frontend bundle fs.FS used to serve the
 // /app/ route. Phase 120-04 wires this from the daemon at both web-start
-// sites (mirrors SetFilesHandler). nil → /app/ returns 503; that is the
+// sites. nil → /app/ returns 503; that is the
 // expected state under `go build` (no wailsassets tag → assets_stub.go's
 // nil StaticAppFS). Production builds (`wails build` / `go build -tags
 // wailsassets`) get the real embed.FS.
 //
 // Single setter, set once before Start(). Not mutex-protected — mirrors
-// SetFilesHandler pattern.
+// SetSessionResolver pattern.
 func (ws *WebServer) SetStaticAppFS(appFS fs.FS) {
 	ws.staticAppFS = appFS
 }
@@ -373,7 +347,7 @@ func (ws *WebServer) SetRWGate(sessionID string, active bool) {
 
 // isRWGated reports whether sessionID has passed the public-write consent
 // gate. Read-only; uses the RLock path to avoid blocking concurrent
-// requireCapability/originAllowedForWrite calls against other sessions.
+// requireCapability calls against other sessions.
 func (ws *WebServer) isRWGated(sessionID string) bool {
 	ws.mu.RLock()
 	defer ws.mu.RUnlock()
@@ -880,7 +854,7 @@ func (ws *WebServer) setupRoutes() {
 	mux.HandleFunc("POST /join/exchange", ws.handleJoinExchange)
 
 	// GET /api/sessions/meta — open (no capability required). Returns shareable-session
-	// metadata (id, name, cli_type, status, url) for all web-enabled sessions to
+	// metadata (id, name, status, url) for all web-enabled sessions to
 	// tailnet-trusted callers. Never returns cap tokens, grants, or session content (RB-03).
 	//
 	// Trust model (WR-03 invariant):
@@ -914,53 +888,6 @@ func (ws *WebServer) setupRoutes() {
 	// Closes ROADMAP SC#4 ("no manual page reload for hot-swappable plugins").
 	// Capability-gated like the read endpoint above.
 	mux.HandleFunc("GET /api/plugin-config/stream", ws.requireCapability(ws.handleStreamPluginConfig))
-
-	// Phase 119 / WEB-02..WEB-04: capability-gated read-only file API. The
-	// closure captures ws (not ws.filesHandler) so the handler instance is
-	// read at request time, AFTER the daemon has called SetFilesHandler.
-	// Pitfall 2 — registering ws.filesHandler.List directly would bind nil
-	// at setupRoutes() time. The same closure body is reused for all four
-	// routes via a small helper to avoid four near-identical literal
-	// blocks. Method-prefixed (GET/HEAD) per Go 1.22+ mux semantics — any
-	// other verb returns 405 automatically without registering an
-	// explicit handler (Pitfall 8 / WEB-02 SC#3). HEAD /api/files/read is
-	// registered explicitly even though Go 1.22's ServeMux dispatches HEAD
-	// to the GET handler when no HEAD-specific pattern is registered —
-	// explicit registration documents the FS-06 intent (HEAD must hit
-	// ServeContent for Content-Length without body) and locks the
-	// behavior against any future mux semantics change. The /list and
-	// /stat routes intentionally rely on the GET→HEAD auto-dispatch
-	// because their JSON responses do not need the explicit guard.
-	filesDispatch := func(op func(*files.Handler) http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			h := ws.filesHandler
-			if h == nil {
-				http.Error(w, "files handler not configured", http.StatusServiceUnavailable)
-				return
-			}
-			op(h)(w, r)
-		}
-	}
-	mux.HandleFunc("GET /api/files/list", ws.requireFilesRead(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.List })))
-	mux.HandleFunc("GET /api/files/stat", ws.requireFilesRead(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Stat })))
-	mux.HandleFunc("GET /api/files/read", ws.requireFilesRead(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Read })))
-	mux.HandleFunc("HEAD /api/files/read", ws.requireFilesRead(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Read })))
-
-	// Five write routes: requireFilesWrite (capability + HasPerm(files.write) +
-	// CSRF Origin check) wraps the same filesDispatch closure used for reads.
-	// Verb-prefixed for Go 1.22+ auto-405 on wrong verbs (WEB-02 / CAP-07).
-	// Verbs are frozen by the daemon socket side (internal/daemon/api.go:149-153)
-	// — the webserver tier adds only the requireFilesWrite gate (Phase 124).
-	mux.HandleFunc("PUT /api/files/write", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Write })))
-	// CR-02: HEAD on the write route lets probeWrite (useFilesCapability) reach
-	// the requireFilesWrite middleware so a 403-with-"files.write" is returned
-	// when the cap lacks the perm. Without this, Go's mux returns 405 before
-	// the middleware fires, making the probe fail-open to canWrite=true.
-	mux.HandleFunc("HEAD /api/files/write", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Write })))
-	mux.HandleFunc("POST /api/files/upload", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Upload })))
-	mux.HandleFunc("DELETE /api/files/delete", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Delete })))
-	mux.HandleFunc("POST /api/files/rename", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Rename })))
-	mux.HandleFunc("POST /api/files/mkdir", ws.requireFilesWrite(filesDispatch(func(h *files.Handler) http.HandlerFunc { return h.Mkdir })))
 
 	// Phase 151-03 / PERSIST-01..02: capability-gated chat history and export.
 	// The {id} path wildcard causes requireCapability's path-ID check
@@ -1013,11 +940,10 @@ func (ws *WebServer) setupRoutes() {
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/",
 		assetsNoStore(http.FileServerFS(assetsFS))))
 
-	// Phase 120-04 — /app/ serves the React frontend (FileBrowserTab and the
-	// rest of the SPA) for remote/web-share viewers. The fs.FS is wired from
+	// Phase 120-04 — /app/ serves the React frontend SPA for remote/web-share viewers. The fs.FS is wired from
 	// the daemon at web-start time via SetStaticAppFS; the closure reads
 	// ws.staticAppFS at request time so a missing wiring surfaces as a 503
-	// instead of a nil-deref panic (mirrors filesHandler pattern). Public
+	// instead of a nil-deref panic. Public
 	// tier: no capability gate here — the React bundle is static client code,
 	// and any /api/ call it makes is independently gated.
 	//
@@ -1210,15 +1136,15 @@ func (ws *WebServer) handleListSessions(w http.ResponseWriter, r *http.Request) 
 	}
 	items := make([]sessionListItem, 0, 1)
 	if ws.IsSessionEnabled(claims.SID) {
-		name, cliType, st, hostname := "", "", "", ""
+		name, st, hostname := "", "", ""
 		if ws.sessionResolver != nil {
-			name, cliType, st, hostname = ws.sessionResolver(claims.SID)
+			name, st, hostname, _ = ws.sessionResolver(claims.SID)
 		}
 		if name == "" {
 			name = claims.SID
 		}
 		items = append(items, sessionListItem{
-			ID: claims.SID, Name: name, CLIType: cliType, Status: st, Hostname: hostname,
+			ID: claims.SID, Name: name, Status: st, Hostname: hostname,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1229,7 +1155,7 @@ func (ws *WebServer) handleListSessions(w http.ResponseWriter, r *http.Request) 
 // Returns metadata for all web-enabled sessions to tailnet-trusted callers.
 // Open — no capability required. Trust boundary: the webserver is bound to the
 // Tailscale IP (network-layer trust per resolved #86 decision). This endpoint
-// returns ONLY metadata (id, name, cli_type, status, url) — never cap tokens,
+// returns ONLY metadata (id, name, status, url) — never cap tokens,
 // grants, session content, or signing keys (RB-03 no-enumeration contract).
 // handleSessionsMeta handles GET /api/sessions/meta.
 // Returns cap-free metadata for all web-enabled sessions (RB-03 restored).
@@ -1239,20 +1165,19 @@ func (ws *WebServer) handleSessionsMeta(w http.ResponseWriter, r *http.Request) 
 	ids := ws.webEnabledSessions()
 	items := make([]sessionMetaItem, 0, len(ids))
 	for _, id := range ids {
-		name, cliType, st := "", "", ""
+		name, st := "", ""
 		if ws.sessionResolver != nil {
-			name, cliType, st, _ = ws.sessionResolver(id)
+			name, st, _, _ = ws.sessionResolver(id)
 		}
 		if name == "" {
 			name = id
 		}
 		sessionURL := fmt.Sprintf("%s/sessions/%s", ws.BaseURL(), id)
 		items = append(items, sessionMetaItem{
-			ID:      id,
-			Name:    name,
-			CLIType: cliType,
-			Status:  st,
-			URL:     sessionURL,
+			ID:     id,
+			Name:   name,
+			Status: st,
+			URL:    sessionURL,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1281,8 +1206,8 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	name, cliType, status, hostname := ws.sessionResolver(id)
-	if name == id && cliType == "" {
+	name, status, hostname, found := ws.sessionResolver(id)
+	if !found {
 		http.NotFound(w, r)
 		return
 	}
@@ -1290,7 +1215,6 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(sessionListItem{
 		ID:       id,
 		Name:     name,
-		CLIType:  cliType,
 		Status:   status,
 		Hostname: hostname,
 		Perms:    claims.Perms,
@@ -1359,12 +1283,12 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	// ?readonly=1 to the URL.
 	//
 	// SEC-01: gate on the whole "write" token, NOT an exact-string match.
-	// When per-session file browsing is ON (D-04) the daemon mints the RO
-	// token as "read,files.read" — an exact `== "read"` check would treat
-	// that read-only viewer as read-write and let them inject to the PTY
-	// (and send raw MsgInput keystrokes). HasPerm uses whole-token semantics,
-	// so both "read" and "read,files.read" are read-only while "read,write"
-	// (and "read,write,files.read,files.write") are not.
+	// The daemon now mints only "read" / "read,write", but tokens minted
+	// before the file browser was removed may still carry legacy files perms
+	// (e.g. "read,files.read") — an exact `== "read"` check would treat that
+	// read-only viewer as read-write and let them inject to the PTY. HasPerm
+	// uses whole-token semantics, so both "read" and "read,files.read" are
+	// read-only while "read,write" is not.
 	claims, _ := capability.ClaimsFromContext(r.Context())
 	readonly := !capability.HasPerm(claims.Perms, "write")
 
@@ -1573,8 +1497,8 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 			case relay.MsgChatSend:
 				// Phase 154 / CHAT-01 / D-06 (Phase 163): wire the MsgChatSend (0x31) dispatch.
 				// Per D-06, RO clients are full chat participants and may post chat messages;
-				// only MsgInput (PTY keystrokes) and MsgSessionInject (@session) remain RO-gated.
-				// Chat send NEVER writes to PTY stdin — only MsgSessionInject (0x35) does.
+				// only MsgInput (PTY keystrokes) remains RO-gated. Chat send NEVER writes to
+				// PTY stdin. 0x35 (the retired inject frame) has no case here and is dropped.
 				// Content sanitization lives inside hub.HandleChatSend (T-154-02 / D-02).
 				// sub.ReadOnly is derived from the signed JWT HasPerm("write") check (cannot be
 				// bypassed by URL params — D-24/SEC-04). On HandleChatSend error, log server-side
@@ -1586,30 +1510,6 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 				}
 				if err := hub.HandleChatSend(sub, cp.Content); err != nil {
 					slog.Warn("webserver: chat send rejected", "err", err)
-				}
-			case relay.MsgSessionInject:
-				// Phase 153 / SEC-01: RW cap required to inject text into PTY stdin.
-				// The gate is server-side in hub.HandleInject — must hold against a
-				// hand-crafted WS frame regardless of any client-side suppression (D-04).
-				// sub.ReadOnly here is derived from the signed JWT via the whole-token
-				// HasPerm "write" check (set at line ~1008) and cannot be bypassed by
-				// URL params (D-24/SEC-04) or by a "read,files.read" RO token (SEC-01).
-				// NOTE: MsgChatSend (0x31) is chat-only and NEVER writes to PTY (D-02).
-				var ip relay.InjectPayload
-				if json.Unmarshal(payload, &ip) != nil || ip.Text == "" {
-					continue // malformed or empty frame: ignore silently (same as MsgTyping/MsgAliasSet)
-				}
-				if err := hub.HandleInject(sub, ip.Text); err != nil {
-					// IN-01: never forward the raw internal error to the remote
-					// web client — a PTY write failure would leak plumbing detail
-					// (e.g. "io: read/write on closed pipe"). Log the detail
-					// server-side and NAK with a stable, user-facing reason.
-					slog.Warn("webserver: inject rejected", "err", err)
-					select {
-					case sub.Msgs <- relay.MakeInjectErrorFrame(relay.InjectErrorReason(err)):
-					default:
-						go sub.CloseSlow()
-					}
 				}
 			}
 		}
@@ -1651,6 +1551,12 @@ func assetsNoStore(next http.Handler) http.Handler {
 		// Block directory listing: any request whose (already-stripped) path
 		// is empty or ends with "/" is a directory index request — return 404.
 		if r.URL.Path == "" || r.URL.Path == "/" || len(r.URL.Path) > 0 && r.URL.Path[len(r.URL.Path)-1] == '/' {
+			http.NotFound(w, r)
+			return
+		}
+		// fs.Sub rejects non-UTF-8 names with fs.ErrInvalid, which FileServerFS
+		// turns into a 500; a client-supplied bad path is a 404 (found by FuzzWebServerRoutes).
+		if !utf8.ValidString(r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}

@@ -9,15 +9,12 @@ import {
   MSG_ALIAS_SET,
   MSG_CHAT,
   MSG_CHAT_SEND,
-  MSG_SESSION_INJECT,
-  MSG_INJECT_ERROR,
   MSG_SELF,
   encodeInputFrame,
   encodeResizeFrame,
   encodeTypingFrame,
   encodeAliasSetFrame,
   encodeChatSendFrame,
-  encodeSessionInjectFrame,
   parseServerFrame,
   RelayClient,
   type ChatMessage,
@@ -303,8 +300,6 @@ describe('RelayClient URL construction', () => {
 describe('Phase 154 constants', () => {
   it('MSG_CHAT is 0x30', () => { expect(MSG_CHAT).toBe(0x30) })
   it('MSG_CHAT_SEND is 0x31', () => { expect(MSG_CHAT_SEND).toBe(0x31) })
-  it('MSG_SESSION_INJECT is 0x35', () => { expect(MSG_SESSION_INJECT).toBe(0x35) })
-  it('MSG_INJECT_ERROR is 0x36', () => { expect(MSG_INJECT_ERROR).toBe(0x36) })
 })
 
 describe('encodeChatSendFrame (Phase 154 behavior)', () => {
@@ -317,19 +312,6 @@ describe('encodeChatSendFrame (Phase 154 behavior)', () => {
     const frame = encodeChatSendFrame('hi')
     const body = new TextDecoder().decode(frame.slice(1))
     expect(JSON.parse(body)).toEqual({ content: 'hi' })
-  })
-})
-
-describe('encodeSessionInjectFrame (Phase 154 behavior)', () => {
-  it('byte[0] === MSG_SESSION_INJECT (0x35)', () => {
-    const frame = encodeSessionInjectFrame('run')
-    expect(frame[0]).toBe(0x35)
-  })
-
-  it('remaining bytes JSON-decode to { text: "run" }', () => {
-    const frame = encodeSessionInjectFrame('run')
-    const body = new TextDecoder().decode(frame.slice(1))
-    expect(JSON.parse(body)).toEqual({ text: 'run' })
   })
 })
 
@@ -352,7 +334,7 @@ function buildChatFrame(msg: Partial<ChatMessage>): Uint8Array {
   return frame
 }
 
-describe('parseServerFrame — Phase 154 chat/inject_error behaviors', () => {
+describe('parseServerFrame — Phase 154 chat behaviors', () => {
   // Behavior 3: MSG_CHAT (0x30) decodes and exposes message.alias (proves alias not authorAlias)
   it('decodes 0x30 frame → { type:"chat", message } with message.alias populated', () => {
     const frame = buildChatFrame({ alias: 'Bob', content: 'hey there' })
@@ -375,19 +357,13 @@ describe('parseServerFrame — Phase 154 chat/inject_error behaviors', () => {
     expect(result.type).toBe('unknown')
   })
 
-  // Behavior 5: MSG_INJECT_ERROR (0x36) → { type:'inject_error', reason }
-  it('decodes 0x36 frame → { type:"inject_error", reason }', () => {
-    const json = JSON.stringify({ reason: 'read only' })
-    const encoded = new TextEncoder().encode(json)
+  // Behavior 5: 0x36 (the retired inject NAK, CHAT-01) is no longer decoded
+  it('returns { type:"unknown" } for a retired 0x36 frame', () => {
+    const encoded = new TextEncoder().encode(JSON.stringify({ reason: 'read only' }))
     const frame = new Uint8Array(1 + encoded.length)
-    frame[0] = MSG_INJECT_ERROR
+    frame[0] = 0x36
     frame.set(encoded, 1)
-
-    const result = parseServerFrame(frame)
-    expect(result.type).toBe('inject_error')
-    if (result.type === 'inject_error') {
-      expect(result.reason).toBe('read only')
-    }
+    expect(parseServerFrame(frame).type).toBe('unknown')
   })
 })
 

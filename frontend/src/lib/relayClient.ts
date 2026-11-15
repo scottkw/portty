@@ -11,8 +11,7 @@ export const MSG_CHAT_SEND       = 0x31  // client → server: post chat message
 export const MSG_PRESENCE        = 0x32  // server → client: full presence roster (JSON PresencePayload)
 export const MSG_TYPING          = 0x33  // bidirectional: typing-start/stop (JSON TypingPayload)
 export const MSG_ALIAS_SET       = 0x34  // client → server: set/update alias (JSON AliasPayload)
-export const MSG_SESSION_INJECT  = 0x35  // client → server: inject text into PTY
-export const MSG_INJECT_ERROR    = 0x36  // server → client: inject rejected (SEC-01 or oversize)
+// 0x35/0x36 are RETIRED (the old chat→PTY inject frame and its NAK, CHAT-01). Never reuse them.
 export const MSG_SELF            = 0x37  // server → client: own identity on WS connect (Phase 161)
 
 // PresenceEntry describes one participant in the presence roster.
@@ -35,7 +34,6 @@ export interface ChatMessage {
   alias: string         // json:"alias" in Go (NOT authorAlias)
   content: string
   mentions?: string[]   // AuthorIDs of mentioned participants; omitted when empty
-  sessionInject?: boolean
   ts: number            // UNIX milliseconds
 }
 
@@ -46,7 +44,6 @@ export type ServerFrame =
   | { type: 'presence'; participants: PresenceEntry[] }
   | { type: 'typing'; personKey: string; alias: string; typing: boolean }
   | { type: 'chat'; message: ChatMessage }
-  | { type: 'inject_error'; reason: string }
   | { type: 'self'; personKey: string; alias: string }
   | { type: 'unknown' }
 
@@ -114,18 +111,6 @@ export function encodeChatSendFrame(content: string): Uint8Array {
 }
 
 /**
- * Encode a session inject request for the server.
- * Format: [MSG_SESSION_INJECT, ...UTF-8 bytes of JSON {text}]
- */
-export function encodeSessionInjectFrame(text: string): Uint8Array {
-  const encoded = new TextEncoder().encode(JSON.stringify({ text }))
-  const frame = new Uint8Array(1 + encoded.length)
-  frame[0] = MSG_SESSION_INJECT
-  frame.set(encoded, 1)
-  return frame
-}
-
-/**
  * Parse a server-sent binary frame into a typed union.
  */
 export function parseServerFrame(data: Uint8Array): ServerFrame {
@@ -176,16 +161,6 @@ export function parseServerFrame(data: Uint8Array): ServerFrame {
       }
     }
 
-    case MSG_INJECT_ERROR: {
-      try {
-        const json = new TextDecoder().decode(data.slice(1))
-        const parsed = JSON.parse(json) as { reason: string }
-        return { type: 'inject_error', reason: parsed.reason }
-      } catch {
-        return { type: 'unknown' }
-      }
-    }
-
     case MSG_SELF: {
       try {
         const json = new TextDecoder().decode(data.slice(1))
@@ -217,7 +192,6 @@ export interface RelayClientCallbacks {
   onPresence?: (participants: PresenceEntry[]) => void
   onTyping?: (personKey: string, alias: string, typing: boolean) => void
   onChat?: (message: ChatMessage) => void
-  onInjectError?: (reason: string) => void
   /**
    * Phase 157 VIEW-04: called when the server pushes a 0x02 MsgResize frame.
    * Guest viewers (remote || wsURL) use this to honor the host-authority grid.
@@ -285,9 +259,6 @@ export class RelayClient {
         case 'chat':
           this.callbacks.onChat?.(frame.message)
           break
-        case 'inject_error':
-          this.callbacks.onInjectError?.(frame.reason)
-          break
         case 'resize':
           // VIEW-04 (Phase 157): the server is the host-authority for the PTY grid.
           // Guest viewers (remote || wsURL) pass onResize to honor the server-pushed
@@ -337,13 +308,6 @@ export class RelayClient {
   sendAliasSet(alias: string): void {
     if (this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(encodeAliasSetFrame(alias))
-    }
-  }
-
-  /** Inject text into the PTY via the relay. */
-  sendSessionInject(text: string): void {
-    if (this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(encodeSessionInjectFrame(text))
     }
   }
 

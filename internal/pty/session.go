@@ -27,7 +27,7 @@ type Session struct {
 	// ID is the unique identifier for this session.
 	ID string
 
-	// CLI is the name of the CLI binary that was launched (e.g. "claude").
+	// CLI is the path of the binary that was launched (e.g. "/bin/zsh").
 	CLI string
 
 	// State is the current lifecycle state of the session.
@@ -44,10 +44,6 @@ type Session struct {
 
 	// cancel stops the context that was used to start the process.
 	cancel context.CancelFunc
-
-	// job holds a platform-specific cleanup handle (Windows: *jobObject, POSIX: nil).
-	// Stored as any to avoid build-tag spread across files.
-	job any
 
 	// mu protects concurrent access to mutable fields (State, pty, killed).
 	mu sync.Mutex

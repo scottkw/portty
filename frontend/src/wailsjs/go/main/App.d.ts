@@ -5,7 +5,6 @@ import { daemon } from '../models'
 
 export interface SessionInfo {
   id: string
-  cli: string
   name: string
   state: string
   status: string
@@ -15,10 +14,6 @@ export interface SessionInfo {
   viewerCount: number
   exitCode?: number
   duration?: number
-  /** Phase 124 / CAP-06: true when the session cwd equals EvalSymlinks($HOME). Server-side source of truth for the home-dir write warning on both GUI and TUI. */
-  homeDir: boolean
-  /** Phase 137 / SHARE-03: true when the per-session browse toggle is ON. Server-side source of truth (replaces filesWrite — D-07). */
-  browseEnabled: boolean
   /** Phase 165 / FNL-01: true when Tailscale Funnel is active. NOT omitempty — false must serialize. */
   funnelActive: boolean
   /** Phase 131 / GRID-02: EvalSymlinks-resolved session working directory. Used by the Hub to group session cards by working directory. */
@@ -27,29 +22,17 @@ export interface SessionInfo {
   funnelWriteActive: boolean
 }
 
-export interface DetectedCLI {
-  Name: string
-  Path: string
-}
-
-export function CreateSession(cli: string, name: string, workDir: string, args: string[], cols: number, rows: number): Promise<string>
+export function CreateSession(name: string, workDir: string, cols: number, rows: number): Promise<string>
 export function ListSessions(): Promise<SessionInfo[]>
 export function RenameSession(id: string, name: string): Promise<void>
 export function KillSession(id: string): Promise<void>
-export function DetectCLIs(): Promise<DetectedCLI[]>
-// Phase 101-01 prerequisite — shell discovery via daemon /shells route.
-export function ListShells(): Promise<daemon.DetectedShell[]>
 // Phase 101-01 — persisted "user has been warned about shell web-share" flag.
 export function GetShellWebShareWarned(): Promise<boolean>
 export function SetShellWebShareWarned(v: boolean): Promise<void>
 // Phase 150 SET-01 — warning-enabled master switch (default ON).
 export function GetShellWebShareWarningEnabled(): Promise<boolean>
 export function SetShellWebShareWarningEnabled(v: boolean): Promise<void>
-// Phase 107-01 SHELL-11 — persisted shell binary path setting.
-export function GetShellPath(): Promise<string>
-export function SetShellPath(v: string): Promise<void>
 export function GetRelayPort(): Promise<number>
-export function UpdateCLIPath(name: string, path: string): Promise<void>
 
 // Web serving bound methods
 export function StartWebServer(port: number): Promise<void>
@@ -67,7 +50,6 @@ export function AcknowledgeCTDisclosure(): Promise<void>
 // QR code and status bound methods
 export function GetSessionQRCode(sessionID: string): Promise<string>
 export function GetWebServerQRCode(): Promise<string>
-export function GetSessionStatus(sessionID: string): Promise<string>
 // Phase 132 / CARD-07 — throttled tail snapshot for Hub mini-preview. n clamped to [1..20].
 export function GetSessionTailLines(id: string, n: number): Promise<string[]>
 // Phase 139 / CARD-05 — VT-emulator styled tail: per-cell color+bold grid. n clamped to [1..20].
@@ -79,9 +61,6 @@ export function RetryDaemon(): Promise<void>
 
 // Directory dialog bound method
 export function OpenDirectoryDialog(defaultDir: string): Promise<string>
-
-// File dialog bound method (SET-04)
-export function OpenFileDialog(defaultDir: string): Promise<string>
 
 // Version bound method
 export function GetVersion(): Promise<string>
@@ -100,21 +79,17 @@ export function CheckForUpdates(): Promise<{
 
 // Tailscale health bound method
 export function GetTailscaleStatus(): Promise<{
-  installed: boolean
   connected: boolean
   hasCerts: boolean
   ip: string
   domain: string
-  binaryFound: boolean
-  daemonUp: boolean
-  platformHint: string
+  acceptDns: boolean
 }>
 
 // Remote sessions bound method
 export interface RemoteSession {
   id: string
   name: string
-  cliType: string
   status: string
   url: string
   // broadcast join-code fields REMOVED — D-10: discovery carries no codes (out-of-band design)
@@ -139,30 +114,15 @@ export function RegisterRemoteCap(sessionID: string, baseURL: string, capToken: 
 // Phase 146-05 — held-cap reuse: read cap-bearing open URL from daemon RemoteCapStore.
 export function OpenRemoteSessionURL(sessionID: string): Promise<string>
 
-// Auto-install Tailscale bound method
-export function AutoInstallTailscale(): Promise<void>
-
 // Local network mode bound methods
 export function GetLocalNetworkPassword(): Promise<string>
 export function GetWebServerMode(): Promise<string>
 
-// CLI paths getter bound method (SET-01/02)
-export function GetCLIPaths(): Promise<Record<string, string>>
-
 // Theme notification bound method
-export function NotifyThemeChange(): Promise<void>
 
 // Start-minimized bound methods (TRAY-02/03)
 export function GetStartMinimized(): Promise<boolean>
 export function SetStartMinimized(val: boolean): Promise<void>
-
-// Auto-close session bound methods (SESS-01/02)
-export function GetAutoCloseSession(): Promise<boolean>
-export function SetAutoCloseSession(val: boolean): Promise<void>
-
-// Notify-on-waiting bound methods (Phase 167 / NTF-04)
-export function GetNotifyOnWaiting(): Promise<boolean>
-export function SetNotifyOnWaiting(val: boolean): Promise<void>
 
 // Stay-on-hub-after-create bound methods (Phase 168 / UX-01)
 export function GetStayOnHubAfterCreate(): Promise<boolean>
@@ -193,10 +153,6 @@ export function SetImageConfig(arg1: daemon.ImageConfig): Promise<void>
 // Save terminal session (Phase 97 SER-01).
 export function SaveTerminalSession(defaultDir: string, defaultName: string, content: string): Promise<void>
 
-// Phase 120 UAT-1 — server-side file download with native SaveFileDialog,
-// bypassing the Wails WKWebView's ignore-the-<a-download>-attribute behavior.
-export function DownloadFile(url: string, suggestedName: string): Promise<void>
-
 // Set tray progress quartile (Phase 98 PRG-03).
 export function SetTrayProgress(quartile: number): Promise<void>
 
@@ -210,16 +166,12 @@ export interface IssueCapabilitiesResponse {
   writeUrl: string
   readCode: string
   writeCode: string
-  homeDir: boolean  // Phase 124 / CAP-06: true when session cwd == EvalSymlinks($HOME)
   publicReadCode: string  // Phase 170 / FNL-08: reusable public read join code; "" when not a Funnel session
 }
 export function IssueCapabilities(sessionID: string): Promise<IssueCapabilitiesResponse>
 export function ExchangeJoinCode(code: string): Promise<string>
 export function RegenerateSigningKey(): Promise<void>
 export function GetCapabilityQRCode(joinURL: string): Promise<string>
-
-// Phase 137 / SHARE-03: per-session browse toggle (owner binding). Replaces SetSessionFilesWrite (D-02/D-07).
-export function SetSessionBrowse(sessionID: string, enabled: boolean): Promise<void>
 
 // Phase 165 / FNL-01 — Funnel on/off; expiresIn=0 means no auto-expiry (FNL-07).
 export function SetSessionFunnel(sessionID: string, enabled: boolean, expiresIn: number): Promise<void>

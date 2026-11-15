@@ -24,18 +24,6 @@ type Claims struct {
 	V       int    `json:"v"`        // claim schema version; always 1 in v3.1
 }
 
-// PermFilesRead is the capability bit token granting access to /api/files/*
-// routes (FS-10, FS-11). Added in v3.4 (Phase 118). Whole-token
-// comma-separated semantics — never substring (Pitfall 4).
-const PermFilesRead = "files.read"
-
-// PermFilesWrite is the capability bit token granting access to the five
-// webserver write routes (PUT /api/files/write, POST /api/files/upload,
-// DELETE /api/files/delete, POST /api/files/rename, POST /api/files/mkdir).
-// Added in v3.5 (Phase 124, CAP-01). Whole-token comma-separated semantics —
-// always gated via HasPerm, never strings.Contains (T-124-01 / T-124-02).
-const PermFilesWrite = "files.write"
-
 // HasPerm reports whether perm appears as a whole comma-separated token in
 // perms.
 //

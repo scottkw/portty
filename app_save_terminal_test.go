@@ -14,8 +14,7 @@ import (
 // TestSaveTerminalSession exercises the four behavioral paths of the
 // Phase 97 SER-01 Wails RPC. Uses the saveFileDialogFunc injection
 // (function-injection pattern per PROJECT.md "Key Decisions") to mock
-// runtime.SaveFileDialog. Mirror of TestUpdateCLIPath table-driven
-// pattern at app_test.go lines 234-259.
+// runtime.SaveFileDialog with a table-driven case list.
 func TestSaveTerminalSession(t *testing.T) {
 	tmpDir := t.TempDir()
 	validPath := filepath.Join(tmpDir, "test.txt")

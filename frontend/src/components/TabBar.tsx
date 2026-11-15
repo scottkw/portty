@@ -1,16 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { GlobeAltIcon, LockOpenIcon } from '@heroicons/react/24/outline'
-// WR/POL: agentBadgeModifier extracted to a shared lib so the Hub card left
-// spine (.hub-card[data-agent]) and this tab dot (.tab__agent-badge--*) derive
-// the per-CLI "session type" color from one source and cannot drift.
-import { agentBadgeModifier } from '../lib/agentBadge'
 
 export interface Tab {
   id: string
   name: string
   sessionId: string
-  cli: string
-  type?: 'terminal' | 'welcome' | 'settings' | 'file-browser' | 'hub' | 'help' | 'web-session'
+  type?: 'terminal' | 'welcome' | 'settings' | 'hub' | 'help' | 'web-session'
   /** Phase 168-03 (FIX-03) — per-tab remote peer origin for 'web-session' tabs
    *  opened via handleOpenRemoteSession. undefined for the app's own web-share
    *  bootstrap tab (which falls back to the mount-stable webParams). */
@@ -18,31 +13,6 @@ export interface Tab {
   /** Phase 168-03 (FIX-03) — per-tab capability token, paired with baseURL. */
   capToken?: string
 }
-// Phase 101-02 — human-readable agent label for the tab tooltip suffix.
-// Locked copy: shells use "Shell — DISPLAYNAME" (em-dash U+2014); AI CLIs
-// use the same product names the new-session modal shows. Unknown CLIs
-// fall through to the raw cli string so the tab still renders a useful
-// hover tip.
-function agentDisplayName(cli: string): string {
-  const shellMap: Record<string, string> = {
-    shell: 'system default',
-    bash: 'bash',
-    zsh: 'zsh',
-    pwsh: 'PowerShell',
-    powershell: 'Windows PowerShell',
-  }
-  if (shellMap[cli] !== undefined) return 'Shell — ' + shellMap[cli]
-  const cliMap: Record<string, string> = {
-    claude: 'Claude Code',
-    opencode: 'OpenCode',
-    codex: 'OpenAI Codex',
-    gemini: 'Gemini CLI',
-    cursor: 'Cursor',
-    aider: 'Aider',
-  }
-  return cliMap[cli] ?? cli
-}
-
 interface TabBarProps {
   tabs: Tab[]
   activeId: string | null
@@ -56,8 +26,6 @@ interface TabBarProps {
    * filename, and calls the SaveTerminalSession Wails RPC.
    */
   onRequestSave?: (tabId: string) => void
-  sessionStatuses?: Record<string, string>
-  exitCountdowns?: Record<string, number>  // sessionId -> seconds remaining
   /**
    * Phase 98 PRG-02 — per-tab progress value (0-100) keyed by sessionId.
    * Populated by App.tsx handleProgressChange; consumed in Wave 3 (Plan 04)
@@ -67,26 +35,13 @@ interface TabBarProps {
    */
   tabProgress?: Record<string, number>
   /**
-   * Phase 120-04 UI-01 — open (or focus) the FileBrowserTab for a session via
-   * the tab's right-click context menu. Shown only for terminal tabs (those
-   * with a truthy sessionId).
-   */
-  onBrowseFiles?: (sessionId: string, sessionName: string) => void
-  /**
    * Phase 159-04 (WEBCHAT-05) — web-share guest mode. When true, the desktop-only
    * tab affordances are suppressed: no double-click/right-click rename and no
    * Rename / Save Terminal As menu items (both are Wails RPCs with no bridge in a
    * browser — they fail silently and only relabel the local tab). The × close
-   * button stays.
+   * button stays. Guests get no session-menu chevron.
    */
   webMode?: boolean
-  /**
-   * Phase 159-04 (WEBCHAT-05) — when in webMode, whether the guest's cap grants
-   * files.read. Only then is the session-menu chevron shown (its sole web-mode
-   * item is "Browse files", letting a file-enabled guest re-open the file
-   * browser if they closed it). A guest without file access gets no chevron.
-   */
-  webFilesEnabled?: boolean
   /**
    * Phase 166 / FUI-03 — per-session internet exposure state, keyed by sessionId.
    * When funnelActiveSessions[tab.sessionId] is true, the tab renders a globe icon
@@ -116,12 +71,8 @@ export function TabBar({
   onClose,
   onRename,
   onRequestSave,
-  sessionStatuses,
-  exitCountdowns,
   tabProgress,
-  onBrowseFiles,
   webMode = false,
-  webFilesEnabled = false,
   funnelActiveSessions,
   funnelWriteActiveSessions,
 }: TabBarProps): React.ReactElement {
@@ -224,33 +175,13 @@ export function TabBar({
       )}
       <div className="tab-list" ref={listRef}>
         {tabs.map((tab) => {
-          // Phase 101-02 (SHELL-06 GUI half) — agent badge between status dot
-          // and tab name. Decorative (aria-hidden); the same info is exposed
-          // textually in the tab-name tooltip suffix.
-          const badgeModifier = agentBadgeModifier(tab.cli)
-          const badgeClass = badgeModifier
-            ? `tab__agent-badge tab__agent-badge--${badgeModifier}`
-            : 'tab__agent-badge'
-          // Tab tooltip carries both the rename hint AND the agent-type
-          // suffix — e.g., "Double-click or right-click to rename · Shell — bash".
-          // For unknown CLIs (cli=""), omit the suffix so welcome / daemon /
-          // settings tabs don't render a meaningless "()" string.
-          const agentLabel = tab.cli ? agentDisplayName(tab.cli) : ''
-          const titleText = agentLabel
-            ? `Double-click or right-click to rename · ${agentLabel}`
-            : 'Double-click or right-click to rename'
           return (
           <div
             key={tab.id}
-            className={`tab${tab.id === activeId ? ' tab--active' : ''}${exitCountdowns?.[tab.sessionId] ? ' tab--exiting' : ''}`}
+            className={`tab${tab.id === activeId ? ' tab--active' : ''}`}
             onClick={() => onSelect(tab.id)}
             title={tab.name}
           >
-            <span
-              className={`tab__status tab__status--${sessionStatuses?.[tab.sessionId] || 'running'}`}
-              title={sessionStatuses?.[tab.sessionId] || 'running'}
-            />
-            <span className={badgeClass} aria-hidden="true" />
             {/* Phase 166 / FUI-03 — tab internet exposure indicator.
                 COLORBLIND-SAFE: GlobeAltIcon shape carries state; color is reinforcement only.
                 Text label is in aria-label + title — not rendered visually (D-09). */}
@@ -295,15 +226,12 @@ export function TabBar({
                   e.stopPropagation()
                   setContextMenu({ tabId: tab.id, x: e.clientX, y: e.clientY })
                 }}
-                title={titleText}
+                title="Double-click or right-click to rename"
               >
                 {tab.name}
               </span>
             )}
-            {exitCountdowns?.[tab.sessionId] && (
-              <span className="tab__countdown">{exitCountdowns[tab.sessionId]}s</span>
-            )}
-            {tab.sessionId && (!webMode || webFilesEnabled) && (
+            {tab.sessionId && !webMode && (
               <button
                 className="tab__chevron"
                 data-testid="tab-chevron"
@@ -396,27 +324,6 @@ export function TabBar({
             Save Terminal As…
           </button>
           )}
-          {/* Phase 120-04 UI-01 — Browse files menu item, gated on terminal
-              tabs (those with a truthy sessionId). Welcome / Settings /
-              file-browser tabs do not get this item. */}
-          {(() => {
-            const tab = tabs.find((t) => t.id === contextMenu.tabId)
-            if (!tab?.sessionId) return null
-            if (!onBrowseFiles) return null
-            return (
-              <button
-                role="menuitem"
-                className="tab__context-menu__item"
-                data-testid="tab-context-browse-files"
-                onClick={() => {
-                  onBrowseFiles(tab.sessionId, tab.name)
-                  setContextMenu(null)
-                }}
-              >
-                Browse files
-              </button>
-            )
-          })()}
         </div>
       )}
     </div>

@@ -1,0 +1,39 @@
+{
+    "cliPaths": {
+        "claude": "/usr/local/bin/claude",
+        "tailscale": "/opt/homebrew/bin/tailscale"
+    },
+    "startMinimized": false,
+    "notifyOnWaiting": true,
+    "stayOnHubAfterCreate": true,
+    "shellWebShareWarned": true,
+    "shellPath": "/bin/zsh",
+    "autoCloseSession": true,
+    "shellWebShareWarningEnabled": true,
+    "filesWrite": true,
+    "plugins": {
+        "webgl": true,
+        "unicode11": true,
+        "search": true,
+        "searchConfig": {
+            "regex": false,
+            "caseSensitive": false,
+            "wholeWord": false
+        },
+        "webLinks": true,
+        "webLinksConfig": {
+            "modifier": "platform",
+            "confirmOSC8": true,
+            "confirmIDN": true,
+            "confirmTyposquat": true
+        },
+        "image": true,
+        "imageConfig": {
+            "storageLimit": 16
+        },
+        "serialize": true,
+        "clipboard": true,
+        "progress": false
+    },
+    "schemaVersion": 4
+}

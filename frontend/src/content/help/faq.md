@@ -8,10 +8,6 @@ Wails disables the browser DevTools in production builds. To inspect the fronten
 
 Use the **Share** button on a Hub session card. Toggle "Share the session" to get read-only and read/write share links and join codes. Anyone on your Tailscale network can use these links to view or interact with your session. No passwords or manual TLS setup are required — AgentHub handles HTTPS automatically.
 
-### How do I enable remote file browsing?
-
-In the Share modal, toggle **Enable remote file browsing**. The permission level for file access inherits from the link the visitor uses: visitors using the read-only link can only read files, while visitors using the read/write link can also create, edit, and delete files. Web sharing must be enabled first.
-
 ### Where are sessions and logs stored?
 
 Sessions are managed by the AgentHub daemon process, which runs in the background. On macOS, logs and application data are stored at `~/Library/Application Support/agenthub/`. The daemon socket is located in the same directory. Sessions persist across GUI restarts — the daemon keeps them alive until you kill them explicitly.

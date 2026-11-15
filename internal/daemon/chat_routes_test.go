@@ -19,7 +19,6 @@ import (
 
 	"github.com/scottkw/agenthub/internal/pty"
 	"github.com/scottkw/agenthub/internal/relay"
-	"github.com/scottkw/agenthub/internal/status"
 )
 
 // newChatRouteEngine creates a minimal SessionEngine wired with a temp chats
@@ -32,10 +31,7 @@ func newChatRouteEngine(t *testing.T, chatsDir string) *SessionEngine {
 		backend:         &spyBackend{},
 		manager:         relay.NewHubManager(),
 		tabNames:        make(map[string]string),
-		sessionCLIs:     make(map[string]string),
 		sessionWorkDirs: make(map[string]string),
-		cliPaths:        make(map[string]string),
-		sessionStatuses: make(map[string]status.SessionStatus),
 		configDir:       t.TempDir(),
 		chatStores:      make(map[string]*ChatStore),
 		chatsBaseDir:    chatsDir,

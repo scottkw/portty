@@ -55,8 +55,8 @@ function renderSidebar(overrides: Partial<SidebarTestProps> = {}) {
     onGroupSelect: vi.fn(),
     onCreateGroup: vi.fn(),
     onDropOnGroup: vi.fn(),
-    groupCounts: {} as Record<string, { running: number; total: number; attention: number; waiting: number }>,
-    globalGroupCounts: { running: 0, total: 0, attention: 0, waiting: 0 },
+    groupCounts: {} as Record<string, { total: number }>,
+    globalGroupCounts: { total: 0 },
     // Phase 147 — Help button prop (added to SidebarProps in Plan 02)
     onOpenHelp: vi.fn(),
   }
@@ -540,10 +540,10 @@ describe('Sidebar group sub-list (POL-05) — RED', () => {
     expect(alphaBtn!.getAttribute('aria-pressed')).toBe('false')
   })
 
-  // (b) group item button has aria-label containing running/total sessions
-  it('POL-05 RED: group item button has aria-label with running/total session count', () => {
+  // (b) group item button has aria-label with the member count only (no running count, CONTEXT Amendment 2)
+  it('POL-05: group item button has aria-label with the session count and no running count', () => {
     const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    const groupCounts = { 'grp-1': { running: 2, total: 3, attention: 0, waiting: 0 } }
+    const groupCounts = { 'grp-1': { total: 3 } }
     ;({ container, root } = renderSidebar({ groupDefs, groupCounts }))
     const list = container.querySelector('ul.sidebar__group-list')
     expect(list).not.toBeNull()
@@ -552,9 +552,9 @@ describe('Sidebar group sub-list (POL-05) — RED', () => {
       b.getAttribute('aria-label')?.includes('Alpha') || b.textContent?.includes('Alpha')
     )
     expect(alphaBtn).not.toBeUndefined()
-    // aria-label should include session counts
     const ariaLabel = alphaBtn!.getAttribute('aria-label') ?? ''
-    expect(ariaLabel).toMatch(/\d+\/\d+/)
+    expect(ariaLabel).toBe('Alpha group, 3 sessions')
+    expect(ariaLabel).not.toMatch(/\d+\/\d+/)
   })
 
   // (c) clicking a group item calls onGroupSelect(g.id) AND onOpenHub

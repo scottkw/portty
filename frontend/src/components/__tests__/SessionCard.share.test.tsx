@@ -14,7 +14,7 @@
  * Phase 138 / CARD-02/03/04 — Origin indicator, connection indicator, Kill + remote affordances.
  *
  * These tests are RED against the current SessionCard — the new props (isRemote,
- * isConnected, onKill, onOpenInBrowser, onBrowseFiles) will be added in Plans 02/03.
+ * isConnected, onKill, onOpenInBrowser) will be added in Plans 02/03.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import React from 'react'
@@ -35,15 +35,12 @@ import type { SessionInfo } from '../../wailsjs/go/main/App'
 const localSession: SessionInfo = {
   id: 'sess-1',
   name: 'My Session',
-  cli: 'claude',
   state: 'running',
   status: 'idle',
   createdAt: '2026-01-01T00:00:00Z',
   hostname: '', // local: empty hostname
   webEnabled: false,
   viewerCount: 0,
-  homeDir: false,
-  browseEnabled: false,
   funnelActive: false,
   funnelWriteActive: false,
   workDir: '/home/user',
@@ -78,9 +75,8 @@ interface RenderOpts {
   // Phase 146: signature changed from (url: string) to (session) for cap-exchange flow
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onOpenInBrowser?: (session: any) => void
-  onBrowseFiles?: (sessionId: string, sessionName: string) => void
   // Phase 131/134 re-attach affordance — local-only after CARD-04 gating (WR-01)
-  onOpenSession?: (id: string, name: string, cli: string) => void
+  onOpenSession?: (id: string, name: string) => void
 }
 
 let container: HTMLElement | undefined
@@ -102,7 +98,6 @@ function renderCard(opts: RenderOpts = {}) {
         isConnected: opts.isConnected,
         onKill: opts.onKill,
         onOpenInBrowser: opts.onOpenInBrowser,
-        onBrowseFiles: opts.onBrowseFiles,
         onOpenSession: opts.onOpenSession,
       } as Parameters<typeof SessionCard>[0])
     )
@@ -215,7 +210,7 @@ describe('CARD-03: Connection indicator (colorblind-safe)', () => {
 })
 
 // Phase 138 / CARD-04: Kill + remote affordances in the overflow menu.
-// RED against current SessionCard — onKill/onOpenInBrowser/onBrowseFiles not yet accepted; Plans 02/03 add them.
+// RED against current SessionCard — onKill/onOpenInBrowser not yet accepted; Plans 02/03 add them.
 // Kill uses a two-step inline confirm (UI-SPEC Claude's Discretion choice — no modal).
 describe('CARD-04: Kill menu item guard (stopPropagation)', () => {
   it('Kill option appears in overflow menu for live local sessions', () => {
@@ -249,7 +244,7 @@ describe('CARD-04: Kill menu item guard (stopPropagation)', () => {
   })
 })
 
-// Phase 138 / CARD-04: Remote-only affordances (Open in browser, Browse files).
+// Phase 138 / CARD-04: Remote-only affordances (Open in tab).
 // RED against current SessionCard — remote menu items not yet implemented; Plans 02/03 add them.
 describe('CARD-04: Remote affordances in overflow menu', () => {
   // FIX-03 RC-C (plan 09): D-17 opens an in-app tab, so the label reads "Open in
@@ -262,24 +257,11 @@ describe('CARD-04: Remote affordances in overflow menu', () => {
     expect(c.textContent).toContain('Open in tab')
     expect(c.textContent).not.toContain('Open in browser')
   })
-  it('remote card overflow menu contains "Browse files"', () => {
-    const onBrowseFiles = vi.fn()
-    const { container: c } = renderCard({ session: remoteSession, isRemote: true, onBrowseFiles })
-    const menuBtn = c.querySelector('.hub-card__menu-btn') as HTMLButtonElement
-    flushSync(() => { menuBtn.click() })
-    expect(c.textContent).toContain('Browse files')
-  })
   it('local card overflow menu does NOT contain "Open in tab"', () => {
     const { container: c } = renderCard({ session: localSession, isRemote: false })
     const menuBtn = c.querySelector('.hub-card__menu-btn') as HTMLButtonElement
     flushSync(() => { menuBtn.click() })
     expect(c.textContent).not.toContain('Open in tab')
-  })
-  it('local card overflow menu does NOT contain "Browse files"', () => {
-    const { container: c } = renderCard({ session: localSession, isRemote: false })
-    const menuBtn = c.querySelector('.hub-card__menu-btn') as HTMLButtonElement
-    flushSync(() => { menuBtn.click() })
-    expect(c.textContent).not.toContain('Browse files')
   })
   // CR-01 / Phase 146 FIX-03 (out-of-band): "Open in tab" is NOT gated on roJoinCode.
   // The button opens for any remote session — the modal guides the viewer to obtain a code.

@@ -40,7 +40,7 @@ func setupAttachTest(t *testing.T) (serverURL string, mgr *relay.HubManager, pty
 	mgr = relay.NewHubManager()
 	mgr.Create(sid, ptyOutputR, inputCaptureW, nil)
 
-	srv := httptest.NewServer(relay.NewServer(mgr, nil, nil))
+	srv := httptest.NewServer(relay.NewServer(mgr, nil))
 	t.Cleanup(func() {
 		srv.Close()
 		mgr.Shutdown()
@@ -280,19 +280,15 @@ func TestAttachSession_CtrlCPassthrough(t *testing.T) {
 }
 
 // TestPrintAttachBanner verifies that printAttachBanner writes the expected
-// connection banner containing session name, CLI type, hostname, and detach hint (RMTE-02).
+// connection banner containing session name, hostname, and detach hint (RMTE-02).
 func TestPrintAttachBanner(t *testing.T) {
 	var buf bytes.Buffer
-	printAttachBanner(&buf, "my-session", "claude", "macbook-pro.local")
+	printAttachBanner(&buf, "my-session", "macbook-pro.local")
 	output := buf.String()
 
 	// Must contain session name
 	if !strings.Contains(output, "my-session") {
 		t.Errorf("banner missing session name; got: %s", output)
-	}
-	// Must contain CLI type
-	if !strings.Contains(output, "claude") {
-		t.Errorf("banner missing CLI type; got: %s", output)
 	}
 	// Must contain hostname
 	if !strings.Contains(output, "macbook-pro.local") {
@@ -301,6 +297,10 @@ func TestPrintAttachBanner(t *testing.T) {
 	// Must contain detach key hint
 	if !strings.Contains(output, `Ctrl-\`) {
 		t.Errorf("banner missing detach key hint; got: %s", output)
+	}
+	// Only the hostname segment follows the name: no agent segment.
+	if n := strings.Count(output, "│"); n != 1 {
+		t.Errorf("banner should have exactly one segment separator, got %d; got: %s", n, output)
 	}
 	// Must contain separator lines
 	if !strings.Contains(output, "─────") {
@@ -312,20 +312,20 @@ func TestPrintAttachBanner(t *testing.T) {
 // is replaced by "unnamed" in the banner (RMTE-02).
 func TestPrintAttachBanner_EmptyName(t *testing.T) {
 	var buf bytes.Buffer
-	printAttachBanner(&buf, "", "claude", "host.local")
+	printAttachBanner(&buf, "", "host.local")
 	if !strings.Contains(buf.String(), "unnamed") {
 		t.Errorf("empty name should show 'unnamed'; got: %s", buf.String())
 	}
 }
 
 // TestPrintAttachBanner_NoOptionalFields verifies that the banner omits
-// separator characters when CLI and hostname are empty (RMTE-02).
+// separator characters when hostname is empty (RMTE-02).
 func TestPrintAttachBanner_NoOptionalFields(t *testing.T) {
 	var buf bytes.Buffer
-	printAttachBanner(&buf, "session-1", "", "")
+	printAttachBanner(&buf, "session-1", "")
 	output := buf.String()
 	if strings.Contains(output, "│") {
-		t.Errorf("should not contain separator when CLI and hostname are empty; got: %s", output)
+		t.Errorf("should not contain separator when hostname is empty; got: %s", output)
 	}
 	if !strings.Contains(output, "session-1") {
 		t.Errorf("banner missing session name; got: %s", output)
@@ -336,16 +336,13 @@ func TestPrintAttachBanner_NoOptionalFields(t *testing.T) {
 // a remote hostname displays the hostname in the banner output (REM-05).
 func TestCmdAttach_RemoteBannerShowsHostname(t *testing.T) {
 	var buf bytes.Buffer
-	printAttachBanner(&buf, "remote-project", "claude", "macbook")
+	printAttachBanner(&buf, "remote-project", "macbook")
 	output := buf.String()
 	if !strings.Contains(output, "macbook") {
 		t.Errorf("banner missing remote hostname; got: %s", output)
 	}
 	if !strings.Contains(output, "remote-project") {
 		t.Errorf("banner missing session name; got: %s", output)
-	}
-	if !strings.Contains(output, "claude") {
-		t.Errorf("banner missing CLI type; got: %s", output)
 	}
 }
 
@@ -473,7 +470,6 @@ func TestWsOutputPump_MsgMeta(t *testing.T) {
 	// Create a minimal bar to receive viewer count updates.
 	bar := statusbar.New(&stdout, statusbar.Options{
 		SessionName: "test",
-		AgentType:   "claude",
 		Hostname:    "host",
 		CreatedAt:   time.Now(),
 		Position:    statusbar.Bottom,

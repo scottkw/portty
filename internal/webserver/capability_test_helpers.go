@@ -152,11 +152,11 @@ func testServerWithHub(t *testing.T, sessionID string) (*WebServer, *http.Client
 		t.Fatalf("ws.Start: %v", err)
 	}
 	ws.EnableSession(sessionID)
-	ws.SetSessionResolver(func(id string) (string, string, string, string) {
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == sessionID {
-			return "Security Review Session", "codex", "running", "review-host"
+			return "Security Review Session", "running", "review-host", true
 		}
-		return id, "", "", ""
+		return "", "", "", false
 	})
 
 	t.Cleanup(func() {

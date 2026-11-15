@@ -1,25 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
-	"io"
-	"log"
-	"log/slog"
-	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/scottkw/agenthub/internal/daemon"
-	"github.com/scottkw/agenthub/internal/pty"
-	"github.com/scottkw/agenthub/internal/status"
 	"github.com/scottkw/agenthub/internal/tailnet"
 	"github.com/scottkw/agenthub/internal/updater"
 	"github.com/scottkw/agenthub/internal/webserver"
@@ -30,34 +22,24 @@ import (
 // SessionInfo is the JSON-serialisable representation of a session returned by ListSessions.
 type SessionInfo struct {
 	ID         string `json:"id"`
-	CLI        string `json:"cli"`
 	Name       string `json:"name"`
 	State      string `json:"state"`
 	Status     string `json:"status"`
 	CreatedAt  string `json:"createdAt"`
 	Hostname   string `json:"hostname"`
 	WebEnabled bool   `json:"webEnabled"`
-	// Phase 124 / CAP-06: true when the session cwd equals EvalSymlinks($HOME).
-	// Server-side source of truth for the home-dir write warning banner (GUI +
-	// TUI parity). Must be propagated from daemon.SessionInfo or the GUI banner
-	// never fires (UAT finding).
-	HomeDir bool `json:"homeDir"`
-	// Phase 137 / SHARE-05: true when the per-session browse toggle is ON.
-	// Single server-side source of truth for GUI modal seeding (NOT omitempty:
-	// false must serialize so the modal can seed on open per RESEARCH open question 2).
-	BrowseEnabled bool `json:"browseEnabled"`
 	// Phase 165 / FNL-01: true when Tailscale Funnel is active for this session.
 	// NOT omitempty: false must serialize so the frontend poll detects expiry
-	// (same rule as BrowseEnabled / HomeDir — silent false-drop is a UAT-class bug).
+	// (silent false-drop is a UAT-class bug).
 	FunnelActive bool `json:"funnelActive"`
 	// Phase 171 / FNL-09: true when the gate-minted public write cap (consent-gated
 	// Full Access write-share) is active for this session. NOT omitempty: false must
 	// serialize so the frontend poll detects a write-share teardown flip (same rule
-	// as FunnelActive / BrowseEnabled / HomeDir — silent false-drop is a UAT-class bug).
+	// as FunnelActive — silent false-drop is a UAT-class bug).
 	FunnelWriteActive bool `json:"funnelWriteActive"`
 	// Phase 131 — Hub card fields (CARD-04, CARD-05, CARD-06, GRID-02).
 	// Omitting any of these silently drops them to zero in the Wails RPC
-	// response — same class of UAT bug documented on HomeDir above.
+	// response — same class of UAT bug documented on FunnelActive above.
 	ViewerCount int    `json:"viewerCount"`
 	ExitCode    *int   `json:"exitCode,omitempty"`
 	Duration    *int   `json:"duration,omitempty"`
@@ -66,11 +48,10 @@ type SessionInfo struct {
 
 // RemoteSession is a session on a remote tailnet peer.
 type RemoteSession struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	CLIType string `json:"cliType"`
-	Status  string `json:"status"`
-	URL     string `json:"url"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	URL    string `json:"url"`
 }
 
 // RemotePeerSessions groups sessions by peer hostname.
@@ -108,101 +89,36 @@ type App struct {
 	// Phase 98 PRG-03 / PROJECT.md "Function injection" pattern.
 	refreshTrayStateFunc func()
 
-	// notifyOnWaiting caches the persisted NotifyOnWaiting preference (Phase
-	// 167 / NTF-04). Atomic because it's written by the Wails RPC goroutine
-	// (SetNotifyOnWaiting) and read by the tray-poller goroutine
-	// (maybeNotifyWaiting), mirroring lastTrayQuartile's concurrency pattern.
-	notifyOnWaiting atomic.Bool
-
-	// lastWaitingStatus tracks the previously-observed Status per session ID,
-	// used by maybeNotifyWaiting to edge-detect the non-waiting→waiting
-	// transition (NTF-02). Only ever read/written from refreshTrayState's
-	// single goroutine (the 5s tray-poller ticker), so it needs no separate
-	// locking. nil until the first maybeNotifyWaiting call (cold-start
-	// baseline capture).
-	lastWaitingStatus map[string]string
-
-	// sendNotificationFunc allows unit tests to mock sendNotification so no
-	// real OS notification fires. Defaults to sendNotification. Phase 167 /
-	// NTF-01..03, mirrors the saveFileDialogFunc injection pattern.
+	// sendNotificationFunc is the one native notification path (quit-to-tray
+	// notice now, Phase 6 update notices later). Defaults to sendNotification;
+	// tests swap it so no real OS notification fires.
 	sendNotificationFunc func(identifier, title, body string)
 
-	// requestNotificationAuthFunc allows unit tests to spy on the proactive
-	// authorization entry point without firing a real OS permission prompt.
-	// Defaults to requestNotificationAuth. Phase 167-06 (M-41 gap closure) —
-	// mirrors the sendNotificationFunc injection pattern.
-	requestNotificationAuthFunc func()
+	// emitEventFunc allows unit tests to capture Wails events. nil in
+	// production (emitEvent calls runtime.EventsEmit). Mirrors the
+	// sendNotificationFunc injection pattern.
+	emitEventFunc func(name string, data any)
+
+	// tailscaleCheckFunc is the Tailscale health check seam; nil means
+	// webserver.CheckHealth. lastHealth is the last emitted result (nil until
+	// the first check); the poller and GetTailscaleStatus share it under healthMu.
+	tailscaleCheckFunc func(context.Context) webserver.TailscaleHealth
+	healthMu           sync.Mutex
+	lastHealth         *webserver.TailscaleHealth
+
+	// seenSessions is every id the exit watcher has listed and not yet
+	// reported via session:exit. Owned by the exit watcher goroutine.
+	seenSessions map[string]bool
 }
 
 // NewApp creates a new App without starting any subsystems.
 func NewApp() *App {
 	a := &App{
-		saveFileDialogFunc:          runtime.SaveFileDialog,
-		sendNotificationFunc:        sendNotification,
-		requestNotificationAuthFunc: requestNotificationAuth,
+		saveFileDialogFunc:   runtime.SaveFileDialog,
+		sendNotificationFunc: sendNotification,
 	}
 	a.lastTrayQuartile.Store(-1) // Phase 98 PRG-03 — ensure first SetTrayProgress call always updates
 	return a
-}
-
-// displayNameForCLI maps a CLI identifier to its human-readable display name
-// (Phase 167 / NTF-03). Static mirror of internal/pty/detect.go's knownCLIs
-// table — deliberately does NOT call pty.DetectCLI, which performs a live
-// PATH scan unsuitable for this per-notification lookup (RESEARCH LOCKED
-// decision #5). Unknown CLIs (including shells) fall back to the raw input.
-func displayNameForCLI(cli string) string {
-	switch cli {
-	case "claude":
-		return "Claude Code"
-	case "codex":
-		return "OpenAI Codex"
-	case "gemini":
-		return "Gemini CLI"
-	case "opencode":
-		return "OpenCode"
-	case "agy":
-		return "Google Antigravity"
-	default:
-		return cli
-	}
-}
-
-// maybeNotifyWaiting fires a native notification for every session whose
-// Status transitioned from non-"waiting" to "waiting" since the previous
-// call (Phase 167 / NTF-02). Must be called from a single goroutine (the
-// tray-poller ticker) — a.lastWaitingStatus is not otherwise synchronized.
-// No-op when the NotifyOnWaiting preference is off (NTF-04). The first call
-// (lastWaitingStatus nil) only baselines current statuses without firing, so
-// sessions already waiting at cold-start don't trigger a notification burst.
-func (a *App) maybeNotifyWaiting(sessions []SessionInfo) {
-	if !a.notifyOnWaiting.Load() {
-		return
-	}
-	firstRun := a.lastWaitingStatus == nil
-	if firstRun {
-		a.lastWaitingStatus = make(map[string]string, len(sessions))
-	}
-	seen := make(map[string]bool, len(sessions))
-	for _, s := range sessions {
-		seen[s.ID] = true
-		prev, known := a.lastWaitingStatus[s.ID]
-		a.lastWaitingStatus[s.ID] = s.Status
-		if firstRun {
-			continue // baseline capture only — no notification on cold start
-		}
-		if s.Status == string(status.StatusWaiting) && known && prev != string(status.StatusWaiting) {
-			body := fmt.Sprintf("%s (%s) is waiting for your input.", s.Name, displayNameForCLI(s.CLI))
-			// Phase 167-06 (M-41 gap closure): confirms from outside whether
-			// the trigger actually reached the native send on a signed build.
-			log.Printf("notification: non-waiting->waiting edge fired for session %s (status=%s notifyOnWaiting=%v)", s.ID, s.Status, a.notifyOnWaiting.Load())
-			a.sendNotificationFunc("agenthub.session-waiting."+s.ID, "AgentHub", body)
-		}
-	}
-	for id := range a.lastWaitingStatus {
-		if !seen[id] {
-			delete(a.lastWaitingStatus, id) // prune sessions no longer present
-		}
-	}
 }
 
 // domReady is called by Wails after the WebView DOM is ready.
@@ -233,24 +149,18 @@ func (a *App) startup(ctx context.Context) {
 	a.trayInit = true
 
 	socketPath := daemon.DefaultSocketPath()
+	// Set once, before any poller starts, and never reassigned: the client only
+	// dials on use, so the pollers read it lock-free and RetryDaemon only has
+	// to bring the daemon up. While it is down, calls fail and pollers retry.
+	a.client = daemon.NewDaemonClient(socketPath)
 	if err := daemon.EnsureDaemon(socketPath); err != nil {
 		a.daemonErr = err
 		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
 		runtime.EventsEmit(ctx, "daemon:error", err.Error())
-		// Start tray poller even on failure — it will show error icon state.
-		a.startTrayPoller(ctx)
-		a.startUpdatePoller(ctx) // update checks don't depend on daemon
-		return
 	}
-	a.client = daemon.NewDaemonClient(socketPath)
 
-	// Cache the persisted NotifyOnWaiting preference (Phase 167 / NTF-04).
-	// On error, leave the atomic at its zero value (false — the safe default).
-	if val, err := a.client.GetNotifyOnWaiting(); err == nil {
-		a.notifyOnWaiting.Store(val)
-	} else {
-		log.Printf("notification: initial NotifyOnWaiting cache load failed (%v) — defaulting to false until the toggle is set", err)
-	}
+	// One app-wide exit watcher closes tabs for every exited session (TERM-05).
+	a.startExitWatcher(ctx)
 
 	// Start tray state poller (updates icon, tooltip, session list every 5s).
 	a.startTrayPoller(ctx)
@@ -279,18 +189,14 @@ func (a *App) GetVersion() string {
 }
 
 // RetryDaemon re-attempts daemon spawn after a startup failure.
-// Called by the frontend "Retry Connection" button.
+// Called by the frontend "Retry Connection" button. It neither replaces
+// a.client nor starts pollers: startup did both once (WR-05).
 func (a *App) RetryDaemon() error {
-	socketPath := daemon.DefaultSocketPath()
-	if err := daemon.EnsureDaemon(socketPath); err != nil {
+	if err := daemon.EnsureDaemon(daemon.DefaultSocketPath()); err != nil {
 		a.daemonErr = err
 		return err
 	}
 	a.daemonErr = nil
-	a.client = daemon.NewDaemonClient(socketPath)
-	if a.ctx != nil {
-		a.startHealthPoller(a.ctx)
-	}
 	return nil
 }
 
@@ -346,7 +252,7 @@ func (a *App) QuitGUIOnly() {
 	} else {
 		body = fmt.Sprintf("AgentHub is still running in the background. %d sessions active.", count)
 	}
-	sendNotification("agenthub.quit-gui-only", "AgentHub", body)
+	a.sendNotificationFunc("agenthub.quit-gui-only", "AgentHub", body)
 }
 
 // QuitAll shuts down the daemon (terminating all sessions) and quits the
@@ -364,136 +270,81 @@ func (a *App) QuitAll() {
 
 // --- Wails-bound methods ---
 
-// CreateSession spawns a new CLI session and returns its ID.
-// args are passed to the CLI process; pass nil if no extra arguments are needed.
+// CreateSession spawns a new login-shell session and returns its ID.
+// Empty workDir starts in the home directory.
 // cols and rows specify the initial PTY dimensions; pass 0 for defaults (80x24).
-// Creates the session through the daemon client, then polls for status updates
-// and emits Wails events (replaces the onStatus callback used in earlier phases).
-func (a *App) CreateSession(cli, name, workDir string, args []string, cols, rows int) (string, error) {
+// Exit detection is the app-wide exit watcher (startExitWatcher), which covers
+// every session regardless of how or when it was created.
+func (a *App) CreateSession(name, workDir string, cols, rows int) (string, error) {
 	if a.client == nil {
 		return "", fmt.Errorf("daemon not connected")
 	}
-	id, err := a.client.CreateSession(cli, name, workDir, args, cols, rows)
-	if err != nil {
-		return "", err
-	}
-	// Poll session status for up to 60s to emit Wails events (replaces onStatus callback).
-	go a.pollSessionStatus(id)
-	return id, nil
+	return a.client.CreateSession(name, workDir, cols, rows)
 }
 
-// shouldContinuePolling is the pure, injectable-clock deadline check driving
-// pollSessionStatus's loop. It returns true while now is still within
-// maxWindow of pollStart, matching the original inline
-// `time.Now().Before(deadline)` semantics exactly (deadline == pollStart +
-// maxWindow). Extracted as a side-effect-free helper (175-02 Task 1 / BUG-03
-// Wave 0 scaffolding) so the exit-poll deadline math is unit-testable without
-// a live daemon or wall-clock sleeps; 175-05 is the plan that may change the
-// semantics (e.g. re-arming the deadline) — this extraction is
-// behavior-preserving only.
-func shouldContinuePolling(pollStart, now time.Time, maxWindow time.Duration) bool {
-	return now.Before(pollStart.Add(maxWindow))
-}
-
-// pollSessionStatus polls the daemon for status changes on a newly created
-// session and emits Wails "session:status" events. Also detects natural exit
-// (State == "stopped") and emits "session:exit". Replaces the onStatus
-// callback that was used when CreateSession called the engine directly.
-func (a *App) pollSessionStatus(sessionID string) {
-	var last string
-	var consecutiveErrors int
-	pollStart := time.Now()
-	const maxPollWindow = 300 * time.Second // extended to 5min for long-running agents
-	// slowCallThreshold flags ListSessions round-trips that take unusually
-	// long over what should be a near-instant local Unix-socket call. 175-01
-	// DIAGNOSIS (VERDICT: DISPROVED — the fixed deadline is NOT BUG-03's root
-	// cause) flags the un-timeout'd http.Client in internal/daemon/client.go
-	// as the candidate hang site; this instruments the call at its app.go
-	// call site (this plan's declared files_modified does not include
-	// client.go) so a future stall is directly observable instead of silent.
-	const slowCallThreshold = 2 * time.Second
-	for shouldContinuePolling(pollStart, time.Now(), maxPollWindow) {
-		callStart := time.Now()
-		sessions, err := a.client.ListSessions()
-		if elapsed := time.Since(callStart); elapsed > slowCallThreshold {
-			slog.Warn("pollSessionStatus: daemon ListSessions call unusually slow (possible daemon-client stall)",
-				"sessionId", sessionID, "elapsed", elapsed, "err", err)
-		}
-		if err != nil {
-			consecutiveErrors++
-			if consecutiveErrors >= 5 {
-				// Terminal exit without session:exit — Task 2 (175-05): make the
-				// silent-give-up failure mode that made BUG-03 hard to diagnose
-				// observable in logs.
-				slog.Warn("pollSessionStatus: stopping watch, daemon unreachable",
-					"sessionId", sessionID, "reason", "daemon-gone", "consecutiveErrors", consecutiveErrors, "lastErr", err)
-				return // daemon is gone — stop polling
-			}
-			time.Sleep(500 * time.Millisecond)
-			continue
-		}
-		consecutiveErrors = 0
-		found := false
-		for _, s := range sessions {
-			if s.ID == sessionID {
-				found = true
-				// Emit heuristic status changes (existing behavior)
-				if s.Status != last {
-					last = s.Status
-					if a.ctx != nil && a.ctx.Value("frontend") != nil {
-						runtime.EventsEmit(a.ctx, "session:status", map[string]string{
-							"sessionId": sessionID,
-							"status":    s.Status,
-						})
-					}
-				}
-				// Exit detection: daemon marks session as "stopped" when process exits naturally
-				if s.State == "stopped" {
-					a.emitExitEvent(sessionID, s)
-					return
-				}
-				break
-			}
-		}
-		if !found {
-			// Session removed from daemon (killed externally) — stop polling.
-			// Terminal exit without session:exit — see Task 2 note above.
-			slog.Warn("pollSessionStatus: stopping watch, session no longer present",
-				"sessionId", sessionID, "reason", "session-removed")
-			return
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	// Loop condition (shouldContinuePolling) went false — the exit-poll
-	// deadline expired without ever observing a "stopped" state or the
-	// session disappearing. DISPROVED branch only: the deadline itself was
-	// kept (175-01 verdict), but its expiry is now a logged, non-silent
-	// terminal exit rather than a bare implicit return (Task 2 / 175-05).
-	slog.Warn("pollSessionStatus: stopping watch, exit-poll deadline expired",
-		"sessionId", sessionID, "reason", "deadline-expiry", "window", maxPollWindow)
-}
-
-// emitExitEvent sends the session:exit Wails event to the frontend.
-func (a *App) emitExitEvent(sessionID string, s daemon.SessionInfo) {
-	if a.ctx == nil || a.ctx.Value("frontend") == nil {
+// emitEvent sends a Wails event to the frontend. Tests inject emitEventFunc;
+// otherwise the emit is skipped when there is no Wails frontend (unit tests,
+// CLI helpers) because runtime.EventsEmit needs one.
+func (a *App) emitEvent(name string, data any) {
+	if a.emitEventFunc != nil {
+		a.emitEventFunc(name, data)
 		return
 	}
-	exitCode := 0
-	if s.ExitCode != nil {
-		exitCode = *s.ExitCode
+	if a.ctx != nil && a.ctx.Value("frontend") != nil {
+		runtime.EventsEmit(a.ctx, name, data)
 	}
-	duration := 0
-	if s.Duration != nil {
-		duration = *s.Duration
+}
+
+// startExitWatcher starts the single app-wide exit watcher: checkExits runs
+// immediately and then every 500 ms until ctx is done. There is no deadline,
+// so a shell that exits hours after it started is still reported (TERM-05).
+// startup is the only caller.
+func (a *App) startExitWatcher(ctx context.Context) {
+	go func() {
+		a.checkExits()
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				a.checkExits()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// checkExits removes every session the daemon reports as stopped (a failed
+// kill leaves it listed and the next tick retries) and emits session:exit once
+// for every previously listed session that is now gone: one it just removed,
+// or one removed elsewhere (CLI kill, daemon restart). Only the watcher
+// goroutine (or a test) calls this, so seenSessions needs no lock.
+func (a *App) checkExits() {
+	if a.client == nil {
+		return
 	}
-	runtime.EventsEmit(a.ctx, "session:exit", map[string]any{
-		"sessionId":   sessionID,
-		"exitCode":    exitCode,
-		"sessionName": s.Name,
-		"cli":         s.CLI,
-		"duration":    duration,
-		"finalStatus": s.Status,
-	})
+	sessions, err := a.client.ListSessions()
+	if err != nil {
+		return // daemon unreachable; the next tick retries
+	}
+	if a.seenSessions == nil {
+		a.seenSessions = make(map[string]bool)
+	}
+	listed := make(map[string]bool, len(sessions))
+	for _, s := range sessions {
+		a.seenSessions[s.ID] = true
+		if s.State == "stopped" && a.client.KillSession(s.ID) == nil {
+			continue // removed; reported below
+		}
+		listed[s.ID] = true
+	}
+	for id := range a.seenSessions {
+		if !listed[id] {
+			delete(a.seenSessions, id)
+			a.emitEvent("session:exit", map[string]any{"sessionId": id})
+		}
+	}
 }
 
 // ListSessions returns a snapshot of all registered sessions.
@@ -509,18 +360,12 @@ func (a *App) ListSessions() []SessionInfo {
 	for i, s := range sessions {
 		result[i] = SessionInfo{
 			ID:         s.ID,
-			CLI:        s.CLI,
 			Name:       s.Name,
 			State:      s.State,
 			Status:     s.Status,
 			CreatedAt:  s.CreatedAt,
 			Hostname:   s.Hostname,
 			WebEnabled: s.WebEnabled,
-			// Phase 137 / SHARE-05 + CAP-06: propagate browse-enabled and home-dir
-			// flags so the GUI's Share modal seeds from daemon source of truth.
-			// Omitting these silently drops them to false (same UAT class as FilesWrite bug).
-			HomeDir:       s.HomeDir,
-			BrowseEnabled: s.BrowseEnabled,
 			// Phase 165 / FNL-01: propagate Funnel state so the frontend poll
 			// can detect expiry. Omitting silently drops to false (T-165-15).
 			FunnelActive: s.FunnelActive,
@@ -530,7 +375,7 @@ func (a *App) ListSessions() []SessionInfo {
 			FunnelWriteActive: s.FunnelWriteActive,
 			// Phase 131 / CARD-04..06, GRID-02: propagate Hub card fields from
 			// daemon source of truth. Omitting these silently drops them to zero
-			// — the same class of silent-corruption bug documented on HomeDir above.
+			// — the same class of silent-corruption bug documented on FunnelActive above.
 			ViewerCount: s.ViewerCount,
 			ExitCode:    s.ExitCode,
 			Duration:    s.Duration,
@@ -553,32 +398,7 @@ func (a *App) KillSession(id string) error {
 	if a.client == nil {
 		return fmt.Errorf("daemon not connected")
 	}
-	err := a.client.KillSession(id)
-	if err != nil {
-		return err
-	}
-	// Emit the status event for the frontend (same payload shape as before).
-	if a.ctx != nil && a.ctx.Value("frontend") != nil {
-		runtime.EventsEmit(a.ctx, "session:status", map[string]string{
-			"sessionId": id,
-			"status":    string(status.StatusErrored),
-		})
-	}
-	return nil
-}
-
-// GetSessionStatus returns the current heuristic status of the session as a
-// string ("running", "waiting", "idle", or "errored").
-// Returns "running" if the session is not found (conservative default).
-func (a *App) GetSessionStatus(sessionID string) string {
-	if a.client == nil {
-		return string(status.StatusRunning)
-	}
-	s, err := a.client.GetSessionStatus(sessionID)
-	if err != nil {
-		return string(status.StatusRunning) // conservative default
-	}
-	return s
+	return a.client.KillSession(id)
 }
 
 // GetSessionTailLines returns the last n plain-text lines from the session's
@@ -625,29 +445,6 @@ func (a *App) GetSessionStyledTailLines(id string, n int) [][]daemon.StyledSpan 
 		return [][]daemon.StyledSpan{}
 	}
 	return lines
-}
-
-// DetectCLIs returns the list of supported AI coding CLIs found on PATH.
-func (a *App) DetectCLIs() []pty.DetectedCLI {
-	return pty.DetectCLIs()
-}
-
-// ListShells returns the daemon's discovery of installed shells. Phase 101-01
-// prerequisite for plan 101-02 (NewSessionModal shell rows). Mirrors the
-// thin-delegation pattern used by ListSessions/DetectCLIs.
-//
-// Returns an empty slice (not nil) on error or when the daemon is unreachable —
-// the GUI degrades gracefully by omitting shell rows from the new-session modal
-// (per UI-SPEC §Edge Cases "silent absence" pattern).
-func (a *App) ListShells() []daemon.DetectedShell {
-	if a.client == nil {
-		return []daemon.DetectedShell{}
-	}
-	shells, err := a.client.ListShells()
-	if err != nil {
-		return []daemon.DetectedShell{}
-	}
-	return shells
 }
 
 // GetShellWebShareWarned returns the persisted "user has been warned about shell
@@ -698,33 +495,6 @@ func (a *App) SetShellWebShareWarningEnabled(v bool) error {
 	return a.client.SetShellWebShareWarningEnabled(v)
 }
 
-// GetShellPath returns the persisted shell binary path. When no path has been
-// set by the user, the daemon returns the platform default. Called by the
-// Settings → Paths "Shell binary" field (plan 107-03) on mount.
-// Phase 107 SHELL-11.
-func (a *App) GetShellPath() string {
-	if a.client == nil {
-		return ""
-	}
-	path, err := a.client.GetShellPath()
-	if err != nil {
-		return ""
-	}
-	return path
-}
-
-// SetShellPath persists the shell binary path. An empty path clears the
-// override (restores platform default). A non-empty path that does not exist
-// or is not executable causes the daemon to return an error. Called by the
-// Settings → Paths "Shell binary" field Save Paths click (plan 107-03).
-// Phase 107 SHELL-11.
-func (a *App) SetShellPath(v string) error {
-	if a.client == nil {
-		return nil
-	}
-	return a.client.SetShellPath(v)
-}
-
 // GetRelayPort returns the TCP port the daemon's relay HTTP server is listening on.
 func (a *App) GetRelayPort() int {
 	if a.client == nil {
@@ -735,24 +505,6 @@ func (a *App) GetRelayPort() int {
 		return 0
 	}
 	return port
-}
-
-// UpdateCLIPath stores a custom executable path for the named CLI.
-// The path must exist on disk.
-func (a *App) UpdateCLIPath(name, path string) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.UpdateCLIPath(name, path)
-}
-
-// GetCLIPaths returns all stored CLI path overrides. Used by Settings tab to
-// populate path inputs with persisted values on mount.
-func (a *App) GetCLIPaths() (map[string]string, error) {
-	if a.client == nil {
-		return nil, fmt.Errorf("daemon not connected")
-	}
-	return a.client.GetCLIPaths()
 }
 
 // GetStartMinimized returns the persisted start-minimized preference.
@@ -778,9 +530,7 @@ func (a *App) SetStartMinimized(val bool) error {
 
 // GetStayOnHubAfterCreate returns the persisted "stay on Hub after creating
 // a session" preference (Phase 168 / UX-01). Returns false (auto-switch,
-// today's behavior) when daemon is not connected. Plain client passthrough —
-// no atomic cache needed since there is no background reader (unlike
-// NotifyOnWaiting's tray poller).
+// today's behavior) when daemon is not connected. Plain client passthrough.
 func (a *App) GetStayOnHubAfterCreate() bool {
 	if a.client == nil {
 		return false
@@ -799,55 +549,6 @@ func (a *App) SetStayOnHubAfterCreate(val bool) error {
 		return fmt.Errorf("daemon not connected")
 	}
 	return a.client.SetStayOnHubAfterCreate(val)
-}
-
-// GetNotifyOnWaiting returns the cached native-notification-on-waiting
-// preference (Phase 167 / NTF-04). Reads the atomic cache rather than the
-// daemon so the tray-poller's edge detector and the Settings toggle always
-// agree on the current value without an extra round trip.
-func (a *App) GetNotifyOnWaiting() bool {
-	return a.notifyOnWaiting.Load()
-}
-
-// SetNotifyOnWaiting updates the cached preference immediately (so
-// maybeNotifyWaiting picks it up on the very next tick) and persists it via
-// the daemon client. When notifications are newly enabled, the tray
-// poller's next tick performs a fresh baseline capture (Task 1), preventing
-// a cold-start notification burst for sessions already waiting.
-func (a *App) SetNotifyOnWaiting(val bool) error {
-	a.notifyOnWaiting.Store(val)
-	// Phase 167-06 (M-41 gap closure): proactively surface the macOS
-	// permission prompt the moment the toggle is enabled, regardless of
-	// daemon connectivity — the leading suspected fix (during UAT the app
-	// showed as "Off" in System Settings with NO prompt ever seen).
-	if val && a.requestNotificationAuthFunc != nil {
-		a.requestNotificationAuthFunc()
-	}
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.SetNotifyOnWaiting(val)
-}
-
-// GetAutoCloseSession returns the persisted auto-close-on-exit preference.
-// Returns true (enabled) when daemon is not connected (conservative default per D-11).
-func (a *App) GetAutoCloseSession() bool {
-	if a.client == nil {
-		return true
-	}
-	val, err := a.client.GetAutoCloseSession()
-	if err != nil {
-		return true // default: enabled
-	}
-	return val
-}
-
-// SetAutoCloseSession persists the auto-close-on-exit preference.
-func (a *App) SetAutoCloseSession(val bool) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.SetAutoCloseSession(val)
 }
 
 // GetPluginSettings returns the persisted plugin enable/disable preferences.
@@ -1021,12 +722,17 @@ func configDir() string {
 }
 
 // StartWebServer tells the daemon to start the web server.
-// Uses Tailscale mode when connected with certs; falls back to local mode otherwise.
+// Refused while Tailscale is not connected (NET-01, Amendment 3); uses
+// Tailscale mode when connected with certs, local mode when connected without.
 func (a *App) StartWebServer(port int) error {
 	if a.client == nil {
 		return fmt.Errorf("daemon not connected")
 	}
 	h := a.GetTailscaleStatus()
+	if !h.Connected {
+		// Same sentence as frontend/src/lib/tailscale.ts TAILSCALE_OFF_REASON.
+		return errors.New("Tailscale isn't connected. Remote access and sharing are off until it is.")
+	}
 	if h.Connected && h.IP != "" && h.HasCerts {
 		_, err := a.client.StartWebServer(h.IP, port, h.Domain, "tailscale", "")
 		return err
@@ -1090,18 +796,6 @@ func (a *App) DisconnectViewers(sessionID string) error {
 	return a.client.DisconnectViewers(sessionID)
 }
 
-// SetSessionBrowse enables or disables the per-session file-browse capability
-// for a specific session. Phase 137 / SHARE-03. Mirrors ToggleWebServing but
-// targets the engine's per-session browse map (sole driver of file-perm
-// injection per D-02/D-03/D-04). Toggle-off clears outstanding grants on the
-// daemon (stale-cap threat mitigation per SHARE-05).
-func (a *App) SetSessionBrowse(sessionID string, enabled bool) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.SetSessionBrowse(sessionID, enabled)
-}
-
 // SetSessionFunnel enables or disables Tailscale Funnel for a session.
 // Phase 165 / FNL-01. Thin bridge — all Funnel logic lives in the daemon
 // (165-02). expiresIn is the auto-expiry in seconds (0 = no expiry, FNL-07)
@@ -1136,16 +830,6 @@ func (a *App) DisableSessionFunnelWrite(sessionID string) error {
 		return fmt.Errorf("daemon not connected")
 	}
 	return a.client.DisableSessionFunnelWrite(sessionID)
-}
-
-// NotifyThemeChange signals active OpenCode terminal sessions to re-query
-// the terminal palette after a theme change in Settings > Appearance.
-// Fire-and-forget from the frontend — errors are logged, not surfaced to UI.
-func (a *App) NotifyThemeChange() error {
-	if a.client == nil {
-		return nil // daemon not connected; no sessions to signal
-	}
-	return a.client.NotifyThemeChange()
 }
 
 // GetWebServerURL returns the base HTTPS URL of the running web server,
@@ -1268,28 +952,11 @@ func (a *App) OpenDirectoryDialog(defaultDir string) (string, error) {
 	})
 }
 
-// OpenFileDialog opens a native OS file picker and returns the selected path.
-// Returns "" if the user cancels. Falls back to the user's home directory when
-// defaultDir is empty. Used by Settings > Paths browse buttons (SET-04).
-func (a *App) OpenFileDialog(defaultDir string) (string, error) {
-	if defaultDir == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			defaultDir = home
-		}
-	}
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:            "Select Executable",
-		DefaultDirectory: defaultDir,
-		ShowHiddenFiles:  true,
-	})
-}
-
 // SaveTerminalSession opens a native Save File dialog and writes the supplied
 // terminal scrollback content to the user-chosen path. Cancellation is silent
 // success. Returns wrapped errors for dialog setup or write failures.
 //
-// Phase 97 SER-01. Mirrors OpenFileDialog (lines 815-829) for the cancel=""
-// pattern. Uses saveFileDialogFunc indirection (function-injection per
+// Phase 97 SER-01. Follows the Wails dialog cancel="" pattern. Uses saveFileDialogFunc indirection (function-injection per
 // PROJECT.md "Key Decisions") so unit tests can mock the Wails runtime.
 func (a *App) SaveTerminalSession(defaultDir, defaultName, content string) error {
 	if defaultDir == "" {
@@ -1310,66 +977,10 @@ func (a *App) SaveTerminalSession(defaultDir, defaultName, content string) error
 		return fmt.Errorf("SaveTerminalSession: dialog: %w", err)
 	}
 	if path == "" {
-		return nil // user cancelled — silent success per OpenFileDialog precedent
+		return nil // user cancelled — silent success, like OpenDirectoryDialog
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("SaveTerminalSession: write: %w", err)
-	}
-	return nil
-}
-
-// DownloadFile opens a native Save File dialog and writes bytes fetched from
-// the given URL (typically the local relay's /api/files/read endpoint) to
-// the user-chosen path. Cancellation is silent success.
-//
-// Phase 120 UAT-1: the React <a download> attribute is ignored by Wails'
-// WKWebView — clicking a download link just navigates the webview to the
-// URL, replacing the React app with raw file content. This method bridges
-// the gap by performing the save server-side with a native dialog.
-//
-// url MUST be a loopback URL (the relay at 127.0.0.1 or the daemon's
-// local /api/files/remote/{sid}/* proxy). The URL is fetched without auth
-// because both endpoints are bound to 127.0.0.1 and trust the loopback
-// transport (or, for the remote proxy, the cap is injected server-side
-// from RemoteCapStore).
-func (a *App) DownloadFile(url, suggestedName string) error {
-	defaultDir := ""
-	if home, err := os.UserHomeDir(); err == nil {
-		defaultDir = filepath.Join(home, "Downloads")
-		if _, statErr := os.Stat(defaultDir); statErr != nil {
-			defaultDir = home
-		}
-	}
-	path, err := a.saveFileDialogFunc(a.ctx, runtime.SaveDialogOptions{
-		Title:                "Save File As…",
-		DefaultDirectory:     defaultDir,
-		DefaultFilename:      suggestedName,
-		CanCreateDirectories: true,
-	})
-	if err != nil {
-		return fmt.Errorf("DownloadFile: dialog: %w", err)
-	}
-	if path == "" {
-		return nil // user cancelled — silent success per SaveTerminalSession precedent
-	}
-	// Loopback fetch with a generous timeout sized for the 5 MiB cap +
-	// network slack. The relay/daemon-proxy never blocks longer than this.
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	resp, err := httpClient.Get(url)
-	if err != nil {
-		return fmt.Errorf("DownloadFile: fetch: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("DownloadFile: server returned %d", resp.StatusCode)
-	}
-	out, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("DownloadFile: create: %w", err)
-	}
-	defer out.Close()
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		return fmt.Errorf("DownloadFile: write: %w", err)
 	}
 	return nil
 }
@@ -1405,18 +1016,18 @@ func (a *App) SetTrayProgress(quartile int) error {
 	return nil
 }
 
-// GetTailscaleStatus returns the current Tailscale health state.
-// Called by the frontend on-demand; also available as a Wails-bound method.
+// GetTailscaleStatus runs a fresh Tailscale health check and returns it.
+// It goes through checkTailscaleHealth so the poller knows every value the
+// frontend has seen and emits the recovery from a transient failure.
 func (a *App) GetTailscaleStatus() webserver.TailscaleHealth {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	customPath := ""
-	if a.client != nil {
-		if paths, err := a.client.GetCLIPaths(); err == nil {
-			customPath = paths["tailscale"]
-		}
+	return a.checkTailscaleHealth(context.Background())
+}
+
+func (a *App) tailscaleCheck(ctx context.Context) webserver.TailscaleHealth {
+	if a.tailscaleCheckFunc != nil {
+		return a.tailscaleCheckFunc(ctx)
 	}
-	return webserver.CheckHealthWithCustomPath(ctx, customPath)
+	return webserver.CheckHealth(ctx)
 }
 
 // GetRemoteSessions discovers tailnet peers and fetches their session lists.
@@ -1441,11 +1052,10 @@ func (a *App) GetRemoteSessions() []RemotePeerSessions {
 		sessions := make([]RemoteSession, 0, len(g.Sessions))
 		for _, s := range g.Sessions {
 			sessions = append(sessions, RemoteSession{
-				ID:      s.ID,
-				Name:    s.Name,
-				CLIType: s.CLIType,
-				Status:  s.Status,
-				URL:     s.URL,
+				ID:     s.ID,
+				Name:   s.Name,
+				Status: s.Status,
+				URL:    s.URL,
 			})
 		}
 		// Every group returned by FetchAllPeerSessions answered the cap-gated
@@ -1485,11 +1095,10 @@ func (a *App) GetRemoteSessionsWithMeta() []RemotePeerSessions {
 		sessions := make([]RemoteSession, 0, len(g.Sessions))
 		for _, s := range g.Sessions {
 			sessions = append(sessions, RemoteSession{
-				ID:      s.ID,
-				Name:    s.Name,
-				CLIType: s.CLIType,
-				Status:  s.Status,
-				URL:     s.URL,
+				ID:     s.ID,
+				Name:   s.Name,
+				Status: s.Status,
+				URL:    s.URL,
 			})
 		}
 		results = append(results, RemotePeerSessions{
@@ -1517,9 +1126,9 @@ func (a *App) ExchangeJoinCodeAtURL(remoteBaseURL, code string) (string, error) 
 }
 
 // RegisterRemoteCap deposits a (sessionID, remote baseURL, cap token) tuple
-// into the local daemon's RemoteCapStore. Subsequent file-browser fetches
-// through the local-daemon proxy route /api/files/remote/{sid}/... use this
-// cap. Phase 122-03 / REMOTE-01.
+// into the local daemon's RemoteCapStore. OpenRemoteSessionURL and the relay
+// remote terminal WS proxy (/api/relay/remote/{sid}/ws) use this cap.
+// Phase 122-03 / REMOTE-01.
 func (a *App) RegisterRemoteCap(sessionID, baseURL, capToken string) error {
 	if a.client == nil {
 		return fmt.Errorf("daemon not connected")
@@ -1586,7 +1195,6 @@ func (a *App) refreshTrayState() {
 	var sessions []SessionInfo
 	if connected {
 		sessions = a.ListSessions()
-		a.maybeNotifyWaiting(sessions) // Phase 167 / NTF-01..03
 	}
 	a.updateTray(sessions, connected)
 }
@@ -1654,86 +1262,35 @@ func (a *App) CheckForUpdates() *updater.UpdateInfo {
 	return info
 }
 
-// findBrew returns the path to the Homebrew binary, checking both Apple Silicon
-// and Intel Mac install locations.
-func findBrew() (string, error) {
-	if _, err := os.Stat("/opt/homebrew/bin/brew"); err == nil {
-		return "/opt/homebrew/bin/brew", nil
+// checkTailscaleHealth runs one health check and emits "tailscale:health" when
+// it is the first result or differs from the last one. The first result is
+// always emitted: "not connected" is the zero value, so comparing against a
+// zero starting point would never report a launch-time disconnect. The emit
+// happens under healthMu so events reach the frontend in lastHealth order.
+func (a *App) checkTailscaleHealth(ctx context.Context) webserver.TailscaleHealth {
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	h := a.tailscaleCheck(checkCtx)
+	cancel()
+	a.healthMu.Lock()
+	defer a.healthMu.Unlock()
+	if a.lastHealth == nil || *a.lastHealth != h {
+		a.lastHealth = &h
+		a.emitEvent("tailscale:health", h)
 	}
-	if _, err := os.Stat("/usr/local/bin/brew"); err == nil {
-		return "/usr/local/bin/brew", nil
-	}
-	return "", fmt.Errorf("Homebrew not found; install from https://brew.sh")
+	return h
 }
 
-// AutoInstallTailscale runs `brew install --cask tailscale-app` on macOS,
-// streaming stdout/stderr lines via tailscale:install:progress events and
-// emitting tailscale:install:done on completion.
-func (a *App) AutoInstallTailscale() error {
-	if goruntime.GOOS != "darwin" {
-		return fmt.Errorf("auto-install is only supported on macOS")
-	}
-	brewPath, err := findBrew()
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(brewPath, "install", "--cask", "tailscale-app")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	cmd.Stderr = cmd.Stdout
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "tailscale:install:progress", line)
-			}
-		}
-		exitErr := cmd.Wait()
-		if exitErr != nil {
-			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "tailscale:install:done", map[string]interface{}{"success": false, "error": exitErr.Error()})
-			}
-		} else {
-			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "tailscale:install:done", map[string]interface{}{"success": true})
-			}
-		}
-	}()
-	return nil
-}
-
-// startHealthPoller starts a background goroutine that polls Tailscale health
-// every 10 seconds and emits "tailscale:health" events when the state changes.
-// The goroutine exits when ctx is cancelled (Wails shutdown).
+// startHealthPoller checks Tailscale health once immediately and then every
+// 10 seconds. The goroutine exits when ctx is cancelled (Wails shutdown).
 func (a *App) startHealthPoller(ctx context.Context) {
 	go func() {
+		a.checkTailscaleHealth(ctx)
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
-		var last webserver.TailscaleHealth
 		for {
 			select {
 			case <-ticker.C:
-				customPath := ""
-				if a.client != nil {
-					if paths, err := a.client.GetCLIPaths(); err == nil {
-						customPath = paths["tailscale"]
-					}
-				}
-				checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				h := webserver.CheckHealthWithCustomPath(checkCtx, customPath)
-				cancel()
-				if h != last {
-					last = h
-					if a.ctx != nil && a.ctx.Value("frontend") != nil {
-						runtime.EventsEmit(a.ctx, "tailscale:health", h)
-					}
-				}
+				a.checkTailscaleHealth(ctx)
 			case <-ctx.Done():
 				return
 			}

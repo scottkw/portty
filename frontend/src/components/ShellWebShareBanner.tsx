@@ -25,10 +25,10 @@ import { XMarkIcon } from '@heroicons/react/20/solid'
  *                    visible to them."
  *   Primary CTA:    "Enable web sharing"
  *   Confirming:     "Enabling…" (U+2026 ellipsis — single character)
- *   Secondary CTA:  "Cancel"
+ *   Secondary CTA:  "Keep sharing off" (01-07 UI-SPEC; still calls onCancel)
  *   Dismiss aria:   "Dismiss security warning"
  *
- * Focus moves to the Cancel button on mount (safe-action default per
+ * Focus moves to the "Keep sharing off" button on mount (safe-action default per
  * QuitConfirmModal v3.0 Phase 85 precedent). Esc fires onCancel. Information
  * disclosure mitigation: sessionName is rendered as a React text node (auto-
  * escaped) inside the body line, never via dangerouslySetInnerHTML.
@@ -55,12 +55,12 @@ export function ShellWebShareBanner({
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [enabling, setEnabling] = useState(false)
 
-  // Focus the safe action (Cancel) on mount — mirrors QuitConfirmModal pattern.
+  // Focus the safe action ("Keep sharing off") on mount — mirrors QuitConfirmModal pattern.
   useEffect(() => {
     cancelRef.current?.focus()
   }, [])
 
-  // Esc dismisses the banner (treated as Cancel).
+  // Esc dismisses the banner (treated as "Keep sharing off").
   // Focus gate (CR-02): only respond when keyboard focus is inside the banner
   // OR no other modal is open. This prevents the banner's Esc handler from
   // hijacking dismissal of a layered modal (kill-confirm, new-session modal,
@@ -122,7 +122,7 @@ export function ShellWebShareBanner({
           onClick={onCancel}
           className="webgl-recovery-banner__shell-btn webgl-recovery-banner__shell-btn--secondary"
         >
-          Cancel
+          Keep sharing off
         </button>
         <button
           type="button"

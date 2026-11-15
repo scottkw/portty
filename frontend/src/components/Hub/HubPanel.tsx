@@ -6,16 +6,12 @@ import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../../wailsjs/go/models'
 import { ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import { HubFilterBar } from './HubFilterBar'
-import type { HubFilter } from './HubFilterBar'
 import { SessionCardGrid } from './SessionCardGrid'
 import { HubEmptyState } from './HubEmptyState'
 import { computeCounts, computeGlobalCounts } from '../../lib/hubGroupCounts'
 import type { GroupCounts } from '../../lib/hubGroupCounts'
 import { HubModal } from './HubModal'
 import { useChatUnreadListeners } from './useChatUnreadListeners'
-// WR-01: deriveHubStatus extracted to shared util (was triplicated across SessionCard/HubFilterBar/HubPanel)
-// ATTN-01/04: isAttentionStatus is the single canonical attention predicate; used for live set + debounced sort key
-import { deriveHubStatus, isAttentionStatus } from '../../lib/hubStatus'
 import {
   memberKey,
   type HubGroupDef,
@@ -24,32 +20,23 @@ import {
 type PluginSettings = daemon.PluginSettings
 
 /**
- * filterSessions — apply status filter + case-insensitive substring search.
+ * filterSessions — case-insensitive substring search.
  *
  * @param sessions  - full session list (from prop)
- * @param filter    - active HubFilter key ('all' means no filter)
  * @param search    - trimmed search string ('' means no search)
  * @returns filtered subset, preserving input order
  */
 export function filterSessions(
   sessions: SessionInfo[],
-  filter: HubFilter,
   search: string,
 ): SessionInfo[] {
   const needle = search.toLowerCase()
   return sessions.filter((s) => {
-    // Status filter
-    if (filter !== 'all') {
-      const status = deriveHubStatus(s)
-      if (status !== filter) return false
-    }
-
-    // Search filter — case-insensitive substring on name, cli, and hostname
+    // Search filter — case-insensitive substring on name and hostname
     if (needle) {
       const inName = s.name.toLowerCase().includes(needle)
-      const inCli = s.cli.toLowerCase().includes(needle)
       const inHost = s.hostname.toLowerCase().includes(needle)
-      if (!inName && !inCli && !inHost) return false
+      if (!inName && !inHost) return false
     }
 
     return true
@@ -118,21 +105,6 @@ function usePreviewPoller(
   return tails
 }
 
-/* ATTN-04: debounce hook — controls reorder ORDER only, never card content */
-/* Uses useRef + setTimeout — does NOT add a second periodic timer; the single interval is in usePreviewPoller */
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = React.useState<T>(value)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    if (timerRef.current !== null) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => setDebouncedValue(value), delay)
-    return () => { if (timerRef.current !== null) clearTimeout(timerRef.current) }
-  }, [value, delay])
-
-  return debouncedValue
-}
-
 // ---- Props ----
 
 // WR-04: DEFAULT_FONT_SIZE used in the modal render to avoid magic number 14.
@@ -149,7 +121,7 @@ export interface HubPanelProps {
   /** Fired when the user commits an inline rename. */
   onRename: (id: string, name: string) => void
   /** Opens (or focuses) the session's terminal tab. Phase 131 UAT follow-up. */
-  onOpenSession?: (sessionId: string, name: string, cli: string) => void
+  onOpenSession?: (sessionId: string, name: string) => void
   /** Phase 132 / GRID-07 — remote sessions from App.tsx (already adapted to SessionInfo[]) */
   remoteSessions?: SessionInfo[]
   /** Phase 132 / CARD-07 — true when Hub tab is active (gates usePreviewPoller interval) */
@@ -176,8 +148,6 @@ export interface HubPanelProps {
   onKill?: (sessionId: string) => void
   /** Phase 138 — Open remote session in system browser (Phase 146: receives session object for cap exchange) */
   onOpenInBrowser?: (session: AdaptedRemoteSessionInfo) => void
-  /** Phase 138 — Browse remote session files (join-code flow) */
-  onBrowseFiles?: (sessionId: string, sessionName: string) => void
   /** Phase 138 — remotePeers raw data for unreachable-peer hints */
   remotePeers?: import('../../lib/remoteSession').RemotePeerSessions[]
   /** POL-05 — active group filter driven by Sidebar selection (state lifted to App.tsx) */
@@ -200,6 +170,8 @@ export interface HubPanelProps {
   // moved with the modal render to App.tsx (single render site — see App.tsx).
   /** Opens the (App.tsx-owned) Share modal for the given session — the card's Share button. */
   setShareModalSession?: (session: SessionInfo | null) => void
+  /** NET-01: disables every local card's Share button with this reason. */
+  shareDisabledReason?: string
 }
 
 // POL-05: SIDEBAR_COLLAPSED_KEY removed — hub-group-sidebar-collapsed localStorage key no longer used.
@@ -243,15 +215,14 @@ export function HubPanel({
   onFontSizeChange,
   onKill,
   onOpenInBrowser,
-  onBrowseFiles,
   remotePeers,
   activeGroupId: activeGroupIdProp = null,
   groupDefs: groupDefsProp = [],
   onDropOnGroup: onDropOnGroupProp,
   onGroupCountsChange,
   setShareModalSession,
+  shareDisabledReason,
 }: HubPanelProps): React.ReactElement {
-  const [activeFilter, setActiveFilter] = useState<HubFilter>('all')
   const [searchText, setSearchText] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -259,6 +230,8 @@ export function HubPanel({
   interface HubModalState {
     session: SessionInfo
     sourceRect: DOMRect
+    /** Provenance at open time; only local modals auto-close (remote lists are best-effort). */
+    isRemote: boolean
   }
   const [modalState, setModalState] = useState<HubModalState | null>(null)
 
@@ -310,11 +283,8 @@ export function HubPanel({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // Reset both filter and search (used by Clear-filter CTA)
-  const handleClearFilter = useCallback(() => {
-    setActiveFilter('all')
-    setSearchText('')
-  }, [])
+  // Clear search CTA
+  const handleClearSearch = useCallback(() => setSearchText(''), [])
 
   // Phase 132 / GRID-07: merge local + remote sessions into one unified grid
   const allSessions = [...sessions, ...(remoteSessions ?? [])]
@@ -329,8 +299,16 @@ export function HubPanel({
     [remoteSessions],
   )
 
+  // Close a local modal when its session exits. The local list is authoritative;
+  // the remote list empties on any probe failure, so remote modals stay open.
+  useEffect(() => {
+    if (modalState && !modalState.isRemote && !sessions.some((s) => s.id === modalState.session.id)) {
+      setModalState(null)
+    }
+  }, [sessions, modalState])
+
   // Phase 138 / CARD-03: derive connected set from remoteCapsCached.
-  // Mirror attentionIds threading — boolean Set threaded to SessionCardGrid as connectedRemoteIds.
+  // Boolean Set threaded to SessionCardGrid as connectedRemoteIds.
   const connectedRemoteIds = React.useMemo(
     () => remoteCapsCached ?? new Set<string>(),
     [remoteCapsCached],
@@ -360,25 +338,8 @@ export function HubPanel({
     return m
   }, [localPreviewTails, remoteSessions])
 
-  /* ATTN-02: float-to-top reorder is within-group; debounce window 1000ms */
-  /* Only POSITION is debounced — card content (isAttention) uses the LIVE set above */
-  const attentionSortKey = allSessions
-    .map((s) => `${s.id}:${isAttentionStatus(deriveHubStatus(s)) ? '1' : '0'}`)
-    .join(',')
-  const debouncedSortKey = useDebouncedValue(attentionSortKey, 1000)
-
-  /* ATTN-01: live attention set — NOT debounced; card border/icon update immediately */
-  /* IN-02: memoized on attentionSortKey (encodes all id:bit changes) so the Set keeps
-     referential identity across preview-poll renders where attention membership is stable.
-     This avoids unnecessary SessionCardGrid re-renders from always-new Set references. */
-  const attentionIds = React.useMemo(
-    () => new Set(allSessions.filter((s) => isAttentionStatus(deriveHubStatus(s))).map((s) => s.id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [attentionSortKey], // attentionSortKey encodes all id:bit changes
-  )
-
-  // Apply status filter + search to allSessions
-  const filtered = filterSessions(allSessions, activeFilter, searchText)
+  // Apply search to allSessions
+  const filtered = filterSessions(allSessions, searchText)
 
   // Phase 132 / GRID-03: apply named-group filter when a group is selected
   // When activeGroupId is '__other__', show sessions not in any named group.
@@ -408,14 +369,14 @@ export function HubPanel({
   // allSessions or groupDefs changes. This avoids lifting allSessions to App.tsx.
   useEffect(() => {
     if (!onGroupCountsChange) return
-    const counts: Record<string, { running: number; total: number; attention: number; waiting: number }> = {}
+    const counts: Record<string, GroupCounts> = {}
     for (const g of groupDefs) {
       counts[g.id] = computeCounts(allSessions, new Set(g.memberKeys))
     }
     const global = computeGlobalCounts(allSessions)
     onGroupCountsChange(counts, global)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allSessions.map(s => s.id + ':' + s.status).join(','), groupDefs.map(g => g.id + ':' + g.memberKeys.join(';')).join(','), onGroupCountsChange])
+  }, [allSessions.map(s => s.id + ':' + memberKey(s.name, s.workDir)).join(','), groupDefs.map(g => g.id + ':' + g.memberKeys.join(';')).join(','), onGroupCountsChange])
 
   // Phase 134 — MODAL-06: card click handler with remote cap gate
   const handleCardClick = useCallback((session: SessionInfo, rect: DOMRect) => {
@@ -435,7 +396,7 @@ export function HubPanel({
       m.delete(session.id)
       return m
     })
-    setModalState({ session, sourceRect: rect })
+    setModalState({ session, sourceRect: rect, isRemote })
   }, [remoteIdSet, remoteCapsCached, onRequestRemoteCap])
 
   // Phase 134 — MODAL-06: cap-acquired handler — called by App.tsx after successful join-code exchange
@@ -451,10 +412,10 @@ export function HubPanel({
     // Use stored rect or fall back to centered rect
     const sourceRect = pendingSourceRectRef.current ??
       new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0)
-    setModalState({ session, sourceRect })
+    setModalState({ session, sourceRect, isRemote: remoteIdSet.has(sessionId) })
     setPendingModalSessionId(null)
     pendingSourceRectRef.current = null
-  }, [pendingModalSessionId, sessions, remoteSessions])
+  }, [pendingModalSessionId, sessions, remoteSessions, remoteIdSet])
 
   // Phase 134 — register cap-acquired callback with App.tsx
   useEffect(() => {
@@ -489,7 +450,7 @@ export function HubPanel({
   } else if (allSessions.length === 0) {
     body = <HubEmptyState variant="no-sessions" onNewSession={onNewSession} />
   } else if (visibleSessions.length === 0) {
-    body = <HubEmptyState variant="no-matches" onClearFilter={handleClearFilter} />
+    body = <HubEmptyState variant="no-matches" onClearSearch={handleClearSearch} />
   } else {
     body = (
       <SessionCardGrid
@@ -498,17 +459,15 @@ export function HubPanel({
         onOpenSession={onOpenSession}
         onCardClick={handleCardClick}
         onShare={handleShare}
+        shareDisabledReason={shareDisabledReason}
         groupDefs={groupDefs.length > 0 ? groupDefs : undefined}
         previewTails={previewTails}
         previewTheme={terminalTheme}
         onAssignGroup={handleAssignGroup}
-        attentionIds={attentionIds}
-        debouncedSortKey={debouncedSortKey}
         connectedRemoteIds={connectedRemoteIds}
         remoteIdSet={remoteIdSet}
         onKill={onKill}
         onOpenInBrowser={onOpenInBrowser}
-        onBrowseFiles={onBrowseFiles}
         unreadBySessionId={unreadMap}
       />
     )
@@ -519,11 +478,8 @@ export function HubPanel({
       <div className="hub">
         {/* CARD-01: Header strip removed — HubFilterBar's New Session button is the sole entry point */}
         <HubFilterBar
-          sessions={allSessions}
-          activeFilter={activeFilter}
           searchText={searchText}
           searchRef={searchRef}
-          onFilterChange={setActiveFilter}
           onSearchChange={setSearchText}
           onNewSession={onNewSession}
         />
@@ -558,27 +514,23 @@ export function HubPanel({
           The card's Share button still opens it via the setShareModalSession
           controlled prop. */}
 
-      {modalState && relayPort !== undefined && relayPort > 0 && (() => {
-        // Compute isRemote at render time (same rule as handleCardClick).
-        // GAP-134-A: provenance (remoteIdSet), NOT hostname — local sessions carry the
-        // machine hostname. This discriminator routes remote sessions through the daemon
-        // WS proxy seam added in Plan 07 (RelayClient opts.remote → /api/relay/remote/{id}/ws).
-        const isRemote = remoteIdSet.has(modalState.session.id)
-        return (
-          <HubModal
-            session={modalState.session}
-            sourceRect={modalState.sourceRect}
-            relayPort={relayPort}
-            fontSize={fontSizes?.[modalState.session.id] ?? DEFAULT_FONT_SIZE}
-            theme={terminalTheme}
-            pluginConfig={pluginConfig}
-            remote={isRemote}
-            onFontSizeChange={onFontSizeChange ? (delta) => onFontSizeChange(modalState.session.id, delta) : undefined}
-            onClose={() => setModalState(null)}
-            onUnreadChange={handleUnreadChange}
-          />
-        )
-      })()}
+      {/* Route by the provenance recorded at open (GAP-134-A: not hostname). The
+          remote list is best-effort, so it must not flip an open remote modal to
+          local; remote sessions go through the daemon WS proxy seam (Plan 07). */}
+      {modalState && relayPort !== undefined && relayPort > 0 && (
+        <HubModal
+          session={modalState.session}
+          sourceRect={modalState.sourceRect}
+          relayPort={relayPort}
+          fontSize={fontSizes?.[modalState.session.id] ?? DEFAULT_FONT_SIZE}
+          theme={terminalTheme}
+          pluginConfig={pluginConfig}
+          remote={modalState.isRemote}
+          onFontSizeChange={onFontSizeChange ? (delta) => onFontSizeChange(modalState.session.id, delta) : undefined}
+          onClose={() => setModalState(null)}
+          onUnreadChange={handleUnreadChange}
+        />
+      )}
     </>
   )
 }
