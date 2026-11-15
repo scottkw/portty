@@ -1,713 +1,160 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act } from 'react'
-import { createRoot } from 'react-dom/client'
-import { Sidebar } from '../Sidebar'
+import { createRoot, type Root } from 'react-dom/client'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
-import type { HubGroupDef } from '../../lib/hubGroups'
+import { Sidebar } from '../Sidebar'
+import type { Tab } from '../TabBar'
+import type { SessionInfo } from '../../wailsjs/go/main/App'
 
-// CSS source for contract tests (jsdom has no layout engine — we inspect raw CSS text)
-// This is the established project pattern from SettingsTab, WelcomeTab, TerminalPanel tests.
-const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
+// Portty 02-04 (NAV-01..03): the sidebar is a macOS source list.
 
-// Source files for POL-03 / POL-04 source-gate assertions
-const terminalPanelRaw = readFileSync(
-  resolve(__dirname, '../TerminalPanel.tsx'),
-  'utf-8',
-)
-const hubFilterBarRaw = readFileSync(
-  resolve(__dirname, '../Hub/HubFilterBar.tsx'),
-  'utf-8',
-)
-const hubEmptyStateRaw = readFileSync(
-  resolve(__dirname, '../Hub/HubEmptyState.tsx'),
-  'utf-8',
-)
-
-// Helper: default group defs for POL-05 tests
-function makeGroup(overrides: Partial<HubGroupDef> = {}): HubGroupDef {
+function session(id: string, name: string, extra: Partial<SessionInfo> = {}): SessionInfo {
   return {
-    id: 'grp-1',
-    name: 'Alpha',
-    memberKeys: [],
+    id,
+    name,
+    state: 'running',
+    status: 'running',
+    createdAt: '2026-01-01T00:00:00Z',
+    hostname: '',
+    webEnabled: false,
+    viewerCount: 0,
+    funnelActive: false,
+    workDir: '/',
+    funnelWriteActive: false,
+    ...extra,
+  }
+}
+
+type Props = Parameters<typeof Sidebar>[0]
+
+let container: HTMLDivElement | null = null
+let root: Root | null = null
+
+function render(overrides: Partial<Props> = {}) {
+  container = document.createElement('div')
+  document.body.appendChild(container)
+  root = createRoot(container)
+  const props: Props = {
+    sessions: [],
+    activeTab: null,
+    onOpenLocal: vi.fn(),
     ...overrides,
   }
+  act(() => root!.render(<Sidebar {...props} />))
+  return { c: container, props }
 }
 
-// Helper to render Sidebar with default no-op props
-// Phase 138 / NAV-02..05: reduced to 3-item sidebar (Home, Hub, Settings only).
-// onOpenDaemonManager, onOpenRemoteSessions, onAdd removed — those panels are deleted.
-// Phase 147: SidebarProps will gain onOpenHelp in Plan 02. Until then, use
-// an extended type so these RED-state tests compile without a prop type error.
-type SidebarTestProps = Parameters<typeof Sidebar>[0] & { onOpenHelp?: () => void }
+afterEach(() => {
+  if (root) act(() => root!.unmount())
+  container?.remove()
+  container = null
+  root = null
+})
 
-function renderSidebar(overrides: Partial<SidebarTestProps> = {}) {
-  const container = document.createElement('div')
-  document.body.appendChild(container)
-  const root = createRoot(container)
-  const defaultProps: SidebarTestProps = {
-    onSettings: vi.fn(),
-    onHome: vi.fn(),
-    onOpenHub: vi.fn(),
-    // POL-05 additions — required props with safe empty defaults
-    groupDefs: [] as HubGroupDef[],
-    activeGroupId: null as string | null,
-    onGroupSelect: vi.fn(),
-    onCreateGroup: vi.fn(),
-    onDropOnGroup: vi.fn(),
-    groupCounts: {} as Record<string, { total: number }>,
-    globalGroupCounts: { total: 0 },
-    // Phase 147 — Help button prop (added to SidebarProps in Plan 02)
-    onOpenHelp: vi.fn(),
-  }
-  act(() => {
-    // Cast to any to allow the pre-implementation onOpenHelp prop; Plan 02 makes
-    // it a real prop and this cast becomes redundant (removing it is a GREEN signal).
-    root.render(<Sidebar {...(defaultProps as Parameters<typeof Sidebar>[0])} {...(overrides as Parameters<typeof Sidebar>[0])} />)
-  })
-  return { container, root, ...defaultProps, ...(overrides as typeof defaultProps) }
+const localTab = (s: SessionInfo): Tab => ({ id: s.id, name: s.name, sessionId: s.id })
+const rows = (c: HTMLElement, groupLabel: string) => {
+  const header = Array.from(c.querySelectorAll('h2')).find((h) => h.textContent === groupLabel)
+  const section = header?.closest('section')
+  return Array.from(section?.querySelectorAll<HTMLButtonElement>('button.sidebar__row') ?? [])
 }
 
-describe('Sidebar component (SIDE-01)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
+describe('Sidebar: This Mac (NAV-01)', () => {
+  it('is a nav landmark named "Sessions"', () => {
+    const { c } = render()
+    const nav = c.querySelector('nav')
+    expect(nav?.getAttribute('aria-label')).toBe('Sessions')
+    expect(c.querySelectorAll('nav[aria-label="Sessions"]').length).toBe(1)
   })
 
-  it('renders a <nav> element with class "sidebar"', () => {
-    ;({ container, root } = renderSidebar())
-    const nav = container.querySelector('nav.sidebar')
-    expect(nav).not.toBeNull()
+  it('renders one row per session in the array order (no client sort)', () => {
+    const sessions = [session('b', 'zeta'), session('a', 'alpha'), session('c', 'mid')]
+    const { c } = render({ sessions })
+    expect(rows(c, 'This Mac').map((b) => b.textContent)).toEqual(['zeta', 'alpha', 'mid'])
   })
 
-  it('renders <nav> with aria-label="Main navigation"', () => {
-    ;({ container, root } = renderSidebar())
-    const nav = container.querySelector('nav')
-    expect(nav).not.toBeNull()
-    expect(nav!.getAttribute('aria-label')).toBe('Main navigation')
+  it('section is labelled by its "This Mac" header', () => {
+    const { c } = render({ sessions: [session('a', 'x')] })
+    const section = c.querySelector('section')!
+    const header = c.querySelector(`#${section.getAttribute('aria-labelledby')}`)
+    expect(header?.textContent).toBe('This Mac')
   })
 
-  it('renders buttons with class sidebar__item for nav items', () => {
-    ;({ container, root } = renderSidebar())
-    const items = container.querySelectorAll('button.sidebar__item')
-    expect(items.length).toBeGreaterThan(0)
+  it('clicking a row calls onOpenLocal(id, name)', () => {
+    const onOpenLocal = vi.fn()
+    const { c } = render({ sessions: [session('a', 'alpha'), session('b', 'beta')], onOpenLocal })
+    act(() => rows(c, 'This Mac')[1].click())
+    expect(onOpenLocal).toHaveBeenCalledWith('b', 'beta')
   })
 
-  // Phase 138 / NAV-02..05: exactly 3 items (Home, Hub, Settings); Phase 147 adds Help → 4
-  it('renders exactly 4 sidebar__item buttons (Home, Hub, Settings, Help)', () => {
-    ;({ container, root } = renderSidebar())
-    const items = container.querySelectorAll('button.sidebar__item')
-    expect(items.length).toBe(4)
+  it('two sessions with the same name render two rows, each opening its own id', () => {
+    const onOpenLocal = vi.fn()
+    const { c } = render({ sessions: [session('s1', 'shell'), session('s2', 'shell')], onOpenLocal })
+    const r = rows(c, 'This Mac')
+    expect(r.length).toBe(2)
+    act(() => r[0].click())
+    act(() => r[1].click())
+    expect(onOpenLocal.mock.calls).toEqual([['s1', 'shell'], ['s2', 'shell']])
   })
 
-  // Phase 138 / NAV-03: Sessions panel removed — button must be absent
-  it('does NOT render a Sessions button', () => {
-    ;({ container, root } = renderSidebar())
-    expect(container.querySelector('button[aria-label="Sessions"]')).toBeNull()
+  it('marks only the active local tab row with aria-current="page"', () => {
+    const sessions = [session('a', 'alpha'), session('b', 'beta')]
+    const { c } = render({ sessions, activeTab: localTab(sessions[1]) })
+    const current = c.querySelectorAll('[aria-current="page"]')
+    expect(current.length).toBe(1)
+    expect(current[0].textContent).toBe('beta')
   })
 
-  // Phase 138 / NAV-02: Remote panel removed — button must be absent
-  it('does NOT render a Remote button', () => {
-    ;({ container, root } = renderSidebar())
-    expect(container.querySelector('button[aria-label="Remote"]')).toBeNull()
-  })
-
-  // Phase 138 / NAV-05: New Session sidebar item removed — creation lives in HubFilterBar
-  it('does NOT render a New Session button', () => {
-    ;({ container, root } = renderSidebar())
-    expect(container.querySelector('button[aria-label="New Session"]')).toBeNull()
-  })
-})
-
-describe('Sidebar toggle (SIDE-02)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  beforeEach(() => {
-    localStorage.clear()
-  })
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-    localStorage.clear()
-  })
-
-  it('renders with class "sidebar" and NOT "sidebar--collapsed" by default (expanded state)', () => {
-    ;({ container, root } = renderSidebar())
-    const nav = container.querySelector('nav')
-    expect(nav).not.toBeNull()
-    expect(nav!.classList.contains('sidebar')).toBe(true)
-    expect(nav!.classList.contains('sidebar--collapsed')).toBe(false)
-  })
-
-  it('clicking the toggle button (.sidebar__toggle) adds sidebar--collapsed class', () => {
-    ;({ container, root } = renderSidebar())
-    const toggleBtn = container.querySelector('.sidebar__toggle') as HTMLButtonElement
-    expect(toggleBtn).not.toBeNull()
-    act(() => {
-      toggleBtn.click()
+  it('selects no local row when the active tab is not a local terminal tab', () => {
+    const sessions = [session('a', 'alpha')]
+    const { c } = render({
+      sessions,
+      activeTab: { id: '__settings__', name: 'Settings', sessionId: '', type: 'settings' },
     })
-    const nav = container.querySelector('nav')
-    expect(nav!.classList.contains('sidebar--collapsed')).toBe(true)
+    expect(c.querySelectorAll('[aria-current="page"]').length).toBe(0)
   })
 
-  it('clicking toggle again removes sidebar--collapsed (back to expanded)', () => {
-    ;({ container, root } = renderSidebar())
-    const toggleBtn = container.querySelector('.sidebar__toggle') as HTMLButtonElement
-    act(() => {
-      toggleBtn.click()
-    })
-    act(() => {
-      toggleBtn.click()
-    })
-    const nav = container.querySelector('nav')
-    expect(nav!.classList.contains('sidebar--collapsed')).toBe(false)
-  })
-})
-
-describe('Sidebar localStorage persistence (SIDE-03)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  beforeEach(() => {
-    localStorage.clear()
+  it('shows a non-interactive "No sessions" line with an empty array', () => {
+    const { c } = render({ sessions: [] })
+    const muted = c.querySelector('li.sidebar__muted')
+    expect(muted?.textContent).toBe('No sessions')
+    expect(muted?.querySelector('button')).toBeNull()
   })
 
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-    localStorage.clear()
+  it('shows a Shared img only for web-enabled sessions', () => {
+    const { c } = render({ sessions: [session('a', 'alpha', { webEnabled: true }), session('b', 'beta')] })
+    const [a, b] = rows(c, 'This Mac')
+    expect(a.querySelector('[role="img"][aria-label="Shared"]')).not.toBeNull()
+    expect(b.querySelector('[role="img"]')).toBeNull()
   })
 
-  it('renders without sidebar--collapsed when localStorage has no sidebar-collapsed key (expanded default)', () => {
-    expect(localStorage.getItem('sidebar-collapsed')).toBeNull()
-    ;({ container, root } = renderSidebar())
-    const nav = container.querySelector('nav')
-    expect(nav!.classList.contains('sidebar--collapsed')).toBe(false)
+  it('exposes the full name in title for truncation', () => {
+    const long = 'a-very-long-session-name-that-will-not-fit-in-the-sidebar'
+    const { c } = render({ sessions: [session('a', long)] })
+    expect(c.querySelector('.sidebar__row-name')?.getAttribute('title')).toBe(long)
   })
 
-  it('renders with sidebar--collapsed when localStorage has sidebar-collapsed = "true"', () => {
-    localStorage.setItem('sidebar-collapsed', 'true')
-    ;({ container, root } = renderSidebar())
-    const nav = container.querySelector('nav')
-    expect(nav!.classList.contains('sidebar--collapsed')).toBe(true)
-  })
-
-  it('toggling the sidebar writes "true" to localStorage key sidebar-collapsed when collapsing', () => {
-    ;({ container, root } = renderSidebar())
-    const toggleBtn = container.querySelector('.sidebar__toggle') as HTMLButtonElement
-    act(() => {
-      toggleBtn.click()
-    })
-    expect(localStorage.getItem('sidebar-collapsed')).toBe('true')
-  })
-
-  it('toggling the sidebar writes "false" to localStorage key sidebar-collapsed when expanding', () => {
-    localStorage.setItem('sidebar-collapsed', 'true')
-    ;({ container, root } = renderSidebar())
-    const toggleBtn = container.querySelector('.sidebar__toggle') as HTMLButtonElement
-    act(() => {
-      toggleBtn.click()
-    })
-    expect(localStorage.getItem('sidebar-collapsed')).toBe('false')
-  })
-})
-
-describe('Sidebar icon centering precondition (SBR-01)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  beforeEach(() => {
-    localStorage.clear()
-  })
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-    localStorage.clear()
-  })
-
-  it('collapsed sidebar items contain only an SVG icon (no label span)', () => {
-    ;({ container, root } = renderSidebar())
-    const toggleBtn = container.querySelector('.sidebar__toggle') as HTMLButtonElement
-    act(() => { toggleBtn.click() })
-    const items = container.querySelectorAll('.sidebar__item')
-    items.forEach((item) => {
-      expect(item.querySelector('svg')).not.toBeNull()
-      expect(item.querySelector('.sidebar__label')).toBeNull()
-    })
-  })
-
-  // Phase 138 / NAV-02..05: 3 items remain in DOM when collapsed (was 6); Phase 147 adds Help → 4
-  it('all 4 sidebar items remain in DOM when collapsed', () => {
-    ;({ container, root } = renderSidebar())
-    const toggleBtn = container.querySelector('.sidebar__toggle') as HTMLButtonElement
-    act(() => { toggleBtn.click() })
-    const items = container.querySelectorAll('.sidebar__item')
-    expect(items.length).toBe(4)
-  })
-})
-
-describe('Sidebar icons (ICON-01, ICON-02)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-  })
-
-  it('renders SVG elements for toggle and nav icons (querySelectorAll("svg").length >= 2)', () => {
-    ;({ container, root } = renderSidebar())
-    const svgs = container.querySelectorAll('svg')
-    expect(svgs.length).toBeGreaterThanOrEqual(2)
-  })
-})
-
-describe('Sidebar Hub item (HUB-01, Phase 131)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-  })
-
-  it('renders a Hub button with aria-label="Hub"', () => {
-    ;({ container, root } = renderSidebar())
-    const hubBtn = container.querySelector('button[aria-label="Hub"]')
-    expect(hubBtn).not.toBeNull()
-    expect(hubBtn!.classList.contains('sidebar__item')).toBe(true)
-  })
-
-  it('Hub button fires onOpenHub when clicked', () => {
-    const onOpenHub = vi.fn()
-    ;({ container, root } = renderSidebar({ onOpenHub }))
-    const hubBtn = container.querySelector('button[aria-label="Hub"]') as HTMLButtonElement
-    expect(hubBtn).not.toBeNull()
-    act(() => { hubBtn.click() })
-    expect(onOpenHub).toHaveBeenCalledTimes(1)
-  })
-
-  it('Hub button does NOT have sidebar__item--active when activePanel is not __hub__', () => {
-    ;({ container, root } = renderSidebar({ activePanel: '__settings__' }))
-    const hubBtn = container.querySelector('button[aria-label="Hub"]')
-    expect(hubBtn).not.toBeNull()
-    expect(hubBtn!.classList.contains('sidebar__item--active')).toBe(false)
-  })
-
-  it('Hub button has sidebar__item--active when activePanel === "__hub__"', () => {
-    ;({ container, root } = renderSidebar({ activePanel: '__hub__' }))
-    const hubBtn = container.querySelector('button[aria-label="Hub"]')
-    expect(hubBtn).not.toBeNull()
-    expect(hubBtn!.classList.contains('sidebar__item--active')).toBe(true)
-  })
-
-  it('Hub button has sidebar__item--active only when active (not when other panel is active)', () => {
-    // Settings panel active — Hub button must NOT be active
-    ;({ container, root } = renderSidebar({ activePanel: '__settings__' }))
-    const hubBtn = container.querySelector('button[aria-label="Hub"]')
-    expect(hubBtn!.classList.contains('sidebar__item--active')).toBe(false)
-  })
-})
-
-describe('Sidebar Help item (Phase 147)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-  })
-
-  it('renders a Help button with aria-label="Help"', () => {
-    ;({ container, root } = renderSidebar())
-    const helpBtn = container.querySelector('button[aria-label="Help"]')
-    expect(helpBtn).not.toBeNull()
-    expect(helpBtn!.classList.contains('sidebar__item')).toBe(true)
-  })
-
-  it('Help button fires onOpenHelp when clicked', () => {
-    const onOpenHelp = vi.fn()
-    ;({ container, root } = renderSidebar({ onOpenHelp }))
-    const helpBtn = container.querySelector('button[aria-label="Help"]') as HTMLButtonElement
-    expect(helpBtn).not.toBeNull()
-    act(() => { helpBtn.click() })
-    expect(onOpenHelp).toHaveBeenCalledTimes(1)
-  })
-
-  it('Help button does NOT have sidebar__item--active when activePanel is not __help__', () => {
-    ;({ container, root } = renderSidebar({ activePanel: '__settings__' }))
-    const helpBtn = container.querySelector('button[aria-label="Help"]')
-    expect(helpBtn).not.toBeNull()
-    expect(helpBtn!.classList.contains('sidebar__item--active')).toBe(false)
-  })
-
-  it('Help button has sidebar__item--active when activePanel === "__help__"', () => {
-    ;({ container, root } = renderSidebar({ activePanel: '__help__' }))
-    const helpBtn = container.querySelector('button[aria-label="Help"]')
-    expect(helpBtn).not.toBeNull()
-    expect(helpBtn!.classList.contains('sidebar__item--active')).toBe(true)
-  })
-})
-
-describe('Sidebar icon position stability (SBR-02)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  beforeEach(() => {
-    localStorage.clear()
-  })
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-    localStorage.clear()
-  })
-
-  it('all sidebar__icon elements exist in both expanded and collapsed states', () => {
-    // Phase 138: 1 toggle + 3 nav items = 4; Phase 147 adds Help → 5 sidebar__icon SVGs total
-    ;({ container, root } = renderSidebar())
-    const expandedIcons = container.querySelectorAll('svg.sidebar__icon')
-    expect(expandedIcons.length).toBeGreaterThanOrEqual(4)
-
-    const toggleBtn = container.querySelector('.sidebar__toggle') as HTMLButtonElement
-    act(() => { toggleBtn.click() })
-
-    // After collapse, same icon count — icons are always in the DOM
-    const collapsedIcons = container.querySelectorAll('svg.sidebar__icon')
-    expect(collapsedIcons.length).toBe(expandedIcons.length)
-  })
-
-  it('sidebar__toggle contains exactly one sidebar__icon SVG', () => {
-    ;({ container, root } = renderSidebar())
-    // The toggle button uses the same .sidebar__icon class — it participates
-    // in the unified icon-alignment system (14px margin, 24px center)
-    const toggleIcons = container.querySelectorAll('.sidebar__toggle svg.sidebar__icon')
-    expect(toggleIcons.length).toBe(1)
-  })
-
-  it('CSS contract: .sidebar__icon has margin: 0 14px (fixed 48px icon slot — SBR-02)', () => {
-    // Verify the stylesheet declares the fixed-width icon slot.
-    // Math: 14px left + 20px icon + 14px right = 48px slot.
-    // Icon center = 14 + 10 = 24px in both expanded and collapsed states.
-    expect(cssRaw).toMatch(/\.sidebar__icon\s*\{[^}]*margin:\s*0\s+14px/)
-  })
-
-  it('CSS contract: .sidebar--collapsed .sidebar__item justify-content override is removed (anti-regression)', () => {
-    // The Phase 63 rule `.sidebar--collapsed .sidebar__item { justify-content: center }`
-    // caused the 6px icon shift bug. It must NOT be present after the Phase 70 fix.
-    // If this test fails, the override has been re-introduced.
-    expect(cssRaw).not.toMatch(/\.sidebar--collapsed\s+\.sidebar__item\s*\{[^}]*justify-content\s*:\s*center/)
-  })
-})
-
-// ============================================================
-// NAV-05 positive render contract — 3 items with groups present (GAP-03)
-// ============================================================
-
-describe('NAV-05 positive render contract — 3 items with groups present (GAP-03)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  beforeEach(() => {
-    localStorage.clear()
-  })
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-    localStorage.clear()
-  })
-
-  it('still renders exactly 4 sidebar__item buttons when groupDefs are present (Home, Hub, Settings, Help)', () => {
-    // sidebar is expanded by default (no sidebar-collapsed in localStorage)
-    // showGroupList = effectiveExpanded && groupDefs.length > 0 — group items render in ul.sidebar__group-list,
-    // NOT as button.sidebar__item, so the top-level nav count must stay at exactly 4.
-    const groupDefs = [
-      makeGroup({ id: 'grp-1', name: 'Alpha' }),
-      makeGroup({ id: 'grp-2', name: 'Beta' }),
-    ]
-    ;({ container, root } = renderSidebar({ groupDefs }))
-    const items = container.querySelectorAll('button.sidebar__item')
-    expect(items.length).toBe(4)
-  })
-
-  it('renders group entries as .sidebar__group-item elements (not as top-level nav items)', () => {
-    const groupDefs = [
-      makeGroup({ id: 'grp-1', name: 'Alpha' }),
-      makeGroup({ id: 'grp-2', name: 'Beta' }),
-    ]
-    ;({ container, root } = renderSidebar({ groupDefs }))
-    // Groups appear inside ul.sidebar__group-list as li.sidebar__group-item
-    const groupItems = container.querySelectorAll('.sidebar__group-item')
-    // 2 named groups + "All" sentinel = 3 total group items
-    expect(groupItems.length).toBe(groupDefs.length + 1)
-  })
-
-  it('group item count matches groupDefs.length (named groups only, excluding "All")', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    ;({ container, root } = renderSidebar({ groupDefs }))
-    // Named group items: one per groupDef. "All" is also a .sidebar__group-item but its
-    // li.sidebar__group-item is also in the list; total = groupDefs.length + 1.
-    // Here we assert the list renders groupDefs.length named items by checking total = N+1.
-    const groupItems = container.querySelectorAll('.sidebar__group-item')
-    expect(groupItems.length).toBe(groupDefs.length + 1) // +1 for "All"
-  })
-
-  it('no Sessions or Remote buttons appear regardless of groupDefs', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    ;({ container, root } = renderSidebar({ groupDefs }))
-    expect(container.querySelector('button[aria-label="Sessions"]')).toBeNull()
-    expect(container.querySelector('button[aria-label="Remote"]')).toBeNull()
-  })
-})
-
-// ============================================================
-// POL-05: Sidebar group sub-list (RED — fails until POL-05 lands)
-// ============================================================
-
-describe('Sidebar group sub-list (POL-05) — RED', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  beforeEach(() => {
-    localStorage.clear()
-  })
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-    localStorage.clear()
-  })
-
-  // (a) renders a group sub-list when groupDefs is non-empty
-  it('POL-05 RED: renders ul.sidebar__group-list when groupDefs.length > 0', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    ;({ container, root } = renderSidebar({ groupDefs }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-  })
-
-  // (a) "All" item is always present when groupDefs.length > 0
-  it('POL-05 RED: renders an "All" item in the group sub-list', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    ;({ container, root } = renderSidebar({ groupDefs }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-    expect(list!.textContent).toContain('All')
-  })
-
-  // (a) one button per group plus one for "All"
-  it('POL-05 RED: renders one group item button per groupDef plus an All item', () => {
-    const groupDefs = [
-      makeGroup({ id: 'grp-1', name: 'Alpha' }),
-      makeGroup({ id: 'grp-2', name: 'Beta' }),
-    ]
-    ;({ container, root } = renderSidebar({ groupDefs }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-    // 1 All + 2 groups = 3 items
-    const items = list!.querySelectorAll('li')
-    expect(items.length).toBe(3)
-  })
-
-  // (b) aria-pressed reflects activeGroupId
-  it('POL-05 RED: group item button has aria-pressed=true when activeGroupId matches', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    ;({ container, root } = renderSidebar({ groupDefs, activeGroupId: 'grp-1' }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-    // Find the button for Alpha
-    const buttons = list!.querySelectorAll('button')
-    const alphaBtn = Array.from(buttons).find(b => b.textContent?.includes('Alpha'))
-    expect(alphaBtn).not.toBeUndefined()
-    expect(alphaBtn!.getAttribute('aria-pressed')).toBe('true')
-  })
-
-  it('POL-05 RED: group item button has aria-pressed=false when not active', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    ;({ container, root } = renderSidebar({ groupDefs, activeGroupId: null }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-    const buttons = list!.querySelectorAll('button')
-    const alphaBtn = Array.from(buttons).find(b => b.textContent?.includes('Alpha'))
-    expect(alphaBtn).not.toBeUndefined()
-    expect(alphaBtn!.getAttribute('aria-pressed')).toBe('false')
-  })
-
-  // (b) group item button has aria-label with the member count only (no running count, CONTEXT Amendment 2)
-  it('POL-05: group item button has aria-label with the session count and no running count', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    const groupCounts = { 'grp-1': { total: 3 } }
-    ;({ container, root } = renderSidebar({ groupDefs, groupCounts }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-    const buttons = list!.querySelectorAll('button')
-    const alphaBtn = Array.from(buttons).find(b =>
-      b.getAttribute('aria-label')?.includes('Alpha') || b.textContent?.includes('Alpha')
+  it('has no Home, Hub, Help or Settings item (NAV-03)', () => {
+    const { c } = render({ sessions: [session('a', 'alpha')] })
+    const names = Array.from(c.querySelectorAll('button')).map(
+      (b) => b.getAttribute('aria-label') ?? b.textContent,
     )
-    expect(alphaBtn).not.toBeUndefined()
-    const ariaLabel = alphaBtn!.getAttribute('aria-label') ?? ''
-    expect(ariaLabel).toBe('Alpha group, 3 sessions')
-    expect(ariaLabel).not.toMatch(/\d+\/\d+/)
-  })
-
-  // (c) clicking a group item calls onGroupSelect(g.id) AND onOpenHub
-  it('POL-05 RED: clicking a group item calls onGroupSelect(id) and onOpenHub', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    const onGroupSelect = vi.fn()
-    const onOpenHub = vi.fn()
-    ;({ container, root } = renderSidebar({ groupDefs, onGroupSelect, onOpenHub }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-    const buttons = list!.querySelectorAll('button')
-    const alphaBtn = Array.from(buttons).find(b => b.textContent?.includes('Alpha')) as HTMLButtonElement
-    expect(alphaBtn).not.toBeUndefined()
-    act(() => { alphaBtn.click() })
-    expect(onGroupSelect).toHaveBeenCalledWith('grp-1')
-    expect(onOpenHub).toHaveBeenCalled()
-  })
-
-  // (d) clicking "All" calls onGroupSelect(null)
-  it('POL-05 RED: clicking "All" calls onGroupSelect(null)', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    const onGroupSelect = vi.fn()
-    ;({ container, root } = renderSidebar({ groupDefs, onGroupSelect }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-    const buttons = list!.querySelectorAll('button')
-    const allBtn = Array.from(buttons).find(b => b.textContent?.trim() === 'All') as HTMLButtonElement
-    expect(allBtn).not.toBeUndefined()
-    act(() => { allBtn.click() })
-    expect(onGroupSelect).toHaveBeenCalledWith(null)
-  })
-
-  // (e) drop event on a group <li> reads dataTransfer and calls onDropOnGroup(g.id, key)
-  it('POL-05 RED: drop on a group li calls onDropOnGroup(groupId, key)', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    const onDropOnGroup = vi.fn()
-    ;({ container, root } = renderSidebar({ groupDefs, onDropOnGroup }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-    const items = list!.querySelectorAll('li')
-    // Find Alpha item — second <li> after All
-    const alphaLi = Array.from(items).find(li => li.textContent?.includes('Alpha')) as HTMLElement
-    expect(alphaLi).not.toBeUndefined()
-
-    const dropKey = 'MySession:::/home/user/project'
-    act(() => {
-      const dropEvent = new Event('drop', { bubbles: true, cancelable: true })
-      Object.defineProperty(dropEvent, 'dataTransfer', {
-        value: { getData: (type: string) => type === 'text/plain' ? dropKey : '' },
-      })
-      alphaLi.dispatchEvent(dropEvent)
-    })
-
-    expect(onDropOnGroup).toHaveBeenCalledWith('grp-1', dropKey)
-  })
-
-  // (f) dropping on "All" does NOT call onDropOnGroup (id===null guard)
-  it('POL-05 RED: drop on "All" li does NOT call onDropOnGroup', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    const onDropOnGroup = vi.fn()
-    ;({ container, root } = renderSidebar({ groupDefs, onDropOnGroup }))
-    const list = container.querySelector('ul.sidebar__group-list')
-    expect(list).not.toBeNull()
-    const items = list!.querySelectorAll('li')
-    // "All" is the first <li>
-    const allLi = Array.from(items).find(li => li.textContent?.trim() === 'All') as HTMLElement
-    expect(allLi).not.toBeUndefined()
-
-    const dropKey = 'MySession:::/home/user/project'
-    act(() => {
-      const dropEvent = new Event('drop', { bubbles: true, cancelable: true })
-      Object.defineProperty(dropEvent, 'dataTransfer', {
-        value: { getData: (type: string) => type === 'text/plain' ? dropKey : '' },
-      })
-      allLi.dispatchEvent(dropEvent)
-    })
-
-    expect(onDropOnGroup).not.toHaveBeenCalled()
-  })
-
-  // (g) inline "New group" creation: clicking shows input; Enter with text calls onCreateGroup
-  it('POL-05 RED: clicking new-group affordance reveals an input', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    ;({ container, root } = renderSidebar({ groupDefs }))
-    // Find the "New group" button (any button with "New group" text near the sub-list)
-    const newGroupBtn = Array.from(container.querySelectorAll('button')).find(
-      b => b.textContent?.trim() === 'New group',
-    ) as HTMLButtonElement
-    expect(newGroupBtn).not.toBeUndefined()
-    act(() => { newGroupBtn.click() })
-    const input = container.querySelector('input')
-    expect(input).not.toBeNull()
-  })
-
-  it('POL-05 RED: Enter with trimmed text calls onCreateGroup', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    const onCreateGroup = vi.fn()
-    ;({ container, root } = renderSidebar({ groupDefs, onCreateGroup }))
-    const newGroupBtn = Array.from(container.querySelectorAll('button')).find(
-      b => b.textContent?.trim() === 'New group',
-    ) as HTMLButtonElement
-    expect(newGroupBtn).not.toBeUndefined()
-    act(() => { newGroupBtn.click() })
-    const input = container.querySelector('input') as HTMLInputElement
-    expect(input).not.toBeNull()
-    act(() => {
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(input, 'My New Group')
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    act(() => {
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    })
-    expect(onCreateGroup).toHaveBeenCalledWith('My New Group')
-  })
-
-  // Group sub-list is hidden when sidebar is collapsed
-  it('POL-05 RED: group sub-list is not visible when sidebar is collapsed', () => {
-    const groupDefs = [makeGroup({ id: 'grp-1', name: 'Alpha' })]
-    ;({ container, root } = renderSidebar({ groupDefs }))
-    const toggleBtn = container.querySelector('.sidebar__toggle') as HTMLButtonElement
-    act(() => { toggleBtn.click() })
-    // When collapsed, group sub-list should not be rendered or visible
-    const list = container.querySelector('ul.sidebar__group-list')
-    // Either absent from DOM or has display:none — either is valid; assert absence from DOM
-    expect(list).toBeNull()
+    for (const n of ['Home', 'Hub', 'Help', 'Settings']) expect(names).not.toContain(n)
   })
 })
 
-// ============================================================
-// CSS source-gate: POL-05 sidebar__group-* rules
-// ============================================================
+// Source gates carried over from the old Sidebar test file; they guard other
+// components and stay until those components change (02-05 deletes the Hub ones).
+const terminalPanelRaw = readFileSync(resolve(__dirname, '../TerminalPanel.tsx'), 'utf-8')
+const hubFilterBarRaw = readFileSync(resolve(__dirname, '../Hub/HubFilterBar.tsx'), 'utf-8')
+const hubEmptyStateRaw = readFileSync(resolve(__dirname, '../Hub/HubEmptyState.tsx'), 'utf-8')
 
-describe('CSS source-gate: POL-05 sidebar__group-* rules (RED)', () => {
-  it('POL-05 RED: style.css contains .sidebar__group-list rule', () => {
-    expect(cssRaw).toContain('.sidebar__group-list')
-  })
-
-  it('POL-05 RED: style.css contains .sidebar__group-item rule', () => {
-    expect(cssRaw).toContain('.sidebar__group-item')
-  })
-})
-
-// ============================================================
-// Source-gate: POL-04 — pendingThemeRef in TerminalPanel.tsx (RED)
-// ============================================================
-
-describe('Source-gate: POL-04 pendingThemeRef in TerminalPanel.tsx (RED)', () => {
-  it('POL-04 RED: TerminalPanel.tsx contains pendingThemeRef', () => {
+describe('Source-gate: POL-04 pendingThemeRef in TerminalPanel.tsx', () => {
+  it('TerminalPanel.tsx contains pendingThemeRef', () => {
     expect(terminalPanelRaw).toContain('pendingThemeRef')
   })
 
-  it('POL-04 RED: fitTerminal appears after clearTextureAtlas in TerminalPanel.tsx', () => {
-    // clearTextureAtlas must come before fitTerminal in the repaint path
+  it('fitTerminal appears after clearTextureAtlas in TerminalPanel.tsx', () => {
     const clearIdx = terminalPanelRaw.indexOf('clearTextureAtlas')
     const fitIdx = terminalPanelRaw.indexOf('fitTerminal', clearIdx)
     expect(clearIdx).toBeGreaterThan(-1)
@@ -715,16 +162,12 @@ describe('Source-gate: POL-04 pendingThemeRef in TerminalPanel.tsx (RED)', () =>
   })
 })
 
-// ============================================================
-// Source-gate: POL-03 — PlusIcon in HubFilterBar.tsx and HubEmptyState.tsx (RED)
-// ============================================================
-
-describe('Source-gate: POL-03 PlusIcon in HubFilterBar.tsx and HubEmptyState.tsx (RED)', () => {
-  it('POL-03 RED: HubFilterBar.tsx contains PlusIcon', () => {
+describe('Source-gate: POL-03 PlusIcon in HubFilterBar.tsx and HubEmptyState.tsx', () => {
+  it('HubFilterBar.tsx contains PlusIcon', () => {
     expect(hubFilterBarRaw).toContain('PlusIcon')
   })
 
-  it('POL-03 RED: HubEmptyState.tsx contains PlusIcon', () => {
+  it('HubEmptyState.tsx contains PlusIcon', () => {
     expect(hubEmptyStateRaw).toContain('PlusIcon')
   })
 })

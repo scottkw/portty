@@ -171,7 +171,7 @@ describe('App.tsx wiring — footer "Share Session" opens the lifted Share modal
     const idx = raw.indexOf('const openShareModalForActiveSession')
     expect(idx).toBeGreaterThan(-1)
     const block = raw.slice(idx, idx + 400)
-    expect(block).toContain('hubSessions.find(')
+    expect(block).toContain('sessions.find(')
     expect(block).toContain('activeId')
     expect(block).toContain('setShareModalSession(')
   })

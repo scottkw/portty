@@ -54,12 +54,12 @@ describe('App.tsx TERM-05: session:exit closes the tab', () => {
     expect(created).toBeGreaterThan(-1)
     expect(guard).toBeGreaterThan(created)
     expect(guard).toBeLessThan(body.indexOf('setTabs('))
-    expect(guard).toBeLessThan(body.indexOf('setHubSessions('))
+    expect(guard).toBeLessThan(body.indexOf('setSessions('))
   })
 
   // WR-04: the Hub reflects the exit at once (and its open modal closes).
   it('removes the exited session from hubSessions', () => {
-    expect(exitHandler()).toContain('setHubSessions((prev) => prev.filter((s) => s.id !== data.sessionId))')
+    expect(exitHandler()).toContain('setSessions((prev) => prev.filter((s) => s.id !== data.sessionId))')
   })
 
   it('removeTabStateRef stays in sync with removeTabState', () => {
@@ -99,7 +99,7 @@ describe.each([
     // (its one session:exit already handled) must not come back as a tab.
     expect(b).toContain("const sessions = allSessions.filter((s) => s.state !== 'stopped' && !exitedIdsRef.current.has(s.id))")
     // Tabs and hubSessions are built from the filtered list.
-    expect(b).toContain('setHubSessions(sessions)')
+    expect(b).toContain('setSessions(sessions)')
     expect(b).toContain('sessions.map((s) => ({')
     expect(b).not.toContain('allSessions.map(')
   })

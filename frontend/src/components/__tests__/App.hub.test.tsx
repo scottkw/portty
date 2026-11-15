@@ -24,50 +24,7 @@ describe('HUB-TAB: HUB_TAB constant exists with correct id and type (HUB-01)', (
   })
 })
 
-describe('HUB-WIRE: onOpenHub is wired to Sidebar (HUB-01)', () => {
-  it('defines handleOpenHub callback', () => {
-    expect(raw).toContain('handleOpenHub')
-  })
-
-  it('wires onOpenHub={handleOpenHub} to Sidebar', () => {
-    expect(raw).toContain('onOpenHub={handleOpenHub}')
-  })
-
-  it('wires activePanel={activeId ?? undefined} to Sidebar', () => {
-    expect(raw).toContain('activePanel={activeId ?? undefined}')
-  })
-
-  it('handleOpenHub uses find-or-create pattern checking t.type === hub', () => {
-    expect(raw).toContain("t.type === 'hub'")
-  })
-})
-
-describe('HUB-POLL: Hub poll is gated on HUB_TAB.id (T-131-10 DoS prevention)', () => {
-  it('Hub poll early-returns when activeId !== HUB_TAB.id', () => {
-    expect(raw).toContain('activeId !== HUB_TAB.id')
-  })
-
-  it('Hub poll uses 3s interval (3000ms)', () => {
-    // The Hub poll must use 3000ms interval (same as daemon-manager poll)
-    // We verify both the HUB_TAB.id gate and the 3000 interval are present
-    expect(raw).toContain('3000')
-    expect(raw).toContain('HUB_TAB.id')
-  })
-
-  it('Hub poll calls ListSessions', () => {
-    expect(raw).toContain('ListSessions')
-  })
-
-  it('Hub poll sets hubSessions and hubError', () => {
-    expect(raw).toContain('setHubSessions')
-    expect(raw).toContain('setHubError')
-  })
-
-  it('Hub poll early-returns in web mode', () => {
-    // The poll must check mode === web before polling (Phase 120-06 gate)
-    expect(raw).toContain("mode === 'web'")
-  })
-})
+// Portty 02-04: HUB-WIRE and HUB-POLL removed with the Hub sidebar item and the Hub-gated poll.
 
 describe('HUB-RENDER: HubPanel is rendered with correct props (HUB-01)', () => {
   it('imports HubPanel from Hub/HubPanel', () => {
@@ -78,8 +35,8 @@ describe('HUB-RENDER: HubPanel is rendered with correct props (HUB-01)', () => {
     expect(raw).toContain('activeId === HUB_TAB.id')
   })
 
-  it('passes sessions={hubSessions} to HubPanel', () => {
-    expect(raw).toContain('sessions={hubSessions}')
+  it('passes sessions={sessions} to HubPanel', () => {
+    expect(raw).toContain('sessions={sessions}')
   })
 
   it('passes error={hubError} to HubPanel', () => {

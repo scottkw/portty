@@ -57,14 +57,6 @@ import { PluginToggleBanner } from './components/PluginToggleBanner'
 import { QuitConfirmModal } from './components/QuitConfirmModal'
 import { useColorScheme } from './lib/useColorScheme'
 import { LIGHT_PALETTE, DARK_PALETTE } from './lib/terminalPalettes'
-import {
-  loadGroups,
-  createGroup,
-  assignToGroup,
-  removeFromGroup,
-  type HubGroupDef,
-} from './lib/hubGroups'
-import type { GroupCounts } from './lib/hubGroupCounts'
 
 const DEFAULT_FONT_SIZE = 13
 
@@ -89,16 +81,10 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // the lifetime of the SPA. useMemo keeps the reference stable so dependency
   // arrays of downstream effects never see false re-evaluations.
   const webParams = useMemo(() => readWebModeParams(), [])
-  // Phase 120-06 — web-mode initial state: no Welcome tab, no Sidebar focus.
-  // The auto-open effect below will open the session view from the
-  // ?session= URL param. Starting empty keeps WelcomeTab (which calls
-  // GetVersion + references the absolute /agenthub-title-logo.png path that
-  // 404s under /app/) from briefly mounting before the auto-open fires.
-  const initialTabs: Tab[] = mode === 'web' ? [] : [WELCOME_TAB]
-  const [tabs, setTabs] = useState<Tab[]>(initialTabs)
-  const [activeId, setActiveId] = useState<string | null>(
-    mode === 'web' ? null : WELCOME_TAB.id,
-  )
+  // NAV-03: both modes start with no tabs. Desktop init restores running
+  // sessions as tabs; web mode opens the ?session= view (effect below).
+  const [tabs, setTabs] = useState<Tab[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
   const [relayPort, setRelayPort] = useState<number | null>(null)
   const [tabCounter, setTabCounter] = useState(1)
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
@@ -158,8 +144,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
 
   // Ref for the background upgrade poller (local -> tailscale mode transition)
   const upgradePollerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Phase 131 — Hub sessions and error state (polled when the Hub tab is active)
-  const [hubSessions, setHubSessions] = useState<SessionInfo[]>([])
+  // NAV-01: every daemon session, from the always-on 3 s poll (desktop only).
+  const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [hubError, setHubError] = useState(false)
   // Phase 168-05 (UX-02) — Share modal open-state, lifted from HubPanel so both the Hub
   // card click AND the footer "Share Session" button drive a single SessionShareModal
@@ -247,37 +233,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // THEM-01: follow the system appearance. Palettes are module constants, so
   // the TerminalPanel theme effect only re-runs on a real scheme change.
   const terminalTheme = useColorScheme() === 'dark' ? DARK_PALETTE : LIGHT_PALETTE
-
-  // POL-05: Group state lifted from HubPanel to App.tsx
-  // groupDefs + activeGroupId drive both Sidebar (render+select+create+drag-drop)
-  // and HubPanel (filtering). Counts flow UP from HubPanel via onGroupCountsChange callback
-  // (allSessions is NOT lifted — HubPanel keeps its own polling).
-  const [groupDefs, setGroupDefs] = useState<HubGroupDef[]>(() => loadGroups())
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
-  const [groupCounts, setGroupCounts] = useState<Record<string, GroupCounts>>({})
-  const [globalGroupCounts, setGlobalGroupCounts] = useState<GroupCounts>({ total: 0 })
-
-  const handleGroupSelect = useCallback((id: string | null) => {
-    setActiveGroupId(id)
-  }, [])
-
-  const handleCreateGroup = useCallback((name: string) => {
-    setGroupDefs((prev) => createGroup(prev, name))
-  }, [])
-
-  const handleDropOnGroup = useCallback((groupId: string, key: string) => {
-    setGroupDefs((prev) =>
-      groupId === '__other__' ? removeFromGroup(prev, key) : assignToGroup(prev, groupId, key)
-    )
-  }, [])
-
-  const handleGroupCountsChange = useCallback(
-    (counts: Record<string, GroupCounts>, global: GroupCounts) => {
-      setGroupCounts(counts)
-      setGlobalGroupCounts(global)
-    },
-    []
-  )
 
   // Phase 97 SER-01: TerminalPanel calls this on attach/detach to
   // register/unregister its serialize() closure. Empty deps because
@@ -421,11 +376,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         setRelayPort(port)
         setWebServerRunning(running)
         if (healthEventSeqRef.current === healthSeq) setTailscaleHealth(health)
-        // Phase 168-05 (UX-02): seed hubSessions from the same ListSessions() call used
-        // for tab restoration, so openShareModalForActiveSession works even before the
-        // user ever visits the Hub tab (the 3s Hub poll below only runs while Hub is
-        // active — SESS-02 restore can land the user directly on a session tab).
-        setHubSessions(sessions)
+        // Seed the sidebar and Share lookup from the restore call, before the first poll tick.
+        setSessions(sessions)
 
         // Fetch web server mode for local-network-fallback UI
         GetWebServerMode().then(mode => {
@@ -588,7 +540,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         // its tab. The Go exit watcher has already removed the session from
         // the daemon, so this only updates UI state (no daemon calls).
         exitedIdsRef.current.add(data.sessionId)
-        setHubSessions((prev) => prev.filter((s) => s.id !== data.sessionId))
+        setSessions((prev) => prev.filter((s) => s.id !== data.sessionId))
         removeTabStateRef.current?.(data.sessionId)
       }
     )
@@ -664,15 +616,10 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         setActiveId(sessionId)
       }
 
-      // CR-01 fix: seed hubSessions synchronously so the footer "Share Session"
-      // button (openShareModalForActiveSession) works immediately for a
-      // just-created session, even before the Hub tab's 3s poll ever runs
-      // (the default stayOnHubAfterCreate=OFF auto-switches away from Hub —
-      // see the setActiveId call above). This mirrors the SessionInfo shape
-      // seeded at mount (:511) as closely as possible from data we have
-      // locally; the next Hub-tab poll or modal-open poll will reconcile any
-      // fields the daemon fills in that we don't know yet (e.g. hostname).
-      setHubSessions((prev) => [
+      // CR-01 fix: seed sessions synchronously so the sidebar row and the
+      // footer "Share Session" button work for a just-created session before
+      // the next 3 s poll; that poll reconciles the fields we guess here.
+      setSessions((prev) => [
         ...prev,
         {
           id: sessionId,
@@ -781,9 +728,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // parity) — the App-level pendingShellWebToggle/ShellWebShareBanner path
   // that used to back the footer's direct toggle is retired below.
   const openShareModalForActiveSession = useCallback(() => {
-    const session = hubSessions.find((s) => s.id === activeId)
+    const session = sessions.find((s) => s.id === activeId)
     if (session) setShareModalSession(session)
-  }, [hubSessions, activeId])
+  }, [sessions, activeId])
 
   // Phase 101-03 — banner confirm: per RESEARCH §8 race mitigation, set the
   // local shellWebShareWarned flag SYNCHRONOUSLY (before awaiting either RPC).
@@ -836,20 +783,16 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     })
   }, [])
 
-  // Phase 131 — Poll sessions when the Hub tab is active (mirrors daemon-manager poll pattern).
-  // T-131-10: early-return when not active prevents DoS from polling while Hub is inactive.
-  // WR-02: reset hubError immediately on Hub activation so a stale error banner from a
-  // prior visit does not persist when the user returns to a healthy Hub. hubSessions is NOT
-  // reset here to avoid a flash-to-empty — the first refresh() call populates it promptly.
+  // NAV-01: always-on session poll, so the sidebar lists every daemon session
+  // (including ones created from the CLI) and the open Share dialog stays live.
+  // hubError still feeds the Hub branch until it is removed.
   useEffect(() => {
     if (mode === 'web') return // Phase 120-06: no Wails RPC in browser mode.
-    if (activeId !== HUB_TAB.id) return
-    setHubError(false) // WR-02: clear any stale error state from the previous visit
     let cancelled = false
     async function refresh() {
       try {
-        const sessions = await ListSessions()
-        if (!cancelled) { setHubSessions(sessions); setHubError(false) }
+        const list = await ListSessions()
+        if (!cancelled) { setSessions(list); setHubError(false) }
       } catch {
         if (!cancelled) setHubError(true)
       }
@@ -857,42 +800,10 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     void refresh()
     const interval = setInterval(() => void refresh(), 3000)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [activeId])
-
-  // CR-02 fix: keep hubSessions live while the Share modal is open from a
-  // non-Hub tab. The Hub-tab poll above (T-131-10) intentionally only runs
-  // while the Hub tab is active — the footer "Share Session" entry point is
-  // used precisely when it is NOT — so without this, the modal's live-sync
-  // effect below never receives Funnel warm-up / viewerCount updates while
-  // open from a session tab. Scoped strictly to "modal is open AND Hub tab
-  // is not already polling" so this does not become an always-on poll (the
-  // DoS-guard intent behind T-131-10 is preserved — polling only happens
-  // while a share modal is actually mounted).
-  useEffect(() => {
-    if (mode === 'web') return // Phase 120-06: no Wails RPC in browser mode.
-    if (!shareModalSession) return
-    if (activeId === HUB_TAB.id) return // Hub-tab poll above already covers this case.
-    let cancelled = false
-    async function refresh() {
-      try {
-        const sessions = await ListSessions()
-        if (!cancelled) setHubSessions(sessions)
-      } catch {
-        // Best-effort — the modal simply keeps showing its last-known state.
-      }
-    }
-    void refresh()
-    const interval = setInterval(() => void refresh(), 3000)
-    return () => { cancelled = true; clearInterval(interval) }
-    // Keyed on shareModalSession?.id (not the whole object, which gets a new
-    // reference every time the sync effect below applies a server update) —
-    // otherwise this effect would tear down and restart its interval (firing
-    // an immediate extra refresh) on every single poll tick.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shareModalSession?.id, activeId])
+  }, [])
 
   // Phase 168-05 (UX-02, RESEARCH Pitfall 3 / Pattern 4): keep the lifted Share modal's
-  // session prop in sync with hubSessions. shareModalSession is a snapshot taken at
+  // session prop in sync with sessions. shareModalSession is a snapshot taken at
   // open-time (either from a Hub card click or the footer's openShareModalForActiveSession);
   // without this effect a server-side flip (e.g. funnelActive completing, viewerCount
   // changing) never reaches an already-open modal. This is the single sync instance —
@@ -902,12 +813,12 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // from its own setState.
   useEffect(() => {
     if (!shareModalSession) return
-    const updated = hubSessions.find((s) => s.id === shareModalSession.id)
+    const updated = sessions.find((s) => s.id === shareModalSession.id)
     if (updated && updated !== shareModalSession) {
       setShareModalSession(updated)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hubSessions, shareModalSession?.id])
+  }, [sessions, shareModalSession?.id])
 
   // Poll remote sessions when the Hub tab is active (Phase 138 — only the
   // HUB_TAB guard is retained; Hub still needs remote data — T-138-08).
@@ -1157,28 +1068,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     [joinModalForSession, remotePeers, openWebSessionTab],
   )
 
-  // Phase 131 — open the Hub tab. HUB-02: coexists
-  // with the Sessions panel — adds its own tab rather than replacing any existing tab.
-  const handleOpenHub = useCallback(() => {
-    const existing = tabs.find((t) => t.type === 'hub')
-    if (existing) {
-      setActiveId(existing.id)
-      return
-    }
-    setTabs((prev) => [...prev, HUB_TAB])
-    setActiveId(HUB_TAB.id)
-  }, [tabs])
-
-  const handleHome = useCallback(() => {
-    const existing = tabs.find((t) => t.type === 'welcome')
-    if (existing) {
-      setActiveId(existing.id)
-      return
-    }
-    setTabs((prev) => [...prev, WELCOME_TAB])
-    setActiveId(WELCOME_TAB.id)
-  }, [tabs])
-
   const retryInit = useCallback(async () => {
     setDaemonError(null)
     // Phase 120-06 — web mode has no daemon to retry against. The web-share
@@ -1208,8 +1097,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       setRelayPort(port)
       setWebServerRunning(running)
       if (healthEventSeqRef.current === healthSeq) setTailscaleHealth(health)
-      // Phase 168-05 (UX-02): mirror the mount-time hubSessions seed (see init above).
-      setHubSessions(sessions)
+      // Mirror the mount-time sessions seed (see init above).
+      setSessions(sessions)
 
       // Fetch web server mode for local-network-fallback UI
       GetWebServerMode().then(mode => {
@@ -1249,24 +1138,15 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       <div className="app__row">
       {/* Phase 159-02 (WEBCHAT-03) — web-share guest scope. In web mode the SPA
           is served to a remote guest holding a capability for ONE session; the
-          desktop navigation chrome (Home / Hub / Settings / session groups) must
+          desktop navigation chrome (the Sessions sidebar and its peer list) must
           NOT be rendered, or the guest could navigate away from the scoped
           session and reach the open /api/sessions/meta enumeration surface.
           Mirrors the existing `mode !== 'web'` gates on the Settings surface. */}
       {mode !== 'web' && (
       <Sidebar
-        onHome={handleHome}
-        onSettings={handleOpenSettings}
-        onOpenHub={handleOpenHub}
-        onOpenHelp={handleOpenHelp}
-        activePanel={activeId ?? undefined}
-        groupDefs={groupDefs}
-        activeGroupId={activeGroupId}
-        onGroupSelect={handleGroupSelect}
-        onCreateGroup={handleCreateGroup}
-        onDropOnGroup={handleDropOnGroup}
-        groupCounts={groupCounts}
-        globalGroupCounts={globalGroupCounts}
+        sessions={sessions}
+        activeTab={tabs.find((t) => t.id === activeId) ?? null}
+        onOpenLocal={handleOpenSessionTab}
       />
       )}
       <div className="app__content">
@@ -1279,14 +1159,14 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
           onRequestSave={handleRequestSave}
           tabProgress={tabProgress}
           webMode={mode === 'web'}
-          funnelActiveSessions={/* Phase 166 / FUI-03: derived from hubSessions 3s poll; no new interval */
-            hubSessions.reduce<Record<string, boolean>>(
+          funnelActiveSessions={/* Phase 166 / FUI-03: derived from the sessions 3s poll; no new interval */
+            sessions.reduce<Record<string, boolean>>(
               (acc, s) => ({ ...acc, [s.id]: s.funnelActive }),
               {}
             )
           }
-          funnelWriteActiveSessions={/* Phase 171 / FNL-09: derived from hubSessions 3s poll; no new interval */
-            hubSessions.reduce<Record<string, boolean>>(
+          funnelWriteActiveSessions={/* Phase 171 / FNL-09: derived from the sessions 3s poll; no new interval */
+            sessions.reduce<Record<string, boolean>>(
               (acc, s) => ({ ...acc, [s.id]: s.funnelWriteActive }),
               {}
             )
@@ -1353,7 +1233,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         {/* Phase 131 — Hub surface. Phase 138 — wired with onKill/onOpenInBrowser/remotePeers. */}
         {activeId === HUB_TAB.id && (
           <HubPanel
-            sessions={hubSessions}
+            sessions={sessions}
             error={hubError}
             onNewSession={() => setShowNewSessionModal(true)}
             onRename={handleRenameTab}
@@ -1381,10 +1261,6 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
             onKill={(id) => void handleCloseTab(id)}
             onOpenInBrowser={handleOpenRemoteSession}
             remotePeers={remotePeers}
-            activeGroupId={activeGroupId}
-            groupDefs={groupDefs}
-            onDropOnGroup={handleDropOnGroup}
-            onGroupCountsChange={handleGroupCountsChange}
             setShareModalSession={setShareModalSession}
             shareDisabledReason={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}
           />

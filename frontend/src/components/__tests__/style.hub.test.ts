@@ -130,20 +130,6 @@ describe('Hub motion contract — reduced-motion guard (Pitfall 6)', () => {
   })
 })
 
-describe('Hub sidebar active state (Pitfall 8 / HUB-01)', () => {
-  it('.sidebar__item--active rule is present', () => {
-    expect(cssRaw).toContain('.sidebar__item--active')
-  })
-
-  it('.sidebar__item--active uses var(--hub-accent) for color', () => {
-    const activeIdx = cssRaw.indexOf('.sidebar__item--active')
-    expect(activeIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', activeIdx)
-    const block = cssRaw.slice(activeIdx, blockEnd)
-    expect(block).toContain('var(--hub-accent')
-  })
-})
-
 describe('Hub group header (mirrors .remote-panel__peer-header)', () => {
   it('.hub__group-header is declared', () => {
     expect(cssRaw).toContain('.hub__group-header')

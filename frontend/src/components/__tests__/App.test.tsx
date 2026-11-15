@@ -331,35 +331,12 @@ describe('Phase 98 PRG-02/PRG-03: App.tsx progress-debounce integration — Wave
   })
 })
 
-// BRND-02: Welcome tab integration
-describe('BRND-02: welcome tab integration', () => {
-  it('imports WelcomeTab component', () => {
-    expect(raw).toContain("import { WelcomeTab } from './components/WelcomeTab'")
-  })
-
-  it('defines a WELCOME_TAB constant with type welcome', () => {
-    expect(raw).toContain("type: 'welcome'")
-    expect(raw).toContain('WELCOME_TAB')
-  })
-
-  it('initializes tabs with welcome tab in desktop mode', () => {
-    // Phase 120-06 — the initial-state literal moved into a mode-aware
-    // `initialTabs` const that resolves to [WELCOME_TAB] under desktop mode
-    // and [] under web mode. Both the const and the desktop-branch literal
-    // must still be present.
-    expect(raw).toContain('useState<Tab[]>(initialTabs)')
-    expect(raw).toMatch(/mode === 'web' \? \[\] : \[WELCOME_TAB\]/)
-  })
-
-  it('initializes activeId with welcome tab id in desktop mode', () => {
-    // Phase 120-06 — same mode gate: desktop boots into WELCOME_TAB.id,
-    // web boots into null so the auto-open effect can mount the file
-    // browser without WelcomeTab flashing.
-    expect(raw).toMatch(/mode === 'web' \? null : WELCOME_TAB\.id/)
-  })
-
-  it('renders WelcomeTab when active tab is welcome', () => {
-    expect(raw).toContain('<WelcomeTab')
+// Portty 02-04 NAV-03: launch has no Welcome tab (WelcomeTab itself goes in 02-04 Task 3 / 02-05).
+describe('launch state (NAV-03)', () => {
+  it('initial tabs hold no Welcome tab', () => {
+    expect(raw).toContain('useState<Tab[]>([])')
+    expect(raw).not.toMatch(/\[WELCOME_TAB\]/)
+    expect(raw).not.toContain('WELCOME_TAB.id,')
   })
 
   it('hides static HTML splash on mount', () => {
@@ -369,8 +346,8 @@ describe('BRND-02: welcome tab integration', () => {
 
 // Portty 02-01 UAT defects A and B: desktop drag strips.
 describe('desktop window chrome CSS (LOOK-01)', () => {
-  it('collapsed sidebar: tab bar pads past the 80px traffic-light reserve', () => {
-    expect(cssRaw).toMatch(/html\.is-desktop \.sidebar--collapsed \+ \.app__content \.tab-bar \{\s*padding-left: 32px;/)
+  it('the old 48px collapsed sidebar is gone (Portty 02-04)', () => {
+    expect(cssRaw).not.toMatch(/(^|\s)\.sidebar--collapsed/m)
   })
 
   it('drag strips do not text-select (WebKit prefix included)', () => {

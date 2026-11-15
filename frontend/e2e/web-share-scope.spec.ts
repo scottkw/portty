@@ -11,7 +11,8 @@
 // Settings and reach the open /api/sessions/meta enumeration surface.
 //
 // Selector contract:
-//   nav[aria-label="Main navigation"]  — the desktop Sidebar (MUST be absent in web mode)
+//   nav[aria-label="Sessions"]         — the desktop Sidebar since Portty 02-04 (MUST be absent in web mode)
+//   nav[aria-label="Main navigation"]  — the pre-02-04 Sidebar label (kept as a regression guard)
 //   .hub-modal__chat-toggle            — chat toggle (scoped surface present)
 //   .xterm                             — xterm terminal (session surface present)
 
@@ -31,7 +32,10 @@ test.describe('Phase 159-02 — web-share guest scope (WEBCHAT-03)', () => {
       await expect(page.locator('.xterm').first()).toBeVisible({ timeout: 15_000 })
 
       // Desktop chrome is NOT present: the Sidebar nav must not render in web mode.
+      await expect(page.locator('nav[aria-label="Sessions"]')).toHaveCount(0)
       await expect(page.locator('nav[aria-label="Main navigation"]')).toHaveCount(0)
+      // Portty 02-04: no peer list or This Mac group either.
+      await expect(page.getByText('This Mac')).toHaveCount(0)
 
       // Belt-and-suspenders: the Sidebar's nav entry points must be unreachable.
       await expect(page.getByRole('button', { name: 'Hub' })).toHaveCount(0)

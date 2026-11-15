@@ -8,7 +8,7 @@
  * App.wiring.test.tsx, App.createTab.stayOnHub.test.tsx).
  *
  * Bug: openShareModalForActiveSession (wired to StatusBar's onShareSession)
- * resolves the active session purely via `hubSessions.find(s => s.id ===
+ * resolves the active session purely via `sessions.find(s => s.id ===
  * activeId)`. hubSessions was only populated at mount, on daemon-connect,
  * and by the Hub-tab-only 3s poll — never by createTab. A session created
  * via "New Session" (default stayOnHubAfterCreate=OFF auto-switches to its
@@ -23,28 +23,28 @@ import { describe, it, expect } from 'vitest'
 import raw from '../../App.tsx?raw'
 
 describe('CR-01 (168-REVIEW): createTab seeds hubSessions — source contract', () => {
-  it('createTab calls setHubSessions in its success path (not just setTabs)', () => {
+  it('createTab calls setSessions in its success path (not just setTabs)', () => {
     const idx = raw.indexOf('const createTab = useCallback')
     expect(idx).toBeGreaterThan(-1)
     const slice = raw.slice(idx, idx + 3200)
     expect(slice).toContain('setTabs((prev) => [...prev, tab])')
-    expect(slice).toContain('setHubSessions((prev) => [')
+    expect(slice).toContain('setSessions((prev) => [')
   })
 
   it('the appended hubSessions entry is keyed by the same sessionId as the new tab', () => {
     const idx = raw.indexOf('const createTab = useCallback')
     const slice = raw.slice(idx, idx + 3200)
-    const seedIdx = slice.indexOf('setHubSessions((prev) => [')
+    const seedIdx = slice.indexOf('setSessions((prev) => [')
     expect(seedIdx).toBeGreaterThan(-1)
     const seedSlice = slice.slice(seedIdx, seedIdx + 500)
     expect(seedSlice).toContain('id: sessionId,')
   })
 
-  it('setHubSessions runs inside the same try block as CreateSession — after the id is known, before the catch', () => {
+  it('setSessions runs inside the same try block as CreateSession — after the id is known, before the catch', () => {
     const idx = raw.indexOf('const createTab = useCallback')
     const slice = raw.slice(idx, idx + 3200)
     const sessionIdIdx = slice.indexOf('const sessionId = await CreateSession(')
-    const seedIdx = slice.indexOf('setHubSessions((prev) => [')
+    const seedIdx = slice.indexOf('setSessions((prev) => [')
     const catchIdx = slice.indexOf('} catch (err) {')
     expect(sessionIdIdx).toBeGreaterThan(-1)
     expect(seedIdx).toBeGreaterThan(sessionIdIdx)
@@ -55,7 +55,7 @@ describe('CR-01 (168-REVIEW): createTab seeds hubSessions — source contract', 
     const idx = raw.indexOf('const openShareModalForActiveSession')
     expect(idx).toBeGreaterThan(-1)
     const block = raw.slice(idx, idx + 400)
-    expect(block).toContain('hubSessions.find(')
+    expect(block).toContain('sessions.find(')
     expect(block).toContain('activeId')
     expect(block).toContain('setShareModalSession(')
   })
