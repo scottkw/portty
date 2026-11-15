@@ -180,3 +180,43 @@ describe('NET-01: SettingsTab two-state Tailscale status', () => {
     expectNoRemovedStates()
   })
 })
+
+describe('NET-01 / Amendment 3: Start Web Server is gated on Tailscale', () => {
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+
+  afterEach(() => {
+    root.unmount()
+    container.remove()
+    vi.clearAllMocks()
+  })
+
+  function startButton(): HTMLButtonElement {
+    const btn = Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'Start Web Server')
+    expect(btn).toBeDefined()
+    return btn as HTMLButtonElement
+  }
+
+  it('is disabled with the NET-01 sentence as its title while Tailscale is not connected', async () => {
+    const { StartWebServer } = await import('../../wailsjs/go/main/App')
+    ;({ container, root } = renderSettingsTab(makeProps({ tailscaleHealth: makeHealth() })))
+    await flushEffects()
+
+    const btn = startButton()
+    expect(btn.disabled).toBe(true)
+    expect(btn.title).toBe(TAILSCALE_OFF_REASON)
+    btn.click()
+    expect(StartWebServer).not.toHaveBeenCalled()
+  })
+
+  it('is enabled with no title once Tailscale is connected', async () => {
+    ;({ container, root } = renderSettingsTab(makeProps({
+      tailscaleHealth: makeHealth({ connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'my-node.ts.net' }),
+    })))
+    await flushEffects()
+
+    const btn = startButton()
+    expect(btn.disabled).toBe(false)
+    expect(btn.title).toBe('')
+  })
+})

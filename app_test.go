@@ -620,9 +620,9 @@ func TestStartWebServerLocalModeFallback(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	app := testApp(t)
-	// StartWebServer tries Tailscale first; if unavailable, falls back to local
-	// mode which requires a daemon-generated password. In CI (no Tailscale, no
-	// daemon password), a "password" error is expected and correct behavior.
+	// StartWebServer uses Tailscale mode with certs, local mode when connected
+	// without certs, and refuses when Tailscale is not connected (NET-01). In CI
+	// any of these errors is expected and correct behavior.
 	err := app.StartWebServer(0)
 	if err == nil {
 		// Tailscale is connected and server started — clean up.
@@ -632,6 +632,20 @@ func TestStartWebServerLocalModeFallback(t *testing.T) {
 	// Any error is acceptable — Tailscale not found or local mode password
 	// missing are both valid outcomes in a test environment.
 	t.Logf("StartWebServer error (expected in CI): %s", err.Error())
+}
+
+// NET-01 / Amendment 3: a start request while Tailscale is not connected is
+// refused with the NET-01 sentence instead of falling back to LAN mode.
+func TestStartWebServerRefusedWhileTailscaleOff(t *testing.T) {
+	app := testApp(t)
+	app.tailscaleCheckFunc = func(context.Context) webserver.TailscaleHealth { return webserver.TailscaleHealth{} }
+	err := app.StartWebServer(0)
+	if err == nil || err.Error() != "Tailscale isn't connected. Remote access and sharing are off until it is." {
+		t.Fatalf("StartWebServer err = %v, want the NET-01 sentence", err)
+	}
+	if app.IsWebServerRunning() {
+		t.Fatal("web server started while Tailscale was not connected")
+	}
 }
 
 func TestIsWebServerRunning(t *testing.T) {

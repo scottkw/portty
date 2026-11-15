@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -721,12 +722,17 @@ func configDir() string {
 }
 
 // StartWebServer tells the daemon to start the web server.
-// Uses Tailscale mode when connected with certs; falls back to local mode otherwise.
+// Refused while Tailscale is not connected (NET-01, Amendment 3); uses
+// Tailscale mode when connected with certs, local mode when connected without.
 func (a *App) StartWebServer(port int) error {
 	if a.client == nil {
 		return fmt.Errorf("daemon not connected")
 	}
 	h := a.GetTailscaleStatus()
+	if !h.Connected {
+		// Same sentence as frontend/src/lib/tailscale.ts TAILSCALE_OFF_REASON.
+		return errors.New("Tailscale isn't connected. Remote access and sharing are off until it is.")
+	}
 	if h.Connected && h.IP != "" && h.HasCerts {
 		_, err := a.client.StartWebServer(h.IP, port, h.Domain, "tailscale", "")
 		return err

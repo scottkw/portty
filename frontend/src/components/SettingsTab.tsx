@@ -299,6 +299,9 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
     }
   }
 
+  // NET-01 / Amendment 3: Start is gated like Share; Stop stays available.
+  const tailscaleOff = !!tailscaleHealth && !tailscaleHealth.connected
+
   async function handleToggleServer() {
     setServerError(null)
     setServerLoading(true)
@@ -532,11 +535,15 @@ export function SettingsTab({ tailscaleHealth, webServerMode, onWebServerStateCh
           <button
             className={`settings-panel__btn ${isServerRunning ? 'settings-panel__btn--cancel' : 'settings-panel__btn--save'}`}
             onClick={handleToggleServer}
-            disabled={serverLoading || (!isServerRunning && !ctDisclosed)}
+            disabled={serverLoading || (!isServerRunning && (!ctDisclosed || tailscaleOff))}
             title={
-              !ctDisclosed && !isServerRunning
-                ? 'Acknowledge the Certificate Transparency disclosure first'
-                : undefined
+              isServerRunning
+                ? undefined
+                : tailscaleOff
+                  ? TAILSCALE_OFF_REASON
+                  : !ctDisclosed
+                    ? 'Acknowledge the Certificate Transparency disclosure first'
+                    : undefined
             }
           >
             {serverLoading
