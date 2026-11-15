@@ -88,7 +88,7 @@ Plans:
   6. Session chat is gone from the desktop app, the web share page, the daemon/webserver API and the relay protocol; no chat button, badge, or endpoint remains, and old clients that send chat frames do not crash anything
   7. Switching macOS between Light and Dark changes the whole app and every open terminal at once, with no restart; there is no theme picker, and the web share page follows the browser's light/dark setting
   8. The window looks like a native macOS app: system font and accent color, a source-list sidebar, a unified title bar/toolbar, and native-style controls; no custom dark chrome or hardcoded colors remain (LOOK-01)
-**Plans**: 6/12 plans executed (sequential waves 1-12; App.tsx, style.css and TESTING.md are shared hot files)
+**Plans**: 7/12 plans executed (sequential waves 1-12; App.tsx, style.css and TESTING.md are shared hot files)
 
 Plans:
 **Wave 1**
@@ -110,7 +110,7 @@ Plans:
 - [x] 02-06-PLAN.md — Stay-on-Hub preference removed end to end (Settings, App, bindings, daemon); key dropped on save, migration test flipped, removed routes 404
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 02-07-PLAN.md — CHAT-01 UI: chat components, frontend chat frames and chat-only deps removed; WebShareSessionView moved; components/Hub gone
+- [x] 02-07-PLAN.md — CHAT-01 UI: chat components, frontend chat frames and chat-only deps removed; WebShareSessionView moved; components/Hub gone
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 02-08-PLAN.md — Unified toolbar: pill tabs, close = detach, End Session… confirm, rename in tab and sidebar, context menu, empty state, toolbar Share with aria-described disabled state; status bar removed
@@ -189,7 +189,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
-| 2. Tabs + Sidebar Navigation | 6/12 | In Progress | - |
+| 2. Tabs + Sidebar Navigation | 7/12 | In Progress | - |
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
