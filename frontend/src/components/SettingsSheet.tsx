@@ -16,18 +16,12 @@ import {
   SetShellWebShareWarningEnabled,
 } from '../wailsjs/go/main/App'
 import { BrowserOpenURL, ClipboardSetText } from '../wailsjs/wailsjs/runtime/runtime'
-import {
-  ArrowTopRightOnSquareIcon,
-  ClipboardDocumentIcon,
-  Cog6ToothIcon,
-  LockClosedIcon,
-  QrCodeIcon,
-  SignalIcon,
-} from '@heroicons/react/24/outline'
+import { Cog6ToothIcon, LockClosedIcon, SignalIcon } from '@heroicons/react/24/outline'
 import { RegenerateKeyModal } from './RegenerateKeyModal'
 import { PluginsSection, type PluginToggleKind } from './PluginsSection'
 import { Switch } from './Switch'
 import { TAILSCALE_OFF_REASON, type TailscaleHealth } from '../lib/tailscale'
+import { shortHost } from '../lib/sidebarPeers'
 import { useDialogFocus } from '../lib/useDialogFocus'
 
 interface SettingsSheetProps {
@@ -225,14 +219,9 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
     setShowDashQR(true)
   }
 
-  function tailscaleStatusClass(h: TailscaleHealth | null): string {
-    if (!h) return ''
-    return h.connected ? 'ok' : 'error'
-  }
-
   function tailscaleStatusText(h: TailscaleHealth | null): string {
     if (!h) return 'Checking…'
-    return h.connected ? 'Connected' : 'Not connected'
+    return h.connected ? `Connected as ${shortHost(h.domain) || h.ip}` : 'Not connected'
   }
 
   async function handleAcknowledgeCT() {
@@ -313,8 +302,21 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
 
   // NET-01 / Amendment 3: Start is gated like Share; Stop stays available.
   const tailscaleOff = !!tailscaleHealth && !tailscaleHealth.connected
+  // T-02-34: aria-disabled (not `disabled`) keeps Start focusable so its reason is announced;
+  // the click returns early, and the daemon keeps its own CT/mode checks.
+  const startBlocked = !isServerRunning && (tailscaleOff || !ctDisclosed)
+  const webServerReason: React.ReactNode = serverError
+    ? <span className="settings-row__error" role="alert">{serverError}</span>
+    : isServerRunning
+      ? (serverURL ? `Running on ${serverURL}` : 'Running')
+      : tailscaleOff
+        ? TAILSCALE_OFF_REASON
+        : !ctDisclosed
+          ? 'Acknowledge Certificate Transparency in Security first.'
+          : 'Stopped'
 
   async function handleToggleServer() {
+    if (startBlocked) return
     setServerError(null)
     setServerLoading(true)
     try {
@@ -330,7 +332,10 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
       }
       await onWebServerStateChange()
     } catch (err) {
-      setServerError(err instanceof Error ? err.message : String(err))
+      const detail = (err instanceof Error ? err.message : String(err)).replace(/\.$/, '')
+      setServerError(isServerRunning
+        ? `Couldn't stop the web server: ${detail}.`
+        : `Couldn't start the web server: ${detail}. Check that port ${selectedPort} isn't in use, then try again.`)
     } finally {
       setServerLoading(false)
     }
@@ -400,56 +405,52 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
             </div>
 
             <div role="tabpanel" id="settings-pane-sharing" aria-labelledby="settings-tab-sharing" hidden={pane !== 'sharing'}>
-              <div className="settings-panel__body">
-                <h3 id="settings-session-behavior">Session Behavior</h3>
-                <div className="settings-panel__field-group">
-                  {shellWarnLoaded && (
-                    <label
-                      className={`settings-panel__toggle-row${shellWarnEnabled ? ' settings-panel__toggle-row--checked' : ''}`}
-                      htmlFor="shellWebShareWarningEnabled"
-                      style={shellWarnSaving ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-                    >
-                      <span className="settings-panel__toggle-track">
-                        <span className="settings-panel__toggle-thumb" />
-                      </span>
-                      <span className="settings-panel__toggle-label">Warn before web-sharing a shell session.</span>
-                    </label>
-                  )}
-                  <input
-                    type="checkbox"
-                    id="shellWebShareWarningEnabled"
-                    className="settings-panel__toggle-input"
-                    checked={shellWarnEnabled}
-                    onChange={() => void handleToggleShellWarnEnabled()}
-                  />
-                  <p className="settings-panel__description">
-                    Show a one-time security reminder before web-sharing a shell session. Disabling suppresses the reminder.
-                  </p>
-                  {shellWarnError && <p className="settings-panel__error">{shellWarnError}</p>}
-                </div>
-
-                <h3 id="settings-web-server">Web Server</h3>
-                <div className="settings-panel__field-group">
-                  <label className="settings-panel__label">Tailscale Status</label>
-                  <div className="ts-status">
+              <div className="settings-group">
+                <Row label="Tailscale" description={tailscaleOff ? TAILSCALE_OFF_REASON : undefined}>
+                  <span className="ts-status">
                     {tailscaleHealth && (
-                      <span className={`ts-status__dot ts-status__dot--${tailscaleStatusClass(tailscaleHealth)}`} />
+                      <span className={`ts-status__dot ts-status__dot--${tailscaleHealth.connected ? 'ok' : 'error'}`} aria-hidden="true" />
                     )}
                     <span className="ts-status__text">{tailscaleStatusText(tailscaleHealth)}</span>
-                  </div>
-                  <p className="settings-panel__description">
-                    {tailscaleHealth
-                      ? (tailscaleHealth.connected
-                          ? `Connected via ${tailscaleHealth.domain || tailscaleHealth.ip}`
-                          : TAILSCALE_OFF_REASON)
-                      : 'Checking…'}
-                  </p>
-                </div>
+                  </span>
+                </Row>
+                {shellWarnLoaded && (
+                  <Row
+                    label="Ask before sharing a session"
+                    htmlFor="shellWebShareWarningEnabled"
+                    description="Shows a one-time security reminder the first time you share a session."
+                  >
+                    <Switch
+                      id="shellWebShareWarningEnabled"
+                      checked={shellWarnEnabled}
+                      saving={shellWarnSaving}
+                      onChange={() => void handleToggleShellWarnEnabled()}
+                    />
+                  </Row>
+                )}
+              </div>
+              {shellWarnError && <p className="settings-sheet__error" role="alert">{shellWarnError}</p>}
 
-                <div className="settings-panel__field-group">
-                  <label className="settings-panel__label">Port</label>
+              <div className="settings-group">
+                {/* UI-REVIEW 01 #2/#3: the reason is on screen, never tooltip-only. */}
+                <Row label="Web server" descriptionId="web-server-reason" description={webServerReason}>
+                  <button
+                    type="button"
+                    className="button button--secondary"
+                    onClick={() => void handleToggleServer()}
+                    disabled={serverLoading}
+                    aria-disabled={startBlocked || undefined}
+                    aria-describedby={startBlocked ? 'web-server-reason' : undefined}
+                  >
+                    {serverLoading
+                      ? (isServerRunning ? 'Stopping…' : 'Starting…')
+                      : (isServerRunning ? 'Stop Server' : 'Start Server')}
+                  </button>
+                </Row>
+                <Row label="Port" htmlFor="web-server-port">
                   <input
-                    className="settings-panel__path-input settings-panel__port-input"
+                    id="web-server-port"
+                    className="settings-input settings-input--number"
                     type="number"
                     value={selectedPort}
                     onChange={(e) => setSelectedPort(Number(e.target.value))}
@@ -457,141 +458,96 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
                     min={1}
                     max={65535}
                   />
-                </div>
-
-                <div className="settings-panel__field-group">
-                  <button
-                    className={`settings-panel__btn ${isServerRunning ? 'settings-panel__btn--cancel' : 'settings-panel__btn--save'}`}
-                    onClick={handleToggleServer}
-                    disabled={serverLoading || (!isServerRunning && (!ctDisclosed || tailscaleOff))}
-                    title={
-                      isServerRunning
-                        ? undefined
-                        : tailscaleOff
-                          ? TAILSCALE_OFF_REASON
-                          : !ctDisclosed
-                            ? 'Acknowledge the Certificate Transparency disclosure first'
-                            : undefined
-                    }
-                  >
-                    {serverLoading
-                      ? (isServerRunning ? 'Stopping…' : 'Starting…')
-                      : (isServerRunning ? 'Stop Web Server' : 'Start Web Server')}
-                  </button>
-                  {serverError && <p className="settings-panel__error">{serverError}</p>}
-                  {isServerRunning && serverURL && (
-                    <>
-                      <div className="settings-web-server__url-row">
-                        <span className="settings-web-server__url-text">{serverURL}</span>
-                        <button
-                          className="settings-web-server__action-btn"
-                          onClick={() => BrowserOpenURL(serverURL)}
-                          aria-label="Open dashboard in browser"
-                        >
-                          <ArrowTopRightOnSquareIcon style={{ width: 14, height: 14 }} />
-                          Open
-                        </button>
-                        <button
-                          className={`settings-web-server__action-btn${urlCopied ? ' settings-web-server__action-btn--copy-done' : ''}`}
-                          onClick={handleCopyURL}
-                          aria-label="Copy dashboard URL to clipboard"
-                        >
-                          <ClipboardDocumentIcon style={{ width: 14, height: 14 }} />
-                          {urlCopied ? 'Copied!' : 'Copy'}
-                        </button>
-                        <button
-                          className={`settings-web-server__action-btn${showDashQR ? ' settings-web-server__action-btn--active' : ''}`}
-                          onClick={handleToggleDashQR}
-                          aria-label={showDashQR ? 'Hide QR code' : 'Show QR code'}
-                        >
-                          <QrCodeIcon style={{ width: 14, height: 14 }} />
-                          {showDashQR ? 'Hide QR' : 'QR'}
-                        </button>
-                      </div>
-                      {qrError && <p className="settings-panel__error">{qrError}</p>}
-                      {showDashQR && dashQRb64 && (
-                        <img
-                          src={`data:image/png;base64,${dashQRb64}`}
-                          width={200}
-                          height={200}
-                          alt="QR code for dashboard URL"
-                          className="settings-web-server__qr"
-                        />
-                      )}
-                    </>
-                  )}
-                </div>
-
+                </Row>
+                {isServerRunning && serverURL && (
+                  <div className="settings-row">
+                    <span className="settings-row__text settings-row__mono">{serverURL}</span>
+                    <div className="settings-row__control">
+                      <button
+                        type="button"
+                        className="button button--secondary"
+                        onClick={() => BrowserOpenURL(serverURL)}
+                        aria-label="Open dashboard in browser"
+                      >
+                        Open
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--secondary"
+                        onClick={() => void handleCopyURL()}
+                        aria-label="Copy dashboard URL to clipboard"
+                      >
+                        {urlCopied ? 'Copied!' : 'Copy'}
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--secondary"
+                        onClick={() => void handleToggleDashQR()}
+                        aria-label={showDashQR ? 'Hide QR code' : 'Show QR code'}
+                      >
+                        {showDashQR ? 'Hide QR' : 'QR'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {isServerRunning && (qrError || (showDashQR && dashQRb64)) && (
+                  <div className="settings-row settings-row--qr">
+                    {qrError && <p className="settings-row__description settings-row__error" role="alert">{qrError}</p>}
+                    {showDashQR && dashQRb64 && (
+                      <img
+                        src={`data:image/png;base64,${dashQRb64}`}
+                        width={200}
+                        height={200}
+                        alt="QR code for dashboard URL"
+                        className="settings-row__qr"
+                      />
+                    )}
+                  </div>
+                )}
                 {webServerMode === 'local' && isServerRunning && (
                   <>
-                    <div className="settings-web-server__mode-indicator">
-                      Web server mode: Local network (self-signed TLS)
-                    </div>
-                    <div className="settings-web-server__password-label">
-                      LAN Access Credentials
-                    </div>
-                    <div className="settings-web-server__credential-hint">
-                      Username: <span className="settings-web-server__credential-value">leave blank or enter anything</span>
-                    </div>
-                    <div className="settings-web-server__password-label">
-                      Password
-                    </div>
-                    <div
-                      className="settings-web-server__password-field"
-                      onClick={() => void handleCopyPassword()}
-                      title="Click to copy password"
-                    >
-                      <span>{localPassword || 'Loading…'}</span>
-                      <span className={`settings-web-server__copy-hint${copied ? ' settings-web-server__copy-hint--copied' : ''}`}>
-                        {copied ? 'Copied!' : '(click to copy)'}
-                      </span>
-                    </div>
+                    <Row label="Mode" description="Local network (self-signed TLS)" />
+                    <Row label="Username" description="Leave blank or enter anything" />
+                    <Row label="Password" description={<span className="settings-row__mono">{localPassword || 'Loading…'}</span>}>
+                      <button
+                        type="button"
+                        className="button button--secondary"
+                        onClick={() => void handleCopyPassword()}
+                        aria-label="Copy LAN password"
+                      >
+                        {copied ? 'Copied!' : 'Copy'}
+                      </button>
+                    </Row>
                   </>
                 )}
               </div>
+              <p className="settings-sheet__footnote">{"Share a session with the Share button in the main window's toolbar."}</p>
             </div>
 
             <div role="tabpanel" id="settings-pane-security" aria-labelledby="settings-tab-security" hidden={pane !== 'security'}>
-              <div className="settings-panel__body">
-                <div className={`ct-disclosure ${ctDisclosed ? 'ct-disclosure--acknowledged' : ''}`}>
-                  <label className="settings-panel__label">Certificate Transparency</label>
-                  {ctDisclosed ? (
-                    <p className="ct-disclosure__text">
-                      <span style={{ color: '#9ece6a' }}>&#10003;</span> Certificate Transparency acknowledged
-                    </p>
-                  ) : (
-                    <>
-                      <p className="ct-disclosure__text">
-                        When you start the web server, Tailscale will provision a Let&apos;s Encrypt TLS certificate
-                        for your device&apos;s hostname (e.g., <code className="settings-panel__code">hostname.ts.net</code>).
-                        This hostname will be permanently visible in public Certificate Transparency logs.
-                        This is normal and expected for any Let&apos;s Encrypt certificate.
-                      </p>
-                      <button
-                        className="ct-disclosure__btn settings-panel__btn settings-panel__btn--save"
-                        onClick={handleAcknowledgeCT}
-                      >
+              <div className="settings-group">
+                <Row
+                  label="Certificate Transparency"
+                  description={ctDisclosed
+                    ? "Your tailnet certificate's name is published in public CT logs."
+                    : "Starting the web server gets a Let's Encrypt certificate for your Mac's tailnet name (for example hostname.ts.net). That name becomes permanently visible in public Certificate Transparency logs."}
+                >
+                  {ctDisclosed
+                    ? <span className="settings-row__success">Acknowledged</span>
+                    : (
+                      <button type="button" className="button button--secondary" onClick={() => void handleAcknowledgeCT()}>
                         I Understand
                       </button>
-                      {ctError && <p className="settings-panel__error">{ctError}</p>}
-                    </>
-                  )}
-                </div>
-
-                <h3 id="settings-security">Security</h3>
-                <p className="settings-panel__description">
-                  Rotating the signing key immediately invalidates all shared links across all sessions. Use this if you suspect a link has been leaked.
-                </p>
-                <div className="settings-panel__field-group">
-                  <button
-                    className="settings-panel__btn settings-panel__btn--destructive"
-                    onClick={() => setShowRegenModal(true)}
-                  >
-                    Regenerate Signing Key
+                    )}
+                </Row>
+                <Row label="Session keys" description="Regenerating signs out every browser and Mac attached to your sessions.">
+                  <button type="button" className="button button--secondary" onClick={() => setShowRegenModal(true)}>
+                    Regenerate…
                   </button>
-                  {regenError && <p className="settings-panel__error">{regenError}</p>}
-                </div>
+                </Row>
               </div>
+              {ctError && <p className="settings-sheet__error" role="alert">{ctError}</p>}
+              {regenError && <p className="settings-sheet__error" role="alert">{regenError}</p>}
             </div>
           </div>
 
@@ -609,16 +565,17 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
         onConfirm={handleConfirmDisableShellWarn}
         onCancel={() => setShowDisableWarnConfirm(false)}
         titleId="disable-shell-warn-title"
-        title="Disable shell web-share warning?"
-        body="AgentHub won't show the one-time security reminder before you web-share a shell session. You can re-enable it anytime in Settings → Session Behavior."
-        confirmLabel="Disable warning"
-        actingLabel="Disabling…"
-        cancelLabel="Keep warning"
+        title="Stop asking before sharing?"
+        body="You won't see the one-time security reminder before sharing a session. You can turn it back on in Settings ▸ Sharing."
+        confirmLabel="Stop Asking"
+        actingLabel="Saving…"
+        cancelLabel="Keep Asking"
       />
       <RegenerateKeyModal
         isOpen={showRegenModal}
         onConfirm={handleRegenerateSigningKey}
         onCancel={() => setShowRegenModal(false)}
+        destructive
       />
     </>
   )

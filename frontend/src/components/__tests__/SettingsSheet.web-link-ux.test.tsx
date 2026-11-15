@@ -6,12 +6,12 @@ import raw from '../../components/SettingsSheet.tsx?raw'
 // Use fs.readFileSync for CSS — vitest/jsdom does not support ?raw imports for CSS.
 const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
+// Portty 02-11: the running-only URL row in Settings ▸ Sharing has Open /
+// Copy / QR secondary push buttons (UI-SPEC "Sharing pane").
+
 describe('WEB-01: Open in browser button', () => {
   it('imports BrowserOpenURL from Wails runtime', () => {
     expect(raw).toContain('BrowserOpenURL')
-  })
-  it('imports ArrowTopRightOnSquareIcon from heroicons', () => {
-    expect(raw).toContain('ArrowTopRightOnSquareIcon')
   })
   it('calls BrowserOpenURL on Open button click', () => {
     expect(raw).toContain('BrowserOpenURL(serverURL)')
@@ -25,9 +25,6 @@ describe('WEB-02: Copy URL to clipboard', () => {
   it('imports ClipboardSetText from Wails runtime', () => {
     expect(raw).toContain('ClipboardSetText')
   })
-  it('imports ClipboardDocumentIcon from heroicons', () => {
-    expect(raw).toContain('ClipboardDocumentIcon')
-  })
   it('has handleCopyURL function', () => {
     expect(raw).toContain('async function handleCopyURL')
   })
@@ -35,7 +32,7 @@ describe('WEB-02: Copy URL to clipboard', () => {
     expect(raw).toContain('ClipboardSetText(serverURL)')
   })
   it('shows Copied! feedback', () => {
-    expect(raw).toContain("Copied!")
+    expect(raw).toContain("urlCopied ? 'Copied!' : 'Copy'")
   })
   it('has aria-label for Copy button', () => {
     expect(raw).toContain('Copy dashboard URL to clipboard')
@@ -45,9 +42,6 @@ describe('WEB-02: Copy URL to clipboard', () => {
 describe('WEB-03: QR code display', () => {
   it('imports GetWebServerQRCode from App bindings', () => {
     expect(raw).toContain('GetWebServerQRCode')
-  })
-  it('imports QrCodeIcon from heroicons', () => {
-    expect(raw).toContain('QrCodeIcon')
   })
   it('has handleToggleDashQR function', () => {
     expect(raw).toContain('async function handleToggleDashQR')
@@ -61,9 +55,10 @@ describe('WEB-03: QR code display', () => {
   it('resets QR state when server stops', () => {
     expect(raw).toContain('setDashQRb64(null)')
   })
-  it('has aria-labels for QR toggle', () => {
+  it('has aria-labels and QR / Hide QR labels for the toggle', () => {
     expect(raw).toContain('Show QR code')
     expect(raw).toContain('Hide QR code')
+    expect(raw).toContain("showDashQR ? 'Hide QR' : 'QR'")
   })
 })
 
@@ -73,35 +68,22 @@ describe('WEB-03: QR error handling', () => {
   })
 })
 
-describe('CSS: URL action row classes', () => {
-  it('has settings-web-server__url-row class', () => {
-    expect(cssRaw).toContain('.settings-web-server__url-row')
+describe('Portty 02-11: URL row uses the shared row and button styles', () => {
+  it('the three URL actions are secondary push buttons', () => {
+    const start = raw.indexOf('{isServerRunning && serverURL && (')
+    const block = raw.slice(start, raw.indexOf('{isServerRunning && (qrError', start))
+    expect(block.match(/className="button button--secondary"/g)).toHaveLength(3)
+    expect(block).toContain('className="settings-row__text settings-row__mono"')
   })
-  it('has settings-web-server__url-text class', () => {
-    expect(cssRaw).toContain('.settings-web-server__url-text')
-  })
-  it('has settings-web-server__action-btn class', () => {
-    expect(cssRaw).toContain('.settings-web-server__action-btn')
-  })
-  it('has settings-web-server__action-btn--copy-done class', () => {
-    expect(cssRaw).toContain('.settings-web-server__action-btn--copy-done')
-  })
-  it('has settings-web-server__qr class', () => {
-    expect(cssRaw).toContain('.settings-web-server__qr')
-  })
-  it('url-row uses flex layout', () => {
-    expect(cssRaw).toContain('.settings-web-server__url-row')
-    const idx = cssRaw.indexOf('.settings-web-server__url-row')
+  it('the URL is 12px ui-monospace with an ellipsis', () => {
+    const idx = cssRaw.indexOf('.settings-row__mono {')
     const block = cssRaw.slice(idx, cssRaw.indexOf('}', idx) + 1)
-    expect(block).toContain('display: flex')
-  })
-  it('url-text uses text-overflow ellipsis', () => {
-    const idx = cssRaw.indexOf('.settings-web-server__url-text')
-    const block = cssRaw.slice(idx, cssRaw.indexOf('}', idx) + 1)
+    expect(block).toContain('ui-monospace')
+    expect(block).toContain('font-size: 12px')
     expect(block).toContain('text-overflow: ellipsis')
   })
-  it('QR image has 200px dimensions', () => {
-    const idx = cssRaw.indexOf('.settings-web-server__qr')
+  it('QR image keeps its 200px dimensions', () => {
+    const idx = cssRaw.indexOf('.settings-row__qr {')
     const block = cssRaw.slice(idx, cssRaw.indexOf('}', idx) + 1)
     expect(block).toContain('width: 200px')
     expect(block).toContain('height: 200px')

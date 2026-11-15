@@ -157,3 +157,43 @@ describe('General pane', () => {
     expect(Array.from(general.querySelectorAll('button')).some((b) => b.textContent === 'Save Plugins')).toBe(true)
   })
 })
+
+describe('Security pane', () => {
+  it('Certificate Transparency: "I Understand", then "Acknowledged" in the success style', async () => {
+    await renderSheet()
+    const security = panel('security')
+    expect(security.textContent).toContain(
+      "Starting the web server gets a Let's Encrypt certificate for your Mac's tailnet name (for example hostname.ts.net). That name becomes permanently visible in public Certificate Transparency logs.",
+    )
+    const understand = Array.from(security.querySelectorAll('button')).find((b) => b.textContent === 'I Understand')!
+    expect(understand.className).toContain('button--secondary')
+    await act(async () => understand.click())
+    await act(async () => { await new Promise<void>((r) => setTimeout(r, 0)) })
+    const ack = security.querySelector('.settings-row__success')!
+    expect(ack.textContent).toBe('Acknowledged')
+    expect(security.textContent).toContain("Your tailnet certificate's name is published in public CT logs.")
+    expect(Array.from(security.querySelectorAll('button')).some((b) => b.textContent === 'I Understand')).toBe(false)
+  })
+
+  it('Session keys: "Regenerate…" opens the confirm with a destructive "Invalidate All Links"', async () => {
+    await renderSheet()
+    const security = panel('security')
+    expect(security.textContent).toContain('Regenerating signs out every browser and Mac attached to your sessions.')
+    const regen = Array.from(security.querySelectorAll('button')).find((b) => b.textContent === 'Regenerate…')!
+    await act(async () => regen.click())
+    const confirm = container.querySelector('[aria-labelledby="regen-key-title"]')!
+    expect(confirm.textContent).toContain('Regenerate Signing Key?')
+    const invalidate = Array.from(confirm.querySelectorAll('button')).find((b) => b.textContent === 'Invalidate All Links')!
+    expect(invalidate.className).toContain('button--destructive')
+    // Cancel first (T-02-36), and the confirm sits after the sheet so it owns Esc.
+    expect(document.activeElement?.textContent).toBe('Keep Links')
+  })
+})
+
+describe('LOOK-01: no inline colour or check glyph in SettingsSheet.tsx', () => {
+  it('has no inline colour/background style and no #9ece6a', () => {
+    expect(raw).not.toMatch(/style=\{\{[^}]*(color|background)/)
+    expect(raw).not.toMatch(/#[0-9a-fA-F]{3,6}\b/)
+    expect(raw).not.toContain('&#10003;')
+  })
+})
