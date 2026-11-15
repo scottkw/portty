@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,6 +108,16 @@ type App struct {
 	// Defaults to requestNotificationAuth. Phase 167-06 (M-41 gap closure) —
 	// mirrors the sendNotificationFunc injection pattern.
 	requestNotificationAuthFunc func()
+
+	// emitEventFunc allows unit tests to capture Wails events. nil in
+	// production (emitEvent calls runtime.EventsEmit). Mirrors the
+	// sendNotificationFunc injection pattern.
+	emitEventFunc func(name string, data any)
+
+	// exitEmitted records sessions already reported via session:exit, so each
+	// stopped session is reported once. Owned by the exit watcher goroutine.
+	exitEmitted     map[string]bool
+	exitWatcherOnce sync.Once
 }
 
 // NewApp creates a new App without starting any subsystems.
@@ -161,6 +170,9 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.client = daemon.NewDaemonClient(socketPath)
 
+	// One app-wide exit watcher closes tabs for every exited session (TERM-05).
+	a.startExitWatcher(ctx)
+
 	// Cache the persisted NotifyOnWaiting preference (Phase 167 / NTF-04).
 	// On error, leave the atomic at its zero value (false — the safe default).
 	if val, err := a.client.GetNotifyOnWaiting(); err == nil {
@@ -206,6 +218,7 @@ func (a *App) RetryDaemon() error {
 	a.daemonErr = nil
 	a.client = daemon.NewDaemonClient(socketPath)
 	if a.ctx != nil {
+		a.startExitWatcher(a.ctx)
 		a.startHealthPoller(a.ctx)
 	}
 	return nil
@@ -284,131 +297,78 @@ func (a *App) QuitAll() {
 // CreateSession spawns a new login-shell session and returns its ID.
 // Empty workDir starts in the home directory.
 // cols and rows specify the initial PTY dimensions; pass 0 for defaults (80x24).
-// Creates the session through the daemon client, then polls for status updates
-// and emits Wails events (replaces the onStatus callback used in earlier phases).
+// Exit detection is the app-wide exit watcher (startExitWatcher), which covers
+// every session regardless of how or when it was created.
 func (a *App) CreateSession(name, workDir string, cols, rows int) (string, error) {
 	if a.client == nil {
 		return "", fmt.Errorf("daemon not connected")
 	}
-	id, err := a.client.CreateSession(name, workDir, cols, rows)
-	if err != nil {
-		return "", err
-	}
-	// Poll session status for up to 60s to emit Wails events (replaces onStatus callback).
-	go a.pollSessionStatus(id)
-	return id, nil
+	return a.client.CreateSession(name, workDir, cols, rows)
 }
 
-// shouldContinuePolling is the pure, injectable-clock deadline check driving
-// pollSessionStatus's loop. It returns true while now is still within
-// maxWindow of pollStart, matching the original inline
-// `time.Now().Before(deadline)` semantics exactly (deadline == pollStart +
-// maxWindow). Extracted as a side-effect-free helper (175-02 Task 1 / BUG-03
-// Wave 0 scaffolding) so the exit-poll deadline math is unit-testable without
-// a live daemon or wall-clock sleeps; 175-05 is the plan that may change the
-// semantics (e.g. re-arming the deadline) — this extraction is
-// behavior-preserving only.
-func shouldContinuePolling(pollStart, now time.Time, maxWindow time.Duration) bool {
-	return now.Before(pollStart.Add(maxWindow))
-}
-
-// pollSessionStatus polls the daemon for status changes on a newly created
-// session and emits Wails "session:status" events. Also detects natural exit
-// (State == "stopped") and emits "session:exit". Replaces the onStatus
-// callback that was used when CreateSession called the engine directly.
-func (a *App) pollSessionStatus(sessionID string) {
-	var last string
-	var consecutiveErrors int
-	pollStart := time.Now()
-	const maxPollWindow = 300 * time.Second // extended to 5min for long-running agents
-	// slowCallThreshold flags ListSessions round-trips that take unusually
-	// long over what should be a near-instant local Unix-socket call. 175-01
-	// DIAGNOSIS (VERDICT: DISPROVED — the fixed deadline is NOT BUG-03's root
-	// cause) flags the un-timeout'd http.Client in internal/daemon/client.go
-	// as the candidate hang site; this instruments the call at its app.go
-	// call site (this plan's declared files_modified does not include
-	// client.go) so a future stall is directly observable instead of silent.
-	const slowCallThreshold = 2 * time.Second
-	for shouldContinuePolling(pollStart, time.Now(), maxPollWindow) {
-		callStart := time.Now()
-		sessions, err := a.client.ListSessions()
-		if elapsed := time.Since(callStart); elapsed > slowCallThreshold {
-			slog.Warn("pollSessionStatus: daemon ListSessions call unusually slow (possible daemon-client stall)",
-				"sessionId", sessionID, "elapsed", elapsed, "err", err)
-		}
-		if err != nil {
-			consecutiveErrors++
-			if consecutiveErrors >= 5 {
-				// Terminal exit without session:exit — Task 2 (175-05): make the
-				// silent-give-up failure mode that made BUG-03 hard to diagnose
-				// observable in logs.
-				slog.Warn("pollSessionStatus: stopping watch, daemon unreachable",
-					"sessionId", sessionID, "reason", "daemon-gone", "consecutiveErrors", consecutiveErrors, "lastErr", err)
-				return // daemon is gone — stop polling
-			}
-			time.Sleep(500 * time.Millisecond)
-			continue
-		}
-		consecutiveErrors = 0
-		found := false
-		for _, s := range sessions {
-			if s.ID == sessionID {
-				found = true
-				// Emit heuristic status changes (existing behavior)
-				if s.Status != last {
-					last = s.Status
-					if a.ctx != nil && a.ctx.Value("frontend") != nil {
-						runtime.EventsEmit(a.ctx, "session:status", map[string]string{
-							"sessionId": sessionID,
-							"status":    s.Status,
-						})
-					}
-				}
-				// Exit detection: daemon marks session as "stopped" when process exits naturally
-				if s.State == "stopped" {
-					a.emitExitEvent(sessionID, s)
-					return
-				}
-				break
-			}
-		}
-		if !found {
-			// Session removed from daemon (killed externally) — stop polling.
-			// Terminal exit without session:exit — see Task 2 note above.
-			slog.Warn("pollSessionStatus: stopping watch, session no longer present",
-				"sessionId", sessionID, "reason", "session-removed")
-			return
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	// Loop condition (shouldContinuePolling) went false — the exit-poll
-	// deadline expired without ever observing a "stopped" state or the
-	// session disappearing. DISPROVED branch only: the deadline itself was
-	// kept (175-01 verdict), but its expiry is now a logged, non-silent
-	// terminal exit rather than a bare implicit return (Task 2 / 175-05).
-	slog.Warn("pollSessionStatus: stopping watch, exit-poll deadline expired",
-		"sessionId", sessionID, "reason", "deadline-expiry", "window", maxPollWindow)
-}
-
-// emitExitEvent sends the session:exit Wails event to the frontend.
-func (a *App) emitExitEvent(sessionID string, s daemon.SessionInfo) {
-	if a.ctx == nil || a.ctx.Value("frontend") == nil {
+// emitEvent sends a Wails event to the frontend. Tests inject emitEventFunc;
+// otherwise the emit is skipped when there is no Wails frontend (unit tests,
+// CLI helpers) because runtime.EventsEmit needs one.
+func (a *App) emitEvent(name string, data any) {
+	if a.emitEventFunc != nil {
+		a.emitEventFunc(name, data)
 		return
 	}
-	exitCode := 0
-	if s.ExitCode != nil {
-		exitCode = *s.ExitCode
+	if a.ctx != nil && a.ctx.Value("frontend") != nil {
+		runtime.EventsEmit(a.ctx, name, data)
 	}
-	duration := 0
-	if s.Duration != nil {
-		duration = *s.Duration
-	}
-	runtime.EventsEmit(a.ctx, "session:exit", map[string]any{
-		"sessionId":   sessionID,
-		"exitCode":    exitCode,
-		"sessionName": s.Name,
-		"duration":    duration,
+}
+
+// startExitWatcher starts the single app-wide exit watcher: checkExits runs
+// immediately and then every 500 ms until ctx is done. There is no deadline,
+// so a shell that exits hours after it started is still reported (TERM-05).
+// Safe to call more than once (startup and RetryDaemon); only the first starts.
+func (a *App) startExitWatcher(ctx context.Context) {
+	a.exitWatcherOnce.Do(func() {
+		go func() {
+			a.checkExits()
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					a.checkExits()
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
 	})
+}
+
+// checkExits emits session:exit once for every session the daemon reports as
+// stopped, including one already stopped the first time it is seen (the GUI
+// must remove it). Ids the daemon no longer lists are pruned. Only the watcher
+// goroutine (or a test) calls this, so exitEmitted needs no lock.
+func (a *App) checkExits() {
+	if a.client == nil {
+		return
+	}
+	sessions, err := a.client.ListSessions()
+	if err != nil {
+		return // daemon unreachable; the next tick retries
+	}
+	if a.exitEmitted == nil {
+		a.exitEmitted = make(map[string]bool)
+	}
+	listed := make(map[string]bool, len(sessions))
+	for _, s := range sessions {
+		listed[s.ID] = true
+		if s.State == "stopped" && !a.exitEmitted[s.ID] {
+			a.exitEmitted[s.ID] = true
+			a.emitEvent("session:exit", map[string]any{"sessionId": s.ID})
+		}
+	}
+	for id := range a.exitEmitted {
+		if !listed[id] {
+			delete(a.exitEmitted, id)
+		}
+	}
 }
 
 // ListSessions returns a snapshot of all registered sessions.

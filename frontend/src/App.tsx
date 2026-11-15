@@ -469,12 +469,17 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         return
       }
       try {
-        const [port, sessions, running, health] = await Promise.all([
+        const [port, allSessions, running, health] = await Promise.all([
           GetRelayPort(),
           ListSessions(),
           IsWebServerRunning(),
           GetTailscaleStatus(),
         ])
+        // A shell that exited while no GUI was watching is removed, not restored (TERM-05).
+        const sessions = allSessions.filter((s) => s.state !== 'stopped')
+        allSessions.filter((s) => s.state === 'stopped').forEach((s) => {
+          KillSession(s.id).catch((err) => console.warn('[App] KillSession of stopped session failed:', err))
+        })
         setRelayPort(port)
         setWebServerRunning(running)
         setTailscaleHealth(health)
@@ -671,38 +676,11 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
 
     const offExit = EventsOn(
       'session:exit',
-      (data: {
-        sessionId: string
-        exitCode: number
-        sessionName: string
-        duration: number
-      }) => {
-        // SHELL-12: on clean exit (code 0), respect the user's "Auto-close tab
-        // on exit" preference (autoCloseRef, loaded from GetAutoCloseSession()).
-        // When auto-close is ON (default): close tab immediately — no toast, no
-        // countdown. When OFF: fall through to setSessionExits so the ExitToast
-        // appears, honoring the user's explicit preference.
-        // The daemon (107-02) normalizes PTY -1 → 0, so this branch covers all
-        // natural-exit cases including shell EOF.
-        if (data.exitCode === 0) {
-          if (autoCloseRef.current) {
-            // Auto-close enabled: close tab immediately (SHELL-12 default path)
-            void handleCloseTabRef.current?.(data.sessionId)
-            return
-          }
-          // Auto-close disabled: fall through to show ExitToast (no countdown)
-        }
-        // Non-zero exit (or zero-exit with auto-close OFF): record exit state
-        // and show ExitToast (existing behavior).
-        const exitState: ExitState = {
-          sessionId: data.sessionId,
-          sessionName: data.sessionName,
-          exitCode: data.exitCode,
-          duration: data.duration,
-          countdown: -1,
-          cancelled: false,
-        }
-        setSessionExits(prev => ({ ...prev, [data.sessionId]: exitState }))
+      (data: { sessionId: string }) => {
+        // TERM-05: any shell exit, at any age and with any exit code, closes
+        // its tab; handleCloseTab's KillSession removes the session from the
+        // daemon (also for sessions with no open tab, e.g. CLI-created).
+        void handleCloseTabRef.current?.(data.sessionId)
       }
     )
 
@@ -1305,12 +1283,17 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       return
     }
     try {
-      const [port, sessions, running, health] = await Promise.all([
+      const [port, allSessions, running, health] = await Promise.all([
         GetRelayPort(),
         ListSessions(),
         IsWebServerRunning(),
         GetTailscaleStatus(),
       ])
+      // Mirror init: stopped sessions are removed, not restored (TERM-05).
+      const sessions = allSessions.filter((s) => s.state !== 'stopped')
+      allSessions.filter((s) => s.state === 'stopped').forEach((s) => {
+        KillSession(s.id).catch((err) => console.warn('[App] KillSession of stopped session failed:', err))
+      })
       setRelayPort(port)
       setWebServerRunning(running)
       setTailscaleHealth(health)

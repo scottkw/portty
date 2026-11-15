@@ -37,6 +37,12 @@ var testSockSeq atomic.Int64
 // and wires the client, simulating what startup() does without the subprocess.
 func testApp(t *testing.T) *App {
 	t.Helper()
+	return testAppWithSpawn(t, "/bin/cat", nil) // deterministic echo process instead of a login shell
+}
+
+// testAppWithSpawn is testApp with every session spawning path with args.
+func testAppWithSpawn(t *testing.T, path string, args []string) *App {
+	t.Helper()
 	// Isolate config directory so settings.json doesn't leak between tests.
 	if goruntime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
@@ -46,7 +52,7 @@ func testApp(t *testing.T) *App {
 
 	// Start an in-process daemon API for tests (no real subprocess).
 	engine := daemon.NewSessionEngine()
-	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
+	engine.SetSpawnCommandForTest(path, args)
 	api := daemon.NewAPI(engine)
 
 	seq := testSockSeq.Add(1)
@@ -862,68 +868,6 @@ func TestNilClientGetRemoteSessions(t *testing.T) {
 }
 
 // --- RetryDaemon tests ---
-
-// TestPollSessionStatus_ImmediateFirstCall verifies that pollSessionStatus
-// makes its first HTTP call immediately, without sleeping first. The test
-// creates a session and then checks that GetSessionStatus returns a non-empty
-// status within 200ms — well before the old 2-second sleep would have elapsed.
-func TestPollSessionStatus_ImmediateFirstCall(t *testing.T) {
-	app := testApp(t)
-
-	id, err := app.CreateSession("poll-test", "", 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-
-	// Start polling in a background goroutine (mirrors production usage).
-	go app.pollSessionStatus(id)
-
-	// Wait 200ms — well under the 2-second sleep that exists in the buggy code.
-	time.Sleep(200 * time.Millisecond)
-
-	// The first HTTP call must have been made by now. GetSessionStatus
-	// independently polls the daemon so it always returns a fresh value; the
-	// important thing is that the session exists and has a valid status, proving
-	// the daemon is reachable and the session was created.
-	s := app.GetSessionStatus(id)
-	if s == "" {
-		t.Error("GetSessionStatus returned empty string within 200ms — first poll may not have fired yet")
-	}
-	valid := map[string]bool{"running": true, "waiting": true, "idle": true, "errored": true}
-	if !valid[s] {
-		t.Errorf("GetSessionStatus returned invalid status %q", s)
-	}
-}
-
-// TestPollSessionStatus_StopsOnHTTPError verifies that pollSessionStatus exits
-// promptly when the daemon is unreachable, rather than blocking until the
-// 300-second deadline expires. The circuit breaker exits after 5 consecutive
-// errors (5 x 500ms sleep = ~2.5s plus dial attempts).
-func TestPollSessionStatus_StopsOnHTTPError(t *testing.T) {
-	// Point the client at a socket path that has no listener — every HTTP call
-	// will fail immediately with "connection refused". This simulates a daemon
-	// that has gone away and exercises the error-circuit-breaker path.
-	seq := testSockSeq.Add(1)
-	deadSocketPath := fmt.Sprintf("/tmp/aht_dead_%d_%d.sock", os.Getpid(), seq)
-	_ = os.Remove(deadSocketPath) // Ensure nothing is listening there.
-
-	client := daemon.NewDaemonClient(deadSocketPath)
-	app := &App{
-		ctx:    context.Background(),
-		client: client,
-	}
-
-	start := time.Now()
-	app.pollSessionStatus("any-session-id")
-	elapsed := time.Since(start)
-
-	// Circuit breaker: 5 consecutive errors x 500ms sleep = ~2.5s plus dial
-	// overhead. Allow 10s headroom. The key assertion is it doesn't loop for
-	// 300 seconds.
-	if elapsed > 10*time.Second {
-		t.Errorf("pollSessionStatus took %v with no daemon — expected < 10s (circuit breaker should exit after 5 consecutive errors)", elapsed)
-	}
-}
 
 // TestRetryDaemonFail verifies RetryDaemon returns a non-nil error, leaves
 // a.client nil, and sets a.daemonErr when the daemon cannot start.
