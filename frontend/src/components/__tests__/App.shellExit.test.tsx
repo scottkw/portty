@@ -36,6 +36,19 @@ describe('App.tsx TERM-05: session:exit closes the tab', () => {
     expect(h).not.toMatch(/\bif\s*\(/)
   })
 
+  // WR-03: a shell can exit (and be reported, once) before CreateSession
+  // resolves; createTab must not then add a tab for the removed session.
+  it('records exited ids and createTab skips one that already exited', () => {
+    expect(exitHandler()).toContain('exitedIdsRef.current.add(data.sessionId)')
+    const body = slice('const createTab = useCallback(', '}, [tabCounter')
+    const created = body.indexOf('await CreateSession(')
+    const guard = body.indexOf('if (exitedIdsRef.current.has(sessionId)) return')
+    expect(created).toBeGreaterThan(-1)
+    expect(guard).toBeGreaterThan(created)
+    expect(guard).toBeLessThan(body.indexOf('setTabs('))
+    expect(guard).toBeLessThan(body.indexOf('setHubSessions('))
+  })
+
   it('handleCloseTabRef stays in sync with handleCloseTab', () => {
     expect(raw).toContain('handleCloseTabRef.current = handleCloseTab')
   })

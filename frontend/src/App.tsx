@@ -239,6 +239,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // Ref to handleCloseTab so the session:exit event handler (with [] deps) can call
   // the latest version without a stale closure
   const handleCloseTabRef = useRef<((id: string) => Promise<void>) | undefined>(undefined)
+  // Every session:exit id, so createTab skips a shell that exited before
+  // CreateSession resolved (the exit is reported only once).
+  const exitedIdsRef = useRef(new Set<string>())
 
   // Terminal theme (global — same theme for all sessions)
   const [terminalThemeName, setTerminalThemeName] = useState<string>(() => {
@@ -611,6 +614,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
         // TERM-05: any shell exit, at any age and with any exit code, closes
         // its tab. The Go exit watcher has already removed the session from
         // the daemon, so handleCloseTab's KillSession "not found" is expected.
+        exitedIdsRef.current.add(data.sessionId)
         void handleCloseTabRef.current?.(data.sessionId)
       }
     )
@@ -663,6 +667,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
 
     try {
       const sessionId = await CreateSession(defaultName, workDir, cols, rows)
+      if (exitedIdsRef.current.has(sessionId)) return
       const tab: Tab = {
         id: sessionId,
         name: defaultName,
