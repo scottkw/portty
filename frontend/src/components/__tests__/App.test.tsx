@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import raw from '../../App.tsx?raw'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
+
+const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
 describe('App', () => {
   // UILAY-02: App.tsx imports and renders <StatusBar> inside terminal-wrapper
@@ -379,5 +383,16 @@ describe('BRND-02: welcome tab integration', () => {
 
   it('hides static HTML splash on mount', () => {
     expect(raw).toContain("getElementById('splash-static')")
+  })
+})
+
+// Portty 02-01 UAT defects A and B: desktop drag strips.
+describe('desktop window chrome CSS (LOOK-01)', () => {
+  it('collapsed sidebar: tab bar pads past the 80px traffic-light reserve', () => {
+    expect(cssRaw).toMatch(/html\.is-desktop \.sidebar--collapsed \+ \.app__content \.tab-bar \{\s*padding-left: 32px;/)
+  })
+
+  it('drag strips do not text-select (WebKit prefix included)', () => {
+    expect(cssRaw).toMatch(/html\.is-desktop :is\(\.sidebar, \.tab-bar\) \{\s*-webkit-user-select: none;\s*user-select: none;/)
   })
 })

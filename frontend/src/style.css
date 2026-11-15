@@ -5767,3 +5767,21 @@ html.is-desktop .sidebar:not(.sidebar--collapsed) .sidebar__toggle {
   height: 28px;
   margin: 0;
 }
+
+/* Collapsed sidebar is 48px, so the tab bar pads 32px more to clear the
+   80px traffic-light reserve. Padding stays part of the drag region. */
+html.is-desktop .sidebar--collapsed + .app__content .tab-bar {
+  padding-left: 32px;
+}
+
+/* Dragging a strip must not text-select labels. WebKit needs the prefix;
+   inputs opt back in so rename/create fields stay editable. */
+html.is-desktop :is(.sidebar, .tab-bar) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html.is-desktop :is(.sidebar, .tab-bar) input {
+  -webkit-user-select: text;
+  user-select: text;
+}
