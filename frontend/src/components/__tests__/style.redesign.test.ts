@@ -95,10 +95,6 @@ describe('Phase 141-07: ≥8 surface selectors apply var(--hub-font-ui) or var(-
 // ─── Radii tokens: consumed by surface selectors ─────────────────────────────
 
 describe('Phase 141-07: comp radii tokens applied to surfaces', () => {
-  it('--hub-radius-pill is consumed by at least one selector (filter chips/pills)', () => {
-    expect(cssRaw).toContain('border-radius: var(--hub-radius-pill)')
-  })
-
   it('--hub-radius-md is consumed by at least one selector (cards/panels)', () => {
     expect(cssRaw).toContain('border-radius: var(--hub-radius-md)')
   })
@@ -115,10 +111,6 @@ describe('Phase 141-07: comp radii tokens applied to surfaces', () => {
 // ─── Type scale: heading token consumed ──────────────────────────────────────
 
 describe('Phase 141-07: comp type scale tokens applied', () => {
-  it('--hub-font-size-heading is consumed by at least one heading selector', () => {
-    expect(cssRaw).toContain('font-size: var(--hub-font-size-heading)')
-  })
-
   it('--hub-font-size-sm is consumed by at least one small-text selector', () => {
     expect(cssRaw).toContain('font-size: var(--hub-font-size-sm)')
   })

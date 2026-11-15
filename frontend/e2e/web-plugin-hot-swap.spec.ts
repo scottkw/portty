@@ -9,7 +9,7 @@
 // the SPA does NOT consume /api/plugin-config or the SSE stream at all — web
 // guests no longer get live plugin-config hot-swap. The instrumentation here
 // (hooking the UMD `window.WebglAddon` global) also cannot fire against the
-// Vite-bundled SPA. This is a known, chat-orthogonal cross-surface gap tracked
+// Vite-bundled SPA. This is a known cross-surface gap tracked
 // for a follow-up that wires /api/plugin-config + SSE into the /app/ web mode.
 // Re-enable after that work lands. See: scottkw/agenthub#112 (web-guest
 // plugin-config parity).

@@ -52,8 +52,7 @@ describe('Hub modal animation guard (MODAL-01: reduced-motion compliance)', () =
     // animation. (Portty 02-05: the bare `.hub-modal` panel went with HubModal.) Targeting the rule by its selector is robust against unrelated
     // reduced-motion blocks appearing later in the stylesheet — a brittle
     // `lastIndexOf('prefers-reduced-motion: reduce')` scan matched a trailing
-    // chat-panel `transition: none` block instead (pre-existing; surfaced when
-    // Phase 158 added the `.terminal-chat-host .chat-panel` reduced-motion entry).
+    // later, unrelated `transition: none` block instead.
     const ruleMatch = cssRaw.match(/\.hub-modal-overlay\s*\{[^}]*\}/g) || []
     const reducedMotionRule = ruleMatch.find((r) => r.includes('animation: none'))
     expect(reducedMotionRule, '.hub-modal-overlay rule with animation: none not found').toBeTruthy()
