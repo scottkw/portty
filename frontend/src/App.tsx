@@ -20,7 +20,6 @@ import {
   GetRemoteSessionsWithMeta,
   GetWebServerMode,
   GetLastUpdateInfo,
-  GetStayOnHubAfterCreate,
   GetPluginSettings,
   GetShellWebShareWarned,
   SetShellWebShareWarned,
@@ -197,11 +196,6 @@ function App(): React.ReactElement {
   // Quit confirmation modal state (Phase 85)
   const [showQuitModal, setShowQuitModal] = useState(false)
   const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string }>>([])
-  // Stay-on-hub-after-create setting (Phase 168 UX-01): loaded on mount,
-  // default false (auto-switch, today's behavior). Stored as a ref (not
-  // state) — avoids stale closures inside
-  // createTab without needing to add it to the useCallback deps array.
-  const stayOnHubAfterCreateRef = useRef(false)
   // Ref to removeTabState so the session:exit event handler (with [] deps) can call
   // the latest version without a stale closure
   const removeTabStateRef = useRef<((id: string) => void) | undefined>(undefined)
@@ -392,9 +386,6 @@ function App(): React.ReactElement {
             }
           }, 500)
         }
-
-        // Load stay-on-hub-after-create preference (Phase 168 UX-01)
-        GetStayOnHubAfterCreate().then(val => { stayOnHubAfterCreateRef.current = val }).catch(() => {})
 
         // Phase 101-03 SHELL-08 — hydrate the one-time shell-web-share-warning
         // flag from daemon-persisted settings. On failure default to false so
@@ -595,13 +586,7 @@ function App(): React.ReactElement {
         sessionId,
       }
       setTabs((prev) => [...prev, tab])
-      // Phase 168 UX-01: when stayOnHubAfterCreate is ON, skip the
-      // auto-switch so the user stays on the Hub after creating a session.
-      // The tab is still created unconditionally (D-10) — only this single
-      // setActiveId call (the only auto-switch in the app, D-11) is gated.
-      if (!stayOnHubAfterCreateRef.current) {
-        setActiveId(sessionId)
-      }
+      setActiveId(sessionId)
 
       // CR-01 fix: seed sessions synchronously so the sidebar row and the
       // footer "Share Session" button work for a just-created session before

@@ -78,10 +78,6 @@ export const GetWebServerMode        = ()                   => Call('main.App.Ge
 export const GetStartMinimized       = ()                   => Call('main.App.GetStartMinimized', [])
 export const SetStartMinimized       = (val)                => Call('main.App.SetStartMinimized', [val])
 
-// Stay-on-hub-after-create bound methods (Phase 168 / UX-01)
-export const GetStayOnHubAfterCreate = ()                   => Call('main.App.GetStayOnHubAfterCreate', [])
-export const SetStayOnHubAfterCreate = (val)                => Call('main.App.SetStayOnHubAfterCreate', [val])
-
 // Plugin settings bound methods (PLUG-03 / Phase 92)
 export const GetPluginSettings       = ()                   => Call('main.App.GetPluginSettings', [])
 export const SetPluginSettings       = (s)                  => Call('main.App.SetPluginSettings', [s])

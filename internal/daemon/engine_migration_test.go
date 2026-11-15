@@ -224,7 +224,8 @@ func TestSettingsMigration_FilesReadSchemaVersionRewrite(t *testing.T) {
 
 // TestSettingsMigration_LegacyAgentHubV42 loads a real-shaped AgentHub v4.2
 // settings.json that still carries the removed "filesWrite" and
-// "autoCloseSession", "cliPaths", "shellPath" and "notifyOnWaiting" keys.
+// "autoCloseSession", "cliPaths", "shellPath", "notifyOnWaiting" and
+// "stayOnHubAfterCreate" keys.
 // Old settings must load without error, the unknown keys are ignored, the
 // kept values survive, and the next save drops every removed key.
 func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
@@ -246,9 +247,6 @@ func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	}
 	e.loadSettingsFromDisk(dir)
 
-	if !e.GetStayOnHubAfterCreate() {
-		t.Error("stayOnHubAfterCreate = false, want true (kept value must survive)")
-	}
 	if !e.GetShellWebShareWarned() {
 		t.Error("shellWebShareWarned = false, want true (kept value must survive)")
 	}
@@ -275,13 +273,15 @@ func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 	// Portty 01-11 (CONTEXT Amendments 1 and 2): the shell and CLI path
 	// overrides and the awaiting-input toggle are gone; the legacy keys load
 	// without error and are dropped on save.
-	for _, k := range []string{"cliPaths", "shellPath", "notifyOnWaiting"} {
+	// Portty 02-06 (NAV-03): the Hub is gone, so the stay-on-Hub preference
+	// is too; the legacy key loads without error and is dropped on save.
+	for _, k := range []string{"cliPaths", "shellPath", "notifyOnWaiting", "stayOnHubAfterCreate"} {
 		if _, ok := onDisk[k]; ok {
 			t.Errorf("saved settings.json still contains %s; the removed key should be dropped on save", k)
 		}
 	}
-	if onDisk["stayOnHubAfterCreate"] != true || onDisk["shellWebShareWarned"] != true {
-		t.Errorf("kept keys lost on save: stayOnHubAfterCreate=%v shellWebShareWarned=%v", onDisk["stayOnHubAfterCreate"], onDisk["shellWebShareWarned"])
+	if onDisk["shellWebShareWarned"] != true {
+		t.Errorf("kept key lost on save: shellWebShareWarned=%v", onDisk["shellWebShareWarned"])
 	}
 	if _, ok := onDisk["plugins"].(map[string]any); !ok {
 		t.Errorf("saved settings.json lost the plugins block: %v", onDisk["plugins"])

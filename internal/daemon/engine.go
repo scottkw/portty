@@ -36,7 +36,6 @@ type SessionEngine struct {
 	sessionWorkDirs map[string]string // sessionID -> EvalSymlinks-resolved absolute WorkDir (Phase 118 / FS-02)
 
 	startMinimized              bool           // persisted start-minimized preference
-	stayOnHubAfterCreate        bool           // Phase 168 UX-01: persisted "stay on Hub after creating a session" preference (default OFF)
 	shellWebShareWarned         bool           // Phase 101 SHELL-08: user has acknowledged the shell web-share security banner
 	shellWebShareWarningEnabled *bool          // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
 	pluginSettings              PluginSettings // populated by loadSettingsFromDisk via defaults-merge
@@ -77,7 +76,6 @@ func daemonConfigDir() string {
 // files write default) are ignored by json.Unmarshal and dropped on save.
 type daemonSettings struct {
 	StartMinimized              bool           `json:"startMinimized,omitempty"`
-	StayOnHubAfterCreate        bool           `json:"stayOnHubAfterCreate,omitempty"` // Phase 168 UX-01: default OFF; zero-value is the correct default (no defaults-merge needed)
 	ShellWebShareWarned         bool           `json:"shellWebShareWarned,omitempty"`
 	ShellWebShareWarningEnabled *bool          `json:"shellWebShareWarningEnabled,omitempty"` // Phase 150 SET-01: *bool so omitempty omits false; nil → default true (D-08)
 	Plugins                     PluginSettings `json:"plugins"`
@@ -118,7 +116,6 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 	}
 	e.mu.Lock()
 	e.startMinimized = s.StartMinimized
-	e.stayOnHubAfterCreate = s.StayOnHubAfterCreate
 	e.shellWebShareWarned = s.ShellWebShareWarned
 	e.shellWebShareWarningEnabled = s.ShellWebShareWarningEnabled
 	// nil pointer = not set in settings.json = fresh install → default ON (D-08).
@@ -150,7 +147,6 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 func (e *SessionEngine) saveSettingsToDisk() {
 	s := daemonSettings{
 		StartMinimized:              e.startMinimized,
-		StayOnHubAfterCreate:        e.stayOnHubAfterCreate,
 		ShellWebShareWarned:         e.shellWebShareWarned,
 		ShellWebShareWarningEnabled: e.shellWebShareWarningEnabled,
 		Plugins:                     e.pluginSettings,
@@ -614,23 +610,6 @@ func (e *SessionEngine) GetStartMinimized() bool {
 func (e *SessionEngine) SetStartMinimized(val bool) {
 	e.mu.Lock()
 	e.startMinimized = val
-	e.saveSettingsToDisk()
-	e.mu.Unlock()
-}
-
-// GetStayOnHubAfterCreate returns the persisted "stay on Hub after creating
-// a session" preference. Phase 168 UX-01; default OFF (zero-value false).
-func (e *SessionEngine) GetStayOnHubAfterCreate() bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.stayOnHubAfterCreate
-}
-
-// SetStayOnHubAfterCreate updates and persists the "stay on Hub after
-// creating a session" preference. Phase 168 UX-01.
-func (e *SessionEngine) SetStayOnHubAfterCreate(val bool) {
-	e.mu.Lock()
-	e.stayOnHubAfterCreate = val
 	e.saveSettingsToDisk()
 	e.mu.Unlock()
 }

@@ -528,29 +528,6 @@ func (a *App) SetStartMinimized(val bool) error {
 	return a.client.SetStartMinimized(val)
 }
 
-// GetStayOnHubAfterCreate returns the persisted "stay on Hub after creating
-// a session" preference (Phase 168 / UX-01). Returns false (auto-switch,
-// today's behavior) when daemon is not connected. Plain client passthrough.
-func (a *App) GetStayOnHubAfterCreate() bool {
-	if a.client == nil {
-		return false
-	}
-	val, err := a.client.GetStayOnHubAfterCreate()
-	if err != nil {
-		return false
-	}
-	return val
-}
-
-// SetStayOnHubAfterCreate persists the "stay on Hub after creating a
-// session" preference (Phase 168 / UX-01).
-func (a *App) SetStayOnHubAfterCreate(val bool) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.SetStayOnHubAfterCreate(val)
-}
-
 // GetPluginSettings returns the persisted plugin enable/disable preferences.
 // Returns the zero-value PluginSettings when the daemon is not connected
 // or when the RPC fails — callers MUST also gate on a toggleLoaded-style
