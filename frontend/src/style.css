@@ -4,10 +4,7 @@
 /* Hide native scrollbar so FitAddon uses full container width.
    xterm.js handles scroll internally via mouse wheel / touchpad. */
 .xterm-viewport {
-  scrollbar-width: none;           /* Firefox */
-}
-.xterm-viewport::-webkit-scrollbar {
-  display: none;                   /* WebKit (Wails, Chrome, Safari) */
+  scrollbar-width: none;
 }
 
 /* Phase 157 VIEW-05: guest scale transform anchor.
@@ -76,17 +73,25 @@ body,
 /* Prevent macOS WKWebView from reserving native scrollbar space.
    Without this, "Always show scrollbars" in System Preferences causes
    a ~16px gap on the right where the scrollbar track is rendered. */
-html::-webkit-scrollbar,
-body::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
+html,
+body {
+  scrollbar-width: none;
 }
 
 body {
-  background-color: #1a1b26;
-  color: #c0caf5;
+  background-color: var(--color-window);
+  color: var(--color-text);
   font-family: var(--hub-font-ui);
+}
+
+/* Focus ring (UI-SPEC "Focus ring"): keyboard focus only. Sidebar rows and
+   tab labels inset it with outline-offset: -3px. */
+:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* Form-control font reset. Native <button>/<input>/<select>/<textarea> do NOT
@@ -146,9 +151,6 @@ textarea {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-}
-.tab-list::-webkit-scrollbar {
-  display: none;
 }
 
 /* Tabs share the space up to 220px, shrink to 88px, then the strip scrolls. */
@@ -216,7 +218,6 @@ textarea {
   font: inherit;
   font-size: 13px;
   font-weight: 400;
-  outline: none;
 }
 
 .tab__close {
@@ -1066,119 +1067,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   color: var(--color-text-secondary);
 }
 
-/* ─── Daemon Management Panel (Phase 40) ─────────────────────────── */
-.daemon-panel {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  background-color: #1a1b26;
-  overflow-y: auto;
-  padding: 24px;
-}
-
-.daemon-panel__empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #9aa5ce;
-  font-size: 14px;
-}
-
-.daemon-panel__header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #292e42;
-}
-
-.daemon-panel__title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #c0caf5;
-}
-
-.daemon-panel__count {
-  font-size: 12px;
-  color: #9aa5ce;
-}
-
-.daemon-panel__list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.daemon-panel__session-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: #16161e;
-  border: 1px solid #292e42;
-}
-
-.daemon-panel__session-row:hover {
-  border-color: #3b4261;
-}
-
-.daemon-panel__status {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.daemon-panel__status--running { background: #3b82f6; }
-.daemon-panel__status--idle    { background: #22c55e; }
-.daemon-panel__status--waiting { background: #f59e0b; }
-.daemon-panel__status--errored { background: #ef4444; }
-
-.daemon-panel__name {
-  font-size: 13px;
-  color: #c0caf5;
-  font-weight: 500;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.daemon-panel__cli {
-  font-size: 11px;
-  color: #9aa5ce;
-  background: #1e2030;
-  padding: 2px 8px;
-  border-radius: 3px;
-  flex-shrink: 0;
-}
-
-.daemon-panel__hostname {
-  font-size: 11px;
-  color: #9aa5ce;
-  background: #1e2030;
-  padding: 2px 8px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.daemon-panel__actions {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
+/* ─── Share dialog push button (class kept from the Phase 40 daemon panel) ─── */
 .daemon-panel__btn {
   /* Portty 02-09: Share dialog push button (Copy / Open / QR), tokens only. */
   height: 24px;
@@ -1223,9 +1112,10 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 /* ─── Phase 93 WGL-02/WGL-03 base, now used only by ShellWebShareBanner
    (the WebGL, plugin toggle and update banners use .banner, Portty 02-10). */
 .webgl-recovery-banner {
-  background: #16161e;
-  border: 1px solid #292e42;
-  border-left: 3px solid #7aa2f7;
+  background: var(--color-banner-warning-bg);
+  color: var(--color-banner-warning-fg);
+  border: 1px solid var(--color-separator);
+  border-left: 3px solid var(--color-accent);
   border-radius: 4px;
   padding: 12px 16px;
   margin-bottom: 24px;
@@ -1241,7 +1131,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .webgl-recovery-banner__dismiss {
   background: transparent;
   border: none;
-  color: #9aa5ce;
+  color: inherit;
   cursor: pointer;
   padding: 4px;
   min-width: 24px;
@@ -1252,12 +1142,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   border-radius: 4px;
 }
 .webgl-recovery-banner__dismiss:hover {
-  color: #c0caf5;
-  background: #1e2030;
-}
-.webgl-recovery-banner__dismiss:focus-visible {
-  outline: 2px solid #7aa2f7;
-  outline-offset: 2px;
+  background: var(--color-control-hover);
 }
 @media (prefers-reduced-motion: reduce) {
   .webgl-recovery-banner {
@@ -1279,13 +1164,12 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 
 /* ─── Phase 101-03 SHELL-08 — Shell web-share security banner ──────────
    Modifier on .webgl-recovery-banner: overrides the info-blue left accent
-   with destructive-red (#f7768e, existing TokyoNight palette member — no
-   new hex). Keeps the 53px stack rhythm and reuses every other property.
+   with the destructive token. Keeps the 53px stack rhythm and reuses every other property.
    Internal layout helpers (heading + body + action row) are namespaced
    under "webgl-recovery-banner__shell-*" so they cannot collide with the
    existing __message / __dismiss classes used by the info banners. */
 .webgl-recovery-banner--shell-warning {
-  border-left: 3px solid #f7768e;
+  border-left: 3px solid var(--color-destructive);
   /* Override the default centered single-line layout: this banner has a
      2-line body (heading + paragraph) so use start-aligned items. */
   align-items: center;
@@ -1319,12 +1203,10 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .webgl-recovery-banner__shell-heading {
   font-size: 13px;
   font-weight: 600;
-  color: #c0caf5;
   line-height: 1.4;
 }
 .webgl-recovery-banner__shell-text {
   font-size: 12px;
-  color: #a9b1d6;
   line-height: 1.4;
 }
 .webgl-recovery-banner__shell-actions {
@@ -1340,35 +1222,25 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   cursor: pointer;
   border: 1px solid transparent;
   background: transparent;
-  color: #c0caf5;
+  color: inherit;
   line-height: 1.4;
-}
-.webgl-recovery-banner__shell-btn:focus-visible {
-  outline: 2px solid #7aa2f7;
-  outline-offset: 2px;
 }
 .webgl-recovery-banner__shell-btn:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
 .webgl-recovery-banner__shell-btn--secondary {
-  border-color: #292e42;
+  border-color: var(--color-control-border);
   background: transparent;
-  color: #a9b1d6;
 }
 .webgl-recovery-banner__shell-btn--secondary:hover:not(:disabled) {
-  background: #1e2030;
-  color: #c0caf5;
+  background: var(--color-control-hover);
 }
 .webgl-recovery-banner__shell-btn--primary-destructive {
-  background: #f7768e;
-  color: #1a1b26;
+  background: var(--color-destructive);
+  color: var(--color-on-accent);
   font-weight: 600;
-  border-color: #f7768e;
-}
-.webgl-recovery-banner__shell-btn--primary-destructive:hover:not(:disabled) {
-  background: #f08aa0;
-  border-color: #f08aa0;
+  border-color: var(--color-destructive);
 }
 
 /* ─── Banner (Portty 02-10, UI-SPEC "Banner"): one style for every banner ───
@@ -1572,10 +1444,10 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   align-items: center;
   gap: 4px;
   padding: 0 8px;
-  background-color: #16161e;
-  border: 1px solid #292e42;
+  background-color: var(--color-popover);
+  border: 1px solid var(--color-control-border);
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-popover);
   transform: translateY(0);
   opacity: 1;
   transition: transform 200ms ease, opacity 200ms ease;
@@ -1595,29 +1467,28 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   height: 28px;
   background-color: transparent;
   border: none;
-  border-bottom: 1px solid #292e42;
-  color: #c0caf5;
+  border-bottom: 1px solid var(--color-separator);
+  color: var(--color-text);
   font-size: 13px;
   font-family: inherit;
   padding: 0 4px;
-  outline: none;
 }
 .find-bar__input:focus {
-  border-bottom-color: #7aa2f7;
+  border-bottom-color: var(--color-accent);
 }
 .find-bar__input::placeholder {
-  color: #414868;
+  color: var(--color-text-secondary);
 }
 .find-bar__count {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: #9aa5ce;
+  color: var(--color-text-secondary);
   white-space: nowrap;
   min-width: 44px;
   text-align: right;
 }
 .find-bar__count--no-results {
-  color: #f7768e;
+  color: var(--color-error-text);
 }
 .find-bar__count--hidden {
   visibility: hidden;
@@ -1632,7 +1503,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .find-bar__divider {
   width: 1px;
   height: 16px;
-  background-color: #292e42;
+  background-color: var(--color-separator);
   margin: 0 8px;
   flex-shrink: 0;
 }
@@ -1647,7 +1518,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: #9aa5ce;
+  color: var(--color-text-secondary);
   cursor: pointer;
   padding: 2px;
   display: inline-flex;
@@ -1661,22 +1532,12 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .find-bar__toggle--regex:hover,
 .find-bar__toggle--word:hover,
 .find-bar__close:hover {
-  background-color: #1e2030;
-  color: #c0caf5;
-}
-.find-bar__btn--prev:focus-visible,
-.find-bar__btn--next:focus-visible,
-.find-bar__toggle--case:focus-visible,
-.find-bar__toggle--regex:focus-visible,
-.find-bar__toggle--word:focus-visible,
-.find-bar__close:focus-visible,
-.find-bar__input:focus-visible {
-  outline: 2px solid #7aa2f7;
-  outline-offset: 2px;
+  background-color: var(--color-control-hover);
+  color: var(--color-text);
 }
 .find-bar__toggle--active {
-  background-color: rgba(122, 162, 247, 0.12);
-  color: #7aa2f7;
+  background-color: var(--color-chip);
+  color: var(--color-accent);
 }
 .find-bar__btn--prev[disabled],
 .find-bar__btn--next[disabled] {
@@ -1782,19 +1643,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
     transform: translateY(0);
     opacity: 1;
   }
-}
-
-/* sr-only utility — screen-reader-only text (UI-SPEC §Accessibility). */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 /* ─── Remote Join Code dialog content (Portty 02-09: sheet shell in .dialog*) ─── */
@@ -1965,17 +1813,6 @@ html.is-desktop {
   --hub-font-weight-emphasis: 600;
   --hub-sidebar-width: 200px;
   --hub-sidebar-collapsed-width: 32px;
-}
-
-/* --- Hub surface --- */
-.hub {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--hub-bg);
-  color: var(--hub-text-primary);
-  font-family: var(--hub-font-ui);
-  overflow: hidden;
 }
 
 /* --- Inline session name (InlineSessionName) --- */
@@ -2375,9 +2212,6 @@ html.is-desktop {
   cursor: pointer;
   padding: 4px 12px;
 }
-.hub-share-internet-section__disable:focus-visible {
-  outline: 2px solid var(--hub-accent);
-}
 .hub-share-internet-section__error {
   font-size: var(--hub-font-size-sm);
   color: var(--hub-destructive);
@@ -2442,7 +2276,6 @@ html.is-desktop {
   border: 1px solid var(--hub-border);
   border-radius: var(--hub-radius-sm);
   padding: 4px 8px;
-  outline: none;
 }
 /* Hold-to-confirm control (D-01/D-07/R1). 44px min-height touch-target
    exception (UI-SPEC Spacing Scale) even though the control is full-width. */
@@ -2465,9 +2298,6 @@ html.is-desktop {
 .hub-funnel-write-gate__hold-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-.hub-funnel-write-gate__hold-btn:focus-visible {
-  outline: 2px solid var(--hub-accent);
 }
 /* The fill IS the primary feedback mechanism (D-07) — functionally load-bearing,
    not decorative, so it is not fully suppressed under prefers-reduced-motion. */
@@ -2521,9 +2351,6 @@ html.is-desktop {
   border-radius: var(--hub-radius-sm);
   cursor: pointer;
   padding: 4px 12px;
-}
-.hub-funnel-write-gate__disable:focus-visible {
-  outline: 2px solid var(--hub-accent);
 }
 
 /* FULL ACCESS icon — session tab (TabBar) */

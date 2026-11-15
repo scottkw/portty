@@ -1,45 +1,68 @@
 /**
- * Portty Phase 2 plan 02-03 — colour token source gate (THEM-01 / LOOK-01).
+ * Portty Phase 2 — colour token source gate (THEM-01 / LOOK-01).
  *
  * The user is colour-blind, so colour correctness is proven here at the source
  * level, never by eye. style.css must declare every UI-SPEC colour token twice:
  * Light on :root and Dark in @media (prefers-color-scheme: dark) { :root { … } },
  * with the same names in both blocks. Legacy --hub-* tokens may only alias.
- * Replaces themeTokens.test.ts (the [data-ui-theme="light"] parity gate); its
- * RDS-02 migrated-surface hex scan and reduced-motion checks are carried over.
+ *
+ * Plan 02-12 made this the LOOK-01 proof: no literal colour anywhere in
+ * style.css outside the token blocks, no inline colour in component TSX, no
+ * custom scrollbars, and one focus ring on the --color-focus-ring token. It
+ * replaced the RDS-02 migrated-surface hex scan and the older style.hub.test.ts.
  */
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const rawCss = readFileSync(resolve(__dirname, '..', 'style.css'), 'utf8')
+const srcDir = resolve(__dirname, '..')
+const rawCss = readFileSync(resolve(srcDir, 'style.css'), 'utf8')
 
-const HEX_RE = /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b/g
-
-/** Replace block comments with spaces, keeping newlines so line numbers hold. */
+/** Replace block comments with spaces, keeping newlines and offsets. */
 function stripBlockComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '))
 }
 
-/** Body of the first rule whose header matches `selectorMatch` (brace-balanced). */
-function extractBlockBody(css: string, selectorMatch: RegExp): string | null {
+interface Block { body: string; start: number; end: number }
+
+/** First rule whose header matches `selectorMatch` (brace-balanced). start/end span header to closing brace. */
+function findBlock(css: string, selectorMatch: RegExp): Block | null {
   const m = selectorMatch.exec(css)
   if (!m) return null
   let i = css.indexOf('{', m.index)
   if (i === -1) return null
+  const open = i
   let depth = 0
-  const start = i + 1
   for (; i < css.length; i++) {
     if (css[i] === '{') depth++
     else if (css[i] === '}') {
       depth--
-      if (depth === 0) return css.slice(start, i)
+      if (depth === 0) return { body: css.slice(open + 1, i), start: m.index, end: i + 1 }
     }
   }
   return null
+}
+
+function extractBlockBody(css: string, selectorMatch: RegExp): string | null {
+  return findBlock(css, selectorMatch)?.body ?? null
+}
+
+/** Innermost block of a nested header path (outermost first), with offsets into `css`. */
+function findPath(css: string, path: RegExp[]): Block | null {
+  let body = css
+  let base = 0
+  let found: Block | null = null
+  for (const sel of path) {
+    const b = findBlock(body, sel)
+    if (!b) return null
+    found = { body: b.body, start: base + b.start, end: base + b.end }
+    base = found.end - 1 - b.body.length
+    body = b.body
+  }
+  return found
 }
 
 /** name -> value for every custom property declared in a block body. */
@@ -52,9 +75,29 @@ function declarations(body: string): Map<string, string> {
 }
 
 const cleanCss = stripBlockComments(rawCss)
-const lightBody = extractBlockBody(cleanCss, /(^|\n):root\s*\{/)
-const darkMedia = extractBlockBody(cleanCss, /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{/)
-const darkBody = darkMedia === null ? null : extractBlockBody(darkMedia, /:root\s*\{/)
+
+/**
+ * The only places a literal colour may appear: header paths (outermost first)
+ * and the UI-SPEC column each block's values must match. Plan 02-13 may
+ * register a data-appearance fallback block here.
+ */
+const TOKEN_BLOCK_SELECTORS: Array<{ name: string; path: RegExp[]; mode: 'light' | 'dark' }> = [
+  { name: ':root (Light)', path: [/(^|\n):root\s*\{/], mode: 'light' },
+  {
+    name: '@media (prefers-color-scheme: dark) { :root }',
+    path: [/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{/, /:root\s*\{/],
+    mode: 'dark',
+  },
+]
+
+const tokenBlocks = TOKEN_BLOCK_SELECTORS.map((t) => ({ ...t, block: findPath(cleanCss, t.path) }))
+
+/** style.css without comments and with every token block blanked out. */
+const cssOutsideTokenBlocks = tokenBlocks.reduce(
+  (css, { block }) =>
+    block ? css.slice(0, block.start) + ' '.repeat(block.end - block.start) + css.slice(block.end) : css,
+  cleanCss,
+)
 
 const isColourToken = (n: string) => /^--(color|shadow|opacity)-/.test(n)
 const norm = (v: string) => v.replace(/\s+/g, '').toLowerCase()
@@ -104,26 +147,59 @@ const UI_SPEC: Array<[string, string, string]> = [
   ['--opacity-disabled', '0.45', '0.45'],
 ]
 
+/** Every `property: value` declaration as [line, value]. */
+function declarationValues(css: string): Array<[number, string]> {
+  const out: Array<[number, string]> = []
+  const re = /([a-zA-Z-]+)\s*:\s*([^;{}]+)(?=[;}])/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(css)) !== null) out.push([css.slice(0, m.index).split('\n').length, m[2].trim()])
+  return out
+}
+
+const HEX_RE = /#[0-9a-fA-F]{3,8}\b/
+const FUNC_COLOUR_RE = /\b(rgba?|hsla?)\(/
+// transparent, currentColor, inherit, Canvas and CanvasText stay allowed.
+const NAMED_COLOUR_RE = /\b(white|black|red|green|blue|gray|grey|silver|yellow|orange|purple|pink|navy|teal)\b/i
+
+/** Every rule as [selector, body], including rules nested in @media. */
+function rules(css: string): Array<[string, string]> {
+  const out: Array<[string, string]> = []
+  const re = /([^{}]+)\{([^{}]*)\}/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(css)) !== null) out.push([m[1].trim(), m[2]])
+  return out
+}
+
+/** App.tsx and every non-test .tsx under components/. */
+function componentSources(): Array<[string, string]> {
+  const files = [join(srcDir, 'App.tsx')]
+  for (const rel of readdirSync(join(srcDir, 'components'), { recursive: true }) as string[]) {
+    if (rel.endsWith('.tsx') && !rel.includes('__tests__') && !/\.test\.tsx$/.test(rel)) {
+      files.push(join(srcDir, 'components', rel))
+    }
+  }
+  return files.map((f) => [f.slice(srcDir.length + 1), readFileSync(f, 'utf8')])
+}
+
 describe('LOOK-01 / THEM-01: two-block colour tokens', () => {
-  it('finds the Light :root block and the Dark prefers-color-scheme :root block', () => {
-    expect(lightBody, ':root block not found').not.toBeNull()
-    expect(darkBody, '@media (prefers-color-scheme: dark) { :root { … } } not found').not.toBeNull()
+  it('finds every block in TOKEN_BLOCK_SELECTORS', () => {
+    for (const t of tokenBlocks) expect(t.block, `${t.name} not found`).not.toBeNull()
   })
 
-  it('(a) both blocks declare exactly the same --color-* / --shadow-* / --opacity-* names', () => {
-    const light = [...declarations(lightBody!).keys()].filter(isColourToken).sort()
-    const dark = [...declarations(darkBody!).keys()].filter(isColourToken).sort()
-    expect(light.length).toBeGreaterThan(0)
-    expect(dark).toEqual(light)
+  it('(a) every token block declares exactly the same --color-* / --shadow-* / --opacity-* names', () => {
+    const names = tokenBlocks.map((t) => [...declarations(t.block!.body).keys()].filter(isColourToken).sort())
+    expect(names[0].length).toBeGreaterThan(0)
+    for (let i = 1; i < names.length; i++) expect(names[i], tokenBlocks[i].name).toEqual(names[0])
   })
 
-  it('(b) every UI-SPEC token has its Light and Dark value', () => {
-    const light = declarations(lightBody!)
-    const dark = declarations(darkBody!)
+  it('(b) every UI-SPEC token has its Light or Dark value in each block', () => {
     const wrong: string[] = []
-    for (const [name, l, d] of UI_SPEC) {
-      if (norm(light.get(name) ?? '') !== norm(l)) wrong.push(`${name} light=${light.get(name)} want ${l}`)
-      if (norm(dark.get(name) ?? '') !== norm(d)) wrong.push(`${name} dark=${dark.get(name)} want ${d}`)
+    for (const t of tokenBlocks) {
+      const decl = declarations(t.block!.body)
+      for (const [name, l, d] of UI_SPEC) {
+        const want = t.mode === 'light' ? l : d
+        if (norm(decl.get(name) ?? '') !== norm(want)) wrong.push(`${t.name} ${name}=${decl.get(name)} want ${want}`)
+      }
     }
     expect(wrong).toEqual([])
   })
@@ -141,7 +217,7 @@ describe('LOOK-01 / THEM-01: two-block colour tokens', () => {
   })
 
   it('(e) :root declares color-scheme: light dark', () => {
-    expect(lightBody!).toMatch(/color-scheme:\s*light dark\s*;/)
+    expect(tokenBlocks[0].block!.body).toMatch(/color-scheme:\s*light dark\s*;/)
   })
 
   it('(f) style.css has no @font-face (system fonts only)', () => {
@@ -153,41 +229,61 @@ describe('LOOK-01 / THEM-01: two-block colour tokens', () => {
   })
 })
 
-// Carried over from themeTokens.test.ts (Phase 141 RDS-02): surfaces that were
-// migrated to tokens must not regain raw hex. Token blocks sit under :root, which
-// is out of scope, so they are never flagged.
-const MIGRATED_SURFACE_SELECTORS = [
-  '.sidebar', '.welcome-tab', '.tab-bar', '.terminal-container',
-  '.hub-share-modal',
-  // Portty 02-11: the Settings sheet, its rows, the Switch and the Share dialog switch rows.
-  '.settings-', '.switch', '.share-toggle-row', '.ts-status',
-  // Portty 02-08: toolbar, tab pills, context menu, empty state, End Session note.
-  '.tab__', '.tab-list', '.toolbar-', '.context-menu', '.empty-state', '.end-session',
-  // Portty 02-09: every dialog and the Share dialog's content.
-  '.dialog', '.button', '.new-session-', '.quit-modal', '.remote-join-modal', '.share-seg',
-  '.hub-funnel-risk-panel', '.share-field', '.session-share-panel', '.daemon-panel__btn', '.link-confirm-popover',
-]
-
-describe('RDS-02 / RDS-04 carry-over', () => {
-  it('migrated surfaces contain no raw hex', () => {
-    const lines = cleanCss.split('\n')
-    const nearestSelector = (i: number) => {
-      for (let j = i; j >= 0; j--) {
-        if (lines[j].includes('{') && !/^\s*(--|[a-z-]+\s*:)/.test(lines[j])) return lines[j].trim()
-      }
-      return '<file scope>'
-    }
+describe('LOOK-01: no hardcoded colour (Portty 02-12)', () => {
+  it('(g) outside the token blocks, style.css has no hex, rgb()/rgba()/hsl()/hsla() or named colour value', () => {
     const offenders: string[] = []
-    lines.forEach((line, i) => {
-      const hex = line.match(HEX_RE)
-      if (!hex) return
-      const sel = nearestSelector(i)
-      if (!MIGRATED_SURFACE_SELECTORS.some((s) => sel.includes(s))) return
-      offenders.push(`style.css:${i + 1} ${sel} -> ${hex.join(', ')}`)
-    })
+    for (const [line, value] of declarationValues(cssOutsideTokenBlocks)) {
+      const bare = value.replace(/--[\w-]+/g, '')
+      if (HEX_RE.test(bare) || FUNC_COLOUR_RE.test(bare) || NAMED_COLOUR_RE.test(bare)) {
+        offenders.push(`style.css:${line} ${value}`)
+      }
+    }
     expect(offenders).toEqual([])
   })
 
+  it('(h) no custom ::-webkit-scrollbar rule and no --hub-scrollbar token (native overlay scrollbars)', () => {
+    expect(cleanCss).not.toContain('::-webkit-scrollbar')
+    expect(cleanCss).not.toContain('--hub-scrollbar')
+  })
+
+  it('(i) one :focus-visible ring on --color-focus-ring, none on mouse focus, and no other ring colour', () => {
+    expect(cleanCss).toMatch(
+      /(^|\n):focus-visible\s*\{\s*outline:\s*3px solid var\(--color-focus-ring\);\s*outline-offset:\s*1px;\s*\}/,
+    )
+    expect(cleanCss).toMatch(/(^|\n):focus:not\(:focus-visible\)\s*\{\s*outline:\s*none;\s*\}/)
+    const offenders = rules(cleanCss)
+      .filter(([sel, body]) => sel.replace(':not(:focus-visible)', '').includes(':focus-visible') && /outline:/.test(body))
+      .filter(([, body]) => !/outline:\s*3px solid var\(--color-focus-ring\)/.test(body))
+      .map(([sel]) => sel)
+    expect(offenders).toEqual([])
+  })
+
+  it('(j) no component or App.tsx inline style={{ … }} carries a hex or rgb()/hsl() colour', () => {
+    const sources = componentSources()
+    expect(sources.length).toBeGreaterThan(20)
+    const offenders: string[] = []
+    for (const [file, src] of sources) {
+      for (const m of src.matchAll(/style=\{\{([\s\S]*?)\}\}/g)) {
+        if (HEX_RE.test(m[1]) || FUNC_COLOUR_RE.test(m[1])) offenders.push(`${file}: style={{${m[1].trim()}}}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})
+
+describe('Removed UI stays removed', () => {
+  // Portty 02-07 (CHAT-01), moved from style.hub.test.ts in 02-12.
+  it('has no .chat-*, .mention-popover* or chat-toggle rule (CHAT-01)', () => {
+    expect(cleanCss).not.toMatch(/\.(chat-|mention-popover)|chat-toggle|terminal-chat-host/)
+  })
+
+  // Portty 01-07 (TEST-03 / STRP-01), moved from style.hub.test.ts in 02-12.
+  it('has no agent spine or chip rules (data-agent, .hub-card__badge, .hub-card__chip--agent)', () => {
+    expect(cleanCss).not.toMatch(/data-agent|\.hub-card__badge|\.hub-card__chip--agent/)
+  })
+})
+
+describe('RDS-04 carry-over: reduced motion', () => {
   it('motion is governed by both prefers-reduced-motion arms', () => {
     expect(cleanCss).toMatch(/@media\s*\(prefers-reduced-motion:\s*no-preference\)/)
     expect(cleanCss).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/)

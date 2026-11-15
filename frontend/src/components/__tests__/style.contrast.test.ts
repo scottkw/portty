@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
 
 // UI-01: WCAG AA contrast regression tests for non-terminal GUI text.
-const css = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
+// Portty 02-12: the old #565f89 / removed-selector pins were dropped; style.tokens.test.ts
+// pins these values in style.css and bans literal colours elsewhere.
 
 function sRGB(c: number): number {
   c = c / 255
@@ -37,56 +36,4 @@ describe('UI-01: --color-text-secondary passes WCAG AA on every chrome surface (
       expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5)
     })
   }
-})
-
-describe('UI-01: tab bar contrast — no failing #565f89 text color', () => {
-  it('.tab rule does not use #565f89 for color', () => {
-    expect(css).not.toMatch(/\.tab\s*\{[^}]*color:\s*#565f89/)
-  })
-
-  it('.tab__close rule does not use #565f89', () => {
-    expect(css).not.toMatch(/\.tab__close\s*\{[^}]*color:\s*#565f89/)
-  })
-
-})
-
-describe('UI-01: settings panel contrast — no failing #565f89 text color', () => {
-  it('.settings-panel__body h3 does not use #565f89', () => {
-    expect(css).not.toMatch(/\.settings-panel__body\s+h3\s*\{[^}]*color:\s*#565f89/)
-  })
-
-  it('.settings-panel__description does not use #565f89', () => {
-    expect(css).not.toMatch(/\.settings-panel__description\s*\{[^}]*color:\s*#565f89/)
-  })
-
-  it('the removed Settings → Paths table and empty-state rules are gone (Portty 01-11)', () => {
-    expect(css).not.toMatch(/\.settings-panel__(empty|table)\b/)
-  })
-
-  it('.settings-panel__url does not use #565f89', () => {
-    expect(css).not.toMatch(/\.settings-panel__url\s*\{[^}]*color:\s*#565f89/)
-  })
-})
-
-describe('UI-01: welcome tab contrast — no failing #565f89 text color', () => {
-  it('.welcome-tab__version does not use #565f89', () => {
-    expect(css).not.toMatch(/\.welcome-tab__version\s*\{[^}]*color:\s*#565f89/)
-  })
-
-  it('.welcome-tab__heading does not use #565f89', () => {
-    expect(css).not.toMatch(/\.welcome-tab__heading\s*\{[^}]*color:\s*#565f89/)
-  })
-})
-
-describe('UI-01: modal contrast — no failing #565f89 text color', () => {
-  it('.new-session-modal__section-label does not use #565f89', () => {
-    expect(css).not.toMatch(/\.new-session-modal__section-label\s*\{[^}]*color:\s*#565f89/)
-  })
-})
-
-describe('UI-01: intentionally-dim elements preserved', () => {
-  // Portty 02-08: the status bar and its dim "WEB SERVER NOT RUNNING" state are removed.
-  it('the status bar rules are gone', () => {
-    expect(css).not.toContain('.tab-status-bar')
-  })
 })

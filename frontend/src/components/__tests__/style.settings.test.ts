@@ -24,10 +24,6 @@ describe('UI-02 Gap 7: retired modal and tab classes stay gone', () => {
   it('has no Settings → Paths rules (Portty 01-11)', () => {
     expect(css).not.toMatch(/settings-panel__(table|cli-name|path-row|browse-btn)/)
   })
-
-  it('has no custom scrollbar for Settings and no --hub-scrollbar tokens', () => {
-    expect(css).not.toContain('--hub-scrollbar')
-  })
 })
 
 describe('LOOK-01: Settings sheet layout', () => {
@@ -96,13 +92,5 @@ describe('LOOK-01: Switch uses the token colours', () => {
   it('saving dims the switch and blocks pointer events', () => {
     expect(css).toMatch(/\n\.switch--saving\s*\{[^}]*pointer-events: none/)
     expect(css).toMatch(/\.switch:disabled,\s*\.switch--saving\s*\{[^}]*var\(--opacity-disabled\)/)
-  })
-})
-
-describe('LOOK-01: Settings rules carry no hex', () => {
-  it('no hex in any .settings-*, .switch, .ts-status or .share-toggle-row rule', () => {
-    const blocks = css.match(/(^|\n)[^\n{}]*\.(settings-|switch|ts-status|share-toggle-row)[^{]*\{[^}]*\}/g) ?? []
-    expect(blocks.length).toBeGreaterThan(10)
-    for (const b of blocks) expect(b).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
   })
 })

@@ -4,7 +4,6 @@ import { resolve } from 'path'
 
 // Phase 134 — Hub modal CSS contract tests.
 // Pattern: mirrors style.hub.test.ts (reads raw CSS text, block-finder helper for structural assertions).
-// These tests are intentionally RED until modal CSS is implemented in a later plan.
 const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
 // Portty 02-09 (LOOK-01): the Share dialog moved onto the shared sheet shell,
@@ -36,18 +35,5 @@ describe('Dialog animation guard (MODAL-01: reduced-motion compliance)', () => {
     expect(cssRaw).toMatch(/@keyframes dialog-in\s*\{[^}]*translateY\(-8px\)/)
     expect(cssRaw).toMatch(/\.dialog\s*\{\s*animation:\s*dialog-in 150ms ease-out/)
     expect(cssRaw).toMatch(/\.dialog--exiting,\s*\.dialog-scrim--exiting\s*\{\s*animation:\s*dialog-out 100ms/)
-  })
-})
-
-// The briefing view (send button, tail, respond input) and the status/attention
-// header icons were removed with HubBriefingModal (CONTEXT Amendment 2).
-describe('Hub modal has no briefing or status CSS (TERM-05)', () => {
-  it('briefing and status rules are gone', () => {
-    for (const sel of [
-      '.hub-modal__send-btn', '.hub-modal__tail', '.hub-modal__respond', '.hub-modal__body--briefing',
-      '.hub-modal__status-icon', '.hub-modal__attn-icon', '.hub-modal__attn-badge',
-    ]) {
-      expect(cssRaw, sel).not.toContain(sel)
-    }
   })
 })

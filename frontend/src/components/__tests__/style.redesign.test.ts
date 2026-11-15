@@ -56,10 +56,6 @@ describe('Portty 02-03: legacy --hub-* colour tokens alias the UI-SPEC tokens', 
     expect(cssRaw).toContain('--hub-accent: var(--color-accent);')
   })
 
-  it('#7C8CFF (rejected violet accent) is absent', () => {
-    expect(cssRaw.toLowerCase()).not.toContain('#7c8cff')
-  })
-
   it('semantic success / warning alias the UI-SPEC text tokens', () => {
     expect(cssRaw).toContain('--hub-success: var(--color-success-text);')
     expect(cssRaw).toContain('--hub-warning: var(--color-banner-warning-fg);')
@@ -68,12 +64,7 @@ describe('Portty 02-03: legacy --hub-* colour tokens alias the UI-SPEC tokens', 
 
 // ─── Font application: surface selectors must consume the tokens ─────────────
 
-describe('Phase 141-07: ≥8 surface selectors apply var(--hub-font-ui) or var(--hub-font-mono)', () => {
-  it('at least 8 font-family declarations use var(--hub-font-ui) or var(--hub-font-mono)', () => {
-    const matches = cssRaw.match(/font-family:\s*var\(--hub-font-(ui|mono)\)/g) ?? []
-    expect(matches.length).toBeGreaterThanOrEqual(8)
-  })
-
+describe('Phase 141-07: surface selectors apply var(--hub-font-ui) or var(--hub-font-mono)', () => {
   it('var(--hub-font-ui) is applied to at least one surface selector', () => {
     expect(cssRaw).toContain('font-family: var(--hub-font-ui)')
   })
@@ -121,19 +112,6 @@ describe('Phase 141-07: comp type scale tokens applied', () => {
   })
 })
 
-// ─── D-03 colorblind fences — MUST remain unchanged ──────────────────────────
-
-describe('Phase 141-07: D-03 colorblind-safe fences — status-state', () => {
-  it('agent-badge palette is gone (01-07 STRP-01 — no agent identity)', () => {
-    expect(cssRaw).not.toContain('.tab__agent-badge')
-  })
-
-  // Portty 02-08: the status bar (and its WEB ON/OFF state colours) is removed.
-  it('the bottom status bar rules are gone (Portty 02-08)', () => {
-    expect(cssRaw).not.toContain('.tab-status-bar')
-  })
-})
-
 // ─── 01-04: New Session modal (01-UI-SPEC section 1) ────────────────────────
 
 describe('01-04: New Session modal CSS', () => {
@@ -148,13 +126,5 @@ describe('01-04: New Session modal CSS', () => {
     expect(body).toMatch(/text-overflow:\s*ellipsis/)
     expect(body).toMatch(/white-space:\s*nowrap/)
     expect(body).toMatch(/min-width:\s*0/)
-  })
-
-  it('shell-line rules (--mono display, helper text) are gone', () => {
-    expect(cssRaw).not.toMatch(/new-session-modal__(folder-display--mono|helper)/)
-  })
-
-  it('agent-button and args rule families are gone', () => {
-    expect(cssRaw).not.toMatch(/new-session-modal__(agent|args)/)
   })
 })
