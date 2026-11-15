@@ -22,11 +22,19 @@ function slice(marker: string, end: string): string {
 const exitHandler = () => slice("'session:exit'", '\n    )')
 const initBody = () => slice('async function init()', 'void init()')
 const retryInitBody = () => slice('const retryInit = useCallback(', '}, [])')
-const closeTabBody = () => slice('const handleCloseTab = useCallback(', 'handleCloseTabRef.current = handleCloseTab')
+const removeTabBody = () => slice('const removeTabState = useCallback(', 'removeTabStateRef.current = removeTabState')
+const closeTabBody = () => slice('const handleCloseTab = useCallback(', '}, [webEnabled, removeTabState])')
 
 describe('App.tsx TERM-05: session:exit closes the tab', () => {
-  it('calls handleCloseTabRef.current with data.sessionId', () => {
-    expect(exitHandler()).toContain('handleCloseTabRef.current?.(data.sessionId)')
+  // Iteration-2 WR-03: the Go watcher already removed the session, so the exit
+  // path is UI-only; a redundant KillSession would always fail and its warn
+  // would hide real kill failures from user-initiated closes.
+  it('calls the UI-only removeTabStateRef.current with data.sessionId (no kill)', () => {
+    const h = exitHandler()
+    expect(h).toContain('removeTabStateRef.current?.(data.sessionId)')
+    expect(h).not.toContain('handleCloseTab')
+    expect(h).not.toContain('KillSession')
+    expect(h).not.toContain('ToggleWebServing')
   })
 
   it('has no exit-code branch and records no exit state', () => {
@@ -54,28 +62,30 @@ describe('App.tsx TERM-05: session:exit closes the tab', () => {
     expect(exitHandler()).toContain('setHubSessions((prev) => prev.filter((s) => s.id !== data.sessionId))')
   })
 
-  it('handleCloseTabRef stays in sync with handleCloseTab', () => {
-    expect(raw).toContain('handleCloseTabRef.current = handleCloseTab')
+  it('removeTabStateRef stays in sync with removeTabState', () => {
+    expect(raw).toContain('removeTabStateRef.current = removeTabState')
   })
 
-  // Plan-checker advisory: the exit cleanup must not depend on a tab existing.
-  // Hub-only or CLI-created sessions have no tab, yet their exit must still
-  // remove the session from the daemon.
-  it('handleCloseTab calls KillSession(id) unconditionally, before touching tabs', () => {
-    const body = closeTabBody()
-    const killIdx = body.indexOf('await KillSession(id)')
-    const setTabsIdx = body.indexOf('setTabs(')
-    expect(killIdx).toBeGreaterThan(-1)
-    expect(setTabsIdx).toBeGreaterThan(killIdx)
-    const beforeKill = body.slice(0, killIdx)
-    expect(beforeKill).not.toMatch(/\btabs\b/)
-    expect(beforeKill).not.toMatch(/^\s*return\b/m) // no early return before the kill
-  })
-
-  it('handleCloseTab still shifts focus to the adjacent tab', () => {
-    const body = closeTabBody()
+  it('removeTabState is UI-only and shifts focus to the adjacent tab', () => {
+    const body = removeTabBody()
+    expect(body).not.toContain('KillSession')
+    expect(body).not.toContain('ToggleWebServing')
+    expect(body).toContain('setTabs(')
+    expect(body).toContain('setWebEnabled(')
+    expect(body).toContain('setFontSizes(')
     expect(body).toContain('activeId === id')
     expect(body).toContain('setActiveId(next?.id ?? null)')
+  })
+
+  // A user close (tab x, Hub kill) must still kill the session, unconditionally
+  // and before the UI removal, with no early return that skips the kill.
+  it('handleCloseTab kills unconditionally, then calls removeTabState(id)', () => {
+    const body = closeTabBody()
+    const killIdx = body.indexOf('await KillSession(id)')
+    expect(killIdx).toBeGreaterThan(-1)
+    expect(body.indexOf('removeTabState(id)')).toBeGreaterThan(killIdx)
+    expect(body).toContain("console.warn('[App] KillSession failed:', err)")
+    expect(body.slice(0, killIdx)).not.toMatch(/^\s*return\b/m)
   })
 })
 

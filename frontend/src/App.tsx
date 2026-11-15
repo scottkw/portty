@@ -236,9 +236,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // state) — avoids stale closures inside
   // createTab without needing to add it to the useCallback deps array.
   const stayOnHubAfterCreateRef = useRef(false)
-  // Ref to handleCloseTab so the session:exit event handler (with [] deps) can call
+  // Ref to removeTabState so the session:exit event handler (with [] deps) can call
   // the latest version without a stale closure
-  const handleCloseTabRef = useRef<((id: string) => Promise<void>) | undefined>(undefined)
+  const removeTabStateRef = useRef<((id: string) => void) | undefined>(undefined)
   // Every session:exit id, so createTab and the init/retryInit restore skip a
   // shell that exited while their RPCs were pending (exits are reported once).
   const exitedIdsRef = useRef(new Set<string>())
@@ -618,10 +618,10 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       (data: { sessionId: string }) => {
         // TERM-05: any shell exit, at any age and with any exit code, closes
         // its tab. The Go exit watcher has already removed the session from
-        // the daemon, so handleCloseTab's KillSession "not found" is expected.
+        // the daemon, so this only updates UI state (no daemon calls).
         exitedIdsRef.current.add(data.sessionId)
         setHubSessions((prev) => prev.filter((s) => s.id !== data.sessionId))
-        void handleCloseTabRef.current?.(data.sessionId)
+        removeTabStateRef.current?.(data.sessionId)
       }
     )
 
@@ -752,17 +752,11 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     }
   }, [tabs])
 
-  const handleCloseTab = useCallback(async (id: string) => {
-    // Disable web serving for this session before closing.
-    if (webEnabled[id]) {
-      try { await ToggleWebServing(id, false) } catch (_) { /* ignore */ }
-      setWebEnabled((prev) => { const n = { ...prev }; delete n[id]; return n })
-    }
-    try {
-      await KillSession(id)
-    } catch (err) {
-      console.warn('[App] KillSession failed:', err)
-    }
+  // UI-only removal of a session's tab state. session:exit calls it directly
+  // (the daemon already removed the session); handleCloseTab calls it after
+  // its kill.
+  const removeTabState = useCallback((id: string) => {
+    setWebEnabled((prev) => { const n = { ...prev }; delete n[id]; return n })
     setTabs((prev) => {
       const remaining = prev.filter((t) => t.id !== id)
       // Activate an adjacent tab if the closed one was active.
@@ -775,9 +769,22 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     })
     // Clean up font size for the closed session.
     setFontSizes((prev) => { const n = { ...prev }; delete n[id]; return n })
-  }, [activeId, webEnabled])
+  }, [activeId])
   // Keep the ref in sync so the session:exit event handler ([] deps) always calls the latest version
-  handleCloseTabRef.current = handleCloseTab
+  removeTabStateRef.current = removeTabState
+
+  const handleCloseTab = useCallback(async (id: string) => {
+    // Disable web serving for this session before closing.
+    if (webEnabled[id]) {
+      try { await ToggleWebServing(id, false) } catch (_) { /* ignore */ }
+    }
+    try {
+      await KillSession(id)
+    } catch (err) {
+      console.warn('[App] KillSession failed:', err)
+    }
+    removeTabState(id)
+  }, [webEnabled, removeTabState])
 
   const handleRenameTab = useCallback(async (id: string, name: string) => {
     try {
