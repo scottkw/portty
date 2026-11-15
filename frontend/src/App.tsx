@@ -239,6 +239,8 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
   // Ref to removeTabState so the session:exit event handler (with [] deps) can call
   // the latest version without a stale closure
   const removeTabStateRef = useRef<((id: string) => void) | undefined>(undefined)
+  // Same pattern for the menu:settings listener (Settings… ⌘,).
+  const openSettingsRef = useRef<(() => void) | undefined>(undefined)
   // Every session:exit id, so createTab and the init/retryInit restore skip a
   // shell that exited while their RPCs were pending (exits are reported once).
   const exitedIdsRef = useRef(new Set<string>())
@@ -627,6 +629,9 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
 
     // Native menu: File > New Session (Cmd+T).
     const offMenuNewSession = EventsOn('menu:new-session', () => setShowNewSessionModal(true))
+    // Native menu: Settings… (Cmd+,). menu:close-tab and menu:toggle-sidebar get
+    // listeners in 02-08 / 02-04; closing a tab still kills its shell today.
+    const offMenuSettings = EventsOn('menu:settings', () => openSettingsRef.current?.())
 
     // Subscribe to quit-requested event from Go backend (Phase 85)
     const offQuit = EventsOn('app:quit-requested', () => {
@@ -654,6 +659,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
       offExit()
       offQuit()
       offMenuNewSession()
+      offMenuSettings()
       if (upgradePollerRef.current !== null) {
         clearInterval(upgradePollerRef.current)
         upgradePollerRef.current = null
@@ -735,6 +741,7 @@ const SETTINGS_TAB: Tab = { id: '__settings__', name: 'Settings', sessionId: '',
     setTabs((prev) => [...prev, SETTINGS_TAB])
     setActiveId(SETTINGS_TAB.id)
   }, [tabs])
+  openSettingsRef.current = handleOpenSettings
 
   // Phase 147 — find-or-add help tab (mirrors handleOpenSettings exactly).
   // Phase 166 FUI-06 — optional sectionId scrolls the Help tab to a specific section

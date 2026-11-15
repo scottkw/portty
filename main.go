@@ -125,26 +125,48 @@ func emitMenuEvent(event string) menu.Callback {
 	return func(_ *menu.CallbackData) { menuEmit(event) }
 }
 
+// helpURL is where Help > Portty Help points (docs land in Phase 3).
+const helpURL = "https://portty.app"
+
 // appMenu constructs the macOS application menu bar.
-// Ordering is critical on macOS: AppMenu must be first, then EditMenu, then
-// custom submenus. See STATE.md accumulated context for the ordering pitfall.
+// Ordering still matters on macOS: the FIRST submenu is shown as the
+// application menu (STATE.md ordering pitfall). It is a custom submenu, not
+// the built-in AppMenu role, because Go cannot insert Settings… into the role.
 func appMenu() *menu.Menu {
 	m := menu.NewMenu()
-	// 1. AppMenu MUST be first on macOS (STATE.md pitfall)
-	m.Append(menu.AppMenu())
+	// 1. Application menu — must stay first.
+	appSub := m.AddSubmenu("AgentHub")
+	appSub.AddText("Settings…", keys.CmdOrCtrl(","), emitMenuEvent("menu:settings"))
+	appSub.AddSeparator()
+	appSub.AddText("Hide AgentHub", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
+		if appCtx != nil {
+			runtime.Hide(appCtx)
+		}
+	})
+	appSub.AddSeparator()
+	// runtime.Quit runs OnBeforeClose first, so the quit-confirm modal still owns quitting.
+	appSub.AddText("Quit AgentHub", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+		if appCtx != nil {
+			runtime.Quit(appCtx)
+		}
+	})
 	// 2. File menu (custom — FileMenuRole is commented out in v2.10.2)
 	fileMenu := m.AddSubmenu("File")
 	fileMenu.AddText("New Session", keys.CmdOrCtrl("t"), emitMenuEvent("menu:new-session"))
 	fileMenu.AddSeparator()
-	fileMenu.AddText("Close Tab", keys.CmdOrCtrl("w"), nil)
+	fileMenu.AddText("Close Tab", keys.CmdOrCtrl("w"), emitMenuEvent("menu:close-tab"))
 	// 3. EditMenu — enables Cmd+C/V/X/Z via native NSMenu (MENU-02)
 	m.Append(menu.EditMenu())
-	// 4. Window menu
+	// 4. View menu — static label; Wails v2 labels only change on a menu rebuild.
+	viewMenu := m.AddSubmenu("View")
+	viewMenu.AddText("Toggle Sidebar", keys.Combo("s", keys.CmdOrCtrlKey, keys.ControlKey), emitMenuEvent("menu:toggle-sidebar"))
+	// 5. Window menu
 	m.Append(menu.WindowMenu())
-	// 5. Help menu (custom — HelpSubMenuRole is commented out in v2.10.2)
+	// 6. Help menu (custom — HelpSubMenuRole is commented out in v2.10.2)
 	helpMenu := m.AddSubmenu("Help")
-	helpMenu.AddText("AgentHub on GitHub", nil, openGitHubCallback)
+	helpMenu.AddText("Portty Help", nil, func(_ *menu.CallbackData) { menuOpenURL(helpURL) })
 	helpMenu.AddText("Check for Updates", nil, checkForUpdatesCallback)
+	helpMenu.AddText("AgentHub on GitHub", nil, openGitHubCallback)
 	return m
 }
 

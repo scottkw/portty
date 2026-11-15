@@ -25,11 +25,13 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **121** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
+| Go unit/integration | **122** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
 | vitest (frontend) | **117** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts, UI state, CSS token source gates, lib adapters (relay, remote, hub, status) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, cross-surface chat parity gate (PARITY-01/EXPORT-01), web-share guest scope (WEBCHAT-03) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **246** | — | — | — |
+| **Total** | **247** | — | — | — |
+
+> Note: Portty Phase 2 plan 02-01 (LOOK-01 window chrome and menu bar): counts from `git ls-files` — Go **122** (+1: `menu_test.go` added — window options, menu structure, accelerators, emitted events, Help URL), vitest **117** (unchanged; `App.test.tsx` gained the `menu:new-session`/`menu:settings` listener and desktop drag-strip CSS assertions), Playwright **7**, build-script **1**, total **247**. Section 4: two LOOK-01 rows. Section 5: Category AC, M-58 and M-59.
 
 > Note: Portty Phase 1 plans 01-10..01-12 (final Phase 1 reconciliation; CONTEXT Amendments 1 and 2): counts from `git ls-files` — Go **121** (`*_test.go`), vitest **117** (`frontend/src/*.test.ts(x)`), Playwright **7** (`frontend/e2e/*.spec.ts`), build-script **1**, total **246**. Deleted test files: 01-10 — `app_poll_test.go`, `App.exit.test.tsx`, `ExitToast.test.tsx`, `ExitCountdownBanner.test.tsx`, `frontend/src/lib/hubStatus.test.ts`, `frontend/src/components/Hub/HubBriefingModal.test.tsx`; 01-11 — `internal/daemon/engine_notify_test.go`, `internal/daemon/api_notify_test.go`, `NewSessionModal.shellRow.test.tsx`, `SettingsTab.shellPath.test.tsx`, `SettingsTab.notify-toggle.test.tsx`, `SettingsTab.notify-permission-hint.test.tsx`; 01-12 — `frontend/src/components/__tests__/LocalNetworkBanner.test.tsx`. Added test files: 01-10 — `app_exit_test.go`, `internal/daemon/settings_removed_test.go`; 01-12 — `frontend/src/components/__tests__/TailscaleBanner.test.tsx`, `frontend/src/components/__tests__/App.tailscale.test.tsx` (vitest 116 → 117: −1 +2). 01-12 also rewrote in place: `internal/webserver/tailscale_test.go` (LocalAPI-only; the stub-binary, binary-detection, custom-path, daemon-stopped and FIX-05 permission-limited tests are gone), `SettingsTab.tailscale-status.test.tsx` (two-state), the Tailscale blocks of `App.test.tsx` and `SettingsTab.test.tsx`, `TestCmdHealth_OutputFormat` (four lines); it added `TestCheckTailscaleHealth_EmitsFirstResultAndChanges` (app_test.go) and NET-01 cases in `StatusBar.shareSession.test.tsx` and `SessionCard.test.tsx`, and removed `TestAutoInstallTailscale` with the brew install flow. Section 5: M-15 (Antigravity launch) and M-45 (macsys permission-limited detection) removed with their categories, M-40 rewritten for NET-01, M-57 added. The two FIX-05 traceability rows were replaced by NET-01 rows.
 
@@ -238,6 +240,8 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | NET-01 | frontend/src/components/Hub/SessionCard.test.tsx | vitest | Portty 01-12: a local card with `shareDisabledReason` has a disabled Share button with the reason as aria-label/title and the LockClosedIcon, and clicking does not call `onShare`; without it the button is enabled; a remote card keeps its owner-only lock reason. |
 | NET-01 | frontend/src/components/__tests__/App.tailscale.test.tsx | vitest | Portty 01-12: focus and `visibilitychange` listeners call `GetTailscaleStatus` (desktop only) and are removed in cleanup; the remote poll calls `setRemotePeers([])` and returns while `tailscaleOff`, with `tailscaleOff` in its deps; StatusBar and HubPanel receive `shareDisabledReason`; the Share dialog closes on disconnect; no `AutoInstallTailscale`. |
 | NET-01 | frontend/src/components/__tests__/SettingsTab.test.tsx | vitest | Portty 01-12: "NET-01: two-state Tailscale status" (replaces the TS-01/TS-02 4-state source checks) — shared `TailscaleHealth` type, no multi-state fields, labels or diagnostics checklist, "Connected"/"Not connected" only. |
+| LOOK-01 | menu_test.go | Go | Portty 02-01: `TestMacWindowOptions` (hidden-inset title bar flags, transparent webview, translucent window, system appearance), `TestAppMenu_Structure` (custom first app submenu starting with Settings…, File, Edit role, View, Window role, Help = Portty Help / Check for Updates / AgentHub on GitHub), `TestAppMenu_Accelerators` (⌘, ⌘H ⌘Q ⌘T ⌘W ⌃⌘S), `TestAppMenu_EventsEmitted` / `TestAppMenu_NewSessionEmitsEvent` (`menu:settings`, `menu:new-session`, `menu:close-tab`, `menu:toggle-sidebar`), `TestAppMenu_HelpOpensPorttyURL` (`https://portty.app`) |
+| LOOK-01 | frontend/src/components/__tests__/App.test.tsx | vitest | Portty 02-01: `menu:new-session` and `menu:settings` listeners (Settings through a ref to `handleOpenSettings`), no `menu:close-tab` listener yet (T-02-04), banner stack under the tab bar; "desktop window chrome CSS" — collapsed-sidebar tab bar clears the 80px traffic-light reserve and the drag strips are not text-selectable |
 | SHARE-04 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Copyable links, QR, LAN Basic Auth password surface |
 | SHARE-05 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Cap/URL/QR lifecycle (off→on cache-clear, stale-URL cleanup) |
 | SHARE-06 | frontend/src/components/__tests__/SessionCard.share.test.tsx | vitest | Remote peer card: `isRemote` prop disables Share affordance (LockClosedIcon) |
@@ -825,6 +829,27 @@ The alias-set wire contract, client-side validateAlias, alias-control component 
   4. Reconnect Tailscale and click back into the Portty window. The banner disappears on focus (or within 10 seconds), Share and Start Web Server re-enable, Settings shows "Connected" via the tailnet domain or IP, and peer cards return, all without a restart. At no point does Portty offer to install Tailscale.
   - _Why not automatable:_ needs a real Tailscale client to toggle, a second tailnet device and the native webview's focus events. The decision logic is unit-tested in `internal/webserver/tailscale_test.go`, the emit-on-change poller and the Go refusal of a web-server start while not connected (`TestStartWebServerRefusedWhileTailscaleOff`) in `app_test.go`, the UI in `TailscaleBanner.test.tsx`, `SettingsTab.tailscale-status.test.tsx` and `App.tailscale.test.tsx`.
   - _Source:_ 01-12-PLAN.md Task 2 human-check; 01-CONTEXT.md Amendment 3 (Start Web Server gate); REQUIREMENTS NET-01.
+
+### Category AC — Window Chrome & Menu Bar (LOOK-01)
+
+- **M-58** LOOK-01 hidden-inset window chrome (Portty 02-01 Task 1 human check). Ships `mac.TitleBarHiddenInset()`; the `mac.TitleBarHidden()` fallback was not needed (click-tested on macOS 27.2).
+  1. Quit any installed AgentHub and stop its daemon (shared socket and port 7443), then open the built app with two sessions open.
+  2. Top-left corner: the native traffic lights sit over the sidebar's top strip and no window title shows.
+  3. Click each tab in the 52px top bar, a tab's ×, and the new-tab control: each acts on the first click and none starts a window drag.
+  4. Click the sidebar's Toggle sidebar button right of the traffic lights: the sidebar collapses and expands. Collapsed, the first tab starts clear of the traffic lights.
+  5. Drag empty top-bar space and the empty sidebar strip: the window moves, and no sidebar label gets text-selected.
+  6. Vibrancy: put a colourful wallpaper or window behind the app. The sidebar shows a translucent desktop tint; the tab bar and terminal stay opaque and readable. (Not verifiable in the Tart VM, where sidebar pixels sample identical with or without content behind; check on a real host.)
+  - _Why not automatable:_ native NSToolbar hit-testing, native window drag and NSVisualEffectView vibrancy are outside vitest, Go tests and Playwright. The window flags are unit-tested in `menu_test.go` (`TestMacWindowOptions`) and the CSS in `App.test.tsx`.
+  - _Source:_ 02-01-PLAN.md Task 1 human-check; 02-UI-SPEC.md "Window chrome contract".
+- **M-59** LOOK-01 menu bar (Portty 02-01 Task 2).
+  1. ⌘T (and File ▸ New Session) opens the New Session dialog.
+  2. ⌘, (and AgentHub ▸ Settings…) opens Settings.
+  3. Help ▸ Portty Help opens https://portty.app in the default browser.
+  4. ⌘H hides the app.
+  5. ⌘Q shows the quit-confirm dialog (it does not quit straight away).
+  6. ⌘W and ⌃⌘S do nothing yet (their listeners arrive in plans 02-08 and 02-04); ⌘W must not close or kill a session.
+  - _Why not automatable:_ native NSMenu accelerators and Wails event delivery need the built app. Menu structure, accelerators and emitted events are unit-tested in `menu_test.go`; the frontend listeners in `App.test.tsx`.
+  - _Source:_ 02-01-PLAN.md Task 2; 02-UI-SPEC.md "Interaction Contract ▸ Menu bar".
 
 ---
 

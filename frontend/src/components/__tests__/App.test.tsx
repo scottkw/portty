@@ -265,6 +265,16 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(raw).toContain("EventsOn('menu:new-session', () => setShowNewSessionModal(true))")
   })
 
+  it('subscribes to menu:settings through a ref to handleOpenSettings (Portty 02-01)', () => {
+    expect(raw).toContain("EventsOn('menu:settings', () => openSettingsRef.current?.())")
+    expect(raw).toContain('openSettingsRef.current = handleOpenSettings')
+    expect(raw).toContain('offMenuSettings()')
+  })
+
+  it('does not wire menu:close-tab yet: closing a tab still kills the shell (T-02-04)', () => {
+    expect(raw).not.toContain("EventsOn('menu:close-tab'")
+  })
+
   it('renders TailscaleBanner inside banner-stack, gated on tailscaleOff', () => {
     const stackBlock = raw.slice(raw.indexOf('banner-stack'))
     expect(stackBlock).toContain('{tailscaleOff && <TailscaleBanner />}')

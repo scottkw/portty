@@ -541,6 +541,9 @@ Hub grid, Hub nav item and Hub tab · Home and Welcome tab · Help tab, help sea
 | Odd spacing (2, 3, 6, 10, 14, 18, 20, 28px) and 30px controls | Snapped to the 4px scale; 28px controls | Spacing scale rule and UI-REVIEW 01 spacing finding |
 | Dark chip `#3A3A3C`, pane-tab selected `#3A3A3C` | `#323234`, `#333335` | Secondary text and accent text need 4.5:1. The mockup pairs measured 4.4:1 and 4.35:1 |
 | Peer group header shown while Tailscale is off ("home-air") | "Other Macs" placeholder header | Peer names are unknown while Tailscale is off (peers are cleared) |
+| App menu: About, Settings…, then the standard items (Interaction Contract ▸ Menu bar) | No About item yet | Orchestrator resolved default 2: About deferred to Phase 3 (BRND-01). 02-01 |
+| App menu standard items | Hide ⌘H and Quit ⌘Q only; Hide Others and Show All dropped | A custom first submenu replaces the `menu.AppMenu()` role so Settings… can sit in it, and Wails v2 has no Go API for Hide Others or Show All. 02-01 |
+| View ▸ "Hide Sidebar" / "Show Sidebar" | Static "Toggle Sidebar" ⌃⌘S | Orchestrator resolved default 3: Wails v2 menu labels only change on a menu rebuild. 02-01 |
 
 ---
 
