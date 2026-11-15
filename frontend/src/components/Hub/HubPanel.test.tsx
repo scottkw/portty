@@ -115,8 +115,8 @@ function renderPanel(overrides: {
   groupDefs?: HubGroupDef[]
   onDropOnGroup?: (groupId: string, mKey: string) => void
   onGroupCountsChange?: (
-    counts: Record<string, { running: number; total: number; attention: number }>,
-    global: { running: number; total: number; attention: number }
+    counts: Record<string, { total: number }>,
+    global: { total: number }
   ) => void
   // Phase 168-05 (UX-02) — shareModalSession is a controlled prop lifted to App.tsx;
   // HubPanel only calls the setter (the Share modal itself renders in App.tsx now).
@@ -539,7 +539,7 @@ describe('HubPanel', () => {
   })
 
   // POL-05 RED: onGroupCountsChange callback is called after mount with per-group+global counts shape
-  it('POL-05 RED: HubPanel calls onGroupCountsChange at least once after mount with {running,total,attention} shape', async () => {
+  it('POL-05: HubPanel calls onGroupCountsChange after mount with member-only {total} counts', async () => {
     vi.useFakeTimers()
     const onGroupCountsChange = vi.fn()
     const groupDef: HubGroupDef = {
@@ -567,22 +567,17 @@ describe('HubPanel', () => {
 
     // The first call should receive (counts, globalCounts) where globalCounts has the expected shape
     const [countsArg, globalArg] = onGroupCountsChange.mock.calls[0]
-    // counts is a Record<string, {running, total, attention}>
-    expect(typeof countsArg).toBe('object')
-    // globalCounts has exactly running, total, attention (no waiting count)
-    expect(globalArg).toEqual({
-      running: expect.any(Number),
-      total: expect.any(Number),
-      attention: expect.any(Number),
-    })
+    // Membership counts only: no running or attention count (CONTEXT Amendment 2)
+    expect(countsArg).toEqual({ 'grp-1': { total: 1 } })
+    expect(globalArg).toEqual({ total: 1 })
 
     vi.useRealTimers()
   })
 })
 
-// ---- Phase 133: attention live vs debounced behavior (ATTN-02/03/04/05) ----
+// ---- No session status in the Hub (CONTEXT Amendment 2) ----
 
-describe('HubPanel attention (ATTN-02/03/04/05)', () => {
+describe('HubPanel shows no session status', () => {
   afterEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
@@ -590,79 +585,16 @@ describe('HubPanel attention (ATTN-02/03/04/05)', () => {
     vi.useRealTimers()
   })
 
-  it('attention card shows .hub-card--attention immediately (live, not debounced)', async () => {
-    vi.useFakeTimers()
-    // Session exited non-zero (attention)
+  it('errored and non-zero-exit sessions get no attention class and keep their order', () => {
     const sessions = [
-      makeSession({ id: 'attn-sess', name: 'Attn Session', status: 'errored', state: 'stopped', exitCode: 3, workDir: '/proj' }),
+      makeSession({ id: 's1', name: 'Session1', status: 'running', state: 'running', workDir: '/proj' }),
+      makeSession({ id: 's2', name: 'Session2', status: 'errored', state: 'running', workDir: '/proj' }),
+      makeSession({ id: 's3', name: 'Session3', status: 'errored', state: 'stopped', exitCode: 3, workDir: '/proj' }),
     ]
     const { container } = renderPanel({ sessions, isActive: false })
-
-    // Even without advancing timers, the live isAttention prop should be applied immediately
-    const cards = container.querySelectorAll('article.hub-card')
-    expect(cards.length).toBe(1)
-    expect(cards[0].classList.contains('hub-card--attention')).toBe(true)
-  })
-
-  it('ATTN-03/05: session transitioning from errored to running loses .hub-card--attention with no remount', async () => {
-    vi.useFakeTimers()
-    const sessions = [
-      makeSession({ id: 'sess-clear', name: 'ClearSession', status: 'errored', state: 'running', workDir: '/proj' }),
-    ]
-    const { container, root } = renderPanel({ sessions, isActive: false })
-
-    // Verify attention is shown initially
-    let card = container.querySelector('article.hub-card')
-    expect(card).not.toBeNull()
-    expect(card!.classList.contains('hub-card--attention')).toBe(true)
-
-    // Re-render with the session now in 'running' state (attention clears)
-    const updatedSessions = [
-      makeSession({ id: 'sess-clear', name: 'ClearSession', status: 'running', state: 'running', workDir: '/proj' }),
-    ]
-    act(() => {
-      root.render(
-        <HubPanel
-          sessions={updatedSessions}
-          error={false}
-          onNewSession={vi.fn()}
-          onRename={vi.fn()}
-          isActive={false}
-          terminalTheme={STUB_THEME}
-        />
-      )
-    })
-
-    // The card should still be present (no remount) but WITHOUT the attention class
-    card = container.querySelector('article.hub-card')
-    expect(card).not.toBeNull()
-    expect(card!.classList.contains('hub-card--attention')).toBe(false)
-  })
-
-  it('debounced sort key settles after ~1000ms (reorder only after debounce)', async () => {
-    vi.useFakeTimers()
-    // Two sessions: first is non-attention, second is attention
-    // After render, attention card should float to top after 1s debounce
-    const sessions = [
-      makeSession({ id: 'non-attn', name: 'NonAttnFirst', status: 'running', state: 'running', workDir: '/proj' }),
-      makeSession({ id: 'attn', name: 'AttnSecond', status: 'errored', state: 'stopped', exitCode: 1, workDir: '/proj' }),
-    ]
-    const { container } = renderPanel({ sessions, isActive: false })
-
-    // Before debounce settles: we should still see both cards (grid is rendered)
-    let cards = container.querySelectorAll('article.hub-card')
-    expect(cards.length).toBe(2)
-
-    // After advancing 1100ms (debounce settles), attention card should be first
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1100)
-    })
-
-    cards = container.querySelectorAll('article.hub-card')
-    expect(cards.length).toBe(2)
-    // The attention card should now be first in DOM order within its group
-    const firstLabel = cards[0].getAttribute('aria-label') ?? ''
-    expect(firstLabel).toContain('AttnSecond')
+    const cards = Array.from(container.querySelectorAll('article.hub-card'))
+    expect(cards.map((c) => (c.getAttribute('aria-label') ?? '').split(',')[0])).toEqual(['Session1', 'Session2', 'Session3'])
+    expect(container.querySelector('.hub-card--attention, .hub-card__attn-icon')).toBeNull()
   })
 
   it('single setInterval invariant: only one interval created (CARD-07 preserved)', async () => {
@@ -680,25 +612,10 @@ describe('HubPanel attention (ATTN-02/03/04/05)', () => {
     })
 
     // Count setInterval calls — must be exactly 1 (the preview poller)
-    // useDebouncedValue uses setTimeout, not setInterval
     const intervalCalls = setIntervalSpy.mock.calls.length
     expect(intervalCalls).toBe(1)
 
     setIntervalSpy.mockRestore()
-  })
-
-  it('needs attention: only errored sessions show hub-card--attention (legacy waiting does not)', () => {
-    const sessions = [
-      makeSession({ id: 's1', name: 'Session1', status: 'errored', state: 'stopped', exitCode: 3, workDir: '/proj' }),
-      makeSession({ id: 's2', name: 'Session2', status: 'errored', state: 'running', workDir: '/proj' }),
-      makeSession({ id: 's3', name: 'Session3', status: 'running', state: 'running', workDir: '/proj' }),
-      makeSession({ id: 's4', name: 'Session4', status: 'waiting', state: 'running', workDir: '/proj' }),
-      makeSession({ id: 's5', name: 'Session5', status: 'exited', state: 'stopped', exitCode: 0, workDir: '/proj' }),
-    ]
-    const { container } = renderPanel({ sessions, isActive: false })
-
-    const attentionCards = container.querySelectorAll('article.hub-card--attention')
-    expect(attentionCards.length).toBe(2)
   })
 })
 

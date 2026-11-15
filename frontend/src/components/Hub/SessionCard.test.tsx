@@ -55,100 +55,28 @@ function renderCard(session: SessionInfo, onRename?: (id: string, name: string) 
   return { container, root }
 }
 
-function renderCardWithAttention(session: SessionInfo, isAttention: boolean) {
-  const container = document.createElement('div')
-  document.body.appendChild(container)
-  const root = createRoot(container)
-  act(() => {
-    root.render(<SessionCard session={session} isAttention={isAttention} />)
-  })
-  return { container, root }
-}
-
 describe('SessionCard', () => {
   afterEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
   })
 
-  // ---- Status rendering: icon + text label for every status ----
+  // ---- No session status (TERM-05, CONTEXT Amendment 2) ----
 
-  it('running: renders icon with aria-label "Running" AND visible text label "Running"', () => {
-    const { container } = renderCard(makeSession({ state: 'running', status: 'running' }))
-    const icon = container.querySelector('[aria-label="Running"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Running')
+  it('a stopped session with a non-zero exit code renders no status text, no exit code and no attention icon', () => {
+    const { container } = renderCard(makeSession({ state: 'stopped', status: 'errored', exitCode: 3, duration: 120 }))
+    const card = container.querySelector('.hub-card') as HTMLElement
+    expect(card.textContent).not.toMatch(/Running|Exited|Error/)
+    expect(container.querySelector('[aria-label="Running"], [aria-label="Exited"], [aria-label="Error"], [aria-label="Needs attention"]')).toBeNull()
+    expect(container.querySelector('.hub-card__exit-chip, .hub-card__attn-icon, .hub-card__status-indicator')).toBeNull()
+    expect(card.className).not.toMatch(/hub-card--(dim|attention)/)
+    expect(card.getAttribute('aria-label')).not.toMatch(/Exited|Error|Running|attention|\b3\b/)
   })
 
-  it.each(['idle', 'waiting', '', 'bogus'])('legacy/unknown status %j renders as Running', (status) => {
+  it.each(['running', 'idle', 'errored', ''])('a live session with status %j renders no status label', (status) => {
     const { container } = renderCard(makeSession({ state: 'running', status }))
-    expect(container.querySelector('[aria-label="Running"]')).not.toBeNull()
-    expect(container.querySelector('.hub-card__status-label')!.textContent).toBe('Running')
-    expect(container.textContent).not.toContain('Needs input')
-  })
-
-  it('daemon errored with no exit code: renders icon with aria-label "Error" AND visible text label "Error"', () => {
-    const { container } = renderCard(makeSession({ state: 'running', status: 'errored' }))
-    const icon = container.querySelector('[aria-label="Error"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toContain('Error')
-  })
-
-  it('stopped exit-0: renders icon with aria-label "Exited" AND visible text label "Exited"', () => {
-    const exitCode = 0
-    const { container } = renderCard(makeSession({ state: 'stopped', status: 'exited', exitCode, duration: 3600 }))
-    const icon = container.querySelector('[aria-label="Exited"]')
-    expect(icon).not.toBeNull()
-    const label = container.querySelector('.hub-card__status-label')
-    expect(label).not.toBeNull()
-    expect(label!.textContent).toBe('Exited')
-  })
-
-  it('stopped exit 3: renders icon with aria-label "Exited 3" AND visible text label "Exited 3"', () => {
-    const exitCode = 3
-    const { container } = renderCard(makeSession({ state: 'stopped', status: 'errored', exitCode, duration: 3600 }))
-    expect(container.querySelector('[aria-label="Exited 3"]')).not.toBeNull()
-    expect(container.querySelector('.hub-card__status-label')!.textContent).toBe('Exited 3')
-  })
-
-  it('no status icon spins', () => {
-    const { container } = renderCard(makeSession({ state: 'running', status: 'running' }))
-    expect(container.querySelector('.hub-card__status-icon--spin')).toBeNull()
-  })
-
-  // ---- Dimming ----
-
-  it('stopped exit-0 card gets hub-card--dim class', () => {
-    const exitCode = 0
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 120 }))
-    const card = container.querySelector('.hub-card--dim')
-    expect(card).not.toBeNull()
-  })
-
-  it('stopped non-zero exit card does NOT get hub-card--dim class', () => {
-    const exitCode = 1
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 120 }))
-    const card = container.querySelector('.hub-card--dim')
-    expect(card).toBeNull()
-  })
-
-  it('stopped non-zero exit card shows exit-code chip with "Exited {code}"', () => {
-    const exitCode = 2
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 120 }))
-    const chip = container.querySelector('.hub-card__exit-chip')
-    expect(chip).not.toBeNull()
-    expect(chip!.textContent).toContain('2')
-  })
-
-  it('stopped exit-0 card does NOT show exit-code chip', () => {
-    const exitCode = 0
-    const { container } = renderCard(makeSession({ state: 'stopped', exitCode, duration: 120 }))
-    const chip = container.querySelector('.hub-card__exit-chip')
-    expect(chip).toBeNull()
+    expect(container.querySelector('.hub-card__status-label, .hub-card__status-icon')).toBeNull()
+    expect(container.querySelector('.hub-card')!.textContent).not.toMatch(/Running|Exited|Error/)
   })
 
   // ---- Viewer count ----
@@ -222,7 +150,7 @@ describe('SessionCard', () => {
 
   // ---- Aria-label on card ----
 
-  it('card has aria-label containing name, status, and origin', () => {
+  it('card has aria-label containing name and origin', () => {
     const { container } = renderCard(makeSession({ hostname: '' }))
     const card = container.querySelector('.hub-card')
     expect(card).not.toBeNull()
@@ -692,55 +620,13 @@ describe('SessionCard Phase 134 source-inspection (onCardClick + stopPropagation
   })
 })
 
-describe('SessionCard attention (ATTN-01)', () => {
+describe('SessionCard chat badge and Open button', () => {
   afterEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
   })
 
-  it('isAttention=true: card article has .hub-card--attention class', () => {
-    const { container } = renderCardWithAttention(
-      makeSession({ state: 'running', status: 'errored' }),
-      true,
-    )
-    const card = container.querySelector('.hub-card--attention')
-    expect(card).not.toBeNull()
-  })
-
-  it('isAttention=true: renders .hub-card__attn-icon element with aria-label "Needs attention"', () => {
-    const { container } = renderCardWithAttention(
-      makeSession({ state: 'running', status: 'errored' }),
-      true,
-    )
-    const attnIcon = container.querySelector('.hub-card__attn-icon')
-    expect(attnIcon).not.toBeNull()
-    expect(attnIcon!.getAttribute('aria-label')).toBe('Needs attention')
-  })
-
-  it('isAttention=true: card article aria-label ends with ", needs attention"', () => {
-    const { container } = renderCardWithAttention(
-      makeSession({ state: 'running', status: 'errored' }),
-      true,
-    )
-    const card = container.querySelector('.hub-card')
-    expect(card).not.toBeNull()
-    const label = card!.getAttribute('aria-label') ?? ''
-    expect(label).toMatch(/, needs attention$/)
-  })
-
-  it('isAttention=false: no .hub-card--attention, no .hub-card__attn-icon, aria-label does NOT contain "needs attention"', () => {
-    const { container } = renderCardWithAttention(
-      makeSession({ state: 'running', status: 'running' }),
-      false,
-    )
-    expect(container.querySelector('.hub-card--attention')).toBeNull()
-    expect(container.querySelector('.hub-card__attn-icon')).toBeNull()
-    const card = container.querySelector('.hub-card')
-    const label = card!.getAttribute('aria-label') ?? ''
-    expect(label).not.toContain('needs attention')
-  })
-
-  it('REGRESSION(Phase 131/132): isAttention=true still renders .hub-card__status-indicator and Open button for a live session', () => {
+  it('REGRESSION(Phase 131/132): a live session whose daemon status is errored still renders the Open button', () => {
     const onOpen = vi.fn()
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -749,14 +635,11 @@ describe('SessionCard attention (ATTN-01)', () => {
       root.render(
         <SessionCard
           session={makeSession({ state: 'running', status: 'errored' })}
-          isAttention={true}
           onOpenSession={onOpen}
         />,
       )
     })
-    // Status indicator preserved
-    expect(container.querySelector('.hub-card__status-indicator')).not.toBeNull()
-    // Open button preserved for live session
+    // Open button preserved for live session (state !== 'stopped' guard is behavior, not display)
     expect(container.querySelector('.hub-card__open')).not.toBeNull()
   })
 

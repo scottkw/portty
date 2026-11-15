@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { act } from 'react'
 import type { SessionInfo } from '../../wailsjs/go/main/App'
 
-// Tests for HubModal (MODAL-01, MODAL-02, MODAL-03 routing).
+// Tests for HubModal (MODAL-01, MODAL-02; no session status per CONTEXT Amendment 2).
 // HubModal.tsx is fully implemented; the ?raw source-inspection assertions below are GREEN.
 // Plus a jsdom behavioral test for the inert focus-trap lifecycle (IN-04 / WR-01 regression guard).
 // NOTE: jsdom 29 does NOT implement `inert` focus suppression, but the `inert` property/attribute
@@ -13,12 +13,9 @@ import type { SessionInfo } from '../../wailsjs/go/main/App'
 import raw from './HubModal.tsx?raw'
 
 // ---- Mocks ----
-// Stub the leaf modals so the behavioral render does not pull in @xterm / relayClient / Wails RPC.
+// Stub the leaf modal so the behavioral render does not pull in @xterm / relayClient / Wails RPC.
 vi.mock('./HubInteractiveModal', () => ({
   HubInteractiveModal: () => React.createElement('div', { 'data-testid': 'interactive-stub' }),
-}))
-vi.mock('./HubBriefingModal', () => ({
-  HubBriefingModal: () => React.createElement('div', { 'data-testid': 'briefing-stub' }),
 }))
 
 import { HubModal } from './HubModal'
@@ -86,41 +83,12 @@ describe('HubModal (GAP-134-C: origin marker uses provenance, not hostname)', ()
   })
 })
 
-describe('HubModal (MODAL-03: attention-based routing)', () => {
-  it('MODAL-03: renders HubBriefingModal branch (attention=true path)', () => {
-    expect(raw).toContain('HubBriefingModal')
-  })
-
-  it('MODAL-03: renders HubInteractiveModal branch (attention=false path)', () => {
-    expect(raw).toContain('HubInteractiveModal')
-  })
-
-  it('MODAL-03: routing predicate uses isAttentionStatus', () => {
-    expect(raw).toContain('isAttentionStatus')
-  })
-})
-
-describe('HubModal (A11Y-01: STATUS_CONFIG mirrors SessionCard — colorblind-safe at source)', () => {
-  // Verify at source that STATUS_CONFIG contains each of the 3 status keys with
-  // unique icon + text label. Color is reinforcement only (colorblind-safe).
-  // Verified at source level (hex constants in code), NEVER by eye.
-  it('A11Y-01: STATUS_CONFIG contains running status with "Running" label', () => {
-    expect(raw).toContain("running:")
-    expect(raw).toContain("'Running'")
-  })
-
-  it('A11Y-01: STATUS_CONFIG contains errored status with "Error" label', () => {
-    expect(raw).toContain("errored:")
-    expect(raw).toContain("'Error'")
-  })
-
-  it('A11Y-01: STATUS_CONFIG contains exited status with "Exited" label', () => {
-    expect(raw).toContain("exited:")
-    expect(raw).toContain("'Exited'")
-  })
-
-  it('A11Y-01: STATUS_CONFIG has no idle/waiting/stopped-* entries', () => {
-    expect(raw).not.toMatch(/\bidle:|\bwaiting:|'stopped-(ok|err)':|'Needs input'/)
+describe('HubModal (TERM-05: no status, no briefing view)', () => {
+  it('always renders HubInteractiveModal; the briefing view and status helpers are gone', () => {
+    expect(raw).toContain('<HubInteractiveModal')
+    expect(raw).not.toContain('HubBriefingModal')
+    expect(raw).not.toMatch(/isAttentionStatus|deriveHubStatus|STATUS_CONFIG/)
+    expect(raw).not.toMatch(/hub-modal__status-icon|hub-modal__attn-/)
   })
 })
 
@@ -217,7 +185,7 @@ describe('HubModal (A11Y-04 behavioral: inert focus-trap lifecycle — WR-01 reg
   //                         do not deliver a hand-dispatched 'animationend' to React's
   //                         synthetic handler, so we never rely on it; clicks ARE
   //                         delivered, which is enough to reach 'exiting'.)
-  function renderModal(reducedMotion: boolean) {
+  function renderModal(reducedMotion: boolean, session: SessionInfo = makeSession()) {
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: reducedMotion,
       media: query,
@@ -241,7 +209,7 @@ describe('HubModal (A11Y-04 behavioral: inert focus-trap lifecycle — WR-01 reg
     act(() => {
       root.render(
         React.createElement(HubModal, {
-          session: makeSession(),
+          session,
           sourceRect: { left: 0, top: 0, width: 100, height: 100 } as DOMRect,
           relayPort: 51234,
           fontSize: 14,
@@ -302,17 +270,12 @@ describe('HubModal (A11Y-04 behavioral: inert focus-trap lifecycle — WR-01 reg
     expect(hubEl.inert).toBe(false)
   })
 
-  it('A11Y-01: modal header exposes the session status to AT via a visually-hidden label', () => {
-    // UI-REVIEW finding: a screen-reader user inside the dialog could not determine the
-    // session status — the header icon is decorative (Heroicons hard-code aria-hidden).
-    // Status must be conveyed by a text label (not color — colorblind-safe). The icon stays
-    // decorative; an sr-only span carries the STATUS_CONFIG label. Default status 'exited' → 'Exited'.
-    renderModal(true) // reduced-motion → 'open'
-    const statusIcon = container.querySelector('.hub-modal__status-icon') as HTMLElement
-    expect(statusIcon).not.toBeNull()
-    expect(statusIcon.getAttribute('aria-hidden')).toBe('true') // icon stays decorative
-    const srLabel = container.querySelector('.hub-modal__header .sr-only') as HTMLElement
-    expect(srLabel, 'modal header missing AT-readable status label').not.toBeNull()
-    expect(srLabel.textContent).toBe('Exited')
+  it('TERM-05: a stopped session with a non-zero exit code opens the interactive modal with no status in the header', () => {
+    const dialog = renderModal(true, makeSession({ state: 'stopped', status: 'errored', exitCode: 3 }))
+    expect(container.querySelector('[data-testid="interactive-stub"]')).not.toBeNull()
+    expect(dialog.getAttribute('aria-label')).toBe('Session terminal: Test Session')
+    const header = container.querySelector('.hub-modal__header') as HTMLElement
+    expect(header.textContent).not.toMatch(/Running|Exited|Error|Needs attention/)
+    expect(header.querySelector('.sr-only, .hub-modal__status-icon, .hub-modal__attn-badge')).toBeNull()
   })
 })

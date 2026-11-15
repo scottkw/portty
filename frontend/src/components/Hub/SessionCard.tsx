@@ -4,49 +4,20 @@ import type { AdaptedRemoteSessionInfo } from '../../lib/remoteAdapter'
 import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../../wailsjs/go/models'
 import {
-  PlayCircleIcon,
-  ExclamationCircleIcon,
-  StopCircleIcon,
   ComputerDesktopIcon,
   GlobeAltIcon,
   EyeIcon,
   Bars3Icon,
   EllipsisHorizontalIcon,
-  BellAlertIcon,          // ATTN-01: attention icon — colorblind-safe shape carrier
   LockClosedIcon,         // D-13: shape signal for disabled Share button on remote peer cards
   LockOpenIcon,           // Phase 171 / FNL-09: FULL ACCESS badge shape carrier (colorblind-safe, distinct from GlobeAltIcon)
   LinkIcon,               // CARD-03: "Connected" state shape signal (colorblind-safe)
   WindowIcon,             // FIX-03 RC-C: "Open in tab" in-app glyph (D-17 opens an in-app tab, not a browser)
 } from '@heroicons/react/24/outline'
 import { InlineSessionName } from './InlineSessionName'
-// WR-01: deriveHubStatus extracted to shared util (was triplicated across SessionCard/HubFilterBar/HubPanel)
-import { deriveHubStatus } from '../../lib/hubStatus'
-import type { HubStatus } from '../../lib/hubStatus'
 import { memberKey, type HubGroupDef } from '../../lib/hubGroups'
 import { MiniPreview } from './MiniPreview'
 import { ChatBadge } from './ChatBadge'
-
-// ---- STATUS_CONFIG ----
-// COLORBLIND-SAFE: every status has unique icon shape + text label; color is reinforcement only.
-// Hex values are authoritative source of truth — verify at source, not by eye (user is colorblind).
-const STATUS_CONFIG: Record<
-  HubStatus,
-  { Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; label: string }
-> = {
-  /* COLORBLIND-SAFE: status dot dark hex #3b82f6 (running) — reinforcement only; PlayCircleIcon carries the state */
-  /* COLORBLIND-SAFE: status dot light hex #1d4ed8 (running) — WCAG AA 7.1:1 on white; icon carries state */
-  running: { Icon: PlayCircleIcon, label: 'Running' },
-  /* COLORBLIND-SAFE: status dot dark hex #565f89 (exited) — reinforcement only; StopCircleIcon carries the state */
-  /* COLORBLIND-SAFE: status dot light hex #4b5563 (exited) — WCAG AA 7.0:1 on white; icon carries state */
-  exited: { Icon: StopCircleIcon, label: 'Exited' },
-  /* COLORBLIND-SAFE: status dot dark hex #ef4444 (errored) — reinforcement only; ExclamationCircleIcon carries the state */
-  /* COLORBLIND-SAFE: exit-code dark hex #f7768e (non-zero exit) — reinforcement only; "Exited {code}" text carries the state */
-  /* COLORBLIND-SAFE: status dot light hex #b91c1c (errored) — WCAG AA 6.0:1 on white; icon carries state */
-  /* COLORBLIND-SAFE: status dot light hex #c0394f (non-zero exit) — WCAG AA 4.7:1 on white; icon carries state */
-  /* HUB-04 LIGHT THEME: verified WCAG AA for --hub-accent #3d6fe8 on #ffffff (4.5:1) */
-  /* HUB-04 LIGHT THEME: verified WCAG AA for --hub-destructive #c0394f on #ffffff (4.7:1) */
-  errored: { Icon: ExclamationCircleIcon, label: 'Error' },
-}
 
 // ---- Helpers ----
 
@@ -128,8 +99,6 @@ export interface SessionCardProps {
   groupDefs?: HubGroupDef[]
   /** GROUP-02: fires when user assigns this card to a group via menu */
   onAssignGroup?: (memberKey: string, groupId: string) => void
-  /** ATTN-01: true when isAttentionStatus(deriveHubStatus(session)) is true */
-  isAttention?: boolean
   /**
    * Phase 134 — fires when card body is clicked (not Open/menu/drag-handle/rename input).
    * Receives the session and the card's bounding rect (used for grow animation origin).
@@ -168,21 +137,15 @@ export interface SessionCardProps {
 /**
  * SessionCard — presentational card for the Hub session grid.
  *
- * Colorblind-safe: every status renders icon + text label.
- * Color is reinforcement only (see STATUS_CONFIG hex comments above).
- *
  * Layout (Phase 172 — consolidated chip row, Sketch 001 Variant B winner):
  *   HEADER: InlineSessionName + ChatBadge
- *   STATUS ROW: status-indicator (icon + label, attention) — stays the
- *     primary top-line signal, NOT chipified (D-03)
- *   EXIT CHIP: "Exited {code}" (only when stopped with non-zero exit)
  *   CHIP ROW: agent chip · origin chip · exposure cluster (INTERNET / FULL
  *     ACCESS filled badges forced onto their own right-aligned line, D-01/D-04/D-05)
  *   META LINE: uptime · viewer count · Connected/Available, muted (D-06)
  *   ACTIONS: Open (when live, Phase 131) / Share
  *   PREVIEW: MiniPreview (CARD-07 plain-text snapshot; NO xterm)
  *
- * Dimming (CARD-08): exited cards get hub-card--dim; errored cards do NOT.
+ * No session status, dimming or attention styling (CONTEXT Amendment 2).
  */
 export function SessionCard({
   session,
@@ -192,7 +155,6 @@ export function SessionCard({
   previewTheme,
   groupDefs,
   onAssignGroup,
-  isAttention,
   onCardClick,
   onShare,
   isRemote,
@@ -207,17 +169,9 @@ export function SessionCard({
     name,
     hostname,
     viewerCount,
-    exitCode,
     duration,
     createdAt,
   } = session
-
-  const hubStatus = deriveHubStatus(session)
-  const { Icon, label } = STATUS_CONFIG[hubStatus]
-
-  // A stopped errored session has a known non-zero code: "Exited {code}"; otherwise "Error"
-  const exitedWithCode = hubStatus === 'errored' && session.state === 'stopped'
-  const displayLabel = exitedWithCode ? `Exited ${exitCode}` : label
 
   // Origin marker: provenance-based when isRemote prop is supplied (CARD-02 fix),
   // falls back to hostname-based for callers that do not yet supply the prop.
@@ -238,10 +192,9 @@ export function SessionCard({
       ? formatDuration(duration)
       : formatUptime(createdAt)
 
-  // Card aria-label per Accessibility Contract
-  // ATTN-01: append ", needs attention" suffix when attention is active (Accessibility Contract item 3)
+  // Card aria-label per Accessibility Contract (no session status, CONTEXT Amendment 2)
   // CARD-03: append ", connected" or ", available" for remote cards
-  const cardAriaLabel = `${name}, ${displayLabel}, ${originText}${isAttention ? ', needs attention' : ''}${isRemote ? (isConnected ? ', connected' : ', available') : ''}`
+  const cardAriaLabel = `${name}, ${originText}${isRemote ? (isConnected ? ', connected' : ', available') : ''}`
 
   /* GROUP-04: membership key = "${session.name}:::${session.workDir}" — survives session-id churn */
   const memberKeyForSession = memberKey(name, session.workDir)
@@ -329,9 +282,7 @@ export function SessionCard({
     <article
       className={[
         'hub-card',
-        hubStatus === 'exited' ? 'hub-card--dim' : '',
         isDragging ? 'hub-card--dragging' : '',
-        isAttention ? 'hub-card--attention' : '',
       ].filter(Boolean).join(' ')}
       draggable="true"
       onDragStart={(e) => {
@@ -456,34 +407,6 @@ export function SessionCard({
         />
         <ChatBadge count={unreadCount ?? 0} hasMention={hasChatMention ?? false} />
       </div>
-
-      {/* STATUS ROW: status indicator — stays the primary top-line signal, NOT
-          chipified (D-03). CR-01: hub-card__row1 matches CSS definition. */}
-      <div className="hub-card__row1">
-        {/* ATTN-01: attention icon — inline left of status icon; COLORBLIND-SAFE: BellAlertIcon carries state */}
-        {isAttention && (
-          <span className="hub-card__attn-icon" aria-label="Needs attention">
-            {/* CRITICAL: NO Tailwind w-4 h-4 — size via .hub-card__attn-icon svg in style.css (Plan 02) */}
-            <BellAlertIcon aria-hidden="true" />
-          </span>
-        )}
-        <span className="hub-card__status-indicator">
-          <Icon
-            className="hub-card__status-icon"
-            aria-label={displayLabel}
-          />
-          <span className="hub-card__status-label">{displayLabel}</span>
-        </span>
-      </div>
-
-      {/* ROW 4: exit-code chip (only for non-zero exit) */}
-      {/* CR-01: hub-card__row4 matches CSS definition (was hub-card__row hub-card__row--exit) */}
-      {exitedWithCode && (
-        <div className="hub-card__row4">
-          {/* IN-02: aria-hidden since exit code is already in card aria-label */}
-          <span className="hub-card__exit-chip" aria-hidden="true">Exited {exitCode}</span>
-        </div>
-      )}
 
       {/* Phase 172 / D-01/D-04/D-05 — consolidated chip row: origin · exposure.
           Sketch 001 Variant B (winner): rounded-rect quiet chip for origin,

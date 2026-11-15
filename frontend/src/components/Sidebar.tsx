@@ -7,6 +7,7 @@ import {
   QuestionMarkCircleIcon,  // Phase 147 / HELP-01
 } from '@heroicons/react/24/outline'
 import type { HubGroupDef } from '../lib/hubGroups'
+import type { GroupCounts } from '../lib/hubGroupCounts'
 
 const STORAGE_KEY = 'sidebar-collapsed'
 
@@ -24,8 +25,8 @@ interface SidebarProps {
   onGroupSelect: (id: string | null) => void
   onCreateGroup: (name: string) => void
   onDropOnGroup: (groupId: string, mKey: string) => void
-  groupCounts: Record<string, { running: number; total: number; attention: number }>
-  globalGroupCounts: { running: number; total: number; attention: number }
+  groupCounts: Record<string, GroupCounts>
+  globalGroupCounts: GroupCounts
   onOpenHelp: () => void  // Phase 147 / HELP-01
 }
 
@@ -35,7 +36,7 @@ interface SidebarProps {
 interface GroupItemProps {
   id: string | null  // null = "All"
   label: string
-  counts: { running: number; total: number; attention: number }
+  counts: GroupCounts
   isActive: boolean
   onGroupSelect: (id: string | null) => void
   onOpenHub: () => void
@@ -94,7 +95,7 @@ function GroupItem({
         type="button"
         className="sidebar__group-item__btn"
         aria-pressed={isActive}
-        aria-label={`${label} group, ${counts.running}/${counts.total} sessions`}
+        aria-label={`${label} group, ${counts.total} sessions`}
         onClick={() => { onGroupSelect(id); onOpenHub() }}
         onKeyDown={(e) => {
           if (e.key === ' ') {
@@ -252,7 +253,7 @@ export function Sidebar({
               key={g.id}
               id={g.id}
               label={g.name}
-              counts={groupCounts[g.id] ?? { running: 0, total: 0, attention: 0 }}
+              counts={groupCounts[g.id] ?? { total: 0 }}
               isActive={activeGroupId === g.id}
               onGroupSelect={onGroupSelect}
               onOpenHub={onOpenHub}

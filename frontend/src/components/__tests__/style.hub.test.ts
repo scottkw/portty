@@ -54,10 +54,6 @@ describe('Hub CSS tokens — dark theme (default :root)', () => {
     expect(cssRaw).toContain('--hub-destructive')
   })
 
-  it('declares --hub-dim-opacity custom property', () => {
-    expect(cssRaw).toContain('--hub-dim-opacity')
-  })
-
   it('dark theme --hub-bg has correct hex #14151b (comp dark surface)', () => {
     expect(cssRaw).toContain('--hub-bg: #14151b')
   })
@@ -145,29 +141,17 @@ describe('Hub layout — responsive grid (GRID-01)', () => {
   })
 })
 
-describe('Hub card dim state (CARD-08)', () => {
-  it('.hub-card--dim rule is present', () => {
-    expect(cssRaw).toContain('.hub-card--dim')
-  })
-
-  it('.hub-card--dim uses var(--hub-dim-opacity) for opacity', () => {
-    const dimIdx = cssRaw.indexOf('.hub-card--dim')
-    expect(dimIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', dimIdx)
-    const block = cssRaw.slice(dimIdx, blockEnd)
-    expect(block).toContain('var(--hub-dim-opacity)')
-  })
-
-  it('.hub-card--dim uses var(--hub-card-dim-bg) for background', () => {
-    const dimIdx = cssRaw.indexOf('.hub-card--dim')
-    expect(dimIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', dimIdx)
-    const block = cssRaw.slice(dimIdx, blockEnd)
-    expect(block).toContain('var(--hub-card-dim-bg)')
-  })
-
-  it('error-exit cards are NOT dimmed — comment present (CARD-08 correctness)', () => {
-    expect(cssRaw).toContain('Error-exit cards are NOT dimmed')
+// CONTEXT Amendment 2: no session status, dimming or attention styling on Hub cards.
+describe('Hub cards show no session status (TERM-05)', () => {
+  it('status, exit-code, dim and attention rules and the --hub-attn-* / dim tokens are gone', () => {
+    for (const sel of [
+      '.hub-card--dim', '.hub-card--attention', '.hub-card__attn-icon', '.hub-card__exit-chip',
+      '.hub-card__status-icon', '.hub-card__status-indicator', '.hub-card__status-label',
+      '.hub__group-sidebar-item__attn-badge', '@keyframes hub-attn-pulse',
+      '--hub-attn-', '--hub-dim-opacity', '--hub-card-dim-bg',
+    ]) {
+      expect(cssRaw, sel).not.toContain(sel)
+    }
   })
 })
 
@@ -247,11 +231,6 @@ describe('Hub colorblind-safe source comments (source-level UAT verification)', 
   it('has COLORBLIND-SAFE comment for stopped/done dark hex #565f89', () => {
     expect(cssRaw).toContain('#565f89')
   })
-
-  it('has source-level COLORBLIND-SAFE comment block for light hex #1d4ed8 (running)', () => {
-    expect(cssRaw).toContain('#1d4ed8')
-    expect(cssRaw).toContain('7.1:1')
-  })
 })
 
 // Phase 135 CSS contract — GAP-135-A focus-visible rings + GAP-135-E/F reduced-motion
@@ -296,10 +275,6 @@ describe('Phase 135 — GAP-135-A: focus-visible rings for Hub interactive eleme
   it('A11Y-02: .hub-filter__search:focus is still present and unchanged (inputs keep :focus per WCAG 2.4.7)', () => {
     expect(cssRaw).toContain('.hub-filter__search:focus')
   })
-
-  it('A11Y-02: .hub-modal__respond-input:focus is still present and unchanged (inputs keep :focus per WCAG 2.4.7)', () => {
-    expect(cssRaw).toContain('.hub-modal__respond-input:focus')
-  })
 })
 
 describe('Phase 135 — GAP-135-E/F: prefers-reduced-motion reduce blocks', () => {
@@ -323,29 +298,8 @@ describe('Phase 135 — GAP-135-E/F: prefers-reduced-motion reduce blocks', () =
   })
 })
 
-// Phase 133 CSS contract — attention pulse + badge (CR-02, CR-03, IN-01)
+// Phase 133 CSS contract (IN-01)
 describe('Hub Phase 133 CSS contract', () => {
-  it('CR-02: .hub-card--attention has opacity:1 (dim override invariant)', () => {
-    // Find the .hub-card--attention rule and confirm opacity:1 is set
-    const attnIdx = cssRaw.indexOf('.hub-card--attention {')
-    expect(attnIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', attnIdx)
-    const block = cssRaw.slice(attnIdx, blockEnd)
-    expect(block).toContain('opacity: 1')
-  })
-
-  it('CR-03: .hub__group-sidebar-item__attn-badge--count rule is present', () => {
-    expect(cssRaw).toContain('.hub__group-sidebar-item__attn-badge--count')
-  })
-
-  it('CR-03: attn-badge--count rule uses var(--hub-attn-badge-text) for color', () => {
-    const countIdx = cssRaw.indexOf('.hub__group-sidebar-item__attn-badge--count')
-    expect(countIdx).toBeGreaterThan(-1)
-    const blockEnd = cssRaw.indexOf('}', countIdx)
-    const block = cssRaw.slice(countIdx, blockEnd)
-    expect(block).toContain('var(--hub-attn-badge-text)')
-  })
-
   it('IN-01: .hub-card has position: relative (anchor for drag-handle/menu-btn)', () => {
     const cardIdx = cssRaw.indexOf('.hub-card {')
     expect(cardIdx).toBeGreaterThan(-1)
@@ -375,9 +329,6 @@ describe('CARD-03: Connection indicator CSS (hub-card__conn)', () => {
 describe('CARD-04: Preserved grid CSS (anti-regression)', () => {
   it('preserves .hub__card-row grid definition', () => {
     expect(cssRaw).toContain('.hub__card-row')
-  })
-  it('preserves .hub-card--attention class', () => {
-    expect(cssRaw).toContain('.hub-card--attention')
   })
   it('preserves hub-card min-width 240px constraint', () => {
     expect(cssRaw).toContain('240px')

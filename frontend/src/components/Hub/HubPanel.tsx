@@ -12,9 +12,6 @@ import { computeCounts, computeGlobalCounts } from '../../lib/hubGroupCounts'
 import type { GroupCounts } from '../../lib/hubGroupCounts'
 import { HubModal } from './HubModal'
 import { useChatUnreadListeners } from './useChatUnreadListeners'
-// WR-01: deriveHubStatus extracted to shared util (was triplicated across SessionCard/HubFilterBar/HubPanel)
-// ATTN-01/04: isAttentionStatus is the single canonical attention predicate; used for live set + debounced sort key
-import { deriveHubStatus, isAttentionStatus } from '../../lib/hubStatus'
 import {
   memberKey,
   type HubGroupDef,
@@ -106,21 +103,6 @@ function usePreviewPoller(
   }, [sessionIdKey, isActive])
 
   return tails
-}
-
-/* ATTN-04: debounce hook — controls reorder ORDER only, never card content */
-/* Uses useRef + setTimeout — does NOT add a second periodic timer; the single interval is in usePreviewPoller */
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = React.useState<T>(value)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    if (timerRef.current !== null) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => setDebouncedValue(value), delay)
-    return () => { if (timerRef.current !== null) clearTimeout(timerRef.current) }
-  }, [value, delay])
-
-  return debouncedValue
 }
 
 // ---- Props ----
@@ -313,7 +295,7 @@ export function HubPanel({
   )
 
   // Phase 138 / CARD-03: derive connected set from remoteCapsCached.
-  // Mirror attentionIds threading — boolean Set threaded to SessionCardGrid as connectedRemoteIds.
+  // Boolean Set threaded to SessionCardGrid as connectedRemoteIds.
   const connectedRemoteIds = React.useMemo(
     () => remoteCapsCached ?? new Set<string>(),
     [remoteCapsCached],
@@ -342,23 +324,6 @@ export function HubPanel({
     }
     return m
   }, [localPreviewTails, remoteSessions])
-
-  /* ATTN-02: float-to-top reorder is within-group; debounce window 1000ms */
-  /* Only POSITION is debounced — card content (isAttention) uses the LIVE set above */
-  const attentionSortKey = allSessions
-    .map((s) => `${s.id}:${isAttentionStatus(deriveHubStatus(s)) ? '1' : '0'}`)
-    .join(',')
-  const debouncedSortKey = useDebouncedValue(attentionSortKey, 1000)
-
-  /* ATTN-01: live attention set — NOT debounced; card border/icon update immediately */
-  /* IN-02: memoized on attentionSortKey (encodes all id:bit changes) so the Set keeps
-     referential identity across preview-poll renders where attention membership is stable.
-     This avoids unnecessary SessionCardGrid re-renders from always-new Set references. */
-  const attentionIds = React.useMemo(
-    () => new Set(allSessions.filter((s) => isAttentionStatus(deriveHubStatus(s))).map((s) => s.id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [attentionSortKey], // attentionSortKey encodes all id:bit changes
-  )
 
   // Apply search to allSessions
   const filtered = filterSessions(allSessions, searchText)
@@ -391,14 +356,14 @@ export function HubPanel({
   // allSessions or groupDefs changes. This avoids lifting allSessions to App.tsx.
   useEffect(() => {
     if (!onGroupCountsChange) return
-    const counts: Record<string, { running: number; total: number; attention: number }> = {}
+    const counts: Record<string, GroupCounts> = {}
     for (const g of groupDefs) {
       counts[g.id] = computeCounts(allSessions, new Set(g.memberKeys))
     }
     const global = computeGlobalCounts(allSessions)
     onGroupCountsChange(counts, global)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allSessions.map(s => s.id + ':' + s.status).join(','), groupDefs.map(g => g.id + ':' + g.memberKeys.join(';')).join(','), onGroupCountsChange])
+  }, [allSessions.map(s => s.id + ':' + memberKey(s.name, s.workDir)).join(','), groupDefs.map(g => g.id + ':' + g.memberKeys.join(';')).join(','), onGroupCountsChange])
 
   // Phase 134 — MODAL-06: card click handler with remote cap gate
   const handleCardClick = useCallback((session: SessionInfo, rect: DOMRect) => {
@@ -485,8 +450,6 @@ export function HubPanel({
         previewTails={previewTails}
         previewTheme={terminalTheme}
         onAssignGroup={handleAssignGroup}
-        attentionIds={attentionIds}
-        debouncedSortKey={debouncedSortKey}
         connectedRemoteIds={connectedRemoteIds}
         remoteIdSet={remoteIdSet}
         onKill={onKill}

@@ -3252,8 +3252,6 @@ textarea {
   --hub-font-size-sm: 12.5px;
   --hub-font-size-heading: 19px;
   --hub-font-weight-emphasis: 600;
-  --hub-dim-opacity: 0.45;
-  --hub-card-dim-bg: #13141f;
   --hub-group-header-bg: #16161e;
   --hub-empty-icon-color: #3b4261;
   --hub-scrollbar: #3b4261;
@@ -3272,14 +3270,6 @@ textarea {
   /* COLORBLIND-SAFE: drag-over border dark hex #7aa2f7 — border change (shape) is primary non-color cue */
   --hub-drag-over-border: #7aa2f7;
   --hub-drag-over-bg: rgba(122,162,247,0.08);
-  /* === Phase 133: Attention + Pulse tokens === */
-  /* COLORBLIND-SAFE: attn border dark hex #e0af68 — reinforcement only; BellAlertIcon + pulse shape carries state */
-  --hub-attn-border: #e0af68;
-  --hub-attn-border-glow: rgba(224,175,104,0.35);
-  --hub-attn-icon-color: #e0af68;
-  --hub-attn-badge-bg: rgba(224,175,104,0.18);
-  --hub-attn-badge-text: #e0af68;
-  --hub-attn-static-border: #e0af68;
   /* === Phase 166: Internet-exposure badge tokens (dark) === */
   /* COLORBLIND-SAFE: internet badge dark hex #43ddb2 — reinforcement only; GlobeAltIcon shape + "INTERNET" text carry state */
   --hub-internet-badge-bg: rgba(67, 221, 178, 0.15);
@@ -3318,8 +3308,6 @@ textarea {
   --hub-destructive: #c0394f;
   --hub-success: #2e7d32;
   --hub-warning: #b45309;
-  --hub-dim-opacity: 0.45;
-  --hub-card-dim-bg: #ebebef;
   --hub-group-header-bg: #ebebef;
   --hub-empty-icon-color: #c5c5d0;
   --hub-scrollbar: #c5c5d0;
@@ -3338,14 +3326,6 @@ textarea {
   /* COLORBLIND-SAFE: drag-over border light hex #3d6fe8 — border change (shape) is primary non-color cue */
   --hub-drag-over-border: #3d6fe8;
   --hub-drag-over-bg: rgba(61,111,232,0.06);
-  /* === Phase 133: Attention + Pulse tokens (light) === */
-  /* COLORBLIND-SAFE: attn border light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-  --hub-attn-border: #b45309;
-  --hub-attn-border-glow: rgba(180,83,9,0.25);
-  --hub-attn-icon-color: #b45309;
-  --hub-attn-badge-bg: rgba(180,83,9,0.14);
-  --hub-attn-badge-text: #b45309;
-  --hub-attn-static-border: #b45309;
   /* === Phase 166: Internet-exposure badge tokens (light) === */
   /* COLORBLIND-SAFE: internet badge light hex #0d7a5c — WCAG AA ~5.2:1 on white; icon + text carry state */
   --hub-internet-badge-bg: rgba(13, 122, 92, 0.13);
@@ -3519,20 +3499,11 @@ textarea {
 .hub-card__menu-btn:focus-visible,
 .hub-card__menu-item:focus-visible,
 .hub-modal__close:focus-visible,
-.hub-modal__send-btn:focus-visible,
-.hub-modal__close-btn:focus-visible,
 .hub__group-sidebar-toggle:focus-visible,
 .hub__group-sidebar-item:focus-visible,
 .hub__group-sidebar-item__btn:focus-visible {
   outline: 2px solid var(--hub-accent);
   outline-offset: 2px;
-}
-
-/* CARD-08: Stopped/exited (exit 0) cards are dimmed.
-   Error-exit cards are NOT dimmed — full opacity + ExclamationCircleIcon carries that state. */
-.hub-card--dim {
-  opacity: var(--hub-dim-opacity);
-  background: var(--hub-card-dim-bg);
 }
 
 /* --- Card row layouts --- */
@@ -3548,15 +3519,7 @@ textarea {
   margin-bottom: 10px;
 }
 
-.hub-card__row1 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.hub-card__row3,
-.hub-card__row4 {
+.hub-card__row3 {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3573,8 +3536,7 @@ textarea {
    rhythm — while keeping the INTERNET / FULL ACCESS exposure badges the
    prominent FILLED chips so they pop MORE by contrast (D-01/D-04/D-05, Sketch
    001 Variant B — the pinned winner, .planning/sketches/001-hub-card-chip-row).
-   Status (D-03) is NOT chipified — it stays the primary top-line signal above
-   this row (.hub-card__row1, unchanged). All new rules resolve through
+   Session status is not shown (CONTEXT Amendment 2). All new rules resolve through
    --hub-* tokens so they are correct in both dark (:root) and light
    ([data-ui-theme="light"]) themes without a per-theme override.
    ============================================================ */
@@ -3709,23 +3671,6 @@ textarea {
   flex-shrink: 0;
 }
 
-/* --- Status icon --- */
-.hub-card__status-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-/* --- Status dot color reinforcement (shape + icon + text are PRIMARY differentiators) --- */
-/* COLORBLIND-SAFE: status dot dark hex #3b82f6 (running) — reinforcement only; PlayCircleIcon carries the state */
-/* COLORBLIND-SAFE: status dot dark hex #ef4444 (errored) — reinforcement only; ExclamationCircleIcon carries the state */
-/* COLORBLIND-SAFE: status dot dark hex #565f89 (exited) — reinforcement only; StopCircleIcon carries the state */
-/* COLORBLIND-SAFE: exit-code dark hex #f7768e (non-zero exit) — reinforcement only; "Exited {code}" text carries the state */
-/* COLORBLIND-SAFE: status dot light hex #1d4ed8 (running) — WCAG AA 7.1:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #b91c1c (errored) — WCAG AA 6.0:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #4b5563 (exited) — WCAG AA 7.0:1 on white; icon carries state */
-/* COLORBLIND-SAFE: status dot light hex #c0394f (non-zero exit) — WCAG AA 4.7:1 on white; icon carries state */
-
 /* --- Card session name --- */
 .hub-card__name {
   font-size: 14px;
@@ -3803,32 +3748,6 @@ textarea {
   color: var(--hub-text-muted);
 }
 
-/* --- Exit code chip (stopped/errored only) --- */
-.hub-card__exit-chip {
-  font-size: 11px;
-  font-family: var(--hub-font-mono);
-  padding: 1px 5px;
-  border-radius: var(--hub-radius-sm);
-  background: var(--hub-surface-elevated);
-  color: var(--hub-destructive);
-  border: 1px solid var(--hub-border);
-}
-
-/* --- Status indicator wrapper (icon + label, row 1) --- */
-/* CR-01: these rules were missing — added to pair with TSX hub-card__status-indicator usage */
-.hub-card__status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.hub-card__status-label {
-  font-size: 11px;
-  color: var(--hub-text-secondary);
-  white-space: nowrap;
-}
-
 /* --- Filter bar --- */
 /* CR-01: .hub__filter-bar is the canonical wrapper (TSX was using hub-filter, now corrected) */
 .hub__filter-bar {
@@ -3844,8 +3763,8 @@ textarea {
 /* CR-01 / POL-03: hub-filter__new-session — "New session" button in the filter bar */
 /* Restyled to comp's minimal text-link affordance (D-07) — transparent, no border, accent PlusIcon */
 /* Comp parity: prominent filled, glowing accent pill (was a quiet borderless
-   text affordance). Mirrors the primary-CTA treatment (.hub-modal__send-btn:
-   accent fill + --hub-bg text), with a soft accent glow. */
+   text affordance). Primary-CTA treatment: accent fill + --hub-bg text, with a
+   soft accent glow. */
 .hub-filter__new-session {
   background: var(--hub-accent);
   border: none;
@@ -4090,53 +4009,6 @@ textarea {
   flex-shrink: 0;
 }
 
-/* === Phase 133: Attention icon wrapper + badge sizing === */
-.hub-card__attn-icon {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  color: var(--hub-attn-icon-color);
-}
-/* CRITICAL: size the icon with explicit CSS — no Tailwind in this project */
-/* Phase 132 UAT confirmed: w-N h-N utility classes are no-ops in this project */
-.hub-card__attn-icon svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-/* ATTN-06: collapsed-group attention badge */
-/* COLORBLIND-SAFE: attn badge dark hex #e0af68 — reinforcement only; BellAlertIcon carries state */
-/* COLORBLIND-SAFE: attn badge light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-.hub__group-sidebar-item__attn-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 4px;
-  height: 16px;
-  border-radius: 8px;
-  background: var(--hub-attn-badge-bg);
-  color: var(--hub-attn-badge-text);
-  font-size: 11px;
-  line-height: 1.0;
-  font-family: var(--hub-font-ui);
-  flex-shrink: 0;
-}
-/* CRITICAL: explicit CSS sizing — no Tailwind in this project */
-.hub__group-sidebar-item__attn-badge svg {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-/* ATTN-06: count digit inside the collapsed-group attention badge */
-.hub__group-sidebar-item__attn-badge--count {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--hub-attn-badge-text);
-}
-
 .hub-card__drag-handle svg,
 .hub-card__menu-btn svg {
   width: 16px;
@@ -4273,48 +4145,15 @@ textarea {
   cursor: grabbing;
 }
 
-/* ATTN-01: attention card — pulsing border + glow (colorblind-safe: BellAlertIcon carries state) */
-/* COLORBLIND-SAFE: attn border dark hex #e0af68 — reinforcement only; BellAlertIcon + pulse shape carries state */
-/* COLORBLIND-SAFE: attn border light hex #b45309 — WCAG AA 7.6:1 on white; icon carries state */
-.hub-card--attention {
-  border-color: var(--hub-attn-border);
-  opacity: 1; /* attention always wins — dim modifier is suppressed for cards needing action */
-}
-
-/* A11Y-03: pulse wrapped in @media (prefers-reduced-motion: no-preference); static border fallback */
+/* Card hover transition for motion-enabled users only */
 @media (prefers-reduced-motion: no-preference) {
-  .hub-card--attention {
-    animation: hub-attn-pulse 2s ease-in-out infinite;
-  }
-  /* ATTN-03: attention clear — override 100ms base transition for motion-enabled users only */
   .hub-card {
     transition: border-color 400ms ease, box-shadow 400ms ease, background 100ms ease;
-  }
-  /* Keep amber border on hover — prevents .hub-card:hover from overriding attention border */
-  .hub-card--attention:hover {
-    border-color: var(--hub-attn-border);
-  }
-}
-
-/* hub-attn-pulse keyframes declared at root scope — animation only fires when the
-   class is applied inside the prefers-reduced-motion media query above */
-@keyframes hub-attn-pulse {
-  0%   { border-color: var(--hub-attn-border); box-shadow: 0 0 0 0 var(--hub-attn-border-glow); }
-  50%  { border-color: var(--hub-attn-border); box-shadow: 0 0 0 4px var(--hub-attn-border-glow); }
-  100% { border-color: var(--hub-attn-border); box-shadow: 0 0 0 0 var(--hub-attn-border-glow); }
-}
-
-/* Reduced-motion: static attention border only — no animation, no glow */
-@media (prefers-reduced-motion: reduce) {
-  .hub-card--attention {
-    border-color: var(--hub-attn-static-border);
-    box-shadow: none;
-    animation: none;
   }
 }
 
 /* GAP-135-F: suppress card hover border/background transition under reduced-motion.
-   Must come AFTER the no-preference block (line 4944) so cascade resolves correctly. */
+   Must come AFTER the no-preference block above so cascade resolves correctly. */
 @media (prefers-reduced-motion: reduce) {
   .hub-card {
     transition: none;
@@ -4459,7 +4298,6 @@ textarea {
 /* =====================================================================
    Phase 134 — Hub Modal CSS
    All colors via var(--hub-*) tokens only (rgba() for scrim/shadow OK).
-   Template: Phase 133 hub-attn-pulse block (lines 4926–4956).
    ===================================================================== */
 
 /* Hub Modal Overlay — full-viewport scrim + centering flex container */
@@ -4489,7 +4327,7 @@ textarea {
   font-family: var(--hub-font-ui);
 }
 
-/* Modal Header Strip — present in both interactive and briefing modals */
+/* Modal Header Strip */
 .hub-modal__header {
   height: 48px;
   display: flex;
@@ -4515,21 +4353,9 @@ textarea {
 }
 
 /* GAP-134-B: header icons MUST be sized with explicit CSS — Heroicons ship with no
-   intrinsic width/height and this project has no Tailwind (w-N/h-N are no-ops, see the
-   hub-card__attn-icon note). Without these rules the icons balloon to fill the header. */
-.hub-modal__status-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
+   intrinsic width/height and this project has no Tailwind (w-N/h-N are no-ops).
+   Without these rules the icons balloon to fill the header. */
 .hub-modal__origin-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.hub-modal__attn-icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
@@ -4559,18 +4385,7 @@ textarea {
   color: var(--hub-accent);
 }
 
-.hub-modal__attn-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--hub-attn-badge-bg);
-  color: var(--hub-attn-badge-text);
-  font-size: 11px;
-  border-radius: 4px;
-  padding: 2px 6px;
-}
-
-/* Modal Body — flex-grow container for interactive and briefing */
+/* Modal Body — flex-grow container */
 .hub-modal__body {
   flex: 1;
   min-height: 0;
@@ -4653,119 +4468,10 @@ textarea {
   flex-shrink: 0;
 }
 
-.hub-modal__body--briefing {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 16px;
-  gap: 12px;
-  overflow: hidden;
-}
-
-/* Tail display — monospace scrollable output block */
-.hub-modal__tail {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  background: var(--hub-preview-bg);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-md);
-  padding: 12px;
-  font-family: var(--hub-font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--hub-text-secondary);
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.hub-modal__tail--empty,
-.hub-modal__tail--loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--hub-text-muted);
-  font-size: 14px;
-}
-
-/* Respond section — brief input + send controls */
-.hub-modal__respond {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.hub-modal__respond-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--hub-text-muted);
-}
-
-.hub-modal__respond-input {
-  width: 100%;
-  min-height: 64px;
-  max-height: 160px;
-  background: var(--hub-surface);
-  border: 1px solid var(--hub-border);
-  border-radius: 6px;
-  color: var(--hub-text-primary);
-  font-family: var(--hub-font-ui);
-  font-size: var(--hub-font-size-base);
-  line-height: 1.5;
-  padding: 8px 12px;
-  resize: vertical;
-  outline: none;
-}
-
-.hub-modal__respond-input:focus {
-  border-color: var(--hub-accent);
-  outline: none;
-}
-
-.hub-modal__respond-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.hub-modal__send-btn {
-  background: var(--hub-accent);
-  color: var(--hub-bg);
-  font-weight: 600;
-  font-size: 14px;
-  padding: 8px 16px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-}
-
-.hub-modal__send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.hub-modal__close-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--hub-text-muted);
-  font-size: 14px;
-}
-
-.hub-modal__error-banner {
-  color: var(--hub-destructive);
-  font-size: 14px;
-  padding: 8px;
-}
-
 /* hub-modal-grow / hub-modal-shrink / hub-modal-overlay-in / hub-modal-overlay-out
    keyframes declared at ROOT scope — they only animate when the class is applied
    inside the prefers-reduced-motion media query below.
-   Template: hub-attn-pulse keyframes (lines 4941-4947). */
+*/
 @keyframes hub-modal-grow {
   from { opacity: 0; transform: scale(0.05); }
   to   { opacity: 1; transform: scale(1); }
@@ -4803,7 +4509,6 @@ textarea {
 }
 
 /* Reduced-motion: modal appears/disappears instantly — no animation */
-/* Template: lines 4950-4956 hub-card--attention reduced-motion guard */
 @media (prefers-reduced-motion: reduce) {
   .hub-modal {
     animation: none;
