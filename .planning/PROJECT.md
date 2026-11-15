@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Portty is a macOS terminal emulator with built-in remote access over Tailscale. It is a stripped-down fork of AgentHub: it keeps the persistent daemon-backed terminal sessions, Tailscale integration, web/desktop sharing, chat, themes, and notifications, and removes everything specific to AI agent CLIs. Its first user is the author, who runs a terminal (often with Claude Code inside) on an office MacBook Air and controls it from a personal MacBook Air at home.
+Portty is a macOS terminal emulator with built-in remote access over Tailscale. It is a stripped-down fork of AgentHub: it keeps the persistent daemon-backed terminal sessions, Tailscale integration, web/desktop sharing, and notifications, and removes everything specific to AI agent CLIs. Its first user is the author, who runs a terminal (often with Claude Code inside) on an office MacBook Air and controls it from a personal MacBook Air at home.
 
 ## Core Value
 
@@ -20,8 +20,7 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 - ✓ Remote attach to sessions on other tailnet machines, from the GUI and from the CLI (`attach host:id`, WSS relay, tmux-style status bar). (existing)
 - ✓ Per-session web share with read-only and read/write capability links, multiple simultaneous clients, and PTY resize arbitration. (existing)
 - ✓ Tailscale Funnel public sharing: risk-gated, auto-expiring, consent-gated write. (existing)
-- ✓ Per-session human chat side channel. (existing)
-- ✓ 138 terminal themes and the vendored xterm.js plugin suite (GPU render, search, links, sixel, OSC 52, OSC 9;4). (existing)
+- ✓ Vendored xterm.js plugin suite (GPU render, search, links, sixel, OSC 52, OSC 9;4). (existing)
 - ✓ Native notifications and auto-update checks. (existing)
 
 ### Active
@@ -33,6 +32,8 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 - [ ] New sessions start the user's login shell (no agent picker)
 - [ ] Remove the Hub session grid and replace it with tabs plus a sidebar that lists local sessions and remote tailnet peers' sessions. Clicking one opens it in a tab.
 - [ ] Remove the file browser/editor (read and write, local and remote)
+- [ ] Replace the 138 terminal themes with system light/dark for the app and terminals
+- [ ] Remove session chat entirely (desktop, web, daemon API, relay frames)
 - [ ] Remove Windows and Linux code paths, packaging, and CI. macOS only.
 - [ ] One "Share" action publishes a session to BOTH tailnet peers (shows in their sidebar) AND a tailnet web link. Funnel public sharing stays a separate risk-gated step.
 - [ ] CLI keeps `attach host:id` (renamed `portty attach`) for use from Warp or any terminal
@@ -43,6 +44,7 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 - AI agent CLI management (detection, picker, agent status, agent bridge): commoditized; Portty is a plain terminal
 - Hub session grid: replaced by a simpler tabs + sidebar model
 - File browser/editor: not needed for remote terminal control
+- Session chat: not needed (user decision 2026-11-15; removed in Phase 2)
 - Windows and Linux: both target machines are Macs; removing them cuts maintenance a lot
 - Claude Code Remote Control as the solution: needs a full terminal, not just the Claude session
 - Warp session-sharing "tickler": Warp's idle timeout is server-side and not configurable (warpdotdev/warp#11972), and fake activity would type into the live terminal
@@ -78,7 +80,9 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 | Tabs + sidebar instead of Hub grid | Simpler navigation for a plain terminal | — Pending |
 | One Share action = tailnet peers + web link | User wants sharing to automatically cover both desktop and browser | — Pending |
 | Keep CLI `attach` | Fallback from Warp or any terminal; code already exists | — Pending |
-| Keep chat, themes/plugins, notifications/updates; drop file browser | User's explicit choice | — Pending |
+| Keep themes/plugins, notifications/updates; drop file browser | User's explicit choice | — Pending |
+| Only macOS light/dark, following the system (drops the theme library) | Simpler, consistent look across app and terminals (user decision 2026-11-15) | — Pending |
+| Remove session chat (reverses the earlier "keep chat") | Not needed for remote terminal control (user decision 2026-11-15) | — Pending |
 | Website portty.app; private repo scottkw/portty | User decision 2026-11-14 | — Pending |
 | No Homebrew. GitHub release DMGs plus a GIFsmith-style update check, download and verify | Same distribution model as GIFsmith/TransomWM | — Pending |
 | Make scottkw/portty public before the first release | The anonymous Releases API returns 404 for private repos, so update checks would never see a release | — Pending |

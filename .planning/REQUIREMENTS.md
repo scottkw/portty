@@ -19,7 +19,8 @@
 - [x] **TERM-01**: User can open a new local terminal session, which always starts macOS zsh as a login shell (`/bin/zsh -l`, no shell choice) in a chosen (or last-used) directory
 - [x] **TERM-02**: Sessions keep running in the daemon when the GUI window is closed or the app restarts, and reopen with scrollback intact
 - [ ] **TERM-03**: User can run multiple sessions as tabs, and rename and close them
-- [x] **TERM-04**: Themes and xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) keep working, controllable from Settings
+- [x] **TERM-04**: xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) keep working, controllable from Settings
+- [ ] **THEM-01**: The app and every terminal use one standard macOS light or dark appearance that follows the system setting live. The 138 terminal themes, the theme picker and its settings key are removed (old settings files still load). The web share page follows the browser's light/dark preference the same way (user decision 2026-11-15)
 
 - [x] **TERM-05**: When a session's shell exits, for any reason, its tab closes immediately. There is no status indicator, exit countdown, toast or banner, and this works for shells that exit hours after they started
 - [x] **NET-01**: Portty checks for a working Tailscale connection (LocalAPI). When there isn't one, it shows a banner, "Tailscale isn't connected. Remote access and sharing are off until it is.", and disables the share and remote controls. It rechecks automatically and never installs or configures Tailscale
@@ -40,9 +41,9 @@
 - [ ] **SHAR-06**: From any terminal (e.g. Warp), `portty attach <host>:<session>` attaches to a remote shared session with the tmux-style status bar
 - [ ] **SHAR-07**: A remote attach left idle for 12+ hours stays connected or reconnects automatically. Detaching and reattaching restores scrollback.
 
-### Chat & Notifications
+### Chat removal & Notifications
 
-- [x] **CHAT-01**: The per-session human chat works across desktop and web surfaces, with the `@session` agent-inject bridge removed
+- [ ] **CHAT-01**: Session chat is removed everywhere: desktop and web chat UI, the daemon/webserver chat API and store, the relay chat frames, and their tests. Old clients' chat frames are dropped without error (user decision 2026-11-15; Phase 1 removed only the `@session` inject bridge)
 - [ ] **NOTF-01**: Native macOS notifications appear under the Portty name
 
 ### Updates & Distribution
@@ -87,6 +88,8 @@
 | Homebrew distribution | Releases ship only as GitHub release DMGs linked from portty.app (user decision 2026-11-14) |
 | Warp "tickler" | Warp's idle timeout is server-side and not configurable, and fake activity would type into the live terminal |
 | New relay/cloud services | Tailnet (plus opt-in Funnel) only |
+| Terminal theme library (138 themes) | Replaced by system light/dark (THEM-01, 2026-11-15) |
+| Session chat | Not needed; removed in Phase 2 (user decision 2026-11-15) |
 
 ## Traceability
 
@@ -103,6 +106,7 @@
 | TERM-03 | Phase 2 | Pending |
 | TERM-04 | Phase 1 | Complete |
 | TERM-05 | Phase 1 | Complete |
+| THEM-01 | Phase 2 | Pending |
 | NET-01 | Phase 1 | Complete |
 | NAV-01 | Phase 2 | Pending |
 | NAV-02 | Phase 2 | Pending |
@@ -114,7 +118,7 @@
 | SHAR-05 | Phase 4 | Pending |
 | SHAR-06 | Phase 4 | Pending |
 | SHAR-07 | Phase 5 | Pending |
-| CHAT-01 | Phase 1 | Complete |
+| CHAT-01 | Phase 2 | Pending |
 | NOTF-01 | Phase 3 | Pending |
 | DIST-03 | Phase 3 | Pending |
 | UPD-01 | Phase 6 | Pending |
@@ -128,10 +132,10 @@
 | VERF-01 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 34 total
-- Mapped to phases: 34
+- v1 requirements: 35 total
+- Mapped to phases: 35
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-11-14*
-*Last updated: 2026-11-14 after adding UPD-01..04 and DIST-03 (GitHub-release updates, no Homebrew)*
+*Last updated: 2026-11-15 after CHAT-01 changed to chat removal (Phase 2)*

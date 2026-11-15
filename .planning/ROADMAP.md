@@ -26,12 +26,12 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Phase 1: Plain macOS Terminal
 **Goal**: The app is a plain macOS terminal: new sessions run macOS zsh (`/bin/zsh -l`), no agent-CLI, file-browser, or Windows/Linux code remains, and every kept feature still works
 **Depends on**: Nothing (first phase)
-**Requirements**: STRP-01, STRP-02, STRP-03, STRP-04, TERM-01, TERM-02, TERM-04, TERM-05, NET-01, CHAT-01
+**Requirements**: STRP-01, STRP-02, STRP-03, STRP-04, TERM-01, TERM-02, TERM-04, TERM-05, NET-01
 **Success Criteria** (what must be TRUE):
   1. User opens a new session, picks a directory (defaulting to the last-used one), and gets `/bin/zsh -l` there, with no shell choice anywhere and no Settings → Paths section; no agent picker, agent badges, agent working/waiting status, or file browser/editor appears in the desktop app or the web share view
   2. User quits and relaunches the app (or closes and reopens the window) and every running session is still there with its scrollback
   3. User changes the terminal theme and toggles xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) in Settings, and open terminals pick up the change
-  4. User chats on a session from the desktop app and from a browser web share, and both sides see the messages; nothing typed in chat (including `@session`) is ever written into the terminal
+  4. ~~Chat parity~~ Superseded 2026-11-15: chat is removed entirely in Phase 2 (CHAT-01). Phase 1 removed the `@session` inject bridge; UAT confirmed browser chat never reaches the PTY
   5. On macOS the Go build, Go tests, Vitest, and lint all pass with no Windows/Linux sources, packaging, or CI jobs left; the daemon no longer serves a files API or files capability; the security fuzz harness still runs against relay and webserver
   6. When a local shell exits, its tab closes immediately, with no status dot, exit countdown, toast or banner, including for shells that exit hours later
   7. With Tailscale disconnected, a banner says remote access and sharing are off, and the Share and remote controls are disabled. Reconnecting clears the banner without a restart. Portty never installs or configures Tailscale
@@ -78,13 +78,15 @@ Plans:
 ### Phase 2: Tabs + Sidebar Navigation
 **Goal**: Users navigate everything from tabs plus a sidebar: the Hub grid is gone, and the sidebar lists local sessions and tailnet peers' sessions, each opening in a tab
 **Depends on**: Phase 1
-**Requirements**: NAV-01, NAV-02, NAV-03, TERM-03
+**Requirements**: NAV-01, NAV-02, NAV-03, TERM-03, CHAT-01, THEM-01
 **Success Criteria** (what must be TRUE):
   1. The app launches straight into tabs plus a sidebar; there is no Hub grid view or Hub entry anywhere
   2. The sidebar lists every local session; clicking one focuses its tab if it is open, or opens it in a new tab
   3. The sidebar lists sessions shared by other machines on the tailnet, grouped by machine; clicking one attaches to it in a tab
   4. User can run several sessions as tabs, rename a session (the new name shows in both its tab and the sidebar), and close it
-  5. Session chat and the Share dialog (including the Funnel risk panel) are still reachable from any session tab now that the Hub is gone
+  5. The Share dialog (including the Funnel risk panel) is still reachable from any session tab now that the Hub is gone
+  6. Session chat is gone from the desktop app, the web share page, the daemon/webserver API and the relay protocol; no chat button, badge, or endpoint remains, and old clients that send chat frames do not crash anything
+  7. Switching macOS between Light and Dark changes the whole app and every open terminal at once, with no restart; there is no theme picker, and the web share page follows the browser's light/dark setting
 **Plans**: TBD
 **UI hint**: yes
 
