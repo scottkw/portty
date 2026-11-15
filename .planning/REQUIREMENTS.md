@@ -22,7 +22,7 @@
 - [x] **TERM-04**: Themes and xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) keep working, controllable from Settings
 
 - [x] **TERM-05**: When a session's shell exits, for any reason, its tab closes immediately. There is no status indicator, exit countdown, toast or banner, and this works for shells that exit hours after they started
-- [ ] **NET-01**: Portty checks for a working Tailscale connection (LocalAPI). When there isn't one, it shows a banner, "Tailscale isn't connected. Remote access and sharing are off until it is.", and disables the share and remote controls. It rechecks automatically and never installs or configures Tailscale
+- [x] **NET-01**: Portty checks for a working Tailscale connection (LocalAPI). When there isn't one, it shows a banner, "Tailscale isn't connected. Remote access and sharing are off until it is.", and disables the share and remote controls. It rechecks automatically and never installs or configures Tailscale
 
 ### Navigation
 
@@ -103,7 +103,7 @@
 | TERM-03 | Phase 2 | Pending |
 | TERM-04 | Phase 1 | Complete |
 | TERM-05 | Phase 1 | Complete |
-| NET-01 | Phase 1 | Pending |
+| NET-01 | Phase 1 | Complete |
 | NAV-01 | Phase 2 | Pending |
 | NAV-02 | Phase 2 | Pending |
 | NAV-03 | Phase 2 | Pending |

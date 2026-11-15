@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. On macOS the Go build, Go tests, Vitest, and lint all pass with no Windows/Linux sources, packaging, or CI jobs left; the daemon no longer serves a files API or files capability; the security fuzz harness still runs against relay and webserver
   6. When a shell exits, its tab closes immediately, with no status dot, exit countdown, toast or banner, including for shells that exit hours later
   7. With Tailscale disconnected, a banner says remote access and sharing are off, and the Share and remote controls are disabled. Reconnecting clears the banner without a restart. Portty never installs or configures Tailscale
-**Plans**: 11/12 plans executed (sequential waves 1-12; shared hot files and TESTING.md force serial order)
+**Plans**: 12/12 plans executed (sequential waves 1-12; shared hot files and TESTING.md force serial order)
 
 Plans:
 **Wave 1**
@@ -73,7 +73,7 @@ Plans:
 - [x] 01-11-PLAN.md — Every session is `/bin/zsh -l`; New Session shell line, Settings → Paths, shellPath/cliPaths plumbing and the awaiting-input notification toggle removed; legacy settings load and drop the keys
 
 **Wave 12** *(blocked on Wave 11 completion)*
-- [ ] 01-12-PLAN.md — Tailscale detect-only (LocalAPI connected/not connected), NET-01 banner, Share/remote controls disabled with the same reason, focus recheck, brew install flow removed; final TESTING.md reconciliation and full phase gate
+- [x] 01-12-PLAN.md — Tailscale detect-only (LocalAPI connected/not connected), NET-01 banner, Share/remote controls disabled with the same reason, focus recheck, brew install flow removed; final TESTING.md reconciliation and full phase gate
 **UI hint**: yes
 
 ### Phase 2: Tabs + Sidebar Navigation
@@ -154,7 +154,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Plain macOS Terminal | 11/12 | In Progress | - |
+| 1. Plain macOS Terminal | 12/12 | In Progress | - |
 | 2. Tabs + Sidebar Navigation | 0/TBD | Not started | - |
 | 3. Portty Brand | 0/TBD | Not started | - |
 | 4. One-Click Share | 0/TBD | Not started | - |

@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Plain macOS Terminal
-status: executing
-stopped_at: Completed 01-11-PLAN.md
-last_updated: "2026-11-15T00:34:36.527Z"
+status: verifying
+stopped_at: Completed 01-12-PLAN.md
+last_updated: "2026-11-15T00:49:07.232Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 1 execution started
-state_head: 53653f79427bf8603eeeaa18b96ab2ad88b08b62
+state_head: f7be6fb25dc87b99867f36673af3cd778998029f
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 
 Phase: 1 (Plain macOS Terminal) — READY TO EXECUTE
 Plan: 10 of 10
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-14 — Phase 1 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -67,6 +67,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P09 | 20 min | 3 tasks | 33 files |
 | Phase 01 P10 | 19min | 3 tasks | 60 files |
 | Phase 01 P11 | 12min | 3 tasks | 53 files |
+| Phase 01 P12 | 12min | 3 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Every session spawns the constant /bin/zsh -l (sessionShell); $SHELL and legacy shellPath are ignored
 - [Phase 01]: loadSettingsFromDisk rewrites settings.json only on an old schemaVersion now that the stale-path filter is gone
 - [Phase 01]: sendNotification is the single native notification path; QuitGUIOnly calls it through a.sendNotificationFunc (Phase 6 reuses it)
+- [Phase 01]: TailscaleHealth is LocalAPI-only and fail-closed: connected only when tailscaled answers with BackendState Running; the zero value means not connected
+- [Phase 01]: The Tailscale poller emits its first result unconditionally (lastHealth nil sentinel) so a launch-time disconnect is reported
+- [Phase 01]: tailscaleOff is false while health is null (unchecked, and always in web mode); the NET-01 sentence lives once in frontend/src/lib/tailscale.ts
 
 ### Pending Todos
 
@@ -139,6 +143,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-15T00:34:36.507Z
-Stopped at: Completed 01-11-PLAN.md
+Last session: 2026-11-15T00:49:07.211Z
+Stopped at: Completed 01-12-PLAN.md
 Resume file: None
