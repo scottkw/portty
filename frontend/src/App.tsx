@@ -610,6 +610,7 @@ function App(): React.ReactElement {
       // the removed Sessions page show bogus "WEB ON" state with broken URLs.
     } catch (err) {
       console.error('[App] CreateSession failed:', err)
+      throw err // the New Session dialog stays open and shows it
     }
   }, [tabCounter, webServerRunning])
 
@@ -1382,9 +1383,9 @@ function App(): React.ReactElement {
       {showNewSessionModal && (
         <NewSessionModal
           isOpen={showNewSessionModal}
-          onConfirm={(workDir) => {
+          onConfirm={async (workDir) => {
+            await createTab(workDir)
             setShowNewSessionModal(false)
-            void createTab(workDir)
           }}
           onClose={() => setShowNewSessionModal(false)}
         />

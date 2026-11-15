@@ -1,7 +1,9 @@
 /**
  * New Session modal contract (01-UI-SPEC section 1, CONTEXT Amendment 1):
- * Working Directory section only, Close / Create Session footer. No shell line,
+ * Working Directory section only, Cancel / Create Session footer. No shell line,
  * no agent list and no Extra Arguments field.
+ * Portty 02-09 (LOOK-01): sheet style, no header ×, the scrim does nothing,
+ * Esc cancels, and a failed create shows the error inline with the dialog open.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import React from 'react'
@@ -16,7 +18,7 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   OpenDirectoryDialog: vi.fn().mockResolvedValue(''),
 }))
 
-function renderModal(onConfirm = vi.fn(), onClose = vi.fn()) {
+function renderModal(onConfirm = vi.fn().mockResolvedValue(undefined), onClose = vi.fn()) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
@@ -72,7 +74,8 @@ describe('NewSessionModal rendering and behavior', () => {
     expect(labels).toEqual(['Working Directory'])
     expect(container.textContent).not.toContain('Shell')
     expect(container.textContent).not.toContain('login shell')
-    expect(byText(container, 'Close')).toBeDefined()
+    expect(byText(container, 'Cancel')).toBeDefined()
+    expect(byText(container, 'Close')).toBeUndefined()
     expect(byText(container, 'Create Session')).toBeDefined()
     expect(container.textContent).not.toContain('Select Agent')
     expect(container.textContent).not.toContain('Extra Arguments')
@@ -122,14 +125,42 @@ describe('NewSessionModal rendering and behavior', () => {
     expect(onConfirm).toHaveBeenCalledWith('/tmp/picked')
   })
 
-  it('Close button and overlay click call onClose; clicks inside the modal do not', () => {
+  it('is a labelled modal dialog with no header close button', () => {
+    ;({ container, root } = renderModal())
+    const dialog = container.querySelector('[role="dialog"]')!
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent).toBe('New Session')
+    expect(container.querySelector('[aria-label="Close"]')).toBeNull()
+    expect(container.innerHTML).not.toContain('×')
+  })
+
+  it('focuses Create Session on open', () => {
+    ;({ container, root } = renderModal())
+    expect(document.activeElement?.textContent).toBe('Create Session')
+  })
+
+  it('Cancel and Esc call onClose; scrim and in-dialog clicks do not', () => {
     let onClose: ReturnType<typeof vi.fn>
     ;({ container, root, onClose } = renderModal())
-    flushSync(() => (container.querySelector('.new-session-modal') as HTMLElement).click())
+    flushSync(() => (container.querySelector('.dialog') as HTMLElement).click())
+    flushSync(() => (container.querySelector('.dialog-scrim') as HTMLElement).click())
     expect(onClose).not.toHaveBeenCalled()
-    flushSync(() => byText(container, 'Close').click())
+    flushSync(() => byText(container, 'Cancel').click())
     expect(onClose).toHaveBeenCalledTimes(1)
-    flushSync(() => (container.querySelector('.new-session-overlay') as HTMLElement).click())
+    act(() => {
+      document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
     expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('a rejected create keeps the dialog open and shows the error copy', async () => {
+    const onConfirm = vi.fn().mockRejectedValue(new Error('no such directory'))
+    ;({ container, root } = renderModal(onConfirm))
+    await act(async () => { byText(container, 'Create Session').click() })
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(container.querySelector('.dialog__error')?.textContent).toBe(
+      "Couldn't create the session: no such directory. Check that the folder exists, then try again.",
+    )
+    expect(byText(container, 'Create Session').disabled).toBe(false)
   })
 })

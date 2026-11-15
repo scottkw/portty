@@ -932,72 +932,139 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   }
 }
 
-/* --- New Session Modal -------------------------------------------------- */
-.new-session-overlay {
+/* ─── Dialogs and sheets (Portty 02-09, UI-SPEC "Dialogs and sheets") ──
+   One macOS sheet style for every modal: attached under the 52px toolbar,
+   tokens only. A scrim click does nothing; useDialogFocus owns Esc and Tab. */
+.dialog-scrim {
   position: fixed;
   inset: 0;
   z-index: 1000;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.6);
+  padding-top: 52px;
+  background: var(--color-scrim);
 }
-.new-session-modal {
-  background-color: #1e2030;
-  border: 1px solid #292e42;
-  border-radius: 8px;
-  width: 460px;
-  max-width: 95vw;
-  max-height: 80vh;
+.dialog {
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  width: 480px;
+  max-width: calc(100% - 48px);
+  max-height: calc(100vh - 104px);
+  padding: 24px;
+  background: var(--color-window);
+  color: var(--color-text);
+  border: 1px solid var(--color-control-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-popover);
+  font-family: var(--hub-font-ui);
+  font-size: 13px;
+  line-height: 18px;
 }
-.new-session-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid #292e42;
+.dialog--share {
+  width: 560px;
 }
-.new-session-modal__header h2 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #c0caf5;
-  line-height: 1.2;
-}
-.new-session-modal__close {
-  background: transparent;
-  border: none;
-  color: #9aa5ce;
-  font-size: 20px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.new-session-modal__close:hover {
-  color: #f7768e;
-  background: #3b4261;
-}
-.new-session-modal__body {
-  padding: 20px;
-}
-.new-session-modal__section {
-  margin-bottom: 24px;
-}
-.new-session-modal__section:last-child {
-  margin-bottom: 0;
-}
-.new-session-modal__section-label {
-  display: block;
+.dialog__title {
+  margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #9aa5ce;
+  line-height: 18px;
+  color: var(--color-text);
+}
+.dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.dialog__secondary {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+.dialog__error {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-error-text);
+}
+.dialog__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+  flex-shrink: 0;
+}
+.button {
+  height: 28px;
+  min-width: 80px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: default;
+}
+.button--primary {
+  background: var(--color-selection-fill);
+  color: var(--color-on-accent);
+}
+.button--secondary {
+  background: var(--color-button);
+  border-color: var(--color-control-border);
+  color: var(--color-text);
+}
+.button--destructive {
+  background: var(--color-destructive);
+  color: var(--color-on-accent);
+}
+.button:disabled {
+  opacity: var(--opacity-disabled);
+}
+.button:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes dialog-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dialog-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dialog {
+    animation: dialog-in 150ms ease-out;
+  }
+  .dialog-scrim {
+    animation: dialog-fade-in 150ms ease-out;
+  }
+  .dialog--exiting,
+  .dialog-scrim--exiting {
+    animation: dialog-out 100ms ease-in forwards;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog,
+  .dialog-scrim {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* --- New Session dialog content --- */
+.new-session-modal__section-label {
+  display: block;
   margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  color: var(--color-text-secondary);
 }
 .new-session-modal__folder-row {
   display: flex;
@@ -1006,79 +1073,20 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 .new-session-modal__folder-display {
   flex: 1;
-  padding: 6px 12px;
-  background: #16161e;
-  border: 1px solid #292e42;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #9aa5ce;
+  min-width: 0; /* let a long path shrink in the flex row and ellipsize instead of widening the dialog */
+  height: 28px;
+  padding: 0 8px;
+  line-height: 26px;
+  background: var(--color-field);
+  border: 1px solid var(--color-control-border);
+  border-radius: 6px;
+  color: var(--color-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0; /* let a long path shrink in the flex row and ellipsize instead of widening the modal */
-  min-height: 32px;
-  line-height: 20px;
 }
 .new-session-modal__folder-display--active {
-  color: #7aa2f7;
-}
-.new-session-modal__browse-btn {
-  padding: 4px 8px;
-  border: 1px solid #292e42;
-  border-radius: 4px;
-  font-size: 11px;
-  background: transparent;
-  color: #a9b1d6;
-  cursor: pointer;
-  white-space: nowrap;
-  font-family: inherit;
-}
-.new-session-modal__browse-btn:hover {
-  background: #1e2030;
-  color: #c0caf5;
-}
-.new-session-modal__browse-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.new-session-modal__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid #292e42;
-}
-.new-session-modal__btn--close {
-  background: transparent;
-  border: 1px solid #292e42;
-  color: #9aa5ce;
-  padding: 6px 16px;
-  border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.new-session-modal__btn--close:hover {
-  color: #c0caf5;
-  border-color: #3b4261;
-}
-.new-session-modal__btn--create {
-  background: #7aa2f7;
-  color: #1a1b26;
-  font-weight: 600;
-  border: none;
-  padding: 6px 16px;
-  border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.new-session-modal__btn--create:hover {
-  background: #89b4fa;
-}
-.new-session-modal__btn--create:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  color: var(--color-text);
 }
 
 /* ─── Context menu (Portty 02-08, UI-SPEC "Context menus") ────────── */
