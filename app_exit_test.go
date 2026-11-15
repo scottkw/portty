@@ -148,8 +148,30 @@ func TestCheckExits_PrunesRemovedSessions(t *testing.T) {
 		t.Fatalf("session still listed after KillSession (state %q)", st)
 	}
 	app.checkExits()
-	if len(app.exitEmitted) != 0 {
-		t.Fatalf("exitEmitted = %v, want empty after prune", app.exitEmitted)
+	if len(app.exitEmitted) != 0 || len(app.seenSessions) != 0 {
+		t.Fatalf("exitEmitted = %v, seenSessions = %v, want both empty after prune", app.exitEmitted, app.seenSessions)
+	}
+	if n := rec.exitsFor(id); n != 1 {
+		t.Fatalf("session:exit count = %d, want exactly 1 (no re-report on removal)", n)
+	}
+}
+
+// TestCheckExits_ReportsRemovedWithoutStoppedSighting (WR-01): a running
+// session removed between ticks (agenthub kill, daemon restart) never shows
+// as stopped, but its tab must still close.
+func TestCheckExits_ReportsRemovedWithoutStoppedSighting(t *testing.T) {
+	app, rec, id := shApp(t, "exec sleep 60")
+	app.checkExits()
+	if n := rec.total(); n != 0 {
+		t.Fatalf("events for a running session = %d, want 0", n)
+	}
+	if err := app.client.KillSession(id); err != nil { // stop + remove in one call
+		t.Fatalf("KillSession: %v", err)
+	}
+	app.checkExits()
+	app.checkExits()
+	if n := rec.exitsFor(id); n != 1 {
+		t.Fatalf("session:exit count = %d, want exactly 1", n)
 	}
 }
 
