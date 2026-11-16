@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Tabs + Sidebar Navigation
 status: executing
-stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-11-16T01:59:32.994Z"
+stopped_at: Phase 3 UI-SPEC approved
+last_updated: "2026-11-16T14:42:48.249Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 2 execution started
-state_head: 3251a80e1237717fff42520526c543d40aee51bb
+state_head: 3ec928560a1194a6bf36568830f6b2bd0e88bcf8
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 24
-  completed_plans: 12
+  total_plans: 25
+  completed_plans: 25
   percent: 17
 ---
 
@@ -150,6 +150,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261115-rc8 | Phase 2 UI polish: sidebar vibrancy material, terminal padding, LAN-mode wording, type/spacing leftovers | 2026-11-15 | 3251a80e | [261115-rc8-phase-2-ui-polish-sidebar-vibrancy-mater](./quick/261115-rc8-phase-2-ui-polish-sidebar-vibrancy-mater/) |
+| 261116-c9f | Sidebar "native, alive" refresh: header glyphs, New Session row and +, peer host rows with status dots, compact footer | 2026-11-16 | b501b8f8 | [261116-c9f-sidebar-native-alive-refresh](./quick/261116-c9f-sidebar-native-alive-refresh/) |
 
 ## Deferred Items
 
@@ -169,6 +170,6 @@ Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appeara
 
 ## Session Continuity
 
-Last session: 2026-11-15T16:21:55.355Z
-Stopped at: Phase 2 UI-SPEC approved
-Resume file: .planning/phases/02-tabs-sidebar-navigation/02-UI-SPEC.md
+Last session: 2026-11-16T14:42:46.774Z
+Stopped at: Phase 3 UI-SPEC approved
+Resume file: .planning/phases/03-portty-brand/03-UI-SPEC.md
