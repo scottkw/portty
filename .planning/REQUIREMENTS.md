@@ -11,7 +11,7 @@
 - [ ] **BRND-02**: The app icon, tray icons (including progress and error states), and title logos come from `portty-brand/`
 - [x] **BRND-03**: CLI binary is `portty` (e.g. `portty attach`, `portty daemon`), and the Go module path, config/data directories, and socket names use "portty" instead of "agenthub"
 - [ ] **BRND-04**: README, help content, and in-app text describe Portty as a terminal with remote access. No AgentHub or agent-CLI wording remains in user-facing text.
-- [x] **BRND-05**: No "AgentHub"/"agenthub" reference remains anywhere in the repo (code, identifiers, comments, tests, CI, scripts, docs, config). A case-insensitive search over tracked files, excluding `.planning/` history and git history, finds zero hits.
+- [ ] **BRND-05**: No "AgentHub"/"agenthub" reference remains anywhere in the repo (code, identifiers, comments, tests, CI, scripts, docs, config). A case-insensitive search over tracked files, excluding `.planning/` history and git history, finds zero hits.
 - [x] **BRND-06**: The app's website is https://portty.app. About box, Help, README, and update/release links point to it or to github.com/scottkw/portty, never to AgentHub URLs.
 
 ### Terminal
