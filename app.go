@@ -1322,6 +1322,9 @@ func (a *App) refreshTrayState() {
 	a.updateTray(sessions, connected)
 }
 
+// updateSlug is the GitHub repository whose releases the update check reads.
+const updateSlug = "scottkw/portty"
+
 // startUpdatePoller checks for updates on startup and every hour.
 // Follows the startHealthPoller/startTrayPoller goroutine+ticker pattern.
 func (a *App) startUpdatePoller(ctx context.Context) {
@@ -1349,7 +1352,7 @@ func (a *App) startUpdatePoller(ctx context.Context) {
 
 // runUpdateCheck performs a single update check and emits an event if a newer version is found.
 func (a *App) runUpdateCheck(ctx context.Context, force bool) {
-	info, err := updater.Check(ctx, configDir(), "scottkw/agenthub", Version, updater.DefaultDetect, force)
+	info, err := updater.Check(ctx, configDir(), updateSlug, Version, updater.DefaultDetect, force)
 	if err != nil || info == nil {
 		return
 	}
@@ -1373,7 +1376,7 @@ func (a *App) GetLastUpdateInfo() *updater.UpdateInfo {
 func (a *App) CheckForUpdates() *updater.UpdateInfo {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	info, _ := updater.Check(ctx, configDir(), "scottkw/agenthub", Version, updater.DefaultDetect, true)
+	info, _ := updater.Check(ctx, configDir(), updateSlug, Version, updater.DefaultDetect, true)
 	if info != nil {
 		a.lastUpdateMu.Lock()
 		a.lastUpdate = info

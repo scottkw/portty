@@ -1,10 +1,10 @@
-// Package updater provides rate-limited update detection for the agenthub app.
+// Package updater provides rate-limited update detection for Portty.
 // It checks GitHub releases (via go-selfupdate) and persists the last-check
 // timestamp to disk to avoid excessive network calls.
 //
 // Usage:
 //
-//	info, err := updater.Check(ctx, configDir, "scottkw/agenthub", version, updater.DefaultDetect, false)
+//	info, err := updater.Check(ctx, configDir, "scottkw/portty", version, updater.DefaultDetect, false)
 //	if info != nil {
 //	    // show update notification
 //	}
@@ -29,6 +29,11 @@ const (
 
 	// checkFile is the filename for the persisted last-check timestamp.
 	checkFile = "update_check.json"
+
+	// dmgAssetFilter matches the release DMG that release.yml publishes,
+	// portty-v<x.y.z>-darwin-universal.dmg. go-selfupdate lowercases asset
+	// names before matching, and without a filter it never matches a .dmg.
+	dmgAssetFilter = `^portty-v?\d+\.\d+\.\d+.*-darwin-universal\.dmg$`
 )
 
 // DetectFunc is the injectable function type for detecting the latest release.
@@ -51,7 +56,18 @@ type lastCheckFile struct {
 // It returns the latest version string (without leading "v"), whether a release
 // was found, and any network/API error.
 func DefaultDetect(ctx context.Context, slug string) (string, bool, error) {
-	latest, found, err := selfupdate.DetectLatest(ctx, selfupdate.ParseSlug(slug))
+	return detectLatestFrom(ctx, nil, slug)
+}
+
+// detectLatestFrom finds the newest non-draft, non-prerelease release of slug
+// that carries the Portty DMG. A nil src means the default GitHub source,
+// which reports a 404 (no releases, or a private repo) as nothing found.
+func detectLatestFrom(ctx context.Context, src selfupdate.Source, slug string) (string, bool, error) {
+	up, err := selfupdate.NewUpdater(selfupdate.Config{Source: src, Filters: []string{dmgAssetFilter}})
+	if err != nil {
+		return "", false, err
+	}
+	latest, found, err := up.DetectLatest(ctx, selfupdate.ParseSlug(slug))
 	if err != nil || !found {
 		return "", found, err
 	}
