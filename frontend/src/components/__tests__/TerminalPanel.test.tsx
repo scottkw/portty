@@ -83,6 +83,18 @@ describe('font size control', () => {
     expect(body.indexOf('fitTerminal(term)', guest)).toBeGreaterThan(body.indexOf('} else {', guest))
   })
 
+  // Quick 261116-ku9 R2: shared grid math and the PTY's spawn grid at construction.
+  it('fitTerminal delegates its cols/rows math to gridForContentBox', () => {
+    const fit = raw.slice(raw.indexOf('function fitTerminal('), raw.indexOf('interface TerminalPanelProps'))
+    expect(fit).toContain('gridForContentBox(parentW, parentH, dims.css.cell.width, dims.css.cell.height)')
+    expect(fit).not.toContain('Math.floor(')
+  })
+
+  it('constructs the Terminal with initialCols/initialRows only when both are positive', () => {
+    const ctor = raw.slice(raw.indexOf('const term = new Terminal({'), raw.indexOf('const fitAddon = new FitAddon()'))
+    expect(ctor).toContain('...(initialCols && initialCols > 0 && initialRows && initialRows > 0 ? { cols: initialCols, rows: initialRows } : {})')
+  })
+
   it('font effect depends on [fontFamily, fontSize, isActive]', () => {
     expect(raw).toContain('}, [fontFamily, fontSize, isActive])')
     expect(raw).not.toContain('}, [fontSize])')

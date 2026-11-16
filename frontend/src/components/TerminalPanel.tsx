@@ -25,6 +25,7 @@ import { SessionEndedBanner } from './SessionEndedBanner'
 // no built-in touch handling; this helper attaches the missing handlers.
 import { attachTouchScroll } from '../lib/touchScrollHandler'
 import { DEFAULT_TERMINAL_FONT_STACK } from '../lib/terminalFont'
+import { gridForContentBox } from '../lib/initialGrid'
 type PluginSettings = daemon.PluginSettings
 
 // Custom fit that uses full container width (no hardcoded scrollbar deduction).
@@ -46,8 +47,7 @@ function fitTerminal(term: Terminal): void {
   const parentW = parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight)
   const parentH = parent.clientHeight - parseFloat(parentStyle.paddingTop) - parseFloat(parentStyle.paddingBottom)
 
-  const cols = Math.max(2, Math.floor(parentW / dims.css.cell.width))
-  const rows = Math.max(1, Math.floor(parentH / dims.css.cell.height))
+  const { cols, rows } = gridForContentBox(parentW, parentH, dims.css.cell.width, dims.css.cell.height)
 
   if (term.rows !== rows || term.cols !== cols) {
     core._renderService.clear()
@@ -63,6 +63,9 @@ interface TerminalPanelProps {
   onFontSizeChange: (delta: number) => void
   /** Quick 261116-ku9 R1: xterm fontFamily (built by terminalFontFamily); defaults to the stack alone. */
   fontFamily?: string
+  /** Quick 261116-ku9 R2: the PTY's spawn grid, so a pre-fit write lands at the shell's column count. */
+  initialCols?: number
+  initialRows?: number
   theme: ITheme
   /** When true, RelayClient builds the daemon-proxy URL
    *  (ws://127.0.0.1:{port}/api/relay/remote/{id}/ws) instead of the
@@ -112,6 +115,8 @@ export function TerminalPanel({
   fontSize,
   onFontSizeChange,
   fontFamily = DEFAULT_TERMINAL_FONT_STACK,
+  initialCols,
+  initialRows,
   theme,
   remote,
   wsURL,
@@ -281,6 +286,8 @@ export function TerminalPanel({
       fontFamily,
       fontSize,
       theme,
+      // Start at the PTY's spawn grid (else xterm's 80×24) until the first fit.
+      ...(initialCols && initialCols > 0 && initialRows && initialRows > 0 ? { cols: initialCols, rows: initialRows } : {}),
     })
 
     const fitAddon = new FitAddon()

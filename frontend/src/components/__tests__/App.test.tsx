@@ -417,7 +417,21 @@ describe('TERM-01: createTab threading', () => {
     expect(raw).toContain('createTab(workDir)')
   })
   it('createTab calls CreateSession without cli or args', () => {
-    expect(raw).toContain('CreateSession(defaultName, workDir, cols, rows)')
+    expect(raw).toContain('CreateSession(defaultName, workDir, grid?.cols ?? 0, grid?.rows ?? 0)')
+  })
+
+  // Quick 261116-ku9 R2: the PTY spawns at the grid the new xterm will fit to.
+  it('createTab measures the grid with the current terminal font and threads it to the tab', () => {
+    const start = raw.indexOf('const createTab = useCallback(')
+    const body = raw.slice(start, raw.indexOf('}, [tabCounter, terminalFontStack, terminalFont.size])', start))
+    expect(body).toContain('measureInitialGrid(container, terminalFontStack, terminalFont.size)')
+    expect(body).toContain('if (grid) spawnGridRef.current[sessionId] = grid')
+    expect(body.indexOf('spawnGridRef.current[sessionId] = grid')).toBeLessThan(body.indexOf('setTabs('))
+    expect(raw).not.toMatch(/clientWidth \/ 8|clientHeight \/ 17|cols = 220/)
+    expect(raw).toContain('initialCols={spawnGridRef.current[tab.sessionId]?.cols}')
+    expect(raw).toContain('initialRows={spawnGridRef.current[tab.sessionId]?.rows}')
+    const remove = raw.slice(raw.indexOf('const removeTabState = useCallback('), raw.indexOf('removeTabStateRef.current = removeTabState'))
+    expect(remove).toContain('delete spawnGridRef.current[id]')
   })
   it('default tab name is shell {n}', () => {
     expect(raw).toContain('const defaultName = `shell ${tabCounter}`')

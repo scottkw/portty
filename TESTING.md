@@ -26,12 +26,12 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
 | Go unit/integration | **111** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
-| vitest (frontend) | **92** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers) |
+| vitest (frontend) | **93** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (the guest sees only the terminal: WEBCHAT-03, CHAT-01), live light/dark (THEM-01) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **211** | — | — | — |
+| **Total** | **212** | — | — | — |
 
-> Note: Quick 261116-ku9 (Terminal Font setting, Phase 3 UI-review fixes): counts from `git ls-files` — Go **111** (+1: internal/daemon/terminal_font_settings_test.go), vitest **92** (+1: frontend/src/lib/__tests__/terminalFont.test.ts), Playwright **7**, build-script **1**, total **211**. Edited in place: app_test.go (`TestGetTerminalFont_NoDaemonDefault`, `TestSetTerminalFont_RoundTrip`), SettingsSheet.test.tsx (Terminal Font row, blur/Enter commit, no-change no-op, restore on rejection), SettingsSheet.shell-warn-toggle / tailscale-status / web-link-ux tests (binding mocks for `GetTerminalFont` / `SetTerminalFont`), TerminalPanel.test.tsx (font effect, lib stack), App.test.tsx (`GetTerminalFont` at init and reconnect, zoom starts from the setting). Section 4: LOOK-01 rows added. Section 5: M-75 added.
+> Note: Quick 261116-ku9 (Terminal Font setting, Phase 3 UI-review fixes): counts from `git ls-files` — Go **111** (+1: internal/daemon/terminal_font_settings_test.go), vitest **93** (+2: frontend/src/lib/__tests__/terminalFont.test.ts, frontend/src/lib/__tests__/initialGrid.test.ts), Playwright **7**, build-script **1**, total **212**. Edited in place: internal/pty/native_test.go (`TestNativeCreate_InitialSizeVisibleToChild`), app_test.go (`TestGetTerminalFont_NoDaemonDefault`, `TestSetTerminalFont_RoundTrip`), SettingsSheet.test.tsx (Terminal Font row, blur/Enter commit, no-change no-op, restore on rejection), SettingsSheet.shell-warn-toggle / tailscale-status / web-link-ux tests (binding mocks for `GetTerminalFont` / `SetTerminalFont`), TerminalPanel.test.tsx (font effect, lib stack), App.test.tsx (`GetTerminalFont` at init and reconnect, zoom starts from the setting, createTab measures the spawn grid). Section 4: LOOK-01 and TERM-01 rows added. Section 5: M-75 and M-76 added.
 
 > Note: Portty Phase 3 plan 03-06 (DIST-03, BRND-05): counts from `git ls-files` unchanged — Go **110**, vitest **91**, Playwright **7**, build-script **1**, total **209**. Added gate script tests/check-brand.sh (not a counted suite file); tests/build-script.test.sh edited in place; distribute.yml and the package-manager cask removed.
 
@@ -268,6 +268,8 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | STRP-02 | internal/daemon/engine_migration_test.go | Go | Portty 01-03/01-11 (renamed 03-01): `TestSettingsMigration_LegacyV4Keys` — `tests/fixtures/settings_legacy_v4.json` (carries `filesWrite`, `cliPaths`, `shellPath`, `notifyOnWaiting`) loads cleanly; `shellWebShareWarned` and the plugins block survive; the next save drops `filesWrite`, `cliPaths`, `shellPath`, `notifyOnWaiting` and (Portty 02-06) `stayOnHubAfterCreate` (T-01-38). `TestSettingsMigrationV3_1ToV3_2` — the v3.1 upgrade re-write drops `cliPaths` |
 | TERM-01 | internal/daemon/engine_test.go | Go | Portty 01-04/01-11: `TestCreateSession_LoginShell` — real session (isolated `ZDOTDIR`, `SHELL=/bin/bash`) answers `[[ -o login ]] && [[ -n $ZSH_VERSION ]] && echo LOGIN_OK_$((40+2))` with `LOGIN_OK_42`, so it is a zsh login shell whatever `$SHELL` says. `TestCreateSession_LoginShellArgv` / `TestCreateSession_IgnoresShellEnvAndLegacySetting` — the spawn is always `/bin/zsh` with argv exactly `["-l"]`, even with `SHELL=/bin/bash` and a legacy settings.json `shellPath` (T-01-36); `TestCreateSession_ShellEmptyWorkDirHome` — empty dir starts in `$HOME` |
 | TERM-01 | internal/daemon/api_test.go | Go | Portty 01-04: `TestHandleCreateSession_LegacyBodyIgnored` — a legacy `{"cli":"claude","args":["--evil"]}` POST /sessions body still spawns the login shell with exactly `["-l"]` (T-01-15) |
+| TERM-01 | internal/pty/native_test.go | Go | Quick 261116-ku9: `TestNativeCreate_InitialSizeVisibleToChild` — `/bin/stty size` spawned at 123×45 prints exactly "45 123" (the PTY is sized before the shell starts) |
+| TERM-01 | frontend/src/lib/__tests__/initialGrid.test.ts | vitest | Quick 261116-ku9: headless xterm PROMPT_SP mechanism (the "%" mark stays on row 0 when the xterm has fewer columns than the shell's COLUMNS, 80 or 131 vs 132; gone at 132 and 140), `gridForContentBox` floors and clamps to 2×1, `measureInitialGrid` returns null under jsdom and removes its probe |
 | TERM-01 | cmd_cli_test.go | Go | Portty 01-04: `TestCmdNew_WithDir` / `TestCmdNew_NoDir` / `TestCmdNew_RejectsUnknownFlag` / `TestCmdNew_DaemonError` / `TestUsage_DocumentsNewDir` — `portty new [dir]` only (no agent arg, no `new shell`, no `--` passthrough) |
 | STRP-01 | internal/daemon/engine_natural_exit_test.go | Go | Portty 01-06: `TestDerivedStatus_ExitedErrored` — `sh -c "exit 0"` reads `exited`, `sh -c "exit 3"` reads `errored` in both `GetSessionStatus` and `ListSessions` |
 | STRP-01 | internal/daemon/engine_test.go | Go | Portty 01-06: `TestListSessions_ShellStatusRunning` — a live PTY session reads `running` (status derived from process state, no heuristic) |
@@ -924,6 +926,13 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
   4. Quit and relaunch: the row and the terminals show the saved family and size.
   - _Why not automatable:_ installed-font resolution and the WebGL/DOM glyph rendering exist only in the built app on a Mac. Validation, persistence and the effect wiring are covered by `terminal_font_settings_test.go`, `SettingsSheet.test.tsx` and `TerminalPanel.test.tsx`.
   - _Source:_ 261116-ku9-PLAN.md Task 1 (R1).
+
+- **M-76** No inverted "%" on a new session (quick 261116-ku9).
+  1. In the Tart VM (DOM renderer): from the empty state, click New Session; then, with tabs open, press ⌘T; then resize the window and press ⌘T again.
+  2. Repeat on the host Mac (WebGL renderer).
+  3. Expected: each new session's first line is the prompt, with no reverse-video "%" line above it.
+  - _Why not automatable:_ the timing of zsh's first prompt against the first xterm fit, and the real cell metrics of each renderer, exist only in the built app. The mechanism and the spawn order are covered by `initialGrid.test.ts` and `native_test.go`.
+  - _Source:_ 261116-ku9-PLAN.md Task 2 (R2).
 
 ---
 

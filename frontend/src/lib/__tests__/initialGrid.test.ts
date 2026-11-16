@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { Terminal } from '@xterm/xterm'
+import { gridForContentBox, measureInitialGrid } from '../initialGrid'
 
 // Quick 261116-ku9 (R2): the inverted "%" on a new session's first line is
 // zsh's PROMPT_SP mark. zsh prints the standout "%", then COLUMNS−1 spaces, CR,
@@ -33,5 +34,26 @@ describe('PROMPT_SP mark mechanism (headless xterm)', () => {
       const row0 = await row0After(cols, 132)
       expect(row0.trimEnd()).toBe('host%')
     }
+  })
+})
+
+describe('gridForContentBox', () => {
+  it('floors the content box by the cell size', () => {
+    expect(gridForContentBox(1028, 696, 7.8, 17)).toEqual({ cols: 131, rows: 40 })
+  })
+
+  it('clamps tiny or zero boxes to at least 2 cols and 1 row', () => {
+    expect(gridForContentBox(0, 0, 7.8, 17)).toEqual({ cols: 2, rows: 1 })
+    expect(gridForContentBox(5, 3, 7.8, 17)).toEqual({ cols: 2, rows: 1 })
+  })
+})
+
+describe('measureInitialGrid', () => {
+  it('returns null under jsdom (no layout) and leaves no probe behind', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    expect(measureInitialGrid(host, 'monospace', 13)).toBeNull()
+    expect(host.childElementCount).toBe(0)
+    host.remove()
   })
 })

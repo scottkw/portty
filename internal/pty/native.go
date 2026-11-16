@@ -48,17 +48,19 @@ func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Sess
 	// Setpgid here because combining Setpgid+Setsid causes EPERM on macOS.
 	// killSession uses -pid (negative) to kill the entire process group.
 
-	if err := cmd.Start(); err != nil {
-		cancel()
-		_ = p.Close()
-		return nil, fmt.Errorf("start process: %w", err)
-	}
-
-	// Set initial terminal dimensions.
+	// Set initial terminal dimensions BEFORE the shell starts (quick 261116-ku9):
+	// zsh reads its size at startup and pads its PROMPT_SP mark to it, so a
+	// late resize leaves an inverted "%" line. Resize is an ioctl on the master.
 	if err := p.Resize(req.Cols, req.Rows); err != nil {
 		cancel()
 		_ = p.Close()
 		return nil, fmt.Errorf("initial resize: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		cancel()
+		_ = p.Close()
+		return nil, fmt.Errorf("start process: %w", err)
 	}
 
 	id, err := generateID()

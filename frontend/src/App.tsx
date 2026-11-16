@@ -61,6 +61,7 @@ import { QuitConfirmModal } from './components/QuitConfirmModal'
 import { useColorScheme } from './lib/useColorScheme'
 import { LIGHT_PALETTE, DARK_PALETTE } from './lib/terminalPalettes'
 import { DEFAULT_TERMINAL_FONT_SIZE, terminalFontFamily, type TerminalFont } from './lib/terminalFont'
+import { measureInitialGrid } from './lib/initialGrid'
 
 
 /**
@@ -112,6 +113,8 @@ function App(): React.ReactElement {
   // ⌘+/⌘− zoom starts from it. The family applies to every local tab.
   const [terminalFont, setTerminalFont] = useState<TerminalFont>({ family: '', size: DEFAULT_TERMINAL_FONT_SIZE })
   const terminalFontStack = useMemo(() => terminalFontFamily(terminalFont.family), [terminalFont.family])
+  // Quick 261116-ku9 R2: the grid each new session's PTY was spawned at, so its xterm starts there too.
+  const spawnGridRef = useRef<Record<string, { cols: number; rows: number }>>({})
   // Tailscale health state
   const [tailscaleHealth, setTailscaleHealth] = useState<TailscaleHealth | null>(null)
   // NET-01: null means "not checked yet" (and always in web mode), which is not "off".
@@ -580,18 +583,16 @@ function App(): React.ReactElement {
     const defaultName = `shell ${tabCounter}`
     setTabCounter((n) => n + 1)
 
-    // Estimate initial PTY dimensions from the terminal container.
-    // These are approximations — the double-rAF fit sends exact resize after mount.
+    // Quick 261116-ku9 R2: spawn the PTY at the grid the new tab's xterm will
+    // fit to, so zsh's first prompt (PROMPT_SP) is padded for the same width.
     const container = document.querySelector('.terminal-container') as HTMLElement | null
-    let cols = 220, rows = 50  // Reasonable fallback for large screens
-    if (container && container.clientWidth > 0 && container.clientHeight > 0) {
-      cols = Math.max(80, Math.floor(container.clientWidth / 8))
-      rows = Math.max(24, Math.floor(container.clientHeight / 17))
-    }
+    const grid = container ? measureInitialGrid(container, terminalFontStack, terminalFont.size) : null
+    if (!grid) console.warn('[App] measureInitialGrid: no layout; the daemon spawns at 80×24')
 
     try {
-      const sessionId = await CreateSession(defaultName, workDir, cols, rows)
+      const sessionId = await CreateSession(defaultName, workDir, grid?.cols ?? 0, grid?.rows ?? 0)
       if (exitedIdsRef.current.has(sessionId)) return
+      if (grid) spawnGridRef.current[sessionId] = grid
       const tab: Tab = {
         id: sessionId,
         name: defaultName,
@@ -628,7 +629,7 @@ function App(): React.ReactElement {
       console.error('[App] CreateSession failed:', err)
       throw err // the New Session dialog stays open and shows it
     }
-  }, [tabCounter])
+  }, [tabCounter, terminalFontStack, terminalFont.size])
 
   // UI-only removal of a session's tab state. session:exit calls it directly
   // (the daemon already removed the session); closeTab is nothing more.
@@ -640,6 +641,7 @@ function App(): React.ReactElement {
     })
     // Clean up font size for the closed session.
     setFontSizes((prev) => { const n = { ...prev }; delete n[id]; return n })
+    delete spawnGridRef.current[id]
   }, [])
   // Keep the ref in sync so the session:exit event handler ([] deps) always calls the latest version
   removeTabStateRef.current = removeTabState
@@ -1313,6 +1315,8 @@ function App(): React.ReactElement {
                   isActive={isActive}
                   relayPort={relayPort}
                   fontFamily={terminalFontStack}
+                  initialCols={spawnGridRef.current[tab.sessionId]?.cols}
+                  initialRows={spawnGridRef.current[tab.sessionId]?.rows}
                   fontSize={fontSizes[tab.sessionId] ?? terminalFont.size}
                   onFontSizeChange={(delta) => handleFontSizeChange(tab.sessionId, delta)}
                   theme={terminalTheme}
