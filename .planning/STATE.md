@@ -146,7 +146,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- [Next, after Phase 3 review/verify, before Phase 4] Quick task: Settings ▸ General ▸ Terminal Font (font family text field + size), persisted by the daemon like Appearance; the Nerd Font fallback list stays after the user's choice. User approved 2026-11-16 ("yes").
+- Follow-up: restored tabs after an app restart still start at 80×24, so their scrollback replay can show the old % mark in history (see 261116-ku9 SUMMARY).
 
 ### Blockers/Concerns
 
@@ -175,6 +175,7 @@ Recent decisions affecting current work:
 |---|-------------|------|--------|-----------|
 | 261115-rc8 | Phase 2 UI polish: sidebar vibrancy material, terminal padding, LAN-mode wording, type/spacing leftovers | 2026-11-15 | 3251a80e | [261115-rc8-phase-2-ui-polish-sidebar-vibrancy-mater](./quick/261115-rc8-phase-2-ui-polish-sidebar-vibrancy-mater/) |
 | 261116-c9f | Sidebar "native, alive" refresh: header glyphs, New Session row and +, peer host rows with status dots, compact footer | 2026-11-16 | b501b8f8 | [261116-c9f-sidebar-native-alive-refresh](./quick/261116-c9f-sidebar-native-alive-refresh/) |
+| 261116-ku9 | Terminal Font setting (daemon-persisted, live), first-prompt % fix (PTY sized before spawn + measured grid), Settings copy, plugin save-on-change, single empty-state New Session | 2026-11-16 | a363abd6 | [261116-ku9-terminal-font-setting-and-ui-review-fixe](./quick/261116-ku9-terminal-font-setting-and-ui-review-fixe/) |
 | 3 | Terminal font: Nerd Font fallbacks after SF Mono so Powerlevel10k icons render | 2026-11-16 | ffe5a118 | — |
 
 ## Deferred Items
