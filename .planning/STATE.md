@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 3
 status: executing
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-11-16T17:01:14.056Z"
+stopped_at: Completed 03-05-PLAN.md
+last_updated: "2026-11-16T17:46:44.488Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 3 execution started
-state_head: c6967566ccea3f3976d493bf545022d82deb7434
+state_head: 03c160b543af0ba27803ea6cb80489ae556945aa
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 31
-  completed_plans: 29
+  completed_plans: 30
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 3 — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 3 execution started
 
@@ -71,6 +71,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 03 P02 | 28 min | 3 tasks | 15 files |
 | Phase 03 P03 | 10 min | 2 tasks | 69 files |
 | Phase 03 P04 | 25min | 2 tasks | 13 files |
+| Phase 3 P05 | 15min | 3 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -134,6 +135,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-04: About Portty uses the native AppKit standard panel via about_darwin.go/.m and the menuShowAbout seam; only credits and a blank build version are passed
 - [Phase 03]: 03-04: GitHub Help item and openGitHubCallback removed, not renamed
 - [Phase 03]: 03-04: quit-to-menu-bar copy lives in pure quitToMenuBarBody(n) (0/1/n), identifier portty.quit-gui-only, title Portty
+- [Phase 3]: 03-05: Web pages change text only (Portty in the system font, no logo or CSS changes); the live /dashboard and /join routes are tested for copy and the CSP header
+- [Phase 3]: 03-05: Folder memory key is portty:lastWorkDir with no migration (it resets once to home)
+- [Phase 3]: 03-05: Negative test assertions use patterns that never spell the old name out (App.test namespaced theme-key regex)
 
 ### Pending Todos
 
@@ -185,6 +189,6 @@ Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appeara
 
 ## Session Continuity
 
-Last session: 2026-11-16T17:01:12.601Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-11-16T17:46:43.065Z
+Stopped at: Completed 03-05-PLAN.md
 Resume file: None
