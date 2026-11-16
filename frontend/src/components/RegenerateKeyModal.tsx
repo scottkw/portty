@@ -49,15 +49,19 @@ function RegenerateKeyModal({
   const [acting, setActing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
-  // Cancel first: the safer default for a destructive action.
-  useDialogFocus(dialogRef, { onCancel, initialFocus: 'cancel', active: isOpen })
+  // Cancel first: the safer default for a destructive action. Esc is ignored
+  // while onConfirm is in flight, matching the disabled Cancel button.
+  useDialogFocus(dialogRef, {
+    onCancel: () => { if (!acting) onCancel() },
+    initialFocus: 'cancel',
+    active: isOpen,
+  })
 
-  // Reset transient state when modal (re)opens or closes.
+  // Reset transient state when the modal opens or closes, so an error from a
+  // previous attempt never shows on the next open.
   useEffect(() => {
-    if (!isOpen) {
-      setError(null)
-      setActing(false)
-    }
+    setError(null)
+    setActing(false)
   }, [isOpen])
 
   if (!isOpen) return null

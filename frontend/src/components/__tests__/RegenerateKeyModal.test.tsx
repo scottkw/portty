@@ -147,6 +147,23 @@ describe('RegenerateKeyModal: sheet shell and focus (Portty 02-09)', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
+  it('ignores Esc while onConfirm is in flight (WR-01)', async () => {
+    const onCancel = vi.fn()
+    let resolve!: () => void
+    const pending = new Promise<void>((r) => { resolve = r })
+    mount(<RegenerateKeyModal isOpen onConfirm={() => pending} onCancel={onCancel} />)
+    await act(async () => { container.querySelector<HTMLButtonElement>('[data-dialog-primary]')!.click() })
+    act(() => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(onCancel).not.toHaveBeenCalled()
+    await act(async () => { resolve(); await pending })
+    act(() => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
   it('shows a rejected onConfirm inline and stays open', async () => {
     mount(<RegenerateKeyModal isOpen onConfirm={() => Promise.reject(new Error('boom'))} onCancel={() => {}} />)
     const confirm = container.querySelector<HTMLButtonElement>('[data-dialog-primary]')!
