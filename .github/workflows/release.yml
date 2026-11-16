@@ -84,18 +84,18 @@ jobs:
 
       - name: Copy branded ICNS into bundle
         run: |
-          cp build/appicon.icns build/bin/AgentHub.app/Contents/Resources/iconfile.icns 2>/dev/null || true
+          cp build/darwin/iconfile.icns build/bin/Portty.app/Contents/Resources/iconfile.icns
 
       # CRITICAL: tar .app BEFORE upload — actions/upload-artifact zips and strips symlinks/+x bits
       # (90-RESEARCH.md Pitfall 1 lines 471-477)
       - name: Tar .app bundle (preserve symlinks and +x bits)
-        run: tar -czf build/bin/AgentHub.app.tar.gz -C build/bin AgentHub.app
+        run: tar -czf build/bin/Portty.app.tar.gz -C build/bin Portty.app
 
       - name: Attest unsigned artifact (internal)
         id: attest
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
-          subject-path: build/bin/AgentHub.app.tar.gz
+          subject-path: build/bin/Portty.app.tar.gz
 
       - name: Stage attestation bundle alongside artifact
         shell: bash
@@ -104,9 +104,9 @@ jobs:
       - name: Upload unsigned .app bundle + attestation bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: agenthub-darwin-universal-unsigned
+          name: portty-darwin-universal-unsigned
           path: |
-            build/bin/AgentHub.app.tar.gz
+            build/bin/Portty.app.tar.gz
             build/bin/attestation.json
           if-no-files-found: error
 
@@ -134,7 +134,7 @@ jobs:
       - name: Download unsigned .app bundle + attestation bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: agenthub-darwin-universal-unsigned
+          name: portty-darwin-universal-unsigned
           path: artifacts/
 
       - name: Verify internal attestation
@@ -148,14 +148,14 @@ jobs:
             exit 1
           fi
           echo "Verifying attestation bundle: $BUNDLE"
-          gh attestation verify artifacts/AgentHub.app.tar.gz \
+          gh attestation verify artifacts/Portty.app.tar.gz \
             --repo ${{ github.repository }} \
             --bundle "$BUNDLE"
 
       - name: Untar .app bundle
         run: |
           mkdir -p build/bin
-          tar -xzf artifacts/AgentHub.app.tar.gz -C build/bin/
+          tar -xzf artifacts/Portty.app.tar.gz -C build/bin/
 
       # ======================================================================
       # Below: codesign/notarize/DMG steps MOVED VERBATIM from old build-macos
@@ -180,43 +180,38 @@ jobs:
             --timestamp \
             --entitlements build/entitlements.plist \
             --sign "$MACOS_CERTIFICATE_NAME" \
-            build/bin/AgentHub.app
+            build/bin/Portty.app
 
       - name: Notarize .app
         run: |
-          xcrun notarytool store-credentials "agenthub-notarize" \
+          xcrun notarytool store-credentials "portty-notarize" \
             --apple-id "$MACOS_NOTARIZATION_APPLE_ID" \
             --team-id "$MACOS_NOTARIZATION_TEAM_ID" \
             --password "$MACOS_NOTARIZATION_PWD"
-          ditto -c -k --keepParent build/bin/AgentHub.app build/bin/agenthub-notarize.zip
-          xcrun notarytool submit build/bin/agenthub-notarize.zip \
-            --keychain-profile "agenthub-notarize" \
+          ditto -c -k --keepParent build/bin/Portty.app build/bin/portty-notarize.zip
+          xcrun notarytool submit build/bin/portty-notarize.zip \
+            --keychain-profile "portty-notarize" \
             --wait --timeout 60m
-          xcrun stapler staple build/bin/AgentHub.app
+          xcrun stapler staple build/bin/Portty.app
 
       - name: Create and sign DMG
         run: |
-          brew install create-dmg
           VERSION="${GITHUB_REF_NAME}"
-          DMG_NAME="agenthub-${VERSION}-darwin-universal.dmg"
-          create-dmg \
-            --volname "AgentHub" \
-            --codesign "$MACOS_CERTIFICATE_NAME" \
-            "${DMG_NAME}" \
-            build/bin/AgentHub.app
-          mv "${DMG_NAME}" build/bin/
+          DMG_NAME="portty-${VERSION}-darwin-universal.dmg"
+          hdiutil create -volname "Portty" -srcfolder build/bin/Portty.app -ov -format UDZO "build/bin/${DMG_NAME}"
+          codesign --force --timestamp --sign "$MACOS_CERTIFICATE_NAME" "build/bin/${DMG_NAME}"
 
       - name: Cleanup keychain
         if: always()
         run: |
           security delete-keychain build.keychain || true
-          rm -f certificate.p12 build/bin/agenthub-notarize.zip
+          rm -f certificate.p12 build/bin/portty-notarize.zip
 
       - name: Upload signed DMG
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-dmg
-          path: build/bin/agenthub-*.dmg
+          path: build/bin/portty-*.dmg
           if-no-files-found: error
 
   publish:
@@ -238,7 +233,7 @@ jobs:
         run: |
           cd artifacts
           # Only the signed DMG ships. The explicit glob excludes attestation
-          # .json bundles and the unsigned AgentHub.app.tar.gz intermediate.
+          # .json bundles and the unsigned Portty.app.tar.gz intermediate.
           sha256sum *.dmg > checksums.txt
           cat checksums.txt
 
@@ -255,10 +250,8 @@ jobs:
             artifacts/checksums.txt
           fail_on_unmatched_files: true
           draft: ${{ contains(github.ref, '-rc') }}
-          # DIST-01 (Phase 106 91-A fix): publish via RELEASE_PUBLISH_TOKEN (PAT)
-          # so the resulting `release.published` event triggers distribute.yml
-          # automatically. GITHUB_TOKEN-published releases are muted by Actions
-          # safety policy and do NOT fire downstream workflows.
-          # Falls back to GITHUB_TOKEN if RELEASE_PUBLISH_TOKEN is not set so
-          # manual dispatch still works.
+          # RELEASE_PUBLISH_TOKEN (PAT) once let the `release.published` event
+          # trigger a downstream tap-update workflow; that workflow was removed
+          # (DIST-03). The token logic stays until Phase 6 revisits publishing.
+          # Falls back to GITHUB_TOKEN if RELEASE_PUBLISH_TOKEN is not set.
           token: ${{ secrets.RELEASE_PUBLISH_TOKEN || secrets.GITHUB_TOKEN }}

@@ -8,9 +8,9 @@ jobs:
       fail-fast: false
       matrix:
         # Single entry kept as a matrix so the required check context name
-        # "build (agenthub, darwin/universal, macos-latest)" stays stable.
+        # "build (portty, darwin/universal, macos-latest)" stays stable.
         build:
-          - name: agenthub
+          - name: portty
             platform: darwin/universal
             os: macos-latest
 
@@ -22,6 +22,9 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           submodules: true
+
+      - name: Brand gate (BRND-05, BRND-06, DIST-03)
+        run: bash tests/check-brand.sh
 
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -53,6 +56,9 @@ jobs:
       - name: Verify traceability paths exist
         run: bash tests/check-traceability-paths.sh
 
+      - name: Verify brand assets (BRND-02)
+        run: bash scripts/verify-icons.sh
+
       - name: Install Wails CLI (version from go.mod)
         shell: bash
         run: |
@@ -71,6 +77,6 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: agenthub-darwin-universal
-          path: build/bin/agenthub.app
+          name: portty-darwin-universal
+          path: build/bin/Portty.app
           if-no-files-found: error

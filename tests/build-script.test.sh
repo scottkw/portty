@@ -191,7 +191,7 @@ _test_sign_missing_env_vars() {
     bash -c "
       $FUNC_SNIPPET
       unset MACOS_SIGNING_IDENTITY MACOS_APPLE_ID MACOS_TEAM_ID MACOS_APP_PASSWORD
-      sign_and_notarize 'build/bin/agenthub.app'
+      sign_and_notarize 'build/bin/Portty.app'
     " 2>&1
   ) || true
 

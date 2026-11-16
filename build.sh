@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build.sh — macOS build script for AgentHub (Wails v2)
+# build.sh — macOS build script for Portty (Wails v2)
 # Usage: build.sh --platform macos [--sign]
 
 PLATFORM=""
@@ -77,10 +77,10 @@ build_macos() {
   "$WAILS" build -platform darwin/universal -clean \
     -ldflags "-X main.Version=${VERSION}" \
     -tags wailsassets
-  echo "==> macOS build complete: build/bin/agenthub.app"
+  echo "==> macOS build complete: build/bin/Portty.app"
 
   if [[ "$SIGN" == "true" ]]; then
-    sign_and_notarize "build/bin/agenthub.app"
+    sign_and_notarize "build/bin/Portty.app"
   fi
 }
 
@@ -133,13 +133,13 @@ sign_and_notarize() {
   codesign --verify --deep --strict --verbose=2 "$APP"
 
   # Step 3: Create zip for notarytool (ditto preserves macOS metadata; NOT zip -r)
-  local ZIP="build/bin/agenthub-notarize.zip"
+  local ZIP="build/bin/portty-notarize.zip"
   echo "==> Creating notarization archive"
   ditto -c -k --keepParent "$APP" "$ZIP"
 
   # Step 4: Store credentials in keychain profile
   echo "==> Storing notarization credentials"
-  xcrun notarytool store-credentials "agenthub-notarize" \
+  xcrun notarytool store-credentials "portty-notarize" \
     --apple-id "$APPLE_ID" \
     --team-id "$TEAM_ID" \
     --password "$APP_PASSWORD"
@@ -147,7 +147,7 @@ sign_and_notarize() {
   # Step 5: Submit and wait (--wait is CRITICAL: without it, exit 0 does NOT mean success)
   echo "==> Submitting for notarization (this may take several minutes)"
   xcrun notarytool submit "$ZIP" \
-    --keychain-profile "agenthub-notarize" \
+    --keychain-profile "portty-notarize" \
     --wait
 
   # Step 6: Staple notarization ticket to .app
