@@ -219,4 +219,13 @@ describe('ShareSegmentedControl — colorblind-safe danger cue (SM-07)', () => {
     expect(c.textContent).not.toContain('⚠')
     expect(tabs.filter((t) => t.querySelector('svg.share-seg__icon'))).toHaveLength(1)
   })
+
+  // Review IN-09: the aria-hidden icon's warning reaches screen readers.
+  it('names the danger tab with a Warning prefix on its access label; other tabs keep their text name', () => {
+    const c = renderControl({ tabs: TABS_POST_CONFIRM, active: 'internet-fa' })
+    const tabs = Array.from(c.querySelectorAll('[role="tab"]')) as HTMLButtonElement[]
+    const dangerTab = tabs.find((t) => t.className.includes('is-danger'))!
+    expect(dangerTab.getAttribute('aria-label')).toBe('Internet, Warning: Full access')
+    expect(tabs.filter((t) => t.hasAttribute('aria-label'))).toHaveLength(1)
+  })
 })

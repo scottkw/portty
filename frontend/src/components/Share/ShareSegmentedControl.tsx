@@ -74,6 +74,7 @@ export function ShareSegmentedControl({
       {tabs.map((t) => {
         const isActive = active === t.id
         const subText = t.disabled ? 'N/A' : t.sub
+        const showDanger = t.danger && !t.disabled
         return (
           <button
             key={t.id}
@@ -86,6 +87,8 @@ export function ShareSegmentedControl({
             aria-disabled={t.disabled}
             disabled={t.disabled}
             tabIndex={isActive ? 0 : -1}
+            // The icon is aria-hidden; this carries its warning to screen readers (IN-09).
+            aria-label={showDanger ? `${t.main}, Warning: ${subText}` : undefined}
             className={classNames(
               'share-seg',
               isActive && 'is-active',
@@ -105,7 +108,7 @@ export function ShareSegmentedControl({
             }}
           >
             <span className="share-seg__main">{t.main}</span>
-            {t.danger && !t.disabled && (
+            {showDanger && (
               <ExclamationTriangleIcon className="share-seg__icon" aria-hidden="true" />
             )}
             <span className="share-seg__sub">{subText}</span>
