@@ -150,8 +150,8 @@ describe('TERM-01/02 initial fit not synchronous', () => {
 })
 
 describe('PAD-01 terminal padding', () => {
-  it('.terminal-session-container has padding: 8px for inset from edges', () => {
-    expect(cssRaw).toMatch(/\.terminal-session-container\s*\{[^}]*padding:\s*8px/)
+  it('.terminal-session-container has padding: 12px 16px for inset from edges (UI-SPEC)', () => {
+    expect(cssRaw).toMatch(/\.terminal-session-container\s*\{[^}]*padding:\s*12px 16px/)
   })
 
   it('.terminal-session-container paints the --color-terminal-bg token (Portty 02-03)', () => {
