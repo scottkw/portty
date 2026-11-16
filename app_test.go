@@ -1104,3 +1104,44 @@ func TestApplyStoredAppearance_AppliesSavedValue(t *testing.T) {
 		t.Errorf("applied: want [light], got %v", *got)
 	}
 }
+
+// WR-05: domReady waits for startup to close startupDone, but only up to
+// startupWait, because it runs on the Wails message loop.
+func TestDomReady_WaitsForStartupDone(t *testing.T) {
+	a := testApp(t)
+	if err := a.client.SetStartMinimized(true); err != nil { // skip WindowShow (no Wails ctx in tests)
+		t.Fatalf("SetStartMinimized: %v", err)
+	}
+	a.startupDone = make(chan struct{})
+	returned := make(chan struct{})
+	go func() { a.domReady(context.Background()); close(returned) }()
+	select {
+	case <-returned:
+		t.Fatal("domReady returned before startupDone closed")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(a.startupDone)
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("domReady did not return after startupDone closed")
+	}
+}
+
+func TestDomReady_BoundedWhenStartupHangs(t *testing.T) {
+	a := testApp(t)
+	if err := a.client.SetStartMinimized(true); err != nil {
+		t.Fatalf("SetStartMinimized: %v", err)
+	}
+	a.startupDone = make(chan struct{}) // never closed: startup is wedged
+	prev := startupWait
+	startupWait = 50 * time.Millisecond
+	t.Cleanup(func() { startupWait = prev })
+	returned := make(chan struct{})
+	go func() { a.domReady(context.Background()); close(returned) }()
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("domReady blocked past startupWait")
+	}
+}

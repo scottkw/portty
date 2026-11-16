@@ -30,7 +30,10 @@ func NewDaemonClient(socketPath string) *DaemonClient {
 		},
 	}
 	return &DaemonClient{
-		http: &http.Client{Transport: transport},
+		// A wedged daemon must not hang callers forever (review WR-05). Every
+		// request here is a bounded JSON call (tailnet peers caps itself at 10 s);
+		// there is no streaming endpoint on this client.
+		http: &http.Client{Transport: transport, Timeout: 30 * time.Second},
 		base: "http://daemon",
 	}
 }

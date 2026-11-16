@@ -143,9 +143,18 @@ func NewApp() *App {
 // domReady is called by Wails after the WebView DOM is ready.
 // Shows the window unless the persisted start-minimized preference is set.
 // Falls back to showing the window when the daemon is unreachable (safe default).
+// startupWait bounds domReady's wait for startup. domReady runs on the Wails
+// message loop, so a wedged daemon must not block it forever (review WR-05).
+var startupWait = 5 * time.Second
+
 func (a *App) domReady(ctx context.Context) {
 	if a.startupDone != nil {
-		<-a.startupDone // the stored Appearance must land before the first visible paint
+		// The stored Appearance should land before the first visible paint; past
+		// the bound, show anyway and let it apply when startup finishes.
+		select {
+		case <-a.startupDone:
+		case <-time.After(startupWait):
+		}
 	}
 	startMinimized := false
 	if a.client != nil {
@@ -175,16 +184,18 @@ func (a *App) startup(ctx context.Context) {
 	// dials on use, so the pollers read it lock-free and RetryDaemon only has
 	// to bring the daemon up. While it is down, calls fail and pollers retry.
 	a.client = daemon.NewDaemonClient(socketPath)
-	if err := daemon.EnsureDaemon(socketPath); err != nil {
-		a.daemonErr = err
-		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
-		runtime.EventsEmit(ctx, "daemon:error", err.Error())
-	} else {
-		a.applyStoredAppearance()
-	}
-	if a.startupDone != nil {
-		close(a.startupDone)
-	}
+	func() {
+		if a.startupDone != nil {
+			defer close(a.startupDone) // even on panic, so domReady never waits the full bound
+		}
+		if err := daemon.EnsureDaemon(socketPath); err != nil {
+			a.daemonErr = err
+			// Notify frontend — window is already rendered when OnStartup runs (goroutine).
+			runtime.EventsEmit(ctx, "daemon:error", err.Error())
+		} else {
+			a.applyStoredAppearance()
+		}
+	}()
 
 	// One app-wide exit watcher closes tabs for every exited session (TERM-05).
 	a.startExitWatcher(ctx)
