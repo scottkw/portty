@@ -435,7 +435,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
                 {appearanceLoaded && (
                   <Row label="Appearance" description="Automatic follows your Mac's Light or Dark setting in System Settings.">
                     {/* Styled like the Share dialog segmented control (NSSegmentedControl). */}
-                    <div className="share-segbar" role="radiogroup" aria-label="Appearance" onKeyDown={handleAppearanceKeyDown}>
+                    <div className="share-segbar settings-appearance" role="radiogroup" aria-label="Appearance" onKeyDown={handleAppearanceKeyDown}>
                       {APPEARANCES.map(({ id, label }) => (
                         <button
                           key={id}

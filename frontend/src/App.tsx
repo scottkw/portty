@@ -5,7 +5,7 @@ import { EmptyState } from './components/EmptyState'
 import { nextActiveTabId, renameInList, tabLabel } from './lib/tabs'
 import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
-import { SettingsSheet } from './components/SettingsSheet'
+import { SettingsSheet, type Appearance } from './components/SettingsSheet'
 import { stripAnsi } from './lib/stripAnsi'
 import { sanitizeFilename } from './lib/sanitizeFilename'
 import { detectMode, readWebModeParams } from './lib/webMode'
@@ -31,6 +31,7 @@ import {
   QuitAll,
   SaveTerminalSession,
   SetTrayProgress,
+  GetAppearance,
 } from './wailsjs/go/main/App'
 import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
@@ -214,7 +215,10 @@ function App(): React.ReactElement {
 
   // THEM-01: follow the system appearance. Palettes are module constants, so
   // the TerminalPanel theme effect only re-runs on a real scheme change.
-  const terminalTheme = useColorScheme() === 'dark' ? DARK_PALETTE : LIGHT_PALETTE
+  // Portty 02-13: the Settings override is desktop only; the web share page
+  // always follows the browser.
+  const [appearance, setAppearance] = useState<Appearance>('system')
+  const terminalTheme = useColorScheme(mode === 'web' ? 'system' : appearance) === 'dark' ? DARK_PALETTE : LIGHT_PALETTE
 
   // Phase 97 SER-01: TerminalPanel calls this on attach/detach to
   // register/unregister its serialize() closure. Empty deps because
@@ -410,6 +414,11 @@ function App(): React.ReactElement {
             console.warn('[App] GetShellWebShareWarningEnabled failed:', err)
             setShellWebShareWarningEnabled(true) // default ON (safe degradation per D-08)
           })
+
+        // Portty 02-13 THEM-01: the stored Appearance override (keep 'system' on failure).
+        GetAppearance()
+          .then((v) => { if (v === 'light' || v === 'dark') setAppearance(v) })
+          .catch(() => { /* stay 'system' */ })
 
         // Restore existing sessions as tabs (SESS-02 reattachment after window re-show).
         if (sessions.length > 0) {
@@ -1221,6 +1230,7 @@ function App(): React.ReactElement {
             tailscaleHealth={tailscaleHealth}
             webServerMode={webServerMode}
             onPluginToggleSideEffect={handlePluginToggleSideEffect}
+            onAppearanceChange={setAppearance}
             onWebServerStateChange={async () => {
               try {
                 const running = await IsWebServerRunning()

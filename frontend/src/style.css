@@ -2027,6 +2027,18 @@ html.is-desktop {
   outline-offset: 1px;
 }
 
+/* Portty 02-13: the Settings Appearance control shrink-wraps, and .share-seg's
+   flex: 1 (zero basis) splits that width into equal thirds that "Automatic"
+   overflows. Equal grid columns size every segment to the widest label. */
+.settings-appearance {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+.settings-appearance .share-seg {
+  padding: 0 12px;
+}
+
 /* =====================================================================
    Phase 173 (SM-06) — Reusable link card (.share-linkcard*)
    One layout for every access tier's link row (Tailnet RO/Full-Access,

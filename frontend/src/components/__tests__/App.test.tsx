@@ -54,6 +54,33 @@ describe('App', () => {
     })
   })
 
+  // Portty 02-13 (THEM-01 amended): Settings ▸ Appearance override, desktop only.
+  describe('Appearance override (THEM-01)', () => {
+    it('loads GetAppearance only after the web-mode early return in init', () => {
+      const webReturn = raw.indexOf("if (mode === 'web') {\n        return\n      }")
+      const call = raw.indexOf('GetAppearance()')
+      expect(webReturn).toBeGreaterThan(-1)
+      expect(call).toBeGreaterThan(webReturn)
+      expect(raw.match(/GetAppearance\(\)/g)).toHaveLength(1)
+    })
+
+    it("passes 'system' to useColorScheme in web mode, the override otherwise", () => {
+      expect(raw).toContain("useColorScheme(mode === 'web' ? 'system' : appearance)")
+      expect(raw.match(/useColorScheme\(/g)).toHaveLength(1)
+    })
+
+    it('wires onAppearanceChange to the appearance state', () => {
+      const start = raw.indexOf('<SettingsSheet')
+      expect(raw.slice(start, raw.indexOf('/>', raw.indexOf('onShellWarnEnabledChange', start)))).toContain('onAppearanceChange={setAppearance}')
+    })
+
+    it('adds no data-appearance fallback (WKWebView follows NSApp.appearance, M-68)', () => {
+      expect(raw).not.toContain('data-appearance')
+      expect(raw).not.toContain('dataset.appearance')
+      expect(cssRaw).not.toContain('data-appearance')
+    })
+  })
+
   // UILAY-03: Old web-serving-bar overlay has been removed from App.tsx
   describe('old overlay removed (UILAY-03)', () => {
     it('does not contain web-serving-bar class', () => {
@@ -154,7 +181,7 @@ describe('App', () => {
     })
 
     it('derives terminalTheme from the colour scheme', () => {
-      expect(raw).toContain("const terminalTheme = useColorScheme() === 'dark' ? DARK_PALETTE : LIGHT_PALETTE")
+      expect(raw).toContain("const terminalTheme = useColorScheme(mode === 'web' ? 'system' : appearance) === 'dark' ? DARK_PALETTE : LIGHT_PALETTE")
     })
 
     it('passes theme prop to TerminalPanel', () => {

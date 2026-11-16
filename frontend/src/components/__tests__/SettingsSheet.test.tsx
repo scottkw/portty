@@ -3,8 +3,12 @@ import React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { act } from 'react'
 import raw from '../../components/SettingsSheet.tsx?raw'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import { SettingsSheet } from '../SettingsSheet'
 import { SetAppearance } from '../../wailsjs/go/main/App'
+
+const css = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
 // Every Wails binding resolves to undefined except the loads the General pane needs.
 vi.mock('../../wailsjs/go/main/App', async (importOriginal) => {
@@ -141,6 +145,9 @@ describe('General pane', () => {
     expect(radios().map((r) => r.textContent)).toEqual(['Automatic', 'Light', 'Dark'])
     expect(checked()).toEqual(['Automatic'])
     expect(radios().map((r) => r.tabIndex)).toEqual([0, -1, -1])
+    // Equal-width segments sized to the widest label (M-68: "Automatic" was cramped).
+    expect(container.querySelector('[role="radiogroup"][aria-label="Appearance"]')!.classList).toContain('settings-appearance')
+    expect(css).toMatch(/\.settings-appearance \{[^}]*grid-auto-columns: 1fr;/)
     expect(panel('general').textContent).toContain("Automatic follows your Mac's Light or Dark setting in System Settings.")
     expect(container.textContent).not.toMatch(/Interface Theme|Terminal Theme|Stay on Hub/i)
     expect(raw).not.toMatch(/ALLOWED_THEMES|selectedTheme|onThemeChange|uiTheme|StayOnHub/)
