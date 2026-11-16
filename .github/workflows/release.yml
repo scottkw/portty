@@ -259,7 +259,10 @@ jobs:
             artifacts/*.dmg
             artifacts/checksums.txt
           fail_on_unmatched_files: true
-          draft: ${{ contains(github.ref, '-rc') }}
+          draft: ${{ contains(github.ref_name, '-rc') }}
+          # Any pre-release suffix (-rc, -beta, -alpha, ...) is flagged so the
+          # in-app updater, which skips prereleases, never offers it.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           # RELEASE_PUBLISH_TOKEN (PAT) once let the `release.published` event
           # trigger a downstream tap-update workflow; that workflow was removed
           # (DIST-03). The token logic stays until Phase 6 revisits publishing.
