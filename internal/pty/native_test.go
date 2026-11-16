@@ -252,3 +252,44 @@ func TestKillClean_NotFound(t *testing.T) {
 		t.Errorf("expected ErrSessionNotFound, got %v", err)
 	}
 }
+
+// Quick 261116-ku9 (R2): the child must see the requested size at startup.
+// zsh reads COLUMNS once when it starts; if the PTY is still 0×0 (or 80×24)
+// at that moment, its PROMPT_SP padding is generated for the wrong width.
+func TestNativeCreate_InitialSizeVisibleToChild(t *testing.T) {
+	b := NewNativePTYBackend()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sess, err := b.Create(ctx, CreateRequest{CLI: "/bin/stty", Args: []string{"size"}, Cols: 123, Rows: 45, WorkDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	defer b.Kill(sess.ID) //nolint:errcheck
+
+	ch := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 256)
+		var sb strings.Builder
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			n, err := sess.Read(buf)
+			if n > 0 {
+				sb.Write(buf[:n])
+			}
+			if strings.Contains(sb.String(), "\n") || err != nil {
+				break
+			}
+		}
+		ch <- sb.String()
+	}()
+
+	select {
+	case out := <-ch:
+		if got := strings.TrimSpace(out); got != "45 123" {
+			t.Errorf("child saw size %q, want \"45 123\"", got)
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("timed out waiting for stty output")
+	}
+}
