@@ -17,8 +17,8 @@ Not in this phase: one-click sharing and Funnel removal (Phase 4), the full DMG 
 
 ### Identity and storage
 - Bundle ID is `app.portty.Portty` (matches the portty.app domain). App is `Portty.app`; `wails.json` productName Portty.
-- Fresh start: Portty never reads, imports or writes AgentHub settings or data (`~/.config/agenthub`). No migration code.
-- Config, data and the daemon socket live under `~/.config/portty/` (same layout as AgentHub, renamed). Go module path `github.com/scottkw/portty`.
+- Fresh start: Portty never reads, imports or writes AgentHub settings or data (`~/Library/Application Support/agenthub/`). No migration code.
+- Config, data and the daemon socket live under `~/Library/Application Support/portty/` (`os.UserConfigDir()` + "portty": AgentHub's real layout, renamed; user confirmed 2026-11-16 after research showed AgentHub never used `~/.config`). Go module path `github.com/scottkw/portty`.
 - An AgentHub daemon that is still running is left alone. Portty runs its own `portty daemon`; both apps can run side by side.
 
 ### Running alongside AgentHub on the tailnet
@@ -39,6 +39,16 @@ Not in this phase: one-click sharing and Funnel removal (Phase 4), the full DMG 
 - Update check queries `scottkw/portty`. When no release exists yet (or the API 404s while the repo is private), treat it as up to date with no error shown.
 - Delete AgentHub-era design docs (`docs/plugin-architecture-assessment.md`, stale `docs/superpowers/` material) rather than rewriting them.
 - Remove `packaging/homebrew` and every Homebrew mention in docs, scripts and workflows (DIST-03, already decided).
+
+### Research follow-ups (orchestrator defaults, 2026-11-16)
+- Wails bundle name comes from `wails.json` `name`: set both `name` and `outputfilename` to `Portty`; bundle ID goes in `build/darwin/Info.plist` and `Info.dev.plist`.
+- Add the go-selfupdate `Filters` setting so a `.dmg` release asset is matched and the "newer release shows the banner" case works.
+- Delete `build/gen_icon.go` too (regenerates old AgentHub art, same reason as `gen_progress_icons.go`).
+- `internal/daemon/path.go` keeps adding `/opt/homebrew/bin` to PATH (finds the Tailscale CLI; code, not Homebrew distribution). Only stale Homebrew comments go.
+- README Install gets one `ln -s` line to put `portty` on PATH, since Homebrew used to do that.
+- Replace `brew install create-dmg` in `release.yml` with `hdiutil` (DIST-03).
+- CLI `web start` binding 443 is left for Phase 4.
+- Renaming the `build.yml` matrix entry changes the required check name; re-applying branch protection is a manual step noted for when CI is re-enabled.
 
 ### Claude's Discretion
 - Exact marker header name and value; rename order and plan split; how test fixtures like `tests/fixtures/settings_agenthub_v4.2.json` are renamed or replaced; wording of in-app strings within the macOS-native tone set in Phase 2.

@@ -189,7 +189,7 @@ If the standard panel can't be reached from cgo (unlikely: the tray code already
 | Help ▸ Check for Updates, nothing newer | **Nothing visible in this phase.** The check runs; if no newer release exists, no UI appears. The explicit reply ("Portty is up to date" / "Version X is available" / a readable error) belongs to UPD-02 in Phase 6. Copy reserved for it: **Portty is up to date.** / **You're running version <current>.** |
 | Help ▸ Check for Updates, newer release exists | The same banner as above |
 
-The updater's cache lives under `~/.config/portty/`. Nothing is read from `~/.config/agenthub/`.
+The updater's cache lives under `~/Library/Application Support/portty/`. Nothing is read from `~/Library/Application Support/agenthub/`.
 
 ### Web pages (`web/*.html`)
 
