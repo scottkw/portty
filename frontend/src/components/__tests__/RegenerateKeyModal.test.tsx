@@ -56,7 +56,7 @@ describe('RegenerateKeyModal copy', () => {
         onConfirm={noop}
         onCancel={() => {}}
         title="Disable shell web-share warning?"
-        body="AgentHub won't show the one-time security reminder before web-sharing a shell session."
+        body="Portty won't show the one-time security reminder before web-sharing a shell session."
         confirmLabel="Disable warning"
         cancelLabel="Keep warning"
       />

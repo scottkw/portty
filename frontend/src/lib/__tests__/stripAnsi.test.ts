@@ -35,10 +35,10 @@ describe('Phase 97 SER-01: stripAnsi() — Plan 97-02 implementation', () => {
     // Fixture mimicking serialize({ excludeModes: true }) output — a mix
     // of color resets, cursor moves, ECH erasures, and printable text.
     const fixture =
-      '\x1b[0m\x1b[38;2;255;128;0mAgentHub\x1b[0m \x1b[1;32m$\x1b[0m ' +
+      '\x1b[0m\x1b[38;2;255;128;0mPortty\x1b[0m \x1b[1;32m$\x1b[0m ' +
       'echo hello\x1b[3C\x1b[2X\x1b[?25h\nhello\x1b[0m'
     const out = stripAnsi(fixture)
-    expect(out).toBe('AgentHub $ echo hello\nhello')
+    expect(out).toBe('Portty $ echo hello\nhello')
     // Defensive: no \x1b bytes remain.
     expect(out).not.toContain('\x1b')
   })

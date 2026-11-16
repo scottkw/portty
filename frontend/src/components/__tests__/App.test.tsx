@@ -197,8 +197,7 @@ describe('App', () => {
 
     it('has no theme library, theme storage keys or data-ui-theme writes', () => {
       expect(raw).not.toContain("from 'xterm-theme'")
-      expect(raw).not.toContain('agenthub:terminalTheme')
-      expect(raw).not.toContain('agenthub:uiTheme')
+      expect(raw).not.toMatch(/['"][a-z]+:(terminalTheme|uiTheme)['"]/)
       expect(raw).not.toContain('THEME_STORAGE_KEY')
       expect(raw).not.toContain('data-ui-theme')
       expect(raw).not.toContain('style.colorScheme')

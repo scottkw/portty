@@ -1,7 +1,7 @@
 // Phase 98 Plan 98-05 — progress addon web parity e2e (PRG-02 / PRG-03).
 //
 // Status: documented `test.skip` — the progress e2e path requires a running
-// agenthub instance with a real session, OSC 9;4 write fixture, and daemon
+// Portty instance with a real session, OSC 9;4 write fixture, and daemon
 // RPC fixture for SetTrayProgress (Plan 98-02). The chromedp-based e2e harness
 // used for Phase 94 (findbar_web_e2e_test.go in internal/webserver) covers the
 // deterministic source-inspection path; the runtime OSC 9;4 pipeline is

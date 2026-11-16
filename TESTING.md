@@ -25,11 +25,13 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **109** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
+| Go unit/integration | **110** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
 | vitest (frontend) | **91** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (the guest sees only the terminal: WEBCHAT-03, CHAT-01), live light/dark (THEM-01) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **208** | — | — | — |
+| **Total** | **209** | — | — | — |
+
+> Note: Portty Phase 3 plan 03-05 (BRND-04 in-app and web text): counts from `git ls-files` — Go **110** (+1: internal/webserver/brand_pages_test.go), vitest **91**, Playwright **7**, build-script **1**, total **209**. Edited in place: auth_test.go (realm Portty), app_bundle_test.go, QuitConfirmModal.test.tsx, NewSessionModal.test.tsx, App.test.tsx, RegenerateKeyModal.test.tsx, stripAnsi.test.ts, UpdateBanner.test.tsx; e2e comments only.
 
 > Note: Portty Phase 3 plan 03-04 (BRND-01, NOTF-01): counts from `git ls-files` unchanged — Go **109**, vitest **91**, Playwright **7**, build-script **1**, total **208**. Edited in place: menu_test.go (About Portty, Portty menus, no GitHub item), tray_common_test.go (Portty tooltip, menu, TestQuitToMenuBarBody), notification_darwin_test.go. New source files about_darwin.go and about_darwin.m have no test file (native panel, M-72).
 
@@ -448,6 +450,10 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | BRND-01 | menu_test.go | Go | Portty 03-04: TestAppMenu_Structure (Portty submenu, About Portty first, no GitHub item), TestAppMenu_AboutOpensNativePanel (menuShowAbout seam), TestAppMenu_Accelerators (Hide Portty ⌘H, Quit Portty ⌘Q) |
 | BRND-01 | tray_common_test.go | Go | Portty 03-04: TestTrayTooltip (Portty — no sessions / 1 session / n sessions), BuildMenuItems Open Portty … Quit Portty |
 | NOTF-01 | tray_common_test.go | Go | Portty 03-04: TestQuitToMenuBarBody 0/1/n copy; identifier portty.quit-gui-only, title Portty |
+| BRND-04 | internal/webserver/brand_pages_test.go | Go | Portty 03-05: live /dashboard and /join and the embedded terminal page say Portty (titles, five join headings, tagline, Session Ended copy), no agent wording, CSP header kept |
+| BRND-01 | frontend/src/components/__tests__/QuitConfirmModal.test.tsx | vitest | Portty 03-05: dialog title "Quit Portty?" in source and rendered |
+| BRND-03 | frontend/src/components/__tests__/NewSessionModal.test.tsx | vitest | Portty 03-05: folder memory under portty:lastWorkDir (fresh start, no migration) |
+| BRND-06 | frontend/src/components/__tests__/UpdateBanner.test.tsx | vitest | Portty 03-05: Download Update opens the github.com/scottkw/portty release URL it is given |
 
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 

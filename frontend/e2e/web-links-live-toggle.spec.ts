@@ -1,7 +1,7 @@
 // Phase 95 Plan 95-06 — web parity live-toggle e2e (LNK-05/SC-5).
 //
 // Status: documented `test.skip` — the live-toggle path requires a running
-// agenthub instance with a real session, a Tailscale-served terminal page,
+// Portty instance with a real session, a Tailscale-served terminal page,
 // and a daemon RPC fixture for SetWebLinksConfig (Plan 95-05). The
 // chromedp-based e2e harness used for Phase 94 (findbar_web_e2e_test.go in
 // internal/webserver) covers the deterministic source-inspection path; the

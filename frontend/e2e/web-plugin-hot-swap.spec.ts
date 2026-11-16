@@ -11,7 +11,7 @@
 // (hooking the UMD `window.WebglAddon` global) also cannot fire against the
 // Vite-bundled SPA. This is a known cross-surface gap tracked
 // for a follow-up that wires /api/plugin-config + SSE into the /app/ web mode.
-// Re-enable after that work lands. See: scottkw/agenthub#112 (web-guest
+// Re-enable after that work lands. See: upstream issue #112 (web-guest
 // plugin-config parity).
 //
 // Asserts the web terminal page honors plugin-config:

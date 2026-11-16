@@ -15,7 +15,7 @@ import { BrowserOpenURL } from '../../wailsjs/wailsjs/runtime/runtime'
 const mockUpdate: UpdateInfo = {
   currentVersion: '1.0.0',
   latestVersion: '2.0.0',
-  releaseURL: 'https://github.com/agenthub-dev/agenthub/releases/tag/v2.0.0',
+  releaseURL: 'https://github.com/scottkw/portty/releases/tag/v2.0.0',
 }
 
 function renderUpdateBanner(update: UpdateInfo, onDismiss: () => void, className?: string) {
