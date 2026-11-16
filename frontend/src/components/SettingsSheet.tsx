@@ -376,7 +376,10 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   const webServerReason: React.ReactNode = reasonError && !startBlocked
     ? <span className="settings-row__error" role="alert">{reasonError}</span>
     : isServerRunning
-      ? (serverURL ? `Running on ${serverURL}` : 'Running')
+      ? webServerMode === 'local'
+        // LAN mode must not read as Tailscale sharing when the banner says it is off (T-rc8-01).
+        ? `Running on your local network${serverURL ? ` at ${serverURL}` : ''}.${tailscaleOff ? ' Tailscale sharing is off.' : ''}`
+        : (serverURL ? `Running on ${serverURL}` : 'Running')
       : tailscaleOff
         ? TAILSCALE_OFF_REASON
         : !ctDisclosed

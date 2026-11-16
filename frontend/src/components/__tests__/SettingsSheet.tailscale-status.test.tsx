@@ -49,7 +49,10 @@ const REMOVED_STATES = ['Permission Limited', 'Daemon Stopped', 'Not Installed',
 let container: HTMLElement
 let root: ReturnType<typeof createRoot>
 
-async function renderSheet(tailscaleHealth: TailscaleHealth | null) {
+async function renderSheet(
+  tailscaleHealth: TailscaleHealth | null,
+  webServerMode: 'tailscale' | 'local' | null = null,
+) {
   const onWebServerStateChange = vi.fn().mockResolvedValue(undefined)
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -59,7 +62,7 @@ async function renderSheet(tailscaleHealth: TailscaleHealth | null) {
       isOpen: true,
       onClose: vi.fn(),
       tailscaleHealth,
-      webServerMode: null,
+      webServerMode,
       onWebServerStateChange,
     }))
   })
@@ -182,5 +185,27 @@ describe('NET-01 / Amendment 3 / T-02-34: a blocked Start Server explains itself
     await renderSheet(makeHealth())
     expect(container.querySelector('[title]')).toBeNull()
     expect(sharing().textContent).toContain("Share a session with the Share button in the main window's toolbar.")
+  })
+})
+
+describe('NET-01 (quick 261115-rc8): the running Web server says when it is on the local network', () => {
+  const LAN_URL = 'https://192.168.64.108:7443'
+
+  it('LAN mode with Tailscale off names the local network and says Tailscale sharing is off', async () => {
+    vi.mocked(AppBindings.IsWebServerRunning).mockResolvedValueOnce(true)
+    vi.mocked(AppBindings.GetWebServerURL).mockResolvedValueOnce(LAN_URL)
+    await renderSheet(makeHealth(), 'local')
+    expect(container.querySelector('#web-server-reason')!.textContent).toBe(
+      `Running on your local network at ${LAN_URL}. Tailscale sharing is off.`,
+    )
+  })
+
+  it('LAN mode with Tailscale connected names the local network only', async () => {
+    vi.mocked(AppBindings.IsWebServerRunning).mockResolvedValueOnce(true)
+    vi.mocked(AppBindings.GetWebServerURL).mockResolvedValueOnce(LAN_URL)
+    await renderSheet(CONNECTED, 'local')
+    expect(container.querySelector('#web-server-reason')!.textContent).toBe(
+      `Running on your local network at ${LAN_URL}.`,
+    )
   })
 })
