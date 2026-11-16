@@ -187,6 +187,7 @@ const sessionShell = "/bin/zsh"
 func NewSessionEngine() *SessionEngine {
 	hostname, _ := os.Hostname()
 	cfgDir := daemonConfigDir()
+	warningEnabled := true // D-08 default ON
 	e := &SessionEngine{
 		hostname:        hostname,
 		configDir:       cfgDir,
@@ -195,6 +196,10 @@ func NewSessionEngine() *SessionEngine {
 		manager:         relay.NewHubManager(),
 		tabNames:        make(map[string]string),
 		sessionWorkDirs: make(map[string]string),
+		// Fresh install: loadSettingsFromDisk returns early when settings.json
+		// is missing or unreadable, so start from the defaults it would merge.
+		pluginSettings:              defaultPluginSettings(),
+		shellWebShareWarningEnabled: &warningEnabled,
 	}
 	// -l because go-pty discards Args[0], so the argv0 "-zsh" login trick is impossible.
 	e.spawnCommand = func() (string, []string) { return sessionShell, []string{"-l"} }

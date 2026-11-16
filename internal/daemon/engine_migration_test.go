@@ -287,3 +287,30 @@ func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
 		t.Errorf("saved settings.json lost the plugins block: %v", onDisk["plugins"])
 	}
 }
+
+// IN-10: with no settings.json (fresh install) loadSettingsFromDisk returns
+// early, so NewSessionEngine must start from the plugin defaults rather than
+// the zero value (WebGL off, image storageLimit 0).
+func TestNewSessionEngine_FreshInstallDefaults(t *testing.T) {
+	home := t.TempDir() // os.UserConfigDir is $HOME/Library/Application Support on darwin
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+
+	e := NewSessionEngine()
+	if _, err := os.Stat(settingsPath(e.configDir)); !os.IsNotExist(err) {
+		t.Fatalf("settings.json should not exist in a fresh config dir (err=%v)", err)
+	}
+	got := e.GetPluginSettings()
+	if got != defaultPluginSettings() {
+		t.Errorf("fresh-install plugin settings: got %+v, want %+v", got, defaultPluginSettings())
+	}
+	if !got.WebGL {
+		t.Error("fresh install: WebGL should default ON")
+	}
+	if got.ImageConfig.StorageLimit != 16 {
+		t.Errorf("fresh install: image storageLimit = %d, want 16", got.ImageConfig.StorageLimit)
+	}
+	if !e.GetShellWebShareWarningEnabled() {
+		t.Error("fresh install: shell web-share warning should default ON")
+	}
+}
