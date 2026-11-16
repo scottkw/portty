@@ -32,8 +32,8 @@ const byText = (container: HTMLElement, text: string) =>
   Array.from(container.querySelectorAll('button')).find((b) => b.textContent === text) as HTMLButtonElement
 
 describe('NewSessionModal source contract', () => {
-  it('keeps the agenthub:lastWorkDir key (Phase 3 renames it)', () => {
-    expect(raw).toContain("'agenthub:lastWorkDir'")
+  it('uses the portty:lastWorkDir key', () => {
+    expect(raw).toContain("'portty:lastWorkDir'")
   })
   it('has no agent picker, args field or per-agent args persistence', () => {
     expect(raw).not.toMatch(/ARGS_KEY|SHELL_ARGS_KEY|Extra Arguments|Select Agent|DetectedCLI|DetectedShell/)
@@ -98,7 +98,7 @@ describe('NewSessionModal rendering and behavior', () => {
   })
 
   it('pre-fills the last-used directory and passes it to onConfirm', () => {
-    localStorage.setItem('agenthub:lastWorkDir', '/Users/me/project')
+    localStorage.setItem('portty:lastWorkDir', '/Users/me/project')
     let onConfirm: ReturnType<typeof vi.fn>
     ;({ container, root, onConfirm } = renderModal())
     const display = container.querySelector('.new-session-modal__folder-display--active')
@@ -120,7 +120,7 @@ describe('NewSessionModal rendering and behavior', () => {
 
     await act(async () => { resolvePick('/tmp/picked') })
     expect(byText(container, 'Browse…').disabled).toBe(false)
-    expect(localStorage.getItem('agenthub:lastWorkDir')).toBe('/tmp/picked')
+    expect(localStorage.getItem('portty:lastWorkDir')).toBe('/tmp/picked')
     flushSync(() => byText(container, 'Create Session').click())
     expect(onConfirm).toHaveBeenCalledWith('/tmp/picked')
   })

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { OpenDirectoryDialog } from '../wailsjs/go/main/App'
 import { useDialogFocus } from '../lib/useDialogFocus'
 
-const LAST_DIR_KEY = 'agenthub:lastWorkDir'
+const LAST_DIR_KEY = 'portty:lastWorkDir'
 
 export interface NewSessionModalProps {
   isOpen: boolean

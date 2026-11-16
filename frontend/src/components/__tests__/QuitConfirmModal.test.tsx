@@ -22,8 +22,8 @@ describe('QuitConfirmModal source inspection', () => {
       expect(raw).not.toContain('aria-label="Close"')
       expect(raw).not.toContain('&times;')
     })
-    it('displays modal title "Quit AgentHub?"', () => {
-      expect(raw).toContain('Quit AgentHub?')
+    it('displays modal title "Quit Portty?"', () => {
+      expect(raw).toContain('Quit Portty?')
     })
   })
 
@@ -114,7 +114,7 @@ describe('QuitConfirmModal behaviour (Portty 02-09, LOOK-01)', () => {
     mount()
     const dialog = container.querySelector('[role="dialog"]')!
     expect(dialog.getAttribute('aria-modal')).toBe('true')
-    expect(document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent).toBe('Quit AgentHub?')
+    expect(document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent).toBe('Quit Portty?')
     expect(document.activeElement?.textContent).toBe('Keep Running')
     const buttons = Array.from(container.querySelectorAll('.dialog__buttons button'))
     expect(buttons.map((b) => b.textContent)).toEqual(['Keep Running', 'Quit GUI Only', 'Quit Everything'])

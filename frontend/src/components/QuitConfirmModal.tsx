@@ -41,7 +41,7 @@ function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: 
         aria-modal="true"
         aria-labelledby="quit-modal-title"
       >
-        <h2 className="dialog__title" id="quit-modal-title">Quit AgentHub?</h2>
+        <h2 className="dialog__title" id="quit-modal-title">Quit Portty?</h2>
         <div className="dialog__body">
           <p>{subtitleText}</p>
           {sessions.length > 0 && (
