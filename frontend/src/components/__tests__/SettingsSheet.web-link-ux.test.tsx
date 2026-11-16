@@ -1,7 +1,34 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
 import raw from '../../components/SettingsSheet.tsx?raw'
+import { SettingsSheet } from '../SettingsSheet'
+import { ClipboardSetText } from '../../wailsjs/wailsjs/runtime/runtime'
+
+vi.mock('../../wailsjs/go/main/App', () => ({
+  StartWebServer: vi.fn().mockResolvedValue(undefined),
+  StopWebServer: vi.fn().mockResolvedValue(undefined),
+  GetWebServerURL: vi.fn().mockResolvedValue('https://example.ts.net'),
+  IsWebServerRunning: vi.fn().mockResolvedValue(true),
+  HasCTDisclosure: vi.fn().mockResolvedValue(true),
+  AcknowledgeCTDisclosure: vi.fn().mockResolvedValue(undefined),
+  GetLocalNetworkPassword: vi.fn().mockResolvedValue(''),
+  GetWebServerQRCode: vi.fn().mockResolvedValue(''),
+  GetStartMinimized: vi.fn().mockResolvedValue(false),
+  SetStartMinimized: vi.fn().mockResolvedValue(undefined),
+  GetAppearance: vi.fn().mockResolvedValue('system'),
+  SetAppearance: vi.fn().mockResolvedValue(undefined),
+  RegenerateSigningKey: vi.fn().mockResolvedValue(undefined),
+  GetShellWebShareWarningEnabled: vi.fn().mockResolvedValue(true),
+  SetShellWebShareWarningEnabled: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('../PluginsSection', () => ({ PluginsSection: () => null }))
+vi.mock('../../wailsjs/wailsjs/runtime/runtime', () => ({
+  BrowserOpenURL: vi.fn(),
+  ClipboardSetText: vi.fn().mockResolvedValue(undefined),
+}))
 
 // Use fs.readFileSync for CSS — vitest/jsdom does not support ?raw imports for CSS.
 const cssRaw = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
@@ -31,11 +58,35 @@ describe('WEB-02: Copy URL to clipboard', () => {
   it('calls ClipboardSetText in handleCopyURL', () => {
     expect(raw).toContain('ClipboardSetText(serverURL)')
   })
-  // Review IN-07: a clipboard failure reaches the existing server error state.
-  it('catches a ClipboardSetText rejection and reports it', () => {
-    const body = raw.slice(raw.indexOf('async function handleCopyURL'), raw.indexOf('async function handleToggleDashQR'))
-    expect(body).toContain('catch (err)')
-    expect(body).toContain("setServerError('Could not copy the URL — '")
+  // Review IN-07 / IN-11: a clipboard failure is reported in the Web server row,
+  // and the next successful copy restores "Running on <url>".
+  it('reports a ClipboardSetText rejection until the next successful copy', async () => {
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const root = createRoot(el)
+    await act(async () => {
+      root.render(React.createElement(SettingsSheet, {
+        isOpen: true,
+        onClose: vi.fn(),
+        tailscaleHealth: null,
+        webServerMode: null,
+        onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
+      }))
+    })
+    await act(async () => { await new Promise<void>((r) => setTimeout(r, 0)) })
+    const reason = () => el.querySelector('#web-server-reason')?.textContent
+    const copy = () => el.querySelector<HTMLButtonElement>('[aria-label="Copy dashboard URL to clipboard"]')!
+    expect(reason()).toBe('Running on https://example.ts.net')
+
+    vi.mocked(ClipboardSetText).mockRejectedValueOnce(new Error('denied'))
+    await act(async () => { copy().click() })
+    expect(reason()).toBe('Could not copy the URL — denied')
+
+    await act(async () => { copy().click() })
+    expect(reason()).toBe('Running on https://example.ts.net')
+
+    await act(async () => root.unmount())
+    el.remove()
   })
   it('shows Copied! feedback', () => {
     expect(raw).toContain("urlCopied ? 'Copied!' : 'Copy'")

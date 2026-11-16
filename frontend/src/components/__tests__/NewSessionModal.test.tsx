@@ -132,6 +132,10 @@ describe('NewSessionModal rendering and behavior', () => {
     await act(async () => { byText(container, 'Browse…').click() })
     expect(container.querySelector('.dialog__error')?.textContent).toBe("Couldn't open the folder picker: picker unavailable.")
     expect(byText(container, 'Browse…').disabled).toBe(false)
+    // Review IN-11: the next successful Browse clears it.
+    vi.mocked(AppMock.OpenDirectoryDialog).mockResolvedValueOnce('/tmp/picked')
+    await act(async () => { byText(container, 'Browse…').click() })
+    expect(container.querySelector('.dialog__error')).toBeNull()
   })
 
   it('is a labelled modal dialog with no header close button', () => {

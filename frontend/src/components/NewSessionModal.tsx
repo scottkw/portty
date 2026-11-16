@@ -23,6 +23,7 @@ export function NewSessionModal({ isOpen, onConfirm, onClose }: NewSessionModalP
   if (!isOpen) return null
 
   async function handleBrowse() {
+    setError(null)
     setBrowseLoading(true)
     try {
       const path = await OpenDirectoryDialog(selectedDir)

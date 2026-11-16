@@ -119,6 +119,8 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
 
   // URL action row state (WEB-01/02/03)
   const [urlCopied, setUrlCopied] = useState(false)
+  // Kept apart from serverError so a later successful copy can clear it without hiding a start/stop error.
+  const [urlCopyError, setUrlCopyError] = useState<string | null>(null)
   const [showDashQR, setShowDashQR] = useState(false)
   const [dashQRb64, setDashQRb64] = useState<string | null>(null)
   const [qrError, setQrError] = useState<string | null>(null)
@@ -227,10 +229,11 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
 
   async function handleCopyURL() {
     if (!serverURL) return
+    setUrlCopyError(null)
     try {
       await ClipboardSetText(serverURL)
     } catch (err) {
-      setServerError('Could not copy the URL — ' + (err instanceof Error ? err.message : String(err)))
+      setUrlCopyError('Could not copy the URL — ' + (err instanceof Error ? err.message : String(err)))
       return
     }
     setUrlCopied(true)
@@ -369,8 +372,9 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   // the click returns early, and the daemon keeps its own CT/mode checks.
   const startBlocked = !isServerRunning && (tailscaleOff || !ctDisclosed)
   // A blocked reason outranks a stale start error, which the blocked click can no longer clear.
-  const webServerReason: React.ReactNode = serverError && !startBlocked
-    ? <span className="settings-row__error" role="alert">{serverError}</span>
+  const reasonError = serverError ?? urlCopyError
+  const webServerReason: React.ReactNode = reasonError && !startBlocked
+    ? <span className="settings-row__error" role="alert">{reasonError}</span>
     : isServerRunning
       ? (serverURL ? `Running on ${serverURL}` : 'Running')
       : tailscaleOff
@@ -382,6 +386,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   async function handleToggleServer() {
     if (startBlocked) return
     setServerError(null)
+    setUrlCopyError(null)
     setServerLoading(true)
     try {
       if (isServerRunning) {
