@@ -205,6 +205,13 @@ const peer = (hostname: string, reachable: boolean, sessions: [string, string][]
   reachable,
   sessions: sessions.map(([id, name]) => ({ id, name, status: 'running', url: `https://${hostname}:8443/sessions/${id}` })),
 })
+const hostRow = (c: HTMLElement, host: string) =>
+  Array.from(c.querySelectorAll<HTMLElement>('.sidebar__host')).find(
+    (h) => h.querySelector('.sidebar__row-name')?.textContent === host,
+  )
+// Quick 261116-c9f: peer sessions nest under their host row inside "Other Macs".
+const peerRows = (c: HTMLElement, host: string) =>
+  Array.from(hostRow(c, host)?.closest('li')?.querySelectorAll<HTMLButtonElement>('button.sidebar__row') ?? [])
 const mutedText = (c: HTMLElement) => Array.from(c.querySelectorAll('li.sidebar__muted')).map((l) => l.textContent)
 
 describe('Sidebar: peer groups (NAV-02)', () => {
@@ -218,38 +225,62 @@ describe('Sidebar: peer groups (NAV-02)', () => {
     expect(mutedText(c)).toContain(line)
   })
 
-  it('a reachable peer renders its short host header and one row per session, no "Other Macs"', () => {
+  it('a reachable peer is a host row inside one "Other Macs" section, its sessions nested beneath', () => {
     const p = peer('home-air.tail1.ts.net', true, [['p1', 'shell'], ['p2', 'logs']])
     const { c } = render({ peerView: peerView(false, true, [p]) })
-    const header = Array.from(c.querySelectorAll('h2')).find((h) => h.textContent === 'home-air')
-    expect(header?.getAttribute('title')).toBe('home-air.tail1.ts.net')
-    expect(Array.from(c.querySelectorAll('h2')).map((h) => h.textContent)).not.toContain('Other Macs')
-    const r = rows(c, 'home-air')
+    expect(Array.from(c.querySelectorAll('h2')).map((h) => h.textContent)).toEqual(['This Mac', 'Other Macs'])
+    const host = hostRow(c, 'home-air')!
+    expect(host.getAttribute('title')).toBe('home-air.tail1.ts.net')
+    expect(host.closest('section')?.getAttribute('aria-labelledby')).toBe('sidebar-group-peers')
+    const r = peerRows(c, 'home-air')
     expect(r.map((b) => b.textContent)).toEqual(['shell', 'logs'])
     expect(r[0].querySelector('[role="img"]')).toBeNull()
+  })
+
+  it('the host row dot is filled and "Reachable" when reachable, hollow and "Not reachable" when not', () => {
+    const v = peerView(false, true, [peer('up.tail1.ts.net', true, [['u1', 'one']]), peer('down.tail1.ts.net', false)])
+    const { c } = render({ peerView: v })
+    const up = hostRow(c, 'up')!.querySelector('.sidebar__dot')!
+    const down = hostRow(c, 'down')!.querySelector('.sidebar__dot')!
+    expect(up.getAttribute('role')).toBe('img')
+    expect(up.classList.contains('sidebar__dot--on')).toBe(true)
+    expect(up.getAttribute('aria-label')).toBe('Reachable')
+    expect(down.getAttribute('role')).toBe('img')
+    expect(down.classList.contains('sidebar__dot--on')).toBe(false)
+    expect(down.getAttribute('aria-label')).toBe('Not reachable')
+  })
+
+  it('a reachable peer with nothing shared shows "Nothing shared" under its host, no rows', () => {
+    const { c } = render({ peerView: peerView(false, true, [peer('idle.tail1.ts.net', true)]) })
+    expect(peerRows(c, 'idle')).toHaveLength(0)
+    const li = hostRow(c, 'idle')!.closest('li')!
+    expect(Array.from(li.querySelectorAll('li.sidebar__muted')).map((l) => l.textContent)).toEqual(['Nothing shared'])
   })
 
   it('clicking a peer row calls onOpenPeer(peer, session)', () => {
     const onOpenPeer = vi.fn()
     const p = peer('home-air.tail1.ts.net', true, [['p1', 'shell'], ['p2', 'logs']])
     const { c } = render({ peerView: peerView(false, true, [p]), onOpenPeer })
-    act(() => rows(c, 'home-air')[1].click())
+    act(() => peerRows(c, 'home-air')[1].click())
     expect(onOpenPeer).toHaveBeenCalledWith(p, p.sessions[1])
   })
 
-  it('an unreachable peer shows its header and the can\'t-reach line, no rows', () => {
+  it('an unreachable peer shows its host row and the can\'t-reach line, no rows', () => {
     const { c } = render({ peerView: peerView(false, true, [peer('down.tail1.ts.net', false)]) })
-    expect(rows(c, 'down')).toHaveLength(0)
-    expect(mutedText(c)).toContain("Can't reach this Mac. Check that it's awake and on your tailnet.")
+    expect(hostRow(c, 'down')).toBeDefined()
+    expect(peerRows(c, 'down')).toHaveLength(0)
+    const li = hostRow(c, 'down')!.closest('li')!
+    expect(li.querySelector('li.sidebar__muted')?.textContent).toBe("Can't reach this Mac. Check that it's awake and on your tailnet.")
   })
 
-  it('two peers sharing a first label render as two groups', () => {
+  it('two peers sharing a first label render as two host rows', () => {
     const v = peerView(false, true, [
       peer('air.tail-a.ts.net', true, [['a1', 'one']]),
       peer('air.tail-b.ts.net', true, [['b1', 'two']]),
     ])
     const { c } = render({ peerView: v })
-    expect(Array.from(c.querySelectorAll('h2')).filter((h) => h.textContent === 'air')).toHaveLength(2)
+    const names = Array.from(c.querySelectorAll('.sidebar__host .sidebar__row-name')).map((n) => n.textContent)
+    expect(names).toEqual(['air', 'air'])
   })
 
   it('aria-current marks the peer row of an active web-session tab, and only that row', () => {
@@ -284,6 +315,15 @@ describe('Sidebar: Tailscale footer', () => {
     const { c } = render()
     expect(footer(c)?.textContent).toBe('Tailscale connected · office-air')
     expect(footer(c)?.querySelector('.sidebar__dot--on')).not.toBeNull()
+  })
+
+  it.each([
+    ['connected', { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'office-air.tail1.ts.net' }],
+    ['not connected', { connected: false, hasCerts: false, ip: '', domain: '' }],
+  ] as const)('%s: the footer text carries its full copy in title (quick 261116-c9f)', (_label, tailscaleHealth) => {
+    const { c } = render({ tailscaleHealth })
+    const text = c.querySelector('.sidebar__footer-text')!
+    expect(text.getAttribute('title')).toBe(text.textContent)
   })
 
   it('connected with no domain falls back to the IP', () => {
@@ -376,7 +416,7 @@ describe('Sidebar: local row menu and rename (Portty 02-08)', () => {
       sessions: [{ id: 'p1', name: 'remote', status: 'running', url: 'https://home-air.tail1.ts.net:8443/sessions/p1' }],
     }
     const { c } = render({ peerView: peerView(false, true, [peer]) })
-    const peerRow = rows(c, 'home-air')[0]
+    const peerRow = peerRows(c, 'home-air')[0]
     act(() => { peerRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })) })
     expect(document.querySelector('[role="menu"]')).toBeNull()
     act(() => { peerRow.querySelector('.sidebar__row-name')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })

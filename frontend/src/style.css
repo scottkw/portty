@@ -483,28 +483,57 @@ button.sidebar__row:hover:not([aria-current="page"]) {
   color: var(--color-text-secondary);
 }
 
+/* Other Macs host row (quick 261116-c9f): not interactive, so no hover. */
+.sidebar__host {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--color-text);
+  cursor: default;
+}
+
+.sidebar__host-item + .sidebar__host-item {
+  margin-top: 4px;
+}
+
+/* 8 padding + 16 icon + 8 gap: child content lines up under the hostname,
+   while the selection pill keeps the full row width. */
+.sidebar__rows--nested .sidebar__row,
+.sidebar__rows--nested .sidebar__muted {
+  padding-left: 32px;
+}
+
 .sidebar__footer {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  height: 40px;
+  height: 28px;
   padding: 0 16px;
   border-top: 1px solid var(--color-separator);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 11px;
+  line-height: 14px;
   color: var(--color-text-secondary);
 }
 
+/* Off is a hollow ring, on a filled dot: shape carries the state, not just colour. */
 .sidebar__dot {
+  box-sizing: border-box;
   width: 8px;
   height: 8px;
   flex-shrink: 0;
+  border: 1.5px solid var(--color-status-off);
   border-radius: 50%;
-  background: var(--color-status-off);
+  background: transparent;
 }
 
 .sidebar__dot--on {
+  border-color: var(--color-status-on);
   background: var(--color-status-on);
 }
 

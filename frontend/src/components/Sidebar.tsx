@@ -14,6 +14,7 @@ const PEER_PLACEHOLDER: Record<'off' | 'loading' | 'none', string> = {
   none: 'No shared sessions on other Macs.',
 }
 const PEER_UNREACHABLE = "Can't reach this Mac. Check that it's awake and on your tailnet."
+const PEER_NOTHING_SHARED = 'Nothing shared'
 
 /** UI-SPEC Iconography: the one non-Heroicons glyph (Hide/Show Sidebar). */
 export function SidebarToggleIcon(): React.ReactElement {
@@ -164,43 +165,57 @@ export function Sidebar({
           </ul>
         </section>
 
-        {peerView.kind !== 'groups' ? (
-          <section className="sidebar__group" aria-labelledby="sidebar-group-peers">
-            <div className="sidebar__group-head">
-              <h2 id="sidebar-group-peers" className="sidebar__group-header">
-                <GlobeAltIcon className="sidebar__group-icon" aria-hidden="true" />
-                <span className="sidebar__group-label">Other Macs</span>
-              </h2>
-            </div>
-            <ul className="sidebar__rows">
+        <section className="sidebar__group" aria-labelledby="sidebar-group-peers">
+          <div className="sidebar__group-head">
+            <h2 id="sidebar-group-peers" className="sidebar__group-header">
+              <GlobeAltIcon className="sidebar__group-icon" aria-hidden="true" />
+              <span className="sidebar__group-label">Other Macs</span>
+            </h2>
+          </div>
+          <ul className="sidebar__rows">
+            {peerView.kind !== 'groups' ? (
               <li className="sidebar__muted">{PEER_PLACEHOLDER[peerView.kind]}</li>
-            </ul>
-          </section>
-        ) : (
-          peerView.groups.map((g, i) => (
-            <section key={g.key} className="sidebar__group" aria-labelledby={`sidebar-group-peer-${i}`}>
-              <div className="sidebar__group-head">
-                <h2 id={`sidebar-group-peer-${i}`} className="sidebar__group-header" title={g.key}>{g.host}</h2>
-              </div>
-              <ul className="sidebar__rows">
-                {!g.reachable && <li className="sidebar__muted">{PEER_UNREACHABLE}</li>}
-                {g.reachable && g.peer.sessions.map((s) => (
-                  <li key={s.id}>
-                    <button
-                      type="button"
-                      className="sidebar__row"
-                      aria-current={s.id === activePeerId ? 'page' : undefined}
-                      onClick={() => onOpenPeer(g.peer, s)}
-                    >
+            ) : (
+              peerView.groups.map((g, i) => {
+                const status = g.reachable ? 'Reachable' : 'Not reachable'
+                return (
+                  <li key={g.key} className="sidebar__host-item">
+                    <div className="sidebar__host" title={g.key}>
                       <ComputerDesktopIcon className="sidebar__row-icon" aria-hidden="true" />
-                      <span className="sidebar__row-name" title={s.name}>{s.name}</span>
-                    </button>
+                      <span id={`sidebar-peer-${i}`} className="sidebar__row-name">{g.host}</span>
+                      <span
+                        className={`sidebar__dot${g.reachable ? ' sidebar__dot--on' : ''}`}
+                        role="img"
+                        aria-label={status}
+                        title={status}
+                      />
+                    </div>
+                    <ul className="sidebar__rows sidebar__rows--nested" aria-labelledby={`sidebar-peer-${i}`}>
+                      {/* The text line, not the dot colour, carries the state. */}
+                      {!g.reachable && <li className="sidebar__muted">{PEER_UNREACHABLE}</li>}
+                      {g.reachable && g.peer.sessions.length === 0 && (
+                        <li className="sidebar__muted">{PEER_NOTHING_SHARED}</li>
+                      )}
+                      {g.reachable && g.peer.sessions.map((s) => (
+                        <li key={s.id}>
+                          <button
+                            type="button"
+                            className="sidebar__row"
+                            aria-current={s.id === activePeerId ? 'page' : undefined}
+                            onClick={() => onOpenPeer(g.peer, s)}
+                          >
+                            <CommandLineIcon className="sidebar__row-icon" aria-hidden="true" />
+                            <span className="sidebar__row-name" title={s.name}>{s.name}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
-                ))}
-              </ul>
-            </section>
-          ))
-        )}
+                )
+              })
+            )}
+          </ul>
+        </section>
       </div>
 
       {menu && (
@@ -221,7 +236,7 @@ export function Sidebar({
           className={`sidebar__dot${tailscaleHealth?.connected ? ' sidebar__dot--on' : ''}`}
           aria-hidden="true"
         />
-        <span className="sidebar__footer-text">{footerText}</span>
+        <span className="sidebar__footer-text" title={footerText}>{footerText}</span>
       </div>
     </nav>
   )

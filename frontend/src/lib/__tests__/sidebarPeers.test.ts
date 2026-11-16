@@ -37,10 +37,14 @@ describe('peerView: UI-SPEC peer group states (NAV-02)', () => {
     expect(peerView(false, true, [])).toEqual({ kind: 'none' })
   })
 
-  it('a reachable peer with zero sessions is hidden (and alone gives none)', () => {
-    expect(peerView(false, true, [peer('a.ts.net', true)])).toEqual({ kind: 'none' })
-    const g = groupsOf(peerView(false, true, [peer('a.ts.net', true), peer('b.ts.net', true, ['1'])]))
-    expect(g.map((x) => x.key)).toEqual(['b.ts.net'])
+  // Quick 261116-c9f: an idle reachable peer is kept and reads "Nothing shared".
+  it('a reachable peer with zero sessions is kept as a group', () => {
+    const alone = groupsOf(peerView(false, true, [peer('a.ts.net', true)]))
+    expect(alone).toHaveLength(1)
+    expect(alone[0].reachable).toBe(true)
+    expect(alone[0].peer.sessions).toEqual([])
+    const g = groupsOf(peerView(false, true, [peer('b.ts.net', true, ['1']), peer('a.ts.net', true)]))
+    expect(g.map((x) => x.key)).toEqual(['a.ts.net', 'b.ts.net'])
   })
 
   it('an unreachable peer survives, even with no sessions', () => {
