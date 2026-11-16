@@ -1,7 +1,8 @@
 ---
 phase: 02-tabs-sidebar-navigation
-reviewed: 2026-11-16T00:30:40Z
+reviewed: 2026-11-16T01:14:28Z
 depth: standard
+iteration: 3
 files_reviewed: 129
 files_reviewed_list:
   - app.go
@@ -135,174 +136,145 @@ files_reviewed_list:
   - web/assets/join.css
 findings:
   critical: 0
-  warning: 6
-  info: 10
-  total: 16
+  warning: 1
+  info: 9
+  total: 10
   necessity: 1
 status: issues_found
 ---
 
-# Phase 2: Code Review Report
+# Phase 2: Code Review Report (iteration 3)
 
-**Reviewed:** 2026-11-16T00:30:40Z
+**Reviewed:** 2026-11-16T01:14:28Z
 **Depth:** standard
-**Files Reviewed:** 129 (56 non-test source files read in full or by diff; test files consulted for coverage)
+**Files Reviewed:** 129. The scope is the same as iterations 1 and 2. I re-read in full the six files touched by `65c0b5ad..9b3b32ae` (`app.go`, `app_test.go`, `SettingsSheet.tsx`, `NewSessionModal.tsx` and their two test files), plus the code they call: `internal/daemon/process.go` `EnsureDaemon`, `internal/daemon/socket.go`, `tray.go`, the `App.tsx` init, retryInit, quit and poll paths, and the Wails v2.10.2 darwin message loop and dispatcher.
 **Status:** issues_found
 
 ## Summary
 
-I reviewed the Phase 2 diff (`c2f4255d..HEAD`): the cgo/ObjC Appearance bridge, the `startupDone` gate between `startup` and `domReady`, removal of the chat and presence relay frames, the `appearance` settings API, the new sidebar, tab bar, context menu and dialog focus code, and the restyled Share, Settings and confirm dialogs. Ground truth passes: `go build ./... && go vet ./...` and `pnpm exec tsc --noEmit` both exit 0.
+This is the last `--auto` re-review, after the iteration-2 fixes `eb740795` (WR-07, IN-13) and `9b3b32ae` (IN-11). I re-ran the ground truth on `9b3b32ae` and all of it passes:
+- `go build ./... && go vet ./...`: exit 0
+- `go test -race -short -count=1 ./...`: exit 0, every package ok
+- `pnpm exec tsc --noEmit`: exit 0
+- `pnpm exec vitest run`: 91 files, 1160 tests pass
 
-These areas checked out:
-- **Retired frames 0x30-0x37:** both read pumps (`internal/relay/server.go:153`, `internal/webserver/server.go:1327`) have no case and no default arm, so these frames are dropped before any PTY write. `parseServerFrame` maps them to `unknown`, so a peer still running older code cannot crash the client. Fuzz and inject tests cover both pumps.
-- **Appearance enum:** validated in three places, `App.SetAppearance` (`app.go:545`), `SessionEngine.SetAppearance` (`engine.go:643`) and `handleSetAppearance`, which returns 400. Stored values are normalized on load, so a missing or garbage value reads as `system`, including on the fresh-install path.
-- **ObjC bridge:** `dispatch_async` to the main queue, with `mode` captured by value. FIFO order on the main queue means `WindowShow` from `domReady` runs after the Appearance is set. Startup does no synchronous main-thread work (the tray and `EventsEmit` both hop async), so I found no deadlock as long as the daemon I/O returns (see WR-05).
-- **End Session:** the client-side `ToggleWebServing(false)` is defense in depth. `handleDeleteSession` already runs `runSessionExitCleanup` (DisableSession, ClearGrants, ref-counted Funnel teardown).
-- **`OpenTailscale`:** fixed argv and a fixed URL. No frontend value reaches `exec`.
-- **Capability, CSP and Funnel consent:** not weakened. The web-mode sidebar and tab chrome stay hidden. `FunnelRiskPanel` and the write gate changed styling only. The webserver sets `Origin: "web"` again, so host-authority resize still works.
+WR-07, IN-11 and IN-13 are resolved. `eb740795` introduced one regression, WR-08: `awaitStartup` was added to `ListSessions`, and the Quit confirm path also calls `ListSessions`. So ⌘Q, the tray Quit item and the window close path do nothing visible while startup is slow or wedged, for up to 90 s plus a 30 s RPC timeout. The `ListSessions` and `GetRelayPort` gates protect nothing on the init path, which is already ordered behind `GetDaemonError`, so removing them fixes the regression at no cost. I also found two new Info findings. IN-14: start-minimized is ignored when startup takes over 5 s. IN-15: the 90 s bound does not cover the actual `EnsureDaemon` worst case.
 
-The main problems are lifecycle and race issues around the new flows: Esc bypasses the disabled Cancel during an in-flight End Session, the tray can no longer reopen detached sessions, the stored Appearance is lost on the Retry path, concurrent Appearance writes are unordered, the `startupDone` wait has no bound, and the session poll can resurrect an exited session. Nothing reaches BLOCKER level.
+These are the results of the checks the orchestrator asked for:
+
+- **No deadlock.** `awaitStartup` (`app.go:165-175`) only receives from `startupDone` or a timer. The only goroutine that closes `startupDone` is the one running `startDaemon`, and `startDaemon` never calls a gated binding. `applyStoredAppearance` calls `GetAppearance`, which is not gated. `startup` calls `initTray` before `startDaemon`, but that only installs the status item. The tray poller, exit watcher, health poller and update poller start after `startDaemon` returns, so their `ListSessions` calls never wait. `onTraySession` (`tray.go:73-87`) moves its `ListSessions` call onto a goroutine, and the tray menu has no session entries until the first post-startup `refreshTrayState`.
+- **`RetryDaemon` cannot hang the UI loop.** Wails dispatches every `C` call on its own goroutine (`wails/v2@v2.10.2/internal/frontend/desktop/darwin/frontend.go:389`). Only `DomReady`, `runtime:ready` and `wails:openInspector` run inline on the message processor (`:360-383`). The JS `Call` has no timeout by default (`runtime/desktop/calls.js:57-61`), so a 90 s wait just resolves late. In the UI, `retryInit` clears `daemonError` before it awaits, so the banner goes away and the main area stays blank with no progress cue while the wait runs. That is a UX gap, not a hang. The real UI-level hang is the quit path (WR-08).
+- **`NewApp` creating the client has no network side effects.** `NewDaemonClient` (`internal/daemon/client.go:26-40`) only builds an `http.Transport` with a lazy `DialContext`, so nothing connects at construction. The only side effect is `DefaultSocketPath()`, which runs `os.MkdirAll(<UserConfigDir>/agenthub, 0700)` (`socket.go:21`). `startup` already did that before this change, and `NewApp` is only reached from `runGUI` (`main.go:68`), never from the CLI or `--help` paths. The happens-before argument holds: the field is written before `wails.Run` starts any goroutine.
+- **`startDaemon` closes `startupDone` on every return path.** The close is the first statement and is deferred (`app.go:238-240`). Both branches, the `emitEvent("daemon:error")` branch and the `applyStoredAppearance` branch, return normally. `emitEvent` (`app.go:375-383`) checks `ctx.Value("frontend")`. Wails sets that key before it calls `OnStartup` (`internal/app/app_production.go:89`), so the event still reaches the frontend in production. `TestStartDaemon_AlwaysClosesStartupDone` covers both branches.
+- **domReady's timeout path never calls the daemon.** `ready=false` skips `GetStartMinimized` (`app.go:187-195`). `TestDomReady_TimeoutShowsWindowWithoutRPC` points the client at a socket that accepts and never answers, and asserts zero accepts. It would catch a regression.
+- **Data race (WR-07 part 3).** It is closed for the startup writes: `a.client` (written in `NewApp`), plus `a.daemonErr`, `a.ctx` and `a.trayInit` (written before the close), all have a happens-before edge for any reader that went through `awaitStartup`. One residual remains. `RetryDaemon` writes `a.daemonErr` after `startupDone` with no further synchronization, so the field comment "read only after startupDone" is not the whole story. The frontend never runs `GetDaemonError` and `RetryDaemon` at the same time, because the Retry button only appears after init's `GetDaemonError` has resolved or `daemon:error` has fired, and `startupDone` closes immediately after that emit. So this is not a finding.
+- **The `urlCopyError` and folder-picker error clearing is correct.** `handleCopyURL` clears `urlCopyError` before each attempt (`SettingsSheet.tsx:232`), and `handleToggleServer` clears both errors (`:388-389`). Precedence is `serverError ?? urlCopyError` (`:375`), so a copy can never hide a start or stop error. `isServerRunning` only changes in `handleToggleServer` and the mount load (`:154, :394, :400`), so a copy error cannot outlive the running state. The Copy button only renders while the server is running. `handleBrowse` clearing `error` at the start (`NewSessionModal.tsx:26`) also clears a stale create error once the user picks another folder, which is the right behaviour. Both new tests are behavioural. The fix report says both failed against the pre-fix source.
+
+I carried forward the deferred findings IN-01, IN-02, IN-03, IN-04, IN-06, IN-08 and IN-12 with their IDs. All seven still apply, and I updated their line numbers.
+
+## Resolved (verified this iteration)
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| WR-07 | Resolved; the regression it introduced is WR-08 | (1) The timeout path makes no RPC: `app.go:187-195`, checked by `TestDomReady_TimeoutShowsWindowWithoutRPC`. (2) `init` cannot run before startup: `GetDaemonError` waits (`app.go:258-266`) and `init` awaits it before `Promise.all` (`App.tsx:344-354`). A slow but successful start gives `relayPort > 0` (`TestSlowStartup_InitWaitsForStartup`), and a slow failure reaches the banner (`TestSlowStartup_FailureReachesInit`). (3) The race is closed by creating the client in `NewApp` (`app.go:145`) and reading `daemonErr` only after `awaitStartup`. |
+| IN-11 | Resolved | `SettingsSheet.tsx:122-123, 232, 236, 375-377, 389`; `NewSessionModal.tsx:26`. Render tests: `SettingsSheet.web-link-ux.test.tsx:63-90`, `NewSessionModal.test.tsx:135-138`. |
+| IN-13 | Resolved | `startupWait`, `startupBindingWait`, `errStartupTimeout` and `awaitStartup` now sit above domReady's doc comment (`app.go:151-179`). The "even on panic" comment is gone. `startDaemon`'s doc says "on every return path" (`app.go:235-236`). |
+
+Resolved in iteration 1 and still resolved: WR-01, WR-02, WR-03, WR-04, WR-05 (its residual was WR-07), WR-06, IN-05, IN-07, IN-09, IN-10. None of the iteration-2 commits touch their code paths, except WR-03's `RetryDaemon`, which still calls `applyStoredAppearance` (`app.go:286`).
 
 ## Narrative Findings (AI reviewer)
 
 ## Warnings
 
-### WR-01: Esc cancels a confirm while its action is in flight, bypassing the disabled Cancel button
+### WR-08: `awaitStartup` in `ListSessions` blocks the Quit confirm for up to 90 s (120 s with a wedged daemon) during a slow startup
 
-**File:** `frontend/src/components/RegenerateKeyModal.tsx:53-76` (with `frontend/src/lib/useDialogFocus.ts:57-61`)
-**Issue:** While `acting` is true, both buttons are disabled so the user cannot cancel. But `useDialogFocus` still maps Escape to `onCancel`. For End Session (`App.tsx:1352-1356`), Esc during "Ending…" closes the dialog as if cancelled, yet `endSession` and `KillSession` keep running and the shell is killed anyway. The UI tells the user they cancelled when they did not. Esc also triggers the reset effect (`isOpen` → false, which clears `error` and `acting`). If `onConfirm` then rejects, `handleConfirm`'s catch calls `setError(msg)` on the closed modal, and the next End Session or Regenerate dialog opens showing that stale error. The same applies to the Regenerate Signing Key and "Stop asking" confirms in `SettingsSheet`.
-**Fix:** Ignore Esc while acting, and clear the error on open rather than only on close:
-```tsx
-useDialogFocus(dialogRef, {
-  onCancel: () => { if (!actingRef.current) onCancel() },
-  initialFocus: 'cancel',
-  active: isOpen,
-})
-useEffect(() => { if (isOpen) { setError(null); setActing(false) } }, [isOpen])
-```
-(keep an `actingRef` in sync with `acting`, since the hook reads the latest `onCancel` through a ref).
+**File:** `app.go:437-438`, `app.go:562-563`, `app.go:305-317`; `frontend/src/App.tsx:537-549`
+**Issue:** `eb740795` made `ListSessions` (and `GetRelayPort`) wait on `startupDone` for up to `startupBindingWait` (90 s). Every quit path goes through `ListSessions`:
+- ⌘Q goes `applicationShouldTerminate`, then `processMessage("Q")` (`wails .../darwin/AppDelegate.m:27`), then the dispatcher's `Quit()` (`dispatcher.go:69-70`), then `OnBeforeClose` (`frontend.go:326-333`).
+- The tray Quit item goes through `onTrayQuit` (`tray.go:59-70`).
 
-### WR-02: Tray "focus session" does nothing for a detached session (regression from detach-only close)
+Both paths end in `beforeClose`, which returns `true` (cancels the quit) and emits `app:quit-requested` (`app.go:305-317`). The frontend handler shows the confirm only after `ListSessions()` resolves (`App.tsx:540-548`). So while startup is still running, which is past domReady's 5 s bound when the window is already visible, ⌘Q does nothing visible until startup finishes. With a wedged daemon, it waits the full 90 s, and then the "try anyway" RPC adds the 30 s client timeout. During that time the only way out is Force Quit. Repeated ⌘Q presses queue more blocked calls, because the `prev` guard is still `false`. Before this commit, the same path blocked at most 30 s, the client timeout. A slow or wedged startup is exactly when a user is most likely to give up and quit.
 
-**File:** `frontend/src/App.tsx:501-509`
-**Issue:** `onTraySession` (`tray.go:73-88`) lists every daemon session and emits `tray:focus-session`. The handler only activates an existing tab (`prev.find(...)`) and otherwise does nothing. TERM-03 makes closing a tab detach only, so a closed tab's session keeps running and stays in the tray menu. Clicking it shows the window but opens nothing. Before this phase a running session nearly always had a tab, so this is a new dead path. CLI-created sessions hit it too.
-**Fix:** Find the tab or open one, inside the functional updater so the `[]`-deps listener never reads stale state:
-```tsx
-const cancelTrayFocus = EventsOn('tray:focus-session', (sessionId: string) => {
-  if (exitedIdsRef.current.has(sessionId)) return
-  setTabs((prev) => prev.some((t) => t.id === sessionId)
-    ? prev
-    : [...prev, { id: sessionId, name: 'shell', sessionId }])
-  setActiveId(sessionId)
-})
-```
-(the label comes from `tabLabel(tab, sessions)`, so the placeholder name is never shown once the poll lands).
-
-### WR-03: The stored Appearance is never applied after "Retry Connection"
-
-**File:** `app.go:218-225`, `frontend/src/App.tsx:1004-1054`
-**Issue:** `startup` calls `applyStoredAppearance()` only when the first `EnsureDaemon` succeeds (`app.go:179-181`). If the first attempt fails and the user clicks Retry Connection, `RetryDaemon` brings the daemon up but never applies the stored override, and `retryInit` never calls `GetAppearance`. A user with Dark (or Light) stored gets the system appearance in the chrome, the terminals and the sidebar vibrancy until the next launch, while Settings shows Dark selected. That contradicts THEM-01 ("applies before the window first paints… applies live").
-**Fix:** In `RetryDaemon`, after a successful `EnsureDaemon`, call `a.applyStoredAppearance()`. In `retryInit`, add the same `GetAppearance().then(...)` hydration that `init` does (lines 419-421).
-
-### WR-04: Changing the Appearance quickly can leave the stored, native and on-screen values out of sync
-
-**File:** `frontend/src/components/SettingsSheet.tsx:265-286`; `app.go:542-557`
-**Issue:** `selectAppearance` applies the change optimistically and fires `SetAppearance` with no in-flight guard. Arrow-key navigation (`handleAppearanceKeyDown`) makes repeated calls easy. Each Wails binding call runs in its own goroutine (`wails/v2 darwin/frontend.go:388`), so two PATCHes can reach the daemon out of order, and their `setNativeAppearance` hops can land out of order too. Pressing Right twice (Automatic → Light → Dark) can leave Light persisted and applied natively while the control shows Dark. A failed earlier call also rolls back to its own `prev`, overwriting a newer successful choice.
-**Fix:** Serialize the calls. Ignore input while a save is in flight (as `Switch`'s `saving` does), or keep a monotonically increasing request id and apply rollback or `onAppearanceChange` only for the latest request. On the Go side, guard `SetAppearance` with a mutex so the persist and apply pair is atomic per call.
-
-### WR-05: `domReady` waits on `startupDone` with no bound, and the daemon client has no timeout
-
-**File:** `app.go:144-146`, `app.go:175-184`; `internal/daemon/client.go:32-35`
-**Issue:** `domReady` runs on the single Wails message-processor goroutine (`frontend.go:152-154, 361-365`) and now blocks until `startup` closes `startupDone`. Before closing it, `startup` runs `EnsureDaemon` and `GetAppearance`, both over an `http.Client` with no `Timeout`. A wedged daemon (socket accepting, handler stuck on `e.mu`) blocks `startup` forever. The window then never shows, every later frontend message (binding calls, events) queues behind `domReady`, and once the 100-slot `messageBuffer` fills, the exported `processMessage` blocks the AppKit main thread. `close(a.startupDone)` is also not deferred, so any future early return or panic recovery in `startup` would reproduce the hang. The old `domReady` had a similar hang through `GetStartMinimized`. The new gate widens it to the whole message loop and adds an RPC to the critical path.
-**Fix:** Bound the wait and make the close unconditional:
+The two gates also protect nothing. `init` awaits the gated `GetDaemonError` before it calls `GetRelayPort` and `ListSessions` (`App.tsx:344-354`), and `retryInit` awaits the gated `RetryDaemon` first (`App.tsx:1016-1026`). Those are the only frontend callers of `GetRelayPort`. The other `ListSessions` callers are the session poll, which tolerates `[]` and keeps polling every 3 s (`App.tsx:746-753`), the quit handler, `QuitGUIOnly`, `onTraySession` and `refreshTrayState`. None of them needs to wait for startup.
+**Fix:** Remove the gate from `ListSessions` and `GetRelayPort`, and keep it only on `GetDaemonError` and `RetryDaemon`, which order init and retry:
 ```go
-// startup
-defer func() { if a.startupDone != nil { close(a.startupDone) } }() // or a sync.Once
-// domReady
-select {
-case <-a.startupDone:
-case <-time.After(5 * time.Second): // show anyway; Appearance lands when startup finishes
+// ListSessions returns a snapshot of all registered sessions.
+func (a *App) ListSessions() []SessionInfo {
+	if a.client == nil {
+		return []SessionInfo{}
+	}
+	...
+}
+
+// GetRelayPort returns the TCP port the daemon's relay HTTP server is listening on.
+func (a *App) GetRelayPort() int {
+	if a.client == nil {
+		return 0
+	}
+	...
 }
 ```
-Also give `DaemonClient.http` a request timeout (for example 5 s, with streaming endpoints exempt). Add a test for the domReady/startup ordering; `app_test.go` has none.
-
-### WR-06: The session poll can bring back an exited or ended session, and clicking it opens a tab that never closes
-
-**File:** `frontend/src/App.tsx:741-755`, `frontend/src/App.tsx:898-911`, `frontend/src/App.tsx:648-655`
-**Issue:** The 3 s poll does `setSessions(list)` unfiltered. A `ListSessions` call already in flight when `session:exit` fires (or when `endSession` removes the row) can resolve afterwards with the dead session still listed, so the sidebar shows it again for up to one poll interval. `handleOpenSessionTab` does not check `exitedIdsRef`, so clicking that row opens a terminal tab for a dead session. `session:exit` is reported only once, so nothing ever closes that tab. `exitedIdsRef` exists for exactly this race (`createTab` and the restore paths use it), but the poll and the sidebar open path skip it.
-**Fix:** Filter the poll result and guard the open path:
-```tsx
-if (!cancelled) setSessions(list.filter((s) => !exitedIdsRef.current.has(s.id)))
-// handleOpenSessionTab
-if (exitedIdsRef.current.has(sessionId)) return
-```
-and add the killed id to `exitedIdsRef` in `endSession` after `KillSession` resolves.
+`TestSlowStartup_InitWaitsForStartup` still passes, because it calls `GetDaemonError` before `GetRelayPort`. Add a test that keeps `startupDone` open and asserts `ListSessions()` returns within ~100 ms. Optionally, also make the quit handler show the confirm at once and fill in the session list when it arrives, so a wedged daemon cannot delay Quit by the 30 s client timeout either.
 
 ## Info
 
-### IN-01: A failed rename reverts silently, and the poll can flicker the name
+### IN-01: A failed rename reverts silently, and the poll can flicker the name (carried forward, deferred)
 
-**File:** `frontend/src/App.tsx:660-669`
-**Issue:** A `RenameSession` failure only does `console.warn` and puts the old name back with no visible reason. A poll that started before the RPC landed can also briefly show the old name over the optimistic one. With two quick renames where the first fails after the second succeeds, the revert sets the name back to the original while the daemon holds the second name, until the next poll.
-**Fix:** Show the failure in `saveBanner` (it already exists for this kind of message). Revert only if the current name still equals the attempted one.
+**File:** `frontend/src/App.tsx:662-671`
+**Issue:** Unchanged. A `RenameSession` failure only does `console.warn` and puts the old name back with no visible reason. If two quick renames overlap and the first fails after the second succeeds, the revert sets the name back to the original while the daemon holds the second name, until the next poll.
+**Fix:** Show the failure in `saveBanner`. Revert only if the current name still equals the attempted one.
 
-### IN-02: Menu shortcuts act behind open dialogs
+### IN-02: Menu shortcuts act behind open dialogs (carried forward, deferred)
 
-**File:** `frontend/src/App.tsx:524-533`
-**Issue:** ⌘W closes (detaches) the active tab while Settings, Share or the End Session confirm is open. ⌘T stacks New Session over Settings. A native sheet would block these.
-**Fix:** In the listeners, return early when `document.querySelector('[aria-modal="true"]')` matches (or track a `modalOpen` ref).
+**File:** `frontend/src/App.tsx:525-531`
+**Issue:** Unchanged. ⌘W detaches the active tab while Settings, Share or the End Session confirm is open, and ⌘T stacks New Session over Settings.
+**Fix:** Return early from the listeners when `document.querySelector('[aria-modal="true"]')` matches.
 
-### IN-03: Dead Hub-era code and stale comments left behind
+### IN-03: Dead Hub-era code and stale comments left behind (carried forward, deferred on purpose)
 
-**File:** `app.go:428-447`, `internal/daemon/api.go:157-158, 680-720`, `internal/daemon/engine.go:458-560`, `internal/daemon/client.go:88-110`, `frontend/src/wailsjs/go/main/App.d.ts:53-55`, `internal/relay/hub.go:88-90, 164-165`, `internal/webserver/server.go:1166-1173`, `frontend/src/components/RemoteJoinCodeModal.tsx:114`
-**Issue:** The only callers of `GetSessionTailLines` and the styled-tail route, engine renderer and client method were the Hub previews, so with the Hub gone they are unreachable. `App.d.ts:55` keeps an orphan comment for the removed `GetSessionStyledTailLines`. The comments in `hub.go` still mention ChatPanel and the Hub-card preview, `server.go` still says "chat-capable SPA", and the join dialog says the session opens "in your browser" although it now opens in an app tab.
-**Fix:** Remove the dead tail paths, or record why they stay, and update the comments and copy.
+**File:** `app.go:492-511`, `internal/daemon/client.go:91-111`, `internal/daemon/api.go:157-158`, `frontend/src/wailsjs/go/main/App.d.ts:54`, `internal/relay/hub.go:164-165, 182`, `internal/webserver/server.go:1166, 1173`, `frontend/src/components/RemoteJoinCodeModal.tsx:114`
+**Issue:** Unchanged; only the `app.go` lines moved. The tail and styled-tail paths (`GetSessionTailLines`, "Used by the Hub mini-preview poller") have had no callers since the Hub was removed. `hub.go` still mentions ChatPanel and the Hub-card preview, `server.go` still says "chat-capable SPA", and the join dialog still says "in your browser".
+**Fix:** Remove the dead paths, or record why they stay, and update the comments and copy.
 
-### IN-04: Chat history files and aliases.json are orphaned on disk for upgraded users
+### IN-04: Chat history files and aliases.json are orphaned on disk for upgraded users (carried forward, deferred on purpose)
 
 **File:** `internal/daemon/engine.go` (former `chatsDir()` / `NewAliasStore(cfgDir)`)
-**Issue:** CHAT-01 removed the chat store and alias store, but nothing deletes the existing `<configDir>/chats/*.jsonl` or `aliases.json`. Those files can hold chat content and tailnet identities.
-**Fix:** Add a one-time best-effort `os.RemoveAll(filepath.Join(cfgDir, "chats"))` and remove `aliases.json` at daemon start, or document that they are retained.
+**Issue:** Unchanged. Nothing deletes `<configDir>/chats/*.jsonl` or `aliases.json`, and those files can hold chat content and tailnet identities.
+**Fix:** Add a one-time best-effort removal at daemon start, or document that the files are kept.
 
-### IN-05: `OpenTailscale` finds `open` through PATH
+### IN-06: Impossible-state guard: `@available(macOS 10.14, *)` (carried forward, deferred)
 
-**File:** `app.go:1053`
-**Issue:** `exec.Command("open", ...)` resolves through `PATH`. When the app is started from a shell with a modified PATH, a different `open` would run.
-**Fix:** Use `exec.Command("/usr/bin/open", "-a", name)`.
-
-### IN-06: Impossible-state guard: `@available(macOS 10.14, *)`
-
-**File:** `appearance_darwin.m:18-19`
+**File:** `appearance_darwin.m:19`
 **Category:** necessity
-**Issue:** The guarded state (running on macOS older than 10.14) cannot occur. The module targets Go 1.26 (`go.mod:3`), whose binaries require a much newer macOS, and the product targets Apple Silicon MacBook Airs only (macOS 11+). The comment's premise ("deployment target is 10.13") describes Wails' own cgo flags, not this package. This rests partly on judgment about the toolchain minimum, so it is Info.
+**Issue:** Unchanged. A Go 1.26 binary targeting Apple Silicon cannot run on macOS older than 10.14, and the comment's "deployment target is 10.13" premise (`appearance_darwin.m:18`) describes Wails' cgo flags. This rests partly on judgment about the toolchain minimum, so it stays Info.
 **Fix:** Keep it if it only silences `-Wunguarded-availability`, but correct the comment. Otherwise drop the branch.
 
-### IN-07: Unused dependency and unhandled promise rejections
+### IN-08: Settings shows "Automatic" when the Appearance load fails, and Automatic cannot be re-saved (carried forward, deferred)
 
-**File:** `frontend/src/App.tsx:623`, `frontend/src/components/SettingsSheet.tsx:225-230`, `frontend/src/components/NewSessionModal.tsx:25-36`
-**Issue:** `createTab`'s dependency list includes `webServerRunning`, which it never reads. `handleCopyURL` and `handleBrowse` have no catch, so a failing `ClipboardSetText` or `OpenDirectoryDialog` produces an unhandled rejection and no user feedback.
-**Fix:** Drop the dependency, and add catch handlers that set the existing error state.
+**File:** `frontend/src/components/SettingsSheet.tsx:195-199, 277`
+**Issue:** Unchanged; the lines moved +2. The `GetAppearance` catch still marks the control loaded with the default `system`, and `selectAppearance` still returns early on `next === appearance`.
+**Fix:** When loading fails, show an error and render no selection, or skip the early return after a failed load.
 
-### IN-08: Settings shows "Automatic" when the Appearance load fails, and Automatic cannot be re-saved
+### IN-12: The WR-02, WR-03 and WR-06 race fixes are covered only by source-text assertions (carried forward, deferred)
 
-**File:** `frontend/src/components/SettingsSheet.tsx:190-195, 265-266`
-**Issue:** If `GetAppearance` rejects, the control renders "Automatic" even though Dark may be stored, and `selectAppearance` returns early on `next === appearance`, so the user cannot re-save Automatic to clear a stored override.
-**Fix:** When loading fails, show an error and render no selection, or drop the early return on load failure.
+**File:** `frontend/src/components/__tests__/App.nav.test.tsx:28-30, 59-60, 69-75`; `frontend/src/components/__tests__/App.test.tsx:64-72, 571-572`
+**Issue:** Unchanged. The tests slice `App.tsx` source and look for literal strings. A behaviour-preserving reformat fails them, and a change that keeps the strings but breaks the behaviour passes them. No test renders the poll-in-flight-across-exit race or a tray focus for a detached session. (The IN-11 fix shows the better pattern: it turned its source-text assertion into a render test.)
+**Fix:** For WR-06, render `App` with a deferred `ListSessions`, fire `session:exit`, resolve the poll, and assert the sidebar row is absent. For WR-02, emit `tray:focus-session` for an ID that has no tab and assert that a tab panel appears.
 
-### IN-09: The danger cue on the Full-access segment is visual only
+### IN-14: Start-minimized is ignored whenever startup takes over 5 s, which is the login-at-cold-boot case it exists for
 
-**File:** `frontend/src/components/Share/ShareSegmentedControl.tsx:76, 108-110`
-**Issue:** The old "⚠" prefix was part of the text label. The replacement `ExclamationTriangleIcon` is `aria-hidden`, so screen readers lose the danger signal on the full command-execution tier (the CSS ring is visual too).
-**Fix:** Add visually hidden text ("Warning:") or an `aria-describedby` on the danger segment.
+**File:** `app.go:183-203`
+**Issue:** On domReady's timeout path, `ready=false`, so `startMinimized` stays `false` and the window is shown (`app.go:196-203`). The comment documents this as the safe default. But the slow-startup case is most likely at login on a cold boot (`EnsureDaemon` spawning the daemon) and after an upgrade (the version-mismatch restart, `process.go:176-181`). That is exactly when a user who chose "start minimized" expects no window. Iteration 2 had the same visible outcome in most slow cases, because the late RPC usually failed against a daemon that was not yet up. Before WR-05, the preference was always honoured. Nothing hides the window once startup finishes and the preference becomes readable.
+**Fix:** Accept and document it in the M-NN manual checklist, or keep a GUI-side copy of the preference (for example in `UserDefaults` or a small file next to the socket, updated by `SetStartMinimized`), so `domReady` can decide without the daemon.
 
-### IN-10: Inherited fresh-install plugin settings bug (already logged)
+### IN-15: `startupBindingWait` (90 s) does not cover `EnsureDaemon`'s actual worst case, contrary to its comment
 
-**File:** `internal/daemon/engine.go` `loadSettingsFromDisk`
-**Issue:** As already noted elsewhere, plugin settings stay zero-valued when settings.json is missing. Cited for completeness only. The new `appearance` key is not affected, because `GetAppearance` normalizes `""` to `system`.
-**Fix:** None in this phase. The post-phase fix is already tracked.
+**File:** `app.go:155-158`; `internal/daemon/process.go:168-220`
+**Issue:** The comment says 90 s "covers EnsureDaemon's worst case with 30 s client timeouts". `EnsureDaemon` makes its own client with the 30 s timeout. A daemon that answers `/health` but hangs on `/relay-port` costs 30 s at `:190`. The spawn follows, and the 3 s poll loop checks its deadline only between iterations, so one `Health` (30 s) plus one `GetRelayPort` (30 s) inside it costs up to 60 s more. That adds up to about 90 s plus spawn time, or more with the `GetDaemonVersion`/`ShutdownDaemon` branch. When startup overruns, `init` shows "daemon startup timed out" even though startup then succeeds a moment later, and nothing clears the banner until the user clicks Retry. The fix report already lists this recovery under "Remaining limit". A late failure does replace the banner text through `daemon:error`.
+**Fix:** Correct the comment ("covers the common worst case; past it, Retry recovers"). Alternatively, bound `EnsureDaemon` itself with a context deadline so the two limits agree.
 
 ---
 
-_Reviewed: 2026-11-16T00:30:40Z_
+_Reviewed: 2026-11-16T01:14:28Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
