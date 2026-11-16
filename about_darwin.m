@@ -14,7 +14,7 @@ void showAboutPanel(void) {
 	dispatch_async(dispatch_get_main_queue(), ^{
 		NSMutableParagraphStyle *para = [[NSMutableParagraphStyle alloc] init];
 		para.alignment = NSTextAlignmentCenter;
-		NSFont *font = [NSFont systemFontOfSize:[NSFont smallSystemFontSize]];
+		NSFont *font = [NSFont systemFontOfSize:[NSFont systemFontSize]]; // 13 pt, matching the app body text
 
 		NSMutableAttributedString *credits = [[NSMutableAttributedString alloc]
 			initWithString:@"A macOS terminal with remote access over Tailscale.\n"

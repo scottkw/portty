@@ -173,7 +173,7 @@ Shown from App menu ▸ **About Portty**. It is the **native AppKit standard Abo
 | Icon | The bundle app icon (`iconfile.icns`). Pass no override |
 | Application name | `Portty` (from `CFBundleName`) |
 | Version line | `Version <CFBundleShortVersionString>`. Pass `NSAboutPanelOptionVersion: @""` so AppKit omits the duplicate parenthetical build number ("Version 2.2.0", not "Version 2.2.0 (2.2.0)") |
-| Credits | `NSAboutPanelOptionCredits`: an `NSAttributedString` of two centered lines. Line 1: `A macOS terminal with remote access over Tailscale.` Line 2: `portty.app`, with `NSLinkAttributeName` = `https://portty.app`. Font: `[NSFont systemFontOfSize:[NSFont smallSystemFontSize]]` (11pt, regular). Line 1 color: `NSColor.secondaryLabelColor`. The link is drawn in `NSColor.linkColor` by AppKit. Both follow Light/Dark automatically |
+| Credits | `NSAboutPanelOptionCredits`: an `NSAttributedString` of two centered lines. Line 1: `A macOS terminal with remote access over Tailscale.` Line 2: `portty.app`, with `NSLinkAttributeName` = `https://portty.app`. Font: `[NSFont systemFontOfSize:[NSFont systemFontSize]]` (13pt, regular; raised from 11pt on 2026-11-16 at the user's request). Line 1 color: `NSColor.secondaryLabelColor`. The link is drawn in `NSColor.linkColor` by AppKit. Both follow Light/Dark automatically |
 | Copyright | `Copyright © 2026 Ken Scott. MIT License.` (from `NSHumanReadableCopyright`) |
 | Behavior | Non-modal panel with a native close button. A second "About Portty" brings the same panel forward (AppKit default). Clicking the link opens the default browser |
 | Not included | No GitHub link, no AgentHub credit, no license text block, no "Check for Updates" button |
