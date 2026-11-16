@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 3
 status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-11-16T16:29:34.659Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-11-16T16:40:13.943Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 3 execution started
-state_head: e983943dd62407473e3d68594f6ba970b7255845
+state_head: 728977b352cb78227960698d3af28429ecf58db2
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 31
-  completed_plans: 27
+  completed_plans: 28
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 3 — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 3 execution started
 
@@ -69,6 +69,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 01 P12 | 12min | 3 tasks | 30 files |
 | Phase 3 P01 | 7 min | 3 tasks | 71 files |
 | Phase 03 P02 | 28 min | 3 tasks | 15 files |
+| Phase 03 P03 | 10 min | 2 tasks | 69 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Portty web/peer port is 7444 (tailnet.DefaultProbePort); the daemon binds the same constant the probe dials
 - [Phase 03]: Peer discovery requires X-Portty: 1 with 200 or 401 on GET /api/sessions; the probe no longer reads the body, so upstream-app peers are not shown; the header is an identity hint, not authentication
 - [Phase 03]: Update check reads scottkw/portty via go-selfupdate Filters matching portty-v<x.y.z>-darwin-universal.dmg; no-release and error paths stay silent
+- [Phase 03]: 03-03: tray icons load as one template NSImage with an 18 px and a 36 px rep (18x18 pt each); trayIconBytesForState returns the (1x, @2x) pair, error pair still wins
+- [Phase 03]: 03-03: portty-brand/, build/gen_icon.go and build/gen_progress_icons.go deleted; each brand asset has one source
+- [Phase 03]: 03-03: scripts/verify-icons.sh uses only sips/cmp/stat; Windows, Linux and ImageMagick checks dropped
 
 ### Pending Todos
 
@@ -176,6 +180,6 @@ Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appeara
 
 ## Session Continuity
 
-Last session: 2026-11-16T16:29:21.501Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-11-16T16:40:12.524Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
