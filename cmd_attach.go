@@ -27,7 +27,7 @@ import (
 // and restores the terminal on every exit path.
 func cmdAttach(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: agenthub attach <session-id>")
+		return fmt.Errorf("usage: portty attach <session-id>")
 	}
 
 	// Parse optional flags. Default detach key: Ctrl-backslash (0x1C).
@@ -122,7 +122,7 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 
 	// Phase 117 / PAPER-02: clear the local terminal so the attached session
 	// renders from a clean canvas. Without this, the user's prior shell
-	// prompt (e.g. the line "agenthub attach <sid>" they just typed)
+	// prompt (e.g. the line "portty attach <sid>" they just typed)
 	// remains visible above the session's first frame. Pure ANSI:
 	// CSI 2 J (Erase in Display, all) + CSI H (Cursor Position, home).
 	// Only emitted when stdout is a TTY — non-TTY callers (pipes,

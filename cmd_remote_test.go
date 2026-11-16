@@ -79,7 +79,7 @@ func TestResolveRemotePeer(t *testing.T) {
 }
 
 // TestFetchPeerSessions_Success uses httptest.NewTLSServer to verify session mapping.
-// The peer still sends AgentHub's cli_type; it is ignored on decode.
+// An older peer may still send cli_type; it is ignored on decode.
 func TestFetchPeerSessions_Success(t *testing.T) {
 	items := []struct {
 		ID      string `json:"id"`

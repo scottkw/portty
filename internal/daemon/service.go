@@ -52,9 +52,9 @@ func newServiceConfig() (*service.Config, error) {
 		return nil, fmt.Errorf("abs executable: %w", err)
 	}
 	return &service.Config{
-		Name:        "agenthub-daemon",
-		DisplayName: "AgentHub Daemon",
-		Description: "AgentHub session manager daemon",
+		Name:        "portty-daemon",
+		DisplayName: "Portty Daemon",
+		Description: "Keeps Portty terminal sessions running in the background.",
 		Executable:  exe,
 		Arguments:   []string{"daemon"},
 		Option: service.KeyValue{

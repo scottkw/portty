@@ -28,30 +28,30 @@ func cmdDaemon(args []string, out io.Writer) error {
 		return nil
 	case "install":
 		if err := serviceControlFunc("install"); err != nil {
-			return fmt.Errorf("agenthub daemon install: %w", err)
+			return fmt.Errorf("portty daemon install: %w", err)
 		}
 		fmt.Fprintln(out, "daemon service installed")
 		return nil
 	case "uninstall":
 		if err := serviceControlFunc("uninstall"); err != nil {
-			return fmt.Errorf("agenthub daemon uninstall: %w", err)
+			return fmt.Errorf("portty daemon uninstall: %w", err)
 		}
 		fmt.Fprintln(out, "daemon service uninstalled")
 		return nil
 	case "start":
 		if err := serviceControlFunc("start"); err != nil {
-			return fmt.Errorf("agenthub daemon start: %w", err)
+			return fmt.Errorf("portty daemon start: %w", err)
 		}
 		fmt.Fprintln(out, "daemon service started")
 		return nil
 	case "stop":
 		if err := serviceControlFunc("stop"); err != nil {
-			return fmt.Errorf("agenthub daemon stop: %w", err)
+			return fmt.Errorf("portty daemon stop: %w", err)
 		}
 		fmt.Fprintln(out, "daemon service stopped")
 		return nil
 	default:
-		return fmt.Errorf("unknown daemon subcommand %q; usage: agenthub daemon <install|uninstall|start|stop|status|run>", args[0])
+		return fmt.Errorf("unknown daemon subcommand %q; usage: portty daemon <install|uninstall|start|stop|status|run>", args[0])
 	}
 }
 

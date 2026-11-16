@@ -14,14 +14,14 @@ func TestNewServiceConfig_Fields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newServiceConfig: %v", err)
 	}
-	if cfg.Name != "agenthub-daemon" {
-		t.Errorf("Name = %q, want %q", cfg.Name, "agenthub-daemon")
+	if cfg.Name != "portty-daemon" {
+		t.Errorf("Name = %q, want %q", cfg.Name, "portty-daemon")
 	}
-	if cfg.DisplayName != "AgentHub Daemon" {
-		t.Errorf("DisplayName = %q, want %q", cfg.DisplayName, "AgentHub Daemon")
+	if cfg.DisplayName != "Portty Daemon" {
+		t.Errorf("DisplayName = %q, want %q", cfg.DisplayName, "Portty Daemon")
 	}
-	if cfg.Description != "AgentHub session manager daemon" {
-		t.Errorf("Description = %q, want %q", cfg.Description, "AgentHub session manager daemon")
+	if cfg.Description != "Keeps Portty terminal sessions running in the background." {
+		t.Errorf("Description = %q, want %q", cfg.Description, "Keeps Portty terminal sessions running in the background.")
 	}
 	if len(cfg.Arguments) != 1 || cfg.Arguments[0] != "daemon" {
 		t.Errorf("Arguments = %v, want [daemon]", cfg.Arguments)

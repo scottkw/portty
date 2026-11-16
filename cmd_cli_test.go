@@ -363,7 +363,7 @@ func TestCmdQR_MissingArgs(t *testing.T) {
 	}
 }
 
-// TestCmdWeb_MissingSubcommand verifies that missing subcommand returns an error with "usage: agenthub web".
+// TestCmdWeb_MissingSubcommand verifies that missing subcommand returns an error with "usage: portty web".
 func TestCmdWeb_MissingSubcommand(t *testing.T) {
 	client := testSetup(t)
 	var buf bytes.Buffer
@@ -371,8 +371,8 @@ func TestCmdWeb_MissingSubcommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing subcommand, got nil")
 	}
-	if !strings.Contains(err.Error(), "usage: agenthub web") {
-		t.Errorf("expected error to contain %q, got %q", "usage: agenthub web", err.Error())
+	if !strings.Contains(err.Error(), "usage: portty web") {
+		t.Errorf("expected error to contain %q, got %q", "usage: portty web", err.Error())
 	}
 }
 
@@ -568,7 +568,7 @@ func assertSessionID(t *testing.T, out string) {
 	}
 }
 
-// TestCmdNew_WithDir: `agenthub new <dir>` creates a session in dir named
+// TestCmdNew_WithDir: `portty new <dir>` creates a session in dir named
 // after its basename and prints the ID.
 func TestCmdNew_WithDir(t *testing.T) {
 	client := testSetup(t)
@@ -588,7 +588,7 @@ func TestCmdNew_WithDir(t *testing.T) {
 	}
 }
 
-// TestCmdNew_NoDir: `agenthub new` creates a session named "shell"; the daemon
+// TestCmdNew_NoDir: `portty new` creates a session named "shell"; the daemon
 // starts it in the home directory.
 func TestCmdNew_NoDir(t *testing.T) {
 	client := testSetup(t)
@@ -614,7 +614,7 @@ func TestCmdNew_RejectsUnknownFlag(t *testing.T) {
 	if callErr == nil {
 		t.Fatal("expected non-nil error for unknown flag, got nil")
 	}
-	if !strings.Contains(stderr, "agenthub new: flag provided but not defined: -shell") {
+	if !strings.Contains(stderr, "portty new: flag provided but not defined: -shell") {
 		t.Errorf("unexpected stderr %q", stderr)
 	}
 	if sessions, _ := client.ListSessions(); len(sessions) != 0 {
@@ -625,7 +625,7 @@ func TestCmdNew_RejectsUnknownFlag(t *testing.T) {
 // TestCmdNew_DaemonError: a daemon-unreachable error surfaces on stderr with
 // the underlying error and a non-nil return.
 func TestCmdNew_DaemonError(t *testing.T) {
-	client := daemon.NewDaemonClient("/tmp/agenthub-nonexistent-socket-test.sock")
+	client := daemon.NewDaemonClient("/tmp/portty-nonexistent-socket-test.sock")
 	var buf bytes.Buffer
 	var callErr error
 	stderr := captureStderr(t, func() {
@@ -634,8 +634,8 @@ func TestCmdNew_DaemonError(t *testing.T) {
 	if callErr == nil {
 		t.Fatal("expected error when daemon socket is unreachable, got nil")
 	}
-	if !strings.HasPrefix(stderr, "agenthub new: ") || !strings.Contains(stderr, callErr.Error()) {
-		t.Errorf("expected stderr 'agenthub new: %v', got %q", callErr, stderr)
+	if !strings.HasPrefix(stderr, "portty new: ") || !strings.Contains(stderr, callErr.Error()) {
+		t.Errorf("expected stderr 'portty new: %v', got %q", callErr, stderr)
 	}
 }
 
@@ -667,7 +667,7 @@ func TestCmdNew_RejectsExtraArgs(t *testing.T) {
 	if callErr == nil {
 		t.Fatal("expected an error for two positional arguments, got nil")
 	}
-	if !strings.Contains(stderr, "usage: agenthub new [<path>]") {
+	if !strings.Contains(stderr, "usage: portty new [<path>]") {
 		t.Errorf("unexpected stderr %q", stderr)
 	}
 	if sessions, _ := client.ListSessions(); len(sessions) != 0 {

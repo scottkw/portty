@@ -59,31 +59,31 @@ func unknownCommandMessage(cmd string) string {
 
 // cmdNew creates a new login-shell session and writes its UUID to out.
 //
-//	agenthub new [<path>]
+//	portty new [<path>]
 //
 // <path> is optional; if omitted, workDir is "" and the daemon resolves it to
 // the home directory. A relative <path> is resolved against the CLI's cwd (the
 // daemon's cwd is unrelated). New sessions always run /bin/zsh -l.
 //
-// Errors go to stderr as `agenthub new: <err>`.
+// Errors go to stderr as `portty new: <err>`.
 func cmdNew(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // we emit our own error copy
 	if err := fs.Parse(args); err != nil {
-		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
+		fmt.Fprintf(os.Stderr, "portty new: %v\n", err)
 		return err
 	}
 	positionals := fs.Args()
 	if len(positionals) > 1 { // e.g. the removed agent-plus-path form
-		err := fmt.Errorf("usage: agenthub new [<path>] (got %d arguments)", len(positionals))
-		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
+		err := fmt.Errorf("usage: portty new [<path>] (got %d arguments)", len(positionals))
+		fmt.Fprintf(os.Stderr, "portty new: %v\n", err)
 		return err
 	}
 	workDir := ""
 	if len(positionals) == 1 {
 		abs, err := filepath.Abs(positionals[0])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
+			fmt.Fprintf(os.Stderr, "portty new: %v\n", err)
 			return err
 		}
 		workDir = abs
@@ -96,7 +96,7 @@ func cmdNew(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	}
 	id, err := client.CreateSession(name, workDir, 0, 0)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "agenthub new: %v\n", err)
+		fmt.Fprintf(os.Stderr, "portty new: %v\n", err)
 		return err
 	}
 	fmt.Fprintln(out, id)
@@ -126,7 +126,7 @@ func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	}
 	sessions, err := client.ListSessions()
 	if err != nil {
-		return fmt.Errorf("agenthub list: %w", err)
+		return fmt.Errorf("portty list: %w", err)
 	}
 	if sessions == nil {
 		sessions = []daemon.SessionInfo{}
@@ -184,10 +184,10 @@ func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
 // cmdKill terminates a session silently.
 func cmdKill(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: agenthub kill <session-id>")
+		return fmt.Errorf("usage: portty kill <session-id>")
 	}
 	if err := client.KillSession(args[0]); err != nil {
-		return fmt.Errorf("agenthub kill: %w", err)
+		return fmt.Errorf("portty kill: %w", err)
 	}
 	return nil
 }
@@ -195,10 +195,10 @@ func cmdKill(client *daemon.DaemonClient, args []string) error {
 // cmdRename renames a session silently.
 func cmdRename(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: agenthub rename <session-id> <name>")
+		return fmt.Errorf("usage: portty rename <session-id> <name>")
 	}
 	if err := client.RenameSession(args[0], args[1]); err != nil {
-		return fmt.Errorf("agenthub rename: %w", err)
+		return fmt.Errorf("portty rename: %w", err)
 	}
 	return nil
 }
@@ -206,7 +206,7 @@ func cmdRename(client *daemon.DaemonClient, args []string) error {
 // cmdWeb dispatches web sub-commands: start, stop, status.
 func cmdWeb(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: agenthub web <start|stop|status>")
+		return fmt.Errorf("usage: portty web <start|stop|status>")
 	}
 	switch args[0] {
 	case "start":
@@ -216,7 +216,7 @@ func cmdWeb(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	case "status":
 		return cmdWebStatus(client, args[1:], out)
 	default:
-		return fmt.Errorf("usage: agenthub web <start|stop|status>")
+		return fmt.Errorf("usage: portty web <start|stop|status>")
 	}
 }
 
@@ -237,7 +237,7 @@ func cmdWebStart(client *daemon.DaemonClient, _ []string, out io.Writer) error {
 	}
 	url, err := client.StartWebServer(h.IP, port, h.Domain, "tailscale", "")
 	if err != nil {
-		return fmt.Errorf("agenthub web start: %w", err)
+		return fmt.Errorf("portty web start: %w", err)
 	}
 	fmt.Fprintln(out, url)
 	return nil
@@ -246,7 +246,7 @@ func cmdWebStart(client *daemon.DaemonClient, _ []string, out io.Writer) error {
 // cmdWebStop stops the web server silently.
 func cmdWebStop(client *daemon.DaemonClient) error {
 	if err := client.StopWebServer(); err != nil {
-		return fmt.Errorf("agenthub web stop: %w", err)
+		return fmt.Errorf("portty web stop: %w", err)
 	}
 	return nil
 }
@@ -260,7 +260,7 @@ func cmdWebStatus(client *daemon.DaemonClient, args []string, out io.Writer) err
 	}
 	resp, err := client.GetWebServerStatus()
 	if err != nil {
-		return fmt.Errorf("agenthub web status: %w", err)
+		return fmt.Errorf("portty web status: %w", err)
 	}
 	if *jsonOut {
 		return json.NewEncoder(out).Encode(resp)
@@ -276,10 +276,10 @@ func cmdWebStatus(client *daemon.DaemonClient, args []string, out io.Writer) err
 // cmdServe enables web serving for the given session.
 func cmdServe(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: agenthub serve <session-id>")
+		return fmt.Errorf("usage: portty serve <session-id>")
 	}
 	if err := client.ToggleWebServing(args[0], true); err != nil {
-		return fmt.Errorf("agenthub serve: %w", err)
+		return fmt.Errorf("portty serve: %w", err)
 	}
 	return nil
 }
@@ -287,10 +287,10 @@ func cmdServe(client *daemon.DaemonClient, args []string) error {
 // cmdUnserve disables web serving for the given session.
 func cmdUnserve(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: agenthub unserve <session-id>")
+		return fmt.Errorf("usage: portty unserve <session-id>")
 	}
 	if err := client.ToggleWebServing(args[0], false); err != nil {
-		return fmt.Errorf("agenthub unserve: %w", err)
+		return fmt.Errorf("portty unserve: %w", err)
 	}
 	return nil
 }
@@ -332,16 +332,16 @@ func cmdSettings(client *daemon.DaemonClient, out io.Writer) error {
 // cmdQR renders a QR code for the given session URL in the terminal.
 func cmdQR(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: agenthub qr <session-id>")
+		return fmt.Errorf("usage: portty qr <session-id>")
 	}
 	resp, err := client.GetWebServerStatus()
 	if err != nil || !resp.Running {
-		return fmt.Errorf("web server not running — use 'agenthub web start' first")
+		return fmt.Errorf("web server not running — use 'portty web start' first")
 	}
 	url := fmt.Sprintf("%s/sessions/%s", resp.URL, args[0])
 	q, err := qrcode.New(url, qrcode.Medium)
 	if err != nil {
-		return fmt.Errorf("agenthub qr: %w", err)
+		return fmt.Errorf("portty qr: %w", err)
 	}
 	fmt.Fprint(out, q.ToSmallString(false))
 	fmt.Fprintln(out, url)

@@ -1,8 +1,5 @@
 # Go build artifacts
-/agenthub
-/agenthub.exe
-/agenthub-cli
-/agenthub-cli.exe
+/portty
 *.exe
 /bin/
 /playwright-fixture
