@@ -22,7 +22,7 @@ import (
 	"testing/fstest"
 )
 
-const fakeIndexHTML = `<!doctype html><html><head><title>AgentHub</title></head><body><div id="root"></div></body></html>`
+const fakeIndexHTML = `<!doctype html><html><head><title>Portty</title></head><body><div id="root"></div></body></html>`
 
 func TestAppBundle_503WithoutFS(t *testing.T) {
 	ws, client := testServer(t)

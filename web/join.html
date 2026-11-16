@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Join Session - AgentHub</title>
+  <title>Join Session — Portty</title>
   <link rel="stylesheet" href="/assets/join.css">
 </head>
 <body>
   <div class="container">
     <!-- State A: code pre-filled, valid happy path -->
     <div id="state-a" class="state">
-      <h1>AgentHub</h1>
+      <h1>Portty</h1>
       <h2>Join Session</h2>
       <p class="join-session-name">Shared Terminal Session</p>
       <p>You are about to join a shared terminal session. Tap Join to open it.</p>
@@ -23,7 +23,7 @@
 
     <!-- State B: no code — prompt user to enter one -->
     <div id="state-b" class="state">
-      <h1>AgentHub</h1>
+      <h1>Portty</h1>
       <h2>Join a Shared Session</h2>
       <p>Enter a join code to continue.</p>
       <form action="/join" method="GET">
@@ -36,7 +36,7 @@
 
     <!-- State C: expired -->
     <div id="state-c" class="state">
-      <h1>AgentHub</h1>
+      <h1>Portty</h1>
       <h2 class="error">Link Expired</h2>
       <p>This join code has expired or has already been used. Ask the session owner to share a new link.</p>
       <a href="/dashboard" class="back-btn">Go Back</a>
@@ -44,7 +44,7 @@
 
     <!-- State D: invalid code -->
     <div id="state-d" class="state">
-      <h1>AgentHub</h1>
+      <h1>Portty</h1>
       <h2 class="error">Invalid Code</h2>
       <p>This join code is not recognized. Check for typos, or ask the session owner for a new link.</p>
       <a href="/dashboard" class="back-btn">Go Back</a>
@@ -52,9 +52,9 @@
 
     <!-- State E: session gone -->
     <div id="state-e" class="state">
-      <h1>AgentHub</h1>
+      <h1>Portty</h1>
       <h2 class="error">Session Ended</h2>
-      <p>This session is no longer available. The agent may have exited or the session owner may have stopped sharing.</p>
+      <p>This session is no longer available. The shell may have exited, or the owner stopped sharing it.</p>
       <a href="/dashboard" class="back-btn">Go Back</a>
     </div>
   </div>

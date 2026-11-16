@@ -34,7 +34,7 @@ func GenerateSelfSignedCert(ip string) (*tls.Config, error) {
 
 	caTmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{Organization: []string{"AgentHub Local"}},
+		Subject:               pkix.Name{Organization: []string{"Portty Local"}},
 		NotBefore:             time.Now().Add(-time.Minute),
 		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
 		IsCA:                  true,

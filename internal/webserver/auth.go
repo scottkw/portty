@@ -9,7 +9,7 @@ import (
 //
 // On missing or incorrect credentials, the middleware responds with:
 //   - HTTP 401 Unauthorized
-//   - WWW-Authenticate: Basic realm="AgentHub"
+//   - WWW-Authenticate: Basic realm="Portty"
 //
 // This is used in local mode to protect the web server from unauthenticated
 // access on the local network.
@@ -18,7 +18,7 @@ func BasicAuthMiddleware(password string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, pass, ok := r.BasicAuth()
 			if !ok || pass != password {
-				w.Header().Set("WWW-Authenticate", `Basic realm="AgentHub"`)
+				w.Header().Set("WWW-Authenticate", `Basic realm="Portty"`)
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}

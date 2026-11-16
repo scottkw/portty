@@ -27,7 +27,7 @@ func TestBasicAuthMiddleware_Unauthorized(t *testing.T) {
 	if wwwAuth == "" {
 		t.Error("expected WWW-Authenticate header to be set")
 	}
-	if want := `Basic realm="AgentHub"`; wwwAuth != want {
+	if want := `Basic realm="Portty"`; wwwAuth != want {
 		t.Errorf("WWW-Authenticate = %q, want %q", wwwAuth, want)
 	}
 }
