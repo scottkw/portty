@@ -10,7 +10,7 @@
 - [ ] **BRND-01**: The built app is named Portty: bundle name, bundle ID, window title, menu bar, About box, tray tooltip
 - [ ] **BRND-02**: The app icon, tray icons (including progress and error states), and title logos come from `portty-brand/`
 - [x] **BRND-03**: CLI binary is `portty` (e.g. `portty attach`, `portty daemon`), and the Go module path, config/data directories, and socket names use "portty" instead of "agenthub"
-- [ ] **BRND-04**: README, help content, and in-app text describe Portty as a terminal with remote access. No AgentHub or agent-CLI wording remains in user-facing text.
+- [x] **BRND-04**: README, help content, and in-app text describe Portty as a terminal with remote access. No AgentHub or agent-CLI wording remains in user-facing text.
 - [ ] **BRND-05**: No "AgentHub"/"agenthub" reference remains anywhere in the repo (code, identifiers, comments, tests, CI, scripts, docs, config). A case-insensitive search over tracked files, excluding `.planning/` history and git history, finds zero hits.
 - [x] **BRND-06**: The app's website is https://portty.app. About box, Help, README, and update/release links point to it or to github.com/scottkw/portty, never to AgentHub URLs.
 
@@ -53,7 +53,7 @@
 - [ ] **UPD-02**: The user can force an immediate check from a "Check for Updates…" menu item. It reports "Portty is up to date", "Version X is available", or a readable error
 - [ ] **UPD-03**: From the update notice, one click downloads the release DMG, verifies its SHA-256 digest and Developer ID Team signature, and reveals it in Finder. This matches the GIFsmith flow (port of `~/dev/gifsmith/internal/update`)
 - [ ] **UPD-04**: No published release, a 404, drafts, prereleases, network failures, and rate limits are all handled quietly: no false "update available", no repeated error popups, and periodic checks keep running
-- [ ] **DIST-03**: No Homebrew distribution. `packaging/homebrew` and every Homebrew reference (docs, scripts, release workflow) are removed. Releases ship only as GitHub release DMGs, linked from https://portty.app
+- [x] **DIST-03**: No Homebrew distribution. `packaging/homebrew` and every Homebrew reference (docs, scripts, release workflow) are removed. Releases ship only as GitHub release DMGs, linked from https://portty.app
 
 ### Strip-down
 
@@ -101,7 +101,7 @@
 | BRND-01 | Phase 3 | Pending |
 | BRND-02 | Phase 3 | Pending |
 | BRND-03 | Phase 3 | Complete |
-| BRND-04 | Phase 3 | Pending |
+| BRND-04 | Phase 3 | Complete |
 | BRND-05 | Phase 3 | Complete |
 | BRND-06 | Phase 3 | Complete |
 | TERM-01 | Phase 1 | Complete |
@@ -124,7 +124,7 @@
 | SHAR-07 | Phase 5 | Pending |
 | CHAT-01 | Phase 2 | Pending |
 | NOTF-01 | Phase 3 | Complete |
-| DIST-03 | Phase 3 | Pending |
+| DIST-03 | Phase 3 | Complete |
 | UPD-01 | Phase 6 | Pending |
 | UPD-02 | Phase 6 | Pending |
 | UPD-03 | Phase 6 | Pending |

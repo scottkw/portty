@@ -1,17 +1,17 @@
 ---
 gsd_state_version: "1.0"
 current_phase: 3
-status: executing
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-11-16T17:46:44.488Z"
+status: verifying
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-11-16T19:01:16.641Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 3 execution started
-state_head: 03c160b543af0ba27803ea6cb80489ae556945aa
+state_head: 9aea24e7b73e029170d7017fa46a4c4b0f5f06b7
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 31
-  completed_plans: 30
+  completed_plans: 31
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 Phase: 3 — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-16 — Phase 3 execution started
 
 Progress: [██░░░░░░░░] 17%
@@ -72,6 +72,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 03 P03 | 10 min | 2 tasks | 69 files |
 | Phase 03 P04 | 25min | 2 tasks | 13 files |
 | Phase 3 P05 | 15min | 3 tasks | 21 files |
+| Phase 3 P06 | 53min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,10 @@ Recent decisions affecting current work:
 - [Phase 3]: 03-05: Web pages change text only (Portty in the system font, no logo or CSS changes); the live /dashboard and /join routes are tested for copy and the CSP header
 - [Phase 3]: 03-05: Folder memory key is portty:lastWorkDir with no migration (it resets once to home)
 - [Phase 3]: 03-05: Negative test assertions use patterns that never spell the old name out (App.test namespaced theme-key regex)
+- [Phase 3]: 03-06: Brand gate is tests/check-brand.sh run from build.yml (bracket-class patterns; exit 0/1/2), not inline negated shell
+- [Phase 3]: 03-06: Release DMG is a plain hdiutil UDZO image signed with codesign; no create-dmg or package-manager install; first exercised in Phase 6
+- [Phase 3]: 03-06: RELEASE_PUBLISH_TOKEN logic kept, comment only; Phase 6 revisits publishing
+- [Phase 3]: 03-06: build.yml context renamed to build (portty, darwin/universal, macos-latest); branch protection re-apply is a manual user step when CI is re-enabled
 
 ### Pending Todos
 
@@ -189,6 +194,6 @@ Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appeara
 
 ## Session Continuity
 
-Last session: 2026-11-16T17:46:43.065Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-11-16T19:01:15.188Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: None
