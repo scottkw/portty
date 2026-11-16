@@ -221,6 +221,7 @@ func (a *App) RetryDaemon() error {
 		return err
 	}
 	a.daemonErr = nil
+	a.applyStoredAppearance() // startup skipped it while the daemon was down
 	return nil
 }
 

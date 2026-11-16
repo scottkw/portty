@@ -61,7 +61,14 @@ describe('App', () => {
       const call = raw.indexOf('GetAppearance()')
       expect(webReturn).toBeGreaterThan(-1)
       expect(call).toBeGreaterThan(webReturn)
-      expect(raw.match(/GetAppearance\(\)/g)).toHaveLength(1)
+      expect(raw.match(/GetAppearance\(\)/g)).toHaveLength(2)
+    })
+
+    // Review WR-03: Retry Connection hydrates the override too, after RetryDaemon succeeds.
+    it('retryInit loads GetAppearance after RetryDaemon', () => {
+      const start = raw.indexOf('const retryInit = useCallback(')
+      const body = raw.slice(start, raw.indexOf('}, [])', start))
+      expect(body.indexOf('GetAppearance()')).toBeGreaterThan(body.indexOf('await RetryDaemon()'))
     })
 
     it("passes 'system' to useColorScheme in web mode, the override otherwise", () => {

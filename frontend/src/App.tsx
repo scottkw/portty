@@ -1034,6 +1034,11 @@ function App(): React.ReactElement {
       // Mirror the mount-time sessions seed (see init above).
       setSessions(sessions)
 
+      // Mirror init: the stored Appearance override (keep 'system' on failure).
+      GetAppearance()
+        .then((v) => { if (v === 'light' || v === 'dark') setAppearance(v) })
+        .catch(() => { /* stay 'system' */ })
+
       // Fetch web server mode for local-network-fallback UI
       GetWebServerMode().then(mode => {
         setWebServerMode(mode === 'tailscale' || mode === 'local' ? mode : null)

@@ -942,6 +942,11 @@ func TestRetryDaemonSuccess_KeepsClientAndPollers(t *testing.T) {
 	defer cancel()
 	app.startExitWatcher(ctx) // reads a.client concurrently with the retry
 
+	if err := client.SetAppearance("dark"); err != nil {
+		t.Fatalf("client.SetAppearance(dark): %v", err)
+	}
+	got := recordAppearance(app)
+
 	if err := app.RetryDaemon(); err != nil {
 		t.Fatalf("RetryDaemon: %v", err)
 	}
@@ -950,6 +955,10 @@ func TestRetryDaemonSuccess_KeepsClientAndPollers(t *testing.T) {
 	}
 	if app.daemonErr != nil {
 		t.Fatalf("daemonErr = %v, want nil", app.daemonErr)
+	}
+	// WR-03: startup skipped the stored Appearance while the daemon was down.
+	if len(*got) != 1 || (*got)[0] != "dark" {
+		t.Errorf("applied after retry: want [dark], got %v", *got)
 	}
 }
 
