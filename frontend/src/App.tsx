@@ -651,6 +651,7 @@ function App(): React.ReactElement {
       try { await ToggleWebServing(id, false) } catch (err) { console.warn('[App] ToggleWebServing(false) failed:', err) }
     }
     await KillSession(id)
+    exitedIdsRef.current.add(id) // an in-flight poll must not bring it back
     removeTabState(id)
     setSessions((prev) => prev.filter((s) => s.id !== id))
   }, [sessions, removeTabState])
@@ -745,7 +746,8 @@ function App(): React.ReactElement {
     async function refresh() {
       try {
         const list = await ListSessions()
-        if (!cancelled) setSessions(list)
+        // A poll in flight across session:exit or End Session may still list it.
+        if (!cancelled) setSessions(list.filter((s) => !exitedIdsRef.current.has(s.id)))
       } catch {
         // Keep the last list until the next tick succeeds.
       }
@@ -897,6 +899,7 @@ function App(): React.ReactElement {
   // NOTE: the Hub surfaces this via an explicit "Open" button rather than a
   // whole-card click — card-click is reserved for the Phase 134 modal gesture.
   const handleOpenSessionTab = useCallback((sessionId: string, name: string) => {
+    if (exitedIdsRef.current.has(sessionId)) return // no exit event would ever close it
     const existing = tabs.find((t) => t.id === sessionId)
     if (existing) {
       setActiveId(existing.id)

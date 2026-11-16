@@ -568,6 +568,8 @@ describe('renameSession and End Session (TERM-03)', () => {
     expect(toggle).toBeGreaterThan(-1)
     expect(kill).toBeGreaterThan(toggle)
     expect(b.indexOf('removeTabState(id)')).toBeGreaterThan(kill)
+    // Review WR-06: recorded as exited so an in-flight poll cannot resurrect it.
+    expect(b.indexOf('exitedIdsRef.current.add(id)')).toBeGreaterThan(kill)
   })
 
   it('End Session… opens a destructive confirm with the UI-SPEC copy', () => {

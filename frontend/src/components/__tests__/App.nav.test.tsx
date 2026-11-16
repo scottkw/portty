@@ -25,7 +25,8 @@ describe('Portty NAV-01: always-on session poll feeds the sidebar', () => {
   it('polls ListSessions every 3000 ms with no tab gate', () => {
     const body = poll()
     expect(body).toContain('setInterval(() => void refresh(), 3000)')
-    expect(body).toContain('setSessions(list)')
+    // Review WR-06: a poll in flight across an exit must not resurrect the session.
+    expect(body).toContain('setSessions(list.filter((s) => !exitedIdsRef.current.has(s.id)))')
     expect(body).not.toContain('activeId')
     expect(body).not.toContain('HUB_TAB')
   })
@@ -55,6 +56,8 @@ describe('Portty NAV-01: always-on session poll feeds the sidebar', () => {
 
   it('handleOpenSessionTab focuses an open tab or appends and activates one', () => {
     const body = slice('const handleOpenSessionTab = useCallback(', '}, [tabs])')
+    expect(body.indexOf('if (exitedIdsRef.current.has(sessionId)) return')).toBeGreaterThan(-1)
+    expect(body.indexOf('if (exitedIdsRef.current.has(sessionId)) return')).toBeLessThan(body.indexOf('setTabs('))
     expect(body).toContain('tabs.find((t) => t.id === sessionId)')
     expect(body).toContain('setActiveId(existing.id)')
     expect(body).toContain('setTabs((prev) => [...prev, newTab])')
