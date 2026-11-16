@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/relay"
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/capability"
+	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/webserver"
 )
 
 // ssExtTestKey is a deterministic 32-byte HMAC key used by external-package

@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/relay"
-	"github.com/scottkw/agenthub/internal/statusbar"
+	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/statusbar"
 )
 
 // LockedWriter serialises concurrent writes to an underlying io.Writer.

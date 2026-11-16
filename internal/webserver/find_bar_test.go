@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	webfs "github.com/scottkw/agenthub/web"
+	webfs "github.com/scottkw/portty/web"
 )
 
 // Phase 94 Plan 94-01 Wave 0 — find-bar asset + web HTML/JS smoke tests.

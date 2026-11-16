@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/relay"
-	"github.com/scottkw/agenthub/internal/tailnet"
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/capability"
+	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/tailnet"
+	"github.com/scottkw/portty/internal/webserver"
 )
 
 // testDaemon creates an API server with a fresh engine on a temp socket.

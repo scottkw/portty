@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/daemon"
+	"github.com/scottkw/portty/internal/daemon"
 )
 
 // fixtureCap is the canonical cap token the fixture peer accepts.

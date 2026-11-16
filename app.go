@@ -12,10 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/daemon"
-	"github.com/scottkw/agenthub/internal/tailnet"
-	"github.com/scottkw/agenthub/internal/updater"
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/tailnet"
+	"github.com/scottkw/portty/internal/updater"
+	"github.com/scottkw/portty/internal/webserver"
 	qrcode "github.com/skip2/go-qrcode"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -803,14 +803,14 @@ func (a *App) SetImageConfig(cfg daemon.ImageConfig) error {
 	return nil
 }
 
-// configDir returns the path to the agenthub config directory (~/.config/agenthub).
-// Creates the directory if it does not exist.
+// configDir returns os.UserConfigDir()/portty (~/Library/Application Support/portty
+// on macOS), creating it 0700 if it does not exist.
 func configDir() string {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "agenthub")
+	dir := filepath.Join(base, "portty")
 	_ = os.MkdirAll(dir, 0700)
 	return dir
 }

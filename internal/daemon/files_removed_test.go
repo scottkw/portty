@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/scottkw/agenthub/internal/daemon"
+	"github.com/scottkw/portty/internal/daemon"
 )
 
 func newRemovedRoutesAPI(t *testing.T) *daemon.API {

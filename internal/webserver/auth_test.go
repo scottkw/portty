@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/webserver"
 )
 
 // TestBasicAuthMiddleware_Unauthorized verifies that a request with no

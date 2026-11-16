@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/testutil"
+	"github.com/scottkw/portty/internal/testutil"
 )
 
 // setupTestServer creates a test HTTP server with a relay Server backed by a

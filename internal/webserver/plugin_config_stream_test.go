@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/capability"
+	"github.com/scottkw/portty/internal/capability"
 )
 
 // issueExpiredCapFor mints a cap whose HMAC signature fails verification by

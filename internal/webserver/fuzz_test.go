@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/capability"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // fuzzWebServer builds a WebServer the way testServer does, minus Start(), with

@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/capability"
+	"github.com/scottkw/portty/internal/webserver"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tailcfg"

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/capability"
+	"github.com/scottkw/portty/internal/capability"
 )
 
 // joinCodeRegex matches the D-10 wire format: two groups of 4 base32 chars

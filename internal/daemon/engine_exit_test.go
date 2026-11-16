@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/pty"
+	"github.com/scottkw/portty/internal/pty"
 )
 
 // TestExitEvent_ExitWatcher_TransitionsToStopped verifies that when a session's

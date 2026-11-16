@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/webserver"
 )
 
 // BuildVersion is set by the main package at startup. The daemon embeds it in

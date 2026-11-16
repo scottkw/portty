@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/attach"
-	"github.com/scottkw/agenthub/internal/relay"
-	"github.com/scottkw/agenthub/internal/statusbar"
-	"github.com/scottkw/agenthub/internal/tailnet"
+	"github.com/scottkw/portty/internal/attach"
+	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/statusbar"
+	"github.com/scottkw/portty/internal/tailnet"
 )
 
 // setupAttachTest creates a relay HubManager + Server backed by io.Pipe pairs

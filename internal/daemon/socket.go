@@ -8,16 +8,15 @@ import (
 	"time"
 )
 
-// DefaultSocketPath returns the Unix socket path for the agenthub daemon,
-// under the user config directory.
-//
-// The parent directory is created if it does not already exist.
+// DefaultSocketPath returns the Unix socket path for the Portty daemon:
+// daemon.sock in os.UserConfigDir()/portty (~/Library/Application Support/portty
+// on macOS). The parent directory is created 0700 if it does not already exist.
 func DefaultSocketPath() string {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "agenthub")
+	dir := filepath.Join(base, "portty")
 	_ = os.MkdirAll(dir, 0700)
 	return filepath.Join(dir, "daemon.sock")
 }

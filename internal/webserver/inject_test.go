@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // writerFuncWeb adapts a func to io.Writer for the counting PTY writer.

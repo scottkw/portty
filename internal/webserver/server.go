@@ -18,9 +18,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/relay"
-	webfs "github.com/scottkw/agenthub/web"
+	"github.com/scottkw/portty/internal/capability"
+	"github.com/scottkw/portty/internal/relay"
+	webfs "github.com/scottkw/portty/web"
 	qrcode "github.com/skip2/go-qrcode"
 	"tailscale.com/client/local"
 	"tailscale.com/ipn"

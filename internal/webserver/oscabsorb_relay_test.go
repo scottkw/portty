@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // Phase 111 / Issue #54: integration tests that exercise the full WS read pump

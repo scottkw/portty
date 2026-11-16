@@ -1,4 +1,4 @@
-module github.com/scottkw/agenthub
+module github.com/scottkw/portty
 
 go 1.26.4
 

@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 func TestSessionEnd_HubDone_CarriesCloseReason(t *testing.T) {

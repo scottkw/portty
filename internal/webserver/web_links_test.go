@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	webfs "github.com/scottkw/agenthub/web"
+	webfs "github.com/scottkw/portty/web"
 )
 
 // Phase 95 Plan 95-06 — web parity gates for the web-links addon.

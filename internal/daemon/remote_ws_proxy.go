@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // handleRemoteSessionWS proxies an inbound webview WebSocket to a remote peer's

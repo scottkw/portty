@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // TestAPIDisconnectViewers_ClosesOnlyWebOrigin asserts POST

@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/daemon"
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/webserver"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tailcfg"

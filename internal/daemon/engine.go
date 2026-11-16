@@ -15,8 +15,8 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	xvt "github.com/charmbracelet/x/vt"
-	"github.com/scottkw/agenthub/internal/pty"
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/pty"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // SessionEngine owns all session state: registry, backend, hub manager,
@@ -54,14 +54,15 @@ type SessionEngine struct {
 	spawnCommand func() (string, []string)
 }
 
-// daemonConfigDir returns ~/.config/agenthub/, creating it if needed.
+// daemonConfigDir returns os.UserConfigDir()/portty (~/Library/Application Support/portty
+// on macOS), creating it 0700 if needed.
 // Mirrors app.go configDir() — internal packages cannot import main.
 func daemonConfigDir() string {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "agenthub")
+	dir := filepath.Join(base, "portty")
 	_ = os.MkdirAll(dir, 0700)
 	return dir
 }

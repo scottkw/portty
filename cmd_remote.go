@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/scottkw/agenthub/internal/tailnet"
+	"github.com/scottkw/portty/internal/tailnet"
 )
 
 // CLIRemoteSession is a simplified remote session representation for CLI use.

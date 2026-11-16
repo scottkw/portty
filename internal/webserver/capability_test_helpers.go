@@ -35,7 +35,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // selfSignedTLSForTest generates an in-memory self-signed CA and leaf cert for

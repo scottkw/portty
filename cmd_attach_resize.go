@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/attach"
+	"github.com/scottkw/portty/internal/attach"
 )
 
 // watchResize delegates to the shared attach package which handles

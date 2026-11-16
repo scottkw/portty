@@ -31,8 +31,8 @@ func TestSocketPathDefault(t *testing.T) {
 	if path == "" {
 		t.Fatal("DefaultSocketPath returned empty string")
 	}
-	if !strings.HasSuffix(path, filepath.Join("agenthub", "daemon.sock")) {
-		t.Errorf("DefaultSocketPath = %q, want suffix %q", path, filepath.Join("agenthub", "daemon.sock"))
+	if !strings.HasSuffix(path, filepath.Join("portty", "daemon.sock")) {
+		t.Errorf("DefaultSocketPath = %q, want suffix %q", path, filepath.Join("portty", "daemon.sock"))
 	}
 }
 

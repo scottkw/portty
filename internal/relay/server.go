@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/pty"
+	"github.com/scottkw/portty/internal/pty"
 )
 
 // Server is an HTTP handler that exposes relay sessions over WebSocket.

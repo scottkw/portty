@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/tailnet"
+	"github.com/scottkw/portty/internal/tailnet"
 )
 
 // TestParseRemoteID is a table-driven test for the parseRemoteID helper.

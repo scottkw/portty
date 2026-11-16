@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/statusbar"
+	"github.com/scottkw/portty/internal/statusbar"
 )
 
 type safeBuf struct {

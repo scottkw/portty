@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/daemon"
-	"github.com/scottkw/agenthub/internal/relay"
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/webserver"
 )
 
 // testSetup creates a real daemon API on a short socket path and returns a DaemonClient.

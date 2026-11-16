@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/capability"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // TestRemoveGrant_Surgical asserts RemoveGrant deletes only the named

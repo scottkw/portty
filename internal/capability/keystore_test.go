@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/scottkw/agenthub/internal/capability"
+	"github.com/scottkw/portty/internal/capability"
 )
 
 // TestFileKeyStore_RoundTrip verifies that Save followed by Load returns the

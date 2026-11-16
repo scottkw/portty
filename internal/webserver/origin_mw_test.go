@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // TestRequireAllowedOrigin_MatchingOriginPasses asserts that an Origin header

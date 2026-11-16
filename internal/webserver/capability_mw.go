@@ -3,7 +3,7 @@ package webserver
 import (
 	"net/http"
 
-	"github.com/scottkw/agenthub/internal/capability"
+	"github.com/scottkw/portty/internal/capability"
 )
 
 // requireCapability returns a middleware that gates access to a handler on a

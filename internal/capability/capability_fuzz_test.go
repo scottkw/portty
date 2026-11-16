@@ -8,7 +8,7 @@ package capability_test
 import (
 	"testing"
 
-	"github.com/scottkw/agenthub/internal/capability"
+	"github.com/scottkw/portty/internal/capability"
 )
 
 // FuzzVerify exercises capability.Verify against arbitrary token strings. The

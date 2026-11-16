@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	webfs "github.com/scottkw/agenthub/web"
+	webfs "github.com/scottkw/portty/web"
 )
 
 // TestAssets_XtermJSServedFromEmbed asserts that GET /assets/xterm/xterm.js

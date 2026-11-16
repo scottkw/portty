@@ -38,7 +38,7 @@ import (
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 
-	webfs "github.com/scottkw/agenthub/web"
+	webfs "github.com/scottkw/portty/web"
 )
 
 // awaitPromiseOpt configures chromedp.Evaluate to wait for the returned

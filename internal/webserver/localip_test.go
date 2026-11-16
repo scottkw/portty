@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/webserver"
 )
 
 // TestGetLANIP verifies that GetLANIP returns a non-empty non-loopback IPv4.

@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/capability"
-	"github.com/scottkw/agenthub/internal/relay"
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/capability"
+	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/webserver"
 )
 
 // joinExchangeTestServer wires a WebServer with a signing key, a fresh

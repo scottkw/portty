@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/scottkw/agenthub/internal/daemon"
+	"github.com/scottkw/portty/internal/daemon"
 )
 
 func TestChatRemoved_RelayLoopbackMux(t *testing.T) {

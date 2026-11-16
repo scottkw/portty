@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/testutil"
+	"github.com/scottkw/portty/internal/testutil"
 )
 
 // makeTestHub creates a Hub backed by an io.Pipe for testing.

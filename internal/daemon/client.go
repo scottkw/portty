@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/tailnet"
+	"github.com/scottkw/portty/internal/tailnet"
 )
 
 // DaemonClient is a typed Go client that communicates with the daemon API

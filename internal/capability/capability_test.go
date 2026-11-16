@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scottkw/agenthub/internal/capability"
+	"github.com/scottkw/portty/internal/capability"
 )
 
 // testKey returns a deterministic 32-byte key for signing across tests.

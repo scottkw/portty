@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/webserver"
 )
 
 // TestGenerateSelfSignedCert verifies that GenerateSelfSignedCert returns a

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -42,7 +41,7 @@ func TestDispatchHelp(t *testing.T) {
 		}
 	}
 	// Must contain help trailer.
-	if !strings.Contains(out, "Run 'agenthub <command> --help' for command-specific flags") {
+	if !strings.Contains(out, "Run 'portty <command> --help' for command-specific flags") {
 		t.Errorf("usage() missing help trailer")
 	}
 }
@@ -51,7 +50,7 @@ func TestDispatchHelp(t *testing.T) {
 func TestDispatchHelpShort(t *testing.T) {
 	// This test validates the dispatch logic in main().
 	// Since main() calls os.Exit, we test the condition directly.
-	args := []string{"agenthub", "-h"}
+	args := []string{"portty", "-h"}
 	if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
 		// Would call usage() — verified by TestDispatchHelp.
 		return
@@ -62,7 +61,7 @@ func TestDispatchHelpShort(t *testing.T) {
 // TestDispatchNoArgs verifies that no-args routes to GUI path.
 func TestDispatchNoArgs(t *testing.T) {
 	// Verify the dispatch condition: len(os.Args) == 1 → GUI.
-	args := []string{"agenthub"}
+	args := []string{"portty"}
 	if len(args) != 1 {
 		t.Fatal("expected single-element args to route to GUI")
 	}
@@ -86,7 +85,7 @@ func TestDispatchFlagRouting(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.arg, func(t *testing.T) {
-			args := []string{"agenthub", tc.arg}
+			args := []string{"portty", tc.arg}
 			isFlag := strings.HasPrefix(args[1], "-")
 			isHelp := args[1] == "--help" || args[1] == "-h"
 
@@ -103,15 +102,11 @@ func TestDispatchFlagRouting(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownCommand verifies that an unknown command triggers
-// the error path with the correct message format.
+// TestRunCLI_UnknownCommand verifies the exact message runCLI prints for an
+// unknown command (runCLI itself calls os.Exit, so the builder is tested).
 func TestRunCLI_UnknownCommand(t *testing.T) {
-	// We can't call runCLI directly because it calls os.Exit(1).
-	// Instead, verify the format matches what main.go produces.
-	cmd := "bogus"
-	expected := fmt.Sprintf("agenthub: unknown command %q", cmd)
-	got := fmt.Sprintf("agenthub: unknown command %q", cmd)
-	if got != expected {
-		t.Errorf("error format mismatch: got %q, want %q", got, expected)
+	want := `portty: unknown command "bogus"` + "\n" + `Run 'portty --help' for usage.` + "\n"
+	if got := unknownCommandMessage("bogus"); got != want {
+		t.Errorf("unknownCommandMessage(\"bogus\") = %q, want %q", got, want)
 	}
 }

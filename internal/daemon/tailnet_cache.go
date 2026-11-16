@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/tailnet"
+	"github.com/scottkw/portty/internal/tailnet"
 )
 
 const cacheTTL = 30 * time.Second

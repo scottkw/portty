@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/pty"
-	"github.com/scottkw/agenthub/internal/relay"
+	"github.com/scottkw/portty/internal/pty"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 func TestNewSessionEngine(t *testing.T) {

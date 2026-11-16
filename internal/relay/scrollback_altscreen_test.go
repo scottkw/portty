@@ -33,7 +33,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/testutil"
+	"github.com/scottkw/portty/internal/testutil"
 )
 
 // altScreenEnter is the DEC private-mode sequence a full-screen TUI emits

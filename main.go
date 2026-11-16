@@ -15,7 +15,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/scottkw/agenthub/internal/daemon"
+	"github.com/scottkw/portty/internal/daemon"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
@@ -43,7 +43,7 @@ var appInstance *App
 func main() {
 	daemon.BuildVersion = Version
 	// Phase 120-04 — hand the embedded React bundle FS to the daemon package so
-	// the daemon-mode invocation (`agenthub daemon`) can mount it on the
+	// the daemon-mode invocation (`portty daemon`) can mount it on the
 	// webserver's /app/ route. In dev builds (no wailsassets tag) this
 	// returns nil; the webserver answers /app/ with 503. In prod builds
 	// (wailsassets) this returns the same fs.FS used by Wails for the
@@ -174,7 +174,7 @@ func appMenu() *menu.Menu {
 // Uses the package-level appCtx set during app.startup().
 func openGitHubCallback(_ *menu.CallbackData) {
 	if appCtx != nil {
-		runtime.BrowserOpenURL(appCtx, "https://github.com/scottkw/agenthub")
+		runtime.BrowserOpenURL(appCtx, "https://github.com/scottkw/portty")
 	}
 }
 
@@ -208,7 +208,7 @@ func runCLI(args []string) {
 	// All other commands: auto-start daemon, create client, dispatch.
 	socketPath := daemon.DefaultSocketPath()
 	if err := daemon.EnsureDaemon(socketPath); err != nil {
-		fmt.Fprintf(os.Stderr, "agenthub: %v\n", err)
+		fmt.Fprintf(os.Stderr, "portty: %v\n", err)
 		os.Exit(1)
 	}
 	client := daemon.NewDaemonClient(socketPath)
@@ -243,7 +243,7 @@ func runCLI(args []string) {
 		// Only "daemon status" reaches here (others handled above).
 		err = cmdDaemonStatus(client, cmdArgs[1:], os.Stdout)
 	default:
-		fmt.Fprintf(os.Stderr, "agenthub: unknown command %q\nRun 'agenthub --help' for usage.\n", cmd)
+		fmt.Fprint(os.Stderr, unknownCommandMessage(cmd))
 		os.Exit(1)
 	}
 

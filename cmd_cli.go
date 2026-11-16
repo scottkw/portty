@@ -11,15 +11,15 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/scottkw/agenthub/internal/daemon"
-	"github.com/scottkw/agenthub/internal/tailnet"
-	"github.com/scottkw/agenthub/internal/webserver"
+	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/tailnet"
+	"github.com/scottkw/portty/internal/webserver"
 	qrcode "github.com/skip2/go-qrcode"
 )
 
 // usage prints the command reference to stderr.
 func usage() {
-	fmt.Fprint(os.Stderr, `Usage: agenthub [command] [flags]
+	fmt.Fprint(os.Stderr, `Usage: portty [command] [flags]
 
 Run with no arguments to launch the desktop GUI.
 
@@ -48,8 +48,13 @@ Remote Sessions:
   list --local                                Shows only local sessions
   attach <hostname:session-id>                Attach to a remote session (e.g., macbook:abc123)
 
-Run 'agenthub <command> --help' for command-specific flags.
+Run 'portty <command> --help' for command-specific flags.
 `)
+}
+
+// unknownCommandMessage is what runCLI prints to stderr for an unrecognized command.
+func unknownCommandMessage(cmd string) string {
+	return fmt.Sprintf("portty: unknown command %q\nRun 'portty --help' for usage.\n", cmd)
 }
 
 // cmdNew creates a new login-shell session and writes its UUID to out.

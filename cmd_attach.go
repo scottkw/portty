@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/scottkw/agenthub/internal/attach"
-	"github.com/scottkw/agenthub/internal/daemon"
-	"github.com/scottkw/agenthub/internal/statusbar"
-	"github.com/scottkw/agenthub/internal/tailnet"
+	"github.com/scottkw/portty/internal/attach"
+	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/statusbar"
+	"github.com/scottkw/portty/internal/tailnet"
 	"golang.org/x/term"
 )
 
