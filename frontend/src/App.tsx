@@ -1082,6 +1082,7 @@ function App(): React.ReactElement {
         onHide={() => setSidebarHidden(true)}
         onRename={(id, name) => void renameSession(id, name)}
         onEndSession={setEndSessionTarget}
+        onNewSession={() => setShowNewSessionModal(true)}
       />
       )}
       <div className="app__content">

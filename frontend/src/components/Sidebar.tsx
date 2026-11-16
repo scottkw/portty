@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { CommandLineIcon, ComputerDesktopIcon, SignalIcon } from '@heroicons/react/24/outline'
+import { CommandLineIcon, ComputerDesktopIcon, GlobeAltIcon, PlusIcon, SignalIcon } from '@heroicons/react/24/outline'
 import type { Tab } from './TabBar'
 import type { SessionInfo } from '../wailsjs/go/main/App'
 import type { RemotePeerSessions, RemoteSession } from '../lib/remoteSession'
@@ -41,6 +41,8 @@ interface SidebarProps {
   /** Portty 02-08 (TERM-03): local rows only. App owns the RPCs. */
   onRename: (sessionId: string, name: string) => void
   onEndSession: (sessionId: string) => void
+  /** Opens the New Session dialog (same as ⌘T and the toolbar "+"), quick 261116-c9f. */
+  onNewSession: () => void
 }
 
 export function Sidebar({
@@ -53,6 +55,7 @@ export function Sidebar({
   onHide,
   onRename,
   onEndSession,
+  onNewSession,
 }: SidebarProps): React.ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; invoker: HTMLElement } | null>(null)
@@ -76,10 +79,43 @@ export function Sidebar({
         <SidebarToggleIcon />
       </button>
       <div className="sidebar__list">
-        <section className="sidebar__group" aria-labelledby="sidebar-group-local">
-          <h2 id="sidebar-group-local" className="sidebar__group-header">This Mac</h2>
+        <section
+          className={`sidebar__group${sessions.length === 0 ? ' sidebar__group--empty' : ''}`}
+          aria-labelledby="sidebar-group-local"
+        >
+          <div className="sidebar__group-head">
+            <h2 id="sidebar-group-local" className="sidebar__group-header">
+              <ComputerDesktopIcon className="sidebar__group-icon" aria-hidden="true" />
+              <span className="sidebar__group-label">This Mac</span>
+            </h2>
+            {/* A sibling of the h2, so the heading's name stays "This Mac". */}
+            <button
+              type="button"
+              className="sidebar__group-add"
+              aria-label="New Session"
+              title="New Session (⌘T)"
+              aria-keyshortcuts="Meta+T"
+              onClick={onNewSession}
+            >
+              <PlusIcon aria-hidden="true" />
+            </button>
+          </div>
           <ul className="sidebar__rows">
-            {sessions.length === 0 && <li className="sidebar__muted">No sessions</li>}
+            {sessions.length === 0 && (
+              <li>
+                <button
+                  type="button"
+                  className="sidebar__row sidebar__row--action"
+                  aria-label="New Session"
+                  aria-keyshortcuts="Meta+T"
+                  onClick={onNewSession}
+                >
+                  <PlusIcon className="sidebar__row-icon" aria-hidden="true" />
+                  <span className="sidebar__row-name">New Session</span>
+                  <span className="sidebar__row-hint" aria-hidden="true">⌘T</span>
+                </button>
+              </li>
+            )}
             {sessions.map((s) => {
               const name = s.name || 'shell'
               if (editingId === s.id) {
@@ -130,7 +166,12 @@ export function Sidebar({
 
         {peerView.kind !== 'groups' ? (
           <section className="sidebar__group" aria-labelledby="sidebar-group-peers">
-            <h2 id="sidebar-group-peers" className="sidebar__group-header">Other Macs</h2>
+            <div className="sidebar__group-head">
+              <h2 id="sidebar-group-peers" className="sidebar__group-header">
+                <GlobeAltIcon className="sidebar__group-icon" aria-hidden="true" />
+                <span className="sidebar__group-label">Other Macs</span>
+              </h2>
+            </div>
             <ul className="sidebar__rows">
               <li className="sidebar__muted">{PEER_PLACEHOLDER[peerView.kind]}</li>
             </ul>
@@ -138,7 +179,9 @@ export function Sidebar({
         ) : (
           peerView.groups.map((g, i) => (
             <section key={g.key} className="sidebar__group" aria-labelledby={`sidebar-group-peer-${i}`}>
-              <h2 id={`sidebar-group-peer-${i}`} className="sidebar__group-header" title={g.key}>{g.host}</h2>
+              <div className="sidebar__group-head">
+                <h2 id={`sidebar-group-peer-${i}`} className="sidebar__group-header" title={g.key}>{g.host}</h2>
+              </div>
               <ul className="sidebar__rows">
                 {!g.reachable && <li className="sidebar__muted">{PEER_UNREACHABLE}</li>}
                 {g.reachable && g.peer.sessions.map((s) => (

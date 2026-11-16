@@ -46,6 +46,7 @@ function render(overrides: Partial<Props> = {}) {
     onHide: vi.fn(),
     onRename: vi.fn(),
     onEndSession: vi.fn(),
+    onNewSession: vi.fn(),
     tailscaleHealth: { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'office-air.tail1.ts.net' },
     ...overrides,
   }
@@ -123,11 +124,58 @@ describe('Sidebar: This Mac (NAV-01)', () => {
     expect(c.querySelectorAll('[aria-current="page"]').length).toBe(0)
   })
 
-  it('shows a non-interactive "No sessions" line with an empty array', () => {
+  // Quick 261116-c9f (R3): the empty group offers New Session instead of a dead line.
+  it('with no sessions, This Mac shows one "New Session ⌘T" row that calls onNewSession', () => {
+    const onNewSession = vi.fn()
+    const { c } = render({ sessions: [], onNewSession })
+    const section = c.querySelector('section[aria-labelledby="sidebar-group-local"]')!
+    expect(section.querySelector('li.sidebar__muted')).toBeNull()
+    const r = rows(c, 'This Mac')
+    expect(r).toHaveLength(1)
+    expect(r[0].getAttribute('aria-label')).toBe('New Session')
+    expect(r[0].getAttribute('aria-keyshortcuts')).toBe('Meta+T')
+    expect(r[0].textContent).toBe('New Session⌘T')
+    expect(r[0].querySelector('svg')).not.toBeNull()
+    act(() => r[0].click())
+    expect(onNewSession).toHaveBeenCalledTimes(1)
+  })
+
+  // Quick 261116-c9f (R2): a header "+" beside "This Mac", outside the h2.
+  it.each([
+    ['without sessions', [] as SessionInfo[]],
+    ['with sessions', [session('a', 'alpha')]],
+  ])('the This Mac "+" is present %s and calls onNewSession', (_label, sessions) => {
+    const onNewSession = vi.fn()
+    const { c } = render({ sessions, onNewSession })
+    const btn = c.querySelector<HTMLButtonElement>('button.sidebar__group-add')!
+    expect(btn).not.toBeNull()
+    expect(btn.getAttribute('aria-label')).toBe('New Session')
+    expect(btn.getAttribute('title')).toBe('New Session (⌘T)')
+    expect(btn.getAttribute('aria-keyshortcuts')).toBe('Meta+T')
+    const h2 = c.querySelector('#sidebar-group-local')!
+    expect(h2.textContent).toBe('This Mac')
+    expect(h2.querySelector('button')).toBeNull()
+    act(() => btn.click())
+    expect(onNewSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks This Mac sidebar__group--empty only when there are no sessions', () => {
+    const section = (c: HTMLElement) => c.querySelector('section[aria-labelledby="sidebar-group-local"]')!
     const { c } = render({ sessions: [] })
-    const muted = c.querySelector('li.sidebar__muted')
-    expect(muted?.textContent).toBe('No sessions')
-    expect(muted?.querySelector('button')).toBeNull()
+    expect(section(c).classList.contains('sidebar__group--empty')).toBe(true)
+    act(() => root!.unmount())
+    container!.remove()
+    root = null
+    const { c: c2 } = render({ sessions: [session('a', 'alpha')] })
+    expect(section(c2).classList.contains('sidebar__group--empty')).toBe(false)
+  })
+
+  it('the This Mac and Other Macs headers each carry an aria-hidden glyph (R1)', () => {
+    const { c } = render({ peerView: { kind: 'off' } })
+    for (const label of ['This Mac', 'Other Macs']) {
+      const h2 = Array.from(c.querySelectorAll('h2')).find((h) => h.textContent === label)
+      expect(h2?.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    }
   })
 
   it('shows a Shared img only for web-enabled sessions', () => {

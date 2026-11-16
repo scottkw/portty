@@ -77,6 +77,7 @@ function renderPeerSidebar(onOpenPeer: Parameters<typeof Sidebar>[0]['onOpenPeer
         onHide: vi.fn(),
         onRename: vi.fn(),
         onEndSession: vi.fn(),
+        onNewSession: vi.fn(),
         tailscaleHealth: { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'me.ts.net' },
       }),
     )
@@ -169,7 +170,10 @@ describe('Sidebar peer row — open entry point (NAV-02)', () => {
   it('clicking the row calls onOpenPeer with the peer and session; adapting it keeps the peer URL', () => {
     const onOpenPeer = vi.fn()
     const { container: c } = renderPeerSidebar(onOpenPeer)
-    const row = c.querySelector<HTMLButtonElement>('button.sidebar__row')!
+    // The first row is This Mac's New Session row (sessions: []), so find the peer row by text.
+    const row = Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find(
+      (b) => b.textContent === 'Remote Session',
+    )!
     flushSync(() => { row.click() })
     expect(onOpenPeer).toHaveBeenCalledWith(remotePeer, remotePeer.sessions[0])
     const adapted = adaptRemoteSession(remotePeer, remotePeer.sessions[0])
