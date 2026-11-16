@@ -146,7 +146,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+- [Next, after Phase 3 review/verify, before Phase 4] Quick task: Settings ▸ General ▸ Terminal Font (font family text field + size), persisted by the daemon like Appearance; the Nerd Font fallback list stays after the user's choice. User approved 2026-11-16 ("yes").
 
 ### Blockers/Concerns
 
