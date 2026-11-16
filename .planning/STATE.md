@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 3
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-11-16T15:58:57.803Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-11-16T16:29:34.659Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 3 execution started
-state_head: 62b39be1e52cd6b87c0033401b7affa4d0df7f2d
+state_head: e983943dd62407473e3d68594f6ba970b7255845
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 31
-  completed_plans: 26
+  completed_plans: 27
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 3 — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 3 execution started
 
@@ -68,6 +68,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 01 P11 | 12min | 3 tasks | 53 files |
 | Phase 01 P12 | 12min | 3 tasks | 30 files |
 | Phase 3 P01 | 7 min | 3 tasks | 71 files |
+| Phase 03 P02 | 28 min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,9 @@ Recent decisions affecting current work:
 - [Phase 3]: Module path is github.com/scottkw/portty; all 57 importing .go files rewritten by one sed, zero new gofmt diffs
 - [Phase 3]: Portty stores settings, capability.key and daemon.sock in os.UserConfigDir()/portty (0700), fresh start, no migration from the old directory
 - [Phase 3]: LaunchAgent label is portty-daemon so it sits beside any old upstream agent
+- [Phase 03]: Portty web/peer port is 7444 (tailnet.DefaultProbePort); the daemon binds the same constant the probe dials
+- [Phase 03]: Peer discovery requires X-Portty: 1 with 200 or 401 on GET /api/sessions; the probe no longer reads the body, so upstream-app peers are not shown; the header is an identity hint, not authentication
+- [Phase 03]: Update check reads scottkw/portty via go-selfupdate Filters matching portty-v<x.y.z>-darwin-universal.dmg; no-release and error paths stay silent
 
 ### Pending Todos
 
@@ -133,7 +137,6 @@ None yet.
 - [Phase 2]: LOOK-01 (2026-11-15) — GUI redesign to a macOS-native look, folded into Phase 2 so the UI is redone once with tabs + sidebar and THEM-01. A mockup artifact is being made to feed discuss/planning. UI-REVIEW 01 findings (banner hex colors, disabled-reason tooltips) get fixed as part of this.
 - [Phase 2]: THEM-01 (2026-11-15) — remove the theme library/picker; app chrome + xterm follow prefers-color-scheme live (desktop and web share). Check OSC/tray glyphs and the WebGL renderer under both modes.
 - [Phase 2]: Remove chat entirely (CHAT-01, decided 2026-11-15) — ChatPanel/ChatBadge/MentionPopover/TerminalChatHost, chat store + routes, relay chat frames, FuzzSanitizeChatContent, chat CORS (FilesCORS naming). Chat panel, Share modal, Funnel risk panel, and web-share session view live under `frontend/src/components/Hub/`. Hub removal must move them, not delete them. Remote-peer polling in `App.tsx` only runs while the Hub tab is active.
-- [Phase 3]: Peer discovery probes port 7443 for AgentHub's "capability required" marker. If AgentHub still runs on either Mac, Portty may treat it as a peer or collide on the port. Decide on the port and marker during the rebrand. Both Macs need the rebranded build at the same time.
 - [Phase 3]: NOTF-01 (v1: update check points at Portty's feed) overlaps DIST-02 (v2: auto-update pulls from Portty's feed). The v1 check must cope with no Portty release existing yet.
 - [Phase 4]: Remote attach today uses a join-code/capability handshake (`RemoteJoinCodeModal`). SHAR-01's "one action, no separate toggles" must define how peers get capabilities without weakening the capability model.
 - [Phase 4]: Since 01-03, the public-write consent gate state (`SetRWGate`/`isRWGated`) is still written by the funnel-write handlers, but no production code reads it (its only reader, `originAllowedForWrite`, was removed). WebSocket write is still enforced by grants. The Share redesign must decide whether to keep or remove the gate.
@@ -173,6 +176,6 @@ Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appeara
 
 ## Session Continuity
 
-Last session: 2026-11-16T15:58:47.310Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-11-16T16:29:21.501Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None

@@ -9,10 +9,10 @@
 
 - [ ] **BRND-01**: The built app is named Portty: bundle name, bundle ID, window title, menu bar, About box, tray tooltip
 - [ ] **BRND-02**: The app icon, tray icons (including progress and error states), and title logos come from `portty-brand/`
-- [ ] **BRND-03**: CLI binary is `portty` (e.g. `portty attach`, `portty daemon`), and the Go module path, config/data directories, and socket names use "portty" instead of "agenthub"
+- [x] **BRND-03**: CLI binary is `portty` (e.g. `portty attach`, `portty daemon`), and the Go module path, config/data directories, and socket names use "portty" instead of "agenthub"
 - [ ] **BRND-04**: README, help content, and in-app text describe Portty as a terminal with remote access. No AgentHub or agent-CLI wording remains in user-facing text.
-- [ ] **BRND-05**: No "AgentHub"/"agenthub" reference remains anywhere in the repo (code, identifiers, comments, tests, CI, scripts, docs, config). A case-insensitive search over tracked files, excluding `.planning/` history and git history, finds zero hits.
-- [ ] **BRND-06**: The app's website is https://portty.app. About box, Help, README, and update/release links point to it or to github.com/scottkw/portty, never to AgentHub URLs.
+- [x] **BRND-05**: No "AgentHub"/"agenthub" reference remains anywhere in the repo (code, identifiers, comments, tests, CI, scripts, docs, config). A case-insensitive search over tracked files, excluding `.planning/` history and git history, finds zero hits.
+- [x] **BRND-06**: The app's website is https://portty.app. About box, Help, README, and update/release links point to it or to github.com/scottkw/portty, never to AgentHub URLs.
 
 ### Terminal
 
@@ -45,7 +45,7 @@
 ### Chat removal & Notifications
 
 - [ ] **CHAT-01**: Session chat is removed everywhere: desktop and web chat UI, the daemon/webserver chat API and store, the relay chat frames, and their tests. Old clients' chat frames are dropped without error (user decision 2026-11-15; Phase 1 removed only the `@session` inject bridge)
-- [ ] **NOTF-01**: Native macOS notifications appear under the Portty name
+- [x] **NOTF-01**: Native macOS notifications appear under the Portty name
 
 ### Updates & Distribution
 
@@ -100,10 +100,10 @@
 |-------------|-------|--------|
 | BRND-01 | Phase 3 | Pending |
 | BRND-02 | Phase 3 | Pending |
-| BRND-03 | Phase 3 | Pending |
+| BRND-03 | Phase 3 | Complete |
 | BRND-04 | Phase 3 | Pending |
-| BRND-05 | Phase 3 | Pending |
-| BRND-06 | Phase 3 | Pending |
+| BRND-05 | Phase 3 | Complete |
+| BRND-06 | Phase 3 | Complete |
 | TERM-01 | Phase 1 | Complete |
 | TERM-02 | Phase 1 | Complete |
 | TERM-03 | Phase 2 | Pending |
@@ -123,7 +123,7 @@
 | SHAR-06 | Phase 4 | Pending |
 | SHAR-07 | Phase 5 | Pending |
 | CHAT-01 | Phase 2 | Pending |
-| NOTF-01 | Phase 3 | Pending |
+| NOTF-01 | Phase 3 | Complete |
 | DIST-03 | Phase 3 | Pending |
 | UPD-01 | Phase 6 | Pending |
 | UPD-02 | Phase 6 | Pending |
