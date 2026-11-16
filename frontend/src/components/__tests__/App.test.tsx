@@ -561,9 +561,24 @@ describe('closeTab is detach-only (TERM-03, T-02-27)', () => {
 })
 
 describe('empty state (LOOK-01)', () => {
+  // Quick 261116-ku9 R4: one boolean gates EmptyState and hides the sidebar's New Session row.
+  it('passes the same showEmptyState to Sidebar as hideNewSessionRow', () => {
+    expect(raw.match(/const showEmptyState = /g)).toHaveLength(1)
+    const sidebar = raw.slice(raw.indexOf('<Sidebar'), raw.indexOf('/>', raw.indexOf('<Sidebar')))
+    expect(sidebar).toContain('hideNewSessionRow={showEmptyState}')
+  })
+
+  // Quick 261116-ku9 R1: in-app remote tabs use the viewer's font; web guests self-fetch the host's.
+  it('passes the viewer font to WebShareSessionView only on the desktop', () => {
+    const view = raw.slice(raw.indexOf('<WebShareSessionView'), raw.indexOf('/>', raw.indexOf('<WebShareSessionView')))
+    expect(view).toContain("fontFamily={mode !== 'web' ? terminalFontStack : undefined}")
+    expect(view).toContain("fontSize={mode !== 'web' ? terminalFont.size : undefined}")
+  })
+
   it('renders EmptyState in desktop mode once init has run and no tab is open', () => {
     expect(raw).toContain("import { EmptyState } from './components/EmptyState'")
-    expect(raw).toContain("{mode !== 'web' && relayPort !== null && tabs.length === 0 && (")
+    expect(raw).toContain("const showEmptyState = mode !== 'web' && relayPort !== null && tabs.length === 0")
+    expect(raw).toContain('{showEmptyState && (')
     expect(raw).toContain('<EmptyState onNewSession={() => setShowNewSessionModal(true)} />')
   })
 })

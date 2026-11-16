@@ -153,6 +153,20 @@
       // (b) SearchAddon's registerDecoration calls when passing decorations: {}
       // (Phase 94 SRC-02 onDidChangeResults gating). Desktop TerminalPanel.tsx
       // has had this since Phase 93 — web parity restored here in Plan 94-05.
+      // Quick 261116-ku9 (R1): the host's Settings ▸ Terminal Font arrives on
+      // /api/plugin-config as terminalFont {family, size}. Same guard as the
+      // daemon and parseTerminalFont: nothing that escapes the quoted family.
+      var DEFAULT_TERMINAL_FONT_STACK = 'ui-monospace, "SF Mono", Menlo, "MesloLGS NF", "Symbols Nerd Font Mono", "Hack Nerd Font Mono", monospace';
+      function hostFontFamily(tf) {
+        var f = tf && typeof tf.family === 'string' ? tf.family.trim() : '';
+        if (f === '' || Array.from(f).length > 64 || /["';{}\\\u0000-\u001f\u007f-\u009f]/.test(f)) return DEFAULT_TERMINAL_FONT_STACK;
+        return '"' + f + '", ' + DEFAULT_TERMINAL_FONT_STACK;
+      }
+      function hostFontSize(tf) {
+        var n = tf && tf.size;
+        return Number.isInteger(n) && n >= 6 && n <= 32 ? n : 14; // 14: an older host sends no font
+      }
+
       var term = new Terminal({
         cursorBlink: !isReadOnly,
         disableStdin: isReadOnly,
@@ -162,8 +176,8 @@
           foreground: '#cccccc',
           cursor: '#cccccc',
         },
-        fontFamily: 'ui-monospace, "SF Mono", Menlo, "MesloLGS NF", "Symbols Nerd Font Mono", "Hack Nerd Font Mono", monospace',
-        fontSize: 14,
+        fontFamily: hostFontFamily(pluginConfig.terminalFont),
+        fontSize: hostFontSize(pluginConfig.terminalFont),
       });
 
       var fitAddon = new FitAddon.FitAddon();
@@ -705,6 +719,16 @@
             console.warn('[web-links] addon load failed:', e);
             webLinksAddonHandle = null;
           }
+        }
+
+        // Quick 261116-ku9: host Terminal Font. A guest only rescales; it never
+        // fits or sends a resize frame (VIEW-04: the host PTY owns the grid).
+        var nextFamily = hostFontFamily(newConfig.terminalFont);
+        var nextSize = hostFontSize(newConfig.terminalFont);
+        if (term.options.fontFamily !== nextFamily || term.options.fontSize !== nextSize) {
+          term.options.fontFamily = nextFamily;
+          term.options.fontSize = nextSize;
+          recomputeScale();
         }
 
         lastApplied = JSON.stringify(newConfig);

@@ -3,28 +3,27 @@ import raw from '../../components/SettingsSheet.tsx?raw'
 import pluginsRaw from '../../components/PluginsSection.tsx?raw'
 
 
-// Portty 01-11: Save Plugins is the only Save button left in Settings (the
-// Save Paths flow went with Settings → Paths), so the save-confirmation
-// contract is checked on PluginsSection.
-describe('SET-03: Save confirmation feedback', () => {
-    it('has saved state variable', () => {
-        expect(pluginsRaw).toContain('setSaved')
+// Quick 261116-ku9 R5: Settings has no Save button left. Plugin switches save
+// as they change (the Save Paths flow went with Settings → Paths in 01-11), so
+// the persistence contract is "each switch saves itself; failures show".
+describe('SET-03: Plugin settings persist on change', () => {
+    it('has no explicit save state or "Saved!" confirmation', () => {
+        expect(pluginsRaw).not.toContain('setSaved')
+        expect(pluginsRaw).not.toContain("'Saved!'")
     })
 
-    it('sets saved true after successful save', () => {
-        expect(pluginsRaw).toContain('setSaved(true)')
+    it('each switch change awaits SetPluginSettings with the flipped snapshot', () => {
+        expect(pluginsRaw).toContain('await SetPluginSettings(next)')
+        expect(pluginsRaw).toContain('onChange={() => void toggle(key)()}')
     })
 
-    it('resets saved after timeout', () => {
-        expect(pluginsRaw).toContain('setSaved(false)')
+    it('a failed save restores the switch and shows the error', () => {
+        expect(pluginsRaw).toContain('[key]: prev[key]')
+        expect(pluginsRaw).toContain('Could not save plugin settings — {error}')
     })
 
-    it('displays Saved! text', () => {
-        expect(pluginsRaw).toContain("'Saved!'")
-    })
-
-    it('is the shared secondary push button (Portty 02-11: no green fill)', () => {
-        expect(pluginsRaw).toContain('className="button button--secondary"')
+    it('has no push button in the plugin section (Portty 02-11: no green fill)', () => {
+        expect(pluginsRaw).not.toContain('<button')
         expect(pluginsRaw).not.toContain('settings-panel__btn--saved')
     })
 })

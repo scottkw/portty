@@ -259,3 +259,44 @@ func TestAssets_WebPagesFollowColorScheme(t *testing.T) {
 		}
 	}
 }
+
+// TestTerminalJS_HostTerminalFont asserts that terminal.html renders with the
+// host's Settings ▸ Terminal Font from /api/plugin-config (quick 261116-ku9,
+// R1 web part) and that applying it only rescales: the guest never drives the
+// host grid (VIEW-04), so the font path sends no resize frame.
+func TestTerminalJS_HostTerminalFont(t *testing.T) {
+	data, err := webfs.WebFS.ReadFile("assets/terminal.js")
+	if err != nil {
+		t.Fatalf("ReadFile assets/terminal.js: %v", err)
+	}
+	s := string(data)
+	for _, want := range []string{
+		`pluginConfig.terminalFont`,
+		`newConfig.terminalFont`,
+		`'ui-monospace, "SF Mono", Menlo, "MesloLGS NF", "Symbols Nerd Font Mono", "Hack Nerd Font Mono", monospace'`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("terminal.js: missing %q", want)
+		}
+	}
+	start := strings.Index(s, "function applyPluginConfig(")
+	if start < 0 {
+		t.Fatal("terminal.js: applyPluginConfig not found")
+	}
+	fontStart := strings.Index(s[start:], "hostFontFamily(newConfig.terminalFont)")
+	if fontStart < 0 {
+		t.Fatal("applyPluginConfig: does not read newConfig.terminalFont")
+	}
+	fontPath := s[start+fontStart:]
+	fontPath = fontPath[:strings.Index(fontPath, "lastApplied = JSON.stringify(newConfig)")]
+	for _, want := range []string{"term.options.fontFamily = nextFamily", "term.options.fontSize = nextSize", "recomputeScale()"} {
+		if !strings.Contains(fontPath, want) {
+			t.Errorf("applyPluginConfig font path: missing %q", want)
+		}
+	}
+	for _, banned := range []string{"MsgResize2", "fit()", "sendResize"} {
+		if strings.Contains(fontPath, banned) {
+			t.Errorf("applyPluginConfig font path must not resize the grid: found %q", banned)
+		}
+	}
+}

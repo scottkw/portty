@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../wailsjs/go/models'
 import { TerminalPanel } from './TerminalPanel'
+import { DEFAULT_TERMINAL_FONT_SIZE, parseTerminalFont, terminalFontFamily } from '../lib/terminalFont'
 
 type PluginSettings = daemon.PluginSettings
 
@@ -37,6 +38,13 @@ export interface WebShareSessionViewProps {
    * inside URL-building logic below).
    */
   baseURL?: string
+  /**
+   * Quick 261116-ku9 R1: the viewer's own Terminal Font (desktop in-app remote
+   * tabs; the font must be installed on the viewing Mac). Absent on web
+   * guests, which use the host's font from /api/plugin-config.
+   */
+  fontFamily?: string
+  fontSize?: number
 }
 
 /**
@@ -53,6 +61,8 @@ export function WebShareSessionView({
   pluginConfig,
   baseURL,
   remote,
+  fontFamily,
+  fontSize,
 }: WebShareSessionViewProps): React.ReactElement {
   // FIX-03 (plan 09) RC-A transport switch. When true, the terminal routes
   // through the daemon proxy (remote:true, wsURL undefined).
@@ -117,6 +127,12 @@ export function WebShareSessionView({
   // populated; otherwise fall back to the Wails-provided prop (desktop path).
   const effectivePluginConfig = livePluginConfig ?? pluginConfig
 
+  // Font: explicit props (viewer's setting), else the host's terminalFont from
+  // the fetched/SSE config, else the defaults.
+  const hostFont = parseTerminalFont((livePluginConfig as { terminalFont?: unknown } | null)?.terminalFont)
+  const effectiveFontFamily = fontFamily ?? (hostFont ? terminalFontFamily(hostFont.family) : terminalFontFamily(''))
+  const effectiveFontSize = fontSize ?? hostFont?.size ?? DEFAULT_TERMINAL_FONT_SIZE
+
   return (
     <div className="hub-modal__body hub-modal__body--interactive">
       {/* isActive={true}: constant on web-share (no grow animation). */}
@@ -124,7 +140,8 @@ export function WebShareSessionView({
         sessionId={sessionId}
         isActive={true}
         relayPort={relayPort}
-        fontSize={13}
+        fontFamily={effectiveFontFamily}
+        fontSize={effectiveFontSize}
         onFontSizeChange={() => {}}
         theme={theme ?? {}}
         pluginConfig={effectivePluginConfig}

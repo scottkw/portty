@@ -460,14 +460,7 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	// func() []byte (not PluginSettings) avoids the daemon→webserver→daemon
 	// circular import. json.Marshal failure returns nil so the handler
 	// responds 503 (web client falls back to built-in defaults).
-	ws.SetPluginSettingsProvider(func() []byte {
-		s := a.engine.GetPluginSettings()
-		b, err := json.Marshal(s)
-		if err != nil {
-			return nil
-		}
-		return b
-	})
+	ws.SetPluginSettingsProvider(a.guestPluginConfigJSON)
 	// Phase 93 PLUG-04 push channel: register BroadcastPluginConfig as the
 	// engine's plugin-settings change listener so SSE subscribers get a frame
 	// on every SetPluginSettings call (closes ROADMAP SC#4 — no manual page
@@ -758,6 +751,21 @@ func (a *API) handleSetAppearance(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// guestPluginConfigJSON is the /api/plugin-config payload (and its SSE
+// frames): the plugin settings flattened, plus the host's Terminal Font under
+// "terminalFont" so web guests render with it (quick 261116-ku9). nil on a
+// marshal error, so the handler answers 503 as before.
+func (a *API) guestPluginConfigJSON() []byte {
+	b, err := json.Marshal(struct {
+		PluginSettings
+		TerminalFont TerminalFont `json:"terminalFont"`
+	}{a.engine.GetPluginSettings(), a.engine.GetTerminalFont()})
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
 func (a *API) handleGetTerminalFont(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.engine.GetTerminalFont())
 }
@@ -1003,14 +1011,7 @@ func (a *API) handleWebServerStart(w http.ResponseWriter, r *http.Request) {
 
 	// Phase 93 PLUG-04: provide the daemon's current plugin settings as
 	// pre-marshaled JSON to the webserver's /api/plugin-config handler.
-	ws.SetPluginSettingsProvider(func() []byte {
-		s := a.engine.GetPluginSettings()
-		b, err := json.Marshal(s)
-		if err != nil {
-			return nil
-		}
-		return b
-	})
+	ws.SetPluginSettingsProvider(a.guestPluginConfigJSON)
 	// Phase 93 PLUG-04 push channel: register BroadcastPluginConfig as the
 	// engine's plugin-settings change listener (closes ROADMAP SC#4).
 	a.engine.SetPluginSettingsListener(func() {

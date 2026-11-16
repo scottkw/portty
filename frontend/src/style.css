@@ -771,11 +771,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   line-height: 16px;
   color: var(--color-error-text);
 }
-.settings-sheet__save-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
 .settings-sheet__footnote {
   margin: 8px 0 0;
   font-size: 12px;

@@ -24,3 +24,12 @@ export function terminalFontFamily(family: string): string {
   if (f === '' || !isSafeFamily(f)) return DEFAULT_TERMINAL_FONT_STACK
   return `"${f}", ${DEFAULT_TERMINAL_FONT_STACK}`
 }
+
+/** A host terminalFont from /api/plugin-config, or null unless it is a valid {family, size}. */
+export function parseTerminalFont(value: unknown): TerminalFont | null {
+  if (typeof value !== 'object' || value === null) return null
+  const { family, size } = value as { family?: unknown; size?: unknown }
+  if (typeof family !== 'string' || !isSafeFamily(family.trim())) return null
+  if (typeof size !== 'number' || !Number.isInteger(size) || size < 6 || size > 32) return null
+  return { family: family.trim(), size }
+}

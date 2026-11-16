@@ -1072,6 +1072,11 @@ function App(): React.ReactElement {
     }
   }, [])
 
+  // relayPort is set with the restored tabs, so launch never flashes the empty state.
+  // R4 (quick 261116-ku9): one boolean gates the empty state and hides the
+  // sidebar's New Session row, so the empty state's button is the only labelled CTA.
+  const showEmptyState = mode !== 'web' && relayPort !== null && tabs.length === 0
+
   return (
     <div className="app">
       <div className="app__row">
@@ -1093,6 +1098,7 @@ function App(): React.ReactElement {
         onRename={(id, name) => void renameSession(id, name)}
         onEndSession={setEndSessionTarget}
         onNewSession={() => setShowNewSessionModal(true)}
+        hideNewSessionRow={showEmptyState}
       />
       )}
       <div className="app__content">
@@ -1233,6 +1239,9 @@ function App(): React.ReactElement {
                 theme={terminalTheme}
                 pluginConfig={isRemoteWebTab ? undefined : (pluginConfig ?? undefined)}
                 remote={isRemoteWebTab}
+                // Desktop: the viewer's own font (it must be installed here). Web: the host's, self-fetched.
+                fontFamily={mode !== 'web' ? terminalFontStack : undefined}
+                fontSize={mode !== 'web' ? terminalFont.size : undefined}
               />
             </div>
           )
@@ -1281,8 +1290,7 @@ function App(): React.ReactElement {
             }}
           />
         )}
-        {/* relayPort is set with the restored tabs, so launch never flashes this. */}
-        {mode !== 'web' && relayPort !== null && tabs.length === 0 && (
+        {showEmptyState && (
           <EmptyState onNewSession={() => setShowNewSessionModal(true)} />
         )}
         {daemonError && tabs.length === 0 && (

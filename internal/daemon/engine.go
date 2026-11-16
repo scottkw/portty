@@ -706,8 +706,9 @@ func (e *SessionEngine) GetTerminalFont() TerminalFont {
 	return normalizeTerminalFont(TerminalFont{Family: e.terminalFontFamily, Size: e.terminalFontSize})
 }
 
-// SetTerminalFont validates and persists the Terminal Font. An invalid value
-// is rejected and leaves the stored value unchanged.
+// SetTerminalFont validates and persists the Terminal Font, then notifies the
+// plugin-settings listener like SetPluginSettings. An invalid value is
+// rejected, leaves the stored value unchanged and notifies nobody.
 func (e *SessionEngine) SetTerminalFont(f TerminalFont) error {
 	f, err := validateTerminalFont(f)
 	if err != nil {
@@ -716,7 +717,12 @@ func (e *SessionEngine) SetTerminalFont(f TerminalFont) error {
 	e.mu.Lock()
 	e.terminalFontFamily, e.terminalFontSize = f.Family, f.Size
 	e.saveSettingsToDisk()
+	listener := e.pluginSettingsListener
 	e.mu.Unlock()
+	// Web guests get the host font on the plugin-config SSE channel.
+	if listener != nil {
+		listener()
+	}
 	return nil
 }
 

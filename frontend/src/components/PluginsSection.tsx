@@ -15,13 +15,11 @@ const PluginSettings = daemon.PluginSettings
 /**
  * PluginsSection — Phase 92 (PUI-01), Phase 99 (PUI-02)
  *
- * Renders the 8-plugin enable/disable section in the Settings sheet (General pane). Persists
- * via the Wails Get/Set plugin-settings bindings; the GUI layer
- * (app.go) emits 'settings:plugins' on a successful save which propagates the
- * new pluginConfig into every open TerminalPanel via App.tsx prop drilling.
- *
- * Phase 92 contract: TerminalPanel does NOT consume pluginConfig — the
- * pipeline is wired but inert. Phase 93 wires consumption.
+ * Renders the 8-plugin enable/disable section in the Settings sheet (General pane).
+ * Each switch saves as it changes, the macOS way (quick 261116-ku9 R5): there is
+ * no explicit save button, so closing the sheet can never drop a change. The GUI
+ * layer (app.go) emits 'settings:plugins' on a successful save, which propagates
+ * the new pluginConfig into every open TerminalPanel via App.tsx prop drilling.
  *
  * Phase 99 PUI-02: onPluginToggleSideEffect callback fires after a successful
  * save when unicode11 or image booleans changed vs the last-saved snapshot.
@@ -49,9 +47,10 @@ export function PluginsSection({
     }
   }, [])
 
-  // Three-state Save ("Saving…" / "Saved!")
+  // One switch save in flight at a time: the ref guards synchronously, the state
+  // drives the Switch's saving look (which also ignores clicks).
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const savingRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -68,33 +67,6 @@ export function PluginsSection({
       })
   }, [])
 
-  async function handleSavePlugins(): Promise<void> {
-    if (!pluginConfig) return
-    setSaving(true)
-    setError(null)
-    try {
-      await SetPluginSettings(pluginConfig)
-      // Phase 99 PUI-02: compute diff between last-saved snapshot and current saved value.
-      // Only unicode11 and image trigger the side-effect (cannot hot-swap — new sessions only).
-      const prior = lastSavedRef.current
-      const kinds: PluginToggleKind[] = []
-      if (prior) {
-        if (prior.unicode11 !== pluginConfig.unicode11) kinds.push('unicode11')
-        if (prior.image !== pluginConfig.image) kinds.push('image')
-      }
-      lastSavedRef.current = pluginConfig
-      if (kinds.length > 0 && onPluginToggleSideEffect) {
-        onPluginToggleSideEffect(kinds)
-      }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1500)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
   // Narrow the row keys to only boolean fields so renderRow stays type-safe
   // and `checked={...}` accepts the value (PluginSettings has a nested object
   // field added in Phase 94 — see daemon models).
@@ -102,14 +74,39 @@ export function PluginsSection({
     [K in keyof PluginSettings]: PluginSettings[K] extends boolean ? K : never
   }[keyof PluginSettings]
 
-  const toggle = (key: PluginBooleanKey) => () => {
-    setPluginConfig((prev) => {
-      if (!prev) return prev
-      // Construct a fresh PluginSettings instance from the existing one so
-      // class identity (and any nested instance fields) are preserved.
-      const next = new PluginSettings({ ...prev, [key]: !prev[key] })
-      return next
-    })
+  // Save the full snapshot with this key flipped. Disclosure sub-keys are kept
+  // in local state, so this snapshot never reverts them.
+  const toggle = (key: PluginBooleanKey) => async () => {
+    const prev = pluginConfig
+    if (!prev || savingRef.current) return
+    // Fresh PluginSettings instance so class identity and nested fields are preserved.
+    const next = new PluginSettings({ ...prev, [key]: !prev[key] })
+    savingRef.current = true
+    setPluginConfig(next)
+    setSaving(true)
+    setError(null)
+    try {
+      await SetPluginSettings(next)
+      // Phase 99 PUI-02: only unicode11 and image trigger the side-effect
+      // (cannot hot-swap — new sessions only).
+      const prior = lastSavedRef.current
+      const kinds: PluginToggleKind[] = []
+      if (prior) {
+        if (prior.unicode11 !== next.unicode11) kinds.push('unicode11')
+        if (prior.image !== next.image) kinds.push('image')
+      }
+      lastSavedRef.current = next
+      if (kinds.length > 0 && onPluginToggleSideEffect) {
+        onPluginToggleSideEffect(kinds)
+      }
+    } catch (err) {
+      // Put only this switch back; a sub-key changed meanwhile stays.
+      setPluginConfig((cur) => (cur ? new PluginSettings({ ...cur, [key]: prev[key] }) : cur))
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   // One grouped-form row per plugin (UI-SPEC "General pane"): label,
@@ -138,7 +135,7 @@ export function PluginsSection({
             id={`plugin-${key as string}`}
             checked={pluginConfig?.[key] ?? false}
             saving={saving}
-            onChange={toggle(key)}
+            onChange={() => void toggle(key)()}
           />
         </div>
       </div>
@@ -148,11 +145,14 @@ export function PluginsSection({
   // Phase 99 PUI-03: inline <details> disclosures for plugins with meaningful
   // runtime config. Each disclosure dispatches a SUB-KEY RPC (SetSearchConfig /
   // SetWebLinksConfig / SetImageConfig) — never the full-snapshot save RPC —
-  // to honor the PUI-04 anti-race contract from Phase 94-07 WR-03.
+  // to honor the PUI-04 anti-race contract from Phase 94-07 WR-03. Each also
+  // writes its sub-key into local state, so a later switch save (full
+  // snapshot) carries it instead of reverting it (quick 261116-ku9 R5).
   const renderSearchDisclosure = (): React.ReactNode => {
     if (!pluginsLoaded || !pluginConfig) return null
     const sc = pluginConfig.searchConfig
     const dispatch = (next: daemon.SearchConfig) => {
+      setPluginConfig((prev) => (prev ? new PluginSettings({ ...prev, searchConfig: next }) : prev))
       SetSearchConfig(next).catch(() => { /* silent — sub-key RPC */ })
     }
     return (
@@ -193,6 +193,7 @@ export function PluginsSection({
     if (!pluginsLoaded || !pluginConfig) return null
     const wc = pluginConfig.webLinksConfig
     const dispatch = (next: daemon.WebLinksConfig) => {
+      setPluginConfig((prev) => (prev ? new PluginSettings({ ...prev, webLinksConfig: next }) : prev))
       SetWebLinksConfig(next).catch(() => { /* silent — sub-key RPC */ })
     }
     return (
@@ -298,7 +299,7 @@ export function PluginsSection({
         undefined,
         renderSearchDisclosure())}
       {renderRow('webLinks', 'Clickable web links',
-        'Detect URLs in terminal output and make them clickable with Cmd-click (macOS) or Ctrl-click.',
+        'Detect URLs in terminal output and make them clickable with ⌘-click.',
         undefined,
         renderWebLinksDisclosure())}
       {renderRow('image', 'Inline images',
@@ -309,10 +310,9 @@ export function PluginsSection({
         'Right-click a tab to export the visible scrollback as a text file.',
         'Saved files include any secrets, tokens, or sensitive data printed in the session.')}
       {renderRow('clipboard', 'Clipboard (OSC 52)',
-        'Allow the running CLI to place text on the system clipboard via the OSC 52 escape sequence.')}
+        'Allow a program in the terminal to place text on the system clipboard via the OSC 52 escape sequence.')}
       {renderRow('progress', 'Progress (OSC 9;4)',
-        'Show a per-tab progress underline when the running CLI emits OSC 9;4 progress updates.',
-        'Default OFF in v3.2 — flips ON in v3.3 after field validation.')}
+        'Show a per-tab progress underline when a program in the terminal emits OSC 9;4 progress updates.')}
       </div>
       )}
 
@@ -321,17 +321,6 @@ export function PluginsSection({
           Could not save plugin settings — {error}
         </p>
       )}
-      <div className="settings-sheet__save-row">
-        {/* "Saved!" stays enabled so the confirmation isn't drawn dimmed like a disabled control. */}
-        <button
-          type="button"
-          className="button button--secondary"
-          onClick={() => void handleSavePlugins()}
-          disabled={saving || !pluginsLoaded}
-        >
-          {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Plugins'}
-        </button>
-      </div>
     </>
   )
 }

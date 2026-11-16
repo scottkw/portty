@@ -215,3 +215,41 @@ describe('WebShareSessionView — cleanup on unmount (FIX-01)', () => {
     expect(es.closed).toBe(true)
   })
 })
+
+// Quick 261116-ku9 R1 web part: web guests render with the host's Terminal Font.
+describe('WebShareSessionView — host Terminal Font (quick 261116-ku9)', () => {
+  const STACK = 'ui-monospace, "SF Mono", Menlo, "MesloLGS NF", "Symbols Nerd Font Mono", "Hack Nerd Font Mono", monospace'
+
+  it('uses the fetched terminalFont, and an SSE frame updates it', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ webgl: true, terminalFont: { family: 'Menlo', size: 15 } }) })
+    const { unmount } = mountView()
+    await flushMicrotasks()
+    expect(capturedTerminalProps?.fontFamily).toBe(`"Menlo", ${STACK}`)
+    expect(capturedTerminalProps?.fontSize).toBe(15)
+
+    act(() => {
+      FakeEventSource.instances[0].dispatch('plugin-config', { webgl: true, terminalFont: { family: 'SF Mono', size: 18 } })
+    })
+    expect(capturedTerminalProps?.fontFamily).toBe(`"SF Mono", ${STACK}`)
+    expect(capturedTerminalProps?.fontSize).toBe(18)
+    unmount()
+  })
+
+  it('explicit fontFamily/fontSize props win over the fetched value', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ terminalFont: { family: 'Menlo', size: 15 } }) })
+    const { unmount } = mountView({ fontFamily: 'viewer-stack', fontSize: 11 })
+    await flushMicrotasks()
+    expect(capturedTerminalProps?.fontFamily).toBe('viewer-stack')
+    expect(capturedTerminalProps?.fontSize).toBe(11)
+    unmount()
+  })
+
+  it('an invalid terminalFont falls back to the default stack and 13', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ terminalFont: { family: 'a;b', size: 15 } }) })
+    const { unmount } = mountView()
+    await flushMicrotasks()
+    expect(capturedTerminalProps?.fontFamily).toBe(STACK)
+    expect(capturedTerminalProps?.fontSize).toBe(13)
+    unmount()
+  })
+})

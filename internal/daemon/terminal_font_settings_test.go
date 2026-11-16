@@ -145,3 +145,44 @@ func TestAPITerminalFont_PatchInvalid400(t *testing.T) {
 		t.Errorf("after rejected PATCHes: want Menlo 14, got %+v", got)
 	}
 }
+
+// Quick 261116-ku9 (R1 web part): web guests receive the host font on the
+// existing capability-gated plugin-config channel.
+func TestTerminalFontGuestPluginConfigJSON(t *testing.T) {
+	e := &SessionEngine{configDir: t.TempDir(), pluginSettings: defaultPluginSettings()}
+	if err := e.SetTerminalFont(TerminalFont{Family: "Menlo", Size: 15}); err != nil {
+		t.Fatal(err)
+	}
+	a := &API{engine: e}
+	var got map[string]any
+	if err := json.Unmarshal(a.guestPluginConfigJSON(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, k := range []string{"webgl", "searchConfig", "webLinks", "imageConfig"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("plugin key %q missing from %v", k, got)
+		}
+	}
+	font, ok := got["terminalFont"].(map[string]any)
+	if !ok || font["family"] != "Menlo" || font["size"] != float64(15) {
+		t.Errorf("terminalFont: got %v", got["terminalFont"])
+	}
+}
+
+func TestTerminalFontSetNotifiesListener(t *testing.T) {
+	e := &SessionEngine{configDir: t.TempDir()}
+	calls := 0
+	e.SetPluginSettingsListener(func() { calls++ })
+	if err := e.SetTerminalFont(TerminalFont{Family: "Menlo", Size: 14}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Errorf("valid set: want 1 listener call, got %d", calls)
+	}
+	if err := e.SetTerminalFont(TerminalFont{Family: "a;b", Size: 14}); err == nil {
+		t.Fatal("invalid set: want error")
+	}
+	if calls != 1 {
+		t.Errorf("invalid set: want no further listener call, got %d total", calls)
+	}
+}

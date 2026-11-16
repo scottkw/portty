@@ -1,5 +1,29 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import React from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { act } from 'react'
 import raw from '../PluginsSection.tsx?raw'
+import { PluginsSection } from '../PluginsSection'
+import { SetPluginSettings, SetSearchConfig } from '../../wailsjs/go/main/App'
+
+vi.mock('../../wailsjs/go/main/App', () => ({
+  GetPluginSettings: vi.fn(async () => ({
+    webgl: true, unicode11: false, search: true, webLinks: true, image: false,
+    serialize: false, clipboard: false, progress: false,
+    searchConfig: { regex: false, caseSensitive: false, wholeWord: false },
+    webLinksConfig: { modifier: 'platform', confirmOSC8: true, confirmIDN: true, confirmTyposquat: true },
+    imageConfig: { storageLimit: 16 },
+  })),
+  SetPluginSettings: vi.fn(async () => undefined),
+  SetSearchConfig: vi.fn(async () => undefined),
+  SetWebLinksConfig: vi.fn(async () => undefined),
+  SetImageConfig: vi.fn(async () => undefined),
+}))
+// Wails-generated daemon.* constructors fail under jsdom.
+vi.mock('../../wailsjs/go/models', () => {
+  class Stub { constructor(o: Record<string, unknown> = {}) { Object.assign(this, o) } }
+  return { daemon: { PluginSettings: Stub, SearchConfig: Stub, WebLinksConfig: Stub, ImageConfig: Stub } }
+})
 
 describe('PUI-01: 8 toggle rows in UI-SPEC order', () => {
   it('contains all 8 plugin labels', () => {
@@ -37,20 +61,91 @@ describe('PUI-01: 8 toggle rows in UI-SPEC order', () => {
   })
 })
 
-describe('PUI-01: Three-state Save button', () => {
-  it('has Save Plugins copy', () => {
-    expect(raw).toContain("'Save Plugins'")
+// Quick 261116-ku9 R5: switches save as they change (macOS); no explicit save button.
+describe('PUI-01: plugin switches save on change', () => {
+  it('has no explicit save button, save states or save row', () => {
+    expect(raw).not.toContain('Save Plugins')
+    expect(raw).not.toContain('Saved!')
+    expect(raw).not.toMatch(/handleSavePlugins|setSaved|settings-sheet__save-row|<button/)
   })
-  it('has Saving… and Saved! states', () => {
-    // U+2026 horizontal ellipsis
-    expect(raw).toMatch(/Saving…|Saving…/)
-    expect(raw).toContain("'Saved!'")
+  it('saves the flipped snapshot from the switch handler, one save in flight', () => {
+    const body = raw.slice(raw.indexOf('const toggle = (key: PluginBooleanKey) => async () => {'), raw.indexOf('function renderRow('))
+    expect(body).toContain('if (!prev || savingRef.current) return')
+    expect(body).toContain('await SetPluginSettings(next)')
   })
-  it('is a secondary push button (Portty 02-11)', () => {
-    expect(raw).toContain('className="button button--secondary"')
+})
+
+describe('Quick 261116-ku9 R5: save-on-change behaviour (rendered)', () => {
+  let container: HTMLDivElement
+  let root: Root
+  const sw = (key: string) => container.querySelector<HTMLButtonElement>(`#plugin-${key}`)!
+  const flush = () => act(async () => { await new Promise<void>((r) => setTimeout(r, 0)) })
+
+  async function mount(props: React.ComponentProps<typeof PluginsSection> = {}) {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    await act(async () => root.render(<PluginsSection {...props} />))
+    await flush()
+  }
+
+  beforeEach(() => {
+    vi.mocked(SetPluginSettings).mockReset()
+    vi.mocked(SetPluginSettings).mockResolvedValue(undefined)
+    vi.mocked(SetSearchConfig).mockClear()
   })
-  it('uses 1500ms timeout (matches Save Paths cadence)', () => {
-    expect(raw).toContain('1500')
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  it('a switch click saves once with that key flipped', async () => {
+    await mount()
+    await act(async () => sw('clipboard').click())
+    await flush()
+    expect(SetPluginSettings).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(SetPluginSettings).mock.calls[0][0]).toMatchObject({ clipboard: true, webgl: true })
+    expect(sw('clipboard').getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('ignores another switch while a save is pending', async () => {
+    let resolve!: () => void
+    vi.mocked(SetPluginSettings).mockImplementationOnce(() => new Promise<void>((r) => { resolve = r }))
+    await mount()
+    await act(async () => sw('clipboard').click())
+    await act(async () => sw('progress').click())
+    expect(SetPluginSettings).toHaveBeenCalledTimes(1)
+    await act(async () => { resolve() })
+    await flush()
+    expect(sw('progress').getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('a rejected save puts the switch back and shows the error', async () => {
+    vi.mocked(SetPluginSettings).mockRejectedValueOnce(new Error('daemon not connected'))
+    await mount()
+    await act(async () => sw('clipboard').click())
+    await flush()
+    expect(sw('clipboard').getAttribute('aria-checked')).toBe('false')
+    expect(container.querySelector('[role="alert"]')!.textContent).toBe('Could not save plugin settings — daemon not connected')
+  })
+
+  it.each([['unicode11'], ['image']])('flipping %s fires onPluginToggleSideEffect', async (key) => {
+    const onPluginToggleSideEffect = vi.fn()
+    await mount({ onPluginToggleSideEffect })
+    await act(async () => sw(key).click())
+    await flush()
+    expect(onPluginToggleSideEffect).toHaveBeenCalledWith([key])
+  })
+
+  it('a disclosure sub-key change rides along in the next switch save snapshot', async () => {
+    await mount()
+    const regex = container.querySelector<HTMLInputElement>('#search-default-regex')!
+    await act(async () => regex.click())
+    expect(SetSearchConfig).toHaveBeenCalledTimes(1)
+    expect(regex.checked).toBe(true)
+    await act(async () => sw('clipboard').click())
+    await flush()
+    expect(vi.mocked(SetPluginSettings).mock.calls[0][0]).toMatchObject({ searchConfig: { regex: true } })
   })
 })
 
@@ -128,19 +223,18 @@ describe('IMG-01: italic next-session-only caption under Image row (Plan 96-04)'
   })
 })
 
-describe('Phase 98 PRG-01: v3.3-flip italic caption under Progress row', () => {
-  it('renders the v3.3-flip italic caption under the Progress toggle', () => {
-    // Verbatim per REQUIREMENTS PRG-01 (v3.3-flip caption):
-    const VERBATIM = 'Default OFF in v3.2 — flips ON in v3.3 after field validation.'
-    expect(raw).toContain(VERBATIM)
+// Quick 261116-ku9 R3 (BRND-04): Portty copy — no milestone caption, no agent-era wording, macOS-only click.
+describe('Phase 98 PRG-01: Progress row copy', () => {
+  it('the progress row has no caption (the milestone caption is gone)', () => {
+    expect(raw).not.toMatch(/v3\.2|v3\.3/)
+    const row = raw.slice(raw.indexOf("renderRow('progress'"), raw.indexOf('</div>', raw.indexOf("renderRow('progress'")))
+    expect(row).toContain("'Show a per-tab progress underline when a program in the terminal emits OSC 9;4 progress updates.')}")
+  })
 
-    // Positional check — the verbatim string must appear within ~300 chars
-    // AFTER the 'Progress (OSC 9;4)' label (the 2nd argument to the progress
-    // renderRow call). This proves it's the 4th argument to progress renderRow.
-    const labelIdx = raw.indexOf("'Progress (OSC 9;4)'")
-    expect(labelIdx).toBeGreaterThan(-1)
-    const window = raw.slice(labelIdx, labelIdx + 400)
-    expect(window).toContain(VERBATIM)
+  it('clipboard says "a program in the terminal" and the link row is macOS-only', () => {
+    expect(raw).toContain("'Allow a program in the terminal to place text on the system clipboard via the OSC 52 escape sequence.'")
+    expect(raw).toContain("'Detect URLs in terminal output and make them clickable with ⌘-click.'")
+    expect(raw).not.toMatch(/running CLI|Ctrl-click/)
   })
 
   it('Progress renderRow uses settings-panel__description--italic modifier class', () => {
@@ -171,20 +265,18 @@ describe('Phase 99 PUI-02: onPluginToggleSideEffect side-effect callback', () =>
     expect(raw).toContain('lastSavedRef')
   })
 
-  it('compares prior.unicode11 vs current after save', () => {
-    expect(raw).toContain('prior.unicode11 !== pluginConfig.unicode11')
+  it('compares prior.unicode11 vs the saved snapshot', () => {
+    expect(raw).toContain('prior.unicode11 !== next.unicode11')
   })
 
-  it('compares prior.image vs current after save', () => {
-    expect(raw).toContain('prior.image !== pluginConfig.image')
+  it('compares prior.image vs the saved snapshot', () => {
+    expect(raw).toContain('prior.image !== next.image')
   })
 
-  it('updates lastSavedRef.current after successful save', () => {
-    // Must appear in handleSavePlugins, after SetPluginSettings call
-    const saveHandlerIdx = raw.indexOf('handleSavePlugins')
-    expect(saveHandlerIdx).toBeGreaterThan(-1)
-    const afterSave = raw.indexOf('lastSavedRef.current = pluginConfig', saveHandlerIdx)
-    expect(afterSave).toBeGreaterThan(-1)
+  it('updates lastSavedRef.current after a successful switch save', () => {
+    const saveIdx = raw.indexOf('await SetPluginSettings(next)')
+    expect(saveIdx).toBeGreaterThan(-1)
+    expect(raw.indexOf('lastSavedRef.current = next', saveIdx)).toBeGreaterThan(-1)
   })
 
   it('calls onPluginToggleSideEffect when kinds array is non-empty', () => {

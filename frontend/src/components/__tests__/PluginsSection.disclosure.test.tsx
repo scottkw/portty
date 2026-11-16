@@ -42,7 +42,7 @@ describe('PUI-03: <details> disclosures for Search / WebLinks / Image (source-in
 })
 
 describe('PUI-04: anti-race contract — sub-key RPCs do not route through SetPluginSettings', () => {
-  it('SetPluginSettings appears exactly twice (1 import + 1 call inside handleSavePlugins)', () => {
+  it('SetPluginSettings appears exactly twice (1 import + 1 call inside the switch save handler)', () => {
     const matches = raw.match(/SetPluginSettings/g) ?? []
     expect(matches.length).toBe(2)
   })

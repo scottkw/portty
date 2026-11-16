@@ -140,6 +140,17 @@ describe('Sidebar: This Mac (NAV-01)', () => {
     expect(onNewSession).toHaveBeenCalledTimes(1)
   })
 
+  // Quick 261116-ku9 (R4): while the main-area empty state shows, the empty
+  // state's button is the only labelled New Session CTA; the header "+" stays.
+  it('hideNewSessionRow drops the empty-group row but keeps the empty class and the header "+"', () => {
+    const { c } = render({ sessions: [], hideNewSessionRow: true })
+    const section = c.querySelector('section[aria-labelledby="sidebar-group-local"]')!
+    expect(section.querySelector('.sidebar__row--action')).toBeNull()
+    expect(section.classList.contains('sidebar__group--empty')).toBe(true)
+    expect(section.querySelector('ul.sidebar__rows')).not.toBeNull()
+    expect(c.querySelector('button.sidebar__group-add')!.getAttribute('aria-label')).toBe('New Session')
+  })
+
   // Quick 261116-c9f (R2): a header "+" beside "This Mac", outside the h2.
   it.each([
     ['without sessions', [] as SessionInfo[]],

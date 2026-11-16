@@ -44,6 +44,8 @@ interface SidebarProps {
   onEndSession: (sessionId: string) => void
   /** Opens the New Session dialog (same as ⌘T and the toolbar "+"), quick 261116-c9f. */
   onNewSession: () => void
+  /** Quick 261116-ku9 R4: hide the empty-group New Session row while the main-area empty state shows. */
+  hideNewSessionRow?: boolean
 }
 
 export function Sidebar({
@@ -57,6 +59,7 @@ export function Sidebar({
   onRename,
   onEndSession,
   onNewSession,
+  hideNewSessionRow = false,
 }: SidebarProps): React.ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; invoker: HTMLElement } | null>(null)
@@ -102,7 +105,7 @@ export function Sidebar({
             </button>
           </div>
           <ul className="sidebar__rows">
-            {sessions.length === 0 && (
+            {sessions.length === 0 && !hideNewSessionRow && (
               <li>
                 <button
                   type="button"

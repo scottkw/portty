@@ -297,14 +297,14 @@ describe('General pane', () => {
     expect(panel('general').textContent).toContain('Opens with no window. Click the menu bar icon to show it.')
   })
 
-  it('renders one switch per terminal plugin and the Save Plugins button', async () => {
+  it('renders one switch per terminal plugin and no explicit plugin-save button (quick 261116-ku9 R5)', async () => {
     await renderSheet()
     const general = panel('general')
     expect(general.textContent).toContain('Terminal Plugins')
     const pluginSwitches = general.querySelectorAll('[role="switch"][id^="plugin-"]')
     expect(pluginSwitches).toHaveLength(8)
     expect(general.querySelector('label[for="plugin-webgl"]')!.textContent).toBe('WebGL renderer')
-    expect(Array.from(general.querySelectorAll('button')).some((b) => b.textContent === 'Save Plugins')).toBe(true)
+    expect(Array.from(container.querySelectorAll('button')).some((b) => /Save Plugins|Saving…|Saved!/.test(b.textContent ?? ''))).toBe(false)
   })
 })
 
