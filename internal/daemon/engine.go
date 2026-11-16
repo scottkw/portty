@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -37,6 +39,8 @@ type SessionEngine struct {
 
 	startMinimized              bool           // persisted start-minimized preference
 	appearance                  string         // persisted Appearance override: system|light|dark ("" reads as system)
+	terminalFontFamily          string         // persisted Terminal Font family ("" = default stack)
+	terminalFontSize            int            // persisted Terminal Font size (0 reads as DefaultTerminalFontSize)
 	shellWebShareWarned         bool           // Phase 101 SHELL-08: user has acknowledged the shell web-share security banner
 	shellWebShareWarningEnabled *bool          // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
 	pluginSettings              PluginSettings // populated by loadSettingsFromDisk via defaults-merge
@@ -79,6 +83,8 @@ func daemonConfigDir() string {
 type daemonSettings struct {
 	StartMinimized              bool           `json:"startMinimized,omitempty"`
 	Appearance                  string         `json:"appearance,omitempty"`
+	TerminalFontFamily          string         `json:"terminalFontFamily,omitempty"`
+	TerminalFontSize            int            `json:"terminalFontSize,omitempty"`
 	ShellWebShareWarned         bool           `json:"shellWebShareWarned,omitempty"`
 	ShellWebShareWarningEnabled *bool          `json:"shellWebShareWarningEnabled,omitempty"` // Phase 150 SET-01: *bool so omitempty omits false; nil → default true (D-08)
 	Plugins                     PluginSettings `json:"plugins"`
@@ -120,6 +126,8 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 	e.mu.Lock()
 	e.startMinimized = s.StartMinimized
 	e.appearance = normalizeAppearance(s.Appearance)
+	f := normalizeTerminalFont(TerminalFont{Family: s.TerminalFontFamily, Size: s.TerminalFontSize})
+	e.terminalFontFamily, e.terminalFontSize = f.Family, f.Size
 	e.shellWebShareWarned = s.ShellWebShareWarned
 	e.shellWebShareWarningEnabled = s.ShellWebShareWarningEnabled
 	// nil pointer = not set in settings.json = fresh install → default ON (D-08).
@@ -152,6 +160,8 @@ func (e *SessionEngine) saveSettingsToDisk() {
 	s := daemonSettings{
 		StartMinimized:              e.startMinimized,
 		Appearance:                  e.appearance,
+		TerminalFontFamily:          e.terminalFontFamily,
+		TerminalFontSize:            e.terminalFontSize,
 		ShellWebShareWarned:         e.shellWebShareWarned,
 		ShellWebShareWarningEnabled: e.shellWebShareWarningEnabled,
 		Plugins:                     e.pluginSettings,
@@ -650,6 +660,61 @@ func (e *SessionEngine) SetAppearance(v string) error {
 	}
 	e.mu.Lock()
 	e.appearance = v
+	e.saveSettingsToDisk()
+	e.mu.Unlock()
+	return nil
+}
+
+// validateTerminalFont trims the family and rejects anything that could break
+// out of the quoted family in an xterm/CSS font string (quotes, semicolon,
+// braces, backslash, control characters), an over-long name, or a size
+// outside the zoom range. The family is always rendered double-quoted ahead of
+// a fixed stack, so these characters are the whole escape surface.
+func validateTerminalFont(f TerminalFont) (TerminalFont, error) {
+	f.Family = strings.TrimSpace(f.Family)
+	if utf8.RuneCountInString(f.Family) > MaxTerminalFontFamilyLen {
+		return f, fmt.Errorf("invalid terminal font family: longer than %d characters", MaxTerminalFontFamilyLen)
+	}
+	for _, r := range f.Family {
+		if strings.ContainsRune(`"';{}\`, r) || unicode.IsControl(r) {
+			return f, fmt.Errorf("invalid terminal font family %q: quotes, semicolons, braces, backslashes and control characters are not allowed", f.Family)
+		}
+	}
+	if f.Size < MinTerminalFontSize || f.Size > MaxTerminalFontSize {
+		return f, fmt.Errorf("invalid terminal font size %d: want %d to %d", f.Size, MinTerminalFontSize, MaxTerminalFontSize)
+	}
+	return f, nil
+}
+
+// normalizeTerminalFont maps a stored value onto a valid one field by field:
+// an invalid family reads as "" and an invalid or missing size as the default.
+func normalizeTerminalFont(f TerminalFont) TerminalFont {
+	out := TerminalFont{Size: DefaultTerminalFontSize}
+	if v, err := validateTerminalFont(TerminalFont{Family: f.Family, Size: DefaultTerminalFontSize}); err == nil {
+		out.Family = v.Family
+	}
+	if f.Size >= MinTerminalFontSize && f.Size <= MaxTerminalFontSize {
+		out.Size = f.Size
+	}
+	return out
+}
+
+// GetTerminalFont returns the persisted Terminal Font. It never reports size 0.
+func (e *SessionEngine) GetTerminalFont() TerminalFont {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return normalizeTerminalFont(TerminalFont{Family: e.terminalFontFamily, Size: e.terminalFontSize})
+}
+
+// SetTerminalFont validates and persists the Terminal Font. An invalid value
+// is rejected and leaves the stored value unchanged.
+func (e *SessionEngine) SetTerminalFont(f TerminalFont) error {
+	f, err := validateTerminalFont(f)
+	if err != nil {
+		return err
+	}
+	e.mu.Lock()
+	e.terminalFontFamily, e.terminalFontSize = f.Family, f.Size
 	e.saveSettingsToDisk()
 	e.mu.Unlock()
 	return nil

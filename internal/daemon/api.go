@@ -160,6 +160,8 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("PATCH /settings/start-minimized", a.handleSetStartMinimized)
 	a.mux.HandleFunc("GET /settings/appearance", a.handleGetAppearance)
 	a.mux.HandleFunc("PATCH /settings/appearance", a.handleSetAppearance)
+	a.mux.HandleFunc("GET /settings/terminal-font", a.handleGetTerminalFont)
+	a.mux.HandleFunc("PATCH /settings/terminal-font", a.handleSetTerminalFont)
 	a.mux.HandleFunc("GET /settings/shell-web-share-warned", a.handleGetShellWebShareWarned)
 	a.mux.HandleFunc("PATCH /settings/shell-web-share-warned", a.handleUpdateShellWebShareWarned)
 	a.mux.HandleFunc("GET /settings/shell-web-share-warning-enabled", a.handleGetShellWebShareWarningEnabled)
@@ -750,6 +752,24 @@ func (a *API) handleSetAppearance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.engine.SetAppearance(req.Appearance); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) handleGetTerminalFont(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, a.engine.GetTerminalFont())
+}
+
+func (a *API) handleSetTerminalFont(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var req TerminalFont
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := a.engine.SetTerminalFont(req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

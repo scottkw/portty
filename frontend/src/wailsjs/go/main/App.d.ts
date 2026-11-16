@@ -128,6 +128,9 @@ export function SetStartMinimized(val: boolean): Promise<void>
 // Appearance override bound methods (Portty 02-13 / THEM-01): system|light|dark
 export function GetAppearance(): Promise<string>
 export function SetAppearance(arg1: string): Promise<void>
+// Terminal Font bound methods (quick 261116-ku9): family "" = default stack; size 6..32
+export function GetTerminalFont(): Promise<{ family: string; size: number }>
+export function SetTerminalFont(arg1: string, arg2: number): Promise<void>
 
 // Plugin settings bound methods (PLUG-03 / Phase 92)
 export function GetPluginSettings(): Promise<daemon.PluginSettings>

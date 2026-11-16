@@ -141,6 +141,18 @@ func (c *DaemonClient) SetAppearance(v string) error {
 		map[string]string{"appearance": v}, nil)
 }
 
+// GetTerminalFont returns the persisted Terminal Font.
+func (c *DaemonClient) GetTerminalFont() (TerminalFont, error) {
+	var f TerminalFont
+	err := c.doJSON(http.MethodGet, "/settings/terminal-font", nil, &f)
+	return f, err
+}
+
+// SetTerminalFont persists the Terminal Font; the daemon validates it.
+func (c *DaemonClient) SetTerminalFont(f TerminalFont) error {
+	return c.doJSON(http.MethodPatch, "/settings/terminal-font", f, nil)
+}
+
 // GetShellWebShareWarned returns the persisted shell-web-share-warned flag.
 // Phase 101 SHELL-08.
 func (c *DaemonClient) GetShellWebShareWarned() (bool, error) {

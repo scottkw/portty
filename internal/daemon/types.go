@@ -171,3 +171,18 @@ type ExchangeJoinCodeRequest struct {
 type ExchangeJoinCodeResponse struct {
 	URL string `json:"url"`
 }
+
+// TerminalFont is the persisted Settings ▸ General ▸ Terminal Font value
+// (quick 261116-ku9). An empty Family means the default stack (SF Mono first).
+type TerminalFont struct {
+	Family string `json:"family"`
+	Size   int    `json:"size"`
+}
+
+// Terminal font bounds. The size range matches the per-tab ⌘+/⌘− zoom clamp.
+const (
+	DefaultTerminalFontSize  = 13
+	MinTerminalFontSize      = 6
+	MaxTerminalFontSize      = 32
+	MaxTerminalFontFamilyLen = 64 // runes
+)

@@ -24,6 +24,7 @@ import { SessionEndedBanner } from './SessionEndedBanner'
 // Phase 113 UI-03 / UI-04 — iPad single-finger scrollback. xterm.js v6 has
 // no built-in touch handling; this helper attaches the missing handlers.
 import { attachTouchScroll } from '../lib/touchScrollHandler'
+import { DEFAULT_TERMINAL_FONT_STACK } from '../lib/terminalFont'
 type PluginSettings = daemon.PluginSettings
 
 // Custom fit that uses full container width (no hardcoded scrollbar deduction).
@@ -60,6 +61,8 @@ interface TerminalPanelProps {
   relayPort: number
   fontSize: number
   onFontSizeChange: (delta: number) => void
+  /** Quick 261116-ku9 R1: xterm fontFamily (built by terminalFontFamily); defaults to the stack alone. */
+  fontFamily?: string
   theme: ITheme
   /** When true, RelayClient builds the daemon-proxy URL
    *  (ws://127.0.0.1:{port}/api/relay/remote/{id}/ws) instead of the
@@ -108,6 +111,7 @@ export function TerminalPanel({
   relayPort,
   fontSize,
   onFontSizeChange,
+  fontFamily = DEFAULT_TERMINAL_FONT_STACK,
   theme,
   remote,
   wsURL,
@@ -274,8 +278,7 @@ export function TerminalPanel({
       scrollback: 10000,         // TERM-04
       allowProposedApi: true,    // required for unicode11
       cursorBlink: true,
-      // Nerd Font fallbacks after SF Mono: prompt themes (Powerlevel10k) draw their icons from them.
-      fontFamily: 'ui-monospace, "SF Mono", Menlo, "MesloLGS NF", "Symbols Nerd Font Mono", "Hack Nerd Font Mono", monospace',
+      fontFamily,
       fontSize,
       theme,
     })
@@ -806,12 +809,24 @@ export function TerminalPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive])
 
-  // Apply font size changes from the controlled prop.
+  // Apply Terminal Font family/size changes live (quick 261116-ku9 R1).
+  // POL-04: never touch render options on a hidden panel; isActive re-runs this
+  // on activation. Host refits (onResize then resizes the PTY); a guest only
+  // rescales because guests never drive the grid (VIEW-04).
   useEffect(() => {
-    if (!termRef.current || !fitAddonRef.current) return
-    termRef.current.options.fontSize = fontSize
-    fitTerminal(termRef.current)
-  }, [fontSize])
+    const term = termRef.current
+    if (!term || !isActive) return
+    if (term.options.fontFamily === fontFamily && term.options.fontSize === fontSize) return
+    term.options.fontFamily = fontFamily
+    term.options.fontSize = fontSize
+    if (isGuestRef.current) {
+      recomputeScale()
+    } else {
+      fitTerminal(term)
+    }
+  // recomputeScale is a stable useCallback([]) and isGuestRef is a ref.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fontFamily, fontSize, isActive])
 
   // Apply theme changes from the controlled prop (THM-03).
   // POL-04: isActive-guarded — a display:none panel has rows=0; running

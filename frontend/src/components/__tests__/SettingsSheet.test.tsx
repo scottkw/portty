@@ -6,7 +6,7 @@ import raw from '../../components/SettingsSheet.tsx?raw'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { SettingsSheet } from '../SettingsSheet'
-import { SetAppearance } from '../../wailsjs/go/main/App'
+import { SetAppearance, SetTerminalFont, GetTerminalFont } from '../../wailsjs/go/main/App'
 
 const css = readFileSync(resolve(__dirname, '../../style.css'), 'utf-8')
 
@@ -16,6 +16,7 @@ vi.mock('../../wailsjs/go/main/App', async (importOriginal) => {
   const fns: Record<string, unknown> = Object.fromEntries(Object.keys(mod).map((k) => [k, vi.fn().mockResolvedValue(undefined)]))
   fns.GetStartMinimized = vi.fn().mockResolvedValue(false)
   fns.GetAppearance = vi.fn().mockResolvedValue('system')
+  fns.GetTerminalFont = vi.fn().mockResolvedValue({ family: '', size: 13 })
   fns.GetPluginSettings = vi.fn().mockResolvedValue({
     webgl: true, unicode11: false, search: true, webLinks: true, image: false,
     serialize: false, clipboard: false, progress: false,
@@ -206,6 +207,85 @@ describe('General pane', () => {
     await flush()
     expect(SetAppearance).toHaveBeenLastCalledWith('dark')
     expect(checked()).toEqual(['Dark'])
+  })
+
+  // Quick 261116-ku9 R1: Terminal Font commits on blur or Enter.
+  describe('Terminal Font', () => {
+    const family = () => container.querySelector<HTMLInputElement>('#terminal-font-family')!
+    const size = () => container.querySelector<HTMLInputElement>('#terminal-font-size')!
+    function type(input: HTMLInputElement, value: string) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      setter.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    const blur = (input: HTMLInputElement) => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+
+    it('shows a Terminal Font row with name and size fields holding the loaded values', async () => {
+      vi.mocked(GetTerminalFont).mockResolvedValueOnce({ family: 'Menlo', size: 15 })
+      await renderSheet()
+      expect(container.querySelector('label[for="terminal-font-family"]')!.textContent).toBe('Terminal Font')
+      expect(panel('general').textContent).toContain('Leave the name empty to use SF Mono. Nerd Font icons keep working.')
+      expect(family().getAttribute('aria-label')).toBe('Font name')
+      expect(family().placeholder).toBe('SF Mono')
+      expect(family().value).toBe('Menlo')
+      expect(size().getAttribute('aria-label')).toBe('Font size')
+      expect(size().type).toBe('number')
+      expect(size().min).toBe('6')
+      expect(size().max).toBe('32')
+      expect(size().value).toBe('15')
+    })
+
+    it('blur commits the edited name once and notifies onTerminalFontChange', async () => {
+      const onTerminalFontChange = vi.fn()
+      vi.mocked(SetTerminalFont).mockClear()
+      await renderSheet({ onTerminalFontChange })
+      await act(async () => type(family(), 'Menlo'))
+      await act(async () => blur(family()))
+      await flush()
+      expect(SetTerminalFont).toHaveBeenCalledTimes(1)
+      expect(SetTerminalFont).toHaveBeenCalledWith('Menlo', 13)
+      expect(onTerminalFontChange).toHaveBeenCalledWith({ family: 'Menlo', size: 13 })
+      await act(async () => blur(family()))
+      await flush()
+      expect(SetTerminalFont).toHaveBeenCalledTimes(1)
+    })
+
+    it('Enter commits the same way', async () => {
+      const onTerminalFontChange = vi.fn()
+      vi.mocked(SetTerminalFont).mockClear()
+      await renderSheet({ onTerminalFontChange })
+      await act(async () => type(family(), 'Menlo'))
+      await act(async () => {
+        family().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      })
+      await flush()
+      expect(SetTerminalFont).toHaveBeenCalledWith('Menlo', 13)
+      expect(onTerminalFontChange).toHaveBeenCalledWith({ family: 'Menlo', size: 13 })
+    })
+
+    it('blurring with no change makes no call', async () => {
+      vi.mocked(SetTerminalFont).mockClear()
+      await renderSheet()
+      await act(async () => blur(family()))
+      await act(async () => blur(size()))
+      await flush()
+      expect(SetTerminalFont).not.toHaveBeenCalled()
+    })
+
+    it('a rejected save shows the error and restores both fields', async () => {
+      const onTerminalFontChange = vi.fn()
+      vi.mocked(SetTerminalFont).mockRejectedValueOnce(new Error('invalid terminal font size 40: want 6 to 32'))
+      await renderSheet({ onTerminalFontChange })
+      await act(async () => type(family(), 'Menlo'))
+      await act(async () => type(size(), '40'))
+      await act(async () => blur(size()))
+      await flush()
+      expect(family().value).toBe('')
+      expect(size().value).toBe('13')
+      expect(onTerminalFontChange).not.toHaveBeenCalled()
+      const alerts = Array.from(container.querySelectorAll('[role="alert"]')).map((a) => a.textContent)
+      expect(alerts).toContain("Couldn't save the terminal font: invalid terminal font size 40: want 6 to 32.")
+    })
   })
 
   it('"Start hidden in the menu bar" is a labelled switch', async () => {

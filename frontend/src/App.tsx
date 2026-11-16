@@ -32,6 +32,7 @@ import {
   SaveTerminalSession,
   SetTrayProgress,
   GetAppearance,
+  GetTerminalFont,
 } from './wailsjs/go/main/App'
 import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
@@ -59,8 +60,8 @@ import { PluginToggleBanner } from './components/PluginToggleBanner'
 import { QuitConfirmModal } from './components/QuitConfirmModal'
 import { useColorScheme } from './lib/useColorScheme'
 import { LIGHT_PALETTE, DARK_PALETTE } from './lib/terminalPalettes'
+import { DEFAULT_TERMINAL_FONT_SIZE, terminalFontFamily, type TerminalFont } from './lib/terminalFont'
 
-const DEFAULT_FONT_SIZE = 13
 
 /**
  * App is the root component — it owns all tab state and wires
@@ -107,6 +108,10 @@ function App(): React.ReactElement {
   // Track which session's QR modal is open (null = none)
   // Track font size per session: sessionId -> fontSize (pixels)
   const [fontSizes, setFontSizes] = useState<Record<string, number>>({})
+  // Quick 261116-ku9 R1: Settings ▸ Terminal Font. Unzoomed tabs follow its size;
+  // ⌘+/⌘− zoom starts from it. The family applies to every local tab.
+  const [terminalFont, setTerminalFont] = useState<TerminalFont>({ family: '', size: DEFAULT_TERMINAL_FONT_SIZE })
+  const terminalFontStack = useMemo(() => terminalFontFamily(terminalFont.family), [terminalFont.family])
   // Tailscale health state
   const [tailscaleHealth, setTailscaleHealth] = useState<TailscaleHealth | null>(null)
   // NET-01: null means "not checked yet" (and always in web mode), which is not "off".
@@ -419,6 +424,8 @@ function App(): React.ReactElement {
         GetAppearance()
           .then((v) => { if (v === 'light' || v === 'dark') setAppearance(v) })
           .catch(() => { /* stay 'system' */ })
+        // Quick 261116-ku9 R1: the stored Terminal Font (keep the default on failure).
+        GetTerminalFont().then(setTerminalFont).catch(() => { /* keep default */ })
 
         // Restore existing sessions as tabs (SESS-02 reattachment after window re-show).
         if (sessions.length > 0) {
@@ -732,11 +739,11 @@ function App(): React.ReactElement {
 
   const handleFontSizeChange = useCallback((sessionId: string, delta: number) => {
     setFontSizes((prev) => {
-      const current = prev[sessionId] ?? DEFAULT_FONT_SIZE
+      const current = prev[sessionId] ?? terminalFont.size
       const next = Math.max(6, Math.min(32, current + delta))
       return { ...prev, [sessionId]: next }
     })
-  }, [])
+  }, [terminalFont.size])
 
   // NAV-01: always-on session poll, so the sidebar lists every daemon session
   // (including ones created from the CLI) and the open Share dialog stays live.
@@ -1041,6 +1048,7 @@ function App(): React.ReactElement {
       GetAppearance()
         .then((v) => { if (v === 'light' || v === 'dark') setAppearance(v) })
         .catch(() => { /* stay 'system' */ })
+      GetTerminalFont().then(setTerminalFont).catch(() => { /* keep default */ })
 
       // Fetch web server mode for local-network-fallback UI
       GetWebServerMode().then(mode => {
@@ -1241,6 +1249,7 @@ function App(): React.ReactElement {
             webServerMode={webServerMode}
             onPluginToggleSideEffect={handlePluginToggleSideEffect}
             onAppearanceChange={setAppearance}
+            onTerminalFontChange={setTerminalFont}
             onWebServerStateChange={async () => {
               try {
                 const running = await IsWebServerRunning()
@@ -1303,7 +1312,8 @@ function App(): React.ReactElement {
                   sessionId={tab.sessionId}
                   isActive={isActive}
                   relayPort={relayPort}
-                  fontSize={fontSizes[tab.sessionId] ?? DEFAULT_FONT_SIZE}
+                  fontFamily={terminalFontStack}
+                  fontSize={fontSizes[tab.sessionId] ?? terminalFont.size}
                   onFontSizeChange={(delta) => handleFontSizeChange(tab.sessionId, delta)}
                   theme={terminalTheme}
                   pluginConfig={pluginConfig}

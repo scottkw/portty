@@ -1118,6 +1118,30 @@ func TestApplyStoredAppearance_AppliesSavedValue(t *testing.T) {
 	}
 }
 
+// Quick 261116-ku9: Terminal Font bindings forward to the daemon, which owns validation.
+func TestGetTerminalFont_NoDaemonDefault(t *testing.T) {
+	a := &App{}
+	if got := a.GetTerminalFont(); got != (daemon.TerminalFont{Family: "", Size: 13}) {
+		t.Errorf("no daemon: want {\"\" 13}, got %+v", got)
+	}
+	if err := a.SetTerminalFont("Menlo", 14); err == nil {
+		t.Error("SetTerminalFont with no daemon: want error, got nil")
+	}
+}
+
+func TestSetTerminalFont_RoundTrip(t *testing.T) {
+	a := testApp(t)
+	if err := a.SetTerminalFont("Menlo", 14); err != nil {
+		t.Fatalf("SetTerminalFont: %v", err)
+	}
+	if got := a.GetTerminalFont(); got != (daemon.TerminalFont{Family: "Menlo", Size: 14}) {
+		t.Errorf("GetTerminalFont: got %+v", got)
+	}
+	if err := a.SetTerminalFont("Me;nlo", 14); err == nil {
+		t.Error("SetTerminalFont(invalid family): want error, got nil")
+	}
+}
+
 // WR-05: domReady waits for startup to close startupDone, but only up to
 // startupWait, because it runs on the Wails message loop.
 func TestDomReady_WaitsForStartupDone(t *testing.T) {

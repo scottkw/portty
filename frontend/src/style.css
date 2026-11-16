@@ -888,6 +888,9 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   width: 72px;
   text-align: right;
 }
+.settings-input--font {
+  width: 160px;
+}
 .settings-check,
 .settings-field {
   display: flex;

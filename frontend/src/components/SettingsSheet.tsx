@@ -12,6 +12,8 @@ import {
   SetStartMinimized,
   GetAppearance,
   SetAppearance,
+  GetTerminalFont,
+  SetTerminalFont,
   RegenerateSigningKey,
   // Phase 150 SET-01 — shell web-share warning enabled master switch
   GetShellWebShareWarningEnabled,
@@ -25,6 +27,7 @@ import { Switch } from './Switch'
 import { TAILSCALE_OFF_REASON, type TailscaleHealth } from '../lib/tailscale'
 import { shortHost } from '../lib/sidebarPeers'
 import { useDialogFocus } from '../lib/useDialogFocus'
+import type { TerminalFont } from '../lib/terminalFont'
 
 interface SettingsSheetProps {
   isOpen: boolean
@@ -38,6 +41,8 @@ interface SettingsSheetProps {
   onShellWarnEnabledChange?: (enabled: boolean) => void
   // Portty 02-13 THEM-01: notifies App.tsx after the Appearance override is saved.
   onAppearanceChange?: (appearance: Appearance) => void
+  // Quick 261116-ku9 R1: notifies App.tsx after the Terminal Font is saved.
+  onTerminalFontChange?: (font: TerminalFont) => void
 }
 
 export type Appearance = 'system' | 'light' | 'dark'
@@ -92,7 +97,7 @@ export function SettingsSheet(props: SettingsSheetProps): React.ReactElement | n
   return <SettingsSheetContent {...props} />
 }
 
-function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebServerStateChange, onPluginToggleSideEffect, onShellWarnEnabledChange, onAppearanceChange }: SettingsSheetProps): React.ReactElement {
+function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebServerStateChange, onPluginToggleSideEffect, onShellWarnEnabledChange, onAppearanceChange, onTerminalFontChange }: SettingsSheetProps): React.ReactElement {
   const [pane, setPane] = useState<Pane>('general')
   const [appearance, setAppearanceState] = useState<Appearance>('system')
   const [appearanceLoaded, setAppearanceLoaded] = useState(false)
@@ -101,6 +106,15 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   // One SetAppearance at a time: binding calls run on separate goroutines, so
   // overlapping saves could persist and apply out of order (review WR-04).
   const appearanceSavingRef = useRef(false)
+  // Terminal Font (quick 261116-ku9 R1): inputs commit on blur or Enter, like a macOS text field.
+  const [fontFamily, setFontFamily] = useState('')
+  const [fontSize, setFontSize] = useState('13')
+  const [fontLoaded, setFontLoaded] = useState(false)
+  const [fontError, setFontError] = useState<string | null>(null)
+  const fontSavedRef = useRef<TerminalFont>({ family: '', size: 13 })
+  const fontRequestedRef = useRef<TerminalFont>({ family: '', size: 13 })
+  // Saves run in commit order through one promise chain.
+  const fontChainRef = useRef<Promise<void>>(Promise.resolve())
   const dialogRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Partial<Record<Pane, HTMLButtonElement | null>>>({})
   useDialogFocus(dialogRef, { onCancel: onClose, initialFocus: 'primary' })
@@ -189,6 +203,17 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
       setStartMinimized(val)
       setToggleLoaded(true)
     }).catch(() => setToggleLoaded(true))
+  }, [])
+
+  // Load the Terminal Font on mount (quick 261116-ku9 R1).
+  useEffect(() => {
+    GetTerminalFont().then(f => {
+      fontSavedRef.current = f
+      fontRequestedRef.current = f
+      setFontFamily(f.family)
+      setFontSize(String(f.size))
+      setFontLoaded(true)
+    }).catch(() => setFontLoaded(true))
   }, [])
 
   // Load the Appearance override on mount (Portty 02-13 THEM-01).
@@ -288,6 +313,32 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
     } finally {
       appearanceSavingRef.current = false
     }
+  }
+
+  function commitTerminalFont(): void {
+    // The daemon is the validation point; a bad size comes back as an error.
+    const next: TerminalFont = { family: fontFamily.trim(), size: Number(fontSize) }
+    const req = fontRequestedRef.current
+    if (next.family === req.family && next.size === req.size) return
+    fontRequestedRef.current = next
+    setFontError(null)
+    fontChainRef.current = fontChainRef.current.then(async () => {
+      try {
+        await SetTerminalFont(next.family, next.size)
+        fontSavedRef.current = next
+        onTerminalFontChange?.(next)
+      } catch (err) {
+        const saved = fontSavedRef.current
+        fontRequestedRef.current = saved
+        setFontFamily(saved.family)
+        setFontSize(String(saved.size))
+        setFontError(`Couldn't save the terminal font: ${err instanceof Error ? err.message : String(err)}.`)
+      }
+    })
+  }
+
+  function handleFontKeyDown(e: React.KeyboardEvent): void {
+    if (e.key === 'Enter') commitTerminalFont()
   }
 
   function handleAppearanceKeyDown(e: React.KeyboardEvent): void {
@@ -473,6 +524,42 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
                     </div>
                   </Row>
                 )}
+                {fontLoaded && (
+                  <Row
+                    label="Terminal Font"
+                    htmlFor="terminal-font-family"
+                    description="Leave the name empty to use SF Mono. Nerd Font icons keep working."
+                  >
+                    <input
+                      id="terminal-font-family"
+                      className="settings-input settings-input--font"
+                      type="text"
+                      aria-label="Font name"
+                      placeholder="SF Mono"
+                      maxLength={64}
+                      spellCheck={false}
+                      autoComplete="off"
+                      autoCapitalize="off"
+                      value={fontFamily}
+                      onChange={(e) => setFontFamily(e.target.value)}
+                      onBlur={commitTerminalFont}
+                      onKeyDown={handleFontKeyDown}
+                    />
+                    <input
+                      id="terminal-font-size"
+                      className="settings-input settings-input--number"
+                      type="number"
+                      aria-label="Font size"
+                      min={6}
+                      max={32}
+                      step={1}
+                      value={fontSize}
+                      onChange={(e) => setFontSize(e.target.value)}
+                      onBlur={commitTerminalFont}
+                      onKeyDown={handleFontKeyDown}
+                    />
+                  </Row>
+                )}
                 {toggleLoaded && (
                   <Row
                     label="Start hidden in the menu bar"
@@ -489,6 +576,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
                 )}
               </div>
               {appearanceError && <p className="settings-sheet__error" role="alert">{appearanceError}</p>}
+              {fontError && <p className="settings-sheet__error" role="alert">{fontError}</p>}
               {toggleError && <p className="settings-sheet__error" role="alert">{toggleError}</p>}
 
               {/* Plugins (Phase 92 PUI-01, Phase 99 PUI-02) */}

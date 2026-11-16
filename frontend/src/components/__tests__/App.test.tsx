@@ -113,12 +113,16 @@ describe('App', () => {
       expect(raw).toContain('fontSizes')
     })
 
-    it('defines DEFAULT_FONT_SIZE = 13 (UI-SPEC terminal font)', () => {
-      expect(raw).toContain('DEFAULT_FONT_SIZE = 13')
+    it('defaults the terminal font to the lib constant (13) and zoom starts from the setting', () => {
+      expect(raw).toContain("import { DEFAULT_TERMINAL_FONT_SIZE, terminalFontFamily, type TerminalFont } from './lib/terminalFont'")
+      expect(raw).toContain("useState<TerminalFont>({ family: '', size: DEFAULT_TERMINAL_FONT_SIZE })")
+      expect(raw).not.toContain('DEFAULT_FONT_SIZE = 13')
     })
 
-    it('defines handleFontSizeChange callback', () => {
-      expect(raw).toContain('handleFontSizeChange')
+    it('defines handleFontSizeChange starting from terminalFont.size', () => {
+      const start = raw.indexOf('const handleFontSizeChange = useCallback(')
+      const body = raw.slice(start, raw.indexOf('}, [terminalFont.size])', start))
+      expect(body).toContain('prev[sessionId] ?? terminalFont.size')
     })
 
     it('clamps font size between 6 and 32', () => {
@@ -126,8 +130,18 @@ describe('App', () => {
       expect(raw).toContain('Math.min(32')
     })
 
-    it('passes fontSize prop to TerminalPanel', () => {
-      expect(raw).toContain('fontSize=')
+    it('passes the built family stack and a fontSize falling back to the setting to TerminalPanel', () => {
+      expect(raw).toContain('useMemo(() => terminalFontFamily(terminalFont.family), [terminalFont.family])')
+      expect(raw).toContain('fontFamily={terminalFontStack}')
+      expect(raw).toContain('fontSize={fontSizes[tab.sessionId] ?? terminalFont.size}')
+    })
+
+    // Quick 261116-ku9 R1: Terminal Font loads at init and on reconnect, and Settings updates it.
+    it('loads GetTerminalFont at init and on reconnect, and wires onTerminalFontChange', () => {
+      expect(raw.match(/GetTerminalFont\(\)/g)).toHaveLength(2)
+      const start = raw.indexOf('const retryInit = useCallback(')
+      expect(raw.slice(start, raw.indexOf('}, [])', start))).toContain('GetTerminalFont()')
+      expect(raw).toContain('onTerminalFontChange={setTerminalFont}')
     })
 
     it('passes onFontSizeChange prop to TerminalPanel', () => {

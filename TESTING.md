@@ -25,11 +25,13 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **110** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
-| vitest (frontend) | **91** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers) |
+| Go unit/integration | **111** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
+| vitest (frontend) | **92** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (the guest sees only the terminal: WEBCHAT-03, CHAT-01), live light/dark (THEM-01) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **209** | — | — | — |
+| **Total** | **211** | — | — | — |
+
+> Note: Quick 261116-ku9 (Terminal Font setting, Phase 3 UI-review fixes): counts from `git ls-files` — Go **111** (+1: internal/daemon/terminal_font_settings_test.go), vitest **92** (+1: frontend/src/lib/__tests__/terminalFont.test.ts), Playwright **7**, build-script **1**, total **211**. Edited in place: app_test.go (`TestGetTerminalFont_NoDaemonDefault`, `TestSetTerminalFont_RoundTrip`), SettingsSheet.test.tsx (Terminal Font row, blur/Enter commit, no-change no-op, restore on rejection), SettingsSheet.shell-warn-toggle / tailscale-status / web-link-ux tests (binding mocks for `GetTerminalFont` / `SetTerminalFont`), TerminalPanel.test.tsx (font effect, lib stack), App.test.tsx (`GetTerminalFont` at init and reconnect, zoom starts from the setting). Section 4: LOOK-01 rows added. Section 5: M-75 added.
 
 > Note: Portty Phase 3 plan 03-06 (DIST-03, BRND-05): counts from `git ls-files` unchanged — Go **110**, vitest **91**, Playwright **7**, build-script **1**, total **209**. Added gate script tests/check-brand.sh (not a counted suite file); tests/build-script.test.sh edited in place; distribute.yml and the package-manager cask removed.
 
@@ -315,6 +317,8 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | LOOK-01 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Portty 02-09: title `Share “<name>”` labels the dialog, no "Close share modal" ×, one primary footer "Done" focused on open, Done and Esc start the 100ms fade and only the dialog's own animationend calls `onClose`, the scrim click does nothing, `.dialog--share` is 560px; Funnel consent-gate cases unchanged (T-02-32) |
 | LOOK-01 | frontend/src/components/__tests__/style.hub.modal.test.ts | vitest | Portty 02-09: `.dialog-scrim` fixed full-window on `--color-scrim` under the 52px toolbar; 150ms `dialog-in` with `translateY(-8px)`, 100ms `dialog-out`, `animation: none` under reduced motion; the Hub overlay is gone |
 | LOOK-01 | frontend/src/components/__tests__/TailscaleBanner.test.tsx | vitest | Portty 02-10: shared banner style (`.banner--warning`, svg `ExclamationTriangleIcon`, no ⚠), `id="ts-off-reason"` and `role="status"` kept, no dismiss, "Open Tailscale" calls the `OpenTailscale` binding and a failure is logged |
+| LOOK-01 | internal/daemon/terminal_font_settings_test.go | Go | Quick 261116-ku9: `TestTerminalFontSettings_*` — fresh engine `{"" 13}`, round trip through settings.json `terminalFontFamily` / `terminalFontSize`, trimmed family, quotes/semicolon/braces/backslash/control/65 runes/size 5, 33, 0 rejected with the stored value unchanged, invalid on-disk values load as defaults; `TestAPITerminalFont_*` GET/PATCH 204, invalid PATCH 400 |
+| LOOK-01 | frontend/src/lib/__tests__/terminalFont.test.ts | vitest | Quick 261116-ku9: `terminalFontFamily` — blank family gives the default stack, a family is double-quoted ahead of the stack, forbidden characters or more than 64 characters fall back to the stack, the stack ends with the three Nerd Font fallbacks and `monospace` |
 | NET-01 | app_test.go | Go | Portty 02-10: `TestOpenTailscale_OpensApp` (fixed app name "Tailscale", download page untouched), `TestOpenTailscale_FallsBackToDownloadURL` (fixed `https://tailscale.com/download/mac` when the app cannot open); never installs or configures Tailscale |
 | SHARE-04 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Copyable links, QR, LAN Basic Auth password surface |
 | SHARE-05 | frontend/src/components/__tests__/SessionShareModal.test.tsx | vitest | Cap/URL/QR lifecycle (off→on cache-clear, stale-URL cleanup) |
@@ -910,6 +914,16 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
   2. Expected: the light Portty title logo, then portty-title-logo-dark.png, each 400 px wide with alt text Portty.
   - _Why not automatable:_ GitHub's `<picture>`/prefers-color-scheme rendering is only visible in a browser on github.com.
   - _Source:_ 03-06-PLAN.md Task 3 human-check; 03-UI-SPEC README header contract.
+
+### Category AO — Terminal Font and First Prompt (LOOK-01, TERM-01)
+
+- **M-75** Terminal Font live apply (quick 261116-ku9; Tart VM, built app).
+  1. With two tabs open, one zoomed with ⌘+, open Settings ▸ General ▸ Terminal Font, type a Nerd Font family (for example "Hack Nerd Font Mono"), set the size to 15, press Enter.
+  2. Expected: both tabs change family at once; the unzoomed tab changes to 15 and refits (no clipped last column or row); the zoomed tab keeps its zoomed size; Powerlevel10k prompt icons still draw.
+  3. Type a name with a semicolon and press Enter: "Couldn't save the terminal font: …" appears and the fields show the last saved values.
+  4. Quit and relaunch: the row and the terminals show the saved family and size.
+  - _Why not automatable:_ installed-font resolution and the WebGL/DOM glyph rendering exist only in the built app on a Mac. Validation, persistence and the effect wiring are covered by `terminal_font_settings_test.go`, `SettingsSheet.test.tsx` and `TerminalPanel.test.tsx`.
+  - _Source:_ 261116-ku9-PLAN.md Task 1 (R1).
 
 ---
 

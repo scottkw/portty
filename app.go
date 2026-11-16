@@ -604,6 +604,29 @@ func (a *App) GetAppearance() string {
 	return val
 }
 
+// GetTerminalFont returns the persisted Terminal Font, or the default
+// (empty family, size 13) when the daemon is not connected or the RPC fails.
+func (a *App) GetTerminalFont() daemon.TerminalFont {
+	def := daemon.TerminalFont{Size: daemon.DefaultTerminalFontSize}
+	if a.client == nil {
+		return def
+	}
+	f, err := a.client.GetTerminalFont()
+	if err != nil {
+		return def
+	}
+	return f
+}
+
+// SetTerminalFont persists the Terminal Font. The daemon is the single
+// validation point (quick 261116-ku9).
+func (a *App) SetTerminalFont(family string, size int) error {
+	if a.client == nil {
+		return fmt.Errorf("daemon not connected")
+	}
+	return a.client.SetTerminalFont(daemon.TerminalFont{Family: family, Size: size})
+}
+
 // SetAppearance validates, persists and applies the Appearance override live.
 func (a *App) SetAppearance(mode string) error {
 	switch mode {

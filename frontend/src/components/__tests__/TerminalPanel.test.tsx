@@ -66,19 +66,26 @@ describe('font size control', () => {
   })
 
   it('applies fontSize prop to terminal options', () => {
-    expect(raw).toContain('options.fontSize = fontSize')
+    expect(raw).toContain('term.options.fontSize = fontSize')
   })
 
-  it('calls fitTerminal() after fontSize change', () => {
-    // fontSize assignment and fitTerminal() must appear in same effect
-    const fontSizeEffect = raw.slice(
-      raw.indexOf('options.fontSize = fontSize'),
-    )
-    expect(fontSizeEffect).toContain('fitTerminal(')
+  // Quick 261116-ku9 R1: one font effect applies family and size live.
+  it('font effect sets family and size, then fits on host and rescales on guest', () => {
+    const start = raw.indexOf('// Apply Terminal Font family/size changes live')
+    const body = raw.slice(start, raw.indexOf('}, [fontFamily, fontSize, isActive])', start))
+    expect(start).toBeGreaterThan(-1)
+    expect(body).toContain('if (!term || !isActive) return')
+    expect(body).toContain('term.options.fontFamily = fontFamily')
+    expect(body).toContain('term.options.fontSize = fontSize')
+    const guest = body.indexOf('if (isGuestRef.current) {')
+    expect(guest).toBeGreaterThan(-1)
+    expect(body.indexOf('recomputeScale()', guest)).toBeGreaterThan(guest)
+    expect(body.indexOf('fitTerminal(term)', guest)).toBeGreaterThan(body.indexOf('} else {', guest))
   })
 
-  it('has useEffect with fontSize dependency', () => {
-    expect(raw).toContain('[fontSize]')
+  it('font effect depends on [fontFamily, fontSize, isActive]', () => {
+    expect(raw).toContain('}, [fontFamily, fontSize, isActive])')
+    expect(raw).not.toContain('}, [fontSize])')
   })
 })
 
@@ -208,8 +215,12 @@ describe('THM-03: live theme application', () => {
     expect(raw).not.toMatch(/backgroundColor:\s*theme\.background/)
   })
 
-  it('uses the system monospace font (Portty 02-03, UI-SPEC)', () => {
-    expect(raw).toContain(`fontFamily: 'ui-monospace, "SF Mono", Menlo, "MesloLGS NF", "Symbols Nerd Font Mono", "Hack Nerd Font Mono", monospace'`)
+  it('constructs the Terminal with the fontFamily prop, defaulting to the lib stack (Portty 02-03, quick 261116-ku9)', () => {
+    expect(raw).toContain("import { DEFAULT_TERMINAL_FONT_STACK } from '../lib/terminalFont'")
+    expect(raw).toContain('fontFamily = DEFAULT_TERMINAL_FONT_STACK,')
+    const ctor = raw.slice(raw.indexOf('const term = new Terminal({'), raw.indexOf('})', raw.indexOf('const term = new Terminal({')))
+    expect(ctor).toMatch(/\n\s*fontFamily,\n/)
+    expect(raw).not.toContain('"Hack Nerd Font Mono", monospace')
     expect(raw).not.toContain('Cascadia')
   })
 })

@@ -82,6 +82,9 @@ export const SetStartMinimized       = (val)                => Call('main.App.Se
 // Appearance override bound methods (Portty 02-13 / THEM-01): system|light|dark
 export const GetAppearance           = ()                   => Call('main.App.GetAppearance', [])
 export const SetAppearance           = (arg1)               => Call('main.App.SetAppearance', [arg1])
+// Terminal Font bound methods (quick 261116-ku9): family "" = default stack; size 6..32
+export const GetTerminalFont         = ()                   => Call('main.App.GetTerminalFont', [])
+export const SetTerminalFont         = (arg1, arg2)         => Call('main.App.SetTerminalFont', [arg1, arg2])
 
 // Plugin settings bound methods (PLUG-03 / Phase 92)
 export const GetPluginSettings       = ()                   => Call('main.App.GetPluginSettings', [])
