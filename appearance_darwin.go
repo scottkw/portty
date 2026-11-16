@@ -6,6 +6,7 @@ package main
 
 // Implemented in appearance_darwin.m.
 void setAppAppearance(int mode);
+void setSidebarMaterial(void);
 */
 import "C"
 
@@ -20,4 +21,10 @@ func setNativeAppearance(mode string) {
 	default:
 		C.setAppAppearance(0)
 	}
+}
+
+// applySidebarMaterial gives the translucent window's effect view the native
+// Sidebar material.
+func applySidebarMaterial() {
+	C.setSidebarMaterial()
 }

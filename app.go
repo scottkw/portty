@@ -211,6 +211,10 @@ func (a *App) startup(ctx context.Context) {
 	appCtx = ctx    // expose to menu callbacks (openGitHubCallback)
 	appInstance = a // expose to menu callbacks (checkForUpdatesCallback)
 
+	// Frontend.Run creates the window before starting OnStartup, so it exists here.
+	// It is still hidden (StartHidden), and the serial main queue runs this before the later WindowShow.
+	applySidebarMaterial()
+
 	// Start system tray icon immediately — it must be visible regardless of
 	// daemon state. The poller will set the error icon if daemon is unreachable.
 	a.initTray()
