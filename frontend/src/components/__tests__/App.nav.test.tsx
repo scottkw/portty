@@ -62,6 +62,16 @@ describe('Portty NAV-01: always-on session poll feeds the sidebar', () => {
   })
 })
 
+// Review WR-02: the tray reopens a detached session (no tab) instead of doing nothing.
+describe('tray:focus-session opens or focuses a tab', () => {
+  it('skips exited sessions, focuses an open tab, otherwise appends one', () => {
+    const body = slice("EventsOn('tray:focus-session'", '\n    })')
+    expect(body).toContain('if (exitedIdsRef.current.has(sessionId)) return')
+    expect(body).toContain('setActiveId(tab ? tab.id : sessionId)')
+    expect(body).toContain("[...prev, { id: sessionId, name: 'shell', sessionId }]")
+  })
+})
+
 // Portty 02-04 NAV-03: launch goes straight to sidebar plus tabs.
 describe('Portty NAV-03: no Welcome tab at launch', () => {
   it('starts with no tabs and no active tab in both modes', () => {

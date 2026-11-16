@@ -498,13 +498,14 @@ function App(): React.ReactElement {
       setPluginConfig(s)
     })
 
+    // Closing a tab only detaches (TERM-03), so the tray lists sessions with no
+    // tab: focus the open tab or open one. The label comes from tabLabel.
     const cancelTrayFocus = EventsOn('tray:focus-session', (sessionId: string) => {
+      if (exitedIdsRef.current.has(sessionId)) return
       setTabs(prev => {
         const tab = prev.find(t => t.sessionId === sessionId)
-        if (tab) {
-          setActiveId(tab.id)
-        }
-        return prev
+        setActiveId(tab ? tab.id : sessionId)
+        return tab ? prev : [...prev, { id: sessionId, name: 'shell', sessionId }]
       })
     })
 
