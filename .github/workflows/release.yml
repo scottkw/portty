@@ -77,6 +77,16 @@ jobs:
       - name: Ensure frontend/dist exists for embed
         run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
 
+      # The bundle's CFBundle*Version comes from wails.json, so stamp it from
+      # the same tag as main.Version. Plist versions must be numeric, so the
+      # pre-release suffix is dropped (v1.2.0-beta.1 -> 1.2.0).
+      - name: Stamp bundle version from tag
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          V="${V%%-*}"
+          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag $GITHUB_REF_NAME is not vX.Y.Z[-suffix]"; exit 1; }
+          jq --arg v "$V" '.info.productVersion = $v' wails.json > wails.json.tmp && mv wails.json.tmp wails.json
+
       - name: Build macOS app
         run: |
           wails build -platform darwin/universal -tags wailsassets \

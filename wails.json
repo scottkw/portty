@@ -11,7 +11,7 @@
   "info": {
     "companyName": "Portty",
     "productName": "Portty",
-    "productVersion": "2.2.0",
+    "productVersion": "0.1.0",
     "copyright": "Copyright © 2026 Ken Scott. MIT License.",
     "comments": "A macOS terminal with remote access over Tailscale."
   }

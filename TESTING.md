@@ -892,7 +892,7 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
 
 - **M-72** About Portty panel (Portty 03-04; Tart VM, built app, Light then Dark).
   1. App menu ▸ About Portty.
-  2. Expected: the native panel with the Portty icon, "Portty", exactly one line "Version 2.2.0" (no parenthetical), "A macOS terminal with remote access over Tailscale.", "portty.app" (record whether it is a clickable link that opens https://portty.app or plain text; UI-SPEC unresolved row), and "Copyright © 2026 Ken Scott. MIT License.". Readable in Light and in Dark.
+  2. Expected: the native panel with the Portty icon, "Portty", exactly one line "Version 0.1.0" on a local build or the tag's X.Y.Z on a release build (no parenthetical), "A macOS terminal with remote access over Tailscale.", "portty.app" (record whether it is a clickable link that opens https://portty.app or plain text; UI-SPEC unresolved row), and "Copyright © 2026 Ken Scott. MIT License.". Readable in Light and in Dark.
   3. Choose About Portty again: the same panel comes forward (no second panel).
   4. With VoiceOver on, the panel's name, version, description and copyright are read.
   - _Why not automatable:_ AppKit draws the standard About panel; only a live app shows its layout and link behaviour. The menu wiring is covered by `TestAppMenu_AboutOpensNativePanel` in `menu_test.go`.
