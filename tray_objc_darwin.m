@@ -194,8 +194,22 @@ void updateTrayTooltip(const char *tooltip) {
 void setDockVisible(int visible) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (visible) {
+            BOOL wasAccessory = NSApp.activationPolicy != NSApplicationActivationPolicyRegular;
             [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-            [NSApp activateIgnoringOtherApps:YES];
+            if (wasAccessory) {
+                // AppKit leaves the menu bar unresponsive after an Accessory→Regular
+                // switch until the app is deactivated and reactivated. Hand focus to
+                // the Dock briefly, then take it back.
+                NSRunningApplication *dock = [[NSRunningApplication
+                    runningApplicationsWithBundleIdentifier:@"com.apple.dock"] firstObject];
+                [dock activateWithOptions:0];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC),
+                               dispatch_get_main_queue(), ^{
+                    [NSApp activateIgnoringOtherApps:YES];
+                });
+            } else {
+                [NSApp activateIgnoringOtherApps:YES];
+            }
         } else {
             [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
         }
