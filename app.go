@@ -152,9 +152,11 @@ func NewApp() *App {
 // message loop, so a wedged daemon must not block it forever (review WR-05).
 var startupWait = 5 * time.Second
 
-// startupBindingWait bounds how long bindings wait for startup. It covers
-// EnsureDaemon's worst case with 30 s client timeouts. Bindings run on their
-// own goroutines, so this wait never stalls the message loop (review WR-07).
+// startupBindingWait bounds how long GetDaemonError and RetryDaemon wait for
+// startup. It covers the common EnsureDaemon worst case, not every one: a daemon
+// that hangs on several 30 s client calls can overrun it, and then Retry
+// recovers. Bindings run on their own goroutines, so this wait never stalls
+// the message loop (review WR-07, IN-15).
 var startupBindingWait = 90 * time.Second
 
 var errStartupTimeout = errors.New("daemon startup timed out")
@@ -436,7 +438,6 @@ func (a *App) checkExits() {
 
 // ListSessions returns a snapshot of all registered sessions.
 func (a *App) ListSessions() []SessionInfo {
-	a.awaitStartup() // the daemon may still be starting; past the bound, try anyway
 	if a.client == nil {
 		return []SessionInfo{}
 	}
@@ -561,7 +562,6 @@ func (a *App) SetShellWebShareWarningEnabled(v bool) error {
 
 // GetRelayPort returns the TCP port the daemon's relay HTTP server is listening on.
 func (a *App) GetRelayPort() int {
-	a.awaitStartup() // the daemon may still be starting; past the bound, try anyway
 	if a.client == nil {
 		return 0
 	}

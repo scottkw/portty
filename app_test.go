@@ -1198,8 +1198,8 @@ func TestDomReady_TimeoutShowsWindowWithoutRPC(t *testing.T) {
 }
 
 // WR-07: startup that outlasts domReady's bound still gives the frontend init
-// a working daemon. GetDaemonError, GetRelayPort and ListSessions wait for
-// startupDone, so init reads the final state (relay port > 0, no error).
+// a working daemon. init awaits GetDaemonError, which waits for startupDone,
+// before GetRelayPort, so init reads the final state (relay port > 0, no error).
 func TestSlowStartup_InitWaitsForStartup(t *testing.T) {
 	a := testApp(t)
 	a.startupDone = make(chan struct{})
@@ -1240,6 +1240,23 @@ func TestSlowStartup_InitWaitsForStartup(t *testing.T) {
 	}
 	if ss := a.ListSessions(); ss == nil {
 		t.Fatal("ListSessions returned nil after startup")
+	}
+}
+
+// WR-08: ListSessions never waits for startup. The Quit confirm calls it, so a
+// gate there left Quit doing nothing visible during a slow startup.
+func TestListSessions_DoesNotWaitForStartup(t *testing.T) {
+	a := testApp(t)
+	a.startupDone = make(chan struct{}) // never closed: startup still running
+	got := make(chan []SessionInfo, 1)
+	go func() { got <- a.ListSessions() }()
+	select {
+	case ss := <-got:
+		if ss == nil {
+			t.Fatal("ListSessions returned nil, want a slice")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ListSessions waited on startupDone")
 	}
 }
 
