@@ -26,5 +26,5 @@ func TestHasAppBundleID_FalseWhenUnbundled(t *testing.T) {
 // build, not under `go test`, because the main dispatch queue is never pumped
 // in a test binary.
 func TestSendNotification_NoBundleReturnsCleanly(t *testing.T) {
-	sendNotification("agenthub.test", "AgentHub", "waiting")
+	sendNotification("portty.test", "Portty", "test")
 }

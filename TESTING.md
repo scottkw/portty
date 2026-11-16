@@ -31,6 +31,8 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
 | **Total** | **208** | — | — | — |
 
+> Note: Portty Phase 3 plan 03-04 (BRND-01, NOTF-01): counts from `git ls-files` unchanged — Go **109**, vitest **91**, Playwright **7**, build-script **1**, total **208**. Edited in place: menu_test.go (About Portty, Portty menus, no GitHub item), tray_common_test.go (Portty tooltip, menu, TestQuitToMenuBarBody), notification_darwin_test.go. New source files about_darwin.go and about_darwin.m have no test file (native panel, M-72).
+
 > Note: Portty Phase 3 plan 03-03 (BRND-02 brand assets): counts from `git ls-files` unchanged — Go **109**, vitest **91**, Playwright **7**, build-script **1**, total **208**. Edited in place: tray_test.go (six 18×18 / 36×36 pairs), app_set_tray_progress_test.go (1x and @2x pair, error precedence).
 
 > Note: Portty Phase 3 plan 03-02 (port 7444, X-Portty marker, update feed): counts from `git ls-files` — Go **109** (+1: internal/webserver/probe_marker_test.go), vitest **91**, Playwright **7**, build-script **1**, total **208**. Edited in place: tailnet_test.go (marker cases, renamed hosts, TestFetchPeerSessionsMeta_IgnoresLegacyFields), updater_test.go (scottkw/portty slug, offline fake Source, TestDetectLatestFrom_*), SettingsSheet.tailscale-status.test.tsx and remoteSession.test.ts (port 7444), api_test.go and funnel_test.go (port 7444).
@@ -284,7 +286,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | NET-01 | frontend/src/components/__tests__/App.test.tsx | vitest | Portty 01-12: "Tailscale health integration (NET-01)" — imports TailscaleBanner and the shared TailscaleHealth type, derives `tailscaleOff`, renders `{tailscaleOff && <TailscaleBanner />}` inside the banner stack and includes `tailscaleOff` in the INVARIANT gating expression; no LocalNetworkBanner, no dismiss state. |
 | NET-01 | frontend/src/components/__tests__/TabBar.test.tsx | vitest | Portty 02-08 (retargeted from the deleted StatusBar.shareSession test, UI-REVIEW 01 #2/#3): with `shareDisabled` the toolbar Share button has `aria-disabled="true"` (not `disabled`, stays focusable) and `aria-describedby="ts-off-reason"`, no `aria-label`, its name stays "Share" even when shared, and click and Enter do not call `onShare`; enabled otherwise. `TailscaleBanner.test.tsx` pins `id="ts-off-reason"` on the visible sentence |
 | NET-01 | frontend/src/components/__tests__/App.tailscale.test.tsx | vitest | Portty 01-12: focus and `visibilitychange` listeners call `GetTailscaleStatus` (desktop only) and are removed in cleanup; the remote poll calls `setRemotePeers([])` and returns while `tailscaleOff`, with `tailscaleOff` in its deps; StatusBar and HubPanel receive `shareDisabledReason`; the Share dialog closes on disconnect; no `AutoInstallTailscale`. |
-| LOOK-01 | menu_test.go | Go | Portty 02-01: `TestMacWindowOptions` (hidden-inset title bar flags, transparent webview, translucent window, system appearance), `TestAppMenu_Structure` (custom first app submenu starting with Settings…, File, Edit role, View, Window role, Help = Portty Help / Check for Updates / AgentHub on GitHub), `TestAppMenu_Accelerators` (⌘, ⌘H ⌘Q ⌘T ⌘W ⌃⌘S), `TestAppMenu_EventsEmitted` / `TestAppMenu_NewSessionEmitsEvent` (`menu:settings`, `menu:new-session`, `menu:close-tab`, `menu:toggle-sidebar`), `TestAppMenu_HelpOpensPorttyURL` (`https://portty.app`) |
+| LOOK-01 | menu_test.go | Go | Portty 02-01: `TestMacWindowOptions` (hidden-inset title bar flags, transparent webview, translucent window, system appearance), `TestAppMenu_Structure` (custom first app submenu Portty = About Portty, Settings…, Hide Portty, Quit Portty; File, Edit role, View, Window role, Help = Portty Help / Check for Updates), `TestAppMenu_Accelerators` (⌘, ⌘H ⌘Q ⌘T ⌘W ⌃⌘S), `TestAppMenu_EventsEmitted` / `TestAppMenu_NewSessionEmitsEvent` (`menu:settings`, `menu:new-session`, `menu:close-tab`, `menu:toggle-sidebar`), `TestAppMenu_HelpOpensPorttyURL` (`https://portty.app`) |
 | THEM-01 | frontend/src/lib/__tests__/useColorScheme.test.tsx | vitest | Portty 02-03: initial value follows `matchMedia`, a change event flips light→dark, rapid changes leave the last value, unmount removes the same handler. Portty 02-13: override `'dark'`/`'light'` wins over the media value, `'system'` follows changes, switching back to `'system'` returns to the media value |
 | THEM-01 | frontend/src/lib/__tests__/terminalPalettes.test.ts | vitest | Portty 02-03: every UI-SPEC value of `LIGHT_PALETTE` and `DARK_PALETTE` (21 keys each, colour-blind-safe proof), stable module identity |
 | THEM-01 | frontend/src/__tests__/style.tokens.test.ts | vitest | Portty 02-03: Light `:root` and Dark `prefers-color-scheme` blocks declare the same token names with UI-SPEC values; no `data-ui-theme`; `color-scheme: light dark` |
@@ -443,6 +445,9 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | BRND-02 | tray_test.go | Go | Portty 03-03: TestTrayIconAsset — six tray states, 1x 18×18 and @2x 36×36, embedded from the brand files |
 | BRND-02 | app_set_tray_progress_test.go | Go | Portty 03-03: trayIconBytesForState returns the matching 1x and @2x pair; error wins over progress |
 | BRND-02 | scripts/verify-icons.sh | build-script | Portty 03-03: app icon 1024, iconset 10 @2x-named files, icns from iconutil, tray sizes, six Portty title logos, generators and portty-brand/ absent (sips, no ImageMagick) |
+| BRND-01 | menu_test.go | Go | Portty 03-04: TestAppMenu_Structure (Portty submenu, About Portty first, no GitHub item), TestAppMenu_AboutOpensNativePanel (menuShowAbout seam), TestAppMenu_Accelerators (Hide Portty ⌘H, Quit Portty ⌘Q) |
+| BRND-01 | tray_common_test.go | Go | Portty 03-04: TestTrayTooltip (Portty — no sessions / 1 session / n sessions), BuildMenuItems Open Portty … Quit Portty |
+| NOTF-01 | tray_common_test.go | Go | Portty 03-04: TestQuitToMenuBarBody 0/1/n copy; identifier portty.quit-gui-only, title Portty |
 
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 
@@ -613,10 +618,10 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
 ### Category U — Native Notifications (NTF)
 
 - **M-41** Native notification path (Portty 01-11; NTF-01): the awaiting-input toggle is gone (CONTEXT Amendment 2), and `sendNotification` (`notification_darwin.go`, called through `App.sendNotificationFunc`) is the one kept native path. Phase 6 update notices will reuse it.
-  1. Use a Developer-ID-signed build (`wails build -tags wailsassets` + `codesign --options runtime --entitlements build/entitlements.plist`). Quit any installed AgentHub and stop its daemon first.
+  1. Use a Developer-ID-signed Portty build (`wails build -tags wailsassets` + `codesign --options runtime --entitlements build/entitlements.plist`).
   2. Open Settings → Behavior and confirm it shows only "Start minimized to system tray" (no awaiting-input toggle, no notification-permission hint).
   3. With at least one session open, choose "Quit GUI only" from the quit dialog.
-  4. Confirm exactly one native notification, attributed to AgentHub, says "AgentHub is still running in the background. N session(s) active." and the tray icon stays. The first send may show the macOS permission prompt (authorization is requested lazily).
+  4. Confirm exactly one native notification, attributed to Portty, says "Portty is still running in the menu bar." (no open sessions), "Portty is still running in the menu bar with 1 session open." or "Portty is still running in the menu bar with N sessions open.", and the tray icon stays. The first send may show the macOS permission prompt (authorization is requested lazily).
   - _Why not automatable:_ native `UNUserNotificationCenter` delivery needs a signed bundle and a live desktop session. The unbundled guard is unit-tested (`TestHasAppBundleID_FalseWhenUnbundled`, `TestSendNotification_NoBundleReturnsCleanly` in `notification_darwin_test.go`).
   - _Source:_ Phase 167 NTF-01 (history: the 167-05/06 crash and delivery fixes); rewritten for Portty 01-11.
 
@@ -868,6 +873,23 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
   3. Expected: the Portty mark in every state, crisp at Retina (not upscaled from 18 px), tinted black/white by macOS, the ring filling clockwise by quartile, no colour art.
   - _Why not automatable:_ Retina rep selection and template tinting happen only in the live AppKit menu bar. File sizes and the 1x/@2x pairing are covered by `tray_test.go`, `app_set_tray_progress_test.go` and `scripts/verify-icons.sh`.
   - _Source:_ 03-03-PLAN.md Task 2 human-check; 03-CONTEXT Icons and logos.
+
+### Category AN — Portty Identity (BRND-01, BRND-06, NOTF-01)
+
+- **M-72** About Portty panel (Portty 03-04; Tart VM, built app, Light then Dark).
+  1. App menu ▸ About Portty.
+  2. Expected: the native panel with the Portty icon, "Portty", exactly one line "Version 2.2.0" (no parenthetical), "A macOS terminal with remote access over Tailscale.", "portty.app" (record whether it is a clickable link that opens https://portty.app or plain text; UI-SPEC unresolved row), and "Copyright © 2026 Ken Scott. MIT License.". Readable in Light and in Dark.
+  3. Choose About Portty again: the same panel comes forward (no second panel).
+  4. With VoiceOver on, the panel's name, version, description and copyright are read.
+  - _Why not automatable:_ AppKit draws the standard About panel; only a live app shows its layout and link behaviour. The menu wiring is covered by `TestAppMenu_AboutOpensNativePanel` in `menu_test.go`.
+  - _Source:_ 03-04-PLAN.md Task 2 human-check; 03-UI-SPEC About panel.
+
+- **M-73** Portty identity on a signed build (Portty 03-04).
+  1. Use a Developer-ID-signed Portty.app.
+  2. Expected: Finder, the Dock, ⌘-Tab and the menu bar show Portty with the Portty icon; the Window menu lists the window as Portty; the tray tooltip reads "Portty — no sessions" / "Portty — 1 session" / "Portty — N sessions" and the tray menu reads Open Portty … Quit Portty.
+  3. Choose Quit GUI Only with 0, 1 and 2 sessions open. The first time, macOS asks notification permission for Portty; after approval each notification is attributed to Portty with the matching body from M-41 step 4.
+  - _Why not automatable:_ bundle name, icon and UNUserNotificationCenter attribution come from the signed bundle at runtime. The copy is covered by `TestTrayTooltip`, the `TestBuildMenuItems*` tests and `TestQuitToMenuBarBody` in `tray_common_test.go`.
+  - _Source:_ 03-04-PLAN.md Task 2 human-check; 03-UI-SPEC Name Surfaces; NOTF-01.
 
 ---
 

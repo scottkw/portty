@@ -23,17 +23,17 @@ NSMutableArray *menuSessionNames = nil;
 NSMutableArray *menuSessionIDs = nil;
 BOOL daemonConnected = YES;
 
-// AgentHubMenuDelegate rebuilds the menu on every open so it always reflects
+// PorttyMenuDelegate rebuilds the menu on every open so it always reflects
 // the current session list without a separate polling update path.
-@interface AgentHubMenuDelegate : NSObject <NSMenuDelegate>
+@interface PorttyMenuDelegate : NSObject <NSMenuDelegate>
 @end
 
-@implementation AgentHubMenuDelegate
+@implementation PorttyMenuDelegate
 - (void)menuWillOpen:(NSMenu *)menu {
     [menu removeAllItems];
 
     NSMenuItem *openItem = [[NSMenuItem alloc]
-        initWithTitle:@"Open AgentHub"
+        initWithTitle:@"Open Portty"
         action:@selector(showClicked:)
         keyEquivalent:@""];
     openItem.target = statusItem;
@@ -54,7 +54,7 @@ BOOL daemonConnected = YES;
 
     [menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *quitItem = [[NSMenuItem alloc]
-        initWithTitle:@"Quit"
+        initWithTitle:@"Quit Portty"
         action:@selector(quitClicked:)
         keyEquivalent:@""];
     quitItem.target = statusItem;
@@ -62,17 +62,17 @@ BOOL daemonConnected = YES;
 }
 @end
 
-static AgentHubMenuDelegate *menuDelegate = nil;
+static PorttyMenuDelegate *menuDelegate = nil;
 
-// AgentHubNotificationDelegate presents notifications while AgentHub is the
+// PorttyNotificationDelegate presents notifications while Portty is the
 // frontmost app (Phase 167-06, M-41 gap closure). Without a registered
 // UNUserNotificationCenterDelegate, UNUserNotificationCenter suppresses
 // banners/sounds for the foreground app by default, silently swallowing the
 // notification even when authorization was granted and delivery succeeded.
-@interface AgentHubNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
+@interface PorttyNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
 
-@implementation AgentHubNotificationDelegate
+@implementation PorttyNotificationDelegate
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center
         willPresentNotification:(UNNotification *)notification
           withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler {
@@ -82,7 +82,7 @@ static AgentHubMenuDelegate *menuDelegate = nil;
 }
 @end
 
-static AgentHubNotificationDelegate *notificationDelegate = nil;
+static PorttyNotificationDelegate *notificationDelegate = nil;
 
 // registerNotificationDelegate installs the foreground-presentation delegate
 // on UNUserNotificationCenter. Idempotent (safe to call repeatedly) and
@@ -91,16 +91,16 @@ static AgentHubNotificationDelegate *notificationDelegate = nil;
 // uncaught NSInternalInconsistencyException.
 void registerNotificationDelegate(void) {
     if (!hasValidBundleIdentifier()) {
-        NSLog(@"AgentHub: skipping notification delegate registration — no valid app-bundle identifier (unbundled/unsigned process)");
+        NSLog(@"Portty: skipping notification delegate registration — no valid app-bundle identifier (unbundled/unsigned process)");
         return;
     }
     @try {
         if (notificationDelegate == nil) {
-            notificationDelegate = [[AgentHubNotificationDelegate alloc] init];
+            notificationDelegate = [[PorttyNotificationDelegate alloc] init];
         }
         [UNUserNotificationCenter currentNotificationCenter].delegate = notificationDelegate;
     } @catch (NSException *e) {
-        NSLog(@"AgentHub: swallowed exception registering notification delegate: %@", e);
+        NSLog(@"Portty: swallowed exception registering notification delegate: %@", e);
     }
 }
 
@@ -132,11 +132,11 @@ void initStatusItem(const void *d1, int n1, const void *d2, int n2) {
 
         // Set icon from the 1x and @2x PNG data.
         statusItem.button.image = makeTrayImage(data1, data2);
-        statusItem.button.toolTip = @"AgentHub";
+        statusItem.button.toolTip = @"Portty";
 
         // Build menu with delegate for dynamic rebuilding.
         NSMenu *menu = [[NSMenu alloc] init];
-        menuDelegate = [[AgentHubMenuDelegate alloc] init];
+        menuDelegate = [[PorttyMenuDelegate alloc] init];
         menu.delegate = menuDelegate;
         statusItem.menu = menu;
 
@@ -231,21 +231,21 @@ int hasValidBundleIdentifier(void) {
 // guard passes and the notification fires exactly as before.
 void sendNotification(const char *identifier, const char *title, const char *body) {
     if (!hasValidBundleIdentifier()) {
-        NSLog(@"AgentHub: skipping native notification — no valid app-bundle identifier (unbundled/unsigned process)");
+        NSLog(@"Portty: skipping native notification — no valid app-bundle identifier (unbundled/unsigned process)");
         return;
     }
     NSString *nsIdentifier = [NSString stringWithUTF8String:identifier];
     NSString *nsTitle = [NSString stringWithUTF8String:title];
     NSString *nsBody  = [NSString stringWithUTF8String:body];
     dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"AgentHub: dispatching native notification for identifier %@", nsIdentifier);
+        NSLog(@"Portty: dispatching native notification for identifier %@", nsIdentifier);
         registerNotificationDelegate();
         @try {
             UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
             [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
                 completionHandler:^(BOOL granted, NSError *error) {
                 if (!granted) {
-                    NSLog(@"AgentHub: notification authorization NOT granted for identifier %@ (error=%@)", nsIdentifier, error);
+                    NSLog(@"Portty: notification authorization NOT granted for identifier %@ (error=%@)", nsIdentifier, error);
                     return;
                 }
                 dispatch_async(dispatch_get_main_queue(), ^{
@@ -259,7 +259,7 @@ void sendNotification(const char *identifier, const char *title, const char *bod
                         // the entitlement-free way to make "your session needs input"
                         // noticeable. The foreground delegate already returns
                         // UNNotificationPresentationOptionSound so this also plays when
-                        // AgentHub is frontmost. Persistence-until-dismissed remains the
+                        // Portty is frontmost. Persistence-until-dismissed remains the
                         // user's Alert-style choice (System Settings → Notifications).
                         content.sound = [UNNotificationSound defaultSound];
                         UNNotificationRequest *req = [UNNotificationRequest
@@ -268,30 +268,30 @@ void sendNotification(const char *identifier, const char *title, const char *bod
                             trigger:nil];
                         [center addNotificationRequest:req withCompletionHandler:^(NSError * _Nullable error) {
                             if (error != nil) {
-                                NSLog(@"AgentHub: notification delivery FAILED for identifier %@: %@", nsIdentifier, error);
+                                NSLog(@"Portty: notification delivery FAILED for identifier %@: %@", nsIdentifier, error);
                             } else {
-                                NSLog(@"AgentHub: notification delivery accepted for identifier %@", nsIdentifier);
+                                NSLog(@"Portty: notification delivery accepted for identifier %@", nsIdentifier);
                             }
                         }];
                     } @catch (NSException *e) {
-                        NSLog(@"AgentHub: swallowed exception adding notification request: %@", e);
+                        NSLog(@"Portty: swallowed exception adding notification request: %@", e);
                     }
                 });
             }];
         } @catch (NSException *e) {
-            NSLog(@"AgentHub: swallowed exception requesting notification authorization: %@", e);
+            NSLog(@"Portty: swallowed exception requesting notification authorization: %@", e);
         }
     });
 }
 
 // Action handlers — forward to Go callbacks.
-@interface NSStatusItem (AgentHubTray)
+@interface NSStatusItem (PorttyTray)
 - (void)showClicked:(id)sender;
 - (void)quitClicked:(id)sender;
 - (void)sessionClicked:(NSMenuItem *)sender;
 @end
 
-@implementation NSStatusItem (AgentHubTray)
+@implementation NSStatusItem (PorttyTray)
 - (void)showClicked:(id)sender { onTrayShow(); }
 - (void)quitClicked:(id)sender { onTrayQuit(); }
 - (void)sessionClicked:(NSMenuItem *)sender { onTraySession((int)sender.tag); }

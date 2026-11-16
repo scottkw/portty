@@ -7,11 +7,11 @@ import "fmt"
 func trayTooltip(n int) string {
 	switch n {
 	case 0:
-		return "AgentHub \u2014 no sessions"
+		return "Portty \u2014 no sessions"
 	case 1:
-		return "AgentHub \u2014 1 session"
+		return "Portty \u2014 1 session"
 	default:
-		return fmt.Sprintf("AgentHub \u2014 %d sessions", n)
+		return fmt.Sprintf("Portty \u2014 %d sessions", n)
 	}
 }
 
@@ -32,13 +32,13 @@ type MenuItem struct {
 }
 
 // BuildMenuItems constructs the canonical tray menu structure:
-// "Open AgentHub" -> separator -> [sessions] -> separator -> "Quit"
+// "Open Portty" -> separator -> [sessions] -> separator -> "Quit Portty"
 // The first separator is always present. When sessions is empty the result is:
-// Open AgentHub, separator, separator, Quit (4 items).
+// Open Portty, separator, separator, Quit Portty (4 items).
 // This is the single source of truth for menu layout across all platforms.
 func BuildMenuItems(sessions []SessionInfo) []MenuItem {
 	items := []MenuItem{
-		{Kind: MenuItemAction, Label: "Open AgentHub"},
+		{Kind: MenuItemAction, Label: "Open Portty"},
 		{Kind: MenuItemSeparator},
 	}
 	for i, s := range sessions {
@@ -51,7 +51,25 @@ func BuildMenuItems(sessions []SessionInfo) []MenuItem {
 	}
 	items = append(items,
 		MenuItem{Kind: MenuItemSeparator},
-		MenuItem{Kind: MenuItemAction, Label: "Quit"},
+		MenuItem{Kind: MenuItemAction, Label: "Quit Portty"},
 	)
 	return items
+}
+
+// Identifier and title of the quit-to-menu-bar notification (NOTF-01).
+const (
+	quitNotificationID    = "portty.quit-gui-only"
+	quitNotificationTitle = "Portty"
+)
+
+// quitToMenuBarBody is the quit-to-menu-bar notification body for n open sessions.
+func quitToMenuBarBody(n int) string {
+	switch n {
+	case 0:
+		return "Portty is still running in the menu bar."
+	case 1:
+		return "Portty is still running in the menu bar with 1 session open."
+	default:
+		return fmt.Sprintf("Portty is still running in the menu bar with %d sessions open.", n)
+	}
 }

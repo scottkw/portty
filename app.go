@@ -322,9 +322,9 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	return true // always prevent default quit — modal owns the decision
 }
 
-// QuitGUIOnly hides the GUI window to the system tray without stopping
-// the daemon or any active sessions. Sends a macOS notification confirming
-// the app is still running in the background (D-10, D-11).
+// QuitGUIOnly hides the window to the menu bar without stopping the daemon
+// or any active sessions, and sends a notification saying Portty is still
+// running (D-10, D-11).
 func (a *App) QuitGUIOnly() {
 	if a.ctx == nil {
 		return
@@ -339,13 +339,7 @@ func (a *App) QuitGUIOnly() {
 			count++
 		}
 	}
-	var body string
-	if count == 1 {
-		body = "AgentHub is still running in the background. 1 session active."
-	} else {
-		body = fmt.Sprintf("AgentHub is still running in the background. %d sessions active.", count)
-	}
-	a.sendNotificationFunc("agenthub.quit-gui-only", "AgentHub", body)
+	a.sendNotificationFunc(quitNotificationID, quitNotificationTitle, quitToMenuBarBody(count))
 }
 
 // QuitAll shuts down the daemon (terminating all sessions) and quits the
