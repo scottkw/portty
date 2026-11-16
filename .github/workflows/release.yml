@@ -263,8 +263,7 @@ jobs:
           # Any pre-release suffix (-rc, -beta, -alpha, ...) is flagged so the
           # in-app updater, which skips prereleases, never offers it.
           prerelease: ${{ contains(github.ref_name, '-') }}
-          # RELEASE_PUBLISH_TOKEN (PAT) once let the `release.published` event
-          # trigger a downstream tap-update workflow; that workflow was removed
-          # (DIST-03). The token logic stays until Phase 6 revisits publishing.
-          # Falls back to GITHUB_TOKEN if RELEASE_PUBLISH_TOKEN is not set.
-          token: ${{ secrets.RELEASE_PUBLISH_TOKEN || secrets.GITHUB_TOKEN }}
+          # Publishes with the job's GITHUB_TOKEN (contents: write). No workflow
+          # triggers on `release` any more (DIST-03), so the old
+          # RELEASE_PUBLISH_TOKEN PAT is unused and can be deleted from the
+          # repo secrets.
