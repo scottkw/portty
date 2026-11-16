@@ -190,8 +190,11 @@ Items acknowledged and deferred at milestone close, most recent first:
 | Phase | State | Resume |
 |-------|-------|--------|
 | 2 | verification_deferred_human | /gsd-verify-work 2 |
+| 3 | verification_deferred_human | /gsd-verify-work 3 |
 
 Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appearance, VoiceOver) need both Macs. The user deferred them on 2026-11-16 ("push that UAT until later and move on"). Item 1 passed.
+
+Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHub; repo private) cannot run in the VM; deferred on 2026-11-16 the same way. M-71 and M-72 passed in the VM.
 
 ## Session Continuity
 
