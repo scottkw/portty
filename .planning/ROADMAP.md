@@ -144,11 +144,11 @@ Plans:
   6. The root `LICENSE` is still MIT, and README plus `frontend/package.json` declare the MIT license
   7. `packaging/homebrew` is gone, and no docs, scripts or workflows mention Homebrew
   8. A case-insensitive search for "agenthub" over tracked files (excluding `.planning/`) returns zero hits, and every website/repo link points to https://portty.app or github.com/scottkw/portty
-**Plans**: 6 plans (sequential waves 1-6; the module rename must land first, and tray_objc_darwin.m, app.go and TESTING.md are shared hot files)
+**Plans**: 1/6 plans executed (sequential waves 1-6; the module rename must land first, and tray_objc_darwin.m, app.go and TESTING.md are shared hot files)
 
 Plans:
 **Wave 1**
-- [ ] 03-01-PLAN.md — Go module github.com/scottkw/portty, config/socket under ~/Library/Application Support/portty, `portty` CLI text and unknown-command message, portty-daemon service, renamed legacy fixture
+- [x] 03-01-PLAN.md — Go module github.com/scottkw/portty, config/socket under ~/Library/Application Support/portty, `portty` CLI text and unknown-command message, portty-daemon service, renamed legacy fixture
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 03-02-PLAN.md — Port 7444, Portty-only `X-Portty: 1` probe marker on GET /api/sessions, update feed scottkw/portty with DMG asset filter (silent when no release)
@@ -212,7 +212,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
-| 3. Portty Brand | 0/6 | Planned | - |
+| 3. Portty Brand | 1/6 | In Progress | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
 | 6. Release Updates | 0/TBD | Not started | - |

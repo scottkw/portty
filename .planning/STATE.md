@@ -1,18 +1,17 @@
 ---
 gsd_state_version: "1.0"
 current_phase: 3
-current_phase_name: Portty Brand
 status: executing
-stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-11-16T15:48:59.581Z"
-last_activity: 2026-11-15
-last_activity_desc: Phase 2 execution started
-state_head: 293fc1e51d4be43367d5fa3dd7000fc97f372e56
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-11-16T15:58:57.803Z"
+last_activity: 2026-11-16
+last_activity_desc: Phase 3 execution started
+state_head: 62b39be1e52cd6b87c0033401b7affa4d0df7f2d
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 31
-  completed_plans: 25
+  completed_plans: 26
   percent: 17
 ---
 
@@ -23,14 +22,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 2 — Tabs + Sidebar Navigation
+**Current focus:** Phase 3
 
 ## Current Position
 
-Phase: 3 (Portty Brand) — READY TO EXECUTE
-Plan: 1 of 12
+Phase: 3 — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-11-15 — Phase 2 execution started
+Last activity: 2026-11-16 — Phase 3 execution started
 
 Progress: [██░░░░░░░░] 17%
 
@@ -68,6 +67,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 01 P10 | 19min | 3 tasks | 60 files |
 | Phase 01 P11 | 12min | 3 tasks | 53 files |
 | Phase 01 P12 | 12min | 3 tasks | 30 files |
+| Phase 3 P01 | 7 min | 3 tasks | 71 files |
 
 ## Accumulated Context
 
@@ -118,6 +118,9 @@ Recent decisions affecting current work:
 - [Phase 01]: TailscaleHealth is LocalAPI-only and fail-closed: connected only when tailscaled answers with BackendState Running; the zero value means not connected
 - [Phase 01]: The Tailscale poller emits its first result unconditionally (lastHealth nil sentinel) so a launch-time disconnect is reported
 - [Phase 01]: tailscaleOff is false while health is null (unchecked, and always in web mode); the NET-01 sentence lives once in frontend/src/lib/tailscale.ts
+- [Phase 3]: Module path is github.com/scottkw/portty; all 57 importing .go files rewritten by one sed, zero new gofmt diffs
+- [Phase 3]: Portty stores settings, capability.key and daemon.sock in os.UserConfigDir()/portty (0700), fresh start, no migration from the old directory
+- [Phase 3]: LaunchAgent label is portty-daemon so it sits beside any old upstream agent
 
 ### Pending Todos
 
@@ -170,6 +173,6 @@ Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appeara
 
 ## Session Continuity
 
-Last session: 2026-11-16T14:42:46.774Z
-Stopped at: Phase 3 UI-SPEC approved
-Resume file: .planning/phases/03-portty-brand/03-UI-SPEC.md
+Last session: 2026-11-16T15:58:47.310Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
