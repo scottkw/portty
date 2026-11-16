@@ -162,20 +162,20 @@ describe('NET-01 / Amendment 3 / T-02-34: a blocked Start Server explains itself
     expect(container.querySelector('#web-server-reason')!.textContent).toBe('Stopped')
     await act(async () => btn.click())
     await act(async () => { await new Promise<void>((r) => setTimeout(r, 0)) })
-    expect(AppBindings.StartWebServer).toHaveBeenCalledWith(7443)
+    expect(AppBindings.StartWebServer).toHaveBeenCalledWith(7444)
     expect(onWebServerStateChange).toHaveBeenCalled()
     expect(container.querySelector('#web-server-reason')!.textContent).toBe('Running on https://example.ts.net')
     expect(serverButton().textContent).toBe('Stop Server')
   })
 
   it('a start failure shows the UI-SPEC copy in the error style and the sheet stays open', async () => {
-    vi.mocked(AppBindings.StartWebServer).mockRejectedValue(new Error('listen tcp :7443: bind: address already in use'))
+    vi.mocked(AppBindings.StartWebServer).mockRejectedValue(new Error('listen tcp :7444: bind: address already in use'))
     await renderSheet(CONNECTED)
     await act(async () => serverButton().click())
     await act(async () => { await new Promise<void>((r) => setTimeout(r, 0)) })
     const reason = container.querySelector('#web-server-reason')!
     expect(reason.textContent).toBe(
-      "Couldn't start the web server: listen tcp :7443: bind: address already in use. Check that port 7443 isn't in use, then try again.",
+      "Couldn't start the web server: listen tcp :7444: bind: address already in use. Check that port 7444 isn't in use, then try again.",
     )
     expect(reason.querySelector('.settings-row__error')).not.toBeNull()
     expect(container.querySelector('[role="dialog"]')).not.toBeNull()
@@ -189,7 +189,7 @@ describe('NET-01 / Amendment 3 / T-02-34: a blocked Start Server explains itself
 })
 
 describe('NET-01 (quick 261115-rc8): the running Web server says when it is on the local network', () => {
-  const LAN_URL = 'https://192.168.64.108:7443'
+  const LAN_URL = 'https://192.168.64.108:7444'
 
   it('LAN mode with Tailscale off names the local network and says Tailscale sharing is off', async () => {
     vi.mocked(AppBindings.IsWebServerRunning).mockResolvedValueOnce(true)

@@ -380,7 +380,7 @@ func TestAutoStartWebServer_AlreadyRunning(t *testing.T) {
 	}
 	api.SetWebServerForTest(ws)
 	// AutoStartWebServer should no-op when already running.
-	err = api.AutoStartWebServer("100.64.0.1", 7443, "test.ts.net", "tailscale", "")
+	err = api.AutoStartWebServer("100.64.0.1", 7444, "test.ts.net", "tailscale", "")
 	if err != nil {
 		t.Errorf("AutoStartWebServer with existing server: want nil, got %v", err)
 	}

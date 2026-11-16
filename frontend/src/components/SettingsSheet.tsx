@@ -106,7 +106,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   useDialogFocus(dialogRef, { onCancel: onClose, initialFocus: 'primary' })
 
   // Web serving state
-  const [selectedPort, setSelectedPort] = useState<number>(7443)
+  const [selectedPort, setSelectedPort] = useState<number>(7444)
   const [isServerRunning, setIsServerRunning] = useState(false)
   const [serverURL, setServerURL] = useState<string>('')
   const [serverError, setServerError] = useState<string | null>(null)

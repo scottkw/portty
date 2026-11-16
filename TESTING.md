@@ -25,11 +25,13 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **108** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
+| Go unit/integration | **109** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
 | vitest (frontend) | **91** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (the guest sees only the terminal: WEBCHAT-03, CHAT-01), live light/dark (THEM-01) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **207** | — | — | — |
+| **Total** | **208** | — | — | — |
+
+> Note: Portty Phase 3 plan 03-02 (port 7444, X-Portty marker, update feed): counts from `git ls-files` — Go **109** (+1: internal/webserver/probe_marker_test.go), vitest **91**, Playwright **7**, build-script **1**, total **208**. Edited in place: tailnet_test.go (marker cases, renamed hosts, TestFetchPeerSessionsMeta_IgnoresLegacyFields), updater_test.go (scottkw/portty slug, offline fake Source, TestDetectLatestFrom_*), SettingsSheet.tailscale-status.test.tsx and remoteSession.test.ts (port 7444), api_test.go and funnel_test.go (port 7444).
 
 > Note: Portty Phase 3 plan 03-01 (BRND-03, module github.com/scottkw/portty): counts from `git ls-files` unchanged — Go **108**, vitest **91**, Playwright **7**, build-script **1**, total **207**. Edited in place: socket_test.go (portty/daemon.sock), service_test.go, dispatch_test.go (TestRunCLI_UnknownCommand now asserts unknownCommandMessage), cmd_cli_test.go, engine_migration_test.go (TestSettingsMigration_LegacyV4Keys reads the renamed fixture tests/fixtures/settings_legacy_v4.json).
 
@@ -259,7 +261,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | STRP-01 | frontend/src/components/__tests__/TabBar.test.tsx | vitest | Portty 01-10 (replaces the 01-06 status-dot cases, CONTEXT Amendment 2): "TabBar shows no session status" — a tab has no `role="img"` element and no Running/Exited/Error label, while the OSC 9;4 progress underline still renders (`scaleX(0.5)` for 50) |
 | STRP-01 | frontend/src/components/__tests__/NewSessionModal.test.tsx | vitest | Portty 01-04/01-11: no agent list / Extra Arguments; only the Working Directory section (no Shell line, no "login shell" text, no `GetShellPath`); "Home directory (default)"; Create Session passes only the directory; "Browsing…" disabled while the picker is open |
 | STRP-01 | internal/webserver/server_test.go | Go | Portty 01-08: `TestSessionInfo_UnknownID404KnownID200` — resolver found flag: unknown id → 404, known id → 200 with name/status/hostname; info, list and meta JSON carry no `cli_type` (T-01-24, RESEARCH Pitfall 7) |
-| STRP-01 | internal/tailnet/tailnet_test.go | Go | Portty 01-08: `TestFetchPeerSessionsMeta_LegacyAgentHubPeer` — an AgentHub peer sending `cli_type` and status `waiting` still decodes; id, name, status, url kept (T-01-25) |
+| STRP-01 | internal/tailnet/tailnet_test.go | Go | Portty 01-08: `TestFetchPeerSessionsMeta_IgnoresLegacyFields` (renamed in 03-02) — an older peer sending `cli_type` and status `waiting` still decodes; id, name, status, url kept (T-01-25) |
 | TERM-04 | frontend/src/components/__tests__/App.test.tsx | vitest | Portty 01-04: "TERM-04: terminal theme change re-themes open terminals" — `handleThemeChange` persists the theme and calls `setTerminalThemeName(name)`; no `NotifyThemeChange` (OpenCode SIGUSR2) broadcast remains |
 | TERM-05 | app_exit_test.go | Go | Portty 01-10: `TestCheckExits_EmitsOnceWhenShellExits` / `TestCheckExits_LongLivedSessionStillReported` / `TestCheckExits_StoppedAtFirstSight` / `TestCheckExits_PrunesRemovedSessions` — the app-wide exit watcher emits exactly one `session:exit {sessionId}` per stopped session (non-zero exit, after many polls with no time window, already stopped at first sight) and prunes removed ids (T-01-31, T-01-32) |
 | TERM-05 | frontend/src/components/__tests__/App.shellExit.test.tsx | vitest | Portty 01-10, updated 02-08: the `session:exit` handler calls the UI-only `removeTabStateRef.current?.(data.sessionId)` with no exit-code branch and no kill; `removeTabState` picks the next tab with `nextActiveTabId`; `init` and `retryInit` restore only non-stopped sessions and pass stopped ones to `KillSession` |
@@ -432,6 +434,10 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | BRND-03 | cmd_cli_test.go | Go | Portty 03-01: every usage line and error prefix reads portty (TestCmdWeb_MissingSubcommand, TestCmdNew_*) |
 | BRND-03 | internal/daemon/socket_test.go | Go | Portty 03-01: TestSocketPathDefault — DefaultSocketPath ends in portty/daemon.sock under os.UserConfigDir() |
 | BRND-03 | dispatch_test.go | Go | Portty 03-01: TestDispatchHelp (Portty usage trailer), TestRunCLI_UnknownCommand (exact unknownCommandMessage text) |
+| BRND-03 | internal/tailnet/tailnet_test.go | Go | Portty 03-02: probe accepts only X-Portty: 1 with 200/401 (TestProbePeer_CapProtected401_Found, TestProbePeer_UpstreamShaped401_NotFound, TestProbePeer_200WithoutMarker_NotFound, TestProbePeer_WrongMarkerValue_NotFound); DefaultProbePort 7444 |
+| BRND-03 | internal/webserver/probe_marker_test.go | Go | Portty 03-02: GET /api/sessions carries X-Portty: 1 on 401 and 200; /api/sessions/meta and /dashboard do not |
+| NOTF-01 | internal/updater/updater_test.go | Go | Portty 03-02: scottkw/portty feed; DMG asset filter (TestDetectLatestFrom_FindsDMGRelease); drafts, prereleases, no asset, no releases (404) and source errors are silent |
+| BRND-06 | internal/updater/updater_test.go | Go | Portty 03-02: release URL https://github.com/scottkw/portty/releases/tag/v… (TestCheck_NewerVersionFound) |
 
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 
@@ -460,6 +466,12 @@ GUI remote attach starts from sidebar peer rows (Portty 02-04). Setup for all it
 - **M-05** Peer states: put the second Mac to sleep (or quit its app); within 30 s its group shows "Can't reach this Mac. Check that it's awake and on your tailnet." Turn off sharing on it: its group disappears and, with no other peer sharing, "Other Macs" reads "No shared sessions on other Macs." Disconnect Tailscale on this Mac: the peer area reads "Peers appear when Tailscale is connected." and the footer "Tailscale not connected"; open peer tabs stay.
   - _Why not automatable:_ needs a live tailnet and a second Mac.
   - _Source:_ 02-UI-SPEC.md "Peer group states".
+- **M-70** Side by side and peer discovery on port 7444 (Portty 03-02). Needs two Macs on one tailnet.
+  1. On Mac A, run the upstream app and Portty at the same time: both launch, Portty's daemon socket is under ~/Library/Application Support/portty and its web server listens on 7444 (`lsof -nP -iTCP:7444 -sTCP:LISTEN` shows the Portty daemon).
+  2. On Mac B (Portty build), Other Macs lists Mac A's Portty host and its shared session, and does not list a host that runs only the upstream app.
+  3. `curl -sk -D - https://<macA>.<tailnet>.ts.net:7444/api/sessions -o /dev/null` shows `HTTP/2 401` and `x-portty: 1`.
+  - _Why not automatable:_ two Macs and a live tailnet. The probe and marker logic is unit-tested in `internal/tailnet/tailnet_test.go` and `internal/webserver/probe_marker_test.go`.
+  - _Source:_ 03-02-PLAN.md Task 3 human-check.
 
 ### Category C — Terminal / Theme (POL-04)
 

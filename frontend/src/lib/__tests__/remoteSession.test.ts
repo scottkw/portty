@@ -63,8 +63,8 @@ describe('remoteBaseURLFor', () => {
   })
 
   it('preserves the explicit port', () => {
-    expect(remoteBaseURLFor({ url: 'https://h.example:7443/sessions/x' })).toBe(
-      'https://h.example:7443',
+    expect(remoteBaseURLFor({ url: 'https://h.example:7444/sessions/x' })).toBe(
+      'https://h.example:7444',
     )
   })
 })

@@ -164,7 +164,7 @@ func TestFunnelSessionsMap(t *testing.T) {
 
 // TestHandleSetSessionFunnel_Enable verifies the happy-path enable (FNL-01/FNL-04):
 //   - POST /sessions/{id}/funnel {enabled:true} drives ws.EnableFunnel via the injected fake.
-//   - Response FunnelURL is non-empty and has no ":443"/":7443" port suffix.
+//   - Response FunnelURL is non-empty and has no ":443"/":7444" port suffix.
 //   - GET /sessions reports FunnelActive=true for that session.
 func TestHandleSetSessionFunnel_Enable(t *testing.T) {
 	if testing.Short() {
@@ -187,7 +187,7 @@ func TestHandleSetSessionFunnel_Enable(t *testing.T) {
 	if resp.FunnelURL == "" {
 		t.Fatal("FunnelURL must be non-empty after enable")
 	}
-	if strings.Contains(resp.FunnelURL, ":443") || strings.Contains(resp.FunnelURL, ":7443") {
+	if strings.Contains(resp.FunnelURL, ":443") || strings.Contains(resp.FunnelURL, ":7444") {
 		t.Errorf("FunnelURL must not contain port suffix for port 443: got %q", resp.FunnelURL)
 	}
 
@@ -678,7 +678,7 @@ func TestFunnelTeardown_RefCountKeepsSiblingUp(t *testing.T) {
 
 // TestIssueCapabilities_FunnelURL verifies FNL-03 in issueCapabilitiesForSession:
 //   - With funnelSessions[id]==true and ws.FunnelBaseURL() non-empty, the issued
-//     readURL/writeURL use the funnel host (no port component, not the tailnet :7443 port).
+//     readURL/writeURL use the funnel host (no port component, not the tailnet :7444 port).
 //   - Without funnelSessions[id] the URLs use the tailnet BaseURL (with port).
 func TestIssueCapabilities_FunnelURL(t *testing.T) {
 	if testing.Short() {
@@ -729,7 +729,7 @@ func TestIssueCapabilities_FunnelURL(t *testing.T) {
 	if !strings.HasPrefix(funnelResp.ReadURL, funnelBase) {
 		t.Errorf("with Funnel: ReadURL %q must start with FunnelBaseURL %q", funnelResp.ReadURL, funnelBase)
 	}
-	if strings.Contains(funnelResp.ReadURL, ":443") || strings.Contains(funnelResp.ReadURL, ":7443") {
+	if strings.Contains(funnelResp.ReadURL, ":443") || strings.Contains(funnelResp.ReadURL, ":7444") {
 		t.Errorf("with Funnel: ReadURL %q must not contain port suffix", funnelResp.ReadURL)
 	}
 	// ?cap= token must still be present (capability gate intact).
