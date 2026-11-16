@@ -1036,6 +1036,18 @@ func TestOpenTailscale_OpensApp(t *testing.T) {
 	}
 }
 
+// TestOpenAppCmd_AbsolutePath: the default opener runs /usr/bin/open, never a
+// PATH lookup (IN-05), with the fixed argv.
+func TestOpenAppCmd_AbsolutePath(t *testing.T) {
+	cmd := openAppCmd("Tailscale")
+	if cmd.Path != "/usr/bin/open" {
+		t.Errorf("cmd.Path = %q, want /usr/bin/open", cmd.Path)
+	}
+	if want := []string{"/usr/bin/open", "-a", "Tailscale"}; !reflect.DeepEqual(cmd.Args, want) {
+		t.Errorf("cmd.Args = %v, want %v", cmd.Args, want)
+	}
+}
+
 // TestOpenTailscale_FallsBackToDownloadURL: when the app cannot be opened,
 // the fixed download URL opens instead and no error reaches the frontend.
 func TestOpenTailscale_FallsBackToDownloadURL(t *testing.T) {

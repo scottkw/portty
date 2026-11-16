@@ -108,7 +108,7 @@ type App struct {
 	lastHealth         *webserver.TailscaleHealth
 
 	// openAppFunc and openURLFunc are the OpenTailscale seams; nil means
-	// `open -a <name>` and runtime.BrowserOpenURL.
+	// `/usr/bin/open -a <name>` (openAppCmd) and runtime.BrowserOpenURL.
 	openAppFunc func(name string) error
 	openURLFunc func(url string)
 
@@ -1063,13 +1063,19 @@ func (a *App) GetTailscaleStatus() webserver.TailscaleHealth {
 	return a.checkTailscaleHealth(context.Background())
 }
 
+// openAppCmd uses an absolute path so a modified PATH cannot swap in another
+// `open` (review IN-05).
+func openAppCmd(name string) *exec.Cmd {
+	return exec.Command("/usr/bin/open", "-a", name)
+}
+
 // OpenTailscale launches the installed Tailscale app, or opens its download
 // page if that fails (NET-01: it never installs or configures anything). The
 // argv and URL are fixed; no frontend value reaches exec (T-02-30).
 func (a *App) OpenTailscale() error {
 	openApp := a.openAppFunc
 	if openApp == nil {
-		openApp = func(name string) error { return exec.Command("open", "-a", name).Run() }
+		openApp = func(name string) error { return openAppCmd(name).Run() }
 	}
 	if err := openApp("Tailscale"); err == nil {
 		return nil
