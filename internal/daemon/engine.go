@@ -36,6 +36,7 @@ type SessionEngine struct {
 	sessionWorkDirs map[string]string // sessionID -> EvalSymlinks-resolved absolute WorkDir (Phase 118 / FS-02)
 
 	startMinimized              bool           // persisted start-minimized preference
+	appearance                  string         // persisted Appearance override: system|light|dark ("" reads as system)
 	shellWebShareWarned         bool           // Phase 101 SHELL-08: user has acknowledged the shell web-share security banner
 	shellWebShareWarningEnabled *bool          // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
 	pluginSettings              PluginSettings // populated by loadSettingsFromDisk via defaults-merge
@@ -76,6 +77,7 @@ func daemonConfigDir() string {
 // files write default) are ignored by json.Unmarshal and dropped on save.
 type daemonSettings struct {
 	StartMinimized              bool           `json:"startMinimized,omitempty"`
+	Appearance                  string         `json:"appearance,omitempty"`
 	ShellWebShareWarned         bool           `json:"shellWebShareWarned,omitempty"`
 	ShellWebShareWarningEnabled *bool          `json:"shellWebShareWarningEnabled,omitempty"` // Phase 150 SET-01: *bool so omitempty omits false; nil → default true (D-08)
 	Plugins                     PluginSettings `json:"plugins"`
@@ -116,6 +118,7 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 	}
 	e.mu.Lock()
 	e.startMinimized = s.StartMinimized
+	e.appearance = normalizeAppearance(s.Appearance)
 	e.shellWebShareWarned = s.ShellWebShareWarned
 	e.shellWebShareWarningEnabled = s.ShellWebShareWarningEnabled
 	// nil pointer = not set in settings.json = fresh install → default ON (D-08).
@@ -147,6 +150,7 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 func (e *SessionEngine) saveSettingsToDisk() {
 	s := daemonSettings{
 		StartMinimized:              e.startMinimized,
+		Appearance:                  e.appearance,
 		ShellWebShareWarned:         e.shellWebShareWarned,
 		ShellWebShareWarningEnabled: e.shellWebShareWarningEnabled,
 		Plugins:                     e.pluginSettings,
@@ -612,6 +616,37 @@ func (e *SessionEngine) SetStartMinimized(val bool) {
 	e.startMinimized = val
 	e.saveSettingsToDisk()
 	e.mu.Unlock()
+}
+
+// normalizeAppearance maps a stored Appearance value onto the enum; a missing
+// or unknown value reads as "system" (follow macOS).
+func normalizeAppearance(v string) string {
+	switch v {
+	case "system", "light", "dark":
+		return v
+	}
+	return "system"
+}
+
+// GetAppearance returns the persisted Appearance override (system|light|dark).
+// An engine that never loaded settings.json (fresh install) reports "system".
+func (e *SessionEngine) GetAppearance() string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return normalizeAppearance(e.appearance)
+}
+
+// SetAppearance validates and persists the Appearance override. A value outside
+// system|light|dark is rejected and leaves the stored value unchanged.
+func (e *SessionEngine) SetAppearance(v string) error {
+	if normalizeAppearance(v) != v {
+		return fmt.Errorf("invalid appearance %q: want system, light or dark", v)
+	}
+	e.mu.Lock()
+	e.appearance = v
+	e.saveSettingsToDisk()
+	e.mu.Unlock()
+	return nil
 }
 
 // GetShellWebShareWarned returns the persisted "user has acknowledged the

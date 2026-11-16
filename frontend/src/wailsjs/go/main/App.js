@@ -79,6 +79,10 @@ export const GetWebServerMode        = ()                   => Call('main.App.Ge
 export const GetStartMinimized       = ()                   => Call('main.App.GetStartMinimized', [])
 export const SetStartMinimized       = (val)                => Call('main.App.SetStartMinimized', [val])
 
+// Appearance override bound methods (Portty 02-13 / THEM-01): system|light|dark
+export const GetAppearance           = ()                   => Call('main.App.GetAppearance', [])
+export const SetAppearance           = (arg1)               => Call('main.App.SetAppearance', [arg1])
+
 // Plugin settings bound methods (PLUG-03 / Phase 92)
 export const GetPluginSettings       = ()                   => Call('main.App.GetPluginSettings', [])
 export const SetPluginSettings       = (s)                  => Call('main.App.SetPluginSettings', [s])

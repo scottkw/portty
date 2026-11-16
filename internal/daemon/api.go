@@ -158,6 +158,8 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /sessions/{id}/styled-tail", a.handleGetSessionStyledTailLines)
 	a.mux.HandleFunc("GET /settings/start-minimized", a.handleGetStartMinimized)
 	a.mux.HandleFunc("PATCH /settings/start-minimized", a.handleSetStartMinimized)
+	a.mux.HandleFunc("GET /settings/appearance", a.handleGetAppearance)
+	a.mux.HandleFunc("PATCH /settings/appearance", a.handleSetAppearance)
 	a.mux.HandleFunc("GET /settings/shell-web-share-warned", a.handleGetShellWebShareWarned)
 	a.mux.HandleFunc("PATCH /settings/shell-web-share-warned", a.handleUpdateShellWebShareWarned)
 	a.mux.HandleFunc("GET /settings/shell-web-share-warning-enabled", a.handleGetShellWebShareWarningEnabled)
@@ -732,6 +734,25 @@ func (a *API) handleSetStartMinimized(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.engine.SetStartMinimized(req.StartMinimized)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) handleGetAppearance(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"appearance": a.engine.GetAppearance()})
+}
+
+func (a *API) handleSetAppearance(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Appearance string `json:"appearance"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := a.engine.SetAppearance(req.Appearance); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

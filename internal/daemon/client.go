@@ -122,6 +122,22 @@ func (c *DaemonClient) SetStartMinimized(val bool) error {
 		map[string]bool{"startMinimized": val}, nil)
 }
 
+// GetAppearance returns the persisted Appearance override (system|light|dark).
+func (c *DaemonClient) GetAppearance() (string, error) {
+	var resp map[string]string
+	if err := c.doJSON(http.MethodGet, "/settings/appearance", nil, &resp); err != nil {
+		return "", err
+	}
+	return resp["appearance"], nil
+}
+
+// SetAppearance persists the Appearance override; the daemon rejects values
+// outside system|light|dark.
+func (c *DaemonClient) SetAppearance(v string) error {
+	return c.doJSON(http.MethodPatch, "/settings/appearance",
+		map[string]string{"appearance": v}, nil)
+}
+
 // GetShellWebShareWarned returns the persisted shell-web-share-warned flag.
 // Phase 101 SHELL-08.
 func (c *DaemonClient) GetShellWebShareWarned() (bool, error) {

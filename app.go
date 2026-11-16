@@ -112,6 +112,15 @@ type App struct {
 	openAppFunc func(name string) error
 	openURLFunc func(url string)
 
+	// applyAppearanceFunc is the native Appearance seam; nil means
+	// setNativeAppearance (NSApp.appearance).
+	applyAppearanceFunc func(mode string)
+
+	// startupDone is closed once startup has the daemon up (or failed) and has
+	// applied the stored Appearance. Wails runs OnStartup on a goroutine that
+	// races domReady, so domReady waits on it before showing the window.
+	startupDone chan struct{}
+
 	// seenSessions is every id the exit watcher has listed and not yet
 	// reported via session:exit. Owned by the exit watcher goroutine.
 	seenSessions map[string]bool
@@ -122,6 +131,7 @@ func NewApp() *App {
 	a := &App{
 		saveFileDialogFunc:   runtime.SaveFileDialog,
 		sendNotificationFunc: sendNotification,
+		startupDone:          make(chan struct{}),
 	}
 	a.lastTrayQuartile.Store(-1) // Phase 98 PRG-03 — ensure first SetTrayProgress call always updates
 	return a
@@ -131,6 +141,9 @@ func NewApp() *App {
 // Shows the window unless the persisted start-minimized preference is set.
 // Falls back to showing the window when the daemon is unreachable (safe default).
 func (a *App) domReady(ctx context.Context) {
+	if a.startupDone != nil {
+		<-a.startupDone // the stored Appearance must land before the first visible paint
+	}
 	startMinimized := false
 	if a.client != nil {
 		if val, err := a.client.GetStartMinimized(); err == nil {
@@ -163,6 +176,11 @@ func (a *App) startup(ctx context.Context) {
 		a.daemonErr = err
 		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
 		runtime.EventsEmit(ctx, "daemon:error", err.Error())
+	} else {
+		a.applyStoredAppearance()
+	}
+	if a.startupDone != nil {
+		close(a.startupDone)
 	}
 
 	// One app-wide exit watcher closes tabs for every exited session (TERM-05).
@@ -508,6 +526,50 @@ func (a *App) SetStartMinimized(val bool) error {
 		return fmt.Errorf("daemon not connected")
 	}
 	return a.client.SetStartMinimized(val)
+}
+
+// GetAppearance returns the persisted Appearance override (system|light|dark),
+// or "system" when the daemon is not connected or the RPC fails.
+func (a *App) GetAppearance() string {
+	if a.client == nil {
+		return "system"
+	}
+	val, err := a.client.GetAppearance()
+	if err != nil {
+		return "system"
+	}
+	return val
+}
+
+// SetAppearance validates, persists and applies the Appearance override live.
+func (a *App) SetAppearance(mode string) error {
+	switch mode {
+	case "system", "light", "dark":
+	default:
+		return fmt.Errorf("invalid appearance %q: want system, light or dark", mode)
+	}
+	if a.client == nil {
+		return fmt.Errorf("daemon not connected")
+	}
+	if err := a.client.SetAppearance(mode); err != nil {
+		return err
+	}
+	a.applyAppearance(mode)
+	return nil
+}
+
+// applyStoredAppearance applies the persisted Appearance natively. startup calls
+// it while the window is still hidden, so a stored Dark never flashes Light.
+func (a *App) applyStoredAppearance() {
+	a.applyAppearance(a.GetAppearance())
+}
+
+func (a *App) applyAppearance(mode string) {
+	if a.applyAppearanceFunc != nil {
+		a.applyAppearanceFunc(mode)
+		return
+	}
+	setNativeAppearance(mode)
 }
 
 // GetPluginSettings returns the persisted plugin enable/disable preferences.

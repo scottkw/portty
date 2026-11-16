@@ -25,6 +25,8 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   GetWebServerQRCode: vi.fn().mockResolvedValue(''),
   GetStartMinimized: vi.fn().mockResolvedValue(false),
   SetStartMinimized: vi.fn().mockResolvedValue(undefined),
+  GetAppearance: vi.fn().mockResolvedValue('system'),
+  SetAppearance: vi.fn().mockResolvedValue(undefined),
   RegenerateSigningKey: vi.fn().mockResolvedValue(undefined),
   GetShellWebShareWarningEnabled: vi.fn().mockResolvedValue(true),
   SetShellWebShareWarningEnabled: vi.fn().mockResolvedValue(undefined),

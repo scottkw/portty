@@ -125,6 +125,10 @@ export function GetWebServerMode(): Promise<string>
 export function GetStartMinimized(): Promise<boolean>
 export function SetStartMinimized(val: boolean): Promise<void>
 
+// Appearance override bound methods (Portty 02-13 / THEM-01): system|light|dark
+export function GetAppearance(): Promise<string>
+export function SetAppearance(arg1: string): Promise<void>
+
 // Plugin settings bound methods (PLUG-03 / Phase 92)
 export function GetPluginSettings(): Promise<daemon.PluginSettings>
 export function SetPluginSettings(arg1: daemon.PluginSettings): Promise<void>

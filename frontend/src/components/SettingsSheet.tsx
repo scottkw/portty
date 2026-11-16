@@ -10,6 +10,8 @@ import {
   GetWebServerQRCode,
   GetStartMinimized,
   SetStartMinimized,
+  GetAppearance,
+  SetAppearance,
   RegenerateSigningKey,
   // Phase 150 SET-01 — shell web-share warning enabled master switch
   GetShellWebShareWarningEnabled,
@@ -34,6 +36,20 @@ interface SettingsSheetProps {
   onPluginToggleSideEffect?: (kinds: PluginToggleKind[]) => void
   // Phase 150 SET-01: notifies App.tsx after warning-enabled toggle changes (D-03 re-arm sync).
   onShellWarnEnabledChange?: (enabled: boolean) => void
+  // Portty 02-13 THEM-01: notifies App.tsx after the Appearance override is saved.
+  onAppearanceChange?: (appearance: Appearance) => void
+}
+
+export type Appearance = 'system' | 'light' | 'dark'
+
+const APPEARANCES: ReadonlyArray<{ id: Appearance; label: string }> = [
+  { id: 'system', label: 'Automatic' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+]
+
+function isAppearance(v: string): v is Appearance {
+  return APPEARANCES.some((a) => a.id === v)
 }
 
 type Pane = 'general' | 'sharing' | 'security'
@@ -76,8 +92,12 @@ export function SettingsSheet(props: SettingsSheetProps): React.ReactElement | n
   return <SettingsSheetContent {...props} />
 }
 
-function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebServerStateChange, onPluginToggleSideEffect, onShellWarnEnabledChange }: SettingsSheetProps): React.ReactElement {
+function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebServerStateChange, onPluginToggleSideEffect, onShellWarnEnabledChange, onAppearanceChange }: SettingsSheetProps): React.ReactElement {
   const [pane, setPane] = useState<Pane>('general')
+  const [appearance, setAppearanceState] = useState<Appearance>('system')
+  const [appearanceLoaded, setAppearanceLoaded] = useState(false)
+  const [appearanceError, setAppearanceError] = useState<string | null>(null)
+  const appearanceRefs = useRef<Partial<Record<Appearance, HTMLButtonElement | null>>>({})
   const dialogRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Partial<Record<Pane, HTMLButtonElement | null>>>({})
   useDialogFocus(dialogRef, { onCancel: onClose, initialFocus: 'primary' })
@@ -166,6 +186,14 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
     }).catch(() => setToggleLoaded(true))
   }, [])
 
+  // Load the Appearance override on mount (Portty 02-13 THEM-01).
+  useEffect(() => {
+    GetAppearance().then(val => {
+      if (isAppearance(val)) setAppearanceState(val)
+      setAppearanceLoaded(true)
+    }).catch(() => setAppearanceLoaded(true))
+  }, [])
+
   // Load shell web-share warning enabled preference on mount (Phase 150 SET-01).
   useEffect(() => {
     GetShellWebShareWarningEnabled().then(val => {
@@ -232,6 +260,29 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
     } catch (err) {
       setCTError(err instanceof Error ? err.message : String(err))
     }
+  }
+
+  async function selectAppearance(next: Appearance) {
+    if (next === appearance) return
+    const prev = appearance
+    setAppearanceState(next)
+    setAppearanceError(null)
+    try {
+      await SetAppearance(next)
+      onAppearanceChange?.(next)
+    } catch (err) {
+      setAppearanceState(prev)
+      setAppearanceError('Could not save preference — ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  function handleAppearanceKeyDown(e: React.KeyboardEvent): void {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    const i = APPEARANCES.findIndex((a) => a.id === appearance)
+    const next = APPEARANCES[(i + (e.key === 'ArrowRight' ? 1 : -1) + APPEARANCES.length) % APPEARANCES.length].id
+    appearanceRefs.current[next]?.focus()
+    void selectAppearance(next)
   }
 
   async function handleToggleMinimized() {
@@ -380,10 +431,28 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
           <div className="settings-sheet__content">
             <div role="tabpanel" id="settings-pane-general" aria-labelledby="settings-tab-general" hidden={pane !== 'general'}>
               <div className="settings-group">
-                {/* THEM-01: follows the system. Interim static row; plan 02-13 adds the override. */}
-                <Row label="Appearance" description="Follows your Mac's Light or Dark setting in System Settings.">
-                  <span className="settings-row__value">Automatic</span>
-                </Row>
+                {/* THEM-01 (amended 2026-11-15): Automatic follows macOS; Light/Dark override it natively. */}
+                {appearanceLoaded && (
+                  <Row label="Appearance" description="Automatic follows your Mac's Light or Dark setting in System Settings.">
+                    {/* Styled like the Share dialog segmented control (NSSegmentedControl). */}
+                    <div className="share-segbar" role="radiogroup" aria-label="Appearance" onKeyDown={handleAppearanceKeyDown}>
+                      {APPEARANCES.map(({ id, label }) => (
+                        <button
+                          key={id}
+                          ref={(el) => { appearanceRefs.current[id] = el }}
+                          type="button"
+                          role="radio"
+                          aria-checked={appearance === id}
+                          tabIndex={appearance === id ? 0 : -1}
+                          className={appearance === id ? 'share-seg is-active' : 'share-seg'}
+                          onClick={() => void selectAppearance(id)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </Row>
+                )}
                 {toggleLoaded && (
                   <Row
                     label="Start hidden in the menu bar"
@@ -399,6 +468,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
                   </Row>
                 )}
               </div>
+              {appearanceError && <p className="settings-sheet__error" role="alert">{appearanceError}</p>}
               {toggleError && <p className="settings-sheet__error" role="alert">{toggleError}</p>}
 
               {/* Plugins (Phase 92 PUI-01, Phase 99 PUI-02) */}

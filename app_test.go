@@ -1042,3 +1042,56 @@ func TestOpenTailscale_FallsBackToDownloadURL(t *testing.T) {
 		t.Errorf("fallback URL = %q, want the Tailscale download page", gotURL)
 	}
 }
+
+// recordAppearance installs a recording applyAppearanceFunc seam (Portty 02-13).
+func recordAppearance(a *App) *[]string {
+	var got []string
+	a.applyAppearanceFunc = func(mode string) { got = append(got, mode) }
+	return &got
+}
+
+func TestSetAppearance_PersistsAndApplies(t *testing.T) {
+	a := testApp(t)
+	got := recordAppearance(a)
+	if v := a.GetAppearance(); v != "system" {
+		t.Errorf("default GetAppearance: want system, got %q", v)
+	}
+	if err := a.SetAppearance("dark"); err != nil {
+		t.Fatalf("SetAppearance(dark): %v", err)
+	}
+	if len(*got) != 1 || (*got)[0] != "dark" {
+		t.Errorf("applied: want [dark], got %v", *got)
+	}
+	if v := a.GetAppearance(); v != "dark" {
+		t.Errorf("GetAppearance after set: want dark, got %q", v)
+	}
+}
+
+func TestSetAppearance_RejectsInvalid(t *testing.T) {
+	a := testApp(t)
+	if err := a.SetAppearance("light"); err != nil {
+		t.Fatalf("SetAppearance(light): %v", err)
+	}
+	got := recordAppearance(a)
+	if err := a.SetAppearance("purple"); err == nil {
+		t.Error("SetAppearance(purple): want error, got nil")
+	}
+	if len(*got) != 0 {
+		t.Errorf("applied after rejection: want none, got %v", *got)
+	}
+	if v := a.GetAppearance(); v != "light" {
+		t.Errorf("stored value after rejection: want light, got %q", v)
+	}
+}
+
+func TestApplyStoredAppearance_AppliesSavedValue(t *testing.T) {
+	a := testApp(t)
+	if err := a.client.SetAppearance("light"); err != nil {
+		t.Fatalf("client.SetAppearance(light): %v", err)
+	}
+	got := recordAppearance(a)
+	a.applyStoredAppearance()
+	if len(*got) != 1 || (*got)[0] != "light" {
+		t.Errorf("applied: want [light], got %v", *got)
+	}
+}

@@ -4,12 +4,14 @@ import { createRoot, type Root } from 'react-dom/client'
 import { act } from 'react'
 import raw from '../../components/SettingsSheet.tsx?raw'
 import { SettingsSheet } from '../SettingsSheet'
+import { SetAppearance } from '../../wailsjs/go/main/App'
 
-// Every Wails binding resolves to undefined except the two loads the General pane needs.
+// Every Wails binding resolves to undefined except the loads the General pane needs.
 vi.mock('../../wailsjs/go/main/App', async (importOriginal) => {
   const mod = await importOriginal<Record<string, unknown>>()
   const fns: Record<string, unknown> = Object.fromEntries(Object.keys(mod).map((k) => [k, vi.fn().mockResolvedValue(undefined)]))
   fns.GetStartMinimized = vi.fn().mockResolvedValue(false)
+  fns.GetAppearance = vi.fn().mockResolvedValue('system')
   fns.GetPluginSettings = vi.fn().mockResolvedValue({
     webgl: true, unicode11: false, search: true, webLinks: true, image: false,
     serialize: false, clipboard: false, progress: false,
@@ -129,13 +131,53 @@ describe('LOOK-01 / NAV-03: Settings is one sheet over the window', () => {
 })
 
 describe('General pane', () => {
-  it('THEM-01: Appearance reads "Automatic" with no theme picker', async () => {
+  const radios = () => Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radiogroup"][aria-label="Appearance"] [role="radio"]'))
+  const radio = (name: string) => radios().find((r) => r.textContent === name)!
+  const checked = () => radios().filter((r) => r.getAttribute('aria-checked') === 'true').map((r) => r.textContent)
+  const flush = () => act(async () => { await new Promise<void>((r) => setTimeout(r, 0)) })
+
+  it('THEM-01: Appearance is Automatic / Light / Dark with Automatic checked, and no theme picker', async () => {
     await renderSheet()
-    const general = panel('general')
-    expect(general.textContent).toContain('Automatic')
-    expect(general.textContent).toContain("Follows your Mac's Light or Dark setting in System Settings.")
+    expect(radios().map((r) => r.textContent)).toEqual(['Automatic', 'Light', 'Dark'])
+    expect(checked()).toEqual(['Automatic'])
+    expect(radios().map((r) => r.tabIndex)).toEqual([0, -1, -1])
+    expect(panel('general').textContent).toContain("Automatic follows your Mac's Light or Dark setting in System Settings.")
     expect(container.textContent).not.toMatch(/Interface Theme|Terminal Theme|Stay on Hub/i)
     expect(raw).not.toMatch(/ALLOWED_THEMES|selectedTheme|onThemeChange|uiTheme|StayOnHub/)
+  })
+
+  it('THEM-01: clicking Dark saves it and notifies onAppearanceChange', async () => {
+    const onAppearanceChange = vi.fn()
+    vi.mocked(SetAppearance).mockClear()
+    await renderSheet({ onAppearanceChange })
+    await act(async () => radio('Dark').click())
+    await flush()
+    expect(SetAppearance).toHaveBeenCalledWith('dark')
+    expect(onAppearanceChange).toHaveBeenCalledWith('dark')
+    expect(checked()).toEqual(['Dark'])
+  })
+
+  it('THEM-01: a rejected SetAppearance restores the previous choice and shows the error', async () => {
+    const onAppearanceChange = vi.fn()
+    vi.mocked(SetAppearance).mockRejectedValueOnce(new Error('daemon not connected'))
+    await renderSheet({ onAppearanceChange })
+    await act(async () => radio('Light').click())
+    await flush()
+    expect(checked()).toEqual(['Automatic'])
+    expect(onAppearanceChange).not.toHaveBeenCalled()
+    expect(container.querySelector('.settings-sheet__error')!.textContent).toContain('daemon not connected')
+  })
+
+  it('THEM-01: ArrowRight from Automatic selects Light and moves focus', async () => {
+    vi.mocked(SetAppearance).mockClear()
+    await renderSheet()
+    await act(async () => {
+      radio('Automatic').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    })
+    await flush()
+    expect(checked()).toEqual(['Light'])
+    expect(document.activeElement).toBe(radio('Light'))
+    expect(SetAppearance).toHaveBeenCalledWith('light')
   })
 
   it('"Start hidden in the menu bar" is a labelled switch', async () => {
