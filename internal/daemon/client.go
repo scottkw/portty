@@ -358,7 +358,7 @@ func (c *DaemonClient) RegenerateSigningKey() error {
 	return c.doJSON(http.MethodPost, "/capability/regenerate-key", nil, nil)
 }
 
-// ListTailnetPeers returns discovered tailnet peers running AgentHub.
+// ListTailnetPeers returns discovered tailnet peers running Portty.
 func (c *DaemonClient) ListTailnetPeers() ([]tailnet.Peer, error) {
 	var peers []tailnet.Peer
 	if err := c.doJSON(http.MethodGet, "/tailnet/peers", nil, &peers); err != nil {

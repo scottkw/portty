@@ -1,19 +1,18 @@
 // Package tailnet provides Tailscale peer discovery and HTTP probe functions
-// for finding other AgentHub instances on the tailnet.
+// for finding other Portty instances on the tailnet.
 //
 // Usage:
 //
 //	peers, err := tailnet.DiscoverAndProbe(ctx)
 //
 // This calls DiscoverPeers (via local tailscaled) and probes each online peer
-// for a running AgentHub instance at DefaultProbePort.
+// for a running Portty instance at DefaultProbePort.
 package tailnet
 
 import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -24,9 +23,18 @@ import (
 	"tailscale.com/ipn/ipnstate"
 )
 
-// DefaultProbePort is the TCP port AgentHub listens on for HTTPS connections.
-// This matches the default in SettingsPanel.tsx.
-const DefaultProbePort = 7443
+// DefaultProbePort is the TCP port Portty's web server listens on and peers
+// probe. It is 7444 so Portty and the upstream app (on its own port) can run
+// side by side. The frontend default lives in SettingsSheet.tsx.
+const DefaultProbePort = 7444
+
+// MarkerHeader and MarkerValue identify a Portty server to peer discovery: the
+// server sets them on GET /api/sessions and the probe accepts only replies that
+// carry them. This is an identity hint, not an authentication signal.
+const (
+	MarkerHeader = "X-Portty"
+	MarkerValue  = "1"
+)
 
 // Peer represents an online Tailscale peer. DNSName retains its trailing dot
 // as returned by the Tailscale daemon; callers must strip it before use in URLs.
@@ -79,37 +87,22 @@ func DiscoverPeers(ctx context.Context) ([]Peer, error) {
 	return discoverPeers(ctx, lc.Status)
 }
 
-// agentHubProbeMarker is the body AgentHub's capability middleware returns on
-// an unauthenticated request to a cap-gated endpoint (internal/webserver/
-// capability_mw.go). The discovery probe hits GET /api/sessions WITHOUT a cap,
-// so a shared (cap-protected) peer answers 401 with this marker rather than 200.
-const agentHubProbeMarker = "capability required"
-
-// isAgentHubProbeResponse reports whether a probe response indicates a running
-// AgentHub peer. Two cases count as "present":
-//   - 200 OK: an open endpoint (no cap gate).
-//   - 401 carrying the AgentHub "capability required" marker: a shared,
-//     cap-protected peer. This is the #84 fix — every real tailnet share is
-//     cap-gated, so /api/sessions returns 401, not 200; requiring 200 dropped
-//     every shared peer and left the Remote panel permanently empty.
-//
-// A bare or foreign 401 (no marker) is NOT accepted, so an arbitrary
-// 401-returning service on :7443 is not mistaken for AgentHub.
-func isAgentHubProbeResponse(resp *http.Response) bool {
-	if resp.StatusCode == http.StatusOK {
-		return true
+// isPorttyProbeResponse reports whether a probe response comes from a running
+// Portty peer: the reply must carry the Portty marker header, and the status
+// must be 200 (open endpoint) or 401 (a shared, cap-protected peer; every real
+// tailnet share is cap-gated). Replies without the marker, including the
+// upstream app's 401, are rejected. The body is never read.
+func isPorttyProbeResponse(resp *http.Response) bool {
+	if resp.Header.Get(MarkerHeader) != MarkerValue {
+		return false
 	}
-	if resp.StatusCode == http.StatusUnauthorized {
-		// Bounded read — the marker is short; never slurp an arbitrary body.
-		buf, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-		return strings.Contains(string(buf), agentHubProbeMarker)
-	}
-	return false
+	return resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusUnauthorized
 }
 
 // probePeer is the internal testable probe function.
 // It sends a GET request to https://{peer.DNSName_stripped}:{DefaultProbePort}/api/sessions
-// using the provided HTTP client, returning true if the response is 200 OK.
+// using the provided HTTP client, returning true when the reply carries the
+// Portty marker with 200 or 401.
 // If the DNS-based request fails and the peer has TailscaleIPs, it retries
 // using the first IP directly (with ServerName set for TLS validation).
 func probePeer(ctx context.Context, peer Peer, client *http.Client) bool {
@@ -122,7 +115,7 @@ func probePeer(ctx context.Context, peer Peer, client *http.Client) bool {
 	}
 	resp, err := client.Do(req)
 	if err == nil {
-		ok := isAgentHubProbeResponse(resp)
+		ok := isPorttyProbeResponse(resp)
 		resp.Body.Close()
 		return ok
 	}
@@ -162,12 +155,12 @@ func probePeerByIP(ctx context.Context, peer Peer, client *http.Client) bool {
 			return false
 		}
 	}
-	ok := isAgentHubProbeResponse(resp)
+	ok := isPorttyProbeResponse(resp)
 	resp.Body.Close()
 	return ok
 }
 
-// ProbePeer probes whether the given peer is running AgentHub.
+// ProbePeer probes whether the given peer is running Portty.
 // It uses a 2-second timeout and system-CA TLS (Tailscale Let's Encrypt certs
 // are publicly trusted — no skip-verify flag is used).
 func ProbePeer(ctx context.Context, peer Peer) bool {
@@ -205,7 +198,7 @@ func probeAll(ctx context.Context, peers []Peer, fn probeFunc) []Peer {
 }
 
 // DiscoverAndProbe discovers all online Tailscale peers and probes each one
-// to determine which are running AgentHub. It returns only peers that responded
+// to determine which are running Portty. It returns only peers that responded
 // successfully to the probe.
 func DiscoverAndProbe(ctx context.Context) ([]Peer, error) {
 	peers, err := DiscoverPeers(ctx)

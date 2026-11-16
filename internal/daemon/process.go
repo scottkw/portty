@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/scottkw/portty/internal/tailnet"
 	"github.com/scottkw/portty/internal/webserver"
 )
 
@@ -25,7 +26,7 @@ var BuildVersion string
 // when Tailscale recovers. Exits only when ctx is cancelled.
 //
 // Polling cadence: 5s. Lower than the original 15s because the user-visible
-// gap between "Tailscale up" and "AgentHub URL switches" was reported as
+// gap between "Tailscale up" and "the share URL switches" was reported as
 // long enough that users manually-restarted the web server thinking the
 // upgrade was stuck (P-1).
 func upgradeToTailscale(ctx context.Context, api *API) {
@@ -46,7 +47,7 @@ func upgradeToTailscale(ctx context.Context, api *API) {
 			if api.WebServerMode() == "tailscale" && api.WebServerBindIP() == h.IP {
 				continue
 			}
-			if err := api.RestartWebServer(h.IP, 7443, h.Domain, "tailscale", ""); err != nil {
+			if err := api.RestartWebServer(h.IP, tailnet.DefaultProbePort, h.Domain, "tailscale", ""); err != nil {
 				fmt.Fprintf(os.Stderr, "daemon: upgrade to tailscale: %v\n", err)
 				continue // retry on next tick
 			}
@@ -122,7 +123,7 @@ func runDaemonCore(ctx context.Context) {
 			"daemon: tailscale health: connected=%v hasCerts=%v ip=%q domain=%q\n",
 			h.Connected, h.HasCerts, h.IP, h.Domain)
 		if h.Connected && h.HasCerts && h.IP != "" {
-			if err := api.AutoStartWebServer(h.IP, 7443, h.Domain, "tailscale", ""); err != nil {
+			if err := api.AutoStartWebServer(h.IP, tailnet.DefaultProbePort, h.Domain, "tailscale", ""); err != nil {
 				fmt.Fprintf(os.Stderr, "daemon: auto-start web server: %v\n", err)
 			} else {
 				fmt.Fprintf(os.Stderr, "daemon: web server auto-started on %s (tailscale)\n", h.IP)
@@ -133,7 +134,7 @@ func runDaemonCore(ctx context.Context) {
 			if lanErr != nil {
 				fmt.Fprintf(os.Stderr, "daemon: local mode: no LAN IP: %v (web server NOT started — UI will show no share URLs)\n", lanErr)
 			} else {
-				if err := api.AutoStartWebServer(lanIP, 7443, "", "local", localPassword); err != nil {
+				if err := api.AutoStartWebServer(lanIP, tailnet.DefaultProbePort, "", "local", localPassword); err != nil {
 					fmt.Fprintf(os.Stderr, "daemon: auto-start web server (local): %v\n", err)
 				} else {
 					fmt.Fprintf(os.Stderr, "daemon: web server auto-started on %s (local mode)\n", lanIP)

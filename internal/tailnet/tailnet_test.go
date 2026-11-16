@@ -138,6 +138,7 @@ func redirectingClient(srv *httptest.Server) *http.Client {
 func TestProbePeer_Found(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/sessions" {
+			w.Header().Set(MarkerHeader, MarkerValue)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -166,14 +167,15 @@ func TestProbePeer_NotFound(t *testing.T) {
 }
 
 // TestProbePeer_CapProtected401_Found is the regression test for #84. A
-// cap-protected AgentHub peer answers the unauthenticated discovery probe
-// (GET /api/sessions, no cap) with 401 "capability required" (capability_mw.go).
-// Before the fix, probePeer accepted only HTTP 200, so every shared (cap-gated)
-// peer — i.e. every real tailnet share — was silently dropped and the Remote
-// panel stayed empty. Discovery must treat the AgentHub-shaped 401 as "present".
+// cap-protected Portty peer answers the unauthenticated discovery probe
+// (GET /api/sessions, no cap) with 401 "capability required" (capability_mw.go)
+// plus the X-Portty marker. Before the #84 fix, probePeer accepted only HTTP
+// 200, so every shared (cap-gated) peer — i.e. every real tailnet share — was
+// silently dropped and the Remote panel stayed empty. A marked 401 is "present".
 func TestProbePeer_CapProtected401_Found(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/sessions" {
+			w.Header().Set(MarkerHeader, MarkerValue)
 			http.Error(w, "capability required", http.StatusUnauthorized)
 			return
 		}
@@ -183,13 +185,55 @@ func TestProbePeer_CapProtected401_Found(t *testing.T) {
 
 	peer := Peer{DNSName: "testhost.ts.net."}
 	if !probePeer(context.Background(), peer, redirectingClient(srv)) {
-		t.Error("expected probePeer to return true for AgentHub 401 \"capability required\"")
+		t.Error("expected probePeer to return true for a marked Portty 401 \"capability required\"")
 	}
 }
 
-// TestProbePeer_Generic401_NotFound guards the #84 fix against false positives:
-// a non-AgentHub server that happens to return a bare 401 on :7443 must NOT be
-// mistaken for an AgentHub peer. Only the "capability required" marker counts.
+// TestProbePeer_UpstreamShaped401_NotFound: the upstream app answers the probe
+// with the same 401 "capability required" body but no X-Portty marker. Such a
+// peer must not be shown, so the shared body text alone no longer qualifies.
+func TestProbePeer_UpstreamShaped401_NotFound(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "capability required", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	peer := Peer{DNSName: "testhost.ts.net."}
+	if probePeer(context.Background(), peer, redirectingClient(srv)) {
+		t.Error("expected probePeer to return false for an unmarked 401 \"capability required\"")
+	}
+}
+
+// TestProbePeer_200WithoutMarker_NotFound: a bare 200 is not a Portty peer.
+func TestProbePeer_200WithoutMarker_NotFound(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	peer := Peer{DNSName: "testhost.ts.net."}
+	if probePeer(context.Background(), peer, redirectingClient(srv)) {
+		t.Error("expected probePeer to return false for a 200 without the marker")
+	}
+}
+
+// TestProbePeer_WrongMarkerValue_NotFound: the header must carry exactly MarkerValue.
+func TestProbePeer_WrongMarkerValue_NotFound(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(MarkerHeader, "0")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	peer := Peer{DNSName: "testhost.ts.net."}
+	if probePeer(context.Background(), peer, redirectingClient(srv)) {
+		t.Error("expected probePeer to return false for a wrong marker value")
+	}
+}
+
+// TestProbePeer_Generic401_NotFound guards against false positives: an
+// unrelated server that returns a bare 401 on the probe port must NOT be
+// mistaken for a Portty peer.
 func TestProbePeer_Generic401_NotFound(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -198,7 +242,7 @@ func TestProbePeer_Generic401_NotFound(t *testing.T) {
 
 	peer := Peer{DNSName: "testhost.ts.net."}
 	if probePeer(context.Background(), peer, redirectingClient(srv)) {
-		t.Error("expected probePeer to return false for a generic (non-AgentHub) 401")
+		t.Error("expected probePeer to return false for a generic 401")
 	}
 }
 
@@ -223,6 +267,7 @@ func TestProbePeer_DNSNameDotStrip(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
+		w.Header().Set(MarkerHeader, MarkerValue)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -303,13 +348,13 @@ func TestDiscoverAndProbe_Integration(t *testing.T) {
 	status := &ipnstate.Status{
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
 			key.NewNode().Public(): {
-				HostName: "agenthub-peer",
-				DNSName:  "agenthub-peer.ts.net.",
+				HostName: "portty-peer",
+				DNSName:  "portty-peer.ts.net.",
 				Online:   true,
 			},
 			key.NewNode().Public(): {
-				HostName: "non-agenthub-peer",
-				DNSName:  "non-agenthub-peer.ts.net.",
+				HostName: "other-peer",
+				DNSName:  "other-peer.ts.net.",
 				Online:   true,
 			},
 		},
@@ -323,17 +368,17 @@ func TestDiscoverAndProbe_Integration(t *testing.T) {
 		t.Fatalf("expected 2 discovered peers, got %d", len(discovered))
 	}
 
-	// probeFunc returns true only for agenthub-peer.
+	// probeFunc returns true only for portty-peer.
 	fn := probeFunc(func(ctx context.Context, p Peer) bool {
-		return p.Hostname == "agenthub-peer"
+		return p.Hostname == "portty-peer"
 	})
 
 	result := probeAll(context.Background(), discovered, fn)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
-	if result[0].Hostname != "agenthub-peer" {
-		t.Errorf("expected agenthub-peer, got %q", result[0].Hostname)
+	if result[0].Hostname != "portty-peer" {
+		t.Errorf("expected portty-peer, got %q", result[0].Hostname)
 	}
 }
 
@@ -347,6 +392,7 @@ func TestProbePeer_IPFallback(t *testing.T) {
 	// path (which also goes through the client) succeeds.
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/sessions" {
+			w.Header().Set(MarkerHeader, MarkerValue)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -596,10 +642,10 @@ func TestFetchAllPeerSessionsMeta_PopulatedPeer(t *testing.T) {
 	}
 }
 
-// TestFetchPeerSessionsMeta_LegacyAgentHubPeer verifies that a peer still on
-// AgentHub, which sends cli_type and agent statuses like "waiting", decodes
-// without error and keeps id, name, status and url (STRP-01).
-func TestFetchPeerSessionsMeta_LegacyAgentHubPeer(t *testing.T) {
+// TestFetchPeerSessionsMeta_IgnoresLegacyFields verifies that an older peer
+// may still send cli_type and agent-era statuses like "waiting"; they decode
+// harmlessly and id, name, status and url are kept (STRP-01).
+func TestFetchPeerSessionsMeta_IgnoresLegacyFields(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[{"id":"old1","name":"Old Peer Session","cli_type":"claude","status":"waiting","url":"https://old-peer/sessions/old1"}]`))

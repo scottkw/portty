@@ -20,6 +20,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/capability"
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/tailnet"
 	webfs "github.com/scottkw/portty/web"
 	qrcode "github.com/skip2/go-qrcode"
 	"tailscale.com/client/local"
@@ -73,7 +74,7 @@ type sessionListItem struct {
 	Perms    string `json:"perms,omitempty"`
 }
 
-// WebServer serves the AgentHub dashboard and relays terminal I/O over WSS to
+// WebServer serves the Portty dashboard and relays terminal I/O over WSS to
 // remote browser clients. Access control is provided at the network level by
 // Tailscale — no application-layer authentication is required.
 type WebServer struct {
@@ -441,8 +442,8 @@ func (ws *WebServer) startTailscale() error {
 	//
 	// WHY THIS EXISTS (co-location assumption + SNI-502 rationale):
 	// tailscaled terminates the ONLY public TLS on hop 1 (guest→ingress, real verified
-	// Tailscale cert). On hop 2 (tailscaled→AgentHub) it dials the configured proxy target.
-	// The AgentHub HTTPS listener uses an SNI-driven cert (ws.lc.GetCertificate mints a cert
+	// Tailscale cert). On hop 2 (tailscaled→Portty) it dials the configured proxy target.
+	// The Portty HTTPS listener uses an SNI-driven cert (ws.lc.GetCertificate mints a cert
 	// ONLY for the <hostname>.ts.net DNS name). When tailscaled dials a raw IP, the TLS
 	// ClientHello sends SNI=IP-literal; the server has no cert for an IP → TLS internal_error
 	// → HTTP 502 for every external Funnel guest (FNL-03 root cause). https+insecure (165-04)
@@ -456,7 +457,7 @@ func (ws *WebServer) startTailscale() error {
 	// dual-origin allowlist + public Tailscale cert on hop 1 are all intact.
 	//
 	// CO-LOCATION GUARD (MUST NOT be removed silently): this design is safe ONLY because
-	// tailscaled and the AgentHub listener run on the SAME host. If they are ever split
+	// tailscaled and the Portty listener run on the SAME host. If they are ever split
 	// across tailnet nodes, the Funnel proxy target MUST become a WireGuard-tunneled
 	// tailnet-IP target (never plaintext across a real network interface).
 	loopbackLn, loopbackErr := net.Listen("tcp", "127.0.0.1:0")
@@ -554,8 +555,8 @@ func (ws *WebServer) Addr() string {
 }
 
 // BaseURL returns the base HTTPS URL for the server.
-// In "local" mode it uses the bind IP (e.g. https://192.168.1.50:7443).
-// In "tailscale" mode (or when Mode is unset) it uses the FQDN (e.g. https://hostname.ts.net:7443).
+// In "local" mode it uses the bind IP (e.g. https://192.168.1.50:7444).
+// In "tailscale" mode (or when Mode is unset) it uses the FQDN (e.g. https://hostname.ts.net:7444).
 func (ws *WebServer) BaseURL() string {
 	ws.mu.RLock()
 	ln := ws.listener
@@ -629,7 +630,7 @@ func (ws *WebServer) EnableFunnel(ctx context.Context, funnelPort uint16) error 
 	//
 	// LOOPBACK-HTTP TARGET RATIONALE (165-05, replacing the dead 165-04 Option A):
 	//   - tailscaled terminates the ONLY public TLS on hop 1 (guest→ingress, real verified
-	//     Tailscale cert); hop 2 (tailscaled→AgentHub) uses this proxy target.
+	//     Tailscale cert); hop 2 (tailscaled→Portty) uses this proxy target.
 	//   - The 165-04 https+insecure://<bindIP>:<tlsPort> target is DEAD: tailscaled dials
 	//     the raw IP and sends SNI=IP-literal; ws.lc.GetCertificate has no cert for an IP
 	//     literal → TLS internal_error → HTTP 502 for every external guest. https+insecure
@@ -641,7 +642,7 @@ func (ws *WebServer) EnableFunnel(ctx context.Context, funnelPort uint16) error 
 	//   - The public internet-facing posture is UNCHANGED: cap token + dual-origin allowlist
 	//     + public Tailscale cert on hop 1 are all intact.
 	//   - CO-LOCATION GUARD (MUST NOT be removed silently): this design is safe ONLY because
-	//     tailscaled and the AgentHub listener are CO-LOCATED on the same host. If they are
+	//     tailscaled and the Portty listener are CO-LOCATED on the same host. If they are
 	//     ever split across tailnet nodes, this target MUST become a WireGuard-tunneled
 	//     tailnet-IP target — a future split must not silently re-expose plaintext traffic.
 	if ws.loopbackListener == nil {
@@ -822,8 +823,9 @@ func (ws *WebServer) setupRoutes() {
 	mux.HandleFunc("GET /api/sessions/meta", ws.handleSessionsMeta)
 
 	// GET /api/sessions — capability-gated; handleListSessions returns ONLY
-	// the single session bound to the cap (D-18).
-	mux.HandleFunc("GET /api/sessions", ws.requireCapability(ws.handleListSessions))
+	// the single session bound to the cap (D-18). porttyMarker sits outside the
+	// cap check so the unauthenticated 401 that peer discovery sees carries it too.
+	mux.HandleFunc("GET /api/sessions", porttyMarker(ws.requireCapability(ws.handleListSessions)))
 
 	// GET /api/sessions/{id}/info — capability-gated; cap must match {id}
 	// (SEC-03). Used by the terminal page to populate status bar + perms
@@ -1393,4 +1395,14 @@ func assetsNoStore(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// porttyMarker sets the Portty marker header (X-Portty: 1) before
+// calling next. Only GET /api/sessions uses it: peer discovery probes that
+// route and accepts only marked replies. It identifies Portty; it grants nothing.
+func porttyMarker(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(tailnet.MarkerHeader, tailnet.MarkerValue)
+		next(w, r)
+	}
 }
