@@ -448,21 +448,21 @@ codesign --force --timestamp --sign "$MACOS_CERTIFICATE_NAME" "build/bin/${DMG_N
 | A6 | WebKit localStorage for the app lives under a bundle-ID-keyed path, so it resets | Runtime State | Last-used folder may carry over (harmless) |
 | A7 | The `/usr/local/bin` symlink is the right CLI install method for this user | Pitfall 4 | User may prefer `~/.local/bin` or an in-app installer |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Fix DMG asset matching in the updater now, or in Phase 6?**
+1. **Fix DMG asset matching in the updater now, or in Phase 6?** — RESOLVED: now; plan 03-02 adds `Filters` plus an offline test (CONTEXT research follow-ups).
    - Known: the slug change plus silent 404 meet the CONTEXT decision as written. Without `Filters`, no DMG release is ever detected (verified in go-selfupdate source).
    - Recommendation: include the one-line `Filters` config plus an offline fake-`Source` test in plan 03-02. It's small, it touches the same function, and it makes the UI-SPEC "newer release → banner" row actually achievable. If the planner wants to keep scope tight, record it as a Phase 6 (UPD-01) blocker in STATE.md instead.
-2. **Delete `build/gen_icon.go` too?**
+2. **Delete `build/gen_icon.go` too?** — RESOLVED: yes; plan 03-03 deletes it.
    - It writes the AgentHub icon and tray art over `build/appicon.png` and `assets/tray_icon{,_error}.png` if anyone runs it. That's the same reason CONTEXT gives for deleting `gen_progress_icons.go`. Its only brand hit is one comment.
    - Recommendation: delete it (Chesterton satisfied: its sole purpose was generating the art the brand files replace). The user can override.
-3. **Do code-level Homebrew paths count for DIST-03?**
+3. **Do code-level Homebrew paths count for DIST-03?** — RESOLVED: no; `path.go`/`path_test.go` stay, stale comments go (CONTEXT; plan 03-06 gate excludes them).
    - `internal/daemon/path.go` prepends `/opt/homebrew/bin` and `/usr/local/bin` so the Tailscale CLI is found. `path_test.go` is named `TestAugmentServicePath_HomebrewTailscaleOnly`. The `main.go:67` comment mentions "Homebrew, volta, nvm" (stale).
    - Success criterion 7 covers "docs, scripts or workflows". These are code paths about where Tailscale is installed, not about distributing Portty.
    - Recommendation: keep `path.go` and `path_test.go` (a real directory, explained by its comment) and fix the stale `main.go` comment. Also change the fixture's `"/opt/homebrew/bin/tailscale"` value to `/usr/local/bin/tailscale` (coverage is unaffected). Gate with `git grep -n -i 'homebrew\|brew install\|brew tap' -- ':!.planning' ':!internal/daemon/path.go' ':!internal/daemon/path_test.go'` → empty.
-4. **README: CLI install line?** The UI-SPEC README sections are Install / Use It From Another Mac / License. Recommendation: one symlink line inside Install (Pitfall 4). Otherwise BRND-03's `portty attach` only works by full bundle path.
-5. **CLI `web start` port 443 vs 7444?** Recommendation: leave it as is in this phase and note it for Phase 4 (share redesign touches `serve`/`web`). The rebrand moves only the 7443 sites.
-6. **`assets/appicon.png` is unreferenced by code.** UI-SPEC places the Portty icon there anyway (it was there in AgentHub). Recommendation: follow UI-SPEC. Removing it is a later simplicity call.
+4. **README: CLI install line?** — RESOLVED: yes, one `ln -s` line in Install (CONTEXT; plan 03-06). The UI-SPEC README sections are Install / Use It From Another Mac / License. Recommendation: one symlink line inside Install (Pitfall 4). Otherwise BRND-03's `portty attach` only works by full bundle path.
+5. **CLI `web start` port 443 vs 7444?** — RESOLVED: left for Phase 4 (CONTEXT). Recommendation: leave it as is in this phase and note it for Phase 4 (share redesign touches `serve`/`web`). The rebrand moves only the 7443 sites.
+6. **`assets/appicon.png` is unreferenced by code.** — RESOLVED: follow the UI-SPEC and keep the Portty icon there (plan 03-03). UI-SPEC places the Portty icon there anyway (it was there in AgentHub). Recommendation: follow UI-SPEC. Removing it is a later simplicity call.
 
 ## Environment Availability
 
