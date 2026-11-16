@@ -115,6 +115,9 @@ type App struct {
 	// applyAppearanceFunc is the native Appearance seam; nil means
 	// setNativeAppearance (NSApp.appearance).
 	applyAppearanceFunc func(mode string)
+	// appearanceMu makes each persist-and-apply (or read-and-apply) atomic, so
+	// concurrent binding calls apply natively in the order they persisted.
+	appearanceMu sync.Mutex
 
 	// startupDone is closed once startup has the daemon up (or failed) and has
 	// applied the stored Appearance. Wails runs OnStartup on a goroutine that
@@ -552,6 +555,8 @@ func (a *App) SetAppearance(mode string) error {
 	if a.client == nil {
 		return fmt.Errorf("daemon not connected")
 	}
+	a.appearanceMu.Lock()
+	defer a.appearanceMu.Unlock()
 	if err := a.client.SetAppearance(mode); err != nil {
 		return err
 	}
@@ -562,6 +567,8 @@ func (a *App) SetAppearance(mode string) error {
 // applyStoredAppearance applies the persisted Appearance natively. startup calls
 // it while the window is still hidden, so a stored Dark never flashes Light.
 func (a *App) applyStoredAppearance() {
+	a.appearanceMu.Lock()
+	defer a.appearanceMu.Unlock()
 	a.applyAppearance(a.GetAppearance())
 }
 

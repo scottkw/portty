@@ -98,6 +98,9 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   const [appearanceLoaded, setAppearanceLoaded] = useState(false)
   const [appearanceError, setAppearanceError] = useState<string | null>(null)
   const appearanceRefs = useRef<Partial<Record<Appearance, HTMLButtonElement | null>>>({})
+  // One SetAppearance at a time: binding calls run on separate goroutines, so
+  // overlapping saves could persist and apply out of order (review WR-04).
+  const appearanceSavingRef = useRef(false)
   const dialogRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Partial<Record<Pane, HTMLButtonElement | null>>>({})
   useDialogFocus(dialogRef, { onCancel: onClose, initialFocus: 'primary' })
@@ -263,7 +266,8 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   }
 
   async function selectAppearance(next: Appearance) {
-    if (next === appearance) return
+    if (next === appearance || appearanceSavingRef.current) return
+    appearanceSavingRef.current = true
     const prev = appearance
     setAppearanceState(next)
     setAppearanceError(null)
@@ -273,12 +277,15 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
     } catch (err) {
       setAppearanceState(prev)
       setAppearanceError('Could not save preference — ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      appearanceSavingRef.current = false
     }
   }
 
   function handleAppearanceKeyDown(e: React.KeyboardEvent): void {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
     e.preventDefault()
+    if (appearanceSavingRef.current) return // keep focus on the checked segment
     const i = APPEARANCES.findIndex((a) => a.id === appearance)
     const next = APPEARANCES[(i + (e.key === 'ArrowRight' ? 1 : -1) + APPEARANCES.length) % APPEARANCES.length].id
     appearanceRefs.current[next]?.focus()

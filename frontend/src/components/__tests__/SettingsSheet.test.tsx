@@ -187,6 +187,27 @@ describe('General pane', () => {
     expect(SetAppearance).toHaveBeenCalledWith('light')
   })
 
+  // Review WR-04: overlapping saves could persist and apply out of order.
+  it('THEM-01: ignores further choices while a SetAppearance is in flight', async () => {
+    let resolve!: () => void
+    vi.mocked(SetAppearance).mockClear()
+    vi.mocked(SetAppearance).mockImplementationOnce(() => new Promise<void>((r) => { resolve = r }))
+    await renderSheet()
+    await act(async () => radio('Light').click())
+    await act(async () => {
+      radio('Light').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    })
+    await act(async () => radio('Dark').click())
+    expect(SetAppearance).toHaveBeenCalledTimes(1)
+    expect(checked()).toEqual(['Light'])
+    await act(async () => { resolve() })
+    await flush()
+    await act(async () => radio('Dark').click())
+    await flush()
+    expect(SetAppearance).toHaveBeenLastCalledWith('dark')
+    expect(checked()).toEqual(['Dark'])
+  })
+
   it('"Start hidden in the menu bar" is a labelled switch', async () => {
     await renderSheet()
     const sw = container.querySelector<HTMLButtonElement>('#startMinimized')!
