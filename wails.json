@@ -1,7 +1,7 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "agenthub",
-  "outputfilename": "AgentHub",
+  "name": "Portty",
+  "outputfilename": "Portty",
   "frontend:install": "pnpm install",
   "frontend:build": "pnpm run build",
   "frontend:dev:watcher": "pnpm run dev",
@@ -9,10 +9,10 @@
   "wailsjsdir": "./frontend/src/wailsjs",
   "assetdir": "./frontend/dist",
   "info": {
-    "companyName": "AgentHub",
-    "productName": "AgentHub",
+    "companyName": "Portty",
+    "productName": "Portty",
     "productVersion": "2.2.0",
-    "copyright": "Copyright 2026 AgentHub",
-    "comments": "AI coding session manager"
+    "copyright": "Copyright © 2026 Ken Scott. MIT License.",
+    "comments": "A macOS terminal with remote access over Tailscale."
   }
 }

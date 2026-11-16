@@ -77,8 +77,12 @@ func TestAppMenu_Structure(t *testing.T) {
 		t.Fatalf("top-level items = %d, want 6", len(items))
 	}
 	// macOS shows the first submenu as the application menu.
-	if items[0].SubMenu == nil || len(items[0].SubMenu.Items) == 0 || items[0].SubMenu.Items[0].Label != "Settings…" {
-		t.Errorf("first submenu does not start with Settings…: %+v", items[0])
+	if items[0].Label != "Portty" || items[0].SubMenu == nil || len(items[0].SubMenu.Items) < 3 {
+		t.Fatalf("items[0] = %+v, want Portty submenu", items[0])
+	}
+	app := items[0].SubMenu.Items
+	if app[0].Label != "About Portty" || !app[1].IsSeparator() || app[2].Label != "Settings…" {
+		t.Errorf("app submenu starts %q, sep=%v, %q; want About Portty, separator, Settings…", app[0].Label, app[1].IsSeparator(), app[2].Label)
 	}
 	if items[1].Label != "File" {
 		t.Errorf("items[1] = %q, want File", items[1].Label)
@@ -99,7 +103,7 @@ func TestAppMenu_Structure(t *testing.T) {
 	for _, it := range items[5].SubMenu.Items {
 		help = append(help, it.Label)
 	}
-	want := []string{"Portty Help", "Check for Updates", "AgentHub on GitHub"}
+	want := []string{"Portty Help", "Check for Updates"}
 	if strings.Join(help, "|") != strings.Join(want, "|") {
 		t.Errorf("Help items = %v, want %v", help, want)
 	}
@@ -111,9 +115,9 @@ func TestAppMenu_Accelerators(t *testing.T) {
 		sub, label, key string
 		mods            []keys.Modifier
 	}{
-		{"AgentHub", "Settings…", ",", []keys.Modifier{keys.CmdOrCtrlKey}},
-		{"AgentHub", "Hide AgentHub", "h", []keys.Modifier{keys.CmdOrCtrlKey}},
-		{"AgentHub", "Quit AgentHub", "q", []keys.Modifier{keys.CmdOrCtrlKey}},
+		{"Portty", "Settings…", ",", []keys.Modifier{keys.CmdOrCtrlKey}},
+		{"Portty", "Hide Portty", "h", []keys.Modifier{keys.CmdOrCtrlKey}},
+		{"Portty", "Quit Portty", "q", []keys.Modifier{keys.CmdOrCtrlKey}},
 		{"File", "New Session", "t", []keys.Modifier{keys.CmdOrCtrlKey}},
 		{"File", "Close Tab", "w", []keys.Modifier{keys.CmdOrCtrlKey}},
 		{"View", "Toggle Sidebar", "s", []keys.Modifier{keys.CmdOrCtrlKey, keys.ControlKey}},
@@ -130,7 +134,7 @@ func TestAppMenu_EventsEmitted(t *testing.T) {
 	got := recordMenuEmit(t)
 	m := appMenu()
 	for _, p := range [][2]string{
-		{"AgentHub", "Settings…"},
+		{"Portty", "Settings…"},
 		{"File", "New Session"},
 		{"File", "Close Tab"},
 		{"View", "Toggle Sidebar"},
@@ -154,5 +158,25 @@ func TestAppMenu_HelpOpensPorttyURL(t *testing.T) {
 	item.Click(&menu.CallbackData{MenuItem: item})
 	if len(got) != 1 || got[0] != "https://portty.app" {
 		t.Fatalf("opened %v, want [https://portty.app]", got)
+	}
+}
+
+func TestAppMenu_AboutOpensNativePanel(t *testing.T) {
+	emitted := recordMenuEmit(t)
+	var opened []string
+	origURL := menuOpenURL
+	menuOpenURL = func(url string) { opened = append(opened, url) }
+	about := 0
+	origAbout := menuShowAbout
+	menuShowAbout = func() { about++ }
+	t.Cleanup(func() { menuOpenURL = origURL; menuShowAbout = origAbout })
+
+	item := findMenuItem(t, appMenu(), "Portty", "About Portty")
+	if item.Accelerator != nil {
+		t.Errorf("About Portty accelerator = %+v, want none", item.Accelerator)
+	}
+	item.Click(&menu.CallbackData{MenuItem: item})
+	if about != 1 || len(*emitted) != 0 || len(opened) != 0 {
+		t.Fatalf("about=%d emitted=%v opened=%v, want 1 About call and nothing else", about, *emitted, opened)
 	}
 }

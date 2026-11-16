@@ -6,11 +6,11 @@
         <key>CFBundleName</key>
         <string>{{.Info.ProductName}}</string>
         <key>CFBundleDisplayName</key>
-        <string>AgentHub</string>
+        <string>Portty</string>
         <key>CFBundleExecutable</key>
         <string>{{.OutputFilename}}</string>
         <key>CFBundleIdentifier</key>
-        <string>com.agenthub.app</string>
+        <string>app.portty.Portty</string>
         <key>CFBundleVersion</key>
         <string>{{.Info.ProductVersion}}</string>
         <key>CFBundleGetInfoString</key>

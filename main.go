@@ -1,4 +1,4 @@
-// AgentHub — unified binary: desktop GUI, CLI commands, and daemon mode.
+// Portty — unified binary: desktop GUI, CLI commands, and daemon mode.
 //
 // Dispatch strategy (locked in STATE.md):
 //   - No args, or first arg starts with "-" (except --help/-h) → GUI
@@ -64,11 +64,11 @@ func main() {
 }
 
 func runGUI() {
-	daemon.AugmentServicePath() // Ensure CLIs in /usr/local/bin, Homebrew, volta, nvm are on PATH
+	daemon.AugmentServicePath() // Put the Tailscale CLI on PATH when launched from Finder or the Dock (internal/daemon/path.go)
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:             "AgentHub",
+		Title:             "Portty",
 		Width:             1200,
 		Height:            800,
 		MinWidth:          800,
@@ -106,8 +106,8 @@ func macWindowOptions() *mac.Options {
 	}
 }
 
-// menuEmit and menuOpenURL are seams so tests can record menu actions
-// without a Wails runtime.
+// menuEmit, menuOpenURL and menuShowAbout are seams so tests can record menu
+// actions without a Wails runtime.
 var menuEmit = func(event string) {
 	if appCtx != nil {
 		runtime.EventsEmit(appCtx, event)
@@ -119,6 +119,8 @@ var menuOpenURL = func(url string) {
 		runtime.BrowserOpenURL(appCtx, url)
 	}
 }
+
+var menuShowAbout = func() { showNativeAboutPanel() }
 
 // emitMenuEvent returns a menu callback that emits event to the frontend.
 func emitMenuEvent(event string) menu.Callback {
@@ -135,17 +137,19 @@ const helpURL = "https://portty.app"
 func appMenu() *menu.Menu {
 	m := menu.NewMenu()
 	// 1. Application menu — must stay first.
-	appSub := m.AddSubmenu("AgentHub")
+	appSub := m.AddSubmenu("Portty")
+	appSub.AddText("About Portty", nil, func(_ *menu.CallbackData) { menuShowAbout() })
+	appSub.AddSeparator()
 	appSub.AddText("Settings…", keys.CmdOrCtrl(","), emitMenuEvent("menu:settings"))
 	appSub.AddSeparator()
-	appSub.AddText("Hide AgentHub", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
+	appSub.AddText("Hide Portty", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
 		if appCtx != nil {
 			runtime.Hide(appCtx)
 		}
 	})
 	appSub.AddSeparator()
 	// runtime.Quit runs OnBeforeClose first, so the quit-confirm modal still owns quitting.
-	appSub.AddText("Quit AgentHub", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+	appSub.AddText("Quit Portty", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 		if appCtx != nil {
 			runtime.Quit(appCtx)
 		}
@@ -166,16 +170,7 @@ func appMenu() *menu.Menu {
 	helpMenu := m.AddSubmenu("Help")
 	helpMenu.AddText("Portty Help", nil, func(_ *menu.CallbackData) { menuOpenURL(helpURL) })
 	helpMenu.AddText("Check for Updates", nil, checkForUpdatesCallback)
-	helpMenu.AddText("AgentHub on GitHub", nil, openGitHubCallback)
 	return m
-}
-
-// openGitHubCallback opens the AgentHub GitHub repository in the default browser.
-// Uses the package-level appCtx set during app.startup().
-func openGitHubCallback(_ *menu.CallbackData) {
-	if appCtx != nil {
-		runtime.BrowserOpenURL(appCtx, "https://github.com/scottkw/portty")
-	}
 }
 
 // checkForUpdatesCallback triggers an immediate update check from the Help menu.
