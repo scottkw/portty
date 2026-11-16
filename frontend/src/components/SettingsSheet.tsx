@@ -227,7 +227,12 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
 
   async function handleCopyURL() {
     if (!serverURL) return
-    await ClipboardSetText(serverURL)
+    try {
+      await ClipboardSetText(serverURL)
+    } catch (err) {
+      setServerError('Could not copy the URL — ' + (err instanceof Error ? err.message : String(err)))
+      return
+    }
     setUrlCopied(true)
     setTimeout(() => setUrlCopied(false), 1500)
   }

@@ -125,6 +125,15 @@ describe('NewSessionModal rendering and behavior', () => {
     expect(onConfirm).toHaveBeenCalledWith('/tmp/picked')
   })
 
+  // Review IN-07: a failing folder picker shows the error instead of an unhandled rejection.
+  it('shows an error when the folder picker fails and re-enables Browse…', async () => {
+    vi.mocked(AppMock.OpenDirectoryDialog).mockRejectedValueOnce(new Error('picker unavailable'))
+    ;({ container, root } = renderModal())
+    await act(async () => { byText(container, 'Browse…').click() })
+    expect(container.querySelector('.dialog__error')?.textContent).toBe("Couldn't open the folder picker: picker unavailable.")
+    expect(byText(container, 'Browse…').disabled).toBe(false)
+  })
+
   it('is a labelled modal dialog with no header close button', () => {
     ;({ container, root } = renderModal())
     const dialog = container.querySelector('[role="dialog"]')!

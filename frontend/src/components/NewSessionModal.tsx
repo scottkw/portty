@@ -30,6 +30,9 @@ export function NewSessionModal({ isOpen, onConfirm, onClose }: NewSessionModalP
         setSelectedDir(path)
         localStorage.setItem(LAST_DIR_KEY, path)
       }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      setError(`Couldn't open the folder picker: ${detail}.`)
     } finally {
       setBrowseLoading(false)
     }

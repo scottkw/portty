@@ -621,7 +621,7 @@ function App(): React.ReactElement {
       console.error('[App] CreateSession failed:', err)
       throw err // the New Session dialog stays open and shows it
     }
-  }, [tabCounter, webServerRunning])
+  }, [tabCounter])
 
   // UI-only removal of a session's tab state. session:exit calls it directly
   // (the daemon already removed the session); closeTab is nothing more.

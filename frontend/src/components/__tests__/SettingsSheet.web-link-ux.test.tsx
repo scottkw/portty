@@ -31,6 +31,12 @@ describe('WEB-02: Copy URL to clipboard', () => {
   it('calls ClipboardSetText in handleCopyURL', () => {
     expect(raw).toContain('ClipboardSetText(serverURL)')
   })
+  // Review IN-07: a clipboard failure reaches the existing server error state.
+  it('catches a ClipboardSetText rejection and reports it', () => {
+    const body = raw.slice(raw.indexOf('async function handleCopyURL'), raw.indexOf('async function handleToggleDashQR'))
+    expect(body).toContain('catch (err)')
+    expect(body).toContain("setServerError('Could not copy the URL — '")
+  })
   it('shows Copied! feedback', () => {
     expect(raw).toContain("urlCopied ? 'Copied!' : 'Copy'")
   })
