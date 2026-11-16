@@ -1,4 +1,4 @@
-# AgentHub — Claude Instructions
+# Portty — Claude Instructions
 
 ## Regression Test Convention (Standing Rule)
 

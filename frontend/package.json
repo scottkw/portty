@@ -1,7 +1,8 @@
 {
   "name": "frontend",
   "version": "1.0.0",
-  "description": "AgentHub desktop app frontend",
+  "description": "Portty desktop app frontend",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "vite",
