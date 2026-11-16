@@ -88,33 +88,32 @@ func TestApp_SetTrayProgress_BoundsCheck(t *testing.T) {
 }
 
 // TestApp_SetTrayProgress_ErrorPrecedence verifies that trayIconBytesForState
-// returns trayIconErrorBytes when connected=false, regardless of lastTrayQuartile.
+// returns the error pair when connected=false, regardless of lastTrayQuartile,
+// and the matching 1x and @2x pair otherwise.
 //
 // Phase 98 PRG-03 / T-98-08 (error-state precedence, Pitfall #8) — progress
 // glyph must not mask daemon-disconnect state. Tests the helper directly to
-// avoid any platform-tray API invocation. This test runs on the host GOOS;
-// the helper is defined identically in all three platform files so the same
-// assertion holds on any build target.
+// avoid any platform-tray API invocation.
 func TestApp_SetTrayProgress_ErrorPrecedence(t *testing.T) {
 	// Apply quartile 3 (75% progress glyph).
 	a := newTestApp(3, func() {})
 
-	// When disconnected, must return error bytes regardless of quartile.
-	got := a.trayIconBytesForState(false)
-	if &got[0] != &trayIconErrorBytes[0] {
-		t.Errorf("trayIconBytesForState(connected=false, quartile=3): expected trayIconErrorBytes, got different slice")
+	check := func(desc string, connected bool, want1, want2 []byte) {
+		t.Helper()
+		x1, x2 := a.trayIconBytesForState(connected)
+		if &x1[0] != &want1[0] {
+			t.Errorf("trayIconBytesForState(%s): wrong 1x slice", desc)
+		}
+		if &x2[0] != &want2[0] {
+			t.Errorf("trayIconBytesForState(%s): wrong @2x slice", desc)
+		}
 	}
 
-	// When connected with quartile 3, must return progress-75 bytes.
-	got = a.trayIconBytesForState(true)
-	if &got[0] != &trayIconProgress75Bytes[0] {
-		t.Errorf("trayIconBytesForState(connected=true, quartile=3): expected trayIconProgress75Bytes, got different slice")
-	}
-
-	// Reset to quartile 0 (no active progress) — connected path should return base icon.
+	// When disconnected, must return the error pair regardless of quartile.
+	check("connected=false, quartile=3", false, trayIconErrorBytes, trayIconErrorBytes2x)
+	// When connected with quartile 3, must return the progress-75 pair.
+	check("connected=true, quartile=3", true, trayIconProgress75Bytes, trayIconProgress75Bytes2x)
+	// Reset to quartile 0 (no active progress) — connected path returns the base pair.
 	a.lastTrayQuartile.Store(0)
-	got = a.trayIconBytesForState(true)
-	if &got[0] != &trayIconBytes[0] {
-		t.Errorf("trayIconBytesForState(connected=true, quartile=0): expected trayIconBytes, got different slice")
-	}
+	check("connected=true, quartile=0", true, trayIconBytes, trayIconBytes2x)
 }

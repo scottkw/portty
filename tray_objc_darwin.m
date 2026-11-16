@@ -104,21 +104,34 @@ void registerNotificationDelegate(void) {
     }
 }
 
+// makeTrayImage builds one 18×18 pt template image from the 18 px (d1) and
+// 36 px (d2) PNGs. Both reps are sized 18×18 pt so AppKit picks the 36 px rep
+// on Retina displays. Returns an autoreleased image.
+static NSImage *makeTrayImage(NSData *d1, NSData *d2) {
+    NSImage *icon = [[NSImage alloc] initWithSize:NSMakeSize(18, 18)];
+    for (NSData *d in @[d1, d2]) {
+        NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithData:d];
+        [rep setSize:NSMakeSize(18, 18)];
+        [icon addRepresentation:rep];
+        [rep release];
+    }
+    [icon setTemplate:YES];  // Adapts to light/dark menu bar.
+    return [icon autorelease];
+}
+
 // initStatusItem creates a macOS status bar item with a dynamic menu delegate.
-void initStatusItem(const void *iconData, int iconLen) {
-    // Copy icon data synchronously — iconData is a Go pointer only valid during
-    // the cgo call. The dispatch_async block runs later when Go may have reclaimed it.
-    NSData *data = [NSData dataWithBytes:iconData length:iconLen];
+void initStatusItem(const void *d1, int n1, const void *d2, int n2) {
+    // Copy icon data synchronously — d1/d2 are Go pointers only valid during
+    // the cgo call. The dispatch_async block runs later when Go may have reclaimed them.
+    NSData *data1 = [NSData dataWithBytes:d1 length:n1];
+    NSData *data2 = [NSData dataWithBytes:d2 length:n2];
     dispatch_async(dispatch_get_main_queue(), ^{
         NSStatusBar *bar = [NSStatusBar systemStatusBar];
         statusItem = [bar statusItemWithLength:NSVariableStatusItemLength];
         [statusItem retain];
 
-        // Set icon from PNG data.
-        NSImage *icon = [[NSImage alloc] initWithData:data];
-        [icon setSize:NSMakeSize(18, 18)];
-        [icon setTemplate:YES];  // Adapts to light/dark menu bar.
-        statusItem.button.image = icon;
+        // Set icon from the 1x and @2x PNG data.
+        statusItem.button.image = makeTrayImage(data1, data2);
         statusItem.button.toolTip = @"AgentHub";
 
         // Build menu with delegate for dynamic rebuilding.
@@ -145,15 +158,13 @@ void removeStatusItem(void) {
 }
 
 // updateTrayIcon swaps the tray icon PNG at runtime (normal vs error state).
-void updateTrayIcon(const void *iconData, int iconLen) {
-    // Copy before dispatch — iconData is a Go pointer only valid during cgo call.
-    NSData *data = [NSData dataWithBytes:iconData length:iconLen];
+void updateTrayIcon(const void *d1, int n1, const void *d2, int n2) {
+    // Copy before dispatch — d1/d2 are Go pointers only valid during cgo call.
+    NSData *data1 = [NSData dataWithBytes:d1 length:n1];
+    NSData *data2 = [NSData dataWithBytes:d2 length:n2];
     dispatch_async(dispatch_get_main_queue(), ^{
         if (statusItem == nil) return;
-        NSImage *icon = [[NSImage alloc] initWithData:data];
-        [icon setSize:NSMakeSize(18, 18)];
-        [icon setTemplate:YES];
-        statusItem.button.image = icon;
+        statusItem.button.image = makeTrayImage(data1, data2);
     });
 }
 

@@ -11,32 +11,36 @@ import (
 	"testing"
 )
 
-// TestTrayIconAsset verifies that both tray icon PNGs are valid 18x18 images.
+// TestTrayIconAsset verifies that every tray state embeds a valid 18×18 1x PNG
+// and a 36×36 @2x PNG.
 func TestTrayIconAsset(t *testing.T) {
-	// Verify tray_icon.png is valid and correct size
-	if len(trayIconBytes) == 0 {
-		t.Fatal("trayIconBytes is empty")
+	cases := []struct {
+		file string
+		data []byte
+		size int
+	}{
+		{"tray_icon.png", trayIconBytes, 18},
+		{"tray_icon@2x.png", trayIconBytes2x, 36},
+		{"tray_icon_error.png", trayIconErrorBytes, 18},
+		{"tray_icon_error@2x.png", trayIconErrorBytes2x, 36},
+		{"tray_icon_progress_25.png", trayIconProgress25Bytes, 18},
+		{"tray_icon_progress_25@2x.png", trayIconProgress25Bytes2x, 36},
+		{"tray_icon_progress_50.png", trayIconProgress50Bytes, 18},
+		{"tray_icon_progress_50@2x.png", trayIconProgress50Bytes2x, 36},
+		{"tray_icon_progress_75.png", trayIconProgress75Bytes, 18},
+		{"tray_icon_progress_75@2x.png", trayIconProgress75Bytes2x, 36},
+		{"tray_icon_progress_100.png", trayIconProgress100Bytes, 18},
+		{"tray_icon_progress_100@2x.png", trayIconProgress100Bytes2x, 36},
 	}
-	img, err := png.Decode(bytes.NewReader(trayIconBytes))
-	if err != nil {
-		t.Fatalf("tray_icon.png is not valid PNG: %v", err)
-	}
-	bounds := img.Bounds()
-	if bounds.Dx() != 18 || bounds.Dy() != 18 {
-		t.Errorf("tray_icon.png expected 18x18, got %dx%d", bounds.Dx(), bounds.Dy())
-	}
-
-	// Verify error icon too
-	if len(trayIconErrorBytes) == 0 {
-		t.Fatal("trayIconErrorBytes is empty")
-	}
-	imgErr, err := png.Decode(bytes.NewReader(trayIconErrorBytes))
-	if err != nil {
-		t.Fatalf("tray_icon_error.png is not valid PNG: %v", err)
-	}
-	boundsErr := imgErr.Bounds()
-	if boundsErr.Dx() != 18 || boundsErr.Dy() != 18 {
-		t.Errorf("tray_icon_error.png expected 18x18, got %dx%d", boundsErr.Dx(), boundsErr.Dy())
+	for _, c := range cases {
+		img, err := png.Decode(bytes.NewReader(c.data))
+		if err != nil {
+			t.Errorf("%s is not valid PNG: %v", c.file, err)
+			continue
+		}
+		if b := img.Bounds(); b.Dx() != c.size || b.Dy() != c.size {
+			t.Errorf("%s expected %dx%d, got %dx%d", c.file, c.size, c.size, b.Dx(), b.Dy())
+		}
 	}
 }
 

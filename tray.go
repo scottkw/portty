@@ -10,9 +10,9 @@ package main
 
 // Function declarations — implementations live in tray_objc.m (compiled once
 // by cgo to avoid duplicate ObjC class symbols during go test linking).
-void initStatusItem(const void *iconData, int iconLen);
+void initStatusItem(const void *d1, int n1, const void *d2, int n2);
 void removeStatusItem(void);
-void updateTrayIcon(const void *iconData, int iconLen);
+void updateTrayIcon(const void *d1, int n1, const void *d2, int n2);
 void updateTrayTooltip(const char *tooltip);
 void setTraySessionData(const char **names, const char **ids, int count);
 void setDockVisible(int visible);
@@ -29,20 +29,38 @@ import (
 //go:embed assets/tray_icon.png
 var trayIconBytes []byte
 
+//go:embed assets/tray_icon@2x.png
+var trayIconBytes2x []byte
+
 //go:embed assets/tray_icon_error.png
 var trayIconErrorBytes []byte
+
+//go:embed assets/tray_icon_error@2x.png
+var trayIconErrorBytes2x []byte
 
 //go:embed assets/tray_icon_progress_25.png
 var trayIconProgress25Bytes []byte
 
+//go:embed assets/tray_icon_progress_25@2x.png
+var trayIconProgress25Bytes2x []byte
+
 //go:embed assets/tray_icon_progress_50.png
 var trayIconProgress50Bytes []byte
+
+//go:embed assets/tray_icon_progress_50@2x.png
+var trayIconProgress50Bytes2x []byte
 
 //go:embed assets/tray_icon_progress_75.png
 var trayIconProgress75Bytes []byte
 
+//go:embed assets/tray_icon_progress_75@2x.png
+var trayIconProgress75Bytes2x []byte
+
 //go:embed assets/tray_icon_progress_100.png
 var trayIconProgress100Bytes []byte
+
+//go:embed assets/tray_icon_progress_100@2x.png
+var trayIconProgress100Bytes2x []byte
 
 // trayCallbackApp is the global App reference for cgo callbacks.
 // Set before initTray returns. Only accessed from the main goroutine.
@@ -63,7 +81,7 @@ func onTrayQuit() {
 	app := trayCallbackApp
 	go func() {
 		if app != nil && app.ctx != nil {
-			runtime.WindowShow(app.ctx)      // D-08: auto-show if hidden
+			runtime.WindowShow(app.ctx) // D-08: auto-show if hidden
 			app.setDockVisible(true)
 			runtime.EventsEmit(app.ctx, "app:quit-requested", nil)
 		}
@@ -97,36 +115,36 @@ func (a *App) setDockVisible(visible bool) {
 	}
 }
 
-// trayIconBytesForState returns the appropriate tray icon byte slice for the
-// given connection state and current progress quartile (Phase 98 PRG-03).
+// trayIconBytesForState returns the 1x (18 px) and @2x (36 px) tray icon
+// byte slices for the given connection state and current progress quartile
+// (Phase 98 PRG-03).
 //
 // Error precedence (Pitfall #8): when connected=false, always returns
-// trayIconErrorBytes regardless of a.lastTrayQuartile to ensure daemon-
+// the error pair regardless of a.lastTrayQuartile to ensure daemon-
 // disconnect is not masked by a progress glyph.
-func (a *App) trayIconBytesForState(connected bool) []byte {
+func (a *App) trayIconBytesForState(connected bool) (x1, x2 []byte) {
 	if !connected {
-		return trayIconErrorBytes
+		return trayIconErrorBytes, trayIconErrorBytes2x
 	}
 	switch a.lastTrayQuartile.Load() {
 	case 1:
-		return trayIconProgress25Bytes
+		return trayIconProgress25Bytes, trayIconProgress25Bytes2x
 	case 2:
-		return trayIconProgress50Bytes
+		return trayIconProgress50Bytes, trayIconProgress50Bytes2x
 	case 3:
-		return trayIconProgress75Bytes
+		return trayIconProgress75Bytes, trayIconProgress75Bytes2x
 	case 4:
-		return trayIconProgress100Bytes
+		return trayIconProgress100Bytes, trayIconProgress100Bytes2x
 	default:
-		return trayIconBytes
+		return trayIconBytes, trayIconBytes2x
 	}
 }
 
 // updateTray updates the tray icon, tooltip, and session list based on current state.
 func (a *App) updateTray(sessions []SessionInfo, connected bool) {
 	// Update icon based on connectivity and progress quartile.
-	bytes := a.trayIconBytesForState(connected)
-	ptr := unsafe.Pointer(&bytes[0])
-	C.updateTrayIcon(ptr, C.int(len(bytes)))
+	x1, x2 := a.trayIconBytesForState(connected)
+	C.updateTrayIcon(unsafe.Pointer(&x1[0]), C.int(len(x1)), unsafe.Pointer(&x2[0]), C.int(len(x2)))
 
 	// Update tooltip with session count.
 	tip := trayTooltip(len(sessions))
@@ -156,8 +174,8 @@ func (a *App) updateTray(sessions []SessionInfo, connected bool) {
 // initTray creates a macOS system tray icon with a dynamic menu delegate.
 func (a *App) initTray() {
 	trayCallbackApp = a
-	ptr := unsafe.Pointer(&trayIconBytes[0])
-	C.initStatusItem(ptr, C.int(len(trayIconBytes)))
+	C.initStatusItem(unsafe.Pointer(&trayIconBytes[0]), C.int(len(trayIconBytes)),
+		unsafe.Pointer(&trayIconBytes2x[0]), C.int(len(trayIconBytes2x)))
 }
 
 // cleanupTray removes the status bar item.
