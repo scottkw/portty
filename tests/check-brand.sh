@@ -46,9 +46,10 @@ report filename "$(grep -i -E "$OLD_NAME" <<< "$files")"
 out=$(git grep -n -i -I -E 'home[b]rew|[b]rew (install|tap)' -- ':!.planning' \
   ':!internal/daemon/path.go' ':!internal/daemon/path_test.go'); rc=$?
 check_status "$rc"
-report homebrew "$out"
+PM_PREFIX="home""brew" # split so this file does not spell the word it checks for
+report "$PM_PREFIX" "$out"
 if [[ -e packaging ]]; then
-  report homebrew "packaging/ still exists"
+  report "$PM_PREFIX" "packaging/ still exists"
 fi
 
 out=$(git grep -n -I -o -E 'github\.com/scottkw/[A-Za-z0-9_.-]+' -- ':!.planning'); rc=$?
