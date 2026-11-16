@@ -49,6 +49,10 @@ describe('Portty NAV-01: always-on session poll feeds the sidebar', () => {
     expect(block).toContain('onOpenLocal={handleOpenSessionTab}')
   })
 
+  it('wires the sidebar New Session to the New Session dialog (quick 261116-c9f)', () => {
+    expect(slice('<Sidebar', '/>')).toContain('onNewSession={() => setShowNewSessionModal(true)}')
+  })
+
   it('gates the Sidebar on mode !== web (WEBCHAT-03 guest scope)', () => {
     const idx = raw.indexOf('<Sidebar')
     expect(raw.slice(idx - 60, idx)).toMatch(/\{mode !== 'web' && [^(]*\(\s*$/)
@@ -122,9 +126,10 @@ describe('NAV-03: Sessions sidebar item is removed (Phase 138)', () => {
   })
 })
 
-// Phase 138 / NAV-04: New Session sidebar item removed — creation lives solely on Hub's HubFilterBar.
-// App.tsx must NOT pass onAdd={handleAddTab} to Sidebar, and handleAddTab must be gone.
-describe('NAV-04: New Session sidebar item is removed (Phase 138)', () => {
+// Phase 138 / NAV-04: creation goes through the New Session dialog, opened by ⌘T, the toolbar "+",
+// the empty state and, since quick 261116-c9f, the sidebar's This Mac "+" and empty-group row, all
+// via setShowNewSessionModal(true). The old onAdd={handleAddTab} path must stay gone.
+describe('NAV-04: the old onAdd/handleAddTab sidebar path stays removed (Phase 138)', () => {
   it('does NOT wire onAdd={handleAddTab} to Sidebar', () => {
     expect(raw).not.toContain('onAdd={handleAddTab}')
   })

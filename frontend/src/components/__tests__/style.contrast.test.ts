@@ -37,3 +37,18 @@ describe('UI-01: --color-text-secondary passes WCAG AA on every chrome surface (
     })
   }
 })
+
+// Quick 261116-c9f: the empty This Mac "New Session ⌘T" row is accent text on the sidebar.
+// Values are the UI-SPEC tokens style.tokens.test.ts pins; the user is colour-blind, so
+// legibility is proven here rather than by eye.
+describe('quick 261116-c9f: --color-accent text on the sidebar passes WCAG AA (both modes)', () => {
+  const pairs: Array<[string, string, string]> = [
+    ['light sidebar', '#0063CC', '#ECECEE'],
+    ['dark sidebar', '#4DA3FF', '#262628'],
+  ]
+  for (const [name, fg, bg] of pairs) {
+    it(`${fg} on ${bg} (${name}) >= 4.5`, () => {
+      expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5)
+    })
+  }
+})
