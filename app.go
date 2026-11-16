@@ -70,10 +70,10 @@ type RemotePeerSessions struct {
 // All session operations are delegated through DaemonClient over the Unix socket.
 type App struct {
 	ctx              context.Context
-	client           *daemon.DaemonClient // only daemon communication field; nil when startup failed
+	client           *daemon.DaemonClient // only daemon communication field; set in NewApp, before Wails starts any goroutine (nil only in tests)
 	trayInit         bool                 // true once initTray has been called
 	lastTrayQuartile atomic.Int32         // Phase 98 PRG-03 — last applied tray progress quartile [0..4]; -1 = unset. Atomic because written by Wails RPC goroutine (SetTrayProgress) and read by startTrayPoller goroutine via trayIconBytesForState (CR-01).
-	daemonErr        error                // non-nil when EnsureDaemon failed at startup
+	daemonErr        error                // non-nil when EnsureDaemon failed; read only after startupDone (awaitStartup)
 	quitting         bool                 // true when tray Quit was clicked; lets beforeClose allow exit
 	// Update checker state
 	lastUpdate   *updater.UpdateInfo
@@ -121,8 +121,13 @@ type App struct {
 
 	// startupDone is closed once startup has the daemon up (or failed) and has
 	// applied the stored Appearance. Wails runs OnStartup on a goroutine that
-	// races domReady, so domReady waits on it before showing the window.
+	// races domReady and the bindings, so they wait on it (WR-07).
 	startupDone chan struct{}
+
+	// ensureDaemonFunc and showWindowFunc are startup seams; nil means
+	// daemon.EnsureDaemon and runtime.WindowShow plus the Dock icon.
+	ensureDaemonFunc func(socketPath string) error
+	showWindowFunc   func()
 
 	// seenSessions is every id the exit watcher has listed and not yet
 	// reported via session:exit. Owned by the exit watcher goroutine.
@@ -135,34 +140,64 @@ func NewApp() *App {
 		saveFileDialogFunc:   runtime.SaveFileDialog,
 		sendNotificationFunc: sendNotification,
 		startupDone:          make(chan struct{}),
+		// The client only dials on use. Creating it here, before wails.Run,
+		// gives every Wails goroutine a happens-before edge on it.
+		client: daemon.NewDaemonClient(daemon.DefaultSocketPath()),
 	}
 	a.lastTrayQuartile.Store(-1) // Phase 98 PRG-03 — ensure first SetTrayProgress call always updates
 	return a
 }
 
-// domReady is called by Wails after the WebView DOM is ready.
-// Shows the window unless the persisted start-minimized preference is set.
-// Falls back to showing the window when the daemon is unreachable (safe default).
 // startupWait bounds domReady's wait for startup. domReady runs on the Wails
 // message loop, so a wedged daemon must not block it forever (review WR-05).
 var startupWait = 5 * time.Second
 
+// startupBindingWait bounds how long bindings wait for startup. It covers
+// EnsureDaemon's worst case with 30 s client timeouts. Bindings run on their
+// own goroutines, so this wait never stalls the message loop (review WR-07).
+var startupBindingWait = 90 * time.Second
+
+var errStartupTimeout = errors.New("daemon startup timed out")
+
+// awaitStartup blocks until startup closes startupDone, giving the caller a
+// happens-before edge on daemonErr. It returns false if startupBindingWait
+// passes first. Call it only from binding goroutines, never from domReady.
+func (a *App) awaitStartup() bool {
+	if a.startupDone == nil {
+		return true
+	}
+	select {
+	case <-a.startupDone:
+		return true
+	case <-time.After(startupBindingWait):
+		return false
+	}
+}
+
+// domReady is called by Wails after the WebView DOM is ready.
+// Shows the window unless the persisted start-minimized preference is set.
+// Falls back to showing the window when the daemon is unreachable (safe default).
 func (a *App) domReady(ctx context.Context) {
+	startMinimized := false
+	ready := true
 	if a.startupDone != nil {
-		// The stored Appearance should land before the first visible paint; past
-		// the bound, show anyway and let it apply when startup finishes.
+		// The stored Appearance should land before the first visible paint.
 		select {
 		case <-a.startupDone:
 		case <-time.After(startupWait):
+			ready = false // daemon slow or wedged: show the window without another RPC
 		}
 	}
-	startMinimized := false
-	if a.client != nil {
+	if ready && a.client != nil {
 		if val, err := a.client.GetStartMinimized(); err == nil {
 			startMinimized = val
 		}
 	}
 	if !startMinimized {
+		if a.showWindowFunc != nil {
+			a.showWindowFunc()
+			return
+		}
 		runtime.WindowShow(ctx)
 		a.setDockVisible(true)
 	}
@@ -179,23 +214,10 @@ func (a *App) startup(ctx context.Context) {
 	a.initTray()
 	a.trayInit = true
 
-	socketPath := daemon.DefaultSocketPath()
-	// Set once, before any poller starts, and never reassigned: the client only
-	// dials on use, so the pollers read it lock-free and RetryDaemon only has
-	// to bring the daemon up. While it is down, calls fail and pollers retry.
-	a.client = daemon.NewDaemonClient(socketPath)
-	func() {
-		if a.startupDone != nil {
-			defer close(a.startupDone) // even on panic, so domReady never waits the full bound
-		}
-		if err := daemon.EnsureDaemon(socketPath); err != nil {
-			a.daemonErr = err
-			// Notify frontend — window is already rendered when OnStartup runs (goroutine).
-			runtime.EventsEmit(ctx, "daemon:error", err.Error())
-		} else {
-			a.applyStoredAppearance()
-		}
-	}()
+	// a.client was set in NewApp and is never reassigned, so the pollers read
+	// it lock-free and RetryDaemon only has to bring the daemon up. While it is
+	// down, calls fail and pollers retry.
+	a.startDaemon(daemon.DefaultSocketPath())
 
 	// One app-wide exit watcher closes tabs for every exited session (TERM-05).
 	a.startExitWatcher(ctx)
@@ -210,10 +232,33 @@ func (a *App) startup(ctx context.Context) {
 	a.startUpdatePoller(ctx)
 }
 
+// startDaemon brings the daemon up for startup and closes startupDone on every
+// return path, so domReady and the bindings never wait out their bounds.
+func (a *App) startDaemon(socketPath string) {
+	if a.startupDone != nil {
+		defer close(a.startupDone)
+	}
+	ensure := a.ensureDaemonFunc
+	if ensure == nil {
+		ensure = daemon.EnsureDaemon
+	}
+	if err := ensure(socketPath); err != nil {
+		a.daemonErr = err
+		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
+		a.emitEvent("daemon:error", err.Error())
+	} else {
+		a.applyStoredAppearance()
+	}
+}
+
 // GetDaemonError returns the startup error message, or "" if startup succeeded.
 // Called by the frontend on mount to detect a failed startup (the daemon:error
-// event may fire before React subscribes, so this is the reliable path).
+// event may fire before React subscribes, so this is the reliable path). It
+// waits for startup, so init never sees a half-started daemon (WR-07).
 func (a *App) GetDaemonError() string {
+	if !a.awaitStartup() {
+		return errStartupTimeout.Error()
+	}
 	if a.daemonErr != nil {
 		return a.daemonErr.Error()
 	}
@@ -230,6 +275,9 @@ func (a *App) GetVersion() string {
 // Called by the frontend "Retry Connection" button. It neither replaces
 // a.client nor starts pollers: startup did both once (WR-05).
 func (a *App) RetryDaemon() error {
+	if !a.awaitStartup() {
+		return errStartupTimeout // never run a second EnsureDaemon beside startup's
+	}
 	if err := daemon.EnsureDaemon(daemon.DefaultSocketPath()); err != nil {
 		a.daemonErr = err
 		return err
@@ -388,6 +436,7 @@ func (a *App) checkExits() {
 
 // ListSessions returns a snapshot of all registered sessions.
 func (a *App) ListSessions() []SessionInfo {
+	a.awaitStartup() // the daemon may still be starting; past the bound, try anyway
 	if a.client == nil {
 		return []SessionInfo{}
 	}
@@ -512,6 +561,7 @@ func (a *App) SetShellWebShareWarningEnabled(v bool) error {
 
 // GetRelayPort returns the TCP port the daemon's relay HTTP server is listening on.
 func (a *App) GetRelayPort() int {
+	a.awaitStartup() // the daemon may still be starting; past the bound, try anyway
 	if a.client == nil {
 		return 0
 	}

@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -1140,20 +1141,166 @@ func TestDomReady_WaitsForStartupDone(t *testing.T) {
 	}
 }
 
-func TestDomReady_BoundedWhenStartupHangs(t *testing.T) {
-	a := testApp(t)
-	if err := a.client.SetStartMinimized(true); err != nil {
-		t.Fatalf("SetStartMinimized: %v", err)
+// WR-07: past startupWait, domReady shows the window without another RPC. The
+// client points at a socket that accepts and never answers, so any RPC would
+// block for the 30 s client timeout.
+func TestDomReady_TimeoutShowsWindowWithoutRPC(t *testing.T) {
+	sock := fmt.Sprintf("/tmp/ahw%d.sock", os.Getpid())
+	_ = os.Remove(sock)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
 	}
-	a.startupDone = make(chan struct{}) // never closed: startup is wedged
+	t.Cleanup(func() { ln.Close(); _ = os.Remove(sock) })
+	var accepts atomic.Int32
+	go func() {
+		var held []net.Conn // hold every connection open, never answer
+		defer func() {
+			for _, c := range held {
+				c.Close()
+			}
+		}()
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepts.Add(1)
+			held = append(held, c)
+		}
+	}()
+
+	shown := make(chan struct{}, 1)
+	a := &App{
+		client:         daemon.NewDaemonClient(sock),
+		startupDone:    make(chan struct{}), // never closed: startup is wedged
+		showWindowFunc: func() { shown <- struct{}{} },
+	}
 	prev := startupWait
 	startupWait = 50 * time.Millisecond
 	t.Cleanup(func() { startupWait = prev })
+
 	returned := make(chan struct{})
 	go func() { a.domReady(context.Background()); close(returned) }()
 	select {
 	case <-returned:
 	case <-time.After(2 * time.Second):
 		t.Fatal("domReady blocked past startupWait")
+	}
+	select {
+	case <-shown:
+	default:
+		t.Fatal("domReady did not show the window on timeout")
+	}
+	if n := accepts.Load(); n != 0 {
+		t.Fatalf("domReady dialed the daemon %d times on timeout, want 0", n)
+	}
+}
+
+// WR-07: startup that outlasts domReady's bound still gives the frontend init
+// a working daemon. GetDaemonError, GetRelayPort and ListSessions wait for
+// startupDone, so init reads the final state (relay port > 0, no error).
+func TestSlowStartup_InitWaitsForStartup(t *testing.T) {
+	a := testApp(t)
+	a.startupDone = make(chan struct{})
+	a.showWindowFunc = func() {}
+	a.applyAppearanceFunc = func(string) {}
+	prev := startupWait
+	startupWait = 20 * time.Millisecond
+	t.Cleanup(func() { startupWait = prev })
+
+	release := make(chan struct{})
+	a.ensureDaemonFunc = func(string) error { <-release; return nil }
+	go a.startDaemon("unused")
+
+	a.domReady(context.Background()) // times out: startup is still running
+
+	type initResult struct {
+		daemonErr string
+		port      int
+	}
+	got := make(chan initResult, 1)
+	go func() { // the frontend init sequence
+		e := a.GetDaemonError()
+		got <- initResult{e, a.GetRelayPort()}
+	}()
+	select {
+	case r := <-got:
+		t.Fatalf("init returned before startup finished: %+v", r)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case r := <-got:
+		if r.daemonErr != "" || r.port <= 0 {
+			t.Fatalf("init after slow startup: daemonErr=%q port=%d, want \"\" and > 0", r.daemonErr, r.port)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("init did not return after startup finished")
+	}
+	if ss := a.ListSessions(); ss == nil {
+		t.Fatal("ListSessions returned nil after startup")
+	}
+}
+
+// WR-07: a slow startup that fails surfaces its error to init.
+func TestSlowStartup_FailureReachesInit(t *testing.T) {
+	a := &App{startupDone: make(chan struct{}), emitEventFunc: func(string, any) {}}
+	release := make(chan struct{})
+	a.ensureDaemonFunc = func(string) error { <-release; return errors.New("spawn failed") }
+	go a.startDaemon("unused")
+	got := make(chan string, 1)
+	go func() { got <- a.GetDaemonError() }()
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	select {
+	case e := <-got:
+		if e != "spawn failed" {
+			t.Fatalf("GetDaemonError = %q, want %q", e, "spawn failed")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("GetDaemonError did not return after startup failed")
+	}
+}
+
+// WR-07: GetDaemonError reports a timeout instead of waiting forever.
+func TestGetDaemonError_BoundedWhenStartupHangs(t *testing.T) {
+	a := &App{startupDone: make(chan struct{})}
+	prev := startupBindingWait
+	startupBindingWait = 20 * time.Millisecond
+	t.Cleanup(func() { startupBindingWait = prev })
+	if e := a.GetDaemonError(); e != errStartupTimeout.Error() {
+		t.Fatalf("GetDaemonError = %q, want %q", e, errStartupTimeout.Error())
+	}
+}
+
+// WR-07: startDaemon closes startupDone on both the success and error paths,
+// and emits daemon:error only on failure.
+func TestStartDaemon_AlwaysClosesStartupDone(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{{"success", nil}, {"failure", errors.New("boom")}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var emitted []string
+			a := &App{
+				startupDone:         make(chan struct{}),
+				ensureDaemonFunc:    func(string) error { return tc.err },
+				emitEventFunc:       func(name string, _ any) { emitted = append(emitted, name) },
+				applyAppearanceFunc: func(string) {},
+			}
+			a.startDaemon("unused")
+			select {
+			case <-a.startupDone:
+			default:
+				t.Fatal("startupDone not closed")
+			}
+			if (tc.err != nil) != (len(emitted) == 1 && emitted[0] == "daemon:error") {
+				t.Fatalf("emitted %v for err=%v", emitted, tc.err)
+			}
+			if (a.daemonErr != nil) != (tc.err != nil) {
+				t.Fatalf("daemonErr = %v, want %v", a.daemonErr, tc.err)
+			}
+		})
 	}
 }
