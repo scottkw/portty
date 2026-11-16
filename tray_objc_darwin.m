@@ -202,8 +202,11 @@ void setTraySessionData(const char **names, const char **ids, int count) {
         [idArr addObject:[NSString stringWithUTF8String:ids[i]]];
     }
     dispatch_async(dispatch_get_main_queue(), ^{
-        menuSessionNames = nameArr;
-        menuSessionIDs = idArr;
+        // MRC: the globals own their arrays; release the previous pair.
+        [menuSessionNames release];
+        [menuSessionIDs release];
+        menuSessionNames = [nameArr retain];
+        menuSessionIDs = [idArr retain];
     });
 }
 
