@@ -2145,6 +2145,12 @@ html.is-desktop {
    Internet public URL). All colors via var(--hub-*) tokens only.
    ===================================================================== */
 
+.session-share-panel__tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .share-linkcard {
   display: flex;
   flex-direction: column;
