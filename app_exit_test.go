@@ -156,7 +156,7 @@ func TestCheckExits_RemovesStoppedSession(t *testing.T) {
 }
 
 // TestCheckExits_ReportsRemovedWithoutStoppedSighting (WR-01): a running
-// session removed between ticks (agenthub kill, daemon restart) never shows
+// session removed between ticks (portty kill, daemon restart) never shows
 // as stopped, but its tab must still close.
 func TestCheckExits_ReportsRemovedWithoutStoppedSighting(t *testing.T) {
 	app, rec, id := shApp(t, "exec sleep 60")

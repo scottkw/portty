@@ -14,7 +14,7 @@ import (
 // daemon-direct relay path (handleSession). Mirrors the Phase 111 webserver-
 // layer integration suite (internal/webserver/oscabsorb_relay_test.go) but
 // targets the relay.Server directly — the path used by the Wails desktop
-// attach and by CLI `agenthub attach`. These two surfaces bypass the
+// attach and by CLI `portty attach`. These two surfaces bypass the
 // webserver wrapper and were leaking OSC 10/11 + DA1 responses into PTY
 // stdin until this phase landed.
 

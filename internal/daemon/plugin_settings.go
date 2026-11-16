@@ -49,7 +49,7 @@ type WebLinksConfig struct {
 // ImageConfig persists per-plugin runtime configuration for the
 // inline-image addon (Phase 96 IMG-02). Defaults to a 16 MB cap on
 // decoded RGBA storage, overriding upstream addon-image's 128 MB
-// default to prevent tab-OOM on multi-tab AgentHub sessions
+// default to prevent tab-OOM on multi-tab sessions
 // (STATE.md §Decisions, ROADMAP Phase 96 SC-3).
 //
 // JSON tag is camelCase to match daemonSettings vocabulary; field

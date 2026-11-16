@@ -902,7 +902,7 @@ func (a *API) handleSetWebLinksConfig(w http.ResponseWriter, r *http.Request) {
 // IMG-02 range gate (T-96-02-01): StorageLimit must be in [1, 1000] MB.
 // Reject 0 (no images render — defeat-the-feature footgun) and >1000
 // (defeats tab-OOM mitigation per ROADMAP Phase 96 SC-3; the upstream
-// addon-image default is 128 MB but AgentHub locks 16 MB by default,
+// addon-image default is 128 MB but Portty locks 16 MB by default,
 // allowing user override up to 1000 MB hard cap for hypothetical future
 // power-user advanced disclosure).
 func (a *API) handleSetImageConfig(w http.ResponseWriter, r *http.Request) {

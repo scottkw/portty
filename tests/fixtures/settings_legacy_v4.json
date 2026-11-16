@@ -1,7 +1,7 @@
 {
     "cliPaths": {
         "claude": "/usr/local/bin/claude",
-        "tailscale": "/opt/homebrew/bin/tailscale"
+        "tailscale": "/usr/local/bin/tailscale"
     },
     "startMinimized": false,
     "notifyOnWaiting": true,

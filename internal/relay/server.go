@@ -134,7 +134,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	// before they reach PTY stdin. The webserver-layer handleWSSRelay
 	// applies the same absorber for the web-share path; this one catches
 	// the daemon-direct attach path used by the Wails desktop GUI and by
-	// CLI `agenthub attach`. State must persist across MsgInput frames
+	// CLI `portty attach`. State must persist across MsgInput frames
 	// because envelopes may split across frames — the zero-value
 	// &InputAbsorber{} is the legitimate "outside, empty buffers" state.
 	readDone := make(chan struct{})

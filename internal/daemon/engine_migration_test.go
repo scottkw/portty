@@ -222,15 +222,15 @@ func TestSettingsMigration_FilesReadSchemaVersionRewrite(t *testing.T) {
 	}
 }
 
-// TestSettingsMigration_LegacyAgentHubV42 loads a real-shaped AgentHub v4.2
-// settings.json that still carries the removed "filesWrite" and
+// TestSettingsMigration_LegacyV4Keys loads a real-shaped v4.2 settings.json
+// from the upstream app that still carries the removed "filesWrite" and
 // "autoCloseSession", "cliPaths", "shellPath", "notifyOnWaiting" and
 // "stayOnHubAfterCreate" keys.
 // Old settings must load without error, the unknown keys are ignored, the
 // kept values survive, and the next save drops every removed key.
-func TestSettingsMigration_LegacyAgentHubV42(t *testing.T) {
+func TestSettingsMigration_LegacyV4Keys(t *testing.T) {
 	dir := t.TempDir()
-	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "settings_agenthub_v4.2.json"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "settings_legacy_v4.json"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}

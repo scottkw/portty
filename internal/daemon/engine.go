@@ -74,7 +74,7 @@ func daemonConfigDir() string {
 // block + schemaVersion to always serialize so future loads observe them
 // even when every plugin is at its zero value (all-false).
 //
-// Legacy AgentHub keys that are no longer struct fields (e.g. the removed
+// Legacy keys from older settings files that are no longer struct fields (e.g. the removed
 // files write default) are ignored by json.Unmarshal and dropped on save.
 type daemonSettings struct {
 	StartMinimized              bool           `json:"startMinimized,omitempty"`

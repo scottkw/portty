@@ -417,7 +417,7 @@ func TestListSessions_ShellStatusRunning(t *testing.T) {
 // TestSetShellWebShareWarned_Default verifies fresh engine reads false.
 //
 // Phase 116 / TEST-06: NewSessionEngine() loads from the user's real
-// ~/.config/agenthub/settings.json at construction time. Reset every field
+// os.UserConfigDir()/portty/settings.json at construction time. Reset every field
 // that loadSettingsFromDisk touches so the "default value" assertion is
 // deterministic regardless of the developer's local settings.
 func TestSetShellWebShareWarned_Default(t *testing.T) {

@@ -2,7 +2,7 @@
 //
 // The embed.FS (`go:embed all:frontend/dist`) lives in package main and is
 // gated behind the `wailsassets` build tag. The daemon process (a separate
-// invocation of the same binary via `agenthub daemon`) cannot import package
+// invocation of the same binary via `portty daemon`) cannot import package
 // main, so main wires the FS into this package at startup via SetStaticAppFS.
 //
 // Both daemon code paths that construct a *webserver.WebServer (AutoStartWebServer

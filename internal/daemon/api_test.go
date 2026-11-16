@@ -28,7 +28,7 @@ func testDaemon(t *testing.T) (*API, *DaemonClient, string) {
 	t.Helper()
 	engine := NewSessionEngine()
 	// Isolate from real settings.json that NewSessionEngine may have loaded.
-	// NewSessionEngine() unconditionally reads ~/.config/agenthub/settings.json
+	// NewSessionEngine() unconditionally reads os.UserConfigDir()/portty/settings.json
 	// at construction time (engine.go: loadSettingsFromDisk(cfgDir)). Any field
 	// the real settings file populates leaks into the test unless explicitly
 	// reset here. Phase 116 / TEST-04..06: every field that loadSettingsFromDisk
@@ -979,7 +979,7 @@ func TestOnExit_ClearsGrants(t *testing.T) {
 // (and ws.signingKey) to non-nil.
 func TestStartup_LoadsOrGeneratesSigningKey(t *testing.T) {
 	// Use an isolated temp config directory so this test doesn't clobber
-	// the real ~/.config/agenthub/capability.key.
+	// the real os.UserConfigDir()/portty/capability.key.
 	tmpDir := t.TempDir()
 	engine := NewSessionEngine()
 	engine.configDir = tmpDir

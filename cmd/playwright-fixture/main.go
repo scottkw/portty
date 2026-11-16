@@ -2,7 +2,7 @@
 
 // Package main is a Playwright e2e test fixture for Phase 93 web parity specs.
 //
-// This binary boots an in-process AgentHub web server with:
+// This binary boots an in-process Portty web server with:
 //   - Self-signed TLS on 127.0.0.1 (random port)
 //   - One pre-seeded session ("playwright-test-session") backed by an io.Pipe
 //     PTY stub (no real shell — the page only needs to attach for the addon
