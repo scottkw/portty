@@ -119,31 +119,37 @@ static NSImage *makeTrayImage(NSData *d1, NSData *d2) {
     return [icon autorelease];
 }
 
+// Entry points called from Go wrap their bodies in @autoreleasepool: cgo
+// threads have no pool that ever drains, so autoreleased copies would leak on
+// every 5 s tray poll. The copied dispatch block retains what it captures.
+
 // initStatusItem creates a macOS status bar item with a dynamic menu delegate.
 void initStatusItem(const void *d1, int n1, const void *d2, int n2) {
-    // Copy icon data synchronously — d1/d2 are Go pointers only valid during
-    // the cgo call. The dispatch_async block runs later when Go may have reclaimed them.
-    NSData *data1 = [NSData dataWithBytes:d1 length:n1];
-    NSData *data2 = [NSData dataWithBytes:d2 length:n2];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSStatusBar *bar = [NSStatusBar systemStatusBar];
-        statusItem = [bar statusItemWithLength:NSVariableStatusItemLength];
-        [statusItem retain];
+    @autoreleasepool {
+        // Copy icon data synchronously — d1/d2 are Go pointers only valid during
+        // the cgo call. The dispatch_async block runs later when Go may have reclaimed them.
+        NSData *data1 = [NSData dataWithBytes:d1 length:n1];
+        NSData *data2 = [NSData dataWithBytes:d2 length:n2];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSStatusBar *bar = [NSStatusBar systemStatusBar];
+            statusItem = [bar statusItemWithLength:NSVariableStatusItemLength];
+            [statusItem retain];
 
-        // Set icon from the 1x and @2x PNG data.
-        statusItem.button.image = makeTrayImage(data1, data2);
-        statusItem.button.toolTip = @"Portty";
+            // Set icon from the 1x and @2x PNG data.
+            statusItem.button.image = makeTrayImage(data1, data2);
+            statusItem.button.toolTip = @"Portty";
 
-        // Build menu with delegate for dynamic rebuilding.
-        NSMenu *menu = [[NSMenu alloc] init];
-        menuDelegate = [[PorttyMenuDelegate alloc] init];
-        menu.delegate = menuDelegate;
-        statusItem.menu = menu;
+            // Build menu with delegate for dynamic rebuilding.
+            NSMenu *menu = [[NSMenu alloc] init];
+            menuDelegate = [[PorttyMenuDelegate alloc] init];
+            menu.delegate = menuDelegate;
+            statusItem.menu = menu;
 
-        // Hide Dock icon — Wails overrides LSUIElement by setting its own
-        // activation policy, so we must set accessory mode programmatically.
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-    });
+            // Hide Dock icon — Wails overrides LSUIElement by setting its own
+            // activation policy, so we must set accessory mode programmatically.
+            [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+        });
+    }
 }
 
 // removeStatusItem tears down the status bar item.
@@ -159,23 +165,27 @@ void removeStatusItem(void) {
 
 // updateTrayIcon swaps the tray icon PNG at runtime (normal vs error state).
 void updateTrayIcon(const void *d1, int n1, const void *d2, int n2) {
-    // Copy before dispatch — d1/d2 are Go pointers only valid during cgo call.
-    NSData *data1 = [NSData dataWithBytes:d1 length:n1];
-    NSData *data2 = [NSData dataWithBytes:d2 length:n2];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (statusItem == nil) return;
-        statusItem.button.image = makeTrayImage(data1, data2);
-    });
+    @autoreleasepool {
+        // Copy before dispatch — d1/d2 are Go pointers only valid during cgo call.
+        NSData *data1 = [NSData dataWithBytes:d1 length:n1];
+        NSData *data2 = [NSData dataWithBytes:d2 length:n2];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (statusItem == nil) return;
+            statusItem.button.image = makeTrayImage(data1, data2);
+        });
+    }
 }
 
 // updateTrayTooltip updates the hover tooltip of the tray icon.
 void updateTrayTooltip(const char *tooltip) {
-    NSString *tip = [NSString stringWithUTF8String:tooltip];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (statusItem != nil) {
-            statusItem.button.toolTip = tip;
-        }
-    });
+    @autoreleasepool {
+        NSString *tip = [NSString stringWithUTF8String:tooltip];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (statusItem != nil) {
+                statusItem.button.toolTip = tip;
+            }
+        });
+    }
 }
 
 // setDockVisible shows or hides the macOS Dock icon by toggling the
@@ -194,20 +204,22 @@ void setDockVisible(int visible) {
 
 // setTraySessionData updates the session names/IDs used by the menu delegate.
 void setTraySessionData(const char **names, const char **ids, int count) {
-    // Copy strings synchronously — names/ids are Go pointers freed after cgo returns.
-    NSMutableArray *nameArr = [NSMutableArray arrayWithCapacity:count];
-    NSMutableArray *idArr = [NSMutableArray arrayWithCapacity:count];
-    for (int i = 0; i < count; i++) {
-        [nameArr addObject:[NSString stringWithUTF8String:names[i]]];
-        [idArr addObject:[NSString stringWithUTF8String:ids[i]]];
+    @autoreleasepool {
+        // Copy strings synchronously — names/ids are Go pointers freed after cgo returns.
+        NSMutableArray *nameArr = [NSMutableArray arrayWithCapacity:count];
+        NSMutableArray *idArr = [NSMutableArray arrayWithCapacity:count];
+        for (int i = 0; i < count; i++) {
+            [nameArr addObject:[NSString stringWithUTF8String:names[i]]];
+            [idArr addObject:[NSString stringWithUTF8String:ids[i]]];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // MRC: the globals own their arrays; release the previous pair.
+            [menuSessionNames release];
+            [menuSessionIDs release];
+            menuSessionNames = [nameArr retain];
+            menuSessionIDs = [idArr retain];
+        });
     }
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // MRC: the globals own their arrays; release the previous pair.
-        [menuSessionNames release];
-        [menuSessionIDs release];
-        menuSessionNames = [nameArr retain];
-        menuSessionIDs = [idArr retain];
-    });
 }
 
 // hasValidBundleIdentifier reports whether the running process has a valid
