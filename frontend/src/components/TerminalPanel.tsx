@@ -274,7 +274,8 @@ export function TerminalPanel({
       scrollback: 10000,         // TERM-04
       allowProposedApi: true,    // required for unicode11
       cursorBlink: true,
-      fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+      // Nerd Font fallbacks after SF Mono: prompt themes (Powerlevel10k) draw their icons from them.
+      fontFamily: 'ui-monospace, "SF Mono", Menlo, "MesloLGS NF", "Symbols Nerd Font Mono", "Hack Nerd Font Mono", monospace',
       fontSize,
       theme,
     })

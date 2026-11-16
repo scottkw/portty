@@ -162,7 +162,7 @@
           foreground: '#cccccc',
           cursor: '#cccccc',
         },
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        fontFamily: 'ui-monospace, "SF Mono", Menlo, "MesloLGS NF", "Symbols Nerd Font Mono", "Hack Nerd Font Mono", monospace',
         fontSize: 14,
       });
 

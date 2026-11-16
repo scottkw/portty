@@ -209,7 +209,7 @@ describe('THM-03: live theme application', () => {
   })
 
   it('uses the system monospace font (Portty 02-03, UI-SPEC)', () => {
-    expect(raw).toContain(`fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace'`)
+    expect(raw).toContain(`fontFamily: 'ui-monospace, "SF Mono", Menlo, "MesloLGS NF", "Symbols Nerd Font Mono", "Hack Nerd Font Mono", monospace'`)
     expect(raw).not.toContain('Cascadia')
   })
 })
