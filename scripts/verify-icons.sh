@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Brand asset check. macOS built-ins only (sips, cmp, stat). Run from the repo root.
 set -e
 
 PASS=0
@@ -18,41 +19,49 @@ check() {
   fi
 }
 
-echo "=== AgentHub Icon Verification ==="
+# dims FILE W H — true when sips reports exactly W×H pixels.
+dims() {
+  local out
+  out=$(sips -g pixelWidth -g pixelHeight "$1" 2>/dev/null) || return 1
+  echo "$out" | grep -q "pixelWidth: $2\$" && echo "$out" | grep -q "pixelHeight: $3\$"
+}
+
+echo "=== Portty Icon Verification ==="
 echo ""
 
-# SC1: appicon.png is 1024x1024
-check "appicon.png is 1024x1024" \
-  "identify build/appicon.png | grep -q '1024x1024'"
+# App icon
+check "build/appicon.png is 1024x1024" "dims build/appicon.png 1024 1024"
+check "assets/appicon.png is byte-identical to build/appicon.png" "cmp build/appicon.png assets/appicon.png"
 
-# SC2: iconfile.icns exists and has content
-check "iconfile.icns exists" \
-  "test -s build/darwin/iconfile.icns"
+# Iconset and icns
+check "AppIcon.iconset holds exactly 10 PNGs" \
+  "test \$(ls build/AppIcon.iconset/*.png 2>/dev/null | wc -l) -eq 10"
+check "AppIcon.iconset has no -2x.png names" \
+  "test \$(ls build/AppIcon.iconset/ | grep -c -- '-2x\.png\$') -eq 0"
+check "iconfile.icns exists and is >100000 bytes (multi-entry)" \
+  "test -f build/darwin/iconfile.icns && test \$(stat -f%z build/darwin/iconfile.icns) -gt 100000"
 
-# SC2: iconfile.icns has multiple entries (check file size > 100KB as proxy for 10 entries)
-check "iconfile.icns has substantial content (>100KB = multi-entry)" \
-  "test $(stat -f%z build/darwin/iconfile.icns 2>/dev/null || stat -c%s build/darwin/iconfile.icns 2>/dev/null) -gt 100000"
-
-# SC3: icon.ico exists and has multiple frames
-check "icon.ico exists" \
-  "test -s build/windows/icon.ico"
-
-check "icon.ico has >=4 frames" \
-  "test $(identify build/windows/icon.ico 2>/dev/null | wc -l) -ge 4"
-
-# SC4: Linux PNGs
-for size in 16 32 48 128 256 512; do
-  check "Linux ${size}x${size}.png exists" \
-    "test -f build/linux/${size}x${size}.png"
+# Tray icons: 1x 18x18, @2x 36x36
+for s in "" _error _progress_25 _progress_50 _progress_75 _progress_100; do
+  check "assets/tray_icon${s}.png is 18x18" "dims assets/tray_icon${s}.png 18 18"
+  check "assets/tray_icon${s}@2x.png is 36x36" "dims assets/tray_icon${s}@2x.png 36 36"
 done
 
-# SC5: Title logo in frontend assets
-check "frontend title logo exists" \
-  "test -f frontend/src/assets/agenthub-title-logo.png"
+# Title logos
+for d in docs frontend/public frontend/src/assets; do
+  for f in portty-title-logo.png portty-title-logo-dark.png; do
+    check "$d/$f is 1400x360" "dims $d/$f 1400 360"
+  done
+done
+check "exactly six title-logo files, all Portty-named" \
+  "test \$(find docs frontend/public frontend/src/assets -maxdepth 1 -name '*title-logo*.png' | wc -l) -eq 6 && \
+   test \$(find docs frontend/public frontend/src/assets -maxdepth 1 -name '*title-logo*.png' \
+     ! -name portty-title-logo.png ! -name portty-title-logo-dark.png | wc -l) -eq 0"
 
-# iconset folder has 10 entries
-check "AppIcon.iconset has 10 entries" \
-  "test $(ls build/AppIcon.iconset/*.png 2>/dev/null | wc -l) -eq 10"
+# One source per asset: no generator or brand drop folder left
+check "portty-brand/ is gone" "test ! -e portty-brand"
+check "build/gen_icon.go is gone" "test ! -e build/gen_icon.go"
+check "build/gen_progress_icons.go is gone" "test ! -e build/gen_progress_icons.go"
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

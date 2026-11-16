@@ -31,6 +31,8 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
 | **Total** | **208** | — | — | — |
 
+> Note: Portty Phase 3 plan 03-03 (BRND-02 brand assets): counts from `git ls-files` unchanged — Go **109**, vitest **91**, Playwright **7**, build-script **1**, total **208**. Edited in place: tray_test.go (six 18×18 / 36×36 pairs), app_set_tray_progress_test.go (1x and @2x pair, error precedence).
+
 > Note: Portty Phase 3 plan 03-02 (port 7444, X-Portty marker, update feed): counts from `git ls-files` — Go **109** (+1: internal/webserver/probe_marker_test.go), vitest **91**, Playwright **7**, build-script **1**, total **208**. Edited in place: tailnet_test.go (marker cases, renamed hosts, TestFetchPeerSessionsMeta_IgnoresLegacyFields), updater_test.go (scottkw/portty slug, offline fake Source, TestDetectLatestFrom_*), SettingsSheet.tailscale-status.test.tsx and remoteSession.test.ts (port 7444), api_test.go and funnel_test.go (port 7444).
 
 > Note: Portty Phase 3 plan 03-01 (BRND-03, module github.com/scottkw/portty): counts from `git ls-files` unchanged — Go **108**, vitest **91**, Playwright **7**, build-script **1**, total **207**. Edited in place: socket_test.go (portty/daemon.sock), service_test.go, dispatch_test.go (TestRunCLI_UnknownCommand now asserts unknownCommandMessage), cmd_cli_test.go, engine_migration_test.go (TestSettingsMigration_LegacyV4Keys reads the renamed fixture tests/fixtures/settings_legacy_v4.json).
@@ -438,6 +440,9 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | BRND-03 | internal/webserver/probe_marker_test.go | Go | Portty 03-02: GET /api/sessions carries X-Portty: 1 on 401 and 200; /api/sessions/meta and /dashboard do not |
 | NOTF-01 | internal/updater/updater_test.go | Go | Portty 03-02: scottkw/portty feed; DMG asset filter (TestDetectLatestFrom_FindsDMGRelease); drafts, prereleases, no asset, no releases (404) and source errors are silent |
 | BRND-06 | internal/updater/updater_test.go | Go | Portty 03-02: release URL https://github.com/scottkw/portty/releases/tag/v… (TestCheck_NewerVersionFound) |
+| BRND-02 | tray_test.go | Go | Portty 03-03: TestTrayIconAsset — six tray states, 1x 18×18 and @2x 36×36, embedded from the brand files |
+| BRND-02 | app_set_tray_progress_test.go | Go | Portty 03-03: trayIconBytesForState returns the matching 1x and @2x pair; error wins over progress |
+| BRND-02 | scripts/verify-icons.sh | build-script | Portty 03-03: app icon 1024, iconset 10 @2x-named files, icns from iconutil, tray sizes, six Portty title logos, generators and portty-brand/ absent (sips, no ImageMagick) |
 
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 
@@ -854,6 +859,15 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
   6. With the app set to Dark and macOS in Light, open a web share link in Safari: the page stays light (it follows the browser, never the desktop override).
   - _Why not automatable:_ NSApp.appearance propagation into WKWebView and NSVisualEffectView, and first-paint timing, exist only in the native app. The stored value, validation, startup apply, the control and the hook override are covered by the THEM-01 rows for `internal/daemon/appearance_settings_test.go`, `app_test.go`, `SettingsSheet.test.tsx`, `useColorScheme.test.tsx` and `App.test.tsx` in Section 4; the web page by `web-color-scheme.spec.ts`.
   - _Source:_ 02-13-PLAN.md Tasks 1-2; REQUIREMENTS THEM-01 (amended 2026-11-15); 02-UI-SPEC Deviations "Appearance control (amended 2026-11-15)".
+
+### Category AM — Brand Assets (BRND-02)
+
+- **M-71** Tray icons on Retina, light and dark (Portty 03-03; run in the Tart VM on the built app).
+  1. With a session emitting OSC 9;4 progress (`tests/fixtures/osc94-progress-fixture.sh`), watch the menu bar icon step through idle and progress 25 / 50 / 75 / 100; stop the daemon for the error state.
+  2. Check each state at 100% and 200% (Retina) scaling, on a Light and a Dark menu bar, and with the tray menu open (highlighted).
+  3. Expected: the Portty mark in every state, crisp at Retina (not upscaled from 18 px), tinted black/white by macOS, the ring filling clockwise by quartile, no colour art.
+  - _Why not automatable:_ Retina rep selection and template tinting happen only in the live AppKit menu bar. File sizes and the 1x/@2x pairing are covered by `tray_test.go`, `app_set_tray_progress_test.go` and `scripts/verify-icons.sh`.
+  - _Source:_ 03-03-PLAN.md Task 2 human-check; 03-CONTEXT Icons and logos.
 
 ---
 

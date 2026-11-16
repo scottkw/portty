@@ -1,7 +1,10 @@
 # AgentHub
 
 <p align="center">
-  <img src="docs/agenthub-title-logo.png" alt="AgentHub" width="400">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/portty-title-logo-dark.png">
+    <img src="docs/portty-title-logo.png" alt="Portty" width="400">
+  </picture>
 </p>
 
 AgentHub runs AI coding CLIs — Claude Code, Codex, Gemini CLI, OpenCode, Google Antigravity — and raw shell sessions (bash, zsh, PowerShell) in persistent terminal sessions managed by a background daemon. As of **v4.0** the desktop GUI is **Hub-first**: a single top-level Hub shows every local and remote session as a live, colorblind-safe card you can filter, group, share, and expand into a terminal. Google Antigravity (`agy`) is integrated as a selectable agent and was verified live (interactive REPL, authenticated session) in v4.0; it remains in limited/waitlist rollout, so it appears in the picker once `agy` is installed. Two surfaces share one set of sessions: a Wails desktop GUI and the `agenthub` CLI (the previous Bubble Tea TUI was retired in v4.0 — cross-surface parity is now GUI/CLI/web). Sessions survive GUI restarts and are controllable from either surface. Agent CLIs are discovered automatically across common install locations (nvm, Volta, Homebrew, snap, flatpak, cargo, pipx, and native installers).
