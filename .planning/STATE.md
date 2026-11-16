@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 3
 status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-11-16T16:40:13.943Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-11-16T17:01:14.056Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 3 execution started
-state_head: 728977b352cb78227960698d3af28429ecf58db2
+state_head: c6967566ccea3f3976d493bf545022d82deb7434
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 31
-  completed_plans: 28
+  completed_plans: 29
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 3 — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 3 execution started
 
@@ -70,6 +70,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 3 P01 | 7 min | 3 tasks | 71 files |
 | Phase 03 P02 | 28 min | 3 tasks | 15 files |
 | Phase 03 P03 | 10 min | 2 tasks | 69 files |
+| Phase 03 P04 | 25min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,10 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-03: tray icons load as one template NSImage with an 18 px and a 36 px rep (18x18 pt each); trayIconBytesForState returns the (1x, @2x) pair, error pair still wins
 - [Phase 03]: 03-03: portty-brand/, build/gen_icon.go and build/gen_progress_icons.go deleted; each brand asset has one source
 - [Phase 03]: 03-03: scripts/verify-icons.sh uses only sips/cmp/stat; Windows, Linux and ImageMagick checks dropped
+- [Phase 03]: 03-04: wails.json name and outputfilename both Portty, giving build/bin/Portty.app; bundle ID app.portty.Portty in both Info.plist templates
+- [Phase 03]: 03-04: About Portty uses the native AppKit standard panel via about_darwin.go/.m and the menuShowAbout seam; only credits and a blank build version are passed
+- [Phase 03]: 03-04: GitHub Help item and openGitHubCallback removed, not renamed
+- [Phase 03]: 03-04: quit-to-menu-bar copy lives in pure quitToMenuBarBody(n) (0/1/n), identifier portty.quit-gui-only, title Portty
 
 ### Pending Todos
 
@@ -180,6 +185,6 @@ Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appeara
 
 ## Session Continuity
 
-Last session: 2026-11-16T16:40:12.524Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-11-16T17:01:12.601Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None

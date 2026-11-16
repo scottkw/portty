@@ -144,7 +144,7 @@ Plans:
   6. The root `LICENSE` is still MIT, and README plus `frontend/package.json` declare the MIT license
   7. `packaging/homebrew` is gone, and no docs, scripts or workflows mention Homebrew
   8. A case-insensitive search for "agenthub" over tracked files (excluding `.planning/`) returns zero hits, and every website/repo link points to https://portty.app or github.com/scottkw/portty
-**Plans**: 3/6 plans executed (sequential waves 1-6; the module rename must land first, and tray_objc_darwin.m, app.go and TESTING.md are shared hot files)
+**Plans**: 4/6 plans executed (sequential waves 1-6; the module rename must land first, and tray_objc_darwin.m, app.go and TESTING.md are shared hot files)
 
 Plans:
 **Wave 1**
@@ -157,7 +157,7 @@ Plans:
 - [x] 03-03-PLAN.md — Brand assets from portty-brand/: Retina (@2x) template tray icons, app icon, iconset + iconutil icns, title logos; generators and portty-brand/ deleted; sips-based verify-icons.sh
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 03-04-PLAN.md — Portty.app with bundle ID app.portty.Portty, window title and Portty menus, native About Portty panel, tray text and 0/1/n quit notification
+- [x] 03-04-PLAN.md — Portty.app with bundle ID app.portty.Portty, window title and Portty menus, native About Portty panel, tray text and 0/1/n quit notification
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 03-05-PLAN.md — Web pages, local-mode realm/cert, Quit dialog, document title and portty:lastWorkDir key; no source file carries the old name
@@ -212,7 +212,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
-| 3. Portty Brand | 3/6 | In Progress | - |
+| 3. Portty Brand | 4/6 | In Progress | - |
 | 4. One-Click Share | 0/TBD | Not started | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
 | 6. Release Updates | 0/TBD | Not started | - |
