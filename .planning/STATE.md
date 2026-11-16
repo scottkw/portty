@@ -4,10 +4,10 @@ current_phase: 2
 current_phase_name: Tabs + Sidebar Navigation
 status: executing
 stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-11-15T18:30:49.910Z"
+last_updated: "2026-11-16T01:59:32.994Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 2 execution started
-state_head: 07412d211ab07fb1a079074da07da61ef29028ac
+state_head: 3251a80e1237717fff42520526c543d40aee51bb
 progress:
   total_phases: 6
   completed_phases: 1
@@ -144,6 +144,12 @@ None yet.
   - scrollback diff
   Rewrite VERF-01 as a short two-Mac sleep/wake check. Real overnight use becomes an informal check, not a gate. The requirement wording is the user's, so confirm at discuss before changing it.
 - [Phase 5]: The office Mac must not sleep overnight. Keep-awake (CONV-01) is v2, so the overnight test needs manual `caffeinate`/Energy settings. The home Mac sleeping overnight needs reconnect-on-wake.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 261115-rc8 | Phase 2 UI polish: sidebar vibrancy material, terminal padding, LAN-mode wording, type/spacing leftovers | 2026-11-15 | 3251a80e | [261115-rc8-phase-2-ui-polish-sidebar-vibrancy-mater](./quick/261115-rc8-phase-2-ui-polish-sidebar-vibrancy-mater/) |
 
 ## Deferred Items
 
