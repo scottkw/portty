@@ -1,236 +1,49 @@
 ---
 phase: 03-portty-brand
-reviewed: 2026-11-16T19:29:46Z
+reviewed: 2026-11-16T19:40:10Z
 depth: standard
-files_reviewed: 134
+iteration: 2
+files_reviewed: 4
 files_reviewed_list:
-  - .claude/CLAUDE.md
-  - .github/workflows/build.yml
-  - .github/workflows/release.yml
-  - .gitignore
-  - CHANGELOG.md
-  - CLAUDE.md
-  - README.md
-  - TESTING.md
-  - about_darwin.go
-  - about_darwin.m
-  - app.go
-  - app_exit_test.go
-  - app_set_tray_progress_test.go
-  - app_test.go
-  - build.sh
-  - build/darwin/Info.dev.plist
-  - build/darwin/Info.plist
-  - cmd/playwright-fixture/main.go
-  - cmd_attach.go
-  - cmd_attach_resize.go
-  - cmd_attach_test.go
-  - cmd_cli.go
-  - cmd_cli_test.go
-  - cmd_daemon.go
-  - cmd_daemon_test.go
-  - cmd_remote.go
-  - cmd_remote_test.go
-  - dispatch_test.go
-  - frontend/e2e/progress.spec.ts
-  - frontend/e2e/web-links-live-toggle.spec.ts
-  - frontend/e2e/web-plugin-hot-swap.spec.ts
-  - frontend/index.html
-  - frontend/package.json
-  - frontend/src/App.tsx
-  - frontend/src/components/NewSessionModal.tsx
-  - frontend/src/components/QuitConfirmModal.tsx
-  - frontend/src/components/SettingsSheet.tsx
-  - frontend/src/components/Sidebar.tsx
-  - frontend/src/components/TerminalPanel.tsx
-  - frontend/src/components/__tests__/App.nav.test.tsx
-  - frontend/src/components/__tests__/App.open-remote.test.tsx
-  - frontend/src/components/__tests__/App.test.tsx
-  - frontend/src/components/__tests__/NewSessionModal.test.tsx
-  - frontend/src/components/__tests__/QuitConfirmModal.test.tsx
-  - frontend/src/components/__tests__/RegenerateKeyModal.test.tsx
-  - frontend/src/components/__tests__/SettingsSheet.tailscale-status.test.tsx
-  - frontend/src/components/__tests__/Sidebar.test.tsx
-  - frontend/src/components/__tests__/TerminalPanel.test.tsx
-  - frontend/src/components/__tests__/UpdateBanner.test.tsx
-  - frontend/src/components/__tests__/style.contrast.test.ts
-  - frontend/src/lib/__tests__/remoteSession.test.ts
-  - frontend/src/lib/__tests__/sidebarPeers.test.ts
-  - frontend/src/lib/__tests__/stripAnsi.test.ts
-  - frontend/src/lib/sidebarPeers.ts
-  - frontend/src/style.css
-  - go.mod
-  - internal/attach/attach.go
-  - internal/capability/capability_fuzz_test.go
-  - internal/capability/capability_test.go
-  - internal/capability/joincode_test.go
-  - internal/capability/keystore_test.go
-  - internal/daemon/api.go
-  - internal/daemon/api_disconnect_test.go
-  - internal/daemon/api_test.go
-  - internal/daemon/chat_removed_test.go
-  - internal/daemon/client.go
-  - internal/daemon/engine.go
-  - internal/daemon/engine_exit_test.go
-  - internal/daemon/engine_migration_test.go
-  - internal/daemon/engine_test.go
-  - internal/daemon/files_removed_test.go
-  - internal/daemon/funnel_test.go
-  - internal/daemon/plugin_settings.go
-  - internal/daemon/process.go
-  - internal/daemon/remote_ws_proxy.go
-  - internal/daemon/remote_ws_proxy_test.go
-  - internal/daemon/service.go
-  - internal/daemon/service_test.go
-  - internal/daemon/socket.go
-  - internal/daemon/socket_test.go
-  - internal/daemon/staticapp.go
-  - internal/daemon/tailnet_cache.go
-  - internal/relay/hub_test.go
-  - internal/relay/oscabsorb_relay_test.go
-  - internal/relay/scrollback_altscreen_test.go
-  - internal/relay/server.go
-  - internal/relay/server_test.go
-  - internal/statusbar/bar_test.go
-  - internal/tailnet/tailnet.go
-  - internal/tailnet/tailnet_test.go
-  - internal/updater/updater.go
-  - internal/updater/updater_test.go
-  - internal/webserver/app_bundle_test.go
-  - internal/webserver/assets_test.go
-  - internal/webserver/auth.go
-  - internal/webserver/auth_test.go
-  - internal/webserver/brand_pages_test.go
-  - internal/webserver/capability_mw.go
-  - internal/webserver/capability_test.go
-  - internal/webserver/capability_test_helpers.go
-  - internal/webserver/find_bar_test.go
-  - internal/webserver/findbar_perf_e2e_test.go
-  - internal/webserver/fuzz_test.go
-  - internal/webserver/inject_test.go
-  - internal/webserver/join_test.go
-  - internal/webserver/localip_test.go
-  - internal/webserver/origin_mw_test.go
-  - internal/webserver/oscabsorb_relay_test.go
-  - internal/webserver/plugin_config_stream_test.go
-  - internal/webserver/probe_marker_test.go
-  - internal/webserver/rwgate_test.go
-  - internal/webserver/selfcert.go
-  - internal/webserver/selfcert_test.go
-  - internal/webserver/server.go
-  - internal/webserver/server_test.go
-  - internal/webserver/session_ended_test.go
-  - internal/webserver/web_links_test.go
-  - main.go
-  - menu_test.go
-  - notification_darwin_test.go
-  - scripts/verify-icons.sh
-  - tests/build-script.test.sh
-  - tests/check-brand.sh
-  - tests/fixtures/settings_legacy_v4.json
-  - tray.go
-  - tray_common.go
-  - tray_common_test.go
   - tray_objc_darwin.m
-  - tray_test.go
+  - .github/workflows/release.yml
   - wails.json
-  - web/assets/terminal.js
-  - web/dashboard.html
-  - web/join.html
-  - web/terminal.html
+  - TESTING.md
 findings:
   critical: 0
-  warning: 4
-  info: 9
-  total: 13
-  necessity: 1
-status: issues_found
+  warning: 0
+  info: 11
+  total: 11
+  necessity: 0
+status: clean
 ---
 
-# Phase 3: Code Review Report
+# Phase 3: Code Review Report (iteration 2)
 
-**Reviewed:** 2026-11-16T19:29:46Z
+**Reviewed:** 2026-11-16T19:40:10Z
 **Depth:** standard
-**Files Reviewed:** 134
-**Status:** issues_found
+**Files Reviewed:** 4
+**Status:** clean (no critical or warning findings remain; 11 info items are open)
 
 ## Summary
 
-I reviewed the diff 136bcb52..HEAD over the 134 listed files at standard depth. Most of the diff is mechanical renaming (module path, strings, comments, tests). I spent most of the time on the areas the orchestrator flagged as high-risk.
+This pass re-reviews the fix commits df89629b..684bae6f (`git diff df89629b~1`) in the four files they touched. It checks that WR-01..WR-04 and IN-01 are actually fixed and that the fixes added no new bugs. Info items IN-02..IN-09 from iteration 1 were out of the fixer's scope. They are copied below unchanged.
 
-Ground truth checked: `go build ./... && go vet ./...` exit 0; `pnpm -C frontend exec tsc --noEmit` exit 0; `go test -short ./internal/tailnet ./internal/updater` passes, as do `./internal/webserver -run ProbeMarker` and `. -run 'Tray|Menu|Quit'`; `bash tests/check-brand.sh` reports clean; `bash scripts/verify-icons.sh` passes 27/27; `bash tests/check-traceability-paths.sh` reports OK.
+Ground truth: `go build ./... && go vet ./...` exit 0. `bash tests/check-traceability-paths.sh` reports OK (106 paths). I ran the stamp step's shell and jq logic locally on a copy of wails.json: `v1.2.0`, `v1.2.0-beta.1` and `v1.2.0-rc1` give `1.2.0`; `v1.2`, `vfoo` and `v1.2.3+meta` are rejected; the `©` in `copyright` survives the jq rewrite. actionlint is not installed, so I did not lint the workflow.
 
-What I verified and found sound:
+### Iteration-1 findings: verification
 
-- **X-Portty marker placement.** `porttyMarker(ws.requireCapability(ws.handleListSessions))` (`internal/webserver/server.go:828`) sets the header before the cap check, so the unauthenticated 401 carries it. The header grants nothing. `requireCapability` is unchanged, and `http.Error` leaves custom headers alone. The probe (`internal/tailnet/tailnet.go:95-101`) rejects any reply without `X-Portty: 1` and never reads the body. Every caller that feeds the sidebar goes through `DiscoverAndProbe` (`internal/daemon/api.go:1445`). The local-mode basicAuth 401 has no marker, but local mode is never probed over the tailnet.
-- **go-selfupdate filter.** I read the v1.5.2 source. With `Filters` set, `findAssetFromRelease` matches only the lowercased asset name against the filters and skips the OS/arch suffix rule. `^portty-v?\d+\.\d+\.\d+.*-darwin-universal\.dmg$` matches the `portty-${GITHUB_REF_NAME}-darwin-universal.dmg` name that release.yml produces. The browser-URL fallback cannot match because of the `^portty` anchor. A nil `Source` falls back to `NewGitHubSource`, which maps a 404 to `(nil, nil)`. `Check` swallows every error. Drafts and prereleases are skipped by default.
-- **Config dir and socket.** All three builders (`app.go:803`, `internal/daemon/engine.go:61`, `internal/daemon/socket.go:15`) use `os.UserConfigDir()/portty` with `MkdirAll(…, 0700)`. No tracked code reads the old app's directory.
-- **About panel.** `dispatch_async` to the main queue. MRC is balanced: `para`, `link` and `credits` are each released once, after AppKit copies them. The dictionary literals are autoreleased inside the main-queue block, where GCD drains a pool.
-- **check-brand.sh.** The negated grep is anchored (`:github\.com/scottkw/portty$`). An empty here-string yields one empty line, which `report` skips. A git error exits 2 instead of passing. The script cannot match its own text.
-- **hdiutil.** I tested `hdiutil create -srcfolder X.app` locally: the volume root holds `X.app`, not its `Contents/`.
-- **cgo pointers.** The tray `[]byte` arguments hold no Go pointers. Both `.m` entry points copy the bytes into `NSData` before `dispatch_async`.
+| ID | Status | Evidence |
+|----|--------|----------|
+| IN-01 | Fixed | `tray_objc_darwin.m:215-221`. The main-queue block releases the previous arrays, then stores `[nameArr retain]` and `[idArr retain]`. Every call makes fresh arrays, so the old and new objects can never be the same, and the release cannot free the array being stored. `[nil release]` on the first call does nothing. All reads (`menuWillOpen:`) and writes run on the serial main queue, so there is no race. |
+| WR-01 | Fixed | `tray_objc_darwin.m:128,168,181,207`. `initStatusItem`, `updateTrayIcon`, `updateTrayTooltip` and `setTraySessionData` each wrap their bodies in `@autoreleasepool`. The file is compiled without ARC: `tray.go:6` passes only `-x objective-c`, and the explicit `retain`/`release` calls would not compile under ARC. Without ARC, `dispatch_async` copies the block before it returns, the copy retains every captured object pointer (`data1`, `data2`, `tip`, `nameArr`, `idArr`), and block disposal releases them once. So the objects outlive the pool drain and nothing is released twice. `makeTrayImage` returns an autoreleased image on the main queue, where GCD drains a pool. `removeStatusItem` and `setDockVisible` autorelease nothing on the cgo thread, so they need no pool. |
+| WR-02 | Fixed | `wails.json:14` is now `0.1.0`. `release.yml:83-88` stamps `info.productVersion` from the tag before `wails build`. `build/darwin/Info.plist:15,19` fill both `CFBundleVersion` and `CFBundleShortVersionString` from `{{.Info.ProductVersion}}`. Quoting is correct: `"${GITHUB_REF_NAME#v}"` and `"${V%%-*}"` are quoted, the `[[ =~ ]]` pattern is unquoted as it must be, and `--arg` passes the value to jq as a string, not as jq code. The default `bash -e` shell on macOS runners supports `[[ ]]`. jq ships on `macos-latest`. If jq fails, the `&&` skips the `mv`, and the line's non-zero status is the script's exit status, so the step fails. No tracked file outside `.planning/` still mentions `2.2.0` as the app version. TESTING.md M-72 is updated to match. |
+| WR-03 | Fixed | `release.yml:262,265`. `draft: contains(github.ref_name, '-rc')` and `prerelease: contains(github.ref_name, '-')`. Any hyphenated tag becomes a prerelease, which the updater skips. An `-rc` tag is both a draft and a prerelease, which is harmless. |
+| WR-04 | Fixed | `release.yml:255-269`. The `token:` input is gone, so softprops falls back to `github.token`, and the publish job keeps `contents: write` (line 232). Someone with repo access still needs to delete the `RELEASE_PUBLISH_TOKEN` secret by hand. |
 
-The four warnings: a slow ObjC leak on the 5 s tray poll that this phase doubled; an About box that shows the inherited `2.2.0` version instead of the release tag; release.yml publishing `-beta`/`-alpha` tags as full releases, which this phase's updater fix now offers as updates; and a leftover PAT used for a downstream workflow this phase deleted.
-
-## Warnings
-
-### WR-01: Tray icon NSData is autoreleased on a Go thread with no pool; it leaks every 5 s, now twice per tick
-
-**File:** `tray_objc_darwin.m:126-127`, `tray_objc_darwin.m:163-164` (called from `tray.go` `updateTray`, driven by `app.go:1286` 5-second ticker via `refreshTrayState` at `app.go:1316`)
-**Issue:** `[NSData dataWithBytes:length:]` returns an autoreleased object. `initStatusItem` and `updateTrayIcon` run on whatever Go M thread made the cgo call, and that thread has no `@autoreleasepool`. The ObjC runtime then creates an implicit per-thread pool that drains only when the thread exits, and Go M threads almost never exit. The dispatched block retains each `NSData` while it runs, but the autorelease reference is never balanced, so every `NSData` lives forever. `updateTray` calls `updateTrayIcon` on every 5 s poll whether or not the state changed. Before this phase that leaked one ~425 B `NSData` per tick. Now it leaks two (~425 B plus ~780 B), about 21 MB/day for an app built to stay up overnight. The pattern predates this phase, but the @2x change doubled the allocation and the leak.
-**Fix:** Drain a pool around the copies. The block still keeps the data alive, because a copied block retains captured ObjC objects even under MRC:
-```objc
-void updateTrayIcon(const void *d1, int n1, const void *d2, int n2) {
-    @autoreleasepool {
-        NSData *data1 = [NSData dataWithBytes:d1 length:n1];
-        NSData *data2 = [NSData dataWithBytes:d2 length:n2];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (statusItem == nil) return;
-            statusItem.button.image = makeTrayImage(data1, data2);
-        });
-    }
-}
-```
-Do the same in `initStatusItem`. Also skip the cgo call in `updateTray` when the `(connected, quartile)` pair has not changed since the last call. Do not wrap `setTraySessionData` the same way without first fixing IN-01, because it relies on this leak.
-
-### WR-02: About box shows "Version 2.2.0" (the upstream app's version) instead of the release tag
-
-**File:** `about_darwin.m:42`, `wails.json:14`, `build/darwin/Info.plist:15-19`, `.github/workflows/release.yml:80-82`
-**Issue:** The new About panel takes its version from `CFBundleShortVersionString`, which Wails renders from `wails.json` `productVersion` (`2.2.0`, inherited unchanged). release.yml stamps only `-X main.Version=${{ github.ref_name }}`. So a tagged Portty build such as `v0.1.0` shows "Version 2.2.0" in About, while the update banner and `daemon.BuildVersion` report `v0.1.0`. BRND-01 lists the About box as a Portty identity surface. RESEARCH defers versioning to Phase 6, but release.yml is live now, and any tag pushed before Phase 6 ships a DMG with a wrong, AgentHub-era version in About. That same stale version also sits in `CFBundleVersion`, which Finder's Get Info and notarization records display.
-**Fix:** Stamp the plist version from the tag in release.yml before `wails build` (and in build.sh from `VERSION`):
-```yaml
-- name: Stamp bundle version from tag
-  run: |
-    V="${GITHUB_REF_NAME#v}"
-    jq --arg v "$V" '.info.productVersion = $v' wails.json > wails.json.tmp && mv wails.json.tmp wails.json
-```
-Or at least set `productVersion` to a Portty-era placeholder (`0.0.0`) so the stale upstream number never ships.
-
-### WR-03: Pre-release tags other than `-rc` publish as full releases, which the fixed updater now offers to every user
-
-**File:** `.github/workflows/release.yml:252`, `internal/updater/updater.go:65-75`
-**Issue:** `draft: ${{ contains(github.ref, '-rc') }}` is the only gate, and `prerelease:` is never set. A tag like `v1.2.0-beta.1` or `v1.2.0-alpha` (both match `on.push.tags: 'v*'`) therefore becomes a normal, non-prerelease GitHub release with a DMG named `portty-v1.2.0-beta.1-darwin-universal.dmg`. Before this phase the updater could never match a `.dmg`, so this did no harm. With the new `Filters` setting, which accepts `\d+\.\d+\.\d+.*`, `DetectLatest` returns that beta, because go-selfupdate skips only releases flagged `prerelease`. `semver` ranks `1.2.0-beta.1` above `1.1.x`, so every stable user gets an update banner pointing at a beta.
-**Fix:** Mark any hyphenated tag as a prerelease (and keep `-rc` as draft if that is still wanted):
-```yaml
-draft: ${{ contains(github.ref_name, '-rc') }}
-prerelease: ${{ contains(github.ref_name, '-') }}
-```
-Optionally tighten `dmgAssetFilter` to `^portty-v?\d+\.\d+\.\d+-darwin-universal\.dmg$` so a hyphenated build can never match.
-
-### WR-04: Phantom requirement — RELEASE_PUBLISH_TOKEN PAT kept for a downstream workflow this phase deleted
-
-**File:** `.github/workflows/release.yml:253-257`
-**Category:** necessity
-**Issue:** The PAT existed only so the `release.published` event would trigger `distribute.yml`, because releases published with `GITHUB_TOKEN` do not fire workflows. This phase deletes `distribute.yml` (DIST-03), and no workflow still triggers on that event: `.github/workflows/` now holds only `build.yml`, `e2e.yml` and `release.yml`, and none of them has a `release:` or `workflow_run` trigger. The requirement has lapsed, as the repository shows. Keeping it means the publish job runs with a long-lived personal token, a broader credential than the job-scoped `GITHUB_TOKEN` it already has `contents: write` for, and gains nothing in return. CLAUDE.md asks to keep the security posture tight around releases.
-**Fix:** Use `token: ${{ secrets.GITHUB_TOKEN }}` (or drop the `token:` line; the action defaults to it), remove the stale comment, and delete the `RELEASE_PUBLISH_TOKEN` repo secret.
+I found no new critical or warning issues. The fixes leave three minor items, listed as IN-10..IN-12.
 
 ## Info
-
-### IN-01: `setTraySessionData` stores autoreleased arrays in globals without retaining them (latent use-after-free; pre-existing, outside the diff)
-
-**File:** `tray_objc_darwin.m:196-207`
-**Issue:** Under MRC, `[NSMutableArray arrayWithCapacity:]` objects go into `menuSessionNames` and `menuSessionIDs` without a `retain`, and the previous arrays are never released. This works today only because of the never-drained Go-thread pool described in WR-01. If someone fixes WR-01 by wrapping this function in `@autoreleasepool`, or the Go M thread exits, the globals dangle and `menuWillOpen:` crashes.
-**Fix:** In the main-queue block, `[menuSessionNames release]; menuSessionNames = [nameArr retain];` (same for IDs), then wrap the copying in `@autoreleasepool`.
 
 ### IN-02: Sidebar "none" placeholder text no longer matches its meaning
 
@@ -252,7 +65,7 @@ Optionally tighten `dmgAssetFilter` to `^portty-v?\d+\.\d+\.\d+-darwin-universal
 
 ### IN-05: DMG has no Applications alias, but README says to drag Portty to Applications
 
-**File:** `.github/workflows/release.yml:201`, `README.md:12`
+**File:** `.github/workflows/release.yml:211`, `README.md:12`
 **Issue:** `hdiutil create -srcfolder build/bin/Portty.app` produces a volume holding only `Portty.app` (verified locally), with no `/Applications` drop target. Also, `hdiutil create/attach` print deprecation warnings on this macOS (use `diskutil image`). It still works on `macos-latest` today.
 **Fix:** Stage a folder first: `mkdir dmg && cp -R build/bin/Portty.app dmg/ && ln -s /Applications dmg/Applications && hdiutil create -volname Portty -srcfolder dmg …`.
 
@@ -271,7 +84,7 @@ Optionally tighten `dmgAssetFilter` to `^portty-v?\d+\.\d+\.\d+-darwin-universal
 ### IN-08: `/agenthub` is no longer gitignored, and an untracked `agenthub` binary sits in the repo root
 
 **File:** `.gitignore:2`
-**Issue:** The old binary names were dropped from `.gitignore`, and `git status` shows `?? agenthub`. A `git add -A` would commit a large binary. The brand gate would then fail CI on the filename.
+**Issue:** The old binary names were dropped from `.gitignore`, and `git status` still shows `?? agenthub`. A `git add -A` would commit a large binary. The brand gate would then fail CI on the filename.
 **Fix:** Delete the stale binary, or keep `/agenthub` ignored until no local copies remain.
 
 ### IN-09: The brand gate's link check is case-sensitive and misses other GitHub URL forms
@@ -280,8 +93,27 @@ Optionally tighten `dmgAssetFilter` to `^portty-v?\d+\.\d+\.\d+-darwin-universal
 **Issue:** The check covers only lowercase `github.com/scottkw/<repo>`. It does not catch `raw.githubusercontent.com/scottkw/…`, `api.github.com/repos/scottkw/…`, `scottkw.github.io`, or mixed-case hosts, so a link to another of the author's repos in those forms would pass BRND-06. The old-name check (`-i`) still catches any AgentHub repo URL, so the practical risk is low.
 **Fix:** Add `-i` and widen the pattern, for example `'(github\.com|githubusercontent\.com|github\.com/repos)/scottkw/[A-Za-z0-9_.-]+'`, keeping the `portty$` allow rule case-insensitive.
 
+### IN-10: The new pool comment says every Go-called entry point drains a pool; some still do not, and the file has other MRC leaks
+
+**File:** `tray_objc_darwin.m:122-124` (comment), `tray_objc_darwin.m:231-233`, `tray_objc_darwin.m:247-255`, `tray_objc_darwin.m:268`, `tray_objc_darwin.m:35,45,56`, `tray_objc_darwin.m:143`
+**Issue:** The comment added in a573d088 says "Entry points called from Go wrap their bodies in @autoreleasepool". `sendNotification` (lines 252-254 autorelease three `NSString`s on the cgo thread) and `hasValidBundleIdentifier` (called from Go via `notification_darwin.go:26`) do not. The file also leaks objects it allocates outright: `UNMutableNotificationContent` (line 268, never released), the three kinds of `NSMenuItem` allocated in `menuWillOpen:` (lines 35, 45, 56; the menu retains them, and the `alloc` reference is never released, so every menu open leaks one item per row), and the one-time `NSMenu` in `initStatusItem` (line 143). None of these is on the 5 s poll. Notifications fire only on quit-to-tray (`app.go:342`), and menu items leak only when the user opens the menu, so the real cost is tiny. All of it predates this phase, but the new comment now claims a rule that the file does not follow.
+**Fix:** Wrap the bodies of `sendNotification` and `hasValidBundleIdentifier` in `@autoreleasepool`. Add `[item release]` (and the same for `openItem` and `quitItem`) after each `addItem:`, `[content release]` after building `req`, and `[menu release]` after `statusItem.menu = menu`. Or narrow the comment to "the tray entry points".
+
+### IN-11: A local `build.sh` build shows "Version 0.1.0" in About whatever `BUILD_VERSION` is
+
+**File:** `build.sh:75-78`, `wails.json:14`
+**Issue:** WR-02's fix stamps the plist only in release.yml. `build.sh` still puts `BUILD_VERSION` (default `dev`) only into `-X main.Version`. So `BUILD_VERSION=v0.3.0 ./build.sh` produces an app whose About box says 0.1.0 while the update banner and `daemon.BuildVersion` say v0.3.0. The fixer chose this on purpose, and M-72 documents it. It only affects local builds.
+**Fix:** If local builds should match, apply the same stamp in `build.sh` when `BUILD_VERSION` matches `^v?[0-9]+\.[0-9]+\.[0-9]+`, writing to a temporary copy of wails.json or restoring it afterwards so the working tree stays clean.
+
+### IN-12: The build step pastes `${{ github.ref_name }}` into the shell script, and the new stamp check does not cover it
+
+**File:** `.github/workflows/release.yml:91-93`
+**Issue:** `-ldflags "-X main.Version=${{ github.ref_name }}"` expands the tag into the script text before bash runs. Git tag names may contain `$`, `(`, `)`, `;` and backticks, so a tag such as `v1.2.3-$(cmd)` would run `cmd` inside the double quotes. The new stamp step does not stop this, because it strips everything after the first `-` before checking the format. The job has `id-token: write` and `attestations: write`. Only someone who can already push tags can do this, so it is hardening, not a vulnerability. It predates this phase. The stamp step and the DMG step already read the tag through the safe `$GITHUB_REF_NAME` environment variable.
+**Fix:** Use the environment variable here too: `-ldflags "-X main.Version=${GITHUB_REF_NAME}"`. Optionally, validate the whole tag in the stamp step, for example `[[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]`.
+
 ---
 
-_Reviewed: 2026-11-16T19:29:46Z_
+_Reviewed: 2026-11-16T19:40:10Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+_Iteration: 2_

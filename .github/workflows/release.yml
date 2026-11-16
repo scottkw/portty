@@ -90,7 +90,7 @@ jobs:
       - name: Build macOS app
         run: |
           wails build -platform darwin/universal -tags wailsassets \
-            -ldflags "-X main.Version=${{ github.ref_name }}"
+            -ldflags "-X main.Version=${GITHUB_REF_NAME}"
 
       - name: Copy branded ICNS into bundle
         run: |
