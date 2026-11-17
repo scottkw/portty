@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 4
 status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-11-17T05:03:26.353Z"
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-11-17T05:44:26.616Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 4 execution started
-state_head: ceac9dec427f7f29ac086de19d6e9a8a1a1b6502
+state_head: 16f61840bcdfe7fb288918e37b882d3943c16023
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 37
-  completed_plans: 35
+  completed_plans: 36
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 4 — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 4 execution started
 
@@ -77,6 +77,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 4 P02 | 20min | 2 tasks | 39 files |
 | Phase 4 P03 | 35min | 2 tasks | 25 files |
 | Phase 4 P04 | 45min | 2 tasks | 28 files |
+| Phase 04 P05 | 36min | 2 tasks | 57 files |
 
 ## Accumulated Context
 
@@ -161,6 +162,10 @@ Recent decisions affecting current work:
 - [Phase 4]: POST /peers/connect is the one viewing-side path for CLI and GUI: host from tailscaled's peer list, base URL from the peer's DNS name, cap stored in the daemon
 - [Phase 4]: FetchPeerSessionsMetaWithClient returns (sessions, MetaStatus, error) so a refused port maps to not_sharing
 - [Phase 4]: portty attach resolves a bare argument as a local session first, then a host; host:session is always remote
+- [Phase 04]: 04-05: SharePopover takes a shared prop (webEnabled from the poll) so it never flashes off and follows shares made from the sidebar or CLI while open
+- [Phase 04]: 04-05: The Share popover stays open when Tailscale drops and shows the reason; turning Share off still works
+- [Phase 04]: 04-05: The popover VM check is TESTING.md M-81 (M-78 was taken by 04-02); M-82 covers Tailscale-off share controls
+- [Phase 04]: 04-05: Sidebar's Other Macs GlobeAltIcon is kept (peer-group icon, not a removed exposure icon)
 
 ### Pending Todos
 
@@ -223,6 +228,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T05:03:25.188Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-11-17T05:44:25.466Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
