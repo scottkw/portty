@@ -76,6 +76,7 @@ type WebServer struct {
 	mu         sync.RWMutex
 	webEnabled map[string]bool // sessionID -> enabled (WEB-01 toggle)
 	listener   net.Listener    // guarded by ws.mu; the TLS listener (tailscale cert or self-signed)
+	srv        *http.Server    // guarded by ws.mu; Stop closes it with its connections
 	mux        *http.ServeMux
 
 	// grants tracks the set of active grant_ids per session (D-14). Populated
@@ -341,11 +342,13 @@ func (ws *WebServer) Start() error {
 		return err
 	}
 
+	srv := &http.Server{Handler: ws.mux}
 	ws.mu.Lock()
 	ws.listener = ln
+	ws.srv = srv
 	ws.mu.Unlock()
 
-	go http.Serve(ln, ws.mux) //nolint:errcheck
+	go srv.Serve(ln) //nolint:errcheck
 
 	return nil
 }
@@ -367,16 +370,18 @@ func (ws *WebServer) listenTLS(tlsCfg *tls.Config) (net.Listener, error) {
 	return ln, nil
 }
 
-// Stop closes the TLS listener, stopping the HTTP server.
+// Stop closes the listener and every open connection, so keep-alive sockets
+// stop reaching this server's mux (WR-01). Hijacked WebSockets survive Close;
+// callers kick viewers before Stop.
 func (ws *WebServer) Stop() error {
 	// Snapshot under RLock and close after releasing it (Close() may block).
 	ws.mu.RLock()
-	ln := ws.listener
+	srv := ws.srv
 	ws.mu.RUnlock()
-	if ln == nil {
+	if srv == nil {
 		return nil
 	}
-	return ln.Close()
+	return srv.Close()
 }
 
 // Addr returns the listener's network address (host:port).

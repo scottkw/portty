@@ -2,6 +2,7 @@ package webserver
 
 import (
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"testing"
@@ -24,6 +25,25 @@ func TestShareRemoved_StopClosesOnlyListener(t *testing.T) {
 	if err == nil {
 		conn.Close()
 		t.Fatalf("TLS dial to %s succeeded after Stop; want failure", addr)
+	}
+}
+
+// TestStop_ClosesKeepAliveConns (WR-01): a pooled keep-alive connection stops
+// reaching the server once Stop returns.
+func TestStop_ClosesKeepAliveConns(t *testing.T) {
+	ws, client := testServer(t)
+	resp, err := client.Get(ws.BaseURL() + "/dashboard")
+	if err != nil {
+		t.Fatalf("GET before Stop: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if err := ws.Stop(); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if resp, err := client.Get(ws.BaseURL() + "/dashboard"); err == nil {
+		resp.Body.Close()
+		t.Fatalf("GET over the pooled connection after Stop = %d; want an error", resp.StatusCode)
 	}
 }
 
