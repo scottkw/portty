@@ -36,6 +36,13 @@ type Subscriber struct {
 	// Kick closes the connection with the given reason (RevokeWebViewers).
 	// Called in its own goroutine; nil falls back to CloseSlow.
 	Kick func(reason string)
+
+	// ID: per-hub connection number for viewer-diag log lines, assigned by
+	// Subscribe before it returns. Diagnostics only.
+	ID uint64
+	// Remote: the viewer's IP for viewer-diag lines, set by the webserver
+	// before Subscribe; empty for local viewers. Diagnostics only.
+	Remote string
 }
 
 // Hub manages a single PTY session's output fan-out.

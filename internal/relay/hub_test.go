@@ -2,8 +2,12 @@ package relay
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"log"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -870,5 +874,97 @@ func TestReconnectPreamble_StripsTerminalQueries(t *testing.T) {
 
 	if got := hub.ReconnectPreamble(); string(got) != string(MakeOutputFrame(want)) {
 		t.Errorf("preamble = %q; want %q (text and mode sets kept, queries dropped)", got, MakeOutputFrame(want))
+	}
+}
+
+// diagBuf is a log writer the test can read while hub goroutines write to it.
+type diagBuf struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (d *diagBuf) Write(p []byte) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.b.Write(p)
+}
+
+func (d *diagBuf) String() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.b.String()
+}
+
+// TestHub_DiagLog checks the viewer-diag timeline the hub writes for UAT gap 1
+// (04-08): join, leave, first slow kick, revoke, with %q-quoted client names.
+// Not parallel: it swaps the standard logger's output.
+func TestHub_DiagLog(t *testing.T) {
+	buf := &diagBuf{}
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(buf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
+
+	hub := NewHub("abcdef0123456789", strings.NewReader(""), io.Discard, DefaultScrollbackBytes, nil)
+
+	// A crafted name with a newline must stay on one line (log injection).
+	var slowCalls atomic.Int32
+	web := &Subscriber{
+		Msgs:      make(chan []byte), // always full
+		CloseSlow: func() { slowCalls.Add(1) },
+		Origin:    "web",
+		Remote:    "100.64.0.2",
+		Name:      "cli\nviewer-diag: forged",
+	}
+	local := &Subscriber{Msgs: make(chan []byte, 8), CloseSlow: func() {}, Origin: "local", Name: "panel"}
+	hub.Subscribe(web)
+	hub.Subscribe(local)
+	if web.ID == 0 || local.ID == 0 || web.ID == local.ID {
+		t.Fatalf("connection IDs not assigned uniquely: web=%d local=%d", web.ID, local.ID)
+	}
+
+	for _, want := range []string{
+		fmt.Sprintf(`viewer-diag: join session=abcdef01 conn=%d origin=web from=100.64.0.2 client="cli\nviewer-diag: forged" viewers=1 web=1`, web.ID),
+		fmt.Sprintf(`viewer-diag: join session=abcdef01 conn=%d origin=local from= client="panel" viewers=2 web=1`, local.ID),
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Fatalf("log lacks %q:\n%s", want, buf.String())
+		}
+	}
+
+	hub.Unsubscribe(local)
+	hub.Unsubscribe(local) // absent: must log nothing
+	leave := fmt.Sprintf(`viewer-diag: leave session=abcdef01 conn=%d origin=local client="panel" viewers=1`, local.ID)
+	if n := strings.Count(buf.String(), "viewer-diag: leave"); n != 1 || !strings.Contains(buf.String(), leave) {
+		t.Fatalf("want exactly one leave line %q, got %d:\n%s", leave, n, buf.String())
+	}
+
+	// Full channel across many sends at all three sites: one slow line, CloseSlow every time.
+	for i := 0; i < 5; i++ {
+		hub.broadcast([]byte("x"))
+	}
+	hub.BroadcastMeta([]byte("m"))
+	hub.broadcastResize(80, 24)
+	testutil.WaitFor(t, 2*time.Second, func() bool { return slowCalls.Load() == 7 }, "CloseSlow called %d times, want 7", slowCalls.Load())
+	testutil.WaitFor(t, 2*time.Second, func() bool { return strings.Contains(buf.String(), "viewer-diag: slow") }, "no slow line")
+	if n := strings.Count(buf.String(), "viewer-diag: slow"); n != 1 {
+		t.Fatalf("want one slow line, got %d:\n%s", n, buf.String())
+	}
+	if want := fmt.Sprintf(`viewer-diag: slow session=abcdef01 conn=%d origin=web client="cli\nviewer-diag: forged" queued=0`, web.ID); !strings.Contains(buf.String(), want) {
+		t.Fatalf("log lacks %q:\n%s", want, buf.String())
+	}
+
+	hub.RevokeWebViewers("share stopped")
+	if want := `viewer-diag: revoke session=abcdef01 reason="share stopped" web=1`; !strings.Contains(buf.String(), want) {
+		t.Fatalf("log lacks %q:\n%s", want, buf.String())
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if !strings.HasPrefix(line, "viewer-diag: ") || strings.HasPrefix(line, "viewer-diag: forged") {
+			t.Fatalf("unexpected or forged log line %q", line)
+		}
 	}
 }
