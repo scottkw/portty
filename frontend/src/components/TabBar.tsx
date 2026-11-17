@@ -25,6 +25,8 @@ export interface Tab {
   peerHost?: string
   /** Portty 04-06: ConnectPeerSession failed; the tab shows the connect-failed banner. */
   connectFailed?: boolean
+  /** The host stopped sharing this peer tab's session; a row click reconnects (WR-06). */
+  shareStopped?: boolean
 }
 interface TabBarProps {
   tabs: Tab[]

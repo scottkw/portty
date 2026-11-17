@@ -139,6 +139,26 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
   })
 })
 
+describe('App — reconnect after the host shares again (WR-06)', () => {
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks(); vi.useRealTimers() })
+
+  it('a click on the returned row reconnects the stopped tab with the new cap', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const connect = vi.fn()
+      .mockReturnValueOnce(okResult)
+      .mockReturnValueOnce({ ...okResult, url: okResult.url.replace('CAP123', 'CAP456') })
+    const c = await mountApp(baseImpl(connect))
+    await click(peerRow(c)!)
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-share-stopped"]')!)
+    expect(peerRow(c)).toBeUndefined()
+    await act(async () => { vi.advanceTimersByTime(30_000) }) // next peer poll: shared again
+    await flush()
+    await click(peerRow(c)!)
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(c.querySelector('[data-testid="web-session-view"]')!.getAttribute('data-cap')).toBe('CAP456')
+  })
+})
+
 describe('App.tsx — no code-based access remains', () => {
   it('App has no dialog state, cached-cap set or removed remote-cap bindings', () => {
     expect(raw).toContain('ConnectPeerSession(session.peerDNSName || peerHost, session.id)')
@@ -270,7 +290,7 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
     // The key prop must appear on the element itself (before sessionId prop),
     // not merely somewhere later in the file.
     const elementSlice = slice.slice(wsvIdx, wsvIdx + 400)
-    expect(elementSlice).toContain('key={wsSessionId}')
+    expect(elementSlice).toContain("key={`${wsSessionId}:${wsCapToken}`}")
   })
 })
 

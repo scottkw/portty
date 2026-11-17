@@ -780,7 +780,7 @@ function App(): React.ReactElement {
   const handleOpenRemoteSession = useCallback(
     async (session: AdaptedRemoteSessionInfo): Promise<void> => {
       const existing = tabs.find((t) => t.id === webSessionTabId(session.id))
-      if (existing && !existing.connectFailed) {
+      if (existing && !existing.connectFailed && !existing.shareStopped) {
         setActiveId(existing.id)
         return
       }
@@ -803,11 +803,13 @@ function App(): React.ReactElement {
   )
 
   // Portty 04-06: the host stopped sharing a session this Mac has a tab on. Drop
-  // its row at once (the tab stays); the next peer poll reconciles.
+  // its row at once (the tab stays); the next peer poll reconciles. The tab is
+  // marked so clicking the row again, once it is re-shared, reconnects (WR-06).
   const dropPeerSession = useCallback((peerHost: string, sessionId: string) => {
     setRemotePeers((prev) => prev.map((p) => (
       p.hostname === peerHost ? { ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) } : p
     )))
+    setTabs((prev) => prev.map((t) => (t.id === webSessionTabId(sessionId) ? { ...t, shareStopped: true } : t)))
   }, [])
 
   const retryInit = useCallback(async () => {
@@ -1030,9 +1032,10 @@ function App(): React.ReactElement {
             <div className="terminal-wrapper" id={`tabpanel-${activeId}`} role="tabpanel" style={{ display: 'flex' }}>
               {/* CR-03: key on wsSessionId so React remounts (drops stale
                   plugin-config useState) when the active tab switches
-                  to a different remote session. */}
+                  to a different remote session; the cap too, so a
+                  reconnect after a re-share dials afresh (WR-06). */}
               <WebShareSessionView
-                key={wsSessionId}
+                key={`${wsSessionId}:${wsCapToken}`}
                 sessionId={wsSessionId}
                 capToken={wsCapToken}
                 baseURL={activeWebTab?.baseURL}
