@@ -271,9 +271,9 @@ export function SharePopover({
       style={{ left: pos.left, top: pos.top, width: pos.width }}
       onKeyDown={onKeyDown}
     >
-      <svg className="share-popover__arrow" style={{ left: pos.arrowLeft }} width="16" height="9" viewBox="0 0 16 9" aria-hidden="true">
-        <polygon className="share-popover__arrow-fill" points="0,9 8,1 16,9" />
-        <path className="share-popover__arrow-stroke" d="M0.5 9 L8 1.5 L15.5 9" />
+      <svg className="share-popover__arrow" style={{ left: pos.arrowLeft }} width="16" height="8" viewBox="0 0 16 8" aria-hidden="true">
+        <polygon className="share-popover__arrow-fill" points="0,8 8,0 16,8" />
+        <path className="share-popover__arrow-stroke" d="M0.5 8 L8 0.5 L15.5 8" />
       </svg>
       <div className="share-popover__row">
         <label htmlFor={switchId}>{SHARE_SWITCH_LABEL}</label>

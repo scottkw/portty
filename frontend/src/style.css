@@ -1551,10 +1551,11 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-/* The arrow's base covers the popover's top border, so there is no seam under it. */
+/* top is measured from the padding edge, so the arrow's bottom row covers the
+   popover's 1px top border and there is no seam under it. */
 .share-popover__arrow {
   position: absolute;
-  top: -9px;
+  top: -8px;
   display: block;
 }
 .share-popover__arrow-fill {
