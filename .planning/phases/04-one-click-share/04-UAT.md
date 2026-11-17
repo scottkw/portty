@@ -30,7 +30,7 @@ notes: Toolbar Share button is disabled with Tailscale off, so the popover switc
 
 total: 3
 passed: 3
-issues: 3
+issues: 4
 pending: 0
 skipped: 0
 blocked: 0
@@ -62,3 +62,11 @@ blocked: 0
   missing: []
 
 Observation (not a gap): browser tab label reads "Session" rather than the session name.
+
+- truth: "A viewer attaching through another Mac's daemon proxy (GUI tab or `portty attach`) joins a session whose catch-up history is larger than 32 KiB"
+  status: failed
+  reason: "Found by 04-07's harness (not seen live): no Go WebSocket reader in the attach path calls SetReadLimit, so coder/websocket's 32768-byte default applies; the host sends the scrollback ring (up to 256 KiB) as one preamble message, and the viewing daemon's proxy (remote_ws_proxy.go copyWS upstream.Read) and the CLI (attach.WsOutputPump) drop the joiner after the grid frame. User decision 2026-11-17: fix in gap plan 04-10 before the next two-Mac UAT. See deferred-items.md."
+  severity: major
+  test: 1
+  artifacts: [internal/daemon/remote_ws_proxy.go, internal/attach]
+  missing: []
