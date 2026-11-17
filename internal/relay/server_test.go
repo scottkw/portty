@@ -461,3 +461,19 @@ func TestRelay_ResumeDelta(t *testing.T) {
 		t.Fatalf("offset meta %d, want > %d", end, off)
 	}
 }
+
+// TestRelay_PingGetsPong: the local relay answers MsgPing with MsgPong too, so
+// every endpoint speaks the same app-level liveness protocol (SHAR-07).
+func TestRelay_PingGetsPong(t *testing.T) {
+	srv, _, _, _, sid := setupTestServer(t)
+	conn := dialWS(t, srv.URL, sid)
+	readJoinReplay(t, conn)
+	if err := conn.Write(context.Background(), websocket.MessageBinary, []byte{MsgPing}); err != nil {
+		t.Fatalf("write ping: %v", err)
+	}
+	for {
+		if typ, _ := readFrame(t, conn); typ == 0x04 { // fails after 5s without a pong
+			return
+		}
+	}
+}
