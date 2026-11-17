@@ -25,11 +25,13 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **105** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
+| Go unit/integration | **108** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
 | vitest (frontend) | **93** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (the guest sees only the terminal: WEBCHAT-03, CHAT-01), live light/dark (THEM-01) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **206** | — | — | — |
+| **Total** | **209** | — | — | — |
+
+> Note: Portty Phase 4 plan 04-02 Task 1 (SHAR-01, SHAR-03, SHAR-04: one share switch per session, `portty share` / `portty unshare`): counts from `git ls-files` — Go **108** (+2: internal/daemon/share_test.go, cmd_share_test.go; the earlier 105 did not include testmain_test.go), vitest **93**, Playwright **7**, build-script **1**, total **209**. Edited in place: internal/webserver/server_test.go (`TestStart_TakenPortIsErrPortInUse`), cmd_cli_test.go (`TestCmdWebStatus_*`, `TestCmdWebStop`, `TestCmdServe_*`, `TestCmdUnserve_Success`, `TestCmdWeb_MissingSubcommand` and the `testSetupWithWebServer` helper removed with the `web`, `serve` and `unserve` commands), dispatch_test.go (usage list has share and unshare). Section 4: BRND-03 cmd_cli_test.go row reworded; SHAR-01, SHAR-03, SHAR-04 rows added.
 
 > Note: Test isolation fix (2026-11-16): `testmain_test.go` (root package) gives every root test a temporary HOME, and `daemon.EnsureDaemon` refuses to spawn a detached daemon from a test binary (`testing.Testing()`). Before this, root tests reached `EnsureDaemon`, re-ran the test binary as `portty.test daemon` in the user's real `~/Library/Application Support/portty`, and left it running holding the real socket. Go test-file count +1 (`testmain_test.go`).
 
@@ -437,7 +439,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | BUG-01 | frontend/src/components/__tests__/TerminalPanel.scale.test.tsx | vitest | Phase 175-03 (v4.2, extended in place — no new file): source-gate test updated from pinning `computeGuestScale` to pinning `computeGuestViewport`; new narrow-viewport (floor-clamp + `.terminal-guest--scroll-x` class), wide-viewport (`scale(1)`, no scroll-x class), and host-path (never gains the scroll-x class) behavioral tests, plus a CSS-gate test for `.terminal-guest--scroll-x` in `style.css`. |
 | BUG-06 | internal/webserver/csp_integration_test.go | Go | Phase 176-02 (v4.2): `TestCSPHeaderStrict_App` — GET /app/ (with stub `staticAppFS` wired via `SetStaticAppFS`) returns 200 with the strict Content-Security-Policy header via `assertCSPHeaderStrict`; proves the `/app/` route now flows through `ws.cspHeaders`, closing the previously-unprotected guest SPA surface. |
 | BRND-03 | internal/daemon/service_test.go | Go | Portty 03-01: TestNewServiceConfig_Fields — LaunchAgent name portty-daemon, display name Portty Daemon, description "Keeps Portty terminal sessions running in the background." |
-| BRND-03 | cmd_cli_test.go | Go | Portty 03-01: every usage line and error prefix reads portty (TestCmdWeb_MissingSubcommand, TestCmdNew_*) |
+| BRND-03 | cmd_cli_test.go | Go | Portty 03-01: every usage line and error prefix reads portty (TestCmdNew_*, TestCmdRename_MissingArgs) |
 | BRND-03 | internal/daemon/socket_test.go | Go | Portty 03-01: TestSocketPathDefault — DefaultSocketPath ends in portty/daemon.sock under os.UserConfigDir() |
 | BRND-03 | dispatch_test.go | Go | Portty 03-01: TestDispatchHelp (Portty usage trailer), TestRunCLI_UnknownCommand (exact unknownCommandMessage text) |
 | BRND-03 | internal/tailnet/tailnet_test.go | Go | Portty 03-02: probe accepts only X-Portty: 1 with 200/401 (TestProbePeer_CapProtected401_Found, TestProbePeer_UpstreamShaped401_NotFound, TestProbePeer_200WithoutMarker_NotFound, TestProbePeer_WrongMarkerValue_NotFound); DefaultProbePort 7444 |
@@ -463,6 +465,11 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | SHAR-05 | internal/daemon/share_removed_test.go | Go | Portty 04-01: removed daemon routes answer 404/405 |
 | SHAR-05 | internal/webserver/share_removed_test.go | Go | Portty 04-01: removed webserver routes answer 404/405; Stop closes the only listener |
 | SHAR-02 | internal/daemon/settings_removed_test.go | Go | Portty 04-01: `TestSettingsRemoved_ShareReminderKeysDropped` — a settings.json carrying the two legacy share-reminder settings keys loads (a kept key still loads) and the next save writes neither key |
+| SHAR-01 | internal/daemon/share_test.go | Go | Portty 04-02: `TestShare_Idempotent`, `TestShare_TailscaleOff` (503 tailscale_off), `TestShare_HTTPSOff` (409 https_off, no server built), `TestShare_UnknownSession` (404 not_found), `TestShare_FirstShareWritesCTAck` — one in-memory share record per session behind `PUT /sessions/{id}/share` |
+| SHAR-03 | internal/daemon/share_test.go | Go | Portty 04-02: `TestShare_OnReturnsWorkingLink` — share-on returns `https://<host>/sessions/<id>?cap=<token>`; GET redirects to /app/; a WebSocket with the link's cap and Origin echoes typed input from the session |
+| SHAR-04 | internal/daemon/share_test.go | Go | Portty 04-02: `TestShare_OffStopsServerAndNewLinkDiffers` — share-off clears the record (webEnabled false), stops the share server when nothing is shared; share-on again mints a new token and the old one no longer opens the session |
+| SHAR-01 | cmd_share_test.go | Go | Portty 04-02: `TestResolveSession` (exact name, then exact ID, then unique ID prefix; name clash and no-match copy), `TestCmdShare_PrintsLinkAndCTOnFirstShare`, `TestCmdShare_Errors`, `TestCmdUnshare` — UI-SPEC CLI output copy |
+| SHAR-01 | internal/webserver/server_test.go | Go | Portty 04-02: `TestStart_TakenPortIsErrPortInUse` — a taken share port is ErrPortInUse, never a random port |
 
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 

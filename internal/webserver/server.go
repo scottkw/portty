@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"net/url"
 	"sync"
+	"syscall"
 	"unicode/utf8"
 
 	"github.com/coder/websocket"
@@ -26,7 +27,7 @@ import (
 type Config struct {
 	// BindIP is the IP address to bind the HTTPS listener on (Tailscale IP, e.g. 100.x.x.x).
 	BindIP string
-	// Port is the preferred HTTPS port. If 0 or unavailable, a random port is used.
+	// Port is the HTTPS port. 0 binds a random port (tests); a taken port is ErrPortInUse.
 	Port int
 	// FQDN is the Tailscale MagicDNS hostname (from CertDomains[0]), used in BaseURL.
 	FQDN string
@@ -278,7 +279,7 @@ func (ws *WebServer) Mode() string { return ws.config.Mode }
 func (ws *WebServer) BindIP() string { return ws.config.BindIP }
 
 // startTailscale opens a TLS listener using Tailscale's lc.GetCertificate hook
-// (or the TLSConfig test override). Falls back to a random port on EADDRINUSE.
+// (or the TLSConfig test override). A taken port is ErrPortInUse.
 // tailscaleCGNAT is the Tailscale 100.64.0.0/10 carrier-grade NAT range that
 // MagicDNS / tailnet IPs are drawn from. The /api/sessions/meta endpoint is
 // open (no cap) and relies on the listener being bound to an address in this
@@ -331,20 +332,9 @@ func (ws *WebServer) startTailscale() error {
 		}
 	}
 
-	// Try configured port first; fall back to :0 (random) on EADDRINUSE.
-	port := ws.config.Port
-	addr := fmt.Sprintf("%s:%d", ws.config.BindIP, port)
-	ln, err := tls.Listen("tcp", addr, tlsCfg)
+	ln, err := ws.listenTLS(tlsCfg)
 	if err != nil {
-		var opErr *net.OpError
-		if errors.As(err, &opErr) && port != 0 {
-			// Port in use — try random port
-			addr = fmt.Sprintf("%s:0", ws.config.BindIP)
-			ln, err = tls.Listen("tcp", addr, tlsCfg)
-		}
-		if err != nil {
-			return fmt.Errorf("webserver: listen: %w", err)
-		}
+		return err
 	}
 
 	ws.mu.Lock()
@@ -358,7 +348,6 @@ func (ws *WebServer) startTailscale() error {
 
 // startLocal opens a TLS listener using a self-signed certificate for
 // ws.config.BindIP, wraps the mux with HTTP Basic Auth, and begins serving.
-// Falls back to a random port on EADDRINUSE.
 func (ws *WebServer) startLocal() error {
 	tlsCfg, err := GenerateSelfSignedCert(ws.config.BindIP)
 	if err != nil {
@@ -369,20 +358,9 @@ func (ws *WebServer) startLocal() error {
 		tlsCfg = ws.config.TLSConfig
 	}
 
-	// Try configured port first; fall back to :0 (random) on EADDRINUSE.
-	port := ws.config.Port
-	addr := fmt.Sprintf("%s:%d", ws.config.BindIP, port)
-	ln, err := tls.Listen("tcp", addr, tlsCfg)
+	ln, err := ws.listenTLS(tlsCfg)
 	if err != nil {
-		var opErr *net.OpError
-		if errors.As(err, &opErr) && port != 0 {
-			// Port in use — try random port
-			addr = fmt.Sprintf("%s:0", ws.config.BindIP)
-			ln, err = tls.Listen("tcp", addr, tlsCfg)
-		}
-		if err != nil {
-			return fmt.Errorf("webserver: listen: %w", err)
-		}
+		return err
 	}
 
 	ws.mu.Lock()
@@ -393,6 +371,23 @@ func (ws *WebServer) startLocal() error {
 	handler := basicAuthMiddleware(ws.config.Password)(ws.mux)
 	go http.Serve(ln, handler) //nolint:errcheck
 	return nil
+}
+
+// ErrPortInUse is returned by Start when the configured port is taken. There
+// is no random-port fallback: tailnet peers only probe the fixed share port.
+var ErrPortInUse = errors.New("address already in use")
+
+// listenTLS binds the configured port. Port 0 (tests) binds a random port.
+func (ws *WebServer) listenTLS(tlsCfg *tls.Config) (net.Listener, error) {
+	port := ws.config.Port
+	ln, err := tls.Listen("tcp", fmt.Sprintf("%s:%d", ws.config.BindIP, port), tlsCfg)
+	if err != nil {
+		if port != 0 && errors.Is(err, syscall.EADDRINUSE) {
+			return nil, fmt.Errorf("webserver: port %d is in use: %w", port, ErrPortInUse)
+		}
+		return nil, fmt.Errorf("webserver: listen: %w", err)
+	}
+	return ln, nil
 }
 
 // Stop closes the TLS listener, stopping the HTTP server.

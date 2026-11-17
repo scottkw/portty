@@ -302,6 +302,45 @@ func (c *DaemonClient) ListTailnetPeers() ([]tailnet.Peer, error) {
 	return peers, nil
 }
 
+// GetSessionShare reports whether a session is shared and returns its link.
+func (c *DaemonClient) GetSessionShare(id string) (ShareResponse, error) {
+	var resp ShareResponse
+	err := c.doJSON(http.MethodGet, "/sessions/"+id+"/share", nil, &resp)
+	return resp, err
+}
+
+// SetSessionShared turns sharing on or off. Share failures come back as
+// *ShareError carrying a stable code.
+func (c *DaemonClient) SetSessionShared(id string, shared bool) (ShareResponse, error) {
+	b, err := json.Marshal(ShareRequest{Shared: shared})
+	if err != nil {
+		return ShareResponse{}, err
+	}
+	req, err := http.NewRequest(http.MethodPut, c.base+"/sessions/"+id+"/share", bytes.NewReader(b))
+	if err != nil {
+		return ShareResponse{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return ShareResponse{}, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		var e ShareErrorResponse
+		if json.Unmarshal(body, &e) == nil && e.Error != "" {
+			return ShareResponse{}, &ShareError{Code: e.Error, Detail: e.Detail}
+		}
+		return ShareResponse{}, fmt.Errorf("daemon API PUT share: status %d: %s", resp.StatusCode, body)
+	}
+	var out ShareResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return ShareResponse{}, fmt.Errorf("decode response: %w", err)
+	}
+	return out, nil
+}
+
 // doJSON is a shared request/response helper. It marshals body (if non-nil),
 // sends the request, checks the status code, and decodes result (if non-nil).
 func (c *DaemonClient) doJSON(method, path string, body, result any) error {

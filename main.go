@@ -222,12 +222,10 @@ func runCLI(args []string) {
 		err = cmdRename(client, cmdArgs)
 	case "attach":
 		err = cmdAttach(client, cmdArgs)
-	case "web":
-		err = cmdWeb(client, cmdArgs, os.Stdout)
-	case "serve":
-		err = cmdServe(client, cmdArgs)
-	case "unserve":
-		err = cmdUnserve(client, cmdArgs)
+	case "share":
+		err = cmdShare(client, cmdArgs, os.Stdout)
+	case "unshare":
+		err = cmdUnshare(client, cmdArgs, os.Stdout)
 	case "health":
 		err = cmdHealth(cmdArgs, os.Stdout)
 	case "settings":

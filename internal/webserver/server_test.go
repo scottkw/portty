@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"math/big"
 	"net"
@@ -1076,5 +1077,29 @@ func TestWebReadPump_DropsGuestResize(t *testing.T) {
 	if hub.Cols() != 100 || hub.Rows() != 40 {
 		t.Errorf("hub grid changed after guest MsgResize2: got %dx%d, want 100x40",
 			hub.Cols(), hub.Rows())
+	}
+}
+
+// TestStart_TakenPortIsErrPortInUse: a taken port is an error, never a random
+// port, because tailnet peers only probe the fixed share port.
+func TestStart_TakenPortIsErrPortInUse(t *testing.T) {
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	port := busy.Addr().(*net.TCPAddr).Port
+	tlsCfg, _ := selfSignedTLSForTest(t)
+	ws, err := webserver.NewWebServer(webserver.Config{BindIP: "127.0.0.1", Port: port, FQDN: "127.0.0.1", TLSConfig: tlsCfg}, relay.NewHubManager())
+	if err != nil {
+		t.Fatalf("NewWebServer: %v", err)
+	}
+	err = ws.Start()
+	if err == nil {
+		ws.Stop()
+		t.Fatalf("Start on a taken port succeeded (addr %s); want ErrPortInUse", ws.Addr())
+	}
+	if !errors.Is(err, webserver.ErrPortInUse) {
+		t.Fatalf("Start error = %v; want ErrPortInUse", err)
 	}
 }

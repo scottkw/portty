@@ -117,3 +117,44 @@ const (
 	MaxTerminalFontSize      = 32
 	MaxTerminalFontFamilyLen = 64 // runes
 )
+
+// ShareRequest is the request body for PUT /sessions/{id}/share.
+type ShareRequest struct {
+	Shared bool `json:"shared"`
+}
+
+// ShareResponse is the response body for GET and PUT /sessions/{id}/share.
+// URL carries the full-control capability; treat it like a password.
+type ShareResponse struct {
+	Shared     bool   `json:"shared"`
+	URL        string `json:"url,omitempty"`
+	FirstShare bool   `json:"firstShare,omitempty"`
+}
+
+// ShareErrorResponse is the error body for PUT /sessions/{id}/share.
+type ShareErrorResponse struct {
+	Error  string `json:"error"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// Share error codes (ShareErrorResponse.Error).
+const (
+	ShareErrNotFound     = "not_found"
+	ShareErrTailscaleOff = "tailscale_off"
+	ShareErrHTTPSOff     = "https_off"
+	ShareErrPortInUse    = "port_in_use"
+	ShareErrStartFailed  = "start_failed"
+)
+
+// ShareError is a share failure with a stable code for the CLI and GUI copy.
+type ShareError struct {
+	Code   string
+	Detail string
+}
+
+func (e *ShareError) Error() string {
+	if e.Detail == "" {
+		return e.Code
+	}
+	return e.Code + ": " + e.Detail
+}

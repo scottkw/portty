@@ -32,6 +32,15 @@ type API struct {
 	tailnetCache  *tailnetCache
 	localPassword string // generated once per daemon lifetime; non-empty in local mode
 
+	// shares holds one record per shared session (guarded by mu). The share
+	// server runs exactly while this map is non-empty. See share.go.
+	shares map[string]shareRecord
+	// Share seams (guarded by mu): Tailscale health, share server factory and
+	// certificate warm-up. Copied from the package defaults in NewAPI.
+	shareHealth    func(context.Context) webserver.TailscaleHealth
+	newShareServer func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error)
+	warmCert       func(context.Context, string) error
+
 	// --- Phase 87 capability state (D-04/D-06/D-14/D-15/D-16) -----------
 	// signingKey is the 32-byte HMAC-SHA256 key used to Sign capabilities.
 	// Bootstrapped from disk in BootstrapCapabilityState; replaced atomically
@@ -61,6 +70,11 @@ func NewAPI(engine *SessionEngine) *API {
 		mux:          http.NewServeMux(),
 		tailnetCache: &tailnetCache{},
 		remoteCaps:   NewRemoteCapStore(),
+
+		shares:         map[string]shareRecord{},
+		shareHealth:    defaultShareHealth,
+		newShareServer: defaultNewShareServer,
+		warmCert:       defaultWarmCert,
 	}
 	a.registerRoutes()
 	return a
@@ -74,6 +88,9 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /sessions/{id}", a.handleGetSession)
 	a.mux.HandleFunc("DELETE /sessions/{id}", a.handleDeleteSession)
 	a.mux.HandleFunc("PATCH /sessions/{id}/name", a.handleRenameSession)
+	// One on/off share switch per session (share.go). Owner-only socket.
+	a.mux.HandleFunc("GET /sessions/{id}/share", a.handleGetShare)
+	a.mux.HandleFunc("PUT /sessions/{id}/share", a.handlePutShare)
 	a.mux.HandleFunc("GET /sessions/{id}/tail", a.handleGetSessionTailLines)
 	a.mux.HandleFunc("GET /sessions/{id}/styled-tail", a.handleGetSessionStyledTailLines)
 	a.mux.HandleFunc("GET /settings/start-minimized", a.handleGetStartMinimized)
@@ -405,15 +422,12 @@ func (a *API) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		sessions = []SessionInfo{}
 	}
 
-	// Enrich with web-enabled state from the running web server (SERVE-02).
+	// A session is shared exactly when it has a share record.
 	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws != nil {
-		for i := range sessions {
-			sessions[i].WebEnabled = ws.IsSessionEnabled(sessions[i].ID)
-		}
+	for i := range sessions {
+		_, sessions[i].WebEnabled = a.shares[sessions[i].ID]
 	}
+	a.mu.RUnlock()
 
 	writeJSON(w, http.StatusOK, sessions)
 }

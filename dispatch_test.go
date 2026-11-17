@@ -28,8 +28,8 @@ func TestDispatchHelp(t *testing.T) {
 	if !strings.Contains(out, "Run with no arguments to launch the desktop GUI") {
 		t.Errorf("usage() missing GUI launch instruction, got:\n%s", out)
 	}
-	// Must contain all 13 CLI commands (requirement CLI-01 coverage in help).
-	for _, cmd := range []string{"new", "list", "kill", "rename", "attach", "serve", "unserve", "web", "health", "settings", "daemon"} {
+	// Must contain every CLI command (requirement CLI-01 coverage in help).
+	for _, cmd := range []string{"new", "list", "kill", "rename", "attach", "share", "unshare", "health", "settings", "daemon"} {
 		if !strings.Contains(out, "  "+cmd+" ") && !strings.Contains(out, "  "+cmd+"\n") {
 			t.Errorf("usage() missing command %q", cmd)
 		}

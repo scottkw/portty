@@ -28,9 +28,8 @@ Commands:
   kill <id>                                   Kill a session
   rename <id> <name>                          Rename a session
   attach <id>                                 Attach to a local or remote session
-  serve <id>                                  Enable web sharing for a session
-  unserve <id>                                Disable web sharing for a session
-  web                                         Open the web dashboard
+  share <session>                             Share a session with your tailnet
+  unshare <session>                           Stop sharing a session and disconnect viewers
   health                                      Check Tailscale health status
   settings                                    Open the settings panel
   daemon <subcommand>                         Manage the background daemon
@@ -197,98 +196,6 @@ func cmdRename(client *daemon.DaemonClient, args []string) error {
 	}
 	if err := client.RenameSession(args[0], args[1]); err != nil {
 		return fmt.Errorf("portty rename: %w", err)
-	}
-	return nil
-}
-
-// cmdWeb dispatches web sub-commands: start, stop, status.
-func cmdWeb(client *daemon.DaemonClient, args []string, out io.Writer) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: portty web <start|stop|status>")
-	}
-	switch args[0] {
-	case "start":
-		return cmdWebStart(client, args[1:], out)
-	case "stop":
-		return cmdWebStop(client)
-	case "status":
-		return cmdWebStatus(client, args[1:], out)
-	default:
-		return fmt.Errorf("usage: portty web <start|stop|status>")
-	}
-}
-
-// cmdWebStart validates Tailscale health then starts the web server, printing the URL.
-func cmdWebStart(client *daemon.DaemonClient, _ []string, out io.Writer) error {
-	port := 443
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	h := webserver.CheckHealth(ctx)
-	if !h.Connected {
-		return fmt.Errorf("Tailscale is not connected")
-	}
-	if h.IP == "" {
-		return fmt.Errorf("Tailscale IP not available")
-	}
-	if !h.HasCerts {
-		return fmt.Errorf("Tailscale HTTPS certificates not enabled")
-	}
-	url, err := client.StartWebServer(h.IP, port, h.Domain, "tailscale", "")
-	if err != nil {
-		return fmt.Errorf("portty web start: %w", err)
-	}
-	fmt.Fprintln(out, url)
-	return nil
-}
-
-// cmdWebStop stops the web server silently.
-func cmdWebStop(client *daemon.DaemonClient) error {
-	if err := client.StopWebServer(); err != nil {
-		return fmt.Errorf("portty web stop: %w", err)
-	}
-	return nil
-}
-
-// cmdWebStatus prints the web server running/url/addr key-value block, or JSON with --json.
-func cmdWebStatus(client *daemon.DaemonClient, args []string, out io.Writer) error {
-	fs := flag.NewFlagSet("web-status", flag.ContinueOnError)
-	jsonOut := fs.Bool("json", false, "output as JSON")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	resp, err := client.GetWebServerStatus()
-	if err != nil {
-		return fmt.Errorf("portty web status: %w", err)
-	}
-	if *jsonOut {
-		return json.NewEncoder(out).Encode(resp)
-	}
-	fmt.Fprintf(out, "%-12s%v\n", "running:", resp.Running)
-	if resp.Running {
-		fmt.Fprintf(out, "%-12s%v\n", "url:", resp.URL)
-		fmt.Fprintf(out, "%-12s%v\n", "addr:", resp.Addr)
-	}
-	return nil
-}
-
-// cmdServe enables web serving for the given session.
-func cmdServe(client *daemon.DaemonClient, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: portty serve <session-id>")
-	}
-	if err := client.ToggleWebServing(args[0], true); err != nil {
-		return fmt.Errorf("portty serve: %w", err)
-	}
-	return nil
-}
-
-// cmdUnserve disables web serving for the given session.
-func cmdUnserve(client *daemon.DaemonClient, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: portty unserve <session-id>")
-	}
-	if err := client.ToggleWebServing(args[0], false); err != nil {
-		return fmt.Errorf("portty unserve: %w", err)
 	}
 	return nil
 }

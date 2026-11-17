@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/daemon"
-	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/webserver"
 )
 
@@ -178,130 +177,6 @@ func TestCmdRename_MissingArgs(t *testing.T) {
 	}
 }
 
-// testSetupWithWebServer creates a daemon with an injected running WebServer.
-// Returns client and a cleanup-registered web server reference.
-// Used for cmdServe/cmdUnserve tests that require a running web server.
-func testSetupWithWebServer(t *testing.T) *daemon.DaemonClient {
-	t.Helper()
-	if runtime.GOOS == "darwin" {
-		t.Setenv("HOME", t.TempDir())
-	} else {
-		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	}
-	engine := daemon.NewSessionEngine()
-	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
-	api := daemon.NewAPI(engine)
-	socketPath := fmt.Sprintf("/tmp/aht%d_%d.sock", os.Getpid(), time.Now().UnixNano()%10000)
-	t.Cleanup(func() { os.Remove(socketPath) })
-	if err := api.Start(socketPath); err != nil {
-		t.Fatalf("api.Start: %v", err)
-	}
-
-	// Create and inject a test web server (no TLS, localhost, random port).
-	ws, err := webserver.NewWebServer(webserver.Config{
-		BindIP: "127.0.0.1",
-		Port:   0,
-		FQDN:   "localhost",
-	}, relay.NewHubManager())
-	if err != nil {
-		t.Fatalf("NewWebServer: %v", err)
-	}
-	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
-		return "", "", "", false
-	})
-	if err := ws.Start(); err != nil {
-		t.Fatalf("ws.Start: %v", err)
-	}
-	api.SetWebServerForTest(ws)
-
-	t.Cleanup(func() {
-		_ = ws.Stop()
-		api.Stop()
-	})
-	time.Sleep(10 * time.Millisecond)
-	return daemon.NewDaemonClient(socketPath)
-}
-
-// TestCmdWebStatus_NotRunning verifies web status prints "running:" and "false" when not running.
-func TestCmdWebStatus_NotRunning(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	err := cmdWebStatus(client, nil, &buf)
-	if err != nil {
-		t.Fatalf("cmdWebStatus returned error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "running:") {
-		t.Errorf("expected output to contain %q, got %q", "running:", out)
-	}
-	if !strings.Contains(out, "false") {
-		t.Errorf("expected output to contain %q, got %q", "false", out)
-	}
-}
-
-// TestCmdWebStatus_JSON verifies --json produces valid JSON for web status.
-func TestCmdWebStatus_JSON(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	err := cmdWebStatus(client, []string{"--json"}, &buf)
-	if err != nil {
-		t.Fatalf("cmdWebStatus --json returned error: %v", err)
-	}
-	var resp daemon.WebServerStatusResponse
-	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
-		t.Fatalf("JSON unmarshal failed: %v\nraw: %s", err, buf.String())
-	}
-	if resp.Running {
-		t.Error("expected Running=false")
-	}
-}
-
-// TestCmdWebStop verifies cmdWebStop returns no error (server may or may not be running).
-func TestCmdWebStop(t *testing.T) {
-	client := testSetup(t)
-	// Stopping when not running should return no error (server returns 204).
-	err := cmdWebStop(client)
-	if err != nil {
-		t.Errorf("cmdWebStop returned unexpected error: %v", err)
-	}
-}
-
-// TestCmdServe_Success creates a session and enables web serving for it.
-func TestCmdServe_Success(t *testing.T) {
-	client := testSetupWithWebServer(t)
-	id, err := client.CreateSession("servetest", "/tmp", 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	if err := cmdServe(client, []string{id}); err != nil {
-		t.Fatalf("cmdServe returned error: %v", err)
-	}
-}
-
-// TestCmdServe_MissingArgs verifies that missing args returns an error containing "usage".
-func TestCmdServe_MissingArgs(t *testing.T) {
-	client := testSetup(t)
-	err := cmdServe(client, []string{})
-	if err == nil {
-		t.Fatal("expected error for missing args, got nil")
-	}
-	if !strings.Contains(err.Error(), "usage") {
-		t.Errorf("expected error to contain %q, got %q", "usage", err.Error())
-	}
-}
-
-// TestCmdUnserve_Success creates a session and disables web serving for it.
-func TestCmdUnserve_Success(t *testing.T) {
-	client := testSetupWithWebServer(t)
-	id, err := client.CreateSession("unservetest", "/tmp", 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	if err := cmdUnserve(client, []string{id}); err != nil {
-		t.Fatalf("cmdUnserve returned error: %v", err)
-	}
-}
-
 // TestCmdHealth_OutputFormat verifies cmdHealth prints exactly 4 key-value lines.
 func TestCmdHealth_OutputFormat(t *testing.T) {
 	var buf bytes.Buffer
@@ -335,19 +210,6 @@ func TestCmdHealth_JSON(t *testing.T) {
 		t.Fatalf("JSON unmarshal failed: %v\nraw: %s", err, buf.String())
 	}
 	// Just verify it deserialized without error — actual values depend on system state.
-}
-
-// TestCmdWeb_MissingSubcommand verifies that missing subcommand returns an error with "usage: portty web".
-func TestCmdWeb_MissingSubcommand(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	err := cmdWeb(client, []string{}, &buf)
-	if err == nil {
-		t.Fatal("expected error for missing subcommand, got nil")
-	}
-	if !strings.Contains(err.Error(), "usage: portty web") {
-		t.Errorf("expected error to contain %q, got %q", "usage: portty web", err.Error())
-	}
 }
 
 // TestCmdSettings_Basic verifies cmdSettings prints both label lines and no cli-paths block.
