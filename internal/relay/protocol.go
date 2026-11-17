@@ -13,6 +13,7 @@ const (
 	MsgOutput  byte = 0x01 // PTY stdout/stderr → client
 	MsgResize  byte = 0x02 // Terminal resize (cols, rows as big-endian uint16)
 	MsgTitle   byte = 0x03 // Window title update
+	MsgPong    byte = 0x04 // Answer to MsgPing: lets JS and proxied CLIs see end-to-end liveness (SHAR-07)
 	MsgInput   byte = 0x10 // Client keyboard input → PTY stdin
 	MsgResize2 byte = 0x11 // Alternative resize format (reserved)
 	MsgPing    byte = 0x12 // Keep-alive ping
@@ -21,6 +22,9 @@ const (
 	// Reserved range 0x20-0x2F for future server-push frame types.
 	MsgMeta byte = 0x20
 )
+
+// PongFrame is the whole MsgPong frame. Shared by every connection: never mutate it.
+var PongFrame = []byte{MsgPong}
 
 // MakeOutputFrame prepends the MsgOutput type byte to data.
 func MakeOutputFrame(data []byte) []byte {

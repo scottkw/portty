@@ -131,6 +131,10 @@ type WebServer struct {
 	// beforeSubscribeHookForTest runs just before hub.Subscribe in
 	// handleWSSRelay when non-nil. Test-only seam for the subscribe race.
 	beforeSubscribeHookForTest func()
+
+	// heartbeatEvery / heartbeatTimeout override relay.PingEvery and
+	// relay.PingTimeout for viewer heartbeats when non-zero. Test-only.
+	heartbeatEvery, heartbeatTimeout time.Duration
 }
 
 // NewWebServer creates a WebServer and sets up routes.

@@ -172,3 +172,13 @@ func TestMakeMeta_OmitsNilFields(t *testing.T) {
 		t.Errorf("expected omitted viewerCount for nil pointer, got: %s", payload)
 	}
 }
+
+// TestMsgPongWireValue pins the pong wire byte; the frontend pins the same literal.
+func TestMsgPongWireValue(t *testing.T) {
+	if MsgPong != 0x04 {
+		t.Errorf("MsgPong = 0x%02x, want 0x04", MsgPong)
+	}
+	if !bytes.Equal(PongFrame, []byte{0x04}) {
+		t.Errorf("PongFrame = %v, want [4]", PongFrame)
+	}
+}
