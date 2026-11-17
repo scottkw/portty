@@ -22,9 +22,13 @@
 # paths are split literals, so this script never matches its own text.
 #
 # Exit: 0 clean, 1 findings, 2 git error.
-# Run: bash tests/check-share-removal.sh    (from project root)
+# Run: bash tests/check-share-removal.sh    (from anywhere in the repo)
 
 set -uo pipefail # not -e: git grep exits 1 for "no match", which is expected
+
+# Pathspecs, removed-file checks and TESTING.md are all root-relative.
+root=$(git rev-parse --show-toplevel) && cd "$root" || { echo "ERROR: not a git repo"; exit 2; }
+[[ -f TESTING.md ]] || { echo "ERROR: TESTING.md missing"; exit 2; }
 
 FINDINGS=0
 # The legacy settings fixture spells the old reminder keys so the migration test can pin their removal.
@@ -100,10 +104,10 @@ for path in \
 done
 
 # TESTING.md Sections 4-5 (Section 2 is a dated history log and may name them).
-if [[ -f TESTING.md ]]; then
-  out=$(awk '/^## 4\./,/^## 6\./' TESTING.md | grep -n -i -E -e "${PUBLIC}|${CODES}|${VIEWONLY}|${REMINDER}")
-  report testing-md "$out"
-fi
+section=$(awk '/^## 4\./,/^## 6\./' TESTING.md)
+[[ -n "$section" ]] || { echo "ERROR: TESTING.md Sections 4-6 not found"; exit 2; }
+out=$(grep -n -i -E -e "${PUBLIC}|${CODES}|${VIEWONLY}|${REMINDER}" <<< "$section")
+report testing-md "$out"
 
 if (( FINDINGS > 0 )); then
   echo "FAIL: ${FINDINGS} finding(s)"

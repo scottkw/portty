@@ -12,9 +12,12 @@
 # pattern never matches its own text and this script never flags itself.
 #
 # Exit: 0 clean, 1 findings, 2 git error.
-# Run: bash tests/check-brand.sh    (from project root)
+# Run: bash tests/check-brand.sh    (from anywhere in the repo)
 
 set -uo pipefail # not -e: git grep exits 1 for "no match", which is expected
+
+# Pathspecs and the packaging/ check are root-relative.
+root=$(git rev-parse --show-toplevel) && cd "$root" || { echo "ERROR: not a git repo"; exit 2; }
 
 FINDINGS=0
 

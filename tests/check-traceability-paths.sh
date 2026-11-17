@@ -9,13 +9,15 @@
 # Any table cell of the form "| path.ext |" (.go/.ts/.tsx/.sh) is a path.
 # POSIX tools only, so BSD (macOS) and GNU grep behave the same.
 #
-# Run: bash tests/check-traceability-paths.sh    (from project root)
+# Run: bash tests/check-traceability-paths.sh    (from anywhere in the repo)
 
 set -euo pipefail
 
+# Table paths are root-relative.
+root=$(git rev-parse --show-toplevel) && cd "$root" || { echo "ERROR: not a git repo"; exit 2; }
 if [[ ! -f "TESTING.md" ]]; then
-  echo "TESTING.md not present yet — skipping path check"
-  exit 0
+  echo "ERROR: TESTING.md missing"
+  exit 1
 fi
 
 # grep exits 1 on no match; tolerate that so the empty check below reports it.
