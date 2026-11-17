@@ -101,7 +101,8 @@ const liveEmulatorScrollbackLines = 50
 // nothing ever drains Emulator.Read() on this feed path, so an unstripped
 // query would deadlock both EnsureLiveEmulator's bootstrap and Run()'s drain
 // loop (#96/#100). SGR/color sequences are deliberately preserved so styled
-// output survives.
+// output survives. ReconnectPreamble also applies it to the raw catch-up
+// replay (UAT gap 1).
 //
 // relay MUST NOT import internal/daemon (daemon already imports relay — an
 // import back the other way would be a cycle), so this pattern is
@@ -114,6 +115,8 @@ var liveEmuQueryStripPattern = regexp.MustCompile(
 		`|\x1b\[[0-9;]*\$p` + // DECRQM ANSI
 		`|\x1b\[\?[0-9;]*\$p` + // DECRQM DEC
 		`|\x1b\[\?2048[hl]` + // in-band resize set/reset (set triggers a pw write)
+		`|\x1b\[>[0-9;]*q` + // XTVERSION
+		`|\x1b\[\?u` + // kitty keyboard flags query
 		`|\x1b\]1[012];\?(?:\x07|\x1b\\)`, // OSC 10/11/12 color query, BEL- or ST-terminated
 )
 
@@ -553,11 +556,19 @@ func (h *Hub) RenderSnapshot() []byte {
 //     source. This subsumes BUG-04 / #119 Problem 2 (the alt-screen ESC[?1049h
 //     wrap) as one instance of the general "history lost" condition.
 //
+// Both raw paths drop reply-eliciting terminal queries (liveEmuQueryStripPattern).
+// A joining terminal answers every historic query in the replay (DSR, DA2,
+// DECRQM, XTVERSION, kitty), and those answers would be typed into the shared
+// shell for every viewer (UAT gap 1, H-replies). Queries change no terminal
+// state, so the replay still renders the same; mode sets and colours stay. The
+// ring stores 0x01-framed chunks, so a query split across two PTY reads is not
+// matched: accepted, it needs a read boundary inside a few-byte sequence.
+//
 // Callers MUST call EnsureLiveEmulator first (so the wrapped-ring path has a
 // current emulator to render). Returns nil when there is nothing to replay,
 // matching the pre-existing `len(snapshot) > 0` call-site guard.
 func (h *Hub) ReconnectPreamble() []byte {
-	raw := h.ScrollbackSnapshot()
+	raw := liveEmuQueryStripPattern.ReplaceAll(h.ScrollbackSnapshot(), nil)
 
 	// Ring still holds the whole session — raw replay is complete + byte-faithful.
 	if !h.scrollback.Truncated() {

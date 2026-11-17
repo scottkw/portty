@@ -440,6 +440,8 @@ var ansiEscape = regexp.MustCompile(
 //   - DECRQM DEC  (ESC[?...$p)    — Request DEC Mode
 //   - OSC color queries (ESC]10|11|12;?) — Foreground/Background/Cursor color query
 //   - DEC mode 2048 set/reset (ESC[?2048h/l) — In-band resize (fires a pw write on set)
+//   - XTVERSION (ESC[>0q) and the kitty keyboard query (ESC[?u) — mirrored from
+//     relay's liveEmuQueryStripPattern, which also cleans the catch-up replay
 //
 // NOT stripped: SGR (color/bold/etc.), cursor movement, erase, scroll — these are
 // rendering sequences and must reach the emulator to produce correct styled output.
@@ -451,6 +453,8 @@ var queryStripPattern = regexp.MustCompile(
 		`|\x1b\[[0-9;]*\$p` + // DECRQM ANSI
 		`|\x1b\[\?[0-9;]*\$p` + // DECRQM DEC
 		`|\x1b\[\?2048[hl]` + // in-band resize set/reset (set triggers a pw write)
+		`|\x1b\[>[0-9;]*q` + // XTVERSION
+		`|\x1b\[\?u` + // kitty keyboard flags query
 		`|\x1b\]1[012];\?(?:\x07|\x1b\\)`, // OSC 10/11/12 color query, BEL- or ST-terminated
 )
 
