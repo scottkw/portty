@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 04
 current_phase_name: One-Click Share
 status: verifying
-stopped_at: Completed 04-09-PLAN.md
-last_updated: "2026-11-17T19:48:44.141Z"
+stopped_at: Completed 04-10-PLAN.md
+last_updated: "2026-11-17T20:13:30.711Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 04 execution started
-state_head: 231ee45da5766d8939c2c452e1bcf5c754476659
+state_head: bd13ffa9d630cff288a86eeeb0f2c9693257b9b4
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 40
-  completed_plans: 40
+  total_plans: 41
+  completed_plans: 41
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 04 (One-Click Share) — EXECUTING
-Plan: 9 of 9
+Plan: 10 of 10
 Status: Phase complete — ready for verification
 Last activity: 2026-11-17 — Phase 04 execution started
 
@@ -83,6 +83,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 04 P07 | 11min | 3 tasks | 7 files |
 | Phase 04 P08 | 93 min | 3 tasks | 12 files |
 | Phase 04 P09 | 14 min | 2 tasks | 9 files |
+| Phase 04 P10 | 8 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -182,6 +183,7 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-08: relay.DiagID shortens session IDs for viewer-diag lines in hub, webserver and proxy
 - [Phase 04]: 04-09: share server session info returns magicDNSLabel(h.Domain), the tailnet short name, not the OS hostname, so the browser stop banner matches the GUI and CLI (UAT gap 2)
 - [Phase 04]: 04-09: user decision 2026-11-17 (UAT gap 3) Button opens when shared: with Tailscale off, shareDisabled = tailscaleOff && !activeShared; unshared stays aria-disabled, daemon still refuses share-on
+- [Phase 04]: 04-10: relay.ViewerReadLimit = 4 * DefaultScrollbackBytes (1 MiB) on the viewing daemon proxy upstream conn and in attach.AttachSession; share server, local relay and proxy clientConn keep the 32 KiB default (guest-input DoS guard). Raw-ring preamble is hard-capped by the ring; the wrapped-ring RenderSnapshot bound is estimated, not enforced (UAT gap 4)
 
 ### Pending Todos
 
@@ -246,6 +248,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T19:48:42.763Z
-Stopped at: Completed 04-09-PLAN.md
+Last session: 2026-11-17T20:13:29.300Z
+Stopped at: Completed 04-10-PLAN.md
 Resume file: None

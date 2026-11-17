@@ -176,7 +176,7 @@ Plans:
   3. User turns Share off, every remote viewer (peer GUI, browser, CLI) is disconnected, and the session disappears from peers' sidebars
   4. No Funnel, public-link, risk-panel, or read-only code, UI, settings, or tests remain
   5. From Warp or any terminal, `portty attach <host>:<session>` attaches to a session shared from another Mac and shows the tmux-style status bar
-**Plans**: 9/10 plans executed (sequential waves 1-6; api.go, server.go, app.go, App.tsx, the Wails stubs and TESTING.md are shared hot files). 4 gap-closure plans added 2026-11-17 from the two-Mac UAT (04-07..04-09 in sequential gap waves 1-3; 04-10 is a second gap run, one plan; TESTING.md and the relay hub are shared hot files)
+**Plans**: 10/10 plans executed (sequential waves 1-6; api.go, server.go, app.go, App.tsx, the Wails stubs and TESTING.md are shared hot files). 4 gap-closure plans added 2026-11-17 from the two-Mac UAT (04-07..04-09 in sequential gap waves 1-3; 04-10 is a second gap run, one plan; TESTING.md and the relay hub are shared hot files)
 
 Plans:
 **Wave 1**
@@ -207,7 +207,7 @@ Plans:
 - [x] 04-09-PLAN.md — Gaps 2 and 3: browser stop banner uses the tailnet short name; with Tailscale off a shared session's Shared button opens the popover so Share can be turned off (user decision "Button opens when shared"); UI-SPEC reconciled
 
 **Gap closure (second run), Wave 1** *(UAT 2026-11-17, gap 4)*
-- [ ] 04-10-PLAN.md — Gap 4: a GUI tab or `portty attach` joining through the proxy survives a catch-up replay over 32 KiB. relay.ViewerReadLimit (1 MiB, 4x the ring) on the proxy upstream and the CLI conn; input-side readers keep 32 KiB; RED-first long-history harness variant; long-session M-80/M-83
+- [x] 04-10-PLAN.md — Gap 4: a GUI tab or `portty attach` joining through the proxy survives a catch-up replay over 32 KiB. relay.ViewerReadLimit (1 MiB, 4x the ring) on the proxy upstream and the CLI conn; input-side readers keep 32 KiB; RED-first long-history harness variant; long-session M-80/M-83
 **UI hint**: yes
 
 ### Phase 5: Overnight Survival
@@ -244,6 +244,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
 | 3. Portty Brand | 6/6 | In Progress | - |
-| 4. One-Click Share | 9/10 | In Progress | - |
+| 4. One-Click Share | 10/10 | In Progress | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
 | 6. Release Updates | 0/TBD | Not started | - |
