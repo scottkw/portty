@@ -1,7 +1,6 @@
 package webserver
 
 import (
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -12,8 +11,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"strconv"
-	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -24,7 +21,6 @@ import (
 	webfs "github.com/scottkw/portty/web"
 	qrcode "github.com/skip2/go-qrcode"
 	"tailscale.com/client/local"
-	"tailscale.com/ipn"
 )
 
 // Config holds configuration for the WebServer.
@@ -81,37 +77,21 @@ type WebServer struct {
 	config  Config
 	manager *relay.HubManager
 
-	// lc is the Tailscale local client, promoted from startTailscale()'s
-	// stack-local var so it can be shared with the Funnel lifecycle methods.
+	// lc is the Tailscale local client; it backs the TLS certificate hook
+	// (GetCertificate) in startTailscale.
 	// Stored by value (zero-value usable — local.Client has no internal
 	// pointers that require explicit init). Anti-Pattern 2: never store by ptr.
 	lc local.Client
 
-	// Funnel state — all guarded by ws.mu (same mutex as ws.listener).
-	// funnelClient is the injectable seam (production = &ws.lc; tests inject
-	// a fakeFunnelClient — funnel_client.go / funnel_test.go).
-	funnelClient  funnelClient // injectable seam; set by NewWebServer
-	funnelActive  bool         // true iff a successful SetServeConfig(AllowFunnel) is current
-	funnelBaseURL string       // "https://<hostname>" (no port) when active on port 443
-	funnelPort    uint16       // the port passed to EnableFunnel; 0 when inactive
-
-	mu               sync.RWMutex
-	webEnabled       map[string]bool // sessionID -> enabled (WEB-01 toggle)
-	listener         net.Listener    // guarded by ws.mu; the TLS listener (tailscale cert or self-signed)
-	loopbackListener net.Listener    // guarded by ws.mu; plain-HTTP loopback listener for Funnel hop-2 target (startTailscale only)
-	mux              *http.ServeMux
+	mu         sync.RWMutex
+	webEnabled map[string]bool // sessionID -> enabled (WEB-01 toggle)
+	listener   net.Listener    // guarded by ws.mu; the TLS listener (tailscale cert or self-signed)
+	mux        *http.ServeMux
 
 	// grants tracks the set of active grant_ids per session (D-14). Populated
 	// on toggle-on by Plan 04, cleared on toggle-off or session exit. Guarded
 	// by ws.mu.
 	grants map[string]map[string]struct{}
-
-	// rwGated tracks which sessions have passed the public-write consent gate
-	// (FNL-09 D-02). Set via SetRWGate, read via isRWGated. Guarded by ws.mu,
-	// colocated with grants. Lazy-initialized by SetRWGate — a nil map reads
-	// as "no session gated" (Go's nil-map-read-returns-zero-value semantics),
-	// so NewWebServer does not need to pre-allocate it.
-	rwGated map[string]bool
 
 	// signingKey is the 32-byte HMAC-SHA256 key used by requireCapability
 	// (D-04/D-16). Guarded by ws.mu; swapped race-free via SetSigningKey.
@@ -162,9 +142,6 @@ func NewWebServer(cfg Config, manager *relay.HubManager) (*WebServer, error) {
 		mux:                     http.NewServeMux(),
 		pluginConfigSubscribers: make(map[chan []byte]struct{}),
 	}
-	// Wire the production funnelClient to the promoted lc field.
-	// Tests override this after construction via ws.funnelClient = &fakeFunnelClient{...}.
-	ws.funnelClient = &ws.lc
 	ws.setupRoutes()
 	return ws, nil
 }
@@ -267,48 +244,6 @@ func (ws *WebServer) isGrantActive(sessionID, grantID string) bool {
 	return ok
 }
 
-// RemoveGrant removes a single grantID from sessionID's active grant set,
-// leaving any other grants for that session (e.g. the ordinary tailnet
-// read/write grants) intact and still valid. This is a surgical sibling to
-// ClearGrants (D-15), which wipes every grant for a session — using
-// ClearGrants to revoke one gate-minted write grant would also kill the
-// session's other active grants (Pitfall 2). Idempotent: removing an absent
-// or already-removed grantID is a no-op.
-func (ws *WebServer) RemoveGrant(sessionID, grantID string) {
-	ws.mu.Lock()
-	if ws.grants[sessionID] != nil {
-		delete(ws.grants[sessionID], grantID)
-	}
-	ws.mu.Unlock()
-}
-
-// SetRWGate records whether sessionID has passed the public-write consent
-// gate (FNL-09 D-02). active=true marks the session gated; active=false
-// deletes the entry (rather than leaving a lingering false value) so
-// isRWGated's zero-value read (false) is indistinguishable from an explicit
-// clear. Guarded by ws.mu, colocated with the grants map.
-func (ws *WebServer) SetRWGate(sessionID string, active bool) {
-	ws.mu.Lock()
-	if active {
-		if ws.rwGated == nil {
-			ws.rwGated = make(map[string]bool)
-		}
-		ws.rwGated[sessionID] = true
-	} else {
-		delete(ws.rwGated, sessionID)
-	}
-	ws.mu.Unlock()
-}
-
-// isRWGated reports whether sessionID has passed the public-write consent
-// gate. Read-only; uses the RLock path to avoid blocking concurrent
-// requireCapability calls against other sessions.
-func (ws *WebServer) isRWGated(sessionID string) bool {
-	ws.mu.RLock()
-	defer ws.mu.RUnlock()
-	return ws.rwGated[sessionID]
-}
-
 // SetSigningKey installs the HMAC-SHA256 signing key used by subsequent
 // requireCapability verifications (D-04/D-16). Plan 04 calls this at daemon
 // startup; the RegenerateSigningKey handler calls it to rotate keys. The swap
@@ -408,8 +343,6 @@ func (ws *WebServer) startTailscale() error {
 
 	tlsCfg := ws.config.TLSConfig
 	if tlsCfg == nil {
-		// Use the promoted ws.lc (zero-value usable) instead of a stack-local
-		// var to make the field available to EnableFunnel/DisableFunnel.
 		tlsCfg = &tls.Config{
 			GetCertificate: ws.lc.GetCertificate,
 			MinVersion:     tls.VersionTLS12,
@@ -437,42 +370,6 @@ func (ws *WebServer) startTailscale() error {
 	ws.mu.Unlock()
 
 	go http.Serve(ln, ws.mux) //nolint:errcheck
-
-	// Bind the plain-HTTP loopback listener — the Funnel hop-2 proxy target.
-	//
-	// WHY THIS EXISTS (co-location assumption + SNI-502 rationale):
-	// tailscaled terminates the ONLY public TLS on hop 1 (guest→ingress, real verified
-	// Tailscale cert). On hop 2 (tailscaled→Portty) it dials the configured proxy target.
-	// The Portty HTTPS listener uses an SNI-driven cert (ws.lc.GetCertificate mints a cert
-	// ONLY for the <hostname>.ts.net DNS name). When tailscaled dials a raw IP, the TLS
-	// ClientHello sends SNI=IP-literal; the server has no cert for an IP → TLS internal_error
-	// → HTTP 502 for every external Funnel guest (FNL-03 root cause). https+insecure (165-04)
-	// does NOT fix this: it disables the CLIENT's cert-hostname verification, not the SERVER's
-	// SNI-driven cert selection — the server still fails cert selection and returns no cert.
-	//
-	// FIX: add a PLAIN-HTTP listener on loopback. tailscaled proxies hop 2 to
-	// http://127.0.0.1:<loopbackPort> — no TLS negotiation, no SNI, no cert-selection failure.
-	// The traffic never leaves the machine (kernel loopback, not on any wire), so no
-	// plaintext escapes to the network. The public posture is unchanged: cap token +
-	// dual-origin allowlist + public Tailscale cert on hop 1 are all intact.
-	//
-	// CO-LOCATION GUARD (MUST NOT be removed silently): this design is safe ONLY because
-	// tailscaled and the Portty listener run on the SAME host. If they are ever split
-	// across tailnet nodes, the Funnel proxy target MUST become a WireGuard-tunneled
-	// tailnet-IP target (never plaintext across a real network interface).
-	loopbackLn, loopbackErr := net.Listen("tcp", "127.0.0.1:0")
-	if loopbackErr != nil {
-		// Close the already-opened TLS listener so Start() fails cleanly without leaking it.
-		_ = ln.Close()
-		ws.mu.Lock()
-		ws.listener = nil
-		ws.mu.Unlock()
-		return fmt.Errorf("webserver: loopback listen: %w", loopbackErr)
-	}
-	ws.mu.Lock()
-	ws.loopbackListener = loopbackLn
-	ws.mu.Unlock()
-	go http.Serve(loopbackLn, ws.mux) //nolint:errcheck
 
 	return nil
 }
@@ -516,31 +413,16 @@ func (ws *WebServer) startLocal() error {
 	return nil
 }
 
-// Stop tears down the Funnel serve config (if active) then closes the listeners,
-// stopping the HTTP server. Teardown site 4 of 4 (FNL-05).
+// Stop closes the TLS listener, stopping the HTTP server.
 func (ws *WebServer) Stop() error {
-	// DisableFunnel before closing the listener so the Tailscale serve config
-	// is cleared cleanly even when the daemon exits (site 4 / FNL-05 / T-165-01).
-	// Errors are discarded — we always proceed to close the listener.
-	_ = ws.DisableFunnel(context.Background())
-
-	// Snapshot both listeners under one RLock so we close them after releasing the
-	// lock (Close() may block or call back into the server).
+	// Snapshot under RLock and close after releasing it (Close() may block).
 	ws.mu.RLock()
 	ln := ws.listener
-	loopbackLn := ws.loopbackListener
 	ws.mu.RUnlock()
-
-	var err error
-	if ln != nil {
-		err = ln.Close()
+	if ln == nil {
+		return nil
 	}
-	if loopbackLn != nil {
-		// Loopback close error is intentionally discarded — return only the TLS
-		// listener's close error to preserve existing Stop() semantics.
-		_ = loopbackLn.Close()
-	}
-	return err
+	return ln.Close()
 }
 
 // Addr returns the listener's network address (host:port).
@@ -572,197 +454,6 @@ func (ws *WebServer) BaseURL() string {
 		return fmt.Sprintf("https://%s:%s", ws.config.BindIP, port)
 	}
 	return fmt.Sprintf("https://%s:%s", ws.config.FQDN, port)
-}
-
-// ---------------------------------------------------------------------------
-// Funnel lifecycle methods (Phase 165, FNL-01..FNL-06)
-// ---------------------------------------------------------------------------
-
-// EnableFunnel configures Tailscale Funnel on funnelPort for this server
-// and caches the resulting public base URL. Port 443 is always recommended
-// (Open Question #2 / FNL-06 — CheckFunnelAccess surfaces the human-readable
-// error if the port is disallowed by policy).
-//
-// Locking contract:
-//   - StatusWithoutPeers and CheckFunnelAccess are called OUTSIDE ws.mu
-//     (blocking Unix-socket calls; Anti-Pattern 5).
-//   - GetServeConfig + SetServeConfig + field writes are inside ws.mu.Lock()
-//     (T-165-04 ETag guard).
-//
-// Failure invariant: if any step fails, funnelActive remains false and
-// SetServeConfig is never called (T-165-03 fallback-mode safety).
-func (ws *WebServer) EnableFunnel(ctx context.Context, funnelPort uint16) error {
-	// Step 1: status probe — BEFORE lock (blocking call, Anti-Pattern 5).
-	st, err := ws.funnelClient.StatusWithoutPeers(ctx)
-	if err != nil {
-		return fmt.Errorf("funnel: tailscale status: %w", err)
-	}
-
-	// Step 2: prerequisite check — surface error verbatim (FNL-06).
-	// ipn.CheckFunnelAccess verifies CapabilityHTTPS + NodeAttrFunnel + port policy.
-	if err := ipn.CheckFunnelAccess(funnelPort, st.Self); err != nil {
-		return err // verbatim: "Funnel not available; HTTPS must be enabled..." etc.
-	}
-
-	hostname := strings.TrimSuffix(st.Self.DNSName, ".")
-
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-
-	// Step 3: read-modify-write to preserve ETag (T-165-04 / Pitfall 3).
-	sc, err := ws.funnelClient.GetServeConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("funnel: GetServeConfig: %w", err)
-	}
-	if sc == nil {
-		sc = new(ipn.ServeConfig)
-	}
-
-	// Step 4: TCP handler — Tailscale terminates HTTPS on funnelPort.
-	if sc.TCP == nil {
-		sc.TCP = make(map[uint16]*ipn.TCPPortHandler)
-	}
-	sc.TCP[funnelPort] = &ipn.TCPPortHandler{HTTPS: true}
-
-	// Step 5: Web handler — reverse-proxy to the plain-HTTP loopback listener.
-	// Access ws.loopbackListener directly (we hold Lock; calling ws.Addr() would RLock
-	// which would deadlock with an RWMutex write-lock held).
-	//
-	// LOOPBACK-HTTP TARGET RATIONALE (165-05, replacing the dead 165-04 Option A):
-	//   - tailscaled terminates the ONLY public TLS on hop 1 (guest→ingress, real verified
-	//     Tailscale cert); hop 2 (tailscaled→Portty) uses this proxy target.
-	//   - The 165-04 https+insecure://<bindIP>:<tlsPort> target is DEAD: tailscaled dials
-	//     the raw IP and sends SNI=IP-literal; ws.lc.GetCertificate has no cert for an IP
-	//     literal → TLS internal_error → HTTP 502 for every external guest. https+insecure
-	//     only disables the CLIENT's cert-hostname verification, not the SERVER's SNI-driven
-	//     cert selection — the server still fails cert selection.
-	//   - FIX: proxy to a PLAIN-HTTP loopback listener (127.0.0.1, ephemeral port). No TLS
-	//     negotiation, no SNI, no cert-selection failure. The traffic never leaves the host
-	//     (kernel loopback, not on any wire) so no plaintext escapes to the network.
-	//   - The public internet-facing posture is UNCHANGED: cap token + dual-origin allowlist
-	//     + public Tailscale cert on hop 1 are all intact.
-	//   - CO-LOCATION GUARD (MUST NOT be removed silently): this design is safe ONLY because
-	//     tailscaled and the Portty listener are CO-LOCATED on the same host. If they are
-	//     ever split across tailnet nodes, this target MUST become a WireGuard-tunneled
-	//     tailnet-IP target — a future split must not silently re-expose plaintext traffic.
-	if ws.loopbackListener == nil {
-		return fmt.Errorf("funnel: loopback listener not started")
-	}
-	_, loopbackPort, _ := net.SplitHostPort(ws.loopbackListener.Addr().String())
-	hp := ipn.HostPort(net.JoinHostPort(hostname, strconv.Itoa(int(funnelPort))))
-	if sc.Web == nil {
-		sc.Web = make(map[ipn.HostPort]*ipn.WebServerConfig)
-	}
-	sc.Web[hp] = &ipn.WebServerConfig{
-		Handlers: map[string]*ipn.HTTPHandler{
-			"/": {Proxy: "http://" + net.JoinHostPort("127.0.0.1", loopbackPort)},
-		},
-	}
-
-	// Step 6: set AllowFunnel for this host:port.
-	sc.SetFunnel(hostname, funnelPort, true)
-
-	// Step 7: apply (ETag carried on sc from GetServeConfig).
-	if err := ws.funnelClient.SetServeConfig(ctx, sc); err != nil {
-		return fmt.Errorf("funnel: SetServeConfig: %w", err)
-	}
-
-	// Cache Funnel state (FunnelBaseURL, funnelActive).
-	ws.funnelActive = true
-	ws.funnelPort = funnelPort
-	if funnelPort == 443 {
-		ws.funnelBaseURL = "https://" + hostname // no port — 443 is default HTTPS
-	} else {
-		ws.funnelBaseURL = fmt.Sprintf("https://%s:%d", hostname, funnelPort)
-	}
-	slog.Debug("funnel: enabled", "url", ws.funnelBaseURL) // DEBUG only (T-165-06)
-	return nil
-}
-
-// DisableFunnel removes the Funnel serve config and clears funnelActive.
-// Idempotent: if Funnel is not active this is a no-op. Called from Stop()
-// (teardown site 4), from daemon handleSetSessionFunnel (site 1),
-// handleWebServe disable path (site 2), and runSessionExitCleanup (site 3).
-func (ws *WebServer) DisableFunnel(ctx context.Context) error {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-
-	if !ws.funnelActive {
-		return nil // already inactive — idempotent
-	}
-
-	sc, err := ws.funnelClient.GetServeConfig(ctx)
-	if err != nil {
-		// Still clear local state so we don't get stuck.
-		ws.funnelActive = false
-		ws.funnelBaseURL = ""
-		return fmt.Errorf("funnel: DisableFunnel GetServeConfig: %w", err)
-	}
-	if sc == nil {
-		ws.funnelActive = false
-		ws.funnelBaseURL = ""
-		return nil
-	}
-
-	// Reconstruct hostname from cached funnelBaseURL (avoids a redundant
-	// StatusWithoutPeers call on the teardown path).
-	hostname := strings.TrimSuffix(
-		strings.TrimPrefix(ws.funnelBaseURL, "https://"),
-		fmt.Sprintf(":%d", ws.funnelPort),
-	)
-	hp := ipn.HostPort(net.JoinHostPort(hostname, strconv.Itoa(int(ws.funnelPort))))
-
-	sc.SetFunnel(hostname, ws.funnelPort, false)
-	delete(sc.TCP, ws.funnelPort)
-	delete(sc.Web, hp)
-	if len(sc.TCP) == 0 {
-		sc.TCP = nil
-	}
-	if len(sc.Web) == 0 {
-		sc.Web = nil
-	}
-
-	if err := ws.funnelClient.SetServeConfig(ctx, sc); err != nil {
-		return fmt.Errorf("funnel: DisableFunnel SetServeConfig: %w", err)
-	}
-
-	ws.funnelActive = false
-	ws.funnelBaseURL = ""
-	slog.Debug("funnel: disabled")
-	return nil
-}
-
-// FunnelBaseURL returns the public Funnel URL ("https://<hostname>" for port 443,
-// "https://<hostname>:<port>" for other ports) when Funnel is active,
-// or "" when inactive. Used by the Origin allowlist and URL builders.
-// Does NOT modify BaseURL() — that remains the tailnet URL for tray/QR/Settings.
-func (ws *WebServer) FunnelBaseURL() string {
-	ws.mu.RLock()
-	defer ws.mu.RUnlock()
-	return ws.funnelBaseURL
-}
-
-// ClearLingeringFunnel clears any Funnel serve config left over from a previous
-// daemon run (Tailscale serve configs persist in tailscaled across process
-// restarts). Called by the daemon at startup to ensure a clean initial state
-// (Open Question #3 — Funnel is ephemeral like grants, FNL-05).
-func (ws *WebServer) ClearLingeringFunnel(ctx context.Context) error {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-
-	if ws.funnelClient == nil {
-		return nil
-	}
-	sc, err := ws.funnelClient.GetServeConfig(ctx)
-	if err != nil || sc == nil {
-		return err
-	}
-	if !sc.IsFunnelOn() {
-		return nil // nothing to clear
-	}
-	// Clear the entire serve config — lingering state is invalid without
-	// matching funnelSessions entries in the daemon (analogous to grant expiry).
-	return ws.funnelClient.SetServeConfig(ctx, nil)
 }
 
 // setupRoutes registers all HTTP routes on the server mux.
@@ -891,9 +582,8 @@ func (ws *WebServer) setupRoutes() {
 	// tier: no capability gate here — the React bundle is static client code,
 	// and any /api/ call it makes is independently gated.
 	//
-	// Phase 176 BUG-06 — wrapped in ws.cspHeaders (D-05): the guest SPA is
-	// exposed to the public internet via Funnel and previously served with
-	// NO Content-Security-Policy header. Reuses the existing strict policy
+	// Phase 176 BUG-06 — wrapped in ws.cspHeaders (D-05): the guest SPA
+	// previously served with NO Content-Security-Policy header. Reuses the existing strict policy
 	// verbatim (same as /dashboard, /join, /sessions/{id}); no capability
 	// gate exists here to nest inside, so cspHeaders wraps the handler
 	// literal outermost.

@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -18,17 +17,12 @@ import (
 	"os"
 	"reflect"
 	goruntime "runtime"
-	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/scottkw/portty/internal/daemon"
 	"github.com/scottkw/portty/internal/webserver"
-	"tailscale.com/ipn"
-	"tailscale.com/ipn/ipnstate"
-	"tailscale.com/tailcfg"
 )
 
 var testSockSeq atomic.Int64
@@ -191,44 +185,6 @@ func testAppWithAPI(t *testing.T) (*App, *daemon.API, *daemon.SessionEngine) {
 	return app, api, engine
 }
 
-// appTestFakeFunnelClient is a minimal webserver.FunnelClientForTest double for
-// app_test.go — mirrors daemonFakeFunnelClient in internal/daemon/funnel_test.go.
-// It stores the last SetServeConfig value so EnableFunnel / DisableFunnel can do
-// the full ETag read-modify-write without a live tailscaled daemon. Thread-safe.
-type appTestFakeFunnelClient struct {
-	mu           sync.Mutex
-	storedConfig *ipn.ServeConfig
-}
-
-func (f *appTestFakeFunnelClient) GetServeConfig(_ context.Context) (*ipn.ServeConfig, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.storedConfig, nil
-}
-
-func (f *appTestFakeFunnelClient) SetServeConfig(_ context.Context, cfg *ipn.ServeConfig) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.storedConfig = cfg
-	return nil
-}
-
-func (f *appTestFakeFunnelClient) StatusWithoutPeers(_ context.Context) (*ipnstate.Status, error) {
-	return &ipnstate.Status{
-		Self: &ipnstate.PeerStatus{
-			DNSName: "apptest.ts.net.",
-			CapMap: tailcfg.NodeCapMap{
-				tailcfg.CapabilityHTTPS: nil,
-				tailcfg.NodeAttrFunnel:  nil,
-				tailcfg.NodeCapability("https://tailscale.com/cap/funnel-ports?ports=443,8443,10000"): nil,
-			},
-		},
-	}, nil
-}
-
-// Compile-time assertion: appTestFakeFunnelClient implements the exported seam.
-var _ webserver.FunnelClientForTest = (*appTestFakeFunnelClient)(nil)
-
 func TestListSessionsEmpty(t *testing.T) {
 	app := testApp(t)
 	sessions := app.ListSessions()
@@ -315,246 +271,6 @@ func TestListSessions_PropagatesWorkDir(t *testing.T) {
 	}
 	if got.WorkDir != raw.WorkDir {
 		t.Errorf("ListSessions dropped WorkDir: binding=%q daemon=%q", got.WorkDir, raw.WorkDir)
-	}
-}
-
-// TestApp_SetSessionFunnel_NilClient asserts that App.SetSessionFunnel returns
-// the "daemon not connected" error when a.client is nil (mirrors ToggleWebServing
-// nil-guard). Phase 165 / T-165-14.
-func TestApp_SetSessionFunnel_NilClient(t *testing.T) {
-	app := &App{} // no client wired
-	err := app.SetSessionFunnel("sess-1", true, 3600)
-	if err == nil {
-		t.Fatal("SetSessionFunnel with nil client: expected error, got nil")
-	}
-	if err.Error() != "daemon not connected" {
-		t.Errorf("SetSessionFunnel nil-client error = %q; want %q", err.Error(), "daemon not connected")
-	}
-}
-
-// TestListSessions_PropagatesFunnelActive is the regression guard for
-// Phase 165 / T-165-15: App.ListSessions must propagate SessionInfo.FunnelActive
-// from the daemon source of truth so the frontend can poll funnel state.
-// false must stay false (NOT dropped by omitempty); true must stay true.
-//
-// Uses a real daemon + WebServer with an injected fake funnelClient so
-// App.SetSessionFunnel can succeed without a live tailscaled daemon.
-func TestListSessions_PropagatesFunnelActive(t *testing.T) {
-	app, api, engine := testAppWithAPI(t)
-
-	// Wire a WebServer with a fake funnel client so EnableFunnel can succeed.
-	tlsCfg, err := webserver.GenerateSelfSignedCert("127.0.0.1")
-	if err != nil {
-		t.Fatalf("GenerateSelfSignedCert: %v", err)
-	}
-	ws, err := webserver.NewWebServer(webserver.Config{
-		BindIP:    "127.0.0.1",
-		Port:      0,
-		FQDN:      "apptest.ts.net",
-		TLSConfig: tlsCfg,
-	}, engine.Manager())
-	if err != nil {
-		t.Fatalf("NewWebServer: %v", err)
-	}
-	fake := &appTestFakeFunnelClient{}
-	ws.SetFunnelClientForTest(fake)
-	if err := ws.Start(); err != nil {
-		t.Fatalf("ws.Start: %v", err)
-	}
-	t.Cleanup(func() { _ = ws.Stop() })
-	api.SetWebServerForTest(ws)
-
-	// Create a session to work with.
-	id, err := app.CreateSession("funnel-propagation-session", "", 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-
-	// Initially FunnelActive must be false (not yet enabled) and must propagate
-	// as false — not silently dropped as a zero value.
-	sessions := app.ListSessions()
-	var got *SessionInfo
-	for i := range sessions {
-		if sessions[i].ID == id {
-			got = &sessions[i]
-			break
-		}
-	}
-	if got == nil {
-		t.Fatalf("session %q not found in App.ListSessions (initial)", id)
-	}
-	if got.FunnelActive {
-		t.Error("ListSessions: FunnelActive should be false before SetSessionFunnel (not dropped by omitempty)")
-	}
-
-	// Enable Funnel; FunnelActive should propagate as true.
-	if err := app.SetSessionFunnel(id, true, 0); err != nil {
-		t.Fatalf("SetSessionFunnel enable: %v", err)
-	}
-
-	sessions = app.ListSessions()
-	got = nil
-	for i := range sessions {
-		if sessions[i].ID == id {
-			got = &sessions[i]
-			break
-		}
-	}
-	if got == nil {
-		t.Fatalf("session %q not found in App.ListSessions (after enable)", id)
-	}
-	if !got.FunnelActive {
-		t.Error("App.ListSessions dropped FunnelActive=true after SetSessionFunnel(enable) (frontend poll would never see active funnel)")
-	}
-}
-
-// TestSessionInfo_MirrorsDaemonFunnelFields is the regression guard demanded
-// by Phase 177 / FNL-09 D-05: it fails if a future edit adds (or renames) a
-// daemon.SessionInfo funnel-exposure field without mirroring it onto the
-// app.go Wails bridge's SessionInfo. This exercises the REAL Go struct types
-// via reflection — never the App.d.ts stub TEXT, which is exactly the blind
-// spot funnelBinding.contract.test.tsx left open (it only asserts the
-// hand-authored TypeScript stub, not the Go bridge that actually produces
-// the JSON the frontend receives). Any daemon "Funnel*" field without a
-// matching json-tagged field on main.SessionInfo turns this test red.
-func TestSessionInfo_MirrorsDaemonFunnelFields(t *testing.T) {
-	daemonType := reflect.TypeOf(daemon.SessionInfo{})
-	appType := reflect.TypeOf(SessionInfo{})
-
-	// Index app.SessionInfo's json tags (bare name, options stripped) by Go field name.
-	appJSONTags := make(map[string]string, appType.NumField())
-	for i := 0; i < appType.NumField(); i++ {
-		f := appType.Field(i)
-		tag := f.Tag.Get("json")
-		if tag == "" {
-			continue
-		}
-		appJSONTags[strings.Split(tag, ",")[0]] = f.Name
-	}
-
-	found := 0
-	for i := 0; i < daemonType.NumField(); i++ {
-		f := daemonType.Field(i)
-		if !strings.HasPrefix(f.Name, "Funnel") {
-			continue
-		}
-		found++
-		tag := f.Tag.Get("json")
-		if tag == "" {
-			t.Errorf("daemon.SessionInfo.%s has no json tag", f.Name)
-			continue
-		}
-		name := strings.Split(tag, ",")[0]
-		if _, ok := appJSONTags[name]; !ok {
-			t.Errorf("daemon.SessionInfo.%s (json tag %q) has no matching field on app.SessionInfo — "+
-				"the app.go Wails bridge silently drops this funnel-exposure field from the native GUI (T-177-03)",
-				f.Name, name)
-		}
-	}
-	if found == 0 {
-		t.Fatal("no daemon.SessionInfo fields matched the \"Funnel\" prefix — the enumeration matched nothing, " +
-			"so this test would silently guard against nothing")
-	}
-}
-
-// TestListSessions_PropagatesFunnelWriteActive is the regression guard for
-// Phase 177 / FNL-09 (D-05): App.ListSessions must propagate
-// SessionInfo.FunnelWriteActive from the daemon source of truth, and the
-// SERIALIZED JSON must carry the "funnelWriteActive" key even when false
-// (NOT omitempty). Mirrors TestListSessions_PropagatesFunnelActive
-// (T-165-15) for the write-share sibling field. This is the load-bearing
-// guard: App.js's ListSessions binding is a raw Call passthrough with no
-// createFrom/field filtering, so the JSON asserted here directly is exactly
-// what the frontend consumers (FULL ACCESS badge, tab icon, share-modal
-// resync) receive over the wire.
-func TestListSessions_PropagatesFunnelWriteActive(t *testing.T) {
-	app, api, engine := testAppWithAPI(t)
-
-	if err := api.BootstrapCapabilityState(); err != nil {
-		t.Fatalf("BootstrapCapabilityState: %v", err)
-	}
-
-	tlsCfg, err := webserver.GenerateSelfSignedCert("127.0.0.1")
-	if err != nil {
-		t.Fatalf("GenerateSelfSignedCert: %v", err)
-	}
-	ws, err := webserver.NewWebServer(webserver.Config{
-		BindIP:    "127.0.0.1",
-		Port:      0,
-		FQDN:      "apptest.ts.net",
-		TLSConfig: tlsCfg,
-	}, engine.Manager())
-	if err != nil {
-		t.Fatalf("NewWebServer: %v", err)
-	}
-	fake := &appTestFakeFunnelClient{}
-	ws.SetFunnelClientForTest(fake)
-	ws.SetSigningKey(api.CurrentSigningKey())
-	ws.SetJoinCodes(api.JoinCodes())
-	if err := ws.Start(); err != nil {
-		t.Fatalf("ws.Start: %v", err)
-	}
-	t.Cleanup(func() { _ = ws.Stop() })
-	api.SetWebServerForTest(ws)
-
-	id, err := app.CreateSession("funnel-write-propagation-session", "", 0, 0)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-
-	// Before minting a write cap, FunnelWriteActive must propagate as false —
-	// and the serialized JSON must still carry the key (not dropped by omitempty).
-	sessions := app.ListSessions()
-	var got *SessionInfo
-	for i := range sessions {
-		if sessions[i].ID == id {
-			got = &sessions[i]
-			break
-		}
-	}
-	if got == nil {
-		t.Fatalf("session %q not found in App.ListSessions (initial)", id)
-	}
-	if got.FunnelWriteActive {
-		t.Error("ListSessions: FunnelWriteActive should be false before SetSessionFunnelWrite (not dropped by omitempty)")
-	}
-	rawJSON, err := json.Marshal(got)
-	if err != nil {
-		t.Fatalf("json.Marshal(initial SessionInfo): %v", err)
-	}
-	if !strings.Contains(string(rawJSON), `"funnelWriteActive":false`) {
-		t.Errorf("serialized SessionInfo JSON missing \"funnelWriteActive\":false — got %s "+
-			"(the frontend poll could never detect a true->false write-share teardown flip if this key were omitted)", rawJSON)
-	}
-
-	// Mint the gate-minted public write cap; FunnelWriteActive should
-	// propagate as true, and the serialized JSON must contain the true value.
-	if _, err := app.SetSessionFunnelWrite(id, 900); err != nil {
-		t.Fatalf("SetSessionFunnelWrite: %v", err)
-	}
-
-	sessions = app.ListSessions()
-	got = nil
-	for i := range sessions {
-		if sessions[i].ID == id {
-			got = &sessions[i]
-			break
-		}
-	}
-	if got == nil {
-		t.Fatalf("session %q not found in App.ListSessions (after mint)", id)
-	}
-	if !got.FunnelWriteActive {
-		t.Fatal("App.ListSessions dropped FunnelWriteActive=true after SetSessionFunnelWrite " +
-			"(the FULL ACCESS badge/tab-icon/share-modal-resync would never render — this is the original bug)")
-	}
-	rawJSON, err = json.Marshal(got)
-	if err != nil {
-		t.Fatalf("json.Marshal(post-mint SessionInfo): %v", err)
-	}
-	if !strings.Contains(string(rawJSON), `"funnelWriteActive":true`) {
-		t.Errorf("serialized SessionInfo JSON missing \"funnelWriteActive\":true — got %s "+
-			"(this is exactly the JSON App.js passes through raw to the FULL ACCESS consumers)", rawJSON)
 	}
 }
 

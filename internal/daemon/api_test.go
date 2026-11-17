@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -1512,7 +1511,7 @@ func TestIssueCapabilities_ExactPerms(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = api.engine.KillSession(sid) })
 
-	roURL, rwURL, _, _, _, err := api.issueCapabilitiesForSession(sid)
+	roURL, rwURL, _, _, err := api.issueCapabilitiesForSession(sid)
 	if err != nil {
 		t.Fatalf("issueCapabilitiesForSession: %v", err)
 	}
@@ -1521,101 +1520,6 @@ func TestIssueCapabilities_ExactPerms(t *testing.T) {
 	}
 	if got := extractClaimsFromURL(t, rwURL, key).Perms; got != "read,write" {
 		t.Errorf("RW Perms = %q; want exact \"read,write\"", got)
-	}
-}
-
-// -------------------------------------------------------------------------
-// Phase 170-02 / FNL-08: public read code mint/cache/revoke driving test.
-//
-// This is the RED/GREEN driver for issueCapabilitiesForSession's new 5th
-// return value (publicReadCode). The comprehensive teardown-trigger and
-// read-only-scope regression suite lives in funnel_test.go (Task 2); this
-// test exercises the mint site directly (white-box, same package) without
-// spinning up a real Funnel client, mirroring TestIssueCapabilities_ExactPerms'
-// issueCapsTestSetup pattern.
-// -------------------------------------------------------------------------
-
-// TestIssueCapabilitiesForSession_FunnelPublicReadCode asserts:
-//   - A Funnel session (a.funnelSessions[sid]=true) gets a non-empty
-//     PublicReadCode from issueCapabilitiesForSession, minted from rTok only.
-//   - A second call returns the IDENTICAL code (idempotent — no rotation).
-//   - The code's token (via Exchange + Verify) carries exactly "read".
-//   - A non-Funnel session gets PublicReadCode == "".
-//   - disableFunnelForSession revokes the code: a later Exchange returns
-//     capability.ErrCodeNotFound.
-func TestIssueCapabilitiesForSession_FunnelPublicReadCode(t *testing.T) {
-	api, _, key := issueCapsTestSetup(t)
-
-	sid, err := api.engine.CreateSession(context.Background(), "funnel-public-code", "", 80, 24, nil)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-	t.Cleanup(func() { _ = api.engine.KillSession(sid) })
-
-	// Mark the session Funnel-active with an explicit per-code TTL, mirroring
-	// what handleSetSessionFunnel's enable path records (without needing a
-	// real ws.EnableFunnel round-trip through a fake Tailscale client).
-	api.mu.Lock()
-	if api.funnelSessions == nil {
-		api.funnelSessions = make(map[string]bool)
-	}
-	api.funnelSessions[sid] = true
-	if api.funnelReadCodeTTL == nil {
-		api.funnelReadCodeTTL = make(map[string]time.Duration)
-	}
-	api.funnelReadCodeTTL[sid] = time.Hour
-	api.mu.Unlock()
-
-	_, _, _, _, publicCode1, err := api.issueCapabilitiesForSession(sid)
-	if err != nil {
-		t.Fatalf("issueCapabilitiesForSession: %v", err)
-	}
-	if publicCode1 == "" {
-		t.Fatal("FNL-08: PublicReadCode must be non-empty for a Funnel session")
-	}
-
-	_, _, _, _, publicCode2, err := api.issueCapabilitiesForSession(sid)
-	if err != nil {
-		t.Fatalf("issueCapabilitiesForSession (2nd call): %v", err)
-	}
-	if publicCode2 != publicCode1 {
-		t.Errorf("FNL-08 / T-170-04: PublicReadCode rotated across re-issue: %q != %q", publicCode2, publicCode1)
-	}
-
-	// The code's token must be read-only.
-	tok, err := api.joinCodes.Exchange(publicCode1)
-	if err != nil {
-		t.Fatalf("Exchange(publicCode1): %v", err)
-	}
-	claims, err := capability.Verify(tok, key)
-	if err != nil {
-		t.Fatalf("Verify: %v", err)
-	}
-	if capability.HasPerm(claims.Perms, "write") {
-		t.Errorf("T-170-01: public read code token Perms = %q must NOT contain write", claims.Perms)
-	}
-	if claims.Perms != "read" {
-		t.Errorf("T-170-01: public read code token Perms = %q, want exactly \"read\"", claims.Perms)
-	}
-
-	// A non-Funnel session must get an empty PublicReadCode.
-	sid2, err := api.engine.CreateSession(context.Background(), "non-funnel", "", 80, 24, nil)
-	if err != nil {
-		t.Fatalf("CreateSession (non-funnel): %v", err)
-	}
-	t.Cleanup(func() { _ = api.engine.KillSession(sid2) })
-	_, _, _, _, publicCode3, err := api.issueCapabilitiesForSession(sid2)
-	if err != nil {
-		t.Fatalf("issueCapabilitiesForSession (non-funnel): %v", err)
-	}
-	if publicCode3 != "" {
-		t.Errorf("FNL-08: non-Funnel session PublicReadCode = %q, want empty", publicCode3)
-	}
-
-	// disableFunnelForSession must revoke the cached code.
-	api.disableFunnelForSession(context.Background(), sid)
-	if _, err := api.joinCodes.Exchange(publicCode1); !errors.Is(err, capability.ErrCodeNotFound) {
-		t.Errorf("T-170-02: after disableFunnelForSession, Exchange(publicCode1) = %v, want ErrCodeNotFound", err)
 	}
 }
 
@@ -1722,8 +1626,8 @@ func TestHandleGetSessionStyledTailLines(t *testing.T) {
 // regression guard: disabling web-serving for a session must proactively close
 // its existing web-origin viewers (so the guest sees the disconnect banner
 // instead of a silently frozen "dead terminal"), while leaving local-origin
-// subscribers untouched. Before the fix the disable path only cleared grants +
-// Funnel and left open guest sockets hanging idle with no close event.
+// subscribers untouched. Before the fix the disable path only cleared grants
+// and left open guest sockets hanging idle with no close event.
 func TestHandleWebServe_ToggleOffDisconnectsWebViewers(t *testing.T) {
 	api, _, socketPath := testDaemon(t)
 	ws, err := webserver.NewWebServer(webserver.Config{

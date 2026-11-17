@@ -2,23 +2,17 @@ package daemon
 
 // SessionInfo is the JSON-serialisable representation of a session.
 type SessionInfo struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	State        string `json:"state"`
-	Status       string `json:"status"` // running/exited/errored, derived from State + ExitCode
-	CreatedAt    string `json:"createdAt"`
-	Hostname     string `json:"hostname"`
-	WebEnabled   bool   `json:"webEnabled"`
-	ViewerCount  int    `json:"viewerCount"`        // Phase 168 / FIX-04, D-03: number of remote (web-origin) viewers only — excludes the app's own internal Origin=="local" WebSocket subscribers
-	ExitCode     *int   `json:"exitCode,omitempty"` // nil while running; set when State is "stopped"
-	Duration     *int   `json:"duration,omitempty"` // seconds since CreatedAt; set when State is "stopped"
-	FunnelActive bool   `json:"funnelActive"`       // Phase 165 / FNL-01: true when Tailscale Funnel is active for this session; NOT omitempty (false must serialize so frontend poll detects expiry)
-	WorkDir      string `json:"workDir"`            // Phase 131 / GRID-02: EvalSymlinks-resolved session working directory; populated from engine.sessionWorkDirs map; enables Hub card grouping by directory
-	// FunnelWriteActive is true when the gate-minted public write cap (FNL-09)
-	// is currently active for this session. NOT omitempty — false must
-	// serialize so the frontend poll detects a true->false teardown flip
-	// (mirrors FunnelActive, Phase 171 / FNL-09).
-	FunnelWriteActive bool `json:"funnelWriteActive"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	State       string `json:"state"`
+	Status      string `json:"status"` // running/exited/errored, derived from State + ExitCode
+	CreatedAt   string `json:"createdAt"`
+	Hostname    string `json:"hostname"`
+	WebEnabled  bool   `json:"webEnabled"`
+	ViewerCount int    `json:"viewerCount"`        // Phase 168 / FIX-04, D-03: number of remote (web-origin) viewers only — excludes the app's own internal Origin=="local" WebSocket subscribers
+	ExitCode    *int   `json:"exitCode,omitempty"` // nil while running; set when State is "stopped"
+	Duration    *int   `json:"duration,omitempty"` // seconds since CreatedAt; set when State is "stopped"
+	WorkDir     string `json:"workDir"`            // Phase 131 / GRID-02: EvalSymlinks-resolved session working directory; populated from engine.sessionWorkDirs map; enables Hub card grouping by directory
 }
 
 // CreateRequest is the request body for POST /sessions. Legacy "cli" and
@@ -101,63 +95,17 @@ type WebServeRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
-// SetSessionFunnelRequest is the request body for POST /sessions/{id}/funnel.
-// Phase 165 / FNL-01/FNL-07.
-type SetSessionFunnelRequest struct {
-	Enabled   bool `json:"enabled"`
-	ExpiresIn int  `json:"expiresIn"` // auto-expiry in seconds; 0 = no auto-expiry (FNL-07)
-}
-
-// SetSessionFunnelResponse is the response body for POST /sessions/{id}/funnel
-// when enabled=true. FunnelURL is the public share URL with no port component
-// (port 443 = default HTTPS, so ":443" is omitted). Phase 165 / FNL-01/FNL-03.
-type SetSessionFunnelResponse struct {
-	FunnelURL string `json:"funnelUrl"` // "https://<hostname>" — no :443 suffix
-}
-
-// SetSessionFunnelWriteRequest is the request body for POST
-// /sessions/{id}/funnel-write. Phase 171 / FNL-09 — mints the gate-minted,
-// terminal-only, single-use public write capability.
-type SetSessionFunnelWriteRequest struct {
-	// ExpiresIn is the requested TTL (seconds) for the write grant/code.
-	// Server-side clamped UNCONDITIONALLY to (0, 3600]: 0 or a value greater
-	// than 3600 becomes exactly 3600 (R5/D-11). This is deliberately NOT the
-	// read Funnel handler's ExpiresIn==0-means-unbounded semantics (Pitfall
-	// 6) — a public WRITE cap must always be bounded and short-lived.
-	ExpiresIn int `json:"expiresIn"`
-}
-
-// SetSessionFunnelWriteResponse is the response body for POST
-// /sessions/{id}/funnel-write. WriteURL is the Funnel-base public entry
-// point (never the tailnet base — this cap is public-only by design);
-// WriteCode is the single-use join code; ExpiresAt is the absolute
-// UNIX-seconds expiry shared by both the grant and the code.
-// Phase 171 / FNL-09.
-type SetSessionFunnelWriteResponse struct {
-	WriteURL  string `json:"writeUrl"`
-	WriteCode string `json:"writeCode"`
-	ExpiresAt int64  `json:"expiresAt"`
-}
-
 // --- Phase 87 capability types (D-06, D-07, D-09, D-11) ------------------
 
 // IssueCapabilitiesResponse is the response body for POST
 // /sessions/{id}/capabilities. Each call produces TWO capabilities (D-07):
 // one read-only link and one read-write link. Each capability is paired with
 // a single-use 5-minute join code (D-09/D-11).
-//
-// PublicReadCode (Phase 170-02 / FNL-08): populated ONLY for Funnel (public
-// internet) sessions. Unlike ReadCode/WriteCode (single-use, 5-minute), this
-// is a reusable join code minted once from the read-only token and cached
-// per session — it resolves for every anonymous viewer for the lifetime of
-// the share (bounded by min(ExpiresIn, 8h)) and is revoked the moment the
-// share is torn down. Empty "" for non-Funnel (tailnet/local) sessions.
 type IssueCapabilitiesResponse struct {
-	ReadURL        string `json:"readUrl"`
-	WriteURL       string `json:"writeUrl"`
-	ReadCode       string `json:"readCode"`
-	WriteCode      string `json:"writeCode"`
-	PublicReadCode string `json:"publicReadCode"` // Phase 170-02 / FNL-08: reusable share-lifetime read code; "" when not a Funnel session
+	ReadURL   string `json:"readUrl"`
+	WriteURL  string `json:"writeUrl"`
+	ReadCode  string `json:"readCode"`
+	WriteCode string `json:"writeCode"`
 }
 
 // ExchangeJoinCodeRequest is the body for POST /join/exchange.

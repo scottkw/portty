@@ -311,40 +311,6 @@ func (c *DaemonClient) DisconnectViewers(sessionID string) error {
 	return c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/disconnect-viewers", nil, nil)
 }
 
-// SetSessionFunnel enables or disables Tailscale Funnel for a session.
-// Phase 165 / FNL-01. Mirrors ToggleWebServing — thin
-// delegation, no Funnel logic here. expiresIn is the auto-expiry duration in
-// seconds; 0 = no auto-expiry (FNL-07). The response body (FunnelURL) is
-// discarded here; the GUI retrieves it from IssueCapabilities.
-func (c *DaemonClient) SetSessionFunnel(sessionID string, enabled bool, expiresIn int) error {
-	return c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/funnel",
-		SetSessionFunnelRequest{Enabled: enabled, ExpiresIn: expiresIn}, nil)
-}
-
-// SetSessionFunnelWrite mints the gate-minted, terminal-only public write
-// capability (FNL-09): a single-use write code + a short-lived (<=1h,
-// server-clamped) RW consent gate. Mirrors SetSessionFunnel's thin
-// delegation shape — no gate logic lives here, only in the daemon
-// (171-02). expiresIn is the requested TTL in seconds; the server clamps it
-// unconditionally to (0, 3600].
-func (c *DaemonClient) SetSessionFunnelWrite(sessionID string, expiresIn int) (writeURL, writeCode string, expiresAt int64, err error) {
-	var resp SetSessionFunnelWriteResponse
-	err = c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/funnel-write",
-		SetSessionFunnelWriteRequest{ExpiresIn: expiresIn}, &resp)
-	if err != nil {
-		return "", "", 0, err
-	}
-	return resp.WriteURL, resp.WriteCode, resp.ExpiresAt, nil
-}
-
-// DisableSessionFunnelWrite revokes the gate-minted write grant, code, and
-// RW gate for a session (FNL-09) WITHOUT touching the reusable public read
-// share — a surgical sibling to SetSessionFunnel's disable path, scoped
-// only to the write cap (D-03).
-func (c *DaemonClient) DisableSessionFunnelWrite(sessionID string) error {
-	return c.doJSON(http.MethodDelete, "/sessions/"+sessionID+"/funnel-write", nil, nil)
-}
-
 // IssueCapabilities mints the read + read,write capability pair for a
 // web-enabled session (D-07). Returns the URLs and single-use join codes
 // (D-09) for each. Called by the GUI/CLI/TUI after toggle-on.

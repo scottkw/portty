@@ -57,82 +57,7 @@ type API struct {
 	// builds a fresh client per request via newRemoteFilesHTTPClient().
 	remoteFilesClientForTest *http.Client
 
-	// --- Phase 165 Funnel state (FNL-01/FNL-05/FNL-07) ----------------------
-	// funnelSessions tracks which sessions have Tailscale Funnel active.
-	// DisableFunnel is called on the WebServer ONLY when len(funnelSessions)==0
-	// (ref-count gate — Anti-Pattern 3 from 165-RESEARCH.md: never tear down a
-	// still-active sibling session). Lazy-initialised on first enable. Guarded by a.mu.
-	funnelSessions map[string]bool
-	// funnelExpiry holds per-session auto-expiry timers (FNL-07).
-	// A timer fires a.disableFunnelForSession asynchronously via time.AfterFunc.
-	// Early teardown calls t.Stop() + delete to prevent double-fire (T-165-13).
-	// Lazy-initialised on first timer registration. Guarded by a.mu.
-	funnelExpiry map[string]*time.Timer
-
-	// --- Phase 170-02 Funnel public read code state (FNL-08) ----------------
-	// funnelReadCode caches the single reusable public-share join code minted
-	// per Funnel session. Keyed by sessionID. Minted lazily inside
-	// issueCapabilitiesForSession from the read-only rTok ONLY (never wTok,
-	// T-170-01) on first capability issuance for a Funnel session, then reused
-	// on every subsequent call so a code already handed to a viewer never
-	// rotates (T-170-04). Revoked + deleted in disableFunnelForSession
-	// (T-170-02) — the single teardown chokepoint all in-process triggers
-	// route through. Lazy-initialised on first mint. Guarded by a.mu.
-	funnelReadCode map[string]string
-	// funnelReadCodeTTL holds the per-session TTL chosen at Funnel-enable time
-	// (handleSetSessionFunnel), consumed by issueCapabilitiesForSession when
-	// it mints the code. Value is min(ExpiresIn, funnelReadCodeMaxTTL); when
-	// ExpiresIn==0 ("Until I disable") it is funnelReadCodeMaxTTL — the
-	// entropy-safety backstop for the ~40-bit code (T-170-05). Lazy-initialised
-	// on first enable. Guarded by a.mu.
-	funnelReadCodeTTL map[string]time.Duration
-	// funnelReadCodeExpiry holds the absolute wall-clock expiry of the cached
-	// reusable public-share code, so issueCapabilitiesForSession can detect a
-	// lapsed code at the mint gate and re-mint (WR-02). Without it, an
-	// "Until I disable" (ExpiresIn==0) share whose code hit the 8h backstop
-	// would keep returning the now-dead string forever (viewers get 410→404),
-	// because the presence of the stale string in funnelReadCode suppresses any
-	// re-mint. Keyed by sessionID; set on every fresh mint and deleted in
-	// disableFunnelForSession alongside funnelReadCode. Guarded by a.mu.
-	funnelReadCodeExpiry map[string]time.Time
-
-	// --- Phase 171-02 Funnel public WRITE-gate state (FNL-09) ----------------
-	// funnelWriteGrant caches the gate-minted write grantID per session so
-	// revokeFunnelWriteLocked can surgically ws.RemoveGrant exactly that
-	// grant — never a ClearGrants-style wipe of the session's other active
-	// grants (Pitfall 2 precedent from Phase 171-01's RemoveGrant). Lazy-
-	// initialised on first mint. Guarded by a.mu.
-	funnelWriteGrant map[string]string
-	// funnelWriteCode caches the single-use public write join code per
-	// session so it can be explicitly a.joinCodes.Revoke'd at any of the
-	// four teardown triggers (owner disables RW / funnel-off / session-exit
-	// / auto-expiry) rather than being left to its own TTL alone.
-	// Lazy-initialised on first mint. Guarded by a.mu.
-	funnelWriteCode map[string]string
-	// funnelWriteExpiry holds the per-session auto-expiry timer for the
-	// gate-minted write cap (clamped <=1h, R5/D-11). Stopped + removed on
-	// early teardown to prevent double-fire (mirrors funnelExpiry/T-165-13).
-	// Lazy-initialised on first mint. Guarded by a.mu.
-	funnelWriteExpiry map[string]*time.Timer
-
-	// mintRaceHookForTest, when non-nil, is invoked by issueCapabilitiesForSession
-	// AFTER the base-URL Funnel-membership read but BEFORE the mint critical
-	// section takes a.mu — the exact TOCTOU window WR-01 closes. A test sets it to
-	// a teardown (disableFunnelForSession) so the mint gate's under-lock re-check
-	// of funnelSessions is exercised deterministically instead of via a flaky
-	// goroutine race. Production leaves it nil. Written once before the call under
-	// test and read without a lock, mirroring the other *ForTest seams.
-	mintRaceHookForTest func()
 }
-
-// funnelReadCodeMaxTTL bounds the per-code TTL of the reusable public-share
-// join code (FNL-08) to 8 hours regardless of the Funnel session's own
-// ExpiresIn — including the unbounded ExpiresIn==0 ("Until I disable") case.
-// This preserves the ~40-bit code entropy brute-force-safety argument
-// (T-170-03): 2^40 possibilities over a bounded window, never an unbounded
-// one. Explicit Revoke in disableFunnelForSession is the PRIMARY "dies with
-// the share" mechanism; this TTL is defense-in-depth only (T-170-05).
-const funnelReadCodeMaxTTL = 8 * time.Hour
 
 // NewAPI creates an API wired to the given SessionEngine and registers all routes.
 func NewAPI(engine *SessionEngine) *API {
@@ -179,7 +104,7 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("POST /sessions/{id}/web-serve", a.handleWebServe)
 	// Phase 168 / FIX-02 (#117): owner-only force-disconnect of all Origin=="web"
 	// viewers for a session. Daemon-local mux only (same trust boundary as
-	// handleWebServe/handleSetSessionFunnel above) — NEVER a capability-gated
+	// handleWebServe above) — NEVER a capability-gated
 	// /api/... route a guest browser can reach (SECURITY STRIDE-EoP, T-168-07).
 	// Drops connections only; does not revoke the capability (D-06) — viewers
 	// may reconnect with the same join code.
@@ -191,19 +116,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /webserver/local-password", a.handleGetLocalPassword)
 	// Phase 87 capability-based authorization endpoints (D-06, D-09, D-16).
 	a.mux.HandleFunc("POST /sessions/{id}/capabilities", a.handleIssueCapabilities)
-	// Phase 165 / FNL-01: per-session Tailscale Funnel toggle.
-	// Loopback-trust (daemon socket): no auth gate — only the owner's GUI calls this.
-	// Disable path routes through disableFunnelForSession (ref-count gate, T-165-09).
-	a.mux.HandleFunc("POST /sessions/{id}/funnel", a.handleSetSessionFunnel)
-	// Phase 171-02 / FNL-09: gate-minted public write capability. Registered
-	// on the SAME loopback mux, adjacent to the Funnel toggle above, and
-	// inherits the identical owner-only access-control model (no new auth
-	// layer — the daemon binds this mux to the loopback socket only).
-	// Mints a terminal-only cap with a single-use code, expiry clamped <=1h.
-	// DELETE revokes ONLY the write grant/code/gate (D-03) — the reusable
-	// public read share, funnelSessions, and every other grant are untouched.
-	a.mux.HandleFunc("POST /sessions/{id}/funnel-write", a.handleSetSessionFunnelWrite)
-	a.mux.HandleFunc("DELETE /sessions/{id}/funnel-write", a.handleDisableSessionFunnelWrite)
 	a.mux.HandleFunc("POST /join/exchange", a.handleExchangeJoinCode)
 	a.mux.HandleFunc("POST /capability/regenerate-key", a.handleRegenerateSigningKey)
 	// Phase 122-01 / REMOTE-01: remote cap deposit.
@@ -483,12 +395,6 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	if err := ws.Start(); err != nil {
 		return err
 	}
-	// Phase 165 / FNL-05 (Open Question #3): clear any Funnel serve config
-	// left over from a previous daemon run (Tailscale serve configs survive
-	// process restarts). This is analogous to grants not surviving restart.
-	// Errors are discarded — a stale config is suboptimal but not fatal;
-	// the next EnableFunnel will overwrite it anyway.
-	_ = ws.ClearLingeringFunnel(context.Background())
 	a.webServer = ws
 	return nil
 }
@@ -524,33 +430,11 @@ func (a *API) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	// Enrich with web-enabled state from the running web server (SERVE-02).
 	a.mu.RLock()
 	ws := a.webServer
-	// Snapshot funnelSessions under the same read lock to avoid a separate lock
-	// acquisition — both reads are already serialised by a.mu.RLock.
-	funnelSnap := make(map[string]bool, len(a.funnelSessions))
-	for k, v := range a.funnelSessions {
-		funnelSnap[k] = v
-	}
-	// Snapshot funnelWriteGrant presence (FNL-09) under the same read lock.
-	funnelWriteSnap := make(map[string]bool, len(a.funnelWriteGrant))
-	for k := range a.funnelWriteGrant {
-		funnelWriteSnap[k] = true
-	}
 	a.mu.RUnlock()
 	if ws != nil {
 		for i := range sessions {
 			sessions[i].WebEnabled = ws.IsSessionEnabled(sessions[i].ID)
 		}
-	}
-	// Populate FunnelActive from the snapshot (FNL-01).
-	// NOT omitempty: false must serialise so frontend polling detects expiry.
-	for i := range sessions {
-		sessions[i].FunnelActive = funnelSnap[sessions[i].ID]
-	}
-	// Populate FunnelWriteActive from the snapshot (FNL-09).
-	// NOT omitempty: false must serialise so the frontend poll detects the
-	// true->false flip when the gate-minted write cap is revoked.
-	for i := range sessions {
-		sessions[i].FunnelWriteActive = funnelWriteSnap[sessions[i].ID]
 	}
 
 	writeJSON(w, http.StatusOK, sessions)
@@ -607,10 +491,6 @@ func (a *API) runSessionExitCleanup(sessionID string) {
 		ws.DisableSession(sessionID)
 		ws.ClearGrants(sessionID) // D-15 also applies on natural exit (Pitfall 1)
 	}
-	// Phase 165 / FNL-05: natural session end also tears down Funnel (site 3).
-	// Routes through the ref-counted helper so a sibling Funnel session is not
-	// prematurely cut off (Anti-Pattern 3 / T-165-09).
-	a.disableFunnelForSession(context.Background(), sessionID)
 }
 
 // runSessionExitCleanupForTest is a test-only alias for runSessionExitCleanup.
@@ -639,21 +519,9 @@ func (a *API) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// 165-04 / FNL-05 (GAP 2 kill-path fix): synchronously run the shared teardown
-	// after KillSession so Funnel is disabled and funnelSessions[id] is removed on
-	// the explicit-kill path, without the 10s D-12 grace period.
-	//
-	// WHY this is safe (no double-cleanup race with the natural-exit goroutine):
-	//   - KillSession sets sess.IsKilled() = true.
-	//   - The natural-exit goroutine in engine.go returns early when sess.IsKilled(),
-	//     so onExit is never called → the 10s time.AfterFunc timer is never armed.
-	//   - disableFunnelForSession is idempotent and ref-counted: if this session was
-	//     not Funnel-enabled, the delete(funnelSessions, id) is a no-op; if a sibling
-	//     Funnel session exists, len(funnelSessions) > 0 after deletion so DisableFunnel
-	//     is not called, and the sibling's Funnel stays up (T-165-09 anti-pattern guard).
-	//
-	// WHY no second ws.DisableFunnel call: disableFunnelForSession is the single
-	// authority on the ref-count gate; do NOT call ws.DisableFunnel directly here.
+	// Run the shared teardown synchronously on the explicit-kill path, without
+	// the 10s grace period. Safe: KillSession marks the session killed, so the
+	// natural-exit goroutine returns early and never arms its own cleanup.
 	a.runSessionExitCleanup(id)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1124,10 +992,6 @@ func (a *API) handleWebServe(w http.ResponseWriter, r *http.Request) {
 	if hub, ok := a.engine.Manager().Get(id); ok {
 		hub.DisconnectWebViewers()
 	}
-	// Phase 165 / FNL-05: web-share-off also tears down Funnel for this session
-	// (site 2). Routes through the ref-counted disableFunnelForSession helper so
-	// a sibling Funnel session is never cut off prematurely (Anti-Pattern 3).
-	a.disableFunnelForSession(r.Context(), id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1159,31 +1023,31 @@ func (a *API) handleDisconnectViewers(w http.ResponseWriter, r *http.Request) {
 // This is the atomic "Share" operation from the user's perspective (D-07):
 // one call produces both a read-only and a read-write link, each with its
 // own grant_id for future revocation granularity.
-func (a *API) issueCapabilitiesForSession(sessionID string) (readURL, writeURL, readCode, writeCode, publicReadCode string, err error) {
+func (a *API) issueCapabilitiesForSession(sessionID string) (readURL, writeURL, readCode, writeCode string, err error) {
 	a.signingKeyMu.RLock()
 	key := a.signingKey
 	a.signingKeyMu.RUnlock()
 	if key == nil {
-		return "", "", "", "", "", errors.New("capability: signing key not bootstrapped")
+		return "", "", "", "", errors.New("capability: signing key not bootstrapped")
 	}
 
 	a.mu.RLock()
 	ws := a.webServer
 	a.mu.RUnlock()
 	if ws == nil {
-		return "", "", "", "", "", errors.New("web server not running")
+		return "", "", "", "", errors.New("web server not running")
 	}
 	if a.joinCodes == nil {
-		return "", "", "", "", "", errors.New("capability: join-code manager not bootstrapped")
+		return "", "", "", "", errors.New("capability: join-code manager not bootstrapped")
 	}
 
 	// Generate two 128-bit grant IDs (hex-encoded to 32 chars).
 	var rgid, wgid [16]byte
 	if _, err := rand.Read(rgid[:]); err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", err
 	}
 	if _, err := rand.Read(wgid[:]); err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", err
 	}
 
 	now := time.Now().Unix()
@@ -1196,11 +1060,11 @@ func (a *API) issueCapabilitiesForSession(sessionID string) (readURL, writeURL, 
 
 	rTok, err := capability.Sign(rClaims, key)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", err
 	}
 	wTok, err := capability.Sign(wClaims, key)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", err
 	}
 
 	// Register both grants BEFORE returning URLs so the caller's first
@@ -1209,125 +1073,19 @@ func (a *API) issueCapabilitiesForSession(sessionID string) (readURL, writeURL, 
 	ws.AddGrant(sessionID, rClaims.GrantID)
 	ws.AddGrant(sessionID, wClaims.GrantID)
 
-	// Phase 165 / FNL-03: use FunnelBaseURL (no-port public URL) for the READ
-	// link on Funnel sessions; fall back to the tailnet BaseURL when Funnel
-	// is not active for this session. Fail-safe: if FunnelBaseURL is "" (not
-	// yet cached or race), keep the tailnet base.
-	//
-	// D-04 (Phase 171 / FNL-09): the WRITE link (tailnet "Full Access Link")
-	// is NEVER rebased to the Funnel base here — readBase and writeBase are
-	// deliberately separate variables. Before this fix both shared one `base`
-	// var, so enabling Funnel silently turned the owner's tailnet-only
-	// full-access link into a public one (T-171-07, the accidental-write
-	// gap this phase closes). The ONLY public write cap is now minted by the
-	// dedicated gate handler (handleSetSessionFunnelWrite), never here.
-	readBase := ws.BaseURL()
-	writeBase := ws.BaseURL()
-	a.mu.RLock()
-	isFunnelSession := a.funnelSessions[sessionID]
-	a.mu.RUnlock()
-	if isFunnelSession {
-		if fb := ws.FunnelBaseURL(); fb != "" {
-			readBase = fb
-		}
-	}
-	readURL = readBase + "/sessions/" + sessionID + "?cap=" + rTok
-	writeURL = writeBase + "/sessions/" + sessionID + "?cap=" + wTok
+	readURL = ws.BaseURL() + "/sessions/" + sessionID + "?cap=" + rTok
+	writeURL = ws.BaseURL() + "/sessions/" + sessionID + "?cap=" + wTok
 
 	readCode, err = a.joinCodes.Issue(rTok)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", err
 	}
 	writeCode, err = a.joinCodes.Issue(wTok)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", err
 	}
 
-	// FNL-08: mint (or reuse) the reusable public-share join code for a
-	// Funnel session, bound to rTok (the read-only token) ONLY — never wTok
-	// (T-170-01). Cached per session under a.mu so a repeat IssueCapabilities
-	// call (browse toggle, warm-up re-issue, modal reopen) returns the SAME
-	// code instead of rotating it (T-170-04) — a code already handed to a
-	// viewer must not silently break. Non-Funnel sessions leave
-	// publicReadCode "". a.mu is held across IssueReusable (crypto/rand +
-	// joinCodes' own mutex only, no blocking I/O) to close the TOCTOU window
-	// where two concurrent callers could each mint a distinct code.
-	if isFunnelSession {
-		// Test seam (WR-01): simulate a teardown landing in the TOCTOU window
-		// between the base-URL membership read above and the mint lock below.
-		// nil in production.
-		if a.mintRaceHookForTest != nil {
-			a.mintRaceHookForTest()
-		}
-		a.mu.Lock()
-		// WR-01: re-verify Funnel membership INSIDE the same critical section as
-		// the mint. isFunnelSession was read above under a separate RLock; a
-		// disableFunnelForSession that interleaved between that read and this
-		// Lock (expiry timer, user disable) would otherwise let us mint a
-		// reusable code the teardown already ran past and will never revoke —
-		// orphaning a live public code past "dies with the share" (T-170-02).
-		if a.funnelSessions[sessionID] {
-			cached, ok := a.funnelReadCode[sessionID]
-			// WR-02: treat an expired cached code as absent. An "Until I
-			// disable" (ExpiresIn==0) share keeps its public URL up
-			// indefinitely, but the code itself is TTL-capped at
-			// funnelReadCodeMaxTTL (8h, T-170-03 entropy backstop). Past that
-			// the code is dead (Exchange → 410/404) yet still cached; without
-			// this re-mint gate it would never recover short of a Funnel
-			// off→on cycle.
-			expiry, hasExpiry := a.funnelReadCodeExpiry[sessionID]
-			expired := ok && hasExpiry && time.Now().After(expiry)
-			if !ok || expired {
-				code, mintErr := a.mintFunnelReadCodeLocked(sessionID, rTok)
-				if mintErr != nil {
-					a.mu.Unlock()
-					return "", "", "", "", "", mintErr
-				}
-				cached = code
-			} else if rebindErr := a.joinCodes.Rebind(cached, rTok); rebindErr != nil {
-				// CR-01: the cached public code exists but its stored token no
-				// longer resolves (expired-and-swept or revoked out from under
-				// us) — mint a fresh one so the UI never surfaces a dead code.
-				code, mintErr := a.mintFunnelReadCodeLocked(sessionID, rTok)
-				if mintErr != nil {
-					a.mu.Unlock()
-					return "", "", "", "", "", mintErr
-				}
-				cached = code
-			}
-			publicReadCode = cached
-		}
-		a.mu.Unlock()
-	}
-
-	return readURL, writeURL, readCode, writeCode, publicReadCode, nil
-}
-
-// mintFunnelReadCodeLocked mints a fresh reusable public-share join code
-// (FNL-08) bound to rTok, stores it in the per-session cache, and returns it.
-// The caller MUST hold a.mu. TTL selection mirrors the enable-time choice
-// (funnelReadCodeTTL, min(ExpiresIn, funnelReadCodeMaxTTL)); it falls back to
-// the 8h backstop when no per-session TTL was recorded.
-func (a *API) mintFunnelReadCodeLocked(sessionID, rTok string) (string, error) {
-	ttl := a.funnelReadCodeTTL[sessionID]
-	if ttl <= 0 {
-		ttl = funnelReadCodeMaxTTL
-	}
-	code, err := a.joinCodes.IssueReusable(rTok, ttl)
-	if err != nil {
-		return "", err
-	}
-	if a.funnelReadCode == nil {
-		a.funnelReadCode = make(map[string]string)
-	}
-	if a.funnelReadCodeExpiry == nil {
-		a.funnelReadCodeExpiry = make(map[string]time.Time)
-	}
-	a.funnelReadCode[sessionID] = code
-	// WR-02: record the absolute expiry so a later issuance can detect a lapsed
-	// code and re-mint instead of returning the dead string.
-	a.funnelReadCodeExpiry[sessionID] = time.Now().Add(ttl)
-	return code, nil
+	return readURL, writeURL, readCode, writeCode, nil
 }
 
 // handleIssueCapabilities issues two capabilities for a web-enabled session
@@ -1347,17 +1105,16 @@ func (a *API) handleIssueCapabilities(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not web-enabled", http.StatusBadRequest)
 		return
 	}
-	readURL, writeURL, readCode, writeCode, publicReadCode, err := a.issueCapabilitiesForSession(id)
+	readURL, writeURL, readCode, writeCode, err := a.issueCapabilitiesForSession(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, IssueCapabilitiesResponse{
-		ReadURL:        readURL,
-		WriteURL:       writeURL,
-		ReadCode:       readCode,
-		WriteCode:      writeCode,
-		PublicReadCode: publicReadCode, // Phase 170-02 / FNL-08: "" for non-Funnel sessions
+		ReadURL:   readURL,
+		WriteURL:  writeURL,
+		ReadCode:  readCode,
+		WriteCode: writeCode,
 	})
 }
 
@@ -1413,19 +1170,7 @@ func (a *API) handleExchangeJoinCode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "web server not running", http.StatusBadRequest)
 		return
 	}
-	// Phase 165 / FNL-03: use FunnelBaseURL for Funnel sessions (same swap logic
-	// as issueCapabilitiesForSession). The joinCodes.Exchange single-use consumption
-	// and the cap token are unaffected — only the host changes (T-165-11).
-	base := ws.BaseURL()
-	a.mu.RLock()
-	isFunnelSession := a.funnelSessions[claims.SID]
-	a.mu.RUnlock()
-	if isFunnelSession {
-		if fb := ws.FunnelBaseURL(); fb != "" {
-			base = fb
-		}
-	}
-	url := base + "/sessions/" + claims.SID + "?cap=" + token
+	url := ws.BaseURL() + "/sessions/" + claims.SID + "?cap=" + token
 	writeJSON(w, http.StatusOK, ExchangeJoinCodeResponse{URL: url})
 }
 
@@ -1465,308 +1210,4 @@ func (a *API) handleTailnetPeers(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	peers := a.tailnetCache.getOrRefresh(ctx, tailnet.DiscoverAndProbe)
 	writeJSON(w, http.StatusOK, peers)
-}
-
-// handleSetSessionFunnel handles POST /sessions/{id}/funnel.
-// It enables or disables Tailscale Funnel per-session (FNL-01/FNL-07).
-// Phase 165.
-//
-// Enable path (req.Enabled==true): calls ws.EnableFunnel(ctx, 443) and, if
-// it succeeds, records funnelSessions[id]=true and optionally registers a
-// time.AfterFunc expiry timer (FNL-07). Returns 200 with SetSessionFunnelResponse.
-//
-// Disable path (req.Enabled==false): calls disableFunnelForSession and returns 204.
-//
-// CheckFunnelAccess errors (FNL-06) are surfaced verbatim as 400 so the user
-// sees the human-readable "Funnel not available; ..." text.
-func (a *API) handleSetSessionFunnel(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var req SetSessionFunnelRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws == nil {
-		http.Error(w, "web server not running", http.StatusBadRequest)
-		return
-	}
-
-	if !req.Enabled {
-		a.disableFunnelForSession(r.Context(), id)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	// Enable path: call the real WebServer.EnableFunnel — CheckFunnelAccess runs inside.
-	if err := ws.EnableFunnel(r.Context(), 443); err != nil {
-		// Surface CheckFunnelAccess error verbatim (FNL-06).
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	a.mu.Lock()
-	if a.funnelSessions == nil {
-		a.funnelSessions = make(map[string]bool)
-	}
-	a.funnelSessions[id] = true
-
-	// FNL-08 / T-170-05: capture the per-code TTL for the reusable public-share
-	// join code that issueCapabilitiesForSession will mint on first capability
-	// issuance for this Funnel session (no rTok is available here, so minting
-	// itself is deferred to that call site). Capped at funnelReadCodeMaxTTL
-	// (8h) — this bound holds even when ExpiresIn==0 ("Until I disable"),
-	// preserving the ~40-bit code entropy brute-force-safety argument for a
-	// code that must resolve for an unbounded number of anonymous viewers.
-	if a.funnelReadCodeTTL == nil {
-		a.funnelReadCodeTTL = make(map[string]time.Duration)
-	}
-	readCodeTTL := funnelReadCodeMaxTTL
-	if req.ExpiresIn > 0 {
-		if d := time.Duration(req.ExpiresIn) * time.Second; d < readCodeTTL {
-			readCodeTTL = d
-		}
-	}
-	a.funnelReadCodeTTL[id] = readCodeTTL
-
-	// FNL-07: register auto-expiry timer if expiresIn > 0.
-	if req.ExpiresIn > 0 {
-		if a.funnelExpiry == nil {
-			a.funnelExpiry = make(map[string]*time.Timer)
-		}
-		// Cancel any existing timer for this session before registering a new one
-		// (re-enable before expiry must not double-fire — T-165-13).
-		if t, ok := a.funnelExpiry[id]; ok {
-			t.Stop()
-		}
-		dur := time.Duration(req.ExpiresIn) * time.Second
-		a.funnelExpiry[id] = time.AfterFunc(dur, func() {
-			a.disableFunnelForSession(context.Background(), id)
-		})
-	}
-	a.mu.Unlock()
-
-	writeJSON(w, http.StatusOK, SetSessionFunnelResponse{FunnelURL: ws.FunnelBaseURL()})
-}
-
-// funnelWriteExpiryMax bounds ExpiresIn for the gate-minted public write cap
-// (FNL-09) to exactly 1 hour, unconditionally. This is the R5/D-11 clamp
-// (Pitfall 6): 0 or any value greater than this becomes exactly this — NOT
-// the read Funnel handler's ExpiresIn==0-means-unbounded semantics. A
-// public WRITE cap must never be long-lived or unbounded.
-const funnelWriteExpiryMax = 3600 * time.Second
-
-// handleSetSessionFunnelWrite handles POST /sessions/{id}/funnel-write
-// (FNL-09). It mints the gate-minted, terminal-only public write
-// capability: registers a grant (ws.AddGrant), sets the RW consent gate
-// (ws.SetRWGate), mints a single-use join code bound to the write token
-// (joinCodes.IssueSingleUseWithTTL), and starts an expiry timer that
-// revokes exactly this write cap on fire (disableFunnelWriteForSession,
-// added in Task 3). Perms is hardcoded to "read,write" (terminal-only,
-// T-171-06/D-05).
-//
-// Loopback-trust (daemon socket): no auth gate — same access-control model
-// as the existing POST /sessions/{id}/funnel toggle registered above.
-func (a *API) handleSetSessionFunnelWrite(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var req SetSessionFunnelWriteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	a.signingKeyMu.RLock()
-	key := a.signingKey
-	a.signingKeyMu.RUnlock()
-	if key == nil {
-		http.Error(w, "capability: signing key not bootstrapped", http.StatusInternalServerError)
-		return
-	}
-	if a.joinCodes == nil {
-		http.Error(w, "capability: join-code manager not bootstrapped", http.StatusInternalServerError)
-		return
-	}
-
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws == nil {
-		http.Error(w, "web server not running", http.StatusBadRequest)
-		return
-	}
-
-	// R5/D-11 (Pitfall 6): unconditional clamp — 0 or >1h becomes exactly
-	// 1h. Deliberately NOT the read handler's "0 == unbounded" semantics; a
-	// public WRITE cap must always have a bounded, short lifetime.
-	if req.ExpiresIn <= 0 || time.Duration(req.ExpiresIn)*time.Second > funnelWriteExpiryMax {
-		req.ExpiresIn = int(funnelWriteExpiryMax / time.Second)
-	}
-	ttl := time.Duration(req.ExpiresIn) * time.Second
-
-	var gid [16]byte
-	if _, err := rand.Read(gid[:]); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	grantID := hex.EncodeToString(gid[:])
-
-	// T-171-06/D-05 (Pitfall 5): Perms hardcoded "read,write" — terminal-only.
-	claims := capability.Claims{SID: id, Perms: "read,write", IAT: time.Now().Unix(), GrantID: grantID, V: 1}
-	wTok, err := capability.Sign(claims, key)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	code, err := a.joinCodes.IssueSingleUseWithTTL(wTok, ttl)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	a.mu.Lock()
-	// Clear any prior gate-minted write grant/code/timer for this session
-	// before installing the fresh one: a re-mint without an intervening
-	// disable must not leak the previous grant/code, nor leave a stale timer
-	// that could later fire and revoke the NEW mint out from under it
-	// (mirrors T-165-13's re-enable-before-expiry double-fire guard for the
-	// read Funnel timer, generalised via the shared teardown primitive).
-	a.revokeFunnelWriteLocked(id, ws)
-
-	ws.AddGrant(id, grantID)
-	ws.SetRWGate(id, true)
-	if a.funnelWriteGrant == nil {
-		a.funnelWriteGrant = make(map[string]string)
-	}
-	a.funnelWriteGrant[id] = grantID
-	if a.funnelWriteCode == nil {
-		a.funnelWriteCode = make(map[string]string)
-	}
-	a.funnelWriteCode[id] = code
-	if a.funnelWriteExpiry == nil {
-		a.funnelWriteExpiry = make(map[string]*time.Timer)
-	}
-	expiresAt := time.Now().Add(ttl)
-	a.funnelWriteExpiry[id] = time.AfterFunc(ttl, func() {
-		a.disableFunnelWriteForSession(context.Background(), id)
-	})
-	a.mu.Unlock()
-
-	writeURL := ws.FunnelBaseURL() + "/sessions/" + id + "?cap=" + wTok
-	writeJSON(w, http.StatusOK, SetSessionFunnelWriteResponse{
-		WriteURL:  writeURL,
-		WriteCode: code,
-		ExpiresAt: expiresAt.Unix(),
-	})
-}
-
-// handleDisableSessionFunnelWrite handles DELETE /sessions/{id}/funnel-write
-// (FNL-09). Revokes ONLY the gate-minted write grant/code/gate — never the
-// reusable public read share, funnelSessions, or any other grant for the
-// session (D-03, Pitfall 3): this handler delegates to
-// disableFunnelWriteForSession, never to ClearGrants or
-// disableFunnelForSession, both of which have a much wider blast radius.
-func (a *API) handleDisableSessionFunnelWrite(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	a.disableFunnelWriteForSession(r.Context(), id)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// disableFunnelForSession clears the per-session Funnel state and calls
-// ws.DisableFunnel when no other Funnel sessions remain (ref-count gate).
-// Invoked by: handleSetSessionFunnel toggle-off (site 1), handleWebServe
-// disable path (site 2), runSessionExitCleanup (site 3), and the funnelExpiry
-// timer (site 5). Site 4 (daemon stop) is covered by ws.Stop()→DisableFunnel
-// in Phase 165-01 — do NOT add a second call there (would double-fire).
-//
-// This is also the single teardown chokepoint for the FNL-08 reusable public
-// read code (T-170-02): every one of the triggers above routes through here,
-// so revoking the cached code in ONE place covers every path — not just the
-// funnelReadCodeMaxTTL backstop timer. A manually-disabled share must leave
-// no live public entry point.
-//
-// Locking contract: acquires a.mu.Lock, then releases before calling ws.DisableFunnel
-// (blocking call must not hold the mutex — mirrors the pattern in runSessionExitCleanup).
-func (a *API) disableFunnelForSession(ctx context.Context, sessionID string) {
-	a.mu.Lock()
-	// Stop and remove the expiry timer if present (T-165-13 double-fire prevention).
-	if t, ok := a.funnelExpiry[sessionID]; ok {
-		t.Stop()
-		delete(a.funnelExpiry, sessionID)
-	}
-	// FNL-08 / T-170-02: revoke the cached reusable public-share join code, if
-	// one was ever minted, BEFORE the funnelSessions delete below — a viewer
-	// holding the code must never be able to resolve it again once teardown
-	// starts. Revoke is a no-op for a never-minted/absent code.
-	if code, ok := a.funnelReadCode[sessionID]; ok {
-		a.joinCodes.Revoke(code)
-		delete(a.funnelReadCode, sessionID)
-	}
-	delete(a.funnelReadCodeExpiry, sessionID)
-	delete(a.funnelReadCodeTTL, sessionID)
-	delete(a.funnelSessions, sessionID)
-	remaining := len(a.funnelSessions)
-	ws := a.webServer
-	// Phase 171-02 / FNL-09 / D-03: cascade into the write-cap teardown too —
-	// every trigger that tears down the read share (toggle-off, web-share-off,
-	// session-exit, auto-expiry) must also revoke any gate-minted write cap;
-	// a public write cap must never outlive the read share it was granted
-	// alongside. revokeFunnelWriteLocked is a no-op when no write cap was
-	// ever minted for this session.
-	a.revokeFunnelWriteLocked(sessionID, ws)
-	a.mu.Unlock()
-
-	// Ref-count gate (Anti-Pattern 3 / T-165-09): only call DisableFunnel when
-	// the last Funnel session is torn down so a still-active sibling is never cut off.
-	if ws != nil && remaining == 0 {
-		_ = ws.DisableFunnel(ctx)
-	}
-}
-
-// revokeFunnelWriteLocked revokes exactly the gate-minted write grant, code,
-// RW gate, and expiry timer for sessionID (FNL-09) — the single shared
-// teardown primitive called from BOTH the RW-only disable path
-// (disableFunnelWriteForSession) and disableFunnelForSession's cascade
-// above (funnel-off / web-share-off / session-exit / auto-expiry). The
-// caller MUST hold a.mu. Mirrors the inlined funnelReadCode cleanup block
-// in disableFunnelForSession, but scoped to the write cap ONLY — it never
-// touches funnelSessions/funnelReadCode and never calls ws.DisableFunnel or
-// ClearGrants (that wider blast radius is exactly why an RW-only disable
-// must not route through disableFunnelForSession, Pitfall 3). A no-op when
-// no write cap was ever minted for this session (idempotent).
-func (a *API) revokeFunnelWriteLocked(sessionID string, ws *webserver.WebServer) {
-	if grantID, ok := a.funnelWriteGrant[sessionID]; ok {
-		if ws != nil {
-			ws.RemoveGrant(sessionID, grantID)
-		}
-		delete(a.funnelWriteGrant, sessionID)
-	}
-	if code, ok := a.funnelWriteCode[sessionID]; ok {
-		a.joinCodes.Revoke(code)
-		delete(a.funnelWriteCode, sessionID)
-	}
-	if ws != nil {
-		ws.SetRWGate(sessionID, false)
-	}
-	if t, ok := a.funnelWriteExpiry[sessionID]; ok {
-		t.Stop()
-		delete(a.funnelWriteExpiry, sessionID)
-	}
-}
-
-// disableFunnelWriteForSession revokes the gate-minted write grant/code/gate
-// for sessionID (FNL-09) WITHOUT touching the reusable public read share,
-// funnelSessions, or any other grant — a surgical sibling to
-// disableFunnelForSession's much wider blast radius (Pitfall 3). This is
-// both the expiry-timer callback target (registered by
-// handleSetSessionFunnelWrite) and the RW-only HTTP DELETE
-// /sessions/{id}/funnel-write handler's delegate.
-func (a *API) disableFunnelWriteForSession(_ context.Context, sessionID string) {
-	a.mu.Lock()
-	ws := a.webServer
-	a.revokeFunnelWriteLocked(sessionID, ws)
-	a.mu.Unlock()
 }

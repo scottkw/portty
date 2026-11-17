@@ -29,18 +29,9 @@ type SessionInfo struct {
 	CreatedAt  string `json:"createdAt"`
 	Hostname   string `json:"hostname"`
 	WebEnabled bool   `json:"webEnabled"`
-	// Phase 165 / FNL-01: true when Tailscale Funnel is active for this session.
-	// NOT omitempty: false must serialize so the frontend poll detects expiry
-	// (silent false-drop is a UAT-class bug).
-	FunnelActive bool `json:"funnelActive"`
-	// Phase 171 / FNL-09: true when the gate-minted public write cap (consent-gated
-	// Full Access write-share) is active for this session. NOT omitempty: false must
-	// serialize so the frontend poll detects a write-share teardown flip (same rule
-	// as FunnelActive — silent false-drop is a UAT-class bug).
-	FunnelWriteActive bool `json:"funnelWriteActive"`
 	// Phase 131 — Hub card fields (CARD-04, CARD-05, CARD-06, GRID-02).
 	// Omitting any of these silently drops them to zero in the Wails RPC
-	// response — same class of UAT bug documented on FunnelActive above.
+	// response (silent false-drop is a UAT-class bug).
 	ViewerCount int    `json:"viewerCount"`
 	ExitCode    *int   `json:"exitCode,omitempty"`
 	Duration    *int   `json:"duration,omitempty"`
@@ -453,16 +444,9 @@ func (a *App) ListSessions() []SessionInfo {
 			CreatedAt:  s.CreatedAt,
 			Hostname:   s.Hostname,
 			WebEnabled: s.WebEnabled,
-			// Phase 165 / FNL-01: propagate Funnel state so the frontend poll
-			// can detect expiry. Omitting silently drops to false (T-165-15).
-			FunnelActive: s.FunnelActive,
-			// Phase 171 / FNL-09: propagate the public write-share cap state so the
-			// frontend poll can detect a write-share teardown flip. Omitting silently
-			// drops to false (T-177-01 — this is the load-bearing runtime fix).
-			FunnelWriteActive: s.FunnelWriteActive,
 			// Phase 131 / CARD-04..06, GRID-02: propagate Hub card fields from
 			// daemon source of truth. Omitting these silently drops them to zero
-			// — the same class of silent-corruption bug documented on FunnelActive above.
+			// (silent corruption).
 			ViewerCount: s.ViewerCount,
 			ExitCode:    s.ExitCode,
 			Duration:    s.Duration,
@@ -905,42 +889,6 @@ func (a *App) DisconnectViewers(sessionID string) error {
 		return fmt.Errorf("daemon not connected")
 	}
 	return a.client.DisconnectViewers(sessionID)
-}
-
-// SetSessionFunnel enables or disables Tailscale Funnel for a session.
-// Phase 165 / FNL-01. Thin bridge — all Funnel logic lives in the daemon
-// (165-02). expiresIn is the auto-expiry in seconds (0 = no expiry, FNL-07)
-// so Phase 166's expiry picker can drive the full FNL-07 path.
-func (a *App) SetSessionFunnel(sessionID string, enabled bool, expiresIn int) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.SetSessionFunnel(sessionID, enabled, expiresIn)
-}
-
-// SetSessionFunnelWrite mints the gate-minted, terminal-only public write
-// capability for a session (FNL-09). Phase 171-02. Thin bridge — all
-// RW-gate lifecycle logic lives in the daemon; expiresIn is the requested
-// TTL in seconds (server-clamped unconditionally to (0, 3600]).
-func (a *App) SetSessionFunnelWrite(sessionID string, expiresIn int) (daemon.SetSessionFunnelWriteResponse, error) {
-	if a.client == nil {
-		return daemon.SetSessionFunnelWriteResponse{}, fmt.Errorf("daemon not connected")
-	}
-	writeURL, writeCode, expiresAt, err := a.client.SetSessionFunnelWrite(sessionID, expiresIn)
-	if err != nil {
-		return daemon.SetSessionFunnelWriteResponse{}, err
-	}
-	return daemon.SetSessionFunnelWriteResponse{WriteURL: writeURL, WriteCode: writeCode, ExpiresAt: expiresAt}, nil
-}
-
-// DisableSessionFunnelWrite revokes the gate-minted write grant/code/gate
-// for a session (FNL-09) without disturbing the reusable public read share.
-// Phase 171-02. Thin bridge — mirrors SetSessionFunnelWrite.
-func (a *App) DisableSessionFunnelWrite(sessionID string) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.DisableSessionFunnelWrite(sessionID)
 }
 
 // GetWebServerURL returns the base HTTPS URL of the running web server,
