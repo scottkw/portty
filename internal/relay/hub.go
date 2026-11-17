@@ -2,6 +2,7 @@ package relay
 
 import (
 	"io"
+	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -135,6 +136,14 @@ func NewHub(sessionID string, reader io.Reader, writer io.Writer, scrollbackByte
 	}
 }
 
+// id8 is the session ID shortened for viewer-diag log lines.
+func (h *Hub) id8() string {
+	if len(h.sessionID) > 8 {
+		return h.sessionID[:8]
+	}
+	return h.sessionID
+}
+
 // Resize calls the resize callback registered at construction time.
 // If no callback was provided it is a no-op.
 func (h *Hub) Resize(cols, rows int) error {
@@ -257,6 +266,7 @@ func (h *Hub) ResizeClient(sub *Subscriber, cols, rows int) error {
 	// D-01 freeze: if no local subscriber reports a positive size, leave ptyCols/ptyRows
 	// unchanged (last host grid persists). Only update when we have a valid min.
 	needResize := (minCols > 0 && minRows > 0) && (minCols != h.ptyCols || minRows != h.ptyRows)
+	oldCols, oldRows := h.ptyCols, h.ptyRows
 	if needResize {
 		h.ptyCols = minCols
 		h.ptyRows = minRows
@@ -265,6 +275,8 @@ func (h *Hub) ResizeClient(sub *Subscriber, cols, rows int) error {
 	h.mu.Unlock() // unlock-before-IO: broadcastResize and resizeFn must not run under mu
 
 	if needResize {
+		// Diagnostic for UAT gap 1 (04-07 H-grid): who changed the host grid, and to what.
+		log.Printf("viewer-diag: grid session=%s %dx%d -> %dx%d by=%s client=%q", h.id8(), oldCols, oldRows, pc, pr, sub.Origin, sub.Name)
 		// VIEW-01: broadcast the new authoritative grid to all subscribers.
 		h.broadcastResize(uint16(pc), uint16(pr))
 		// CR-01: keep the live emulator's geometry in lockstep with the PTY so a

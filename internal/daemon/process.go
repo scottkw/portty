@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,6 +19,8 @@ var BuildVersion string
 // RunDaemon is the daemon's main entry point. It creates a signal context and
 // delegates to runDaemonCore. Called from main.go when os.Args[1] == "daemon".
 func RunDaemon() {
+	// Microseconds so viewer-diag lines within a few seconds can be ordered (daemon.log).
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 	runDaemonCore(ctx)
