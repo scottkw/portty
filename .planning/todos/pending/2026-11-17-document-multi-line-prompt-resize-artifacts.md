@@ -13,10 +13,10 @@ With a multi-line zsh prompt (seen with Powerlevel10k's two-line style), resizin
 Portty window leaves stray copies of the prompt's top line (e.g. `╭─  ~/dev/temp`)
 in the scrollback. Found during Phase 4 two-Mac UAT on 2026-11-17.
 
-It happens only when the window gets smaller, either narrower or shorter, never when
-it gets wider or taller (user observation, 2026-11-17). Narrowing wraps the prompt
-lines, adding rows above the cursor; shortening scrolls the screen up under the
-cursor. Either way zsh's relative cursor move to redraw the prompt falls short.
+It happens only when the window gets narrower. Wider, taller and shorter are all fine
+(user observation, 2026-11-17, after testing each direction). Narrowing wraps the
+prompt lines, adding rows above the cursor; zsh moves up by the old row count to
+redraw the prompt and falls short. The other directions add no wrapped rows.
 
 Cause: each resize sends SIGWINCH, zsh redraws the prompt, the terminal reflows old
 text and zsh's cursor lands one line off, orphaning the top prompt line. Portty makes
@@ -29,8 +29,8 @@ Decision (2026-11-17, user): no code fix for the initial release. Document it in
 
 Add a "Known issues" entry to the user documentation with these two items:
 
-1. **Known behavior.** Making the window smaller (narrower or shorter) can leave copies of
-   the prompt's top line behind; making it wider or taller never does. The leftover lines are cosmetic and do not affect the session.
+1. **Known behavior.** Making the window narrower can leave copies of the prompt's top
+   line behind; making it wider, taller or shorter does not. The leftover lines are cosmetic and do not affect the session.
    Clear them with `clear` or Ctrl-L. (Portty has no Cmd-K clear shortcut today —
    checked 2026-11-17.) A future release may wait ~100 ms after a drag stops before
    resizing the shell, cutting it to at most one leftover line per drag.
