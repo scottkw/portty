@@ -168,7 +168,12 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 					_ = hub.ResizeClient(sub, int(cols), int(rows)) // host-authority arbiter (VIEW-01/VIEW-02)
 				}
 			case MsgPing:
-				// Keep-alive — no-op.
+				// Answer without blocking: a full queue means a "too slow" kick is
+				// coming (T-05-06). No WebSocket heartbeat on this loopback relay.
+				select {
+				case sub.Msgs <- PongFrame:
+				default:
+				}
 			}
 		}
 	}()
