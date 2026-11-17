@@ -11,6 +11,28 @@ package daemon
 // no tailnet: the host's share server (cap and Origin gated), the host's relay
 // hub, the viewing Mac's daemon proxy (/api/relay/remote/{id}/ws) and the real
 // CLI pump (attach.AttachSession), against one shared /bin/cat session.
+//
+// Verdicts (04-07, ranked hypotheses; results on unmodified code):
+//
+//   - H-grid (host-local tiny grid push, the best fit for "guests blank, office
+//     fine"): no in-process trigger. Only Hub.ResizeClient broadcasts a 0x02 and
+//     only for an Origin "local" subscriber; the remote CLI is Origin "web".
+//     Not reproducible in-process. Live evidence: 04-08 viewer-diag grid lines,
+//     TESTING.md M-83.
+//   - H-net (first-contact tailnet path stall, fits `[reconnecting]` and the
+//     ~10 s recovery): no in-process trigger. Not reproducible in-process. Live
+//     evidence: 04-08 proxy dial/close lines, M-83 `tailscale ping`.
+//   - H-replies (replayed query replies typed into the shared shell):
+//     replayed_query_replies FAILED (local, guiTab and browser each got 54
+//     echoed reply bytes). Reproduced and fixed: Hub.ReconnectPreamble strips
+//     reply-eliciting queries. It hits every viewer including the office's own
+//     panel, so it does not match the UAT signature.
+//   - H-resize (the CLI reports a tiny size): tiny_resize_0x0, tiny_resize_1x1
+//     and tiny_resize_2x1 PASSED. Refuted.
+//   - H-stuck (a CLI that stops reading blocks fan-out): stuck_cli_never_reads
+//     PASSED. Refuted.
+//
+// Root cause: not pinned — no in-process variant reproduces the UAT signature (guests lose output or get a non-host grid while the office panel is fine), so the live repro relies on the 04-08 diagnostic log and TESTING.md M-83.
 
 import (
 	"bytes"

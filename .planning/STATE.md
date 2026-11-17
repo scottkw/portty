@@ -4,10 +4,10 @@ current_phase: 04
 current_phase_name: One-Click Share
 status: executing
 stopped_at: context exhaustion at 75% (2026-11-17)
-last_updated: "2026-11-17T17:38:55.621Z"
-last_activity: 2026-11-16
-last_activity_desc: Phase 4 execution started
-state_head: dbed8f095a4a339167e291ffe4aa006922760c45
+last_updated: "2026-11-17T17:44:27.330Z"
+last_activity: 2026-11-17
+last_activity_desc: Phase 04 execution started
+state_head: 3d0c1d5cf43fd6f549b3841b5193c897dbc8e9de
 progress:
   total_phases: 6
   completed_phases: 1
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 4
+**Current focus:** Phase 04 — One-Click Share
 
 ## Current Position
 
-Phase: 04 (One-Click Share) — READY TO EXECUTE
-Plan: 6 of 6
-Status: Ready to execute
-Last activity: 2026-11-16 — Phase 4 execution started
+Phase: 04 (One-Click Share) — EXECUTING
+Plan: 7 of 9
+Status: Executing Phase 04
+Last activity: 2026-11-17 — Phase 04 execution started
 
 Progress: [██░░░░░░░░] 17%
 
@@ -199,6 +199,7 @@ Recent decisions affecting current work:
   - daemon restart
   - scrollback diff
   Rewrite VERF-01 as a short two-Mac sleep/wake check. Real overnight use becomes an informal check, not a gate. The requirement wording is the user's, so confirm at discuss before changing it.
+- [Phase 5]: On a remote `portty attach`, the status bar shows `[reconnecting]` after 5 s with no output, because the host sends no heartbeat frame and the cmd_attach.go watcher keys on received frames. That misleads on any idle session (UAT gap 1 diagnosis, 04-07). Phase 5's reconnect/idle work owns the fix.
 - [Phase 5]: The office Mac must not sleep overnight. Keep-awake (CONV-01) is v2, so the overnight test needs manual `caffeinate`/Energy settings. The home Mac sleeping overnight needs reconnect-on-wake.
 
 ### Quick Tasks Completed

@@ -1,0 +1,16 @@
+## Deferred Items
+
+- Proxied joiners are dropped when the catch-up replay is over 32 KiB (found during 04-07)
+  status: open
+  **What:** No Go WebSocket reader in the attach path calls `SetReadLimit`, so coder/websocket's default 32768-byte message limit applies. The host sends the whole raw scrollback ring (up to 256 KiB) as one preamble message. The viewing daemon's proxy (`internal/daemon/remote_ws_proxy.go`, `upstream.Read` in `copyWS`) fails on a larger preamble and tears down the joiner. A local CLI attach (`attach.WsOutputPump`) has the same limit.
+  **Evidence:** a scratch run of the 04-07 harness with about 52 KiB of history: the CLI through `/api/relay/remote/{id}/ws` got the grid frame, then EOF. GUI tabs already connected were unaffected, and browsers have no such limit.
+  **Why deferred:** pre-existing, outside 04-07's scope. It kills the joiner's own connection, not the other viewers (not UAT gap 1's signature). It does match "a GUI tab through the proxy can't rejoin a long session", so it is worth checking against the 04-08 diagnostic log.
+  **Fix sketch:** raise the read limit on the proxy's upstream conn and on the CLI conn (for example `conn.SetReadLimit(1 << 20)`, above the 256 KiB ring), plus a harness variant with more than 32 KiB of history.
+
+- `internal/relay/scrollback_altscreen_test.go` is not gofmt-clean on the 04-07 base
+  status: open
+  **What:** `gofmt -l internal/relay` lists it. 04-07 did not touch the file. Out of scope.
+
+- `TestRevoke_InputAfterRevokeNeverReachesPTY` (internal/webserver/revoke_test.go) failed once under the full `go test -race -short ./...` run during 04-07
+  status: open
+  **What:** `input after revoke reached the PTY: "after-revoke\n"`. It passed 30/30 in isolation and on a full-suite rerun. 04-07 changed nothing under internal/webserver. Likely cause: `Hub.RevokeWebViewers` runs `Kick` in a goroutine, so a frame written right after the revoke can reach the read pump before the close lands. Worth a look, because share-off is meant to stop input at once.
