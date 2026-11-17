@@ -22,7 +22,7 @@ describe('App', () => {
       expect(raw).toContain('const activeShared = !!sessions.find((s) => s.id === activeId)?.webEnabled')
       expect(tabBar).toContain('shared={activeShared}')
       // 04-09: a shared session's button stays enabled with Tailscale off (App.tailscale.test.tsx).
-      expect(tabBar).toContain('shareDisabled={tailscaleOff && !activeShared}')
+      expect(tabBar).toContain('shareDisabled={tailscaleOff && !activeShared && !sharePopoverOpen}')
     })
 
     it('renders one SharePopover, for the active local session, reporting toggles into the session list', () => {

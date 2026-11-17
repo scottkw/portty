@@ -913,7 +913,7 @@ function App(): React.ReactElement {
           sharePopoverId={SHARE_POPOVER_ID}
           shareButtonRef={shareButtonRef}
           shared={activeShared}
-          shareDisabled={tailscaleOff && !activeShared}
+          shareDisabled={tailscaleOff && !activeShared && !sharePopoverOpen}
         />
 
         {/* INVARIANT: this gating expression must include the trigger of EVERY banner

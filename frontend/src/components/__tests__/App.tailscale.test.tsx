@@ -106,10 +106,11 @@ describe('App.tsx NET-01: tailscale:health handler', () => {
 describe('App.tsx NET-01: Share controls', () => {
   // Portty 02-08 / 04-09: the toolbar Share button is aria-disabled while Tailscale
   // is off and the session is not shared (TabBar.test.tsx covers aria-describedby).
-  it('TabBar receives shareDisabled from tailscaleOff && !activeShared', () => {
+  // WR-05: an open popover keeps the button working, so it can close the popover.
+  it('TabBar receives shareDisabled from tailscaleOff && !activeShared && !sharePopoverOpen', () => {
     const idx = raw.indexOf('<TabBar')
     const props = raw.slice(idx, raw.indexOf('/>', idx))
-    expect(props).toContain('shareDisabled={tailscaleOff && !activeShared}')
+    expect(props).toContain('shareDisabled={tailscaleOff && !activeShared && !sharePopoverOpen}')
     expect(props).toContain('shared={activeShared}')
   })
 
@@ -137,16 +138,22 @@ describe('App.tsx NET-01: no Tailscale install flow', () => {
 describe('App — Tailscale off: the toolbar Share button (mounted)', () => {
   afterEach(async () => { await unmountApp(); vi.clearAllMocks() })
 
+  // The daemon's share state follows SetSessionShared, so a refetch after Share off reads false.
   function impl(webEnabled: boolean, setShared: (...a: unknown[]) => unknown) {
+    let shared = webEnabled
     return {
       GetRelayPort: () => 0,
       GetTailscaleStatus: () => ({ connected: false, hasCerts: false, ip: '', domain: '' }),
       ListSessions: () => [{
         id: 'sess-1', name: 'shell 1', state: 'running', status: 'idle', createdAt: '', hostname: '',
-        webEnabled, viewerCount: 0, workDir: '/',
+        webEnabled: shared, viewerCount: 0, workDir: '/',
       }],
-      GetSessionShare: () => ({ shared: true, url: 'https://office-air.tail1234.ts.net:7444/sessions/sess-1?cap=CAP', errorCode: '', errorDetail: '' }),
-      SetSessionShared: setShared,
+      GetSessionShare: () => ({ shared, url: shared ? 'https://office-air.tail1234.ts.net:7444/sessions/sess-1?cap=CAP' : '', errorCode: '', errorDetail: '' }),
+      SetSessionShared: (...a: unknown[]) => {
+        const r = setShared(...a) as { shared: boolean } | undefined
+        if (r) shared = r.shared
+        return r
+      },
       HasCTDisclosure: () => true,
     }
   }
@@ -179,6 +186,18 @@ describe('App — Tailscale off: the toolbar Share button (mounted)', () => {
     await click(sw)
     expect(setShared).toHaveBeenCalledTimes(1)
     expect(setShared).toHaveBeenCalledWith('sess-1', false)
+
+    // WR-05: now unshared, the open popover's button still closes it, then goes aria-disabled.
+    expect(btn.textContent).toBe('Share')
+    expect(btn.hasAttribute('aria-disabled')).toBe(false)
+    expect(sw.getAttribute('aria-checked')).toBe('false')
+    expect(sw.getAttribute('aria-disabled')).toBe('true')
+    await click(btn)
+    expect(dialog(), 'button closes the popover').toBeNull()
+    expect(btn.getAttribute('aria-disabled')).toBe('true')
+    await click(btn)
+    expect(dialog(), 'button cannot reopen it').toBeNull()
+    expect(setShared).toHaveBeenCalledTimes(1)
   })
 
   it('an unshared session: the Share button is aria-disabled and opens nothing', async () => {

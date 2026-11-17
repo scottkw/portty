@@ -289,7 +289,8 @@ export function TabBar({
           It toggles the Share popover (Portty 04-05). shareDisabled (Tailscale off and
           not shared): aria-disabled (not disabled) keeps it focusable with its name, the
           reason is the visible banner sentence, and it does nothing. A shared session's
-          button stays enabled with Tailscale off, so its popover can turn Share off. */}
+          button stays enabled with Tailscale off, so its popover can turn Share off, and
+          App keeps it enabled while the popover is open so it can close it (04 WR-05). */}
       {!webMode && activeTab && isLocal(activeTab) && onShare && (
         <button
           ref={shareButtonRef}
