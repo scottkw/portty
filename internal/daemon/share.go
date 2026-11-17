@@ -283,7 +283,8 @@ func (a *API) mintShareRecord(id string) (shareRecord, error) {
 // holds a.mu.
 // Order matters: grants clear before the kick so a viewer subscribing
 // mid-revoke fails its post-subscribe re-check, and the kick precedes Stop
-// because Stop closes only the listener (hijacked WebSockets survive it).
+// because Stop closes the listener and plain connections; hijacked WebSockets
+// survive it.
 func (a *API) unshareLocked(id string) {
 	delete(a.shares, id)
 	ws := a.webServer
