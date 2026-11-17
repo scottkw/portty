@@ -91,6 +91,13 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
     expect(document.querySelector('input')).toBeNull()
   })
 
+  it('connects by the MagicDNS name when the peer has one (WR-05: HostNames can repeat)', async () => {
+    const connect = vi.fn(() => okResult)
+    const c = await mountApp({ ...baseImpl(connect), GetRemoteSessionsWithMeta: () => [{ ...remotePeer, hostname: 'Kens-MacBook-Air', dnsName: 'office-air-1.tail1234.ts.net' }] })
+    await click(peerRow(c)!)
+    expect(connect).toHaveBeenCalledWith('office-air-1.tail1234.ts.net', 'sess-remote-1')
+  })
+
   it('clicking the row of an open tab activates it without connecting again', async () => {
     const connect = vi.fn(() => okResult)
     const c = await mountApp(baseImpl(connect))
@@ -134,7 +141,7 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
 
 describe('App.tsx — no code-based access remains', () => {
   it('App has no dialog state, cached-cap set or removed remote-cap bindings', () => {
-    expect(raw).toContain('ConnectPeerSession(peerHost, session.id)')
+    expect(raw).toContain('ConnectPeerSession(session.peerDNSName || peerHost, session.id)')
     expect(raw).not.toContain('remoteCapsCached')
     expect(raw).not.toContain('handleModalExchange')
   })

@@ -36,6 +36,7 @@ type ShareableSessionMeta struct {
 // This nil-vs-empty distinction is the RB-04 fix — peers are never silently dropped.
 type PeerSessionMetaGroup struct {
 	Hostname  string                 `json:"hostname"`
+	DNSName   string                 `json:"dnsName"` // MagicDNS FQDN, no trailing dot: the unambiguous connect key
 	Reachable bool                   `json:"reachable"`
 	Sessions  []ShareableSessionMeta `json:"sessions"`
 }
@@ -214,6 +215,7 @@ func fetchAllPeerSessionsMeta(ctx context.Context, peers []Peer, fetch func(cont
 			mu.Lock()
 			groups = append(groups, PeerSessionMetaGroup{
 				Hostname:  p.Hostname,
+				DNSName:   strings.TrimSuffix(p.DNSName, "."),
 				Reachable: status == MetaOK,
 				Sessions:  sessions,
 			})

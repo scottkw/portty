@@ -18,6 +18,8 @@ export interface RemoteSession {
 
 export interface RemotePeerSessions {
   hostname: string
+  /** MagicDNS FQDN: the unambiguous key for ConnectPeerSession (HostNames can repeat). */
+  dnsName?: string
   /** Phase 130 — true when the peer responded to the metadata probe; false when unreachable. */
   reachable: boolean
   sessions: RemoteSession[]

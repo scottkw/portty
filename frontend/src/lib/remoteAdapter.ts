@@ -8,6 +8,7 @@ import type { SessionInfo } from '../wailsjs/go/main/App'
 // Discovery carries no access secrets: access comes from the same-account check (Portty 04-06).
 export type AdaptedRemoteSessionInfo = SessionInfo & {
   url: string
+  peerDNSName?: string
 }
 
 export function adaptRemoteSession(
@@ -25,6 +26,7 @@ export function adaptRemoteSession(
     viewerCount: 0,
     workDir: '',               // remote sessions have no local workDir → fall into "Other"
     url: session.url,          // CR-01: carry the peer URL so "Open in browser" can resolve it
+    peerDNSName: peer.dnsName, // the connect key: HostNames can repeat, MagicDNS names can't
   }
 }
 

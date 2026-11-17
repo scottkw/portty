@@ -50,9 +50,17 @@ func peerShortName(p tailnet.Peer) string {
 	return p.Hostname
 }
 
-// matchPeer finds host among online peers: MagicDNS label first, then HostName,
-// both case-insensitive.
+// matchPeer finds host among online peers: the full MagicDNS name first (what
+// the GUI sends, since HostNames can repeat: WR-05), then the MagicDNS label,
+// then HostName, all case-insensitive.
 func matchPeer(peers []tailnet.Peer, host string) (tailnet.Peer, bool) {
+	if fqdn := strings.TrimSuffix(host, "."); strings.Contains(fqdn, ".") {
+		for _, p := range peers {
+			if strings.EqualFold(strings.TrimSuffix(p.DNSName, "."), fqdn) {
+				return p, true
+			}
+		}
+	}
 	for _, p := range peers {
 		if label, _, _ := strings.Cut(strings.TrimSuffix(p.DNSName, "."), "."); label != "" && strings.EqualFold(label, host) {
 			return p, true

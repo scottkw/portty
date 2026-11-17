@@ -73,6 +73,7 @@ export interface RemoteSession {
 
 export interface RemotePeerSessions {
   hostname: string
+  dnsName: string
   /** Phase 130 — true when the peer responded to the /api/sessions/meta probe; false when unreachable. */
   reachable: boolean
   sessions: RemoteSession[]

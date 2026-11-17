@@ -105,7 +105,7 @@ var (
 )
 
 func TestPeerConnect_HostMatching(t *testing.T) {
-	for _, host := range []string{"office-air", "Kens-MacBook-Air", "OFFICE-AIR", "kens-macbook-air"} {
+	for _, host := range []string{"office-air", "Kens-MacBook-Air", "OFFICE-AIR", "kens-macbook-air", "office-air.tail1234.ts.net", "Office-Air.tail1234.ts.net."} {
 		t.Run(host, func(t *testing.T) {
 			e := newConnectEnv(t, buildSess)
 			code, ok, bad := e.connect(t, host, "build")
@@ -116,6 +116,21 @@ func TestPeerConnect_HostMatching(t *testing.T) {
 				t.Fatalf("response = %+v", ok)
 			}
 		})
+	}
+}
+
+// TestPeerConnect_FQDNPicksTheRightMac (WR-05): two Macs share a HostName, so
+// MagicDNS gives the second one the label office-air-1. The GUI sends the full
+// DNS name, which picks that Mac even though the first one's label equals its
+// HostName.
+func TestPeerConnect_FQDNPicksTheRightMac(t *testing.T) {
+	e := newConnectEnv(t, buildSess)
+	first := tailnet.Peer{Hostname: "office-air", DNSName: "office-air.tail1234.ts.net.", Online: true}
+	second := tailnet.Peer{Hostname: "office-air", DNSName: "office-air-1.tail1234.ts.net.", Online: true}
+	e.api.SetPeerSeamsForTest(func(context.Context) ([]tailnet.Peer, error) { return []tailnet.Peer{first, second}, nil }, nil, nil)
+	code, ok, bad := e.connect(t, "office-air-1.tail1234.ts.net", "build")
+	if code != http.StatusOK || ok.Host != "office-air-1" {
+		t.Fatalf("connect by FQDN = %d %+v %+v; want the office-air-1 Mac", code, ok, bad)
 	}
 }
 

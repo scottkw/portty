@@ -50,6 +50,7 @@ type RemoteSession struct {
 // honest per-peer states in the Remote Sessions panel (RB-04).
 type RemotePeerSessions struct {
 	Hostname  string          `json:"hostname"`
+	DNSName   string          `json:"dnsName"` // what ConnectPeerSession should be given (WR-05)
 	Reachable bool            `json:"reachable"`
 	Sessions  []RemoteSession `json:"sessions"`
 }
@@ -995,6 +996,7 @@ func (a *App) GetRemoteSessionsWithMeta() []RemotePeerSessions {
 		}
 		results = append(results, RemotePeerSessions{
 			Hostname:  g.Hostname,
+			DNSName:   g.DNSName,
 			Reachable: g.Reachable,
 			Sessions:  sessions,
 		})

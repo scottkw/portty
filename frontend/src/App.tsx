@@ -787,7 +787,7 @@ function App(): React.ReactElement {
       const peerHost = session.hostname
       let label = `${shortHost(peerHost)} › ${session.name}`
       try {
-        const result = await ConnectPeerSession(peerHost, session.id)
+        const result = await ConnectPeerSession(session.peerDNSName || peerHost, session.id)
         label = `${shortHost(result.host || peerHost)} › ${result.name || session.name}`
         if (!result.errorCode) {
           const parsed = new URL(result.url)
