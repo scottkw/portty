@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"sync"
 	"syscall"
+	"time"
 	"unicode/utf8"
 
 	"github.com/coder/websocket"
@@ -342,7 +343,8 @@ func (ws *WebServer) Start() error {
 		return err
 	}
 
-	srv := &http.Server{Handler: ws.mux}
+	// Timeouts bound slow header reads and idle keep-alives from tailnet peers.
+	srv := &http.Server{Handler: ws.mux, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	ws.mu.Lock()
 	ws.listener = ln
 	ws.srv = srv

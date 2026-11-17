@@ -146,6 +146,7 @@ func (a *API) handlePeerConnect(w http.ResponseWriter, r *http.Request) {
 	baseURL := a.peerBaseURL(peer)
 	ip := peerIP(peer)
 	client := a.peerClient(strings.TrimSuffix(peer.DNSName, "."), ip)
+	defer client.CloseIdleConnections() // the client is per-request; don't leave its keep-alive open on both Macs
 
 	shared, status, ferr := tailnet.FetchPeerSessionsMetaWithClient(ctx, baseURL, client)
 	switch {
