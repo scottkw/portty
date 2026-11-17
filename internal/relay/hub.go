@@ -74,13 +74,13 @@ type Hub struct {
 	// liveEmu is nil until EnsureLiveEmulator's first call (lazy — T-175-04-01:
 	// never constructed for a session that never gets a shared viewer). Once
 	// constructed it lives for the rest of the hub's life, continuously fed by
-	// Run()'s drain loop via recordFrame, so its state survives any later wrap
+	// Run()'s drain loop via recordFrameLocked, so its state survives any later wrap
 	// of the raw scrollback ring — RenderSnapshot() never re-derives from the
 	// (possibly truncated) ring (RESEARCH "Pitfall 3").
 	//
 	// emuMu is a SEPARATE lock from mu (T-175-04-02). Note the anti-hang
 	// guarantee comes from liveEmuQueryStripPattern (which lets emu.Write return
-	// synchronously — see recordFrame), NOT from goroutine isolation: recordFrame
+	// synchronously — see recordFrameLocked), NOT from goroutine isolation: recordFrameLocked
 	// runs INLINE in the drain goroutine, so an unstripped query sequence would
 	// stall the drain loop. emuMu only keeps the emulator's own state consistent
 	// (append+feed vs bootstrap vs resize) without contending on the fan-out mu.
@@ -370,12 +370,22 @@ func (h *Hub) Run() {
 			// is independent so slow subscribers cannot corrupt fast ones.
 			frame := MakeOutputFrame(buf[:n])
 			// CR-03 (code review): append to scrollback AND feed the live
-			// emulator as ONE atomic step under emuMu — see recordFrame. This
-			// prevents a boundary frame being counted twice (once by
+			// emulator as ONE atomic step under emuMu — see recordFrameLocked.
+			// This prevents a boundary frame being counted twice (once by
 			// EnsureLiveEmulator's bootstrap ScrollbackSnapshot, once by the live
 			// feed), the TestHub_TwoClientsFanOut "hello worldhello world" race.
-			h.recordFrame(frame, buf[:n])
+			//
+			// SHAR-07 exactly-once: the broadcast happens under the same emuMu
+			// hold, the lock Join subscribes and captures under, so a frame lands
+			// either in a joining viewer's replay or in its queue, never both and
+			// never neither (recording outside the broadcast let one frame be
+			// duplicated). broadcast never blocks (slow viewers are kicked in their
+			// own goroutine), so holding emuMu never waits on a viewer. Lock order
+			// stays emuMu then hub.mu.
+			h.emuMu.Lock()
+			h.recordFrameLocked(frame, buf[:n])
 			h.broadcast(frame)
+			h.emuMu.Unlock()
 		}
 		if err != nil {
 			return
@@ -383,10 +393,10 @@ func (h *Hub) Run() {
 	}
 }
 
-// recordFrame appends the framed bytes to the scrollback ring AND feeds the raw
-// (pre-framing) PTY bytes to the live emulator (if one has been built) as ONE
-// atomic step under emuMu. Called from Run()'s drain loop immediately after the
-// PTY Read returns, OUTSIDE hub.mu (emuMu is a separate lock, T-175-04-02).
+// recordFrameLocked appends the framed bytes to the scrollback ring AND feeds the
+// raw (pre-framing) PTY bytes to the live emulator (if one has been built) as ONE
+// atomic step. The caller (Run's drain loop) holds emuMu, NOT hub.mu (emuMu is a
+// separate lock, T-175-04-02).
 //
 // Atomicity vs EnsureLiveEmulator's bootstrap is REQUIRED (CR-03, code review):
 // EnsureLiveEmulator builds the emulator and bootstraps it once from
@@ -404,9 +414,7 @@ func (h *Hub) Run() {
 // emu.Write return synchronously with no drain goroutine — the proven engine.go
 // #96/#100 mitigation. A query sequence NOT covered by that pattern would block
 // emu.Write and therefore this drain loop.
-func (h *Hub) recordFrame(frame, raw []byte) {
-	h.emuMu.Lock()
-	defer h.emuMu.Unlock()
+func (h *Hub) recordFrameLocked(frame, raw []byte) {
 	h.scrollback.Append(frame)
 	if h.liveEmu == nil {
 		// EAGER BUILD (M-51 fix): construct the emulator on the FIRST frame and
@@ -446,14 +454,14 @@ func (h *Hub) recordFrame(frame, raw []byte) {
 // SIGWINCH redraw repopulate a clean screen.
 //
 // The common case (no resize for the session's life) is unaffected: the eager
-// build in recordFrame feeds a single emulator continuously, so completeness
-// after a raw-ring wrap (the original BUG-04 fix) is preserved. recordFrame's
+// build in recordFrameLocked feeds a single emulator continuously, so completeness
+// after a raw-ring wrap (the original BUG-04 fix) is preserved. recordFrameLocked's
 // nil-guard means if output arrives before this rebuild's first frame, the feed
 // simply lands in the freshly-built emulator.
 //
 // Takes ONLY emuMu (never hub.mu): callers acquire emuMu→hub.mu via Cols()/Rows()
 // elsewhere, so this MUST be called after hub.mu is released, or the reverse lock
-// order would deadlock. No-op until the emulator exists (recordFrame will build
+// order would deadlock. No-op until the emulator exists (recordFrameLocked will build
 // at the current geometry on the first frame).
 func (h *Hub) resizeLiveEmulator(cols, rows int) {
 	h.emuMu.Lock()
@@ -521,7 +529,7 @@ func (h *Hub) ScrollbackSnapshot() []byte {
 }
 
 // EnsureLiveEmulator is a safety no-op now that the emulator is built EAGERLY
-// from the first PTY frame in recordFrame (M-51 fix). Any session that has
+// from the first PTY frame in recordFrameLocked (M-51 fix). Any session that has
 // produced ANY output already has a live emulator that was fed since byte 1, so
 // this returns immediately. It survives only for the degenerate case of a
 // connection accepted BEFORE any PTY output has flowed: there it constructs an
@@ -543,9 +551,9 @@ func (h *Hub) ensureLiveEmulatorLocked() {
 		return
 	}
 
-	// No output has flowed yet (recordFrame never ran) — build an empty emulator
+	// No output has flowed yet (recordFrameLocked never ran) — build an empty emulator
 	// at the current fallback geometry so RenderSnapshot is well-defined. The
-	// drain loop's recordFrame will feed this same instance once bytes arrive.
+	// drain loop's recordFrameLocked will feed this same instance once bytes arrive.
 	emu := xvt.NewEmulator(h.Cols(), h.Rows())
 	// T-175-04-01: bound the emulator's own scrollback — it is only ever used
 	// to render the CURRENT screen, never scrolled through.
@@ -653,7 +661,7 @@ type Replay struct {
 // PTY. Any other resume (absent, older than the ring start, past the end) is
 // ReplayFull, never an error or a silent partial. Replays are chunked to
 // ReplayChunk so no reader needs a raised limit for the catch-up. Subscribe and
-// capture both happen under emuMu, the lock Run records under, so each frame
+// capture both happen under emuMu, the lock Run records and broadcasts under, so each frame
 // reaches the viewer exactly once: in the replay or in sub.Msgs.
 // The ring bytes ride along with their 0x01 frame headers as SOH bytes; the
 // client takes its position from the offset meta, never by counting them.

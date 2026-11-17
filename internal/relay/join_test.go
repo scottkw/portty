@@ -182,7 +182,7 @@ func TestJoin_ExactlyOnceUnderConcurrentOutput(t *testing.T) {
 	var wg sync.WaitGroup
 	for v := 0; v < 20; v++ {
 		wg.Add(1)
-		threshold := uint64(rand.Intn(lines*13*9/10))
+		threshold := uint64(rand.Intn(lines * 13 * 9 / 10))
 		go func(v int) {
 			defer wg.Done()
 			for hub.scrollback.End() < threshold {
