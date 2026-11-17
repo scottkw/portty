@@ -233,6 +233,9 @@ func (a *API) startShareServer(
 
 	a.mu.Lock()
 	a.webServer = ws
+	// Re-read the key under a.mu: a regenerate between the SetSigningKey above
+	// and this install saw no server and could not update this one (WR-03).
+	ws.SetSigningKey(a.CurrentSigningKey())
 	// Phase 93 PLUG-04 push channel: SSE subscribers get a frame on every
 	// plugin-settings change. One share server at a time, so one listener.
 	a.engine.SetPluginSettingsListener(func() {
