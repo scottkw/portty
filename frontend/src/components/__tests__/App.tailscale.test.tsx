@@ -101,8 +101,11 @@ describe('App.tsx NET-01: Share controls', () => {
     expect(raw.slice(idx, raw.indexOf('/>', idx))).toContain('shareDisabled={tailscaleOff}')
   })
 
-  it('closes an open Share dialog when tailscaleOff becomes true', () => {
-    expect(raw).toMatch(/useEffect\(\(\) => \{\s*if \(tailscaleOff\) setShareModalSession\(null\)\s*\}, \[tailscaleOff\]\)/)
+  // Portty 04-05 (UI-SPEC): the popover stays open when Tailscale drops and shows
+  // the reason itself (turning Share off must still work), so it gets the flag.
+  it('passes tailscaleOff to the Share popover instead of closing it', () => {
+    const idx = raw.indexOf('<SharePopover')
+    expect(raw.slice(idx, raw.indexOf('/>', idx))).toContain('tailscaleOff={tailscaleOff}')
   })
 
   it('does not restate the NET-01 reason (TailscaleBanner renders the shared constant)', () => {

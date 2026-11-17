@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  GlobeAltIcon,
-  LockOpenIcon,
   PlusIcon,
   SignalIcon,
   XMarkIcon,
@@ -55,29 +53,19 @@ interface TabBarProps {
    * browser bridge), no close button and no "+" (UI-SPEC "Web share page").
    */
   webMode?: boolean
-  /**
-   * Phase 166 / FUI-03 — per-session internet exposure state, keyed by sessionId.
-   * When funnelActiveSessions[tab.sessionId] is true, the tab renders a globe icon
-   * with aria-label/title "Internet exposed". Derived from sessions in App.tsx
-   * (rides the existing 3s poll — no new interval added).
-   */
-  funnelActiveSessions?: Record<string, boolean>
-  /**
-   * Phase 171 / FNL-09 — per-session public write (FULL ACCESS) exposure
-   * state, keyed by sessionId. When funnelWriteActiveSessions[tab.sessionId]
-   * is true, the tab renders a LockOpenIcon after the internet icon (D-10
-   * read-then-write order) with aria-label/title "Full access exposed —
-   * command execution". Mirrors funnelActiveSessions exactly — derived from
-   * the same sessions 3s poll in App.tsx, no new interval.
-   */
-  funnelWriteActiveSessions?: Record<string, boolean>
   /** Portty 02-04: the sidebar is hidden, so the bar takes the 80px traffic-light inset and a Show Sidebar button. */
   sidebarHidden?: boolean
   onShowSidebar?: () => void
   /** Portty 02-08: the toolbar "+" button (desktop only). */
   onNewSession?: () => void
-  /** Portty 02-08 (ROADMAP SC5): opens the Share dialog for the active local session. */
+  /** Portty 04-05: toggles the Share popover for the active local session. */
   onShare?: () => void
+  /** The Share popover is open (aria-expanded). */
+  shareOpen?: boolean
+  /** The popover's id (aria-controls). */
+  sharePopoverId?: string
+  /** The Share button, the popover's anchor. */
+  shareButtonRef?: React.Ref<HTMLButtonElement>
   /** The active local session is web-shared: the button reads "Shared". */
   shared?: boolean
   /** NET-01: Tailscale is off. Share stays focusable with aria-disabled and the banner's reason. */
@@ -104,14 +92,15 @@ export function TabBar({
   onRequestSave,
   tabProgress,
   webMode = false,
-  funnelActiveSessions,
-  funnelWriteActiveSessions,
   sidebarHidden = false,
   onShowSidebar,
   onNewSession,
   onShare,
   shared = false,
   shareDisabled = false,
+  shareOpen = false,
+  sharePopoverId,
+  shareButtonRef,
 }: TabBarProps): React.ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ tab: Tab; x: number; y: number; invoker: HTMLElement } | null>(null)
@@ -199,31 +188,6 @@ export function TabBar({
             className={`tab${active ? ' tab--active' : ''}`}
             title={tab.name}
           >
-            {/* Phase 166 / FUI-03 — tab internet exposure indicator.
-                COLORBLIND-SAFE: GlobeAltIcon shape carries state; color is reinforcement only.
-                Text label is in aria-label + title — not rendered visually (D-09). */}
-            {funnelActiveSessions?.[tab.sessionId] && (
-              <span
-                className="tab__internet-icon"
-                aria-label="Internet exposed"
-                title="Internet exposed"
-              >
-                <GlobeAltIcon aria-hidden="true" />
-              </span>
-            )}
-            {/* Phase 171 / FNL-09 — tab full-access (public write) indicator.
-                COLORBLIND-SAFE: LockOpenIcon shape carries state; color is
-                reinforcement only. Rendered AFTER the internet icon
-                (read-then-write order, D-10). */}
-            {funnelWriteActiveSessions?.[tab.sessionId] && (
-              <span
-                className="tab__fullaccess-icon"
-                aria-label="Full access exposed — command execution"
-                title="Full access exposed — command execution"
-              >
-                <LockOpenIcon aria-hidden="true" />
-              </span>
-            )}
             {editingId === tab.id ? (
               <InlineSessionName
                 id={tab.id}
@@ -311,17 +275,24 @@ export function TabBar({
         </button>
       )}
       {/* Share for a local session, "On <host>" for a peer tab, nothing otherwise.
-          Tailscale off: aria-disabled (not disabled) keeps it focusable with a stable
-          name, the reason is the visible banner sentence, and there is no handler. */}
-      {!webMode && activeTab && isLocal(activeTab) && onShare && (shareDisabled ? (
-        <button type="button" className="toolbar-share" aria-disabled="true" aria-describedby="ts-off-reason">
-          {shareIcon}Share
-        </button>
-      ) : (
-        <button type="button" className={`toolbar-share${shared ? ' toolbar-share--shared' : ''}`} onClick={onShare}>
+          It toggles the Share popover (Portty 04-05). Tailscale off: aria-disabled
+          (not disabled) keeps it focusable with its name, the reason is the visible
+          banner sentence, and it does nothing. */}
+      {!webMode && activeTab && isLocal(activeTab) && onShare && (
+        <button
+          ref={shareButtonRef}
+          type="button"
+          className={`toolbar-share${shared ? ' toolbar-share--shared' : ''}`}
+          aria-haspopup="dialog"
+          aria-expanded={shareOpen}
+          aria-controls={shareOpen ? sharePopoverId : undefined}
+          {...(shareDisabled
+            ? { 'aria-disabled': 'true' as const, 'aria-describedby': 'ts-off-reason' }
+            : { onClick: onShare })}
+        >
           {shareIcon}{shared ? 'Shared' : 'Share'}
         </button>
-      ))}
+      )}
       {!webMode && activeTab?.type === 'web-session' && (
         <span className="toolbar-chip">On {activeTab.name.split(' › ')[0]}</span>
       )}

@@ -158,9 +158,9 @@ describe('Portty NAV-03: no Hub, Welcome or Help tabs', () => {
     }
   })
 
-  it("the Share dialog's help link opens HELP_URL in the browser", () => {
-    expect(raw).toContain("import { HELP_URL } from './lib/helpUrl'")
-    expect(raw).toContain('onOpenHelp={() => BrowserOpenURL(HELP_URL)}')
+  // Portty 04-05: the help link lived in the removed share dialog; the popover has none.
+  it('has no help-link handler', () => {
+    expect(raw).not.toContain('HELP_URL')
     expect(raw).not.toContain('handleOpenHelp')
   })
 })

@@ -48,13 +48,8 @@ describe('createTab seeds sessions and activates the new tab — source contract
     expect(catchIdx).toBeGreaterThan(seedIdx)
   })
 
-  it('openShareModalForActiveSession still resolves from sessions + activeId (unchanged lookup contract)', () => {
-    const idx = raw.indexOf('const openShareModalForActiveSession')
-    expect(idx).toBeGreaterThan(-1)
-    const block = raw.slice(idx, idx + 400)
-    expect(block).toContain('sessions.find(')
-    expect(block).toContain('activeId')
-    expect(block).toContain('setShareModalSession(')
+  it('the Share popover resolves its session from sessions + activeId (works before the next poll)', () => {
+    expect(raw).toContain('sharePopoverOpen ? sessions.find((s) => s.id === activeId) : undefined')
   })
 
   it('createTab always activates the new tab and reads no stay-on-Hub preference (NAV-03)', () => {

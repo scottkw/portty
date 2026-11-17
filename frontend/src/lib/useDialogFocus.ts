@@ -14,7 +14,7 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]'
 
 function focusables(root: HTMLElement): HTMLElement[] {
-  // tabindex=-1 covers the roving segments of ShareSegmentedControl.
+  // tabindex=-1 marks roving items (segmented-control segments) that Tab skips.
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
     (el) => el.getAttribute('tabindex') !== '-1',
   )

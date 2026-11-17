@@ -7,12 +7,13 @@ import { Switch } from '../Switch'
 let container: HTMLDivElement
 let root: Root
 
-function Harness({ saving = false }: { saving?: boolean }): React.ReactElement {
+function Harness({ saving = false, blocked = false }: { saving?: boolean; blocked?: boolean }): React.ReactElement {
   const [on, setOn] = useState(false)
   return (
     <>
       <label htmlFor="sw">Thing</label>
-      <Switch id="sw" checked={on} saving={saving} onChange={() => setOn((v) => !v)} />
+      <p id="why">Reason</p>
+      <Switch id="sw" checked={on} saving={saving} blocked={blocked} describedBy={blocked ? 'why' : undefined} onChange={() => setOn((v) => !v)} />
     </>
   )
 }
@@ -51,5 +52,26 @@ describe('LOOK-01: Switch', () => {
     expect(sw.className).toContain('switch--saving')
     await act(async () => sw.click())
     expect(sw.getAttribute('aria-checked')).toBe('false')
+  })
+
+  // Portty 04-05: aria-disabled (not disabled) while saving or blocked, so focus stays on it.
+  it('saving sets aria-disabled and keeps the button focusable', async () => {
+    const sw = await render(<Harness saving />)
+    expect(sw.getAttribute('aria-disabled')).toBe('true')
+    expect(sw.disabled).toBe(false)
+  })
+
+  it('blocked: aria-disabled, aria-describedby to the reason, clicks ignored', async () => {
+    const sw = await render(<Harness blocked />)
+    expect(sw.getAttribute('aria-disabled')).toBe('true')
+    expect(sw.getAttribute('aria-describedby')).toBe('why')
+    await act(async () => sw.click())
+    expect(sw.getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('an idle switch has no aria-disabled or aria-describedby', async () => {
+    const sw = await render(<Harness />)
+    expect(sw.hasAttribute('aria-disabled')).toBe(false)
+    expect(sw.hasAttribute('aria-describedby')).toBe(false)
   })
 })

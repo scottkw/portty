@@ -90,8 +90,9 @@ describe('Phase 141-07: comp radii tokens applied to surfaces', () => {
     expect(cssRaw).toContain('border-radius: var(--hub-radius-md)')
   })
 
-  it('--hub-radius-sm is consumed by at least one selector (inputs/buttons)', () => {
-    expect(cssRaw).toContain('border-radius: var(--hub-radius-sm)')
+  // Portty 04-05: its last consumers left with the old share dialog; the token stays (04-UI-SPEC: delete no token).
+  it('--hub-radius-sm is still declared', () => {
+    expect(cssRaw).toMatch(/--hub-radius-sm:\s*8px/)
   })
 
   // Portty 02-11: its only consumer, the old .settings-panel modal, is gone; sheets use 12px.
@@ -107,8 +108,9 @@ describe('Phase 141-07: comp type scale tokens applied', () => {
     expect(cssRaw).toContain('font-size: var(--hub-font-size-sm)')
   })
 
-  it('--hub-font-weight-emphasis is consumed by at least one emphasis selector', () => {
-    expect(cssRaw).toContain('font-weight: var(--hub-font-weight-emphasis)')
+  // Portty 04-05: its last consumers left with the old share dialog; the token stays (04-UI-SPEC: delete no token).
+  it('--hub-font-weight-emphasis is still declared', () => {
+    expect(cssRaw).toMatch(/--hub-font-weight-emphasis:\s*600/)
   })
 })
 

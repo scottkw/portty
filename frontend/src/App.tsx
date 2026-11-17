@@ -15,7 +15,6 @@ import {
   KillSession,
   RenameSession,
   GetRelayPort,
-  ToggleWebServing,
   IsWebServerRunning,
   GetTailscaleStatus,
   RetryDaemon,
@@ -24,9 +23,6 @@ import {
   GetWebServerMode,
   GetLastUpdateInfo,
   GetPluginSettings,
-  GetShellWebShareWarned,
-  SetShellWebShareWarned,
-  GetShellWebShareWarningEnabled,
   QuitGUIOnly,
   QuitAll,
   SaveTerminalSession,
@@ -38,13 +34,12 @@ import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
 import type { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
-import { EventsOn, BrowserOpenURL } from './wailsjs/wailsjs/runtime/runtime'
+import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
 import { NewSessionModal } from './components/NewSessionModal'
 import { RemoteJoinCodeModal } from './components/RemoteJoinCodeModal'
-import { SessionShareModal } from './components/Share/SessionShareModal'
+import { SharePopover } from './components/SharePopover'
 import { remoteBaseURLFor } from './lib/remoteSession'
 import { adaptRemoteSession } from './lib/remoteAdapter'
-import { HELP_URL } from './lib/helpUrl'
 import { peerView, shortHost } from './lib/sidebarPeers'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
@@ -63,6 +58,8 @@ import { LIGHT_PALETTE, DARK_PALETTE } from './lib/terminalPalettes'
 import { DEFAULT_TERMINAL_FONT_SIZE, terminalFontFamily, type TerminalFont } from './lib/terminalFont'
 import { measureInitialGrid } from './lib/initialGrid'
 
+
+const SHARE_POPOVER_ID = 'share-popover'
 
 /**
  * App is the root component — it owns all tab state and wires
@@ -90,20 +87,8 @@ function App(): React.ReactElement {
   const [sidebarHidden, setSidebarHidden] = useState(false)
   // Session id the End Session… confirm is open for (TERM-03); null = closed.
   const [endSessionTarget, setEndSessionTarget] = useState<string | null>(null)
-  // Phase 101-03 SHELL-07/SHELL-08 — one-time security-warning gate for shell
-  // sessions. `shellWebShareWarned` is hydrated from the daemon settings via
-  // GetShellWebShareWarned() on mount; once the user confirms the banner, both
-  // local state and the daemon-persisted flag flip to true permanently (per-
-  // machine, not per-session). Phase 168-05: the in-flight pending state now
-  // lives inside SessionShareModal (pendingShellShare, local) — the App-level
-  // pendingShellWebToggle used only by the retired footer-direct-toggle path.
-  const [shellWebShareWarned, setShellWebShareWarned] = useState(false)
-  // Phase 150 SET-01 — master warning-enabled switch (default true = ON per D-08).
-  // Hydrated from daemon on mount; safe-degradation default is true (warning shows)
-  // so that a daemon disconnect never silently disables the security guardrail.
-  const [shellWebShareWarningEnabled, setShellWebShareWarningEnabled] = useState(true)
   // Track web server running state
-  const [webServerRunning, setWebServerRunning] = useState(false)
+  const [, setWebServerRunning] = useState(false)
   // Track web server mode: 'tailscale' | 'local' | null
   const [webServerMode, setWebServerMode] = useState<'tailscale' | 'local' | null>(null)
   // Track which session's QR modal is open (null = none)
@@ -152,10 +137,9 @@ function App(): React.ReactElement {
   const upgradePollerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // NAV-01: every daemon session, from the always-on 3 s poll (desktop only).
   const [sessions, setSessions] = useState<SessionInfo[]>([])
-  // Phase 168-05 (UX-02) — Share modal open-state, lifted to App so every share entry
-  // point (the toolbar Share button) drives a single SessionShareModal
-  // instance (RESEARCH Pattern 4). null = closed; non-null = open for this session.
-  const [shareModalSession, setShareModalSession] = useState<SessionInfo | null>(null)
+  // Portty 04-05: the Share popover for the active local session, anchored on the toolbar button.
+  const [sharePopoverOpen, setSharePopoverOpen] = useState(false)
+  const shareButtonRef = useRef<HTMLButtonElement>(null)
   // NAV-02: remote peers for the sidebar peer groups (30 s poll while Tailscale is connected).
   const [remotePeers, setRemotePeers] = useState<RemotePeerSessions[]>([])
   // True after the first successful peer poll; clears the "Looking for other Macs…" line.
@@ -403,26 +387,6 @@ function App(): React.ReactElement {
           }, 500)
         }
 
-        // Phase 101-03 SHELL-08 — hydrate the one-time shell-web-share-warning
-        // flag from daemon-persisted settings. On failure default to false so
-        // the banner re-shows on the next toggle attempt (safe degradation —
-        // worst case the user re-confirms once).
-        GetShellWebShareWarned()
-          .then((v) => setShellWebShareWarned(v))
-          .catch((err) => {
-            console.warn('[App] GetShellWebShareWarned failed:', err)
-            setShellWebShareWarned(false)
-          })
-
-        // Phase 150 SET-01 — hydrate the warning-enabled master switch from daemon.
-        // On failure default to true (safe degradation: warning stays ON per D-08).
-        GetShellWebShareWarningEnabled()
-          .then((v) => setShellWebShareWarningEnabled(v))
-          .catch((err) => {
-            console.warn('[App] GetShellWebShareWarningEnabled failed:', err)
-            setShellWebShareWarningEnabled(true) // default ON (safe degradation per D-08)
-          })
-
         // Portty 02-13 THEM-01: the stored Appearance override (keep 'system' on failure).
         GetAppearance()
           .then((v) => { if (v === 'light' || v === 'dark') setAppearance(v) })
@@ -615,7 +579,6 @@ function App(): React.ReactElement {
           hostname: '',
           webEnabled: false,
           viewerCount: 0,
-          funnelActive: false,
           workDir,
         } as SessionInfo,
       ])
@@ -652,18 +615,16 @@ function App(): React.ReactElement {
     removeTabState(id)
   }, [removeTabState])
 
-  // End Session… after its confirm (TERM-03): stop sharing first so attached
-  // viewers are cut off, then kill. Errors reach the confirm dialog. The exit
-  // watcher and the poll agree with the instant removal below.
+  // End Session… after its confirm (TERM-03). The daemon's kill path drops
+  // the session's share and disconnects its viewers (Portty 04-02). Errors
+  // reach the confirm dialog. The exit watcher and the poll agree with the
+  // instant removal below.
   const endSession = useCallback(async (id: string) => {
-    if (sessions.find((s) => s.id === id)?.webEnabled) {
-      try { await ToggleWebServing(id, false) } catch (err) { console.warn('[App] ToggleWebServing(false) failed:', err) }
-    }
     await KillSession(id)
     exitedIdsRef.current.add(id) // an in-flight poll must not bring it back
     removeTabState(id)
     setSessions((prev) => prev.filter((s) => s.id !== id))
-  }, [sessions, removeTabState])
+  }, [removeTabState])
 
   // Rename from the tab or the sidebar row. Tab labels derive from sessions
   // (tabLabel), so the optimistic rename shows in both places at once; a
@@ -679,65 +640,18 @@ function App(): React.ReactElement {
     }
   }, [sessions])
 
-  // Share state lives on the session list; the Share dialog reports a toggle
+  // Share state lives on the session list; the Share popover reports a toggle
   // here so the toolbar and sidebar show it before the next poll.
   const setSessionWebEnabled = useCallback((id: string, enabled: boolean) => {
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, webEnabled: enabled } : s)))
   }, [])
+  const closeSharePopover = useCallback(() => setSharePopoverOpen(false), [])
 
-  // Phase 168-05 (UX-02 / D-14), Portty 02-08: the toolbar Share button opens
-  // the (lifted) Share modal for the active session; it never toggles sharing.
-  // Toggling now happens exclusively inside SessionShareModal, which owns
-  // its own self-contained shell-warning gate (SET-01, D-10 cross-surface
-  // parity) — the App-level pendingShellWebToggle/ShellWebShareBanner path
-  // that used to back the old footer's direct toggle is retired below.
-  const openShareModalForActiveSession = useCallback(() => {
-    const session = sessions.find((s) => s.id === activeId)
-    if (session) setShareModalSession(session)
-  }, [sessions, activeId])
-
-  // Phase 101-03 — banner confirm: per RESEARCH §8 race mitigation, set the
-  // local shellWebShareWarned flag SYNCHRONOUSLY (before awaiting either RPC).
-  // If a second shell session's toggle fires while the SetShellWebShareWarned
-  // disk write is still in flight, the second toggle's interception check
-  // will already see the updated local state and skip the banner.
-  // Phase 168-05: sessionId now derives from shareModalSession (the single
-  // lifted modal-open state, D-14) instead of the retired pendingShellWebToggle
-  // — the modal is the only surface that can trigger this confirm.
-  // WR-01 fix: returns a success/failure boolean so the modal only flips its
-  // local "sharing ON" UI state when ToggleWebServing actually succeeded —
-  // previously the modal unconditionally set shareEnabled=true after this
-  // resolved, even when the Promise.all rejected (e.g. ToggleWebServing
-  // failing while SetShellWebShareWarned still succeeded), showing "ON" for
-  // a session the daemon never actually enabled web-serving for.
-  const handleShellWebShareConfirm = useCallback(async (): Promise<boolean> => {
-    if (!shareModalSession) return false
-    const sessionId = shareModalSession.id
-    // Race mitigation (RESEARCH §8): set local "warned" flag synchronously
-    // before any await so a fast double-toggle doesn't re-show the banner.
-    // The banner itself stays mounted during the await so its "Enabling…"
-    // transient state + aria-busy can render (CR-01 fix).
-    setShellWebShareWarned(true)
-    try {
-      await Promise.all([
-        SetShellWebShareWarned(true),
-        ToggleWebServing(sessionId, true),
-      ])
-      setSessionWebEnabled(sessionId, true)
-      return true
-    } catch (err) {
-      console.warn('[App] shell web-share confirm failed:', err)
-      // Best-effort rollback: clear the banner and let the user retry. Avoid
-      // leaving local "warned" true if the persist call failed — the next
-      // toggle will re-prompt rather than silently downgrade.
-      setShellWebShareWarned(false)
-      return false
-    }
-  }, [shareModalSession, setSessionWebEnabled])
-
-  // Phase 168-05: the modal owns its own pendingShellShare local state and
-  // already resets it before calling this — no App-level state to clear.
-  const handleShellWebShareCancel = useCallback(() => {}, [])
+  // UI-SPEC "Open, close and focus": a tab switch (local or peer), ending the
+  // session and opening Settings close the popover. Esc, an outside click and
+  // the window losing key status are handled inside SharePopover.
+  useEffect(() => { setSharePopoverOpen(false) }, [activeId])
+  useEffect(() => { if (showSettings) setSharePopoverOpen(false) }, [showSettings])
 
   const handleFontSizeChange = useCallback((sessionId: string, delta: number) => {
     setFontSizes((prev) => {
@@ -748,7 +662,7 @@ function App(): React.ReactElement {
   }, [terminalFont.size])
 
   // NAV-01: always-on session poll, so the sidebar lists every daemon session
-  // (including ones created from the CLI) and the open Share dialog stays live.
+  // (including ones created from the CLI) and the open Share popover stays live.
   useEffect(() => {
     if (mode === 'web') return // Phase 120-06: no Wails RPC in browser mode.
     let cancelled = false
@@ -765,23 +679,6 @@ function App(): React.ReactElement {
     const interval = setInterval(() => void refresh(), 3000)
     return () => { cancelled = true; clearInterval(interval) }
   }, [])
-
-  // Phase 168-05 (UX-02, RESEARCH Pitfall 3 / Pattern 4): keep the lifted Share modal's
-  // session prop in sync with sessions. shareModalSession is a snapshot taken at
-  // open-time (by openShareModalForActiveSession);
-  // without this effect a server-side flip (e.g. funnelActive completing, viewerCount
-  // changing) never reaches an already-open modal. This is the single sync instance —
-  // SessionShareModal itself is rendered once, here, at the App.tsx level so the toolbar
-  // Share button works from any local session tab. Keyed on shareModalSession?.id (not the whole object) to avoid re-running
-  // from its own setState.
-  useEffect(() => {
-    if (!shareModalSession) return
-    const updated = sessions.find((s) => s.id === shareModalSession.id)
-    if (updated && updated !== shareModalSession) {
-      setShareModalSession(updated)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, shareModalSession?.id])
 
   // NAV-02: poll remote peers every 30 s whenever the desktop app is open and
   // Tailscale is connected; not gated on any tab. Errors keep the last list.
@@ -812,11 +709,6 @@ function App(): React.ReactElement {
       cancelled = true
       clearInterval(interval)
     }
-  }, [tailscaleOff])
-
-  // NET-01: a disconnect closes an open Share dialog (its controls are disabled too).
-  useEffect(() => {
-    if (tailscaleOff) setShareModalSession(null)
   }, [tailscaleOff])
 
   // NET-01: recheck Tailscale when the window gains focus or becomes visible
@@ -1115,21 +1007,12 @@ function App(): React.ReactElement {
           sidebarHidden={mode !== 'web' && sidebarHidden}
           onShowSidebar={() => setSidebarHidden(false)}
           onNewSession={() => setShowNewSessionModal(true)}
-          onShare={openShareModalForActiveSession}
+          onShare={() => setSharePopoverOpen((open) => !open)}
+          shareOpen={sharePopoverOpen}
+          sharePopoverId={SHARE_POPOVER_ID}
+          shareButtonRef={shareButtonRef}
           shared={!!sessions.find((s) => s.id === activeId)?.webEnabled}
           shareDisabled={tailscaleOff}
-          funnelActiveSessions={/* Phase 166 / FUI-03: derived from the sessions 3s poll; no new interval */
-            sessions.reduce<Record<string, boolean>>(
-              (acc, s) => ({ ...acc, [s.id]: s.funnelActive }),
-              {}
-            )
-          }
-          funnelWriteActiveSessions={/* Phase 171 / FNL-09: derived from the sessions 3s poll; no new interval */
-            sessions.reduce<Record<string, boolean>>(
-              (acc, s) => ({ ...acc, [s.id]: s.funnelWriteActive }),
-              {}
-            )
-          }
         />
 
         {/* INVARIANT: this gating expression must include the trigger of EVERY banner
@@ -1142,11 +1025,6 @@ function App(): React.ReactElement {
           saveBanner !== null ||
           pluginToggleBanners.length > 0) && (
           <div className="banner-stack">
-            {/* Phase 101-03 SHELL-08 — the action-blocking shell web-share security
-                banner used to render here (top priority) for the footer's direct
-                toggle. Phase 168-05 (D-14): the footer no longer toggles directly —
-                the equivalent banner (ShellWebShareBanner, same shared warned/
-                warningEnabled authority) now lives inside SessionShareModal only. */}
             {tailscaleOff && <TailscaleBanner />}
             {(webglContextLost || webglSoftwareDetected) && !webglBannerDismissed && (
               <WebGLRecoveryBanner
@@ -1273,21 +1151,6 @@ function App(): React.ReactElement {
                 }
               } catch (_) { /* ignore */ }
             }}
-            onShellWarnEnabledChange={(enabled: boolean) => {
-              // Phase 150 SET-01 — keep App.tsx warningEnabled in sync with
-              // the SettingsSheet switch. When the user re-enables the warning
-              // (OFF→ON), also re-fetch shellWebShareWarned from the daemon
-              // because SetShellWebShareWarningEnabled(true) atomically reset
-              // shellWebShareWarned to false on the daemon side (D-03 re-arm).
-              // Without this re-sync, local state would still show warned=true
-              // and the banner would never re-appear.
-              setShellWebShareWarningEnabled(enabled)
-              if (enabled) {
-                GetShellWebShareWarned()
-                  .then(setShellWebShareWarned)
-                  .catch(() => setShellWebShareWarned(false))
-              }
-            }}
           />
         )}
         {showEmptyState && (
@@ -1340,27 +1203,24 @@ function App(): React.ReactElement {
       </div>
       </div>{/* end app__row */}
 
-      {/* Phase 168-05 (UX-02) — Share modal: rendered here (App.tsx top level, always
-          mounted regardless of active tab). This is the SINGLE SessionShareModal
-          instance — every share entry point (the toolbar Share button via
-          openShareModalForActiveSession) drives this one
-          shareModalSession state (RESEARCH Pattern 4). Do NOT render a second
-          SessionShareModal anywhere else — a second instance reproduces the exact
-          button-modal state-drift bug (#115) this plan exists to fix. */}
-      {shareModalSession && (
-        <SessionShareModal
-          session={shareModalSession}
-          webServerMode={webServerMode}
-          webServerRunning={webServerRunning}
-          onClose={() => setShareModalSession(null)}
-          shellWebShareWarned={shellWebShareWarned}
-          shellWebShareWarningEnabled={shellWebShareWarningEnabled}
-          onShellWebShareConfirm={handleShellWebShareConfirm}
-          onShellWebShareCancel={handleShellWebShareCancel}
-          onOpenHelp={() => BrowserOpenURL(HELP_URL)}
-          onShareEnabledChange={setSessionWebEnabled}
-        />
-      )}
+      {/* Portty 04-05: the one Share popover, for the active local session only
+          (a peer tab's id matches no local session). */}
+      {(() => {
+        const session = sharePopoverOpen ? sessions.find((s) => s.id === activeId) : undefined
+        return session ? (
+          <SharePopover
+            sessionId={session.id}
+            sessionName={session.name || 'shell'}
+            shared={!!session.webEnabled}
+            anchor={shareButtonRef.current}
+            popoverId={SHARE_POPOVER_ID}
+            tailscaleOff={tailscaleOff}
+            tailscaleDomain={tailscaleHealth?.domain ?? ''}
+            onClose={closeSharePopover}
+            onSharedChange={setSessionWebEnabled}
+          />
+        ) : null
+      })()}
 
       {(() => {
         const target = sessions.find((s) => s.id === endSessionTarget)

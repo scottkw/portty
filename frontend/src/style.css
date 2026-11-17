@@ -687,9 +687,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   font-size: 13px;
   line-height: 18px;
 }
-.dialog--share {
-  width: 560px;
-}
 
 /* ─── Settings sheet (Portty 02-11, UI-SPEC "Settings sheet") ──────────
    Header and footer stay put; only the pane content scrolls, so the sheet
@@ -1167,25 +1164,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   color: var(--color-text-secondary);
 }
 
-/* ─── Share dialog push button (class kept from the Phase 40 daemon panel) ─── */
-.daemon-panel__btn {
-  /* Portty 02-09: Share dialog push button (Copy / Open / QR), tokens only. */
-  height: 24px;
-  padding: 0 12px;
-  border: 1px solid var(--color-control-border);
-  border-radius: 6px;
-  background: var(--color-button);
-  color: var(--color-text);
-  font-family: inherit;
-  font-size: 13px;
-  white-space: nowrap;
-  cursor: default;
-}
-
-.daemon-panel__btn:disabled {
-  opacity: var(--opacity-disabled);
-}
-
 /* ─── Banner stack container (Phase 81 — BAN-01/BAN-02) ─────────── */
 .banner-stack {
   display: flex;
@@ -1209,47 +1187,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   font-style: italic;
 }
 
-/* ─── Phase 93 WGL-02/WGL-03 base, now used only by ShellWebShareBanner
-   (the WebGL, plugin toggle and update banners use .banner, Portty 02-10). */
-.webgl-recovery-banner {
-  background: var(--color-banner-warning-bg);
-  color: var(--color-banner-warning-fg);
-  border: 1px solid var(--color-separator);
-  border-left: 3px solid var(--color-accent);
-  border-radius: 4px;
-  padding: 12px 16px;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  transition: opacity 150ms ease, max-height 200ms ease;
-}
-.banner-stack .webgl-recovery-banner {
-  margin-bottom: 0;
-}
-.webgl-recovery-banner__dismiss {
-  background: transparent;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: 4px;
-  min-width: 24px;
-  min-height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-}
-.webgl-recovery-banner__dismiss:hover {
-  background: var(--color-control-hover);
-}
-@media (prefers-reduced-motion: reduce) {
-  .webgl-recovery-banner {
-    transition: none;
-  }
-}
-
 /* ─── Phase 175-06 (BUG-02 / #125) — Session-ended guest disconnect banner ──
    Rendered by TerminalPanel over the top of the terminal viewport (anchored on
    .terminal-session-container's position:relative). Look comes from .banner
@@ -1260,87 +1197,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   left: 0;
   right: 0;
   z-index: 10;
-}
-
-/* ─── Phase 101-03 SHELL-08 — Shell web-share security banner ──────────
-   Modifier on .webgl-recovery-banner: overrides the info-blue left accent
-   with the destructive token. Keeps the 53px stack rhythm and reuses every other property.
-   Internal layout helpers (heading + body + action row) are namespaced
-   under "webgl-recovery-banner__shell-*" so they cannot collide with the
-   existing __message / __dismiss classes used by the info banners. */
-.webgl-recovery-banner--shell-warning {
-  border-left: 3px solid var(--color-destructive);
-  /* Override the default centered single-line layout: this banner has a
-     2-line body (heading + paragraph) so use start-aligned items. */
-  align-items: center;
-}
-
-/* Phase 150 SET-01 gap-closure (live UAT) — block variant for the Hub Share
-   modal. The default horizontal body|actions strip is tuned for the wide
-   banner stack; inside the narrower modal the 3-button actions row squeezes
-   the text into a tall narrow column. Stack vertically: full-width body over a
-   right-aligned actions row. StatusBar (default variant) is unaffected. */
-.webgl-recovery-banner--block {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-}
-.webgl-recovery-banner--block .webgl-recovery-banner__shell-body {
-  padding-right: 0;
-}
-.webgl-recovery-banner--block .webgl-recovery-banner__shell-actions {
-  justify-content: flex-end;
-}
-
-.webgl-recovery-banner__shell-body {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-right: 12px;
-  min-width: 0;
-}
-.webgl-recovery-banner__shell-heading {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-.webgl-recovery-banner__shell-text {
-  font-size: 12px;
-  line-height: 1.4;
-}
-.webgl-recovery-banner__shell-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-.webgl-recovery-banner__shell-btn {
-  font-size: 12px;
-  border-radius: 4px;
-  padding: 4px 12px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  background: transparent;
-  color: inherit;
-  line-height: 1.4;
-}
-.webgl-recovery-banner__shell-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-.webgl-recovery-banner__shell-btn--secondary {
-  border-color: var(--color-control-border);
-  background: transparent;
-}
-.webgl-recovery-banner__shell-btn--secondary:hover:not(:disabled) {
-  background: var(--color-control-hover);
-}
-.webgl-recovery-banner__shell-btn--primary-destructive {
-  background: var(--color-destructive);
-  color: var(--color-on-accent);
-  font-weight: 600;
-  border-color: var(--color-destructive);
 }
 
 /* ─── Banner (Portty 02-10, UI-SPEC "Banner"): one style for every banner ───
@@ -1459,72 +1315,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
      beneath the existing status/name/cli/hostname/actions flex line. */
   flex-basis: 100%;
   width: 100%;
-}
-
-.session-share-panel__link-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-}
-
-.session-share-panel__label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  min-width: 120px;
-  flex-shrink: 0;
-}
-
-.session-share-panel__url {
-  flex: 1;
-  font-size: 12px;
-  color: var(--color-accent);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-share-panel__actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.session-share-panel__qr {
-  display: block;
-  margin-top: 8px;
-  margin-left: 128px;
-  border-radius: 8px;
-}
-
-.session-share-panel__error {
-  font-size: 12px;
-  color: var(--color-error-text);
-  margin-top: 4px;
-}
-
-/* Labelled read-only code field (SessionShare/shared.tsx CodeDisplay, Portty 02-09). */
-.session-share-panel__code-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 4px 0 8px;
-  font-size: 13px;
-}
-.share-field__label {
-  color: var(--color-text-secondary);
-}
-.share-field__value {
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: var(--color-field);
-  color: var(--color-text);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  user-select: all;
 }
 
 /* ─── Phase 94 — Find bar (SRC-01/SRC-04) ─────────────────────────────
@@ -1732,6 +1522,100 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   .link-confirm-popover {
     animation: none;
   }
+}
+
+/* ─── Portty 04-05 — Share popover (04-UI-SPEC "Share popover") ───
+   Non-modal, under the toolbar Share button; above banners, below sheets (1000). */
+.share-popover {
+  position: fixed;
+  z-index: 900;
+  box-sizing: border-box;
+  max-width: calc(100% - 24px);
+  padding: 16px;
+  background: var(--color-popover);
+  color: var(--color-text);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--hub-radius-md);
+  box-shadow: var(--shadow-popover);
+  font-family: var(--hub-font-ui);
+  font-size: 13px;
+  line-height: 18px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .share-popover {
+    animation: share-popover-in 120ms ease-out;
+  }
+}
+@keyframes share-popover-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* The arrow's base covers the popover's top border, so there is no seam under it. */
+.share-popover__arrow {
+  position: absolute;
+  top: -9px;
+  display: block;
+}
+.share-popover__arrow-fill {
+  fill: var(--color-popover);
+}
+.share-popover__arrow-stroke {
+  fill: none;
+  stroke: var(--color-control-border);
+  stroke-width: 1px;
+}
+.share-popover__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+}
+.share-popover__state {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.share-popover__state:empty {
+  display: none;
+}
+.share-popover__line {
+  margin: 0;
+  font-size: var(--hub-font-size-sm);
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+.share-popover__error {
+  color: var(--color-error-text);
+}
+.share-popover__link-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px; /* 12px from the switch row in total */
+}
+.share-popover__link {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  background: var(--color-field);
+  color: var(--color-text);
+  border: 1px solid var(--color-control-border);
+  border-radius: 6px;
+  font-family: var(--hub-font-mono);
+  font-size: 12px;
+}
+.share-popover__link:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+.share-popover__copy {
+  flex-shrink: 0;
+  height: 24px;
+  min-width: 76px; /* fits "Copied!" so the button keeps its width */
+  padding: 0 12px;
 }
 
 @keyframes link-confirm-popover-slide-in {
@@ -1953,115 +1837,8 @@ html.is-desktop {
 }
 
 /* =====================================================================
-   Phase 141 Plan 04 — Share Modal CSS (S-07 gap)
-   Portty 02-09: the panel, scrim, title and motion come from .dialog*
-   (.dialog--share is 560px); these rules style only the Share content.
-   ===================================================================== */
-
-/* Share Modal Body — outer flex column (control strip + segbar + tabpanel).
-   Phase 173 (SM-02): overflow-y:auto is KEPT here as an outer safety bound
-   (e.g. a very short viewport), but under normal sizing the fixed control
-   strip + segmented control never grow, so this level should not need to
-   scroll in practice — .hub-share-modal__tabpanel below is the ONE region
-   designed to scroll when a tab's content is tall. */
-.hub-share-modal__body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  gap: 12px;
-}
-
-/* Share Modal Tab Panel — the single inner scroll region (SM-02/D-02).
-   Mounted by the shell (Plan 06) to wrap the active tab's body content only;
-   the control strip + segbar above it stay fixed and never scroll with it. */
-.hub-share-modal__tabpanel {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* Phase 173 (D-01/SM-01) — divider between the fixed control strip (toggles)
-   and the swappable panel region below it (empty hint / confirm view /
-   segmented control + tab body). */
-.hub-share-modal__rule {
-  border: none;
-  border-top: 1px solid var(--hub-border);
-  margin: 0;
-  flex-shrink: 0;
-}
-
-/* Phase 173 (SM-05) — empty-state hint shown when sharing is off. */
-.hub-share-modal__empty-hint {
-  margin: 0;
-  font-size: var(--hub-font-size-sm);
-  color: var(--hub-text-muted);
-}
-
-/* LAN credential block */
-.hub-share-modal__lan-creds {
-  margin: 8px 0;
-  font-size: 12px;
-  color: var(--hub-text-secondary);
-}
-
-.hub-share-modal__lan-creds-label {
-  font-weight: 600;
-}
-
-.hub-share-modal__lan-creds code {
-  background: var(--hub-surface);
-  padding: 4px 8px;
-  border-radius: var(--hub-radius-sm);
-  font-family: var(--hub-font-mono);
-}
-
-/* Share dialog control-strip switch rows (Portty 02-11: the shared Switch).
-   Phase 173 (SM-07): the On/Off/N-A state text sits beside the switch as the
-   colorblind ground-truth signal. */
-.share-toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
-}
-.share-toggle-row__label {
-  flex: 1;
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--color-text);
-}
-.share-toggle-row__state {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 14px;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-
-/* Phase 173 (D-15) — Funnel toggle disabled wrapper + note. Migrated from
-   inline style. */
-.hub-funnel-toggle-section[aria-disabled='true'] {
-  opacity: 0.6;
-  pointer-events: none;
-}
-.hub-funnel-toggle-section__note {
-  font-size: var(--hub-font-size-sm);
-  color: var(--hub-text-muted);
-  margin-top: 4px;
-}
-
-/* =====================================================================
-   Phase 173 (SM-03/SM-07) — Share segmented control (.share-segbar/.share-seg*)
-   All colors via var(--hub-*) tokens only. Colorblind-safe: the Full-access
-   segment's "danger" state is an inset box-shadow ring + a warning icon/text in
-   the label (rendered by the component), never a hue swap. Owner is
-   colorblind (see project memory) — verify at source, not by eye.
+   Segmented control (.share-segbar/.share-seg*), used by Settings ▸
+   Appearance. All colors via var(--hub-*) tokens only.
    ===================================================================== */
 
 .share-segbar {
@@ -2101,23 +1878,6 @@ html.is-desktop {
   font-weight: 600;
 }
 
-/* COLORBLIND-SAFE (SM-07): inset ring is the primary non-color cue for the
-   active Full-access segment — reinforces the warning icon + "Full access" text
-   rendered by the component, not a hue swap on the active background. */
-.share-seg.is-active.is-danger {
-  box-shadow: inset 0 0 0 1px var(--color-error-text);
-}
-
-.share-seg__icon {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-.share-seg.is-active.is-danger :is(.share-seg__sub, .share-seg__icon) {
-  color: var(--color-error-text);
-}
-
 .share-seg:disabled {
   opacity: var(--opacity-disabled);
 }
@@ -2137,347 +1897,6 @@ html.is-desktop {
 }
 .settings-appearance .share-seg {
   padding: 0 12px;
-}
-
-/* =====================================================================
-   Phase 173 (SM-06) — Reusable link card (.share-linkcard*)
-   One layout for every access tier's link row (Tailnet RO/Full-Access,
-   Internet public URL). All colors via var(--hub-*) tokens only.
-   ===================================================================== */
-
-.session-share-panel__tab {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.share-linkcard {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-md);
-  background: var(--hub-surface);
-}
-
-.share-linkcard__top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.share-linkcard__title {
-  font-size: 13px;
-  font-weight: var(--hub-font-weight-emphasis);
-  color: var(--hub-text-primary);
-  flex-shrink: 0;
-}
-
-/* CSS truncation only — the full URL lives in the element's title= attribute
-   (D-06); no JS truncate helper. */
-.share-linkcard__url {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--hub-accent);
-  font-family: var(--hub-font-mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.share-linkcard__actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.share-linkcard__join {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--hub-text-muted);
-}
-
-/* Replaces the orphaned inline style={{...color:'#9aa5ce'}} scope paragraphs
-   (SessionSharePanel.tsx :467/:506) — description now attaches directly
-   beneath its own link card instead of floating between sections. */
-.share-linkcard__desc {
-  font-size: 11px;
-  color: var(--hub-text-muted);
-  margin: 0;
-  line-height: 1.4;
-}
-
-/* ===== Phase 166: Funnel Frontend + Help Guide component classes ===== */
-
-/* Phase 166 / FUI-03 — tab internet icon (TabBar) */
-.tab__internet-icon {
-  display: flex;
-  width: 12px;
-  height: 12px;
-  color: var(--color-text-secondary);
-  flex-shrink: 0;
-}
-
-/* Phase 166 / FUI-01 — inline risk panel (SessionShareModal) */
-.hub-funnel-risk-panel {
-  /* Warning banner tokens (UI-SPEC "Share dialog"). */
-  background: var(--color-banner-warning-bg);
-  color: var(--color-banner-warning-fg);
-  border-radius: 6px;
-  overflow: hidden;
-  /* The parent .hub-share-modal__body is a height-constrained flex column.
-     This panel's `overflow: hidden` makes its flex min-height resolve to 0,
-     so the default flex-shrink:1 would crush it below its content when the
-     body overflows — clipping the expiry select and the Enable/Cancel CTAs
-     (the whole two-step commit gesture). Pin it so the body scrolls instead. */
-  flex-shrink: 0;
-  /* Collapsed state: zero the vertical padding so the panel fully disappears
-     (max-height:0 alone still leaves a padding strip). --open restores it. */
-  max-height: 0;
-  padding: 0 16px;
-  font-size: 13px;
-  line-height: 18px;
-}
-.hub-funnel-risk-panel--open {
-  max-height: 400px;
-  padding: 16px;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .hub-funnel-risk-panel {
-    transition: max-height 200ms ease-out, padding 200ms ease-out, opacity 150ms ease;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .hub-funnel-risk-panel { transition: none; }
-}
-.hub-funnel-risk-panel__warning {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.hub-funnel-risk-panel__icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-.hub-funnel-risk-panel__expiry {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0;
-}
-/* <select> keeps appearance: auto, so WKWebView draws a native popup button. */
-.hub-funnel-risk-panel__expiry select {
-  font-size: 13px;
-}
-.hub-funnel-risk-panel__help-link {
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.hub-funnel-risk-panel__help-link:is(:hover, :focus-visible) {
-  text-decoration: underline;
-}
-.hub-funnel-risk-panel__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-/* Phase 166 / FUI-04/05 — internet public section (SessionSharePanel) */
-.hub-share-internet-section {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--hub-border);
-}
-.hub-share-internet-section__heading {
-  font-size: var(--hub-font-size-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--hub-text-muted);
-  margin-bottom: 8px;
-}
-.hub-share-internet-section__warmup {
-  font-size: var(--hub-font-size-sm);
-  font-style: italic;
-  color: var(--hub-text-muted);
-}
-.hub-share-internet-section__url-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.hub-share-internet-section__disable {
-  margin-top: 8px;
-  font-size: var(--hub-font-size-base);
-  color: var(--hub-text-muted);
-  background: none;
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-sm);
-  cursor: pointer;
-  padding: 4px 12px;
-}
-.hub-share-internet-section__error {
-  font-size: var(--hub-font-size-sm);
-  color: var(--hub-destructive);
-  margin-top: 8px;
-}
-
-/* ===== Phase 171 (FNL-09) — public write consent gate + FULL ACCESS badge ===== */
-
-/* Danger section — public write consent gate (SessionSharePanel).
-   Structurally distinct from .hub-share-internet-section: 2px destructive top
-   border (vs the read section's 1px neutral border) — a source-verifiable,
-   not color-only, distinction (D-06). */
-.hub-funnel-write-gate {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 2px solid var(--hub-destructive);
-}
-.hub-funnel-write-gate__heading {
-  font-size: var(--hub-font-size-sm);
-  font-weight: 600; /* the contract allows two weights; the uppercase letter-spaced text and the 2px destructive top border on .hub-funnel-write-gate set it apart from .hub-share-internet-section__heading */
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--hub-destructive);
-  margin-bottom: 8px;
-}
-.hub-funnel-write-gate__warning {
-  border-left: 3px solid var(--hub-destructive); /* NOT --hub-warning — see UI-SPEC Color */
-  padding-left: 8px;
-  margin-bottom: 12px;
-}
-.hub-funnel-write-gate__icon {
-  width: 16px;
-  height: 16px;
-  color: var(--hub-destructive);
-  vertical-align: middle;
-}
-.hub-funnel-write-gate__warning-heading {
-  font-size: var(--hub-font-size-base);
-  font-weight: 600;
-  color: var(--hub-text-primary); /* full weight, never muted — D-08 */
-  margin: 0 0 4px;
-}
-.hub-funnel-write-gate__warning-body {
-  font-size: var(--hub-font-size-base);
-  font-weight: 400;
-  line-height: 1.5;
-  color: var(--hub-text-secondary);
-  margin: 0;
-}
-.hub-funnel-write-gate__expiry {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 0 8px;
-  font-size: var(--hub-font-size-base);
-  color: var(--hub-text-muted);
-}
-.hub-funnel-write-gate__expiry select {
-  font-size: var(--hub-font-size-base);
-  background-color: var(--hub-surface);
-  color: var(--hub-text-primary);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-sm);
-  padding: 4px 8px;
-}
-/* Hold-to-confirm control (D-01/D-07/R1). 44px min-height touch-target
-   exception (UI-SPEC Spacing Scale) even though the control is full-width. */
-.hub-funnel-write-gate__hold-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 44px;
-  margin-top: 8px;
-  overflow: hidden;
-  background: var(--hub-surface);
-  border: 1px solid var(--hub-destructive);
-  border-radius: var(--hub-radius-sm);
-  cursor: pointer;
-  user-select: none;
-  touch-action: none;
-}
-.hub-funnel-write-gate__hold-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-/* The fill IS the primary feedback mechanism (D-07) — functionally load-bearing,
-   not decorative, so it is not fully suppressed under prefers-reduced-motion. */
-.hub-funnel-write-gate__hold-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 0%;
-  background: var(--hub-destructive);
-  opacity: 0.25;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .hub-funnel-write-gate__hold-fill { transition: width 50ms linear; }
-}
-@media (prefers-reduced-motion: reduce) {
-  /* Geometry-based feedback (fill width) is functional, not decorative, so it is
-     NOT suppressed — only the smoothing easing is removed (UI-SPEC Motion). */
-  .hub-funnel-write-gate__hold-fill { transition: none; }
-}
-.hub-funnel-write-gate__hold-label {
-  position: relative;
-  font-size: var(--hub-font-size-base);
-  font-weight: var(--hub-font-weight-emphasis);
-  color: var(--hub-text-primary);
-}
-.hub-funnel-write-gate__result {
-  margin-top: 12px;
-}
-.hub-funnel-write-gate__countdown {
-  font-size: var(--hub-font-size-sm);
-  font-weight: 600;
-  color: var(--hub-text-secondary);
-  margin-top: 8px;
-}
-.hub-funnel-write-gate__countdown--urgent {
-  color: var(--hub-destructive);
-}
-.hub-funnel-write-gate__used {
-  font-size: var(--hub-font-size-sm);
-  font-weight: 600;
-  color: var(--hub-text-secondary);
-  margin-top: 8px;
-}
-.hub-funnel-write-gate__disable {
-  margin-top: 8px;
-  font-size: var(--hub-font-size-base);
-  color: var(--hub-destructive);
-  background: none;
-  border: 1px solid var(--hub-destructive);
-  border-radius: var(--hub-radius-sm);
-  cursor: pointer;
-  padding: 4px 12px;
-}
-
-/* FULL ACCESS icon — session tab (TabBar) */
-.tab__fullaccess-icon {
-  display: flex;
-  width: 12px;
-  height: 12px;
-  color: var(--color-error-text);
-  flex-shrink: 0;
 }
 
 /* ─── Desktop window chrome (Portty 02-01) ──────────────────────────

@@ -12,24 +12,31 @@ describe('App', () => {
       expect(raw).not.toContain('StatusBar')
     })
 
-    it('TabBar opens the lifted Share modal and gets the share and NET-01 state', () => {
+    // Portty 04-05: the button toggles the Share popover, anchored on it.
+    it('TabBar toggles the Share popover and gets the share and NET-01 state', () => {
       const tabBar = raw.slice(raw.indexOf('<TabBar'), raw.indexOf('/>', raw.indexOf('<TabBar')))
-      expect(tabBar).toContain('onShare={openShareModalForActiveSession}')
+      expect(tabBar).toContain('onShare={() => setSharePopoverOpen((open) => !open)}')
+      expect(tabBar).toContain('shareOpen={sharePopoverOpen}')
+      expect(tabBar).toContain('sharePopoverId={SHARE_POPOVER_ID}')
+      expect(tabBar).toContain('shareButtonRef={shareButtonRef}')
       expect(tabBar).toContain('shared={!!sessions.find((s) => s.id === activeId)?.webEnabled}')
       expect(tabBar).toContain('shareDisabled={tailscaleOff}')
     })
 
-    it('openShareModalForActiveSession picks the active session from the session list', () => {
-      const start = raw.indexOf('const openShareModalForActiveSession = useCallback(')
-      const body = raw.slice(start, raw.indexOf('}, [sessions, activeId])', start))
-      expect(body).toContain('sessions.find((s) => s.id === activeId)')
-      expect(body).toContain('setShareModalSession(session)')
-      expect(body).not.toContain('ToggleWebServing')
+    it('renders one SharePopover, for the active local session, reporting toggles into the session list', () => {
+      expect(raw).toContain("import { SharePopover } from './components/SharePopover'")
+      expect(raw.match(/<SharePopover\b/g)).toHaveLength(1)
+      const idx = raw.indexOf('<SharePopover')
+      const block = raw.slice(raw.lastIndexOf('{(() => {', idx), raw.indexOf('/>', idx))
+      expect(block).toContain('sharePopoverOpen ? sessions.find((s) => s.id === activeId) : undefined')
+      expect(block).toContain('anchor={shareButtonRef.current}')
+      expect(block).toContain('onSharedChange={setSessionWebEnabled}')
+      expect(block).toContain('tailscaleOff={tailscaleOff}')
     })
 
-    it('the Share dialog reports toggles back into the session list', () => {
-      const idx = raw.indexOf('<SessionShareModal')
-      expect(raw.slice(idx, idx + 800)).toContain('onShareEnabledChange={setSessionWebEnabled}')
+    it('a tab switch and opening Settings close the popover', () => {
+      expect(raw).toContain('useEffect(() => { setSharePopoverOpen(false) }, [activeId])')
+      expect(raw).toContain('useEffect(() => { if (showSettings) setSharePopoverOpen(false) }, [showSettings])')
     })
   })
 
@@ -78,7 +85,7 @@ describe('App', () => {
 
     it('wires onAppearanceChange to the appearance state', () => {
       const start = raw.indexOf('<SettingsSheet')
-      expect(raw.slice(start, raw.indexOf('/>', raw.indexOf('onShellWarnEnabledChange', start)))).toContain('onAppearanceChange={setAppearance}')
+      expect(raw.slice(start, raw.indexOf('/>', start))).toContain('onAppearanceChange={setAppearance}')
     })
 
     it('adds no data-appearance fallback (WKWebView follows NSApp.appearance, M-68)', () => {
@@ -512,15 +519,11 @@ describe('desktop window chrome CSS (LOOK-01)', () => {
   })
 })
 
-// Portty 02-05 (ROADMAP SC5): the Share dialog moved out of components/Hub/ and
-// is still rendered exactly once at App level.
-describe('Share dialog lives in components/Share (Portty 02-05)', () => {
-  it('imports SessionShareModal from components/Share', () => {
-    expect(raw).toContain("import { SessionShareModal } from './components/Share/SessionShareModal'")
-  })
-
-  it('renders exactly one SessionShareModal', () => {
-    expect(raw.match(/<SessionShareModal\b/g)).toHaveLength(1)
+// Portty 04-05 (SHAR-01): the old tabbed share dialog is gone; the popover replaces it.
+describe('the tabbed share dialog is gone (Portty 04-05)', () => {
+  it('imports nothing from components/Share or components/SessionShare', () => {
+    expect(raw).not.toMatch(/components\/(Share|SessionShare)\//)
+    expect(raw).not.toContain('shareModalSession')
   })
 })
 
@@ -603,12 +606,12 @@ describe('renameSession and End Session (TERM-03)', () => {
     expect(raw).toContain('tabs={tabs.map((t) => ({ ...t, name: tabLabel(t, sessions) }))}')
   })
 
-  it('endSession stops web serving when shared, then kills, then removes the tab', () => {
+  // Portty 04-05: the daemon's kill path drops the share (04-02), so no separate stop call.
+  it('endSession kills, then removes the tab', () => {
     const b = body('const endSession = useCallback(')
-    const toggle = b.indexOf('ToggleWebServing(id, false)')
     const kill = b.indexOf('await KillSession(id)')
-    expect(toggle).toBeGreaterThan(-1)
-    expect(kill).toBeGreaterThan(toggle)
+    expect(b).not.toContain('ToggleWebServing')
+    expect(kill).toBeGreaterThan(-1)
     expect(b.indexOf('removeTabState(id)')).toBeGreaterThan(kill)
     // Review WR-06: recorded as exited so an in-flight poll cannot resurrect it.
     expect(b.indexOf('exitedIdsRef.current.add(id)')).toBeGreaterThan(kill)
@@ -625,6 +628,6 @@ describe('renameSession and End Session (TERM-03)', () => {
 
   it('the separate webEnabled map is gone; share state reads from sessions', () => {
     expect(raw).not.toContain('setWebEnabled')
-    expect(raw).toContain('onShareEnabledChange={setSessionWebEnabled}')
+    expect(raw).toContain('onSharedChange={setSessionWebEnabled}')
   })
 })

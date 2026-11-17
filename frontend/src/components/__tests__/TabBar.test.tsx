@@ -212,59 +212,10 @@ describe('Phase 139 TAB-03: TabBar title on outer .tab div — RED until Plan 02
   })
 })
 
-// ---- Phase 166 / FUI-03: funnelActiveSessions tab icon tests ----
-
-describe('TabBar funnelActiveSessions (FUI-03)', () => {
-  let container: HTMLElement
-  let root: ReturnType<typeof createRoot>
-
-  afterEach(() => {
-    root.unmount()
-    container.remove()
-  })
-
-  it('FUI-03: funnelActiveSessions[sessionId]=true renders an element with aria-label "Internet exposed"', () => {
-    ;({ container, root } = renderTabBarWithTabs({
-      funnelActiveSessions: { sess1: true, sess2: false },
-    }))
-    const el = container.querySelector('[aria-label="Internet exposed"]')
-    expect(el).not.toBeNull()
-  })
-
-  it('FUI-03: funnelActiveSessions[sessionId]=true renders .tab__internet-icon element', () => {
-    ;({ container, root } = renderTabBarWithTabs({
-      funnelActiveSessions: { sess1: true },
-    }))
-    const icon = container.querySelector('.tab__internet-icon')
-    expect(icon).not.toBeNull()
-  })
-
-  it('FUI-03: .tab__internet-icon has title="Internet exposed"', () => {
-    ;({ container, root } = renderTabBarWithTabs({
-      funnelActiveSessions: { sess1: true },
-    }))
-    const icon = container.querySelector('.tab__internet-icon')
-    expect(icon).not.toBeNull()
-    expect(icon!.getAttribute('title')).toBe('Internet exposed')
-  })
-
-  it('FUI-03: funnelActiveSessions empty/false renders no .tab__internet-icon', () => {
-    ;({ container, root } = renderTabBarWithTabs({
-      funnelActiveSessions: { sess1: false, sess2: false },
-    }))
-    const icon = container.querySelector('.tab__internet-icon')
-    expect(icon).toBeNull()
-  })
-
-  it('FUI-03: funnelActiveSessions prop absent renders no .tab__internet-icon', () => {
-    ;({ container, root } = renderTabBarWithTabs())
-    const icon = container.querySelector('.tab__internet-icon')
-    expect(icon).toBeNull()
-  })
-
-  it('FUI-03 COLORBLIND-SAFE: TabBar.tsx source contains COLORBLIND-SAFE comment for the tab icon', () => {
-    expect(raw).toContain('COLORBLIND-SAFE')
-    expect(raw).toContain('tab__internet-icon')
+// Portty 04-05 (SHAR-05): the tab exposure icons for public sharing are gone.
+describe('TabBar has no public-exposure tab icons (Portty 04-05)', () => {
+  it('the source renders no exposure icon', () => {
+    expect(raw).not.toMatch(/GlobeAlt|LockOpen|tab__internet-icon|tab__fullaccess-icon/)
   })
 })
 
@@ -528,7 +479,7 @@ describe('TabBar Share button and "On <host>" chip (Portty 02-08)', () => {
     expect(onShare).toHaveBeenCalledTimes(1)
   })
 
-  it('Tailscale off: aria-disabled="true" (not disabled), aria-describedby="ts-off-reason", name stays "Share", click and Enter do nothing', () => {
+  it('Tailscale off: aria-disabled="true" (not disabled), aria-describedby="ts-off-reason", keeps its Shared look, click and Enter do nothing', () => {
     const onShare = vi.fn()
     ;({ container, root } = renderTabBarWithTabs({ onShare, shareDisabled: true, shared: true }))
     const btn = share()[0]
@@ -536,12 +487,32 @@ describe('TabBar Share button and "On <host>" chip (Portty 02-08)', () => {
     expect(btn.disabled).toBe(false)
     expect(btn.getAttribute('aria-describedby')).toBe('ts-off-reason')
     expect(btn.hasAttribute('aria-label')).toBe(false)
-    expect(btn.textContent).toBe('Share')
+    expect(btn.textContent).toBe('Shared')
+    expect(btn.classList.contains('toolbar-share--shared')).toBe(true)
     btn.focus()
     expect(document.activeElement).toBe(btn)
     flushSync(() => btn.click())
     flushSync(() => btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
     expect(onShare).not.toHaveBeenCalled()
+  })
+
+  // Portty 04-05: the button opens the Share popover.
+  it('carries aria-haspopup="dialog", aria-expanded and aria-controls while open', () => {
+    ;({ container, root } = renderTabBarWithTabs({ onShare: vi.fn() }))
+    expect(share()[0].getAttribute('aria-haspopup')).toBe('dialog')
+    expect(share()[0].getAttribute('aria-expanded')).toBe('false')
+    expect(share()[0].hasAttribute('aria-controls')).toBe(false)
+    flushSync(() => root.unmount())
+    container.remove()
+    ;({ container, root } = renderTabBarWithTabs({ onShare: vi.fn(), shareOpen: true, sharePopoverId: 'share-popover' }))
+    expect(share()[0].getAttribute('aria-expanded')).toBe('true')
+    expect(share()[0].getAttribute('aria-controls')).toBe('share-popover')
+  })
+
+  it('exposes the button through shareButtonRef (the popover anchor)', () => {
+    const ref = React.createRef<HTMLButtonElement>()
+    ;({ container, root } = renderTabBarWithTabs({ onShare: vi.fn(), shareButtonRef: ref }))
+    expect(ref.current).toBe(share()[0])
   })
 
   it('a peer active tab shows the "On <host>" chip instead of Share', () => {
