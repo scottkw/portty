@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 4
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-11-17T03:34:03.308Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-11-17T04:07:06.832Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 4 execution started
-state_head: 71201e896cc25f37b0fd5839aeb7f042b45888d5
+state_head: a781a66b2c95756dadf54ca546d9aad2a96853bf
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 37
-  completed_plans: 32
+  completed_plans: 33
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 4 — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 4 execution started
 
@@ -74,6 +74,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 3 P05 | 15min | 3 tasks | 21 files |
 | Phase 3 P06 | 53min | 3 tasks | 17 files |
 | Phase 4 P01 | 35min | 3 tasks | 67 files |
+| Phase 4 P02 | 20min | 2 tasks | 39 files |
 
 ## Accumulated Context
 
@@ -147,6 +148,11 @@ Recent decisions affecting current work:
 - [Phase 4]: 04-01: relay.Subscriber.ReadOnly and the webserver HasPerm(claims.Perms, "write") check stay as the capability write gate; only ways to create a view-only link were removed
 - [Phase 4]: 04-01: issueCapabilitiesForSession mints one read,write grant; IssueCapabilitiesResponse keeps only writeUrl until 04-02 replaces it with the share switch
 - [Phase 4]: 04-01: Section 5 Category J (share warning GUI switch) left for 04-05
+- [Phase 4]: 04-02: Share state is one in-memory daemon record per session behind GET/PUT /sessions/{id}/share; the share server runs exactly while a record exists (no boot server, no LAN fallback)
+- [Phase 4]: 04-02: A taken share port is ErrPortInUse (port_in_use), never a random port; only EADDRINUSE maps to it
+- [Phase 4]: 04-02: App share bindings return ShareResult with errorCode (daemon codes, start_failed/stop_failed, unavailable for GetSessionShare) and never throw
+- [Phase 4]: 04-02: Key regeneration re-mints every share link; exit and kill drop the record via unshareLocked
+- [Phase 4]: 04-02: vmpreview build tag fakes Tailscale on 127.0.0.1:7444 for the Tart VM; check-brand.sh fails if it reaches .github, build.sh or scripts
 
 ### Pending Todos
 
@@ -207,6 +213,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T03:33:53.824Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-11-17T04:07:04.896Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
