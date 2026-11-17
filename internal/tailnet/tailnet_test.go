@@ -3,10 +3,12 @@ package tailnet
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -597,7 +599,8 @@ func TestFetchAllPeerSessionsMeta_EmptySessionsNotDropped(t *testing.T) {
 	// redirectingClient trusts the httptest server's self-signed certificate.
 	// This is the pattern mirroring FetchPeerSessionsWithClient for the cap-gated path.
 	testClient := redirectingClient(srv)
-	sessions, reachable := FetchPeerSessionsMetaWithClient(context.Background(), srv.URL, testClient)
+	sessions, status, _ := FetchPeerSessionsMetaWithClient(context.Background(), srv.URL, testClient)
+	reachable := status == MetaOK
 
 	// Reachable peer with zero sessions: Reachable=true, Sessions=[] (not nil, not dropped).
 	if !reachable {
@@ -629,7 +632,8 @@ func TestFetchAllPeerSessionsMeta_PopulatedPeer(t *testing.T) {
 	// Use FetchPeerSessionsMetaWithClient so the redirectingClient trusts the
 	// httptest server's self-signed cert (mirrors FetchPeerSessionsWithClient pattern).
 	testClient := redirectingClient(srv)
-	sessions, reachable := FetchPeerSessionsMetaWithClient(context.Background(), srv.URL, testClient)
+	sessions, status, _ := FetchPeerSessionsMetaWithClient(context.Background(), srv.URL, testClient)
+	reachable := status == MetaOK
 
 	if !reachable {
 		t.Errorf("expected Reachable=true for peer serving sessions, got false")
@@ -652,7 +656,8 @@ func TestFetchPeerSessionsMeta_IgnoresLegacyFields(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	sessions, reachable := FetchPeerSessionsMetaWithClient(context.Background(), srv.URL, redirectingClient(srv))
+	sessions, status, _ := FetchPeerSessionsMetaWithClient(context.Background(), srv.URL, redirectingClient(srv))
+	reachable := status == MetaOK
 	if !reachable {
 		t.Fatal("expected Reachable=true for a legacy peer")
 	}
@@ -687,7 +692,8 @@ func TestFetchPeerSessionsMeta_IPFallback(t *testing.T) {
 	// The redirectingClient pattern used in existing tests re-routes by host,
 	// but FetchPeerSessionsMeta owns its own client — so the IP path exercise
 	// is best validated via the function's own logic once it exists.
-	sessions, reachable := FetchPeerSessionsMeta(context.Background(), peer)
+	sessions, status := FetchPeerSessionsMeta(context.Background(), peer)
+	reachable := status == MetaOK
 
 	// Even via IP fallback, we expect at least the function to return results.
 	// With a real server that happens to answer on the IP, reachable=true.
@@ -699,5 +705,121 @@ func TestFetchPeerSessionsMeta_IPFallback(t *testing.T) {
 		t.Logf("IP fallback returned reachable=false (acceptable if network blocks IP fallback in test env); sessions=%v", sessions)
 	} else if len(sessions) != 1 {
 		t.Errorf("expected 1 session via IP fallback, got %d", len(sessions))
+	}
+}
+
+// -----------------------------------------------------------------------
+// Phase 4 (04-04): tri-state meta, FetchPeerCap, forbidden peers dropped.
+// -----------------------------------------------------------------------
+
+func TestMetaStatus_TriState(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cases := []struct {
+		name    string
+		handler http.HandlerFunc
+		want    MetaStatus
+		wantLen int
+	}{
+		{"ok", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`[{"id":"a","name":"build","status":"running"}]`))
+		}, MetaOK, 1},
+		{"ok empty", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`[]`)) }, MetaOK, 0},
+		{"forbidden with marker", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set(MarkerHeader, MarkerValue)
+			http.Error(w, "forbidden", http.StatusForbidden)
+		}, MetaForbidden, 0},
+		{"forbidden without marker", func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+		}, MetaUnreachable, 0},
+		{"server error", func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "boom", http.StatusInternalServerError)
+		}, MetaUnreachable, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewTLSServer(tc.handler)
+			defer srv.Close()
+			sessions, status, _ := FetchPeerSessionsMetaWithClient(ctx, srv.URL, srv.Client())
+			if status != tc.want {
+				t.Fatalf("status = %v, want %v", status, tc.want)
+			}
+			if len(sessions) != tc.wantLen {
+				t.Fatalf("len = %d, want %d", len(sessions), tc.wantLen)
+			}
+			if status == MetaOK && sessions == nil {
+				t.Fatal("MetaOK must return a non-nil slice")
+			}
+		})
+	}
+	t.Run("refused", func(t *testing.T) {
+		srv := httptest.NewTLSServer(http.NotFoundHandler())
+		url, client := srv.URL, srv.Client()
+		srv.Close()
+		_, status, err := FetchPeerSessionsMetaWithClient(ctx, url, client)
+		if status != MetaUnreachable || !errors.Is(err, syscall.ECONNREFUSED) {
+			t.Fatalf("status = %v err = %v, want unreachable with ECONNREFUSED", status, err)
+		}
+	})
+}
+
+func TestFetchPeerCap(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var gotCT, gotPath, gotMethod string
+	status := http.StatusOK
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCT, gotPath, gotMethod = r.Header.Get("Content-Type"), r.URL.EscapedPath(), r.Method
+		if gotCT != "application/json" {
+			http.Error(w, "unsupported", http.StatusUnsupportedMediaType)
+			return
+		}
+		if status != http.StatusOK {
+			http.Error(w, "no", status)
+			return
+		}
+		_, _ = w.Write([]byte(`{"cap":"tok123"}`))
+	}))
+	defer srv.Close()
+
+	got, err := FetchPeerCap(ctx, srv.URL, "s 1", srv.Client())
+	if err != nil || got != "tok123" {
+		t.Fatalf("FetchPeerCap = %q, %v; want tok123", got, err)
+	}
+	if gotMethod != http.MethodPost || gotCT != "application/json" || gotPath != "/api/peer/sessions/s%201/cap" {
+		t.Fatalf("request = %s %s (%s)", gotMethod, gotPath, gotCT)
+	}
+
+	status = http.StatusForbidden
+	if _, err := FetchPeerCap(ctx, srv.URL, "s1", srv.Client()); !errors.Is(err, ErrPeerForbidden) {
+		t.Fatalf("403: err = %v, want ErrPeerForbidden", err)
+	}
+	status = http.StatusNotFound
+	if _, err := FetchPeerCap(ctx, srv.URL, "s1", srv.Client()); !errors.Is(err, ErrPeerNotShared) {
+		t.Fatalf("404: err = %v, want ErrPeerNotShared", err)
+	}
+	status = http.StatusInternalServerError
+	if _, err := FetchPeerCap(ctx, srv.URL, "s1", srv.Client()); err == nil || errors.Is(err, ErrPeerForbidden) || errors.Is(err, ErrPeerNotShared) {
+		t.Fatalf("500: err = %v, want a plain error", err)
+	}
+}
+
+func TestFetchAllPeerSessionsMeta_DropsForbiddenPeers(t *testing.T) {
+	fetch := func(_ context.Context, p Peer) ([]ShareableSessionMeta, MetaStatus) {
+		switch p.Hostname {
+		case "same":
+			return []ShareableSessionMeta{{ID: "s1", Name: "build"}}, MetaOK
+		case "other-account":
+			return nil, MetaForbidden
+		default:
+			return nil, MetaUnreachable
+		}
+	}
+	groups := fetchAllPeerSessionsMeta(context.Background(), []Peer{{Hostname: "same"}, {Hostname: "other-account"}, {Hostname: "asleep"}}, fetch)
+	if len(groups) != 2 || groups[0].Hostname != "asleep" || groups[1].Hostname != "same" {
+		t.Fatalf("groups = %+v, want asleep and same only", groups)
+	}
+	if groups[0].Reachable || groups[0].Sessions == nil || !groups[1].Reachable || len(groups[1].Sessions) != 1 {
+		t.Fatalf("groups = %+v", groups)
 	}
 }

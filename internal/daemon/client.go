@@ -286,6 +286,33 @@ func (c *DaemonClient) SetSessionShared(id string, shared bool) (ShareResponse, 
 	return out, nil
 }
 
+// ConnectPeer asks the daemon to connect to a session shared from another Mac
+// (POST /peers/connect). Failures come back as *PeerConnectError.
+func (c *DaemonClient) ConnectPeer(host, session string) (PeerConnectResponse, error) {
+	b, err := json.Marshal(PeerConnectRequest{Host: host, Session: session})
+	if err != nil {
+		return PeerConnectResponse{}, err
+	}
+	resp, err := c.http.Post(c.base+"/peers/connect", "application/json", bytes.NewReader(b))
+	if err != nil {
+		return PeerConnectResponse{}, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		var e PeerConnectErrorResponse
+		if json.Unmarshal(body, &e) == nil && e.Error != "" {
+			return PeerConnectResponse{}, &PeerConnectError{Code: e.Error, Detail: e.Detail, Hosts: e.Hosts, Sessions: e.Sessions}
+		}
+		return PeerConnectResponse{}, fmt.Errorf("daemon API POST /peers/connect: status %d: %s", resp.StatusCode, body)
+	}
+	var out PeerConnectResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return PeerConnectResponse{}, fmt.Errorf("decode response: %w", err)
+	}
+	return out, nil
+}
+
 // doJSON is a shared request/response helper. It marshals body (if non-nil),
 // sends the request, checks the status code, and decodes result (if non-nil).
 func (c *DaemonClient) doJSON(method, path string, body, result any) error {

@@ -25,11 +25,13 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **109** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
+| Go unit/integration | **110** `*_test.go` files | `internal/`, repo root | `go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
 | vitest (frontend) | **93** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (the guest sees only the terminal: WEBCHAT-03, CHAT-01), live light/dark (THEM-01) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **210** | — | — | — |
+| **Total** | **211** | — | — | — |
+
+> Note: Portty Phase 4 plan 04-04 Task 1 (SHAR-06, SHAR-04, SHAR-01: `portty attach <host>:<session>` through the local daemon, close reasons forwarded by the remote WebSocket proxy, peer meta tri-state): counts from `git ls-files` — Go **110** (+1: internal/daemon/peer_connect_test.go; the direct-dial remote attach tests in cmd_attach_test.go were replaced by helper tests), vitest **93**, Playwright **7**, build-script **1**, total **211**.
 
 > Note: Portty Phase 4 plan 04-03 Task 2 (SHAR-03, SHAR-04: share-off closes every viewer with the fixed reason, the plugin stream ends on revoke, failed link opens show a page): counts from `git ls-files` — Go **109** (+3: internal/relay/close_reasons_test.go, internal/webserver/revoke_test.go, internal/webserver/link_page_test.go), vitest **93**, Playwright **7**, build-script **1**, total **210**. Edited in place: internal/relay/hub_test.go (`TestDisconnectWebViewers` renamed `TestRevokeWebViewers` with DisconnectWebViewers deleted from the hub), internal/webserver/csp_mw_test.go (`TestCSPHeaders_ReferrerPolicyNoReferrer`), internal/webserver/session_ended_test.go (asserts `relay.CloseReasonSessionEnded`), internal/daemon/share_test.go (`TestShare_OffClosesViewerWithReason`). Section 4: FIX-02 hub_test.go row and the M-item source line updated; SHAR-03 and SHAR-04 rows added.
 
@@ -487,6 +489,11 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | SHAR-04 | internal/relay/close_reasons_test.go | Go | Portty 04-03: `TestCloseReason_Literals` — "share stopped" and "session ended" wire literals are pinned |
 | SHAR-04 | internal/daemon/share_test.go | Go | Portty 04-03: `TestShare_OffClosesViewerWithReason` — share-off closes the link's WebSocket with 1000 and `relay.CloseReasonShareStopped` |
 | SHAR-03 | internal/webserver/csp_mw_test.go | Go | Portty 04-03: `TestCSPHeaders_ReferrerPolicyNoReferrer` — every cspHeaders response carries Referrer-Policy: no-referrer (the /app/ URL holds a full-control token) |
+| SHAR-06 | internal/daemon/peer_connect_test.go | Go | Portty 04-04: `TestPeerConnect_HostMatching` (MagicDNS label, HostName, case-insensitive), `TestPeerConnect_StoresCap` (the capability lands in RemoteCapStore and the relay proxy can attach), `TestPeerConnect_UniqueIDPrefix`, `TestPeerConnect_AmbiguousName`, `TestPeerConnect_NoSuchSession`, `TestPeerConnect_EmptySession` (one shared picks it, several give `multiple`), `TestPeerConnect_NotSharing` (empty list or refused port), `TestPeerConnect_TailscaleOff`, `TestPeerConnect_UnknownHostListsProbed`, `TestPeerConnect_ClientDecodesError` |
+| SHAR-01 | internal/daemon/peer_connect_test.go | Go | Portty 04-04: `TestPeerConnect_Forbidden` — a peer on a different Tailscale account (meta 403 or capability 403) gives `forbidden`, no capability stored |
+| SHAR-01 | internal/tailnet/tailnet_test.go | Go | Portty 04-04: `TestMetaStatus_TriState` (200, 200 empty, 403 with the X-Portty marker is forbidden, 403 without it and 500 are unreachable, refused carries ECONNREFUSED), `TestFetchPeerCap` (POST with application/json, 403 and 404 sentinels), `TestFetchAllPeerSessionsMeta_DropsForbiddenPeers` |
+| SHAR-04 | internal/daemon/remote_ws_proxy_test.go | Go | Portty 04-04: `TestRemoteWSProxy_ForwardsClose` — the peer's close (1000 "share stopped" or "session ended") reaches the proxy's client with the same code and reason |
+| SHAR-06 | cmd_attach_test.go | Go | Portty 04-04: `TestRemoteAttachEnd` (share stopped, wrapped, session ended, plain error), `TestRemoteRelayURL` (remote attach dials the local relay proxy with no cap) |
 
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 

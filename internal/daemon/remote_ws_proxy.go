@@ -24,6 +24,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -110,7 +111,14 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	errc := make(chan error, 2)
 	go copyWS(ctx, upstream, clientConn, errc) // webview → peer (input/resize/ping)
 	go copyWS(ctx, clientConn, upstream, errc) // peer → webview (scrollback/output)
-	<-errc
+	err = <-errc
+	// Forward a close code and reason (e.g. 1000 "share stopped") so the viewer
+	// can say why it ended. Reasons come from the peer's fixed constants and
+	// never carry the cap.
+	var ce websocket.CloseError
+	if errors.As(err, &ce) {
+		_ = clientConn.Close(ce.Code, ce.Reason)
+	}
 }
 
 // copyWS reads whole messages from src and writes them verbatim to dst until

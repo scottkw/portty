@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -17,59 +16,62 @@ import (
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/attach"
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/statusbar"
-	"github.com/scottkw/portty/internal/tailnet"
 	"golang.org/x/term"
 )
 
-// cmdAttach connects the local terminal to a running daemon session via the
-// relay WebSocket server. It sets the terminal to raw mode, relays all I/O,
-// and restores the terminal on every exit path.
-func cmdAttach(client *daemon.DaemonClient, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: portty attach <session-id>")
-	}
+// attachOpts are the optional attach flags.
+type attachOpts struct {
+	detachKey  byte
+	clientName string
+	statusTop  bool
+}
 
-	// Parse optional flags. Default detach key: Ctrl-backslash (0x1C).
-	detachKey := byte(0x1C)
-	clientName := ""
-	statusTop := false
-	for _, arg := range args[1:] {
+func parseAttachFlags(args []string) attachOpts {
+	// Default detach key: Ctrl-backslash (0x1C).
+	o := attachOpts{detachKey: 0x1C}
+	for _, arg := range args {
 		if arg == "--status-top" {
-			statusTop = true
-		} else if len(arg) > 9 && arg[:9] == "--client=" {
-			clientName = arg[9:]
-		} else if len(arg) > 13 && arg[:13] == "--detach-key=" {
-			val := arg[13:]
-			switch val {
+			o.statusTop = true
+		} else if v, ok := strings.CutPrefix(arg, "--client="); ok && v != "" {
+			o.clientName = v
+		} else if v, ok := strings.CutPrefix(arg, "--detach-key="); ok && v != "" {
+			switch v {
 			case `ctrl-\`, "ctrl-backslash":
-				detachKey = 0x1C
+				o.detachKey = 0x1C
 			default:
-				if len(val) == 1 {
-					detachKey = val[0]
+				if len(v) == 1 {
+					o.detachKey = v[0]
 				}
 			}
 		}
 	}
+	return o
+}
 
-	// Detect remote session ID format (hostname:session-id).
-	hostname, sessionID, isRemote := parseRemoteID(args[0])
-	if isRemote {
-		return cmdAttachRemote(client, hostname, sessionID, detachKey, statusTop)
+// cmdAttach connects the local terminal to a session on this Mac or to a session
+// shared from another Mac (<host>:<session>). It sets the terminal to raw mode,
+// relays all I/O, and restores the terminal on every exit path.
+func cmdAttach(client *daemon.DaemonClient, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: portty attach <session> | <host>:<session> | <host>")
 	}
+	opts := parseAttachFlags(args[1:])
+	if host, session, isRemote := parseRemoteID(args[0]); isRemote {
+		return attachRemote(client, host, session, opts)
+	}
+	return attachLocal(client, args[0], opts)
+}
 
-	// Must be run in an interactive terminal.
+func attachLocal(client *daemon.DaemonClient, sessionID string, opts attachOpts) error {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return fmt.Errorf("attach: stdin is not a terminal")
 	}
-
-	// Get the relay port from the daemon.
 	port, err := client.GetRelayPort()
 	if err != nil {
 		return fmt.Errorf("attach: %w", err)
 	}
-
-	// Verify the session exists and capture its metadata for the banner.
 	sessions, err := client.ListSessions()
 	if err != nil {
 		return fmt.Errorf("attach: %w", err)
@@ -89,17 +91,57 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 	u := url.URL{
 		Scheme: "ws",
 		Host:   fmt.Sprintf("127.0.0.1:%d", port),
-		Path:   fmt.Sprintf("/sessions/%s/ws", sessionID),
+		Path:   fmt.Sprintf("/sessions/%s/ws", session.ID),
 	}
-	q := url.Values{}
-	if clientName != "" {
-		q.Set("client", clientName)
+	if opts.clientName != "" {
+		u.RawQuery = url.Values{"client": {opts.clientName}}.Encode()
 	}
-	if len(q) > 0 {
-		u.RawQuery = q.Encode()
+	createdAt, _ := time.Parse(time.RFC3339, session.CreatedAt)
+	if createdAt.IsZero() {
+		createdAt = time.Now()
 	}
-	wsURL := u.String()
+	return runAttach(u.String(), session.Name, session.Hostname, createdAt, opts, false)
+}
 
+// attachRemote connects to a session shared from another Mac. The local daemon
+// resolves the host, checks access through the same-account peer routes and
+// holds the capability; the CLI dials the daemon's relay proxy, which injects
+// the Origin and the cap upstream (RESEARCH Pattern 5).
+func attachRemote(client *daemon.DaemonClient, host, session string, opts attachOpts) error {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return fmt.Errorf("attach: stdin is not a terminal")
+	}
+	res, err := client.ConnectPeer(host, session)
+	if err != nil {
+		return fmt.Errorf("attach: %w", err)
+	}
+	port, err := client.GetRelayPort()
+	if err != nil {
+		return fmt.Errorf("attach: %w", err)
+	}
+	return runAttach(remoteRelayURL(port, res.SessionID), res.Name, res.Host, time.Now(), opts, true)
+}
+
+// remoteRelayURL is the local daemon's proxy route for a remote session. It
+// carries no cap; the daemon holds it.
+func remoteRelayURL(relayPort int, sessionID string) string {
+	return fmt.Sprintf("ws://127.0.0.1:%d/api/relay/remote/%s/ws", relayPort, url.PathEscape(sessionID))
+}
+
+// remoteAttachEnd recognises the host turning sharing off: the proxy forwards
+// the host's close (1000, "share stopped").
+func remoteAttachEnd(err error, host, name string) (msg string, revoked bool) {
+	var ce websocket.CloseError
+	if errors.As(err, &ce) && ce.Reason == relay.CloseReasonShareStopped {
+		return fmt.Sprintf("Portty: %s stopped sharing %s.", host, name), true
+	}
+	return "", false
+}
+
+// runAttach dials wsURL and runs the interactive attach loop with the banner or
+// status bar. remote turns on the connection-state watcher and the
+// stopped-sharing exit.
+func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpts, remote bool) error {
 	// Create signal context that cancels on SIGTERM or SIGHUP.
 	// Do NOT catch SIGINT — in raw mode Ctrl-C is byte 0x03, not a signal.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGHUP)
@@ -115,12 +157,8 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 	stdout := attach.NewLockedWriter(os.Stdout)
 
 	// Phase 117 / PAPER-02: clear the local terminal so the attached session
-	// renders from a clean canvas. Without this, the user's prior shell
-	// prompt (e.g. the line "portty attach <sid>" they just typed)
-	// remains visible above the session's first frame. Pure ANSI:
-	// CSI 2 J (Erase in Display, all) + CSI H (Cursor Position, home).
-	// Only emitted when stdout is a TTY — non-TTY callers (pipes,
-	// CI redirects) get the existing one-shot banner on stderr instead.
+	// renders from a clean canvas. Pure ANSI: CSI 2 J + CSI H. Only emitted when
+	// stdout is a TTY — non-TTY callers get the one-shot banner on stderr instead.
 	if term.IsTerminal(int(os.Stdout.Fd())) {
 		_, _ = stdout.Write([]byte("\x1b[2J\x1b[H"))
 	}
@@ -128,17 +166,13 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 	// Create status bar if stdout is a TTY (SB-03).
 	var bar *statusbar.Bar
 	if term.IsTerminal(int(os.Stdout.Fd())) {
-		createdAt, _ := time.Parse(time.RFC3339, session.CreatedAt)
-		if createdAt.IsZero() {
-			createdAt = time.Now()
-		}
 		pos := statusbar.Bottom
-		if statusTop {
+		if opts.statusTop {
 			pos = statusbar.Top
 		}
 		bar = statusbar.New(stdout, statusbar.Options{
-			SessionName: session.Name,
-			Hostname:    session.Hostname,
+			SessionName: name,
+			Hostname:    hostname,
 			CreatedAt:   createdAt,
 			Position:    pos,
 			Fd:          os.Stdout.Fd(),
@@ -147,7 +181,7 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 		defer bar.Stop()
 	} else {
 		// Non-TTY path: show one-shot banner on stderr (bar is suppressed).
-		printAttachBanner(os.Stderr, session.Name, session.Hostname)
+		printAttachBanner(os.Stderr, name, hostname)
 	}
 
 	// Put terminal in raw mode. Restore on every exit path.
@@ -167,146 +201,12 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 	// Start platform-specific SIGWINCH watcher (no-op on Windows).
 	watchResize(ctx, conn)
 
-	err = attach.AttachSession(ctx, conn, os.Stdin, stdout, detachKey, bar, nil)
-	printDetachMessage(os.Stderr)
-	return err
-}
-
-// cmdAttachRemote handles attaching to a session on a remote tailnet peer.
-// It resolves the hostname to FQDN via tailnet peer discovery, verifies the
-// session exists on the remote peer, and connects via WSS relay.
-func cmdAttachRemote(client *daemon.DaemonClient, hostname, sessionID string, detachKey byte, statusTop bool) error {
-	// Must be run in an interactive terminal.
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return fmt.Errorf("attach: stdin is not a terminal")
-	}
-
-	// Resolve hostname to peer via tailnet peer discovery.
-	peers, err := client.ListTailnetPeers()
-	if err != nil {
-		return fmt.Errorf("attach: discover peers: %w", err)
-	}
-	var peer *tailnet.Peer
-	for _, p := range peers {
-		if strings.EqualFold(p.Hostname, hostname) {
-			peer = &p
-			break
-		}
-	}
-	if peer == nil {
-		return buildUnknownHostError(hostname, peers)
-	}
-	fqdn := strings.TrimSuffix(peer.DNSName, ".")
-
-	// Construct base URL for fetching sessions and WSS relay.
-	baseURL := fmt.Sprintf("https://%s:%d", fqdn, tailnet.DefaultProbePort)
-
-	return cmdAttachRemoteWithClient(hostname, sessionID, fqdn, baseURL, nil, peer, detachKey, statusTop)
-}
-
-// cmdAttachRemoteWithClient is the testable core of the remote attach flow.
-// It accepts an HTTP client and base URL for testing with httptest servers.
-// If httpClient is nil, a production TLS client is used and peer is used for
-// IP-fallback fetch via tailnet.FetchPeerSessions.
-func cmdAttachRemoteWithClient(hostname, sessionID, fqdn, baseURL string, httpClient *http.Client, peer *tailnet.Peer, detachKey byte, statusTop bool) error {
-	// Verify the session exists on the remote peer and get its metadata.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var remoteSessions []CLIRemoteSession
-	if httpClient != nil {
-		remoteSessions = fetchPeerSessionsWithClient(ctx, baseURL, httpClient)
-	} else if peer != nil {
-		remoteSessions = fetchPeerSessions(ctx, *peer)
-	}
-
-	var session *CLIRemoteSession
-	for _, s := range remoteSessions {
-		if s.ID == sessionID {
-			session = &s
-			break
-		}
-	}
-	if session == nil {
-		return fmt.Errorf("attach: session %q not found on remote host %q", sessionID, hostname)
-	}
-
-	// Construct WSS URL to remote peer's relay.
-	wsURL := fmt.Sprintf("wss://%s:%d/sessions/%s/ws", fqdn, tailnet.DefaultProbePort, sessionID)
-
-	// Create signal context (same as local attach).
-	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGHUP)
-	defer stop()
-
-	conn, _, err := websocket.Dial(sigCtx, wsURL, nil)
-	if err != nil && peer != nil && len(peer.TailscaleIPs) > 0 {
-		// DNS fallback: connect to Tailscale IP with TLS ServerName set to the
-		// FQDN so SNI matches the Tailscale-provisioned Let's Encrypt certificate.
-		ipWSURL := fmt.Sprintf("wss://%s:%d/sessions/%s/ws", peer.TailscaleIPs[0], tailnet.DefaultProbePort, sessionID)
-		conn, _, err = websocket.Dial(sigCtx, ipWSURL, &websocket.DialOptions{
-			Host: fmt.Sprintf("%s:%d", fqdn, tailnet.DefaultProbePort),
-			HTTPClient: &http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{
-						ServerName: fqdn,
-						MinVersion: tls.VersionTLS12,
-					},
-				},
-			},
-		})
-	}
-	if err != nil {
-		return fmt.Errorf("attach: dial remote relay: %w", err)
-	}
-	defer conn.CloseNow()
-
-	// Wrap stdout in a LockedWriter.
-	stdout := attach.NewLockedWriter(os.Stdout)
-
-	// Create status bar if stdout is a TTY (SB-03).
-	var bar *statusbar.Bar
-	if term.IsTerminal(int(os.Stdout.Fd())) {
-		pos := statusbar.Bottom
-		if statusTop {
-			pos = statusbar.Top
-		}
-		bar = statusbar.New(stdout, statusbar.Options{
-			SessionName: session.Name,
-			Hostname:    hostname,
-			CreatedAt:   time.Now(), // CLIRemoteSession has no CreatedAt
-			Position:    pos,
-			Fd:          os.Stdout.Fd(),
-		})
-		bar.Start()
-		defer bar.Stop()
-	} else {
-		printAttachBanner(os.Stderr, session.Name, hostname)
-	}
-
-	// Put terminal in raw mode (same as local attach).
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		return fmt.Errorf("attach: raw mode: %w", err)
-	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState) //nolint:errcheck
-
-	// Send initial resize.
-	cols, rows, err := term.GetSize(int(os.Stdin.Fd()))
-	if err == nil {
-		frame := attach.MakeClientResizeFrame(uint16(cols), uint16(rows))
-		_ = conn.Write(sigCtx, websocket.MessageBinary, frame)
-	}
-
-	// Start resize watcher (platform-specific).
-	watchResize(sigCtx, conn)
-
 	// SB-05: connection state watcher for remote sessions.
 	// Sets "reconnecting" if no frame received for >5s.
 	var onFrame func()
-	if bar != nil {
+	if remote && bar != nil {
 		var mu sync.Mutex
 		var lastFrame time.Time
-
 		onFrame = func() {
 			mu.Lock()
 			lastFrame = time.Now()
@@ -314,8 +214,6 @@ func cmdAttachRemoteWithClient(hostname, sessionID, fqdn, baseURL string, httpCl
 			bar.SetConnectionState("")
 		}
 		onFrame() // initialize with current time
-
-		// Watcher goroutine: set "reconnecting" if no frame for 5s.
 		go func() {
 			tick := time.NewTicker(time.Second)
 			defer tick.Stop()
@@ -328,29 +226,26 @@ func cmdAttachRemoteWithClient(hostname, sessionID, fqdn, baseURL string, httpCl
 					if time.Since(lf) > 5*time.Second {
 						bar.SetConnectionState("reconnecting")
 					}
-				case <-sigCtx.Done():
+				case <-ctx.Done():
 					return
 				}
 			}
 		}()
 	}
 
-	err = attach.AttachSession(sigCtx, conn, os.Stdin, stdout, detachKey, bar, onFrame)
+	err = attach.AttachSession(ctx, conn, os.Stdin, stdout, opts.detachKey, bar, onFrame)
+	if msg, revoked := remoteAttachEnd(err, hostname, name); remote && revoked {
+		// Restore the terminal and remove the bar before printing; the deferred
+		// calls would run after the message. Both are safe to repeat.
+		term.Restore(int(os.Stdin.Fd()), oldState) //nolint:errcheck
+		if bar != nil {
+			bar.Stop()
+		}
+		fmt.Fprintf(os.Stdout, "\n%s\n", msg)
+		return nil
+	}
 	printDetachMessage(os.Stderr)
 	return err
-}
-
-// buildUnknownHostError creates a helpful error message when a hostname
-// doesn't match any tailnet peer, listing available peer hostnames.
-func buildUnknownHostError(hostname string, peers []tailnet.Peer) error {
-	var names []string
-	for _, p := range peers {
-		names = append(names, p.Hostname)
-	}
-	if len(names) == 0 {
-		return fmt.Errorf("attach: unknown remote host %q — no tailnet peers found", hostname)
-	}
-	return fmt.Errorf("attach: unknown remote host %q\nAvailable peers: %s", hostname, strings.Join(names, ", "))
 }
 
 // printAttachBanner writes the connection banner to w (typically os.Stderr).

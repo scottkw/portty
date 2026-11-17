@@ -123,3 +123,61 @@ func (e *ShareError) Error() string {
 	}
 	return e.Code + ": " + e.Detail
 }
+
+// PeerConnectRequest is the request body for POST /peers/connect. Session may be
+// empty: the host's only shared session is picked, or the list comes back.
+type PeerConnectRequest struct {
+	Host    string `json:"host"`
+	Session string `json:"session"`
+}
+
+// PeerConnectResponse is the success body for POST /peers/connect. The capability
+// is stored in the daemon; URL carries it for the owner's GUI only.
+type PeerConnectResponse struct {
+	SessionID string `json:"sessionId"`
+	Name      string `json:"name"`
+	Host      string `json:"host"`
+	URL       string `json:"url"`
+}
+
+// PeerSessionChoice names one shared session in a PeerConnectErrorResponse.
+type PeerSessionChoice struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// PeerConnectErrorResponse is the error body for POST /peers/connect.
+type PeerConnectErrorResponse struct {
+	Error    string              `json:"error"`
+	Detail   string              `json:"detail,omitempty"`
+	Hosts    []string            `json:"hosts,omitempty"`
+	Sessions []PeerSessionChoice `json:"sessions,omitempty"`
+}
+
+// Peer connect error codes (PeerConnectErrorResponse.Error).
+const (
+	PeerErrTailscaleOff  = "tailscale_off"
+	PeerErrUnknownHost   = "unknown_host"
+	PeerErrNotSharing    = "not_sharing"
+	PeerErrNoSuchSession = "no_such_session"
+	PeerErrAmbiguous     = "ambiguous"
+	PeerErrMultiple      = "multiple"
+	PeerErrForbidden     = "forbidden"
+	PeerErrUnreachable   = "unreachable"
+)
+
+// PeerConnectError is a POST /peers/connect failure with a stable code plus the
+// host or session lists the CLI and GUI copy need.
+type PeerConnectError struct {
+	Code     string
+	Detail   string
+	Hosts    []string
+	Sessions []PeerSessionChoice
+}
+
+func (e *PeerConnectError) Error() string {
+	if e.Detail == "" {
+		return e.Code
+	}
+	return e.Code + ": " + e.Detail
+}

@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -18,7 +18,6 @@ import (
 	"github.com/scottkw/portty/internal/attach"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/statusbar"
-	"github.com/scottkw/portty/internal/tailnet"
 )
 
 // setupAttachTest creates a relay HubManager + Server backed by io.Pipe pairs
@@ -346,64 +345,40 @@ func TestCmdAttach_RemoteBannerShowsHostname(t *testing.T) {
 	}
 }
 
-// TestCmdAttach_RemoteSessionNotFound verifies the error message when a session
-// does not exist on the remote peer (REM-05).
-func TestCmdAttach_RemoteSessionNotFound(t *testing.T) {
-	// Create an httptest TLS server that returns zero sessions.
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]struct{}{})
-	}))
-	defer ts.Close()
-
-	err := cmdAttachRemoteWithClient(
-		"macbook", "nonexistent-session",
-		"macbook.ts.net", ts.URL, ts.Client(), nil, byte(0x1C), false,
-	)
-	if err == nil {
-		t.Fatal("expected error for missing remote session, got nil")
+// TestRemoteAttachEnd (SHAR-04): only the host's "share stopped" close, even
+// wrapped, ends a remote attach with the stopped-sharing line.
+func TestRemoteAttachEnd(t *testing.T) {
+	stopped := websocket.CloseError{Code: websocket.StatusNormalClosure, Reason: relay.CloseReasonShareStopped}
+	cases := []struct {
+		name        string
+		err         error
+		wantRevoked bool
+	}{
+		{"share stopped", stopped, true},
+		{"wrapped", fmt.Errorf("read: %w", stopped), true},
+		{"session ended", websocket.CloseError{Code: websocket.StatusNormalClosure, Reason: relay.CloseReasonSessionEnded}, false},
+		{"plain error", errors.New("connection reset"), false},
+		{"nil", nil, false},
 	}
-	if !strings.Contains(err.Error(), "not found on remote host") {
-		t.Errorf("expected error containing %q, got %q", "not found on remote host", err.Error())
-	}
-	if !strings.Contains(err.Error(), "nonexistent-session") {
-		t.Errorf("expected error containing session ID, got %q", err.Error())
-	}
-}
-
-// TestCmdAttach_UnknownRemoteHost verifies the error message when the hostname
-// doesn't match any tailnet peer (REM-05).
-func TestCmdAttach_UnknownRemoteHost(t *testing.T) {
-	peers := []tailnet.Peer{
-		{Hostname: "macbook", DNSName: "macbook.ts.net.", Online: true},
-		{Hostname: "desktop", DNSName: "desktop.ts.net.", Online: true},
-	}
-	err := buildUnknownHostError("laptop", peers)
-	if err == nil {
-		t.Fatal("expected error for unknown host, got nil")
-	}
-	if !strings.Contains(err.Error(), "unknown remote host") {
-		t.Errorf("expected error containing %q, got %q", "unknown remote host", err.Error())
-	}
-	if !strings.Contains(err.Error(), "laptop") {
-		t.Errorf("expected error containing hostname %q, got %q", "laptop", err.Error())
-	}
-	if !strings.Contains(err.Error(), "macbook") {
-		t.Errorf("expected error containing available peer %q, got %q", "macbook", err.Error())
-	}
-	if !strings.Contains(err.Error(), "desktop") {
-		t.Errorf("expected error containing available peer %q, got %q", "desktop", err.Error())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			msg, revoked := remoteAttachEnd(tc.err, "office-air", "build")
+			if revoked != tc.wantRevoked {
+				t.Fatalf("revoked = %v, want %v", revoked, tc.wantRevoked)
+			}
+			if revoked && msg != "Portty: office-air stopped sharing build." {
+				t.Fatalf("msg = %q", msg)
+			}
+		})
 	}
 }
 
-// TestCmdAttach_UnknownRemoteHost_NoPeers verifies the error when no peers exist.
-func TestCmdAttach_UnknownRemoteHost_NoPeers(t *testing.T) {
-	err := buildUnknownHostError("laptop", nil)
-	if err == nil {
-		t.Fatal("expected error for unknown host, got nil")
-	}
-	if !strings.Contains(err.Error(), "no tailnet peers found") {
-		t.Errorf("expected error containing %q, got %q", "no tailnet peers found", err.Error())
+// TestRemoteRelayURL (SHAR-06): a remote attach dials the local daemon's relay
+// proxy, never the peer, and the URL carries no cap.
+func TestRemoteRelayURL(t *testing.T) {
+	got := remoteRelayURL(54321, "aaaa-1111")
+	if got != "ws://127.0.0.1:54321/api/relay/remote/aaaa-1111/ws" {
+		t.Fatalf("remoteRelayURL = %q", got)
 	}
 }
 

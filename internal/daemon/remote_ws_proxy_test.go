@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/relay"
 )
 
 // fixtureCap is the canonical cap token the fixture peer accepts.
@@ -396,5 +398,46 @@ func TestRemoteSessionWS_LongLived(t *testing.T) {
 	}
 	if typ != websocket.MessageBinary || string(got) != "after-deadline" {
 		t.Errorf("post-deadline echo = (%v, %q); want (binary, %q)", typ, got, "after-deadline")
+	}
+}
+
+// TestRemoteWSProxy_ForwardsClose (SHAR-04): when the peer closes the session
+// WebSocket with a code and reason (share stopped, session ended), the viewer on
+// the proxy's client side receives the same code and reason, so the GUI and
+// `portty attach` can say why it ended.
+func TestRemoteWSProxy_ForwardsClose(t *testing.T) {
+	for _, reason := range []string{relay.CloseReasonShareStopped, relay.CloseReasonSessionEnded} {
+		t.Run(reason, func(t *testing.T) {
+			upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+				if err != nil {
+					return
+				}
+				_ = conn.Close(websocket.StatusNormalClosure, reason)
+			}))
+			defer upstream.Close()
+			api := newDaemonAPIWithUpstreamCert(t, upstream)
+			socketSrv := httptest.NewServer(api.Handler())
+			defer socketSrv.Close()
+			relaySrv := httptest.NewServer(api.RelayHandler())
+			defer relaySrv.Close()
+			depositCapOnSocket(t, socketSrv, "sid1", upstream.URL, fixtureCap)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			conn, _, err := dialProxy(ctx, t, relaySrv.URL, "sid1", "")
+			if err != nil {
+				t.Fatalf("dial proxy: %v", err)
+			}
+			defer conn.CloseNow()
+			_, _, err = conn.Read(ctx)
+			var ce websocket.CloseError
+			if !errors.As(err, &ce) {
+				t.Fatalf("read err = %v, want a CloseError", err)
+			}
+			if ce.Code != websocket.StatusNormalClosure || ce.Reason != reason {
+				t.Fatalf("close = (%d, %q), want (1000, %q)", ce.Code, ce.Reason, reason)
+			}
+		})
 	}
 }

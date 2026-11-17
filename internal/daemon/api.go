@@ -57,6 +57,12 @@ type API struct {
 	// trusted-cert chain. Production code leaves this nil and the proxy
 	// builds a fresh client per request via newRemoteFilesHTTPClient().
 	remoteFilesClientForTest *http.Client
+
+	// Peer connect seams (peer_connect.go), copied from package defaults in
+	// NewAPI; tests replace them with SetPeerSeamsForTest.
+	discoverPeers func(context.Context) ([]tailnet.Peer, error)
+	probePeers    func(context.Context) []tailnet.Peer
+	peerBaseURL   func(tailnet.Peer) string
 }
 
 // NewAPI creates an API wired to the given SessionEngine and registers all routes.
@@ -71,6 +77,12 @@ func NewAPI(engine *SessionEngine) *API {
 		shareHealth:    defaultShareHealth,
 		newShareServer: defaultNewShareServer,
 		warmCert:       defaultWarmCert,
+
+		discoverPeers: tailnet.DiscoverPeers,
+		peerBaseURL:   defaultPeerBaseURL,
+	}
+	a.probePeers = func(ctx context.Context) []tailnet.Peer {
+		return a.tailnetCache.getOrRefresh(ctx, tailnet.DiscoverAndProbe)
 	}
 	a.registerRoutes()
 	return a
@@ -104,6 +116,8 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("POST /shutdown", a.handleShutdown)
 	// Tailnet peer discovery.
 	a.mux.HandleFunc("GET /tailnet/peers", a.handleTailnetPeers)
+	// Connect to a session shared from another Mac (CLI attach and the GUI).
+	a.mux.HandleFunc("POST /peers/connect", a.handlePeerConnect)
 	// Phase 87 D-16 panic button: new signing key; shares are re-minted.
 	a.mux.HandleFunc("POST /capability/regenerate-key", a.handleRegenerateSigningKey)
 	// Phase 122-01 / REMOTE-01: remote cap deposit.
@@ -658,6 +672,6 @@ func (a *API) handleRegenerateSigningKey(w http.ResponseWriter, r *http.Request)
 func (a *API) handleTailnetPeers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	peers := a.tailnetCache.getOrRefresh(ctx, tailnet.DiscoverAndProbe)
+	peers := a.probePeers(ctx)
 	writeJSON(w, http.StatusOK, peers)
 }
