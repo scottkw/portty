@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/scottkw/portty/internal/tailnet"
@@ -196,6 +197,12 @@ func EnsureDaemon(socketPath string) error {
 			fmt.Fprintf(os.Stderr, "EnsureDaemon: stale daemon detected (relay not ready), respawning\n")
 			_ = CleanupStaleSocket(socketPath)
 		}
+	}
+
+	// A test binary must never spawn a detached daemon: the child re-runs the
+	// test binary, outlives the test, and holds the user's real socket.
+	if testing.Testing() {
+		return fmt.Errorf("EnsureDaemon: refusing to spawn a daemon from a test binary")
 	}
 
 	exe, err := os.Executable()
