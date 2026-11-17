@@ -14,3 +14,9 @@
 - `TestRevoke_InputAfterRevokeNeverReachesPTY` (internal/webserver/revoke_test.go) failed once under the full `go test -race -short ./...` run during 04-07
   status: open
   **What:** `input after revoke reached the PTY: "after-revoke\n"`. It passed 30/30 in isolation and on a full-suite rerun. 04-07 changed nothing under internal/webserver. Likely cause: `Hub.RevokeWebViewers` runs `Kick` in a goroutine, so a frame written right after the revoke can reach the read pump before the close lands. Worth a look, because share-off is meant to stop input at once.
+
+- `TestAPIAppearance_GetPatch` and `TestAPITerminalFont_GetPatch` (internal/daemon) read the real settings.json (found during 04-08)
+  status: open
+  **What:** both fail with `default GET: want system, got "dark"` and `want {"" 13}, got {Family: Size:16}`. The values match the user's real `~/Library/Application Support/portty/settings.json` (appearance dark), so `testDaemon` reads the real config dir for these settings instead of a temp dir. They fail the same way on the 04-08 base commit 0a6e451d (checked in a temporary worktree), so 04-08 did not cause it; they passed during 04-07 only because the real settings were still at their defaults.
+  **Also seen:** the full run prints `daemon: daemon already running at /Users/ken/Library/Application Support/portty/daemon.sock`, so some daemon test still resolves the real socket path.
+  **Fix sketch:** point the settings path used by `testDaemon` at `t.TempDir()` (as `ConfigDirForTest` does for the engine), then re-run the full suite with a non-default real settings.json.
