@@ -38,6 +38,12 @@ package daemon
 // (grid, join, leave, slow, revoke, first input, web resize ignored on the host;
 // proxy open, dial failed, end on the viewing Mac). TestCLIAttach_OtherViewersKeepOutput
 // checks a whole CLI attach logs that timeline without the cap.
+//
+// Long history (04-10, UAT gap 4): TestCLIAttach_LongHistoryJoiners has a GUI
+// tab and the real CLI join through the proxy after about 120 KiB of history.
+// Both failed after the grid frame on the old code (coder/websocket's 32 KiB
+// per-message default on the proxy upstream and the CLI conn). Go readers of
+// host-to-viewer frames now use relay.ViewerReadLimit.
 
 import (
 	"bytes"
