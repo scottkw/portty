@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 04
 current_phase_name: One-Click Share
 status: executing
-stopped_at: Completed 04-07-PLAN.md
-last_updated: "2026-11-17T17:58:11.487Z"
+stopped_at: Completed 04-08-PLAN.md
+last_updated: "2026-11-17T19:37:19.513Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 04 execution started
-state_head: e0671ebc2d3580a44e1dadcee4dc36e31fba66e2
+state_head: bfcb1e24bcfd527a760130c5e6b5e4a19db92670
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 40
-  completed_plans: 38
+  completed_plans: 39
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 04 (One-Click Share) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 04 execution started
 
@@ -81,6 +81,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 04 P05 | 36min | 2 tasks | 57 files |
 | Phase 4 P06 | 11min | 3 tasks | 34 files |
 | Phase 04 P07 | 11min | 3 tasks | 7 files |
+| Phase 04 P08 | 93 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -175,6 +176,9 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-07: UAT gap 1 root cause not pinned in-process; H-grid and H-net need the 04-08 log and M-83 live repro
 - [Phase 04]: 04-07: Hub.ReconnectPreamble strips reply-eliciting terminal queries (liveEmuQueryStripPattern, now with XTVERSION and kitty CSI ? u) so a joining terminal never types answers into the shared shell
 - [Phase 04]: 04-07: 32 KiB coder/websocket read limit drops proxied joiners on long sessions; deferred (deferred-items.md)
+- [Phase 04]: 04-08: the detached daemon logs to daemon.log (0600, one rotation per start) in its config dir; viewer-diag lines on host and viewing Mac give live evidence for UAT gap 1 (M-83)
+- [Phase 04]: 04-08: proxy log errors strip the whole upstream query before redacting the raw token (redactCapTokenFromError alone left cap=<redacted>)
+- [Phase 04]: 04-08: relay.DiagID shortens session IDs for viewer-diag lines in hub, webserver and proxy
 
 ### Pending Todos
 
@@ -239,6 +243,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T17:58:09.172Z
-Stopped at: Completed 04-07-PLAN.md
+Last session: 2026-11-17T19:37:17.168Z
+Stopped at: Completed 04-08-PLAN.md
 Resume file: None
