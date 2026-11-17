@@ -395,3 +395,5 @@ Applicable state considerations resolved: 14 covered, 3 backstop, 1 unresolved.
 - Visual anchor: the switch row in the off state; the link field in the on state.
 - State-line gap: use 8px below the switch row in every state (off description, "Getting a link…", errors), so text does not shift between states.
 - Overflow: planner confirms the 320px popover fits at the 800px window minimum, or adds a 12px left clamp.
+
+- Copy added 2026-11-17 (user approved): shared but the link could not be read back → "Couldn't get the link: <detail>. Check that Tailscale is connected, then try again."

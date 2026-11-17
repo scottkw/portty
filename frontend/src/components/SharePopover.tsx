@@ -13,6 +13,7 @@ import {
   SHARE_SWITCH_LABEL,
   SHARE_WARNING,
   shareCtLine,
+  shareLinkLoadError,
   shareStartError,
   shareStopError,
 } from '../lib/shareCopy'
@@ -246,7 +247,7 @@ export function SharePopover({
       </>
     ) : loadError ? (
       <>
-        <p className="share-popover__line share-popover__error">{shareStartError('unavailable', loadError)}</p>
+        <p className="share-popover__line share-popover__error">{shareLinkLoadError(loadError)}</p>
         {errorLine(['stop'])}
       </>
     ) : (

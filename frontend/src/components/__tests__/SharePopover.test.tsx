@@ -163,7 +163,7 @@ describe('SharePopover: turning Share on', () => {
     await render({ shared: true })
     expect(sw().getAttribute('aria-checked')).toBe('true')
     expect(q('.share-popover__error')!.textContent).toBe(
-      "Couldn't start sharing: daemon not connected. Check that Tailscale is connected, then try again.",
+      "Couldn't get the link: daemon not connected. Check that Tailscale is connected, then try again.",
     )
   })
 
@@ -171,7 +171,7 @@ describe('SharePopover: turning Share on', () => {
     vi.mocked(GetSessionShare).mockRejectedValue('daemon not connected')
     await render({ shared: true })
     expect(q('.share-popover__error')!.textContent).toBe(
-      "Couldn't start sharing: daemon not connected. Check that Tailscale is connected, then try again.",
+      "Couldn't get the link: daemon not connected. Check that Tailscale is connected, then try again.",
     )
   })
 

@@ -28,6 +28,11 @@ export function shareStartError(code: string, detail: string): string {
   return `Couldn't start sharing: ${clean(detail)}. Check that Tailscale is connected, then try again.`
 }
 
+/** Shared, but the link couldn't be read back (popover reopened on a shared session). */
+export function shareLinkLoadError(detail: string): string {
+  return `Couldn't get the link: ${clean(detail)}. Check that Tailscale is connected, then try again.`
+}
+
 export function shareStopError(detail: string): string {
   return `Couldn't stop sharing: ${clean(detail)}. Try again.`
 }
