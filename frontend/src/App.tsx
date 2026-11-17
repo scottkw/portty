@@ -15,12 +15,11 @@ import {
   KillSession,
   RenameSession,
   GetRelayPort,
-  IsWebServerRunning,
   GetTailscaleStatus,
+  SetSessionShared,
   RetryDaemon,
   GetDaemonError,
   GetRemoteSessionsWithMeta,
-  GetWebServerMode,
   GetLastUpdateInfo,
   GetPluginSettings,
   QuitGUIOnly,
@@ -38,6 +37,7 @@ import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
 import { NewSessionModal } from './components/NewSessionModal'
 import { RemoteJoinCodeModal } from './components/RemoteJoinCodeModal'
 import { SharePopover } from './components/SharePopover'
+import { menuShareError, menuStopError } from './lib/shareCopy'
 import { remoteBaseURLFor } from './lib/remoteSession'
 import { adaptRemoteSession } from './lib/remoteAdapter'
 import { peerView, shortHost } from './lib/sidebarPeers'
@@ -87,11 +87,9 @@ function App(): React.ReactElement {
   const [sidebarHidden, setSidebarHidden] = useState(false)
   // Session id the End Session… confirm is open for (TERM-03); null = closed.
   const [endSessionTarget, setEndSessionTarget] = useState<string | null>(null)
-  // Track web server running state
-  const [, setWebServerRunning] = useState(false)
-  // Track web server mode: 'tailscale' | 'local' | null
-  const [webServerMode, setWebServerMode] = useState<'tailscale' | 'local' | null>(null)
-  // Track which session's QR modal is open (null = none)
+  // Portty 04-05: the sidebar menu's last Share / Stop Sharing failure (UI-SPEC
+  // warning banner); cleared on Dismiss or that session's next success.
+  const [shareFailure, setShareFailure] = useState<{ sessionId: string; text: string } | null>(null)
   // Track font size per session: sessionId -> fontSize (pixels)
   const [fontSizes, setFontSizes] = useState<Record<string, number>>({})
   // Quick 261116-ku9 R1: Settings ▸ Terminal Font. Unzoomed tabs follow its size;
@@ -133,8 +131,6 @@ function App(): React.ReactElement {
   const trayDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null) // 200ms debounce window
   const lastDispatchedQuartileRef = useRef<number>(-1)
 
-  // Ref for the background upgrade poller (local -> tailscale mode transition)
-  const upgradePollerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // NAV-01: every daemon session, from the always-on 3 s poll (desktop only).
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   // Portty 04-05: the Share popover for the active local session, anchored on the toolbar button.
@@ -340,10 +336,9 @@ function App(): React.ReactElement {
       }
       try {
         const healthSeq = healthEventSeqRef.current
-        const [port, allSessions, running, health] = await Promise.all([
+        const [port, allSessions, health] = await Promise.all([
           GetRelayPort(),
           ListSessions(),
-          IsWebServerRunning(),
           GetTailscaleStatus(),
         ])
         // A shell that exited while no GUI was watching is removed, not restored (TERM-05).
@@ -352,40 +347,9 @@ function App(): React.ReactElement {
           KillSession(s.id).catch((err) => console.warn('[App] KillSession of stopped session failed:', err))
         })
         setRelayPort(port)
-        setWebServerRunning(running)
         if (healthEventSeqRef.current === healthSeq) setTailscaleHealth(health)
         // Seed the sidebar and Share lookup from the restore call, before the first poll tick.
         setSessions(sessions)
-
-        // Fetch web server mode for local-network-fallback UI
-        GetWebServerMode().then(mode => {
-          const validMode = mode === 'tailscale' || mode === 'local' ? mode : null
-          setWebServerMode(validMode)
-          if (validMode) setWebServerRunning(true)
-        }).catch(() => setWebServerMode(null))
-
-        // If web server isn't running yet, poll briefly — the daemon may still
-        // be starting it (local-mode fallback takes a moment after init).
-        if (!running) {
-          let attempts = 0
-          const poll = setInterval(async () => {
-            attempts++
-            try {
-              const nowRunning = await IsWebServerRunning()
-              if (nowRunning) {
-                setWebServerRunning(true)
-                const mode = await GetWebServerMode()
-                const validMode = mode === 'tailscale' || mode === 'local' ? mode : null
-                setWebServerMode(validMode)
-                clearInterval(poll)
-              } else if (attempts >= 10) {
-                clearInterval(poll)
-              }
-            } catch {
-              clearInterval(poll)
-            }
-          }, 500)
-        }
 
         // Portty 02-13 THEM-01: the stored Appearance override (keep 'system' on failure).
         GetAppearance()
@@ -414,45 +378,6 @@ function App(): React.ReactElement {
     const offHealth = EventsOn('tailscale:health', (h: TailscaleHealth) => {
       healthEventSeqRef.current++
       setTailscaleHealth(h)
-      // If Tailscale just became fully healthy, poll for the backend to upgrade
-      // from local mode to tailscale mode (daemon's upgradeToTailscale goroutine).
-      if (h.connected && h.hasCerts && h.ip) {
-        setWebServerMode(prev => {
-          if (prev === 'local') {
-            // Clear any existing poller before starting a new one.
-            if (upgradePollerRef.current !== null) {
-              clearInterval(upgradePollerRef.current)
-            }
-            let attempts = 0
-            upgradePollerRef.current = setInterval(async () => {
-              attempts++
-              try {
-                const mode = await GetWebServerMode()
-                if (mode === 'tailscale') {
-                  setWebServerMode('tailscale')
-                  if (upgradePollerRef.current !== null) {
-                    clearInterval(upgradePollerRef.current)
-                    upgradePollerRef.current = null
-                  }
-                } else if (attempts >= 10) {
-                  if (upgradePollerRef.current !== null) {
-                    clearInterval(upgradePollerRef.current)
-                    upgradePollerRef.current = null
-                  }
-                }
-              } catch {
-                if (attempts >= 10) {
-                  if (upgradePollerRef.current !== null) {
-                    clearInterval(upgradePollerRef.current)
-                    upgradePollerRef.current = null
-                  }
-                }
-              }
-            }, 3000)
-          }
-          return prev
-        })
-      }
     })
 
     const offDaemonError = EventsOn('daemon:error', (msg: string) => {
@@ -536,10 +461,6 @@ function App(): React.ReactElement {
       offMenuCloseTab()
       offMenuSettings()
       offMenuToggleSidebar()
-      if (upgradePollerRef.current !== null) {
-        clearInterval(upgradePollerRef.current)
-        upgradePollerRef.current = null
-      }
     }
   }, [])
 
@@ -646,6 +567,25 @@ function App(): React.ReactElement {
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, webEnabled: enabled } : s)))
   }, [])
   const closeSharePopover = useCallback(() => setSharePopoverOpen(false), [])
+
+  // Portty 04-05: the sidebar menu's Share / Stop Sharing, on the same binding as
+  // the popover. Success shows only through the row icon and the toolbar; a
+  // failure shows one warning banner (copy picked by code, detail from the local binding).
+  const toggleShareFromMenu = useCallback(async (id: string, shared: boolean) => {
+    const name = sessions.find((s) => s.id === id)?.name || 'shell'
+    let r: { shared: boolean; errorCode: string; errorDetail: string }
+    try {
+      r = await SetSessionShared(id, shared)
+    } catch (err) {
+      r = { shared: !shared, errorCode: shared ? 'start_failed' : 'stop_failed', errorDetail: String(err) }
+    }
+    if (r.errorCode) {
+      setShareFailure({ sessionId: id, text: shared ? menuShareError(name, r.errorDetail) : menuStopError(name, r.errorDetail) })
+      return
+    }
+    setSessionWebEnabled(id, r.shared)
+    setShareFailure((f) => (f?.sessionId === id ? null : f))
+  }, [sessions, setSessionWebEnabled])
 
   // UI-SPEC "Open, close and focus": a tab switch (local or peer), ending the
   // session and opening Settings close the popover. Esc, an outside click and
@@ -921,10 +861,9 @@ function App(): React.ReactElement {
     }
     try {
       const healthSeq = healthEventSeqRef.current
-      const [port, allSessions, running, health] = await Promise.all([
+      const [port, allSessions, health] = await Promise.all([
         GetRelayPort(),
         ListSessions(),
-        IsWebServerRunning(),
         GetTailscaleStatus(),
       ])
       // Mirror init: stopped sessions are removed, not restored (TERM-05).
@@ -933,7 +872,6 @@ function App(): React.ReactElement {
         KillSession(s.id).catch((err) => console.warn('[App] KillSession of stopped session failed:', err))
       })
       setRelayPort(port)
-      setWebServerRunning(running)
       if (healthEventSeqRef.current === healthSeq) setTailscaleHealth(health)
       // Mirror the mount-time sessions seed (see init above).
       setSessions(sessions)
@@ -943,11 +881,6 @@ function App(): React.ReactElement {
         .then((v) => { if (v === 'light' || v === 'dark') setAppearance(v) })
         .catch(() => { /* stay 'system' */ })
       GetTerminalFont().then(setTerminalFont).catch(() => { /* keep default */ })
-
-      // Fetch web server mode for local-network-fallback UI
-      GetWebServerMode().then(mode => {
-        setWebServerMode(mode === 'tailscale' || mode === 'local' ? mode : null)
-      }).catch(() => setWebServerMode(null))
 
       if (sessions.length > 0) {
         const restoredTabs: Tab[] = sessions.map((s) => ({
@@ -989,6 +922,7 @@ function App(): React.ReactElement {
         onHide={() => setSidebarHidden(true)}
         onRename={(id, name) => void renameSession(id, name)}
         onEndSession={setEndSessionTarget}
+        onShareToggle={(id, shared) => void toggleShareFromMenu(id, shared)}
         onNewSession={() => setShowNewSessionModal(true)}
         hideNewSessionRow={showEmptyState}
       />
@@ -1023,9 +957,19 @@ function App(): React.ReactElement {
           update ||
           ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
           saveBanner !== null ||
+          shareFailure !== null ||
           pluginToggleBanners.length > 0) && (
           <div className="banner-stack">
             {tailscaleOff && <TailscaleBanner />}
+            {shareFailure && (
+              <div className="banner banner--warning" role="status">
+                <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
+                <span className="banner__message">{shareFailure.text}</span>
+                <button type="button" className="banner__dismiss" onClick={() => setShareFailure(null)} aria-label="Dismiss">
+                  <XMarkIcon aria-hidden="true" />
+                </button>
+              </div>
+            )}
             {(webglContextLost || webglSoftwareDetected) && !webglBannerDismissed && (
               <WebGLRecoveryBanner
                 reason={webglSoftwareDetected ? 'software-rasterized' : 'context-loss'}
@@ -1125,7 +1069,7 @@ function App(): React.ReactElement {
           )
         })()}
 
-        {/* Phase 120-06 — SettingsSheet is Wails-bound (calls IsWebServerRunning,
+        {/* Phase 120-06 — SettingsSheet is Wails-bound (calls
             HasCTDisclosure, GetStartMinimized, etc. on open). In web mode none
             of those RPCs are reachable, so it is never mounted there. The
             Settings surface has no meaning for a web-share viewer (no daemon
@@ -1135,22 +1079,9 @@ function App(): React.ReactElement {
             isOpen={showSettings}
             onClose={() => setShowSettings(false)}
             tailscaleHealth={tailscaleHealth}
-            webServerMode={webServerMode}
             onPluginToggleSideEffect={handlePluginToggleSideEffect}
             onAppearanceChange={setAppearance}
             onTerminalFontChange={setTerminalFont}
-            onWebServerStateChange={async () => {
-              try {
-                const running = await IsWebServerRunning()
-                setWebServerRunning(running)
-                if (!running) {
-                  setWebServerMode(null)
-                } else {
-                  const mode = await GetWebServerMode()
-                  setWebServerMode(mode === 'tailscale' || mode === 'local' ? mode : null)
-                }
-              } catch (_) { /* ignore */ }
-            }}
           />
         )}
         {showEmptyState && (

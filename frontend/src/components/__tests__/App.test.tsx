@@ -330,7 +330,7 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     const handler = raw.slice(start, raw.indexOf('})', start))
     expect(handler).toContain('activeIdRef.current')
     expect(handler).toContain('if (id !== null) removeTabStateRef.current?.(id)')
-    expect(handler).not.toMatch(/KillSession|ToggleWebServing/)
+    expect(handler).not.toMatch(/KillSession|SetSessionShared/)
     expect(raw).toContain('offMenuCloseTab()')
     expect(raw).toContain('activeIdRef.current = activeId')
   })
@@ -544,7 +544,7 @@ describe('closeTab is detach-only (TERM-03, T-02-27)', () => {
   }
 
   it('closeTab makes no session RPC', () => {
-    expect(closeTabBody()).not.toMatch(/KillSession|ToggleWebServing|RenameSession/)
+    expect(closeTabBody()).not.toMatch(/KillSession|SetSessionShared|RenameSession/)
     expect(closeTabBody()).toContain('removeTabState(id)')
   })
 
@@ -610,7 +610,7 @@ describe('renameSession and End Session (TERM-03)', () => {
   it('endSession kills, then removes the tab', () => {
     const b = body('const endSession = useCallback(')
     const kill = b.indexOf('await KillSession(id)')
-    expect(b).not.toContain('ToggleWebServing')
+    expect(b).not.toContain('SetSessionShared')
     expect(kill).toBeGreaterThan(-1)
     expect(b.indexOf('removeTabState(id)')).toBeGreaterThan(kill)
     // Review WR-06: recorded as exited so an in-flight poll cannot resurrect it.

@@ -5,6 +5,10 @@ export interface ContextMenuItem {
   label: string
   onSelect: () => void
   separatorBefore?: boolean
+  /** Visible but inert (Portty 04-05): aria-disabled, dimmed, no highlight, skipped by ↑/↓, ignores Enter and click. */
+  disabled?: boolean
+  /** id of the visible text that explains a disabled item. */
+  describedBy?: string
 }
 
 /** Shift+F10 or the context-menu key open a menu from the keyboard. */
@@ -47,7 +51,7 @@ export function ContextMenu({ items, x, y, invoker, onClose }: ContextMenuProps)
       left: x + width > window.innerWidth ? Math.max(0, x - width) : x,
       top: y + height > window.innerHeight ? Math.max(0, y - height) : y,
     })
-    el.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
+    el.querySelector<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])')?.focus()
   }, [x, y])
 
   useEffect(() => {
@@ -66,7 +70,7 @@ export function ContextMenu({ items, x, y, invoker, onClose }: ContextMenuProps)
   }, [])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const all = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
+    const all = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? [])
     const i = all.indexOf(document.activeElement as HTMLElement)
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
@@ -96,8 +100,11 @@ export function ContextMenu({ items, x, y, invoker, onClose }: ContextMenuProps)
             role="menuitem"
             className="context-menu__item"
             tabIndex={-1}
-            onMouseEnter={(e) => e.currentTarget.focus()}
+            aria-disabled={item.disabled ? 'true' : undefined}
+            aria-describedby={item.disabled ? item.describedBy : undefined}
+            onMouseEnter={(e) => { if (!item.disabled) e.currentTarget.focus() }}
             onClick={() => {
+              if (item.disabled) return
               item.onSelect()
               close()
             }}

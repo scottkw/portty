@@ -12,26 +12,6 @@ export namespace daemon {
 	        this.storageLimit = source["storageLimit"];
 	    }
 	}
-	export class IssueCapabilitiesResponse {
-	    readUrl: string;
-	    writeUrl: string;
-	    readCode: string;
-	    writeCode: string;
-	    publicReadCode: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new IssueCapabilitiesResponse(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.readUrl = source["readUrl"];
-	        this.writeUrl = source["writeUrl"];
-	        this.readCode = source["readCode"];
-	        this.writeCode = source["writeCode"];
-	        this.publicReadCode = source["publicReadCode"];
-	    }
-	}
 	export class WebLinksConfig {
 	    modifier: string;
 	    confirmOSC8: boolean;
@@ -117,22 +97,6 @@ export namespace daemon {
 		}
 	}
 	
-	export class SetSessionFunnelWriteResponse {
-	    writeUrl: string;
-	    writeCode: string;
-	    expiresAt: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new SetSessionFunnelWriteResponse(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.writeUrl = source["writeUrl"];
-	        this.writeCode = source["writeCode"];
-	        this.expiresAt = source["expiresAt"];
-	    }
-	}
 
 }
 
@@ -199,8 +163,6 @@ export namespace main {
 	    createdAt: string;
 	    hostname: string;
 	    webEnabled: boolean;
-	    funnelActive: boolean;
-	    funnelWriteActive: boolean;
 	    viewerCount: number;
 	    exitCode?: number;
 	    duration?: number;
@@ -219,8 +181,6 @@ export namespace main {
 	        this.createdAt = source["createdAt"];
 	        this.hostname = source["hostname"];
 	        this.webEnabled = source["webEnabled"];
-	        this.funnelActive = source["funnelActive"];
-	        this.funnelWriteActive = source["funnelWriteActive"];
 	        this.viewerCount = source["viewerCount"];
 	        this.exitCode = source["exitCode"];
 	        this.duration = source["duration"];

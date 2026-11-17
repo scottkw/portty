@@ -8,30 +8,12 @@ export const CreateSession  = (name, workDir, cols, rows) => Call('main.App.Crea
 export const ListSessions   = ()             => Call('main.App.ListSessions', [])
 export const RenameSession  = (id, name)     => Call('main.App.RenameSession', [id, name])
 export const KillSession    = (id)           => Call('main.App.KillSession', [id])
-// Phase 101-01 — persisted "user has been warned about shell web-share" flag.
-export const GetShellWebShareWarned  = ()    => Call('main.App.GetShellWebShareWarned', [])
-export const SetShellWebShareWarned  = (v)   => Call('main.App.SetShellWebShareWarned', [v])
-// Phase 150 SET-01 — warning-enabled master switch (default ON).
-export const GetShellWebShareWarningEnabled = ()  => Call('main.App.GetShellWebShareWarningEnabled', [])
-export const SetShellWebShareWarningEnabled = (v) => Call('main.App.SetShellWebShareWarningEnabled', [v])
 export const GetRelayPort            = ()    => Call('main.App.GetRelayPort', [])
-
-// Web serving bound methods
-export const StartWebServer       = (port)                  => Call('main.App.StartWebServer', [port])
-export const StopWebServer        = ()                      => Call('main.App.StopWebServer', [])
-export const ToggleWebServing     = (sessionID, enabled)    => Call('main.App.ToggleWebServing', [sessionID, enabled])
-// Phase 168 / FIX-02 (#117) — owner-only force-disconnect of all remote viewers.
-export const DisconnectViewers    = (sessionID)             => Call('main.App.DisconnectViewers', [sessionID])
-export const GetWebServerURL      = ()                      => Call('main.App.GetWebServerURL', [])
-export const IsWebServerRunning   = ()                      => Call('main.App.IsWebServerRunning', [])
 
 // CT disclosure bound methods
 export const HasCTDisclosure        = ()                    => Call('main.App.HasCTDisclosure', [])
 export const AcknowledgeCTDisclosure = ()                   => Call('main.App.AcknowledgeCTDisclosure', [])
 
-// QR code and status bound methods
-export const GetSessionQRCode     = (sessionID)             => Call('main.App.GetSessionQRCode', [sessionID])
-export const GetWebServerQRCode   = ()                      => Call('main.App.GetWebServerQRCode', [])
 // Phase 132 / CARD-07 — throttled tail snapshot for Hub mini-preview. n clamped to [1..20].
 export const GetSessionTailLines  = (id, n)                 => Call('main.App.GetSessionTailLines', [id, n])
 // Phase 139 / CARD-05 — VT-emulator styled tail: per-cell color+bold grid. n clamped to [1..20].
@@ -66,12 +48,6 @@ export const ExchangeJoinCodeAtURL = (remoteBaseURL, code)  => Call('main.App.Ex
 export const RegisterRemoteCap     = (sessionID, baseURL, capToken) => Call('main.App.RegisterRemoteCap', [sessionID, baseURL, capToken])
 // Phase 146-05 — held-cap reuse: read cap-bearing open URL from daemon RemoteCapStore.
 export const OpenRemoteSessionURL  = (sessionID)            => Call('main.App.OpenRemoteSessionURL', [sessionID])
-
-// Auto-install Tailscale bound method
-
-// Local network mode bound methods
-export const GetLocalNetworkPassword = ()                   => Call('main.App.GetLocalNetworkPassword', [])
-export const GetWebServerMode        = ()                   => Call('main.App.GetWebServerMode', [])
 
 // Theme notification bound method
 
@@ -117,16 +93,5 @@ export const SetSessionShared        = (sessionID, shared)  => Call('main.App.Se
 export const ConnectPeerSession      = (host, sessionID)    => Call('main.App.ConnectPeerSession', [host, sessionID])
 
 // Phase 87 capability bound methods (SEC-01..SEC-05)
-export const IssueCapabilities       = (sessionID)          => Call('main.App.IssueCapabilities', [sessionID])
-export const ExchangeJoinCode        = (code)               => Call('main.App.ExchangeJoinCode', [code])
 export const RegenerateSigningKey    = ()                   => Call('main.App.RegenerateSigningKey', [])
-export const GetCapabilityQRCode     = (joinURL)            => Call('main.App.GetCapabilityQRCode', [joinURL])
 
-// Phase 137 / SHARE-03: per-session browse toggle (owner binding). Replaces SetSessionFilesWrite (D-02/D-07).
-
-// Phase 165 / FNL-01 — Funnel enable/disable with auto-expiry (expiresIn=0 = no expiry).
-export const SetSessionFunnel = (sessionID, enabled, expiresIn) => Call('main.App.SetSessionFunnel', [sessionID, enabled, expiresIn])
-
-// Phase 171-02 / FNL-09 — mint/revoke the gate-minted public write capability.
-export const SetSessionFunnelWrite     = (sessionID, expiresIn) => Call('main.App.SetSessionFunnelWrite', [sessionID, expiresIn])
-export const DisableSessionFunnelWrite = (sessionID)            => Call('main.App.DisableSessionFunnelWrite', [sessionID])

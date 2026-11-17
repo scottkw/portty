@@ -1,13 +1,10 @@
 /**
- * RegenerateKeyModal — copy customization tests (Phase 150 gap-closure, SET-01).
+ * RegenerateKeyModal — copy customization tests.
  *
- * Regression context: Phase 150-02 reused RegenerateKeyModal as the
- * confirm-on-disable dialog for the shell web-share warning toggle, but the
- * component had hardcoded "Regenerate Signing Key?" / "Invalidate All Links"
- * copy. The disable-warning surface therefore rendered a dialog claiming it
- * would invalidate ALL shared links — a misleading, action-mismatched prompt
- * (found in live UAT). These tests pin both the default (regen-key) copy AND
- * the parameterized copy so the component can be safely reused.
+ * The signing-key confirm (Settings ▸ Security) uses the default copy; any
+ * other confirm (End Session) passes its own, and the signing-key copy must
+ * never leak into it. These tests pin both the default copy AND the
+ * parameterized copy so the component can be safely reused.
  *
  * Uses the project's createRoot + act DOM render convention (no
  * @testing-library/react dependency).
@@ -55,17 +52,17 @@ describe('RegenerateKeyModal copy', () => {
         isOpen
         onConfirm={noop}
         onCancel={() => {}}
-        title="Disable shell web-share warning?"
-        body="Portty won't show the one-time security reminder before web-sharing a shell session."
-        confirmLabel="Disable warning"
-        cancelLabel="Keep warning"
+        title="End “build”?"
+        body="The shell and everything running in it will stop."
+        confirmLabel="End Session"
+        cancelLabel="Keep Running"
       />
     )
     const text = container.textContent ?? ''
-    expect(text).toContain('Disable shell web-share warning?')
-    expect(text).toContain('one-time security reminder')
-    expect(text).toContain('Disable warning')
-    expect(text).toContain('Keep warning')
+    expect(text).toContain('End “build”?')
+    expect(text).toContain('everything running in it will stop')
+    expect(text).toContain('End Session')
+    expect(text).toContain('Keep Running')
     // The misleading signing-key copy must NOT leak into a non-signing-key use.
     expect(text).not.toContain('Regenerate Signing Key')
     expect(text).not.toContain('Invalidate All Links')
@@ -79,11 +76,11 @@ describe('RegenerateKeyModal copy', () => {
         isOpen
         onConfirm={onConfirm}
         onCancel={() => {}}
-        confirmLabel="Disable warning"
+        confirmLabel="End Session"
       />
     )
     const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-    const confirmBtn = buttons.find((b) => b.textContent?.includes('Disable warning'))
+    const confirmBtn = buttons.find((b) => b.textContent?.includes('End Session'))
     expect(confirmBtn).toBeTruthy()
     await act(async () => {
       confirmBtn!.click()

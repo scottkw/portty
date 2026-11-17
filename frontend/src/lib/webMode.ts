@@ -10,7 +10,7 @@
  * Rationale: 120-VERIFICATION.md Human Verification #2 flagged that loading
  * `/app/?session=…&cap=…` in a regular browser produced a partially-functional
  * shell because `App.tsx` was Wails-coupled (always called `GetRelayPort()` /
- * `GetWebServerMode()` and used `fbBaseURL = http://127.0.0.1:${relayPort}`).
+ * the server-mode binding and used `fbBaseURL = http://127.0.0.1:${relayPort}`).
  * This module is the canonical signal that lets App.tsx skip the Wails RPC
  * suite and drive `fbBaseURL` / `capToken` from URL params instead.
  *

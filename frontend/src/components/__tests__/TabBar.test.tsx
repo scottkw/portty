@@ -538,7 +538,7 @@ describe('TabBar Share button and "On <host>" chip (Portty 02-08)', () => {
   })
 
   it('TabBar never toggles sharing itself', () => {
-    expect(raw).not.toContain('ToggleWebServing')
+    expect(raw).not.toContain('SetSessionShared')
   })
 
   it('scroll buttons are chevron icon buttons, not ‹ › entities', () => {

@@ -1,4 +1,4 @@
-/* GRID-07: remote sessions adapted via adaptRemoteSession(); hostname != '' routes to GlobeAltIcon + hostname */
+/* GRID-07: remote sessions adapted via adaptRemoteSession(); a non-empty hostname marks a peer session. */
 import type { RemotePeerSessions, RemoteSession } from './remoteSession'
 import type { SessionInfo } from '../wailsjs/go/main/App'
 
@@ -20,12 +20,10 @@ export function adaptRemoteSession(
     state: 'running',          // conservative default — remote status is not granular
     status: session.status || 'running',
     createdAt: new Date().toISOString(),
-    hostname: peer.hostname,   // non-empty → GlobeAltIcon + hostname in SessionCard
+    hostname: peer.hostname,   // non-empty marks a peer session
     webEnabled: true,
     viewerCount: 0,
     workDir: '',               // remote sessions have no local workDir → fall into "Other"
-    funnelActive: false,       // remote sessions are never Funnel-active from the local perspective
-    funnelWriteActive: false,  // remote sessions never carry the local gate-minted write cap (FNL-09)
     url: session.url,          // CR-01: carry the peer URL so "Open in browser" can resolve it
   }
 }

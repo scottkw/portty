@@ -14,42 +14,20 @@ export interface SessionInfo {
   viewerCount: number
   exitCode?: number
   duration?: number
-  /** Phase 165 / FNL-01: true when Tailscale Funnel is active. NOT omitempty — false must serialize. */
-  funnelActive: boolean
   /** Phase 131 / GRID-02: EvalSymlinks-resolved session working directory. Used by the Hub to group session cards by working directory. */
   workDir: string
-  /** Phase 171-02 / FNL-09: true when the gate-minted public write cap is active. NOT omitempty — false must serialize so the frontend poll detects revocation. */
-  funnelWriteActive: boolean
 }
 
 export function CreateSession(name: string, workDir: string, cols: number, rows: number): Promise<string>
 export function ListSessions(): Promise<SessionInfo[]>
 export function RenameSession(id: string, name: string): Promise<void>
 export function KillSession(id: string): Promise<void>
-// Phase 101-01 — persisted "user has been warned about shell web-share" flag.
-export function GetShellWebShareWarned(): Promise<boolean>
-export function SetShellWebShareWarned(v: boolean): Promise<void>
-// Phase 150 SET-01 — warning-enabled master switch (default ON).
-export function GetShellWebShareWarningEnabled(): Promise<boolean>
-export function SetShellWebShareWarningEnabled(v: boolean): Promise<void>
 export function GetRelayPort(): Promise<number>
-
-// Web serving bound methods
-export function StartWebServer(port: number): Promise<void>
-export function StopWebServer(): Promise<void>
-export function ToggleWebServing(sessionID: string, enabled: boolean): Promise<void>
-// Phase 168 / FIX-02 (#117) — owner-only force-disconnect of all remote viewers.
-export function DisconnectViewers(sessionID: string): Promise<void>
-export function GetWebServerURL(): Promise<string>
-export function IsWebServerRunning(): Promise<boolean>
 
 // CT disclosure bound methods
 export function HasCTDisclosure(): Promise<boolean>
 export function AcknowledgeCTDisclosure(): Promise<void>
 
-// QR code and status bound methods
-export function GetSessionQRCode(sessionID: string): Promise<string>
-export function GetWebServerQRCode(): Promise<string>
 // Phase 132 / CARD-07 — throttled tail snapshot for Hub mini-preview. n clamped to [1..20].
 export function GetSessionTailLines(id: string, n: number): Promise<string[]>
 // Phase 139 / CARD-05 — VT-emulator styled tail: per-cell color+bold grid. n clamped to [1..20].
@@ -114,10 +92,6 @@ export function RegisterRemoteCap(sessionID: string, baseURL: string, capToken: 
 export function OpenRemoteSessionURL(sessionID: string): Promise<string>
 // Portty 02-10 — NET-01 banner action: open -a Tailscale, else the download page.
 export function OpenTailscale(): Promise<void>
-
-// Local network mode bound methods
-export function GetLocalNetworkPassword(): Promise<string>
-export function GetWebServerMode(): Promise<string>
 
 // Theme notification bound method
 
@@ -192,26 +166,5 @@ export interface PeerConnectResult {
 export function ConnectPeerSession(host: string, sessionID: string): Promise<PeerConnectResult>
 
 // Phase 87 capability bound methods (SEC-01..SEC-05)
-export interface IssueCapabilitiesResponse {
-  readUrl: string
-  writeUrl: string
-  readCode: string
-  writeCode: string
-  publicReadCode: string  // Phase 170 / FNL-08: reusable public read join code; "" when not a Funnel session
-}
-export function IssueCapabilities(sessionID: string): Promise<IssueCapabilitiesResponse>
-export function ExchangeJoinCode(code: string): Promise<string>
 export function RegenerateSigningKey(): Promise<void>
-export function GetCapabilityQRCode(joinURL: string): Promise<string>
 
-// Phase 165 / FNL-01 — Funnel on/off; expiresIn=0 means no auto-expiry (FNL-07).
-export function SetSessionFunnel(sessionID: string, enabled: boolean, expiresIn: number): Promise<void>
-
-// Phase 171-02 / FNL-09 — mint the gate-minted, terminal-only public write
-// capability (single-use write code, RW consent gate, expiry clamped
-// server-side to <=1h regardless of the requested expiresIn — NOT the
-// funnel-read handler's expiresIn==0-means-unbounded semantics).
-export function SetSessionFunnelWrite(sessionID: string, expiresIn: number): Promise<daemon.SetSessionFunnelWriteResponse>
-// Phase 171-02 / FNL-09 — revoke the gate-minted write grant/code/gate without
-// disturbing the reusable public read share.
-export function DisableSessionFunnelWrite(sessionID: string): Promise<void>

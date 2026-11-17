@@ -827,30 +827,11 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .settings-row__value {
   color: var(--color-text-secondary);
 }
-.settings-row__error {
-  color: var(--color-error-text);
-}
+
 .settings-row__success {
   color: var(--color-success-text);
 }
-.settings-row--qr {
-  flex-direction: column;
-  align-items: flex-start;
-}
-.settings-row__qr {
-  display: block;
-  width: 200px;
-  height: 200px;
-  border-radius: 6px;
-}
-.settings-row__mono {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  line-height: 16px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+
 .settings-row .button {
   height: 24px;
   min-width: 0;
@@ -1117,6 +1098,9 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   background: var(--color-selection-fill);
   color: var(--color-on-accent);
 }
+.context-menu__item[aria-disabled='true'] {
+  opacity: var(--opacity-disabled);
+}
 
 .context-menu__separator {
   height: 1px;
@@ -1305,16 +1289,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   font-size: 12px;
   line-height: 16px;
   color: var(--color-text-secondary);
-}
-
-/* === Phase 87: Session share panel (UI-SPEC Surface 1) === */
-.session-share-panel {
-  padding-top: 8px;
-  padding-bottom: 8px;
-  /* Span the full session row width so the two link rows stack cleanly
-     beneath the existing status/name/cli/hostname/actions flex line. */
-  flex-basis: 100%;
-  width: 100%;
 }
 
 /* ─── Phase 94 — Find bar (SRC-01/SRC-04) ─────────────────────────────

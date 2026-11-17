@@ -90,6 +90,66 @@ describe('ContextMenu', () => {
   })
 })
 
+// Portty 04-05: a disabled item (Share while Tailscale is off).
+describe('ContextMenu disabled items', () => {
+  function openWithDisabled(onShare = vi.fn()) {
+    invoker = document.createElement('button')
+    document.body.appendChild(invoker)
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    flushSync(() =>
+      root.render(
+        React.createElement(ContextMenu, {
+          x: 10,
+          y: 20,
+          invoker,
+          onClose: vi.fn(),
+          items: [
+            { label: 'Rename', onSelect: vi.fn() },
+            { label: 'Share', onSelect: onShare, disabled: true, describedBy: 'ts-off-reason' },
+            { label: 'End Session…', onSelect: vi.fn(), separatorBefore: true },
+          ],
+        }),
+      ),
+    )
+    return Array.from(menu().querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find((b) => b.textContent === 'Share')!
+  }
+
+  it('renders aria-disabled and aria-describedby, and is not natively disabled', () => {
+    const share = openWithDisabled()
+    expect(share.getAttribute('aria-disabled')).toBe('true')
+    expect(share.getAttribute('aria-describedby')).toBe('ts-off-reason')
+    expect(share.disabled).toBe(false)
+  })
+
+  it('is skipped by ArrowDown / ArrowUp', () => {
+    openWithDisabled()
+    expect(document.activeElement?.textContent).toBe('Rename')
+    key('ArrowDown')
+    expect(document.activeElement?.textContent).toBe('End Session…')
+    key('ArrowUp')
+    expect(document.activeElement?.textContent).toBe('Rename')
+  })
+
+  it('ignores click and hover', () => {
+    const onShare = vi.fn()
+    const share = openWithDisabled(onShare)
+    flushSync(() => share.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
+    expect(document.activeElement).not.toBe(share)
+    flushSync(() => share.click())
+    expect(onShare).not.toHaveBeenCalled()
+    expect(menu()).not.toBeNull()
+  })
+
+  it('enabled items carry neither attribute', () => {
+    openWithDisabled()
+    const rename = menu().querySelector('[role="menuitem"]')!
+    expect(rename.hasAttribute('aria-disabled')).toBe(false)
+    expect(rename.hasAttribute('aria-describedby')).toBe(false)
+  })
+})
+
 describe('isMenuKey', () => {
   it('matches Shift+F10 and the ContextMenu key only', () => {
     const k = (key: string, shiftKey = false) => isMenuKey({ key, shiftKey } as React.KeyboardEvent)

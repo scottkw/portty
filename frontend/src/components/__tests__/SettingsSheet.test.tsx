@@ -49,8 +49,6 @@ async function renderSheet(overrides: Partial<Parameters<typeof SettingsSheet>[0
       isOpen: true,
       onClose,
       tailscaleHealth: null,
-      webServerMode: null,
-      onWebServerStateChange: vi.fn().mockResolvedValue(undefined),
       ...overrides,
     }))
   })
@@ -313,8 +311,9 @@ describe('Security pane', () => {
     await renderSheet()
     const security = panel('security')
     expect(security.textContent).toContain(
-      "Starting the web server gets a Let's Encrypt certificate for your Mac's tailnet name (for example hostname.ts.net). That name becomes permanently visible in public Certificate Transparency logs.",
+      "Sharing a session gets a Let's Encrypt certificate for your Mac's tailnet name (for example hostname.ts.net). That name becomes permanently visible in public Certificate Transparency logs.",
     )
+    expect(security.textContent).not.toContain('Starting the web server')
     const understand = Array.from(security.querySelectorAll('button')).find((b) => b.textContent === 'I Understand')!
     expect(understand.className).toContain('button--secondary')
     await act(async () => understand.click())

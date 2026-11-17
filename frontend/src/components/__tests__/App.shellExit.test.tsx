@@ -4,7 +4,7 @@
  * Every session:exit (any exit code, any session age) closes its tab and
  * removes the session; sessions already stopped at restore time are removed,
  * not restored as tabs. Source inspection (`App.tsx?raw`), the same pattern as
- * App.shellWebShare.test.tsx and App.nav.test.tsx, avoids mounting the full
+ * App.nav.test.tsx, avoids mounting the full
  * tree with Wails-runtime mocks.
  */
 import { describe, it, expect } from 'vitest'
@@ -33,7 +33,7 @@ describe('App.tsx TERM-05: session:exit closes the tab', () => {
     expect(h).toContain('removeTabStateRef.current?.(data.sessionId)')
     expect(h).not.toContain('closeTab')
     expect(h).not.toContain('KillSession')
-    expect(h).not.toContain('ToggleWebServing')
+    expect(h).not.toContain('SetSessionShared')
   })
 
   it('has no exit-code branch and records no exit state', () => {
@@ -68,7 +68,7 @@ describe('App.tsx TERM-05: session:exit closes the tab', () => {
   it('removeTabState is UI-only and shifts focus to the neighbour tab', () => {
     const body = removeTabBody()
     expect(body).not.toContain('KillSession')
-    expect(body).not.toContain('ToggleWebServing')
+    expect(body).not.toContain('SetSessionShared')
     expect(body).toContain('setTabs(')
     expect(body).toContain('setFontSizes(')
     expect(body).toContain('nextActiveTabId(prev, id, cur)')

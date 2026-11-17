@@ -1,13 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  StartWebServer,
-  StopWebServer,
-  GetWebServerURL,
-  IsWebServerRunning,
   HasCTDisclosure,
   AcknowledgeCTDisclosure,
-  GetLocalNetworkPassword,
-  GetWebServerQRCode,
   GetStartMinimized,
   SetStartMinimized,
   GetAppearance,
@@ -15,11 +9,7 @@ import {
   GetTerminalFont,
   SetTerminalFont,
   RegenerateSigningKey,
-  // Phase 150 SET-01 — shell web-share warning enabled master switch
-  GetShellWebShareWarningEnabled,
-  SetShellWebShareWarningEnabled,
 } from '../wailsjs/go/main/App'
-import { BrowserOpenURL, ClipboardSetText } from '../wailsjs/wailsjs/runtime/runtime'
 import { Cog6ToothIcon, LockClosedIcon, SignalIcon } from '@heroicons/react/24/outline'
 import { RegenerateKeyModal } from './RegenerateKeyModal'
 import { PluginsSection, type PluginToggleKind } from './PluginsSection'
@@ -33,12 +23,9 @@ interface SettingsSheetProps {
   isOpen: boolean
   onClose: () => void
   tailscaleHealth: TailscaleHealth | null
-  webServerMode?: 'tailscale' | 'local' | null
-  onWebServerStateChange: () => Promise<void>
   // Phase 99 PUI-02: forwarded to PluginsSection for post-save banner triggers.
   onPluginToggleSideEffect?: (kinds: PluginToggleKind[]) => void
   // Phase 150 SET-01: notifies App.tsx after warning-enabled toggle changes (D-03 re-arm sync).
-  onShellWarnEnabledChange?: (enabled: boolean) => void
   // Portty 02-13 THEM-01: notifies App.tsx after the Appearance override is saved.
   onAppearanceChange?: (appearance: Appearance) => void
   // Quick 261116-ku9 R1: notifies App.tsx after the Terminal Font is saved.
@@ -97,7 +84,7 @@ export function SettingsSheet(props: SettingsSheetProps): React.ReactElement | n
   return <SettingsSheetContent {...props} />
 }
 
-function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebServerStateChange, onPluginToggleSideEffect, onShellWarnEnabledChange, onAppearanceChange, onTerminalFontChange }: SettingsSheetProps): React.ReactElement {
+function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffect, onAppearanceChange, onTerminalFontChange }: SettingsSheetProps): React.ReactElement {
   const [pane, setPane] = useState<Pane>('general')
   const [appearance, setAppearanceState] = useState<Appearance>('system')
   const [appearanceLoaded, setAppearanceLoaded] = useState(false)
@@ -119,25 +106,9 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   const tabRefs = useRef<Partial<Record<Pane, HTMLButtonElement | null>>>({})
   useDialogFocus(dialogRef, { onCancel: onClose, initialFocus: 'primary' })
 
-  // Web serving state
-  const [selectedPort, setSelectedPort] = useState<number>(7444)
-  const [isServerRunning, setIsServerRunning] = useState(false)
-  const [serverURL, setServerURL] = useState<string>('')
-  const [serverError, setServerError] = useState<string | null>(null)
-  const [serverLoading, setServerLoading] = useState(false)
+  // Certificate Transparency acknowledgement (Security pane)
   const [ctDisclosed, setCTDisclosed] = useState(false)
   const [ctError, setCTError] = useState<string | null>(null)
-  // Local network password display
-  const [localPassword, setLocalPassword] = useState('')
-  const [copied, setCopied] = useState(false)
-
-  // URL action row state (WEB-01/02/03)
-  const [urlCopied, setUrlCopied] = useState(false)
-  // Kept apart from serverError so a later successful copy can clear it without hiding a start/stop error.
-  const [urlCopyError, setUrlCopyError] = useState<string | null>(null)
-  const [showDashQR, setShowDashQR] = useState(false)
-  const [dashQRb64, setDashQRb64] = useState<string | null>(null)
-  const [qrError, setQrError] = useState<string | null>(null)
 
   // Start-minimized toggle state (TRAY-01)
   const [startMinimized, setStartMinimized] = useState(false)
@@ -145,57 +116,15 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
   const [toggleSaving, setToggleSaving] = useState(false)
   const [toggleError, setToggleError] = useState<string | null>(null)
 
-  // Phase 150 SET-01 — shell web-share warning enabled master switch (D-08 default ON).
-  const [shellWarnEnabled, setShellWarnEnabled] = useState(true) // default ON (D-08)
-  const [shellWarnLoaded, setShellWarnLoaded] = useState(false)
-  const [shellWarnSaving, setShellWarnSaving] = useState(false)
-  const [shellWarnError, setShellWarnError] = useState<string | null>(null)
-  const [showDisableWarnConfirm, setShowDisableWarnConfirm] = useState(false)
-
   // Security section state (Phase 87 D-16) — panic button to rotate the
   // capability signing key, invalidating every outstanding shared link.
   const [showRegenModal, setShowRegenModal] = useState(false)
   const [regenError, setRegenError] = useState<string | null>(null)
 
-  // Load web serving state on mount.
+  // Load the CT acknowledgement on mount.
   useEffect(() => {
-    async function loadWebState() {
-      try {
-        const [running, ctAck] = await Promise.all([
-          IsWebServerRunning(),
-          HasCTDisclosure(),
-        ])
-        setIsServerRunning(running)
-        setCTDisclosed(ctAck)
-
-        if (running) {
-          const url = await GetWebServerURL()
-          setServerURL(url)
-        }
-      } catch (err) {
-        console.error('[SettingsSheet] loadWebState:', err)
-      }
-    }
-    void loadWebState()
+    HasCTDisclosure().then(setCTDisclosed).catch((err) => console.error('[SettingsSheet] HasCTDisclosure:', err))
   }, [])
-
-  // Fetch LAN password when in local mode and server is running.
-  useEffect(() => {
-    if (webServerMode === 'local' && isServerRunning) {
-      GetLocalNetworkPassword().then(setLocalPassword).catch(() => setLocalPassword(''))
-    } else {
-      setLocalPassword('')
-    }
-  }, [webServerMode, isServerRunning])
-
-  // Reset QR state when server stops.
-  useEffect(() => {
-    if (!isServerRunning) {
-      setShowDashQR(false)
-      setDashQRb64(null)
-      setQrError(null)
-    }
-  }, [isServerRunning])
 
   // Load start-minimized preference on mount (TRAY-01/TRAY-03).
   useEffect(() => {
@@ -224,14 +153,6 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
     }).catch(() => setAppearanceLoaded(true))
   }, [])
 
-  // Load shell web-share warning enabled preference on mount (Phase 150 SET-01).
-  useEffect(() => {
-    GetShellWebShareWarningEnabled().then(val => {
-      setShellWarnEnabled(val)
-      setShellWarnLoaded(true)
-    }).catch(() => setShellWarnLoaded(true))
-  }, [])
-
   function handleTabKeyDown(e: React.KeyboardEvent): void {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
     e.preventDefault()
@@ -239,48 +160,6 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
     const next = PANES[(i + (e.key === 'ArrowRight' ? 1 : PANES.length - 1)) % PANES.length].id
     setPane(next)
     tabRefs.current[next]?.focus()
-  }
-
-  async function handleCopyPassword() {
-    if (!localPassword) return
-    try {
-      await ClipboardSetText(localPassword)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // ClipboardSetText failed — no user-visible action needed
-    }
-  }
-
-  async function handleCopyURL() {
-    if (!serverURL) return
-    setUrlCopyError(null)
-    try {
-      await ClipboardSetText(serverURL)
-    } catch (err) {
-      setUrlCopyError('Could not copy the URL — ' + (err instanceof Error ? err.message : String(err)))
-      return
-    }
-    setUrlCopied(true)
-    setTimeout(() => setUrlCopied(false), 1500)
-  }
-
-  async function handleToggleDashQR() {
-    if (showDashQR) {
-      setShowDashQR(false)
-      return
-    }
-    setQrError(null)
-    if (!dashQRb64) {
-      try {
-        const b64 = await GetWebServerQRCode()
-        setDashQRb64(b64)
-      } catch {
-        setQrError('QR unavailable — tap to retry')
-        return
-      }
-    }
-    setShowDashQR(true)
   }
 
   function tailscaleStatusText(h: TailscaleHealth | null): string {
@@ -365,44 +244,6 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
     }
   }
 
-  // Phase 150 SET-01 — D-07: turning OFF requires confirmation; turning ON is instant.
-  async function handleToggleShellWarnEnabled() {
-    const next = !shellWarnEnabled
-    if (!next) {
-      // Turning OFF — show confirm dialog before persisting (D-07).
-      setShowDisableWarnConfirm(true)
-      return
-    }
-    // Turning ON — instant, no confirmation.
-    setShellWarnSaving(true)
-    setShellWarnError(null)
-    try {
-      await SetShellWebShareWarningEnabled(true)
-      setShellWarnEnabled(true)
-      // D-03 re-arm: notify App.tsx to re-sync shellWebShareWarned state.
-      onShellWarnEnabledChange?.(true)
-    } catch (err) {
-      setShellWarnError('Could not save preference — ' + (err instanceof Error ? err.message : String(err)))
-    } finally {
-      setShellWarnSaving(false)
-    }
-  }
-
-  async function handleConfirmDisableShellWarn() {
-    setShowDisableWarnConfirm(false)
-    setShellWarnSaving(true)
-    setShellWarnError(null)
-    try {
-      await SetShellWebShareWarningEnabled(false)
-      setShellWarnEnabled(false)
-      onShellWarnEnabledChange?.(false)
-    } catch (err) {
-      setShellWarnError('Could not save preference — ' + (err instanceof Error ? err.message : String(err)))
-    } finally {
-      setShellWarnSaving(false)
-    }
-  }
-
   async function handleRegenerateSigningKey(): Promise<void> {
     setRegenError(null)
     try {
@@ -417,52 +258,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
     }
   }
 
-  // NET-01 / Amendment 3: Start is gated like Share; Stop stays available.
   const tailscaleOff = !!tailscaleHealth && !tailscaleHealth.connected
-  // T-02-34: aria-disabled (not `disabled`) keeps Start focusable so its reason is announced;
-  // the click returns early, and the daemon keeps its own CT/mode checks.
-  const startBlocked = !isServerRunning && (tailscaleOff || !ctDisclosed)
-  // A blocked reason outranks a stale start error, which the blocked click can no longer clear.
-  const reasonError = serverError ?? urlCopyError
-  const webServerReason: React.ReactNode = reasonError && !startBlocked
-    ? <span className="settings-row__error" role="alert">{reasonError}</span>
-    : isServerRunning
-      ? webServerMode === 'local'
-        // LAN mode must not read as Tailscale sharing when the banner says it is off (T-rc8-01).
-        ? `Running on your local network${serverURL ? ` at ${serverURL}` : ''}.${tailscaleOff ? ' Tailscale sharing is off.' : ''}`
-        : (serverURL ? `Running on ${serverURL}` : 'Running')
-      : tailscaleOff
-        ? TAILSCALE_OFF_REASON
-        : !ctDisclosed
-          ? 'Acknowledge Certificate Transparency in Security first.'
-          : 'Stopped'
-
-  async function handleToggleServer() {
-    if (startBlocked) return
-    setServerError(null)
-    setUrlCopyError(null)
-    setServerLoading(true)
-    try {
-      if (isServerRunning) {
-        await StopWebServer()
-        setIsServerRunning(false)
-        setServerURL('')
-      } else {
-        await StartWebServer(selectedPort)
-        const url = await GetWebServerURL()
-        setServerURL(url)
-        setIsServerRunning(true)
-      }
-      await onWebServerStateChange()
-    } catch (err) {
-      const detail = (err instanceof Error ? err.message : String(err)).replace(/\.$/, '')
-      setServerError(isServerRunning
-        ? `Couldn't stop the web server: ${detail}.`
-        : `Couldn't start the web server: ${detail}. Check that port ${selectedPort} isn't in use, then try again.`)
-    } finally {
-      setServerLoading(false)
-    }
-  }
 
   const paneLabel = PANES.find((p) => p.id === pane)!.label
 
@@ -593,114 +389,10 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
                     <span className="ts-status__text">{tailscaleStatusText(tailscaleHealth)}</span>
                   </span>
                 </Row>
-                {shellWarnLoaded && (
-                  <Row
-                    label="Ask before sharing a session"
-                    htmlFor="shellWebShareWarningEnabled"
-                    description="Shows a one-time security reminder the first time you share a session."
-                  >
-                    <Switch
-                      id="shellWebShareWarningEnabled"
-                      checked={shellWarnEnabled}
-                      saving={shellWarnSaving}
-                      onChange={() => void handleToggleShellWarnEnabled()}
-                    />
-                  </Row>
-                )}
               </div>
-              {shellWarnError && <p className="settings-sheet__error" role="alert">{shellWarnError}</p>}
-
-              <div className="settings-group">
-                {/* UI-REVIEW 01 #2/#3: the reason is on screen, never tooltip-only. */}
-                <Row label="Web server" descriptionId="web-server-reason" description={webServerReason}>
-                  <button
-                    type="button"
-                    className="button button--secondary"
-                    onClick={() => void handleToggleServer()}
-                    disabled={serverLoading}
-                    aria-disabled={startBlocked || undefined}
-                    aria-describedby={startBlocked ? 'web-server-reason' : undefined}
-                  >
-                    {serverLoading
-                      ? (isServerRunning ? 'Stopping…' : 'Starting…')
-                      : (isServerRunning ? 'Stop Server' : 'Start Server')}
-                  </button>
-                </Row>
-                <Row label="Port" htmlFor="web-server-port">
-                  <input
-                    id="web-server-port"
-                    className="settings-input settings-input--number"
-                    type="number"
-                    value={selectedPort}
-                    onChange={(e) => setSelectedPort(Number(e.target.value))}
-                    disabled={isServerRunning}
-                    min={1}
-                    max={65535}
-                  />
-                </Row>
-                {isServerRunning && serverURL && (
-                  <div className="settings-row">
-                    <span className="settings-row__text settings-row__mono">{serverURL}</span>
-                    <div className="settings-row__control">
-                      <button
-                        type="button"
-                        className="button button--secondary"
-                        onClick={() => BrowserOpenURL(serverURL)}
-                        aria-label="Open dashboard in browser"
-                      >
-                        Open
-                      </button>
-                      <button
-                        type="button"
-                        className="button button--secondary"
-                        onClick={() => void handleCopyURL()}
-                        aria-label="Copy dashboard URL to clipboard"
-                      >
-                        {urlCopied ? 'Copied!' : 'Copy'}
-                      </button>
-                      <button
-                        type="button"
-                        className="button button--secondary"
-                        onClick={() => void handleToggleDashQR()}
-                        aria-label={showDashQR ? 'Hide QR code' : 'Show QR code'}
-                      >
-                        {showDashQR ? 'Hide QR' : 'QR'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {isServerRunning && (qrError || (showDashQR && dashQRb64)) && (
-                  <div className="settings-row settings-row--qr">
-                    {qrError && <p className="settings-row__description settings-row__error" role="alert">{qrError}</p>}
-                    {showDashQR && dashQRb64 && (
-                      <img
-                        src={`data:image/png;base64,${dashQRb64}`}
-                        width={200}
-                        height={200}
-                        alt="QR code for dashboard URL"
-                        className="settings-row__qr"
-                      />
-                    )}
-                  </div>
-                )}
-                {webServerMode === 'local' && isServerRunning && (
-                  <>
-                    <Row label="Mode" description="Local network (self-signed TLS)" />
-                    <Row label="Username" description="Leave blank or enter anything" />
-                    <Row label="Password" description={<span className="settings-row__mono">{localPassword || 'Loading…'}</span>}>
-                      <button
-                        type="button"
-                        className="button button--secondary"
-                        onClick={() => void handleCopyPassword()}
-                        aria-label="Copy LAN password"
-                      >
-                        {copied ? 'Copied!' : 'Copy'}
-                      </button>
-                    </Row>
-                  </>
-                )}
-              </div>
-              <p className="settings-sheet__footnote">{"Share a session with the Share button in the main window's toolbar."}</p>
+              <p className="settings-sheet__footnote">
+                Share a session from the toolbar, or right-click it in the sidebar. Macs signed in to your Tailscale account see shared sessions in their sidebar, and each shared session gets a link for any browser on your tailnet. Turning Share off disconnects everyone.
+              </p>
             </div>
 
             <div role="tabpanel" id="settings-pane-security" aria-labelledby="settings-tab-security" hidden={pane !== 'security'}>
@@ -709,7 +401,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
                   label="Certificate Transparency"
                   description={ctDisclosed
                     ? "Your tailnet certificate's name is published in public CT logs."
-                    : "Starting the web server gets a Let's Encrypt certificate for your Mac's tailnet name (for example hostname.ts.net). That name becomes permanently visible in public Certificate Transparency logs."}
+                    : "Sharing a session gets a Let's Encrypt certificate for your Mac's tailnet name (for example hostname.ts.net). That name becomes permanently visible in public Certificate Transparency logs."}
                 >
                   {ctDisclosed
                     ? <span className="settings-row__success">Acknowledged</span>
@@ -739,17 +431,6 @@ function SettingsSheetContent({ onClose, tailscaleHealth, webServerMode, onWebSe
       </div>
 
       {/* Confirms sit after the sheet in the DOM, so they are the topmost modal for Esc and Tab. */}
-      <RegenerateKeyModal
-        isOpen={showDisableWarnConfirm}
-        onConfirm={handleConfirmDisableShellWarn}
-        onCancel={() => setShowDisableWarnConfirm(false)}
-        titleId="disable-shell-warn-title"
-        title="Stop asking before sharing?"
-        body="You won't see the one-time security reminder before sharing a session. You can turn it back on in Settings ▸ Sharing."
-        confirmLabel="Stop Asking"
-        actingLabel="Saving…"
-        cancelLabel="Keep Asking"
-      />
       <RegenerateKeyModal
         isOpen={showRegenModal}
         onConfirm={handleRegenerateSigningKey}

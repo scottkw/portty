@@ -7,9 +7,8 @@ interface RegenerateKeyModalProps {
   onCancel: () => void
   /**
    * Optional copy overrides so this confirm modal can be reused for actions
-   * other than signing-key rotation (Phase 150: shell web-share warning
-   * disable-confirm). All default to the signing-key copy, so existing call
-   * sites that omit them are unchanged.
+   * other than signing-key rotation (the End Session confirm). All default
+   * to the signing-key copy, so call sites that omit them are unchanged.
    */
   title?: string
   /** Rendered inside a <p>: inline content only (End Session adds a block-styled span). */

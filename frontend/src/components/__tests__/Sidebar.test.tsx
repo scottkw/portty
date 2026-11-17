@@ -21,9 +21,7 @@ function session(id: string, name: string, extra: Partial<SessionInfo> = {}): Se
     hostname: '',
     webEnabled: false,
     viewerCount: 0,
-    funnelActive: false,
     workDir: '/',
-    funnelWriteActive: false,
     ...extra,
   }
 }
@@ -46,6 +44,7 @@ function render(overrides: Partial<Props> = {}) {
     onHide: vi.fn(),
     onRename: vi.fn(),
     onEndSession: vi.fn(),
+    onShareToggle: vi.fn(),
     onNewSession: vi.fn(),
     tailscaleHealth: { connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'office-air.tail1.ts.net' },
     ...overrides,
@@ -378,11 +377,11 @@ describe('Sidebar: local row menu and rename (Portty 02-08)', () => {
   const clickItem = (label: string) =>
     act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find((b) => b.textContent === label)!.click())
 
-  it('right-click on a local row opens Rename · ─ · End Session…; End Session… calls onEndSession(id)', () => {
+  it('right-click on a local row opens Rename · Share · ─ · End Session…; End Session… calls onEndSession(id)', () => {
     const onEndSession = vi.fn()
     const { c } = render({ sessions: [session('a', 'shell 1')], onEndSession })
     act(() => { rows(c, 'This Mac')[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })) })
-    expect(items()).toEqual(['Rename', 'End Session…'])
+    expect(items()).toEqual(['Rename', 'Share', 'End Session…'])
     expect(document.querySelector('[role="menu"] [role="separator"]')).not.toBeNull()
     clickItem('End Session…')
     expect(onEndSession).toHaveBeenCalledWith('a')
@@ -392,7 +391,7 @@ describe('Sidebar: local row menu and rename (Portty 02-08)', () => {
     const { c } = render({ sessions: [session('a', 'shell 1')] })
     const row = rows(c, 'This Mac')[0]
     act(() => { row.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true })) })
-    expect(items()).toEqual(['Rename', 'End Session…'])
+    expect(items()).toEqual(['Rename', 'Share', 'End Session…'])
   })
 
   it('double-clicking the name renames in place; Enter commits onRename(id, name); a single click still opens', () => {
@@ -411,6 +410,56 @@ describe('Sidebar: local row menu and rename (Portty 02-08)', () => {
     act(() => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
     expect(onRename).toHaveBeenCalledWith('a', 'logs')
     expect(c.querySelector('input')).toBeNull()
+  })
+
+  // Portty 04-05 (UI-SPEC "Sidebar context menu"): Share / Stop Sharing act at once.
+  const openMenu = (c: HTMLElement) =>
+    act(() => { rows(c, 'This Mac')[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })) })
+  const item = (label: string) =>
+    Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find((b) => b.textContent === label)!
+
+  it('Share calls onShareToggle(id, true)', () => {
+    const onShareToggle = vi.fn()
+    const { c } = render({ sessions: [session('a', 'shell 1')], onShareToggle })
+    openMenu(c)
+    clickItem('Share')
+    expect(onShareToggle).toHaveBeenCalledWith('a', true)
+  })
+
+  it('a shared row reads Rename · Stop Sharing · ─ · End Session…; Stop Sharing calls onShareToggle(id, false)', () => {
+    const onShareToggle = vi.fn()
+    const { c } = render({ sessions: [session('a', 'shell 1', { webEnabled: true })], onShareToggle })
+    openMenu(c)
+    expect(items()).toEqual(['Rename', 'Stop Sharing', 'End Session…'])
+    clickItem('Stop Sharing')
+    expect(onShareToggle).toHaveBeenCalledWith('a', false)
+  })
+
+  it('Tailscale off: Share is aria-disabled with aria-describedby="ts-off-reason" and does nothing', () => {
+    const onShareToggle = vi.fn()
+    const { c } = render({
+      sessions: [session('a', 'shell 1')],
+      onShareToggle,
+      tailscaleHealth: { connected: false, hasCerts: false, ip: '', domain: '' },
+    })
+    openMenu(c)
+    expect(item('Share').getAttribute('aria-disabled')).toBe('true')
+    expect(item('Share').getAttribute('aria-describedby')).toBe('ts-off-reason')
+    act(() => item('Share').click())
+    expect(onShareToggle).not.toHaveBeenCalled()
+  })
+
+  it('Tailscale off: Stop Sharing stays enabled', () => {
+    const onShareToggle = vi.fn()
+    const { c } = render({
+      sessions: [session('a', 'shell 1', { webEnabled: true })],
+      onShareToggle,
+      tailscaleHealth: { connected: false, hasCerts: false, ip: '', domain: '' },
+    })
+    openMenu(c)
+    expect(item('Stop Sharing').hasAttribute('aria-disabled')).toBe(false)
+    clickItem('Stop Sharing')
+    expect(onShareToggle).toHaveBeenCalledWith('a', false)
   })
 
   it('the Rename menu item starts the in-place edit', () => {

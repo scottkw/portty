@@ -42,6 +42,8 @@ interface SidebarProps {
   /** Portty 02-08 (TERM-03): local rows only. App owns the RPCs. */
   onRename: (sessionId: string, name: string) => void
   onEndSession: (sessionId: string) => void
+  /** Portty 04-05: the row menu's Share / Stop Sharing; App flips the daemon state. */
+  onShareToggle: (sessionId: string, shared: boolean) => void
   /** Opens the New Session dialog (same as ⌘T and the toolbar "+"), quick 261116-c9f. */
   onNewSession: () => void
   /** Quick 261116-ku9 R4: hide the empty-group New Session row while the main-area empty state shows. */
@@ -58,6 +60,7 @@ export function Sidebar({
   onHide,
   onRename,
   onEndSession,
+  onShareToggle,
   onNewSession,
   hideNewSessionRow = false,
 }: SidebarProps): React.ReactElement {
@@ -221,18 +224,27 @@ export function Sidebar({
         </section>
       </div>
 
-      {menu && (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          invoker={menu.invoker}
-          onClose={() => setMenu(null)}
-          items={[
-            { label: 'Rename', onSelect: () => setEditingId(menu.id) },
-            { label: 'End Session…', onSelect: () => onEndSession(menu.id), separatorBefore: true },
-          ]}
-        />
-      )}
+      {menu && (() => {
+        // UI-SPEC "Sidebar context menu": Share acts at once (no ellipsis) and is
+        // blocked while Tailscale is off; Stop Sharing always works.
+        const shared = !!sessions.find((s) => s.id === menu.id)?.webEnabled
+        const tailscaleOff = tailscaleHealth !== null && !tailscaleHealth.connected
+        return (
+          <ContextMenu
+            x={menu.x}
+            y={menu.y}
+            invoker={menu.invoker}
+            onClose={() => setMenu(null)}
+            items={[
+              { label: 'Rename', onSelect: () => setEditingId(menu.id) },
+              shared
+                ? { label: 'Stop Sharing', onSelect: () => onShareToggle(menu.id, false) }
+                : { label: 'Share', onSelect: () => onShareToggle(menu.id, true), disabled: tailscaleOff, describedBy: 'ts-off-reason' },
+              { label: 'End Session…', onSelect: () => onEndSession(menu.id), separatorBefore: true },
+            ]}
+          />
+        )
+      })()}
 
       <div className="sidebar__footer" role="status">
         <span
