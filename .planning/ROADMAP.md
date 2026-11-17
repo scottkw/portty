@@ -176,7 +176,7 @@ Plans:
   3. User turns Share off, every remote viewer (peer GUI, browser, CLI) is disconnected, and the session disappears from peers' sidebars
   4. No Funnel, public-link, risk-panel, or read-only code, UI, settings, or tests remain
   5. From Warp or any terminal, `portty attach <host>:<session>` attaches to a session shared from another Mac and shows the tmux-style status bar
-**Plans**: 6/9 plans executed (sequential waves 1-6; api.go, server.go, app.go, App.tsx, the Wails stubs and TESTING.md are shared hot files). 3 gap-closure plans added 2026-11-17 from the two-Mac UAT (04-07..04-09, sequential gap waves 1-3; TESTING.md and the relay hub are shared hot files)
+**Plans**: 7/9 plans executed (sequential waves 1-6; api.go, server.go, app.go, App.tsx, the Wails stubs and TESTING.md are shared hot files). 3 gap-closure plans added 2026-11-17 from the two-Mac UAT (04-07..04-09, sequential gap waves 1-3; TESTING.md and the relay hub are shared hot files)
 
 Plans:
 **Wave 1**
@@ -198,7 +198,7 @@ Plans:
 - [x] 04-06-PLAN.md — Codeless peer tabs with stopped-sharing and connect-failed banners, web "Link No Longer Works" and stopped banner, join dialog deleted, SC4 removal gate in CI, docs, full phase gate
 
 **Gap closure, Wave 1** *(UAT 2026-11-17, gap 1)*
-- [ ] 04-07-PLAN.md — CLI attach disturbing other viewers: in-process harness of a CLI attach beside a GUI tab and a browser, one variant per ranked hypothesis, a test-backed fix for each reproduced mechanism, explicit root-cause verdict
+- [x] 04-07-PLAN.md — CLI attach disturbing other viewers: in-process harness of a CLI attach beside a GUI tab and a browser, one variant per ranked hypothesis, a test-backed fix for each reproduced mechanism, explicit root-cause verdict
 
 **Gap closure, Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 04-08-PLAN.md — Live diagnosability for gap 1: daemon.log in the config dir, `viewer-diag:` lines (grid, join/leave, slow, revoke, first input, proxy open/end) with no tokens or input bytes, TESTING.md M-83
@@ -241,6 +241,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
 | 3. Portty Brand | 6/6 | In Progress | - |
-| 4. One-Click Share | 6/9 | In Progress | - |
+| 4. One-Click Share | 7/9 | In Progress | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
 | 6. Release Updates | 0/TBD | Not started | - |

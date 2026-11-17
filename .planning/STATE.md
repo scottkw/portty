@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 04
 current_phase_name: One-Click Share
 status: executing
-stopped_at: context exhaustion at 75% (2026-11-17)
-last_updated: "2026-11-17T17:44:27.330Z"
+stopped_at: Completed 04-07-PLAN.md
+last_updated: "2026-11-17T17:58:11.487Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 04 execution started
-state_head: 3d0c1d5cf43fd6f549b3841b5193c897dbc8e9de
+state_head: e0671ebc2d3580a44e1dadcee4dc36e31fba66e2
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 40
-  completed_plans: 37
+  completed_plans: 38
   percent: 17
 ---
 
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 04 (One-Click Share) — EXECUTING
-Plan: 7 of 9
-Status: Executing Phase 04
+Plan: 8 of 9
+Status: Ready to execute
 Last activity: 2026-11-17 — Phase 04 execution started
 
 Progress: [██░░░░░░░░] 17%
@@ -80,6 +80,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 4 P04 | 45min | 2 tasks | 28 files |
 | Phase 04 P05 | 36min | 2 tasks | 57 files |
 | Phase 4 P06 | 11min | 3 tasks | 34 files |
+| Phase 04 P07 | 11min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -171,6 +172,9 @@ Recent decisions affecting current work:
 - [Phase 4]: 04-06: Clicking the row of an open working peer tab only activates it; ConnectPeerSession runs for a new or connect-failed tab
 - [Phase 4]: 04-06: Removal gate narrowed after dry run: TS 'public write' fields and the kept read-only capability model are not removed features; legacy settings fixture out of scope
 - [Phase 4]: 04-06: No vmpreview WhoIs fake: M-79's browser path is cap-gated, only meta and peer-cap routes use WhoIs
+- [Phase 04]: 04-07: UAT gap 1 root cause not pinned in-process; H-grid and H-net need the 04-08 log and M-83 live repro
+- [Phase 04]: 04-07: Hub.ReconnectPreamble strips reply-eliciting terminal queries (liveEmuQueryStripPattern, now with XTVERSION and kitty CSI ? u) so a joining terminal never types answers into the shared shell
+- [Phase 04]: 04-07: 32 KiB coder/websocket read limit drops proxied joiners on long sessions; deferred (deferred-items.md)
 
 ### Pending Todos
 
@@ -235,6 +239,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T15:11:21.805Z
-Stopped at: context exhaustion at 75% (2026-11-17)
-Resume file: .planning/phases/04-one-click-share/04-UAT.md
+Last session: 2026-11-17T17:58:09.172Z
+Stopped at: Completed 04-07-PLAN.md
+Resume file: None
