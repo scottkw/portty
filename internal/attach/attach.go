@@ -34,7 +34,12 @@ func (lw *LockedWriter) Write(p []byte) (int, error) {
 
 // AttachSession is the testable core of the attach flow. It runs two I/O
 // pumps concurrently and returns when either completes or ctx is cancelled.
+// The first message is the catch-up preamble (up to the 256 KiB ring), which
+// coder/websocket's 32 KiB default read limit would reject, dropping the attach
+// (UAT gap 4). runAttach and the 04-07 harness both reach the conn through here.
 func AttachSession(ctx context.Context, conn *websocket.Conn, stdin io.Reader, stdout io.Writer, detachKey byte, bar *statusbar.Bar, onFrame func()) error {
+	conn.SetReadLimit(relay.ViewerReadLimit)
+
 	type result struct{ err error }
 
 	stdinDone := make(chan result, 1)

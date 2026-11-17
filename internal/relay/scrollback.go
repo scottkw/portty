@@ -5,6 +5,25 @@ import "sync"
 // DefaultScrollbackBytes is the default maximum scrollback buffer size (256 KiB).
 const DefaultScrollbackBytes = 256 * 1024
 
+// ViewerReadLimit is the per-message read limit for Go WebSocket readers on the
+// viewer side of a session (frames flowing host to viewer): the viewing
+// daemon's proxy upstream conn and the CLI attach conn (UAT gap 4).
+// coder/websocket defaults to 32768 bytes, but the host sends the catch-up
+// preamble (Hub.ReconnectPreamble) as one message, and a full 32 KiB PTY read
+// plus its frame header is already one byte over that default.
+//
+// Bound: the raw-ring preamble is hard-capped by the ring (Scrollback.Append
+// keeps at most DefaultScrollbackBytes). The wrapped-ring preamble is one
+// RenderSnapshot of the live emulator's current screen; its size is estimated,
+// not enforced (about 20 bytes per styled cell, so well under 1 MiB for any
+// real screen). 4x the ring fits both and still caps what one message can make
+// a reader buffer.
+//
+// Readers of viewer input (the share server, the local relay, the proxy's
+// client side) keep the 32 KiB default: input frames are small, and a guest
+// must not be able to make the host buffer large messages (DoS).
+const ViewerReadLimit = 4 * DefaultScrollbackBytes
+
 // Scrollback is a bounded, mutex-protected byte buffer.
 // When the buffer exceeds its maximum capacity, the oldest bytes are discarded.
 type Scrollback struct {

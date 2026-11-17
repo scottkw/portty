@@ -63,6 +63,8 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	//    allowlist (T-134-06-01): the inbound conn is still loopback-only, so the
 	//    same allowlist handleSession uses applies here. WS upgrades are not
 	//    CORS-preflighted, so no cross-origin CORS wrapper is involved (Pattern 3).
+	// The client side keeps coder/websocket's 32 KiB read limit: it only carries
+	// viewer input, which the host's share server limits to 32 KiB anyway.
 	clientConn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: relay.LoopbackOriginPatterns(r.Host),
 	})
@@ -112,6 +114,8 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer upstream.CloseNow()
+	// Peer to viewer carries the catch-up preamble as one message (UAT gap 4).
+	upstream.SetReadLimit(relay.ViewerReadLimit)
 	// A slow first dial points at a cold or DERP-relayed tailnet path (04-07 H-net).
 	log.Printf("viewer-diag: proxy open session=%s host=%s dial=%s", id8, host, time.Since(dialStart))
 	opened := time.Now()
