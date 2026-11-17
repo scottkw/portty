@@ -56,7 +56,8 @@ var errNotTerminal = errors.New("portty: attach needs an interactive terminal.")
 
 // cmdAttach connects the local terminal to a session on this Mac or to a session
 // shared from another Mac. A bare argument is a local session first (exact name,
-// exact ID, unique ID prefix), then a host; <host>:<session> is always remote.
+// exact ID, unique ID prefix), then a host; <host>:<session> is remote unless a
+// local session has that exact name.
 // It sets the terminal to raw mode, relays all I/O, and restores the terminal
 // on every exit path.
 func cmdAttach(client *daemon.DaemonClient, args []string) error {
@@ -84,8 +85,8 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 		}
 		return attachRemote(client, host, session, opts, os.Stdout, nil)
 	}
-	// Not a session here: try the argument as a Mac on the tailnet. Any refusal
-	// keeps the local "no session named" error, since it was most likely a typo.
+	// Not a session here: try the argument as a Mac on the tailnet. If it names
+	// no Mac, keep the local "no session named" error (most likely a typo).
 	return attachRemote(client, target, "", opts, os.Stdout, nse)
 }
 
@@ -118,16 +119,19 @@ func attachLocal(client *daemon.DaemonClient, session daemon.SessionInfo, opts a
 // holds the capability; the CLI dials the daemon's relay proxy, which injects
 // the Origin and the cap upstream (RESEARCH Pattern 5). An empty session
 // attaches the host's only shared session or lists several on out.
-// onRefused, when set, replaces every connect refusal except the listing.
-func attachRemote(client *daemon.DaemonClient, host, session string, opts attachOpts, out io.Writer, onRefused error) error {
+// onNoHost, when set, replaces the refusals that mean the argument named no
+// Mac (unknown host, Tailscale off): the typo case. A Mac that was found keeps
+// its own message (not sharing, other account, unreachable).
+func attachRemote(client *daemon.DaemonClient, host, session string, opts attachOpts, out io.Writer, onNoHost error) error {
 	res, err := client.ConnectPeer(host, session)
 	var pe *daemon.PeerConnectError
 	switch {
 	case errors.As(err, &pe) && pe.Code == daemon.PeerErrMultiple:
 		printSharedSessions(out, peerDisplayHost(pe, host), pe.Sessions)
 		return nil
-	case errors.As(err, &pe) && onRefused != nil:
-		return onRefused
+	case errors.As(err, &pe) && onNoHost != nil &&
+		(pe.Code == daemon.PeerErrUnknownHost || pe.Code == daemon.PeerErrTailscaleOff):
+		return onNoHost
 	case errors.As(err, &pe):
 		return errors.New(peerConnectMessage(pe, host, session))
 	case err != nil:

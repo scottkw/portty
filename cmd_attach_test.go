@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -574,8 +575,8 @@ func TestPeerConnectMessage(t *testing.T) {
 }
 
 // TestCmdAttach_Resolution (WR-09): a local name with a colon attaches locally,
-// an empty host is refused, and a typo keeps the local "no session named" error
-// whatever the tailnet says, even from a non-terminal stdin.
+// an empty host is refused, and a typo with Tailscale off keeps the local
+// "no session named" error, even from a non-terminal stdin.
 func TestCmdAttach_Resolution(t *testing.T) {
 	api, client := testShareSetup(t)
 	api.SetPeerSeamsForTest(func(context.Context) ([]tailnet.Peer, error) { return nil, errors.New("tailscaled not running") }, nil, nil)
@@ -592,5 +593,31 @@ func TestCmdAttach_Resolution(t *testing.T) {
 		if !errors.As(err, &nse) {
 			t.Fatalf("%q: err = %v; want the no-session error", arg, err)
 		}
+	}
+}
+
+// TestCmdAttach_BareHostNotSharing (review 2 WR-02): bare `portty attach <host>`
+// for a Mac that exists but shares nothing says so, not "no session named".
+func TestCmdAttach_BareHostNotSharing(t *testing.T) {
+	peer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/sessions/meta" {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer peer.Close()
+	api, client := testShareSetup(t)
+	api.SetPeerClientForTest(peer.Client())
+	api.SetPeerSeamsForTest(
+		func(context.Context) ([]tailnet.Peer, error) {
+			return []tailnet.Peer{{Hostname: "Office", DNSName: "office-air.tail1.ts.net.", Online: true}}, nil
+		},
+		func(context.Context) []tailnet.Peer { return nil },
+		func(tailnet.Peer) string { return peer.URL },
+	)
+	err := cmdAttach(client, []string{"office-air"})
+	if err == nil || !strings.Contains(err.Error(), "office-air isn't sharing any sessions") {
+		t.Fatalf("err = %v; want the not-sharing message", err)
 	}
 }
