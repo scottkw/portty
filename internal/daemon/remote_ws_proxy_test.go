@@ -68,6 +68,8 @@ type fixtureWSPeer struct {
 	gotOrigin  string
 	gotCap     string
 	sawUpgrade bool
+	gotResume  string // resume query value on the last upgrade
+	hasResume  bool   // whether a resume parameter was present at all
 }
 
 // newFixtureRemotePeerWithWS spins up an httptest.NewTLSServer that serves a
@@ -91,6 +93,8 @@ func newFixtureRemotePeerWithWS(t *testing.T) *fixtureWSPeer {
 		peer.gotOrigin = origin
 		peer.gotCap = cap
 		peer.sawUpgrade = true
+		peer.gotResume = r.URL.Query().Get("resume")
+		peer.hasResume = r.URL.Query().Has("resume")
 		peer.mu.Unlock()
 
 		// Mirror the peer's requireAllowedOrigin: empty Origin is rejected.
@@ -514,5 +518,68 @@ func TestRemoteWSProxy_DiagLog(t *testing.T) {
 
 	if got := buf.String(); strings.Contains(got, fixtureCap) || strings.Contains(got, "cap=") {
 		t.Fatalf("proxy log leaks the cap:\n%s", got)
+	}
+
+	// A resume query must not reach the logs either (T-05-04).
+	wsURL := "ws://" + strings.TrimPrefix(relaySrv.URL, "http://") + "/api/relay/remote/sid2/ws?resume=4242"
+	conn3, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial proxy (resume): %v", err)
+	}
+	_, _, _ = conn3.Read(ctx)
+	conn3.CloseNow()
+	testutil.WaitFor(t, 2*time.Second, func() bool {
+		return strings.Count(buf.String(), "viewer-diag: proxy dial failed session=sid2") >= 2
+	}, "no second proxy dial failed line:\n%s", buf.String())
+	if got := buf.String(); strings.Contains(got, "resume=") || strings.Contains(got, "4242") {
+		t.Fatalf("proxy log leaks the resume query:\n%s", got)
+	}
+}
+
+// TestRemoteWSProxy_ForwardsResume: the proxy forwards ?resume= upstream only
+// when it parses as a decimal uint64, re-encoded from the number, and always
+// forwards the cap (SHAR-07).
+func TestRemoteWSProxy_ForwardsResume(t *testing.T) {
+	for _, tc := range []struct {
+		name, query, want string
+		has               bool
+	}{
+		{"numeric", "?resume=123", "123", true},
+		{"non_numeric", "?resume=abc", "", false},
+		{"absent", "", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			peer := newFixtureRemotePeerWithWS(t)
+			api := newDaemonAPIWithUpstreamCert(t, peer.srv)
+			relaySrv := httptest.NewServer(api.RelayHandler())
+			defer relaySrv.Close()
+			depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			wsURL := "ws://" + strings.TrimPrefix(relaySrv.URL, "http://") + "/api/relay/remote/sid1/ws" + tc.query
+			conn, _, err := websocket.Dial(ctx, wsURL, nil)
+			if err != nil {
+				t.Fatalf("dial proxy: %v", err)
+			}
+			defer conn.CloseNow()
+			// Round-trip one frame so the upstream upgrade has completed.
+			if err := conn.Write(ctx, websocket.MessageBinary, []byte("ping")); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			if _, _, err := conn.Read(ctx); err != nil {
+				t.Fatalf("read: %v", err)
+			}
+
+			peer.mu.Lock()
+			gotCap, gotResume, hasResume := peer.gotCap, peer.gotResume, peer.hasResume
+			peer.mu.Unlock()
+			if gotCap != fixtureCap {
+				t.Fatalf("cap %q, want %q", gotCap, fixtureCap)
+			}
+			if hasResume != tc.has || gotResume != tc.want {
+				t.Fatalf("upstream resume %q (present=%t), want %q (present=%t)", gotResume, hasResume, tc.want, tc.has)
+			}
+		})
 	}
 }

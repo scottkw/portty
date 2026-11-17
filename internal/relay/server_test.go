@@ -2,6 +2,8 @@ package relay
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -393,5 +395,69 @@ func TestRelayJoin_PushesResizeBeforeScrollback(t *testing.T) {
 	secondType, _ := readOrdered()
 	if secondType != MsgOutput {
 		t.Errorf("second non-meta frame: got type 0x%02x, want MsgOutput (0x%02x)", secondType, MsgOutput)
+	}
+}
+
+// readJoinReplay reads frames up to the offset meta and returns the replay
+// mode, the concatenated replay output and the offset.
+func readJoinReplay(t *testing.T, conn *websocket.Conn) (string, []byte, uint64) {
+	t.Helper()
+	mode := ""
+	var out []byte
+	for {
+		typ, payload := readFrame(t, conn)
+		switch typ {
+		case MsgOutput:
+			if mode == "" {
+				t.Fatalf("output before the replay meta: %q", payload)
+			}
+			out = append(out, payload...)
+		case MsgMeta:
+			var m MetaPayload
+			if err := json.Unmarshal(payload, &m); err != nil {
+				t.Fatalf("meta json: %v", err)
+			}
+			if m.Replay != nil {
+				mode = *m.Replay
+			}
+			if m.Offset != nil {
+				if mode == "" {
+					t.Fatal("offset meta before the replay meta")
+				}
+				return mode, out, *m.Offset
+			}
+		}
+	}
+}
+
+// TestRelay_ResumeDelta: the local relay speaks the same replay contract as the
+// share server; a reconnect with the offset meta value gets only missed output.
+func TestRelay_ResumeDelta(t *testing.T) {
+	srv, manager, ptyW, _, sid := setupTestServer(t)
+	hub, _ := manager.Get(sid)
+	write := func(s string) {
+		want := hub.scrollback.End() + uint64(1+len(s))
+		if _, err := io.WriteString(ptyW, s); err != nil {
+			t.Fatal(err)
+		}
+		testutil.WaitFor(t, 2*time.Second, func() bool { return hub.scrollback.End() >= want }, "hub never recorded %q", s)
+	}
+
+	write("SEEN-OUTPUT\r\n")
+	conn := dialWS(t, srv.URL, sid)
+	mode, out, off := readJoinReplay(t, conn)
+	if mode != ReplayFull || !strings.Contains(string(out), "SEEN-OUTPUT") {
+		t.Fatalf("first join: mode %q out %q, want full with SEEN-OUTPUT", mode, out)
+	}
+	conn.CloseNow()
+
+	write("MISSED-OUTPUT\r\n")
+	conn2 := dialWSWithQuery(t, srv.URL, sid, fmt.Sprintf("resume=%d", off))
+	mode, out, end := readJoinReplay(t, conn2)
+	if mode != ReplayDelta || !strings.Contains(string(out), "MISSED-OUTPUT") || strings.Contains(string(out), "SEEN-OUTPUT") {
+		t.Fatalf("resume join: mode %q out %q, want delta with only MISSED-OUTPUT", mode, out)
+	}
+	if end <= off {
+		t.Fatalf("offset meta %d, want > %d", end, off)
 	}
 }
