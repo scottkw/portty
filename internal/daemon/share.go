@@ -164,8 +164,16 @@ func (a *API) shareOn(ctx context.Context, id string) (ShareResponse, *ShareErro
 	if rec, ok := a.shares[id]; ok {
 		return ShareResponse{Shared: true, URL: shareURL(ws, id, rec.token)}, nil
 	}
+	// The session may have exited or been killed during the warm-up, and its
+	// exit cleanup found no record to drop (WR-04). On any refusal here,
+	// unshareLocked stops a server this call started for nothing.
+	if !a.sessionShareable(id) {
+		a.unshareLocked(id)
+		return ShareResponse{}, &ShareError{ShareErrNotFound, "no running session " + id}
+	}
 	rec, err := a.mintShareRecord(id)
 	if err != nil {
+		a.unshareLocked(id)
 		return ShareResponse{}, &ShareError{ShareErrStartFailed, err.Error()}
 	}
 	ws.EnableSession(id)

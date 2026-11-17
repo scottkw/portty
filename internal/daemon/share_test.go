@@ -525,3 +525,18 @@ func TestShare_ConcurrentFirstSharesStartOneServer(t *testing.T) {
 		t.Fatalf("share servers built = %d; want 1", builds)
 	}
 }
+
+// TestShare_SessionKilledDuringStartIsNotShared (WR-04): a session killed during
+// the first share's warm-up is refused, and the server started for it stops.
+func TestShare_SessionKilledDuringStartIsNotShared(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	id := newShareSession(t, client)
+	killWarm := func(context.Context, string) error { return client.KillSession(id) }
+	api.SetShareSeamsForTest(healthyTailnet, loopbackShareServer, killWarm)
+	if code, e := putShareRaw(t, api, id, true); code != http.StatusNotFound || e.Error != ShareErrNotFound {
+		t.Fatalf("share of a session killed during start = %d %+v; want 404 not_found", code, e)
+	}
+	if shareServerRunning(api) {
+		t.Fatal("the share server still runs with nothing shared")
+	}
+}
