@@ -173,6 +173,21 @@ describe('SharePopover: turning Share on', () => {
     )
   })
 
+  it('the link field opens scrolled to its end, where links differ', async () => {
+    let left = 0
+    const proto = HTMLInputElement.prototype
+    Object.defineProperty(proto, 'scrollWidth', { configurable: true, get: () => 500 })
+    Object.defineProperty(proto, 'scrollLeft', { configurable: true, get: () => left, set: (v: number) => { left = v } })
+    try {
+      vi.mocked(GetSessionShare).mockResolvedValue(on)
+      await render({ shared: true })
+      expect(link()!.scrollLeft).toBe(500)
+    } finally {
+      delete (proto as unknown as Record<string, unknown>).scrollWidth
+      delete (proto as unknown as Record<string, unknown>).scrollLeft
+    }
+  })
+
   it('a 300-character link sits whole in one input', async () => {
     const long = 'https://office-air.tail1234.ts.net/sessions/s1?cap=' + 'x'.repeat(300 - 51)
     expect(long).toHaveLength(300)

@@ -96,6 +96,13 @@ export function SharePopover({
 
   useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current) }, [])
 
+  // Show the end of the link (session path and token), the part that differs between links.
+  const showLink = !busy && !tailscaleOff && shared && !!url
+  useLayoutEffect(() => {
+    const el = linkRef.current
+    if (showLink && el) el.scrollLeft = el.scrollWidth
+  }, [showLink, url])
+
   const place = useCallback(() => {
     if (!anchor) return
     const r = anchor.getBoundingClientRect()
@@ -213,7 +220,7 @@ export function SharePopover({
   } else if (tailscaleOff) {
     body = <>{errorLine(['start'])}{line(TAILSCALE_OFF_REASON, reasonId)}{errorLine(['stop'])}</>
   } else if (shared) {
-    body = url ? (
+    body = showLink ? (
       <>
         <div className="share-popover__link-row">
           <input
