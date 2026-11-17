@@ -5,6 +5,7 @@ package webserver_test
 
 import (
 	"encoding/json"
+	"github.com/scottkw/portty/internal/webserver"
 	"net/http"
 	"testing"
 )
@@ -14,6 +15,7 @@ import (
 // discovery payload; the owner shares a session by sending its link.
 func TestSessionsMeta_ExactKeySet(t *testing.T) {
 	ws, client := testServer(t)
+	ws.SetWhoIsClientForTest(webserver.SameUserWhoIsForTest())
 	ws.SetSigningKey(ssExtTestKey)
 	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == "sess-rb03" {

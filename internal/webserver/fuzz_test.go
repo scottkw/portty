@@ -8,6 +8,7 @@ package webserver
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -35,6 +36,7 @@ func fuzzWebServer(f *testing.F) *WebServer {
 	}
 	f.Cleanup(func() { _ = ln.Close() })
 	ws.listener = ln
+	ws.SetWhoIsClientForTest(&fakeWhoIs{err: errors.New("no tailscaled in tests")})
 	ws.SetSigningKey(capTestKey)
 	ws.EnableSession("s1")
 	return ws

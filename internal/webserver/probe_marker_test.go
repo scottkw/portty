@@ -57,8 +57,10 @@ func TestProbeMarker_AuthorizedSessionsCarriesMarker(t *testing.T) {
 func TestProbeMarker_OtherRoutesHaveNoMarker(t *testing.T) {
 	ws, client := testServer(t)
 	ws.SetSigningKey(capTestKey)
+	ws.SetWhoIsClientForTest(SameUserWhoIsForTest())
 	ws.EnableSession("s-marker")
 
+	// A same-account meta reply is unmarked; only the refusal carries the marker.
 	for _, path := range []string{"/api/sessions/meta", "/dashboard"} {
 		resp, err := client.Get(ws.BaseURL() + path)
 		if err != nil {

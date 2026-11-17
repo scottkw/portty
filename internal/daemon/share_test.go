@@ -19,6 +19,9 @@ import (
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/webserver"
+	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/tailcfg"
 )
 
 func healthyTailnet(context.Context) webserver.TailscaleHealth {
@@ -32,7 +35,23 @@ func loopbackShareServer(_ webserver.TailscaleHealth, m *relay.HubManager) (*web
 	if err != nil {
 		return nil, err
 	}
-	return webserver.NewWebServer(webserver.Config{BindIP: "127.0.0.1", Port: 0, FQDN: "127.0.0.1", TLSConfig: cfg}, m)
+	ws, err := webserver.NewWebServer(webserver.Config{BindIP: "127.0.0.1", Port: 0, FQDN: "127.0.0.1", TLSConfig: cfg}, m)
+	if err != nil {
+		return nil, err
+	}
+	ws.SetWhoIsClientForTest(sameUserWhoIs{})
+	return ws, nil
+}
+
+// sameUserWhoIs reports every caller as a node of this Mac's Tailscale user.
+type sameUserWhoIs struct{}
+
+func (sameUserWhoIs) WhoIs(context.Context, string) (*apitype.WhoIsResponse, error) {
+	return &apitype.WhoIsResponse{Node: &tailcfg.Node{User: 42}}, nil
+}
+
+func (sameUserWhoIs) StatusWithoutPeers(context.Context) (*ipnstate.Status, error) {
+	return &ipnstate.Status{Self: &ipnstate.PeerStatus{UserID: 42}}, nil
 }
 
 func noWarm(context.Context, string) error { return nil }
@@ -405,4 +424,33 @@ func TestShare_NoServerAtBoot(t *testing.T) {
 	if got, err := client.GetSessionShare(id); err != nil || got.Shared {
 		t.Fatalf("GetSessionShare = %+v, %v; want not shared", got, err)
 	}
+}
+
+func TestShare_PeerCapReturnsLinkToken(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	id := newShareSession(t, client)
+	u, token := linkParts(t, mustShare(t, client, id).URL)
+
+	req, _ := http.NewRequest(http.MethodPost, "https://"+u.Host+"/api/peer/sessions/"+id+"/cap", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := insecureNoRedirectClient().Do(req)
+	if err != nil {
+		t.Fatalf("POST peer cap: %v", err)
+	}
+	defer resp.Body.Close()
+	var body struct{ Cap string }
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("peer cap = %d, %v", resp.StatusCode, err)
+	}
+	if body.Cap != token {
+		t.Fatalf("peer cap = %q; want the share link's token %q", body.Cap, token)
+	}
+
+	if _, err := client.SetSessionShared(id, false); err != nil {
+		t.Fatal(err)
+	}
+	if shareServerRunning(api) {
+		t.Fatal("share server still running after share-off")
+	}
+	assertNotListening(t, u.Host)
 }

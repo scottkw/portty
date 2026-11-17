@@ -36,12 +36,9 @@ type Config struct {
 }
 
 // sessionMetaItem is the JSON shape returned by GET /api/sessions/meta.
-// This endpoint is open (no capability required) and returns metadata-only fields
-// for all web-enabled sessions. Trust boundary: the endpoint is mounted on the
-// webserver which is bound to the Tailscale IP — only tailnet members can reach it
-// (network-layer trust per the resolved #86 decision and RB-03). It must NEVER
-// include cap tokens, grants, content, or signing keys.
-// RB-03 restored: cap-free discovery — no credentials in this payload.
+// The endpoint needs no capability but is gated by requireSameUser: only a
+// tailnet node logged in as this Mac's Tailscale user gets it. It must NEVER
+// include cap tokens, grants, content, or signing keys (RB-03).
 type sessionMetaItem struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
@@ -116,6 +113,13 @@ type WebServer struct {
 	// Phase 93 PLUG-04 push channel — closes ROADMAP SC#4.
 	pluginConfigMu          sync.RWMutex
 	pluginConfigSubscribers map[chan []byte]struct{}
+
+	// whois backs requireSameUser (whois.go). &lc in production.
+	whois whoIsClient
+
+	// shareToken returns a shared session's link token for the peer
+	// capability route. Set once before Start via SetShareTokenProvider.
+	shareToken func(sessionID string) (string, bool)
 }
 
 // NewWebServer creates a WebServer and sets up routes.
@@ -129,6 +133,7 @@ func NewWebServer(cfg Config, manager *relay.HubManager) (*WebServer, error) {
 		mux:                     http.NewServeMux(),
 		pluginConfigSubscribers: make(map[chan []byte]struct{}),
 	}
+	ws.whois = &ws.lc
 	ws.setupRoutes()
 	return ws, nil
 }
@@ -254,16 +259,13 @@ func (ws *WebServer) currentSigningKey() []byte {
 }
 
 // tailscaleCGNAT is the Tailscale 100.64.0.0/10 carrier-grade NAT range that
-// MagicDNS / tailnet IPs are drawn from. The /api/sessions/meta endpoint is
-// open (no cap) and relies on the listener being bound to an address in this
-// range for its "tailnet-trusted = bind IP" access model (resolved #86).
+// MagicDNS / tailnet IPs are drawn from. The share listener is expected to be
+// bound to an address in this range (resolved #86).
 var tailscaleCGNAT = netip.MustParsePrefix("100.64.0.0/10")
 
 // assertTailnetBindIP is a defense-in-depth, non-fatal startup check (WR-03).
-// The open /api/sessions/meta route trusts the network layer (it is served
-// only on the Tailscale bind IP). There is no per-request RemoteAddr check, by
-// design, because adding one would break loopback-bound test/dev servers.
-// Instead we WARN — not
+// The cap-free /api/sessions/meta route is gated by requireSameUser (WhoIs),
+// which assumes callers arrive over the tailnet. We WARN — not
 // refuse — when BindIP is neither loopback (allowed for tests/dev) nor within
 // the Tailscale CGNAT range, so a future misconfiguration that binds the open
 // metadata endpoint to a LAN/0.0.0.0 interface surfaces a loud log line rather
@@ -275,9 +277,9 @@ func (ws *WebServer) assertTailnetBindIP() {
 	addr, err := netip.ParseAddr(bind)
 	if err != nil {
 		// Empty or non-IP bind (e.g. "" → all interfaces). This is the most
-		// dangerous case for an open endpoint; warn explicitly.
+		// dangerous case; warn explicitly.
 		slog.Warn("webserver: bind IP is not a parseable address; "+
-			"the open /api/sessions/meta endpoint trusts the bind IP for access control",
+			"the share listener expects a tailnet bind IP",
 			"bind_ip", bind)
 		return
 	}
@@ -288,8 +290,7 @@ func (ws *WebServer) assertTailnetBindIP() {
 		return // expected: bound to the Tailscale 100.x address
 	}
 	slog.Warn("webserver: bind IP is outside the Tailscale CGNAT range "+
-		"(100.64.0.0/10); the open /api/sessions/meta endpoint assumes a tailnet-only "+
-		"bind IP for access control and would be reachable on this interface without a cap",
+		"(100.64.0.0/10); the share listener expects a tailnet-only bind IP",
 		"bind_ip", bind)
 }
 
@@ -386,6 +387,8 @@ func (ws *WebServer) BaseURL() string {
 //   - /api/sessions, /api/sessions/{id}/info, /sessions/{id}, /sessions/{id}/ws
 //     — gated by requireCapability. The session-bound cap enforces enumeration,
 //     cross-session isolation, and write permission via claims.Perms (D-24).
+//   - /api/sessions/meta and POST /api/peer/sessions/{id}/cap — gated by
+//     requireSameUser (same Tailscale user via WhoIs, fail closed).
 func (ws *WebServer) setupRoutes() {
 	mux := ws.mux
 
@@ -402,17 +405,17 @@ func (ws *WebServer) setupRoutes() {
 	// by Plan 06).
 	mux.HandleFunc("GET /dashboard", ws.cspHeaders(ws.handleDashboard))
 
-	// GET /api/sessions/meta — open (no capability required). Returns shareable-session
-	// metadata (id, name, status, url) for all web-enabled sessions to
-	// tailnet-trusted callers. Never returns cap tokens, grants, or session content (RB-03).
-	//
-	// Trust model (WR-03 invariant): access control is network-layer ONLY —
-	// the listener is bound to the Tailscale 100.64.0.0/10 IP (resolved #86),
-	// so this open route is reachable only from the tailnet. There is
-	// intentionally no per-request RemoteAddr check (it would break loopback
-	// test/dev binds). Start() calls assertTailnetBindIP() to WARN (defense in
-	// depth) if the bind IP is ever outside the tailnet range.
-	mux.HandleFunc("GET /api/sessions/meta", ws.handleSessionsMeta)
+	// GET /api/sessions/meta — no capability, but only a node logged in as
+	// this Mac's Tailscale user (WhoIs, numeric user ID) gets the shared
+	// sessions' metadata (id, name, status, url). Anyone else gets 403 with
+	// the X-Portty marker so the viewing Mac drops the group. Never returns
+	// cap tokens, grants, or session content (RB-03).
+	mux.HandleFunc("GET /api/sessions/meta", ws.requireSameUser(ws.handleSessionsMeta))
+
+	// POST /api/peer/sessions/{id}/cap — a same-account peer receives the
+	// share's capability with no join code. POST + application/json only, no
+	// Access-Control-* headers, Cache-Control: no-store (whois.go handlePeerCap).
+	mux.HandleFunc("POST /api/peer/sessions/{id}/cap", ws.requireSameUser(ws.handlePeerCap))
 
 	// GET /api/sessions — capability-gated; handleListSessions returns ONLY
 	// the single session bound to the cap (D-18). porttyMarker sits outside the
@@ -601,16 +604,9 @@ func (ws *WebServer) handleListSessions(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(items) //nolint:errcheck
 }
 
-// handleSessionsMeta handles GET /api/sessions/meta.
-// Returns metadata for all web-enabled sessions to tailnet-trusted callers.
-// Open — no capability required. Trust boundary: the webserver is bound to the
-// Tailscale IP (network-layer trust per resolved #86 decision). This endpoint
-// returns ONLY metadata (id, name, status, url) — never cap tokens,
-// grants, session content, or signing keys (RB-03 no-enumeration contract).
-// handleSessionsMeta handles GET /api/sessions/meta.
-// Returns cap-free metadata for all web-enabled sessions (RB-03 restored).
-// This endpoint is open (no capability required); it must NEVER include
-// cap tokens, grants, or any credential material.
+// handleSessionsMeta handles GET /api/sessions/meta (behind requireSameUser).
+// Returns cap-free metadata for all web-enabled sessions; it must NEVER
+// include cap tokens, grants, or any credential material (RB-03).
 func (ws *WebServer) handleSessionsMeta(w http.ResponseWriter, r *http.Request) {
 	ids := ws.webEnabledSessions()
 	items := make([]sessionMetaItem, 0, len(ids))

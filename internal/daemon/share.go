@@ -209,6 +209,13 @@ func (a *API) startShareServer(
 	// Phase 93 PLUG-04: plugin settings as pre-marshaled JSON (func() []byte
 	// avoids the daemon→webserver→daemon import cycle).
 	ws.SetPluginSettingsProvider(a.guestPluginConfigJSON)
+	// Same-account peers receive the link's own token (one token per share).
+	ws.SetShareTokenProvider(func(sessionID string) (string, bool) {
+		a.mu.RLock()
+		defer a.mu.RUnlock()
+		rec, ok := a.shares[sessionID]
+		return rec.token, ok
+	})
 	// Signing key BEFORE Start so requireCapability never sees nil (Pitfall 3).
 	ws.SetSigningKey(a.CurrentSigningKey())
 	ws.SetStaticAppFS(getStaticAppFS())

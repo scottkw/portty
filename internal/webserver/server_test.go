@@ -699,6 +699,7 @@ func TestSessionInfoEndpoint_NotFound(t *testing.T) {
 func TestSessionInfo_UnknownID404KnownID200(t *testing.T) {
 	ws, client := testServer(t)
 	ws.SetSigningKey(ssExtTestKey)
+	ws.SetWhoIsClientForTest(webserver.SameUserWhoIsForTest())
 	baseURL := ws.BaseURL()
 
 	ws.SetSessionResolver(func(id string) (string, string, string, bool) {

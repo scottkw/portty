@@ -3,7 +3,7 @@ package webserver_test
 // Wave 0 RED tests for Phase 130 RB-01 / RB-03.
 //
 // These tests assert the contract for GET /api/sessions/meta — the new
-// metadata-only, open (no-cap) endpoint that lets tailnet peers discover
+// metadata-only, no-cap endpoint that lets same-account tailnet peers discover
 // which sessions are shareable without holding a session-scoped capability.
 //
 // The handler (handleSessionsMeta) does NOT exist yet; these tests are
@@ -14,6 +14,7 @@ package webserver_test
 
 import (
 	"encoding/json"
+	"github.com/scottkw/portty/internal/webserver"
 	"net/http"
 	"sort"
 	"testing"
@@ -24,6 +25,7 @@ import (
 // id, name, status, and url fields populated by the sessionResolver.
 func TestSessionsMeta_ReturnsWebEnabledSessions(t *testing.T) {
 	ws, client := testServer(t)
+	ws.SetWhoIsClientForTest(webserver.SameUserWhoIsForTest())
 	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		switch id {
 		case "sess-a":
@@ -88,11 +90,11 @@ func TestSessionsMeta_ReturnsWebEnabledSessions(t *testing.T) {
 }
 
 // TestSessionsMeta_NoCap verifies that GET /api/sessions/meta returns 200
-// WITHOUT any cap header — the endpoint is open (tailnet-trusted via network
-// binding, not application-layer cap). This contrasts with GET /api/sessions
-// which requires a capability token.
+// WITHOUT any cap for a same-account caller (WhoIs-gated, not cap-gated).
+// This contrasts with GET /api/sessions which requires a capability token.
 func TestSessionsMeta_NoCap(t *testing.T) {
 	ws, client := testServer(t)
+	ws.SetWhoIsClientForTest(webserver.SameUserWhoIsForTest())
 	ws.EnableSession("sess1")
 
 	// Request without any cap header or query param.
@@ -104,10 +106,10 @@ func TestSessionsMeta_NoCap(t *testing.T) {
 
 	// Must be 200 (open), not 401 (which /api/sessions returns without a cap).
 	if resp.StatusCode == http.StatusUnauthorized {
-		t.Fatalf("/api/sessions/meta returned 401 — the endpoint must be open (no cap required); got %d", resp.StatusCode)
+		t.Fatalf("/api/sessions/meta returned 401 — the endpoint needs no cap; got %d", resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 for open endpoint, got %d", resp.StatusCode)
+		t.Fatalf("expected 200 for a same-account caller, got %d", resp.StatusCode)
 	}
 }
 
@@ -116,6 +118,7 @@ func TestSessionsMeta_NoCap(t *testing.T) {
 // are web-enabled. The RB-04 honest-empty-state contract.
 func TestSessionsMeta_EmptyWhenNoneEnabled(t *testing.T) {
 	ws, client := testServer(t)
+	ws.SetWhoIsClientForTest(webserver.SameUserWhoIsForTest())
 	// No sessions enabled.
 
 	resp, err := client.Get(ws.BaseURL() + "/api/sessions/meta")
@@ -150,6 +153,7 @@ func TestSessionsMeta_EmptyWhenNoneEnabled(t *testing.T) {
 // equals exactly {id, name, status, url}.
 func TestSessionsMeta_NoCapInResponse(t *testing.T) {
 	ws, client := testServer(t)
+	ws.SetWhoIsClientForTest(webserver.SameUserWhoIsForTest())
 	ws.SetSigningKey(ssExtTestKey) // signing key is present (simulate production state)
 	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == "secure-sess" {
