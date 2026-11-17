@@ -265,9 +265,13 @@ func (a *API) mintShareRecord(id string) (shareRecord, error) {
 	return shareRecord{grantID: claims.GrantID, token: tok}, nil
 }
 
-// unshareLocked drops the session's record, revokes its grants, disconnects
-// its web viewers and stops the share server when nothing is shared. Shared
-// by share-off, session exit and kill. Caller holds a.mu.
+// unshareLocked drops the session's record, revokes its grants, closes its
+// web viewers with relay.CloseReasonShareStopped and stops the share server
+// when nothing is shared. Shared by share-off, session exit and kill. Caller
+// holds a.mu.
+// Order matters: grants clear before the kick so a viewer subscribing
+// mid-revoke fails its post-subscribe re-check, and the kick precedes Stop
+// because Stop closes only the listener (hijacked WebSockets survive it).
 func (a *API) unshareLocked(id string) {
 	delete(a.shares, id)
 	ws := a.webServer
@@ -276,7 +280,7 @@ func (a *API) unshareLocked(id string) {
 		ws.DisableSession(id)
 	}
 	if hub, ok := a.engine.Manager().Get(id); ok {
-		hub.DisconnectWebViewers()
+		hub.RevokeWebViewers(relay.CloseReasonShareStopped)
 	}
 	if ws != nil && len(a.shares) == 0 {
 		_ = ws.Stop()
@@ -286,14 +290,15 @@ func (a *API) unshareLocked(id string) {
 }
 
 // remintSharesLocked gives every share a new capability signed with the
-// current key: viewers on the old link are disconnected and the old grant is
-// cleared. A share that cannot be re-minted is turned off. Caller holds a.mu.
+// current key: the old grant is cleared and viewers on the old link are
+// closed with relay.CloseReasonShareStopped. A share that cannot be re-minted
+// is turned off. Caller holds a.mu.
 func (a *API) remintSharesLocked(ws *webserver.WebServer) {
 	for id := range a.shares {
-		if hub, ok := a.engine.Manager().Get(id); ok {
-			hub.DisconnectWebViewers()
-		}
 		ws.ClearGrants(id)
+		if hub, ok := a.engine.Manager().Get(id); ok {
+			hub.RevokeWebViewers(relay.CloseReasonShareStopped)
+		}
 		rec, err := a.mintShareRecord(id)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "daemon: re-mint share %s: %v\n", id, err)

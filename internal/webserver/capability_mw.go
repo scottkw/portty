@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/scottkw/portty/internal/capability"
+	webfs "github.com/scottkw/portty/web"
 )
 
 // requireCapability returns a middleware that gates access to a handler on a
@@ -36,40 +37,70 @@ import (
 // committed by then.
 func (ws *WebServer) requireCapability(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("cap")
-		if token == "" {
-			http.Error(w, "capability required", http.StatusUnauthorized)
+		claims, status, msg := ws.verifyCapability(r)
+		if status != 0 {
+			http.Error(w, msg, status)
 			return
 		}
-		key := ws.currentSigningKey()
-		if key == nil {
-			http.Error(w, "capability required", http.StatusUnauthorized)
-			return
-		}
-		claims, err := capability.Verify(token, key)
-		if err != nil {
-			// Collapse all verify failures to a single 401 body — do not leak
-			// whether the token was malformed, had a bad signature, or had
-			// unparseable claims (T-87-08).
-			http.Error(w, "capability required", http.StatusUnauthorized)
-			return
-		}
-		if pathID := r.PathValue("id"); pathID != "" && claims.SID != pathID {
-			http.Error(w, "capability does not match session", http.StatusForbidden)
-			return
-		}
-		if !ws.isGrantActive(claims.SID, claims.GrantID) {
-			http.Error(w, "capability has been revoked", http.StatusForbidden)
-			return
-		}
-		if !ws.IsSessionEnabled(claims.SID) {
-			// Defense in depth: toggle-off clears grants AND disables web
-			// serving. Either alone would block this request; checking both
-			// guards against a future code path that touches only one.
-			http.Error(w, "capability has been revoked", http.StatusForbidden)
-			return
-		}
-		ctx := capability.WithClaims(r.Context(), claims)
-		next(w, r.WithContext(ctx))
+		next(w, r.WithContext(capability.WithClaims(r.Context(), claims)))
 	}
+}
+
+// requireCapabilityPage is requireCapability for the browser-facing link
+// route: on failure it writes the same status with the static "Link No
+// Longer Works" page. Nothing from the request is rendered into it.
+func (ws *WebServer) requireCapabilityPage(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, status, _ := ws.verifyCapability(r)
+		if status != 0 {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.WriteHeader(status)
+			_, _ = w.Write(linkInvalidPage)
+			return
+		}
+		next(w, r.WithContext(capability.WithClaims(r.Context(), claims)))
+	}
+}
+
+// linkInvalidPage is the embedded web/link-invalid.html.
+var linkInvalidPage = func() []byte {
+	b, err := webfs.WebFS.ReadFile("link-invalid.html")
+	if err != nil {
+		panic("webserver: embedded link-invalid.html: " + err.Error())
+	}
+	return b
+}()
+
+// verifyCapability runs the enforcement sequence above. On failure it returns
+// a non-zero status and the plain-text body requireCapability writes.
+func (ws *WebServer) verifyCapability(r *http.Request) (capability.Claims, int, string) {
+	token := r.URL.Query().Get("cap")
+	if token == "" {
+		return capability.Claims{}, http.StatusUnauthorized, "capability required"
+	}
+	key := ws.currentSigningKey()
+	if key == nil {
+		return capability.Claims{}, http.StatusUnauthorized, "capability required"
+	}
+	claims, err := capability.Verify(token, key)
+	if err != nil {
+		// Collapse all verify failures to a single 401 body — do not leak
+		// whether the token was malformed, had a bad signature, or had
+		// unparseable claims (T-87-08).
+		return capability.Claims{}, http.StatusUnauthorized, "capability required"
+	}
+	if pathID := r.PathValue("id"); pathID != "" && claims.SID != pathID {
+		return capability.Claims{}, http.StatusForbidden, "capability does not match session"
+	}
+	if !ws.isGrantActive(claims.SID, claims.GrantID) {
+		return capability.Claims{}, http.StatusForbidden, "capability has been revoked"
+	}
+	if !ws.IsSessionEnabled(claims.SID) {
+		// Defense in depth: toggle-off clears grants AND disables web
+		// serving. Either alone would block this request; checking both
+		// guards against a future code path that touches only one.
+		return capability.Claims{}, http.StatusForbidden, "capability has been revoked"
+	}
+	return claims, 0, ""
 }

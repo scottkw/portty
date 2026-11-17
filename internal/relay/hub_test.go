@@ -697,22 +697,23 @@ func TestBroadcastMeta_NonBlocking(t *testing.T) {
 	}
 }
 
-// TestDisconnectWebViewers asserts DisconnectWebViewers closes exactly the
-// Origin=="web" subscribers and never touches Origin=="local" ones, and that
-// the local subscriber keeps receiving broadcast frames afterward (Phase 168
-// / FIX-02, #117).
-func TestDisconnectWebViewers(t *testing.T) {
+// TestRevokeWebViewers asserts RevokeWebViewers closes exactly the
+// Origin=="web" subscribers (Kick with the reason, CloseSlow when Kick is
+// nil) and never touches Origin=="local" ones, and that the local subscriber
+// keeps receiving broadcast frames afterward (Phase 168 / FIX-02, #117).
+func TestRevokeWebViewers(t *testing.T) {
 	hub, ptyWriter := makeTestHub(t)
 
 	var mu sync.Mutex
 	closedWeb1, closedWeb2, closedLocal := false, false, false
+	var web1Reason string
 
 	web1 := &Subscriber{
 		Msgs: make(chan []byte, 256),
-		CloseSlow: func() {
+		Kick: func(reason string) {
 			mu.Lock()
 			defer mu.Unlock()
-			closedWeb1 = true
+			closedWeb1, web1Reason = true, reason
 		},
 		Origin: "web",
 	}
@@ -740,17 +741,20 @@ func TestDisconnectWebViewers(t *testing.T) {
 	hub.Subscribe(local)
 	go hub.Run()
 
-	hub.DisconnectWebViewers()
+	hub.RevokeWebViewers(CloseReasonShareStopped)
 
 	testutil.WaitFor(t, 2*time.Second, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return closedWeb1 && closedWeb2
-	}, "web subscribers' CloseSlow was not called")
+	}, "web subscribers were not closed")
 
 	mu.Lock()
+	if web1Reason != CloseReasonShareStopped {
+		t.Fatalf("Kick reason = %q, want %q", web1Reason, CloseReasonShareStopped)
+	}
 	if closedLocal {
-		t.Fatal("DisconnectWebViewers closed the local-origin subscriber — it must be untouched (D-05)")
+		t.Fatal("RevokeWebViewers closed the local-origin subscriber — it must be untouched (D-05)")
 	}
 	mu.Unlock()
 
@@ -766,7 +770,7 @@ func TestDisconnectWebViewers(t *testing.T) {
 			t.Errorf("expected payload %q, got %q", data, payload)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for local subscriber to receive post-disconnect frame")
+		t.Fatal("timeout waiting for local subscriber to receive post-revoke frame")
 	}
 
 	ptyWriter.Close()

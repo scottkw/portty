@@ -454,3 +454,41 @@ func TestShare_PeerCapReturnsLinkToken(t *testing.T) {
 	}
 	assertNotListening(t, u.Host)
 }
+
+func TestShare_OffClosesViewerWithReason(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	id := newShareSession(t, client)
+	u, token := linkParts(t, mustShare(t, client, id).URL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	hdr := http.Header{}
+	hdr.Set("Origin", "https://"+u.Host)
+	wsURL := "wss://" + u.Host + "/sessions/" + id + "/ws?cap=" + url.QueryEscape(token)
+	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPClient: insecureNoRedirectClient(), HTTPHeader: hdr})
+	if err != nil {
+		t.Fatalf("websocket.Dial: %v", err)
+	}
+	defer conn.CloseNow()
+	hub, _ := api.engine.Manager().Get(id)
+	for hub.RemoteViewerCount() == 0 {
+		if ctx.Err() != nil {
+			t.Fatal("viewer never subscribed")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if _, err := client.SetSessionShared(id, false); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		_, _, err = conn.Read(ctx)
+		if err != nil {
+			break
+		}
+	}
+	var ce websocket.CloseError
+	if websocket.CloseStatus(err) != websocket.StatusNormalClosure || !errors.As(err, &ce) || ce.Reason != relay.CloseReasonShareStopped {
+		t.Fatalf("close = %v; want 1000 %q", err, relay.CloseReasonShareStopped)
+	}
+}

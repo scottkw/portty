@@ -87,8 +87,8 @@ import (
 	"strings"
 )
 
-// cspHeaders sets the Content-Security-Policy and Cache-Control: no-store
-// response headers, then delegates to next. When ws.BaseURL() returns ""
+// cspHeaders sets the Content-Security-Policy, Cache-Control: no-store and
+// Referrer-Policy: no-referrer response headers, then delegates to next. When ws.BaseURL() returns ""
 // (listener not ready), it responds HTTP 500 and does NOT delegate.
 func (ws *WebServer) cspHeaders(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +122,8 @@ func (ws *WebServer) cspHeaders(next http.HandlerFunc) http.HandlerFunc {
 		b.WriteString("frame-ancestors 'none'")
 		w.Header().Set("Content-Security-Policy", b.String())
 		w.Header().Set("Cache-Control", "no-store")
+		// The /app/ URL carries a full-control token; never leak it via Referer.
+		w.Header().Set("Referrer-Policy", "no-referrer")
 		next(w, r)
 	}
 }

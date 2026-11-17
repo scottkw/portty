@@ -172,6 +172,18 @@ func TestCSPHeaders_CacheControlNoStore(t *testing.T) {
 	}
 }
 
+// TestCSPHeaders_ReferrerPolicyNoReferrer: the /app/ URL carries a
+// full-control token, so no cspHeaders page may leak it via Referer.
+func TestCSPHeaders_ReferrerPolicyNoReferrer(t *testing.T) {
+	ws, _ := testServer(t)
+	handler := ws.cspHeaders(func(w http.ResponseWriter, r *http.Request) {})
+	rec := httptest.NewRecorder()
+	handler(rec, httptest.NewRequest("GET", ws.BaseURL()+"/app/", nil))
+	if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Errorf("Referrer-Policy = %q, want no-referrer", got)
+	}
+}
+
 // TestCSPHeaders_CallsNext asserts that the inner handler IS called when
 // BaseURL is valid and the 200 status propagates (D-13: always delegates on
 // success, unlike gate-style middleware).

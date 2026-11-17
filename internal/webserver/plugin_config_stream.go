@@ -15,6 +15,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+
+	"github.com/scottkw/portty/internal/capability"
 )
 
 // sseChannelBuffer is the per-subscriber buffer depth. A slow consumer
@@ -57,6 +59,14 @@ func (ws *WebServer) handleStreamPluginConfig(w http.ResponseWriter, r *http.Req
 		ws.pluginConfigMu.Unlock()
 	}()
 
+	// The stream ends at once when the cap's grant is revoked (share off):
+	// take the revoke signal, then re-check the grant before every send.
+	claims, _ := capability.ClaimsFromContext(r.Context())
+	revoked := ws.revokeSignal(claims.SID)
+	if !ws.isGrantActive(claims.SID, claims.GrantID) {
+		return
+	}
+
 	// Send the initial frame (current settings) immediately so the client
 	// can reconcile state without waiting for the next change-event.
 	// Acceptance test pins this within 250ms of connection.
@@ -72,8 +82,10 @@ func (ws *WebServer) handleStreamPluginConfig(w http.ResponseWriter, r *http.Req
 		select {
 		case <-ctx.Done():
 			return
+		case <-revoked:
+			return
 		case body, ok := <-ch:
-			if !ok || body == nil {
+			if !ok || body == nil || !ws.isGrantActive(claims.SID, claims.GrantID) {
 				return
 			}
 			if _, err := fmt.Fprintf(w, "event: plugin-config\ndata: %s\n\n", body); err != nil {

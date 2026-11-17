@@ -188,7 +188,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 			// with no code/reason). Fixed generic reason only — never a raw
 			// Go error string or a user-set session name (IN-01 convention,
 			// T-175-06-01).
-			conn.Close(websocket.StatusNormalClosure, "session ended")
+			conn.Close(websocket.StatusNormalClosure, CloseReasonSessionEnded)
 			return
 		case <-readDone:
 			return

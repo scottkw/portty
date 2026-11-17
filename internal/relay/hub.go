@@ -31,6 +31,10 @@ type Subscriber struct {
 	// Origin: "local" (relay loopback) or "web" (webserver Tailscale). Set once
 	// at subscribe time; the host-authority resize arbiter and RemoteViewerCount read it.
 	Origin string
+
+	// Kick closes the connection with the given reason (RevokeWebViewers).
+	// Called in its own goroutine; nil falls back to CloseSlow.
+	Kick func(reason string)
 }
 
 // Hub manages a single PTY session's output fan-out.
@@ -177,24 +181,17 @@ func (h *Hub) RemoteViewerCount() int {
 	return count
 }
 
-// DisconnectWebViewers force-closes every currently subscribed Origin=="web"
-// subscriber for this session's hub, leaving Origin=="local" subscribers
-// (the app's own TerminalPanel/ChatPanel/status-watcher/preview connections)
-// completely untouched (D-05, Phase 168 / FIX-02, #117).
+// RevokeWebViewers closes every currently subscribed Origin=="web"
+// subscriber with reason (via Kick, else CloseSlow), leaving Origin=="local"
+// subscribers (the app's own terminal connections) untouched (D-05, FIX-02).
+// The caller revokes the capability first (ClearGrants), so a kicked viewer
+// cannot reconnect with the same link.
 //
-// It reuses the exact same close mechanism as broadcastResize's close-on-full
-// path — go sub.CloseSlow() — rather than inventing a second termination
-// mechanism. Matching subscribers are collected into a local slice under
-// h.mu, the lock is released, and ONLY THEN is CloseSlow called per
-// subscriber. This unlock-before-IO ordering is mandatory: CloseSlow calls
-// back into Unsubscribe, which re-enters h.mu — calling CloseSlow while still
-// holding h.mu self-deadlocks (T-157-04, mirrored from broadcastResize's
-// documented hazard at hub.go:288-291/311-322).
-//
-// DisconnectWebViewers does not revoke the session's capability token — web
-// viewers may reconnect with the same link (D-06). Full access
-// revocation remains the existing "disable web sharing" path.
-func (h *Hub) DisconnectWebViewers() {
+// Matching subscribers are collected under h.mu, the lock is released, and
+// ONLY THEN is each close called. This unlock-before-IO ordering is
+// mandatory: closing calls back into Unsubscribe, which re-enters h.mu —
+// calling it while still holding h.mu self-deadlocks (T-157-04).
+func (h *Hub) RevokeWebViewers(reason string) {
 	h.mu.Lock()
 	targets := make([]*Subscriber, 0, len(h.subscribers))
 	for s := range h.subscribers {
@@ -205,7 +202,11 @@ func (h *Hub) DisconnectWebViewers() {
 	h.mu.Unlock()
 
 	for _, sub := range targets {
-		go sub.CloseSlow()
+		if sub.Kick != nil {
+			go sub.Kick(reason)
+		} else {
+			go sub.CloseSlow()
+		}
 	}
 }
 

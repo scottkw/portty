@@ -120,6 +120,14 @@ type WebServer struct {
 	// shareToken returns a shared session's link token for the peer
 	// capability route. Set once before Start via SetShareTokenProvider.
 	shareToken func(sessionID string) (string, bool)
+
+	// revokeSignals holds one channel per session, closed by ClearGrants so
+	// long-lived streams end at once on revoke. Guarded by ws.mu.
+	revokeSignals map[string]chan struct{}
+
+	// beforeSubscribeHookForTest runs just before hub.Subscribe in
+	// handleWSSRelay when non-nil. Test-only seam for the subscribe race.
+	beforeSubscribeHookForTest func()
 }
 
 // NewWebServer creates a WebServer and sets up routes.
@@ -130,6 +138,7 @@ func NewWebServer(cfg Config, manager *relay.HubManager) (*WebServer, error) {
 		manager:                 manager,
 		webEnabled:              make(map[string]bool),
 		grants:                  make(map[string]map[string]struct{}),
+		revokeSignals:           make(map[string]chan struct{}),
 		mux:                     http.NewServeMux(),
 		pluginConfigSubscribers: make(map[chan []byte]struct{}),
 	}
@@ -220,7 +229,25 @@ func (ws *WebServer) AddGrant(sessionID, grantID string) {
 func (ws *WebServer) ClearGrants(sessionID string) {
 	ws.mu.Lock()
 	delete(ws.grants, sessionID)
+	if ch, ok := ws.revokeSignals[sessionID]; ok {
+		close(ch)
+		delete(ws.revokeSignals, sessionID)
+	}
 	ws.mu.Unlock()
+}
+
+// revokeSignal returns the channel the next ClearGrants for sessionID closes.
+// Callers re-check isGrantActive after taking it: a ClearGrants that ran just
+// before is seen there, one that runs after closes the channel.
+func (ws *WebServer) revokeSignal(sessionID string) <-chan struct{} {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ch, ok := ws.revokeSignals[sessionID]
+	if !ok {
+		ch = make(chan struct{})
+		ws.revokeSignals[sessionID] = ch
+	}
+	return ch
 }
 
 // isGrantActive reports whether grantID is currently in sessionID's active
@@ -441,8 +468,9 @@ func (ws *WebServer) setupRoutes() {
 	// GET /sessions/{id} — capability-gated terminal HTML page. The old
 	// webEnabled-only pre-check is removed — requireCapability's grant-list
 	// lookup already implies web-enabled (grants are cleared on toggle-off).
+	// A failed check shows the static "Link No Longer Works" page.
 	mux.HandleFunc("GET /sessions/{id}",
-		ws.cspHeaders(ws.requireCapability(ws.handleTerminalPage)))
+		ws.cspHeaders(ws.requireCapabilityPage(ws.handleTerminalPage)))
 
 	// GET /sessions/{id}/ws — Origin allowlist + capability-gated WebSocket
 	// upgrade. Phase 88 (D-10) wraps requireAllowedOrigin OUTSIDE
@@ -760,7 +788,14 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	sub.CloseSlow = func() {
 		conn.Close(websocket.StatusPolicyViolation, "too slow")
 	}
+	// Share-off revokes with a fixed reason the clients recognise.
+	sub.Kick = func(reason string) {
+		conn.Close(websocket.StatusNormalClosure, reason)
+	}
 
+	if ws.beforeSubscribeHookForTest != nil {
+		ws.beforeSubscribeHookForTest()
+	}
 	// Subscribe FIRST — frames arrive in Msgs from now on, so the snapshot
 	// replayed below cannot leave a gap in the output stream.
 	hub.Subscribe(sub)
@@ -770,6 +805,14 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 		relay.NotifyViewerCount(hub)
 	}()
 	defer conn.CloseNow()
+
+	// Re-check after subscribing: share-off clears grants before it kicks
+	// subscribers, so a viewer that passed requireCapability just before the
+	// revoke either is kicked or sees its grant gone here (TOCTOU).
+	if !ws.isGrantActive(claims.SID, claims.GrantID) || !ws.IsSessionEnabled(sessionID) {
+		conn.Close(websocket.StatusNormalClosure, relay.CloseReasonShareStopped)
+		return
+	}
 
 	// VIEW-03: push authoritative host grid BEFORE scrollback replay so that
 	// replayed raw bytes land in a correctly-sized terminal grid. Direct conn.Write
@@ -846,7 +889,7 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 			// with no code/reason). Fixed generic reason only — never a raw
 			// Go error string or a user-set session name (IN-01 convention,
 			// T-175-06-01).
-			conn.Close(websocket.StatusNormalClosure, "session ended")
+			conn.Close(websocket.StatusNormalClosure, relay.CloseReasonSessionEnded)
 			return
 		case <-readDone:
 			return

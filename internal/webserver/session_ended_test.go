@@ -111,8 +111,8 @@ func TestSessionEnd_HubDone_CarriesCloseReason(t *testing.T) {
 		t.Errorf("close code = %v, want %v (websocket.StatusNormalClosure)",
 			closeErr.Code, websocket.StatusNormalClosure)
 	}
-	if closeErr.Reason != "session ended" {
+	if closeErr.Reason != relay.CloseReasonSessionEnded {
 		t.Errorf("close reason = %q, want %q (fixed generic reason — never a raw internal "+
-			"error string, per IN-01/T-175-02-02)", closeErr.Reason, "session ended")
+			"error string, per IN-01/T-175-02-02)", closeErr.Reason, relay.CloseReasonSessionEnded)
 	}
 }
