@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 04
 current_phase_name: One-Click Share
-status: executing
-stopped_at: Completed 04-08-PLAN.md
-last_updated: "2026-11-17T19:37:19.513Z"
+status: verifying
+stopped_at: Completed 04-09-PLAN.md
+last_updated: "2026-11-17T19:48:44.141Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 04 execution started
-state_head: bfcb1e24bcfd527a760130c5e6b5e4a19db92670
+state_head: 231ee45da5766d8939c2c452e1bcf5c754476659
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 40
-  completed_plans: 39
+  completed_plans: 40
   percent: 17
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 Phase: 04 (One-Click Share) — EXECUTING
 Plan: 9 of 9
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-17 — Phase 04 execution started
 
 Progress: [██░░░░░░░░] 17%
@@ -82,6 +82,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 4 P06 | 11min | 3 tasks | 34 files |
 | Phase 04 P07 | 11min | 3 tasks | 7 files |
 | Phase 04 P08 | 93 min | 3 tasks | 12 files |
+| Phase 04 P09 | 14 min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -179,6 +180,8 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-08: the detached daemon logs to daemon.log (0600, one rotation per start) in its config dir; viewer-diag lines on host and viewing Mac give live evidence for UAT gap 1 (M-83)
 - [Phase 04]: 04-08: proxy log errors strip the whole upstream query before redacting the raw token (redactCapTokenFromError alone left cap=<redacted>)
 - [Phase 04]: 04-08: relay.DiagID shortens session IDs for viewer-diag lines in hub, webserver and proxy
+- [Phase 04]: 04-09: share server session info returns magicDNSLabel(h.Domain), the tailnet short name, not the OS hostname, so the browser stop banner matches the GUI and CLI (UAT gap 2)
+- [Phase 04]: 04-09: user decision 2026-11-17 (UAT gap 3) Button opens when shared: with Tailscale off, shareDisabled = tailscaleOff && !activeShared; unshared stays aria-disabled, daemon still refuses share-on
 
 ### Pending Todos
 
@@ -243,6 +246,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T19:37:17.168Z
-Stopped at: Completed 04-08-PLAN.md
+Last session: 2026-11-17T19:48:42.763Z
+Stopped at: Completed 04-09-PLAN.md
 Resume file: None
