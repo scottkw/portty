@@ -3,7 +3,7 @@
 # Share removal gate for Portty Phase 4 (ROADMAP SC4; SHAR-02, SHAR-05).
 # Fails if tracked files outside .planning/, TESTING.md, vendored xterm and the
 # *_removed_test.go route pins still carry any of:
-#   - public internet sharing, its consent UI and the public-write gate
+#   - public internet sharing, its consent UI and the public wr[i]te gate
 #   - code-based access and image codes (the old image-code module included)
 #   - view-only links, or a view-only capability minted by non-test Go
 #   - the LAN server and its password
@@ -16,7 +16,7 @@
 # Kept on purpose: the capability write-perm check (relay.Subscriber.ReadOnly
 # from HasPerm(claims.Perms, "write")) is the security model, not a link feature,
 # so the view-only patterns leave capabilities and viewers alone. A class field
-# that happens to be named after the write method is not the public-write gate.
+# that happens to be named after the write method is not that gate.
 #
 # Every pattern spells its word with one letter in a bracket class, and removed
 # paths are split literals, so this script never matches its own text.
