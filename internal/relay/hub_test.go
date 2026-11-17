@@ -834,3 +834,41 @@ func TestHub_TwoWebOriginSubscribers_NoEviction(t *testing.T) {
 
 	ptyWriter.Close()
 }
+
+// TestReconnectPreamble_StripsTerminalQueries (UAT gap 1, H-replies): a joining
+// terminal answers the historic queries in a raw catch-up replay, and those
+// answers would be typed into the shared shell. The preamble keeps text and
+// every state-changing sequence and drops every reply-eliciting query.
+func TestReconnectPreamble_StripsTerminalQueries(t *testing.T) {
+	r, w := io.Pipe()
+	hub := NewHub("preamble-strip-queries-test", r, w, DefaultScrollbackBytes, nil)
+	done := make(chan struct{})
+	go func() { hub.Run(); close(done) }()
+	defer func() { _ = w.Close(); <-done }()
+
+	keep := []string{"\x1b[?1049h", "\x1b[?2004h", "\x1b[31m"} // alt screen, bracketed paste, colour
+	queries := []string{
+		"\x1b[6n",       // DSR
+		"\x1b[>c",       // DA2
+		"\x1b[?2026$p",  // DECRQM
+		"\x1b[>0q",      // XTVERSION
+		"\x1b[?u",       // kitty keyboard query
+		"\x1b]11;?\x07", // OSC 11 background query
+	}
+	var payload, want []byte
+	for i, q := range queries {
+		text := "line " + string(rune('A'+i)) + "\r\n"
+		k := keep[i%len(keep)]
+		payload = append(payload, text+k+q...)
+		want = append(want, text+k...)
+	}
+	if _, err := w.Write(payload); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	testutil.WaitFor(t, 2*time.Second, func() bool { return len(hub.ScrollbackSnapshot()) > len(payload) }, "scrollback never populated")
+	hub.EnsureLiveEmulator()
+
+	if got := hub.ReconnectPreamble(); string(got) != string(MakeOutputFrame(want)) {
+		t.Errorf("preamble = %q; want %q (text and mode sets kept, queries dropped)", got, MakeOutputFrame(want))
+	}
+}
