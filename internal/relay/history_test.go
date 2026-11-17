@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -169,4 +170,138 @@ func TestFullReplay_IntactRingUnchanged(t *testing.T) {
 	if got := fullReplay(t, hub); !bytes.Equal(got, want) {
 		t.Errorf("intact-ring full replay changed (#109): got %d bytes, want %d", len(got), len(want))
 	}
+}
+
+// zshClear is what zsh `clear` emits; Claude Code's /clear sends the same ED3.
+const zshClear = "\x1b[H\x1b[2J\x1b[3J"
+
+func TestHistory_ED3Clears(t *testing.T) {
+	hub, w := historyHub(t)
+	emitLines(t, hub, w, 1, 12000)
+	emit(t, hub, w, zshClear+"% ")
+	if tags := lineTags(fullReplay(t, hub)); len(tags) != 0 {
+		t.Errorf("ESC[3J left %d LINE tags in the replay (first %d)", len(tags), tags[0])
+	}
+
+	// The J handler must survive the resize rebuild (Pitfall 12).
+	hub, w = historyHub(t)
+	emitLines(t, hub, w, 1, 12000)
+	resizeHub(t, hub, 100, 30)
+	emitLines(t, hub, w, 12001, 12100)
+	emit(t, hub, w, zshClear+"% ")
+	if tags := lineTags(fullReplay(t, hub)); len(tags) != 0 {
+		t.Errorf("ESC[3J after a resize rebuild left %d LINE tags (first %d)", len(tags), tags[0])
+	}
+}
+
+func TestHistory_RISClears(t *testing.T) {
+	hub, w := historyHub(t)
+	emitLines(t, hub, w, 1, 12000)
+	emit(t, hub, w, "\x1bc% ")
+	if tags := lineTags(fullReplay(t, hub)); len(tags) != 0 {
+		t.Errorf("RIS left %d LINE tags in the replay (first %d)", len(tags), tags[0])
+	}
+}
+
+func TestHistory_SurvivesResize(t *testing.T) {
+	hub, w := historyHub(t)
+	emitLines(t, hub, w, 1, 12000)
+	resizeHub(t, hub, 100, 30)
+	emit(t, hub, w, "% ")
+	tags := lineTags(fullReplay(t, hub))
+	if len(tags) < HistoryMaxLines-30 {
+		t.Fatalf("after a resize the replay carries %d LINE tags, want about %d", len(tags), HistoryMaxLines)
+	}
+	for i := 1; i < len(tags); i++ {
+		if tags[i] != tags[i-1]+1 {
+			t.Fatalf("LINE tags not consecutive at %d: %d then %d", i, tags[i-1], tags[i])
+		}
+	}
+	// LINE-011978..LINE-012000 were on screen at resize time, never scrolled.
+	if last := tags[len(tags)-1]; last != 12000 {
+		t.Errorf("rows visible at resize time missing from history: last LINE tag %d, want 12000", last)
+	}
+}
+
+var cupRE = regexp.MustCompile(`\x1b\[\d+;\d+H`)
+
+// afterCUP returns what follows the last CUP in the replay: the mode restores.
+func afterCUP(t *testing.T, p []byte) string {
+	t.Helper()
+	locs := cupRE.FindAllIndex(p, -1)
+	if len(locs) == 0 {
+		t.Fatalf("no CUP in replay tail %q", p[max(0, len(p)-60):])
+	}
+	return string(p[locs[len(locs)-1][1]:])
+}
+
+func TestFullReplay_ModeRestores(t *testing.T) {
+	hub, w := historyHub(t)
+	emit(t, hub, w, "\x1b[?2004h\x1b[?1h\x1b[?25l\x1b[?1049h\x1b[?1049l\x1b[?2048h")
+	emitLines(t, hub, w, 1, 12000)
+	want := "\x1b[?1h\x1b[?25l\x1b[?2004h"
+	if got := afterCUP(t, fullReplay(t, hub)); got != want {
+		t.Errorf("mode restores %q, want %q (ascending, no 2048/1047/1049/47)", got, want)
+	}
+
+	resizeHub(t, hub, 100, 30)
+	emit(t, hub, w, "% ")
+	if got := afterCUP(t, fullReplay(t, hub)); got != want {
+		t.Errorf("after a resize rebuild, mode restores %q, want %q", got, want)
+	}
+}
+
+func TestFullReplay_AltScreenOrder(t *testing.T) {
+	hub, w := historyHub(t)
+	emitLines(t, hub, w, 1, 12000)
+	emit(t, hub, w, "\x1b[?2004h\x1b[?1049hALT-ROW-1\r\nALT-ROW-2")
+	p := string(fullReplay(t, hub))
+
+	i := strings.Index(p, altScreenEnterSeq)
+	if i < 0 {
+		t.Fatalf("no %q in alt-screen replay", altScreenEnterSeq)
+	}
+	hist := p[:i]
+	if !strings.HasSuffix(hist, "\r\n") || !strings.Contains(hist[max(0, len(hist)-40):], "LINE-011977") {
+		t.Errorf("replay before ESC[?1049h should end with the last history line and CRLF: %q", hist[max(0, len(hist)-40):])
+	}
+	wantTail := "\x1b[2;10H\x1b[?2004h"
+	if !strings.HasSuffix(p, wantTail) {
+		t.Fatalf("alt replay should end with CUP then restores %q: tail %q", wantTail, p[max(0, len(p)-40):])
+	}
+	rows := strings.Split(strings.TrimSuffix(p[i+len(altScreenEnterSeq):], wantTail), "\r\n")
+	if len(rows) != 24 || rows[0] != "ALT-ROW-1" || rows[1] != "ALT-ROW-2" {
+		t.Errorf("alt rows: %d rows, first %q", len(rows), rows[:min(2, len(rows))])
+	}
+}
+
+// TestHistory_HeapBoundAfterBurst guards RESEARCH Pitfall 2: one emulator write
+// of 9,000 lines must not leave the scrolled uv.Lines reachable.
+func TestHistory_HeapBoundAfterBurst(t *testing.T) {
+	hub := NewHub("heap-burst", nil, nil, DefaultScrollbackBytes, nil)
+	var b strings.Builder
+	for i := range 9000 {
+		fmt.Fprintf(&b, "H%06d %s\r\n", i, strings.Repeat("z", 99))
+	}
+	data := []byte(b.String())
+	frame := MakeOutputFrame(data)
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	hub.emuMu.Lock()
+	hub.recordFrameLocked(frame, data)
+	n := hub.history.Len()
+	hub.emuMu.Unlock()
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+
+	if n < 8900 {
+		t.Fatalf("history holds %d lines after the burst, want about 9000 (drain did not run)", n)
+	}
+	if growth := int64(after.HeapAlloc) - int64(before.HeapAlloc); growth > 32<<20 {
+		t.Errorf("heap grew %d MiB after a 9,000-line burst, want under 32 MiB", growth>>20)
+	}
+	runtime.KeepAlive(hub)
+	runtime.KeepAlive(frame)
 }
