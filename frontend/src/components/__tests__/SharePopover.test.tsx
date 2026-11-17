@@ -20,6 +20,7 @@ import { GetSessionShare, SetSessionShared, HasCTDisclosure } from '../../wailsj
 import { ClipboardSetText } from '../../wailsjs/wailsjs/runtime/runtime'
 import { SharePopover, type SharePopoverProps } from '../SharePopover'
 import { TAILSCALE_OFF_REASON } from '../../lib/tailscale'
+import { menuShareError, menuStopError, shareStopError } from '../../lib/shareCopy'
 
 const URL = 'https://office-air.tail1234.ts.net/sessions/s1?cap=TOKEN'
 const off = { shared: false, url: '', firstShare: false, errorCode: '', errorDetail: '' }
@@ -203,6 +204,25 @@ describe('SharePopover: turning Share on', () => {
     expect(q('.share-popover__error')!.textContent).toBe(
       "Couldn't start sharing: port 8443 is in use. Check that Tailscale is connected, then try again.",
     )
+  })
+})
+
+describe('SharePopover: error detail', () => {
+  it('a thrown Error loses its "Error: " prefix and its own trailing period', async () => {
+    vi.mocked(SetSessionShared).mockRejectedValue(new Error('dial tcp 100.64.0.1:443: connect: connection refused.'))
+    await render()
+    await click(sw())
+    expect(q('.share-popover__error')!.textContent).toBe(
+      "Couldn't start sharing: dial tcp 100.64.0.1:443: connect: connection refused. Check that Tailscale is connected, then try again.",
+    )
+  })
+
+  it('the stop error and both menu banners clean the detail the same way', () => {
+    expect(shareStopError('Error: daemon not connected.')).toBe("Couldn't stop sharing: daemon not connected. Try again.")
+    expect(menuShareError('build', 'Error: port 8443 is in use.')).toBe(
+      "Couldn't share “build”: port 8443 is in use. Check that Tailscale is connected, then try again.",
+    )
+    expect(menuStopError('build', 'daemon not connected..')).toBe("Couldn't stop sharing “build”: daemon not connected. Try again.")
   })
 })
 

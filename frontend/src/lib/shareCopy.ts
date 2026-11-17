@@ -15,21 +15,27 @@ export function shareCtLine(domain: string): string {
   return `The first share gets an HTTPS certificate for ${domain}. That name is published in public Certificate Transparency logs.`
 }
 
+// A thrown Error stringifies as "Error: …" and the detail often ends with its own
+// period; strip both so the fixed sentence reads "…: <detail>. Check…".
+function clean(detail: string): string {
+  return detail.trim().replace(/^Error:\s*/, '').replace(/\.+$/, '')
+}
+
 export function shareStartError(code: string, detail: string): string {
   if (code === 'https_off') {
     return "Couldn't start sharing: HTTPS certificates are off for your tailnet. Turn on HTTPS on the DNS page of the Tailscale admin console, then try again."
   }
-  return `Couldn't start sharing: ${detail}. Check that Tailscale is connected, then try again.`
+  return `Couldn't start sharing: ${clean(detail)}. Check that Tailscale is connected, then try again.`
 }
 
 export function shareStopError(detail: string): string {
-  return `Couldn't stop sharing: ${detail}. Try again.`
+  return `Couldn't stop sharing: ${clean(detail)}. Try again.`
 }
 
 export function menuShareError(name: string, detail: string): string {
-  return `Couldn't share “${name}”: ${detail}. Check that Tailscale is connected, then try again.`
+  return `Couldn't share “${name}”: ${clean(detail)}. Check that Tailscale is connected, then try again.`
 }
 
 export function menuStopError(name: string, detail: string): string {
-  return `Couldn't stop sharing “${name}”: ${detail}. Try again.`
+  return `Couldn't stop sharing “${name}”: ${clean(detail)}. Try again.`
 }
