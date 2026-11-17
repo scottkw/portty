@@ -9,11 +9,11 @@ package daemon
 // 127.0.0.1:<relayPort> — never the peer — so the daemon must proxy.
 //
 // This file adds GET /api/relay/remote/{sessionID}/ws on the relay loopback
-// surface (mounted in relay_remote_files.go alongside the file-proxy routes). It
-// mirrors the remote-files proxy exactly: look up the Phase 122 cap from the
-// RemoteCapStore, dial the peer's already-cap-gated wss://<baseURL>/sessions/
-// {sid}/ws?cap=T using the same InsecureSkipVerify tailnet transport
-// (remoteFilesClient()), and copy opaque WS frames both ways. The cap stays
+// surface. It looks up the cap /peers/connect stored in the RemoteCapStore,
+// dials the peer's already-cap-gated wss://<baseURL>/sessions/{sid}/ws?cap=T
+// through the same verified peer client /peers/connect used (peerClient: the
+// stored Tailscale IP, certificate checked against the baseURL host), and
+// copies opaque WS frames both ways. The cap stays
 // server-side: the webview's URL carries NO cap (T-134-06-03 info-disclosure).
 //
 // Critical correctness gotchas (134-RESEARCH Pitfalls 1 & 4):
@@ -52,7 +52,7 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	// Cap lookup BEFORE the upgrade so the no-cap path returns the same JSON 404
 	// contract as proxyRemoteFiles (the frontend treats this marker as "no cap
 	// held"). A bare route-miss would be Go's "404 page not found".
-	baseURL, capToken, ok := a.remoteCaps.Get(sid)
+	baseURL, ip, capToken, ok := a.remoteCaps.Get(sid)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no cap registered for session"})
 		return
@@ -85,14 +85,14 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	// 3. Dial the peer with a BOUNDED dial context (10s) but the long-lived
 	//    request context as its parent. CRITICAL (Pitfall 1): inject
 	//    Origin: <baseURL> — the peer's requireAllowedOrigin rejects an empty
-	//    Origin, which a Go WS dialer would otherwise send. Reuse the existing
-	//    InsecureSkipVerify tailnet transport (do NOT build a new client).
+	//    Origin, which a Go WS dialer would otherwise send. Use the verified
+	//    peer client (stored IP, certificate checked against the base URL host).
 	dialCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	hdr := http.Header{}
 	hdr.Set("Origin", strings.TrimRight(baseURL, "/")) // byte-exact match to the peer's BaseURL()
 	upstream, _, derr := websocket.Dial(dialCtx, u.String(), &websocket.DialOptions{
-		HTTPClient: a.remoteFilesClient(),
+		HTTPClient: a.peerClient(u.Hostname(), ip),
 		HTTPHeader: hdr,
 	})
 	if derr != nil {

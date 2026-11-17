@@ -2,7 +2,7 @@ package daemon
 
 // Phase 122-01 — Remote capability store.
 //
-// RemoteCapStore caches per-session (baseURL, capToken) tuples the local
+// RemoteCapStore caches per-session (baseURL, peerIP, capToken) tuples the local
 // daemon uses to open a remote session (open-url) and to reach a remote
 // peer's webserver through the remote terminal WS proxy. The store lives in process memory only — there is no disk
 // persistence. A daemon restart wipes the cache and the GUI must deposit the
@@ -19,12 +19,13 @@ import (
 	"sync"
 )
 
-// remoteCapEntry is the per-session (baseURL, capToken) tuple. baseURL is the
+// remoteCapEntry is the per-session tuple. baseURL is the
 // scheme://host[:port] root of the remote peer's webserver (no trailing slash);
-// capToken is the opaque HMAC-signed capability the remote webserver issued
-// (the cap deposited for a remote session).
+// peerIP is the Tailscale IP the verified peer client dials (CR-02); capToken
+// is the opaque HMAC-signed capability the remote webserver issued.
 type remoteCapEntry struct {
 	baseURL  string
+	peerIP   string
 	capToken string
 }
 
@@ -46,7 +47,7 @@ func NewRemoteCapStore() *RemoteCapStore {
 	return &RemoteCapStore{entries: make(map[string]remoteCapEntry)}
 }
 
-// Put deposits (baseURL, capToken) for sessionID, overwriting any prior entry
+// Put deposits (baseURL, peerIP, capToken) for sessionID, overwriting any prior entry
 // for the same sessionID. Empty inputs are rejected with an explicit error
 // rather than silently no-op'd, so POST /peers/connect
 // reports a failure instead of storing a bad entry (Pitfall 4).
@@ -55,10 +56,9 @@ func NewRemoteCapStore() *RemoteCapStore {
 // host at deposit time. This prevents proxyRemoteFiles from receiving a
 // malformed or non-https baseURL and failing later with a 500 when building
 // the upstream request. Rejecting here returns a clean 400 at deposit time.
-// The tailnet self-signed cert pattern (InsecureSkipVerify) only applies to
-// TLS handshake verification, not to the URL scheme itself; http:// is still
-// rejected to prevent accidental cleartext transmission of the cap token.
-func (s *RemoteCapStore) Put(sessionID, baseURL, capToken string) error {
+// http:// is rejected to prevent cleartext transmission of the cap token.
+// peerIP may be empty (tests); the verified peer client then fails every dial.
+func (s *RemoteCapStore) Put(sessionID, baseURL, peerIP, capToken string) error {
 	if sessionID == "" {
 		return errors.New("remote caps: sessionID required")
 	}
@@ -80,21 +80,21 @@ func (s *RemoteCapStore) Put(sessionID, baseURL, capToken string) error {
 		return errors.New("remote caps: baseURL must have a non-empty host")
 	}
 	s.mu.Lock()
-	s.entries[sessionID] = remoteCapEntry{baseURL: baseURL, capToken: capToken}
+	s.entries[sessionID] = remoteCapEntry{baseURL: baseURL, peerIP: peerIP, capToken: capToken}
 	s.mu.Unlock()
 	return nil
 }
 
-// Get returns the (baseURL, capToken, true) tuple for sessionID, or
-// ("", "", false) if no entry exists. Safe for concurrent readers via RWMutex.
-func (s *RemoteCapStore) Get(sessionID string) (baseURL, capToken string, ok bool) {
+// Get returns the (baseURL, peerIP, capToken, true) tuple for sessionID, or
+// zero values and false if no entry exists. Safe for concurrent readers.
+func (s *RemoteCapStore) Get(sessionID string) (baseURL, peerIP, capToken string, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	e, ok := s.entries[sessionID]
 	if !ok {
-		return "", "", false
+		return "", "", "", false
 	}
-	return e.baseURL, e.capToken, true
+	return e.baseURL, e.peerIP, e.capToken, true
 }
 
 // Delete removes the entry for sessionID. A subsequent Get returns (_, _, false).

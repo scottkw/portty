@@ -12,17 +12,17 @@ func TestRemoteCapStore_NewIsEmpty(t *testing.T) {
 	if s == nil {
 		t.Fatal("NewRemoteCapStore returned nil")
 	}
-	if _, _, ok := s.Get("anything"); ok {
+	if _, _, _, ok := s.Get("anything"); ok {
 		t.Fatalf("freshly constructed store should be empty")
 	}
 }
 
 func TestRemoteCapStore_PutThenGet(t *testing.T) {
 	s := NewRemoteCapStore()
-	if err := s.Put("sid-1", "https://peer.example", "tok-abc"); err != nil {
+	if err := s.Put("sid-1", "https://peer.example", "", "tok-abc"); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	base, tok, ok := s.Get("sid-1")
+	base, _, tok, ok := s.Get("sid-1")
 	if !ok {
 		t.Fatal("Get returned ok=false after Put")
 	}
@@ -33,7 +33,7 @@ func TestRemoteCapStore_PutThenGet(t *testing.T) {
 
 func TestRemoteCapStore_GetUnknown(t *testing.T) {
 	s := NewRemoteCapStore()
-	base, tok, ok := s.Get("unknown")
+	base, _, tok, ok := s.Get("unknown")
 	if ok || base != "" || tok != "" {
 		t.Fatalf("Get(unknown) = (%q, %q, %v); want (\"\", \"\", false)", base, tok, ok)
 	}
@@ -41,11 +41,11 @@ func TestRemoteCapStore_GetUnknown(t *testing.T) {
 
 func TestRemoteCapStore_PutOverwrites(t *testing.T) {
 	s := NewRemoteCapStore()
-	_ = s.Put("sid-1", "https://old.example", "tok-old")
-	if err := s.Put("sid-1", "https://new.example", "tok-new"); err != nil {
+	_ = s.Put("sid-1", "https://old.example", "", "tok-old")
+	if err := s.Put("sid-1", "https://new.example", "", "tok-new"); err != nil {
 		t.Fatalf("Put overwrite: %v", err)
 	}
-	base, tok, _ := s.Get("sid-1")
+	base, _, tok, _ := s.Get("sid-1")
 	if base != "https://new.example" || tok != "tok-new" {
 		t.Fatalf("overwrite: got (%q, %q); want new values", base, tok)
 	}
@@ -53,9 +53,9 @@ func TestRemoteCapStore_PutOverwrites(t *testing.T) {
 
 func TestRemoteCapStore_Delete(t *testing.T) {
 	s := NewRemoteCapStore()
-	_ = s.Put("sid-1", "https://peer.example", "tok-abc")
+	_ = s.Put("sid-1", "https://peer.example", "", "tok-abc")
 	s.Delete("sid-1")
-	if _, _, ok := s.Get("sid-1"); ok {
+	if _, _, _, ok := s.Get("sid-1"); ok {
 		t.Fatal("Get after Delete returned ok=true")
 	}
 	// Deleting an unknown sessionID should be a no-op (no panic).
@@ -71,12 +71,12 @@ func TestRemoteCapStore_ConcurrentPutGet(t *testing.T) {
 		wg.Add(2)
 		go func(i int) {
 			defer wg.Done()
-			_ = s.Put("sid", "https://peer.example", "tok")
+			_ = s.Put("sid", "https://peer.example", "", "tok")
 			_ = i
 		}(i)
 		go func(i int) {
 			defer wg.Done()
-			_, _, _ = s.Get("sid")
+			_, _, _, _ = s.Get("sid")
 			_ = i
 		}(i)
 	}
@@ -94,7 +94,7 @@ func TestRemoteCapStore_PutRejectsEmpty(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if err := s.Put(c.sid, c.base, c.tok); err == nil {
+			if err := s.Put(c.sid, c.base, "", c.tok); err == nil {
 				t.Fatal("expected error from Put with empty input; got nil")
 			}
 		})
@@ -117,7 +117,7 @@ func TestRemoteCapStore_PutRejectsMalformedBaseURL(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := s.Put("sid", c.baseURL, "tok-abc")
+			err := s.Put("sid", c.baseURL, "", "tok-abc")
 			if err == nil {
 				t.Fatalf("Put(%q): expected error for invalid baseURL; got nil", c.baseURL)
 			}
@@ -139,7 +139,7 @@ func TestRemoteCapStore_PutAcceptsValidHTTPS(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if err := s.Put("sid-"+c.name, c.baseURL, "tok-abc"); err != nil {
+			if err := s.Put("sid-"+c.name, c.baseURL, "", "tok-abc"); err != nil {
 				t.Fatalf("Put(%q): unexpected error: %v", c.baseURL, err)
 			}
 		})

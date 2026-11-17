@@ -34,14 +34,14 @@ import (
 const fixtureCap = "FIXTURE_CAP"
 
 // newDaemonAPIWithUpstreamCert constructs a daemon API with a tempdir configDir
-// and injects the upstream's self-signed cert via SetRemoteFilesClientForTest
+// and injects the upstream's self-signed cert via SetPeerClientForTest
 // so the proxy's outbound HTTPS/WSS dials succeed.
 func newDaemonAPIWithUpstreamCert(t *testing.T, upstream *httptest.Server) *daemon.API {
 	t.Helper()
 	engine := daemon.NewSessionEngine()
 	engine.ConfigDirForTest(t.TempDir())
 	api := daemon.NewAPI(engine)
-	api.SetRemoteFilesClientForTest(upstream.Client())
+	api.SetPeerClientForTest(upstream.Client())
 	return api
 }
 

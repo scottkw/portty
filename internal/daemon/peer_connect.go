@@ -3,7 +3,8 @@ package daemon
 // POST /peers/connect: the one path the CLI and the GUI use to reach a session
 // shared from another Mac on the same Tailscale account. It resolves the host from
 // tailscaled's own peer list, builds the base URL from that peer's DNS name (never
-// a URL the peer supplied), reads the shared sessions and the share's capability
+// a URL the peer supplied), dials the peer's Tailscale IP with the certificate
+// verified against that name (peer_client.go), reads the shared sessions and the share's capability
 // through the host's WhoIs-gated peer routes, and stores the capability in
 // RemoteCapStore so the relay WS proxy can attach. No code or token is pasted.
 
@@ -135,7 +136,8 @@ func (a *API) handlePeerConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	host := peerShortName(peer)
 	baseURL := a.peerBaseURL(peer)
-	client := a.remoteFilesClient()
+	ip := peerIP(peer)
+	client := a.peerClient(strings.TrimSuffix(peer.DNSName, "."), ip)
 
 	shared, status, ferr := tailnet.FetchPeerSessionsMetaWithClient(ctx, baseURL, client)
 	switch {
@@ -173,7 +175,7 @@ func (a *API) handlePeerConnect(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, PeerConnectErrorResponse{Error: PeerErrUnreachable, Detail: host})
 		return
 	}
-	if err := a.remoteCaps.Put(sess.ID, baseURL, capToken); err != nil {
+	if err := a.remoteCaps.Put(sess.ID, baseURL, ip, capToken); err != nil {
 		log.Printf("peers/connect: store cap for %s: %s", host, redactCapTokenFromError(err, capToken))
 		writeJSON(w, http.StatusBadGateway, PeerConnectErrorResponse{Error: PeerErrUnreachable, Detail: host})
 		return

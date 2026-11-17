@@ -51,12 +51,10 @@ type API struct {
 	// daemon restart wipes the cache (Phase 122-01 / REMOTE-01).
 	remoteCaps *RemoteCapStore
 
-	// remoteFilesClientForTest, when non-nil, overrides the outbound HTTPS
-	// client used by the remote terminal WS proxy. Tests inject httptest.NewTLSServer's
-	// Client() here so they can drive the proxy without setting up a real
-	// trusted-cert chain. Production code leaves this nil and the proxy
-	// builds a fresh client per request via newRemoteFilesHTTPClient().
-	remoteFilesClientForTest *http.Client
+	// peerClientForTest, when non-nil, replaces the verified per-peer client
+	// (peer_client.go) for /peers/connect and the remote terminal WS proxy.
+	// Tests inject httptest.NewTLSServer's Client(); production leaves it nil.
+	peerClientForTest *http.Client
 
 	// Peer connect seams (peer_connect.go), copied from package defaults in
 	// NewAPI; tests replace them with SetPeerSeamsForTest.
@@ -132,15 +130,12 @@ func (a *API) Handler() http.Handler {
 	return a.mux
 }
 
-// SetRemoteFilesClientForTest overrides the daemon's outbound HTTPS client
-// used by the remote terminal WS proxy with the supplied client.
-// Test-only — wraps the unexported remoteFilesClientForTest field so that
-// external test packages can inject httptest.NewTLSServer's Client() and
-// have the proxy trust the upstream's self-signed certificate. Production
-// code must never call this; the field stays nil and remoteFilesClient
-// builds a fresh client per request via newRemoteFilesHTTPClient.
-func (a *API) SetRemoteFilesClientForTest(c *http.Client) {
-	a.remoteFilesClientForTest = c
+// SetPeerClientForTest replaces the verified per-peer HTTPS client used by
+// /peers/connect and the remote terminal WS proxy. Test-only: external test
+// packages inject httptest.NewTLSServer's Client() so the daemon trusts the
+// fake peer's self-signed certificate. Production code must never call this.
+func (a *API) SetPeerClientForTest(c *http.Client) {
+	a.peerClientForTest = c
 }
 
 // BootstrapCapabilityState loads or generates the HMAC signing key (D-04).

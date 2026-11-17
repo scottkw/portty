@@ -61,8 +61,8 @@ type sessionListItem struct {
 }
 
 // WebServer serves the Portty dashboard and relays terminal I/O over WSS to
-// remote browser clients. Access control is provided at the network level by
-// Tailscale — no application-layer authentication is required.
+// remote browser clients. It listens on the tailnet only; every session route
+// also needs a capability token, and the peer routes a same-user WhoIs check.
 type WebServer struct {
 	config  Config
 	manager *relay.HubManager

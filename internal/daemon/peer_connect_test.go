@@ -68,7 +68,7 @@ func newConnectEnv(t *testing.T, shared ...tailnet.ShareableSessionMeta) *connec
 	engine := daemon.NewSessionEngine()
 	engine.ConfigDirForTest(t.TempDir())
 	api := daemon.NewAPI(engine)
-	api.SetRemoteFilesClientForTest(peer.Client())
+	api.SetPeerClientForTest(peer.Client())
 	api.SetPeerSeamsForTest(
 		func(context.Context) ([]tailnet.Peer, error) { return []tailnet.Peer{officeAir}, nil },
 		func(context.Context) []tailnet.Peer {

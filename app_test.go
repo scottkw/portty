@@ -463,7 +463,7 @@ func TestConnectPeerSession(t *testing.T) {
 	}))
 	defer peer.Close()
 	api, client := testShareSetup(t)
-	api.SetRemoteFilesClientForTest(peer.Client())
+	api.SetPeerClientForTest(peer.Client())
 	api.SetPeerSeamsForTest(
 		func(context.Context) ([]tailnet.Peer, error) {
 			return []tailnet.Peer{{Hostname: "Office", DNSName: "office-air.tail1.ts.net.", Online: true}}, nil
