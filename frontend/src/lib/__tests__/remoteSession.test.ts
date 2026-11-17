@@ -6,7 +6,6 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  remoteBaseURLFor,
   findRemoteSession,
   isRemoteSessionId,
 } from '../remoteSession'
@@ -44,30 +43,6 @@ const peers: RemotePeerSessions[] = [
     ],
   },
 ]
-
-describe('remoteBaseURLFor', () => {
-  it('drops the /sessions/{id} suffix via URL.origin', () => {
-    expect(
-      remoteBaseURLFor({
-        url: 'https://hub-a.tailnet.ts.net:9443/sessions/abc',
-      }),
-    ).toBe('https://hub-a.tailnet.ts.net:9443')
-  })
-
-  it('also drops query strings and fragments', () => {
-    expect(
-      remoteBaseURLFor({
-        url: 'https://hub-a.tailnet.ts.net:9443/sessions/abc?x=1#frag',
-      }),
-    ).toBe('https://hub-a.tailnet.ts.net:9443')
-  })
-
-  it('preserves the explicit port', () => {
-    expect(remoteBaseURLFor({ url: 'https://h.example:7444/sessions/x' })).toBe(
-      'https://h.example:7444',
-    )
-  })
-})
 
 describe('findRemoteSession', () => {
   it('finds a session in the first peer with hostname enriched', () => {

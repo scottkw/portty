@@ -69,7 +69,6 @@ export interface RemoteSession {
   name: string
   status: string
   url: string
-  // broadcast join-code fields REMOVED — D-10: discovery carries no codes (out-of-band design)
 }
 
 export interface RemotePeerSessions {
@@ -79,17 +78,11 @@ export interface RemotePeerSessions {
   sessions: RemoteSession[]
 }
 
-export function GetRemoteSessions(): Promise<RemotePeerSessions[]>
-// Phase 130 — replaces GetRemoteSessions at the peers-poll site in App.tsx.
+// Phase 130 — the sidebar peer poll in App.tsx.
 // Returns ALL probed peers (including unreachable + zero-session ones) so the
 // Remote Sessions panel can render honest per-peer states (RB-01, RB-04).
 export function GetRemoteSessionsWithMeta(): Promise<RemotePeerSessions[]>
 
-// Phase 122-03 — remote-session file-browse join-code exchange + cap deposit.
-export function ExchangeJoinCodeAtURL(remoteBaseURL: string, code: string): Promise<string>
-export function RegisterRemoteCap(sessionID: string, baseURL: string, capToken: string): Promise<void>
-// Phase 146-05 — held-cap reuse: read cap-bearing open URL from daemon RemoteCapStore.
-export function OpenRemoteSessionURL(sessionID: string): Promise<string>
 // Portty 02-10 — NET-01 banner action: open -a Tailscale, else the download page.
 export function OpenTailscale(): Promise<void>
 

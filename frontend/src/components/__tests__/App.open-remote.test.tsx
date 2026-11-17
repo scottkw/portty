@@ -1,64 +1,146 @@
-// Phase 146-05 additions (GAP-146-A gap closure):
-//   - WR-02 held-cap reuse behavior tests (source-inspection of the held-cap branch)
-//   - WR-01 SID-correct fallback test (no hand-built ?cap= in open-session branch)
-//   - WR-03 error-copy behavior test (mapErrorMessage for not-found → used/expired)
+// Portty 04-06 — opening a peer session from the sidebar (SHAR-01, SHAR-04).
 //
-// These tests fail against the Phase 146 Plans 01-04 code base and go GREEN
-// when Plan 05 adds the held-cap reuse path, WR-01 URL fix, and WR-03 copy.
+// A peer row opens (or activates) its '<host> › <session>' tab at once through
+// ConnectPeerSession; there is no dialog and no code. A failed connect keeps the
+// tab open with a warning banner, and clicking the row again retries. When the
+// host stops sharing, the row disappears at once.
 //
-// Phase 168-03 (FIX-03, #118) additions — D-17 REVERSES the Phase 146 external-
-// browser design. Opening a remote session now opens an in-app web-session tab
-// (openWebSessionTab) instead of BrowserOpenURL. The held-cap and modal-exchange
-// branches still call OpenRemoteSessionURL to get the daemon-composed, SID-correct
-// cap-bearing URL (WR-01 protection preserved) — but the URL is now PARSED
-// (origin -> baseURL, ?cap= -> capToken) and handed to openWebSessionTab instead
-// of BrowserOpenURL. These tests fail against the pre-168-03 code base (which still
-// calls BrowserOpenURL) and go GREEN once the in-app reroute lands.
-
-// Wave 0 RED tests for Phase 146 FIX-03 — out-of-band open contract (REDESIGNED).
-//
-// This file replaces the broadcast-era tests that validated the now-rejected
-// ExchangeJoinCodeAtURL-directly / isPeerSelf / rwJoinCode flow. See CONTEXT.md
-// D-02/D-04/D-09..D-12 and superseded-broadcast/README.md.
-//
-// The new contract:
-//   - handleOpenRemoteSession: opens RemoteJoinCodeModal (via setJoinModalForSession)
-//     when the viewer has no held cap — does NOT call ExchangeJoinCodeAtURL directly.
-//   - handleModalExchange: has an 'open-session' branch that builds
-//     /sessions/{id}?cap= URL and calls BrowserOpenURL after exchange.
-//   - Dead code removed: isPeerSelf and rwJoinCode selection logic are gone (D-06/WR-01).
-//   - Behavior assertion: a remote session's open entry point (since Portty 02-04,
-//     a sidebar peer row) is NOT disabled and clicking it calls the open handler with
-//     the session object — exercises the actual open entry point rather than
-//     inspecting source in isolation.
-//
-// Source-inspection tests use the App.tsx?raw import pattern (established by
-// App.fileBrowserMode.test.tsx and App.wiring.test.tsx). Behavior tests render
-// the Sidebar with a peer fixture.
+// Behavior tests mount the real App with the Wails bridge faked (appHarness) and
+// WebShareSessionView stubbed (no xterm in jsdom). The stub exposes the props App
+// passes and a button that fires onShareStopped.
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 
-// Source-inspection via App.tsx?raw (established pattern — no Wails mock needed).
 import raw from '../../App.tsx?raw'
-
-import { RemoteJoinCodeModal } from '../RemoteJoinCodeModal'
-
-// Portty 02-04: GUI remote attach moved from the Hub remote cards to sidebar peer rows.
 import { Sidebar } from '../Sidebar'
 import { peerView } from '../../lib/sidebarPeers'
 import { adaptRemoteSession } from '../../lib/remoteAdapter'
 import type { RemotePeerSessions } from '../../lib/remoteSession'
+import { mountApp, unmountApp, flush } from './appHarness'
 
-// Peer fixture: discovery carries no join codes (out-of-band design).
+vi.mock('../WebShareSessionView', () => ({
+  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void }) =>
+    React.createElement('div', {
+      'data-testid': 'web-session-view',
+      'data-session': p.sessionId,
+      'data-base': p.baseURL ?? '',
+      'data-cap': p.capToken,
+      'data-host': p.hostLabel ?? '',
+      'data-remote': String(p.remote),
+    }, React.createElement('button', { type: 'button', 'data-testid': 'fire-share-stopped', onClick: () => p.onShareStopped?.() })),
+}))
+
 const remotePeer: RemotePeerSessions = {
-  hostname: 'remote.host.ts.net',
+  hostname: 'office-air.tail1234.ts.net',
   reachable: true,
-  sessions: [{ id: 'sess-remote-1', name: 'Remote Session', status: 'idle', url: 'https://remote.host.ts.net:8443/sessions/sess-remote-1' }],
+  sessions: [{ id: 'sess-remote-1', name: 'Remote Session', status: 'idle', url: 'https://office-air.tail1234.ts.net:7444/sessions/sess-remote-1' }],
 }
 
+const okResult = {
+  sessionId: 'sess-remote-1',
+  name: 'Remote Session',
+  host: 'office-air',
+  url: 'https://office-air.tail1234.ts.net:7444/sessions/sess-remote-1?cap=CAP123',
+  errorCode: '',
+}
+
+function baseImpl(connect: (...a: unknown[]) => unknown) {
+  return {
+    GetDaemonError: () => '',
+    GetRelayPort: () => 0,
+    ListSessions: () => [],
+    GetTailscaleStatus: () => ({ connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'home-air.tail1234.ts.net' }),
+    GetRemoteSessionsWithMeta: () => [remotePeer],
+    ConnectPeerSession: connect,
+  }
+}
+
+function peerRow(c: HTMLElement): HTMLButtonElement | undefined {
+  return Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find((b) => b.textContent === 'Remote Session')
+}
+
+async function click(el: HTMLElement) {
+  await act(async () => { el.click() })
+  await flush()
+}
+
+const CONNECT_FAILED = "Couldn't connect to office-air. Check that it's awake and signed in to your Tailscale account."
+
+describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', () => {
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks() })
+
+  it('one click calls ConnectPeerSession(hostname, id) once and opens a <host> › <name> tab, no dialog', async () => {
+    const connect = vi.fn(() => okResult)
+    const c = await mountApp(baseImpl(connect))
+    const row = peerRow(c)
+    expect(row, 'peer row listed from the poll').toBeDefined()
+    await click(row!)
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect(connect).toHaveBeenCalledWith('office-air.tail1234.ts.net', 'sess-remote-1')
+    expect(c.textContent).toContain('office-air › Remote Session')
+    const view = c.querySelector('[data-testid="web-session-view"]')!
+    expect(view).not.toBeNull()
+    expect(view.getAttribute('data-base')).toBe('https://office-air.tail1234.ts.net:7444')
+    expect(view.getAttribute('data-cap')).toBe('CAP123')
+    expect(view.getAttribute('data-remote')).toBe('true')
+    expect(view.getAttribute('data-host')).toBe('office-air')
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(document.querySelector('input')).toBeNull()
+  })
+
+  it('clicking the row of an open tab activates it without connecting again', async () => {
+    const connect = vi.fn(() => okResult)
+    const c = await mountApp(baseImpl(connect))
+    await click(peerRow(c)!)
+    await click(peerRow(c)!)
+    expect(connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('an errorCode opens the tab with the connect-failed banner, and a second click retries', async () => {
+    const connect = vi.fn()
+      .mockReturnValueOnce({ sessionId: '', name: '', host: '', url: '', errorCode: 'forbidden' })
+      .mockReturnValueOnce(okResult)
+    const c = await mountApp(baseImpl(connect))
+    await click(peerRow(c)!)
+    expect(c.textContent).toContain('office-air › Remote Session')
+    expect(c.textContent).toContain(CONNECT_FAILED)
+    expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
+    await click(peerRow(c)!)
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(c.textContent).not.toContain(CONNECT_FAILED)
+    expect(c.querySelector('[data-testid="web-session-view"]')).not.toBeNull()
+  })
+
+  it('a rejected binding is shown as a failed connect', async () => {
+    const connect = vi.fn(() => { throw new Error('bridge down') })
+    const c = await mountApp(baseImpl(connect))
+    await click(peerRow(c)!)
+    expect(c.textContent).toContain(CONNECT_FAILED)
+  })
+
+  it('when the host stops sharing, the row disappears at once and the tab stays', async () => {
+    const connect = vi.fn(() => okResult)
+    const c = await mountApp(baseImpl(connect))
+    await click(peerRow(c)!)
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-share-stopped"]')!)
+    expect(peerRow(c)).toBeUndefined()
+    expect(c.textContent).toContain('office-air › Remote Session')
+    expect(c.querySelector('[data-testid="web-session-view"]')).not.toBeNull()
+  })
+})
+
+describe('App.tsx — no code-based access remains', () => {
+  it('App has no dialog state, cached-cap set or removed remote-cap bindings', () => {
+    expect(raw).toContain('ConnectPeerSession(peerHost, session.id)')
+    expect(raw).not.toContain('remoteCapsCached')
+    expect(raw).not.toContain('handleModalExchange')
+  })
+})
+
+// ─── Sidebar peer row (Portty 02-04) ─────────────────────────────────────────
 let container: HTMLElement | undefined
 let root: Root | undefined
 
@@ -86,168 +168,26 @@ function renderPeerSidebar(onOpenPeer: Parameters<typeof Sidebar>[0]['onOpenPeer
   return { container: container! }
 }
 
-afterEach(() => {
-  if (root) {
-    flushSync(() => root!.unmount())
-    root = undefined
-  }
-  if (container) {
-    container.remove()
-    container = undefined
-  }
-  vi.clearAllMocks()
-})
-
-// ─── Source-inspection: handleOpenRemoteSession (out-of-band contract) ────────
-describe('App.tsx — handleOpenRemoteSession (out-of-band, FIX-03)', () => {
-  it('opens RemoteJoinCodeModal via setJoinModalForSession (not BrowserOpenURL directly)', () => {
-    const idx = raw.indexOf('handleOpenRemoteSession')
-    expect(idx, 'handleOpenRemoteSession must be present in App.tsx').toBeGreaterThan(-1)
-    // Plan 05 added held-cap reuse before the modal path — use a larger slice to
-    // cover the full callback including the no-cap fallback branch (D-03 parity).
-    const slice = raw.slice(idx, idx + 1000)
-    // Out-of-band: handler opens the modal on the no-cap path.
-    expect(slice).toContain('setJoinModalForSession')
-    // ExchangeJoinCodeAtURL moves to handleModalExchange — not called here.
-    expect(slice).not.toContain('ExchangeJoinCodeAtURL')
-  })
-
-  it('dead code removed: isPeerSelf is gone from App.tsx (D-06/WR-01)', () => {
-    expect(raw).not.toContain('isPeerSelf')
-  })
-
-  it('dead code removed: rwJoinCode selection is gone from App.tsx (D-06/WR-01)', () => {
-    expect(raw).not.toContain('rwJoinCode')
-  })
-})
-
-// ─── Source-inspection: handleModalExchange open-session branch ───────────────
-describe('App.tsx — handleModalExchange open-session branch (FIX-03)', () => {
-  it("handles only the sidebar's 'open-session' intent (the Hub's hub-modal intent is gone)", () => {
-    const idx = raw.indexOf('const handleModalExchange')
-    expect(idx, 'handleModalExchange must be present in App.tsx').toBeGreaterThan(-1)
-    expect(raw).toContain("intent: 'open-session'")
-    expect(raw).not.toContain("'hub-modal'")
-    expect(raw).not.toContain('findRemoteSession')
-  })
-
-  it('open-session branch uses OpenRemoteSessionURL to get the cap-bearing URL (WR-01 fix, preserved by FIX-03)', () => {
-    // Plan 05 WR-01: the open-session branch no longer hand-builds /sessions/{id}?cap=
-    // directly (mismatch-prone). Instead it calls OpenRemoteSessionURL (daemon-composed).
-    // Phase 168-03 keeps this SID-correctness guarantee — the URL is now parsed and
-    // handed to openWebSessionTab instead of BrowserOpenURL (see tests below).
-    const idx = raw.indexOf('handleModalExchange')
-    const slice = raw.slice(idx, idx + 1600)
-    expect(slice).toContain('OpenRemoteSessionURL')
-    // The hand-built form must be gone (WR-01 acceptance criterion).
-    expect(slice).not.toContain("pending.id + '?cap='")
-  })
-
-  it('open-session branch calls openWebSessionTab, NOT BrowserOpenURL, with the cap-bearing URL (FIX-03, D-17)', () => {
-    const idx = raw.indexOf('handleModalExchange')
-    // Plan 05 WR-01 fix added deposit + OpenRemoteSessionURL; 168-03 replaces the
-    // trailing BrowserOpenURL(url) call with an in-app openWebSessionTab(...) call.
-    const slice = raw.slice(idx, idx + 1600)
-    expect(slice).toContain('openWebSessionTab')
-    expect(slice).not.toContain('BrowserOpenURL')
-  })
-})
-
-// ─── Behavior: a sidebar peer row exercises the open entry point (Portty 02-04) ─
-//
-// Replaces the Hub SessionCard "Open in tab" assertions. The peer row is the GUI
-// entry point; App routes it through handleOpenRemoteSession unchanged, so the
-// cached-cap and join-code branches below still own the capability handshake.
 describe('Sidebar peer row — open entry point (NAV-02)', () => {
-  it('a peer row is an enabled button even though discovery carries no join code', () => {
-    const { container: c } = renderPeerSidebar(vi.fn())
-    const row = Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find(
-      (b) => b.textContent === 'Remote Session',
-    )
-    expect(row).toBeDefined()
-    expect(row!.disabled).toBe(false)
+  afterEach(() => {
+    if (root) { flushSync(() => root!.unmount()); root = undefined }
+    container?.remove()
+    container = undefined
   })
 
   it('clicking the row calls onOpenPeer with the peer and session; adapting it keeps the peer URL', () => {
     const onOpenPeer = vi.fn()
     const { container: c } = renderPeerSidebar(onOpenPeer)
-    // The first row is This Mac's New Session row (sessions: []), so find the peer row by text.
-    const row = Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find(
-      (b) => b.textContent === 'Remote Session',
-    )!
+    const row = peerRow(c)!
+    expect(row.disabled).toBe(false)
     flushSync(() => { row.click() })
     expect(onOpenPeer).toHaveBeenCalledWith(remotePeer, remotePeer.sessions[0])
     const adapted = adaptRemoteSession(remotePeer, remotePeer.sessions[0])
-    expect(adapted).toMatchObject({ id: 'sess-remote-1', hostname: 'remote.host.ts.net', url: remotePeer.sessions[0].url })
+    expect(adapted).toMatchObject({ id: 'sess-remote-1', hostname: remotePeer.hostname, url: remotePeer.sessions[0].url })
   })
 
   it('App wires onOpenPeer through handleOpenRemoteSession(adaptRemoteSession(peer, s))', () => {
     expect(raw).toContain('onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}')
-  })
-
-  it("both open branches label the tab '<short host> › <name>' (U+203A)", () => {
-    expect(raw).toContain("openWebSessionTab(session.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(session.hostname)} › ${session.name}`)")
-    expect(raw).toContain("openWebSessionTab(pending.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(pending.hostname)} › ${pending.name}`)")
-  })
-})
-
-// ─── WR-02 behavior: held-cap reuse path in handleOpenRemoteSession ────────────
-//
-// These source-inspection assertions cross the held-cap reuse behavior:
-//   (a) held-cap: handleOpenRemoteSession has remoteCapsCached.has() guard +
-//       calls OpenRemoteSessionURL binding (no modal on hit)
-//   (b) no-cap fallback: falls through to setJoinModalForSession (existing)
-//   (c) WR-01: hand-built pending.id + '?cap=' removed from open-session branch
-//
-// Source inspection is used here (established pattern in this codebase) combined
-// with the WR-03 component render below which exercises true component behavior.
-describe('App.tsx — handleOpenRemoteSession held-cap reuse (GAP-146-A, Plan 05)', () => {
-  it('held-cap path: handleOpenRemoteSession checks remoteCapsCached.has(session.id) FIRST', () => {
-    const idx = raw.indexOf('handleOpenRemoteSession')
-    expect(idx, 'handleOpenRemoteSession must be present in App.tsx').toBeGreaterThan(-1)
-    const slice = raw.slice(idx, idx + 700)
-    // The held-cap reuse guard must appear before the setJoinModalForSession call.
-    expect(slice).toContain('remoteCapsCached.has')
-  })
-
-  it('held-cap path: handleOpenRemoteSession calls OpenRemoteSessionURL when cap is held', () => {
-    const idx = raw.indexOf('handleOpenRemoteSession')
-    const slice = raw.slice(idx, idx + 700)
-    // The new binding must be called in the held-cap branch.
-    expect(slice).toContain('OpenRemoteSessionURL')
-  })
-
-  it('held-cap path: OpenRemoteSessionURL is imported from the Wails bindings', () => {
-    // Verify the binding is in the App import list.
-    expect(raw).toContain('OpenRemoteSessionURL')
-  })
-
-  // Phase 168-03 (FIX-03, D-17) — in-app reroute of the held-cap branch.
-  it('held-cap path: handleOpenRemoteSession does NOT call BrowserOpenURL (FIX-03, D-17)', () => {
-    const idx = raw.indexOf('handleOpenRemoteSession')
-    const slice = raw.slice(idx, idx + 700)
-    expect(slice).not.toContain('BrowserOpenURL')
-  })
-
-  it('held-cap path: handleOpenRemoteSession calls openWebSessionTab with the parsed cap-bearing URL (FIX-03)', () => {
-    const idx = raw.indexOf('handleOpenRemoteSession')
-    const slice = raw.slice(idx, idx + 700)
-    // The OpenRemoteSessionURL result must be opened in-app via openWebSessionTab,
-    // parameterized on session.id (not a shared/global session id).
-    expect(slice).toContain('openWebSessionTab(session.id')
-  })
-
-  it('WR-01 fixed: hand-built pending.id + ?cap= is gone from the open-session branch', () => {
-    // The WR-01 mismatch-prone URL must be removed from handleModalExchange.
-    // After the fix the URL is built by OpenRemoteSessionURL in the daemon.
-    expect(raw).not.toContain("pending.id + '?cap='")
-  })
-
-  it('no-cap fallback: handleOpenRemoteSession still calls setJoinModalForSession when no cap held', () => {
-    const idx = raw.indexOf('handleOpenRemoteSession')
-    // Use 1200 chars to cover the whole callback including the no-cap fallback branch.
-    const slice = raw.slice(idx, idx + 1200)
-    expect(slice).toContain('setJoinModalForSession')
   })
 })
 
@@ -289,7 +229,7 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
   it('the __websession__ render branch resolves per-tab params from the active tab, not the global webParams, for remote tabs (RESEARCH Pitfall 3)', () => {
     const idx = raw.indexOf("activeId.startsWith('__websession__')")
     expect(idx, 'the __websession__ render branch must be present').toBeGreaterThan(-1)
-    const slice = raw.slice(idx, idx + 2000)
+    const slice = raw.slice(idx, idx + 3500)
     expect(slice).toContain('activeWebTab')
     expect(slice).toContain('isRemoteWebTab')
     expect(slice).toContain('baseURL={activeWebTab?.baseURL}')
@@ -303,7 +243,7 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
   it('RC-B/RC-A: the __websession__ branch wraps WebShareSessionView in .terminal-wrapper and threads remote={isRemoteWebTab}', () => {
     const idx = raw.indexOf("activeId.startsWith('__websession__')")
     expect(idx, 'the __websession__ render branch must be present').toBeGreaterThan(-1)
-    const slice = raw.slice(idx, idx + 2000)
+    const slice = raw.slice(idx, idx + 3500)
     expect(slice).toContain('terminal-wrapper')
     expect(slice).toContain('remote={isRemoteWebTab}')
   })
@@ -317,7 +257,7 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
   it('CR-03: <WebShareSessionView> is keyed by wsSessionId so switching remote tabs forces a remount (no cross-session state leak)', () => {
     const idx = raw.indexOf("activeId.startsWith('__websession__')")
     expect(idx, 'the __websession__ render branch must be present').toBeGreaterThan(-1)
-    const slice = raw.slice(idx, idx + 2000)
+    const slice = raw.slice(idx, idx + 3500)
     const wsvIdx = slice.indexOf('<WebShareSessionView')
     expect(wsvIdx, '<WebShareSessionView> element must be present in this branch').toBeGreaterThan(-1)
     // The key prop must appear on the element itself (before sessionId prop),
@@ -327,85 +267,3 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
   })
 })
 
-// ─── WR-03 behavior: RemoteJoinCodeModal used/expired error copy ───────────────
-//
-// True component-render behavior test (not source inspection).
-// The not-found error (single-use code already consumed, D-11) must surface
-// "already been used or expired" copy, NOT "Code invalid. Double-check the digits."
-describe('RemoteJoinCodeModal — WR-03 used/expired error copy (GAP-146-A, Plan 05)', () => {
-  let wrapperDiv: HTMLDivElement | undefined
-  let wrapperRoot: Root | undefined
-
-  afterEach(() => {
-    if (wrapperRoot) {
-      flushSync(() => wrapperRoot!.unmount())
-      wrapperRoot = undefined
-    }
-    if (wrapperDiv) {
-      wrapperDiv.remove()
-      wrapperDiv = undefined
-    }
-  })
-
-  async function submitCodeToModal(
-    onExchange: (code: string) => Promise<void>,
-    code: string,
-  ): Promise<HTMLElement> {
-    wrapperDiv = document.createElement('div')
-    document.body.appendChild(wrapperDiv)
-    wrapperRoot = createRoot(wrapperDiv)
-    flushSync(() => {
-      wrapperRoot!.render(
-        React.createElement(RemoteJoinCodeModal, {
-          remoteSession: { id: 'sid-1', name: 'Test Session', hostname: 'test.host' },
-          intent: 'open-session',
-          onExchange,
-          onClose: vi.fn(),
-        })
-      )
-    })
-    // Enter code
-    const input = wrapperDiv.querySelector('input[type="text"]') as HTMLInputElement
-    const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value')
-    desc?.set?.call(input, code)
-    flushSync(() => {
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    const submit = Array.from(wrapperDiv.querySelectorAll('button')).find(
-      (b) => /join/i.test(b.textContent ?? '')
-    ) as HTMLButtonElement
-    await act(async () => {
-      submit.click()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    return wrapperDiv
-  }
-
-  it('WR-03: not-found error (single-use code consumed) shows "already been used or expired" — NOT "Code invalid"', async () => {
-    const onExchange = vi.fn(async () => {
-      throw new Error('join code not-found (status 404)')
-    })
-    const el = await submitCodeToModal(onExchange, 'ABCD-EFGH')
-    const errorEl = el.querySelector('[data-testid="remote-join-modal-error"]')
-    expect(errorEl).not.toBeNull()
-    const errorText = errorEl!.textContent ?? ''
-    // Must contain the corrected copy (WR-03 fix).
-    expect(errorText).toContain('already used or expired')
-    // Must NOT contain the wrong copy that conflates typos with single-use expiry.
-    expect(errorText).not.toContain('Double-check')
-  })
-
-  it('WR-03: invalid error (typo) still shows "Code invalid. Double-check" copy', async () => {
-    const onExchange = vi.fn(async () => {
-      throw new Error('join code is invalid (status 401)')
-    })
-    const el = await submitCodeToModal(onExchange, 'ZZZZ-ZZZZ')
-    const errorEl = el.querySelector('[data-testid="remote-join-modal-error"]')
-    expect(errorEl).not.toBeNull()
-    const errorText = errorEl!.textContent ?? ''
-    // Typo path remains "Code invalid." (separate branch from used/expired).
-    expect(errorText).toContain('Code invalid')
-    expect(errorText).toContain('Double-check')
-  })
-})

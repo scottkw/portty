@@ -21,6 +21,7 @@ import { isAllowedScheme, getRisk, type RiskKind } from '../lib/urlSafety'
 import { openLink, isModifierPressed, type ModifierMode } from '../lib/openLink'
 import { LinkConfirmPopover } from './LinkConfirmPopover'
 import { SessionEndedBanner } from './SessionEndedBanner'
+import { CLOSE_REASON_SHARE_STOPPED } from '../lib/closeReasons'
 // Phase 113 UI-03 / UI-04 — iPad single-finger scrollback. xterm.js v6 has
 // no built-in touch handling; this helper attaches the missing handlers.
 import { attachTouchScroll } from '../lib/touchScrollHandler'
@@ -101,6 +102,10 @@ interface TerminalPanelProps {
    * App-side registry can clear the entry (Pitfall #7 stuck-progress).
    */
   onProgressChange?: (sessionId: string, state: IProgressState) => void
+  /** Portty 04-06: host label for the stopped-sharing banner (guest path). */
+  hostLabel?: string
+  /** Portty 04-06: called once when a guest socket closes with the share-stopped reason. */
+  onShareStopped?: () => void
 }
 
 /**
@@ -124,8 +129,13 @@ export function TerminalPanel({
   onWebGLContextLost,
   onRegisterSaver,
   onProgressChange,
+  hostLabel,
+  onShareStopped,
 }: TerminalPanelProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
+  // The relay onClose closure is built once at mount; read the latest callback through a ref.
+  const onShareStoppedRef = useRef(onShareStopped)
+  onShareStoppedRef.current = onShareStopped
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   // POL-04: deferred theme ref — stashes the theme when the panel is hidden (isActive=false)
@@ -220,7 +230,7 @@ export function TerminalPanel({
   // Never set on the host path, and never wired to auto-reconnect (RESEARCH
   // anti-pattern) — a "session ended" close means the session is genuinely
   // gone.
-  const [sessionEnded, setSessionEnded] = useState<{ ended: boolean; reason?: string }>({
+  const [sessionEnded, setSessionEnded] = useState<{ ended: boolean; reason?: string; shareStopped?: boolean }>({
     ended: false,
   })
   const [findBarOpen, setFindBarOpen] = useState(false)
@@ -370,7 +380,12 @@ export function TerminalPanel({
       // "session ended" notice about its own session. No auto-reconnect.
       onClose: (code, reason) => {
         console.debug(`[RelayClient] disconnected session=${sessionId}`, code, reason)
-        if (isGuest) setSessionEnded({ ended: true, reason })
+        if (!isGuest) return
+        // Portty 04-06: the view keeps its scrollback but takes no more input.
+        term.options.disableStdin = true
+        const shareStopped = reason === CLOSE_REASON_SHARE_STOPPED
+        setSessionEnded({ ended: true, reason, shareStopped })
+        if (shareStopped) onShareStoppedRef.current?.()
       },
       // VIEW-04/05 (Phase 157): guest honors server-pushed 0x02 → term.resize +
       // scale recompute. Pitfall 5: term.resize BEFORE recomputeScale so scale
@@ -987,6 +1002,8 @@ export function TerminalPanel({
       {isGuestRef.current && sessionEnded.ended && (
         <SessionEndedBanner
           reason={sessionEnded.reason}
+          kind={sessionEnded.shareStopped ? 'share-stopped' : 'ended'}
+          host={hostLabel}
           onDismiss={() => setSessionEnded({ ended: false })}
         />
       )}

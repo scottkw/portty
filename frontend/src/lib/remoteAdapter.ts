@@ -5,7 +5,7 @@ import type { SessionInfo } from '../wailsjs/go/main/App'
 // A remote session adapted to the SessionInfo shape carries extra fields the
 // Wails-generated SessionInfo type has no slot for: the peer-supplied `url` (needed
 // by the Hub card's "Open in browser" affordance, CR-01).
-// broadcast join-code fields REMOVED — D-10: discovery carries no codes (out-of-band design).
+// Discovery carries no access secrets: access comes from the same-account check (Portty 04-06).
 export type AdaptedRemoteSessionInfo = SessionInfo & {
   url: string
 }

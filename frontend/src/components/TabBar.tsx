@@ -21,6 +21,10 @@ export interface Tab {
   baseURL?: string
   /** Phase 168-03 (FIX-03) — per-tab capability token, paired with baseURL. */
   capToken?: string
+  /** Portty 04-06: the peer's hostname for a peer tab (sidebar group key and banner host). */
+  peerHost?: string
+  /** Portty 04-06: ConnectPeerSession failed; the tab shows the connect-failed banner. */
+  connectFailed?: boolean
 }
 interface TabBarProps {
   tabs: Tab[]

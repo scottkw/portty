@@ -1603,25 +1603,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   }
 }
 
-/* ─── Remote Join Code dialog content (Portty 02-09: sheet shell in .dialog*) ─── */
-.remote-join-modal__input {
-  width: 100%;
-  height: 28px;
-  margin-top: 12px;
-  padding: 0 8px;
-  background: var(--color-field);
-  border: 1px solid var(--color-control-border);
-  border-radius: 6px;
-  color: var(--color-text);
-  font-family: var(--hub-font-mono);
-  font-size: 13px;
-  letter-spacing: 2px;
-}
-.remote-join-modal__input:focus-visible {
-  outline: 3px solid var(--color-focus-ring);
-  outline-offset: 1px;
-}
-
 /* ============================================================
    Phase 131 — Hub Surface
    All Hub components use var(--hub-*) tokens.

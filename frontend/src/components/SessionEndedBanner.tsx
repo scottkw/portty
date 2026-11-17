@@ -36,12 +36,22 @@ export interface SessionEndedBannerProps {
    */
   reason?: string
   className?: string
+  /**
+   * Portty 04-06: 'share-stopped' when the close reason was the share-stopped
+   * constant (the host turned Share off). Chosen by the caller from the
+   * constant, never from wire text.
+   */
+  kind?: 'ended' | 'share-stopped'
+  /** Local host label (peer tab or cap-verified session info) for 'share-stopped'. */
+  host?: string
 }
 
 export function SessionEndedBanner({
   onDismiss,
   reason,
   className,
+  kind = 'ended',
+  host,
 }: SessionEndedBannerProps): React.ReactElement {
   useEffect(() => {
     if (reason) {
@@ -57,7 +67,9 @@ export function SessionEndedBanner({
     <div className={cls} role="status" aria-live="polite">
       <InformationCircleIcon className="banner__icon" aria-hidden="true" />
       <span className="banner__message">
-        Session ended — the owner stopped this session.
+        {kind === 'share-stopped'
+          ? (host ? `${host} stopped sharing this session.` : 'This session is no longer shared.')
+          : 'Session ended — the owner stopped this session.'}
       </span>
       <button
         type="button"

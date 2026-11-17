@@ -4,8 +4,7 @@
 // CARD-04 contract: hostname pass-through (globe icon) and URL pass-through
 // (CR-01 "Open in browser" affordance).
 //
-// Broadcast pass-through tests REMOVED — D-10: discovery carries no join codes
-// in the out-of-band design. See CONTEXT.md D-10.
+// Discovery carries no access secrets (access comes from the same-account check).
 
 import { describe, it, expect } from 'vitest'
 import { adaptRemoteSession, adaptAllRemoteSessions } from '../remoteAdapter'

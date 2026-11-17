@@ -45,6 +45,10 @@ export interface WebShareSessionViewProps {
    */
   fontFamily?: string
   fontSize?: number
+  /** Portty 04-06: host label for the stopped-sharing banner (local tab state or cap-verified session info). */
+  hostLabel?: string
+  /** Portty 04-06: the share stopped (close reason constant); the caller drops the sidebar row. */
+  onShareStopped?: () => void
 }
 
 /**
@@ -63,6 +67,8 @@ export function WebShareSessionView({
   remote,
   fontFamily,
   fontSize,
+  hostLabel,
+  onShareStopped,
 }: WebShareSessionViewProps): React.ReactElement {
   // FIX-03 (plan 09) RC-A transport switch. When true, the terminal routes
   // through the daemon proxy (remote:true, wsURL undefined).
@@ -147,6 +153,8 @@ export function WebShareSessionView({
         pluginConfig={effectivePluginConfig}
         remote={useProxy}
         wsURL={useProxy ? undefined : wsURL}
+        hostLabel={hostLabel}
+        onShareStopped={onShareStopped}
       />
     </div>
   )

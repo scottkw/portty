@@ -20,6 +20,7 @@ import {
   RetryDaemon,
   GetDaemonError,
   GetRemoteSessionsWithMeta,
+  ConnectPeerSession,
   GetLastUpdateInfo,
   GetPluginSettings,
   QuitGUIOnly,
@@ -35,14 +36,11 @@ import type { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
 import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
 import { NewSessionModal } from './components/NewSessionModal'
-import { RemoteJoinCodeModal } from './components/RemoteJoinCodeModal'
 import { SharePopover } from './components/SharePopover'
 import { menuShareError, menuStopError } from './lib/shareCopy'
-import { remoteBaseURLFor } from './lib/remoteSession'
 import { adaptRemoteSession } from './lib/remoteAdapter'
 import { peerView, shortHost } from './lib/sidebarPeers'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
-import { ExchangeJoinCodeAtURL, RegisterRemoteCap, OpenRemoteSessionURL } from './wailsjs/go/main/App'
 import { ExclamationTriangleIcon, InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { TailscaleBanner } from './components/TailscaleBanner'
 import type { TailscaleHealth } from './lib/tailscale'
@@ -140,24 +138,6 @@ function App(): React.ReactElement {
   const [remotePeers, setRemotePeers] = useState<RemotePeerSessions[]>([])
   // True after the first successful peer poll; clears the "Looking for other Macs…" line.
   const [remoteLoaded, setRemoteLoaded] = useState(false)
-
-  // Phase 122-03 — remote-session cap state.
-  //   remoteCapsCached: sessionIds whose caps are already deposited in the
-  //     local daemon's RemoteCapStore. Per locked decision D-03, the modal is
-  //     skipped for cached sessions.
-  //   joinModalForSession: the session the paste-join-code modal is open for,
-  //     or null when no modal is showing.
-  const [remoteCapsCached, setRemoteCapsCached] = useState<Set<string>>(
-    () => new Set<string>(),
-  )
-  const [joinModalForSession, setJoinModalForSession] = useState<{
-    id: string
-    name: string
-    hostname: string
-    intent: 'open-session'
-    /** Pre-computed when the dialog opens; the exchange handler uses it as is. */
-    baseURL: string
-  } | null>(null)
 
   // Update notification state (lifted to App — Phase 81 D-06)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
@@ -712,13 +692,10 @@ function App(): React.ReactElement {
   // pass a baseURL + capToken that are carried PER-TAB on the Tab object, so
   // two different remote sessions never share params (RESEARCH Pitfall 3).
   // Portty 02-04: name is the tab label; peer tabs pass '<host> › <session>'.
-  const openWebSessionTab = useCallback((sessionId: string, baseURL?: string, capToken?: string, name = 'Session') => {
+  // Portty 04-06: peer tabs also pass peerHost and connectFailed; reopening an
+  // existing tab with peer fields (a retry) replaces them.
+  const openWebSessionTab = useCallback((sessionId: string, baseURL?: string, capToken?: string, name = 'Session', peer?: { peerHost: string; connectFailed?: boolean }) => {
     const tabId = webSessionTabId(sessionId)
-    const existing = tabs.find((t) => t.id === tabId)
-    if (existing) {
-      setActiveId(existing.id)
-      return
-    }
     const newTab: Tab = {
       id: tabId,
       name,
@@ -726,6 +703,13 @@ function App(): React.ReactElement {
       type: 'web-session',
       baseURL,
       capToken,
+      ...peer,
+    }
+    const existing = tabs.find((t) => t.id === tabId)
+    if (existing) {
+      if (peer) setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...newTab, name: t.name } : t)))
+      setActiveId(existing.id)
+      return
     }
     setTabs((prev) => [...prev, newTab])
     setActiveId(newTab.id)
@@ -766,85 +750,42 @@ function App(): React.ReactElement {
     }
   }, [])
 
-  // Phase 146 FIX-03 (out-of-band redesign) — held-cap reuse (remoteCapsCached) +
-  // modal fallback for depositing a cap.
-  //
-  // Phase 168-03 (D-17) — REVERSES the Phase 146 external-browser design: opening
-  // a remote session now opens an in-app web-session tab (openWebSessionTab)
-  // instead of BrowserOpenURL. OpenRemoteSessionURL is still called to get the
-  // daemon-composed, SID-correct cap-bearing URL (WR-01 protection preserved —
-  // the daemon builds the URL from its own RemoteCapStore entry, so the path SID
-  // always matches the deposited cap); the URL is parsed (origin -> baseURL,
-  // ?cap= -> capToken) and handed to openWebSessionTab, which carries those
-  // values PER-TAB so a second remote session never reuses the first's cap/host.
+  // Portty 04-06: a peer row opens (or activates) its tab at once. The daemon
+  // asks the peer through the same-account routes (no code) and keeps the cap;
+  // the returned URL gives the tab's origin and cap. A failure opens the tab
+  // with the connect-failed banner, and clicking the row again retries.
   const handleOpenRemoteSession = useCallback(
     async (session: AdaptedRemoteSessionInfo): Promise<void> => {
-      // Held-cap reuse: cap already held → build the open URL from the daemon
-      // store and open it in-app (no modal).
-      if (remoteCapsCached.has(session.id)) {
-        try {
-          const url = await OpenRemoteSessionURL(session.id)
-          const parsed = new URL(url)
-          openWebSessionTab(session.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(session.hostname)} › ${session.name}`)
-          return
-        } catch {
-          // Stale/evicted cap — fall through to modal for self-heal.
-        }
-      }
-      // No cap (or stale): open join-code modal for out-of-band exchange.
-      const baseURL = remoteBaseURLFor(session)
-      if (!baseURL) {
-        setSaveBanner({ kind: 'error', text: 'Cannot open session — the remote peer URL is unavailable.' })
+      const existing = tabs.find((t) => t.id === webSessionTabId(session.id))
+      if (existing && !existing.connectFailed) {
+        setActiveId(existing.id)
         return
       }
-      setJoinModalForSession({
-        id: session.id,
-        name: session.name,
-        hostname: session.hostname,
-        intent: 'open-session',
-        baseURL,
-      })
+      const peerHost = session.hostname
+      let label = `${shortHost(peerHost)} › ${session.name}`
+      try {
+        const result = await ConnectPeerSession(peerHost, session.id)
+        label = `${shortHost(result.host || peerHost)} › ${result.name || session.name}`
+        if (!result.errorCode) {
+          const parsed = new URL(result.url)
+          openWebSessionTab(session.id, parsed.origin, parsed.searchParams.get('cap') ?? '', label, { peerHost })
+          return
+        }
+      } catch {
+        // A rejected binding or a malformed URL is a failed connect, shown the same way.
+      }
+      openWebSessionTab(session.id, undefined, undefined, label, { peerHost, connectFailed: true })
     },
-    [remoteCapsCached, setSaveBanner, openWebSessionTab],
+    [tabs, openWebSessionTab],
   )
 
-  // Phase 122-03 — modal-exchange handler. Two-step: exchange join code for a
-  // cap against the REMOTE peer's /join/exchange endpoint, then deposit the
-  // cap into the local daemon's RemoteCapStore. On success, mark the session
-  // as cap-cached. The cap token never enters React state (T-122-03-01).
-  //
-  // Phase 168-03 (D-17) — on success it opens the in-app web-session tab
-  // (openWebSessionTab) rather than an external browser window. Portty 02-04:
-  // 'open-session' (a sidebar peer row) is the only intent; the Hub's went with it.
-  const handleModalExchange = useCallback(
-    async (code: string): Promise<void> => {
-      const pending = joinModalForSession
-      if (!pending) throw new Error('no session pending')
-
-      // Use the pre-computed baseURL. GAP-146-A WR-01 fix (Plan 05): deposit the cap
-      // so RemoteCapStore holds the SID-correct entry, then build the open URL via
-      // OpenRemoteSessionURL (daemon-composed), never a hand-built URL that could
-      // pair /sessions/A with the cap for B.
-      const baseURL = pending.baseURL
-      if (!baseURL) throw new Error('session-gone')
-      const cap = await ExchangeJoinCodeAtURL(baseURL, code)
-      // Deposit the cap so the daemon's RemoteCapStore holds the keyed entry.
-      await RegisterRemoteCap(pending.id, baseURL, cap)
-      // Mark session as cap-cached so future opens reuse it (held-cap branch above).
-      setRemoteCapsCached((prev) => {
-        const next = new Set(prev)
-        next.add(pending.id)
-        return next
-      })
-      // Build the SID-correct cap-bearing URL from the daemon's stored entry
-      // (keyed by the cap just deposited — daemon ensures path SID = lookup key),
-      // then open it in-app (D-17).
-      const url = await OpenRemoteSessionURL(pending.id)
-      const parsed = new URL(url)
-      openWebSessionTab(pending.id, parsed.origin, parsed.searchParams.get('cap') ?? '', `${shortHost(pending.hostname)} › ${pending.name}`)
-    },
-    [joinModalForSession, openWebSessionTab],
-  )
+  // Portty 04-06: the host stopped sharing a session this Mac has a tab on. Drop
+  // its row at once (the tab stays); the next peer poll reconciles.
+  const dropPeerSession = useCallback((peerHost: string, sessionId: string) => {
+    setRemotePeers((prev) => prev.map((p) => (
+      p.hostname === peerHost ? { ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) } : p
+    )))
+  }, [])
 
   const retryInit = useCallback(async () => {
     setDaemonError(null)
@@ -1039,6 +980,20 @@ function App(): React.ReactElement {
           const isRemoteWebTab = activeWebTab?.baseURL !== undefined
           const wsSessionId = activeWebTab?.sessionId ?? webParams.sessionId ?? activeId.slice('__websession__'.length)
           const wsCapToken = isRemoteWebTab ? (activeWebTab?.capToken ?? '') : (webParams.capToken ?? '')
+          const peerHost = activeWebTab?.peerHost
+          // Portty 04-06: a peer tab whose connect failed shows only the warning banner.
+          if (activeWebTab?.connectFailed) {
+            return (
+              <div className="terminal-wrapper" id={`tabpanel-${activeId}`} role="tabpanel" style={{ display: 'flex' }}>
+                <div className="banner banner--warning" role="status">
+                  <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
+                  <span className="banner__message">
+                    {`Couldn't connect to ${shortHost(peerHost ?? '')}. Check that it's awake and signed in to your Tailscale account.`}
+                  </span>
+                </div>
+              </div>
+            )
+          }
           return (
             // FIX-03 (plan 09) RC-B: WebShareSessionView's flex:1 root (its
             // interactive Hub-modal body class) is inert under the block-context
@@ -1064,6 +1019,8 @@ function App(): React.ReactElement {
                 // Desktop: the viewer's own font (it must be installed here). Web: the host's, self-fetched.
                 fontFamily={mode !== 'web' ? terminalFontStack : undefined}
                 fontSize={mode !== 'web' ? terminalFont.size : undefined}
+                hostLabel={peerHost ? shortHost(peerHost) : undefined}
+                onShareStopped={peerHost ? () => dropPeerSession(peerHost, wsSessionId) : undefined}
               />
             </div>
           )
@@ -1202,15 +1159,6 @@ function App(): React.ReactElement {
         />
       )}
 
-      {/* Phase 122-03 — paste-join-code modal for remote-session open. */}
-      {joinModalForSession && (
-        <RemoteJoinCodeModal
-          remoteSession={joinModalForSession}
-          intent={joinModalForSession.intent}
-          onExchange={handleModalExchange}
-          onClose={() => setJoinModalForSession(null)}
-        />
-      )}
     </div>
   )
 }

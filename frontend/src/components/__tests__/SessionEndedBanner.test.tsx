@@ -99,4 +99,27 @@ describe('SessionEndedBanner', () => {
     expect(dismiss.textContent).toBe('')
     expect(container.textContent).not.toContain('×')
   })
+
+  // Portty 04-06 (SHAR-04): the stopped-sharing kind.
+  function renderKind(props: { host?: string; reason?: string }) {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    const r = createRoot(c)
+    flushSync(() => {
+      r.render(React.createElement(SessionEndedBanner, { onDismiss: vi.fn(), kind: 'share-stopped', ...props }))
+    })
+    return { container: c, root: r }
+  }
+
+  it("kind 'share-stopped' with a host renders '<host> stopped sharing this session.' and never the reason", () => {
+    ;({ container, root } = renderKind({ host: 'office-air', reason: 'share stopped <b>x</b>' }))
+    expect(container.textContent).toBe('office-air stopped sharing this session.')
+    expect(container.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite')
+    expect(container.querySelector('[aria-label="Dismiss"]')).not.toBeNull()
+  })
+
+  it("kind 'share-stopped' without a host renders the fallback copy", () => {
+    ;({ container, root } = renderKind({ reason: 'share stopped' }))
+    expect(container.textContent).toBe('This session is no longer shared.')
+  })
 })

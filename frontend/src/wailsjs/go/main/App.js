@@ -37,17 +37,9 @@ export const GetVersion           = ()                      => Call('main.App.Ge
 export const GetLastUpdateInfo    = ()                      => Call('main.App.GetLastUpdateInfo', [])
 export const CheckForUpdates      = ()                      => Call('main.App.CheckForUpdates', [])
 
-// Remote sessions bound method
-export const GetRemoteSessions    = ()                      => Call('main.App.GetRemoteSessions', [])
-
-// Phase 130 — metadata-aware remote discovery (replaces GetRemoteSessions at the peers-poll site).
+// Phase 130 — metadata-aware remote discovery for the sidebar peer poll.
 export const GetRemoteSessionsWithMeta = ()                 => Call('main.App.GetRemoteSessionsWithMeta', [])
 
-// Phase 122-03 — remote-session file-browse join-code exchange + cap deposit.
-export const ExchangeJoinCodeAtURL = (remoteBaseURL, code)  => Call('main.App.ExchangeJoinCodeAtURL', [remoteBaseURL, code])
-export const RegisterRemoteCap     = (sessionID, baseURL, capToken) => Call('main.App.RegisterRemoteCap', [sessionID, baseURL, capToken])
-// Phase 146-05 — held-cap reuse: read cap-bearing open URL from daemon RemoteCapStore.
-export const OpenRemoteSessionURL  = (sessionID)            => Call('main.App.OpenRemoteSessionURL', [sessionID])
 
 // Theme notification bound method
 
