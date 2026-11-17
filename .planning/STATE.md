@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 4
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-11-17T04:07:06.832Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-11-17T04:37:22.965Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 4 execution started
-state_head: a781a66b2c95756dadf54ca546d9aad2a96853bf
+state_head: 7ef6a325c258265afacb3eb100f3bc084b91eaa3
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 37
-  completed_plans: 33
+  completed_plans: 34
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 4 — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 4 execution started
 
@@ -75,6 +75,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 3 P06 | 53min | 3 tasks | 17 files |
 | Phase 4 P01 | 35min | 3 tasks | 67 files |
 | Phase 4 P02 | 20min | 2 tasks | 39 files |
+| Phase 4 P03 | 35min | 2 tasks | 25 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,9 @@ Recent decisions affecting current work:
 - [Phase 4]: 04-02: App share bindings return ShareResult with errorCode (daemon codes, start_failed/stop_failed, unavailable for GetSessionShare) and never throw
 - [Phase 4]: 04-02: Key regeneration re-mints every share link; exit and kill drop the record via unshareLocked
 - [Phase 4]: 04-02: vmpreview build tag fakes Tailscale on 127.0.0.1:7444 for the Tart VM; check-brand.sh fails if it reaches .github, build.sh or scripts
+- [Phase 4]: Peer capability route returns the share record's existing token (one token per share); GET falls through to 404
+- [Phase 4]: Revoke order everywhere: ClearGrants, DisableSession, RevokeWebViewers(relay.CloseReasonShareStopped), then Stop; key regeneration clears grants before kicking
+- [Phase 4]: Same-account meta 200 carries no X-Portty marker; only the 403 refusal does
 
 ### Pending Todos
 
@@ -213,6 +217,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T04:07:04.896Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-11-17T04:37:20.969Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None

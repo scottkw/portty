@@ -176,7 +176,7 @@ Plans:
   3. User turns Share off, every remote viewer (peer GUI, browser, CLI) is disconnected, and the session disappears from peers' sidebars
   4. No Funnel, public-link, risk-panel, or read-only code, UI, settings, or tests remain
   5. From Warp or any terminal, `portty attach <host>:<session>` attaches to a session shared from another Mac and shows the tmux-style status bar
-**Plans**: 2/6 plans executed (sequential waves 1-6; api.go, server.go, app.go, App.tsx, the Wails stubs and TESTING.md are shared hot files)
+**Plans**: 3/6 plans executed (sequential waves 1-6; api.go, server.go, app.go, App.tsx, the Wails stubs and TESTING.md are shared hot files)
 
 Plans:
 **Wave 1**
@@ -186,7 +186,7 @@ Plans:
 - [x] 04-02-PLAN.md — Share is one daemon switch: GET/PUT /sessions/{id}/share, server starts on first share and stops when none, `portty share`/`unshare`, LAN fallback and boot auto-start removed, GetSessionShare/SetSessionShared bindings, vmpreview build for the VM
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 04-03-PLAN.md — Same-account WhoIs gate on discovery and a peer-capability route; share off revokes every viewer with `share stopped`; "Link No Longer Works" page; Referrer-Policy
+- [x] 04-03-PLAN.md — Same-account WhoIs gate on discovery and a peer-capability route; share off revokes every viewer with `share stopped`; "Link No Longer Works" page; Referrer-Policy
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 04-04-PLAN.md — POST /peers/connect for GUI and CLI, proxy forwards close reasons, `portty attach <host>[:<session>]` with UI-SPEC copy, `portty list` fixed, ConnectPeerSession binding, old remote-cap routes removed
@@ -232,6 +232,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
 | 3. Portty Brand | 6/6 | In Progress | - |
-| 4. One-Click Share | 2/6 | In Progress | - |
+| 4. One-Click Share | 3/6 | In Progress | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
 | 6. Release Updates | 0/TBD | Not started | - |
