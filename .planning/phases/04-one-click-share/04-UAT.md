@@ -1,38 +1,64 @@
 ---
-status: testing
+status: complete
 phase: 04-one-click-share
 source: [04-VERIFICATION.md]
 started: 2026-11-17T07:00:00Z
-updated: 2026-11-17T07:00:00Z
+updated: 2026-11-17T17:00:00Z
 ---
 
 ## Current Test
 
-number: 1
-name: Two-Mac share flow (M-80)
-awaiting: user response (needs both Macs on the tailnet, each running this build)
+[testing complete]
 
 ## Tests
 
 ### 1. Two-Mac share flow (M-80)
 expected: Share on the office Mac shows the session in the home Mac's sidebar; one click opens it with no code; the browser link works from another tailnet device; from Warp, `portty attach <host>:<session>` shows the status bar, and bare `portty attach <host>` attaches (one share) or lists (several); Share off shows the stop banner in the GUI tab and browser, removes the sidebar row, and the CLI prints "Portty: <host> stopped sharing <session>." and exits 0; re-share then clicking the row reconnects to the right Mac (WR-05/WR-06); a Mac on another account sees nothing. Check `tailscale status` shows no tags on either Mac.
-result: [pending]
+result: pass (step 6, different-account Mac, skipped: no second account available)
+notes: Office = kens-macbook-air-1574, home = kens-personal-macbook-air, build 9af051d3 (ad-hoc signed, arm64). First Share-on took up to ~20 s (first HTTPS cert issue, warmCert); re-share was instant. Bidirectional typing confirmed across home GUI, office GUI, browser and CLI. No tags on either Mac. See Gaps for 3 issues found during this test.
 
 ### 2. No lingering public serve config (M-77)
 expected: `tailscale serve status` prints "No serve config" on both Macs (run `tailscale serve reset` if anything is listed). Closes T-04-01.
-result: [pending]
+result: pass
 
 ### 3. Share controls follow real Tailscale (M-82)
 expected: With real Tailscale disconnected, Share is dimmed with its reason and Stop Sharing still works; reconnecting re-enables it.
-result: [pending]
+result: pass
+notes: Toolbar Share button is disabled with Tailscale off, so the popover switch is unreachable; Stop Sharing worked from the sidebar right-click menu. Share state (sidebar icon) is kept while disconnected, per 04-UI-SPEC.md:270.
 
 ## Summary
 
 total: 3
-passed: 0
-issues: 0
-pending: 3
+passed: 3
+issues: 3
+pending: 0
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+- truth: "Attaching from the CLI does not disturb other viewers of the same shared session"
+  status: failed
+  reason: "User reported: first `portty attach kens-macbook-air-1574:\"shell 1\"` blanked the home GUI tab and the browser (lone `-` top-left) and the CLI status bar showed `4 viewers` / `[reconnecting]`. Office Mac's own window kept working. Detaching the CLI (Ctrl-\\) restored the GUI tab and browser within ~10 s. Second attach and a 3x attach/detach loop did not reproduce."
+  severity: major
+  test: 1
+  artifacts: []
+  missing: []
+
+- truth: "Browser stop banner names the host the same way as the GUI and CLI (tailnet name)"
+  status: failed
+  reason: "User reported: browser banner read `Kens-MacBook-Air.local stopped sharing this session.` while GUI and CLI used `kens-macbook-air-1574`. Browser gets the OS hostname via the webserver session resolver."
+  severity: cosmetic
+  test: 1
+  artifacts: [frontend/src/components/SessionEndedBanner.tsx, internal/daemon/share.go]
+  missing: []
+
+- truth: "With Tailscale off, turning Share off works from the popover switch (04-UI-SPEC.md:346)"
+  status: failed
+  reason: "User reported: toolbar Share button is disabled with Tailscale off, so the popover cannot be opened; only the sidebar right-click Stop Sharing works. Matches 04-UI-SPEC.md:139 but contradicts :270/:346. Spec needs one answer."
+  severity: minor
+  test: 3
+  artifacts: [.planning/phases/04-one-click-share/04-UI-SPEC.md]
+  missing: []
+
+Observation (not a gap): browser tab label reads "Session" rather than the session name.
