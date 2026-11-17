@@ -2,6 +2,7 @@ package relay
 
 import (
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 
@@ -38,9 +39,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // handleSession upgrades the HTTP connection to WebSocket and starts pumping
 // messages between the client and its session Hub.
 //
-// Subscribe-before-snapshot ordering is critical here: we subscribe to the hub
-// first, then replay the scrollback snapshot. Any frames written between snapshot
-// time and the first live frame arrive via the Msgs channel — no frames are lost.
+// Hub.Join subscribes and captures the catch-up replay as one atomic step under
+// the lock the drain loop records and broadcasts under, so every frame reaches
+// the client exactly once: in the replay or via the Msgs channel. A ?resume=
+// offset the ring still covers gets only the missed output (SHAR-07).
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
@@ -93,9 +95,10 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 	sub.Origin = "local" // read by the host-authority resize arbiter
 
-	// Subscribe FIRST — anti-race pattern. Frames arrive in Msgs from now on,
-	// so the snapshot taken below cannot cause a gap in the output stream.
-	hub.Subscribe(sub)
+	// Join subscribes and captures the catch-up replay atomically (SHAR-07):
+	// every frame reaches this viewer exactly once, in the replay or in Msgs.
+	resume, hasResume := ParseResume(r.URL.Query().Get("resume"))
+	replay := hub.Join(sub, resume, hasResume)
 	NotifyViewerCount(hub) // push updated viewer count to all clients
 	defer func() {
 		hub.Unsubscribe(sub)
@@ -112,20 +115,18 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Phase 175 (BUG-04, #119): replay a catch-up preamble. ReconnectPreamble
-	// picks BYTE-FAITHFUL raw scrollback by default (keeps #109's guest-layout
-	// fix — the guest xterm stays in lockstep with the host TUI) and only falls
-	// back to the emulator-derived current-screen snapshot when the raw 256 KiB
-	// ring has actually wrapped past a full-screen TUI's one-time ESC[?1049h
-	// (alt-screen enter) marker, where raw replay would otherwise be
-	// blank/garbled. EnsureLiveEmulator (continuously fed by Hub.Run) keeps that
-	// fallback available and is idempotent — a no-op after the first connection.
-	hub.EnsureLiveEmulator()
-	if snapshot := hub.ReconnectPreamble(); len(snapshot) > 0 {
-		if err := conn.Write(ctx, websocket.MessageBinary, snapshot); err != nil {
+	// Phase 175 (BUG-04, #119) / Phase 5 (SHAR-07): the catch-up replay, bracketed
+	// by MsgMeta{replay} and MsgMeta{offset}. A full replay is byte-faithful raw
+	// scrollback while the ring is intact (#109) and the live emulator's current
+	// screen once it wrapped (M-51); a delta is only the ring bytes after the
+	// client's resume offset. See Hub.Join.
+	for _, f := range replay.Frames() {
+		if err := conn.Write(ctx, websocket.MessageBinary, f); err != nil {
 			return
 		}
 	}
+	log.Printf("viewer-diag: replay session=%s conn=%d mode=%s bytes=%d resume=%t",
+		DiagID(sessionID), sub.ID, replay.Mode, replay.Bytes(), hasResume)
 
 	// Read pump — runs in a separate goroutine, parsing client -> PTY frames.
 	//

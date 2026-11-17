@@ -730,7 +730,7 @@ func (ws *WebServer) handleTerminalPage(w http.ResponseWriter, r *http.Request) 
 }
 
 // handleWSSRelay upgrades to WebSocket and relays frames between the hub and the browser.
-// Uses subscribe-before-snapshot pattern to avoid missing frames.
+// Hub.Join subscribes and captures the replay atomically, so no frame is missed or duplicated.
 //
 // Phase 87: requireCapability has already verified the cap and attached the
 // Claims to r.Context(). Subscriber.ReadOnly is sourced from claims.Perms
@@ -807,9 +807,10 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	if ws.beforeSubscribeHookForTest != nil {
 		ws.beforeSubscribeHookForTest()
 	}
-	// Subscribe FIRST — frames arrive in Msgs from now on, so the snapshot
-	// replayed below cannot leave a gap in the output stream.
-	hub.Subscribe(sub)
+	// Join subscribes and captures the catch-up replay atomically (SHAR-07):
+	// every frame reaches this viewer exactly once, in the replay or in Msgs.
+	resume, hasResume := relay.ParseResume(r.URL.Query().Get("resume"))
+	replay := hub.Join(sub, resume, hasResume)
 	joined := time.Now()
 	relay.NotifyViewerCount(hub) // push updated viewer count to all clients
 	defer func() {
@@ -820,7 +821,8 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 
 	// Re-check after subscribing: share-off clears grants before it kicks
 	// subscribers, so a viewer that passed requireCapability just before the
-	// revoke either is kicked or sees its grant gone here (TOCTOU).
+	// revoke either is kicked or sees its grant gone here (TOCTOU). It runs
+	// before any replay byte is written, so a revoked viewer gets no history.
 	if !ws.isGrantActive(claims.SID, claims.GrantID) || !ws.IsSessionEnabled(sessionID) {
 		conn.Close(websocket.StatusNormalClosure, relay.CloseReasonShareStopped)
 		return
@@ -835,20 +837,19 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Phase 175 (BUG-04, #119): replay a catch-up preamble. ReconnectPreamble
-	// picks BYTE-FAITHFUL raw scrollback by default (keeps #109's guest-layout
-	// fix — the guest xterm stays in lockstep with the host TUI) and only falls
-	// back to the emulator-derived current-screen snapshot when the raw 256 KiB
-	// ring has actually wrapped past a full-screen TUI's one-time ESC[?1049h
-	// (alt-screen enter) marker, where raw replay would otherwise be
-	// blank/garbled. EnsureLiveEmulator (continuously fed by Hub.Run) keeps that
-	// fallback available and is idempotent — a no-op after the first connection.
-	hub.EnsureLiveEmulator()
-	if snapshot := hub.ReconnectPreamble(); len(snapshot) > 0 {
-		if err := conn.Write(ctx, websocket.MessageBinary, snapshot); err != nil {
+	// Phase 175 (BUG-04, #119) / Phase 5 (SHAR-07): the catch-up replay, bracketed
+	// by MsgMeta{replay} and MsgMeta{offset}, in chunks of at most
+	// relay.ReplayChunk. A full replay is byte-faithful raw scrollback while the
+	// ring is intact (#109) and the live emulator's current screen once it
+	// wrapped (M-51); a delta is only the ring bytes after the viewer's resume
+	// offset. See Hub.Join.
+	for _, f := range replay.Frames() {
+		if err := conn.Write(ctx, websocket.MessageBinary, f); err != nil {
 			return
 		}
 	}
+	log.Printf("viewer-diag: replay session=%s conn=%d mode=%s bytes=%d resume=%t",
+		relay.DiagID(sessionID), sub.ID, replay.Mode, replay.Bytes(), hasResume)
 
 	// Read pump — client → PTY
 	readDone := make(chan struct{})

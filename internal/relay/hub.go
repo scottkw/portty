@@ -113,8 +113,7 @@ const liveEmulatorScrollbackLines = 50
 // nothing ever drains Emulator.Read() on this feed path, so an unstripped
 // query would deadlock both EnsureLiveEmulator's bootstrap and Run()'s drain
 // loop (#96/#100). SGR/color sequences are deliberately preserved so styled
-// output survives. ReconnectPreamble also applies it to the raw catch-up
-// replay (UAT gap 1).
+// output survives. Join also applies it to the raw catch-up replay (UAT gap 1).
 //
 // relay MUST NOT import internal/daemon (daemon already imports relay — an
 // import back the other way would be a cycle), so this pattern is
@@ -531,11 +530,15 @@ func (h *Hub) ScrollbackSnapshot() []byte {
 // from an already-wrapped ring misses the one-time header writes), and after the
 // eager build it is dead code: liveEmu is non-nil the moment any frame arrives.
 //
-// Both WS connect sites (relay/server.go, webserver/server.go) still call this
-// before RenderSnapshot; it remains idempotent and cheap.
+// Join calls its locked variant before rendering; it remains idempotent and cheap.
 func (h *Hub) EnsureLiveEmulator() {
 	h.emuMu.Lock()
 	defer h.emuMu.Unlock()
+	h.ensureLiveEmulatorLocked()
+}
+
+// ensureLiveEmulatorLocked is EnsureLiveEmulator's body. Caller holds emuMu.
+func (h *Hub) ensureLiveEmulatorLocked() {
 	if h.liveEmu != nil {
 		return
 	}
@@ -567,6 +570,16 @@ func (h *Hub) EnsureLiveEmulator() {
 func (h *Hub) RenderSnapshot() []byte {
 	h.emuMu.Lock()
 	defer h.emuMu.Unlock()
+	content := h.renderScreenLocked()
+	if content == nil {
+		return nil
+	}
+	return MakeOutputFrame(content)
+}
+
+// renderScreenLocked returns the live emulator's current screen, unframed, or
+// nil when there is no emulator or nothing to show. Caller holds emuMu.
+func (h *Hub) renderScreenLocked() []byte {
 	if h.liveEmu == nil {
 		return nil
 	}
@@ -589,12 +602,25 @@ func (h *Hub) RenderSnapshot() []byte {
 	if altScreen {
 		content = altScreenEnterSeq + content
 	}
-	return MakeOutputFrame([]byte(content))
+	return []byte(content)
 }
 
-// ReconnectPreamble returns the byte stream a newly-connecting client should
-// replay to catch up to the live session. The discriminator is whether the raw
-// 256 KiB scrollback ring still holds the FULL session history:
+// Replay is what Join captured for a joining viewer: Mode is ReplayFull or
+// ReplayDelta, Chunks are MsgOutput frames of at most ReplayChunk payload each
+// (none when there is nothing to replay), End is the ring end offset the
+// client resumes from.
+type Replay struct {
+	Mode   string
+	Chunks [][]byte
+	End    uint64
+}
+
+// Join subscribes sub and captures its catch-up replay as one atomic step, and
+// returns the replay the caller writes (after the grid frame) bracketed by
+// MakeMeta{Replay: Mode} and MakeMeta{Offset: End}.
+//
+// For a full replay the discriminator is whether the raw 256 KiB scrollback
+// ring still holds the FULL session history:
 //
 //   - Ring INTACT (not truncated) — replay the RAW byte history. This is
 //     byte-faithful: the guest's xterm ends up identical to the host TUI, so
@@ -607,7 +633,7 @@ func (h *Hub) RenderSnapshot() []byte {
 //     never rewrote (top/htop's static columns, vim's screen, a long Claude
 //     scrollback) is missing, so a raw tail replays scrambled/partial (the M-51
 //     top garble). The live per-hub emulator — continuously fed since the first
-//     connection — holds the COMPLETE current screen, so its RenderSnapshot()
+//     PTY byte — holds the COMPLETE current screen, so its rendered screen
 //     (which re-establishes alt-screen mode when applicable) is the correct
 //     source. This subsumes BUG-04 / #119 Problem 2 (the alt-screen ESC[?1049h
 //     wrap) as one instance of the general "history lost" condition.
@@ -620,31 +646,73 @@ func (h *Hub) RenderSnapshot() []byte {
 // ring stores 0x01-framed chunks, so a query split across two PTY reads is not
 // matched: accepted, it needs a read boundary inside a few-byte sequence.
 //
-// Callers MUST call EnsureLiveEmulator first (so the wrapped-ring path has a
-// current emulator to render). Returns nil when there is nothing to replay,
-// matching the pre-existing `len(snapshot) > 0` call-site guard.
-func (h *Hub) ReconnectPreamble() []byte {
-	raw := liveEmuQueryStripPattern.ReplaceAll(h.ScrollbackSnapshot(), nil)
+// SHAR-07 / Phase 5 (overnight survival): offsets are frame bytes of the ring
+// (Scrollback.End). A client that sends hasResume with an offset the ring still
+// covers gets ReplayDelta: only the ring bytes after it, query-stripped like the
+// full path, so a rejoining terminal never answers hours-old queries into the
+// PTY. Any other resume (absent, older than the ring start, past the end) is
+// ReplayFull, never an error or a silent partial. Replays are chunked to
+// ReplayChunk so no reader needs a raised limit for the catch-up. Subscribe and
+// capture both happen under emuMu, the lock Run records under, so each frame
+// reaches the viewer exactly once: in the replay or in sub.Msgs.
+// The ring bytes ride along with their 0x01 frame headers as SOH bytes; the
+// client takes its position from the offset meta, never by counting them.
+func (h *Hub) Join(sub *Subscriber, resume uint64, hasResume bool) Replay {
+	r, data, raw := h.joinLocked(sub, resume, hasResume)
+	// Strip and chunk outside emuMu so the drain loop is not held up.
+	if raw {
+		data = liveEmuQueryStripPattern.ReplaceAll(data, nil)
+	}
+	for len(data) > 0 {
+		n := min(len(data), ReplayChunk)
+		r.Chunks = append(r.Chunks, MakeOutputFrame(data[:n]))
+		data = data[n:]
+	}
+	return r
+}
 
-	// Ring still holds the whole session — raw replay is complete + byte-faithful.
-	if !h.scrollback.Truncated() {
-		if len(raw) == 0 {
-			return nil
+// Frames returns the replay as the caller writes it after the grid frame:
+// MsgMeta{replay}, the chunks, MsgMeta{offset}.
+func (r Replay) Frames() [][]byte {
+	mode, end := r.Mode, r.End
+	frames := make([][]byte, 0, len(r.Chunks)+2)
+	frames = append(frames, MakeMeta(MetaPayload{Replay: &mode}))
+	frames = append(frames, r.Chunks...)
+	return append(frames, MakeMeta(MetaPayload{Offset: &end}))
+}
+
+// Bytes returns the total payload bytes of the replay chunks (diagnostics).
+func (r Replay) Bytes() int {
+	n := 0
+	for _, c := range r.Chunks {
+		n += len(c) - 1
+	}
+	return n
+}
+
+// joinLocked subscribes and captures the replay bytes under emuMu. raw reports
+// ring bytes that still need query stripping.
+func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Replay, data []byte, raw bool) {
+	h.emuMu.Lock()
+	defer h.emuMu.Unlock()
+	h.Subscribe(sub) // lock order emuMu then hub.mu, as Cols()/Rows()
+	h.ensureLiveEmulatorLocked()
+
+	if hasResume {
+		if tail, end, ok := h.scrollback.SnapshotFrom(resume); ok {
+			return Replay{Mode: ReplayDelta, End: end}, tail, true
 		}
-		return raw
 	}
-
-	// Ring wrapped — raw is incomplete; prefer the emulator's complete snapshot.
-	if snap := h.RenderSnapshot(); len(snap) > 0 {
-		return snap
+	r = Replay{Mode: ReplayFull, End: h.scrollback.End()}
+	if h.scrollback.Truncated() {
+		// Ring wrapped — raw is incomplete; prefer the emulator's complete screen.
+		if screen := h.renderScreenLocked(); len(screen) > 0 {
+			return r, screen, false
+		}
 	}
-
-	// Emulator unavailable (should not happen after EnsureLiveEmulator) — fall
-	// back to the incomplete raw tail rather than sending nothing.
-	if len(raw) == 0 {
-		return nil
-	}
-	return raw
+	// Ring intact (complete and byte-faithful), or the emulator has nothing to
+	// render: fall back to the raw tail rather than sending nothing.
+	return r, h.scrollback.Snapshot(), true
 }
 
 // Cols returns the current PTY column width as set by the host-authority resize

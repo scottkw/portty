@@ -5,6 +5,7 @@ package relay
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 )
 
 // Message type bytes — single-byte prefix for every framed message.
@@ -61,6 +62,33 @@ func ParseFrame(frame []byte) (msgType byte, payload []byte, err error) {
 // All fields are pointers so omitempty works correctly for partial updates.
 type MetaPayload struct {
 	ViewerCount *int `json:"viewerCount,omitempty"`
+	// Replay is sent once before a join's catch-up output: ReplayDelta (only
+	// what the client missed since its resume offset) or ReplayFull (the client
+	// resets its buffer first). SHAR-07.
+	Replay *string `json:"replay,omitempty"`
+	// Offset is sent once after a join's catch-up output: the ring end in frame
+	// bytes. The client adds the length of every later MsgOutput frame to it and
+	// sends the total back as ?resume= when it reconnects.
+	Offset *uint64 `json:"offset,omitempty"`
+}
+
+// Replay modes carried in MetaPayload.Replay.
+const (
+	ReplayFull  = "full"
+	ReplayDelta = "delta"
+)
+
+// ReplayChunk is the largest replay payload per MsgOutput message. Any value up
+// to 32767 fits coder/websocket's 32768-byte default read limit with the type
+// byte. A var so tests can shrink it.
+var ReplayChunk = 16 << 10
+
+// ParseResume parses a ?resume= query value. Only a decimal uint64 is ok; an
+// empty, negative, non-decimal or overflowing value is not ok and takes the
+// full-replay path.
+func ParseResume(s string) (uint64, bool) {
+	n, err := strconv.ParseUint(s, 10, 64)
+	return n, err == nil
 }
 
 // MakeMeta encodes a MetaPayload as a MsgMeta frame.

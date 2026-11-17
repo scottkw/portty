@@ -118,11 +118,11 @@ func TestScrollbackAltScreenReplay(t *testing.T) {
 	}
 }
 
-// TestReconnectPreamble_RawWhenNotAltScreen is the #109 regression guard: a
+// TestFullReplay_RawWhenNotAltScreen is the #109 regression guard: a
 // normal (non-alt-screen) session must replay the BYTE-FAITHFUL raw scrollback,
 // not the emulator's re-rendered grid — the rendered grid desyncs the guest's
 // xterm from the host TUI and reintroduces the guest layout garble (#109).
-func TestReconnectPreamble_RawWhenNotAltScreen(t *testing.T) {
+func TestFullReplay_RawWhenNotAltScreen(t *testing.T) {
 	r, w := io.Pipe()
 	hub := NewHub("preamble-mainscreen-test", r, w, DefaultScrollbackBytes, nil)
 	done := make(chan struct{})
@@ -138,15 +138,15 @@ func TestReconnectPreamble_RawWhenNotAltScreen(t *testing.T) {
 	testutil.WaitFor(t, 2*time.Second, func() bool { return len(hub.ScrollbackSnapshot()) > 0 }, "scrollback never populated")
 	hub.EnsureLiveEmulator()
 
-	if got, raw := hub.ReconnectPreamble(), hub.ScrollbackSnapshot(); !bytes.Equal(got, raw) {
+	if got, raw := fullReplay(t, hub), hub.ScrollbackSnapshot(); !bytes.Equal(got, raw) {
 		t.Errorf("non-alt-screen must use byte-faithful raw replay (#109); got %q, want raw %q", got, raw)
 	}
 }
 
-// TestReconnectPreamble_RawWhileAltMarkerInRing: an alt-screen session whose
+// TestFullReplay_RawWhileAltMarkerInRing: an alt-screen session whose
 // ESC[?1049h marker is STILL in the ring must ALSO use raw replay — raw is
 // byte-faithful and self-sufficient here, so #109 stays fixed.
-func TestReconnectPreamble_RawWhileAltMarkerInRing(t *testing.T) {
+func TestFullReplay_RawWhileAltMarkerInRing(t *testing.T) {
 	r, w := io.Pipe()
 	hub := NewHub("preamble-alt-marker-present-test", r, w, DefaultScrollbackBytes, nil)
 	done := make(chan struct{})
@@ -163,16 +163,16 @@ func TestReconnectPreamble_RawWhileAltMarkerInRing(t *testing.T) {
 	if !bytes.Contains(raw, []byte(altScreenEnter)) {
 		t.Fatalf("fixture invalid: marker already gone from ring")
 	}
-	if got := hub.ReconnectPreamble(); !bytes.Equal(got, raw) {
+	if got := fullReplay(t, hub); !bytes.Equal(got, raw) {
 		t.Errorf("alt-screen with marker still in ring must use raw replay (#109); got rendered grid instead")
 	}
 }
 
-// TestReconnectPreamble_EmulatorFallbackAfterWrap: only once the ring has
+// TestFullReplay_EmulatorFallbackAfterWrap: only once the ring has
 // wrapped PAST the alt-screen-enter marker does the preamble fall back to the
 // emulator snapshot (BUG-04 #119 Problem 2) — the sole case where raw replay
 // would be blank/garbled.
-func TestReconnectPreamble_EmulatorFallbackAfterWrap(t *testing.T) {
+func TestFullReplay_EmulatorFallbackAfterWrap(t *testing.T) {
 	r, w := io.Pipe()
 	hub := NewHub("preamble-alt-wrapped-test", r, w, DefaultScrollbackBytes, nil)
 	done := make(chan struct{})
@@ -196,7 +196,7 @@ func TestReconnectPreamble_EmulatorFallbackAfterWrap(t *testing.T) {
 	testutil.WaitFor(t, 2*time.Second, func() bool { return !bytes.Contains(hub.ScrollbackSnapshot(), []byte(altScreenEnter)) }, "ring never wrapped past alt marker")
 
 	raw := hub.ScrollbackSnapshot()
-	got := hub.ReconnectPreamble()
+	got := fullReplay(t, hub)
 	if bytes.Equal(got, raw) {
 		t.Errorf("after ring wrapped past the alt marker, expected emulator fallback, got raw replay")
 	}
@@ -205,14 +205,14 @@ func TestReconnectPreamble_EmulatorFallbackAfterWrap(t *testing.T) {
 	}
 }
 
-// TestReconnectPreamble_EmulatorWhenMainScreenRingWrapped is the M-51 guard:
+// TestFullReplay_EmulatorWhenMainScreenRingWrapped is the M-51 guard:
 // a MAIN-SCREEN full-screen app (top/htop on macOS render in the main screen via
 // absolute cursor positioning, NOT the alternate screen) whose 256 KiB ring has
 // WRAPPED must reconnect from the emulator's complete snapshot — NOT the raw,
 // now-incomplete tail (which replays scrambled columns). This fails under the old
 // alt-screen-only discriminator, which took the raw branch for any non-alt-screen
 // session regardless of ring truncation.
-func TestReconnectPreamble_EmulatorWhenMainScreenRingWrapped(t *testing.T) {
+func TestFullReplay_EmulatorWhenMainScreenRingWrapped(t *testing.T) {
 	r, w := io.Pipe()
 	hub := NewHub("preamble-mainscreen-wrapped-test", r, w, DefaultScrollbackBytes, nil)
 	done := make(chan struct{})
@@ -239,9 +239,9 @@ func TestReconnectPreamble_EmulatorWhenMainScreenRingWrapped(t *testing.T) {
 	if bytes.Contains(raw, []byte(altScreenEnter)) {
 		t.Fatalf("fixture invalid: unexpected alt-screen marker present")
 	}
-	got := hub.ReconnectPreamble()
+	got := fullReplay(t, hub)
 	if len(got) == 0 {
-		t.Fatal("ReconnectPreamble returned nothing")
+		t.Fatal("full replay returned nothing")
 	}
 	if bytes.Equal(got, raw) {
 		t.Errorf("main-screen session with a WRAPPED ring must reconnect from the emulator's "+
@@ -249,7 +249,7 @@ func TestReconnectPreamble_EmulatorWhenMainScreenRingWrapped(t *testing.T) {
 	}
 }
 
-// TestReconnectPreamble_EagerEmulatorCapturesHeaderBeforeWrap is the M-51
+// TestFullReplay_EagerEmulatorCapturesHeaderBeforeWrap is the M-51
 // eager-emulator guard. It simulates top's in-place positioned header: a
 // full-screen MAIN-screen app writes a header ONCE at row 1 (absolute cursor
 // home), then only ever repaints a lower body region — it NEVER rewrites the
@@ -264,7 +264,7 @@ func TestReconnectPreamble_EmulatorWhenMainScreenRingWrapped(t *testing.T) {
 // which no longer contains the header write, so row 1 renders blank/garbled.
 // It is GREEN with the eager build: the emulator saw the header at byte 1 and
 // still holds it in row 1 at reconnect time.
-func TestReconnectPreamble_EagerEmulatorCapturesHeaderBeforeWrap(t *testing.T) {
+func TestFullReplay_EagerEmulatorCapturesHeaderBeforeWrap(t *testing.T) {
 	r, w := io.Pipe()
 	hub := NewHub("preamble-eager-header-test", r, w, DefaultScrollbackBytes, nil)
 	done := make(chan struct{})
@@ -313,9 +313,9 @@ func TestReconnectPreamble_EagerEmulatorCapturesHeaderBeforeWrap(t *testing.T) {
 	hub.Subscribe(sub)
 	hub.EnsureLiveEmulator()
 
-	got := hub.ReconnectPreamble()
+	got := fullReplay(t, hub)
 	if len(got) == 0 {
-		t.Fatal("ReconnectPreamble returned nothing")
+		t.Fatal("full replay returned nothing")
 	}
 	if !bytes.Contains(got, []byte("HEADER-XYZ")) {
 		t.Errorf("late-join reconnect preamble lost the one-time header write (M-51): "+

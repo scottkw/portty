@@ -24,7 +24,7 @@ package daemon
 //     evidence: 04-08 proxy dial/close lines, M-83 `tailscale ping`.
 //   - H-replies (replayed query replies typed into the shared shell):
 //     replayed_query_replies FAILED (local, guiTab and browser each got 54
-//     echoed reply bytes). Reproduced and fixed: Hub.ReconnectPreamble strips
+//     echoed reply bytes). Reproduced and fixed: Hub.Join strips
 //     reply-eliciting queries. It hits every viewer including the office's own
 //     panel, so it does not match the UAT signature.
 //   - H-resize (the CLI reports a tiny size): tiny_resize_0x0, tiny_resize_1x1
@@ -429,7 +429,7 @@ func TestCLIAttach_Hypotheses(t *testing.T) {
 		s.checkUndisturbed(t, "guiTab", "browser")
 	})
 
-	// H-replies: the catch-up replay (relay/hub.go Hub.ReconnectPreamble, raw
+	// H-replies: the catch-up replay (relay/hub.go Hub.Join, raw
 	// scrollback) carries historic queries; the CLI writes them to the user's
 	// terminal, which answers on stdin; attach/attach.go StdinPump forwards the
 	// answers as MsgInput, and relay/oscabsorb.go InputAbsorber.Filter drops

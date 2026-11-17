@@ -839,11 +839,11 @@ func TestHub_TwoWebOriginSubscribers_NoEviction(t *testing.T) {
 	ptyWriter.Close()
 }
 
-// TestReconnectPreamble_StripsTerminalQueries (UAT gap 1, H-replies): a joining
+// TestFullReplay_StripsTerminalQueries (UAT gap 1, H-replies): a joining
 // terminal answers the historic queries in a raw catch-up replay, and those
 // answers would be typed into the shared shell. The preamble keeps text and
 // every state-changing sequence and drops every reply-eliciting query.
-func TestReconnectPreamble_StripsTerminalQueries(t *testing.T) {
+func TestFullReplay_StripsTerminalQueries(t *testing.T) {
 	r, w := io.Pipe()
 	hub := NewHub("preamble-strip-queries-test", r, w, DefaultScrollbackBytes, nil)
 	done := make(chan struct{})
@@ -872,7 +872,7 @@ func TestReconnectPreamble_StripsTerminalQueries(t *testing.T) {
 	testutil.WaitFor(t, 2*time.Second, func() bool { return len(hub.ScrollbackSnapshot()) > len(payload) }, "scrollback never populated")
 	hub.EnsureLiveEmulator()
 
-	if got := hub.ReconnectPreamble(); string(got) != string(MakeOutputFrame(want)) {
+	if got := fullReplay(t, hub); string(got) != string(MakeOutputFrame(want)) {
 		t.Errorf("preamble = %q; want %q (text and mode sets kept, queries dropped)", got, MakeOutputFrame(want))
 	}
 }
