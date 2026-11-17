@@ -2,11 +2,11 @@
 gsd_state_version: "1.0"
 current_phase: 4
 status: verifying
-stopped_at: "Phase 4 complete (two-Mac UAT deferred); next: Phase 5 discuss via /gsd-autonomous --from 5"
-last_updated: "2026-11-17T15:10:44.620Z"
+stopped_at: context exhaustion at 75% (2026-11-17)
+last_updated: "2026-11-17T15:11:24.160Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 4 execution started
-state_head: 2ba1bb009d8ee1d3cd13d10fe1fd7439da04c672
+state_head: 9af051d3e74dcd6c51584a3bedfe533db111d2fa
 progress:
   total_phases: 6
   completed_phases: 1
@@ -174,6 +174,7 @@ Recent decisions affecting current work:
 ### Pending Todos
 
 - Follow-up: restored tabs after an app restart still start at 80×24, so their scrollback replay can show the old % mark in history (see 261116-ku9 SUMMARY).
+- [2026-11-17] [docs] Document multi-line prompt resize artifacts in user docs — [todo file](.planning/todos/pending/2026-11-17-document-multi-line-prompt-resize-artifacts.md)
 
 ### Blockers/Concerns
 
@@ -232,6 +233,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T15:10:42.240Z
-Stopped at: Phase 4 complete (two-Mac UAT deferred); next: Phase 5 discuss via /gsd-autonomous --from 5
+Last session: 2026-11-17T15:11:21.805Z
+Stopped at: context exhaustion at 75% (2026-11-17)
 Resume file: .planning/phases/04-one-click-share/04-UAT.md
