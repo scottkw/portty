@@ -1,11 +1,11 @@
 // Package webserver CSP integration tests (Phase 89, SEC-08).
 //
-// Verifies D-18's five-assertion suite on all three HTML routes
-// (/sessions/{id}, /dashboard, /join) against a live test server,
+// Verifies D-18's five-assertion suite on the HTML routes
+// (/sessions/{id}, /dashboard) against a live test server,
 // extending the unit tests in csp_mw_test.go to real HTTP responses.
 //
 // Also verifies:
-//   - Cache-Control: no-store flows through on all three HTML routes (D-16)
+//   - Cache-Control: no-store flows through on the HTML routes (D-16)
 //   - CSP header is present even on 401 responses (cspHeaders is OUTERMOST — D-13)
 package webserver
 
@@ -115,20 +115,6 @@ func TestCSPHeaderStrict_Dashboard(t *testing.T) {
 	assertCSPHeaderStrict(t, resp, ws.BaseURL(), "/dashboard")
 }
 
-// TestCSPHeaderStrict_Join asserts D-18's five assertions on GET /join.
-func TestCSPHeaderStrict_Join(t *testing.T) {
-	ws, client := testServer(t)
-	resp, err := client.Get(ws.BaseURL() + "/join")
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 for /join, got %d", resp.StatusCode)
-	}
-	assertCSPHeaderStrict(t, resp, ws.BaseURL(), "/join")
-}
-
 // TestCSPHeaderStrict_App asserts D-18's five assertions on GET /app/
 // (Phase 176 BUG-06). testServer(t) does NOT wire a static app FS (only
 // app_bundle_test.go calls SetStaticAppFS), so /app/ returns 503 by
@@ -212,8 +198,8 @@ func TestCSPHeaderStrict_CacheControl(t *testing.T) {
 		},
 	}
 
-	// /dashboard and /join still return 200; use the default client.
-	for _, p := range []string{"/dashboard", "/join"} {
+	// /dashboard still returns 200; use the default client.
+	for _, p := range []string{"/dashboard"} {
 		resp, err := client.Get(ws.BaseURL() + p)
 		if err != nil {
 			t.Fatalf("Get %s: %v", p, err)

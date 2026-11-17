@@ -40,10 +40,6 @@ type API struct {
 	// block an unrelated operation on webServer/localPassword).
 	signingKeyMu sync.RWMutex
 	signingKey   []byte
-	// joinCodes is the in-memory short-lived join-code manager (D-09/D-11).
-	// The Plan-06 /join/exchange handler on the webserver consumes the same
-	// manager via ws.SetJoinCodes.
-	joinCodes *capability.JoinCodeManager
 
 	// remoteCaps caches per-session (baseURL, capToken) tuples used to open
 	// remote sessions and by the remote terminal WS proxy. In-memory only;
@@ -56,7 +52,6 @@ type API struct {
 	// trusted-cert chain. Production code leaves this nil and the proxy
 	// builds a fresh client per request via newRemoteFilesHTTPClient().
 	remoteFilesClientForTest *http.Client
-
 }
 
 // NewAPI creates an API wired to the given SessionEngine and registers all routes.
@@ -107,7 +102,7 @@ func (a *API) registerRoutes() {
 	// handleWebServe above) — NEVER a capability-gated
 	// /api/... route a guest browser can reach (SECURITY STRIDE-EoP, T-168-07).
 	// Drops connections only; does not revoke the capability (D-06) — viewers
-	// may reconnect with the same join code.
+	// may reconnect with the same link.
 	a.mux.HandleFunc("POST /sessions/{id}/disconnect-viewers", a.handleDisconnectViewers)
 	a.mux.HandleFunc("POST /shutdown", a.handleShutdown)
 	// Tailnet peer discovery.
@@ -116,17 +111,16 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /webserver/local-password", a.handleGetLocalPassword)
 	// Phase 87 capability-based authorization endpoints (D-06, D-09, D-16).
 	a.mux.HandleFunc("POST /sessions/{id}/capabilities", a.handleIssueCapabilities)
-	a.mux.HandleFunc("POST /join/exchange", a.handleExchangeJoinCode)
 	a.mux.HandleFunc("POST /capability/regenerate-key", a.handleRegenerateSigningKey)
 	// Phase 122-01 / REMOTE-01: remote cap deposit.
 	// POST /api/remote-files/caps accepts (sessionId, baseUrl, capToken) from
-	// the GUI after a successful join-code exchange; the open-url route and the
+	// the GUI for a remote session; the open-url route and the
 	// relay remote terminal WS proxy use that cap. Loopback transport is the
 	// trust boundary; no auth gate here.
 	a.mux.HandleFunc("POST /api/remote-files/caps", a.handleRegisterRemoteCap)
 	// Phase 146-05 / GAP-146-A: read-only open-url endpoint. Returns the cap-bearing
 	// open URL from RemoteCapStore so the frontend can open a remote session without
-	// re-prompting for a join code (held-cap reuse path). No cap is minted; the cap
+	// asking for a new link (held-cap reuse path). No cap is minted; the cap
 	// enters only the returned URL string (T-146-05-01 / T-146-05-04 accept).
 	a.mux.HandleFunc("GET /api/remote-files/caps/{sessionID}/open-url", a.handleRemoteSessionOpenURL)
 }
@@ -152,14 +146,14 @@ func (a *API) SetRemoteFilesClientForTest(c *http.Client) {
 	a.remoteFilesClientForTest = c
 }
 
-// BootstrapCapabilityState loads or generates the HMAC signing key (D-04) and
-// constructs the in-memory JoinCodeManager (D-11). Must be called once during
+// BootstrapCapabilityState loads or generates the HMAC signing key (D-04).
+// Must be called once during
 // daemon startup, BEFORE any web server is created — otherwise requireCapability
 // would see a nil signing key (Pitfall 3) and 401 every request.
 //
-// Callers must pair this with ws.SetSigningKey + ws.SetJoinCodes whenever a
-// WebServer is constructed (AutoStartWebServer, handleWebServerStart, etc.).
-// CurrentSigningKey and JoinCodes accessors expose the bootstrapped state.
+// Callers must pair this with ws.SetSigningKey whenever a WebServer is
+// constructed (AutoStartWebServer, handleWebServerStart, etc.).
+// CurrentSigningKey exposes the bootstrapped key.
 func (a *API) BootstrapCapabilityState() error {
 	store := capability.NewFileKeyStore(a.engine.configDir)
 	key, err := capability.LoadOrGenerate(store)
@@ -169,11 +163,6 @@ func (a *API) BootstrapCapabilityState() error {
 	a.signingKeyMu.Lock()
 	a.signingKey = key
 	a.signingKeyMu.Unlock()
-	// Join codes live for 5 minutes (D-11) and are NOT persisted across
-	// restarts — on daemon restart, users must regenerate any outstanding
-	// share codes. This is acceptable because codes are ephemeral sharing
-	// artefacts, not durable credentials.
-	a.joinCodes = capability.NewJoinCodeManager(5 * time.Minute)
 	return nil
 }
 
@@ -184,12 +173,6 @@ func (a *API) CurrentSigningKey() []byte {
 	a.signingKeyMu.RLock()
 	defer a.signingKeyMu.RUnlock()
 	return a.signingKey
-}
-
-// JoinCodes returns the bootstrapped JoinCodeManager, or nil if
-// BootstrapCapabilityState has not run.
-func (a *API) JoinCodes() *capability.JoinCodeManager {
-	return a.joinCodes
 }
 
 // RelayHandler returns the http.Handler served on the relay loopback TCP port
@@ -383,7 +366,7 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	})
 	// Wire capability state onto the web server BEFORE Start() so requireCapability
 	// has a non-nil signing key when the first request arrives (Pitfall 3). The
-	// bootstrapped signing key and joinCodes MUST be populated by a prior call
+	// bootstrapped signing key MUST be populated by a prior call
 	// to BootstrapCapabilityState; if that did not happen, requireCapability
 	// will 401 every request — which is the correct defensive default.
 	a.signingKeyMu.RLock()
@@ -391,7 +374,6 @@ func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password strin
 	a.signingKeyMu.RUnlock()
 	ws.SetSigningKey(key)
 	ws.SetStaticAppFS(getStaticAppFS())
-	ws.SetJoinCodes(a.joinCodes)
 	if err := ws.Start(); err != nil {
 		return err
 	}
@@ -893,7 +875,6 @@ func (a *API) handleWebServerStart(w http.ResponseWriter, r *http.Request) {
 	a.signingKeyMu.RUnlock()
 	ws.SetSigningKey(key)
 	ws.SetStaticAppFS(getStaticAppFS())
-	ws.SetJoinCodes(a.joinCodes)
 
 	if err := ws.Start(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1001,7 +982,7 @@ func (a *API) handleWebServe(w http.ResponseWriter, r *http.Request) {
 // see the SECURITY comment at the route registration above (T-168-07).
 //
 // Does NOT revoke the session's capability grants or touch web-serve state
-// (D-06): viewers may reconnect with the same join code. Full access
+// (D-06): viewers may reconnect with the same link. Full access
 // revocation remains handleWebServe's disable path.
 func (a *API) handleDisconnectViewers(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -1014,84 +995,45 @@ func (a *API) handleDisconnectViewers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// issueCapabilitiesForSession mints the two capabilities (read + read,write)
-// for a web-enabled session, registers both grant_ids on the WebServer, and
-// issues a short-lived join code (D-09) for each. Returns the two
-// capability-bearing URLs and their join codes. Called by
-// handleIssueCapabilities (POST /sessions/{id}/capabilities).
-//
-// This is the atomic "Share" operation from the user's perspective (D-07):
-// one call produces both a read-only and a read-write link, each with its
-// own grant_id for future revocation granularity.
-func (a *API) issueCapabilitiesForSession(sessionID string) (readURL, writeURL, readCode, writeCode string, err error) {
+// issueCapabilitiesForSession mints one full-control capability (perms
+// "read,write") for a web-enabled session, registers its grant_id on the
+// WebServer and returns the capability-bearing link. Called by
+// handleIssueCapabilities (POST /sessions/{id}/capabilities). A share always
+// grants full control (SHAR-02); no view-only link is ever minted.
+func (a *API) issueCapabilitiesForSession(sessionID string) (writeURL string, err error) {
 	a.signingKeyMu.RLock()
 	key := a.signingKey
 	a.signingKeyMu.RUnlock()
 	if key == nil {
-		return "", "", "", "", errors.New("capability: signing key not bootstrapped")
+		return "", errors.New("capability: signing key not bootstrapped")
 	}
 
 	a.mu.RLock()
 	ws := a.webServer
 	a.mu.RUnlock()
 	if ws == nil {
-		return "", "", "", "", errors.New("web server not running")
-	}
-	if a.joinCodes == nil {
-		return "", "", "", "", errors.New("capability: join-code manager not bootstrapped")
+		return "", errors.New("web server not running")
 	}
 
-	// Generate two 128-bit grant IDs (hex-encoded to 32 chars).
-	var rgid, wgid [16]byte
-	if _, err := rand.Read(rgid[:]); err != nil {
-		return "", "", "", "", err
+	var gid [16]byte // 128-bit grant ID, hex-encoded to 32 chars
+	if _, err := rand.Read(gid[:]); err != nil {
+		return "", err
 	}
-	if _, err := rand.Read(wgid[:]); err != nil {
-		return "", "", "", "", err
-	}
-
-	now := time.Now().Unix()
-	// RO link mints "read", full-access link mints "read,write". No other perm
-	// is ever minted (the files perms left with the file browser).
-	rPerms := "read"
-	wPerms := "read,write"
-	rClaims := capability.Claims{SID: sessionID, Perms: rPerms, IAT: now, GrantID: hex.EncodeToString(rgid[:]), V: 1}
-	wClaims := capability.Claims{SID: sessionID, Perms: wPerms, IAT: now, GrantID: hex.EncodeToString(wgid[:]), V: 1}
-
-	rTok, err := capability.Sign(rClaims, key)
+	claims := capability.Claims{SID: sessionID, Perms: "read,write", IAT: time.Now().Unix(), GrantID: hex.EncodeToString(gid[:]), V: 1}
+	tok, err := capability.Sign(claims, key)
 	if err != nil {
-		return "", "", "", "", err
-	}
-	wTok, err := capability.Sign(wClaims, key)
-	if err != nil {
-		return "", "", "", "", err
+		return "", err
 	}
 
-	// Register both grants BEFORE returning URLs so the caller's first
-	// request with the returned token succeeds (no TOCTOU where the token
-	// arrives before the grant is registered).
-	ws.AddGrant(sessionID, rClaims.GrantID)
-	ws.AddGrant(sessionID, wClaims.GrantID)
-
-	readURL = ws.BaseURL() + "/sessions/" + sessionID + "?cap=" + rTok
-	writeURL = ws.BaseURL() + "/sessions/" + sessionID + "?cap=" + wTok
-
-	readCode, err = a.joinCodes.Issue(rTok)
-	if err != nil {
-		return "", "", "", "", err
-	}
-	writeCode, err = a.joinCodes.Issue(wTok)
-	if err != nil {
-		return "", "", "", "", err
-	}
-
-	return readURL, writeURL, readCode, writeCode, nil
+	// Register the grant BEFORE returning the URL so the caller's first
+	// request with the token succeeds (no TOCTOU).
+	ws.AddGrant(sessionID, claims.GrantID)
+	return ws.BaseURL() + "/sessions/" + sessionID + "?cap=" + tok, nil
 }
 
-// handleIssueCapabilities issues two capabilities for a web-enabled session
-// (D-07) and returns their URLs and join codes. Called by the frontend after
-// a toggle-on gesture. Returns 400 when the web server is not running or
-// the session is not web-enabled.
+// handleIssueCapabilities issues one full-control capability for a
+// web-enabled session and returns its link. Returns 400 when the web server
+// is not running or the session is not web-enabled.
 func (a *API) handleIssueCapabilities(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	a.mu.RLock()
@@ -1105,73 +1047,12 @@ func (a *API) handleIssueCapabilities(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not web-enabled", http.StatusBadRequest)
 		return
 	}
-	readURL, writeURL, readCode, writeCode, err := a.issueCapabilitiesForSession(id)
+	writeURL, err := a.issueCapabilitiesForSession(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, IssueCapabilitiesResponse{
-		ReadURL:   readURL,
-		WriteURL:  writeURL,
-		ReadCode:  readCode,
-		WriteCode: writeCode,
-	})
-}
-
-// handleExchangeJoinCode consumes a single-use join code (D-09/D-11) and
-// returns the capability-bearing URL the client should follow. Status codes:
-//   - 200: code valid, returns ExchangeJoinCodeResponse{URL}
-//   - 400: bad request body or empty code
-//   - 404: code not found (never issued, already exchanged, GC'd)
-//   - 410: code expired past TTL
-//   - 500: token verify failed or web server not running
-func (a *API) handleExchangeJoinCode(w http.ResponseWriter, r *http.Request) {
-	var req ExchangeJoinCodeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if req.Code == "" {
-		http.Error(w, "code required", http.StatusBadRequest)
-		return
-	}
-	if a.joinCodes == nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	token, err := a.joinCodes.Exchange(req.Code)
-	switch {
-	case errors.Is(err, capability.ErrCodeExpired):
-		http.Error(w, "code expired", http.StatusGone)
-		return
-	case errors.Is(err, capability.ErrCodeNotFound):
-		http.Error(w, "invalid code", http.StatusNotFound)
-		return
-	case err != nil:
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	a.signingKeyMu.RLock()
-	key := a.signingKey
-	a.signingKeyMu.RUnlock()
-	if key == nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	claims, err := capability.Verify(token, key)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws == nil {
-		http.Error(w, "web server not running", http.StatusBadRequest)
-		return
-	}
-	url := ws.BaseURL() + "/sessions/" + claims.SID + "?cap=" + token
-	writeJSON(w, http.StatusOK, ExchangeJoinCodeResponse{URL: url})
+	writeJSON(w, http.StatusOK, IssueCapabilitiesResponse{WriteURL: writeURL})
 }
 
 // handleRegenerateSigningKey replaces capability.key on disk, updates the

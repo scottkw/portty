@@ -49,8 +49,8 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Cap lookup BEFORE the upgrade so the no-cap path returns the same JSON 404
-	// contract as proxyRemoteFiles (the frontend re-prompts for a join code on
-	// this marker). A bare route-miss would be Go's "404 page not found".
+	// contract as proxyRemoteFiles (the frontend treats this marker as "no cap
+	// held"). A bare route-miss would be Go's "404 page not found".
 	baseURL, capToken, ok := a.remoteCaps.Get(sid)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no cap registered for session"})

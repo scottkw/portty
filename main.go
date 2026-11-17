@@ -230,8 +230,6 @@ func runCLI(args []string) {
 		err = cmdUnserve(client, cmdArgs)
 	case "health":
 		err = cmdHealth(cmdArgs, os.Stdout)
-	case "qr":
-		err = cmdQR(client, cmdArgs, os.Stdout)
 	case "settings":
 		err = cmdSettings(client, os.Stdout)
 	case "daemon":

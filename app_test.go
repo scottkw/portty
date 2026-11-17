@@ -2,17 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/base64"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	"os"
 	"reflect"
@@ -77,76 +68,6 @@ func testAppWithSpawn(t *testing.T, path string, args []string) *App {
 		_ = os.Remove(socketPath)
 	})
 	return app
-}
-
-// testAppWithDirectWebServer creates an App + daemon API pair and returns a
-// setup function that injects a TLS web server directly into the daemon API
-// (bypassing the Tailscale prerequisite). Used for tests that need a running
-// web server without a real Tailscale connection.
-func testAppWithDirectWebServer(t *testing.T, tlsCfg *tls.Config) (*App, func(sessionID string) error) {
-	t.Helper()
-	if goruntime.GOOS == "darwin" {
-		t.Setenv("HOME", t.TempDir())
-	} else {
-		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	}
-
-	engine := daemon.NewSessionEngine()
-	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
-	api := daemon.NewAPI(engine)
-
-	seq := testSockSeq.Add(1)
-	socketPath := fmt.Sprintf("/tmp/aht%d_%d.sock", os.Getpid(), seq)
-	_ = os.Remove(socketPath)
-	if err := api.Start(socketPath); err != nil {
-		t.Fatalf("testAppWithDirectWebServer: api.Start: %v", err)
-	}
-	if _, err := api.StartRelay(); err != nil {
-		t.Fatalf("testAppWithDirectWebServer: StartRelay: %v", err)
-	}
-
-	client := daemon.NewDaemonClient(socketPath)
-	time.Sleep(10 * time.Millisecond)
-
-	app := &App{
-		ctx:    context.Background(),
-		client: client,
-	}
-
-	var wsRef *webserver.WebServer
-
-	setup := func(sessionID string) error {
-		ws, err := webserver.NewWebServer(webserver.Config{
-			BindIP:    "127.0.0.1",
-			Port:      0,
-			FQDN:      "localhost",
-			TLSConfig: tlsCfg,
-		}, engine.Manager())
-		if err != nil {
-			return fmt.Errorf("NewWebServer: %w", err)
-		}
-		ws.SetSessionResolver(func(id string) (string, string, string, bool) {
-			return "", "", "", false
-		})
-		if err := ws.Start(); err != nil {
-			return fmt.Errorf("ws.Start: %w", err)
-		}
-		ws.EnableSession(sessionID)
-		wsRef = ws
-		// Inject the running webserver directly into the daemon API.
-		api.SetWebServerForTest(ws)
-		return nil
-	}
-
-	t.Cleanup(func() {
-		if wsRef != nil {
-			_ = wsRef.Stop()
-		}
-		engine.Manager().Shutdown()
-		api.Stop()
-		_ = os.Remove(socketPath)
-	})
-	return app, setup
 }
 
 // testAppWithAPI creates an App + daemon API pair (like testApp) and returns
@@ -369,76 +290,6 @@ func TestIsWebServerRunning(t *testing.T) {
 	app := testApp(t)
 	if app.IsWebServerRunning() {
 		t.Error("expected IsWebServerRunning to be false before StartWebServer")
-	}
-}
-
-// selfSignedTLSForAppTest generates an in-memory self-signed TLS config
-// for use in app-level tests where Tailscale is not available.
-func selfSignedTLSForAppTest(t *testing.T) *tls.Config {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("selfSignedTLSForAppTest: generate key: %v", err)
-	}
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "test"},
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
-		DNSNames:     []string{"localhost"},
-	}
-	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatalf("selfSignedTLSForAppTest: create cert: %v", err)
-	}
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyDER, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		t.Fatalf("selfSignedTLSForAppTest: marshal key: %v", err)
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-	cert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		t.Fatalf("selfSignedTLSForAppTest: key pair: %v", err)
-	}
-	return &tls.Config{Certificates: []tls.Certificate{cert}}
-}
-
-func TestGetWebServerQRCode(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-
-	tlsCfg := selfSignedTLSForAppTest(t)
-	app, startWebServer := testAppWithDirectWebServer(t, tlsCfg)
-
-	if err := startWebServer("test-session-id"); err != nil {
-		t.Fatalf("startWebServer: %v", err)
-	}
-
-	b64, err := app.GetWebServerQRCode()
-	if err != nil {
-		t.Fatalf("GetWebServerQRCode: %v", err)
-	}
-	if b64 == "" {
-		t.Fatal("GetWebServerQRCode returned empty string")
-	}
-
-	pngBytes, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		t.Fatalf("base64 decode: %v", err)
-	}
-	if len(pngBytes) < 4 {
-		t.Fatalf("decoded PNG too short: %d bytes", len(pngBytes))
-	}
-	if pngBytes[0] != 0x89 || pngBytes[1] != 'P' || pngBytes[2] != 'N' || pngBytes[3] != 'G' {
-		t.Errorf("expected PNG magic bytes, got %v", pngBytes[:4])
-	}
-}
-
-func TestGetWebServerQRCode_NoServer(t *testing.T) {
-	app := testApp(t)
-	_, err := app.GetWebServerQRCode()
-	if err == nil {
-		t.Error("expected GetWebServerQRCode to return error when web server is not running")
 	}
 }
 

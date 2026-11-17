@@ -98,26 +98,9 @@ type WebServeRequest struct {
 // --- Phase 87 capability types (D-06, D-07, D-09, D-11) ------------------
 
 // IssueCapabilitiesResponse is the response body for POST
-// /sessions/{id}/capabilities. Each call produces TWO capabilities (D-07):
-// one read-only link and one read-write link. Each capability is paired with
-// a single-use 5-minute join code (D-09/D-11).
+// /sessions/{id}/capabilities: the link carrying one full-control capability.
 type IssueCapabilitiesResponse struct {
-	ReadURL   string `json:"readUrl"`
-	WriteURL  string `json:"writeUrl"`
-	ReadCode  string `json:"readCode"`
-	WriteCode string `json:"writeCode"`
-}
-
-// ExchangeJoinCodeRequest is the body for POST /join/exchange.
-type ExchangeJoinCodeRequest struct {
-	Code string `json:"code"`
-}
-
-// ExchangeJoinCodeResponse is the response body for POST /join/exchange.
-// URL carries the resolved session URL with the `?cap=<token>` query
-// parameter, which the caller follows to reach the gated session.
-type ExchangeJoinCodeResponse struct {
-	URL string `json:"url"`
+	WriteURL string `json:"writeUrl"`
 }
 
 // TerminalFont is the persisted Settings ▸ General ▸ Terminal Font value

@@ -19,7 +19,6 @@ import (
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/tailnet"
 	webfs "github.com/scottkw/portty/web"
-	qrcode "github.com/skip2/go-qrcode"
 	"tailscale.com/client/local"
 )
 
@@ -47,7 +46,6 @@ type Config struct {
 // webserver which is bound to the Tailscale IP — only tailnet members can reach it
 // (network-layer trust per the resolved #86 decision and RB-03). It must NEVER
 // include cap tokens, grants, content, or signing keys.
-// Broadcast join-code fields removed per CONTEXT.md D-10.
 // RB-03 restored: cap-free discovery — no credentials in this payload.
 type sessionMetaItem struct {
 	ID     string `json:"id"`
@@ -97,12 +95,6 @@ type WebServer struct {
 	// (D-04/D-16). Guarded by ws.mu; swapped race-free via SetSigningKey.
 	// Read via currentSigningKey which returns the slice header under RLock.
 	signingKey []byte
-
-	// joinCodes is the in-memory store of short-lived join codes (D-09/D-11).
-	// Plan 04 calls SetJoinCodes at daemon startup; Plan 06 consumes the
-	// manager in handleJoinExchange. Guarded by ws.mu; swapped race-free via
-	// SetJoinCodes.
-	joinCodes *capability.JoinCodeManager
 
 	// sessionResolver is set once before Start() and is not mutex-protected.
 	sessionResolver func(sessionID string) (name, status, hostname string, ok bool)
@@ -252,16 +244,6 @@ func (ws *WebServer) isGrantActive(sessionID, grantID string) bool {
 func (ws *WebServer) SetSigningKey(key []byte) {
 	ws.mu.Lock()
 	ws.signingKey = key
-	ws.mu.Unlock()
-}
-
-// SetJoinCodes installs the join-code manager used by handleJoinExchange
-// (D-09/D-11). Plan 04 wires this at daemon startup; Plan 06 consumes
-// ws.joinCodes in the exchange handler. The swap is race-free against
-// concurrent readers via ws.mu.
-func (ws *WebServer) SetJoinCodes(jc *capability.JoinCodeManager) {
-	ws.mu.Lock()
-	ws.joinCodes = jc
 	ws.mu.Unlock()
 }
 
@@ -464,8 +446,6 @@ func (ws *WebServer) BaseURL() string {
 //   - /api/sessions, /api/sessions/{id}/info, /sessions/{id}, /sessions/{id}/ws
 //     — gated by requireCapability. The session-bound cap enforces enumeration,
 //     cross-session isolation, and write permission via claims.Perms (D-24).
-//   - /api/sessions/{id}/qr — open (QR points at the session URL; the cap
-//     token is baked into the URL, not needed to fetch the QR image).
 //
 // In local-network-fallback mode, basicAuthMiddleware wraps the entire mux at
 // startLocal() and runs BEFORE these per-route wrappers (D-20 defense in
@@ -485,17 +465,6 @@ func (ws *WebServer) setupRoutes() {
 	// GET /dashboard — open landing page (no session list per D-17, finalized
 	// by Plan 06).
 	mux.HandleFunc("GET /dashboard", ws.cspHeaders(ws.handleDashboard))
-
-	// GET /join — open join-flow page (Plan 06, D-09). Reads ?code= from the
-	// query string for pre-fill. Not capability-gated — it only collects the
-	// code; the exchange itself runs on POST /join/exchange.
-	mux.HandleFunc("GET /join", ws.cspHeaders(ws.handleJoin))
-
-	// POST /join/exchange — open join-code exchange endpoint. Consumes a
-	// single-use code and 303-redirects to /sessions/{id}?cap=<token>. Not
-	// capability-gated — the code itself is the credential for this step
-	// (D-09/D-11).
-	mux.HandleFunc("POST /join/exchange", ws.handleJoinExchange)
 
 	// GET /api/sessions/meta — open (no capability required). Returns shareable-session
 	// metadata (id, name, status, url) for all web-enabled sessions to
@@ -549,10 +518,6 @@ func (ws *WebServer) setupRoutes() {
 	mux.HandleFunc("GET /sessions/{id}/ws",
 		ws.requireAllowedOrigin(ws.requireCapability(ws.handleWSSRelay)))
 
-	// GET /api/sessions/{id}/qr — serves QR code PNG. Open because the QR
-	// encodes the capability-bearing URL; the cap itself lives in the URL.
-	mux.HandleFunc("GET /api/sessions/{id}/qr", ws.handleSessionQR)
-
 	// GET /assets/ and /assets/xterm/ — public static assets from the embedded web.WebFS.
 	// Per D-14: http.FileServerFS mounted via fs.Sub. Two separate mounts because
 	// vendored xterm files live at web/vendor/xterm/ on disk (user decision D-01/D-02)
@@ -584,7 +549,7 @@ func (ws *WebServer) setupRoutes() {
 	//
 	// Phase 176 BUG-06 — wrapped in ws.cspHeaders (D-05): the guest SPA
 	// previously served with NO Content-Security-Policy header. Reuses the existing strict policy
-	// verbatim (same as /dashboard, /join, /sessions/{id}); no capability
+	// verbatim (same as /dashboard, /sessions/{id}); no capability
 	// gate exists here to nest inside, so cspHeaders wraps the handler
 	// literal outermost.
 	//
@@ -672,87 +637,6 @@ func (ws *WebServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Write(data) //nolint:errcheck
 }
 
-// handleJoin serves the embedded join.html landing page. The page reads
-// ?code= and ?error= from the URL on the client side and shows the matching
-// state variant (A=pre-filled, B=no-code, C=expired, D=invalid, E=session-gone).
-// No capability required — the code input itself is the credential for the
-// subsequent POST /join/exchange call.
-func (ws *WebServer) handleJoin(w http.ResponseWriter, r *http.Request) {
-	data, err := webfs.WebFS.ReadFile("join.html")
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data) //nolint:errcheck
-}
-
-// handleJoinExchange consumes a single-use join code (D-09/D-11) and redirects
-// to /sessions/{id}?cap=<token> via HTTP 303 See Other. Error contract:
-//   - Empty or malformed body              -> 303 /join?error=invalid
-//   - ErrCodeExpired                       -> 303 /join?error=expired
-//   - ErrCodeNotFound                      -> 303 /join?error=invalid
-//   - underlying verify / server error     -> 500
-//   - session no longer web-enabled        -> 303 /join?error=session-gone
-//
-// Join-code 303 responses point at /join?error=<kind> so the user-facing UX
-// (join.html State C/D/E) is the same shape regardless of whether the failure
-// came from the browser back button, an expired code, or a revoked session.
-func (ws *WebServer) handleJoinExchange(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/join?error=invalid", http.StatusSeeOther)
-		return
-	}
-	code := r.FormValue("code")
-	if code == "" {
-		http.Redirect(w, r, "/join?error=invalid", http.StatusSeeOther)
-		return
-	}
-
-	ws.mu.RLock()
-	jc := ws.joinCodes
-	ws.mu.RUnlock()
-	if jc == nil {
-		// Daemon never wired a JoinCodeManager — misconfiguration. Refuse rather
-		// than silently accept: an un-wired manager means the server cannot
-		// consume codes, so every request here is effectively invalid.
-		http.Error(w, "join flow not available", http.StatusInternalServerError)
-		return
-	}
-
-	token, err := jc.Exchange(code)
-	switch {
-	case errors.Is(err, capability.ErrCodeExpired):
-		http.Redirect(w, r, "/join?error=expired", http.StatusSeeOther)
-		return
-	case errors.Is(err, capability.ErrCodeNotFound):
-		http.Redirect(w, r, "/join?error=invalid", http.StatusSeeOther)
-		return
-	case err != nil:
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	key := ws.currentSigningKey()
-	if key == nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	claims, err := capability.Verify(token, key)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	if !ws.IsSessionEnabled(claims.SID) {
-		http.Redirect(w, r, "/join?error=session-gone", http.StatusSeeOther)
-		return
-	}
-
-	target := "/sessions/" + claims.SID + "?cap=" + token
-	http.Redirect(w, r, target, http.StatusSeeOther)
-}
-
 // handleListSessions handles GET /api/sessions. Per D-18 the response
 // contains ONLY the single session that the caller's capability is bound to
 // — there is no listing-scoped capability, so no caller can ever receive a
@@ -794,7 +678,7 @@ func (ws *WebServer) handleListSessions(w http.ResponseWriter, r *http.Request) 
 // handleSessionsMeta handles GET /api/sessions/meta.
 // Returns cap-free metadata for all web-enabled sessions (RB-03 restored).
 // This endpoint is open (no capability required); it must NEVER include
-// cap tokens, join codes, grants, or any credential material.
+// cap tokens, grants, or any credential material.
 func (ws *WebServer) handleSessionsMeta(w http.ResponseWriter, r *http.Request) {
 	ids := ws.webEnabledSessions()
 	items := make([]sessionMetaItem, 0, len(ids))
@@ -879,25 +763,6 @@ func (ws *WebServer) handleTerminalPage(w http.ResponseWriter, r *http.Request) 
 		url.QueryEscape(token),
 	)
 	http.Redirect(w, r, target, http.StatusFound)
-}
-
-// handleSessionQR handles GET /api/sessions/{id}/qr.
-// Returns a QR code PNG for the session URL. Returns 404 if the session is not
-// web-enabled.
-func (ws *WebServer) handleSessionQR(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.PathValue("id")
-	if !ws.IsSessionEnabled(sessionID) {
-		http.NotFound(w, r)
-		return
-	}
-	sessionURL := fmt.Sprintf("%s/sessions/%s", ws.BaseURL(), sessionID)
-	png, err := qrcode.Encode(sessionURL, qrcode.Medium, 256)
-	if err != nil {
-		http.Error(w, "failed to generate QR code", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Write(png) //nolint:errcheck
 }
 
 // handleWSSRelay upgrades to WebSocket and relays frames between the hub and the browser.

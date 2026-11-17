@@ -5,8 +5,8 @@ package daemon
 // RemoteCapStore caches per-session (baseURL, capToken) tuples the local
 // daemon uses to open a remote session (open-url) and to reach a remote
 // peer's webserver through the remote terminal WS proxy. The store lives in process memory only — there is no disk
-// persistence (matches JoinCodeManager invariant). A daemon restart wipes the
-// cache and the GUI/TUI must re-exchange the join code to repopulate.
+// persistence. A daemon restart wipes the cache and the GUI must deposit the
+// cap for a remote session again to repopulate.
 //
 // Security invariant: nothing in this file writes a cap token to disk. The
 // companion test asserts this via a source-grep guard so that future edits
@@ -22,7 +22,7 @@ import (
 // remoteCapEntry is the per-session (baseURL, capToken) tuple. baseURL is the
 // scheme://host[:port] root of the remote peer's webserver (no trailing slash);
 // capToken is the opaque HMAC-signed capability the remote webserver issued
-// when the user exchanged the join code.
+// (the cap deposited for a remote session).
 type remoteCapEntry struct {
 	baseURL  string
 	capToken string
@@ -33,8 +33,8 @@ type remoteCapEntry struct {
 // write side. The zero value is NOT usable — call NewRemoteCapStore.
 //
 // Persistence is intentionally absent. The store rebuilds from user actions
-// (paste join code → exchange → register) after every daemon restart; this
-// matches the JoinCodeManager design and keeps the cap-token footprint out
+// (the GUI deposits the cap again) after every daemon restart; this keeps
+// the cap-token footprint out
 // of any on-disk artefact (Threat T-122-02 in PLAN.md).
 type RemoteCapStore struct {
 	mu      sync.RWMutex

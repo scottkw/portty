@@ -1,7 +1,7 @@
 // Package webserver CSP header middleware (Phase 89, SEC-08).
 //
 // cspHeaders implements the Content-Security-Policy response header setter
-// for all HTML-serving routes (terminal.html, dashboard.html, join.html).
+// for all HTML-serving routes (terminal.html, dashboard.html).
 // It is wired by Plan 04 — this file only defines the method.
 //
 // Policy specification (D-09, amended 2026-04-22 after Phase 89 e2e finding):

@@ -180,7 +180,7 @@ func TestSessionsMeta_NoCapInResponse(t *testing.T) {
 	item := items[0]
 
 	// RB-03: assert the EXACT allowed key set — any extra key is a violation.
-	// Cap-free discovery restored (CONTEXT.md D-10): no join codes, no credentials.
+	// Cap-free discovery restored (CONTEXT.md D-10): no credentials.
 	allowed := map[string]bool{
 		"id":     true,
 		"name":   true,

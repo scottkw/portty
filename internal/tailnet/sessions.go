@@ -113,7 +113,6 @@ func FetchAllPeerSessions(ctx context.Context, peers []Peer) []PeerSessionGroup 
 // remote session. Returned by GET /api/sessions/meta (open endpoint, no cap
 // required). Contains ONLY non-sensitive metadata — never cap tokens, grants, or
 // session content (RB-03 no-enumeration contract).
-// Broadcast join-code fields removed: design rejected per CONTEXT.md D-10.
 // Credentials are delivered out of band by the owner; this struct carries no creds.
 type ShareableSessionMeta struct {
 	ID     string `json:"id"`

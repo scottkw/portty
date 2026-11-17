@@ -232,7 +232,7 @@ func TestAssets_VendoredAddons(t *testing.T) {
 	}
 }
 
-// TestAssets_WebPagesFollowColorScheme asserts that the browser join and
+// TestAssets_WebPagesFollowColorScheme asserts that the browser
 // dashboard pages follow the browser's light/dark preference with the app's
 // two-block token pattern (Portty 02-12, THEM-01): colour literals live only in
 // the :root blocks, and every rule below reads var(--color-*).
@@ -240,7 +240,7 @@ func TestAssets_WebPagesFollowColorScheme(t *testing.T) {
 	comments := regexp.MustCompile(`(?s)/\*.*?\*/`)
 	rootBlocks := regexp.MustCompile(`:root\s*\{[^}]*\}`)
 	literal := regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(`)
-	for _, name := range []string{"assets/join.css", "assets/dashboard.css"} {
+	for _, name := range []string{"assets/dashboard.css"} {
 		data, err := webfs.WebFS.ReadFile(name)
 		if err != nil {
 			t.Fatalf("ReadFile %s: %v", name, err)

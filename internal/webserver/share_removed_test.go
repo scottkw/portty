@@ -3,6 +3,7 @@ package webserver
 import (
 	"crypto/tls"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -23,5 +24,32 @@ func TestShareRemoved_StopClosesOnlyListener(t *testing.T) {
 	if err == nil {
 		conn.Close()
 		t.Fatalf("TLS dial to %s succeeded after Stop; want failure", addr)
+	}
+}
+
+// TestShareRemoved_WebServerRoutes proves the code-based access page, its
+// exchange endpoint and the image endpoint are gone. The request carries a
+// valid read,write cap for an enabled session, so a 404/405 means the route
+// itself is gone, not that the capability gate rejected it.
+func TestShareRemoved_WebServerRoutes(t *testing.T) {
+	ws, client := testServer(t)
+	ws.SetSigningKey(capTestKey)
+	ws.EnableSession("sess-share")
+	token := issueCapFor(t, ws, "sess-share", "read,write")
+
+	for _, r := range []struct{ method, path string }{
+		{http.MethodGet, "/join"},
+		{http.MethodPost, "/join/exchange"},
+		{http.MethodGet, "/api/sessions/sess-share/qr"},
+	} {
+		req, _ := http.NewRequest(r.method, ws.BaseURL()+r.path+"?cap="+token, nil)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", r.method, r.path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Errorf("%s %s = %d; want 404 or 405 (route removed)", r.method, r.path, resp.StatusCode)
+		}
 	}
 }

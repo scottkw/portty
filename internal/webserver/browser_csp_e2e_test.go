@@ -95,12 +95,3 @@ func TestBrowserCSP_DashboardNoViolations(t *testing.T) {
 		t.Errorf("CSP violations on dashboard page (Phase 89 D-19 / SC-4): %+v", violations)
 	}
 }
-
-func TestBrowserCSP_JoinNoViolations(t *testing.T) {
-	ws, _ := testServer(t)
-	url := ws.BaseURL() + "/join"
-	violations := runChromedpAndCollectCSPViolations(t, url)
-	if len(violations) > 0 {
-		t.Errorf("CSP violations on join page (Phase 89 D-19 / SC-4): %+v", violations)
-	}
-}

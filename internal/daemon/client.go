@@ -311,23 +311,12 @@ func (c *DaemonClient) DisconnectViewers(sessionID string) error {
 	return c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/disconnect-viewers", nil, nil)
 }
 
-// IssueCapabilities mints the read + read,write capability pair for a
-// web-enabled session (D-07). Returns the URLs and single-use join codes
-// (D-09) for each. Called by the GUI/CLI/TUI after toggle-on.
+// IssueCapabilities mints one full-control capability for a web-enabled
+// session and returns its link. Called by the GUI after toggle-on.
 func (c *DaemonClient) IssueCapabilities(sessionID string) (IssueCapabilitiesResponse, error) {
 	var resp IssueCapabilitiesResponse
 	err := c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/capabilities", nil, &resp)
 	return resp, err
-}
-
-// ExchangeJoinCode consumes a single-use join code and returns the
-// capability-bearing URL the client should follow.
-func (c *DaemonClient) ExchangeJoinCode(code string) (string, error) {
-	var resp ExchangeJoinCodeResponse
-	if err := c.doJSON(http.MethodPost, "/join/exchange", ExchangeJoinCodeRequest{Code: code}, &resp); err != nil {
-		return "", err
-	}
-	return resp.URL, nil
 }
 
 // RegenerateSigningKey rotates the HMAC signing key (D-16 panic button).

@@ -192,7 +192,7 @@ func (h *Hub) RemoteViewerCount() int {
 // documented hazard at hub.go:288-291/311-322).
 //
 // DisconnectWebViewers does not revoke the session's capability token — web
-// viewers may reconnect with the same join code (D-06). Full access
+// viewers may reconnect with the same link (D-06). Full access
 // revocation remains the existing "disable web sharing" path.
 func (h *Hub) DisconnectWebViewers() {
 	h.mu.Lock()

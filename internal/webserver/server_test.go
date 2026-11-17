@@ -485,56 +485,6 @@ func TestTerminalPageRedirect(t *testing.T) {
 	})
 }
 
-func TestQREndpoint(t *testing.T) {
-	ws, client := testServer(t)
-	baseURL := ws.BaseURL()
-
-	ws.EnableSession("sess-qr")
-
-	resp, err := client.Get(baseURL + "/api/sessions/sess-qr/qr")
-	if err != nil {
-		t.Fatalf("GET /api/sessions/sess-qr/qr: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, b)
-	}
-
-	ct := resp.Header.Get("Content-Type")
-	if ct != "image/png" {
-		t.Errorf("expected Content-Type image/png, got %q", ct)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
-	if len(body) < 4 {
-		t.Fatalf("PNG body too short: %d bytes", len(body))
-	}
-	if body[0] != 0x89 || body[1] != 'P' || body[2] != 'N' || body[3] != 'G' {
-		t.Errorf("expected PNG magic bytes, got %v", body[:4])
-	}
-}
-
-func TestQREndpointNotEnabled(t *testing.T) {
-	ws, client := testServer(t)
-	baseURL := ws.BaseURL()
-
-	// "not-enabled-session" is NOT web-enabled — should return 404
-	resp, err := client.Get(baseURL + "/api/sessions/not-enabled-session/qr")
-	if err != nil {
-		t.Fatalf("GET /api/sessions/not-enabled-session/qr: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("expected 404 for non-enabled session, got %d", resp.StatusCode)
-	}
-}
-
 // TestDashboardNoAuthReturns200 verifies that GET /dashboard is accessible
 // without authentication.
 func TestDashboardNoAuthReturns200(t *testing.T) {

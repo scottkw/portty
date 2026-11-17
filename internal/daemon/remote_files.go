@@ -2,9 +2,9 @@ package daemon
 
 // Remote session caps on the daemon socket.
 //
-// After a successful join-code exchange the desktop GUI deposits the remote
-// peer's (sessionID, baseURL, capToken) here so it can open the remote session
-// (and reuse the held cap) without re-prompting for a join code:
+// The desktop GUI deposits the remote peer's (sessionID, baseURL, capToken)
+// here so it can open the remote session (and reuse the held cap) without
+// asking for a new link:
 //
 //   POST /api/remote-files/caps                          — deposit the cap
 //   GET  /api/remote-files/caps/{sessionID}/open-url     — cap-bearing open URL
@@ -88,7 +88,7 @@ func (a *API) remoteFilesClient() *http.Client {
 }
 
 // handleRegisterRemoteCap accepts the (sessionID, baseURL, capToken) tuple
-// from the desktop GUI / TUI after a successful join-code exchange and stores
+// from the desktop GUI (the cap deposited for a remote session) and stores
 // it in the RemoteCapStore. handleRemoteSessionOpenURL and the remote terminal
 // WS proxy look up the cap from this store.
 //

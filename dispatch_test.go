@@ -29,7 +29,7 @@ func TestDispatchHelp(t *testing.T) {
 		t.Errorf("usage() missing GUI launch instruction, got:\n%s", out)
 	}
 	// Must contain all 13 CLI commands (requirement CLI-01 coverage in help).
-	for _, cmd := range []string{"new", "list", "kill", "rename", "attach", "serve", "unserve", "web", "health", "qr", "settings", "daemon"} {
+	for _, cmd := range []string{"new", "list", "kill", "rename", "attach", "serve", "unserve", "web", "health", "settings", "daemon"} {
 		if !strings.Contains(out, "  "+cmd+" ") && !strings.Contains(out, "  "+cmd+"\n") {
 			t.Errorf("usage() missing command %q", cmd)
 		}

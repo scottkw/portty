@@ -1,20 +1,7 @@
 package webserver_test
 
-// Wave 0 RED tests for Phase 146 FIX-03 — out-of-band open redesign.
-//
-// This file encodes the RESTORED RB-03 cap-free contract for GET /api/sessions/meta.
-//
-// The superseded broadcast tests asserted that ro_join_code / rw_join_code were
-// embedded in the response. That design was REJECTED (see CONTEXT.md
-// D-02/D-10/D-12 and superseded-broadcast/README.md).
-//
-// This inverted test asserts the ABSENCE of those keys — enforcing the RB-03
-// invariant: /api/sessions/meta carries no credential material at all.
-//
-// RED state now: the current production code still embeds ro_join_code/rw_join_code
-// (broadcast wiring from the superseded Wave 0). This test FAILS against current code.
-// It goes GREEN when Plan 02 removes the broadcast (the join-code issuer wiring,
-// the join-code fields on sessionMetaItem, and the enrichment in handleSessionsMeta).
+// RB-03 cap-free contract for GET /api/sessions/meta: the payload carries no
+// credential material at all, only the exact key set id, name, status, url.
 
 import (
 	"encoding/json"
@@ -22,14 +9,10 @@ import (
 	"testing"
 )
 
-// TestSessionsMeta_NoJoinCodesInResponse encodes the RB-03 restored cap-free contract:
-// GET /api/sessions/meta MUST NOT contain ro_join_code or rw_join_code in any item.
-// Credentials are never broadcast to the discovery payload — the owner delivers
-// them out of band when they choose to share.
-//
-// RED: current production code embeds codes via superseded broadcast wiring;
-// this test FAILS until Plan 02 removes the broadcast.
-func TestSessionsMeta_NoJoinCodesInResponse(t *testing.T) {
+// TestSessionsMeta_ExactKeySet: every item in GET /api/sessions/meta has
+// exactly the keys id, name, status and url. Credentials are never part of the
+// discovery payload; the owner shares a session by sending its link.
+func TestSessionsMeta_ExactKeySet(t *testing.T) {
 	ws, client := testServer(t)
 	ws.SetSigningKey(ssExtTestKey)
 	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
@@ -39,8 +22,6 @@ func TestSessionsMeta_NoJoinCodesInResponse(t *testing.T) {
 		return "", "", "", false
 	})
 	ws.EnableSession("sess-rb03")
-	// No join-code issuer is wired — RB-03 requires cap-free discovery
-	// regardless of any issuer configuration.
 
 	resp, err := client.Get(ws.BaseURL() + "/api/sessions/meta")
 	if err != nil {
@@ -61,18 +42,18 @@ func TestSessionsMeta_NoJoinCodesInResponse(t *testing.T) {
 
 	item := items[0]
 
-	// RB-03 RESTORED: join codes MUST NOT appear in the cap-free discovery payload.
-	if _, ok := item["ro_join_code"]; ok {
-		t.Error("RB-03 violation: ro_join_code must not appear in cap-free meta response — codes are delivered out of band only")
+	want := map[string]bool{"id": true, "name": true, "status": true, "url": true}
+	if len(item) != len(want) {
+		t.Errorf("meta item has %d keys, want exactly %d: %v", len(item), len(want), item)
 	}
-	if _, ok := item["rw_join_code"]; ok {
-		t.Error("RB-03 violation: rw_join_code must not appear in cap-free meta response — codes are delivered out of band only")
+	for key := range item {
+		if !want[key] {
+			t.Errorf("RB-03 violation: meta item carries unexpected key %q", key)
+		}
 	}
-
-	// Assert the cap-free fields ARE present (RB-01 contract: id, name, status, url).
-	for _, key := range []string{"id", "name", "status", "url"} {
+	for key := range want {
 		if _, ok := item[key]; !ok {
-			t.Errorf("expected cap-free field %q to be present in meta response, but it was absent", key)
+			t.Errorf("meta item missing cap-free field %q", key)
 		}
 	}
 }

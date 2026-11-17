@@ -755,8 +755,8 @@ func TestAPISetStartMinimizedInvalidBody(t *testing.T) {
 
 // --- Phase 87 Plan 04 tests ---------------------------------------------
 
-// configureCapabilityStateForTest wires a synthetic signing key and join-code
-// manager onto both the API and its WebServer so capability flows work in
+// configureCapabilityStateForTest wires a synthetic signing key onto both the
+// API and its WebServer so capability flows work in
 // tests without needing a real daemon startup sequence.
 func configureCapabilityStateForTest(t *testing.T, api *API, ws *webserver.WebServer) []byte {
 	t.Helper()
@@ -767,10 +767,7 @@ func configureCapabilityStateForTest(t *testing.T, api *API, ws *webserver.WebSe
 	api.signingKeyMu.Lock()
 	api.signingKey = key
 	api.signingKeyMu.Unlock()
-	jc := capability.NewJoinCodeManager(5 * time.Minute)
-	api.joinCodes = jc
 	ws.SetSigningKey(key)
-	ws.SetJoinCodes(jc)
 	return key
 }
 
@@ -1012,11 +1009,6 @@ func TestStartup_LoadsOrGeneratesSigningKey(t *testing.T) {
 		t.Errorf("signing key length: got %d, want 32", len(key))
 	}
 
-	// api.joinCodes must be non-nil.
-	if api.joinCodes == nil {
-		t.Errorf("api.joinCodes is nil after BootstrapCapabilityState")
-	}
-
 	// A subsequent call must reload the same key (not regenerate).
 	api2 := NewAPI(engine)
 	if err := api2.BootstrapCapabilityState(); err != nil {
@@ -1039,9 +1031,8 @@ func TestStartup_LoadsOrGeneratesSigningKey(t *testing.T) {
 // --- Task 2 (IPC handler) tests -----------------------------------------
 
 // TestIPCHandlers_CapabilityRoundTrip: POST /sessions/{sid}/capabilities
-// returns four fields (readUrl, writeUrl, readCode, writeCode). POSTing the
-// readCode to /join/exchange returns a URL containing the same cap token as
-// readUrl. This verifies the end-to-end join-code exchange.
+// returns one link carrying a "read,write" capability whose grant is live on
+// the webserver (SHAR-02: a share always grants full control).
 func TestIPCHandlers_CapabilityRoundTrip(t *testing.T) {
 	api, _, socketPath := testDaemon(t)
 	lnCfg := newLoopbackTLSListener(t)
@@ -1054,12 +1045,15 @@ func TestIPCHandlers_CapabilityRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWebServer with TLS: %v", err)
 	}
+	ws.SetSessionResolver(func(string) (string, string, string, bool) {
+		return "round-trip", "running", "localhost", true
+	})
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
 	}
 	t.Cleanup(func() { _ = ws.Stop() })
 	api.SetWebServerForTest(ws)
-	configureCapabilityStateForTest(t, api, ws)
+	key := configureCapabilityStateForTest(t, api, ws)
 
 	// Create + toggle ON.
 	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"round-trip","workDir":""}`)
@@ -1080,94 +1074,15 @@ func TestIPCHandlers_CapabilityRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(issueBody, &issue); err != nil {
 		t.Fatalf("decode IssueCapabilitiesResponse: %v", err)
 	}
-	if issue.ReadURL == "" || issue.WriteURL == "" || issue.ReadCode == "" || issue.WriteCode == "" {
-		t.Fatalf("IssueCapabilitiesResponse has empty field: %+v", issue)
+	if !strings.Contains(issue.WriteURL, "?cap=") {
+		t.Fatalf("WriteURL missing ?cap=: %+v", issue)
 	}
-	if !strings.Contains(issue.ReadURL, "?cap=") {
-		t.Errorf("ReadURL missing ?cap=: %q", issue.ReadURL)
+	claims := extractClaimsFromURL(t, issue.WriteURL, key)
+	if claims.Perms != "read,write" || claims.SID != cr.ID {
+		t.Errorf("claims = %+v; want SID %q with perms exactly \"read,write\"", claims, cr.ID)
 	}
-
-	// POST /join/exchange with readCode — must return URL with same ?cap= as readUrl.
-	exchangeBody := fmt.Sprintf(`{"code":%q}`, issue.ReadCode)
-	st, xBody := rawPost(t, socketPath, "/join/exchange", exchangeBody)
-	if st != http.StatusOK {
-		t.Fatalf("POST /join/exchange: want 200, got %d; body: %s", st, xBody)
-	}
-	var xResp ExchangeJoinCodeResponse
-	if err := json.Unmarshal(xBody, &xResp); err != nil {
-		t.Fatalf("decode ExchangeJoinCodeResponse: %v", err)
-	}
-	// Extract ?cap= token from ReadURL and assert xResp.URL contains it.
-	readTok := extractCapToken(issue.ReadURL)
-	exchangedTok := extractCapToken(xResp.URL)
-	if readTok == "" || exchangedTok == "" {
-		t.Fatalf("could not extract cap tokens: readURL=%q exchanged=%q", issue.ReadURL, xResp.URL)
-	}
-	if readTok != exchangedTok {
-		t.Errorf("join-code exchange produced different token: got %q, want %q", exchangedTok, readTok)
-	}
-}
-
-// TestIPCHandlers_ExpiredCodeReturns410: issue a join code with a very short
-// TTL, sleep past it, POST /join/exchange → 410 Gone.
-func TestIPCHandlers_ExpiredCodeReturns410(t *testing.T) {
-	api, _, socketPath := testDaemon(t)
-	lnCfg := newLoopbackTLSListener(t)
-	ws, err := webserver.NewWebServer(webserver.Config{
-		BindIP:    "127.0.0.1",
-		Port:      0,
-		FQDN:      "127.0.0.1",
-		TLSConfig: lnCfg,
-	}, api.engine.Manager())
-	if err != nil {
-		t.Fatalf("NewWebServer: %v", err)
-	}
-	if err := ws.Start(); err != nil {
-		t.Fatalf("ws.Start: %v", err)
-	}
-	t.Cleanup(func() { _ = ws.Stop() })
-	api.SetWebServerForTest(ws)
-
-	// Custom setup: use a very short join-code TTL so the test can expire
-	// codes without simulated clocks.
-	key, err := capability.GenerateKey()
-	if err != nil {
-		t.Fatalf("GenerateKey: %v", err)
-	}
-	api.signingKeyMu.Lock()
-	api.signingKey = key
-	api.signingKeyMu.Unlock()
-	shortJC := capability.NewJoinCodeManager(50 * time.Millisecond)
-	api.joinCodes = shortJC
-	ws.SetSigningKey(key)
-	ws.SetJoinCodes(shortJC)
-
-	// Create + toggle ON.
-	_, body := rawPost(t, socketPath, "/sessions", `{"cli":"cat","name":"expired-code","workDir":""}`)
-	var cr CreateResponse
-	if err := json.Unmarshal(body, &cr); err != nil {
-		t.Fatalf("decode create response: %v", err)
-	}
-	if st, _ := rawPost(t, socketPath, fmt.Sprintf("/sessions/%s/web-serve", cr.ID), `{"enabled":true}`); st != http.StatusNoContent {
-		t.Fatalf("toggle-on: want 204, got %d", st)
-	}
-
-	// Issue caps (this also registers join codes).
-	st, issueBody := rawPost(t, socketPath, fmt.Sprintf("/sessions/%s/capabilities", cr.ID), ``)
-	if st != http.StatusOK {
-		t.Fatalf("issue: want 200, got %d; body: %s", st, issueBody)
-	}
-	var issue IssueCapabilitiesResponse
-	if err := json.Unmarshal(issueBody, &issue); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-
-	// Sleep past the 50ms TTL.
-	time.Sleep(200 * time.Millisecond)
-
-	st, _ = rawPost(t, socketPath, "/join/exchange", fmt.Sprintf(`{"code":%q}`, issue.ReadCode))
-	if st != http.StatusGone {
-		t.Errorf("expired code: want 410 Gone, got %d", st)
+	if !probeGrant(t, ws, key, cr.ID, claims.GrantID) {
+		t.Error("issued grant is not active on the webserver")
 	}
 }
 
@@ -1459,9 +1374,8 @@ func TestDaemonClient_GetSetShellWebShareWarned_RoundTrip(t *testing.T) {
 }
 
 // -------------------------------------------------------------------------
-// SHARE-03: issueCapabilitiesForSession mints exactly "read" (read-only link)
-// and "read,write" (full-access link). The files perms and the per-session
-// browse toggle that added them were removed with the file browser.
+// SHARE-03 / SHAR-02: issueCapabilitiesForSession mints exactly one
+// "read,write" capability. No other perm is ever minted.
 //
 // We verify the post-issuance tokens by decoding them with capability.Verify
 // against the synthetic test signing key. The webserver dependency is real
@@ -1500,8 +1414,8 @@ func extractClaimsFromURL(t *testing.T, urlStr string, key []byte) capability.Cl
 	return claims
 }
 
-// TestIssueCapabilities_ExactPerms asserts the RO token Perms == "read" and
-// the RW token Perms == "read,write" exactly. No other perm is ever minted.
+// TestIssueCapabilities_ExactPerms asserts the single issued token's Perms
+// are exactly "read,write".
 func TestIssueCapabilities_ExactPerms(t *testing.T) {
 	api, _, key := issueCapsTestSetup(t)
 
@@ -1511,15 +1425,12 @@ func TestIssueCapabilities_ExactPerms(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = api.engine.KillSession(sid) })
 
-	roURL, rwURL, _, _, err := api.issueCapabilitiesForSession(sid)
+	link, err := api.issueCapabilitiesForSession(sid)
 	if err != nil {
 		t.Fatalf("issueCapabilitiesForSession: %v", err)
 	}
-	if got := extractClaimsFromURL(t, roURL, key).Perms; got != "read" {
-		t.Errorf("RO Perms = %q; want exact \"read\"", got)
-	}
-	if got := extractClaimsFromURL(t, rwURL, key).Perms; got != "read,write" {
-		t.Errorf("RW Perms = %q; want exact \"read,write\"", got)
+	if got := extractClaimsFromURL(t, link, key).Perms; got != "read,write" {
+		t.Errorf("Perms = %q; want exact \"read,write\"", got)
 	}
 }
 

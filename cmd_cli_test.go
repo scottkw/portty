@@ -337,32 +337,6 @@ func TestCmdHealth_JSON(t *testing.T) {
 	// Just verify it deserialized without error — actual values depend on system state.
 }
 
-// TestCmdQR_WebNotRunning verifies cmdQR returns an error when web server is not running.
-func TestCmdQR_WebNotRunning(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	err := cmdQR(client, []string{"some-id"}, &buf)
-	if err == nil {
-		t.Fatal("expected error when web server not running, got nil")
-	}
-	if !strings.Contains(err.Error(), "web server not running") {
-		t.Errorf("expected error to contain %q, got %q", "web server not running", err.Error())
-	}
-}
-
-// TestCmdQR_MissingArgs verifies that missing args returns an error containing "usage".
-func TestCmdQR_MissingArgs(t *testing.T) {
-	client := testSetup(t)
-	var buf bytes.Buffer
-	err := cmdQR(client, []string{}, &buf)
-	if err == nil {
-		t.Fatal("expected error for missing args, got nil")
-	}
-	if !strings.Contains(err.Error(), "usage") {
-		t.Errorf("expected error to contain %q, got %q", "usage", err.Error())
-	}
-}
-
 // TestCmdWeb_MissingSubcommand verifies that missing subcommand returns an error with "usage: portty web".
 func TestCmdWeb_MissingSubcommand(t *testing.T) {
 	client := testSetup(t)

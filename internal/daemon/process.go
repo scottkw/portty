@@ -81,8 +81,8 @@ func runDaemonCore(ctx context.Context) {
 	engine := NewSessionEngine()
 	api := NewAPI(engine)
 
-	// Phase 87 (D-04): bootstrap the capability signing key + join-code
-	// manager BEFORE any web server is started. A missing key here is fatal
+	// Phase 87 (D-04): bootstrap the capability signing key BEFORE any web
+	// server is started. A missing key here is fatal
 	// — without it, requireCapability would 401 every request and the daemon
 	// is effectively a brick for web access.
 	if err := api.BootstrapCapabilityState(); err != nil {

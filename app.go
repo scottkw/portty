@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -16,7 +15,6 @@ import (
 	"github.com/scottkw/portty/internal/tailnet"
 	"github.com/scottkw/portty/internal/updater"
 	"github.com/scottkw/portty/internal/webserver"
-	qrcode "github.com/skip2/go-qrcode"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -932,44 +930,16 @@ func (a *App) IsWebServerRunning() bool {
 	return resp.Running
 }
 
-// GetWebServerQRCode returns a base64-encoded PNG QR code for the web server dashboard URL.
-// Returns an error if the daemon is disconnected or the web server is not running.
-func (a *App) GetWebServerQRCode() (string, error) {
-	if a.client == nil {
-		return "", fmt.Errorf("daemon not connected")
-	}
-	resp, err := a.client.GetWebServerStatus()
-	if err != nil || !resp.Running {
-		return "", fmt.Errorf("web server not running")
-	}
-	png, err := qrcode.Encode(resp.URL, qrcode.Medium, 256)
-	if err != nil {
-		return "", fmt.Errorf("GetWebServerQRCode: encode: %w", err)
-	}
-	return base64.StdEncoding.EncodeToString(png), nil
-}
-
 // --- Phase 87 capability Wails bindings (D-06, D-07, D-09, D-16) ---------
 
-// IssueCapabilities asks the daemon to mint two capabilities (read + read,write)
-// for the given session (D-07). The session must be web-enabled (caller must
-// have already called ToggleWebServing). Returns the read/write URLs and the
-// matching single-use join codes.
+// IssueCapabilities asks the daemon to mint one full-control capability for
+// the given session. The session must be web-enabled (caller must have already
+// called ToggleWebServing). Returns its link.
 func (a *App) IssueCapabilities(sessionID string) (daemon.IssueCapabilitiesResponse, error) {
 	if a.client == nil {
 		return daemon.IssueCapabilitiesResponse{}, fmt.Errorf("daemon not connected")
 	}
 	return a.client.IssueCapabilities(sessionID)
-}
-
-// ExchangeJoinCode consumes a single-use join code and returns the
-// capability-bearing URL the client should follow. Called by the /join page
-// after the user taps "Join Session".
-func (a *App) ExchangeJoinCode(code string) (string, error) {
-	if a.client == nil {
-		return "", fmt.Errorf("daemon not connected")
-	}
-	return a.client.ExchangeJoinCode(code)
 }
 
 // RegenerateSigningKey rotates the HMAC signing key (D-16 panic button in
@@ -979,21 +949,6 @@ func (a *App) RegenerateSigningKey() error {
 		return fmt.Errorf("daemon not connected")
 	}
 	return a.client.RegenerateSigningKey()
-}
-
-// GetCapabilityQRCode encodes a join-code exchange URL as a base64 PNG QR
-// code (D-09). The caller must pass the join-code URL (e.g.
-// "https://host/join?code=A7K-4P2N"), NOT the raw capability token URL.
-// Mirrors GetWebServerQRCode; the encoder call is identical.
-func (a *App) GetCapabilityQRCode(joinURL string) (string, error) {
-	if joinURL == "" {
-		return "", fmt.Errorf("joinURL required")
-	}
-	png, err := qrcode.Encode(joinURL, qrcode.Medium, 256)
-	if err != nil {
-		return "", fmt.Errorf("GetCapabilityQRCode: encode: %w", err)
-	}
-	return base64.StdEncoding.EncodeToString(png), nil
 }
 
 // OpenDirectoryDialog opens a native OS folder picker and returns the selected path.
@@ -1198,21 +1153,6 @@ func (a *App) GetRemoteSessionsWithMeta() []RemotePeerSessions {
 	return results
 }
 
-// ExchangeJoinCodeAtURL exchanges a 5-character join code against a REMOTE
-// peer's `/join/exchange` endpoint (NOT the local daemon) and returns the cap
-// token extracted from the response.
-//
-// Phase 122-03 / REMOTE-01 — the desktop GUI's paste-join-code modal calls
-// this to obtain a cap for browsing files on a remote tailnet session. The
-// returned cap is subsequently deposited via RegisterRemoteCap; it must NEVER
-// be passed to the React frontend (it lives in the daemon's RemoteCapStore).
-func (a *App) ExchangeJoinCodeAtURL(remoteBaseURL, code string) (string, error) {
-	if a.client == nil {
-		return "", fmt.Errorf("daemon not connected")
-	}
-	return a.client.ExchangeJoinCodeAtURL(remoteBaseURL, code)
-}
-
 // RegisterRemoteCap deposits a (sessionID, remote baseURL, cap token) tuple
 // into the local daemon's RemoteCapStore. OpenRemoteSessionURL and the relay
 // remote terminal WS proxy (/api/relay/remote/{sid}/ws) use this cap.
@@ -1229,13 +1169,13 @@ func (a *App) RegisterRemoteCap(sessionID, baseURL, capToken string) error {
 // daemon composes baseURL+/sessions/{id}?cap=TOKEN from its own store entry
 // (keyed by sessionID) and returns the full URL as a string.
 //
-// Convention (matches ExchangeJoinCodeAtURL): the frontend receives the
+// Convention: the frontend receives the
 // composed URL string and opens it via BrowserOpenURL; the raw cap token never
 // enters React state — it lives only inside the returned URL string.
 //
 // Returns an error when the daemon is not connected or when no cap is stored
 // for sessionID (e.g. "status 404"). The caller treats a 404-flavoured error
-// as "no cap held; fall back to the join-code modal" so a stale/evicted entry
+// as "no cap held for this session" so a stale/evicted entry
 // self-heals gracefully (T-146-05-02 accept).
 //
 // Do NOT call BrowserOpenURL here — the frontend opens the returned URL,

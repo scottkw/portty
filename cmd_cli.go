@@ -14,7 +14,6 @@ import (
 	"github.com/scottkw/portty/internal/daemon"
 	"github.com/scottkw/portty/internal/tailnet"
 	"github.com/scottkw/portty/internal/webserver"
-	qrcode "github.com/skip2/go-qrcode"
 )
 
 // usage prints the command reference to stderr.
@@ -33,7 +32,6 @@ Commands:
   unserve <id>                                Disable web sharing for a session
   web                                         Open the web dashboard
   health                                      Check Tailscale health status
-  qr <id>                                     Print QR code for a session URL
   settings                                    Open the settings panel
   daemon <subcommand>                         Manage the background daemon
     daemon run                                Run daemon in foreground
@@ -326,24 +324,5 @@ func cmdSettings(client *daemon.DaemonClient, out io.Writer) error {
 	} else {
 		fmt.Fprintf(out, "%-14s%d\n", "relay-port:", port)
 	}
-	return nil
-}
-
-// cmdQR renders a QR code for the given session URL in the terminal.
-func cmdQR(client *daemon.DaemonClient, args []string, out io.Writer) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: portty qr <session-id>")
-	}
-	resp, err := client.GetWebServerStatus()
-	if err != nil || !resp.Running {
-		return fmt.Errorf("web server not running — use 'portty web start' first")
-	}
-	url := fmt.Sprintf("%s/sessions/%s", resp.URL, args[0])
-	q, err := qrcode.New(url, qrcode.Medium)
-	if err != nil {
-		return fmt.Errorf("portty qr: %w", err)
-	}
-	fmt.Fprint(out, q.ToSmallString(false))
-	fmt.Fprintln(out, url)
 	return nil
 }

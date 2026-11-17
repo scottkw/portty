@@ -45,16 +45,17 @@ func TestBrandPages_DashboardSaysPortty(t *testing.T) {
 	}
 }
 
-func TestBrandPages_JoinSaysPortty(t *testing.T) {
-	body := getPage(t, "/join")
-	if !strings.Contains(body, "<title>Join Session — Portty</title>") {
-		t.Error("/join body missing em-dash title")
+// TestBrandPages_DashboardPointsToLinks: the dashboard has no entry form; it
+// tells the visitor to open a session from its link (UI-SPEC Web pages).
+func TestBrandPages_DashboardPointsToLinks(t *testing.T) {
+	body := getPage(t, "/dashboard")
+	if !strings.Contains(body, "To open a session here, use its link. Copy it from the Share button on the Mac that runs the session.") {
+		t.Error("/dashboard body missing the link paragraph")
 	}
-	if n := strings.Count(body, "<h1>Portty</h1>"); n != 5 {
-		t.Errorf("/join has %d <h1>Portty</h1>, want 5 (one per state)", n)
-	}
-	if !strings.Contains(body, "This session is no longer available. The shell may have exited, or the owner stopped sharing it.") {
-		t.Error("/join body missing Session Ended copy")
+	for _, gone := range []string{"<form", "<input", "<script"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("/dashboard body still contains %q", gone)
+		}
 	}
 }
 
@@ -70,7 +71,7 @@ func TestBrandPages_TerminalPageSaysPortty(t *testing.T) {
 
 func TestBrandPages_NoAgentWording(t *testing.T) {
 	agent := regexp.MustCompile(`(?i)agent`)
-	for _, name := range []string{"dashboard.html", "join.html", "terminal.html"} {
+	for _, name := range []string{"dashboard.html", "terminal.html"} {
 		b, err := webfs.WebFS.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
