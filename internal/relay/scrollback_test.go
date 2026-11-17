@@ -91,3 +91,30 @@ func TestScrollbackDefaultBytes(t *testing.T) {
 		t.Errorf("DefaultScrollbackBytes should be 256*1024, got %d", DefaultScrollbackBytes)
 	}
 }
+
+func TestScrollback_SnapshotFrom(t *testing.T) {
+	sb := NewScrollback(8)
+	sb.Append([]byte("abcd"))
+	if data, end, ok := sb.SnapshotFrom(1); !ok || end != 4 || string(data) != "bcd" {
+		t.Fatalf("before wrap: %q %d %t", data, end, ok)
+	}
+	if data, _, ok := sb.SnapshotFrom(4); !ok || len(data) != 0 {
+		t.Fatalf("off == end: %q %t, want empty ok", data, ok)
+	}
+	if _, end, ok := sb.SnapshotFrom(5); ok || end != 4 {
+		t.Fatalf("off > end: ok=%t end=%d, want not ok at 4", ok, end)
+	}
+	sb.Append([]byte("efghij")) // 10 bytes written, ring holds "cdefghij" (start 2)
+	if data, end, ok := sb.SnapshotFrom(2); !ok || end != 10 || string(data) != "cdefghij" {
+		t.Fatalf("after wrap at start: %q %d %t", data, end, ok)
+	}
+	if data, _, ok := sb.SnapshotFrom(7); !ok || string(data) != "hij" {
+		t.Fatalf("after wrap mid: %q %t", data, ok)
+	}
+	if data, _, ok := sb.SnapshotFrom(1); ok || data != nil {
+		t.Fatalf("off < start: %q %t, want nil not ok", data, ok)
+	}
+	if sb.End() != 10 {
+		t.Fatalf("End %d, want 10", sb.End())
+	}
+}
