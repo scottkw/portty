@@ -57,6 +57,10 @@ type API struct {
 	// Tests inject httptest.NewTLSServer's Client(); production leaves it nil.
 	peerClientForTest *http.Client
 
+	// heartbeatEvery / heartbeatTimeout override relay.PingEvery and
+	// relay.PingTimeout for the remote WS proxy's upstream heartbeat when non-zero.
+	heartbeatEvery, heartbeatTimeout time.Duration
+
 	// Peer connect seams (peer_connect.go), copied from package defaults in
 	// NewAPI; tests replace them with SetPeerSeamsForTest.
 	discoverPeers func(context.Context) ([]tailnet.Peer, error)
@@ -137,6 +141,11 @@ func (a *API) Handler() http.Handler {
 // fake peer's self-signed certificate. Production code must never call this.
 func (a *API) SetPeerClientForTest(c *http.Client) {
 	a.peerClientForTest = c
+}
+
+// SetHeartbeatForTest shortens the remote WS proxy's upstream heartbeat. Tests only.
+func (a *API) SetHeartbeatForTest(every, timeout time.Duration) {
+	a.heartbeatEvery, a.heartbeatTimeout = every, timeout
 }
 
 // BootstrapCapabilityState loads or generates the HMAC signing key (D-04).

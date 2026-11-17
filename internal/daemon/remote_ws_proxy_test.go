@@ -70,6 +70,8 @@ type fixtureWSPeer struct {
 	sawUpgrade bool
 	gotResume  string // resume query value on the last upgrade
 	hasResume  bool   // whether a resume parameter was present at all
+	silent     bool   // accept, then never read (so never answer pings): a half-open peer
+	done       chan struct{}
 }
 
 // newFixtureRemotePeerWithWS spins up an httptest.NewTLSServer that serves a
@@ -82,7 +84,7 @@ type fixtureWSPeer struct {
 func newFixtureRemotePeerWithWS(t *testing.T) *fixtureWSPeer {
 	t.Helper()
 
-	peer := &fixtureWSPeer{}
+	peer := &fixtureWSPeer{done: make(chan struct{})}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /sessions/{id}/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +97,7 @@ func newFixtureRemotePeerWithWS(t *testing.T) *fixtureWSPeer {
 		peer.sawUpgrade = true
 		peer.gotResume = r.URL.Query().Get("resume")
 		peer.hasResume = r.URL.Query().Has("resume")
+		silent := peer.silent
 		peer.mu.Unlock()
 
 		// Mirror the peer's requireAllowedOrigin: empty Origin is rejected.
@@ -121,6 +124,13 @@ func newFixtureRemotePeerWithWS(t *testing.T) *fixtureWSPeer {
 		defer conn.CloseNow()
 
 		ctx := r.Context()
+		if silent {
+			select {
+			case <-ctx.Done():
+			case <-peer.done:
+			}
+			return
+		}
 		for {
 			typ, data, rerr := conn.Read(ctx)
 			if rerr != nil {
@@ -134,6 +144,7 @@ func newFixtureRemotePeerWithWS(t *testing.T) *fixtureWSPeer {
 
 	peer.srv = httptest.NewTLSServer(mux)
 	t.Cleanup(peer.srv.Close)
+	t.Cleanup(func() { close(peer.done) }) // runs first: releases silent handlers
 	return peer
 }
 
@@ -581,5 +592,61 @@ func TestRemoteWSProxy_ForwardsResume(t *testing.T) {
 				t.Fatalf("upstream resume %q (present=%t), want %q (present=%t)", gotResume, hasResume, tc.want, tc.has)
 			}
 		})
+	}
+}
+
+// proxyWithHeartbeat wires a daemon relay to peer with a short upstream
+// heartbeat and dials the proxy for sid1.
+func proxyWithHeartbeat(t *testing.T, peer *fixtureWSPeer) *websocket.Conn {
+	t.Helper()
+	api := newDaemonAPIWithUpstreamCert(t, peer.srv)
+	api.SetHeartbeatForTest(50*time.Millisecond, 100*time.Millisecond)
+	relaySrv := httptest.NewServer(api.RelayHandler())
+	t.Cleanup(relaySrv.Close)
+	depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := dialProxy(ctx, t, relaySrv.URL, "sid1", "")
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	t.Cleanup(func() { conn.CloseNow() })
+	return conn
+}
+
+// TestRemoteWSProxy_SilentUpstreamClosesClient (SHAR-07): when the peer stops
+// answering pings, the proxy drops both sides with no close frame, so the GUI
+// tab or `portty attach` sees an abnormal close (not 1000) and reconnects.
+func TestRemoteWSProxy_SilentUpstreamClosesClient(t *testing.T) {
+	peer := newFixtureRemotePeerWithWS(t)
+	peer.mu.Lock()
+	peer.silent = true
+	peer.mu.Unlock()
+	conn := proxyWithHeartbeat(t, peer)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, _, err := conn.Read(ctx)
+	if ctx.Err() != nil {
+		t.Fatalf("proxy never dropped the silent upstream within 2s (err=%v)", err)
+	}
+	if code := websocket.CloseStatus(err); code != -1 {
+		t.Fatalf("close status %d, want -1 (no close frame)", code)
+	}
+}
+
+// TestRemoteWSProxy_LiveUpstreamStaysOpen: a peer that keeps reading answers
+// every ping, so the proxy leaves it open across many heartbeat intervals.
+func TestRemoteWSProxy_LiveUpstreamStaysOpen(t *testing.T) {
+	conn := proxyWithHeartbeat(t, newFixtureRemotePeerWithWS(t))
+	time.Sleep(time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := conn.Write(ctx, websocket.MessageBinary, []byte("still-here")); err != nil {
+		t.Fatalf("write after 1s: %v", err)
+	}
+	if _, got, err := conn.Read(ctx); err != nil || string(got) != "still-here" {
+		t.Fatalf("echo after 1s = %q, %v", got, err)
 	}
 }
