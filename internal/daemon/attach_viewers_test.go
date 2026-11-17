@@ -475,9 +475,10 @@ func TestCLIAttach_Hypotheses(t *testing.T) {
 }
 
 // UAT gap 4: a viewer joining through the viewing daemon's proxy after more
-// than 32 KiB of history. The catch-up preamble arrives as one message, so any
-// Go reader left at coder/websocket's 32 KiB default drops the joiner after
-// the grid frame.
+// than 32 KiB of history. The catch-up preamble used to arrive as one message,
+// so any Go reader left at coder/websocket's 32 KiB default dropped the joiner
+// after the grid frame. Since SHAR-07 the replay is chunked (relay.ReplayChunk),
+// so the joiners wait for HIST-END, the last replayed line, not MARKER-1.
 func TestCLIAttach_LongHistoryJoiners(t *testing.T) {
 	const histLines = 200
 	tag := func(i int) string { return fmt.Sprintf("HIST-%04d-", i) }
@@ -526,7 +527,7 @@ func TestCLIAttach_LongHistoryJoiners(t *testing.T) {
 		conn.SetReadLimit(-1)
 		late := newViewerTap(s.ctx, conn)
 		s.viewers["lateGuiTab"] = late
-		waitUntil(t, "late GUI tab catch-up replay (MARKER-1)", func() bool { return late.has("MARKER-1") })
+		waitUntil(t, "late GUI tab catch-up replay (HIST-END)", func() bool { return late.has("HIST-END") })
 		out, _, _ := late.state()
 		checkHistory(t, "late GUI tab", out)
 
@@ -538,6 +539,7 @@ func TestCLIAttach_LongHistoryJoiners(t *testing.T) {
 	t.Run("cli_through_proxy", func(t *testing.T) {
 		s := newLongScene(t)
 		cli := s.attachCLI(t, s.dialCLI(t, 80, 24))
+		waitUntil(t, "cli catch-up replay (HIST-END)", func() bool { return cli.stdout.has("HIST-END") })
 		checkHistory(t, "cli", cli.stdout.bytes())
 
 		s.typeLine(t, "MARKER-2")
