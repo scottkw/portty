@@ -137,6 +137,7 @@ function App(): React.ReactElement {
 
   // NAV-01: every daemon session, from the always-on 3 s poll (desktop only).
   const [sessions, setSessions] = useState<SessionInfo[]>([])
+  const activeShared = !!sessions.find((s) => s.id === activeId)?.webEnabled
   // Portty 04-05: the Share popover for the active local session, anchored on the toolbar button.
   const [sharePopoverOpen, setSharePopoverOpen] = useState(false)
   const shareButtonRef = useRef<HTMLButtonElement>(null)
@@ -911,8 +912,8 @@ function App(): React.ReactElement {
           shareOpen={sharePopoverOpen}
           sharePopoverId={SHARE_POPOVER_ID}
           shareButtonRef={shareButtonRef}
-          shared={!!sessions.find((s) => s.id === activeId)?.webEnabled}
-          shareDisabled={tailscaleOff}
+          shared={activeShared}
+          shareDisabled={tailscaleOff && !activeShared}
         />
 
         {/* INVARIANT: this gating expression must include the trigger of EVERY banner

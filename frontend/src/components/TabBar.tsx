@@ -74,7 +74,12 @@ interface TabBarProps {
   shareButtonRef?: React.Ref<HTMLButtonElement>
   /** The active local session is web-shared: the button reads "Shared". */
   shared?: boolean
-  /** NET-01: Tailscale is off. Share stays focusable with aria-disabled and the banner's reason. */
+  /**
+   * NET-01: App sets it while Tailscale is off and the session is not shared, so
+   * turning Share on is blocked; the button stays focusable with aria-disabled and
+   * the banner's reason. A shared session's button stays enabled so its popover
+   * can turn Share off (04-09, user decision 2026-11-17).
+   */
   shareDisabled?: boolean
 }
 
@@ -281,9 +286,10 @@ export function TabBar({
         </button>
       )}
       {/* Share for a local session, "On <host>" for a peer tab, nothing otherwise.
-          It toggles the Share popover (Portty 04-05). Tailscale off: aria-disabled
-          (not disabled) keeps it focusable with its name, the reason is the visible
-          banner sentence, and it does nothing. */}
+          It toggles the Share popover (Portty 04-05). shareDisabled (Tailscale off and
+          not shared): aria-disabled (not disabled) keeps it focusable with its name, the
+          reason is the visible banner sentence, and it does nothing. A shared session's
+          button stays enabled with Tailscale off, so its popover can turn Share off. */}
       {!webMode && activeTab && isLocal(activeTab) && onShare && (
         <button
           ref={shareButtonRef}

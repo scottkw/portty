@@ -136,7 +136,8 @@ Off state: the link row and warning are replaced by the description (Caption, 8p
 |-------|--------|----------|
 | Not shared | Unchanged: transparent, 1px `--color-separator` border, `SignalIcon` 16 + "Share" | Toggles the Share popover |
 | Shared | Unchanged: accent fill, label "Shared" | Toggles the Share popover |
-| Tailscale off | Its current look (Share or Shared) at `--opacity-disabled`. `aria-disabled="true"`, `aria-describedby="ts-off-reason"`, name stays "Share" / "Shared" (Phase 2 rule) | Does nothing. A shared session can still be stopped from the sidebar menu or `portty unshare` |
+| Tailscale off, not shared | "Share" at `--opacity-disabled`. `aria-disabled="true"`, `aria-describedby="ts-off-reason"`, name stays "Share" (Phase 2 rule) | Does nothing |
+| Tailscale off, shared | Unchanged "Shared" look, enabled, name stays "Shared" | Toggles the Share popover, which shows `TAILSCALE_OFF_REASON` with the switch on and enabled, so Share can be turned off while turning it on stays blocked. The sidebar menu's Stop Sharing and `portty unshare` also work |
 | Popover open | No extra visual. `aria-haspopup="dialog"`, `aria-expanded="true"` (otherwise `"false"`), `aria-controls` = popover id | Click, Enter or Space closes the popover |
 
 ### Share popover (new; replaces `SessionShareModal`)
@@ -267,7 +268,7 @@ CLI errors are in the Copywriting Contract.
 | Turn Share off (popover switch, "Stop Sharing", `portty unshare`) | Every capability for the session is revoked and every viewer (peer GUI, browser, CLI) is disconnected with the notices above. Indicators clear. The web server stops when no session is shared |
 | Turn Share on again | A new link. Old links show "Link No Longer Works" |
 | App or daemon restart | Shared sessions stay shared with the same link; indicators restore on launch |
-| Tailscale disconnects | Phase 2 behavior (banner, Share button `aria-disabled`, peer groups collapse). Share state is kept. Turning Share off still works; turning it on does not |
+| Tailscale disconnects | Phase 2 behavior (banner, peer groups collapse). The Share button is `aria-disabled` while the session is not shared; a shared session's Shared button still opens the popover. Share state is kept. Turning Share off still works; turning it on does not |
 | End Session on a shared session | Confirm (with the disconnect line), then viewers see the existing session-ended notices |
 
 ---
@@ -343,7 +344,7 @@ Applicable state considerations resolved: 14 covered, 3 backstop, 1 unresolved.
 | populated | Share popover, shared | ✅ covered | The shared popover shows the full link in a read-only mono field, a Copy button that reads "Copied!" for 2 seconds, and the locked warning line |
 | error | Start / stop / copy failures | ✅ covered | Failures revert the switch and show the inline error copy from the Copywriting Contract in `--color-error-text` |
 | error | Tailnet HTTPS certificates off | ✅ covered | With HTTPS certificates off for the tailnet, turning Share on fails with the admin-console instruction, and no LAN server starts |
-| disabled | Share button, popover switch, menu "Share" with Tailscale off | ✅ covered | With Tailscale off, turning Share on is blocked with aria-disabled plus a visible reason, while turning it off (switch, Stop Sharing, `portty unshare`) always works |
+| disabled | Share button, popover switch, menu "Share" with Tailscale off | ✅ covered | With Tailscale off, turning Share on is blocked with aria-disabled plus a visible reason, while turning it off (switch, Stop Sharing, `portty unshare`) always works. The toolbar button stays enabled for a shared session so the popover switch is reachable |
 | populated | Share state sync | ✅ covered | Sharing from the popover, the sidebar menu or `portty share` updates the row icon, the toolbar button and the popover in the same app session; restarts keep the state and the link |
 | populated | Peer sidebar on stop | ✅ covered | When a session stops being shared, peers drop its row within one poll (≤30s), and at once if a tab is open on it, which keeps its scrollback and shows "<host> stopped sharing this session." |
 | empty | Peer with a different Tailscale account | ✅ covered | A Mac signed in to another account shows no group in the sidebar and no error row |
@@ -396,4 +397,5 @@ Applicable state considerations resolved: 14 covered, 3 backstop, 1 unresolved.
 - State-line gap: use 8px below the switch row in every state (off description, "Getting a link…", errors), so text does not shift between states.
 - Overflow: planner confirms the 320px popover fits at the 800px window minimum, or adds a 12px left clamp.
 
+- Decision 2026-11-17 (user, UAT gap 3): Button opens when shared. With Tailscale off, a shared session's toolbar Shared button stays enabled and opens the popover, whose switch can only turn Share off; an unshared session's Share button stays `aria-disabled`.
 - Copy added 2026-11-17 (user approved): shared but the link could not be read back → "Couldn't get the link: <detail>. Check that Tailscale is connected, then try again."

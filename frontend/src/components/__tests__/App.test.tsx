@@ -19,8 +19,10 @@ describe('App', () => {
       expect(tabBar).toContain('shareOpen={sharePopoverOpen}')
       expect(tabBar).toContain('sharePopoverId={SHARE_POPOVER_ID}')
       expect(tabBar).toContain('shareButtonRef={shareButtonRef}')
-      expect(tabBar).toContain('shared={!!sessions.find((s) => s.id === activeId)?.webEnabled}')
-      expect(tabBar).toContain('shareDisabled={tailscaleOff}')
+      expect(raw).toContain('const activeShared = !!sessions.find((s) => s.id === activeId)?.webEnabled')
+      expect(tabBar).toContain('shared={activeShared}')
+      // 04-09: a shared session's button stays enabled with Tailscale off (App.tailscale.test.tsx).
+      expect(tabBar).toContain('shareDisabled={tailscaleOff && !activeShared}')
     })
 
     it('renders one SharePopover, for the active local session, reporting toggles into the session list', () => {
