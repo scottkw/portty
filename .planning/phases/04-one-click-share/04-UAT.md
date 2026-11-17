@@ -3,7 +3,7 @@ status: complete
 phase: 04-one-click-share
 source: [04-VERIFICATION.md]
 started: 2026-11-17T07:00:00Z
-updated: 2026-11-17T17:00:00Z
+updated: 2026-11-17T20:40:03Z
 ---
 
 ## Current Test
@@ -26,12 +26,36 @@ expected: With real Tailscale disconnected, Share is dimmed with its reason and 
 result: pass
 notes: Toolbar Share button is disabled with Tailscale off, so the popover switch is unreachable; Stop Sharing worked from the sidebar right-click menu. Share state (sidebar icon) is kept while disconnected, per 04-UI-SPEC.md:270.
 
+### 4. Live repro of gap 1 with diagnostic log (M-83)
+expected: On a shared session with more than 32 KiB of history, after `tailscale ping` from the home Mac, attach and detach `portty attach <office>:<session>` three times beside the home GUI tab and a browser. No viewer blanks. If one does, collect the `viewer-diag:` lines from `~/Library/Application Support/portty/daemon.log` on both Macs.
+result: [pending]
+
+### 5. daemon.log after a real daemon restart (WR-01 fix)
+expected: After restarting the daemon, `daemon.log` is mode 0600 and starts at the `daemon: listening on` line; the previous run is in `daemon.log.1`.
+result: [pending]
+
+### 6. Browser banner uses the tailnet name (M-80/M-79, gap 2)
+expected: Turning Share off shows the browser banner with the tailnet short name (same as GUI and CLI), never `.local`.
+result: [pending]
+
+### 7. Long-session attach (M-80, gap 4)
+expected: After `seq 1 20000` in the shared session, both the home GUI tab and `portty attach` show history ending in 20000 and keep receiving live output.
+result: [pending]
+
+### 8. Tailscale-off switch-off from the popover (M-82, gap 3)
+expected: With real Tailscale off, a shared session's Shared button opens the popover and its switch turns Share off; the button then closes the popover once and goes dim. An unshared session's button stays dim.
+result: [pending]
+
+### 9. Different-account Mac sees nothing (M-80 step 6)
+expected: A Mac on another Tailscale account shows no group for the office Mac, and `portty attach` there prints the access-refused line.
+result: [pending]
+
 ## Summary
 
-total: 3
+total: 9
 passed: 3
 issues: 4
-pending: 0
+pending: 6
 skipped: 0
 blocked: 0
 
