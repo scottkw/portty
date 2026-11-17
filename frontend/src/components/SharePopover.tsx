@@ -96,6 +96,9 @@ export function SharePopover({
 
   useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current) }, [])
 
+  // An error from before Tailscale changed state is stale; don't show it beside the reason line.
+  useEffect(() => { setError(null) }, [tailscaleOff])
+
   // Show the end of the link (session path and token), the part that differs between links.
   const showLink = !busy && !tailscaleOff && shared && !!url
   useLayoutEffect(() => {

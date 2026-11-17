@@ -305,6 +305,16 @@ describe('SharePopover: Tailscale off', () => {
     expect(SetSessionShared).not.toHaveBeenCalled()
   })
 
+  it('a start error from before Tailscale dropped is cleared, so only the reason shows', async () => {
+    vi.mocked(SetSessionShared).mockResolvedValue({ ...off, errorCode: 'start_failed', errorDetail: 'port 8443 is in use' })
+    await render()
+    await click(sw())
+    expect(q('.share-popover__error')).not.toBeNull()
+    await render({ tailscaleOff: true })
+    expect(q('.share-popover__error')).toBeNull()
+    expect(state().textContent).toBe(TAILSCALE_OFF_REASON)
+  })
+
   it('shared: the switch stays operable and the reason replaces the link and warning', async () => {
     vi.mocked(GetSessionShare).mockResolvedValue(on)
     vi.mocked(SetSessionShared).mockResolvedValue(off)
