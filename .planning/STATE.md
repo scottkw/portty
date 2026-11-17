@@ -224,6 +224,7 @@ Items acknowledged and deferred at milestone close, most recent first:
 |-------|-------|--------|
 | 2 | verification_deferred_human | /gsd-verify-work 2 |
 | 3 | verification_deferred_human | /gsd-verify-work 3 |
+| 4 | verification_deferred_human | /gsd-verify-work 4 |
 
 Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appearance, VoiceOver) need both Macs. The user deferred them on 2026-11-16 ("push that UAT until later and move on"). Item 1 passed.
 
