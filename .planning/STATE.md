@@ -1,18 +1,17 @@
 ---
 gsd_state_version: "1.0"
 current_phase: 4
-current_phase_name: One-Click Share
 status: executing
-stopped_at: Completed 03-06-PLAN.md
-last_updated: "2026-11-17T02:56:52.017Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-11-17T03:34:03.308Z"
 last_activity: 2026-11-16
-last_activity_desc: Phase 3 execution started
-state_head: c1abd642e50e65beac75a43e8084eb892fe73797
+last_activity_desc: Phase 4 execution started
+state_head: 71201e896cc25f37b0fd5839aeb7f042b45888d5
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 37
-  completed_plans: 31
+  completed_plans: 32
   percent: 17
 ---
 
@@ -23,14 +22,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 3
+**Current focus:** Phase 4
 
 ## Current Position
 
-Phase: 4 (One-Click Share) — READY TO EXECUTE
-Plan: 6 of 6
+Phase: 4 — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-11-16 — Phase 3 execution started
+Last activity: 2026-11-16 — Phase 4 execution started
 
 Progress: [██░░░░░░░░] 17%
 
@@ -74,6 +73,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 03 P04 | 25min | 2 tasks | 13 files |
 | Phase 3 P05 | 15min | 3 tasks | 21 files |
 | Phase 3 P06 | 53min | 3 tasks | 17 files |
+| Phase 4 P01 | 35min | 3 tasks | 67 files |
 
 ## Accumulated Context
 
@@ -144,6 +144,9 @@ Recent decisions affecting current work:
 - [Phase 3]: 03-06: Release DMG is a plain hdiutil UDZO image signed with codesign; no create-dmg or package-manager install; first exercised in Phase 6
 - [Phase 3]: 03-06: RELEASE_PUBLISH_TOKEN logic kept, comment only; Phase 6 revisits publishing
 - [Phase 3]: 03-06: build.yml context renamed to build (portty, darwin/universal, macos-latest); branch protection re-apply is a manual user step when CI is re-enabled
+- [Phase 4]: 04-01: relay.Subscriber.ReadOnly and the webserver HasPerm(claims.Perms, "write") check stay as the capability write gate; only ways to create a view-only link were removed
+- [Phase 4]: 04-01: issueCapabilitiesForSession mints one read,write grant; IssueCapabilitiesResponse keeps only writeUrl until 04-02 replaces it with the share switch
+- [Phase 4]: 04-01: Section 5 Category J (share warning GUI switch) left for 04-05
 
 ### Pending Todos
 
@@ -204,6 +207,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-16T19:01:15.188Z
-Stopped at: Completed 03-06-PLAN.md
+Last session: 2026-11-17T03:33:53.824Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
