@@ -43,6 +43,9 @@ type Subscriber struct {
 	// Remote: the viewer's IP for viewer-diag lines, set by the webserver
 	// before Subscribe; empty for local viewers. Diagnostics only.
 	Remote string
+
+	// slowLogged: the first slow kick has been logged. Read/written under hub.mu.
+	slowLogged bool
 }
 
 // Hub manages a single PTY session's output fan-out.
@@ -56,6 +59,7 @@ type Hub struct {
 
 	mu          sync.Mutex
 	subscribers map[*Subscriber]struct{}
+	nextConnID  uint64 // last Subscriber.ID handed out; under mu
 	done        chan struct{}
 	closed      bool
 	closeOnce   sync.Once
@@ -143,12 +147,12 @@ func NewHub(sessionID string, reader io.Reader, writer io.Writer, scrollbackByte
 	}
 }
 
-// id8 is the session ID shortened for viewer-diag log lines.
-func (h *Hub) id8() string {
-	if len(h.sessionID) > 8 {
-		return h.sessionID[:8]
+// DiagID is a session ID shortened for viewer-diag log lines.
+func DiagID(sessionID string) string {
+	if len(sessionID) > 8 {
+		return sessionID[:8]
 	}
-	return h.sessionID
+	return sessionID
 }
 
 // Resize calls the resize callback registered at construction time.
@@ -164,15 +168,53 @@ func (h *Hub) Resize(cols, rows int) error {
 // Must be called before Hub.Run or while Run is active under the mu lock.
 func (h *Hub) Subscribe(sub *Subscriber) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	h.subscribers[sub] = struct{}{}
+	h.nextConnID++
+	sub.ID = h.nextConnID
+	total, web := len(h.subscribers), h.webCountLocked()
+	h.mu.Unlock() // unlock-before-IO: no log write under mu
+	log.Printf("viewer-diag: join session=%s conn=%d origin=%s from=%s client=%q viewers=%d web=%d",
+		DiagID(h.sessionID), sub.ID, sub.Origin, sub.Remote, sub.Name, total, web)
 }
 
 // Unsubscribe removes a subscriber.
 func (h *Hub) Unsubscribe(sub *Subscriber) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	_, present := h.subscribers[sub]
 	delete(h.subscribers, sub)
+	total := len(h.subscribers)
+	h.mu.Unlock()
+	if present {
+		log.Printf("viewer-diag: leave session=%s conn=%d origin=%s client=%q viewers=%d",
+			DiagID(h.sessionID), sub.ID, sub.Origin, sub.Name, total)
+	}
+}
+
+// webCountLocked counts Origin=="web" subscribers. Caller holds h.mu.
+func (h *Hub) webCountLocked() int {
+	count := 0
+	for s := range h.subscribers {
+		if s.Origin == "web" {
+			count++
+		}
+	}
+	return count
+}
+
+// kickSlow closes a subscriber whose channel is full, in its own goroutine as
+// before, and logs the first kick per subscriber. Caller holds h.mu; the log
+// write happens in the goroutine so no I/O runs under mu (T-157-04).
+func (h *Hub) kickSlow(sub *Subscriber) {
+	first := !sub.slowLogged
+	sub.slowLogged = true
+	queued := len(sub.Msgs)
+	go func() {
+		if first {
+			log.Printf("viewer-diag: slow session=%s conn=%d origin=%s client=%q queued=%d",
+				DiagID(h.sessionID), sub.ID, sub.Origin, sub.Name, queued)
+		}
+		sub.CloseSlow()
+	}()
 }
 
 // SubscriberCount returns the number of currently subscribed clients. (MC-04)
@@ -191,13 +233,7 @@ func (h *Hub) SubscriberCount() int {
 func (h *Hub) RemoteViewerCount() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	count := 0
-	for s := range h.subscribers {
-		if s.Origin == "web" {
-			count++
-		}
-	}
-	return count
+	return h.webCountLocked()
 }
 
 // RevokeWebViewers closes every currently subscribed Origin=="web"
@@ -219,6 +255,7 @@ func (h *Hub) RevokeWebViewers(reason string) {
 		}
 	}
 	h.mu.Unlock()
+	log.Printf("viewer-diag: revoke session=%s reason=%q web=%d", DiagID(h.sessionID), reason, len(targets))
 
 	for _, sub := range targets {
 		if sub.Kick != nil {
@@ -283,7 +320,7 @@ func (h *Hub) ResizeClient(sub *Subscriber, cols, rows int) error {
 
 	if needResize {
 		// Diagnostic for UAT gap 1 (04-07 H-grid): who changed the host grid, and to what.
-		log.Printf("viewer-diag: grid session=%s %dx%d -> %dx%d by=%s client=%q", h.id8(), oldCols, oldRows, pc, pr, sub.Origin, sub.Name)
+		log.Printf("viewer-diag: grid session=%s %dx%d -> %dx%d by=%s client=%q", DiagID(h.sessionID), oldCols, oldRows, pc, pr, sub.Origin, sub.Name)
 		// VIEW-01: broadcast the new authoritative grid to all subscribers.
 		h.broadcastResize(uint16(pc), uint16(pr))
 		// CR-01: keep the live emulator's geometry in lockstep with the PTY so a
@@ -311,7 +348,7 @@ func (h *Hub) broadcastResize(cols, rows uint16) {
 		select {
 		case sub.Msgs <- frame:
 		default:
-			go sub.CloseSlow()
+			h.kickSlow(sub)
 		}
 	}
 }
@@ -440,7 +477,7 @@ func (h *Hub) broadcast(frame []byte) {
 		select {
 		case sub.Msgs <- frame:
 		default:
-			go sub.CloseSlow()
+			h.kickSlow(sub)
 		}
 	}
 }
@@ -456,7 +493,7 @@ func (h *Hub) BroadcastMeta(frame []byte) {
 		select {
 		case sub.Msgs <- frame:
 		default:
-			go sub.CloseSlow()
+			h.kickSlow(sub)
 		}
 	}
 }

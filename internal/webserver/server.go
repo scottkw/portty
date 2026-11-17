@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -792,6 +793,9 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 		Name:     clientName,
 		Origin:   "web", // read by the host-authority resize arbiter
 	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		sub.Remote = host // viewer-diag only
+	}
 	sub.CloseSlow = func() {
 		conn.Close(websocket.StatusPolicyViolation, "too slow")
 	}
@@ -806,6 +810,7 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	// Subscribe FIRST — frames arrive in Msgs from now on, so the snapshot
 	// replayed below cannot leave a gap in the output stream.
 	hub.Subscribe(sub)
+	joined := time.Now()
 	relay.NotifyViewerCount(hub) // push updated viewer count to all clients
 	defer func() {
 		hub.Unsubscribe(sub)
@@ -850,6 +855,13 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	absorber := &relay.InputAbsorber{} // Phase 111 / Issue #54: absorb OSC 10/11/DA1 replies. Phase 115: type moved to relay package.
 	go func() {
 		defer close(readDone)
+		// viewer-diag counts only: input payloads are never logged (they can be passwords).
+		var inFrames, inBytes int
+		defer func() {
+			if inFrames > 0 {
+				log.Printf("viewer-diag: input total session=%s conn=%d frames=%d bytes=%d", relay.DiagID(sessionID), sub.ID, inFrames, inBytes)
+			}
+		}()
 		for {
 			_, msg, err := conn.Read(ctx)
 			if err != nil {
@@ -863,17 +875,31 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 			// no case and no default arm, so old clients' frames are dropped.
 			switch msgType {
 			case relay.MsgInput:
+				passed := 0
 				if !sub.ReadOnly { // MC-03: discard input for read-only clients
 					filtered := absorber.Filter(payload)
+					passed = len(filtered)
 					if len(filtered) > 0 {
 						_ = hub.WriteInput(filtered)
 					}
+				}
+				inFrames++
+				inBytes += len(payload)
+				if inFrames == 1 {
+					// Input within ms of joining, before any typing, is a terminal answering replayed queries (04-07 H-replies).
+					log.Printf("viewer-diag: first input session=%s conn=%d client=%q after=%s bytes=%d passed=%d",
+						relay.DiagID(sessionID), sub.ID, sub.Name, time.Since(joined), len(payload), passed)
 				}
 			case relay.MsgResize2:
 				// VIEW-02 / T-157-02: a web guest is a read-only viewer of the host PTY grid.
 				// The host-authority arbiter also rejects non-local origin, but dropping the
 				// call here avoids a needless lock acquisition per guest resize and makes the
 				// intent explicit: a remote web client never drives the shared PTY size.
+				// Guests never send this frame, so the log line marks a CLI connection.
+				if len(payload) >= 4 {
+					log.Printf("viewer-diag: web resize ignored session=%s conn=%d cols=%d rows=%d",
+						relay.DiagID(sessionID), sub.ID, uint16(payload[0])<<8|uint16(payload[1]), uint16(payload[2])<<8|uint16(payload[3]))
+				}
 			case relay.MsgPing:
 				// Keep-alive — no-op.
 			}
