@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-11-17T23:07:46.788Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-11-17T23:25:12.462Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: 8dc18ade2a74c3f51a1f7fea3f11bba00c728352
+state_head: c92cc05e067c4ccf2388a484d278f5e41197ca19
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 48
-  completed_plans: 43
+  completed_plans: 44
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 5 (Overnight Survival) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 5 execution started
 
@@ -86,6 +86,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 04 P10 | 8 min | 2 tasks | 6 files |
 | Phase 5 P01 | 13min | 3 tasks | 14 files |
 | Phase 5 P02 | 12min | 3 tasks | 11 files |
+| Phase 05 P03 | 6min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -191,6 +192,8 @@ Recent decisions affecting current work:
 - [Phase 5]: 05-01: client resume position = offset meta + len of every later MsgOutput frame (type byte included)
 - [Phase 5]: 05-02: Heartbeat returns false (no reap log) when a ping fails because the handler ctx ended
 - [Phase 5]: 05-02: no WebSocket heartbeat on the loopback relay or the proxy's client side; only the share server (toward viewers) and the proxy (toward upstream) ping
+- [Phase 05]: 05-03: scrollback history is a hub-owned rendered-line ring (10,000 lines / 4 MiB, memory only) drained from the emulator after every write; ESC[3J and RIS empty it; resize pushes visible rows before the rebuild
+- [Phase 05]: 05-03: wrapped full replay = history CRLF + all Height() rows CRLF-joined + CUP + ascending DEC mode restores (never 47/1047/1049/2048); intact-ring raw replay unchanged (#109)
 
 ### Pending Todos
 
@@ -259,6 +262,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T23:07:45.322Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-11-17T23:25:10.963Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None

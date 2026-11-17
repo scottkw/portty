@@ -220,7 +220,7 @@ Plans:
   3. Detaching and reattaching from the GUI, the CLI, or a browser restores the session's scrollback
   4. Overnight test: Claude Code runs in a shared shell on the office Mac and the home Mac attaches from the Portty GUI. After both sit idle overnight, the user keeps typing the next morning and the previous day's scrollback is intact
   5. The next morning the same session also opens from a browser on the tailnet and works
-**Plans**: 2/7 plans executed in 4 waves
+**Plans**: 3/7 plans executed in 4 waves
 
 Plans:
 **Wave 1**
@@ -228,7 +228,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 05-02-PLAN.md — Liveness: MsgPong reply on both servers, WebSocket heartbeats on the share server and the proxy upstream
-- [ ] 05-03-PLAN.md — Hub-owned 10,000-line rendered history; wrapped full replay with CRLF rows, cursor and mode restores; ED3/RIS clear
+- [x] 05-03-PLAN.md — Hub-owned 10,000-line rendered history; wrapped full replay with CRLF rows, cursor and mode restores; ED3/RIS clear
 - [ ] 05-04-PLAN.md — GUI/browser RelayClient reconnect loop, pong-armed watchdog, delayed "reconnecting" banner, stdin gating
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -261,5 +261,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
 | 3. Portty Brand | 6/6 | In Progress | - |
 | 4. One-Click Share | 10/10 | In Progress | - |
-| 5. Overnight Survival | 2/7 | In Progress | - |
+| 5. Overnight Survival | 3/7 | In Progress | - |
 | 6. Release Updates | 0/TBD | Not started | - |
