@@ -2,9 +2,9 @@
 phase: 04-one-click-share
 fixed_at: 2026-11-17T00:00:00Z
 review_path: .planning/phases/04-one-click-share/04-REVIEW.md
-iteration: 1
-findings_in_scope: 11
-fixed: 11
+iteration: 2
+findings_in_scope: 4
+fixed: 4
 skipped: 0
 status: all_fixed
 ---
@@ -148,3 +148,59 @@ The viewer already maps a non-200/non-403 answer to unreachable. Test: `TestWhoI
 _Fixed: 2026-11-17_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+---
+
+# Iteration 2
+
+**Source review:** .planning/phases/04-one-click-share/04-REVIEW.md (iteration 2, commit 495df1f1)
+**In scope (coordinator's list):** WR-01, WR-02, IN-06, IN-07. Fixed: 4. Skipped: 0. The frontmatter counts above are for this iteration; iteration 1 was 11 of 11.
+**Left as they are, by instruction:** IN-03, IN-05, IN-08 (duplicate-HostName grouping). IN-02 and IN-04 are also still open.
+
+**Where verification ran:** in the main checkout (`/Users/ken/dev/portty`), with no worktree. All of these exit 0 on HEAD `cae3d563`:
+- `go build ./...`, `go vet ./...`, `go vet -tags playwrightfixture ./cmd/playwright-fixture/`, `go vet -tags vmpreview ./...`
+- `go test -race -short ./...`
+- `pnpm -C frontend exec tsc --noEmit`, `pnpm -C frontend exec vitest run` (82 files, 1038 tests)
+- the three gates (`check-traceability-paths`, `check-brand`, `check-share-removal`)
+- `pgrep -f '\.test daemon'` prints nothing.
+
+No test file was added, so TESTING.md needed no change.
+
+## Fixed Issues
+
+### WR-01: A share-on that gives up can stop the server another share-on just started
+
+**Files modified:** `internal/daemon/share.go`, `internal/daemon/api.go` (field comment)
+**Commit:** b494a5c4
+**Status:** fixed: requires human verification
+**Applied fix:** `shareOn` now holds `startMu` (`defer a.startMu.Unlock()`) from the server check through the session re-check and mint. A share-on that refuses and calls `unshareLocked` can therefore never come between another share-on's "server installed" and "record minted". The lock order is `startMu`, then `a.mu`. Nothing takes `startMu` while holding `a.mu`, and share-off and exit cleanup don't take `startMu` at all.
+**Test:** none added. No seam sits between the release of `startMu` and the `a.mu.Lock()` that follows it. Reproducing the race would require the waiting share-on to win `a.mu` against the share-on that just released `startMu`. That would be a timing-dependent test that almost never fails on the old code, so I chose not to add a flaky one. The fix is correct by reading the code: the whole start-to-mint section is now one critical section under `startMu`. The existing WR-02/WR-04 tests from iteration 1 still pass.
+
+### WR-02: Bare `portty attach <host>` on a found Mac said "no session named <host>"
+
+**Files modified:** `cmd_attach.go`, `cmd_attach_test.go`
+**Commit:** 6d078421
+**Applied fix:** `attachRemote`'s fallback, now called `onNoHost`, replaces only `unknown_host` and `tailscale_off`, the two cases where the argument named no Mac. For not sharing, another account, unreachable and no such session, the found Mac's UI-SPEC message from `peerConnectMessage` is shown again.
+**Test:** `TestCmdAttach_BareHostNotSharing` runs bare `portty attach office-air` against a fake peer whose meta returns `[]`. It asserts "office-air isn't sharing any sessions". With the fix reverted it gets "no session named". `TestCmdAttach_Resolution` still covers a typo with Tailscale off.
+**Also in this commit:** the IN-06 `cmdAttach` doc fix, because it is the same file.
+
+### IN-06: Two comments contradicted the fixed code
+
+**Files modified:** `internal/daemon/share.go` (commit 7e9c9405), `cmd_attach.go` (in 6d078421)
+**Applied fix:**
+- The `unshareLocked` comment now reads "Stop closes the listener and plain connections; hijacked WebSockets survive it."
+- The `cmdAttach` comment now reads "<host>:<session> is remote unless a local session has that exact name."
+
+### IN-07: No share-server timeouts; every `/peers/connect` left an idle TLS connection open
+
+**Files modified:** `internal/webserver/server.go`, `internal/daemon/peer_connect.go`
+**Commit:** cae3d563
+**Applied fix:**
+- The share server's `http.Server` now sets `ReadHeaderTimeout: 10s` and `IdleTimeout: 60s`. Hijacked WebSockets aren't affected. The plugin-config SSE stream isn't affected either: no `WriteTimeout` is set, and `IdleTimeout` applies only between requests.
+- `handlePeerConnect` now calls `defer client.CloseIdleConnections()` on its per-request client, so no keep-alive is left open on either Mac.
+
+---
+
+_Fixed: 2026-11-17_
+_Fixer: Claude (gsd-code-fixer)_
+_Iteration: 2_
