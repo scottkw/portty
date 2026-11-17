@@ -63,6 +63,7 @@ func runDaemonCore(ctx context.Context) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "daemon: listening on %s\n", socketPath)
+	startDaemonLog(daemonConfigDir()) // after the bind: a failed duplicate spawn never rotates
 
 	// No web server starts at boot: the share server starts on the first
 	// share and stops when nothing is shared (share.go).

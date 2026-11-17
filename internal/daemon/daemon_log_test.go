@@ -13,45 +13,77 @@ import (
 
 // Every test here uses t.TempDir(); the real config directory is never touched.
 
-func TestOpenDaemonLog_RotatesAndIs0600(t *testing.T) {
+// WR-01: the spawning parent appends, so a duplicate or retried spawn never
+// moves away the log of the run that just died.
+func TestOpenDaemonLog_AppendsAndIs0600(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "daemon.log")
-	if err := os.WriteFile(path, []byte("old run"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("crashed run\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-
-	f, err := openDaemonLog(dir)
-	if err != nil {
-		t.Fatalf("openDaemonLog: %v", err)
+	for _, line := range []string{"spawn 1\n", "spawn 2\n"} {
+		f, err := openDaemonLog(dir)
+		if err != nil {
+			t.Fatalf("openDaemonLog: %v", err)
+		}
+		if _, err := f.WriteString(line); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
 	}
-	if got, _ := os.ReadFile(path + ".1"); string(got) != "old run" {
-		t.Fatalf("daemon.log.1 = %q, want %q", got, "old run")
+	if got, _ := os.ReadFile(path); string(got) != "crashed run\nspawn 1\nspawn 2\n" {
+		t.Fatalf("daemon.log = %q; want all three runs appended", got)
+	}
+	if _, err := os.Stat(path + ".1"); !os.IsNotExist(err) {
+		t.Fatalf("daemon.log.1 exists after spawns (err=%v); the parent must not rotate", err)
+	}
+
+	f, err := openDaemonLog(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if fi, _ := f.Stat(); fi.Mode().Perm() != 0600 {
+		t.Fatalf("new daemon.log mode = %v, want 0600", fi.Mode().Perm())
+	}
+}
+
+// WR-01: past the cap, daemon.log rolls over to daemon.log.1 and the
+// descriptor (stderr in the daemon) follows to a fresh 0600 file.
+func TestDaemonLog_RollsOverPastCap(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.log")
+	out, err := openDaemonLog(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	d := &daemonLog{path: path, max: 10, out: out, fds: []int{int(out.Fd())}}
+
+	for _, s := range []string{"aaaaaa", "bbbb", "cccccc"} {
+		if _, err := d.Write([]byte(s)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, _ := os.ReadFile(path + ".1"); string(got) != "aaaaaabbbb" {
+		t.Fatalf("daemon.log.1 = %q; want %q", got, "aaaaaabbbb")
+	}
+	if got, _ := os.ReadFile(path); string(got) != "cccccc" {
+		t.Fatalf("daemon.log = %q; want %q", got, "cccccc")
 	}
 	fi, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fi.Mode().Perm() != 0600 {
-		t.Fatalf("daemon.log mode = %v, want 0600", fi.Mode().Perm())
+		t.Fatalf("rotated daemon.log mode = %v, want 0600", fi.Mode().Perm())
 	}
-	if fi.Size() != 0 {
-		t.Fatalf("fresh daemon.log size = %d, want 0", fi.Size())
-	}
-	if _, err := f.WriteString("second run"); err != nil {
+	// A direct write on the descriptor (a panic, fmt.Fprintf(os.Stderr)) lands in the new file too.
+	if _, err := out.WriteString("dd"); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
-	if got, _ := os.ReadFile(path); string(got) != "second run" {
-		t.Fatalf("daemon.log = %q, want %q", got, "second run")
-	}
-
-	f2, err := openDaemonLog(dir)
-	if err != nil {
-		t.Fatalf("second openDaemonLog: %v", err)
-	}
-	f2.Close()
-	if got, _ := os.ReadFile(path + ".1"); string(got) != "second run" {
-		t.Fatalf("after second rotation daemon.log.1 = %q, want %q", got, "second run")
+	if got, _ := os.ReadFile(path); string(got) != "ccccccdd" {
+		t.Fatalf("daemon.log after direct write = %q; want %q", got, "ccccccdd")
 	}
 }
 
