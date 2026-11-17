@@ -2,11 +2,14 @@ package webserver
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -182,5 +185,57 @@ func TestRevoke_PluginStreamDropsFrameAfterRevoke(t *testing.T) {
 	ws.BroadcastPluginConfig(context.Background())
 	if rest := readToEOF(t, rdr, time.Second); strings.Contains(rest, "plugin-config") {
 		t.Fatalf("a frame was delivered after revoke: %q", rest)
+	}
+}
+
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// CR-01: a link holder flooding resize frames gets one "web resize ignored"
+// line per connection, with the total in the input total line.
+func TestResizeFlood_LogsOncePerConnection(t *testing.T) {
+	diag := &syncBuf{}
+	prev := log.Writer()
+	log.SetOutput(diag)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	_, conn, _ := dialShared(t, "resize-flood")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	const n = 50
+	for i := 0; i < n; i++ {
+		if err := conn.Write(ctx, websocket.MessageBinary, []byte{relay.MsgResize2, 0, 80, 0, 24}); err != nil { // the CLI's client resize frame
+			t.Fatalf("write resize %d: %v", i, err)
+		}
+	}
+	conn.Close(websocket.StatusNormalClosure, "")
+
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.Contains(diag.String(), "viewer-diag: input total") {
+		if time.Now().After(deadline) {
+			t.Fatalf("no input total line:\n%s", diag.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	out := diag.String()
+	if c := strings.Count(out, "web resize ignored"); c != 1 {
+		t.Errorf("resize ignored lines = %d; want 1:\n%s", c, out)
+	}
+	if !strings.Contains(out, "frames=0 bytes=0 resizes=50") {
+		t.Errorf("input total line lacks resizes=%d:\n%s", n, out)
 	}
 }

@@ -856,10 +856,10 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer close(readDone)
 		// viewer-diag counts only: input payloads are never logged (they can be passwords).
-		var inFrames, inBytes int
+		var inFrames, inBytes, resizes int
 		defer func() {
-			if inFrames > 0 {
-				log.Printf("viewer-diag: input total session=%s conn=%d frames=%d bytes=%d", relay.DiagID(sessionID), sub.ID, inFrames, inBytes)
+			if inFrames > 0 || resizes > 0 {
+				log.Printf("viewer-diag: input total session=%s conn=%d frames=%d bytes=%d resizes=%d", relay.DiagID(sessionID), sub.ID, inFrames, inBytes, resizes)
 			}
 		}()
 		for {
@@ -895,8 +895,11 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 				// The host-authority arbiter also rejects non-local origin, but dropping the
 				// call here avoids a needless lock acquisition per guest resize and makes the
 				// intent explicit: a remote web client never drives the shared PTY size.
-				// Guests never send this frame, so the log line marks a CLI connection.
-				if len(payload) >= 4 {
+				// The bundled guest never sends this frame, so the line marks a CLI connection.
+				// Logged once per connection (CR-01): any link holder can send these frames
+				// at line rate; the total goes in the input total line.
+				resizes++
+				if resizes == 1 && len(payload) >= 4 {
 					log.Printf("viewer-diag: web resize ignored session=%s conn=%d cols=%d rows=%d",
 						relay.DiagID(sessionID), sub.ID, uint16(payload[0])<<8|uint16(payload[1]), uint16(payload[2])<<8|uint16(payload[3]))
 				}
