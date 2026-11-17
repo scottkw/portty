@@ -485,7 +485,7 @@ Make the Go intervals overridable in tests (package vars or Server fields), so t
 | A8 | macOS default pf configuration filters lo0 (for a pf blackhole test) | Testing Strategy | Use the `kill -STOP` variant, which needs no root |
 | A9 | Version skew is rare (single user), so the "output before replay meta = old host" fallback suffices | Pitfall 8 | Duplicate history after a reconnect to an old host; documented |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Alt-screen scrollback leak (Pitfall 3, pre-existing): fix in this phase?**
    - What we know: 126.6 MiB for 20k scrolled alt-screen lines. There is no public API to cap `scrs[1]`.
