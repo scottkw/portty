@@ -33,15 +33,22 @@ package daemon
 //     PASSED. Refuted.
 //
 // Root cause: not pinned — no in-process variant reproduces the UAT signature (guests lose output or get a non-host grid while the office panel is fine), so the live repro relies on the 04-08 diagnostic log and TESTING.md M-83.
+//
+// Live evidence (04-08): the daemon writes `viewer-diag:` lines to daemon.log
+// (grid, join, leave, slow, revoke, first input, web resize ignored on the host;
+// proxy open, dial failed, end on the viewing Mac). TestCLIAttach_OtherViewersKeepOutput
+// checks a whole CLI attach logs that timeline without the cap.
 
 import (
 	"bytes"
 	"context"
 	"crypto/tls"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -128,6 +135,12 @@ func (l *lockedBuffer) Write(p []byte) (int, error) {
 	return l.b.Write(p)
 }
 
+func (l *lockedBuffer) bytes() []byte {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return bytes.Clone(l.b.Bytes())
+}
+
 func (l *lockedBuffer) has(s string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -141,6 +154,7 @@ type attachScene struct {
 	ctx       context.Context
 	hub       *relay.Hub
 	sid       string
+	capToken  string
 	viewRelay string // ws://<viewing daemon relay>
 	local     *websocket.Conn
 	viewers   map[string]*viewerTap // "local", "guiTab", "browser"
@@ -194,6 +208,7 @@ func newAttachScene(t *testing.T, prelude ...string) *attachScene {
 		ctx:       ctx,
 		hub:       hub,
 		sid:       sid,
+		capToken:  capToken,
 		viewRelay: "ws://" + strings.TrimPrefix(viewRelay.URL, "http://"),
 		viewers:   map[string]*viewerTap{},
 	}
@@ -313,6 +328,14 @@ func (s *attachScene) checkUndisturbed(t *testing.T, names ...string) {
 }
 
 func TestCLIAttach_OtherViewersKeepOutput(t *testing.T) {
+	diag := &lockedBuffer{}
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(diag)
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
+
 	s := newAttachScene(t)
 
 	cli := s.attachCLI(t, s.dialCLI(t, 80, 24))
@@ -327,6 +350,32 @@ func TestCLIAttach_OtherViewersKeepOutput(t *testing.T) {
 	s.waitAll(t, "MARKER-3", "local", "guiTab", "browser")
 
 	s.checkUndisturbed(t, "guiTab", "browser")
+
+	// 04-08 viewer-diag timeline: four joins, the CLI's ignored 80x24 resize
+	// and its leave under the same conn number, the proxy's open and end lines.
+	id8 := relay.DiagID(s.sid)
+	resize := regexp.MustCompile(`viewer-diag: web resize ignored session=` + regexp.QuoteMeta(id8) + ` conn=(\d+) cols=80 rows=24`)
+	var cliConn string
+	waitUntil(t, "web resize ignored line for the CLI", func() bool {
+		if m := resize.FindSubmatch(diag.bytes()); m != nil {
+			cliConn = string(m[1])
+			return true
+		}
+		return false
+	})
+	waitUntil(t, "leave line for the CLI conn", func() bool {
+		return diag.has("viewer-diag: leave session=" + id8 + " conn=" + cliConn + " origin=web")
+	})
+	waitUntil(t, "proxy end line", func() bool { return diag.has("viewer-diag: proxy end session=" + id8) })
+	if n := bytes.Count(diag.bytes(), []byte("viewer-diag: join session="+id8)); n < 4 {
+		t.Errorf("join lines = %d; want 4 (local, guiTab, browser, cli):\n%s", n, diag.bytes())
+	}
+	if !diag.has("viewer-diag: proxy open session=" + id8) {
+		t.Errorf("no proxy open line:\n%s", diag.bytes())
+	}
+	if diag.has(s.capToken) || diag.has(url.QueryEscape(s.capToken)) || diag.has("cap=") {
+		t.Errorf("diagnostic log leaks the share link's cap")
+	}
 }
 
 // Terminal queries the replayed_query_replies variant puts in the session

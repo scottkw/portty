@@ -18,8 +18,10 @@ package daemon_test
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +30,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/daemon"
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/testutil"
 )
 
 // fixtureCap is the canonical cap token the fixture peer accepts.
@@ -424,5 +427,92 @@ func TestRemoteWSProxy_ForwardsClose(t *testing.T) {
 				t.Fatalf("close = (%d, %q), want (1000, %q)", ce.Code, ce.Reason, reason)
 			}
 		})
+	}
+}
+
+// diagLog captures the standard logger for one test (not parallel-safe: it
+// swaps the global output) and is readable while proxy goroutines write.
+type diagLog struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (d *diagLog) Write(p []byte) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.b.Write(p)
+}
+
+func (d *diagLog) String() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.b.String()
+}
+
+func captureDiagLog(t *testing.T) *diagLog {
+	t.Helper()
+	d := &diagLog{}
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(d)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
+	return d
+}
+
+// TestRemoteWSProxy_DiagLog (04-08): the viewing daemon's proxy logs its dial
+// time, a failed dial and how a connection ended, and never the cap.
+func TestRemoteWSProxy_DiagLog(t *testing.T) {
+	buf := captureDiagLog(t)
+
+	// Peer closes with 1000 "share stopped".
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+		if err != nil {
+			return
+		}
+		_ = conn.Close(websocket.StatusNormalClosure, relay.CloseReasonShareStopped)
+	}))
+	defer upstream.Close()
+	api := newDaemonAPIWithUpstreamCert(t, upstream)
+	relaySrv := httptest.NewServer(api.RelayHandler())
+	defer relaySrv.Close()
+	depositCap(t, api, "sid1", upstream.URL, fixtureCap)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := dialProxy(ctx, t, relaySrv.URL, "sid1", "")
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	_, _, _ = conn.Read(ctx)
+	conn.CloseNow()
+	testutil.WaitFor(t, 2*time.Second, func() bool { return strings.Contains(buf.String(), "viewer-diag: proxy end") }, "no proxy end line:\n%s", buf.String())
+	if !regexp.MustCompile(`viewer-diag: proxy open session=sid1 host=127\.0\.0\.1 dial=\S+`).MatchString(buf.String()) {
+		t.Fatalf("no proxy open line with a dial duration:\n%s", buf.String())
+	}
+	if !regexp.MustCompile(`viewer-diag: proxy end session=sid1 first=peer code=1000 reason="share stopped" after=\S+`).MatchString(buf.String()) {
+		t.Fatalf("no proxy end line first=peer code=1000:\n%s", buf.String())
+	}
+
+	// Dial to an unreachable peer.
+	dead := httptest.NewTLSServer(http.NotFoundHandler())
+	deadURL := dead.URL
+	dead.Close()
+	depositCap(t, api, "sid2", deadURL, fixtureCap)
+	conn2, _, err := dialProxy(ctx, t, relaySrv.URL, "sid2", "")
+	if err != nil {
+		t.Fatalf("dial proxy (dead peer): %v", err)
+	}
+	_, _, _ = conn2.Read(ctx)
+	conn2.CloseNow()
+	testutil.WaitFor(t, 2*time.Second, func() bool {
+		return strings.Contains(buf.String(), "viewer-diag: proxy dial failed session=sid2 host=127.0.0.1 err=")
+	}, "no proxy dial failed line:\n%s", buf.String())
+
+	if got := buf.String(); strings.Contains(got, fixtureCap) || strings.Contains(got, "cap=") {
+		t.Fatalf("proxy log leaks the cap:\n%s", got)
 	}
 }
