@@ -220,7 +220,23 @@ Plans:
   3. Detaching and reattaching from the GUI, the CLI, or a browser restores the session's scrollback
   4. Overnight test: Claude Code runs in a shared shell on the office Mac and the home Mac attaches from the Portty GUI. After both sit idle overnight, the user keeps typing the next morning and the previous day's scrollback is intact
   5. The next morning the same session also opens from a browser on the tailnet and works
-**Plans**: TBD
+**Plans**: 7 plans in 4 waves
+
+Plans:
+**Wave 1**
+- [ ] 05-01-PLAN.md — Resumable replay contract: Hub.Join with resume offsets, delta/full meta, 16 KiB chunks, exactly-once; share server, local relay and proxy on it
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 05-02-PLAN.md — Liveness: MsgPong reply on both servers, WebSocket heartbeats on the share server and the proxy upstream
+- [ ] 05-03-PLAN.md — Hub-owned 10,000-line rendered history; wrapped full replay with CRLF rows, cursor and mode restores; ED3/RIS clear
+- [ ] 05-04-PLAN.md — GUI/browser RelayClient reconnect loop, pong-armed watchdog, delayed "reconnecting" banner, stdin gating
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 05-05-PLAN.md — Re-auth before redial: GUI GetRelayPort + ConnectPeerSession, browser /info probe
+- [ ] 05-06-PLAN.md — `portty attach` reconnect loop (attach.Run), UAT gap 1 fix, harness drop / daemon-restart / scrollback-diff tests
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 05-07-PLAN.md — TESTING.md manifest, SHAR-07/VERF-01 traceability, M-84..M-87 (two-Mac items deferred-capable), todos
 
 ### Phase 6: Release Updates
 **Goal**: Installed copies of Portty find out about new GitHub releases on their own or on demand, and the user can download, verify and open an update in a couple of clicks, using the same flow as GIFsmith
