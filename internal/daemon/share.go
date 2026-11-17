@@ -141,19 +141,20 @@ func (a *API) shareOn(ctx context.Context, id string) (ShareResponse, *ShareErro
 		return ShareResponse{}, &ShareError{ShareErrHTTPSOff, "HTTPS certificates are off for your tailnet"}
 	}
 
-	// One start at a time: the port is fixed, so a second concurrent start
-	// would fail with port_in_use while the first one's server runs (WR-02).
+	// One share-on at a time from start through mint: the port is fixed, so a
+	// second concurrent start would fail with port_in_use (WR-02), and a
+	// share-on that gives up below must not stop a server another one just
+	// started before it minted (review 2 WR-01). Lock order: startMu, then a.mu.
 	a.startMu.Lock()
+	defer a.startMu.Unlock()
 	a.mu.RLock()
 	ws := a.webServer
 	a.mu.RUnlock()
 	if ws == nil {
 		if serr := a.startShareServer(ctx, h, newServer, warmCert); serr != nil {
-			a.startMu.Unlock()
 			return ShareResponse{}, serr
 		}
 	}
-	a.startMu.Unlock()
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
