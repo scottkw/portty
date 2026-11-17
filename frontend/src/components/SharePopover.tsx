@@ -62,6 +62,7 @@ export function SharePopover({
   const busyRef = useRef(false)
   const [shared, setShared] = useState(sharedProp)
   const [url, setUrl] = useState('')
+  const [loadError, setLoadError] = useState('') // GetSessionShare's failure detail
   const [busy, setBusy] = useState<'starting' | 'stopping' | null>(null)
   const [error, setError] = useState<Failure | null>(null)
   const [ctAcked, setCtAcked] = useState(true) // hidden until HasCTDisclosure answers
@@ -78,11 +79,14 @@ export function SharePopover({
     let cancelled = false
     GetSessionShare(sessionId)
       .then((r) => {
-        if (cancelled || busyRef.current || r.errorCode) return
+        if (cancelled || busyRef.current) return
+        // On failure keep the poll's state; a shared session shows the error instead of a link.
+        if (r.errorCode) { setLoadError(r.errorDetail); return }
+        setLoadError('')
         setShared(r.shared)
         setUrl(r.url)
       })
-      .catch(() => { /* keep the poll's state */ })
+      .catch((err) => { if (!cancelled && !busyRef.current) setLoadError(String(err)) })
     return () => { cancelled = true }
   }, [sessionId, sharedProp])
 
@@ -230,7 +234,14 @@ export function SharePopover({
         {line(SHARE_WARNING)}
         {errorLine(['stop', 'copy'])}
       </>
-    ) : null
+    ) : loadError ? (
+      <>
+        <p className="share-popover__line share-popover__error">{shareStartError('unavailable', loadError)}</p>
+        {errorLine(['stop'])}
+      </>
+    ) : (
+      line(SHARE_STARTING)
+    )
   } else {
     body = (
       <>

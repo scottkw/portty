@@ -147,6 +147,31 @@ describe('SharePopover: turning Share on', () => {
     expect(link()!.value).toBe(URL)
   })
 
+  it('a shared session whose link is still loading shows Getting a link…, never an empty body', async () => {
+    vi.mocked(GetSessionShare).mockReturnValue(new Promise(() => {}))
+    await render({ shared: true })
+    expect(sw().getAttribute('aria-checked')).toBe('true')
+    expect(link()).toBeNull()
+    expect(state().textContent).toBe('Getting a link…')
+  })
+
+  it('a shared session whose link fails to load shows the error, not a blank body', async () => {
+    vi.mocked(GetSessionShare).mockResolvedValue({ ...off, errorCode: 'unavailable', errorDetail: 'daemon not connected' })
+    await render({ shared: true })
+    expect(sw().getAttribute('aria-checked')).toBe('true')
+    expect(q('.share-popover__error')!.textContent).toBe(
+      "Couldn't start sharing: daemon not connected. Check that Tailscale is connected, then try again.",
+    )
+  })
+
+  it('a rejected link lookup is shown too, not swallowed', async () => {
+    vi.mocked(GetSessionShare).mockRejectedValue('daemon not connected')
+    await render({ shared: true })
+    expect(q('.share-popover__error')!.textContent).toBe(
+      "Couldn't start sharing: daemon not connected. Check that Tailscale is connected, then try again.",
+    )
+  })
+
   it('a 300-character link sits whole in one input', async () => {
     const long = 'https://office-air.tail1234.ts.net/sessions/s1?cap=' + 'x'.repeat(300 - 51)
     expect(long).toHaveLength(300)
