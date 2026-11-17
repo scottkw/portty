@@ -155,12 +155,12 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
     vi.clearAllMocks()
   })
 
-  function mountGuest(onShareStopped: () => void) {
+  function mountGuest(onShareStopped: () => void, hostLabel = 'office-air') {
     flushSync(() => {
       root.render(React.createElement(TerminalPanel, {
         sessionId: 's1', isActive: true, relayPort: 1234, fontSize: 13,
         onFontSizeChange: () => {}, theme: {}, remote: true,
-        hostLabel: 'office-air', onShareStopped,
+        hostLabel, onShareStopped,
       }))
     })
     expect(hoisted.state.onClose, 'RelayClient got an onClose callback').not.toBeNull()
@@ -187,5 +187,11 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
     expect(container.textContent).toContain('Session ended — the owner stopped this session.')
     expect(onShareStopped).not.toHaveBeenCalled()
     expect(hoisted.state.term!.options.disableStdin).toBe(true)
+  })
+
+  it("'share stopped' with an empty host label (web page, host unknown) shows the fallback", () => {
+    mountGuest(vi.fn(), '')
+    close('share stopped')
+    expect(container.textContent).toContain('This session is no longer shared.')
   })
 })

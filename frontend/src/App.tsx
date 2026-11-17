@@ -45,6 +45,7 @@ import { ExclamationTriangleIcon, InformationCircleIcon, XMarkIcon } from '@hero
 import { TailscaleBanner } from './components/TailscaleBanner'
 import type { TailscaleHealth } from './lib/tailscale'
 import { WebShareSessionView } from './components/WebShareSessionView'
+import { LinkNoLongerWorks } from './components/LinkNoLongerWorks'
 import { TerminalPanel } from './components/TerminalPanel'
 import { UpdateBanner } from './components/UpdateBanner'
 import type { UpdateInfo } from './components/UpdateBanner'
@@ -74,6 +75,11 @@ function App(): React.ReactElement {
   // the lifetime of the SPA. useMemo keeps the reference stable so dependency
   // arrays of downstream effects never see false re-evaluations.
   const webParams = useMemo(() => readWebModeParams(), [])
+  // Portty 04-06 (SHAR-03): web mode with an incomplete link, or a cap the server
+  // refuses, shows Link No Longer Works and no tab.
+  const [webLinkDead, setWebLinkDead] = useState(() => mode === 'web' && (!webParams.sessionId || !webParams.capToken))
+  // Host label from the cap-verified session info, for the stopped-sharing banner.
+  const [webHost, setWebHost] = useState('')
   // NAV-03: both modes start with no tabs. Desktop init restores running
   // sessions as tabs; web mode opens the ?session= view (effect below).
   const [tabs, setTabs] = useState<Tab[]>([])
@@ -743,11 +749,28 @@ function App(): React.ReactElement {
   // with a ?session=<id> param, open the session view (WebShareSessionView:
   // terminal) as the active tab.
   // Effect runs exactly once because mode + webParams are mount-stable.
+  // Portty 04-06: check the cap first. 401/403 is a dead link; any other answer
+  // (or a network error) opens the tab, and the WebSocket reports the real state.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (mode === 'web' && webParams.sessionId) {
-      openWebSessionTab(webParams.sessionId)
-    }
+    const { sessionId, capToken } = webParams
+    if (mode !== 'web' || !sessionId || !capToken) return
+    let cancelled = false
+    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/info?cap=${encodeURIComponent(capToken)}`)
+      .then(async (res) => {
+        if (cancelled) return
+        if (res.status === 401 || res.status === 403) {
+          setWebLinkDead(true)
+          return
+        }
+        if (res.ok) {
+          const info = await res.json().catch(() => null) as { hostname?: unknown } | null
+          if (!cancelled && typeof info?.hostname === 'string') setWebHost(info.hostname)
+        }
+        if (!cancelled) openWebSessionTab(sessionId)
+      })
+      .catch(() => { if (!cancelled) openWebSessionTab(sessionId) })
+    return () => { cancelled = true }
   }, [])
 
   // Portty 04-06: a peer row opens (or activates) its tab at once. The daemon
@@ -954,6 +977,7 @@ function App(): React.ReactElement {
           </div>
         )}
         <div className="terminal-container">
+        {webLinkDead && <LinkNoLongerWorks />}
         {/* Phase 155-03 — WebShareSessionView render branch. Activated when
             the active tab id starts with __websession__. This is the primary
             surface for web-share viewers: TerminalPanel
@@ -1019,7 +1043,7 @@ function App(): React.ReactElement {
                 // Desktop: the viewer's own font (it must be installed here). Web: the host's, self-fetched.
                 fontFamily={mode !== 'web' ? terminalFontStack : undefined}
                 fontSize={mode !== 'web' ? terminalFont.size : undefined}
-                hostLabel={peerHost ? shortHost(peerHost) : undefined}
+                hostLabel={peerHost ? shortHost(peerHost) : (mode === 'web' ? webHost : undefined)}
                 onShareStopped={peerHost ? () => dropPeerSession(peerHost, wsSessionId) : undefined}
               />
             </div>

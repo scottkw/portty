@@ -627,6 +627,33 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   color: var(--color-text-secondary);
 }
 
+/* Portty 04-06: dead web link on /app/ (04-UI-SPEC Web pages). */
+.link-dead {
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--color-window);
+  padding-top: 48px;
+}
+
+.link-dead__heading {
+  max-width: 320px;
+  margin: 0 auto;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--color-text);
+}
+
+.link-dead__body {
+  max-width: 320px;
+  margin: 8px auto 0;
+  text-align: center;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-text-secondary);
+}
+
 .empty-state__actions {
   display: flex;
   align-items: center;

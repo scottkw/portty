@@ -31,6 +31,8 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
 | **Total** | **197** | — | — | — |
 
+> Note: Portty Phase 4 plan 04-06 Task 2 (SHAR-03 web link states, SHAR-04 web stopped-sharing banner): counts from `git ls-files` — Go **109** (unchanged), vitest **82** (+2), Playwright **7**, build-script **1**, total **199**. Added (2): `frontend/src/components/__tests__/LinkNoLongerWorks.test.tsx`, `frontend/src/components/__tests__/App.webLink.test.tsx` (web mode through the page location, real App on the shared harness). Edited in place: `WebShareSessionView.test.tsx` (host label and callback pass-through), `TerminalPanel.guestClose.test.tsx` (fallback copy with no host). Section 4: three rows added. Section 5: Category AS with M-79 added.
+
 > Note: Portty Phase 4 plan 04-06 Task 1 (SHAR-01 codeless peer tabs, SHAR-04 stopped-sharing banner): counts from `git ls-files` — Go **109** (unchanged), vitest **80** (−2 +2), Playwright **7**, build-script **1**, total **197**. Deleted (2) with the old join dialog: `frontend/src/components/RemoteJoinCodeModal.test.tsx`, `frontend/src/components/__tests__/RemoteJoinCodeModal.test.tsx`. Added (2): `frontend/src/lib/__tests__/closeReasons.test.ts` (TS half of the close-reason pin), `frontend/src/components/__tests__/TerminalPanel.guestClose.test.tsx` (guest close path rendered with mocked xterm and RelayClient). Rewritten: `App.open-remote.test.tsx` (mounts the real App through the new non-test harness `components/__tests__/appHarness.ts`). Edited in place: `SessionEndedBanner.test.tsx` (share-stopped kind), `remoteSession.test.ts` (removed helper's cases dropped), `remoteAdapter.test.ts` (comment). Section 4: the FIX-03 open-contract rows collapsed into one, the NAV-02 row rewritten, four SHAR rows added. Section 5: M-03 and M-04 rewritten; Category G (M-13) retired into M-04.
 
 > Note: Portty Phase 4 plan 04-05 Task 2 (SHAR-01 sidebar Share / Stop Sharing, Settings ▸ Sharing shrunk, SHAR-02/SHAR-05 frontend stubs): counts from `git ls-files` — Go **109** (unchanged), vitest **80** (−2), Playwright **7**, build-script **1**, total **197**. Deleted (2) with the share-reminder switch and the web-server Settings rows: `frontend/src/components/__tests__/SettingsSheet.shell-warn-toggle.test.tsx`, `frontend/src/components/__tests__/SettingsSheet.web-link-ux.test.tsx`. Edited in place: `ContextMenu.test.tsx` (disabled items), `Sidebar.test.tsx` (Share / Stop Sharing, Tailscale off; fixture fields dropped), `SettingsSheet.test.tsx` (CT copy), `SettingsSheet.tailscale-status.test.tsx` (server-row cases replaced by the explanation and an only-the-status-row check), `RegenerateKeyModal.test.tsx` (override copy is the End Session confirm), `App.open-remote.test.tsx` (`onShareToggle` prop), `App.test.tsx`, `App.shellExit.test.tsx`, `TabBar.test.tsx` (negative pins name `SetSessionShared` instead of the removed binding). Section 4: the reminder-switch row removed, the NET-01 Settings row and the SET-01 RegenerateKeyModal row rewritten, three SHAR-01 rows added. Section 5: Categories J (M-16) and T (M-37..M-40) retired; M-82 added.
@@ -472,7 +474,10 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | SHAR-04 | frontend/src/components/__tests__/App.open-remote.test.tsx | vitest | Portty 04-06: when the peer tab reports the share stopped, its sidebar row disappears at once and the tab stays |
 | SHAR-04 | frontend/src/lib/__tests__/closeReasons.test.ts | vitest | Portty 04-06: `CLOSE_REASON_SHARE_STOPPED` and `CLOSE_REASON_SESSION_ENDED` equal the Go literals (the Go half is `internal/relay/close_reasons_test.go`) |
 | SHAR-04 | frontend/src/components/__tests__/SessionEndedBanner.test.tsx | vitest | Portty 04-06: kind `share-stopped` renders `<host> stopped sharing this session.` or, with no host, `This session is no longer shared.`; same status role, polite live region and Dismiss; the close reason is never rendered |
-| SHAR-04 | frontend/src/components/__tests__/TerminalPanel.guestClose.test.tsx | vitest | Portty 04-06: a guest close with `share stopped` shows the stopped-sharing banner with the host label and calls `onShareStopped`; `session ended` keeps the session-ended banner; xterm stdin is disabled after either |
+| SHAR-04 | frontend/src/components/__tests__/TerminalPanel.guestClose.test.tsx | vitest | Portty 04-06: a guest close with `share stopped` shows the stopped-sharing banner with the host label (or `This session is no longer shared.` with none) and calls `onShareStopped`; `session ended` keeps the session-ended banner; xterm stdin is disabled after either |
+| SHAR-03 | frontend/src/components/__tests__/LinkNoLongerWorks.test.tsx | vitest | Portty 04-06: the in-app dead-link block renders only `Link No Longer Works` and its fixed body copy |
+| SHAR-03 | frontend/src/components/__tests__/App.webLink.test.tsx | vitest | Portty 04-06: on /app/, a 401 or 403 from `/api/sessions/{id}/info` or a missing cap (no fetch) shows the block with no tab and never the session id from the URL; 200 opens the terminal tab with the host from the session info; a network error still opens the tab |
+| SHAR-04 | frontend/src/components/__tests__/WebShareSessionView.test.tsx | vitest | Portty 04-06: the view passes the host label (empty when unknown) and `onShareStopped` through to TerminalPanel |
 
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 
@@ -861,6 +866,17 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
   3. Reconnect Tailscale: Share works again from the toolbar and the row menu.
   - _Why not automatable:_ needs the real Tailscale client toggled on a Mac; the states are unit-covered in `TabBar.test.tsx`, `Sidebar.test.tsx`, `ContextMenu.test.tsx` and `SharePopover.test.tsx`.
   - _Source:_ 04-UI-SPEC.md UI Considerations (disabled).
+
+### Category AS — Share Viewing (SHAR-01, SHAR-03, SHAR-04, SHAR-06)
+
+- **M-79** Browser link states in the Tart VM (Portty 04-06).
+  1. Build with `wails build -platform darwin/arm64 -tags "wailsassets vmpreview"` and copy Portty.app into the Tart VM portty-test. Open a session and turn Share on from the toolbar popover.
+  2. Open the link in Safari (accept the self-signed certificate) and type `echo hi`: it runs (full control).
+  3. Turn sharing off (the switch, or `portty unshare <session>`): the page keeps its output, ignores typing and shows `<host> stopped sharing this session.` (or `This session is no longer shared.`). It does not reconnect.
+  4. Reload the old link: `Link No Longer Works` with no host, session name or ID.
+  5. Turn Share on again: the new link works.
+  - _Why not automatable:_ a real browser against the built app's share server; jsdom cannot run the real WebSocket close path. The states are covered by `App.webLink.test.tsx`, `LinkNoLongerWorks.test.tsx` and `TerminalPanel.guestClose.test.tsx`.
+  - _Source:_ 04-UI-SPEC.md Web pages; 04-06-PLAN.md Task 2 human-check.
 
 ---
 

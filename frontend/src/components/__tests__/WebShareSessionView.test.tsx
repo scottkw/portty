@@ -167,3 +167,22 @@ describe('WebShareSessionView — remote-tab daemon-proxy transport (FIX-03 RC-A
     unmount()
   })
 })
+
+// Portty 04-06 (SHAR-04): the stopped-sharing banner is rendered by TerminalPanel
+// (TerminalPanel.guestClose.test.tsx); this view hands it the host label and callback.
+describe('WebShareSessionView — stopped-sharing props (SHAR-04)', () => {
+  it('passes hostLabel and onShareStopped through to TerminalPanel', () => {
+    const onShareStopped = vi.fn()
+    const { unmount } = mountView({ hostLabel: 'office-air', onShareStopped })
+    expect(capturedTerminalProps?.hostLabel).toBe('office-air')
+    ;(capturedTerminalProps?.onShareStopped as () => void)()
+    expect(onShareStopped).toHaveBeenCalledTimes(1)
+    unmount()
+  })
+
+  it('an empty host label reaches TerminalPanel as empty (the banner then shows the fallback)', () => {
+    const { unmount } = mountView({ hostLabel: '' })
+    expect(capturedTerminalProps?.hostLabel).toBe('')
+    unmount()
+  })
+})
