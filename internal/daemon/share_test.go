@@ -540,3 +540,51 @@ func TestShare_SessionKilledDuringStartIsNotShared(t *testing.T) {
 		t.Fatal("the share server still runs with nothing shared")
 	}
 }
+
+func TestMagicDNSLabel(t *testing.T) {
+	for in, want := range map[string]string{
+		"office-air.tail1234.ts.net":  "office-air",
+		"office-air.tail1234.ts.net.": "office-air",
+		"office-air":                  "office-air",
+		"127.0.0.1":                   "127.0.0.1", // VM build: the domain is an IP literal
+		"":                            "",
+	} {
+		if got := magicDNSLabel(in); got != want {
+			t.Errorf("magicDNSLabel(%q) = %q; want %q", in, got, want)
+		}
+	}
+}
+
+// UAT gap 2: the browser's stop banner names the host from the session info,
+// so it must be the tailnet short name the GUI and CLI show, not the OS name.
+func TestShare_WebInfoHostIsTailnetName(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	api.SetShareSeamsForTest(func(context.Context) webserver.TailscaleHealth {
+		return webserver.TailscaleHealth{Connected: true, HasCerts: true, IP: "127.0.0.1", Domain: "office-air.tail1234.ts.net"}
+	}, loopbackShareServer, noWarm)
+	id := newShareSession(t, client)
+	u, token := linkParts(t, mustShare(t, client, id).URL)
+
+	resp, err := insecureNoRedirectClient().Get("https://" + u.Host + "/api/sessions/" + id + "/info?cap=" + url.QueryEscape(token))
+	if err != nil {
+		t.Fatalf("GET info: %v", err)
+	}
+	defer resp.Body.Close()
+	var info struct {
+		Hostname string `json:"hostname"`
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET info = %d; want 200", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatalf("decode info: %v", err)
+	}
+	if info.Hostname != "office-air" {
+		t.Fatalf("info hostname = %q; want the tailnet short name %q", info.Hostname, "office-air")
+	}
+	for _, s := range api.engine.ListSessions() {
+		if s.ID == id && s.Hostname == info.Hostname {
+			t.Fatalf("info hostname %q equals the OS hostname; the test proves nothing", s.Hostname)
+		}
+	}
+}

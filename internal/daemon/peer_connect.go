@@ -43,6 +43,8 @@ func (a *API) SetPeerSeamsForTest(discover func(context.Context) ([]tailnet.Peer
 
 // peerShortName is the MagicDNS short name: the first label of the DNS name,
 // falling back to the HostName.
+func magicDNSLabel(name string) string { return name } // RED stub
+
 func peerShortName(p tailnet.Peer) string {
 	if label, _, _ := strings.Cut(strings.TrimSuffix(p.DNSName, "."), "."); label != "" {
 		return label
