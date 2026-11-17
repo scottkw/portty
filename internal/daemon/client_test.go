@@ -105,14 +105,14 @@ func TestClientGetRelayPort(t *testing.T) {
 	}
 }
 
-func TestClientWebServerStatus(t *testing.T) {
+func TestClientGetSessionShare_NotShared(t *testing.T) {
 	_, client, _ := testDaemon(t)
-	resp, err := client.GetWebServerStatus()
+	resp, err := client.GetSessionShare("no-such-session")
 	if err != nil {
-		t.Fatalf("GetWebServerStatus: %v", err)
+		t.Fatalf("GetSessionShare: %v", err)
 	}
-	if resp.Running {
-		t.Errorf("GetWebServerStatus: want Running=false, got true")
+	if resp.Shared || resp.URL != "" {
+		t.Errorf("GetSessionShare = %+v; want not shared", resp)
 	}
 }
 

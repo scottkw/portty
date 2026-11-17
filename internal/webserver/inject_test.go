@@ -47,7 +47,6 @@ func setupInjectWebServer(t *testing.T) (*WebServer, *http.Client, string, *atom
 		BindIP:    "127.0.0.1",
 		Port:      0,
 		FQDN:      "127.0.0.1",
-		Mode:      "tailscale",
 		TLSConfig: tlsCfg,
 	}, manager)
 	if err != nil {

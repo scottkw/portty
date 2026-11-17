@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	goruntime "runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -71,8 +72,8 @@ func testAppWithSpawn(t *testing.T, path string, args []string) *App {
 }
 
 // testAppWithAPI creates an App + daemon API pair (like testApp) and returns
-// the daemon API and SessionEngine so callers can inject test doubles
-// (e.g. SetWebServerForTest). Phase 165 / T-165-15.
+// the daemon API and SessionEngine so callers can inject test doubles.
+// Phase 165 / T-165-15.
 func testAppWithAPI(t *testing.T) (*App, *daemon.API, *daemon.SessionEngine) {
 	t.Helper()
 	if goruntime.GOOS == "darwin" {
@@ -245,51 +246,45 @@ func TestGetRelayPort(t *testing.T) {
 	}
 }
 
-func TestToggleWebServingErrorsWhenNotRunning(t *testing.T) {
-	app := testApp(t)
-	// web server is not running — ToggleWebServing should return an error.
-	err := app.ToggleWebServing("some-session-id", true)
-	if err == nil {
-		t.Error("expected ToggleWebServing to return error when web server is not running")
+// The share bindings flip the daemon's one share switch and never throw:
+// failures come back as ShareResult.ErrorCode (Portty 04-02).
+func TestSessionShareBindings(t *testing.T) {
+	api, client := testShareSetup(t)
+	app := &App{ctx: context.Background(), client: client}
+	id, err := client.CreateSession("bind", "/tmp", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := app.GetSessionShare(id); got.Shared || got.ErrorCode != "" {
+		t.Fatalf("GetSessionShare before share = %+v", got)
+	}
+	on := app.SetSessionShared(id, true)
+	if !on.Shared || !strings.Contains(on.URL, "?cap=") || !on.FirstShare || on.ErrorCode != "" {
+		t.Fatalf("SetSessionShared(true) = %+v", on)
+	}
+	if got := app.GetSessionShare(id); !got.Shared || got.URL != on.URL {
+		t.Fatalf("GetSessionShare while shared = %+v; want %q", got, on.URL)
+	}
+	if off := app.SetSessionShared(id, false); off.Shared || off.ErrorCode != "" {
+		t.Fatalf("SetSessionShared(false) = %+v", off)
+	}
+
+	api.SetShareSeamsForTest(func(context.Context) webserver.TailscaleHealth { return webserver.TailscaleHealth{} }, loopbackShareServerForTest, func(context.Context, string) error { return nil })
+	if got := app.SetSessionShared(id, true); got.Shared || got.ErrorCode != daemon.ShareErrTailscaleOff || got.ErrorDetail == "" {
+		t.Fatalf("SetSessionShared with Tailscale off = %+v; want errorCode %s", got, daemon.ShareErrTailscaleOff)
 	}
 }
 
-func TestStartWebServerLocalModeFallback(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	app := testApp(t)
-	// StartWebServer uses Tailscale mode with certs, local mode when connected
-	// without certs, and refuses when Tailscale is not connected (NET-01). In CI
-	// any of these errors is expected and correct behavior.
-	err := app.StartWebServer(0)
-	if err == nil {
-		// Tailscale is connected and server started — clean up.
-		_ = app.StopWebServer()
-		return
+func TestSessionShareBindings_NilClient(t *testing.T) {
+	app := &App{}
+	if got := app.SetSessionShared("x", true); got.ErrorCode != "start_failed" || got.ErrorDetail == "" {
+		t.Errorf("share-on with no daemon = %+v; want start_failed", got)
 	}
-	// Any error is acceptable — Tailscale not found or local mode password
-	// missing are both valid outcomes in a test environment.
-	t.Logf("StartWebServer error (expected in CI): %s", err.Error())
-}
-
-// NET-01 / Amendment 3: a start request while Tailscale is not connected is
-// refused with the NET-01 sentence instead of falling back to LAN mode.
-func TestStartWebServerRefusedWhileTailscaleOff(t *testing.T) {
-	app := testApp(t)
-	app.tailscaleCheckFunc = func(context.Context) webserver.TailscaleHealth { return webserver.TailscaleHealth{} }
-	err := app.StartWebServer(0)
-	if err == nil || err.Error() != "Tailscale isn't connected. Remote access and sharing are off until it is." {
-		t.Fatalf("StartWebServer err = %v, want the NET-01 sentence", err)
+	if got := app.SetSessionShared("x", false); got.ErrorCode != "stop_failed" {
+		t.Errorf("share-off with no daemon = %+v; want stop_failed", got)
 	}
-	if app.IsWebServerRunning() {
-		t.Fatal("web server started while Tailscale was not connected")
-	}
-}
-
-func TestIsWebServerRunning(t *testing.T) {
-	app := testApp(t)
-	if app.IsWebServerRunning() {
-		t.Error("expected IsWebServerRunning to be false before StartWebServer")
+	if got := app.GetSessionShare("x"); got.Shared || got.ErrorCode == "" {
+		t.Errorf("GetSessionShare with no daemon = %+v; want an errorCode", got)
 	}
 }
 

@@ -33,12 +33,6 @@ type Config struct {
 	FQDN string
 	// TLSConfig is an override for tests; nil in production (uses lc.GetCertificate).
 	TLSConfig *tls.Config
-	// Mode controls which start path to use: "tailscale" (default) or "local".
-	// In "local" mode the server uses a self-signed cert and HTTP Basic Auth.
-	Mode string
-	// Password is the HTTP Basic Auth password used when Mode == "local".
-	// Must be non-empty when Mode is "local".
-	Password string
 }
 
 // sessionMetaItem is the JSON shape returned by GET /api/sessions/meta.
@@ -77,7 +71,7 @@ type WebServer struct {
 	manager *relay.HubManager
 
 	// lc is the Tailscale local client; it backs the TLS certificate hook
-	// (GetCertificate) in startTailscale.
+	// (GetCertificate) in Start.
 	// Stored by value (zero-value usable — local.Client has no internal
 	// pointers that require explicit init). Anti-Pattern 2: never store by ptr.
 	lc local.Client
@@ -109,8 +103,8 @@ type WebServer struct {
 	pluginSettingsProvider func() []byte
 
 	// staticAppFS is the embedded React frontend bundle served under /app/.
-	// Wired from the daemon at web-start sites (api.go AutoStartWebServer +
-	// handleWebServerStart) via SetStaticAppFS. Read at request time inside
+	// Wired from the daemon's share server start (share.go startShareServer)
+	// via SetStaticAppFS. Read at request time inside
 	// the route closure (Pitfall 2 — setupRoutes runs before SetStaticAppFS
 	// has a chance to set it). nil → /app/ returns 503; this is the
 	// expected dev-build state (assets stub).
@@ -259,27 +253,6 @@ func (ws *WebServer) currentSigningKey() []byte {
 	return ws.signingKey
 }
 
-// Start opens the TLS listener and begins serving.
-// Dispatches to startLocal() or startTailscale() based on Config.Mode.
-func (ws *WebServer) Start() error {
-	switch ws.config.Mode {
-	case "local":
-		return ws.startLocal()
-	default:
-		return ws.startTailscale()
-	}
-}
-
-// Mode returns the server's configured mode ("tailscale" or "local").
-func (ws *WebServer) Mode() string { return ws.config.Mode }
-
-// BindIP returns the server's configured bind IP. Used by the daemon's
-// Tailscale-mode watcher to decide whether a config change is needed when
-// Tailscale state transitions.
-func (ws *WebServer) BindIP() string { return ws.config.BindIP }
-
-// startTailscale opens a TLS listener using Tailscale's lc.GetCertificate hook
-// (or the TLSConfig test override). A taken port is ErrPortInUse.
 // tailscaleCGNAT is the Tailscale 100.64.0.0/10 carrier-grade NAT range that
 // MagicDNS / tailnet IPs are drawn from. The /api/sessions/meta endpoint is
 // open (no cap) and relies on the listener being bound to an address in this
@@ -287,10 +260,10 @@ func (ws *WebServer) BindIP() string { return ws.config.BindIP }
 var tailscaleCGNAT = netip.MustParsePrefix("100.64.0.0/10")
 
 // assertTailnetBindIP is a defense-in-depth, non-fatal startup check (WR-03).
-// In tailscale mode the open /api/sessions/meta route trusts the network layer
-// (it is served only on the Tailscale bind IP). There is no per-request
-// RemoteAddr check, by design, because adding one would break loopback-bound
-// test/dev servers and the local-mode basic-auth path. Instead we WARN — not
+// The open /api/sessions/meta route trusts the network layer (it is served
+// only on the Tailscale bind IP). There is no per-request RemoteAddr check, by
+// design, because adding one would break loopback-bound test/dev servers.
+// Instead we WARN — not
 // refuse — when BindIP is neither loopback (allowed for tests/dev) nor within
 // the Tailscale CGNAT range, so a future misconfiguration that binds the open
 // metadata endpoint to a LAN/0.0.0.0 interface surfaces a loud log line rather
@@ -303,7 +276,7 @@ func (ws *WebServer) assertTailnetBindIP() {
 	if err != nil {
 		// Empty or non-IP bind (e.g. "" → all interfaces). This is the most
 		// dangerous case for an open endpoint; warn explicitly.
-		slog.Warn("webserver: tailscale-mode bind IP is not a parseable address; "+
+		slog.Warn("webserver: bind IP is not a parseable address; "+
 			"the open /api/sessions/meta endpoint trusts the bind IP for access control",
 			"bind_ip", bind)
 		return
@@ -314,13 +287,16 @@ func (ws *WebServer) assertTailnetBindIP() {
 	if tailscaleCGNAT.Contains(addr) {
 		return // expected: bound to the Tailscale 100.x address
 	}
-	slog.Warn("webserver: tailscale-mode bind IP is outside the Tailscale CGNAT range "+
+	slog.Warn("webserver: bind IP is outside the Tailscale CGNAT range "+
 		"(100.64.0.0/10); the open /api/sessions/meta endpoint assumes a tailnet-only "+
 		"bind IP for access control and would be reachable on this interface without a cap",
 		"bind_ip", bind)
 }
 
-func (ws *WebServer) startTailscale() error {
+// Start opens the TLS listener on the tailnet bind IP using Tailscale's
+// lc.GetCertificate hook (or the TLSConfig override) and begins serving.
+// A taken port is ErrPortInUse.
+func (ws *WebServer) Start() error {
 	// WR-03: belt-and-suspenders trust-boundary check for the open meta route.
 	ws.assertTailnetBindIP()
 
@@ -343,33 +319,6 @@ func (ws *WebServer) startTailscale() error {
 
 	go http.Serve(ln, ws.mux) //nolint:errcheck
 
-	return nil
-}
-
-// startLocal opens a TLS listener using a self-signed certificate for
-// ws.config.BindIP, wraps the mux with HTTP Basic Auth, and begins serving.
-func (ws *WebServer) startLocal() error {
-	tlsCfg, err := GenerateSelfSignedCert(ws.config.BindIP)
-	if err != nil {
-		return fmt.Errorf("webserver: generate self-signed cert: %w", err)
-	}
-	// Test override: if a TLSConfig was provided, use it instead.
-	if ws.config.TLSConfig != nil {
-		tlsCfg = ws.config.TLSConfig
-	}
-
-	ln, err := ws.listenTLS(tlsCfg)
-	if err != nil {
-		return err
-	}
-
-	ws.mu.Lock()
-	ws.listener = ln
-	ws.mu.Unlock()
-
-	// Wrap the mux with Basic Auth so unauthenticated requests get 401.
-	handler := basicAuthMiddleware(ws.config.Password)(ws.mux)
-	go http.Serve(ln, handler) //nolint:errcheck
 	return nil
 }
 
@@ -413,9 +362,8 @@ func (ws *WebServer) Addr() string {
 	return ln.Addr().String()
 }
 
-// BaseURL returns the base HTTPS URL for the server.
-// In "local" mode it uses the bind IP (e.g. https://192.168.1.50:7444).
-// In "tailscale" mode (or when Mode is unset) it uses the FQDN (e.g. https://hostname.ts.net:7444).
+// BaseURL returns the base HTTPS URL for the server, built from the FQDN
+// (e.g. https://hostname.ts.net:7444).
 func (ws *WebServer) BaseURL() string {
 	ws.mu.RLock()
 	ln := ws.listener
@@ -426,9 +374,6 @@ func (ws *WebServer) BaseURL() string {
 	_, port, err := net.SplitHostPort(ln.Addr().String())
 	if err != nil {
 		return ""
-	}
-	if ws.config.Mode == "local" {
-		return fmt.Sprintf("https://%s:%s", ws.config.BindIP, port)
 	}
 	return fmt.Sprintf("https://%s:%s", ws.config.FQDN, port)
 }
@@ -441,10 +386,6 @@ func (ws *WebServer) BaseURL() string {
 //   - /api/sessions, /api/sessions/{id}/info, /sessions/{id}, /sessions/{id}/ws
 //     — gated by requireCapability. The session-bound cap enforces enumeration,
 //     cross-session isolation, and write permission via claims.Perms (D-24).
-//
-// In local-network-fallback mode, basicAuthMiddleware wraps the entire mux at
-// startLocal() and runs BEFORE these per-route wrappers (D-20 defense in
-// depth).
 func (ws *WebServer) setupRoutes() {
 	mux := ws.mux
 
@@ -465,16 +406,12 @@ func (ws *WebServer) setupRoutes() {
 	// metadata (id, name, status, url) for all web-enabled sessions to
 	// tailnet-trusted callers. Never returns cap tokens, grants, or session content (RB-03).
 	//
-	// Trust model (WR-03 invariant):
-	//   - tailscale mode: access control is network-layer ONLY — the listener is
-	//     bound to the Tailscale 100.64.0.0/10 IP (resolved #86), so this open
-	//     route is reachable only from the tailnet. There is intentionally no
-	//     per-request RemoteAddr check (it would break loopback test/dev binds).
-	//     startTailscale() calls assertTailnetBindIP() to WARN (defense in depth)
-	//     if the bind IP is ever outside the tailnet range.
-	//   - local mode: startLocal() wraps the ENTIRE mux with basicAuthMiddleware,
-	//     so this same route is password-gated there (D-20). No mode-aware branch
-	//     is needed here because the local-mode wrapper sits in front of the mux.
+	// Trust model (WR-03 invariant): access control is network-layer ONLY —
+	// the listener is bound to the Tailscale 100.64.0.0/10 IP (resolved #86),
+	// so this open route is reachable only from the tailnet. There is
+	// intentionally no per-request RemoteAddr check (it would break loopback
+	// test/dev binds). Start() calls assertTailnetBindIP() to WARN (defense in
+	// depth) if the bind IP is ever outside the tailnet range.
 	mux.HandleFunc("GET /api/sessions/meta", ws.handleSessionsMeta)
 
 	// GET /api/sessions — capability-gated; handleListSessions returns ONLY

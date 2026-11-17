@@ -5,6 +5,9 @@
 #   - a github.com/scottkw/ link to any repo but portty    (BRND-06)
 #   - a mention of the macOS package manager, outside the
 #     Tailscale PATH code in internal/daemon/path.go       (DIST-03)
+#   - the VM-only vmpreview build tag in .github, build.sh or scripts,
+#     tracked or untracked: release builds must never carry
+#     the fake Tailscale used for the Tart VM GUI check    (SHAR-01)
 # Every pattern spells its word with one letter in a bracket class, so the
 # pattern never matches its own text and this script never flags itself.
 #
@@ -55,6 +58,10 @@ fi
 out=$(git grep -n -I -o -E 'github\.com/scottkw/[A-Za-z0-9_.-]+' -- ':!.planning'); rc=$?
 check_status "$rc"
 report link "$(grep -v -E ':github\.com/scottkw/portty$' <<< "$out")"
+
+out=$(git grep -n -I --untracked 'vmpr[e]view' -- .github build.sh scripts); rc=$?
+check_status "$rc"
+report vm-tag "$out"
 
 if (( FINDINGS > 0 )); then
   echo "FAIL: ${FINDINGS} finding(s)"

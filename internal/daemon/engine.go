@@ -824,9 +824,8 @@ func (e *SessionEngine) SetImageConfig(cfg ImageConfig) {
 // channel — webserver registers BroadcastPluginConfig here so SSE subscribers
 // receive a frame on every change.
 //
-// Single-listener slot: the two NewWebServer call sites in api.go are mutually
-// exclusive at runtime (one for AutoStartWebServer / Tailscale-mode, one for
-// handleWebServerStart / mode-switch), so a single slot is safe.
+// Single-listener slot: at most one share server runs at a time (share.go
+// startShareServer), so a single slot is safe. nil clears it.
 func (e *SessionEngine) SetPluginSettingsListener(fn func()) {
 	e.mu.Lock()
 	e.pluginSettingsListener = fn

@@ -2,62 +2,18 @@ package daemon
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/scottkw/portty/internal/tailnet"
-	"github.com/scottkw/portty/internal/webserver"
 )
 
 // BuildVersion is set by the main package at startup. The daemon embeds it in
 // the health response so that EnsureDaemon can detect stale daemons from older
 // builds and restart them.
 var BuildVersion string
-
-// upgradeToTailscale polls Tailscale health every 15s. When Tailscale becomes
-// fully healthy (Connected + HasCerts + IP), it restarts the web server in
-// Tailscale mode. Runs continuously — does not exit on first upgrade, so a
-// later Tailscale outage that drops back to LAN can still be re-upgraded
-// when Tailscale recovers. Exits only when ctx is cancelled.
-//
-// Polling cadence: 5s. Lower than the original 15s because the user-visible
-// gap between "Tailscale up" and "the share URL switches" was reported as
-// long enough that users manually-restarted the web server thinking the
-// upgrade was stuck (P-1).
-func upgradeToTailscale(ctx context.Context, api *API) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			h := webserver.CheckHealth(checkCtx)
-			cancel()
-			if !(h.Connected && h.HasCerts && h.IP != "") {
-				continue // Tailscale not ready
-			}
-			// Skip the restart if we're already serving in Tailscale mode on
-			// the same IP — avoids redundant restart churn and dropped client
-			// connections every tick once we've upgraded.
-			if api.WebServerMode() == "tailscale" && api.WebServerBindIP() == h.IP {
-				continue
-			}
-			if err := api.RestartWebServer(h.IP, tailnet.DefaultProbePort, h.Domain, "tailscale", ""); err != nil {
-				fmt.Fprintf(os.Stderr, "daemon: upgrade to tailscale: %v\n", err)
-				continue // retry on next tick
-			}
-			fmt.Fprintf(os.Stderr, "daemon: web server upgraded to tailscale on %s\n", h.IP)
-		case <-ctx.Done():
-			return
-		}
-	}
-}
 
 // RunDaemon is the daemon's main entry point. It creates a signal context and
 // delegates to runDaemonCore. Called from main.go when os.Args[1] == "daemon".
@@ -82,8 +38,8 @@ func runDaemonCore(ctx context.Context) {
 	engine := NewSessionEngine()
 	api := NewAPI(engine)
 
-	// Phase 87 (D-04): bootstrap the capability signing key BEFORE any web
-	// server is started. A missing key here is fatal
+	// Phase 87 (D-04): bootstrap the capability signing key BEFORE any share
+	// server can start. A missing key here is fatal
 	// — without it, requireCapability would 401 every request and the daemon
 	// is effectively a brick for web access.
 	if err := api.BootstrapCapabilityState(); err != nil {
@@ -105,63 +61,14 @@ func runDaemonCore(ctx context.Context) {
 	}
 	fmt.Fprintf(os.Stderr, "daemon: listening on %s\n", socketPath)
 
-	// Generate local-mode password once per daemon lifetime (NET-01).
-	localPassword, err := generateLocalPassword()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "daemon: %v\n", err)
-		return // abort — cannot serve without a secure password
-	}
-	api.SetLocalPassword(localPassword)
-
-	// Auto-start web server: Tailscale mode if available, local mode fallback (NET-01, SERVE-01).
-	// Diagnostic logging records the precise health-check outcome so a Finder/launchd
-	// invocation that lands in an unexpected mode can be diagnosed post-hoc (P-6).
-	{
-		ctx5s, cancel := context.WithTimeout(ctx, 5*time.Second)
-		h := webserver.CheckHealth(ctx5s)
-		cancel()
-		fmt.Fprintf(os.Stderr,
-			"daemon: tailscale health: connected=%v hasCerts=%v ip=%q domain=%q\n",
-			h.Connected, h.HasCerts, h.IP, h.Domain)
-		if h.Connected && h.HasCerts && h.IP != "" {
-			if err := api.AutoStartWebServer(h.IP, tailnet.DefaultProbePort, h.Domain, "tailscale", ""); err != nil {
-				fmt.Fprintf(os.Stderr, "daemon: auto-start web server: %v\n", err)
-			} else {
-				fmt.Fprintf(os.Stderr, "daemon: web server auto-started on %s (tailscale)\n", h.IP)
-			}
-		} else {
-			// Local mode fallback
-			lanIP, lanErr := webserver.GetLANIP()
-			if lanErr != nil {
-				fmt.Fprintf(os.Stderr, "daemon: local mode: no LAN IP: %v (web server NOT started — UI will show no share URLs)\n", lanErr)
-			} else {
-				if err := api.AutoStartWebServer(lanIP, tailnet.DefaultProbePort, "", "local", localPassword); err != nil {
-					fmt.Fprintf(os.Stderr, "daemon: auto-start web server (local): %v\n", err)
-				} else {
-					fmt.Fprintf(os.Stderr, "daemon: web server auto-started on %s (local mode)\n", lanIP)
-				}
-			}
-			// Launch background upgrader: watches for Tailscale to become healthy
-			// and upgrades the web server from local to Tailscale mode automatically.
-			go upgradeToTailscale(ctx, api)
-		}
-	}
+	// No web server starts at boot: the share server starts on the first
+	// share and stops when nothing is shared (share.go).
 
 	<-ctx.Done()
 
 	fmt.Fprintf(os.Stderr, "daemon: shutting down\n")
 	_ = api.Stop()
 	engine.Manager().Shutdown()
-}
-
-// generateLocalPassword generates a cryptographically random 16-byte password
-// encoded as base64url (~22 characters). Called once per daemon lifetime.
-func generateLocalPassword() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("generate local password: %w", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil // ~22 chars
 }
 
 // EnsureDaemon checks if the daemon is reachable on socketPath. If not, it

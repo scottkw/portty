@@ -5,9 +5,8 @@
 // invocation of the same binary via `portty daemon`) cannot import package
 // main, so main wires the FS into this package at startup via SetStaticAppFS.
 //
-// Both daemon code paths that construct a *webserver.WebServer (AutoStartWebServer
-// + handleWebServerStart in api.go) read this package-level FS and pass it to
-// ws.SetStaticAppFS, which mounts /app/ for remote/web-share viewers.
+// The share server (startShareServer in share.go) reads this package-level FS
+// and passes it to ws.SetStaticAppFS, which mounts /app/ for share viewers.
 //
 // When unset (dev build, `go test`, `go run` without wailsassets), this stays
 // nil and the webserver responds 503 for /app/ — the expected dev fallback.

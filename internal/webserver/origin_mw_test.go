@@ -137,7 +137,6 @@ func TestRequireAllowedOrigin_FailClosedWhenListenerNotReady(t *testing.T) {
 	cfg := Config{
 		BindIP: "127.0.0.1",
 		FQDN:   "127.0.0.1",
-		Mode:   "tailscale",
 	}
 	ws, err := NewWebServer(cfg, relay.NewHubManager())
 	if err != nil {
@@ -185,7 +184,6 @@ func TestAllowedOrigins_ReturnsBaseURLSingleton(t *testing.T) {
 	cfg := Config{
 		BindIP: "127.0.0.1",
 		FQDN:   "127.0.0.1",
-		Mode:   "tailscale",
 	}
 	wsDown, err := NewWebServer(cfg, relay.NewHubManager())
 	if err != nil {

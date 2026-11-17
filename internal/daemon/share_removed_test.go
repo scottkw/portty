@@ -23,6 +23,14 @@ func TestShareRemoved_DaemonRoutes(t *testing.T) {
 		{http.MethodPatch, "/settings/shell-web-share-warned"},
 		{http.MethodGet, "/settings/shell-web-share-warning-enabled"},
 		{http.MethodPatch, "/settings/shell-web-share-warning-enabled"},
+		// Portty 04-02: the old share server lifecycle routes; PUT /sessions/{id}/share replaces them.
+		{http.MethodGet, "/webserver/local-" + "password"},
+		{http.MethodPost, "/webserver/start"},
+		{http.MethodPost, "/webserver/stop"},
+		{http.MethodGet, "/webserver/status"},
+		{http.MethodPost, "/sessions/x/web-serve"},
+		{http.MethodPost, "/sessions/x/capabilities"},
+		{http.MethodPost, "/sessions/x/disconnect-viewers"},
 	} {
 		assertRouteGone(t, h, r.method, r.path)
 	}

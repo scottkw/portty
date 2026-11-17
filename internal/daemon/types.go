@@ -68,41 +68,6 @@ type RelayPortResponse struct {
 	Port int `json:"port"`
 }
 
-// WebServerStartRequest is the request body for POST /webserver/start.
-type WebServerStartRequest struct {
-	IP       string `json:"ip"`
-	Port     int    `json:"port"`
-	FQDN     string `json:"fqdn"`
-	Mode     string `json:"mode"`     // "tailscale" | "local"
-	Password string `json:"password"` // non-empty for local mode
-}
-
-// WebServerStartResponse is the response body for POST /webserver/start.
-type WebServerStartResponse struct {
-	URL string `json:"url"`
-}
-
-// WebServerStatusResponse is the response body for GET /webserver/status.
-type WebServerStatusResponse struct {
-	Running bool   `json:"running"`
-	URL     string `json:"url"`
-	Addr    string `json:"addr"`
-	Mode    string `json:"mode"` // "tailscale" | "local" | ""
-}
-
-// WebServeRequest is the request body for POST /sessions/{id}/web-serve.
-type WebServeRequest struct {
-	Enabled bool `json:"enabled"`
-}
-
-// --- Phase 87 capability types (D-06, D-07, D-09, D-11) ------------------
-
-// IssueCapabilitiesResponse is the response body for POST
-// /sessions/{id}/capabilities: the link carrying one full-control capability.
-type IssueCapabilitiesResponse struct {
-	WriteURL string `json:"writeUrl"`
-}
-
 // TerminalFont is the persisted Settings ▸ General ▸ Terminal Font value
 // (quick 261116-ku9). An empty Family means the default stack (SF Mono first).
 type TerminalFont struct {

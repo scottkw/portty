@@ -24,7 +24,7 @@ import (
 //   - An IP SAN set to the provided ip
 //   - MinVersion: TLS 1.2
 //
-// This is used in local mode when Tailscale is unavailable.
+// Used by tests and the VM-only loopback share server (share_vmpreview.go).
 func GenerateSelfSignedCert(ip string) (*tls.Config, error) {
 	// --- CA key + cert ---
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

@@ -48,7 +48,6 @@ func TestSessionEnd_HubDone_CarriesCloseReason(t *testing.T) {
 		BindIP:    "127.0.0.1",
 		Port:      0,
 		FQDN:      "127.0.0.1",
-		Mode:      "tailscale",
 		TLSConfig: tlsCfg,
 	}
 	ws, err := NewWebServer(cfg, manager)

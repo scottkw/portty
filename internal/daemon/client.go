@@ -210,41 +210,6 @@ func (c *DaemonClient) GetRelayPort() (int, error) {
 	return resp.Port, nil
 }
 
-// StartWebServer tells the daemon to start the web server.
-// mode is "tailscale" or "local"; password is non-empty for local mode.
-func (c *DaemonClient) StartWebServer(ip string, port int, fqdn, mode, password string) (string, error) {
-	req := WebServerStartRequest{IP: ip, Port: port, FQDN: fqdn, Mode: mode, Password: password}
-	var resp WebServerStartResponse
-	if err := c.doJSON(http.MethodPost, "/webserver/start", req, &resp); err != nil {
-		return "", err
-	}
-	return resp.URL, nil
-}
-
-// GetLocalNetworkPassword returns the generated local-mode password from the daemon.
-// Returns empty string when the daemon is in Tailscale mode (no password needed).
-func (c *DaemonClient) GetLocalNetworkPassword() (string, error) {
-	var resp map[string]string
-	if err := c.doJSON(http.MethodGet, "/webserver/local-password", nil, &resp); err != nil {
-		return "", err
-	}
-	return resp["password"], nil
-}
-
-// StopWebServer tells the daemon to stop the Tailscale web server.
-func (c *DaemonClient) StopWebServer() error {
-	return c.doJSON(http.MethodPost, "/webserver/stop", nil, nil)
-}
-
-// GetWebServerStatus returns the current web server state from the daemon.
-func (c *DaemonClient) GetWebServerStatus() (WebServerStatusResponse, error) {
-	var resp WebServerStatusResponse
-	if err := c.doJSON(http.MethodGet, "/webserver/status", nil, &resp); err != nil {
-		return WebServerStatusResponse{}, err
-	}
-	return resp, nil
-}
-
 // ShutdownDaemon sends POST /shutdown to terminate the daemon process.
 // Connection-reset errors are expected (daemon exits before response completes)
 // and are treated as success.
@@ -264,28 +229,8 @@ func (c *DaemonClient) ShutdownDaemon() error {
 	return nil
 }
 
-// ToggleWebServing enables or disables web serving for a session.
-func (c *DaemonClient) ToggleWebServing(sessionID string, enabled bool) error {
-	return c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/web-serve", WebServeRequest{Enabled: enabled}, nil)
-}
-
-// DisconnectViewers force-closes every remote (Origin=="web") viewer
-// currently connected to the session, without revoking the capability or
-// affecting web-serve state (D-06). Phase 168 / FIX-02, #117.
-func (c *DaemonClient) DisconnectViewers(sessionID string) error {
-	return c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/disconnect-viewers", nil, nil)
-}
-
-// IssueCapabilities mints one full-control capability for a web-enabled
-// session and returns its link. Called by the GUI after toggle-on.
-func (c *DaemonClient) IssueCapabilities(sessionID string) (IssueCapabilitiesResponse, error) {
-	var resp IssueCapabilitiesResponse
-	err := c.doJSON(http.MethodPost, "/sessions/"+sessionID+"/capabilities", nil, &resp)
-	return resp, err
-}
-
 // RegenerateSigningKey rotates the HMAC signing key (D-16 panic button).
-// All previously-issued capabilities become invalid globally.
+// Every old link stops verifying; shares are re-minted with new links.
 func (c *DaemonClient) RegenerateSigningKey() error {
 	return c.doJSON(http.MethodPost, "/capability/regenerate-key", nil, nil)
 }

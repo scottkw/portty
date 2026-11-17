@@ -260,7 +260,7 @@ func (a *API) mintShareRecord(id string) (shareRecord, error) {
 
 // unshareLocked drops the session's record, revokes its grants, disconnects
 // its web viewers and stops the share server when nothing is shared. Shared
-// by share-off, session exit, kill. Caller holds a.mu.
+// by share-off, session exit and kill. Caller holds a.mu.
 func (a *API) unshareLocked(id string) {
 	delete(a.shares, id)
 	ws := a.webServer
@@ -275,5 +275,25 @@ func (a *API) unshareLocked(id string) {
 		_ = ws.Stop()
 		a.engine.SetPluginSettingsListener(nil)
 		a.webServer = nil
+	}
+}
+
+// remintSharesLocked gives every share a new capability signed with the
+// current key: viewers on the old link are disconnected and the old grant is
+// cleared. A share that cannot be re-minted is turned off. Caller holds a.mu.
+func (a *API) remintSharesLocked(ws *webserver.WebServer) {
+	for id := range a.shares {
+		if hub, ok := a.engine.Manager().Get(id); ok {
+			hub.DisconnectWebViewers()
+		}
+		ws.ClearGrants(id)
+		rec, err := a.mintShareRecord(id)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: re-mint share %s: %v\n", id, err)
+			a.unshareLocked(id)
+			continue
+		}
+		ws.AddGrant(id, rec.grantID)
+		a.shares[id] = rec
 	}
 }

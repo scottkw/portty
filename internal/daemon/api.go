@@ -2,10 +2,7 @@ package daemon
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -22,15 +19,14 @@ import (
 
 // API serves the daemon HTTP API over a Unix socket or Windows named pipe.
 type API struct {
-	engine        *SessionEngine
-	mux           *http.ServeMux
-	ln            net.Listener
-	relayPort     int                  // TCP port the relay server is listening on
-	relayLn       net.Listener         // TCP listener for the relay server
-	mu            sync.RWMutex         // guards webServer and localPassword
-	webServer     *webserver.WebServer // nil when not running
-	tailnetCache  *tailnetCache
-	localPassword string // generated once per daemon lifetime; non-empty in local mode
+	engine       *SessionEngine
+	mux          *http.ServeMux
+	ln           net.Listener
+	relayPort    int                  // TCP port the relay server is listening on
+	relayLn      net.Listener         // TCP listener for the relay server
+	mu           sync.RWMutex         // guards webServer, shares and the share seams
+	webServer    *webserver.WebServer // the share server; nil when nothing is shared
+	tailnetCache *tailnetCache
 
 	// shares holds one record per shared session (guarded by mu). The share
 	// server runs exactly while this map is non-empty. See share.go.
@@ -46,7 +42,7 @@ type API struct {
 	// Bootstrapped from disk in BootstrapCapabilityState; replaced atomically
 	// by handleRegenerateSigningKey. All reads/writes go under signingKeyMu
 	// (a dedicated lock separate from a.mu so a capability request does not
-	// block an unrelated operation on webServer/localPassword).
+	// block an unrelated operation on webServer/shares).
 	signingKeyMu sync.RWMutex
 	signingKey   []byte
 
@@ -104,26 +100,11 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("PATCH /settings/search-config", a.handleSetSearchConfig)
 	a.mux.HandleFunc("PATCH /settings/web-links-config", a.handleSetWebLinksConfig)
 	a.mux.HandleFunc("PATCH /settings/image-config", a.handleSetImageConfig)
-	// Relay port and web server routes.
 	a.mux.HandleFunc("GET /relay-port", a.handleRelayPort)
-	a.mux.HandleFunc("POST /webserver/start", a.handleWebServerStart)
-	a.mux.HandleFunc("POST /webserver/stop", a.handleWebServerStop)
-	a.mux.HandleFunc("GET /webserver/status", a.handleWebServerStatus)
-	a.mux.HandleFunc("POST /sessions/{id}/web-serve", a.handleWebServe)
-	// Phase 168 / FIX-02 (#117): owner-only force-disconnect of all Origin=="web"
-	// viewers for a session. Daemon-local mux only (same trust boundary as
-	// handleWebServe above) — NEVER a capability-gated
-	// /api/... route a guest browser can reach (SECURITY STRIDE-EoP, T-168-07).
-	// Drops connections only; does not revoke the capability (D-06) — viewers
-	// may reconnect with the same link.
-	a.mux.HandleFunc("POST /sessions/{id}/disconnect-viewers", a.handleDisconnectViewers)
 	a.mux.HandleFunc("POST /shutdown", a.handleShutdown)
 	// Tailnet peer discovery.
 	a.mux.HandleFunc("GET /tailnet/peers", a.handleTailnetPeers)
-	// Local mode password endpoint.
-	a.mux.HandleFunc("GET /webserver/local-password", a.handleGetLocalPassword)
-	// Phase 87 capability-based authorization endpoints (D-06, D-09, D-16).
-	a.mux.HandleFunc("POST /sessions/{id}/capabilities", a.handleIssueCapabilities)
+	// Phase 87 D-16 panic button: new signing key; shares are re-minted.
 	a.mux.HandleFunc("POST /capability/regenerate-key", a.handleRegenerateSigningKey)
 	// Phase 122-01 / REMOTE-01: remote cap deposit.
 	// POST /api/remote-files/caps accepts (sessionId, baseUrl, capToken) from
@@ -165,7 +146,7 @@ func (a *API) SetRemoteFilesClientForTest(c *http.Client) {
 // would see a nil signing key (Pitfall 3) and 401 every request.
 //
 // Callers must pair this with ws.SetSigningKey whenever a WebServer is
-// constructed (AutoStartWebServer, handleWebServerStart, etc.).
+// constructed (startShareServer in share.go).
 // CurrentSigningKey exposes the bootstrapped key.
 func (a *API) BootstrapCapabilityState() error {
 	store := capability.NewFileKeyStore(a.engine.configDir)
@@ -278,122 +259,6 @@ func (a *API) Addr() net.Addr {
 	return a.ln.Addr()
 }
 
-// SetWebServerForTest directly injects a running WebServer into the API's web
-// server field. This is for use in unit tests only — it allows tests to bypass
-// the Tailscale prerequisite check in handleWebServerStart.
-func (a *API) SetWebServerForTest(ws *webserver.WebServer) {
-	a.mu.Lock()
-	a.webServer = ws
-	a.mu.Unlock()
-}
-
-// SetLocalPassword stores the generated local-mode password. Called once from
-// runDaemonCore before any web server is started. Thread-safe.
-func (a *API) SetLocalPassword(pwd string) {
-	a.mu.Lock()
-	a.localPassword = pwd
-	a.mu.Unlock()
-}
-
-// WebServerMode returns the running web server's mode ("tailscale" or
-// "local"), or "" if no web server is running. Thread-safe.
-func (a *API) WebServerMode() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.webServer == nil {
-		return ""
-	}
-	return a.webServer.Mode()
-}
-
-// WebServerBindIP returns the running web server's bind IP, or "" if no
-// web server is running. Thread-safe.
-func (a *API) WebServerBindIP() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.webServer == nil {
-		return ""
-	}
-	return a.webServer.BindIP()
-}
-
-// RestartWebServer stops the current web server (if any) and starts a new one with
-// the given config. Used internally for mode upgrades (local -> tailscale).
-// Unlike AutoStartWebServer, it always replaces the running server — it is not idempotent.
-func (a *API) RestartWebServer(ip string, port int, fqdn, mode, password string) error {
-	a.mu.Lock()
-	if a.webServer != nil {
-		_ = a.webServer.Stop()
-		a.webServer = nil
-	}
-	a.mu.Unlock()
-	// Reuse AutoStartWebServer which creates, configures, and starts the server.
-	// It's safe because we just set webServer to nil above.
-	return a.AutoStartWebServer(ip, port, fqdn, mode, password)
-}
-
-// AutoStartWebServer starts the web server if not already running.
-// Called from runDaemonCore at startup; mirrors handleWebServerStart without HTTP.
-// Returns nil if the server is already running (idempotent).
-func (a *API) AutoStartWebServer(ip string, port int, fqdn, mode, password string) error {
-	// Local mode requires a non-empty password to prevent unauthenticated access.
-	if mode == "local" && password == "" {
-		return fmt.Errorf("AutoStartWebServer: local mode requires a non-empty password")
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.webServer != nil {
-		return nil // already running
-	}
-	ws, err := webserver.NewWebServer(webserver.Config{
-		BindIP:   ip,
-		Port:     port,
-		FQDN:     fqdn,
-		Mode:     mode,
-		Password: password,
-	}, a.engine.Manager())
-	if err != nil {
-		return err
-	}
-	ws.SetSessionResolver(func(sessionID string) (name, status, hostname string, ok bool) {
-		for _, s := range a.engine.ListSessions() {
-			if s.ID == sessionID {
-				return s.Name, s.Status, s.Hostname, true
-			}
-		}
-		return "", "", "", false
-	})
-	// Phase 93 PLUG-04: provide the daemon's current plugin settings as
-	// pre-marshaled JSON to the webserver's /api/plugin-config handler.
-	// func() []byte (not PluginSettings) avoids the daemon→webserver→daemon
-	// circular import. json.Marshal failure returns nil so the handler
-	// responds 503 (web client falls back to built-in defaults).
-	ws.SetPluginSettingsProvider(a.guestPluginConfigJSON)
-	// Phase 93 PLUG-04 push channel: register BroadcastPluginConfig as the
-	// engine's plugin-settings change listener so SSE subscribers get a frame
-	// on every SetPluginSettings call (closes ROADMAP SC#4 — no manual page
-	// reload). The single-listener slot in Engine is safe because the two
-	// NewWebServer call sites are mutually exclusive at runtime.
-	a.engine.SetPluginSettingsListener(func() {
-		ws.BroadcastPluginConfig(context.Background())
-	})
-	// Wire capability state onto the web server BEFORE Start() so requireCapability
-	// has a non-nil signing key when the first request arrives (Pitfall 3). The
-	// bootstrapped signing key MUST be populated by a prior call
-	// to BootstrapCapabilityState; if that did not happen, requireCapability
-	// will 401 every request — which is the correct defensive default.
-	a.signingKeyMu.RLock()
-	key := a.signingKey
-	a.signingKeyMu.RUnlock()
-	ws.SetSigningKey(key)
-	ws.SetStaticAppFS(getStaticAppFS())
-	if err := ws.Start(); err != nil {
-		return err
-	}
-	a.webServer = ws
-	return nil
-}
-
 // writeJSON writes v as a JSON response with the given status code.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -439,12 +304,11 @@ func (a *API) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build onExit callback for web serving grace period (D-12).
-	// When session exits naturally, disable web serving after 10 seconds so
-	// web viewers see final output before serving stops. DisableSession is a
-	// no-op for sessions that were never enabled.
+	// Build onExit callback for the share grace period (D-12). When the
+	// session exits naturally, drop its share after 10 seconds so web viewers
+	// see final output first. A no-op for sessions that were never shared.
 	//
-	// Also clear grants for the session (D-15, RESEARCH Pitfall 1): session
+	// Dropping the share clears its grants (D-15, RESEARCH Pitfall 1): session
 	// end invalidates all outstanding capabilities. Leaving grants in the map
 	// would leak memory AND could (theoretically) allow a recycled session ID
 	// to inherit stale grants.
@@ -462,27 +326,22 @@ func (a *API) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Phase 87 / SEC-01: creating a session does NOT auto-enable web serving.
-	// The user must explicitly toggle web-serving ON via POST
-	// /sessions/{id}/web-serve (D-06 grant gesture) to expose the session.
+	// Phase 87 / SEC-01: creating a session does NOT share it. The user must
+	// turn sharing on via PUT /sessions/{id}/share (D-06 grant gesture).
 	// This closes the SEC-01 finding: tailnet peers can no longer discover
 	// newly-created sessions without an explicit share gesture.
 
 	writeJSON(w, http.StatusCreated, CreateResponse{ID: id})
 }
 
-// runSessionExitCleanup disables web serving for a session and clears all of
-// its grants. Invoked 10 seconds after the session PTY exits (handleCreateSession
+// runSessionExitCleanup drops the session's share (grants cleared, session
+// disabled, share server stopped if it was the last share). Invoked 10 seconds after the session PTY exits (handleCreateSession
 // onExit). Extracted so tests can invoke the cleanup synchronously without
 // waiting for the 10-second grace timer.
 func (a *API) runSessionExitCleanup(sessionID string) {
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws != nil {
-		ws.DisableSession(sessionID)
-		ws.ClearGrants(sessionID) // D-15 also applies on natural exit (Pitfall 1)
-	}
+	a.mu.Lock()
+	a.unshareLocked(sessionID) // D-15 also applies on natural exit (Pitfall 1)
+	a.mu.Unlock()
 }
 
 // runSessionExitCleanupForTest is a test-only alias for runSessionExitCleanup.
@@ -769,262 +628,9 @@ func (a *API) handleRelayPort(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, RelayPortResponse{Port: a.relayPort})
 }
 
-func (a *API) handleWebServerStart(w http.ResponseWriter, r *http.Request) {
-	var req WebServerStartRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// In local mode, resolve LAN IP if caller did not provide one.
-	if req.Mode == "local" && req.IP == "" {
-		lanIP, err := webserver.GetLANIP()
-		if err != nil {
-			http.Error(w, "no LAN IP found: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		req.IP = lanIP
-	}
-
-	// Local mode requires a non-empty password to prevent unauthenticated access.
-	if req.Mode == "local" && req.Password == "" {
-		http.Error(w, "local mode requires a non-empty password", http.StatusBadRequest)
-		return
-	}
-
-	// Stop any previously running server to avoid leaking its listener.
-	a.mu.Lock()
-	if a.webServer != nil {
-		_ = a.webServer.Stop()
-		a.webServer = nil
-	}
-	a.mu.Unlock()
-
-	ws, err := webserver.NewWebServer(webserver.Config{
-		BindIP:   req.IP,
-		Port:     req.Port,
-		FQDN:     req.FQDN,
-		Mode:     req.Mode,
-		Password: req.Password,
-	}, a.engine.Manager())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Set session resolver so the web server can look up session metadata.
-	ws.SetSessionResolver(func(sessionID string) (name, status, hostname string, ok bool) {
-		for _, s := range a.engine.ListSessions() {
-			if s.ID == sessionID {
-				return s.Name, s.Status, s.Hostname, true
-			}
-		}
-		return "", "", "", false
-	})
-
-	// Phase 93 PLUG-04: provide the daemon's current plugin settings as
-	// pre-marshaled JSON to the webserver's /api/plugin-config handler.
-	ws.SetPluginSettingsProvider(a.guestPluginConfigJSON)
-	// Phase 93 PLUG-04 push channel: register BroadcastPluginConfig as the
-	// engine's plugin-settings change listener (closes ROADMAP SC#4).
-	a.engine.SetPluginSettingsListener(func() {
-		ws.BroadcastPluginConfig(context.Background())
-	})
-
-	// Wire capability state BEFORE Start() so requireCapability has a key on
-	// the first request (Pitfall 3).
-	a.signingKeyMu.RLock()
-	key := a.signingKey
-	a.signingKeyMu.RUnlock()
-	ws.SetSigningKey(key)
-	ws.SetStaticAppFS(getStaticAppFS())
-
-	if err := ws.Start(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	a.mu.Lock()
-	a.webServer = ws
-	a.mu.Unlock()
-
-	writeJSON(w, http.StatusOK, WebServerStartResponse{URL: ws.BaseURL()})
-}
-
-func (a *API) handleWebServerStop(w http.ResponseWriter, r *http.Request) {
-	a.mu.Lock()
-	ws := a.webServer
-	a.webServer = nil
-	a.mu.Unlock()
-
-	if ws != nil {
-		_ = ws.Stop()
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) handleWebServerStatus(w http.ResponseWriter, r *http.Request) {
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-
-	if ws == nil {
-		writeJSON(w, http.StatusOK, WebServerStatusResponse{Running: false})
-		return
-	}
-	writeJSON(w, http.StatusOK, WebServerStatusResponse{
-		Running: true,
-		URL:     ws.BaseURL(),
-		Addr:    ws.Addr(),
-		Mode:    ws.Mode(),
-	})
-}
-
-// handleGetLocalPassword returns the local-mode password over the Unix socket.
-// The socket is owned by the current user (0600) so only same-UID processes
-// can reach this endpoint. This is the intended access-control model.
-func (a *API) handleGetLocalPassword(w http.ResponseWriter, r *http.Request) {
-	a.mu.RLock()
-	pwd := a.localPassword
-	a.mu.RUnlock()
-	writeJSON(w, http.StatusOK, map[string]string{"password": pwd})
-}
-
-// handleWebServe toggles web serving for a session (D-06 grant gesture).
-//
-// Enable path (req.Enabled==true): marks the session web-enabled so that
-// subsequent POST /sessions/{id}/capabilities calls can issue capabilities.
-// Returns 204 No Content. The authoritative capability issuance path is the
-// separate POST /sessions/{id}/capabilities endpoint — keeping this handler
-// body-less avoids dead weight in DaemonClient.ToggleWebServing (which
-// discards the response body). The frontend (Plan 05) follows toggle-on with
-// a separate POST /sessions/{id}/capabilities.
-//
-// Disable path (req.Enabled==false): marks the session web-disabled AND
-// clears its entire grant list (D-15). Previously-issued capabilities for
-// this session become permanently invalid — the user must run the Share flow
-// again to produce fresh ones.
-func (a *API) handleWebServe(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var req WebServeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-
-	if ws == nil {
-		http.Error(w, "web server not running", http.StatusBadRequest)
-		return
-	}
-
-	if req.Enabled {
-		ws.EnableSession(id)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	ws.DisableSession(id)
-	ws.ClearGrants(id) // D-15: permanent grant clear on toggle-off
-	// M-49 / BUG-02 (#125): the owner stopping the share must give each remote
-	// viewer a disconnect notice, not a silently frozen terminal. Proactively
-	// close the session's web-origin viewers (same mechanism as the "Disconnect
-	// all viewers" path) so their WS close fires the guest disconnect banner.
-	// Local-origin subscribers (the owner's own attach) are left untouched.
-	if hub, ok := a.engine.Manager().Get(id); ok {
-		hub.DisconnectWebViewers()
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleDisconnectViewers force-closes every Origin=="web" subscriber on the
-// session's relay hub, giving the owner a "Disconnect all viewers" escape
-// hatch (Phase 168 / FIX-02, #117). Registered on the daemon-local mux only —
-// see the SECURITY comment at the route registration above (T-168-07).
-//
-// Does NOT revoke the session's capability grants or touch web-serve state
-// (D-06): viewers may reconnect with the same link. Full access
-// revocation remains handleWebServe's disable path.
-func (a *API) handleDisconnectViewers(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	hub, ok := a.engine.Manager().Get(id)
-	if !ok {
-		http.Error(w, "session not found", http.StatusNotFound)
-		return
-	}
-	hub.DisconnectWebViewers()
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// issueCapabilitiesForSession mints one full-control capability (perms
-// "read,write") for a web-enabled session, registers its grant_id on the
-// WebServer and returns the capability-bearing link. Called by
-// handleIssueCapabilities (POST /sessions/{id}/capabilities). A share always
-// grants full control (SHAR-02); no view-only link is ever minted.
-func (a *API) issueCapabilitiesForSession(sessionID string) (writeURL string, err error) {
-	a.signingKeyMu.RLock()
-	key := a.signingKey
-	a.signingKeyMu.RUnlock()
-	if key == nil {
-		return "", errors.New("capability: signing key not bootstrapped")
-	}
-
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws == nil {
-		return "", errors.New("web server not running")
-	}
-
-	var gid [16]byte // 128-bit grant ID, hex-encoded to 32 chars
-	if _, err := rand.Read(gid[:]); err != nil {
-		return "", err
-	}
-	claims := capability.Claims{SID: sessionID, Perms: "read,write", IAT: time.Now().Unix(), GrantID: hex.EncodeToString(gid[:]), V: 1}
-	tok, err := capability.Sign(claims, key)
-	if err != nil {
-		return "", err
-	}
-
-	// Register the grant BEFORE returning the URL so the caller's first
-	// request with the token succeeds (no TOCTOU).
-	ws.AddGrant(sessionID, claims.GrantID)
-	return ws.BaseURL() + "/sessions/" + sessionID + "?cap=" + tok, nil
-}
-
-// handleIssueCapabilities issues one full-control capability for a
-// web-enabled session and returns its link. Returns 400 when the web server
-// is not running or the session is not web-enabled.
-func (a *API) handleIssueCapabilities(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws == nil {
-		http.Error(w, "web server not running", http.StatusBadRequest)
-		return
-	}
-	if !ws.IsSessionEnabled(id) {
-		http.Error(w, "session not web-enabled", http.StatusBadRequest)
-		return
-	}
-	writeURL, err := a.issueCapabilitiesForSession(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, IssueCapabilitiesResponse{WriteURL: writeURL})
-}
-
-// handleRegenerateSigningKey replaces capability.key on disk, updates the
-// in-memory signing key, and calls ws.SetSigningKey so requireCapability
-// picks up the new key on the next request (D-16 panic button). All
-// previously-issued capabilities fail verification against the new key —
-// this is the intended blast radius. No attempt is made to preserve
-// outstanding grants: the stale grants eventually expire when their sessions
-// end, and the signature check alone is sufficient to block them.
+// handleRegenerateSigningKey replaces capability.key on disk, swaps the
+// in-memory key and re-mints every share with it (D-16 panic button): every
+// old link stops verifying, shares stay on with new links.
 func (a *API) handleRegenerateSigningKey(w http.ResponseWriter, r *http.Request) {
 	newKey, err := capability.GenerateKey()
 	if err != nil {
@@ -1040,12 +646,12 @@ func (a *API) handleRegenerateSigningKey(w http.ResponseWriter, r *http.Request)
 	a.signingKey = newKey
 	a.signingKeyMu.Unlock()
 
-	a.mu.RLock()
-	ws := a.webServer
-	a.mu.RUnlock()
-	if ws != nil {
+	a.mu.Lock()
+	if ws := a.webServer; ws != nil {
 		ws.SetSigningKey(newKey)
+		a.remintSharesLocked(ws)
 	}
+	a.mu.Unlock()
 	w.WriteHeader(http.StatusOK)
 }
 

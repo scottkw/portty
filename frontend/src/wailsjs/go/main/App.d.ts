@@ -164,6 +164,20 @@ export function SetTrayProgress(quartile: number): Promise<void>
 export function QuitGUIOnly(): Promise<void>
 export function QuitAll(): Promise<void>
 
+// Portty 04-02: one share switch per session. Failures fill errorCode
+// (not_found, tailscale_off, https_off, port_in_use, start_failed, stop_failed,
+// unavailable) and errorDetail; the bindings never throw. url carries the
+// full-control capability.
+export interface ShareResult {
+  shared: boolean
+  url: string
+  firstShare: boolean
+  errorCode: string
+  errorDetail: string
+}
+export function GetSessionShare(sessionID: string): Promise<ShareResult>
+export function SetSessionShared(sessionID: string, shared: boolean): Promise<ShareResult>
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export interface IssueCapabilitiesResponse {
   readUrl: string

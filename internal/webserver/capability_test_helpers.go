@@ -141,7 +141,6 @@ func testServerWithHub(t *testing.T, sessionID string) (*WebServer, *http.Client
 		BindIP:    "127.0.0.1",
 		Port:      0,
 		FQDN:      "127.0.0.1",
-		Mode:      "tailscale",
 		TLSConfig: tlsCfg,
 	}
 	ws, err := NewWebServer(cfg, manager)

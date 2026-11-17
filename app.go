@@ -123,9 +123,14 @@ type App struct {
 	seenSessions map[string]bool
 }
 
+// defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
+// webserver.CheckHealth. Only the VM-only vmpreview build sets it.
+var defaultTailscaleCheck func(context.Context) webserver.TailscaleHealth
+
 // NewApp creates a new App without starting any subsystems.
 func NewApp() *App {
 	a := &App{
+		tailscaleCheckFunc:   defaultTailscaleCheck,
 		saveFileDialogFunc:   runtime.SaveFileDialog,
 		sendNotificationFunc: sendNotification,
 		startupDone:          make(chan struct{}),
@@ -766,92 +771,49 @@ func configDir() string {
 	return dir
 }
 
-// StartWebServer tells the daemon to start the web server.
-// Refused while Tailscale is not connected (NET-01, Amendment 3); uses
-// Tailscale mode when connected with certs, local mode when connected without.
-func (a *App) StartWebServer(port int) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	h := a.GetTailscaleStatus()
-	if !h.Connected {
-		// Same sentence as frontend/src/lib/tailscale.ts TAILSCALE_OFF_REASON.
-		return errors.New("Tailscale isn't connected. Remote access and sharing are off until it is.")
-	}
-	if h.Connected && h.IP != "" && h.HasCerts {
-		_, err := a.client.StartWebServer(h.IP, port, h.Domain, "tailscale", "")
-		return err
-	}
-	// Local mode fallback — daemon already holds the generated password.
-	pwd, _ := a.client.GetLocalNetworkPassword()
-	_, err := a.client.StartWebServer("", port, "", "local", pwd)
-	return err
+// ShareResult is what the share bindings return. They never throw: a failure
+// fills ErrorCode (the daemon share error codes, or start_failed / stop_failed
+// when the daemon is unreachable) and ErrorDetail. URL is the full-control link.
+type ShareResult struct {
+	Shared      bool   `json:"shared"`
+	URL         string `json:"url"`
+	FirstShare  bool   `json:"firstShare"`
+	ErrorCode   string `json:"errorCode"`
+	ErrorDetail string `json:"errorDetail"`
 }
 
-// GetLocalNetworkPassword returns the generated LAN access password from the daemon,
-// or empty string if not in local mode or daemon is unreachable.
-func (a *App) GetLocalNetworkPassword() string {
-	if a.client == nil {
-		return ""
+func shareResult(resp daemon.ShareResponse, err error, fallbackCode string) ShareResult {
+	if err == nil {
+		return ShareResult{Shared: resp.Shared, URL: resp.URL, FirstShare: resp.FirstShare}
 	}
-	pwd, err := a.client.GetLocalNetworkPassword()
-	if err != nil {
-		return ""
+	var se *daemon.ShareError
+	if errors.As(err, &se) {
+		return ShareResult{ErrorCode: se.Code, ErrorDetail: se.Detail}
 	}
-	return pwd
+	return ShareResult{ErrorCode: fallbackCode, ErrorDetail: err.Error()}
 }
 
-// GetWebServerMode returns the web server mode ("tailscale", "local", or "").
-// Returns "" when the web server is not running or daemon is unreachable.
-func (a *App) GetWebServerMode() string {
+// GetSessionShare reports whether a session is shared and its link.
+func (a *App) GetSessionShare(id string) ShareResult {
 	if a.client == nil {
-		return ""
+		return ShareResult{ErrorCode: "unavailable", ErrorDetail: "daemon not connected"}
 	}
-	resp, err := a.client.GetWebServerStatus()
-	if err != nil || !resp.Running {
-		return ""
-	}
-	return resp.Mode
+	resp, err := a.client.GetSessionShare(id)
+	return shareResult(resp, err, "unavailable")
 }
 
-// StopWebServer tells the daemon to stop the web server.
-func (a *App) StopWebServer() error {
+// SetSessionShared flips the session's one share switch in the daemon, the
+// same state `portty share` / `portty unshare` and the sidebar menu flip.
+func (a *App) SetSessionShared(id string, shared bool) ShareResult {
+	code := "start_failed"
+	if !shared {
+		code = "stop_failed"
+	}
 	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
+		return ShareResult{ErrorCode: code, ErrorDetail: "daemon not connected"}
 	}
-	return a.client.StopWebServer()
-}
-
-// ToggleWebServing enables or disables web serving for a specific session.
-// Returns an error if the web server is not running.
-func (a *App) ToggleWebServing(sessionID string, enabled bool) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.ToggleWebServing(sessionID, enabled)
-}
-
-// DisconnectViewers force-closes every remote (web-origin) viewer currently
-// connected to the session, without revoking the share capability. Phase 168
-// / FIX-02, #117.
-func (a *App) DisconnectViewers(sessionID string) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.DisconnectViewers(sessionID)
-}
-
-// GetWebServerURL returns the base HTTPS URL of the running web server,
-// or an empty string if the server is not running.
-func (a *App) GetWebServerURL() string {
-	if a.client == nil {
-		return ""
-	}
-	resp, err := a.client.GetWebServerStatus()
-	if err != nil || !resp.Running {
-		return ""
-	}
-	return resp.URL
+	resp, err := a.client.SetSessionShared(id, shared)
+	return shareResult(resp, err, code)
 }
 
 // ctDisclosurePath returns the path to the CT disclosure acknowledgement file.
@@ -870,32 +832,8 @@ func (a *App) AcknowledgeCTDisclosure() error {
 	return os.WriteFile(ctDisclosurePath(), []byte("1"), 0600)
 }
 
-// IsWebServerRunning returns true if the daemon's web server is active.
-func (a *App) IsWebServerRunning() bool {
-	if a.client == nil {
-		return false
-	}
-	resp, err := a.client.GetWebServerStatus()
-	if err != nil {
-		return false
-	}
-	return resp.Running
-}
-
-// --- Phase 87 capability Wails bindings (D-06, D-07, D-09, D-16) ---------
-
-// IssueCapabilities asks the daemon to mint one full-control capability for
-// the given session. The session must be web-enabled (caller must have already
-// called ToggleWebServing). Returns its link.
-func (a *App) IssueCapabilities(sessionID string) (daemon.IssueCapabilitiesResponse, error) {
-	if a.client == nil {
-		return daemon.IssueCapabilitiesResponse{}, fmt.Errorf("daemon not connected")
-	}
-	return a.client.IssueCapabilities(sessionID)
-}
-
 // RegenerateSigningKey rotates the HMAC signing key (D-16 panic button in
-// Settings > Security). All previously-issued capabilities become invalid.
+// Settings > Security). Every old link stops verifying; shares get new links.
 func (a *App) RegenerateSigningKey() error {
 	if a.client == nil {
 		return fmt.Errorf("daemon not connected")

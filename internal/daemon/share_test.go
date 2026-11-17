@@ -110,12 +110,16 @@ func linkStatus(t *testing.T, link string) (int, string) {
 }
 
 func TestShare_OnReturnsWorkingLink(t *testing.T) {
-	_, client := shareTestDaemon(t)
+	api, client := shareTestDaemon(t)
 	id := newShareSession(t, client)
 	resp := mustShare(t, client, id)
 	u, token := linkParts(t, resp.URL)
 	if u.Scheme != "https" || u.Path != "/sessions/"+id || token == "" {
 		t.Fatalf("link = %q; want https://<host>/sessions/%s?cap=<token>", resp.URL, id)
+	}
+
+	if claims := extractClaimsFromURL(t, resp.URL, api.CurrentSigningKey()); claims.Perms != "read,write" || claims.SID != id {
+		t.Fatalf("link claims = %+v; want SID %s with perms exactly read,write (SHAR-02)", claims, id)
 	}
 
 	code, loc := linkStatus(t, resp.URL)
@@ -241,10 +245,7 @@ func TestShare_OffStopsServerAndNewLinkDiffers(t *testing.T) {
 	if webEnabled(t, client, id) {
 		t.Fatal("webEnabled true after share-off")
 	}
-	if c, err := net.DialTimeout("tcp", oldURL.Host, time.Second); err == nil {
-		c.Close()
-		t.Fatalf("share server still accepting on %s after the last share was turned off", oldURL.Host)
-	}
+	assertNotListening(t, oldURL.Host)
 	if got, _ := client.GetSessionShare(id); got.Shared {
 		t.Fatalf("GetSessionShare after off = %+v", got)
 	}
@@ -282,5 +283,126 @@ func TestShare_FirstShareWritesCTAck(t *testing.T) {
 	}
 	if second := mustShare(t, client, newShareSession(t, client)); second.FirstShare {
 		t.Fatal("second session's share-on: firstShare true")
+	}
+}
+
+func shareServerRunning(api *API) bool {
+	api.mu.RLock()
+	defer api.mu.RUnlock()
+	return api.webServer != nil
+}
+
+func assertNotListening(t *testing.T, host string) {
+	t.Helper()
+	if c, err := net.DialTimeout("tcp", host, time.Second); err == nil {
+		c.Close()
+		t.Fatalf("share server still accepting on %s", host)
+	}
+}
+
+func TestShare_OffDisconnectsWebViewersOnly(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	id := newShareSession(t, client)
+	mustShare(t, client, id)
+	hub, ok := api.engine.Manager().Get(id)
+	if !ok {
+		t.Fatalf("hub for session %s not found", id)
+	}
+	webClosed := make(chan struct{}, 1)
+	localClosed := make(chan struct{}, 1)
+	sig := func(ch chan struct{}) func() {
+		return func() {
+			select {
+			case ch <- struct{}{}:
+			default:
+			}
+		}
+	}
+	hub.Subscribe(&relay.Subscriber{Msgs: make(chan []byte, 256), CloseSlow: sig(webClosed), Origin: "web"})
+	hub.Subscribe(&relay.Subscriber{Msgs: make(chan []byte, 256), CloseSlow: sig(localClosed), Origin: "local"})
+
+	if _, err := client.SetSessionShared(id, false); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-webClosed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("web viewer was not disconnected on share-off (M-49: silent dead terminal)")
+	}
+	select {
+	case <-localClosed:
+		t.Fatal("share-off closed the owner's local subscriber")
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+func TestShare_KillDropsRecordAndStopsServer(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	id := newShareSession(t, client)
+	u, _ := linkParts(t, mustShare(t, client, id).URL)
+	if err := client.KillSession(id); err != nil {
+		t.Fatalf("KillSession: %v", err)
+	}
+	if got, _ := client.GetSessionShare(id); got.Shared {
+		t.Fatalf("GetSessionShare after kill = %+v", got)
+	}
+	if shareServerRunning(api) {
+		t.Fatal("share server still set after the last shared session was killed")
+	}
+	assertNotListening(t, u.Host)
+}
+
+func TestShare_ExitCleanupDropsRecord(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	exiting := newShareSession(t, client)
+	other := newShareSession(t, client)
+	mustShare(t, client, exiting)
+	u, _ := linkParts(t, mustShare(t, client, other).URL)
+
+	api.runSessionExitCleanupForTest(exiting)
+	if got, _ := client.GetSessionShare(exiting); got.Shared {
+		t.Fatalf("exited session still shared: %+v", got)
+	}
+	if !shareServerRunning(api) {
+		t.Fatal("share server stopped while another session is still shared")
+	}
+
+	api.runSessionExitCleanupForTest(other)
+	if shareServerRunning(api) {
+		t.Fatal("share server still set after the last shared session exited")
+	}
+	assertNotListening(t, u.Host)
+}
+
+func TestShare_KeyRegenRemintsLinks(t *testing.T) {
+	_, client := shareTestDaemon(t)
+	id := newShareSession(t, client)
+	old := mustShare(t, client, id)
+	if err := client.RegenerateSigningKey(); err != nil {
+		t.Fatalf("RegenerateSigningKey: %v", err)
+	}
+	if code, _ := linkStatus(t, old.URL); code == http.StatusFound {
+		t.Fatal("the link from before key regeneration still opens the session")
+	}
+	cur, err := client.GetSessionShare(id)
+	if err != nil || !cur.Shared {
+		t.Fatalf("GetSessionShare after regen = %+v, %v; want still shared", cur, err)
+	}
+	if cur.URL == old.URL {
+		t.Fatal("key regeneration kept the old link")
+	}
+	if code, loc := linkStatus(t, cur.URL); code != http.StatusFound || !strings.HasPrefix(loc, "/app/?session=") {
+		t.Fatalf("re-minted link = %d %q; want 302 to /app/", code, loc)
+	}
+}
+
+func TestShare_NoServerAtBoot(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	id := newShareSession(t, client)
+	if shareServerRunning(api) {
+		t.Fatal("a share server is running before anything was shared")
+	}
+	if got, err := client.GetSessionShare(id); err != nil || got.Shared {
+		t.Fatalf("GetSessionShare = %+v, %v; want not shared", got, err)
 	}
 }

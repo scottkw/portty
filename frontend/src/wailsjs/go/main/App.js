@@ -109,6 +109,10 @@ export const SetTrayProgress        = (quartile)                => Call('main.Ap
 export const QuitGUIOnly             = ()                   => Call('main.App.QuitGUIOnly', [])
 export const QuitAll                 = ()                   => Call('main.App.QuitAll', [])
 
+// Portty 04-02: one share switch per session; both return ShareResult and never throw.
+export const GetSessionShare         = (sessionID)          => Call('main.App.GetSessionShare', [sessionID])
+export const SetSessionShared        = (sessionID, shared)  => Call('main.App.SetSessionShared', [sessionID, shared])
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export const IssueCapabilities       = (sessionID)          => Call('main.App.IssueCapabilities', [sessionID])
 export const ExchangeJoinCode        = (code)               => Call('main.App.ExchangeJoinCode', [code])
