@@ -28,6 +28,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,7 +84,13 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	}
 	u.Scheme = "wss"
 	u.Path = "/sessions/" + sid + "/ws"
-	u.RawQuery = "cap=" + url.QueryEscape(capToken)
+	// SHAR-07: forward the viewer's resume offset only when it parses as a
+	// decimal uint64, re-encoded from the number so only digits reach the peer.
+	q := url.Values{"cap": {capToken}}
+	if resume, ok := relay.ParseResume(r.URL.Query().Get("resume")); ok {
+		q.Set("resume", strconv.FormatUint(resume, 10))
+	}
+	u.RawQuery = q.Encode()
 
 	// 3. Dial the peer with a BOUNDED dial context (10s) but the long-lived
 	//    request context as its parent. CRITICAL (Pitfall 1): inject
@@ -114,7 +121,7 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer upstream.CloseNow()
-	// Peer to viewer carries the catch-up preamble as one message (UAT gap 4).
+	// A live 32 KiB PTY frame is over the 32 KiB default (UAT gap 4).
 	upstream.SetReadLimit(relay.ViewerReadLimit)
 	// A slow first dial points at a cold or DERP-relayed tailnet path (04-07 H-net).
 	log.Printf("viewer-diag: proxy open session=%s host=%s dial=%s", id8, host, time.Since(dialStart))
