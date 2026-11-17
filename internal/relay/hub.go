@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
+	"github.com/charmbracelet/x/ansi"
 	xvt "github.com/charmbracelet/x/vt"
 )
 
@@ -92,6 +95,10 @@ type Hub struct {
 	// (SHAR-07, Phase 5). It lives here, outside liveEmu, so an emulator
 	// rebuild on resize keeps it. Only touched under emuMu.
 	history *History
+	// modes is the DEC private mode state the app last set (mode number to
+	// set/reset), replayed after the screen. Hub-owned so it survives emulator
+	// rebuilds, which start from default modes. Only touched under emuMu.
+	modes map[int]bool
 }
 
 // altScreenEnterSeq is the DEC private-mode sequence a full-screen TUI emits
@@ -141,6 +148,7 @@ func NewHub(sessionID string, reader io.Reader, writer io.Writer, scrollbackByte
 		subscribers: make(map[*Subscriber]struct{}),
 		done:        make(chan struct{}),
 		history:     NewHistory(HistoryMaxLines, HistoryMaxBytes),
+		modes:       make(map[int]bool),
 	}
 }
 
@@ -442,9 +450,41 @@ func (h *Hub) recordFrameLocked(frame, raw []byte) {
 // that scrolls many lines is not truncated before the drain. Keeping 10,000
 // lines in the emulator itself would cost about 126 MiB per session (uv.Cell
 // is 112 bytes); rendered strings cost about 1.1 MiB (RESEARCH Pitfall 1).
+//
+// The hooks below run inside emu.Write, which only runs under emuMu, so they
+// touch h.history and h.modes safely. Each handler returns false so the
+// emulator's default handling still runs.
 func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	emu := xvt.NewEmulator(cols, rows)
 	emu.SetScrollbackSize(HistoryMaxLines)
+	// Track DEC private modes for the replay's restores; ANSI modes are not
+	// replayed (the callbacks report both).
+	track := func(on bool) func(ansi.Mode) {
+		return func(m ansi.Mode) {
+			if d, ok := m.(ansi.DECMode); ok {
+				h.modes[int(d)] = on
+			}
+		}
+	}
+	emu.SetCallbacks(xvt.Callbacks{EnableMode: track(true), DisableMode: track(false)})
+	// ESC[3J (zsh `clear`, Claude Code's /clear) erases scrollback: empty the
+	// history too, so a cleared transcript is never replayed (T-05-10).
+	emu.RegisterCsiHandler('J', func(params ansi.Params) bool {
+		if n, _, _ := params.Param(0, 0); n == 3 {
+			h.history.Clear()
+		}
+		return false
+	})
+	// RIS (ESC c) resets the terminal: empty the history and the mode state.
+	// The default reset does not touch the emulator scrollback, so clear lines
+	// scrolled earlier in this same write as well. The default handler then
+	// reports every mode at its default, which refills h.modes.
+	emu.RegisterEscHandler('c', func() bool {
+		h.history.Clear()
+		clear(h.modes)
+		emu.ClearScrollback()
+		return false
+	})
 	return emu
 }
 
@@ -501,6 +541,21 @@ func (h *Hub) resizeLiveEmulator(cols, rows int) {
 	defer h.emuMu.Unlock()
 	if h.liveEmu == nil {
 		return
+	}
+	// SHAR-07 / Phase 5: the old emulator's screen is about to be discarded, so
+	// keep a main screen's rows in history first: drain what already scrolled,
+	// then push the visible rows down to the cursor row (below it is blank or
+	// stale). The shell redraws its prompt after SIGWINCH, so a few prompt
+	// lines can appear twice in history; accepted (CONTEXT open question).
+	// An alt-screen TUI's rows are not history and are simply redrawn.
+	if old := h.liveEmu; !old.IsAltScreen() {
+		h.drainScrollbackLocked()
+		if old.String() != "" {
+			lines := strings.Split(old.Render(), "\n")
+			for _, row := range lines[:min(old.CursorPosition().Y+1, len(lines))] {
+				h.history.Push(row)
+			}
+		}
 	}
 	h.liveEmu = h.newLiveEmulator(cols, rows)
 }
@@ -641,6 +696,22 @@ func (h *Hub) renderScreenLocked() []byte {
 	b.WriteString(strings.ReplaceAll(h.liveEmu.Render(), "\n", "\r\n"))
 	pos := h.liveEmu.CursorPosition()
 	fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
+	// Restore the app's DEC private modes (bracketed paste, cursor keys, cursor
+	// visibility, mouse) in ascending order, so the viewer's xterm behaves like
+	// the host even though the ring wrapped past the sets. Never the alt-screen
+	// modes (handled by the prefix above) or 2048 (in-band resize, stripped on
+	// purpose by liveEmuQueryStripPattern).
+	for _, m := range slices.Sorted(maps.Keys(h.modes)) {
+		switch m {
+		case 47, 1047, 1049, 2048:
+			continue
+		}
+		set := byte('l')
+		if h.modes[m] {
+			set = 'h'
+		}
+		fmt.Fprintf(&b, "\x1b[?%d%c", m, set)
+	}
 	return []byte(b.String())
 }
 
