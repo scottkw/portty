@@ -289,7 +289,7 @@ export function SharePopover({
           describedBy={blocked ? reasonId : undefined}
         />
       </div>
-      <div className="share-popover__state" aria-live="polite">{body}</div>
+      <div className={`share-popover__state${showLink ? ' share-popover__state--link' : ''}`} aria-live="polite">{body}</div>
     </div>,
     document.body,
   )

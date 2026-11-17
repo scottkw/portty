@@ -146,6 +146,8 @@ describe('SharePopover: turning Share on', () => {
     await render({ shared: true })
     expect(sw().getAttribute('aria-checked')).toBe('true')
     expect(link()!.value).toBe(URL)
+    // The link state takes the 12px gap under the switch row; text states keep 8px.
+    expect(state().classList.contains('share-popover__state--link')).toBe(true)
   })
 
   it('a shared session whose link is still loading shows Getting a link…, never an empty body', async () => {

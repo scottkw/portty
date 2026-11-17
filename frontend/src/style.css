@@ -1582,6 +1582,10 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .share-popover__state:empty {
   display: none;
 }
+/* The link row sits 12px under the switch row (the text states use 8px). */
+.share-popover__state--link {
+  margin-top: 12px;
+}
 .share-popover__line {
   margin: 0;
   font-size: var(--hub-font-size-sm);
@@ -1594,7 +1598,6 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .share-popover__link-row {
   display: flex;
   gap: 8px;
-  margin-top: 4px; /* 12px from the switch row in total */
 }
 .share-popover__link {
   flex: 1;
