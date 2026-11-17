@@ -21,6 +21,10 @@ package daemon
 //     rejects an empty Origin with 403. We inject Origin: <baseURL> byte-exact.
 //  2. The bidirectional copy loop MUST use the long-lived request context, NOT
 //     the 10s dial-timeout context — otherwise a healthy terminal dies after 10s.
+//
+// Phase 5 (SHAR-07): the proxy pings the upstream every relay.PingEvery and, when
+// it stops answering, closes both sides with no close frame, so the GUI tab or
+// `portty attach` sees an abnormal close and reconnects.
 
 import (
 	"context"
@@ -134,6 +138,18 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	errc := make(chan copyEnd, 2)
 	go copyWS(ctx, upstream, clientConn, "client", errc) // webview → peer (input/resize/ping)
 	go copyWS(ctx, clientConn, upstream, "peer", errc)   // peer → webview (scrollback/output)
+	// SHAR-07: drop a silent upstream (half-open after sleep or a network
+	// change). The peer-side copyWS above is the reader Heartbeat needs. The
+	// loopback clientConn is not pinged: a dead local client closes its socket.
+	every, timeout := relay.PingEvery, relay.PingTimeout
+	if a.heartbeatEvery > 0 {
+		every, timeout = a.heartbeatEvery, a.heartbeatTimeout
+	}
+	go func() {
+		if relay.Heartbeat(ctx, upstream, every, timeout) {
+			log.Printf("viewer-diag: proxy heartbeat timeout session=%s host=%s", id8, host)
+		}
+	}()
 	end := <-errc
 	err = end.err
 	code := int(websocket.CloseStatus(err))
