@@ -3,6 +3,7 @@ package webserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"mime"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/tailnet"
+	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/ipn/ipnstate"
 )
@@ -59,8 +61,17 @@ func refuseOtherUser(w http.ResponseWriter) {
 	http.Error(w, "forbidden", http.StatusForbidden)
 }
 
+// refuseLocalFault refuses when this Mac's own tailscaled can't answer. It
+// carries no marker, so the viewer reads it as unreachable, not as another
+// account (WR-08).
+func refuseLocalFault(w http.ResponseWriter) {
+	http.Error(w, "unavailable", http.StatusServiceUnavailable)
+}
+
 // requireSameUser admits only callers whose tailnet node is logged in as this
-// Mac's Tailscale user. Every error fails closed with 403.
+// Mac's Tailscale user. Every error fails closed: 403 with the marker when the
+// answer says another account (or no tailnet peer), 503 when this Mac's
+// tailscaled fails to answer.
 func (ws *WebServer) requireSameUser(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -68,10 +79,15 @@ func (ws *WebServer) requireSameUser(next http.HandlerFunc) http.HandlerFunc {
 		st, err := ws.whois.StatusWithoutPeers(ctx)
 		if err != nil || st == nil || st.Self == nil {
 			slog.Debug("webserver: same-user check: no self status", "err", err)
-			refuseOtherUser(w)
+			refuseLocalFault(w)
 			return
 		}
 		who, err := ws.whois.WhoIs(ctx, r.RemoteAddr)
+		if err != nil && !errors.Is(err, local.ErrPeerNotFound) {
+			slog.Debug("webserver: same-user check: whois failed", "err", err)
+			refuseLocalFault(w)
+			return
+		}
 		if err != nil || !sameUser(who, st.Self) {
 			var peerUser int64
 			if who != nil && who.Node != nil {

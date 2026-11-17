@@ -23,14 +23,18 @@ const testSelfUser tailcfg.UserID = 42
 // fakeWhoIs answers WhoIs by the host part of the remote address; unknown
 // hosts get local.ErrPeerNotFound. A non-nil err fails both calls.
 type fakeWhoIs struct {
-	self   *ipnstate.Status
-	byAddr map[string]*apitype.WhoIsResponse
-	err    error
+	self     *ipnstate.Status
+	byAddr   map[string]*apitype.WhoIsResponse
+	err      error
+	whoisErr error // fails WhoIs only
 }
 
 func (f *fakeWhoIs) WhoIs(_ context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.whoisErr != nil {
+		return nil, f.whoisErr
 	}
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
@@ -131,13 +135,9 @@ func TestWhoIs_MetaSameUser(t *testing.T) {
 }
 
 func TestWhoIs_MetaRefused(t *testing.T) {
-	statusErr := whoIsAs(testSelfUser)
-	statusErr.self = nil
 	for name, fake := range map[string]*fakeWhoIs{
 		"other user":     whoIsAs(7),
-		"whois error":    {self: whoIsAs(testSelfUser).self, byAddr: nil},
-		"local api":      {err: errors.New("tailscaled down")},
-		"status no self": statusErr,
+		"peer not found": {self: whoIsAs(testSelfUser).self, byAddr: nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			ws, client := testServer(t)
@@ -150,6 +150,40 @@ func TestWhoIs_MetaRefused(t *testing.T) {
 			defer resp.Body.Close()
 			assertRefused(t, resp)
 			assertNoCORS(t, resp)
+			var buf bytes.Buffer
+			_, _ = buf.ReadFrom(resp.Body)
+			if bytes.Contains(buf.Bytes(), []byte("sess-a")) {
+				t.Fatalf("refusal body leaks the session: %q", buf.String())
+			}
+		})
+	}
+}
+
+// TestWhoIs_LocalFaultIs503 (WR-08): when this Mac's own tailscaled fails, the
+// gate still refuses, but with 503 and no marker, so the viewer shows the host
+// as unreachable rather than as another account.
+func TestWhoIs_LocalFaultIs503(t *testing.T) {
+	statusErr := whoIsAs(testSelfUser)
+	statusErr.self = nil
+	whoisErr := whoIsAs(testSelfUser)
+	whoisErr.whoisErr = errors.New("context deadline exceeded")
+	for name, fake := range map[string]*fakeWhoIs{
+		"local api":      {err: errors.New("tailscaled down")},
+		"status no self": statusErr,
+		"whois error":    whoisErr,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ws, client := testServer(t)
+			ws.SetWhoIsClientForTest(fake)
+			ws.EnableSession("sess-a")
+			resp, err := client.Get(ws.BaseURL() + "/api/sessions/meta")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get(tailnet.MarkerHeader) != "" {
+				t.Fatalf("status %d, X-Portty %q; want 503 with no marker", resp.StatusCode, resp.Header.Get(tailnet.MarkerHeader))
+			}
 			var buf bytes.Buffer
 			_, _ = buf.ReadFrom(resp.Body)
 			if bytes.Contains(buf.Bytes(), []byte("sess-a")) {
