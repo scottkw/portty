@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: executing
-stopped_at: Completed 04-10-PLAN.md
-last_updated: "2026-11-17T22:42:59.060Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-11-17T23:00:31.164Z"
 last_activity: 2026-11-17
-last_activity_desc: Phase 04 execution started
-state_head: f7741868de42248b7ce58fe72f20de14b872bfeb
+last_activity_desc: Phase 5 execution started
+state_head: 6d17c90958ef1558f984738b5cc8b3b77150967f
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 48
-  completed_plans: 41
+  completed_plans: 42
   percent: 17
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 04 — One-Click Share
+**Current focus:** Phase 5 — Overnight Survival
 
 ## Current Position
 
-Phase: 5 (Overnight Survival) — READY TO EXECUTE
-Plan: 10 of 10
+Phase: 5 (Overnight Survival) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-11-17 — Phase 04 execution started
+Last activity: 2026-11-17 — Phase 5 execution started
 
 Progress: [██░░░░░░░░] 17%
 
@@ -84,6 +84,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 04 P08 | 93 min | 3 tasks | 12 files |
 | Phase 04 P09 | 14 min | 2 tasks | 9 files |
 | Phase 04 P10 | 8 min | 2 tasks | 6 files |
+| Phase 5 P01 | 13min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -184,6 +185,9 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-09: share server session info returns magicDNSLabel(h.Domain), the tailnet short name, not the OS hostname, so the browser stop banner matches the GUI and CLI (UAT gap 2)
 - [Phase 04]: 04-09: user decision 2026-11-17 (UAT gap 3) Button opens when shared: with Tailscale off, shareDisabled = tailscaleOff && !activeShared; unshared stays aria-disabled, daemon still refuses share-on
 - [Phase 04]: 04-10: relay.ViewerReadLimit = 4 * DefaultScrollbackBytes (1 MiB) on the viewing daemon proxy upstream conn and in attach.AttachSession; share server, local relay and proxy clientConn keep the 32 KiB default (guest-input DoS guard). Raw-ring preamble is hard-capped by the ring; the wrapped-ring RenderSnapshot bound is estimated, not enforced (UAT gap 4)
+- [Phase 5]: 05-01: Hub.Join is the single replay builder; Replay.Frames() emits grid-follow-on sequence Meta{replay}, <=16 KiB chunks, Meta{offset} for both servers
+- [Phase 5]: 05-01: Run records and broadcasts under emuMu so Join is exactly-once; Join strips/chunks outside the lock
+- [Phase 5]: 05-01: client resume position = offset meta + len of every later MsgOutput frame (type byte included)
 
 ### Pending Todos
 
@@ -252,6 +256,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T20:13:29.300Z
-Stopped at: Completed 04-10-PLAN.md
+Last session: 2026-11-17T23:00:20.765Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
