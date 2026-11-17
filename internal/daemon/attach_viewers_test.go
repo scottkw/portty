@@ -306,3 +306,92 @@ func TestCLIAttach_OtherViewersKeepOutput(t *testing.T) {
 
 	s.checkUndisturbed(t, "guiTab", "browser")
 }
+
+// Terminal queries the replayed_query_replies variant puts in the session
+// history, each with the reply a real terminal (Warp, say) would type back.
+var queryReplies = []struct{ query, reply string }{
+	{"\x1b[6n", "\x1b[24;1R"},                           // DSR -> CPR
+	{"\x1b[>c", "\x1b[>1;10;0c"},                        // DA2
+	{"\x1b[?2026$p", "\x1b[?2026;2$y"},                  // DECRQM -> DECRPM
+	{"\x1b[>0q", "\x1bP>|fake-term\x1b\\"},              // XTVERSION
+	{"\x1b[?u", "\x1b[?0u"},                             // kitty keyboard query
+	{"\x1b]11;?\x07", "\x1b]11;rgb:0000/0000/0000\x07"}, // OSC 11 background query
+}
+
+func TestCLIAttach_Hypotheses(t *testing.T) {
+	// H-resize: the CLI reports a tiny size. Checks webserver/server.go
+	// handleWSSRelay (MsgResize2 from a web viewer is dropped) and
+	// relay/hub.go Hub.ResizeClient (non-local origin never drives the grid).
+	for _, sz := range []struct {
+		name       string
+		cols, rows uint16
+	}{
+		{"tiny_resize_0x0", 0, 0},
+		{"tiny_resize_1x1", 1, 1},
+		{"tiny_resize_2x1", 2, 1},
+	} {
+		t.Run(sz.name, func(t *testing.T) {
+			s := newAttachScene(t)
+			cli := s.attachCLI(t, s.dialCLI(t, sz.cols, sz.rows))
+			s.typeLine(t, "MARKER-2")
+			s.waitAll(t, "MARKER-2", "guiTab", "browser")
+			s.checkUndisturbed(t, "guiTab", "browser")
+			cli.detach(t)
+		})
+	}
+
+	// H-stuck: a CLI connection that never reads. Checks relay/hub.go
+	// Hub.broadcast / BroadcastMeta / broadcastResize (non-blocking send plus
+	// CloseSlow) end to end through the viewing daemon's copyWS proxy.
+	t.Run("stuck_cli_never_reads", func(t *testing.T) {
+		s := newAttachScene(t)
+		s.dialCLI(t, 80, 24) // never read, no AttachSession; the host may close it
+		s.typeLine(t, "MARKER-2")
+		s.waitAll(t, "MARKER-2", "guiTab", "browser")
+		s.checkUndisturbed(t, "guiTab", "browser")
+	})
+
+	// H-replies: the catch-up replay (relay/hub.go Hub.ReconnectPreamble, raw
+	// scrollback) carries historic queries; the CLI writes them to the user's
+	// terminal, which answers on stdin; attach/attach.go StdinPump forwards the
+	// answers as MsgInput, and relay/oscabsorb.go InputAbsorber.Filter drops
+	// only OSC 10/11 and DA1 replies, so the rest reach the shared PTY.
+	t.Run("replayed_query_replies", func(t *testing.T) {
+		var prelude []string
+		for _, q := range queryReplies {
+			prelude = append(prelude, q.query)
+		}
+		s := newAttachScene(t, prelude...)
+
+		before := map[string]int{}
+		for name, v := range s.viewers {
+			before[name] = v.outLen()
+		}
+		cli := s.attachCLI(t, s.dialCLI(t, 80, 24))
+
+		// Fake terminal: answer each query the replay showed it. (The OSC 11
+		// query typed on the local conn is absorbed by the host's InputAbsorber
+		// before it reaches the PTY, so it is never in the history.)
+		for _, q := range queryReplies {
+			if cli.stdout.has(q.query) {
+				if _, err := cli.stdin.Write([]byte(q.reply)); err != nil {
+					t.Fatalf("fake terminal reply: %v", err)
+				}
+			}
+		}
+		time.Sleep(time.Second)
+
+		// The cat session is idle, so any output now is shell input the attach
+		// injected (the tty echoes it).
+		for _, name := range []string{"local", "guiTab", "browser"} {
+			out, _, _ := s.viewers[name].state()
+			if extra := out[before[name]:]; len(extra) > 0 {
+				t.Errorf("%s received %d output bytes after the CLI attached, with no one typing: %q", name, len(extra), extra)
+			}
+		}
+
+		s.typeLine(t, "MARKER-2")
+		s.waitAll(t, "MARKER-2", "local", "guiTab", "browser")
+		cli.detach(t)
+	})
+}
