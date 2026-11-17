@@ -621,7 +621,16 @@ The existing `testServer` binds `127.0.0.1` with a self-signed TLS config (capab
 | A5 | A listener bound to the tailnet IP keeps working after a Tailscale reconnect with the same IP | Interaction Contract ("share state is kept") | Medium; Phase 5's reconnect work owns this. Note it for the two-Mac UAT |
 | A6 | Reading "persists across daemon restarts" as satisfied by in-memory records, because sessions die with the daemon | Pattern 1 | Medium: the user may want literal disk persistence. Open Question 1 |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+Orchestrator resolutions, 2026-11-16 (recorded in 04-CONTEXT.md):
+1. Share-state persistence — RESOLVED: in-memory in the daemon. App restarts keep the daemon (and its share records) running; a daemon restart ends every session, so no persisted record could match a live one. This meets the intent of "share state survives restarts".
+2. Peers on a different Tailscale account — RESOLVED: `GET /api/sessions/meta` returns 403 for non-same-user callers, and the client drops those groups (hidden, per UI-SPEC). Same-user peers with nothing shared still show "Nothing shared".
+3. Proxy InsecureSkipVerify — RESOLVED: leave for Phase 5 (no IP fallback yet for MagicDNS-off Macs); add a STATE.md Phase 5 concern.
+4. Plan boundaries — RESOLVED: accepted; build and tests stay green at every boundary, and a temporarily broken runtime share UI between plans is acceptable on this branch.
+
+<details><summary>Original questions</summary>
+
 
 1. **Disk persistence of share records** (locked decision "persists across daemon and app restarts").
    - What we know: app restarts keep the daemon (and the record) alive. A daemon restart kills every PTY (no restore code), so a persisted record could never match a live session.
@@ -633,6 +642,8 @@ The existing `testServer` binds `127.0.0.1` with a self-signed TLS config (capab
 3. **`RemoteCapStore` keyed by session ID only** (remote_caps.go:39-43). Two peers can't realistically collide (32-hex random IDs), so keep it. Phase 5 reconnect may want `(host, id)`.
 
 4. **InsecureSkipVerify in the proxy client** (remote_files.go:89-100) was justified by self-signed LAN certs, which this phase removes. Tightening to verify against the FQDN is possible now, but the proxy has no IP fallback for clients with MagicDNS off. Recommend leaving it as is in Phase 4 (WireGuard already authenticates the peer IP) and listing it for Phase 5.
+
+</details>
 
 ## Environment Availability
 

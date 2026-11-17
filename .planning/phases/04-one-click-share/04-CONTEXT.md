@@ -19,7 +19,8 @@ Not in this phase: 12h+ idle survival and reconnect (SHAR-07, Phase 5); update d
 - Peer Macs get access automatically when Tailscale WhoIs (via the local tailscaled client, `tailscale.com/client/local`) shows the requesting node is logged in as the same tailnet user as this Mac. No join code. Portty still mints a capability behind the scenes, so the capability-gated model stays intact (only issuance is automated).
 - The web link carries the full-control capability token. Anyone on the tailnet who has the link can use it (treat it like a password); the server stays tailnet-only.
 - Turning Share off revokes every capability for that session and disconnects all viewers (peer GUI, browser, CLI). Turning it back on mints a new link.
-- Share state persists across daemon and app restarts.
+- Share state persists across app restarts by living in the daemon (in memory). A daemon restart ends every session anyway, so nothing is written to disk (research OQ1, orchestrator resolution 2026-11-16).
+- Peers logged in as a different Tailscale user are hidden: the meta endpoint returns 403 to them and the client drops those groups.
 
 ### The Share control
 - The toolbar Share button opens a small popover with one "Share this session" switch. The sidebar row context menu also has "Share" / "Stop Sharing".

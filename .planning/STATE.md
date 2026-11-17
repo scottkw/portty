@@ -150,6 +150,8 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
+- [Phase 5]: The daemon remote WS proxy sets InsecureSkipVerify (legacy of LAN self-signed certs, removed in Phase 4). Tighten TLS verification once an IP fallback exists for Macs with MagicDNS off.
+
 - [Phase 4]: Phase 1 review WR-01/WR-02 (deferred by verifier): the daemon auto-starts a password-gated LAN web server when Tailscale is off (`internal/daemon/process.go:114-145`), StartWebServer falls back to a LAN-only self-signed server when Tailscale is up but tailnet HTTPS certs are off (`app.go:736-743`), and CLI `serve` has no Tailscale check. Phase 4's tailnet-only share must close all three.
 - [Phase 2]: Flaky vitest `SessionShareModal.test.tsx:813-821` (SM-02 tabpanel) needs `vi.waitFor`; the Share modal moves in Phase 2 anyway.
 - [Phase 2]: LOOK-01 (2026-11-15) — GUI redesign to a macOS-native look, folded into Phase 2 so the UI is redone once with tabs + sidebar and THEM-01. A mockup artifact is being made to feed discuss/planning. UI-REVIEW 01 findings (banner hex colors, disabled-reason tooltips) get fixed as part of this.
