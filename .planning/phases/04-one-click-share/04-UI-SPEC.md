@@ -1,7 +1,8 @@
 ---
 phase: "04"
 slug: "one-click-share"
-status: draft
+status: approved
+reviewed_at: 2026-11-16
 shadcn_initialized: false
 preset: none
 created: "2026-11-16"
@@ -388,3 +389,9 @@ Applicable state considerations resolved: 14 covered, 3 backstop, 1 unresolved.
 - [ ] Dimension 7 Inventory Provenance: PASS (not applicable: `Tool: none`, so the Component Inventory section is omitted as the template requires)
 
 **Approval:** pending
+
+## Checker Notes (2026-11-16)
+
+- Visual anchor: the switch row in the off state; the link field in the on state.
+- State-line gap: use 8px below the switch row in every state (off description, "Getting a link…", errors), so text does not shift between states.
+- Overflow: planner confirms the 320px popover fits at the 800px window minimum, or adds a 12px left clamp.
