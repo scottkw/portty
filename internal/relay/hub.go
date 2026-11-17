@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"regexp"
@@ -86,6 +87,11 @@ type Hub struct {
 	// (append+feed vs bootstrap vs resize) without contending on the fan-out mu.
 	emuMu   sync.Mutex
 	liveEmu *xvt.Emulator
+
+	// history holds the rendered lines that scrolled off the main screen
+	// (SHAR-07, Phase 5). It lives here, outside liveEmu, so an emulator
+	// rebuild on resize keeps it. Only touched under emuMu.
+	history *History
 }
 
 // altScreenEnterSeq is the DEC private-mode sequence a full-screen TUI emits
@@ -96,15 +102,6 @@ type Hub struct {
 // reconstructing the mode marker the raw 256 KiB scrollback ring may have
 // wrapped past (BUG-04, #119).
 const altScreenEnterSeq = "\x1b[?1049h"
-
-// liveEmulatorScrollbackLines bounds the live per-hub VT emulator's own
-// internal scrollback buffer (T-175-04-01). The emulator exists solely to
-// produce a current-screen RenderSnapshot() — it does not need real
-// scrollback depth — so this is deliberately small, mirroring the
-// emuRows=50 row bound the daemon's styled-tail renderer
-// (internal/daemon/engine.go, GET /sessions/{id}/styled-tail) uses for its
-// own headless emulator.
-const liveEmulatorScrollbackLines = 50
 
 // liveEmuQueryStripPattern mirrors internal/daemon/engine.go's
 // queryStripPattern byte-for-byte. It strips terminal-query and in-band-
@@ -143,6 +140,7 @@ func NewHub(sessionID string, reader io.Reader, writer io.Writer, scrollbackByte
 		resizeFn:    resizeFn,
 		subscribers: make(map[*Subscriber]struct{}),
 		done:        make(chan struct{}),
+		history:     NewHistory(HistoryMaxLines, HistoryMaxBytes),
 	}
 }
 
@@ -428,12 +426,47 @@ func (h *Hub) recordFrameLocked(frame, raw []byte) {
 		// the complete history. Later PTY resizes are tracked by resizeLiveEmulator
 		// (CR-01). Lock order matches EnsureLiveEmulator (emuMu → hub.mu via
 		// Cols()/Rows()); no inversion.
-		emu := xvt.NewEmulator(h.Cols(), h.Rows())
-		emu.SetScrollbackSize(liveEmulatorScrollbackLines)
-		h.liveEmu = emu
+		h.liveEmu = h.newLiveEmulator(h.Cols(), h.Rows())
 	}
 	clean := liveEmuQueryStripPattern.ReplaceAll(raw, nil)
 	h.liveEmu.Write(clean) //nolint:errcheck // emulator Write never returns a meaningful error
+	h.drainScrollbackLocked()
+}
+
+// newLiveEmulator builds the live emulator. It is the only constructor, so a
+// rebuild (resizeLiveEmulator) can never miss a setting (RESEARCH Pitfall 12).
+//
+// Its scrollback max equals HistoryMaxLines, though the real history lives in
+// h.history: drainScrollbackLocked empties the emulator scrollback after every
+// write, so it stays near empty, and the large max only means one 32 KiB read
+// that scrolls many lines is not truncated before the drain. Keeping 10,000
+// lines in the emulator itself would cost about 126 MiB per session (uv.Cell
+// is 112 bytes); rendered strings cost about 1.1 MiB (RESEARCH Pitfall 1).
+func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
+	emu := xvt.NewEmulator(cols, rows)
+	emu.SetScrollbackSize(HistoryMaxLines)
+	return emu
+}
+
+// drainScrollbackLocked moves the lines that scrolled off the emulator's main
+// screen into h.history as rendered ANSI strings. Caller holds emuMu.
+//
+// SHAR-07 / Phase 5: this is what makes "restores scrollback" true after the
+// raw ring wraps. Lines() returns the scrollback's internal slice, and Clear()
+// only reslices it to zero length, so every old uv.Line stays reachable through
+// the backing array: zero the full capacity first (RESEARCH Pitfall 2, a
+// 9,000-line burst kept about 110 MiB alive without it).
+func (h *Hub) drainScrollbackLocked() {
+	sb := h.liveEmu.Scrollback()
+	if sb.Len() == 0 {
+		return
+	}
+	ls := sb.Lines()
+	for _, l := range ls {
+		h.history.Push(l.Render())
+	}
+	clear(ls[:cap(ls)])
+	sb.Clear()
 }
 
 // resizeLiveEmulator propagates an authoritative PTY resize to the live per-hub
@@ -469,9 +502,7 @@ func (h *Hub) resizeLiveEmulator(cols, rows int) {
 	if h.liveEmu == nil {
 		return
 	}
-	emu := xvt.NewEmulator(cols, rows)
-	emu.SetScrollbackSize(liveEmulatorScrollbackLines)
-	h.liveEmu = emu
+	h.liveEmu = h.newLiveEmulator(cols, rows)
 }
 
 // broadcast sends frame to all current subscribers using a non-blocking send.
@@ -554,11 +585,7 @@ func (h *Hub) ensureLiveEmulatorLocked() {
 	// No output has flowed yet (recordFrameLocked never ran) — build an empty emulator
 	// at the current fallback geometry so RenderSnapshot is well-defined. The
 	// drain loop's recordFrameLocked will feed this same instance once bytes arrive.
-	emu := xvt.NewEmulator(h.Cols(), h.Rows())
-	// T-175-04-01: bound the emulator's own scrollback — it is only ever used
-	// to render the CURRENT screen, never scrolled through.
-	emu.SetScrollbackSize(liveEmulatorScrollbackLines)
-	h.liveEmu = emu
+	h.liveEmu = h.newLiveEmulator(h.Cols(), h.Rows())
 }
 
 // RenderSnapshot returns the live emulator's current screen as a
@@ -592,25 +619,29 @@ func (h *Hub) renderScreenLocked() []byte {
 		return nil
 	}
 
-	// Render() pads every row up to the emulator's full height (default 50 —
-	// Hub.Rows()'s fallback) with trailing blank lines. Trim them so a normal
-	// (non-alt-screen) session's preamble is byte-identical to what raw PTY
-	// output would have produced, matching the pre-existing scrollback-replay
-	// contract for ordinary (non-wrapped, non-full-screen) sessions. Mirrors
-	// the daemon styled-tail renderer's own "trim trailing blank rows"
-	// convention (internal/daemon/engine.go).
-	content := strings.TrimRight(h.liveEmu.Render(), "\n")
 	altScreen := h.liveEmu.IsAltScreen()
-	if content == "" && !altScreen {
+	if h.liveEmu.String() == "" && !altScreen {
 		// Nothing to show yet, and no mode marker to reconstruct — sending an
 		// empty frame would be pure overhead and would break the "no data
 		// received before real output arrives" contract callers rely on.
 		return nil
 	}
+
+	// SHAR-07 / Phase 5: lay the screen out exactly like the host in xterm.js,
+	// which runs with convertEol off (LF only moves down). Render() joins rows
+	// with a bare LF, which staircased every wrapped replay, so rows are joined
+	// with CRLF instead. All Height() rows are sent, trailing blank rows
+	// included, so the viewport fills like the host's, and a CUP puts the cursor
+	// where the host's is (Render() trims trailing spaces, so the text alone
+	// leaves it short, e.g. after "% "). RESEARCH Pattern 5, Pitfall 4.
+	var b strings.Builder
 	if altScreen {
-		content = altScreenEnterSeq + content
+		b.WriteString(altScreenEnterSeq)
 	}
-	return []byte(content)
+	b.WriteString(strings.ReplaceAll(h.liveEmu.Render(), "\n", "\r\n"))
+	pos := h.liveEmu.CursorPosition()
+	fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
+	return []byte(b.String())
 }
 
 // Replay is what Join captured for a joining viewer: Mode is ReplayFull or
@@ -713,8 +744,12 @@ func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Repl
 	}
 	r = Replay{Mode: ReplayFull, End: h.scrollback.End()}
 	if h.scrollback.Truncated() {
-		// Ring wrapped — raw is incomplete; prefer the emulator's complete screen.
+		// Ring wrapped — raw is incomplete; prefer the emulator's complete
+		// screen, after the history that scrolled off it (SHAR-07).
 		if screen := h.renderScreenLocked(); len(screen) > 0 {
+			if hist := h.history.Render(); hist != "" {
+				screen = append([]byte(hist+"\r\n"), screen...)
+			}
 			return r, screen, false
 		}
 	}
