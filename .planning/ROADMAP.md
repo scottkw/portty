@@ -176,7 +176,7 @@ Plans:
   3. User turns Share off, every remote viewer (peer GUI, browser, CLI) is disconnected, and the session disappears from peers' sidebars
   4. No Funnel, public-link, risk-panel, or read-only code, UI, settings, or tests remain
   5. From Warp or any terminal, `portty attach <host>:<session>` attaches to a session shared from another Mac and shows the tmux-style status bar
-**Plans**: 5/6 plans executed (sequential waves 1-6; api.go, server.go, app.go, App.tsx, the Wails stubs and TESTING.md are shared hot files)
+**Plans**: 6/6 plans executed (sequential waves 1-6; api.go, server.go, app.go, App.tsx, the Wails stubs and TESTING.md are shared hot files)
 
 Plans:
 **Wave 1**
@@ -195,7 +195,7 @@ Plans:
 - [x] 04-05-PLAN.md — Share popover with one switch, sidebar Share / Stop Sharing, Settings ▸ Sharing shrunk; share dialog, risk panel, tabs, warning banner, web-server settings and stale stubs deleted
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 04-06-PLAN.md — Codeless peer tabs with stopped-sharing and connect-failed banners, web "Link No Longer Works" and stopped banner, join dialog deleted, SC4 removal gate in CI, docs, full phase gate
+- [x] 04-06-PLAN.md — Codeless peer tabs with stopped-sharing and connect-failed banners, web "Link No Longer Works" and stopped banner, join dialog deleted, SC4 removal gate in CI, docs, full phase gate
 **UI hint**: yes
 
 ### Phase 5: Overnight Survival
@@ -232,6 +232,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Plain macOS Terminal | 12/12 | Complete    | 2026-11-15 |
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
 | 3. Portty Brand | 6/6 | In Progress | - |
-| 4. One-Click Share | 5/6 | In Progress | - |
+| 4. One-Click Share | 6/6 | In Progress | - |
 | 5. Overnight Survival | 0/TBD | Not started | - |
 | 6. Release Updates | 0/TBD | Not started | - |

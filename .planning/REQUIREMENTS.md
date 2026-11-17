@@ -34,12 +34,12 @@
 
 ### Remote & Sharing
 
-- [ ] **SHAR-01**: Sharing is one on/off state per session. Shared means BOTH: visible to the user's tailnet peers (in their Portty sidebar) AND reachable through a tailnet-only web link. No share tabs, modes, or separate toggles.
-- [ ] **SHAR-02**: A share always grants full control (read/write). The read-only link type and its UI are removed; links stay token-gated and tailnet-only (user decision 2026-11-15)
-- [ ] **SHAR-03**: Opening the web link in a browser on the tailnet gives a working interactive terminal for the session
-- [ ] **SHAR-04**: User can stop sharing a session, which disconnects remote viewers and removes it from peers' sidebars
-- [ ] **SHAR-05**: Tailscale Funnel public sharing is removed: risk panel, consent gates, hold-to-confirm, public links, Funnel config and their tests (user decision 2026-11-15)
-- [ ] **SHAR-06**: From any terminal (e.g. Warp), `portty attach <host>:<session>` attaches to a remote shared session with the tmux-style status bar
+- [x] **SHAR-01**: Sharing is one on/off state per session. Shared means BOTH: visible to the user's tailnet peers (in their Portty sidebar) AND reachable through a tailnet-only web link. No share tabs, modes, or separate toggles.
+- [x] **SHAR-02**: A share always grants full control (read/write). The read-only link type and its UI are removed; links stay token-gated and tailnet-only (user decision 2026-11-15)
+- [x] **SHAR-03**: Opening the web link in a browser on the tailnet gives a working interactive terminal for the session
+- [x] **SHAR-04**: User can stop sharing a session, which disconnects remote viewers and removes it from peers' sidebars
+- [x] **SHAR-05**: Tailscale Funnel public sharing is removed: risk panel, consent gates, hold-to-confirm, public links, Funnel config and their tests (user decision 2026-11-15)
+- [x] **SHAR-06**: From any terminal (e.g. Warp), `portty attach <host>:<session>` attaches to a remote shared session with the tmux-style status bar
 - [ ] **SHAR-07**: A remote attach left idle for 12+ hours stays connected or reconnects automatically. Detaching and reattaching restores scrollback.
 
 ### Chat removal & Notifications
@@ -115,12 +115,12 @@
 | NAV-01 | Phase 2 | Pending |
 | NAV-02 | Phase 2 | Pending |
 | NAV-03 | Phase 2 | Pending |
-| SHAR-01 | Phase 4 | Pending |
-| SHAR-02 | Phase 4 | Pending |
-| SHAR-03 | Phase 4 | Pending |
-| SHAR-04 | Phase 4 | Pending |
-| SHAR-05 | Phase 4 | Pending |
-| SHAR-06 | Phase 4 | Pending |
+| SHAR-01 | Phase 4 | Complete |
+| SHAR-02 | Phase 4 | Complete |
+| SHAR-03 | Phase 4 | Complete |
+| SHAR-04 | Phase 4 | Complete |
+| SHAR-05 | Phase 4 | Complete |
+| SHAR-06 | Phase 4 | Complete |
 | SHAR-07 | Phase 5 | Pending |
 | CHAT-01 | Phase 2 | Pending |
 | NOTF-01 | Phase 3 | Complete |

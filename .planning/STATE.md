@@ -1,17 +1,17 @@
 ---
 gsd_state_version: "1.0"
 current_phase: 4
-status: executing
-stopped_at: Completed 04-05-PLAN.md
-last_updated: "2026-11-17T05:44:26.616Z"
+status: verifying
+stopped_at: Completed 04-06-PLAN.md
+last_updated: "2026-11-17T06:00:11.289Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 4 execution started
-state_head: 16f61840bcdfe7fb288918e37b882d3943c16023
+state_head: cc3ebb449264251343fc51f58704c8221086d3df
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 37
-  completed_plans: 36
+  completed_plans: 37
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 Phase: 4 — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-16 — Phase 4 execution started
 
 Progress: [██░░░░░░░░] 17%
@@ -78,6 +78,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 4 P03 | 35min | 2 tasks | 25 files |
 | Phase 4 P04 | 45min | 2 tasks | 28 files |
 | Phase 04 P05 | 36min | 2 tasks | 57 files |
+| Phase 4 P06 | 11min | 3 tasks | 34 files |
 
 ## Accumulated Context
 
@@ -166,6 +167,9 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-05: The Share popover stays open when Tailscale drops and shows the reason; turning Share off still works
 - [Phase 04]: 04-05: The popover VM check is TESTING.md M-81 (M-78 was taken by 04-02); M-82 covers Tailscale-off share controls
 - [Phase 04]: 04-05: Sidebar's Other Macs GlobeAltIcon is kept (peer-group icon, not a removed exposure icon)
+- [Phase 4]: 04-06: Clicking the row of an open working peer tab only activates it; ConnectPeerSession runs for a new or connect-failed tab
+- [Phase 4]: 04-06: Removal gate narrowed after dry run: TS 'public write' fields and the kept read-only capability model are not removed features; legacy settings fixture out of scope
+- [Phase 4]: 04-06: No vmpreview WhoIs fake: M-79's browser path is cap-gated, only meta and peer-cap routes use WhoIs
 
 ### Pending Todos
 
@@ -228,6 +232,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T05:44:25.466Z
-Stopped at: Completed 04-05-PLAN.md
+Last session: 2026-11-17T06:00:10.119Z
+Stopped at: Completed 04-06-PLAN.md
 Resume file: None
