@@ -19,6 +19,7 @@ import (
 	"github.com/scottkw/portty/internal/daemon"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/statusbar"
+	"github.com/scottkw/portty/internal/tailnet"
 )
 
 // setupAttachTest creates a relay HubManager + Server backed by io.Pipe pairs
@@ -569,5 +570,27 @@ func TestPeerConnectMessage(t *testing.T) {
 				t.Fatalf("got  %q\nwant %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestCmdAttach_Resolution (WR-09): a local name with a colon attaches locally,
+// an empty host is refused, and a typo keeps the local "no session named" error
+// whatever the tailnet says, even from a non-terminal stdin.
+func TestCmdAttach_Resolution(t *testing.T) {
+	api, client := testShareSetup(t)
+	api.SetPeerSeamsForTest(func(context.Context) ([]tailnet.Peer, error) { return nil, errors.New("tailscaled not running") }, nil, nil)
+	if _, err := client.CreateSession("db:prod", "", 80, 24); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	// Test stdin is not a terminal, so reaching attachLocal gives errNotTerminal.
+	if err := cmdAttach(client, []string{"db:prod"}); !errors.Is(err, errNotTerminal) {
+		t.Fatalf("local colon name: err = %v; want the local attach (errNotTerminal)", err)
+	}
+	for _, arg := range []string{"tpyo", ":sess"} {
+		err := cmdAttach(client, []string{arg})
+		var nse noSessionError
+		if !errors.As(err, &nse) {
+			t.Fatalf("%q: err = %v; want the no-session error", arg, err)
+		}
 	}
 }

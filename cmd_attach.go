@@ -65,9 +65,7 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 	}
 	opts := parseAttachFlags(args[1:])
 	target := args[0]
-	if host, session, isRemote := parseRemoteID(target); isRemote {
-		return attachRemote(client, host, session, opts, os.Stdout, nil)
-	}
+	// A local session wins, even one whose name holds a colon (WR-09).
 	sessions, err := client.ListSessions()
 	if err != nil {
 		return fmt.Errorf("portty: %w", err)
@@ -80,8 +78,14 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 	if !errors.As(err, &nse) {
 		return err // name clash
 	}
-	// Not a session here: try the argument as a Mac on the tailnet. An unknown
-	// host keeps the local "no session named" error.
+	if host, session, isRemote := parseRemoteID(target); isRemote {
+		if host == "" {
+			return nse
+		}
+		return attachRemote(client, host, session, opts, os.Stdout, nil)
+	}
+	// Not a session here: try the argument as a Mac on the tailnet. Any refusal
+	// keeps the local "no session named" error, since it was most likely a typo.
 	return attachRemote(client, target, "", opts, os.Stdout, nse)
 }
 
@@ -114,23 +118,24 @@ func attachLocal(client *daemon.DaemonClient, session daemon.SessionInfo, opts a
 // holds the capability; the CLI dials the daemon's relay proxy, which injects
 // the Origin and the cap upstream (RESEARCH Pattern 5). An empty session
 // attaches the host's only shared session or lists several on out.
-// onUnknownHost, when set, replaces the unknown-host error.
-func attachRemote(client *daemon.DaemonClient, host, session string, opts attachOpts, out io.Writer, onUnknownHost error) error {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return errNotTerminal
-	}
+// onRefused, when set, replaces every connect refusal except the listing.
+func attachRemote(client *daemon.DaemonClient, host, session string, opts attachOpts, out io.Writer, onRefused error) error {
 	res, err := client.ConnectPeer(host, session)
 	var pe *daemon.PeerConnectError
 	switch {
 	case errors.As(err, &pe) && pe.Code == daemon.PeerErrMultiple:
 		printSharedSessions(out, peerDisplayHost(pe, host), pe.Sessions)
 		return nil
-	case errors.As(err, &pe) && pe.Code == daemon.PeerErrUnknownHost && onUnknownHost != nil:
-		return onUnknownHost
+	case errors.As(err, &pe) && onRefused != nil:
+		return onRefused
 	case errors.As(err, &pe):
 		return errors.New(peerConnectMessage(pe, host, session))
 	case err != nil:
 		return fmt.Errorf("portty: %w", err)
+	}
+	// After resolving, so a typo or a refusal reports itself, not the terminal.
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return errNotTerminal
 	}
 	port, err := client.GetRelayPort()
 	if err != nil {
