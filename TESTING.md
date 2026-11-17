@@ -31,6 +31,8 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
 | **Total** | **197** | — | — | — |
 
+> Note: Portty Phase 4 plan 04-06 Task 3 (SHAR-02, SHAR-05 removal gate in CI; final Phase 4 reconciliation): counts from `git ls-files` unchanged — Go **109**, vitest **82**, Playwright **7**, build-script **1**, total **199** (the new gate `tests/check-share-removal.sh` is a CI step like the brand gate, not a counted suite file). `build.yml` runs it right after the brand gate; the job and its required check context are unchanged (Section 3 untouched). Section 4: two gate rows added. Section 5: M-53, M-57 and M-67 reworded so they no longer describe removed pages, bindings or entry points; M-80 added to Category AS.
+
 > Note: Portty Phase 4 plan 04-06 Task 2 (SHAR-03 web link states, SHAR-04 web stopped-sharing banner): counts from `git ls-files` — Go **109** (unchanged), vitest **82** (+2), Playwright **7**, build-script **1**, total **199**. Added (2): `frontend/src/components/__tests__/LinkNoLongerWorks.test.tsx`, `frontend/src/components/__tests__/App.webLink.test.tsx` (web mode through the page location, real App on the shared harness). Edited in place: `WebShareSessionView.test.tsx` (host label and callback pass-through), `TerminalPanel.guestClose.test.tsx` (fallback copy with no host). Section 4: three rows added. Section 5: Category AS with M-79 added.
 
 > Note: Portty Phase 4 plan 04-06 Task 1 (SHAR-01 codeless peer tabs, SHAR-04 stopped-sharing banner): counts from `git ls-files` — Go **109** (unchanged), vitest **80** (−2 +2), Playwright **7**, build-script **1**, total **197**. Deleted (2) with the old join dialog: `frontend/src/components/RemoteJoinCodeModal.test.tsx`, `frontend/src/components/__tests__/RemoteJoinCodeModal.test.tsx`. Added (2): `frontend/src/lib/__tests__/closeReasons.test.ts` (TS half of the close-reason pin), `frontend/src/components/__tests__/TerminalPanel.guestClose.test.tsx` (guest close path rendered with mocked xterm and RelayClient). Rewritten: `App.open-remote.test.tsx` (mounts the real App through the new non-test harness `components/__tests__/appHarness.ts`). Edited in place: `SessionEndedBanner.test.tsx` (share-stopped kind), `remoteSession.test.ts` (removed helper's cases dropped), `remoteAdapter.test.ts` (comment). Section 4: the FIX-03 open-contract rows collapsed into one, the NAV-02 row rewritten, four SHAR rows added. Section 5: M-03 and M-04 rewritten; Category G (M-13) retired into M-04.
@@ -206,7 +208,7 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 ### CI Workflow Mapping
 
-- `build.yml` (runs on push + PR): a single macOS job (`macos-latest`) running the brand gate (`tests/check-brand.sh`), Go tests (race detector), build-script tests, vitest, the traceability path-check step and `scripts/verify-icons.sh`, then the Wails build
+- `build.yml` (runs on push + PR): a single macOS job (`macos-latest`) running the brand gate (`tests/check-brand.sh`), the share removal gate (`tests/check-share-removal.sh`), Go tests (race detector), build-script tests, vitest, the traceability path-check step and `scripts/verify-icons.sh`, then the Wails build
 - `e2e.yml` (runs on push/PR to `main`): Playwright cross-browser (chromium, firefox, webkit)
 - `release.yml` (runs on `v*` tags): builds, signs and notarizes Portty.app, then publishes the hdiutil DMG plus checksums. There is no distribute workflow.
 
@@ -478,6 +480,8 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | SHAR-03 | frontend/src/components/__tests__/LinkNoLongerWorks.test.tsx | vitest | Portty 04-06: the in-app dead-link block renders only `Link No Longer Works` and its fixed body copy |
 | SHAR-03 | frontend/src/components/__tests__/App.webLink.test.tsx | vitest | Portty 04-06: on /app/, a 401 or 403 from `/api/sessions/{id}/info` or a missing cap (no fetch) shows the block with no tab and never the session id from the URL; 200 opens the terminal tab with the host from the session info; a network error still opens the tab |
 | SHAR-04 | frontend/src/components/__tests__/WebShareSessionView.test.tsx | vitest | Portty 04-06: the view passes the host label (empty when unknown) and `onShareStopped` through to TerminalPanel |
+| SHAR-05 | tests/check-share-removal.sh | build-script | Portty 04-06: no public internet sharing, consent UI, code-based access, LAN server, share reminder or old server-lifecycle code, UI, settings or tests outside .planning/, TESTING.md history, vendored xterm and the removal-pin tests; removed files absent; the old image-code module is out of go.mod; runs in build.yml |
+| SHAR-02 | tests/check-share-removal.sh | build-script | Portty 04-06: no view-only link feature and no view-only capability minted by non-test Go; the capability write-perm check is kept on purpose |
 
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 
@@ -634,8 +638,8 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
 
 - **M-53** Production-build `/app/` CSP console sweep (BUG-06, #123, D-06): confirm the newly-added `ws.cspHeaders` wrap on `/app/` (176-02) does not break the public guest SPA in a real browser.
   1. Produce a production build: `wails build -tags "webkit2_41,wailsassets"` (see M-34 for the same build-tag precedent — `/app/` 503s under `wails dev`/plain `go build` since no SPA bundle is embedded).
-  2. Load `/app/` (directly, or via a share/Funnel URL redirect) and confirm the SPA renders normally.
-  3. Open the browser DevTools console and confirm there is no Content-Security-Policy violation that breaks functionality — check inline scripts, `wasm-unsafe-eval`, `connect-src` (SSE + WS relay), `font-src`, and `img-src data:` in particular (the same policy already proven clean on `/dashboard`/`/join`/`/sessions/{id}`).
+  2. Load `/app/` (directly, or through a share link's redirect) and confirm the SPA renders normally.
+  3. Open the browser DevTools console and confirm there is no Content-Security-Policy violation that breaks functionality — check inline scripts, `wasm-unsafe-eval`, `connect-src` (SSE + WS relay), `font-src`, and `img-src data:` in particular (the same policy already proven clean on `/dashboard` and `/sessions/{id}`).
   4. If a genuine violation is found, relax ONLY that specific directive (D-07 — no blanket loosening); otherwise no action needed.
   - _Why not automatable:_ requires a production Vite build (not `wails dev`) and a real browser DevTools console read — `TestCSPHeaderStrict_App` proves the header is present on a 200 response, but not that the live SPA is violation-free in an actual browser. This item is OPPORTUNISTIC (release-time), not ship-blocking.
   - _Source:_ Phase 176-02 (BUG-06, #123); 176-02-SUMMARY.md D2 rationale (`human_judgment: true`).
@@ -645,9 +649,9 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
 - **M-57** NET-01 live Tailscale check (Portty 01-12, CONTEXT Amendments 1 and 3): Portty only reads the connection state from the LocalAPI and never installs or configures Tailscale.
   1. Portty and the upstream app use separate sockets and ports since Portty 03-01/03-02, so nothing needs stopping first. Launch the Portty build. Open two sessions; have a second Mac on the tailnet with a session of its own.
   2. Disconnect Tailscale from its menu bar app. Within 10 seconds (or immediately when the Portty window regains focus) the banner reads exactly "Tailscale isn't connected. Remote access and sharing are off until it is." and has no dismiss button.
-  3. Confirm the toolbar Share button is dimmed (`aria-disabled`, still focusable) and does nothing when clicked, no peer groups or join-code entry points show in the sidebar, Settings ▸ Sharing shows "Not connected" on the Tailscale row with that sentence under it, and both terminals keep working.
-  4. Reconnect Tailscale and click back into the Portty window. The banner disappears on focus (or within 10 seconds), Share and Start Web Server re-enable, Settings shows "Connected" via the tailnet domain or IP, and peer groups return, all without a restart. At no point does Portty offer to install Tailscale.
-  - _Why not automatable:_ needs a real Tailscale client to toggle, a second tailnet device and the native webview's focus events. The decision logic is unit-tested in `internal/webserver/tailscale_test.go`, the emit-on-change poller and the Go refusal of a web-server start while not connected (`TestStartWebServerRefusedWhileTailscaleOff`) in `app_test.go`, the UI in `TailscaleBanner.test.tsx`, `SettingsSheet.tailscale-status.test.tsx` and `App.tailscale.test.tsx`.
+  3. Confirm the toolbar Share button is dimmed (`aria-disabled`, still focusable) and does nothing when clicked, no peer groups show in the sidebar, Settings ▸ Sharing shows "Not connected" on the Tailscale row with that sentence under it, and both terminals keep working.
+  4. Reconnect Tailscale and click back into the Portty window. The banner disappears on focus (or within 10 seconds), Share re-enables, Settings shows "Connected" via the tailnet domain or IP, and peer groups return, all without a restart. At no point does Portty offer to install Tailscale.
+  - _Why not automatable:_ needs a real Tailscale client to toggle, a second tailnet device and the native webview's focus events. The decision logic is unit-tested in `internal/webserver/tailscale_test.go`, the emit-on-change poller in `app_test.go`, the share refusal while not connected (`TestShare_TailscaleOff`) in `internal/daemon/share_test.go`, the UI in `TailscaleBanner.test.tsx`, `SettingsSheet.tailscale-status.test.tsx` and `App.tailscale.test.tsx`.
   - _Source:_ 01-12-PLAN.md Task 2 human-check; 01-CONTEXT.md Amendment 3 (Start Web Server gate); REQUIREMENTS NET-01.
 
 ### Category AC — Window Chrome & Menu Bar (LOOK-01)
@@ -760,8 +764,8 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
 
 ### Category AK — No Hardcoded Colours (LOOK-01, THEM-01)
 
-- **M-67** Light/Dark on the browser join and dashboard pages, and the last colour sweep in the app (Portty 02-12). Share a session in the built app.
-  1. In Safari and in Chrome, open `https://<host>:<port>/dashboard` and a `/join?code=…` link (also an expired or invalid code, for the error state). With macOS in Light, both pages are light (white page, dark text, blue Join button with white text); switch System Settings ▸ Appearance to Dark and both repaint dark without a reload. Text, the code field, its placeholder and the Go Back button stay readable in both modes, and the fonts are the system font with SF Mono for codes.
+- **M-67** Light/Dark on the browser dashboard and dead-link pages, and the last colour sweep in the app (Portty 02-12, 04-06). Share a session in the built app.
+  1. In Safari and in Chrome, open `https://<host>:<port>/dashboard` and a session link with its cap removed (the Link No Longer Works page). With macOS in Light, both pages are light (white page, dark text); switch System Settings ▸ Appearance to Dark and both repaint dark without a reload. All text stays readable in both modes, in the system font.
   2. In the app, in Light, then Dark: press Tab through the toolbar, sidebar rows, tabs, a dialog and the Settings sheet. Every focused control shows the same soft blue 3px ring (sidebar rows and tab labels inside their edge); a mouse click shows no ring.
   3. Open ⌘F in a terminal: the find bar is on the popover colour with a thin border and soft shadow, readable in both modes; the active Aa/.*/word toggles show a grey fill and blue glyph; "No results" is red.
   4. Scroll a long Settings pane: the scrollbars are the macOS overlay scrollbars and follow the appearance; the tab strip and the terminal show no scrollbar, and with System Settings ▸ Appearance ▸ Show scroll bars set to Always no gap appears at the window's right edge.
@@ -877,6 +881,17 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
   5. Turn Share on again: the new link works.
   - _Why not automatable:_ a real browser against the built app's share server; jsdom cannot run the real WebSocket close path. The states are covered by `App.webLink.test.tsx`, `LinkNoLongerWorks.test.tsx` and `TerminalPanel.guestClose.test.tsx`.
   - _Source:_ 04-UI-SPEC.md Web pages; 04-06-PLAN.md Task 2 human-check.
+
+- **M-80** Two-Mac share flow (Portty 04-06, deferred UAT). Both Macs run the new build and are signed in to the same Tailscale account.
+  1. On the office Mac, turn Share on for a session running a shell.
+  2. Within 30 s the home Mac lists it under Other Macs; one click opens a tab at once (no prompt) with full control.
+  3. A browser on another tailnet device opens the link with full control.
+  4. From Warp on the home Mac, `portty attach office-air:<session>` shows the status bar; `portty attach office-air` attaches when one session is shared and lists them when there are several.
+  5. On the office Mac, turn Share off: the home GUI tab shows `office-air stopped sharing this session.` and its row disappears, the browser shows the same banner, and the CLI prints `Portty: office-air stopped sharing <session>.` and exits 0.
+  6. A Mac on a different Tailscale account shows no group for the office Mac, and `portty attach` there prints the didn't-allow-access line.
+  7. Also run M-77 on both Macs.
+  - _Why not automatable:_ two Macs and a live tailnet; tests use a fake local client.
+  - _Source:_ 04-UI-SPEC.md UI Considerations backstop; 04-06-PLAN.md.
 
 ---
 

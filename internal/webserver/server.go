@@ -440,7 +440,7 @@ func (ws *WebServer) setupRoutes() {
 	mux.HandleFunc("GET /api/sessions/meta", ws.requireSameUser(ws.handleSessionsMeta))
 
 	// POST /api/peer/sessions/{id}/cap — a same-account peer receives the
-	// share's capability with no join code. POST + application/json only, no
+	// share's capability with nothing to type. POST + application/json only, no
 	// Access-Control-* headers, Cache-Control: no-store (whois.go handlePeerCap).
 	mux.HandleFunc("POST /api/peer/sessions/{id}/cap", ws.requireSameUser(ws.handlePeerCap))
 

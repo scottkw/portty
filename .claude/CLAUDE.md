@@ -13,7 +13,7 @@ Portty is a macOS terminal emulator with built-in remote access over Tailscale. 
 - **License**: MIT. Keep the root `LICENSE` (MIT, "Copyright (c) 2026 Ken Scott"). README and package metadata (e.g. `frontend/package.json` `license`) state MIT — the user requires the code to be MIT licensed
 - **Platform**: macOS only (Apple Silicon MacBook Airs). Both target machines are Macs.
 - **Tech stack**: Keep the inherited stack (Go/Wails/React/tsnet). This is a strip-down, not a rewrite.
-- **Network**: Remote access only over the user's tailnet (plus opt-in Funnel). No new relay servers or cloud dependencies.
+- **Network**: Remote access only over the user's tailnet. No new relay servers or cloud dependencies.
 - **Security**: Keep token-gated, tailnet-only share links and the CSP intact through the refactor. Remote write access to a shell is powerful.
 - **Deletion discipline**: Chesterton's Fence. Read each piece and know why it exists before removing it, especially in daemon, relay, and capability code shared between kept and removed features.
 

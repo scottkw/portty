@@ -87,7 +87,7 @@ func (ws *WebServer) requireSameUser(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // handlePeerCap handles POST /api/peer/sessions/{id}/cap: a same-account
-// peer receives the share's capability with no join code. POST plus a
+// peer receives the share's capability with nothing to type. POST plus a
 // required JSON content type forces a CORS preflight that this server never
 // answers, so a cross-site page cannot read the token.
 func (ws *WebServer) handlePeerCap(w http.ResponseWriter, r *http.Request) {

@@ -26,6 +26,9 @@ jobs:
       - name: Brand gate (BRND-05, BRND-06, DIST-03)
         run: bash tests/check-brand.sh
 
+      - name: Share removal gate (SHAR-02, SHAR-05)
+        run: bash tests/check-share-removal.sh
+
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
