@@ -212,10 +212,13 @@ func (a *API) startShareServer(
 	if err != nil {
 		return &ShareError{ShareErrStartFailed, err.Error()}
 	}
+	// The browser banner must name the host the way the GUI and CLI do (UAT
+	// gap 2); the certificate domain is this node's MagicDNS name.
+	host := magicDNSLabel(h.Domain)
 	ws.SetSessionResolver(func(sessionID string) (name, status, hostname string, ok bool) {
 		for _, s := range a.engine.ListSessions() {
 			if s.ID == sessionID {
-				return s.Name, s.Status, s.Hostname, true
+				return s.Name, s.Status, host, true
 			}
 		}
 		return "", "", "", false

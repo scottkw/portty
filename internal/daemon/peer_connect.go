@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -43,10 +44,19 @@ func (a *API) SetPeerSeamsForTest(discover func(context.Context) ([]tailnet.Peer
 
 // peerShortName is the MagicDNS short name: the first label of the DNS name,
 // falling back to the HostName.
-func magicDNSLabel(name string) string { return name } // RED stub
+// magicDNSLabel is a MagicDNS name's short label (the first one), the host name
+// every surface shows. An IP literal (the VM build's share domain) stays whole.
+func magicDNSLabel(name string) string {
+	name = strings.TrimSuffix(name, ".")
+	if net.ParseIP(name) != nil {
+		return name
+	}
+	label, _, _ := strings.Cut(name, ".")
+	return label
+}
 
 func peerShortName(p tailnet.Peer) string {
-	if label, _, _ := strings.Cut(strings.TrimSuffix(p.DNSName, "."), "."); label != "" {
+	if label := magicDNSLabel(p.DNSName); label != "" {
 		return label
 	}
 	return p.Hostname
