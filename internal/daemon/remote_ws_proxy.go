@@ -25,6 +25,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -87,6 +88,14 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	//    Origin: <baseURL> — the peer's requireAllowedOrigin rejects an empty
 	//    Origin, which a Go WS dialer would otherwise send. Use the verified
 	//    peer client (stored IP, certificate checked against the base URL host).
+	// viewer-diag lines log only the upstream hostname, never the URL or its
+	// query. redact strips the whole query first (the dial error quotes the URL),
+	// then the raw token.
+	id8, host := relay.DiagID(sid), u.Hostname()
+	redact := func(err error) string {
+		return redactCapTokenFromError(errors.New(strings.ReplaceAll(err.Error(), u.RawQuery, "<redacted>")), capToken)
+	}
+	dialStart := time.Now()
 	dialCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	hdr := http.Header{}
@@ -97,21 +106,33 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	})
 	if derr != nil {
 		// Never surface the cap token in a close reason or log (T-134-06-03).
-		// The reason string is a fixed literal; the redacted error is available
-		// via redactCapTokenFromError(derr, capToken) if logging is added later.
+		// The reason string is a fixed literal; the log line carries the redacted error.
+		log.Printf("viewer-diag: proxy dial failed session=%s host=%s err=%s", id8, host, redact(derr))
 		clientConn.Close(websocket.StatusTryAgainLater, "remote unreachable")
 		return
 	}
 	defer upstream.CloseNow()
+	// A slow first dial points at a cold or DERP-relayed tailnet path (04-07 H-net).
+	log.Printf("viewer-diag: proxy open session=%s host=%s dial=%s", id8, host, time.Since(dialStart))
+	opened := time.Now()
 
 	// 4. Bidirectional opaque copy on the REQUEST context (Pitfall 4 — NOT the
 	//    10s dialCtx, which would kill a healthy long-lived terminal). The first
 	//    side to error/close tears down both via the deferred CloseNow calls.
 	ctx := r.Context()
-	errc := make(chan error, 2)
-	go copyWS(ctx, upstream, clientConn, errc) // webview → peer (input/resize/ping)
-	go copyWS(ctx, clientConn, upstream, errc) // peer → webview (scrollback/output)
-	err = <-errc
+	errc := make(chan copyEnd, 2)
+	go copyWS(ctx, upstream, clientConn, "client", errc) // webview → peer (input/resize/ping)
+	go copyWS(ctx, clientConn, upstream, "peer", errc)   // peer → webview (scrollback/output)
+	end := <-errc
+	err = end.err
+	code := int(websocket.CloseStatus(err))
+	if code == -1 {
+		log.Printf("viewer-diag: proxy end session=%s first=%s code=-1 reason=\"\" after=%s err=%s", id8, end.side, time.Since(opened), redact(err))
+	} else {
+		var ce websocket.CloseError
+		errors.As(err, &ce)
+		log.Printf("viewer-diag: proxy end session=%s first=%s code=%d reason=%q after=%s", id8, end.side, code, ce.Reason, time.Since(opened))
+	}
 	// Forward a close code and reason (e.g. 1000 "share stopped") so the viewer
 	// can say why it ended. Reasons come from the peer's fixed constants and
 	// never carry the cap.
@@ -121,18 +142,25 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// copyEnd is how one copy direction ended; side names the conn it read from
+// ("peer" or "client") for the viewer-diag proxy end line.
+type copyEnd struct {
+	side string
+	err  error
+}
+
 // copyWS reads whole messages from src and writes them verbatim to dst until
 // either side errors. The PTY frame protocol is end-to-end between xterm and the
 // peer hub, so the proxy is transport-only: it never parses or evaluates frames.
-func copyWS(ctx context.Context, dst, src *websocket.Conn, errc chan<- error) {
+func copyWS(ctx context.Context, dst, src *websocket.Conn, side string, errc chan<- copyEnd) {
 	for {
 		typ, data, err := src.Read(ctx)
 		if err != nil {
-			errc <- err
+			errc <- copyEnd{side, err}
 			return
 		}
 		if err := dst.Write(ctx, typ, data); err != nil {
-			errc <- err
+			errc <- copyEnd{side, err}
 			return
 		}
 	}
