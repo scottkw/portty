@@ -44,8 +44,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
-	// MC-03, MC-05: parse client metadata from URL query params at upgrade time.
-	readonly := r.URL.Query().Get("readonly") == "1" || r.URL.Query().Get("readonly") == "true"
+	// MC-05: parse client metadata from URL query params at upgrade time.
+	// Local subscribers are never read-only; only the webserver sets ReadOnly,
+	// from the verified capability's write perm.
 	clientName := r.URL.Query().Get("client")
 	if len(clientName) > 64 {
 		clientName = clientName[:64] // cap identity name to prevent injection
@@ -83,9 +84,8 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	// Create subscriber with a buffered channel. CloseSlow disconnects the client
 	// when the buffer fills up, preventing a slow client from blocking fan-out.
 	sub := &Subscriber{
-		Msgs:     make(chan []byte, 256),
-		ReadOnly: readonly,
-		Name:     clientName,
+		Msgs: make(chan []byte, 256),
+		Name: clientName,
 	}
 	sub.CloseSlow = func() {
 		conn.Close(websocket.StatusPolicyViolation, "too slow")

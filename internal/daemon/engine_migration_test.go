@@ -247,10 +247,6 @@ func TestSettingsMigration_LegacyV4Keys(t *testing.T) {
 	}
 	e.loadSettingsFromDisk(dir)
 
-	if !e.GetShellWebShareWarned() {
-		t.Error("shellWebShareWarned = false, want true (kept value must survive)")
-	}
-
 	e.mu.Lock()
 	e.saveSettingsToDisk()
 	e.mu.Unlock()
@@ -280,9 +276,6 @@ func TestSettingsMigration_LegacyV4Keys(t *testing.T) {
 			t.Errorf("saved settings.json still contains %s; the removed key should be dropped on save", k)
 		}
 	}
-	if onDisk["shellWebShareWarned"] != true {
-		t.Errorf("kept key lost on save: shellWebShareWarned=%v", onDisk["shellWebShareWarned"])
-	}
 	if _, ok := onDisk["plugins"].(map[string]any); !ok {
 		t.Errorf("saved settings.json lost the plugins block: %v", onDisk["plugins"])
 	}
@@ -309,8 +302,5 @@ func TestNewSessionEngine_FreshInstallDefaults(t *testing.T) {
 	}
 	if got.ImageConfig.StorageLimit != 16 {
 		t.Errorf("fresh install: image storageLimit = %d, want 16", got.ImageConfig.StorageLimit)
-	}
-	if !e.GetShellWebShareWarningEnabled() {
-		t.Error("fresh install: shell web-share warning should default ON")
 	}
 }

@@ -37,13 +37,11 @@ type SessionEngine struct {
 	tabNames        map[string]string // sessionID -> display name
 	sessionWorkDirs map[string]string // sessionID -> EvalSymlinks-resolved absolute WorkDir (Phase 118 / FS-02)
 
-	startMinimized              bool           // persisted start-minimized preference
-	appearance                  string         // persisted Appearance override: system|light|dark ("" reads as system)
-	terminalFontFamily          string         // persisted Terminal Font family ("" = default stack)
-	terminalFontSize            int            // persisted Terminal Font size (0 reads as DefaultTerminalFontSize)
-	shellWebShareWarned         bool           // Phase 101 SHELL-08: user has acknowledged the shell web-share security banner
-	shellWebShareWarningEnabled *bool          // Phase 150 SET-01: master warning switch; nil = default (true per D-08)
-	pluginSettings              PluginSettings // populated by loadSettingsFromDisk via defaults-merge
+	startMinimized     bool           // persisted start-minimized preference
+	appearance         string         // persisted Appearance override: system|light|dark ("" reads as system)
+	terminalFontFamily string         // persisted Terminal Font family ("" = default stack)
+	terminalFontSize   int            // persisted Terminal Font size (0 reads as DefaultTerminalFontSize)
+	pluginSettings     PluginSettings // populated by loadSettingsFromDisk via defaults-merge
 
 	// pluginSettingsListener (if non-nil) is invoked synchronously by
 	// SetPluginSettings AFTER the new value is persisted, while the engine
@@ -81,14 +79,12 @@ func daemonConfigDir() string {
 // Legacy keys from older settings files that are no longer struct fields (e.g. the removed
 // files write default) are ignored by json.Unmarshal and dropped on save.
 type daemonSettings struct {
-	StartMinimized              bool           `json:"startMinimized,omitempty"`
-	Appearance                  string         `json:"appearance,omitempty"`
-	TerminalFontFamily          string         `json:"terminalFontFamily,omitempty"`
-	TerminalFontSize            int            `json:"terminalFontSize,omitempty"`
-	ShellWebShareWarned         bool           `json:"shellWebShareWarned,omitempty"`
-	ShellWebShareWarningEnabled *bool          `json:"shellWebShareWarningEnabled,omitempty"` // Phase 150 SET-01: *bool so omitempty omits false; nil → default true (D-08)
-	Plugins                     PluginSettings `json:"plugins"`
-	SchemaVersion               int            `json:"schemaVersion"`
+	StartMinimized     bool           `json:"startMinimized,omitempty"`
+	Appearance         string         `json:"appearance,omitempty"`
+	TerminalFontFamily string         `json:"terminalFontFamily,omitempty"`
+	TerminalFontSize   int            `json:"terminalFontSize,omitempty"`
+	Plugins            PluginSettings `json:"plugins"`
+	SchemaVersion      int            `json:"schemaVersion"`
 }
 
 // settingsPath returns the path to settings.json inside the config dir.
@@ -128,15 +124,6 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 	e.appearance = normalizeAppearance(s.Appearance)
 	f := normalizeTerminalFont(TerminalFont{Family: s.TerminalFontFamily, Size: s.TerminalFontSize})
 	e.terminalFontFamily, e.terminalFontSize = f.Family, f.Size
-	e.shellWebShareWarned = s.ShellWebShareWarned
-	e.shellWebShareWarningEnabled = s.ShellWebShareWarningEnabled
-	// nil pointer = not set in settings.json = fresh install → default ON (D-08).
-	// Unlike shellWebShareWarned (plain bool, default false), this new field defaults
-	// to true, so we must use *bool and handle nil explicitly.
-	if e.shellWebShareWarningEnabled == nil {
-		t := true
-		e.shellWebShareWarningEnabled = &t
-	}
 	e.pluginSettings = s.Plugins
 	// Detect upgrade-path: the on-disk schemaVersion was below
 	// CurrentSchemaVersion (e.g. v3.1 file with no key → 0). Re-save so
@@ -158,14 +145,12 @@ func (e *SessionEngine) loadSettingsFromDisk(dir string) {
 // Caller holds e.mu.Lock().
 func (e *SessionEngine) saveSettingsToDisk() {
 	s := daemonSettings{
-		StartMinimized:              e.startMinimized,
-		Appearance:                  e.appearance,
-		TerminalFontFamily:          e.terminalFontFamily,
-		TerminalFontSize:            e.terminalFontSize,
-		ShellWebShareWarned:         e.shellWebShareWarned,
-		ShellWebShareWarningEnabled: e.shellWebShareWarningEnabled,
-		Plugins:                     e.pluginSettings,
-		SchemaVersion:               CurrentSchemaVersion,
+		StartMinimized:     e.startMinimized,
+		Appearance:         e.appearance,
+		TerminalFontFamily: e.terminalFontFamily,
+		TerminalFontSize:   e.terminalFontSize,
+		Plugins:            e.pluginSettings,
+		SchemaVersion:      CurrentSchemaVersion,
 	}
 	data, err := json.Marshal(s)
 	if err != nil {
@@ -198,7 +183,6 @@ const sessionShell = "/bin/zsh"
 func NewSessionEngine() *SessionEngine {
 	hostname, _ := os.Hostname()
 	cfgDir := daemonConfigDir()
-	warningEnabled := true // D-08 default ON
 	e := &SessionEngine{
 		hostname:        hostname,
 		configDir:       cfgDir,
@@ -209,8 +193,7 @@ func NewSessionEngine() *SessionEngine {
 		sessionWorkDirs: make(map[string]string),
 		// Fresh install: loadSettingsFromDisk returns early when settings.json
 		// is missing or unreadable, so start from the defaults it would merge.
-		pluginSettings:              defaultPluginSettings(),
-		shellWebShareWarningEnabled: &warningEnabled,
+		pluginSettings: defaultPluginSettings(),
 	}
 	// -l because go-pty discards Args[0], so the argv0 "-zsh" login trick is impossible.
 	e.spawnCommand = func() (string, []string) { return sessionShell, []string{"-l"} }
@@ -723,54 +706,6 @@ func (e *SessionEngine) SetTerminalFont(f TerminalFont) error {
 	if listener != nil {
 		listener()
 	}
-	return nil
-}
-
-// GetShellWebShareWarned returns the persisted "user has acknowledged the
-// shell web-share security banner" flag. Phase 101 SHELL-08.
-func (e *SessionEngine) GetShellWebShareWarned() bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.shellWebShareWarned
-}
-
-// SetShellWebShareWarned persists the shell-web-share-warned flag.
-// Returns an error path for symmetry with future-proofed callers; the
-// underlying saveSettingsToDisk swallows IO errors today, so this currently
-// always returns nil.
-func (e *SessionEngine) SetShellWebShareWarned(val bool) error {
-	e.mu.Lock()
-	e.shellWebShareWarned = val
-	e.saveSettingsToDisk()
-	e.mu.Unlock()
-	return nil
-}
-
-// GetShellWebShareWarningEnabled returns the warning-enabled master switch.
-// Returns true when not set (nil pointer = default ON per D-08). Phase 150 SET-01.
-func (e *SessionEngine) GetShellWebShareWarningEnabled() bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	if e.shellWebShareWarningEnabled == nil {
-		return true
-	}
-	return *e.shellWebShareWarningEnabled
-}
-
-// SetShellWebShareWarningEnabled persists the warning-enabled master switch.
-// D-03 re-arm: when enabling (val=true), atomically resets shellWebShareWarned
-// to false so the one-time banner shows again on the next shell web-share.
-// Both fields are written in a single saveSettingsToDisk call (atomic).
-// Phase 150 SET-01.
-func (e *SessionEngine) SetShellWebShareWarningEnabled(val bool) error {
-	e.mu.Lock()
-	e.shellWebShareWarningEnabled = &val
-	if val {
-		// Re-arm (D-03): reset the one-time acknowledged flag.
-		e.shellWebShareWarned = false
-	}
-	e.saveSettingsToDisk()
-	e.mu.Unlock()
 	return nil
 }
 

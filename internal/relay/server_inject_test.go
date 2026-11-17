@@ -175,26 +175,6 @@ func TestRetiredFrames_RW_RelayPath(t *testing.T) {
 	waitForCount(t, ptyWriteCount, 1)
 }
 
-// TestRetiredFrames_RO_RelayPath: a read-only client's retired frames and its
-// MsgInput write nothing, and its socket stays subscribed afterwards.
-func TestRetiredFrames_RO_RelayPath(t *testing.T) {
-	ts, _, sessionID, ptyWriteCount := setupInjectTestServer(t)
-	conn := dialInjectWS(t, ts, sessionID, "readonly=1")
-	frames := collectFrames(conn)
-
-	sendRetiredFrames(t, conn)
-	sendInput(t, conn)
-	waitForCount(t, ptyWriteCount, 0)
-	sendInput(t, conn) // still writable
-
-	// A second viewer joining is broadcast to the first only if it is still subscribed.
-	dialInjectWS(t, ts, sessionID, "readonly=1")
-	frames.waitForViewerCount(t, 2)
-	if got := ptyWriteCount.Load(); got != 0 {
-		t.Errorf("PTY write count = %d for a read-only client, want 0", got)
-	}
-}
-
 // TestRetiredFrames_NoServerFrames_RelayPath: nothing the server sends after
 // connect, retired frames or input has a type byte in 0x30-0x37.
 func TestRetiredFrames_NoServerFrames_RelayPath(t *testing.T) {

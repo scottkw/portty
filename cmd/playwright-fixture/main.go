@@ -26,9 +26,7 @@
 //
 //	BASE_URL=https://127.0.0.1:PORT
 //	CAP=<token>
-//	VIEWER_CAP=<token>
 //	ADMIN_URL=http://127.0.0.1:ADMIN_PORT
-//	REMOTE_PEER_URL=https://127.0.0.1:PEER_PORT
 //	READY=1
 //
 // The Playwright config's webServer.url field is used to wait for readiness.
@@ -143,8 +141,8 @@ func main() {
 		log.Fatalf("ws.Start: %v", err)
 	}
 
-	// 6. Mint two capabilities for the test session, matching what the daemon
-	//    mints for a share: OWNER cap "read,write", VIEWER cap "read".
+	// 6. Mint the capability for the test session, matching what the daemon
+	//    mints for a share: one full-control cap, "read,write".
 	ownerClaims := capability.Claims{
 		SID:     sessionID,
 		Perms:   "read,write",
@@ -157,26 +155,6 @@ func main() {
 		log.Fatalf("capability.Sign owner: %v", err)
 	}
 	ws.AddGrant(sessionID, ownerClaims.GrantID)
-
-	viewerClaims := capability.Claims{
-		SID:     sessionID,
-		Perms:   "read",
-		IAT:     time.Now().Unix(),
-		GrantID: "grant-playwright-fixture-viewer",
-		V:       1,
-	}
-	viewerToken, err := capability.Sign(viewerClaims, fixedTestKey)
-	if err != nil {
-		log.Fatalf("capability.Sign viewer: %v", err)
-	}
-	ws.AddGrant(sessionID, viewerClaims.GrantID)
-
-	// 6b. Phase 122-05 — mock "remote peer" webserver on a second TLS port.
-	//     Mimics a peer on the tailnet for remote-session join scenarios. Serves:
-	//        POST /join/exchange → 303 Location: /sessions/peer-sid?cap=FIXTURE_CAP
-	//     Listener address is published via the REMOTE_PEER_URL line.
-	remotePeerURL, remotePeerStop := startRemotePeerFixture(tlsCfg)
-	defer remotePeerStop()
 
 	// 7. Admin HTTP server (plain, separate port) for /__test__/plugin-config.
 	adminLn, err := net.Listen("tcp", "127.0.0.1:0")
@@ -227,9 +205,7 @@ func main() {
 	adminURL := "http://" + adminLn.Addr().String()
 	fmt.Printf("BASE_URL=%s\n", baseURL)
 	fmt.Printf("CAP=%s\n", token)
-	fmt.Printf("VIEWER_CAP=%s\n", viewerToken)
 	fmt.Printf("ADMIN_URL=%s\n", adminURL)
-	fmt.Printf("REMOTE_PEER_URL=%s\n", remotePeerURL)
 	fmt.Println("READY=1")
 
 	// 9. Wait for SIGTERM/SIGINT, then clean up.
@@ -265,52 +241,6 @@ func mustMarshal(v any) []byte {
 		panic(err)
 	}
 	return data
-}
-
-// startRemotePeerFixture stands up a second TLS listener that mimics a remote
-// peer on the tailnet for remote-session join scenarios. Returns the base URL
-// ("https://127.0.0.1:PORT") and a stop closure the caller defers.
-//
-//	POST /join/exchange → 303 Location: /sessions/peer-sid?cap=FIXTURE_CAP
-//
-// We reuse the same self-signed TLS config as the main webserver because
-// (a) it's already valid for 127.0.0.1 and (b) the e2e specs use
-// ignoreHTTPSErrors anyway. The shared config is fine — TLS handshake is
-// stateless per connection.
-func startRemotePeerFixture(tlsCfg *tls.Config) (baseURL string, stop func()) {
-	const (
-		fixtureRemoteCap     = "FIXTURE_CAP"
-		fixtureRemoteSession = "peer-sid"
-	)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /join/exchange", func(w http.ResponseWriter, r *http.Request) {
-		// Accept any code (the fixture isn't validating the code itself —
-		// the test asserts on the redirect contract).
-		w.Header().Set("Location", "/sessions/"+fixtureRemoteSession+"?cap="+fixtureRemoteCap)
-		w.WriteHeader(http.StatusSeeOther)
-	})
-
-	ln, err := tls.Listen("tcp", "127.0.0.1:0", tlsCfg)
-	if err != nil {
-		log.Fatalf("remote-peer listen: %v", err)
-	}
-
-	srv := &http.Server{
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-	go func() {
-		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			log.Printf("remote-peer Serve: %v", err)
-		}
-	}()
-
-	return "https://" + ln.Addr().String(), func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutdownCtx)
-	}
 }
 
 // selfSignedTLS generates an in-memory self-signed CA + leaf for 127.0.0.1.

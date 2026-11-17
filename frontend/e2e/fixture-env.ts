@@ -1,7 +1,6 @@
 // Phase 93 Plan 05 — fixture-env loader for Playwright specs.
 // Reads .playwright/fixture-env.json (written by global-setup.ts) and
-// returns the BASE_URL / CAP / VIEWER_CAP / ADMIN_URL the test fixture
-// exposed. VIEWER_CAP is the read-only cap.
+// returns the BASE_URL / CAP / ADMIN_URL the test fixture exposed.
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -9,16 +8,7 @@ import { resolve } from 'node:path'
 export interface FixtureEnv {
   baseURL: string
   cap: string
-  viewerCap: string
   adminURL: string
-  /**
-   * Phase 122-05 — mock "remote peer" webserver URL used by remote-session
-   * scenarios (16+17). The fixture's second TLS listener serves a canned
-   * /api/files contract behind a fixed cap token ("FIXTURE_CAP"). Tests
-   * point a fetch at this URL to verify the upstream contract that the
-   * desktop GUI / TUI remote-file paths depend on.
-   */
-  remotePeerURL: string
   pid: number
 }
 
@@ -48,9 +38,4 @@ export function sessionURL(env: FixtureEnv = loadFixtureEnv()): string {
  */
 export function appUrl(env: FixtureEnv = loadFixtureEnv()): string {
   return `${env.baseURL}/app/?session=playwright-test-session&cap=${encodeURIComponent(env.cap)}`
-}
-
-/** Same as appUrl but with the read-only viewer cap. */
-export function viewerAppUrl(env: FixtureEnv = loadFixtureEnv()): string {
-  return `${env.baseURL}/app/?session=playwright-test-session&cap=${encodeURIComponent(env.viewerCap)}`
 }

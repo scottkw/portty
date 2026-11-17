@@ -82,10 +82,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("PATCH /settings/appearance", a.handleSetAppearance)
 	a.mux.HandleFunc("GET /settings/terminal-font", a.handleGetTerminalFont)
 	a.mux.HandleFunc("PATCH /settings/terminal-font", a.handleSetTerminalFont)
-	a.mux.HandleFunc("GET /settings/shell-web-share-warned", a.handleGetShellWebShareWarned)
-	a.mux.HandleFunc("PATCH /settings/shell-web-share-warned", a.handleUpdateShellWebShareWarned)
-	a.mux.HandleFunc("GET /settings/shell-web-share-warning-enabled", a.handleGetShellWebShareWarningEnabled)
-	a.mux.HandleFunc("PATCH /settings/shell-web-share-warning-enabled", a.handleSetShellWebShareWarningEnabled)
 	a.mux.HandleFunc("GET /settings/plugins", a.handleGetPluginSettings)
 	a.mux.HandleFunc("PATCH /settings/plugins", a.handleSetPluginSettings)
 	a.mux.HandleFunc("PATCH /settings/search-config", a.handleSetSearchConfig)
@@ -634,53 +630,6 @@ func (a *API) handleSetTerminalFont(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleGetShellWebShareWarned returns the persisted shell-web-share-warned
-// flag wrapped in `{"value": <bool>}`. Phase 101 SHELL-08.
-func (a *API) handleGetShellWebShareWarned(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"value": a.engine.GetShellWebShareWarned()})
-}
-
-// handleUpdateShellWebShareWarned accepts `{"value": <bool>}` and persists
-// the shell-web-share-warned flag. Phase 101 SHELL-08.
-func (a *API) handleUpdateShellWebShareWarned(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Value bool `json:"value"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if err := a.engine.SetShellWebShareWarned(req.Value); err != nil {
-		http.Error(w, fmt.Sprintf("persist: %v", err), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleGetShellWebShareWarningEnabled returns the warning-enabled master switch
-// wrapped in `{"value": <bool>}`. Defaults true (D-08). Phase 150 SET-01.
-func (a *API) handleGetShellWebShareWarningEnabled(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"value": a.engine.GetShellWebShareWarningEnabled()})
-}
-
-// handleSetShellWebShareWarningEnabled accepts `{"value": <bool>}` and persists
-// the warning-enabled master switch. When val=true the engine atomically resets
-// shellWebShareWarned (D-03 re-arm). Phase 150 SET-01.
-func (a *API) handleSetShellWebShareWarningEnabled(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Value bool `json:"value"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if err := a.engine.SetShellWebShareWarningEnabled(req.Value); err != nil {
-		http.Error(w, fmt.Sprintf("persist: %v", err), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // handleGetPluginSettings returns the engine's current PluginSettings as a
 // JSON object (direct struct shape — no wrapper map).
 func (a *API) handleGetPluginSettings(w http.ResponseWriter, r *http.Request) {
@@ -717,7 +666,7 @@ func (a *API) handleSetPluginSettings(w http.ResponseWriter, r *http.Request) {
 //
 // The route is PATCH /settings/search-config — sibling to /settings/plugins —
 // chosen for symmetry with the other sub-key-style PATCH /settings/* routes
-// (e.g. /settings/shell-web-share-warning-enabled).
+// (e.g. /settings/web-links-config).
 func (a *API) handleSetSearchConfig(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 

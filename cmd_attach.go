@@ -32,13 +32,10 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 
 	// Parse optional flags. Default detach key: Ctrl-backslash (0x1C).
 	detachKey := byte(0x1C)
-	readOnly := false
 	clientName := ""
 	statusTop := false
 	for _, arg := range args[1:] {
-		if arg == "--readonly" {
-			readOnly = true
-		} else if arg == "--status-top" {
+		if arg == "--status-top" {
 			statusTop = true
 		} else if len(arg) > 9 && arg[:9] == "--client=" {
 			clientName = arg[9:]
@@ -88,16 +85,13 @@ func cmdAttach(client *daemon.DaemonClient, args []string) error {
 		return fmt.Errorf("attach: session %q not found", sessionID)
 	}
 
-	// MC-03, MC-05: build WebSocket URL with optional query params.
+	// MC-05: build WebSocket URL with optional query params.
 	u := url.URL{
 		Scheme: "ws",
 		Host:   fmt.Sprintf("127.0.0.1:%d", port),
 		Path:   fmt.Sprintf("/sessions/%s/ws", sessionID),
 	}
 	q := url.Values{}
-	if readOnly {
-		q.Set("readonly", "1")
-	}
 	if clientName != "" {
 		q.Set("client", clientName)
 	}

@@ -62,7 +62,7 @@ type App struct {
 	client           *daemon.DaemonClient // only daemon communication field; set in NewApp, before Wails starts any goroutine (nil only in tests)
 	trayInit         bool                 // true once initTray has been called
 	lastTrayQuartile atomic.Int32         // Phase 98 PRG-03 — last applied tray progress quartile [0..4]; -1 = unset. Atomic because written by Wails RPC goroutine (SetTrayProgress) and read by startTrayPoller goroutine via trayIconBytesForState (CR-01).
-	daemonErr        error                // non-nil when EnsureDaemon failed; read only after startupDone (awaitStartup)
+	daemonErr        error                // non-nil when EnsureDaemon failed; read it only after startupDone (awaitStartup)
 	quitting         bool                 // true when tray Quit was clicked; lets beforeClose allow exit
 	// Update checker state
 	lastUpdate   *updater.UpdateInfo
@@ -490,54 +490,6 @@ func (a *App) GetSessionTailLines(id string, n int) []string {
 		return []string{}
 	}
 	return lines
-}
-
-// GetShellWebShareWarned returns the persisted "user has been warned about shell
-// web-share security implications" flag. Used by ShellWebShareBanner (plan 101-03)
-// to suppress the one-time confirmation banner on subsequent toggles.
-func (a *App) GetShellWebShareWarned() bool {
-	if a.client == nil {
-		return false
-	}
-	warned, err := a.client.GetShellWebShareWarned()
-	if err != nil {
-		return false
-	}
-	return warned
-}
-
-// SetShellWebShareWarned persists the "user has been warned" flag. Called by
-// ShellWebShareBanner (plan 101-03) when the user dismisses the one-time
-// confirmation banner.
-func (a *App) SetShellWebShareWarned(v bool) error {
-	if a.client == nil {
-		return nil
-	}
-	return a.client.SetShellWebShareWarned(v)
-}
-
-// GetShellWebShareWarningEnabled returns the warning-enabled master switch.
-// Returns true (enabled) when the daemon is not connected — safe degradation per D-08.
-// Phase 150 SET-01.
-func (a *App) GetShellWebShareWarningEnabled() bool {
-	if a.client == nil {
-		return true // default ON (not false like GetShellWebShareWarned)
-	}
-	val, err := a.client.GetShellWebShareWarningEnabled()
-	if err != nil {
-		return true // default: enabled (safe degradation per D-08)
-	}
-	return val
-}
-
-// SetShellWebShareWarningEnabled persists the warning-enabled master switch.
-// When enabling, the daemon atomically resets shellWebShareWarned (D-03 re-arm).
-// Phase 150 SET-01.
-func (a *App) SetShellWebShareWarningEnabled(v bool) error {
-	if a.client == nil {
-		return nil
-	}
-	return a.client.SetShellWebShareWarningEnabled(v)
 }
 
 // GetRelayPort returns the TCP port the daemon's relay HTTP server is listening on.

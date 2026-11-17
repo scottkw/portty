@@ -65,8 +65,7 @@ type ImageConfig struct {
 
 // PluginSettings is the persisted user choice for each xterm.js addon
 // shipped by the v3.2 plugin suite. Field names match UI-SPEC ordering.
-// JSON tags are camelCase to match daemonSettings vocabulary (startMinimized,
-// shellWebShareWarned).
+// JSON tags are camelCase to match daemonSettings vocabulary (startMinimized).
 //
 // NO omitempty: missing keys must round-trip as the user's saved choice
 // (which may legitimately be `false`), and Pitfall #14 mandates the

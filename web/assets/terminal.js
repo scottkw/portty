@@ -50,7 +50,6 @@
     let connected = false;
     const statusDot = document.getElementById('status-dot');
     const sessionInfoEl = document.getElementById('session-info');
-    const statusBar = document.getElementById('web-status-bar');
 
     function updateStatusBar(meta, wsConnected) {
       if (meta) {
@@ -247,13 +246,6 @@
       // Production-safe: this is a write-only assignment to the window object,
       // mirrors the pattern already used by the perf harness for `window.term`.
       window.term = term;
-
-      if (isReadOnly) {
-        var badge = document.createElement('span');
-        badge.className = 'readonly-badge';
-        badge.textContent = 'READ ONLY';
-        statusBar.appendChild(badge);
-      }
 
       // Phase 93 WGL-03: software-rasterizer probe (web parity with desktop webglProbe.ts)
       function isSoftwareWebGL() {

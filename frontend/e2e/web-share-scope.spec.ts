@@ -17,7 +17,7 @@
 //   button named /chat/i               — MUST be absent (Portty 02-07, CHAT-01)
 
 import { test, expect } from '@playwright/test'
-import { appUrl, viewerAppUrl, loadFixtureEnv } from './fixture-env'
+import { appUrl, loadFixtureEnv } from './fixture-env'
 
 test.describe('Phase 159-02 — web-share guest scope (WEBCHAT-03)', () => {
   test('web-share /app/ guest sees the scoped session surface, NOT the desktop Sidebar', async ({ browser }) => {
@@ -46,10 +46,11 @@ test.describe('Phase 159-02 — web-share guest scope (WEBCHAT-03)', () => {
   })
 
   // WEBCHAT-05 + Phase 01-02: a web-share guest gets no session-menu chevron and
-  // no file tab, whatever perms the cap carries. Rename / Save Terminal As are
+  // no file tab. Rename / Save Terminal As are
   // Wails RPCs with no browser bridge, and the file browser is gone, so the menu
   // has nothing to offer. Double-click rename is disabled too.
-  for (const [label, urlFor] of [['owner', appUrl], ['viewer', viewerAppUrl]] as const) {
+  // Every share cap is full control (SHAR-02), so the owner cap is the only case.
+  for (const [label, urlFor] of [['owner', appUrl]] as const) {
     test(`${label} cap: no session-menu chevron, no file tab, no double-click rename`, async ({ browser }) => {
       const env = loadFixtureEnv()
       const ctx = await browser.newContext({ ignoreHTTPSErrors: true })

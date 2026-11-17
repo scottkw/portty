@@ -153,41 +153,6 @@ func (c *DaemonClient) SetTerminalFont(f TerminalFont) error {
 	return c.doJSON(http.MethodPatch, "/settings/terminal-font", f, nil)
 }
 
-// GetShellWebShareWarned returns the persisted shell-web-share-warned flag.
-// Phase 101 SHELL-08.
-func (c *DaemonClient) GetShellWebShareWarned() (bool, error) {
-	var resp map[string]bool
-	if err := c.doJSON(http.MethodGet, "/settings/shell-web-share-warned", nil, &resp); err != nil {
-		return false, err
-	}
-	return resp["value"], nil
-}
-
-// SetShellWebShareWarned persists the shell-web-share-warned flag.
-// Phase 101 SHELL-08.
-func (c *DaemonClient) SetShellWebShareWarned(val bool) error {
-	return c.doJSON(http.MethodPatch, "/settings/shell-web-share-warned",
-		map[string]bool{"value": val}, nil)
-}
-
-// GetShellWebShareWarningEnabled returns the warning-enabled master switch.
-// Phase 150 SET-01.
-func (c *DaemonClient) GetShellWebShareWarningEnabled() (bool, error) {
-	var resp map[string]bool
-	if err := c.doJSON(http.MethodGet, "/settings/shell-web-share-warning-enabled", nil, &resp); err != nil {
-		return false, err
-	}
-	return resp["value"], nil
-}
-
-// SetShellWebShareWarningEnabled persists the warning-enabled master switch.
-// When val=true the engine atomically resets shellWebShareWarned (D-03 re-arm).
-// Phase 150 SET-01.
-func (c *DaemonClient) SetShellWebShareWarningEnabled(val bool) error {
-	return c.doJSON(http.MethodPatch, "/settings/shell-web-share-warning-enabled",
-		map[string]bool{"value": val}, nil)
-}
-
 // GetPluginSettings fetches the persisted plugin enable/disable preferences.
 func (c *DaemonClient) GetPluginSettings() (PluginSettings, error) {
 	var resp PluginSettings
