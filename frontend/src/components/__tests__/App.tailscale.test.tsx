@@ -1,13 +1,23 @@
 /**
  * NET-01 — App.tsx Tailscale-off contract (CONTEXT Amendment 1).
  *
- * While Tailscale is not connected: Share controls are disabled with the
- * NET-01 reason, an open Share dialog closes, and the remote-peer poll is
- * skipped with remotePeers cleared. Focus and visibility changes recheck
- * the connection. Source inspection (`App.tsx?raw`), like the other App tests.
+ * While Tailscale is not connected: turning Share on is blocked with the NET-01
+ * reason, a shared session's Shared button still opens the popover so Share can
+ * be turned off (04-09, user decision 2026-11-17), and the remote-peer poll is
+ * skipped with remotePeers cleared. Focus and visibility changes recheck the
+ * connection. Mostly source inspection (`App.tsx?raw`); the Share button cases
+ * mount the real App (appHarness).
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import React, { act } from 'react'
 import raw from '../../App.tsx?raw'
+import { TAILSCALE_OFF_REASON } from '../../lib/tailscale'
+import { mountApp, unmountApp, flush } from './appHarness'
+
+// jsdom has no xterm.
+vi.mock('../TerminalPanel', () => ({
+  TerminalPanel: () => React.createElement('div', { 'data-testid': 'terminal-panel' }),
+}))
 
 /** Slice from `marker` to the first `end` after it. */
 function slice(marker: string, end: string): string {
@@ -94,11 +104,13 @@ describe('App.tsx NET-01: tailscale:health handler', () => {
 })
 
 describe('App.tsx NET-01: Share controls', () => {
-  // Portty 02-08: the toolbar Share button takes aria-disabled from tailscaleOff
-  // (TabBar.test.tsx covers aria-describedby="ts-off-reason").
-  it('TabBar receives shareDisabled from tailscaleOff', () => {
+  // Portty 02-08 / 04-09: the toolbar Share button is aria-disabled while Tailscale
+  // is off and the session is not shared (TabBar.test.tsx covers aria-describedby).
+  it('TabBar receives shareDisabled from tailscaleOff && !activeShared', () => {
     const idx = raw.indexOf('<TabBar')
-    expect(raw.slice(idx, raw.indexOf('/>', idx))).toContain('shareDisabled={tailscaleOff}')
+    const props = raw.slice(idx, raw.indexOf('/>', idx))
+    expect(props).toContain('shareDisabled={tailscaleOff && !activeShared}')
+    expect(props).toContain('shared={activeShared}')
   })
 
   // Portty 04-05 (UI-SPEC): the popover stays open when Tailscale drops and shows
@@ -118,5 +130,67 @@ describe('App.tsx NET-01: no Tailscale install flow', () => {
   it('does not import or call AutoInstallTailscale', () => {
     expect(raw).not.toContain('AutoInstallTailscale')
     expect(raw).not.toContain('tailscale:install')
+  })
+})
+
+// 04-09 (UAT gap 3, user decision 2026-11-17: Button opens when shared).
+describe('App — Tailscale off: the toolbar Share button (mounted)', () => {
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks() })
+
+  function impl(webEnabled: boolean, setShared: (...a: unknown[]) => unknown) {
+    return {
+      GetRelayPort: () => 0,
+      GetTailscaleStatus: () => ({ connected: false, hasCerts: false, ip: '', domain: '' }),
+      ListSessions: () => [{
+        id: 'sess-1', name: 'shell 1', state: 'running', status: 'idle', createdAt: '', hostname: '',
+        webEnabled, viewerCount: 0, workDir: '/',
+      }],
+      GetSessionShare: () => ({ shared: true, url: 'https://office-air.tail1234.ts.net:7444/sessions/sess-1?cap=CAP', errorCode: '', errorDetail: '' }),
+      SetSessionShared: setShared,
+      HasCTDisclosure: () => true,
+    }
+  }
+
+  const button = (c: HTMLElement) => c.querySelector<HTMLButtonElement>('.toolbar-share')!
+  const dialog = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label="Share “shell 1”"]')
+
+  async function click(el: HTMLElement) {
+    await act(async () => { el.click() })
+    await flush()
+  }
+
+  it('a shared session: the Shared button opens the popover, which shows the reason and turns Share off', async () => {
+    const setShared = vi.fn(() => ({ shared: false, url: '', errorCode: '', errorDetail: '' }))
+    const c = await mountApp(impl(true, setShared))
+    const btn = button(c)
+    expect(btn.textContent).toBe('Shared')
+    expect(btn.hasAttribute('aria-disabled')).toBe(false)
+    expect(btn.hasAttribute('aria-describedby')).toBe(false)
+
+    await click(btn)
+    const d = dialog()
+    expect(d, 'Share popover opens').not.toBeNull()
+    expect(d!.textContent).toContain(TAILSCALE_OFF_REASON)
+    expect(d!.querySelector('[aria-label="Share link"]')).toBeNull()
+    const sw = d!.querySelector<HTMLButtonElement>('[role="switch"]')!
+    expect(sw.getAttribute('aria-checked')).toBe('true')
+    expect(sw.hasAttribute('aria-disabled')).toBe(false)
+
+    await click(sw)
+    expect(setShared).toHaveBeenCalledTimes(1)
+    expect(setShared).toHaveBeenCalledWith('sess-1', false)
+  })
+
+  it('an unshared session: the Share button is aria-disabled and opens nothing', async () => {
+    const setShared = vi.fn()
+    const c = await mountApp(impl(false, setShared))
+    const btn = button(c)
+    expect(btn.textContent).toBe('Share')
+    expect(btn.getAttribute('aria-disabled')).toBe('true')
+    expect(btn.getAttribute('aria-describedby')).toBe('ts-off-reason')
+
+    await click(btn)
+    expect(dialog()).toBeNull()
+    expect(setShared).not.toHaveBeenCalled()
   })
 })
