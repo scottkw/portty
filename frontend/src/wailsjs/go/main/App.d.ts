@@ -178,6 +178,19 @@ export interface ShareResult {
 export function GetSessionShare(sessionID: string): Promise<ShareResult>
 export function SetSessionShared(sessionID: string, shared: boolean): Promise<ShareResult>
 
+// Portty 04-04: connect to a session shared from another Mac on the same
+// Tailscale account. Never throws: errorCode is one of tailscale_off,
+// unknown_host, not_sharing, no_such_session, ambiguous, multiple, forbidden,
+// unreachable. The daemon keeps the cap; attach via /api/relay/remote/{sessionId}/ws.
+export interface PeerConnectResult {
+  sessionId: string
+  name: string
+  host: string
+  url: string
+  errorCode: string
+}
+export function ConnectPeerSession(host: string, sessionID: string): Promise<PeerConnectResult>
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export interface IssueCapabilitiesResponse {
   readUrl: string

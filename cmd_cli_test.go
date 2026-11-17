@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/tailnet"
 	"github.com/scottkw/portty/internal/webserver"
 )
 
@@ -322,8 +323,8 @@ func TestCmdList_JSON_WithHostField(t *testing.T) {
 }
 
 // TestUsage_RemoteSessionDocs verifies that the usage text documents remote
-// session features including the Remote Sessions section, hostname:session-id
-// example, --local flag, and updated descriptions (REM-05).
+// session features: the Remote Sessions section, the host:session attach line
+// with its example, the --local flag (REM-05, SHAR-06).
 func TestUsage_RemoteSessionDocs(t *testing.T) {
 	// Read cmd_cli.go source to verify usage text content.
 	// Since usage() writes to os.Stderr directly, we use source inspection.
@@ -338,11 +339,11 @@ func TestUsage_RemoteSessionDocs(t *testing.T) {
 		needle string
 	}{
 		{"Remote Sessions section header", "Remote Sessions:"},
-		{"hostname:session-id example", "hostname:session-id"},
+		{"host:session attach line", "attach <host>:<session>"},
 		{"--local flag in list line", "--local"},
 		{"List local and remote sessions", "List local and remote sessions"},
-		{"Attach to a local or remote session", "Attach to a local or remote session"},
-		{"macbook:abc123 example", "macbook:abc123"},
+		{"local attach line", "Attach to a session on this Mac"},
+		{"remote attach example", "Attach to a session shared from another Mac (e.g., office-air:build)"},
 	}
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {
@@ -526,5 +527,25 @@ func TestUsage_DocumentsNewDir(t *testing.T) {
 		if strings.Contains(content, gone) {
 			t.Errorf("usage() still contains removed form %q", gone)
 		}
+	}
+}
+
+// TestRemoteListGroups (SHAR-01): `portty list` shows reachable peers only, named
+// by their MagicDNS short name (forbidden peers never reach it).
+func TestRemoteListGroups(t *testing.T) {
+	peers := []tailnet.Peer{
+		{Hostname: "Kens-MacBook-Air", DNSName: "office-air.tail1.ts.net."},
+		{Hostname: "asleep", DNSName: "asleep.tail1.ts.net."},
+	}
+	groups := []tailnet.PeerSessionMetaGroup{
+		{Hostname: "Kens-MacBook-Air", Reachable: true, Sessions: []tailnet.ShareableSessionMeta{{ID: "s1", Name: "build", Status: "running"}}},
+		{Hostname: "asleep", Reachable: false, Sessions: []tailnet.ShareableSessionMeta{}},
+	}
+	got := remoteListGroups(peers, groups)
+	if len(got) != 1 || got[0].Hostname != "office-air" || len(got[0].Sessions) != 1 {
+		t.Fatalf("groups = %+v", got)
+	}
+	if s := got[0].Sessions[0]; s.Hostname != "office-air" || s.FQDN != "office-air.tail1.ts.net" || s.ID != "s1" {
+		t.Fatalf("session = %+v", s)
 	}
 }

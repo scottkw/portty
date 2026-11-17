@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -27,7 +28,8 @@ Commands:
   list [--json] [--local]                     List local and remote sessions
   kill <id>                                   Kill a session
   rename <id> <name>                          Rename a session
-  attach <id>                                 Attach to a local or remote session
+  attach <session>                            Attach to a session on this Mac
+  attach <host>:<session>                     Attach to a session shared from another Mac (e.g., office-air:build)
   share <session>                             Share a session with your tailnet
   unshare <session>                           Stop sharing a session and disconnect viewers
   health                                      Check Tailscale health status
@@ -41,9 +43,8 @@ Commands:
     daemon status [--json]                    Show daemon status
 
 Remote Sessions:
-  list                                        Shows local + remote sessions grouped by host
-  list --local                                Shows only local sessions
-  attach <hostname:session-id>                Attach to a remote session (e.g., macbook:abc123)
+  list                                        Shows this Mac's sessions and sessions shared from Macs on your Tailscale account
+  list --local                                Shows only this Mac's sessions
 
 Run 'portty <command> --help' for command-specific flags.
 `)
@@ -112,6 +113,33 @@ type listRemoteGroup struct {
 	Sessions []CLIRemoteSession `json:"sessions"`
 }
 
+// remoteListGroups keeps reachable peers and names each by its MagicDNS short
+// name, the name `portty attach <host>:<session>` takes.
+func remoteListGroups(peers []tailnet.Peer, groups []tailnet.PeerSessionMetaGroup) []listRemoteGroup {
+	byHostname := make(map[string]tailnet.Peer, len(peers))
+	for _, p := range peers {
+		byHostname[p.Hostname] = p
+	}
+	var out []listRemoteGroup
+	for _, g := range groups {
+		if !g.Reachable {
+			continue
+		}
+		p := byHostname[g.Hostname]
+		fqdn := strings.TrimSuffix(p.DNSName, ".")
+		short, _, _ := strings.Cut(fqdn, ".")
+		if short == "" {
+			short = g.Hostname
+		}
+		sessions := make([]CLIRemoteSession, 0, len(g.Sessions))
+		for _, s := range g.Sessions {
+			sessions = append(sessions, CLIRemoteSession{ID: s.ID, Name: s.Name, Status: s.Status, Hostname: short, FQDN: fqdn})
+		}
+		out = append(out, listRemoteGroup{Hostname: short, Sessions: sessions})
+	}
+	return out
+}
+
 // cmdList lists all sessions in a tabwriter table, or as JSON with --json.
 // Includes remote sessions from tailnet peers unless --local is specified.
 func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
@@ -129,30 +157,15 @@ func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
 		sessions = []daemon.SessionInfo{}
 	}
 
-	// Fetch remote sessions (unless --local).
+	// Fetch remote sessions (unless --local). Peers on another Tailscale account
+	// are already dropped by FetchAllPeerSessionsMeta.
 	var remoteGroups []listRemoteGroup
 	if !*localOnly {
 		peers, _ := client.ListTailnetPeers()
 		if len(peers) > 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			groups := tailnet.FetchAllPeerSessions(ctx, peers)
-			for _, g := range groups {
-				cliSessions := make([]CLIRemoteSession, 0, len(g.Sessions))
-				for _, s := range g.Sessions {
-					cliSessions = append(cliSessions, CLIRemoteSession{
-						ID:       s.ID,
-						Name:     s.Name,
-						Status:   s.Status,
-						Hostname: s.Hostname,
-						FQDN:     s.FQDN,
-					})
-				}
-				remoteGroups = append(remoteGroups, listRemoteGroup{
-					Hostname: g.Hostname,
-					Sessions: cliSessions,
-				})
-			}
+			remoteGroups = remoteListGroups(peers, tailnet.FetchAllPeerSessionsMeta(ctx, peers))
 		}
 	}
 

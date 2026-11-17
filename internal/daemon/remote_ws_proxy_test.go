@@ -8,7 +8,7 @@
 // requires), and copies opaque WS frames both ways.
 //
 // They use a fixture TLS peer + newDaemonAPIWithUpstreamCert +
-// depositCapOnSocket (defined below); the fixture peer here serves a cap-guarded WS echo endpoint at /sessions/{id}/ws that asserts the
+// depositCap (defined below); the fixture peer here serves a cap-guarded WS echo endpoint at /sessions/{id}/ws that asserts the
 // ?cap= query param AND a non-empty Origin equal to its own base URL.
 //
 // Lives in package daemon_test.
@@ -16,9 +16,7 @@
 package daemon_test
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -47,25 +45,12 @@ func newDaemonAPIWithUpstreamCert(t *testing.T, upstream *httptest.Server) *daem
 	return api
 }
 
-// depositCapOnSocket deposits the (sessionID, baseURL, capToken) tuple via the
-// Unix-socket mux's POST /api/remote-files/caps. The desktop GUI does this
-// through the Wails Go binding (App.RegisterRemoteCap → DaemonClient over the
-// socket), NOT the webview — so the deposit route is intentionally socket-only
-// and is exercised here through api.Handler() rather than the relay surface.
-func depositCapOnSocket(t *testing.T, socketSrv *httptest.Server, sessionID, baseURL, cap string) {
+// depositCap stores the (sessionID, baseURL, capToken) tuple in the API's
+// RemoteCapStore, as POST /peers/connect does after fetching the peer's cap.
+func depositCap(t *testing.T, api *daemon.API, sessionID, baseURL, cap string) {
 	t.Helper()
-	raw, _ := json.Marshal(map[string]string{
-		"sessionId": sessionID,
-		"baseUrl":   baseURL,
-		"capToken":  cap,
-	})
-	resp, err := http.Post(socketSrv.URL+"/api/remote-files/caps", "application/json", bytes.NewReader(raw))
-	if err != nil {
+	if err := api.PutRemoteCapForTest(sessionID, baseURL, cap); err != nil {
 		t.Fatalf("cap deposit: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("cap deposit status: want 200, got %d", resp.StatusCode)
 	}
 }
 
@@ -175,7 +160,7 @@ func TestRemoteSessionWS_MountedOnRelay(t *testing.T) {
 	relaySrv := httptest.NewServer(api.RelayHandler())
 	defer relaySrv.Close()
 
-	depositCapOnSocket(t, socketSrv, "sid1", peer.srv.URL, fixtureCap)
+	depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -240,7 +225,7 @@ func TestRemoteSessionWS_FrameCopy(t *testing.T) {
 	relaySrv := httptest.NewServer(api.RelayHandler())
 	defer relaySrv.Close()
 
-	depositCapOnSocket(t, socketSrv, "sid1", peer.srv.URL, fixtureCap)
+	depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -278,7 +263,7 @@ func TestRemoteSessionWS_InjectsOrigin(t *testing.T) {
 	relaySrv := httptest.NewServer(api.RelayHandler())
 	defer relaySrv.Close()
 
-	depositCapOnSocket(t, socketSrv, "sid1", peer.srv.URL, fixtureCap)
+	depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -326,7 +311,7 @@ func TestRemoteSessionWS_RejectsCrossSiteOrigin(t *testing.T) {
 	relaySrv := httptest.NewServer(api.RelayHandler())
 	defer relaySrv.Close()
 
-	depositCapOnSocket(t, socketSrv, "sid1", peer.srv.URL, fixtureCap)
+	depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
 
 	req, err := http.NewRequest("GET", relaySrv.URL+"/api/relay/remote/sid1/ws", nil)
 	if err != nil {
@@ -365,7 +350,7 @@ func TestRemoteSessionWS_LongLived(t *testing.T) {
 	relaySrv := httptest.NewServer(api.RelayHandler())
 	defer relaySrv.Close()
 
-	depositCapOnSocket(t, socketSrv, "sid1", peer.srv.URL, fixtureCap)
+	depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -421,7 +406,7 @@ func TestRemoteWSProxy_ForwardsClose(t *testing.T) {
 			defer socketSrv.Close()
 			relaySrv := httptest.NewServer(api.RelayHandler())
 			defer relaySrv.Close()
-			depositCapOnSocket(t, socketSrv, "sid1", upstream.URL, fixtureCap)
+			depositCap(t, api, "sid1", upstream.URL, fixtureCap)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

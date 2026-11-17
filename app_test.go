@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	goruntime "runtime"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/tailnet"
 	"github.com/scottkw/portty/internal/webserver"
 )
 
@@ -438,16 +441,51 @@ func TestNilClientKillSession(t *testing.T) {
 	}
 }
 
-// TestNilClientGetRemoteSessions verifies GetRemoteSessions returns an empty slice
-// (not nil, no panic) when the daemon client is nil.
-func TestNilClientGetRemoteSessions(t *testing.T) {
-	app := testAppNoDaemon(t)
-	peers := app.GetRemoteSessions()
-	if peers == nil {
-		t.Fatal("GetRemoteSessions with nil client returned nil, want empty slice")
+// TestConnectPeerSession (SHAR-06, SHAR-01): the binding returns the daemon's
+// connect result, a typed errorCode for refusals and "unreachable" with no daemon;
+// it never throws.
+func TestConnectPeerSession(t *testing.T) {
+	forbidden := false
+	peer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if forbidden {
+			w.Header().Set(tailnet.MarkerHeader, tailnet.MarkerValue)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		switch r.URL.Path {
+		case "/api/sessions/meta":
+			_, _ = w.Write([]byte(`[{"id":"aaaa1111","name":"build","status":"running"}]`))
+		case "/api/peer/sessions/aaaa1111/cap":
+			_, _ = w.Write([]byte(`{"cap":"TOKEN"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer peer.Close()
+	api, client := testShareSetup(t)
+	api.SetRemoteFilesClientForTest(peer.Client())
+	api.SetPeerSeamsForTest(
+		func(context.Context) ([]tailnet.Peer, error) {
+			return []tailnet.Peer{{Hostname: "Office", DNSName: "office-air.tail1.ts.net.", Online: true}}, nil
+		},
+		func(context.Context) []tailnet.Peer { return nil },
+		func(tailnet.Peer) string { return peer.URL },
+	)
+	app := &App{ctx: context.Background(), client: client}
+
+	got := app.ConnectPeerSession("office-air", "build")
+	if got.ErrorCode != "" || got.SessionID != "aaaa1111" || got.Name != "build" || got.Host != "office-air" || !strings.HasSuffix(got.URL, "/sessions/aaaa1111?cap=TOKEN") {
+		t.Fatalf("ConnectPeerSession = %+v", got)
 	}
-	if len(peers) != 0 {
-		t.Errorf("expected 0 peers, got %d", len(peers))
+	forbidden = true
+	if got := app.ConnectPeerSession("office-air", "build"); got.ErrorCode != daemon.PeerErrForbidden || got.URL != "" {
+		t.Fatalf("other account: %+v; want forbidden", got)
+	}
+	if got := app.ConnectPeerSession("garage", ""); got.ErrorCode != daemon.PeerErrUnknownHost {
+		t.Fatalf("unknown host: %+v", got)
+	}
+	if got := (&App{}).ConnectPeerSession("office-air", "build"); got.ErrorCode != daemon.PeerErrUnreachable {
+		t.Fatalf("no daemon: %+v; want unreachable", got)
 	}
 }
 

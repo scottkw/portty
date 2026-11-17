@@ -44,7 +44,15 @@ func resolveSession(sessions []daemon.SessionInfo, arg string) (daemon.SessionIn
 	if len(byPrefix) == 1 {
 		return byPrefix[0], nil
 	}
-	return daemon.SessionInfo{}, fmt.Errorf("portty: no session named %q. Run 'portty list' to see your sessions.", arg)
+	return daemon.SessionInfo{}, noSessionError{arg}
+}
+
+// noSessionError is resolveSession's no-match error; attach falls back to a
+// host lookup on it.
+type noSessionError struct{ arg string }
+
+func (e noSessionError) Error() string {
+	return fmt.Sprintf("portty: no session named %q. Run 'portty list' to see your sessions.", e.arg)
 }
 
 func lookupSession(client *daemon.DaemonClient, arg string) (daemon.SessionInfo, error) {

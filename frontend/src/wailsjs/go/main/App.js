@@ -113,6 +113,9 @@ export const QuitAll                 = ()                   => Call('main.App.Qu
 export const GetSessionShare         = (sessionID)          => Call('main.App.GetSessionShare', [sessionID])
 export const SetSessionShared        = (sessionID, shared)  => Call('main.App.SetSessionShared', [sessionID, shared])
 
+// Portty 04-04: returns PeerConnectResult and never throws.
+export const ConnectPeerSession      = (host, sessionID)    => Call('main.App.ConnectPeerSession', [host, sessionID])
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export const IssueCapabilities       = (sessionID)          => Call('main.App.IssueCapabilities', [sessionID])
 export const ExchangeJoinCode        = (code)               => Call('main.App.ExchangeJoinCode', [code])

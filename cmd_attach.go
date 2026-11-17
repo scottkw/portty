@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"github.com/coder/websocket"
@@ -50,43 +51,48 @@ func parseAttachFlags(args []string) attachOpts {
 	return o
 }
 
+// errNotTerminal is the attach error for a non-interactive stdin.
+var errNotTerminal = errors.New("portty: attach needs an interactive terminal.")
+
 // cmdAttach connects the local terminal to a session on this Mac or to a session
-// shared from another Mac (<host>:<session>). It sets the terminal to raw mode,
-// relays all I/O, and restores the terminal on every exit path.
+// shared from another Mac. A bare argument is a local session first (exact name,
+// exact ID, unique ID prefix), then a host; <host>:<session> is always remote.
+// It sets the terminal to raw mode, relays all I/O, and restores the terminal
+// on every exit path.
 func cmdAttach(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: portty attach <session> | <host>:<session> | <host>")
 	}
 	opts := parseAttachFlags(args[1:])
-	if host, session, isRemote := parseRemoteID(args[0]); isRemote {
-		return attachRemote(client, host, session, opts)
-	}
-	return attachLocal(client, args[0], opts)
-}
-
-func attachLocal(client *daemon.DaemonClient, sessionID string, opts attachOpts) error {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return fmt.Errorf("attach: stdin is not a terminal")
-	}
-	port, err := client.GetRelayPort()
-	if err != nil {
-		return fmt.Errorf("attach: %w", err)
+	target := args[0]
+	if host, session, isRemote := parseRemoteID(target); isRemote {
+		return attachRemote(client, host, session, opts, os.Stdout, nil)
 	}
 	sessions, err := client.ListSessions()
 	if err != nil {
-		return fmt.Errorf("attach: %w", err)
+		return fmt.Errorf("portty: %w", err)
 	}
-	var session *daemon.SessionInfo
-	for _, s := range sessions {
-		if s.ID == sessionID {
-			session = &s
-			break
-		}
+	s, err := resolveSession(sessions, target)
+	if err == nil {
+		return attachLocal(client, s, opts)
 	}
-	if session == nil {
-		return fmt.Errorf("attach: session %q not found", sessionID)
+	var nse noSessionError
+	if !errors.As(err, &nse) {
+		return err // name clash
 	}
+	// Not a session here: try the argument as a Mac on the tailnet. An unknown
+	// host keeps the local "no session named" error.
+	return attachRemote(client, target, "", opts, os.Stdout, nse)
+}
 
+func attachLocal(client *daemon.DaemonClient, session daemon.SessionInfo, opts attachOpts) error {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return errNotTerminal
+	}
+	port, err := client.GetRelayPort()
+	if err != nil {
+		return fmt.Errorf("portty: %w", err)
+	}
 	// MC-05: build WebSocket URL with optional query params.
 	u := url.URL{
 		Scheme: "ws",
@@ -106,20 +112,91 @@ func attachLocal(client *daemon.DaemonClient, sessionID string, opts attachOpts)
 // attachRemote connects to a session shared from another Mac. The local daemon
 // resolves the host, checks access through the same-account peer routes and
 // holds the capability; the CLI dials the daemon's relay proxy, which injects
-// the Origin and the cap upstream (RESEARCH Pattern 5).
-func attachRemote(client *daemon.DaemonClient, host, session string, opts attachOpts) error {
+// the Origin and the cap upstream (RESEARCH Pattern 5). An empty session
+// attaches the host's only shared session or lists several on out.
+// onUnknownHost, when set, replaces the unknown-host error.
+func attachRemote(client *daemon.DaemonClient, host, session string, opts attachOpts, out io.Writer, onUnknownHost error) error {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return fmt.Errorf("attach: stdin is not a terminal")
+		return errNotTerminal
 	}
 	res, err := client.ConnectPeer(host, session)
-	if err != nil {
-		return fmt.Errorf("attach: %w", err)
+	var pe *daemon.PeerConnectError
+	switch {
+	case errors.As(err, &pe) && pe.Code == daemon.PeerErrMultiple:
+		printSharedSessions(out, peerDisplayHost(pe, host), pe.Sessions)
+		return nil
+	case errors.As(err, &pe) && pe.Code == daemon.PeerErrUnknownHost && onUnknownHost != nil:
+		return onUnknownHost
+	case errors.As(err, &pe):
+		return errors.New(peerConnectMessage(pe, host, session))
+	case err != nil:
+		return fmt.Errorf("portty: %w", err)
 	}
 	port, err := client.GetRelayPort()
 	if err != nil {
-		return fmt.Errorf("attach: %w", err)
+		return fmt.Errorf("portty: %w", err)
 	}
 	return runAttach(remoteRelayURL(port, res.SessionID), res.Name, res.Host, time.Now(), opts, true)
+}
+
+// peerDisplayHost prefers the daemon's MagicDNS short name over what was typed.
+func peerDisplayHost(pe *daemon.PeerConnectError, typed string) string {
+	if pe.Detail != "" {
+		return pe.Detail
+	}
+	return typed
+}
+
+// printSharedSessions lists a host's shared sessions when bare
+// `portty attach <host>` finds more than one (UI-SPEC CLI output).
+func printSharedSessions(out io.Writer, host string, sessions []daemon.PeerSessionChoice) {
+	fmt.Fprintf(out, "%s is sharing %d sessions:\n", host, len(sessions))
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	for _, s := range sessions {
+		fmt.Fprintf(w, "  %s\t%s\n", s.Name, s.ID)
+	}
+	w.Flush()
+	fmt.Fprintf(out, "Run 'portty attach %s:<session>' to attach.\n", host)
+}
+
+// peerConnectMessage is the stderr copy for a failed remote attach (UI-SPEC CLI
+// errors).
+func peerConnectMessage(pe *daemon.PeerConnectError, typedHost, session string) string {
+	host := peerDisplayHost(pe, typedHost)
+	notSharing := fmt.Sprintf("portty: %s isn't sharing any sessions. Turn on Share for a session on %s first.", host, host)
+	switch pe.Code {
+	case daemon.PeerErrTailscaleOff:
+		return "portty: Tailscale isn't connected. Remote access and sharing are off until it is."
+	case daemon.PeerErrUnknownHost:
+		if len(pe.Hosts) == 0 {
+			return "portty: no other Macs running Portty were found. Check that Tailscale is connected on both Macs."
+		}
+		return fmt.Sprintf("portty: no Mac named %q is running Portty on your tailnet. Found: %s.", typedHost, strings.Join(pe.Hosts, ", "))
+	case daemon.PeerErrNotSharing:
+		return notSharing
+	case daemon.PeerErrNoSuchSession:
+		if len(pe.Sessions) == 0 {
+			return notSharing
+		}
+		names := make([]string, len(pe.Sessions))
+		for i, s := range pe.Sessions {
+			names[i] = s.Name
+		}
+		return fmt.Sprintf("portty: %s has no shared session named %q. Shared there: %s.", host, session, strings.Join(names, ", "))
+	case daemon.PeerErrAmbiguous:
+		ids := make([]string, len(pe.Sessions))
+		for i, s := range pe.Sessions {
+			ids[i] = s.ID
+			if len(s.ID) > 8 {
+				ids[i] = s.ID[:8]
+			}
+		}
+		return fmt.Sprintf("portty: more than one session is named %q. Use an ID prefix instead: %s.", session, strings.Join(ids, ", "))
+	case daemon.PeerErrForbidden:
+		return fmt.Sprintf("portty: %s didn't allow access. Sessions are shared only with Macs signed in to the same Tailscale account.", host)
+	default: // unreachable and anything new
+		return fmt.Sprintf("portty: couldn't connect to %s. Check that it's awake and signed in to your Tailscale account.", host)
+	}
 }
 
 // remoteRelayURL is the local daemon's proxy route for a remote session. It
@@ -149,7 +226,7 @@ func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpt
 
 	conn, _, err := websocket.Dial(ctx, wsURL, nil)
 	if err != nil {
-		return fmt.Errorf("attach: dial relay: %w", err)
+		return fmt.Errorf("portty: couldn't reach the session: %w", err)
 	}
 	defer conn.CloseNow()
 
@@ -187,7 +264,7 @@ func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpt
 	// Put terminal in raw mode. Restore on every exit path.
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		return fmt.Errorf("attach: raw mode: %w", err)
+		return fmt.Errorf("portty: raw mode: %w", err)
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState) //nolint:errcheck
 

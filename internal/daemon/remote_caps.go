@@ -48,8 +48,8 @@ func NewRemoteCapStore() *RemoteCapStore {
 
 // Put deposits (baseURL, capToken) for sessionID, overwriting any prior entry
 // for the same sessionID. Empty inputs are rejected with an explicit error
-// rather than silently no-op'd, so the POST /api/remote-files/caps handler
-// can surface 400 to the caller (Pitfall 4 in the plan).
+// rather than silently no-op'd, so POST /peers/connect
+// reports a failure instead of storing a bad entry (Pitfall 4).
 //
 // WR-03: baseURL is validated as a well-formed https:// URL with a non-empty
 // host at deposit time. This prevents proxyRemoteFiles from receiving a

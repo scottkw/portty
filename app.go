@@ -963,53 +963,12 @@ func (a *App) tailscaleCheck(ctx context.Context) webserver.TailscaleHealth {
 	return webserver.CheckHealth(ctx)
 }
 
-// GetRemoteSessions discovers tailnet peers and fetches their session lists.
-// Returns an empty slice if the daemon is unreachable or no peers are found.
-// Individual peer fetch failures are silently omitted.
-// Delegates to tailnet.FetchAllPeerSessions for concurrent fetch with IP fallback.
-func (a *App) GetRemoteSessions() []RemotePeerSessions {
-	if a.client == nil {
-		return []RemotePeerSessions{}
-	}
-	peers, err := a.client.ListTailnetPeers()
-	if err != nil || len(peers) == 0 {
-		return []RemotePeerSessions{}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	groups := tailnet.FetchAllPeerSessions(ctx, peers)
-
-	results := make([]RemotePeerSessions, 0, len(groups))
-	for _, g := range groups {
-		sessions := make([]RemoteSession, 0, len(g.Sessions))
-		for _, s := range g.Sessions {
-			sessions = append(sessions, RemoteSession{
-				ID:     s.ID,
-				Name:   s.Name,
-				Status: s.Status,
-				URL:    s.URL,
-			})
-		}
-		// Every group returned by FetchAllPeerSessions answered the cap-gated
-		// probe, so it is reachable by definition. Set Reachable=true explicitly
-		// to match the RemotePeerSessions semantics of GetRemoteSessionsWithMeta
-		// (WR-04: leaving it defaulted to false mislabels reachable peers as
-		// "Unreachable" in RemoteSessionsPanel for any future caller).
-		results = append(results, RemotePeerSessions{Hostname: g.Hostname, Reachable: true, Sessions: sessions})
-	}
-	return results
-}
-
 // GetRemoteSessionsWithMeta discovers tailnet peers and fetches their shareable-session
 // metadata via the open /api/sessions/meta endpoint (no cap required). Returns ALL
 // probed peers including unreachable ones (Reachable=false) and peers with zero
 // shareable sessions (Reachable=true, len(Sessions)==0) — enabling honest per-peer
 // states in the Remote Sessions panel (RB-01, RB-04).
-//
-// This RPC uses the new tailnet metadata path (FetchAllPeerSessionsMeta) that never
-// silently drops peers, unlike the cap-gated GetRemoteSessions path. GetRemoteSessions
-// is retained for backward compatibility during the plan-04 frontend rewire.
+// Peers signed in to a different Tailscale account are dropped (SHAR-01).
 func (a *App) GetRemoteSessionsWithMeta() []RemotePeerSessions {
 	if a.client == nil {
 		return []RemotePeerSessions{}
@@ -1043,38 +1002,34 @@ func (a *App) GetRemoteSessionsWithMeta() []RemotePeerSessions {
 	return results
 }
 
-// RegisterRemoteCap deposits a (sessionID, remote baseURL, cap token) tuple
-// into the local daemon's RemoteCapStore. OpenRemoteSessionURL and the relay
-// remote terminal WS proxy (/api/relay/remote/{sid}/ws) use this cap.
-// Phase 122-03 / REMOTE-01.
-func (a *App) RegisterRemoteCap(sessionID, baseURL, capToken string) error {
-	if a.client == nil {
-		return fmt.Errorf("daemon not connected")
-	}
-	return a.client.RegisterRemoteCap(sessionID, baseURL, capToken)
+// PeerConnectResult is what ConnectPeerSession returns. It never throws: a
+// failure fills ErrorCode with a POST /peers/connect code, or "unreachable" when
+// the daemon can't be reached. URL is the session's link and carries the cap.
+type PeerConnectResult struct {
+	SessionID string `json:"sessionId"`
+	Name      string `json:"name"`
+	Host      string `json:"host"`
+	URL       string `json:"url"`
+	ErrorCode string `json:"errorCode"`
 }
 
-// OpenRemoteSessionURL returns the cap-bearing open URL for a remote session
-// by reading the already-stored cap from the daemon's RemoteCapStore. The
-// daemon composes baseURL+/sessions/{id}?cap=TOKEN from its own store entry
-// (keyed by sessionID) and returns the full URL as a string.
-//
-// Convention: the frontend receives the
-// composed URL string and opens it via BrowserOpenURL; the raw cap token never
-// enters React state — it lives only inside the returned URL string.
-//
-// Returns an error when the daemon is not connected or when no cap is stored
-// for sessionID (e.g. "status 404"). The caller treats a 404-flavoured error
-// as "no cap held for this session" so a stale/evicted entry
-// self-heals gracefully (T-146-05-02 accept).
-//
-// Do NOT call BrowserOpenURL here — the frontend opens the returned URL,
-// matching the existing exchange→open convention. Phase 146-05 / GAP-146-A.
-func (a *App) OpenRemoteSessionURL(sessionID string) (string, error) {
+// ConnectPeerSession connects to a session shared from another Mac on the same
+// Tailscale account through the daemon (the same path `portty attach` uses).
+// The daemon keeps the capability, so the remote terminal attaches through
+// /api/relay/remote/{sessionId}/ws.
+func (a *App) ConnectPeerSession(host, sessionID string) PeerConnectResult {
 	if a.client == nil {
-		return "", fmt.Errorf("daemon not connected")
+		return PeerConnectResult{ErrorCode: daemon.PeerErrUnreachable}
 	}
-	return a.client.RemoteSessionOpenURL(sessionID)
+	res, err := a.client.ConnectPeer(host, sessionID)
+	if err != nil {
+		var pe *daemon.PeerConnectError
+		if errors.As(err, &pe) {
+			return PeerConnectResult{ErrorCode: pe.Code}
+		}
+		return PeerConnectResult{ErrorCode: daemon.PeerErrUnreachable}
+	}
+	return PeerConnectResult{SessionID: res.SessionID, Name: res.Name, Host: res.Host, URL: res.URL}
 }
 
 // startTrayPoller starts a background goroutine that refreshes tray state

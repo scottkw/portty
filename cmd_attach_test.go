@@ -16,6 +16,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/attach"
+	"github.com/scottkw/portty/internal/daemon"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/statusbar"
 )
@@ -518,5 +519,55 @@ func TestWsOutputPump_IgnoresUnknownFrameTypes(t *testing.T) {
 	}
 	if msgType == relay.MsgOutput || msgType == relay.MsgMeta {
 		t.Errorf("unknown frame type 0xFF should not match known types")
+	}
+}
+
+// TestAttach_MultipleSharedListing (SHAR-06): bare `portty attach <host>` with
+// several shared sessions prints the header, one indented row per session (name
+// then ID) and the hint line.
+func TestAttach_MultipleSharedListing(t *testing.T) {
+	var buf bytes.Buffer
+	printSharedSessions(&buf, "office-air", []daemon.PeerSessionChoice{
+		{ID: "aaaa1111-0000", Name: "build"},
+		{ID: "bbbb2222-0000", Name: "deploy-logs"},
+	})
+	want := "office-air is sharing 2 sessions:\n" +
+		"  build        aaaa1111-0000\n" +
+		"  deploy-logs  bbbb2222-0000\n" +
+		"Run 'portty attach office-air:<session>' to attach.\n"
+	if buf.String() != want {
+		t.Fatalf("listing =\n%q\nwant\n%q", buf.String(), want)
+	}
+}
+
+// TestPeerConnectMessage (SHAR-06, SHAR-01): every connect error maps to its
+// UI-SPEC stderr copy with the portty prefix.
+func TestPeerConnectMessage(t *testing.T) {
+	two := []daemon.PeerSessionChoice{{ID: "aaaa1111-0000", Name: "build"}, {ID: "bbbb2222-0000", Name: "logs"}}
+	cases := []struct {
+		pe   daemon.PeerConnectError
+		want string
+	}{
+		{daemon.PeerConnectError{Code: daemon.PeerErrTailscaleOff}, "portty: Tailscale isn't connected. Remote access and sharing are off until it is."},
+		{daemon.PeerConnectError{Code: daemon.PeerErrUnknownHost, Hosts: []string{"office-air", "home-air"}}, `portty: no Mac named "garage" is running Portty on your tailnet. Found: office-air, home-air.`},
+		{daemon.PeerConnectError{Code: daemon.PeerErrUnknownHost}, "portty: no other Macs running Portty were found. Check that Tailscale is connected on both Macs."},
+		{daemon.PeerConnectError{Code: daemon.PeerErrNotSharing, Detail: "office-air"}, "portty: office-air isn't sharing any sessions. Turn on Share for a session on office-air first."},
+		{daemon.PeerConnectError{Code: daemon.PeerErrNoSuchSession, Detail: "office-air", Sessions: two}, `portty: office-air has no shared session named "deploy". Shared there: build, logs.`},
+		{daemon.PeerConnectError{Code: daemon.PeerErrNoSuchSession, Detail: "office-air"}, "portty: office-air isn't sharing any sessions. Turn on Share for a session on office-air first."},
+		{daemon.PeerConnectError{Code: daemon.PeerErrAmbiguous, Detail: "office-air", Sessions: two}, `portty: more than one session is named "deploy". Use an ID prefix instead: aaaa1111, bbbb2222.`},
+		{daemon.PeerConnectError{Code: daemon.PeerErrForbidden, Detail: "office-air"}, "portty: office-air didn't allow access. Sessions are shared only with Macs signed in to the same Tailscale account."},
+		{daemon.PeerConnectError{Code: daemon.PeerErrUnreachable, Detail: "office-air"}, "portty: couldn't connect to office-air. Check that it's awake and signed in to your Tailscale account."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.pe.Code, func(t *testing.T) {
+			host := "office-air"
+			if tc.pe.Code == daemon.PeerErrUnknownHost {
+				host = "garage"
+			}
+			pe := tc.pe
+			if got := peerConnectMessage(&pe, host, "deploy"); got != tc.want {
+				t.Fatalf("got  %q\nwant %q", got, tc.want)
+			}
+		})
 	}
 }

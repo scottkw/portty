@@ -120,17 +120,6 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("POST /peers/connect", a.handlePeerConnect)
 	// Phase 87 D-16 panic button: new signing key; shares are re-minted.
 	a.mux.HandleFunc("POST /capability/regenerate-key", a.handleRegenerateSigningKey)
-	// Phase 122-01 / REMOTE-01: remote cap deposit.
-	// POST /api/remote-files/caps accepts (sessionId, baseUrl, capToken) from
-	// the GUI for a remote session; the open-url route and the
-	// relay remote terminal WS proxy use that cap. Loopback transport is the
-	// trust boundary; no auth gate here.
-	a.mux.HandleFunc("POST /api/remote-files/caps", a.handleRegisterRemoteCap)
-	// Phase 146-05 / GAP-146-A: read-only open-url endpoint. Returns the cap-bearing
-	// open URL from RemoteCapStore so the frontend can open a remote session without
-	// asking for a new link (held-cap reuse path). No cap is minted; the cap
-	// enters only the returned URL string (T-146-05-01 / T-146-05-04 accept).
-	a.mux.HandleFunc("GET /api/remote-files/caps/{sessionID}/open-url", a.handleRemoteSessionOpenURL)
 }
 
 // Handler returns the API's underlying http.Handler (the registered mux).

@@ -1,12 +1,6 @@
 package main
 
-import (
-	"context"
-	"net/http"
-	"strings"
-
-	"github.com/scottkw/portty/internal/tailnet"
-)
+import "strings"
 
 // CLIRemoteSession is a simplified remote session representation for CLI use.
 type CLIRemoteSession struct {
@@ -26,44 +20,4 @@ func parseRemoteID(id string) (hostname, sessionID string, isRemote bool) {
 		return parts[0], parts[1], true
 	}
 	return "", id, false
-}
-
-// resolveRemotePeer finds a peer by hostname (case-insensitive) and returns
-// the peer's FQDN with the trailing dot stripped. Returns ("", false) if not found.
-func resolveRemotePeer(peers []tailnet.Peer, hostname string) (fqdn string, found bool) {
-	for _, p := range peers {
-		if strings.EqualFold(p.Hostname, hostname) {
-			return strings.TrimSuffix(p.DNSName, "."), true
-		}
-	}
-	return "", false
-}
-
-// fetchPeerSessions fetches sessions from a single peer. Delegates to
-// tailnet.FetchPeerSessions for HTTP fetch with IP fallback.
-func fetchPeerSessions(ctx context.Context, peer tailnet.Peer) []CLIRemoteSession {
-	sessions := tailnet.FetchPeerSessions(ctx, peer)
-	return peerSessionsToCLI(sessions)
-}
-
-// fetchPeerSessionsWithClient fetches sessions using an injected HTTP client.
-// Used in tests to bypass TLS with httptest servers.
-func fetchPeerSessionsWithClient(ctx context.Context, baseURL string, client *http.Client) []CLIRemoteSession {
-	sessions := tailnet.FetchPeerSessionsWithClient(ctx, baseURL, client)
-	return peerSessionsToCLI(sessions)
-}
-
-// peerSessionsToCLI converts shared PeerSession values to CLI-specific type.
-func peerSessionsToCLI(sessions []tailnet.PeerSession) []CLIRemoteSession {
-	result := make([]CLIRemoteSession, 0, len(sessions))
-	for _, s := range sessions {
-		result = append(result, CLIRemoteSession{
-			ID:       s.ID,
-			Name:     s.Name,
-			Status:   s.Status,
-			Hostname: s.Hostname,
-			FQDN:     s.FQDN,
-		})
-	}
-	return result
 }

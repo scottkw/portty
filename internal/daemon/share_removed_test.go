@@ -31,6 +31,10 @@ func TestShareRemoved_DaemonRoutes(t *testing.T) {
 		{http.MethodPost, "/sessions/x/web-serve"},
 		{http.MethodPost, "/sessions/x/capabilities"},
 		{http.MethodPost, "/sessions/x/disconnect-viewers"},
+		// Portty 04-04: the GUI no longer deposits or reads back remote caps;
+		// POST /peers/connect fetches and stores them.
+		{http.MethodPost, "/api/remote-files/caps"},
+		{http.MethodGet, "/api/remote-files/caps/x/open-url"},
 	} {
 		assertRouteGone(t, h, r.method, r.path)
 	}
