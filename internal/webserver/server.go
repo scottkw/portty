@@ -909,8 +909,24 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 						relay.DiagID(sessionID), sub.ID, uint16(payload[0])<<8|uint16(payload[1]), uint16(payload[2])<<8|uint16(payload[3]))
 				}
 			case relay.MsgPing:
-				// Keep-alive — no-op.
+				// Answer without blocking: a full queue means a "too slow" kick is coming (T-05-06).
+				select {
+				case sub.Msgs <- relay.PongFrame:
+				default:
+				}
 			}
+		}
+	}()
+
+	// SHAR-07: drop a viewer that stops answering WebSocket pings (half-open TCP,
+	// frozen process). Started after the read pump, which answers pings.
+	every, timeout := relay.PingEvery, relay.PingTimeout
+	if ws.heartbeatEvery > 0 {
+		every, timeout = ws.heartbeatEvery, ws.heartbeatTimeout
+	}
+	go func() {
+		if relay.Heartbeat(ctx, conn, every, timeout) {
+			log.Printf("viewer-diag: heartbeat timeout session=%s conn=%d", relay.DiagID(sessionID), sub.ID)
 		}
 	}()
 
