@@ -43,6 +43,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -463,6 +464,80 @@ func TestCLIAttach_Hypotheses(t *testing.T) {
 
 		s.typeLine(t, "MARKER-2")
 		s.waitAll(t, "MARKER-2", "local", "guiTab", "browser")
+		cli.detach(t)
+	})
+}
+
+// UAT gap 4: a viewer joining through the viewing daemon's proxy after more
+// than 32 KiB of history. The catch-up preamble arrives as one message, so any
+// Go reader left at coder/websocket's 32 KiB default drops the joiner after
+// the grid frame.
+func TestCLIAttach_LongHistoryJoiners(t *testing.T) {
+	const histLines = 200
+	tag := func(i int) string { return fmt.Sprintf("HIST-%04d-", i) }
+
+	// The viewers join first (newAttachScene), then the history is typed one
+	// line at a time: typed in one burst, the tty input queue overflows while
+	// cat catches up and most lines reach the ring only once. Waiting for cat's
+	// copy of each line keeps the history at two copies per line (~125 KB).
+	newLongScene := func(t *testing.T) *attachScene {
+		s := newAttachScene(t)
+		for i := 0; i < histLines; i++ {
+			s.typeLine(t, tag(i)+strings.Repeat("x", 300))
+			waitUntil(t, "cat to echo "+tag(i), func() bool {
+				return bytes.Count(s.hub.ScrollbackSnapshot(), []byte(tag(i))) >= 2
+			})
+		}
+		s.typeLine(t, "HIST-END")
+		s.waitAll(t, "HIST-END", "local", "guiTab", "browser")
+		if n := len(s.hub.ScrollbackSnapshot()); n < 3*32768 || n >= relay.DefaultScrollbackBytes {
+			t.Fatalf("history = %d bytes; it must sit between 96 KiB and the %d-byte ring, so the raw replay is one message well over the 32 KiB default and the ring has not wrapped", n, relay.DefaultScrollbackBytes)
+		}
+		return s
+	}
+
+	checkHistory := func(t *testing.T, who string, out []byte) {
+		t.Helper()
+		missing, first := 0, -1
+		for i := 0; i < histLines; i++ {
+			if !bytes.Contains(out, []byte(tag(i))) {
+				if first < 0 {
+					first = i
+				}
+				missing++
+			}
+		}
+		if missing > 0 {
+			t.Errorf("%s catch-up replay is missing %d of %d history lines (first missing HIST-%04d)", who, missing, histLines, first)
+		}
+	}
+
+	t.Run("gui_tab_through_proxy", func(t *testing.T) {
+		s := newLongScene(t)
+		conn := dialViewer(s.ctx, t, "lateGuiTab", s.viewRelay+"/api/relay/remote/"+s.sid+"/ws", "wails://wails", nil)
+		// This conn stands in for the webview's browser WebSocket, which has no
+		// per-message limit, so only the proxy's upstream read is under test.
+		conn.SetReadLimit(-1)
+		late := newViewerTap(s.ctx, conn)
+		s.viewers["lateGuiTab"] = late
+		waitUntil(t, "late GUI tab catch-up replay (MARKER-1)", func() bool { return late.has("MARKER-1") })
+		out, _, _ := late.state()
+		checkHistory(t, "late GUI tab", out)
+
+		s.typeLine(t, "MARKER-2")
+		s.waitAll(t, "MARKER-2", "local", "guiTab", "browser", "lateGuiTab")
+		s.checkUndisturbed(t, "guiTab", "browser", "lateGuiTab")
+	})
+
+	t.Run("cli_through_proxy", func(t *testing.T) {
+		s := newLongScene(t)
+		cli := s.attachCLI(t, s.dialCLI(t, 80, 24))
+		checkHistory(t, "cli", cli.stdout.bytes())
+
+		s.typeLine(t, "MARKER-2")
+		s.waitAll(t, "MARKER-2", "local", "guiTab", "browser")
+		waitUntil(t, "cli to see MARKER-2", func() bool { return cli.stdout.has("MARKER-2") })
+		s.checkUndisturbed(t, "guiTab", "browser")
 		cli.detach(t)
 	})
 }
