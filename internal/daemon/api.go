@@ -26,6 +26,7 @@ type API struct {
 	relayLn      net.Listener         // TCP listener for the relay server
 	mu           sync.RWMutex         // guards webServer, shares and the share seams
 	webServer    *webserver.WebServer // the share server; nil when nothing is shared
+	startMu      sync.Mutex           // serializes share-server start (never held with mu across warm-up)
 	tailnetCache *tailnetCache
 
 	// shares holds one record per shared session (guarded by mu). The share

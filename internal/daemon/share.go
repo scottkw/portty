@@ -141,14 +141,19 @@ func (a *API) shareOn(ctx context.Context, id string) (ShareResponse, *ShareErro
 		return ShareResponse{}, &ShareError{ShareErrHTTPSOff, "HTTPS certificates are off for your tailnet"}
 	}
 
+	// One start at a time: the port is fixed, so a second concurrent start
+	// would fail with port_in_use while the first one's server runs (WR-02).
+	a.startMu.Lock()
 	a.mu.RLock()
 	ws := a.webServer
 	a.mu.RUnlock()
 	if ws == nil {
 		if serr := a.startShareServer(ctx, h, newServer, warmCert); serr != nil {
+			a.startMu.Unlock()
 			return ShareResponse{}, serr
 		}
 	}
+	a.startMu.Unlock()
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -180,8 +185,8 @@ func (a *API) shareOn(ctx context.Context, id string) (ShareResponse, *ShareErro
 	return ShareResponse{Shared: true, URL: shareURL(ws, id, rec.token), FirstShare: first}, nil
 }
 
-// startShareServer builds, wires and starts a share server, then installs it
-// unless another request installed one first.
+// startShareServer builds, wires and starts a share server, then installs it.
+// Caller holds a.startMu, so no other start can install one meanwhile.
 func (a *API) startShareServer(
 	ctx context.Context,
 	h webserver.TailscaleHealth,
@@ -227,11 +232,6 @@ func (a *API) startShareServer(
 	}
 
 	a.mu.Lock()
-	if a.webServer != nil { // lost a race to another share-on
-		a.mu.Unlock()
-		_ = ws.Stop()
-		return nil
-	}
 	a.webServer = ws
 	// Phase 93 PLUG-04 push channel: SSE subscribers get a frame on every
 	// plugin-settings change. One share server at a time, so one listener.

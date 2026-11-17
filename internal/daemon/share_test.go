@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -490,5 +491,37 @@ func TestShare_OffClosesViewerWithReason(t *testing.T) {
 	var ce websocket.CloseError
 	if websocket.CloseStatus(err) != websocket.StatusNormalClosure || !errors.As(err, &ce) || ce.Reason != relay.CloseReasonShareStopped {
 		t.Fatalf("close = %v; want 1000 %q", err, relay.CloseReasonShareStopped)
+	}
+}
+
+// TestShare_ConcurrentFirstSharesStartOneServer (WR-02): two first shares that
+// overlap during the warm-up start one server, and both succeed.
+func TestShare_ConcurrentFirstSharesStartOneServer(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	a, b := newShareSession(t, client), newShareSession(t, client)
+	var mu sync.Mutex
+	builds := 0
+	counting := func(h webserver.TailscaleHealth, m *relay.HubManager) (*webserver.WebServer, error) {
+		mu.Lock()
+		builds++
+		mu.Unlock()
+		return loopbackShareServer(h, m)
+	}
+	slowWarm := func(context.Context, string) error { time.Sleep(200 * time.Millisecond); return nil }
+	api.SetShareSeamsForTest(healthyTailnet, counting, slowWarm)
+
+	var wg sync.WaitGroup
+	for _, id := range []string{a, b} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if resp, err := client.SetSessionShared(id, true); err != nil || !resp.Shared {
+				t.Errorf("share %s = %+v, %v", id, resp, err)
+			}
+		}()
+	}
+	wg.Wait()
+	if builds != 1 {
+		t.Fatalf("share servers built = %d; want 1", builds)
 	}
 }
