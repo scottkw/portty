@@ -189,6 +189,10 @@ Recent decisions affecting current work:
 
 - Follow-up: restored tabs after an app restart still start at 80×24, so their scrollback replay can show the old % mark in history (see 261116-ku9 SUMMARY).
 - [2026-11-17] [docs] Document multi-line prompt resize artifacts in user docs — [todo file](.planning/todos/pending/2026-11-17-document-multi-line-prompt-resize-artifacts.md)
+- [2026-11-17] [relay] Send the catch-up replay in chunks of 32 KiB or less — [todo file](.planning/todos/pending/2026-11-17-chunk-catch-up-replay.md)
+- [2026-11-17] [testing] Isolate daemon settings tests from the real config dir — [todo file](.planning/todos/pending/2026-11-17-isolate-daemon-settings-tests.md)
+- [2026-11-17] [frontend] Split pastes over 32 KiB into multiple input frames — [todo file](.planning/todos/pending/2026-11-17-split-large-pastes.md)
+- [2026-11-17] [relay] Strip remaining reply-eliciting terminal queries from the catch-up replay — [todo file](.planning/todos/pending/2026-11-17-strip-more-terminal-queries-from-replay.md)
 
 ### Blockers/Concerns
 
