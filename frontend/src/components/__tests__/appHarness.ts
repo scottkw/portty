@@ -1,12 +1,15 @@
 // Test harness that mounts the real App with the Wails bridge faked on window.
 // The generated stubs call window.go.main.App[method](...); every method resolves
-// to impl[method](...args) when given, else null. Runtime calls (EventsOn, …) are no-ops.
+// to impl[method](...args) when given, else null. Runtime calls are no-ops; EventsOn callbacks land in wailsEvents.
 import React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { act } from 'react'
 import App from '../../App'
 
 type Impl = Record<string, (...args: unknown[]) => unknown>
+
+/** The callback App registered per Wails event name (EventsOn), so tests can fire Go events. */
+export const wailsEvents = new Map<string, (...args: unknown[]) => void>()
 
 let root: Root | undefined
 let container: HTMLDivElement | undefined
@@ -27,7 +30,11 @@ export async function mountApp(overrides: Impl): Promise<HTMLDivElement> {
       }),
     },
   }
-  w.runtime = new Proxy({}, { get: () => () => () => {} })
+  w.runtime = new Proxy({}, {
+    get: (_t, k: string) => k === 'EventsOn' // the test runtime stub (src/wailsjs/runtime) calls window.runtime.EventsOn
+      ? (name: string, cb: (...args: unknown[]) => void) => { wailsEvents.set(name, cb); return () => {} }
+      : () => () => {},
+  })
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -51,4 +58,5 @@ export async function unmountApp(): Promise<void> {
   const w = window as unknown as Record<string, unknown>
   delete w.go
   delete w.runtime
+  wailsEvents.clear()
 }
