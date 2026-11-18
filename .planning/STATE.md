@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: verifying
-stopped_at: Completed 05-09-PLAN.md
-last_updated: "2026-11-18T04:10:57.235Z"
+stopped_at: Completed 05-10-PLAN.md
+last_updated: "2026-11-18T04:30:08.160Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: cc5891b1fffa634dfb272e0609fbf97d05f8262d
+state_head: 9846f32a10fb706d6b6264fda808f6420eaba17c
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 56
-  completed_plans: 50
+  completed_plans: 51
   percent: 17
 ---
 
@@ -93,6 +93,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 05 P07 | 8min | 2 tasks | 5 files |
 | Phase 5 P08 | 12min | 3 tasks | 4 files |
 | Phase 05 P09 | 21 min | 3 tasks | 9 files |
+| Phase 05 P10 | 16min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -214,6 +215,8 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-09: openWebSessionTab decides add-or-update inside setTabs(prev => ...); handleOpenRemoteSession has a per-session in-flight guard
 - [Phase 05]: 05-09: ErrorBoundary per terminal tab, around WebShareSessionView (resetKey=activeId) and at the root; fallback is fixed copy, log is label + error.name only
 - [Phase 05]: 05-09: VM GUI checks read the Accessibility tree (~/ptest/axdump) because WebKit in the Tart VMs cannot paint into screencapture
+- [Phase 05]: 05-10: pure-Go wake detector (internal/wakewatch: wall-clock tick gap + routable interface addresses) supersedes 'no NSWorkspace wake hook'; user approved 2026-11-17
+- [Phase 05]: 05-10: a wake-triggered redial restarts the backoff at attempt 0; a wake probe drops only a ponged socket silent for ProbeGrace (5 s); WakeMinGap 5 s caps wake actions
 
 ### Pending Todos
 
@@ -282,6 +285,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-18T04:10:54.736Z
-Stopped at: Completed 05-09-PLAN.md
+Last session: 2026-11-18T04:30:05.601Z
+Stopped at: Completed 05-10-PLAN.md
 Resume file: None
