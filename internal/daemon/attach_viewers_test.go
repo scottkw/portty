@@ -44,6 +44,16 @@ package daemon
 // Both failed after the grid frame on the old code (coder/websocket's 32 KiB
 // per-message default on the proxy upstream and the CLI conn). Go readers of
 // host-to-viewer frames now use relay.ViewerReadLimit.
+//
+// Reconnect (05-06, SHAR-07): the CLI here is the real remote loop
+// (attach.Run) where a test needs reconnects. TestCLIAttach_ReconnectsWithDelta
+// kicks it with a non-final close and diffs every typed line against the host's
+// own viewer; TestCLIAttach_ViewingDaemonRestart reconnects it through a fresh
+// viewing daemon after re-auth; TestCLIAttach_ShareOffWhileConnected and
+// TestCLIAttach_ReauthShareStoppedEnds pin the two ways a share-off ends it
+// without a redial. The UAT gap 1 [reconnecting]-on-idle false positive (the
+// old five-second no-output watcher) is fixed by loop-driven state and pinned by
+// TestCLIAttach_IdleNoReconnecting.
 
 import (
 	"bytes"

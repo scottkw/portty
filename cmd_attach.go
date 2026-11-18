@@ -253,20 +253,30 @@ func remoteRelayURL(relayPort int, sessionID string) string {
 	return fmt.Sprintf("ws://127.0.0.1:%d/api/relay/remote/%s/ws", relayPort, url.PathEscape(sessionID))
 }
 
-// remoteAttachEnd recognises the host turning sharing off: the proxy forwards
-// the host's close (1000, "share stopped").
-func remoteAttachEnd(err error, host, name string) (msg string, revoked bool) {
+// remoteAttachEnd recognises the host ending a remote attach for good: the
+// proxy forwards the host's close (1000, "share stopped" or "session ended").
+// msg is fixed copy with the host and session names only.
+func remoteAttachEnd(err error, host, name string) (msg string, ended bool) {
 	var ce websocket.CloseError
-	if errors.As(err, &ce) && ce.Reason == relay.CloseReasonShareStopped {
+	if !errors.As(err, &ce) {
+		return "", false
+	}
+	switch ce.Reason {
+	case relay.CloseReasonShareStopped:
 		return fmt.Sprintf("Portty: %s stopped sharing %s.", host, name), true
+	case relay.CloseReasonSessionEnded:
+		return fmt.Sprintf("Portty: %s on %s ended.", name, host), true
 	}
 	return "", false
 }
 
 // runAttach dials wsURL and runs the interactive attach with the banner or
-// status bar. A remote target reconnects on its own (attach.Run) and ends with
-// the stopped-sharing message; a local attach (remote nil) keeps one
-// connection: a dropped local relay means the daemon and its sessions died.
+// status bar. A remote target reconnects on its own after drops, silent
+// connections and a restart of this Mac's daemon (attach.Run), and ends with a
+// fixed message when the host stops sharing or the session ends. A local attach
+// (remote nil) keeps one connection: a dropped local relay means the daemon and
+// its sessions died. Raw mode and the bar last for the whole attach and are
+// restored on every exit path.
 func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpts, remote *remoteTarget) error {
 	// Create signal context that cancels on SIGTERM or SIGHUP.
 	// Do NOT catch SIGINT — in raw mode Ctrl-C is byte 0x03, not a signal.
@@ -350,7 +360,7 @@ func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpt
 			ClearOnFull: stdoutTTY,
 		})
 	}
-	if msg, revoked := remoteAttachEnd(err, hostname, name); remote != nil && revoked {
+	if msg, ended := remoteAttachEnd(err, hostname, name); remote != nil && ended {
 		// Restore the terminal and remove the bar before printing; the deferred
 		// calls would run after the message. Both are safe to repeat.
 		term.Restore(int(os.Stdin.Fd()), oldState) //nolint:errcheck
