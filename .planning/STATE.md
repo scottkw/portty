@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: verifying
-stopped_at: Completed 05-13-PLAN.md
-last_updated: "2026-11-18T06:03:37.185Z"
+stopped_at: Completed 05-14-PLAN.md
+last_updated: "2026-11-18T07:05:03.256Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: f1b95d7d19ab76cd371c3ac42a5187149044963d
+state_head: 69735aab49438fa8155114684c4abec12c8d3a94
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 56
-  completed_plans: 54
+  completed_plans: 55
   percent: 17
 ---
 
@@ -97,6 +97,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 5 P11 | 6min | 2 tasks | 5 files |
 | Phase 5 P12 | 40min | 3 tasks | 8 files |
 | Phase 05 P13 | 39min | 4 tasks | 10 files |
+| Phase 05 P14 | 58min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -226,6 +227,8 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-13: Go wake/network detector reaches guest views as Wails system:wake, bridged in App.tsx to window 'portty:wake'; RelayClient never imports the Wails runtime
 - [Phase 05]: 05-13: a system wake redials even in a hidden window and restarts the backoff (attempt = 0); one wake action per 5 s across the Wails event and the browser's watchdog tick gap
 - [Phase 05]: 05-13 (folded todo): peer poll every 5 s while visible, 30 s while hidden, immediate on focus/visible/wake, one fan-out at a time
+- [Phase 05]: 05-14: R6 FAIL recorded, not fixed: nothing respawns the viewing Mac's daemon, so its GUI tab and CLI retry forever; respawn point left to the orchestrator
+- [Phase 05]: 05-14: ECONNREFUSED question answered as matrix row R9 (PASS): no transient condition made the host refuse, only a real host-daemon stop or reboot did
 
 ### Pending Todos
 
@@ -260,6 +263,7 @@ Recent decisions affecting current work:
   Rewrite VERF-01 as a short two-Mac sleep/wake check. Real overnight use becomes an informal check, not a gate. The requirement wording is the user's, so confirm at discuss before changing it.
 - [Phase 5]: On a remote `portty attach`, the status bar shows `[reconnecting]` after 5 s with no output, because the host sends no heartbeat frame and the cmd_attach.go watcher keys on received frames. That misleads on any idle session (UAT gap 1 diagnosis, 04-07). Phase 5's reconnect/idle work owns the fix.
 - [Phase 5]: The office Mac must not sleep overnight. Keep-awake (CONV-01) is v2, so the overnight test needs manual `caffeinate`/Energy settings. The home Mac sleeping overnight needs reconnect-on-wake.
+- 05-14 R6 FAIL: viewing Mac's daemon is never respawned after it dies; GUI peer tab and portty attach retry forever (05-VM-MATRIX.md R6, deferred-items From 05-14)
 
 ### Quick Tasks Completed
 
@@ -294,6 +298,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-18T06:03:35.649Z
-Stopped at: Completed 05-13-PLAN.md
+Last session: 2026-11-18T07:05:01.849Z
+Stopped at: Completed 05-14-PLAN.md
 Resume file: None
