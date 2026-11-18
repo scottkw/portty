@@ -1,4 +1,5 @@
 ---
+resolves_phase: 7
 created: 2026-11-17T20:32:19Z
 title: Isolate daemon settings tests from the real config dir
 area: testing

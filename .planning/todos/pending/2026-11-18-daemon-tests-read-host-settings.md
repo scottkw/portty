@@ -1,4 +1,5 @@
 ---
+resolves_phase: 7
 created: 2026-11-18T14:00:00Z
 title: TestAPIAppearance_GetPatch and TestAPITerminalFont_GetPatch read the host's real settings.json
 area: testing

@@ -1,4 +1,5 @@
 ---
+resolves_phase: 7
 created: 2026-11-17T20:32:19Z
 title: Strip remaining reply-eliciting terminal queries from the catch-up replay
 area: relay

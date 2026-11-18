@@ -37,18 +37,20 @@ Hardening only: each requirement closes a v1.0 todo. No new features.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HARD-01 | — | Pending |
-| HARD-02 | — | Pending |
-| HARD-03 | — | Pending |
-| HARD-04 | — | Pending |
-| HARD-05 | — | Pending |
-| HARD-06 | — | Pending |
-| HARD-07 | — | Pending |
-| HARD-08 | — | Pending |
+| HARD-01 | Phase 7 | Pending |
+| HARD-02 | Phase 7 | Pending |
+| HARD-03 | Phase 7 | Pending |
+| HARD-04 | Phase 7 | Pending |
+| HARD-05 | Phase 7 | Pending |
+| HARD-06 | Phase 7 | Pending |
+| HARD-07 | Phase 7 | Pending |
+| HARD-08 | Phase 7 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 8 total
-- Mapped to phases: 0 (roadmap pending)
+- Mapped to phases: 8
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-11-18*
+*Last updated: 2026-11-18 after v1.1 roadmap creation (all 8 → Phase 7)*

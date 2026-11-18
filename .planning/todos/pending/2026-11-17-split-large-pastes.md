@@ -1,4 +1,5 @@
 ---
+resolves_phase: 7
 created: 2026-11-17T20:32:19Z
 title: Split pastes over 32 KiB into multiple input frames
 area: frontend

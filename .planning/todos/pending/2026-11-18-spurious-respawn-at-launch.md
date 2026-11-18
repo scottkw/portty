@@ -1,4 +1,5 @@
 ---
+resolves_phase: 7
 created: 2026-11-18T10:00:00Z
 title: GUI logs a respawn attempt at launch while the daemon is healthy
 area: daemon

@@ -1,4 +1,5 @@
 ---
+resolves_phase: 7
 created: 2026-11-17T23:59:00Z
 title: Cap the vt library's alt-screen scrollback
 area: relay

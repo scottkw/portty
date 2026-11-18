@@ -1,4 +1,5 @@
 ---
+resolves_phase: 7
 created: 2026-11-18
 area: tests
 source: Phase 6 verification

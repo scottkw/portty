@@ -1,4 +1,5 @@
 ---
+resolves_phase: 7
 created: 2026-11-17T17:26:17.244Z
 title: Document multi-line prompt resize artifacts in user docs
 area: docs

@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-11-18T20:42:22.049Z"
 last_activity: 2026-11-18
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-15)
+See: .planning/PROJECT.md (updated 2026-11-18)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 6 — Release Updates
+**Current focus:** Phase 7 — Hardening (v1.1)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 7 of 7 (Hardening)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-11-18 — Milestone v1.1 started
+Status: Ready to plan
+Last activity: 2026-11-18 — v1.1 roadmap created (Phase 7, HARD-01..HARD-08)
+
+Progress: [░░░░░░░░░░] 0%
 
 
 ## Performance Metrics
@@ -110,6 +112,7 @@ Recent decisions affecting current work:
 - [Roadmap]: Navigation before rebrand, so help and in-app text are rewritten once against the final UI
 - [Roadmap]: NAV-02 (peer sessions in sidebar) ships with Hub removal so GUI remote attach never regresses (it currently lives in Hub remote cards)
 - [Roadmap]: Overnight survival is its own phase so the overnight-length test doesn't hold up same-day share verification
+- [Roadmap v1.1]: One phase, Phase 7 Hardening, holds all 8 HARD requirements (user-approved; granularity coarse); numbering continues from v1.0
 - [Phase 1]: 01-01: Renamed internal/daemon/ipc_nonwindows.go to ipc.go so no *nonwindows* file stays tracked
 - [Phase 1]: 01-01: godbus and tailscale/go-winio stay in go.mod as indirect transitive deps (wails linux backend, tailscale safesocket); only direct requires removed
 - [Phase 1]: 01-01: release.yml publishes only the signed DMG + checksums.txt; user must re-apply branch protection (build (agenthub, darwin/universal, macos-latest) + playwright) when CI is re-enabled
@@ -344,10 +347,10 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-18T19:19:08.705Z
-Stopped at: Completed 06-04-PLAN.md
+Last session: 2026-11-18
+Stopped at: v1.1 roadmap created; Phase 7 ready to plan
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Discuss Phase 7 with /gsd-discuss-phase 7, then plan it with /gsd-plan-phase 7

@@ -1,4 +1,5 @@
 ---
+resolves_phase: 7
 created: 2026-11-18T10:00:00Z
 title: Switching remote tabs disconnects the inactive one and costs a full replay
 area: frontend
