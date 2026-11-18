@@ -140,6 +140,16 @@ func (a *App) GetUpdateStatus() updater.Status {
 	return a.updates.Status()
 }
 
+// DownloadUpdate downloads, verifies and reveals the available update (UPD-03); the banner's and
+// the alert's Download buttons both call it. A failure is in the returned Status.Error.
+func (a *App) DownloadUpdate() updater.Status {
+	if a.updates == nil {
+		return a.GetUpdateStatus()
+	}
+	st, _ := a.updates.Download()
+	return st
+}
+
 // CheckForUpdates runs a check at once for the Help menu. Task 3 replaces it with native alerts.
 func (a *App) CheckForUpdates() updater.Status {
 	if !releaseBuild() || a.updates == nil {
