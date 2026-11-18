@@ -40,7 +40,7 @@
 - [x] **SHAR-04**: User can stop sharing a session, which disconnects remote viewers and removes it from peers' sidebars
 - [x] **SHAR-05**: Tailscale Funnel public sharing is removed: risk panel, consent gates, hold-to-confirm, public links, Funnel config and their tests (user decision 2026-11-15)
 - [x] **SHAR-06**: From any terminal (e.g. Warp), `portty attach <host>:<session>` attaches to a remote shared session with the tmux-style status bar
-- [ ] **SHAR-07**: A remote attach left idle for 12+ hours stays connected or reconnects automatically. Detaching and reattaching restores scrollback.
+- [x] **SHAR-07**: A remote attach left idle for 12+ hours stays connected or reconnects automatically. Detaching and reattaching restores scrollback.
 
 ### Chat removal & Notifications
 
@@ -121,7 +121,7 @@
 | SHAR-04 | Phase 4 | Complete |
 | SHAR-05 | Phase 4 | Complete |
 | SHAR-06 | Phase 4 | Complete |
-| SHAR-07 | Phase 5 | Pending |
+| SHAR-07 | Phase 5 | Complete |
 | CHAT-01 | Phase 2 | Pending |
 | NOTF-01 | Phase 3 | Complete |
 | DIST-03 | Phase 3 | Complete |
