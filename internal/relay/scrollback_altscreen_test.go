@@ -244,7 +244,7 @@ func TestFullReplay_EmulatorWhenMainScreenRingWrapped(t *testing.T) {
 		t.Fatal("full replay returned nothing")
 	}
 	if bytes.Equal(got, raw) {
-		t.Errorf("main-screen session with a WRAPPED ring must reconnect from the emulator's "+
+		t.Errorf("main-screen session with a WRAPPED ring must reconnect from the emulator's " +
 			"complete snapshot, not the incomplete raw tail (M-51 top garble)")
 	}
 }

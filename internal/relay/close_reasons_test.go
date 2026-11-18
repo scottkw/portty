@@ -20,7 +20,9 @@ func TestCloseReason_Literals(t *testing.T) {
 
 // Only the two owner-initiated reasons on 1000 end a reconnecting client.
 func TestIsTerminalClose(t *testing.T) {
-	ce := func(code websocket.StatusCode, reason string) error { return websocket.CloseError{Code: code, Reason: reason} }
+	ce := func(code websocket.StatusCode, reason string) error {
+		return websocket.CloseError{Code: code, Reason: reason}
+	}
 	cases := []struct {
 		name string
 		err  error
