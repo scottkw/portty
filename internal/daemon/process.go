@@ -2,8 +2,11 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -74,10 +77,32 @@ func runDaemonCore(ctx context.Context) {
 	fmt.Fprintf(os.Stderr, "daemon: listening on %s\n", socketPath)
 	startDaemonLog(daemonConfigDir()) // after the bind: a failed duplicate spawn never rotates
 
+	// Review it3 WR-03: a daemon whose socket path was removed or rebound is
+	// unreachable but still holds the lock, so no replacement could ever start.
+	// It exits instead. No watch where the socket is no file (Windows pipe).
+	lost := make(chan struct{})
+	if bound, err := os.Stat(socketPath); err == nil {
+		go func() {
+			if socketLost(ctx, socketPath, bound, 5*time.Second) {
+				close(lost)
+			}
+		}()
+	}
+
 	// No web server starts at boot: the share server starts on the first
 	// share and stops when nothing is shared (share.go).
 
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case <-lost:
+		fmt.Fprintf(os.Stderr, "daemon: socket %s was removed or replaced; exiting to free the lock\n", socketPath)
+		// The path may now be another daemon's socket: close without unlinking it.
+		if ul, ok := api.ln.(*net.UnixListener); ok {
+			ul.SetUnlinkOnClose(false)
+			_ = ul.Close()
+			api.ln = nil
+		}
+	}
 
 	fmt.Fprintf(os.Stderr, "daemon: shutting down\n")
 	_ = api.Stop()
@@ -99,7 +124,8 @@ func EnsureDaemon(socketPath string) error {
 				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), restarting\n", ver, BuildVersion)
 				_ = client.ShutdownDaemon()
 				time.Sleep(200 * time.Millisecond)
-				_ = CleanupStaleSocket(socketPath)
+				// No socket cleanup here (review it3 WR-03): only the spawned
+				// daemon unlinks it, under the lock, once the old one let go.
 				// fall through to spawn
 			} else {
 				needsSpawn = false
@@ -113,9 +139,8 @@ func EnsureDaemon(socketPath string) error {
 				return nil // fully operational
 			}
 			// Stale daemon without relay support. Log and continue to spawn a new one.
-			// The stale process will exit on its own when the socket is replaced.
+			// The socket is left alone: the new daemon cleans up under the lock.
 			fmt.Fprintf(os.Stderr, "EnsureDaemon: stale daemon detected (relay not ready), respawning\n")
-			_ = CleanupStaleSocket(socketPath)
 		}
 	}
 
@@ -145,4 +170,24 @@ func EnsureDaemon(socketPath string) error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("EnsureDaemon: daemon did not become ready within 3s")
+}
+
+// socketLost checks every interval whether path still names the socket this
+// daemon bound (bound). It returns true once the path is gone or names another
+// file, and false when ctx ends first. Other stat errors are not counted: a
+// false alarm would end every session.
+func socketLost(ctx context.Context, path string, bound os.FileInfo, every time.Duration) bool {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-t.C:
+			cur, err := os.Stat(path)
+			if errors.Is(err, fs.ErrNotExist) || (err == nil && !os.SameFile(bound, cur)) {
+				return true
+			}
+		}
+	}
 }

@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -120,4 +122,103 @@ func TestLockDaemon_ExclusiveAndWaits(t *testing.T) {
 		t.Fatalf("lockDaemon after the holder let go: %v", err)
 	}
 	third.Close()
+}
+
+// Review it3 WR-03: EnsureDaemon (GUI, CLI) never unlinks the socket path. Its
+// dial-then-remove could take a daemon's live socket that was bound between
+// the two steps; the spawned daemon cleans up under the lock instead. The fake
+// daemon here stops listening (leaving its file) just before EnsureDaemon
+// would have cleaned up, so the file looks stale.
+func TestEnsureDaemon_NeverUnlinksSocket(t *testing.T) {
+	for _, tc := range []struct {
+		name, build, closeOn string
+	}{
+		{"version mismatch", "v2", "/shutdown"},
+		{"relay not ready", "dev", "/relay-port"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old := BuildVersion
+			BuildVersion = tc.build
+			t.Cleanup(func() { BuildVersion = old })
+			path := shortProcTestSocket(t, "nounlink")
+			ln, err := net.Listen("unix", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ln.(*net.UnixListener).SetUnlinkOnClose(false)
+			t.Cleanup(func() { ln.Close() })
+			go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+				if r.URL.Path == tc.closeOn {
+					ln.Close()
+				}
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/health":
+					fmt.Fprint(w, `{"status":"ok","version":"v1"}`)
+				case "/relay-port":
+					fmt.Fprint(w, `{"port":0}`)
+				default:
+					fmt.Fprint(w, `{}`)
+				}
+			}))
+			_ = EnsureDaemon(path) // a test binary refuses the spawn
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("EnsureDaemon removed the socket path: %v", err)
+			}
+		})
+	}
+}
+
+// Review it3 WR-03: a daemon whose socket path is removed or rebound can no
+// longer be reached, yet it holds the lock, so no replacement could start.
+// socketLost spots that so the daemon exits and frees the lock.
+func TestSocketLost(t *testing.T) {
+	bind := func(t *testing.T) (string, os.FileInfo) {
+		path := shortProcTestSocket(t, "lost")
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ln.(*net.UnixListener).SetUnlinkOnClose(false)
+		t.Cleanup(func() { ln.Close() })
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return path, fi
+	}
+	watch := func(path string, fi os.FileInfo) chan bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		t.Cleanup(cancel)
+		lost := make(chan bool, 1)
+		go func() { lost <- socketLost(ctx, path, fi, 10*time.Millisecond) }()
+		return lost
+	}
+	t.Run("kept", func(t *testing.T) {
+		path, fi := bind(t)
+		if <-watch(path, fi) {
+			t.Fatal("socketLost reported an untouched socket as lost")
+		}
+	})
+	t.Run("removed", func(t *testing.T) {
+		path, fi := bind(t)
+		lost := watch(path, fi)
+		os.Remove(path)
+		if !<-lost {
+			t.Fatal("socketLost missed a removed socket")
+		}
+	})
+	t.Run("replaced", func(t *testing.T) {
+		path, fi := bind(t)
+		lost := watch(path, fi)
+		os.Remove(path)
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ln.Close()
+		if !<-lost {
+			t.Fatal("socketLost missed a socket rebound by someone else")
+		}
+	})
 }
