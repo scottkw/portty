@@ -957,7 +957,7 @@ function App(): React.ReactElement {
         sessions={sessions}
         activeTab={tabs.find((t) => t.id === activeId) ?? null}
         onOpenLocal={handleOpenSessionTab}
-        peerView={peerView(tailscaleOff, remoteLoaded, remotePeers)}
+        peerView={peerView(tailscaleOff, remoteLoaded, remotePeers, reconnectingHost)}
         onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}
         tailscaleHealth={tailscaleHealth}
         onHide={() => setSidebarHidden(true)}

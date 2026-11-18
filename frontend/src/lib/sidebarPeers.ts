@@ -36,10 +36,21 @@ export function peerColorIndex(hostname: string): number {
   return (h >>> 0) % PEER_COLOR_COUNT
 }
 
-export function peerView(tailscaleOff: boolean, loaded: boolean, peers: RemotePeerSessions[]): PeerView {
+export function peerView(
+  tailscaleOff: boolean,
+  loaded: boolean,
+  peers: RemotePeerSessions[],
+  reconnectingHost: string | null = null,
+): PeerView {
   if (tailscaleOff) return { kind: 'off' }
   if (!loaded) return { kind: 'loading' }
-  const groups = peers
+  // Discovery lists only peers that answer its probe, so a Mac whose open tab is
+  // reconnecting would drop out; keep it, unreachable, so its row can show amber.
+  const listed =
+    reconnectingHost && !peers.some((p) => p.hostname === reconnectingHost)
+      ? [...peers, { hostname: reconnectingHost, reachable: false, sessions: [] }]
+      : peers
+  const groups = listed
     // Every probed peer is kept: an unreachable one shows the can't-reach line, a reachable one
     // with nothing shared shows "Nothing shared". Quick 261116-c9f reverses the UI-SPEC "Hidden"
     // row at the user's request.
