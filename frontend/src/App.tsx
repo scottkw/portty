@@ -714,15 +714,14 @@ function App(): React.ReactElement {
       capToken,
       ...peer,
     }
-    const existing = tabs.find((t) => t.id === tabId)
-    if (existing) {
-      if (peer) setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...newTab, name: t.name } : t)))
-      setActiveId(existing.id)
-      return
-    }
-    setTabs((prev) => [...prev, newTab])
-    setActiveId(newTab.id)
-  }, [tabs])
+    // Portty 05-09: decide add-or-update on the latest state, never a stale
+    // snapshot; two appends of one id made duplicate tabs.
+    setTabs((prev) => {
+      if (!prev.some((t) => t.id === tabId)) return [...prev, newTab]
+      return peer ? prev.map((t) => (t.id === tabId ? { ...newTab, name: t.name } : t)) : prev
+    })
+    setActiveId(tabId)
+  }, [])
 
   // Phase 131 UAT follow-up — re-attach to an already-running session.
   // Opens (or focuses) a terminal tab for an existing session id. Mirrors the
@@ -780,13 +779,21 @@ function App(): React.ReactElement {
   // asks the peer through the same-account routes (no code) and keeps the cap;
   // the returned URL gives the tab's origin and cap. A failure opens the tab
   // with the connect-failed banner, and clicking the row again retries.
+  // Portty 05-09: session ids whose connect is in flight. A repeat click
+  // during a slow connect only activates an existing tab.
+  const connectingRef = useRef(new Set<string>())
   const handleOpenRemoteSession = useCallback(
     async (session: AdaptedRemoteSessionInfo): Promise<void> => {
       const existing = tabs.find((t) => t.id === webSessionTabId(session.id))
+      if (connectingRef.current.has(session.id)) {
+        if (existing) setActiveId(existing.id)
+        return
+      }
       if (existing && !existing.connectFailed && !existing.shareStopped) {
         setActiveId(existing.id)
         return
       }
+      connectingRef.current.add(session.id)
       const peerHost = session.hostname
       const connectHost = session.peerDNSName || peerHost
       let label = `${shortHost(peerHost)} › ${session.name}`
@@ -800,6 +807,8 @@ function App(): React.ReactElement {
         }
       } catch {
         // A rejected binding or a malformed URL is a failed connect, shown the same way.
+      } finally {
+        connectingRef.current.delete(session.id)
       }
       openWebSessionTab(session.id, undefined, undefined, label, { peerHost, connectFailed: true })
     },
