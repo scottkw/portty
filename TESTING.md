@@ -1155,21 +1155,21 @@ Rig for all four (Portty 07-05; Claude runs them in the two Tart VMs): build on 
   1. Generate exactly 100,000 base64 bytes with no newline in the home VM: `head -c 75000 /dev/urandom | base64 | tr -d '\n' | head -c 100000`; record its `shasum -a 256`.
   2. GUI peer tab: open an office session from Other Macs in the home GUI, run `stty raw -echo; head -c 100000 > /tmp/<file>; stty sane` in it, `pbcopy` the payload and paste it with Cmd+V. The office file is 100,000 bytes with the payload's sha256, and the home daemon.log shows no socket close for that viewer.
   3. `portty attach`: the same receiver typed through the expect driver (100x30 pty, FIFO input); write the payload into the FIFO in one write; compare size and sha256.
-  - _Last run:_ pending (07-05 Task 2)
+  - _Last run:_ 2026-11-18, build fb72d7b9: H-01 (GUI peer tab) and H-02 (`portty attach`) PASS, both office files 100,000 bytes with the payload sha256, no 1009 close; evidence in .planning/phases/07-hardening/07-VM-CHECKS.md.
   - _Why not automatable:_ a native Cmd+V paste into the GUI and a real tailnet between two Macs need a GUI session on real macOS. The split is covered by the Section 4 HARD-02 rows.
   - _Source:_ 07-CONTEXT.md specifics (VM spot check); 07-05-PLAN.md.
 
 - **M-95** Peer tab switch rejoins with a delta replay (HARD-05).
   1. Two shared office sessions, one running a 2 s TICK ticker. In the home GUI open the ticker tab, then the other tab, wait 20 s, select the ticker tab again; three times.
   2. Each rejoin logs `viewer-diag: replay ... mode=delta ... resume=true` in the office daemon.log, and the tab's ticks are consecutive with none missing or repeated across each switch.
-  - _Last run:_ pending (07-05 Task 2)
+  - _Last run:_ 2026-11-18, build fb72d7b9: H-03 PASS, three returns logged `mode=delta ... resume=true`, ticks 1..291 consecutive with no repeat; evidence in .planning/phases/07-hardening/07-VM-CHECKS.md.
   - _Why not automatable:_ native tab clicks in the GUI against a real remote daemon. The logic is covered by the Section 4 HARD-05 rows.
   - _Source:_ 07-CONTEXT.md; 07-05-PLAN.md.
 
 - **M-96** GUI launch with a healthy daemon makes no respawn attempt (HARD-04).
-  1. With the home daemon healthy for more than 60 s, kill only the GUI app process, relaunch with `open --stderr /tmp/h4-N.err`, wait 30 s; three launches.
+  1. With the home daemon healthy for more than 60 s, kill only the GUI app process (it ignores SIGTERM, so `kill -9` its pid; never the `Portty daemon` process), relaunch with `open --stderr /tmp/h4-N.err`, wait 30 s; three launches.
   2. No `respawn attempt` line in any capture, and the same daemon pid throughout. If a `not answering right after launch` line appears, record its error text (the HARD-04 root-cause evidence).
-  - _Last run:_ pending (07-05 Task 2)
+  - _Last run:_ 2026-11-18, build fb72d7b9: H-04 PASS, three relaunches with no respawn line and the same daemon pid; no launch-blip line appeared; evidence in .planning/phases/07-hardening/07-VM-CHECKS.md.
   - _Why not automatable:_ needs a real GUI launch with the app's own daemon spawn path on macOS. The gate is covered by the Section 4 HARD-04 row.
   - _Source:_ 07-03-SUMMARY.md (HARD-04 root cause); 07-05-PLAN.md.
 
@@ -1177,7 +1177,7 @@ Rig for all four (Portty 07-05; Claude runs them in the two Tart VMs): build on 
   1. Quit the office GUI and daemon; start `GODEBUG=gctrace=1 nohup ~/ptest/Portty.app/Contents/MacOS/Portty daemon > /tmp/gctrace.log 2>&1 &`; relaunch the GUI.
   2. In a session record C = `tput cols`, enter the alt screen (`printf '\e[?1049h'`), print 30,000 lines of exactly C non-blank characters, leave (`printf '\e[?1049l'`); twice.
   3. Read the live heap (the last number of each `gc N ...: A->B->C MB` line) at baseline, in the alt screen and after at least two GCs past the exit. PASS: each in-alt peak minus baseline is at most 10,000 × C × 112 B + 16 MiB, the second peak is not above the first, and the post-exit live heap is within 20 MB of baseline on both runs. Record RSS alongside. Restore the normal GUI-spawned daemon afterwards.
-  - _Last run:_ pending (07-05 Task 2)
+  - _Last run:_ 2026-11-18, build fb72d7b9: H-05 FAIL on the in-alt peak (C = 100, ceiling 122.81 MiB, peak 128 − baseline 5 = 123 MiB as read at gctrace whole-MiB resolution); plateau (128 both runs) and post-exit (6 MiB) pass; open for a gap plan; evidence in .planning/phases/07-hardening/07-VM-CHECKS.md.
   - _Why not automatable:_ a real daemon process with a real PTY and TUI-style output over minutes; the unit-level bound is the Section 4 HARD-01 row.
   - _Source:_ 07-01-SUMMARY.md (measured heap growth); 07-05-PLAN.md.
 ---
