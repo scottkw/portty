@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: verifying
-stopped_at: Completed 05-15-PLAN.md
-last_updated: "2026-11-18T07:57:35.948Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-11-18T17:31:02.814Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: 8dd047e059986785cd3dff577b7fe144a9538615
+state_head: e3146f62e6b361206be78c257f739bbc51db7cfd
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 57
-  completed_plans: 57
+  total_plans: 61
+  completed_plans: 60
   percent: 17
 ---
 
@@ -100,6 +100,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 05 P14 | 58min | 2 tasks | 2 files |
 | Phase 05 P16 | 31min | 2 tasks | 7 files |
 | Phase 05 P15 | 20min | 2 tasks | 6 files |
+| Phase 6 P02 | 10 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -234,6 +235,8 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-16: viewing-Mac daemon respawns in-process from the GUI tray poller (serialized, 10 s to 2 min backoff, daemon:error on the 3rd attempt) and the portty attach re-auth; no launchd agent
 - [Phase 05]: 05-16: the NAV-01 session poll refreshes relayPort (only after init, never to 0) so new local tabs reach a respawned daemon
 - [Phase 05]: 05-15: TESTING.md reconciled for 05-08..05-16 (Go 123, vitest 86, total 217); Go commands run with GOTOOLCHAIN=go1.26.11; M-88..M-90 added; five gap-source todos completed
+- [Phase 6]: 06-02: Service.Check is serialized by its own mutex (a second check waits, then runs as a cheap 304); busy covers only downloading and verifying
+- [Phase 6]: 06-02: update cadence is an hourly tick checking when 24h of wall clock passed since the last completed check, so sleep does not stretch it; failures retry on the next tick
 
 ### Pending Todos
 
@@ -306,6 +309,6 @@ Phase 5: VM matrix, post-review regression, iteration-3 spot check and browser v
 
 ## Session Continuity
 
-Last session: 2026-11-18T07:57:34.417Z
-Stopped at: Completed 05-15-PLAN.md
+Last session: 2026-11-18T17:31:00.108Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
