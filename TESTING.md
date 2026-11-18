@@ -919,7 +919,7 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
 - **M-79** Browser link states in the Tart VM (Portty 04-06).
   1. Build with `wails build -platform darwin/arm64 -tags "wailsassets vmpreview"` and copy Portty.app into the Tart VM portty-test. Open a session and turn Share on from the toolbar popover.
   2. Open the link in Safari (accept the self-signed certificate) and type `echo hi`: it runs (full control).
-  3. Turn sharing off (the switch, or `portty unshare <session>`): the page keeps its output, ignores typing and shows `<host> stopped sharing this session.` (or `This session is no longer shared.`), naming the host by its tailnet short name, the same name the GUI and CLI show (the VM build's share domain is `127.0.0.1`, so there it reads `127.0.0.1`). It does not reconnect.
+  3. Turn sharing off (the switch, or `portty unshare <session>`): the page keeps its output, ignores typing and shows `<host> stopped sharing this session.` (or `This session is no longer shared.`), naming the host by its tailnet short name, the same name the GUI and CLI show (the VM build's share domain is `127.0.0.1`, so there it reads `127.0.0.1`). It does not reconnect, because a stopped share is final; a network drop does reconnect (Phase 5, M-86).
   4. Reload the old link: `Link No Longer Works` with no host, session name or ID.
   5. Turn Share on again: the new link works.
   - _Why not automatable:_ a real browser against the built app's share server; jsdom cannot run the real WebSocket close path. The states are covered by `App.webLink.test.tsx`, `LinkNoLongerWorks.test.tsx` and `TerminalPanel.guestClose.test.tsx`.
@@ -941,7 +941,7 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
   2. On the home Mac run `tailscale ping <office>` and note whether it answers via DERP or directly.
   3. From Warp on the home Mac run `portty attach <office>:"<session>"`. Watch the GUI tab and the browser for 15 s, type a command in the CLI, then detach with `Ctrl-\`. Repeat attach and detach three times.
      - Expected: the GUI tab and the browser never blank or freeze, every command shows on every viewer, and the bar's viewer count is 4 (office window, GUI tab, browser, CLI).
-     - A `[reconnecting]` label after about 5 s of no output on an idle session is the known no-heartbeat indicator (Phase 5 concern). It is not this failure by itself.
+     - On an idle session the bar never shows `[reconnecting]`; it appears only while the connection is really down (UAT gap 1, fixed in 05-06).
   4. If a viewer blanks or freezes, note the time. On both Macs run `grep viewer-diag "$HOME/Library/Application Support/portty/daemon.log"` (and `daemon.log.1` if the daemon restarted). Keep the lines from 30 s before to 30 s after, plus the `tailscale ping` result. Read them for:
      - a `grid` line with small dimensions (host-side grid push, H-grid);
      - `slow` lines (a stalled viewer was kicked);
@@ -951,6 +951,54 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
   - _Why not automatable:_ two Macs, a real tailnet path (direct or DERP), Warp's terminal replies and the native GUI. internal/daemon/attach_viewers_test.go covers the code paths with fakes.
   - _Source:_ 04-UAT.md gap 1; 04-07-PLAN.md and 04-08-PLAN.md.
 
+
+### Category AT — Overnight Survival (SHAR-07, VERF-01)
+
+The user requires Portty to be rock solid: a session must survive network glitches, network and Wi-Fi access-point switches, and sleep/wake with no manual reattach. M-84 and M-85 are **deferred-capable**: at Phase 5 verification the user decides whether M-84 (the real overnight run, VERF-01 as written) or M-85 (the accelerated sleep/wake run) gates VERF-01, or defers both. Claude runs M-86 and M-87 in the Tart VMs (Safari through dev-browser); only the two-Mac items need the user. Two Tart VMs are on the tailnet for two-machine runs: `portty-test` (office role, tailnet name `portty-vm-office-2`, 100.103.7.20) and `portty-test-2` (home role, `portty-vm-home-3`, 100.78.170.1).
+
+Caveats a user can trip over (all by design or known, none a failure by itself):
+- zsh `clear` sends `ESC[3J`, which empties the history a reattach replays.
+- History lives in memory only (last 10,000 lines), so a restart of the host Mac's daemon loses it, as before Phase 5.
+- If the host turns Share off while a browser is asleep and no other session is shared, the share port is closed, the browser's probe gets a network error, and the page keeps showing `Connection lost — reconnecting…` until it is closed (05-05 known limit).
+- Both Macs must run the same build. A new client against an older host gets full replays instead of deltas, and its watchdog stays armed.
+- The office Mac must be kept awake by hand (a foreground `caffeinate`). Portty has no keep-awake feature (CONV-01, v2) and these checks never change power or sleep settings.
+- After the viewing Mac wakes, the GUI tab and the CLI may take up to about 45 s to notice a dead socket (watchdog: 40 s of silence plus a 5 s probe) unless the webview fires `online` or `visibilitychange`; there is no system wake hook yet (todo `network-resilience-matrix`).
+
+- **M-84** Overnight two-Mac test (Portty 05-07; VERF-01 as written; deferred-capable). Both Macs run the same build and are signed in to the same Tailscale account.
+  1. On the office Mac open a terminal (not Portty) and run `caffeinate -dims`. Leave it in the foreground all night and stop it with Ctrl-C in the morning. Change no system setting.
+  2. On the office Mac start Claude Code in a Portty session and turn Share on. On the home Mac open the session from the sidebar, and in Warp run `portty attach <office>:<session>`.
+  3. Leave both overnight. The home Mac may sleep.
+  4. Next morning, without reattaching:
+     - typing reaches Claude Code from the GUI tab and from the CLI;
+     - the previous day's scrollback is there in both, with nothing duplicated;
+     - the same session opens from a browser on another tailnet device and works.
+  5. On both Macs run `grep viewer-diag "$HOME/Library/Application Support/portty/daemon.log"` (and `daemon.log.1` if a daemon restarted). Read the `replay ... mode=` lines (reconnects should be `mode=delta` unless the 256 KiB ring wrapped) and any `heartbeat timeout` / `proxy heartbeat timeout` lines (a dead socket was dropped).
+  - _Why not automatable:_ two real Macs, a real overnight idle gap with sleep, the real tailnet path and the native GUI. The accelerated stand-ins are in internal/daemon/attach_viewers_test.go and internal/relay/history_test.go (Section 4 VERF-01 rows).
+  - _Source:_ 05-RESEARCH.md Testing Strategy; 05-01..05-06 plans; 05-CONTEXT.md (VERF-01 gate deferred).
+
+- **M-85** Two-Mac short sleep/wake and network changes (Portty 05-07; deferred-capable accelerated alternative to M-84). Same setup as M-84 steps 1-2, plus the session open in a browser on the home Mac.
+  1. Close the home Mac's lid for 10+ minutes, then open it. All three viewers reconnect on their own: the GUI tab and the browser may show `Connection lost — reconnecting…` briefly, and the CLI bar may show `[reconnecting]` briefly.
+  2. Turn the home Mac's Wi-Fi off for 20 s and back on. Then switch it to another Wi-Fi network or access point (or a phone hotspot) and back.
+  3. Expected after each step: history is intact with nothing duplicated, and typing into Claude Code works from all three, with no manual reattach.
+     - While the home daemon cannot reach the office Mac, the CLI bar may flip from `[reconnecting]` to connected for a moment and back (the proxy accepts the loopback socket, then closes it with 1013 "remote unreachable"; 05-06 known behavior).
+  4. Read the daemon.log `viewer-diag` lines as in M-84 step 5.
+  - _Why not automatable:_ a real Mac's sleep and Wi-Fi, the GUI tab inside WKWebView and the real tailnet path. The VMs cannot sleep the way a laptop lid does.
+  - _Source:_ 05-RESEARCH.md Testing Strategy; 05-04, 05-05 and 05-06 plans.
+
+- **M-86** VM browser freeze (Portty 05-07; Claude runs it).
+  1. Build with `wails build -platform darwin/arm64 -tags "wailsassets vmpreview"`, copy Portty.app into the Tart VM `portty-test`, open a session, turn Share on and open the `127.0.0.1:7444` link in Safari. Type `echo hi`: it runs.
+  2. Find the daemon (`pgrep -fl portty`) and `kill -STOP` it for 60 s. The page shows `Connection lost — reconnecting…` (watchdog: about 40 s of silence plus a 5 s probe) and ignores typing.
+  3. `kill -CONT` it. The page reconnects, the banner clears, nothing is duplicated and typing works.
+  4. Two-VM variant: with Share on in `portty-test`, open the session in `portty-test-2` from the sidebar, with `portty attach portty-vm-office-2:<session>` and in Safari on the tailnet link. Repeat steps 2-3 against the office daemon, then `kill -STOP` / `-CONT` the home daemon in `portty-test-2`. All three home viewers recover with nothing duplicated.
+  - _Why not automatable:_ a real browser's WebSocket and timers against a frozen daemon; jsdom fakes the socket. The rules are covered by relayClient.test.ts and TerminalPanel.reconnect.test.tsx.
+  - _Source:_ 05-RESEARCH.md Testing Strategy (VM list); 05-04-PLAN.md.
+
+- **M-87** VM suspend / clock jump (Portty 05-07; Claude runs it).
+  1. With the M-86 setup (one VM or both), run `tart suspend portty-test` for several minutes, then resume it.
+  2. Expected: the session continues with no reconnect storm (only a few `join` lines in daemon.log) and no duplicated output; typing works. In the two-VM setup, also suspend and resume `portty-test-2` (the home role) and check its GUI tab, CLI and browser recover.
+  3. If `tart suspend` does not work for this guest, run the M-86 `kill -STOP` variant instead and note it.
+  - _Why not automatable:_ a guest suspend jumps the wall clock under a live WebSocket; the CLI watchdog measures wall-clock silence on purpose (05-06), which a unit test cannot reproduce faithfully.
+  - _Source:_ 05-RESEARCH.md Testing Strategy (VM list) and Assumption A7; 05-06-PLAN.md.
 ---
 
 ## 6. Standing Convention
