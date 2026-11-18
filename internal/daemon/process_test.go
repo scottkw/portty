@@ -97,3 +97,27 @@ func TestRunDaemon_Exports(t *testing.T) {
 	var _ func() = RunDaemon
 	var _ func(string) error = EnsureDaemon
 }
+
+// WR-05: one daemon at a time. A second daemon cannot take the lock while the
+// first holds it, and gets it once the first lets go within the wait (the
+// version-mismatch restart: the old daemon exits just after its shutdown reply).
+func TestLockDaemon_ExclusiveAndWaits(t *testing.T) {
+	path := t.TempDir() + "/daemon.lock"
+	first, err := lockDaemon(path, 0)
+	if err != nil {
+		t.Fatalf("first lockDaemon: %v", err)
+	}
+	if second, err := lockDaemon(path, 100*time.Millisecond); err == nil {
+		second.Close()
+		t.Fatal("second lockDaemon succeeded while the first holds the lock")
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		first.Close() // what the kernel does when the old daemon exits
+	}()
+	third, err := lockDaemon(path, 2*time.Second)
+	if err != nil {
+		t.Fatalf("lockDaemon after the holder let go: %v", err)
+	}
+	third.Close()
+}

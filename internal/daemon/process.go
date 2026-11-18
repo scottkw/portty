@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -33,6 +34,14 @@ func RunDaemon() {
 func runDaemonCore(ctx context.Context) {
 	AugmentServicePath() // Must be before NewSessionEngine / any exec.LookPath
 	socketPath := DefaultSocketPath()
+	// WR-05: the lock comes before any socket cleanup or bind. A daemon that
+	// cannot get it within the wait leaves the running one alone.
+	lock, err := lockDaemon(filepath.Join(filepath.Dir(socketPath), "daemon.lock"), 2*time.Second)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: already running (lock: %v)\n", err)
+		return
+	}
+	defer lock.Close() // held for the process lifetime
 	if err := CleanupStaleSocket(socketPath); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: %v\n", err)
 		return
