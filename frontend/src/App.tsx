@@ -617,8 +617,10 @@ function App(): React.ReactElement {
     return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
-  // NAV-02: poll remote peers every 30 s whenever the desktop app is open and
-  // Tailscale is connected; not gated on any tab. Errors keep the last list.
+  // NAV-02: poll remote peers whenever the desktop app is open and Tailscale is
+  // connected; not gated on any tab. Errors keep the last list. 05-13: every 5 s
+  // while visible (a new share shows up fast), 30 s while hidden, at once on
+  // focus, visibility and wake. Each poll is a fan-out to every peer, so never two at once.
   useEffect(() => {
     if (mode === 'web') return // Phase 120-06: no Wails RPC in browser mode.
     // NET-01: while Tailscale is off, list no peers; tailscaleOff is a dep so
@@ -629,7 +631,12 @@ function App(): React.ReactElement {
       return
     }
     let cancelled = false
+    let inFlight = false
+    let lastAt = 0
     async function refresh() {
+      if (inFlight) return
+      inFlight = true
+      lastAt = Date.now()
       try {
         const peers = await GetRemoteSessionsWithMeta()
         if (!cancelled) {
@@ -638,13 +645,26 @@ function App(): React.ReactElement {
         }
       } catch {
         // Absorbed: the sidebar keeps its last state until the next poll succeeds.
+      } finally {
+        inFlight = false
       }
     }
+    const visible = () => document.visibilityState === 'visible'
+    const now = () => void refresh()
+    const onVisibility = () => { if (visible()) now() }
     void refresh()
-    const interval = setInterval(() => void refresh(), 30_000)
+    const interval = setInterval(() => {
+      if (visible() || Date.now() - lastAt >= 30_000) now()
+    }, 5_000)
+    window.addEventListener('focus', now)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('portty:wake', now)
     return () => {
       cancelled = true
       clearInterval(interval)
+      window.removeEventListener('focus', now)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('portty:wake', now)
     }
   }, [tailscaleOff])
 

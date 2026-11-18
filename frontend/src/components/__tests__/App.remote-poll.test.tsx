@@ -14,7 +14,7 @@ import { mountApp, unmountApp, flush, wailsEvents } from './appHarness'
 const peer: RemotePeerSessions = { hostname: 'office-air.tail1234.ts.net', reachable: true, sessions: [] }
 
 let visibility = 'visible'
-let poll: ReturnType<typeof vi.fn>
+let poll: ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>
 
 function mount() {
   return mountApp({
@@ -34,7 +34,7 @@ describe('App — remote peer poll cadence (05-13)', () => {
     vi.useFakeTimers()
     visibility = 'visible'
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
-    poll = vi.fn(() => [peer])
+    poll = vi.fn<(...args: unknown[]) => unknown>(() => [peer])
   })
 
   afterEach(async () => {
@@ -80,7 +80,7 @@ describe('App — remote peer poll cadence (05-13)', () => {
 
   it('never starts a second fan-out while one is in flight', async () => {
     let release!: (v: RemotePeerSessions[]) => void
-    poll = vi.fn()
+    poll = vi.fn<(...args: unknown[]) => unknown>()
       .mockImplementationOnce(() => new Promise<RemotePeerSessions[]>((r) => { release = r }))
       .mockImplementation(() => [peer])
     await mount()
