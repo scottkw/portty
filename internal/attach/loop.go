@@ -153,7 +153,7 @@ func Run(ctx context.Context, first *websocket.Conn, o RunOptions) error {
 
 func (l *loop) readStdin(done <-chan struct{}) {
 	for {
-		buf := make([]byte, 32*1024)
+		buf := make([]byte, relay.MaxInputPayload) // one read becomes one frame under the relay's read limit
 		n, err := l.o.Stdin.Read(buf)
 		if n > 0 {
 			select {

@@ -87,6 +87,12 @@ const (
 // byte. A var so tests can shrink it.
 var ReplayChunk = 16 << 10
 
+// MaxInputPayload is the largest payload one MsgInput frame may carry: 32768
+// (coder/websocket's default read limit, kept by every input reader as the DoS
+// guard) minus the type byte. A larger frame closes the socket, so senders
+// split longer input into frames of at most this many payload bytes (HARD-02).
+const MaxInputPayload = 32767
+
 // ReplayPendingMax caps the bytes of live frames held for one viewer while its
 // replay is written (Hub.TakePending). A viewer that keeps up with the output
 // holds less than the replay itself (at most the 4 MiB history plus a screen),
