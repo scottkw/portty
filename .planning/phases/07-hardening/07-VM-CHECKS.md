@@ -25,6 +25,15 @@ Evidence for plan 07-05 Task 2. Each row is one check Claude ran in the Tart VMs
 - The ceiling's 16 MiB headroom is fixed, but vt's per-line overhead scales with width. 07-01 measured 93.7 MiB at 80 columns against 85.4 MiB from cells alone (about 8.3 MiB of overhead). At 100 columns that overhead is about 10.4 MiB, which leaves about 5.6 MiB of headroom for everything else in the daemon during the burst (the ring, the viewer's queued output, the GUI's preview emulators). The burst GC saw about 6 MiB of that. This is my reading of the numbers, not a measured breakdown.
 - The plan's PASS rule is not met as written, so the row is FAIL. Not fixed here (plan rule). Options for a gap plan: a ceiling with per-line overhead (e.g. measure vt's bytes per line at width C, as 07-01 did at 80) or headroom that scales with C, or a precise heap reading (gctrace's whole-MiB resolution cannot settle a 0.2 MiB margin).
 
+## Orchestrator disposition of H-05 (2026-11-18)
+
+The FAIL verdict above stays recorded as measured. Disposition: **accepted as a ceiling calibration miss, not a product defect; no gap plan.**
+
+- SC1 asks for a *fixed* bound and for main-screen history to survive. The run shows both: identical 128 MiB peaks on two 30,000-line runs (plateau at vt's 10,000-line cap), and a full release on exit (6 MiB).
+- The 16 MiB headroom was a plan-time constant written before any 100-column measurement. The miss (0.19 MiB as read) is smaller than gctrace's 1 MiB resolution.
+- The automated proof of SC1 is `TestHistory_HeapBoundAfterAltScreenScroll` (fixed 80 columns, width-derived ceiling, plateau and post-exit checks), and it passes in both gate runs.
+- Residual: daemon heap while a full-width TUI is in the alt screen is about 10,000 × cols × ~120 B (≈ 128 MiB at 100 columns, ≈ 270 MiB at 220 columns), freed on exit. This is the documented `shortcut:` limit in hub.go (vt exposes no alt-scrollback cap).
+
 ## Cleanup
 
 - CLI drivers stopped (`h2c` detached with Ctrl-\, exit 0; `h5c` detached), the `h5mon.sh` monitor and the gctrace daemon killed; office test sessions ended with that daemon.
