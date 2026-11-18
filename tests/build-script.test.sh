@@ -277,6 +277,16 @@ assert_file_contains_literal "contains shebang #!/usr/bin/env bash" \
 assert_file_contains_literal "contains set -euo pipefail" \
   "set -euo pipefail" "$BUILD_SH"
 
+# Go toolchain pin (05-11): tailscale.com v1.98.3 JSON breaks on Go 1.27
+assert_file_contains_regex "build.sh exports GOTOOLCHAIN" \
+  '^export GOTOOLCHAIN=' "$BUILD_SH"
+
+assert_file_contains_regex "build.sh reads go.mod's toolchain line" \
+  "awk '/\\^toolchain /.*go\\.mod" "$BUILD_SH"
+
+assert_file_contains_regex "go.mod has a toolchain line" \
+  '^toolchain go[0-9]+\.[0-9]+\.[0-9]+$' "$SCRIPT_DIR/../go.mod"
+
 # ---------------------------------------------------------------------------
 # Section 12: SEC-10 compliance — build.sh install pattern
 # ---------------------------------------------------------------------------

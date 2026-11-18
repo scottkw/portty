@@ -51,6 +51,15 @@ case "$PLATFORM" in
     ;;
 esac
 
+# Build with go.mod's toolchain: tailscale.com v1.98.3's JSON decoding breaks on Go 1.27, and
+# GOTOOLCHAIN=auto never downgrades a newer local Go. Remove with the tailscale.com upgrade.
+GOMOD_TOOLCHAIN="$(awk '/^toolchain /{print $2}' "$(dirname "$0")/go.mod")"
+if [[ -z "$GOMOD_TOOLCHAIN" ]]; then
+  echo "ERROR: go.mod has no toolchain line (expected e.g. 'toolchain go1.26.11')"
+  exit 1
+fi
+export GOTOOLCHAIN="${GOTOOLCHAIN:-$GOMOD_TOOLCHAIN}"
+
 # Wails binary check
 WAILS="$(go env GOPATH)/bin/wails"
 WAILS_PINNED_VER="$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2 2>/dev/null)"

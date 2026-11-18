@@ -2,6 +2,8 @@ module github.com/scottkw/portty
 
 go 1.26.4
 
+toolchain go1.26.11
+
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/aymanbagabas/go-pty v0.2.3
