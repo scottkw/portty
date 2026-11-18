@@ -25,6 +25,13 @@ Portty is a macOS terminal with remote access over Tailscale.
 
 Any device on your tailnet can also open the session's link in a browser, and anyone with the link has full control. Turning Share off disconnects everyone.
 
+## Known Issues
+
+**Stray prompt lines after making the window narrower.** With a multi-line shell prompt (such as Powerlevel10k's two-line style), making the window narrower can leave copies of the prompt's top line in the scrollback. Wider, taller and shorter are fine. Each resize makes zsh redraw the prompt; narrowing wraps the prompt's lines, so the redraw starts one line too low and leaves the old top line behind. The lines are cosmetic and do not affect the session.
+
+- Clear them with `clear` or Ctrl-L.
+- Or use a one-line prompt. For Powerlevel10k, run `p10k configure` and pick the one-line style, or set it in `~/.p10k.zsh`.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
