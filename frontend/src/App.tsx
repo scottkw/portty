@@ -184,6 +184,8 @@ function App(): React.ReactElement {
   // The menu:close-tab listener ([] deps) reads the active tab through this ref.
   const activeIdRef = useRef<string | null>(null)
   activeIdRef.current = activeId
+  const tabsRef = useRef(tabs)
+  tabsRef.current = tabs
   // Every session:exit id, so createTab and the init/retryInit restore skip a
   // shell that exited while their RPCs were pending (exits are reported once).
   const exitedIdsRef = useRef(new Set<string>())
@@ -922,10 +924,16 @@ function App(): React.ReactElement {
     }
   }, [])
 
-  // Review IN-01: the poller brought the daemon back after an error, so reload as Retry would.
+  // Review IN-01: the poller brought the daemon back after an error. With no tabs, reload
+  // as Retry would; otherwise only clear the error, since retryInit replaces the tab list
+  // and would drop peer tabs and move focus (review it3 WR-02).
   useEffect(() => {
     if (mode === 'web') return
-    return EventsOn('daemon:recovered', () => { void retryInit() })
+    return EventsOn('daemon:recovered', () => {
+      if (tabsRef.current.length === 0) { void retryInit(); return }
+      setDaemonError(null)
+      GetRelayPort().then((p) => { if (p > 0) setRelayPort(p) }).catch(() => { /* keep the port */ })
+    })
   }, [retryInit])
 
   // relayPort is set with the restored tabs, so launch never flashes the empty state.
