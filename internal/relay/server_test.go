@@ -124,13 +124,27 @@ func TestServer_ClientNameQueryParam(t *testing.T) {
 	}, "SubscriberCount stayed < 1: connection handler never registered the subscriber")
 }
 
+// waitTwoSubscribers waits until both dialled clients are subscribed. dialWS
+// returns at the handshake and the server's Join comes later; a write before it
+// reaches that client in its full replay, with the ring's 0x01 frame header.
+func waitTwoSubscribers(t *testing.T, manager *HubManager, sessionID string) {
+	t.Helper()
+	hub, ok := manager.Get(sessionID)
+	if !ok {
+		t.Fatal("session not found in manager")
+	}
+	testutil.WaitFor(t, 2*time.Second, func() bool { return hub.SubscriberCount() >= 2 },
+		"SubscriberCount stayed < 2: the server never joined both clients")
+}
+
 // TestHub_TwoClientsFanOut verifies criterion 1: two WS clients connected to the
 // same session both receive the same PTY output simultaneously.
 func TestHub_TwoClientsFanOut(t *testing.T) {
-	srv, _, ptyWrite, _, sessionID := setupTestServer(t)
+	srv, manager, ptyWrite, _, sessionID := setupTestServer(t)
 
 	clientA := dialWS(t, srv.URL, sessionID)
 	clientB := dialWS(t, srv.URL, sessionID)
+	waitTwoSubscribers(t, manager, sessionID)
 
 	// Write PTY output.
 	const payload = "hello world"
@@ -223,10 +237,11 @@ func TestHub_ReconnectScrollback(t *testing.T) {
 // TestHub_InputFanOut verifies criterion 3: input from any connected client reaches
 // the PTY and produces output visible to all clients.
 func TestHub_InputFanOut(t *testing.T) {
-	srv, _, ptyWrite, inputRead, sessionID := setupTestServer(t)
+	srv, manager, ptyWrite, inputRead, sessionID := setupTestServer(t)
 
 	clientA := dialWS(t, srv.URL, sessionID)
 	clientB := dialWS(t, srv.URL, sessionID)
+	waitTwoSubscribers(t, manager, sessionID)
 
 	// Client A sends an input frame.
 	inputFrame := MakeInputFrame([]byte("ls\n"))
