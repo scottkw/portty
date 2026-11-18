@@ -56,7 +56,10 @@ describe('Phase 93 WGL-01 / CLIP-01: hot-swap useEffect structure', () => {
   })
 
   it('Scrollback preservation: source never calls term.reset() (would discard buffer)', () => {
-    expect(src).not.toMatch(/term\.reset\(\)/)
+    // SHAR-07 exception: the RelayClient onReset callback, fired only when the server
+    // announces a full replay of the whole history onto existing content.
+    expect(src).toMatch(/onReset: \(\) => term\.reset\(\),/)
+    expect(src.replace(/onReset: \(\) => term\.reset\(\),/, '')).not.toMatch(/term\.reset\(\)/)
   })
 
   it('hot-swap useEffect disposes addons on toggle-off (cleanup paths)', () => {

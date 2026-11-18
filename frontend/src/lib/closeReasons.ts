@@ -4,3 +4,10 @@
 // Clients branch on them and show fixed copy; the wire text is never rendered.
 export const CLOSE_REASON_SHARE_STOPPED = 'share stopped'
 export const CLOSE_REASON_SESSION_ENDED = 'session ended'
+
+// True only for a final close: 1000 with one of the two reasons above. Code 1000
+// alone is not enough (a client detach is also 1000), and any other code is a
+// network drop that a reconnecting client retries (SHAR-07).
+export function isTerminalClose(code: number, reason: string): boolean {
+  return code === 1000 && (reason === CLOSE_REASON_SHARE_STOPPED || reason === CLOSE_REASON_SESSION_ENDED)
+}

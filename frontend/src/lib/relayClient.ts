@@ -1,6 +1,10 @@
+import { CLOSE_REASON_SESSION_ENDED, CLOSE_REASON_SHARE_STOPPED, isTerminalClose } from './closeReasons'
+
 // Binary framing constants matching internal/relay/protocol.go
 export const MSG_OUTPUT  = 0x01  // server → client: PTY output
 export const MSG_RESIZE  = 0x02  // server → client: resize notification
+export const MSG_PONG    = 0x04  // server → client: answer to MSG_PING (relay.MsgPong, pinned in tests)
+export const MSG_META    = 0x20  // server → client: JSON metadata (relay.MsgMeta)
 export const MSG_INPUT   = 0x10  // client → server: keyboard input
 export const MSG_RESIZE2 = 0x11  // client → server: resize request
 export const MSG_PING    = 0x12  // client → server: keep-alive
@@ -12,6 +16,8 @@ export const MSG_PING    = 0x12  // client → server: keep-alive
 export type ServerFrame =
   | { type: 'output'; payload: Uint8Array }
   | { type: 'resize'; cols: number; rows: number }
+  | { type: 'pong' }
+  | { type: 'meta'; payload: Uint8Array }
   | { type: 'unknown' }
 
 /**
@@ -61,9 +67,47 @@ export function parseServerFrame(data: Uint8Array): ServerFrame {
       return { type: 'resize', cols, rows }
     }
 
+    case MSG_PONG:
+      return { type: 'pong' }
+
+    case MSG_META:
+      return { type: 'meta', payload: data.slice(1) }
+
     default:
       return { type: 'unknown' }
   }
+}
+
+/**
+ * Reconnect timing (SHAR-07, Phase 5) — the one place for these numbers.
+ * Backoff 1, 2, 4, 8, 16 s then 30 s cap, ±20 % jitter, reset only after a
+ * connection stayed open 30 s. Ping every 15 s; after the first MsgPong a socket
+ * silent for 40 s gets a probe ping and is dead 5 s later. The reconnecting
+ * banner shows after 3 s so a brief blip stays silent.
+ */
+export const RECONNECT = {
+  minMs: 1_000,
+  maxMs: 30_000,
+  jitter: 0.2,
+  healthyResetMs: 30_000,
+  pingMs: 15_000,
+  deadMs: 40_000,
+  probeGraceMs: 5_000,
+  bannerDelayMs: 3_000,
+} as const
+
+export type RelayState = 'connecting' | 'open' | 'reconnecting' | 'stopped'
+
+/** Answer of the re-auth hook run before each redial (05-05 wires the real ones). */
+export type ReconnectVerdict =
+  | { kind: 'ok'; port?: number }
+  | { kind: 'retry' }
+  | { kind: 'stop'; reason: 'share-stopped' | 'ended' }
+
+/** Delay before reconnect attempt `attempt` (0-based); `rand` in [0, 1). */
+export function backoffDelayMs(attempt: number, rand: number): number {
+  const base = Math.min(RECONNECT.maxMs, RECONNECT.minMs * 2 ** attempt)
+  return Math.min(RECONNECT.maxMs, base * (1 - RECONNECT.jitter + 2 * RECONNECT.jitter * rand))
 }
 
 // Callbacks for RelayClient events
@@ -77,6 +121,10 @@ export interface RelayClientCallbacks {
    * ("session ended") on hub.Done() — never a raw error string or a
    * user-set session name (T-175-06-01). code/reason are optional so
    * existing () => void-shaped callers keep working unchanged.
+   *
+   * With opts.reconnect on (SHAR-07) it fires only for a final close
+   * (isTerminalClose) or a stop verdict from beforeReconnect; every other
+   * close is retried, and a user close() fires nothing.
    */
   onClose?: (code?: number, reason?: string) => void
   /**
@@ -85,73 +133,212 @@ export interface RelayClientCallbacks {
    * Optional so host-path callers (no remote, no wsURL) can omit it without change.
    */
   onResize?: (cols: number, rows: number) => void
+  /** SHAR-07: reconnect-mode state transitions (fired on change only). */
+  onStateChange?: (state: RelayState) => void
+  /** SHAR-07: the terminal must be cleared before a full replay lands on existing content. */
+  onReset?: () => void
 }
 
 /**
  * WebSocket client implementing the binary framing protocol from Phase 2.
- * One instance per terminal session.
+ * One instance per terminal session. With opts.reconnect it replaces its socket
+ * after a drop and resumes the stream (SHAR-07); without it, one socket, as before.
  */
 export class RelayClient {
-  private ws: WebSocket
+  private ws!: WebSocket
   private pingInterval: ReturnType<typeof setInterval> | null = null
+  private readonly reconnect?: { beforeReconnect?: () => Promise<ReconnectVerdict> }
+  private state: RelayState = 'connecting'
+  private closedByUser = false
+  private attempt = 0
+  private openedAt = 0
+  private redialing = false
+  private retryTimer: ReturnType<typeof setTimeout> | null = null
+  // Stream position (05-01 contract): offset meta + (payload.length + 1) per later output frame.
+  private offset = 0
+  private offsetValid = false
+  private hasRendered = false
+  private awaitingReplayMeta = true
 
   constructor(
-    port: number,
-    sessionId: string,
+    private port: number,
+    private readonly sessionId: string,
     private callbacks: RelayClientCallbacks,
-    opts?: { remote?: boolean; wsURL?: string },
+    private readonly opts?: {
+      remote?: boolean
+      wsURL?: string
+      reconnect?: { beforeReconnect?: () => Promise<ReconnectVerdict> }
+    },
   ) {
+    this.reconnect = opts?.reconnect
+    this.dial(this.baseURL())
+  }
+
+  private baseURL(): string {
     // Phase 155: wsURL override short-circuits BEFORE port is used — port is 0
     // on web-share so it must never appear in the URL (Pitfall 1).
-    let url: string
-    if (opts?.wsURL) {
-      url = opts.wsURL                          // web-share override (wss://host/...?cap=)
-    } else {
-      const path = opts?.remote
-        ? `/api/relay/remote/${sessionId}/ws`   // daemon proxy → peer (cap looked up server-side; T-134-07-01)
-        : `/sessions/${sessionId}/ws`           // local relay direct
-      url = `ws://127.0.0.1:${port}${path}`
-    }
-    this.ws = new WebSocket(url)
-    this.ws.binaryType = 'arraybuffer'
+    if (this.opts?.wsURL) return this.opts.wsURL // web-share override (wss://host/...?cap=)
+    const path = this.opts?.remote
+      ? `/api/relay/remote/${this.sessionId}/ws`   // daemon proxy → peer (cap looked up server-side; T-134-07-01)
+      : `/sessions/${this.sessionId}/ws`           // local relay direct
+    return `ws://127.0.0.1:${this.port}${path}`
+  }
 
-    this.ws.onopen = () => {
-      callbacks.onOpen?.()
-      // Send keep-alive pings every 30 seconds
+  private dial(url: string): void {
+    this.offsetValid = false
+    this.awaitingReplayMeta = true
+    this.openedAt = 0
+    const ws = new WebSocket(url)
+    ws.binaryType = 'arraybuffer'
+    this.ws = ws
+
+    // Every handler ignores events from a socket that is no longer current.
+    ws.onopen = () => {
+      if (ws !== this.ws) return
+      this.openedAt = Date.now()
+      if (this.reconnect) this.setState('open')
+      this.callbacks.onOpen?.()
+      this._clearPing()
       this.pingInterval = setInterval(() => {
         if (this.ws.readyState === WebSocket.OPEN) {
           this.ws.send(new Uint8Array([MSG_PING]))
         }
-      }, 30_000)
+      }, RECONNECT.pingMs)
     }
 
-    this.ws.onmessage = (event: MessageEvent) => {
-      const frame = parseServerFrame(new Uint8Array(event.data as ArrayBuffer))
-      switch (frame.type) {
-        case 'output':
-          this.callbacks.onOutput(frame.payload)
-          break
-        case 'resize':
-          // VIEW-04 (Phase 157): the server is the host-authority for the PTY grid.
-          // Guest viewers (remote || wsURL) pass onResize to honor the server-pushed
-          // grid; host-path callers omit it so 0x02 is a no-op for local sessions.
-          this.callbacks.onResize?.(frame.cols, frame.rows)
-          break
-        // 'unknown' frames are silently dropped
-      }
+    ws.onmessage = (event: MessageEvent) => {
+      if (ws !== this.ws) return
+      this.handleFrame(parseServerFrame(new Uint8Array(event.data as ArrayBuffer)))
     }
 
-    this.ws.onclose = (evt: CloseEvent) => {
+    ws.onclose = (evt: CloseEvent) => {
+      if (ws !== this.ws) return
       this._clearPing()
-      callbacks.onClose?.(evt.code, evt.reason)
+      if (!this.reconnect) {
+        this.callbacks.onClose?.(evt.code, evt.reason)
+        return
+      }
+      if (this.closedByUser) return
+      if (isTerminalClose(evt.code, evt.reason)) {
+        this.stop(evt.code, evt.reason)
+        return
+      }
+      // A first connect that fails (openedAt 0) is retried like a drop.
+      if (this.openedAt && Date.now() - this.openedAt >= RECONNECT.healthyResetMs) this.attempt = 0
+      this.scheduleRetry()
     }
 
-    this.ws.onerror = () => {
+    ws.onerror = () => {
       // Error is always followed by close; let onClose handle cleanup
     }
   }
 
-  /** Send keyboard input to the PTY. */
+  private handleFrame(frame: ServerFrame): void {
+    switch (frame.type) {
+      case 'output':
+        // Output before any replay meta on this socket: an older host sent a full
+        // replay without saying so, so clear what is already shown.
+        if (this.awaitingReplayMeta) {
+          if (this.hasRendered) this.callbacks.onReset?.()
+          this.awaitingReplayMeta = false
+        }
+        if (this.offsetValid) this.offset += frame.payload.length + 1
+        this.hasRendered = true
+        this.callbacks.onOutput(frame.payload)
+        break
+      case 'resize':
+        // VIEW-04 (Phase 157): the server is the host-authority for the PTY grid.
+        // Guest viewers (remote || wsURL) pass onResize to honor the server-pushed
+        // grid; host-path callers omit it so 0x02 is a no-op for local sessions.
+        this.callbacks.onResize?.(frame.cols, frame.rows)
+        break
+      case 'meta':
+        this.handleMeta(frame.payload)
+        break
+      // 'pong' and 'unknown' frames are dropped
+    }
+  }
+
+  private handleMeta(payload: Uint8Array): void {
+    let m: unknown
+    try {
+      m = JSON.parse(new TextDecoder().decode(payload))
+    } catch {
+      this.offsetValid = false // a bad frame forces an explicit full replay next time, never a partial
+      return
+    }
+    if (typeof m !== 'object' || m === null) {
+      this.offsetValid = false
+      return
+    }
+    const { replay, offset } = m as { replay?: unknown; offset?: unknown }
+    if (typeof replay === 'string') {
+      if (replay === 'full' && this.hasRendered) this.callbacks.onReset?.()
+      this.awaitingReplayMeta = false
+    }
+    if (offset !== undefined) {
+      if (typeof offset === 'number' && Number.isSafeInteger(offset) && offset >= 0) {
+        this.offset = offset
+        this.offsetValid = true
+      } else {
+        this.offsetValid = false
+      }
+    }
+  }
+
+  private setState(state: RelayState): void {
+    if (this.state === state) return
+    this.state = state
+    this.callbacks.onStateChange?.(state)
+  }
+
+  private scheduleRetry(): void {
+    this.setState('reconnecting')
+    this._clearRetry()
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null
+      void this.redial()
+    }, backoffDelayMs(this.attempt, Math.random()))
+  }
+
+  private async redial(): Promise<void> {
+    if (this.redialing) return
+    this.redialing = true
+    this.attempt++
+    let verdict: ReconnectVerdict
+    try {
+      verdict = (await this.reconnect?.beforeReconnect?.()) ?? { kind: 'ok' }
+    } catch {
+      verdict = { kind: 'retry' }
+    }
+    this.redialing = false
+    if (this.closedByUser || this.state !== 'reconnecting') return
+    if (verdict.kind === 'stop') {
+      this.stop(1000, verdict.reason === 'share-stopped' ? CLOSE_REASON_SHARE_STOPPED : CLOSE_REASON_SESSION_ENDED)
+      return
+    }
+    if (verdict.kind === 'retry') {
+      this.scheduleRetry()
+      return
+    }
+    if (verdict.port) this.port = verdict.port // a wsURL ignores the port
+    let url = this.baseURL()
+    if (this.offsetValid) url += `${url.includes('?') ? '&' : '?'}resume=${this.offset}`
+    this.dial(url)
+  }
+
+  private stop(code: number, reason: string): void {
+    this.teardown()
+    this.setState('stopped')
+    this.callbacks.onClose?.(code, reason)
+  }
+
+  private teardown(): void {
+    this._clearPing()
+    this._clearRetry()
+  }
+
+  /** Send keyboard input to the PTY. Dropped (never queued) unless the socket is open. */
   sendInput(text: string): void {
     if (this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(encodeInputFrame(text))
@@ -165,16 +352,31 @@ export class RelayClient {
     }
   }
 
-  /** Close the WebSocket connection and stop keep-alive pings. */
+  /** Close the WebSocket connection and stop keep-alive pings (and any reconnecting). */
   close(): void {
-    this._clearPing()
-    this.ws.close()
+    this.closedByUser = true
+    if (!this.reconnect) {
+      this._clearPing()
+      this.ws.close()
+      return
+    }
+    this.teardown()
+    const ws = this.ws
+    ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
+    ws.close()
   }
 
   private _clearPing(): void {
     if (this.pingInterval !== null) {
       clearInterval(this.pingInterval)
       this.pingInterval = null
+    }
+  }
+
+  private _clearRetry(): void {
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer)
+      this.retryTimer = null
     }
   }
 }

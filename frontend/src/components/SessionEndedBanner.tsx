@@ -14,10 +14,11 @@ import { InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
  * Mirrors WebGLRecoveryBanner's accessible-banner pattern: role="status" +
  * aria-live="polite" + fixed copy + dismiss button.
  *
- * Per the phase's locked decision this is a SINGLE generic notice — do NOT
- * build differentiated "owner ended" vs "network error" messaging, and do
- * NOT wire any auto-reconnect to this banner (RESEARCH anti-patterns): a
- * "session ended" close means the session is genuinely gone.
+ * Final closes (share stopped, session ended) are still never retried: the
+ * session or the share is genuinely gone. Since Phase 5 (SHAR-07) a network
+ * drop reconnects instead, and the panel shows kind 'reconnecting' while it
+ * does (no dismiss button; it goes away when the socket reopens). Every kind
+ * has fixed copy, and the wire reason is still never rendered.
  *
  * Colorblind-safe (MEMORY: user is colorblind): the message is conveyed via
  * text + an accessible status role, never via color alone.
@@ -29,7 +30,8 @@ import { InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
  * below, regardless of what `reason` contains.
  */
 export interface SessionEndedBannerProps {
-  onDismiss: () => void
+  /** Renders the Dismiss button when given; kind 'reconnecting' never has one. */
+  onDismiss?: () => void
   /**
    * Raw WebSocket CloseEvent.reason, if any. Used only for logging/
    * branching — see the Security note above. Never rendered.
@@ -39,9 +41,10 @@ export interface SessionEndedBannerProps {
   /**
    * Portty 04-06: 'share-stopped' when the close reason was the share-stopped
    * constant (the host turned Share off). Chosen by the caller from the
-   * constant, never from wire text.
+   * constant, never from wire text. Phase 5 (SHAR-07): 'reconnecting' while a
+   * dropped guest socket is being replaced.
    */
-  kind?: 'ended' | 'share-stopped'
+  kind?: 'ended' | 'share-stopped' | 'reconnecting'
   /** Local host label (peer tab or cap-verified session info) for 'share-stopped'. */
   host?: string
 }
@@ -67,18 +70,22 @@ export function SessionEndedBanner({
     <div className={cls} role="status" aria-live="polite">
       <InformationCircleIcon className="banner__icon" aria-hidden="true" />
       <span className="banner__message">
-        {kind === 'share-stopped'
-          ? (host ? `${host} stopped sharing this session.` : 'This session is no longer shared.')
-          : 'Session ended — the owner stopped this session.'}
+        {kind === 'reconnecting'
+          ? 'Connection lost — reconnecting…'
+          : kind === 'share-stopped'
+            ? (host ? `${host} stopped sharing this session.` : 'This session is no longer shared.')
+            : 'Session ended — the owner stopped this session.'}
       </span>
-      <button
-        type="button"
-        className="banner__dismiss"
-        aria-label="Dismiss"
-        onClick={onDismiss}
-      >
-        <XMarkIcon aria-hidden="true" />
-      </button>
+      {onDismiss && kind !== 'reconnecting' && (
+        <button
+          type="button"
+          className="banner__dismiss"
+          aria-label="Dismiss"
+          onClick={onDismiss}
+        >
+          <XMarkIcon aria-hidden="true" />
+        </button>
+      )}
     </div>
   )
 }

@@ -10,7 +10,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { ProgressAddon, type IProgressState } from '@xterm/addon-progress'
-import { RelayClient } from '../lib/relayClient'
+import { RelayClient, RECONNECT, type ReconnectVerdict } from '../lib/relayClient'
 import { computeGuestViewport, DEFAULT_GUEST_MIN_SCALE } from '../lib/terminalScale'
 import { isSoftwareWebGL } from '../lib/webglProbe'
 import { isXtermFocused } from '../lib/isXtermFocused'
@@ -106,6 +106,12 @@ interface TerminalPanelProps {
   hostLabel?: string
   /** Portty 04-06: called once when a guest socket closes with the share-stopped reason. */
   onShareStopped?: () => void
+  /**
+   * Phase 5 (SHAR-07): guest re-auth hook run before each redial (05-05 wires
+   * GetRelayPort + ConnectPeerSession or the browser /info probe). Absent means
+   * redial straight away.
+   */
+  beforeReconnect?: () => Promise<ReconnectVerdict>
 }
 
 /**
@@ -131,11 +137,14 @@ export function TerminalPanel({
   onProgressChange,
   hostLabel,
   onShareStopped,
+  beforeReconnect,
 }: TerminalPanelProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   // The relay onClose closure is built once at mount; read the latest callback through a ref.
   const onShareStoppedRef = useRef(onShareStopped)
   onShareStoppedRef.current = onShareStopped
+  const beforeReconnectRef = useRef(beforeReconnect)
+  beforeReconnectRef.current = beforeReconnect
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   // POL-04: deferred theme ref — stashes the theme when the panel is hidden (isActive=false)
@@ -224,15 +233,16 @@ export function TerminalPanel({
   // SearchAddon (also at this level) and FindBar share a single source of
   // truth. searchOptions are seeded from pluginConfig?.searchConfig at
   // mount only (Pitfall #2 — mid-open re-sync would surprise the user).
-  // Phase 175-06 (BUG-02 / #125): guest-path disconnect notice. Set when the
-  // RelayClient onClose fires on the guest (remote viewer) path — the owner
-  // ended/stopped the session and the server sent a "session ended" close.
-  // Never set on the host path, and never wired to auto-reconnect (RESEARCH
-  // anti-pattern) — a "session ended" close means the session is genuinely
-  // gone.
+  // Phase 175-06 (BUG-02 / #125): guest-path end notice. Set when the
+  // RelayClient onClose fires on the guest (remote viewer) path, which since
+  // Phase 5 (SHAR-07) happens only for a final close (share stopped, session
+  // ended) or a stop verdict from beforeReconnect: the view ends there. A
+  // network drop does not set it; the client reconnects and `reconnecting`
+  // shows the delayed banner instead. Never set on the host path.
   const [sessionEnded, setSessionEnded] = useState<{ ended: boolean; reason?: string; shareStopped?: boolean }>({
     ended: false,
   })
+  const [reconnecting, setReconnecting] = useState(false)
   const [findBarOpen, setFindBarOpen] = useState(false)
   // Phase 94 WR-01 / SC-4 — exit animation. While `findBarExiting` is true,
   // the FindBar receives an `exiting` prop that toggles the .find-bar--exiting
@@ -370,14 +380,22 @@ export function TerminalPanel({
     // fitTerminal runs before WS connects so the fit resize event is dropped).
     // GUEST path: server pushes 0x02 on join (VIEW-03); guest never drives the
     // grid, so onOpen does not send dims. onResize honors the server-pushed grid.
+    // SHAR-07: the reconnecting banner waits RECONNECT.bannerDelayMs so a blip stays silent.
+    let bannerTimer: ReturnType<typeof setTimeout> | null = null
+    const hideReconnecting = () => {
+      if (bannerTimer !== null) { clearTimeout(bannerTimer); bannerTimer = null }
+      setReconnecting(false)
+    }
     const client = new RelayClient(relayPort, sessionId, {
       onOutput: (data) => term.write(data),
       onOpen: isGuest
         ? undefined
         : () => { client.sendResize(term.cols, term.rows) },
-      // Phase 175-06 (BUG-02 / #125): show the disconnect banner on the
-      // guest path only — the host is the owner and does not need a
-      // "session ended" notice about its own session. No auto-reconnect.
+      // Phase 175-06 (BUG-02 / #125): show the end banner on the guest path
+      // only — the host is the owner and does not need a "session ended"
+      // notice about its own session. Guests reconnect after a drop (SHAR-07,
+      // Phase 5), so this fires only for a final close; host-path tabs never
+      // reconnect (a local relay drop means the daemon and session died).
       onClose: (code, reason) => {
         console.debug(`[RelayClient] disconnected session=${sessionId}`, code, reason)
         if (!isGuest) return
@@ -396,7 +414,27 @@ export function TerminalPanel({
             recomputeScale()
           }
         : undefined,
-    }, { remote, wsURL })
+      onReset: () => term.reset(),
+      // SHAR-07: while not open, stdin is disabled and RelayClient drops input;
+      // keystrokes are never queued into the shell (T-05-14).
+      onStateChange: (state) => {
+        if (state === 'reconnecting') {
+          term.options.disableStdin = true
+          hideReconnecting()
+          // RECONNECT is read here only: other TerminalPanel tests mock relayClient without it.
+          bannerTimer = setTimeout(() => { bannerTimer = null; setReconnecting(true) }, RECONNECT.bannerDelayMs)
+          return
+        }
+        hideReconnecting()
+        if (state === 'open') term.options.disableStdin = false
+      },
+    }, {
+      remote,
+      wsURL,
+      reconnect: isGuest
+        ? { beforeReconnect: () => beforeReconnectRef.current?.() ?? Promise.resolve({ kind: 'ok' }) }
+        : undefined,
+    })
     clientRef.current = client
 
     // Wire terminal input to relay (TERM-05: paste support via terminal.onData).
@@ -412,6 +450,7 @@ export function TerminalPanel({
       disposeData.dispose()
       disposeResize.dispose()
       client.close()
+      if (bannerTimer !== null) clearTimeout(bannerTimer)
       // Phase 93: dispose hot-swap addons before disposing the terminal
       // itself to avoid orphaned references. dispose() on the addon detaches
       // the render backend / clipboard handler — Terminal.dispose() then
@@ -1006,6 +1045,9 @@ export function TerminalPanel({
           host={hostLabel}
           onDismiss={() => setSessionEnded({ ended: false })}
         />
+      )}
+      {isGuestRef.current && reconnecting && !sessionEnded.ended && (
+        <SessionEndedBanner kind="reconnecting" />
       )}
       {(findBarOpen || findBarExiting) && pluginConfig?.search && (
         <FindBar
