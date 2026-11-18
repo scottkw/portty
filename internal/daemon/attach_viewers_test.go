@@ -314,6 +314,153 @@ func (c *cliSession) detach(t *testing.T) {
 	}
 }
 
+// loopCLI is a running attach.Run (the remote reconnect loop) with piped stdin,
+// a captured stdout and the OnState calls it made.
+type loopCLI struct {
+	cliSession
+	mu     sync.Mutex
+	states []string
+}
+
+// cliURL is the viewing daemon's proxy route the CLI dials (remoteRelayURL).
+func (s *attachScene) cliURL() string { return s.viewRelay + "/api/relay/remote/" + s.sid + "/ws" }
+
+// fastTiming keeps the default liveness intervals and shortens the backoff so
+// a redial lands well inside viewerWait.
+var fastTiming = attach.Timing{PingEvery: 15 * time.Second, DeadAfter: 40 * time.Second, BackoffMin: 10 * time.Millisecond, BackoffMax: 50 * time.Millisecond, HealthyReset: 30 * time.Second}
+
+// runCLI runs attach.Run on conn (Stdin, Stdout and OnState are filled in) and
+// waits for the catch-up replay.
+func (s *attachScene) runCLI(t *testing.T, conn *websocket.Conn, o attach.RunOptions) *loopCLI {
+	t.Helper()
+	pr, pw := io.Pipe()
+	t.Cleanup(func() { pw.Close() })
+	c := &loopCLI{cliSession: cliSession{stdin: pw, stdout: &lockedBuffer{}, done: make(chan error, 1)}}
+	o.Stdin, o.Stdout, o.DetachKey = pr, c.stdout, 0x1C
+	o.OnState = func(state string) {
+		c.mu.Lock()
+		c.states = append(c.states, state)
+		c.mu.Unlock()
+	}
+	if o.URL == nil {
+		o.URL = s.cliURL
+	}
+	go func() { c.done <- attach.Run(s.ctx, conn, o) }()
+	waitUntil(t, "cli catch-up replay (MARKER-1)", func() bool { return c.stdout.has("MARKER-1") })
+	return c
+}
+
+// stateSeen reports whether OnState was called with state.
+func (c *loopCLI) stateSeen(state string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, st := range c.states {
+		if st == state {
+			return true
+		}
+	}
+	return false
+}
+
+// lastState is the most recent OnState value; ok is false before any call.
+func (c *loopCLI) lastState() (state string, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.states) == 0 {
+		return "", false
+	}
+	return c.states[len(c.states)-1], true
+}
+
+// waitReconnected waits until the loop went to reconnecting and back to "".
+func (c *loopCLI) waitReconnected(t *testing.T) {
+	t.Helper()
+	waitUntil(t, "cli to reconnect", func() bool {
+		st, ok := c.lastState()
+		return ok && st == "" && c.stateSeen("reconnecting")
+	})
+}
+
+// checkSameLines asserts every tag occurs in the CLI's output (SOH frame
+// headers from a replay removed) exactly as often as in the local viewer's.
+func checkSameLines(t *testing.T, cli []byte, local []byte, tags []string) {
+	t.Helper()
+	cli = bytes.ReplaceAll(cli, []byte{relay.MsgOutput}, nil)
+	local = bytes.ReplaceAll(local, []byte{relay.MsgOutput}, nil)
+	for _, tag := range tags {
+		if c, l := bytes.Count(cli, []byte(tag)), bytes.Count(local, []byte(tag)); c != l || l == 0 {
+			t.Errorf("%s: cli has %d copies, local viewer %d (want equal, non-zero)", tag, c, l)
+		}
+	}
+}
+
+// captureDiag routes the standard logger (viewer-diag lines) into a buffer.
+func captureDiag(t *testing.T) *lockedBuffer {
+	t.Helper()
+	diag := &lockedBuffer{}
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(diag)
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
+	return diag
+}
+
+func lineTags(from, to int) []string {
+	var tags []string
+	for i := from; i <= to; i++ {
+		tags = append(tags, fmt.Sprintf("LINE-%04d", i))
+	}
+	return tags
+}
+
+// SHAR-07: a remote CLI kicked with a non-final close reconnects through the
+// real proxy with ?resume= and gets only what it missed. Lines typed while it
+// was down reach it once each, exactly like the host's own viewer.
+func TestCLIAttach_ReconnectsWithDelta(t *testing.T) {
+	diag := captureDiag(t)
+	s := newAttachScene(t)
+
+	release := make(chan struct{})
+	reauth := func(ctx context.Context) attach.Verdict {
+		select {
+		case <-release:
+			return attach.VerdictOK
+		case <-ctx.Done():
+			return attach.VerdictRetry
+		}
+	}
+	cli := s.runCLI(t, s.dialCLI(t, 80, 24), attach.RunOptions{Reauth: reauth, Timing: fastTiming})
+
+	for _, tag := range lineTags(1, 50) {
+		s.typeLine(t, tag)
+	}
+	waitUntil(t, "cli to see LINE-0050", func() bool { return cli.stdout.has("LINE-0050") })
+
+	kickAt := len(diag.bytes())
+	s.hub.RevokeWebViewers("test drop")
+	waitUntil(t, "cli to go reconnecting", func() bool { return cli.stateSeen("reconnecting") })
+	for _, tag := range lineTags(51, 100) {
+		s.typeLine(t, tag)
+	}
+	s.waitAll(t, "LINE-0100", "local")
+	close(release)
+	cli.waitReconnected(t)
+
+	s.typeLine(t, "MARKER-END")
+	s.waitAll(t, "MARKER-END", "local")
+	waitUntil(t, "cli to see MARKER-END", func() bool { return cli.stdout.has("MARKER-END") })
+
+	local, _, _ := s.viewers["local"].state()
+	checkSameLines(t, cli.stdout.bytes(), local, append(lineTags(1, 100), "MARKER-END"))
+	delta := regexp.MustCompile(`viewer-diag: replay session=` + regexp.QuoteMeta(relay.DiagID(s.sid)) + ` conn=\d+ mode=delta`)
+	if !delta.Match(diag.bytes()[kickAt:]) {
+		t.Errorf("no delta replay logged after the kick:\n%s", diag.bytes()[kickAt:])
+	}
+	cli.detach(t)
+}
+
 // checkUndisturbed asserts the named viewers are still open, every grid frame
 // they got is the host's 120x40, and the host hub is still 120x40.
 func (s *attachScene) checkUndisturbed(t *testing.T, names ...string) {
