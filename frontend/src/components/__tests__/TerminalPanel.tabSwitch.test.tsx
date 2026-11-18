@@ -217,6 +217,31 @@ describe('TerminalPanel peer tab switch (HARD-05)', () => {
     expect(writes(second)).not.toContain(RIS)
   })
 
+  it('offset gone on the host: the full replay resets the restored content (RIS after the snapshot)', () => {
+    mount()
+    liveAt104(ws(0))
+    unmount()
+
+    const second = mount()
+    expect(ws(1).url).toContain('?resume=104')
+    joined(ws(1))
+    send(ws(1), metaFrame({ replay: 'full' }))
+    send(ws(1), outFrame('everything'))
+    send(ws(1), metaFrame({ offset: 200 }))
+    expect(writes(second)).toEqual(['SNAPSHOT-DATA', RIS, 'everything'])
+  })
+
+  it('an ended session stores nothing: the next mount has no snapshot and no resume', () => {
+    mount()
+    liveAt104(ws(0))
+    act(() => { ws(0).readyState = 3; ws(0).onclose?.({ code: 1000, reason: 'session ended' }) })
+    unmount()
+
+    const second = mount()
+    expect(writes(second)).toEqual([])
+    expect(ws(1).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s1/ws')
+  })
+
   it('a host (local) tab stores nothing: a later remote mount has no snapshot and no resume', () => {
     mount({})
     joined(ws(0))

@@ -988,4 +988,45 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
       expect(ws(2).url).not.toContain('resume=')
     })
   })
+
+  // HARD-05: a restored peer-tab snapshot dials with the offset it shows.
+  describe('resume option (HARD-05)', () => {
+    const makeResume = (resume: number) => {
+      client = new RelayClient(1234, 's', cbs, { remote: true, resume, reconnect: {} })
+      return client
+    }
+
+    it('resume: 42 dials resume=42 and resumePoint() is 42 before any frame', () => {
+      const c = makeResume(42)
+      expect(ws(0).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s/ws?resume=42')
+      expect(c.resumePoint()).toBe(42)
+    })
+
+    it('a delta answer: resumePoint() is null until the offset meta, then counts output; no reset', () => {
+      const c = makeResume(42)
+      joined(0)
+      send(0, meta({ replay: 'delta' }))
+      expect(c.resumePoint()).toBeNull()
+      send(0, meta({ offset: 50 }))
+      expect(c.resumePoint()).toBe(50)
+      send(0, out('abc'))
+      expect(c.resumePoint()).toBe(54)
+      expect(cbs.onReset).not.toHaveBeenCalled()
+    })
+
+    it('a full answer resets the restored terminal once', () => {
+      makeResume(42)
+      joined(0)
+      send(0, meta({ replay: 'full' }))
+      send(0, out('everything'))
+      send(0, meta({ offset: 60 }))
+      expect(cbs.onReset).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([-1, 1.5, NaN])('resume %s is ignored: plain URL, resumePoint() null', (resume) => {
+      const c = makeResume(resume)
+      expect(ws(0).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s/ws')
+      expect(c.resumePoint()).toBeNull()
+    })
+  })
 })
