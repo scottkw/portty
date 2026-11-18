@@ -508,7 +508,7 @@ func TestRetryDaemonFail(t *testing.T) {
 	if app.client != nil {
 		t.Error("expected app.client to remain nil after failed RetryDaemon")
 	}
-	if app.daemonErr == nil {
+	if app.daemonErr.Load() == nil {
 		t.Error("expected app.daemonErr to be set after failed RetryDaemon")
 	}
 }
@@ -554,8 +554,8 @@ func TestRetryDaemonSuccess_KeepsClientAndPollers(t *testing.T) {
 	if app.client != client {
 		t.Fatal("RetryDaemon replaced a.client")
 	}
-	if app.daemonErr != nil {
-		t.Fatalf("daemonErr = %v, want nil", app.daemonErr)
+	if err := app.daemonErr.Load(); err != nil {
+		t.Fatalf("daemonErr = %v, want nil", *err)
 	}
 	// WR-03: startup skipped the stored Appearance while the daemon was down.
 	if len(*got) != 1 || (*got)[0] != "dark" {
@@ -939,8 +939,8 @@ func TestStartDaemon_AlwaysClosesStartupDone(t *testing.T) {
 			if (tc.err != nil) != (len(emitted) == 1 && emitted[0] == "daemon:error") {
 				t.Fatalf("emitted %v for err=%v", emitted, tc.err)
 			}
-			if (a.daemonErr != nil) != (tc.err != nil) {
-				t.Fatalf("daemonErr = %v, want %v", a.daemonErr, tc.err)
+			if (a.daemonErr.Load() != nil) != (tc.err != nil) {
+				t.Fatalf("daemonErr set = %t, want %v", a.daemonErr.Load() != nil, tc.err)
 			}
 		})
 	}

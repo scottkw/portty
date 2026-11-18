@@ -61,11 +61,11 @@ type RemotePeerSessions struct {
 // All session operations are delegated through DaemonClient over the Unix socket.
 type App struct {
 	ctx              context.Context
-	client           *daemon.DaemonClient // only daemon communication field; set in NewApp, before Wails starts any goroutine (nil only in tests)
-	trayInit         bool                 // true once initTray has been called
-	lastTrayQuartile atomic.Int32         // Phase 98 PRG-03 — last applied tray progress quartile [0..4]; -1 = unset. Atomic because written by Wails RPC goroutine (SetTrayProgress) and read by startTrayPoller goroutine via trayIconBytesForState (CR-01).
-	daemonErr        error                // non-nil when EnsureDaemon failed; read it only after startupDone (awaitStartup)
-	quitting         atomic.Bool          // set first by QuitAll and shutdown: beforeClose allows exit and the poller never respawns (WR-04)
+	client           *daemon.DaemonClient  // only daemon communication field; set in NewApp, before Wails starts any goroutine (nil only in tests)
+	trayInit         bool                  // true once initTray has been called
+	lastTrayQuartile atomic.Int32          // Phase 98 PRG-03 — last applied tray progress quartile [0..4]; -1 = unset. Atomic because written by Wails RPC goroutine (SetTrayProgress) and read by startTrayPoller goroutine via trayIconBytesForState (CR-01).
+	daemonErr        atomic.Pointer[error] // non-nil when EnsureDaemon failed; atomic: Retry writes it while init reads it (IN-08)
+	quitting         atomic.Bool           // set first by QuitAll and shutdown: beforeClose allows exit and the poller never respawns (WR-04)
 	// Update checker state
 	lastUpdate   *updater.UpdateInfo
 	lastUpdateMu sync.Mutex
@@ -256,7 +256,7 @@ func (a *App) startDaemon(socketPath string) {
 		defer close(a.startupDone)
 	}
 	if err := a.ensure()(socketPath); err != nil {
-		a.daemonErr = err
+		a.daemonErr.Store(&err)
 		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
 		a.emitEvent("daemon:error", err.Error())
 	} else {
@@ -343,8 +343,8 @@ func (a *App) GetDaemonError() string {
 	if !a.awaitStartup() {
 		return errStartupTimeout.Error()
 	}
-	if a.daemonErr != nil {
-		return a.daemonErr.Error()
+	if err := a.daemonErr.Load(); err != nil {
+		return (*err).Error()
 	}
 	return ""
 }
@@ -369,10 +369,10 @@ func (a *App) RetryDaemon() error {
 	}
 	a.daemonMu.Unlock()
 	if err != nil {
-		a.daemonErr = err
+		a.daemonErr.Store(&err)
 		return err
 	}
-	a.daemonErr = nil
+	a.daemonErr.Store(nil)
 	a.applyStoredAppearance() // startup skipped it while the daemon was down
 	return nil
 }

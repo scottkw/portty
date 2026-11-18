@@ -271,3 +271,20 @@ func TestRespawnDaemon_QuittingSkipsEnsure(t *testing.T) {
 		t.Fatal("ensure ran while quitting")
 	}
 }
+
+// IN-08: Retry's write of the daemon error and init's read of it race unless
+// they are synchronized (run with -race).
+func TestDaemonError_RetryAndReadConcurrently(t *testing.T) {
+	respawnHome(t)
+	app := &App{startupDone: closedChan(), ensureDaemonFunc: func(string) error { return errors.New("boom") }}
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(2)
+		go func() { defer wg.Done(); _ = app.RetryDaemon() }()
+		go func() { defer wg.Done(); _ = app.GetDaemonError() }()
+	}
+	wg.Wait()
+	if got := app.GetDaemonError(); got != "boom" {
+		t.Fatalf("GetDaemonError = %q, want boom", got)
+	}
+}
