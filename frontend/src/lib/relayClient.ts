@@ -83,7 +83,8 @@ export function parseServerFrame(data: Uint8Array): ServerFrame {
  * Backoff 1, 2, 4, 8, 16 s then 30 s cap, ±20 % jitter, reset only after a
  * connection stayed open 30 s. Ping every 15 s; after the first MsgPong a socket
  * silent for 40 s gets a probe ping and is dead 5 s later. The reconnecting
- * banner shows after 3 s so a brief blip stays silent.
+ * banner shows after 3 s so a brief blip stays silent. A system wake (05-13) acts
+ * at most once per wakeMinGapMs; a watchdog tick later than wakeGapMs counts as one.
  */
 export const RECONNECT = {
   minMs: 1_000,
@@ -94,6 +95,8 @@ export const RECONNECT = {
   deadMs: 40_000,
   probeGraceMs: 5_000,
   bannerDelayMs: 3_000,
+  wakeGapMs: 5_000,
+  wakeMinGapMs: 5_000,
 } as const
 
 export type RelayState = 'connecting' | 'open' | 'reconnecting' | 'stopped'
@@ -162,6 +165,7 @@ export class RelayClient {
   private lastFrameAt = 0
   private probeSentAt = 0
   private watchdog: ReturnType<typeof setInterval> | null = null
+  private lastWakeAt = 0
   // Stream position (05-01 contract): offset meta + (payload.length + 1) per later output frame.
   private offset = 0
   private offsetValid = false
@@ -182,6 +186,7 @@ export class RelayClient {
     if (this.reconnect) {
       this.watchdog = setInterval(this.checkLiveness, 1_000)
       window.addEventListener('online', this.onWake)
+      window.addEventListener('portty:wake', this.onSystemWake)
       document.addEventListener('visibilitychange', this.onWake)
     }
     this.dial(this.baseURL())
@@ -311,6 +316,25 @@ export class RelayClient {
     }
   }
 
+  // 05-13: this Mac woke or changed networks (the Go detector via App.tsx's
+  // 'portty:wake'). The redial is not gated on visibility, so a hidden window is
+  // ready when shown; the probe kill keeps checkLiveness's visibility rule.
+  private onSystemWake = (): void => {
+    const now = Date.now()
+    if (now - this.lastWakeAt < RECONNECT.wakeMinGapMs) return
+    this.lastWakeAt = now
+    if (this.state === 'reconnecting') {
+      if (this.retryTimer !== null) {
+        this._clearRetry()
+        void this.redial()
+      }
+      this.attempt = 0 // after redial's synchronous attempt++: the next wait is the first step
+    } else if (this.state === 'open') {
+      this.attempt = 0
+      this.sendProbe()
+    }
+  }
+
   // Drop a dead socket without waiting for its close (a half-open socket can sit in
   // CLOSING for a long time) and dial a new one at once.
   private abandon(): void {
@@ -405,6 +429,7 @@ export class RelayClient {
       clearInterval(this.watchdog)
       this.watchdog = null
       window.removeEventListener('online', this.onWake)
+      window.removeEventListener('portty:wake', this.onSystemWake)
       document.removeEventListener('visibilitychange', this.onWake)
     }
   }

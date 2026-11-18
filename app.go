@@ -235,6 +235,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// Start update checker background poller.
 	a.startUpdatePoller(ctx)
+
+	// Tell guest views when this Mac wakes or changes networks.
+	a.startWakeWatcher(ctx)
 }
 
 // startDaemon brings the daemon up for startup and closes startupDone on every
@@ -1162,8 +1165,22 @@ func (a *App) checkTailscaleHealth(ctx context.Context) webserver.TailscaleHealt
 	return h
 }
 
-// startWakeWatcher: RED scaffold.
-func (a *App) startWakeWatcher(ctx context.Context) {}
+// startWakeWatcher forwards the 05-10 wake/network detector to the frontend as
+// system:wake ("wake" or "network"), so guest views redial right after sleep or
+// a network switch instead of waiting out the watchdog (user requirement, SHAR-07).
+// The detector closes its channel when ctx ends, which ends the goroutine.
+func (a *App) startWakeWatcher(ctx context.Context) {
+	watch := a.wakeWatchFunc
+	if watch == nil {
+		watch = wakewatch.Watch
+	}
+	events := watch(ctx)
+	go func() {
+		for r := range events {
+			a.emitEvent("system:wake", string(r))
+		}
+	}()
+}
 
 // startHealthPoller checks Tailscale health once immediately and then every
 // 10 seconds. The goroutine exits when ctx is cancelled (Wails shutdown).

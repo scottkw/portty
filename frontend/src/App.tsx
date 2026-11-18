@@ -410,6 +410,12 @@ function App(): React.ReactElement {
       }
     )
 
+    // 05-13: the Go wake/network detector, re-dispatched on window so RelayClient
+    // (which also runs in the browser) never imports the Wails runtime.
+    const offWake = EventsOn('system:wake', (reason: string) => {
+      window.dispatchEvent(new CustomEvent('portty:wake', { detail: reason }))
+    })
+
     // Native menu: File > New Session (Cmd+T).
     const offMenuNewSession = EventsOn('menu:new-session', () => setShowNewSessionModal(true))
     // Native menu: File > Close Tab (Cmd+W). Detach only; with no tab open it does nothing.
@@ -451,6 +457,7 @@ function App(): React.ReactElement {
       offMenuCloseTab()
       offMenuSettings()
       offMenuToggleSidebar()
+      offWake()
     }
   }, [])
 
