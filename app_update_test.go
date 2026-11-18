@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -116,6 +117,9 @@ func setVersion(t *testing.T, v string) {
 func newUpdateHarness(t *testing.T) *updateHarness {
 	t.Helper()
 	setVersion(t, "v1.0.0")
+	// os.UserConfigDir and os.UserCacheDir read $HOME on darwin: update_notified and the updates
+	// folder land in a temp dir, never in the developer's real Portty files.
+	t.Setenv("HOME", t.TempDir())
 	gh := &updateFake{}
 	gh.Server = httptest.NewServer(http.HandlerFunc(gh.serve))
 	t.Cleanup(gh.Close)
@@ -243,14 +247,7 @@ func notifiedFile(t *testing.T) string {
 	return strings.TrimSpace(string(b))
 }
 
-func resetNotified(t *testing.T) {
-	t.Helper()
-	_ = os.Remove(notifiedVersionPath())
-	t.Cleanup(func() { _ = os.Remove(notifiedVersionPath()) })
-}
-
 func TestUpdatePoller_FirstCheckAfterDelay(t *testing.T) {
-	resetNotified(t)
 	h := newUpdateHarness(t)
 	h.gh.set("9.9.9", 0)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -286,7 +283,6 @@ func TestUpdatePoller_FirstCheckAfterDelay(t *testing.T) {
 }
 
 func TestUpdatePoller_DailyCadenceAndNoRepeat(t *testing.T) {
-	resetNotified(t)
 	h := newUpdateHarness(t)
 	h.gh.set("9.9.9", 0)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -332,7 +328,6 @@ func TestUpdatePoller_DailyCadenceAndNoRepeat(t *testing.T) {
 }
 
 func TestUpdatePoller_FailureRetriedHourlyAndQuiet(t *testing.T) {
-	resetNotified(t)
 	for _, status := range []int{500, 403} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			h := newUpdateHarness(t)
@@ -358,7 +353,6 @@ func TestUpdatePoller_FailureRetriedHourlyAndQuiet(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("the loop did not stop when ctx ended")
 			}
-			resetNotified(t)
 		})
 	}
 }
@@ -382,7 +376,6 @@ func TestUpdatePoller_DevBuildNeverChecks(t *testing.T) {
 }
 
 func TestDownloadUpdate_BindingRunsDownload(t *testing.T) {
-	resetNotified(t)
 	h := newUpdateHarness(t)
 	h.gh.set("9.9.9", 0)
 	if _, err := h.app.updates.Check(context.Background()); err != nil {
@@ -446,7 +439,6 @@ func TestManualUpdateCheck_UpToDate(t *testing.T) {
 }
 
 func TestManualUpdateCheck_AvailableLater(t *testing.T) {
-	resetNotified(t)
 	h := newUpdateHarness(t)
 	h.gh.set("9.9.9", 0)
 	h.answer = "Later"
@@ -466,7 +458,6 @@ func TestManualUpdateCheck_AvailableLater(t *testing.T) {
 }
 
 func TestManualUpdateCheck_AvailableDownload(t *testing.T) {
-	resetNotified(t)
 	h := newUpdateHarness(t)
 	h.gh.set("9.9.9", 0)
 	h.answer = "Download"
@@ -548,7 +539,6 @@ func (h *updateHarness) blockDownload(t *testing.T) func() {
 }
 
 func TestManualUpdateCheck_WhileDownloading(t *testing.T) {
-	resetNotified(t)
 	h := newUpdateHarness(t)
 	finish := h.blockDownload(t)
 	h.app.checkForUpdatesManually()
@@ -594,7 +584,6 @@ func TestTrayUpdate_OfferUpdate(t *testing.T) {
 		}
 	})
 	t.Run("downloading", func(t *testing.T) {
-		resetNotified(t)
 		h := newUpdateHarness(t)
 		finish := h.blockDownload(t)
 		h.app.offerUpdate()
@@ -614,4 +603,15 @@ func TestTrayUpdate_OfferUpdate(t *testing.T) {
 			t.Errorf("current: %d shows, dialogs %q", h.showCount(), h.dialogList())
 		}
 	})
+}
+
+// WR-03: the harness never touches the real user's update_notified or updates folder.
+func TestUpdateHarness_IsolatesUserFiles(t *testing.T) {
+	realHome := os.Getenv("HOME")
+	h := newUpdateHarness(t)
+	for _, p := range []string{notifiedVersionPath(), h.app.updates.Dir} {
+		if lib := filepath.Join(realHome, "Library") + string(os.PathSeparator); realHome != "" && strings.HasPrefix(p, lib) {
+			t.Errorf("%s is in the real %s", p, lib)
+		}
+	}
 }
