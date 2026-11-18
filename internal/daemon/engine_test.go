@@ -1215,7 +1215,7 @@ func TestGetSessionStyledTailLines_QueryNoHang(t *testing.T) {
 // unbuffered response pipe (Emulator.pw), interleaved with visible text.
 //
 // Verifies two things:
-//  1. The call completes well within a 5-second timeout (no hang — queryStripPattern
+//  1. The call completes well within a 5-second timeout (no hang — relay.StripTerminalQueries
 //     strips every blocking sequence before emu.Write; FIX-01 / #100).
 //  2. The visible text surrounding the control sequences survives in the rendered
 //     grid (the strip is narrow: only query verbs, not SGR/color; Pitfall 3).
@@ -1312,6 +1312,6 @@ func TestGetSessionStyledTailLines_AllQueriesNoHang(t *testing.T) {
 		}
 
 	case <-time.After(5 * time.Second):
-		t.Fatal("GetSessionStyledTailLines hung on terminal query escape sequences — queryStripPattern did not cover all blocking sequences (FIX-01 regression)")
+		t.Fatal("GetSessionStyledTailLines hung on terminal query escape sequences — relay.StripTerminalQueries did not cover all blocking sequences (FIX-01 regression)")
 	}
 }

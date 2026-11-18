@@ -124,21 +124,35 @@ type Hub struct {
 // wrapped past (BUG-04, #119).
 const altScreenEnterSeq = "\x1b[?1049h"
 
-// liveEmuQueryStripPattern mirrors internal/daemon/engine.go's
-// queryStripPattern byte-for-byte. It strips terminal-query and in-band-
-// resize escape sequences that would otherwise elicit a blocking response
-// write into charmbracelet/x/vt's unbuffered response pipe (Emulator.pw) —
-// nothing ever drains Emulator.Read() on this feed path, so an unstripped
-// query would deadlock both EnsureLiveEmulator's bootstrap and Run()'s drain
-// loop (#96/#100). SGR/color sequences are deliberately preserved so styled
-// output survives. Join also applies it to the raw catch-up replay (UAT gap 1).
+// liveEmuQueryStripPattern matches the reply-eliciting terminal queries and
+// the in-band resize mode. Stripping matters twice:
 //
-// relay MUST NOT import internal/daemon (daemon already imports relay — an
-// import back the other way would be a cycle), so this pattern is
-// duplicated here rather than shared.
+//   - Feeding the live emulator: charmbracelet/x/vt writes its answer into an
+//     unbuffered response pipe (Emulator.pw) that nothing drains on this path,
+//     so an unstripped query would block emu.Write and with it Run's drain loop
+//     and the daemon's styled tail (#96/#100).
+//   - Replaying to a joining terminal: it answers every historic query in the
+//     replay, and the answers are typed into the shared shell (UAT gap 1).
+//
+// Covered: DA1, DA2 and DA3 (CSI c, CSI > c, CSI = c); DSR and DECXCPR
+// (CSI n, CSI ? n); DECRQM ANSI and DEC (CSI $ p); in-band resize set/reset
+// (CSI ? 2048 h/l, the set makes the terminal report its size); XTVERSION
+// (CSI > q); the kitty keyboard query (CSI ? u); XTWINOPS size reports
+// (CSI 14 t, 14;2 t, 16 t, 18 t); XTGETTCAP (DCS + q); DECRQSS (DCS $ q);
+// OSC 10/11/12 colour queries; OSC 4 palette queries; OSC 52 clipboard reads.
+// Window-op sets (CSI 8;r;c t, 22;0 t), OSC 4 sets, OSC 52 writes, sixel DCS
+// images, SGR and every other mode set pass through untouched.
+//
+// It is shared through StripTerminalQueries: internal/daemon imports relay
+// (never the reverse), so the hub and the engine strip the same set.
+//
+// Known limits: the ring stores 0x01-framed PTY reads, so a query split across
+// two reads is not matched; an OSC 4 that mixes sets and queries is kept whole;
+// a query not listed above is not stripped.
 var liveEmuQueryStripPattern = regexp.MustCompile(
 	`\x1b\[[0-9;]*c` + // DA1 (and any params before c)
 		`|\x1b\[>[0-9;]*c` + // DA2
+		`|\x1b\[=[0-9;]*c` + // DA3
 		`|\x1b\[[0-9;]*n` + // DSR (5n/6n and any CSI n)
 		`|\x1b\[\?[0-9;]*n` + // DECXCPR (ESC[?...n)
 		`|\x1b\[[0-9;]*\$p` + // DECRQM ANSI
@@ -146,8 +160,21 @@ var liveEmuQueryStripPattern = regexp.MustCompile(
 		`|\x1b\[\?2048[hl]` + // in-band resize set/reset (set triggers a pw write)
 		`|\x1b\[>[0-9;]*q` + // XTVERSION
 		`|\x1b\[\?u` + // kitty keyboard flags query
-		`|\x1b\]1[012];\?(?:\x07|\x1b\\)`, // OSC 10/11/12 color query, BEL- or ST-terminated
+		`|\x1b\[1[468](?:;[0-9]*)?t` + // XTWINOPS 14/16/18 size reports (not the 8/22/23 sets)
+		`|\x1bP\+q[0-9A-Fa-f;]*(?:\x1b\\|\x07)` + // XTGETTCAP (hex-encoded names)
+		`|\x1bP\$q[\x20-\x7e]*(?:\x1b\\|\x07)` + // DECRQSS (sixel DCS has no $ after P)
+		`|\x1b\]1[012];\?(?:\x07|\x1b\\)` + // OSC 10/11/12 color query, BEL- or ST-terminated
+		`|\x1b\]4(?:;[0-9]+;\?)+(?:\x07|\x1b\\)` + // OSC 4 palette query (index;? pairs only)
+		`|\x1b\]52;[a-z0-9]*;\?(?:\x07|\x1b\\)`, // OSC 52 clipboard read (writes stay)
 )
+
+// StripTerminalQueries returns b without the sequences liveEmuQueryStripPattern
+// matches. The hub's live emulator feed, both raw replay paths in Join and the
+// daemon engine's styled tail all use it, so the hub and the engine strip the
+// same set.
+func StripTerminalQueries(b []byte) []byte {
+	return liveEmuQueryStripPattern.ReplaceAll(b, nil)
+}
 
 // NewHub constructs a Hub for the given session.
 // scrollbackBytes controls the scrollback buffer capacity.
@@ -481,8 +508,7 @@ func (h *Hub) recordFrameLocked(frame, raw []byte) {
 		// Cols()/Rows()); no inversion.
 		h.liveEmu = h.newLiveEmulator(h.Cols(), h.Rows())
 	}
-	clean := liveEmuQueryStripPattern.ReplaceAll(raw, nil)
-	h.liveEmu.Write(clean) //nolint:errcheck // emulator Write never returns a meaningful error
+	h.liveEmu.Write(StripTerminalQueries(raw)) //nolint:errcheck // emulator Write never returns a meaningful error
 	h.drainScrollbackLocked()
 }
 
@@ -801,13 +827,16 @@ type Replay struct {
 //     source. This subsumes BUG-04 / #119 Problem 2 (the alt-screen ESC[?1049h
 //     wrap) as one instance of the general "history lost" condition.
 //
-// Both raw paths drop reply-eliciting terminal queries (liveEmuQueryStripPattern).
-// A joining terminal answers every historic query in the replay (DSR, DA2,
-// DECRQM, XTVERSION, kitty), and those answers would be typed into the shared
-// shell for every viewer (UAT gap 1, H-replies). Queries change no terminal
-// state, so the replay still renders the same; mode sets and colours stay. The
-// ring stores 0x01-framed chunks, so a query split across two PTY reads is not
-// matched: accepted, it needs a read boundary inside a few-byte sequence.
+// Both raw paths drop reply-eliciting terminal queries (StripTerminalQueries;
+// liveEmuQueryStripPattern's doc comment lists the set and its limits). A
+// joining terminal answers every historic query in the replay, and those
+// answers would be typed into the shared shell for every viewer (UAT gap 1,
+// H-replies). Queries change no terminal state, so the replay still renders the
+// same. Colours and mode sets survive the strip, except the in-band resize mode
+// ?2048, which is stripped because setting it makes the terminal report its
+// size. The ring stores 0x01-framed chunks, so a query split across two PTY
+// reads is not matched: accepted, it needs a read boundary inside a few-byte
+// sequence.
 //
 // SHAR-07 / Phase 5 (overnight survival): offsets are frame bytes of the ring
 // (Scrollback.End). A client that sends hasResume with an offset the ring still
@@ -836,7 +865,7 @@ func (h *Hub) Join(sub *Subscriber, resume uint64, hasResume bool) Replay {
 	r, data, raw := h.joinLocked(sub, resume, hasResume)
 	// Strip and chunk outside emuMu so the drain loop is not held up.
 	if raw {
-		data = liveEmuQueryStripPattern.ReplaceAll(data, nil)
+		data = StripTerminalQueries(data)
 	}
 	for len(data) > 0 {
 		n := min(len(data), ReplayChunk)

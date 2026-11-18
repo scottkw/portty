@@ -424,40 +424,6 @@ var ansiEscape = regexp.MustCompile(
 		`)`,
 )
 
-// queryStripPattern matches terminal-query and in-band-resize escape sequences
-// that elicit a blocking response write into charmbracelet/x/vt's unbuffered
-// response pipe (Emulator.pw). Stripping these BEFORE emu.Write lets Write run
-// synchronously with no drain goroutine — which also removes the concurrent
-// Read/Close data race (#100). SGR/color sequences are deliberately preserved
-// so the styled grid keeps its colors and bold attributes.
-//
-// Covered sequences:
-//   - DA1  (ESC[c / ESC[0c)       — Primary Device Attributes
-//   - DA2  (ESC[>c)               — Secondary Device Attributes
-//   - DSR  (ESC[5n / ESC[6n)      — Device Status Report / Cursor Position
-//   - DECXCPR (ESC[?6n)           — Extended Cursor Position Report
-//   - DECRQM ANSI (ESC[...$p)     — Request ANSI Mode
-//   - DECRQM DEC  (ESC[?...$p)    — Request DEC Mode
-//   - OSC color queries (ESC]10|11|12;?) — Foreground/Background/Cursor color query
-//   - DEC mode 2048 set/reset (ESC[?2048h/l) — In-band resize (fires a pw write on set)
-//   - XTVERSION (ESC[>0q) and the kitty keyboard query (ESC[?u) — mirrored from
-//     relay's liveEmuQueryStripPattern, which also cleans the catch-up replay
-//
-// NOT stripped: SGR (color/bold/etc.), cursor movement, erase, scroll — these are
-// rendering sequences and must reach the emulator to produce correct styled output.
-var queryStripPattern = regexp.MustCompile(
-	`\x1b\[[0-9;]*c` + // DA1 (and any params before c)
-		`|\x1b\[>[0-9;]*c` + // DA2
-		`|\x1b\[[0-9;]*n` + // DSR (5n/6n and any CSI n)
-		`|\x1b\[\?[0-9;]*n` + // DECXCPR (ESC[?...n)
-		`|\x1b\[[0-9;]*\$p` + // DECRQM ANSI
-		`|\x1b\[\?[0-9;]*\$p` + // DECRQM DEC
-		`|\x1b\[\?2048[hl]` + // in-band resize set/reset (set triggers a pw write)
-		`|\x1b\[>[0-9;]*q` + // XTVERSION
-		`|\x1b\[\?u` + // kitty keyboard flags query
-		`|\x1b\]1[012];\?(?:\x07|\x1b\\)`, // OSC 10/11/12 color query, BEL- or ST-terminated
-)
-
 // GetSessionTailLines returns the last n plain-text lines from the session's
 // scrollback buffer. Relay framing bytes (0x01 / relay.MsgOutput) and ANSI/OSC
 // escape sequences are stripped before splitting on newlines. Trailing empty
@@ -546,13 +512,8 @@ func (e *SessionEngine) GetSessionStyledTailLines(id string, n int) [][]StyledSp
 	cols := hub.Cols()
 	emu := xvt.NewEmulator(cols, emuRows)
 
-	// Strip terminal-query and in-band-resize sequences that would block
-	// emu.Write on the emulator's unbuffered response pipe (#96). With these
-	// removed, Write returns synchronously and no drain goroutine is needed —
-	// which also removes the concurrent Read/Close data race (#100).
-	// SGR/color sequences are preserved so the styled grid renders correctly.
-	clean := queryStripPattern.ReplaceAll(stripped, nil)
-	emu.Write(clean) //nolint:errcheck // emulator Write never returns a meaningful error
+	// emu.Write blocks on an unanswered query, so the shared relay strip runs first (#96/#100).
+	emu.Write(relay.StripTerminalQueries(stripped)) //nolint:errcheck // emulator Write never returns a meaningful error
 	_ = emu.Close()
 
 	// Extract the active screen rows as StyledSpan slices.
