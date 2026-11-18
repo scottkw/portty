@@ -204,7 +204,8 @@ export class RelayClient {
   }
 
   private dial(url: string): void {
-    this.offsetValid = false
+    // offsetValid survives until this socket's replay starts (WR-02): a socket the
+    // proxy accepts and then refuses rendered nothing, so the old offset is still exact.
     this.awaitingReplayMeta = true
     this.openedAt = 0
     this.probeSentAt = 0
@@ -273,6 +274,7 @@ export class RelayClient {
         if (this.awaitingReplayMeta) {
           if (this.hasRendered) this.callbacks.onReset?.()
           this.awaitingReplayMeta = false
+          this.offsetValid = false
         }
         if (this.offsetValid) this.offset += frame.payload.length + 1
         this.hasRendered = true
@@ -378,6 +380,7 @@ export class RelayClient {
     if (typeof replay === 'string') {
       if (replay === 'full' && this.hasRendered) this.callbacks.onReset?.()
       this.awaitingReplayMeta = false
+      this.offsetValid = false // trusted again only after this socket's offset meta
     }
     if (offset !== undefined) {
       if (typeof offset === 'number' && Number.isSafeInteger(offset) && offset >= 0) {

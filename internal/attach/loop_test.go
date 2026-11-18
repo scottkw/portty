@@ -390,6 +390,38 @@ func TestRun_NoOffsetMetaMeansFullReplay(t *testing.T) {
 	r.detach(t)
 }
 
+// WR-02: a socket the daemon proxy accepts and then refuses (1013, before any
+// frame), or one that dies after only the grid frame, rendered nothing: the
+// old offset is still exact and the next redial keeps asking for the delta.
+func TestRun_RefusedSocketKeepsResume(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		switch i {
+		case 0:
+			writeFrames(c, replayMeta(relay.ReplayFull), output("AAA"), offsetMeta(100))
+			c.Close(websocket.StatusGoingAway, "") //nolint:errcheck
+		case 1:
+			c.Close(websocket.StatusTryAgainLater, "remote unreachable") //nolint:errcheck
+		case 2:
+			writeFrames(c, relay.MakeResizeFrame(80, 24))
+			c.Close(websocket.StatusGoingAway, "") //nolint:errcheck
+		default:
+			f.pump(i, c, nil) //nolint:errcheck
+		}
+	}, nil)
+	r := startRun(t, f, RunOptions{Timing: fast})
+	waitFor(t, "a fourth connection", func() bool { return f.accepts() >= 4 })
+	f.mu.Lock()
+	urls := append([]string(nil), f.urls...)
+	f.mu.Unlock()
+	for _, u := range urls[1:4] {
+		if !strings.Contains(u, "resume=100") {
+			t.Errorf("redial URLs = %q; want resume=100 on each", urls[1:4])
+			break
+		}
+	}
+	r.detach(t)
+}
+
 func TestRun_HealthyResetRestartsBackoff(t *testing.T) {
 	const minB = 200 * time.Millisecond
 	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {

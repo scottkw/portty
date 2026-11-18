@@ -269,7 +269,8 @@ func (l *loop) classify(err error) (error, bool) {
 
 // readFrames renders one connection's frames until its read fails.
 func (l *loop) readFrames(ctx context.Context, conn *websocket.Conn, lastFrame *atomic.Int64, ponged *atomic.Bool) error {
-	l.offsetValid = false // trusted again only after this socket's offset meta
+	// The old offset stays valid until this socket starts its replay (WR-02): a
+	// socket the proxy accepts and then refuses rendered nothing.
 	sawReplay, full := false, false
 	for {
 		_, msg, err := conn.Read(ctx)
@@ -290,6 +291,9 @@ func (l *loop) readFrames(ctx context.Context, conn *websocket.Conn, lastFrame *
 					return outputError{werr}
 				}
 			}
+			if !sawReplay {
+				l.offsetValid = false // an older host's unannounced replay
+			}
 			sawReplay, full = true, false
 			if _, werr := l.o.Stdout.Write(payload); werr != nil {
 				return outputError{werr}
@@ -308,6 +312,7 @@ func (l *loop) readFrames(ctx context.Context, conn *websocket.Conn, lastFrame *
 				l.o.Bar.SetViewerCount(*meta.ViewerCount)
 			}
 			if meta.Replay != nil {
+				l.offsetValid = false // trusted again only after this socket's offset meta
 				sawReplay, full = true, *meta.Replay == relay.ReplayFull
 			}
 			if meta.Offset != nil {

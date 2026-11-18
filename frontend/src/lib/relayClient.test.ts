@@ -431,8 +431,12 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
   const pong = new Uint8Array([MSG_PONG])
   const ws = (i: number) => WS.instances[i]
   const count = () => WS.instances.length
-  const open = (i: number) => { ws(i).readyState = 1; ws(i).onopen?.() }
   const send = (i: number, f: Uint8Array) => ws(i).onmessage?.({ data: f.buffer as ArrayBuffer })
+  // upgrade: the WebSocket (for a peer, the loopback proxy) accepted; nothing from the host yet.
+  const upgrade = (i: number) => { ws(i).readyState = 1; ws(i).onopen?.() }
+  // open: upgraded and the host's first frame (its grid, sent at once on join) arrived (WR-03).
+  const grid = new Uint8Array([MSG_RESIZE, 0, 80, 0, 24])
+  const open = (i: number) => { upgrade(i); send(i, grid) }
   const drop = (i: number, code = 1006, reason = '') => { ws(i).readyState = 3; ws(i).onclose?.({ code, reason }) }
   const advance = (ms: number) => vi.advanceTimersByTimeAsync(ms)
   const pingsSent = (i: number) => ws(i).send.mock.calls.filter((c) => (c[0] as Uint8Array)[0] === MSG_PING).length
@@ -540,6 +544,23 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     open(1)
     expect(ws(0).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(false)
     expect(ws(1).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(false)
+  })
+
+  it('a socket the proxy accepts and then refuses keeps the resume offset (WR-02)', async () => {
+    make()
+    open(0)
+    send(0, meta({ replay: 'full' }))
+    send(0, meta({ offset: 100 }))
+    drop(0)
+    await advance(1000)
+    upgrade(1)
+    drop(1, 1013, 'remote unreachable')
+    await advance(2000)
+    expect(ws(2).url).toContain('resume=100')
+    open(2) // only the grid arrives before the drop: nothing was rendered, the offset holds
+    drop(2)
+    await advance(4000)
+    expect(ws(3).url).toContain('resume=100')
   })
 
   it('beforeReconnect retry schedules again; a rejected promise counts as retry', async () => {
