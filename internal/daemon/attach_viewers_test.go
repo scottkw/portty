@@ -81,6 +81,13 @@ import (
 
 const viewerWait = 2 * time.Second
 
+// reconnectWait bounds a CLI redial. A healthy one takes about 100 ms, but under a
+// loaded race run macOS sometimes leaves a fresh loopback connect pending until
+// the dialer gives up. The CLI then abandons that dial after attach's 10 s
+// dialTimeout and redials at once, which is the product working as designed
+// (seen at 10.1 s, full replay intact), so the wait allows one stalled dial.
+const reconnectWait = 20 * time.Second
+
 // viewerTap records everything one viewer connection receives.
 type viewerTap struct {
 	mu    sync.Mutex
@@ -134,10 +141,16 @@ func (v *viewerTap) has(s string) bool {
 // waitUntil polls cond for up to viewerWait.
 func waitUntil(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(viewerWait)
+	waitFor(t, what, viewerWait, cond)
+}
+
+// waitFor polls cond for up to d.
+func waitFor(t *testing.T, what string, d time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(d)
 	for !cond() {
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out after %v waiting for %s", viewerWait, what)
+			t.Fatalf("timed out after %v waiting for %s", d, what)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -356,7 +369,7 @@ type loopCLI struct {
 func (s *attachScene) cliURL() string { return s.viewRelay + "/api/relay/remote/" + s.sid + "/ws" }
 
 // fastTiming keeps the default liveness intervals and shortens the backoff so
-// a redial lands well inside viewerWait.
+// a redial lands well inside reconnectWait.
 var fastTiming = attach.Timing{PingEvery: 15 * time.Second, DeadAfter: 40 * time.Second, BackoffMin: 10 * time.Millisecond, BackoffMax: 50 * time.Millisecond, HealthyReset: 30 * time.Second}
 
 // runCLI runs attach.Run on conn (Stdin, Stdout and OnState are filled in) and
@@ -405,7 +418,7 @@ func (c *loopCLI) lastState() (state string, ok bool) {
 // waitReconnected waits until the loop went to reconnecting and back to "".
 func (c *loopCLI) waitReconnected(t *testing.T) {
 	t.Helper()
-	waitUntil(t, "cli to reconnect", func() bool {
+	waitFor(t, "cli to reconnect", reconnectWait, func() bool {
 		st, ok := c.lastState()
 		return ok && st == "" && c.stateSeen("reconnecting")
 	})
