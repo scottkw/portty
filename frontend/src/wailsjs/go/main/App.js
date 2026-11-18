@@ -33,9 +33,9 @@ export const OpenTailscale        = ()                      => Call('main.App.Op
 // Version bound method
 export const GetVersion           = ()                      => Call('main.App.GetVersion', [])
 
-// Update checker bound methods
-export const GetLastUpdateInfo    = ()                      => Call('main.App.GetLastUpdateInfo', [])
-export const CheckForUpdates      = ()                      => Call('main.App.CheckForUpdates', [])
+// Update bound methods (Portty 06-02/06-03)
+export const GetUpdateStatus      = ()                      => Call('main.App.GetUpdateStatus', [])
+export const DownloadUpdate       = ()                      => Call('main.App.DownloadUpdate', [])
 
 // Phase 130 — metadata-aware remote discovery for the sidebar peer poll.
 export const GetRemoteSessionsWithMeta = ()                 => Call('main.App.GetRemoteSessionsWithMeta', [])

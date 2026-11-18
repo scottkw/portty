@@ -3,27 +3,21 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { UpdateBanner } from '../UpdateBanner'
-import type { UpdateInfo } from '../UpdateBanner'
+import type { UpdateStatus } from '../UpdateBanner'
 
-// Mock BrowserOpenURL from Wails runtime
-vi.mock('../../wailsjs/wailsjs/runtime/runtime', () => ({
-  BrowserOpenURL: vi.fn(),
-}))
+const available: UpdateStatus = { state: 'available', current: '1.0.0', latest: '2.0.0', done: 0, total: 0, error: '' }
 
-import { BrowserOpenURL } from '../../wailsjs/wailsjs/runtime/runtime'
-
-const mockUpdate: UpdateInfo = {
-  currentVersion: '1.0.0',
-  latestVersion: '2.0.0',
-  releaseURL: 'https://github.com/scottkw/portty/releases/tag/v2.0.0',
-}
-
-function renderUpdateBanner(update: UpdateInfo, onDismiss: () => void, className?: string) {
+function renderUpdateBanner(
+  status: UpdateStatus,
+  onDismiss: () => void,
+  className?: string,
+  onDownload: () => void = vi.fn(),
+) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
   flushSync(() => {
-    root.render(React.createElement(UpdateBanner, { update, onDismiss, className }))
+    root.render(React.createElement(UpdateBanner, { status, onDownload, onDismiss, className }))
   })
   return { container, root }
 }
@@ -38,21 +32,8 @@ describe('UpdateBanner', () => {
     vi.clearAllMocks()
   })
 
-  it('renders update version information', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
-    expect(container.textContent).toContain('1.0.0')
-    expect(container.textContent).toContain('2.0.0')
-  })
-
-  it('renders Download Update button', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
-    const downloadBtn = container.querySelector('.banner__action')
-    expect(downloadBtn).not.toBeNull()
-    expect(downloadBtn?.textContent).toContain('Download Update')
-  })
-
   it('renders Dismiss button with correct aria-label', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
+    ;({ container, root } = renderUpdateBanner(available, vi.fn()))
     const dismissBtn = container.querySelector('.banner__dismiss')
     expect(dismissBtn).not.toBeNull()
     expect(dismissBtn?.getAttribute('aria-label')).toBe('Dismiss')
@@ -60,51 +41,39 @@ describe('UpdateBanner', () => {
 
   it('calls onDismiss when Dismiss button clicked', () => {
     const onDismiss = vi.fn()
-    ;({ container, root } = renderUpdateBanner(mockUpdate, onDismiss))
+    ;({ container, root } = renderUpdateBanner(available, onDismiss))
     const dismissBtn = container.querySelector('.banner__dismiss') as HTMLButtonElement
     flushSync(() => { dismissBtn.click() })
     expect(onDismiss).toHaveBeenCalledOnce()
   })
 
   it('has role="alert" for accessibility', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
+    ;({ container, root } = renderUpdateBanner(available, vi.fn()))
     const alertEl = container.querySelector('[role="alert"]')
     expect(alertEl).not.toBeNull()
   })
 
   it('has aria-live="polite"', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
+    ;({ container, root } = renderUpdateBanner(available, vi.fn()))
     const alertEl = container.querySelector('[aria-live="polite"]')
     expect(alertEl).not.toBeNull()
   })
 
   it('applies className when provided (for banner-exit animation)', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn(), 'banner-exit'))
+    ;({ container, root } = renderUpdateBanner(available, vi.fn(), 'banner-exit'))
     const banner = container.querySelector('.banner')
     expect(banner?.classList.contains('banner-exit')).toBe(true)
   })
 
-  it('calls BrowserOpenURL with releaseURL on download click', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
-    const downloadBtn = container.querySelector('.banner__action') as HTMLButtonElement
-    flushSync(() => { downloadBtn.click() })
-    expect(BrowserOpenURL).toHaveBeenCalledWith(mockUpdate.releaseURL)
-  })
-
-  it('renders "Update available:" message text', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
-    expect(container.textContent).toContain('Update available:')
-  })
-
   it('is the info variant of the shared banner with an InformationCircleIcon (Portty 02-10)', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
+    ;({ container, root } = renderUpdateBanner(available, vi.fn()))
     const banner = container.querySelector('.banner')!
     expect(banner.classList.contains('banner--info')).toBe(true)
     expect(banner.querySelector('svg.banner__icon')?.getAttribute('aria-hidden')).toBe('true')
   })
 
   it('dismisses with an XMarkIcon button, not a text label or ×', () => {
-    ;({ container, root } = renderUpdateBanner(mockUpdate, vi.fn()))
+    ;({ container, root } = renderUpdateBanner(available, vi.fn()))
     const dismiss = container.querySelector('.banner__dismiss')!
     expect(dismiss.querySelector('svg')).not.toBeNull()
     expect(dismiss.textContent).toBe('')

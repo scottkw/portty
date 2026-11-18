@@ -21,7 +21,8 @@ import {
   GetDaemonError,
   GetRemoteSessionsWithMeta,
   ConnectPeerSession,
-  GetLastUpdateInfo,
+  GetUpdateStatus,
+  DownloadUpdate,
   GetPluginSettings,
   QuitGUIOnly,
   QuitAll,
@@ -51,7 +52,7 @@ import { LinkNoLongerWorks } from './components/LinkNoLongerWorks'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { UpdateBanner } from './components/UpdateBanner'
-import type { UpdateInfo } from './components/UpdateBanner'
+import type { UpdateStatus } from './components/UpdateBanner'
 import { WebGLRecoveryBanner } from './components/WebGLRecoveryBanner'
 import { PluginToggleBanner } from './components/PluginToggleBanner'
 import { QuitConfirmModal } from './components/QuitConfirmModal'
@@ -151,8 +152,10 @@ function App(): React.ReactElement {
   // True after the first successful peer poll; clears the "Looking for other Macs…" line.
   const [remoteLoaded, setRemoteLoaded] = useState(false)
 
-  // Update notification state (lifted to App — Phase 81 D-06)
-  const [update, setUpdate] = useState<UpdateInfo | null>(null)
+  // Update notification state (lifted to App — Phase 81 D-06; Go's Status since Portty 06-03)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+  // The latest version whose banner the user dismissed; a newer version or a download shows it again.
+  const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
   // Local network banner dismiss state (session-only, D-04)
   const [updateExiting, setUpdateExiting] = useState(false)
 
@@ -274,12 +277,18 @@ function App(): React.ReactElement {
     [tabs, sessions, serializerRegistry]
   )
 
+  const dismissLatest = updateStatus?.latest ?? null
   const handleDismissUpdate = useCallback(() => {
     setUpdateExiting(true)
     setTimeout(() => {
-      setUpdate(null)
+      setDismissedUpdate(dismissLatest)
       setUpdateExiting(false)
     }, 200)
+  }, [dismissLatest])
+
+  // Go reports the outcome through update:status events; the result is ignored.
+  const handleDownloadUpdate = useCallback(() => {
+    DownloadUpdate().catch(() => {})
   }, [])
 
   // Phase 93 WGL-02 / WGL-03: stable callback for TerminalPanel's hot-swap
@@ -711,17 +720,23 @@ function App(): React.ReactElement {
     }
   }, [mode])
 
-  // update:available subscription, lifted to App (Phase 81 D-06)
+  // update:status subscription, lifted to App (Phase 81 D-06; Portty 06-03)
   useEffect(() => {
-    if (mode === 'web') return // Phase 120-06: update poller is Wails-only.
-    GetLastUpdateInfo()
-      .then((info) => { if (info) setUpdate(info) })
-      .catch(() => {})
-    const offUpdate = EventsOn('update:available', (info: UpdateInfo) => {
-      setUpdate(info)
-    })
+    if (mode === 'web') return // Phase 120-06: the updater is Wails-only.
+    const apply = (s: UpdateStatus | null) => {
+      if (!s || s.state === 'checking') return // the daily re-check never flickers the banner
+      if (s.state === 'downloading') setDismissedUpdate(null) // a started download brings the banner back
+      setUpdateStatus(s)
+    }
+    GetUpdateStatus().then(apply).catch(() => {})
+    const offUpdate = EventsOn('update:status', apply)
     return () => { offUpdate() }
   }, [])
+
+  const showUpdateBanner =
+    updateStatus !== null &&
+    ['available', 'downloading', 'verifying', 'revealed'].includes(updateStatus.state) &&
+    updateStatus.latest !== dismissedUpdate
 
   // Phase 155-03 — stable tab id for the web-session view. One view per
   // session (find-or-focus semantics).
@@ -996,7 +1011,7 @@ function App(): React.ReactElement {
             true but whose trigger is missing here will never mount (the whole stack is
             conditionally rendered). Phase 129 DNS-03 regressed exactly this way. */}
         {(tailscaleOff ||
-          update ||
+          showUpdateBanner ||
           ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
           saveBanner !== null ||
           shareFailure !== null ||
@@ -1018,9 +1033,10 @@ function App(): React.ReactElement {
                 onDismiss={() => setWebglBannerDismissed(true)}
               />
             )}
-            {update && (
+            {showUpdateBanner && (
               <UpdateBanner
-                update={update}
+                status={updateStatus}
+                onDownload={handleDownloadUpdate}
                 onDismiss={handleDismissUpdate}
                 className={updateExiting ? 'banner-exit' : undefined}
               />

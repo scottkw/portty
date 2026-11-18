@@ -42,17 +42,17 @@ export function OpenDirectoryDialog(defaultDir: string): Promise<string>
 // Version bound method
 export function GetVersion(): Promise<string>
 
-// Update checker bound methods
-export function GetLastUpdateInfo(): Promise<{
-  currentVersion: string;
-  latestVersion: string;
-  releaseURL: string;
-} | null>
-export function CheckForUpdates(): Promise<{
-  currentVersion: string;
-  latestVersion: string;
-  releaseURL: string;
-} | null>
+// Update bound methods (Portty 06-02/06-03). Go emits the same Status on 'update:status'.
+export interface UpdateStatus {
+  state: 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'verifying' | 'revealed'
+  current: string
+  latest: string
+  done: number
+  total: number
+  error: string
+}
+export function GetUpdateStatus(): Promise<UpdateStatus>
+export function DownloadUpdate(): Promise<UpdateStatus>
 
 // Tailscale health bound method
 export function GetTailscaleStatus(): Promise<{
