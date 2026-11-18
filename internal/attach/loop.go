@@ -104,7 +104,7 @@ type loop struct {
 	t            Timing
 	input        chan chunk
 	stdinErr     chan error
-	connected    atomic.Bool // the host's first frame arrived on the current socket
+	connected    atomic.Bool // the host's replay on the current socket is written (it reads input)
 	reconnecting bool        // last state shown was "reconnecting"; Run's goroutine only
 
 	// Stream state, owned by the current connection's frame reader and read by
@@ -187,9 +187,9 @@ func (l *loop) serve(ctx context.Context, conn *websocket.Conn) (err error, retr
 	var ponged atomic.Bool
 	lastFrame.Store(time.Now().UnixNano())
 	readDone := make(chan error, 1)
-	// Connected means the host answered (WR-03): the daemon proxy upgrades the
-	// socket before it dials the peer, and the host sends its grid or replay
-	// meta at once on join. Until then keystrokes stay stale (T-05-14).
+	// Connected means the host's replay is written (WR-03, WR-01 it3): the daemon
+	// proxy upgrades before it dials the peer, and the host reads no input until
+	// its replay is out. Until then keystrokes stay stale (T-05-14).
 	first := make(chan struct{})
 	go func() { readDone <- l.readFrames(cctx, conn, &lastFrame, &ponged, first) }()
 	if l.o.OnConnect != nil {
@@ -277,23 +277,26 @@ func (l *loop) classify(err error) (error, bool) {
 	}
 }
 
-// readFrames renders one connection's frames until its read fails.
-// first is closed at the first frame, which also marks the loop connected.
+// readFrames renders one connection's frames until its read fails. first is
+// closed, and the loop marked connected, at the replay's offset meta, or at
+// the first output of an older host that sends no replay meta.
 func (l *loop) readFrames(ctx context.Context, conn *websocket.Conn, lastFrame *atomic.Int64, ponged *atomic.Bool, first chan struct{}) error {
 	// The old offset stays valid until this socket starts its replay (WR-02): a
 	// socket the proxy accepts and then refuses rendered nothing.
 	sawReplay, full := false, false
+	markConnected := func() {
+		if first != nil {
+			l.connected.Store(true)
+			close(first)
+			first = nil
+		}
+	}
 	for {
 		_, msg, err := conn.Read(ctx)
 		if err != nil {
 			return err
 		}
 		lastFrame.Store(time.Now().UnixNano())
-		if first != nil {
-			l.connected.Store(true) // before any output is shown, so typing at it is live
-			close(first)
-			first = nil
-		}
 		typ, payload, ferr := relay.ParseFrame(msg)
 		if ferr != nil {
 			continue
@@ -309,6 +312,7 @@ func (l *loop) readFrames(ctx context.Context, conn *websocket.Conn, lastFrame *
 			}
 			if !sawReplay {
 				l.offsetValid = false // an older host's unannounced replay
+				markConnected()       // before it is shown, so typing at it is live
 			}
 			sawReplay, full = true, false
 			if _, werr := l.o.Stdout.Write(payload); werr != nil {
@@ -333,6 +337,7 @@ func (l *loop) readFrames(ctx context.Context, conn *websocket.Conn, lastFrame *
 			}
 			if meta.Offset != nil {
 				l.offset, l.offsetValid = *meta.Offset, true
+				markConnected() // the replay is written: the host reads input from here
 			}
 		case relay.MsgPong:
 			ponged.Store(true)
@@ -374,7 +379,7 @@ func (l *loop) reconnect(ctx context.Context, attempt *int) (*websocket.Conn, er
 			return nil, nil
 		case r := <-res:
 			cancel()
-			return r.conn, r.err // serve clears "reconnecting" at the host's first frame
+			return r.conn, r.err // serve clears "reconnecting" once the host's replay is written
 		}
 	}
 }

@@ -424,11 +424,13 @@ func TestRun_RefusedSocketKeepsResume(t *testing.T) {
 	r.detach(t)
 }
 
-// WR-03: a socket is connected only once the host's first frame arrives. While
-// the daemon proxy is still dialing the peer, [reconnecting] stays up and
-// keystrokes are discarded, never queued for the shell.
-func TestRun_NotConnectedUntilFirstFrame(t *testing.T) {
-	sendGrid := make(chan struct{})
+// WR-03 / WR-01 it3: a socket is connected only once the host's replay is
+// written (its offset meta). While the daemon proxy is still dialing the peer,
+// and while the replay is still arriving (the host reads no input until it is
+// written), [reconnecting] stays up and keystrokes are discarded, never queued
+// for the shell.
+func TestRun_NotConnectedUntilReplayEnds(t *testing.T) {
+	sendGrid, endReplay := make(chan struct{}), make(chan struct{})
 	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
 		if i == 0 {
 			c.Close(websocket.StatusGoingAway, "") //nolint:errcheck
@@ -441,23 +443,49 @@ func TestRun_NotConnectedUntilFirstFrame(t *testing.T) {
 		case <-f.done:
 			return
 		}
-		writeFrames(c, relay.MakeResizeFrame(80, 24))
+		writeFrames(c, relay.MakeResizeFrame(80, 24), replayMeta(relay.ReplayFull), output("HISTORY"))
+		select {
+		case <-endReplay:
+		case <-f.done:
+			return
+		}
+		writeFrames(c, offsetMeta(100))
 		<-f.done
 	}, nil)
 	r := startRun(t, f, RunOptions{Timing: fast})
 	waitFor(t, "the redial accepted", func() bool { return f.accepts() >= 2 })
 	r.typeIn(t, "EARLY")
+	close(sendGrid)
+	waitFor(t, "the replay output", func() bool { return strings.Contains(r.stdout(), "HISTORY") })
+	r.typeIn(t, "MIDREPLAY")
 	time.Sleep(50 * time.Millisecond)
 	if s := r.stateList(); len(s) != 1 || s[0] != "reconnecting" {
-		t.Errorf("states before the host's first frame = %q; want only reconnecting", s)
+		t.Errorf("states before the replay's offset meta = %q; want only reconnecting", s)
 	}
-	close(sendGrid)
+	close(endReplay)
 	waitFor(t, "connected", func() bool { s := r.stateList(); return len(s) == 2 && s[1] == "" })
 	r.typeIn(t, "FRESH")
 	waitFor(t, "FRESH on the second connection", func() bool { return strings.Contains(f.input(1), "FRESH") })
-	if got := f.input(1); strings.Contains(got, "EARLY") {
-		t.Errorf("keystrokes typed before the host answered reached the shell: %q", got)
+	if got := f.input(1); strings.Contains(got, "EARLY") || strings.Contains(got, "MIDREPLAY") {
+		t.Errorf("keystrokes typed before the replay ended reached the shell: %q", got)
 	}
+	r.detach(t)
+}
+
+// An older host sends no replay meta: it is connected at its first output.
+func TestRun_OlderHostConnectedAtFirstOutput(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		if i == 0 {
+			c.Close(websocket.StatusGoingAway, "") //nolint:errcheck
+			return
+		}
+		writeFrames(c, relay.MakeResizeFrame(80, 24), output("READY"))
+		f.pump(i, c, nil) //nolint:errcheck
+	}, nil)
+	r := startRun(t, f, RunOptions{Timing: fast})
+	waitFor(t, "connected", func() bool { s := r.stateList(); return len(s) == 2 && s[1] == "" })
+	r.typeIn(t, "LIVE")
+	waitFor(t, "LIVE on the second connection", func() bool { return f.input(1) == "LIVE" })
 	r.detach(t)
 }
 

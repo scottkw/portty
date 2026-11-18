@@ -259,13 +259,11 @@ export class RelayClient {
       if (gen !== this.socketGen) return
       this.lastFrameAt = Date.now()
       this.probeSentAt = 0
-      // WR-03: open means the host answered (its grid or replay meta comes at once on
-      // join), not the upgrade: the daemon proxy upgrades before it dials the peer.
+      // WR-03: the host answered (its grid comes at once on join), so a slow replay is
+      // never killed by the connect timer. Input opens only after the replay (markOpen).
       if (this.reconnect && this.openedAt === 0) {
         this._clearConnect()
         this.openedAt = this.lastFrameAt
-        this.setState('open')
-        this.callbacks.onOpen?.()
       }
       this.handleFrame(parseServerFrame(new Uint8Array(event.data as ArrayBuffer)))
     }
@@ -285,6 +283,7 @@ export class RelayClient {
       }
       // A first connect that fails (openedAt 0) is retried like a drop.
       this.resetBackoffIfHealthy()
+      this.openedAt = 0 // the watchdog leaves a closed socket alone
       this.scheduleRetry()
     }
 
@@ -302,6 +301,7 @@ export class RelayClient {
           if (this.hasRendered) this.callbacks.onReset?.()
           this.awaitingReplayMeta = false
           this.offsetValid = false
+          this.markOpen() // an older host: no offset meta will mark the replay's end
         }
         if (this.offsetValid) this.offset += frame.payload.length + 1
         this.hasRendered = true
@@ -341,7 +341,8 @@ export class RelayClient {
     const gap = now - this.lastTickAt
     this.lastTickAt = now
     if (gap > RECONNECT.wakeGapMs) this.onSystemWake()
-    if (this.state !== 'open' || !this.pongSeen || document.visibilityState !== 'visible') return
+    // From the host's first frame, not only from open: a socket can die mid-replay.
+    if (this.openedAt === 0 || !this.pongSeen || document.visibilityState !== 'visible') return
     if (this.probeSentAt === 0) {
       if (now - this.lastFrameAt > RECONNECT.deadMs) this.sendProbe()
       return
@@ -381,12 +382,13 @@ export class RelayClient {
   // Drop a dead socket without waiting for its close (a half-open socket can sit in
   // CLOSING for a long time) and dial a new one at once.
   private abandon(): void {
-    const ws = this.ws! // only reached from 'open', so a socket exists
+    const ws = this.ws! // only reached after a host frame, so a socket exists
     this.socketGen++
     this._clearPing()
     ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
     ws.close()
     this.resetBackoffIfHealthy()
+    this.openedAt = 0
     this.setState('reconnecting')
     void this.redial()
   }
@@ -416,7 +418,17 @@ export class RelayClient {
       } else {
         this.offsetValid = false
       }
+      // WR-01 it3: the replay is written, so the host reads input from here on.
+      this.markOpen()
     }
+  }
+
+  // Reconnect mode: open (input accepted) once the host's catch-up is written. Typing
+  // at a half-drawn replay would be queued by the host and land late (T-05-14).
+  private markOpen(): void {
+    if (!this.reconnect || this.state === 'open') return
+    this.setState('open')
+    this.callbacks.onOpen?.()
   }
 
   private setState(state: RelayState): void {

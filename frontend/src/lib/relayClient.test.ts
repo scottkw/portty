@@ -434,9 +434,12 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
   const send = (i: number, f: Uint8Array) => ws(i).onmessage?.({ data: f.buffer as ArrayBuffer })
   // upgrade: the WebSocket (for a peer, the loopback proxy) accepted; nothing from the host yet.
   const upgrade = (i: number) => { ws(i).readyState = 1; ws(i).onopen?.() }
-  // open: upgraded and the host's first frame (its grid, sent at once on join) arrived (WR-03).
+  // joined: upgraded and the host's first frame (its grid, sent at once on join) arrived (WR-03).
   const grid = new Uint8Array([MSG_RESIZE, 0, 80, 0, 24])
-  const open = (i: number) => { upgrade(i); send(i, grid) }
+  const joined = (i: number) => { upgrade(i); send(i, grid) }
+  // open: joined and the (empty) replay is done: its offset meta arrived (WR-01 it3).
+  const open = (i: number) => { joined(i); send(i, meta({ replay: 'full' })); send(i, meta({ offset: 0 })) }
+  const inputsSent = (i: number) => ws(i).send.mock.calls.filter((c) => (c[0] as Uint8Array)[0] === MSG_INPUT).length
   const drop = (i: number, code = 1006, reason = '') => { ws(i).readyState = 3; ws(i).onclose?.({ code, reason }) }
   const advance = (ms: number) => vi.advanceTimersByTimeAsync(ms)
   const pingsSent = (i: number) => ws(i).send.mock.calls.filter((c) => (c[0] as Uint8Array)[0] === MSG_PING).length
@@ -557,9 +560,51 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     upgrade(1)
     expect(cbs.onStateChange).toHaveBeenLastCalledWith('reconnecting') // banner stays up
     send(1, grid)
+    send(1, meta({ replay: 'full' }))
+    send(1, meta({ offset: 0 }))
     expect(cbs.onStateChange).toHaveBeenLastCalledWith('open')
     client!.sendInput('ls\r')
     expect(ws(1).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(true)
+  })
+
+  it('input is dropped until the replay ends: open comes at the offset meta, not the grid (WR-01 it3)', async () => {
+    make()
+    joined(0)
+    send(0, meta({ replay: 'full' }))
+    send(0, out('history'))
+    client!.sendInput('y\r') // typed at a half-drawn screen
+    expect(cbs.onStateChange).not.toHaveBeenCalledWith('open')
+    expect(inputsSent(0)).toBe(0)
+    await advance(RECONNECT.connectMs * 2) // a slow replay: the connect timer stopped at the grid
+    expect(ws(0).close).not.toHaveBeenCalled()
+    send(0, meta({ offset: 100 }))
+    expect(cbs.onStateChange).toHaveBeenLastCalledWith('open')
+    client!.sendInput('y\r')
+    expect(inputsSent(0)).toBe(1)
+  })
+
+  it('an older host that sends no replay meta opens at its first output (WR-01 it3)', async () => {
+    make()
+    joined(0)
+    expect(cbs.onStateChange).not.toHaveBeenCalledWith('open')
+    send(0, out('$ '))
+    expect(cbs.onStateChange).toHaveBeenLastCalledWith('open')
+    client!.sendInput('ls\r')
+    expect(inputsSent(0)).toBe(1)
+  })
+
+  it('a socket that goes silent mid-replay is probed and abandoned like an open one (WR-01 it3)', async () => {
+    make()
+    open(0)
+    send(0, pong)
+    drop(0)
+    await advance(1000)
+    joined(1)
+    send(1, meta({ replay: 'full' }))
+    send(1, out('part of the history'))
+    await advance(RECONNECT.deadMs + RECONNECT.probeGraceMs + 2000)
+    expect(ws(1).close).toHaveBeenCalled()
+    expect(count()).toBe(3)
   })
 
   it('a socket with no host frame within connectMs is dropped and retried on the backoff, never stopped (WR-06)', async () => {
@@ -598,7 +643,7 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     drop(1, 1013, 'remote unreachable')
     await advance(2000)
     expect(ws(2).url).toContain('resume=100')
-    open(2) // only the grid arrives before the drop: nothing was rendered, the offset holds
+    joined(2) // only the grid arrives before the drop: nothing was rendered, the offset holds
     drop(2)
     await advance(4000)
     expect(ws(3).url).toContain('resume=100')
@@ -636,7 +681,7 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
 
   it('beforeReconnect ok with port 4321 dials the new loopback port', async () => {
     make(() => Promise.resolve({ kind: 'ok', port: 4321 }))
-    open(0)
+    joined(0)
     drop(0)
     await advance(1000)
     expect(ws(1).url).toBe('ws://127.0.0.1:4321/api/relay/remote/s/ws')
@@ -907,12 +952,12 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
   describe('stream position', () => {
     it('output before any replay meta on a reconnect (older host) resets once', async () => {
       make()
-      open(0)
+      joined(0)
       send(0, out('a'))
       expect(cbs.onReset).not.toHaveBeenCalled()
       drop(0)
       await advance(1000)
-      open(1)
+      joined(1)
       send(1, out('b'))
       send(1, out('c'))
       expect(cbs.onReset).toHaveBeenCalledTimes(1)
@@ -935,7 +980,7 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
       drop(0)
       await advance(1000)
       expect(ws(1).url).toContain('resume=100')
-      open(1)
+      joined(1)
       send(1, meta({ replay: 'delta' }))
       send(1, out('partial'))
       drop(1)

@@ -177,14 +177,15 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
 
   const ws = (i: number) => MockWS.instances[i]
   const send = (s: MockWS, frame: Uint8Array) => act(() => { s.onmessage?.({ data: frame.buffer as ArrayBuffer }) })
-  // Upgraded and the host's first frame (its grid, sent at once on join) arrived: open (WR-03).
-  const open = (s: MockWS) => { act(() => { s.readyState = 1; s.onopen?.() }); send(s, new Uint8Array([0x02, 0, 80, 0, 24])) }
+  // Upgraded and the host's first frame (its grid, sent at once on join) arrived (WR-03).
+  // Input opens later, at the replay's offset meta (WR-01 it3).
+  const joined = (s: MockWS) => { act(() => { s.readyState = 1; s.onopen?.() }); send(s, new Uint8Array([0x02, 0, 80, 0, 24])) }
   const drop = (s: MockWS, code = 1006, reason = '') => act(() => { s.readyState = 3; s.onclose?.({ code, reason }) })
   const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
 
   // Socket 1 reaches a counted offset: full replay, offset meta 100, then live "world" (6 frame bytes).
   async function liveThenDrop() {
-    open(ws(0))
+    joined(ws(0))
     send(ws(0), metaFrame({ replay: 'full' }))
     send(ws(0), outFrame('hello'))
     send(ws(0), metaFrame({ offset: 100 }))
@@ -206,8 +207,12 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     expect(container.textContent).toContain(BANNER)
     expect(MockWS.instances).toHaveLength(2)
 
-    open(ws(1))
+    joined(ws(1))
     send(ws(1), metaFrame({ replay: 'delta' }))
+    send(ws(1), outFrame('missed'))
+    // WR-01 it3: still replaying, so the host reads no input yet: stdin stays off.
+    expect(hoisted.state.term!.options.disableStdin).toBe(true)
+    send(ws(1), metaFrame({ offset: 113 }))
     expect(container.textContent).not.toContain(BANNER)
     expect(hoisted.state.term!.reset.mock.calls).toHaveLength(0)
     expect(risWrites()).toHaveLength(0)
@@ -220,7 +225,7 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     mount()
     await liveThenDrop()
     await advance(1000)
-    open(ws(1))
+    joined(ws(1))
     send(ws(1), metaFrame({ replay: 'full' }))
     send(ws(1), outFrame('again'))
     const term = hoisted.state.term!
@@ -236,14 +241,16 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     mount()
     await liveThenDrop()
     await advance(1000)
-    open(ws(1))
+    joined(ws(1))
+    send(ws(1), metaFrame({ replay: 'delta' }))
+    send(ws(1), metaFrame({ offset: 106 }))
     await advance(10_000)
     expect(container.textContent).not.toContain(BANNER)
   })
 
   it("1000 'share stopped' is final: no new socket and today's stopped-sharing banner", async () => {
     mount()
-    open(ws(0))
+    joined(ws(0))
     drop(ws(0), 1000, 'share stopped')
     await advance(60_000)
     expect(MockWS.instances).toHaveLength(1)
@@ -253,7 +260,7 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
 
   it('a host-path tab (no remote, no wsURL) does not reconnect after a 1006 close', async () => {
     mount({})
-    open(ws(0))
+    joined(ws(0))
     drop(ws(0))
     await advance(60_000)
     expect(MockWS.instances).toHaveLength(1)
