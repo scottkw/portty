@@ -25,7 +25,7 @@ import { mountApp, unmountApp, flush } from './appHarness'
 const stub = vi.hoisted(() => ({ mounts: 0, verdict: undefined as unknown, throwFor: '' }))
 
 vi.mock('../WebShareSessionView', () => ({
-  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown> }) => {
+  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown>; onReconnectingChange?: (on: boolean) => void }) => {
     React.useEffect(() => { stub.mounts++ }, [])
     if (p.sessionId === stub.throwFor) throw new SyntaxError(`bad URL wss://x/ws?cap=${p.capToken}`)
     return React.createElement('div', {
@@ -38,7 +38,9 @@ vi.mock('../WebShareSessionView', () => ({
       'data-has-reconnect': String(p.beforeReconnect !== undefined),
     },
     React.createElement('button', { type: 'button', 'data-testid': 'fire-share-stopped', onClick: () => p.onShareStopped?.() }),
-    React.createElement('button', { type: 'button', 'data-testid': 'fire-before-reconnect', onClick: () => { void p.beforeReconnect?.().then((v) => { stub.verdict = v }) } }))
+    React.createElement('button', { type: 'button', 'data-testid': 'fire-before-reconnect', onClick: () => { void p.beforeReconnect?.().then((v) => { stub.verdict = v }) } }),
+    React.createElement('button', { type: 'button', 'data-testid': 'fire-reconnecting', onClick: () => p.onReconnectingChange?.(true) }),
+    React.createElement('button', { type: 'button', 'data-testid': 'fire-reconnected', onClick: () => p.onReconnectingChange?.(false) }))
   },
 }))
 
@@ -89,7 +91,7 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
     await click(row!)
     expect(connect).toHaveBeenCalledTimes(1)
     expect(connect).toHaveBeenCalledWith('office-air.tail1234.ts.net', 'sess-remote-1')
-    expect(c.textContent).toContain('office-air › Remote Session')
+    expect(c.textContent).toContain('Remote Session · office-air')
     const view = c.querySelector('[data-testid="web-session-view"]')!
     expect(view).not.toBeNull()
     expect(view.getAttribute('data-base')).toBe('https://office-air.tail1234.ts.net:7444')
@@ -121,7 +123,7 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
       .mockReturnValueOnce(okResult)
     const c = await mountApp(baseImpl(connect))
     await click(peerRow(c)!)
-    expect(c.textContent).toContain('office-air › Remote Session')
+    expect(c.textContent).toContain('Remote Session · office-air')
     expect(c.textContent).toContain(CONNECT_FAILED)
     expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
     await click(peerRow(c)!)
@@ -150,7 +152,7 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
     expect(connect).toHaveBeenCalledTimes(1)
     expect(c.querySelectorAll('[data-testid="web-session-view"]')).toHaveLength(1)
     expect(c.querySelectorAll('[id="tabpanel-__websession__sess-remote-1"]')).toHaveLength(1)
-    expect(Array.from(c.querySelectorAll('[role="tab"]')).filter((t) => t.textContent?.includes('office-air › Remote Session'))).toHaveLength(1)
+    expect(Array.from(c.querySelectorAll('[role="tab"]')).filter((t) => t.textContent?.includes('Remote Session · office-air'))).toHaveLength(1)
     await click(peerRow(c)!) // a third click after it opened only activates it
     expect(connect).toHaveBeenCalledTimes(1)
   })
@@ -170,8 +172,8 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
     })
     await flush()
     const labels = Array.from(c.querySelectorAll('[role="tab"]')).map((t) => t.textContent ?? '')
-    expect(labels.filter((l) => l.includes('office-air › Remote Session'))).toHaveLength(1)
-    expect(labels.filter((l) => l.includes('office-air › Second'))).toHaveLength(1)
+    expect(labels.filter((l) => l.includes('Remote Session · office-air'))).toHaveLength(1)
+    expect(labels.filter((l) => l.includes('Second · office-air'))).toHaveLength(1)
   })
 
   it('when the host stops sharing, the row disappears at once and the tab stays', async () => {
@@ -180,8 +182,29 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
     await click(peerRow(c)!)
     await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-share-stopped"]')!)
     expect(peerRow(c)).toBeUndefined()
-    expect(c.textContent).toContain('office-air › Remote Session')
+    expect(c.textContent).toContain('Remote Session · office-air')
     expect(c.querySelector('[data-testid="web-session-view"]')).not.toBeNull()
+  })
+})
+
+describe('App — the peer dot while its tab reconnects (UI polish)', () => {
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks() })
+
+  it('the host dot turns amber ("Reconnecting") while the tab reconnects and green ("Reachable") once it is back', async () => {
+    const c = await mountApp(baseImpl(vi.fn(() => okResult)))
+    await click(peerRow(c)!)
+    const dot = () => c.querySelector('.sidebar__host .sidebar__dot')!
+    expect(dot().classList.contains('sidebar__dot--on')).toBe(true)
+
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-reconnecting"]')!)
+    expect(dot().classList.contains('sidebar__dot--warn')).toBe(true)
+    expect(dot().classList.contains('sidebar__dot--on')).toBe(false)
+    expect(dot().getAttribute('aria-label')).toBe('Reconnecting')
+
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-reconnected"]')!)
+    expect(dot().classList.contains('sidebar__dot--warn')).toBe(false)
+    expect(dot().classList.contains('sidebar__dot--on')).toBe(true)
+    expect(dot().getAttribute('aria-label')).toBe('Reachable')
   })
 })
 

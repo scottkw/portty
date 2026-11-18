@@ -214,8 +214,51 @@ describe('Phase 139 TAB-03: TabBar title on outer .tab div — RED until Plan 02
 
 // Portty 04-05 (SHAR-05): the tab exposure icons for public sharing are gone.
 describe('TabBar has no public-exposure tab icons (Portty 04-05)', () => {
+  // The UI-polish globe marks a remote (peer) tab, not internet exposure; it is the one GlobeAlt use.
   it('the source renders no exposure icon', () => {
-    expect(raw).not.toMatch(/GlobeAlt|LockOpen|tab__internet-icon|tab__fullaccess-icon/)
+    expect(raw).not.toMatch(/LockOpen|tab__internet-icon|tab__fullaccess-icon/)
+    expect(raw.match(/<GlobeAltIcon[^>]*>/g)).toEqual(['<GlobeAltIcon className="tab__remote-icon" aria-hidden="true" />'])
+  })
+})
+
+describe('TabBar remote tab label (UI polish)', () => {
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+
+  afterEach(() => {
+    root.unmount()
+    container.remove()
+  })
+
+  it('a peer tab shows a decorative globe, "session · host" with the host dimmed, and the Mac colour dot', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      tabs: [
+        { id: 'tab1', name: 'shell 1', sessionId: 'sess1' },
+        { id: '__websession__p', name: 'kens-macbook-air-1574 › shell 1', sessionId: 'p', type: 'web-session', peerHost: 'kens-macbook-air-1574.tail1.ts.net' },
+      ],
+    }))
+    const [local, remote] = Array.from(container.querySelectorAll('[role="tab"]'))
+    expect(remote.textContent).toBe('shell 1 · kens-macbook-air-1574')
+    expect(remote.querySelector('.tab__host')?.textContent).toBe(' · kens-macbook-air-1574')
+    expect(remote.querySelector('svg.tab__remote-icon')?.getAttribute('aria-hidden')).toBe('true')
+    const dot = remote.querySelector('.peer-dot') as HTMLElement
+    expect(dot.getAttribute('aria-hidden')).toBe('true')
+    expect(dot.style.background).toMatch(/^var\(--color-peer-[0-4]\)$/)
+    expect(remote.closest('.tab')?.getAttribute('title')).toBe('shell 1 · kens-macbook-air-1574')
+    // Local tabs and the web-guest tab (no peerHost) stay plain.
+    expect(local.textContent).toBe('shell 1')
+    expect(local.querySelector('svg, .peer-dot')).toBeNull()
+  })
+
+  it('the web-guest bootstrap tab (web-session, no peerHost) gets no globe or host', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      webMode: true,
+      tabs: [{ id: '__websession__s', name: 'Session', sessionId: 's', type: 'web-session' }],
+      activeId: '__websession__s',
+    }))
+    const tab = container.querySelector('[role="tab"]')!
+    expect(tab.textContent).toBe('Session')
+    expect(tab.querySelector('svg, .peer-dot')).toBeNull()
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { peerView, shortHost } from '../sidebarPeers'
+import { PEER_COLOR_COUNT, peerColorIndex, peerView, shortHost } from '../sidebarPeers'
 import type { RemotePeerSessions } from '../remoteSession'
 
 const peer = (hostname: string, reachable: boolean, ids: string[] = []): RemotePeerSessions => ({
@@ -72,5 +72,26 @@ describe('peerView: UI-SPEC peer group states (NAV-02)', () => {
     )
     expect(g.map((x) => x.host)).toEqual(['air', 'air'])
     expect(g.map((x) => x.key)).toEqual(['air.tail-a.ts.net', 'air.tail-b.ts.net'])
+  })
+})
+
+describe('peerColorIndex: one stable colour per Mac (UI polish)', () => {
+  it('is stable: the same hostname always gets the same index, whatever the case', () => {
+    const a = peerColorIndex('office-air.tail1234.ts.net')
+    expect(peerColorIndex('office-air.tail1234.ts.net')).toBe(a)
+    expect(peerColorIndex('Office-Air.tail1234.ts.net')).toBe(a)
+    // Pinned so a hash change (which would recolour every Mac) is a deliberate test edit.
+    expect([peerColorIndex('office-air.tail1234.ts.net'), peerColorIndex('home-air.tail1234.ts.net')]).toEqual([0, 3])
+  })
+
+  it('stays inside the palette and spreads across all of it', () => {
+    const seen = new Set<number>()
+    for (let i = 0; i < 40; i++) {
+      const n = peerColorIndex(`mac-${i}.tail1234.ts.net`)
+      expect(n).toBeGreaterThanOrEqual(0)
+      expect(n).toBeLessThan(PEER_COLOR_COUNT)
+      seen.add(n)
+    }
+    expect(seen.size).toBe(PEER_COLOR_COUNT)
   })
 })

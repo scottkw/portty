@@ -239,6 +239,27 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     expect(new TextDecoder().decode(calls[calls.length - 1][0] as Uint8Array)).toBe('again')
   })
 
+  it('UI polish: onReconnectingChange follows the banner (true at 3 s, false on reopen), and false on unmount', async () => {
+    const onReconnectingChange = vi.fn()
+    mount({ remote: true, onReconnectingChange })
+    await liveThenDrop()
+    await advance(2999)
+    expect(onReconnectingChange).not.toHaveBeenCalled()
+    await advance(1)
+    expect(onReconnectingChange.mock.calls).toEqual([[true]])
+    joined(ws(1))
+    send(ws(1), metaFrame({ replay: 'delta' }))
+    send(ws(1), metaFrame({ offset: 106 }))
+    expect(onReconnectingChange.mock.calls).toEqual([[true], [false]])
+
+    // Unmounted mid-reconnect (the user switched tabs): it still reports false.
+    drop(ws(1))
+    await advance(3000)
+    expect(onReconnectingChange.mock.calls).toEqual([[true], [false], [true]])
+    act(() => root.unmount())
+    expect(onReconnectingChange.mock.calls).toEqual([[true], [false], [true], [false]])
+  })
+
   it('a blip that reopens within 1 s never shows the banner', async () => {
     mount()
     await liveThenDrop()

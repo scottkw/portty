@@ -260,6 +260,24 @@ describe('Sidebar: peer groups (NAV-02)', () => {
     expect(down.getAttribute('aria-label')).toBe('Not reachable')
   })
 
+  it('UI polish: the dot is amber and "Reconnecting" for the reconnecting host only, even if the poll reads it unreachable', () => {
+    const v = peerView(false, true, [peer('up.tail1.ts.net', true, [['u1', 'one']]), peer('down.tail1.ts.net', false)])
+    const { c } = render({ peerView: v, reconnectingHost: 'down.tail1.ts.net' })
+    const up = hostRow(c, 'up')!.querySelector('.sidebar__dot')!
+    const down = hostRow(c, 'down')!.querySelector('.sidebar__dot')!
+    expect(down.classList.contains('sidebar__dot--warn')).toBe(true)
+    expect(down.getAttribute('aria-label')).toBe('Reconnecting')
+    expect(up.classList.contains('sidebar__dot--warn')).toBe(false)
+    expect(up.getAttribute('aria-label')).toBe('Reachable')
+  })
+
+  it("UI polish: each peer session row ends in that Mac's decorative colour dot", () => {
+    const { c } = render({ peerView: peerView(false, true, [peer('home-air.tail1.ts.net', true, [['p1', 'shell']])]) })
+    const dot = peerRows(c, 'home-air')[0].querySelector('.peer-dot') as HTMLElement
+    expect(dot.getAttribute('aria-hidden')).toBe('true')
+    expect(dot.style.background).toMatch(/^var\(--color-peer-[0-4]\)$/)
+  })
+
   it('a reachable peer with nothing shared shows "Nothing shared" under its host, no rows', () => {
     const { c } = render({ peerView: peerView(false, true, [peer('idle.tail1.ts.net', true)]) })
     expect(peerRows(c, 'idle')).toHaveLength(0)
