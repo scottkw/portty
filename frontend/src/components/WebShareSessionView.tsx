@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../wailsjs/go/models'
 import { TerminalPanel } from './TerminalPanel'
+import type { ReconnectVerdict } from '../lib/relayClient'
 import { DEFAULT_TERMINAL_FONT_SIZE, parseTerminalFont, terminalFontFamily } from '../lib/terminalFont'
 
 type PluginSettings = daemon.PluginSettings
@@ -49,6 +50,8 @@ export interface WebShareSessionViewProps {
   hostLabel?: string
   /** Portty 04-06: the share stopped (close reason constant); the caller drops the sidebar row. */
   onShareStopped?: () => void
+  /** Portty 05-05: App's pre-redial re-auth for peer tabs (remote only). */
+  beforeReconnect?: () => Promise<ReconnectVerdict>
 }
 
 /**
@@ -69,6 +72,7 @@ export function WebShareSessionView({
   fontSize,
   hostLabel,
   onShareStopped,
+  beforeReconnect,
 }: WebShareSessionViewProps): React.ReactElement {
   // FIX-03 (plan 09) RC-A transport switch. When true, the terminal routes
   // through the daemon proxy (remote:true, wsURL undefined).
@@ -155,6 +159,7 @@ export function WebShareSessionView({
         wsURL={useProxy ? undefined : wsURL}
         hostLabel={hostLabel}
         onShareStopped={onShareStopped}
+        beforeReconnect={useProxy ? beforeReconnect : undefined}
       />
     </div>
   )

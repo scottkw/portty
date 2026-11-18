@@ -39,6 +39,8 @@ import { NewSessionModal } from './components/NewSessionModal'
 import { SharePopover } from './components/SharePopover'
 import { menuShareError, menuStopError } from './lib/shareCopy'
 import { adaptRemoteSession } from './lib/remoteAdapter'
+import { peerConnectVerdict } from './lib/closeReasons'
+import type { ReconnectVerdict } from './lib/relayClient'
 import { peerView, shortHost } from './lib/sidebarPeers'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExclamationTriangleIcon, InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
@@ -701,7 +703,7 @@ function App(): React.ReactElement {
   // Portty 02-04: name is the tab label; peer tabs pass '<host> › <session>'.
   // Portty 04-06: peer tabs also pass peerHost and connectFailed; reopening an
   // existing tab with peer fields (a retry) replaces them.
-  const openWebSessionTab = useCallback((sessionId: string, baseURL?: string, capToken?: string, name = 'Session', peer?: { peerHost: string; connectFailed?: boolean }) => {
+  const openWebSessionTab = useCallback((sessionId: string, baseURL?: string, capToken?: string, name = 'Session', peer?: { peerHost: string; connectHost?: string; connectFailed?: boolean }) => {
     const tabId = webSessionTabId(sessionId)
     const newTab: Tab = {
       id: tabId,
@@ -786,13 +788,14 @@ function App(): React.ReactElement {
         return
       }
       const peerHost = session.hostname
+      const connectHost = session.peerDNSName || peerHost
       let label = `${shortHost(peerHost)} › ${session.name}`
       try {
-        const result = await ConnectPeerSession(session.peerDNSName || peerHost, session.id)
+        const result = await ConnectPeerSession(connectHost, session.id)
         label = `${shortHost(result.host || peerHost)} › ${result.name || session.name}`
         if (!result.errorCode) {
           const parsed = new URL(result.url)
-          openWebSessionTab(session.id, parsed.origin, parsed.searchParams.get('cap') ?? '', label, { peerHost })
+          openWebSessionTab(session.id, parsed.origin, parsed.searchParams.get('cap') ?? '', label, { peerHost, connectHost })
           return
         }
       } catch {
@@ -802,6 +805,20 @@ function App(): React.ReactElement {
     },
     [tabs, openWebSessionTab],
   )
+
+  // Portty 05-05 (SHAR-07): run before each peer-tab redial. Re-running the
+  // connect re-checks same-account access and Share, refills this daemon's cap
+  // store, and the relay port may be new after a daemon restart. It must not
+  // touch tabs: changing the view's key would remount it and drop the buffer.
+  const reconnectPeerTab = useCallback(async (host: string, sessionId: string): Promise<ReconnectVerdict> => {
+    try {
+      const port = await GetRelayPort()
+      const result = await ConnectPeerSession(host, sessionId)
+      return result.errorCode ? peerConnectVerdict(result.errorCode) : { kind: 'ok', port }
+    } catch {
+      return { kind: 'retry' }
+    }
+  }, [])
 
   // Portty 04-06: the host stopped sharing a session this Mac has a tab on. Drop
   // its row at once (the tab stays); the next peer poll reconciles. The tab is
@@ -1049,6 +1066,7 @@ function App(): React.ReactElement {
                 fontSize={mode !== 'web' ? terminalFont.size : undefined}
                 hostLabel={peerHost ? shortHost(peerHost) : (mode === 'web' ? webHost : undefined)}
                 onShareStopped={peerHost ? () => dropPeerSession(peerHost, wsSessionId) : undefined}
+                beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId) : undefined}
               />
             </div>
           )

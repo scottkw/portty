@@ -23,6 +23,8 @@ export interface Tab {
   capToken?: string
   /** Portty 04-06: the peer's hostname for a peer tab (sidebar group key and banner host). */
   peerHost?: string
+  /** Portty 05-05: the host ConnectPeerSession was called with (MagicDNS name or hostname); reused before each redial. */
+  connectHost?: string
   /** Portty 04-06: ConnectPeerSession failed; the tab shows the connect-failed banner. */
   connectFailed?: boolean
   /** The host stopped sharing this peer tab's session; a row click reconnects (WR-06). */

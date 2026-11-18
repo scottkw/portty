@@ -9,7 +9,7 @@
 // WebShareSessionView stubbed (no xterm in jsdom). The stub exposes the props App
 // passes and a button that fires onShareStopped.
 
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
@@ -171,9 +171,10 @@ describe('App — reconnect after the host shares again (WR-06)', () => {
 // ConnectPeerSession (re-checks access, refills the daemon's cap store, picks up a
 // new relay port after a daemon restart). The view is never remounted.
 describe('App — peer tab re-authenticates before each redial (SHAR-07)', () => {
-  afterEach(async () => { await unmountApp(); vi.clearAllMocks(); stub.mounts = 0; stub.verdict = undefined })
+  beforeEach(() => { stub.mounts = 0; stub.verdict = undefined })
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks() })
 
-  async function openThenReconnect(connect: ReturnType<typeof vi.fn>, relayPort: () => unknown = () => 5555, peer: RemotePeerSessions = remotePeer) {
+  async function openThenReconnect(connect: (...a: unknown[]) => unknown, relayPort: () => unknown = () => 5555, peer: RemotePeerSessions = remotePeer) {
     const c = await mountApp({ ...baseImpl(connect), GetRelayPort: relayPort, GetRemoteSessionsWithMeta: () => [peer] })
     await click(peerRow(c)!)
     await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-before-reconnect"]')!)
@@ -239,7 +240,8 @@ describe('App — peer tab re-authenticates before each redial (SHAR-07)', () =>
 
 describe('App.tsx — no code-based access remains', () => {
   it('App has no dialog state, cached-cap set or removed remote-cap bindings', () => {
-    expect(raw).toContain('ConnectPeerSession(session.peerDNSName || peerHost, session.id)')
+    expect(raw).toContain('const connectHost = session.peerDNSName || peerHost')
+    expect(raw).toContain('ConnectPeerSession(connectHost, session.id)')
     expect(raw).not.toContain('remoteCapsCached')
     expect(raw).not.toContain('handleModalExchange')
   })
