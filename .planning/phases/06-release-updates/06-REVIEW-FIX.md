@@ -159,3 +159,9 @@ Fixes were edited and committed in the main checkout, on branch `gsd/phase-06-re
 _Fixed: 2026-11-18T19:44:22Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+## Iteration 2
+
+| ID | Status | Commit | Note |
+|---|---|---|---|
+| IN-01 (iter 2) | fixed | 6f9411cc | Check keeps `revealed` when it finds the same release (`rel == s.rel`), so Download re-shows the kept DMG. A relaunch still re-downloads (no in-memory release); acceptable, fully re-verified. Test extended in `TestService_DownloadAfterRevealRevealsAgain`; fails without the fix. |
