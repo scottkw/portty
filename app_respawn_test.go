@@ -257,3 +257,17 @@ func TestRespawnDaemon_HealthyMinuteResetsStreak(t *testing.T) {
 		t.Fatalf("events = %q, want a second daemon:error after the reset", ev.got())
 	}
 }
+
+// WR-04: once Quit All has begun, the poller never brings the daemon back.
+func TestRespawnDaemon_QuittingSkipsEnsure(t *testing.T) {
+	sock := respawnHome(t)
+	rec := &respawnEnsures{}
+	app := &App{client: daemon.NewDaemonClient(sock), startupDone: closedChan(), ensureDaemonFunc: rec.ensure}
+	app.quitting.Store(true)
+
+	app.respawnDaemonIfDown(time.Now())
+
+	if rec.calls() != 0 {
+		t.Fatal("ensure ran while quitting")
+	}
+}

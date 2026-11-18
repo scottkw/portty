@@ -65,7 +65,7 @@ type App struct {
 	trayInit         bool                 // true once initTray has been called
 	lastTrayQuartile atomic.Int32         // Phase 98 PRG-03 — last applied tray progress quartile [0..4]; -1 = unset. Atomic because written by Wails RPC goroutine (SetTrayProgress) and read by startTrayPoller goroutine via trayIconBytesForState (CR-01).
 	daemonErr        error                // non-nil when EnsureDaemon failed; read it only after startupDone (awaitStartup)
-	quitting         bool                 // true when tray Quit was clicked; lets beforeClose allow exit
+	quitting         atomic.Bool          // set first by QuitAll and shutdown: beforeClose allows exit and the poller never respawns (WR-04)
 	// Update checker state
 	lastUpdate   *updater.UpdateInfo
 	lastUpdateMu sync.Mutex
@@ -288,7 +288,7 @@ const respawnKeepsStoppingMsg = "Portty restarted the daemon 3 times and it keep
 // unreachable after startup (R6), so remote tabs, the sidebar and new sessions
 // come back without a click. It skips while another EnsureDaemon runs.
 func (a *App) respawnDaemonIfDown(now time.Time) {
-	if a.client == nil {
+	if a.client == nil || a.quitting.Load() {
 		return
 	}
 	if a.startupDone != nil {
@@ -303,6 +303,9 @@ func (a *App) respawnDaemonIfDown(now time.Time) {
 		return
 	}
 	defer a.daemonMu.Unlock()
+	if a.quitting.Load() { // QuitAll ran while Health was in flight
+		return
+	}
 	if healthy {
 		if a.respawnAttempts > 0 && now.Sub(a.lastRespawn) >= respawnHealthyReset {
 			a.respawnAttempts = 0
@@ -376,6 +379,7 @@ func (a *App) RetryDaemon() error {
 
 // shutdown is called when the Wails app is about to exit.
 func (a *App) shutdown(_ context.Context) {
+	a.quitting.Store(true) // the app is exiting: no respawn from here on (WR-04)
 	// Remove the system tray icon before cleaning up other resources.
 	if a.trayInit {
 		a.cleanupTray()
@@ -390,7 +394,7 @@ func (a *App) shutdown(_ context.Context) {
 // When called outside a Wails context (e.g., in unit tests), the event emit
 // is skipped safely — sessions are unaffected in both cases.
 func (a *App) beforeClose(ctx context.Context) bool {
-	if a.quitting {
+	if a.quitting.Load() {
 		return false // QuitAll already set flag — allow quit
 	}
 	// Wails stores the frontend under the "frontend" key; skip the call when
@@ -429,10 +433,12 @@ func (a *App) QuitAll() {
 	if a.ctx == nil {
 		return
 	}
+	a.quitting.Store(true) // first: the poller must not respawn the daemon we stop (WR-04)
 	if a.client != nil {
+		a.daemonMu.Lock() // waits out a respawn already running
 		_ = a.client.ShutdownDaemon()
+		a.daemonMu.Unlock()
 	}
-	a.quitting = true
 	runtime.Quit(a.ctx)
 }
 

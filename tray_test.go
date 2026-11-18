@@ -248,8 +248,8 @@ func TestQuitAll(t *testing.T) {
 		t.Fatalf("cannot read app.go: %v", err)
 	}
 	srcStr := string(src)
-	if !containsInQuitAll(srcStr, "a.quitting = true") {
-		t.Error("QuitAll source must contain `a.quitting = true` (APP-02 contract)")
+	if !containsInQuitAll(srcStr, "a.quitting.Store(true)") {
+		t.Error("QuitAll source must contain `a.quitting.Store(true)` (APP-02 contract)")
 	}
 	if !containsInQuitAll(srcStr, "a.client.ShutdownDaemon()") {
 		t.Error("QuitAll source must contain `a.client.ShutdownDaemon()` (APP-02 contract)")
@@ -274,7 +274,7 @@ func TestQuitAllSubprocess(t *testing.T) {
 		// source inspection in TestQuitAll confirms the ordering.
 		app := &App{ctx: context.Background(), client: nil}
 		// Set quitting manually to confirm beforeClose would allow quit after QuitAll.
-		app.quitting = false
+		app.quitting.Store(false)
 		// QuitAll will set app.quitting=true then call runtime.Quit which exits.
 		app.QuitAll()
 	case "nil_client":
