@@ -23,17 +23,13 @@ import (
 // Returns the API, a DaemonClient connected to it, and the socket path.
 func testDaemon(t *testing.T) (*API, *DaemonClient, string) {
 	t.Helper()
+	// NewSessionEngine loads os.UserConfigDir()/portty/settings.json at
+	// construction. A fresh HOME means it finds none and starts from defaults,
+	// for every settings field, including ones added later (HARD-06).
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	engine := NewSessionEngine()
-	// Isolate from real settings.json that NewSessionEngine may have loaded.
-	// NewSessionEngine() unconditionally reads os.UserConfigDir()/portty/settings.json
-	// at construction time (engine.go: loadSettingsFromDisk(cfgDir)). Any field
-	// the real settings file populates leaks into the test unless explicitly
-	// reset here. Phase 116 / TEST-04..06: every field that loadSettingsFromDisk
-	// touches must appear in this reset block. Future engine fields require an
-	// addition here OR a refactor that decouples NewSessionEngine from disk.
 	engine.configDir = t.TempDir()
-	engine.startMinimized = false
-	engine.pluginSettings = defaultPluginSettings()
 	engine.SetSpawnCommandForTest("/bin/cat", nil) // deterministic echo process instead of a login shell
 	api := NewAPI(engine)
 	// Use short socket path — macOS t.TempDir() paths exceed the 103-char limit.
