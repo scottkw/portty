@@ -43,7 +43,8 @@ vi.mock('@xterm/xterm', async () => {
     public attachCustomKeyEventHandler = vi.fn()
     public onData = vi.fn(() => ({ dispose: () => {} }))
     public onResize = vi.fn(() => ({ dispose: () => {} }))
-    public write = vi.fn()
+    // xterm runs a write callback once that chunk is parsed; the mock parses at once.
+    public write = vi.fn((_d: unknown, cb?: () => void) => { cb?.() })
     public reset = vi.fn()
     public dispose = vi.fn()
     public clearTextureAtlas = vi.fn()
@@ -138,6 +139,8 @@ const metaFrame = (m: object) => new Uint8Array([0x20, ...enc.encode(JSON.string
 const outFrame = (s: string) => new Uint8Array([0x01, ...enc.encode(s)])
 
 const BANNER = 'Connection lost — reconnecting…'
+const RIS = '\x1bc'
+const risWrites = () => hoisted.state.term!.write.mock.calls.filter((c) => c[0] === RIS)
 
 describe('TerminalPanel guest reconnect (SHAR-07)', () => {
   let container: HTMLElement
@@ -206,10 +209,13 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     send(ws(1), metaFrame({ replay: 'delta' }))
     expect(container.textContent).not.toContain(BANNER)
     expect(hoisted.state.term!.reset.mock.calls).toHaveLength(0)
+    expect(risWrites()).toHaveLength(0)
     expect(hoisted.state.term!.options.disableStdin).toBe(false)
   })
 
-  it('a full replay on the new socket resets xterm once before the next write', async () => {
+  // 05-12: the reset goes through the write queue (RIS), never the synchronous
+  // reset(), so output still queued in xterm cannot be drawn after it.
+  it('a full replay on the new socket writes RIS once, in stream order before the next output', async () => {
     mount()
     await liveThenDrop()
     await advance(1000)
@@ -217,9 +223,12 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     send(ws(1), metaFrame({ replay: 'full' }))
     send(ws(1), outFrame('again'))
     const term = hoisted.state.term!
-    expect(term.reset.mock.calls).toHaveLength(1)
-    const lastWrite = term.write.mock.invocationCallOrder[term.write.mock.invocationCallOrder.length - 1]
-    expect(term.reset.mock.invocationCallOrder[0]).toBeLessThan(lastWrite)
+    expect(term.reset.mock.calls).toHaveLength(0)
+    expect(risWrites()).toHaveLength(1)
+    const calls = term.write.mock.calls
+    const risIdx = calls.findIndex((c) => c[0] === RIS)
+    expect(risIdx).toBe(calls.length - 2)
+    expect(new TextDecoder().decode(calls[calls.length - 1][0] as Uint8Array)).toBe('again')
   })
 
   it('a blip that reopens within 1 s never shows the banner', async () => {

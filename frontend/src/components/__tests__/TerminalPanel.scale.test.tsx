@@ -26,6 +26,7 @@ import React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import src from '../TerminalPanel.tsx?raw'
+import helperSrc from '../../lib/guestTerminal.ts?raw'
 
 // ─── Hoisted shared state (shared between mock factories and test body) ───────
 
@@ -39,6 +40,8 @@ const hoisted = vi.hoisted(() => {
     termResizeCalls: [] as Array<[number, number]>,
     // The most recent terminal element (to inspect style.transform)
     lastElement: null as HTMLElement | null,
+    // When set, write callbacks queue here instead of running at once (xterm parses async)
+    pendingWrites: null as Array<() => void> | null,
   }
 })
 
@@ -89,7 +92,11 @@ vi.mock('@xterm/xterm', async () => {
     public attachCustomKeyEventHandler = vi.fn()
     public onData = vi.fn(() => ({ dispose: () => {} }))
     public onResize = vi.fn(() => ({ dispose: () => {} }))
-    public write = vi.fn()
+    public write = vi.fn((_d: unknown, cb?: () => void) => {
+      if (!cb) return
+      if (hoisted.pendingWrites) hoisted.pendingWrites.push(cb)
+      else cb()
+    })
     public dispose = vi.fn()
     public clearTextureAtlas = vi.fn()
     public refresh = vi.fn()
@@ -211,8 +218,14 @@ describe('Phase 157 TerminalPanel — source gates (VIEW-04/05)', () => {
     expect(src).toMatch(/isGuest\s*=\s*remote\s*\|\|\s*!!wsURL/)
   })
 
-  it('calls term.resize inside the onResize callback (guest honor)', () => {
-    expect(src).toContain('term.resize(Math.max(1, cols), Math.max(1, rows))')
+  it('guest onResize goes through applyHostGrid with recomputeScale as its follow-up (05-12)', () => {
+    expect(src).toContain("from '../lib/guestTerminal'")
+    expect(src).toContain('onResize: isGuest\n        ? (cols, rows) => applyHostGrid(term, cols, rows, recomputeScale)')
+  })
+
+  it('applyHostGrid clamps and resizes inside a write callback (guest honor, stream order)', () => {
+    expect(helperSrc).toMatch(/term\.write\('', \(\) => \{/)
+    expect(helperSrc).toContain('term.resize(Math.max(1, cols), Math.max(1, rows))')
   })
 
   it('guest path: does not call client.sendResize from onOpen', () => {
@@ -221,17 +234,12 @@ describe('Phase 157 TerminalPanel — source gates (VIEW-04/05)', () => {
     expect(src).toMatch(/isGuest\s*\?\s*undefined\s*:\s*\(\)\s*=>\s*\{/)
   })
 
-  it('guest path: calls recomputeScale() after term.resize (Pitfall 5 order)', () => {
-    // In the onResize callback block: term.resize THEN recomputeScale
-    const onResizeBlock = src.slice(
-      src.indexOf('onResize: isGuest'),
-      src.indexOf('onResize: isGuest') + 300,
-    )
-    const resizeIdx = onResizeBlock.indexOf('term.resize')
-    const scaleIdx = onResizeBlock.indexOf('recomputeScale()')
+  it('guest path: applyHostGrid calls its follow-up (recomputeScale) after term.resize (Pitfall 5 order)', () => {
+    const resizeIdx = helperSrc.indexOf('term.resize')
+    const afterIdx = helperSrc.indexOf('after?.()')
     expect(resizeIdx).toBeGreaterThanOrEqual(0)
-    expect(scaleIdx).toBeGreaterThanOrEqual(0)
-    expect(resizeIdx).toBeLessThan(scaleIdx)
+    expect(afterIdx).toBeGreaterThanOrEqual(0)
+    expect(resizeIdx).toBeLessThan(afterIdx)
   })
 
   it('guest ResizeObserver path does NOT call fitTerminal', () => {
@@ -271,12 +279,14 @@ describe('Phase 157 TerminalPanel — guest path behavioral (VIEW-04/05)', () =>
     hoisted.sendResizeCalls = []
     hoisted.termResizeCalls = []
     hoisted.lastElement = null
+    hoisted.pendingWrites = null
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
   })
 
   afterEach(() => {
+    hoisted.pendingWrites = null
     try { flushSync(() => root.unmount()) } catch { /* ignore */ }
     container.remove()
     vi.clearAllMocks()
@@ -326,6 +336,27 @@ describe('Phase 157 TerminalPanel — guest path behavioral (VIEW-04/05)', () =>
     flushSync(() => { onResize?.(0, 0) })
 
     expect(hoisted.termResizeCalls).toContainEqual([1, 1])
+  })
+
+  // 05-12: a host grid change waits for output already queued in xterm, then
+  // resizes, then rescales (Pitfall 5).
+  it('guest: onResize waits for the queued write callback, then resizes, then rescales', () => {
+    mountGuest(true)
+    const onResize = hoisted.lastCallbacks?.['onResize'] as (cols: number, rows: number) => void
+    hoisted.termResizeCalls = [] // ignore resizes made while mounting
+    hoisted.lastElement!.style.transform = ''
+    hoisted.pendingWrites = []
+
+    flushSync(() => { onResize(100, 30) })
+    expect(hoisted.termResizeCalls).toHaveLength(0)
+    expect(hoisted.lastElement?.style.transform ?? '').toBe('')
+
+    const queued = hoisted.pendingWrites
+    hoisted.pendingWrites = null
+    flushSync(() => { queued.forEach((cb) => cb()) })
+    expect(hoisted.termResizeCalls).toEqual([[100, 30]])
+    expect(hoisted.lastElement?.style.transform).toMatch(/^scale\(/)
+    expect(hoisted.sendResizeCalls).toHaveLength(0)
   })
 
   // VIEW-05: guest applies CSS transform after onResize

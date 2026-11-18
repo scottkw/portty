@@ -57,9 +57,11 @@ describe('Phase 93 WGL-01 / CLIP-01: hot-swap useEffect structure', () => {
 
   it('Scrollback preservation: source never calls term.reset() (would discard buffer)', () => {
     // SHAR-07 exception: the RelayClient onReset callback, fired only when the server
-    // announces a full replay of the whole history onto existing content.
-    expect(src).toMatch(/onReset: \(\) => term\.reset\(\),/)
-    expect(src.replace(/onReset: \(\) => term\.reset\(\),/, '')).not.toMatch(/term\.reset\(\)/)
+    // announces a full replay of the whole history onto existing content. 05-12: it
+    // uses the in-band helper (RIS through the write queue), never a synchronous reset.
+    expect(src.match(/resetForFullReplay\(/g) ?? []).toHaveLength(1)
+    expect(src).toMatch(/onReset: \(\) => resetForFullReplay\(term\),/)
+    expect(src).not.toMatch(/\.reset\(\)/)
   })
 
   it('hot-swap useEffect disposes addons on toggle-off (cleanup paths)', () => {

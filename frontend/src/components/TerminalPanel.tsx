@@ -12,6 +12,7 @@ import { SerializeAddon } from '@xterm/addon-serialize'
 import { ProgressAddon, type IProgressState } from '@xterm/addon-progress'
 import { RelayClient, RECONNECT, type ReconnectVerdict } from '../lib/relayClient'
 import { computeGuestViewport, DEFAULT_GUEST_MIN_SCALE } from '../lib/terminalScale'
+import { applyHostGrid, resetForFullReplay } from '../lib/guestTerminal'
 import { isSoftwareWebGL } from '../lib/webglProbe'
 import { isXtermFocused } from '../lib/isXtermFocused'
 import { FindBar, type FindBarSearchOptions } from './FindBar/FindBar'
@@ -406,15 +407,15 @@ export function TerminalPanel({
         if (shareStopped) onShareStoppedRef.current?.()
       },
       // VIEW-04/05 (Phase 157): guest honors server-pushed 0x02 → term.resize +
-      // scale recompute. Pitfall 5: term.resize BEFORE recomputeScale so scale
-      // math reads the new term.cols/rows. Clamp to ≥1 (T-157-03 / xterm guard).
+      // scale recompute. 05-12: applyHostGrid queues the resize behind output
+      // already written, so old-width bytes parse at the old width. Pitfall 5:
+      // it resizes BEFORE calling recomputeScale, so scale math reads the new
+      // term.cols/rows. Clamp to ≥1 (T-157-03 / xterm guard) lives in the helper.
       onResize: isGuest
-        ? (cols, rows) => {
-            term.resize(Math.max(1, cols), Math.max(1, rows))
-            recomputeScale()
-          }
+        ? (cols, rows) => applyHostGrid(term, cols, rows, recomputeScale)
         : undefined,
-      onReset: () => term.reset(),
+      // 05-12: an in-band reset, so output still queued is not drawn after it.
+      onReset: () => resetForFullReplay(term),
       // SHAR-07: while not open, stdin is disabled and RelayClient drops input;
       // keystrokes are never queued into the shell (T-05-14).
       onStateChange: (state) => {
