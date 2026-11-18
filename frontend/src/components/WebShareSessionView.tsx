@@ -96,8 +96,9 @@ export function WebShareSessionView({
 
   // Portty 05-05 (SHAR-07): browser path, before each redial ask the share server
   // whether the cap still works, so a revoked link stops instead of retrying.
+  // WR-06: a probe to a sleeping host times out into a retry, never a hang.
   const probeShare = (): Promise<ReconnectVerdict> =>
-    fetch(`${apiBaseURL}/api/sessions/${encodeURIComponent(sessionId)}/info?cap=${encodeURIComponent(capToken)}`, { cache: 'no-store' })
+    fetch(`${apiBaseURL}/api/sessions/${encodeURIComponent(sessionId)}/info?cap=${encodeURIComponent(capToken)}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) })
       .then((res) => shareInfoVerdict(res.status), () => ({ kind: 'retry' }))
 
   // Phase 168 FIX-01 (#112) — web-guest plugin-config self-fetch + SSE

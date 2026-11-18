@@ -562,6 +562,31 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     expect(ws(1).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(true)
   })
 
+  it('a socket with no host frame within connectMs is dropped and retried on the backoff, never stopped (WR-06)', async () => {
+    make()
+    await advance(RECONNECT.connectMs - 1)
+    expect(ws(0).close).not.toHaveBeenCalled()
+    await advance(1)
+    expect(ws(0).close).toHaveBeenCalled()
+    expect(ws(0).onclose).toBeNull()
+    expect(cbs.onStateChange).toHaveBeenLastCalledWith('reconnecting')
+    await expectRedialAfter(1000)
+    upgrade(1) // a handshake that completes but the host never answers
+    await advance(RECONNECT.connectMs)
+    expect(ws(1).close).toHaveBeenCalled()
+    await expectRedialAfter(2000)
+    expect(cbs.onClose).not.toHaveBeenCalled()
+  })
+
+  it('a socket that opens in time is never dropped by the connect timer (WR-06)', async () => {
+    make()
+    open(0)
+    await advance(RECONNECT.connectMs * 3)
+    expect(ws(0).close).not.toHaveBeenCalled()
+    drop(0) // a close cancels the timer: the pending backoff is not restarted
+    await expectRedialAfter(1000)
+  })
+
   it('a socket the proxy accepts and then refuses keeps the resume offset (WR-02)', async () => {
     make()
     open(0)
@@ -685,7 +710,7 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
       const states = cbs.onStateChange.mock.calls.length
       lateClose({ code: 1000, reason: 'share stopped' })
       lateMessage({ data: out('stale').buffer as ArrayBuffer })
-      await advance(60_000)
+      await advance(RECONNECT.connectMs - 1000) // past any backoff a late close could start, short of the connect timer
       expect(count()).toBe(2)
       expect(cbs.onClose).not.toHaveBeenCalled()
       expect(cbs.onOutput).not.toHaveBeenCalled()

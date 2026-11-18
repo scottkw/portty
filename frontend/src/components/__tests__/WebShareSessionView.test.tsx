@@ -201,7 +201,7 @@ describe('WebShareSessionView — pre-redial check (SHAR-07)', () => {
     await expect((capturedTerminalProps?.beforeReconnect as Hook)()).resolves.toEqual({ kind: 'stop', reason: 'share-stopped' })
     expect(fetchMock).toHaveBeenCalledWith(
       `https://office-air.ts.net:7444/api/sessions/${encodeURIComponent('sess/1')}/info?cap=${encodeURIComponent('tok=a&b')}`,
-      { cache: 'no-store' },
+      expect.objectContaining({ cache: 'no-store' }),
     )
     unmount()
   })
@@ -214,6 +214,21 @@ describe('WebShareSessionView — pre-redial check (SHAR-07)', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status })))
     const { unmount } = mountView()
     await expect((capturedTerminalProps?.beforeReconnect as Hook)()).resolves.toEqual(verdict)
+    unmount()
+  })
+
+  it('browser path: a probe that hangs times out after 10 s and retries (WR-06)', async () => {
+    const ctrl = new AbortController()
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(ctrl.signal)
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('timed out', 'TimeoutError')))
+    })))
+    const { unmount } = mountView()
+    const verdict = (capturedTerminalProps?.beforeReconnect as Hook)()
+    expect(timeout).toHaveBeenCalledWith(10_000)
+    ctrl.abort()
+    await expect(verdict).resolves.toEqual({ kind: 'retry' })
+    timeout.mockRestore()
     unmount()
   })
 

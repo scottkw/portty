@@ -85,6 +85,8 @@ export function parseServerFrame(data: Uint8Array): ServerFrame {
  * silent for 40 s gets a probe ping and is dead 5 s later. The reconnecting
  * banner shows after 3 s so a brief blip stays silent. A system wake (05-13) acts
  * at most once per wakeMinGapMs; a watchdog tick later than wakeGapMs counts as one.
+ * A socket with no host frame within connectMs is dropped and retried (WR-06); it
+ * is longer than the daemon proxy's 10 s upstream dial, so that path ends first.
  */
 export const RECONNECT = {
   minMs: 1_000,
@@ -97,6 +99,7 @@ export const RECONNECT = {
   bannerDelayMs: 3_000,
   wakeGapMs: 5_000,
   wakeMinGapMs: 5_000,
+  connectMs: 15_000,
 } as const
 
 export type RelayState = 'connecting' | 'open' | 'reconnecting' | 'stopped'
@@ -157,6 +160,7 @@ export class RelayClient {
   private openedAt = 0
   private redialing = false
   private retryTimer: ReturnType<typeof setTimeout> | null = null
+  private connectTimer: ReturnType<typeof setTimeout> | null = null
   // Bumped on every dial and abandonment: handlers of an older socket ignore their events.
   private socketGen = 0
   // Liveness (reconnect mode): armed by the first MsgPong so an older host that never
@@ -222,6 +226,18 @@ export class RelayClient {
     }
     ws.binaryType = 'arraybuffer'
     this.ws = ws
+    if (this.reconnect) {
+      // WR-06: a handshake to a sleeping host, or a host that never answers, would
+      // otherwise hold this attempt until the browser gives up (minutes).
+      this._clearConnect()
+      this.connectTimer = setTimeout(() => {
+        this.connectTimer = null
+        this.socketGen++
+        ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
+        ws.close()
+        this.scheduleRetry()
+      }, RECONNECT.connectMs)
+    }
 
     // Every handler ignores events from a socket that is no longer current.
     ws.onopen = () => {
@@ -246,6 +262,7 @@ export class RelayClient {
       // WR-03: open means the host answered (its grid or replay meta comes at once on
       // join), not the upgrade: the daemon proxy upgrades before it dials the peer.
       if (this.reconnect && this.openedAt === 0) {
+        this._clearConnect()
         this.openedAt = this.lastFrameAt
         this.setState('open')
         this.callbacks.onOpen?.()
@@ -256,6 +273,7 @@ export class RelayClient {
     ws.onclose = (evt: CloseEvent) => {
       if (gen !== this.socketGen) return
       this._clearPing()
+      this._clearConnect()
       if (!this.reconnect) {
         this.callbacks.onClose?.(evt.code, evt.reason)
         return
@@ -451,6 +469,7 @@ export class RelayClient {
   private teardown(): void {
     this._clearPing()
     this._clearRetry()
+    this._clearConnect()
     if (this.watchdog !== null) {
       clearInterval(this.watchdog)
       this.watchdog = null
@@ -495,6 +514,13 @@ export class RelayClient {
     if (this.pingInterval !== null) {
       clearInterval(this.pingInterval)
       this.pingInterval = null
+    }
+  }
+
+  private _clearConnect(): void {
+    if (this.connectTimer !== null) {
+      clearTimeout(this.connectTimer)
+      this.connectTimer = null
     }
   }
 
