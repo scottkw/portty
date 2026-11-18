@@ -270,6 +270,75 @@ func TestRemoteSessionWS_FrameCopy(t *testing.T) {
 	}
 }
 
+// echoProxyConn dials the relay proxy for a session whose peer echoes every
+// message, as TestRemoteSessionWS_FrameCopy does.
+func echoProxyConn(t *testing.T) *websocket.Conn {
+	t.Helper()
+	peer := newFixtureRemotePeerWithWS(t)
+	api := newDaemonAPIWithUpstreamCert(t, peer.srv)
+	socketSrv := httptest.NewServer(api.Handler())
+	t.Cleanup(socketSrv.Close)
+	relaySrv := httptest.NewServer(api.RelayHandler())
+	t.Cleanup(relaySrv.Close)
+	depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := dialProxy(ctx, t, relaySrv.URL, "sid1", "wails://wails")
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	t.Cleanup(func() { conn.CloseNow() })
+	return conn
+}
+
+// HARD-02: the proxy's client socket keeps the 32768-byte read limit; a frame
+// of exactly that size is forwarded.
+func TestRemoteSessionWS_InputFrameAtLimitForwarded(t *testing.T) {
+	conn := echoProxyConn(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	frame := relay.MakeInputFrame([]byte(strings.Repeat("a", relay.MaxInputPayload)))
+	if err := conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
+		t.Fatalf("write %d-byte frame: %v", len(frame), err)
+	}
+	_, got, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatalf("read echo: %v", err)
+	}
+	if string(got) != string(frame) {
+		t.Errorf("echo is %d bytes; want the %d-byte frame unchanged", len(got), len(frame))
+	}
+}
+
+// HARD-02: a frame over the limit closes the viewer socket and never reaches
+// the peer (the echo peer would send it back).
+func TestRemoteSessionWS_InputFrameOverLimitClosed(t *testing.T) {
+	conn := echoProxyConn(t)
+	conn.SetReadLimit(1 << 20) // so an echoed over-limit frame would be seen, not refused here
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	frame := relay.MakeInputFrame([]byte(strings.Repeat("a", relay.MaxInputPayload+1)))
+	if err := conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
+		t.Fatalf("write %d-byte frame: %v", len(frame), err)
+	}
+	for {
+		_, got, err := conn.Read(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				t.Fatal("the proxy kept the viewer socket open after an over-limit frame")
+			}
+			t.Logf("viewer socket closed: %v", err)
+			if got := websocket.CloseStatus(err); got != websocket.StatusMessageTooBig {
+				t.Errorf("close status = %d; want %d (the proxy's own read limit)", got, websocket.StatusMessageTooBig)
+			}
+			return
+		}
+		if len(got) == len(frame) {
+			t.Fatal("the over-limit frame reached the peer and came back")
+		}
+	}
+}
+
 // TestRemoteSessionWS_InjectsOrigin (WS-PROXY-04): the peer asserts it received
 // a non-empty Origin equal to its base URL on the upstream dial, plus the cap.
 func TestRemoteSessionWS_InjectsOrigin(t *testing.T) {

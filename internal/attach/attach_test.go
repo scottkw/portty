@@ -2,7 +2,12 @@ package attach
 
 import (
 	"bytes"
+	"context"
+	"io"
 	"testing"
+	"time"
+
+	"github.com/coder/websocket"
 )
 
 func TestLockedWriter(t *testing.T) {
@@ -37,5 +42,21 @@ func TestMakeClientResizeFrame(t *testing.T) {
 	}
 	if rows != 24 {
 		t.Errorf("expected rows=24, got %d", rows)
+	}
+}
+
+// Local attach: a paste over 32 KiB goes out in frames under the relay's
+// 32768-byte read limit and arrives whole and in order (HARD-02).
+func TestStdinPump_LargePasteArrivesWhole(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		f.pump(i, c, nil) //nolint:errcheck
+	}, nil)
+	paste := pasteBytes(100_000)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = AttachSession(ctx, f.dial(t), bytes.NewReader(paste), io.Discard, 0x1C, nil, nil)
+	waitFor(t, "the whole paste", func() bool { return len(f.input(0)) >= len(paste) })
+	if got := f.input(0); got != string(paste) {
+		t.Fatalf("relay got %d bytes; want the %d-byte paste in order", len(got), len(paste))
 	}
 }
