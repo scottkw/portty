@@ -186,3 +186,51 @@ describe('WebShareSessionView — stopped-sharing props (SHAR-04)', () => {
     unmount()
   })
 })
+
+// Portty 05-05 (SHAR-07): before each redial the browser view asks the share
+// server whether its cap still works; remote tabs pass App's hook through.
+describe('WebShareSessionView — pre-redial check (SHAR-07)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  type Hook = () => Promise<unknown>
+
+  it('browser path: probes /info with the encoded id and cap and maps the status', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 403 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { unmount } = mountView({ sessionId: 'sess/1', capToken: 'tok=a&b', baseURL: 'https://office-air.ts.net:7444' })
+    await expect((capturedTerminalProps?.beforeReconnect as Hook)()).resolves.toEqual({ kind: 'stop', reason: 'share-stopped' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://office-air.ts.net:7444/api/sessions/${encodeURIComponent('sess/1')}/info?cap=${encodeURIComponent('tok=a&b')}`,
+      { cache: 'no-store' },
+    )
+    unmount()
+  })
+
+  it.each([
+    [200, { kind: 'ok' }],
+    [404, { kind: 'stop', reason: 'ended' }],
+    [500, { kind: 'retry' }],
+  ])('browser path: status %i resolves %o', async (status, verdict) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status })))
+    const { unmount } = mountView()
+    await expect((capturedTerminalProps?.beforeReconnect as Hook)()).resolves.toEqual(verdict)
+    unmount()
+  })
+
+  it('browser path: a rejected fetch retries', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network') }))
+    const { unmount } = mountView()
+    await expect((capturedTerminalProps?.beforeReconnect as Hook)()).resolves.toEqual({ kind: 'retry' })
+    unmount()
+  })
+
+  it('remote path: passes the given hook unchanged and never fetches', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const hook = vi.fn(async () => ({ kind: 'ok' as const, port: 1 }))
+    const { unmount } = mountView({ remote: true, relayPort: 42, baseURL: 'https://peer.example.ts.net', beforeReconnect: hook })
+    expect(capturedTerminalProps?.beforeReconnect).toBe(hook)
+    expect(fetchMock).not.toHaveBeenCalled()
+    unmount()
+  })
+})
