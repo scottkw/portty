@@ -214,10 +214,11 @@ export class RelayClient {
 
   /**
    * HARD-05: the exact stream offset of everything handed to onOutput, or null when
-   * it is not known (no offset meta yet on this socket). Saved with a peer-tab snapshot.
+   * it is not known (no offset meta yet on this socket) or the stream ended for good
+   * (stopped: nothing to resume). Saved with a peer-tab snapshot.
    */
   resumePoint(): number | null {
-    return this.offsetValid ? this.offset : null
+    return this.offsetValid && this.state !== 'stopped' ? this.offset : null
   }
 
   private baseURL(): string {
