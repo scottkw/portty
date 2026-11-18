@@ -220,7 +220,7 @@ Plans:
   3. Detaching and reattaching from the GUI, the CLI, or a browser restores the session's scrollback
   4. Overnight test: Claude Code runs in a shared shell on the office Mac and the home Mac attaches from the Portty GUI. After both sit idle overnight, the user keeps typing the next morning and the previous day's scrollback is intact
   5. The next morning the same session also opens from a browser on the tailnet and works
-**Plans**: 6/7 plans executed in 4 waves
+**Plans**: 7/7 plans executed in 4 waves
 
 Plans:
 **Wave 1**
@@ -236,7 +236,7 @@ Plans:
 - [x] 05-06-PLAN.md — `portty attach` reconnect loop (attach.Run), UAT gap 1 fix, harness drop / daemon-restart / scrollback-diff tests
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 05-07-PLAN.md — TESTING.md manifest, SHAR-07/VERF-01 traceability, M-84..M-87 (two-Mac items deferred-capable), todos
+- [x] 05-07-PLAN.md — TESTING.md manifest, SHAR-07/VERF-01 traceability, M-84..M-87 (two-Mac items deferred-capable), todos
 
 ### Phase 6: Release Updates
 **Goal**: Installed copies of Portty find out about new GitHub releases on their own or on demand, and the user can download, verify and open an update in a couple of clicks, using the same flow as GIFsmith
@@ -261,5 +261,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
 | 3. Portty Brand | 6/6 | In Progress | - |
 | 4. One-Click Share | 10/10 | In Progress | - |
-| 5. Overnight Survival | 6/7 | In Progress | - |
+| 5. Overnight Survival | 7/7 | In Progress | - |
 | 6. Release Updates | 0/TBD | Not started | - |
