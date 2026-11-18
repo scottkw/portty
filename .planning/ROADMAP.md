@@ -220,7 +220,7 @@ Plans:
   3. Detaching and reattaching from the GUI, the CLI, or a browser restores the session's scrollback
   4. Overnight test: Claude Code runs in a shared shell on the office Mac and the home Mac attaches from the Portty GUI. After both sit idle overnight, the user keeps typing the next morning and the previous day's scrollback is intact
   5. The next morning the same session also opens from a browser on the tailnet and works
-**Plans**: 7/7 plans executed in 4 waves
+**Plans**: 7/15 plans executed (05-01..05-07 in 4 waves). 8 gap-closure plans added 2026-11-17 from five pending todos raised during execution (jumbled screen on reattach, duplicate remote tab blanking the window, wake/network-change reconnect and the resilience matrix, Go toolchain pin for tailscale.com, guest scrollbar); 05-12..05-15 are sequential because they share TerminalPanel/App.tsx, the two Tart VMs and TESTING.md
 
 Plans:
 **Wave 1**
@@ -237,6 +237,24 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [x] 05-07-PLAN.md — TESTING.md manifest, SHAR-07/VERF-01 traceability, M-84..M-87 (two-Mac items deferred-capable), todos
+
+**Gap closure, Wave 1** *(todos raised 2026-11-17 during execution)*
+- [ ] 05-08-PLAN.md — Replay fidelity proof in Go: Claude-Code-like wrapped replay compared grid-for-grid with the host; geometry-aware Join (no delta or raw replay across a genuine host resize); typing after a wrapped replay; xterm fixture
+- [ ] 05-09-PLAN.md — Duplicate remote tab / blank window: in-flight guard, functional dedupe, safe next-active rule, render guard, ErrorBoundary per pane and root; VM double-click check
+- [ ] 05-10-PLAN.md — internal/wakewatch (wall-clock tick gap + interface-address change) and wake-driven reconnect in `portty attach`; long-output-during-gap harness row; CONTEXT amendment superseding "no NSWorkspace wake hook"
+- [ ] 05-11-PLAN.md — Go toolchain pin (go.mod `toolchain go1.26.11`, build.sh GOTOOLCHAIN export, Go 1.27 compile guard) and a LocalAPI decode test with a tailcfg format-tag canary
+
+**Gap closure, Wave 2** *(blocked on 05-08)*
+- [ ] 05-12-PLAN.md — Guest rendering: real-xterm cross-check against the Go fixture, in-stream reset and host-grid resize, scrollbar at the pane edge; two-VM reattach check
+
+**Gap closure, Wave 3** *(blocked on 05-09, 05-10, 05-12)*
+- [ ] 05-13-PLAN.md — GUI/browser wake: Wails `system:wake` from the detector, RelayClient reconnect-now with debounce, browser timer-gap wake, WebSocket constructor-throw hardening; VM wake-latency check
+
+**Gap closure, Wave 4** *(blocked on all gap plans)*
+- [ ] 05-14-PLAN.md — Network-resilience matrix on two Tart VMs over the tailnet (drop, half-open, network change, viewing/host sleep, daemon restarts, long output during the gap) recorded in 05-VM-MATRIX.md
+
+**Gap closure, Wave 5** *(blocked on 05-14)*
+- [ ] 05-15-PLAN.md — TESTING.md close-out (counts, GOTOOLCHAIN note, SHAR-07/VERF-01 rows, M-88..M-90, M-84 reattach step), five todos completed, full gate on go1.26.11
 
 ### Phase 6: Release Updates
 **Goal**: Installed copies of Portty find out about new GitHub releases on their own or on demand, and the user can download, verify and open an update in a couple of clicks, using the same flow as GIFsmith
@@ -261,5 +279,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
 | 3. Portty Brand | 6/6 | In Progress | - |
 | 4. One-Click Share | 10/10 | In Progress | - |
-| 5. Overnight Survival | 7/7 | In Progress | - |
+| 5. Overnight Survival | 7/15 | In Progress | - |
 | 6. Release Updates | 0/TBD | Not started | - |
