@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -303,5 +304,226 @@ func TestService_CheckSerialized(t *testing.T) {
 	got := f.gh.checks()
 	if len(got) != 2 || got[0] != "" || got[1] == "" {
 		t.Errorf("If-None-Match per request = %q; want two requests, the second conditional", got)
+	}
+}
+
+// available checks the fake's v9.9.9 so the service is ready to Download, then clears the emits.
+func (f svcFix) available(t *testing.T) {
+	t.Helper()
+	f.gh.set(f.gh.rel("9.9.9"), 0)
+	if st, err := f.svc.Check(context.Background()); err != nil || st.State != "available" {
+		t.Fatalf("Check = %+v, %v", st, err)
+	}
+	f.ev.reset()
+}
+
+const (
+	checksumText  = "The download didn't match the release's checksum, so Portty deleted it."
+	signatureText = "The download didn't pass the signature check, so Portty deleted it."
+	revealText    = "Portty couldn't show the download in Finder."
+	downloadText  = "Portty couldn't download version 9.9.9. Try again later."
+)
+
+func TestService_DownloadReveals(t *testing.T) {
+	f := newSvc(t)
+	f.available(t)
+	stale := filepath.Join(f.dir, DMGAssetName("1.0.0"))
+	if err := os.MkdirAll(f.dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := f.svc.Download()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (Status{State: "revealed", Current: "1.0.0", Latest: "9.9.9"}); st != want {
+		t.Errorf("Download = %+v, want %+v", st, want)
+	}
+	path := filepath.Join(f.dir, DMGAssetName("9.9.9"))
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("downloaded DMG: %v %v", fi, err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale DMG not cleaned: %v", err)
+	}
+	ev := f.ev.list()
+	if len(ev) < 4 {
+		t.Fatalf("emitted %s", f.ev.states())
+	}
+	if ev[0].State != "downloading" || ev[0].Total != int64(len(payload)) || ev[0].Latest != "9.9.9" {
+		t.Errorf("first emit %+v", ev[0])
+	}
+	if p := ev[len(ev)-3]; p.State != "downloading" || p.Done != int64(len(payload)) || p.Total != int64(len(payload)) {
+		t.Errorf("last progress %+v", p)
+	}
+	if v, r := ev[len(ev)-2], ev[len(ev)-1]; v.State != "verifying" || r != st {
+		t.Errorf("tail %+v, %+v", v, r)
+	}
+	f.run.mu.Lock()
+	calls := append([]string(nil), f.run.calls...)
+	f.run.mu.Unlock()
+	if len(calls) != 5 || !strings.HasPrefix(calls[0], "/usr/bin/codesign --verify") || calls[4] != "/usr/bin/open -R "+path {
+		t.Errorf("runner calls %q", calls)
+	}
+}
+
+// downloadFailure drives one failing Download from available.
+func downloadFailure(t *testing.T, mode string) (svcFix, Status, error) {
+	t.Helper()
+	f := newSvc(t)
+	f.available(t)
+	f.gh.mu.Lock()
+	switch mode {
+	case "500":
+		f.gh.assetStatus = 500
+	case "digest":
+		bad := append([]byte(nil), payload...)
+		bad[0] ^= 1
+		f.gh.assetBody = bad
+	case "codesign":
+		f.run.fail = "codesign"
+	case "reveal":
+		f.run.fail = "open"
+	}
+	f.gh.mu.Unlock()
+	st, err := f.svc.Download()
+	return f, st, err
+}
+
+func TestService_DownloadFailures(t *testing.T) {
+	for _, c := range []struct {
+		mode, kind, text string
+		kept             bool
+	}{
+		{"500", "download", downloadText, false},
+		{"digest", "verify", checksumText, false},
+		{"codesign", "verify", signatureText, false},
+		{"reveal", "reveal", revealText, true},
+	} {
+		t.Run(c.mode, func(t *testing.T) {
+			f, st, err := downloadFailure(t, c.mode)
+			var e *Error
+			if !errors.As(err, &e) || e.Kind != c.kind || e.Text != c.text {
+				t.Errorf("err = %#v, want %s %q", err, c.kind, c.text)
+			}
+			if want := (Status{State: "available", Current: "1.0.0", Latest: "9.9.9", Error: c.text}); st != want || f.svc.Status() != want {
+				t.Errorf("Download = %+v, Status = %+v; want %+v", st, f.svc.Status(), want)
+			}
+			if ev := f.ev.list(); len(ev) == 0 || ev[len(ev)-1].Error != c.text {
+				t.Errorf("last emit %+v", ev)
+			}
+			_, statErr := os.Stat(filepath.Join(f.dir, DMGAssetName("9.9.9")))
+			if kept := statErr == nil; kept != c.kept {
+				t.Errorf("DMG kept %v, want %v", kept, c.kept)
+			}
+			if c.kept {
+				return
+			}
+			entries, _ := os.ReadDir(f.dir)
+			for _, e := range entries {
+				t.Errorf("left in Dir: %s", e.Name())
+			}
+		})
+	}
+	t.Run("retry clears the error", func(t *testing.T) {
+		f, _, _ := downloadFailure(t, "reveal")
+		f.run.mu.Lock()
+		f.run.fail = ""
+		f.run.mu.Unlock()
+		if st, err := f.svc.Download(); err != nil || st.State != "revealed" || st.Error != "" {
+			t.Errorf("retry = %+v, %v", st, err)
+		}
+	})
+	t.Run("no Dir", func(t *testing.T) {
+		f := newSvc(t)
+		f.available(t)
+		f.svc.Dir = ""
+		var e *Error
+		if st, err := f.svc.Download(); !errors.As(err, &e) || e.Kind != "download" || st.State != "available" {
+			t.Errorf("Download with no Dir = %+v, %v", st, err)
+		}
+		if f.gh.assets.Load() != 0 {
+			t.Error("an asset request was sent with no Dir")
+		}
+	})
+}
+
+func TestService_DownloadNotAvailable(t *testing.T) {
+	f := newSvc(t)
+	if st, err := f.svc.Download(); err != nil || st != (Status{State: "idle", Current: "1.0.0"}) {
+		t.Errorf("from idle: %+v, %v", st, err)
+	}
+	f.gh.set(f.gh.rel("1.0.0"), 0)
+	if _, err := f.svc.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.ev.reset()
+	if st, err := f.svc.Download(); err != nil || st != (Status{State: "current", Current: "1.0.0"}) {
+		t.Errorf("from current: %+v, %v", st, err)
+	}
+	if f.gh.assets.Load() != 0 || len(f.ev.list()) != 0 {
+		t.Errorf("%d asset requests, emitted %s", f.gh.assets.Load(), f.ev.states())
+	}
+}
+
+func TestService_DownloadOneAtATime(t *testing.T) {
+	f := newSvc(t)
+	f.available(t)
+	entered, release := make(chan struct{}, 1), make(chan struct{})
+	f.gh.mu.Lock()
+	f.gh.onAsset = func() { entered <- struct{}{}; <-release }
+	f.gh.mu.Unlock()
+	done := make(chan Status, 1)
+	go func() { st, _ := f.svc.Download(); done <- st }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("the first Download never reached the asset")
+	}
+	if st, err := f.svc.Download(); err != nil || st.State != "downloading" {
+		t.Errorf("second Download = %+v, %v", st, err)
+	}
+	if st, err := f.svc.Check(context.Background()); err != nil || st.State != "downloading" {
+		t.Errorf("Check during download = %+v, %v", st, err)
+	}
+	close(release)
+	if st := <-done; st.State != "revealed" {
+		t.Errorf("first Download = %+v", st)
+	}
+	if n := f.gh.assets.Load(); n != 1 {
+		t.Errorf("%d asset requests, want 1", n)
+	}
+	if n := len(f.gh.checks()); n != 1 {
+		t.Errorf("%d release requests, want 1 (the Check during the download sent none)", n)
+	}
+}
+
+func TestService_ErrorTextsHaveNoURLOrPath(t *testing.T) {
+	var texts []string
+	for _, mode := range []string{"500", "digest", "codesign", "reveal"} {
+		f, st, err := downloadFailure(t, mode)
+		if err == nil {
+			t.Fatalf("%s: no error", mode)
+		}
+		texts = append(texts, err.Error(), st.Error)
+		for _, s := range []string{err.Error(), st.Error} {
+			if strings.Contains(s, f.dir) || strings.Contains(s, f.gh.URL) {
+				t.Errorf("%s: %q holds the Dir or the server URL", mode, s)
+			}
+		}
+	}
+	for _, status := range []int{500, 403} {
+		f := newSvc(t)
+		f.gh.set(nil, status)
+		_, err := f.svc.Check(context.Background())
+		texts = append(texts, err.Error())
+	}
+	for _, s := range texts {
+		if s == "" || strings.Contains(s, "://") || strings.Contains(s, string(filepath.Separator)) {
+			t.Errorf("error text %q is empty or holds a URL or a path", s)
+		}
 	}
 }

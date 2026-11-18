@@ -394,3 +394,28 @@ func TestUpdateDefaults_ReleaseBuild(t *testing.T) {
 		t.Errorf("updateAllow(github) = %v, updateAllow(loopback) = %v", updateAllow(ok), updateAllow(bad))
 	}
 }
+
+func TestDownloadUpdate_BindingRunsDownload(t *testing.T) {
+	resetNotified(t)
+	h := newUpdateHarness(t)
+	h.gh.set("9.9.9", 0)
+	if _, err := h.app.updates.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	st := h.app.DownloadUpdate()
+	if st.State != "revealed" || st.Latest != "9.9.9" || st.Error != "" {
+		t.Errorf("DownloadUpdate = %+v", st)
+	}
+	for _, s := range []string{"downloading", "verifying", "revealed"} {
+		if h.states(s) == 0 {
+			t.Errorf("no update:status %s event", s)
+		}
+	}
+	if _, assets := h.gh.counts(); assets != 1 {
+		t.Errorf("%d asset requests, want 1", assets)
+	}
+
+	if st := (&App{}).DownloadUpdate(); st.State != "idle" {
+		t.Errorf("nil updates: DownloadUpdate = %+v", st)
+	}
+}
