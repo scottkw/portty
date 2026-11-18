@@ -123,7 +123,7 @@ jobs:
   sign-macos:
     needs: [build-macos]
     runs-on: macos-latest
-    timeout-minutes: 90 # notarization wait is capped at 60m below
+    timeout-minutes: 150 # two notarization waits (.app and DMG), each capped at 60m below
     environment: release
     permissions:
       contents: read
@@ -168,8 +168,9 @@ jobs:
           tar -xzf artifacts/Portty.app.tar.gz -C build/bin/
 
       # ======================================================================
-      # Below: codesign/notarize/DMG steps MOVED VERBATIM from old build-macos
-      # (previous release.yml lines 93-141). Cryptographic logic unchanged.
+      # Below: codesign/notarize/DMG steps came from the old build-macos job.
+      # The DMG is now also notarized, stapled and checked the way the in-app
+      # updater (internal/updater) checks it, before the keychain is deleted.
       # ======================================================================
 
       - name: Import certificate to keychain
@@ -210,6 +211,31 @@ jobs:
           DMG_NAME="portty-${VERSION}-darwin-universal.dmg"
           hdiutil create -volname "Portty" -srcfolder build/bin/Portty.app -ov -format UDZO "build/bin/${DMG_NAME}"
           codesign --force --timestamp --sign "$MACOS_CERTIFICATE_NAME" "build/bin/${DMG_NAME}"
+
+      # Runs before "Cleanup keychain": the portty-notarize profile lives in build.keychain.
+      - name: Notarize and staple DMG
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          DMG="build/bin/portty-${VERSION}-darwin-universal.dmg"
+          xcrun notarytool submit "$DMG" --keychain-profile "portty-notarize" --wait --timeout 60m
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+
+      # The in-app updater (internal/updater Verify) rejects any DMG that fails
+      # these three checks, so a release must never ship one. The Team ID is
+      # hardcoded to match updater.TeamID.
+      - name: Verify DMG like the in-app updater
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          DMG="build/bin/portty-${VERSION}-darwin-universal.dmg"
+          codesign --verify --strict "$DMG"
+          DVV=$(codesign -dvv "$DMG" 2>&1)
+          echo "$DVV"
+          grep -qx 'TeamIdentifier=S2K7P43927' <<< "$DVV" || { echo "FAIL: DMG is not signed by Team S2K7P43927"; exit 1; }
+          SPCTL=$(spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1) || { echo "$SPCTL"; echo "FAIL: spctl rejected the DMG"; exit 1; }
+          echo "$SPCTL"
+          grep -q ': accepted' <<< "$SPCTL" || { echo "FAIL: spctl did not accept the DMG"; exit 1; }
+          grep -qx 'source=Notarized Developer ID' <<< "$SPCTL" || { echo "FAIL: the DMG is not notarized"; exit 1; }
 
       - name: Cleanup keychain
         if: always()
