@@ -303,12 +303,15 @@ Items acknowledged and deferred at milestone close, most recent first:
 | 3 | verification_deferred_human | /gsd-verify-work 3 |
 | 4 | verification_deferred_human | /gsd-verify-work 4 |
 | 5 | verification_deferred_human | /gsd-verify-work 5 |
+| 6 | verification_deferred_human | /gsd-verify-work 6 |
 
 Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appearance, VoiceOver) need both Macs. The user deferred them on 2026-11-16 ("push that UAT until later and move on"). Item 1 passed.
 
 Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHub; repo private) cannot run in the VM; deferred on 2026-11-16 the same way. M-71 and M-72 passed in the VM.
 
 Phase 5: VM matrix, post-review regression, iteration-3 spot check and browser view all ran on two Tart VMs over the real tailnet. Two-physical-Mac items M-84 (overnight reattach, VERF-01 gate) and M-85 (lid sleep + real Wi-Fi AP switch) deferred by the user on 2026-11-18 ("Defer, keep going"). The milestone audit lists them.
+
+Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verification 7/7, human_needed. Real-release items (M-93: first v* tag CI run with DMG identifier signing, notarize and staple; notarized DMG verify and reveal; delivered notification) need a public repo and release secrets, so they wait for the first real release. U-06 noasset re-run after WR-04 is still to do in the VM.
 
 ## Session Continuity
 

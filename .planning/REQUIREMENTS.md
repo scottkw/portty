@@ -49,10 +49,10 @@
 
 ### Updates & Distribution
 
-- [ ] **UPD-01**: Portty checks the latest GitHub release of scottkw/portty (public Releases API, no login) shortly after launch and then periodically, and shows an in-app notice plus a native notification when a newer version than the running one is published
-- [ ] **UPD-02**: The user can force an immediate check from a "Check for Updates…" menu item. It reports "Portty is up to date", "Version X is available", or a readable error
-- [ ] **UPD-03**: From the update notice, one click downloads the release DMG, verifies its SHA-256 digest and Developer ID Team signature, and reveals it in Finder. This matches the GIFsmith flow (port of `~/dev/gifsmith/internal/update`)
-- [ ] **UPD-04**: No published release, a 404, drafts, prereleases, network failures, and rate limits are all handled quietly: no false "update available", no repeated error popups, and periodic checks keep running
+- [x] **UPD-01**: Portty checks the latest GitHub release of scottkw/portty (public Releases API, no login) shortly after launch and then periodically, and shows an in-app notice plus a native notification when a newer version than the running one is published
+- [x] **UPD-02**: The user can force an immediate check from a "Check for Updates…" menu item. It reports "Portty is up to date", "Version X is available", or a readable error
+- [x] **UPD-03**: From the update notice, one click downloads the release DMG, verifies its SHA-256 digest and Developer ID Team signature, and reveals it in Finder. This matches the GIFsmith flow (port of `~/dev/gifsmith/internal/update`)
+- [x] **UPD-04**: No published release, a 404, drafts, prereleases, network failures, and rate limits are all handled quietly: no false "update available", no repeated error popups, and periodic checks keep running
 - [x] **DIST-03**: No Homebrew distribution. `packaging/homebrew` and every Homebrew reference (docs, scripts, release workflow) are removed. Releases ship only as GitHub release DMGs, linked from https://portty.app
 
 ### Strip-down
@@ -125,10 +125,10 @@
 | CHAT-01 | Phase 2 | Pending |
 | NOTF-01 | Phase 3 | Complete |
 | DIST-03 | Phase 3 | Complete |
-| UPD-01 | Phase 6 | Pending |
-| UPD-02 | Phase 6 | Pending |
-| UPD-03 | Phase 6 | Pending |
-| UPD-04 | Phase 6 | Pending |
+| UPD-01 | Phase 6 | Complete |
+| UPD-02 | Phase 6 | Complete |
+| UPD-03 | Phase 6 | Complete |
+| UPD-04 | Phase 6 | Complete |
 | STRP-01 | Phase 1 | Complete |
 | STRP-02 | Phase 1 | Complete |
 | STRP-03 | Phase 1 | Complete |
