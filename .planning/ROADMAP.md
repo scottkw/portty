@@ -39,7 +39,13 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`. Audit: `.planning/mileston
   3. Recovery paths do no wasted work. Launching the GUI with a healthy daemon logs no respawn attempt and leaves the 3-attempt daemon-error streak at zero. Switching back to a remote tab rejoins with a delta replay from its last offset: no full redraw, no duplicated or missing output.
   4. On a developer Mac with non-default Portty settings, `go test -race -short ./...` and Vitest pass with no `-skip` in TESTING.md or any gate. The daemon tests never read or write the real Portty config dir (settings.json, socket). TestHub_TwoClientsFanOut passes in repeated full `-race` runs because its race is fixed or the test is deterministic.
   5. A user who sees stray prompt lines after narrowing the window finds a Known issues entry in the user docs. It gives the cause (zsh redrawing a wrapped multi-line prompt on each resize) and the remedies: `clear` or Ctrl-L, or a single-line prompt via `p10k configure`.
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 07-01-PLAN.md — Relay replay hardening: shared query strip (HARD-03), alt-screen exit rebuild with heap soak (HARD-01), deterministic fan-out test (HARD-07)
+- [ ] 07-02-PLAN.md — Peer tab delta rejoin: snapshot + offset across unmount, no hidden sockets (HARD-05)
+- [ ] 07-03-PLAN.md — Launch respawn gate (HARD-04), daemon test isolation with no -skip (HARD-06), README Known Issues (HARD-08)
+- [ ] 07-04-PLAN.md — Large pastes split into frames under the 32 KiB guard: frontend, CLI, server guard test (HARD-02)
+- [ ] 07-05-PLAN.md — TESTING.md reconciliation, full gate with nothing skipped, Tart VM spot check (all HARD)
 **UI hint**: no
 
 ## Progress
