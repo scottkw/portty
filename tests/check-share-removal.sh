@@ -62,7 +62,8 @@ scan() {
 }
 
 PUBLIC='f[u]nnel|r[i]sk[ _-]?panel|h[o]ld[ _-]?to[ _-]?confirm|public[ _-]?(l[i]nk|sh[a]re)|public[_-]?wr[i]te|public wr[i]te gate|SetRWG[a]te|isRWG[a]ted|rwG[a]ted'
-CODES='j[o]in[ _-]?c[o]de|/j[o]in([^a-z]|$)|q[r][ _-]?code'
+# The route check skips "_" so the Phase 5 test file path (relay/j[o]in_test.go) in TESTING.md Section 4 is not a hit.
+CODES='j[o]in[ _-]?c[o]de|/j[o]in([^a-z_]|$)|q[r][ _-]?code'
 VIEWONLY='--r[e]adonly|Get\("r[e]adonly"\)|r[e]adonly[-_]badge|internet[ _-]?r[e]ad|r[e]ad-only (link|share|tab)'
 REMINDER='shellw[e]bshare|shell[ _-]w[e]b[ _-]share'
 
