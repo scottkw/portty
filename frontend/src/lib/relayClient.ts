@@ -148,7 +148,7 @@ export interface RelayClientCallbacks {
  * after a drop and resumes the stream (SHAR-07); without it, one socket, as before.
  */
 export class RelayClient {
-  private ws!: WebSocket
+  private ws: WebSocket | null = null // null only while the first construction has failed
   private pingInterval: ReturnType<typeof setInterval> | null = null
   private readonly reconnect?: { beforeReconnect?: () => Promise<ReconnectVerdict> }
   private state: RelayState = 'connecting'
@@ -166,6 +166,7 @@ export class RelayClient {
   private probeSentAt = 0
   private watchdog: ReturnType<typeof setInterval> | null = null
   private lastWakeAt = 0
+  private lastTickAt = Date.now()
   // Stream position (05-01 contract): offset meta + (payload.length + 1) per later output frame.
   private offset = 0
   private offsetValid = false
@@ -208,7 +209,16 @@ export class RelayClient {
     this.openedAt = 0
     this.probeSentAt = 0
     const gen = ++this.socketGen
-    const ws = new WebSocket(url)
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(url)
+    } catch {
+      // A malformed URL throws. Never log the URL or the error: both can carry ?cap=.
+      console.error('[RelayClient] could not open a WebSocket')
+      if (this.reconnect) this.scheduleRetry()
+      else setTimeout(() => this.callbacks.onClose?.(1006, ''), 0) // never re-enter the caller
+      return
+    }
     ws.binaryType = 'arraybuffer'
     this.ws = ws
 
@@ -220,7 +230,7 @@ export class RelayClient {
       this.callbacks.onOpen?.()
       this._clearPing()
       this.pingInterval = setInterval(() => {
-        if (this.ws.readyState === WebSocket.OPEN) {
+        if (this.ws?.readyState === WebSocket.OPEN) {
           this.ws.send(new Uint8Array([MSG_PING]))
         }
       }, RECONNECT.pingMs)
@@ -289,16 +299,20 @@ export class RelayClient {
   }
 
   private sendProbe(): void {
-    if (this.ws.readyState !== WebSocket.OPEN) return
+    if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(new Uint8Array([MSG_PING]))
     this.probeSentAt = Date.now()
   }
 
   // Half-open detection. A large Date.now() delta alone (a clock jump after sleep)
   // never kills a socket: silence earns a probe, and only an unanswered probe kills.
+  // A tick far later than 1 s means the machine slept (05-13: the browser's wake signal).
   private checkLiveness = (): void => {
-    if (this.state !== 'open' || !this.pongSeen || document.visibilityState !== 'visible') return
     const now = Date.now()
+    const gap = now - this.lastTickAt
+    this.lastTickAt = now
+    if (gap > RECONNECT.wakeGapMs) this.onSystemWake()
+    if (this.state !== 'open' || !this.pongSeen || document.visibilityState !== 'visible') return
     if (this.probeSentAt === 0) {
       if (now - this.lastFrameAt > RECONNECT.deadMs) this.sendProbe()
       return
@@ -317,7 +331,7 @@ export class RelayClient {
   }
 
   // 05-13: this Mac woke or changed networks (the Go detector via App.tsx's
-  // 'portty:wake'). The redial is not gated on visibility, so a hidden window is
+  // 'portty:wake', or a watchdog tick gap). The redial is not gated on visibility, so a hidden window is
   // ready when shown; the probe kill keeps checkLiveness's visibility rule.
   private onSystemWake = (): void => {
     const now = Date.now()
@@ -338,7 +352,7 @@ export class RelayClient {
   // Drop a dead socket without waiting for its close (a half-open socket can sit in
   // CLOSING for a long time) and dial a new one at once.
   private abandon(): void {
-    const ws = this.ws
+    const ws = this.ws! // only reached from 'open', so a socket exists
     this.socketGen++
     this._clearPing()
     ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
@@ -436,14 +450,14 @@ export class RelayClient {
 
   /** Send keyboard input to the PTY. Dropped (never queued) unless the socket is open. */
   sendInput(text: string): void {
-    if (this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(encodeInputFrame(text))
     }
   }
 
   /** Notify the PTY of a terminal resize. */
   sendResize(cols: number, rows: number): void {
-    if (this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(encodeResizeFrame(cols, rows))
     }
   }
@@ -453,12 +467,13 @@ export class RelayClient {
     this.closedByUser = true
     if (!this.reconnect) {
       this._clearPing()
-      this.ws.close()
+      this.ws?.close()
       return
     }
     this.teardown()
     this.socketGen++
     const ws = this.ws
+    if (!ws) return
     ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
     ws.close()
   }
