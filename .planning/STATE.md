@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: verifying
-stopped_at: Completed 05-08-PLAN.md
-last_updated: "2026-11-18T03:47:16.394Z"
+stopped_at: Completed 05-09-PLAN.md
+last_updated: "2026-11-18T04:10:57.235Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: 26787936ac24bb1f09be3bc053145c70a0162650
+state_head: cc5891b1fffa634dfb272e0609fbf97d05f8262d
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 56
-  completed_plans: 49
+  completed_plans: 50
   percent: 17
 ---
 
@@ -92,6 +92,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 5 P06 | 18min | 3 tasks | 7 files |
 | Phase 05 P07 | 8min | 2 tasks | 5 files |
 | Phase 5 P08 | 12min | 3 tasks | 4 files |
+| Phase 05 P09 | 21 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -210,6 +211,9 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-07: VERF-01 rows are accelerated stand-ins; M-84/M-85 deferred-capable, gate decision left to the user at verification
 - [Phase 5]: 05-08: Join sends no delta or raw replay across a genuine host resize (geomEnd); the first resize from the unknown grid keeps the #109 raw replay
 - [Phase 5]: 05-08: rendered replays never restore 2026 and re-print the last-column cell when the host cursor is in pending wrap (inferred; vt hides atPhantom)
+- [Phase 05]: 05-09: openWebSessionTab decides add-or-update inside setTabs(prev => ...); handleOpenRemoteSession has a per-session in-flight guard
+- [Phase 05]: 05-09: ErrorBoundary per terminal tab, around WebShareSessionView (resetKey=activeId) and at the root; fallback is fixed copy, log is label + error.name only
+- [Phase 05]: 05-09: VM GUI checks read the Accessibility tree (~/ptest/axdump) because WebKit in the Tart VMs cannot paint into screencapture
 
 ### Pending Todos
 
@@ -278,6 +282,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-18T03:47:13.798Z
-Stopped at: Completed 05-08-PLAN.md
+Last session: 2026-11-18T04:10:54.736Z
+Stopped at: Completed 05-09-PLAN.md
 Resume file: None
