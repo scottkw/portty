@@ -13,6 +13,7 @@ import { ProgressAddon, type IProgressState } from '@xterm/addon-progress'
 import { RelayClient, RECONNECT, type ReconnectVerdict } from '../lib/relayClient'
 import { computeGuestViewport, DEFAULT_GUEST_MIN_SCALE } from '../lib/terminalScale'
 import { applyHostGrid, resetForFullReplay } from '../lib/guestTerminal'
+import { putPeerSnapshot, takePeerSnapshot } from '../lib/peerSnapshots'
 import { isSoftwareWebGL } from '../lib/webglProbe'
 import { isXtermFocused } from '../lib/isXtermFocused'
 import { FindBar, type FindBarSearchOptions } from './FindBar/FindBar'
@@ -401,6 +402,17 @@ export function TerminalPanel({
     // closure (same lifetime as the relay connection — one RelayClient per session).
     const isGuest = remote || !!wsURL
 
+    // HARD-05: a desktop peer tab is unmounted when hidden, so it keeps its content
+    // and stream offset across the switch and rejoins with a delta. Its own serializer:
+    // the Phase 97 serializeAddonRef is plugin-controlled (off for peer tabs).
+    const snapSerializer = remote && !wsURL ? new SerializeAddon() : null
+    if (snapSerializer) term.loadAddon(snapSerializer)
+    const snap = snapSerializer ? takePeerSnapshot(sessionId) : undefined
+    if (snap) {
+      applyHostGrid(term, snap.cols, snap.rows, recomputeScale)
+      term.write(snap.data)
+    }
+
     // Connect relay client — one per terminal (TERM-01 independent sessions).
     // HOST path: onOpen sends current terminal dims to the PTY (critical —
     // fitTerminal runs before WS connects so the fit resize event is dropped).
@@ -460,6 +472,7 @@ export function TerminalPanel({
       reconnect: isGuest
         ? { beforeReconnect: () => beforeReconnectRef.current?.() ?? Promise.resolve({ kind: 'ok' }) }
         : undefined,
+      resume: snap?.offset,
     })
     clientRef.current = client
 
@@ -475,6 +488,7 @@ export function TerminalPanel({
     return () => {
       disposeData.dispose()
       disposeResize.dispose()
+      const resumePoint = snapSerializer ? client.resumePoint() : null // read before close
       client.close()
       if (bannerTimer !== null) clearTimeout(bannerTimer)
       // Phase 93: dispose hot-swap addons before disposing the terminal
@@ -542,7 +556,18 @@ export function TerminalPanel({
         window.clearTimeout(findBarExitTimerRef.current)
         findBarExitTimerRef.current = null
       }
-      term.dispose()
+      if (snapSerializer && resumePoint !== null) {
+        // xterm parses writes asynchronously: serialize only once received output is
+        // in the buffer, so the snapshot never lags its offset.
+        term.write('', () => {
+          putPeerSnapshot(sessionId, { data: snapSerializer.serialize(), cols: term.cols, rows: term.rows, offset: resumePoint })
+          snapSerializer.dispose()
+          term.dispose()
+        })
+      } else {
+        snapSerializer?.dispose()
+        term.dispose()
+      }
       termRef.current = null
       fitAddonRef.current = null
       clientRef.current = null

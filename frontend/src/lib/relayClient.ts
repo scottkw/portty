@@ -185,16 +185,39 @@ export class RelayClient {
       remote?: boolean
       wsURL?: string
       reconnect?: { beforeReconnect?: () => Promise<ReconnectVerdict> }
+      /** HARD-05: the stream offset a restored peer-tab snapshot already shows. */
+      resume?: number
     },
   ) {
     this.reconnect = opts?.reconnect
+    const resume = opts?.resume
+    if (resume !== undefined && Number.isSafeInteger(resume) && resume >= 0) {
+      // HARD-05: the terminal already shows the stream up to here, so ask for a delta
+      // (a full answer resets it via onReset).
+      this.offset = resume
+      this.offsetValid = true
+      this.hasRendered = true
+    }
     if (this.reconnect) {
       this.watchdog = setInterval(this.checkLiveness, 1_000)
       window.addEventListener('online', this.onWake)
       window.addEventListener('portty:wake', this.onSystemWake)
       document.addEventListener('visibilitychange', this.onWake)
     }
-    this.dial(this.baseURL())
+    this.dial(this.withResume(this.baseURL()))
+  }
+
+  // SHAR-07 / HARD-05: ask the host for a delta from the counted offset when it is exact.
+  private withResume(url: string): string {
+    return this.offsetValid ? `${url}${url.includes('?') ? '&' : '?'}resume=${this.offset}` : url
+  }
+
+  /**
+   * HARD-05: the exact stream offset of everything handed to onOutput, or null when
+   * it is not known (no offset meta yet on this socket). Saved with a peer-tab snapshot.
+   */
+  resumePoint(): number | null {
+    return this.offsetValid ? this.offset : null
   }
 
   private baseURL(): string {
@@ -467,9 +490,7 @@ export class RelayClient {
       return
     }
     if (verdict.port) this.port = verdict.port // a wsURL ignores the port
-    let url = this.baseURL()
-    if (this.offsetValid) url += `${url.includes('?') ? '&' : '?'}resume=${this.offset}`
-    this.dial(url)
+    this.dial(this.withResume(this.baseURL()))
   }
 
   private stop(code: number, reason: string): void {

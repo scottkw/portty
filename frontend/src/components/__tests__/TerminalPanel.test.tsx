@@ -291,7 +291,10 @@ describe('Phase 97 SER-01: SerializeAddon hot-swap arm — Plan 97-04 implementa
     // SerializeAddon construction MUST appear inside the hot-swap block
     // and MUST NOT appear inside the mount block.
     expect(hotSwapBlock).toContain('new SerializeAddon')
-    expect(mountBlock).not.toContain('new SerializeAddon')
+    // HARD-05 (07-02) adds a separate peer-tab snapshot serializer to the mount block;
+    // the plugin-controlled one (ref + saver registration) must never be built there.
+    expect(mountBlock).not.toMatch(/serializeAddonRef\.current\s*=\s*serializeAddon/)
+    expect(mountBlock).not.toMatch(/onRegisterSaver\?\.\(\s*sessionId\s*,\s*\(\s*\)\s*=>/)
   })
 
   it('unregisters saver on toggle-off (negative arm flushes the registry entry)', () => {

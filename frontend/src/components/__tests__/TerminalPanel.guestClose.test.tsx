@@ -108,6 +108,7 @@ vi.mock('../../lib/relayClient', () => ({
     }
     sendInput() {}
     sendResize() {}
+    resumePoint() { return null } // HARD-05: no offset known, so no tab-switch snapshot
     close() {}
   },
   MSG_OUTPUT: 0x01,
