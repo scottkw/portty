@@ -18,6 +18,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # build.yml runs this too, but a v* tag can point at a commit that never passed it.
+      - name: Brand gate (BRND-05, BRND-06, DIST-03, VM-only build tag)
+        run: bash tests/check-brand.sh
+
       - name: Run Go tests
         run: go test -race -short ./...
 
@@ -91,6 +95,14 @@ jobs:
         run: |
           wails build -platform darwin/universal -tags wailsassets \
             -ldflags "-X main.Version=${GITHUB_REF_NAME}"
+
+      # The VM-only fake update feed (cmd/fakegh's address) must never reach a release binary.
+      - name: Release binary carries no VM-only fakes
+        run: |
+          BIN=build/bin/Portty.app/Contents/MacOS/Portty
+          test -f "$BIN" || { echo "FAIL: $BIN not built"; exit 1; }
+          N=$(grep -ac '127.0.0.1:8788' "$BIN" || true)
+          [ "$N" = 0 ] || { echo "FAIL: the release binary contains the VM-only fake update feed address"; exit 1; }
 
       - name: Copy branded ICNS into bundle
         run: |

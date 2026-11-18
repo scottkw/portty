@@ -121,3 +121,21 @@ func TestReleaseWorkflow_PrereleaseFlag(t *testing.T) {
 		}
 	}
 }
+
+// WR-02: the release pipeline runs the brand gate itself (a v* tag need not have passed build.yml)
+// and checks the built binary, before it is tarred, for the VM-only fake update feed.
+func TestReleaseWorkflow_VMOnlyFakesGated(t *testing.T) {
+	wf := readWorkflow(t)
+	if !strings.Contains(job(t, wf, "validate"), "run: bash tests/check-brand.sh") {
+		t.Error("the validate job does not run tests/check-brand.sh")
+	}
+	b := job(t, wf, "build-macos")
+	gate := "- name: Release binary carries no VM-only fakes\n"
+	i, j := strings.Index(b, "- name: Build macOS app\n"), strings.Index(b, gate)
+	if i < 0 || j < i || j > strings.Index(b, "- name: Tar .app bundle") {
+		t.Fatalf("build-macos lacks %q between the build and the tar step", gate)
+	}
+	if s := step(t, b, strings.TrimSuffix(strings.TrimPrefix(gate, "- name: "), "\n")); !strings.Contains(s, "grep -ac '127.0.0.1:8788' \"$BIN\"") {
+		t.Errorf("the gate does not grep the binary for the fake feed address:\n%s", s)
+	}
+}
