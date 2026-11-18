@@ -220,7 +220,7 @@ Plans:
   3. Detaching and reattaching from the GUI, the CLI, or a browser restores the session's scrollback
   4. Overnight test: Claude Code runs in a shared shell on the office Mac and the home Mac attaches from the Portty GUI. After both sit idle overnight, the user keeps typing the next morning and the previous day's scrollback is intact
   5. The next morning the same session also opens from a browser on the tailnet and works
-**Plans**: 14/15 plans executed (05-01..05-07 in 4 waves). 8 gap-closure plans added 2026-11-17 from five pending todos raised during execution (jumbled screen on reattach, duplicate remote tab blanking the window, wake/network-change reconnect and the resilience matrix, Go toolchain pin for tailscale.com, guest scrollbar); 05-12..05-15 are sequential because they share TerminalPanel/App.tsx, the two Tart VMs and TESTING.md
+**Plans**: 14/16 plans executed (05-01..05-07 in 4 waves). 8 gap-closure plans added 2026-11-17 from five pending todos raised during execution (jumbled screen on reattach, duplicate remote tab blanking the window, wake/network-change reconnect and the resilience matrix, Go toolchain pin for tailscale.com, guest scrollbar); 05-12..05-15 are sequential because they share TerminalPanel/App.tsx, the two Tart VMs and TESTING.md. 05-16 added 2026-11-18 from the 05-14 matrix row R6 (FAIL: nothing respawns the viewing Mac's daemon); it runs before the 05-15 close-out
 
 Plans:
 **Wave 1**
@@ -254,6 +254,9 @@ Plans:
 - [x] 05-14-PLAN.md — Network-resilience matrix on two Tart VMs over the tailnet (drop, half-open, network change, viewing/host sleep, daemon restarts, long output during the gap) recorded in 05-VM-MATRIX.md
 
 **Gap closure, Wave 5** *(blocked on 05-14)*
+- [ ] 05-16-PLAN.md — Viewing-Mac daemon respawn (R6): the GUI's 5 s poller and the `portty attach` re-auth call EnsureDaemon, serialized and backed off, with no launchd agent; seam tests; R6 re-run on the two Tart VMs flips to PASS
+
+**Gap closure, Wave 6** *(blocked on 05-16)*
 - [ ] 05-15-PLAN.md — TESTING.md close-out (counts, GOTOOLCHAIN note, SHAR-07/VERF-01 rows, M-88..M-90, M-84 reattach step), five todos completed, full gate on go1.26.11
 
 ### Phase 6: Release Updates
