@@ -502,9 +502,22 @@ describe('05-12 TerminalPanel — guest element spans the pane (scrollbar at the
   it('subtracts the container padding so the padding stays', () => {
     const node = mount({ remote: true })
     node.style.padding = '12px 16px'
-    size(node, 1032, 306) // content box 1000 wide; scale = min(1032/900, 306/408) = 0.75
+    size(node, 1032, 330) // content box 1000 x 306; scale = min(1000/900, 306/408) = 0.75
     grid(100, 24)
+    expect(hoisted.lastElement!.style.transform).toBe('scale(0.75)')
     expect(widthPx()).toBeCloseTo(1000 / 0.75, 3)
+  })
+
+  // Width-limited: the scaled grid must fit the content box, so the stretched
+  // element is exactly the grid's width and the scrollbar sits at the grid's
+  // right edge instead of over its last columns.
+  it('width-limited with padding: the grid fits the content box and the element is not narrower than the grid', () => {
+    const node = mount({ remote: true })
+    node.style.padding = '12px 16px'
+    size(node, 752, 800) // content box 720 x 776; scale = 720/900 = 0.8
+    grid(100, 24)
+    expect(hoisted.lastElement!.style.transform).toBe('scale(0.8)')
+    expect(widthPx()).toBeCloseTo(900, 3)
   })
 
   it('scale 1: the element is as wide as the content box', () => {
