@@ -419,3 +419,213 @@ func TestDownloadUpdate_BindingRunsDownload(t *testing.T) {
 		t.Errorf("nil updates: DownloadUpdate = %+v", st)
 	}
 }
+
+func (h *updateHarness) dialogList() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.dialogs...)
+}
+
+func (h *updateHarness) showCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.shows
+}
+
+func (h *updateHarness) trayList() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.tray...)
+}
+
+// oneDialog checks that exactly one alert was shown and returns it.
+func (h *updateHarness) oneDialog(t *testing.T) string {
+	t.Helper()
+	d := h.dialogList()
+	if len(d) != 1 {
+		t.Fatalf("dialogs %q, want one", d)
+	}
+	return d[0]
+}
+
+const availableAlert = "Version 9.9.9 is available.|You have version 1.0.0.|Download Later|Download|Later"
+
+func TestManualUpdateCheck_UpToDate(t *testing.T) {
+	h := newUpdateHarness(t)
+	h.gh.set("1.0.0", 0)
+	h.app.checkForUpdatesManually()
+	if got, want := h.oneDialog(t), "Portty is up to date.|Version 1.0.0 is the newest version.|OK|OK|"; got != want {
+		t.Errorf("alert %q, want %q", got, want)
+	}
+}
+
+func TestManualUpdateCheck_AvailableLater(t *testing.T) {
+	resetNotified(t)
+	h := newUpdateHarness(t)
+	h.gh.set("9.9.9", 0)
+	h.answer = "Later"
+	h.app.checkForUpdatesManually()
+	if got := h.oneDialog(t); got != availableAlert {
+		t.Errorf("alert %q, want %q", got, availableAlert)
+	}
+	if _, assets := h.gh.counts(); assets != 0 || h.showCount() != 0 {
+		t.Errorf("Later: %d asset requests, %d window shows", assets, h.showCount())
+	}
+	if n := len(h.notifications()); n != 0 {
+		t.Errorf("a manual check sent %d notifications", n)
+	}
+	if notifiedFile(t) != "9.9.9" {
+		t.Errorf("update_notified = %q, want 9.9.9", notifiedFile(t))
+	}
+}
+
+func TestManualUpdateCheck_AvailableDownload(t *testing.T) {
+	resetNotified(t)
+	h := newUpdateHarness(t)
+	h.gh.set("9.9.9", 0)
+	h.answer = "Download"
+	h.app.checkForUpdatesManually()
+	if got := h.oneDialog(t); got != availableAlert {
+		t.Errorf("alert %q", got)
+	}
+	if h.showCount() != 1 {
+		t.Errorf("%d window shows, want 1", h.showCount())
+	}
+	if st := h.app.GetUpdateStatus(); st.State != "revealed" {
+		t.Errorf("after Download: %+v", st)
+	}
+}
+
+func TestManualUpdateCheck_Error(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		status int // 0: the server is closed
+		text   string
+	}{
+		{"closed", 0, "Portty couldn't reach GitHub. Check your internet connection and try again."},
+		{"403", 403, "GitHub is limiting update checks from this network. Try again in an hour."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newUpdateHarness(t)
+			if c.status == 0 {
+				h.gh.Close()
+			} else {
+				h.gh.set("", c.status)
+			}
+			h.app.checkForUpdatesManually()
+			if got, want := h.oneDialog(t), "Couldn't check for updates.|"+c.text+"|OK|OK|"; got != want {
+				t.Errorf("alert %q, want %q", got, want)
+			}
+			if st := h.app.GetUpdateStatus(); st.State == "available" {
+				t.Errorf("state %+v", st)
+			}
+		})
+	}
+}
+
+func TestManualUpdateCheck_DevBuild(t *testing.T) {
+	h := newUpdateHarness(t)
+	setVersion(t, "dev")
+	h.gh.set("9.9.9", 0)
+	h.app.checkForUpdatesManually()
+	want := "This build doesn't check for updates.|Only release builds of Portty check GitHub for new versions.|OK|OK|"
+	if got := h.oneDialog(t); got != want {
+		t.Errorf("alert %q, want %q", got, want)
+	}
+	if c, _ := h.gh.counts(); c != 0 {
+		t.Errorf("%d requests from a dev build", c)
+	}
+}
+
+// blockDownload makes h available and starts a download that waits in the asset handler until
+// the returned func is called; that func waits for the download to finish.
+func (h *updateHarness) blockDownload(t *testing.T) func() {
+	t.Helper()
+	h.gh.set("9.9.9", 0)
+	if _, err := h.app.updates.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entered, release, done := make(chan struct{}, 1), make(chan struct{}), make(chan struct{})
+	h.gh.mu.Lock()
+	h.gh.onAsset = func() { entered <- struct{}{}; <-release }
+	h.gh.mu.Unlock()
+	go func() { h.app.DownloadUpdate(); close(done) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the download never reached the asset")
+	}
+	var once sync.Once
+	finish := func() { once.Do(func() { close(release); <-done }) }
+	t.Cleanup(finish)
+	return finish
+}
+
+func TestManualUpdateCheck_WhileDownloading(t *testing.T) {
+	resetNotified(t)
+	h := newUpdateHarness(t)
+	finish := h.blockDownload(t)
+	h.app.checkForUpdatesManually()
+	want := "Portty is downloading version 9.9.9.|It will be shown in Finder once it's verified.|OK|OK|"
+	if got := h.oneDialog(t); got != want {
+		t.Errorf("alert %q, want %q", got, want)
+	}
+	finish()
+}
+
+func TestTrayUpdate_FollowsStatus(t *testing.T) {
+	h := newUpdateHarness(t)
+	h.gh.set("9.9.9", 0)
+	if _, err := h.app.updates.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.trayList(); len(got) != 1 || got[0] != "Update Available…" {
+		t.Fatalf("tray after available %q (checking must not touch it)", got)
+	}
+	h.gh.set("1.0.0", 0)
+	if _, err := h.app.updates.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.trayList(); len(got) != 2 || got[1] != "" {
+		t.Errorf("tray after current %q", got)
+	}
+}
+
+func TestTrayUpdate_OfferUpdate(t *testing.T) {
+	t.Run("available", func(t *testing.T) {
+		h := newUpdateHarness(t)
+		h.gh.set("9.9.9", 0)
+		if _, err := h.app.updates.Check(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		h.answer = "Later"
+		h.app.offerUpdate()
+		if h.showCount() != 1 {
+			t.Errorf("%d window shows, want 1", h.showCount())
+		}
+		if got := h.oneDialog(t); got != availableAlert {
+			t.Errorf("alert %q", got)
+		}
+	})
+	t.Run("downloading", func(t *testing.T) {
+		resetNotified(t)
+		h := newUpdateHarness(t)
+		finish := h.blockDownload(t)
+		h.app.offerUpdate()
+		if h.showCount() != 1 || len(h.dialogList()) != 0 {
+			t.Errorf("%d shows, dialogs %q; want one show, no alert", h.showCount(), h.dialogList())
+		}
+		finish()
+	})
+	t.Run("current", func(t *testing.T) {
+		h := newUpdateHarness(t)
+		h.gh.set("1.0.0", 0)
+		if _, err := h.app.updates.Check(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		h.app.offerUpdate()
+		if h.showCount() != 0 || len(h.dialogList()) != 0 {
+			t.Errorf("current: %d shows, dialogs %q", h.showCount(), h.dialogList())
+		}
+	})
+}

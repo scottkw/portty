@@ -103,7 +103,7 @@ func TestAppMenu_Structure(t *testing.T) {
 	for _, it := range items[5].SubMenu.Items {
 		help = append(help, it.Label)
 	}
-	want := []string{"Portty Help", "Check for Updates"}
+	want := []string{"Portty Help", "Check for Updates…"}
 	if strings.Join(help, "|") != strings.Join(want, "|") {
 		t.Errorf("Help items = %v, want %v", help, want)
 	}
