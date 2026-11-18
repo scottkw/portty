@@ -138,6 +138,17 @@ type App struct {
 	respawnAttempts int       // attempts in the current streak
 	lastRespawn     time.Time // when the last attempt ran
 
+	// HARD-04: the first poller tick after launch saw a healthy daemon as
+	// unreachable and spent an attempt from the streak. Until the poller has
+	// seen the daemon healthy, a failed check within respawnLaunchGrace of a
+	// successful startup is ignored. The grace is bounded so R6 still
+	// recovers a daemon that dies early; a failed startup leaves launchedAt
+	// zero and gets none. seenHealthy and launchWaitLogged are guarded by
+	// daemonMu; launchedAt is written before startupDone closes and read after.
+	seenHealthy      bool
+	launchWaitLogged bool
+	launchedAt       time.Time
+
 	// seenSessions is every id the exit watcher has listed and not yet
 	// reported via session:exit. Owned by the exit watcher goroutine.
 	seenSessions map[string]bool
@@ -267,6 +278,7 @@ func (a *App) startDaemon(socketPath string) {
 		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
 		a.emitEvent("daemon:error", err.Error())
 	} else {
+		a.launchedAt = time.Now()
 		a.applyStoredAppearance()
 	}
 }
@@ -287,6 +299,7 @@ const (
 	respawnMaxDelay     = 2 * time.Minute
 	respawnHealthyReset = time.Minute
 	respawnErrorAfter   = 3
+	respawnLaunchGrace  = 10 * time.Second // the first two 5 s ticks (HARD-04)
 )
 
 const respawnKeepsStoppingMsg = "Portty restarted the daemon 3 times and it keeps stopping."
@@ -305,7 +318,7 @@ func (a *App) respawnDaemonIfDown(now time.Time) {
 			return // startup's own EnsureDaemon is still running
 		}
 	}
-	healthy := a.client.Health() == nil
+	healthErr := a.client.Health()
 	if !a.daemonMu.TryLock() {
 		return
 	}
@@ -313,7 +326,8 @@ func (a *App) respawnDaemonIfDown(now time.Time) {
 	if a.quitting.Load() { // QuitAll ran while Health was in flight
 		return
 	}
-	if healthy {
+	if healthErr == nil {
+		a.seenHealthy = true
 		if a.respawnAttempts > 0 && now.Sub(a.lastRespawn) >= respawnHealthyReset {
 			a.respawnAttempts = 0
 		}
@@ -323,6 +337,13 @@ func (a *App) respawnDaemonIfDown(now time.Time) {
 			a.daemonErr.Store(nil)
 			a.applyStoredAppearance() // skipped while startup failed
 			a.emitEvent("daemon:recovered", nil)
+		}
+		return
+	}
+	if !a.seenHealthy && !a.launchedAt.IsZero() && now.Sub(a.launchedAt) < respawnLaunchGrace {
+		if !a.launchWaitLogged {
+			a.launchWaitLogged = true
+			fmt.Fprintf(os.Stderr, "portty: daemon not answering right after launch (%v); waiting up to 10s before any respawn\n", healthErr)
 		}
 		return
 	}
@@ -339,7 +360,7 @@ func (a *App) respawnDaemonIfDown(now time.Time) {
 	if err != nil {
 		result = err.Error()
 	}
-	fmt.Fprintf(os.Stderr, "portty: daemon unreachable, respawn attempt %d: %s\n", a.respawnAttempts, result)
+	fmt.Fprintf(os.Stderr, "portty: daemon unreachable (%v), respawn attempt %d: %s\n", healthErr, a.respawnAttempts, result)
 	if a.respawnAttempts == respawnErrorAfter {
 		if err == nil {
 			err = errors.New(respawnKeepsStoppingMsg)
