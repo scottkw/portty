@@ -169,15 +169,15 @@ func appMenu() *menu.Menu {
 	// 6. Help menu (custom — HelpSubMenuRole is commented out in v2.10.2)
 	helpMenu := m.AddSubmenu("Help")
 	helpMenu.AddText("Portty Help", nil, func(_ *menu.CallbackData) { menuOpenURL(helpURL) })
-	helpMenu.AddText("Check for Updates", nil, checkForUpdatesCallback)
+	helpMenu.AddText("Check for Updates…", nil, checkForUpdatesCallback)
 	return m
 }
 
 // checkForUpdatesCallback triggers an immediate update check from the Help menu.
-// Runs in a goroutine to avoid blocking the UI thread.
+// Runs in a goroutine: the check and its native alert block, and must not hold the UI thread.
 func checkForUpdatesCallback(_ *menu.CallbackData) {
 	if appInstance != nil {
-		go appInstance.CheckForUpdates()
+		go appInstance.checkForUpdatesManually()
 	}
 }
 

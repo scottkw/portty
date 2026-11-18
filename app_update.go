@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/updater"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Release-build update endpoint and cadence. Only the VM-only vmpreview build overrides them.
@@ -106,9 +107,18 @@ func (a *App) autoCheck(ctx context.Context) bool {
 	return true
 }
 
-// onUpdateStatus is the Service's Emit. It runs under the service mutex, so it must not block.
+// onUpdateStatus is the Service's Emit. It runs under the service mutex, so it must not block:
+// emitEvent and the tray setter both return at once. The tray offers the update while a newer
+// version is known and is left alone during a check.
 func (a *App) onUpdateStatus(st updater.Status) {
 	a.emitEvent("update:status", st)
+	switch {
+	case st.State == "checking":
+	case st.Latest != "":
+		a.setTrayUpdate("Update Available…")
+	default:
+		a.setTrayUpdate("")
+	}
 }
 
 func notifiedVersionPath() string { return filepath.Join(configDir(), "update_notified") }
@@ -150,13 +160,92 @@ func (a *App) DownloadUpdate() updater.Status {
 	return st
 }
 
-// CheckForUpdates runs a check at once for the Help menu. Task 3 replaces it with native alerts.
-func (a *App) CheckForUpdates() updater.Status {
+// checkForUpdatesManually is Help → Check for Updates…: a check at once that always answers with
+// a native alert. Unexported so Wails never binds it. The alert blocks, so call it on a goroutine.
+func (a *App) checkForUpdatesManually() {
 	if !releaseBuild() || a.updates == nil {
-		return a.GetUpdateStatus()
+		a.alert("This build doesn't check for updates.", "Only release builds of Portty check GitHub for new versions.")
+		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	st, _ := a.updates.Check(ctx)
-	return st
+	st, err := a.updates.Check(ctx)
+	cancel()
+	switch {
+	case err != nil:
+		a.alert("Couldn't check for updates.", err.Error())
+	case st.State == "downloading" || st.State == "verifying":
+		a.alert("Portty is downloading version "+st.Latest+".", "It will be shown in Finder once it's verified.")
+	case st.State == "available":
+		rememberNotified(st.Latest) // the alert already told the user; no notification for it later
+		a.offerDownload(st)
+	default:
+		a.alert("Portty is up to date.", "Version "+st.Current+" is the newest version.")
+	}
+}
+
+// offerUpdate is the tray item's action: offer a known update, or show the window with the
+// banner while one downloads.
+func (a *App) offerUpdate() {
+	st := a.GetUpdateStatus()
+	switch st.State {
+	case "available", "revealed":
+		a.showWindow()
+		a.offerDownload(st)
+	case "downloading", "verifying":
+		a.showWindow()
+	}
+}
+
+// offerDownload asks Download or Later; Download shows the window, where the banner tracks progress.
+func (a *App) offerDownload(st updater.Status) {
+	choice := a.dialog(runtime.MessageDialogOptions{
+		Type: runtime.InfoDialog, Title: "Version " + st.Latest + " is available.", Message: "You have version " + st.Current + ".",
+		Buttons: []string{"Download", "Later"}, DefaultButton: "Download", CancelButton: "Later",
+	})
+	if choice == "Download" {
+		a.showWindow()
+		a.DownloadUpdate()
+	}
+}
+
+func (a *App) alert(title, message string) {
+	a.dialog(runtime.MessageDialogOptions{Type: runtime.InfoDialog, Title: title, Message: message, Buttons: []string{"OK"}, DefaultButton: "OK"})
+}
+
+// dialog shows an app-modal NSAlert and waits for the answer: never call it on the main thread.
+func (a *App) dialog(opts runtime.MessageDialogOptions) string {
+	if a.messageDialogFunc != nil {
+		choice, _ := a.messageDialogFunc(opts)
+		return choice
+	}
+	if a.ctx == nil {
+		return ""
+	}
+	choice, err := runtime.MessageDialog(a.ctx, opts)
+	if err != nil {
+		log.Printf("update: alert failed: %v", err)
+	}
+	return choice
+}
+
+func (a *App) showWindow() {
+	if a.showWindowFunc != nil {
+		a.showWindowFunc()
+		return
+	}
+	if a.ctx != nil {
+		runtime.WindowShow(a.ctx)
+		a.setDockVisible(true)
+	}
+}
+
+// setTrayUpdate sets the tray's update item title ("" hides it).
+func (a *App) setTrayUpdate(title string) {
+	if a.setTrayUpdateFunc != nil {
+		a.setTrayUpdateFunc(title)
+		return
+	}
+	if a.trayInit {
+		setTrayUpdateItem(title)
+	}
 }

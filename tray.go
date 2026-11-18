@@ -15,6 +15,7 @@ void removeStatusItem(void);
 void updateTrayIcon(const void *d1, int n1, const void *d2, int n2);
 void updateTrayTooltip(const char *tooltip);
 void setTraySessionData(const char **names, const char **ids, int count);
+void setTrayUpdateItem(const char *title);
 void setDockVisible(int visible);
 */
 import "C"
@@ -103,6 +104,21 @@ func onTraySession(idx C.int) {
 			runtime.EventsEmit(trayCallbackApp.ctx, "tray:focus-session", sessions[i].ID)
 		}
 	}()
+}
+
+//export onTrayUpdate
+func onTrayUpdate() {
+	app := trayCallbackApp // captured before the goroutine, like onTrayQuit
+	if app != nil {
+		go app.offerUpdate() // the alert blocks; never on the main thread
+	}
+}
+
+// setTrayUpdateItem sets the tray menu's update item title; "" removes the item.
+func setTrayUpdateItem(title string) {
+	ct := C.CString(title)
+	C.setTrayUpdateItem(ct)
+	C.free(unsafe.Pointer(ct))
 }
 
 // setDockVisible shows or hides the macOS Dock icon by toggling the application

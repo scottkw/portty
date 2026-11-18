@@ -13,6 +13,7 @@
 extern void onTrayShow(void);
 extern void onTrayQuit(void);
 extern void onTraySession(int idx);
+extern void onTrayUpdate(void);
 
 // Forward-declare hasValidBundleIdentifier (defined below, near sendNotification)
 // so registerNotificationDelegate, which comes before that definition, can call it.
@@ -22,6 +23,7 @@ NSStatusItem *statusItem = nil;
 NSMutableArray *menuSessionNames = nil;
 NSMutableArray *menuSessionIDs = nil;
 BOOL daemonConnected = YES;
+NSString *trayUpdateTitle = nil; // "Update Available…" while a newer version is known; nil or empty hides the item
 
 // PorttyMenuDelegate rebuilds the menu on every open so it always reflects
 // the current session list without a separate polling update path.
@@ -38,6 +40,16 @@ BOOL daemonConnected = YES;
         keyEquivalent:@""];
     openItem.target = statusItem;
     [menu addItem:openItem];
+
+    if (trayUpdateTitle.length > 0) {
+        NSMenuItem *updateItem = [[NSMenuItem alloc]
+            initWithTitle:trayUpdateTitle
+            action:@selector(updateClicked:)
+            keyEquivalent:@""];
+        updateItem.target = statusItem;
+        [menu addItem:updateItem];
+        [updateItem release]; // MRC: the menu retains it
+    }
 
     if (menuSessionNames != nil && menuSessionNames.count > 0) {
         [menu addItem:[NSMenuItem separatorItem]];
@@ -236,6 +248,19 @@ void setTraySessionData(const char **names, const char **ids, int count) {
     }
 }
 
+// setTrayUpdateItem sets the update item's title for the menu delegate; "" hides it.
+void setTrayUpdateItem(const char *title) {
+    @autoreleasepool {
+        // Copy synchronously — title is a Go pointer freed after cgo returns.
+        NSString *t = [NSString stringWithUTF8String:title];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // MRC: the global owns its string; release the previous one.
+            [trayUpdateTitle release];
+            trayUpdateTitle = [t retain];
+        });
+    }
+}
+
 // hasValidBundleIdentifier reports whether the running process has a valid
 // app-bundle identifier. UNUserNotificationCenter requires one; an unbundled
 // process (e.g. `wails dev`, a `go test` binary) has none, and calling into
@@ -318,10 +343,12 @@ void sendNotification(const char *identifier, const char *title, const char *bod
 - (void)showClicked:(id)sender;
 - (void)quitClicked:(id)sender;
 - (void)sessionClicked:(NSMenuItem *)sender;
+- (void)updateClicked:(id)sender;
 @end
 
 @implementation NSStatusItem (PorttyTray)
 - (void)showClicked:(id)sender { onTrayShow(); }
 - (void)quitClicked:(id)sender { onTrayQuit(); }
 - (void)sessionClicked:(NSMenuItem *)sender { onTraySession((int)sender.tag); }
+- (void)updateClicked:(id)sender { onTrayUpdate(); }
 @end
