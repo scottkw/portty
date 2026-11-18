@@ -268,7 +268,7 @@ Recent decisions affecting current work:
   Rewrite VERF-01 as a short two-Mac sleep/wake check. Real overnight use becomes an informal check, not a gate. The requirement wording is the user's, so confirm at discuss before changing it.
 - [Phase 5]: On a remote `portty attach`, the status bar shows `[reconnecting]` after 5 s with no output, because the host sends no heartbeat frame and the cmd_attach.go watcher keys on received frames. That misleads on any idle session (UAT gap 1 diagnosis, 04-07). Phase 5's reconnect/idle work owns the fix.
 - [Phase 5]: The office Mac must not sleep overnight. Keep-awake (CONV-01) is v2, so the overnight test needs manual `caffeinate`/Energy settings. The home Mac sleeping overnight needs reconnect-on-wake.
-- 05-14 R6 FAIL: viewing Mac's daemon is never respawned after it dies; GUI peer tab and portty attach retry forever (05-VM-MATRIX.md R6, deferred-items From 05-14)
+- ~~05-14 R6 FAIL~~ resolved by 05-16 (daemon respawn; R6 PASS on VMs)
 
 ### Quick Tasks Completed
 
@@ -296,10 +296,13 @@ Items acknowledged and deferred at milestone close, most recent first:
 | 2 | verification_deferred_human | /gsd-verify-work 2 |
 | 3 | verification_deferred_human | /gsd-verify-work 3 |
 | 4 | verification_deferred_human | /gsd-verify-work 4 |
+| 5 | verification_deferred_human | /gsd-verify-work 5 |
 
 Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appearance, VoiceOver) need both Macs. The user deferred them on 2026-11-16 ("push that UAT until later and move on"). Item 1 passed.
 
 Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHub; repo private) cannot run in the VM; deferred on 2026-11-16 the same way. M-71 and M-72 passed in the VM.
+
+Phase 5: VM matrix, post-review regression, iteration-3 spot check and browser view all ran on two Tart VMs over the real tailnet. Two-physical-Mac items M-84 (overnight reattach, VERF-01 gate) and M-85 (lid sleep + real Wi-Fi AP switch) deferred by the user on 2026-11-18 ("Defer, keep going"). The milestone audit lists them.
 
 ## Session Continuity
 
