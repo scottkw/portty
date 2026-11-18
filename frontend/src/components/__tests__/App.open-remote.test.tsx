@@ -136,6 +136,43 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
     expect(c.textContent).toContain(CONNECT_FAILED)
   })
 
+  // Portty 05-09: a second click while the first connect is still in flight
+  // used to open a duplicate tab (both clicks passed the stale tabs check).
+  it('a double click during a slow connect opens one tab and connects once', async () => {
+    let resolve!: (v: unknown) => void
+    const connect = vi.fn(() => new Promise((r) => { resolve = r }))
+    const c = await mountApp(baseImpl(connect))
+    await click(peerRow(c)!)
+    await click(peerRow(c)!)
+    await act(async () => { resolve(okResult) })
+    await flush()
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect(c.querySelectorAll('[data-testid="web-session-view"]')).toHaveLength(1)
+    expect(c.querySelectorAll('[id="tabpanel-__websession__sess-remote-1"]')).toHaveLength(1)
+    expect(Array.from(c.querySelectorAll('[role="tab"]')).filter((t) => t.textContent?.includes('office-air › Remote Session'))).toHaveLength(1)
+    await click(peerRow(c)!) // a third click after it opened only activates it
+    expect(connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('two different remote sessions clicked back to back open two tabs', async () => {
+    const resolvers: ((v: unknown) => void)[] = []
+    const connect = vi.fn(() => new Promise((r) => { resolvers.push(r) }))
+    const second = { id: 'sess-remote-2', name: 'Second', status: 'idle', url: 'https://office-air.tail1234.ts.net:7444/sessions/sess-remote-2' }
+    const c = await mountApp({ ...baseImpl(connect), GetRemoteSessionsWithMeta: () => [{ ...remotePeer, sessions: [...remotePeer.sessions, second] }] })
+    const row2 = Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find((b) => b.textContent === 'Second')!
+    await click(peerRow(c)!)
+    await click(row2)
+    expect(connect).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      resolvers[0](okResult)
+      resolvers[1]({ ...okResult, sessionId: 'sess-remote-2', name: 'Second', url: okResult.url.replace(/sess-remote-1/g, 'sess-remote-2') })
+    })
+    await flush()
+    const labels = Array.from(c.querySelectorAll('[role="tab"]')).map((t) => t.textContent ?? '')
+    expect(labels.filter((l) => l.includes('office-air › Remote Session'))).toHaveLength(1)
+    expect(labels.filter((l) => l.includes('office-air › Second'))).toHaveLength(1)
+  })
+
   it('when the host stops sharing, the row disappears at once and the tab stays', async () => {
     const connect = vi.fn(() => okResult)
     const c = await mountApp(baseImpl(connect))
