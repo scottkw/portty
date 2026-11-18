@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 5
-current_phase_name: Overnight Survival
+current_phase: 6
+current_phase_name: Release Updates
 status: verifying
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-11-18T17:31:02.814Z"
-last_activity: 2026-11-17
-last_activity_desc: Phase 5 execution started
-state_head: e3146f62e6b361206be78c257f739bbc51db7cfd
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-11-18T19:19:11.440Z"
+last_activity: 2026-11-18
+last_activity_desc: Phase 6 execution started
+state_head: f575240b13f55e32f95b48c0ee1a58e954b75c31
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 61
-  completed_plans: 60
+  completed_plans: 61
   percent: 17
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 5 — Overnight Survival
+**Current focus:** Phase 6 — Release Updates
 
 ## Current Position
 
-Phase: 5 (Overnight Survival) — EXECUTING
-Plan: 7 of 7
+Phase: 6 (Release Updates) — EXECUTING
+Plan: 4 of 4
 Status: Phase complete — ready for verification
-Last activity: 2026-11-17 — Phase 5 execution started
+Last activity: 2026-11-18 — Phase 6 execution started
 
 Progress: [██░░░░░░░░] 17%
 
@@ -101,6 +101,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 05 P16 | 31min | 2 tasks | 7 files |
 | Phase 05 P15 | 20min | 2 tasks | 6 files |
 | Phase 6 P02 | 10 min | 3 tasks | 13 files |
+| Phase 6 P04 | 95min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -237,6 +238,8 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-15: TESTING.md reconciled for 05-08..05-16 (Go 123, vitest 86, total 217); Go commands run with GOTOOLCHAIN=go1.26.11; M-88..M-90 added; five gap-source todos completed
 - [Phase 6]: 06-02: Service.Check is serialized by its own mutex (a second check waits, then runs as a cheap 304); busy covers only downloading and verifying
 - [Phase 6]: 06-02: update cadence is an hourly tick checking when 24h of wall clock passed since the last completed check, so sleep does not stretch it; failures retry on the next tick
+- [Phase 6]: 06-04: TestUpdateDefaults_ReleaseBuild lives in a !vmpreview file; the VM-only fake update feed reuses the vmpreview tag guarded by check-brand.sh
+- [Phase 6]: 06-04: M-92 VM checks U-01..U-06 PASS with a real notarized same-team DMG (no verify bypass); notification delivery is left to M-93 on the notarized release
 
 ### Pending Todos
 
@@ -309,6 +312,6 @@ Phase 5: VM matrix, post-review regression, iteration-3 spot check and browser v
 
 ## Session Continuity
 
-Last session: 2026-11-18T17:31:00.108Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-11-18T19:19:08.705Z
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None

@@ -268,7 +268,7 @@ Plans:
   2. "Check for Updates…" runs a check immediately and tells the user they are up to date, that version X is available, or what went wrong
   3. Clicking Download in the notice fetches the release DMG, rejects it if the SHA-256 digest or Developer ID Team signature doesn't match, and otherwise reveals the verified DMG in Finder
   4. With no release published, or the repo returning 404, Portty reports "up to date" or stays silent, never a false update or repeated error popups
-**Plans**: 3/4 plans executed (06-01 and 06-03 in parallel, then 06-02, then 06-04)
+**Plans**: 4/4 plans executed (06-01 and 06-03 in parallel, then 06-02, then 06-04)
 **UI hint**: yes
 
 Plans:
@@ -280,7 +280,7 @@ Plans:
 - [x] 06-02-PLAN.md — App wiring: 10 s / 24 h checks, update:status state machine, one notification per version, DownloadUpdate, "Check for Updates…" native alerts, tray "Update Available…"; go-selfupdate removed
 
 **Wave 3** *(blocked on 06-01, 06-02, 06-03)*
-- [ ] 06-04-PLAN.md — Tart VM checks against a fake GitHub (vmpreview seam, cmd/fakegh): notice and notification, manual alerts, unsigned / ad-hoc / bad-digest rejects, reveal of a notarized DMG, quiet 404 / draft / prerelease / rate limit; TESTING.md
+- [x] 06-04-PLAN.md — Tart VM checks against a fake GitHub (vmpreview seam, cmd/fakegh): notice and notification, manual alerts, unsigned / ad-hoc / bad-digest rejects, reveal of a notarized DMG, quiet 404 / draft / prerelease / rate limit; TESTING.md
 
 ## Progress
 
@@ -294,4 +294,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Portty Brand | 6/6 | In Progress | - |
 | 4. One-Click Share | 10/10 | In Progress | - |
 | 5. Overnight Survival | 16/16 | In Progress | - |
-| 6. Release Updates | 3/4 | In Progress | - |
+| 6. Release Updates | 4/4 | In Progress | - |
