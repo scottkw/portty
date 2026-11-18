@@ -194,12 +194,12 @@ func TestService_CheckQuietOutcomes(t *testing.T) {
 		"draft":      func(g *ghFake) any { r := g.rel("9.9.9"); r["draft"] = true; return r },
 		"prerelease": func(g *ghFake) any { r := g.rel("9.9.9"); r["prerelease"] = true; return r },
 		"tag latest": func(g *ghFake) any { r := g.rel("9.9.9"); r["tag_name"] = "latest"; return r },
-		"no digest": func(g *ghFake) any {
-			r := g.rel("9.9.9")
-			delete(r["assets"].([]map[string]any)[0], "digest")
+		"same version": func(g *ghFake) any { return g.rel("1.0.0") },
+		"same version, no DMG": func(g *ghFake) any {
+			r := g.rel("1.0.0")
+			r["assets"] = []map[string]any{}
 			return r
 		},
-		"same version": func(g *ghFake) any { return g.rel("1.0.0") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newSvc(t)
@@ -261,6 +261,32 @@ func TestService_CheckFailures(t *testing.T) {
 			}
 			if st, err := g.svc.Check(context.Background()); err == nil || st.State != "idle" {
 				t.Errorf("from idle: %+v, %v", st, err)
+			}
+		})
+	}
+}
+
+// WR-04: a newer release whose DMG is missing, still uploading or invalid is an incomplete check
+// (kind check, previous status kept), not "current", so the poller retries it on the next tick.
+func TestService_CheckNewerNotInstallable(t *testing.T) {
+	const text = "Version 9.9.9 isn't ready to download yet. Try again later."
+	for name, edit := range map[string]func(r map[string]any){
+		"no DMG":    func(r map[string]any) { r["assets"] = []map[string]any{} },
+		"uploading": func(r map[string]any) { r["assets"].([]map[string]any)[0]["state"] = "starter" },
+		"no digest": func(r map[string]any) { delete(r["assets"].([]map[string]any)[0], "digest") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newSvc(t)
+			r := f.gh.rel("9.9.9")
+			edit(r)
+			f.gh.set(r, 0)
+			st, err := f.svc.Check(context.Background())
+			var e *Error
+			if !errors.As(err, &e) || e.Kind != "check" || e.Text != text {
+				t.Errorf("err = %#v, want check error %q", err, text)
+			}
+			if st.State != "idle" || f.ev.states() != "checking,idle" {
+				t.Errorf("Check = %+v, emitted %s; want the previous idle", st, f.ev.states())
 			}
 		})
 	}

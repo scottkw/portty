@@ -32,6 +32,7 @@ type updateFake struct {
 	mu      sync.Mutex
 	version string
 	status  int
+	noAsset bool // the release has no DMG yet
 	checks  int
 	assets  int
 	onAsset func() // runs inside the asset handler before it answers
@@ -51,7 +52,7 @@ func (f *updateFake) counts() (checks, assets int) {
 
 func (f *updateFake) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
-	version, status, onAsset := f.version, f.status, f.onAsset
+	version, status, onAsset, noAsset := f.version, f.status, f.onAsset, f.noAsset
 	if strings.HasPrefix(r.URL.Path, "/dl/") {
 		f.assets++
 	} else {
@@ -73,18 +74,22 @@ func (f *updateFake) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	etag := `"` + version + `"`
+	etag := fmt.Sprintf(`"%s-%v"`, version, noAsset)
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 	sum := sha256.Sum256(updateDMG)
 	name := updater.DMGAssetName(version)
-	w.Header().Set("ETag", etag)
-	_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": "v" + version, "assets": []map[string]any{{
+	assets := []map[string]any{{
 		"name": name, "size": len(updateDMG), "state": "uploaded", "digest": "sha256:" + hex.EncodeToString(sum[:]),
 		"browser_download_url": f.URL + "/dl/" + name,
-	}}})
+	}}
+	if noAsset {
+		assets = nil
+	}
+	w.Header().Set("ETag", etag)
+	_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": "v" + version, "assets": assets})
 }
 
 // updateHarness is an App on release version 1.0.0 whose update service talks to an updateFake,
@@ -613,5 +618,46 @@ func TestUpdateHarness_IsolatesUserFiles(t *testing.T) {
 		if lib := filepath.Join(realHome, "Library") + string(os.PathSeparator); realHome != "" && strings.HasPrefix(p, lib) {
 			t.Errorf("%s is in the real %s", p, lib)
 		}
+	}
+}
+
+const notReadyText = "Version 9.9.9 isn't ready to download yet. Try again later."
+
+// WR-04: a newer release without its DMG yet is an incomplete check: the poller retries it on the
+// next hourly tick, quietly, and offers the update once the DMG is there.
+func TestUpdatePoller_NotReadyRetriedHourly(t *testing.T) {
+	h := newUpdateHarness(t)
+	h.gh.mu.Lock()
+	h.gh.version, h.gh.noAsset = "9.9.9", true
+	h.gh.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	h.start(t, ctx)
+	h.tick(t)
+	h.tick(t)
+	if c, _ := h.gh.counts(); c != 2 {
+		t.Errorf("%d requests, want 2 (retried on the next tick)", c)
+	}
+	if h.states("available") != 0 || len(h.notifications()) != 0 || len(h.dialogList()) != 0 {
+		t.Errorf("a not-ready release produced available, a notification or an alert")
+	}
+	h.gh.mu.Lock()
+	h.gh.noAsset = false
+	h.gh.mu.Unlock()
+	h.tick(t)
+	if h.states("available") != 1 || len(h.notifications()) != 1 {
+		t.Errorf("the DMG arrived but no update was offered")
+	}
+}
+
+// WR-04: the manual check says the newer version isn't ready, never "up to date".
+func TestManualUpdateCheck_NotReady(t *testing.T) {
+	h := newUpdateHarness(t)
+	h.gh.mu.Lock()
+	h.gh.version, h.gh.noAsset = "9.9.9", true
+	h.gh.mu.Unlock()
+	h.app.checkForUpdatesManually()
+	if got, want := h.oneDialog(t), "Couldn't check for updates.|"+notReadyText+"|OK|OK|"; got != want {
+		t.Errorf("alert %q, want %q", got, want)
 	}
 }

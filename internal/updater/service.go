@@ -73,7 +73,8 @@ func (s *Service) Status() Status {
 func busy(state string) bool { return state == "downloading" || state == "verifying" }
 
 // Check asks GitHub for the latest release. While a download runs it returns the status at once.
-// A failure restores the previous status and returns *Error kind check.
+// A failure, or a newer release without an installable DMG yet, restores the previous status and
+// returns *Error kind check.
 func (s *Service) Check(ctx context.Context) (Status, error) {
 	s.checkMu.Lock()
 	defer s.checkMu.Unlock()
@@ -97,6 +98,11 @@ func (s *Service) Check(ctx context.Context) (Status, error) {
 	switch {
 	case errors.Is(err, ErrNotInstallable):
 		log.Printf("update: release v%s not installable: %v", rel.Version, err)
+		// A newer release is published before its DMG finishes uploading (or after a failed
+		// upload): an incomplete check, so the hourly retry runs and nobody is told "up to date".
+		if n, cerr := Compare(rel.Version, s.Current); cerr == nil && n > 0 {
+			return s.set(prev), &Error{Kind: "check", Text: "Version " + rel.Version + " isn't ready to download yet. Try again later."}
+		}
 	case err != nil:
 		log.Printf("update: check failed: %v", err)
 		text := "Portty couldn't reach GitHub. Check your internet connection and try again."
