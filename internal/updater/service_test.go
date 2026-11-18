@@ -190,10 +190,10 @@ func TestService_CheckAvailable(t *testing.T) {
 
 func TestService_CheckQuietOutcomes(t *testing.T) {
 	for name, body := range map[string]func(g *ghFake) any{
-		"404":        func(*ghFake) any { return nil },
-		"draft":      func(g *ghFake) any { r := g.rel("9.9.9"); r["draft"] = true; return r },
-		"prerelease": func(g *ghFake) any { r := g.rel("9.9.9"); r["prerelease"] = true; return r },
-		"tag latest": func(g *ghFake) any { r := g.rel("9.9.9"); r["tag_name"] = "latest"; return r },
+		"404":          func(*ghFake) any { return nil },
+		"draft":        func(g *ghFake) any { r := g.rel("9.9.9"); r["draft"] = true; return r },
+		"prerelease":   func(g *ghFake) any { r := g.rel("9.9.9"); r["prerelease"] = true; return r },
+		"tag latest":   func(g *ghFake) any { r := g.rel("9.9.9"); r["tag_name"] = "latest"; return r },
 		"same version": func(g *ghFake) any { return g.rel("1.0.0") },
 		"same version, no DMG": func(g *ghFake) any {
 			r := g.rel("1.0.0")
@@ -392,6 +392,15 @@ func TestService_DownloadReveals(t *testing.T) {
 	f.run.mu.Unlock()
 	if len(calls) != 5 || !strings.HasPrefix(calls[0], "/usr/bin/codesign --verify") || calls[4] != "/usr/bin/open -R "+path {
 		t.Errorf("runner calls %q", calls)
+	}
+	// IN-02: verify and reveal run on their own 2-minute deadline, not the download's 10 minutes.
+	f.run.mu.Lock()
+	left := append([]time.Duration(nil), f.run.left...)
+	f.run.mu.Unlock()
+	for i, d := range left {
+		if d <= 0 || d > 2*time.Minute {
+			t.Errorf("call %d (%s) ran with %v left, want its own deadline of at most 2m", i, calls[i], d)
+		}
 	}
 }
 

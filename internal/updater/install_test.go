@@ -59,15 +59,21 @@ func noFiles(t *testing.T, dir string) {
 type fakeRun struct {
 	mu    sync.Mutex
 	calls []string
-	fail  string // "codesign", "dvv", "spctl", "xattr", "open"
-	team  string // -dvv output lines (goodDVV: the identifier of DMGAssetName("9.9.9") and Team S2K7P43927)
-	spctl string // spctl output
+	fail  string          // "codesign", "dvv", "spctl", "xattr", "open"
+	team  string          // -dvv output lines (goodDVV: the identifier of DMGAssetName("9.9.9") and Team S2K7P43927)
+	spctl string          // spctl output
+	left  []time.Duration // time left on each call's context deadline (0: none)
 }
 
-func (f *fakeRun) run(_ context.Context, name string, args ...string) ([]byte, error) {
+func (f *fakeRun) run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, strings.Join(append([]string{name}, args...), " "))
+	var left time.Duration
+	if d, ok := ctx.Deadline(); ok {
+		left = time.Until(d)
+	}
+	f.left = append(f.left, left)
 	step := filepath.Base(name)
 	if slices.Contains(args, "-dvv") {
 		step = "dvv"
@@ -310,6 +316,8 @@ func TestVerify(t *testing.T) {
 
 func TestVerifyFailures(t *testing.T) {
 	good := fakeRun{team: goodDVV, spctl: goodSpctl}
+	// The identifier cases (WR-01) stand for a genuine older Portty DMG, or another product of the
+	// same team, served under DMGAssetName("9.9.9").
 	cases := map[string]struct {
 		f    *fakeRun
 		step string
@@ -320,7 +328,6 @@ func TestVerifyFailures(t *testing.T) {
 		"team not set":      {&fakeRun{team: "TeamIdentifier=not set", spctl: good.spctl}, "team"},
 		"team prefix":       {&fakeRun{team: "TeamIdentifier=S2K7P439270", spctl: good.spctl}, "team"},
 		"no identifier":     {&fakeRun{team: "TeamIdentifier=" + TeamID, spctl: good.spctl}, "identifier"},
-		// WR-01: a genuine older Portty DMG, or another product of the same team, under this name.
 		"older version":     {&fakeRun{team: "Identifier=portty-v1.0.0-darwin-universal\nTeamIdentifier=" + TeamID, spctl: good.spctl}, "identifier"},
 		"other product":     {&fakeRun{team: "Identifier=Gifsmith-1.0.1-arm64\nTeamIdentifier=" + TeamID, spctl: good.spctl}, "identifier"},
 		"identifier prefix": {&fakeRun{team: "Identifier=portty-v9.9.9-darwin-universalx\nTeamIdentifier=" + TeamID, spctl: good.spctl}, "identifier"},

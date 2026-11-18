@@ -177,12 +177,16 @@ func (s *Service) Download() (Status, error) {
 	if s.Now != nil {
 		now = s.Now
 	}
-	if err := Verify(ctx, s.Run, path, TeamID, rel.DMG.Name, now()); err != nil {
+	// Verify and reveal get their own deadline: a download that used most of its 10 minutes must
+	// not get a good file killed mid-check and reported as a signature failure.
+	vctx, vcancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer vcancel()
+	if err := Verify(vctx, s.Run, path, TeamID, rel.DMG.Name, now()); err != nil {
 		log.Printf("update: %v", err) // names the failed step
 		_ = os.Remove(path)
 		return fail("verify", "The download didn't pass the signature check, so Portty deleted it.")
 	}
-	if err := Reveal(ctx, s.Run, path); err != nil {
+	if err := Reveal(vctx, s.Run, path); err != nil {
 		log.Printf("update: reveal failed")
 		return fail("reveal", "Portty couldn't show the download in Finder.")
 	}
