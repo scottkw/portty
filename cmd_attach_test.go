@@ -646,3 +646,69 @@ func TestCmdAttach_BareHostNotSharing(t *testing.T) {
 		t.Fatalf("err = %v; want the not-sharing message", err)
 	}
 }
+
+// swapEnsureLocalDaemon replaces the CLI respawn seam with a counter that
+// returns err, restoring it after the test.
+func swapEnsureLocalDaemon(t *testing.T, err error) *int {
+	t.Helper()
+	calls := 0
+	orig := ensureLocalDaemon
+	ensureLocalDaemon = func(string) error { calls++; return err }
+	t.Cleanup(func() { ensureLocalDaemon = orig })
+	return &calls
+}
+
+// TestRemoteReauth_DeadDaemonRunsEnsure (R6): a re-auth that cannot reach
+// this Mac's daemon starts one before the redial, and retries either way
+// while the daemon stays unreachable.
+func TestRemoteReauth_DeadDaemonRunsEnsure(t *testing.T) {
+	sock := fmt.Sprintf("/tmp/rr%d_%d.sock", os.Getpid(), time.Now().UnixNano()%100000) // nothing listens
+	for _, seamErr := range []error{errors.New("spawn boom"), nil} {
+		calls := swapEnsureLocalDaemon(t, seamErr)
+		port := 1234
+		reauth := remoteReauth(daemon.NewDaemonClient(sock), "office-air", "sid-1", &port)
+		if v := reauth(context.Background()); v != attach.VerdictRetry {
+			t.Fatalf("seam err %v: verdict = %v, want VerdictRetry", seamErr, v)
+		}
+		if *calls != 1 {
+			t.Fatalf("seam err %v: ensure calls = %d, want 1", seamErr, *calls)
+		}
+		if port != 1234 {
+			t.Fatalf("port changed to %d on a failed re-auth", port)
+		}
+	}
+}
+
+// TestRemoteReauth_HealthyNotSharingSkipsEnsure (R7 path): a healthy local
+// daemon and a host that no longer shares end the attach, and no daemon is
+// spawned.
+func TestRemoteReauth_HealthyNotSharingSkipsEnsure(t *testing.T) {
+	peer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/sessions/meta" {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer peer.Close()
+	api, client := testShareSetup(t)
+	if _, err := api.StartRelay(); err != nil {
+		t.Fatalf("StartRelay: %v", err)
+	}
+	api.SetPeerClientForTest(peer.Client())
+	api.SetPeerSeamsForTest(
+		func(context.Context) ([]tailnet.Peer, error) {
+			return []tailnet.Peer{{Hostname: "Office", DNSName: "office-air.tail1.ts.net.", Online: true}}, nil
+		},
+		func(context.Context) []tailnet.Peer { return nil },
+		func(tailnet.Peer) string { return peer.URL },
+	)
+	calls := swapEnsureLocalDaemon(t, nil)
+	port := 1234
+	if v := remoteReauth(client, "office-air", "sid-1", &port)(context.Background()); v != attach.VerdictShareStopped {
+		t.Fatalf("verdict = %v, want VerdictShareStopped", v)
+	}
+	if *calls != 0 {
+		t.Fatalf("ensure ran %d times with a healthy daemon", *calls)
+	}
+}
