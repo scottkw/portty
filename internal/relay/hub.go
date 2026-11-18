@@ -51,6 +51,13 @@ type Subscriber struct {
 
 	// slowLogged: the first slow kick has been logged. Read/written under hub.mu.
 	slowLogged bool
+
+	// replaying: Join set it and the caller is still writing the replay, so
+	// frames go to pending (capped at ReplayPendingMax bytes) instead of Msgs,
+	// which nothing drains yet (WR-01). Read/written under hub.mu.
+	replaying    bool
+	pending      [][]byte
+	pendingBytes int
 }
 
 // Hub manages a single PTY session's output fan-out.
@@ -229,6 +236,39 @@ func (h *Hub) kickSlow(sub *Subscriber) {
 	}()
 }
 
+// sendLocked queues frame for sub without blocking; a full queue kicks it.
+// Caller holds h.mu.
+func (h *Hub) sendLocked(sub *Subscriber, frame []byte) {
+	if sub.replaying {
+		if sub.pendingBytes+len(frame) > ReplayPendingMax {
+			h.kickSlow(sub)
+			return
+		}
+		sub.pending = append(sub.pending, frame)
+		sub.pendingBytes += len(frame)
+		return
+	}
+	select {
+	case sub.Msgs <- frame:
+	default:
+		h.kickSlow(sub)
+	}
+}
+
+// TakePending returns the frames held for sub since Join (or the last call),
+// in order, to be written after the replay. Once nothing is held it ends the
+// replay and returns nil: later frames go to Msgs. Callers loop until nil.
+func (h *Hub) TakePending(sub *Subscriber) [][]byte {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	frames := sub.pending
+	sub.pending, sub.pendingBytes = nil, 0
+	if len(frames) == 0 {
+		sub.replaying = false
+	}
+	return frames
+}
+
 // SubscriberCount returns the number of currently subscribed clients. (MC-04)
 func (h *Hub) SubscriberCount() int {
 	h.mu.Lock()
@@ -359,11 +399,7 @@ func (h *Hub) broadcastResize(cols, rows uint16) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for sub := range h.subscribers {
-		select {
-		case sub.Msgs <- frame:
-		default:
-			h.kickSlow(sub)
-		}
+		h.sendLocked(sub, frame)
 	}
 }
 
@@ -579,11 +615,7 @@ func (h *Hub) broadcast(frame []byte) {
 	defer h.mu.Unlock()
 
 	for sub := range h.subscribers {
-		select {
-		case sub.Msgs <- frame:
-		default:
-			h.kickSlow(sub)
-		}
+		h.sendLocked(sub, frame)
 	}
 }
 
@@ -595,11 +627,7 @@ func (h *Hub) BroadcastMeta(frame []byte) {
 	defer h.mu.Unlock()
 
 	for sub := range h.subscribers {
-		select {
-		case sub.Msgs <- frame:
-		default:
-			h.kickSlow(sub)
-		}
+		h.sendLocked(sub, frame)
 	}
 }
 
@@ -789,7 +817,10 @@ type Replay struct {
 // ReplayFull, never an error or a silent partial. Replays are chunked to
 // ReplayChunk so no reader needs a raised limit for the catch-up. Subscribe and
 // capture both happen under emuMu, the lock Run records and broadcasts under, so each frame
-// reaches the viewer exactly once: in the replay or in sub.Msgs.
+// reaches the viewer exactly once: in the replay, in TakePending or in sub.Msgs.
+// Frames broadcast while the caller writes the replay are held for TakePending
+// rather than queued in Msgs, so a long replay cannot fill the 256-frame queue
+// and get the viewer kicked as slow (WR-01).
 // The ring bytes ride along with their 0x01 frame headers as SOH bytes; the
 // client takes its position from the offset meta, never by counting them.
 //
@@ -839,7 +870,8 @@ func (r Replay) Bytes() int {
 func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Replay, data []byte, raw bool) {
 	h.emuMu.Lock()
 	defer h.emuMu.Unlock()
-	h.Subscribe(sub) // lock order emuMu then hub.mu, as Cols()/Rows()
+	sub.replaying = true // before Subscribe publishes sub; ended by TakePending
+	h.Subscribe(sub)     // lock order emuMu then hub.mu, as Cols()/Rows()
 	h.ensureLiveEmulatorLocked()
 
 	// A resume exactly at geomEnd may predate the resize (no output in between),

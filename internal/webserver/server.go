@@ -852,6 +852,14 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Live frames held while the replay was written, then Msgs from here on (WR-01).
+	for frames := hub.TakePending(sub); len(frames) > 0; frames = hub.TakePending(sub) {
+		for _, f := range frames {
+			if err := conn.Write(ctx, websocket.MessageBinary, f); err != nil {
+				return
+			}
+		}
+	}
 	log.Printf("viewer-diag: replay session=%s conn=%d mode=%s bytes=%d resume=%t",
 		relay.DiagID(sessionID), sub.ID, replay.Mode, replay.Bytes(), hasResume)
 

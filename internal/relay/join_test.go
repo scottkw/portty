@@ -193,6 +193,13 @@ func TestJoin_ExactlyOnceUnderConcurrentOutput(t *testing.T) {
 			r := hub.Join(sub, 0, false)
 			defer hub.Unsubscribe(sub)
 			stream := payloads(r)
+			for frames := hub.TakePending(sub); len(frames) > 0; frames = hub.TakePending(sub) {
+				for _, f := range frames {
+					if f[0] == MsgOutput {
+						stream = append(stream, f[1:]...)
+					}
+				}
+			}
 			for !bytes.Contains(stream, []byte("STOP\n")) {
 				select {
 				case f := <-sub.Msgs:
@@ -253,5 +260,57 @@ func TestParseResume(t *testing.T) {
 		if ok != tc.ok || (ok && got != tc.want) {
 			t.Errorf("ParseResume(%q) = %d, %t; want %d, %t", tc.in, got, ok, tc.want, tc.ok)
 		}
+	}
+}
+
+// TestJoin_LiveOutputDuringReplayNotKicked (WR-01): frames broadcast while the
+// caller is still writing the replay are held, not counted against the
+// 256-frame channel, and come back from TakePending in order, once each.
+func TestJoin_LiveOutputDuringReplayNotKicked(t *testing.T) {
+	hub, w := runJoinHub(t, DefaultScrollbackBytes)
+	emit(t, hub, w, "before\r\n")
+	sub := &Subscriber{Msgs: make(chan []byte, 2)}
+	sub.CloseSlow = func() { t.Error("kicked as slow during the replay") }
+	r := hub.Join(sub, 0, false)
+	defer hub.Unsubscribe(sub)
+	for i := 0; i < 10; i++ {
+		emit(t, hub, w, fmt.Sprintf("L%d\n", i))
+	}
+	hub.emuMu.Lock() // Run broadcasts under emuMu after recording: wait out the last one
+	hub.emuMu.Unlock()
+	stream := payloads(r)
+	for frames := hub.TakePending(sub); len(frames) > 0; frames = hub.TakePending(sub) {
+		for _, f := range frames {
+			stream = append(stream, f[1:]...)
+		}
+	}
+	want := "\x01before\r\n" + "L0\nL1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\n"
+	if string(stream) != want {
+		t.Fatalf("stream = %q, want %q", stream, want)
+	}
+	emit(t, hub, w, "live\n")
+	if f := <-sub.Msgs; string(f[1:]) != "live\n" {
+		t.Fatalf("after TakePending drained: Msgs got %q, want live output", f)
+	}
+}
+
+// TestJoin_PendingOverCapKicks (WR-01): a viewer whose held frames pass
+// ReplayPendingMax bytes is kicked: output outran its link.
+func TestJoin_PendingOverCapKicks(t *testing.T) {
+	old := ReplayPendingMax
+	ReplayPendingMax = 64
+	t.Cleanup(func() { ReplayPendingMax = old })
+	hub, w := runJoinHub(t, DefaultScrollbackBytes)
+	kicked := make(chan struct{}, 8)
+	sub := &Subscriber{Msgs: make(chan []byte, 256), CloseSlow: func() { kicked <- struct{}{} }}
+	hub.Join(sub, 0, false)
+	defer hub.Unsubscribe(sub)
+	for i := 0; i < 10; i++ {
+		emit(t, hub, w, "0123456789\n")
+	}
+	select {
+	case <-kicked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("not kicked after passing ReplayPendingMax")
 	}
 }

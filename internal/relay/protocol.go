@@ -87,6 +87,13 @@ const (
 // byte. A var so tests can shrink it.
 var ReplayChunk = 16 << 10
 
+// ReplayPendingMax caps the bytes of live frames held for one viewer while its
+// replay is written (Hub.TakePending). A viewer that keeps up with the output
+// holds less than the replay itself (at most the 4 MiB history plus a screen),
+// so passing this means output outran the link: it is kicked as slow (WR-01).
+// A var so tests can shrink it.
+var ReplayPendingMax = HistoryMaxBytes
+
 // ParseResume parses a ?resume= query value. Only a decimal uint64 is ok; an
 // empty, negative, non-decimal or overflowing value is not ok and takes the
 // full-replay path.
