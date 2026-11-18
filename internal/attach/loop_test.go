@@ -3,6 +3,7 @@ package attach
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -733,6 +734,37 @@ func TestRun_WakeStaleInputNeverSent(t *testing.T) {
 	waitFor(t, "FRESH on the second connection", func() bool { return strings.Contains(f.input(1), "FRESH") })
 	if got0, got1 := f.input(0), f.input(1); strings.Contains(got0+got1, "STALE") {
 		t.Errorf("gap keystrokes reached the shell: conn0=%q conn1=%q", got0, got1)
+	}
+	r.detach(t)
+}
+
+// pasteBytes is n bytes of printable ASCII made of numbered lines, so a lost
+// or reordered frame shows in a diff. It never holds the detach key.
+func pasteBytes(n int) []byte {
+	var b bytes.Buffer
+	for i := 0; b.Len() < n; i++ {
+		fmt.Fprintf(&b, "%06d paste line\n", i)
+	}
+	return b.Bytes()[:n]
+}
+
+// A paste over 32 KiB goes out in frames under the relay's 32768-byte read
+// limit, so one connection carries it whole and in order (HARD-02).
+func TestRun_LargePasteArrivesWhole(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		writeFrames(c, replayMeta(relay.ReplayFull), offsetMeta(0), output("READY"))
+		f.pump(i, c, nil) //nolint:errcheck
+	}, nil)
+	r := startRun(t, f, RunOptions{Timing: fast})
+	r.ready(t)
+	paste := pasteBytes(100_000)
+	r.typeIn(t, string(paste))
+	waitFor(t, "the whole paste", func() bool { return len(f.input(0)) >= len(paste) || f.accepts() > 1 })
+	if got := f.input(0); got != string(paste) {
+		t.Fatalf("first connection got %d bytes; want the %d-byte paste in order", len(got), len(paste))
+	}
+	if n := f.accepts(); n != 1 {
+		t.Errorf("connections = %d; want 1 (a frame tripped the read limit)", n)
 	}
 	r.detach(t)
 }
