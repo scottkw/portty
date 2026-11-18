@@ -112,7 +112,8 @@ type loop struct {
 	offsetValid bool
 	rendered    bool
 
-	lastWake time.Time // last wake signal acted on; used by serve and the gap in turn
+	lastWake   time.Time // last wake signal acted on; used by serve and the gap in turn
+	wakeRedial bool      // serve dropped a socket after a wake probe: redial without waiting
 }
 
 // Run is the remote attach loop (SHAR-07). It serves first, and whenever a
@@ -191,6 +192,8 @@ func (l *loop) serve(ctx context.Context, conn *websocket.Conn) (err error, retr
 	}
 	ping := time.NewTicker(l.t.PingEvery)
 	defer ping.Stop()
+	var probe <-chan time.Time // armed by a wake signal
+	var probeSent int64
 
 	// broken ends the connection after a failed write or the watchdog: the
 	// reader's error says whether the host closed it for good.
@@ -232,6 +235,18 @@ func (l *loop) serve(ctx context.Context, conn *websocket.Conn) (err error, retr
 				return broken(errSilent)
 			}
 			_ = conn.Write(cctx, websocket.MessageBinary, []byte{relay.MsgPing})
+		case <-l.o.Wake: // a nil channel never fires
+			if l.wakeAllowed() {
+				probeSent, probe = time.Now().UnixNano(), time.After(l.t.ProbeGrace)
+				_ = conn.Write(cctx, websocket.MessageBinary, []byte{relay.MsgPing})
+			}
+		case <-probe:
+			probe = nil
+			// Only a host that pongs is held to the probe (an older one never answers).
+			if ponged.Load() && lastFrame.Load() < probeSent {
+				l.wakeRedial = true
+				return broken(errSilent)
+			}
 		case <-ctx.Done():
 			conn.Close(websocket.StatusNormalClosure, "detach") //nolint:errcheck
 			return nil, false
@@ -349,14 +364,18 @@ func (l *loop) reconnect(ctx context.Context, attempt *int) (*websocket.Conn, er
 // redial backs off, re-authenticates and dials until it has a connection. A
 // wake cuts the backoff short and restarts the schedule from its first step.
 func (l *loop) redial(ctx context.Context, attempt *int) (*websocket.Conn, error) {
+	woke := l.wakeRedial
+	l.wakeRedial = false
 	for {
-		woke, ok := l.backoff(ctx, *attempt)
-		if !ok {
-			return nil, nil
+		if !woke {
+			var ok bool
+			if woke, ok = l.backoff(ctx, *attempt); !ok {
+				return nil, nil
+			}
 		}
 		*attempt++
 		if woke {
-			*attempt = 0
+			*attempt, woke = 0, false
 		}
 		v := VerdictOK
 		if l.o.Reauth != nil {
