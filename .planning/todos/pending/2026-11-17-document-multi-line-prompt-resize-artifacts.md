@@ -5,6 +5,9 @@ area: docs
 severity: cosmetic
 files:
   - frontend/src/components/TerminalPanel.tsx:819
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
 ---
 
 ## Problem

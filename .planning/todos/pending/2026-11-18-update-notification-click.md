@@ -2,6 +2,9 @@
 created: 2026-11-18
 area: updater
 source: Phase 6 review IN-05
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
 ---
 # Clicking the update notification may not show Portty
 

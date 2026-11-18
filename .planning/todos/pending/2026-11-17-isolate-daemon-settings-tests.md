@@ -5,6 +5,9 @@ area: testing
 severity: major
 files:
   - internal/daemon
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
 ---
 
 ## Problem

@@ -58,6 +58,10 @@ human_verification:
   - test: "M-80 step 6 (skipped in UAT, no second account): a Mac signed in to a different Tailscale account"
     expected: "No group for the office Mac; `portty attach office-air` prints the didn't-allow-access line"
     why_human: "Needs a second Tailscale account. The 403 path is covered with fakes (TestWhoIs_MetaRefused, TestPeerConnect_Forbidden)"
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
+  status: human_needed
 ---
 
 # Phase 4: One-Click Share Verification Report

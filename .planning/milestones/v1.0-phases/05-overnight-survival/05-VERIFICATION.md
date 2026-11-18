@@ -52,6 +52,10 @@ human_verification:
   - test: "Harvested from 05-14-PLAN.md Tasks 1-2 <human-check> (Claude-run in the VMs): resilience matrix R1-R8 on the real tailnet."
     expected: "Claude runs this in the Tart VMs (no human). Pass: R2, R4, R5, R6 and R8 recover with typing working and nothing duplicated; R7 ends with the final message; R3 recovers (or is DEFERRED:M-85 only if the VM cannot take its interface down); every row's Result is PASS or DEFERRED:M-NN and none reads FAIL."
     why_human: "Already recorded: R1-R9 PASS (R6 after the 05-16 fix), post-review regression 11/11 PASS, iteration-3 spot check 6/6 PASS. Nothing is left to run."
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
+  status: human_needed
 ---
 
 # Phase 5: Overnight Survival Verification Report

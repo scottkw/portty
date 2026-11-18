@@ -7,8 +7,8 @@
 
 ### Branding
 
-- [ ] **BRND-01**: The built app is named Portty: bundle name, bundle ID, window title, menu bar, About box, tray tooltip
-- [ ] **BRND-02**: The app icon, tray icons (including progress and error states), and title logos come from `portty-brand/`
+- [x] **BRND-01**: The built app is named Portty: bundle name, bundle ID, window title, menu bar, About box, tray tooltip
+- [x] **BRND-02**: The app icon, tray icons (including progress and error states), and title logos come from `portty-brand/`
 - [x] **BRND-03**: CLI binary is `portty` (e.g. `portty attach`, `portty daemon`), and the Go module path, config/data directories, and socket names use "portty" instead of "agenthub"
 - [x] **BRND-04**: README, help content, and in-app text describe Portty as a terminal with remote access. No AgentHub or agent-CLI wording remains in user-facing text.
 - [x] **BRND-05**: No "AgentHub"/"agenthub" reference remains anywhere in the repo (code, identifiers, comments, tests, CI, scripts, docs, config). A case-insensitive search over tracked files, excluding `.planning/` history and git history, finds zero hits.
@@ -18,19 +18,19 @@
 
 - [x] **TERM-01**: User can open a new local terminal session, which always starts macOS zsh as a login shell (`/bin/zsh -l`, no shell choice) in a chosen (or last-used) directory
 - [x] **TERM-02**: Sessions keep running in the daemon when the GUI window is closed or the app restarts, and reopen with scrollback intact
-- [ ] **TERM-03**: User can run multiple sessions as tabs, and rename and close them
+- [x] **TERM-03**: User can run multiple sessions as tabs, and rename and close them
 - [x] **TERM-04**: xterm.js plugins (GPU render, search, links, sixel, OSC 52, OSC 9;4 progress) keep working, controllable from Settings
-- [ ] **THEM-01**: The app and every terminal use one standard macOS light or dark appearance that follows the system setting live by default; Settings ▸ Appearance offers Automatic / Light / Dark to override it (user decision 2026-11-15, later the same day). The 138 terminal themes, the theme picker and its settings key are removed (old settings files still load). The web share page follows the browser's light/dark preference the same way (user decision 2026-11-15)
-- [ ] **LOOK-01**: The desktop GUI is redesigned to look and behave like a native macOS app: system font, system accent color, a source-list style sidebar, a unified title bar and toolbar, native-style controls and icons, and no leftover custom dark chrome or hardcoded colors (user decision 2026-11-15)
+- [x] **THEM-01**: The app and every terminal use one standard macOS light or dark appearance that follows the system setting live by default; Settings ▸ Appearance offers Automatic / Light / Dark to override it (user decision 2026-11-15, later the same day). The 138 terminal themes, the theme picker and its settings key are removed (old settings files still load). The web share page follows the browser's light/dark preference the same way (user decision 2026-11-15)
+- [x] **LOOK-01**: The desktop GUI is redesigned to look and behave like a native macOS app: system font, system accent color, a source-list style sidebar, a unified title bar and toolbar, native-style controls and icons, and no leftover custom dark chrome or hardcoded colors (user decision 2026-11-15)
 
 - [x] **TERM-05**: When a session's shell exits, for any reason, its tab closes immediately. There is no status indicator, exit countdown, toast or banner, and this works for shells that exit hours after they started
 - [x] **NET-01**: Portty checks for a working Tailscale connection (LocalAPI). When there isn't one, it shows a banner, "Tailscale isn't connected. Remote access and sharing are off until it is.", and disables the share and remote controls. It rechecks automatically and never installs or configures Tailscale
 
 ### Navigation
 
-- [ ] **NAV-01**: A sidebar lists the user's local sessions. Clicking one focuses or opens it in a tab.
-- [ ] **NAV-02**: The sidebar lists sessions shared by other tailnet peers, grouped by machine. Clicking one attaches to it in a tab.
-- [ ] **NAV-03**: The Hub grid view is gone, and the app opens straight into tabs + sidebar
+- [x] **NAV-01**: A sidebar lists the user's local sessions. Clicking one focuses or opens it in a tab.
+- [x] **NAV-02**: The sidebar lists sessions shared by other tailnet peers, grouped by machine. Clicking one attaches to it in a tab.
+- [x] **NAV-03**: The Hub grid view is gone, and the app opens straight into tabs + sidebar
 
 ### Remote & Sharing
 
@@ -44,7 +44,7 @@
 
 ### Chat removal & Notifications
 
-- [ ] **CHAT-01**: Session chat is removed everywhere: desktop and web chat UI, the daemon/webserver chat API and store, the relay chat frames, and their tests. Old clients' chat frames are dropped without error (user decision 2026-11-15; Phase 1 removed only the `@session` inject bridge)
+- [x] **CHAT-01**: Session chat is removed everywhere: desktop and web chat UI, the daemon/webserver chat API and store, the relay chat frames, and their tests. Old clients' chat frames are dropped without error (user decision 2026-11-15; Phase 1 removed only the `@session` inject bridge)
 - [x] **NOTF-01**: Native macOS notifications appear under the Portty name
 
 ### Updates & Distribution
@@ -98,23 +98,23 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BRND-01 | Phase 3 | Pending |
-| BRND-02 | Phase 3 | Pending |
+| BRND-01 | Phase 3 | Complete |
+| BRND-02 | Phase 3 | Complete |
 | BRND-03 | Phase 3 | Complete |
 | BRND-04 | Phase 3 | Complete |
 | BRND-05 | Phase 3 | Complete |
 | BRND-06 | Phase 3 | Complete |
 | TERM-01 | Phase 1 | Complete |
 | TERM-02 | Phase 1 | Complete |
-| TERM-03 | Phase 2 | Pending |
+| TERM-03 | Phase 2 | Complete |
 | TERM-04 | Phase 1 | Complete |
 | TERM-05 | Phase 1 | Complete |
-| THEM-01 | Phase 2 | Pending |
-| LOOK-01 | Phase 2 | Pending |
+| THEM-01 | Phase 2 | Complete |
+| LOOK-01 | Phase 2 | Complete |
 | NET-01 | Phase 1 | Complete |
-| NAV-01 | Phase 2 | Pending |
-| NAV-02 | Phase 2 | Pending |
-| NAV-03 | Phase 2 | Pending |
+| NAV-01 | Phase 2 | Complete |
+| NAV-02 | Phase 2 | Complete |
+| NAV-03 | Phase 2 | Complete |
 | SHAR-01 | Phase 4 | Complete |
 | SHAR-02 | Phase 4 | Complete |
 | SHAR-03 | Phase 4 | Complete |
@@ -122,7 +122,7 @@
 | SHAR-05 | Phase 4 | Complete |
 | SHAR-06 | Phase 4 | Complete |
 | SHAR-07 | Phase 5 | Complete |
-| CHAT-01 | Phase 2 | Pending |
+| CHAT-01 | Phase 2 | Complete |
 | NOTF-01 | Phase 3 | Complete |
 | DIST-03 | Phase 3 | Complete |
 | UPD-01 | Phase 6 | Complete |

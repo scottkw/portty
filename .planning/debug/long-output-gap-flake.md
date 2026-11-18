@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: "TestCLIAttach_LongOutputDuringGap in internal/daemon/attach_viewers_test.go failed once in 36 runs during phase-05 verification; failure text lost; failed run took 5.30 s (normal duration)."
 created: 2026-11-18T00:00:00Z
 updated: 2026-11-18T05:05:00Z
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
+  status: awaiting_human_verify
 ---
 
 ## Current Focus

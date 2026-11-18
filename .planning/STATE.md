@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 6
-current_phase_name: Release Updates
-status: verifying
+status: Awaiting next milestone
 stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-11-18T19:19:11.440Z"
+last_updated: "2026-11-18T20:31:24.741Z"
 last_activity: 2026-11-18
-last_activity_desc: Phase 6 execution started
-state_head: f575240b13f55e32f95b48c0ee1a58e954b75c31
+last_activity_desc: Milestone v1.0 completed and archived
+state_head: 72b3e52cf2bf69d2084d676a8b118353ae994eb7
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 61
   completed_plans: 61
   percent: 17
+current_phase: 6
+current_phase_name: Release Updates
 ---
 
 # Project State
@@ -27,12 +27,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 6 (Release Updates) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-11-18 — Phase 6 execution started
-
-Progress: [██░░░░░░░░] 17%
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-18 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
@@ -293,7 +291,40 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 | Category | Item | Status | Deferred At | Milestone |
 |----------|------|--------|-------------|-----------|
-| *(none)* | | | | |
+| debug_sessions | long-output-gap-flake | awaiting_human_verify | 2026-11-18 | v1.0 |
+| uat_gaps | 01/01-UAT.md | passed | 2026-11-18 | v1.0 |
+| uat_gaps | 02/02-UAT.md | testing | 2026-11-18 | v1.0 |
+| uat_gaps | 03/03-UAT.md | testing | 2026-11-18 | v1.0 |
+| verification_gaps | 02/02-VERIFICATION.md | human_needed | 2026-11-18 | v1.0 |
+| verification_gaps | 03/03-VERIFICATION.md | human_needed | 2026-11-18 | v1.0 |
+| verification_gaps | 04/04-VERIFICATION.md | human_needed | 2026-11-18 | v1.0 |
+| verification_gaps | 05/05-VERIFICATION.md | human_needed | 2026-11-18 | v1.0 |
+| verification_gaps | 06/06-VERIFICATION.md | human_needed | 2026-11-18 | v1.0 |
+| todos | 2026-11-17-alt-screen-scrollback-growth.md | (presence-only) | 2026-11-18 | v1.0 |
+| todos | 2026-11-17-document-multi-line-prompt-resize-artifacts.md | (presence-only) | 2026-11-18 | v1.0 |
+| todos | 2026-11-17-isolate-daemon-settings-tests.md | (presence-only) | 2026-11-18 | v1.0 |
+| todos | 2026-11-17-split-large-pastes.md | (presence-only) | 2026-11-18 | v1.0 |
+| todos | 2026-11-17-strip-more-terminal-queries-from-replay.md | (presence-only) | 2026-11-18 | v1.0 |
+| todos | 2026-11-18-daemon-tests-read-host-settings.md | (presence-only) | 2026-11-18 | v1.0 |
+| todos | 2026-11-18-relay-fanout-flake.md | (presence-only) | 2026-11-18 | v1.0 |
+| todos | 2026-11-18-spurious-respawn-at-launch.md | (presence-only) | 2026-11-18 | v1.0 |
+| todos | 2026-11-18-tab-switch-full-replay.md | (presence-only) | 2026-11-18 | v1.0 |
+| todos | 2026-11-18-update-notification-click.md | (presence-only) | 2026-11-18 | v1.0 |
+| deferred_items | 02/02-04-SUMMARY.md: SessionShareModal SM-02 flake (resolved in 02-05) | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 02/02-05-SUMMARY.md: orphan remoteAdapter/remoteSession helpers; hub-share-modal class names | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 02/02-09-SUMMARY.md: plugin sub-options native checkboxes; LinkConfirmPopover not a sheet; close fade only on Share dialog | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 02/02-10-SUMMARY.md: ShellWebShareBanner legacy rules; banner-stack cap | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 02/02-11-SUMMARY.md: Cmd+, opens Settings over another dialog (needs VM check) | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 04/deferred-items.md: proxied joiners over 32 KiB (fixed in 04-10) | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 04/deferred-items.md: scrollback_altscreen_test.go not gofmt-clean | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 04/deferred-items.md: TestRevoke_InputAfterRevokeNeverReachesPTY flaked once | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 04/deferred-items.md: TestAPIAppearance/TerminalFont tests read real settings.json | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 04/deferred-items.md: TestExitEvent_ListSessions flaked once | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 05/05-04-SUMMARY.md: SharePopover Copy / initialGrid load flakes | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 05/05-05-SUMMARY.md: same two vitest load flakes | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 05/05-06-SUMMARY.md: TestCLIAttach_LongHistoryJoiners load flake; gofmt altscreen test | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 05/05-13-SUMMARY.md: ECONNREFUSED ends peer tab; proxy 45 s watchdog without wakewatch | acknowledged | 2026-11-18 | v1.0 |
+| deferred_items | 05/05-14-SUMMARY.md: R6 respawn (fixed in 05-15/16); R5 wake backoff; sidebar relist delay; R4 proxy wake 9-12 s | acknowledged | 2026-11-18 | v1.0 |
 
 ## Deferred Verification
 
@@ -318,3 +349,7 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 Last session: 2026-11-18T19:19:08.705Z
 Stopped at: Completed 06-04-PLAN.md
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

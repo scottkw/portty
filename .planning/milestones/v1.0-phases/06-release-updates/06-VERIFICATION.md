@@ -66,6 +66,10 @@ human_verification:
   - test: "U-06 noasset re-run after WR-04 (Tart VM, Claude can run it under M-92): fake GitHub serves a newer 9.9.9 with no DMG asset"
     expected: "Automatic checks stay quiet (no banner, notification or alert) and retry on the next tick; Help -> Check for Updates... says 'Couldn't check for updates.' / 'Version 9.9.9 isn't ready to download yet. Try again later.'"
     why_human: "The recorded U-06 PASS predates WR-04, which changed the manual-check text for this case. Logic is covered by TestService_CheckNewerNotInstallable, TestUpdatePoller_NotReadyRetriedHourly and TestManualUpdateCheck_NotReady; the native alert text needs a GUI session"
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
+  status: human_needed
 ---
 
 # Phase 6: Release Updates Verification Report

@@ -20,25 +20,28 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 - ✓ Remote attach to sessions on other tailnet machines, from the GUI and from the CLI (`attach host:id`, WSS relay, tmux-style status bar). (existing)
 - ✓ Per-session web share with read-only and read/write capability links, multiple simultaneous clients, and PTY resize arbitration. (existing)
 - ✓ Vendored xterm.js plugin suite (GPU render, search, links, sixel, OSC 52, OSC 9;4). (existing)
-- ✓ Native notifications and auto-update checks. (existing)
+- ✓ Native notifications. (existing; the inherited go-selfupdate checker was replaced in v1.0)
 - ✓ Remove all agent-CLI-specific code (CLI picker, badges, per-agent args/themes, agent status, chat→PTY bridge) — Phase 1
 - ✓ New sessions start macOS zsh as a login shell (`/bin/zsh -l`) — Phase 1
 - ✓ File browser/editor removed (local and remote) — Phase 1
 - ✓ Windows and Linux code paths, packaging, and CI removed. macOS only — Phase 1
 - ✓ Tailscale-off state: LocalAPI health check, banner, share/remote/web-server controls disabled — Phase 1 (NET-01)
 
+- ✓ Rebrand to Portty everywhere (binaries, module path, bundle ID, strings, docs, icons from `portty-brand/`); brand gate in CI — v1.0
+- ✓ Tabs plus a sidebar listing local and tailnet peers' sessions replace the Hub grid — v1.0
+- ✓ System light/dark only for app and terminals; native macOS look — v1.0
+- ✓ Session chat removed (desktop, web, daemon API, relay frames) — v1.0
+- ✓ One Share state: tailnet peers' sidebars plus a tailnet web link, full control; Funnel and read-only links removed — v1.0
+- ✓ `portty attach host:session` for Warp or any terminal — v1.0
+- ✓ Sessions survive network glitches, sleep/wake, daemon death (auto-respawn) and replay history without gaps; verified on two Tart VMs over the real tailnet — v1.0
+- ✓ GitHub-release update check on launch, daily and on demand; download, SHA-256 + Team ID + signing identifier + notarization verify, reveal in Finder — v1.0
+
 ### Active
 
-- [ ] Rebrand AgentHub to Portty everywhere: binary names, Go module path, app/bundle ID, UI strings, docs, comments, tests, CI, and icons/logos from `portty-brand/`. Zero "agenthub" references left in tracked files.
-- [ ] Website https://portty.app and repo github.com/scottkw/portty are the canonical links. The repo is private during development and becomes public before the first release
-- [ ] Releases ship only as GitHub release DMGs (linked from portty.app). Portty checks them on launch, periodically, and on demand ("Check for Updates…"), notifies the user, and downloads, verifies and reveals the DMG. Same flow as GIFsmith/TransomWM
-- [ ] Remove the Hub session grid and replace it with tabs plus a sidebar that lists local sessions and remote tailnet peers' sessions. Clicking one opens it in a tab.
-- [ ] Replace the 138 terminal themes with system light/dark for the app and terminals
-- [ ] Redesign the GUI to look and behave like a native macOS app (LOOK-01, Phase 2)
-- [ ] Remove session chat entirely (desktop, web, daemon API, relay frames)
-- [ ] Sharing is one on/off state: shared = tailnet peers (sidebar) AND a tailnet web link, always full control. Funnel and read-only links are removed.
-- [ ] CLI keeps `attach host:id` (renamed `portty attach`) for use from Warp or any terminal
-- [ ] Overnight test passes: start a shell running Claude Code on the office Mac, attach from the home Mac, leave it idle overnight, reattach the next morning with scrollback intact. Attaching from a browser works too.
+- [ ] Overnight two-Mac test (VERF-01, M-84) and lid-sleep / AP-switch test (M-85): deferred by the user at v1.0 close
+- [ ] Deferred two-Mac UI checks from Phases 2–4 (peer attach, live share state, VoiceOver, README on GitHub)
+- [ ] First real release: make scottkw/portty public, add release secrets, tag `vX.Y.Z`; run M-93 (CI DMG signing/notarize/staple, notarized verify + reveal, delivered notification)
+- [ ] Website https://portty.app links to the GitHub release DMGs
 
 ### Out of Scope
 
@@ -49,15 +52,14 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 - Windows and Linux: both target machines are Macs; removing them cuts maintenance a lot
 - Claude Code Remote Control as the solution: needs a full terminal, not just the Claude session
 - Warp session-sharing "tickler": Warp's idle timeout is server-side and not configurable (warpdotdev/warp#11972), and fake activity would type into the live terminal
-- Signed/notarized DMG release: not required for v1 "done". Can follow later, reusing AgentHub's pipeline.
 - Homebrew distribution: releases ship only as GitHub release DMGs linked from portty.app (user decision 2026-11-14)
 
 ## Context
 
 - **Origin:** Warp session sharing drops after an idle period, and the user can't reconnect. Warp offers no setting to change that. Portty replaces Warp sharing for office→home control.
-- **Codebase:** Forked from AgentHub (`~/dev/agenthub`, github.com/scottkw/agenthub) with full git history. Go 1.26 + Wails v2 + React/Vite frontend, `tailscale.com` tsnet, coder/websocket, go-pty. Internal packages: attach, capability, daemon, files, pty, relay, release, status, statusbar, tailnet, testutil, updater, webserver.
-- **Agent-specific hotspots (first pass):** `app.go`, `internal/pty/detect.go`, `internal/status/detector.go`, `internal/daemon/{engine,api,client}.go`, `internal/daemon/notify_theme_*.go`, frontend agent picker and badges.
-- **Removal candidates:** `internal/files` (file browser), Hub frontend components, `tray_{linux,windows}.go`, `notification_{linux,windows}.go`, `packaging/`, Windows pty input.
+- **Codebase:** Forked from AgentHub (`~/dev/agenthub`, github.com/scottkw/agenthub) with full git history. Go 1.26 + Wails v2 + React/Vite frontend, `tailscale.com` tsnet, coder/websocket, go-pty. Internal packages after v1.0: attach, capability, daemon, pty, relay, statusbar, tailnet, testutil, updater, wakewatch, webserver.
+- **State after v1.0 (2026-11-18):** six phases shipped; strip-down, tabs + sidebar, rebrand, one-click share, overnight survival, release updates. Daemon single-instance lock + GUI/CLI respawn; viewer replay with offset resume. Release pipeline signs, notarizes and staples the .app and DMG.
+- **Known debt:** see `.planning/milestones/v1.0-MILESTONE-AUDIT.md` and STATE.md Deferred Items (two-Mac checks, real-release checks, ~10 todos incl. leftover AgentHub plugin-banner code).
 - **Brand:** `portty-brand/` (from Claude Design) mirrors AgentHub's asset layout: `build/appicon.png`, `build/AppIcon.iconset/`, `assets/tray_icon*.png` (progress quartiles plus error), `docs/portty-title-logo{,-dark}.png`.
 - **Existing quality bar:** AgentHub has a large Go test suite, Vitest, Playwright, and a security-review fuzz harness. Removed features take their tests with them. Kept features keep theirs.
 - **Accounts:** office Mac is signed into a corporate Claude account, home Mac into personal Max. Portty is account-agnostic because it just runs a shell.
@@ -75,20 +77,22 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Fork AgentHub instead of building new or using tmux+SSH | Reuses proven daemon, relay, and Tailscale code. The user wants a GUI app plus web share, not just SSH. | — Pending |
-| Fork with full git history | Lets us trace why code exists before deleting it, and cherry-pick AgentHub fixes later | — Pending |
+| Fork AgentHub instead of building new or using tmux+SSH | Reuses proven daemon, relay, and Tailscale code. The user wants a GUI app plus web share, not just SSH. | ✓ Good — daemon/relay/tsnet reused; v1.0 shipped in 4 days |
+| Fork with full git history | Lets us trace why code exists before deleting it, and cherry-pick AgentHub fixes later | ✓ Good — Chesterton's Fence checks relied on it |
 | macOS only | Both machines are MacBook Airs. Big code and CI reduction. | ✓ Good — Phase 1 removed Windows/Linux code and CI |
-| Tabs + sidebar instead of Hub grid | Simpler navigation for a plain terminal | — Pending |
-| One Share action = tailnet peers + web link | User wants sharing to automatically cover both desktop and browser | — Pending |
-| Keep CLI `attach` | Fallback from Warp or any terminal; code already exists | — Pending |
-| Keep themes/plugins, notifications/updates; drop file browser | User's explicit choice | — Pending |
-| Only macOS light/dark, following the system (drops the theme library) | Simpler, consistent look across app and terminals (user decision 2026-11-15) | — Pending |
-| Radical simplicity: one share state, full control, tailnet only; no Funnel, no read-only links | User wants Portty MUCH simpler than AgentHub (2026-11-15) | — Pending |
-| Remove session chat (reverses the earlier "keep chat") | Not needed for remote terminal control (user decision 2026-11-15) | — Pending |
-| Website portty.app; private repo scottkw/portty | User decision 2026-11-14 | — Pending |
-| No Homebrew. GitHub release DMGs plus a GIFsmith-style update check, download and verify | Same distribution model as GIFsmith/TransomWM | — Pending |
-| macOS-native GUI redesign, folded into Phase 2 | macOS-only app no longer needs cross-platform chrome; redo the UI once alongside tabs + sidebar (user decision 2026-11-15) | — Pending |
-| Make scottkw/portty public before the first release | The anonymous Releases API returns 404 for private repos, so update checks would never see a release | — Pending |
+| Tabs + sidebar instead of Hub grid | Simpler navigation for a plain terminal | ✓ Good — Phase 2 |
+| One Share action = tailnet peers + web link | User wants sharing to automatically cover both desktop and browser | ✓ Good — Phase 4 |
+| Keep CLI `attach` | Fallback from Warp or any terminal; code already exists | ✓ Good — `portty attach`, reconnect + respawn in Phase 5 |
+| Keep themes/plugins, notifications/updates; drop file browser | User's explicit choice | ✓ Good — themes later reduced to light/dark |
+| Only macOS light/dark, following the system (drops the theme library) | Simpler, consistent look across app and terminals (user decision 2026-11-15) | ✓ Good — Phase 2 |
+| Radical simplicity: one share state, full control, tailnet only; no Funnel, no read-only links | User wants Portty MUCH simpler than AgentHub (2026-11-15) | ✓ Good — Phase 4 |
+| Remove session chat (reverses the earlier "keep chat") | Not needed for remote terminal control (user decision 2026-11-15) | ✓ Good — Phase 2 |
+| Website portty.app; private repo scottkw/portty | User decision 2026-11-14 | — Pending (site not yet linked) |
+| No Homebrew. GitHub release DMGs plus a GIFsmith-style update check, download and verify | Same distribution model as GIFsmith/TransomWM | ✓ Good — Phase 6; adds signing-identifier check |
+| macOS-native GUI redesign, folded into Phase 2 | macOS-only app no longer needs cross-platform chrome; redo the UI once alongside tabs + sidebar (user decision 2026-11-15) | ✓ Good — plus 2026-11-18 polish |
+| Daemon respawn from GUI poller + CLI, single-instance flock | Remote Mac must recover on its own; no one can log in to fix it | ✓ Good — Phase 5 R6 |
+| Updater verifies DMG signing identifier, not just Team ID | Same team signs GIFsmith; blocks cross-app and downgrade swaps | ✓ Good — Phase 6 WR-01 |
+| Make scottkw/portty public before the first release | The anonymous Releases API returns 404 for private repos, so update checks would never see a release | — Pending (user action before first release) |
 
 ## Evolution
 
@@ -108,4 +112,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-15 after Phase 1*
+*Last updated: 2026-11-18 after v1.0 milestone*

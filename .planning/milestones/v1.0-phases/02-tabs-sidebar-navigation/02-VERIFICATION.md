@@ -23,6 +23,10 @@ human_verification:
   - test: "5-second host glance on real Apple Silicon hardware (not the VM), in Light and in Dark: look at the sidebar, then click another app so Portty is not key. Look at a single open tab and a very long session name"
     expected: "The sidebar shows native vibrancy (desktop tint shows through) and its text is readable. The selected row turns gray when the window is not key. A single tab is a left-aligned pill no wider than 220px. Long names truncate with an ellipsis and never overlap the × or the next pill"
     why_human: "VM vibrancy is reduced and was only seen in Dark. These are visual, native-only checks (02-04 and 02-08 backstop truths)"
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
+  status: human_needed
 ---
 
 # Phase 2: Tabs + Sidebar Navigation Verification Report

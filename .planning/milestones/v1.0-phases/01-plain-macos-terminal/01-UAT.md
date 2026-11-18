@@ -3,6 +3,10 @@ phase: 01-plain-macos-terminal
 status: passed
 date: 2026-11-15
 build: wails build -platform darwin/arm64 -tags wailsassets
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
+  gap_snapshot: "passed::scenarios=0"
 ---
 
 # Phase 1 UAT

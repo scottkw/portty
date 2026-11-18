@@ -161,6 +161,10 @@ human_verification:
   - test: "M-74: View README.md on github.com/scottkw/portty with the light theme, then the dark theme."
     expected: "Light theme shows docs/portty-title-logo.png, dark theme shows docs/portty-title-logo-dark.png, 400 px wide, alt text Portty."
     why_human: "GitHub's <picture>/prefers-color-scheme rendering is only visible on github.com; the repo is private."
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
+  status: human_needed
 ---
 
 # Phase 3: Portty Brand Verification Report

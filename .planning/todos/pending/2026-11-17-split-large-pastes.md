@@ -5,6 +5,9 @@ area: frontend
 severity: minor
 files:
   - frontend/src/lib/relayClient.ts
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
 ---
 
 ## Problem

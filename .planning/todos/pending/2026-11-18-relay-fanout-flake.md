@@ -2,6 +2,9 @@
 created: 2026-11-18
 area: tests
 source: Phase 6 verification
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-11-18
 ---
 # TestHub_TwoClientsFanOut flaked once under -race
 
