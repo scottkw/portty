@@ -922,6 +922,12 @@ function App(): React.ReactElement {
     }
   }, [])
 
+  // Review IN-01: the poller brought the daemon back after an error, so reload as Retry would.
+  useEffect(() => {
+    if (mode === 'web') return
+    return EventsOn('daemon:recovered', () => { void retryInit() })
+  }, [retryInit])
+
   // relayPort is set with the restored tabs, so launch never flashes the empty state.
   // R4 (quick 261116-ku9): one boolean gates the empty state and hides the
   // sidebar's New Session row, so the empty state's button is the only labelled CTA.

@@ -288,3 +288,56 @@ func TestDaemonError_RetryAndReadConcurrently(t *testing.T) {
 		t.Fatalf("GetDaemonError = %q, want boom", got)
 	}
 }
+
+// IN-01: an error that is showing (startup failed, or the third respawn
+// raised daemon:error) clears once the daemon is healthy and the streak has
+// ended, and the frontend gets daemon:recovered to reload like Retry does.
+func TestRespawnDaemon_RecoveryClearsError(t *testing.T) {
+	sock := respawnHome(t)
+	startTestDaemon(t, sock)
+	var mu sync.Mutex
+	var events []string
+	app := &App{
+		client:              daemon.NewDaemonClient(sock),
+		startupDone:         closedChan(),
+		ensureDaemonFunc:    func(string) error { return nil },
+		applyAppearanceFunc: func(string) {},
+		emitEventFunc: func(name string, _ any) {
+			mu.Lock()
+			defer mu.Unlock()
+			events = append(events, name)
+		},
+	}
+	boom := errors.New(respawnKeepsStoppingMsg)
+	app.daemonErr.Store(&boom)
+	t0 := time.Now()
+	app.respawnAttempts, app.lastRespawn = respawnErrorAfter, t0
+
+	app.respawnDaemonIfDown(t0.Add(30 * time.Second)) // healthy, but the streak is still on
+	if app.GetDaemonError() == "" {
+		t.Fatal("error cleared 30 s after a third respawn; want it kept until the streak ends")
+	}
+	app.respawnDaemonIfDown(t0.Add(time.Minute))
+	if got := app.GetDaemonError(); got != "" {
+		t.Fatalf("GetDaemonError after a healthy minute = %q, want empty", got)
+	}
+	app.respawnDaemonIfDown(t0.Add(time.Minute + 5*time.Second))
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) != 1 || events[0] != "daemon:recovered" {
+		t.Fatalf("events = %q, want one daemon:recovered", events)
+	}
+}
+
+// IN-01: the third respawn's daemon:error is also what GetDaemonError reports.
+func TestRespawnDaemon_ThirdAttemptSetsError(t *testing.T) {
+	sock := respawnHome(t)
+	app := &App{client: daemon.NewDaemonClient(sock), startupDone: closedChan(), ensureDaemonFunc: func(string) error { return errors.New("spawn boom") }}
+	t0 := time.Now()
+	for _, off := range []time.Duration{0, 10, 30} {
+		app.respawnDaemonIfDown(t0.Add(off * time.Second))
+	}
+	if got := app.GetDaemonError(); got != "spawn boom" {
+		t.Fatalf("GetDaemonError = %q, want spawn boom", got)
+	}
+}

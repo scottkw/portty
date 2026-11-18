@@ -310,6 +310,13 @@ func (a *App) respawnDaemonIfDown(now time.Time) {
 		if a.respawnAttempts > 0 && now.Sub(a.lastRespawn) >= respawnHealthyReset {
 			a.respawnAttempts = 0
 		}
+		// IN-01: the daemon is back (and stayed up through any streak), so drop
+		// the error and let the frontend reload as Retry would.
+		if a.respawnAttempts == 0 && a.daemonErr.Load() != nil {
+			a.daemonErr.Store(nil)
+			a.applyStoredAppearance() // skipped while startup failed
+			a.emitEvent("daemon:recovered", nil)
+		}
 		return
 	}
 	if a.respawnAttempts > 0 {
@@ -327,11 +334,11 @@ func (a *App) respawnDaemonIfDown(now time.Time) {
 	}
 	fmt.Fprintf(os.Stderr, "portty: daemon unreachable, respawn attempt %d: %s\n", a.respawnAttempts, result)
 	if a.respawnAttempts == respawnErrorAfter {
-		msg := respawnKeepsStoppingMsg
-		if err != nil {
-			msg = err.Error()
+		if err == nil {
+			err = errors.New(respawnKeepsStoppingMsg)
 		}
-		a.emitEvent("daemon:error", msg)
+		a.daemonErr.Store(&err) // GetDaemonError agrees with the banner (IN-01)
+		a.emitEvent("daemon:error", err.Error())
 	}
 }
 
