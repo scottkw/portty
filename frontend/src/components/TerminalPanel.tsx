@@ -234,9 +234,10 @@ export function TerminalPanel({
       container.classList.toggle('terminal-guest--scroll-x', overflowX)
       // 05-12: xterm 6 puts its vertical scrollbar at the right edge of a block
       // child of term.element, which the scale shrinks with it. Stretch the
-      // element to contentW / s so the scrollbar meets the pane edge; the
-      // screen stays host cols wide. The overflow-x branch keeps its own width.
-      term.element.style.width = overflowX ? '' : `${contentW / s}px`
+      // element to contentW / s so the scrollbar meets the pane edge, or to the
+      // grid's width when the grid overflows the pane (overflow-x branch). The
+      // screen stays host cols wide either way.
+      term.element.style.width = `${Math.max(contentW / s, term.cols * cellW)}px`
     }
   }, [])
 
