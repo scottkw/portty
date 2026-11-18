@@ -7,11 +7,13 @@ package relay
 // replay (the viewer).
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	xvt "github.com/charmbracelet/x/vt"
 )
 
@@ -263,4 +265,128 @@ func TestReplayFidelity_DetectsPre0503Staircase(t *testing.T) {
 		t.Fatal("the pre-05-03 bare-LF replay compares equal to the host: the comparison cannot see the staircase")
 	}
 	t.Logf("pre-05-03 replay differs at row %d:\n host    %q\n pre0503 %q", row, w, g)
+}
+
+// TestReplayFidelity_ResumeAcrossResizeIsFull: ring bytes after an offset taken
+// before a genuine host resize are laid out for the old width, so that resume
+// gets a full replay; an offset taken after the resize still gets a delta.
+func TestReplayFidelity_ResumeAcrossResizeIsFull(t *testing.T) {
+	hub, w := runJoinHub(t, DefaultScrollbackBytes)
+	resizeHub(t, hub, fidCols, fidRows)
+	emit(t, hub, w, claudeLikeTurn(0, fidCols))
+	before := join(t, hub, 0, false).End
+	resizeHub(t, hub, 80, fidRows)
+	emit(t, hub, w, claudeLikeTurn(1, 80))
+	if r := join(t, hub, before, true); r.Mode != ReplayFull {
+		t.Fatalf("resume from before a host resize: mode %q, want %q", r.Mode, ReplayFull)
+	}
+	after := join(t, hub, 0, false).End
+	emit(t, hub, w, claudeLikeRedraw(2, 80))
+	if r := join(t, hub, after, true); r.Mode != ReplayDelta {
+		t.Fatalf("resume from after the resize: mode %q, want %q", r.Mode, ReplayDelta)
+	}
+}
+
+// hubScreen returns the hub's live emulator screen and cursor.
+func hubScreen(hub *Hub) ([]string, xvtPos) {
+	hub.emuMu.Lock()
+	defer hub.emuMu.Unlock()
+	p := hub.liveEmu.CursorPosition()
+	return screenRows(hub.liveEmu), xvtPos{p.X, p.Y}
+}
+
+type xvtPos struct{ X, Y int }
+
+// TestReplayFidelity_IntactRingAcrossResizeRendered: the ring is intact but
+// holds bytes from before a genuine resize, so the full replay is the rendered
+// history + screen, not raw bytes laid out for 100 columns.
+func TestReplayFidelity_IntactRingAcrossResizeRendered(t *testing.T) {
+	hub, w := runJoinHub(t, DefaultScrollbackBytes)
+	resizeHub(t, hub, fidCols, fidRows)
+	for i := range 4 {
+		emit(t, hub, w, claudeLikeTurn(i, fidCols))
+	}
+	resizeHub(t, hub, 80, fidRows)
+	emit(t, hub, w, claudeLikeTurn(4, 80))
+	emit(t, hub, w, claudeLikeRedraw(5, 80))
+	if hub.scrollback.Truncated() {
+		t.Fatal("fixture invalid: ring wrapped")
+	}
+
+	guest, r := joinGuest(t, hub, 80, fidRows)
+	if p := payloads(r); bytes.Contains(p, []byte("\x1b[1A")) {
+		t.Fatal("full replay carries raw Ink redraw bytes (ESC[1A) from before the resize; want the rendered screen")
+	}
+	want, cur := hubScreen(hub)
+	requireSameGrid(t, "screen", want, screenRows(guest))
+	if g := guest.CursorPosition(); g.X != cur.X || g.Y != cur.Y {
+		t.Fatalf("cursor: host %v, guest %v", cur, g)
+	}
+}
+
+// TestReplayFidelity_FirstResizeKeepsRaw: output written while the hub grid is
+// still unknown, then the first local resize, is not a geometry change (the
+// PTY was spawned at the GUI's grid), so the #109 raw replay holds.
+func TestReplayFidelity_FirstResizeKeepsRaw(t *testing.T) {
+	hub, w := runJoinHub(t, DefaultScrollbackBytes)
+	emit(t, hub, w, claudeLikeTurn(0, fidCols))
+	resizeHub(t, hub, fidCols, fidRows)
+	emit(t, hub, w, claudeLikeTurn(1, fidCols)+"\x1b[6n")
+	want := liveEmuQueryStripPattern.ReplaceAll(hub.ScrollbackSnapshot(), nil)
+	if got := fullReplay(t, hub); !bytes.Equal(got, want) {
+		t.Fatalf("full replay after the first resize is not the raw ring (#109): got %d bytes, want %d", len(got), len(want))
+	}
+}
+
+// syncGuest is a guest that records whether synchronized output (2026) is on.
+func syncGuest(cols, rows int) (*xvt.Emulator, *bool) {
+	g := fidEmu(cols, rows)
+	on := new(bool)
+	set := func(v bool) func(ansi.Mode) {
+		return func(m ansi.Mode) {
+			if m == ansi.ModeSynchronizedOutput {
+				*on = v
+			}
+		}
+	}
+	g.SetCallbacks(xvt.Callbacks{EnableMode: set(true), DisableMode: set(false)})
+	return g, on
+}
+
+// TestReplayFidelity_JoinMidSyncFrame: a viewer joins inside a synchronized
+// update. The replay is a complete rendered screen, so it must not leave the
+// viewer's terminal holding its rendering for an end marker it never started;
+// after the rest of the frame arrives live, the grids match.
+func TestReplayFidelity_JoinMidSyncFrame(t *testing.T) {
+	hub, w, ref, next := wrappedClaudeSession(t)
+	frame := claudeLikeRedraw(next, fidCols)
+	cut := strings.Index(frame, "╰") // inside the frame, after ESC[?2026h
+	both(t, hub, w, ref, frame[:cut])
+
+	guest, sync := syncGuest(fidCols, fidRows)
+	feedReplay(guest, join(t, hub, 0, false))
+	if *sync {
+		t.Fatal("replay left synchronized output on: the viewer would hold its rendering for a frame it never saw start")
+	}
+	_, _ = ref.WriteString(frame[cut:])
+	_, _ = guest.WriteString(frame[cut:])
+	requireSameGrid(t, "screen", screenRows(ref), screenRows(guest))
+	requireSameCursor(t, ref, guest)
+	if *sync {
+		t.Fatal("guest ended with synchronized output on")
+	}
+}
+
+// TestReplayFidelity_JoinAtPendingWrap: the host's last output fills a row
+// exactly, so its cursor sits in the pending-wrap state; the next printable
+// character must wrap on the guest as it does on the host.
+func TestReplayFidelity_JoinAtPendingWrap(t *testing.T) {
+	hub, w, ref, _ := wrappedClaudeSession(t)
+	both(t, hub, w, ref, unpark+strings.Repeat("P", fidCols))
+
+	guest, _ := joinGuest(t, hub, fidCols, fidRows)
+	_, _ = ref.WriteString("X\r\n")
+	_, _ = guest.WriteString("X\r\n")
+	requireSameGrid(t, "screen", screenRows(ref), screenRows(guest))
+	requireSameCursor(t, ref, guest)
 }
