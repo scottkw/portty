@@ -33,6 +33,7 @@ type fakeRelay struct {
 	inputs   []bytes.Buffer // MsgInput payloads per accepted connection
 	accepted []time.Time
 	closed   []time.Time
+	pings    int // MsgPing frames pump saw, all connections
 }
 
 func newFakeRelay(t *testing.T, serve func(f *fakeRelay, i int, c *websocket.Conn), reject func(i int) bool) *fakeRelay {
@@ -84,6 +85,9 @@ func (f *fakeRelay) pump(i int, c *websocket.Conn, pong func() bool) error {
 			f.inputs[i].Write(p)
 			f.mu.Unlock()
 		case relay.MsgPing:
+			f.mu.Lock()
+			f.pings++
+			f.mu.Unlock()
 			if pong == nil || pong() {
 				_ = c.Write(context.Background(), websocket.MessageBinary, relay.PongFrame)
 			}
@@ -95,6 +99,12 @@ func (f *fakeRelay) accepts() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.inputs)
+}
+
+func (f *fakeRelay) pingCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.pings
 }
 
 func (f *fakeRelay) input(i int) string {
@@ -491,6 +501,139 @@ func TestRun_WakeMinGap(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if got := n(); got != 1 {
 		t.Errorf("two wake signals 100ms apart caused %d redials; want 1", got)
+	}
+	r.detach(t)
+}
+
+// ready waits for the READY output a fake writes after its opening frames, so
+// the loop has processed them (a leading pong arms the watchdog).
+func (r *runLoop) ready(t *testing.T) {
+	t.Helper()
+	waitFor(t, "READY", func() bool { return strings.Contains(r.stdout(), "READY") })
+}
+
+// A wake or network change on an open, ponged connection probes at once; an
+// unanswered probe drops the socket after ProbeGrace and redials with no
+// backoff wait (BackoffMin is longer than waitFor allows).
+func TestRun_WakeProbesOpenSocket(t *testing.T) {
+	for _, reason := range []wakewatch.Reason{wakewatch.Woke, wakewatch.NetworkChanged} {
+		t.Run(string(reason), func(t *testing.T) {
+			probed := make(chan time.Time, 1)
+			f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+				if i > 0 {
+					f.pump(i, c, nil) //nolint:errcheck
+					return
+				}
+				writeFrames(c, relay.PongFrame, output("READY"))
+				for { // then silent: read, never answer
+					_, m, err := c.Read(context.Background())
+					if err != nil {
+						return
+					}
+					if typ, _, _ := relay.ParseFrame(m); typ == relay.MsgPing {
+						select {
+						case probed <- time.Now():
+						default:
+						}
+					}
+				}
+			}, nil)
+			tm := slowWake
+			tm.BackoffMin, tm.ProbeGrace = 5*time.Second, 200*time.Millisecond
+			wake := make(chan wakewatch.Reason, 1)
+			r := startRun(t, f, RunOptions{Timing: tm, Wake: wake})
+			r.ready(t)
+			woke := time.Now()
+			sendWake(t, wake, reason)
+			select {
+			case p := <-probed:
+				if d := p.Sub(woke); d > 200*time.Millisecond {
+					t.Errorf("probe ping %v after the wake; want at once", d)
+				}
+			case <-time.After(loopWait):
+				t.Fatal("no probe ping after the wake")
+			}
+			waitFor(t, "the redial after the unanswered probe", func() bool { return f.accepts() >= 2 })
+			if d := time.Since(woke); d < tm.ProbeGrace || d > tm.ProbeGrace+time.Second {
+				t.Errorf("redial %v after the wake; want just after the %v probe grace", d, tm.ProbeGrace)
+			}
+			r.detach(t)
+		})
+	}
+}
+
+func TestRun_WakeHealthySocketKept(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		writeFrames(c, relay.PongFrame, output("READY"))
+		f.pump(i, c, nil) //nolint:errcheck
+	}, nil)
+	tm := slowWake
+	tm.ProbeGrace = 100 * time.Millisecond
+	wake := make(chan wakewatch.Reason, 1)
+	r := startRun(t, f, RunOptions{Timing: tm, Wake: wake})
+	r.ready(t)
+	sendWake(t, wake, wakewatch.Woke)
+	waitFor(t, "the probe ping", func() bool { return f.pingCount() >= 1 })
+	time.Sleep(3 * tm.ProbeGrace)
+	if n, s := f.accepts(), r.stateList(); n != 1 || len(s) != 0 {
+		t.Errorf("a healthy socket after a wake: %d connections, states %q; want 1 and none", n, s)
+	}
+	r.detach(t)
+}
+
+func TestRun_WakeNoPongHostKept(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		writeFrames(c, output("READY"))
+		f.pump(i, c, func() bool { return false }) //nolint:errcheck
+	}, nil)
+	tm := slowWake
+	tm.ProbeGrace = 100 * time.Millisecond
+	wake := make(chan wakewatch.Reason, 1)
+	r := startRun(t, f, RunOptions{Timing: tm, Wake: wake})
+	r.ready(t)
+	sendWake(t, wake, wakewatch.Woke)
+	waitFor(t, "the probe ping", func() bool { return f.pingCount() >= 1 })
+	time.Sleep(3 * tm.ProbeGrace)
+	if n := f.accepts(); n != 1 {
+		t.Errorf("an older host that never pongs was redialed after a wake (%d connections)", n)
+	}
+	r.detach(t)
+}
+
+func TestRun_WakeStaleInputNeverSent(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		if i == 0 {
+			writeFrames(c, relay.PongFrame, output("READY"))
+			f.pump(i, c, func() bool { return false }) //nolint:errcheck // records input, ignores the probe
+			return
+		}
+		writeFrames(c, replayMeta(relay.ReplayDelta), offsetMeta(0))
+		f.pump(i, c, nil) //nolint:errcheck
+	}, nil)
+	release := make(chan struct{})
+	reauth := func(ctx context.Context) Verdict {
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return VerdictOK
+	}
+	tm := slowWake
+	tm.BackoffMin, tm.ProbeGrace = 5*time.Second, 100*time.Millisecond
+	wake := make(chan wakewatch.Reason, 1)
+	r := startRun(t, f, RunOptions{Timing: tm, Wake: wake, Reauth: reauth})
+	r.ready(t)
+	r.typeIn(t, "LIVE")
+	waitFor(t, "LIVE on the first connection", func() bool { return f.input(0) == "LIVE" })
+	sendWake(t, wake, wakewatch.Woke)
+	waitFor(t, "reconnecting after the unanswered probe", func() bool { return len(r.stateList()) == 1 })
+	r.typeIn(t, "STALE")
+	close(release)
+	waitFor(t, "the wake redial", func() bool { s := r.stateList(); return len(s) == 2 && s[1] == "" })
+	r.typeIn(t, "FRESH")
+	waitFor(t, "FRESH on the second connection", func() bool { return strings.Contains(f.input(1), "FRESH") })
+	if got0, got1 := f.input(0), f.input(1); strings.Contains(got0+got1, "STALE") {
+		t.Errorf("gap keystrokes reached the shell: conn0=%q conn1=%q", got0, got1)
 	}
 	r.detach(t)
 }
