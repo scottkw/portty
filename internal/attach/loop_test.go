@@ -14,6 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/wakewatch"
 )
 
 const loopWait = 2 * time.Second
@@ -428,4 +429,68 @@ func TestRun_FinalCloseStops(t *testing.T) {
 	if n, states := f.accepts(), r.stateList(); n != 1 || len(states) != 0 {
 		t.Errorf("after a final close: %d connections, states %q; want 1 and none", n, states)
 	}
+}
+
+// slowWake waits whole seconds between redials, so a redial within 200 ms of
+// a wake can only come from the wake.
+var slowWake = Timing{PingEvery: time.Hour, DeadAfter: time.Hour, BackoffMin: time.Second, BackoffMax: 10 * time.Second, HealthyReset: time.Hour, ProbeGrace: time.Hour, WakeMinGap: 5 * time.Second}
+
+// sendWake delivers one wake signal or fails the test if nobody takes it.
+func sendWake(t *testing.T, wake chan wakewatch.Reason, r wakewatch.Reason) {
+	t.Helper()
+	select {
+	case wake <- r:
+	case <-time.After(loopWait):
+		t.Fatalf("wake signal %q not taken within %v", r, loopWait)
+	}
+}
+
+func TestRun_WakeSkipsBackoff(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		if i < 2 {
+			return // connections 0 and 1 drop at once
+		}
+		f.pump(i, c, nil) //nolint:errcheck
+	}, nil)
+	wake := make(chan wakewatch.Reason, 1)
+	r := startRun(t, f, RunOptions{Timing: slowWake, Wake: wake})
+	waitFor(t, "reconnecting", func() bool { return len(r.stateList()) > 0 })
+	woke := time.Now()
+	sendWake(t, wake, wakewatch.Woke)
+	waitFor(t, "the wake redial", func() bool { return f.accepts() >= 2 })
+	if d := time.Since(woke); d > 200*time.Millisecond {
+		t.Errorf("redial %v after the wake; want within 200ms (no backoff wait)", d)
+	}
+	waitFor(t, "a third connection", func() bool { return f.accepts() >= 3 })
+	f.mu.Lock()
+	gap := f.accepted[2].Sub(f.closed[1])
+	f.mu.Unlock()
+	if gap >= 1500*time.Millisecond { // first step is 1s ±20 %, the second 2s ±20 %
+		t.Errorf("backoff after the wake redial = %v; want the first step (about 1s): the attempt counter must restart", gap)
+	}
+	r.detach(t)
+}
+
+func TestRun_WakeMinGap(t *testing.T) {
+	f := newFakeRelay(t, func(*fakeRelay, int, *websocket.Conn) {}, nil)
+	var mu sync.Mutex
+	calls := 0
+	reauth := func(context.Context) Verdict { mu.Lock(); calls++; mu.Unlock(); return VerdictRetry }
+	n := func() int { mu.Lock(); defer mu.Unlock(); return calls }
+	wake := make(chan wakewatch.Reason, 1)
+	r := startRun(t, f, RunOptions{Timing: slowWake, Wake: wake, Reauth: reauth})
+	waitFor(t, "reconnecting", func() bool { return len(r.stateList()) > 0 })
+	woke := time.Now()
+	sendWake(t, wake, wakewatch.Woke)
+	waitFor(t, "the wake redial", func() bool { return n() >= 1 })
+	if d := time.Since(woke); d > 200*time.Millisecond {
+		t.Errorf("redial %v after the wake; want within 200ms", d)
+	}
+	time.Sleep(100 * time.Millisecond)
+	sendWake(t, wake, wakewatch.NetworkChanged)
+	time.Sleep(300 * time.Millisecond)
+	if got := n(); got != 1 {
+		t.Errorf("two wake signals 100ms apart caused %d redials; want 1", got)
+	}
+	r.detach(t)
 }

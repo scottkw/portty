@@ -15,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/statusbar"
+	"github.com/scottkw/portty/internal/wakewatch"
 )
 
 // Verdict is a re-auth answer before a redial.
@@ -37,6 +38,8 @@ type Timing struct {
 	BackoffMin   time.Duration // first redial delay
 	BackoffMax   time.Duration // redial delay cap
 	HealthyReset time.Duration // a connection open this long restarts the backoff
+	ProbeGrace   time.Duration // after a wake probe, silence this long abandons a ponged connection
+	WakeMinGap   time.Duration // wake signals closer than this cause one wake action
 }
 
 // DefaultTiming is the one place for the CLI's reconnect numbers (they mirror
@@ -47,6 +50,8 @@ var DefaultTiming = Timing{
 	BackoffMin:   time.Second,
 	BackoffMax:   30 * time.Second,
 	HealthyReset: 30 * time.Second,
+	ProbeGrace:   5 * time.Second,
+	WakeMinGap:   5 * time.Second,
 }
 
 // dialTimeout bounds one redial of the local daemon's proxy (the proxy's own
@@ -78,6 +83,7 @@ type RunOptions struct {
 	Bar         *statusbar.Bar
 	ClearOnFull bool // clear the screen before a full replay once output was rendered
 	Timing      Timing
+	Wake        <-chan wakewatch.Reason // wake / network-change signals; nil means none
 }
 
 // chunk is one stdin read. stale marks bytes read while no connection was
