@@ -9,6 +9,9 @@ export const MSG_INPUT   = 0x10  // client → server: keyboard input
 export const MSG_RESIZE2 = 0x11  // client → server: resize request
 export const MSG_PING    = 0x12  // client → server: keep-alive
 
+// Largest MSG_INPUT payload per frame: relay.MaxInputPayload (32768 read limit minus the type byte).
+export const MAX_INPUT_PAYLOAD = 32767
+
 // 0x30-0x37 are RETIRED (chat, presence, typing, alias, inject, self). parseServerFrame
 // returns {type:'unknown'} for them; never reuse these bytes.
 
@@ -21,15 +24,23 @@ export type ServerFrame =
   | { type: 'unknown' }
 
 /**
- * Encode keyboard input into a binary frame.
- * Format: [MSG_INPUT, ...UTF-8 bytes of text]
+ * Encode keyboard input into MSG_INPUT frames of at most MAX_INPUT_PAYLOAD
+ * payload bytes. Every input reader keeps a 32768-byte message limit as a DoS
+ * guard and a larger frame closes the socket, so a big paste must be split.
+ * Splitting bytes (not characters) is safe: frames stay in order on one socket
+ * and the PTY reassembles a multibyte character cut across two of them.
  */
-export function encodeInputFrame(text: string): Uint8Array {
+export function encodeInputFrames(text: string): Uint8Array[] {
   const encoded = new TextEncoder().encode(text)
-  const frame = new Uint8Array(1 + encoded.length)
-  frame[0] = MSG_INPUT
-  frame.set(encoded, 1)
-  return frame
+  const frames: Uint8Array[] = []
+  for (let i = 0; i < encoded.length; i += MAX_INPUT_PAYLOAD) {
+    const part = encoded.subarray(i, i + MAX_INPUT_PAYLOAD)
+    const frame = new Uint8Array(1 + part.length)
+    frame[0] = MSG_INPUT
+    frame.set(part, 1)
+    frames.push(frame)
+  }
+  return frames
 }
 
 /**
@@ -517,7 +528,7 @@ export class RelayClient {
   sendInput(text: string): void {
     if (this.reconnect && this.state !== 'open') return // T-05-14, WR-03
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(encodeInputFrame(text))
+      for (const frame of encodeInputFrames(text)) this.ws.send(frame)
     }
   }
 

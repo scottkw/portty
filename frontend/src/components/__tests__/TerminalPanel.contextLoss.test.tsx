@@ -143,7 +143,7 @@ vi.mock('../../lib/relayClient', () => ({
   MSG_INPUT: 0x10,
   MSG_RESIZE2: 0x11,
   MSG_PING: 0x12,
-  encodeInputFrame: () => new Uint8Array(),
+  encodeInputFrames: () => [],
   encodeResizeFrame: () => new Uint8Array(),
   parseServerFrame: () => ({ type: 0 }),
 }))

@@ -57,6 +57,7 @@ vi.mock('../../lib/relayClient', async () => {
     }
     sendInput() {}
     sendResize(cols: number, rows: number) { hoisted.sendResizeCalls.push([cols, rows]) }
+    resumePoint() { return null } // HARD-05: no offset known, so no tab-switch snapshot
     close() {}
   }
   return {
@@ -66,7 +67,7 @@ vi.mock('../../lib/relayClient', async () => {
     MSG_INPUT: 0x10,
     MSG_RESIZE2: 0x11,
     MSG_PING: 0x12,
-    encodeInputFrame: () => new Uint8Array(),
+    encodeInputFrames: () => [],
     encodeResizeFrame: () => new Uint8Array(),
     parseServerFrame: () => ({ type: 'unknown' }),
   }

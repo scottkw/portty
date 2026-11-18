@@ -44,14 +44,14 @@ describe('encodeInputFrames (HARD-02)', () => {
       expect(f.length).toBeLessThanOrEqual(MAX_INPUT_PAYLOAD + 1)
     }
     expect(MAX_INPUT_PAYLOAD + 1).toBe(32768)
-    expect(concat(frames)).toEqual(new TextEncoder().encode(text))
+    expect(Array.from(concat(frames))).toEqual(Array.from(new TextEncoder().encode(text))) // Array.from: jsdom's TextEncoder returns another realm's Uint8Array
   })
 
   it('a multibyte character straddling a frame boundary still concatenates byte-for-byte', () => {
     const text = '€'.repeat(20_000) // 3 bytes each, 60,000 bytes: 32767 is not a multiple of 3
     const frames = encodeInputFrames(text)
     expect(frames).toHaveLength(2)
-    expect(concat(frames)).toEqual(new TextEncoder().encode(text))
+    expect(Array.from(concat(frames))).toEqual(Array.from(new TextEncoder().encode(text))) // Array.from: jsdom's TextEncoder returns another realm's Uint8Array
   })
 })
 
@@ -73,7 +73,7 @@ describe('RelayClient host path sends a large paste as ordered frames (HARD-02)'
   afterEach(() => { vi.unstubAllGlobals() })
 
   it('sendInput of 100,000 characters on an open socket sends 4 MSG_INPUT frames in order', () => {
-    const client = new RelayClient(34115, 'sess-1', {})
+    const client = new RelayClient(34115, 'sess-1', { onOutput: vi.fn() })
     const text = 'x'.repeat(99_999) + 'y'
     client.sendInput(text)
     const sent = WS.last.send.mock.calls.map((c) => c[0] as Uint8Array)
