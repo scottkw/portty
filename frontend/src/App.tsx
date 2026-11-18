@@ -608,6 +608,10 @@ function App(): React.ReactElement {
         const list = await ListSessions()
         // A poll in flight across session:exit or End Session may still list it.
         if (!cancelled) setSessions(list.filter((s) => !exitedIdsRef.current.has(s.id)))
+        // 05-16 (R6): a respawned daemon listens on a new relay port, and new
+        // local tabs dial it. init owns the first set (no empty-state flash).
+        const port = await GetRelayPort()
+        if (!cancelled) setRelayPort((prev) => (prev !== null && port > 0 ? port : prev))
       } catch {
         // Keep the last list until the next tick succeeds.
       }

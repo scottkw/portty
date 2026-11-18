@@ -31,6 +31,13 @@ describe('Portty NAV-01: always-on session poll feeds the sidebar', () => {
     expect(body).not.toContain('HUB_TAB')
   })
 
+  // 05-16 (R6): after the app respawns its daemon, new local tabs need the new relay port.
+  it('refreshes the relay port once init has set it, never to 0', () => {
+    const body = poll()
+    expect(body).toContain('const port = await GetRelayPort()')
+    expect(body).toContain('setRelayPort((prev) => (prev !== null && port > 0 ? port : prev))')
+  })
+
   it('is skipped in web mode and cleans up', () => {
     const body = poll()
     expect(body).toContain("if (mode === 'web') return")
