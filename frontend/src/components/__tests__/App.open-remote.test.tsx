@@ -206,6 +206,21 @@ describe('App — the peer dot while its tab reconnects (UI polish)', () => {
     expect(dot().classList.contains('sidebar__dot--on')).toBe(true)
     expect(dot().getAttribute('aria-label')).toBe('Reachable')
   })
+  it('the host row stays (amber) when discovery drops the blocked Mac while its tab reconnects', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let peers = [remotePeer]
+    const c = await mountApp({ ...baseImpl(vi.fn(() => okResult)), GetRemoteSessionsWithMeta: () => peers })
+    await click(peerRow(c)!)
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-reconnecting"]')!)
+    peers = []
+    await act(async () => { vi.advanceTimersByTime(30_000) }) // next peer poll: the office no longer answers
+    await flush()
+    const dot = c.querySelector('.sidebar__host .sidebar__dot')!
+    expect(dot.classList.contains('sidebar__dot--warn')).toBe(true)
+    expect(dot.getAttribute('aria-label')).toBe('Reconnecting')
+    expect(c.textContent).toContain("Can't reach this Mac.")
+    vi.useRealTimers()
+  })
 })
 
 describe('App — reconnect after the host shares again (WR-06)', () => {

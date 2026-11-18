@@ -95,3 +95,18 @@ describe('peerColorIndex: one stable colour per Mac (UI polish)', () => {
     expect(seen.size).toBe(PEER_COLOR_COUNT)
   })
 })
+
+describe('peerView: a reconnecting Mac stays listed (UI polish)', () => {
+  it('adds the reconnecting host as unreachable when discovery has dropped it', () => {
+    const g = groupsOf(peerView(false, true, [], 'office-air.tail1234.ts.net'))
+    expect(g.map((x) => [x.key, x.host, x.reachable])).toEqual([['office-air.tail1234.ts.net', 'office-air', false]])
+  })
+
+  it('leaves a listed host as the poll reports it, and ignores a null host', () => {
+    const listed = [peer('office-air.tail1234.ts.net', true, ['1'])]
+    expect(groupsOf(peerView(false, true, listed, 'office-air.tail1234.ts.net'))).toHaveLength(1)
+    expect(groupsOf(peerView(false, true, listed, 'office-air.tail1234.ts.net'))[0].reachable).toBe(true)
+    expect(peerView(false, true, [], null)).toEqual({ kind: 'none' })
+    expect(peerView(true, true, [], 'office-air.tail1234.ts.net')).toEqual({ kind: 'off' })
+  })
+})
