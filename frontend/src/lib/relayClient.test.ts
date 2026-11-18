@@ -407,6 +407,7 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
   class WS {
     static OPEN = 1
     static instances: WS[] = []
+    static throwNext = 0 // constructions left that throw like a malformed URL
     binaryType = ''
     readyState = 0
     onopen: (() => void) | null = null
@@ -415,7 +416,13 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     onerror: (() => void) | null = null
     send = vi.fn()
     close = vi.fn()
-    constructor(public url: string) { WS.instances.push(this) }
+    constructor(public url: string) {
+      if (WS.throwNext > 0) {
+        WS.throwNext--
+        throw new SyntaxError(`Failed to construct 'WebSocket': The URL '${url}' is invalid.`)
+      }
+      WS.instances.push(this)
+    }
   }
   let visibility = 'visible'
   const enc = new TextEncoder()
@@ -448,6 +455,7 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     WS.instances = []
+    WS.throwNext = 0
     vi.stubGlobal('WebSocket', WS)
     visibility = 'visible'
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
@@ -759,6 +767,78 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
       await advance(RECONNECT.probeGraceMs + 1000)
       expect(pingsSent(0)).toBe(0)
       expect(count()).toBe(1)
+    })
+  })
+
+  describe('timer-gap wake (browser views)', () => {
+    // A watchdog tick that lands long after the previous one: the machine slept.
+    const sleep = async (ms: number) => { vi.setSystemTime(Date.now() + ms); await advance(1000) }
+    const wake = () => window.dispatchEvent(new CustomEvent('portty:wake', { detail: 'wake' }))
+
+    it('while reconnecting it dials at the tick, and a portty:wake right after does nothing extra', async () => {
+      make()
+      drop(0)
+      await advance(1000)
+      drop(1) // next wait is 2 s
+      await sleep(60_000)
+      expect(count(), 'dialed at the tick after the gap').toBe(3)
+      drop(2) // backoff restarted: a 1 s wait is pending
+      wake()
+      await advance(0)
+      expect(count(), 'debounced across sources').toBe(3)
+      await advance(1000)
+      expect(count()).toBe(4)
+    })
+
+    it('while open it sends a probe after a gap shorter than the 40 s silence limit', async () => {
+      make()
+      open(0)
+      send(0, pong)
+      const before = pingsSent(0)
+      await sleep(10_000)
+      expect(pingsSent(0)).toBe(before + 1)
+    })
+  })
+
+  describe('WebSocket constructor throws (malformed URL)', () => {
+    it('on a redial: stays reconnecting and dials again after the backoff', async () => {
+      make()
+      open(0)
+      drop(0)
+      WS.throwNext = 1
+      await advance(1000) // this redial throws
+      expect(count()).toBe(1)
+      expect(cbs.onStateChange).toHaveBeenLastCalledWith('reconnecting')
+      expect(cbs.onClose).not.toHaveBeenCalled()
+      await expectRedialAfter(2000)
+    })
+
+    it('on the first dial: no throw out of the constructor, reconnecting, then a dial after 1 s', async () => {
+      WS.throwNext = 1
+      expect(() => make()).not.toThrow()
+      expect(cbs.onStateChange).toHaveBeenLastCalledWith('reconnecting')
+      await expectRedialAfter(1000)
+    })
+
+    it('without reconnect: onClose(1006) once on a later tick, and no method throws', async () => {
+      WS.throwNext = 1
+      expect(() => { client = new RelayClient(1234, 's', cbs, { remote: true }) }).not.toThrow()
+      expect(cbs.onClose).not.toHaveBeenCalled()
+      await advance(0)
+      expect(cbs.onClose).toHaveBeenCalledTimes(1)
+      expect(cbs.onClose).toHaveBeenCalledWith(1006, '')
+      expect(() => { client!.sendInput('x'); client!.sendResize(80, 24); client!.close() }).not.toThrow()
+      client = null
+    })
+
+    it('logs a fixed message without the URL', async () => {
+      const spies = [vi.spyOn(console, 'error'), vi.spyOn(console, 'warn'), vi.spyOn(console, 'log')]
+      spies.forEach((s) => s.mockImplementation(() => {}))
+      WS.throwNext = 1
+      make(undefined, 'wss://office.example.ts.net/ws?cap=SECRET123')
+      const logged = spies.flatMap((s) => s.mock.calls).map((args) => args.map(String).join(' ')).join('\n')
+      expect(logged).toContain('[RelayClient] could not open a WebSocket')
+      expect(logged).not.toMatch(/wss?:\/\/|cap=/)
     })
   })
 
