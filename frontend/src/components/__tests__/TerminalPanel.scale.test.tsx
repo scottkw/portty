@@ -448,6 +448,94 @@ describe('Phase 157 TerminalPanel — guest path behavioral (VIEW-04/05)', () =>
   })
 })
 
+// ─── 05-12: guest scrollbar at the pane edge ─────────────────────────────────
+//
+// xterm 6 puts its vertical scrollbar at the right edge of .xterm-scrollable-
+// element, a block child of term.element. When the scale is below 1 the element
+// shrinks with it, so the scrollbar sat mid-pane. The guest stretches the
+// element to contentWidth / scale; the grid (screen canvas) keeps host cols.
+
+describe('05-12 TerminalPanel — guest element spans the pane (scrollbar at the edge)', () => {
+  let container: HTMLElement
+  let root: Root
+
+  beforeEach(() => {
+    hoisted.lastCallbacks = null
+    hoisted.sendResizeCalls = []
+    hoisted.termResizeCalls = []
+    hoisted.lastElement = null
+    hoisted.pendingWrites = null
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(() => {
+    try { flushSync(() => root.unmount()) } catch { /* ignore */ }
+    container.remove()
+    vi.clearAllMocks()
+  })
+
+  function mount(props: Partial<React.ComponentProps<typeof TerminalPanel>>) {
+    flushSync(() => { root.render(React.createElement(TerminalPanel, makeBaseProps(props))) })
+    return container.querySelector('.terminal-session-container') as HTMLElement
+  }
+  function size(node: HTMLElement, w: number, h: number) {
+    Object.defineProperty(node, 'clientWidth', { value: w, configurable: true })
+    Object.defineProperty(node, 'clientHeight', { value: h, configurable: true })
+  }
+  const grid = (cols: number, rows: number) => {
+    const onResize = hoisted.lastCallbacks?.['onResize'] as (c: number, r: number) => void
+    flushSync(() => { onResize(cols, rows) })
+  }
+  const widthPx = () => parseFloat(hoisted.lastElement!.style.width)
+
+  // grid = 100 cols x 9px by 24 rows x 17px = 900 x 408
+  it('scale below 1 (height-limited): the element is stretched to contentWidth / scale', () => {
+    const node = mount({ remote: true })
+    size(node, 1000, 306) // scale = min(1000/900, 306/408) = 0.75
+    grid(100, 24)
+    expect(hoisted.lastElement!.style.transform).toBe('scale(0.75)')
+    expect(widthPx()).toBeCloseTo(1000 / 0.75, 3)
+  })
+
+  it('subtracts the container padding so the padding stays', () => {
+    const node = mount({ remote: true })
+    node.style.padding = '12px 16px'
+    size(node, 1032, 306) // content box 1000 wide; scale = min(1032/900, 306/408) = 0.75
+    grid(100, 24)
+    expect(widthPx()).toBeCloseTo(1000 / 0.75, 3)
+  })
+
+  it('scale 1: the element is as wide as the content box', () => {
+    const node = mount({ remote: true })
+    size(node, 1200, 800)
+    grid(100, 24)
+    expect(hoisted.lastElement!.style.transform).toBe('scale(1)')
+    expect(widthPx()).toBeCloseTo(1200, 3)
+  })
+
+  it('overflow-x branch: no stretch, and turning it on clears an earlier stretch', () => {
+    const node = mount({ wsURL: 'wss://host/sessions/s/ws?cap=x' })
+    size(node, 1200, 800)
+    grid(100, 24)
+    expect(widthPx()).toBeCloseTo(1200, 3)
+    size(node, 50, 50)
+    grid(100, 24)
+    expect(node.classList.contains('terminal-guest--scroll-x')).toBe(true)
+    expect(hoisted.lastElement!.style.width).toBe('')
+    expect(hoisted.sendResizeCalls).toHaveLength(0)
+  })
+
+  it('host panels get no stretch', () => {
+    const node = mount({ remote: false })
+    size(node, 1000, 306)
+    const onOpen = hoisted.lastCallbacks?.['onOpen'] as () => void
+    flushSync(() => { onOpen() })
+    expect(hoisted.lastElement!.style.width).toBe('')
+  })
+})
+
 // ─── Behavioral tests — host path ────────────────────────────────────────────
 
 describe('Phase 157 TerminalPanel — host path invariance (VIEW-04/05)', () => {
