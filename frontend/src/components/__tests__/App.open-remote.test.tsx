@@ -21,16 +21,24 @@ import { adaptRemoteSession } from '../../lib/remoteAdapter'
 import type { RemotePeerSessions } from '../../lib/remoteSession'
 import { mountApp, unmountApp, flush } from './appHarness'
 
+// Mount count and the last beforeReconnect verdict, shared with the hoisted stub.
+const stub = vi.hoisted(() => ({ mounts: 0, verdict: undefined as unknown }))
+
 vi.mock('../WebShareSessionView', () => ({
-  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void }) =>
-    React.createElement('div', {
+  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown> }) => {
+    React.useEffect(() => { stub.mounts++ }, [])
+    return React.createElement('div', {
       'data-testid': 'web-session-view',
       'data-session': p.sessionId,
       'data-base': p.baseURL ?? '',
       'data-cap': p.capToken,
       'data-host': p.hostLabel ?? '',
       'data-remote': String(p.remote),
-    }, React.createElement('button', { type: 'button', 'data-testid': 'fire-share-stopped', onClick: () => p.onShareStopped?.() })),
+      'data-has-reconnect': String(p.beforeReconnect !== undefined),
+    },
+    React.createElement('button', { type: 'button', 'data-testid': 'fire-share-stopped', onClick: () => p.onShareStopped?.() }),
+    React.createElement('button', { type: 'button', 'data-testid': 'fire-before-reconnect', onClick: () => { void p.beforeReconnect?.().then((v) => { stub.verdict = v }) } }))
+  },
 }))
 
 const remotePeer: RemotePeerSessions = {
@@ -156,6 +164,76 @@ describe('App — reconnect after the host shares again (WR-06)', () => {
     await click(peerRow(c)!)
     expect(connect).toHaveBeenCalledTimes(2)
     expect(c.querySelector('[data-testid="web-session-view"]')!.getAttribute('data-cap')).toBe('CAP456')
+  })
+})
+
+// Portty 05-05 (SHAR-07): before each redial a peer tab re-runs GetRelayPort and
+// ConnectPeerSession (re-checks access, refills the daemon's cap store, picks up a
+// new relay port after a daemon restart). The view is never remounted.
+describe('App — peer tab re-authenticates before each redial (SHAR-07)', () => {
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks(); stub.mounts = 0; stub.verdict = undefined })
+
+  async function openThenReconnect(connect: ReturnType<typeof vi.fn>, relayPort: () => unknown = () => 5555, peer: RemotePeerSessions = remotePeer) {
+    const c = await mountApp({ ...baseImpl(connect), GetRelayPort: relayPort, GetRemoteSessionsWithMeta: () => [peer] })
+    await click(peerRow(c)!)
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-before-reconnect"]')!)
+    return c
+  }
+
+  it('success resolves ok with the current relay port and redials without remounting the view', async () => {
+    const connect = vi.fn(() => okResult)
+    const c = await openThenReconnect(connect)
+    expect(stub.verdict).toEqual({ kind: 'ok', port: 5555 })
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(connect).toHaveBeenLastCalledWith('office-air.tail1234.ts.net', 'sess-remote-1')
+    const view = c.querySelector('[data-testid="web-session-view"]')!
+    expect(view.getAttribute('data-cap')).toBe('CAP123')
+    expect(view.getAttribute('data-session')).toBe('sess-remote-1')
+    expect(stub.mounts).toBe(1)
+  })
+
+  it('reconnects by the MagicDNS name when the peer has one', async () => {
+    const connect = vi.fn(() => okResult)
+    await openThenReconnect(connect, () => 5555, { ...remotePeer, hostname: 'Kens-MacBook-Air', dnsName: 'office-air-1.tail1234.ts.net' })
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(connect).toHaveBeenLastCalledWith('office-air-1.tail1234.ts.net', 'sess-remote-1')
+  })
+
+  it.each(['not_sharing', 'no_such_session', 'forbidden'])('errorCode %s stops with the stopped-sharing verdict', async (code) => {
+    const connect = vi.fn().mockReturnValueOnce(okResult).mockReturnValueOnce({ ...okResult, url: '', errorCode: code })
+    await openThenReconnect(connect)
+    expect(stub.verdict).toEqual({ kind: 'stop', reason: 'share-stopped' })
+  })
+
+  it.each(['unreachable', 'tailscale_off'])('errorCode %s retries', async (code) => {
+    const connect = vi.fn().mockReturnValueOnce(okResult).mockReturnValueOnce({ ...okResult, url: '', errorCode: code })
+    await openThenReconnect(connect)
+    expect(stub.verdict).toEqual({ kind: 'retry' })
+  })
+
+  it('a rejected ConnectPeerSession retries', async () => {
+    const connect = vi.fn().mockReturnValueOnce(okResult).mockImplementationOnce(() => { throw new Error('bridge down') })
+    await openThenReconnect(connect)
+    expect(stub.verdict).toEqual({ kind: 'retry' })
+  })
+
+  it('a rejected GetRelayPort retries', async () => {
+    let calls = 0
+    const connect = vi.fn(() => okResult)
+    await openThenReconnect(connect, () => { if (++calls > 1) throw new Error('daemon down'); return 5555 })
+    expect(stub.verdict).toEqual({ kind: 'retry' })
+  })
+
+  it('a local web-share tab gets no beforeReconnect from App', async () => {
+    window.history.pushState({}, '', '/app/?session=sess-local&cap=good')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
+    try {
+      const c = await mountApp({})
+      expect(c.querySelector('[data-testid="web-session-view"]')!.getAttribute('data-has-reconnect')).toBe('false')
+    } finally {
+      vi.unstubAllGlobals()
+      window.history.pushState({}, '', '/')
+    }
   })
 })
 
