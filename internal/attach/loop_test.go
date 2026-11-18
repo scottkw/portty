@@ -411,3 +411,21 @@ func TestRun_HealthyResetRestartsBackoff(t *testing.T) {
 	}
 	r.detach(t)
 }
+
+func TestRun_FinalCloseStops(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		c.Close(websocket.StatusNormalClosure, relay.CloseReasonSessionEnded) //nolint:errcheck
+	}, nil)
+	r := startRun(t, f, RunOptions{Timing: fast})
+	select {
+	case err := <-r.done:
+		if !relay.IsTerminalClose(err) {
+			t.Fatalf("Run = %v; want the session-ended close", err)
+		}
+	case <-time.After(loopWait):
+		t.Fatal("Run did not return after a session-ended close")
+	}
+	if n, states := f.accepts(), r.stateList(); n != 1 || len(states) != 0 {
+		t.Errorf("after a final close: %d connections, states %q; want 1 and none", n, states)
+	}
+}

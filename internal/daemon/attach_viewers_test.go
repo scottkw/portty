@@ -49,6 +49,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -58,6 +59,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -162,6 +164,7 @@ type attachScene struct {
 	hub       *relay.Hub
 	sid       string
 	capToken  string
+	shareBase string // https://<host share server>, the cap's base URL
 	viewRelay string // ws://<viewing daemon relay>
 	local     *websocket.Conn
 	viewers   map[string]*viewerTap // "local", "guiTab", "browser"
@@ -179,6 +182,19 @@ func dialViewer(ctx context.Context, t *testing.T, name, wsURL, origin string, c
 	}
 	t.Cleanup(func() { conn.CloseNow() })
 	return conn
+}
+
+// newViewingDaemon builds a viewing Mac's daemon with an empty cap store and
+// serves its relay; it returns the API and the relay's ws:// base.
+func newViewingDaemon(t *testing.T) (*API, string) {
+	t.Helper()
+	viewAPI, _, _ := testDaemon(t)
+	viewAPI.SetPeerClientForTest(&http.Client{ // no Timeout: proxied WebSockets are long-lived
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // self-signed loopback share server
+	})
+	viewRelay := httptest.NewServer(viewAPI.RelayHandler())
+	t.Cleanup(viewRelay.Close)
+	return viewAPI, "ws://" + strings.TrimPrefix(viewRelay.URL, "http://")
 }
 
 // newAttachScene builds host, viewing daemon and the three viewers. Each
@@ -201,22 +217,18 @@ func newAttachScene(t *testing.T, prelude ...string) *attachScene {
 	t.Cleanup(hostRelay.Close)
 
 	// Viewing Mac: its own daemon holding the cap, as /peers/connect leaves it.
-	viewAPI, _, _ := testDaemon(t)
-	viewAPI.SetPeerClientForTest(&http.Client{ // no Timeout: proxied WebSockets are long-lived
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // self-signed loopback share server
-	})
+	viewAPI, viewRelay := newViewingDaemon(t)
 	if err := viewAPI.PutRemoteCapForTest(sid, "https://"+link.Host, capToken); err != nil {
 		t.Fatalf("PutRemoteCapForTest: %v", err)
 	}
-	viewRelay := httptest.NewServer(viewAPI.RelayHandler())
-	t.Cleanup(viewRelay.Close)
 
 	s := &attachScene{
 		ctx:       ctx,
 		hub:       hub,
 		sid:       sid,
 		capToken:  capToken,
-		viewRelay: "ws://" + strings.TrimPrefix(viewRelay.URL, "http://"),
+		shareBase: "https://" + link.Host,
+		viewRelay: viewRelay,
 		viewers:   map[string]*viewerTap{},
 	}
 
@@ -476,6 +488,113 @@ func TestCLIAttach_IdleNoReconnecting(t *testing.T) {
 	}
 	s.typeLine(t, "MARKER-2")
 	waitUntil(t, "cli to see MARKER-2", func() bool { return cli.stdout.has("MARKER-2") })
+	cli.detach(t)
+}
+
+// waitEnded waits for Run to return and checks it ended with the host's
+// share-stopped close.
+func (c *loopCLI) waitEnded(t *testing.T) {
+	t.Helper()
+	select {
+	case err := <-c.done:
+		var ce websocket.CloseError
+		if !errors.As(err, &ce) || ce.Code != websocket.StatusNormalClosure || ce.Reason != relay.CloseReasonShareStopped {
+			t.Fatalf("Run = %v; want close 1000 %q", err, relay.CloseReasonShareStopped)
+		}
+	case <-time.After(viewerWait):
+		t.Fatalf("Run did not end within %v", viewerWait)
+	}
+}
+
+// countingURL is a RunOptions.URL that counts redials.
+func countingURL(s *attachScene) (func() string, *atomic.Int32) {
+	var n atomic.Int32
+	return func() string { n.Add(1); return s.cliURL() }, &n
+}
+
+// Share turned off on the host while the CLI is connected: the proxy forwards
+// the host's 1000 "share stopped" and the CLI stops instead of redialing.
+func TestCLIAttach_ShareOffWhileConnected(t *testing.T) {
+	s := newAttachScene(t)
+	u, dials := countingURL(s)
+	cli := s.runCLI(t, s.dialCLI(t, 80, 24), attach.RunOptions{URL: u, Timing: fastTiming})
+	s.hub.RevokeWebViewers(relay.CloseReasonShareStopped)
+	cli.waitEnded(t)
+	if n := dials.Load(); n != 0 || cli.stateSeen("reconnecting") {
+		t.Errorf("after share stopped: %d redials, reconnecting=%v; want none", n, cli.stateSeen("reconnecting"))
+	}
+}
+
+// A drop, then a re-auth that says the share is gone: the CLI never dials
+// again with the revoked cap (T-05-22).
+func TestCLIAttach_ReauthShareStoppedEnds(t *testing.T) {
+	s := newAttachScene(t)
+	u, dials := countingURL(s)
+	reauth := func(context.Context) attach.Verdict { return attach.VerdictShareStopped }
+	cli := s.runCLI(t, s.dialCLI(t, 80, 24), attach.RunOptions{URL: u, Reauth: reauth, Timing: fastTiming})
+	s.hub.RevokeWebViewers("test drop")
+	cli.waitEnded(t)
+	if n := dials.Load(); n != 0 {
+		t.Errorf("redialed %d times after a share-stopped re-auth; want 0", n)
+	}
+}
+
+// The home Mac's daemon restarted: a new relay port and an empty cap store.
+// Re-auth (what /peers/connect does) refills the new daemon's cap and the CLI
+// reconnects through it with a delta replay and no lost or doubled line.
+func TestCLIAttach_ViewingDaemonRestart(t *testing.T) {
+	diag := captureDiag(t)
+	s := newAttachScene(t)
+	api2, relay2 := newViewingDaemon(t)
+	route2 := relay2 + "/api/relay/remote/" + s.sid + "/ws"
+	if _, resp, err := websocket.Dial(s.ctx, route2, nil); err == nil || resp == nil || resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("dial to the restarted daemon before re-auth: err=%v resp=%v; want the no-cap 404", err, resp)
+	}
+
+	var mu sync.Mutex
+	cur := s.cliURL()
+	url := func() string { mu.Lock(); defer mu.Unlock(); return cur }
+	release := make(chan struct{})
+	reauth := func(ctx context.Context) attach.Verdict {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return attach.VerdictRetry
+		}
+		if err := api2.PutRemoteCapForTest(s.sid, s.shareBase, s.capToken); err != nil {
+			t.Errorf("PutRemoteCapForTest: %v", err)
+			return attach.VerdictRetry
+		}
+		mu.Lock()
+		cur = route2
+		mu.Unlock()
+		return attach.VerdictOK
+	}
+	cli := s.runCLI(t, s.dialCLI(t, 80, 24), attach.RunOptions{URL: url, Reauth: reauth, Timing: fastTiming})
+
+	for _, tag := range lineTags(1, 20) {
+		s.typeLine(t, tag)
+	}
+	waitUntil(t, "cli to see LINE-0020", func() bool { return cli.stdout.has("LINE-0020") })
+	kickAt := len(diag.bytes())
+	s.hub.RevokeWebViewers("test drop")
+	waitUntil(t, "cli to go reconnecting", func() bool { return cli.stateSeen("reconnecting") })
+	for _, tag := range lineTags(21, 40) {
+		s.typeLine(t, tag)
+	}
+	s.waitAll(t, "LINE-0040", "local")
+	close(release)
+	cli.waitReconnected(t)
+
+	s.typeLine(t, "MARKER-END")
+	s.waitAll(t, "MARKER-END", "local")
+	waitUntil(t, "cli to see MARKER-END", func() bool { return cli.stdout.has("MARKER-END") })
+	local, _, _ := s.viewers["local"].state()
+	checkSameLines(t, cli.stdout.bytes(), local, append(lineTags(1, 40), "MARKER-END"))
+	delta := regexp.MustCompile(`viewer-diag: replay session=` + regexp.QuoteMeta(relay.DiagID(s.sid)) + ` conn=\d+ mode=delta`)
+	if !delta.Match(diag.bytes()[kickAt:]) {
+		t.Errorf("no delta replay logged after the restart:\n%s", diag.bytes()[kickAt:])
+	}
 	cli.detach(t)
 }
 

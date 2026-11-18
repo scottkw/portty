@@ -348,29 +348,54 @@ func TestCmdAttach_RemoteBannerShowsHostname(t *testing.T) {
 	}
 }
 
-// TestRemoteAttachEnd (SHAR-04): only the host's "share stopped" close, even
-// wrapped, ends a remote attach with the stopped-sharing line.
+// TestRemoteAttachEnd (SHAR-04, SHAR-07): the host's "share stopped" and
+// "session ended" closes, even wrapped, end a remote attach with fixed copy;
+// anything else is not a final end.
 func TestRemoteAttachEnd(t *testing.T) {
 	stopped := websocket.CloseError{Code: websocket.StatusNormalClosure, Reason: relay.CloseReasonShareStopped}
 	cases := []struct {
-		name        string
-		err         error
-		wantRevoked bool
+		name    string
+		err     error
+		wantMsg string // "" means not a final end
 	}{
-		{"share stopped", stopped, true},
-		{"wrapped", fmt.Errorf("read: %w", stopped), true},
-		{"session ended", websocket.CloseError{Code: websocket.StatusNormalClosure, Reason: relay.CloseReasonSessionEnded}, false},
-		{"plain error", errors.New("connection reset"), false},
-		{"nil", nil, false},
+		{"share stopped", stopped, "Portty: office-air stopped sharing build."},
+		{"wrapped", fmt.Errorf("read: %w", stopped), "Portty: office-air stopped sharing build."},
+		{"session ended", websocket.CloseError{Code: websocket.StatusNormalClosure, Reason: relay.CloseReasonSessionEnded}, "Portty: build on office-air ended."},
+		{"plain error", errors.New("connection reset"), ""},
+		{"nil", nil, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			msg, revoked := remoteAttachEnd(tc.err, "office-air", "build")
-			if revoked != tc.wantRevoked {
-				t.Fatalf("revoked = %v, want %v", revoked, tc.wantRevoked)
+			msg, ended := remoteAttachEnd(tc.err, "office-air", "build")
+			if ended != (tc.wantMsg != "") || msg != tc.wantMsg {
+				t.Fatalf("remoteAttachEnd = (%q, %v); want (%q, %v)", msg, ended, tc.wantMsg, tc.wantMsg != "")
 			}
-			if revoked && msg != "Portty: office-air stopped sharing build." {
-				t.Fatalf("msg = %q", msg)
+		})
+	}
+}
+
+// TestPeerVerdict (SHAR-07): a re-auth answer that the host stopped sharing,
+// lost the session or refuses us ends the attach; anything else retries.
+func TestPeerVerdict(t *testing.T) {
+	pe := func(code string) error { return &daemon.PeerConnectError{Code: code} }
+	cases := []struct {
+		name string
+		err  error
+		want attach.Verdict
+	}{
+		{"ok", nil, attach.VerdictOK},
+		{"not sharing", pe(daemon.PeerErrNotSharing), attach.VerdictShareStopped},
+		{"no such session", pe(daemon.PeerErrNoSuchSession), attach.VerdictShareStopped},
+		{"forbidden", fmt.Errorf("connect: %w", pe(daemon.PeerErrForbidden)), attach.VerdictShareStopped},
+		{"unreachable", pe(daemon.PeerErrUnreachable), attach.VerdictRetry},
+		{"tailscale off", pe(daemon.PeerErrTailscaleOff), attach.VerdictRetry},
+		{"unknown host", pe(daemon.PeerErrUnknownHost), attach.VerdictRetry},
+		{"plain error", errors.New("daemon not running"), attach.VerdictRetry},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := peerVerdict(tc.err); got != tc.want {
+				t.Fatalf("peerVerdict = %v; want %v", got, tc.want)
 			}
 		})
 	}
