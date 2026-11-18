@@ -217,9 +217,14 @@ export function TerminalPanel({
     const cellW: number = dims.css.cell.width
     const cellH: number = dims.css.cell.height
     if (cellW === 0 || cellH === 0) return
+    // 05-12: fit the content box (inside the padding), as fitTerminal does for hosts.
+    const cs = window.getComputedStyle(container)
+    const px = (v: string) => parseFloat(v) || 0 // jsdom leaves unset padding ''
+    const contentW = container.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight)
+    const contentH = container.clientHeight - px(cs.paddingTop) - px(cs.paddingBottom)
     const { scale: s, overflowX } = computeGuestViewport(
-      container.clientWidth,
-      container.clientHeight,
+      contentW,
+      contentH,
       term.cols * cellW,
       term.rows * cellH,
       DEFAULT_GUEST_MIN_SCALE,
@@ -229,10 +234,8 @@ export function TerminalPanel({
       container.classList.toggle('terminal-guest--scroll-x', overflowX)
       // 05-12: xterm 6 puts its vertical scrollbar at the right edge of a block
       // child of term.element, which the scale shrinks with it. Stretch the
-      // element to contentWidth / s so the scrollbar meets the pane edge; the
+      // element to contentW / s so the scrollbar meets the pane edge; the
       // screen stays host cols wide. The overflow-x branch keeps its own width.
-      const cs = window.getComputedStyle(container)
-      const contentW = container.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
       term.element.style.width = overflowX ? '' : `${contentW / s}px`
     }
   }, [])
