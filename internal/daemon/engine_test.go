@@ -1230,6 +1230,12 @@ func TestGetSessionStyledTailLines_QueryNoHang(t *testing.T) {
 //   - DECRQM DEC  ESC[?2026$p — Request Mode (DEC mode 2026 synchronous update)
 //   - OSC color query ESC]11;?BEL — Background color query
 //   - mode-2048 ESC[?2048h  — In-band resize enable (fires pw write on set; Pitfall 1)
+//   - XTWINOPS ESC[14t / ESC[16t / ESC[18t — window size reports (HARD-03)
+//   - DA3    ESC[=c         — Tertiary Device Attributes (HARD-03)
+//   - XTGETTCAP ESC P + q 544e ST — termcap query (HARD-03)
+//   - DECRQSS ESC P $ q m ST — request setting (HARD-03)
+//   - OSC 4 query ESC]4;1;?BEL — palette colour query (HARD-03)
+//   - OSC 52 read ESC]52;c;?BEL — clipboard read (HARD-03)
 func TestGetSessionStyledTailLines_AllQueriesNoHang(t *testing.T) {
 	e := NewSessionEngine()
 
@@ -1257,7 +1263,23 @@ func TestGetSessionStyledTailLines_AllQueriesNoHang(t *testing.T) {
 		"\x1b]11;?\x07" + // OSC 11 background color query, BEL-terminated
 		"iota\n" +
 		"\x1b[?2048h" + // DEC mode 2048 in-band resize SET (Pitfall 1: triggers pw write)
-		"kappa\n"
+		"kappa\n" +
+		"\x1b[14t" + // XTWINOPS 14: text area in pixels
+		"lambda\n" +
+		"\x1b[16t" + // XTWINOPS 16: cell size in pixels
+		"mu\n" +
+		"\x1b[18t" + // XTWINOPS 18: text area in characters
+		"nu\n" +
+		"\x1b[=c" + // DA3
+		"xi\n" +
+		"\x1bP+q544e\x1b\\" + // XTGETTCAP "TN"
+		"omicron\n" +
+		"\x1bP$qm\x1b\\" + // DECRQSS SGR
+		"pi\n" +
+		"\x1b]4;1;?\x07" + // OSC 4 palette query
+		"rho\n" +
+		"\x1b]52;c;?\x07" + // OSC 52 clipboard read
+		"sigma\n"
 
 	makeTailHub(t, e, "styled-all-queries-hang", content)
 
@@ -1282,7 +1304,7 @@ func TestGetSessionStyledTailLines_AllQueriesNoHang(t *testing.T) {
 
 		// Every visible anchor word must appear in the rendered output.
 		// This proves the strip removed only the control sequences, not content.
-		anchors := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa"}
+		anchors := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda", "mu", "nu", "xi", "omicron", "pi", "rho", "sigma"}
 		for _, word := range anchors {
 			if !strings.Contains(joined, word) {
 				t.Errorf("visible anchor %q missing from rendered output after query strip; full output: %q", word, joined)
