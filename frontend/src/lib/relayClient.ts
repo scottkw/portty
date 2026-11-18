@@ -107,7 +107,7 @@ export type ReconnectVerdict =
 /** Delay before reconnect attempt `attempt` (0-based); `rand` in [0, 1). */
 export function backoffDelayMs(attempt: number, rand: number): number {
   const base = Math.min(RECONNECT.maxMs, RECONNECT.minMs * 2 ** attempt)
-  return Math.min(RECONNECT.maxMs, base * (1 - RECONNECT.jitter + 2 * RECONNECT.jitter * rand))
+  return Math.min(RECONNECT.maxMs, Math.round(base * (1 - RECONNECT.jitter + 2 * RECONNECT.jitter * rand)))
 }
 
 // Callbacks for RelayClient events
@@ -154,6 +154,14 @@ export class RelayClient {
   private openedAt = 0
   private redialing = false
   private retryTimer: ReturnType<typeof setTimeout> | null = null
+  // Bumped on every dial and abandonment: handlers of an older socket ignore their events.
+  private socketGen = 0
+  // Liveness (reconnect mode): armed by the first MsgPong so an older host that never
+  // answers pings is never declared dead. Wall-clock times; 0 means none.
+  private pongSeen = false
+  private lastFrameAt = 0
+  private probeSentAt = 0
+  private watchdog: ReturnType<typeof setInterval> | null = null
   // Stream position (05-01 contract): offset meta + (payload.length + 1) per later output frame.
   private offset = 0
   private offsetValid = false
@@ -171,6 +179,11 @@ export class RelayClient {
     },
   ) {
     this.reconnect = opts?.reconnect
+    if (this.reconnect) {
+      this.watchdog = setInterval(this.checkLiveness, 1_000)
+      window.addEventListener('online', this.onWake)
+      document.addEventListener('visibilitychange', this.onWake)
+    }
     this.dial(this.baseURL())
   }
 
@@ -188,14 +201,16 @@ export class RelayClient {
     this.offsetValid = false
     this.awaitingReplayMeta = true
     this.openedAt = 0
+    this.probeSentAt = 0
+    const gen = ++this.socketGen
     const ws = new WebSocket(url)
     ws.binaryType = 'arraybuffer'
     this.ws = ws
 
     // Every handler ignores events from a socket that is no longer current.
     ws.onopen = () => {
-      if (ws !== this.ws) return
-      this.openedAt = Date.now()
+      if (gen !== this.socketGen) return
+      this.openedAt = this.lastFrameAt = Date.now()
       if (this.reconnect) this.setState('open')
       this.callbacks.onOpen?.()
       this._clearPing()
@@ -207,12 +222,14 @@ export class RelayClient {
     }
 
     ws.onmessage = (event: MessageEvent) => {
-      if (ws !== this.ws) return
+      if (gen !== this.socketGen) return
+      this.lastFrameAt = Date.now()
+      this.probeSentAt = 0
       this.handleFrame(parseServerFrame(new Uint8Array(event.data as ArrayBuffer)))
     }
 
     ws.onclose = (evt: CloseEvent) => {
-      if (ws !== this.ws) return
+      if (gen !== this.socketGen) return
       this._clearPing()
       if (!this.reconnect) {
         this.callbacks.onClose?.(evt.code, evt.reason)
@@ -224,7 +241,7 @@ export class RelayClient {
         return
       }
       // A first connect that fails (openedAt 0) is retried like a drop.
-      if (this.openedAt && Date.now() - this.openedAt >= RECONNECT.healthyResetMs) this.attempt = 0
+      this.resetBackoffIfHealthy()
       this.scheduleRetry()
     }
 
@@ -255,8 +272,56 @@ export class RelayClient {
       case 'meta':
         this.handleMeta(frame.payload)
         break
-      // 'pong' and 'unknown' frames are dropped
+      case 'pong':
+        this.pongSeen = true
+        break
+      // 'unknown' frames are dropped
     }
+  }
+
+  private resetBackoffIfHealthy(): void {
+    if (this.openedAt && Date.now() - this.openedAt >= RECONNECT.healthyResetMs) this.attempt = 0
+  }
+
+  private sendProbe(): void {
+    if (this.ws.readyState !== WebSocket.OPEN) return
+    this.ws.send(new Uint8Array([MSG_PING]))
+    this.probeSentAt = Date.now()
+  }
+
+  // Half-open detection. A large Date.now() delta alone (a clock jump after sleep)
+  // never kills a socket: silence earns a probe, and only an unanswered probe kills.
+  private checkLiveness = (): void => {
+    if (this.state !== 'open' || !this.pongSeen || document.visibilityState !== 'visible') return
+    const now = Date.now()
+    if (this.probeSentAt === 0) {
+      if (now - this.lastFrameAt > RECONNECT.deadMs) this.sendProbe()
+      return
+    }
+    if (now - this.probeSentAt >= RECONNECT.probeGraceMs) this.abandon()
+  }
+
+  private onWake = (): void => {
+    if (document.visibilityState !== 'visible') return
+    if (this.state === 'reconnecting' && this.retryTimer !== null) {
+      this._clearRetry() // skip the remaining backoff
+      void this.redial()
+    } else if (this.state === 'open') {
+      this.sendProbe()
+    }
+  }
+
+  // Drop a dead socket without waiting for its close (a half-open socket can sit in
+  // CLOSING for a long time) and dial a new one at once.
+  private abandon(): void {
+    const ws = this.ws
+    this.socketGen++
+    this._clearPing()
+    ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
+    ws.close()
+    this.resetBackoffIfHealthy()
+    this.setState('reconnecting')
+    void this.redial()
   }
 
   private handleMeta(payload: Uint8Array): void {
@@ -336,6 +401,12 @@ export class RelayClient {
   private teardown(): void {
     this._clearPing()
     this._clearRetry()
+    if (this.watchdog !== null) {
+      clearInterval(this.watchdog)
+      this.watchdog = null
+      window.removeEventListener('online', this.onWake)
+      document.removeEventListener('visibilitychange', this.onWake)
+    }
   }
 
   /** Send keyboard input to the PTY. Dropped (never queued) unless the socket is open. */
@@ -361,6 +432,7 @@ export class RelayClient {
       return
     }
     this.teardown()
+    this.socketGen++
     const ws = this.ws
     ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
     ws.close()
