@@ -370,6 +370,10 @@ func (a *App) RetryDaemon() error {
 		return errStartupTimeout // never run a second EnsureDaemon beside startup's
 	}
 	a.daemonMu.Lock()
+	if a.quitting.Load() { // after the lock: Quit All may have just stopped the daemon (review it3 IN-01)
+		a.daemonMu.Unlock()
+		return errors.New("quitting")
+	}
 	err := a.ensure()(daemon.DefaultSocketPath())
 	if err == nil {
 		a.respawnAttempts = 0

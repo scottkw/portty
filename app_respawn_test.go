@@ -272,6 +272,22 @@ func TestRespawnDaemon_QuittingSkipsEnsure(t *testing.T) {
 	}
 }
 
+// Review it3 IN-01: a Retry that lands after Quit All's shutdown never spawns
+// a daemon that would outlive the app.
+func TestRetryDaemon_QuittingSkipsEnsure(t *testing.T) {
+	respawnHome(t)
+	rec := &respawnEnsures{}
+	app := &App{startupDone: closedChan(), ensureDaemonFunc: rec.ensure}
+	app.quitting.Store(true)
+
+	if err := app.RetryDaemon(); err == nil {
+		t.Error("RetryDaemon = nil while quitting; want an error")
+	}
+	if rec.calls() != 0 {
+		t.Fatal("ensure ran while quitting")
+	}
+}
+
 // IN-08: Retry's write of the daemon error and init's read of it race unless
 // they are synchronized (run with -race).
 func TestDaemonError_RetryAndReadConcurrently(t *testing.T) {
