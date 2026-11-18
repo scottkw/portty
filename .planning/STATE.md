@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: verifying
-stopped_at: Completed 05-12-PLAN.md
-last_updated: "2026-11-18T05:21:19.396Z"
+stopped_at: Completed 05-13-PLAN.md
+last_updated: "2026-11-18T06:03:37.185Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: c19565b13ef6ce90d97c8185a7cef68f293273e8
+state_head: f1b95d7d19ab76cd371c3ac42a5187149044963d
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 56
-  completed_plans: 53
+  completed_plans: 54
   percent: 17
 ---
 
@@ -96,6 +96,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 05 P10 | 16min | 3 tasks | 7 files |
 | Phase 5 P11 | 6min | 2 tasks | 5 files |
 | Phase 5 P12 | 40min | 3 tasks | 8 files |
+| Phase 05 P13 | 39min | 4 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -222,6 +223,9 @@ Recent decisions affecting current work:
 - [Phase 5]: 05-11: Pin Go toolchain go1.26.11 (go.mod toolchain line + build.sh GOTOOLCHAIN export + //go:build go1.27 guard in package main); tailscale.com v1.98.3 JSON breaks on Go 1.27 and GOTOOLCHAIN=auto never downgrades. Remove guard and pin together after TestTailscaleJSON_FormatTagCanary passes on the new Go
 - [Phase 5]: 05-12: guest resets and host grid changes go through xterm's write queue (RIS write, resize inside an empty write's callback), never the synchronous reset()/resize()
 - [Phase 5]: 05-12: guest scale fits the container content box; guest element width = max(contentW / scale, grid width) so xterm's scrollbar sits at the pane edge
+- [Phase 05]: 05-13: Go wake/network detector reaches guest views as Wails system:wake, bridged in App.tsx to window 'portty:wake'; RelayClient never imports the Wails runtime
+- [Phase 05]: 05-13: a system wake redials even in a hidden window and restarts the backoff (attempt = 0); one wake action per 5 s across the Wails event and the browser's watchdog tick gap
+- [Phase 05]: 05-13 (folded todo): peer poll every 5 s while visible, 30 s while hidden, immediate on focus/visible/wake, one fan-out at a time
 
 ### Pending Todos
 
@@ -290,6 +294,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-18T05:21:17.883Z
-Stopped at: Completed 05-12-PLAN.md
+Last session: 2026-11-18T06:03:35.649Z
+Stopped at: Completed 05-13-PLAN.md
 Resume file: None
