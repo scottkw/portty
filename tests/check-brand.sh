@@ -8,6 +8,7 @@
 #   - the VM-only vmpreview build tag in .github, build.sh or scripts,
 #     tracked or untracked: release builds must never carry
 #     the fake Tailscale used for the Tart VM GUI check    (SHAR-01)
+#     or the fake update feed of the M-92 VM update checks (UPD)
 # Every pattern spells its word with one letter in a bracket class, so the
 # pattern never matches its own text and this script never flags itself.
 #
