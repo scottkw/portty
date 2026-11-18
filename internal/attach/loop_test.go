@@ -309,7 +309,8 @@ func TestRun_InputWhileDisconnectedNeverSent(t *testing.T) {
 	kick := make(chan struct{})
 	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
 		if i == 0 {
-			go f.pump(i, c, nil) //nolint:errcheck
+			writeFrames(c, output("READY")) // the host answered: connected
+			go f.pump(i, c, nil)            //nolint:errcheck
 			<-kick
 			c.Close(websocket.StatusGoingAway, "") //nolint:errcheck
 			return
@@ -326,6 +327,7 @@ func TestRun_InputWhileDisconnectedNeverSent(t *testing.T) {
 		return VerdictOK
 	}
 	r := startRun(t, f, RunOptions{Timing: fast, Reauth: reauth})
+	r.ready(t)
 	r.typeIn(t, "LIVE")
 	waitFor(t, "LIVE on the first connection", func() bool { return f.input(0) == "LIVE" })
 	close(kick)
@@ -418,6 +420,43 @@ func TestRun_RefusedSocketKeepsResume(t *testing.T) {
 			t.Errorf("redial URLs = %q; want resume=100 on each", urls[1:4])
 			break
 		}
+	}
+	r.detach(t)
+}
+
+// WR-03: a socket is connected only once the host's first frame arrives. While
+// the daemon proxy is still dialing the peer, [reconnecting] stays up and
+// keystrokes are discarded, never queued for the shell.
+func TestRun_NotConnectedUntilFirstFrame(t *testing.T) {
+	sendGrid := make(chan struct{})
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		if i == 0 {
+			c.Close(websocket.StatusGoingAway, "") //nolint:errcheck
+			return
+		}
+		go f.pump(i, c, nil) //nolint:errcheck
+		// The proxy upgraded the socket and is still dialing the peer.
+		select {
+		case <-sendGrid:
+		case <-f.done:
+			return
+		}
+		writeFrames(c, relay.MakeResizeFrame(80, 24))
+		<-f.done
+	}, nil)
+	r := startRun(t, f, RunOptions{Timing: fast})
+	waitFor(t, "the redial accepted", func() bool { return f.accepts() >= 2 })
+	r.typeIn(t, "EARLY")
+	time.Sleep(50 * time.Millisecond)
+	if s := r.stateList(); len(s) != 1 || s[0] != "reconnecting" {
+		t.Errorf("states before the host's first frame = %q; want only reconnecting", s)
+	}
+	close(sendGrid)
+	waitFor(t, "connected", func() bool { s := r.stateList(); return len(s) == 2 && s[1] == "" })
+	r.typeIn(t, "FRESH")
+	waitFor(t, "FRESH on the second connection", func() bool { return strings.Contains(f.input(1), "FRESH") })
+	if got := f.input(1); strings.Contains(got, "EARLY") {
+		t.Errorf("keystrokes typed before the host answered reached the shell: %q", got)
 	}
 	r.detach(t)
 }

@@ -176,8 +176,9 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
   }
 
   const ws = (i: number) => MockWS.instances[i]
-  const open = (s: MockWS) => act(() => { s.readyState = 1; s.onopen?.() })
   const send = (s: MockWS, frame: Uint8Array) => act(() => { s.onmessage?.({ data: frame.buffer as ArrayBuffer }) })
+  // Upgraded and the host's first frame (its grid, sent at once on join) arrived: open (WR-03).
+  const open = (s: MockWS) => { act(() => { s.readyState = 1; s.onopen?.() }); send(s, new Uint8Array([0x02, 0, 80, 0, 24])) }
   const drop = (s: MockWS, code = 1006, reason = '') => act(() => { s.readyState = 3; s.onclose?.({ code, reason }) })
   const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
 

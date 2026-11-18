@@ -226,9 +226,11 @@ export class RelayClient {
     // Every handler ignores events from a socket that is no longer current.
     ws.onopen = () => {
       if (gen !== this.socketGen) return
-      this.openedAt = this.lastFrameAt = Date.now()
-      if (this.reconnect) this.setState('open')
-      this.callbacks.onOpen?.()
+      this.lastFrameAt = Date.now()
+      if (!this.reconnect) {
+        this.openedAt = this.lastFrameAt
+        this.callbacks.onOpen?.()
+      }
       this._clearPing()
       this.pingInterval = setInterval(() => {
         if (this.ws?.readyState === WebSocket.OPEN) {
@@ -241,6 +243,13 @@ export class RelayClient {
       if (gen !== this.socketGen) return
       this.lastFrameAt = Date.now()
       this.probeSentAt = 0
+      // WR-03: open means the host answered (its grid or replay meta comes at once on
+      // join), not the upgrade: the daemon proxy upgrades before it dials the peer.
+      if (this.reconnect && this.openedAt === 0) {
+        this.openedAt = this.lastFrameAt
+        this.setState('open')
+        this.callbacks.onOpen?.()
+      }
       this.handleFrame(parseServerFrame(new Uint8Array(event.data as ArrayBuffer)))
     }
 
@@ -451,8 +460,9 @@ export class RelayClient {
     }
   }
 
-  /** Send keyboard input to the PTY. Dropped (never queued) unless the socket is open. */
+  /** Send keyboard input to the PTY. Dropped (never queued) unless the connection is open. */
   sendInput(text: string): void {
+    if (this.reconnect && this.state !== 'open') return // T-05-14, WR-03
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(encodeInputFrame(text))
     }

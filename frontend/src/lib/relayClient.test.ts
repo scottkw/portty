@@ -546,6 +546,22 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     expect(ws(1).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(false)
   })
 
+  it('an upgraded socket is not open until the host sends a frame: input is dropped (WR-03)', async () => {
+    make()
+    upgrade(0) // the loopback proxy accepted and is still dialing the peer
+    client!.sendInput('ls\r')
+    expect(cbs.onStateChange).not.toHaveBeenCalledWith('open')
+    expect(ws(0).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(false)
+    drop(0, 1013, 'remote unreachable')
+    await advance(1000)
+    upgrade(1)
+    expect(cbs.onStateChange).toHaveBeenLastCalledWith('reconnecting') // banner stays up
+    send(1, grid)
+    expect(cbs.onStateChange).toHaveBeenLastCalledWith('open')
+    client!.sendInput('ls\r')
+    expect(ws(1).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(true)
+  })
+
   it('a socket the proxy accepts and then refuses keeps the resume offset (WR-02)', async () => {
     make()
     open(0)

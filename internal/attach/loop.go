@@ -100,11 +100,12 @@ type outputError struct{ error }
 var errSilent = errors.New("attach: no frame from the relay within the dead-after interval")
 
 type loop struct {
-	o         RunOptions
-	t         Timing
-	input     chan chunk
-	stdinErr  chan error
-	connected atomic.Bool
+	o            RunOptions
+	t            Timing
+	input        chan chunk
+	stdinErr     chan error
+	connected    atomic.Bool // the host's first frame arrived on the current socket
+	reconnecting bool        // last state shown was "reconnecting"; Run's goroutine only
 
 	// Stream state, owned by the current connection's frame reader and read by
 	// the gap only after that reader exited.
@@ -169,6 +170,7 @@ func (l *loop) readStdin(done <-chan struct{}) {
 }
 
 func (l *loop) state(s string) {
+	l.reconnecting = s != ""
 	if l.o.OnState != nil {
 		l.o.OnState(s)
 	}
@@ -179,14 +181,17 @@ func (l *loop) serve(ctx context.Context, conn *websocket.Conn) (err error, retr
 	conn.SetReadLimit(relay.ViewerReadLimit)
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	l.connected.Store(true)
 	defer l.connected.Store(false)
 
 	var lastFrame atomic.Int64 // wall clock (UnixNano): a Mac's sleep counts as silence
 	var ponged atomic.Bool
 	lastFrame.Store(time.Now().UnixNano())
 	readDone := make(chan error, 1)
-	go func() { readDone <- l.readFrames(cctx, conn, &lastFrame, &ponged) }()
+	// Connected means the host answered (WR-03): the daemon proxy upgrades the
+	// socket before it dials the peer, and the host sends its grid or replay
+	// meta at once on join. Until then keystrokes stay stale (T-05-14).
+	first := make(chan struct{})
+	go func() { readDone <- l.readFrames(cctx, conn, &lastFrame, &ponged, first) }()
 	if l.o.OnConnect != nil {
 		l.o.OnConnect(cctx, conn)
 	}
@@ -209,6 +214,11 @@ func (l *loop) serve(ctx context.Context, conn *websocket.Conn) (err error, retr
 
 	for {
 		select {
+		case <-first:
+			first = nil
+			if l.reconnecting {
+				l.state("")
+			}
 		case rerr := <-readDone:
 			conn.CloseNow()
 			return l.classify(rerr)
@@ -268,7 +278,8 @@ func (l *loop) classify(err error) (error, bool) {
 }
 
 // readFrames renders one connection's frames until its read fails.
-func (l *loop) readFrames(ctx context.Context, conn *websocket.Conn, lastFrame *atomic.Int64, ponged *atomic.Bool) error {
+// first is closed at the first frame, which also marks the loop connected.
+func (l *loop) readFrames(ctx context.Context, conn *websocket.Conn, lastFrame *atomic.Int64, ponged *atomic.Bool, first chan struct{}) error {
 	// The old offset stays valid until this socket starts its replay (WR-02): a
 	// socket the proxy accepts and then refuses rendered nothing.
 	sawReplay, full := false, false
@@ -278,6 +289,11 @@ func (l *loop) readFrames(ctx context.Context, conn *websocket.Conn, lastFrame *
 			return err
 		}
 		lastFrame.Store(time.Now().UnixNano())
+		if first != nil {
+			l.connected.Store(true) // before any output is shown, so typing at it is live
+			close(first)
+			first = nil
+		}
 		typ, payload, ferr := relay.ParseFrame(msg)
 		if ferr != nil {
 			continue
@@ -358,10 +374,7 @@ func (l *loop) reconnect(ctx context.Context, attempt *int) (*websocket.Conn, er
 			return nil, nil
 		case r := <-res:
 			cancel()
-			if r.conn != nil {
-				l.state("")
-			}
-			return r.conn, r.err
+			return r.conn, r.err // serve clears "reconnecting" at the host's first frame
 		}
 	}
 }
