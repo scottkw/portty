@@ -182,6 +182,10 @@ textarea {
 }
 
 .tab__label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -201,9 +205,29 @@ textarea {
 
 .tab__name {
   display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Remote tab: globe, "session · host" with the host dimmed; the ellipsis trims the host first. */
+.tab__remote-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.tab__host {
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
+
+/* One colour per Mac (sidebar peer rows and peer tabs); decorative, the host name says which Mac. */
+.peer-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
 }
 
 .tab__rename-input {
@@ -466,6 +490,15 @@ button.sidebar__row:hover:not([aria-current="page"]) {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+  color: var(--color-accent);
+}
+
+/* On the selected pill the accent icon would vanish into the accent fill. */
+.sidebar__row[aria-current="page"] .sidebar__row-icon {
+  color: inherit;
+}
+.sidebar__row[aria-current="page"] .peer-dot {
+  box-shadow: 0 0 0 1px var(--color-on-accent);
 }
 
 .sidebar__row-name {
@@ -535,6 +568,12 @@ button.sidebar__row:hover:not([aria-current="page"]) {
 .sidebar__dot--on {
   border-color: var(--color-status-on);
   background: var(--color-status-on);
+}
+
+/* A tab of this Mac is reconnecting; its aria-label and the banner say so in words. */
+.sidebar__dot--warn {
+  border-color: var(--color-status-warn);
+  background: var(--color-status-warn);
 }
 
 .sidebar__footer-text {
@@ -1680,7 +1719,15 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   --color-group-border: #E0E0E4;
   --color-pane-tab-selected: #E5E5EA;
   --color-status-on: #30D158;
+  --color-status-warn: #FF9F0A;
   --color-status-off: #8E8E93;
+  /* One colour per Mac (peerColorIndex): Apple teal, indigo, purple, pink, brown.
+     No green, orange or grey, so a Mac's dot never reads as a status dot. */
+  --color-peer-0: #30B0C7;
+  --color-peer-1: #5856D6;
+  --color-peer-2: #AF52DE;
+  --color-peer-3: #FF2D55;
+  --color-peer-4: #A2845E;
   --color-success-text: #1A7F37;
   --color-error-text: #C4161C;
   --color-destructive: #D70015;
@@ -1725,7 +1772,13 @@ html.is-inactive .sidebar__row[aria-current="page"] {
     --color-group-border: #3A3A3C;
     --color-pane-tab-selected: #333335;
     --color-status-on: #30D158;
+    --color-status-warn: #FF9F0A;
     --color-status-off: #8E8E93;
+    --color-peer-0: #40C8E0;
+    --color-peer-1: #5E5CE6;
+    --color-peer-2: #BF5AF2;
+    --color-peer-3: #FF375F;
+    --color-peer-4: #AC8E68;
     --color-success-text: #30D158;
     --color-error-text: #FF6961;
     --color-destructive: #D93025;

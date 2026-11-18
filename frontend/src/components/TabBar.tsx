@@ -2,11 +2,13 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  GlobeAltIcon,
   PlusIcon,
   SignalIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { SidebarToggleIcon } from './Sidebar'
+import { PeerDot, SidebarToggleIcon } from './Sidebar'
+import { peerTabParts } from '../lib/tabs'
 import { ContextMenu, isMenuKey, type ContextMenuItem } from './ContextMenu'
 import { InlineSessionName } from './InlineSessionName'
 
@@ -195,11 +197,12 @@ export function TabBar({
       <div className="tab-list" role="tablist" aria-label="Open sessions" ref={listRef}>
         {tabs.map((tab) => {
           const active = tab.id === activeId
+          const peer = peerTabParts(tab)
           return (
           <div
             key={tab.id}
             className={`tab${active ? ' tab--active' : ''}`}
-            title={tab.name}
+            title={peer ? `${peer.session} · ${peer.host}` : tab.name}
           >
             {editingId === tab.id ? (
               <InlineSessionName
@@ -232,12 +235,14 @@ export function TabBar({
                   setMenu({ tab, x: e.clientX, y: e.clientY, invoker: e.currentTarget })
                 }}
               >
+                {peer && <GlobeAltIcon className="tab__remote-icon" aria-hidden="true" />}
                 <span
                   className="tab__name"
                   onDoubleClick={webMode || !isLocal(tab) ? undefined : () => setEditingId(tab.id)}
                 >
-                  {tab.name}
+                  {peer ? <>{peer.session}<span className="tab__host"> · {peer.host}</span></> : tab.name}
                 </span>
+                {peer && tab.peerHost && <PeerDot hostname={tab.peerHost} />}
               </button>
             )}
             {/* Web share page: one static pill, no close (UI-SPEC "Web share page"). */}

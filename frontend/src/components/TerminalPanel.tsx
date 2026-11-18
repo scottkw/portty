@@ -115,6 +115,8 @@ interface TerminalPanelProps {
   beforeReconnect?: () => Promise<ReconnectVerdict>
   /** B5: the browser probe has failed for minutes; the reconnecting banner says the host can't be reached. */
   hostUnreachable?: boolean
+  /** The reconnecting banner showed (true) or hid (false); App ambers the peer's sidebar dot. Also false on unmount. */
+  onReconnectingChange?: (reconnecting: boolean) => void
 }
 
 /**
@@ -142,6 +144,7 @@ export function TerminalPanel({
   onShareStopped,
   beforeReconnect,
   hostUnreachable,
+  onReconnectingChange,
 }: TerminalPanelProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   // The relay onClose closure is built once at mount; read the latest callback through a ref.
@@ -149,6 +152,8 @@ export function TerminalPanel({
   onShareStoppedRef.current = onShareStopped
   const beforeReconnectRef = useRef(beforeReconnect)
   beforeReconnectRef.current = beforeReconnect
+  const onReconnectingChangeRef = useRef(onReconnectingChange)
+  onReconnectingChangeRef.current = onReconnectingChange
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   // POL-04: deferred theme ref — stashes the theme when the panel is hidden (isActive=false)
@@ -258,6 +263,12 @@ export function TerminalPanel({
     ended: false,
   })
   const [reconnecting, setReconnecting] = useState(false)
+  // The cleanup reports false when the banner hides and when the panel unmounts mid-reconnect.
+  useEffect(() => {
+    if (!reconnecting) return
+    onReconnectingChangeRef.current?.(true)
+    return () => onReconnectingChangeRef.current?.(false)
+  }, [reconnecting])
   const [findBarOpen, setFindBarOpen] = useState(false)
   // Phase 94 WR-01 / SC-4 — exit animation. While `findBarExiting` is true,
   // the FindBar receives an `exiting` prop that toggles the .find-bar--exiting

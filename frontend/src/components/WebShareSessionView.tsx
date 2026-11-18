@@ -53,6 +53,8 @@ export interface WebShareSessionViewProps {
   onShareStopped?: () => void
   /** Portty 05-05: App's pre-redial re-auth for peer tabs (remote only). */
   beforeReconnect?: () => Promise<ReconnectVerdict>
+  /** Passed through to TerminalPanel: the reconnecting banner shows (true) or hides (false). */
+  onReconnectingChange?: (reconnecting: boolean) => void
 }
 
 // Review it3 IN-02: AbortSignal.timeout is missing before Safari 16 / Chrome 103, and
@@ -87,6 +89,7 @@ export function WebShareSessionView({
   hostLabel,
   onShareStopped,
   beforeReconnect,
+  onReconnectingChange,
 }: WebShareSessionViewProps): React.ReactElement {
   // FIX-03 (plan 09) RC-A transport switch. When true, the terminal routes
   // through the daemon proxy (remote:true, wsURL undefined).
@@ -197,6 +200,7 @@ export function WebShareSessionView({
         onShareStopped={onShareStopped}
         beforeReconnect={useProxy ? beforeReconnect : probeShare}
         hostUnreachable={hostUnreachable}
+        onReconnectingChange={onReconnectingChange}
       />
     </div>
   )

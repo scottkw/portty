@@ -22,6 +22,20 @@ export function shortHost(hostname: string): string {
   return hostname.split('.')[0]
 }
 
+/** Palette size: style.css declares --color-peer-0 … --color-peer-4 in both token blocks. */
+export const PEER_COLOR_COUNT = 5
+
+/**
+ * One stable colour per Mac: FNV-1a of the lower-cased full hostname, so a Mac
+ * keeps its --color-peer-N across launches. Callers pass the full hostname
+ * (PeerGroup.key, Tab.peerHost), so the sidebar and the tabs agree.
+ */
+export function peerColorIndex(hostname: string): number {
+  let h = 0x811c9dc5
+  for (const ch of hostname.toLowerCase()) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193)
+  return (h >>> 0) % PEER_COLOR_COUNT
+}
+
 export function peerView(tailscaleOff: boolean, loaded: boolean, peers: RemotePeerSessions[]): PeerView {
   if (tailscaleOff) return { kind: 'off' }
   if (!loaded) return { kind: 'loading' }

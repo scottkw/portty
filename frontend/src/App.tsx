@@ -92,6 +92,8 @@ function App(): React.ReactElement {
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   // Hide/Show Sidebar (button, toolbar button, View menu ⌃⌘S). Not persisted.
   const [sidebarHidden, setSidebarHidden] = useState(false)
+  // Full hostname of the peer whose (one mounted) tab shows the reconnecting banner; its sidebar dot turns amber.
+  const [reconnectingHost, setReconnectingHost] = useState<string | null>(null)
   // Session id the End Session… confirm is open for (TERM-03); null = closed.
   const [endSessionTarget, setEndSessionTarget] = useState<string | null>(null)
   // Portty 04-05: the sidebar menu's last Share / Stop Sharing failure (UI-SPEC
@@ -964,6 +966,7 @@ function App(): React.ReactElement {
         onShareToggle={(id, shared) => void toggleShareFromMenu(id, shared)}
         onNewSession={() => setShowNewSessionModal(true)}
         hideNewSessionRow={showEmptyState}
+        reconnectingHost={reconnectingHost}
       />
       )}
       <div className="app__content">
@@ -1125,6 +1128,7 @@ function App(): React.ReactElement {
                 hostLabel={peerHost ? shortHost(peerHost) : (mode === 'web' ? webHost : undefined)}
                 onShareStopped={peerHost ? () => dropPeerSession(peerHost, wsSessionId) : undefined}
                 beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId) : undefined}
+                onReconnectingChange={peerHost ? (on) => setReconnectingHost((h) => (on ? peerHost : h === peerHost ? null : h)) : undefined}
               />
               </ErrorBoundary>
             </div>

@@ -29,6 +29,17 @@ export function tabLabel(tab: { name: string; sessionId: string; type?: string }
   return sessions.find((s) => s.id === tab.sessionId)?.name || tab.name
 }
 
+/**
+ * A peer tab's '<host> › <session>' name split for display ("session · host"),
+ * or null for any other tab. The host is a single DNS label, so the first
+ * separator is the right one even if the session name contains one.
+ */
+export function peerTabParts(tab: { name: string; type?: string; peerHost?: string }): { host: string; session: string } | null {
+  if (tab.type !== 'web-session' || !tab.peerHost) return null
+  const i = tab.name.indexOf(' › ')
+  return i === -1 ? null : { host: tab.name.slice(0, i), session: tab.name.slice(i + 3) }
+}
+
 /** A copy of `sessions` with session `id` renamed. */
 export function renameInList<T extends Named>(sessions: T[], id: string, name: string): T[] {
   return sessions.map((s) => (s.id === id ? { ...s, name } : s))
