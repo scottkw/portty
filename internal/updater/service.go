@@ -119,6 +119,9 @@ func (s *Service) Check(ctx context.Context) (Status, error) {
 		return s.set(prev), &Error{Kind: "check", Text: text}
 	case !found:
 		log.Printf("update: no published release")
+	case newer > 0 && prev.State == "revealed" && rel == s.rel:
+		// Same release as the DMG already verified and revealed: stay revealed so Download shows it again.
+		return s.set(prev), nil
 	case newer > 0:
 		log.Printf("update: %s available", rel.Version)
 		s.rel = rel

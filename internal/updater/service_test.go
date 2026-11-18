@@ -477,6 +477,14 @@ func TestService_DownloadAfterRevealRevealsAgain(t *testing.T) {
 		t.Errorf("kept DMG: %v", err)
 	}
 
+	// A check that finds the same release keeps revealed, so Download still reuses the kept DMG.
+	if st, err := f.svc.Check(context.Background()); err != nil || st.State != "revealed" {
+		t.Fatalf("Check after reveal = %+v, %v; want revealed", st, err)
+	}
+	if st, err := f.svc.Download(); err != nil || st.State != "revealed" || f.gh.assets.Load() != 1 {
+		t.Errorf("Download after Check = %+v, %v, %d asset requests; want reveal of the kept DMG", st, err, f.gh.assets.Load())
+	}
+
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
