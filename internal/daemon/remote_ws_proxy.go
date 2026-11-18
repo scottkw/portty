@@ -68,8 +68,10 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 	//    allowlist (T-134-06-01): the inbound conn is still loopback-only, so the
 	//    same allowlist handleSession uses applies here. WS upgrades are not
 	//    CORS-preflighted, so no cross-origin CORS wrapper is involved (Pattern 3).
-	// The client side keeps coder/websocket's 32 KiB read limit: it only carries
-	// viewer input, which the host's share server limits to 32 KiB anyway.
+	// The client side keeps coder/websocket's default 32768-byte read limit as a
+	// DoS guard: a larger frame closes the viewer socket. Every sender
+	// (relayClient.ts encodeInputFrames, internal/attach stdin reads) splits
+	// input into frames of at most relay.MaxInputPayload bytes plus the type byte.
 	clientConn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: relay.LoopbackOriginPatterns(r.Host),
 	})

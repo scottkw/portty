@@ -69,7 +69,7 @@ func AttachSession(ctx context.Context, conn *websocket.Conn, stdin io.Reader, s
 // StdinPump reads from r, scans for the detach key, and forwards input to the
 // relay via MakeInputFrame. It returns nil on clean detach.
 func StdinPump(ctx context.Context, conn *websocket.Conn, r io.Reader, detachKey byte) error {
-	buf := make([]byte, 32*1024)
+	buf := make([]byte, relay.MaxInputPayload) // one read becomes one frame under the relay's read limit
 	for {
 		select {
 		case <-ctx.Done():

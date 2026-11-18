@@ -311,10 +311,10 @@ func TestRemoteSessionWS_InputFrameAtLimitForwarded(t *testing.T) {
 }
 
 // HARD-02: a frame over the limit closes the viewer socket and never reaches
-// the peer (the echo peer would send it back).
+// the peer. Status 1009 from the proxy pins whose limit tripped: an echoed
+// frame would instead fail the viewer's own read with a non-close error.
 func TestRemoteSessionWS_InputFrameOverLimitClosed(t *testing.T) {
 	conn := echoProxyConn(t)
-	conn.SetReadLimit(1 << 20) // so an echoed over-limit frame would be seen, not refused here
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	frame := relay.MakeInputFrame([]byte(strings.Repeat("a", relay.MaxInputPayload+1)))
