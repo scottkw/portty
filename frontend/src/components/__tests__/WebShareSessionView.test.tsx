@@ -208,6 +208,7 @@ describe('WebShareSessionView — pre-redial check (SHAR-07)', () => {
 
   it.each([
     [200, { kind: 'ok' }],
+    [401, { kind: 'stop', reason: 'share-stopped' }],
     [404, { kind: 'stop', reason: 'ended' }],
     [500, { kind: 'retry' }],
   ])('browser path: status %i resolves %o', async (status, verdict) => {

@@ -30,7 +30,7 @@ import { InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
  * below, regardless of what `reason` contains.
  */
 export interface SessionEndedBannerProps {
-  /** Renders the Dismiss button when given; kind 'reconnecting' never has one. */
+  /** Renders the Dismiss button when given; kinds 'reconnecting' and 'unreachable' never have one. */
   onDismiss?: () => void
   /**
    * Raw WebSocket CloseEvent.reason, if any. Used only for logging/
@@ -42,10 +42,11 @@ export interface SessionEndedBannerProps {
    * Portty 04-06: 'share-stopped' when the close reason was the share-stopped
    * constant (the host turned Share off). Chosen by the caller from the
    * constant, never from wire text. Phase 5 (SHAR-07): 'reconnecting' while a
-   * dropped guest socket is being replaced.
+   * dropped guest socket is being replaced; B5: 'unreachable' once the browser's
+   * probes have failed for minutes (still reconnecting, never final).
    */
-  kind?: 'ended' | 'share-stopped' | 'reconnecting'
-  /** Local host label (peer tab or cap-verified session info) for 'share-stopped'. */
+  kind?: 'ended' | 'share-stopped' | 'reconnecting' | 'unreachable'
+  /** Local host label (peer tab or cap-verified session info) for 'share-stopped' and 'unreachable'. */
   host?: string
 }
 
@@ -72,11 +73,13 @@ export function SessionEndedBanner({
       <span className="banner__message">
         {kind === 'reconnecting'
           ? 'Connection lost — reconnecting…'
-          : kind === 'share-stopped'
-            ? (host ? `${host} stopped sharing this session.` : 'This session is no longer shared.')
-            : 'Session ended — the owner stopped this session.'}
+          : kind === 'unreachable'
+            ? `Can't reach ${host || 'the host Mac'}. The session may have ended or the Mac may be asleep. Still retrying…`
+            : kind === 'share-stopped'
+              ? (host ? `${host} stopped sharing this session.` : 'This session is no longer shared.')
+              : 'Session ended — the owner stopped this session.'}
       </span>
-      {onDismiss && kind !== 'reconnecting' && (
+      {onDismiss && kind !== 'reconnecting' && kind !== 'unreachable' && (
         <button
           type="button"
           className="banner__dismiss"

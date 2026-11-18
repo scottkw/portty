@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../wailsjs/go/models'
 import { TerminalPanel } from './TerminalPanel'
@@ -57,6 +57,10 @@ export interface WebShareSessionViewProps {
 
 // Review it3 IN-02: AbortSignal.timeout is missing before Safari 16 / Chrome 103, and
 // calling it there would throw every probe into a retry, forever.
+// B5: a browser cannot tell a refused probe (host daemon dead) from an unreachable or
+// sleeping host, so it never stops on one; after this long failing, the banner says so.
+const LONG_OUTAGE_MS = 120_000
+
 function timeoutSignal(ms: number): AbortSignal {
   if (typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms)
   const ctrl = new AbortController()
@@ -106,9 +110,24 @@ export function WebShareSessionView({
   // Portty 05-05 (SHAR-07): browser path, before each redial ask the share server
   // whether the cap still works, so a revoked link stops instead of retrying.
   // WR-06: a probe to a sleeping host times out into a retry, never a hang.
+  // B5: failingSince is the first failed fetch since the last answer; any HTTP answer resets it.
+  const failingSince = useRef<number | null>(null)
+  const [hostUnreachable, setHostUnreachable] = useState(false)
   const probeShare = (): Promise<ReconnectVerdict> =>
     fetch(`${apiBaseURL}/api/sessions/${encodeURIComponent(sessionId)}/info?cap=${encodeURIComponent(capToken)}`, { cache: 'no-store', signal: timeoutSignal(10_000) })
-      .then((res) => shareInfoVerdict(res.status), () => ({ kind: 'retry' }))
+      .then(
+        (res) => {
+          failingSince.current = null
+          setHostUnreachable(false)
+          return shareInfoVerdict(res.status)
+        },
+        () => {
+          const now = Date.now()
+          failingSince.current ??= now
+          if (now - failingSince.current >= LONG_OUTAGE_MS) setHostUnreachable(true)
+          return { kind: 'retry' }
+        },
+      )
 
   // Phase 168 FIX-01 (#112) — web-guest plugin-config self-fetch + SSE
   // hot-swap. Restores the config that only ever arrived via a Wails
@@ -177,6 +196,7 @@ export function WebShareSessionView({
         hostLabel={hostLabel}
         onShareStopped={onShareStopped}
         beforeReconnect={useProxy ? beforeReconnect : probeShare}
+        hostUnreachable={hostUnreachable}
       />
     </div>
   )

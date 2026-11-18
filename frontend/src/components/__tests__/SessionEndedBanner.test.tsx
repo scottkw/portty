@@ -135,4 +135,19 @@ describe('SessionEndedBanner', () => {
     expect(container.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite')
     expect(container.querySelector('[aria-label="Dismiss"]')).toBeNull()
   })
+
+  // B5: the browser's probes have failed for minutes; still retrying, never final.
+  it.each([
+    ['office-air', "Can't reach office-air. The session may have ended or the Mac may be asleep. Still retrying…"],
+    [undefined, "Can't reach the host Mac. The session may have ended or the Mac may be asleep. Still retrying…"],
+  ])("kind 'unreachable' with host %s renders the long-outage copy and no Dismiss button", (host, text) => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    flushSync(() => {
+      root!.render(React.createElement(SessionEndedBanner, { kind: 'unreachable', host, onDismiss: vi.fn() }))
+    })
+    expect(container.textContent).toBe(text)
+    expect(container.querySelector('[aria-label="Dismiss"]')).toBeNull()
+  })
 })

@@ -113,6 +113,8 @@ interface TerminalPanelProps {
    * redial straight away.
    */
   beforeReconnect?: () => Promise<ReconnectVerdict>
+  /** B5: the browser probe has failed for minutes; the reconnecting banner says the host can't be reached. */
+  hostUnreachable?: boolean
 }
 
 /**
@@ -139,6 +141,7 @@ export function TerminalPanel({
   hostLabel,
   onShareStopped,
   beforeReconnect,
+  hostUnreachable,
 }: TerminalPanelProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   // The relay onClose closure is built once at mount; read the latest callback through a ref.
@@ -1059,7 +1062,7 @@ export function TerminalPanel({
         />
       )}
       {isGuestRef.current && reconnecting && !sessionEnded.ended && (
-        <SessionEndedBanner kind="reconnecting" />
+        <SessionEndedBanner kind={hostUnreachable ? 'unreachable' : 'reconnecting'} host={hostLabel} />
       )}
       {(findBarOpen || findBarExiting) && pluginConfig?.search && (
         <FindBar
