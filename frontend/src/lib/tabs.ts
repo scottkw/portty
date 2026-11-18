@@ -5,13 +5,16 @@
 /**
  * The tab to activate after `closingId` closes. Closing a background tab keeps
  * the active one; closing the active tab moves right, else left, else null
- * (the empty state).
+ * (the empty state). It never returns closingId: with duplicate ids it once
+ * picked the other copy, which was removed too, and that blanked the window.
  */
 export function nextActiveTabId(tabs: { id: string }[], closingId: string, activeId: string | null): string | null {
   if (closingId !== activeId) return activeId
   const idx = tabs.findIndex((t) => t.id === closingId)
   if (idx === -1) return activeId
-  return (tabs[idx + 1] ?? tabs[idx - 1])?.id ?? null
+  const right = tabs.slice(idx + 1).find((t) => t.id !== closingId)
+  const left = tabs.slice(0, idx).reverse().find((t) => t.id !== closingId)
+  return (right ?? left)?.id ?? null
 }
 
 type Named = { id: string; name: string }

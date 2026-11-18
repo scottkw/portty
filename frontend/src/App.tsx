@@ -49,6 +49,7 @@ import type { TailscaleHealth } from './lib/tailscale'
 import { WebShareSessionView } from './components/WebShareSessionView'
 import { LinkNoLongerWorks } from './components/LinkNoLongerWorks'
 import { TerminalPanel } from './components/TerminalPanel'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { UpdateBanner } from './components/UpdateBanner'
 import type { UpdateInfo } from './components/UpdateBanner'
 import { WebGLRecoveryBanner } from './components/WebGLRecoveryBanner'
@@ -1030,6 +1031,8 @@ function App(): React.ReactElement {
             self-fetch (isWebGuest) and apply the wrong peer's config. */}
         {activeId !== null && activeId.startsWith('__websession__') && (() => {
           const activeWebTab = tabs.find((t) => t.id === activeId)
+          // Portty 05-09: never fall back to window.location.origin on the desktop (wails://, the WebSocket throws).
+          if (!activeWebTab && mode !== 'web') return null
           const isRemoteWebTab = activeWebTab?.baseURL !== undefined
           const wsSessionId = activeWebTab?.sessionId ?? webParams.sessionId ?? activeId.slice('__websession__'.length)
           const wsCapToken = isRemoteWebTab ? (activeWebTab?.capToken ?? '') : (webParams.capToken ?? '')
@@ -1061,6 +1064,7 @@ function App(): React.ReactElement {
                   plugin-config useState) when the active tab switches
                   to a different remote session; the cap too, so a
                   reconnect after a re-share dials afresh (WR-06). */}
+              <ErrorBoundary label="web-session" resetKey={activeId}>
               <WebShareSessionView
                 key={`${wsSessionId}:${wsCapToken}`}
                 sessionId={wsSessionId}
@@ -1077,6 +1081,7 @@ function App(): React.ReactElement {
                 onShareStopped={peerHost ? () => dropPeerSession(peerHost, wsSessionId) : undefined}
                 beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId) : undefined}
               />
+              </ErrorBoundary>
             </div>
           )
         })()}
@@ -1124,6 +1129,7 @@ function App(): React.ReactElement {
                 className="terminal-wrapper"
                 style={{ display: isActive ? 'flex' : 'none' }}
               >
+                <ErrorBoundary label="terminal">
                 <TerminalPanel
                   sessionId={tab.sessionId}
                   isActive={isActive}
@@ -1139,6 +1145,7 @@ function App(): React.ReactElement {
                   onRegisterSaver={handleRegisterSaver}
                   onProgressChange={handleProgressChange}
                 />
+                </ErrorBoundary>
               </div>
             )
           })}
