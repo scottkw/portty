@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: verifying
-stopped_at: Completed 05-16-PLAN.md
-last_updated: "2026-11-18T07:49:37.526Z"
+stopped_at: Completed 05-15-PLAN.md
+last_updated: "2026-11-18T07:57:35.948Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: e0ad123471eec4eccfd5c58eaa4543636ccd1bb2
+state_head: 8dd047e059986785cd3dff577b7fe144a9538615
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 57
-  completed_plans: 56
+  completed_plans: 57
   percent: 17
 ---
 
@@ -99,6 +99,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 05 P13 | 39min | 4 tasks | 10 files |
 | Phase 05 P14 | 58min | 2 tasks | 2 files |
 | Phase 05 P16 | 31min | 2 tasks | 7 files |
+| Phase 05 P15 | 20min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -232,6 +233,7 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-14: ECONNREFUSED question answered as matrix row R9 (PASS): no transient condition made the host refuse, only a real host-daemon stop or reboot did
 - [Phase 05]: 05-16: viewing-Mac daemon respawns in-process from the GUI tray poller (serialized, 10 s to 2 min backoff, daemon:error on the 3rd attempt) and the portty attach re-auth; no launchd agent
 - [Phase 05]: 05-16: the NAV-01 session poll refreshes relayPort (only after init, never to 0) so new local tabs reach a respawned daemon
+- [Phase 05]: 05-15: TESTING.md reconciled for 05-08..05-16 (Go 123, vitest 86, total 217); Go commands run with GOTOOLCHAIN=go1.26.11; M-88..M-90 added; five gap-source todos completed
 
 ### Pending Todos
 
@@ -301,6 +303,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-18T07:49:36.034Z
-Stopped at: Completed 05-16-PLAN.md
+Last session: 2026-11-18T07:57:34.417Z
+Stopped at: Completed 05-15-PLAN.md
 Resume file: None
