@@ -72,12 +72,19 @@ func (s *Service) Status() Status {
 
 func busy(state string) bool { return state == "downloading" || state == "verifying" }
 
-// Check asks GitHub for the latest release. While a download runs it returns the status at once.
+// checkTimeout bounds one Check. It starts once the Check holds checkMu, so a check queued behind
+// another still gets the whole budget.
+var checkTimeout = 30 * time.Second
+
+// Check asks GitHub for the latest release, within checkTimeout of getting its turn. While a
+// download runs it returns the status at once.
 // A failure, or a newer release without an installable DMG yet, restores the previous status and
 // returns *Error kind check.
 func (s *Service) Check(ctx context.Context) (Status, error) {
 	s.checkMu.Lock()
 	defer s.checkMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
 	s.mu.Lock()
 	if busy(s.st.State) {
 		defer s.mu.Unlock()

@@ -333,6 +333,49 @@ func TestService_CheckSerialized(t *testing.T) {
 	}
 }
 
+// IN-03: a Check queued behind a slow one gets its whole budget once it has its turn, not what the
+// first one left.
+func TestService_CheckQueuedGetsOwnBudget(t *testing.T) {
+	old := checkTimeout
+	checkTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { checkTimeout = old })
+	f := newSvc(t)
+	f.gh.set(f.gh.rel("9.9.9"), 0)
+	entered, release := make(chan struct{}, 1), make(chan struct{})
+	t.Cleanup(func() { close(release) }) // runs before the server closes
+	var first atomic.Bool
+	f.gh.onLatest = func() {
+		if first.CompareAndSwap(false, true) {
+			entered <- struct{}{}
+			<-release // the first Check runs out its budget here
+		}
+	}
+	firstErr := make(chan error, 1)
+	go func() { _, err := f.svc.Check(context.Background()); firstErr <- err }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first Check never reached the server")
+	}
+	type result struct {
+		st  Status
+		err error
+	}
+	queued := make(chan result, 1)
+	go func() { st, err := f.svc.Check(context.Background()); queued <- result{st, err} }() // waits about the whole first budget
+	select {
+	case r := <-queued:
+		if r.err != nil || r.st.State != "available" {
+			t.Errorf("queued Check = %+v, %v; want available on its own budget", r.st, r.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the queued Check never returned (the first Check is not bounded)")
+	}
+	if err := <-firstErr; err == nil {
+		t.Error("the first Check did not time out")
+	}
+}
+
 // available checks the fake's v9.9.9 so the service is ready to Download, then clears the emits.
 func (f svcFix) available(t *testing.T) {
 	t.Helper()

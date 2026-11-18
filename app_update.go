@@ -97,9 +97,7 @@ func (a *App) runUpdateLoop(ctx context.Context) {
 // autoCheck runs one automatic check and reports whether it completed (200, 304 or nothing
 // published). Failures only log, in Service.Check.
 func (a *App) autoCheck(ctx context.Context) bool {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	st, err := a.updates.Check(ctx)
+	st, err := a.updates.Check(ctx) // Check bounds itself once it has its turn
 	if err != nil {
 		return false
 	}
@@ -169,9 +167,7 @@ func (a *App) checkForUpdatesManually() {
 		a.alert("This build doesn't check for updates.", "Only release builds of Portty check GitHub for new versions.")
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	st, err := a.updates.Check(ctx)
-	cancel()
+	st, err := a.updates.Check(context.Background()) // its own budget starts after any running check
 	switch {
 	case err != nil:
 		a.alert("Couldn't check for updates.", err.Error())
