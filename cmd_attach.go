@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -111,7 +110,7 @@ func attachLocal(client *daemon.DaemonClient, session daemon.SessionInfo, opts a
 	if createdAt.IsZero() {
 		createdAt = time.Now()
 	}
-	return runAttach(u.String(), session.Name, session.Hostname, createdAt, opts, false)
+	return runAttach(u.String(), session.Name, session.Hostname, createdAt, opts, nil)
 }
 
 // attachRemote connects to a session shared from another Mac. The local daemon
@@ -145,7 +144,47 @@ func attachRemote(client *daemon.DaemonClient, host, session string, opts attach
 	if err != nil {
 		return fmt.Errorf("portty: %w", err)
 	}
-	return runAttach(remoteRelayURL(port, res.SessionID), res.Name, res.Host, time.Now(), opts, true)
+	sid := res.SessionID
+	target := &remoteTarget{
+		url: func() string { return remoteRelayURL(port, sid) },
+		// Before each redial: pick up a restarted daemon's port, then re-run the
+		// WhoIs- and Share-checked connect, which refills the daemon's cap.
+		reauth: func(context.Context) attach.Verdict {
+			p, err := client.GetRelayPort()
+			if err != nil {
+				return attach.VerdictRetry
+			}
+			_, err = client.ConnectPeer(host, sid)
+			v := peerVerdict(err)
+			if v == attach.VerdictOK {
+				port = p
+			}
+			return v
+		},
+	}
+	return runAttach(target.url(), res.Name, res.Host, time.Now(), opts, target)
+}
+
+// remoteTarget is how runAttach redials a remote session: the proxy URL (the
+// relay port can change when the daemon restarts) and the pre-redial re-auth.
+type remoteTarget struct {
+	url    func() string
+	reauth func(context.Context) attach.Verdict
+}
+
+// peerVerdict maps a re-auth ConnectPeer result to the loop's next step, as
+// the GUI's peerConnectVerdict does: a host that stopped sharing, lost the
+// session or refuses us ends the attach; anything else is worth a retry.
+func peerVerdict(err error) attach.Verdict {
+	var pe *daemon.PeerConnectError
+	switch {
+	case err == nil:
+		return attach.VerdictOK
+	case errors.As(err, &pe) && (pe.Code == daemon.PeerErrNotSharing || pe.Code == daemon.PeerErrNoSuchSession || pe.Code == daemon.PeerErrForbidden):
+		return attach.VerdictShareStopped
+	default:
+		return attach.VerdictRetry
+	}
 }
 
 // peerDisplayHost prefers the daemon's MagicDNS short name over what was typed.
@@ -224,10 +263,11 @@ func remoteAttachEnd(err error, host, name string) (msg string, revoked bool) {
 	return "", false
 }
 
-// runAttach dials wsURL and runs the interactive attach loop with the banner or
-// status bar. remote turns on the connection-state watcher and the
-// stopped-sharing exit.
-func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpts, remote bool) error {
+// runAttach dials wsURL and runs the interactive attach with the banner or
+// status bar. A remote target reconnects on its own (attach.Run) and ends with
+// the stopped-sharing message; a local attach (remote nil) keeps one
+// connection: a dropped local relay means the daemon and its sessions died.
+func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpts, remote *remoteTarget) error {
 	// Create signal context that cancels on SIGTERM or SIGHUP.
 	// Do NOT catch SIGINT — in raw mode Ctrl-C is byte 0x03, not a signal.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGHUP)
@@ -241,17 +281,18 @@ func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpt
 
 	// Wrap stdout in a LockedWriter to serialize PTY output and bar draws.
 	stdout := attach.NewLockedWriter(os.Stdout)
+	stdoutTTY := term.IsTerminal(int(os.Stdout.Fd()))
 
 	// Phase 117 / PAPER-02: clear the local terminal so the attached session
 	// renders from a clean canvas. Pure ANSI: CSI 2 J + CSI H. Only emitted when
 	// stdout is a TTY — non-TTY callers get the one-shot banner on stderr instead.
-	if term.IsTerminal(int(os.Stdout.Fd())) {
+	if stdoutTTY {
 		_, _ = stdout.Write([]byte("\x1b[2J\x1b[H"))
 	}
 
 	// Create status bar if stdout is a TTY (SB-03).
 	var bar *statusbar.Bar
-	if term.IsTerminal(int(os.Stdout.Fd())) {
+	if stdoutTTY {
 		pos := statusbar.Bottom
 		if opts.statusTop {
 			pos = statusbar.Top
@@ -277,50 +318,39 @@ func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpt
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState) //nolint:errcheck
 
-	// Send initial resize so PTY dimensions match the local terminal.
-	cols, rows, err := term.GetSize(int(os.Stdin.Fd()))
-	if err == nil {
-		frame := attach.MakeClientResizeFrame(uint16(cols), uint16(rows))
-		_ = conn.Write(ctx, websocket.MessageBinary, frame)
-	}
-
-	// Start platform-specific SIGWINCH watcher (no-op on Windows).
-	watchResize(ctx, conn)
-
-	// SB-05: connection state watcher for remote sessions.
-	// Sets "reconnecting" if no frame received for >5s.
-	var onFrame func()
-	if remote && bar != nil {
-		var mu sync.Mutex
-		var lastFrame time.Time
-		onFrame = func() {
-			mu.Lock()
-			lastFrame = time.Now()
-			mu.Unlock()
-			bar.SetConnectionState("")
+	// Initial resize so PTY dimensions match the local terminal, then the
+	// platform-specific SIGWINCH watcher (no-op on Windows). Remote attaches
+	// redo both on every connection.
+	onConnect := func(ctx context.Context, conn *websocket.Conn) {
+		if cols, rows, err := term.GetSize(int(os.Stdin.Fd())); err == nil {
+			_ = conn.Write(ctx, websocket.MessageBinary, attach.MakeClientResizeFrame(uint16(cols), uint16(rows)))
 		}
-		onFrame() // initialize with current time
-		go func() {
-			tick := time.NewTicker(time.Second)
-			defer tick.Stop()
-			for {
-				select {
-				case <-tick.C:
-					mu.Lock()
-					lf := lastFrame
-					mu.Unlock()
-					if time.Since(lf) > 5*time.Second {
-						bar.SetConnectionState("reconnecting")
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
+		watchResize(ctx, conn)
 	}
 
-	err = attach.AttachSession(ctx, conn, os.Stdin, stdout, opts.detachKey, bar, onFrame)
-	if msg, revoked := remoteAttachEnd(err, hostname, name); remote && revoked {
+	if remote == nil {
+		onConnect(ctx, conn)
+		err = attach.AttachSession(ctx, conn, os.Stdin, stdout, opts.detachKey, bar, nil)
+	} else {
+		// SB-05: the loop is the only source of [reconnecting] (UAT gap 1: the
+		// old five-second no-output watcher flagged every idle session).
+		var onState func(string)
+		if bar != nil {
+			onState = bar.SetConnectionState
+		}
+		err = attach.Run(ctx, conn, attach.RunOptions{
+			URL:         remote.url,
+			Reauth:      remote.reauth,
+			OnConnect:   onConnect,
+			OnState:     onState,
+			Stdin:       os.Stdin,
+			Stdout:      stdout,
+			DetachKey:   opts.detachKey,
+			Bar:         bar,
+			ClearOnFull: stdoutTTY,
+		})
+	}
+	if msg, revoked := remoteAttachEnd(err, hostname, name); remote != nil && revoked {
 		// Restore the terminal and remove the bar before printing; the deferred
 		// calls would run after the message. Both are safe to repeat.
 		term.Restore(int(os.Stdin.Fd()), oldState) //nolint:errcheck
