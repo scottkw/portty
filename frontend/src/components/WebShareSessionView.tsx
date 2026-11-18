@@ -3,6 +3,7 @@ import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../wailsjs/go/models'
 import { TerminalPanel } from './TerminalPanel'
 import type { ReconnectVerdict } from '../lib/relayClient'
+import { shareInfoVerdict } from '../lib/closeReasons'
 import { DEFAULT_TERMINAL_FONT_SIZE, parseTerminalFont, terminalFontFamily } from '../lib/terminalFont'
 
 type PluginSettings = daemon.PluginSettings
@@ -93,6 +94,12 @@ export function WebShareSessionView({
   // leaves the terminal on ws://127.0.0.1:0).
   const wsURL = `${wsOrigin}/sessions/${encodeURIComponent(sessionId)}/ws?cap=${encodeURIComponent(capToken)}`
 
+  // Portty 05-05 (SHAR-07): browser path, before each redial ask the share server
+  // whether the cap still works, so a revoked link stops instead of retrying.
+  const probeShare = (): Promise<ReconnectVerdict> =>
+    fetch(`${apiBaseURL}/api/sessions/${encodeURIComponent(sessionId)}/info?cap=${encodeURIComponent(capToken)}`, { cache: 'no-store' })
+      .then((res) => shareInfoVerdict(res.status), () => ({ kind: 'retry' }))
+
   // Phase 168 FIX-01 (#112) — web-guest plugin-config self-fetch + SSE
   // hot-swap. Restores the config that only ever arrived via a Wails
   // `pluginConfig` prop pre-Phase-159; a web guest (or FIX-03's in-app
@@ -159,7 +166,7 @@ export function WebShareSessionView({
         wsURL={useProxy ? undefined : wsURL}
         hostLabel={hostLabel}
         onShareStopped={onShareStopped}
-        beforeReconnect={useProxy ? beforeReconnect : undefined}
+        beforeReconnect={useProxy ? beforeReconnect : probeShare}
       />
     </div>
   )

@@ -24,3 +24,13 @@ export function peerConnectVerdict(errorCode: string): ReconnectVerdict {
     ? { kind: 'stop', reason: 'share-stopped' }
     : { kind: 'retry' }
 }
+
+// Verdict for GET /api/sessions/{id}/info?cap= run before a browser redial. 401
+// and 403 mean the cap is revoked (never retried); 404 means the session is gone;
+// anything else (5xx, network error as 0) may heal, so retry.
+export function shareInfoVerdict(status: number): ReconnectVerdict {
+  if (status >= 200 && status < 300) return { kind: 'ok' }
+  if (status === 401 || status === 403) return { kind: 'stop', reason: 'share-stopped' }
+  if (status === 404) return { kind: 'stop', reason: 'ended' }
+  return { kind: 'retry' }
+}
