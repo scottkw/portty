@@ -1294,6 +1294,12 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 .banner__action:focus-visible {
   text-decoration: underline;
 }
+/* Portty 06-03: update download progress; tokens only (style gates). */
+.banner__progress {
+  width: 120px;
+  flex-shrink: 0;
+  accent-color: var(--color-accent);
+}
 .banner__dismiss {
   width: 24px;
   height: 24px;
