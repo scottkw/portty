@@ -22,11 +22,12 @@ import type { RemotePeerSessions } from '../../lib/remoteSession'
 import { mountApp, unmountApp, flush } from './appHarness'
 
 // Mount count and the last beforeReconnect verdict, shared with the hoisted stub.
-const stub = vi.hoisted(() => ({ mounts: 0, verdict: undefined as unknown }))
+const stub = vi.hoisted(() => ({ mounts: 0, verdict: undefined as unknown, throwFor: '' }))
 
 vi.mock('../WebShareSessionView', () => ({
   WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown> }) => {
     React.useEffect(() => { stub.mounts++ }, [])
+    if (p.sessionId === stub.throwFor) throw new SyntaxError(`bad URL wss://x/ws?cap=${p.capToken}`)
     return React.createElement('div', {
       'data-testid': 'web-session-view',
       'data-session': p.sessionId,
@@ -275,6 +276,29 @@ describe('App — peer tab re-authenticates before each redial (SHAR-07)', () =>
   })
 })
 
+// Portty 05-09: a crashing pane must leave the sidebar and the tab bar alive.
+describe('App — a crashing remote pane is contained (SHAR-07)', () => {
+  afterEach(async () => { stub.throwFor = ''; await unmountApp(); vi.restoreAllMocks(); vi.clearAllMocks() })
+
+  it('the pane shows the fixed fallback, the sidebar and tab bar stay, and activating another tab clears it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    stub.throwFor = 'sess-remote-1'
+    const second = { id: 'sess-remote-2', name: 'Second', status: 'idle', url: 'https://office-air.tail1234.ts.net:7444/sessions/sess-remote-2' }
+    const connect = vi.fn((_h: unknown, id: unknown) => (id === 'sess-remote-1' ? okResult : { ...okResult, sessionId: 'sess-remote-2', name: 'Second', url: okResult.url.replace(/sess-remote-1/g, 'sess-remote-2') }))
+    const c = await mountApp({ ...baseImpl(connect), GetRemoteSessionsWithMeta: () => [{ ...remotePeer, sessions: [...remotePeer.sessions, second] }] })
+    await click(peerRow(c)!)
+    expect(c.textContent).toContain('This tab hit an error. Close it and open the session again.')
+    expect(c.textContent).not.toContain('CAP123')
+    expect(c.querySelector('.sidebar')).not.toBeNull()
+    expect(peerRow(c)).toBeDefined()
+    expect(c.querySelector('[role="tablist"]')).not.toBeNull()
+    const row2 = Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find((b) => b.textContent === 'Second')!
+    await click(row2)
+    expect(c.textContent).not.toContain('This tab hit an error.')
+    expect(c.querySelector('[data-testid="web-session-view"]')!.getAttribute('data-session')).toBe('sess-remote-2')
+  })
+})
+
 describe('App.tsx — no code-based access remains', () => {
   it('App has no dialog state, cached-cap set or removed remote-cap bindings', () => {
     expect(raw).toContain('const connectHost = session.peerDNSName || peerHost')
@@ -384,6 +408,15 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
   // (the full-height flex-column chain that resolves the modal's flex:1, fixing
   // the half-height terminal + dead band) AND pass remote={isRemoteWebTab} so the
   // remote tab uses the daemon proxy instead of a direct cross-origin peer wss.
+  // Portty 05-09: on the desktop a missing web tab renders nothing. The old
+  // fallback dialed window.location.origin (wails://), whose WebSocket threw and
+  // took the root down. Unreachable through the UI after the dedupe fixes.
+  it('the __websession__ branch renders nothing on the desktop when the active web tab is missing', () => {
+    const idx = raw.indexOf("activeId.startsWith('__websession__')")
+    const slice = raw.slice(idx, idx + 600)
+    expect(slice).toContain("if (!activeWebTab && mode !== 'web') return null")
+  })
+
   it('RC-B/RC-A: the __websession__ branch wraps WebShareSessionView in .terminal-wrapper and threads remote={isRemoteWebTab}', () => {
     const idx = raw.indexOf("activeId.startsWith('__websession__')")
     expect(idx, 'the __websession__ render branch must be present').toBeGreaterThan(-1)

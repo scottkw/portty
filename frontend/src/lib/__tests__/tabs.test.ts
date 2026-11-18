@@ -24,6 +24,13 @@ describe('nextActiveTabId (TERM-03 detach neighbour rule)', () => {
     expect(nextActiveTabId(tabs, 'a', 'c')).toBe('c')
     expect(nextActiveTabId(tabs, 'c', null)).toBeNull()
   })
+
+  // Portty 05-09: duplicate ids made it return the closing id, which blanked the window.
+  it('never returns the closing id, even when the list holds duplicates', () => {
+    expect(nextActiveTabId([{ id: 'a' }, { id: 'x' }, { id: 'x' }, { id: 'b' }], 'x', 'x')).toBe('b')
+    expect(nextActiveTabId([{ id: 'a' }, { id: 'x' }, { id: 'x' }], 'x', 'x')).toBe('a')
+    expect(nextActiveTabId([{ id: 'x' }, { id: 'x' }], 'x', 'x')).toBeNull()
+  })
 })
 
 describe('tabLabel and renameInList (one source of truth for names)', () => {
