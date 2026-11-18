@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: verifying
-stopped_at: Completed 05-11-PLAN.md
-last_updated: "2026-11-18T04:38:01.373Z"
+stopped_at: Completed 05-12-PLAN.md
+last_updated: "2026-11-18T05:21:19.396Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: 836abdcdd6eead1d248254c66a3d58fe4f247eda
+state_head: c19565b13ef6ce90d97c8185a7cef68f293273e8
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 56
-  completed_plans: 52
+  completed_plans: 53
   percent: 17
 ---
 
@@ -95,6 +95,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 05 P09 | 21 min | 3 tasks | 9 files |
 | Phase 05 P10 | 16min | 3 tasks | 7 files |
 | Phase 5 P11 | 6min | 2 tasks | 5 files |
+| Phase 5 P12 | 40min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -219,6 +220,8 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-10: pure-Go wake detector (internal/wakewatch: wall-clock tick gap + routable interface addresses) supersedes 'no NSWorkspace wake hook'; user approved 2026-11-17
 - [Phase 05]: 05-10: a wake-triggered redial restarts the backoff at attempt 0; a wake probe drops only a ponged socket silent for ProbeGrace (5 s); WakeMinGap 5 s caps wake actions
 - [Phase 5]: 05-11: Pin Go toolchain go1.26.11 (go.mod toolchain line + build.sh GOTOOLCHAIN export + //go:build go1.27 guard in package main); tailscale.com v1.98.3 JSON breaks on Go 1.27 and GOTOOLCHAIN=auto never downgrades. Remove guard and pin together after TestTailscaleJSON_FormatTagCanary passes on the new Go
+- [Phase 5]: 05-12: guest resets and host grid changes go through xterm's write queue (RIS write, resize inside an empty write's callback), never the synchronous reset()/resize()
+- [Phase 5]: 05-12: guest scale fits the container content box; guest element width = max(contentW / scale, grid width) so xterm's scrollbar sits at the pane edge
 
 ### Pending Todos
 
@@ -287,6 +290,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-18T04:37:58.835Z
-Stopped at: Completed 05-11-PLAN.md
+Last session: 2026-11-18T05:21:17.883Z
+Stopped at: Completed 05-12-PLAN.md
 Resume file: None
