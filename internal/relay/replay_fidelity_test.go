@@ -8,8 +8,12 @@ package relay
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -389,4 +393,79 @@ func TestReplayFidelity_JoinAtPendingWrap(t *testing.T) {
 	_, _ = guest.WriteString("X\r\n")
 	requireSameGrid(t, "screen", screenRows(ref), screenRows(guest))
 	requireSameCursor(t, ref, guest)
+}
+
+var updateReplayFixture = flag.Bool("update-replay-fixture", false, "rewrite the frontend wrapped-replay fixture")
+
+const replayFixturePath = "../../frontend/src/lib/__tests__/fixtures/wrapped-replay.json"
+
+type fixtureCursor struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+// replayFixture is what the frontend feeds xterm.js to check it against the
+// same replay the Go guest emulator renders (05-12). Text and cursor only.
+type replayFixture struct {
+	Cols        int           `json:"cols"`
+	Rows        int           `json:"rows"`
+	Replay      string        `json:"replay"` // base64 replay payload bytes, written after the grid frame
+	Screen      []string      `json:"screen"`
+	Cursor      fixtureCursor `json:"cursor"`
+	HistoryTail []string      `json:"historyTail"`
+	Live        string        `json:"live"` // base64 next live bytes
+	ScreenAfter []string      `json:"screenAfter"`
+	CursorAfter fixtureCursor `json:"cursorAfter"`
+}
+
+func plainRows(rows []string) []string {
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = strings.TrimRight(ansi.Strip(r), " ")
+	}
+	return out
+}
+
+func emuCursor(e *xvt.Emulator) fixtureCursor {
+	p := e.CursorPosition()
+	return fixtureCursor{p.X, p.Y}
+}
+
+// TestReplayFidelity_XtermFixture writes (with -update-replay-fixture) or
+// checks the frontend fixture. Its content is synthetic: claudeStream output.
+func TestReplayFidelity_XtermFixture(t *testing.T) {
+	hub, _, ref, next := wrappedClaudeSession(t)
+	r := join(t, hub, 0, false)
+	f := replayFixture{
+		Cols:   fidCols,
+		Rows:   fidRows,
+		Replay: base64.StdEncoding.EncodeToString(payloads(r)),
+		Screen: plainRows(screenRows(ref)),
+		Cursor: emuCursor(ref),
+	}
+	sb := plainRows(scrollbackRows(ref))
+	f.HistoryTail = sb[max(0, len(sb)-20):]
+	live := claudeLikeRedraw(next, fidCols)
+	_, _ = ref.WriteString(live)
+	f.Live = base64.StdEncoding.EncodeToString([]byte(live))
+	f.ScreenAfter = plainRows(screenRows(ref))
+	f.CursorAfter = emuCursor(ref)
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(f); err != nil {
+		t.Fatal(err)
+	}
+	if *updateReplayFixture {
+		if err := os.WriteFile(replayFixturePath, buf.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(replayFixturePath)
+	if err != nil || !bytes.Equal(got, buf.Bytes()) {
+		t.Fatalf("fixture stale: run go test ./internal/relay -run TestReplayFidelity_XtermFixture -update-replay-fixture (read err: %v)", err)
+	}
 }

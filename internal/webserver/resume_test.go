@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -180,5 +181,51 @@ func TestWSS_ResumeFullWithoutResume(t *testing.T) {
 	}
 	if want := uint64(len(hub.ScrollbackSnapshot())); end != want {
 		t.Fatalf("offset meta %d, want ring end %d", end, want)
+	}
+}
+
+// TestWSS_InputAfterWrappedReplay: after the ring wraps, a read-write viewer
+// that reads a full (rendered) replay can still type into the shell (05-08:
+// the reattached tab "did not respond").
+func TestWSS_InputAfterWrappedReplay(t *testing.T) {
+	const sid = "input-after-wrap"
+	ws, client, ptyW, inputR := testServerWithHub(t, sid)
+	ws.SetSigningKey(capTestKey)
+	token := issueCapFor(t, ws, sid, "read,write")
+	hub, _ := ws.manager.Get(sid)
+
+	var b strings.Builder
+	for i := 0; i < 10000; i++ { // about 300 KiB: wraps the 256 KiB ring
+		fmt.Fprintf(&b, "WRAP-%06d %s\r\n", i, strings.Repeat("w", 16))
+		if b.Len() > 15<<10 || i == 9999 {
+			writeOutput(t, ptyW, hub, b.String())
+			b.Reset()
+		}
+	}
+
+	conn := dialResume(t, ws, client, sid, token, "")
+	if typ, _ := readWSFrame(t, conn); typ != relay.MsgResize {
+		t.Fatalf("first frame type 0x%02x, want grid frame", typ)
+	}
+	mode, out, _ := readReplay(t, conn)
+	if mode != "full" || !bytes.Contains(out, []byte("WRAP-009999")) {
+		t.Fatalf("replay mode %q (%d bytes), want a full replay ending at WRAP-009999", mode, len(out))
+	}
+	if bytes.IndexByte(out, relay.MsgOutput) >= 0 {
+		t.Fatal("replay carries raw ring frame bytes: the ring did not wrap, so this is not the wrapped path")
+	}
+
+	const typed = "typed-after-replay\r"
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := conn.Write(ctx, websocket.MessageBinary, relay.MakeInputFrame([]byte(typed))); err != nil {
+		t.Fatalf("send input: %v", err)
+	}
+	var got []byte
+	for len(got) < len(typed) {
+		got = append(got, readPipeWithTimeout(t, inputR, 2*time.Second)...)
+	}
+	if string(got) != typed {
+		t.Fatalf("PTY received %q, want %q", got, typed)
 	}
 }
