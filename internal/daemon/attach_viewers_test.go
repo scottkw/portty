@@ -461,6 +461,24 @@ func TestCLIAttach_ReconnectsWithDelta(t *testing.T) {
 	cli.detach(t)
 }
 
+// UAT gap 1: an idle remote attach showed [reconnecting] after five seconds
+// without output. Pongs through the proxy now count as frames: an idle CLI
+// with a watchdog far shorter than the idle time never leaves "connected".
+func TestCLIAttach_IdleNoReconnecting(t *testing.T) {
+	s := newAttachScene(t)
+	tm := fastTiming
+	tm.PingEvery, tm.DeadAfter = 50*time.Millisecond, 200*time.Millisecond
+	cli := s.runCLI(t, s.dialCLI(t, 80, 24), attach.RunOptions{Timing: tm})
+
+	time.Sleep(time.Second)
+	if cli.stateSeen("reconnecting") {
+		t.Error("idle CLI with pongs flowing went reconnecting")
+	}
+	s.typeLine(t, "MARKER-2")
+	waitUntil(t, "cli to see MARKER-2", func() bool { return cli.stdout.has("MARKER-2") })
+	cli.detach(t)
+}
+
 // checkUndisturbed asserts the named viewers are still open, every grid frame
 // they got is the host's 120x40, and the host hub is still 120x40.
 func (s *attachScene) checkUndisturbed(t *testing.T, names ...string) {
