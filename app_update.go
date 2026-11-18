@@ -83,7 +83,9 @@ func (a *App) runUpdateLoop(ctx context.Context) {
 		case <-after(wait):
 		}
 		wait = updateTick
-		if !last.IsZero() && now().Round(0).Sub(last) < updateEvery {
+		// A negative gap means the wall clock went back past the last check: check now, or no
+		// check would run until the clock caught up.
+		if d := now().Round(0).Sub(last); !last.IsZero() && d >= 0 && d < updateEvery {
 			continue
 		}
 		if a.autoCheck(ctx) {

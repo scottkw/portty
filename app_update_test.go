@@ -661,3 +661,25 @@ func TestManualUpdateCheck_NotReady(t *testing.T) {
 		t.Errorf("alert %q, want %q", got, want)
 	}
 }
+
+// IN-01: a check completed while the clock was ahead; once the clock is set back, the next tick
+// checks instead of waiting for the wall clock to pass the old future time.
+func TestUpdatePoller_ClockSetBack(t *testing.T) {
+	h := newUpdateHarness(t)
+	h.gh.set("1.0.0", 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	h.start(t, ctx)
+	t0 := h.now
+	h.tick(t) // the launch check, at t0
+	h.setNow(t0.Add(-30 * 24 * time.Hour))
+	h.tick(t)
+	if c, _ := h.gh.counts(); c != 2 {
+		t.Fatalf("%d requests after the clock went back, want 2", c)
+	}
+	h.setNow(t0.Add(-30*24*time.Hour + time.Hour))
+	h.tick(t)
+	if c, _ := h.gh.counts(); c != 2 {
+		t.Errorf("%d requests an hour later, want 2 (the daily cadence resumes)", c)
+	}
+}
