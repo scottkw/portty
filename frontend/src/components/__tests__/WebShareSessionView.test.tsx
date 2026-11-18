@@ -232,6 +232,32 @@ describe('WebShareSessionView — pre-redial check (SHAR-07)', () => {
     unmount()
   })
 
+  // Review it3 IN-02: browsers before Safari 16 / Chrome 103 have no AbortSignal.timeout.
+  it('browser path: without AbortSignal.timeout the probe still runs and times out after 10 s', async () => {
+    const orig = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout')!
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (AbortSignal as any).timeout
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      }))
+      vi.stubGlobal('fetch', fetchMock)
+      const { unmount } = mountView()
+      let settled = false
+      const verdict = (capturedTerminalProps?.beforeReconnect as Hook)().finally(() => { settled = true })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(9_999)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await expect(verdict).resolves.toEqual({ kind: 'retry' })
+      unmount()
+    } finally {
+      vi.useRealTimers()
+      Object.defineProperty(AbortSignal, 'timeout', orig)
+    }
+  })
+
   it('browser path: a rejected fetch retries', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network') }))
     const { unmount } = mountView()

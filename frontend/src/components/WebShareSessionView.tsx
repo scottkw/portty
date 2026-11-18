@@ -55,6 +55,15 @@ export interface WebShareSessionViewProps {
   beforeReconnect?: () => Promise<ReconnectVerdict>
 }
 
+// Review it3 IN-02: AbortSignal.timeout is missing before Safari 16 / Chrome 103, and
+// calling it there would throw every probe into a retry, forever.
+function timeoutSignal(ms: number): AbortSignal {
+  if (typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms)
+  const ctrl = new AbortController()
+  setTimeout(() => ctrl.abort(), ms)
+  return ctrl.signal
+}
+
 /**
  * WebShareSessionView mounts the TerminalPanel for the web-share browser surface
  * and for in-app remote-peer tabs. The native web-guest path connects via the
@@ -98,7 +107,7 @@ export function WebShareSessionView({
   // whether the cap still works, so a revoked link stops instead of retrying.
   // WR-06: a probe to a sleeping host times out into a retry, never a hang.
   const probeShare = (): Promise<ReconnectVerdict> =>
-    fetch(`${apiBaseURL}/api/sessions/${encodeURIComponent(sessionId)}/info?cap=${encodeURIComponent(capToken)}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) })
+    fetch(`${apiBaseURL}/api/sessions/${encodeURIComponent(sessionId)}/info?cap=${encodeURIComponent(capToken)}`, { cache: 'no-store', signal: timeoutSignal(10_000) })
       .then((res) => shareInfoVerdict(res.status), () => ({ kind: 'retry' }))
 
   // Phase 168 FIX-01 (#112) — web-guest plugin-config self-fetch + SSE
