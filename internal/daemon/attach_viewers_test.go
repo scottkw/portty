@@ -73,6 +73,7 @@ import (
 	"testing"
 	"time"
 
+	xvt "github.com/charmbracelet/x/vt"
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/attach"
 	"github.com/scottkw/portty/internal/relay"
@@ -212,7 +213,14 @@ func newViewingDaemon(t *testing.T) (*API, string) {
 // which every viewer must see before this returns.
 func newAttachScene(t *testing.T, prelude ...string) *attachScene {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	return newAttachSceneTimeout(t, 15*time.Second, prelude...)
+}
+
+// newAttachSceneTimeout is newAttachScene with a longer life for tests that
+// type a lot under load.
+func newAttachSceneTimeout(t *testing.T, timeout time.Duration, prelude ...string) *attachScene {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	t.Cleanup(cancel)
 
 	// Host Mac: a shared /bin/cat session and the office GUI's local relay.
@@ -842,4 +850,90 @@ func TestCLIAttach_LongHistoryJoiners(t *testing.T) {
 		s.checkUndisturbed(t, "guiTab", "browser")
 		cli.detach(t)
 	})
+}
+
+// screenOf feeds out (SOH frame headers removed) into an emulator at the host
+// grid and returns its screen text and cursor.
+func screenOf(out []byte) (string, string) {
+	e := xvt.NewEmulator(120, 40)
+	_, _ = e.Write(bytes.ReplaceAll(out, []byte{relay.MsgOutput}, nil))
+	return e.String(), fmt.Sprint(e.CursorPosition())
+}
+
+// SHAR-07 / VERF-01 matrix row "long output during the gap": the host writes
+// more than the 256 KiB ring while the CLI is down, so its resume offset falls
+// off the ring. The CLI must get a full replay, clear first, and end with the
+// host's screen and every line exactly as often as the host's own viewer.
+func TestCLIAttach_LongOutputDuringGap(t *testing.T) {
+	const gapLines = 200 // each about 1.8 KB in the ring (cat echoes it twice): ~360 KB
+	tag := func(i int) string { return fmt.Sprintf("GAP-%04d-", i) }
+	diag := captureDiag(t)
+	s := newAttachSceneTimeout(t, 90*time.Second)
+
+	release := make(chan struct{})
+	reauth := func(ctx context.Context) attach.Verdict {
+		select {
+		case <-release:
+			return attach.VerdictOK
+		case <-ctx.Done():
+			return attach.VerdictRetry
+		}
+	}
+	cli := s.runCLI(t, s.dialCLI(t, 120, 40), attach.RunOptions{Reauth: reauth, Timing: fastTiming, ClearOnFull: true})
+	for _, tg := range lineTags(1, 20) {
+		s.typeLine(t, tg)
+	}
+	waitUntil(t, "cli to see LINE-0020", func() bool { return cli.stdout.has("LINE-0020") })
+
+	kickAt, outAt := len(diag.bytes()), s.viewers["local"].outLen()
+	s.hub.RevokeWebViewers("test drop")
+	waitUntil(t, "cli to go reconnecting", func() bool { return cli.stateSeen("reconnecting") })
+	// One line at a time, each under the 1024-byte canonical limit: a burst
+	// overflows the tty input queue while cat catches up. The next line waits
+	// for both whole copies (SOH frame headers removed): typed while cat's
+	// write is still blocked, its echo lands mid-row and a row wrap can split
+	// its tag in the rendered history.
+	for i := 0; i < gapLines; i++ {
+		line := tag(i) + strings.Repeat("y", 900)
+		s.typeLine(t, line)
+		waitUntil(t, "cat to echo "+tag(i), func() bool {
+			ring := bytes.ReplaceAll(s.hub.ScrollbackSnapshot(), []byte{relay.MsgOutput}, nil)
+			return bytes.Count(ring, []byte(line+"\r\n")) >= 2
+		})
+	}
+	if n := s.viewers["local"].outLen() - outAt; n <= relay.DefaultScrollbackBytes {
+		t.Fatalf("gap output = %d bytes; want more than the %d-byte ring", n, relay.DefaultScrollbackBytes)
+	}
+	close(release)
+	cli.waitReconnected(t)
+
+	s.typeLine(t, "MARKER-END")
+	end := []byte("MARKER-END\r\n")
+	waitUntil(t, "local and cli to show MARKER-END twice", func() bool {
+		local, _, _ := s.viewers["local"].state()
+		return bytes.Count(local, end) >= 2 && bytes.Count(cli.stdout.bytes(), end) >= 2
+	})
+
+	full := regexp.MustCompile(`viewer-diag: replay session=` + regexp.QuoteMeta(relay.DiagID(s.sid)) + ` conn=\d+ mode=full`)
+	if !full.Match(diag.bytes()[kickAt:]) {
+		t.Errorf("no full replay logged for the CLI's reconnect:\n%s", diag.bytes()[kickAt:])
+	}
+	out := cli.stdout.bytes()
+	i := bytes.LastIndex(out, []byte("\x1b[2J\x1b[H"))
+	if i < 0 {
+		t.Fatal("the CLI never cleared before the full replay")
+	}
+	post := out[i:]
+	local, _, _ := s.viewers["local"].state()
+	gotText, gotCur := screenOf(post)
+	wantText, wantCur := screenOf(local)
+	if gotText != wantText || gotCur != wantCur {
+		t.Errorf("CLI screen after the full replay differs from the host's\n--- cli (cursor %s)\n%s\n--- host (cursor %s)\n%s", gotCur, gotText, wantCur, wantText)
+	}
+	tags := append(lineTags(1, 20), "MARKER-END")
+	for i := 0; i < gapLines; i++ {
+		tags = append(tags, tag(i))
+	}
+	checkSameLines(t, post, local, tags) // nothing lost or duplicated by the replay
+	cli.detach(t)
 }
