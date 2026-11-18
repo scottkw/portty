@@ -6,4 +6,4 @@ Portty looks plain. The user picked every mood offered (calm native, pro tool, w
 ## Sketches
 | # | Name | Design question | Winner | Tags |
 |---|------|-----------------|--------|------|
-| 001 | app-polish | Which overall look should Portty take? | — | layout, sidebar, tabs, status |
+| 001 | app-polish | Which overall look should Portty take? | Keep current + 4 upgrades (A icons, amber dot, remote-tab host label; C per-Mac color) | layout, sidebar, tabs, status |
