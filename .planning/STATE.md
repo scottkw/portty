@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: executing
-stopped_at: Completed 05-05-PLAN.md
-last_updated: "2026-11-18T02:08:58.065Z"
+stopped_at: Completed 05-06-PLAN.md
+last_updated: "2026-11-18T02:30:50.241Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: 021cf2407ff95a978141e791fbe5fc02e966850a
+state_head: 5d9bc86647f9ebbe1ba50ad275cf7e88a2498f01
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 48
-  completed_plans: 46
+  completed_plans: 47
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 5 (Overnight Survival) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 5 execution started
 
@@ -89,6 +89,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 05 P03 | 6min | 2 tasks | 3 files |
 | Phase 5 P04 | 32min | 2 tasks | 11 files |
 | Phase 05 P05 | 18min | 2 tasks | 8 files |
+| Phase 5 P06 | 18min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -201,6 +202,8 @@ Recent decisions affecting current work:
 - [Phase 5]: 05-04: hot-swap 'never term.reset()' guard allows exactly the onReset full-replay line
 - [Phase 05]: 05-05: ConnectPeerSession no_such_session maps to the stopped-sharing banner (mid-gap the daemon cannot tell Share-off from session-ended)
 - [Phase 05]: 05-05: the pre-redial hook never touches tab state, so the guest view keeps its key and xterm buffer across reconnects
+- [Phase 5]: 05-06: CLI watchdog measures silence on the wall clock (UnixNano) so a Mac's sleep counts; a healthy socket may be redialed once after wake (cheap delta)
+- [Phase 5]: 05-06: stdin chunks read while disconnected are stamped stale and dropped (besides draining in the gap), so gap keystrokes never reach the shell
 
 ### Pending Todos
 
@@ -269,6 +272,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-18T02:08:52.390Z
-Stopped at: Completed 05-05-PLAN.md
+Last session: 2026-11-18T02:30:47.802Z
+Stopped at: Completed 05-06-PLAN.md
 Resume file: None

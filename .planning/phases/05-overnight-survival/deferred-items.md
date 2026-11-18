@@ -7,3 +7,8 @@
 ## From 05-05
 
 - Same two load flakes seen again: two default full `vitest run` passes each failed only `SharePopover: Copy ... for 2 s` and `initialGrid > returns null under jsdom` (a 5 s timeout on a synchronous test). Host load average was about 330 at the time. Both pass when run alone, and `vitest run --maxWorkers=4` passed 83/83 files (1119 tests). 05-05 does not touch either file. Not fixed.
+
+## From 05-06
+
+- **`TestCLIAttach_LongHistoryJoiners/gui_tab_through_proxy` load flake.** One full `go test -race -short ./...` run failed it with the scene's 15 s context expiring while 200 history lines were typed one at a time (the dial at the end hit "context deadline exceeded"). It passes alone in about 2.5 s per subtest, and the next full daemon-package run and full-suite run passed. Two test VMs were loading the host. Not changed by 05-06 (newAttachScene only moved the viewing-daemon setup into newViewingDaemon). Not fixed.
+- **`gofmt -l` lists `internal/relay/scrollback_altscreen_test.go`** (last touched in 05-01, bd74dc3d). Formatting only; out of scope for 05-06. Not fixed.
