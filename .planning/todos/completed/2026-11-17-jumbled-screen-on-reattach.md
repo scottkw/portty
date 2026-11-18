@@ -6,6 +6,8 @@ severity: major
 files:
   - internal/relay/hub.go
   - internal/relay/history.go
+completed: 2026-11-18
+status: completed
 ---
 
 ## Problem
@@ -20,3 +22,12 @@ Likely cause: once the 256 KiB raw ring wraps, the old `RenderSnapshot` replay j
 2. Check for a second cause: guest grid cols vs host cols mismatch on attach (the guest must render at host cols before the replay is written).
 3. Check the "wouldn't respond" part: input after a wrapped replay reaches the PTY.
 4. Manual: two-Mac reattach after a long Claude Code session with both Macs on the new build (add to Phase 5 UAT / M-84).
+
+## Resolution
+
+Fixed in 05-08 (host side) and 05-12 (guest side); closed by 05-15.
+
+1. 05-03's wrapped replay was confirmed and hardened in 05-08 (`64b0a85d`, `7c682489`, `26787936`): the hub never sends a delta or raw replay that reaches back past the last host resize, a rendered replay never restores mode 2026 (a join mid synchronized update no longer freezes the view), and a cursor in pending wrap re-prints its last-column cell. Pinned by `internal/relay/replay_fidelity_test.go` (`TestReplayFidelity_WrappedClaudeSession`, a reference vt fed the raw Claude-Code-like stream vs a guest vt fed only the replay, plus the negative control `TestReplayFidelity_DetectsPre0503Staircase`).
+2. Second cause, guest side, fixed in 05-12 (`4818524b`, `cf66661e`): a full replay now resets xterm in band (RIS through the write queue) and host grid changes apply in stream order, so the replay is never written at the wrong cols. Pinned by `frontend/src/lib/__tests__/replayFidelity.test.ts` (real xterm.js fed the Go fixture renders the host grid) and `TerminalPanel.reconnect.test.tsx`.
+3. Input after a wrapped replay reaches the PTY: `TestWSS_InputAfterWrappedReplay` in `internal/webserver/resume_test.go` (05-08).
+4. VM check V-12 PASS (390 KB of Claude-like output, rows identical on first open and reopen, typing round-trips). The two-Mac reattach after a long Claude Code session, with both Macs on the new build, is TESTING.md M-84 step 5 and M-85 step 4 (left to the user).

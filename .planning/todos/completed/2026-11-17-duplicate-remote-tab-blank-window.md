@@ -8,6 +8,8 @@ files:
   - frontend/src/lib/tabs.ts
   - frontend/src/main.tsx
   - frontend/src/components/WebShareSessionView.tsx
+completed: 2026-11-18
+status: completed
 ---
 
 ## Problem
@@ -27,3 +29,12 @@ Read-only diagnosis (not yet reproduced):
 5. Top-level ErrorBoundary in main.tsx.
 
 Add regression tests (double-click race, close with duplicate ids). Do after Phase 5 plan 05-05 lands (it edits App.tsx and WebShareSessionView.tsx).
+
+## Resolution
+
+Fixed in 05-09 (`e51d03cd`, `0cf61b85`, `afdf4c0f`, `d7c6382b`); closed by 05-15.
+
+- Duplicate tabs: an in-flight guard in `handleOpenRemoteSession` and a dedupe inside the functional tab update, so a double click during a slow `ConnectPeerSession` opens one tab and connects once.
+- Blank window: `nextActiveTabId` never returns the closing id, a missing web tab outside web mode renders nothing (no `wails://` WebSocket), and a new `ErrorBoundary` keeps a crashing pane from unmounting the app; its fallback copy never shows the error message. 05-13 (`8af5c8b0`) also made a throwing WebSocket constructor a failed attempt instead of an exception.
+- Tests: `frontend/src/components/__tests__/App.open-remote.test.tsx`, `frontend/src/lib/__tests__/tabs.test.ts`, `frontend/src/components/__tests__/ErrorBoundary.test.tsx`, `frontend/src/lib/relayClient.test.ts`.
+- VM check V-09 PASS (double click opens one tab, Cmd+W keeps sidebar and tab bar, reopen works). Repeatable as TESTING.md M-88 (Claude runs it).

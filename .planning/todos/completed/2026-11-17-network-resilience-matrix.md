@@ -7,6 +7,8 @@ files:
   - frontend/src/lib/relayClient.ts
   - cmd_attach.go
   - internal/daemon/remote_ws_proxy.go
+completed: 2026-11-18
+status: completed
 ---
 
 ## Problem
@@ -27,3 +29,11 @@ Phase 5 covers this with liveness (30 s ping / 15 s timeout), retry forever with
    - home daemon restart, host daemon restart (host restart = session gone, must say so clearly)
    - long output during the gap (ring wrap → full replay)
 3. Fold the automatable rows into Phase 5 verification; the two-Mac rows go on the manual checklist (M-84..M-87).
+
+## Resolution
+
+Fixed in 05-10, 05-13 and 05-16, measured in 05-14 and 05-16; closed by 05-15.
+
+1. Wake/network trigger: a pure-Go detector `internal/wakewatch` (a wall-clock tick gap or a changed interface address list) instead of an NSWorkspace observer, user approved. The CLI loop uses it in 05-10 (`6ef013cf`, `934db371`, `020d16a5`, `4aa0042a`): a wake skips a pending backoff or probes an open socket. 05-13 (`67149bc5`, `17021753`, `9fd0a2fd`, `8af5c8b0`) emits it to the GUI as `system:wake`, re-dispatched as `portty:wake` for RelayClient; browser views treat a late watchdog tick as a wake. Tests: `internal/wakewatch/wakewatch_test.go`, `internal/attach/loop_test.go` (`TestRun_Wake*`), `app_wake_test.go`, `frontend/src/lib/relayClient.test.ts`, `frontend/src/components/__tests__/App.remote-poll.test.tsx`.
+2. Matrix: 05-14 (`764e92ef`, `69735aab`) ran R1-R9 on two Tart VMs over the real tailnet; R6 (viewing-Mac daemon restart) failed and was fixed in 05-16 (`bf628725`, `c2c99648`, `1e0c33c3`, re-run `e0ad1234`): the GUI tray poller and the `portty attach` re-auth start a dead local daemon. Final result 9 PASS / 0 FAIL in `.planning/phases/05-overnight-survival/05-VM-MATRIX.md`; long output during the gap is also pinned by `TestCLIAttach_LongOutputDuringGap` (05-10, `9846f32a`). The matrix is repeatable as TESTING.md M-90.
+3. Left to the user: a real Wi-Fi access-point switch and lid sleep on two physical Macs (TESTING.md M-85; R3 covered an interface flap and address changes only), the overnight run (M-84), and the browser view (M-86).
