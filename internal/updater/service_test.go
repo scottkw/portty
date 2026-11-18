@@ -447,6 +447,44 @@ func TestService_DownloadReveals(t *testing.T) {
 	}
 }
 
+// IN-04: a second Download after a reveal shows the kept, verified DMG again instead of deleting
+// and fetching it again; once the file is gone it downloads afresh.
+func TestService_DownloadAfterRevealRevealsAgain(t *testing.T) {
+	f := newSvc(t)
+	f.available(t)
+	if st, err := f.svc.Download(); err != nil || st.State != "revealed" {
+		t.Fatalf("Download = %+v, %v", st, err)
+	}
+	path := filepath.Join(f.dir, DMGAssetName("9.9.9"))
+	f.ev.reset()
+	f.run.mu.Lock()
+	f.run.calls = nil
+	f.run.mu.Unlock()
+	st, err := f.svc.Download()
+	if want := (Status{State: "revealed", Current: "1.0.0", Latest: "9.9.9"}); err != nil || st != want {
+		t.Errorf("second Download = %+v, %v; want %+v", st, err, want)
+	}
+	f.run.mu.Lock()
+	calls := append([]string(nil), f.run.calls...)
+	f.run.mu.Unlock()
+	if len(calls) != 1 || calls[0] != "/usr/bin/open -R "+path {
+		t.Errorf("runner calls %q, want one reveal of the kept DMG", calls)
+	}
+	if n := f.gh.assets.Load(); n != 1 || len(f.ev.list()) != 0 {
+		t.Errorf("%d asset requests (want 1), emitted %s", n, f.ev.states())
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("kept DMG: %v", err)
+	}
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := f.svc.Download(); err != nil || st.State != "revealed" || f.gh.assets.Load() != 2 {
+		t.Errorf("Download with the DMG gone = %+v, %v, %d asset requests; want a fresh download", st, err, f.gh.assets.Load())
+	}
+}
+
 // downloadFailure drives one failing Download from available.
 func downloadFailure(t *testing.T, mode string) (svcFix, Status, error) {
 	t.Helper()

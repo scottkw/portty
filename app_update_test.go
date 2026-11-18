@@ -597,6 +597,24 @@ func TestTrayUpdate_OfferUpdate(t *testing.T) {
 		}
 		finish()
 	})
+	t.Run("revealed", func(t *testing.T) { // IN-04: Download shows the kept DMG again
+		h := newUpdateHarness(t)
+		h.gh.set("9.9.9", 0)
+		if _, err := h.app.updates.Check(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if st := h.app.DownloadUpdate(); st.State != "revealed" {
+			t.Fatalf("DownloadUpdate = %+v", st)
+		}
+		h.answer = "Download"
+		h.app.offerUpdate()
+		if got := h.oneDialog(t); got != availableAlert {
+			t.Errorf("alert %q", got)
+		}
+		if _, assets := h.gh.counts(); assets != 1 || h.app.GetUpdateStatus().State != "revealed" {
+			t.Errorf("%d asset requests (want 1), status %+v", assets, h.app.GetUpdateStatus())
+		}
+	})
 	t.Run("current", func(t *testing.T) {
 		h := newUpdateHarness(t)
 		h.gh.set("1.0.0", 0)

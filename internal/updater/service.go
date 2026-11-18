@@ -130,13 +130,40 @@ func (s *Service) Check(ctx context.Context) (Status, error) {
 	return s.set(Status{State: "current"}), nil
 }
 
+// revealKept shows the DMG the last Download verified in Finder again, so a second Download after
+// a reveal (the tray item, the alert) does not delete and fetch it again. False when the file is
+// gone or open -R fails; Download then fetches it afresh. Called with s.mu held: open -R returns
+// at once.
+func (s *Service) revealKept() bool {
+	if s.Dir == "" {
+		return false
+	}
+	path := filepath.Join(s.Dir, s.rel.DMG.Name)
+	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := Reveal(ctx, s.Run, path); err != nil {
+		log.Printf("update: reveal again failed")
+		return false
+	}
+	log.Printf("update: revealed %s again", filepath.Base(path))
+	return true
+}
+
 // Download fetches the available release's DMG into Dir, verifies it (digest, signature, Team ID,
-// notarization, quarantine) and only then reveals it in Finder. From any state but available or
-// revealed it returns the status unchanged, so one operation runs at a time. It runs on its own
+// notarization, quarantine) and only then reveals it in Finder. From revealed it shows the kept
+// DMG again when it is still there. From any state but available or revealed it returns the status
+// unchanged, so one operation runs at a time. It runs on its own
 // 10-minute deadline, not the caller's. Every failure returns to available with Status.Error set;
 // a file that failed verification is deleted, a verified one stays for a retry.
 func (s *Service) Download() (Status, error) {
 	s.mu.Lock()
+	if s.st.State == "revealed" && s.revealKept() {
+		defer s.mu.Unlock()
+		return s.status(), nil
+	}
 	if s.st.State != "available" && s.st.State != "revealed" {
 		defer s.mu.Unlock()
 		return s.status(), nil
