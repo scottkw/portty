@@ -528,7 +528,7 @@ describe('05-12 TerminalPanel — guest element spans the pane (scrollbar at the
     expect(widthPx()).toBeCloseTo(1200, 3)
   })
 
-  it('overflow-x branch: no stretch, and turning it on clears an earlier stretch', () => {
+  it('overflow-x branch, grid wider than the pane: the element keeps the grid width (scrollbar at the grid end)', () => {
     const node = mount({ wsURL: 'wss://host/sessions/s/ws?cap=x' })
     size(node, 1200, 800)
     grid(100, 24)
@@ -536,8 +536,20 @@ describe('05-12 TerminalPanel — guest element spans the pane (scrollbar at the
     size(node, 50, 50)
     grid(100, 24)
     expect(node.classList.contains('terminal-guest--scroll-x')).toBe(true)
-    expect(hoisted.lastElement!.style.width).toBe('')
+    expect(hoisted.lastElement!.style.transform).toBe(`scale(${DEFAULT_GUEST_MIN_SCALE})`)
+    expect(widthPx()).toBeCloseTo(900, 3)
     expect(hoisted.sendResizeCalls).toHaveLength(0)
+  })
+
+  // Seen in the VM: a tall host grid puts the natural scale under the floor
+  // through the height alone, while the floored grid is still narrower than
+  // the pane. The element must still reach the pane edge, not stop mid-grid.
+  it('floor reached through the height: the element still spans the pane', () => {
+    const node = mount({ remote: true })
+    size(node, 1000, 200) // natural = min(1000/900, 200/408) = 0.49 -> floor 0.7; grid 630 px wide
+    grid(100, 24)
+    expect(hoisted.lastElement!.style.transform).toBe(`scale(${DEFAULT_GUEST_MIN_SCALE})`)
+    expect(widthPx()).toBeCloseTo(1000 / DEFAULT_GUEST_MIN_SCALE, 3)
   })
 
   it('host panels get no stretch', () => {
