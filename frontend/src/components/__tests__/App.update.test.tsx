@@ -55,6 +55,16 @@ describe('App — update banner follows Go (06-03)', () => {
     expect(button(c, 'Download')).toBeUndefined()
   })
 
+  it('a GetUpdateStatus reply that lands after a newer event does not roll the banner back', async () => {
+    let reply: (s: unknown) => void = () => {}
+    const c = await mountApp({ GetUpdateStatus: () => new Promise((r) => { reply = r }) })
+    await fire({ state: 'downloading', done: 50, total: 200 })
+    await act(async () => { reply(available) })
+    await flush()
+    expect(c.textContent).toContain('Downloading Portty 9.9.9… 25%')
+    expect(button(c, 'Download')).toBeUndefined()
+  })
+
   it('no status and no events render no update banner', async () => {
     const c = await mountApp({})
     expect(banner(c)).toBeNull()

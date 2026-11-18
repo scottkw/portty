@@ -728,8 +728,10 @@ function App(): React.ReactElement {
       if (s.state === 'downloading') setDismissedUpdate(null) // a started download brings the banner back
       setUpdateStatus(s)
     }
-    GetUpdateStatus().then(apply).catch(() => {})
-    const offUpdate = EventsOn('update:status', apply)
+    // The snapshot's reply can land after a newer event; once an event has arrived, drop it.
+    let gotEvent = false
+    const offUpdate = EventsOn('update:status', (s: UpdateStatus | null) => { gotEvent = true; apply(s) })
+    GetUpdateStatus().then((s) => { if (!gotEvent) apply(s) }).catch(() => {})
     return () => { offUpdate() }
   }, [])
 
