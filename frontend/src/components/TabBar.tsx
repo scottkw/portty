@@ -198,11 +198,12 @@ export function TabBar({
         {tabs.map((tab) => {
           const active = tab.id === activeId
           const peer = peerTabParts(tab)
+          const label = peer ? `${peer.session} · ${peer.host}` : tab.name
           return (
           <div
             key={tab.id}
             className={`tab${active ? ' tab--active' : ''}`}
-            title={peer ? `${peer.session} · ${peer.host}` : tab.name}
+            title={label}
           >
             {editingId === tab.id ? (
               <InlineSessionName
@@ -252,7 +253,7 @@ export function TabBar({
                 className="tab__close"
                 onClick={() => onClose(tab.id)}
                 title="Close Tab"
-                aria-label={`Close ${tab.name}`}
+                aria-label={`Close ${label}`}
               >
                 <XMarkIcon aria-hidden="true" />
               </button>

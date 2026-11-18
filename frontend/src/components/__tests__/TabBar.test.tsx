@@ -245,6 +245,7 @@ describe('TabBar remote tab label (UI polish)', () => {
     expect(dot.getAttribute('aria-hidden')).toBe('true')
     expect(dot.style.background).toMatch(/^var\(--color-peer-[0-4]\)$/)
     expect(remote.closest('.tab')?.getAttribute('title')).toBe('shell 1 · kens-macbook-air-1574')
+    expect(remote.closest('.tab')?.querySelector('.tab__close')?.getAttribute('aria-label')).toBe('Close shell 1 · kens-macbook-air-1574')
     // Local tabs and the web-guest tab (no peerHost) stay plain.
     expect(local.textContent).toBe('shell 1')
     expect(local.querySelector('svg, .peer-dot')).toBeNull()
