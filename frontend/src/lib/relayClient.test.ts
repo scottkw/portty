@@ -683,6 +683,85 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     })
   })
 
+  // 05-13: the Go wake/network detector reaches every reconnect-mode client as a window event.
+  describe("system wake ('portty:wake')", () => {
+    const wake = (reason = 'wake') => window.dispatchEvent(new CustomEvent('portty:wake', { detail: reason }))
+
+    it('while reconnecting with a pending backoff it dials at once and restarts the backoff', async () => {
+      make()
+      drop(0)
+      await advance(1000) // attempt 1 dialed
+      drop(1) // next wait is the second step (2 s)
+      await advance(500)
+      expect(count()).toBe(2)
+      wake()
+      await advance(0)
+      expect(count()).toBe(3)
+      drop(2)
+      await expectRedialAfter(1000) // first step again
+    })
+
+    it('a hidden window still redials (it is ready when shown)', async () => {
+      make()
+      open(0)
+      drop(0)
+      visibility = 'hidden'
+      await advance(500)
+      wake('network')
+      await advance(0)
+      expect(count()).toBe(2)
+    })
+
+    it('while open after a pong it sends one probe, and no answer within the grace abandons the socket', async () => {
+      make()
+      open(0)
+      send(0, pong)
+      const before = pingsSent(0)
+      wake()
+      expect(pingsSent(0)).toBe(before + 1)
+      await advance(RECONNECT.probeGraceMs + 1000)
+      expect(ws(0).close).toHaveBeenCalled()
+      expect(count()).toBe(2)
+    })
+
+    it('two events 100 ms apart cause one redial', async () => {
+      make()
+      open(0)
+      drop(0)
+      await advance(200)
+      wake()
+      await advance(0)
+      expect(count()).toBe(2)
+      drop(1) // a new backoff wait is pending
+      await advance(100)
+      wake()
+      await advance(0)
+      expect(count(), 'the second event within wakeMinGapMs is ignored').toBe(2)
+      await advance(1000)
+      expect(count()).toBe(3)
+    })
+
+    it('a host-path client (no reconnect) ignores it', () => {
+      client = new RelayClient(1234, 's', cbs, { remote: true })
+      open(0)
+      wake()
+      expect(pingsSent(0)).toBe(0)
+      expect(count()).toBe(1)
+    })
+
+    it('close() removes the listener', async () => {
+      make()
+      open(0)
+      send(0, pong)
+      client!.close()
+      client = null
+      wake()
+      await advance(RECONNECT.probeGraceMs + 1000)
+      expect(pingsSent(0)).toBe(0)
+      expect(count()).toBe(1)
+    })
+  })
+
   describe('stream position', () => {
     it('output before any replay meta on a reconnect (older host) resets once', async () => {
       make()

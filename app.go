@@ -14,6 +14,7 @@ import (
 	"github.com/scottkw/portty/internal/daemon"
 	"github.com/scottkw/portty/internal/tailnet"
 	"github.com/scottkw/portty/internal/updater"
+	"github.com/scottkw/portty/internal/wakewatch"
 	"github.com/scottkw/portty/internal/webserver"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -96,6 +97,9 @@ type App struct {
 	tailscaleCheckFunc func(context.Context) webserver.TailscaleHealth
 	healthMu           sync.Mutex
 	lastHealth         *webserver.TailscaleHealth
+
+	// wakeWatchFunc is the wake/network detector seam; nil means wakewatch.Watch.
+	wakeWatchFunc func(context.Context) <-chan wakewatch.Reason
 
 	// openAppFunc and openURLFunc are the OpenTailscale seams; nil means
 	// `/usr/bin/open -a <name>` (openAppCmd) and runtime.BrowserOpenURL.
@@ -1157,6 +1161,9 @@ func (a *App) checkTailscaleHealth(ctx context.Context) webserver.TailscaleHealt
 	}
 	return h
 }
+
+// startWakeWatcher: RED scaffold.
+func (a *App) startWakeWatcher(ctx context.Context) {}
 
 // startHealthPoller checks Tailscale health once immediately and then every
 // 10 seconds. The goroutine exits when ctx is cancelled (Wails shutdown).
