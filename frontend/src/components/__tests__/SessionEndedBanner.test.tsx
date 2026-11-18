@@ -122,4 +122,17 @@ describe('SessionEndedBanner', () => {
     ;({ container, root } = renderKind({ reason: 'share stopped' }))
     expect(container.textContent).toBe('This session is no longer shared.')
   })
+
+  // Phase 5 (SHAR-07): shown while a dropped guest socket is being replaced.
+  it("kind 'reconnecting' renders the fixed copy with role status and no Dismiss button", () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    flushSync(() => {
+      root!.render(React.createElement(SessionEndedBanner, { kind: 'reconnecting', onDismiss: vi.fn(), reason: '<b>x</b>' }))
+    })
+    expect(container.textContent).toBe('Connection lost — reconnecting…')
+    expect(container.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite')
+    expect(container.querySelector('[aria-label="Dismiss"]')).toBeNull()
+  })
 })

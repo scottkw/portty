@@ -1,10 +1,12 @@
 /**
- * Portty 04-06 (SHAR-04) — guest close path of TerminalPanel.
+ * Portty 04-06 (SHAR-04) + Phase 5 (SHAR-07) — guest close path of TerminalPanel.
  *
- * A guest socket closing with the share-stopped reason shows the stopped-sharing
- * banner with the local host label and calls onShareStopped; any other close keeps
- * the session-ended banner. Either way xterm stdin is disabled (the view keeps its
- * scrollback and takes no more input). Mocks copied from TerminalPanel.contextLoss.
+ * Only final closes reach onClose now: share-stopped shows the stopped-sharing
+ * banner with the local host label and calls onShareStopped, session-ended shows
+ * the session-ended banner, and either way xterm stdin is disabled (the view keeps
+ * its scrollback and takes no more input). A network drop reconnects instead
+ * (RelayClient onStateChange): the reconnecting banner appears after 3 s and goes
+ * away on 'open', which re-enables stdin. Mocks copied from TerminalPanel.contextLoss.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import React from 'react'
@@ -14,6 +16,8 @@ import { flushSync } from 'react-dom'
 const hoisted = vi.hoisted(() => ({
   state: {
     onClose: null as ((code: number, reason: string) => void) | null,
+    onStateChange: null as ((state: string) => void) | null,
+    onReset: null as (() => void) | null,
     term: null as { options: Record<string, unknown> } | null,
   },
 }))
@@ -93,7 +97,15 @@ vi.mock('@xterm/addon-progress', () => ({
 // Stub RelayClient (it tries to open a real WebSocket).
 vi.mock('../../lib/relayClient', () => ({
   RelayClient: class {
-    constructor(_p: number, _id: string, cbs: { onClose?: (code: number, reason: string) => void }) { hoisted.state.onClose = cbs.onClose ?? null }
+    constructor(_p: number, _id: string, cbs: {
+      onClose?: (code: number, reason: string) => void
+      onStateChange?: (state: string) => void
+      onReset?: () => void
+    }) {
+      hoisted.state.onClose = cbs.onClose ?? null
+      hoisted.state.onStateChange = cbs.onStateChange ?? null
+      hoisted.state.onReset = cbs.onReset ?? null
+    }
     sendInput() {}
     sendResize() {}
     close() {}
@@ -103,6 +115,7 @@ vi.mock('../../lib/relayClient', () => ({
   MSG_INPUT: 0x10,
   MSG_RESIZE2: 0x11,
   MSG_PING: 0x12,
+  RECONNECT: { bannerDelayMs: 3000 },
   encodeInputFrame: () => new Uint8Array(),
   encodeResizeFrame: () => new Uint8Array(),
   parseServerFrame: () => ({ type: 0 }),
@@ -143,6 +156,8 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
 
   beforeEach(() => {
     hoisted.state.onClose = null
+    hoisted.state.onStateChange = null
+    hoisted.state.onReset = null
     hoisted.state.term = null
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -153,6 +168,7 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
     try { flushSync(() => root.unmount()) } catch { /* ignore */ }
     container.remove()
     vi.clearAllMocks()
+    vi.useRealTimers()
   })
 
   function mountGuest(onShareStopped: () => void, hostLabel = 'office-air') {
@@ -193,5 +209,43 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
     mountGuest(vi.fn(), '')
     close('share stopped')
     expect(container.textContent).toContain('This session is no longer shared.')
+  })
+
+  describe('network drop (SHAR-07)', () => {
+    const BANNER = 'Connection lost — reconnecting…'
+    const setState = (st: string) => flushSync(() => { hoisted.state.onStateChange!(st) })
+    const advance = (ms: number) => flushSync(() => { vi.advanceTimersByTime(ms) })
+
+    it("'reconnecting' shows no banner at 2999 ms and the banner at 3000 ms; stdin disabled", () => {
+      vi.useFakeTimers()
+      mountGuest(vi.fn())
+      setState('reconnecting')
+      expect(hoisted.state.term!.options.disableStdin).toBe(true)
+      advance(2999)
+      expect(container.textContent).not.toContain(BANNER)
+      advance(1)
+      expect(container.textContent).toContain(BANNER)
+      expect(container.querySelector('[aria-label="Dismiss"]')).toBeNull()
+    })
+
+    it("'open' removes the banner and re-enables stdin", () => {
+      vi.useFakeTimers()
+      mountGuest(vi.fn())
+      setState('reconnecting')
+      advance(3000)
+      setState('open')
+      expect(container.textContent).not.toContain(BANNER)
+      expect(hoisted.state.term!.options.disableStdin).toBe(false)
+    })
+
+    it("'open' before 3 s cancels the banner (a blip stays silent)", () => {
+      vi.useFakeTimers()
+      mountGuest(vi.fn())
+      setState('reconnecting')
+      advance(1000)
+      setState('open')
+      advance(10_000)
+      expect(container.textContent).not.toContain(BANNER)
+    })
   })
 })
