@@ -123,6 +123,15 @@ type App struct {
 	ensureDaemonFunc func(socketPath string) error
 	showWindowFunc   func()
 
+	// daemonMu serializes every EnsureDaemon after startup (RetryDaemon and
+	// the poller's respawn) and guards the respawn streak. The poller respawns
+	// because a daemon that dies on the viewing Mac otherwise stays dead and
+	// its remote tabs retry it forever (R6). a.client is never replaced: the
+	// new daemon binds the same socket and the client dials per request (WR-05).
+	daemonMu        sync.Mutex
+	respawnAttempts int       // attempts in the current streak
+	lastRespawn     time.Time // when the last attempt ran
+
 	// seenSessions is every id the exit watcher has listed and not yet
 	// reported via session:exit. Owned by the exit watcher goroutine.
 	seenSessions map[string]bool
@@ -246,16 +255,80 @@ func (a *App) startDaemon(socketPath string) {
 	if a.startupDone != nil {
 		defer close(a.startupDone)
 	}
-	ensure := a.ensureDaemonFunc
-	if ensure == nil {
-		ensure = daemon.EnsureDaemon
-	}
-	if err := ensure(socketPath); err != nil {
+	if err := a.ensure()(socketPath); err != nil {
 		a.daemonErr = err
 		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
 		a.emitEvent("daemon:error", err.Error())
 	} else {
 		a.applyStoredAppearance()
+	}
+}
+
+// ensure returns the EnsureDaemon seam, or daemon.EnsureDaemon when unset.
+func (a *App) ensure() func(socketPath string) error {
+	if a.ensureDaemonFunc != nil {
+		return a.ensureDaemonFunc
+	}
+	return daemon.EnsureDaemon
+}
+
+// Respawn pacing: attempts wait 10 s, 20 s, 40 s and so on up to 2 min after
+// the previous one; a minute of healthy daemon ends the streak; the third
+// attempt raises daemon:error once.
+const (
+	respawnBaseDelay    = 10 * time.Second
+	respawnMaxDelay     = 2 * time.Minute
+	respawnHealthyReset = time.Minute
+	respawnErrorAfter   = 3
+)
+
+const respawnKeepsStoppingMsg = "Portty restarted the daemon 3 times and it keeps stopping."
+
+// respawnDaemonIfDown starts the daemon again when the poller finds it
+// unreachable after startup (R6), so remote tabs, the sidebar and new sessions
+// come back without a click. It skips while another EnsureDaemon runs.
+func (a *App) respawnDaemonIfDown(now time.Time) {
+	if a.client == nil {
+		return
+	}
+	if a.startupDone != nil {
+		select {
+		case <-a.startupDone:
+		default:
+			return // startup's own EnsureDaemon is still running
+		}
+	}
+	healthy := a.client.Health() == nil
+	if !a.daemonMu.TryLock() {
+		return
+	}
+	defer a.daemonMu.Unlock()
+	if healthy {
+		if a.respawnAttempts > 0 && now.Sub(a.lastRespawn) >= respawnHealthyReset {
+			a.respawnAttempts = 0
+		}
+		return
+	}
+	if a.respawnAttempts > 0 {
+		wait := min(respawnBaseDelay<<min(a.respawnAttempts-1, 4), respawnMaxDelay)
+		if now.Sub(a.lastRespawn) < wait {
+			return
+		}
+	}
+	a.respawnAttempts++
+	a.lastRespawn = now
+	err := a.ensure()(daemon.DefaultSocketPath())
+	result := "ok"
+	if err != nil {
+		result = err.Error()
+	}
+	fmt.Fprintf(os.Stderr, "portty: daemon unreachable, respawn attempt %d: %s\n", a.respawnAttempts, result)
+	if a.respawnAttempts == respawnErrorAfter {
+		msg := respawnKeepsStoppingMsg
+		if err != nil {
+			msg = err.Error()
+		}
+		a.emitEvent("daemon:error", msg)
 	}
 }
 
@@ -286,7 +359,13 @@ func (a *App) RetryDaemon() error {
 	if !a.awaitStartup() {
 		return errStartupTimeout // never run a second EnsureDaemon beside startup's
 	}
-	if err := daemon.EnsureDaemon(daemon.DefaultSocketPath()); err != nil {
+	a.daemonMu.Lock()
+	err := a.ensure()(daemon.DefaultSocketPath())
+	if err == nil {
+		a.respawnAttempts = 0
+	}
+	a.daemonMu.Unlock()
+	if err != nil {
 		a.daemonErr = err
 		return err
 	}
@@ -1046,13 +1125,16 @@ func (a *App) ConnectPeerSession(host, sessionID string) PeerConnectResult {
 // The goroutine exits when ctx is cancelled (Wails shutdown).
 func (a *App) startTrayPoller(ctx context.Context) {
 	go func() {
-		// Do an immediate refresh before the first tick.
+		// Do an immediate refresh before the first tick. Each refresh first
+		// brings a dead daemon back (R6), so the tray reads the new one.
+		a.respawnDaemonIfDown(time.Now())
 		a.refreshTrayState()
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
+				a.respawnDaemonIfDown(time.Now())
 				a.refreshTrayState()
 			case <-ctx.Done():
 				return

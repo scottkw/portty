@@ -243,6 +243,9 @@ func TestRespawnDaemon_HealthyMinuteResetsStreak(t *testing.T) {
 	stop := startTestDaemon(t, sock)
 	app.respawnDaemonIfDown(t0.Add(90 * time.Second)) // healthy, 60 s after the last attempt
 	stop()
+	// api.Stop leaves the client's keep-alive connection open, which kill -9
+	// would not; a fresh client sees the daemon as gone.
+	app.client = daemon.NewDaemonClient(sock)
 
 	for _, off := range []time.Duration{100, 110, 130} {
 		app.respawnDaemonIfDown(t0.Add(off * time.Second))

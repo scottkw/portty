@@ -147,23 +147,38 @@ func attachRemote(client *daemon.DaemonClient, host, session string, opts attach
 	}
 	sid := res.SessionID
 	target := &remoteTarget{
-		url: func() string { return remoteRelayURL(port, sid) },
-		// Before each redial: pick up a restarted daemon's port, then re-run the
-		// WhoIs- and Share-checked connect, which refills the daemon's cap.
-		reauth: func(context.Context) attach.Verdict {
-			p, err := client.GetRelayPort()
-			if err != nil {
-				return attach.VerdictRetry
-			}
-			_, err = client.ConnectPeer(host, sid)
-			v := peerVerdict(err)
-			if v == attach.VerdictOK {
-				port = p
-			}
-			return v
-		},
+		url:    func() string { return remoteRelayURL(port, sid) },
+		reauth: remoteReauth(client, host, sid, &port),
 	}
 	return runAttach(target.url(), res.Name, res.Host, time.Now(), opts, target)
+}
+
+// ensureLocalDaemon starts this Mac's daemon when it is down. Tests swap it;
+// EnsureDaemon itself refuses to spawn from a test binary.
+var ensureLocalDaemon = daemon.EnsureDaemon
+
+// remoteReauth runs before each redial: it picks up a restarted daemon's
+// port, starting the daemon first if it died (R6), then re-runs the WhoIs- and
+// Share-checked connect, which refills the daemon's cap. The attach loop's
+// backoff paces it, so a daemon that keeps dying is not respawned in a spin.
+func remoteReauth(client *daemon.DaemonClient, host, sid string, port *int) func(context.Context) attach.Verdict {
+	return func(context.Context) attach.Verdict {
+		p, err := client.GetRelayPort()
+		if err != nil {
+			if ensureLocalDaemon(daemon.DefaultSocketPath()) != nil {
+				return attach.VerdictRetry
+			}
+			if p, err = client.GetRelayPort(); err != nil {
+				return attach.VerdictRetry
+			}
+		}
+		_, err = client.ConnectPeer(host, sid)
+		v := peerVerdict(err)
+		if v == attach.VerdictOK {
+			*port = p
+		}
+		return v
+	}
 }
 
 // remoteTarget is how runAttach redials a remote session: the proxy URL (the
@@ -273,7 +288,8 @@ func remoteAttachEnd(err error, host, name string) (msg string, ended bool) {
 
 // runAttach dials wsURL and runs the interactive attach with the banner or
 // status bar. A remote target reconnects on its own after drops, silent
-// connections and a restart of this Mac's daemon (attach.Run), and ends with a
+// connections and a restart of this Mac's daemon (attach.Run), starting a
+// crashed local daemon again before the redial, and ends with a
 // fixed message when the host stops sharing or the session ends. A local attach
 // (remote nil) keeps one connection: a dropped local relay means the daemon and
 // its sessions died. Raw mode and the bar last for the whole attach and are
