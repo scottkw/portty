@@ -284,16 +284,18 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(raw).toContain("import { UpdateBanner } from './components/UpdateBanner'")
   })
 
-  it('imports UpdateInfo type', () => {
-    expect(raw).toContain("import type { UpdateInfo } from './components/UpdateBanner'")
+  it('imports UpdateStatus type', () => {
+    expect(raw).toContain("import type { UpdateStatus } from './components/UpdateBanner'")
   })
 
-  it('imports GetLastUpdateInfo from wailsjs bindings', () => {
-    expect(raw).toContain('GetLastUpdateInfo')
+  it('imports GetUpdateStatus and DownloadUpdate from wailsjs bindings, not the old update bindings (06-03)', () => {
+    expect(raw).toContain('GetUpdateStatus')
+    expect(raw).toContain('DownloadUpdate()')
+    expect(raw).not.toMatch(/GetLastUpdateInfo|CheckForUpdates|update:available/)
   })
 
   it('declares update state at App level', () => {
-    expect(raw).toContain('useState<UpdateInfo | null>(null)')
+    expect(raw).toContain('useState<UpdateStatus | null>(null)')
   })
 
   it('declares updateExiting state', () => {
@@ -353,8 +355,8 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     expect(stackBlock).toContain('<UpdateBanner')
   })
 
-  it('subscribes to update:available event', () => {
-    expect(raw).toContain("EventsOn('update:available'")
+  it('subscribes to update:status event', () => {
+    expect(raw).toContain("EventsOn('update:status'")
   })
 
   it('passes onDismiss to UpdateBanner', () => {
@@ -385,7 +387,7 @@ describe('BannerStack integration (BAN-01, BAN-02)', () => {
     const gate = raw.slice(invariant, raw.indexOf('<div className="banner-stack">', invariant))
     for (const trigger of [
       'tailscaleOff',
-      'update',
+      'showUpdateBanner',
       '(webglContextLost || webglSoftwareDetected) && !webglBannerDismissed',
       'saveBanner !== null',
       'pluginToggleBanners.length > 0',
