@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portty Polish Sketch</title>
+<link rel="stylesheet" href="../themes/default.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-ui); background: var(--wallpaper); min-height: 100vh; padding: 64px 16px 80px; color: var(--color-text); }
+  #variant-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 9998; display: flex; gap: 8px; padding: 10px 16px; background: rgba(255,255,255,.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(0,0,0,.1); flex-wrap: wrap; align-items: center; font-size: 13px; }
+  :root[data-theme="dark"] #variant-nav { background: rgba(30,30,30,.85); border-color: rgba(255,255,255,.1); color: #eee; }
+  .variant-tab, .state-btn { font: inherit; border: 1px solid rgba(0,0,0,.15); background: transparent; color: inherit; padding: 5px 10px; border-radius: 6px; cursor: pointer; transition: all .15s ease; }
+  :root[data-theme="dark"] .variant-tab, :root[data-theme="dark"] .state-btn { border-color: rgba(255,255,255,.2); }
+  .variant-tab:hover, .state-btn:hover { background: rgba(127,127,127,.15); }
+  .variant-tab.active, .state-btn.active { background: var(--color-accent); color: #fff; border-color: transparent; }
+  .nav-sep { width: 1px; height: 20px; background: rgba(127,127,127,.35); margin: 0 4px; }
+  .note { max-width: 1180px; margin: 0 auto 14px; font-size: 13px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  .note b { font-weight: 600; }
+
+  /* ---------- window shell (shared) ---------- */
+  .win { max-width: 1180px; height: 640px; margin: 0 auto; display: flex; border-radius: 12px; overflow: hidden; box-shadow: 0 22px 70px rgba(0,0,0,.35), 0 0 0 .5px rgba(0,0,0,.3); background: var(--color-window); }
+  .sidebar { width: 260px; flex: none; background: var(--color-sidebar); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6); border-right: 1px solid var(--color-separator); display: flex; flex-direction: column; }
+  .traffic { display: flex; gap: 8px; padding: 18px 16px 10px; }
+  .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .traffic i:nth-child(1) { background: #FF5F57; } .traffic i:nth-child(2) { background: #FEBC2E; } .traffic i:nth-child(3) { background: #28C840; }
+  .side-scroll { flex: 1; overflow: auto; padding: 4px 10px; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--color-terminal-bg); }
+  .tabbar { height: 44px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 10px; background: var(--color-toolbar); border-bottom: 1px solid var(--color-separator); }
+  .tab { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 7px; font-size: 13px; color: var(--color-text-secondary); cursor: pointer; transition: all .15s ease; white-space: nowrap; max-width: 260px; }
+  .tab:hover { background: var(--color-control-hover); }
+  .tab.active { background: var(--color-window); color: var(--color-text); box-shadow: var(--shadow-tab-active); }
+  .tab .x { opacity: 0; font-size: 11px; margin-left: 2px; } .tab:hover .x { opacity: .6; }
+  .spacer { flex: 1; }
+  .term { flex: 1; padding: 14px 18px; font: 12.5px/1.55 var(--font-mono); color: var(--color-terminal-fg); overflow: hidden; white-space: pre; position: relative; }
+  .term .p { color: #34C759; } .term .d { color: #0A84FF; } .term .m { color: var(--color-text-tertiary); }
+  .cursor { display: inline-block; width: 7px; height: 15px; background: var(--color-terminal-fg); vertical-align: -3px; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .ico { width: 15px; height: 15px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .row { display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all .15s ease; user-select: none; }
+  .banner { display: none; align-items: center; gap: 8px; font-size: 12.5px; }
+  body.reconnecting .banner { display: flex; }
+  body.reconnecting .term { opacity: .55; }
+  .spin { width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: rgba(0,0,0,.8); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: all .2s ease; pointer-events: none; z-index: 9999; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---------- A: Calm native ---------- */
+  .A .sec { font-size: 11px; font-weight: 600; color: var(--color-text-tertiary); padding: 14px 8px 4px; display: flex; align-items: center; }
+  .A .sec .add { margin-left: auto; opacity: .7; cursor: pointer; }
+  .A .row { height: 28px; padding: 0 8px; border-radius: 6px; font-size: 13px; }
+  .A .row:hover { background: var(--color-control-hover); }
+  .A .row.sel { background: var(--color-accent); color: var(--color-on-accent); }
+  .A .row.sel .ico, .A .row.sel .sub { color: var(--color-on-accent); }
+  .A .row .ico { color: var(--color-accent); }
+  .A .row.child { padding-left: 28px; }
+  .A .sub { margin-left: auto; font-size: 11px; color: var(--color-text-tertiary); }
+  .A .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-status-on); margin-left: auto; box-shadow: 0 0 0 2px rgba(48,209,88,.18); }
+  body.reconnecting .A .dot { background: var(--color-status-warn); box-shadow: 0 0 0 2px rgba(255,159,10,.2); }
+  .A .footer { padding: 10px 16px; font-size: 11.5px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--color-separator); }
+  .A .host { color: var(--color-text-tertiary); }
+  .A .pill { font-size: 12px; color: var(--color-text-secondary); padding: 4px 10px; border-radius: 999px; background: var(--color-chip); display: flex; align-items: center; gap: 6px; }
+  .A .banner { padding: 8px 16px; background: var(--color-banner-warning-bg); color: var(--color-banner-warning-fg); border-bottom: 1px solid var(--color-separator); }
+
+  /* ---------- B: Pro tool ---------- */
+  .B.win { --color-sidebar: rgba(28,28,30,.92); --color-toolbar: #232325; --color-terminal-bg: #161618; --color-terminal-fg: #E5E5EA; --color-window: #1C1C1E; --color-separator: #333336; --color-text: #F2F2F7; --color-text-secondary: #A1A1A6; --color-text-tertiary: #6E6E73; --color-control-hover: rgba(255,255,255,.06); --color-chip: #2C2C2E; color: var(--color-text); }
+  .B .sec { font: 600 10px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-tertiary); padding: 14px 8px 6px; display: flex; }
+  .B .sec .cnt { margin-left: auto; font-family: var(--font-mono); }
+  .B .row { height: 24px; padding: 0 8px; border-radius: 4px; font-size: 12.5px; color: var(--color-text-secondary); border-left: 2px solid transparent; }
+  .B .row:hover { background: var(--color-control-hover); color: var(--color-text); }
+  .B .row.sel { background: rgba(10,132,255,.16); color: var(--color-text); border-left-color: #0A84FF; }
+  .B .row.child { padding-left: 24px; font-family: var(--font-mono); font-size: 12px; }
+  .B .badge { margin-left: auto; font: 600 9.5px/1 var(--font-mono); padding: 3px 5px; border-radius: 3px; letter-spacing: .04em; }
+  .B .live { background: rgba(48,209,88,.16); color: #30D158; }
+  .B .shared { background: rgba(10,132,255,.18); color: #64B5FF; }
+  body.reconnecting .B .live { background: rgba(255,159,10,.18); color: #FF9F0A; }
+  .B .meta { height: 26px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 14px; font: 11px var(--font-mono); color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-separator); background: #1A1A1C; }
+  .B .meta b { color: var(--color-text-secondary); font-weight: 500; }
+  .B .status { height: 24px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 12px; font: 11px var(--font-mono); color: var(--color-text-tertiary); background: #0E0E10; border-top: 1px solid var(--color-separator); }
+  .B .status .ok { color: #30D158; }
+  body.reconnecting .B .status .ok { color: #FF9F0A; }
+  .B .tab { font-size: 12px; height: 28px; border-radius: 5px; }
+  .B .tab.active { background: #2C2C2E; box-shadow: none; color: #fff; }
+  .B .tab .hostlbl { font-family: var(--font-mono); font-size: 11px; color: #64B5FF; }
+  .B .banner { padding: 6px 14px; background: rgba(255,159,10,.12); color: #FF9F0A; font-family: var(--font-mono); font-size: 11.5px; border-bottom: 1px solid rgba(255,159,10,.3); }
+
+  /* ---------- C: Warm & friendly ---------- */
+  .C.win { border-radius: 16px; }
+  .C .sec { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); padding: 16px 10px 6px; display: flex; align-items: center; gap: 8px; }
+  .C .row { min-height: 34px; padding: 4px 10px; border-radius: 10px; font-size: 13px; }
+  .C .row:hover { background: var(--color-control-hover); }
+  .C .row.sel { background: color-mix(in srgb, var(--tint, var(--color-accent)) 18%, transparent); color: var(--color-text); }
+  .C .row.child { padding-left: 14px; margin-left: 22px; }
+  .C .avatar { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; background: var(--tint); flex: none; }
+  .C .mini { width: 8px; height: 8px; border-radius: 3px; background: var(--tint); flex: none; }
+  .C .peer-meta { display: flex; flex-direction: column; line-height: 1.2; }
+  .C .peer-meta small { font-size: 11px; color: var(--color-text-tertiary); }
+  .C .footer { margin: 10px; padding: 9px 12px; border-radius: 12px; background: color-mix(in srgb, var(--color-status-on) 14%, transparent); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+  body.reconnecting .C .footer { background: color-mix(in srgb, var(--color-status-warn) 18%, transparent); }
+  .C .tab { border-radius: 10px; height: 32px; }
+  .C .tab.active { box-shadow: 0 1px 4px rgba(0,0,0,.12), inset 0 -2px 0 var(--tint, transparent); }
+  .C .banner { margin: 10px 14px 0; padding: 10px 14px; border-radius: 12px; background: var(--color-banner-warning-bg); color: var(--color-banner-warning-fg); }
+  .C .new-btn { margin: 6px 10px; padding: 8px 10px; border-radius: 10px; border: 1.5px dashed var(--color-separator); color: var(--color-text-secondary); font-size: 13px; display: flex; gap: 8px; align-items: center; cursor: pointer; transition: all .15s ease; }
+  .C .new-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+</style>
+</head>
+<body>
+<div id="variant-nav">
+  <button class="variant-tab active" data-v="A">A: Calm native</button>
+  <button class="variant-tab" data-v="B">B: Pro tool</button>
+  <button class="variant-tab" data-v="C">C: Warm &amp; friendly</button>
+  <span class="nav-sep"></span>
+  <button class="state-btn active" data-s="connected">Connected</button>
+  <button class="state-btn" data-s="reconnecting">Reconnecting</button>
+  <span class="nav-sep"></span>
+  <button class="state-btn" id="theme-btn">Dark mode</button>
+</div>
+
+<p class="note" id="note"></p>
+<div id="stage"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const ICON = {
+  mac: '<svg class="ico" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="8" rx="1.3"/><path d="M5.5 13.5h5"/></svg>',
+  term: '<svg class="ico" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M5 6.5l2 1.5-2 1.5M8.5 10h2.5"/></svg>',
+  globe: '<svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8"/><path d="M2.2 8h11.6M8 2.2c1.8 1.7 1.8 9.9 0 11.6M8 2.2c-1.8 1.7-1.8 9.9 0 11.6"/></svg>',
+  plus: '<svg class="ico" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></svg>',
+  share: '<svg class="ico" viewBox="0 0 16 16"><path d="M8 10V2.8M5.3 5.2L8 2.5l2.7 2.7M4 8.5v4h8v-4"/></svg>',
+  shield: '<svg class="ico" viewBox="0 0 16 16"><path d="M8 2l5 2v4c0 3-2.3 5.2-5 6-2.7-.8-5-3-5-6V4z"/><path d="M5.8 8l1.6 1.6 2.9-3"/></svg>',
+};
+const TERM = `<span class="p">❯</span> <span class="d">~/dev/edge-mcp</span> claude
+<span class="m">╭──────────────────────────────────────────────╮</span>
+<span class="m">│</span> ✻ Welcome back! Resuming session…              <span class="m">│</span>
+<span class="m">╰──────────────────────────────────────────────╯</span>
+
+⏺ Read(frontend/src/components/chat/disclaimer.ts)
+  ⎿  Read 64 lines
+
+⏺ The setup page now has the Edge AI disclaimer, a tools
+  guide and section links in the top bar.
+
+  Say "commit and push" when you're happy with it.
+
+<span class="m">  ✻ Baked for 4m 31s · done</span>
+
+<span class="p">❯</span> <span class="cursor"></span>`;
+
+const NOTES = {
+  A: '<b>A · Calm native.</b> Closest to Apple\'s own apps. Translucent sidebar over the desktop, SF-Symbols-style icons in your accent color, a filled accent selection, tiny status dot per Mac. Remote tabs get a globe and a dimmed host. A thin amber strip appears only while reconnecting.',
+  B: '<b>B · Pro tool.</b> Dense and crisp, always dark chrome. Upper-case section labels with counts, monospace session names, LIVE / SHARED badges, a meta strip above the terminal (host · size · latency) and a status bar along the bottom. Reconnecting shows as amber text in place.',
+  C: '<b>C · Warm &amp; friendly.</b> Each Mac gets its own color and initials (office = teal, home = coral), echoed as a colored underline on its tabs. Softer, rounder shapes, a dashed "New Session" button, and a friendly status card. Reconnecting is a rounded card above the terminal.',
+};
+
+function A() { return `
+<div class="win A">
+  <div class="sidebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <div class="side-scroll">
+      <div class="sec">This Mac <span class="add" title="New Session" data-act="new">${ICON.plus}</span></div>
+      <div class="row" data-sel>${ICON.term}<span>shell 2</span><span class="sub">⌘1</span></div>
+      <div class="row" data-sel>${ICON.term}<span>build</span><span class="sub">⌘2</span></div>
+      <div class="sec">Other Macs</div>
+      <div class="row">${ICON.mac}<span>Ken's MacBook Air (1574)</span><span class="dot" title="Online"></span></div>
+      <div class="row child sel" data-sel>${ICON.globe}<span>shell 1</span></div>
+      <div class="row child" data-sel>${ICON.globe}<span>claude</span></div>
+    </div>
+    <div class="footer">${ICON.shield}<span>Tailscale connected</span><span class="host">· kens-personal</span></div>
+  </div>
+  <div class="main">
+    <div class="tabbar">
+      <div class="tab" data-tab>${ICON.term}shell 2<span class="x">✕</span></div>
+      <div class="tab active" data-tab>${ICON.globe}shell 1 <span class="host">· kens-macbook-air-1574</span><span class="x">✕</span></div>
+      <div class="spacer"></div>
+      <div class="pill">${ICON.share}Shared on tailnet</div>
+    </div>
+    <div class="banner"><span class="spin"></span>Connection lost — reconnecting to kens-macbook-air-1574…</div>
+    <div class="term">${TERM}</div>
+  </div>
+</div>`; }
+
+function B() { return `
+<div class="win B">
+  <div class="sidebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <div class="side-scroll">
+      <div class="sec">This Mac <span class="cnt">2</span></div>
+      <div class="row" data-sel>${ICON.term}<span>shell 2</span><span class="badge shared">SHARED</span></div>
+      <div class="row" data-sel>${ICON.term}<span>build</span></div>
+      <div class="sec">Other Macs <span class="cnt">1</span></div>
+      <div class="row">${ICON.mac}<span>kens-macbook-air-1574</span><span class="badge live">LIVE</span></div>
+      <div class="row child sel" data-sel><span>shell 1</span></div>
+      <div class="row child" data-sel><span>claude</span></div>
+      <div class="row child" data-act="new"><span style="opacity:.6">+ new session</span></div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="tabbar">
+      <div class="tab" data-tab>shell 2<span class="x">✕</span></div>
+      <div class="tab active" data-tab><span class="hostlbl">1574 ›</span> shell 1<span class="x">✕</span></div>
+      <div class="spacer"></div>
+    </div>
+    <div class="meta"><span><b>kens-macbook-air-1574</b> › shell 1</span><span>148×42</span><span>relay ord · 84 ms</span><span>scrollback 10k</span></div>
+    <div class="banner">⟳ reconnecting · attempt 3 · next try in 4 s · typing disabled</div>
+    <div class="term">${TERM}</div>
+    <div class="status"><span class="ok">● tailscale</span><span>kens-personal</span><span>2 macs online</span><span class="spacer"></span><span>zsh · UTF-8</span></div>
+  </div>
+</div>`; }
+
+function C() { return `
+<div class="win C">
+  <div class="sidebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <div class="side-scroll">
+      <div class="sec">This Mac</div>
+      <div class="row" data-sel style="--tint:#FF7A59"><span class="avatar">KH</span><div class="peer-meta">Ken's home Mac<small>2 sessions</small></div></div>
+      <div class="row child" data-sel style="--tint:#FF7A59"><span class="mini"></span>shell 2</div>
+      <div class="row child" data-sel style="--tint:#FF7A59"><span class="mini"></span>build</div>
+      <div class="new-btn" data-act="new">${ICON.plus} New Session</div>
+      <div class="sec">Other Macs</div>
+      <div class="row" style="--tint:#14B8A6"><span class="avatar">KO</span><div class="peer-meta">Ken's MacBook Air (1574)<small>online · office</small></div></div>
+      <div class="row child sel" data-sel style="--tint:#14B8A6"><span class="mini"></span>shell 1</div>
+      <div class="row child" data-sel style="--tint:#14B8A6"><span class="mini"></span>claude</div>
+    </div>
+    <div class="footer">${ICON.shield}<span>Connected to your tailnet</span></div>
+  </div>
+  <div class="main">
+    <div class="tabbar">
+      <div class="tab" data-tab style="--tint:#FF7A59"><span class="mini"></span>shell 2<span class="x">✕</span></div>
+      <div class="tab active" data-tab style="--tint:#14B8A6"><span class="mini"></span>shell 1 · office<span class="x">✕</span></div>
+      <div class="spacer"></div>
+    </div>
+    <div class="banner"><span class="spin"></span>Lost the connection to your office Mac. Reconnecting — your session is safe.</div>
+    <div class="term">${TERM}</div>
+  </div>
+</div>`; }
+
+const RENDER = { A, B, C };
+let current = 'A';
+function render() {
+  document.getElementById('stage').innerHTML = RENDER[current]();
+  document.getElementById('note').innerHTML = NOTES[current];
+  wire();
+}
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1400); }
+function wire() {
+  const stage = document.getElementById('stage');
+  stage.querySelectorAll('[data-sel]').forEach(r => r.addEventListener('click', () => {
+    stage.querySelectorAll('[data-sel]').forEach(x => x.classList.remove('sel'));
+    r.classList.add('sel');
+  }));
+  stage.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', e => {
+    if (e.target.classList.contains('x')) { t.remove(); toast('Tab closed'); return; }
+    stage.querySelectorAll('[data-tab]').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+  }));
+  stage.querySelectorAll('[data-act="new"]').forEach(b => b.addEventListener('click', () => toast('New Session (⌘T)')));
+}
+document.querySelectorAll('.variant-tab').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.variant-tab').forEach(x => x.classList.remove('active'));
+  b.classList.add('active'); current = b.dataset.v; render();
+}));
+document.querySelectorAll('.state-btn[data-s]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.state-btn[data-s]').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.body.classList.toggle('reconnecting', b.dataset.s === 'reconnecting');
+}));
+document.getElementById('theme-btn').addEventListener('click', e => {
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  e.target.classList.toggle('active', dark);
+});
+if (matchMedia('(prefers-color-scheme: dark)').matches) { document.documentElement.dataset.theme = 'dark'; document.getElementById('theme-btn').classList.add('active'); }
+render();
+</script>
+</body>
+</html>
