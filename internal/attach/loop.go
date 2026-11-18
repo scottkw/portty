@@ -111,6 +111,8 @@ type loop struct {
 	offset      uint64
 	offsetValid bool
 	rendered    bool
+
+	lastWake time.Time // last wake signal acted on; used by serve and the gap in turn
 }
 
 // Run is the remote attach loop (SHAR-07). It serves first, and whenever a
@@ -344,15 +346,18 @@ func (l *loop) reconnect(ctx context.Context, attempt *int) (*websocket.Conn, er
 	}
 }
 
-// redial backs off, re-authenticates and dials until it has a connection.
+// redial backs off, re-authenticates and dials until it has a connection. A
+// wake cuts the backoff short and restarts the schedule from its first step.
 func (l *loop) redial(ctx context.Context, attempt *int) (*websocket.Conn, error) {
 	for {
-		select {
-		case <-time.After(backoffDelay(l.t, *attempt, rand.Float64())):
-		case <-ctx.Done():
+		woke, ok := l.backoff(ctx, *attempt)
+		if !ok {
 			return nil, nil
 		}
 		*attempt++
+		if woke {
+			*attempt = 0
+		}
 		v := VerdictOK
 		if l.o.Reauth != nil {
 			v = l.o.Reauth(ctx)
@@ -373,6 +378,35 @@ func (l *loop) redial(ctx context.Context, attempt *int) (*websocket.Conn, error
 			return conn, nil
 		}
 	}
+}
+
+// backoff waits out one redial delay. woke reports a wake signal that cut it
+// short; ok is false when ctx ended.
+func (l *loop) backoff(ctx context.Context, attempt int) (woke, ok bool) {
+	wait := time.NewTimer(backoffDelay(l.t, attempt, rand.Float64()))
+	defer wait.Stop()
+	for {
+		select {
+		case <-wait.C:
+			return false, true
+		case <-l.o.Wake: // a nil channel never fires
+			if l.wakeAllowed() {
+				return true, true
+			}
+		case <-ctx.Done():
+			return false, false
+		}
+	}
+}
+
+// wakeAllowed rate-limits wake actions to one per WakeMinGap, so a flapping
+// network cannot drive a redial storm (T-05-32).
+func (l *loop) wakeAllowed() bool {
+	if time.Since(l.lastWake) < l.t.WakeMinGap {
+		return false
+	}
+	l.lastWake = time.Now()
+	return true
 }
 
 // resumeURL is URL() plus resume=<offset> when the offset is trusted.

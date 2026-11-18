@@ -18,6 +18,7 @@ import (
 	"github.com/scottkw/portty/internal/daemon"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/statusbar"
+	"github.com/scottkw/portty/internal/wakewatch"
 	"golang.org/x/term"
 )
 
@@ -358,6 +359,7 @@ func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpt
 			DetachKey:   opts.detachKey,
 			Bar:         bar,
 			ClearOnFull: stdoutTTY,
+			Wake:        wakewatch.Watch(ctx),
 		})
 	}
 	if msg, ended := remoteAttachEnd(err, hostname, name); remote != nil && ended {
