@@ -382,7 +382,7 @@ func TestUpdatePoller_DevBuildNeverChecks(t *testing.T) {
 }
 
 func TestUpdateDefaults_ReleaseBuild(t *testing.T) {
-	if updateAPI != updater.GitHubAPI || updateAPI != "https://api.github.com" {
+	if updateAPI != updater.GitHubAPI || updater.GitHubAPI != "https://api.github.com" {
 		t.Errorf("updateAPI = %q", updateAPI)
 	}
 	if updateFirstDelay != 10*time.Second || updateTick != time.Hour || updateEvery != 24*time.Hour {

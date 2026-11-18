@@ -66,9 +66,15 @@ type App struct {
 	lastTrayQuartile atomic.Int32          // Phase 98 PRG-03 — last applied tray progress quartile [0..4]; -1 = unset. Atomic because written by Wails RPC goroutine (SetTrayProgress) and read by startTrayPoller goroutine via trayIconBytesForState (CR-01).
 	daemonErr        atomic.Pointer[error] // non-nil when EnsureDaemon failed; atomic: Retry writes it while init reads it (IN-08)
 	quitting         atomic.Bool           // set first by QuitAll and shutdown: beforeClose allows exit and the poller never respawns (WR-04)
-	// Update checker state
-	lastUpdate   *updater.UpdateInfo
-	lastUpdateMu sync.Mutex
+	// updates is the update state machine (app_update.go); set in NewApp.
+	updates *updater.Service
+	// updateAfter and updateNow are the update loop's timer and clock seams; nil means time.After and time.Now.
+	updateAfter func(time.Duration) <-chan time.Time
+	updateNow   func() time.Time
+	// messageDialogFunc is the native alert seam; nil means runtime.MessageDialog on a.ctx.
+	messageDialogFunc func(runtime.MessageDialogOptions) (string, error)
+	// setTrayUpdateFunc is the tray "Update Available…" item seam; nil means the cgo setter once the tray exists.
+	setTrayUpdateFunc func(title string)
 
 	// saveFileDialogFunc allows unit tests to mock runtime.SaveFileDialog.
 	// Defaults to runtime.SaveFileDialog. Phase 97 SER-01 / PROJECT.md
@@ -81,8 +87,8 @@ type App struct {
 	// Phase 98 PRG-03 / PROJECT.md "Function injection" pattern.
 	refreshTrayStateFunc func()
 
-	// sendNotificationFunc is the one native notification path (quit-to-tray
-	// notice now, Phase 6 update notices later). Defaults to sendNotification;
+	// sendNotificationFunc is the one native notification path (the quit-to-tray
+	// notice and the update-available notice). Defaults to sendNotification;
 	// tests swap it so no real OS notification fires.
 	sendNotificationFunc func(identifier, title, body string)
 
@@ -153,6 +159,7 @@ func NewApp() *App {
 		client: daemon.NewDaemonClient(daemon.DefaultSocketPath()),
 	}
 	a.lastTrayQuartile.Store(-1) // Phase 98 PRG-03 — ensure first SetTrayProgress call always updates
+	a.updates = a.newUpdateService()
 	return a
 }
 
@@ -1178,72 +1185,6 @@ func (a *App) refreshTrayState() {
 		sessions = a.ListSessions()
 	}
 	a.updateTray(sessions, connected)
-}
-
-// updateSlug is the GitHub repository whose releases the update check reads.
-const updateSlug = "scottkw/portty"
-
-// startUpdatePoller checks for updates on startup and every hour.
-// Follows the startHealthPoller/startTrayPoller goroutine+ticker pattern.
-func (a *App) startUpdatePoller(ctx context.Context) {
-	go func() {
-		// Initial check after 5-second delay to avoid startup race
-		// (frontend needs time to mount and subscribe to events).
-		select {
-		case <-time.After(5 * time.Second):
-		case <-ctx.Done():
-			return
-		}
-		a.runUpdateCheck(ctx, false)
-		ticker := time.NewTicker(time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				a.runUpdateCheck(ctx, false)
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-}
-
-// runUpdateCheck performs a single update check and emits an event if a newer version is found.
-func (a *App) runUpdateCheck(ctx context.Context, force bool) {
-	info, err := updater.Check(ctx, configDir(), updateSlug, Version, updater.DefaultDetect, force)
-	if err != nil || info == nil {
-		return
-	}
-	a.lastUpdateMu.Lock()
-	a.lastUpdate = info
-	a.lastUpdateMu.Unlock()
-	runtime.EventsEmit(ctx, "update:available", info)
-}
-
-// GetLastUpdateInfo returns the latest update info, or nil if no update is available.
-// Called by frontend on mount to handle the startup race condition where
-// update:available events may fire before React subscribes.
-func (a *App) GetLastUpdateInfo() *updater.UpdateInfo {
-	a.lastUpdateMu.Lock()
-	defer a.lastUpdateMu.Unlock()
-	return a.lastUpdate
-}
-
-// CheckForUpdates performs an immediate update check, bypassing the rate limit.
-// Called from Help > Check for Updates menu item.
-func (a *App) CheckForUpdates() *updater.UpdateInfo {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	info, _ := updater.Check(ctx, configDir(), updateSlug, Version, updater.DefaultDetect, true)
-	if info != nil {
-		a.lastUpdateMu.Lock()
-		a.lastUpdate = info
-		a.lastUpdateMu.Unlock()
-		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "update:available", info)
-		}
-	}
-	return info
 }
 
 // checkTailscaleHealth runs one health check and emits "tailscale:health" when
