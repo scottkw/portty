@@ -8,7 +8,8 @@ import {
   MSG_RESIZE2,
   RECONNECT,
   backoffDelayMs,
-  encodeInputFrame,
+  encodeInputFrames,
+  MAX_INPUT_PAYLOAD,
   encodeResizeFrame,
   parseServerFrame,
   RelayClient,
@@ -16,25 +17,70 @@ import {
   type RelayClientCallbacks,
 } from './relayClient'
 
-describe('encodeInputFrame', () => {
-  it('prepends MSG_INPUT byte (0x10) to UTF-8 encoded text', () => {
-    const result = encodeInputFrame('hello')
-    expect(result).toBeInstanceOf(Uint8Array)
-    expect(result[0]).toBe(MSG_INPUT) // 0x10
-    expect(Array.from(result)).toEqual([0x10, 104, 101, 108, 108, 111])
+const concat = (frames: Uint8Array[]) => {
+  const out: number[] = []
+  for (const f of frames) out.push(...f.subarray(1))
+  return new Uint8Array(out)
+}
+
+describe('encodeInputFrames (HARD-02)', () => {
+  it('short input is one frame: MSG_INPUT then the UTF-8 bytes', () => {
+    const frames = encodeInputFrames('hello')
+    expect(frames).toHaveLength(1)
+    expect(frames[0]).toBeInstanceOf(Uint8Array)
+    expect(Array.from(frames[0])).toEqual([MSG_INPUT, 104, 101, 108, 108, 111])
   })
 
-  it('handles empty string', () => {
-    const result = encodeInputFrame('')
-    expect(result).toBeInstanceOf(Uint8Array)
-    expect(result.length).toBe(1)
-    expect(result[0]).toBe(MSG_INPUT)
+  it('empty input is no frame', () => {
+    expect(encodeInputFrames('')).toEqual([])
   })
 
-  it('handles multi-byte unicode characters', () => {
-    const result = encodeInputFrame('A')
-    expect(result[0]).toBe(MSG_INPUT)
-    expect(result[1]).toBe(65) // 'A' = 0x41
+  it('100,000 ASCII characters split into 4 frames under the 32768-byte read limit, in order', () => {
+    const text = Array.from({ length: 100_000 }, (_, i) => String.fromCharCode(33 + (i % 90))).join('')
+    const frames = encodeInputFrames(text)
+    expect(frames).toHaveLength(4)
+    for (const f of frames) {
+      expect(f[0]).toBe(MSG_INPUT)
+      expect(f.length).toBeLessThanOrEqual(MAX_INPUT_PAYLOAD + 1)
+    }
+    expect(MAX_INPUT_PAYLOAD + 1).toBe(32768)
+    expect(concat(frames)).toEqual(new TextEncoder().encode(text))
+  })
+
+  it('a multibyte character straddling a frame boundary still concatenates byte-for-byte', () => {
+    const text = '€'.repeat(20_000) // 3 bytes each, 60,000 bytes: 32767 is not a multiple of 3
+    const frames = encodeInputFrames(text)
+    expect(frames).toHaveLength(2)
+    expect(concat(frames)).toEqual(new TextEncoder().encode(text))
+  })
+})
+
+describe('RelayClient host path sends a large paste as ordered frames (HARD-02)', () => {
+  class WS {
+    static OPEN = 1
+    static last: WS
+    binaryType = ''
+    readyState = 1
+    onopen: (() => void) | null = null
+    onmessage: ((e: { data: ArrayBuffer }) => void) | null = null
+    onclose: ((e: { code: number; reason: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    send = vi.fn()
+    close = vi.fn()
+    constructor() { WS.last = this }
+  }
+  beforeEach(() => { vi.stubGlobal('WebSocket', WS) })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('sendInput of 100,000 characters on an open socket sends 4 MSG_INPUT frames in order', () => {
+    const client = new RelayClient(34115, 'sess-1', {})
+    const text = 'x'.repeat(99_999) + 'y'
+    client.sendInput(text)
+    const sent = WS.last.send.mock.calls.map((c) => c[0] as Uint8Array)
+    expect(sent).toHaveLength(4)
+    expect(sent.every((f) => f[0] === MSG_INPUT && f.length <= 32768)).toBe(true)
+    expect(new TextDecoder().decode(concat(sent))).toBe(text)
+    client.close()
   })
 })
 
@@ -547,6 +593,22 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     open(1)
     expect(ws(0).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(false)
     expect(ws(1).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(false)
+  })
+
+  it('a large paste is sent as ordered frames once open, and nothing while reconnecting (HARD-02)', async () => {
+    make()
+    open(0)
+    const text = 'a'.repeat(50_000) + 'b'.repeat(50_000)
+    client!.sendInput(text)
+    const sent = ws(0).send.mock.calls.map((c) => c[0] as Uint8Array).filter((f) => f[0] === MSG_INPUT)
+    expect(sent).toHaveLength(4)
+    expect(new TextDecoder().decode(concat(sent))).toBe(text)
+    drop(0)
+    client!.sendInput(text)
+    await advance(1000)
+    open(1)
+    expect(inputsSent(0)).toBe(4)
+    expect(inputsSent(1)).toBe(0)
   })
 
   it('an upgraded socket is not open until the host sends a frame: input is dropped (WR-03)', async () => {
