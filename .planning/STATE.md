@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-11-17T23:25:12.462Z"
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-11-18T01:45:45.311Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: c92cc05e067c4ccf2388a484d278f5e41197ca19
+state_head: 0de35ab3c68379dadbd05a14597132356b793c2d
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 48
-  completed_plans: 44
+  completed_plans: 45
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 5 (Overnight Survival) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 5 execution started
 
@@ -87,6 +87,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 5 P01 | 13min | 3 tasks | 14 files |
 | Phase 5 P02 | 12min | 3 tasks | 11 files |
 | Phase 05 P03 | 6min | 2 tasks | 3 files |
+| Phase 5 P04 | 32min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -194,6 +195,9 @@ Recent decisions affecting current work:
 - [Phase 5]: 05-02: no WebSocket heartbeat on the loopback relay or the proxy's client side; only the share server (toward viewers) and the proxy (toward upstream) ping
 - [Phase 05]: 05-03: scrollback history is a hub-owned rendered-line ring (10,000 lines / 4 MiB, memory only) drained from the emulator after every write; ESC[3J and RIS empty it; resize pushes visible rows before the rebuild
 - [Phase 05]: 05-03: wrapped full replay = history CRLF + all Height() rows CRLF-joined + CUP + ascending DEC mode restores (never 47/1047/1049/2048); intact-ring raw replay unchanged (#109)
+- [Phase 5]: 05-04: watchdog death and wake events dial at once (no backoff for that attempt); ordinary closes back off
+- [Phase 5]: 05-04: stale-socket detection uses a generation counter, since this.ws still points at the dead socket during the async beforeReconnect
+- [Phase 5]: 05-04: hot-swap 'never term.reset()' guard allows exactly the onReset full-replay line
 
 ### Pending Todos
 
@@ -262,6 +266,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-17T23:25:10.963Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-11-18T01:45:37.513Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
