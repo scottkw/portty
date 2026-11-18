@@ -113,6 +113,10 @@ type Hub struct {
 	// land in the wrong rows (05-08, the reattach jumble). Join sends no delta
 	// or raw replay that reaches back before it. Only touched under emuMu.
 	geomEnd uint64
+	// altExited is set by the vt AltScreen callback when the app leaves the
+	// alternate screen; recordFrameLocked rebuilds the emulator after the
+	// write (rebuildAfterAltExitLocked). Only touched under emuMu.
+	altExited bool
 }
 
 // altScreenEnterSeq is the DEC private-mode sequence a full-screen TUI emits
@@ -510,6 +514,33 @@ func (h *Hub) recordFrameLocked(frame, raw []byte) {
 	}
 	h.liveEmu.Write(StripTerminalQueries(raw)) //nolint:errcheck // emulator Write never returns a meaningful error
 	h.drainScrollbackLocked()
+	if h.altExited {
+		h.altExited = false
+		// Re-entered in the same read: the next exit rebuilds.
+		if !h.liveEmu.IsAltScreen() {
+			h.rebuildAfterAltExitLocked()
+		}
+	}
+}
+
+// rebuildAfterAltExitLocked replaces the live emulator once the app has left
+// the alternate screen, so the alt screen's scrollback is freed (HARD-01).
+// vt gives each screen its own 10,000-line scrollback, and SetScrollbackSize,
+// Scrollback and ClearScrollback reach only the main screen, so the alt
+// screen's lines go only with the emulator. Caller holds emuMu.
+//
+// Unlike resizeLiveEmulator it re-seeds the new emulator with the old main
+// screen rather than pushing the rows into history: no SIGWINCH redraw follows
+// an alt-screen exit, so the main screen must stay where the host shows it.
+// h.history, h.modes and geomEnd are Hub-owned and stay (not a geometry change).
+func (h *Hub) rebuildAfterAltExitLocked() {
+	old := h.liveEmu
+	seed := h.renderScreenLocked()
+	h.liveEmu = h.newLiveEmulator(old.Width(), old.Height())
+	if seed != nil {
+		h.liveEmu.Write(seed) //nolint:errcheck // emulator Write never returns a meaningful error
+	}
+	h.drainScrollbackLocked() // the seed fills exactly Height rows, so nothing scrolls
 }
 
 // newLiveEmulator builds the live emulator. It is the only constructor, so a
@@ -527,6 +558,10 @@ func (h *Hub) recordFrameLocked(frame, raw []byte) {
 // emulator's default handling still runs.
 func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	emu := xvt.NewEmulator(cols, rows)
+	// shortcut: while an app stays in the alt screen its scrollback is capped
+	// only by vt's DefaultScrollbackSize (10,000 lines x width x the 112-byte
+	// uv.Cell, 126.6 MiB measured for 20,000 lines), because vt does not expose
+	// it; rebuildAfterAltExitLocked frees it on exit. Bound it if vt ever does.
 	emu.SetScrollbackSize(HistoryMaxLines)
 	// Track DEC private modes for the replay's restores; ANSI modes are not
 	// replayed (the callbacks report both).
@@ -537,7 +572,16 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 			}
 		}
 	}
-	emu.SetCallbacks(xvt.Callbacks{EnableMode: track(true), DisableMode: track(false)})
+	emu.SetCallbacks(xvt.Callbacks{
+		EnableMode:  track(true),
+		DisableMode: track(false),
+		// Runs inside emu.Write: only flag the exit, recordFrameLocked rebuilds.
+		AltScreen: func(on bool) {
+			if !on {
+				h.altExited = true
+			}
+		},
+	})
 	// ESC[3J (zsh `clear`, Claude Code's /clear) erases scrollback: empty the
 	// history too, so a cleared transcript is never replayed (T-05-10).
 	emu.RegisterCsiHandler('J', func(params ansi.Params) bool {

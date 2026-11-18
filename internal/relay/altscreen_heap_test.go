@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"runtime"
+	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
 	"unsafe"
@@ -70,6 +72,11 @@ func TestHistory_HeapBoundAfterAltScreenScroll(t *testing.T) {
 
 	capBytes := int64(xvt.DefaultScrollbackSize) * cols * int64(unsafe.Sizeof(uv.Cell{}))
 	ceiling := capBytes + 16<<20
+	if raceBuild() {
+		// -race disables the tiny allocator, so each cell's 1-byte content
+		// string takes its own 16-byte block (measured +9.2 MiB at the cap).
+		ceiling += int64(xvt.DefaultScrollbackSize) * cols * 16
+	}
 	burst1, burst2, after := m1-m0, m2-m1, m3-m0
 	t.Logf("heap growth: burst 1 %.1f MiB, burst 2 %.1f MiB, after exit %.1f MiB; in-alt ceiling %.1f MiB",
 		mib(burst1), mib(burst2), mib(after), mib(ceiling))
@@ -100,6 +107,11 @@ func TestHistory_HeapBoundAfterAltScreenScroll(t *testing.T) {
 }
 
 func mib(b int64) float64 { return float64(b) / (1 << 20) }
+
+func raceBuild() bool {
+	bi, _ := debug.ReadBuildInfo()
+	return bi != nil && slices.Contains(bi.Settings, debug.BuildSetting{Key: "-race", Value: "true"})
+}
 
 // TestAltScreenExit_KeepsMainScreenAndHistory: the alt-exit rebuild keeps the
 // pre-app main history once, in order, with no alt line, and the main screen
