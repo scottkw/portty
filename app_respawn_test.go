@@ -357,3 +357,92 @@ func TestRespawnDaemon_ThirdAttemptSetsError(t *testing.T) {
 		t.Fatalf("GetDaemonError = %q, want spawn boom", got)
 	}
 }
+
+// HARD-04: a health blip in the first 10 s after a successful startup spends
+// no respawn attempt and raises nothing.
+func TestRespawnDaemon_LaunchGraceSkips(t *testing.T) {
+	sock := respawnHome(t)
+	rec := &respawnEnsures{}
+	ev := &respawnEvents{}
+	t0 := time.Now()
+	app := &App{client: daemon.NewDaemonClient(sock), startupDone: closedChan(), launchedAt: t0, ensureDaemonFunc: rec.ensure, emitEventFunc: ev.emit}
+
+	app.respawnDaemonIfDown(t0)
+	app.respawnDaemonIfDown(t0.Add(5 * time.Second))
+
+	if rec.calls() != 0 {
+		t.Fatalf("ensure ran %d times inside the launch grace", rec.calls())
+	}
+	if app.respawnAttempts != 0 || len(ev.got()) != 0 {
+		t.Fatalf("attempts = %d, events = %q; want 0 and none", app.respawnAttempts, ev.got())
+	}
+}
+
+// HARD-04 / R6: a daemon that died right after launch still comes back once
+// the grace ends.
+func TestRespawnDaemon_LaunchGraceEnds(t *testing.T) {
+	sock := respawnHome(t)
+	rec := &respawnEnsures{}
+	t0 := time.Now()
+	app := &App{client: daemon.NewDaemonClient(sock), startupDone: closedChan(), launchedAt: t0, ensureDaemonFunc: rec.ensure}
+
+	app.respawnDaemonIfDown(t0)
+	app.respawnDaemonIfDown(t0.Add(respawnLaunchGrace))
+
+	if rec.calls() != 1 {
+		t.Fatalf("ensure calls = %d, want 1 once the grace ended", rec.calls())
+	}
+}
+
+// R6: after the first healthy tick there is no grace, even inside the window.
+func TestRespawnDaemon_HealthySeenEndsGrace(t *testing.T) {
+	sock := respawnHome(t)
+	stop := startTestDaemon(t, sock)
+	rec := &respawnEnsures{}
+	t0 := time.Now()
+	app := &App{client: daemon.NewDaemonClient(sock), startupDone: closedChan(), launchedAt: t0, ensureDaemonFunc: rec.ensure}
+
+	app.respawnDaemonIfDown(t0) // healthy
+	stop()
+	app.client = daemon.NewDaemonClient(sock) // api.Stop keeps the old keep-alive conn open
+	app.respawnDaemonIfDown(t0.Add(5 * time.Second))
+
+	if rec.calls() != 1 {
+		t.Fatalf("ensure calls = %d, want 1 (no grace after a healthy tick)", rec.calls())
+	}
+}
+
+// A failed startup leaves launchedAt zero, so the poller retries at once.
+func TestRespawnDaemon_FailedStartupNoGrace(t *testing.T) {
+	sock := respawnHome(t)
+	rec := &respawnEnsures{}
+	app := &App{client: daemon.NewDaemonClient(sock), startupDone: closedChan(), ensureDaemonFunc: rec.ensure}
+	boom := errors.New("boom")
+	app.daemonErr.Store(&boom)
+
+	app.respawnDaemonIfDown(time.Now())
+
+	if rec.calls() != 1 {
+		t.Fatalf("ensure calls = %d, want 1 after a failed startup", rec.calls())
+	}
+}
+
+func TestStartDaemon_SetsLaunchedAtOnSuccess(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{{"success", nil}, {"failure", errors.New("boom")}} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &App{
+				startupDone:         make(chan struct{}),
+				ensureDaemonFunc:    func(string) error { return tc.err },
+				emitEventFunc:       func(string, any) {},
+				applyAppearanceFunc: func(string) {},
+			}
+			a.startDaemon("unused")
+			if a.launchedAt.IsZero() != (tc.err != nil) {
+				t.Fatalf("launchedAt = %v for err=%v", a.launchedAt, tc.err)
+			}
+		})
+	}
+}
