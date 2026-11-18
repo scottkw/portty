@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: Overnight Survival
 status: verifying
-stopped_at: Completed 05-07-PLAN.md
-last_updated: "2026-11-18T02:42:39.812Z"
+stopped_at: Completed 05-08-PLAN.md
+last_updated: "2026-11-18T03:47:16.394Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 5 execution started
-state_head: b17029ba3be5ce38970e27b077a961f7749ea1cb
+state_head: 26787936ac24bb1f09be3bc053145c70a0162650
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 48
-  completed_plans: 48
+  total_plans: 56
+  completed_plans: 49
   percent: 17
 ---
 
@@ -91,6 +91,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 05 P05 | 18min | 2 tasks | 8 files |
 | Phase 5 P06 | 18min | 3 tasks | 7 files |
 | Phase 05 P07 | 8min | 2 tasks | 5 files |
+| Phase 5 P08 | 12min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -207,6 +208,8 @@ Recent decisions affecting current work:
 - [Phase 5]: 05-06: stdin chunks read while disconnected are stamped stale and dropped (besides draining in the gap), so gap keystrokes never reach the shell
 - [Phase 05]: 05-07: the share-removal gate's /join route pattern skips an underscore so TESTING.md can name internal/relay/join_test.go
 - [Phase 05]: 05-07: VERF-01 rows are accelerated stand-ins; M-84/M-85 deferred-capable, gate decision left to the user at verification
+- [Phase 5]: 05-08: Join sends no delta or raw replay across a genuine host resize (geomEnd); the first resize from the unknown grid keeps the #109 raw replay
+- [Phase 5]: 05-08: rendered replays never restore 2026 and re-print the last-column cell when the host cursor is in pending wrap (inferred; vt hides atPhantom)
 
 ### Pending Todos
 
@@ -275,6 +278,6 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 ## Session Continuity
 
-Last session: 2026-11-18T02:42:37.373Z
-Stopped at: Completed 05-07-PLAN.md
+Last session: 2026-11-18T03:47:13.798Z
+Stopped at: Completed 05-08-PLAN.md
 Resume file: None

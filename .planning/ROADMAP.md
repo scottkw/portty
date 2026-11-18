@@ -220,7 +220,7 @@ Plans:
   3. Detaching and reattaching from the GUI, the CLI, or a browser restores the session's scrollback
   4. Overnight test: Claude Code runs in a shared shell on the office Mac and the home Mac attaches from the Portty GUI. After both sit idle overnight, the user keeps typing the next morning and the previous day's scrollback is intact
   5. The next morning the same session also opens from a browser on the tailnet and works
-**Plans**: 7/15 plans executed (05-01..05-07 in 4 waves). 8 gap-closure plans added 2026-11-17 from five pending todos raised during execution (jumbled screen on reattach, duplicate remote tab blanking the window, wake/network-change reconnect and the resilience matrix, Go toolchain pin for tailscale.com, guest scrollbar); 05-12..05-15 are sequential because they share TerminalPanel/App.tsx, the two Tart VMs and TESTING.md
+**Plans**: 8/15 plans executed (05-01..05-07 in 4 waves). 8 gap-closure plans added 2026-11-17 from five pending todos raised during execution (jumbled screen on reattach, duplicate remote tab blanking the window, wake/network-change reconnect and the resilience matrix, Go toolchain pin for tailscale.com, guest scrollbar); 05-12..05-15 are sequential because they share TerminalPanel/App.tsx, the two Tart VMs and TESTING.md
 
 Plans:
 **Wave 1**
@@ -239,7 +239,7 @@ Plans:
 - [x] 05-07-PLAN.md — TESTING.md manifest, SHAR-07/VERF-01 traceability, M-84..M-87 (two-Mac items deferred-capable), todos
 
 **Gap closure, Wave 1** *(todos raised 2026-11-17 during execution)*
-- [ ] 05-08-PLAN.md — Replay fidelity proof in Go: Claude-Code-like wrapped replay compared grid-for-grid with the host; geometry-aware Join (no delta or raw replay across a genuine host resize); typing after a wrapped replay; xterm fixture
+- [x] 05-08-PLAN.md — Replay fidelity proof in Go: Claude-Code-like wrapped replay compared grid-for-grid with the host; geometry-aware Join (no delta or raw replay across a genuine host resize); typing after a wrapped replay; xterm fixture
 - [ ] 05-09-PLAN.md — Duplicate remote tab / blank window: in-flight guard, functional dedupe, safe next-active rule, render guard, ErrorBoundary per pane and root; VM double-click check
 - [ ] 05-10-PLAN.md — internal/wakewatch (wall-clock tick gap + interface-address change) and wake-driven reconnect in `portty attach`; long-output-during-gap harness row; CONTEXT amendment superseding "no NSWorkspace wake hook"
 - [ ] 05-11-PLAN.md — Go toolchain pin (go.mod `toolchain go1.26.11`, build.sh GOTOOLCHAIN export, Go 1.27 compile guard) and a LocalAPI decode test with a tailcfg format-tag canary
@@ -279,5 +279,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Tabs + Sidebar Navigation | 13/13 | In Progress | - |
 | 3. Portty Brand | 6/6 | In Progress | - |
 | 4. One-Click Share | 10/10 | In Progress | - |
-| 5. Overnight Survival | 7/15 | In Progress | - |
+| 5. Overnight Survival | 8/15 | In Progress | - |
 | 6. Release Updates | 0/TBD | Not started | - |
