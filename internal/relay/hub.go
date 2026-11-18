@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	xvt "github.com/charmbracelet/x/vt"
 )
@@ -99,6 +100,12 @@ type Hub struct {
 	// set/reset), replayed after the screen. Hub-owned so it survives emulator
 	// rebuilds, which start from default modes. Only touched under emuMu.
 	modes map[int]bool
+	// geomEnd is the scrollback end offset at the last genuine host geometry
+	// change (0: none). Raw ring bytes are laid out for the width they were
+	// written at; replayed at another width, Claude Code's relative redraws
+	// land in the wrong rows (05-08, the reattach jumble). Join sends no delta
+	// or raw replay that reaches back before it. Only touched under emuMu.
+	geomEnd uint64
 }
 
 // altScreenEnterSeq is the DEC private-mode sequence a full-screen TUI emits
@@ -331,7 +338,9 @@ func (h *Hub) ResizeClient(sub *Subscriber, cols, rows int) error {
 		// CR-01: keep the live emulator's geometry in lockstep with the PTY so a
 		// later reconnect preamble (RenderSnapshot) is not mis-dimensioned. Safe
 		// here — hub.mu is already released (resizeLiveEmulator takes only emuMu).
-		h.resizeLiveEmulator(pc, pr)
+		// Genuine only when the hub already had a real grid: the first resize from
+		// the unknown grid matches the size the PTY was spawned at.
+		h.resizeLiveEmulator(pc, pr, oldCols > 0 && oldRows > 0)
 		if h.resizeFn != nil {
 			return h.resizeFn(minCols, minRows)
 		}
@@ -536,11 +545,14 @@ func (h *Hub) drainScrollbackLocked() {
 // elsewhere, so this MUST be called after hub.mu is released, or the reverse lock
 // order would deadlock. No-op until the emulator exists (recordFrameLocked will build
 // at the current geometry on the first frame).
-func (h *Hub) resizeLiveEmulator(cols, rows int) {
+func (h *Hub) resizeLiveEmulator(cols, rows int, genuine bool) {
 	h.emuMu.Lock()
 	defer h.emuMu.Unlock()
 	if h.liveEmu == nil {
 		return
+	}
+	if genuine {
+		h.geomEnd = h.scrollback.End()
 	}
 	// SHAR-07 / Phase 5: the old emulator's screen is about to be discarded, so
 	// keep a main screen's rows in history first: drain what already scrolled,
@@ -696,6 +708,17 @@ func (h *Hub) renderScreenLocked() []byte {
 	b.WriteString(strings.ReplaceAll(h.liveEmu.Render(), "\n", "\r\n"))
 	pos := h.liveEmu.CursorPosition()
 	fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
+	// A host cursor at the last column after printing there is in the pending
+	// (deferred) wrap state, which a CUP clears: re-print that cell so the
+	// viewer's next character wraps as the host's does. vt does not expose the
+	// state, so this infers it.
+	// shortcut: a cursor moved onto a filled last column (not printed there) is
+	// replayed as pending wrap too; track the state per write if that shows up.
+	if aw, ok := h.modes[7]; (aw || !ok) && pos.X == h.liveEmu.Width()-1 {
+		if c := h.liveEmu.CellAt(pos.X, pos.Y); c != nil && c.Width == 1 && c.Content != "" && c.Content != " " {
+			b.WriteString(uv.Line{*c}.Render())
+		}
+	}
 	// Restore the app's DEC private modes (bracketed paste, cursor keys, cursor
 	// visibility, mouse) in ascending order, so the viewer's xterm behaves like
 	// the host even though the ring wrapped past the sets. Never the alt-screen
@@ -703,7 +726,9 @@ func (h *Hub) renderScreenLocked() []byte {
 	// purpose by liveEmuQueryStripPattern).
 	for _, m := range slices.Sorted(maps.Keys(h.modes)) {
 		switch m {
-		case 47, 1047, 1049, 2048:
+		case 47, 1047, 1049, 2048, 2026:
+			// 2026 (synchronized output): the replay is a complete screen, so a
+			// join mid-update must not leave the viewer holding its rendering.
 			continue
 		}
 		set := byte('l')
@@ -767,6 +792,15 @@ type Replay struct {
 // reaches the viewer exactly once: in the replay or in sub.Msgs.
 // The ring bytes ride along with their 0x01 frame headers as SOH bytes; the
 // client takes its position from the offset meta, never by counting them.
+//
+// Geometry (05-08): the ring stores raw bytes but not resizes. Bytes written
+// before a genuine host resize, replayed into a viewer at the new width, put
+// relative redraws (Claude Code's Ink frames) in the wrong rows: the reattach
+// jumble. So a delta is sent only from an offset past the last genuine resize
+// (geomEnd), and the raw full replay only while no genuine resize was
+// recorded; otherwise the rendered history + screen goes out. The hub's first
+// resize from its unknown grid is not genuine (the PTY was spawned at that
+// grid), so the #109 raw replay keeps the common never-resized case.
 func (h *Hub) Join(sub *Subscriber, resume uint64, hasResume bool) Replay {
 	r, data, raw := h.joinLocked(sub, resume, hasResume)
 	// Strip and chunk outside emuMu so the drain loop is not held up.
@@ -808,15 +842,18 @@ func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Repl
 	h.Subscribe(sub) // lock order emuMu then hub.mu, as Cols()/Rows()
 	h.ensureLiveEmulatorLocked()
 
-	if hasResume {
+	// A resume exactly at geomEnd may predate the resize (no output in between),
+	// so only an offset past it is known to be laid out for the current grid.
+	if hasResume && (h.geomEnd == 0 || resume > h.geomEnd) {
 		if tail, end, ok := h.scrollback.SnapshotFrom(resume); ok {
 			return Replay{Mode: ReplayDelta, End: end}, tail, true
 		}
 	}
 	r = Replay{Mode: ReplayFull, End: h.scrollback.End()}
-	if h.scrollback.Truncated() {
-		// Ring wrapped — raw is incomplete; prefer the emulator's complete
-		// screen, after the history that scrolled off it (SHAR-07).
+	if h.scrollback.Truncated() || h.geomEnd > 0 {
+		// Ring wrapped (raw is incomplete) or it holds bytes laid out for an
+		// older grid: prefer the emulator's complete screen, after the history
+		// that scrolled off it (SHAR-07, 05-08).
 		if screen := h.renderScreenLocked(); len(screen) > 0 {
 			if hist := h.history.Render(); hist != "" {
 				screen = append([]byte(hist+"\r\n"), screen...)
@@ -824,7 +861,7 @@ func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Repl
 			return r, screen, false
 		}
 	}
-	// Ring intact (complete and byte-faithful), or the emulator has nothing to
+	// Ring intact at one grid (complete and byte-faithful), or the emulator has nothing to
 	// render: fall back to the raw tail rather than sending nothing.
 	return r, h.scrollback.Snapshot(), true
 }
