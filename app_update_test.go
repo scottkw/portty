@@ -172,7 +172,7 @@ func newUpdateHarness(t *testing.T) *updateHarness {
 func fakeUpdateRun(_ context.Context, name string, args ...string) ([]byte, error) {
 	switch {
 	case strings.HasSuffix(name, "codesign") && len(args) > 0 && args[0] == "-dvv":
-		return []byte("TeamIdentifier=" + updater.TeamID + "\n"), nil
+		return []byte("Identifier=portty-v9.9.9-darwin-universal\nTeamIdentifier=" + updater.TeamID + "\n"), nil
 	case strings.HasSuffix(name, "spctl"):
 		return []byte("x.dmg: accepted\nsource=Notarized Developer ID\n"), nil
 	}

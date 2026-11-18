@@ -151,7 +151,7 @@ func newSvc(t *testing.T) svcFix {
 	host := strings.TrimPrefix(g.URL, "http://")
 	allow := func(u *url.URL) bool { return u.Scheme == "http" && u.Host == host }
 	ev := &emits{}
-	run := &fakeRun{team: "TeamIdentifier=" + TeamID, spctl: goodSpctl}
+	run := &fakeRun{team: goodDVV, spctl: goodSpctl}
 	dir := filepath.Join(t.TempDir(), "updates")
 	svc := &Service{
 		Checker: &Checker{API: g.URL, Repo: Repo, HTTP: NewCheckClient(g.URL), Allow: allow},

@@ -171,7 +171,7 @@ func (s *Service) Download() (Status, error) {
 	if s.Now != nil {
 		now = s.Now
 	}
-	if err := Verify(ctx, s.Run, path, TeamID, now()); err != nil {
+	if err := Verify(ctx, s.Run, path, TeamID, rel.DMG.Name, now()); err != nil {
 		log.Printf("update: %v", err) // names the failed step
 		_ = os.Remove(path)
 		return fail("verify", "The download didn't pass the signature check, so Portty deleted it.")

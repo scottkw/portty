@@ -60,7 +60,7 @@ type fakeRun struct {
 	mu    sync.Mutex
 	calls []string
 	fail  string // "codesign", "dvv", "spctl", "xattr", "open"
-	team  string // -dvv output
+	team  string // -dvv output lines (goodDVV: the identifier of DMGAssetName("9.9.9") and Team S2K7P43927)
 	spctl string // spctl output
 }
 
@@ -83,6 +83,8 @@ func (f *fakeRun) run(_ context.Context, name string, args ...string) ([]byte, e
 	}
 	return nil, nil
 }
+
+const goodDVV = "Identifier=portty-v9.9.9-darwin-universal\nTeamIdentifier=" + TeamID
 
 const goodSpctl = "/tmp/x.dmg: accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Ken Scott (S2K7P43927)\n"
 
@@ -133,8 +135,8 @@ func TestFlow_CheckDownloadVerifyReveal(t *testing.T) {
 	}
 
 	now := time.Unix(0x6720_0000, 0)
-	f := &fakeRun{team: "TeamIdentifier=" + TeamID, spctl: path + ": accepted\nsource=Notarized Developer ID\n"}
-	if err := Verify(ctx, f.run, path, TeamID, now); err != nil {
+	f := &fakeRun{team: goodDVV, spctl: path + ": accepted\nsource=Notarized Developer ID\n"}
+	if err := Verify(ctx, f.run, path, TeamID, name, now); err != nil {
 		t.Fatal(err)
 	}
 	if err := Reveal(ctx, f.run, path); err != nil {
@@ -291,8 +293,8 @@ func TestDownloadRedirects(t *testing.T) {
 
 func TestVerify(t *testing.T) {
 	now := time.Unix(0x6720_0000, 0)
-	f := &fakeRun{team: "TeamIdentifier=S2K7P43927", spctl: goodSpctl}
-	if err := Verify(context.Background(), f.run, "/c/x.dmg", TeamID, now); err != nil {
+	f := &fakeRun{team: goodDVV, spctl: goodSpctl}
+	if err := Verify(context.Background(), f.run, "/c/x.dmg", TeamID, DMGAssetName("9.9.9"), now); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
@@ -307,7 +309,7 @@ func TestVerify(t *testing.T) {
 }
 
 func TestVerifyFailures(t *testing.T) {
-	good := fakeRun{team: "TeamIdentifier=S2K7P43927", spctl: goodSpctl}
+	good := fakeRun{team: goodDVV, spctl: goodSpctl}
 	cases := map[string]struct {
 		f    *fakeRun
 		step string
@@ -317,6 +319,11 @@ func TestVerifyFailures(t *testing.T) {
 		"other team":        {&fakeRun{team: "TeamIdentifier=ABCDE12345", spctl: good.spctl}, "team"},
 		"team not set":      {&fakeRun{team: "TeamIdentifier=not set", spctl: good.spctl}, "team"},
 		"team prefix":       {&fakeRun{team: "TeamIdentifier=S2K7P439270", spctl: good.spctl}, "team"},
+		"no identifier":     {&fakeRun{team: "TeamIdentifier=" + TeamID, spctl: good.spctl}, "identifier"},
+		// WR-01: a genuine older Portty DMG, or another product of the same team, under this name.
+		"older version":     {&fakeRun{team: "Identifier=portty-v1.0.0-darwin-universal\nTeamIdentifier=" + TeamID, spctl: good.spctl}, "identifier"},
+		"other product":     {&fakeRun{team: "Identifier=Gifsmith-1.0.1-arm64\nTeamIdentifier=" + TeamID, spctl: good.spctl}, "identifier"},
+		"identifier prefix": {&fakeRun{team: "Identifier=portty-v9.9.9-darwin-universalx\nTeamIdentifier=" + TeamID, spctl: good.spctl}, "identifier"},
 		"spctl fails":       {&fakeRun{fail: "spctl", team: good.team, spctl: good.spctl}, "spctl"},
 		"spctl rejected":    {&fakeRun{team: good.team, spctl: "/tmp/x.dmg: rejected\nsource=Notarized Developer ID\n"}, "spctl"},
 		"unnotarized":       {&fakeRun{team: good.team, spctl: "/tmp/x.dmg: rejected\nsource=Unnotarized Developer ID\n"}, "spctl"},
@@ -326,7 +333,7 @@ func TestVerifyFailures(t *testing.T) {
 		"dvv command fails": {&fakeRun{fail: "dvv", team: good.team, spctl: good.spctl}, "team"},
 	}
 	for name, c := range cases {
-		err := Verify(context.Background(), c.f.run, "/c/x.dmg", TeamID, time.Now())
+		err := Verify(context.Background(), c.f.run, "/c/x.dmg", TeamID, DMGAssetName("9.9.9"), time.Now())
 		if !errors.Is(err, ErrVerify) || !strings.HasSuffix(err.Error(), ": "+c.step) {
 			t.Errorf("%s: err = %v, want ErrVerify at step %s", name, err, c.step)
 		}

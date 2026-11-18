@@ -65,6 +65,14 @@ func TestReleaseWorkflow_DMGName(t *testing.T) {
 	if got := strings.ReplaceAll(m[1], "${VERSION}", "v1.2.3"); got != DMGAssetName("1.2.3") {
 		t.Errorf("tag v1.2.3 publishes %q, the updater looks for %q", got, DMGAssetName("1.2.3"))
 	}
+	// Verify requires the signing identifier to be the asset name without .dmg.
+	id := regexp.MustCompile(`codesign --force --timestamp --identifier "([^"]+)"`).FindStringSubmatch(create)
+	if id == nil {
+		t.Fatalf("the DMG is not signed with an explicit --identifier:\n%s", create)
+	}
+	if got := strings.ReplaceAll(id[1], "${VERSION}", "v1.2.3") + ".dmg"; got != DMGAssetName("1.2.3") {
+		t.Errorf("tag v1.2.3 signs identifier %q, Verify wants the asset name %q without .dmg", id[1], DMGAssetName("1.2.3"))
+	}
 }
 
 func TestReleaseWorkflow_NotarizesAndStaplesDMG(t *testing.T) {
@@ -91,6 +99,7 @@ func TestReleaseWorkflow_NotarizesAndStaplesDMG(t *testing.T) {
 		`codesign --verify --strict "$DMG"`,
 		"codesign -dvv",
 		"'TeamIdentifier=" + TeamID + "'",
+		`grep -qx "Identifier=portty-${VERSION}-darwin-universal" <<< "$DVV"`,
 		"spctl -a -t open --context context:primary-signature",
 		"': accepted'",
 		"'source=Notarized Developer ID'",

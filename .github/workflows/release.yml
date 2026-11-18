@@ -210,7 +210,10 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           DMG_NAME="portty-${VERSION}-darwin-universal.dmg"
           hdiutil create -volname "Portty" -srcfolder build/bin/Portty.app -ov -format UDZO "build/bin/${DMG_NAME}"
-          codesign --force --timestamp --sign "$MACOS_CERTIFICATE_NAME" "build/bin/${DMG_NAME}"
+          # The in-app updater requires the DMG's signing identifier to be its asset name without
+          # .dmg, which binds the file to this version (no rollback or cross-product swap).
+          codesign --force --timestamp --identifier "portty-${VERSION}-darwin-universal" \
+            --sign "$MACOS_CERTIFICATE_NAME" "build/bin/${DMG_NAME}"
 
       # Runs before "Cleanup keychain": the portty-notarize profile lives in build.keychain.
       - name: Notarize and staple DMG
@@ -222,8 +225,9 @@ jobs:
           xcrun stapler validate "$DMG"
 
       # The in-app updater (internal/updater Verify) rejects any DMG that fails
-      # these three checks, so a release must never ship one. The Team ID is
-      # hardcoded to match updater.TeamID.
+      # these checks, so a release must never ship one. The Team ID is
+      # hardcoded to match updater.TeamID; the identifier must be the asset name
+      # without .dmg.
       - name: Verify DMG like the in-app updater
         run: |
           VERSION="${GITHUB_REF_NAME}"
@@ -232,6 +236,7 @@ jobs:
           DVV=$(codesign -dvv "$DMG" 2>&1)
           echo "$DVV"
           grep -qx 'TeamIdentifier=S2K7P43927' <<< "$DVV" || { echo "FAIL: DMG is not signed by Team S2K7P43927"; exit 1; }
+          grep -qx "Identifier=portty-${VERSION}-darwin-universal" <<< "$DVV" || { echo "FAIL: DMG identifier is not portty-${VERSION}-darwin-universal"; exit 1; }
           SPCTL=$(spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1) || { echo "$SPCTL"; echo "FAIL: spctl rejected the DMG"; exit 1; }
           echo "$SPCTL"
           grep -q ': accepted' <<< "$SPCTL" || { echo "FAIL: spctl did not accept the DMG"; exit 1; }

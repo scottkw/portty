@@ -123,15 +123,21 @@ func hasLine(out []byte, line string) bool {
 	return slices.Contains(strings.Split(string(bytes.ReplaceAll(out, []byte("\r"), nil)), "\n"), line)
 }
 
-// Verify checks the downloaded DMG's signature, Team ID and notarization, then quarantines it so
-// it behaves like a browser download. Every failure wraps ErrVerify with the step name.
-func Verify(ctx context.Context, run Runner, path, teamID string, now time.Time) error {
+// Verify checks the downloaded DMG's signature, Team ID, signing identifier and notarization, then
+// quarantines it so it behaves like a browser download. The identifier must be assetName without
+// .dmg (release.yml signs with it), which binds the file to this product and version: a genuine
+// older Portty DMG or another product from the same team is refused. Every failure wraps
+// ErrVerify with the step name.
+func Verify(ctx context.Context, run Runner, path, teamID, assetName string, now time.Time) error {
 	if _, err := run(ctx, "/usr/bin/codesign", "--verify", "--strict", path); err != nil {
 		return fmt.Errorf("%w: codesign", ErrVerify)
 	}
 	out, err := run(ctx, "/usr/bin/codesign", "-dvv", path)
 	if err != nil || !hasLine(out, "TeamIdentifier="+teamID) {
 		return fmt.Errorf("%w: team", ErrVerify)
+	}
+	if !hasLine(out, "Identifier="+strings.TrimSuffix(assetName, ".dmg")) {
+		return fmt.Errorf("%w: identifier", ErrVerify)
 	}
 	out, err = run(ctx, "/usr/sbin/spctl", "-a", "-t", "open", "--context", "context:primary-signature", "-vv", path)
 	if err != nil || !bytes.Contains(out, []byte(": accepted")) || !hasLine(out, "source=Notarized Developer ID") {
