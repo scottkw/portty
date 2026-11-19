@@ -110,10 +110,15 @@ describe('soft-wrapped lines replay as one wrapped line (softwrap-replay fixture
 // IN-08: a viewer joining through a rendered replay prints the host's next
 // bytes in the host's charset (SO/G1, G0 line drawing) and inside its open
 // OSC 8 link, and every OSC 8 it parses is params then URI (vt stores the two
-// swapped; the hub swaps them back).
+// swapped; the hub swaps them back). vt ignores SO, so the host reference here
+// is a second xterm.js fed every byte the host saw.
 describe('charset and link survive a rendered replay (charset-link-replay fixture)', () => {
   for (const c of charsetLinkFixture) {
     it(c.name, async () => {
+      const host = guestTerm(c.cols, c.rows)
+      await flush(host, decode(c.host))
+      await flush(host, decode(c.live))
+
       const term = guestTerm(c.cols, c.rows)
       const osc8: string[] = []
       term.parser.registerOscHandler(8, (data) => {
@@ -123,9 +128,13 @@ describe('charset and link survive a rendered replay (charset-link-replay fixtur
       resetForFullReplay(term)
       await flush(term, decode(c.replay))
       await flush(term, decode(c.live))
-      expect(screen(term)).toEqual(c.screen)
+
+      expect(screen(term)).toEqual(screen(host))
+      expect(cursor(term)).toEqual(cursor(host))
+      expect(screen(term).join('\n')).toContain(c.want)
       expect(osc8).toEqual(c.osc8)
       term.dispose()
+      host.dispose()
     })
   }
 })

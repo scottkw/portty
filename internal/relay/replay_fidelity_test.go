@@ -658,26 +658,40 @@ func TestCharState_Scan(t *testing.T) {
 	}
 }
 
+// TestVT_IgnoresShiftOut pins a vt quirk the hub works around: vt registers
+// its SO and SI handlers inside its C1 loop (handlers.go), so 0x0E and 0x0F do
+// nothing and G1 never reaches GL. The hub's tracker, not vt, carries SO to
+// viewers, and the alt-exit rebuild cannot probe G1. If a vt upgrade fixes
+// this, the rebuild should probe SO/G1 as well.
+func TestVT_IgnoresShiftOut(t *testing.T) {
+	e := NewQuietEmulator(10, 2)
+	_, _ = e.WriteString("\x1b)0\x0eq\x1b(0\x0fq")
+	if got := plainRows(screenRows(e))[0]; got != "q─" {
+		t.Fatalf("vt printed %q for G1-via-SO then G0 line drawing, want %q (SO ignored)", got, "q─")
+	}
+}
+
 // charsetJoin forces the rendered path (a 256-byte ring), feeds each of pre as
-// one PTY read to the hub and a reference, joins a vt guest, then writes live
-// to both and requires the same screen (links included) and cursor.
-func charsetJoin(t *testing.T, pre []string, live string) (hub *Hub, ref *xvt.Emulator, replay []byte) {
+// one PTY read to the hub and a vt reference, joins a vt guest, then writes
+// live to both and requires the same screen (links included) and cursor. host
+// is every byte the reference saw before live.
+func charsetJoin(t *testing.T, pre []string, live string) (ref, guest *xvt.Emulator, host string, replay []byte) {
 	t.Helper()
 	hub, w := runJoinHub(t, 256)
 	resizeHub(t, hub, 40, 6)
 	ref = fidEmu(40, 6)
+	host = strings.Repeat("filler line\r\n", 30) + strings.Join(pre, "")
 	both(t, hub, w, ref, strings.Repeat("filler line\r\n", 30))
 	for _, p := range pre {
 		both(t, hub, w, ref, p)
 	}
 	guest, r := joinGuest(t, hub, 40, 6)
 	requireSameGrid(t, "screen", screenRows(ref), screenRows(guest))
-	requireSameGrid(t, "scrollback", scrollbackRows(ref), scrollbackRows(guest))
 	_, _ = ref.WriteString(live)
 	_, _ = guest.WriteString(live)
 	requireSameGrid(t, "screen after the live bytes", screenRows(ref), screenRows(guest))
 	requireSameCursor(t, ref, guest)
-	return hub, ref, payloads(r)
+	return ref, guest, host, payloads(r)
 }
 
 const (
@@ -685,51 +699,66 @@ const (
 	testLinkEnd  = "\x1b]8;;\x1b\\"
 )
 
+// charsetLinkCases: vt ignores SO (TestVT_IgnoresShiftOut), so the vt guest
+// proves the bytes are harmless there and that the replay ends with the right
+// state; real xterm.js, which honours SO, proves the effect (the fixture).
 var charsetLinkCases = []struct {
-	name string
-	pre  []string
-	live string
-	want string // a plain-text substring of the screen after the live bytes
+	name   string
+	pre    []string
+	live   string
+	suffix string // the replay's last bytes: the state it re-establishes
+	vtWant string // plain text the vt reference shows after live
+	xtWant string // plain text xterm.js shows after live
 }{
-	{"G1 line drawing shifted in with SO", []string{"\x1b)0\x0elqqk"}, "qqx", "┌──┐──│"},
-	{"SO then SI", []string{"\x1b)0\x0e\x0f"}, "q", "q"},
-	{"G0 line drawing", []string{"\x1b(0"}, "q", "─"},
-	{"RIS after SO in one read", []string{"\x1b)0\x0e\x1bcafter"}, "q", "afterq"},
-	{"SO inside an OSC title", []string{"\x1b]0;t\x0e\x07"}, "q", "q"},
-	{"SO inside an OSC cut across reads", []string{"\x1b]0;ti", "t\x0e\x07"}, "q", "q"},
-	{"open OSC 8 link", []string{testLinkOpen + "LINK"}, "MORE" + testLinkEnd, "LINKMORE"},
+	{"G1 line drawing shifted in with SO", []string{"\x1b)0\x0e"}, "lqqk", "\x1b)0\x0e", "lqqk", "┌──┐"},
+	{"SO then SI", []string{"\x1b)0\x0e\x0f"}, "q", "\x1b)0", "q", "q"},
+	{"G0 line drawing", []string{"\x1b(0"}, "q", "\x1b(0", "─", "─"},
+	{"RIS after SO in one read", []string{"\x1b)0\x0e\x1bcafter"}, "q", "\x1b[1;6H", "afterq", "afterq"},
+	{"SO inside an OSC title", []string{"\x1b]0;t\x0e\x07$ "}, "q", "\x1b[6;3H", "$ q", "$ q"},
+	{"SO inside an OSC cut across reads", []string{"\x1b]0;ti", "t\x0e\x07$ "}, "q", "\x1b[6;3H", "$ q", "$ q"},
+	{"open OSC 8 link", []string{testLinkOpen + "LINK"}, "MORE" + testLinkEnd, "\x1b]8;id=7;https://example.invalid/x\x07", "LINKMORE", "LINKMORE"},
 }
 
 // TestRenderedReplay_KeepsCharsetAndLink (IN-08): a viewer joining through a
-// rendered replay prints the host's next bytes in the host's charset and
-// inside its open link, and replayed links reach it params then URI.
+// rendered replay gets the host's charsets, GL and open link at the end of
+// the replay, prints the host's next bytes as the host does, and replayed
+// links reach it params then URI.
 func TestRenderedReplay_KeepsCharsetAndLink(t *testing.T) {
 	for _, c := range charsetLinkCases {
 		t.Run(c.name, func(t *testing.T) {
-			_, ref, _ := charsetJoin(t, c.pre, c.live)
-			if s := strings.Join(plainRows(screenRows(ref)), "\n"); !strings.Contains(s, c.want) {
-				t.Fatalf("fixture invalid: reference screen lacks %q:\n%s", c.want, s)
+			ref, _, _, replay := charsetJoin(t, c.pre, c.live)
+			if !bytes.HasSuffix(replay, []byte(c.suffix)) {
+				t.Errorf("replay ends %q, want it to end with %q", replay[max(0, len(replay)-30):], c.suffix)
+			}
+			if s := strings.Join(plainRows(screenRows(ref)), "\n"); !strings.Contains(s, c.vtWant) {
+				t.Fatalf("fixture invalid: reference screen lacks %q:\n%s", c.vtWant, s)
 			}
 		})
 	}
 	t.Run("linked words in history and on screen", func(t *testing.T) {
 		linked := testLinkOpen + "word" + testLinkEnd
-		_, _, replay := charsetJoin(t, []string{linked + " old\r\n" + strings.Repeat("more\r\n", 8) + linked + " new"}, "!")
-		if n := bytes.Count(replay, []byte("\x1b]8;id=7;https://example.invalid/x")); n != 2 {
-			t.Errorf("replay carries %d params-then-URI opens, want 2 (history and screen): %q", n, replay)
+		ref, guest, _, replay := charsetJoin(t, []string{linked + " old\r\n" + strings.Repeat("more\r\n", 8) + linked + " new"}, "!")
+		if n := bytes.Count(replay, []byte("\x1b]8;id=7;https://example.invalid/x\x07word")); n != 2 {
+			t.Errorf("replay carries %d params-then-URI links, want 2 (history and screen): %q", n, replay)
 		}
 		if bytes.Contains(replay, []byte("\x1b]8;https://example.invalid/x;id=7")) {
 			t.Errorf("replay carries the swapped URI-first form: %q", replay)
 		}
+		refSB, guestSB := scrollbackRows(ref), scrollbackRows(guest)
+		requireSameGrid(t, "history (links included)", refSB[len(refSB)-len(guestSB):], guestSB)
+	})
+	t.Run("link without params at the row end stays in its row", func(t *testing.T) {
+		row := "\x1b]8;;https://example.invalid/y\x1b\\" + strings.Repeat("L", 40) + testLinkEnd
+		charsetJoin(t, []string{row + "\r\nnext row\r\n"}, "!")
 	})
 	t.Run("hub emulator keeps the charset across a genuine resize", func(t *testing.T) {
 		hub, w := runJoinHub(t, DefaultScrollbackBytes)
 		resizeHub(t, hub, 40, 6)
-		emit(t, hub, w, "\x1b)0\x0e")
+		emit(t, hub, w, "\x1b(0")
 		resizeHub(t, hub, 30, 6) // rebuilds the emulator, which starts in ASCII
 		emit(t, hub, w, "\x1b[H\x1b[2Jqqq")
 		if got, _ := hubScreen(hub); plainRows(got)[0] != "───" {
-			t.Fatalf("hub row 0 %q after the resize, want %q (the host is still in SO/G1)", plainRows(got)[0], "───")
+			t.Fatalf("hub row 0 %q after the resize, want %q (the host still has G0 line drawing)", plainRows(got)[0], "───")
 		}
 	})
 }
@@ -740,32 +769,34 @@ type charsetLinkCase struct {
 	Name     string   `json:"name"`
 	Cols     int      `json:"cols"`
 	Rows     int      `json:"rows"`
+	Host     string   `json:"host"`   // base64 every byte the host saw before live: xterm.js's own reference
 	Replay   string   `json:"replay"` // base64 rendered replay, written after the viewer's reset
 	Live     string   `json:"live"`   // base64 next live bytes
-	Screen   []string `json:"screen"` // plain rows after the live bytes
+	Want     string   `json:"want"`   // plain text xterm.js shows after live
 	Payloads []string `json:"osc8"`   // OSC 8 payloads (after "8;") in the order the viewer parses them
 }
 
 var osc8RE = regexp.MustCompile(`\x1b\]8;([^\x07\x1b]*)(?:\x07|\x1b\\)`)
 
 // TestRenderedReplay_CharsetLinkFixture writes (with -update-replay-fixture)
-// or checks charset-link-replay.json, which the frontend feeds real xterm.js.
+// or checks charset-link-replay.json: the frontend feeds each replay plus the
+// live bytes to a real xterm.js viewer and the host bytes plus the live bytes
+// to a second one, and requires the same screen.
 func TestRenderedReplay_CharsetLinkFixture(t *testing.T) {
 	var cases []charsetLinkCase
-	for _, i := range []int{0, 2, 6} { // G1+SO, G0, open link
-		c := charsetLinkCases[i]
-		_, ref, replay := charsetJoin(t, c.pre, c.live)
-		var p []string
+	for _, c := range charsetLinkCases {
+		_, _, host, replay := charsetJoin(t, c.pre, c.live)
+		p := []string{}
 		for _, m := range osc8RE.FindAllSubmatch(append(slices.Clone(replay), c.live...), -1) {
 			if s := string(m[1]); s != ";" && s != "id=7;https://example.invalid/x" {
 				t.Fatalf("%s: unexpected OSC 8 payload %q (want params then URI)", c.name, s)
 			}
 			p = append(p, string(m[1]))
 		}
+		b64 := base64.StdEncoding.EncodeToString
 		cases = append(cases, charsetLinkCase{
-			Name: c.name, Cols: 40, Rows: 6,
-			Replay: base64.StdEncoding.EncodeToString(replay), Live: base64.StdEncoding.EncodeToString([]byte(c.live)),
-			Screen: plainRows(screenRows(ref)), Payloads: append([]string{}, p...),
+			Name: c.name, Cols: 40, Rows: 6, Host: b64([]byte(host)), Replay: b64(replay),
+			Live: b64([]byte(c.live)), Want: c.xtWant, Payloads: p,
 		})
 	}
 

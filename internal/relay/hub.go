@@ -129,6 +129,10 @@ type Hub struct {
 	wraps      wrapSet
 	trackWraps bool
 	lastMove   [2]uv.Position
+	// cs is the charset and OSC 8 link state the host terminal is in
+	// (charstate.go, IN-08), which every replay body ends with. Hub-owned so
+	// it survives rebuilds. Only touched under emuMu.
+	cs charState
 }
 
 // altScreenEnterSeq is the DEC private-mode sequence a full-screen TUI emits
@@ -568,6 +572,7 @@ func (h *Hub) recordFrameLocked(frame, raw []byte) {
 		h.liveEmu = h.newLiveEmulator(h.Cols(), h.Rows())
 	}
 	clean := StripTerminalQueries(raw)
+	h.cs.scan(clean) // GL (SO/SI) in byte order; the handlers track the rest
 	h.trackWraps = true
 	h.liveEmu.Write(clean) //nolint:errcheck // emulator Write never returns a meaningful error
 	h.trackWraps = false
@@ -588,77 +593,11 @@ func (h *Hub) recordFrameLocked(frame, raw []byte) {
 // ESC or C1 introducer, which resets the state, and the alt-exit sequence the
 // rebuild follows is one, so the tail after it is exact (WR-02).
 func incompleteTail(b []byte) []byte {
-	const (
-		ground = iota
-		esc
-		csi
-		osc
-		str // DCS, SOS, PM, APC: ST-terminated only
-		strEsc
-	)
-	state, need, last := ground, 0, 0
-	for i := 0; i < len(b); i++ {
-		c := b[i]
-		switch {
-		// CAN, SUB abort an escape sequence. vt counts any byte, these
-		// included, as part of an open UTF-8 character (WR-09).
-		// shortcut: the scan assumes well-formed UTF-8; track vt's byte count
-		// if malformed UTF-8 around an alt-screen exit ever shows up.
-		case c == 0x18 || c == 0x1a:
-			state, need = ground, 0
-		case need > 0 && c&0xc0 == 0x80:
-			need--
-		case state == ground:
-			need = 0
-			switch {
-			case c == 0x1b:
-				state = esc
-			case c == 0x9b:
-				state = csi
-			case c == 0x9d:
-				state = osc
-			case c == 0x90 || c == 0x98 || c == 0x9e || c == 0x9f:
-				state = str
-			case c&0xe0 == 0xc0:
-				need = 1
-			case c&0xf0 == 0xe0:
-				need = 2
-			case c&0xf8 == 0xf0:
-				need = 3
-			}
-		case state == esc:
-			switch {
-			case c == '[':
-				state = csi
-			case c == ']':
-				state = osc
-			case c == 'P' || c == 'X' || c == '^' || c == '_':
-				state = str
-			case c >= 0x30 && c <= 0x7e:
-				state = ground
-			} // intermediates, C0 controls and ESC itself stay in esc
-		case state == csi:
-			if c == 0x1b {
-				state = esc
-			} else if c >= 0x40 && c <= 0x7e {
-				state = ground
-			}
-		case state == osc || state == str:
-			if c == 0x9c || (state == osc && c == 0x07) {
-				state = ground
-			} else if c == 0x1b {
-				state = strEsc
-			}
-		case state == strEsc:
-			if c == '\\' {
-				state = ground
-			} else {
-				state = esc // the ESC ended the string and starts a sequence
-				i--
-				continue
-			}
-		}
-		if state == ground && need == 0 {
+	var s vtScan
+	last := 0
+	for i, c := range b {
+		s.step(c)
+		if s.state == scanGround && s.need == 0 {
 			last = i + 1
 		}
 	}
@@ -666,6 +605,82 @@ func incompleteTail(b []byte) []byte {
 		return nil
 	}
 	return b[last:]
+}
+
+// vtScan states.
+const (
+	scanGround = iota
+	scanEsc
+	scanCsi
+	scanOsc
+	scanStr // DCS, SOS, PM, APC: ST-terminated only
+	scanStrEsc
+)
+
+// vtScan follows vt's parser bytewise, with C1 controls, far enough to know
+// where escape sequences, strings and UTF-8 characters end (incompleteTail,
+// charState.scan). need is the UTF-8 continuation bytes still expected.
+type vtScan struct{ state, need int }
+
+func (s *vtScan) step(c byte) {
+	switch {
+	// CAN, SUB abort an escape sequence. vt counts any byte, these
+	// included, as part of an open UTF-8 character (WR-09).
+	// shortcut: the scan assumes well-formed UTF-8; track vt's byte count
+	// if malformed UTF-8 around an alt-screen exit ever shows up.
+	case c == 0x18 || c == 0x1a:
+		s.state, s.need = scanGround, 0
+	case s.need > 0 && c&0xc0 == 0x80:
+		s.need--
+	case s.state == scanGround:
+		s.need = 0
+		switch {
+		case c == 0x1b:
+			s.state = scanEsc
+		case c == 0x9b:
+			s.state = scanCsi
+		case c == 0x9d:
+			s.state = scanOsc
+		case c == 0x90 || c == 0x98 || c == 0x9e || c == 0x9f:
+			s.state = scanStr
+		case c&0xe0 == 0xc0:
+			s.need = 1
+		case c&0xf0 == 0xe0:
+			s.need = 2
+		case c&0xf8 == 0xf0:
+			s.need = 3
+		}
+	case s.state == scanEsc:
+		switch {
+		case c == '[':
+			s.state = scanCsi
+		case c == ']':
+			s.state = scanOsc
+		case c == 'P' || c == 'X' || c == '^' || c == '_':
+			s.state = scanStr
+		case c >= 0x30 && c <= 0x7e:
+			s.state = scanGround
+		} // intermediates, C0 controls and ESC itself stay in esc
+	case s.state == scanCsi:
+		if c == 0x1b {
+			s.state = scanEsc
+		} else if c >= 0x40 && c <= 0x7e {
+			s.state = scanGround
+		}
+	case s.state == scanOsc || s.state == scanStr:
+		if c == 0x9c || (s.state == scanOsc && c == 0x07) {
+			s.state = scanGround
+		} else if c == 0x1b {
+			s.state = scanStrEsc
+		}
+	case s.state == scanStrEsc:
+		if c == '\\' {
+			s.state = scanGround
+		} else {
+			s.state = scanEsc // the ESC ended the string and starts a sequence
+			s.step(c)
+		}
+	}
 }
 
 // rebuildAfterAltExitLocked replaces the live emulator once the app has left
@@ -886,7 +901,22 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 		h.wraps.clear()
 		clear(h.modes)
 		h.mainRegion = [2]int{}
+		h.cs.reset()
 		emu.ClearScrollback()
+		return false
+	})
+	// G0/G1 designations and the OSC 8 link, for the replay suffix (IN-08).
+	// Registered last, so they run before vt's own handlers.
+	for set, intro := range []byte{'(', ')'} {
+		for _, f := range []byte{'0', 'A', 'B'} {
+			emu.RegisterEscHandler(ansi.Command(0, intro, f), func() bool {
+				h.cs.designate(set, f)
+				return false
+			})
+		}
+	}
+	emu.RegisterOscHandler(8, func(data []byte) bool {
+		h.cs.osc8(data)
 		return false
 	})
 	return emu
@@ -908,8 +938,8 @@ func (h *Hub) drainScrollbackLocked() {
 	ls := sb.Lines()
 	aw, w := h.autowrapLocked(), h.liveEmu.Width()
 	for _, l := range ls {
-		r := l.Render()
-		h.history.Push(r, aw && lineFull(l, w) && h.wraps.take(rowKey(r)))
+		r := l.Render() // wrap keys are on the raw render
+		h.history.Push(fixRenderedLinks(r), aw && lineFull(l, w) && h.wraps.take(rowKey(r)))
 	}
 	clear(ls[:cap(ls)])
 	sb.Clear()
@@ -991,15 +1021,19 @@ func (h *Hub) resizeLiveEmulator(cols, rows int, genuine bool) {
 		for y, row := range lines {
 			// The cursor row's continuation (below it) is dropped: never wrapped.
 			wrapped := aw && y < len(lines)-1 && lineFull(screenLine(old, y), old.Width()) && h.wraps.take(rowKey(row))
-			h.history.Push(row, wrapped)
+			h.history.Push(fixRenderedLinks(row), wrapped)
 		}
 	}
 	h.wraps.clear()         // the new emulator starts empty
 	h.mainRegion = [2]int{} // the new emulator starts without one
 	h.liveEmu = h.newLiveEmulator(cols, rows)
+	// The host terminal keeps its charsets and open link across a resize; the
+	// new emulator starts without them (IN-08).
+	seed := h.cs.suffix()
 	if inAlt {
-		h.liveEmu.Write([]byte(altScreenEnterSeq)) //nolint:errcheck // emulator Write never returns a meaningful error
+		seed = altScreenEnterSeq + seed
 	}
+	h.liveEmu.Write([]byte(seed)) //nolint:errcheck // emulator Write never returns a meaningful error
 }
 
 // broadcast sends frame to all current subscribers using a non-blocking send.
@@ -1182,7 +1216,7 @@ func (h *Hub) screenBodyLocked() []byte {
 	}
 	rows := strings.Split(h.liveEmu.Render(), "\n")
 	for y, row := range rows {
-		b.WriteString(row)
+		b.WriteString(fixRenderedLinks(row)) // wrap keys are on the raw row
 		if y+1 < len(rows) && !h.screenRowWrappedLocked(y, row, rows[y+1]) {
 			b.WriteString("\r\n")
 		}
@@ -1205,6 +1239,10 @@ func (h *Hub) screenBodyLocked() []byte {
 	// viewer's next character wraps as the host's does. vt does not expose the
 	// state, so this infers it. After ?7: pendingWrapLocked requires autowrap.
 	b.WriteString(h.pendingWrapLocked(pos))
+	// Last, the charsets and open link the host's next bytes print with
+	// (IN-08). The re-printed cell above is already a glyph, so they cannot
+	// change it.
+	b.WriteString(h.cs.suffix())
 	return []byte(b.String())
 }
 
@@ -1225,7 +1263,7 @@ func (h *Hub) screenRowWrappedLocked(y int, row, next string) bool {
 func (h *Hub) pendingWrapLocked(pos uv.Position) string {
 	if aw, ok := h.modes[7]; (aw || !ok) && pos.X == h.liveEmu.Width()-1 {
 		if c := h.liveEmu.CellAt(pos.X, pos.Y); c != nil && c.Width == 1 && c.Content != "" && c.Content != " " {
-			return uv.Line{*c}.Render()
+			return fixRenderedLinks(uv.Line{*c}.Render())
 		}
 	}
 	return ""
