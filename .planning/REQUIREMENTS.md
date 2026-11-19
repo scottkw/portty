@@ -21,6 +21,16 @@ Hardening only: each requirement closes a v1.0 todo. No new features.
 - [x] **HARD-07**: TestHub_TwoClientsFanOut passes reliably under the full `go test -race -short ./...` run (race found and fixed, or the test made deterministic). (todo: relay-fanout-flake)
 - [x] **HARD-08**: The multi-line prompt resize artifact (stray prompt top lines in scrollback when narrowing the window) is documented as a known limit with its cause. (todo: document-multi-line-prompt-resize-artifacts)
 
+### Debt cleanup (from the v1.1 audit)
+
+- [ ] **DEBT-01**: While a full-screen app stays in the alternate screen, the daemon heap per session stays under a small fixed bound that does not scale with 10,000 lines × width (today ~128 MiB at 100 columns, ~270 MiB at 220). The alt screen and the main-screen history stay intact for viewers.
+- [ ] **DEBT-02**: A soft-wrapped long line comes back as one wrapped line, not two hard lines, in history replay and after a rebuild.
+- [ ] **DEBT-03**: Rendered replays and the alt-exit rebuild restore DEC modes before the screen text (IN-06), keep a G1 line-drawing charset shifted in with SO, and keep an open OSC 8 hyperlink (IN-08).
+- [ ] **DEBT-04**: The peer-tab snapshot store is bounded by bytes, drops a tab's entry when the tab closes, is keyed by host plus session, never leaks an xterm if the flush callback doesn't fire, and a quick switch back to the tab still restores the snapshot rather than falling back to a full replay (IN-02, IN-03, W1, W2).
+- [ ] **DEBT-05**: If the socket drops partway through a paste that was split into frames, the user is told the paste was cut short. Unsent frames are never silently lost, and never sent twice (IN-05).
+- [ ] **DEBT-06**: The cause of the HARD-04 launch blip is found and fixed at its root (the grace stays as a safety net), or a cold launch in the VM shows the blip can't be reproduced, and the log diagnostics that would catch it on the real Mac are recorded.
+- [ ] **DEBT-07**: The Phase 7 bookkeeping is complete: `requirements_completed` in the 07 SUMMARY frontmatter, and a SECURITY.md from `/gsd-secure-phase 7`.
+
 ## Future Requirements
 
 - Clicking the "update available" notification shows Portty (needs a notarized build to observe; after the first real release).
@@ -45,10 +55,17 @@ Hardening only: each requirement closes a v1.0 todo. No new features.
 | HARD-06 | Phase 7 | Complete |
 | HARD-07 | Phase 7 | Complete |
 | HARD-08 | Phase 7 | Complete |
+| DEBT-01 | Phase 8 | Pending |
+| DEBT-02 | Phase 8 | Pending |
+| DEBT-03 | Phase 8 | Pending |
+| DEBT-04 | Phase 8 | Pending |
+| DEBT-05 | Phase 8 | Pending |
+| DEBT-06 | Phase 8 | Pending |
+| DEBT-07 | Phase 8 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 8 total
-- Mapped to phases: 8
+- v1.1 requirements: 15 total
+- Mapped to phases: 15
 - Unmapped: 0 ✓
 
 ---

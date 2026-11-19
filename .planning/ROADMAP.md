@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Portty v1.0** — Phases 1-6 (shipped 2026-11-18)
-- 🚧 **v1.1 Hardening** — Phase 7 (in progress)
+- 🚧 **v1.1 Hardening** — Phases 7-8 (in progress)
 
 ## Phases
 
@@ -26,6 +26,7 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`. Audit: `.planning/mileston
 **Milestone Goal:** Fix the reliability and test-hygiene debt left from v1.0, with no new features. Each requirement closes a v1.0 todo.
 
 - [x] **Phase 7: Hardening** - Bounded alt-screen memory, intact large pastes, a query-free catch-up replay, no spurious respawn, delta rejoin on tab switch, and a full test suite that passes with nothing skipped (completed 2026-11-18)
+- [ ] **Phase 8: Debt Cleanup** - Close the v1.1 audit's tech debt: a small alt-screen heap bound, wrapped lines kept in replay, full replay and rebuild fidelity, a bounded and leak-free peer snapshot store, honest partial pastes, the launch-blip root cause, and Phase 7 bookkeeping
 
 ## Phase Details
 
@@ -53,3 +54,16 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 7. Hardening | v1.1 | 5/5 | Complete    | 2026-11-18 |
+
+### Phase 8: Debt Cleanup
+**Goal**: The tech debt recorded in the v1.1 audit is closed, so v1.1 ships with no known deferred items in its own code.
+**Depends on**: Phase 7
+**Requirements**: DEBT-01, DEBT-02, DEBT-03, DEBT-04, DEBT-05, DEBT-06, DEBT-07
+**Success Criteria** (what must be TRUE):
+  1. A full-screen app scrolling 20,000+ full-width lines in the alternate screen keeps each session's daemon heap growth under a small fixed bound that does not grow with width, proven by a soak test at 80 and 220 columns and a VM check. The alt screen and the main-screen history stay correct for viewers who join.
+  2. Replays are faithful. A soft-wrapped long line replays as one wrapped line. Rendered replays and the alt-exit rebuild restore modes before text, keep SO/G1 line drawing and an open OSC 8 link, and the rebuild fuzz test stays at 0 mismatches.
+  3. The peer-tab snapshot store is bounded by bytes, frees a closed tab's entry, is keyed by host plus session, never leaks a terminal, and a quick switch back still gets a delta rejoin.
+  4. A paste cut short by a dropped socket tells the user so. No frame is sent twice, and none is silently lost.
+  5. The HARD-04 launch blip has a root-cause fix, or a documented VM non-reproduction with diagnostics in place. The Phase 7 SUMMARYs carry `requirements_completed`, and Phase 7 has a SECURITY.md.
+**Plans**: TBD
+**UI hint**: no
