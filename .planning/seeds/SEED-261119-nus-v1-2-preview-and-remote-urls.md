@@ -37,7 +37,11 @@ The user approved this as the v1.2 milestone on 2026-11-19 and chose option 2 fo
    - reconnect after the phone sleeps, checked on a real iPhone running the Tailscale app.
    - The existing browser view already has touch scroll (`attachTouchScroll`).
    - **User request:** host it as a subfolder of the Portty website, https://portty.app/app. The website lives in a separate repo, handled by another session.
-   - **OPEN DECISION, settle at v1.2 discuss:** today each host Mac serves its own browser view, and `internal/webserver/origin_mw.go` accepts WebSockets only from the host's own origin (the defence against cross-site WebSocket hijacking). For a page on portty.app to talk to a host, every host would have to trust the portty.app origin. Anyone who could change the JavaScript on portty.app (a compromised site, CDN or deploy) would then get the share token and full shell access on every user's Macs. That conflicts with the constraints "no cloud dependencies" and "keep token-gated tailnet-only links and CSP intact". Options:
+   - **DECIDED (user, 2026-11-19): option (a).**
+     - Each host Mac serves the mobile UI itself over the tailnet, with no change to the origin check, CSP or tokens.
+     - portty.app/app is a static landing/launcher page only: what the app is, how to open your Mac's tailnet link, how to add it to the home screen. It holds no WebSocket, no token and no shell access, so it can stay static on Cloudflare.
+     - The website repo and session own that page; this repo only supplies the copy and the link format.
+   - Background on the decision: today each host Mac serves its own browser view, and `internal/webserver/origin_mw.go` accepts WebSockets only from the host's own origin (the defence against cross-site WebSocket hijacking). For a page on portty.app to talk to a host, every host would have to trust the portty.app origin. Anyone who could change the JavaScript on portty.app (a compromised site, CDN or deploy) would then get the share token and full shell access on every user's Macs. That conflicts with the constraints "no cloud dependencies" and "keep token-gated tailnet-only links and CSP intact". Options:
      - (a) host Macs serve the mobile UI over the tailnet, and portty.app/app is only a landing page or launcher with no shell access;
      - (b) portty.app/app is the real app, with the origin allowlist widened, subresource integrity, a strict CSP and signed releases.
 
