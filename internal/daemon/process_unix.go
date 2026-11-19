@@ -16,7 +16,11 @@ import (
 // The child's stdout and stderr are appended to daemon.log in the config dir
 // (the daemon rotates it, see startDaemonLog); a log problem is reported on
 // the parent's stderr but never stops the daemon.
-func startDetachedDaemon(exe string) error {
+//
+// The returned channel closes when the child exits (WR-04): waiting on it
+// reaps the child, so a daemon that dies is no zombie, and lets EnsureDaemon
+// stop waiting for one that died at spawn.
+func startDetachedDaemon(exe string) (<-chan struct{}, error) {
 	cmd := exec.Command(exe, "daemon")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	logFile, err := openDaemonLog(daemonConfigDir())
@@ -28,9 +32,21 @@ func startDetachedDaemon(exe string) error {
 		defer logFile.Close() // the child keeps its own descriptor
 	}
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, err
 	}
-	return cmd.Process.Release()
+	exited := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(exited) }() // Stdout/Stderr are files: no copy goroutines to wait on
+	return exited, nil
+}
+
+// lockHeld reports whether another process holds the daemon lock at path.
+func lockHeld(path string) bool {
+	f, err := lockDaemon(path, 0)
+	if err != nil {
+		return errors.Is(err, syscall.EWOULDBLOCK)
+	}
+	f.Close()
+	return false
 }
 
 // lockDaemon takes the exclusive daemon lock at path, retrying for up to wait

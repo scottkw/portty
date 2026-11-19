@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -207,8 +209,93 @@ func TestWaitForDaemon_SlowStart(t *testing.T) {
 		}
 	})
 
-	if err := waitForDaemon(NewDaemonClient(path), daemonReadyWait); err != nil {
+	if err := waitForDaemon(NewDaemonClient(path), daemonReadyWait, nil, ""); err != nil {
 		t.Fatalf("a daemon that binds after 4 s must count as started: %v", err)
+	}
+}
+
+// refusingSocket returns a socket path whose file exists but refuses
+// connections, like the previous run's socket before a daemon binds.
+func refusingSocket(t *testing.T, name string) string {
+	t.Helper()
+	path := shortProcTestSocket(t, name)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.(*net.UnixListener).SetUnlinkOnClose(false)
+	ln.Close()
+	return path
+}
+
+// serveDaemonAfter binds a fake ready daemon at path after d.
+func serveDaemonAfter(t *testing.T, path string, d time.Duration) {
+	t.Helper()
+	served := make(chan net.Listener, 1)
+	go func() {
+		time.Sleep(d)
+		os.Remove(path)
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			close(served)
+			return
+		}
+		served <- ln
+		http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+			w.Header().Set("Content-Type", "application/json")
+			if r.URL.Path == "/relay-port" {
+				fmt.Fprint(w, `{"port":4242}`)
+				return
+			}
+			fmt.Fprint(w, `{"status":"ok"}`)
+		}))
+	}()
+	t.Cleanup(func() {
+		if ln, ok := <-served; ok {
+			ln.Close()
+		}
+	})
+}
+
+// 08-REVIEW WR-04: a spawned daemon that dies at once (a crash at init, a bad
+// config) must fail EnsureDaemon in well under daemonReadyWait, since the wait
+// gates startup's error UI, Retry, Quit All and every CLI command. The real
+// spawn path runs `false`, which also checks the child is reaped (exited closes).
+func TestWaitForDaemon_DiedAtSpawnFailsFast(t *testing.T) {
+	exe, err := exec.LookPath("false")
+	if err != nil {
+		t.Skip("no false binary")
+	}
+	exited, err := startDetachedDaemon(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	err = waitForDaemon(NewDaemonClient(refusingSocket(t, "dead")), daemonReadyWait, exited, filepath.Join(t.TempDir(), "daemon.lock"))
+	if err == nil {
+		t.Fatal("a daemon that exited at spawn counted as started")
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Fatalf("took %v to report a dead daemon, want well under %v", d, daemonReadyWait)
+	}
+}
+
+// WR-04: a spawned daemon that exits because another daemon holds the lock
+// (a concurrent EnsureDaemon's, still starting) is no failure: wait for the
+// lock holder, which binds later.
+func TestWaitForDaemon_LostLockWaitsForHolder(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "daemon.lock")
+	holder, err := lockDaemon(lockPath, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	path := refusingSocket(t, "holder")
+	serveDaemonAfter(t, path, time.Second)
+	exited := make(chan struct{})
+	close(exited)
+	if err := waitForDaemon(NewDaemonClient(path), daemonReadyWait, exited, lockPath); err != nil {
+		t.Fatalf("the lock holder bound after 1 s, but: %v", err)
 	}
 }
 

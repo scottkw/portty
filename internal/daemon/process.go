@@ -111,7 +111,7 @@ func runDaemonCore(ctx context.Context) {
 
 // EnsureDaemon checks if the daemon is reachable on socketPath. If not, it
 // spawns a detached daemon subprocess using the current binary with "daemon"
-// as the first argument, then polls until the daemon is ready (max 3 seconds).
+// as the first argument, then polls until the daemon is ready (waitForDaemon).
 func EnsureDaemon(socketPath string) error {
 	client := NewDaemonClient(socketPath)
 	needsSpawn := true
@@ -155,11 +155,12 @@ func EnsureDaemon(socketPath string) error {
 		return fmt.Errorf("EnsureDaemon: locate binary: %w", err)
 	}
 
-	if err := startDetachedDaemon(exe); err != nil {
+	exited, err := startDetachedDaemon(exe)
+	if err != nil {
 		return fmt.Errorf("EnsureDaemon: start daemon: %w", err)
 	}
 
-	return waitForDaemon(client, daemonReadyWait)
+	return waitForDaemon(client, daemonReadyWait, exited, filepath.Join(filepath.Dir(socketPath), "daemon.lock"))
 }
 
 // daemonReadyWait bounds how long EnsureDaemon waits for a spawned daemon.
@@ -169,16 +170,35 @@ func EnsureDaemon(socketPath string) error {
 const daemonReadyWait = 15 * time.Second
 
 // waitForDaemon polls until the daemon is fully ready (health and relay port)
-// or wait passes.
-func waitForDaemon(client *DaemonClient, wait time.Duration) error {
+// or wait passes. WR-04: once exited closes (the spawned daemon is gone) it
+// checks once more and fails at once, unless another process holds the lock
+// at lockPath: then the spawn lost the lock to a daemon still starting (a
+// concurrent EnsureDaemon's), which gets the rest of the wait. A nil exited
+// never fires.
+func waitForDaemon(client *DaemonClient, wait time.Duration, exited <-chan struct{}, lockPath string) error {
+	ready := func() bool {
+		if client.Health() != nil {
+			return false
+		}
+		port, err := client.GetRelayPort()
+		return err == nil && port > 0
+	}
 	deadline := time.Now().Add(wait)
 	for time.Now().Before(deadline) {
-		if err := client.Health(); err == nil {
-			if port, relayErr := client.GetRelayPort(); relayErr == nil && port > 0 {
+		if ready() {
+			return nil
+		}
+		select {
+		case <-exited:
+			exited = nil // handled once
+			if ready() {
 				return nil
 			}
+			if !lockHeld(lockPath) {
+				return fmt.Errorf("EnsureDaemon: daemon exited during startup (see daemon.log)")
+			}
+		case <-time.After(50 * time.Millisecond):
 		}
-		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("EnsureDaemon: daemon did not become ready within %v", wait)
 }
