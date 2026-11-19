@@ -159,8 +159,16 @@ func EnsureDaemon(socketPath string) error {
 		return fmt.Errorf("EnsureDaemon: start daemon: %w", err)
 	}
 
-	// Poll until daemon is fully ready — health + relay port (max 3 seconds).
-	deadline := time.Now().Add(3 * time.Second)
+	return waitForDaemon(client, daemonReadyWait)
+}
+
+// daemonReadyWait bounds how long EnsureDaemon waits for a spawned daemon.
+const daemonReadyWait = 3 * time.Second
+
+// waitForDaemon polls until the daemon is fully ready (health and relay port)
+// or wait passes.
+func waitForDaemon(client *DaemonClient, wait time.Duration) error {
+	deadline := time.Now().Add(wait)
 	for time.Now().Before(deadline) {
 		if err := client.Health(); err == nil {
 			if port, relayErr := client.GetRelayPort(); relayErr == nil && port > 0 {
@@ -169,7 +177,7 @@ func EnsureDaemon(socketPath string) error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return fmt.Errorf("EnsureDaemon: daemon did not become ready within 3s")
+	return fmt.Errorf("EnsureDaemon: daemon did not become ready within %v", wait)
 }
 
 // socketLost checks every interval whether path still names the socket this
