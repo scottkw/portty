@@ -676,17 +676,27 @@ func (h *Hub) resizeLiveEmulator(cols, rows int, genuine bool) {
 	// then push the visible rows down to the cursor row (below it is blank or
 	// stale). The shell redraws its prompt after SIGWINCH, so a few prompt
 	// lines can appear twice in history; accepted (CONTEXT open question).
-	// An alt-screen TUI's rows are not history and are simply redrawn.
-	if old := h.liveEmu; !old.IsAltScreen() {
-		h.drainScrollbackLocked()
-		if old.String() != "" {
-			lines := strings.Split(old.Render(), "\n")
-			for _, row := range lines[:min(old.CursorPosition().Y+1, len(lines))] {
-				h.history.Push(row)
-			}
+	// An alt-screen TUI's rows are not history and are simply redrawn, but the
+	// main screen behind it is kept the same way, and the new emulator enters
+	// the alt screen, so the redraw stays out of history and the app's exit
+	// still fires the HARD-01 rebuild (WR-03).
+	old := h.liveEmu
+	inAlt := old.IsAltScreen()
+	if inAlt {
+		old.Write([]byte("\x1b[?1049l")) //nolint:errcheck // emulator Write never returns a meaningful error
+		h.altExited = false              // our exit, not the app's
+	}
+	h.drainScrollbackLocked()
+	if old.String() != "" {
+		lines := strings.Split(old.Render(), "\n")
+		for _, row := range lines[:min(old.CursorPosition().Y+1, len(lines))] {
+			h.history.Push(row)
 		}
 	}
 	h.liveEmu = h.newLiveEmulator(cols, rows)
+	if inAlt {
+		h.liveEmu.Write([]byte(altScreenEnterSeq)) //nolint:errcheck // emulator Write never returns a meaningful error
+	}
 }
 
 // broadcast sends frame to all current subscribers using a non-blocking send.

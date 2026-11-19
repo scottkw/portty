@@ -154,3 +154,52 @@ func TestAltScreenExit_KeepsMainScreenAndHistory(t *testing.T) {
 		t.Errorf("screen after the app exited:\n%s\nwant as before it started:\n%s", after, screen)
 	}
 }
+
+// TestAltScreenResize_KeepsMainScreenAndExitRebuild: a host resize while an
+// app is in the alternate screen keeps the main screen's lines (in history),
+// keeps the app's redraw out of history, and the app's later exit still
+// leaves the alt screen and rebuilds the emulator (WR-03, HARD-01).
+func TestAltScreenResize_KeepsMainScreenAndExitRebuild(t *testing.T) {
+	hub, w := historyHub(t)
+	emitLines(t, hub, w, 1, 10)
+	emit(t, hub, w, "$ less\r\n")
+	emit(t, hub, w, "\x1b[?1049h")
+	for _, c := range altChunks(0, 100) {
+		emit(t, hub, w, c)
+	}
+
+	resizeHub(t, hub, 100, 30)
+	hub.emuMu.Lock()
+	inAlt := hub.liveEmu.IsAltScreen()
+	hub.emuMu.Unlock()
+	if !inAlt {
+		t.Fatal("emulator left the alt screen on a resize while the app is still up")
+	}
+	for _, c := range altChunks(100, 100) { // the app's SIGWINCH redraw, scrolling
+		emit(t, hub, w, c)
+	}
+	hub.emuMu.Lock()
+	before := hub.liveEmu
+	hub.emuMu.Unlock()
+	emit(t, hub, w, "\x1b[?1049l$ ")
+
+	hub.emuMu.Lock()
+	rebuilt, stillAlt := hub.liveEmu != before, hub.liveEmu.IsAltScreen()
+	hub.emuMu.Unlock()
+	if stillAlt {
+		t.Fatal("emulator still in the alt screen after the app's ESC[?1049l")
+	}
+	if !rebuilt {
+		t.Error("the app's exit did not rebuild the emulator (HARD-01)")
+	}
+	replay := fullReplay(t, hub)
+	if bytes.Contains(replay, []byte("ALTX-")) {
+		t.Error("replay carries alternate-screen lines")
+	}
+	if got := lineTags(replay); len(got) != 10 || got[0] != 1 || got[9] != 10 {
+		t.Errorf("replay LINE tags %v, want 1..10 (the main screen behind the app)", got)
+	}
+	if !bytes.Contains(replay, []byte("$ less")) {
+		t.Error("replay lost the main-screen line \"$ less\"")
+	}
+}
