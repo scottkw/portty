@@ -116,6 +116,11 @@ type Hub struct {
 	// alternate screen; recordFrameLocked rebuilds the emulator after the
 	// write (rebuildAfterAltExitLocked). Only touched under emuMu.
 	altExited bool
+	// mainRegion (DECSTBM, 1-based top and bottom; zero: the whole screen) and
+	// savedCursor (DECSC; nil: none) are the main screen's, which vt does not
+	// expose; the alt-exit rebuild re-applies them (WR-02). Only under emuMu.
+	mainRegion  [2]int
+	savedCursor *uv.Position
 }
 
 // altScreenEnterSeq is the DEC private-mode sequence a full-screen TUI emits
@@ -523,15 +528,99 @@ func (h *Hub) recordFrameLocked(frame, raw []byte) {
 		// Cols()/Rows()); no inversion.
 		h.liveEmu = h.newLiveEmulator(h.Cols(), h.Rows())
 	}
-	h.liveEmu.Write(StripTerminalQueries(raw)) //nolint:errcheck // emulator Write never returns a meaningful error
+	clean := StripTerminalQueries(raw)
+	h.liveEmu.Write(clean) //nolint:errcheck // emulator Write never returns a meaningful error
 	h.drainScrollbackLocked()
 	if h.altExited {
 		h.altExited = false
 		// Re-entered in the same read: the next exit rebuilds.
 		if !h.liveEmu.IsAltScreen() {
-			h.rebuildAfterAltExitLocked()
+			h.rebuildAfterAltExitLocked(incompleteTail(clean))
 		}
 	}
+}
+
+// incompleteTail returns the bytes after b's last ground-state point: an
+// escape sequence (ESC, CSI, OSC, DCS, SOS, PM, APC) or UTF-8 character the
+// read cut off, or nil. It scans as vt's parser does, bytewise with C1
+// controls, assuming ground at b's start. That can be wrong only before an
+// ESC or C1 introducer, which resets the state, and the alt-exit sequence the
+// rebuild follows is one, so the tail after it is exact (WR-02).
+func incompleteTail(b []byte) []byte {
+	const (
+		ground = iota
+		esc
+		csi
+		osc
+		str // DCS, SOS, PM, APC: ST-terminated only
+		strEsc
+	)
+	state, need, last := ground, 0, 0
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		switch {
+		case c == 0x18 || c == 0x1a: // CAN, SUB abort any sequence
+			state, need = ground, 0
+		case need > 0 && c&0xc0 == 0x80:
+			need--
+		case state == ground:
+			need = 0
+			switch {
+			case c == 0x1b:
+				state = esc
+			case c == 0x9b:
+				state = csi
+			case c == 0x9d:
+				state = osc
+			case c == 0x90 || c == 0x98 || c == 0x9e || c == 0x9f:
+				state = str
+			case c&0xe0 == 0xc0:
+				need = 1
+			case c&0xf0 == 0xe0:
+				need = 2
+			case c&0xf8 == 0xf0:
+				need = 3
+			}
+		case state == esc:
+			switch {
+			case c == '[':
+				state = csi
+			case c == ']':
+				state = osc
+			case c == 'P' || c == 'X' || c == '^' || c == '_':
+				state = str
+			case c >= 0x30 && c <= 0x7e:
+				state = ground
+			} // intermediates, C0 controls and ESC itself stay in esc
+		case state == csi:
+			if c == 0x1b {
+				state = esc
+			} else if c >= 0x40 && c <= 0x7e {
+				state = ground
+			}
+		case state == osc || state == str:
+			if c == 0x9c || (state == osc && c == 0x07) {
+				state = ground
+			} else if c == 0x1b {
+				state = strEsc
+			}
+		case state == strEsc:
+			if c == '\\' {
+				state = ground
+			} else {
+				state = esc // the ESC ended the string and starts a sequence
+				i--
+				continue
+			}
+		}
+		if state == ground && need == 0 {
+			last = i + 1
+		}
+	}
+	if last == len(b) {
+		return nil
+	}
+	return b[last:]
 }
 
 // rebuildAfterAltExitLocked replaces the live emulator once the app has left
@@ -544,14 +633,45 @@ func (h *Hub) recordFrameLocked(frame, raw []byte) {
 // screen rather than pushing the rows into history: no SIGWINCH redraw follows
 // an alt-screen exit, so the main screen must stay where the host shows it.
 // h.history, h.modes and geomEnd are Hub-owned and stay (not a geometry change).
-func (h *Hub) rebuildAfterAltExitLocked() {
+//
+// WR-02: the rendered seed carries text, cursor and DEC modes only, so the
+// rebuild also re-applies the main screen's scroll region and saved cursor
+// (tracked by newLiveEmulator's handlers), the current pen and the DEC line
+// drawing G0 charset (read by printing one probe cell into the old emulator,
+// which is discarded anyway), and then replays tail, the sequence or UTF-8
+// character the read cut off, so the next read completes it.
+// shortcut: tab stops, G1-G3/SO, DECSC's saved pen and a pending wrap after a
+// region or saved-cursor restore are lost; track them if a shell needs them.
+func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	old := h.liveEmu
 	seed := h.renderScreenLocked()
+	pos := old.CursorPosition()
+	old.Write([]byte("\x1b[1;1H")) //nolint:errcheck // emulator Write never returns a meaningful error
+	probe := old.CursorPosition()  // region-relative under origin mode
+	old.Write([]byte("q"))         //nolint:errcheck // 'q' is '─' in DEC line drawing
+	cell := old.CellAt(probe.X, probe.Y)
+
 	h.liveEmu = h.newLiveEmulator(old.Width(), old.Height())
-	if seed != nil {
-		h.liveEmu.Write(seed) //nolint:errcheck // emulator Write never returns a meaningful error
+	var b strings.Builder
+	b.Write(seed)
+	if r, s := h.mainRegion, h.savedCursor; r != [2]int{} || s != nil {
+		if r != [2]int{} {
+			fmt.Fprintf(&b, "\x1b[%d;%dr", r[0], r[1]) // homes the cursor
+		}
+		if s != nil {
+			fmt.Fprintf(&b, "\x1b[%d;%dH\x1b7", s.Y+1, s.X+1)
+		}
+		fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
 	}
-	h.drainScrollbackLocked() // the seed fills exactly Height rows, so nothing scrolls
+	if cell != nil {
+		if cell.Content == "─" {
+			b.WriteString("\x1b(0")
+		}
+		b.WriteString(cell.Style.String())
+	}
+	h.liveEmu.Write([]byte(b.String())) //nolint:errcheck // emulator Write never returns a meaningful error
+	h.drainScrollbackLocked()           // the seed fills exactly Height rows, so nothing scrolls
+	h.liveEmu.Write(tail)               //nolint:errcheck // emulator Write never returns a meaningful error
 }
 
 // newLiveEmulator builds the live emulator. It is the only constructor, so a
@@ -576,10 +696,20 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	emu.SetScrollbackSize(HistoryMaxLines)
 	// Track DEC private modes for the replay's restores; ANSI modes are not
 	// replayed (the callbacks report both).
+	// WR-02: the main screen's saved cursor, for the alt-exit rebuild.
+	saveCursor := func() {
+		if !emu.IsAltScreen() {
+			p := emu.CursorPosition()
+			h.savedCursor = &p
+		}
+	}
 	track := func(on bool) func(ansi.Mode) {
 		return func(m ansi.Mode) {
 			if d, ok := m.(ansi.DECMode); ok {
 				h.modes[int(d)] = on
+				if on && d == ansi.ModeSaveCursor {
+					saveCursor()
+				}
 			}
 		}
 	}
@@ -590,8 +720,38 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 		AltScreen: func(on bool) {
 			if !on {
 				h.altExited = true
+				// ?1049h saved the main cursor, which stood still in the alt
+				// screen; the mode is still set while this callback runs.
+				if h.modes[int(ansi.ModeAltScreenSaveCursor)] {
+					saveCursor()
+				}
 			}
 		},
+	})
+	emu.RegisterEscHandler('7', func() bool { saveCursor(); return false })
+	emu.RegisterCsiHandler('s', func(ansi.Params) bool {
+		if !h.modes[69] { // with DECLRMM, CSI s sets margins instead
+			saveCursor()
+		}
+		return false
+	})
+	emu.RegisterCsiHandler('r', func(params ansi.Params) bool {
+		if emu.IsAltScreen() {
+			return false // the alt screen's region goes with it
+		}
+		top, _, _ := params.Param(0, 1)
+		bottom, _, _ := params.Param(1, emu.Height())
+		top, bottom = max(top, 1), min(bottom, emu.Height())
+		if bottom < 1 {
+			bottom = emu.Height()
+		}
+		if top < bottom { // vt ignores the rest
+			h.mainRegion = [2]int{top, bottom}
+			if top == 1 && bottom == emu.Height() {
+				h.mainRegion = [2]int{}
+			}
+		}
+		return false
 	})
 	// ESC[3J (zsh `clear`, Claude Code's /clear) erases scrollback: empty the
 	// history too, so a cleared transcript is never replayed (T-05-10).
@@ -608,6 +768,7 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	emu.RegisterEscHandler('c', func() bool {
 		h.history.Clear()
 		clear(h.modes)
+		h.mainRegion, h.savedCursor = [2]int{}, nil
 		emu.ClearScrollback()
 		return false
 	})
@@ -693,6 +854,7 @@ func (h *Hub) resizeLiveEmulator(cols, rows int, genuine bool) {
 			h.history.Push(row)
 		}
 	}
+	h.mainRegion, h.savedCursor = [2]int{}, nil // the new emulator starts without them
 	h.liveEmu = h.newLiveEmulator(cols, rows)
 	if inAlt {
 		h.liveEmu.Write([]byte(altScreenEnterSeq)) //nolint:errcheck // emulator Write never returns a meaningful error

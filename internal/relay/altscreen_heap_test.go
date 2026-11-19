@@ -155,6 +155,69 @@ func TestAltScreenExit_KeepsMainScreenAndHistory(t *testing.T) {
 	}
 }
 
+// TestAltScreenExit_RebuildMatchesReference: after the alt-exit rebuild, later
+// output lands as it does in an emulator fed every byte, including a read cut
+// mid-escape or mid-UTF-8, a pen, a scroll region, a saved cursor and DEC line
+// drawing (WR-02). Each step is one PTY read; tab stops are a documented loss.
+func TestAltScreenExit_RebuildMatchesReference(t *testing.T) {
+	const app = "\x1b[?1049hALT\x1b[?1049l"
+	cases := []struct {
+		name  string
+		steps []string
+	}{
+		{"read ends mid-CSI after the exit", []string{"$ vim\r\n" + app + "$ \x1b[3", "2mgreen"}},
+		{"read ends mid-UTF-8 after the exit", []string{"$ vim\r\n" + app + "$ \xe2\x94", "\x80ok"}},
+		{"read ends inside an OSC after the exit", []string{"$ vim\r\n" + app + "\x1b]0;ti", "tle\x07$ ok"}},
+		{"pen left red", []string{"$ \x1b[31m", app, "after"}},
+		{"scroll region kept by the shell", []string{"\x1b[1;4r$ vim\r\n", app, "\r\nA\r\nB\r\nC\r\nD\r\nE\r\n"}},
+		{"saved cursor", []string{"ab\x1b7\r\n\r\n", app, "\x1b8Z"}},
+		{"DEC line drawing in G0", []string{"\x1b(0", app, "qqq"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			hub := NewHub("rebuild-ref", nil, nil, DefaultScrollbackBytes, nil)
+			resizeHub(t, hub, 40, 6)
+			ref := NewQuietEmulator(40, 6)
+			hub.emuMu.Lock()
+			defer hub.emuMu.Unlock()
+			hub.ensureLiveEmulatorLocked()
+			first := hub.liveEmu
+			for _, s := range c.steps {
+				hub.recordFrameLocked(MakeOutputFrame([]byte(s)), []byte(s))
+				ref.Write([]byte(s)) //nolint:errcheck
+			}
+			if hub.liveEmu == first {
+				t.Fatal("fixture invalid: the app's exit did not rebuild the emulator")
+			}
+			got, want := hub.liveEmu.Render(), ref.Render()
+			if got != want || hub.liveEmu.CursorPosition() != ref.CursorPosition() {
+				t.Errorf("rebuilt %q cursor %v, want %q cursor %v", got, hub.liveEmu.CursorPosition(), want, ref.CursorPosition())
+			}
+		})
+	}
+}
+
+func TestIncompleteTail(t *testing.T) {
+	for in, want := range map[string]string{
+		"plain":                    "",
+		"$ \x1b[3":                 "\x1b[3",
+		"x\xe2\x94":                "\xe2\x94",
+		"\x1b]0;t\x07ok":           "",
+		"\x1b]0;t\x1b\\ok":         "",
+		"a\x1b]0;title":            "\x1b]0;title",
+		"a\x1bPq#0~":               "\x1bPq#0~",
+		"a\x9b6":                   "\x9b6",
+		"a\x1b(":                   "\x1b(",
+		"\x1b[3\x18ok":             "",
+		"\x1b]0;a\x1b[1":           "\x1b]0;a\x1b[1", // no ground point since the OSC: replay both
+		"\x1b[?1049l\x1b[1;32mok ": "",
+	} {
+		if got := string(incompleteTail([]byte(in))); got != want {
+			t.Errorf("incompleteTail(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // TestAltScreenResize_KeepsMainScreenAndExitRebuild: a host resize while an
 // app is in the alternate screen keeps the main screen's lines (in history),
 // keeps the app's redraw out of history, and the app's later exit still
