@@ -55,6 +55,8 @@ export interface WebShareSessionViewProps {
   beforeReconnect?: () => Promise<ReconnectVerdict>
   /** Passed through to TerminalPanel: the reconnecting banner shows (true) or hides (false). */
   onReconnectingChange?: (reconnecting: boolean) => void
+  /** DEBT-04: passed through to TerminalPanel, the host half of a peer tab's snapshot key. */
+  snapshotHost?: string
 }
 
 // Review it3 IN-02: AbortSignal.timeout is missing before Safari 16 / Chrome 103, and
@@ -90,6 +92,7 @@ export function WebShareSessionView({
   onShareStopped,
   beforeReconnect,
   onReconnectingChange,
+  snapshotHost,
 }: WebShareSessionViewProps): React.ReactElement {
   // FIX-03 (plan 09) RC-A transport switch. When true, the terminal routes
   // through the daemon proxy (remote:true, wsURL undefined).
@@ -201,6 +204,7 @@ export function WebShareSessionView({
         beforeReconnect={useProxy ? beforeReconnect : probeShare}
         hostUnreachable={hostUnreachable}
         onReconnectingChange={onReconnectingChange}
+        snapshotHost={snapshotHost}
       />
     </div>
   )

@@ -5,8 +5,12 @@
  * for a delta instead of a full replay. In memory only, never persisted.
  *
  * A stale entry is still correct: a snapshot and its offset describe one stream
- * point, and the host answers a full replay when that point is gone. The cap bounds
- * entries a closed tab leaves behind.
+ * point, and the host answers a full replay when that point is gone.
+ *
+ * DEBT-04 W1: keyed by host plus session id, because two Macs' daemons can hand
+ * out equal session ids. App drops a tab's entry when the tab is removed; the
+ * per-key generation stops the unmount's late flush (which lands after the drop
+ * when the closed tab was the active one) from storing it again.
  */
 import type { Terminal } from '@xterm/xterm'
 
@@ -20,18 +24,42 @@ export interface PeerSnapshot {
 export const PEER_SNAPSHOT_MAX = 8
 
 const snapshots = new Map<string, PeerSnapshot>()
+const generations = new Map<string, number>()
 
-/** Return the session's snapshot and forget it (a restore uses it once). */
-export function takePeerSnapshot(sessionId: string): PeerSnapshot | undefined {
-  const snap = snapshots.get(sessionId)
-  snapshots.delete(sessionId)
+/** The host part of a peer tab's key: the name App connects by (MagicDNS when the peer has one). */
+export function peerSnapshotHost(tab: { connectHost?: string; peerHost?: string }): string | undefined {
+  return tab.connectHost ?? tab.peerHost
+}
+
+/** The store key; NUL cannot appear in a host or session id, so no pair fakes another. */
+export function peerSnapshotKey(host: string, sessionId: string): string {
+  return `${host}\0${sessionId}`
+}
+
+/** Read at mount and handed back to putPeerSnapshot; a drop in between makes the put a no-op. */
+export function peerSnapshotGeneration(key: string): number {
+  return generations.get(key) ?? 0
+}
+
+/** The tab is gone: forget its snapshot, and refuse a put from the panel that was showing it. */
+export function dropPeerSnapshot(host: string, sessionId: string): void {
+  const key = peerSnapshotKey(host, sessionId)
+  snapshots.delete(key)
+  generations.set(key, peerSnapshotGeneration(key) + 1)
+}
+
+/** Return the key's snapshot and forget it (a restore uses it once). */
+export function takePeerSnapshot(key: string): PeerSnapshot | undefined {
+  const snap = snapshots.get(key)
+  snapshots.delete(key)
   return snap
 }
 
-/** Store the session's snapshot as the newest; the oldest beyond the cap is dropped. */
-export function putPeerSnapshot(sessionId: string, snap: PeerSnapshot): void {
-  snapshots.delete(sessionId)
-  snapshots.set(sessionId, snap)
+/** Store the key's snapshot as the newest; the oldest beyond the cap is dropped. */
+export function putPeerSnapshot(key: string, snap: PeerSnapshot, generation = peerSnapshotGeneration(key)): void {
+  if (generation !== peerSnapshotGeneration(key)) return // the tab was closed after this panel mounted
+  snapshots.delete(key)
+  snapshots.set(key, snap)
   for (const oldest of snapshots.keys()) {
     if (snapshots.size <= PEER_SNAPSHOT_MAX) break
     snapshots.delete(oldest)

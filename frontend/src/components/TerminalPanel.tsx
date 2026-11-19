@@ -13,7 +13,7 @@ import { ProgressAddon, type IProgressState } from '@xterm/addon-progress'
 import { RelayClient, RECONNECT, type ReconnectVerdict } from '../lib/relayClient'
 import { computeGuestViewport, DEFAULT_GUEST_MIN_SCALE } from '../lib/terminalScale'
 import { applyHostGrid, resetForFullReplay } from '../lib/guestTerminal'
-import { putPeerSnapshot, takePeerSnapshot, watchPeerTerm } from '../lib/peerSnapshots'
+import { peerSnapshotGeneration, peerSnapshotKey, putPeerSnapshot, takePeerSnapshot, watchPeerTerm } from '../lib/peerSnapshots'
 import { isSoftwareWebGL } from '../lib/webglProbe'
 import { isXtermFocused } from '../lib/isXtermFocused'
 import { FindBar, type FindBarSearchOptions } from './FindBar/FindBar'
@@ -118,6 +118,8 @@ interface TerminalPanelProps {
   hostUnreachable?: boolean
   /** The reconnecting banner showed (true) or hid (false); App ambers the peer's sidebar dot. Also false on unmount. */
   onReconnectingChange?: (reconnecting: boolean) => void
+  /** DEBT-04: the peer's connect host, the first half of this panel's snapshot key (App's peerSnapshotHost). */
+  snapshotHost?: string
 }
 
 /**
@@ -146,6 +148,7 @@ export function TerminalPanel({
   beforeReconnect,
   hostUnreachable,
   onReconnectingChange,
+  snapshotHost,
 }: TerminalPanelProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   // The relay onClose closure is built once at mount; read the latest callback through a ref.
@@ -408,7 +411,9 @@ export function TerminalPanel({
     const snapSerializer = remote && !wsURL ? new SerializeAddon() : null
     if (snapSerializer) term.loadAddon(snapSerializer)
     const peerWatch = snapSerializer ? watchPeerTerm(term) : null // WR-01: before the snapshot write
-    const snap = snapSerializer ? takePeerSnapshot(sessionId) : undefined
+    const snapKey = peerSnapshotKey(snapshotHost ?? '', sessionId)
+    const snapGeneration = peerSnapshotGeneration(snapKey)
+    const snap = snapSerializer ? takePeerSnapshot(snapKey) : undefined
     if (snap) {
       applyHostGrid(term, snap.cols, snap.rows, recomputeScale)
       term.write(snap.data)
@@ -566,7 +571,7 @@ export function TerminalPanel({
           // WR-01: no snapshot when the delta would land in a torn or unrepresentable state.
           const extra = peerWatch?.suffix() ?? null
           if (extra !== null) {
-            putPeerSnapshot(sessionId, { data: snapSerializer.serialize() + extra, cols: term.cols, rows: term.rows, offset: resumePoint })
+            putPeerSnapshot(snapKey, { data: snapSerializer.serialize() + extra, cols: term.cols, rows: term.rows, offset: resumePoint }, snapGeneration)
           }
           peerWatch?.dispose()
           snapSerializer.dispose()

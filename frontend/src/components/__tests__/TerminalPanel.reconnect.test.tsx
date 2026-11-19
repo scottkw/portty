@@ -136,7 +136,7 @@ class MockWS {
 
 import { TerminalPanel } from '../TerminalPanel'
 import { WebShareSessionView } from '../WebShareSessionView'
-import { takePeerSnapshot } from '../../lib/peerSnapshots'
+import { peerSnapshotKey, takePeerSnapshot } from '../../lib/peerSnapshots'
 
 const enc = new TextEncoder()
 const metaFrame = (m: object) => new Uint8Array([0x20, ...enc.encode(JSON.stringify(m))])
@@ -164,7 +164,7 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
   afterEach(() => {
     try { act(() => root.unmount()) } catch { /* ignore */ }
     container.remove()
-    takePeerSnapshot('s1') // HARD-05: an unmounted peer panel leaves a snapshot; each case starts fresh
+    takePeerSnapshot(peerSnapshotKey('', 's1')) // HARD-05: an unmounted peer panel leaves a snapshot; each case starts fresh
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     vi.useRealTimers()

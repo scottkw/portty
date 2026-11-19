@@ -60,6 +60,7 @@ import { useColorScheme } from './lib/useColorScheme'
 import { LIGHT_PALETTE, DARK_PALETTE } from './lib/terminalPalettes'
 import { DEFAULT_TERMINAL_FONT_SIZE, terminalFontFamily, type TerminalFont } from './lib/terminalFont'
 import { measureInitialGrid } from './lib/initialGrid'
+import { dropPeerSnapshot, peerSnapshotHost } from './lib/peerSnapshots'
 
 
 const SHARE_POPOVER_ID = 'share-popover'
@@ -528,6 +529,12 @@ function App(): React.ReactElement {
   // UI-only removal of a session's tab state. session:exit calls it directly
   // (the daemon already removed the session); closeTab is nothing more.
   const removeTabState = useCallback((id: string) => {
+    // DEBT-04: every tab removal (close button, Cmd+W, End Session, session:exit)
+    // comes through here, so a peer tab's snapshot dies with its tab. Read from
+    // the ref: the setTabs updater may run twice and must stay side-effect free.
+    const tab = tabsRef.current.find((t) => t.id === id)
+    const host = tab?.type === 'web-session' && tab.peerHost ? peerSnapshotHost(tab) : undefined
+    if (tab && host) dropPeerSnapshot(host, tab.sessionId)
     setTabs((prev) => {
       // Right neighbour, else left, else the empty state (TERM-03).
       setActiveId((cur) => nextActiveTabId(prev, id, cur))
@@ -1147,6 +1154,7 @@ function App(): React.ReactElement {
                 onShareStopped={peerHost ? () => dropPeerSession(peerHost, wsSessionId) : undefined}
                 beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId) : undefined}
                 onReconnectingChange={peerHost ? (on) => setReconnectingHost((h) => (on ? peerHost : h === peerHost ? null : h)) : undefined}
+                snapshotHost={peerHost && activeWebTab ? peerSnapshotHost(activeWebTab) : undefined}
               />
               </ErrorBoundary>
             </div>
