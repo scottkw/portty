@@ -99,7 +99,7 @@ func TestRunDaemon_Exports(t *testing.T) {
 	// We cannot call RunDaemon() in tests (it blocks on signal), but we verify
 	// the functions exist and are exported.
 	var _ func() = RunDaemon
-	var _ func(string) error = EnsureDaemon
+	var _ func(string, RestartPolicy) error = EnsureDaemon
 }
 
 // WR-05: one daemon at a time. A second daemon cannot take the lock while the
@@ -163,7 +163,7 @@ func TestEnsureDaemon_NeverUnlinksSocket(t *testing.T) {
 					fmt.Fprint(w, `{}`)
 				}
 			}))
-			_ = EnsureDaemon(path) // a test binary refuses the spawn
+			_ = EnsureDaemon(path, func(string, int) bool { return true }) // a test binary refuses the spawn
 			if _, err := os.Stat(path); err != nil {
 				t.Fatalf("EnsureDaemon removed the socket path: %v", err)
 			}
@@ -499,4 +499,78 @@ func TestSocketLost(t *testing.T) {
 			t.Fatal("socketLost missed a socket rebound by someone else")
 		}
 	})
+}
+
+// DEBT-08: a version-mismatch restart ends every session, so with live
+// sessions EnsureDaemon asks the caller's policy first, and a "no" keeps the
+// old daemon serving. With none it restarts at once (the CR-01 path). A count
+// it cannot get is unknown (-1) and is asked about, never killed blindly.
+func TestEnsureDaemon_StaleRestartConsent(t *testing.T) {
+	running := `[{"id":"a","state":"running"},{"id":"b","state":"running"},{"id":"c","state":"stopped"}]`
+	for _, tc := range []struct {
+		name         string
+		sessions     string // the /sessions body; "" answers 500
+		allow        bool
+		wantAsked    int // the session count passed to the policy; 0: not asked
+		wantShutdown bool
+	}{
+		{"live sessions, keep", running, false, 2, false},
+		{"live sessions, restart", running, true, 2, true},
+		{"only stopped sessions restart without asking", `[{"id":"c","state":"stopped"}]`, false, 0, true},
+		{"no sessions restart without asking", `[]`, false, 0, true},
+		{"unknown count asks", "", false, -1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old := BuildVersion
+			BuildVersion = "v2"
+			t.Cleanup(func() { BuildVersion = old })
+			path := shortProcTestSocket(t, "consent")
+			ln, err := net.Listen("unix", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { ln.Close() })
+			var shutdown atomic.Bool
+			go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/health":
+					fmt.Fprint(w, `{"status":"ok","version":"v1"}`)
+				case "/sessions":
+					if tc.sessions == "" {
+						http.Error(w, "boom", http.StatusInternalServerError)
+						return
+					}
+					fmt.Fprint(w, tc.sessions)
+				case "/relay-port":
+					fmt.Fprint(w, `{"port":4242}`)
+				case "/shutdown":
+					shutdown.Store(true)
+					w.WriteHeader(http.StatusNoContent)
+				}
+			}))
+
+			asked, askedVer := 0, ""
+			err = EnsureDaemon(path, func(ver string, n int) bool {
+				asked, askedVer = n, ver
+				return tc.allow
+			})
+			if asked != tc.wantAsked {
+				t.Fatalf("policy asked with %d sessions, want %d", asked, tc.wantAsked)
+			}
+			if asked != 0 && askedVer != "v1" {
+				t.Fatalf("policy got daemon version %q, want v1", askedVer)
+			}
+			if shutdown.Load() != tc.wantShutdown {
+				t.Fatalf("shutdown sent = %v, want %v", shutdown.Load(), tc.wantShutdown)
+			}
+			if tc.wantShutdown {
+				if err == nil { // the test binary refuses the respawn that follows the shutdown
+					t.Fatal("the restart path returned nil")
+				}
+			} else if err != nil {
+				t.Fatalf("keeping the old daemon must succeed: %v", err)
+			}
+		})
+	}
 }
