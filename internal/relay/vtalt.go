@@ -22,10 +22,16 @@ import (
 	xvt "github.com/charmbracelet/x/vt"
 )
 
-// altScreenOf returns emu's alternate Screen, or nil if vt's layout changed.
+// altScreenOf returns emu's alternate Screen, or nil if vt's layout changed:
+// the field type, and that element 0 holds the scrollback the exported API
+// calls the main one, so swapped roles never disable the main history (IN-04).
 func altScreenOf(emu *xvt.Emulator) *xvt.Screen {
 	f := reflect.ValueOf(emu).Elem().FieldByName("scrs")
 	if !f.IsValid() || f.Type() != reflect.TypeOf([2]xvt.Screen{}) {
+		return nil
+	}
+	main := (*xvt.Screen)(unsafe.Pointer(f.Index(0).UnsafeAddr()))
+	if sb := emu.Scrollback(); sb == nil || main.Scrollback() != sb {
 		return nil
 	}
 	return (*xvt.Screen)(unsafe.Pointer(f.Index(1).UnsafeAddr()))
