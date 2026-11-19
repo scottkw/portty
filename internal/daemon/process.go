@@ -154,13 +154,16 @@ func EnsureDaemon(socketPath string) error {
 }
 
 // startDaemon calls spawn once no other process holds the lock at lockPath,
-// then waits for the daemon (waitForDaemon), all within wait. 08-REVIEW
-// WR-07: a version-mismatched old daemon can take longer to stop than a new
-// daemon's 2 s lock wait, so spawning at once lost the lock and then waited
-// out the rest of the 15 s. A held lock is never broken: the wait ends early
-// when the socket answers (a daemon is up) or at the deadline.
+// then waits for the daemon (waitForDaemon). The lock wait and the spawned
+// daemon's readiness wait each get up to wait (08-REVIEW IN-15: a lock freed
+// at the deadline never spawns with no time left). 08-REVIEW WR-07: a
+// version-mismatched old daemon can take longer to stop than a new daemon's
+// 2 s lock wait, so spawning at once lost the lock and then waited out the
+// rest of the 15 s. A held lock is never broken: the wait ends early when this
+// build's daemon answers or at the deadline.
 func startDaemon(client *DaemonClient, wait time.Duration, lockPath string, spawn func() (<-chan struct{}, error)) error {
-	deadline := time.Now().Add(wait)
+	start := time.Now()
+	deadline := start.Add(wait)
 	for lockHeld(lockPath) {
 		if daemonReady(client) {
 			return nil
@@ -174,7 +177,10 @@ func startDaemon(client *DaemonClient, wait time.Duration, lockPath string, spaw
 	if err != nil {
 		return fmt.Errorf("EnsureDaemon: start daemon: %w", err)
 	}
-	return waitForDaemon(client, time.Until(deadline), exited, lockPath)
+	if err := waitForDaemon(client, wait, exited, lockPath); err != nil {
+		return fmt.Errorf("%w (%v waited in total)", err, time.Since(start).Round(time.Second))
+	}
+	return nil
 }
 
 // staleVersion reports whether a daemon reporting ver is from another build.

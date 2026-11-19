@@ -357,6 +357,27 @@ func TestStartDaemon_WaitsForOldDaemonLock(t *testing.T) {
 	}
 }
 
+// 08-REVIEW IN-15: a lock freed near the deadline still gives the spawned
+// daemon its own readiness window. Here the lock frees at 0.8 s of a 1 s
+// wait and the daemon binds 0.5 s after the spawn; with only the remaining
+// time it timed out.
+func TestStartDaemon_LateLockReleaseKeepsSpawnWindow(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "daemon.lock")
+	old, err := lockDaemon(lockPath, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(800*time.Millisecond, func() { old.Close() })
+	path := refusingSocket(t, "late")
+	spawn := func() (<-chan struct{}, error) {
+		serveDaemonAfter(t, path, 500*time.Millisecond)
+		return nil, nil
+	}
+	if err := startDaemon(NewDaemonClient(path), time.Second, lockPath, spawn); err != nil {
+		t.Fatalf("the daemon bound 0.5 s after the spawn, but: %v", err)
+	}
+}
+
 // 08-REVIEW CR-01: after ShutdownDaemon's 204 the old daemon keeps answering,
 // and holds the lock, for 50 ms before its os.Exit (handleShutdown). The lock
 // wait must not count that old-version daemon as ready, or nothing is spawned
