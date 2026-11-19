@@ -30,6 +30,8 @@ import {
   SetTrayProgress,
   GetAppearance,
   GetTerminalFont,
+  GetDaemonRestartPrompt,
+  AnswerDaemonRestart,
 } from './wailsjs/go/main/App'
 import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
@@ -181,6 +183,8 @@ function App(): React.ReactElement {
 
   // Quit confirmation modal state (Phase 85)
   const [showQuitModal, setShowQuitModal] = useState(false)
+  // DEBT-08: live sessions in an old-version daemon Go kept; 0 means no question, -1 an unknown count.
+  const [restartPrompt, setRestartPrompt] = useState(0)
   // NAV-03: Settings is a sheet over the window (menu Settings… ⌘,), never a tab.
   const [showSettings, setShowSettings] = useState(false)
   const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string }>>([])
@@ -338,6 +342,8 @@ function App(): React.ReactElement {
         setDaemonError(startupErr)
         return
       }
+      // DEBT-08: startup's daemon:restart-needed may have fired before this subscribed.
+      GetDaemonRestartPrompt().then((n) => { if (n) setRestartPrompt(n) }).catch(() => { /* no prompt */ })
       try {
         const healthSeq = healthEventSeqRef.current
         const [port, allSessions, health] = await Promise.all([
@@ -387,6 +393,7 @@ function App(): React.ReactElement {
     const offDaemonError = EventsOn('daemon:error', (msg: string) => {
       setDaemonError(msg)
     })
+    const offRestartNeeded = EventsOn('daemon:restart-needed', (n: number) => setRestartPrompt(n))
 
     // Plugin settings (PLUG-03): initial fetch + change subscription. The
     // PluginsSection component does its own fetch on mount; this top-level
@@ -463,6 +470,7 @@ function App(): React.ReactElement {
     return () => {
       offHealth()
       offDaemonError()
+      offRestartNeeded()
       offPlugins()
       cancelTrayFocus()
       offExit()
@@ -1295,6 +1303,27 @@ function App(): React.ReactElement {
           onCancel={() => setShowQuitModal(false)}
         />
       )}
+
+      {/* DEBT-08: Not Now (focused first, Esc) keeps the old daemon for this launch. */}
+      <RegenerateKeyModal
+        isOpen={restartPrompt !== 0}
+        titleId="daemon-restart-title"
+        title="Update Portty's background service?"
+        body={
+          restartPrompt < 0 ? 'Sessions may be running. Restarting ends them.'
+            : restartPrompt === 1 ? '1 session is running. Restarting ends it.'
+              : `${restartPrompt} sessions are running. Restarting ends them.`
+        }
+        confirmLabel="Restart Now"
+        actingLabel="Restarting…"
+        cancelLabel="Not Now"
+        destructive
+        onConfirm={async () => {
+          await AnswerDaemonRestart(true)
+          setRestartPrompt(0)
+        }}
+        onCancel={() => { setRestartPrompt(0); void AnswerDaemonRestart(false) }}
+      />
 
     </div>
   )

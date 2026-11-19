@@ -46,8 +46,42 @@ Remote Sessions:
   list                                        Shows this Mac's sessions and sessions shared from Macs on your Tailscale account
   list --local                                Shows only this Mac's sessions
 
+Updates:
+  <command> --restart-daemon                  Restart a background daemon left running by an older or newer Portty,
+                                              even though that ends its sessions (without it, the command refuses)
+
 Run 'portty <command> --help' for command-specific flags.
 `)
+}
+
+// restartDaemonFlag is the CLI's consent to a version-mismatch restart that
+// ends the old daemon's live sessions (DEBT-08). runCLI takes it out of the
+// command's arguments.
+const restartDaemonFlag = "--restart-daemon"
+
+// ensureCLIDaemon runs ensure for a CLI command. A daemon from another build
+// with live sessions is restarted only with --restart-daemon (force); without
+// it the command fails with the reason, and the old daemon keeps running.
+func ensureCLIDaemon(ensure func(string, daemon.RestartPolicy) error, socketPath string, force bool) error {
+	var refused error
+	err := ensure(socketPath, func(ver string, n int) bool {
+		if !force {
+			count, them := fmt.Sprintf("%d live sessions", n), "them"
+			switch {
+			case n == 1:
+				count, them = "1 live session", "it"
+			case n < 0:
+				count = "live sessions"
+			}
+			refused = fmt.Errorf("the running daemon is version %s with %s; restarting it to version %s would end %s. Re-run with %s to restart anyway.",
+				ver, count, daemon.BuildVersion, them, restartDaemonFlag)
+		}
+		return force
+	})
+	if err != nil {
+		return err
+	}
+	return refused
 }
 
 // unknownCommandMessage is what runCLI prints to stderr for an unrecognized command.

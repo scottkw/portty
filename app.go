@@ -152,6 +152,16 @@ type App struct {
 	// seenSessions is every id the exit watcher has listed and not yet
 	// reported via session:exit. Owned by the exit watcher goroutine.
 	seenSessions map[string]bool
+
+	// DEBT-08: a daemon from another build with live sessions is kept until
+	// the user agrees to restart it. restartPrompt is the session count the
+	// dialog shows (0: no prompt; -1: unknown); restartDeclined ("Not Now")
+	// stops further prompts this launch; restartApproved lets one "Restart
+	// Now" EnsureDaemon through. Guarded by restartMu (taken after daemonMu).
+	restartMu       sync.Mutex
+	restartPrompt   int
+	restartDeclined bool
+	restartApproved bool
 }
 
 // defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
@@ -283,12 +293,70 @@ func (a *App) startDaemon(socketPath string) {
 	}
 }
 
-// ensure returns the EnsureDaemon seam, or daemon.EnsureDaemon when unset.
+// ensure returns the EnsureDaemon seam, or daemon.EnsureDaemon with the GUI's
+// restart consent when unset.
 func (a *App) ensure() func(socketPath string) error {
 	if a.ensureDaemonFunc != nil {
 		return a.ensureDaemonFunc
 	}
-	return daemon.EnsureDaemon
+	return func(socketPath string) error { return daemon.EnsureDaemon(socketPath, a.restartConsent) }
+}
+
+// restartConsent is the GUI's daemon.RestartPolicy (DEBT-08). It never blocks
+// startup: unless "Restart Now" approved this call, it keeps the old daemon and
+// asks the frontend, once per launch at most once the user said "Not Now".
+func (a *App) restartConsent(_ string, sessions int) bool {
+	a.restartMu.Lock()
+	defer a.restartMu.Unlock()
+	if a.restartApproved {
+		return true
+	}
+	if !a.restartDeclined {
+		a.restartPrompt = sessions
+		a.emitEvent("daemon:restart-needed", sessions)
+	}
+	return false
+}
+
+// GetDaemonRestartPrompt returns the session count to ask about, or 0 when
+// there is no question. The frontend calls it after GetDaemonError, because
+// startup's daemon:restart-needed can fire before React subscribes.
+func (a *App) GetDaemonRestartPrompt() int {
+	a.restartMu.Lock()
+	defer a.restartMu.Unlock()
+	return a.restartPrompt
+}
+
+// AnswerDaemonRestart is the dialog's answer. "Not Now" (false) keeps the old
+// daemon for the rest of this launch. "Restart Now" (true) restarts it, which
+// ends its sessions, and tells the frontend to reload; a failure keeps the prompt.
+func (a *App) AnswerDaemonRestart(restart bool) error {
+	if !restart {
+		a.restartMu.Lock()
+		a.restartPrompt, a.restartDeclined = 0, true
+		a.restartMu.Unlock()
+		return nil
+	}
+	a.daemonMu.Lock()
+	defer a.daemonMu.Unlock()
+	if a.quitting.Load() { // Quit All may have just stopped the daemon
+		return errors.New("quitting")
+	}
+	a.restartMu.Lock()
+	a.restartApproved = true
+	a.restartMu.Unlock()
+	err := a.ensure()(daemon.DefaultSocketPath())
+	a.restartMu.Lock()
+	a.restartApproved = false
+	if err == nil {
+		a.restartPrompt = 0
+	}
+	a.restartMu.Unlock()
+	if err != nil {
+		return err
+	}
+	a.emitEvent("daemon:recovered", nil) // new relay port; the exit watcher closes the ended tabs
+	return nil
 }
 
 // Respawn pacing: attempts wait 10 s, 20 s, 40 s and so on up to 2 min after

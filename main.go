@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/scottkw/portty/internal/daemon"
@@ -187,6 +188,8 @@ func runCLI(args []string) {
 		return
 	}
 	cmd := args[0]
+	forceRestart := slices.Contains(args, restartDaemonFlag)
+	args = slices.DeleteFunc(slices.Clone(args), func(s string) bool { return s == restartDaemonFlag })
 
 	// Daemon sub-command: run daemon mode without EnsureDaemon, or manage service lifecycle.
 	// daemon status needs a running daemon — fall through to EnsureDaemon path.
@@ -202,7 +205,7 @@ func runCLI(args []string) {
 
 	// All other commands: auto-start daemon, create client, dispatch.
 	socketPath := daemon.DefaultSocketPath()
-	if err := daemon.EnsureDaemon(socketPath); err != nil {
+	if err := ensureCLIDaemon(daemon.EnsureDaemon, socketPath, forceRestart); err != nil {
 		fmt.Fprintf(os.Stderr, "portty: %v\n", err)
 		os.Exit(1)
 	}

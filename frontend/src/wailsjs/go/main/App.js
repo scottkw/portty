@@ -21,6 +21,9 @@ export const GetSessionTailLines  = (id, n)                 => Call('main.App.Ge
 // Daemon error and retry bound methods
 export const GetDaemonError       = ()                      => Call('main.App.GetDaemonError', [])
 export const RetryDaemon          = ()                      => Call('main.App.RetryDaemon', [])
+// DEBT-08 — the version-mismatch restart prompt (0: none; -1: count unknown).
+export const GetDaemonRestartPrompt = ()                    => Call('main.App.GetDaemonRestartPrompt', [])
+export const AnswerDaemonRestart  = (restart)               => Call('main.App.AnswerDaemonRestart', [restart])
 
 // Directory dialog bound method
 export const OpenDirectoryDialog  = (defaultDir)            => Call('main.App.OpenDirectoryDialog', [defaultDir])

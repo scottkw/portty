@@ -154,8 +154,11 @@ func attachRemote(client *daemon.DaemonClient, host, session string, opts attach
 }
 
 // ensureLocalDaemon starts this Mac's daemon when it is down. Tests swap it;
-// EnsureDaemon itself refuses to spawn from a test binary.
-var ensureLocalDaemon = daemon.EnsureDaemon
+// EnsureDaemon itself refuses to spawn from a test binary. A reconnect never
+// restarts a daemon from another build that has live sessions (DEBT-08): it keeps it.
+var ensureLocalDaemon = func(socketPath string) error {
+	return daemon.EnsureDaemon(socketPath, func(string, int) bool { return false })
+}
 
 // remoteReauth runs before each redial: it picks up a restarted daemon's
 // port, starting the daemon first if it died (R6), then re-runs the WhoIs- and
