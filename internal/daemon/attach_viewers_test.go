@@ -493,8 +493,13 @@ func TestCLIAttach_ReconnectsWithDelta(t *testing.T) {
 	cli.waitReconnected(t)
 
 	s.typeLine(t, "MARKER-END")
-	s.waitAll(t, "MARKER-END", "local")
-	waitUntil(t, "cli to see MARKER-END", func() bool { return cli.stdout.has("MARKER-END") })
+	// MARKER-END comes back twice, as separate frames: the tty's echo, then
+	// cat's copy. Compare only once both sides hold both copies.
+	markers := func(b []byte) int { return bytes.Count(b, []byte("MARKER-END")) }
+	testutil.WaitFor(t, viewerWait, func() bool { l, _, _ := s.viewers["local"].state(); return markers(l) == 2 },
+		"timed out waiting for the local viewer's two MARKER-END copies (echo + cat)")
+	testutil.WaitFor(t, viewerWait, func() bool { return markers(cli.stdout.bytes()) == 2 },
+		"timed out waiting for the cli's two MARKER-END copies (echo + cat)")
 
 	local, _, _ := s.viewers["local"].state()
 	checkSameLines(t, cli.stdout.bytes(), local, append(lineTags(1, 100), "MARKER-END"))
