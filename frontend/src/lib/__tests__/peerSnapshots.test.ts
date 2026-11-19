@@ -6,11 +6,14 @@
  * replayFidelity.test.ts does): terminal A is the live tab, B is the tab restored
  * from A's serialize() output; both then get the same delta and must match.
  */
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { Terminal } from '@xterm/xterm'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { PEER_SNAPSHOT_MAX, putPeerSnapshot, takePeerSnapshot, watchPeerTerm, type PeerSnapshot } from '../peerSnapshots'
+import {
+  PEER_SAVE_WAIT_MS, PEER_SNAPSHOT_MAX, PEER_SNAPSHOT_MAX_BYTES, awaitPeerSave, beginPeerSave, dropPeerSnapshot,
+  peerSnapshotGeneration, peerSnapshotKey, putPeerSnapshot, takePeerSnapshot, watchPeerTerm, type PeerSnapshot,
+} from '../peerSnapshots'
 
 const snap = (offset: number): PeerSnapshot => ({ data: `d${offset}`, cols: 80, rows: 24, offset })
 
@@ -43,6 +46,89 @@ describe('peerSnapshots store (HARD-05)', () => {
     putPeerSnapshot(ids[PEER_SNAPSHOT_MAX], snap(8))
     expect(takePeerSnapshot('s1')).toBeUndefined()
     expect(takePeerSnapshot('s0')).toEqual(snap(100))
+  })
+})
+
+// DEBT-04 IN-02: the budget counts snapshot text as UTF-16 bytes (2 per code unit).
+const mib = (n: number, offset = 0): PeerSnapshot => ({ data: 'x'.repeat((n * 1024 * 1024) / 2), cols: 80, rows: 24, offset })
+
+describe('peerSnapshots byte budget (DEBT-04 IN-02)', () => {
+  const keys = ['b0', 'b1', 'b2', 'b3']
+  afterEach(() => { for (const k of keys) takePeerSnapshot(k) })
+
+  it('the budget is 8 MiB', () => {
+    expect(PEER_SNAPSHOT_MAX_BYTES).toBe(8 * 1024 * 1024)
+  })
+
+  it('two 3 MiB snapshots fit; a third evicts the oldest', () => {
+    putPeerSnapshot('b0', mib(3, 0))
+    putPeerSnapshot('b1', mib(3, 1))
+    putPeerSnapshot('b2', mib(3, 2))
+    expect(takePeerSnapshot('b0')).toBeUndefined()
+    expect(takePeerSnapshot('b1')?.offset).toBe(1)
+    expect(takePeerSnapshot('b2')?.offset).toBe(2)
+  })
+
+  it('a 9 MiB snapshot is not stored and leaves the others in place', () => {
+    putPeerSnapshot('b0', mib(3, 0))
+    putPeerSnapshot('b1', mib(3, 1))
+    putPeerSnapshot('b3', mib(9, 3))
+    expect(takePeerSnapshot('b3')).toBeUndefined()
+    expect(takePeerSnapshot('b0')?.offset).toBe(0)
+    expect(takePeerSnapshot('b1')?.offset).toBe(1)
+  })
+})
+
+describe('peerSnapshots key and generation (DEBT-04 W1, close race)', () => {
+  const key = peerSnapshotKey('h', 'g1')
+  afterEach(() => { takePeerSnapshot(key) })
+
+  it('equal session ids on two hosts are two keys', () => {
+    expect(peerSnapshotKey('a', 's1')).not.toBe(peerSnapshotKey('b', 's1'))
+  })
+
+  it('a put with the generation read before a drop stores nothing; the new generation stores', () => {
+    const before = peerSnapshotGeneration(key)
+    putPeerSnapshot(key, snap(1), before)
+    dropPeerSnapshot('h', 'g1')
+    expect(takePeerSnapshot(key)).toBeUndefined()
+    putPeerSnapshot(key, snap(2), before)
+    expect(takePeerSnapshot(key)).toBeUndefined()
+    putPeerSnapshot(key, snap(3), peerSnapshotGeneration(key))
+    expect(takePeerSnapshot(key)).toEqual(snap(3))
+  })
+})
+
+describe('peerSnapshots pending save (DEBT-04 IN-03)', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it('no pending save: awaitPeerSave returns null, so the panel starts at once', () => {
+    expect(awaitPeerSave('p0')).toBeNull()
+  })
+
+  it('a pending save: awaitPeerSave resolves when it settles, and the key is free again', async () => {
+    vi.useFakeTimers()
+    const settle = beginPeerSave('p1')
+    let done = false
+    void awaitPeerSave('p1')!.then(() => { done = true })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(done).toBe(false)
+    settle()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(done).toBe(true)
+    expect(awaitPeerSave('p1')).toBeNull()
+  })
+
+  it('a save that never settles: awaitPeerSave resolves after PEER_SAVE_WAIT_MS', async () => {
+    vi.useFakeTimers()
+    expect(PEER_SAVE_WAIT_MS).toBe(250)
+    beginPeerSave('p2')
+    let done = false
+    void awaitPeerSave('p2')!.then(() => { done = true })
+    await vi.advanceTimersByTimeAsync(PEER_SAVE_WAIT_MS - 1)
+    expect(done).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(done).toBe(true)
   })
 })
 

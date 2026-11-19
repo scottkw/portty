@@ -14,6 +14,9 @@ import { createRoot, type Root } from 'react-dom/client'
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const hoisted = vi.hoisted(() => ({
+  // DEBT-04: when a write callback runs. 'sync' parses at once; a number defers it
+  // that many ms; 'never' models xterm never calling back (W2).
+  flush: 'sync' as 'sync' | 'never' | number,
   state: {
     term: null as {
       options: Record<string, unknown>
@@ -45,8 +48,12 @@ vi.mock('@xterm/xterm', async () => {
     public attachCustomKeyEventHandler = vi.fn()
     public onData = vi.fn(() => ({ dispose: () => {} }))
     public onResize = vi.fn(() => ({ dispose: () => {} }))
-    // xterm runs a write callback once that chunk is parsed; the mock parses at once.
-    public write = vi.fn((_d: unknown, cb?: () => void) => { cb?.() })
+    // xterm runs a write callback once that chunk is parsed; the mock parses per hoisted.flush.
+    public write = vi.fn((_d: unknown, cb?: () => void) => {
+      if (!cb || hoisted.flush === 'never') return
+      if (hoisted.flush === 'sync') cb()
+      else setTimeout(cb, hoisted.flush)
+    })
     public reset = vi.fn()
     public dispose = vi.fn()
     public clearTextureAtlas = vi.fn()
@@ -135,7 +142,7 @@ class MockWS {
 }
 
 import { TerminalPanel } from '../TerminalPanel'
-import { peerSnapshotKey, takePeerSnapshot } from '../../lib/peerSnapshots'
+import { PEER_FLUSH_TIMEOUT_MS, PEER_SAVE_WAIT_MS, dropPeerSnapshot, peerSnapshotKey, takePeerSnapshot } from '../../lib/peerSnapshots'
 
 const enc = new TextEncoder()
 const metaFrame = (m: object) => new Uint8Array([0x20, ...enc.encode(JSON.stringify(m))])
@@ -158,6 +165,7 @@ describe('TerminalPanel peer tab switch (HARD-05)', () => {
     MockWS.instances = []
     vi.stubGlobal('WebSocket', MockWS)
     hoisted.state.term = null
+    hoisted.flush = 'sync'
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -167,6 +175,7 @@ describe('TerminalPanel peer tab switch (HARD-05)', () => {
     try { act(() => root.unmount()) } catch { /* ignore */ }
     container.remove()
     takePeerSnapshot(peerSnapshotKey('', 's1')) // never leak a snapshot into the next case
+    takePeerSnapshot(peerSnapshotKey('h', 's1'))
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     vi.useRealTimers()
@@ -283,5 +292,77 @@ describe('TerminalPanel peer tab switch (HARD-05)', () => {
     const second = mount()
     expect(writes(second)).toEqual([])
     expect(ws(1).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s1/ws')
+  })
+  // DEBT-04 W2: xterm may never run the flush callback; the terminal is still disposed.
+  it('a flush callback that never fires: the terminal is disposed at PEER_FLUSH_TIMEOUT_MS and nothing is stored', async () => {
+    const first = mount()
+    liveAt104(ws(0))
+    hoisted.flush = 'never'
+    unmount()
+    expect(first.dispose).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(PEER_FLUSH_TIMEOUT_MS - 1) })
+    expect(first.dispose).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(first.dispose).toHaveBeenCalledTimes(1)
+
+    hoisted.flush = 'sync'
+    const second = mount()
+    expect(writes(second)).toEqual([])
+    expect(ws(1).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s1/ws')
+  })
+
+  // DEBT-04 IN-03: a quick switch back waits for the save still in flight.
+  it('a remount while the save is pending waits for it, restores the snapshot and dials resume=104', async () => {
+    mount()
+    liveAt104(ws(0))
+    hoisted.flush = 100
+    unmount()
+    hoisted.flush = 'sync'
+    const second = mount()
+    expect(MockWS.instances).toHaveLength(1) // not dialled yet: waiting on the save
+    await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+    expect(MockWS.instances).toHaveLength(2)
+    expect(writes(second)[0]).toBe('SNAPSHOT-DATA')
+    expect(ws(1).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s1/ws?resume=104')
+  })
+
+  it('a save that never finishes holds the remount PEER_SAVE_WAIT_MS at most; it then dials a full replay', async () => {
+    const first = mount()
+    liveAt104(ws(0))
+    hoisted.flush = 'never'
+    unmount()
+    hoisted.flush = 'sync'
+    const second = mount()
+    await act(async () => { await vi.advanceTimersByTimeAsync(PEER_SAVE_WAIT_MS - 1) })
+    expect(MockWS.instances).toHaveLength(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(MockWS.instances).toHaveLength(2)
+    expect(ws(1).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s1/ws')
+    expect(writes(second)).toEqual([])
+    expect(first.dispose).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(PEER_FLUSH_TIMEOUT_MS - PEER_SAVE_WAIT_MS) })
+    expect(first.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  // DEBT-04 close race: App drops the entry before React unmounts the active tab's panel.
+  it('a drop before the unmount: the late flush stores nothing', () => {
+    mount({ remote: true, snapshotHost: 'h' })
+    liveAt104(ws(0))
+    dropPeerSnapshot('h', 's1')
+    unmount()
+    expect(takePeerSnapshot(peerSnapshotKey('h', 's1'))).toBeUndefined()
+  })
+
+  it('unmounting while still waiting on a pending save creates no RelayClient and disposes the terminal', async () => {
+    mount()
+    liveAt104(ws(0))
+    hoisted.flush = 100
+    unmount()
+    hoisted.flush = 'sync'
+    const second = mount()
+    unmount()
+    expect(second.dispose).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(PEER_FLUSH_TIMEOUT_MS) })
+    expect(MockWS.instances).toHaveLength(1)
   })
 })
