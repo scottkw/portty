@@ -154,6 +154,13 @@ export interface RelayClientCallbacks {
   onStateChange?: (state: RelayState) => void
   /** SHAR-07: the terminal must be cleared before a full replay lands on existing content. */
   onReset?: () => void
+  /**
+   * DEBT-05: a socket this client did not close died while a split paste may not
+   * have reached the host. sentBytes counts the payload of whole frames that left
+   * the browser; null when nothing was left here but the host never acknowledged
+   * the paste (kernel-buffered bytes die with the connection). Never resent.
+   */
+  onPasteInterrupted?: (info: { sentBytes: number | null; totalBytes: number }) => void
 }
 
 /**
@@ -187,6 +194,12 @@ export class RelayClient {
   private offsetValid = false
   private hasRendered = false
   private awaitingReplayMeta = true
+  // DEBT-05, per socket: the last split paste not yet acknowledged, as queued segments
+  // (payload 0 marks bytes queued between two folded pastes) plus the bytes queued
+  // after it; and pings sent / pongs received, so a pong can be matched to its ping.
+  private paste: { segs: { bytes: number; payload: number }[]; after: number; totalBytes: number; ackPing: number } | null = null
+  private pingsSent = 0
+  private pongsReceived = 0
 
   constructor(
     private port: number,
@@ -248,6 +261,8 @@ export class RelayClient {
     this.awaitingReplayMeta = true
     this.openedAt = 0
     this.probeSentAt = 0
+    this.paste = null
+    this.pingsSent = this.pongsReceived = 0
     const gen = ++this.socketGen
     let ws: WebSocket
     try {
@@ -285,7 +300,7 @@ export class RelayClient {
       this._clearPing()
       this.pingInterval = setInterval(() => {
         if (this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.send(new Uint8Array([MSG_PING]))
+          this.send(new Uint8Array([MSG_PING]))
         }
       }, RECONNECT.pingMs)
     }
@@ -307,6 +322,7 @@ export class RelayClient {
       if (gen !== this.socketGen) return
       this._clearPing()
       this._clearConnect()
+      this.checkPaste(ws) // close() already cleared the record: a user close says nothing
       if (!this.reconnect) {
         this.callbacks.onClose?.(evt.code, evt.reason)
         return
@@ -353,6 +369,9 @@ export class RelayClient {
         break
       case 'pong':
         this.pongSeen = true
+        // The server answers frames in order, so the pong to the paste's ping proves it read every paste frame.
+        this.pongsReceived++
+        if (this.paste && this.pongsReceived >= this.paste.ackPing) this.paste = null
         break
       // 'unknown' frames are dropped
     }
@@ -364,7 +383,7 @@ export class RelayClient {
 
   private sendProbe(): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return
-    this.ws.send(new Uint8Array([MSG_PING]))
+    this.send(new Uint8Array([MSG_PING]))
     this.probeSentAt = Date.now()
   }
 
@@ -421,6 +440,7 @@ export class RelayClient {
     this.socketGen++
     this._clearPing()
     ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
+    this.checkPaste(ws)
     ws.close()
     this.resetBackoffIfHealthy()
     this.openedAt = 0
@@ -527,21 +547,75 @@ export class RelayClient {
   /** Send keyboard input to the PTY. Dropped (never queued) unless the connection is open. */
   sendInput(text: string): void {
     if (this.reconnect && this.state !== 'open') return // T-05-14, WR-03
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      for (const frame of encodeInputFrames(text)) this.ws.send(frame)
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    const frames = encodeInputFrames(text)
+    if (frames.length < 2) {
+      for (const frame of frames) this.send(frame)
+      return
     }
+    // DEBT-05: record the split paste (folded into one still unacknowledged), then ping:
+    // the server handles a socket's frames in order, so the pong acknowledges the paste.
+    const p = this.paste ?? { segs: [], after: 0, totalBytes: 0, ackPing: 0 }
+    if (p.after > 0) p.segs.push({ bytes: p.after, payload: 0 })
+    p.after = 0
+    for (const frame of frames) {
+      this.send(frame, true)
+      p.segs.push({ bytes: frame.length, payload: frame.length - 1 })
+      p.totalBytes += frame.length - 1
+    }
+    this.paste = p
+    this.send(new Uint8Array([MSG_PING]))
+    p.ackPing = this.pingsSent
   }
 
   /** Notify the PTY of a terminal resize. */
   sendResize(cols: number, rows: number): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(encodeResizeFrame(cols, rows))
+      this.send(encodeResizeFrame(cols, rows))
     }
+  }
+
+  // Every frame leaves through here, so bytes queued after a paste and pings are counted.
+  private send(frame: Uint8Array, pasteFrame = false): void {
+    this.ws!.send(frame)
+    if (frame[0] === MSG_PING) this.pingsSent++
+    if (this.paste && !pasteFrame) this.paste.after += frame.length
+  }
+
+  /**
+   * DEBT-05: the current socket died without close(). bufferedAmount still holds the
+   * bytes the browser never transmitted after the close (WHATWG WebSockets), so the
+   * paste bytes left = what is buffered beyond the bytes queued after the paste. Only
+   * whole frames count as sent: the server's reader drops a partial frame. Nothing
+   * buffered still is not delivered until the ack pong: bytes in the kernel's send
+   * buffer die with the connection. A time window would not do: a dead socket is
+   * noticed up to RECONNECT.deadMs + probeGraceMs late. No resend: a double paste
+   * into a shell is worse than a short one.
+   */
+  private checkPaste(ws: WebSocket): void {
+    const p = this.paste
+    this.paste = null
+    if (!p) return
+    const span = p.segs.reduce((n, seg) => n + seg.bytes, 0)
+    const unsent = Math.min(Math.max(ws.bufferedAmount - p.after, 0), span)
+    if (unsent === 0) {
+      this.callbacks.onPasteInterrupted?.({ sentBytes: null, totalBytes: p.totalBytes })
+      return
+    }
+    let end = 0
+    let sentBytes = 0
+    for (const seg of p.segs) {
+      end += seg.bytes
+      if (end > span - unsent) break
+      sentBytes += seg.payload
+    }
+    this.callbacks.onPasteInterrupted?.({ sentBytes, totalBytes: p.totalBytes })
   }
 
   /** Close the WebSocket connection and stop keep-alive pings (and any reconnecting). */
   close(): void {
     this.closedByUser = true
+    this.paste = null // the browser sends queued data before the close frame, and no panel is left to tell
     if (!this.reconnect) {
       this._clearPing()
       this.ws?.close()

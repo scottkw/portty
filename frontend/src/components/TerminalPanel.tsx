@@ -267,6 +267,8 @@ export function TerminalPanel({
     ended: false,
   })
   const [reconnecting, setReconnecting] = useState(false)
+  // DEBT-05: the last paste a socket drop cut short, in KB (sent absent when unconfirmed); kept until dismissed.
+  const [pasteNotice, setPasteNotice] = useState<{ sentKB?: number; totalKB: number } | null>(null)
   // The cleanup reports false when the banner hides and when the panel unmounts mid-reconnect.
   useEffect(() => {
     if (!reconnecting) return
@@ -470,6 +472,11 @@ export function TerminalPanel({
         // IN-09: the RIS goes through term.write, not feed, so re-sync the ground
         // tracker too (CAN aborts any sequence a dropped socket left open).
         onReset: () => { peerWatch?.feed(new Uint8Array([0x18])); resetForFullReplay(term) },
+        // DEBT-05: N rounds down and M up, so the notice never overstates what was sent.
+        onPasteInterrupted: ({ sentBytes, totalBytes }) => setPasteNotice({
+          sentKB: sentBytes === null ? undefined : Math.floor(sentBytes / 1024),
+          totalKB: Math.ceil(totalBytes / 1024),
+        }),
         // SHAR-07: while not open, stdin is disabled and RelayClient drops input;
         // keystrokes are never queued into the shell (T-05-14).
         onStateChange: (state) => {
@@ -1134,6 +1141,14 @@ export function TerminalPanel({
           kind={sessionEnded.shareStopped ? 'share-stopped' : 'ended'}
           host={hostLabel}
           onDismiss={() => setSessionEnded({ ended: false })}
+        />
+      )}
+      {pasteNotice && (
+        <SessionEndedBanner
+          kind="paste-interrupted"
+          pasteSentKB={pasteNotice.sentKB}
+          pasteTotalKB={pasteNotice.totalKB}
+          onDismiss={() => setPasteNotice(null)}
         />
       )}
       {isGuestRef.current && reconnecting && !sessionEnded.ended && (

@@ -20,6 +20,10 @@ import { InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
  * does (no dismiss button; it goes away when the socket reopens). Every kind
  * has fixed copy, and the wire reason is still never rendered.
  *
+ * DEBT-05: kind 'paste-interrupted' says a split paste was cut short by a socket
+ * drop. Its numbers are computed on the client from bytes it queued, never taken
+ * from wire text, so the rule above holds.
+ *
  * Colorblind-safe (MEMORY: user is colorblind): the message is conveyed via
  * text + an accessible status role, never via color alone.
  *
@@ -45,9 +49,13 @@ export interface SessionEndedBannerProps {
    * dropped guest socket is being replaced; B5: 'unreachable' once the browser's
    * probes have failed for minutes (still reconnecting, never final).
    */
-  kind?: 'ended' | 'share-stopped' | 'reconnecting' | 'unreachable'
+  kind?: 'ended' | 'share-stopped' | 'reconnecting' | 'unreachable' | 'paste-interrupted'
   /** Local host label (peer tab or cap-verified session info) for 'share-stopped' and 'unreachable'. */
   host?: string
+  /** 'paste-interrupted': KB of the paste that left the browser; absent when the host never confirmed it. */
+  pasteSentKB?: number
+  /** 'paste-interrupted': the paste's size in KB. */
+  pasteTotalKB?: number
 }
 
 export function SessionEndedBanner({
@@ -56,6 +64,8 @@ export function SessionEndedBanner({
   className,
   kind = 'ended',
   host,
+  pasteSentKB,
+  pasteTotalKB,
 }: SessionEndedBannerProps): React.ReactElement {
   useEffect(() => {
     if (reason) {
@@ -71,13 +81,17 @@ export function SessionEndedBanner({
     <div className={cls} role="status" aria-live="polite">
       <InformationCircleIcon className="banner__icon" aria-hidden="true" />
       <span className="banner__message">
-        {kind === 'reconnecting'
-          ? 'Connection lost — reconnecting…'
-          : kind === 'unreachable'
-            ? `Can't reach ${host || 'the host Mac'}. The session may have ended or the Mac may be asleep. Still retrying…`
-            : kind === 'share-stopped'
-              ? (host ? `${host} stopped sharing this session.` : 'This session is no longer shared.')
-              : 'Session ended — the owner stopped this session.'}
+        {kind === 'paste-interrupted'
+          ? (pasteSentKB !== undefined
+              ? `Paste interrupted: ${pasteSentKB} of ${pasteTotalKB} KB sent`
+              : `Paste may have been cut short (${pasteTotalKB} KB)`)
+          : kind === 'reconnecting'
+            ? 'Connection lost — reconnecting…'
+            : kind === 'unreachable'
+              ? `Can't reach ${host || 'the host Mac'}. The session may have ended or the Mac may be asleep. Still retrying…`
+              : kind === 'share-stopped'
+                ? (host ? `${host} stopped sharing this session.` : 'This session is no longer shared.')
+                : 'Session ended — the owner stopped this session.'}
       </span>
       {onDismiss && kind !== 'reconnecting' && kind !== 'unreachable' && (
         <button
