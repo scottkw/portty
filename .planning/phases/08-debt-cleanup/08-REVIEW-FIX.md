@@ -1,10 +1,10 @@
 ---
 phase: 08-debt-cleanup
-fixed_at: 2026-11-19T20:16:20Z
+fixed_at: 2026-11-19T20:55:00Z
 review_path: .planning/phases/08-debt-cleanup/08-REVIEW.md
-iteration: 2
-findings_in_scope: 6
-fixed: 6
+iteration: 3
+findings_in_scope: 5
+fixed: 5
 skipped: 0
 status: all_fixed
 ---
@@ -278,8 +278,68 @@ Every gate ran once at the end, in the isolated worktree `.claude/worktrees/agen
 
 Unchanged: the 32 KiB limits, share tokens, the CSP and the WR-07 tailnet guard. No file under `internal/webserver/` changed, and no test file was added (Section 2 counts unchanged; Section 4 rows extended).
 
+## Iteration 3
+
+**Fixed at:** 2026-11-19T20:55:00Z
+**Source review:** .planning/phases/08-debt-cleanup/08-REVIEW.md (iteration 3, base 7145b083)
+
+**Summary:** 5 findings in scope (CR-01, IN-13..IN-16). 5 fixed, 0 skipped. The reviewer's probes D1, R1 and R2 are now committed tests.
+
+| ID | Status | Commit |
+|----|--------|--------|
+| CR-01 | fixed: requires human verification (logic change; VM version-mismatch restart not run) | abc0b032 |
+| IN-15 | fixed: requires human verification (logic change) | 37522bcb |
+| IN-14 | fixed: requires human verification (logic change) | 69c4cb58 |
+| IN-16 | fixed | f7d04485 |
+| IN-13 | fixed (documented as an accepted `shortcut:`, no redesign) | 463251a7 |
+
+### CR-01: WR-07's lock wait accepted the dying old daemon
+
+**Files modified:** `internal/daemon/process.go`, `internal/daemon/process_test.go`, `TESTING.md`
+**Commit:** abc0b032
+**Applied fix:** The mismatch restart's comparison (`BuildVersion != "" && BuildVersion != "dev" && ver != BuildVersion`) moved into `staleVersion`, and `EnsureDaemon` and `daemonReady` both use it. `daemonReady` returns false when the answering daemon's `/health` version is stale. That covers startDaemon's lock wait and also `waitForDaemon` after the spawn. Dev builds (`""` or `"dev"`) skip the check, as before.
+**Test:** `TestStartDaemon_MismatchedDaemonAnsweringIsNotReady` (D1). With `BuildVersion = "v2"`, the old daemon holds the lock and answers `/health` with `v1`. After `/shutdown` it replies 204, keeps answering for 50 ms, then closes and releases the lock. The test asserts that `spawn` ran, `startDaemon` returned nil, and 200 ms later `Health` succeeds with version `v2`. Before the fix it failed with "nothing was spawned". `serveDaemonAfter` now reports this build's version (read before its goroutine starts, so no race). `TestStartDaemon_WaitsForOldDaemonLock`, `TestWaitForDaemon_LostLockWaitsForHolder`, `_DiedAtSpawnFailsFast`, `_LockReleasedWithoutBindFailsFast` and `_SlowStart` pass (3 runs each, `-race`).
+
+### IN-15: A lock freed at the deadline spawned with zero wait
+
+**Files modified:** `internal/daemon/process.go`, `internal/daemon/process_test.go`, `TESTING.md`
+**Commit:** 37522bcb
+**Applied fix:** After the lock wait, the spawned daemon gets its own full readiness window (`wait`, i.e. `daemonReadyWait`), not the time left over. `startDaemon` wraps a `waitForDaemon` error with the total time waited (for example "did not become ready within 15s (17s waited in total)"). The worst case grows from 15 s to 30 s, but only when a lock holder takes about 15 s to let go. Every caller runs off the main thread, and the bindings' `startupBindingWait` is 90 s.
+**Test:** `TestStartDaemon_LateLockReleaseKeepsSpawnWindow`. The lock frees at 0.8 s of a 1 s wait and the daemon binds 0.5 s after the spawn. Before the fix it failed with "within 0s".
+
+### IN-14: `ESC SO c` left GL at G1
+
+**Files modified:** `internal/relay/charstate.go`, `internal/relay/replay_fidelity_test.go`, `internal/relay/fuzz_test.go`, `TESTING.md`
+**Commit:** 69c4cb58
+**Applied fix:** `c.esc = x == 0x1b || (c.esc && x < 0x20 && x != 0x18 && x != 0x1a)`. A C0 control keeps ESCAPE, and CAN and SUB abort it.
+**Test:** `TestCharState_Scan` gains both R2 strings, a split-read case and a CAN case. `FuzzCharState` gains both R2 seeds. The rebuild fuzz stays at 0 mismatches.
+
+### IN-16: M-103's 5 MB repeat used a 20 MB receiver
+
+**Files modified:** `TESTING.md`
+**Commit:** f7d04485
+**Applied fix:** Step 1's receiver is now `head -c P` with P = 20000000, and the local-tab repeat spells out a 5,000,000-byte payload with `head -c 5000000`.
+
+### IN-13: A redraw's extra count defeats the row-0 erase clear in one read
+
+**Files modified:** `internal/relay/hub.go`, `internal/relay/history_test.go`, `TESTING.md`
+**Commit:** 463251a7
+**Applied fix:** No behaviour change. A `shortcut:` comment in `row0ErasedLocked` records the limit (one count taken by hash, so a redraw's second count, or an identical wrapped row, defeats the clear; reflow and copy only) and the upgrade path (mark the newest line by position in `drainScrollbackLocked`).
+**Test:** `TestHistory_RedrawDefeatsRow0EraseInOneRead` pins R1 as accepted behaviour: redraw plus the erase in one read leaves the line wrapped, while the control without a redraw and the two-read variant both clear it. In every case row 0 is `$ prompt`.
+
+## Verification (iteration 3)
+
+Every gate ran once at the end, in the isolated worktree `.claude/worktrees/agent-ac53e91fdb620a189` (branch `worktree-agent-ac53e91fdb620a189`, fast-forwarded to 7145b083 first), with `GOTOOLCHAIN=go1.26.11`. Frontend dependencies were installed there with `pnpm install --frozen-lockfile --offline`. The results are reproducible from the same commit in the main checkout.
+
+- `go build ./... && go vet ./...`: clean.
+- `go test -race -short ./...`: 11 of 12 packages ok on the first run (relay 86.9 s, with the rebuild fuzz at 0). `internal/daemon` failed once in `TestCLIAttach_ViewingDaemonRestart` with "MARKER-END: cli has 1 copies, local viewer 2". That test is not on the known-flake list, and nothing in this diff touches its code path (attach and relay replay; the typed lines contain no SO). It reads as a test race: the test waits until the CLI shows the first copy of MARKER-END and then compares counts while the second copy (echo plus output) may still be in flight. One rerun of `internal/daemon` passed (29.8 s). Left as a follow-up, not fixed here.
+- `pnpm vitest run`: 91 files, 1280 tests passed.
+- `bash tests/check-traceability-paths.sh`: 150 paths OK. `bash tests/check-brand.sh`: clean.
+
+Unchanged: the 32 KiB limits, share tokens, the CSP and the WR-07 tailnet guard. No file under `internal/webserver/` changed. No test file was added (Section 2 counts unchanged at Go 137, vitest 91, total 236). Section 2 has an iteration-3 note, the DEBT-02, DEBT-03 and DEBT-06 rows in Section 4 are extended, and M-103 in Section 5 is corrected.
+
 ---
 
-_Fixed: 2026-11-19T20:16:20Z_
+_Fixed: 2026-11-19T20:55:00Z_
 _Fixer: Claude (gsd-code-fixer)_
-_Iteration: 2_
+_Iteration: 3_
