@@ -31,6 +31,7 @@ vi.mock('@xterm/xterm', async () => {
     public rows = 24
     public options: Record<string, unknown> = {}
     public unicode = { activeVersion: '6' as string }
+    public parser = { registerCsiHandler: vi.fn(() => ({ dispose: () => {} })), registerEscHandler: vi.fn(() => ({ dispose: () => {} })) }
     public element: HTMLElement | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     public _core: any

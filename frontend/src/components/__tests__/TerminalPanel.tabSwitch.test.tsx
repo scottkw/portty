@@ -31,6 +31,7 @@ vi.mock('@xterm/xterm', async () => {
     public rows = 24
     public options: Record<string, unknown> = {}
     public unicode = { activeVersion: '6' as string }
+    public parser = { registerCsiHandler: vi.fn(() => ({ dispose: () => {} })), registerEscHandler: vi.fn(() => ({ dispose: () => {} })) }
     public element: HTMLElement | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     public _core: any
@@ -229,6 +230,17 @@ describe('TerminalPanel peer tab switch (HARD-05)', () => {
     send(ws(1), outFrame('everything'))
     send(ws(1), metaFrame({ offset: 200 }))
     expect(writes(second)).toEqual(['SNAPSHOT-DATA', RIS, 'everything'])
+  })
+
+  it('a last frame ending mid-escape stores nothing (WR-01): the next mount does a full replay', () => {
+    mount()
+    liveAt104(ws(0))
+    send(ws(0), outFrame('$ \x1b[3')) // the next frame would start with "2m"
+    unmount()
+
+    const second = mount()
+    expect(writes(second)).toEqual([])
+    expect(ws(1).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s1/ws')
   })
 
   it('an ended session stores nothing: the next mount has no snapshot and no resume', () => {

@@ -13,7 +13,7 @@ import { ProgressAddon, type IProgressState } from '@xterm/addon-progress'
 import { RelayClient, RECONNECT, type ReconnectVerdict } from '../lib/relayClient'
 import { computeGuestViewport, DEFAULT_GUEST_MIN_SCALE } from '../lib/terminalScale'
 import { applyHostGrid, resetForFullReplay } from '../lib/guestTerminal'
-import { putPeerSnapshot, takePeerSnapshot } from '../lib/peerSnapshots'
+import { putPeerSnapshot, takePeerSnapshot, watchPeerTerm } from '../lib/peerSnapshots'
 import { isSoftwareWebGL } from '../lib/webglProbe'
 import { isXtermFocused } from '../lib/isXtermFocused'
 import { FindBar, type FindBarSearchOptions } from './FindBar/FindBar'
@@ -407,6 +407,7 @@ export function TerminalPanel({
     // the Phase 97 serializeAddonRef is plugin-controlled (off for peer tabs).
     const snapSerializer = remote && !wsURL ? new SerializeAddon() : null
     if (snapSerializer) term.loadAddon(snapSerializer)
+    const peerWatch = snapSerializer ? watchPeerTerm(term) : null // WR-01: before the snapshot write
     const snap = snapSerializer ? takePeerSnapshot(sessionId) : undefined
     if (snap) {
       applyHostGrid(term, snap.cols, snap.rows, recomputeScale)
@@ -425,7 +426,7 @@ export function TerminalPanel({
       setReconnecting(false)
     }
     const client = new RelayClient(relayPort, sessionId, {
-      onOutput: (data) => term.write(data),
+      onOutput: (data) => { peerWatch?.feed(data); term.write(data) },
       onOpen: isGuest
         ? undefined
         : () => { client.sendResize(term.cols, term.rows) },
@@ -560,11 +561,17 @@ export function TerminalPanel({
         // xterm parses writes asynchronously: serialize only once received output is
         // in the buffer, so the snapshot never lags its offset.
         term.write('', () => {
-          putPeerSnapshot(sessionId, { data: snapSerializer.serialize(), cols: term.cols, rows: term.rows, offset: resumePoint })
+          // WR-01: no snapshot when the delta would land in a torn or unrepresentable state.
+          const extra = peerWatch?.suffix() ?? null
+          if (extra !== null) {
+            putPeerSnapshot(sessionId, { data: snapSerializer.serialize() + extra, cols: term.cols, rows: term.rows, offset: resumePoint })
+          }
+          peerWatch?.dispose()
           snapSerializer.dispose()
           term.dispose()
         })
       } else {
+        peerWatch?.dispose()
         snapSerializer?.dispose()
         term.dispose()
       }

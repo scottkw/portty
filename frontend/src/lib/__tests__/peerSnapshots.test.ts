@@ -10,7 +10,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { Terminal } from '@xterm/xterm'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { PEER_SNAPSHOT_MAX, putPeerSnapshot, takePeerSnapshot, type PeerSnapshot } from '../peerSnapshots'
+import { PEER_SNAPSHOT_MAX, putPeerSnapshot, takePeerSnapshot, watchPeerTerm, type PeerSnapshot } from '../peerSnapshots'
 
 const snap = (offset: number): PeerSnapshot => ({ data: `d${offset}`, cols: 80, rows: 24, offset })
 
@@ -135,5 +135,109 @@ describe('snapshot + delta equals the live terminal in real xterm.js (HARD-05)',
     expect(b.buffer.active.type).toBe('normal')
     expect(allLines(b)).toEqual(allLines(a))
     expect(cursor(b)).toEqual(cursor(a))
+  })
+})
+
+describe('watchPeerTerm: what serialize() leaves out (WR-01)', () => {
+  const terms: Terminal[] = []
+  afterEach(() => { terms.splice(0).forEach((t) => t.dispose()) })
+
+  // A live peer tab: output is fed to the watch and written to xterm, as TerminalPanel does.
+  function live() {
+    const term = guestTerm()
+    terms.push(term)
+    const serializer = new SerializeAddon()
+    term.loadAddon(serializer)
+    const watch = watchPeerTerm(term)
+    const out = (d: string | Uint8Array) => {
+      const bytes = typeof d === 'string' ? new TextEncoder().encode(d) : d
+      watch.feed(bytes)
+      return new Promise<void>((resolve) => term.write(bytes, resolve))
+    }
+    return { term, serializer, watch, out }
+  }
+  // xterm keeps cursor visibility and the mouse encoding off its public API.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const core = (t: Terminal) => (t as any)._core
+  const restoreFrom = async (a: ReturnType<typeof live>) => {
+    const extra = a.watch.suffix()
+    expect(extra).not.toBeNull()
+    const b = live()
+    await flush(b.term, a.serializer.serialize() + extra)
+    return b
+  }
+
+  it('restores SGR mouse encoding, mouse tracking, a hidden cursor and bracketed paste', async () => {
+    const a = live()
+    await a.out('$ vim\r\n\x1b[?1049h\x1b[?1000h\x1b[?1006h\x1b[?25l\x1b[?2004h\x1b[5;5Hbuffer')
+    expect(core(a.term).coreMouseService.activeEncoding).toBe('SGR')
+    expect(core(a.term).coreService.isCursorHidden).toBe(true)
+
+    const b = await restoreFrom(a)
+    expect(b.term.modes.mouseTrackingMode).toBe('vt200')
+    expect(core(b.term).coreMouseService.activeEncoding).toBe('SGR')
+    expect(core(b.term).coreService.isCursorHidden).toBe(true)
+    expect(b.term.modes.bracketedPasteMode).toBe(true)
+    expect(b.watch.suffix()).toBe(a.watch.suffix()) // the restored tab tracks the same state
+  })
+
+  it('a reset mode is not re-emitted, and a mode list is read whole', async () => {
+    const a = live()
+    await a.out('\x1b[?25;1016l\x1b[?1016;25h\x1b[?25h\x1b[?1016l')
+    expect(a.watch.suffix()).toBe('')
+    await a.out('\x1b[?2004;1016;25l')
+    expect(a.watch.suffix()).toBe('\x1b[?25l')
+    await a.out('\x1b[?1016h')
+    const b = await restoreFrom(a)
+    expect(core(b.term).coreMouseService.activeEncoding).toBe('SGR_PIXELS')
+  })
+
+  it('RIS clears the tracked state', async () => {
+    const a = live()
+    await a.out('\x1b[?25l\x1b[?1006h\x1b[1;4r')
+    await a.out('\x1bc')
+    expect(a.watch.suffix()).toBe('')
+  })
+
+  it.each([
+    ['a CSI cut after its parameters', '$ \x1b[3'],
+    ['a bare ESC', 'text\x1b'],
+    ['an ESC charset designation missing its final byte', '\x1b('],
+    ['an unterminated OSC', '\x1b]0;title'],
+    ['an OSC cut inside its ST', '\x1b]0;title\x1b'],
+    ['an unterminated DCS', '\x1bPq#0;2;0;0;0~'],
+    ['a C1 CSI (U+009B) without its final byte', 'a\u009b3'],
+  ])('no snapshot when the output ends inside %s', async (_name, tail) => {
+    const a = live()
+    await a.out(`hello\r\n${tail}`)
+    expect(a.watch.suffix()).toBeNull()
+  })
+
+  it('no snapshot mid-UTF-8, and the next read completing the character clears it', async () => {
+    const a = live()
+    await a.out(new Uint8Array([0x24, 0x20, 0xe2, 0x94]))
+    expect(a.watch.suffix()).toBeNull()
+    await a.out(new Uint8Array([0x80, 0x6f, 0x6b]))
+    expect(a.watch.suffix()).toBe('')
+  })
+
+  it('complete sequences end in ground: BEL- and ST-terminated OSC, CAN aborting a CSI', async () => {
+    const a = live()
+    await a.out('\x1b]0;t\x07\x1b]8;;http://x\x1b\\link\x1b]8;;\x1b\\ \x1b[3\x18 \x1b(B\x1b[1;32mok\x1b[0m')
+    expect(a.watch.suffix()).toBe('')
+  })
+
+  it('a scroll region vetoes the snapshot until a full-screen DECSTBM or leaving the alt screen', async () => {
+    const a = live()
+    await a.out('\x1b[1;4r')
+    expect(a.watch.suffix()).toBeNull()
+    await a.out('\x1b[r')
+    expect(a.watch.suffix()).toBe('')
+    await a.out('\x1b[1;24r') // the whole screen is no region
+    expect(a.watch.suffix()).toBe('')
+    await a.out('\x1b[?1049h\x1b[2;20r')
+    expect(a.watch.suffix()).toBeNull()
+    await a.out('\x1b[?1049l') // xterm clears the alt buffer, region and all
+    expect(a.watch.suffix()).toBe('')
   })
 })
