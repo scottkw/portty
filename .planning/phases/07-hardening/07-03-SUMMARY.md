@@ -3,6 +3,7 @@ phase: 07-hardening
 plan: 03
 subsystem: daemon-lifecycle, test-hygiene, docs
 status: complete
+requirements-completed: [HARD-04, HARD-06, HARD-08]
 tags: [respawn, launch-grace, test-isolation, testmain, readme]
 requires: []
 provides:

@@ -3,6 +3,7 @@ phase: 07-hardening
 plan: 05
 subsystem: testing, vm-verification
 status: complete
+requirements-completed: [HARD-01, HARD-02, HARD-03, HARD-04, HARD-05, HARD-06, HARD-07, HARD-08]
 tags: [HARD-01, HARD-02, HARD-03, HARD-04, HARD-05, HARD-06, HARD-07, HARD-08, testing-md, gate, tart-vm]
 requires: [07-01, 07-02, 07-03, 07-04]
 provides:

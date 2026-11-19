@@ -3,6 +3,7 @@ phase: 07-hardening
 plan: 01
 subsystem: relay
 status: complete
+requirements-completed: [HARD-01, HARD-03, HARD-07]
 tags: [relay, daemon, vt, query-strip, heap, flaky-test]
 requires: []
 provides:

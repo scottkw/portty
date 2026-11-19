@@ -3,6 +3,7 @@ phase: 07-hardening
 plan: 02
 subsystem: frontend/peer-tabs
 status: complete
+requirements-completed: [HARD-05]
 tags: [HARD-05, relay, resume, xterm, serialize, tab-switch]
 requires: []
 provides:

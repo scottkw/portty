@@ -3,6 +3,7 @@ phase: 07-hardening
 plan: 04
 subsystem: relay/input
 status: complete
+requirements-completed: [HARD-02]
 tags: [HARD-02, relay, attach, relayClient, paste, dos-guard]
 requires: [07-02]
 provides:
