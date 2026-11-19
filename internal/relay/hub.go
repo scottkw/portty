@@ -659,10 +659,10 @@ func incompleteTail(b []byte) []byte {
 }
 
 // rebuildAfterAltExitLocked replaces the live emulator once the app has left
-// the alternate screen, so the alt screen's scrollback is freed (HARD-01).
-// vt gives each screen its own 10,000-line scrollback, and SetScrollbackSize,
-// Scrollback and ClearScrollback reach only the main screen, so the alt
-// screen's lines go only with the emulator. Caller holds emuMu.
+// the alternate screen (HARD-01). Normally the alt screen keeps no scrollback
+// (disableAltScreenScrollback, DEBT-01), so there is none to free; the rebuild
+// still runs on every exit, so it frees vt's 10,000-line alt scrollback if a
+// vt layout change ever makes that call fail. Caller holds emuMu.
 //
 // Unlike resizeLiveEmulator it re-seeds the new emulator with the old main
 // screen rather than pushing the rows into history: no SIGWINCH redraw follows
@@ -777,6 +777,9 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	h.liveEmu.Write(tail) //nolint:errcheck // emulator Write never returns a meaningful error
 }
 
+// altScrollbackWarn logs disableAltScreenScrollback's failure once per process.
+var altScrollbackWarn sync.Once
+
 // newLiveEmulator builds the live emulator. It is the only constructor, so a
 // rebuild (resizeLiveEmulator) can never miss a setting (RESEARCH Pitfall 12).
 //
@@ -792,15 +795,13 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 // emulator's default handling still runs.
 func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	emu := NewQuietEmulator(cols, rows)
-	// shortcut: while an app stays in the alt screen its scrollback is capped
-	// only by vt's DefaultScrollbackSize, because vt does not expose it;
-	// rebuildAfterAltExitLocked frees it on exit. The cap is per session and
-	// scales with width: 10,000 lines x cols x about 112-120 B (the uv.Cell),
-	// so about 128 MiB per session at 100 columns and about 270 MiB at the
-	// 220-column fallback Cols() uses before a local viewer sizes the PTY;
-	// three sessions in `less +F` overnight can hold 0.4-0.8 GiB. Bound it
-	// (vendor a vt change for scrs[1], or rebuild every N alt lines) if a
-	// long-lived alt-screen session shows up on the 8 GB Macs (WR-04).
+	// The alt screen keeps no scrollback (vtalt.go, DEBT-01). If vt's layout
+	// changed, it grows until the app exits, and the exit rebuild frees it.
+	if !disableAltScreenScrollback(emu) {
+		altScrollbackWarn.Do(func() {
+			log.Printf("relay: vt layout changed; alt-screen scrollback stays unbounded until the app leaves the alt screen (DEBT-01)")
+		})
+	}
 	emu.SetScrollbackSize(HistoryMaxLines)
 	// Track DEC private modes for the replay's restores; ANSI modes are not
 	// replayed (the callbacks report both).
