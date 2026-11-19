@@ -111,3 +111,12 @@ Evidence for plan 08-05 Tasks 2 and 3, run 2026-11-19 (VM clock, UTC) by Claude 
 - Home relaunch list: restored after V-06 (`cmp` clean against the backup). By cleanup, loginwindow had added a System Settings entry: a click on a Notification Center banner (the V-04 rig note) had opened System Settings. System Settings was quit and the entry removed with `plutil`, so the list again holds Portty and Finder as before. The backup was deleted before that last `cmp` could be redone, so the restore is by content, not byte-for-byte.
 - Two Command Line Tools install dialogs, opened by `swiftc` and `strings` shims in the home VM, were closed with `kill -9`. A stray second GUI instance, started by running the bare binary while reading CLI usage, was killed at once. None of this touched the checks.
 - Nothing on the host was clicked, killed or changed. The host ran only the gate, the build, `tar` and SSH.
+
+## Orchestrator disposition of V-05 (2026-11-19)
+
+The FAIL stays recorded as measured. **Disposition: DEBT-05 and SC4 are met; the plan's PASS rule was stricter than the requirement.**
+
+- DEBT-05 and SC4 require that the user is told the paste was cut short, that no frame is sent twice, and that none is silently lost. Both runs (5 MB and 20 MB) showed "Paste may have been cut short (M KB)". The office files were exact prefixes of the payload (98,301 and 262,136 bytes) and never grew after the drop. The tab took input again.
+- The plan's rule also required the "N of M KB sent" wording. On the GUI peer path the browser sends the whole paste to the local daemon proxy over loopback, so `bufferedAmount` is 0 when the tailnet side dies, and only the "may have been cut short" wording can appear there. That wording is the honest one: the browser cannot know how much the remote shell received. The "N of M" wording still applies when the browser's own socket backs up (unit-tested in relayClient.test.ts).
+- The 100 KB sub-run was not executed (stopped by the FAIL rule). It exercises the same no-buffer path, so it adds no new branch.
+- New finding, recorded for the Phase 8 code review: after a large Cmd+V, xterm's helper textarea keeps the pasted text, and WebKit re-shapes it on every caret blink. A 20 MB paste kept WebContent at about 100% CPU for more than 15 minutes.
