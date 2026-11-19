@@ -1,284 +1,207 @@
 ---
 phase: 08-debt-cleanup
-reviewed: 2026-11-19T18:45:41Z
+reviewed: 2026-11-19T19:26:19Z
 depth: standard
-files_reviewed: 31
+iteration: 2
+files_reviewed: 17
 files_reviewed_list:
   - TESTING.md
-  - frontend/src/App.tsx
-  - frontend/src/components/SessionEndedBanner.tsx
   - frontend/src/components/TerminalPanel.tsx
-  - frontend/src/components/WebShareSessionView.tsx
-  - frontend/src/components/__tests__/App.open-remote.test.tsx
-  - frontend/src/components/__tests__/TerminalPanel.reconnect.test.tsx
-  - frontend/src/components/__tests__/TerminalPanel.scale.test.tsx
-  - frontend/src/components/__tests__/TerminalPanel.tabSwitch.test.tsx
-  - frontend/src/lib/__tests__/fixtures/charset-link-replay.json
-  - frontend/src/lib/__tests__/fixtures/ris-replay.json
-  - frontend/src/lib/__tests__/fixtures/softwrap-replay.json
-  - frontend/src/lib/__tests__/fixtures/wrapped-replay.json
-  - frontend/src/lib/__tests__/peerSnapshots.test.ts
-  - frontend/src/lib/__tests__/replayFidelity.test.ts
-  - frontend/src/lib/peerSnapshots.ts
-  - frontend/src/lib/relayClient.test.ts
-  - frontend/src/lib/relayClient.ts
+  - frontend/src/lib/__tests__/pasteGuard.test.ts
+  - frontend/src/lib/pasteGuard.ts
   - internal/daemon/process.go
   - internal/daemon/process_test.go
-  - internal/relay/altscreen_heap_test.go
+  - internal/daemon/process_unix.go
   - internal/relay/charstate.go
-  - internal/relay/emu_nohang_test.go
+  - internal/relay/fuzz_test.go
   - internal/relay/history.go
   - internal/relay/history_test.go
   - internal/relay/hub.go
   - internal/relay/replay_fidelity_test.go
   - internal/relay/softwrap_test.go
   - internal/relay/vtalt.go
-  - internal/relay/vtalt_test.go
   - internal/relay/wraps.go
+  - web/assets/terminal.js
 findings:
   critical: 0
-  warning: 5
-  info: 8
-  total: 13
+  warning: 2
+  info: 4
+  total: 6
   necessity: 0
 status: issues_found
 ---
 
-# Phase 8: Code Review Report
+# Phase 8: Code Review Report (iteration 2)
 
-**Reviewed:** 2026-11-19T18:45:41Z
-**Depth:** standard (plus cross-file reads of the pinned vt, ultraviolet, x/ansi and xterm 6.0.0 sources)
-**Files Reviewed:** 31
+**Reviewed:** 2026-11-19T19:26:19Z
+**Depth:** standard, plus cross-file reads of the pinned vt `b57e5e6d29bb` (`screen.go` `ClearWithScrollback`/`DeleteLine`/`InsertLine`/`ScrollUp`, `scrollback.go` `Push`, `handlers.go` ED/EL and the handler registry, `cc.go` `index`/`reverseIndex`, `emulator.go` `Scrollback`/`ScrollbackLen`) and xterm.js 6.0.0 (`Clipboard.ts`, `CoreBrowserTerminal.ts` `_initGlobal`, `EscapeSequenceParser.ts` transition table and OSC/DCS end handling)
+**Files Reviewed:** 17
 **Status:** issues_found
 
 ## Summary
 
-Scope: `git diff 292daeea..HEAD -- . ':!.planning'` (HEAD d7012004). I read every production file in full. I spot-checked the test files and fixtures and did not audit them line by line. Connected code I read: vt `b57e5e6d29bb` (emulator.go, screen.go, handlers.go, cc.go, esc.go, osc.go, utf8.go, scrollback.go), ultraviolet `renderLine`, the x/ansi v0.11.7 parser transition table and `SetHyperlink`, xterm.js 6.0.0 (`Clipboard.ts`, `CoreBrowserTerminal.ts`, `EscapeSequenceParser.ts`), `internal/webserver/server.go` and `internal/relay/server.go` (ping handling), `internal/daemon/remote_ws_proxy.go`, `app.go` (startup, respawn, Retry, QuitAll) and `process_unix.go`.
+Scope: `git diff 2caeea0b..HEAD -- . ':!.planning'` (HEAD 5e48b6f2), the fixes for 08-REVIEW iteration 1 as listed in 08-REVIEW-FIX.md. I read every production change in full, along with the code it connects to. Probes ran as one overlay test file in one relay test binary (scratchpad `zz_probe2_test.go`, `-run TestProbe2_`). They are cited as Q1..Q6. I ran no full suites and no daemon test binary. The WR-04 gap below is proven from the code.
 
-Probes ran as one overlay test file (`-overlay`, scratchpad `zz_probe_test.go`, `-run TestProbe_`, one test binary). Results are cited in the findings as P1..P7.
+Overall, most fixes are correct:
+- WR-01, WR-02, WR-03, WR-05, IN-04 and IN-08 hold up.
+- IN-01 fixes P3b and P6, but keying wraps by absolute line number brings in a regression. vt's ED 2 (`ClearWithScrollback`) pushes only non-empty rows, so after an ED 2 (zsh's Ctrl+L) the drain indices no longer match the line numbers. That causes missed joins and, when rows are identical, false joins (WR-06, probes Q1/Q2). Before this iteration the hash multiset handled ED 2 correctly.
+- WR-04's lost-lock exception is checked only once. So the version-mismatch restart that WR-04 listed (an old daemon slow to stop) still waits the full 15 s (WR-07).
+- IN-02 and IN-03 are fixed for the cases named, but each misses some siblings (IN-10, IN-11).
 
-Overall: the hard parts hold up. DEBT-01's reflect/unsafe reach is memory-safe. vt nil-checks every alt-scrollback push (ClearWithScrollback, DeleteLine, ED 3), and Reset and Resize leave the scrollback alone. A 3,000-stream random alt-screen fuzz with the scrollback disabled produced 0 panics (P5). The generation guard, the byte budget, the 1 s flush timeout and the 250 ms save wait in peerSnapshots/TerminalPanel have no race that loses or corrupts a snapshot; a stale entry stays self-consistent. Pong counting in relayClient cannot acknowledge a paste early. Pongs are only ever dropped (non-blocking send on a full queue), never duplicated, and the daemon proxy forwards them end to end. So a pong count of at least `ackPing` always means a pong to a ping sent after the paste.
+**Unchanged surfaces confirmed:** `git diff --stat 2caeea0b..HEAD` is empty for `internal/webserver/` (CSP, share-token and capability checks, the WR-07 tailnet guard), `internal/relay/protocol.go` (`MaxInputPayload = 32767`), `internal/relay/scrollback.go` (`ViewerReadLimit`), `internal/relay/server.go`, `internal/daemon/remote_ws_proxy.go`, `internal/attach/`, `main.go`, `app.go`, `go.mod`/`go.sum` and `frontend/package.json`. `relayClient.ts` (`encodeInputFrames`) is untouched. The only `web/` change is the 3-line paste listener in `terminal.js`, which is an external script and so does not touch the CSP. The 32 KiB limits, share tokens, CSP and the WR-07 guard are unchanged.
 
-The defects are in edge semantics:
-- The OSC 8 tracker re-emits an unvalidated, attacker-shaped URI at the end of every replay.
-- The soft-wrap detector records some non-wraps, which makes false joins that show up as merged lines after an xterm.js reflow.
-- DEBT-06's 15 s wait has no early exit for a daemon that died at spawn.
-- The seeded textarea/caret CPU burn (WR-01) predates Phase 8.
+## Status of iteration-1 findings
 
-**Unchanged surfaces confirmed:** `git diff --stat 292daeea..HEAD` is empty for `internal/webserver/` (CSP middleware `csp_mw.go`, share-token/cap verification, the WR-07 tailnet guard in `whois.go`/`tailscale.go`), `internal/relay/protocol.go` (MaxInputPayload 32767), `internal/relay/scrollback.go` (ReplayChunk, 32 KiB read-limit notes), `internal/relay/server.go`, `internal/daemon/remote_ws_proxy.go` (32768-byte client read limit, `ViewerReadLimit` upstream), `internal/attach/`, `main.go`, `app.go`, `go.mod`/`go.sum` and `frontend/package.json`. `encodeInputFrames` (32767-byte split) is untouched. The 32 KiB limits, share tokens, CSP and the WR-07 guard are unchanged.
+| ID | Title (short) | Status | Notes |
+|----|---------------|--------|-------|
+| WR-01 | Large paste stays in xterm's helper textarea | **Fixed** (not VM-verified) | Checked against xterm 6.0.0. `_initGlobal` (`CoreBrowserTerminal.ts:342-344`) registers xterm's paste listener on the textarea during `open()`, so the guard added after `term.open` runs second. `handlePasteEvent` never reads `defaultPrevented` and calls only `stopPropagation`, so `preventDefault` changes nothing in xterm. IME is unaffected: composition events are not `paste`, and `CompositionHelper` reads `textarea.value`, which now stays clean. Drag-and-drop is a `drop` event, not `paste`. Middle-click paste (Linux-only path, `:361`/`:530`) and the context-menu paste (`rightClickHandler` moves the textarea under the mouse, and the paste still targets it) both reach xterm's handler first. `term.paste()` callers send no DOM event. A paste that targets `this.element` instead hits a non-editable element, so it has no default insertion. While reconnecting, `disableStdin` drops the paste, the same as before. `web/assets/terminal.js` gets the same correct guard. VM evidence is still missing; see IN-12. |
+| WR-02 | OSC 8 tracker re-emits an unvalidated URI | **Fixed** | `safeLinkField` runs on all three emit paths: tracker `setLink`, the alt-exit probe resync, and `fixRenderedLinks`. `pendingWrapLocked` and `screenBodyLocked` go through `fixRenderedLinks`. vt link fields can never hold BEL or ESC, so `renderedLinkRE` always matches a vt-rendered link and an unsafe link cannot slip past the regex. Over-rejection check: spaces (0x20) pass, percent-encoding is ASCII and passes, non-ASCII/IDN hostnames pass (only U+007F-U+009F and below U+0020 are rejected), and `id=`/`key=value:key=value` params pass. The one real over-rejection is the 2048-byte cap, a little under VTE's 2083-byte URI limit. A longer link loses its link only in replays, not in the live view. Acceptable. |
+| WR-03 | Soft-wrap detector records LF/IND/CUD + CHA as a wrap | **Fixed** | Every vt cursor-motion CSI and ESC 8/D/M gets a `notWrap` handler that runs before vt's (reverse registration order, `handlers.go`). Probe Q6: C1 IND (0x84) followed by a print records no wrap. The only unmarked second move from column W-1 to column 1 or 2 is a print, which is a real autowrap, or BS on a 3-4 column grid, as the comment says. ESC E is not registered in vt at all (pre-existing vt gap, not a wrap issue). |
+| WR-04 | 15 s wait has no early exit when the spawned daemon dies | **Partially fixed**, see **WR-07** | `go cmd.Wait()` reaps the child on every path. In the GUI the goroutine lives as long as the daemon and is not a leak. In the CLI the process exits and the child is re-parented. No other code in the repo reaps children (`git grep` finds no `Wait4`/`SIGCHLD`/`signal.Ignore`), so `Wait` cannot get ECHILD early. `lockHeld` uses `flock(LOCK_EX|LOCK_NB)` on a new open file description. That reports a lock held by another process (or another fd in this one) as `EWOULDBLOCK` and never breaks it. When the lock is free it takes it for microseconds and closes the file, and a starting daemon's 2 s retry loop absorbs that. Exit racing a successful bind is covered: `ready()` is checked again after the exit. The gap is that the lock check runs once. |
+| WR-05 | TESTING.md M-101 requires unreachable wording | **Fixed** | The step 1 and sub-run PASS rules now accept either wording, with M = ceil(P/1024). That matches `Math.ceil(totalBytes / 1024)` in `TerminalPanel.tsx:480`. The N-of-M rule moved to an optional variant, and "_Last run_" records the disposition. |
+| IN-01 | Hash multiset false joins / redraw inflation | **Fixed for P3b and P6; regressions** in **WR-06** and **IN-09** | Line keys plus the hash check fix both probes. Resize clears the set and does not advance `wrapBase`, which is consistent because the new emulator restarts at the same base with an empty set. RIS and ED 3 clear the set. The alt-exit seed scrolls nothing and records nothing (`trackWraps` is false). History trimming does not touch the keys, and a `uint64` line counter cannot overflow. ED 2 and row-moving operations break the claim "a wrap is missed, never moved onto another row". |
+| IN-02 | `EndsWrapped` survives an erase of row 0 | **Fixed for the listed erases**; gaps in **IN-10** | ED 0 from home, ED 1, and EL 0/1/2 on row 0 clear the end-wrap. The unflushed case drops the newest emu-scrollback line's key. ED 2 correctly keeps the join (row 0 is non-empty and is pushed right after the line). The alt screen is a no-op. RI at top, IL on row 0, SD, ECH and DCH still leave the join (Q4). |
+| IN-03 | GL scan misses RIS after ESC-ended OSC; SO in cut-off UTF-8 | **Fixed for RIS and the UTF-8 case**; sibling gap in **IN-11** | `scanStrEsc` now counts for `ESC c`. Dropping `need == 0` matches xterm.js, which ends the character at a non-continuation byte, and matches vtScan, which resets `need` there. An SO or SI right after a string-ending ESC is still missed (Q5). |
+| IN-04 | `altScreenOf` checks type, not which element is main | **Fixed** | `emu.Scrollback()` returns `scrs[0].Scrollback()` (`emulator.go:451`). In the current layout the check compares element 0 with itself and passes. With swapped roles, element 0 would hold the alt screen's own non-nil `NewScrollback` (`screen.go:26`) and the check would fail. `altScreenOf` runs before `SetScrollbackSize`, and the default scrollback is already non-nil then, so the `sb == nil` branch cannot trip by accident. |
+| IN-05 | Paste into a slow PTY blocks the read loop; heartbeat drops viewer | **Deferred (todo filed)**, reasoning sound | `.planning/todos/pending/2026-11-19-paste-heartbeat-drop.md` exists. The three liveness checks named are real, so a heartbeat-only tweak would be partial. One correction for the todo: the writer-goroutine design does not have to change DEBT-05's ack. If the read loop puts the ping's pong on the same queue, behind the input it read, the writer can send it, and a pong still means "handed to the PTY". |
+| IN-06 | Paste notice can fire for a complete paste | **Deferred**, acceptable | The review said no fix was required. |
+| IN-07 | Snapshot host keying misses tab-replacing paths | **Deferred**, acceptable | The cost is memory, bounded by `PEER_SNAPSHOT_MAX` and `PEER_SNAPSHOT_MAX_BYTES`. |
+| IN-08 | No fuzz target for the byte-level parsers | **Fixed** | `FuzzCharState` has 13 seeds and checks split-independence, the suffix control set, and safe emitted links. As the fix report says, it has no xterm.js reference model, so it would not have caught IN-11. |
 
 ## Warnings
 
-### WR-01: A large paste stays in xterm's helper textarea; WebKit re-shapes it on every caret blink (seeded from V-05; predates Phase 8)
+### WR-06: Line-keyed wraps misalign after ED 2: vt pushes only non-empty rows, so wraps are missed and identical rows get false joins (regression from the IN-01 fix)
 
-**File:** `frontend/src/components/TerminalPanel.tsx:391` (no paste handling after `term.open`); root cause `frontend/node_modules/@xterm/xterm/src/browser/Clipboard.ts:43-56`, compiled identically in `lib/xterm.mjs` (`function qs` / `function Cn`)
+**File:** `internal/relay/hub.go:993-1001` (`drainScrollbackLocked` keys line `i` as `wrapBase+i`), `:1009-1011` (`absLine`), `:930-941` (the `J` handler does nothing for ED 2); vt `screen.go:97-107` (`ClearWithScrollback` skips rows `isLineEmpty` reports as empty)
 
-**Issue:** xterm's `handlePasteEvent` calls `ev.stopPropagation()`, reads `clipboardData`, hands the text to `triggerDataEvent` and sets `textarea.value = ''`. It never calls `ev.preventDefault()`. The paste event fires before the browser's default action, so WebKit inserts the whole clipboard text into the focused `xterm-helper-textarea` after xterm has cleared it. xterm's `_inputEvent` (`CoreBrowserTerminal.ts:1192`) only handles `inputType === 'insertText'`, so the `insertFromPaste` insertion stays. The textarea is then cleared only on blur (`:292`) or on an Enter / Ctrl+C keydown (`:1087`). The paste's own CRs are not keydowns, so they do not clear it.
+**Issue:** The new keying assumes that scrollback index `i` holds the screen row whose absolute line number was `wrapBase+i`. vt's ED 2 breaks that assumption: `ClearWithScrollback` pushes only rows with a cell whose content is neither empty nor a space. Each empty row above a wrapped row shifts every later drain index down by one, so each pushed row takes the key of a different row. `take` also deletes on a hash mismatch, so the real wrap is consumed and lost.
 
-Failure scenario (measured in V-05):
-1. Cmd+V of 20 MB (native Edit-menu paste → WKWebView paste command → DOM `paste` on the focused textarea).
-2. The textarea now holds 20 MB.
-3. `OpacityCaretAnimator::updateAnimationProperties` → `FrameSelection::recomputeCaretRect` → `CTFontShapeGlyphs` re-shapes it on every caret blink frame.
-4. WebContent sits at about 100% CPU with 1.8 GB RSS for 15+ minutes. The relay watchdog, banners and every UI update stall.
+- **Q1 (missed join):** `"$ a\r\n\r\n" + 30 digits + "\r\n$ "` at 20×6, then `ESC[H ESC[2J`. History flags: `[false false false …]`. Without the ED 2 (control): `["$ a" "" "0123…9"(true) "0123456789" …]`. The digits line has lost its join.
+- **Q2 (false join):** `"\r\n" + 60×"-" + "\r\n$ "`, then `ESC[H ESC[2J` (in one read or two). History: `d(false) d(true) d(true) "$"`. `Render()` gives `--------------------\r\n----------------------------------------$`. The third, hard row is joined to the prompt, and the first row's real join is lost. The control (no ED 2) gives the correct `d(true) d(true) d(false)`. The pre-iteration hash multiset also got this right.
 
-5 MB cost about 19 s. Any paste in a tab that has not seen Enter since keeps its text resident.
+zsh's Ctrl+L (`clear-screen` sends `ESC[H ESC[2J` with no `ESC[3J`) triggers this whenever an empty row sits above a wrapped line on the screen. That is common. The effect is the same class as WR-03: lines merge or split after an xterm.js reflow, and copy loses or gains a newline. The new comment in `wraps.go` ("A wrap is missed, never moved onto another row") is wrong for this path.
 
-**Predates Phase 8:** yes. Phase 8 changed neither `frontend/package.json` (xterm 6.0.0) nor the paste input path. `term.onData → client.sendInput` is unchanged; 08-03 added only accounting inside `sendInput`. Every Portty build that uses xterm's default paste path has this.
-
-**Fix (smallest safe):** cancel the browser's default insertion and leave xterm's own handler alone. xterm reads `clipboardData` synchronously and only calls `stopPropagation`, not `stopImmediatePropagation`, so a second listener on the same textarea still runs.
-
-```ts
-// TerminalPanel.tsx, right after term.open(containerRef.current)
-const helper = term.textarea
-const stopPasteInsert = (e: ClipboardEvent) => e.preventDefault() // xterm already read clipboardData
-helper?.addEventListener('paste', stopPasteInsert)
-// in the mount effect's cleanup, before term.dispose():
-helper?.removeEventListener('paste', stopPasteInsert)
-```
-
-The same fix covers context-menu paste. Pin it with a vitest that dispatches a `ClipboardEvent('paste')` with `clipboardData` on `term.textarea` and asserts `defaultPrevented`, `onData` fired once and `textarea.value === ''`. Then run a VM check: a 20 MB Cmd+V, WebContent CPU idle within a few seconds, and an AX read of the textarea value empty. Belt and braces, if WebKit ever ignores `preventDefault` here: also clear `term.textarea.value` on an `input` event whose `inputType === 'insertFromPaste'`.
-
-### WR-02: The OSC 8 tracker stores and re-emits an unvalidated URI (C1 controls that xterm.js executes, up to vt's 4 MB OSC buffer) at the end of every replay
-
-**File:** `internal/relay/charstate.go:50-61` (`osc8`), `:95-97` (`suffix`); emitted at `internal/relay/hub.go:1177`, `:1438` (and fed back into vt at `:814`, `:1061`)
-
-**Issue:** The vt and xterm.js parsers disagree on an OSC payload:
-- The x/ansi parser (`parser/transition_table.go:264`) puts every byte 0x20-0xFF except 0x9C into OSC data.
-- xterm.js decodes UTF-8 first, and its "anywhere" C1 transitions (`EscapeSequenceParser.ts:102-108`) apply inside `OSC_STRING`. A U+009B (bytes C2 9B) aborts the OSC and starts a CSI; U+0090 starts a DCS.
-
-`charState.osc8` copies `parts[2]` verbatim, and `suffix()` appends it to every rendered replay, after the CUP. The only shape check is "exactly three `;`-separated parts", which blocks OSC payloads with `;` but no `;`-free CSI or DCS.
-
-- **P1:** feeding `ESC]8;;http://x/\u009b2J BEL` leaves `cs.link = ["", "http://x/\u009b2J"]`. `StripTerminalQueries` keeps it, and the replay ends with `ESC[1;3H ESC]8;;http://x/\u009b2J BEL`. A joining xterm.js viewer then runs CSI 2J right after painting the replay. `\u009b3J` would wipe the history it was just sent; `\u009b?1049h` would strand it in the alt screen; `\u009b6n` / `\u009bc` make the viewer type a CPR/DA reply into the host shell.
-- **DCS variant:** `ESC]8;;http://x/\u0090$qm\u009c` is stored as `http://x/\u0090$qm\xc2`. Replayed, the viewer opens a DCS (DECRQSS) that swallows live output until the next ESC, then types the reply into the PTY. That ESC can come long after the server's join-time input absorber stops looking.
-- **P2:** a 1 MiB URI opened and never closed (then `clear`) adds about 1 MiB to every Join replay. vt's parser data size is 4 MB (`emulator.go:90`), so up to 4 MB per join persists until RIS or a close.
-
-The attacker only needs to get bytes printed in the host terminal (`cat`, `curl`, `git log`, an agent's tool output). Anyone who can print can already send these bytes live. The tracker turns that into a sequence that re-executes on every join and survives `clear`. Rendered rows already carried the URI before Phase 8 (`renderLine`), but `fixRenderedLinks` passes it through unchanged.
-
-**Fix:** validate in one place and use it on both paths:
+**Fix:** re-key the screen rows in the hub's `J` handler before vt's ED 2 runs. The handler already runs first:
 
 ```go
-const maxLinkField = 2048 // xterm.js links beyond this are useless anyway
-func safeLinkField(s string) bool {
-	if len(s) > maxLinkField || !utf8.ValidString(s) {
-		return false
+// hub.go, in the 'J' handler, before `return false`:
+if n == 2 && !emu.IsAltScreen() {
+	h.rekeyForClearLocked(emu)
+}
+
+// rekeyForClearLocked: vt's ClearWithScrollback pushes only non-empty rows,
+// so row y lands at scrollback index sbLen+idx(y); move each wrap to that line.
+func (h *Hub) rekeyForClearLocked(emu *xvt.Emulator) {
+	if len(h.wraps.n) == 0 {
+		return // also keeps the writes below off a nil map
 	}
-	for _, r := range s {
-		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
-			return false
+	base := h.absLine(emu, 0)
+	type mv struct{ line, key uint64 }
+	var moves []mv
+	idx := 0
+	for y := range emu.Height() {
+		k, had := h.wraps.n[base+uint64(y)]
+		delete(h.wraps.n, base+uint64(y))
+		if rowEmptyForVT(screenLine(emu, y)) { // new helper: vt's isLineEmpty rule (every cell "" or " ")
+			continue
 		}
+		if had {
+			moves = append(moves, mv{base + uint64(idx), k})
+		}
+		idx++
 	}
-	return true
+	for _, m := range moves {
+		h.wraps.n[m.line] = m.key // ring slots stay; eviction tolerates stale lines
+	}
 }
-// charState.osc8: if !safeLinkField(parts[1]) || !safeLinkField(parts[2]) { c.link = [2]string{}; return }
-// fixRenderedLinks: in the ReplaceAllStringFunc callback, return "" (drop the link) when either field fails.
 ```
 
-Add a test: the P1, DCS and 1 MiB cases leave `cs.link` empty, and a rendered row with such a link renders without an OSC 8.
+Pin it with Q1 and Q2 in `softwrap_test.go`. The expected flags are the control runs above.
 
-### WR-03: The soft-wrap detector records LF/IND/CUD + CHA/CUP-to-column-1/2 from a full row as a wrap ("harmless" in the comment is wrong)
+### WR-07: WR-04's lost-lock exception is checked once, so a lock holder that never binds (a version-mismatched daemon still shutting down) still costs the full 15 s
 
-**File:** `internal/relay/hub.go:878-895` (CursorPosition callback; claim at `:882-883`)
+**File:** `internal/daemon/process.go:190-200` (`exited = nil // handled once`, then `lockHeld` once); `:121-126` (version-mismatch restart: `ShutdownDaemon`, `Sleep(200ms)`, spawn); `process.go:42` (the spawned daemon waits only 2 s for the lock)
 
-**Issue:** The callback accepts any move pair (W-1,y)→(W-1,y+1) followed by (W-1,y+1)→(1|2,y+1). LF, IND, CUD and VPA all keep X at W-1, and CHA/CUP/HPA then land on column 1 or 2. The "full row and key" checks do not help, because the recorded key is that same full row.
+**Issue:** Once `exited` fires, `waitForDaemon` calls `lockHeld` exactly once. If the lock is held at that moment, the loop falls back to polling only `ready()` until the deadline and never looks at the lock again. WR-04 named this case explicitly: "`lockDaemon` failing after its 2 s when a version-mismatched old daemon is slow to stop".
+1. `EnsureDaemon` tells the old daemon to shut down and spawns after 200 ms.
+2. The old daemon's `api.Stop()` plus `engine.Manager().Shutdown()` (killing every PTY) take more than about 2.2 s, so the new daemon gives up on the lock and exits.
+3. `lockHeld` is true, because the old daemon is still exiting.
+4. The old daemon exits and frees the lock. No daemon is starting, but the GUI startup, Retry, Quit All and every CLI command still wait out the rest of the 15 s.
 
-- **P3a:** `20×"-" LF ESC[2G x` at 20 columns gives a history row `--------------------` with `wrapped=true`, and `History.Render` emits `-------------------- x` with no CRLF.
-- **CUD variant:** `20×"=" ESC[B ESC[2G |` gives `wrapped=true` too.
+A holder that crashes before binding behaves the same way. This is no worse than before iteration 1, but the fix report's claim that "Quit All, Retry, the poller respawn and every CLI command all go through `EnsureDaemon`, so they all fail fast now" does not hold for this path.
 
-Effect: the viewer's xterm.js marks the pair as one logical line. At the host grid it looks identical. When the host resizes, GUI viewers follow the 0x02 grid and xterm.js reflows its buffer, so the two lines merge (`-------------------- x` on one row). Copy and selection also lose the newline. Bare LF reaches the PTY output whenever ONLCR is off, or from IND, CUD or VPA in cursor-addressed main-screen UIs (ncurses `-X`-style programs, box drawing).
-
-**Fix:** only count moves that vt's print path makes. vt's own cursor-motion CSIs can be marked, because registered handlers run before vt's:
-
-```go
-nonPrint := func(ansi.Params) bool { h.nonPrintMove = true; return false }
-for _, f := range []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'f', 'd', 'e', '`', 'a'} {
-	emu.RegisterCsiHandler(int(f), nonPrint)
-}
-// ESC D/E/M and ESC 8 likewise via RegisterEscHandler.
-// In CursorPosition: if h.nonPrintMove { h.nonPrintMove = false; h.lastMove = [2]uv.Position{{X: -1}, {X: -1}}; return }
-```
-
-A cheaper partial fix also handles P3a: require `emu.CellAt(new.X-1, new.Y)` to be the cell just printed (non-empty), and pin it with the P3a and CUD cases in softwrap_test.go. Correct the comment either way.
-
-### WR-04: DEBT-06's 15 s wait has no early exit when the spawned daemon dies, and it now gates Quit All, Retry and every CLI command
-
-**File:** `internal/daemon/process.go:162-184`; `internal/daemon/process_unix.go:19-34`; holders of `daemonMu` at `app.go:322`, `:400`, `:477`
-
-**Issue:** `startDetachedDaemon` calls `cmd.Process.Release()`, so `waitForDaemon` cannot tell "slow to bind" from "already dead". These daemons now cost the full 15 s instead of 3 s:
-- one that exits at once: crash at init, `lockDaemon` failing after its 2 s when a version-mismatched old daemon is slow to stop, a bad config;
-- one whose socket file is stale (refused).
-
-Consequences:
-- The startup error UI appears about 15 s after launch. `domReady` shows the window at 5 s, then `GetDaemonError` blocks on `startupDone`.
-- Each Retry click blocks 15 s, or up to 30 s when a poller respawn holds `daemonMu`.
-- `QuitAll` takes `daemonMu` "to wait out a respawn" and now hangs up to 15 s on a crash-looping daemon.
-- `portty list` and friends hang 15 s before printing the error.
-- `Release()` also leaves each dead daemon a zombie of the GUI, which compounds over respawn streaks (pre-existing).
-
-A slow but live daemon still benefits from 15 s (B-07: 10 s at login), so keep the bound and add the early exit.
-
-**Fix:**
+**Fix:** keep checking the lock after the exit, and fail once it is free and nothing answers. For the version-mismatch path, also wait for the old daemon's lock to free before spawning:
 
 ```go
-// process_unix.go
-func startDetachedDaemon(exe string) (<-chan struct{}, error) {
-	// ... as now up to cmd.Start()
-	exited := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(exited) }() // reaps; no zombie
-	return exited, nil
-}
-// waitForDaemon: in the poll loop
-select {
-case <-exited:
-	if client.Health() == nil { // another EnsureDaemon's daemon won the lock
+exitedSeen := false
+for time.Now().Before(deadline) {
+	if ready() {
 		return nil
 	}
-	return fmt.Errorf("EnsureDaemon: daemon exited during startup (see daemon.log)")
-default:
+	select {
+	case <-exited:
+		exited, exitedSeen = nil, true
+	case <-time.After(50 * time.Millisecond):
+	}
+	if exitedSeen && !lockHeld(lockPath) && !ready() {
+		return fmt.Errorf("EnsureDaemon: daemon exited during startup (see daemon.log)")
+	}
 }
+// EnsureDaemon, version-mismatch branch: replace the fixed 200 ms sleep with
+// "poll lockHeld(lockPath) every 50 ms for up to ~5 s" so the spawn starts
+// after the old daemon let go and its 2 s lock wait is not wasted.
 ```
 
-Test it with a seam that returns a closed `exited` and a refusing socket: the error must come in well under 1 s.
-
-### WR-05: TESTING.md M-101 still requires the "N of M KB sent" wording that the V-05 disposition calls unreachable on that path
-
-**File:** `TESTING.md:1244`
-
-**Issue:** M-101 step 1 runs the GUI peer path, which goes through the loopback daemon proxy, and requires `Paste interrupted: N of M KB sent` with N < M and S < (N+1) × 1024. The orchestrator's V-05 disposition (08-VM-CHECKS.md, "Orchestrator disposition") explains why the browser's `bufferedAmount` is 0 when the tailnet side dies on that path, so only "Paste may have been cut short (M KB)" can appear there. Every future regression run of M-101 will record a FAIL that is not a regression. That trains verifiers to ignore the item, which is the standing regression suite's only DEBT-05 end-to-end check.
-
-**Fix:** rewrite step 1's pass rule to match the requirement and the disposition. The notice appears (either wording), M = ceil(P/1024), the office file is an exact prefix that never grows, nothing is resent, and typing works. Move the N-of-M rule to a browser web-share variant, where the socket itself can back up, or drop it. Update "_Last run_" to note that the FAIL was dispositioned.
+To test it: hold the lock with `lockDaemon`, pass a closed `exited` and a refusing socket, and release the lock after 200 ms. The call must fail in well under 1 s. Today it waits for the whole `wait`.
 
 ## Info
 
-### IN-01: The hash multiset gives false joins for an identical hard row above a wrapped one, and line-editor redraws inflate counts
+### IN-09: Rows moved without scrolling still move a wrap onto an identical row; the "never moved onto another row" comment is wrong
 
-**File:** `internal/relay/wraps.go:34`, `:27-40`; `internal/relay/hub.go:971`
+**File:** `internal/relay/wraps.go:13-18` (the claim); `internal/relay/hub.go:1009-1011`; vt `screen.go:321-337` (`InsertLine`), `:359-367` (`DeleteLine` pushes the region's top row to scrollback even when the region's top is above 0)
 
-**Issue:** `take` consumes keys in drain order, not row identity.
-- **P3b:** `20×"-" CRLF 40×"-" CRLF` at 20 columns gives history `wrapped=[true false false …]`. The hard first row takes the key the second row's wrap added (false join), and the real wrap is then missed.
-- **P6:** a zle-style redraw (`CUU CR` + reprint) of one wrapped prompt line four times leaves count 5 for one physical row. The extras linger until 4,096 later adds evict them, which widens the window for identical-row false joins.
+**Issue:** The hash check blocks only rows with different content. When rows shift without a matching scrollback change, the key of a wrapped row passes to whichever row now sits on its line. If that row is byte-identical, it is a false join.
+- **Q3:** at 20×6, `d CRLF d d CRLF` (the P3b layout), then `ESC[H ESC M` (RI at top) or `ESC[H ESC[L` (IL). History: `"" d(true) d(false) d`. The hard row took the wrap and the real wrap was missed. The correct result is `"" d(false) d(true) d`. Pagers on the main screen do this (git's default `LESS=FRX` runs less without the alt screen, and scrolling back uses RI).
+- **Q3b:** a DECSTBM region whose top is above row 0: vt pushes the region's top row into scrollback, so every row outside the region renumbers. A hard row identical to a wrapped row above the region took that wrap (`["xxxx…"(true) "" "xxxx…"(false) "xxxxx"]`). The hash multiset made the same mistake. For rows that are not identical this is now a missed join.
+- A single read that scrolls more than vt's 10,000-line scrollback (only a flood of empty lines fits in 32 KiB) saturates `ScrollbackLen`, which shifts the keys of rows still on screen in the same way.
 
-The comment "a missed join, never a false one" is true only for eviction. joinLocked's shortcut note covers the identical-row case, but not this ordering form. Same impact as WR-03 (reflow/copy), rarer trigger.
+Same impact as WR-03 (reflow and copy), with rarer triggers.
 
-**Fix:** correct the comment. If it ever matters, key wraps by absolute line number (lines drained so far + row) instead of by content hash.
+**Fix:** correct the comment to say "missed, or moved onto a byte-identical row". If it matters, shift keys in the existing `L`, `M`, `S`, `T` and ESC `M` handlers for rows inside the region, and in the region-top case of `DeleteLine`.
 
-### IN-02: `History.EndsWrapped` is not invalidated when screen row 0 is erased without scrolling
+### IN-10: IN-02's end-wrap clearing misses RI at top, IL on row 0, SD, ECH and DCH
 
-**File:** `internal/relay/history.go:69`; used at `internal/relay/hub.go:1431-1436`
+**File:** `internal/relay/hub.go:930-948` (only `J` and `K` call `row0ErasedLocked`)
 
-**Issue:** **P7:** a 30-character line wraps across the history/screen boundary, then the screen is erased with `ESC[H ESC[J` (ED 0, which pushes nothing, unlike ED 2) and `$ prompt` is printed. History still ends `wrapped=true`, row 0 is `$ prompt`, and the Join replay joins the old line to the new prompt with no CRLF. Impact as WR-03.
+**Issue:** **Q4:** after the P7 setup (a 30-x line wrapped across the history/screen boundary), each of `ESC[H ESC M $ prompt`, `ESC[H ESC[L $ prompt`, `ESC[T ESC[H $ prompt`, `ESC[H ESC[20X $ prompt` and `ESC[H ESC[20P $ prompt` leaves `EndsWrapped() == true` with row 0 = `$ prompt`. The Join replay then joins the old line to the new prompt with no CRLF: the original IN-02 symptom by another route. RI at top is the pager scroll-back case from IN-09.
 
-**Fix:** when joining history to row 0, also require that the key recorded for the history line's continuation matches. A simpler option clears the flag: have the `J` handler (n = 0 at home, 1, 2) and EL on row 0 call `h.history.ClearEndWrap()` (set the last `wrapped` to false).
+**Fix:** call `h.row0ErasedLocked(emu)` from the already-registered handlers in these cases:
+- ESC `M` when the cursor is on row 0 and the region's top is 0;
+- CSI `L` when the cursor is on row 0;
+- CSI `T` when the region's top is 0;
+- CSI `X` and CSI `P` when the cursor is at (0, 0).
 
-### IN-03: The GL scan misses a RIS that follows an OSC terminated by a bare ESC, and an SO inside a malformed UTF-8 tail
+Add these to `TestHistory_EndWrapClearedWhenRow0Erased`.
 
-**File:** `internal/relay/charstate.go:70-81`
+### IN-11: The GL scan still misses an SO or SI right after a string-ending ESC
 
-**Issue:** **P4:** `SO ESC]0;title ESC c` leaves `gl1=true`, so `suffix()` emits `\x0e`. vt and xterm.js both end the OSC at the ESC and run RIS. The check `c.vt.state == scanEsc` reads the pre-step state `scanStrEsc`. The RIS handler resets G0/G1, so the stale SO prints ASCII until a later `ESC ) 0`. From then on every replay puts the viewer in line drawing until the host sends SI. Separately, an SO arriving while `need > 0` (a truncated UTF-8 lead byte) is dropped by the scan but executed by xterm.js. Both are rare.
+**File:** `internal/relay/charstate.go:102-104`
 
-**Fix:** check `x == 'c' && c.esc && (c.vt.state == scanEsc || c.vt.state == scanStrEsc)`. For the UTF-8 case, mirror xterm.js and treat a non-continuation byte as ending the character before testing for SO.
+**Issue:** **Q5:** `ESC]0;t ESC SO abc` and `ESC P $q ESC SO` leave `gl1 == false`. In xterm.js an ESC inside an OSC or DCS ends the string and moves to ESCAPE (`EscapeSequenceParser.ts:593/604`, `:757/782`), and C0 controls execute in ESCAPE (`:113`), so the viewer runs the SO. The tracker sees state `scanStrEsc`, which is not in its list. The reverse case (`SO … ESC]0;t ESC SI`) leaves `gl1 == true` where xterm.js has G0. This is the sibling of the IN-03 RIS fix, and it is rare because it needs a malformed `ESC SO`.
 
-### IN-04: `altScreenOf` checks the field type but not which element is the alt screen
+**Fix:** add `|| c.vt.state == scanStrEsc` to the SO/SI case, and add the Q5 strings to `TestCharState_Scan` and the `FuzzCharState` seeds.
 
-**File:** `internal/relay/vtalt.go:26-32`
+### IN-12: WR-01 has no VM pass condition in TESTING.md, and M-101 states the unverified outcome as fact
 
-**Issue:** If a future vt kept `scrs [2]Screen` but swapped roles, the type check would pass and `SetScrollback(nil)` would disable the main screen's scrollback, so all history would be lost silently. The version pin catches this only when someone runs the test after a bump. The runtime has no semantic check, and it is the only guard in a dependency-bump PR built without the tests.
+**File:** `TESTING.md:1252` (M-101 step 1: "Since 08-REVIEW WR-01 the GUI's WebContent also returns to idle within a few seconds of the paste")
 
-**Fix:** in `altScreenOf`, also require `(*xvt.Screen)(unsafe.Pointer(f.Index(0).UnsafeAddr())).Scrollback() == emu.Scrollback()`, and return nil (fallback plus log) otherwise.
+**Issue:** The vitest models WebKit's default insertion and cannot show that WKWebView honours `preventDefault` on the native Edit-menu paste, or that the caret-blink re-shaping stops. The fix report says WR-01 is not VM-verified. Standing rule 2 in CLAUDE.md says a behaviour that cannot be automated (native GUI) needs an M-item check, but M-101's PASS rule does not include one. The sentence reads as an observed result.
 
-### IN-05: (pre-existing, interacts with DEBT-05) A paste into a slow PTY reader blocks the server's read loop, so its WebSocket heartbeat drops the viewer
-
-**File:** `internal/webserver/server.go:896-904` (synchronous `hub.WriteInput` in the read loop); `internal/relay/heartbeat.go:13-16`
-
-**Issue:** coder/websocket handles the pong to the server's `Ping` only inside `Read`. While `WriteInput` blocks on a full PTY input queue (an app that consumes a multi-MB paste slowly), the read loop does not read, `Ping` times out after 15 s, and `CloseNow` drops a healthy viewer mid-paste. DEBT-05 then shows "may have been cut short". That wording is honest, but the drop is self-inflicted. Not Phase 8; not verified on the VMs.
-
-**Fix:** move the PTY writes off the read goroutine (a bounded channel drained by a writer goroutine, or `Write` with a deadline), so the read loop keeps servicing control frames. Track as a separate item.
-
-### IN-06: The paste notice can fire for a paste that fully arrived (dropped pong or a slow-consumer kick)
-
-**File:** `frontend/src/lib/relayClient.ts:369-375`, `:594-614`; server `internal/webserver/server.go:926-931`
-
-**Issue:** The server answers a ping with a non-blocking send and drops the pong when `sub.Msgs` is full. A large paste into a shell that echoes fills that queue, so the ack waits for the next 15 s heartbeat pong. A socket loss in that window, or the hub's "too slow" kick triggered by the paste's own echo, shows "Paste may have been cut short" for a complete paste. This is conservative (never a false "complete"), and the copy says "may".
-
-**Fix:** none required. Optionally send the pong blocking with a short timeout, or count the pong as owed and resend it on the next drain.
-
-### IN-07: Snapshot host keying (W1) does not cover the paths that replace tabs
-
-**File:** `frontend/src/App.tsx:535-537`, `:944` (`retryInit`'s `setTabs(restoredTabs)`); `webSessionTabId(sessionId)` at `:767`
-
-**Issue:** `retryInit` replaces every tab and drops peer tabs without `dropPeerSnapshot`. Peer tab ids are keyed by session id alone, so two Macs that hand out equal ids still share one tab (`openWebSessionTab` replaces its peer fields). The old host's snapshot is then orphaned under its old key. Both cases are bounded by `PEER_SNAPSHOT_MAX` and `PEER_SNAPSHOT_MAX_BYTES`, and a stale entry stays self-consistent, so this costs memory and a delta, not correctness.
-
-**Fix:** drop snapshots for removed peer tabs in `retryInit` too. If equal ids across hosts are real, key `webSessionTabId` by host as well.
-
-### IN-08: No fuzz target for the new byte-level parsers
-
-**File:** `internal/relay/charstate.go`, `internal/relay/hub.go:621-682` (`vtScan`)
-
-**Issue:** `charState.scan`, `osc8` and `fixRenderedLinks` are covered by table tests and the randomized `rebuildFuzzStream`. That stream checks the rebuild, not GL tracking against a reference. Nothing checks the tracker against xterm.js on adversarial input, which would have caught IN-03 and WR-02.
-
-**Fix:** add `FuzzCharState`: feed arbitrary bytes to a hub and to a reference that tracks GL the xterm.js way (C0 executed in ground/escape/CSI states, strings ended by ESC/BEL/ST/CAN/SUB, UTF-8 decoded first), and assert equal `gl1` and that the replay suffix contains no byte < 0x20 other than ESC, BEL and SO/SI, and no C1 code point.
+**Fix:** add to M-101 step 1's PASS rule, or as a new M-103: "after a 20 MB Cmd+V, WebContent CPU is idle within 5 s, and an AX read of `xterm-helper-textarea`'s value is empty". Reword the sentence as the expected outcome until a run records it.
 
 ---
 
-_Reviewed: 2026-11-19T18:45:41Z_
+_Reviewed: 2026-11-19T19:26:19Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+_Iteration: 2_
