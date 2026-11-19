@@ -243,6 +243,24 @@ describe('TerminalPanel peer tab switch (HARD-05)', () => {
     expect(ws(1).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s1/ws')
   })
 
+  it('a full replay after a torn drop re-syncs the tracker (IN-09): the tab still snapshots', async () => {
+    mount()
+    liveAt104(ws(0))
+    send(ws(0), outFrame('$ \x1b]0;ti')) // the socket drops inside an OSC
+    act(() => { ws(0).readyState = 3; ws(0).onclose?.({ code: 1006, reason: '' }) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(2999) })
+    expect(MockWS.instances).toHaveLength(2)
+    joined(ws(1))
+    send(ws(1), metaFrame({ replay: 'full' }))
+    send(ws(1), outFrame('plain')) // no ESC or BEL that would end the OSC on its own
+    send(ws(1), metaFrame({ offset: 200 }))
+    unmount()
+
+    const second = mount()
+    expect(writes(second)[0]).toBe('SNAPSHOT-DATA')
+    expect(ws(2).url).toContain('?resume=200')
+  })
+
   it('an ended session stores nothing: the next mount has no snapshot and no resume', () => {
     mount()
     liveAt104(ws(0))

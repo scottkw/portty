@@ -453,7 +453,9 @@ export function TerminalPanel({
         ? (cols, rows) => applyHostGrid(term, cols, rows, recomputeScale)
         : undefined,
       // 05-12: an in-band reset, so output still queued is not drawn after it.
-      onReset: () => resetForFullReplay(term),
+      // IN-09: the RIS goes through term.write, not feed, so re-sync the ground
+      // tracker too (CAN aborts any sequence a dropped socket left open).
+      onReset: () => { peerWatch?.feed(new Uint8Array([0x18])); resetForFullReplay(term) },
       // SHAR-07: while not open, stdin is disabled and RelayClient drops input;
       // keystrokes are never queued into the shell (T-05-14).
       onStateChange: (state) => {
