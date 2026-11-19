@@ -1,12 +1,12 @@
 ---
 phase: 07-hardening
-fixed_at: 2026-11-19T06:00:00Z
+fixed_at: 2026-11-19T04:29:56Z
 review_path: .planning/phases/07-hardening/07-REVIEW.md
-iteration: 2
-findings_in_scope: 6
-fixed: 5
-skipped: 1
-status: partial
+iteration: 3
+findings_in_scope: 4
+fixed: 4
+skipped: 0
+status: all_fixed
 ---
 
 # Phase 7: Code Review Fix Report
@@ -289,3 +289,115 @@ The gate ran in the isolated worktree:
 _Fixed: 2026-11-19_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 2_
+
+# Iteration 3
+
+**Source review:** .planning/phases/07-hardening/07-REVIEW.md (iteration 3, 110e560e)
+**Fixed at:** 2026-11-19T04:29:56Z
+
+**Summary:**
+- Findings in scope: 4 (WR-09, WR-08, IN-10, IN-11)
+- Fixed: 4
+- Skipped: 0
+
+Verification ran in the agent's isolated worktree (`.claude/worktrees/agent-abdc7b21b0955cca2`, branch `worktree-agent-abdc7b21b0955cca2`, fast-forwarded to `gsd/phase-07-hardening` at 110e560e first), not in the main checkout. Each new test was run against the pre-fix code and failed there.
+
+## Fixed Issues
+
+### WR-09: the pending-wrap probe misreads a read that ends two or more bytes short of a UTF-8 character
+
+**Files modified:** `internal/relay/hub.go`, `internal/relay/altscreen_heap_test.go`, `.planning/phases/07-hardening/07-REVIEW-FIX.md`
+**Commit:** af591113
+**Applied fix:** the probe now sends one CAN per missing byte (`size - len(tail)`, where a plain `switch` on the lead byte gives the size), then the `x`. The cut-off character prints as one U+FFFD, and the probe `x` and the CUP start from ground. Before, a single CAN completed the character only when it was one byte short.
+
+vt's `ansi.Parser.advanceUtf8` collects any byte, CAN and ESC included, until the character's length is reached. That confirms the reviewer's reading. The WR-05 paragraph and the WR-06 pending-wrap bullet in the iteration-2 section above now carry an in-place correction. The `incompleteTail` comment "CAN, SUB abort any sequence" made the same over-broad claim. It now says they abort an escape sequence, plus a `shortcut:` line: the scan assumes well-formed UTF-8.
+
+**Tests:**
+- `TestAltScreenExit_RebuildMatchesReference` gains 14 subtests: every cut of `é` (1/2), `─` and `日` (1/3, 2/3) and `😀` (1/4, 2/4, 3/4), each on column 1 without a wrap and in pending wrap. 7 fail on the pre-fix code, matching the reviewer's table.
+- `rebuildFuzzStream` now also emits `❯` (3-byte), `日` (3-byte, wide) and `😀` (4-byte, wide). The fuzz test diverged on 1 of 600 streams with the pre-fix probe and on 0 of 600 after the fix.
+
+### WR-08: rendered replays restore DEC modes after the cursor CUP, so `?6l`/`?6h` home every xterm.js viewer's cursor
+
+**Files modified:** `internal/relay/hub.go`, `internal/relay/replay_fidelity_test.go`, `internal/relay/history_test.go`, `frontend/src/lib/__tests__/replayFidelity.test.ts`, `frontend/src/lib/__tests__/fixtures/ris-replay.json` (new fixture), `frontend/src/lib/__tests__/fixtures/wrapped-replay.json` (regenerated)
+**Commit:** a381513f
+**Applied fix:** `renderScreenLocked` now writes the screen text, then the mode loop, then the CUP, then the pending-wrap re-print. The re-print comes after the `?7` restore because `pendingWrapLocked` requires autowrap.
+
+**xterm.js check:** I read xterm.js 6.0.0 `InputHandler.setModePrivate` and `resetModePrivate`.
+- Only mode 6 moves the cursor (`_setCursor(0, 0)` in both directions).
+- Mode 3 resizes and resets only with `windowOptions.setWinLines`, which the frontend never sets.
+- 47/1047/1048/1049 move the cursor too, but the loop already skips them.
+
+The viewer's full-replay reset is a RIS (`resetForFullReplay`), and rendered replays send no DECSTBM. So the region is the full screen, and a CUP under DECOM stays absolute.
+
+**vt check:** vt's `setMode` moves the cursor only for 1048/1049/47, all skipped. So the rebuild seed (which is `renderScreenLocked`) is unaffected, and the rebuild reference and fuzz tests still pass.
+
+**Tests:**
+- `TestRenderScreen_RISKeepsCursor` has three cases: a RIS then a prompt, a RIS then a full row (pending wrap), and an app's bare `?6h ?6l`. Each asserts:
+  - no `ESC[?6` after the cursor CUP
+  - a vt guest fed the replay ends at the host cursor, before and after the next live bytes
+- The test also writes `ris-replay.json` (same `-update-replay-fixture` flag as the wrapped fixture), and `replayFidelity.test.ts` feeds it to real xterm.js after `resetForFullReplay`.
+- On the pre-fix bytes, xterm.js put the cursor at (0,0) in all three cases. The Go test failed all three as well.
+- One normalisation in the vitest: xterm.js reports a pending wrap as `cursorX == cols`, and vt as `cols - 1`. The next live byte (`Y` lands at (1,1)) proves the wrap really is pending.
+
+**Existing tests updated:** `TestFullReplay_ModeRestores` and `TestFullReplay_AltScreenOrder` pinned the old CUP-then-modes order. They now check the same restores (ascending, no 47/1047/1048/1049/2048/2026) just before the last CUP. `ModeRestores` also checks that nothing follows the CUP. `wrapped-replay.json` was regenerated (its mode bytes moved before the CUP), and its vitest passes unchanged.
+
+### IN-10: the tail replay re-executes C0 controls the old emulator already ran inside the cut-off escape sequence
+
+**Files modified:** `internal/relay/hub.go`, `internal/relay/altscreen_heap_test.go`
+**Commit:** c67fdcef
+**Applied fix:** before the tail replay, a tail that starts with ESC or 0x9b loses its C0 bytes other than ESC (CAN and SUB never reach a tail, because `incompleteTail` treats them as ground).
+
+**Tests:** 4 subtests: ESC LF, CSI with BS, CSI with CR, and C1 CSI with BS. 3 fail on the pre-fix code; CR is idempotent and stays as a guard.
+
+**One residual found along the way, recorded as a `shortcut:` comment:**
+- vt's `ExecuteAction` sets `p.cmd = int(b)`, so a C0 inside a CSI overwrites the command bits collected so far, and the final byte is ORed in later. An LF turns a later `m` into `o`; BS and CR leave `m` intact.
+- So vt fed `ESC[3 LF 1m` applies no SGR, while the rebuilt emulator (C0 dropped) applies SGR 31. xterm.js executes the C0 and keeps the sequence, so the rebuild follows xterm.js there.
+- The rebuild cannot copy vt's corruption without re-running the C0. Shells rarely put a C0 inside a CSI.
+
+### IN-11: the seed cannot re-create vt's zero-width cells
+
+**Files modified:** `internal/relay/hub.go`
+**Commit:** b022dbf2
+**Applied fix:** comment only. The rebuild's `shortcut:` list now names vt's zero-width cells (an orphan combining mark, which the re-ingested seed merges into the previous cell or drops).
+
+## Final status of every Phase 7 review finding
+
+| ID | Status | Reason |
+|---|---|---|
+| CR-01 | Fixed (iteration 1) | |
+| WR-01, WR-02, WR-03, WR-04 | Fixed (iteration 1) | |
+| WR-05 | Fixed (iteration 2) | Claim corrected in iteration 3 |
+| WR-06 | Fixed (iteration 2) | Its UTF-8 regression fixed as WR-09 |
+| WR-07 | Fixed (iteration 2) | |
+| WR-08 | Fixed (iteration 3) | a381513f |
+| WR-09 | Fixed (iteration 3) | af591113 |
+| IN-04 | Fixed (iterations 1 and 2) | |
+| IN-07 | Fixed (iteration 1) | |
+| IN-09 | Fixed (iteration 2) | |
+| IN-10 | Fixed (iteration 3) | c67fdcef; vt's C0 command-bit quirk left as a `shortcut:` |
+| IN-11 | Fixed (iteration 3, comment only) | b022dbf2 |
+| IN-01 | Deferred | Necessity finding: keeping or removing the launch grace is the user's scope decision |
+| IN-02 | Deferred | A byte budget needs a close hook from App.tsx's tab model; WR-01 already stores fewer snapshots |
+| IN-03 | Deferred | A pending-promise handshake is a design change; the race costs only a full replay |
+| IN-05 | Deferred | Needs a UX notice in the reconnect banner; the 32 KiB input limit stays |
+| IN-06 | Deferred | WR-08 moved the modes before the CUP but still after the text, so `?2027` still follows the seed text; only emoji/ZWJ rows under `?2027` are affected |
+| IN-08 | Deferred | SO-shifted line drawing and the OSC 8 link need extra probes; listed in the `shortcut:` comment |
+
+## Gate (iteration 3)
+
+The gate ran once, in the isolated worktree, with `GOTOOLCHAIN=go1.26.11`:
+- `go build ./... && go vet ./...`: clean
+- `go test -race -short ./...`: all 12 packages ok on the first run (root 8.5 s, attach 5.9 s, daemon 27.9 s, relay 66.9 s, webserver 20.8 s, tailnet 6.3 s)
+- `pnpm vitest run`: 90 files, 1236 tests passed on the first run (run after the Go suite finished, not alongside it)
+- `pnpm exec tsc --noEmit`: clean
+- `bash tests/check-traceability-paths.sh`: OK, 147 paths
+- `bash tests/check-brand.sh`: clean
+- TESTING.md: commit 79d9bedc (Section 2 note; no new test files, so no Section 4 rows and the counts are unchanged)
+
+The 32 KiB limits, share tokens, CSP and the WR-07 tailnet guard were not touched.
+
+---
+
+_Fixed: 2026-11-19T04:29:56Z_
+_Fixer: Claude (gsd-code-fixer)_
+_Iteration: 3_
