@@ -23,6 +23,19 @@ type whoIsClient interface {
 	StatusWithoutPeers(ctx context.Context) (*ipnstate.Status, error)
 }
 
+// noLiveWhoIs fails every lookup with ErrLiveTailnetInTest, so a test binary
+// that forgets SetWhoIsClientForTest is refused (503) instead of asking the
+// user's tailscaled (WR-07).
+type noLiveWhoIs struct{}
+
+func (noLiveWhoIs) WhoIs(context.Context, string) (*apitype.WhoIsResponse, error) {
+	return nil, tailnet.ErrLiveTailnetInTest
+}
+
+func (noLiveWhoIs) StatusWithoutPeers(context.Context) (*ipnstate.Status, error) {
+	return nil, tailnet.ErrLiveTailnetInTest
+}
+
 // SetWhoIsClientForTest replaces the Tailscale WhoIs client. Test-only.
 func (ws *WebServer) SetWhoIsClientForTest(c whoIsClient) { ws.whois = c }
 

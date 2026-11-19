@@ -39,6 +39,9 @@ var (
 	// defaultWarmCert fetches the tailnet HTTPS certificate before the server
 	// starts, so the first browser request does not wait on issuance.
 	defaultWarmCert = func(ctx context.Context, domain string) error {
+		if !tailnet.LiveAllowed() {
+			return tailnet.ErrLiveTailnetInTest
+		}
 		var lc local.Client
 		_, _, err := lc.CertPair(ctx, domain)
 		return err

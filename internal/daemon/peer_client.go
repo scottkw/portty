@@ -44,6 +44,11 @@ func (a *API) peerClient(fqdn, ip string) *http.Client {
 	if a.peerClientForTest != nil {
 		return a.peerClientForTest
 	}
+	if !tailnet.LiveAllowed() { // WR-07: a test binary never dials a tailnet peer
+		return &http.Client{Transport: &http.Transport{DialContext: func(context.Context, string, string) (net.Conn, error) {
+			return nil, tailnet.ErrLiveTailnetInTest
+		}}}
+	}
 	addr := ""
 	if ip != "" {
 		addr = net.JoinHostPort(ip, strconv.Itoa(tailnet.DefaultProbePort))

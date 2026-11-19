@@ -150,6 +150,9 @@ func NewWebServer(cfg Config, manager *relay.HubManager) (*WebServer, error) {
 		pluginConfigSubscribers: make(map[chan []byte]struct{}),
 	}
 	ws.whois = &ws.lc
+	if !tailnet.LiveAllowed() {
+		ws.whois = noLiveWhoIs{}
+	}
 	ws.setupRoutes()
 	return ws, nil
 }
@@ -337,8 +340,12 @@ func (ws *WebServer) Start() error {
 
 	tlsCfg := ws.config.TLSConfig
 	if tlsCfg == nil {
+		getCert := ws.lc.GetCertificate
+		if !tailnet.LiveAllowed() {
+			getCert = func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return nil, tailnet.ErrLiveTailnetInTest }
+		}
 		tlsCfg = &tls.Config{
-			GetCertificate: ws.lc.GetCertificate,
+			GetCertificate: getCert,
 			MinVersion:     tls.VersionTLS12,
 		}
 	}

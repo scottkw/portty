@@ -100,6 +100,9 @@ func doFetchSessionsMeta(ctx context.Context, url string, client *http.Client, h
 // TailscaleIP with ServerName set to the FQDN for certificate validation
 // (Pitfall 6: fresh client per IP-fallback call).
 func FetchPeerSessionsMeta(ctx context.Context, peer Peer) ([]ShareableSessionMeta, MetaStatus) {
+	if !LiveAllowed() {
+		return nil, MetaUnreachable
+	}
 	fqdn := strings.TrimSuffix(peer.DNSName, ".")
 	client := &http.Client{
 		Timeout: 5 * time.Second,

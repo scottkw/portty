@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -421,9 +422,13 @@ func TestProbePeer_NoIPFallbackWithoutIPs(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	// Use a client that will fail DNS (no rewrite).
+	// A client whose every dial fails, so the DNS path fails without a real
+	// lookup (MagicDNS would send it to tailscaled, WR-07).
 	client := &http.Client{
 		Transport: &http.Transport{
+			DialContext: func(context.Context, string, string) (net.Conn, error) {
+				return nil, errors.New("dial refused")
+			},
 			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 		},
 	}
@@ -437,20 +442,51 @@ func TestProbePeer_NoIPFallbackWithoutIPs(t *testing.T) {
 // Public wrapper smoke tests (exercises public code paths)
 // -----------------------------------------------------------------------
 
-func TestDiscoverPeers_Public(t *testing.T) {
-	// Without a live tailscaled, DiscoverPeers should return an error.
-	// This test exercises the public wrapper code path.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_, err := DiscoverPeers(ctx)
-	// We expect an error because no tailscaled is running in CI.
-	// If somehow it succeeds (dev machine with tailscale), that's also fine.
-	if err != nil {
-		t.Logf("DiscoverPeers returned expected error (no live daemon): %v", err)
-	} else {
-		t.Log("DiscoverPeers succeeded (live tailscaled available)")
+// TestLiveTailnetGuard pins WR-07: in a test binary the public entry points
+// refuse to touch tailscaled or a peer, so a forgotten seam can't probe the
+// user's tailnet.
+func TestLiveTailnetGuard(t *testing.T) {
+	if LiveAllowed() {
+		t.Skip("PORTTY_LIVE_TAILNET_TESTS=1: live tailnet access deliberately enabled")
 	}
-	// Either outcome is acceptable; this test ensures the code compiles and runs.
+	ctx := context.Background()
+	if peers, err := DiscoverPeers(ctx); !errors.Is(err, ErrLiveTailnetInTest) || peers != nil {
+		t.Errorf("DiscoverPeers = %v, %v; want nil, ErrLiveTailnetInTest", peers, err)
+	}
+	if peers, err := DiscoverAndProbe(ctx); !errors.Is(err, ErrLiveTailnetInTest) || peers != nil {
+		t.Errorf("DiscoverAndProbe = %v, %v; want nil, ErrLiveTailnetInTest", peers, err)
+	}
+	// The meta fetch's IP fallback would dial this listener; zero accepts
+	// proves the guard, not a dead address, made it fail.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	var accepts atomic.Int32
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepts.Add(1)
+			c.Close()
+		}
+	}()
+	peer := Peer{Hostname: "p", DNSName: "p.invalid.", TailscaleIPs: []string{ln.Addr().String()}}
+	if ProbePeer(ctx, peer) {
+		t.Error("ProbePeer returned true; want false under the guard")
+	}
+	if s, st := FetchPeerSessionsMeta(ctx, peer); st != MetaUnreachable || s != nil {
+		t.Errorf("FetchPeerSessionsMeta = %v, %v; want nil, MetaUnreachable", s, st)
+	}
+	if g := FetchAllPeerSessionsMeta(ctx, []Peer{peer}); len(g) != 1 || g[0].Reachable {
+		t.Errorf("FetchAllPeerSessionsMeta = %+v; want one unreachable group", g)
+	}
+	if n := accepts.Load(); n != 0 {
+		t.Errorf("guarded calls opened %d connection(s); want 0", n)
+	}
 }
 
 func TestProbePeer_Public(t *testing.T) {

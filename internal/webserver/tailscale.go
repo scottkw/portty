@@ -3,6 +3,7 @@ package webserver
 import (
 	"context"
 
+	"github.com/scottkw/portty/internal/tailnet"
 	"tailscale.com/client/local"
 	"tailscale.com/ipn/ipnstate"
 )
@@ -69,6 +70,9 @@ func realPrefsFunc(lc *local.Client) prefsFunc {
 // CheckHealth queries tailscaled via local.Client and returns TailscaleHealth.
 // ctx should carry a short timeout (3-5 seconds) to prevent UI hangs.
 func CheckHealth(ctx context.Context) TailscaleHealth {
+	if !tailnet.LiveAllowed() {
+		return TailscaleHealth{} // not connected (WR-07)
+	}
 	var lc local.Client
 	return checkHealth(ctx, lc.StatusWithoutPeers, realPrefsFunc(&lc))
 }

@@ -83,6 +83,9 @@ func discoverPeers(ctx context.Context, fn statusFunc) ([]Peer, error) {
 // DiscoverPeers queries the local tailscaled daemon for online peers.
 // It returns only online peers. ctx should carry a short timeout.
 func DiscoverPeers(ctx context.Context) ([]Peer, error) {
+	if !LiveAllowed() {
+		return nil, ErrLiveTailnetInTest
+	}
 	var lc local.Client
 	return discoverPeers(ctx, lc.Status)
 }
@@ -164,6 +167,9 @@ func probePeerByIP(ctx context.Context, peer Peer, client *http.Client) bool {
 // It uses a 2-second timeout and system-CA TLS (Tailscale Let's Encrypt certs
 // are publicly trusted — no skip-verify flag is used).
 func ProbePeer(ctx context.Context, peer Peer) bool {
+	if !LiveAllowed() {
+		return false
+	}
 	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	client := &http.Client{

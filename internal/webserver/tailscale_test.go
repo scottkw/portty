@@ -2,15 +2,35 @@ package webserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"testing"
 
+	"github.com/scottkw/portty/internal/tailnet"
 	"tailscale.com/ipn/ipnstate"
 )
 
 func statusOK(s *ipnstate.Status) statusFunc {
 	return func(ctx context.Context) (*ipnstate.Status, error) { return s, nil }
+}
+
+// TestLiveTailnetGuard_Webserver pins WR-07: in a test binary CheckHealth and
+// the default WhoIs client never ask the user's tailscaled.
+func TestLiveTailnetGuard_Webserver(t *testing.T) {
+	if tailnet.LiveAllowed() {
+		t.Skip("PORTTY_LIVE_TAILNET_TESTS=1: live tailnet access deliberately enabled")
+	}
+	if h := CheckHealth(context.Background()); h != (TailscaleHealth{}) {
+		t.Errorf("CheckHealth = %+v; want zero value under the guard", h)
+	}
+	ws, err := NewWebServer(Config{BindIP: "127.0.0.1"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ws.whois.StatusWithoutPeers(context.Background()); !errors.Is(err, tailnet.ErrLiveTailnetInTest) {
+		t.Errorf("default whois StatusWithoutPeers err = %v; want ErrLiveTailnetInTest", err)
+	}
 }
 
 // TestCheckHealth_LocalAPIUnreachable: a LocalAPI error reads as not connected (fail closed, T-01-40).
