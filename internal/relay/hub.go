@@ -121,17 +121,14 @@ type Hub struct {
 	// the main screen's, which vt does not expose; the alt-exit rebuild
 	// re-applies it (WR-02). Only touched under emuMu.
 	mainRegion [2]int
-	// wraps holds the main-screen rows vt soft-wrapped (DEBT-02, wraps.go).
-	// Hub-owned so it survives the alt-exit rebuild, whose seed re-renders the
-	// same rows on the same lines. trackWraps is set only around the live
-	// feed write, so rebuild probes and seeds record nothing; lastMove is the
-	// previous CursorPosition callback's (old, new); wrapBase is the absolute
-	// line number of the live emulator's first scrollback line (the lines
-	// drained so far). Only touched under emuMu.
+	// wraps holds the keys of main-screen rows vt soft-wrapped (DEBT-02,
+	// wraps.go). Hub-owned so it survives the alt-exit rebuild, whose seed
+	// re-renders the same rows. trackWraps is set only around the live feed
+	// write, so rebuild probes and seeds record nothing; lastMove is the
+	// previous CursorPosition callback's (old, new). Only touched under emuMu.
 	wraps      wrapSet
 	trackWraps bool
 	lastMove   [2]uv.Position
-	wrapBase   uint64
 	// cs is the charset and OSC 8 link state the host terminal is in
 	// (charstate.go, IN-08), which every replay body ends with. Hub-owned so
 	// it survives rebuilds. Only touched under emuMu.
@@ -891,7 +888,7 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 				return
 			}
 			if l := screenLine(emu, new.Y-1); lineFull(l, w) {
-				h.wraps.add(h.absLine(emu, new.Y-1), rowKey(l.Render()))
+				h.wraps.add(rowKey(l.Render()))
 			}
 		},
 	})
@@ -992,22 +989,12 @@ func (h *Hub) drainScrollbackLocked() {
 	}
 	ls := sb.Lines()
 	aw, w := h.autowrapLocked(), h.liveEmu.Width()
-	for i, l := range ls {
+	for _, l := range ls {
 		r := l.Render() // wrap keys are on the raw render
-		// Taken whatever else holds: the line leaves the screen for good.
-		wrapped := h.wraps.take(h.wrapBase+uint64(i), rowKey(r))
-		h.history.Push(fixRenderedLinks(r), wrapped && aw && lineFull(l, w))
+		h.history.Push(fixRenderedLinks(r), aw && lineFull(l, w) && h.wraps.take(rowKey(r)))
 	}
-	h.wrapBase += uint64(len(ls))
 	clear(ls[:cap(ls)])
 	sb.Clear()
-}
-
-// absLine is the absolute line number (wraps.go) of emu's screen row y: the
-// lines drained so far, plus those scrolled into emu's scrollback since.
-// Caller holds emuMu.
-func (h *Hub) absLine(emu *xvt.Emulator, y int) uint64 {
-	return h.wrapBase + uint64(emu.ScrollbackLen()+y)
 }
 
 // row0ErasedLocked is called when an erase is about to blank the start of
@@ -1018,7 +1005,8 @@ func (h *Hub) row0ErasedLocked(emu *xvt.Emulator) {
 	switch {
 	case emu.IsAltScreen():
 	case emu.ScrollbackLen() > 0:
-		h.wraps.take(h.absLine(emu, -1), 0) // drops it whatever its key
+		ls := emu.Scrollback().Lines()
+		h.wraps.take(rowKey(ls[len(ls)-1].Render()))
 	default:
 		h.history.ClearEndWrap()
 	}
@@ -1099,7 +1087,7 @@ func (h *Hub) resizeLiveEmulator(cols, rows int, genuine bool) {
 		aw := h.autowrapLocked()
 		for y, row := range lines {
 			// The cursor row's continuation (below it) is dropped: never wrapped.
-			wrapped := aw && y < len(lines)-1 && lineFull(screenLine(old, y), old.Width()) && h.wraps.take(h.absLine(old, y), rowKey(row))
+			wrapped := aw && y < len(lines)-1 && lineFull(screenLine(old, y), old.Width()) && h.wraps.take(rowKey(row))
 			h.history.Push(fixRenderedLinks(row), wrapped)
 		}
 	}
@@ -1329,7 +1317,7 @@ func (h *Hub) screenBodyLocked() []byte {
 // would cancel the viewer's pending wrap and lose that row). Caller holds emuMu.
 func (h *Hub) screenRowWrappedLocked(y int, row, next string) bool {
 	return next != "" && len(h.wraps.n) > 0 && !h.liveEmu.IsAltScreen() && h.autowrapLocked() &&
-		h.wraps.has(h.absLine(h.liveEmu, y), rowKey(row)) && lineFull(screenLine(h.liveEmu, y), h.liveEmu.Width())
+		h.wraps.has(rowKey(row)) && lineFull(screenLine(h.liveEmu, y), h.liveEmu.Width())
 }
 
 // pendingWrapLocked returns the re-print of the live emulator's cell at pos

@@ -29,31 +29,26 @@ const wrapCmd = "$ "
 
 func TestWrapSet(t *testing.T) {
 	var s wrapSet
-	s.add(3, 7)
-	s.add(3, 7) // a redraw of the same line counts once (IN-01 P6)
-	if !s.has(3, 7) || s.has(3, 8) || s.has(4, 7) {
-		t.Fatal("has: want only line 3 with key 7")
+	s.add(7)
+	s.add(7) // a redraw of one row counts twice: accepted (wraps.go shortcut)
+	if !s.has(7) || s.has(8) {
+		t.Fatal("has: want only key 7")
 	}
-	if a, b := s.take(3, 7), s.take(3, 7); !a || b {
-		t.Errorf("take x2 after add x2 of one line = %v %v, want true false", a, b)
-	}
-	s.add(5, 1)
-	s.add(5, 2) // rewritten in place: the newer key
-	if s.has(5, 1) || !s.has(5, 2) || s.take(5, 1) || s.has(5, 2) {
-		t.Error("a re-added line keeps its old key, or a wrong-key take kept the line")
+	if a, b, c := s.take(7), s.take(7), s.take(7); !a || !b || c {
+		t.Errorf("take x3 after add x2 = %v %v %v, want true true false", a, b, c)
 	}
 	for k := range uint64(wrapSetMax + 1) {
-		s.add(k+100, k)
+		s.add(k + 100)
 	}
-	if s.has(100, 0) {
-		t.Error("oldest line kept after wrapSetMax+1 adds")
+	if s.has(100) {
+		t.Error("oldest key kept after wrapSetMax+1 adds")
 	}
-	if !s.has(101, 1) || !s.has(wrapSetMax+100, wrapSetMax) {
-		t.Error("recent lines evicted")
+	if !s.has(101) || !s.has(wrapSetMax+100) {
+		t.Error("recent keys evicted")
 	}
 	s.clear()
-	if s.has(101, 1) || len(s.n) != 0 {
-		t.Error("clear left lines")
+	if s.has(101) || len(s.n) != 0 {
+		t.Error("clear left keys")
 	}
 }
 
@@ -98,36 +93,85 @@ func TestSoftWrap_CursorMovesAreNotWraps(t *testing.T) {
 	}
 }
 
-// TestSoftWrap_IdenticalHardRowAboveWrap (08-REVIEW IN-01 P3b): a hard row
-// byte-identical to a wrapped row below it must not take that row's wrap.
-func TestSoftWrap_IdenticalHardRowAboveWrap(t *testing.T) {
-	d := strings.Repeat("-", 20)
-	lines, wrapped := historyWraps(t, 20, 6, "\x1bc"+d+"\r\n"+d+d+"\r\nend\r\n")
-	if len(wrapped) < 3 || wrapped[0] || !wrapped[1] || wrapped[2] {
-		t.Errorf("want only the second row wrapped: lines %q wrapped %v", lines, wrapped)
+// hostRows renders lines and their wrapped flags as History does, feeds that
+// to a cols-wide guest tall enough to hold it, and returns the guest's rows:
+// the layout a viewer at the host grid sees.
+func hostRows(cols int, lines []string, wrapped []bool) []string {
+	h := NewHistory(len(lines), HistoryMaxBytes)
+	for i, l := range lines {
+		h.Push(l, wrapped[i])
 	}
+	g := fidEmu(cols, len(lines)+1)
+	_, _ = g.WriteString(h.Render())
+	return screenRows(g)[:len(lines)]
 }
 
-// TestSoftWrap_RedrawCountsOnce (08-REVIEW IN-01 P6): a line editor reprinting
-// one wrapped line (CUU CR, reprint) records its row once, so no extra wrap
-// lingers for a later identical hard row to take.
-func TestSoftWrap_RedrawCountsOnce(t *testing.T) {
+func countTrue(bs []bool) (n int) {
+	for _, b := range bs {
+		if b {
+			n++
+		}
+	}
+	return n
+}
+
+// TestSoftWrap_IdenticalRowsTradeWrap (08-REVIEW IN-01 P3b, accepted as the
+// wraps.go shortcut): a hard row byte-identical to a wrapped row below it may
+// take that row's wrap mark. The mark count and the layout at the host grid
+// must not change.
+func TestSoftWrap_IdenticalRowsTradeWrap(t *testing.T) {
+	d := strings.Repeat("-", 20)
+	lines, wrapped := historyWraps(t, 20, 6, "\x1bc"+d+"\r\n"+d+d+"\r\nend\r\n")
+	if len(lines) < 4 || lines[0] != d || lines[1] != d || lines[2] != d || countTrue(wrapped) != 1 || wrapped[2] {
+		t.Errorf("want one wrap mark on the first two rows: lines %q wrapped %v", lines, wrapped)
+	}
+	requireSameGrid(t, "host-grid layout", lines, hostRows(20, lines, wrapped))
+}
+
+// TestSoftWrap_RedrawKeepsHostLayout (08-REVIEW IN-01 P6, accepted as the
+// wraps.go shortcut): a line editor reprinting one wrapped line (CUU CR,
+// reprint) adds a mark per redraw, and a later identical full hard row may
+// take a leftover one. The redrawn line stays joined and the layout at the
+// host grid must not change.
+func TestSoftWrap_RedrawKeepsHostLayout(t *testing.T) {
 	line := "$ " + strings.Repeat("c", 28)
 	reads := []string{"\x1bc" + line}
 	for range 4 {
 		reads = append(reads, "\x1b[A\r"+line)
 	}
-	// The wrapped line, then an identical full hard row: only the first joins.
 	reads = append(reads, "\r\n"+line[:20]+"\r\n")
 	lines, wrapped := historyWraps(t, 20, 5, reads...)
-	n := 0
-	for _, w := range wrapped {
-		if w {
-			n++
-		}
+	if len(lines) < 3 || lines[0] != line[:20] || !wrapped[0] || wrapped[1] {
+		t.Errorf("want the redrawn line's first row wrapped: lines %q wrapped %v", lines, wrapped)
 	}
-	if n != 1 || !wrapped[0] {
-		t.Errorf("want exactly the redrawn line's first row wrapped: lines %q wrapped %v", lines, wrapped)
+	requireSameGrid(t, "host-grid layout", lines, hostRows(20, lines, wrapped))
+}
+
+// TestSoftWrap_ED2KeepsWraps (08-REVIEW WR-06 Q1/Q2): vt's ED 2 (zsh's
+// Ctrl+L sends ESC[H ESC[2J) pushes only non-empty rows into scrollback, so
+// an empty row above a wrapped one must not cost that wrap (Q1) or move it
+// onto an identical hard row (Q2).
+func TestSoftWrap_ED2KeepsWraps(t *testing.T) {
+	digits := strings.Repeat("0123456789", 3)
+	lines, wrapped := historyWraps(t, 20, 6, "\x1bc$ a\r\n\r\n"+digits+"\r\n$ ", "\x1b[H\x1b[2J")
+	if i := slices.Index(lines, digits[:20]); i < 0 || !wrapped[i] || countTrue(wrapped) != 1 {
+		t.Errorf("Q1: want only the digits row wrapped: lines %q wrapped %v", lines, wrapped)
+	}
+	d := strings.Repeat("-", 20)
+	for _, reads := range [][]string{
+		{"\x1bc\r\n" + d + d + d + "\r\n$ ", "\x1b[H\x1b[2J"},
+		{"\x1bc\r\n" + d + d + d + "\r\n$ \x1b[H\x1b[2J"},
+	} {
+		lines, wrapped := historyWraps(t, 20, 6, reads...)
+		var dw []bool
+		for i, l := range lines {
+			if l == d {
+				dw = append(dw, wrapped[i])
+			}
+		}
+		if !slices.Equal(dw, []bool{true, true, false}) || countTrue(wrapped) != 2 {
+			t.Errorf("Q2 (%d reads): want the dash rows wrapped true true false: lines %q wrapped %v", len(reads), lines, wrapped)
+		}
 	}
 }
 
