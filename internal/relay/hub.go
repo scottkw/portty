@@ -677,8 +677,10 @@ func incompleteTail(b []byte) []byte {
 // into the old emulator, which is discarded anyway. Then tail, the sequence
 // or UTF-8 character the read cut off, is replayed so the next read
 // completes it.
-// shortcut: tab stops, G1-G3/SO, an OSC 8 link (IN-08) and the saved
-// cursor's link and visibility are lost; track them if a shell needs them.
+// shortcut: tab stops, G1-G3/SO, an OSC 8 link (IN-08), the saved cursor's
+// link and visibility, and vt's zero-width cells (an orphan combining mark,
+// which the re-ingested seed merges into the previous cell or drops, IN-11)
+// are lost; track them if a shell needs them.
 func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	old := h.liveEmu
 	seed := h.renderScreenLocked()
