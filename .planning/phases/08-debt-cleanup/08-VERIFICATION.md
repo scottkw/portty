@@ -239,3 +239,9 @@ No gaps block the phase. All five ROADMAP success criteria and DEBT-01..07 have 
 
 _Verified: 2026-11-19_
 _Verifier: Claude (gsd-verifier)_
+
+## User decisions (2026-11-19)
+
+- **V-05:** the user accepted it. DEBT-05/SC4 is met with the "may have been cut short" wording on the proxy path; the 100 KB sub-run is not required.
+- **Follow-up 1 (upgrade ends sessions):** "Guard now, keep later". DEBT-08 / SC6 was added to Phase 8 as plan 08-06 (consent before a version-mismatch restart ends live sessions). Keeping sessions alive across upgrades is the first v1.2 phase.
+- **Follow-ups 2-4:** closed in 358550a8 (browser share viewer paste split, a HARD-02 gap), c5a0a7c8 (todos for IN-06 and IN-07) and 4356835a (charstate shortcut).

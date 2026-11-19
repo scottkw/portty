@@ -29,6 +29,7 @@ Hardening only: each requirement closes a v1.0 todo. No new features.
 - [ ] **DEBT-04**: The peer-tab snapshot store is bounded by bytes, drops a tab's entry when the tab closes, is keyed by host plus session, never leaks an xterm if the flush callback doesn't fire, and a quick switch back to the tab still restores the snapshot rather than falling back to a full replay (IN-02, IN-03, W1, W2).
 - [ ] **DEBT-05**: If the socket drops partway through a paste that was split into frames, the user is told the paste was cut short. Unsent frames are never silently lost, and never sent twice (IN-05).
 - [ ] **DEBT-06**: The cause of the HARD-04 launch blip is found and fixed at its root (the grace stays as a safety net), or a cold launch in the VM shows the blip can't be reproduced, and the log diagnostics that would catch it on the real Mac are recorded.
+- [ ] **DEBT-08**: A version-mismatch restart never ends live sessions without consent. The GUI asks first when sessions are running (Restart now / Not now); "Not now" keeps the old daemon serving. The CLI refuses with a clear message unless `--restart-daemon` is passed. With no live sessions, the restart stays automatic. (User decision 2026-11-19; keeping sessions alive across an upgrade is the first v1.2 phase.)
 - [ ] **DEBT-07**: The Phase 7 bookkeeping is complete: `requirements_completed` in the 07 SUMMARY frontmatter, and a SECURITY.md from `/gsd-secure-phase 7`.
 
 ## Future Requirements
@@ -62,6 +63,7 @@ Hardening only: each requirement closes a v1.0 todo. No new features.
 | DEBT-05 | Phase 8 | Pending |
 | DEBT-06 | Phase 8 | Pending |
 | DEBT-07 | Phase 8 | Pending |
+| DEBT-08 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 15 total
