@@ -240,6 +240,40 @@ func TestHistory_EndWrapClearedWhenRow0Erased(t *testing.T) {
 	}
 }
 
+// 08-REVIEW IN-13 (R1), accepted as the row0ErasedLocked shortcut: the
+// IN-02 clear takes one count of the line's hash. A line editor's redraw of
+// the wrapped row adds a second count, so when the erase lands in the read
+// that also scrolls the row into history, the drain takes that count and the
+// line stays joined to the new row 0. Reflow and copy only: at the host grid
+// a full row joined to a non-empty row keeps its layout. Split over two
+// reads, the clear acts on the history flag and is exact.
+func TestHistory_RedrawDefeatsRow0EraseInOneRead(t *testing.T) {
+	x30 := strings.Repeat("x", 30)
+	pre := "\x1bca\r\nb\r\nc\r\nd\r\n" + x30
+	for _, c := range []struct {
+		name    string
+		reads   []string
+		wrapped bool
+	}{
+		{"no redraw, one read", []string{pre, "\r\n\r\n\r\n\r\n\x1b[H\x1b[2K$ prompt"}, false},
+		{"redraw, one read (accepted)", []string{pre, "\r\x1b[A" + x30, "\r\n\r\n\r\n\r\n\x1b[H\x1b[2K$ prompt"}, true},
+		{"redraw, two reads", []string{pre, "\r\x1b[A" + x30, "\r\n\r\n\r\n\r\n", "\x1b[H\x1b[2K$ prompt"}, false},
+	} {
+		h := NewHub("in13", nil, nil, DefaultScrollbackBytes, nil)
+		resizeHub(t, h, 20, 5)
+		for _, r := range c.reads {
+			probeFeed(h, r)
+		}
+		h.emuMu.Lock()
+		hist := h.history.lines[h.history.head:]
+		ends, row0 := h.history.EndsWrapped(), screenLine(h.liveEmu, 0).Render()
+		h.emuMu.Unlock()
+		if n := len(hist); n == 0 || hist[n-1] != x30[:20] || ends != c.wrapped || row0 != "$ prompt" {
+			t.Errorf("%s: history %q ends wrapped %v (want %v), row 0 %q", c.name, hist, ends, c.wrapped, row0)
+		}
+	}
+}
+
 // TestFullReplay_IntactRingUnchanged is the #109 guard: before the ring wraps
 // the full replay is the query-stripped raw ring, byte for byte.
 func TestFullReplay_IntactRingUnchanged(t *testing.T) {

@@ -1032,6 +1032,11 @@ func (h *Hub) row0ErasedLocked(emu *xvt.Emulator) {
 	switch {
 	case emu.IsAltScreen():
 	case emu.ScrollbackLen() > 0:
+		// shortcut: takes one count by hash, so after a line editor's redraw
+		// (a second count) the line stays joined to row 0, or an identical
+		// wrapped row loses its mark instead (08-REVIEW IN-13). Reflow and
+		// copy only, like the wraps.go shortcut; mark the newest line by
+		// position in drainScrollbackLocked if that shows up.
 		ls := emu.Scrollback().Lines()
 		h.wraps.take(rowKey(ls[len(ls)-1].Render()))
 	default:
