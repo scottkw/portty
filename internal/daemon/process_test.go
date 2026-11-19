@@ -299,6 +299,62 @@ func TestWaitForDaemon_LostLockWaitsForHolder(t *testing.T) {
 	}
 }
 
+// 08-REVIEW WR-07: a lock holder that lets go without binding (a crash before
+// bind) fails the wait then, not at the deadline: the lock is checked on every
+// poll, not once.
+func TestWaitForDaemon_LockReleasedWithoutBindFailsFast(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "daemon.lock")
+	holder, err := lockDaemon(lockPath, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(200*time.Millisecond, func() { holder.Close() })
+	exited := make(chan struct{})
+	close(exited)
+	start := time.Now()
+	if err := waitForDaemon(NewDaemonClient(refusingSocket(t, "released")), daemonReadyWait, exited, lockPath); err == nil {
+		t.Fatal("nothing bound, but the wait succeeded")
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("took %v after the lock was released at 200 ms, want well under 1 s", d)
+	}
+}
+
+// 08-REVIEW WR-07: the version-mismatch restart. The old daemon holds the
+// lock past the new daemon's 2 s lock wait (killing PTYs is slow), then lets
+// go. startDaemon spawns only once the lock is free, so the new daemon gets
+// it and starts, and the call returns soon after the release, not at 15 s.
+// The fake spawn does what runDaemonCore does: a 2 s lockDaemon, then bind.
+func TestStartDaemon_WaitsForOldDaemonLock(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "daemon.lock")
+	old, err := lockDaemon(lockPath, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(2500*time.Millisecond, func() { old.Close() })
+	path := refusingSocket(t, "restart")
+	spawn := func() (<-chan struct{}, error) {
+		exited := make(chan struct{})
+		go func() {
+			lock, err := lockDaemon(lockPath, 2*time.Second)
+			if err != nil {
+				close(exited) // "daemon: already running"
+				return
+			}
+			t.Cleanup(func() { lock.Close() })
+			serveDaemonAfter(t, path, 0)
+		}()
+		return exited, nil
+	}
+	start := time.Now()
+	if err := startDaemon(NewDaemonClient(path), daemonReadyWait, lockPath, spawn); err != nil {
+		t.Fatalf("the old daemon let go at 2.5 s, but: %v", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("took %v, want soon after the 2.5 s release", d)
+	}
+}
+
 // Review it3 WR-03: a daemon whose socket path is removed or rebound can no
 // longer be reached, yet it holds the lock, so no replacement could start.
 // socketLost spots that so the daemon exits and frees the lock.

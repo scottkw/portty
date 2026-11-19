@@ -123,9 +123,9 @@ func EnsureDaemon(socketPath string) error {
 			if ver := client.GetDaemonVersion(); ver != BuildVersion {
 				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), restarting\n", ver, BuildVersion)
 				_ = client.ShutdownDaemon()
-				time.Sleep(200 * time.Millisecond)
 				// No socket cleanup here (review it3 WR-03): only the spawned
 				// daemon unlinks it, under the lock, once the old one let go.
+				// startDaemon spawns only after that (WR-07).
 				// fall through to spawn
 			} else {
 				needsSpawn = false
@@ -155,12 +155,42 @@ func EnsureDaemon(socketPath string) error {
 		return fmt.Errorf("EnsureDaemon: locate binary: %w", err)
 	}
 
-	exited, err := startDetachedDaemon(exe)
+	return startDaemon(client, daemonReadyWait, filepath.Join(filepath.Dir(socketPath), "daemon.lock"),
+		func() (<-chan struct{}, error) { return startDetachedDaemon(exe) })
+}
+
+// startDaemon calls spawn once no other process holds the lock at lockPath,
+// then waits for the daemon (waitForDaemon), all within wait. 08-REVIEW
+// WR-07: a version-mismatched old daemon can take longer to stop than a new
+// daemon's 2 s lock wait, so spawning at once lost the lock and then waited
+// out the rest of the 15 s. A held lock is never broken: the wait ends early
+// when the socket answers (a daemon is up) or at the deadline.
+func startDaemon(client *DaemonClient, wait time.Duration, lockPath string, spawn func() (<-chan struct{}, error)) error {
+	deadline := time.Now().Add(wait)
+	for lockHeld(lockPath) {
+		if daemonReady(client) {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("EnsureDaemon: daemon lock still held after %v", wait)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	exited, err := spawn()
 	if err != nil {
 		return fmt.Errorf("EnsureDaemon: start daemon: %w", err)
 	}
+	return waitForDaemon(client, time.Until(deadline), exited, lockPath)
+}
 
-	return waitForDaemon(client, daemonReadyWait, exited, filepath.Join(filepath.Dir(socketPath), "daemon.lock"))
+// daemonReady reports whether the daemon at client is fully ready: health and
+// relay port.
+func daemonReady(client *DaemonClient) bool {
+	if client.Health() != nil {
+		return false
+	}
+	port, err := client.GetRelayPort()
+	return err == nil && port > 0
 }
 
 // daemonReadyWait bounds how long EnsureDaemon waits for a spawned daemon.
@@ -169,38 +199,30 @@ func EnsureDaemon(socketPath string) error {
 // so the poller respawned a second daemon at once.
 const daemonReadyWait = 15 * time.Second
 
-// waitForDaemon polls until the daemon is fully ready (health and relay port)
-// or wait passes. WR-04: once exited closes (the spawned daemon is gone) it
-// checks once more and fails at once, unless another process holds the lock
-// at lockPath: then the spawn lost the lock to a daemon still starting (a
-// concurrent EnsureDaemon's), which gets the rest of the wait. A nil exited
-// never fires.
+// waitForDaemon polls until the daemon is fully ready (daemonReady) or wait
+// passes. WR-04: once exited closes (the spawned daemon is gone) it fails as
+// soon as nothing answers and no other process holds the lock at lockPath.
+// While one does, the spawn lost the lock to a daemon still starting (a
+// concurrent EnsureDaemon's), which gets the rest of the wait; WR-07: the
+// lock is checked again on every poll, so a holder that lets go without
+// binding fails the wait then, not at the deadline. A nil exited never fires.
 func waitForDaemon(client *DaemonClient, wait time.Duration, exited <-chan struct{}, lockPath string) error {
-	ready := func() bool {
-		if client.Health() != nil {
-			return false
-		}
-		port, err := client.GetRelayPort()
-		return err == nil && port > 0
-	}
 	deadline := time.Now().Add(wait)
+	exitedSeen := false
 	for time.Now().Before(deadline) {
-		if ready() {
+		if daemonReady(client) {
 			return nil
 		}
 		select {
 		case <-exited:
-			exited = nil // handled once
-			if ready() {
-				return nil
-			}
-			if !lockHeld(lockPath) {
-				return fmt.Errorf("EnsureDaemon: daemon exited during startup (see daemon.log)")
-			}
+			exited, exitedSeen = nil, true
 		case <-time.After(50 * time.Millisecond):
 		}
+		if exitedSeen && !lockHeld(lockPath) && !daemonReady(client) {
+			return fmt.Errorf("EnsureDaemon: daemon exited during startup (see daemon.log)")
+		}
 	}
-	return fmt.Errorf("EnsureDaemon: daemon did not become ready within %v", wait)
+	return fmt.Errorf("EnsureDaemon: daemon did not become ready within %v", wait.Round(time.Second))
 }
 
 // socketLost checks every interval whether path still names the socket this
