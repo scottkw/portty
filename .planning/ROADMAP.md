@@ -65,5 +65,11 @@ Plans:
   3. The peer-tab snapshot store is bounded by bytes, frees a closed tab's entry, is keyed by host plus session, never leaks a terminal, and a quick switch back still gets a delta rejoin.
   4. A paste cut short by a dropped socket tells the user so. No frame is sent twice, and none is silently lost.
   5. The HARD-04 launch blip has a root-cause fix, or a documented VM non-reproduction with diagnostics in place. The Phase 7 SUMMARYs carry `requirements_completed`, and Phase 7 has a SECURITY.md.
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 08-01-PLAN.md — Alt screen keeps no scrollback, with soak at 80/220 columns (DEBT-01); soft wraps recorded as vt makes them and replayed without CRLF (DEBT-02)
+- [ ] 08-02-PLAN.md — Mode restores before the text and the history, ?7 after (IN-06); rebuild keeps SO/G1 and OSC 8 links (IN-08); extended fuzz at 0 mismatches (DEBT-03)
+- [ ] 08-03-PLAN.md — Peer snapshot store keyed by host plus session, 8 MiB budget, dropped on tab close, flush timeout, quick-switch wait (DEBT-04); partial-paste notice with no resend (DEBT-05)
+- [ ] 08-04-PLAN.md — Five cold launches after VM reboots, root-cause fix or documented non-reproduction (DEBT-06); 07 SUMMARY requirements-completed and 07-SECURITY.md (DEBT-07)
+- [ ] 08-05-PLAN.md — TESTING.md reconciliation, full gate once with nothing skipped, Tart VM checks V-01..V-06 in 08-VM-CHECKS.md (all DEBT)
 **UI hint**: no
