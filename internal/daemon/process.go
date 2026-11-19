@@ -163,7 +163,10 @@ func EnsureDaemon(socketPath string) error {
 }
 
 // daemonReadyWait bounds how long EnsureDaemon waits for a spawned daemon.
-const daemonReadyWait = 3 * time.Second
+// DEBT-06: at login a daemon took 10 s from spawn to bind (08-VM-CHECKS
+// B-07). The old 3 s failed the GUI's startup, which skips the launch grace,
+// so the poller respawned a second daemon at once.
+const daemonReadyWait = 15 * time.Second
 
 // waitForDaemon polls until the daemon is fully ready (health and relay port)
 // or wait passes.
