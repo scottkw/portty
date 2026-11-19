@@ -59,7 +59,9 @@ describe('wrapped replay renders in real xterm.js like the host (05-08 fixture)'
 
 // WR-08: a host RIS leaves DECOM in the hub's mode set, and xterm.js homes its
 // cursor on ?6h and ?6l, which vt does not, so only xterm.js can catch modes
-// replayed after the cursor CUP.
+// replayed after the cursor CUP. IN-06: in a Join replay with history the
+// restores come before the history, so the home cannot overwrite history rows
+// still in the viewport.
 describe('rendered replay after a host reset keeps the cursor in xterm.js (ris-replay fixture)', () => {
   for (const c of risFixture) {
     it(c.name, async () => {
@@ -70,6 +72,11 @@ describe('rendered replay after a host reset keeps the cursor in xterm.js (ris-r
       // the live bytes below show whether the wrap really is pending.
       const { x, y } = cursor(term)
       expect({ x: Math.min(x, c.cols - 1), y }).toEqual(c.cursor)
+      if (c.historyTail.length > 0) {
+        const baseY = term.buffer.active.baseY
+        expect(lines(term, baseY - c.historyTail.length, baseY)).toEqual(c.historyTail)
+        expect(screen(term)).toEqual(c.screen)
+      }
       await flush(term, decode(c.live))
       expect(cursor(term)).toEqual(c.cursorAfter)
       term.dispose()

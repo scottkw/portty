@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -477,9 +478,50 @@ type risCase struct {
 	Cols        int           `json:"cols"`
 	Rows        int           `json:"rows"`
 	Replay      string        `json:"replay"` // base64 rendered replay, written after the viewer's reset
+	Screen      []string      `json:"screen"` // plain rows; checked only with historyTail
 	Cursor      fixtureCursor `json:"cursor"`
-	Live        string        `json:"live"` // base64 next live bytes
+	HistoryTail []string      `json:"historyTail"` // the last history rows above the viewport; empty for screen-only cases
+	Live        string        `json:"live"`        // base64 next live bytes
 	CursorAfter fixtureCursor `json:"cursorAfter"`
+}
+
+var restoreRE = regexp.MustCompile(`\x1b\[\?(\d+)[hl]`)
+
+// TestRenderScreen_ModesBeforeText (IN-06): every DEC mode restore except
+// autowrap comes before the first screen byte; ?7 comes after the last row,
+// followed only by the CUP (and a pending-wrap re-print), and no ?6 follows
+// the CUP (xterm.js homes on it, WR-08).
+func TestRenderScreen_ModesBeforeText(t *testing.T) {
+	hub := NewHub("modes-before-text", nil, nil, DefaultScrollbackBytes, nil)
+	resizeHub(t, hub, 40, 6)
+	in := "\x1bc\x1b[?2004h\x1b[?25l\x1b[?7lhello\r\nworld"
+	hub.emuMu.Lock()
+	hub.recordFrameLocked(MakeOutputFrame([]byte(in)), []byte(in))
+	out := string(hub.renderScreenLocked())
+	hub.emuMu.Unlock()
+
+	text := strings.Index(out, "hello")
+	if text < 0 || !strings.Contains(out, "world") {
+		t.Fatalf("no screen text in %q", out)
+	}
+	for _, m := range restoreRE.FindAllStringSubmatchIndex(out, -1) {
+		if out[m[2]:m[3]] != "7" && m[0] > text {
+			t.Errorf("restore %q after the first screen byte: %q", out[m[0]:m[1]], out)
+		}
+	}
+	if !strings.Contains(out[:text], "\x1b[?2004h") || !strings.Contains(out[:text], "\x1b[?25l") {
+		t.Errorf("app modes not restored before the text: %q", out[:text])
+	}
+	i7 := strings.Index(out, "\x1b[?7l")
+	if i7 < strings.LastIndex(out, "\r\n") || i7 < strings.Index(out, "world") {
+		t.Fatalf("?7l not after the last screen row: %q", out)
+	}
+	if rest := out[i7+len("\x1b[?7l"):]; !regexp.MustCompile(`^\x1b\[\d+;\d+H$`).MatchString(rest) {
+		t.Errorf("after ?7l want the CUP only (autowrap off: no pending wrap), got %q", rest)
+	}
+	if cup := cupRE.FindAllStringIndex(out, -1); len(cup) == 0 || strings.Contains(out[cup[len(cup)-1][0]:], "\x1b[?6") {
+		t.Errorf("?6 after the CUP: %q", out)
+	}
 }
 
 // TestRenderScreen_RISKeepsCursor: a RIS fills h.modes with every vt default,
@@ -489,35 +531,64 @@ type risCase struct {
 // fixture this writes (with -update-replay-fixture) or checks.
 func TestRenderScreen_RISKeepsCursor(t *testing.T) {
 	var cases []risCase
-	for _, c := range []struct{ name, out, live string }{
-		{"reset, then a prompt", "\x1bcline1\r\nline2\r\n$ ls", " -l"},
-		{"reset, then a full row (pending wrap)", "\x1bc$ " + strings.Repeat("x", 38), "Y"},
-		{"app sets and resets DECOM", "\x1b[?6h\x1b[?6l$ ls", " -l"},
+	var sixty strings.Builder
+	for i := range 60 {
+		fmt.Fprintf(&sixty, "hist %02d\r\n", i)
+	}
+	for _, c := range []struct {
+		name, out, live string
+		history         bool // a rendered Join replay (history, then the screen), not the screen alone
+	}{
+		{"reset, then a prompt", "\x1bcline1\r\nline2\r\n$ ls", " -l", false},
+		{"reset, then a full row (pending wrap)", "\x1bc$ " + strings.Repeat("x", 38), "Y", false},
+		{"app sets and resets DECOM", "\x1b[?6h\x1b[?6l$ ls", " -l", false},
+		{"RIS, then 60 lines, rendered Join replay with history", "\x1bc" + sixty.String() + "$ ls", " -l", true},
 	} {
-		hub := NewHub("ris-render", nil, nil, DefaultScrollbackBytes, nil)
+		ring := DefaultScrollbackBytes
+		if c.history {
+			ring = 256 // the ring wraps, so Join renders history + screen
+		}
+		hub := NewHub("ris-render", nil, nil, ring, nil)
 		resizeHub(t, hub, 40, 6)
-		ref := NewQuietEmulator(40, 6)
+		ref := fidEmu(40, 6)
 		hub.emuMu.Lock()
 		hub.ensureLiveEmulatorLocked()
 		hub.recordFrameLocked(MakeOutputFrame([]byte(c.out)), []byte(c.out))
 		out := hub.renderScreenLocked()
 		hub.emuMu.Unlock()
+		if c.history {
+			out = fullReplay(t, hub)
+			if !hub.scrollback.Truncated() || !bytes.Contains(out, []byte("hist 00")) {
+				t.Fatalf("%s: fixture invalid: not the rendered history path: %q", c.name, out)
+			}
+		}
 		_, _ = ref.WriteString(c.out)
 		host := emuCursor(ref)
+		screen := plainRows(screenRows(ref))
+		tail := []string{}
+		if c.history {
+			sb := plainRows(scrollbackRows(ref))
+			tail = sb[max(0, len(sb)-20):]
+		}
 
 		cup := bytes.LastIndex(out, fmt.Appendf(nil, "\x1b[%d;%dH", host.Y+1, host.X+1))
 		if m := bytes.LastIndex(out, []byte("\x1b[?6")); cup < 0 || m > cup {
 			t.Errorf("%s: DECOM restored after the cursor CUP (homes xterm.js): %q", c.name, out)
 		}
-		guest := NewQuietEmulator(40, 6)
+		guest := fidEmu(40, 6)
 		_, _ = guest.Write(out)
 		requireSameCursor(t, ref, guest)
+		if c.history {
+			requireSameGrid(t, c.name+" screen", screenRows(ref), screenRows(guest))
+			gsb := plainRows(scrollbackRows(guest))
+			requireSameGrid(t, c.name+" history tail", tail, gsb[max(0, len(gsb)-len(tail)):])
+		}
 		_, _ = ref.WriteString(c.live)
 		_, _ = guest.WriteString(c.live)
 		requireSameCursor(t, ref, guest)
 		cases = append(cases, risCase{
 			Name: c.name, Cols: 40, Rows: 6,
-			Replay: base64.StdEncoding.EncodeToString(out), Cursor: host,
+			Replay: base64.StdEncoding.EncodeToString(out), Screen: screen, Cursor: host, HistoryTail: tail,
 			Live: base64.StdEncoding.EncodeToString([]byte(c.live)), CursorAfter: emuCursor(ref),
 		})
 	}

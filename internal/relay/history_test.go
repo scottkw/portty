@@ -257,9 +257,9 @@ var (
 	restoresRE = regexp.MustCompile(`(?:\x1b\[\?\d+[hl])*$`)
 )
 
-// replayTail splits the end of a rendered replay at its last CUP: the mode
-// restores just before it (before, because xterm.js homes the cursor on ?6h
-// and ?6l, WR-08) and whatever follows it (the pending-wrap re-print, if any).
+// replayTail splits the end of a rendered replay at its last CUP: any mode
+// restores just before it (only ?7 belongs there, IN-06) and whatever follows
+// it (the pending-wrap re-print, if any).
 func replayTail(t *testing.T, p []byte) (restores, after string) {
 	t.Helper()
 	locs := cupRE.FindAllIndex(p, -1)
@@ -270,20 +270,75 @@ func replayTail(t *testing.T, p []byte) (restores, after string) {
 	return string(restoresRE.Find(p[:last[0]])), string(p[last[1]:])
 }
 
+// leadingRestores is the run of DEC mode restores a rendered replay starts with.
+var leadingRestores = regexp.MustCompile(`^(?:\x1b\[\?\d+[hl])*`)
+
 func TestFullReplay_ModeRestores(t *testing.T) {
 	hub, w := historyHub(t)
 	emit(t, hub, w, "\x1b[?2004h\x1b[?1h\x1b[?25l\x1b[?1049h\x1b[?1049l\x1b[?2048h")
 	emitLines(t, hub, w, 1, 12000)
+	// Restores first, before the history (IN-06; xterm.js homes on ?6, WR-08),
+	// ascending, no 2048/1047/1049/47; then nothing between the text and the CUP.
 	want := "\x1b[?1h\x1b[?25l\x1b[?2004h"
-	if got, after := replayTail(t, fullReplay(t, hub)); got != want || after != "" {
-		t.Errorf("mode restores %q then CUP then %q, want %q then CUP only (ascending, no 2048/1047/1049/47)", got, after, want)
+	check := func(when string) {
+		t.Helper()
+		p := fullReplay(t, hub)
+		if got := string(leadingRestores.Find(p)); got != want {
+			t.Errorf("%s: leading restores %q, want %q", when, got, want)
+		}
+		if got, after := replayTail(t, p); got != "" || after != "" {
+			t.Errorf("%s: %q before the CUP and %q after it, want neither", when, got, after)
+		}
 	}
+	check("wrapped ring")
 
 	resizeHub(t, hub, 100, 30)
 	emit(t, hub, w, "% ")
-	if got, after := replayTail(t, fullReplay(t, hub)); got != want || after != "" {
-		t.Errorf("after a resize rebuild, mode restores %q then CUP then %q, want %q then CUP only", got, after, want)
+	check("after a resize rebuild")
+}
+
+// TestFullReplay_ModesBeforeHistory (IN-06): after a RIS (every vt default,
+// DECOM included, lands in h.modes) the Join replay starts with the restores,
+// ?7 excepted, then the history; a vt guest gets the host's history tail,
+// screen and cursor.
+func TestFullReplay_ModesBeforeHistory(t *testing.T) {
+	hub, w := historyHub(t)
+	ref := fidEmu(80, 24)
+	both(t, hub, w, ref, "\x1bc")
+	var b strings.Builder
+	for i := 1; i <= 12000; i++ {
+		fmt.Fprintf(&b, "LINE-%06d %s\r\n", i, strings.Repeat("x", 16))
+		if b.Len() > 16<<10 || i == 12000 {
+			both(t, hub, w, ref, b.String())
+			b.Reset()
+		}
 	}
+	both(t, hub, w, ref, "\x1b[?2004h% ")
+	if !hub.scrollback.Truncated() {
+		t.Fatal("fixture invalid: ring did not wrap")
+	}
+	guest, r := joinGuest(t, hub, 80, 24)
+	p := payloads(r)
+
+	lead := string(leadingRestores.Find(p))
+	if !strings.Contains(lead, "\x1b[?2004h") || !strings.Contains(lead, "\x1b[?6l") || strings.Contains(lead, "\x1b[?7") {
+		t.Errorf("leading restores %q: want ?2004h and ?6l, no ?7", lead)
+	}
+	if first := bytes.Index(p, []byte("LINE-")); first != len(lead) {
+		t.Errorf("first history line at byte %d, want right after the restores (%d)", first, len(lead))
+	}
+	for _, m := range regexp.MustCompile(`\x1b\[\?(\d+)[hl]`).FindAllSubmatchIndex(p[len(lead):], -1) {
+		if n := string(p[len(lead)+m[2] : len(lead)+m[3]]); n != "7" {
+			t.Errorf("restore ?%s after the history started", n)
+		}
+	}
+	requireSameGrid(t, "screen", screenRows(ref), screenRows(guest))
+	requireSameCursor(t, ref, guest)
+	refSB, guestSB := scrollbackRows(ref), scrollbackRows(guest)
+	if len(guestSB) < 200 {
+		t.Fatalf("guest scrollback %d rows, want at least 200", len(guestSB))
+	}
+	requireSameGrid(t, "history tail", refSB[len(refSB)-200:], guestSB[len(guestSB)-200:])
 }
 
 func TestFullReplay_AltScreenOrder(t *testing.T) {
@@ -292,6 +347,10 @@ func TestFullReplay_AltScreenOrder(t *testing.T) {
 	emit(t, hub, w, "\x1b[?2004h\x1b[?1049hALT-ROW-1\r\nALT-ROW-2")
 	p := string(fullReplay(t, hub))
 
+	// Restores, then the history, then ?1049h, the alt rows and the CUP (IN-06).
+	if lead := "\x1b[?2004h"; !strings.HasPrefix(p, lead+"LINE-") {
+		t.Fatalf("alt replay should start with the restores %q then the history: %q", lead, p[:min(40, len(p))])
+	}
 	i := strings.Index(p, altScreenEnterSeq)
 	if i < 0 {
 		t.Fatalf("no %q in alt-screen replay", altScreenEnterSeq)
@@ -300,9 +359,9 @@ func TestFullReplay_AltScreenOrder(t *testing.T) {
 	if !strings.HasSuffix(hist, "\r\n") || !strings.Contains(hist[max(0, len(hist)-40):], "LINE-011977") {
 		t.Errorf("replay before ESC[?1049h should end with the last history line and CRLF: %q", hist[max(0, len(hist)-40):])
 	}
-	wantTail := "\x1b[?2004h\x1b[2;10H" // restores, then the CUP (WR-08)
-	if !strings.HasSuffix(p, wantTail) {
-		t.Fatalf("alt replay should end with restores then CUP %q: tail %q", wantTail, p[max(0, len(p)-40):])
+	wantTail := "\x1b[2;10H" // the CUP right after the alt rows
+	if !strings.HasSuffix(p, "ALT-ROW-2"+strings.Repeat("\r\n", 22)+wantTail) {
+		t.Fatalf("alt replay should end with the alt rows then the CUP %q: tail %q", wantTail, p[max(0, len(p)-40):])
 	}
 	rows := strings.Split(strings.TrimSuffix(p[i+len(altScreenEnterSeq):], wantTail), "\r\n")
 	if len(rows) != 24 || rows[0] != "ALT-ROW-1" || rows[1] != "ALT-ROW-2" {
