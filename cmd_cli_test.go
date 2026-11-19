@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -547,5 +548,39 @@ func TestRemoteListGroups(t *testing.T) {
 	}
 	if s := got[0].Sessions[0]; s.Hostname != "office-air" || s.FQDN != "office-air.tail1.ts.net" || s.ID != "s1" {
 		t.Fatalf("session = %+v", s)
+	}
+}
+
+// DEBT-08: the CLI refuses a version-mismatch restart that would end live
+// sessions unless --restart-daemon is given; with none, the restart stays automatic.
+func TestEnsureCLIDaemon_RestartConsent(t *testing.T) {
+	old := daemon.BuildVersion
+	daemon.BuildVersion = "v2"
+	t.Cleanup(func() { daemon.BuildVersion = old })
+	var allowed bool
+	asking := func(n int) func(string, daemon.RestartPolicy) error {
+		return func(_ string, allow daemon.RestartPolicy) error { allowed = allow("v1", n); return nil }
+	}
+	err := ensureCLIDaemon(asking(2), "sock", false)
+	want := "the running daemon is version v1 with 2 live sessions; restarting it to version v2 would end them. Re-run with --restart-daemon to restart anyway."
+	if err == nil || err.Error() != want || allowed {
+		t.Fatalf("no flag: err %v, allowed %v\nwant %q", err, allowed, want)
+	}
+	if err := ensureCLIDaemon(asking(1), "sock", false); err == nil || !strings.Contains(err.Error(), "with 1 live session; restarting it to version v2 would end it.") {
+		t.Fatalf("one session: %v", err)
+	}
+	if err := ensureCLIDaemon(asking(-1), "sock", false); err == nil || !strings.Contains(err.Error(), "version v1 with live sessions;") {
+		t.Fatalf("unknown count: %v", err)
+	}
+	if err := ensureCLIDaemon(asking(2), "sock", true); err != nil || !allowed {
+		t.Fatalf("--restart-daemon: err %v, allowed %v", err, allowed)
+	}
+	noAsk := func(string, daemon.RestartPolicy) error { return nil } // zero sessions: EnsureDaemon never asks
+	if err := ensureCLIDaemon(noAsk, "sock", false); err != nil {
+		t.Fatalf("no prompt: %v", err)
+	}
+	failed := errors.New("spawn failed")
+	if err := ensureCLIDaemon(func(string, daemon.RestartPolicy) error { return failed }, "sock", false); err != failed {
+		t.Fatalf("ensure error = %v", err)
 	}
 }

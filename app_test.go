@@ -945,3 +945,68 @@ func TestStartDaemon_AlwaysClosesStartupDone(t *testing.T) {
 		})
 	}
 }
+
+// DEBT-08: the GUI keeps a version-mismatched daemon with live sessions and
+// asks once. "Not Now" keeps it for the rest of the launch with no new prompt.
+func TestRestartConsent_NotNowKeepsDaemonWithoutAskingAgain(t *testing.T) {
+	var events []string
+	ensures := 0
+	a := &App{
+		emitEventFunc:    func(name string, data any) { events = append(events, fmt.Sprint(name, " ", data)) },
+		ensureDaemonFunc: func(string) error { ensures++; return nil },
+	}
+	if a.restartConsent("v1", 2) {
+		t.Fatal("the GUI policy restarted without consent")
+	}
+	if got := a.GetDaemonRestartPrompt(); got != 2 {
+		t.Fatalf("prompt = %d, want 2", got)
+	}
+	if strings.Join(events, "|") != "daemon:restart-needed 2" {
+		t.Fatalf("events = %q", events)
+	}
+	if err := a.AnswerDaemonRestart(false); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.GetDaemonRestartPrompt(); got != 0 || ensures != 0 {
+		t.Fatalf("after Not Now: prompt %d, ensures %d; want 0, 0", got, ensures)
+	}
+	if a.restartConsent("v1", 3) || a.GetDaemonRestartPrompt() != 0 || len(events) != 1 {
+		t.Fatalf("asked again after Not Now: prompt %d, events %q", a.GetDaemonRestartPrompt(), events)
+	}
+}
+
+// DEBT-08: "Restart Now" runs EnsureDaemon with the restart approved, then
+// tells the frontend to reload. A failed restart keeps the prompt; Quit All wins.
+func TestAnswerDaemonRestart_RestartNow(t *testing.T) {
+	var events []string
+	allowed := false
+	var ensureErr error
+	a := &App{emitEventFunc: func(name string, data any) { events = append(events, name) }}
+	a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent("v1", 2); return ensureErr }
+	a.restartConsent("v1", 2)
+
+	ensureErr = errors.New("spawn failed")
+	if err := a.AnswerDaemonRestart(true); err == nil || !allowed {
+		t.Fatalf("failed restart: err %v, allowed %v", err, allowed)
+	}
+	if a.GetDaemonRestartPrompt() != 2 {
+		t.Fatal("a failed restart dropped the prompt")
+	}
+
+	ensureErr = nil
+	if err := a.AnswerDaemonRestart(true); err != nil || !allowed {
+		t.Fatalf("restart: err %v, allowed %v", err, allowed)
+	}
+	if a.GetDaemonRestartPrompt() != 0 || events[len(events)-1] != "daemon:recovered" {
+		t.Fatalf("after Restart Now: prompt %d, events %q", a.GetDaemonRestartPrompt(), events)
+	}
+	if a.restartConsent("v1", 2) {
+		t.Fatal("the approval outlived its restart")
+	}
+
+	a.quitting.Store(true)
+	allowed = false
+	if err := a.AnswerDaemonRestart(true); err == nil || allowed {
+		t.Fatalf("while quitting: err %v, ensure ran %v", err, allowed)
+	}
+}
