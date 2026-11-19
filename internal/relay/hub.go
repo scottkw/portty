@@ -690,9 +690,14 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	emu := NewQuietEmulator(cols, rows)
 	// shortcut: while an app stays in the alt screen its scrollback is capped
-	// only by vt's DefaultScrollbackSize (10,000 lines x width x the 112-byte
-	// uv.Cell, 126.6 MiB measured for 20,000 lines), because vt does not expose
-	// it; rebuildAfterAltExitLocked frees it on exit. Bound it if vt ever does.
+	// only by vt's DefaultScrollbackSize, because vt does not expose it;
+	// rebuildAfterAltExitLocked frees it on exit. The cap is per session and
+	// scales with width: 10,000 lines x cols x about 112-120 B (the uv.Cell),
+	// so about 128 MiB per session at 100 columns and about 270 MiB at the
+	// 220-column fallback Cols() uses before a local viewer sizes the PTY;
+	// three sessions in `less +F` overnight can hold 0.4-0.8 GiB. Bound it
+	// (vendor a vt change for scrs[1], or rebuild every N alt lines) if a
+	// long-lived alt-screen session shows up on the 8 GB Macs (WR-04).
 	emu.SetScrollbackSize(HistoryMaxLines)
 	// Track DEC private modes for the replay's restores; ANSI modes are not
 	// replayed (the callbacks report both).
