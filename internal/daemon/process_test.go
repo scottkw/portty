@@ -169,6 +169,49 @@ func TestEnsureDaemon_NeverUnlinksSocket(t *testing.T) {
 	}
 }
 
+// DEBT-06: at login a spawned daemon took up to 10 s to bind (08-VM-CHECKS
+// B-07), so EnsureDaemon's 3 s wait failed startup, the launch grace did not
+// apply, and the poller spawned a second daemon. Until the daemon binds, the
+// previous run's socket file answers "connection refused", as captured.
+func TestWaitForDaemon_SlowStart(t *testing.T) {
+	path := shortProcTestSocket(t, "slow")
+	stale, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.(*net.UnixListener).SetUnlinkOnClose(false)
+	stale.Close() // the file stays: dials now get "connection refused"
+
+	served := make(chan net.Listener, 1)
+	go func() {
+		time.Sleep(4 * time.Second) // slower than the old 3 s wait
+		os.Remove(path)
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			close(served)
+			return
+		}
+		served <- ln
+		http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+			w.Header().Set("Content-Type", "application/json")
+			if r.URL.Path == "/relay-port" {
+				fmt.Fprint(w, `{"port":4242}`)
+				return
+			}
+			fmt.Fprint(w, `{"status":"ok"}`)
+		}))
+	}()
+	t.Cleanup(func() {
+		if ln, ok := <-served; ok {
+			ln.Close()
+		}
+	})
+
+	if err := waitForDaemon(NewDaemonClient(path), daemonReadyWait); err != nil {
+		t.Fatalf("a daemon that binds after 4 s must count as started: %v", err)
+	}
+}
+
 // Review it3 WR-03: a daemon whose socket path is removed or rebound can no
 // longer be reached, yet it holds the lock, so no replacement could start.
 // socketLost spots that so the daemon exits and frees the lock.
