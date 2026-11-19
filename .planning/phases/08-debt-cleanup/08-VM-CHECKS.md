@@ -54,3 +54,25 @@ The 05-VM-MATRIX blip (a warm launch against a daemon healthy for 8 min, older c
 **Why the plan's L launches missed it.** They ran via SSH after the console session existed, 39 s to 3 min after boot, when the login's cold caches had mostly warmed. On the real Mac, the matching case is a restart (a macOS update, a crash or power loss) where macOS reopens Portty at login.
 
 **Where the lines go on the real Mac.** An app macOS reopens, or one opened from the Dock or Finder, has stderr on `/dev/null`, so neither app.go line is ever seen. Use `open --stderr <file> /Applications/Portty.app` to capture them. With no capture, the trace is `daemon: already running (lock: …)` in `~/Library/Application Support/portty/daemon.log.1` (or `daemon.log`), right after a start.
+
+## Fix and re-run (Task 2)
+
+- **Fix (root cause above):** `c27b69d3` raises `daemonReadyWait` in `internal/daemon/process.go` from 3 s to 15 s. `27c90bb1` first moved the poll into `waitForDaemon(client, wait)` with no behaviour change. The 10 s launch grace (`respawnLaunchGrace`) and both app.go log lines are unchanged and stay as a safety net (IN-01 deferred).
+- **Seam test:** `TestWaitForDaemon_SlowStart` (internal/daemon/process_test.go, `498d1c77`). A stale socket file refuses connections, and a fake daemon binds 4 s later. The test failed before the fix (`EnsureDaemon: daemon did not become ready within 3s`) and passes after. `go test -race -short -count=1 . ./internal/daemon/` passed once (`ok github.com/scottkw/portty 8.222s`, `ok …/internal/daemon 26.624s`). `go vet . ./internal/daemon/` is clean.
+- **Build:** real app, `GOTOOLCHAIN=go1.26.11 wails build -platform darwin/arm64 -tags wailsassets` at `c27b69d3`, in this worktree. The fresh worktree needed a placeholder `frontend/dist/index.html`, which the frontend build replaced (gitignored). `codesign -dv`: `Signature=adhoc`, `TeamIdentifier=not set`. Binary sha256 `14db862309b49bc70a34615293fee3f390325922a9e9cac198dac35e697e1bfc`, the same on the host and in the home VM. Deployed with `tar` over SSH. frontend/src/wailsjs restored with `git checkout` after the build.
+- **Reproducing condition:** the launch at login. For L-06, L-07 and L-09, the original relaunch-list entry (`app.portty.portty`, `/Users/admin/ptest/Portty.app`) was put back before the reboot, so macOS reopens Portty as in B-01/B-02/B-07. L-08 uses the wrapper harness (as in B-08), so its stderr is a file. A reopened launch's stderr is `/dev/null`, so its byte count is the check: 0 or 163 (the AppKit line) means no Portty line. A respawn line alone is 191 bytes.
+
+| Check | Result | What was checked | Evidence |
+|-------|--------|------------------|----------|
+| L-06 | PASS | Fixed build, macOS reopen at login: no respawn, one daemon | Boot 17:15:11. GUI 368 (ppid 1) at 17:15:24, 13 s after boot; daemon 457 (ppid 368) at 17:15:30, socket bound 17:15:30. GUI fd 2 `/dev/null`, offset 0 bytes. `already running` lines in daemon.log/daemon.log.1: 0; one start |
+| L-07 | PASS | Same, second run | Boot 17:16:49. GUI 376 at 17:17:04, daemon 498 (ppid 376) at 17:17:13, socket bound 17:17:13. GUI fd 2 offset 163 bytes (the AppKit line's length; no room for a 191-byte respawn line). `already running`: 0 |
+| L-08 | PASS | Same with the wrapper harness: stderr captured | Boot 17:18:09. GUI 358 at 17:18:22, 13 s after boot; daemon 493 (ppid 358) at 17:18:30, socket bound 17:18:32. Capture `/tmp/cold-L8.err`: 163 bytes, 1 line, `respawn=0 blip=0`, the AppKit hotkey line only. One daemon start |
+| L-09 | PASS | Extra run on the slow path: macOS reopen where the daemon took longer than the old 3 s to bind | Boot 17:19:43. GUI 392 at 17:19:57; daemon 510 (ppid 392) at 17:20:04, socket bound **17:20:08 (4 s after spawn)**. GUI fd 2 offset 163 bytes (AppKit line only). `already running`: 0; daemon 510 is the only one. With the old 3 s wait this launch would have failed startup and respawned (the B-07/B-08 path) |
+
+In L-06..L-08 the daemon bound within 2 s, so they show the fix breaks nothing at login but do not reach the slow path. L-09 does: a 4 s bind, with no respawn line and no second daemon.
+
+### Cleanup
+
+- Portty killed; settings.json restored from `~/ptest/settings.json.pre0804` (`cmp` clean, WebGL back on). The relaunch list restored from `~/ptest/persistantApps.pre0804` (`cmp` clean; it lists Portty again, as before the run). `~/ptest/Wrap.app`, the LaunchAgent, both backups and the `/tmp/cold-*` captures removed.
+- Portty relaunched normally with `open` (GUI 830, daemon 832); `portty list` is empty.
+- The home VM now runs the fixed build (`14db8623…`). The office VM still runs `bcb837dd` (`78504a15…`). Both are version `dev`, so there is no version-mismatch restart between them.
