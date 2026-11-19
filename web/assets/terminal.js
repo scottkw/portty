@@ -182,6 +182,9 @@
       var fitAddon = new FitAddon.FitAddon();
       term.loadAddon(fitAddon);
       term.open(document.getElementById('terminal'));
+      // 08-REVIEW WR-01: xterm's paste handler (registered first) sends the text but
+      // never cancels the browser's insertion into its helper textarea; cancel it here.
+      if (term.textarea) term.textarea.addEventListener('paste', function (e) { e.preventDefault(); });
       // Phase 157 VIEW-04: grid size is set by server-pushed 0x02 (MsgResize) only.
       // FitAddon is kept loaded (cell-metric reads use its internals) but fit() is
       // never called — we are always a guest; the host PTY owns the grid dimensions.

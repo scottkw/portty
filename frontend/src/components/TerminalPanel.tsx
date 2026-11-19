@@ -16,6 +16,7 @@ import { applyHostGrid, resetForFullReplay } from '../lib/guestTerminal'
 import { PEER_FLUSH_TIMEOUT_MS, awaitPeerSave, beginPeerSave, peerSnapshotGeneration, peerSnapshotKey, putPeerSnapshot, takePeerSnapshot, watchPeerTerm } from '../lib/peerSnapshots'
 import { isSoftwareWebGL } from '../lib/webglProbe'
 import { isXtermFocused } from '../lib/isXtermFocused'
+import { guardPasteInsert } from '../lib/pasteGuard'
 import { FindBar, type FindBarSearchOptions } from './FindBar/FindBar'
 import { SetSearchConfig } from '../wailsjs/go/main/App'
 import { daemon } from '../wailsjs/go/models'
@@ -389,6 +390,7 @@ export function TerminalPanel({
     // hot-swap because pluginConfig?.webgl/clipboard are dep-array keys.
 
     term.open(containerRef.current)
+    const unguardPaste = guardPasteInsert(term.textarea) // WR-01: no paste left in the helper textarea
     // Don't fit here — hidden panels have zero dimensions.
     // The isActive effect handles fitting when a panel becomes visible.
 
@@ -516,6 +518,7 @@ export function TerminalPanel({
 
     return () => {
       cancelled = true // start() may not have run: no client, nothing to save
+      unguardPaste()
       live?.disposeData.dispose()
       live?.disposeResize.dispose()
       const resumePoint = snapSerializer && live ? live.client.resumePoint() : null // read before close
