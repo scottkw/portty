@@ -93,14 +93,16 @@ func (c *charState) reset() {
 
 // scan updates GL from b, the bytes about to be fed to the emulator: SO and SI
 // where vt executes C0 controls (ground, ESC, CSI), never inside a string, and
-// ESC c resets it.
+// ESC c resets it, also when that ESC ended a string (IN-03). An SO or SI
+// inside a cut-off UTF-8 character counts: xterm.js ends the character there
+// and runs it.
 func (c *charState) scan(b []byte) {
 	for _, x := range b {
 		switch {
-		case (x == 0x0e || x == 0x0f) && c.vt.need == 0 &&
+		case (x == 0x0e || x == 0x0f) &&
 			(c.vt.state == scanGround || c.vt.state == scanEsc || c.vt.state == scanCsi):
 			c.gl1 = x == 0x0e
-		case x == 'c' && c.esc && c.vt.state == scanEsc:
+		case x == 'c' && c.esc && (c.vt.state == scanEsc || c.vt.state == scanStrEsc):
 			c.gl1 = false
 		}
 		c.esc = x == 0x1b

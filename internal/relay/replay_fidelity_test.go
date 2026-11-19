@@ -709,6 +709,15 @@ func TestCharState_Scan(t *testing.T) {
 		{"RIS after SO in one read", []string{"\x0eab\x1bcq"}, false},
 		{"CAN aborts an ESC sequence", []string{"\x1b]0;t\x18\x0e"}, true},
 		{"SO after UTF-8 with C1-like continuation bytes", []string{"\xe2\x9d\x9d\x0e"}, true},
+		// 08-REVIEW IN-03: the ESC that ends an OSC starts the RIS (P4), in
+		// one read or across two; a DCS likewise.
+		{"P4 RIS after an ESC-terminated OSC", []string{"\x0e\x1b]0;title\x1bc"}, false},
+		{"RIS after an ESC-terminated OSC across reads", []string{"\x0e\x1b]0;title\x1b", "c"}, false},
+		{"RIS after an ESC-terminated DCS", []string{"\x0e\x1bP$qm\x1bc"}, false},
+		{"ST after an OSC is no RIS", []string{"\x0e\x1b]0;title\x1b\\c"}, true},
+		// IN-03: xterm.js ends a truncated UTF-8 character at a non-continuation byte and runs the SO.
+		{"SO ending a truncated UTF-8 character", []string{"\xe2\x9d\x0e"}, true},
+		{"SO ending a truncated UTF-8 character across reads", []string{"\xf0\x9f", "\x0e"}, true},
 	} {
 		var cs charState
 		for _, r := range c.reads {
