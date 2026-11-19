@@ -5,25 +5,22 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"runtime"
-	"runtime/debug"
-	"slices"
 	"strings"
 	"testing"
 	"unsafe"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	xvt "github.com/charmbracelet/x/vt"
 )
 
 // altChunks returns n full-width TUI lines tagged ALTX-<from..>, each exactly
-// 80 non-blank characters plus CRLF, in PTY-sized chunks of at most 32 KiB.
-func altChunks(from, n int) []string {
+// cols non-blank characters plus CRLF, in PTY-sized chunks of at most 32 KiB.
+func altChunks(cols, from, n int) []string {
 	var out []string
 	var b strings.Builder
 	for i := from; i < from+n; i++ {
 		tag := fmt.Sprintf("ALTX-%06d", i)
-		b.WriteString(tag + strings.Repeat("a", 80-len(tag)) + "\r\n")
-		if b.Len() > 32<<10-82 {
+		b.WriteString(tag + strings.Repeat("a", cols-len(tag)) + "\r\n")
+		if b.Len() > 32<<10-(cols+2) {
 			out = append(out, b.String())
 			b.Reset()
 		}
@@ -41,78 +38,123 @@ func heapAlloc() int64 {
 	return int64(m.HeapAlloc)
 }
 
-// TestHistory_HeapBoundAfterAltScreenScroll: a TUI scrolling 20,000+ lines in
-// the alternate screen holds at most vt's 10,000-line alt scrollback (which no
-// vt API can shrink), plateaus there, and frees it once the app exits (HARD-01).
+// TestHistory_HeapBoundAfterAltScreenScroll: a TUI scrolling 40,000 full-width
+// lines in the alternate screen grows the hub's heap by less than one fixed
+// 32 MiB bound at 80 and at 220 columns, while still in the alt screen and
+// after it exits: the alt screen keeps no scrollback (DEBT-01, vtalt.go).
 func TestHistory_HeapBoundAfterAltScreenScroll(t *testing.T) {
-	const cols = 80
-	hub := NewHub("heap-alt", nil, nil, DefaultScrollbackBytes, nil)
-	resizeHub(t, hub, cols, 24)
-	feed := func(chunks ...string) {
-		hub.emuMu.Lock()
-		defer hub.emuMu.Unlock()
-		for _, c := range chunks {
-			hub.recordFrameLocked(MakeOutputFrame([]byte(c)), []byte(c))
-		}
-	}
+	const bound = 32 << 20
+	for _, cols := range []int{80, 220} {
+		t.Run(fmt.Sprintf("cols=%d", cols), func(t *testing.T) {
+			hub := NewHub("heap-alt", nil, nil, DefaultScrollbackBytes, nil)
+			resizeHub(t, hub, cols, 24)
+			feed := func(chunks ...string) {
+				hub.emuMu.Lock()
+				defer hub.emuMu.Unlock()
+				for _, c := range chunks {
+					hub.recordFrameLocked(MakeOutputFrame([]byte(c)), []byte(c))
+				}
+			}
 
-	var main strings.Builder
-	for i := 1; i <= 200; i++ {
-		fmt.Fprintf(&main, "LINE-%06d %s\r\n", i, strings.Repeat("x", 16))
-	}
-	feed(main.String())
+			var main strings.Builder
+			for i := 1; i <= 200; i++ {
+				fmt.Fprintf(&main, "LINE-%06d %s\r\n", i, strings.Repeat("x", 16))
+			}
+			feed(main.String())
 
+			m0 := heapAlloc()
+			feed("\x1b[?1049h")
+			feed(altChunks(cols, 0, 20000)...)
+			m1 := heapAlloc()
+			feed(altChunks(cols, 20000, 20000)...)
+			m2 := heapAlloc()
+			hub.emuMu.Lock()
+			onScreen := hub.liveEmu.String()
+			hub.emuMu.Unlock()
+			feed("\x1b[?1049l")
+			m3 := heapAlloc()
+
+			burst1, burst2, after := m1-m0, m2-m0, m3-m0
+			t.Logf("cols=%d heap growth: burst 1 %.1f MiB, burst 2 %.1f MiB, after exit %.1f MiB (bound %.0f MiB)",
+				cols, mib(burst1), mib(burst2), mib(after), mib(bound))
+			for _, g := range []struct {
+				when string
+				n    int64
+			}{{"after burst 1", burst1}, {"after burst 2", burst2}, {"after the exit", after}} {
+				if g.n >= bound {
+					t.Errorf("heap grew %.1f MiB %s, want under %.0f MiB", mib(g.n), g.when, mib(bound))
+				}
+			}
+			if !strings.Contains(onScreen, "ALTX-039999") {
+				t.Error("fixture invalid: the alt screen does not show the last alt line")
+			}
+
+			hub.emuMu.Lock()
+			defer hub.emuMu.Unlock()
+			if hub.liveEmu.IsAltScreen() {
+				t.Error("emulator still in the alt screen after ESC[?1049l")
+			}
+			if n := hub.history.Len(); n < 170 {
+				t.Errorf("history holds %d lines, want the main lines that scrolled off (about 177)", n)
+			}
+		})
+	}
+}
+
+// TestAltScreenScrollback_ControlWithoutBound keeps the soak honest: without
+// disableAltScreenScrollback, the same fixture fills vt's alt scrollback.
+func TestAltScreenScrollback_ControlWithoutBound(t *testing.T) {
+	const cols, n = 80, 3000
+	emu := NewQuietEmulator(cols, 24)
+	_, _ = emu.WriteString("\x1b[?1049h")
 	m0 := heapAlloc()
-	feed("\x1b[?1049h")
-	feed(altChunks(0, 20000)...)
-	m1 := heapAlloc()
-	feed(altChunks(20000, 20000)...)
-	m2 := heapAlloc()
-	feed("\x1b[?1049l")
-	m3 := heapAlloc()
+	for _, c := range altChunks(cols, 0, n) {
+		_, _ = emu.WriteString(c)
+	}
+	grew := heapAlloc() - m0
+	want := int64(n) * cols * int64(unsafe.Sizeof(uv.Cell{})) / 2
+	t.Logf("unbounded alt scrollback: %.1f MiB for %d lines", mib(grew), n)
+	if grew < want {
+		t.Errorf("heap grew %.1f MiB, want at least %.1f MiB: the fixture does not fill the alt scrollback", mib(grew), mib(want))
+	}
+	runtime.KeepAlive(emu)
+}
 
-	capBytes := int64(xvt.DefaultScrollbackSize) * cols * int64(unsafe.Sizeof(uv.Cell{}))
-	ceiling := capBytes + 16<<20
-	if raceBuild() {
-		// -race disables the tiny allocator, so each cell's 1-byte content
-		// string takes its own 16-byte block (measured +9.2 MiB at the cap).
-		ceiling += int64(xvt.DefaultScrollbackSize) * cols * 16
-	}
-	burst1, burst2, after := m1-m0, m2-m1, m3-m0
-	t.Logf("heap growth: burst 1 %.1f MiB, burst 2 %.1f MiB, after exit %.1f MiB; in-alt ceiling %.1f MiB",
-		mib(burst1), mib(burst2), mib(after), mib(ceiling))
-
-	if burst1 > ceiling {
-		t.Errorf("in-alt growth %.1f MiB exceeds the vt-derived ceiling %.1f MiB", mib(burst1), mib(ceiling))
-	}
-	if burst1 < capBytes/2 {
-		t.Errorf("in-alt growth %.1f MiB is below half the cap's cell bytes (%.1f MiB): the fixture did not fill the alt scrollback",
-			mib(burst1), mib(capBytes/2))
-	}
-	if burst2 >= burst1/4 {
-		t.Errorf("second burst grew the heap %.1f MiB, want under a quarter of the first (%.1f MiB): no plateau",
-			mib(burst2), mib(burst1/4))
-	}
-	if after >= 32<<20 {
-		t.Errorf("heap grew %.1f MiB once the app left the alt screen, want under 32 MiB", mib(after))
+// TestAltScreen_JoinWhileInAltKeepsMainHistory: a viewer who joins while the
+// app is still in the alt screen gets the pre-app main history once, in order,
+// with no alt line, then the alt screen.
+func TestAltScreen_JoinWhileInAltKeepsMainHistory(t *testing.T) {
+	hub, w := historyHub(t)
+	emitLines(t, hub, w, 1, 200)
+	emit(t, hub, w, "\x1b[?1049h")
+	for _, c := range altChunks(80, 0, 5000) {
+		emit(t, hub, w, c)
 	}
 
-	hub.emuMu.Lock()
-	defer hub.emuMu.Unlock()
-	if hub.liveEmu.IsAltScreen() {
-		t.Error("emulator still in the alt screen after ESC[?1049l")
+	replay := fullReplay(t, hub)
+	i := bytes.Index(replay, []byte(altScreenEnterSeq))
+	if i < 0 {
+		t.Fatalf("replay has no %q prefix while the app is in the alt screen", altScreenEnterSeq)
 	}
-	if n := hub.history.Len(); n < 170 {
-		t.Errorf("history holds %d lines, want the main lines that scrolled off (about 177)", n)
+	if !bytes.Contains(replay[i:], []byte("ALTX-004999")) {
+		t.Error("replay's alt screen lacks the last alt line")
+	}
+	hist := replay[:i]
+	if bytes.Contains(hist, []byte("ALTX-")) {
+		t.Error("replay history carries alternate-screen lines")
+	}
+	tags := lineTags(hist)
+	if len(tags) != 177 {
+		t.Fatalf("replay history has %d LINE tags, want 177 (1..177 once each)", len(tags))
+	}
+	for k, n := range tags {
+		if n != k+1 {
+			t.Fatalf("history LINE tag %d is %d, want %d (missing, repeated or out of order)", k, n, k+1)
+		}
 	}
 }
 
 func mib(b int64) float64 { return float64(b) / (1 << 20) }
-
-func raceBuild() bool {
-	bi, _ := debug.ReadBuildInfo()
-	return bi != nil && slices.Contains(bi.Settings, debug.BuildSetting{Key: "-race", Value: "true"})
-}
 
 // TestAltScreenExit_KeepsMainScreenAndHistory: the alt-exit rebuild keeps the
 // pre-app main history once, in order, with no alt line, and the main screen
@@ -127,7 +169,7 @@ func TestAltScreenExit_KeepsMainScreenAndHistory(t *testing.T) {
 	hub.emuMu.Unlock()
 
 	emit(t, hub, w, "\x1b[?1049h")
-	for _, c := range altChunks(0, 20000) {
+	for _, c := range altChunks(80, 0, 20000) {
 		emit(t, hub, w, c)
 	}
 	emit(t, hub, w, "\x1b[?1049l")
@@ -266,7 +308,7 @@ func TestAltScreenResize_KeepsMainScreenAndExitRebuild(t *testing.T) {
 	emitLines(t, hub, w, 1, 10)
 	emit(t, hub, w, "$ less\r\n")
 	emit(t, hub, w, "\x1b[?1049h")
-	for _, c := range altChunks(0, 100) {
+	for _, c := range altChunks(80, 0, 100) {
 		emit(t, hub, w, c)
 	}
 
@@ -277,7 +319,7 @@ func TestAltScreenResize_KeepsMainScreenAndExitRebuild(t *testing.T) {
 	if !inAlt {
 		t.Fatal("emulator left the alt screen on a resize while the app is still up")
 	}
-	for _, c := range altChunks(100, 100) { // the app's SIGWINCH redraw, scrolling
+	for _, c := range altChunks(80, 100, 100) { // the app's SIGWINCH redraw, scrolling
 		emit(t, hub, w, c)
 	}
 	hub.emuMu.Lock()
