@@ -12,12 +12,15 @@ const (
 )
 
 // History is a bounded ring of rendered terminal lines (self-contained ANSI per
-// line, no line terminator), oldest first. It is never written to disk:
-// terminal contents include secrets, so a daemon restart drops it.
+// line, no line terminator), oldest first. A line pushed as wrapped soft-wrapped
+// onto the next one on the host (DEBT-02), so Render joins the two without a
+// CRLF and the viewer re-wraps them. It is never written to disk: terminal
+// contents include secrets, so a daemon restart drops it.
 //
 // It has no mutex of its own: the hub touches it only under Hub.emuMu.
 type History struct {
 	lines    []string // lines[head:] are the retained lines
+	wrapped  []bool   // wrapped[i]: lines[i] continues onto lines[i+1]
 	head     int
 	bytes    int // total bytes of the retained lines
 	maxLines int
@@ -31,9 +34,11 @@ func NewHistory(maxLines, maxBytes int) *History {
 }
 
 // Push appends line, then drops oldest lines while either cap is exceeded. A
-// single line over the byte cap is dropped too.
-func (h *History) Push(line string) {
+// single line over the byte cap is dropped too. wrapped means line continues
+// onto the next line pushed.
+func (h *History) Push(line string, wrapped bool) {
 	h.lines = append(h.lines, line)
+	h.wrapped = append(h.wrapped, wrapped)
 	h.bytes += len(line)
 	for h.Len() > 0 && (h.Len() > h.maxLines || h.bytes > h.maxBytes) {
 		h.bytes -= len(h.lines[h.head])
@@ -44,19 +49,36 @@ func (h *History) Push(line string) {
 	// push, and the backing array stays bounded at about twice maxLines.
 	if h.head > len(h.lines)/2 {
 		n := copy(h.lines, h.lines[h.head:])
+		copy(h.wrapped, h.wrapped[h.head:])
 		clear(h.lines[n:])
-		h.lines = h.lines[:n]
+		h.lines, h.wrapped = h.lines[:n], h.wrapped[:n]
 		h.head = 0
 	}
 }
 
 // Clear drops every line and releases the storage.
 func (h *History) Clear() {
-	h.lines, h.head, h.bytes = nil, 0, 0
+	h.lines, h.wrapped, h.head, h.bytes = nil, nil, 0, 0
 }
 
 // Len returns the number of retained lines.
 func (h *History) Len() int { return len(h.lines) - h.head }
 
-// Render joins the retained lines with CRLF, with no trailing CRLF.
-func (h *History) Render() string { return strings.Join(h.lines[h.head:], "\r\n") }
+// EndsWrapped reports whether the newest line continues onto what follows the
+// history (the screen's first row).
+func (h *History) EndsWrapped() bool { return h.Len() > 0 && h.wrapped[len(h.wrapped)-1] }
+
+// Render joins the retained lines with CRLF, with no trailing CRLF. A wrapped
+// line is joined to a non-empty next line with nothing: before an empty one
+// the CRLF stays, or the viewer's pending wrap would swallow that row.
+func (h *History) Render() string {
+	var b strings.Builder
+	b.Grow(h.bytes + 2*h.Len())
+	for i := h.head; i < len(h.lines); i++ {
+		b.WriteString(h.lines[i])
+		if i+1 < len(h.lines) && !(h.wrapped[i] && h.lines[i+1] != "") {
+			b.WriteString("\r\n")
+		}
+	}
+	return b.String()
+}
