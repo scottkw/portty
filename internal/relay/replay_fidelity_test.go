@@ -715,6 +715,11 @@ func TestCharState_Scan(t *testing.T) {
 		{"RIS after an ESC-terminated OSC across reads", []string{"\x0e\x1b]0;title\x1b", "c"}, false},
 		{"RIS after an ESC-terminated DCS", []string{"\x0e\x1bP$qm\x1bc"}, false},
 		{"ST after an OSC is no RIS", []string{"\x0e\x1b]0;title\x1b\\c"}, true},
+		// Iteration 2 IN-11 (Q5): an SO or SI right after the ESC that ends a string runs.
+		{"Q5 SO after an ESC-terminated OSC", []string{"\x1b]0;t\x1b\x0eabc"}, true},
+		{"Q5 SO after an ESC-terminated DCS", []string{"\x1bP$q\x1b\x0e"}, true},
+		{"Q5 SI after an ESC-terminated OSC", []string{"\x0e\x1b]0;t\x1b\x0f"}, false},
+		{"SO after an ESC-terminated OSC across reads", []string{"\x1b]0;t\x1b", "\x0e"}, true},
 		// IN-03: xterm.js ends a truncated UTF-8 character at a non-continuation byte and runs the SO.
 		{"SO ending a truncated UTF-8 character", []string{"\xe2\x9d\x0e"}, true},
 		{"SO ending a truncated UTF-8 character across reads", []string{"\xf0\x9f", "\x0e"}, true},

@@ -80,6 +80,8 @@ func FuzzCharState(f *testing.F) {
 		"\x0e\x1b]0;title\x1bc",               // P4
 		"\x0e\x1bP$qm\x1bc",                   // RIS after a DCS
 		"\xe2\x9d\x0e",                        // SO ends a cut-off UTF-8 character
+		"\x1b]0;t\x1b\x0eabc",                 // Q5: SO right after a string-ending ESC
+		"\x0e\x1bP$q\x1b\x0f",                 // Q5: SI after a DCS
 		"\x1b]8;;http://x/\u009b2J\x07$ ",     // P1
 		"\x1b]8;;http://x/\u0090$qm\u009cabc", // DCS variant
 		"\x1b]8;id=1;https://example.invalid/\x07LINK\x1b]8;;\x07",
