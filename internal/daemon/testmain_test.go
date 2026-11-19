@@ -15,17 +15,27 @@ var realHome, testHome string
 // runDaemonCore's test bound the real socket and lock. /tmp, not TMPDIR, so
 // DefaultSocketPath fits the 103-char sun_path limit.
 func TestMain(m *testing.M) {
+	os.Exit(runInTempHome(m))
+}
+
+// runInTempHome runs the tests in a temp HOME and removes it on return. The
+// defer lives here because os.Exit skips defers (IN-07); a panic in a test's
+// own goroutine still kills the process first and leaves the /tmp dir.
+func runInTempHome(m *testing.M) int {
 	realHome = os.Getenv("HOME")
 	home, err := os.MkdirTemp("/tmp", "pdh-")
 	if err != nil {
 		panic(err)
 	}
+	defer os.RemoveAll(home)
 	testHome = home
-	os.Setenv("HOME", home)
-	os.Setenv("XDG_CONFIG_HOME", home)
-	code := m.Run()
-	os.RemoveAll(home)
-	os.Exit(code)
+	// XDG_CONFIG_HOME is ignored by os.UserConfigDir on darwin; set for Linux CI.
+	for _, k := range []string{"HOME", "XDG_CONFIG_HOME"} {
+		if err := os.Setenv(k, home); err != nil {
+			panic(err)
+		}
+	}
+	return m.Run()
 }
 
 func TestTestMain_IsolatesConfigDir(t *testing.T) {
