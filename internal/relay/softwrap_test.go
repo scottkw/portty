@@ -29,26 +29,105 @@ const wrapCmd = "$ "
 
 func TestWrapSet(t *testing.T) {
 	var s wrapSet
-	s.add(7)
-	s.add(7)
-	if !s.has(7) || !s.has(7) {
-		t.Fatal("has after add: false")
+	s.add(3, 7)
+	s.add(3, 7) // a redraw of the same line counts once (IN-01 P6)
+	if !s.has(3, 7) || s.has(3, 8) || s.has(4, 7) {
+		t.Fatal("has: want only line 3 with key 7")
 	}
-	if a, b, c := s.take(7), s.take(7), s.take(7); !a || !b || c {
-		t.Errorf("take x3 after add x2 = %v %v %v, want true true false", a, b, c)
+	if a, b := s.take(3, 7), s.take(3, 7); !a || b {
+		t.Errorf("take x2 after add x2 of one line = %v %v, want true false", a, b)
+	}
+	s.add(5, 1)
+	s.add(5, 2) // rewritten in place: the newer key
+	if s.has(5, 1) || !s.has(5, 2) || s.take(5, 1) || s.has(5, 2) {
+		t.Error("a re-added line keeps its old key, or a wrong-key take kept the line")
 	}
 	for k := range uint64(wrapSetMax + 1) {
-		s.add(k + 100)
+		s.add(k+100, k)
 	}
-	if s.has(100) {
-		t.Error("oldest key kept after wrapSetMax+1 adds")
+	if s.has(100, 0) {
+		t.Error("oldest line kept after wrapSetMax+1 adds")
 	}
-	if !s.has(101) || !s.has(wrapSetMax+100) {
-		t.Error("recent keys evicted")
+	if !s.has(101, 1) || !s.has(wrapSetMax+100, wrapSetMax) {
+		t.Error("recent lines evicted")
 	}
 	s.clear()
-	if s.has(101) || len(s.n) != 0 {
-		t.Error("clear left keys")
+	if s.has(101, 1) || len(s.n) != 0 {
+		t.Error("clear left lines")
+	}
+}
+
+// historyWraps feeds each read to a cols x rows hub, scrolls everything into
+// history with CRLFs and returns the history lines and their wrapped flags.
+func historyWraps(t *testing.T, cols, rows int, reads ...string) ([]string, []bool) {
+	t.Helper()
+	h := NewHub("wraps", nil, nil, DefaultScrollbackBytes, nil)
+	resizeHub(t, h, cols, rows)
+	for _, r := range append(reads, strings.Repeat("\r\n", rows+2)) {
+		probeFeed(h, r)
+	}
+	h.emuMu.Lock()
+	defer h.emuMu.Unlock()
+	return slices.Clone(h.history.lines[h.history.head:]), slices.Clone(h.history.wrapped[h.history.head:])
+}
+
+// TestSoftWrap_CursorMovesAreNotWraps (08-REVIEW WR-03): an LF, IND or CUD
+// from a full row's last column, then a CHA, CUP or HPA to column 1 or 2,
+// makes the same two cursor moves as vt's autowrap. Only autowrap is a wrap.
+func TestSoftWrap_CursorMovesAreNotWraps(t *testing.T) {
+	d := strings.Repeat("-", 20)
+	for _, c := range []struct{ name, in string }{
+		{"P3a LF then CHA 2", "\x1bc" + d + "\n\x1b[2Gx\r\n"},
+		{"CUD then CHA 2", "\x1bc" + d + "\x1b[B\x1b[2G|\r\n"},
+		{"IND then CUP col 2", "\x1bc" + d + "\x1bD\x1b[2;2H|\r\n"},
+		{"LF then HPA 2", "\x1bc" + d + "\n\x1b[2`|\r\n"},
+		{"LF then CR", "\x1bc" + d + "\n\rx\r\n"},
+		{"LF then CUB to col 2", "\x1bc" + d + "\n\x1b[18D|\r\n"},
+	} {
+		lines, wrapped := historyWraps(t, 20, 5, c.in)
+		for i, w := range wrapped {
+			if w {
+				t.Errorf("%s: history line %d %q marked wrapped (lines %q)", c.name, i, lines[i], lines)
+			}
+		}
+	}
+	// Autowrap is still recorded, here after the same LF/CHA traffic.
+	lines, wrapped := historyWraps(t, 20, 5, "\x1bc"+d+"\n\x1b[2Gx\r\n"+d+"ab\r\n")
+	if !slices.Contains(wrapped, true) {
+		t.Errorf("autowrap after cursor moves not recorded: %q %v", lines, wrapped)
+	}
+}
+
+// TestSoftWrap_IdenticalHardRowAboveWrap (08-REVIEW IN-01 P3b): a hard row
+// byte-identical to a wrapped row below it must not take that row's wrap.
+func TestSoftWrap_IdenticalHardRowAboveWrap(t *testing.T) {
+	d := strings.Repeat("-", 20)
+	lines, wrapped := historyWraps(t, 20, 6, "\x1bc"+d+"\r\n"+d+d+"\r\nend\r\n")
+	if len(wrapped) < 3 || wrapped[0] || !wrapped[1] || wrapped[2] {
+		t.Errorf("want only the second row wrapped: lines %q wrapped %v", lines, wrapped)
+	}
+}
+
+// TestSoftWrap_RedrawCountsOnce (08-REVIEW IN-01 P6): a line editor reprinting
+// one wrapped line (CUU CR, reprint) records its row once, so no extra wrap
+// lingers for a later identical hard row to take.
+func TestSoftWrap_RedrawCountsOnce(t *testing.T) {
+	line := "$ " + strings.Repeat("c", 28)
+	reads := []string{"\x1bc" + line}
+	for range 4 {
+		reads = append(reads, "\x1b[A\r"+line)
+	}
+	// The wrapped line, then an identical full hard row: only the first joins.
+	reads = append(reads, "\r\n"+line[:20]+"\r\n")
+	lines, wrapped := historyWraps(t, 20, 5, reads...)
+	n := 0
+	for _, w := range wrapped {
+		if w {
+			n++
+		}
+	}
+	if n != 1 || !wrapped[0] {
+		t.Errorf("want exactly the redrawn line's first row wrapped: lines %q wrapped %v", lines, wrapped)
 	}
 }
 
