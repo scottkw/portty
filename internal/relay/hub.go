@@ -648,7 +648,9 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	old := h.liveEmu
 	seed := h.renderScreenLocked()
 	pos := old.CursorPosition()
-	old.Write([]byte("\x1b[1;1H")) //nolint:errcheck // emulator Write never returns a meaningful error
+	// CAN first: the probe must start from ground whatever tail the read left
+	// in the old parser (a bare DCS introducer swallowed the CUP, WR-05).
+	old.Write([]byte("\x18\x1b[1;1H")) //nolint:errcheck // emulator Write never returns a meaningful error
 	probe := old.CursorPosition()  // region-relative under origin mode
 	old.Write([]byte("q"))         //nolint:errcheck // 'q' is '─' in DEC line drawing
 	cell := old.CellAt(probe.X, probe.Y)

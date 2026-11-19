@@ -172,6 +172,14 @@ func TestAltScreenExit_RebuildMatchesReference(t *testing.T) {
 		{"scroll region kept by the shell", []string{"\x1b[1;4r$ vim\r\n", app, "\r\nA\r\nB\r\nC\r\nD\r\nE\r\n"}},
 		{"saved cursor", []string{"ab\x1b7\r\n\r\n", app, "\x1b8Z"}},
 		{"DEC line drawing in G0", []string{"\x1b(0", app, "qqq"}},
+		// WR-05: the pen/charset probe must land whatever tail the read left.
+		{"pen red, read ends on ESC", []string{"\x1b[1;31m$ vim\r\n" + app + "$ \x1b", "[mafter"}},
+		{"pen red, read ends on ESC P", []string{"\x1b[1;31m$ vim\r\n" + app + "$ \x1bP", "zz\x1b\\after"}},
+		{"pen red, read ends on ESC P +", []string{"\x1b[1;31m$ vim\r\n" + app + "$ \x1bP+", "zz\x1b\\after"}},
+		{"pen red, read ends on C1 DCS", []string{"\x1b[1;31m$ vim\r\n" + app + "$ \x90", "zz\x1b\\after"}},
+		{"pen red, read ends inside APC", []string{"\x1b[1;31m$ vim\r\n" + app + "$ \x1b_x", "y\x1b\\after"}},
+		{"pen red, read ends on C1 CSI", []string{"\x1b[1;31m$ vim\r\n" + app + "$ \x9b3", "2mafter"}},
+		{"line drawing, read ends mid-UTF-8", []string{"\x1b(0\x1b[1;31m$ vim\r\n" + app + "$ \xe2\x94", "\x80qqq"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
