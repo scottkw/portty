@@ -19,6 +19,12 @@ package relay
 // keeps the link in each screen's cursor) is not seen until the next alt-exit
 // rebuild resyncs the tracker from its probes; G2/G3, LS2/LS3, single shifts
 // and GR are not tracked. Track them if a program needs them.
+//
+// shortcut: rows already drawn through SO/G1 before a viewer joins replay as
+// ASCII in a rendered replay, because vt ignores SO/SI (TestVT_IgnoresShiftOut);
+// the tracker fixes only later bytes. The raw ring and live paths are fine, and
+// xterm-256color draws lines through G0 (smacs), so ncurses boxes replay
+// correctly. Upgrade when vt honours SO.
 
 import (
 	"regexp"
