@@ -1,12 +1,12 @@
 ---
 phase: 08-debt-cleanup
-fixed_at: 2026-11-19T19:12:39Z
+fixed_at: 2026-11-19T20:16:20Z
 review_path: .planning/phases/08-debt-cleanup/08-REVIEW.md
-iteration: 1
-findings_in_scope: 13
-fixed: 10
-skipped: 3
-status: partial
+iteration: 2
+findings_in_scope: 6
+fixed: 6
+skipped: 0
+status: all_fixed
 ---
 
 # Phase 8: Code Review Fix Report
@@ -180,3 +180,106 @@ Not VM-verified: WR-01 (a 20 MB Cmd+V should leave WebContent idle within a few 
 _Fixed: 2026-11-19T19:12:39Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+---
+
+# Iteration 2
+
+**Fixed at:** 2026-11-19T20:16:20Z
+**Source review:** .planning/phases/08-debt-cleanup/08-REVIEW.md (iteration 2)
+**Base:** a7d5822d (`docs(08): code review iteration 2`)
+**Frontmatter:** now describes iteration 2. Iteration 1's counts are in its section above (13 in scope, 10 fixed, 3 deferred).
+
+**Summary:**
+- Findings in scope: 6 (2 warnings, 4 info). Fixed: 6. Skipped: 0.
+- One extra commit raises the WR-02 link cap to VTE's 2083 bytes, as the orchestrator allowed when trivial.
+
+The reviewer's probes (scratchpad `zz_probe2_test.go`) became committed regression tests: Q1/Q2 (WR-06), Q4 (IN-10) and Q5 (IN-11). Q3/Q3b (IN-09) are covered by the accepted shortcut and its host-grid layout tests. Q6 (C1 IND) already passed and is unchanged. Each new Q4 case failed before its fix (10 failures: 5 cases, one read and two). WR-06 follows the reviewer's probe output.
+
+## Fixed Issues (iteration 2)
+
+### WR-06 and IN-09: Line-keyed wraps misalign after ED 2 and row moves
+
+**Files modified:** `internal/relay/wraps.go`, `internal/relay/hub.go`, `internal/relay/softwrap_test.go`, `TESTING.md`
+**Commit:** e64026a3
+**Applied fix:** this follows the orchestrator's decision. The reviewer's suggested re-key on ED 2 was not used.
+- Restored the row-hash multiset from before iteration 1 (`wrapSet` is `map[uint64]int` again; `wrapBase` and `absLine` are gone). Hashes follow rows through ED 2, IL, DL, RI and partial scroll regions.
+- `row0ErasedLocked` (IN-02) drops one count of the newest emu-scrollback line's hash.
+- The WR-03 fix is kept: every cursor-motion CSI and ESC 8/D/M still forgets the last move, so motion never counts as a wrap.
+- IN-01's drain-order steal and redraw multi-count are now a documented `shortcut:` in `wraps.go`. Content-identical rows can trade a wrap mark, and the replay's layout at the host grid is unchanged: a full row joined to a non-empty next row lands on the same rows, and `History.Render` keeps the CRLF before an empty one. Only a viewer reflow or a copy sees the moved break. This also replaces the wrong "never moved onto another row" comment (IN-09).
+
+Tests:
+- `TestSoftWrap_ED2KeepsWraps`: Q1 (the digits row stays the only wrap) and Q2 (the dash rows are `true true false`), in one read and in two.
+- `TestSoftWrap_IdenticalRowsTradeWrap` (P3b) and `TestSoftWrap_RedrawKeepsHostLayout` (P6) replace the iteration-1 pins. Each checks the mark count and that the history rendered into a 20-column guest gives exactly the host's rows.
+- `TestWrapSet` is pinned to the multiset again, with the redraw counting twice documented as accepted.
+- `TestSoftWrap_CursorMovesAreNotWraps` (P3a, CUD, IND+CUP, HPA, LF+CR, CUB) passes unchanged, and so do every fixture and the rebuild fuzz (0 mismatches).
+
+**Status:** fixed: requires human verification (logic change in the wrap detector; P3b and P6 are now accepted behaviour, not fixed)
+
+### WR-07: The lost-lock exception was checked once
+
+**Files modified:** `internal/daemon/process.go`, `internal/daemon/process_test.go`, `TESTING.md`
+**Commit:** f04420e1
+**Applied fix:**
+- New `startDaemon` waits while another process holds `daemon.lock` (every 50 ms). It returns early if the socket answers and fails at the 15 s deadline. It spawns only once the lock is free and never breaks a held lock. This replaces the fixed 200 ms sleep after `ShutdownDaemon` in the version-mismatch branch.
+- `waitForDaemon` now checks the lock on every poll after the spawned daemon exits. A holder that lets go without binding fails the wait at once, not at the deadline.
+- The ready check is now a shared `daemonReady`.
+- The `testing.Testing()` spawn guard is unchanged and still runs first.
+
+Tests:
+- `TestStartDaemon_WaitsForOldDaemonLock`: the old daemon holds the lock until 2.5 s, past the 2 s lock wait. The fake spawn does what `runDaemonCore` does (a 2 s `lockDaemon`, then bind), the new daemon starts, and the call returns in about 2.6 s.
+- `TestWaitForDaemon_LockReleasedWithoutBindFailsFast`: release at 200 ms, failure in about 0.22 s.
+- `TestWaitForDaemon_DiedAtSpawnFailsFast`, `TestWaitForDaemon_LostLockWaitsForHolder`, `TestWaitForDaemon_SlowStart` and `TestEnsureDaemon_NeverUnlinksSocket` still pass.
+
+**Status:** fixed: requires human verification (startup-ordering logic; not VM-run on a real version-mismatch restart)
+
+### IN-10: The end-wrap clearing missed RI, IL, SD, ECH and DCH
+
+**Files modified:** `internal/relay/hub.go`, `internal/relay/history_test.go`, `TESTING.md`
+**Commit:** 4722fde0
+**Applied fix:** still applies after WR-06, because the history end-wrap does not depend on wrap keying. New handlers call `row0ErasedLocked` in these cases:
+- ESC `M` and CSI `L` with the cursor on row 0, when the scroll region starts at row 0;
+- CSI `T` when the region starts at row 0;
+- CSI `X` and CSI `P` with the cursor at home.
+
+**Test:** `TestHistory_EndWrapClearedWhenRow0Erased` gains the five Q4 cases, each in one read and in two. It also gains four cases that must keep the join: RI below the top, IL on row 1, SD in a region below row 0, and ECH from column 5.
+**Status:** fixed: requires human verification (logic change)
+
+### IN-11: The GL scan missed an SO or SI right after a string-ending ESC
+
+**Files modified:** `internal/relay/charstate.go`, `internal/relay/replay_fidelity_test.go`, `internal/relay/fuzz_test.go`, `TESTING.md`
+**Commit:** 6ed31304
+**Applied fix:** SO and SI now also count in `scanStrEsc`, the state after the ESC that ends an OSC or DCS. xterm.js is in ESCAPE there, and C0 controls run in ESCAPE.
+**Test:** `TestCharState_Scan` gains the three Q5 strings and a split-read case. `FuzzCharState` gains two Q5 seeds.
+
+### IN-12: WR-01 had no VM pass condition, and M-101 stated the result as fact
+
+**Files modified:** `TESTING.md`
+**Commit:** 6b5ab4f0
+**Applied fix:**
+- New M-103 for WR-01. It passes when, after a 20 MB Cmd+V (plus a 5 MB local-tab run), WebContent CPU is idle within about 30 s, the file is complete (sha256 and `cmp`), the AX read of `xterm-helper-textarea` is empty, and typing and small, bracketed and unicode pastes still work.
+- Its _Last run_ cites the recorded VM result: 08-VM-CHECKS P-01 and P-02, PASS on build 5e48b6f2. Those rows are in the VM agent's commit 9dd3fde5 on `gsd/phase-07-hardening`; this worktree does not contain that commit and did not touch 08-VM-CHECKS.md.
+- M-101 step 1 now points to M-103 instead of stating the outcome. Its _Last run_ says WR-01 was re-run as M-103 and passed.
+
+### WR-02 follow-up: the link field cap is raised to 2083
+
+**Files modified:** `internal/relay/charstate.go`, `internal/relay/replay_fidelity_test.go`, `TESTING.md`
+**Commit:** ea5f14df
+**Applied fix:** `maxLinkField` is now 2083 (VTE's URI limit). `TestFixRenderedLinks_DropsUnsafe` pins 2083 bytes kept and 2084 dropped.
+
+## Verification (iteration 2)
+
+Every gate ran once at the end, in the isolated worktree `.claude/worktrees/agent-a16a9d0329621a469` (branch `worktree-agent-a16a9d0329621a469`), with `GOTOOLCHAIN=go1.26.11`. Frontend dependencies were installed there with `pnpm install --frozen-lockfile --offline`. The results are reproducible from the same commit in the main checkout.
+
+- `go build ./... && go vet ./...`: clean.
+- `go test -race -short ./...`: all 12 packages ok (relay 74.6 s with the rebuild fuzz at 0 mismatches, daemon 27.0 s). No reruns were needed.
+- `pnpm vitest run`: 91 files, 1280 tests passed.
+- `bash tests/check-traceability-paths.sh`: 150 paths OK. `bash tests/check-brand.sh`: clean.
+
+Unchanged: the 32 KiB limits, share tokens, the CSP and the WR-07 tailnet guard. No file under `internal/webserver/` changed, and no test file was added (Section 2 counts unchanged; Section 4 rows extended).
+
+---
+
+_Fixed: 2026-11-19T20:16:20Z_
+_Fixer: Claude (gsd-code-fixer)_
+_Iteration: 2_
