@@ -30,6 +30,17 @@ The user approved this as the v1.2 milestone on 2026-11-19 and chose option 2 fo
    - Local URLs keep the existing confirm popover, then open in the default browser.
    - Security review: this exposes the remote Mac's local ports. Keep it token-gated and tailnet-only, ask consent per port, and allow no arbitrary port scanning.
 
+4. **Mobile-aware web app** (user approved for v1.2, 2026-11-19; estimate about 2-3 days):
+   - a key bar above the iOS keyboard: Esc, Tab, Ctrl, arrows, `|`;
+   - Add to Home Screen: manifest and icon, full screen;
+   - a phone layout: fit to width, keyboard inset, pinch to change the font size;
+   - reconnect after the phone sleeps, checked on a real iPhone running the Tailscale app.
+   - The existing browser view already has touch scroll (`attachTouchScroll`).
+   - **User request:** host it as a subfolder of the Portty website, https://portty.app/app. The website lives in a separate repo, handled by another session.
+   - **OPEN DECISION, settle at v1.2 discuss:** today each host Mac serves its own browser view, and `internal/webserver/origin_mw.go` accepts WebSockets only from the host's own origin (the defence against cross-site WebSocket hijacking). For a page on portty.app to talk to a host, every host would have to trust the portty.app origin. Anyone who could change the JavaScript on portty.app (a compromised site, CDN or deploy) would then get the share token and full shell access on every user's Macs. That conflicts with the constraints "no cloud dependencies" and "keep token-gated tailnet-only links and CSP intact". Options:
+     - (a) host Macs serve the mobile UI over the tailnet, and portty.app/app is only a landing page or launcher with no shell access;
+     - (b) portty.app/app is the real app, with the origin allowlist widened, subresource integrity, a strict CSP and signed releases.
+
 ## Not in scope
 - An in-app web view tab for arbitrary sites. Wails v2 has a single web view; iframes are blocked by X-Frame-Options and the CSP; a native WKWebView would be extra Go/Objective-C to maintain.
 
