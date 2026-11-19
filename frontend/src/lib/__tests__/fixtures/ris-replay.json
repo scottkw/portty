@@ -3,11 +3,20 @@
     "name": "reset, then a prompt",
     "cols": 40,
     "rows": 6,
-    "replay": "bGluZTENCmxpbmUyDQokIGxzDQoNCg0KG1s/MWwbWz82bBtbPzdoG1s/OWwbWz8yNWgbWz82NmwbWz82OWwbWz8xMDAwbBtbPzEwMDFsG1s/MTAwMmwbWz8xMDAzbBtbPzEwMDRsG1s/MTAwNmwbWz8yMDA0bBtbMzs1SA==",
+    "replay": "G1s/MWwbWz82bBtbPzlsG1s/MjVoG1s/NjZsG1s/NjlsG1s/MTAwMGwbWz8xMDAxbBtbPzEwMDJsG1s/MTAwM2wbWz8xMDA0bBtbPzEwMDZsG1s/MjAwNGxsaW5lMQ0KbGluZTINCiQgbHMNCg0KDQobWz83aBtbMzs1SA==",
+    "screen": [
+      "line1",
+      "line2",
+      "$ ls",
+      "",
+      "",
+      ""
+    ],
     "cursor": {
       "x": 4,
       "y": 2
     },
+    "historyTail": [],
     "live": "IC1s",
     "cursorAfter": {
       "x": 7,
@@ -18,11 +27,20 @@
     "name": "reset, then a full row (pending wrap)",
     "cols": 40,
     "rows": 6,
-    "replay": "JCB4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eA0KDQoNCg0KDQobWz8xbBtbPzZsG1s/N2gbWz85bBtbPzI1aBtbPzY2bBtbPzY5bBtbPzEwMDBsG1s/MTAwMWwbWz8xMDAybBtbPzEwMDNsG1s/MTAwNGwbWz8xMDA2bBtbPzIwMDRsG1sxOzQwSHg=",
+    "replay": "G1s/MWwbWz82bBtbPzlsG1s/MjVoG1s/NjZsG1s/NjlsG1s/MTAwMGwbWz8xMDAxbBtbPzEwMDJsG1s/MTAwM2wbWz8xMDA0bBtbPzEwMDZsG1s/MjAwNGwkIHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4DQoNCg0KDQoNChtbPzdoG1sxOzQwSHg=",
+    "screen": [
+      "$ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
     "cursor": {
       "x": 39,
       "y": 0
     },
+    "historyTail": [],
     "live": "WQ==",
     "cursorAfter": {
       "x": 1,
@@ -33,15 +51,69 @@
     "name": "app sets and resets DECOM",
     "cols": 40,
     "rows": 6,
-    "replay": "JCBscw0KDQoNCg0KDQobWz82bBtbMTs1SA==",
+    "replay": "G1s/NmwkIGxzDQoNCg0KDQoNChtbMTs1SA==",
+    "screen": [
+      "$ ls",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
     "cursor": {
       "x": 4,
       "y": 0
     },
+    "historyTail": [],
     "live": "IC1s",
     "cursorAfter": {
       "x": 7,
       "y": 0
+    }
+  },
+  {
+    "name": "RIS, then 60 lines, rendered Join replay with history",
+    "cols": 40,
+    "rows": 6,
+    "replay": "G1s/MWwbWz82bBtbPzlsG1s/MjVoG1s/NjZsG1s/NjlsG1s/MTAwMGwbWz8xMDAxbBtbPzEwMDJsG1s/MTAwM2wbWz8xMDA0bBtbPzEwMDZsG1s/MjAwNGxoaXN0IDAwDQpoaXN0IDAxDQpoaXN0IDAyDQpoaXN0IDAzDQpoaXN0IDA0DQpoaXN0IDA1DQpoaXN0IDA2DQpoaXN0IDA3DQpoaXN0IDA4DQpoaXN0IDA5DQpoaXN0IDEwDQpoaXN0IDExDQpoaXN0IDEyDQpoaXN0IDEzDQpoaXN0IDE0DQpoaXN0IDE1DQpoaXN0IDE2DQpoaXN0IDE3DQpoaXN0IDE4DQpoaXN0IDE5DQpoaXN0IDIwDQpoaXN0IDIxDQpoaXN0IDIyDQpoaXN0IDIzDQpoaXN0IDI0DQpoaXN0IDI1DQpoaXN0IDI2DQpoaXN0IDI3DQpoaXN0IDI4DQpoaXN0IDI5DQpoaXN0IDMwDQpoaXN0IDMxDQpoaXN0IDMyDQpoaXN0IDMzDQpoaXN0IDM0DQpoaXN0IDM1DQpoaXN0IDM2DQpoaXN0IDM3DQpoaXN0IDM4DQpoaXN0IDM5DQpoaXN0IDQwDQpoaXN0IDQxDQpoaXN0IDQyDQpoaXN0IDQzDQpoaXN0IDQ0DQpoaXN0IDQ1DQpoaXN0IDQ2DQpoaXN0IDQ3DQpoaXN0IDQ4DQpoaXN0IDQ5DQpoaXN0IDUwDQpoaXN0IDUxDQpoaXN0IDUyDQpoaXN0IDUzDQpoaXN0IDU0DQpoaXN0IDU1DQpoaXN0IDU2DQpoaXN0IDU3DQpoaXN0IDU4DQpoaXN0IDU5DQokIGxzG1s/N2gbWzY7NUg=",
+    "screen": [
+      "hist 55",
+      "hist 56",
+      "hist 57",
+      "hist 58",
+      "hist 59",
+      "$ ls"
+    ],
+    "cursor": {
+      "x": 4,
+      "y": 5
+    },
+    "historyTail": [
+      "hist 35",
+      "hist 36",
+      "hist 37",
+      "hist 38",
+      "hist 39",
+      "hist 40",
+      "hist 41",
+      "hist 42",
+      "hist 43",
+      "hist 44",
+      "hist 45",
+      "hist 46",
+      "hist 47",
+      "hist 48",
+      "hist 49",
+      "hist 50",
+      "hist 51",
+      "hist 52",
+      "hist 53",
+      "hist 54"
+    ],
+    "live": "IC1s",
+    "cursorAfter": {
+      "x": 7,
+      "y": 5
     }
   }
 ]

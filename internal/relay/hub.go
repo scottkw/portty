@@ -104,8 +104,8 @@ type Hub struct {
 	// rebuild on resize keeps it. Only touched under emuMu.
 	history *History
 	// modes is the DEC private mode state the app last set (mode number to
-	// set/reset), replayed after the screen. Hub-owned so it survives emulator
-	// rebuilds, which start from default modes. Only touched under emuMu.
+	// set/reset), replayed by modeRestoresLocked. Hub-owned so it survives
+	// emulator rebuilds, which start from default modes. Only touched under emuMu.
 	modes map[int]bool
 	// geomEnd is the scrollback end offset at the last genuine host geometry
 	// change (0: none). Raw ring bytes are laid out for the width they were
@@ -1102,8 +1102,59 @@ func (h *Hub) RenderSnapshot() []byte {
 }
 
 // renderScreenLocked returns the live emulator's current screen, unframed, or
-// nil when there is no emulator or nothing to show. Caller holds emuMu.
+// nil when there is no emulator or nothing to show: the mode restores, then
+// the screen body. RenderSnapshot and the alt-exit seed use it; joinLocked
+// puts the history between the two. Caller holds emuMu.
 func (h *Hub) renderScreenLocked() []byte {
+	body := h.screenBodyLocked()
+	if body == nil {
+		return nil
+	}
+	return append([]byte(h.modeRestoresLocked()), body...)
+}
+
+// modeRestoresLocked returns the app's DEC private modes (bracketed paste,
+// cursor keys, cursor visibility, mouse) in ascending order, so the viewer's
+// terminal behaves like the host even though the ring wrapped past the sets.
+// Never the alt-screen modes (the body's prefix), 2048 (in-band resize,
+// stripped on purpose by liveEmuQueryStripPattern) or 7 (the body restores
+// autowrap after its text).
+//
+// IN-06: they go before any replayed text, so a mode that changes layout
+// (?2027 grapheme width) applies to the rows it governs. In a Join they go
+// before the history too: xterm.js homes the cursor on ?6h and ?6l, and a
+// RIS puts 6 in h.modes (WR-08), so between the history and the screen the
+// home would put the screen rows over the history rows still in the viewport.
+// Right after the viewer's reset the cursor is home anyway. No DECSTBM is
+// replayed, so the region is the full screen and the body's CUP stays
+// absolute. In vt (the alt-exit seed) only 47/1047/1048/1049 move the
+// cursor, all excluded, and a new emulator has no region for ?6h to use.
+// Caller holds emuMu.
+func (h *Hub) modeRestoresLocked() string {
+	var b strings.Builder
+	for _, m := range slices.Sorted(maps.Keys(h.modes)) {
+		switch m {
+		case 7, 47, 1047, 1048, 1049, 2048, 2026:
+			// 2026 (synchronized output): the replay is a complete screen, so a
+			// join mid-update must not leave the viewer holding its rendering.
+			// 1048 is an action, not a state: replayed, ?1048l restores the
+			// saved cursor over the body's CUP (WR-06 fuzz).
+			continue
+		}
+		set := byte('l')
+		if h.modes[m] {
+			set = 'h'
+		}
+		fmt.Fprintf(&b, "\x1b[?%d%c", m, set)
+	}
+	return b.String()
+}
+
+// screenBodyLocked returns the screen part of a rendered replay, or nil when
+// there is no emulator or nothing to show: the alt-screen prefix, the rows,
+// the autowrap restore, the cursor CUP and the pending-wrap re-print. Caller
+// holds emuMu.
+func (h *Hub) screenBodyLocked() []byte {
 	if h.liveEmu == nil {
 		return nil
 	}
@@ -1136,27 +1187,16 @@ func (h *Hub) renderScreenLocked() []byte {
 			b.WriteString("\r\n")
 		}
 	}
-	// Restore the app's DEC private modes (bracketed paste, cursor keys, cursor
-	// visibility, mouse) in ascending order, so the viewer's xterm behaves like
-	// the host even though the ring wrapped past the sets. Never the alt-screen
-	// modes (handled by the prefix above) or 2048 (in-band resize, stripped on
-	// purpose by liveEmuQueryStripPattern). Before the CUP: xterm.js homes the
-	// cursor on ?6h and ?6l, and a RIS puts 6 in h.modes (WR-08). No DECSTBM
-	// is replayed, so the region is the full screen and the CUP stays absolute.
-	for _, m := range slices.Sorted(maps.Keys(h.modes)) {
-		switch m {
-		case 47, 1047, 1048, 1049, 2048, 2026:
-			// 2026 (synchronized output): the replay is a complete screen, so a
-			// join mid-update must not leave the viewer holding its rendering.
-			// 1048 is an action, not a state: replayed, ?1048l restores the
-			// saved cursor over the CUP above (WR-06 fuzz).
-			continue
-		}
+	// Autowrap is the one restore after the text: it decides how the replayed
+	// text lays out, and ?7l first would truncate history lines rendered
+	// before a host narrowing and break the soft-wrap joins. Toggling it moves
+	// no cursor in xterm.js or vt.
+	if aw, ok := h.modes[7]; ok {
 		set := byte('l')
-		if h.modes[m] {
+		if aw {
 			set = 'h'
 		}
-		fmt.Fprintf(&b, "\x1b[?%d%c", m, set)
+		fmt.Fprintf(&b, "\x1b[?7%c", set)
 	}
 	pos := h.liveEmu.CursorPosition()
 	fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
@@ -1312,7 +1352,8 @@ func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Repl
 		// Ring wrapped (raw is incomplete) or it holds bytes laid out for an
 		// older grid: prefer the emulator's complete screen, after the history
 		// that scrolled off it (SHAR-07, 05-08).
-		if screen := h.renderScreenLocked(); len(screen) > 0 {
+		if screen := h.screenBodyLocked(); len(screen) > 0 {
+			out := h.modeRestoresLocked() // before the history (IN-06, modeRestoresLocked)
 			if hist := h.history.Render(); hist != "" {
 				// The newest history line soft-wrapped onto the screen's first
 				// row (DEBT-02): join them like screen rows.
@@ -1328,9 +1369,9 @@ func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Repl
 					screenLine(h.liveEmu, 0).Render() != "" {
 					sep = ""
 				}
-				screen = append([]byte(hist+sep), screen...)
+				out += hist + sep
 			}
-			return r, screen, false
+			return r, append([]byte(out), screen...), false
 		}
 	}
 	// Ring intact at one grid (complete and byte-faithful), or the emulator has nothing to
