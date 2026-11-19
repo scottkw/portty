@@ -107,7 +107,8 @@ func (c *charState) scan(b []byte) {
 		case x == 'c' && c.esc && (c.vt.state == scanEsc || c.vt.state == scanStrEsc):
 			c.gl1 = false
 		}
-		c.esc = x == 0x1b
+		// IN-14: a C0 control runs in ESCAPE and stays there (CAN and SUB abort it).
+		c.esc = x == 0x1b || (c.esc && x < 0x20 && x != 0x18 && x != 0x1a)
 		c.vt.step(x)
 	}
 }

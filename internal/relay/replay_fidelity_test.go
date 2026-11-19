@@ -724,6 +724,11 @@ func TestCharState_Scan(t *testing.T) {
 		{"Q5 SO after an ESC-terminated DCS", []string{"\x1bP$q\x1b\x0e"}, true},
 		{"Q5 SI after an ESC-terminated OSC", []string{"\x0e\x1b]0;t\x1b\x0f"}, false},
 		{"SO after an ESC-terminated OSC across reads", []string{"\x1b]0;t\x1b", "\x0e"}, true},
+		// Iteration 3 IN-14 (R2): a C0 control keeps ESCAPE, so ESC SO c is still a RIS.
+		{"R2 ESC SO c after an ESC-terminated OSC", []string{"\x1b]0;t\x1b\x0ec"}, false},
+		{"R2 ESC SO c in ground", []string{"\x1b\x0ec"}, false},
+		{"ESC SO c across reads", []string{"\x1b\x0e", "c"}, false},
+		{"CAN after ESC aborts the RIS", []string{"\x1b\x0e\x18c"}, true},
 		// IN-03: xterm.js ends a truncated UTF-8 character at a non-continuation byte and runs the SO.
 		{"SO ending a truncated UTF-8 character", []string{"\xe2\x9d\x0e"}, true},
 		{"SO ending a truncated UTF-8 character across reads", []string{"\xf0\x9f", "\x0e"}, true},
