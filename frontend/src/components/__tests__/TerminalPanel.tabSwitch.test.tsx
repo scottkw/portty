@@ -135,7 +135,7 @@ class MockWS {
 }
 
 import { TerminalPanel } from '../TerminalPanel'
-import { takePeerSnapshot } from '../../lib/peerSnapshots'
+import { peerSnapshotKey, takePeerSnapshot } from '../../lib/peerSnapshots'
 
 const enc = new TextEncoder()
 const metaFrame = (m: object) => new Uint8Array([0x20, ...enc.encode(JSON.stringify(m))])
@@ -166,7 +166,7 @@ describe('TerminalPanel peer tab switch (HARD-05)', () => {
   afterEach(() => {
     try { act(() => root.unmount()) } catch { /* ignore */ }
     container.remove()
-    takePeerSnapshot('s1') // never leak a snapshot into the next case
+    takePeerSnapshot(peerSnapshotKey('', 's1')) // never leak a snapshot into the next case
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     vi.useRealTimers()

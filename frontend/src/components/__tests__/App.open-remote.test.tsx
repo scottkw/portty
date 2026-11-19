@@ -19,13 +19,14 @@ import { Sidebar } from '../Sidebar'
 import { peerView } from '../../lib/sidebarPeers'
 import { adaptRemoteSession } from '../../lib/remoteAdapter'
 import type { RemotePeerSessions } from '../../lib/remoteSession'
-import { mountApp, unmountApp, flush } from './appHarness'
+import { mountApp, unmountApp, flush, wailsEvents } from './appHarness'
+import { peerSnapshotKey, putPeerSnapshot, takePeerSnapshot } from '../../lib/peerSnapshots'
 
 // Mount count and the last beforeReconnect verdict, shared with the hoisted stub.
 const stub = vi.hoisted(() => ({ mounts: 0, verdict: undefined as unknown, throwFor: '' }))
 
 vi.mock('../WebShareSessionView', () => ({
-  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown>; onReconnectingChange?: (on: boolean) => void }) => {
+  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown>; onReconnectingChange?: (on: boolean) => void; snapshotHost?: string }) => {
     React.useEffect(() => { stub.mounts++ }, [])
     if (p.sessionId === stub.throwFor) throw new SyntaxError(`bad URL wss://x/ws?cap=${p.capToken}`)
     return React.createElement('div', {
@@ -36,6 +37,7 @@ vi.mock('../WebShareSessionView', () => ({
       'data-host': p.hostLabel ?? '',
       'data-remote': String(p.remote),
       'data-has-reconnect': String(p.beforeReconnect !== undefined),
+      'data-snapshot-host': p.snapshotHost ?? '',
     },
     React.createElement('button', { type: 'button', 'data-testid': 'fire-share-stopped', onClick: () => p.onShareStopped?.() }),
     React.createElement('button', { type: 'button', 'data-testid': 'fire-before-reconnect', onClick: () => { void p.beforeReconnect?.().then((v) => { stub.verdict = v }) } }),
@@ -184,6 +186,66 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
     expect(peerRow(c)).toBeUndefined()
     expect(c.textContent).toContain('Remote Session · office-air')
     expect(c.querySelector('[data-testid="web-session-view"]')).not.toBeNull()
+  })
+})
+
+// DEBT-04: a peer tab's snapshot is keyed by host plus session id, and every tab
+// removal drops it. The key the view saves under (snapshotHost) and the key App
+// drops must agree, for a MagicDNS peer and a hostname-only peer alike.
+describe('App — peer tab snapshots (DEBT-04)', () => {
+  const peerA: RemotePeerSessions = { hostname: 'Kens-MacBook-Air', dnsName: 'office-air-1.tail1234.ts.net', reachable: true, sessions: [{ id: 's1', name: 'Alpha', status: 'idle', url: '' }] }
+  const peerC: RemotePeerSessions = { hostname: 'studio-mac', reachable: true, sessions: [{ id: 's2', name: 'Charlie', status: 'idle', url: '' }] }
+  const connect = vi.fn((host: unknown, id: unknown) => ({ sessionId: id, name: '', host: '', url: `https://${host}:7444/sessions/${id}?cap=C`, errorCode: '' }))
+  const snap = { data: 'x', cols: 80, rows: 24, offset: 1 }
+  const keys = [peerSnapshotKey('office-air-1.tail1234.ts.net', 's1'), peerSnapshotKey('studio-mac', 's2'), peerSnapshotKey('other-mac', 's1')]
+
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks(); keys.forEach((k) => takePeerSnapshot(k)) })
+
+  const mount = () => mountApp({ ...baseImpl(connect), GetRemoteSessionsWithMeta: () => [peerA, peerC] })
+  const row = (c: HTMLElement, name: string) => Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find((b) => b.textContent === name)!
+  const viewHost = (c: HTMLElement) => c.querySelector('[data-testid="web-session-view"]')!.getAttribute('data-snapshot-host')
+  const closeButton = (c: HTMLElement, name: string) => c.querySelector<HTMLButtonElement>(`button[aria-label^="Close ${name} "]`)!
+
+  it('the view gets the MagicDNS name for a MagicDNS peer and the hostname for a hostname-only peer', async () => {
+    const c = await mount()
+    await click(row(c, 'Alpha'))
+    expect(viewHost(c)).toBe('office-air-1.tail1234.ts.net')
+    await click(row(c, 'Charlie'))
+    expect(viewHost(c)).toBe('studio-mac')
+  })
+
+  it('closing a MagicDNS peer\'s tab drops its entry and keeps another host\'s entry with the same id', async () => {
+    const c = await mount()
+    await click(row(c, 'Alpha'))
+    const saveKey = peerSnapshotKey(viewHost(c)!, 's1')
+    putPeerSnapshot(saveKey, snap)
+    putPeerSnapshot(peerSnapshotKey('other-mac', 's1'), snap)
+    await click(closeButton(c, 'Alpha'))
+    expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
+    expect(takePeerSnapshot(saveKey)).toBeUndefined()
+    expect(takePeerSnapshot(peerSnapshotKey('other-mac', 's1'))).toEqual(snap)
+  })
+
+  it('closing a hostname-only peer\'s inactive tab drops its entry', async () => {
+    const c = await mount()
+    await click(row(c, 'Charlie'))
+    const saveKey = peerSnapshotKey(viewHost(c)!, 's2')
+    await click(row(c, 'Alpha')) // Charlie's tab is now hidden, as when its snapshot is saved
+    putPeerSnapshot(saveKey, snap)
+    await click(closeButton(c, 'Charlie'))
+    expect(takePeerSnapshot(saveKey)).toBeUndefined()
+  })
+
+  // End Session… is offered on local tabs only (TabBar isLocal); Cmd+W is a peer tab's other removal path.
+  it('File > Close Tab (Cmd+W) on the active peer tab also drops its entry', async () => {
+    const c = await mount()
+    await click(row(c, 'Charlie'))
+    const saveKey = peerSnapshotKey(viewHost(c)!, 's2')
+    putPeerSnapshot(saveKey, snap)
+    await act(async () => { wailsEvents.get('menu:close-tab')!() })
+    await flush()
+    expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
+    expect(takePeerSnapshot(saveKey)).toBeUndefined()
   })
 })
 
