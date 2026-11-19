@@ -1,11 +1,11 @@
 ---
 phase: 07-hardening
-fixed_at: 2026-11-19T00:00:00Z
+fixed_at: 2026-11-19T06:00:00Z
 review_path: .planning/phases/07-hardening/07-REVIEW.md
-iteration: 1
-findings_in_scope: 12
-fixed: 7
-skipped: 5
+iteration: 2
+findings_in_scope: 6
+fixed: 5
+skipped: 1
 status: partial
 ---
 
@@ -142,3 +142,148 @@ The gate ran in the isolated worktree:
 _Fixed: 2026-11-19_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+# Iteration 2
+
+**Source review:** .planning/phases/07-hardening/07-REVIEW.md (iteration 2, f6b68df4)
+
+**Summary:**
+- Findings in scope: 6 (WR-05, WR-06, WR-07, the IN-04 remainder, IN-08, IN-09)
+- Fixed: 5 (WR-07, WR-06, WR-05, IN-04, IN-09)
+- Deferred: 1 (IN-08)
+
+Verification ran in the agent's isolated worktree (`.claude/worktrees/agent-aa44fd1bee676bdd9`, branch `worktree-agent-aa44fd1bee676bdd9`, fast-forwarded to `gsd/phase-07-hardening` at f6b68df4 first), not in the main checkout.
+
+## Fixed Issues
+
+### WR-07: the Go test suites reach the user's real tailscaled and probe every peer
+
+**Files modified:** `internal/tailnet/live.go` (new, not a test), `internal/tailnet/tailnet.go`, `internal/tailnet/sessions.go`, `internal/webserver/tailscale.go`, `internal/webserver/whois.go`, `internal/webserver/server.go`, `internal/daemon/share.go`, `internal/daemon/peer_client.go`, `internal/tailnet/tailnet_test.go`, `internal/webserver/tailscale_test.go`
+**Commit:** d663e738
+**Applied fix:** `tailnet.LiveAllowed()` is `!testing.Testing() || PORTTY_LIVE_TAILNET_TESTS=1`, and `tailnet.ErrLiveTailnetInTest` is the sentinel. Guarded choke points, each checked against every caller:
+- `DiscoverPeers` returns `nil, ErrLiveTailnetInTest`, which also covers `DiscoverAndProbe` and the daemon's default `discoverPeers`/`probePeers`.
+- `ProbePeer` returns false.
+- `FetchPeerSessionsMeta` returns `nil, MetaUnreachable`, which covers `FetchAllPeerSessionsMeta` (one unreachable group per peer).
+- `webserver.CheckHealth` returns the not-connected zero value, which covers `defaultShareHealth`, `cmdHealth` and `App.tailscaleCheck`.
+- `NewWebServer`'s default WhoIs client becomes `noLiveWhoIs` (every lookup fails, so `requireSameUser` refuses with 503).
+- `Start`'s `GetCertificate` hook fails when no `TLSConfig` is set.
+- `defaultWarmCert` returns the sentinel.
+
+The grep found one path the review did not list: the daemon's default per-peer client (`API.peerClient`, used by `/peers/connect` and the remote WS proxy). It now refuses to dial unless `SetPeerClientForTest` set a client. There are no other `local.Client` or `tsnet` uses outside tests, and the remaining dialers (`cmd_attach.go`, `attach/loop.go`, `daemon/socket.go`, `ipc.go`) reach the local daemon only. Seams still bypass the guard: `discoverPeers(ctx, fakeStatus)`, `probePeer(ctx, peer, client)`, `checkHealth(...)`, `SetWhoIsClientForTest`, `SetShareSeamsForTest`, `SetPeerSeamsForTest` and `SetPeerClientForTest`. In the real binary `testing.Testing()` is false, so production behaviour does not change.
+
+Tests:
+- `TestLiveTailnetGuard` replaces `TestDiscoverPeers_Public`, which accepted either outcome. It asserts the sentinel from `DiscoverPeers` and `DiscoverAndProbe`, false from `ProbePeer`, and unreachable from both meta fetches, with a counting listener that sees 0 connections.
+- `TestLiveTailnetGuard_Webserver` covers `CheckHealth` and the default WhoIs client.
+- `TestProbePeer_NoIPFallbackWithoutIPs` now dials through a failing transport, because it made a real DNS lookup of `unresolvable.example.invalid` that MagicDNS hands to tailscaled. It still tests the same thing (no IP fallback without IPs).
+- The listed tests (`cmd_cli_test.go` `TestCmdList_*` lines 48/73/89/110/269/310, `app_test.go` `TestGetRemoteSessionsWithMeta_ReachableField`, `TestProbePeer_Public`, `TestFetchAllPeerSessionsMeta_IncludesUnreachablePeers`, `TestFetchPeerSessionsMeta_IPFallback`) pass unchanged. They already accepted "error or empty".
+
+**Proof (no tailscaled or peer access):**
+- `GODEBUG=netdns=go+2` (the pure-Go resolver with per-lookup tracing) on `./internal/tailnet` plus the root `TestCmdList|TestGetRemoteSessionsWithMeta|TestCmdHealth` tests: all pass with 0 `hostLookupOrder` lines. Before the transport change, the same run printed one lookup (`unresolvable.example.invalid`).
+- `./internal/webserver ./internal/daemon` under the same tracing: both ok, 0 lookups.
+- The full gate `go test -race -short ./...` under the same tracing: 12/12 packages ok, 0 lookups in the whole log.
+- tailscaled's LocalAPI goes over a socket, not DNS. `TestLiveTailnetGuard` proves every LocalAPI entry point returns the sentinel before it builds a `local.Client`.
+- The root package now takes 8.9 s under `-race`, down from 31.6 s in iteration 1, because it no longer waits on live peer probes.
+
+### WR-06: the re-seed's saved-cursor block drops the pending wrap, saves the wrong pen and ignores origin mode
+
+**Files modified:** `internal/relay/hub.go`, `internal/relay/altscreen_heap_test.go`
+**Commit:** 915eb31a
+**Applied fix:** the old emulator is discarded, so the rebuild probes it for the state vt does not expose:
+- **Pending wrap:** after CAN, one probe print. Only a pending wrap wraps it, which puts it on column 1 (column 2 when the CAN flushed a cut-off UTF-8 character as a replacement cell).
+- **Current pen and G0:** read from `q` printed at the top left.
+- **Saved cursor and its pen:** `ESC 8`, then `q`. This replaces the hub-side `savedCursor` tracking: the field, the ESC 7 / CSI s / ?1048 / AltScreen hooks and their resets are deleted.
+
+The new emulator then gets, in order:
+1. The seed.
+2. The saved pen.
+3. `CUP saved` + `ESC 7`.
+4. `CUP pos`.
+
+All of these sit inside `?6l` ... `?6h` when DECOM is set, so the absolute CUPs land where they should.
+
+The pending wrap is re-created by setting it at the alt screen's edge and switching back (`?1047h CUP x ?1047l`). vt keeps one wrap flag for both screens, and an app's exit or a DECRC can leave it set on any column, so this covers both. The current pen and charset come last. The block runs only when the region is set, the saved cursor differs from a fresh one (home, default pen), or the seed's pending-wrap guess was wrong.
+
+The fuzz test also found three bugs in the rebuild:
+- `CellAt` returns a pointer into the buffer, and the saved-pen probe overwrote the cell the current-pen probe had read. Cells are now copied.
+- `renderScreenLocked` replayed `?1048` as a mode. `?1048l` restores the cursor over the replay's CUP. This affected the viewer's rendered replays too, not only the rebuild. 1048 is now excluded like 1047/1049.
+- The cell re-print lost its pen. This was fixed by the alt-screen wrap approach.
+
+**Fuzz test:** `TestAltScreenExit_RebuildFuzz` runs 600 fixed-seed (PCG 7, 2026) random streams at 20x6. Each stream is shell output with SGR, ESC 7/8, CSI s/u, DECSTBM, DECOM, CUP, line drawing, UTF-8, ?25/?7, OSC, DCS, EL and ED, around a ?1049, ?1047 or ?1048+?1047 visit, cut into random 1-24-byte reads. It compares `Render()` and the cursor read for read against an emulator fed every byte.
+- Mismatches: 229 of 600 before the fix, 0 of 600 after.
+- A wider scratch run (18,000 streams over 6 seeds at 20x6, 40x10, 12x4 and 80x24, not committed) left 2.
+- Both of those are an explained residual, now a `shortcut:` comment: a pending wrap on column 0 whose wrap scrolls the region looks the same to the probe as no wrap. It only arises from vt's DECRC/alt-exit quirk (xterm.js keeps the flag per buffer, so the viewer never sees it).
+- 7 new `TestAltScreenExit_RebuildMatchesReference` subtests (saved pen, origin mode, three pending-wrap cases, the last column without a wrap before a split UTF-8 character, `?1048`). 5 of them fail on the pre-fix code.
+
+The remaining documented losses are tab stops, G1-G3/SO, an OSC 8 link (IN-08), and the saved cursor's link and visibility.
+
+### WR-05: the probe is swallowed after a DCS introducer or mid-UTF-8
+
+**Files modified:** `internal/relay/hub.go`, `internal/relay/altscreen_heap_test.go`
+**Commit:** c089d80b
+**Applied fix:** the probe starts with CAN (`"\x18\x1b[1;1H"`, kept in WR-06's restructure as `"\x18x"` followed by the CUP).
+
+Seven subtests cover the tail states: ESC, ESC P, ESC P +, C1 DCS (0x90), APC, C1 CSI (0x9b) and line drawing with a mid-UTF-8 tail, all under a bold red pen. ESC P and 0x90 failed before the fix.
+
+One finding along the way: for a cut-off UTF-8 character, vt's CAN does not abort silently. It prints the partial bytes as one replacement cell. The pen probe is unaffected, and WR-06's wrap probe accounts for the extra cell.
+
+### IN-04 (remainder): CSI 11/15/20 t, and queries split across ring frames
+
+**Files modified:** `internal/relay/hub.go`, `internal/relay/querystrip_test.go`
+**Commit:** 0e6eb34d
+**Applied fix, part (b):** the XTWINOPS pattern is now `(?:1[134-689]|2[01])`, which adds 11 t (window state), 15 t (screen pixels) and 20 t (icon label echo-back). New subtests: 3 strip cases, plus keep cases for `CSI 10;0 t` and `CSI 1 t`.
+
+**Applied fix, part (a):** first I checked the claim at `hub.go:1087-1088`, and it holds.
+- `relayClient.ts` `handleFrame` sets `offsetValid = false` at the replay meta, counts output frames only while `offsetValid`, and sets the offset from the offset meta.
+- `internal/attach/loop.go` does the same (lines 314-339).
+- So no client counts replay bytes.
+
+Join's raw paths now use `stripRingQueries`:
+- It matches the strip pattern with the ring's 0x01 frame headers skipped.
+- A match also drops the headers inside it.
+- Every other byte stays, headers included.
+
+A query-free replay is therefore still exactly the raw ring, and the 11 tests that pin raw replay bytes (the #109 byte-fidelity tests among them) pass unchanged.
+
+I tried and dropped a simpler version that removed every 0x01 from raw replays: it broke those 11 pinned expectations. `TestJoin_StripsQuerySplitAcrossReads` covers DSR, OSC 11 and CSI 21 t, each split by a read boundary, in full and delta replays.
+
+### IN-09: the ground tracker is not reset on the in-band reset
+
+**Files modified:** `frontend/src/components/TerminalPanel.tsx`, `frontend/src/components/__tests__/TerminalPanel.tabSwitch.test.tsx`, `frontend/src/components/__tests__/TerminalPanel.hot-swap.test.tsx`
+**Commits:** 74183d9e, 23bbb9b4
+**Applied fix:** `onReset: () => { peerWatch?.feed(new Uint8Array([0x18])); resetForFullReplay(term) }`. CAN puts the tracker back to ground, in order with the bytes fed after it.
+
+I did not use the reviewer's other suggestion, a reset inside the RIS hook, because it would race. xterm parses the queued RIS after the replay bytes have already been fed to the tracker, so the hook could report ground mid-sequence.
+
+New tabSwitch case: a socket drops inside an OSC, a plain-text full replay follows, and the tab still snapshots and redials with `resume=200`. It fails on the pre-fix code.
+
+The hot-swap source gate pins the `onReset` line, so its regex was updated. Its invariant is unchanged: one `resetForFullReplay` and no `.reset()`.
+
+## Skipped Issues
+
+### IN-08: the charset probe misreads SO-shifted line drawing, and an open OSC 8 link is dropped
+
+**File:** `internal/relay/hub.go` (rebuildAfterAltExitLocked)
+**Reason:** deferred, because neither half is trivial.
+- SO needs three more probes (current GL, G0 after SI, G1 after SO) to decide between `ESC(0`, `ESC)0` and SO, plus SO/SI in the fuzz generator.
+- The link needs the saved and current `uv.Link` re-opened in the right order around `ESC 7`, with its own reference cases.
+
+Both are rare under `TERM=xterm-256color`, and both are already listed in the rebuild's `shortcut:` comment.
+
+**Original issue:** with GL = G1 the rebuild designates G0 instead, and an open hyperlink is not re-opened.
+
+## Gate (iteration 2)
+
+The gate ran in the isolated worktree:
+- `go build ./... && go vet ./...`: clean
+- `GODEBUG=netdns=go+2 go test -race -short ./...`: all 12 packages ok on the first run (root 8.9 s, daemon 37.7 s, relay 113.2 s, webserver 30.6 s, tailnet 6.6 s), 0 DNS lookups in the log
+- `pnpm vitest run`: 90 files, 1233 tests passed. A first run, made while the Go race suite was running, failed `relayClient.test.ts` "a socket open 30 s or more restarts the schedule" (a timing flake; it passed on rerun) and the hot-swap source gate (fixed in 23bbb9b4).
+- `pnpm exec tsc --noEmit`: clean
+- `bash tests/check-traceability-paths.sh`: OK, 147 paths
+- `bash tests/check-brand.sh`: clean
+- TESTING.md: commit 7d4f6541 (Section 2 note, no new test files, so the counts are unchanged; Section 4 rows for HARD-01, HARD-03, HARD-05 and HARD-06)
+
+---
+
+_Fixed: 2026-11-19_
+_Fixer: Claude (gsd-code-fixer)_
+_Iteration: 2_
