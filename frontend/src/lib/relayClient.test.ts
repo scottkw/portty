@@ -77,9 +77,12 @@ describe('RelayClient host path sends a large paste as ordered frames (HARD-02)'
     const text = 'x'.repeat(99_999) + 'y'
     client.sendInput(text)
     const sent = WS.last.send.mock.calls.map((c) => c[0] as Uint8Array)
-    expect(sent).toHaveLength(4)
-    expect(sent.every((f) => f[0] === MSG_INPUT && f.length <= 32768)).toBe(true)
-    expect(new TextDecoder().decode(concat(sent))).toBe(text)
+    // DEBT-05: the 4 input frames in order, then exactly one MSG_PING (the paste's ack).
+    expect(sent).toHaveLength(5)
+    const inputs = sent.slice(0, 4)
+    expect(inputs.every((f) => f[0] === MSG_INPUT && f.length <= 32768)).toBe(true)
+    expect(new TextDecoder().decode(concat(inputs))).toBe(text)
+    expect(Array.from(sent[4])).toEqual([MSG_PING])
     client.close()
   })
 })
@@ -1090,5 +1093,175 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
       expect(ws(0).url).toBe('ws://127.0.0.1:1234/api/relay/remote/s/ws')
       expect(c.resumePoint()).toBeNull()
     })
+  })
+})
+
+// DEBT-05 (IN-05): a paste split into frames and cut short by a socket drop says so.
+// bufferedAmount keeps the bytes a closed socket never sent (WHATWG), so the client
+// counts the whole paste frames that left; a pong to the ping sent right after the
+// paste proves the host read them all. Nothing is queued or resent.
+describe('partial paste on a socket drop (DEBT-05)', () => {
+  class WS {
+    static OPEN = 1
+    static instances: WS[] = []
+    binaryType = ''
+    readyState: number
+    bufferedAmount = 0
+    onopen: (() => void) | null = null
+    onmessage: ((e: { data: ArrayBuffer }) => void) | null = null
+    onclose: ((e: { code: number; reason: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    send = vi.fn()
+    close = vi.fn()
+    constructor(public url: string) { this.readyState = WS.openAtOnce ? 1 : 0; WS.instances.push(this) }
+    static openAtOnce = true
+  }
+  const enc = new TextEncoder()
+  const PASTE = 'x'.repeat(100_000) // frames of 32767, 32767, 32767 and 1699 payload bytes
+  const ws = (i: number) => WS.instances[i]
+  const frames = (i: number) => ws(i).send.mock.calls.map((c) => c[0] as Uint8Array)
+  const msg = (i: number, f: Uint8Array) => ws(i).onmessage?.({ data: f.buffer as ArrayBuffer })
+  const pong = () => new Uint8Array([MSG_PONG])
+  const drop = (i: number, bufferedAmount: number) => { ws(i).bufferedAmount = bufferedAmount; ws(i).readyState = 3; ws(i).onclose?.({ code: 1006, reason: '' }) }
+  let onPasteInterrupted: ReturnType<typeof vi.fn>
+  let client: RelayClient | null
+
+  const host = () => {
+    client = new RelayClient(34115, 's', { onOutput: vi.fn(), onPasteInterrupted } as RelayClientCallbacks)
+    return client
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    WS.instances = []
+    WS.openAtOnce = true
+    vi.stubGlobal('WebSocket', WS)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+    onPasteInterrupted = vi.fn()
+    client = null
+  })
+  afterEach(() => {
+    client?.close()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (document as any).visibilityState
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('host path: 40,000 bytes still buffered at the drop leaves only frame 1 whole: (32767, 100000)', () => {
+    host().sendInput(PASTE)
+    expect(frames(0).slice(0, 4).map((f) => f.length)).toEqual([32768, 32768, 32768, 1700])
+    drop(0, 40_000)
+    expect(onPasteInterrupted).toHaveBeenCalledTimes(1)
+    expect(onPasteInterrupted).toHaveBeenCalledWith({ sentBytes: 32767, totalBytes: 100_000 })
+  })
+
+  it('the split paste is followed by exactly one MSG_PING (the ack)', () => {
+    host().sendInput(PASTE)
+    const sent = frames(0)
+    expect(sent.map((f) => f[0])).toEqual([MSG_INPUT, MSG_INPUT, MSG_INPUT, MSG_INPUT, MSG_PING])
+  })
+
+  it('nothing buffered and the ack pong received: no notice', () => {
+    host().sendInput(PASTE)
+    msg(0, pong())
+    drop(0, 0)
+    expect(onPasteInterrupted).not.toHaveBeenCalled()
+  })
+
+  it('nothing buffered but no ack pong: one notice with sentBytes null', () => {
+    host().sendInput(PASTE)
+    drop(0, 0)
+    expect(onPasteInterrupted).toHaveBeenCalledTimes(1)
+    expect(onPasteInterrupted).toHaveBeenCalledWith({ sentBytes: null, totalBytes: 100_000 })
+  })
+
+  it('a pong to a ping sent before the paste is not the ack', async () => {
+    host()
+    ws(0).onopen?.()
+    await vi.advanceTimersByTimeAsync(RECONNECT.pingMs) // the keep-alive ping goes out
+    expect(frames(0).filter((f) => f[0] === MSG_PING)).toHaveLength(1)
+    client!.sendInput(PASTE)
+    msg(0, pong()) // answers the keep-alive, not the paste's ping
+    drop(0, 0)
+    expect(onPasteInterrupted).toHaveBeenCalledWith({ sentBytes: null, totalBytes: 100_000 })
+  })
+
+  it('keystrokes queued after the paste do not count against it: 20 buffered bytes and the ack pong, no notice', () => {
+    host().sendInput(PASTE)
+    for (let i = 0; i < 10; i++) client!.sendInput('k')
+    msg(0, pong())
+    drop(0, 20)
+    expect(onPasteInterrupted).not.toHaveBeenCalled()
+  })
+
+  it('keystrokes buffered after an unacknowledged paste: unconfirmed (null), never a partial count', () => {
+    host().sendInput(PASTE)
+    for (let i = 0; i < 10; i++) client!.sendInput('k')
+    drop(0, 20)
+    expect(onPasteInterrupted).toHaveBeenCalledWith({ sentBytes: null, totalBytes: 100_000 })
+  })
+
+  it('two split pastes back to back, part of the second buffered: one notice covering both', () => {
+    host().sendInput(PASTE)
+    client!.sendInput(PASTE)
+    drop(0, 40_000)
+    expect(onPasteInterrupted).toHaveBeenCalledTimes(1)
+    // The first paste, its ack ping, then frame 1 of the second left whole.
+    expect(onPasteInterrupted).toHaveBeenCalledWith({ sentBytes: 100_000 + 32_767, totalBytes: 200_000 })
+  })
+
+  describe('reconnect mode', () => {
+    const grid = new Uint8Array([0x02, 0, 80, 0, 24])
+    const meta = (m: object) => new Uint8Array([0x20, ...enc.encode(JSON.stringify(m))])
+    const open = (i: number) => { ws(i).readyState = 1; ws(i).onopen?.(); msg(i, grid); msg(i, meta({ replay: 'full' })); msg(i, meta({ offset: 0 })) }
+    const guest = () => {
+      WS.openAtOnce = false
+      client = new RelayClient(1234, 's', { onOutput: vi.fn(), onPasteInterrupted } as RelayClientCallbacks, { remote: true, reconnect: {} })
+      return client
+    }
+
+    it('a drop mid-paste: one notice, and after the redial the new socket carries no input frame', async () => {
+      guest()
+      open(0)
+      client!.sendInput(PASTE)
+      drop(0, 40_000)
+      expect(onPasteInterrupted).toHaveBeenCalledTimes(1)
+      expect(onPasteInterrupted).toHaveBeenCalledWith({ sentBytes: 32767, totalBytes: 100_000 })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(WS.instances).toHaveLength(2)
+      open(1)
+      await vi.advanceTimersByTimeAsync(RECONNECT.pingMs)
+      expect(frames(1).some((f) => f[0] === MSG_INPUT)).toBe(false)
+      expect(onPasteInterrupted).toHaveBeenCalledTimes(1)
+    })
+
+    it('the watchdog abandoning a stale socket with paste bytes buffered: one notice', async () => {
+      guest()
+      open(0)
+      msg(0, pong()) // arms the watchdog (no ping yet, so it acks nothing)
+      client!.sendInput(PASTE)
+      ws(0).bufferedAmount = 40_000
+      await vi.advanceTimersByTimeAsync(RECONNECT.deadMs + RECONNECT.probeGraceMs + 2000)
+      expect(ws(0).close).toHaveBeenCalled()
+      expect(onPasteInterrupted).toHaveBeenCalledTimes(1)
+      expect(onPasteInterrupted).toHaveBeenCalledWith({ sentBytes: 32767, totalBytes: 100_000 })
+    })
+  })
+
+  it('a user close() mid-paste: no notice', () => {
+    host().sendInput(PASTE)
+    client!.close()
+    drop(0, 40_000)
+    expect(onPasteInterrupted).not.toHaveBeenCalled()
+  })
+
+  it('a single-frame input then a drop: no notice and no ack ping', () => {
+    host().sendInput('ls\r')
+    expect(frames(0).map((f) => f[0])).toEqual([MSG_INPUT])
+    drop(0, 4)
+    expect(onPasteInterrupted).not.toHaveBeenCalled()
   })
 })

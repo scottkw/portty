@@ -20,6 +20,7 @@ const hoisted = vi.hoisted(() => ({
       options: Record<string, unknown>
       reset: { mock: { calls: unknown[]; invocationCallOrder: number[] } }
       write: { mock: { calls: unknown[][]; invocationCallOrder: number[] } }
+      onData: { mock: { calls: unknown[][] } }
     } | null,
   },
 }))
@@ -127,6 +128,7 @@ class MockWS {
   onmessage: ((e: { data: ArrayBuffer }) => void) | null = null
   onclose: ((e: { code: number; reason: string }) => void) | null = null
   onerror: (() => void) | null = null
+  bufferedAmount = 0
   send = vi.fn()
   close = vi.fn()
   constructor(public url: string) {
@@ -240,6 +242,37 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     const risIdx = calls.findIndex((c) => c[0] === RIS)
     expect(risIdx).toBe(calls.length - 2)
     expect(new TextDecoder().decode(calls[calls.length - 1][0] as Uint8Array)).toBe('again')
+  })
+
+  // DEBT-05: a paste cut short by the drop shows a dismissible notice with client-computed numbers.
+  const paste = (text: string) => act(() => { (hoisted.state.term!.onData.mock.calls[0][0] as (d: string) => void)(text) })
+  function openAt100() {
+    joined(ws(0))
+    send(ws(0), metaFrame({ replay: 'full' }))
+    send(ws(0), metaFrame({ offset: 100 }))
+  }
+
+  it('a drop with paste bytes buffered shows "Paste interrupted: 31 of 98 KB sent", and Dismiss removes it', async () => {
+    mount()
+    openAt100()
+    paste('x'.repeat(100_000))
+    ws(0).bufferedAmount = 40_000
+    drop(ws(0))
+    expect(container.textContent).toContain('Paste interrupted: 31 of 98 KB sent')
+    await advance(3000)
+    expect(container.textContent).toContain(BANNER) // shows together with the reconnecting banner
+    const notice = Array.from(container.querySelectorAll('[role="status"]')).find((n) => n.textContent?.includes('Paste interrupted'))!
+    await act(async () => { notice.querySelector<HTMLButtonElement>('button[aria-label="Dismiss"]')!.click() })
+    expect(container.textContent).not.toContain('Paste interrupted')
+    expect(container.textContent).toContain(BANNER)
+  })
+
+  it('a drop with nothing buffered and no ack pong shows "Paste may have been cut short (98 KB)"', () => {
+    mount()
+    openAt100()
+    paste('x'.repeat(100_000))
+    drop(ws(0))
+    expect(container.textContent).toContain('Paste may have been cut short (98 KB)')
   })
 
   it('UI polish: onReconnectingChange follows the banner (true at 3 s, false on reopen), and false on unmount', async () => {
