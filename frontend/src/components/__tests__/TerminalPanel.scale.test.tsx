@@ -222,7 +222,8 @@ describe('Phase 157 TerminalPanel — source gates (VIEW-04/05)', () => {
 
   it('guest onResize goes through applyHostGrid with recomputeScale as its follow-up (05-12)', () => {
     expect(src).toContain("from '../lib/guestTerminal'")
-    expect(src).toContain('onResize: isGuest\n        ? (cols, rows) => applyHostGrid(term, cols, rows, recomputeScale)')
+    // Whitespace-tolerant: DEBT-04 moved the client into start(), one level deeper.
+    expect(src).toMatch(/onResize: isGuest\n\s+\? \(cols, rows\) => applyHostGrid\(term, cols, rows, recomputeScale\)/)
   })
 
   it('applyHostGrid clamps and resizes inside a write callback (guest honor, stream order)', () => {

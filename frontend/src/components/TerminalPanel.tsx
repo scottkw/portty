@@ -13,7 +13,7 @@ import { ProgressAddon, type IProgressState } from '@xterm/addon-progress'
 import { RelayClient, RECONNECT, type ReconnectVerdict } from '../lib/relayClient'
 import { computeGuestViewport, DEFAULT_GUEST_MIN_SCALE } from '../lib/terminalScale'
 import { applyHostGrid, resetForFullReplay } from '../lib/guestTerminal'
-import { peerSnapshotGeneration, peerSnapshotKey, putPeerSnapshot, takePeerSnapshot, watchPeerTerm } from '../lib/peerSnapshots'
+import { PEER_FLUSH_TIMEOUT_MS, awaitPeerSave, beginPeerSave, peerSnapshotGeneration, peerSnapshotKey, putPeerSnapshot, takePeerSnapshot, watchPeerTerm } from '../lib/peerSnapshots'
 import { isSoftwareWebGL } from '../lib/webglProbe'
 import { isXtermFocused } from '../lib/isXtermFocused'
 import { FindBar, type FindBarSearchOptions } from './FindBar/FindBar'
@@ -413,91 +413,106 @@ export function TerminalPanel({
     const peerWatch = snapSerializer ? watchPeerTerm(term) : null // WR-01: before the snapshot write
     const snapKey = peerSnapshotKey(snapshotHost ?? '', sessionId)
     const snapGeneration = peerSnapshotGeneration(snapKey)
-    const snap = snapSerializer ? takePeerSnapshot(snapKey) : undefined
-    if (snap) {
-      applyHostGrid(term, snap.cols, snap.rows, recomputeScale)
-      term.write(snap.data)
-    }
 
-    // Connect relay client — one per terminal (TERM-01 independent sessions).
-    // HOST path: onOpen sends current terminal dims to the PTY (critical —
-    // fitTerminal runs before WS connects so the fit resize event is dropped).
-    // GUEST path: server pushes 0x02 on join (VIEW-03); guest never drives the
-    // grid, so onOpen does not send dims. onResize honors the server-pushed grid.
     // SHAR-07: the reconnecting banner waits RECONNECT.bannerDelayMs so a blip stays silent.
     let bannerTimer: ReturnType<typeof setTimeout> | null = null
     const hideReconnecting = () => {
       if (bannerTimer !== null) { clearTimeout(bannerTimer); bannerTimer = null }
       setReconnecting(false)
     }
-    const client = new RelayClient(relayPort, sessionId, {
-      onOutput: (data) => { peerWatch?.feed(data); term.write(data) },
-      onOpen: isGuest
-        ? undefined
-        : () => { client.sendResize(term.cols, term.rows) },
-      // Phase 175-06 (BUG-02 / #125): show the end banner on the guest path
-      // only — the host is the owner and does not need a "session ended"
-      // notice about its own session. Guests reconnect after a drop (SHAR-07,
-      // Phase 5), so this fires only for a final close; host-path tabs never
-      // reconnect (a local relay drop means the daemon and session died).
-      onClose: (code, reason) => {
-        console.debug(`[RelayClient] disconnected session=${sessionId}`, code, reason)
-        if (!isGuest) return
-        // Portty 04-06: the view keeps its scrollback but takes no more input.
-        term.options.disableStdin = true
-        const shareStopped = reason === CLOSE_REASON_SHARE_STOPPED
-        setSessionEnded({ ended: true, reason, shareStopped })
-        if (shareStopped) onShareStoppedRef.current?.()
-      },
-      // VIEW-04/05 (Phase 157): guest honors server-pushed 0x02 → term.resize +
-      // scale recompute. 05-12: applyHostGrid queues the resize behind output
-      // already written, so old-width bytes parse at the old width. Pitfall 5:
-      // it resizes BEFORE calling recomputeScale, so scale math reads the new
-      // term.cols/rows. Clamp to ≥1 (T-157-03 / xterm guard) lives in the helper.
-      onResize: isGuest
-        ? (cols, rows) => applyHostGrid(term, cols, rows, recomputeScale)
-        : undefined,
-      // 05-12: an in-band reset, so output still queued is not drawn after it.
-      // IN-09: the RIS goes through term.write, not feed, so re-sync the ground
-      // tracker too (CAN aborts any sequence a dropped socket left open).
-      onReset: () => { peerWatch?.feed(new Uint8Array([0x18])); resetForFullReplay(term) },
-      // SHAR-07: while not open, stdin is disabled and RelayClient drops input;
-      // keystrokes are never queued into the shell (T-05-14).
-      onStateChange: (state) => {
-        if (state === 'reconnecting') {
+
+    // DEBT-04 IN-03: a quick switch back can land while the hidden panel's save is
+    // still in flight; wait for it (capped) so the restore gets a delta, not a full
+    // replay. start() runs at once when nothing is pending.
+    let live: { client: RelayClient; disposeData: IDisposable; disposeResize: IDisposable } | null = null
+    let cancelled = false
+    const start = () => {
+      if (cancelled) return
+      const snap = snapSerializer ? takePeerSnapshot(snapKey) : undefined
+      if (snap) {
+        applyHostGrid(term, snap.cols, snap.rows, recomputeScale)
+        term.write(snap.data)
+      }
+
+      // Connect relay client — one per terminal (TERM-01 independent sessions).
+      // HOST path: onOpen sends current terminal dims to the PTY (critical —
+      // fitTerminal runs before WS connects so the fit resize event is dropped).
+      // GUEST path: server pushes 0x02 on join (VIEW-03); guest never drives the
+      // grid, so onOpen does not send dims. onResize honors the server-pushed grid.
+      const client = new RelayClient(relayPort, sessionId, {
+        onOutput: (data) => { peerWatch?.feed(data); term.write(data) },
+        onOpen: isGuest
+          ? undefined
+          : () => { client.sendResize(term.cols, term.rows) },
+        // Phase 175-06 (BUG-02 / #125): show the end banner on the guest path
+        // only — the host is the owner and does not need a "session ended"
+        // notice about its own session. Guests reconnect after a drop (SHAR-07,
+        // Phase 5), so this fires only for a final close; host-path tabs never
+        // reconnect (a local relay drop means the daemon and session died).
+        onClose: (code, reason) => {
+          console.debug(`[RelayClient] disconnected session=${sessionId}`, code, reason)
+          if (!isGuest) return
+          // Portty 04-06: the view keeps its scrollback but takes no more input.
           term.options.disableStdin = true
+          const shareStopped = reason === CLOSE_REASON_SHARE_STOPPED
+          setSessionEnded({ ended: true, reason, shareStopped })
+          if (shareStopped) onShareStoppedRef.current?.()
+        },
+        // VIEW-04/05 (Phase 157): guest honors server-pushed 0x02 → term.resize +
+        // scale recompute. 05-12: applyHostGrid queues the resize behind output
+        // already written, so old-width bytes parse at the old width. Pitfall 5:
+        // it resizes BEFORE calling recomputeScale, so scale math reads the new
+        // term.cols/rows. Clamp to ≥1 (T-157-03 / xterm guard) lives in the helper.
+        onResize: isGuest
+          ? (cols, rows) => applyHostGrid(term, cols, rows, recomputeScale)
+          : undefined,
+        // 05-12: an in-band reset, so output still queued is not drawn after it.
+        // IN-09: the RIS goes through term.write, not feed, so re-sync the ground
+        // tracker too (CAN aborts any sequence a dropped socket left open).
+        onReset: () => { peerWatch?.feed(new Uint8Array([0x18])); resetForFullReplay(term) },
+        // SHAR-07: while not open, stdin is disabled and RelayClient drops input;
+        // keystrokes are never queued into the shell (T-05-14).
+        onStateChange: (state) => {
+          if (state === 'reconnecting') {
+            term.options.disableStdin = true
+            hideReconnecting()
+            // RECONNECT is read here only: other TerminalPanel tests mock relayClient without it.
+            bannerTimer = setTimeout(() => { bannerTimer = null; setReconnecting(true) }, RECONNECT.bannerDelayMs)
+            return
+          }
           hideReconnecting()
-          // RECONNECT is read here only: other TerminalPanel tests mock relayClient without it.
-          bannerTimer = setTimeout(() => { bannerTimer = null; setReconnecting(true) }, RECONNECT.bannerDelayMs)
-          return
-        }
-        hideReconnecting()
-        if (state === 'open') term.options.disableStdin = false
-      },
-    }, {
-      remote,
-      wsURL,
-      reconnect: isGuest
-        ? { beforeReconnect: () => beforeReconnectRef.current?.() ?? Promise.resolve({ kind: 'ok' }) }
-        : undefined,
-      resume: snap?.offset,
-    })
-    clientRef.current = client
+          if (state === 'open') term.options.disableStdin = false
+        },
+      }, {
+        remote,
+        wsURL,
+        reconnect: isGuest
+          ? { beforeReconnect: () => beforeReconnectRef.current?.() ?? Promise.resolve({ kind: 'ok' }) }
+          : undefined,
+        resume: snap?.offset,
+      })
+      clientRef.current = client
 
-    // Wire terminal input to relay (TERM-05: paste support via terminal.onData).
-    const disposeData = term.onData((data) => client.sendInput(data))
+      // Wire terminal input to relay (TERM-05: paste support via terminal.onData).
+      const disposeData = term.onData((data) => client.sendInput(data))
 
-    // Wire terminal resize to relay — HOST only.
-    // GUEST must NOT send 0x11 (D-03: guests never drive PTY resize).
-    const disposeResize = isGuest
-      ? { dispose: () => {} }
-      : term.onResize(({ cols, rows }) => { client.sendResize(cols, rows) })
+      // Wire terminal resize to relay — HOST only.
+      // GUEST must NOT send 0x11 (D-03: guests never drive PTY resize).
+      const disposeResize = isGuest
+        ? { dispose: () => {} }
+        : term.onResize(({ cols, rows }) => { client.sendResize(cols, rows) })
+      live = { client, disposeData, disposeResize }
+    }
+    const pendingSave = snapSerializer ? awaitPeerSave(snapKey) : null
+    if (pendingSave) void pendingSave.then(start)
+    else start()
 
     return () => {
-      disposeData.dispose()
-      disposeResize.dispose()
-      const resumePoint = snapSerializer ? client.resumePoint() : null // read before close
-      client.close()
+      cancelled = true // start() may not have run: no client, nothing to save
+      live?.disposeData.dispose()
+      live?.disposeResize.dispose()
+      const resumePoint = snapSerializer && live ? live.client.resumePoint() : null // read before close
+      live?.client.close()
       if (bannerTimer !== null) clearTimeout(bannerTimer)
       // Phase 93: dispose hot-swap addons before disposing the terminal
       // itself to avoid orphaned references. dispose() on the addon detaches
@@ -566,17 +581,27 @@ export function TerminalPanel({
       }
       if (snapSerializer && resumePoint !== null) {
         // xterm parses writes asynchronously: serialize only once received output is
-        // in the buffer, so the snapshot never lags its offset.
-        term.write('', () => {
+        // in the buffer, so the snapshot never lags its offset. W2: if the callback
+        // never comes, the timeout still disposes the terminal and stores nothing
+        // (the buffer may lag the offset). A remount waits on settleSave (IN-03).
+        const settleSave = beginPeerSave(snapKey)
+        let finished = false
+        const finish = (save: boolean) => {
+          if (finished) return
+          finished = true
+          clearTimeout(flushTimer)
           // WR-01: no snapshot when the delta would land in a torn or unrepresentable state.
-          const extra = peerWatch?.suffix() ?? null
+          const extra = save ? (peerWatch?.suffix() ?? null) : null
           if (extra !== null) {
             putPeerSnapshot(snapKey, { data: snapSerializer.serialize() + extra, cols: term.cols, rows: term.rows, offset: resumePoint }, snapGeneration)
           }
           peerWatch?.dispose()
           snapSerializer.dispose()
           term.dispose()
-        })
+          settleSave()
+        }
+        const flushTimer = setTimeout(() => finish(false), PEER_FLUSH_TIMEOUT_MS)
+        term.write('', () => finish(true))
       } else {
         peerWatch?.dispose()
         snapSerializer?.dispose()

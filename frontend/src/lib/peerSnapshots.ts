@@ -22,9 +22,18 @@ export interface PeerSnapshot {
 }
 
 export const PEER_SNAPSHOT_MAX = 8
+/** IN-02: a 10,000-line scrollback serializes to megabytes, so entries alone don't bound memory. */
+export const PEER_SNAPSHOT_MAX_BYTES = 8 * 1024 * 1024
+/** IN-03: how long a remount waits for its tab's save before dialling; a hung flush must not hold the tab blank. */
+export const PEER_SAVE_WAIT_MS = 250
+/** W2: xterm may never run the flush callback (e.g. a disposed render service); a leaked terminal holds its whole buffer. */
+export const PEER_FLUSH_TIMEOUT_MS = 1000
 
 const snapshots = new Map<string, PeerSnapshot>()
 const generations = new Map<string, number>()
+const pendingSaves = new Map<string, Promise<void>>()
+// JS strings are UTF-16 in memory: two bytes per code unit.
+const sizeOf = (snap: PeerSnapshot) => 2 * snap.data.length
 
 /** The host part of a peer tab's key: the name App connects by (MagicDNS when the peer has one). */
 export function peerSnapshotHost(tab: { connectHost?: string; peerHost?: string }): string | undefined {
@@ -55,15 +64,40 @@ export function takePeerSnapshot(key: string): PeerSnapshot | undefined {
   return snap
 }
 
-/** Store the key's snapshot as the newest; the oldest beyond the cap is dropped. */
+/**
+ * Store the key's snapshot as the newest; the oldest are dropped until both caps
+ * hold. A snapshot over the whole budget is not stored: that tab gets a full replay.
+ */
 export function putPeerSnapshot(key: string, snap: PeerSnapshot, generation = peerSnapshotGeneration(key)): void {
   if (generation !== peerSnapshotGeneration(key)) return // the tab was closed after this panel mounted
   snapshots.delete(key)
+  if (sizeOf(snap) > PEER_SNAPSHOT_MAX_BYTES) return
   snapshots.set(key, snap)
-  for (const oldest of snapshots.keys()) {
-    if (snapshots.size <= PEER_SNAPSHOT_MAX) break
+  let total = 0
+  for (const s of snapshots.values()) total += sizeOf(s)
+  for (const [oldest, s] of snapshots) {
+    if (snapshots.size <= PEER_SNAPSHOT_MAX && total <= PEER_SNAPSHOT_MAX_BYTES) break
     snapshots.delete(oldest)
+    total -= sizeOf(s)
   }
+}
+
+/** A hiding panel's save is in flight for the key; call the result once it has stored (or given up). */
+export function beginPeerSave(key: string): () => void {
+  let settle!: () => void
+  const saved = new Promise<void>((resolve) => { settle = resolve })
+  pendingSaves.set(key, saved)
+  return () => {
+    if (pendingSaves.get(key) === saved) pendingSaves.delete(key)
+    settle()
+  }
+}
+
+/** Null when no save for the key is in flight; else resolves when it settles or after PEER_SAVE_WAIT_MS. */
+export function awaitPeerSave(key: string): Promise<void> | null {
+  const saved = pendingSaves.get(key)
+  if (!saved) return null
+  return Promise.race([saved, new Promise<void>((resolve) => setTimeout(resolve, PEER_SAVE_WAIT_MS))])
 }
 
 /** The parser hooks watchPeerTerm needs (a subset of xterm's Terminal). */
