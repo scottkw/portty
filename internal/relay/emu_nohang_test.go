@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"math/rand"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -34,6 +35,31 @@ func randomChunks(n, chunk int) []string {
 	return out
 }
 
+// progressing fails the test if fn stops calling step for stall (it then leaks
+// fn's goroutine). A wedged emulator stops the steps for good, while a slow
+// host (-race under load) only spaces them out, so total time is not the test.
+func progressing(t *testing.T, stall time.Duration, what string, fn func(step func())) {
+	t.Helper()
+	var n atomic.Int64
+	done := make(chan struct{})
+	go func() { fn(func() { n.Add(1) }); close(done) }()
+	last, since := n.Load(), time.Now()
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-tick.C:
+			if cur := n.Load(); cur != last {
+				last, since = cur, time.Now()
+			} else if time.Since(since) > stall {
+				t.Fatalf("%s made no progress for %v after %d steps: the live emulator is wedged", what, stall, cur)
+			}
+		}
+	}
+}
+
 // within fails the test if fn does not return in d (it then leaks fn's goroutine).
 func within(t *testing.T, d time.Duration, what string, fn func()) {
 	t.Helper()
@@ -62,9 +88,12 @@ func TestHub_UnstrippedQueryNeverWedges(t *testing.T) {
 			hub.Subscribe(sub)
 			defer hub.Unsubscribe(sub)
 
-			within(t, 10*time.Second, "PTY writes", func() {
+			// Each pipe write returns once the hub has read it, and the hub
+			// reads again only after the emulator took the previous read.
+			progressing(t, 5*time.Second, "PTY writes", func(step func()) {
 				for _, s := range c.steps {
 					_, _ = io.WriteString(w, s)
+					step()
 				}
 				_, _ = io.WriteString(w, "after-marker")
 			})
