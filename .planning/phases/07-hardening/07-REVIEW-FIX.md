@@ -189,7 +189,7 @@ Tests:
 **Files modified:** `internal/relay/hub.go`, `internal/relay/altscreen_heap_test.go`
 **Commit:** 915eb31a
 **Applied fix:** the old emulator is discarded, so the rebuild probes it for the state vt does not expose:
-- **Pending wrap:** after CAN, one probe print. Only a pending wrap wraps it, which puts it on column 1 (column 2 when the CAN flushed a cut-off UTF-8 character as a replacement cell).
+- **Pending wrap:** after CAN, one probe print. Only a pending wrap wraps it, which puts it on column 1 (column 2 when the CAN flushed a cut-off UTF-8 character as a replacement cell). *Corrected in iteration 3 (WR-09): one CAN completes the character only when it is one byte short. vt counts CAN as a byte of an open UTF-8 character, so the probe now sends one CAN per missing byte.*
 - **Current pen and G0:** read from `q` printed at the top left.
 - **Saved cursor and its pen:** `ESC 8`, then `q`. This replaces the hub-side `savedCursor` tracking: the field, the ESC 7 / CSI s / ?1048 / AltScreen hooks and their resets are deleted.
 
@@ -225,6 +225,8 @@ The remaining documented losses are tab stops, G1-G3/SO, an OSC 8 link (IN-08), 
 Seven subtests cover the tail states: ESC, ESC P, ESC P +, C1 DCS (0x90), APC, C1 CSI (0x9b) and line drawing with a mid-UTF-8 tail, all under a bold red pen. ESC P and 0x90 failed before the fix.
 
 One finding along the way: for a cut-off UTF-8 character, vt's CAN does not abort silently. It prints the partial bytes as one replacement cell. The pen probe is unaffected, and WR-06's wrap probe accounts for the extra cell.
+
+*Corrected in iteration 3 (WR-09):* the paragraph above holds only for a character cut one byte short. CAN returns vt's parser to ground from every escape-sequence state, but not from an open UTF-8 character: vt counts the CAN, and any byte after it, as one of the character's bytes until the length is reached. A tail 2 or 3 bytes short swallowed the probe `x` (and, for `f0`, the CUP's ESC). The pen probe still landed, but the wrap probe misread. The probe now completes the character with one CAN per missing byte.
 
 ### IN-04 (remainder): CSI 11/15/20 t, and queries split across ring frames
 

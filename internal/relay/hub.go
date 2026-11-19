@@ -590,7 +590,11 @@ func incompleteTail(b []byte) []byte {
 	for i := 0; i < len(b); i++ {
 		c := b[i]
 		switch {
-		case c == 0x18 || c == 0x1a: // CAN, SUB abort any sequence
+		// CAN, SUB abort an escape sequence. vt counts any byte, these
+		// included, as part of an open UTF-8 character (WR-09).
+		// shortcut: the scan assumes well-formed UTF-8; track vt's byte count
+		// if malformed UTF-8 around an alt-screen exit ever shows up.
+		case c == 0x18 || c == 0x1a:
 			state, need = ground, 0
 		case need > 0 && c&0xc0 == 0x80:
 			need--
@@ -682,15 +686,24 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	inferred := h.pendingWrapLocked(pos) != "" // what the seed re-created
 	var cell, savedCell uv.Cell                // copies: CellAt points into the buffer the next probe overwrites
 	// CAN first: the probes must start from ground whatever tail the read left
-	// in the old parser (a bare DCS introducer swallowed the CUP, WR-05). The
-	// CAN prints a cut-off UTF-8 character as one replacement cell, then the
-	// probe 'x': only a pending wrap wraps the first, putting 'x' on column n.
+	// in the old parser (a bare DCS introducer swallowed the CUP, WR-05). A CAN
+	// aborts an escape sequence, but vt counts it as a byte of a cut-off UTF-8
+	// character (WR-09), so send one CAN per missing byte: the character then
+	// prints as one replacement cell, then the probe 'x'. Only a pending wrap
+	// wraps the first, putting 'x' on column n.
 	// shortcut: a pending wrap on column 0 whose wrap scrolls reads as none.
-	n := 1
+	n, fill := 1, 1
 	if len(tail) > 0 && !utf8.FullRune(tail) {
-		n = 2
+		size := 4
+		switch {
+		case tail[0]&0xe0 == 0xc0:
+			size = 2
+		case tail[0]&0xf0 == 0xe0:
+			size = 3
+		}
+		n, fill = 2, size-len(tail)
 	}
-	old.Write([]byte("\x18x")) //nolint:errcheck // emulator Write never returns a meaningful error
+	old.Write([]byte(strings.Repeat("\x18", fill) + "x")) //nolint:errcheck // emulator Write never returns a meaningful error
 	after := old.CursorPosition()
 	pending := after.X == n && (pos.X != 0 || after.Y != pos.Y)
 	old.Write([]byte("\x1b[1;1H")) //nolint:errcheck // emulator Write never returns a meaningful error

@@ -192,6 +192,19 @@ func TestAltScreenExit_RebuildMatchesReference(t *testing.T) {
 		{"last column without a wrap, read ends mid-UTF-8", []string{app + strings.Repeat("a", 39) + "\xc3", "\xa9b"}},
 		{"?1048 reset not replayed as a restore", []string{"\x1b[?1048h\x1b[?1048lab\r\ncd", app47, "Z"}},
 	}
+	// WR-09: vt takes a CAN as a byte of an open UTF-8 character, so check
+	// every cut shape (bytes read of the character's length), on column 1
+	// without a wrap and in pending wrap.
+	for _, ch := range []string{"\xc3\xa9", "\xe2\x94\x80", "\xe6\x97\xa5", "\xf0\x9f\x98\x80"} {
+		for cut := 1; cut < len(ch); cut++ {
+			for where, pre := range map[string]string{"column 1": "a" + app, "pending wrap": app + strings.Repeat("a", 40)} {
+				cases = append(cases, struct {
+					name  string
+					steps []string
+				}{fmt.Sprintf("%s, read ends %d of %d bytes into %q", where, cut, len(ch), ch), []string{pre + ch[:cut], ch[cut:] + "b"}})
+			}
+		}
+	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			hub := NewHub("rebuild-ref", nil, nil, DefaultScrollbackBytes, nil)
@@ -318,7 +331,7 @@ func rebuildFuzzStream(r *rand.Rand, cols, rows int) []string {
 			case 11:
 				b.WriteString([]string{"\x1b(0", "\x1b(B"}[r.IntN(2)])
 			case 12:
-				b.WriteString([]string{"qqx", "\xe2\x94\x80", "\xc3\xa9"}[r.IntN(3)])
+				b.WriteString([]string{"qqx", "\xe2\x94\x80", "\xc3\xa9", "\xe2\x9d\xaf", "\xe6\x97\xa5", "\xf0\x9f\x98\x80"}[r.IntN(6)]) // WR-09: 2-, 3- and 4-byte, wide
 			case 13:
 				b.WriteString([]string{"\x1b[?25l", "\x1b[?25h", "\x1b[?7l", "\x1b[?7h"}[r.IntN(4)])
 			case 14:
