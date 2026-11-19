@@ -13,6 +13,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import fixture from './fixtures/wrapped-replay.json'
 import risFixture from './fixtures/ris-replay.json'
 import softwrapFixture from './fixtures/softwrap-replay.json'
+import charsetLinkFixture from './fixtures/charset-link-replay.json'
 import { applyHostGrid, resetForFullReplay } from '../guestTerminal'
 
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
@@ -104,6 +105,29 @@ describe('soft-wrapped lines replay as one wrapped line (softwrap-replay fixture
     expect(row(f.screenLongRow) + row(f.screenLongRow + 1)).toBe(f.screenLongText)
     term.dispose()
   })
+})
+
+// IN-08: a viewer joining through a rendered replay prints the host's next
+// bytes in the host's charset (SO/G1, G0 line drawing) and inside its open
+// OSC 8 link, and every OSC 8 it parses is params then URI (vt stores the two
+// swapped; the hub swaps them back).
+describe('charset and link survive a rendered replay (charset-link-replay fixture)', () => {
+  for (const c of charsetLinkFixture) {
+    it(c.name, async () => {
+      const term = guestTerm(c.cols, c.rows)
+      const osc8: string[] = []
+      term.parser.registerOscHandler(8, (data) => {
+        osc8.push(data)
+        return false // xterm's own link handler still runs
+      })
+      resetForFullReplay(term)
+      await flush(term, decode(c.replay))
+      await flush(term, decode(c.live))
+      expect(screen(term)).toEqual(c.screen)
+      expect(osc8).toEqual(c.osc8)
+      term.dispose()
+    })
+  }
 })
 
 const burst = Array.from({ length: 400 }, (_, i) => `stale burst line ${i} ${'x'.repeat(40)}`).join('\r\n')

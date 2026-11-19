@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -609,5 +610,180 @@ func TestRenderScreen_RISKeepsCursor(t *testing.T) {
 	got, err := os.ReadFile(risFixturePath)
 	if err != nil || !bytes.Equal(got, buf.Bytes()) {
 		t.Fatalf("fixture stale: run go test ./internal/relay -run TestRenderScreen_RISKeepsCursor -update-replay-fixture (read err: %v)", err)
+	}
+}
+
+// TestFixRenderedLinks: vt renders OSC 8 with params and URI swapped
+// (charstate.go); the fix swaps them back and closes a link vt left open at
+// the end of the row.
+func TestFixRenderedLinks(t *testing.T) {
+	for in, want := range map[string]string{
+		"\x1b]8;https://example.invalid/x;id=7\x07LINK\x1b]8;;\x07": "\x1b]8;id=7;https://example.invalid/x\x07LINK\x1b]8;;\x07",
+		"\x1b]8;https://x.invalid/a;\x07A\x1b]8;;\x07 b":           "\x1b]8;;https://x.invalid/a\x07A\x1b]8;;\x07 b",
+		"\x1b]8;;\x07":                    "\x1b]8;;\x07",
+		"plain \x1b[1mtext\x1b[m":         "plain \x1b[1mtext\x1b[m",
+		"\x1b]8;https://x.invalid/a;\x07A": "\x1b]8;;https://x.invalid/a\x07A\x1b]8;;\x07", // no params: vt leaves it open at the row end
+		"\x1b]8;u1;p=1\x07a\x1b]8;;\x07 \x1b]8;u2;p=2\x07b\x1b]8;;\x07": "\x1b]8;p=1;u1\x07a\x1b]8;;\x07 \x1b]8;p=2;u2\x07b\x1b]8;;\x07",
+	} {
+		if got := fixRenderedLinks(in); got != want {
+			t.Errorf("fixRenderedLinks(%q)\n got  %q\n want %q", in, got, want)
+		}
+	}
+}
+
+// TestCharState_Scan: GL follows SO and SI where vt executes C0 controls, in
+// byte order and across reads, never inside an OSC string, and a RIS resets it.
+func TestCharState_Scan(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		reads []string
+		gl1   bool
+	}{
+		{"SO", []string{"a\x0eb"}, true},
+		{"SO then SI", []string{"\x0e", "x\x0f"}, false},
+		{"SO inside an OSC title", []string{"\x1b]0;t\x0e\x07q"}, false},
+		{"SO inside an OSC cut across reads", []string{"\x1b]0;ti", "t\x0ele\x07q"}, false},
+		{"SO in a CSI", []string{"\x1b[1\x0em"}, true},
+		{"RIS after SO in one read", []string{"\x0eab\x1bcq"}, false},
+		{"CAN aborts an ESC sequence", []string{"\x1b]0;t\x18\x0e"}, true},
+		{"SO after UTF-8 with C1-like continuation bytes", []string{"\xe2\x9d\x9d\x0e"}, true},
+	} {
+		var cs charState
+		for _, r := range c.reads {
+			cs.scan([]byte(r))
+		}
+		if cs.gl1 != c.gl1 {
+			t.Errorf("%s: GL is G1 = %v, want %v", c.name, cs.gl1, c.gl1)
+		}
+	}
+}
+
+// charsetJoin forces the rendered path (a 256-byte ring), feeds each of pre as
+// one PTY read to the hub and a reference, joins a vt guest, then writes live
+// to both and requires the same screen (links included) and cursor.
+func charsetJoin(t *testing.T, pre []string, live string) (hub *Hub, ref *xvt.Emulator, replay []byte) {
+	t.Helper()
+	hub, w := runJoinHub(t, 256)
+	resizeHub(t, hub, 40, 6)
+	ref = fidEmu(40, 6)
+	both(t, hub, w, ref, strings.Repeat("filler line\r\n", 30))
+	for _, p := range pre {
+		both(t, hub, w, ref, p)
+	}
+	guest, r := joinGuest(t, hub, 40, 6)
+	requireSameGrid(t, "screen", screenRows(ref), screenRows(guest))
+	requireSameGrid(t, "scrollback", scrollbackRows(ref), scrollbackRows(guest))
+	_, _ = ref.WriteString(live)
+	_, _ = guest.WriteString(live)
+	requireSameGrid(t, "screen after the live bytes", screenRows(ref), screenRows(guest))
+	requireSameCursor(t, ref, guest)
+	return hub, ref, payloads(r)
+}
+
+const (
+	testLinkOpen = "\x1b]8;id=7;https://example.invalid/x\x1b\\"
+	testLinkEnd  = "\x1b]8;;\x1b\\"
+)
+
+var charsetLinkCases = []struct {
+	name string
+	pre  []string
+	live string
+	want string // a plain-text substring of the screen after the live bytes
+}{
+	{"G1 line drawing shifted in with SO", []string{"\x1b)0\x0elqqk"}, "qqx", "┌──┐──│"},
+	{"SO then SI", []string{"\x1b)0\x0e\x0f"}, "q", "q"},
+	{"G0 line drawing", []string{"\x1b(0"}, "q", "─"},
+	{"RIS after SO in one read", []string{"\x1b)0\x0e\x1bcafter"}, "q", "afterq"},
+	{"SO inside an OSC title", []string{"\x1b]0;t\x0e\x07"}, "q", "q"},
+	{"SO inside an OSC cut across reads", []string{"\x1b]0;ti", "t\x0e\x07"}, "q", "q"},
+	{"open OSC 8 link", []string{testLinkOpen + "LINK"}, "MORE" + testLinkEnd, "LINKMORE"},
+}
+
+// TestRenderedReplay_KeepsCharsetAndLink (IN-08): a viewer joining through a
+// rendered replay prints the host's next bytes in the host's charset and
+// inside its open link, and replayed links reach it params then URI.
+func TestRenderedReplay_KeepsCharsetAndLink(t *testing.T) {
+	for _, c := range charsetLinkCases {
+		t.Run(c.name, func(t *testing.T) {
+			_, ref, _ := charsetJoin(t, c.pre, c.live)
+			if s := strings.Join(plainRows(screenRows(ref)), "\n"); !strings.Contains(s, c.want) {
+				t.Fatalf("fixture invalid: reference screen lacks %q:\n%s", c.want, s)
+			}
+		})
+	}
+	t.Run("linked words in history and on screen", func(t *testing.T) {
+		linked := testLinkOpen + "word" + testLinkEnd
+		_, _, replay := charsetJoin(t, []string{linked + " old\r\n" + strings.Repeat("more\r\n", 8) + linked + " new"}, "!")
+		if n := bytes.Count(replay, []byte("\x1b]8;id=7;https://example.invalid/x")); n != 2 {
+			t.Errorf("replay carries %d params-then-URI opens, want 2 (history and screen): %q", n, replay)
+		}
+		if bytes.Contains(replay, []byte("\x1b]8;https://example.invalid/x;id=7")) {
+			t.Errorf("replay carries the swapped URI-first form: %q", replay)
+		}
+	})
+	t.Run("hub emulator keeps the charset across a genuine resize", func(t *testing.T) {
+		hub, w := runJoinHub(t, DefaultScrollbackBytes)
+		resizeHub(t, hub, 40, 6)
+		emit(t, hub, w, "\x1b)0\x0e")
+		resizeHub(t, hub, 30, 6) // rebuilds the emulator, which starts in ASCII
+		emit(t, hub, w, "\x1b[H\x1b[2Jqqq")
+		if got, _ := hubScreen(hub); plainRows(got)[0] != "───" {
+			t.Fatalf("hub row 0 %q after the resize, want %q (the host is still in SO/G1)", plainRows(got)[0], "───")
+		}
+	})
+}
+
+const charsetLinkFixturePath = "../../frontend/src/lib/__tests__/fixtures/charset-link-replay.json"
+
+type charsetLinkCase struct {
+	Name     string   `json:"name"`
+	Cols     int      `json:"cols"`
+	Rows     int      `json:"rows"`
+	Replay   string   `json:"replay"` // base64 rendered replay, written after the viewer's reset
+	Live     string   `json:"live"`   // base64 next live bytes
+	Screen   []string `json:"screen"` // plain rows after the live bytes
+	Payloads []string `json:"osc8"`   // OSC 8 payloads (after "8;") in the order the viewer parses them
+}
+
+var osc8RE = regexp.MustCompile(`\x1b\]8;([^\x07\x1b]*)(?:\x07|\x1b\\)`)
+
+// TestRenderedReplay_CharsetLinkFixture writes (with -update-replay-fixture)
+// or checks charset-link-replay.json, which the frontend feeds real xterm.js.
+func TestRenderedReplay_CharsetLinkFixture(t *testing.T) {
+	var cases []charsetLinkCase
+	for _, i := range []int{0, 2, 6} { // G1+SO, G0, open link
+		c := charsetLinkCases[i]
+		_, ref, replay := charsetJoin(t, c.pre, c.live)
+		var p []string
+		for _, m := range osc8RE.FindAllSubmatch(append(slices.Clone(replay), c.live...), -1) {
+			if s := string(m[1]); s != ";" && s != "id=7;https://example.invalid/x" {
+				t.Fatalf("%s: unexpected OSC 8 payload %q (want params then URI)", c.name, s)
+			}
+			p = append(p, string(m[1]))
+		}
+		cases = append(cases, charsetLinkCase{
+			Name: c.name, Cols: 40, Rows: 6,
+			Replay: base64.StdEncoding.EncodeToString(replay), Live: base64.StdEncoding.EncodeToString([]byte(c.live)),
+			Screen: plainRows(screenRows(ref)), Payloads: append([]string{}, p...),
+		})
+	}
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(cases); err != nil {
+		t.Fatal(err)
+	}
+	if *updateReplayFixture {
+		if err := os.WriteFile(charsetLinkFixturePath, buf.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(charsetLinkFixturePath)
+	if err != nil || !bytes.Equal(got, buf.Bytes()) {
+		t.Fatalf("fixture stale: run go test ./internal/relay -run TestRenderedReplay_CharsetLinkFixture -update-replay-fixture (read err: %v)", err)
 	}
 }
