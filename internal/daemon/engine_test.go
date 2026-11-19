@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1061,6 +1062,34 @@ func TestGetSessionTailLines_UnknownSession(t *testing.T) {
 //   - Carriage-return (TUI overwrite) collapses to a single logical line (#96)
 //   - Unknown session returns [][]StyledSpan{} (non-nil, len 0)
 // ========================================================================
+
+// TestGetSessionStyledTailLines_UnstrippedQueryNeverHangs: reply-eliciting
+// queries StripTerminalQueries misses must not block the styled-tail
+// emulator (CR-01). 192 KiB of seed-1 random bytes stays inside the ring.
+func TestGetSessionStyledTailLines_UnstrippedQueryNeverHangs(t *testing.T) {
+	blob := make([]byte, 192<<10)
+	rand.New(rand.NewSource(1)).Read(blob)
+	for name, content := range map[string]string{
+		"8-bit CSI DA1":           "a\x9bcb\r\n",
+		"2048 inside a mode list": "a\x1b[?2004;2048hb\r\n",
+		"random blob":             string(blob),
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := NewSessionEngine()
+			done := make(chan struct{})
+			go func() {
+				makeTailHub(t, e, "styled-nohang", content+"tail-ok\r\n")
+				e.GetSessionStyledTailLines("styled-nohang", 5)
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("hub drain or GetSessionStyledTailLines did not return within 10s")
+			}
+		})
+	}
+}
 
 // TestGetSessionStyledTailLines_ColorBold: scrollback with CSI bold+green sequence
 // → result contains spans with FG "ansi:2" and Bold true.

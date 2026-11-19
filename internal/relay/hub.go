@@ -90,11 +90,10 @@ type Hub struct {
 	// of the raw scrollback ring — RenderSnapshot() never re-derives from the
 	// (possibly truncated) ring (RESEARCH "Pitfall 3").
 	//
-	// emuMu is a SEPARATE lock from mu (T-175-04-02). Note the anti-hang
-	// guarantee comes from liveEmuQueryStripPattern (which lets emu.Write return
-	// synchronously — see recordFrameLocked), NOT from goroutine isolation: recordFrameLocked
-	// runs INLINE in the drain goroutine, so an unstripped query sequence would
-	// stall the drain loop. emuMu only keeps the emulator's own state consistent
+	// emuMu is a SEPARATE lock from mu (T-175-04-02). recordFrameLocked runs
+	// INLINE in the drain goroutine, so emu.Write must never block: the
+	// anti-hang guarantee is NewQuietEmulator's closed response pipe (CR-01),
+	// not the query strip. emuMu only keeps the emulator's own state consistent
 	// (append+feed vs bootstrap vs resize) without contending on the fan-out mu.
 	emuMu   sync.Mutex
 	liveEmu *xvt.Emulator
@@ -129,14 +128,13 @@ type Hub struct {
 const altScreenEnterSeq = "\x1b[?1049h"
 
 // liveEmuQueryStripPattern matches the reply-eliciting terminal queries and
-// the in-band resize mode. Stripping matters twice:
-//
-//   - Feeding the live emulator: charmbracelet/x/vt writes its answer into an
-//     unbuffered response pipe (Emulator.pw) that nothing drains on this path,
-//     so an unstripped query would block emu.Write and with it Run's drain loop
-//     and the daemon's styled tail (#96/#100).
-//   - Replaying to a joining terminal: it answers every historic query in the
-//     replay, and the answers are typed into the shared shell (UAT gap 1).
+// the in-band resize mode. Its job is the replay: a joining terminal answers
+// every historic query in it, and the answers are typed into the shared shell
+// (UAT gap 1). It is NOT what keeps the hub's and the engine's vt emulators
+// from hanging: vt honours encodings no pattern covers (8-bit CSI, a query
+// split across reads, 2048 inside a mode list), so NewQuietEmulator makes
+// every reply fail fast instead (CR-01). The live feed still strips, which
+// keeps ?2048 out of h.modes.
 //
 // Covered: DA1, DA2 and DA3 (CSI c, CSI > c, CSI = c); DSR and DECXCPR
 // (CSI n, CSI ? n); DECRQM ANSI and DEC (CSI $ p); in-band resize set/reset
@@ -173,11 +171,27 @@ var liveEmuQueryStripPattern = regexp.MustCompile(
 )
 
 // StripTerminalQueries returns b without the sequences liveEmuQueryStripPattern
-// matches. The hub's live emulator feed, both raw replay paths in Join and the
-// daemon engine's styled tail all use it, so the hub and the engine strip the
-// same set.
+// matches. It keeps historic queries in a replay from eliciting replies that
+// reach the shared shell; NewQuietEmulator, not this strip, keeps emulator
+// writes from hanging. The hub's live emulator feed, both raw replay paths in
+// Join and the daemon engine's styled tail all use it, so the hub and the
+// engine strip the same set.
 func StripTerminalQueries(b []byte) []byte {
 	return liveEmuQueryStripPattern.ReplaceAll(b, nil)
+}
+
+// NewQuietEmulator returns a vt emulator whose query replies are discarded.
+// vt writes each reply (DA, DSR, DECRQM, OSC 10-12, the ?2048 report) into an
+// unbuffered io.Pipe and blocks Write until someone reads it; with the pipe
+// writer closed every reply returns ErrClosedPipe at once, which vt ignores,
+// so Write never blocks whatever bytes it is fed (CR-01). Closing the pipe,
+// not emu.Close, leaves Write working and needs no reader goroutine, so the
+// #100 Read/Close race on e.closed cannot come back. Use it for every
+// emulator whose replies nobody wants.
+func NewQuietEmulator(cols, rows int) *xvt.Emulator {
+	emu := xvt.NewEmulator(cols, rows)
+	_ = emu.InputPipe().(io.Closer).Close()
+	return emu
 }
 
 // NewHub constructs a Hub for the given session.
@@ -491,11 +505,8 @@ func (h *Hub) Run() {
 // the nil-guarded feed below no-ops because liveEmu is not yet set) OR it
 // arrives after liveEmu is set (and only the live feed applies it).
 //
-// The anti-hang mechanism for the emulator write is liveEmuQueryStripPattern
-// (not goroutine isolation): stripping the query/response sequences lets
-// emu.Write return synchronously with no drain goroutine — the proven engine.go
-// #96/#100 mitigation. A query sequence NOT covered by that pattern would block
-// emu.Write and therefore this drain loop.
+// emu.Write runs inline in the drain loop, so it must never block: the live
+// emulator comes from NewQuietEmulator, whose replies fail fast (CR-01).
 func (h *Hub) recordFrameLocked(frame, raw []byte) {
 	h.scrollback.Append(frame)
 	if h.liveEmu == nil {
@@ -557,7 +568,7 @@ func (h *Hub) rebuildAfterAltExitLocked() {
 // touch h.history and h.modes safely. Each handler returns false so the
 // emulator's default handling still runs.
 func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
-	emu := xvt.NewEmulator(cols, rows)
+	emu := NewQuietEmulator(cols, rows)
 	// shortcut: while an app stays in the alt screen its scrollback is capped
 	// only by vt's DefaultScrollbackSize (10,000 lines x width x the 112-byte
 	// uv.Cell, 126.6 MiB measured for 20,000 lines), because vt does not expose

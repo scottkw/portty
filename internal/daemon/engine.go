@@ -16,7 +16,6 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	xvt "github.com/charmbracelet/x/vt"
 	"github.com/scottkw/portty/internal/pty"
 	"github.com/scottkw/portty/internal/relay"
 )
@@ -510,11 +509,9 @@ func (e *SessionEngine) GetSessionStyledTailLines(id string, n int) [][]StyledSp
 	// from the active screen are returned after blank-row trimming.
 	const emuRows = 50
 	cols := hub.Cols()
-	emu := xvt.NewEmulator(cols, emuRows)
-
-	// emu.Write blocks on an unanswered query, so the shared relay strip runs first (#96/#100).
+	// Quiet: a query the strip misses must not block Write (CR-01, #96/#100).
+	emu := relay.NewQuietEmulator(cols, emuRows)
 	emu.Write(relay.StripTerminalQueries(stripped)) //nolint:errcheck // emulator Write never returns a meaningful error
-	_ = emu.Close()
 
 	// Extract the active screen rows as StyledSpan slices.
 	var rows [][]StyledSpan
