@@ -109,15 +109,27 @@ func runDaemonCore(ctx context.Context) {
 	engine.Manager().Shutdown()
 }
 
+// RestartPolicy decides whether EnsureDaemon may restart a daemon from another
+// build that has live sessions; the restart ends them (DEBT-08). sessions is
+// -1 when the daemon could not list them. false keeps the old daemon serving.
+type RestartPolicy func(daemonVersion string, sessions int) bool
+
 // EnsureDaemon checks if the daemon is reachable on socketPath. If not, it
 // spawns a detached daemon subprocess using the current binary with "daemon"
 // as the first argument, then polls until the daemon is ready (waitForDaemon).
-func EnsureDaemon(socketPath string) error {
+// A daemon from another build is restarted, after allowRestart agrees when it
+// has live sessions. When allowRestart says no, EnsureDaemon returns nil with
+// the old daemon still running: the policy's own "no" is the caller's signal.
+func EnsureDaemon(socketPath string, allowRestart RestartPolicy) error {
 	client := NewDaemonClient(socketPath)
 	needsSpawn := true
 	if err := client.Health(); err == nil {
 		// Daemon is reachable — check version compatibility first.
 		if ver := client.GetDaemonVersion(); staleVersion(ver) {
+			if n := liveSessions(client); n != 0 && !allowRestart(ver, n) {
+				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q) with %d live sessions; keeping it\n", ver, BuildVersion, n)
+				return nil
+			}
 			fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), restarting\n", ver, BuildVersion)
 			_ = client.ShutdownDaemon()
 			// No socket cleanup here (review it3 WR-03): only the spawned
@@ -181,6 +193,22 @@ func startDaemon(client *DaemonClient, wait time.Duration, lockPath string, spaw
 		return fmt.Errorf("%w (%v waited in total)", err, time.Since(start).Round(time.Second))
 	}
 	return nil
+}
+
+// liveSessions counts the daemon's sessions that have not stopped, or returns
+// -1 when it cannot list them (T-08-31: an unknown count is asked about).
+func liveSessions(client *DaemonClient) int {
+	sessions, err := client.ListSessions()
+	if err != nil {
+		return -1
+	}
+	n := 0
+	for _, s := range sessions {
+		if s.State != "stopped" {
+			n++
+		}
+	}
+	return n
 }
 
 // staleVersion reports whether a daemon reporting ver is from another build.
