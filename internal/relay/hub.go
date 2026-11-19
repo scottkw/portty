@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -116,11 +117,10 @@ type Hub struct {
 	// alternate screen; recordFrameLocked rebuilds the emulator after the
 	// write (rebuildAfterAltExitLocked). Only touched under emuMu.
 	altExited bool
-	// mainRegion (DECSTBM, 1-based top and bottom; zero: the whole screen) and
-	// savedCursor (DECSC; nil: none) are the main screen's, which vt does not
-	// expose; the alt-exit rebuild re-applies them (WR-02). Only under emuMu.
-	mainRegion  [2]int
-	savedCursor *uv.Position
+	// mainRegion (DECSTBM, 1-based top and bottom; zero: the whole screen) is
+	// the main screen's, which vt does not expose; the alt-exit rebuild
+	// re-applies it (WR-02). Only touched under emuMu.
+	mainRegion [2]int
 }
 
 // altScreenEnterSeq is the DEC private-mode sequence a full-screen TUI emits
@@ -637,43 +637,88 @@ func incompleteTail(b []byte) []byte {
 // h.history, h.modes and geomEnd are Hub-owned and stay (not a geometry change).
 //
 // WR-02: the rendered seed carries text, cursor and DEC modes only, so the
-// rebuild also re-applies the main screen's scroll region and saved cursor
-// (tracked by newLiveEmulator's handlers), the current pen and the DEC line
-// drawing G0 charset (read by printing one probe cell into the old emulator,
-// which is discarded anyway), and then replays tail, the sequence or UTF-8
-// character the read cut off, so the next read completes it.
-// shortcut: tab stops, G1-G3/SO, DECSC's saved pen and a pending wrap after a
-// region or saved-cursor restore are lost; track them if a shell needs them.
+// rebuild also re-applies the main screen's scroll region (tracked by
+// newLiveEmulator's DECSTBM handler), the pending wrap, the saved cursor
+// with its pen, the current pen and the DEC line drawing G0 charset. vt
+// exposes none of the last four, so they are read by printing probe cells
+// into the old emulator, which is discarded anyway. Then tail, the sequence
+// or UTF-8 character the read cut off, is replayed so the next read
+// completes it.
+// shortcut: tab stops, G1-G3/SO, an OSC 8 link (IN-08) and the saved
+// cursor's link and visibility are lost; track them if a shell needs them.
 func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	old := h.liveEmu
 	seed := h.renderScreenLocked()
 	pos := old.CursorPosition()
-	// CAN first: the probe must start from ground whatever tail the read left
-	// in the old parser (a bare DCS introducer swallowed the CUP, WR-05).
-	old.Write([]byte("\x18\x1b[1;1H")) //nolint:errcheck // emulator Write never returns a meaningful error
+	inferred := h.pendingWrapLocked(pos) != "" // what the seed re-created
+	var cell, savedCell uv.Cell                // copies: CellAt points into the buffer the next probe overwrites
+	// CAN first: the probes must start from ground whatever tail the read left
+	// in the old parser (a bare DCS introducer swallowed the CUP, WR-05). The
+	// CAN prints a cut-off UTF-8 character as one replacement cell, then the
+	// probe 'x': only a pending wrap wraps the first, putting 'x' on column n.
+	// shortcut: a pending wrap on column 0 whose wrap scrolls reads as none.
+	n := 1
+	if len(tail) > 0 && !utf8.FullRune(tail) {
+		n = 2
+	}
+	old.Write([]byte("\x18x")) //nolint:errcheck // emulator Write never returns a meaningful error
+	after := old.CursorPosition()
+	pending := after.X == n && (pos.X != 0 || after.Y != pos.Y)
+	old.Write([]byte("\x1b[1;1H")) //nolint:errcheck // emulator Write never returns a meaningful error
 	probe := old.CursorPosition()  // region-relative under origin mode
 	old.Write([]byte("q"))         //nolint:errcheck // 'q' is '─' in DEC line drawing
-	cell := old.CellAt(probe.X, probe.Y)
+	if c := old.CellAt(probe.X, probe.Y); c != nil {
+		cell = *c
+	}
+	old.Write([]byte("\x1b8")) //nolint:errcheck // DECRC: what a later ESC 8 restores (vt keeps it per screen)
+	saved := old.CursorPosition()
+	old.Write([]byte("q")) //nolint:errcheck // prints in the saved pen
+	if c := old.CellAt(saved.X, saved.Y); c != nil {
+		savedCell = *c
+	}
+	pen := func(c uv.Cell) string {
+		if c.Style.IsZero() {
+			return "\x1b[m"
+		}
+		return "\x1b[m" + c.Style.String()
+	}
 
 	h.liveEmu = h.newLiveEmulator(old.Width(), old.Height())
 	var b strings.Builder
 	b.Write(seed)
-	if r, s := h.mainRegion, h.savedCursor; r != [2]int{} || s != nil {
+	// A fresh emulator's saved cursor is home in the default pen, so restore
+	// only a different one. CUPs clear a pending wrap, so this runs only when
+	// needed, or when the seed's pending-wrap guess was wrong.
+	r := h.mainRegion
+	keepSaved := saved != (uv.Position{}) || !savedCell.Style.IsZero()
+	if r != [2]int{} || keepSaved || inferred != pending {
+		om := h.modes[6] // DECOM makes the CUPs below region-relative
+		if om {
+			b.WriteString("\x1b[?6l")
+		}
 		if r != [2]int{} {
 			fmt.Fprintf(&b, "\x1b[%d;%dr", r[0], r[1]) // homes the cursor
 		}
-		if s != nil {
-			fmt.Fprintf(&b, "\x1b[%d;%dH\x1b7", s.Y+1, s.X+1)
+		if keepSaved {
+			fmt.Fprintf(&b, "%s\x1b[%d;%dH\x1b7", pen(savedCell), saved.Y+1, saved.X+1)
 		}
 		fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
-	}
-	if cell != nil {
-		if cell.Content == "─" {
-			b.WriteString("\x1b(0")
+		if pending {
+			// vt keeps one pending-wrap flag for both screens (an app's exit
+			// or a DECRC can leave it set anywhere): set it at the alt
+			// screen's edge and switch back, which leaves the cursor at pos.
+			fmt.Fprintf(&b, "\x1b[?1047h\x1b[1;%dHx\x1b[?1047l", old.Width())
 		}
-		b.WriteString(cell.Style.String())
+		if om {
+			b.WriteString("\x1b[?6h") // vt's DECOM set does not move the cursor
+		}
 	}
+	if cell.Content == "─" {
+		b.WriteString("\x1b(0")
+	}
+	b.WriteString(pen(cell))
 	h.liveEmu.Write([]byte(b.String())) //nolint:errcheck // emulator Write never returns a meaningful error
+	h.altExited = false                 // the pending-wrap switch above is not the app's exit
 	h.drainScrollbackLocked()           // the seed fills exactly Height rows, so nothing scrolls
 	h.liveEmu.Write(tail)               //nolint:errcheck // emulator Write never returns a meaningful error
 }
@@ -705,20 +750,10 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	emu.SetScrollbackSize(HistoryMaxLines)
 	// Track DEC private modes for the replay's restores; ANSI modes are not
 	// replayed (the callbacks report both).
-	// WR-02: the main screen's saved cursor, for the alt-exit rebuild.
-	saveCursor := func() {
-		if !emu.IsAltScreen() {
-			p := emu.CursorPosition()
-			h.savedCursor = &p
-		}
-	}
 	track := func(on bool) func(ansi.Mode) {
 		return func(m ansi.Mode) {
 			if d, ok := m.(ansi.DECMode); ok {
 				h.modes[int(d)] = on
-				if on && d == ansi.ModeSaveCursor {
-					saveCursor()
-				}
 			}
 		}
 	}
@@ -729,20 +764,8 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 		AltScreen: func(on bool) {
 			if !on {
 				h.altExited = true
-				// ?1049h saved the main cursor, which stood still in the alt
-				// screen; the mode is still set while this callback runs.
-				if h.modes[int(ansi.ModeAltScreenSaveCursor)] {
-					saveCursor()
-				}
 			}
 		},
-	})
-	emu.RegisterEscHandler('7', func() bool { saveCursor(); return false })
-	emu.RegisterCsiHandler('s', func(ansi.Params) bool {
-		if !h.modes[69] { // with DECLRMM, CSI s sets margins instead
-			saveCursor()
-		}
-		return false
 	})
 	emu.RegisterCsiHandler('r', func(params ansi.Params) bool {
 		if emu.IsAltScreen() {
@@ -777,7 +800,7 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	emu.RegisterEscHandler('c', func() bool {
 		h.history.Clear()
 		clear(h.modes)
-		h.mainRegion, h.savedCursor = [2]int{}, nil
+		h.mainRegion = [2]int{}
 		emu.ClearScrollback()
 		return false
 	})
@@ -863,7 +886,7 @@ func (h *Hub) resizeLiveEmulator(cols, rows int, genuine bool) {
 			h.history.Push(row)
 		}
 	}
-	h.mainRegion, h.savedCursor = [2]int{}, nil // the new emulator starts without them
+	h.mainRegion = [2]int{} // the new emulator starts without one
 	h.liveEmu = h.newLiveEmulator(cols, rows)
 	if inAlt {
 		h.liveEmu.Write([]byte(altScreenEnterSeq)) //nolint:errcheck // emulator Write never returns a meaningful error
@@ -1002,13 +1025,7 @@ func (h *Hub) renderScreenLocked() []byte {
 	// (deferred) wrap state, which a CUP clears: re-print that cell so the
 	// viewer's next character wraps as the host's does. vt does not expose the
 	// state, so this infers it.
-	// shortcut: a cursor moved onto a filled last column (not printed there) is
-	// replayed as pending wrap too; track the state per write if that shows up.
-	if aw, ok := h.modes[7]; (aw || !ok) && pos.X == h.liveEmu.Width()-1 {
-		if c := h.liveEmu.CellAt(pos.X, pos.Y); c != nil && c.Width == 1 && c.Content != "" && c.Content != " " {
-			b.WriteString(uv.Line{*c}.Render())
-		}
-	}
+	b.WriteString(h.pendingWrapLocked(pos))
 	// Restore the app's DEC private modes (bracketed paste, cursor keys, cursor
 	// visibility, mouse) in ascending order, so the viewer's xterm behaves like
 	// the host even though the ring wrapped past the sets. Never the alt-screen
@@ -1016,9 +1033,11 @@ func (h *Hub) renderScreenLocked() []byte {
 	// purpose by liveEmuQueryStripPattern).
 	for _, m := range slices.Sorted(maps.Keys(h.modes)) {
 		switch m {
-		case 47, 1047, 1049, 2048, 2026:
+		case 47, 1047, 1048, 1049, 2048, 2026:
 			// 2026 (synchronized output): the replay is a complete screen, so a
 			// join mid-update must not leave the viewer holding its rendering.
+			// 1048 is an action, not a state: replayed, ?1048l restores the
+			// saved cursor over the CUP above (WR-06 fuzz).
 			continue
 		}
 		set := byte('l')
@@ -1028,6 +1047,19 @@ func (h *Hub) renderScreenLocked() []byte {
 		fmt.Fprintf(&b, "\x1b[?%d%c", m, set)
 	}
 	return []byte(b.String())
+}
+
+// pendingWrapLocked returns the re-print of the live emulator's cell at pos
+// when the cursor there is in pending wrap, or "". Caller holds emuMu.
+// shortcut: a cursor moved onto a filled last column (not printed there) is
+// replayed as pending wrap too; track the state per write if that shows up.
+func (h *Hub) pendingWrapLocked(pos uv.Position) string {
+	if aw, ok := h.modes[7]; (aw || !ok) && pos.X == h.liveEmu.Width()-1 {
+		if c := h.liveEmu.CellAt(pos.X, pos.Y); c != nil && c.Width == 1 && c.Content != "" && c.Content != " " {
+			return uv.Line{*c}.Render()
+		}
+	}
+	return ""
 }
 
 // Replay is what Join captured for a joining viewer: Mode is ReplayFull or

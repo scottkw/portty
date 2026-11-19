@@ -3,6 +3,7 @@ package relay
 import (
 	"bytes"
 	"fmt"
+	"math/rand/v2"
 	"runtime"
 	"runtime/debug"
 	"slices"
@@ -161,6 +162,7 @@ func TestAltScreenExit_KeepsMainScreenAndHistory(t *testing.T) {
 // drawing (WR-02). Each step is one PTY read; tab stops are a documented loss.
 func TestAltScreenExit_RebuildMatchesReference(t *testing.T) {
 	const app = "\x1b[?1049hALT\x1b[?1049l"
+	const app47 = "\x1b[?1047hALT\x1b[?1047l"
 	cases := []struct {
 		name  string
 		steps []string
@@ -180,6 +182,15 @@ func TestAltScreenExit_RebuildMatchesReference(t *testing.T) {
 		{"pen red, read ends inside APC", []string{"\x1b[1;31m$ vim\r\n" + app + "$ \x1b_x", "y\x1b\\after"}},
 		{"pen red, read ends on C1 CSI", []string{"\x1b[1;31m$ vim\r\n" + app + "$ \x9b3", "2mafter"}},
 		{"line drawing, read ends mid-UTF-8", []string{"\x1b(0\x1b[1;31m$ vim\r\n" + app + "$ \xe2\x94", "\x80qqq"}},
+		// WR-06: saved cursor pen, origin mode, pending wrap, ?1048. ?1047
+		// saves no cursor, so the shell's own DECSC is what ESC 8 restores.
+		{"saved cursor keeps its pen", []string{"\x1b[32mab\x1b7\x1b[m\r\n", app47, "\x1b8Z"}},
+		{"origin mode with a region", []string{"\x1b[2;5r\x1b[?6h\x1b[1;1Hab\x1b7\r\n\r\n", app47, "\x1b8Z\r\nY"}},
+		{"pending wrap at the read's end", []string{app + strings.Repeat("a", 40), "b"}},
+		{"pending wrap left by the app", []string{"\x1b[?1049h\x1b[1;40Hx\x1b[?1049l", "b"}},
+		{"pending wrap, read ends mid-UTF-8", []string{app + strings.Repeat("a", 40) + "\xe2\x94", "\x80b"}},
+		{"last column without a wrap, read ends mid-UTF-8", []string{app + strings.Repeat("a", 39) + "\xc3", "\xa9b"}},
+		{"?1048 reset not replayed as a restore", []string{"\x1b[?1048h\x1b[?1048lab\r\ncd", app47, "Z"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -272,5 +283,94 @@ func TestAltScreenResize_KeepsMainScreenAndExitRebuild(t *testing.T) {
 	}
 	if !bytes.Contains(replay, []byte("$ less")) {
 		t.Error("replay lost the main-screen line \"$ less\"")
+	}
+}
+
+// rebuildFuzzStream returns one random shell-output stream around an app's
+// alt-screen visit, cut into random reads. It avoids the rebuild's
+// documented losses: tab stops, SO/SI and G1-G3, OSC 8 links, REP.
+func rebuildFuzzStream(r *rand.Rand, cols, rows int) []string {
+	main := func(n int) string {
+		var b strings.Builder
+		for range n {
+			switch r.IntN(20) {
+			case 0, 1, 2:
+				b.WriteString(strings.Repeat(string(rune('a'+r.IntN(26))), 1+r.IntN(cols+cols/2)))
+			case 3, 4:
+				b.WriteString("\r\n")
+			case 5:
+				fmt.Fprintf(&b, "\x1b[%dm", []int{0, 1, 4, 7, 31, 32, 33, 34, 42}[r.IntN(9)])
+			case 6:
+				fmt.Fprintf(&b, "\x1b[1;3%dm", r.IntN(8))
+			case 7:
+				b.WriteString([]string{"\x1b7", "\x1b8", "\x1b[s", "\x1b[u"}[r.IntN(4)])
+			case 8:
+				if r.IntN(3) == 0 {
+					b.WriteString("\x1b[r")
+				} else {
+					top := 1 + r.IntN(rows-1)
+					fmt.Fprintf(&b, "\x1b[%d;%dr", top, top+1+r.IntN(rows-top))
+				}
+			case 9:
+				b.WriteString([]string{"\x1b[?6h", "\x1b[?6l"}[r.IntN(2)])
+			case 10:
+				fmt.Fprintf(&b, "\x1b[%d;%dH", 1+r.IntN(rows), 1+r.IntN(cols))
+			case 11:
+				b.WriteString([]string{"\x1b(0", "\x1b(B"}[r.IntN(2)])
+			case 12:
+				b.WriteString([]string{"qqx", "\xe2\x94\x80", "\xc3\xa9"}[r.IntN(3)])
+			case 13:
+				b.WriteString([]string{"\x1b[?25l", "\x1b[?25h", "\x1b[?7l", "\x1b[?7h"}[r.IntN(4)])
+			case 14:
+				b.WriteString([]string{"\x1b]0;title\x07", "\x1bPzz\x1b\\", "\x1b[K", "\x1b[2J"}[r.IntN(4)])
+			default:
+				b.WriteString("$ ")
+			}
+		}
+		return b.String()
+	}
+	apps := [][2]string{{"\x1b[?1049h", "\x1b[?1049l"}, {"\x1b[?1047h", "\x1b[?1047l"}, {"\x1b[?1048h\x1b[?1047h", "\x1b[?1047l\x1b[?1048l"}}
+	app := apps[r.IntN(len(apps))]
+	s := main(30+r.IntN(40)) + app[0] + main(10+r.IntN(20)) + app[1] + main(20+r.IntN(40))
+	var reads []string
+	for len(s) > 0 {
+		n := min(len(s), 1+r.IntN(24))
+		reads = append(reads, s[:n])
+		s = s[n:]
+	}
+	return reads
+}
+
+// TestAltScreenExit_RebuildFuzz: random streams around an alt-screen visit,
+// cut into random reads, leave the rebuilt emulator matching one fed every
+// byte, read for read (WR-05, WR-06). Fixed seeds keep it deterministic.
+func TestAltScreenExit_RebuildFuzz(t *testing.T) {
+	const cols, rows, streams = 20, 6, 600
+	r := rand.New(rand.NewPCG(7, 2026))
+	mismatches := 0
+	for i := range streams {
+		reads := rebuildFuzzStream(r, cols, rows)
+		hub := NewHub("rebuild-fuzz", nil, nil, DefaultScrollbackBytes, nil)
+		resizeHub(t, hub, cols, rows)
+		ref := NewQuietEmulator(cols, rows)
+		hub.emuMu.Lock()
+		hub.ensureLiveEmulatorLocked()
+		for j, s := range reads {
+			hub.recordFrameLocked(MakeOutputFrame([]byte(s)), []byte(s))
+			ref.Write([]byte(s)) //nolint:errcheck
+			got, want := hub.liveEmu.Render(), ref.Render()
+			if gp, wp := hub.liveEmu.CursorPosition(), ref.CursorPosition(); got != want || gp != wp {
+				if mismatches < 5 {
+					t.Errorf("stream %d read %d: rebuilt %q cursor %v, want %q cursor %v\nreads so far: %q",
+						i, j, got, gp, want, wp, reads[:j+1])
+				}
+				mismatches++
+				break
+			}
+		}
+		hub.emuMu.Unlock()
+	}
+	if mismatches > 0 {
+		t.Errorf("%d of %d streams diverged from the reference", mismatches, streams)
 	}
 }
