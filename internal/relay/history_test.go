@@ -190,7 +190,8 @@ func TestHistory_WrappedRender(t *testing.T) {
 // TestHistory_EndWrapClearedWhenRow0Erased (08-REVIEW IN-02 P7): a line that
 // wrapped from history onto screen row 0 no longer continues once row 0's
 // start is erased without a scroll (ED 0 from home, ED 1, EL 0 from column 0,
-// EL 1, EL 2), whether the line drained in an earlier read or is still in
+// EL 1, EL 2) or changed by RI at the top, IL on row 0, SD, or ECH or DCH at
+// home (iteration 2 IN-10, Q4), whether the line drained in an earlier read or is still in
 // vt's scrollback in the same read. ED 2 pushes row 0 into history right
 // after the line, and an erase that keeps row 0's start leaves it, so both
 // keep the join.
@@ -205,6 +206,15 @@ func TestHistory_EndWrapClearedWhenRow0Erased(t *testing.T) {
 		{"EL 2 on row 0", "\x1b[H\x1b[2K$ prompt", false},
 		{"EL 0 from column 1", "\x1b[H\x1b[K$ prompt", false},
 		{"EL 1 on row 0", "\x1b[1;3H\x1b[1K\x1b[H$ prompt", false},
+		{"Q4 RI at top", "\x1b[H\x1bM$ prompt", false},
+		{"Q4 IL on row 0", "\x1b[H\x1b[L$ prompt", false},
+		{"Q4 SD", "\x1b[T\x1b[H$ prompt", false},
+		{"Q4 ECH at home", "\x1b[H\x1b[20X$ prompt", false},
+		{"Q4 DCH at home", "\x1b[H\x1b[20P$ prompt", false},
+		{"RI below the top keeps it", "\x1b[3;1H\x1bM", true},
+		{"IL on row 1 keeps it", "\x1b[2;1H\x1b[L", true},
+		{"SD in a region below row 0 keeps it", "\x1b[2;5r\x1b[T\x1b[r", true},
+		{"ECH from column 5 keeps it", "\x1b[1;5H\x1b[3X", true},
 		{"ED 0 from row 0 column 5 keeps it", "\x1b[1;5H\x1b[J", true},
 		{"EL on row 1 keeps it", "\x1b[2;1H\x1b[2K", true},
 		{"ED 2 keeps it", "\x1b[H\x1b[2J", true},

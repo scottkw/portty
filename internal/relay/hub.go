@@ -944,6 +944,33 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 		}
 		return false
 	})
+	// IN-10: the other ways row 0's start changes without a scroll. RI at
+	// the top, IL on row 0 and SD push row 0 down (a pager scrolling back),
+	// only when the region starts at row 0; ECH and DCH at home blank or
+	// shift its first cells.
+	regionAtTop := func() bool { return h.mainRegion[0] <= 1 }
+	row0Shift := func() bool {
+		if emu.CursorPosition().Y == 0 && regionAtTop() {
+			h.row0ErasedLocked(emu)
+		}
+		return false
+	}
+	emu.RegisterEscHandler('M', row0Shift)
+	emu.RegisterCsiHandler('L', func(ansi.Params) bool { return row0Shift() })
+	emu.RegisterCsiHandler('T', func(ansi.Params) bool {
+		if regionAtTop() {
+			h.row0ErasedLocked(emu)
+		}
+		return false
+	})
+	for _, f := range "XP" {
+		emu.RegisterCsiHandler(int(f), func(ansi.Params) bool {
+			if emu.CursorPosition() == (uv.Position{}) {
+				h.row0ErasedLocked(emu)
+			}
+			return false
+		})
+	}
 	// RIS (ESC c) resets the terminal: empty the history and the mode state.
 	// The default reset does not touch the emulator scrollback, so clear lines
 	// scrolled earlier in this same write as well. The default handler then
