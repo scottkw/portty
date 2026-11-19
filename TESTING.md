@@ -1203,7 +1203,7 @@ Rig for all four (Portty 07-05; Claude runs them in the two Tart VMs): build on 
 - **M-96** GUI launch with a healthy daemon makes no respawn attempt (HARD-04).
   1. With the home daemon healthy for more than 60 s, kill only the GUI app process (it ignores SIGTERM, so `kill -9` its pid; never the `Portty daemon` process), relaunch with `open --stderr /tmp/h4-N.err`, wait 30 s; three launches.
   2. No `respawn attempt` line in any capture, and the same daemon pid throughout. If a `not answering right after launch` line appears, record its error text (the HARD-04 root-cause evidence).
-  - _Last run:_ 2026-11-18, build fb72d7b9: H-04 PASS, three relaunches with no respawn line and the same daemon pid; no launch-blip line appeared; evidence in .planning/phases/07-hardening/07-VM-CHECKS.md.
+  - _Last run:_ 2026-11-19, build 7dcb66b2: V-06 PASS, three GUI relaunches with daemon 1625 healthy, 0 capture lines, no respawn line, the same daemon pid; evidence in .planning/phases/08-debt-cleanup/08-VM-CHECKS.md.
   - _Why not automatable:_ needs a real GUI launch with the app's own daemon spawn path on macOS. The gate is covered by the Section 4 HARD-04 row.
   - _Source:_ 07-03-SUMMARY.md (HARD-04 root cause); 07-05-PLAN.md.
 
@@ -1236,21 +1236,21 @@ Rig as for Category AV (Portty 08-05; Claude runs them in the two Tart VMs, WebG
 - **M-100** Peer-tab snapshot lifecycle (DEBT-04).
   1. Two shared office sessions as home GUI tabs, one a 2 s TICK ticker. Three times: 20 s on the other tab, then select the ticker tab. Then a quick switch: the other tab and back within about 1 s. Then close the ticker tab with its close button and reopen the same session from Other Macs.
   2. Each return logs `mode=delta ... resume=true` in the office daemon.log and the ticks are consecutive with none repeated (`seqcheck.sh TICK`); the reopen after the close logs `mode=full ... resume=false`.
-  - _Last run:_ pending (08-05 Task 3).
+  - _Last run:_ 2026-11-19, build 7dcb66b2: V-04 PASS, three returns and a quick switch (1.05 s) all `mode=delta ... resume=true`, ticks 1..181 consecutive with no repeat, the reopen after the close `mode=full ... resume=false`; evidence in .planning/phases/08-debt-cleanup/08-VM-CHECKS.md.
   - _Why not automatable:_ native tab clicks and a tab close in the GUI against a real remote daemon. The store logic is covered by the Section 4 DEBT-04 rows.
   - _Source:_ 08-03-SUMMARY.md; M-95; 08-05-PLAN.md.
 
 - **M-101** Partial-paste notice on a tailnet drop (DEBT-05).
   1. Main run: in a home GUI tab on a shared office session run `stty raw -echo; cat > /tmp/<file>`, paste a large base64 payload (5 MB or more, no newline, sha256 recorded) with Cmd+V, and within about 1 s run `tailscale down` in the office VM; `tailscale up` after 15 s. The tab shows `Paste interrupted: N of M KB sent` with N < M; after the reconnect the office file stops growing, is under (N+1) × 1024 bytes and is an exact prefix of the payload (`cmp -n`); the tab takes typing again.
   2. Sub-run: run `tailscale down` in the office VM first, then paste a 100,000-byte payload within 3 s. Once the tab shows the reconnecting banner, `tailscale up`. The tab shows a paste notice (`Paste may have been cut short (98 KB)` or `Paste interrupted: N of 98 KB sent`), never silence, and the office file is an exact prefix of the payload that does not grow.
-  - _Last run:_ pending (08-05 Task 3).
+  - _Last run:_ 2026-11-19, build 7dcb66b2: V-05 FAIL on the main run's first rule. Drops mid-paste at 5 MB and 20 MB both showed `Paste may have been cut short (M KB)`, never `Paste interrupted: N of M KB sent`. The office files (98,301 and 262,136 bytes) were exact prefixes that never grew, and the tab took typing again. A 20 MB paste also pinned the GUI's WebContent for over 15 minutes (the pasted text stays in xterm's helper textarea). The sub-run was not run. Open for the verifier; evidence in .planning/phases/08-debt-cleanup/08-VM-CHECKS.md.
   - _Why not automatable:_ a native Cmd+V paste, a real tailnet outage between two Macs and the browser's real socket buffering. The accounting is covered by the Section 4 DEBT-05 rows.
   - _Source:_ 08-03-SUMMARY.md; M-94; 08-05-PLAN.md.
 
 - **M-102** Cold launch after a reboot (DEBT-06).
   1. Reboot the home VM with no daemon running (kill the GUI and the daemon with `kill -9` first, so the stale `daemon.sock` stays), remove Portty from loginwindow's relaunch list, and after the boot launch with `open --stderr /tmp/<name>.err ~/ptest/Portty.app`; wait 30 s. Also once with the relaunch-list entry kept, so macOS reopens Portty at login (its stderr is /dev/null: the byte count of its fd 2 is the check, 0 or the 163-byte AppKit line).
   2. No `respawn attempt` or `not answering right after launch` line, exactly one daemon (ppid = the GUI), and no `daemon: already running` in daemon.log / daemon.log.1.
-  - _Last run:_ pending (08-05 Task 3).
+  - _Last run:_ 2026-11-19, build 7dcb66b2: V-06 PASS, a cold `open --stderr` launch 45 s after a reboot (one daemon, only the AppKit line) and a macOS reopen at login (GUI fd 2 offset 163, no `already running`); evidence in .planning/phases/08-debt-cleanup/08-VM-CHECKS.md.
   - _Why not automatable:_ a real reboot and macOS's login-time relaunch. The wait is covered by the Section 4 DEBT-06 row.
   - _Source:_ 08-04-SUMMARY.md and 08-VM-CHECKS.md (L- and B-rows); 08-05-PLAN.md.
 ---
