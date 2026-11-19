@@ -17,6 +17,14 @@ The user runs a terminal on the office Mac (often with Claude Code inside) and c
 The user approved this as the v1.2 milestone on 2026-11-19 and chose option 2 for URLs: no embedded browser.
 
 ## Approved Scope (v1.2 requirements to write at /gsd-new-milestone)
+0. **FIRST PHASE: keep sessions alive across a Portty upgrade.** User decision, 2026-11-19 ("Guard now, keep later").
+   - Today a version-mismatch restart ends every live session (handleShutdown, since 3d7fd1a2).
+   - v1.1 adds only a consent guard (DEBT-08).
+   - v1.2: the old daemon hands its PTY master file descriptors and session state (ring, history, offsets) to the new daemon over the unix socket (SCM_RIGHTS). Viewers reconnect with resume.
+   - Needs a VM upgrade test with live sessions and attached viewers.
+   - Also in this phase:
+     - the GUI ignores SIGTERM (found in U-01);
+     - pending todos: paste-heartbeat-drop (IN-05), paste-notice-false-positive (IN-06), peer-snapshot-tab-replace (IN-07), web-viewer-paste-notice. These share the ack/input-queue path.
 1. **File preview via `portty open <file>`**, run inside any session, local or remote.
    - The CLI talks to the daemon on the Mac where the shell runs. That daemon sends a preview message over the session's existing authenticated relay stream, chunked with a size cap. Viewers open a preview tab next to the terminal tabs.
    - Renderers:
