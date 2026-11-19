@@ -694,21 +694,28 @@ func (s *vtScan) step(c byte) {
 // an alt-screen exit, so the main screen must stay where the host shows it.
 // h.history, h.modes and geomEnd are Hub-owned and stay (not a geometry change).
 //
-// WR-02: the rendered seed carries text, cursor and DEC modes only, so the
-// rebuild also re-applies the main screen's scroll region (tracked by
-// newLiveEmulator's DECSTBM handler), the pending wrap, the saved cursor
-// with its pen, the current pen and the DEC line drawing G0 charset. vt
-// exposes none of the last four, so they are read by printing probe cells
-// into the old emulator, which is discarded anyway. Then tail, the sequence
-// or UTF-8 character the read cut off, is replayed so the next read
-// completes it.
-// shortcut: tab stops, G1-G3/SO, an OSC 8 link (IN-08), the saved cursor's
-// link and visibility, and vt's zero-width cells (an orphan combining mark,
+// WR-02: the rendered seed carries text (its links included), cursor and DEC
+// modes only, so the rebuild also re-applies the main screen's scroll region
+// (tracked by newLiveEmulator's DECSTBM handler), the pending wrap, the saved
+// cursor with its pen and OSC 8 link, the current pen and link and the DEC
+// line drawing G0 charset. vt exposes none of the last four, so they are read
+// by printing probe cells into the old emulator, which is discarded anyway: a
+// cell carries the pen and link it was printed with, and 'q' prints as '─'
+// through a line-drawing G0. The probed G0 and link resync the tracker (IN-08),
+// which then re-emits them with the tracked G1 and GL: vt ignores SO and SI
+// (0x0e, 0x0f; TestVT_IgnoresShiftOut), so G1 never prints and cannot be
+// probed. Then tail, the sequence or UTF-8 character the read cut off, is
+// replayed so the next read completes it.
+// shortcut: tab stops, G2/G3 and single shifts, the UK national set, the saved
+// cursor's visibility, and vt's zero-width cells (an orphan combining mark,
 // which the re-ingested seed merges into the previous cell or drops, IN-11)
 // are lost; track them if a shell needs them.
 func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	old := h.liveEmu
-	seed := h.renderScreenLocked()
+	var seed []byte // restores and body; the charsets and link go last, from the probes
+	if body := h.screenBodyLocked(); body != nil {
+		seed = append([]byte(h.modeRestoresLocked()), body...)
+	}
 	pos := old.CursorPosition()
 	inferred := h.pendingWrapLocked(pos) != "" // what the seed re-created
 	var cell, savedCell uv.Cell                // copies: CellAt points into the buffer the next probe overwrites
@@ -751,6 +758,24 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 		}
 		return "\x1b[m" + c.Style.String()
 	}
+	// vt stores OSC 8 params in Link.URL and the URI in Link.Params (charstate.go).
+	link := func(c uv.Cell) string {
+		if c.Link.IsZero() {
+			return ""
+		}
+		return ansi.SetHyperlink(c.Link.Params, c.Link.URL)
+	}
+	// Resync the tracker: G0 and the current link as vt has them.
+	switch {
+	case cell.Content == "─":
+		h.cs.g[0] = '0'
+	case h.cs.g[0] == '0':
+		h.cs.g[0] = 0
+	}
+	h.cs.link = [2]string{}
+	if cell.Link.Params != "" {
+		h.cs.link = [2]string{cell.Link.URL, cell.Link.Params}
+	}
 
 	h.liveEmu = h.newLiveEmulator(old.Width(), old.Height())
 	var b strings.Builder
@@ -759,7 +784,7 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	// only a different one. CUPs clear a pending wrap, so this runs only when
 	// needed, or when the seed's pending-wrap guess was wrong.
 	r := h.mainRegion
-	keepSaved := saved != (uv.Position{}) || !savedCell.Style.IsZero()
+	keepSaved := saved != (uv.Position{}) || !savedCell.Style.IsZero() || !savedCell.Link.IsZero()
 	if r != [2]int{} || keepSaved || inferred != pending {
 		om := h.modes[6] // DECOM makes the CUPs below region-relative
 		if om {
@@ -769,7 +794,10 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 			fmt.Fprintf(&b, "\x1b[%d;%dr", r[0], r[1]) // homes the cursor
 		}
 		if keepSaved {
-			fmt.Fprintf(&b, "%s\x1b[%d;%dH\x1b7", pen(savedCell), saved.Y+1, saved.X+1)
+			fmt.Fprintf(&b, "%s%s\x1b[%d;%dH\x1b7", pen(savedCell), link(savedCell), saved.Y+1, saved.X+1)
+			if !savedCell.Link.IsZero() {
+				b.WriteString(ansi.ResetHyperlink()) // the current link comes last
+			}
 		}
 		fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
 		if pending {
@@ -782,10 +810,11 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 			b.WriteString("\x1b[?6h") // vt's DECOM set does not move the cursor
 		}
 	}
-	if cell.Content == "─" {
-		b.WriteString("\x1b(0")
-	}
 	b.WriteString(pen(cell))
+	b.WriteString(h.cs.suffix())
+	if cell.Link.Params == "" && cell.Link.URL != "" {
+		b.WriteString(link(cell)) // vt keeps a link with params and no URI; the tracker does not
+	}
 	h.liveEmu.Write([]byte(b.String())) //nolint:errcheck // emulator Write never returns a meaningful error
 	h.altExited = false                 // the pending-wrap switch above is not the app's exit
 	h.drainScrollbackLocked()           // the seed fills exactly Height rows, so nothing scrolls
@@ -1136,15 +1165,16 @@ func (h *Hub) RenderSnapshot() []byte {
 }
 
 // renderScreenLocked returns the live emulator's current screen, unframed, or
-// nil when there is no emulator or nothing to show: the mode restores, then
-// the screen body. RenderSnapshot and the alt-exit seed use it; joinLocked
-// puts the history between the two. Caller holds emuMu.
+// nil when there is no emulator or nothing to show: the mode restores, the
+// screen body, then the charsets and open link (charState.suffix). joinLocked
+// puts the history after the restores; the alt-exit rebuild seeds with the
+// restores and body and re-emits the state from its probes. Caller holds emuMu.
 func (h *Hub) renderScreenLocked() []byte {
 	body := h.screenBodyLocked()
 	if body == nil {
 		return nil
 	}
-	return append([]byte(h.modeRestoresLocked()), body...)
+	return append([]byte(h.modeRestoresLocked()), append(body, h.cs.suffix()...)...)
 }
 
 // modeRestoresLocked returns the app's DEC private modes (bracketed paste,
@@ -1239,10 +1269,6 @@ func (h *Hub) screenBodyLocked() []byte {
 	// viewer's next character wraps as the host's does. vt does not expose the
 	// state, so this infers it. After ?7: pendingWrapLocked requires autowrap.
 	b.WriteString(h.pendingWrapLocked(pos))
-	// Last, the charsets and open link the host's next bytes print with
-	// (IN-08). The re-printed cell above is already a glyph, so they cannot
-	// change it.
-	b.WriteString(h.cs.suffix())
 	return []byte(b.String())
 }
 
@@ -1409,7 +1435,7 @@ func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Repl
 				}
 				out += hist + sep
 			}
-			return r, append([]byte(out), screen...), false
+			return r, append(append([]byte(out), screen...), h.cs.suffix()...), false
 		}
 	}
 	// Ring intact at one grid (complete and byte-faithful), or the emulator has nothing to
