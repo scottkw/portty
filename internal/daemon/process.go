@@ -117,19 +117,13 @@ func EnsureDaemon(socketPath string) error {
 	needsSpawn := true
 	if err := client.Health(); err == nil {
 		// Daemon is reachable — check version compatibility first.
-		// Production builds (non-"dev") compare versions; a stale daemon from
-		// an older release won't have newly added API routes (e.g. start-minimized).
-		if BuildVersion != "" && BuildVersion != "dev" {
-			if ver := client.GetDaemonVersion(); ver != BuildVersion {
-				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), restarting\n", ver, BuildVersion)
-				_ = client.ShutdownDaemon()
-				// No socket cleanup here (review it3 WR-03): only the spawned
-				// daemon unlinks it, under the lock, once the old one let go.
-				// startDaemon spawns only after that (WR-07).
-				// fall through to spawn
-			} else {
-				needsSpawn = false
-			}
+		if ver := client.GetDaemonVersion(); staleVersion(ver) {
+			fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), restarting\n", ver, BuildVersion)
+			_ = client.ShutdownDaemon()
+			// No socket cleanup here (review it3 WR-03): only the spawned
+			// daemon unlinks it, under the lock, once the old one let go.
+			// startDaemon spawns only after that (WR-07).
+			// fall through to spawn
 		} else {
 			needsSpawn = false
 		}
@@ -183,10 +177,18 @@ func startDaemon(client *DaemonClient, wait time.Duration, lockPath string, spaw
 	return waitForDaemon(client, time.Until(deadline), exited, lockPath)
 }
 
-// daemonReady reports whether the daemon at client is fully ready: health and
-// relay port.
+// staleVersion reports whether a daemon reporting ver is from another build.
+// Production builds (non-"dev") compare versions; a stale daemon from an older
+// release won't have newly added API routes (e.g. start-minimized).
+func staleVersion(ver string) bool {
+	return BuildVersion != "" && BuildVersion != "dev" && ver != BuildVersion
+}
+
+// daemonReady reports whether the daemon at client is fully ready: health,
+// this build's version and relay port. 08-REVIEW CR-01: a version-mismatched
+// daemon told to stop still answers, and holds the lock, until it exits.
 func daemonReady(client *DaemonClient) bool {
-	if client.Health() != nil {
+	if client.Health() != nil || staleVersion(client.GetDaemonVersion()) {
 		return false
 	}
 	port, err := client.GetRelayPort()

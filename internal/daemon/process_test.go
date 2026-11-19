@@ -228,9 +228,11 @@ func refusingSocket(t *testing.T, name string) string {
 	return path
 }
 
-// serveDaemonAfter binds a fake ready daemon at path after d.
+// serveDaemonAfter binds a fake ready daemon of this build's version at path
+// after d.
 func serveDaemonAfter(t *testing.T, path string, d time.Duration) {
 	t.Helper()
+	ver := BuildVersion // read here: the handler goroutine may outlive a test's restore
 	served := make(chan net.Listener, 1)
 	go func() {
 		time.Sleep(d)
@@ -247,7 +249,7 @@ func serveDaemonAfter(t *testing.T, path string, d time.Duration) {
 				fmt.Fprint(w, `{"port":4242}`)
 				return
 			}
-			fmt.Fprint(w, `{"status":"ok"}`)
+			fmt.Fprintf(w, `{"status":"ok","version":%q}`, ver)
 		}))
 	}()
 	t.Cleanup(func() {
@@ -352,6 +354,75 @@ func TestStartDaemon_WaitsForOldDaemonLock(t *testing.T) {
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("took %v, want soon after the 2.5 s release", d)
+	}
+}
+
+// 08-REVIEW CR-01: after ShutdownDaemon's 204 the old daemon keeps answering,
+// and holds the lock, for 50 ms before its os.Exit (handleShutdown). The lock
+// wait must not count that old-version daemon as ready, or nothing is spawned
+// and no daemon is left once it exits.
+func TestStartDaemon_MismatchedDaemonAnsweringIsNotReady(t *testing.T) {
+	old := BuildVersion
+	BuildVersion = "v2"
+	t.Cleanup(func() { BuildVersion = old })
+	lockPath := filepath.Join(t.TempDir(), "daemon.lock")
+	oldLock, err := lockDaemon(lockPath, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := shortProcTestSocket(t, "mismatch")
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{}
+	srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/shutdown": // like handleShutdown: reply, then exit 50 ms later
+			w.WriteHeader(http.StatusNoContent)
+			w.(http.Flusher).Flush()
+			time.AfterFunc(50*time.Millisecond, func() { srv.Close(); oldLock.Close() })
+		case "/relay-port":
+			fmt.Fprint(w, `{"port":4242}`)
+		default:
+			fmt.Fprint(w, `{"status":"ok","version":"v1"}`)
+		}
+	})
+	go srv.Serve(ln) //nolint:errcheck
+	t.Cleanup(func() { srv.Close() })
+
+	client := NewDaemonClient(path)
+	if err := client.ShutdownDaemon(); err != nil {
+		t.Fatal(err)
+	}
+	var spawned atomic.Bool
+	spawn := func() (<-chan struct{}, error) {
+		spawned.Store(true)
+		exited := make(chan struct{})
+		go func() {
+			lock, err := lockDaemon(lockPath, 2*time.Second)
+			if err != nil {
+				close(exited)
+				return
+			}
+			t.Cleanup(func() { lock.Close() })
+			serveDaemonAfter(t, path, 0)
+		}()
+		return exited, nil
+	}
+	if err := startDaemon(client, daemonReadyWait, lockPath, spawn); err != nil {
+		t.Fatalf("startDaemon: %v", err)
+	}
+	if !spawned.Load() {
+		t.Fatal("the old-version daemon counted as ready: nothing was spawned")
+	}
+	time.Sleep(200 * time.Millisecond) // well past the old daemon's exit
+	if err := client.Health(); err != nil {
+		t.Fatalf("no daemon left after the restart: %v", err)
+	}
+	if ver := client.GetDaemonVersion(); ver != BuildVersion {
+		t.Fatalf("daemon version %q, want %q", ver, BuildVersion)
 	}
 }
 
