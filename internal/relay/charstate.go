@@ -65,8 +65,9 @@ func (c *charState) setLink(params, uri string) {
 }
 
 // maxLinkField bounds an OSC 8 field the hub re-emits; real links are far
-// shorter, and vt would otherwise keep up to its 4 MB OSC buffer.
-const maxLinkField = 2048
+// shorter, and vt would otherwise keep up to its 4 MB OSC buffer. 2083 is
+// VTE's URI limit, so any link VTE shows survives a replay.
+const maxLinkField = 2083
 
 // safeLinkField reports whether an OSC 8 field may be re-emitted to viewers
 // (08-REVIEW WR-02). vt keeps every byte 0x20-0xFF but 0x9C as OSC data, while

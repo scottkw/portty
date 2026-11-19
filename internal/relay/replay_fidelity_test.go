@@ -691,6 +691,10 @@ func TestFixRenderedLinks_DropsUnsafe(t *testing.T) {
 			t.Errorf("fixRenderedLinks(%.40q)\n got  %.60q\n want %q", in, got, want)
 		}
 	}
+	// The cap is VTE's 2083-byte URI limit, inclusive.
+	if !safeLinkField(strings.Repeat("a", 2083)) || safeLinkField(strings.Repeat("a", 2084)) {
+		t.Error("safeLinkField: want 2083 bytes kept and 2084 dropped")
+	}
 }
 
 // TestCharState_Scan: GL follows SO and SI where vt executes C0 controls, in
