@@ -12,6 +12,7 @@ import { Terminal } from '@xterm/xterm'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import fixture from './fixtures/wrapped-replay.json'
 import risFixture from './fixtures/ris-replay.json'
+import softwrapFixture from './fixtures/softwrap-replay.json'
 import { applyHostGrid, resetForFullReplay } from '../guestTerminal'
 
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
@@ -74,6 +75,28 @@ describe('rendered replay after a host reset keeps the cursor in xterm.js (ris-r
       term.dispose()
     })
   }
+})
+
+// DEBT-02: the hub replays a soft-wrapped line with no CRLF between its rows,
+// so xterm.js wraps it itself and marks the continuation row isWrapped (copy
+// and reflow then treat it as one line); an exact-width line keeps its CRLF.
+describe('soft-wrapped lines replay as one wrapped line (softwrap-replay fixture)', () => {
+  it('marks wrapped continuations isWrapped, in history and on screen, and not the row after an exact-width line', async () => {
+    const f = softwrapFixture
+    const term = guestTerm(f.cols, f.rows)
+    resetForFullReplay(term)
+    await flush(term, decode(f.replay))
+    const buf = term.buffer.active
+    const row = (i: number) => buf.getLine(i)?.translateToString(true) ?? ''
+
+    expect(buf.getLine(f.longRow + 1)?.isWrapped).toBe(true)
+    expect(row(f.longRow) + row(f.longRow + 1)).toBe(f.longText)
+    expect(row(f.eqRow)).toBe('='.repeat(f.cols))
+    expect(buf.getLine(f.eqRow + 1)?.isWrapped).toBe(false)
+    expect(buf.getLine(f.screenLongRow + 1)?.isWrapped).toBe(true)
+    expect(row(f.screenLongRow) + row(f.screenLongRow + 1)).toBe(f.screenLongText)
+    term.dispose()
+  })
 })
 
 const burst = Array.from({ length: 400 }, (_, i) => `stale burst line ${i} ${'x'.repeat(40)}`).join('\r\n')

@@ -8,8 +8,12 @@ package relay
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -197,5 +201,118 @@ func TestSoftWrap_RISClears(t *testing.T) {
 	both(t, hub, w, ref, "\x1bc")
 	if k := n(); k != 0 {
 		t.Errorf("wrap set holds %d keys after RIS, want 0", k)
+	}
+}
+
+// TestSoftWrap_SurvivesAltExitRebuild: a wrapped line on screen during an app's
+// alt-screen visit, scrolled into history after the exit rebuild, still
+// replays joined: the wrap set is Hub-owned and the seed re-renders the rows.
+func TestSoftWrap_SurvivesAltExitRebuild(t *testing.T) {
+	hub, w, ref := wrapHub(t)
+	wrapLines(t, hub, w, ref, 1, 10)
+	both(t, hub, w, ref, wrapCmd+wrapText+"\r\n$ ")
+	hub.emuMu.Lock()
+	before := hub.liveEmu
+	hub.emuMu.Unlock()
+	both(t, hub, w, ref, "\x1b[?1049h")
+	for _, c := range altChunks(80, 0, 500) {
+		both(t, hub, w, ref, c)
+	}
+	both(t, hub, w, ref, "\x1b[?1049l")
+	hub.emuMu.Lock()
+	rebuilt := hub.liveEmu != before
+	hub.emuMu.Unlock()
+	if !rebuilt {
+		t.Fatal("fixture invalid: the app's exit did not rebuild the emulator")
+	}
+	wrapLines(t, hub, w, ref, 11, 50)
+	replay := wrapReplay(t, hub, ref, 80)
+	if !bytes.Contains(replay, wrapJoined) {
+		t.Errorf("wrap lost across the alt-exit rebuild: %q", replay)
+	}
+}
+
+// TestSoftWrap_SurvivesResizePush: a wrapped line on screen when a genuine host
+// resize pushes the rows into history replays joined, so a viewer at the new,
+// wider grid shows it on one row as xterm.js on the host does after reflow.
+// The line is 92 columns: it wraps at 80 and fits at 100.
+func TestSoftWrap_SurvivesResizePush(t *testing.T) {
+	hub, w, ref := wrapHub(t)
+	wrapLines(t, hub, w, ref, 1, 10)
+	both(t, hub, w, ref, wrapCmd+wrapText[:90]+"\r\n$ ")
+	resizeHub(t, hub, 100, 24)
+	emit(t, hub, w, "$ ") // the shell's SIGWINCH redraw
+	if !hub.scrollback.Truncated() {
+		t.Fatal("fixture invalid: ring did not wrap")
+	}
+	guest, r := joinGuest(t, hub, 100, 24)
+	replay := payloads(r)
+	if !bytes.Contains(replay, []byte(wrapCmd+wrapText[:90])) {
+		t.Errorf("wrap lost across the resize push: %q", replay)
+	}
+	rows := plainRows(append(scrollbackRows(guest), screenRows(guest)...))
+	if !slices.Contains(rows, wrapCmd+wrapText[:90]) || slices.Contains(rows, wrapCmd+wrapText[:78]) {
+		t.Errorf("100-column guest does not show the line on one row: %q", rows)
+	}
+}
+
+const softwrapFixturePath = "../../frontend/src/lib/__tests__/fixtures/softwrap-replay.json"
+
+// softwrapFixture is what the frontend feeds real xterm.js to check that a
+// replayed soft wrap is marked isWrapped and an exact-width line is not.
+// Row indexes are into the whole buffer (scrollback, then screen).
+type softwrapFixture struct {
+	Cols           int    `json:"cols"`
+	Rows           int    `json:"rows"`
+	Replay         string `json:"replay"` // base64 rendered replay, written after the viewer's reset
+	LongRow        int    `json:"longRow"`
+	LongText       string `json:"longText"`
+	EqRow          int    `json:"eqRow"`
+	ScreenLongRow  int    `json:"screenLongRow"`
+	ScreenLongText string `json:"screenLongText"`
+}
+
+// TestSoftWrap_XtermFixture writes (with -update-replay-fixture) or checks the
+// softwrap-replay fixture: a wrapped line and an exact-width line in history,
+// and a wrapped line on screen.
+func TestSoftWrap_XtermFixture(t *testing.T) {
+	screenText := wrapCmd + strings.Repeat("abcdefghij", 10)
+	hub, w, ref := wrapHub(t)
+	both(t, hub, w, ref, wrapCmd+wrapText+"\r\n"+strings.Repeat("=", 80)+"\r\nafter\r\n")
+	wrapLines(t, hub, w, ref, 1, 30)
+	both(t, hub, w, ref, screenText+"\r\n$ ")
+	replay := wrapReplay(t, hub, ref, 80)
+	if !bytes.Contains(replay, wrapJoined) || !bytes.Contains(replay, []byte(screenText)) {
+		t.Fatalf("fixture invalid: wrapped lines not joined: %q", replay)
+	}
+
+	all := plainRows(append(scrollbackRows(ref), screenRows(ref)...))
+	sbLen := len(scrollbackRows(ref))
+	f := softwrapFixture{
+		Cols: 80, Rows: 24, Replay: base64.StdEncoding.EncodeToString(replay),
+		LongRow: slices.Index(all, wrapCmd+wrapText[:78]), LongText: wrapCmd + wrapText,
+		EqRow:         slices.Index(all, strings.Repeat("=", 80)),
+		ScreenLongRow: slices.Index(all, screenText[:80]), ScreenLongText: screenText,
+	}
+	if f.LongRow < 0 || f.EqRow < 0 || f.LongRow >= sbLen || f.EqRow >= sbLen || f.ScreenLongRow < sbLen {
+		t.Fatalf("fixture invalid: rows long %d eq %d screen %d, scrollback %d", f.LongRow, f.EqRow, f.ScreenLongRow, sbLen)
+	}
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(f); err != nil {
+		t.Fatal(err)
+	}
+	if *updateReplayFixture {
+		if err := os.WriteFile(softwrapFixturePath, buf.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(softwrapFixturePath)
+	if err != nil || !bytes.Equal(got, buf.Bytes()) {
+		t.Fatalf("fixture stale: run go test ./internal/relay -run TestSoftWrap_XtermFixture -update-replay-fixture (read err: %v)", err)
 	}
 }
