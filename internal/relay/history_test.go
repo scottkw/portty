@@ -10,6 +10,7 @@ import (
 	"io"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -183,6 +184,49 @@ func TestHistory_WrappedRender(t *testing.T) {
 	h.Push("x", false)
 	if h.EndsWrapped() || h.Render() != "x" {
 		t.Errorf("after Clear: Render %q EndsWrapped %v", h.Render(), h.EndsWrapped())
+	}
+}
+
+// TestHistory_EndWrapClearedWhenRow0Erased (08-REVIEW IN-02 P7): a line that
+// wrapped from history onto screen row 0 no longer continues once row 0's
+// start is erased without a scroll (ED 0 from home, ED 1, EL 0 from column 0,
+// EL 1, EL 2), whether the line drained in an earlier read or is still in
+// vt's scrollback in the same read. ED 2 pushes row 0 into history right
+// after the line, and an erase that keeps row 0's start leaves it, so both
+// keep the join.
+func TestHistory_EndWrapClearedWhenRow0Erased(t *testing.T) {
+	pre := "\x1bca\r\nb\r\nc\r\nd\r\n" + strings.Repeat("x", 30) + "\r\n\r\n\r\n\r\n"
+	for _, c := range []struct {
+		name, erase string
+		wrapped     bool
+	}{
+		{"P7 ED 0 from home", "\x1b[H\x1b[J$ prompt", false},
+		{"ED 1", "\x1b[3;1H\x1b[1J\x1b[H$ prompt", false},
+		{"EL 2 on row 0", "\x1b[H\x1b[2K$ prompt", false},
+		{"EL 0 from column 1", "\x1b[H\x1b[K$ prompt", false},
+		{"EL 1 on row 0", "\x1b[1;3H\x1b[1K\x1b[H$ prompt", false},
+		{"ED 0 from row 0 column 5 keeps it", "\x1b[1;5H\x1b[J", true},
+		{"EL on row 1 keeps it", "\x1b[2;1H\x1b[2K", true},
+		{"ED 2 keeps it", "\x1b[H\x1b[2J", true},
+	} {
+		for _, oneRead := range []bool{false, true} {
+			h := NewHub("in02", nil, nil, DefaultScrollbackBytes, nil)
+			resizeHub(t, h, 20, 5)
+			if oneRead {
+				probeFeed(h, pre+c.erase)
+			} else {
+				probeFeed(h, pre)
+				probeFeed(h, c.erase)
+			}
+			h.emuMu.Lock()
+			hist := h.history.lines[h.history.head:]
+			idx := slices.Index(hist, strings.Repeat("x", 20))
+			got := idx >= 0 && h.history.wrapped[h.history.head+idx]
+			h.emuMu.Unlock()
+			if idx < 0 || got != c.wrapped {
+				t.Errorf("%s (one read %v): the 20-x line in history %v, wrapped %v, want %v (history %q)", c.name, oneRead, idx >= 0, got, c.wrapped, hist)
+			}
+		}
 	}
 }
 

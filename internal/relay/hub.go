@@ -928,9 +928,22 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	// ESC[3J (zsh `clear`, Claude Code's /clear) erases scrollback: empty the
 	// history too, so a cleared transcript is never replayed (T-05-10).
 	emu.RegisterCsiHandler('J', func(params ansi.Params) bool {
-		if n, _, _ := params.Param(0, 0); n == 3 {
+		n, _, _ := params.Param(0, 0)
+		if n == 3 {
 			h.history.Clear()
 			h.wraps.clear()
+		}
+		// IN-02: ED 0 from home and ED 1 erase row 0's start without a
+		// scroll; ED 2 pushes row 0 into history after the line, which stays.
+		if p := emu.CursorPosition(); n == 1 || (n == 0 && p == uv.Position{}) {
+			h.row0ErasedLocked(emu)
+		}
+		return false
+	})
+	emu.RegisterCsiHandler('K', func(params ansi.Params) bool {
+		n, _, _ := params.Param(0, 0)
+		if p := emu.CursorPosition(); p.Y == 0 && (n == 1 || n == 2 || (n == 0 && p.X == 0)) {
+			h.row0ErasedLocked(emu)
 		}
 		return false
 	})
@@ -995,6 +1008,20 @@ func (h *Hub) drainScrollbackLocked() {
 // Caller holds emuMu.
 func (h *Hub) absLine(emu *xvt.Emulator, y int) uint64 {
 	return h.wrapBase + uint64(emu.ScrollbackLen()+y)
+}
+
+// row0ErasedLocked is called when an erase is about to blank the start of
+// emu's main-screen row 0 without scrolling: the line above it, the newest
+// in emu's scrollback or else in history, no longer continues onto it
+// (IN-02). Runs inside emu.Write under emuMu.
+func (h *Hub) row0ErasedLocked(emu *xvt.Emulator) {
+	switch {
+	case emu.IsAltScreen():
+	case emu.ScrollbackLen() > 0:
+		h.wraps.take(h.absLine(emu, -1), 0) // drops it whatever its key
+	default:
+		h.history.ClearEndWrap()
+	}
 }
 
 // autowrapLocked reports whether DECAWM is on (vt's default). Caller holds emuMu.

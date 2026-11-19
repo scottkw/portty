@@ -68,6 +68,14 @@ func (h *History) Len() int { return len(h.lines) - h.head }
 // history (the screen's first row).
 func (h *History) EndsWrapped() bool { return h.Len() > 0 && h.wrapped[len(h.wrapped)-1] }
 
+// ClearEndWrap marks the newest line as not continuing: the screen row it
+// wrapped onto was erased (IN-02).
+func (h *History) ClearEndWrap() {
+	if h.Len() > 0 {
+		h.wrapped[len(h.wrapped)-1] = false
+	}
+}
+
 // Render joins the retained lines with CRLF, with no trailing CRLF. A wrapped
 // line is joined to a non-empty next line with nothing: before an empty one
 // the CRLF stays, or the viewer's pending wrap would swallow that row.
