@@ -126,7 +126,7 @@ func TestFullReplay_WrappedRingFormat(t *testing.T) {
 func TestHistory_Caps(t *testing.T) {
 	h := NewHistory(3, 1<<20)
 	for _, l := range []string{"a", "b", "c", "d"} {
-		h.Push(l)
+		h.Push(l, false)
 	}
 	if h.Len() != 3 || h.Render() != "b\r\nc\r\nd" {
 		t.Errorf("line cap: Len %d Render %q, want 3 %q", h.Len(), h.Render(), "b\r\nc\r\nd")
@@ -134,19 +134,19 @@ func TestHistory_Caps(t *testing.T) {
 
 	h = NewHistory(100, 10)
 	for _, l := range []string{"aaaa", "bbbb", "cccc"} {
-		h.Push(l)
+		h.Push(l, false)
 	}
 	if h.Render() != "bbbb\r\ncccc" {
 		t.Errorf("byte cap: Render %q, want %q", h.Render(), "bbbb\r\ncccc")
 	}
-	h.Push("0123456789A") // one line over the byte cap empties the ring
+	h.Push("0123456789A", false) // one line over the byte cap empties the ring
 	if h.Len() != 0 || h.Render() != "" {
 		t.Errorf("oversized line: Len %d Render %q, want empty", h.Len(), h.Render())
 	}
 
 	h = NewHistory(5, 1<<20)
 	for i := range 1000 {
-		h.Push(strconv.Itoa(i))
+		h.Push(strconv.Itoa(i), false)
 	}
 	if h.Render() != "995\r\n996\r\n997\r\n998\r\n999" {
 		t.Errorf("after many pushes: Render %q", h.Render())
@@ -154,6 +154,35 @@ func TestHistory_Caps(t *testing.T) {
 	h.Clear()
 	if h.Len() != 0 || h.Render() != "" {
 		t.Errorf("Clear: Len %d Render %q", h.Len(), h.Render())
+	}
+}
+
+// TestHistory_WrappedRender: a wrapped line joins a non-empty next line with
+// no CRLF, keeps its CRLF before an empty one, and the flag survives the
+// compaction and goes with Clear (DEBT-02).
+func TestHistory_WrappedRender(t *testing.T) {
+	h := NewHistory(4, 1<<20)
+	h.Push("drop", true) // evicted below
+	h.Push("ab", true)
+	h.Push("cd", false)
+	h.Push("ef", true)
+	h.Push("", false)
+	if got, want := h.Render(), "abcd\r\nef\r\n"; got != want {
+		t.Errorf("Render %q, want %q", got, want)
+	}
+	if h.EndsWrapped() {
+		t.Error("EndsWrapped after an unwrapped line")
+	}
+	for range 10 { // compaction keeps flags with their lines
+		h.Push("gh", true)
+	}
+	if got, want := h.Render(), "ghghghgh"; got != want || !h.EndsWrapped() {
+		t.Errorf("after compaction: Render %q EndsWrapped %v, want %q true", got, h.EndsWrapped(), want)
+	}
+	h.Clear()
+	h.Push("x", false)
+	if h.EndsWrapped() || h.Render() != "x" {
+		t.Errorf("after Clear: Render %q EndsWrapped %v", h.Render(), h.EndsWrapped())
 	}
 }
 
