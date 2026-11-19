@@ -144,9 +144,11 @@ const altScreenEnterSeq = "\x1b[?1049h"
 // Covered: DA1, DA2 and DA3 (CSI c, CSI > c, CSI = c); DSR and DECXCPR
 // (CSI n, CSI ? n); DECRQM ANSI and DEC (CSI $ p); in-band resize set/reset
 // (CSI ? 2048 h/l, the set makes the terminal report its size); XTVERSION
-// (CSI > q); the kitty keyboard query (CSI ? u); XTWINOPS size reports
-// (CSI 14 t, 14;2 t, 16 t, 18 t); XTGETTCAP (DCS + q); DECRQSS (DCS $ q);
-// OSC 10/11/12 colour queries; OSC 4 palette queries; OSC 52 clipboard reads.
+// (CSI > q); the kitty keyboard query (CSI ? u); XTWINOPS reports
+// (CSI 13 t position, 14 t, 14;2 t, 16 t, 18 t, 19 t sizes, 21 t the title,
+// the classic echo-back vector); XTGETTCAP (DCS + q); DECRQSS (DCS $ q);
+// OSC 10/11/12 colour queries, including the multi-query OSC 10;?;? form;
+// OSC 4 palette queries; OSC 52 clipboard reads.
 // Window-op sets (CSI 8;r;c t, 22;0 t), OSC 4 sets, OSC 52 writes, sixel DCS
 // images, SGR and every other mode set pass through untouched.
 //
@@ -167,10 +169,10 @@ var liveEmuQueryStripPattern = regexp.MustCompile(
 		`|\x1b\[\?2048[hl]` + // in-band resize set/reset (set triggers a pw write)
 		`|\x1b\[>[0-9;]*q` + // XTVERSION
 		`|\x1b\[\?u` + // kitty keyboard flags query
-		`|\x1b\[1[468](?:;[0-9]*)?t` + // XTWINOPS 14/16/18 size reports (not the 8/22/23 sets)
+		`|\x1b\[(?:1[34689]|21)(?:;[0-9]*)?t` + // XTWINOPS 13/14/16/18/19/21 reports (not the 8/22/23 sets)
 		`|\x1bP\+q[0-9A-Fa-f;]*(?:\x1b\\|\x07)` + // XTGETTCAP (hex-encoded names)
 		`|\x1bP\$q[\x20-\x7e]*(?:\x1b\\|\x07)` + // DECRQSS (sixel DCS has no $ after P)
-		`|\x1b\]1[012];\?(?:\x07|\x1b\\)` + // OSC 10/11/12 color query, BEL- or ST-terminated
+		`|\x1b\]1[012](?:;\?)+(?:\x07|\x1b\\)` + // OSC 10/11/12 color query (one or more), BEL- or ST-terminated
 		`|\x1b\]4(?:;[0-9]+;\?)+(?:\x07|\x1b\\)` + // OSC 4 palette query (index;? pairs only)
 		`|\x1b\]52;[a-z0-9]*;\?(?:\x07|\x1b\\)`, // OSC 52 clipboard read (writes stay)
 )

@@ -39,6 +39,13 @@ func TestStripTerminalQueries(t *testing.T) {
 		{"OSC 10 query", "\x1b]10;?\x07"},
 		{"OSC 11 query", "\x1b]11;?\x1b\\"},
 		{"OSC 12 query", "\x1b]12;?\x07"},
+		// IN-04 (07 review fix): multi-queries and the other XTWINOPS reports.
+		{"OSC 10 two queries", "\x1b]10;?;?\x07"},
+		{"OSC 11 three queries ST", "\x1b]11;?;?;?\x1b\\"},
+		{"CSI 13 t window position", "\x1b[13t"},
+		{"CSI 13;2 t text area position", "\x1b[13;2t"},
+		{"CSI 19 t screen size chars", "\x1b[19t"},
+		{"CSI 21 t title report", "\x1b[21t"},
 	}
 	for _, c := range append(append([]struct{ name, seq string }{}, addedQueries...), regression...) {
 		t.Run("strip/"+c.name, func(t *testing.T) {
@@ -51,6 +58,8 @@ func TestStripTerminalQueries(t *testing.T) {
 	keep := []struct{ name, seq string }{
 		{"window resize set", "\x1b[8;24;80t"},
 		{"title stack push", "\x1b[22;0t"},
+		{"title stack pop", "\x1b[23;0t"},
+		{"OSC 10 colour set", "\x1b]10;rgb:ff/ff/ff\x07"},
 		{"OSC 4 palette set", "\x1b]4;1;rgb:ff/00/00\x07"},
 		{"sixel DCS", "\x1bPq#0;2;0;0;0~-\x1b\\"},
 		{"SGR", "\x1b[31m"},
