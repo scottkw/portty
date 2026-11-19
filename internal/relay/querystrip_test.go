@@ -46,6 +46,10 @@ func TestStripTerminalQueries(t *testing.T) {
 		{"CSI 13;2 t text area position", "\x1b[13;2t"},
 		{"CSI 19 t screen size chars", "\x1b[19t"},
 		{"CSI 21 t title report", "\x1b[21t"},
+		// IN-04 (07 review fix, iteration 2): the remaining XTWINOPS reports.
+		{"CSI 11 t window state", "\x1b[11t"},
+		{"CSI 15 t screen size pixels", "\x1b[15t"},
+		{"CSI 20 t icon label report", "\x1b[20t"},
 	}
 	for _, c := range append(append([]struct{ name, seq string }{}, addedQueries...), regression...) {
 		t.Run("strip/"+c.name, func(t *testing.T) {
@@ -59,6 +63,8 @@ func TestStripTerminalQueries(t *testing.T) {
 		{"window resize set", "\x1b[8;24;80t"},
 		{"title stack push", "\x1b[22;0t"},
 		{"title stack pop", "\x1b[23;0t"},
+		{"fullscreen undo", "\x1b[10;0t"},
+		{"de-iconify", "\x1b[1t"},
 		{"OSC 10 colour set", "\x1b]10;rgb:ff/ff/ff\x07"},
 		{"OSC 4 palette set", "\x1b]4;1;rgb:ff/00/00\x07"},
 		{"sixel DCS", "\x1bPq#0;2;0;0;0~-\x1b\\"},
@@ -74,6 +80,28 @@ func TestStripTerminalQueries(t *testing.T) {
 				t.Fatalf("StripTerminalQueries(%q) = %q, want it unchanged", in, got)
 			}
 		})
+	}
+}
+
+// TestJoin_StripsQuerySplitAcrossReads (IN-04): a query cut by a PTY read
+// boundary, where the ring holds a 0x01 frame header inside it, is stripped
+// from full and delta replays; the headers outside a query stay.
+func TestJoin_StripsQuerySplitAcrossReads(t *testing.T) {
+	reads := []string{"a\x1b[", "6nb\x1b]11", ";?\x07c\x1b", "[21td"}
+	const want = "\x01abcd" // the first header stays; the one inside each split query goes with it
+	hub, w := runJoinHub(t, DefaultScrollbackBytes)
+	for _, s := range reads {
+		emit(t, hub, w, s)
+	}
+	if got := fullReplay(t, hub); string(got) != want {
+		t.Errorf("full replay = %q; want %q", got, want)
+	}
+	off := join(t, hub, 0, false).End
+	for _, s := range reads {
+		emit(t, hub, w, s)
+	}
+	if r := join(t, hub, off, true); r.Mode != ReplayDelta || string(payloads(r)) != want {
+		t.Errorf("mode %q delta = %q; want delta %q", r.Mode, payloads(r), want)
 	}
 }
 

@@ -145,8 +145,9 @@ const altScreenEnterSeq = "\x1b[?1049h"
 // (CSI n, CSI ? n); DECRQM ANSI and DEC (CSI $ p); in-band resize set/reset
 // (CSI ? 2048 h/l, the set makes the terminal report its size); XTVERSION
 // (CSI > q); the kitty keyboard query (CSI ? u); XTWINOPS reports
-// (CSI 13 t position, 14 t, 14;2 t, 16 t, 18 t, 19 t sizes, 21 t the title,
-// the classic echo-back vector); XTGETTCAP (DCS + q); DECRQSS (DCS $ q);
+// (CSI 11 t window state, 13 t position, 14 t, 14;2 t, 15 t, 16 t, 18 t,
+// 19 t sizes, 20 t the icon label and 21 t the title, the classic echo-back
+// vectors); XTGETTCAP (DCS + q); DECRQSS (DCS $ q);
 // OSC 10/11/12 colour queries, including the multi-query OSC 10;?;? form;
 // OSC 4 palette queries; OSC 52 clipboard reads.
 // Window-op sets (CSI 8;r;c t, 22;0 t), OSC 4 sets, OSC 52 writes, sixel DCS
@@ -155,9 +156,10 @@ const altScreenEnterSeq = "\x1b[?1049h"
 // It is shared through StripTerminalQueries: internal/daemon imports relay
 // (never the reverse), so the hub and the engine strip the same set.
 //
-// Known limits: the ring stores 0x01-framed PTY reads, so a query split across
-// two reads is not matched; an OSC 4 that mixes sets and queries is kept whole;
-// a query not listed above is not stripped.
+// Known limits: the live feed strips each PTY read alone, so a query split
+// across two reads reaches the emulator (harmless, see above; Join's replays
+// strip across reads); an OSC 4 that mixes sets and queries is kept whole; a
+// query not listed above is not stripped.
 var liveEmuQueryStripPattern = regexp.MustCompile(
 	`\x1b\[[0-9;]*c` + // DA1 (and any params before c)
 		`|\x1b\[>[0-9;]*c` + // DA2
@@ -169,7 +171,7 @@ var liveEmuQueryStripPattern = regexp.MustCompile(
 		`|\x1b\[\?2048[hl]` + // in-band resize set/reset (set triggers a pw write)
 		`|\x1b\[>[0-9;]*q` + // XTVERSION
 		`|\x1b\[\?u` + // kitty keyboard flags query
-		`|\x1b\[(?:1[34689]|21)(?:;[0-9]*)?t` + // XTWINOPS 13/14/16/18/19/21 reports (not the 8/22/23 sets)
+		`|\x1b\[(?:1[134-689]|2[01])(?:;[0-9]*)?t` + // XTWINOPS 11/13/14/15/16/18/19/20/21 reports (not the 8/22/23 sets)
 		`|\x1bP\+q[0-9A-Fa-f;]*(?:\x1b\\|\x07)` + // XTGETTCAP (hex-encoded names)
 		`|\x1bP\$q[\x20-\x7e]*(?:\x1b\\|\x07)` + // DECRQSS (sixel DCS has no $ after P)
 		`|\x1b\]1[012](?:;\?)+(?:\x07|\x1b\\)` + // OSC 10/11/12 color query (one or more), BEL- or ST-terminated
@@ -185,6 +187,33 @@ var liveEmuQueryStripPattern = regexp.MustCompile(
 // engine strip the same set.
 func StripTerminalQueries(b []byte) []byte {
 	return liveEmuQueryStripPattern.ReplaceAll(b, nil)
+}
+
+// stripRingQueries is StripTerminalQueries for ring bytes, where a query split
+// across two PTY reads has a 0x01 frame header inside it: matching runs with
+// the headers skipped, and a match drops the headers inside it too (IN-04).
+// Every other byte, headers included, stays, so a replay with no query is
+// still the raw ring (#109). Clients take their position from the offset
+// meta, never by counting replay bytes.
+func stripRingQueries(data []byte) []byte {
+	pos := make([]int, 0, len(data)) // data index of each byte in view
+	view := make([]byte, 0, len(data))
+	for i, c := range data {
+		if c != MsgOutput {
+			pos = append(pos, i)
+			view = append(view, c)
+		}
+	}
+	locs := liveEmuQueryStripPattern.FindAllIndex(view, -1)
+	if locs == nil {
+		return data
+	}
+	out, prev := make([]byte, 0, len(data)), 0
+	for _, l := range locs {
+		out = append(out, data[prev:pos[l[0]]]...)
+		prev = pos[l[1]-1] + 1
+	}
+	return append(out, data[prev:]...)
 }
 
 // NewQuietEmulator returns a vt emulator whose query replies are discarded.
@@ -1102,9 +1131,8 @@ type Replay struct {
 // H-replies). Queries change no terminal state, so the replay still renders the
 // same. Colours and mode sets survive the strip, except the in-band resize mode
 // ?2048, which is stripped because setting it makes the terminal report its
-// size. The ring stores 0x01-framed chunks, so a query split across two PTY
-// reads is not matched: accepted, it needs a read boundary inside a few-byte
-// sequence.
+// size. The ring stores 0x01-framed chunks; stripRingQueries skips those
+// headers while matching, so a query split across two PTY reads is stripped.
 //
 // SHAR-07 / Phase 5 (overnight survival): offsets are frame bytes of the ring
 // (Scrollback.End). A client that sends hasResume with an offset the ring still
@@ -1119,7 +1147,8 @@ type Replay struct {
 // rather than queued in Msgs, so a long replay cannot fill the 256-frame queue
 // and get the viewer kicked as slow (WR-01).
 // The ring bytes ride along with their 0x01 frame headers as SOH bytes; the
-// client takes its position from the offset meta, never by counting them.
+// client takes its position from the offset meta, never by counting them
+// (relayClient.ts and attach/loop.go stop counting at the replay meta).
 //
 // Geometry (05-08): the ring stores raw bytes but not resizes. Bytes written
 // before a genuine host resize, replayed into a viewer at the new width, put
@@ -1133,7 +1162,7 @@ func (h *Hub) Join(sub *Subscriber, resume uint64, hasResume bool) Replay {
 	r, data, raw := h.joinLocked(sub, resume, hasResume)
 	// Strip and chunk outside emuMu so the drain loop is not held up.
 	if raw {
-		data = StripTerminalQueries(data)
+		data = stripRingQueries(data)
 	}
 	for len(data) > 0 {
 		n := min(len(data), ReplayChunk)
