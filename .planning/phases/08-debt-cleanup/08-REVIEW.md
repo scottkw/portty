@@ -1,207 +1,142 @@
 ---
 phase: 08-debt-cleanup
-reviewed: 2026-11-19T19:26:19Z
+reviewed: 2026-11-19T20:29:42Z
 depth: standard
-iteration: 2
-files_reviewed: 17
+iteration: 3
+files_reviewed: 10
 files_reviewed_list:
   - TESTING.md
-  - frontend/src/components/TerminalPanel.tsx
-  - frontend/src/lib/__tests__/pasteGuard.test.ts
-  - frontend/src/lib/pasteGuard.ts
   - internal/daemon/process.go
   - internal/daemon/process_test.go
-  - internal/daemon/process_unix.go
   - internal/relay/charstate.go
   - internal/relay/fuzz_test.go
-  - internal/relay/history.go
   - internal/relay/history_test.go
   - internal/relay/hub.go
   - internal/relay/replay_fidelity_test.go
   - internal/relay/softwrap_test.go
-  - internal/relay/vtalt.go
   - internal/relay/wraps.go
-  - web/assets/terminal.js
 findings:
-  critical: 0
-  warning: 2
+  critical: 1
+  warning: 0
   info: 4
-  total: 6
+  total: 5
   necessity: 0
 status: issues_found
 ---
 
-# Phase 8: Code Review Report (iteration 2)
+# Phase 8: Code Review Report (iteration 3)
 
-**Reviewed:** 2026-11-19T19:26:19Z
-**Depth:** standard, plus cross-file reads of the pinned vt `b57e5e6d29bb` (`screen.go` `ClearWithScrollback`/`DeleteLine`/`InsertLine`/`ScrollUp`, `scrollback.go` `Push`, `handlers.go` ED/EL and the handler registry, `cc.go` `index`/`reverseIndex`, `emulator.go` `Scrollback`/`ScrollbackLen`) and xterm.js 6.0.0 (`Clipboard.ts`, `CoreBrowserTerminal.ts` `_initGlobal`, `EscapeSequenceParser.ts` transition table and OSC/DCS end handling)
-**Files Reviewed:** 17
+**Reviewed:** 2026-11-19T20:29:42Z
+**Depth:** standard, plus cross-file reads: `app.go` (startup, `RetryDaemon`, `respawnDaemonIfDown`, `QuitAll`), `internal/daemon/api.go` `handleShutdown`, `client.go` `ShutdownDaemon`/`GetRelayPort`, `process_unix.go` `lockHeld`/`lockDaemon`, the replay boundary in `hub.go`, `History.Render`, and the pinned vt `b57e5e6d29bb` (`handlers.go` registration and the RI/IL/DL/SD/ECH/DCH handlers, `cc.go` `reverseIndex`, `screen.go` `InsertLine`/`ScrollDown`/`Reset`)
+**Files Reviewed:** 10
 **Status:** issues_found
 
 ## Summary
 
-Scope: `git diff 2caeea0b..HEAD -- . ':!.planning'` (HEAD 5e48b6f2), the fixes for 08-REVIEW iteration 1 as listed in 08-REVIEW-FIX.md. I read every production change in full, along with the code it connects to. Probes ran as one overlay test file in one relay test binary (scratchpad `zz_probe2_test.go`, `-run TestProbe2_`). They are cited as Q1..Q6. I ran no full suites and no daemon test binary. The WR-04 gap below is proven from the code.
+Scope: `git diff a7d5822d..HEAD -- . ':!.planning'` (HEAD d0a6f510), the iteration-2 fixes listed in 08-REVIEW-FIX.md "Iteration 2". I read every production change in full, along with the code it connects to. Probes ran as overlay test files from the scratchpad, one relay binary and one daemon binary, with targeted `-run` filters. They are cited as R1, R2 (relay) and D1 (daemon). I ran no full suites. These committed tests passed in the same runs: `TestSoftWrap_ED2KeepsWraps`, `TestSoftWrap_IdenticalRowsTradeWrap`, `TestSoftWrap_RedrawKeepsHostLayout`, `TestSoftWrap_CursorMovesAreNotWraps`, `TestHistory_EndWrapClearedWhenRow0Erased`, `TestCharState_Scan`, `TestStartDaemon_WaitsForOldDaemonLock` (3 runs) and `TestWaitForDaemon_LockReleasedWithoutBindFailsFast` (3 runs).
 
-Overall, most fixes are correct:
-- WR-01, WR-02, WR-03, WR-05, IN-04 and IN-08 hold up.
-- IN-01 fixes P3b and P6, but keying wraps by absolute line number brings in a regression. vt's ED 2 (`ClearWithScrollback`) pushes only non-empty rows, so after an ED 2 (zsh's Ctrl+L) the drain indices no longer match the line numbers. That causes missed joins and, when rows are identical, false joins (WR-06, probes Q1/Q2). Before this iteration the hash multiset handled ED 2 correctly.
-- WR-04's lost-lock exception is checked only once. So the version-mismatch restart that WR-04 listed (an old daemon slow to stop) still waits the full 15 s (WR-07).
-- IN-02 and IN-03 are fixed for the cases named, but each misses some siblings (IN-10, IN-11).
+Results:
+- WR-06/IN-09, IN-10, IN-11, IN-12 and the WR-02 cap change are correct.
+- WR-07 brings in a regression on the exact path it was meant to fix (CR-01). In the version-mismatch restart, the lock-wait loop's "socket answers" shortcut accepts the old daemon, which still answers for the 50 ms before its `os.Exit`. So `EnsureDaemon` returns success, nothing is spawned, and no daemon is left (probe D1). This happens on every upgrade while a daemon is running. The new test does not catch it because its old daemon never answers.
+- Four Info items: R1 (a redraw's extra count defeats the IN-02 clear), R2 (an IN-11 sibling), a deadline edge in `startDaemon`, and a TESTING.md command nit.
 
-**Unchanged surfaces confirmed:** `git diff --stat 2caeea0b..HEAD` is empty for `internal/webserver/` (CSP, share-token and capability checks, the WR-07 tailnet guard), `internal/relay/protocol.go` (`MaxInputPayload = 32767`), `internal/relay/scrollback.go` (`ViewerReadLimit`), `internal/relay/server.go`, `internal/daemon/remote_ws_proxy.go`, `internal/attach/`, `main.go`, `app.go`, `go.mod`/`go.sum` and `frontend/package.json`. `relayClient.ts` (`encodeInputFrames`) is untouched. The only `web/` change is the 3-line paste listener in `terminal.js`, which is an external script and so does not touch the CSP. The 32 KiB limits, share tokens, CSP and the WR-07 guard are unchanged.
+**Unchanged surfaces confirmed:** `git diff --stat a7d5822d..HEAD` is empty for `internal/webserver/` (CSP, share-token and capability checks, the WR-07 tailnet guard), `internal/relay/protocol.go` (`MaxInputPayload = 32767`), `internal/relay/scrollback.go`, `internal/relay/server.go`, `internal/daemon/remote_ws_proxy.go`, `internal/daemon/api.go`, `internal/attach/`, `main.go`, `app.go`, `go.mod`/`go.sum`, `frontend/` and `web/`. The 32 KiB limits, share tokens, CSP and the WR-07 tailnet guard are unchanged. The `maxLinkField` raise to 2083 still rejects every C0/C1/DEL byte and invalid UTF-8 (`safeLinkField` is otherwise unchanged), so the only effect is that links of 2049-2083 bytes now survive a replay.
 
-## Status of iteration-1 findings
+## Status of iteration-2 findings
 
 | ID | Title (short) | Status | Notes |
 |----|---------------|--------|-------|
-| WR-01 | Large paste stays in xterm's helper textarea | **Fixed** (not VM-verified) | Checked against xterm 6.0.0. `_initGlobal` (`CoreBrowserTerminal.ts:342-344`) registers xterm's paste listener on the textarea during `open()`, so the guard added after `term.open` runs second. `handlePasteEvent` never reads `defaultPrevented` and calls only `stopPropagation`, so `preventDefault` changes nothing in xterm. IME is unaffected: composition events are not `paste`, and `CompositionHelper` reads `textarea.value`, which now stays clean. Drag-and-drop is a `drop` event, not `paste`. Middle-click paste (Linux-only path, `:361`/`:530`) and the context-menu paste (`rightClickHandler` moves the textarea under the mouse, and the paste still targets it) both reach xterm's handler first. `term.paste()` callers send no DOM event. A paste that targets `this.element` instead hits a non-editable element, so it has no default insertion. While reconnecting, `disableStdin` drops the paste, the same as before. `web/assets/terminal.js` gets the same correct guard. VM evidence is still missing; see IN-12. |
-| WR-02 | OSC 8 tracker re-emits an unvalidated URI | **Fixed** | `safeLinkField` runs on all three emit paths: tracker `setLink`, the alt-exit probe resync, and `fixRenderedLinks`. `pendingWrapLocked` and `screenBodyLocked` go through `fixRenderedLinks`. vt link fields can never hold BEL or ESC, so `renderedLinkRE` always matches a vt-rendered link and an unsafe link cannot slip past the regex. Over-rejection check: spaces (0x20) pass, percent-encoding is ASCII and passes, non-ASCII/IDN hostnames pass (only U+007F-U+009F and below U+0020 are rejected), and `id=`/`key=value:key=value` params pass. The one real over-rejection is the 2048-byte cap, a little under VTE's 2083-byte URI limit. A longer link loses its link only in replays, not in the live view. Acceptable. |
-| WR-03 | Soft-wrap detector records LF/IND/CUD + CHA as a wrap | **Fixed** | Every vt cursor-motion CSI and ESC 8/D/M gets a `notWrap` handler that runs before vt's (reverse registration order, `handlers.go`). Probe Q6: C1 IND (0x84) followed by a print records no wrap. The only unmarked second move from column W-1 to column 1 or 2 is a print, which is a real autowrap, or BS on a 3-4 column grid, as the comment says. ESC E is not registered in vt at all (pre-existing vt gap, not a wrap issue). |
-| WR-04 | 15 s wait has no early exit when the spawned daemon dies | **Partially fixed**, see **WR-07** | `go cmd.Wait()` reaps the child on every path. In the GUI the goroutine lives as long as the daemon and is not a leak. In the CLI the process exits and the child is re-parented. No other code in the repo reaps children (`git grep` finds no `Wait4`/`SIGCHLD`/`signal.Ignore`), so `Wait` cannot get ECHILD early. `lockHeld` uses `flock(LOCK_EX|LOCK_NB)` on a new open file description. That reports a lock held by another process (or another fd in this one) as `EWOULDBLOCK` and never breaks it. When the lock is free it takes it for microseconds and closes the file, and a starting daemon's 2 s retry loop absorbs that. Exit racing a successful bind is covered: `ready()` is checked again after the exit. The gap is that the lock check runs once. |
-| WR-05 | TESTING.md M-101 requires unreachable wording | **Fixed** | The step 1 and sub-run PASS rules now accept either wording, with M = ceil(P/1024). That matches `Math.ceil(totalBytes / 1024)` in `TerminalPanel.tsx:480`. The N-of-M rule moved to an optional variant, and "_Last run_" records the disposition. |
-| IN-01 | Hash multiset false joins / redraw inflation | **Fixed for P3b and P6; regressions** in **WR-06** and **IN-09** | Line keys plus the hash check fix both probes. Resize clears the set and does not advance `wrapBase`, which is consistent because the new emulator restarts at the same base with an empty set. RIS and ED 3 clear the set. The alt-exit seed scrolls nothing and records nothing (`trackWraps` is false). History trimming does not touch the keys, and a `uint64` line counter cannot overflow. ED 2 and row-moving operations break the claim "a wrap is missed, never moved onto another row". |
-| IN-02 | `EndsWrapped` survives an erase of row 0 | **Fixed for the listed erases**; gaps in **IN-10** | ED 0 from home, ED 1, and EL 0/1/2 on row 0 clear the end-wrap. The unflushed case drops the newest emu-scrollback line's key. ED 2 correctly keeps the join (row 0 is non-empty and is pushed right after the line). The alt screen is a no-op. RI at top, IL on row 0, SD, ECH and DCH still leave the join (Q4). |
-| IN-03 | GL scan misses RIS after ESC-ended OSC; SO in cut-off UTF-8 | **Fixed for RIS and the UTF-8 case**; sibling gap in **IN-11** | `scanStrEsc` now counts for `ESC c`. Dropping `need == 0` matches xterm.js, which ends the character at a non-continuation byte, and matches vtScan, which resets `need` there. An SO or SI right after a string-ending ESC is still missed (Q5). |
-| IN-04 | `altScreenOf` checks type, not which element is main | **Fixed** | `emu.Scrollback()` returns `scrs[0].Scrollback()` (`emulator.go:451`). In the current layout the check compares element 0 with itself and passes. With swapped roles, element 0 would hold the alt screen's own non-nil `NewScrollback` (`screen.go:26`) and the check would fail. `altScreenOf` runs before `SetScrollbackSize`, and the default scrollback is already non-nil then, so the `sb == nil` branch cannot trip by accident. |
-| IN-05 | Paste into a slow PTY blocks the read loop; heartbeat drops viewer | **Deferred (todo filed)**, reasoning sound | `.planning/todos/pending/2026-11-19-paste-heartbeat-drop.md` exists. The three liveness checks named are real, so a heartbeat-only tweak would be partial. One correction for the todo: the writer-goroutine design does not have to change DEBT-05's ack. If the read loop puts the ping's pong on the same queue, behind the input it read, the writer can send it, and a pong still means "handed to the PTY". |
-| IN-06 | Paste notice can fire for a complete paste | **Deferred**, acceptable | The review said no fix was required. |
-| IN-07 | Snapshot host keying misses tab-replacing paths | **Deferred**, acceptable | The cost is memory, bounded by `PEER_SNAPSHOT_MAX` and `PEER_SNAPSHOT_MAX_BYTES`. |
-| IN-08 | No fuzz target for the byte-level parsers | **Fixed** | `FuzzCharState` has 13 seeds and checks split-independence, the suffix control set, and safe emitted links. As the fix report says, it has no xterm.js reference model, so it would not have caught IN-11. |
+| WR-06 / IN-09 | Line-keyed wraps misalign after ED 2 and row moves | **Fixed** (accepted trade documented) | `wraps.go` matches the pre-iteration-1 multiset (2caeea0b) byte for byte apart from comments. All four call sites (`CursorPosition` add, drain `take`, resize `take`, `screenRowWrappedLocked` `has`) use `rowKey` only. `absLine` and `wrapBase` are gone and nothing references them. **Q1/Q2 (Ctrl+L):** `TestSoftWrap_ED2KeepsWraps` passes in one read and in two. A hash follows its row through vt's empty-row-skipping `ClearWithScrollback`. **WR-03 motion rule kept:** the `notWrap` loop and the `CursorPosition` predicate are unchanged, and `TestSoftWrap_CursorMovesAreNotWraps` passes. **Host-grid layout:** a mark only ever applies where `lineFull` holds at all three sites. `History.Render` (`history.go:87`), the history-to-screen boundary (`hub.go:1495-1497`, which needs row 0 non-empty) and `screenRowWrappedLocked` (`next != ""`) all keep the CRLF before an empty row. So a traded mark joins a full row to a non-empty row, which autowrap puts on the same rows at the host width. No path changes the host-grid layout. Only reflow and copy see a traded mark, as the `shortcut:` says. **IN-02/IN-10 interplay:** `row0ErasedLocked` now takes one count of the newest emu-scrollback line's hash. That is correct for a single mark, but a redraw's extra count defeats it; see IN-13. |
+| WR-07 | Lost-lock exception checked once | **Fixed in `waitForDaemon`; regression in `startDaemon`**, see **CR-01** | `waitForDaemon` now re-checks `lockHeld` on every poll after `exited` and fails once the lock is free and nothing answers. `TestWaitForDaemon_LockReleasedWithoutBindFailsFast` passes in about 0.21 s. **Held-lock detection:** `lockHeld` = `lockDaemon(path, 0)`, which is `flock(LOCK_EX\|LOCK_NB)` on a new open file description. `EWOULDBLOCK` means held, any other error means "not held", and a successful try is released at once by `f.Close()`. It never breaks a held lock. A daemon starting at that instant retries for 2 s (`process.go:42`). **Races:** two GUIs or CLIs that both see the lock free both spawn. The daemons' own `lockDaemon` lets only one bind. The loser exits after 2 s, and its caller's `waitForDaemon` sees the lock held and waits for the winner's socket. A caller that sees the lock held never spawns and returns once the holder answers. Probes only take the lock for microseconds, so they cannot starve a starting daemon. **Main thread:** `EnsureDaemon` runs only from the `OnStartup` goroutine (`domReady` is still bounded by `startupWait` = 5 s), from the `RetryDaemon` binding, from the poller goroutine and from the CLI. `QuitAll` (a binding, so on a goroutine) does not call it and only waits out a running respawn on `daemonMu`, the same as before. The 15 s total is shared between the lock wait and the spawn wait. No UI path blocks the main thread. **The broken path:** the version-mismatch branch dropped its 200 ms sleep, and the lock-wait loop returns `nil` as soon as `daemonReady` passes, which the dying old daemon satisfies (CR-01). |
+| IN-10 | End-wrap clearing missed RI/IL/SD/ECH/DCH | **Fixed** | vt's `RegisterEscHandler`/`RegisterCsiHandler` append (`handlers.go:86-91`), so the second ESC `M` and CSI `L` handlers sit beside `notWrap` and replace nothing. They run before vt's, and both return false. `regionAtTop` (`mainRegion[0] <= 1`, 1-based, `{}` = full screen) matches vt's preconditions: `reverseIndex` scrolls only at `scroll.Min.Y`, `InsertLine` only inside the region, and `ScrollDown` homes to the region's top. vt resets the region only in RIS (`esc.go:25`, `Screen.Reset`), which the hub mirrors, so `mainRegion` cannot go stale. **Over-clearing:** none of practical weight. The only cases that clear without vt changing row 0 are `CSI 0 L`/`CSI 0 T` (vt treats an explicit 0 as a no-op, while xterm.js treats it as 1) and IL/RI with DECLRMM margins excluding column 0. Both are vanishingly rare, and an extra clear only loses a reflow join. The nine new history cases pass in one read and in two. |
+| IN-11 | GL scan missed SO/SI after a string-ending ESC | **Fixed** | `scanStrEsc` is now in the SO/SI state list. vtScan moves `scanStrEsc` to `scanEsc` and re-steps the byte, which stays in `scanEsc` for C0 (`hub.go:676-682`, `:662`). That matches xterm.js (ESC ends the string, and C0 runs in ESCAPE). The reverse (`SO … ESC]0;t ESC SI`) now gives `gl1 == false` (R2). A follow-on `c` is still missed; see IN-14. |
+| IN-12 | WR-01 lacks a VM pass condition; M-101 stated it as fact | **Fixed** | M-103 has a measurable PASS rule (CPU sampling, sha256/`cmp`, an AX read of the textarea, regression pastes), and its _Last run_ matches 08-VM-CHECKS P-01/P-02 (present at HEAD via 9dd3fde5). M-101 step 1 now defers to M-103, and its _Last run_ cites the re-run. `tests/check-traceability-paths.sh`: 150 paths OK. One wording nit: IN-16. |
+| WR-02 follow-up | Link field cap raised to 2083 | **Correct** | The check is `len(s) > maxLinkField`, so 2083 is inclusive, as `TestFixRenderedLinks_DropsUnsafe` pins. The 4 MB OSC buffer bound still applies before it. No security impact. |
 
-## Warnings
+## Critical Issues
 
-### WR-06: Line-keyed wraps misalign after ED 2: vt pushes only non-empty rows, so wraps are missed and identical rows get false joins (regression from the IN-01 fix)
+### CR-01: WR-07's lock-wait accepts the dying old daemon, so the version-mismatch restart returns success without spawning anything (regression)
 
-**File:** `internal/relay/hub.go:993-1001` (`drainScrollbackLocked` keys line `i` as `wrapBase+i`), `:1009-1011` (`absLine`), `:930-941` (the `J` handler does nothing for ED 2); vt `screen.go:97-107` (`ClearWithScrollback` skips rows `isLineEmpty` reports as empty)
+**File:** `internal/daemon/process.go:125-131` (the mismatch branch now goes straight from `ShutdownDaemon` to `startDaemon`), `:168-177` (the `for lockHeld(...) { if daemonReady(client) { return nil } … }` loop); `internal/daemon/api.go:281-290` (`handleShutdown`: replies 204, then `os.Exit(0)` 50 ms later); `internal/daemon/process_test.go` `TestStartDaemon_WaitsForOldDaemonLock` (its old daemon is a refusing socket)
 
-**Issue:** The new keying assumes that scrollback index `i` holds the screen row whose absolute line number was `wrapBase+i`. vt's ED 2 breaks that assumption: `ClearWithScrollback` pushes only rows with a cell whose content is neither empty nor a space. Each empty row above a wrapped row shifts every later drain index down by one, so each pushed row takes the key of a different row. `take` also deletes on a hash mismatch, so the real wrap is consumed and lost.
+**Issue:** `ShutdownDaemon` returns once the 204 arrives. The old daemon keeps serving and keeps `daemon.lock` until its `os.Exit` 50 ms later. `startDaemon` runs within microseconds: `lockHeld` is true, so it calls `daemonReady`, and `/health` plus `/relay-port` from the old daemon both succeed. `startDaemon` returns `nil` without calling `spawn`. 50 ms later the old daemon is gone and nothing replaces it. The 200 ms sleep this replaced used to cover that window.
 
-- **Q1 (missed join):** `"$ a\r\n\r\n" + 30 digits + "\r\n$ "` at 20×6, then `ESC[H ESC[2J`. History flags: `[false false false …]`. Without the ED 2 (control): `["$ a" "" "0123…9"(true) "0123456789" …]`. The digits line has lost its join.
-- **Q2 (false join):** `"\r\n" + 60×"-" + "\r\n$ "`, then `ESC[H ESC[2J` (in one read or two). History: `d(false) d(true) d(true) "$"`. `Render()` gives `--------------------\r\n----------------------------------------$`. The third, hard row is joined to the prompt, and the first row's real join is lost. The control (no ED 2) gives the correct `d(true) d(true) d(false)`. The pre-iteration hash multiset also got this right.
+**D1 (probe, 3 of 3 runs):** an in-process stand-in for the old daemon holds the lock and answers `/health`, `/relay-port` and `/shutdown` like `handleShutdown`. On `/shutdown` it closes the server and releases the lock after 50 ms. After `client.ShutdownDaemon()`, `startDaemon(..., spawn)` returned `err=<nil> spawned=false` in 0.13-0.6 ms. 200 ms later `Health` failed and `lockHeld` was false.
 
-zsh's Ctrl+L (`clear-screen` sends `ESC[H ESC[2J` with no `ESC[3J`) triggers this whenever an empty row sits above a wrapped line on the screen. That is common. The effect is the same class as WR-03: lines merge or split after an xterm.js reflow, and copy loses or gains a newline. The new comment in `wraps.go` ("A wrap is missed, never moved onto another row") is wrong for this path.
+Effect on every upgrade while a daemon is running (the daemon outlives the GUI, so this is the normal upgrade case):
+- **GUI:** startup "succeeds", so `launchedAt` is set and `applyStoredAppearance` reads from a daemon that is exiting. The frontend's `GetDaemonError` returns "" and its first calls fail. `respawnDaemonIfDown` ignores failures for `respawnLaunchGrace` (10 s), so the app runs with no daemon and no banner for 10-15 s until respawn attempt 1. That attempt also uses up a slot in the respawn streak.
+- **CLI:** the first `portty <cmd>` after an upgrade fails with a connection error, because `EnsureDaemon` returned nil.
 
-**Fix:** re-key the screen rows in the hub's `J` handler before vt's ED 2 runs. The handler already runs first:
+The fix report says this path is fixed and lists it as "not VM-run on a real version-mismatch restart". The unit test cannot catch it because its old daemon never answers.
+
+**Fix:** a daemon that is answering only counts if it is the version this binary wants. Check that in the readiness predicate (harmless after the spawn too, since by then the old daemon has let go of the lock), and pin it with a test whose old daemon keeps answering until it releases the lock:
 
 ```go
-// hub.go, in the 'J' handler, before `return false`:
-if n == 2 && !emu.IsAltScreen() {
-	h.rekeyForClearLocked(emu)
-}
-
-// rekeyForClearLocked: vt's ClearWithScrollback pushes only non-empty rows,
-// so row y lands at scrollback index sbLen+idx(y); move each wrap to that line.
-func (h *Hub) rekeyForClearLocked(emu *xvt.Emulator) {
-	if len(h.wraps.n) == 0 {
-		return // also keeps the writes below off a nil map
+// daemonReady reports whether the daemon at client is fully ready (health,
+// relay port) and, in a release build, is this build's version: a
+// version-mismatched daemon told to stop still answers until it exits.
+func daemonReady(client *DaemonClient) bool {
+	var h HealthResponse
+	if err := client.doJSON(http.MethodGet, "/health", nil, &h); err != nil {
+		return false
 	}
-	base := h.absLine(emu, 0)
-	type mv struct{ line, key uint64 }
-	var moves []mv
-	idx := 0
-	for y := range emu.Height() {
-		k, had := h.wraps.n[base+uint64(y)]
-		delete(h.wraps.n, base+uint64(y))
-		if rowEmptyForVT(screenLine(emu, y)) { // new helper: vt's isLineEmpty rule (every cell "" or " ")
-			continue
-		}
-		if had {
-			moves = append(moves, mv{base + uint64(idx), k})
-		}
-		idx++
+	if BuildVersion != "" && BuildVersion != "dev" && h.Version != BuildVersion {
+		return false
 	}
-	for _, m := range moves {
-		h.wraps.n[m.line] = m.key // ring slots stay; eviction tolerates stale lines
-	}
+	port, err := client.GetRelayPort()
+	return err == nil && port > 0
 }
 ```
 
-Pin it with Q1 and Q2 in `softwrap_test.go`. The expected flags are the control runs above.
-
-### WR-07: WR-04's lost-lock exception is checked once, so a lock holder that never binds (a version-mismatched daemon still shutting down) still costs the full 15 s
-
-**File:** `internal/daemon/process.go:190-200` (`exited = nil // handled once`, then `lockHeld` once); `:121-126` (version-mismatch restart: `ShutdownDaemon`, `Sleep(200ms)`, spawn); `process.go:42` (the spawned daemon waits only 2 s for the lock)
-
-**Issue:** Once `exited` fires, `waitForDaemon` calls `lockHeld` exactly once. If the lock is held at that moment, the loop falls back to polling only `ready()` until the deadline and never looks at the lock again. WR-04 named this case explicitly: "`lockDaemon` failing after its 2 s when a version-mismatched old daemon is slow to stop".
-1. `EnsureDaemon` tells the old daemon to shut down and spawns after 200 ms.
-2. The old daemon's `api.Stop()` plus `engine.Manager().Shutdown()` (killing every PTY) take more than about 2.2 s, so the new daemon gives up on the lock and exits.
-3. `lockHeld` is true, because the old daemon is still exiting.
-4. The old daemon exits and frees the lock. No daemon is starting, but the GUI startup, Retry, Quit All and every CLI command still wait out the rest of the 15 s.
-
-A holder that crashes before binding behaves the same way. This is no worse than before iteration 1, but the fix report's claim that "Quit All, Retry, the poller respawn and every CLI command all go through `EnsureDaemon`, so they all fail fast now" does not hold for this path.
-
-**Fix:** keep checking the lock after the exit, and fail once it is free and nothing answers. For the version-mismatch path, also wait for the old daemon's lock to free before spawning:
-
-```go
-exitedSeen := false
-for time.Now().Before(deadline) {
-	if ready() {
-		return nil
-	}
-	select {
-	case <-exited:
-		exited, exitedSeen = nil, true
-	case <-time.After(50 * time.Millisecond):
-	}
-	if exitedSeen && !lockHeld(lockPath) && !ready() {
-		return fmt.Errorf("EnsureDaemon: daemon exited during startup (see daemon.log)")
-	}
-}
-// EnsureDaemon, version-mismatch branch: replace the fixed 200 ms sleep with
-// "poll lockHeld(lockPath) every 50 ms for up to ~5 s" so the spawn starts
-// after the old daemon let go and its 2 s lock wait is not wasted.
-```
-
-To test it: hold the lock with `lockDaemon`, pass a closed `exited` and a refusing socket, and release the lock after 200 ms. The call must fail in well under 1 s. Today it waits for the whole `wait`.
+Test sketch (D1 turned into a regression test, `BuildVersion` set for the test): an old daemon reporting version `"old"` holds the lock, answers until 50 ms after `/shutdown`, then releases the lock. The fake spawn takes the lock and serves version `BuildVersion`. Assert that `spawn` was called and that `startDaemon` returns nil with the new daemon answering.
 
 ## Info
 
-### IN-09: Rows moved without scrolling still move a wrap onto an identical row; the "never moved onto another row" comment is wrong
+### IN-13: A redraw's extra count defeats the IN-02/IN-10 clear while the wrapped row is still in vt's scrollback
 
-**File:** `internal/relay/wraps.go:13-18` (the claim); `internal/relay/hub.go:1009-1011`; vt `screen.go:321-337` (`InsertLine`), `:359-367` (`DeleteLine` pushes the region's top row to scrollback even when the region's top is above 0)
+**File:** `internal/relay/hub.go:1031-1036` (`row0ErasedLocked`, `case emu.ScrollbackLen() > 0`: one `take` of the newest line's hash), `:1021` (the drain `take`s again)
 
-**Issue:** The hash check blocks only rows with different content. When rows shift without a matching scrollback change, the key of a wrapped row passes to whichever row now sits on its line. If that row is byte-identical, it is a false join.
-- **Q3:** at 20×6, `d CRLF d d CRLF` (the P3b layout), then `ESC[H ESC M` (RI at top) or `ESC[H ESC[L` (IL). History: `"" d(true) d(false) d`. The hard row took the wrap and the real wrap was missed. The correct result is `"" d(false) d(true) d`. Pagers on the main screen do this (git's default `LESS=FRX` runs less without the alt screen, and scrolling back uses RI).
-- **Q3b:** a DECSTBM region whose top is above row 0: vt pushes the region's top row into scrollback, so every row outside the region renumbers. A hard row identical to a wrapped row above the region took that wrap (`["xxxx…"(true) "" "xxxx…"(false) "xxxxx"]`). The hash multiset made the same mistake. For rows that are not identical this is now a missed join.
-- A single read that scrolls more than vt's 10,000-line scrollback (only a flood of empty lines fits in 32 KiB) saturates `ScrollbackLen`, which shifts the keys of rows still on screen in the same way.
+**Issue:** under the multiset, the `ScrollbackLen() > 0` branch removes one count of the newest emu-scrollback line's hash. A line editor's redraw of a wrapped row adds a second count (the accepted P6 trade). So the erase takes one count, the drain in the same read takes the other, and the line stays joined to the new row 0.
 
-Same impact as WR-03 (reflow and copy), with rarer triggers.
+**R1:** at 20×5 the reads are: `ESC c a CRLF b CRLF c CRLF d CRLF` + 30 x's, then `CR ESC[A` + 30 x's (a redraw), then `CRLF×4 ESC[H ESC[2K $ prompt` in one read. Result: history `x20 (true)`, `EndsWrapped() == true`, row 0 `$ prompt`. The control without the redraw gives `false`. The two-read variant is correct, because `ClearEndWrap` acts on the history flag.
 
-**Fix:** correct the comment to say "missed, or moved onto a byte-identical row". If it matters, shift keys in the existing `L`, `M`, `S`, `T` and ESC `M` handlers for rows inside the region, and in the region-top case of `DeleteLine`.
+The erase can also consume the mark of a different identical wrapped row. The impact is reflow and copy only. At the host grid a full row joined to a non-empty row keeps its layout. It belongs to the documented trade's class, but the `shortcut:` comment does not cover it.
 
-### IN-10: IN-02's end-wrap clearing misses RI at top, IL on row 0, SD, ECH and DCH
+**Fix:** if it matters, mark the line by position, not by hash. In this branch, set `h.unwrapNewest = emu.ScrollbackLen()` (the 1-based index in the current emu scrollback). In `drainScrollbackLocked`, for that index, still `take` (so no count lingers) but push `wrapped = false`, then reset the marker. Otherwise, add a sentence to the `wraps.go` shortcut noting that the IN-02 clear is best effort under a redraw.
 
-**File:** `internal/relay/hub.go:930-948` (only `J` and `K` call `row0ErasedLocked`)
+### IN-14: `ESC SO c` (also right after a string-ending ESC) leaves GL at G1 after the RIS
 
-**Issue:** **Q4:** after the P7 setup (a 30-x line wrapped across the history/screen boundary), each of `ESC[H ESC M $ prompt`, `ESC[H ESC[L $ prompt`, `ESC[T ESC[H $ prompt`, `ESC[H ESC[20X $ prompt` and `ESC[H ESC[20P $ prompt` leaves `EndsWrapped() == true` with row 0 = `$ prompt`. The Join replay then joins the old line to the new prompt with no CRLF: the original IN-02 symptom by another route. RI at top is the pager scroll-back case from IN-09.
+**File:** `internal/relay/charstate.go:104-110`
 
-**Fix:** call `h.row0ErasedLocked(emu)` from the already-registered handlers in these cases:
-- ESC `M` when the cursor is on row 0 and the region's top is 0;
-- CSI `L` when the cursor is on row 0;
-- CSI `T` when the region's top is 0;
-- CSI `X` and CSI `P` when the cursor is at (0, 0).
+**Issue:** `c.esc = x == 0x1b` resets on the SO, so a following `c` is not counted as RIS. In xterm.js and in vt, a C0 control runs in ESCAPE and leaves the parser there, so `c` still dispatches RIS and GL goes back to G0. **R2:** `"\x1b]0;t\x1b\x0ec"` and `"\x1b\x0ec"` both leave `gl1 == true`. The ground form predates this iteration. IN-11 newly exposes the string form, which used to be correct by accident because the SO was ignored. The visible impact is near nil: after RIS the designations are cleared, so the suffix's SO selects an ASCII G1. It only shows if the host later designates G1 as line drawing while staying in G0. It needs malformed output.
 
-Add these to `TestHistory_EndWrapClearedWhenRow0Erased`.
+**Fix:** keep the ESC flag across C0 controls that run in ESCAPE (CAN and SUB abort it):
 
-### IN-11: The GL scan still misses an SO or SI right after a string-ending ESC
+```go
+c.esc = x == 0x1b || (c.esc && x < 0x20 && x != 0x18 && x != 0x1a)
+```
 
-**File:** `internal/relay/charstate.go:102-104`
+Add both R2 strings to `TestCharState_Scan` and to the `FuzzCharState` seeds.
 
-**Issue:** **Q5:** `ESC]0;t ESC SO abc` and `ESC P $q ESC SO` leave `gl1 == false`. In xterm.js an ESC inside an OSC or DCS ends the string and moves to ESCAPE (`EscapeSequenceParser.ts:593/604`, `:757/782`), and C0 controls execute in ESCAPE (`:113`), so the viewer runs the SO. The tracker sees state `scanStrEsc`, which is not in its list. The reverse case (`SO … ESC]0;t ESC SI`) leaves `gl1 == true` where xterm.js has G0. This is the sibling of the IN-03 RIS fix, and it is rare because it needs a malformed `ESC SO`.
+### IN-15: A lock freed at the deadline spawns with a zero wait, and the timeout message reports the remaining budget, not the total
 
-**Fix:** add `|| c.vt.state == scanStrEsc` to the SO/SI case, and add the Q5 strings to `TestCharState_Scan` and the `FuzzCharState` seeds.
+**File:** `internal/daemon/process.go:170-183`, `:225`
 
-### IN-12: WR-01 has no VM pass condition in TESTING.md, and M-101 states the unverified outcome as fact
+**Issue:** the deadline is checked only while the lock is held. If the lock frees in the last poll, `spawn` runs and `waitForDaemon(…, time.Until(deadline) ≤ 0, …)` returns at once with "did not become ready within 0s". The daemon then starts anyway, the GUI shows an error that the poller later clears, and the CLI fails. Separately, `wait.Round(time.Second)` in `waitForDaemon` is now the time left after the lock wait (for example "within 12s" on a 15 s budget). That misleads anyone reading daemon.log or the banner. Both are narrow and cosmetic.
 
-**File:** `TESTING.md:1252` (M-101 step 1: "Since 08-REVIEW WR-01 the GUI's WebContent also returns to idle within a few seconds of the paste")
+**Fix:** after a lock wait, give the spawn a floor (for example `max(time.Until(deadline), 3*time.Second)`, which goes past 15 s only in that edge case), or skip the spawn and return the lock-held error once the deadline has passed. Report the total budget (`daemonReadyWait`) in the message.
 
-**Issue:** The vitest models WebKit's default insertion and cannot show that WKWebView honours `preventDefault` on the native Edit-menu paste, or that the caret-blink re-shaping stops. The fix report says WR-01 is not VM-verified. Standing rule 2 in CLAUDE.md says a behaviour that cannot be automated (native GUI) needs an M-item check, but M-101's PASS rule does not include one. The sentence reads as an observed result.
+### IN-16: M-103 step 1 hard-codes a 20,000,000-byte receiver for the 5 MB repeat
 
-**Fix:** add to M-101 step 1's PASS rule, or as a new M-103: "after a 20 MB Cmd+V, WebContent CPU is idle within 5 s, and an AX read of `xterm-helper-textarea`'s value is empty". Reword the sentence as the expected outcome until a run records it.
+**File:** `TESTING.md` M-103 step 1
+
+**Issue:** step 1 gives `head -c 20000000 > /tmp/<file>` and then says "Repeat with 5 MB in a home local tab". Followed literally, the 5 MB run's `head` never finishes, and the "file complete" PASS condition cannot be judged. The VM run used `head -c 5000000` (08-VM-CHECKS P-01).
+
+**Fix:** write the receiver as `head -c P > /tmp/<file>` with P the payload size, or spell out `head -c 5000000` for the repeat.
 
 ---
 
-_Reviewed: 2026-11-19T19:26:19Z_
+_Reviewed: 2026-11-19T20:29:42Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
-_Iteration: 2_
+_Iteration: 3_
