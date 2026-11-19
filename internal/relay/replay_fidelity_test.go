@@ -631,6 +631,68 @@ func TestFixRenderedLinks(t *testing.T) {
 	}
 }
 
+// probeFeed feeds s to h as one PTY read.
+func probeFeed(h *Hub, s string) {
+	h.emuMu.Lock()
+	defer h.emuMu.Unlock()
+	h.recordFrameLocked(MakeOutputFrame([]byte(s)), []byte(s))
+}
+
+// TestOSC8_UnsafeLinkDropped (08-REVIEW WR-02): xterm.js decodes UTF-8 before
+// parsing, so a C1 code point inside an OSC 8 URI (kept as data by vt) aborts
+// the OSC there and runs as CSI or DCS. Such a link, or one too long to be
+// useful, must not be stored by the tracker or re-emitted in a rendered row:
+// otherwise it re-executes on every join and survives `clear`.
+func TestOSC8_UnsafeLinkDropped(t *testing.T) {
+	for _, c := range []struct{ name, in, bad string }{
+		{"P1 C1 CSI", "\x1bc\x1b]8;;http://x/\u009b2J\x07$ ", "http://x/"},
+		{"C1 DCS cut by 0x9C", "\x1bc\x1b]8;;http://x/\u0090$qm\u009cabc", "http://x/"},
+		{"C1 in params", "\x1bc\x1b]8;id=\u009b6n;http://x/\x07$ ", "http://x/"},
+		{"P2 1 MiB, then clear", "\x1bc\x1b]8;;http://x/" + strings.Repeat("a", 1<<20) + "\x07\x1b[H\x1b[2J\x1b[3J$ ", "http://x/"},
+	} {
+		h := NewHub("wr02", nil, nil, DefaultScrollbackBytes, nil)
+		resizeHub(t, h, 40, 6)
+		probeFeed(h, c.in)
+		h.emuMu.Lock()
+		link, out := h.cs.link, h.renderScreenLocked()
+		h.emuMu.Unlock()
+		if link != ([2]string{}) {
+			t.Errorf("%s: tracker kept link %.60q", c.name, link)
+		}
+		if bytes.Contains(out, []byte(c.bad)) || bytes.Contains(out, []byte("\u009b")) || bytes.Contains(out, []byte("\u0090")) {
+			t.Errorf("%s: rendered replay re-emits the link: tail %q", c.name, out[max(0, len(out)-60):])
+		}
+		if len(out) > 4096 {
+			t.Errorf("%s: rendered replay is %d bytes, want the link dropped", c.name, len(out))
+		}
+	}
+	// A safe link is still tracked and rendered.
+	h := NewHub("wr02ok", nil, nil, DefaultScrollbackBytes, nil)
+	resizeHub(t, h, 40, 6)
+	probeFeed(h, "\x1bc\x1b]8;id=1;https://example.invalid/é\x07$ ")
+	h.emuMu.Lock()
+	link, out := h.cs.link, h.renderScreenLocked()
+	h.emuMu.Unlock()
+	if link != [2]string{"id=1", "https://example.invalid/é"} || !bytes.HasSuffix(out, []byte("\x1b]8;id=1;https://example.invalid/é\x07")) {
+		t.Errorf("safe link: tracker %q, replay tail %q", link, out[max(0, len(out)-60):])
+	}
+}
+
+// TestFixRenderedLinks_DropsUnsafe (WR-02): a rendered row's unsafe link is
+// replaced by a close, so its cells render unlinked.
+func TestFixRenderedLinks_DropsUnsafe(t *testing.T) {
+	for in, want := range map[string]string{
+		"\x1b]8;http://x/\u009b2J;\x07ab":                          "\x1b]8;;\x07ab",
+		"\x1b]8;http://x/a;id=\u0085\x07ab\x1b]8;;\x07":            "\x1b]8;;\x07ab\x1b]8;;\x07",
+		"\x1b]8;http://x/\xc2;\x07ab":                              "\x1b]8;;\x07ab",
+		"\x1b]8;http://x/" + strings.Repeat("a", 3000) + ";\x07ab": "\x1b]8;;\x07ab",
+	} {
+		if got := fixRenderedLinks(in); got != want {
+			t.Errorf("fixRenderedLinks(%.40q)\n got  %.60q\n want %q", in, got, want)
+		}
+	}
+}
+
 // TestCharState_Scan: GL follows SO and SI where vt executes C0 controls, in
 // byte order and across reads, never inside an OSC string, and a RIS resets it.
 func TestCharState_Scan(t *testing.T) {

@@ -23,6 +23,7 @@ package relay
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -46,16 +47,42 @@ func (c *charState) designate(set int, f byte) {
 }
 
 // osc8 records an OSC 8 payload ("8;params;uri") the way vt accepts it: exactly
-// three parts, otherwise ignored.
+// three parts, otherwise ignored. An unsafe link is recorded as none (WR-02).
 func (c *charState) osc8(data []byte) {
 	parts := strings.Split(string(data), ";")
 	if len(parts) != 3 {
 		return
 	}
-	c.link = [2]string{parts[1], parts[2]}
-	if parts[2] == "" {
-		c.link = [2]string{}
+	c.setLink(parts[1], parts[2])
+}
+
+// setLink records the open link, or none for an empty or unsafe URI.
+func (c *charState) setLink(params, uri string) {
+	c.link = [2]string{}
+	if uri != "" && safeLinkField(params) && safeLinkField(uri) {
+		c.link = [2]string{params, uri}
 	}
+}
+
+// maxLinkField bounds an OSC 8 field the hub re-emits; real links are far
+// shorter, and vt would otherwise keep up to its 4 MB OSC buffer.
+const maxLinkField = 2048
+
+// safeLinkField reports whether an OSC 8 field may be re-emitted to viewers
+// (08-REVIEW WR-02). vt keeps every byte 0x20-0xFF but 0x9C as OSC data, while
+// xterm.js decodes UTF-8 first and lets a C1 code point (U+009B CSI, U+0090
+// DCS) abort the OSC and run. A replayed link runs on every join, so a field
+// with a C0 or C1 control, invalid UTF-8 or excess length is dropped.
+func safeLinkField(s string) bool {
+	if len(s) > maxLinkField || !utf8.ValidString(s) {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			return false
+		}
+	}
+	return true
 }
 
 // reset is a RIS: designations and link to their defaults. GL is reset by the
@@ -112,6 +139,9 @@ var renderedLinkRE = regexp.MustCompile("\x1b\\]8;([^;\x07\x1b]*);([^;\x07\x1b]*
 // renderLine closes a link at the row end only when Link.URL (the params) is
 // set, so a link without params that runs to the row end is closed here: a
 // rendered row stays self-contained.
+//
+// An unsafe link (safeLinkField) becomes a close, so its cells render
+// unlinked (WR-02).
 func fixRenderedLinks(s string) string {
 	if !strings.Contains(s, "\x1b]8;") {
 		return s
@@ -119,6 +149,10 @@ func fixRenderedLinks(s string) string {
 	open := false
 	s = renderedLinkRE.ReplaceAllStringFunc(s, func(m string) string {
 		f := renderedLinkRE.FindStringSubmatch(m)
+		if !safeLinkField(f[1]) || !safeLinkField(f[2]) {
+			open = false
+			return ansi.ResetHyperlink()
+		}
 		open = f[1] != ""
 		return "\x1b]8;" + f[2] + ";" + f[1] + "\x07"
 	})

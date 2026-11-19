@@ -772,10 +772,7 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	case h.cs.g[0] == '0':
 		h.cs.g[0] = 0
 	}
-	h.cs.link = [2]string{}
-	if cell.Link.Params != "" {
-		h.cs.link = [2]string{cell.Link.URL, cell.Link.Params}
-	}
+	h.cs.setLink(cell.Link.URL, cell.Link.Params) // drops an unsafe one (WR-02)
 
 	h.liveEmu = h.newLiveEmulator(old.Width(), old.Height())
 	var b strings.Builder
