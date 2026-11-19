@@ -240,6 +240,33 @@ func TestAltScreenExit_RebuildMatchesReference(t *testing.T) {
 		{"read ends mid-CSI after a BS", []string{"$ " + app + "\x1b[3\b", "1mok"}},
 		{"read ends mid-CSI after a CR", []string{"$ " + app + "\x1b[3\r", "1mok"}},
 		{"read ends on C1 CSI after a BS", []string{"$ " + app + "\x9b3\b", "1mok"}},
+		// IN-08: charsets and OSC 8 links. vt ignores SO/SI
+		// (TestVT_IgnoresShiftOut), so the SO cases print ASCII in the
+		// reference too; the tracker (checked below) still carries them.
+		{"G1 line drawing shifted in with SO", []string{"\x1b)0\x0e", app, "qx"}},
+		{"SO then SI", []string{"\x1b)0\x0e\x0f", app, "qx"}},
+		{"G0 and G1 line drawing, SI", []string{"\x1b(0\x1b)0\x0f", app, "qx"}},
+		{"OSC 8 link open across the exit", []string{"\x1b]8;id=7;https://example.invalid/a\x1b\\$ ", app, "linked"}},
+		{"OSC 8 link without params open across the exit", []string{"\x1b]8;;https://example.invalid/b\x1b\\$ ", app, "linked"}},
+		{"OSC 8 link closed before the exit", []string{"\x1b]8;id=7;https://example.invalid/a\x1b\\$ \x1b]8;;\x1b\\", app, "plain"}},
+		{"saved cursor carries a link", []string{"\x1b]8;id=7;https://example.invalid/a\x1b\\ab\x1b7\x1b]8;;\x1b\\\r\ncd", app, "\x1b8Z"}},
+		{"link restored by DECRC (tracker drift)", []string{"\x1b]8;id=7;https://example.invalid/a\x1b\\\x1b7\x1b]8;;\x1b\\\x1b8", app, "linked"}},
+		// IN-06: a grapheme-width mode before the seed's text.
+		{"?2027 grapheme row to the last column", []string{"\x1b[?2027h" + strings.Repeat("\U0001F468‍\U0001F469‍\U0001F467", 20), app, "x"}},
+	}
+	// The tracker right after the rebuild: the probed G0 and current link, and
+	// the tracked G1 and GL (vt cannot show them).
+	link7 := [2]string{"id=7", "https://example.invalid/a"}
+	wantCS := map[string]charState{
+		"G1 line drawing shifted in with SO":             {g: [2]byte{0, '0'}, gl1: true},
+		"SO then SI":                                     {g: [2]byte{0, '0'}},
+		"G0 and G1 line drawing, SI":                     {g: [2]byte{'0', '0'}},
+		"DEC line drawing in G0":                         {g: [2]byte{'0', 0}},
+		"OSC 8 link open across the exit":                {link: link7},
+		"OSC 8 link without params open across the exit": {link: [2]string{"", "https://example.invalid/b"}},
+		"OSC 8 link closed before the exit":              {},
+		"saved cursor carries a link":                    {},
+		"link restored by DECRC (tracker drift)":         {link: link7},
 	}
 	// WR-09: vt takes a CAN as a byte of an open UTF-8 character, so check
 	// every cut shape (bytes read of the character's length), on column 1
@@ -263,12 +290,24 @@ func TestAltScreenExit_RebuildMatchesReference(t *testing.T) {
 			defer hub.emuMu.Unlock()
 			hub.ensureLiveEmulatorLocked()
 			first := hub.liveEmu
+			var rebuilt *charState
 			for _, s := range c.steps {
+				prev := hub.liveEmu
 				hub.recordFrameLocked(MakeOutputFrame([]byte(s)), []byte(s))
 				ref.Write([]byte(s)) //nolint:errcheck
+				if hub.liveEmu != prev && rebuilt == nil {
+					cs := hub.cs
+					rebuilt = &cs
+				}
 			}
 			if hub.liveEmu == first {
 				t.Fatal("fixture invalid: the app's exit did not rebuild the emulator")
+			}
+			if want, ok := wantCS[c.name]; ok {
+				if rebuilt.g != want.g || rebuilt.gl1 != want.gl1 || rebuilt.link != want.link {
+					t.Errorf("tracker after the rebuild: G %q GL1 %v link %q, want G %q GL1 %v link %q",
+						rebuilt.g, rebuilt.gl1, rebuilt.link, want.g, want.gl1, want.link)
+				}
 			}
 			got, want := hub.liveEmu.Render(), ref.Render()
 			if got != want || hub.liveEmu.CursorPosition() != ref.CursorPosition() {
@@ -350,12 +389,12 @@ func TestAltScreenResize_KeepsMainScreenAndExitRebuild(t *testing.T) {
 
 // rebuildFuzzStream returns one random shell-output stream around an app's
 // alt-screen visit, cut into random reads. It avoids the rebuild's
-// documented losses: tab stops, SO/SI and G1-G3, OSC 8 links, REP.
+// documented losses: tab stops, G2/G3 and single shifts, the UK set, REP.
 func rebuildFuzzStream(r *rand.Rand, cols, rows int) []string {
 	main := func(n int) string {
 		var b strings.Builder
 		for range n {
-			switch r.IntN(20) {
+			switch r.IntN(24) {
 			case 0, 1, 2:
 				b.WriteString(strings.Repeat(string(rune('a'+r.IntN(26))), 1+r.IntN(cols+cols/2)))
 			case 3, 4:
@@ -385,6 +424,13 @@ func rebuildFuzzStream(r *rand.Rand, cols, rows int) []string {
 				b.WriteString([]string{"\x1b[?25l", "\x1b[?25h", "\x1b[?7l", "\x1b[?7h"}[r.IntN(4)])
 			case 14:
 				b.WriteString([]string{"\x1b]0;title\x07", "\x1bPzz\x1b\\", "\x1b[K", "\x1b[2J"}[r.IntN(4)])
+			case 15: // IN-08: SO/SI and G0/G1 designations
+				b.WriteString([]string{"\x0e", "\x0f", "\x1b(0", "\x1b(B", "\x1b)0", "\x1b)B"}[r.IntN(6)])
+			case 16: // an OSC 8 open over printed text
+				n := r.IntN(10)
+				fmt.Fprintf(&b, "\x1b]8;id=%d;https://x.invalid/%d\x1b\\%s", n, n, strings.Repeat("l", 1+r.IntN(5)))
+			case 17:
+				b.WriteString("\x1b]8;;\x1b\\")
 			default:
 				b.WriteString("$ ")
 			}

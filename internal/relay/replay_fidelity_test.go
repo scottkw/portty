@@ -619,9 +619,9 @@ func TestRenderScreen_RISKeepsCursor(t *testing.T) {
 func TestFixRenderedLinks(t *testing.T) {
 	for in, want := range map[string]string{
 		"\x1b]8;https://example.invalid/x;id=7\x07LINK\x1b]8;;\x07": "\x1b]8;id=7;https://example.invalid/x\x07LINK\x1b]8;;\x07",
-		"\x1b]8;https://x.invalid/a;\x07A\x1b]8;;\x07 b":           "\x1b]8;;https://x.invalid/a\x07A\x1b]8;;\x07 b",
-		"\x1b]8;;\x07":                    "\x1b]8;;\x07",
-		"plain \x1b[1mtext\x1b[m":         "plain \x1b[1mtext\x1b[m",
+		"\x1b]8;https://x.invalid/a;\x07A\x1b]8;;\x07 b":            "\x1b]8;;https://x.invalid/a\x07A\x1b]8;;\x07 b",
+		"\x1b]8;;\x07":                     "\x1b]8;;\x07",
+		"plain \x1b[1mtext\x1b[m":          "plain \x1b[1mtext\x1b[m",
 		"\x1b]8;https://x.invalid/a;\x07A": "\x1b]8;;https://x.invalid/a\x07A\x1b]8;;\x07", // no params: vt leaves it open at the row end
 		"\x1b]8;u1;p=1\x07a\x1b]8;;\x07 \x1b]8;u2;p=2\x07b\x1b]8;;\x07": "\x1b]8;p=1;u1\x07a\x1b]8;;\x07 \x1b]8;p=2;u2\x07b\x1b]8;;\x07",
 	} {
