@@ -77,6 +77,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/attach"
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/testutil"
 )
 
 const viewerWait = 2 * time.Second
@@ -618,8 +619,13 @@ func TestCLIAttach_ViewingDaemonRestart(t *testing.T) {
 	cli.waitReconnected(t)
 
 	s.typeLine(t, "MARKER-END")
-	s.waitAll(t, "MARKER-END", "local")
-	waitUntil(t, "cli to see MARKER-END", func() bool { return cli.stdout.has("MARKER-END") })
+	// MARKER-END comes back twice, as separate frames: the tty's echo, then
+	// cat's copy. Compare only once both sides hold both copies.
+	markers := func(b []byte) int { return bytes.Count(b, []byte("MARKER-END")) }
+	testutil.WaitFor(t, viewerWait, func() bool { l, _, _ := s.viewers["local"].state(); return markers(l) == 2 },
+		"timed out waiting for the local viewer's two MARKER-END copies (echo + cat)")
+	testutil.WaitFor(t, viewerWait, func() bool { return markers(cli.stdout.bytes()) == 2 },
+		"timed out waiting for the cli's two MARKER-END copies (echo + cat)")
 	local, _, _ := s.viewers["local"].state()
 	checkSameLines(t, cli.stdout.bytes(), local, append(lineTags(1, 40), "MARKER-END"))
 	delta := regexp.MustCompile(`viewer-diag: replay session=` + regexp.QuoteMeta(relay.DiagID(s.sid)) + ` conn=\d+ mode=delta`)
