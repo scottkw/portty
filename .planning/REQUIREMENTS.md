@@ -9,17 +9,17 @@ Hardening only: each requirement closes a v1.0 todo. No new features.
 
 ### Reliability
 
-- [ ] **HARD-01**: A full-screen app (vim, less, a TUI) scrolling 20,000+ lines in the alternate screen keeps the daemon's heap under a fixed bound; main-screen history is not lost when the emulator is rebuilt. (todo: alt-screen-scrollback-growth)
-- [ ] **HARD-02**: Pasting more than 32 KiB into a local tab, a peer tab, a browser view or `portty attach` delivers every byte to the shell, in order; the 32 KiB per-frame input limit stays as the DoS guard. (todo: split-large-pastes)
-- [ ] **HARD-03**: A viewer joining a session whose history holds CSI 14/16/18 t, XTGETTCAP, DECRQSS, DA3, OSC 4 palette queries or OSC 52 clipboard reads answers none of them into the shared shell; the host hub and the daemon engine strip the same set. (todo: strip-more-terminal-queries-from-replay)
-- [ ] **HARD-04**: Launching the GUI with a healthy daemon makes no respawn attempt and does not count toward the 3-attempt daemon-error streak. (todo: spurious-respawn-at-launch)
-- [ ] **HARD-05**: Switching back to a remote tab rejoins with a delta replay from its last offset instead of a full replay, with no duplicated or missing output. (todo: tab-switch-full-replay)
+- [x] **HARD-01**: A full-screen app (vim, less, a TUI) scrolling 20,000+ lines in the alternate screen keeps the daemon's heap under a fixed bound; main-screen history is not lost when the emulator is rebuilt. (todo: alt-screen-scrollback-growth)
+- [x] **HARD-02**: Pasting more than 32 KiB into a local tab, a peer tab, a browser view or `portty attach` delivers every byte to the shell, in order; the 32 KiB per-frame input limit stays as the DoS guard. (todo: split-large-pastes)
+- [x] **HARD-03**: A viewer joining a session whose history holds CSI 14/16/18 t, XTGETTCAP, DECRQSS, DA3, OSC 4 palette queries or OSC 52 clipboard reads answers none of them into the shared shell; the host hub and the daemon engine strip the same set. (todo: strip-more-terminal-queries-from-replay)
+- [x] **HARD-04**: Launching the GUI with a healthy daemon makes no respawn attempt and does not count toward the 3-attempt daemon-error streak. (todo: spurious-respawn-at-launch)
+- [x] **HARD-05**: Switching back to a remote tab rejoins with a delta replay from its last offset instead of a full replay, with no duplicated or missing output. (todo: tab-switch-full-replay)
 
 ### Test hygiene
 
-- [ ] **HARD-06**: The daemon test suite never reads or writes the host's real Portty config dir (settings.json, socket); TestAPIAppearance_GetPatch and TestAPITerminalFont_GetPatch pass on a developer Mac with non-default settings, and the `-skip` is removed from TESTING.md and every gate. (todos: isolate-daemon-settings-tests, daemon-tests-read-host-settings)
-- [ ] **HARD-07**: TestHub_TwoClientsFanOut passes reliably under the full `go test -race -short ./...` run (race found and fixed, or the test made deterministic). (todo: relay-fanout-flake)
-- [ ] **HARD-08**: The multi-line prompt resize artifact (stray prompt top lines in scrollback when narrowing the window) is documented as a known limit with its cause. (todo: document-multi-line-prompt-resize-artifacts)
+- [x] **HARD-06**: The daemon test suite never reads or writes the host's real Portty config dir (settings.json, socket); TestAPIAppearance_GetPatch and TestAPITerminalFont_GetPatch pass on a developer Mac with non-default settings, and the `-skip` is removed from TESTING.md and every gate. (todos: isolate-daemon-settings-tests, daemon-tests-read-host-settings)
+- [x] **HARD-07**: TestHub_TwoClientsFanOut passes reliably under the full `go test -race -short ./...` run (race found and fixed, or the test made deterministic). (todo: relay-fanout-flake)
+- [x] **HARD-08**: The multi-line prompt resize artifact (stray prompt top lines in scrollback when narrowing the window) is documented as a known limit with its cause. (todo: document-multi-line-prompt-resize-artifacts)
 
 ## Future Requirements
 
@@ -37,14 +37,14 @@ Hardening only: each requirement closes a v1.0 todo. No new features.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HARD-01 | Phase 7 | Pending |
-| HARD-02 | Phase 7 | Pending |
-| HARD-03 | Phase 7 | Pending |
-| HARD-04 | Phase 7 | Pending |
-| HARD-05 | Phase 7 | Pending |
-| HARD-06 | Phase 7 | Pending |
-| HARD-07 | Phase 7 | Pending |
-| HARD-08 | Phase 7 | Pending |
+| HARD-01 | Phase 7 | Complete |
+| HARD-02 | Phase 7 | Complete |
+| HARD-03 | Phase 7 | Complete |
+| HARD-04 | Phase 7 | Complete |
+| HARD-05 | Phase 7 | Complete |
+| HARD-06 | Phase 7 | Complete |
+| HARD-07 | Phase 7 | Complete |
+| HARD-08 | Phase 7 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 8 total
