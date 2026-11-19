@@ -223,16 +223,22 @@ func TestHistory_SurvivesResize(t *testing.T) {
 	}
 }
 
-var cupRE = regexp.MustCompile(`\x1b\[\d+;\d+H`)
+var (
+	cupRE      = regexp.MustCompile(`\x1b\[\d+;\d+H`)
+	restoresRE = regexp.MustCompile(`(?:\x1b\[\?\d+[hl])*$`)
+)
 
-// afterCUP returns what follows the last CUP in the replay: the mode restores.
-func afterCUP(t *testing.T, p []byte) string {
+// replayTail splits the end of a rendered replay at its last CUP: the mode
+// restores just before it (before, because xterm.js homes the cursor on ?6h
+// and ?6l, WR-08) and whatever follows it (the pending-wrap re-print, if any).
+func replayTail(t *testing.T, p []byte) (restores, after string) {
 	t.Helper()
 	locs := cupRE.FindAllIndex(p, -1)
 	if len(locs) == 0 {
 		t.Fatalf("no CUP in replay tail %q", p[max(0, len(p)-60):])
 	}
-	return string(p[locs[len(locs)-1][1]:])
+	last := locs[len(locs)-1]
+	return string(restoresRE.Find(p[:last[0]])), string(p[last[1]:])
 }
 
 func TestFullReplay_ModeRestores(t *testing.T) {
@@ -240,14 +246,14 @@ func TestFullReplay_ModeRestores(t *testing.T) {
 	emit(t, hub, w, "\x1b[?2004h\x1b[?1h\x1b[?25l\x1b[?1049h\x1b[?1049l\x1b[?2048h")
 	emitLines(t, hub, w, 1, 12000)
 	want := "\x1b[?1h\x1b[?25l\x1b[?2004h"
-	if got := afterCUP(t, fullReplay(t, hub)); got != want {
-		t.Errorf("mode restores %q, want %q (ascending, no 2048/1047/1049/47)", got, want)
+	if got, after := replayTail(t, fullReplay(t, hub)); got != want || after != "" {
+		t.Errorf("mode restores %q then CUP then %q, want %q then CUP only (ascending, no 2048/1047/1049/47)", got, after, want)
 	}
 
 	resizeHub(t, hub, 100, 30)
 	emit(t, hub, w, "% ")
-	if got := afterCUP(t, fullReplay(t, hub)); got != want {
-		t.Errorf("after a resize rebuild, mode restores %q, want %q", got, want)
+	if got, after := replayTail(t, fullReplay(t, hub)); got != want || after != "" {
+		t.Errorf("after a resize rebuild, mode restores %q then CUP then %q, want %q then CUP only", got, after, want)
 	}
 }
 
@@ -265,9 +271,9 @@ func TestFullReplay_AltScreenOrder(t *testing.T) {
 	if !strings.HasSuffix(hist, "\r\n") || !strings.Contains(hist[max(0, len(hist)-40):], "LINE-011977") {
 		t.Errorf("replay before ESC[?1049h should end with the last history line and CRLF: %q", hist[max(0, len(hist)-40):])
 	}
-	wantTail := "\x1b[2;10H\x1b[?2004h"
+	wantTail := "\x1b[?2004h\x1b[2;10H" // restores, then the CUP (WR-08)
 	if !strings.HasSuffix(p, wantTail) {
-		t.Fatalf("alt replay should end with CUP then restores %q: tail %q", wantTail, p[max(0, len(p)-40):])
+		t.Fatalf("alt replay should end with restores then CUP %q: tail %q", wantTail, p[max(0, len(p)-40):])
 	}
 	rows := strings.Split(strings.TrimSuffix(p[i+len(altScreenEnterSeq):], wantTail), "\r\n")
 	if len(rows) != 24 || rows[0] != "ALT-ROW-1" || rows[1] != "ALT-ROW-2" {

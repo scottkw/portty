@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest'
 import { Terminal } from '@xterm/xterm'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import fixture from './fixtures/wrapped-replay.json'
+import risFixture from './fixtures/ris-replay.json'
 import { applyHostGrid, resetForFullReplay } from '../guestTerminal'
 
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
@@ -53,6 +54,26 @@ describe('wrapped replay renders in real xterm.js like the host (05-08 fixture)'
     expect(cursor(term)).toEqual(fixture.cursorAfter)
     term.dispose()
   })
+})
+
+// WR-08: a host RIS leaves DECOM in the hub's mode set, and xterm.js homes its
+// cursor on ?6h and ?6l, which vt does not, so only xterm.js can catch modes
+// replayed after the cursor CUP.
+describe('rendered replay after a host reset keeps the cursor in xterm.js (ris-replay fixture)', () => {
+  for (const c of risFixture) {
+    it(c.name, async () => {
+      const term = guestTerm(c.cols, c.rows)
+      resetForFullReplay(term)
+      await flush(term, decode(c.replay))
+      // xterm.js reports a pending wrap as cursorX == cols, vt as cols - 1;
+      // the live bytes below show whether the wrap really is pending.
+      const { x, y } = cursor(term)
+      expect({ x: Math.min(x, c.cols - 1), y }).toEqual(c.cursor)
+      await flush(term, decode(c.live))
+      expect(cursor(term)).toEqual(c.cursorAfter)
+      term.dispose()
+    })
+  }
 })
 
 const burst = Array.from({ length: 400 }, (_, i) => `stale burst line ${i} ${'x'.repeat(40)}`).join('\r\n')

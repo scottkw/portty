@@ -1061,18 +1061,13 @@ func (h *Hub) renderScreenLocked() []byte {
 		b.WriteString(altScreenEnterSeq)
 	}
 	b.WriteString(strings.ReplaceAll(h.liveEmu.Render(), "\n", "\r\n"))
-	pos := h.liveEmu.CursorPosition()
-	fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
-	// A host cursor at the last column after printing there is in the pending
-	// (deferred) wrap state, which a CUP clears: re-print that cell so the
-	// viewer's next character wraps as the host's does. vt does not expose the
-	// state, so this infers it.
-	b.WriteString(h.pendingWrapLocked(pos))
 	// Restore the app's DEC private modes (bracketed paste, cursor keys, cursor
 	// visibility, mouse) in ascending order, so the viewer's xterm behaves like
 	// the host even though the ring wrapped past the sets. Never the alt-screen
 	// modes (handled by the prefix above) or 2048 (in-band resize, stripped on
-	// purpose by liveEmuQueryStripPattern).
+	// purpose by liveEmuQueryStripPattern). Before the CUP: xterm.js homes the
+	// cursor on ?6h and ?6l, and a RIS puts 6 in h.modes (WR-08). No DECSTBM
+	// is replayed, so the region is the full screen and the CUP stays absolute.
 	for _, m := range slices.Sorted(maps.Keys(h.modes)) {
 		switch m {
 		case 47, 1047, 1048, 1049, 2048, 2026:
@@ -1088,6 +1083,13 @@ func (h *Hub) renderScreenLocked() []byte {
 		}
 		fmt.Fprintf(&b, "\x1b[?%d%c", m, set)
 	}
+	pos := h.liveEmu.CursorPosition()
+	fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
+	// A host cursor at the last column after printing there is in the pending
+	// (deferred) wrap state, which a CUP clears: re-print that cell so the
+	// viewer's next character wraps as the host's does. vt does not expose the
+	// state, so this infers it. After ?7: pendingWrapLocked requires autowrap.
+	b.WriteString(h.pendingWrapLocked(pos))
 	return []byte(b.String())
 }
 

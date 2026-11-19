@@ -1,0 +1,47 @@
+[
+  {
+    "name": "reset, then a prompt",
+    "cols": 40,
+    "rows": 6,
+    "replay": "bGluZTENCmxpbmUyDQokIGxzDQoNCg0KG1s/MWwbWz82bBtbPzdoG1s/OWwbWz8yNWgbWz82NmwbWz82OWwbWz8xMDAwbBtbPzEwMDFsG1s/MTAwMmwbWz8xMDAzbBtbPzEwMDRsG1s/MTAwNmwbWz8yMDA0bBtbMzs1SA==",
+    "cursor": {
+      "x": 4,
+      "y": 2
+    },
+    "live": "IC1s",
+    "cursorAfter": {
+      "x": 7,
+      "y": 2
+    }
+  },
+  {
+    "name": "reset, then a full row (pending wrap)",
+    "cols": 40,
+    "rows": 6,
+    "replay": "JCB4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eA0KDQoNCg0KDQobWz8xbBtbPzZsG1s/N2gbWz85bBtbPzI1aBtbPzY2bBtbPzY5bBtbPzEwMDBsG1s/MTAwMWwbWz8xMDAybBtbPzEwMDNsG1s/MTAwNGwbWz8xMDA2bBtbPzIwMDRsG1sxOzQwSHg=",
+    "cursor": {
+      "x": 39,
+      "y": 0
+    },
+    "live": "WQ==",
+    "cursorAfter": {
+      "x": 1,
+      "y": 1
+    }
+  },
+  {
+    "name": "app sets and resets DECOM",
+    "cols": 40,
+    "rows": 6,
+    "replay": "JCBscw0KDQoNCg0KDQobWz82bBtbMTs1SA==",
+    "cursor": {
+      "x": 4,
+      "y": 0
+    },
+    "live": "IC1s",
+    "cursorAfter": {
+      "x": 7,
+      "y": 0
+    }
+  }
+]

@@ -469,3 +469,74 @@ func TestReplayFidelity_XtermFixture(t *testing.T) {
 		t.Fatalf("fixture stale: run go test ./internal/relay -run TestReplayFidelity_XtermFixture -update-replay-fixture (read err: %v)", err)
 	}
 }
+
+const risFixturePath = "../../frontend/src/lib/__tests__/fixtures/ris-replay.json"
+
+type risCase struct {
+	Name        string        `json:"name"`
+	Cols        int           `json:"cols"`
+	Rows        int           `json:"rows"`
+	Replay      string        `json:"replay"` // base64 rendered replay, written after the viewer's reset
+	Cursor      fixtureCursor `json:"cursor"`
+	Live        string        `json:"live"` // base64 next live bytes
+	CursorAfter fixtureCursor `json:"cursorAfter"`
+}
+
+// TestRenderScreen_RISKeepsCursor: a RIS fills h.modes with every vt default,
+// 6 (DECOM) included. xterm.js homes its cursor on ?6h and ?6l, so a rendered
+// replay must restore modes before its CUP (WR-08). The vt guest here does not
+// home on DECOM, so the frontend checks the same bytes in xterm.js through the
+// fixture this writes (with -update-replay-fixture) or checks.
+func TestRenderScreen_RISKeepsCursor(t *testing.T) {
+	var cases []risCase
+	for _, c := range []struct{ name, out, live string }{
+		{"reset, then a prompt", "\x1bcline1\r\nline2\r\n$ ls", " -l"},
+		{"reset, then a full row (pending wrap)", "\x1bc$ " + strings.Repeat("x", 38), "Y"},
+		{"app sets and resets DECOM", "\x1b[?6h\x1b[?6l$ ls", " -l"},
+	} {
+		hub := NewHub("ris-render", nil, nil, DefaultScrollbackBytes, nil)
+		resizeHub(t, hub, 40, 6)
+		ref := NewQuietEmulator(40, 6)
+		hub.emuMu.Lock()
+		hub.ensureLiveEmulatorLocked()
+		hub.recordFrameLocked(MakeOutputFrame([]byte(c.out)), []byte(c.out))
+		out := hub.renderScreenLocked()
+		hub.emuMu.Unlock()
+		_, _ = ref.WriteString(c.out)
+		host := emuCursor(ref)
+
+		cup := bytes.LastIndex(out, fmt.Appendf(nil, "\x1b[%d;%dH", host.Y+1, host.X+1))
+		if m := bytes.LastIndex(out, []byte("\x1b[?6")); cup < 0 || m > cup {
+			t.Errorf("%s: DECOM restored after the cursor CUP (homes xterm.js): %q", c.name, out)
+		}
+		guest := NewQuietEmulator(40, 6)
+		_, _ = guest.Write(out)
+		requireSameCursor(t, ref, guest)
+		_, _ = ref.WriteString(c.live)
+		_, _ = guest.WriteString(c.live)
+		requireSameCursor(t, ref, guest)
+		cases = append(cases, risCase{
+			Name: c.name, Cols: 40, Rows: 6,
+			Replay: base64.StdEncoding.EncodeToString(out), Cursor: host,
+			Live: base64.StdEncoding.EncodeToString([]byte(c.live)), CursorAfter: emuCursor(ref),
+		})
+	}
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(cases); err != nil {
+		t.Fatal(err)
+	}
+	if *updateReplayFixture {
+		if err := os.WriteFile(risFixturePath, buf.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(risFixturePath)
+	if err != nil || !bytes.Equal(got, buf.Bytes()) {
+		t.Fatalf("fixture stale: run go test ./internal/relay -run TestRenderScreen_RISKeepsCursor -update-replay-fixture (read err: %v)", err)
+	}
+}
