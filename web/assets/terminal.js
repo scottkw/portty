@@ -12,9 +12,16 @@
       return frame;
     }
 
-    function makeInputFrame(text) {
+    // HARD-02: split input into frames of at most 32767 payload bytes, sent in order, so
+    // each fits the server's 32768-byte read limit (port of relayClient.ts encodeInputFrames).
+    // A multibyte character cut across two frames reassembles at the PTY.
+    function makeInputFrames(text) {
       const enc = new TextEncoder().encode(text);
-      return makeFrame(MsgInput, enc);
+      const frames = [];
+      for (let i = 0; i < enc.length; i += 32767) {
+        frames.push(makeFrame(MsgInput, enc.subarray(i, i + 32767)));
+      }
+      return frames;
     }
 
     function makeResizeFrame(cols, rows) {
@@ -1082,7 +1089,9 @@
       term.onData(function(data) {
         if (isReadOnly) return;
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(makeInputFrame(data));
+          // shortcut: no DEBT-05 "paste may have been cut short" notice here (needs ping/pong
+          // ack tracking), see todo 2026-11-19-web-viewer-paste-notice.md.
+          makeInputFrames(data).forEach(function (f) { ws.send(f); });
         }
       });
 
