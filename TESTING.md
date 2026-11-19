@@ -1211,7 +1211,7 @@ Rig for all four (Portty 07-05; Claude runs them in the two Tart VMs): build on 
   1. Quit the office GUI and daemon; start `GODEBUG=gctrace=1 nohup ~/ptest/Portty.app/Contents/MacOS/Portty daemon > /tmp/gctrace.log 2>&1 &`; relaunch the GUI.
   2. Attach with the expect driver at the width under test (100x30, then 220x50) and record C = `tput cols`. Enter the alt screen (`printf '\e[?1049h'`), print 30,000 lines of exactly C non-blank characters, leave (`printf '\e[?1049l'`).
   3. Read the live heap (the last number of each `gc N ...: A->B->C MB` line) at baseline, in the alt screen and after at least two GCs past the exit. PASS: at C = 100 and at C = 220 the in-alt peak minus baseline is at most a fixed 32 MiB (the alt screen keeps no scrollback since 08-01), and the post-exit live heap is within 20 MB of baseline after each run. Record RSS alongside. Restore the normal GUI-spawned daemon afterwards.
-  - _Last run:_ pending (08-05 Task 2).
+  - _Last run:_ 2026-11-19, build 7dcb66b2 (the code of 390f832f): V-01 PASS, in-alt peak minus baseline 5 MiB at C = 100 (counting the alt-exit GC) and 0 MiB at C = 220, post-exit +1 MB and +0 MB; evidence in .planning/phases/08-debt-cleanup/08-VM-CHECKS.md.
   - _Why not automatable:_ a real daemon process with a real PTY and TUI-style output over minutes; the unit-level bound is the Section 4 HARD-01 and DEBT-01 rows.
   - _Source:_ 07-01-SUMMARY.md (measured heap growth); 07-05-PLAN.md; 08-01-SUMMARY.md (the fixed bound); 08-05-PLAN.md.
 
@@ -1220,16 +1220,16 @@ Rig for all four (Portty 07-05; Claude runs them in the two Tart VMs): build on 
 Rig as for Category AV (Portty 08-05; Claude runs them in the two Tart VMs, WebGL off in both VMs' settings.json for the run). Office-side typing uses a local `portty attach` through the expect driver (`cli.sh` / `cli.exp`, 100x30); home GUI peer tabs are opened with `openrow.sh`, selected with `clicktab.sh`, read with `~/ptest/axdump2` and copied with `~/ptest/gcopy.sh`. Replay lines in the office daemon.log read `viewer-diag: replay session=... mode=... bytes=... resume=...`.
 
 - **M-98** A soft-wrapped line in a rendered replay (DEBT-02).
-  1. In a shared office session at 100 columns type `echo ` and a 150-character token (the command line soft-wraps), then `printf '=%.0s' $(seq 1 100); echo` and `echo AFTER-EQ`, then `seq 1 60000` so the 256 KiB ring wraps and a join takes the rendered path.
+  1. In a shared office session at 100 columns run `seq 1 60000` first, so the 256 KiB ring wraps and a join takes the rendered path (run afterwards, it would push the lines below out of the 10,000-line history), then type `echo ` and a 150-character token (the command line soft-wraps), `printf '=%.0s' $(seq 1 100); echo` and `echo AFTER-EQ`.
   2. Open a fresh home GUI peer tab; the office log shows `mode=full`. The tab's copy has the echo command on one line with the whole token, the 100-character `=` line and `AFTER-EQ` on separate lines, and the seq tail consecutive.
-  - _Last run:_ pending (08-05 Task 2).
+  - _Last run:_ 2026-11-19, build 7dcb66b2: V-02 PASS, rendered replay (`mode=full`, 70,902 bytes), the 182-character echo command on one line with the whole token, the `=` line and `AFTER-EQ` separate, the seq tail consecutive; evidence in .planning/phases/08-debt-cleanup/08-VM-CHECKS.md.
   - _Why not automatable:_ a real WebKit xterm.js tab over a real tailnet against a real daemon. The relay logic is covered by the Section 4 DEBT-02 rows.
   - _Source:_ 08-01-SUMMARY.md; 07-VM-CHECKS.md R-02 (the split it fixes); 08-05-PLAN.md.
 
 - **M-99** A rendered replay after `reset` keeps history and cursor (DEBT-03 IN-06).
   1. In a shared office session run `seq -f 'pre %g' 1 30`, `reset`, `seq -f 'post %g' 1 60`, then force the rendered path with a host resize from the local driver (100x30 to 110x30; the office log shows `grid ... by=local`).
   2. Open a fresh home GUI peer tab. Its copy has `post 1` .. `post 60` consecutive with none missing, the cursor (the `xterm-helper-textarea` AX frame) is on the prompt row after `post 60`, and `echo CURSOR-OK-V03` from the office driver appears after that prompt.
-  - _Last run:_ pending (08-05 Task 2).
+  - _Last run:_ 2026-11-19, build 7dcb66b2: V-03 PASS, `post 1..60` consecutive with no duplicate after a genuine 100x30 to 110x30 resize, the cursor on the live prompt row, `echo CURSOR-OK-V03` landed after it; evidence in .planning/phases/08-debt-cleanup/08-VM-CHECKS.md.
   - _Why not automatable:_ a real WebKit xterm.js viewer joining a real daemon's rendered replay. The order is covered by the Section 4 DEBT-03 rows.
   - _Source:_ 08-02-SUMMARY.md; 07-VM-CHECKS.md R-03; 08-05-PLAN.md.
 
