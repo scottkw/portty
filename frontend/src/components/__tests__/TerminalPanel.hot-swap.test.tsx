@@ -60,7 +60,8 @@ describe('Phase 93 WGL-01 / CLIP-01: hot-swap useEffect structure', () => {
     // announces a full replay of the whole history onto existing content. 05-12: it
     // uses the in-band helper (RIS through the write queue), never a synchronous reset.
     expect(src.match(/resetForFullReplay\(/g) ?? []).toHaveLength(1)
-    expect(src).toMatch(/onReset: \(\) => resetForFullReplay\(term\),/)
+    // IN-09: the ground tracker is re-synced (a CAN fed to it) before the RIS.
+    expect(src).toMatch(/onReset: \(\) => \{ peerWatch\?\.feed\(new Uint8Array\(\[0x18\]\)\); resetForFullReplay\(term\) \},/)
     expect(src).not.toMatch(/\.reset\(\)/)
   })
 
