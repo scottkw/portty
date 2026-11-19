@@ -1266,11 +1266,11 @@ Rig as for Category AV (Portty 08-05; Claude runs them in the two Tart VMs, WebG
   - _Source:_ 08-04-SUMMARY.md and 08-VM-CHECKS.md (L- and B-rows); 08-05-PLAN.md.
 
 - **M-103** A large paste leaves the GUI idle (08-REVIEW WR-01, DEBT-05).
-  1. In a home GUI tab on a shared office session run `stty raw -echo; head -c 20000000 > /tmp/<file>; stty sane`, then Cmd+V a 20,000,000-byte base64 payload (no newline, sha256 recorded). Sample Portty's WebContent CPU about once a second (`top -l 2 -s 1`, second sample) for 2 minutes. Repeat with 5 MB in a home local tab. Then type, paste a short line and paste unicode text in both tabs.
+  1. In a home GUI tab on a shared office session run `stty raw -echo; head -c P > /tmp/<file>; stty sane` with P = 20000000, then Cmd+V a 20,000,000-byte base64 payload (no newline, sha256 recorded). Sample Portty's WebContent CPU about once a second (`top -l 2 -s 1`, second sample) for 2 minutes. Repeat in a home local tab with a 5,000,000-byte payload and `head -c 5000000` (P must equal the payload size, or `head` never finishes). Then type, paste a short line and paste unicode text in both tabs.
   2. PASS when all hold: WebContent CPU is back to idle (no sustained samples over 5 %) within about 30 s of the paste; the office file is complete (P bytes, sha256 and `cmp` equal to the payload); an AX read of the window returns at once and `xterm-helper-textarea` has an empty value; typing and small, bracketed and unicode pastes still arrive unchanged.
   - _Last run:_ 2026-11-19, build 5e48b6f2: P-01 PASS (20 MB peer tab: WebContent 6.9 % at the paste, no sample over 5 % after 30 s, file complete at 14 s with sha256 and `cmp` equal, AX dump 0.05 s with no textarea value; 5 MB local tab: file complete at 2 s, only isolated single samples over 5 % after 30 s) and P-02 PASS (typing, small, bracketed and unicode pastes in both tabs); evidence in .planning/phases/08-debt-cleanup/08-VM-CHECKS.md.
   - _Why not automatable:_ WKWebView's native Edit-menu paste and WebKit's caret-blink re-shaping cannot run in jsdom. The guard's wiring and the modelled default insertion are covered by the Section 4 DEBT-05 row for pasteGuard.test.ts.
-  - _Source:_ 08-REVIEW.md WR-01 and IN-12 (iterations 1 and 2); 08-VM-CHECKS.md P-01, P-02.
+  - _Source:_ 08-REVIEW.md WR-01 and IN-12 (iterations 1 and 2), IN-16 (iteration 3: the receiver's byte count matches each payload); 08-VM-CHECKS.md P-01, P-02.
 ---
 
 ## 6. Standing Convention
