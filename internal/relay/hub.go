@@ -762,7 +762,17 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	h.liveEmu.Write([]byte(b.String())) //nolint:errcheck // emulator Write never returns a meaningful error
 	h.altExited = false                 // the pending-wrap switch above is not the app's exit
 	h.drainScrollbackLocked()           // the seed fills exactly Height rows, so nothing scrolls
-	h.liveEmu.Write(tail)               //nolint:errcheck // emulator Write never returns a meaningful error
+	if len(tail) > 0 && (tail[0] == 0x1b || tail[0] == 0x9b) {
+		// A C0 inside an ESC or CSI ran at once on the old screen, which the
+		// seed captured; replayed, it would run twice (IN-10). Strings ignore
+		// C0s, so an OSC or DCS after the ESC loses nothing. CAN and SUB cannot
+		// be in a tail, ESC can.
+		// shortcut: vt's parser also lets the C0 overwrite the sequence's
+		// command bits (an LF turns a later m into o); xterm.js does not, and
+		// the rebuild follows xterm.js there. Rare; leave it unless it shows up.
+		tail = slices.DeleteFunc(slices.Clone(tail), func(c byte) bool { return c < 0x20 && c != 0x1b })
+	}
+	h.liveEmu.Write(tail) //nolint:errcheck // emulator Write never returns a meaningful error
 }
 
 // newLiveEmulator builds the live emulator. It is the only constructor, so a

@@ -191,6 +191,13 @@ func TestAltScreenExit_RebuildMatchesReference(t *testing.T) {
 		{"pending wrap, read ends mid-UTF-8", []string{app + strings.Repeat("a", 40) + "\xe2\x94", "\x80b"}},
 		{"last column without a wrap, read ends mid-UTF-8", []string{app + strings.Repeat("a", 39) + "\xc3", "\xa9b"}},
 		{"?1048 reset not replayed as a restore", []string{"\x1b[?1048h\x1b[?1048lab\r\ncd", app47, "Z"}},
+		// IN-10: a C0 inside a cut-off ESC/CSI already ran on the old screen.
+		// (vt also ORs an executed C0 into the CSI's command, so LF turns m
+		// into o; xterm.js does not, and the rebuild cannot copy it.)
+		{"read ends on ESC LF", []string{"$ " + app + "\x1b\n", "[mok"}},
+		{"read ends mid-CSI after a BS", []string{"$ " + app + "\x1b[3\b", "1mok"}},
+		{"read ends mid-CSI after a CR", []string{"$ " + app + "\x1b[3\r", "1mok"}},
+		{"read ends on C1 CSI after a BS", []string{"$ " + app + "\x9b3\b", "1mok"}},
 	}
 	// WR-09: vt takes a CAN as a byte of an open UTF-8 character, so check
 	// every cut shape (bytes read of the character's length), on column 1
