@@ -1,8 +1,15 @@
 package pty
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -291,5 +298,151 @@ func TestNativeCreate_InitialSizeVisibleToChild(t *testing.T) {
 		}
 	case <-time.After(6 * time.Second):
 		t.Fatal("timed out waiting for stty output")
+	}
+}
+
+// startSh starts `sh -c script` in a session that the test kills on cleanup.
+func startSh(t *testing.T, b *NativePTYBackend, script string) *Session {
+	t.Helper()
+	sess, err := b.Create(context.Background(), CreateRequest{CLI: "/bin/sh", Args: []string{"-c", script}, Cols: 80, Rows: 24, WorkDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Kill(sess.ID) })
+	return sess
+}
+
+// readUntilErr reads sess into out until Read fails, then sends the error.
+func readUntilErr(sess *Session, out *bytes.Buffer, mu *sync.Mutex, done chan<- error) {
+	buf := make([]byte, 4096)
+	for {
+		n, err := sess.Read(buf)
+		mu.Lock()
+		out.Write(buf[:n])
+		mu.Unlock()
+		if err != nil {
+			done <- err
+			return
+		}
+	}
+}
+
+// Phase 9 (UPGR-01, probe P3): a read deadline stops a blocked Read at once
+// and no output is lost or repeated across the freeze.
+func TestSession_FreezeIdleRead(t *testing.T) {
+	b := NewNativePTYBackend()
+	sess := startSh(t, b, `i=0; while [ $i -lt 30 ]; do echo tick $i; i=$((i+1)); sleep 0.05; done`)
+
+	var out bytes.Buffer
+	var mu sync.Mutex
+	done := make(chan error, 1)
+	go readUntilErr(sess, &out, &mu, done)
+
+	time.Sleep(400 * time.Millisecond)
+	start := time.Now()
+	if err := sess.SetReadDeadline(time.Now()); err != nil {
+		t.Fatalf("SetReadDeadline: %v", err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Fatalf("frozen Read err = %v, want os.ErrDeadlineExceeded", err)
+		}
+		if d := time.Since(start); d > 200*time.Millisecond {
+			t.Fatalf("freeze took %v, want <= 200ms", d)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Read was not interrupted by the deadline")
+	}
+
+	time.Sleep(300 * time.Millisecond) // output piles up unread in the PTY
+	if err := sess.SetReadDeadline(time.Time{}); err != nil {
+		t.Fatalf("clear deadline: %v", err)
+	}
+	go readUntilErr(sess, &out, &mu, done)
+	select {
+	case <-done: // EOF once the shell exits
+	case <-time.After(5 * time.Second):
+		t.Fatal("no EOF after resume")
+	}
+
+	mu.Lock()
+	text := out.String()
+	mu.Unlock()
+	var ticks []int
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r", ""), "\n") {
+		var k int
+		if _, err := fmt.Sscanf(line, "tick %d", &k); err == nil {
+			ticks = append(ticks, k)
+		}
+	}
+	if len(ticks) != 30 {
+		t.Fatalf("got %d ticks, want 30: %v", len(ticks), ticks)
+	}
+	for i, k := range ticks {
+		if k != i {
+			t.Fatalf("tick %d at position %d (missing or repeated): %v", k, i, ticks)
+		}
+	}
+}
+
+// Phase 9 (Pitfall 6): a shell that prints nothing can still be frozen.
+func TestSession_FreezeTrulyIdleShell(t *testing.T) {
+	b := NewNativePTYBackend()
+	sess := startSh(t, b, `sleep 5`)
+
+	var out bytes.Buffer
+	var mu sync.Mutex
+	done := make(chan error, 1)
+	go readUntilErr(sess, &out, &mu, done)
+	time.Sleep(100 * time.Millisecond)
+
+	start := time.Now()
+	if err := sess.SetReadDeadline(time.Now()); err != nil {
+		t.Fatalf("SetReadDeadline: %v", err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Fatalf("Read err = %v, want os.ErrDeadlineExceeded", err)
+		}
+		if d := time.Since(start); d > 200*time.Millisecond {
+			t.Fatalf("freeze took %v, want <= 200ms", d)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("idle Read was not interrupted by the deadline")
+	}
+}
+
+// Phase 9 (Pitfall 2): with the master non-blocking, a paste bigger than the
+// PTY input buffer must block until the child reads, never fail with EAGAIN.
+func TestSession_LargeWriteBlocksNotEAGAIN(t *testing.T) {
+	b := NewNativePTYBackend()
+	sess := startSh(t, b, `stty -echo; sleep 1; cat > /dev/null`)
+
+	go func() { _, _ = io.Copy(io.Discard, sess) }() // drain output until the PTY closes
+
+	line := []byte(strings.Repeat("x", 62) + "\n")
+	payload := bytes.Repeat(line, (1<<20)/len(line)+1)[:1<<20]
+
+	start := time.Now()
+	n, err := sess.Write(payload)
+	took := time.Since(start)
+	if errors.Is(err, syscall.EAGAIN) {
+		t.Fatalf("Write surfaced EAGAIN after %d bytes: %v", n, err)
+	}
+	if err != nil || n != len(payload) {
+		t.Fatalf("Write = (%d, %v), want (%d, nil)", n, err, len(payload))
+	}
+	if took < 800*time.Millisecond {
+		t.Fatalf("Write took %v; it should block while the child sleeps", took)
+	}
+}
+
+// Phase 9 (Pitfall 6): a session without the pollable dup fails fast.
+func TestSession_NoDeadlineWithoutDup(t *testing.T) {
+	s := &Session{ID: "no-dup"}
+	if err := s.SetReadDeadline(time.Now()); !errors.Is(err, os.ErrNoDeadline) {
+		t.Fatalf("SetReadDeadline = %v, want os.ErrNoDeadline", err)
 	}
 }
