@@ -196,7 +196,7 @@ function App(): React.ReactElement {
   const [updateNeeded, setUpdateNeeded] = useState('')
   // NAV-03: Settings is a sheet over the window (menu Settings… ⌘,), never a tab.
   const [showSettings, setShowSettings] = useState(false)
-  const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string }>>([])
+  const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string }> | null>([])
   // Ref to removeTabState so the session:exit event handler (with [] deps) can call
   // the latest version without a stale closure
   const removeTabStateRef = useRef<((id: string) => void) | undefined>(undefined)
@@ -471,15 +471,23 @@ function App(): React.ReactElement {
       }
       setShowQuitModal(prev => {
         if (prev) return prev  // Ignore if modal already showing (double-fire guard)
+        // V-05b: a hung daemon must not hold the dialog; after 2 s it opens with an unknown (null) count.
+        let opened = false
+        const open = (sessions: Array<{ id: string; name: string }> | null) => {
+          if (opened) return
+          opened = true
+          setQuitSessions(sessions)
+          setShowQuitModal(true)
+        }
+        const timer = setTimeout(() => open(null), 2000)
         ListSessions().then(sessions => {
-          const activeSessions = sessions
+          clearTimeout(timer)
+          open(sessions
             .filter((s: SessionInfo) => s.state !== 'stopped')
-            .map((s: SessionInfo) => ({ id: s.id, name: s.name || 'shell' }))
-          setQuitSessions(activeSessions)
-          setShowQuitModal(true)
+            .map((s: SessionInfo) => ({ id: s.id, name: s.name || 'shell' })))
         }).catch(() => {
-          setQuitSessions([])
-          setShowQuitModal(true)
+          clearTimeout(timer)
+          open(null)
         })
         return prev
       })

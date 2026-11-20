@@ -107,6 +107,27 @@ describe('App — daemon restart consent (DEBT-08)', () => {
     expect(dialogs[0].textContent).toContain('Quit Portty?')
   })
 
+  // V-05b: a daemon that accepts and never answers must not hold the Quit
+  // dialog. It opens within 3 s with an unknown count, and a late answer
+  // does not turn that into "No active sessions."
+  it('a hung ListSessions still shows the Quit dialog within 3 s, with an unknown count', async () => {
+    let answerLate: (v: unknown) => void = () => {}
+    await mountApp({ ListSessions: () => new Promise((resolve) => { answerLate = resolve }) })
+    vi.useFakeTimers()
+    try {
+      await act(async () => { wailsEvents.get('app:quit-requested')?.() })
+      await act(async () => { vi.advanceTimersByTime(2999) })
+      expect(dialog()?.textContent).toContain('Quit Portty?')
+      expect(dialog()?.textContent).toContain("Portty couldn't check whether any sessions are running.")
+      expect(dialog()?.textContent).not.toContain('No active sessions.')
+      await act(async () => { answerLate([]) })
+      await flush()
+      expect(dialog()?.textContent).toContain("Portty couldn't check whether any sessions are running.")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   // UPGR-03: a restart question after a failed handoff says so first.
   it("says the sessions couldn't be moved when the handoff failed", async () => {
     await mountApp({ GetDaemonRestartPrompt: () => 2, GetDaemonRestartMoveFailed: () => true })

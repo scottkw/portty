@@ -3,7 +3,8 @@ import { useDialogFocus } from '../lib/useDialogFocus'
 
 interface QuitConfirmModalProps {
   isOpen: boolean
-  sessions: Array<{ id: string; name: string }>
+  // null: the daemon did not answer in time, so the count is unknown (V-05b).
+  sessions: Array<{ id: string; name: string }> | null
   onQuitGUI: () => void
   onQuitAll: () => void
   onCancel: () => void
@@ -22,11 +23,13 @@ function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: 
 
   if (!isOpen) return null
 
-  const visible = sessions.slice(0, 5)
-  const overflow = sessions.length - 5
+  const visible = sessions?.slice(0, 5) ?? []
+  const overflow = (sessions?.length ?? 0) - 5
 
   const subtitleText =
-    sessions.length === 0
+    sessions === null
+      ? "Portty couldn't check whether any sessions are running."
+      : sessions.length === 0
       ? 'No active sessions.'
       : sessions.length === 1
         ? 'You have 1 active session running.'
@@ -44,7 +47,7 @@ function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: 
         <h2 className="dialog__title" id="quit-modal-title">Quit Portty?</h2>
         <div className="dialog__body">
           <p>{subtitleText}</p>
-          {sessions.length > 0 && (
+          {visible.length > 0 && (
             <div className="quit-modal__session-list">
               {visible.map((s) => (
                 <div className="quit-modal__session-item" key={s.id}>
@@ -56,7 +59,7 @@ function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: 
               )}
             </div>
           )}
-          {sessions.length === 0 && (
+          {sessions?.length === 0 && (
             <p className="quit-modal__no-sessions dialog__secondary">No active sessions.</p>
           )}
         </div>
