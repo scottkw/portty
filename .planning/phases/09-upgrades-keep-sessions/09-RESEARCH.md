@@ -524,7 +524,9 @@ Proposed additions: `API int \`json:"api,omitempty"\`` (absent = 1, the v1.0/v1.
 | A9 | Zero-session mismatches keep the plain restart (no handoff) | Pattern 9 | None functionally |
 | A10 | abduco/zellij characterisations | Prior art | Informational only |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All six were decided in 09-CONTEXT.md ("Decided autonomously (reversible)" table and the locked decisions): 1 accepted with the window minimized; 2 the round-trip property test against a reference hub; 3 the "could not be moved" wording; 4 no LaunchAgent special case (hand off the same way); 5 the share server reports `api`; 6 the GUI quits without the dialog on a logout, restart or shutdown. The text below is kept as the research record.
 
 1. **Loss tolerance in the post-COMMIT crash window (A6).** What we know: before COMMIT nothing can be lost; after COMMITTED the new daemon owns everything. What's unclear: whether a crash of the new daemon between COMMIT and COMMITTED (milliseconds) may lose the few output bytes it read. Recommendation: accept and log; ask in discuss-phase.
 2. **Seed fidelity bar.** What we know: viewers resume by raw delta, so the seed only affects late joiners' full renders, future history lines and the alt-exit rebuild. Recommendation: the property test "render(imported) == render(reference) and stays equal under the same continuation stream" across the existing replay-fidelity corpus. Any divergence class not on the existing `shortcut:` list blocks the plan.
