@@ -17,6 +17,7 @@ import { PEER_FLUSH_TIMEOUT_MS, awaitPeerSave, beginPeerSave, peerSnapshotGenera
 import { isSoftwareWebGL } from '../lib/webglProbe'
 import { isXtermFocused } from '../lib/isXtermFocused'
 import { guardPasteInsert } from '../lib/pasteGuard'
+import { hostReconnectVerdict } from '../lib/hostReconnect'
 import { FindBar, type FindBarSearchOptions } from './FindBar/FindBar'
 import { SetSearchConfig } from '../wailsjs/go/main/App'
 import { daemon } from '../wailsjs/go/models'
@@ -450,9 +451,9 @@ export function TerminalPanel({
           : () => { client.sendResize(term.cols, term.rows) },
         // Phase 175-06 (BUG-02 / #125): show the end banner on the guest path
         // only — the host is the owner and does not need a "session ended"
-        // notice about its own session. Guests reconnect after a drop (SHAR-07,
-        // Phase 5), so this fires only for a final close; host-path tabs never
-        // reconnect (a local relay drop means the daemon and session died).
+        // notice about its own session (the App exit flow reports it). Both
+        // paths reconnect after a drop (SHAR-07; host tabs since 09-06), so this
+        // fires only for a final close or a stop verdict.
         onClose: (code, reason) => {
           console.debug(`[RelayClient] disconnected session=${sessionId}`, code, reason)
           if (!isGuest) return
@@ -495,9 +496,15 @@ export function TerminalPanel({
       }, {
         remote,
         wsURL,
+        // 09-06 (UPGR-02): host tabs reconnect too. A local relay drop used to
+        // mean the daemon and session died; since the upgrade handoff it can be
+        // the old daemon leaving with 1012 while the session lives on under the
+        // new one. hostReconnectVerdict redials only while the daemon still lists
+        // the session, so a real crash (the respawned daemon has no such
+        // session) still ends the tab.
         reconnect: isGuest
           ? { beforeReconnect: () => beforeReconnectRef.current?.() ?? Promise.resolve({ kind: 'ok' }) }
-          : undefined,
+          : { beforeReconnect: () => hostReconnectVerdict(sessionId) },
         resume: snap?.offset,
       })
       clientRef.current = client
@@ -1154,7 +1161,7 @@ export function TerminalPanel({
           onDismiss={() => setPasteNotice(null)}
         />
       )}
-      {isGuestRef.current && reconnecting && !sessionEnded.ended && (
+      {reconnecting && !sessionEnded.ended && (
         <SessionEndedBanner kind={hostUnreachable ? 'unreachable' : 'reconnecting'} host={hostLabel} />
       )}
       {(findBarOpen || findBarExiting) && pluginConfig?.search && (

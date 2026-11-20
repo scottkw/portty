@@ -28,7 +28,13 @@ const (
 	VerdictRetry
 	// VerdictShareStopped: the host no longer shares the session with us; stop.
 	VerdictShareStopped
+	// VerdictEnded: this Mac's daemon no longer runs the session (it crashed
+	// and was respawned); stop with ErrSessionEnded.
+	VerdictEnded
 )
+
+// ErrSessionEnded ends Run after VerdictEnded.
+var ErrSessionEnded = errors.New("portty: the session is no longer running")
 
 // Timing holds the reconnect loop's intervals. A zero RunOptions.Timing means
 // DefaultTiming.
@@ -117,7 +123,7 @@ type loop struct {
 	wakeRedial bool      // serve dropped a socket after a wake probe: redial without waiting
 }
 
-// Run is the remote attach loop (SHAR-07). It serves first, and whenever a
+// Run is the attach loop (SHAR-07; local attaches too since 09-06). It serves first, and whenever a
 // connection ends with anything but a detach or a final close (relay.
 // IsTerminalClose) it shows "reconnecting", backs off, re-authenticates and
 // redials URL with ?resume=<offset>, forever. Keystrokes typed while no
@@ -410,6 +416,8 @@ func (l *loop) redial(ctx context.Context, attempt *int) (*websocket.Conn, error
 		switch v {
 		case VerdictShareStopped:
 			return nil, websocket.CloseError{Code: websocket.StatusNormalClosure, Reason: relay.CloseReasonShareStopped}
+		case VerdictEnded:
+			return nil, ErrSessionEnded
 		case VerdictRetry:
 			continue
 		}
