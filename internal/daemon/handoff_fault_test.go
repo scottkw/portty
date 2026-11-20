@@ -299,6 +299,61 @@ func TestHandoffFault_NewHangsAfterCommit(t *testing.T) {
 	checkOldServes(t, s, n.Load(), nil, false)
 }
 
+// CR-01: the takeover stalls about committedWatchdog between COMMIT and
+// COMMITTED and the watchdog fires right after COMMITTED was written. The
+// watchdog must not exit a takeover that confirmed COMMITTED: the old daemon
+// exits on it, so both exiting would end every shell.
+func TestHandoffFault_WatchdogAfterCommittedWritten(t *testing.T) {
+	s := newHandoffScene(t, tickScript(false))
+	s.holdPeer = true
+	s.setFault(func(side, step string) error {
+		if side+":"+step == "new:committed-written" {
+			time.Sleep(committedWatchdog + 300*time.Millisecond) // the watchdog fires here
+		}
+		return nil
+	})
+	n, code := s.takeover(BuildVersion)
+	s.waitExit(s.oldExits, "old daemon", 0)
+	select {
+	case c := <-s.newExits:
+		t.Fatalf("the takeover exited with %d after COMMITTED was delivered: both daemons are gone", c)
+	default:
+	}
+	if code != takeoverCommitted {
+		t.Fatalf("runTakeover = %d, want 0", code)
+	}
+	s.setFault(nil)
+	checkNewServes(t, s, n, s.ids)
+}
+
+// CR-01: the takeover dies right after COMMITTED reached the old daemon. The
+// old daemon checks the takeover is still there before it lets go, and
+// serves again instead of exiting.
+func TestHandoffFault_TakeoverGoneAtFinish(t *testing.T) {
+	s := newHandoffScene(t, tickScript(false))
+	s.holdPeer = true
+	s.setFault(func(side, step string) error {
+		if side+":"+step == "old:committed-received" {
+			s.closePeer() // the takeover process is gone
+		}
+		return nil
+	})
+	if _, code := s.takeover(BuildVersion); code != takeoverCommitted {
+		t.Fatalf("runTakeover = %d, want 0", code)
+	}
+	waitFor(t, "old daemon thawed", 5*time.Second, func() bool { return !s.old.frozen.Load() })
+	select {
+	case c := <-s.oldExits:
+		t.Fatalf("the old daemon exited with %d after the takeover was gone", c)
+	case <-time.After(restartDrain + 300*time.Millisecond):
+	}
+	if s.old.handedOff.Load() || s.old.ln == nil {
+		t.Errorf("the old daemon let go of its listeners (handedOff %v)", s.old.handedOff.Load())
+	}
+	last := lastTick(ringTicks(s.old, s.ids[0]))
+	waitFor(t, "old ticks advance", 5*time.Second, func() bool { return lastTick(ringTicks(s.old, s.ids[0])) >= last+3 })
+}
+
 // Threat I1: READY times out, the old daemon writes ABORT before it thaws,
 // and the takeover never proceeds after ABORT, even with the old pid gone.
 func TestHandoffFault_AbortBeforeThaw(t *testing.T) {

@@ -564,7 +564,7 @@ func (a *API) serveHandoff(c *net.UnixConn) {
 	select {
 	case err := <-got:
 		if err == nil {
-			o.finish()
+			o.finish(peerGone)
 			return
 		}
 		log.Printf("handoff: no COMMITTED from pid %d (%v); waiting for it to exit before resuming", pid, err)
@@ -695,7 +695,19 @@ func (o *oldHandoff) resumeAfterCommit() {
 // restartDrain, then exit without stopping a session. Never api.Stop,
 // Hub.Shutdown, HubManager.Shutdown, KillSession or a context cancel here:
 // each would unlink the socket, send 1000 session ended, or end shells.
-func (o *oldHandoff) finish() {
+//
+// CR-01: a takeover that has exited since it wrote COMMITTED no longer reads
+// the PTYs, and this daemon exiting would leave nobody holding them. While
+// the listener copies are still open it serves again instead.
+func (o *oldHandoff) finish(peerGone <-chan int) {
+	_ = handoffStep("old", "committed-received") // trace point for tests; its error means nothing
+	select {
+	case <-peerGone:
+		log.Printf("handoff: takeover pid %d exited right after COMMITTED", o.pid)
+		o.resumeAfterCommit()
+		return
+	default:
+	}
 	a := o.a
 	a.handedOff.Store(true)
 	a.closeListenerCopies()
@@ -1128,12 +1140,24 @@ func (t *takeover) oldGone() bool {
 // there, confirms with COMMITTED under the watchdog.
 func (t *takeover) commit(withCommitted bool) int {
 	a := t.a
+	// CR-01: the watchdog and the COMMITTED write share one state. The
+	// watchdog exits only while the write has not started; once it has, the
+	// write's outcome decides, so a delivered COMMITTED is never followed by an
+	// exit (the old daemon exits on it).
+	const (
+		cPending int32 = iota
+		cWriting
+		cDead
+	)
+	var state atomic.Int32
 	var wd *time.Timer
 	if withCommitted {
 		wd = time.AfterFunc(committedWatchdog, func() {
-			log.Printf("handoff: COMMITTED not written within %v of COMMIT", committedWatchdog)
-			t.die(1)
-			_ = t.c.Close()
+			if state.CompareAndSwap(cPending, cDead) {
+				log.Printf("handoff: COMMITTED not written within %v of COMMIT", committedWatchdog)
+				t.die(1)
+			}
+			_ = t.c.Close() // a write still in flight fails and goes to the oldGone check
 		})
 		defer wd.Stop()
 	}
@@ -1161,15 +1185,16 @@ func (t *takeover) commit(withCommitted bool) int {
 		return takeoverFailed
 	}
 	if withCommitted {
+		if !state.CompareAndSwap(cPending, cWriting) { // the watchdog fired first
+			t.cleanup()
+			return takeoverFailed
+		}
 		err := handoffStep("new", "committed-write-fails")
 		if err == nil {
 			err = writeFrame(t.c, frameCommitted, nil)
 		}
+		_ = handoffStep("new", "committed-written") // trace point for tests; its error means nothing
 		wd.Stop()
-		if t.dead.Load() { // the watchdog fired first
-			t.cleanup()
-			return takeoverFailed
-		}
 		if err != nil {
 			// A living old daemon waits for this process to exit before it
 			// resumes, so two readers never coexist. The poll lets an old
