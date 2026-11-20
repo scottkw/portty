@@ -417,70 +417,10 @@ func (st *HubState) validate() error {
 	return nil
 }
 
-// Digest summarises the state as moved (WR-03): every field in a fixed order,
-// map keys sorted, so it depends on neither build's emulator or renderer.
-// The old daemon hashes what it sent and the takeover what it decoded; READY
-// compares them, which catches a transfer that changed anything. A field
-// added to HubState is added here too (TestHandoffState_StateDigest).
-func (st *HubState) Digest() [32]byte {
-	d := sha256.New()
-	var n [8]byte
-	num := func(vs ...int64) {
-		for _, v := range vs {
-			binary.BigEndian.PutUint64(n[:], uint64(v))
-			d.Write(n[:]) //nolint:errcheck // hash writes never fail
-		}
-	}
-	bs := func(b []byte) { num(int64(len(b))); d.Write(b) }            //nolint:errcheck // hash writes never fail
-	str := func(s string) { num(int64(len(s))); io.WriteString(d, s) } //nolint:errcheck // hash writes never fail
-	flag := func(b bool) int64 {
-		if b {
-			return 1
-		}
-		return 0
-	}
-
-	str(st.SessionID)
-	num(int64(st.Ring.End), int64(st.Ring.Max), flag(st.Ring.Truncated))
-	bs(st.Ring.Buf)
-	hs := st.History
-	num(int64(hs.MaxLines), int64(hs.MaxBytes), int64(len(hs.Lines)), int64(len(hs.Wrapped)))
-	for _, l := range hs.Lines {
-		str(l)
-	}
-	for _, w := range hs.Wrapped {
-		num(flag(w))
-	}
-	num(int64(len(st.Modes)))
-	for _, k := range slices.Sorted(maps.Keys(st.Modes)) {
-		num(int64(k), flag(st.Modes[k]))
-	}
-	num(int64(st.GeomEnd), int64(st.MainRegion[0]), int64(st.MainRegion[1]))
-	w := st.Wraps
-	num(int64(len(w.Ring)), int64(w.Next), int64(len(w.N)))
-	for _, k := range w.Ring {
-		num(int64(k))
-	}
-	for _, k := range slices.Sorted(maps.Keys(w.N)) {
-		num(int64(k), int64(w.N[k]))
-	}
-	for _, p := range st.LastMove {
-		num(int64(p.X), int64(p.Y))
-	}
-	cs := st.CS
-	num(int64(cs.G[0]), int64(cs.G[1]), flag(cs.GL1), int64(cs.ScanState), int64(cs.ScanNeed), flag(cs.Esc))
-	str(cs.Link[0])
-	str(cs.Link[1])
-	num(int64(st.PtyCols), int64(st.PtyRows), int64(st.EmuCols), int64(st.EmuRows), flag(st.HasEmu))
-	bs(st.Seed)
-	bs(st.Tail)
-	return [32]byte(d.Sum(nil))
-}
-
 // Digest summarises what a viewer gets from the hub: the ring end offset and
 // bytes (which every delta comes from), the history line count and the
-// rendered screen. Tests compare it to check a rebuilt hub; READY uses
-// HubState.Digest, which no renderer change can break (WR-03).
+// rendered screen. Tests compare it to check a rebuilt hub; READY hashes
+// the SESSION frame bytes instead, which no build difference can break.
 func (h *Hub) Digest() [32]byte {
 	h.emuMu.Lock()
 	defer h.emuMu.Unlock()

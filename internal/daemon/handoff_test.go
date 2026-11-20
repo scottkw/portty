@@ -3,6 +3,7 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -789,6 +790,58 @@ func TestHandoff_HelloCapped(t *testing.T) {
 	}
 	if s.idx("old:peer-pid") >= 0 {
 		t.Errorf("an oversized HELLO went on: %v", s.events)
+	}
+}
+
+// WR-02 (it2): READY's digest is over the SESSION frame bytes. One changed
+// payload byte that still decodes fails it; a frame from a build whose
+// hsSession has a field this build lacks (gob drops it) still matches.
+func TestHandoff_SessionFrameDigest(t *testing.T) {
+	m := hsSession{ID: "s", Pid: 42, Hub: relay.HubState{SessionID: "s", Ring: relay.RingState{Buf: []byte("ring-MARKER-bytes")}}}
+	var buf bytes.Buffer
+	sent, err := writeSessionFrame(&buf, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := buf.Bytes()
+	var got hsSession
+	if sum, err := readSessionFrame(bytes.NewReader(frame), &got); err != nil || sum != sent {
+		t.Fatalf("unchanged frame: err %v, digest match %v", err, sum == sent)
+	}
+
+	bad := bytes.Clone(frame)
+	i := bytes.Index(bad, []byte("MARKER"))
+	if i < 0 {
+		t.Fatal("setup: marker not in the frame")
+	}
+	bad[i] ^= 0x20 // 'M' -> 'm': still decodes
+	got = hsSession{}
+	sum, err := readSessionFrame(bytes.NewReader(bad), &got)
+	if err != nil {
+		t.Fatalf("changed byte did not decode: %v", err)
+	}
+	if string(got.Hub.Ring.Buf) != "ring-mARKER-bytes" {
+		t.Fatalf("setup: decoded ring %q", got.Hub.Ring.Buf)
+	}
+	if sum == sent {
+		t.Fatal("a changed payload byte kept the digest")
+	}
+
+	type futureSession struct { // a later build's hsSession, one field more
+		ID, Name, WorkDir, CLI string
+		CreatedAt              time.Time
+		Pid                    int
+		Hub                    relay.HubState
+		CursorStyle            int
+	}
+	buf.Reset()
+	h := sha256.New()
+	if err := writeFrame(io.MultiWriter(&buf, h), frameSession, futureSession{ID: "s", Pid: 42, Hub: m.Hub, CursorStyle: 3}); err != nil {
+		t.Fatal(err)
+	}
+	got = hsSession{}
+	if sum, err := readSessionFrame(&buf, &got); err != nil || sum != [32]byte(h.Sum(nil)) || got.ID != "s" {
+		t.Fatalf("newer-schema frame: err %v, digest match %v, id %q", err, sum == [32]byte(h.Sum(nil)), got.ID)
 	}
 }
 

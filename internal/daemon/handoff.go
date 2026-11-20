@@ -32,6 +32,7 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/gob"
 	"errors"
@@ -434,7 +435,7 @@ type oldHandoff struct {
 	frozen []handoffEntry
 	start  time.Time
 	gated  bool                // holds a.writeGate (drainWrites) until resume
-	sent   map[string][32]byte // session id -> digest of the state sent (WR-03)
+	sent   map[string][32]byte // session id -> sha256 of the SESSION frame as sent (WR-02 it2)
 }
 
 func (a *API) serveHandoff(c *net.UnixConn) {
@@ -543,7 +544,7 @@ func (a *API) serveHandoff(c *net.UnixConn) {
 		return
 	}
 
-	// READY with a digest per session, each equal to the state sent (WR-03).
+	// READY with a digest per session, each equal to the frame sent (WR-02 it2).
 	_ = c.SetWriteDeadline(time.Time{})
 	_ = c.SetReadDeadline(time.Now().Add(readyTimeout))
 	var ready hsReady
@@ -657,14 +658,31 @@ func (o *oldHandoff) sendSession(i int) error {
 		return err
 	}
 	m := hsSession{ID: e.id, Name: e.name, WorkDir: e.workDir, CLI: e.sess.CLI, CreatedAt: e.sess.CreatedAt, Pid: pid, Hub: st}
-	if err := writeFrame(o.c, frameSession, m); err != nil {
+	sum, err := writeSessionFrame(o.c, m)
+	if err != nil {
 		return fmt.Errorf("session %s: %w", relay.DiagID(e.id), err)
 	}
 	if o.sent == nil {
 		o.sent = map[string][32]byte{}
 	}
-	o.sent[e.id] = st.Digest()
+	o.sent[e.id] = sum
 	return sendFDs(o.c, i+1, master, slave)
+}
+
+// writeSessionFrame and readSessionFrame hash the SESSION frame's bytes as
+// they cross the socket (WR-02 it2), so READY catches a changed or reordered
+// transfer, while a HubState schema difference gob tolerates between two
+// builds still matches: neither side re-encodes its own struct.
+func writeSessionFrame(w io.Writer, m hsSession) ([32]byte, error) {
+	h := sha256.New()
+	err := writeFrame(io.MultiWriter(w, h), frameSession, m)
+	return [32]byte(h.Sum(nil)), err
+}
+
+func readSessionFrame(r io.Reader, m *hsSession) ([32]byte, error) {
+	h := sha256.New()
+	err := readFrame(io.TeeReader(r, h), frameSession, m, maxSessionFrame)
+	return [32]byte(h.Sum(nil)), err
 }
 
 func (o *oldHandoff) checkDigests(d map[string][32]byte) string {
@@ -776,7 +794,7 @@ type importedSession struct {
 	id     string
 	sess   *pty.Session
 	hub    *relay.Hub
-	digest [32]byte // of the state as decoded (WR-03)
+	digest [32]byte // sha256 of the SESSION frame as received (WR-02 it2)
 }
 
 // takeover is runTakeover's state: everything received, so that a failure
@@ -861,7 +879,9 @@ func runTakeover(ctx context.Context, d takeoverDeps) int {
 
 	for i := 0; i < t.global.Sessions; i++ {
 		var m hsSession
-		if err := t.read(frameSession, &m, maxSessionFrame); err != nil {
+		_ = t.c.SetReadDeadline(time.Now().Add(takeoverStepTimeout))
+		digest, err := readSessionFrame(t.c, &m)
+		if err != nil {
 			return t.readFailed(err)
 		}
 		_ = t.c.SetReadDeadline(time.Now().Add(takeoverStepTimeout))
@@ -873,7 +893,6 @@ func runTakeover(ctx context.Context, d takeoverDeps) int {
 			closeFiles(files)
 			return t.fail(takeoverImport, why)
 		}
-		digest := m.Hub.Digest()
 		meta := pty.AdoptMeta{ID: m.ID, CLI: m.CLI, CreatedAt: m.CreatedAt, Pid: m.Pid}
 		sess, hub, err := t.a.engine.importSession(meta, m.Name, m.WorkDir, m.Hub, files[0], files[1])
 		if err != nil {
