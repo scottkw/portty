@@ -310,18 +310,19 @@ func (a *App) ensure() func(socketPath string) error {
 // covers only a count that is still unknown. Anything else is asked again.
 func (a *App) restartConsent(_ string, sessions int) bool {
 	a.restartMu.Lock()
-	defer a.restartMu.Unlock()
-	if ok := a.restartApproved; ok != 0 {
-		if sessions == ok || (sessions > 0 && sessions < ok) {
-			return true
-		}
-		a.restartPrompt = sessions
-		a.emitEvent("daemon:restart-needed", sessions)
-		return false
+	ok := a.restartApproved
+	if ok != 0 && (sessions == ok || (sessions > 0 && sessions < ok)) {
+		a.restartMu.Unlock()
+		return true
 	}
-	if !a.restartDeclined {
+	ask := ok != 0 || !a.restartDeclined
+	if ask {
 		a.restartPrompt = sessions
 		a.emitEvent("daemon:restart-needed", sessions)
+	}
+	a.restartMu.Unlock()
+	if ask {
+		a.showWindow() // WR-03: never a question in a hidden window (start minimized, Quit GUI Only)
 	}
 	return false
 }

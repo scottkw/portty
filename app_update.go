@@ -231,7 +231,8 @@ func (a *App) showWindow() {
 		a.showWindowFunc()
 		return
 	}
-	if a.ctx != nil {
+	if a.ctx != nil && a.ctx.Value("frontend") != nil { // no Wails frontend in unit tests, as in emitEvent
+		runtime.WindowUnminimise(a.ctx) // WindowShow alone leaves a minimized window in the Dock
 		runtime.WindowShow(a.ctx)
 		a.setDockVisible(true)
 	}

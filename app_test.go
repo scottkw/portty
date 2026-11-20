@@ -1057,6 +1057,33 @@ func TestAnswerDaemonRestart_ApprovesShownCountOnly(t *testing.T) {
 	}
 }
 
+// 08-06-REVIEW WR-03: a restart question is never left in a hidden or
+// minimized window (start minimized, Quit GUI Only): raising it shows the
+// window and the Dock icon. No prompt (Not Now, or an approved count) shows nothing.
+func TestRestartConsent_ShowsWindowWhenAsking(t *testing.T) {
+	shown := 0
+	a := &App{emitEventFunc: func(string, any) {}, showWindowFunc: func() { shown++ }}
+	a.restartConsent("v1", 2)
+	if shown != 1 {
+		t.Fatalf("window shown %d times for the prompt, want 1", shown)
+	}
+	allowed := false
+	a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent("v1", 3); return nil }
+	if err := a.AnswerDaemonRestart(true); !errors.Is(err, errRestartCountChanged) || allowed || shown != 2 {
+		t.Fatalf("re-ask: err %v, allowed %v, shown %d; want the window shown again", err, allowed, shown)
+	}
+	a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent("v1", 3); return nil }
+	if err := a.AnswerDaemonRestart(true); err != nil || !allowed || shown != 2 {
+		t.Fatalf("approved restart: err %v, allowed %v, shown %d", err, allowed, shown)
+	}
+	b := &App{emitEventFunc: func(string, any) {}, showWindowFunc: func() { shown++ }}
+	b.restartConsent("v1", 2)
+	_ = b.AnswerDaemonRestart(false)
+	if b.restartConsent("v1", 2); shown != 3 {
+		t.Fatalf("shown %d; want no window after Not Now", shown)
+	}
+}
+
 // 08-06-REVIEW WR-02: the CreateSession binding never runs beside a restart
 // that has counted the daemon's sessions. It waits for startup, for an open
 // restart question, and for an EnsureDaemon under daemonMu.
