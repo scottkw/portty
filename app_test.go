@@ -1215,6 +1215,31 @@ func TestCreateSession_WaitsOutRestarts(t *testing.T) {
 	ran(t, done)
 }
 
+// IN-06: the restart question means a handoff was tried and failed, so Restart
+// Now restarts at once instead of freezing every session for a second
+// handoff first. Other ensures (startup, Retry, the poller) still try one.
+func TestAnswerDaemonRestart_SkipsSecondHandoff(t *testing.T) {
+	origEnsure, origHealth := ensureDaemon, daemonHealthOf
+	t.Cleanup(func() { ensureDaemon, daemonHealthOf = origEnsure, origHealth })
+	daemonHealthOf = func(string) (daemon.HealthResponse, error) { return daemon.HealthResponse{}, errors.New("no daemon") }
+	var noHandoff []bool
+	ensureDaemon = func(_ context.Context, _ string, o daemon.EnsureOptions) error {
+		noHandoff = append(noHandoff, o.NoHandoff)
+		return nil
+	}
+	a := &App{emitEventFunc: func(string, any) {}}
+	if err := a.ensure()("sock"); err != nil {
+		t.Fatal(err)
+	}
+	a.restartConsent(daemon.RestartQuestion{DaemonVersion: "v1", Sessions: 2, MoveFailed: "the new version exited"})
+	if err := a.AnswerDaemonRestart(true); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(noHandoff) != "[false true]" {
+		t.Fatalf("NoHandoff per ensure = %v, want [false true] (a plain ensure, then Restart Now)", noHandoff)
+	}
+}
+
 // UPGR-05 (08-06 IN-07): Quit All cancels a running EnsureDaemon instead of
 // waiting behind it on daemonMu (up to ~30 s before).
 func TestQuitAll_CancelsRunningEnsure(t *testing.T) {

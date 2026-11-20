@@ -345,7 +345,12 @@ func (a *App) ensure() func(socketPath string) error {
 			a.ensureCancel = nil
 			a.ensureMu.Unlock()
 		}()
-		if err := ensureDaemon(ctx, socketPath, daemon.EnsureOptions{Restart: a.restartConsent}); err != nil {
+		// IN-06: Restart Now answers a question asked after a handoff failed, so
+		// it restarts without freezing every session for another attempt.
+		a.restartMu.Lock()
+		approved := a.restartApproved != 0
+		a.restartMu.Unlock()
+		if err := ensureDaemon(ctx, socketPath, daemon.EnsureOptions{Restart: a.restartConsent, NoHandoff: approved}); err != nil {
 			return err
 		}
 		if err := ctx.Err(); err != nil { // Quit All: no more calls to a daemon that may be hung (V-05b)
