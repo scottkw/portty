@@ -111,3 +111,53 @@ Evidence for ROADMAP Phase 9 SC1-SC5 from real app builds in the two Tart VMs. C
   - home: only the deploy. The old `dev` GUI and daemon (no sessions) were stopped, settings.json was backed up first, HEAD installed and launched: GUI 51685, daemon 51690, `/health` dev api 2 handoff 1, 0 sessions, No Open Sessions, stderr 0 bytes; settings.json `cmp` clean against the backup. `~/ptest/stage` was removed.
   - The helpers stay in `~/p907` on both VMs (`v05b2.sh`, `v05c.sh` and `v05d.sh` added on office). They hold no secrets.
   - Host: `build/bin`, `frontend/dist` and the v1.1 extract were removed. Nothing on the host was clicked, killed or launched; every SIGSTOP/SIGCONT, click and the reboot ran inside the office VM. No share link or token was used in these rows.
+
+## Re-run after review iterations 1-2 (bbb34439)
+
+- **Base:** `bbb34439` (gsd/v1.2 after code-review fix iterations 1 and 2), fast-forwarded in the worktree. Claude, 2026-11-20 from 21:22 VM clock.
+- **Builds (host):** `pnpm install --frozen-lockfile --prefer-offline` and `pnpm run build` in `frontend/`, then `GOTOOLCHAIN=go1.26.11 wails build -s -platform darwin/arm64 -tags wailsassets` with `-ldflags "-X main.Version=<v>"` for A and B and without for HEAD (`dev`). Every build logged `Generating bindings: Done.` OLD is a plain `go build -ldflags "-X main.Version=v1.1.0-vmOld"` of `git archive v1.1` (`bbbd8060`); its sha256 equals the previous re-run's OLD. All four are `Signature=adhoc`, `TeamIdentifier=not set`. The sha256 values matched on the host and in both VMs (`~/ptest/stage/<name>`, copied with `tar` over SSH, full-hash `diff`). `frontend/src/wailsjs` was restored with `git checkout` and the generated `go/main` folder removed; `git status --porcelain --ignored -- frontend/src/wailsjs` is empty.
+
+  | App | Tags | Version (`/health`) | Binary sha256 |
+  |-----|------|---------------------|---------------|
+  | A | `wailsassets` | v1.2.0-vmA | `0d38cc4fa35c3e9ce4055da493bfd8e2b2c8b5de69bcf020e4edd211c1c045ac` |
+  | B | `wailsassets` | v1.2.0-vmB | `4324b1ba5458333ea66484f4e324cc9b723203c12ba95309645b9a8f8275cf14` |
+  | HEAD (deployed on both at the end) | `wailsassets` | dev | `5a016b62359ae1194956aa2eac033032e979e2b82a620b199ca88cb45395a9b7` |
+  | OLD (CLI/daemon) | none | v1.1.0-vmOld | `a26230e0dcf3747c1e3017c6f9f47df1163674b66af9d9f50413480c5fc37e1e` |
+
+- **VMs:** office `portty-test` (192.168.64.108) and home `portty-test-2` (192.168.64.109), both already running. Both had booted at 21:15:10 VM clock, a few minutes before the run (not by this run). Before the run each had an empty `dev` daemon (office GUI 357 / daemon 515, home GUI 361 / daemon 549). They were stopped with `stopall.sh` (GUI SIGTERM, daemon SIGTERM; no `kill -9` was needed), settings.json was backed up (`~/ptest/stage/settings.json.pre0907`) and WebGL turned off. Home got HEAD first: GUI 1119, daemon 1126, `/health` `{"status":"ok","version":"dev","api":2,"handoff":1}`.
+- **Blocker found: Tailscale is logged out in both VMs.** `tailscale status` in each VM: `Logged out.`, `BackendState` `NeedsLogin`. Office's health text: `You are logged out. The last login error was: fetch control key: ... context deadline exceeded`. The control server answers now (`curl` 200 from both VMs), and `/Library/Tailscale` has no `tailscaled.state` file. The node is logged out, not just offline. A re-login needs the tailnet owner's account, so this run did not attempt one. Because of it, `portty share` in setupA failed with rc 1 and `portty: Tailscale isn't connected. Remote access and sharing are off until it is.`, and GUI A and GUI B showed the `Tailscale not connected` warning banner with `Open Tailscale`.
+- **Install method, sessions and monitoring:** as in the first pass (U-01 `rm -rf` + `ditto`; `mk.sh` sessions with the shell and vim tickers; `poll.sh` every 200 ms; `axdump2`; `seqcheck.sh` with SOH stripped).
+
+| Check | Result | What was checked | Evidence |
+|-------|--------|------------------|----------|
+| V-05b | PASS | SC5 / IN-07 at `bbb34439`: a v1.1 daemon with sessions; GUI B's DEBT-08 dialog open; `kill -STOP <OLD daemon>`; Restart Now; Cmd-Q; Quit Everything. PASS: the GUI exits within 5 s of the Quit Everything click | <ul><li>Helper `~/p907/v05b2.sh` (unchanged since the last re-run; it had no execute bit, so it was run as `zsh ~/p907/v05b2.sh`). OLD daemon 3693 (`/health` `{"status":"ok","version":"v1.1.0-vmOld"}`), s1 `a9c114e7…` and s2 `275fedcc…`, shells 3706 and 3738, an office viewer through OLD's `attach` (3786).</li><li>B installed and launched: GUI 3824 showed `Update Portty's background service?`. 21:26:16.402 `kill -STOP 3693` (state `Ts`); Restart Now clicked at 21:26:16.704; 2 s later the buttons read `Not Now;Restarting…`, so the restart was approved and its ensure was blocked on the stopped daemon. At 21:26:21.773 the restart dialog was still up (its acting state).</li><li>21:26:22.847 Cmd-Q: the Quit dialog (`Quit Portty?`, the only dialog) was up at 21:26:25.187, **2.3 s** after Cmd-Q. Its text has `couldn't check` (the bounded ListSessions gave up; no session count).</li><li>21:26:25.532 Quit Everything: **GUI 3824 gone in 3.03 s**. At 21:26:28.564 OLD 3693 was still `Ts` (not killed); no other Portty GUI or daemon was running.</li><li>GUI stderr: one line, `EnsureDaemon: version mismatch (daemon="v1.1.0-vmOld", binary="v1.2.0-vmB") with 2 live sessions; keeping it`. It has a count of 2, which only a live daemon can give, so it was printed before the SIGSTOP. The quit path printed nothing.</li><li>21:26:28.668 `kill -CONT 3693`: the old daemon processed the queued /shutdown (`leave` lines for both sessions at 21:26:28.668) and exited. At 21:26:34.676: no Portty process, `/health` DOWN, shells 3706 and 3738 gone, no fresh daemon left behind.</li><li>Before the 09-07 fix: 30.2 s to the Quit dialog and 54.76 s to exit. At `72214c58`: 2.3 to 2.4 s and 3.07 to 3.09 s. Now: 2.3 s and 3.03 s.</li></ul> |
+
+**V-01 and V-02 were not run as rows.** Both need the tailnet:
+- V-01 needs a share link and the home share checks.
+- V-02 needs a home GUI peer tab, a home Safari share viewer and a home `portty attach portty-vm-office:s1`.
+
+Writing either as PASS or FAIL would misstate it. They stay open until Tailscale is logged in again in both VMs.
+
+The parts of V-01 that need no tailnet were run as a partial check. This is not a row result:
+- **Setup.** setupA (share step failed as above): GUI A 1490, daemon 1498, `/health` `{"status":"ok","version":"v1.2.0-vmA","api":2,"handoff":1}`. s1 `63cfa98c…` and s2 `06f179a4…`, shells 1516 and 1569 (children of 1498). An office viewer `portty attach <s1>` (A's CLI, 1630, output to `/tmp/v1.log`) stayed attached through the upgrade.
+- **Quit GUI A and install B.** 21:24:27 GUI A got SIGTERM: gone in 0.15 s, daemon 1498 alive. 21:24:29 B installed and launched.
+- **No dialog.** The AX dumps at +5 s and +20 s have 0 `AXApplicationDialog`. The only banner is the Tailscale warning. At +20 s the tab bar shows `AXRadioButton Title=s1` and `Title=s2`. GUI B stderr is empty.
+- **Poller.** 174 samples over 45 s: never `DOWN`, never two daemon pids in one snapshot. The last A answer was at 21:24:30.414. The first B answer was at 21:24:30.700: `{"status":"ok","version":"v1.2.0-vmB","api":2,"handoff":1}`, `G2110(pp1) D2127(pp2110)`.
+- **daemon.log.** `21:24:30.435085 handoff: takeover pid 2127 (build "v1.2.0-vmB") accepted`, `21:24:30.443394 handoff: committed: serving 2 sessions handed over by pid 1498`, `21:24:30.443655 handoff: committed: 2 sessions moved to pid 2127 in 9ms; exiting`.
+  - Freeze (accepted to committed): 8.6 ms by the timestamps.
+  - There is no `cert warm` line: `warmCert` (handoff.go) logs only when share health reports certs and a domain, and with Tailscale logged out there is none.
+- **Shells after.** `1516(pp1 /bin/zsh) 1569(pp1 /bin/zsh)`: the same pids, now ppid 1.
+- **Ticks.** The office viewer resumed at 21:24:31.443 (`replay session=63cfa98c conn=1 mode=delta bytes=23 resume=true`), 1.00 s after COMMITTED. Its TICK-s1 ran 0..157 (158 lines, 0 duplicates, no jump). `/tmp/s2-ticks.txt` ran 1..151 (0 duplicates, no jump).
+- **Fresh viewers on B (B's CLI).** s1's replay (8065 bytes) has `HIST-s1-1`, `HIST-s1-300` and 300 distinct HIST lines with SOH stripped. s2's replay (5338 bytes) has `ESC[?1049h` and 27 TICK-s2 lines up to TICK-s2 155, so vim's alt screen is shown.
+
+### Cleanup (re-run at bbb34439)
+
+- **office:** `cleanup.sh` ran:
+  - It stopped every test GUI, daemon and expect driver and restored settings.json (`cmp` clean, still clean after launch, `"webgl":true`).
+  - It installed HEAD and launched it: GUI 4094, daemon 4096, `/health` `{"status":"ok","version":"dev","api":2,"handoff":1}`, 0 sessions, the window with No Open Sessions, stderr 0 bytes.
+  - It removed `~/ptest/stage`. Its `rm` of run outputs stopped on a zsh no-match (`/tmp/ha.*`), so those files were removed by hand with `nullglob`. `/tmp` now holds only `head-final.err` and the system's `powerlog`, and `pgrep -x expect` is empty.
+- **home:**
+  - HEAD stopped, settings.json restored (`cmp` clean, still clean after launch, `"webgl":true`).
+  - HEAD relaunched: GUI 1364, daemon 1366, `/health` dev api 2 handoff 1, 0 sessions, No Open Sessions, stderr 0 bytes. `~/ptest/stage` removed.
+- **Not changed:** no share link was created (share failed), so no link file existed on either VM, and Safari was not used. Tailscale was left as found (logged out) in both VMs.
+- **Host:** `build/bin`, `frontend/dist`, `frontend/node_modules` (from the install) and the v1.1 extract were removed. Nothing on the host was clicked, killed or launched. No Go or vitest suite ran, and no product code changed. Every SIGSTOP/SIGCONT, SIGTERM and click ran inside the office VM.
