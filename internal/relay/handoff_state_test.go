@@ -529,3 +529,179 @@ func TestHubManager_AddStaged(t *testing.T) {
 		t.Fatal("AddStaged accepted a duplicate id")
 	}
 }
+
+// splitReads cuts s into reads of n bytes, at byte positions.
+func splitReads(s string, n int) []string {
+	var out []string
+	for len(s) > 0 {
+		k := min(len(s), n)
+		out = append(out, s[:k])
+		s = s[k:]
+	}
+	return out
+}
+
+// recordReads records each read on every hub as one PTY read.
+func recordReads(reads []string, hubs ...*Hub) {
+	for _, s := range reads {
+		feedHubs(s, len(s), hubs...)
+	}
+}
+
+// vimLike is a full-screen editor's session in the alt screen at cols x
+// rows: full repaint, a styled status line, a scroll region, a saved cursor
+// and a pen left set, the last read cut mid-CSI.
+func vimLike(cols, rows int) []string {
+	var b strings.Builder
+	b.WriteString("$ vim notes.txt\r\n\x1b[?1049h\x1b[?1h\x1b=\x1b[H\x1b[2J")
+	for y := 1; y < rows; y++ {
+		if y < 6 {
+			fmt.Fprintf(&b, "\x1b[%d;1Hline %d of the \x1b[1mfile\x1b[m", y, y)
+		} else {
+			fmt.Fprintf(&b, "\x1b[%d;1H\x1b[34m~\x1b[m", y)
+		}
+	}
+	fmt.Fprintf(&b, "\x1b[%d;1H\x1b[7m%-*s\x1b[m", rows, cols, "notes.txt [+]")
+	fmt.Fprintf(&b, "\x1b[1;%dr\x1b[3;7H\x1b7\x1b[5;12H\x1b[1;33m", rows-1)
+	return append(splitReads(b.String(), 301), "\x1b[3")
+}
+
+// handoffCase is one corpus session: reads before the export and after it.
+type handoffCase struct {
+	name       string
+	cols, rows int
+	ring       int
+	pre, cont  []string
+}
+
+func handoffCorpus() []handoffCase {
+	claude := claudeStream(200<<10, fidCols)
+	next := strings.Count(claude, "\x1b[?2026h")
+	shell := plainShellStream(0, 30<<10, 80)
+	vim := append(splitReads(shell, 4<<10), vimLike(80, 24)...)
+	link := "\x1b]8;id=7;https://example.invalid/a\x1b\\"
+	return []handoffCase{
+		{"wrapped Claude session, live redraw", fidCols, fidRows, 64 << 10,
+			splitReads(claude, 16<<10+7), []string{claudeLikeRedraw(next, fidCols), claudeLikeTurn(next+1, fidCols)}},
+		{"soft-wrapped lines, export in pending wrap", 40, 10, DefaultScrollbackBytes,
+			splitReads(plainShellStream(0, 20<<10, 40)+strings.Repeat("y", 80), 997), []string{"z\r\nmore\r\n", "$ "}},
+		{"SO/G1 line drawing and an open OSC 8 link", 40, 10, DefaultScrollbackBytes,
+			[]string{"$ x\r\n\x1b)0\x0eqqq\x1b(0lqk\r\n", link + "linked"}, []string{"text\x0fplain\x1b]8;;\x1b\\ end\r\nqqq\x1b(B"}},
+		{"scroll region with origin mode", 40, 10, DefaultScrollbackBytes,
+			[]string{shell[:2000], "\x1b[3;7r\x1b[?6h\x1b[1;1Hab\x1b7"}, []string{"\r\nA\r\nB\r\nC\r\nD\r\nE\r\nF\x1b8Z", "\x1b[r\x1b[?6l\x1b[10;1Hdone"}},
+		{"vim-like in the alt screen (1049h)", 80, 24, DefaultScrollbackBytes,
+			vim, []string{"1mX\x1b[m", "\x1b[23;1H\n\nscrolled", "\x1b8Y\x1b[2;1H\x1b[Kline 2 edited"}},
+		{"vim-like, then the app exits after the import", 80, 24, DefaultScrollbackBytes,
+			vim, []string{"1mX\x1b[m", "\x1b[r\x1b[?1049l\x1b[?1l\x1b>", "$ ls\r\nnotes.txt\r\n$ "}},
+		{"alt screen in pending wrap", 40, 10, DefaultScrollbackBytes,
+			[]string{"$ top\r\n", "\x1b[?1049h\x1b[3;1H" + strings.Repeat("p", 40)}, []string{"Q", "\x1b[?1049l$ "}},
+		{"alt screen in pending wrap at the saved cursor", 40, 10, DefaultScrollbackBytes,
+			[]string{"$ top\r\n", "\x1b[?1049h\x1b[2;5H\x1b7\x1b[4;1H" + strings.Repeat("p", 40) + "\x1b8"}, []string{"Q", "\x1b[?1049l$ "}},
+		{"1047 app keeps the shell's saved cursor", 40, 10, DefaultScrollbackBytes,
+			[]string{"ab\x1b7\r\ncd", "\x1b[?1047hALT\x1b[5;5H"}, []string{"x", "\x1b[?1047l\x1b8Z"}},
+		{"link open on the main screen, none in the alt screen", 40, 10, DefaultScrollbackBytes,
+			[]string{"\x1b]8;;https://example.invalid/m\x1b\\$ ", "\x1b[?1049h\x1b]8;;\x1b\\alt"}, []string{"more", "\x1b[?1049lmain-linked"}},
+		{"line drawing G0 behind the alt screen", 40, 10, DefaultScrollbackBytes,
+			[]string{"\x1b(0lqk\r\n", "\x1b[?1049h\x1b(Bqx q\x1b(0"}, []string{"qq", "\x1b[?1049lqq"}},
+		{"region in the alt screen", 40, 10, DefaultScrollbackBytes,
+			[]string{"$ less\r\n", "\x1b[?1049h\x1b[2;6r\x1b[6;1Hbottom"}, []string{"\nA\nB\nC", "\x1b[?1049l$ "}},
+	}
+}
+
+// runHandoffCase records pre on the original and a reference hub, moves the
+// original through Export, gob and NewHubFromState, then records cont on the
+// imported hub and the reference, checking deltas, renders and the emulator.
+func runHandoffCase(t *testing.T, c handoffCase) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.Close(); _ = r.Close() })
+	orig := NewHub("corpus", r, io.Discard, c.ring, nil)
+	ref := NewHub("corpus", nil, nil, c.ring, nil)
+	resizeHub(t, orig, c.cols, c.rows)
+	resizeHub(t, ref, c.cols, c.rows)
+	recordReads(c.pre, orig, ref)
+	freezeIdle(t, orig)
+	got, _, _ := importedHub(t, orig)
+
+	requireSameDeltas(t, ref, got)
+	requireSameRender(t, ref, got, c.cols, c.rows)
+	requireSameEmu(t, "after import", ref, got)
+	for i, s := range c.cont {
+		recordReads([]string{s}, ref, got)
+		requireSameEmu(t, fmt.Sprintf("after continuation read %d", i), ref, got)
+	}
+	requireSameRender(t, ref, got, c.cols, c.rows)
+}
+
+// TestHandoffState_RoundTripCorpus (T-R2): sessions in a shell and inside a
+// full-screen program, exported mid-stream, render, place the cursor, replay
+// history and deltas like a reference hub fed everything, also after the
+// app's exit (1049l) fires the alt-exit rebuild on the imported hub.
+func TestHandoffState_RoundTripCorpus(t *testing.T) {
+	for _, c := range handoffCorpus() {
+		t.Run(c.name, func(t *testing.T) { runHandoffCase(t, c) })
+	}
+}
+
+// TestHandoffState_ExportReseedsSelf (Pitfall 7): Export's probes and its
+// ?1049l touch the old emulator, so Export rebuilds it from its own export:
+// the old hub then equals the imported one, and a rollback (Thaw) resumes on
+// it.
+func TestHandoffState_ExportReseedsSelf(t *testing.T) {
+	for _, c := range handoffCorpus() {
+		t.Run(c.name, func(t *testing.T) {
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = w.Close(); _ = r.Close() })
+			orig := NewHub("reseed", r, io.Discard, c.ring, nil)
+			resizeHub(t, orig, c.cols, c.rows)
+			recordReads(c.pre, orig)
+			freezeIdle(t, orig)
+			got, _, _ := importedHub(t, orig)
+			requireSameEmu(t, "old hub after Export", got, orig)
+			if orig.Digest() != got.Digest() {
+				t.Fatal("old hub's digest differs from the imported hub's")
+			}
+
+			orig.Thaw()
+			before := orig.scrollback.End()
+			if _, err := io.WriteString(w, "rolled-back"); err != nil {
+				t.Fatal(err)
+			}
+			testutil.WaitFor(t, 2*time.Second, func() bool { return orig.scrollback.End() > before },
+				"thawed hub never read after Export")
+		})
+	}
+}
+
+// TestHandoffState_DigestDetectsDifference: a state with one ring byte
+// changed still imports, but its hub's digest differs.
+func TestHandoffState_DigestDetectsDifference(t *testing.T) {
+	st := validState(t)
+	a, err := NewHubFromState(st, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := st
+	bad.Ring.Buf = bytes.Clone(st.Ring.Buf)
+	bad.Ring.Buf[len(bad.Ring.Buf)/2] ^= 0x20
+	b, err := NewHubFromState(bad, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("changed ring byte: %v", err)
+	}
+	if a.Digest() == b.Digest() {
+		t.Fatal("a changed ring byte kept the same digest")
+	}
+	again, err := NewHubFromState(st, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Digest() != again.Digest() {
+		t.Fatal("the same state gave two digests")
+	}
+}
