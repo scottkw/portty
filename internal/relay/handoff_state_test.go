@@ -452,12 +452,18 @@ func validState(t *testing.T) HubState {
 // error and no hub.
 func TestHandoffState_ImportValidates(t *testing.T) {
 	cases := map[string]func(*HubState){
-		"ring longer than its max":     func(s *HubState) { s.Ring.Max = len(s.Ring.Buf) - 1 },
-		"ring max over the default":    func(s *HubState) { s.Ring.Max = DefaultScrollbackBytes + 1 },
-		"end below the ring length":    func(s *HubState) { s.Ring.End = uint64(len(s.Ring.Buf)) - 1 },
-		"geomEnd past the end":         func(s *HubState) { s.GeomEnd = s.Ring.End + 1 },
-		"history over the line cap":    func(s *HubState) { s.History.Lines = make([]string, HistoryMaxLines+1); s.History.Wrapped = make([]bool, HistoryMaxLines+1) },
-		"history over the byte cap":    func(s *HubState) { s.History.Lines = []string{strings.Repeat("x", HistoryMaxBytes+1)}; s.History.Wrapped = []bool{false} },
+		"ring longer than its max":  func(s *HubState) { s.Ring.Max = len(s.Ring.Buf) - 1 },
+		"ring max over the default": func(s *HubState) { s.Ring.Max = DefaultScrollbackBytes + 1 },
+		"end below the ring length": func(s *HubState) { s.Ring.End = uint64(len(s.Ring.Buf)) - 1 },
+		"geomEnd past the end":      func(s *HubState) { s.GeomEnd = s.Ring.End + 1 },
+		"history over the line cap": func(s *HubState) {
+			s.History.Lines = make([]string, HistoryMaxLines+1)
+			s.History.Wrapped = make([]bool, HistoryMaxLines+1)
+		},
+		"history over the byte cap": func(s *HubState) {
+			s.History.Lines = []string{strings.Repeat("x", HistoryMaxBytes+1)}
+			s.History.Wrapped = []bool{false}
+		},
 		"wrapped length mismatch":      func(s *HubState) { s.History.Wrapped = append(s.History.Wrapped, true) },
 		"zero columns":                 func(s *HubState) { s.EmuCols = 0 },
 		"5000 columns":                 func(s *HubState) { s.EmuCols = 5000 },

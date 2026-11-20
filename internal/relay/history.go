@@ -15,7 +15,9 @@ const (
 // line, no line terminator), oldest first. A line pushed as wrapped soft-wrapped
 // onto the next one on the host (DEBT-02), so Render joins the two without a
 // CRLF and the viewer re-wraps them. It is never written to disk: terminal
-// contents include secrets, so a daemon restart drops it.
+// contents include secrets, so a daemon restart drops it. An upgrade handoff
+// moves it memory to memory over the 0600 handoff socket (HubState), never
+// through a file.
 //
 // It has no mutex of its own: the hub touches it only under Hub.emuMu.
 type History struct {

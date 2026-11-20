@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"fmt"
 	"io"
 	"sync"
 )
@@ -35,6 +36,18 @@ func (m *HubManager) Create(sessionID string, reader io.Reader, writer io.Writer
 	m.hubs[sessionID] = hub
 	go hub.Run()
 	return hub
+}
+
+// AddStaged stores a hub built by NewHubFromState without starting it: the
+// handoff starts it (Hub.Start) after COMMIT. An existing id is an error.
+func (m *HubManager) AddStaged(sessionID string, hub *Hub) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.hubs[sessionID]; ok {
+		return fmt.Errorf("relay: hub %s already exists", DiagID(sessionID))
+	}
+	m.hubs[sessionID] = hub
+	return nil
 }
 
 // Get looks up a Hub by session ID. Returns the hub and true if found.

@@ -1,14 +1,17 @@
 package relay
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"maps"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -76,6 +79,17 @@ type Hub struct {
 	done        chan struct{}
 	closed      bool
 	closeOnce   sync.Once
+
+	// Phase 9 handoff (UPGR-01): freezing is set from Freeze until Thaw (or
+	// a failed freeze) and frozen is closed by Run when it stops for it, so
+	// a frozen hub has freezing set and frozen closed. Both under mu.
+	// gridMu serialises ResizeClient with the start and end of a freeze, so
+	// no resize lands between the last read and the export. startOnce makes
+	// Start run one reader.
+	freezing  bool
+	frozen    chan struct{}
+	gridMu    sync.Mutex
+	startOnce sync.Once
 
 	// ptyCols, ptyRows: current PTY dimensions as set by the host-authority arbiter.
 	// Only local-origin subscribers drive these fields; the last host grid is frozen
@@ -434,10 +448,25 @@ func (h *Hub) ResizeClient(sub *Subscriber, cols, rows int) error {
 		return nil
 	}
 
+	h.gridMu.Lock()
+	defer h.gridMu.Unlock()
 	h.mu.Lock()
 	sub.Cols = cols
 	sub.Rows = rows
+	if h.freezing {
+		// Frozen: the PTY grid and the emulator stay as exported. Thaw re-runs
+		// the arbiter, so a resize during a rolled-back freeze still lands.
+		h.mu.Unlock()
+		return nil
+	}
+	return h.applyGridLocked(sub.Origin, sub.Name)
+}
 
+// applyGridLocked runs the host-authority arbiter over the local
+// subscribers' sizes and applies a changed grid. by and client name the
+// trigger for the diag line. Caller holds gridMu and mu; mu is released
+// before any IO.
+func (h *Hub) applyGridLocked(by, client string) error {
 	// D-02 min-among-local: iterate only local-origin subscribers with a positive size.
 	minCols, minRows := 0, 0
 	for s := range h.subscribers {
@@ -465,7 +494,7 @@ func (h *Hub) ResizeClient(sub *Subscriber, cols, rows int) error {
 
 	if needResize {
 		// Diagnostic for UAT gap 1 (04-07 H-grid): who changed the host grid, and to what.
-		log.Printf("viewer-diag: grid session=%s %dx%d -> %dx%d by=%s client=%q", DiagID(h.sessionID), oldCols, oldRows, pc, pr, sub.Origin, sub.Name)
+		log.Printf("viewer-diag: grid session=%s %dx%d -> %dx%d by=%s client=%q", DiagID(h.sessionID), oldCols, oldRows, pc, pr, by, client)
 		// VIEW-01: broadcast the new authoritative grid to all subscribers.
 		h.broadcastResize(uint16(pc), uint16(pr))
 		// CR-01: keep the live emulator's geometry in lockstep with the PTY so a
@@ -501,11 +530,11 @@ func (h *Hub) broadcastResize(cols, rows uint16) {
 // to all subscribers. Slow subscribers (full channel) have CloseSlow called in a
 // separate goroutine so they cannot block the drain loop.
 //
-// Run returns when the reader returns any error (typically io.EOF on PTY close).
-// On return, Run calls Shutdown() to signal completion.
+// Run returns when the reader returns any error (typically io.EOF on PTY close)
+// and then calls Shutdown() to signal completion. The one exception is a
+// freeze (Freeze): Run returns at the read deadline without Shutdown, so no
+// viewer is told the session ended and the engine sees no exit.
 func (h *Hub) Run() {
-	defer h.Shutdown()
-
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := h.reader.Read(buf)
@@ -531,10 +560,118 @@ func (h *Hub) Run() {
 			h.broadcast(frame)
 			h.emuMu.Unlock()
 		}
-		if err != nil {
-			return
+		if err == nil {
+			continue
 		}
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			h.mu.Lock()
+			stop := h.freezing
+			if stop {
+				close(h.frozen) // every byte read so far is in the ring and the emulator
+			}
+			h.mu.Unlock()
+			if stop {
+				return
+			}
+			continue // a freeze that gave up: its deadline is already cleared
+		}
+		h.Shutdown()
+		return
 	}
+}
+
+// ErrHubEnded: the session ended (Done is closed), so there is nothing to freeze.
+var ErrHubEnded = errors.New("relay: hub ended")
+
+// freezeTimeout bounds Freeze's wait for Run to stop at the deadline.
+const freezeTimeout = 2 * time.Second
+
+// deadliner is a reader that can stop a blocked Read: an os.File on a
+// pollable fd, such as the non-blocking PTY master (Pattern 2).
+type deadliner interface{ SetReadDeadline(time.Time) error }
+
+// Freeze stops Run at a read boundary without closing Done (Pattern 5), so
+// the hub can be exported. On a nil return every byte read so far is in the
+// ring and the emulator (recordFrameLocked runs before the next Read), and
+// nothing more is read until Thaw. It fails at once when the reader takes no
+// read deadline (a blocking master returns os.ErrNoDeadline, Pitfall 6),
+// returns ErrHubEnded when the shell exits before Run stops, and gives up
+// after freezeTimeout, leaving the hub running.
+func (h *Hub) Freeze() error {
+	d, ok := h.reader.(deadliner)
+	if !ok {
+		return errors.New("relay: freeze: the reader takes no read deadline")
+	}
+	h.gridMu.Lock()
+	h.mu.Lock()
+	closed, already := h.closed, h.freezing
+	frozen := make(chan struct{})
+	if !closed && !already {
+		h.freezing, h.frozen = true, frozen
+	}
+	h.mu.Unlock()
+	h.gridMu.Unlock()
+	switch {
+	case closed:
+		return ErrHubEnded
+	case already:
+		return errors.New("relay: freeze: already frozen")
+	}
+	if err := d.SetReadDeadline(time.Now()); err != nil {
+		h.unfreeze(d)
+		return fmt.Errorf("relay: freeze: %w", err)
+	}
+	select {
+	case <-frozen:
+		return nil
+	case <-h.done:
+		return ErrHubEnded
+	case <-time.After(freezeTimeout):
+		h.unfreeze(d)
+		return errors.New("relay: freeze: the read loop did not stop in time")
+	}
+}
+
+// Thaw resumes a frozen hub: the read loop picks up at the byte after the
+// last one recorded, and resizes made while frozen are applied.
+func (h *Hub) Thaw() {
+	if d, ok := h.reader.(deadliner); ok {
+		h.unfreeze(d)
+	}
+}
+
+// unfreeze clears the deadline and the freeze, re-runs the arbiter for the
+// resizes the freeze held back, and restarts Run if it stopped for the freeze.
+func (h *Hub) unfreeze(d deadliner) {
+	_ = d.SetReadDeadline(time.Time{}) // first: Run retries a stale deadline error once freezing is off
+	h.gridMu.Lock()
+	defer h.gridMu.Unlock()
+	h.mu.Lock()
+	stopped := h.frozenLocked()
+	h.freezing = false
+	_ = h.applyGridLocked("thaw", "") // releases mu; a failed PTY resize stays the next resize's to retry
+	if stopped {
+		go h.Run()
+	}
+}
+
+// frozenLocked reports whether Run has stopped for a freeze that is still
+// on. Caller holds mu.
+func (h *Hub) frozenLocked() bool {
+	if !h.freezing {
+		return false
+	}
+	select {
+	case <-h.frozen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Start runs the read loop of a staged hub (NewHubFromState), once.
+func (h *Hub) Start() {
+	h.startOnce.Do(func() { go h.Run() })
 }
 
 // recordFrameLocked appends the framed bytes to the scrollback ring AND feeds the
@@ -710,7 +847,20 @@ func (s *vtScan) step(c byte) {
 // cursor's visibility, and vt's zero-width cells (an orphan combining mark,
 // which the re-ingested seed merges into the previous cell or drops, IN-11)
 // are lost; track them if a shell needs them.
+//
+// The rebuild is seedLocked then applySeedLocked, the same pair a handoff
+// uses to move the emulator to another daemon (handoff_state.go), so the
+// alt-exit tests cover the handoff seed too.
 func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
+	h.applySeedLocked(h.seedLocked(tail), tail, h.liveEmu.Width(), h.liveEmu.Height())
+}
+
+// seedLocked returns the bytes that rebuild the live emulator's main screen
+// in a fresh one (rebuildAfterAltExitLocked has the full list), given tail,
+// the sequence or UTF-8 character the last read cut off. Its probes print
+// into the live emulator and resync h.cs, so the caller replaces the
+// emulator afterwards (applySeedLocked). Caller holds emuMu.
+func (h *Hub) seedLocked(tail []byte) []byte {
 	old := h.liveEmu
 	var seed []byte // restores and body; the charsets and link go last, from the probes
 	if body := h.screenBodyLocked(); body != nil {
@@ -774,7 +924,6 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	}
 	h.cs.setLink(cell.Link.URL, cell.Link.Params) // drops an unsafe one (WR-02)
 
-	h.liveEmu = h.newLiveEmulator(old.Width(), old.Height())
 	var b strings.Builder
 	b.Write(seed)
 	// A fresh emulator's saved cursor is home in the default pen, so restore
@@ -812,9 +961,16 @@ func (h *Hub) rebuildAfterAltExitLocked(tail []byte) {
 	if cell.Link.Params == "" && cell.Link.URL != "" {
 		b.WriteString(link(cell)) // vt keeps a link with params and no URI; the tracker does not
 	}
-	h.liveEmu.Write([]byte(b.String())) //nolint:errcheck // emulator Write never returns a meaningful error
-	h.altExited = false                 // the pending-wrap switch above is not the app's exit
-	h.drainScrollbackLocked()           // the seed fills exactly Height rows, so nothing scrolls
+	return []byte(b.String())
+}
+
+// applySeedLocked replaces the live emulator with a fresh cols x rows one
+// fed seed (seedLocked), then tail. Caller holds emuMu.
+func (h *Hub) applySeedLocked(seed, tail []byte, cols, rows int) {
+	h.liveEmu = h.newLiveEmulator(cols, rows)
+	h.liveEmu.Write(seed)     //nolint:errcheck // emulator Write never returns a meaningful error
+	h.altExited = false       // the pending-wrap switch in the seed is not the app's exit
+	h.drainScrollbackLocked() // the seed fills exactly Height rows, so nothing scrolls
 	if len(tail) > 0 && (tail[0] == 0x1b || tail[0] == 0x9b) {
 		// A C0 inside an ESC or CSI ran at once on the old screen, which the
 		// seed captured; replayed, it would run twice (IN-10). Strings ignore
