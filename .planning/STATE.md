@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-11-20T01:03:40.583Z"
 last_activity: 2026-11-19
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-18)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 7 — Hardening (v1.1)
+**Current focus:** Phase 9 — Upgrades Keep Sessions (v1.2)
 
 ## Current Position
 

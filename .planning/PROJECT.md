@@ -106,6 +106,10 @@ v1.1 Hardening shipped 2026-11-19 (Phases 7-8, 16/16 requirements). See `.planni
 | Daemon respawn from GUI poller + CLI, single-instance flock | Remote Mac must recover on its own; no one can log in to fix it | ✓ Good — Phase 5 R6 |
 | Updater verifies DMG signing identifier, not just Team ID | Same team signs GIFsmith; blocks cross-app and downgrade swaps | ✓ Good — Phase 6 WR-01 |
 | Make scottkw/portty public before the first release | The anonymous Releases API returns 404 for private repos, so update checks would never see a release | — Pending (user action before first release) |
+| Mobile UI served by each host Mac; portty.app/app is a static launcher only | Trusting the website's origin would turn a website compromise into shell access on every Mac | — Pending (v1.2 Phase 14) |
+| Remote localhost URLs proxied over the tailnet into the normal browser, no embedded browser | Wails v2 has a single web view; the proxy covers the real need (remote dev servers) | — Pending (v1.2 Phase 13) |
+| Path click previews only paths the session printed | Keeps "no generic remote file-read API" | — Pending (v1.2 Phase 12) |
+| Upgrades hand live sessions to the new daemon; DEBT-08 consent stays as the fallback | Upgrading the unattended office Mac must never cost a session | — Pending (v1.2 Phase 9) |
 
 ## Evolution
 

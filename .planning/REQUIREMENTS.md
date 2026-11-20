@@ -32,11 +32,11 @@
 ### File path click
 
 - [ ] **PATH-01**: The terminal knows each session's working directory through OSC 7. Portty's zsh setup emits it, and other shells that emit it work too.
-- [ ] **PATH-02**: Cmd-clicking a file path printed in the terminal (absolute, or relative to the working directory) previews it, using the PREV path for local and remote sessions alike. Paths that don't exist do nothing.
+- [ ] **PATH-02**: Cmd-clicking a file path printed in the terminal (absolute, or relative to the working directory) previews it, using the PREV path for local and remote sessions alike. The host previews only paths that session itself printed (user decision 2026-11-19), so there is still no general file-read API. Paths that don't exist do nothing.
 
 ### Remote localhost URLs
 
-- [ ] **URL-01**: Clicking `http://localhost:PORT` or `http://127.0.0.1:PORT` in a remote session opens that page from the remote Mac in the user's normal browser, proxied over the tailnet by Portty.
+- [ ] **URL-01**: Clicking `http://localhost:PORT` or `http://127.0.0.1:PORT` in a remote session opens that page from the remote Mac in the user's normal browser, proxied over the tailnet by Portty, including WebSocket upgrades so dev-server hot reload works (user decision 2026-11-19).
 - [ ] **URL-02**: The proxy is token-gated and tailnet-only, asks consent per port, binds only on the viewing Mac's loopback, and never allows arbitrary port scanning.
 - [ ] **URL-03**: Local URLs keep today's behaviour: confirm popover, then the default browser.
 
