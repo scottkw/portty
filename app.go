@@ -163,6 +163,17 @@ type App struct {
 	restartPrompt   int
 	restartDeclined bool
 	restartApproved int
+	// restartMoveFailed: the open question follows a failed session handoff,
+	// so the dialog says the sessions couldn't be moved (UPGR-03).
+	restartMoveFailed bool
+
+	// ensureCancel cancels the running EnsureDaemon's ctx, so Quit All never
+	// waits behind it (08-06 IN-07). Guarded by ensureMu.
+	ensureMu     sync.Mutex
+	ensureCancel context.CancelFunc
+
+	// quitFunc is the Wails quit seam; nil means runtime.Quit(a.ctx).
+	quitFunc func()
 }
 
 // defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
@@ -295,12 +306,36 @@ func (a *App) startDaemon(socketPath string) {
 }
 
 // ensure returns the EnsureDaemon seam, or daemon.EnsureDaemon with the GUI's
-// restart consent when unset.
+// restart consent when unset, under a ctx Quit All cancels (IN-07).
 func (a *App) ensure() func(socketPath string) error {
 	if a.ensureDaemonFunc != nil {
 		return a.ensureDaemonFunc
 	}
-	return func(socketPath string) error { return ensureDaemon(socketPath, a.restartConsent) }
+	return func(socketPath string) error {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		a.ensureMu.Lock()
+		a.ensureCancel = cancel
+		if a.quitting.Load() { // Quit All already ran: never start a restart
+			cancel()
+		}
+		a.ensureMu.Unlock()
+		defer func() {
+			a.ensureMu.Lock()
+			a.ensureCancel = nil
+			a.ensureMu.Unlock()
+		}()
+		return ensureDaemon(ctx, socketPath, daemon.EnsureOptions{Restart: a.restartConsent})
+	}
+}
+
+// cancelEnsure cancels the running EnsureDaemon, if any.
+func (a *App) cancelEnsure() {
+	a.ensureMu.Lock()
+	if a.ensureCancel != nil {
+		a.ensureCancel()
+	}
+	a.ensureMu.Unlock()
 }
 
 // ensureDaemon is daemon.EnsureDaemon; tests swap it to see the restart policy
@@ -312,7 +347,8 @@ var ensureDaemon = daemon.EnsureDaemon
 // asks the frontend, once per launch at most once the user said "Not Now".
 // WR-01: an approval covers the count shown or fewer; an unknown (-1) one
 // covers only a count that is still unknown. Anything else is asked again.
-func (a *App) restartConsent(_ string, sessions int) bool {
+func (a *App) restartConsent(q daemon.RestartQuestion) bool {
+	sessions := q.Sessions
 	a.restartMu.Lock()
 	ok := a.restartApproved
 	if ok != 0 && (sessions == ok || (sessions > 0 && sessions < ok)) {
@@ -321,7 +357,7 @@ func (a *App) restartConsent(_ string, sessions int) bool {
 	}
 	ask := ok != 0 || !a.restartDeclined
 	if ask {
-		a.restartPrompt = sessions
+		a.restartPrompt, a.restartMoveFailed = sessions, q.MoveFailed != ""
 		a.emitEvent("daemon:restart-needed", sessions)
 	}
 	a.restartMu.Unlock()
@@ -345,6 +381,15 @@ func (a *App) GetDaemonRestartPrompt() int {
 	a.restartMu.Lock()
 	defer a.restartMu.Unlock()
 	return a.restartPrompt
+}
+
+// GetDaemonRestartMoveFailed reports whether the open restart question follows
+// a failed session handoff (UPGR-03); the dialog reads it when it opens, and
+// the daemon:restart-needed event keeps its count payload.
+func (a *App) GetDaemonRestartMoveFailed() bool {
+	a.restartMu.Lock()
+	defer a.restartMu.Unlock()
+	return a.restartPrompt != 0 && a.restartMoveFailed
 }
 
 // AnswerDaemonRestart is the dialog's answer. "Not Now" (false) keeps the old
@@ -592,10 +637,15 @@ func (a *App) QuitAll() {
 		return
 	}
 	a.quitting.Store(true) // first: the poller must not respawn the daemon we stop (WR-04)
+	a.cancelEnsure()       // IN-07: a running EnsureDaemon gives up daemonMu within a tick
 	if a.client != nil {
-		a.daemonMu.Lock() // waits out a respawn already running
-		_ = a.client.ShutdownDaemon()
+		a.daemonMu.Lock()
+		_ = a.client.ShutdownDaemon() // waits out a handoff freeze (503), then stops whichever daemon owns the socket
 		a.daemonMu.Unlock()
+	}
+	if a.quitFunc != nil {
+		a.quitFunc()
+		return
 	}
 	runtime.Quit(a.ctx)
 }

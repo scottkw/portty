@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/scottkw/portty/internal/tailnet"
@@ -235,20 +236,58 @@ func (c *DaemonClient) GetRelayPort() (int, error) {
 // ShutdownDaemon sends POST /shutdown to terminate the daemon process.
 // Connection-reset errors are expected (daemon exits before response completes)
 // and are treated as success.
+// A daemon frozen for a handoff answers 503: it is waited out (doRetrying)
+// and still returned as an error once the wait is spent.
 func (c *DaemonClient) ShutdownDaemon() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/shutdown", nil)
-	if err != nil {
-		return err
-	}
-	resp, err := c.http.Do(req)
+	hc := *c.http
+	hc.Timeout = 2 * time.Second // per attempt
+	resp, err := c.doRetrying(&hc, func() (*http.Request, error) {
+		return http.NewRequest(http.MethodPost, c.base+"/shutdown", nil)
+	})
 	if err != nil {
 		// Connection reset is expected — daemon exited. Treat as success.
 		return nil
 	}
 	resp.Body.Close()
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return fmt.Errorf("daemon API POST /shutdown: status %d", resp.StatusCode)
+	}
 	return nil
+}
+
+// frozenRetryBudget bounds how long a mutating call waits out a daemon frozen
+// for a handoff. It must outlast 09-04's longest freeze: freezeTimeout (2 s) +
+// readyTimeout (5 s) + committedWatchdog (5 s) + the transfer, about 12 s; a
+// 09-04 test pins that sum below this. A var so tests can shrink it.
+var frozenRetryBudget = 20 * time.Second
+
+// doRetrying sends the request newReq builds with hc, and sends a mutating one
+// again while the daemon answers 503 with Retry-After (09-04's handoff freeze),
+// waiting Retry-After seconds (1 s if unreadable, at most 2 s) each time, until
+// frozenRetryBudget is spent; then the last 503 is returned. A GET is never
+// retried: a frozen daemon still serves reads. A 503 without Retry-After is
+// no freeze (e.g. Tailscale off) and is returned at once.
+func (c *DaemonClient) doRetrying(hc *http.Client, newReq func() (*http.Request, error)) (*http.Response, error) {
+	deadline := time.Now().Add(frozenRetryBudget)
+	for {
+		req, err := newReq()
+		if err != nil {
+			return nil, err
+		}
+		resp, err := hc.Do(req)
+		if err != nil || req.Method == http.MethodGet || resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") == "" {
+			return resp, err
+		}
+		wait := time.Second
+		if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && s > 0 {
+			wait = min(time.Duration(s)*time.Second, 2*time.Second)
+		}
+		if time.Now().Add(wait).After(deadline) {
+			return resp, nil
+		}
+		resp.Body.Close()
+		time.Sleep(wait)
+	}
 }
 
 // RegenerateSigningKey rotates the HMAC signing key (D-16 panic button).
@@ -338,24 +377,28 @@ func (c *DaemonClient) ConnectPeer(host, session string) (PeerConnectResponse, e
 // doJSON is a shared request/response helper. It marshals body (if non-nil),
 // sends the request, checks the status code, and decodes result (if non-nil).
 func (c *DaemonClient) doJSON(method, path string, body, result any) error {
-	var reqBody io.Reader
+	var b []byte
 	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if b, err = json.Marshal(body); err != nil {
 			return fmt.Errorf("marshal request: %w", err)
 		}
-		reqBody = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequest(method, c.base+path, reqBody)
-	if err != nil {
-		return fmt.Errorf("new request: %w", err)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.http.Do(req)
+	resp, err := c.doRetrying(c.http, func() (*http.Request, error) {
+		var reqBody io.Reader
+		if body != nil {
+			reqBody = bytes.NewReader(b)
+		}
+		req, err := http.NewRequest(method, c.base+path, reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("new request: %w", err)
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		return req, nil
+	})
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}

@@ -19,8 +19,10 @@ import (
 //
 // The returned channel closes when the child exits (WR-04): waiting on it
 // reaps the child, so a daemon that dies is no zombie, and lets EnsureDaemon
-// stop waiting for one that died at spawn.
-func startDetachedDaemon(exe string) (<-chan struct{}, error) {
+// stop waiting for one that died at spawn. kill sends SIGTERM to the child, so
+// a cancelled EnsureDaemon (IN-07) can stop the fresh daemon it started; it is
+// a no-op once exited has closed, so a reaped pid is never signalled.
+func startDetachedDaemon(exe string) (exited <-chan struct{}, kill func(), err error) {
 	cmd := exec.Command(exe, "daemon")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	logFile, err := openDaemonLog(daemonConfigDir())
@@ -32,11 +34,18 @@ func startDetachedDaemon(exe string) (<-chan struct{}, error) {
 		defer logFile.Close() // the child keeps its own descriptor
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	exited := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(exited) }() // Stdout/Stderr are files: no copy goroutines to wait on
-	return exited, nil
+	done := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(done) }() // Stdout/Stderr are files: no copy goroutines to wait on
+	kill = func() {
+		select {
+		case <-done:
+		default:
+			_ = cmd.Process.Signal(syscall.SIGTERM) // os.Process refuses a process Wait has reaped
+		}
+	}
+	return done, kill, nil
 }
 
 // lockHeld reports whether another process holds the daemon lock at path.

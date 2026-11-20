@@ -109,18 +109,41 @@ func runDaemonCore(ctx context.Context) {
 	engine.Manager().Shutdown()
 }
 
+// RestartQuestion is what a RestartPolicy is asked about a daemon from another
+// build that has live sessions. Sessions is -1 when the daemon could not list
+// them. MoveFailed is empty unless a session handoff was tried and failed; it
+// then holds the short reason (UPGR-03).
+type RestartQuestion struct {
+	DaemonVersion string
+	Sessions      int
+	MoveFailed    string
+}
+
 // RestartPolicy decides whether EnsureDaemon may restart a daemon from another
-// build that has live sessions; the restart ends them (DEBT-08). sessions is
-// -1 when the daemon could not list them. false keeps the old daemon serving.
-type RestartPolicy func(daemonVersion string, sessions int) bool
+// build that has live sessions; the restart ends them (DEBT-08). false keeps
+// the old daemon serving.
+type RestartPolicy func(RestartQuestion) bool
+
+// EnsureOptions are EnsureDaemon's caller choices. NoHandoff ("use it as it
+// is", --keep-daemon) keeps a daemon from another build without moving its
+// sessions to this build; the handoff branch (09-05) reads it.
+type EnsureOptions struct {
+	Restart   RestartPolicy
+	NoHandoff bool
+}
 
 // EnsureDaemon checks if the daemon is reachable on socketPath. If not, it
 // spawns a detached daemon subprocess using the current binary with "daemon"
 // as the first argument, then polls until the daemon is ready (waitForDaemon).
-// A daemon from another build is restarted, after allowRestart agrees when it
-// has live sessions. When allowRestart says no, EnsureDaemon returns nil with
+// A daemon from another build is restarted, after opts.Restart agrees when it
+// has live sessions. When the policy says no, EnsureDaemon returns nil with
 // the old daemon still running: the policy's own "no" is the caller's signal.
-func EnsureDaemon(socketPath string, allowRestart RestartPolicy) error {
+// A cancelled ctx (Quit All, IN-07) spawns nothing, or kills the fresh daemon
+// it spawned, and returns ctx.Err().
+func EnsureDaemon(ctx context.Context, socketPath string, opts EnsureOptions) error {
+	allowRestart := func(ver string, n int) bool {
+		return opts.Restart(RestartQuestion{DaemonVersion: ver, Sessions: n})
+	}
 	client := NewDaemonClient(socketPath)
 	needsSpawn := true
 	if err := client.Health(); err == nil {
@@ -169,6 +192,9 @@ func EnsureDaemon(socketPath string, allowRestart RestartPolicy) error {
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err // cancelled before a spawn: never spawn
+	}
 	// A test binary must never spawn a detached daemon: the child re-runs the
 	// test binary, outlives the test, and holds the user's real socket.
 	if testing.Testing() {
@@ -180,8 +206,8 @@ func EnsureDaemon(socketPath string, allowRestart RestartPolicy) error {
 		return fmt.Errorf("EnsureDaemon: locate binary: %w", err)
 	}
 
-	return startDaemon(client, daemonReadyWait, filepath.Join(filepath.Dir(socketPath), "daemon.lock"),
-		func() (<-chan struct{}, error) { return startDetachedDaemon(exe) })
+	return startDaemon(ctx, client, daemonReadyWait, filepath.Join(filepath.Dir(socketPath), "daemon.lock"),
+		func() (<-chan struct{}, func(), error) { return startDetachedDaemon(exe) })
 }
 
 // startDaemon calls spawn once no other process holds the lock at lockPath,
@@ -191,8 +217,10 @@ func EnsureDaemon(socketPath string, allowRestart RestartPolicy) error {
 // version-mismatched old daemon can take longer to stop than a new daemon's
 // 2 s lock wait, so spawning at once lost the lock and then waited out the
 // rest of the 15 s. A held lock is never broken: the wait ends early when this
-// build's daemon answers or at the deadline.
-func startDaemon(client *DaemonClient, wait time.Duration, lockPath string, spawn func() (<-chan struct{}, error)) error {
+// build's daemon answers or at the deadline. IN-07: both waits end when ctx
+// is cancelled; nothing is spawned after that, and a child already spawned
+// is killed with spawn's kill func (a fresh daemon owns no sessions yet).
+func startDaemon(ctx context.Context, client *DaemonClient, wait time.Duration, lockPath string, spawn func() (exited <-chan struct{}, kill func(), err error)) error {
 	start := time.Now()
 	deadline := start.Add(wait)
 	for lockHeld(lockPath) {
@@ -202,13 +230,26 @@ func startDaemon(client *DaemonClient, wait time.Duration, lockPath string, spaw
 		if !time.Now().Before(deadline) {
 			return fmt.Errorf("EnsureDaemon: daemon lock still held after %v", wait)
 		}
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
-	exited, err := spawn()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	exited, kill, err := spawn()
 	if err != nil {
 		return fmt.Errorf("EnsureDaemon: start daemon: %w", err)
 	}
-	if err := waitForDaemon(client, wait, exited, lockPath); err != nil {
+	if err := waitForDaemon(ctx, client, wait, exited, lockPath); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			if kill != nil {
+				kill()
+			}
+			return ctxErr
+		}
 		return fmt.Errorf("%w (%v waited in total)", err, time.Since(start).Round(time.Second))
 	}
 	return nil
@@ -271,7 +312,8 @@ const daemonReadyWait = 15 * time.Second
 // concurrent EnsureDaemon's), which gets the rest of the wait; WR-07: the
 // lock is checked again on every poll, so a holder that lets go without
 // binding fails the wait then, not at the deadline. A nil exited never fires.
-func waitForDaemon(client *DaemonClient, wait time.Duration, exited <-chan struct{}, lockPath string) error {
+// A cancelled ctx ends the wait with ctx.Err() (IN-07).
+func waitForDaemon(ctx context.Context, client *DaemonClient, wait time.Duration, exited <-chan struct{}, lockPath string) error {
 	deadline := time.Now().Add(wait)
 	exitedSeen := false
 	for time.Now().Before(deadline) {
@@ -279,6 +321,8 @@ func waitForDaemon(client *DaemonClient, wait time.Duration, exited <-chan struc
 			return nil
 		}
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-exited:
 			exited, exitedSeen = nil, true
 		case <-time.After(50 * time.Millisecond):

@@ -24,6 +24,8 @@ export const RetryDaemon          = ()                      => Call('main.App.Re
 // DEBT-08 — the version-mismatch restart prompt (0: none; -1: count unknown).
 export const GetDaemonRestartPrompt = ()                    => Call('main.App.GetDaemonRestartPrompt', [])
 export const AnswerDaemonRestart  = (restart)               => Call('main.App.AnswerDaemonRestart', [restart])
+// UPGR-03 — the open restart question follows a failed session handoff.
+export const GetDaemonRestartMoveFailed = ()                => Call('main.App.GetDaemonRestartMoveFailed', [])
 
 // Directory dialog bound method
 export const OpenDirectoryDialog  = (defaultDir)            => Call('main.App.OpenDirectoryDialog', [defaultDir])

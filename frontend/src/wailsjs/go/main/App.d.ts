@@ -38,6 +38,8 @@ export function RetryDaemon(): Promise<void>
 // DEBT-08 — the version-mismatch restart prompt: the session count to ask about (0: none; -1: unknown).
 export function GetDaemonRestartPrompt(): Promise<number>
 export function AnswerDaemonRestart(restart: boolean): Promise<void>
+// UPGR-03 — true when the open restart question follows a failed session handoff ("couldn't move your sessions").
+export function GetDaemonRestartMoveFailed(): Promise<boolean>
 
 // Directory dialog bound method
 export function OpenDirectoryDialog(defaultDir: string): Promise<string>

@@ -121,10 +121,15 @@ func flagFirstArgs(args []string) ([]string, error) {
 // ensureCLIDaemon runs ensure for a CLI command. A daemon from another build
 // with live sessions is restarted only with --restart-daemon (force); without
 // it the command fails with the reason, and the old daemon keeps running.
-// IN-04: with --keep-daemon (keep) the command runs on the old daemon instead.
-func ensureCLIDaemon(ensure func(string, daemon.RestartPolicy) error, socketPath string, force, keep bool) error {
+// IN-04: with --keep-daemon (keep) the command runs on the old daemon instead,
+// with no session handoff. UPGR-03: a failed handoff is reported first.
+func ensureCLIDaemon(ensure func(context.Context, string, daemon.EnsureOptions) error, socketPath string, force, keep bool) error {
 	var refused error
-	err := ensure(socketPath, func(ver string, n int) bool {
+	err := ensure(context.Background(), socketPath, daemon.EnsureOptions{NoHandoff: keep, Restart: func(q daemon.RestartQuestion) bool {
+		ver, n := q.DaemonVersion, q.Sessions
+		if q.MoveFailed != "" {
+			fmt.Fprintf(os.Stderr, "portty: couldn't move the running sessions to version %s (%s); they are still running on version %s.\n", daemon.BuildVersion, q.MoveFailed, ver)
+		}
 		switch {
 		case keep:
 			fmt.Fprintf(os.Stderr, "portty: using the running daemon, version %s (this is %s)\n", ver, daemon.BuildVersion)
@@ -140,7 +145,7 @@ func ensureCLIDaemon(ensure func(string, daemon.RestartPolicy) error, socketPath
 				ver, count, daemon.BuildVersion, them, restartDaemonFlag, keepDaemonFlag)
 		}
 		return force
-	})
+	}})
 	if err != nil {
 		return err
 	}
