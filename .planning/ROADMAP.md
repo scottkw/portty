@@ -85,12 +85,13 @@ Plans:
 ### Phase 11: File Preview
 **Goal**: A user in any Portty session, local or remote, can run `portty open <file>` and see an image, PDF or Markdown file in a preview tab beside the terminal, in the app and in a browser share viewer. The bytes never leave the session's authenticated stream.
 **Depends on**: Phase 9 (the API version lets an older daemon or viewer meet the new preview message with "update needed" instead of a failure)
-**Requirements**: PREV-01, PREV-02, PREV-03, PREV-04
+**Requirements**: PREV-01, PREV-02, PREV-03, PREV-04, PREV-05
 **Success Criteria** (what must be TRUE):
   1. Running `portty open <file>` in an office-VM session opens a preview tab beside that session's terminal tab in every app viewer of it: the office VM's local tab and the home VM's peer tab over the real tailnet. Closing the preview leaves the terminal and the session as they were. A missing or unsupported file gets a one-line CLI error. (PREV-01)
   2. PNG, JPEG, GIF, WebP and SVG images, PDFs and Markdown render in the preview tab with the macOS-native look, following system light and dark mode live. PDF rendering is proven inside the Wails v2 web view before anything is built on it. Hostile fixtures (SVG and Markdown carrying script, event handlers, `javascript:` links or remote images) run nothing and fetch nothing. (PREV-02)
   3. A file over the size cap shows a clear "too large to preview" message, never a partial render. While a file near the cap streams, the terminal keeps updating and no viewer is dropped. Neither the daemon nor the share server gains any route that reads a file by path; tests and the security review confirm it. (PREV-03)
   4. A browser share viewer on the home VM gets the same previews through the share link. The share page CSP (today `img-src 'self' data:`) changes only as far as the phase's security review approves, the review is recorded, and the token gate, the tailnet-only listener and `frame-ancestors 'none'` are unchanged. (PREV-04)
+  5. On a VM with nothing on the PATH by hand, `portty open` works in a new Portty session (zsh login shell) with no setup. In Terminal.app, `portty` is not found until Portty menu → "Install Command-Line Tool…" is used; after the macOS administrator prompt, `/usr/local/bin/portty` points into /Applications/Portty.app and `portty list` works there. Cancelling the prompt changes nothing, and an existing link to something else is reported, not overwritten. (PREV-05)
 **Plans**: TBD
 **UI hint**: yes
 

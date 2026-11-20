@@ -29,6 +29,7 @@
 - [ ] **PREV-02**: Images (PNG, JPEG, GIF, WebP, SVG rendered safely), PDFs and Markdown (prettified, sanitized, no script and no remote fetches) render in the preview tab with a macOS-native look in light and dark mode.
 - [ ] **PREV-03**: File bytes travel only over the session's existing authenticated stream, chunked under a size cap with a clear "too large" message. There is no generic file-read API on the daemon or the share server.
 - [ ] **PREV-04**: Browser share viewers get the same previews, with the share page CSP changed only as much as the security review allows.
+- [ ] **PREV-05**: `portty` is on the PATH without manual setup (user decision 2026-11-20). Inside every Portty session it works automatically (the daemon puts the app bundle's binary directory on the session's PATH, and it survives the login shell's path_helper). For other terminals, a Portty menu item "Install Command-Line Tool…" shows the standard macOS administrator prompt and creates `/usr/local/bin/portty` (creating the folder if needed); it says so if the link already exists and points elsewhere instead of overwriting it silently. The website's install step 2 then points at the menu item.
 
 ### File path click
 
@@ -83,6 +84,7 @@
 | PREV-02 | Phase 11 | Pending |
 | PREV-03 | Phase 11 | Pending |
 | PREV-04 | Phase 11 | Pending |
+| PREV-05 | Phase 11 | Pending |
 | PATH-01 | Phase 12 | Pending |
 | PATH-02 | Phase 12 | Pending |
 | URL-01 | Phase 13 | Pending |
@@ -95,8 +97,8 @@
 | MOB-05 | Phase 14 | Pending |
 
 **Coverage:**
-- v1.2 requirements: 25 total
-- Mapped to phases: 25
+- v1.2 requirements: 26 total
+- Mapped to phases: 26
 - Unmapped: 0 ✓
 
 ---
