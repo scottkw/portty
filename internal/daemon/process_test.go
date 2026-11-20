@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -505,20 +506,32 @@ func TestSocketLost(t *testing.T) {
 // sessions EnsureDaemon asks the caller's policy first, and a "no" keeps the
 // old daemon serving. With none it restarts at once (the CR-01 path). A count
 // it cannot get is unknown (-1) and is asked about, never killed blindly.
+// 08-06-REVIEW WR-02: the count is read again right before /shutdown, and one
+// that grew (or turned unknown) goes back to the policy.
 func TestEnsureDaemon_StaleRestartConsent(t *testing.T) {
 	running := `[{"id":"a","state":"running"},{"id":"b","state":"running"},{"id":"c","state":"stopped"}]`
+	one := `[{"id":"a","state":"running"}]`
+	three := `[{"id":"a","state":"running"},{"id":"b","state":"running"},{"id":"d","state":"running"}]`
+	yes := func(int) bool { return true }
+	no := func(int) bool { return false }
+	upTo2 := func(n int) bool { return n > 0 && n <= 2 }
 	for _, tc := range []struct {
 		name         string
-		sessions     string // the /sessions body; "" answers 500
-		allow        bool
-		wantAsked    int // the session count passed to the policy; 0: not asked
+		sessions     []string // successive /sessions bodies (the last repeats); "" answers 500
+		allow        func(int) bool
+		wantAsked    []int // the session counts passed to the policy
 		wantShutdown bool
 	}{
-		{"live sessions, keep", running, false, 2, false},
-		{"live sessions, restart", running, true, 2, true},
-		{"only stopped sessions restart without asking", `[{"id":"c","state":"stopped"}]`, false, 0, true},
-		{"no sessions restart without asking", `[]`, false, 0, true},
-		{"unknown count asks", "", false, -1, false},
+		{"live sessions, keep", []string{running}, no, []int{2}, false},
+		{"live sessions, restart", []string{running}, yes, []int{2}, true},
+		{"only stopped sessions restart without asking", []string{`[{"id":"c","state":"stopped"}]`}, no, nil, true},
+		{"no sessions restart without asking", []string{`[]`}, no, nil, true},
+		{"unknown count asks", []string{""}, no, []int{-1}, false},
+		{"a session created before shutdown is asked about", []string{`[]`, one}, no, []int{1}, false},
+		{"a count that grew after a yes is asked again", []string{running, three}, upTo2, []int{2, 3}, false},
+		{"a count that grew is restarted on a second yes", []string{running, three}, yes, []int{2, 3}, true},
+		{"a count that turned unknown is asked again", []string{running, ""}, upTo2, []int{2, -1}, false},
+		{"fewer sessions on the recount need no new answer", []string{running, one}, upTo2, []int{2}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			old := BuildVersion
@@ -531,17 +544,19 @@ func TestEnsureDaemon_StaleRestartConsent(t *testing.T) {
 			}
 			t.Cleanup(func() { ln.Close() })
 			var shutdown atomic.Bool
+			var lists atomic.Int64
 			go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
 				w.Header().Set("Content-Type", "application/json")
 				switch r.URL.Path {
 				case "/health":
 					fmt.Fprint(w, `{"status":"ok","version":"v1"}`)
 				case "/sessions":
-					if tc.sessions == "" {
+					body := tc.sessions[min(int(lists.Add(1))-1, len(tc.sessions)-1)]
+					if body == "" {
 						http.Error(w, "boom", http.StatusInternalServerError)
 						return
 					}
-					fmt.Fprint(w, tc.sessions)
+					fmt.Fprint(w, body)
 				case "/relay-port":
 					fmt.Fprint(w, `{"port":4242}`)
 				case "/shutdown":
@@ -550,15 +565,16 @@ func TestEnsureDaemon_StaleRestartConsent(t *testing.T) {
 				}
 			}))
 
-			asked, askedVer := 0, ""
+			var asked []int
+			askedVer := ""
 			err = EnsureDaemon(path, func(ver string, n int) bool {
-				asked, askedVer = n, ver
-				return tc.allow
+				asked, askedVer = append(asked, n), ver
+				return tc.allow(n)
 			})
-			if asked != tc.wantAsked {
-				t.Fatalf("policy asked with %d sessions, want %d", asked, tc.wantAsked)
+			if !slices.Equal(asked, tc.wantAsked) {
+				t.Fatalf("policy asked with %v sessions, want %v", asked, tc.wantAsked)
 			}
-			if asked != 0 && askedVer != "v1" {
+			if len(asked) != 0 && askedVer != "v1" {
 				t.Fatalf("policy got daemon version %q, want v1", askedVer)
 			}
 			if shutdown.Load() != tc.wantShutdown {

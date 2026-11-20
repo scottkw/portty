@@ -349,6 +349,9 @@ func (a *App) AnswerDaemonRestart(restart bool) error {
 		a.restartMu.Unlock()
 		return nil
 	}
+	if !a.awaitStartup() {
+		return errStartupTimeout // never beside startup's EnsureDaemon (WR-02)
+	}
 	a.daemonMu.Lock()
 	defer a.daemonMu.Unlock()
 	if a.quitting.Load() { // Quit All may have just stopped the daemon
@@ -576,8 +579,23 @@ func (a *App) CreateSession(name, workDir string, cols, rows int) (string, error
 	if a.client == nil {
 		return "", fmt.Errorf("daemon not connected")
 	}
+	// 08-06-REVIEW WR-02: a restart counts the daemon's sessions and then stops
+	// it, so this never runs beside one: not beside startup's, not while a
+	// restart question is open (Restart Now runs under it), and not beside the
+	// poller's or Retry's EnsureDaemon (daemonMu).
+	if !a.awaitStartup() {
+		return "", errStartupTimeout
+	}
+	for a.GetDaemonRestartPrompt() != 0 && !a.quitting.Load() {
+		time.Sleep(restartPromptPoll)
+	}
+	a.daemonMu.Lock()
+	defer a.daemonMu.Unlock()
 	return a.client.CreateSession(name, workDir, cols, rows)
 }
+
+// restartPromptPoll is how often a waiting CreateSession checks the restart question.
+const restartPromptPoll = 100 * time.Millisecond
 
 // emitEvent sends a Wails event to the frontend. Tests inject emitEventFunc;
 // otherwise the emit is skipped when there is no Wails frontend (unit tests,

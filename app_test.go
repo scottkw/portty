@@ -1056,3 +1056,55 @@ func TestAnswerDaemonRestart_ApprovesShownCountOnly(t *testing.T) {
 		})
 	}
 }
+
+// 08-06-REVIEW WR-02: the CreateSession binding never runs beside a restart
+// that has counted the daemon's sessions. It waits for startup, for an open
+// restart question, and for an EnsureDaemon under daemonMu.
+func TestCreateSession_WaitsOutRestarts(t *testing.T) {
+	created := func(a *App) <-chan error {
+		done := make(chan error, 1)
+		go func() { _, err := a.CreateSession("w", "", 0, 0); done <- err }()
+		return done
+	}
+	blocked := func(t *testing.T, done <-chan error, what string) {
+		t.Helper()
+		select {
+		case err := <-done:
+			t.Fatalf("CreateSession ran %s (err %v)", what, err)
+		case <-time.After(150 * time.Millisecond):
+		}
+	}
+	ran := func(t *testing.T, done <-chan error) {
+		t.Helper()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("CreateSession still waiting")
+		}
+	}
+
+	a := testApp(t)
+	a.emitEventFunc = func(string, any) {}
+	a.startupDone = make(chan struct{})
+	done := created(a)
+	blocked(t, done, "before startup finished")
+	close(a.startupDone)
+	ran(t, done)
+
+	a.restartConsent("v1", 2)
+	done = created(a)
+	blocked(t, done, "while the restart question was open")
+	if err := a.AnswerDaemonRestart(false); err != nil {
+		t.Fatal(err)
+	}
+	ran(t, done)
+
+	a.daemonMu.Lock()
+	done = created(a)
+	blocked(t, done, "beside an EnsureDaemon holding daemonMu")
+	a.daemonMu.Unlock()
+	ran(t, done)
+}

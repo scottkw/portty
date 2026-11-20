@@ -126,8 +126,19 @@ func EnsureDaemon(socketPath string, allowRestart RestartPolicy) error {
 	if err := client.Health(); err == nil {
 		// Daemon is reachable — check version compatibility first.
 		if ver := client.GetDaemonVersion(); staleVersion(ver) {
-			if n := liveSessions(client); n != 0 && !allowRestart(ver, n) {
+			n := liveSessions(client)
+			if n != 0 && !allowRestart(ver, n) {
 				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q) with %d live sessions; keeping it\n", ver, BuildVersion, n)
+				return nil
+			}
+			// 08-06-REVIEW WR-02: a session created since the count was not
+			// part of the answer, so count again right before /shutdown.
+			// shortcut: a session created between this recount and /shutdown
+			// still ends unasked (a few ms); an old daemon's /shutdown takes no
+			// condition. Upgrade in v1.2's session handoff across an upgrade
+			// (REQUIREMENTS.md DEBT-08), e.g. a /shutdown?ifSessions=<n>.
+			if n2 := liveSessions(client); countGrew(n, n2) && !allowRestart(ver, n2) {
+				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), live sessions went from %d to %d; keeping it\n", ver, BuildVersion, n, n2)
 				return nil
 			}
 			fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), restarting\n", ver, BuildVersion)
@@ -209,6 +220,13 @@ func liveSessions(client *DaemonClient) int {
 		}
 	}
 	return n
+}
+
+// countGrew reports whether a live-session count read again (after) needs a
+// new answer: it has sessions and is higher, or is unknown (-1) where before
+// was known, or known where before was unknown.
+func countGrew(before, after int) bool {
+	return after != 0 && after != before && (before < 0 || after < 0 || after > before)
 }
 
 // staleVersion reports whether a daemon reporting ver is from another build.
