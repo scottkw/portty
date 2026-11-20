@@ -47,6 +47,7 @@
 - [ ] **MOB-02**: The share view can be added to the Home Screen (manifest and icon) and opens full screen, served by the host Mac over the tailnet.
 - [ ] **MOB-03**: After the phone sleeps or switches networks, the view reconnects and resumes, checked on a real iPhone running the Tailscale app.
 - [ ] **MOB-04**: This repo supplies the copy and link format for the static launcher page at portty.app/app. That page holds no token, no WebSocket and no shell access, and it is built by the website repo.
+- [ ] **MOB-05**: Browser share links work only for devices signed in to the host's Tailscale account (user decision 2026-11-19). Every share-server request (page, info, WebSocket) gets the same WhoIs same-user check that peer tabs already use, and it fails closed. Your own devices, including an iPhone running the Tailscale app, see no prompt. A valid link opened by another tailnet user or a shared node is refused with a clear page. A pairing code for invited users is deferred (an opt-in later).
 
 ## Future Requirements
 
@@ -90,10 +91,11 @@
 | MOB-02 | Phase 14 | Pending |
 | MOB-03 | Phase 14 | Pending |
 | MOB-04 | Phase 14 | Pending |
+| MOB-05 | Phase 14 | Pending |
 
 **Coverage:**
-- v1.2 requirements: 24 total
-- Mapped to phases: 24
+- v1.2 requirements: 25 total
+- Mapped to phases: 25
 - Unmapped: 0 ✓
 
 ---

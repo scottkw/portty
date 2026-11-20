@@ -43,7 +43,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 - [ ] **Phase 11: File Preview** - `portty open <file>` shows images, PDFs and Markdown in a preview tab for app and browser viewers, over the session's own stream, under a size cap and a reviewed CSP
 - [ ] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote
 - [ ] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent
-- [ ] **Phase 14: Mobile Web App** - The share view on an iPhone: key bar, phone layout, Home Screen install, reconnect after sleep, and launcher copy for portty.app/app
+- [ ] **Phase 14: Mobile Web App** - Browser links limited to your own Tailscale account, then the share view on an iPhone: key bar, phone layout, Home Screen install, reconnect after sleep, and launcher copy for portty.app/app
 
 ## Phase Details
 
@@ -121,12 +121,13 @@ Plans:
 ### Phase 14: Mobile Web App
 **Goal**: The user can drive a shared session from an iPhone. The share view fits the phone, adds the keys iOS lacks, installs to the Home Screen and picks up again after the phone sleeps or changes network. The host Mac serves all of it over the tailnet, and portty.app/app is only a static launcher page.
 **Depends on**: Phases 10 and 11 (it builds on the browser share viewer and its CSP as the paste-notice and preview work leave them)
-**Requirements**: MOB-01, MOB-02, MOB-03, MOB-04
+**Requirements**: MOB-05, MOB-01, MOB-02, MOB-03, MOB-04
 **Success Criteria** (what must be TRUE):
   1. On an iPhone (Playwright's WebKit iPhone emulation first, then the real phone), the share view fits the session to the phone's width, keeps the cursor line above the on-screen keyboard, and shows a key bar above the keyboard (Esc, Tab, Ctrl, arrows, `|`) whose keys reach the shell; Ctrl then C stops a running command. Pinching changes the font size. The desktop browser view is unchanged. (MOB-01)
   2. Add to Home Screen gives a Portty icon that opens the session full screen, with every asset served by the host Mac over the tailnet (nothing from portty.app or a CDN). The token still gates it: after the host stops sharing, the icon opens the "Link No Longer Works" page. The share page CSP changes only as far as the security review approves (for example `manifest-src 'self'`). (MOB-02)
   3. **Human check (real iPhone):** with the Tailscale app connected, after the phone sleeps for several minutes or switches between Wi-Fi and cellular, the view reconnects on its own and resumes with no missing or duplicated output. Recorded as a new M-NN item in TESTING.md. The reconnect logic is unit-tested, but VMs cannot stand in for iOS suspension and the Tailscale app. (MOB-03)
   4. This repo supplies the copy and the link format for portty.app/app (what Portty is, how to open your Mac's tailnet share link, how to add it to the Home Screen) for the website repo. That page holds no token, opens no WebSocket and has no shell access, and nothing in this repo's origin check, CSP or token handling trusts portty.app. (MOB-04)
+  5. Built first: a browser share link opens only for devices on the host's own Tailscale account. On the home VM, which is signed in to the same account, the link opens with no prompt. A request whose WhoIs is a different user (a stub in tests, plus a VM check with a second login or a faked WhoIs) is refused with a "This link only works on your own devices" page before any terminal data is sent. Page, info and WebSocket routes are all gated, and the check fails closed when WhoIs errors. (MOB-05)
 **Plans**: TBD
 **UI hint**: yes
 
