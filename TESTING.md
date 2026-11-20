@@ -1342,19 +1342,19 @@ Rig: the office VM (`portty-test`), two ad-hoc signed builds of one commit that 
 - **M-105** A two-build upgrade keeps every session (SC1, UPGR-01).
   1. A's GUI with two ticking sessions (one running a full-screen app); quit A's GUI; install and launch B.
   2. PASS when: no dialog; the same session ids and shell pids (ppid 1 after A exits); `/health` reports B with `api` 2 and `handoff` 1; the tickers never stop; the full-screen app redraws correctly.
-  - _Last run:_ 2026-11-20, build 8d5bcbb5: V-00 and V-01 PASS. Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md.
+  - _Last run:_ 2026-11-20, build 8d5bcbb5: V-00 and V-01 PASS. Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md. Re-run 2026-11-20 at bbb34439 (after review iterations 1-2): V-01 PASS (share link 302/200 before and after, wrong token 401).
   - _Why not automatable:_ two real app builds installed over a running daemon and a native GUI. The in-process handoff is covered by handoff_test.go; the real binaries by TestHandoffIT (M-114).
   - _Source:_ 09-06-PLAN.md; ROADMAP Phase 9 SC1.
 - **M-106** Viewers reconnect with a delta (SC2, UPGR-02).
   1. During M-105, keep a local tab, a peer tab on the home Mac, a browser share link and a `portty attach` open on a ticking session.
   2. PASS when each shows the reconnecting state at most briefly, then resumes with no duplicated or missing tick, and the local tab and local attach reconnect by themselves.
-  - _Last run:_ 2026-11-20, build 8d5bcbb5: V-02 PASS (office GUI tab, home peer tab, home Safari share and home `portty attach`, all back in 1.0 to 1.5 s with a delta, no tick gap). Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md.
+  - _Last run:_ 2026-11-20, build 8d5bcbb5: V-02 PASS (office GUI tab, home peer tab, home Safari share and home `portty attach`, all back in 1.0 to 1.5 s with a delta, no tick gap). Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md. Re-run 2026-11-20: V-02 **FAIL** at bbb34439 (post-handoff grid flip: 4 of 5 reconnects full, CLI scrollback duplicated), fixed in 50903bee (09-07-FIX2.md); V-02 **PASS** twice at 6ec55a2a (5/5 delta resumes, 0 grid changes, both reconnect orders).
   - _Why not automatable:_ a peer Mac, a browser share over the tailnet and a native GUI. Covered in part by TerminalPanel.reconnect.test.tsx, hostReconnect.test.ts, cmd_attach_test.go and loop_test.go (Section 4 UPGR-02 rows).
   - _Source:_ 09-06-PLAN.md; ROADMAP Phase 9 SC2.
 - **M-107** A killed takeover leaves the old daemon serving (SC3, UPGR-03).
   1. With A serving two ticking sessions, run B-fault with `PORTTY_VMPREVIEW_HANDOFF_FAULT=new:<step>:exit` for a step before COMMIT (and a `pauseN` step killed with `kill -9`).
   2. PASS when: B prints the couldn't-move line and the DEBT-08 question (CLI) or the dialog's couldn't-move sentence (GUI); `/health` still reports A; every shell is alive under A; viewers never disconnect.
-  - _Last run:_ 2026-11-20, build 8d5bcbb5: V-03a PASS (GUI, killed before READY) and V-03b PASS (CLI, killed after it started serving). Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md.
+  - _Last run:_ 2026-11-20, build 8d5bcbb5: V-03a PASS (GUI, killed before READY) and V-03b PASS (CLI, killed after it started serving). Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md. Re-run 2026-11-20 at dc48674b (after CR-01): V-03b PASS twice (immediate kill and 1.5 s kill; old daemon serving again, viewer never disconnected).
   - _Why not automatable:_ fault injection in real processes and a native dialog. In-process steps are covered by handoff_fault_test.go; one real-binary step by TestHandoffIT `fault`.
   - _Source:_ 09-06-PLAN.md; ROADMAP Phase 9 SC3.
 - **M-108** A v1.1 daemon gets DEBT-08 (SC3/SC4, 09-CONTEXT "First upgrade from v1.1").
@@ -1378,7 +1378,7 @@ Rig: the office VM (`portty-test`), two ad-hoc signed builds of one commit that 
 - **M-111** Quit All during an approved restart (SC5, UPGR-05).
   1. Against a daemon whose restart was approved, use the tray's Quit All while the ensure is still running.
   2. PASS when the GUI quits at once and no fresh daemon is left behind.
-  - _Last run:_ 2026-11-20, build 72214c58: V-05b **PASS** (re-run after the quit-path fix, 09-07-FIX.md): with the v1.1 daemon SIGSTOPped under an approved restart, the Quit dialog showed 2.3 to 2.4 s after Cmd-Q with an unknown count, and the GUI exited 3.07 to 3.09 s after Quit Everything; nothing was killed and no fresh daemon was left. The first run (build 8d5bcbb5) FAILED at 30.2 s and 54.76 s. Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md.
+  - _Last run:_ 2026-11-20, build 72214c58: V-05b **PASS** (re-run after the quit-path fix, 09-07-FIX.md): with the v1.1 daemon SIGSTOPped under an approved restart, the Quit dialog showed 2.3 to 2.4 s after Cmd-Q with an unknown count, and the GUI exited 3.07 to 3.09 s after Quit Everything; nothing was killed and no fresh daemon was left. The first run (build 8d5bcbb5) FAILED at 30.2 s and 54.76 s. Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md. Re-run 2026-11-20 at bbb34439: V-05b PASS (GUI gone 3.03 s after Quit Everything).
   - _Why not automatable:_ a tray click during a timed native flow. Covered by `TestQuitAll_CancelsRunningEnsure`, `TestQuitAll_HungDaemon`, `TestEnsureDaemon_CancelUnblocksHungDaemon` and the other cancel tests in process_test.go, and by the hung-ListSessions test in App.daemon-restart.test.tsx.
   - _Source:_ 09-06-PLAN.md; 08-06 IN-07.
 - **M-112** Cmd-Q under the restart dialog (SC5, UPGR-05).
@@ -1396,13 +1396,13 @@ Rig: the office VM (`portty-test`), two ad-hoc signed builds of one commit that 
 - **M-114** TestHandoffIT in the VM (UPGR-01..UPGR-03).
   1. On the host: build A, B, B-fault (`-tags vmpreview`) and a v1.1 CLI with `go build -ldflags "-X main.Version=…"`, and `go test -c ./internal/daemon/`; copy them to the office VM with `tar` over SSH.
   2. In the VM: `PORTTY_HANDOFF_IT=1 PORTTY_HANDOFF_IT_A=… _B=… _BFAULT=… _OLD=… ./daemon-it.test -test.run '^TestHandoffIT$' -test.v`. PASS when all three subtests pass and no `portty-it` process or `/tmp/pit-*` dir is left.
-  - _Last run:_ 2026-11-20, product code a13f4928 (test 23509107): I-01, I-02 and I-03 PASS; evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md.
+  - _Last run:_ 2026-11-20, product code a13f4928 (test 23509107): I-01, I-02 and I-03 PASS; evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md. Re-runs: e7c6ab82 and bbb34439, both PASS.
   - _Why not automatable:_ real daemons from two builds must not run on the user's Mac (firewall alerts, host safety), and the VM has no Go toolchain, so it cannot run in the CI gate (where it skips).
   - _Source:_ 09-06-PLAN.md; 09-RESEARCH.md Test Strategy "Integration", Pitfall 12.
 - **M-115** An old daemon killed after sending its state leaves every session on the new daemon (SC3, plan check W2).
   1. A vmpreview A started with `PORTTY_VMPREVIEW_HANDOFF_FAULT=old:after-state-sent:pause30`; run B; `kill -9` the A daemon during the pause.
   2. PASS when every session is served by B (same ids, shells alive), `/health` reports B, and viewers resume with no gap.
-  - _Last run:_ 2026-11-20, build 8d5bcbb5: V-03d PASS. Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md.
+  - _Last run:_ 2026-11-20, build 8d5bcbb5: V-03d PASS. Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md. Re-run 2026-11-20 at dc48674b (after CR-01): V-03d PASS (takeover proceeded as committed, same shells, delta resume, no tick gap).
   - _Why not automatable:_ killing a real process mid-handoff. Covered in process by `TestHandoffFault_OldDiesAfterStateSent`.
   - _Source:_ 09-06-PLAN.md; 09-04-SUMMARY.md notes for later plans.
 ---
