@@ -256,7 +256,7 @@ func spawnTakeover(exe string) (int, <-chan int, error) {
 }
 
 func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h ensureHooks) error {
-	client := NewDaemonClient(socketPath)
+	client := NewDaemonClient(socketPath).WithContext(ctx) // a cancel ends a call to a hung daemon (V-05b)
 	needsSpawn := true
 	if health, err := client.HealthInfo(); err == nil {
 		// Daemon is reachable — check version compatibility first.
@@ -281,6 +281,10 @@ func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h 
 			allowRestart := func(ver string, n int) bool {
 				return opts.Restart(RestartQuestion{DaemonVersion: ver, Sessions: n, MoveFailed: moveFailed})
 			}
+			// A count read under a cancelled ctx is -1, not an answer: never ask during Quit All.
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if n != 0 && !allowRestart(ver, n) {
 				fmt.Fprintf(h.stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q) with %d live sessions; keeping it\n", ver, BuildVersion, n)
 				return nil
@@ -291,7 +295,11 @@ func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h 
 			// still ends unasked (a few ms); an old daemon's /shutdown takes no
 			// condition. Upgrade in v1.2's session handoff across an upgrade
 			// (REQUIREMENTS.md DEBT-08), e.g. a /shutdown?ifSessions=<n>.
-			if n2 := liveSessions(client); countGrew(n, n2) && !allowRestart(ver, n2) {
+			n2 := liveSessions(client)
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if countGrew(n, n2) && !allowRestart(ver, n2) {
 				fmt.Fprintf(h.stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), live sessions went from %d to %d; keeping it\n", ver, BuildVersion, n, n2)
 				return nil
 			}

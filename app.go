@@ -348,6 +348,9 @@ func (a *App) ensure() func(socketPath string) error {
 		if err := ensureDaemon(ctx, socketPath, daemon.EnsureOptions{Restart: a.restartConsent}); err != nil {
 			return err
 		}
+		if err := ctx.Err(); err != nil { // Quit All: no more calls to a daemon that may be hung (V-05b)
+			return err
+		}
 		a.checkDaemonAPI(socketPath)
 		return nil
 	}
@@ -713,9 +716,22 @@ func (a *App) QuitAll() {
 	a.quitting.Store(true) // first: the poller must not respawn the daemon we stop (WR-04)
 	a.cancelEnsure()       // IN-07: a running EnsureDaemon gives up daemonMu within a tick
 	if a.client != nil {
-		a.daemonMu.Lock()
-		_ = a.client.ShutdownDaemon() // waits out a handoff freeze (503), then stops whichever daemon owns the socket
-		a.daemonMu.Unlock()
+		// V-05b: another call hung on the daemon (CreateSession, a late health
+		// read) must not hold Quit All; after quitLockWait it goes ahead unlocked.
+		deadline := time.Now().Add(quitLockWait)
+		locked := a.daemonMu.TryLock()
+		for !locked && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+			locked = a.daemonMu.TryLock()
+		}
+		// Waits out a handoff freeze (503, a live daemon), then stops whichever
+		// daemon owns the socket. A daemon that never answers is given up on
+		// after the 2 s per-attempt timeout and the GUI quits anyway; nothing is
+		// killed (a takeover may own the sessions).
+		_ = a.client.ShutdownDaemon()
+		if locked {
+			a.daemonMu.Unlock()
+		}
 	}
 	if a.quitFunc != nil {
 		a.quitFunc()
@@ -723,6 +739,9 @@ func (a *App) QuitAll() {
 	}
 	runtime.Quit(a.ctx)
 }
+
+// quitLockWait bounds how long Quit All waits for daemonMu (V-05b).
+const quitLockWait = time.Second
 
 // --- Wails-bound methods ---
 

@@ -19,6 +19,23 @@ import (
 type DaemonClient struct {
 	http *http.Client
 	base string
+	ctx  context.Context // nil: context.Background(); see WithContext
+}
+
+// WithContext returns a copy of c whose requests end when ctx does, so a
+// cancel unblocks a call to a daemon that accepted the connection and hung
+// (V-05b; Quit All cancels the ensure, IN-07).
+func (c *DaemonClient) WithContext(ctx context.Context) *DaemonClient {
+	cc := *c
+	cc.ctx = ctx
+	return &cc
+}
+
+func (c *DaemonClient) reqCtx() context.Context {
+	if c.ctx == nil {
+		return context.Background()
+	}
+	return c.ctx
 }
 
 // NewDaemonClient creates a DaemonClient that dials the given daemon socket path.
@@ -242,7 +259,7 @@ func (c *DaemonClient) ShutdownDaemon() error {
 	hc := *c.http
 	hc.Timeout = 2 * time.Second // per attempt
 	resp, err := c.doRetrying(&hc, func() (*http.Request, error) {
-		return http.NewRequest(http.MethodPost, c.base+"/shutdown", nil)
+		return http.NewRequestWithContext(c.reqCtx(), http.MethodPost, c.base+"/shutdown", nil)
 	})
 	if err != nil {
 		// Connection reset is expected — daemon exited. Treat as success.
@@ -322,7 +339,7 @@ func (c *DaemonClient) SetSessionShared(id string, shared bool) (ShareResponse, 
 	if err != nil {
 		return ShareResponse{}, err
 	}
-	req, err := http.NewRequest(http.MethodPut, c.base+"/sessions/"+id+"/share", bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(c.reqCtx(), http.MethodPut, c.base+"/sessions/"+id+"/share", bytes.NewReader(b))
 	if err != nil {
 		return ShareResponse{}, err
 	}
@@ -390,7 +407,7 @@ func (c *DaemonClient) doJSON(method, path string, body, result any) error {
 		if body != nil {
 			reqBody = bytes.NewReader(b)
 		}
-		req, err := http.NewRequest(method, c.base+path, reqBody)
+		req, err := http.NewRequestWithContext(c.reqCtx(), method, c.base+path, reqBody)
 		if err != nil {
 			return nil, fmt.Errorf("new request: %w", err)
 		}

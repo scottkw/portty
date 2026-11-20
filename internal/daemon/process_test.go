@@ -843,6 +843,8 @@ type fakeDaemon struct {
 	path     string
 	ver      atomic.Pointer[string]
 	shutdown atomic.Bool
+	hang     atomic.Bool  // accept and never answer, like a SIGSTOPped daemon (V-05b)
+	hung     atomic.Int64 // requests held unanswered
 }
 
 func (f *fakeDaemon) setVersion(v string) { f.ver.Store(&v) }
@@ -857,6 +859,11 @@ func startFakeDaemon(t *testing.T, handoff int, sessions string) *fakeDaemon {
 	}
 	t.Cleanup(func() { ln.Close() })
 	go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+		if f.hang.Load() {
+			f.hung.Add(1)
+			<-r.Context().Done() // until the client gives up
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/health":
@@ -1116,6 +1123,56 @@ func TestEnsureDaemon_CancelNeverKillsTakeover(t *testing.T) {
 	}
 	if pid == 0 {
 		t.Fatal("the takeover seam was never called")
+	}
+	if err := syscall.Kill(pid, 0); err != nil {
+		t.Fatalf("the takeover is gone after the cancel: %v", err)
+	}
+}
+
+// V-05b: the takeover committed and the daemon then accepts connections and
+// never answers. Quit All's cancel must end the in-flight readiness call at
+// once (the client is ctx-aware), never wait out the client's 30 s timeout,
+// and never kill the takeover, which may own the sessions.
+func TestEnsureDaemon_CancelUnblocksHungDaemon(t *testing.T) {
+	useBuild(t, "v2")
+	f := startFakeDaemon(t, HandoffVersion, twoLive)
+	var pid int
+	spawn := func(string) (int, <-chan int, error) {
+		cmd := exec.Command("sleep", "30")
+		if err := cmd.Start(); err != nil {
+			return 0, nil, err
+		}
+		pid = cmd.Process.Pid
+		t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+		f.hang.Store(true)
+		out := make(chan int, 1)
+		out <- takeoverCommitted
+		return pid, out, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cancelledAt := make(chan time.Time, 1)
+	go func() {
+		for f.hung.Load() == 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancelledAt <- time.Now()
+		cancel()
+	}()
+	policy, asked := recordPolicy(true)
+	done := make(chan error, 1)
+	go func() { done <- ensureDaemon(ctx, f.path, EnsureOptions{Restart: policy}, testHooks(spawn)) }()
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("EnsureDaemon still blocked on the hung daemon 5 s in")
+	}
+	if d := time.Since(<-cancelledAt); !errors.Is(err, context.Canceled) || d > time.Second {
+		t.Fatalf("err %v %v after the cancel; want context.Canceled within 1 s", err, d)
+	}
+	if len(*asked) != 0 || f.shutdown.Load() {
+		t.Fatalf("asked %+v, shutdown %v after a cancel; want none, false", *asked, f.shutdown.Load())
 	}
 	if err := syscall.Kill(pid, 0); err != nil {
 		t.Fatalf("the takeover is gone after the cancel: %v", err)

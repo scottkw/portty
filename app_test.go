@@ -1228,6 +1228,95 @@ func TestQuitAll_CancelsRunningEnsure(t *testing.T) {
 	}
 }
 
+// hungDaemonSocket listens on a fresh socket, accepts every connection and
+// never answers, like a SIGSTOPped daemon (V-05b). accepted counts connections.
+func hungDaemonSocket(t *testing.T) (path string, accepted *atomic.Int64) {
+	path = fmt.Sprintf("/tmp/hd%d_%d.sock", os.Getpid(), time.Now().UnixNano()%100000)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted = new(atomic.Int64)
+	conns := make(chan net.Conn, 64)
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conns <- c // held open, never read or answered
+			accepted.Add(1)
+		}
+	}()
+	t.Cleanup(func() {
+		ln.Close()
+		os.Remove(path)
+		for len(conns) > 0 {
+			(<-conns).Close()
+		}
+	})
+	return path, accepted
+}
+
+// V-05b: Quit All with a daemon that accepts connections and never answers
+// returns within 5 s, whether daemonMu is held by a running ensure (cancelled;
+// its in-flight call ends with the ctx) or by a hung CreateSession (bounded
+// lock wait), and ShutdownDaemon gives up on its own.
+func TestQuitAll_HungDaemon(t *testing.T) {
+	waitAccepted := func(t *testing.T, accepted *atomic.Int64) {
+		for deadline := time.Now().Add(2 * time.Second); accepted.Load() == 0; time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatal("nothing called the hung daemon")
+			}
+		}
+	}
+	quitWithin := func(t *testing.T, a *App) {
+		start := time.Now()
+		a.QuitAll()
+		if d := time.Since(start); d > 5*time.Second {
+			t.Fatalf("QuitAll took %v against a hung daemon, want within 5 s", d)
+		}
+	}
+	t.Run("behind a running ensure", func(t *testing.T) {
+		path, accepted := hungDaemonSocket(t)
+		ensured := make(chan error, 1)
+		orig := ensureDaemon
+		ensureDaemon = func(ctx context.Context, _ string, o daemon.EnsureOptions) error {
+			err := orig(ctx, path, o) // the real EnsureDaemon, against the hung daemon
+			ensured <- err
+			return err
+		}
+		t.Cleanup(func() { ensureDaemon = orig })
+		var quits atomic.Int64
+		a := &App{ctx: context.Background(), client: daemon.NewDaemonClient(path), emitEventFunc: func(string, any) {}, quitFunc: func() { quits.Add(1) }}
+		go a.RetryDaemon() //nolint:errcheck // holds daemonMu while its ensure runs
+		waitAccepted(t, accepted)
+		quitWithin(t, a)
+		select {
+		case err := <-ensured:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("the ensure returned %v, want context.Canceled", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("the ensure was still blocked on the hung daemon after Quit All")
+		}
+		if quits.Load() != 1 {
+			t.Fatalf("quits %d, want 1", quits.Load())
+		}
+	})
+	t.Run("behind a hung CreateSession", func(t *testing.T) {
+		path, accepted := hungDaemonSocket(t)
+		var quits atomic.Int64
+		a := &App{ctx: context.Background(), client: daemon.NewDaemonClient(path), emitEventFunc: func(string, any) {}, quitFunc: func() { quits.Add(1) }}
+		go a.CreateSession("s", "", 0, 0) //nolint:errcheck // holds daemonMu on the hung daemon
+		waitAccepted(t, accepted)
+		quitWithin(t, a)
+		if quits.Load() != 1 {
+			t.Fatalf("quits %d, want 1", quits.Load())
+		}
+	})
+}
+
 // UPGR-03: a restart question that says the sessions couldn't be moved raises
 // the prompt as before, and the dialog reads MoveFailed when it opens. Not
 // Now clears both.
