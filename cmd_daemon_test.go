@@ -134,3 +134,27 @@ func TestCmdDaemon_Status_JSON_Unreachable(t *testing.T) {
 		t.Error("expected running=false for unreachable daemon")
 	}
 }
+
+// 09-05: `portty daemon --takeover` is the process EnsureDaemon spawns for a
+// handoff. It routes to the RunTakeover seam, and the usage error for an
+// unknown subcommand keeps not advertising the internal flag.
+func TestCmdDaemon_TakeoverRoutes(t *testing.T) {
+	calls := 0
+	old := runTakeoverFunc
+	runTakeoverFunc = func() { calls++ }
+	defer func() { runTakeoverFunc = old }()
+
+	if err := cmdDaemon([]string{"--takeover"}, &bytes.Buffer{}); err != nil || calls != 1 {
+		t.Fatalf("cmdDaemon(--takeover): err %v, RunTakeover calls %d; want nil, 1", err, calls)
+	}
+	err := cmdDaemon([]string{"bogus"}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), `unknown daemon subcommand "bogus"`) {
+		t.Fatalf("cmdDaemon(bogus) = %v, want the usage error", err)
+	}
+	if strings.Contains(err.Error(), "--takeover") {
+		t.Fatalf("usage error advertises the internal flag: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("bogus reached RunTakeover (%d calls)", calls)
+	}
+}

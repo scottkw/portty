@@ -15,6 +15,9 @@ var realHome, testHome string
 // runDaemonCore's test bound the real socket and lock. /tmp, not TMPDIR, so
 // DefaultSocketPath fits the 103-char sun_path limit.
 func TestMain(m *testing.M) {
+	if mode := os.Getenv(takeoverHelperEnv); mode != "" {
+		helperTakeover(mode) // a fake `daemon --takeover` started by a status-pipe test
+	}
 	os.Exit(runInTempHome(m))
 }
 

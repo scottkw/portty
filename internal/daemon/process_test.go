@@ -1,9 +1,12 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -12,8 +15,11 @@ import (
 	"path/filepath"
 	"slices"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 var procTestSeq atomic.Int64
@@ -718,5 +724,196 @@ func TestStartDaemon_CancelAfterSpawnKillsChild(t *testing.T) {
 	}
 	if d := time.Since(start); d > time.Second {
 		t.Fatalf("took %v, want soon after the 200 ms cancel", d)
+	}
+}
+
+// ---- 09-05: the takeover process and EnsureDaemon's handoff branch ----------
+
+// takeoverHelperEnv makes the test binary a fake `daemon --takeover`
+// (TestMain): it reports on the real status pipe with takeoverStatus and
+// reportTakeover, opens no socket and reaches no network.
+const takeoverHelperEnv = "PORTTY_TEST_TAKEOVER_HELPER"
+
+func helperTakeover(mode string) {
+	status := takeoverStatus()
+	switch mode {
+	case "report0-stay": // committed and serving
+		reportTakeover(status, 0)
+		time.Sleep(30 * time.Second) // the test kills it long before
+		os.Exit(0)
+	case "report5-exit5":
+		reportTakeover(status, 5)
+		os.Exit(5)
+	case "exit7":
+		os.Exit(7)
+	case "sigkill":
+		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+		time.Sleep(time.Minute)
+	}
+	os.Exit(99)
+}
+
+// The outcome channel yields the reported byte, at once when the takeover
+// keeps running after it (committed), or the exit code when the process
+// dies without reporting (1 when a signal killed it).
+func TestStartDetachedTakeover_Outcomes(t *testing.T) {
+	for _, tc := range []struct {
+		mode      string
+		want      int
+		stillLive bool
+	}{
+		{"report0-stay", 0, true},
+		{"report5-exit5", 5, false},
+		{"exit7", 7, false},
+		{"sigkill", 1, false},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			t.Setenv(takeoverHelperEnv, tc.mode)
+			pid, outcome, err := startDetachedTakeover(os.Args[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+			select {
+			case got := <-outcome:
+				if got != tc.want {
+					t.Fatalf("outcome %d, want %d", got, tc.want)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("no outcome within 10 s")
+			}
+			if tc.stillLive {
+				if err := syscall.Kill(pid, 0); err != nil {
+					t.Fatalf("the committed takeover is gone once it reported: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// T-09-28: the child reads the status fd from the environment, then unsets
+// the variable and marks the fd close-on-exec before anything else, so no
+// shell the daemon starts inherits either. One byte, then the pipe closes.
+func TestTakeoverStatus_FromEnv(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	fd, err := syscall.Dup(int(w.Fd())) // a plain dup is inheritable, like fd 3 after exec
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	if flags, _ := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); flags&unix.FD_CLOEXEC != 0 {
+		t.Fatal("the dup is already close-on-exec; the test proves nothing")
+	}
+	t.Setenv(takeoverStatusEnv, fmt.Sprint(fd))
+
+	status := takeoverStatus()
+	if status == nil {
+		t.Fatal("takeoverStatus found no status pipe")
+	}
+	if _, ok := os.LookupEnv(takeoverStatusEnv); ok {
+		t.Fatalf("%s is still in the environment", takeoverStatusEnv)
+	}
+	if flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err != nil || flags&unix.FD_CLOEXEC == 0 {
+		t.Fatalf("status fd is not close-on-exec (flags %#x, err %v)", flags, err)
+	}
+	reportTakeover(status, 5)
+	got, err := io.ReadAll(r)
+	if err != nil || !bytes.Equal(got, []byte{5}) {
+		t.Fatalf("pipe carried %v (err %v), want exactly [5] then EOF", got, err)
+	}
+
+	os.Unsetenv(takeoverStatusEnv) // run by hand: nothing to report to
+	if s := takeoverStatus(); s != nil {
+		t.Fatal("takeoverStatus without the variable returned a pipe")
+	}
+	reportTakeover(nil, 0) // must not panic
+}
+
+// fakeDaemon is an old daemon on a unix socket: /health reports ver (api 2
+// and handoff when not 0), /sessions answers sessions, /relay-port 4242, and
+// /shutdown is recorded.
+type fakeDaemon struct {
+	path     string
+	ver      atomic.Pointer[string]
+	shutdown atomic.Bool
+}
+
+func (f *fakeDaemon) setVersion(v string) { f.ver.Store(&v) }
+
+func startFakeDaemon(t *testing.T, handoff int, sessions string) *fakeDaemon {
+	t.Helper()
+	f := &fakeDaemon{path: shortProcTestSocket(t, "ho")}
+	f.setVersion("v1")
+	ln, err := net.Listen("unix", f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/health":
+			_ = json.NewEncoder(w).Encode(HealthResponse{Status: "ok", Version: *f.ver.Load(), API: 2, Handoff: handoff})
+		case "/sessions":
+			fmt.Fprint(w, sessions)
+		case "/relay-port":
+			fmt.Fprint(w, `{"port":4242}`)
+		case "/shutdown":
+			f.shutdown.Store(true)
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	return f
+}
+
+const twoLive = `[{"id":"a","state":"running"},{"id":"b","state":"running"}]`
+
+// takeoverAfter is a fake spawnTakeover: after d it switches the fake daemon
+// to ver (unless "") and yields code. spawns counts the calls.
+func (f *fakeDaemon) takeoverAfter(d time.Duration, code int, ver string, spawns *atomic.Int64) func(string) (int, <-chan int, error) {
+	return func(string) (int, <-chan int, error) {
+		spawns.Add(1)
+		out := make(chan int, 1)
+		time.AfterFunc(d, func() {
+			if ver != "" {
+				f.setVersion(ver)
+			}
+			out <- code
+		})
+		return 4242, out, nil
+	}
+}
+
+func testHooks(spawn func(string) (int, <-chan int, error)) ensureHooks {
+	return ensureHooks{spawnTakeover: spawn, readyWait: daemonReadyWait, noteAfter: time.Hour, stderr: io.Discard}
+}
+
+// recordPolicy returns a policy answering allow and the questions it got.
+func recordPolicy(allow bool) (RestartPolicy, *[]RestartQuestion) {
+	var asked []RestartQuestion
+	return func(q RestartQuestion) bool { asked = append(asked, q); return allow }, &asked
+}
+
+func useBuild(t *testing.T, v string) {
+	old := BuildVersion
+	BuildVersion = v
+	t.Cleanup(func() { BuildVersion = old })
+}
+
+// T-D8 (UPGR-01): a daemon from another build with live sessions that speaks
+// this handoff version gets a takeover; once it reports committed and this
+// build answers, EnsureDaemon returns nil with no question and no /shutdown.
+func TestEnsureDaemon_HandsOff(t *testing.T) {
+	useBuild(t, "v2")
+	f := startFakeDaemon(t, HandoffVersion, twoLive)
+	var spawns atomic.Int64
+	policy, asked := recordPolicy(false)
+	err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, testHooks(f.takeoverAfter(100*time.Millisecond, 0, "v2", &spawns)))
+	if err != nil || spawns.Load() != 1 || len(*asked) != 0 || f.shutdown.Load() {
+		t.Fatalf("err %v, spawns %d, asked %v, shutdown %v; want nil, 1, none, false", err, spawns.Load(), *asked, f.shutdown.Load())
 	}
 }
