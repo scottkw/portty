@@ -3,6 +3,7 @@ package attach
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -538,6 +539,28 @@ func TestRun_FinalCloseStops(t *testing.T) {
 	}
 	if n, states := f.accepts(), r.stateList(); n != 1 || len(states) != 0 {
 		t.Errorf("after a final close: %d connections, states %q; want 1 and none", n, states)
+	}
+}
+
+// TestRun_VerdictEndedStops (09-06): a re-auth that finds the session gone
+// (a local daemon respawned without it) ends Run with ErrSessionEnded and
+// never redials.
+func TestRun_VerdictEndedStops(t *testing.T) {
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		// CloseNow: an abrupt drop, as when the daemon dies
+	}, nil)
+	reauths := 0
+	r := startRun(t, f, RunOptions{Timing: fast, Reauth: func(context.Context) Verdict { reauths++; return VerdictEnded }})
+	select {
+	case err := <-r.done:
+		if !errors.Is(err, ErrSessionEnded) {
+			t.Fatalf("Run = %v; want ErrSessionEnded", err)
+		}
+	case <-time.After(loopWait):
+		t.Fatal("Run did not return after VerdictEnded")
+	}
+	if n := f.accepts(); n != 1 || reauths != 1 {
+		t.Errorf("after VerdictEnded: %d connections, %d re-auths; want 1 and 1", n, reauths)
 	}
 }
 

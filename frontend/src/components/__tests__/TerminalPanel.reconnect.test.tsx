@@ -4,7 +4,9 @@
  * TerminalPanel with the REAL RelayClient over a controllable mock WebSocket:
  * a drop redials with ?resume=<counted offset>, a delta replay keeps the xterm
  * buffer, a full replay resets it, the reconnecting banner appears only after
- * 3 s, a final close stops, and host-path tabs never reconnect. B5: a browser
+ * 3 s, and a final close stops. 09-06: host-path tabs reconnect after a
+ * handoff's 1012 while the daemon still lists the session, and stop when it
+ * does not (a crash and respawn). B5: a browser
  * view whose /info probes fail for 2+ min says the host can't be reached and keeps retrying.
  * xterm/addon mocks copied from TerminalPanel.guestClose.test.tsx.
  */
@@ -16,6 +18,9 @@ import { createRoot, type Root } from 'react-dom/client'
 
 const hoisted = vi.hoisted(() => ({
   state: {
+    // 09-06: what the host tab's re-auth (hostReconnectVerdict) reads from the bindings.
+    relayPort: 5555,
+    sessions: [{ id: 's1', state: 'running' }] as { id: string; state: string }[],
     term: null as {
       options: Record<string, unknown>
       reset: { mock: { calls: unknown[]; invocationCallOrder: number[] } }
@@ -103,7 +108,11 @@ vi.mock('@xterm/addon-webgl', () => ({
   WebglAddon: class { activate(_t: unknown) {} dispose() {} onContextLoss() { return { dispose: () => {} } } },
 }))
 vi.mock('../../lib/webglProbe', () => ({ isSoftwareWebGL: () => false }))
-vi.mock('../../wailsjs/go/main/App', () => ({ SetSearchConfig: () => Promise.resolve() }))
+vi.mock('../../wailsjs/go/main/App', () => ({
+  SetSearchConfig: () => Promise.resolve(),
+  GetRelayPort: () => Promise.resolve(hoisted.state.relayPort),
+  ListSessions: () => Promise.resolve(hoisted.state.sessions),
+}))
 vi.mock('../../wailsjs/go/models', () => ({
   daemon: { SearchConfig: class { constructor(_o: unknown) {} } },
 }))
@@ -156,6 +165,8 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     MockWS.instances = []
+    hoisted.state.relayPort = 5555
+    hoisted.state.sessions = [{ id: 's1', state: 'running' }]
     vi.stubGlobal('WebSocket', MockWS)
     hoisted.state.term = null
     container = document.createElement('div')
@@ -380,11 +391,42 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     expect(MockWS.instances).toHaveLength(1)
   })
 
-  it('a host-path tab (no remote, no wsURL) does not reconnect after a 1006 close', async () => {
+  // 09-06 (UPGR-02): the old premise "a local relay drop means the daemon and
+  // session died" is false once a handoff can close viewers with 1012.
+  it('a host-path tab reconnects after 1012 with a delta from the re-read port while its session is listed', async () => {
+    mount({})
+    expect(ws(0).url).toBe('ws://127.0.0.1:1234/sessions/s1/ws')
+    joined(ws(0))
+    send(ws(0), metaFrame({ replay: 'full' }))
+    send(ws(0), outFrame('hello'))
+    send(ws(0), metaFrame({ offset: 100 }))
+    send(ws(0), outFrame('world'))
+    drop(ws(0), 1012, 'service restart')
+    expect(hoisted.state.term!.options.disableStdin).toBe(true)
+
+    await advance(2999)
+    expect(MockWS.instances).toHaveLength(2)
+    expect(ws(1).url).toBe('ws://127.0.0.1:5555/sessions/s1/ws?resume=106')
+    await advance(1)
+    expect(container.textContent).toContain(BANNER)
+
+    joined(ws(1))
+    send(ws(1), metaFrame({ replay: 'delta' }))
+    send(ws(1), outFrame('missed'))
+    send(ws(1), metaFrame({ offset: 113 }))
+    expect(container.textContent).not.toContain(BANNER)
+    expect(risWrites()).toHaveLength(0)
+    expect(hoisted.state.term!.options.disableStdin).toBe(false)
+  })
+
+  it('a host-path tab stops quietly when the daemon no longer lists its session (a crash and respawn)', async () => {
+    hoisted.state.sessions = [{ id: 'other', state: 'running' }]
     mount({})
     joined(ws(0))
-    drop(ws(0))
+    drop(ws(0), 1012, 'service restart')
     await advance(60_000)
     expect(MockWS.instances).toHaveLength(1)
+    expect(container.textContent).not.toContain(BANNER)
+    expect(container.textContent).not.toContain('ended')
   })
 })

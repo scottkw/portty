@@ -740,3 +740,62 @@ func TestRemoteReauth_HealthyNotSharingSkipsEnsure(t *testing.T) {
 		t.Fatalf("ensure ran %d times with a healthy daemon", *calls)
 	}
 }
+
+// TestAttachLocal_Reauth (09-06, UPGR-02): a local attach re-authenticates
+// before each redial from the daemon's session list. A session still listed
+// and running dials the re-read relay port (a handoff); one the daemon no
+// longer lists, or lists as stopped, ends the attach (a crash and respawn);
+// an unreachable daemon gets one ensureLocalDaemon per re-auth, then a retry.
+func TestAttachLocal_Reauth(t *testing.T) {
+	running := []daemon.SessionInfo{{ID: "sid-1", State: "running"}}
+	down := errors.New("dial unix: connection refused")
+	relayPort := func() (int, error) { return 5678, nil }
+	for _, tc := range []struct {
+		name      string
+		lists     [][]daemon.SessionInfo // successive ListSessions answers; nil entry = unreachable
+		ensureErr error
+		want      attach.Verdict
+		ensures   int
+	}{
+		{"listed and running", [][]daemon.SessionInfo{running}, nil, attach.VerdictOK, 0},
+		{"missing", [][]daemon.SessionInfo{{{ID: "other", State: "running"}}}, nil, attach.VerdictEnded, 0},
+		{"stopped", [][]daemon.SessionInfo{{{ID: "sid-1", State: "stopped"}}}, nil, attach.VerdictEnded, 0},
+		{"respawned without the session", [][]daemon.SessionInfo{nil, {}}, nil, attach.VerdictEnded, 1},
+		{"respawned with the session", [][]daemon.SessionInfo{nil, running}, nil, attach.VerdictOK, 1},
+		{"unreachable throughout", [][]daemon.SessionInfo{nil, nil}, nil, attach.VerdictRetry, 1},
+		{"ensure fails", [][]daemon.SessionInfo{nil}, errors.New("spawn boom"), attach.VerdictRetry, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := swapEnsureLocalDaemon(t, tc.ensureErr)
+			n := 0
+			list := func() ([]daemon.SessionInfo, error) {
+				if n >= len(tc.lists) {
+					t.Fatalf("ListSessions called %d times", n+1)
+				}
+				ss := tc.lists[n]
+				n++
+				if ss == nil {
+					return nil, down
+				}
+				return ss, nil
+			}
+			target := newLocalTarget(list, relayPort, "sid-1", "", 1234)
+			if v := target.reauth(context.Background()); v != tc.want {
+				t.Fatalf("verdict = %v, want %v", v, tc.want)
+			}
+			if *calls != tc.ensures {
+				t.Fatalf("ensureLocalDaemon calls = %d, want %d", *calls, tc.ensures)
+			}
+			wantURL := "ws://127.0.0.1:1234/sessions/sid-1/ws"
+			if tc.want == attach.VerdictOK {
+				wantURL = "ws://127.0.0.1:5678/sessions/sid-1/ws"
+			}
+			if got := target.url(); got != wantURL {
+				t.Fatalf("url = %q, want %q", got, wantURL)
+			}
+		})
+	}
+	if got := newLocalTarget(nil, nil, "sid-1", "laptop", 1234).url(); got != "ws://127.0.0.1:1234/sessions/sid-1/ws?client=laptop" {
+		t.Fatalf("url with a client name = %q", got)
+	}
+}
