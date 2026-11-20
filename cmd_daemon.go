@@ -13,6 +13,9 @@ import (
 // allows test injection of a mock.
 var serviceControlFunc = daemon.ServiceControl
 
+// runTakeoverFunc runs `portty daemon --takeover`; a var for tests.
+var runTakeoverFunc = daemon.RunTakeover
+
 // cmdDaemon dispatches daemon subcommands: install, uninstall, start, stop, run.
 // When called with no arguments, it runs the daemon directly (backward compat
 // with EnsureDaemon's startDetachedDaemon which spawns `exe daemon`).
@@ -25,6 +28,9 @@ func cmdDaemon(args []string, out io.Writer) error {
 	switch args[0] {
 	case "run":
 		daemon.RunDaemon()
+		return nil
+	case "--takeover": // internal, so not in the usage: only EnsureDaemon spawns it (09-05)
+		runTakeoverFunc()
 		return nil
 	case "install":
 		if err := serviceControlFunc("install"); err != nil {

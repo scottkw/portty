@@ -48,6 +48,56 @@ func startDetachedDaemon(exe string) (exited <-chan struct{}, kill func(), err e
 	return done, kill, nil
 }
 
+// startDetachedTakeover spawns `exe daemon --takeover` like startDetachedDaemon
+// (Setsid, output to daemon.log), with the write end of a status pipe as its
+// fd 3 and PORTTY_TAKEOVER_STATUS_FD=3 (RunTakeover). outcome yields the one
+// byte the takeover writes (0 once committed, while it keeps running as the
+// daemon), or, when it exits without writing, its exit code (1 when a signal
+// killed it or it exited 0 unreported: only a written 0 means committed).
+// The child is always reaped. There is no kill func on purpose: after COMMIT
+// the takeover owns every session (Quit All must never end it).
+func startDetachedTakeover(exe string) (pid int, outcome <-chan int, err error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return 0, nil, err
+	}
+	defer w.Close() // the child has its own copy after Start: EOF once it exits
+	cmd := exec.Command(exe, "daemon", "--takeover")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.ExtraFiles = []*os.File{w} // fd 3
+	cmd.Env = append(os.Environ(), takeoverStatusEnv+"=3")
+	logFile, err := openDaemonLog(daemonConfigDir())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "portty: daemon log: %v\n", err)
+	} else {
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+		defer logFile.Close()
+	}
+	if err := cmd.Start(); err != nil {
+		r.Close()
+		return 0, nil, err
+	}
+	out := make(chan int, 1)
+	go func() {
+		var b [1]byte
+		n, _ := r.Read(b[:])
+		r.Close()
+		if n == 1 {
+			out <- int(b[0])
+		}
+		_ = cmd.Wait()
+		if n == 0 {
+			code := cmd.ProcessState.ExitCode()
+			if code <= 0 {
+				code = 1
+			}
+			out <- code
+		}
+	}()
+	return cmd.Process.Pid, out, nil
+}
+
 // lockHeld reports whether another process holds the daemon lock at path.
 func lockHeld(path string) bool {
 	f, err := lockDaemon(path, 0)

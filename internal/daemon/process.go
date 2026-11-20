@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -28,6 +30,68 @@ func RunDaemon() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 	runDaemonCore(ctx)
+}
+
+// takeoverStatusEnv names the status pipe's fd in a takeover that
+// startDetachedTakeover started.
+const takeoverStatusEnv = "PORTTY_TAKEOVER_STATUS_FD"
+
+// RunTakeover is `portty daemon --takeover`: it takes the sessions of the
+// running daemon (runTakeover) and, on success, serves them as the daemon.
+// Only EnsureDaemon spawns it, with the status pipe; its outcome byte (0
+// once committed) is what EnsureDaemon decides from. On failure it exits
+// with the outcome code and the old daemon keeps serving.
+func RunTakeover() {
+	status := takeoverStatus() // first: no child may inherit the pipe or the variable
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+	socketPath := DefaultSocketPath()
+	code := takeoverFailed
+	// No daemon answering: nothing to take over, so no cert warm-up either.
+	if err := NewDaemonClient(socketPath).Health(); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: no running daemon to take over (%v)\n", err)
+	} else {
+		AugmentServicePath() // before NewSessionEngine, as runDaemonCore
+		engine := NewSessionEngine()
+		api := NewAPI(engine)
+		if code = runTakeover(ctx, takeoverDeps{socketPath: socketPath, api: api, build: BuildVersion}); code == takeoverCommitted {
+			reportTakeover(status, code)
+			serveDaemon(ctx, api, engine, socketPath)
+			return
+		}
+	}
+	reportTakeover(status, code)
+	fmt.Fprintf(os.Stderr, "daemon: takeover failed: %s\n", moveFailedReason(code))
+	os.Exit(code)
+}
+
+// takeoverStatus returns the status pipe startDetachedTakeover gave this
+// process, or nil when run by hand. It unsets the variable and marks the fd
+// close-on-exec at once (T-09-28), so shells the daemon starts get neither.
+func takeoverStatus() *os.File {
+	v, ok := os.LookupEnv(takeoverStatusEnv)
+	if !ok {
+		return nil
+	}
+	os.Unsetenv(takeoverStatusEnv)
+	fd, err := strconv.Atoi(v)
+	if err != nil || fd < 3 { // never stdin, stdout or stderr
+		return nil
+	}
+	syscall.CloseOnExec(fd)
+	return os.NewFile(uintptr(fd), "takeover-status")
+}
+
+// reportTakeover writes the outcome byte and closes the pipe. A write error
+// (EPIPE once the spawner has gone) is ignored; on this fd it is an error,
+// not a signal.
+func reportTakeover(status *os.File, code int) {
+	if status == nil {
+		return
+	}
+	_, _ = status.Write([]byte{byte(code)})
+	_ = status.Close()
 }
 
 // runDaemonCore is the blocking core of the daemon. It creates a SessionEngine,
@@ -158,26 +222,67 @@ type EnsureOptions struct {
 // the old daemon still running: the policy's own "no" is the caller's signal.
 // A cancelled ctx (Quit All, IN-07) spawns nothing, or kills the fresh daemon
 // it spawned, and returns ctx.Err().
+//
+// UPGR-01: a daemon from another build with live sessions that speaks this
+// HandoffVersion first gets a takeover (`portty daemon --takeover`), unless
+// opts.NoHandoff. The decision comes only from the takeover's outcome code,
+// never from a clock: committed means no question; a failure falls back to
+// the DEBT-08 question with the couldn't-move reason (UPGR-03).
 func EnsureDaemon(ctx context.Context, socketPath string, opts EnsureOptions) error {
-	allowRestart := func(ver string, n int) bool {
-		return opts.Restart(RestartQuestion{DaemonVersion: ver, Sessions: n})
+	return ensureDaemon(ctx, socketPath, opts, ensureHooks{
+		spawnTakeover: spawnTakeover,
+		readyWait:     daemonReadyWait,
+		noteAfter:     readyTimeout + committedWatchdog + 5*time.Second,
+		stderr:        os.Stderr,
+	})
+}
+
+// ensureHooks are EnsureDaemon's process seams, passed in (not package vars)
+// so the slow-outcome tests can run in parallel.
+type ensureHooks struct {
+	spawnTakeover func(exe string) (pid int, outcome <-chan int, err error)
+	readyWait     time.Duration // for the daemon of this build after a takeover
+	noteAfter     time.Duration // when "still waiting for the handoff" is printed (diagnosis only)
+	stderr        io.Writer
+}
+
+// spawnTakeover starts the takeover process. Like the fresh spawn, a test
+// binary never starts one: the child would take the user's real daemon.
+func spawnTakeover(exe string) (int, <-chan int, error) {
+	if testing.Testing() {
+		return 0, nil, errors.New("refusing to spawn a takeover from a test binary")
 	}
+	return startDetachedTakeover(exe)
+}
+
+func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h ensureHooks) error {
 	client := NewDaemonClient(socketPath)
 	needsSpawn := true
-	if err := client.Health(); err == nil {
+	if health, err := client.HealthInfo(); err == nil {
 		// Daemon is reachable — check version compatibility first.
 		ver, verErr := client.GetDaemonVersion()
 		if verErr != nil { // IN-06: a blip is not a mismatch; read once more
 			ver, verErr = client.GetDaemonVersion()
 		}
 		if verErr != nil {
-			fmt.Fprintf(os.Stderr, "EnsureDaemon: daemon answered but its version could not be read (%v); keeping it\n", verErr)
+			fmt.Fprintf(h.stderr, "EnsureDaemon: daemon answered but its version could not be read (%v); keeping it\n", verErr)
 			return nil
 		}
 		if StaleVersion(ver) {
 			n := liveSessions(client)
+			moveFailed := ""
+			if n != 0 && !opts.NoHandoff && health.Handoff == HandoffVersion {
+				done, reason, err := handOff(ctx, client, h)
+				if done || err != nil {
+					return err
+				}
+				moveFailed = reason
+			}
+			allowRestart := func(ver string, n int) bool {
+				return opts.Restart(RestartQuestion{DaemonVersion: ver, Sessions: n, MoveFailed: moveFailed})
+			}
 			if n != 0 && !allowRestart(ver, n) {
-				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q) with %d live sessions; keeping it\n", ver, BuildVersion, n)
+				fmt.Fprintf(h.stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q) with %d live sessions; keeping it\n", ver, BuildVersion, n)
 				return nil
 			}
 			// 08-06-REVIEW WR-02: a session created since the count was not
@@ -187,10 +292,10 @@ func EnsureDaemon(ctx context.Context, socketPath string, opts EnsureOptions) er
 			// condition. Upgrade in v1.2's session handoff across an upgrade
 			// (REQUIREMENTS.md DEBT-08), e.g. a /shutdown?ifSessions=<n>.
 			if n2 := liveSessions(client); countGrew(n, n2) && !allowRestart(ver, n2) {
-				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), live sessions went from %d to %d; keeping it\n", ver, BuildVersion, n, n2)
+				fmt.Fprintf(h.stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), live sessions went from %d to %d; keeping it\n", ver, BuildVersion, n, n2)
 				return nil
 			}
-			fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), restarting\n", ver, BuildVersion)
+			fmt.Fprintf(h.stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), restarting\n", ver, BuildVersion)
 			_ = client.ShutdownDaemon()
 			// No socket cleanup here (review it3 WR-03): only the spawned
 			// daemon unlinks it, under the lock, once the old one let go.
@@ -206,7 +311,7 @@ func EnsureDaemon(ctx context.Context, socketPath string, opts EnsureOptions) er
 			}
 			// Stale daemon without relay support. Log and continue to spawn a new one.
 			// The socket is left alone: the new daemon cleans up under the lock.
-			fmt.Fprintf(os.Stderr, "EnsureDaemon: stale daemon detected (relay not ready), respawning\n")
+			fmt.Fprintf(h.stderr, "EnsureDaemon: stale daemon detected (relay not ready), respawning\n")
 		}
 	}
 
@@ -224,8 +329,45 @@ func EnsureDaemon(ctx context.Context, socketPath string, opts EnsureOptions) er
 		return fmt.Errorf("EnsureDaemon: locate binary: %w", err)
 	}
 
-	return startDaemon(ctx, client, daemonReadyWait, filepath.Join(filepath.Dir(socketPath), "daemon.lock"),
+	return startDaemon(ctx, client, h.readyWait, filepath.Join(filepath.Dir(socketPath), "daemon.lock"),
 		func() (<-chan struct{}, func(), error) { return startDetachedDaemon(exe) })
+}
+
+// handOff starts a takeover and waits for its outcome code; no clock decides
+// (the takeover bounds itself, 09-04). done: the sessions are on this build's
+// daemon, ask nothing. Otherwise reason is the couldn't-move reason for the
+// DEBT-08 question. err: ctx was cancelled (the takeover is never killed: it
+// may own the sessions), or the takeover committed and its daemon did not
+// become ready (never the question: the sessions already moved). The lock
+// wait of startDaemon is not used: the old daemon holds the lock by design.
+func handOff(ctx context.Context, client *DaemonClient, h ensureHooks) (done bool, reason string, err error) {
+	code := takeoverFailed
+	var pid int
+	var outcome <-chan int
+	exe, err := os.Executable()
+	if err == nil {
+		pid, outcome, err = h.spawnTakeover(exe)
+	}
+	if err != nil {
+		fmt.Fprintf(h.stderr, "EnsureDaemon: cannot start the handoff: %v\n", err)
+	} else {
+		select {
+		case code = <-outcome:
+		case <-ctx.Done():
+			return false, "", ctx.Err()
+		}
+	}
+	_ = pid
+	if code == takeoverCommitted {
+		if err := waitForDaemon(ctx, client, h.readyWait, nil, ""); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return false, "", ctxErr
+			}
+			return false, "", fmt.Errorf("EnsureDaemon: the sessions moved to the new daemon, but it is not ready: %w", err)
+		}
+		return true, "", nil
+	}
+	return false, "", nil
 }
 
 // startDaemon calls spawn once no other process holds the lock at lockPath,
