@@ -25,7 +25,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-18)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 9 — Upgrades Keep Sessions (v1.2)
+**Current focus:** Phase 10 — Input Path Reliability (v1.2)
 
 ## Current Position
 
