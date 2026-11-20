@@ -10,6 +10,7 @@ import (
 	"time"
 
 	gopty "github.com/aymanbagabas/go-pty"
+	"golang.org/x/sys/unix"
 )
 
 // NativePTYBackend implements SessionBackend using the host OS PTY facilities.
@@ -35,6 +36,20 @@ func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Sess
 		return nil, fmt.Errorf("open pty: %w", err)
 	}
 
+	// All session I/O goes through a pollable dup of the master (Phase 9,
+	// probe P3): creack/pty opens it blocking, a deadline on a blocking file
+	// is unsupported, and an idle shell never wakes a blocked read, so a
+	// freeze could hang. Setting O_NONBLOCK also flips go-pty's own master
+	// file (the flag lives on the shared open file description); that file
+	// is not polled, so nothing may read or write through it any more or a
+	// full input buffer surfaces EAGAIN (Pitfall 2). Resize still uses it:
+	// its ioctl works in either mode.
+	ioFile, err := pollableDup(p.(gopty.UnixPty).Master(), "ptmx")
+	if err != nil {
+		_ = p.Close()
+		return nil, fmt.Errorf("dup pty master: %w", err)
+	}
+
 	childCtx, cancel := context.WithCancel(ctx)
 	cmd := p.CommandContext(childCtx, req.CLI, req.Args...)
 	cmd.Dir = req.WorkDir
@@ -53,12 +68,14 @@ func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Sess
 	// late resize leaves an inverted "%" line. Resize is an ioctl on the master.
 	if err := p.Resize(req.Cols, req.Rows); err != nil {
 		cancel()
+		_ = ioFile.Close()
 		_ = p.Close()
 		return nil, fmt.Errorf("initial resize: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
 		cancel()
+		_ = ioFile.Close()
 		_ = p.Close()
 		return nil, fmt.Errorf("start process: %w", err)
 	}
@@ -66,6 +83,7 @@ func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Sess
 	id, err := generateID()
 	if err != nil {
 		cancel()
+		_ = ioFile.Close()
 		_ = p.Close()
 		return nil, fmt.Errorf("generate session ID: %w", err)
 	}
@@ -76,6 +94,8 @@ func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Sess
 		State:     StateRunning,
 		CreatedAt: time.Now(),
 		pty:       p,
+		ioFile:    ioFile,
+		pid:       cmd.Process.Pid,
 		cmd:       cmd,
 		cancel:    cancel,
 		exitCode:  -1,
@@ -119,6 +139,29 @@ func (b *NativePTYBackend) Kill(id string) error {
 // List returns all sessions currently tracked by this backend.
 func (b *NativePTYBackend) List() []*Session {
 	return b.registry.List()
+}
+
+// pollableDup returns a non-blocking, close-on-exec dup of f that the Go
+// netpoller manages, so deadlines work on it. It reads the descriptor inside
+// SyscallConn().Control, never through the Fd method, which switches it to
+// blocking.
+func pollableDup(f *os.File, name string) (*os.File, error) {
+	sc, err := f.SyscallConn()
+	if err != nil {
+		return nil, err
+	}
+	d, derr := -1, error(nil)
+	if err := sc.Control(func(fd uintptr) { d, derr = unix.FcntlInt(fd, unix.F_DUPFD_CLOEXEC, 0) }); err != nil {
+		return nil, err
+	}
+	if derr != nil {
+		return nil, derr
+	}
+	if err := unix.SetNonblock(d, true); err != nil {
+		_ = unix.Close(d)
+		return nil, err
+	}
+	return os.NewFile(uintptr(d), name), nil // non-blocking at NewFile time, so pollable
 }
 
 // generateID returns a cryptographically random 16-byte hex string suitable

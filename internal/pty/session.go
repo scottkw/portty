@@ -3,6 +3,7 @@ package pty
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -36,8 +37,18 @@ type Session struct {
 	// CreatedAt is the time the session was created.
 	CreatedAt time.Time
 
-	// pty is the underlying pseudo-terminal handle.
+	// pty is the underlying pseudo-terminal handle. Only Resize and Close go
+	// through it: its master file is non-blocking once ioFile exists, and a
+	// write on that unpolled file would return EAGAIN (Phase 9 Pitfall 2).
 	pty gopty.Pty
+
+	// ioFile is a pollable, non-blocking dup of the master. Every Read and
+	// Write goes through it, so a read deadline can freeze the session's
+	// reader without losing a byte (Phase 9, probe P3).
+	ioFile *os.File
+
+	// pid is the child's pid (and process group id: go-pty uses Setsid).
+	pid int
 
 	// cmd is the PTY-attached command (holds the process reference).
 	cmd *gopty.Cmd
@@ -66,38 +77,69 @@ type Session struct {
 // even when killSession and the Linux exit detector race to clean up.
 func (s *Session) closePTY() {
 	s.mu.Lock()
-	p := s.pty
+	p, f := s.pty, s.ioFile
 	s.mu.Unlock()
-	if p == nil {
-		return
-	}
 	s.ptyCloseOnce.Do(func() {
-		_ = p.Close()
+		if f != nil {
+			_ = f.Close()
+		}
+		if p != nil {
+			_ = p.Close()
+		}
 	})
+}
+
+// rw returns the file session I/O goes through: the pollable dup when set.
+func (s *Session) rw() (io.ReadWriter, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ioFile != nil {
+		return s.ioFile, nil
+	}
+	if s.pty == nil {
+		return nil, fmt.Errorf("session %s: PTY not initialised", s.ID)
+	}
+	return s.pty, nil
+}
+
+// SetReadDeadline sets the read deadline on the session's pollable master.
+// A session without one returns os.ErrNoDeadline, so a freeze fails fast
+// instead of hanging on a blocking read (Phase 9 Pitfall 6).
+func (s *Session) SetReadDeadline(t time.Time) error {
+	s.mu.Lock()
+	f := s.ioFile
+	s.mu.Unlock()
+	if f == nil {
+		return os.ErrNoDeadline
+	}
+	return f.SetReadDeadline(t)
+}
+
+// Pid returns the child's pid (0 if unknown).
+func (s *Session) Pid() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pid
 }
 
 // Read reads output from the underlying PTY.
 // Implements io.Reader — Phase 2 will fan this out to connected WebSocket clients.
 func (s *Session) Read(p []byte) (int, error) {
-	s.mu.Lock()
-	pty := s.pty
-	s.mu.Unlock()
-	if pty == nil {
-		return 0, fmt.Errorf("session %s: PTY not initialised", s.ID)
+	f, err := s.rw()
+	if err != nil {
+		return 0, err
 	}
-	return pty.Read(p)
+	return f.Read(p)
 }
 
 // Write sends input to the underlying PTY (i.e. to the CLI process stdin).
 // Implements io.Writer.
 func (s *Session) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	pty := s.pty
-	s.mu.Unlock()
-	if pty == nil {
-		return 0, fmt.Errorf("session %s: PTY not initialised", s.ID)
+	f, err := s.rw()
+	if err != nil {
+		return 0, err
 	}
-	return pty.Write(p)
+	return f.Write(p)
 }
 
 // String returns a human-readable description of the session.
