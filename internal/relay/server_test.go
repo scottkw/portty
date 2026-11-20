@@ -3,6 +3,7 @@ package relay
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http/httptest"
@@ -490,5 +491,77 @@ func TestRelay_PingGetsPong(t *testing.T) {
 		if typ, _ := readFrame(t, conn); typ == 0x04 { // fails after 5s without a pong
 			return
 		}
+	}
+}
+
+// TestRestartViewers_Close1012 (UPGR-02): at a handoff's commit every relay
+// viewer gets 1012 service restart, which clients retry (never 1000 session
+// ended), and the returned channel waits for the close handshake.
+func TestRestartViewers_Close1012(t *testing.T) {
+	srv, manager, _, _, sid := setupTestServer(t)
+	conn := dialWS(t, srv.URL, sid)
+	hub, _ := manager.Get(sid)
+	testutil.WaitFor(t, 2*time.Second, func() bool { return hub.SubscriberCount() == 1 }, "viewer never joined")
+
+	done := hub.RestartViewers()
+	select {
+	case <-done:
+		t.Fatal("RestartViewers finished before the viewer answered the close")
+	case <-time.After(200 * time.Millisecond):
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var err error
+	for err == nil {
+		_, _, err = conn.Read(ctx)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RestartViewers never finished")
+	}
+	if code := websocket.CloseStatus(err); code != websocket.StatusServiceRestart {
+		t.Fatalf("close %v (%v), want 1012", code, err)
+	}
+	var ce websocket.CloseError
+	if !errors.As(err, &ce) || ce.Reason != CloseReasonServiceRestart {
+		t.Fatalf("close reason %q, want %q", ce.Reason, CloseReasonServiceRestart)
+	}
+	if IsTerminalClose(err) {
+		t.Fatal("IsTerminalClose: a restart close must be retried")
+	}
+	select {
+	case <-hub.Done():
+		t.Fatal("RestartViewers ended the session")
+	default:
+	}
+}
+
+// TestRestartViewers_NilRestartFallsBack: a subscriber without Restart is
+// closed through CloseSlow, and the channel still closes.
+func TestRestartViewers_NilRestartFallsBack(t *testing.T) {
+	hub := NewHub("restart", nil, nil, DefaultScrollbackBytes, nil)
+	slow := make(chan struct{})
+	hub.Subscribe(&Subscriber{Msgs: make(chan []byte, 1), CloseSlow: func() { close(slow) }})
+	select {
+	case <-hub.RestartViewers():
+	case <-time.After(2 * time.Second):
+		t.Fatal("RestartViewers never finished")
+	}
+	select {
+	case <-slow:
+	default:
+		t.Fatal("CloseSlow was not called")
+	}
+}
+
+// TestRestartViewers_NoSubscribers: nothing to close, so the channel is
+// closed at once.
+func TestRestartViewers_NoSubscribers(t *testing.T) {
+	hub := NewHub("restart", nil, nil, DefaultScrollbackBytes, nil)
+	select {
+	case <-hub.RestartViewers():
+	default:
+		t.Fatal("channel not closed for a hub without viewers")
 	}
 }
