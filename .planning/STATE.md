@@ -1,21 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v1.1
-milestone_name: Hardening
-status: Awaiting next milestone
-stopped_at: Phase 8 complete — all phases complete
-last_updated: "2026-11-20T01:02:30.515Z"
+milestone: v1.2
+milestone_name: Previews, Remote URLs, Mobile
+status: planning
+last_updated: "2026-11-20T01:03:40.583Z"
 last_activity: 2026-11-19
-last_activity_desc: Milestone v1.1 completed and archived
-state_head: 0655f19da18c89fa9d89aa54928205a82e2a1a14
 progress:
-  total_phases: 2
-  completed_phases: 1
-  total_plans: 11
-  completed_plans: 11
-  percent: 50
-current_phase: 8
-current_phase_name: Hardening
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -29,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 
 ## Current Position
 
-Phase: Milestone v1.1 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-11-19 — Milestone v1.1 completed and archived
+Status: Defining requirements
+Last activity: 2026-11-19 — Milestone v1.2 started
 
 
 ## Performance Metrics
