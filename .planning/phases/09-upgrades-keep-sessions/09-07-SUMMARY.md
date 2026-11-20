@@ -2,14 +2,13 @@
 phase: 09-upgrades-keep-sessions
 plan: 07
 subsystem: vm-evidence
-status: checkpoint
+status: complete
 tags: [upgrade, handoff, vm, tart, evidence, quit]
-requirements-completed: [UPGR-01, UPGR-02, UPGR-03, UPGR-04]
-requirements-partial: [UPGR-05]
+requirements-completed: [UPGR-01, UPGR-02, UPGR-03, UPGR-04, UPGR-05]
 dependency_graph:
   requires: ["09-01..09-06 (handoff, takeover, reconnect, copy strings, fault hooks, I-rows)"]
   provides:
-    - "09-VM-CHECKS.md rows V-00..V-05a PASS, V-05b FAIL, plus SOH note and Cleanup"
+    - "09-VM-CHECKS.md rows V-00..V-05a PASS, V-05b FAIL then PASS on the re-run after the fix (09-07-FIX.md), V-05c and V-05d PASS, plus SOH note and Cleanup"
     - "TESTING.md M-105..M-111 and M-115 last-run lines; M-112/M-113 marked not run"
   affects: [TESTING.md, .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md]
 tech-stack:
@@ -49,7 +48,9 @@ Real app builds in the two Tart VMs passed SC1 to SC4:
 - a v1.1 daemon gets the plain DEBT-08 choice
 - the API version and Update needed work
 
-SC5 is not met. SIGTERM passes, but **V-05b FAILS**. With the v1.1 daemon SIGSTOPped under an approved restart, the Quit dialog took 30.2 s to appear, and the GUI exited 54.76 s after Quit Everything. The bar was 5 s. The plan stopped at that row.
+**SC5 is met after a fix (09-07-FIX.md, commits 4f9fdb82 and 72214c58).** The re-run of V-05b PASSED: the Quit dialog showed 2.3 to 2.4 s after Cmd-Q with an unknown count, and the GUI exited 3.07 to 3.09 s after Quit Everything. V-05c (one dialog under Cmd-Q) and V-05d (a macOS restart with the GUI open; the boot time was 12 s after the trigger) PASSED. That makes UPGR-05 complete.
+
+The first pass did not meet SC5: SIGTERM passed, but **V-05b FAILED**. With the v1.1 daemon SIGSTOPped under an approved restart, the Quit dialog took 30.2 s to appear, and the GUI exited 54.76 s after Quit Everything. The bar was 5 s. The plan stopped at that row.
 
 ## CHECKPOINT: V-05b FAIL (plan check W6)
 
@@ -81,8 +82,9 @@ SC5 is not met. SIGTERM passes, but **V-05b FAILS**. With the v1.1 daemon SIGSTO
 | V-04 | PASS | B `/health` api 2; OLD has no `api`. GUI B-fault with `PORTTY_VMPREVIEW_MIN_DAEMON_API=3` shows the `Update needed` banner (no button, empty stderr). CLI rc 1 with the one-line update-needed message |
 | V-05a | PASS | `kill -TERM` GUI B: gone in 0.11 s; daemon 54443 and shells unchanged; ticks advanced |
 | V-05b | **FAIL** | See the checkpoint above: Quit dialog after 30.2 s; GUI exit 54.76 s after Quit Everything (bar: 5 s) |
-| V-05c | not run | Stopped at V-05b |
-| V-05d | not run | Stopped at V-05b |
+| V-05b (re-run after fix) | PASS | Fixed B `c9115f7a…`: Quit dialog 2.4 s and 2.3 s after Cmd-Q, with `Portty couldn't check whether any sessions are running.`; GUI gone 3.09 s and 3.07 s after Quit Everything; old daemon stopped and never killed; after `kill -CONT` it processed the queued /shutdown; no fresh daemon left |
+| V-05c | PASS | Cmd-Q under the open restart dialog: exactly 1 dialog, `Quit Portty?` with `You have 2 active sessions running`; v1.1 daemon still serving, shells its children, ticks advancing; no restart question came back |
+| V-05d | PASS | GUI B open on s1/s2; `osascript … restart`: SSH dropped, boot time `1795154365`, 12 s after the trigger (`1795154353`); auto-login back; no cancellation |
 
 ## Builds (all `Signature=adhoc`, `TeamIdentifier=not set`; sha256 equal on the host and in the VM)
 
@@ -102,7 +104,8 @@ SC5 is not met. SIGTERM passes, but **V-05b FAILS**. With the v1.1 daemon SIGSTO
 3. **[Rig] The vim ticker comes from a sourced file** (`vim -u NONE -N -S tick.vim`) instead of a one-line `-c`. It is the same 1 s `timer_start`; the change avoids quoting trouble through the FIFO.
 4. **[Rule 1, own check] Fresh viewers must use the running daemon's build.** In the first V-03a attempt, the check opened a viewer with the installed B-fault binary, and that `portty attach` upgraded the A daemon. The attempt was discarded and re-run. From then on, `view.sh` takes the binary explicitly.
 5. **[Rule 1, own check] SOH bytes in raw replays.** By design, the ring's `0x01` frame headers ride along in raw replays. A plain grep under-counted V-03d's history (297 of 300). The checks now strip SOH first. This is explained in the VM file; it is not a product defect.
-6. **[Plan check W6] Stopped at V-05b FAIL.** V-05c and V-05d were not run. TESTING.md M-112 and M-113 say "not run". The verify gates that need every V-row PASS (Task 3's) do not pass. That is expected at a checkpoint.
+6. **[Plan check W6] Stopped at V-05b FAIL, then resumed after the fix.** The first pass stopped there. The quit path was then fixed (09-07-FIX.md), V-05b was re-run, and V-05c and V-05d were run, all PASS. The FAIL row stays in 09-VM-CHECKS.md for the record, next to its re-run row. Because of that, the plan's verify check "no FAIL row remains" still matches it; the user asked for the row to be kept.
+7. **[Re-run rig] One more V-05b run with AX captures** (`v05b2.sh`) recorded the `Restarting…` button and the Quit dialog's unknown-count line. V-05c and V-05d use new helpers `v05c.sh` and `v05d.sh` in `~/p907` on office. Rebuilt OLD and B have new sha256 values (the builds are not reproducible byte for byte); both are in 09-VM-CHECKS.md.
 
 ## Known Stubs
 
