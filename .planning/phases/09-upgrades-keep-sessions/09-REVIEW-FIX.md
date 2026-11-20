@@ -176,3 +176,90 @@ Not covered here: the two-binary `TestHandoffIT` (env-gated, office Tart VM only
 _Fixed: 2026-11-20_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+## Iteration 2
+
+**Fixed at:** 2026-11-20
+**Source review:** 09-REVIEW.md, section "Iteration 2"
+**Scope:** all 5 findings (WR-01, WR-02, IN-01, IN-02, IN-03)
+
+**Summary:** 5 in scope, 5 fixed, 0 skipped.
+
+| Finding | Status | Commit(s) |
+|---|---|---|
+| WR-02 (it2) | fixed (a previous fixer did it; reviewed here and found correct) | 89c6e18f |
+| WR-01 (it2) | fixed: requires human verification (a concurrency and route-gating change) | b09971f2, d4dd784c |
+| IN-01 (it2) | fixed | 46e8d08a |
+| IN-02 (it2) | fixed (no test: see below) | fc46b373 |
+| IN-03 (it2) | fixed | fe32d895 |
+
+### WR-02 (it2): READY digest depends on the HubState schema
+
+**Commit:** 89c6e18f (cherry-picked from the stopped fixer's branch, where it was cdf95204's successor d9d4764c)
+**Review:** correct.
+- `writeSessionFrame` hashes through `io.MultiWriter`, and `readSessionFrame` through `io.TeeReader`.
+- `readFrame` uses `io.ReadFull` for exactly 5 + n bytes, so both sides hash the same header and payload bytes and nothing from a later frame.
+- The digest is used only on success, so a partial write or read cannot produce a false match.
+- ABORT frames still come back as `*abortedError` through the tee.
+- Test: `TestHandoff_SessionFrameDigest`. One changed payload byte that still decodes fails the digest; a frame from a later build's struct with an extra field passes.
+- A cosmetic leftover: `runTakeover` sets the read deadline twice around `readSessionFrame`.
+
+### WR-01 (it2): slow writes held the write-drain gate
+
+**Files modified:** `internal/daemon/api.go`, `internal/daemon/share.go`, `internal/daemon/client.go`, `internal/daemon/handoff_fault_test.go`, `TESTING.md`
+**Commits:** b09971f2, plus the follow-up d4dd784c (the first version warmed the certificate twice; `TestShare_SessionKilledDuringStartIsNotShared` caught it in the gate)
+**Applied fix:**
+- `freezeGate` no longer applies the barrier to `POST /peers/connect`, which only caches a peer cap that no handoff moves.
+- `PUT /sessions/{id}/share` takes the gate itself:
+  - Share-off is gated for its whole run.
+  - Share-on runs the health check and, when no share server is running, the cert warm-up before it takes the gate. The drain then waits only for the server start and the mint, which take milliseconds.
+  - `startShareServer` warms again only if the server stopped between that check and the start.
+- New helpers `enterWrite` and `writeFrozen`, shared by the middleware and the share handler.
+- `SetSessionShared` now goes through `doRetrying`, as every other write does. A share-on that meets the freeze lands on whichever daemon serves afterwards instead of failing with a bare 503. A 503 without Retry-After (Tailscale off) still returns at once.
+- **Why the drain was not lengthened:** once restartDrain is counted (IN-01), the worst-case 503 window is 19 s of the 20 s client budget, which leaves no room for a longer drain. A longer drain also would not cover a cold certificate fetch, which can take up to 20 s. Moving the slow, stateless work out of the gate removes the cause. The one-line reason is in the `freezeGate` comment.
+- Tests:
+  - `TestHandoff_SlowShareOnDoesNotBlock`: a share-on held in its warm-up for longer than the drain. The handoff commits, and the share lands on the takeover. Before the fix the drain timed out, so the outcome was 6.
+  - `TestFreezeGate_SlowRoutesSkipBarrier`: `/peers/connect` and PUT share skip the barrier and serve while frozen; other writes hold the gate and get 503.
+
+### IN-01 (it2): maxFrozen left out restartDrain
+
+**Files modified:** `internal/daemon/handoff.go`, `internal/daemon/client.go` (comment), `internal/daemon/handoff_fault_test.go`, `TESTING.md`
+**Commit:** 46e8d08a
+**Applied fix:**
+- `maxFrozen()` now adds `restartDrain`, giving 19 s. The SIGTERM guard waits 1 s longer as a result.
+- `TestHandoff_TimeoutsFitClientRetry` pins three things:
+  - `maxFrozen()` equals the sum of all six terms;
+  - `maxFrozen()` is less than `frozenRetryBudget`;
+  - `maxFrozen()` + 1 s (the gate's Retry-After) is at most `frozenRetryBudget`.
+- The client budget stays at 20 s. The margin is exactly one Retry-After wait.
+
+### IN-02 (it2): Start leaked a refused listener
+
+**Files modified:** `internal/webserver/server.go`
+**Commit:** fc46b373
+**Applied fix:** `Start` closes `raw` when `StartOn` returns an error.
+**No regression test:** `CheckListener` cannot refuse a listener that `Start` opened itself. Every IPv6 or zoned `BindIP` fails at `net.Listen` first, and `Start` binds the configured port. A test would need a new seam.
+
+### IN-03 (it2): the second /shutdown got a fresh budget
+
+**Files modified:** `internal/daemon/client.go`, `internal/daemon/client_test.go`, `TESTING.md`
+**Commit:** fe32d895
+**Applied fix:**
+- `doRetrying` takes its deadline as a parameter. `doJSON` and `SetSessionShared` pass now + `frozenRetryBudget`.
+- `ShutdownDaemon` computes one deadline and passes it to both posts. The re-post always sends at least one attempt.
+- Test: `TestShutdownDaemon_DroppedThenRechecked/the_second_post_shares_the_budget`. The sequence is a 503, a drop, then 503s forever, with a 2.5 s budget. The fix makes 4 posts; a fresh budget would make 5.
+
+### Verification (iteration 2)
+
+All gates ran in this agent's own git worktree, branched from gsd/v1.2 85647018. They did not run in the main checkout.
+
+- `go build ./... && go vet ./...` (GOTOOLCHAIN=go1.26.11): exit 0, no output.
+- `go test -race -short ./...`: exit 1, with one failure: `TestShare_SessionKilledDuringStartIsNotShared`. The cause was this fix's double warm-up, not a flake. It was fixed in d4dd784c. Every other package passed, and so did every other daemon test, including the new ones.
+- The daemon package alone was then run once more: `go test -race -short ./internal/daemon/` exit 0 (75.5 s). The full suite was not run again, because the follow-up touches only `share.go`.
+- `bash tests/check-traceability-paths.sh`: "OK: 163 traceability paths exist".
+- `bash tests/check-brand.sh`: "OK: brand gate clean".
+- No frontend files changed, so vitest and tsc did not run.
+- Not covered: the two-binary `TestHandoffIT` (office Tart VM only) did not run.
+
+_Iteration 2 fixed: 2026-11-20_
+_Fixer: Claude (gsd-code-fixer)_
