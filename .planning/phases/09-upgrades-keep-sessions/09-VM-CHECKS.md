@@ -231,3 +231,12 @@ The parts of V-01 that need no tailnet were run as a partial check. This is not 
 - **home:** `stopall.sh`, settings.json restored (`cmp` clean, still clean after launch, `"webgl":true`), HEAD (`5cec4abf…`) relaunched: GUI 4644, daemon 4646, `/health` dev api 2 handoff 1, 0 sessions, No Open Sessions, stderr 0 bytes. `~/ptest/stage` and the run outputs removed; no expect driver, Safari or safaridriver running.
 - **Both VMs:** `osascript -e 'quit app "Install Command Line Developer Tools"'` was run as a precaution. The VMs were not restarted and Tailscale was not touched. The helpers in `~/p907` and `~/ptest` are unchanged.
 - **Host:** only the Wails builds, `pnpm`, `tar`, `shasum`, `codesign -dv`, `<bin> version` on the three fresh builds (it prints the version and never contacts a daemon) and SSH ran there. Nothing was clicked, killed or launched; no Go or vitest suite ran; no product code changed.
+
+### TestHandoffIT re-runs after the review fixes
+
+Both in the office VM (`portty-test`), same command and env as I-01..I-03, binaries built on the host with sha256 matched in the VM, the VM's own Portty untouched (same pids before and after), no `/tmp/pit-*` or test process left.
+
+| Commit | When (VM UTC) | Result | Evidence |
+|--------|---------------|--------|----------|
+| `e7c6ab82` (review iteration 1 fixes) | 2026-11-20 16:28 | PASS | `--- PASS: TestHandoffIT (15.81s)`: upgrade (3 sessions moved in 43 ms; viewer reconnects=1, TICK-1 1..21 no gap/repeat), fault (rolled back at ready; A kept serving), from-v1.1 (plain DEBT-08 refusal). |
+| `bbb34439` (review iteration 2 fixes) | 2026-11-20 21:19 | PASS | `--- PASS: TestHandoffIT (11.16s)`: upgrade (3 sessions moved in 8 ms; reconnects=1, TICK-1 1..15 no gap/repeat), fault (rolled back at ready after 7 ms), from-v1.1 (v1.1 daemon and shells kept). |
