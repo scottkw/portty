@@ -216,3 +216,26 @@ Evidence for 08-06 (DEBT-08: a version-mismatch restart never ends live sessions
 - The HEAD build `4fe84fcd…` (`9c2c9c20`, version `dev`, ad-hoc signed) was deployed at `~/ptest/Portty.app` and launched with `open`. GUI 29485 and daemon 29487 (ppid 29485) were running, `/health` reported `dev`, `portty list --local` was empty, and the window showed No Open Sessions. It replaces `8960e93e…`.
 - The staged apps, the backup, the helper script and the run outputs (`~/ptest/g`, `/tmp/g3.*`, the `cli.sh` FIFOs and logs) were removed.
 - Nothing on the host was clicked, killed or changed. The host ran only the builds, `tar`, `scp` and SSH. No full Go or vitest suite ran during the VM checks.
+
+## Upgrade guard after review fixes (G-04..G-06)
+
+Evidence for M-104 steps 4 and 5 after 08-06-REVIEW-FIX (WR-01, WR-03, WR-04, IN-04). Claude ran this on 2026-11-19 (VM clock, UTC), in the home VM only. Each result is exactly `PASS`, `FAIL` or `NOT RUN`. Nothing was shared; the output quoted here holds only a Go panic trace and version strings.
+
+- **Base:** `bd1ec1f8` (gsd/phase-07-hardening, fast-forwarded in the worktree), which contains every 08-06 review fix.
+- **Builds:** the U-01/G-01 method: placeholder `frontend/dist/index.html`, then `GOTOOLCHAIN=go1.26.11 wails build -platform darwin/arm64 -tags wailsassets -ldflags "-X main.Version=v1.1.0-vmA"`.
+  - **Build A failed** during Wails' binding generation, which runs the compiled binary with no arguments: `panic: runtime error: index out of range [1] with length 1`, `main.main()` at `main.go:59`, exit status 2.
+  - To confirm what this means for a real launch, B was built with `-skipbindings` (the committed wailsjs stubs are current, per 08-06-REVIEW-FIX) and `-X main.Version=v1.1.0-vmB`. `codesign -dv` reported `Signature=adhoc` and `TeamIdentifier=not set`. Binary sha256 `a7160300e24cecf084fa2a775d007efef0cbdd758afd5f28cd9e9f650b1df3ce`, the same on the host and in the VM. It was copied to a staging folder (`~/ptest/g4stage`) and **not** installed over the deployed app.
+- **Cause (from the source):** in `main()`, the GUI branch is entered when `len(os.Args) == 1 || strings.HasPrefix(os.Args[1], "-")`. Inside it, the WR-04 line `if os.Args[1] == restartDaemonFlag || os.Args[1] == keepDaemonFlag {` reads `os.Args[1]` without the `len(os.Args) > 1` guard that the `--help` line above it has. A launch with no arguments (Finder, the Dock, `open`, login items) therefore panics before `runGUI()`. WR-04 (`a8b8c9a7`) added the line with `restartDaemonFlag` only; IN-04 (`09296261`) added `keepDaemonFlag`. The unit tests do not reach `main()`, so the gates in 08-06-REVIEW-FIX passed.
+
+| Check | Result | What was checked | Evidence |
+|-------|--------|------------------|----------|
+| G-04 | FAIL | Start minimized (WR-03): GUI B launched over an A daemon with 2 live sessions shows the window, the Dock icon and the restart dialog | Not reached: **the GUI does not start at all.** In the VM, the staged B binary run with no arguments printed `panic: runtime error: index out of range [1] with length 1` / `goroutine 1 [running, locked to thread]:` / `main.main()` `…/main.go:59 +0x278`, rc 2. `open -n --stderr /tmp/g4open.err ~/ptest/g4stage/Portty.app` (a LaunchServices launch, as from Finder) wrote the same panic to its stderr, and 4 s later no new Portty process existed: only the deployed GUI 29485 and daemon 29487, `/health` still `dev`. The same binary's `portty version` printed `v1.1.0-vmB` (rc 0) and `portty --help` gave rc 0, so CLI paths with an argument still run. Not run: the settings.json change, the A run with 2 sessions, and the Quit GUI Only repeat. |
+| G-05 | NOT RUN | CLI flag placement (WR-04, IN-04) | Stopped at the G-04 FAIL, as instructed. No A build exists to run the A daemon. |
+| G-06 | NOT RUN | Approved count grew (WR-01) | Stopped at the G-04 FAIL. It needs GUI B, which panics at launch. |
+
+### Cleanup (G-04..G-06)
+
+- The VM's deployed app was not touched: `~/ptest/Portty.app` is still the `9c2c9c20` HEAD build from G-01..G-03 cleanup (sha256 `4fe84fcd…`), with GUI 29485 and daemon 29487 running and `/health` reporting `dev`. A build of `bd1ec1f8` cannot replace it, because it would not launch.
+- settings.json was never changed (start minimized was not turned on), so no backup or restore was needed. The relaunch list was not touched.
+- `~/ptest/g4stage` and `/tmp/g4open.*` were removed from the VM. On the host, the two regenerated files under frontend/src/wailsjs/wailsjs were restored with `git checkout`, and `build/bin`, `frontend/dist` and `frontend/package.json.md5` were removed.
+- Nothing on the host was clicked, killed or changed. The host ran only the builds, `tar` and SSH. No Go or vitest suite was run, and no product code was changed.
