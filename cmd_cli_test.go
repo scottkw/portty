@@ -590,6 +590,47 @@ func TestEnsureCLIDaemon_RestartConsent(t *testing.T) {
 	}
 }
 
+// UPGR-04: a CLI command facing a daemon whose API is below MinDaemonAPI
+// fails with one update-needed line instead of failing its calls. With the
+// default minimum (1) a v1.1 daemon keeps working, --keep-daemon included. A
+// DEBT-08 refusal still wins.
+func TestEnsureCLIDaemon_UpdateNeeded(t *testing.T) {
+	oldVer, oldMin, oldHealth := daemon.BuildVersion, daemon.MinDaemonAPI, daemonHealthOf
+	t.Cleanup(func() { daemon.BuildVersion, daemon.MinDaemonAPI, daemonHealthOf = oldVer, oldMin, oldHealth })
+	daemon.BuildVersion = "v1.2.0"
+	v11 := func(string) (daemon.HealthResponse, error) {
+		return daemon.HealthResponse{Status: "ok", Version: "v1.1.0"}, nil
+	}
+	daemonHealthOf = v11
+	ok := func(string, daemon.RestartPolicy) error { return nil }
+	keeping := func(_ string, allow daemon.RestartPolicy) error { allow("v1.1.0", 2); return nil }
+
+	daemon.MinDaemonAPI = 3
+	want := "the running daemon (version v1.1.0, API 1) is too old for this portty (version v1.2.0 needs API 3): update needed. Re-run as 'portty <command> --restart-daemon …' to restart it."
+	if err := ensureCLIDaemon(ok, "sock", false, false); err == nil || err.Error() != want {
+		t.Fatalf("too-old daemon: err %v\nwant %q", err, want)
+	}
+	if err := ensureCLIDaemon(keeping, "sock", false, true); err == nil || err.Error() != want {
+		t.Fatalf("too-old daemon with --keep-daemon: err %v", err)
+	}
+	if err := ensureCLIDaemon(keeping, "sock", false, false); err == nil || strings.Contains(err.Error(), "update needed") || !strings.Contains(err.Error(), "would end them") {
+		t.Fatalf("the DEBT-08 refusal must win: %v", err)
+	}
+	daemonHealthOf = func(string) (daemon.HealthResponse, error) { return daemon.HealthResponse{}, errors.New("no answer") }
+	if err := ensureCLIDaemon(ok, "sock", false, false); err != nil {
+		t.Fatalf("an unreadable health is not a refusal: %v", err)
+	}
+
+	daemonHealthOf = v11
+	daemon.MinDaemonAPI = 1
+	if err := ensureCLIDaemon(ok, "sock", false, false); err != nil {
+		t.Fatalf("a v1.1 daemon with MinDaemonAPI 1: %v", err)
+	}
+	if err := ensureCLIDaemon(keeping, "sock", false, true); err != nil {
+		t.Fatalf("a v1.1 daemon kept with --keep-daemon: %v", err)
+	}
+}
+
 // 08-06-REVIEW IN-04: health, version and any --help never touch the daemon,
 // so a mismatched one never makes them refuse (or start one).
 func TestCLINeedsDaemon(t *testing.T) {

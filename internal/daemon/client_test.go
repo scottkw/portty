@@ -14,6 +14,32 @@ func TestClientHealth(t *testing.T) {
 	}
 }
 
+// UPGR-04: HealthInfo decodes /health; a body without "api" (v1.0, v1.1)
+// reads as API 1, and this build's daemon reports APIVersion.
+func TestHealthInfo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok","version":"v1.1.0"}`)) //nolint:errcheck
+	}))
+	t.Cleanup(srv.Close)
+	h, err := (&DaemonClient{http: srv.Client(), base: srv.URL}).HealthInfo()
+	if err != nil || h.Version != "v1.1.0" || h.Status != "ok" {
+		t.Fatalf("v1.1 health = %+v, %v", h, err)
+	}
+	if got := DaemonAPI(h); got != 1 {
+		t.Fatalf("DaemonAPI(v1.1 body) = %d, want 1", got)
+	}
+	if MinDaemonAPI != 1 {
+		t.Fatalf("MinDaemonAPI = %d, want 1 (a v1.1 daemon kept with Not Now keeps working)", MinDaemonAPI)
+	}
+
+	_, client, _ := testDaemon(t)
+	h, err = client.HealthInfo()
+	if err != nil || DaemonAPI(h) != 2 || APIVersion != 2 {
+		t.Fatalf("this build's health = %+v, %v; want API 2", h, err)
+	}
+}
+
 func TestClientListSessions(t *testing.T) {
 	_, client, _ := testDaemon(t)
 	sessions, err := client.ListSessions()
