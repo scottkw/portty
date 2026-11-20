@@ -792,6 +792,20 @@ func TestHandoff_HelloCapped(t *testing.T) {
 	}
 }
 
+// IN-02: pid 1 (or less) is never adopted: killAdopted signals -pid, and
+// kill(-1) reaches every process the user owns.
+func TestHandoff_RejectsPidOne(t *testing.T) {
+	for _, pid := range []int{-1, 0, 1} {
+		m := hsSession{ID: "s", Pid: pid, Hub: relay.HubState{SessionID: "s"}}
+		if why := (&takeover{}).invalid(m); why == "" {
+			t.Errorf("a session frame with pid %d was accepted", pid)
+		}
+	}
+	if why := (&takeover{}).invalid(hsSession{ID: "s", Pid: 2, Hub: relay.HubState{SessionID: "s"}}); why != "" {
+		t.Errorf("pid 2 refused: %s", why)
+	}
+}
+
 // fakeAddrListener is a listener that reports addr, for addresses a test
 // cannot bind (a relay on every interface).
 type fakeAddrListener struct {

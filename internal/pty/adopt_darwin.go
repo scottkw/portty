@@ -25,7 +25,7 @@ type AdoptMeta struct {
 // pollable dup (master itself is closed) and keeps slave. On error the caller
 // still owns both.
 func (b *NativePTYBackend) Adopt(meta AdoptMeta, master, slave *os.File) (*Session, error) {
-	if meta.ID == "" || meta.Pid <= 0 || master == nil || slave == nil {
+	if meta.ID == "" || meta.Pid <= 1 || master == nil || slave == nil { // pid 1: killAdopted's kill(-pid) would be kill(-1)
 		return nil, fmt.Errorf("adopt: incomplete session %q (pid %d)", meta.ID, meta.Pid)
 	}
 	// First, so an exit between receipt and here is still seen (Pitfall 8).

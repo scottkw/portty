@@ -248,6 +248,25 @@ func recordSignals(t *testing.T) func() []syscall.Signal {
 	}
 }
 
+// IN-02: Adopt refuses pid 1 and below; killAdopted would turn it into
+// kill(-1), which reaches every process the user owns.
+func TestAdopt_RefusesPidOne(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close(); _ = w.Close() })
+	b := NewNativePTYBackend()
+	for _, pid := range []int{0, 1} {
+		if s, err := b.Adopt(AdoptMeta{ID: "p", Pid: pid}, r, w); err == nil {
+			t.Errorf("Adopt with pid %d = %+v, want an error", pid, s)
+		}
+	}
+	if len(b.List()) != 0 {
+		t.Errorf("a refused adopt registered a session")
+	}
+}
+
 // T-P4 / Pitfall 9: kill escalates while the process lives and never signals
 // a pid whose exit the watcher has already seen.
 func TestKillAdopted(t *testing.T) {

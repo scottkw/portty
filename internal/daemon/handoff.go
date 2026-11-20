@@ -1046,8 +1046,8 @@ func (t *takeover) invalid(m hsSession) string {
 		return "session frame with a bad id"
 	case t.imported(m.ID):
 		return "duplicate session " + relay.DiagID(m.ID)
-	case m.Pid <= 0:
-		return "session " + relay.DiagID(m.ID) + " without a pid"
+	case m.Pid <= 1: // IN-02: killAdopted signals -pid, and kill(-1) reaches every process of the user
+		return "session " + relay.DiagID(m.ID) + " without a valid pid"
 	case len(m.Name) > maxHandoffText || len(m.WorkDir) > maxHandoffText || len(m.CLI) > maxHandoffText:
 		return "session " + relay.DiagID(m.ID) + " metadata over the cap"
 	}
