@@ -305,8 +305,9 @@ func (c *DaemonClient) answersAfterDrop(hc *http.Client, err error) bool {
 }
 
 // frozenRetryBudget bounds how long a mutating call waits out a daemon frozen
-// for a handoff. It must outlast 09-04's longest freeze, maxFrozen (18 s); a
-// 09-04 test pins that sum below this. A var so tests can shrink it.
+// for a handoff. It must outlast 09-04's worst-case 503 window, maxFrozen
+// (19 s), by one Retry-After wait; a 09-04 test pins that. A var so tests can
+// shrink it.
 var frozenRetryBudget = 20 * time.Second
 
 // doRetrying sends the request newReq builds with hc, and sends a mutating one

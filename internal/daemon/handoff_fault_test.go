@@ -777,14 +777,21 @@ func TestHandoff_LockHeldThroughout(t *testing.T) {
 	}
 }
 
-// W3: the longest freeze fits 09-01's client retry budget.
+// W3: the longest freeze fits 09-01's client retry budget. IN-01 (it2): the
+// window includes restartDrain, when the old daemon still answers kept-alive
+// clients 503 after COMMITTED, and a client that got its last 503 at the
+// window's end still has one Retry-After wait of budget left to retry.
 func TestHandoff_TimeoutsFitClientRetry(t *testing.T) {
-	if sum := writeDrainTimeout + freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog; sum >= frozenRetryBudget {
-		t.Errorf("drain %v + freeze %v + state %v + ready %v + watchdog %v = %v, not below frozenRetryBudget %v",
-			writeDrainTimeout, freezeTimeout, stateSendTimeout, readyTimeout, committedWatchdog, sum, frozenRetryBudget)
+	sum := writeDrainTimeout + freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog + restartDrain
+	if maxFrozen() != sum {
+		t.Errorf("maxFrozen %v, want drain %v + freeze %v + state %v + ready %v + watchdog %v + restart drain %v = %v",
+			maxFrozen(), writeDrainTimeout, freezeTimeout, stateSendTimeout, readyTimeout, committedWatchdog, restartDrain, sum)
 	}
 	if maxFrozen() >= frozenRetryBudget {
 		t.Errorf("maxFrozen %v >= frozenRetryBudget %v", maxFrozen(), frozenRetryBudget)
+	}
+	if retryAfter := time.Second; maxFrozen()+retryAfter > frozenRetryBudget { // freezeGate's Retry-After: 1
+		t.Errorf("maxFrozen %v + one %v retry wait > frozenRetryBudget %v", maxFrozen(), retryAfter, frozenRetryBudget)
 	}
 }
 

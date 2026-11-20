@@ -65,11 +65,13 @@ const HandoffVersion = 1
 
 const handoffUpgrade = "portty-handoff/1"
 
-// Timeouts, vars so tests can shorten them. The longest the old daemon stays
-// frozen before it commits or rolls back is writeDrainTimeout +
-// freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog = 18 s,
-// below the client's 20 s frozenRetryBudget (client.go), so a write that met
-// the freeze gate's 503 still lands (TestHandoff_TimeoutsFitClientRetry).
+// Timeouts, vars so tests can shorten them. The longest the old daemon
+// answers writes with 503 is writeDrainTimeout + freezeTimeout +
+// stateSendTimeout + readyTimeout + committedWatchdog, plus restartDrain after
+// COMMITTED (kept-alive clients still reach it) = 19 s. One 1 s Retry-After
+// wait later the client's 20 s frozenRetryBudget (client.go) still has a
+// retry left, so a write that met the freeze gate's 503 still lands
+// (TestHandoff_TimeoutsFitClientRetry).
 var (
 	writeDrainTimeout   = 1 * time.Second  // old side: writes in flight at the freeze finish (WR-01)
 	freezeTimeout       = 2 * time.Second  // relay Hub.Freeze's own bound; hubs freeze concurrently
@@ -83,9 +85,10 @@ var (
 	oldGoneWait         = 500 * time.Millisecond // new side: how long a dying old daemon gets to be gone
 )
 
-// maxFrozen bounds the SIGTERM guard's wait for a handoff's outcome.
+// maxFrozen is the worst-case 503 window (IN-01 it2: restartDrain included)
+// and bounds the SIGTERM guard's wait for a handoff's outcome.
 func maxFrozen() time.Duration {
-	return writeDrainTimeout + freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog
+	return writeDrainTimeout + freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog + restartDrain
 }
 
 // Outcome codes of runTakeover; 09-05 maps them to the couldn't-move reason.
