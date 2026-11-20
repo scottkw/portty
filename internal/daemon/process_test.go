@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -915,5 +916,223 @@ func TestEnsureDaemon_HandsOff(t *testing.T) {
 	err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, testHooks(f.takeoverAfter(100*time.Millisecond, 0, "v2", &spawns)))
 	if err != nil || spawns.Load() != 1 || len(*asked) != 0 || f.shutdown.Load() {
 		t.Fatalf("err %v, spawns %d, asked %v, shutdown %v; want nil, 1, none, false", err, spawns.Load(), *asked, f.shutdown.Load())
+	}
+}
+
+// UPGR-03: a takeover that fails falls back to the DEBT-08 question with the
+// couldn't-move reason for its code, and the old daemon is then kept (no) or
+// restarted (yes) exactly as before.
+func TestEnsureDaemon_HandoffFailsToDebt08(t *testing.T) {
+	const spawnError = -1
+	for _, code := range []int{takeoverRefused, takeoverImport, takeoverTimedOut, takeoverFailed, spawnError} {
+		for _, allow := range []bool{false, true} {
+			t.Run(fmt.Sprintf("code %d, restart %v", code, allow), func(t *testing.T) {
+				useBuild(t, "v2")
+				f := startFakeDaemon(t, HandoffVersion, twoLive)
+				var spawns atomic.Int64
+				spawn, want := f.takeoverAfter(50*time.Millisecond, code, "", &spawns), moveFailedReason(code)
+				if code == spawnError {
+					spawn = func(string) (int, <-chan int, error) { return 0, nil, errors.New("exec failed") }
+					want = "the new version exited"
+				}
+				policy, asked := recordPolicy(allow)
+				err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, testHooks(spawn))
+				if len(*asked) != 1 || (*asked)[0] != (RestartQuestion{DaemonVersion: "v1", Sessions: 2, MoveFailed: want}) {
+					t.Fatalf("policy asked %+v, want one question with MoveFailed %q", *asked, want)
+				}
+				if f.shutdown.Load() != allow {
+					t.Fatalf("shutdown sent = %v, want %v", f.shutdown.Load(), allow)
+				}
+				if allow && err == nil { // the test binary refuses the respawn after the shutdown
+					t.Fatal("the restart path returned nil")
+				}
+				if !allow && err != nil {
+					t.Fatalf("keeping the old daemon must succeed: %v", err)
+				}
+			})
+		}
+	}
+}
+
+// Busy (3): another takeover may be winning. This build answering within the
+// ready wait means no question; still the old build, the busy reason.
+func TestEnsureDaemon_BusyThenReady(t *testing.T) {
+	useBuild(t, "v2")
+	t.Run("the other takeover wins", func(t *testing.T) {
+		f := startFakeDaemon(t, HandoffVersion, twoLive)
+		var spawns atomic.Int64
+		time.AfterFunc(300*time.Millisecond, func() { f.setVersion("v2") })
+		policy, asked := recordPolicy(false)
+		err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, testHooks(f.takeoverAfter(0, takeoverBusy, "", &spawns)))
+		if err != nil || len(*asked) != 0 || f.shutdown.Load() {
+			t.Fatalf("err %v, asked %+v, shutdown %v; want nil, none, false", err, *asked, f.shutdown.Load())
+		}
+	})
+	t.Run("the old daemon stays", func(t *testing.T) {
+		f := startFakeDaemon(t, HandoffVersion, twoLive)
+		var spawns atomic.Int64
+		h := testHooks(f.takeoverAfter(0, takeoverBusy, "", &spawns))
+		h.readyWait = 500 * time.Millisecond
+		policy, asked := recordPolicy(false)
+		err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, h)
+		if err != nil || len(*asked) != 1 || (*asked)[0].MoveFailed != moveFailedReason(takeoverBusy) {
+			t.Fatalf("err %v, asked %+v; want nil and the busy reason", err, *asked)
+		}
+	})
+}
+
+// A failure code with this build answering afterwards is a success after all.
+func TestEnsureDaemon_HandoffFailedButNowCurrent(t *testing.T) {
+	useBuild(t, "v2")
+	f := startFakeDaemon(t, HandoffVersion, twoLive)
+	var spawns atomic.Int64
+	policy, asked := recordPolicy(false)
+	err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, testHooks(f.takeoverAfter(50*time.Millisecond, takeoverFailed, "v2", &spawns)))
+	if err != nil || len(*asked) != 0 || f.shutdown.Load() {
+		t.Fatalf("err %v, asked %+v, shutdown %v; want nil, none, false", err, *asked, f.shutdown.Load())
+	}
+}
+
+// slowBuild sets this build for the two 12 s tests before t.Parallel().
+// shortcut: never restored (a restore in one parallel test's cleanup would
+// race the other's reads); parallel tests run after every sequential test and
+// these two are the package's only ones. Upgrade if another parallel test
+// needs a different BuildVersion.
+func slowBuild(t *testing.T) {
+	BuildVersion = "v2"
+	t.Parallel()
+}
+
+// T-09-29 (plan check B2): a takeover that commits after 12 s gets no
+// question and no /shutdown; no clock decides. The diagnosis line is printed
+// once, however long the wait.
+func TestEnsureDaemon_SlowCommitNoQuestion(t *testing.T) {
+	slowBuild(t)
+	f := startFakeDaemon(t, HandoffVersion, twoLive)
+	var spawns atomic.Int64
+	var stderr bytes.Buffer
+	h := testHooks(f.takeoverAfter(12*time.Second, takeoverCommitted, "v2", &spawns))
+	h.noteAfter, h.stderr = time.Second, &stderr
+	policy, asked := recordPolicy(true)
+	err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, h)
+	if err != nil || len(*asked) != 0 || f.shutdown.Load() {
+		t.Fatalf("err %v, asked %+v, shutdown %v; want nil, none, false", err, *asked, f.shutdown.Load())
+	}
+	if n := strings.Count(stderr.String(), "EnsureDaemon: still waiting for the handoff (pid 4242)\n"); n != 1 {
+		t.Fatalf("still-waiting line printed %d times, want 1; stderr:\n%s", n, stderr.String())
+	}
+}
+
+// T-09-29: a failure that arrives after 12 s is asked about only then.
+func TestEnsureDaemon_NoWallClockDecision(t *testing.T) {
+	slowBuild(t)
+	f := startFakeDaemon(t, HandoffVersion, twoLive)
+	var spawns atomic.Int64
+	var spawnedAt, askedAt time.Time
+	slow := f.takeoverAfter(12*time.Second, takeoverImport, "", &spawns)
+	spawn := func(exe string) (int, <-chan int, error) { spawnedAt = time.Now(); return slow(exe) }
+	var asked []RestartQuestion
+	policy := func(q RestartQuestion) bool { askedAt = time.Now(); asked = append(asked, q); return false }
+	if err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, testHooks(spawn)); err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 1 || asked[0].MoveFailed != moveFailedReason(takeoverImport) {
+		t.Fatalf("asked %+v, want one question with the import reason", asked)
+	}
+	if d := askedAt.Sub(spawnedAt); d < 12*time.Second {
+		t.Fatalf("policy asked %v after the spawn, before the outcome (12 s)", d)
+	}
+}
+
+// UPGR-03: a v1.1 daemon (no handoff field) or another handoff version gets
+// no takeover and the plain DEBT-08 question.
+func TestEnsureDaemon_V11GetsPlainDebt08(t *testing.T) {
+	for _, handoff := range []int{0, HandoffVersion + 1} {
+		t.Run(fmt.Sprintf("handoff %d", handoff), func(t *testing.T) {
+			useBuild(t, "v2")
+			f := startFakeDaemon(t, handoff, twoLive)
+			var spawns atomic.Int64
+			policy, asked := recordPolicy(false)
+			err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, testHooks(f.takeoverAfter(0, 0, "v2", &spawns)))
+			if err != nil || spawns.Load() != 0 || len(*asked) != 1 || (*asked)[0].MoveFailed != "" {
+				t.Fatalf("err %v, spawns %d, asked %+v; want nil, 0, one plain question", err, spawns.Load(), *asked)
+			}
+		})
+	}
+}
+
+// Research A9: no live sessions keeps today's plain restart, no takeover.
+func TestEnsureDaemon_ZeroSessionsPlainRestart(t *testing.T) {
+	useBuild(t, "v2")
+	f := startFakeDaemon(t, HandoffVersion, `[]`)
+	var spawns atomic.Int64
+	policy, asked := recordPolicy(false)
+	err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}, testHooks(f.takeoverAfter(0, 0, "v2", &spawns)))
+	if spawns.Load() != 0 || len(*asked) != 0 || !f.shutdown.Load() || err == nil {
+		t.Fatalf("spawns %d, asked %+v, shutdown %v, err %v; want 0, none, true, the respawn refusal", spawns.Load(), *asked, f.shutdown.Load(), err)
+	}
+}
+
+// --keep-daemon (NoHandoff) never hands off.
+func TestEnsureDaemon_NoHandoffForKeep(t *testing.T) {
+	useBuild(t, "v2")
+	f := startFakeDaemon(t, HandoffVersion, twoLive)
+	var spawns atomic.Int64
+	policy, asked := recordPolicy(false)
+	err := ensureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy, NoHandoff: true}, testHooks(f.takeoverAfter(0, 0, "v2", &spawns)))
+	if err != nil || spawns.Load() != 0 || len(*asked) != 1 || (*asked)[0].MoveFailed != "" {
+		t.Fatalf("err %v, spawns %d, asked %+v; want nil, 0, one plain question", err, spawns.Load(), *asked)
+	}
+}
+
+// T-09-27: Quit All (ctx cancel) while the outcome is pending returns at once
+// and leaves the takeover running; there is no kill path. A real process
+// stands in for the takeover so "still running" is checked, not assumed.
+func TestEnsureDaemon_CancelNeverKillsTakeover(t *testing.T) {
+	useBuild(t, "v2")
+	f := startFakeDaemon(t, HandoffVersion, twoLive)
+	var pid int
+	spawn := func(string) (int, <-chan int, error) {
+		cmd := exec.Command("sleep", "30")
+		if err := cmd.Start(); err != nil {
+			return 0, nil, err
+		}
+		pid = cmd.Process.Pid
+		t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+		return pid, make(chan int), nil // never reports
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelledAt := make(chan time.Time, 1)
+	time.AfterFunc(200*time.Millisecond, func() { cancelledAt <- time.Now(); cancel() })
+	policy, asked := recordPolicy(true)
+	err := ensureDaemon(ctx, f.path, EnsureOptions{Restart: policy}, testHooks(spawn))
+	if d := time.Since(<-cancelledAt); !errors.Is(err, context.Canceled) || d > 100*time.Millisecond {
+		t.Fatalf("err %v %v after the cancel; want context.Canceled within 100 ms", err, d)
+	}
+	if len(*asked) != 0 || f.shutdown.Load() {
+		t.Fatalf("asked %+v, shutdown %v after a cancel; want none, false", *asked, f.shutdown.Load())
+	}
+	if pid == 0 {
+		t.Fatal("the takeover seam was never called")
+	}
+	if err := syscall.Kill(pid, 0); err != nil {
+		t.Fatalf("the takeover is gone after the cancel: %v", err)
+	}
+}
+
+// T-09-30: the real spawn refuses from a test binary, so EnsureDaemon falls
+// back to the question with the spawn-error reason.
+func TestEnsureDaemon_TakeoverRefusedFromTestBinary(t *testing.T) {
+	if _, _, err := spawnTakeover(os.Args[0]); err == nil || !strings.Contains(err.Error(), "test binary") {
+		t.Fatalf("spawnTakeover from a test binary = %v, want the refusal", err)
+	}
+	useBuild(t, "v2")
+	f := startFakeDaemon(t, HandoffVersion, twoLive)
+	policy, asked := recordPolicy(false)
+	if err := EnsureDaemon(context.Background(), f.path, EnsureOptions{Restart: policy}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*asked) != 1 || (*asked)[0].MoveFailed != "the new version exited" {
+		t.Fatalf("asked %+v, want one question with the spawn-error reason", *asked)
 	}
 }
