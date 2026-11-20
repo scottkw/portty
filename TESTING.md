@@ -25,13 +25,15 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **137** `*_test.go` files | `internal/`, repo root | `GOTOOLCHAIN=go1.26.11 go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
-| vitest (frontend) | **93** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers), the browser share viewer's input framing (`web/assets/terminal.js`) |
+| Go unit/integration | **145** `*_test.go` files | `internal/`, repo root | `GOTOOLCHAIN=go1.26.11 go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
+| vitest (frontend) | **95** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers), the browser share viewer's input framing (`web/assets/terminal.js`) |
 | Playwright e2e | **7** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (the guest sees only the terminal: WEBCHAT-03, CHAT-01), live light/dark (THEM-01) |
 | build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **238** | — | — | — |
+| **Total** | **248** | — | — | — |
 
 > **Toolchain:** Go commands in this repo run with `GOTOOLCHAIN=go1.26.11`, the `toolchain` line in go.mod. With a newer Go installed, `GOTOOLCHAIN=auto` never downgrades to the pin, so set it by hand (`build.sh` exports it from go.mod unless the caller already set one). The root package refuses to compile under Go 1.27 (`toolchain_guard.go`, build tag `go1.27`) because tailscale.com v1.98.3's JSON decoding breaks with Go 1.27's encoding/json (tailcfg's `format:nano` tag), a run-time failure the compiler would not catch. When tailscale.com is upgraded, run `TestTailscaleJSON_FormatTagCanary` under the new Go first, then remove the go.mod toolchain line and toolchain_guard.go together.
+
+> Note: Portty Phase 9 (upgrades keep sessions, UPGR-01..UPGR-05): Go **145** (+8: internal/pty/adopt_test.go, internal/fdpass/fdpass_test.go, internal/webserver/listener_test.go, internal/relay/handoff_state_test.go, internal/relay/handoff_fuzz_test.go, internal/daemon/handoff_test.go, internal/daemon/handoff_fault_test.go, internal/daemon/handoff_it_test.go), vitest **95** (+2: frontend/src/components/__tests__/App.update-needed.test.tsx, frontend/src/lib/hostReconnect.test.ts), Playwright **7**, build-script **1**, total **248**. New files prove: a session adopted from passed PTY fds with a kqueue exit watch and a kill that never signals a dead pid (adopt_test); SCM_RIGHTS fd passing that closes every fd on a bad message, peer uid/pid, and the lock and unix listener moving with their fds (fdpass_test); the share server started on a passed listener and `api` on /info (listener_test); hub freeze/thaw and a HubState that round-trips byte for byte through gob into a staged hub, in and out of the alt screen (handoff_state_test, handoff_fuzz_test with `FuzzHandoffRoundTrip`); the two-phase daemon handoff, its refusals and its secret-free log (handoff_test); a fault at every handoff step on both sides leaving the old daemon serving, never two readers, the freeze gate, the SIGTERM guard and the lock held throughout (handoff_fault_test); the Update needed banner (App.update-needed); a host tab's re-auth verdict (hostReconnect). Edited in place: internal/daemon/api_test.go (`api: 2`, `handoff: 1`), client_test.go (HealthInfo, the 503 + Retry-After wait), process_test.go (ctx cancel, the takeover status pipe, the EnsureDaemon handoff branch and its DEBT-08 fallback), testmain_test.go (the fake-takeover switch), internal/pty/native_test.go (freeze reads, large writes block), internal/relay/server_test.go (1012 restart close), internal/attach/loop_test.go (`TestRun_VerdictEndedStops`), cmd_attach_test.go (`TestAttachLocal_Reauth`), cmd_cli_test.go (update needed, couldn't-move copy), cmd_daemon_test.go (`--takeover` routing), app_test.go (Quit All cancels an ensure, SIGTERM quits the GUI only, a system power-off is not cancelled, couldn't-move, update needed), frontend/src/components/__tests__/App.daemon-restart.test.tsx (one modal, couldn't-move copy), TerminalPanel.reconnect.test.tsx (host tabs now reconnect after a 1012 while the session is listed and stop quietly when it is gone; this replaces the old "host-path tabs never reconnect" case). **Env-gated:** `TestHandoffIT` (handoff_it_test.go) skips unless `PORTTY_HANDOFF_IT=1` with prebuilt A, B, B-fault (`-tags vmpreview`) and v1.1 binaries; it runs in the office Tart VM only (09-VM-CHECKS.md rows I-01..I-03, M-114), never on the host. The vmpreview hooks: `PORTTY_VMPREVIEW_HANDOFF_FAULT=<side>:<step>:exit|pauseN` (internal/daemon/handoff_vmpreview.go) and `PORTTY_VMPREVIEW_MIN_DAEMON_API` (internal/daemon/compat_vmpreview.go), compiled only with `-tags vmpreview`. Section 4: UPGR rows. Section 5: Category AY with M-105..M-115; M-104 restated for the handoff era.
 
 > Note: Portty Phase 8 plan 08-06 code-review fixes (08-06-REVIEW-FIX.md): no new test files — Go **137**, vitest **93**, Playwright **7**, build-script **1**, total **238**. Edited in place: internal/daemon/process_test.go, app_test.go, app_respawn_test.go, cmd_cli_test.go, cmd_attach_test.go, dispatch_test.go (`version` in the usage list), frontend/src/components/__tests__/App.daemon-restart.test.tsx. Section 4: DEBT-08 rows. Section 5: M-104 steps 3 to 5.
 
@@ -672,6 +674,30 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | DEBT-08 | cmd_cli_test.go | Go | Portty 08-06 review fix: `TestRestartDaemonFlagPlacement` (WR-04: the flag counts only among the flags right after the command, `daemon status` included; after an argument, as in `rename <id> --restart-daemon`, it is a placement error; after `--` it is a value; `portty --restart-daemon list` becomes `list --restart-daemon`; a bare flag needs a command), `TestCLINeedsDaemon` (IN-04: health, version and any `-h`/`-help`/`--help` skip the daemon), and `TestEnsureCLIDaemon_RestartConsent` gains the placement and `--keep-daemon` refusal text and the `--keep-daemon` case |
 | DEBT-08 | cmd_attach_test.go | Go | Portty 08-06 review fix IN-08: `TestEnsureLocalDaemon_KeepsMismatchedDaemon`: the attach reconnect passes `keepMismatchedDaemon`, which keeps a mismatched daemon with 2, 1 or an unknown count of sessions |
 | DEBT-08 | frontend/src/components/__tests__/App.daemon-restart.test.tsx | vitest | Portty 08-06 review fix: a rejected Restart Now keeps the dialog with the new count, the error line and enabled buttons (IN-08, WR-01); a failed Restart Now that stopped the old daemon closes the dialog and the error banner shows the message (IN-02) |
+| UPGR-01 | internal/pty/adopt_test.go | Go | Portty 09-02 (darwin): `TestAdopt_FromPassedFds` (a session rebuilt from PTY fds passed over SCM_RIGHTS reads and writes the same shell), `TestExitWatch_Orphan`, `TestExitWatch_AlreadyGone`, `TestExitWatch_NonChildKilled` (the kqueue EVFILT_PROC watch reports a non-child's exit, at once for a gone pid), `TestAdopted_ReapNaturalExit`, `TestKillAdopted` (an exited adopted session is never signalled: the Pitfall 9 pin) |
+| UPGR-01 | internal/fdpass/fdpass_test.go | Go | Portty 09-02: `TestSendRecv_PipeFds`, `TestRecv_TruncatedClosesFds` and `TestRecv_CountMismatch` (every fd the kernel delivered is closed on a bad message), `TestPeerUID`, `TestPeerPID`, `TestFlockFollowsPassedFd` (the daemon lock moves with its fd), `TestUnixListenerMovesWithoutUnlink` (the socket keeps its path) |
+| UPGR-01 | internal/webserver/listener_test.go | Go | Portty 09-02: `TestWebServer_StartOnPassedListener` (the share server serves a handed-over TCP listener, bind check kept) and `TestSessionInfo_ReportsAPIVersion` (`api` on /info, UPGR-04) |
+| UPGR-01 | internal/pty/native_test.go | Go | Portty 09-02: `TestSession_FreezeIdleRead`, `TestSession_FreezeTrulyIdleShell` (a read deadline stops the read without closing the session), `TestSession_LargeWriteBlocksNotEAGAIN` (a 1 MiB write through the non-blocking dup blocks and completes), `TestSession_NoDeadlineWithoutDup` |
+| UPGR-02 | internal/relay/handoff_state_test.go | Go | Portty 09-03: `TestHub_FreezeThaw`, `TestHub_FreezeWithoutDeadline`, `TestHub_FreezeWhileEnding`, `TestHub_FrozenResizeAppliedOnThaw` (no byte lost, Done never closed); `TestHandoffState_RoundTripPlain`, `TestHandoffState_RoundTripCorpus` (13 cases in and out of the alt screen: every resume delta, the late-joiner render and continuations equal a reference hub), `TestHandoffState_ExportReseedsSelf`, `TestHandoffState_DigestDetectsDifference`, `TestHandoffState_ImportValidates` (13 invalid fields refused), `TestHandoffState_StagedReadsNothing`, `TestHubManager_AddStaged` |
+| UPGR-02 | internal/relay/handoff_fuzz_test.go | Go | Portty 09-03: `TestHandoffRoundTrip_Streams` (300 streams, 60 under -short: the imported hub and the reseeded old hub match an emulator fed every byte) and `FuzzHandoffRoundTrip` (seed corpus in the gate) |
+| UPGR-02 | internal/relay/server_test.go | Go | Portty 09-03: `TestRestartViewers_Close1012` (viewers get 1012 "service restart" and the done channel waits for the close handshake), `TestRestartViewers_NilRestartFallsBack`, `TestRestartViewers_NoSubscribers` |
+| UPGR-01 | internal/daemon/handoff_test.go | Go | Portty 09-04: `TestHandoff_HappyPath` (two daemons in one process: every session, ring, history, share record and listener moves; the old daemon exits without ending a session; viewers resume with a delta), `TestHandoff_RestartDrainBounded`, `TestHandoff_CertWarmBeforeHello`, `TestHandoff_RouteOnlyOnUnixSocket`, `TestHandoff_RefusesOtherUID`, `TestHandoff_RefusesOlderRelease`, `TestHandoff_NoSecretsInLog` |
+| UPGR-03 | internal/daemon/handoff_fault_test.go | Go | Portty 09-04: `TestHandoffFault_EveryStep` (10 steps on both sides: non-zero outcome, descriptors back to baseline, sessions running, viewers and resumes contiguous), `TestHandoffFault_NoThawUntilTakeoverExits`, `TestHandoffFault_CommittedWriteFailsOldAlive`, `TestHandoffFault_OldDiesAfterStateSent`, `TestHandoffFault_OldDiesMidState`, `TestHandoffFault_OldDiesAfterCommit`, `TestHandoffFault_NewHangsAfterCommit`, `TestHandoffFault_AbortBeforeThaw`, `TestHandoff_OneAtATime`, `TestHandoff_FreezeGate`, `TestHandoff_SIGTERMAfterCommitKeepsSocket`, `TestHandoff_LockHeldThroughout`, `TestHandoff_TimeoutsFitClientRetry`, `TestHandoffFault_SeamNilInRelease` (never two readers of one PTY) |
+| UPGR-01 | internal/daemon/handoff_it_test.go | Go | Portty 09-06, env-gated (`PORTTY_HANDOFF_IT=1`, office Tart VM only; skips in the gate): `TestHandoffIT` with prebuilt binaries: `upgrade` (A to B: same ids and shell pids, `/health` B, a viewer on `attach.Run` reconnects with no gap or repeat, a fresh viewer gets the pre-upgrade history, no shell sees the status pipe or its variable; UPGR-02), `fault` (`new:before-ready:exit`: rc 1 with the couldn't-move line and the DEBT-08 refusal, A keeps serving; UPGR-03), `from-v1.1` (plain DEBT-08 refusal); 09-VM-CHECKS.md I-01..I-03 |
+| UPGR-01 | internal/daemon/process_test.go | Go | Portty 09-05: `TestStartDetachedTakeover_Outcomes`, `TestTakeoverStatus_FromEnv`, `TestEnsureDaemon_HandsOff` (committed: no question), `TestEnsureDaemon_BusyThenReady`, `TestEnsureDaemon_HandoffFailedButNowCurrent`, `TestEnsureDaemon_SlowCommitNoQuestion`, `TestEnsureDaemon_NoWallClockDecision`, `TestEnsureDaemon_ZeroSessionsPlainRestart`, `TestEnsureDaemon_NoHandoffForKeep`, `TestEnsureDaemon_CancelNeverKillsTakeover`, `TestEnsureDaemon_TakeoverRefusedFromTestBinary` |
+| UPGR-03 | internal/daemon/process_test.go | Go | Portty 09-05: `TestEnsureDaemon_HandoffFailsToDebt08` (outcomes 4, 5, 6, 1 and a spawn error fall back to the DEBT-08 question with the couldn't-move reason, keep and restart) and `TestEnsureDaemon_V11GetsPlainDebt08` (handoff 0 or another version: the plain question) |
+| UPGR-05 | internal/daemon/process_test.go | Go | Portty 09-01: `TestEnsureDaemon_CancelBeforeSpawn`, `TestStartDaemon_CancelDuringLockWait`, `TestStartDaemon_CancelAfterSpawnKillsChild` (a cancelled ensure spawns nothing or kills its own fresh child) |
+| UPGR-04 | internal/daemon/api_test.go | Go | Portty 09-01/09-04: `TestAPIHealth` expects `"api":2` and `"handoff":1` |
+| UPGR-04 | internal/daemon/client_test.go | Go | Portty 09-01: `TestHealthInfo` (an absent `api` reads as 1) and `TestDaemonClient_Waits503` (a frozen daemon's 503 with Retry-After is waited out within the 20 s budget; a bare 503 is not) |
+| UPGR-01 | cmd_daemon_test.go | Go | Portty 09-05: `TestCmdDaemon_TakeoverRoutes` (`portty daemon --takeover` runs RunTakeover; it is not in the usage) |
+| UPGR-04 | cmd_cli_test.go | Go | Portty 09-01: `TestEnsureCLIDaemon_UpdateNeeded` (the one-line update-needed refusal) and `TestEnsureCLIDaemon_MoveFailedCopy` (the couldn't-move line before the DEBT-08 refusal, UPGR-03) |
+| UPGR-02 | cmd_attach_test.go | Go | Portty 09-06: `TestAttachLocal_Reauth` (a local attach re-auths from the session list: listed and running dials the re-read port; missing or stopped ends it; unreachable runs ensureLocalDaemon once, then ends, dials or retries) |
+| UPGR-02 | internal/attach/loop_test.go | Go | Portty 09-06: `TestRun_VerdictEndedStops` (VerdictEnded ends Run with ErrSessionEnded and no redial) |
+| UPGR-05 | app_test.go | Go | Portty 09-01: `TestQuitAll_CancelsRunningEnsure`, `TestOnTerminate_QuitsGUIOnly` (SIGTERM quits the GUI, never the daemon), `TestSystemPowerOff_AllowsQuit` (logout/restart/shutdown is not cancelled), `TestRestartConsent_MoveFailed` (UPGR-03), `TestDaemonUpdateNeeded` (UPGR-04) |
+| UPGR-04 | frontend/src/components/__tests__/App.update-needed.test.tsx | vitest | Portty 09-01: describe "App — Update needed banner (UPGR-04)": the banner at load, on `daemon:update-needed`, and none for a compatible daemon |
+| UPGR-05 | frontend/src/components/__tests__/App.daemon-restart.test.tsx | vitest | Portty 09-01: a quit request while the restart dialog is open answers Not Now and shows only the Quit dialog; the couldn't-move first sentence after a failed handoff and the count line only otherwise (UPGR-03) |
+| UPGR-02 | frontend/src/lib/hostReconnect.test.ts | vitest | Portty 09-06: describe "hostReconnectVerdict": retry when the relay port or the session list cannot be read; stop (ended) when the session is missing or stopped; ok with the re-read port when it is running |
+| UPGR-02 | frontend/src/components/__tests__/TerminalPanel.reconnect.test.tsx | vitest | Portty 09-06: a host-path tab reconnects after 1012 with `?resume=` from the re-read port, shows the reconnecting banner at 3 s and keeps its buffer on a delta; a host-path tab whose session the daemon no longer lists stops quietly (no new socket, no banner). Guest cases unchanged |
 
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 
@@ -1293,7 +1319,7 @@ Rig as for Category AV (Portty 08-05; Claude runs them in the two Tart VMs, WebG
 
 Rig: the home VM only, two ad-hoc signed builds of the same commit that differ only in `-X main.Version=` (A and B), installed in place at `~/ptest/Portty.app` with `rm -rf` and `ditto` (08-VM-CHECKS.md U-01 method). Sessions are made with A's CLI and given a ticker through the expect driver (`cli.sh`); `/sessions/<id>/tail` over the daemon socket shows them advancing.
 
-- **M-104** An upgrade asks before it ends live sessions (DEBT-08).
+- **M-104** An upgrade asks before it ends live sessions (DEBT-08). Since Phase 9 the question appears only when the running daemon cannot hand off (a v1.1 daemon, no `handoff` in `/health`) or the handoff failed (M-107, M-108); a successful handoff asks nothing (M-105). So A here is a v1.1 build (or a vmpreview B-fault takeover, as in M-107), and B is a v1.2 build.
   1. GUI, Not Now: A's GUI and two ticking sessions; quit A's GUI (the A daemon stays); install and launch B. The window shows "Update Portty's background service?" with "2 sessions are running. Restarting ends them.", Not Now and Restart Now. Click Not Now: the dialog closes, both tabs are open on the A daemon (same pid, `/health` still A), typing into each tab reaches its shell, and no prompt comes back during the launch (30 s).
   2. GUI, Restart Now: quit and relaunch B; the dialog asks again. Click Restart Now: one daemon reporting B (ppid = the GUI), the old shells are gone, `/sessions` is `[]`, the window shows No Open Sessions and no error banner.
   3. CLI: A's CLI starts a daemon with two ticking sessions (no GUI); install B. B's `portty list` exits 1 with `portty: the running daemon is version <A> with 2 live sessions; restarting it to version <B> would end them. Re-run as 'portty <command> --restart-daemon …' to restart anyway, or as 'portty <command> --keep-daemon …' to use it as it is.` and the tickers keep advancing; `portty list --restart-daemon` exits 0 and the daemon is B. With no sessions, B's `portty list --local` restarts an A daemon at once (rc 0).
@@ -1301,7 +1327,78 @@ Rig: the home VM only, two ad-hoc signed builds of the same commit that differ o
   5. Start minimized (08-06-REVIEW-FIX WR-03): with Start Minimized on and the A daemon holding two sessions, launch B; the window and Dock icon appear with the dialog. Repeat with the window hidden by Quit GUI Only before a poller-raised prompt.
   - _Last run:_ 2026-11-19, build 9c2c9c20: G-01, G-02 and G-03 PASS (steps 1 to 3, before the 08-06 review fixes); then build dcbe999d: G-00 (bare launch) and G-04 to G-06 PASS (steps 4 and 5, after the review fixes). Evidence in .planning/phases/08-debt-cleanup/08-VM-CHECKS.md.
   - _Why not automatable:_ two real app builds installed in place over a running daemon, native clicks in the GUI dialog and live PTYs. The decision logic is covered by the Section 4 DEBT-08 rows.
-  - _Source:_ 08-06-PLAN.md; 08-VERIFICATION.md follow-up 1 and the user decision of 2026-11-19.
+  - _Source:_ 08-06-PLAN.md; 08-VERIFICATION.md follow-up 1 and the user decision of 2026-11-19. Restated for the handoff era in 09-06 (09-CONTEXT "First upgrade from v1.1").
+
+### Category AY — Upgrades Keep Sessions (UPGR-01..UPGR-05)
+
+Rig: the office VM (`portty-test`), two ad-hoc signed builds of one commit that differ only in `-X main.Version=` (A and B; B-fault is B built with `-tags vmpreview`), installed in place at `~/ptest/Portty.app` with `rm -rf` and `ditto` (08-VM-CHECKS.md U-01 method); a v1.1 build for the first-upgrade rows. Sessions get a ticker; `/sessions/<id>/tail` and the viewers show them advancing. Fault injection (`PORTTY_VMPREVIEW_HANDOFF_FAULT=<side>:<step>:exit|pauseN`) only inside the VM. Evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md.
+
+- **M-105** A two-build upgrade keeps every session (SC1, UPGR-01).
+  1. A's GUI with two ticking sessions (one running a full-screen app); quit A's GUI; install and launch B.
+  2. PASS when: no dialog; the same session ids and shell pids (ppid 1 after A exits); `/health` reports B with `api` 2 and `handoff` 1; the tickers never stop; the full-screen app redraws correctly.
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ two real app builds installed over a running daemon and a native GUI. The in-process handoff is covered by handoff_test.go; the real binaries by TestHandoffIT (M-114).
+  - _Source:_ 09-06-PLAN.md; ROADMAP Phase 9 SC1.
+- **M-106** Viewers reconnect with a delta (SC2, UPGR-02).
+  1. During M-105, keep a local tab, a peer tab on the home Mac, a browser share link and a `portty attach` open on a ticking session.
+  2. PASS when each shows the reconnecting state at most briefly, then resumes with no duplicated or missing tick, and the local tab and local attach reconnect by themselves.
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ a peer Mac, a browser share over the tailnet and a native GUI. Covered in part by TerminalPanel.reconnect.test.tsx, hostReconnect.test.ts, cmd_attach_test.go and loop_test.go (Section 4 UPGR-02 rows).
+  - _Source:_ 09-06-PLAN.md; ROADMAP Phase 9 SC2.
+- **M-107** A killed takeover leaves the old daemon serving (SC3, UPGR-03).
+  1. With A serving two ticking sessions, run B-fault with `PORTTY_VMPREVIEW_HANDOFF_FAULT=new:<step>:exit` for a step before COMMIT (and a `pauseN` step killed with `kill -9`).
+  2. PASS when: B prints the couldn't-move line and the DEBT-08 question (CLI) or the dialog's couldn't-move sentence (GUI); `/health` still reports A; every shell is alive under A; viewers never disconnect.
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ fault injection in real processes and a native dialog. In-process steps are covered by handoff_fault_test.go; one real-binary step by TestHandoffIT `fault`.
+  - _Source:_ 09-06-PLAN.md; ROADMAP Phase 9 SC3.
+- **M-108** A v1.1 daemon gets DEBT-08 (SC3/SC4, 09-CONTEXT "First upgrade from v1.1").
+  1. A v1.1 daemon with two sessions; run B's CLI and launch B's GUI.
+  2. PASS when: the plain DEBT-08 refusal (CLI, rc 1) and dialog (GUI), no couldn't-move line, and Not Now keeps the v1.1 daemon serving.
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ a v1.1 app build and a native dialog. The CLI path is covered by TestHandoffIT `from-v1.1`.
+  - _Source:_ 09-06-PLAN.md; 09-CONTEXT.md.
+- **M-109** Update needed (SC4, UPGR-04).
+  1. Launch a vmpreview GUI and CLI with `PORTTY_VMPREVIEW_MIN_DAEMON_API=3` against a running daemon.
+  2. PASS when the GUI shows the "Update needed" banner and the CLI fails with the one-line update-needed message, with no failing calls behind them.
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ a native GUI with a VM-only hook. Covered by App.update-needed.test.tsx and cmd_cli_test.go.
+  - _Source:_ 09-06-PLAN.md; ROADMAP Phase 9 SC4.
+- **M-110** SIGTERM quits the GUI only (SC5, UPGR-05).
+  1. With sessions running, `kill -TERM <GUI pid>`.
+  2. PASS when the GUI exits at once, the daemon keeps running with every session, and relaunching shows them.
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ a real Wails process and signal delivery. The handler is covered by `TestOnTerminate_QuitsGUIOnly`.
+  - _Source:_ 09-06-PLAN.md; ROADMAP Phase 9 SC5.
+- **M-111** Quit All during an approved restart (SC5, UPGR-05).
+  1. Against a daemon whose restart was approved, use the tray's Quit All while the ensure is still running.
+  2. PASS when the GUI quits at once and no fresh daemon is left behind.
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ a tray click during a timed native flow. Covered by `TestQuitAll_CancelsRunningEnsure` and the cancel tests in process_test.go.
+  - _Source:_ 09-06-PLAN.md; 08-06 IN-07.
+- **M-112** Cmd-Q under the restart dialog (SC5, UPGR-05).
+  1. With the DEBT-08 restart dialog open, press Cmd-Q.
+  2. PASS when only the Quit dialog shows (the restart dialog answered Not Now), never two stacked dialogs.
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ native key events and modal stacking. Covered by App.daemon-restart.test.tsx.
+  - _Source:_ 09-06-PLAN.md; ROADMAP Phase 9 SC5.
+- **M-113** A macOS restart is not cancelled (09-CONTEXT logout decision).
+  1. With the GUI open, restart the VM from the Apple menu (or `osascript -e 'tell app "System Events" to restart'`).
+  2. PASS when the VM restarts without Portty cancelling or delaying it (no "Portty canceled restart" alert).
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ a real macOS logout/restart sequence (the swizzled `applicationShouldTerminate:`).
+  - _Source:_ 09-06-PLAN.md; 09-CONTEXT.md.
+- **M-114** TestHandoffIT in the VM (UPGR-01..UPGR-03).
+  1. On the host: build A, B, B-fault (`-tags vmpreview`) and a v1.1 CLI with `go build -ldflags "-X main.Version=…"`, and `go test -c ./internal/daemon/`; copy them to the office VM with `tar` over SSH.
+  2. In the VM: `PORTTY_HANDOFF_IT=1 PORTTY_HANDOFF_IT_A=… _B=… _BFAULT=… _OLD=… ./daemon-it.test -test.run '^TestHandoffIT$' -test.v`. PASS when all three subtests pass and no `portty-it` process or `/tmp/pit-*` dir is left.
+  - _Last run:_ 2026-11-20, product code a13f4928 (test 23509107): I-01, I-02 and I-03 PASS; evidence in .planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md.
+  - _Why not automatable:_ real daemons from two builds must not run on the user's Mac (firewall alerts, host safety), and the VM has no Go toolchain, so it cannot run in the CI gate (where it skips).
+  - _Source:_ 09-06-PLAN.md; 09-RESEARCH.md Test Strategy "Integration", Pitfall 12.
+- **M-115** An old daemon killed after sending its state leaves every session on the new daemon (SC3, plan check W2).
+  1. A vmpreview A started with `PORTTY_VMPREVIEW_HANDOFF_FAULT=old:after-state-sent:pause30`; run B; `kill -9` the A daemon during the pause.
+  2. PASS when every session is served by B (same ids, shells alive), `/health` reports B, and viewers resume with no gap.
+  - _Last run:_ pending (09-07).
+  - _Why not automatable:_ killing a real process mid-handoff. Covered in process by `TestHandoffFault_OldDiesAfterStateSent`.
+  - _Source:_ 09-06-PLAN.md; 09-04-SUMMARY.md notes for later plans.
 ---
 
 ## 6. Standing Convention
