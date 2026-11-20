@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -226,6 +227,165 @@ func TestHub_FrozenResizeAppliedOnThaw(t *testing.T) {
 	defer mu.Unlock()
 	if len(calls) != 1 || calls[0] != [2]int{100, 30} {
 		t.Fatalf("resizeFn calls after Thaw: %v, want one 100x30", calls)
+	}
+}
+
+// settleHub imports and starts a hub whose grid is 85x29 after a genuine
+// resize, so geomEnd is set and below the end, as in V-02. calls returns
+// the resizeFn calls so far.
+func settleHub(t *testing.T) (hub *Hub, calls func() [][2]int) {
+	t.Helper()
+	r0, w0, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w0.Close(); _ = r0.Close() })
+	orig := NewHub("settle", r0, io.Discard, DefaultScrollbackBytes, nil)
+	resizeHub(t, orig, 80, 24) // the spawn grid: not genuine
+	feedHubs(plainShellStream(0, 4<<10, 80), 1<<10, orig)
+	resizeHub(t, orig, 85, 29) // genuine: geomEnd > 0
+	feedHubs(plainShellStream(1000, 2<<10, 85), 1<<10, orig)
+	freezeIdle(t, orig)
+	st, err := orig.Export()
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if st.GeomEnd == 0 || st.GeomEnd >= st.Ring.End || st.PtyCols != 85 || st.PtyRows != 29 {
+		t.Fatalf("fixture: geomEnd %d end %d grid %dx%d", st.GeomEnd, st.Ring.End, st.PtyCols, st.PtyRows)
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.Close(); _ = r.Close() })
+	var mu sync.Mutex
+	var got [][2]int
+	hub, err = NewHubFromState(gobRoundTrip(t, st), r, io.Discard, func(c, rows int) error {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, [2]int{c, rows})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("NewHubFromState: %v", err)
+	}
+	hub.Start()
+	t.Cleanup(hub.Shutdown)
+	return hub, func() [][2]int {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(got)
+	}
+}
+
+// joinLocal joins a local viewer at resume and reports its size, the way a
+// reconnecting GUI tab or `portty attach` does. It returns the replay mode
+// and whether a grid frame reached the viewer.
+func joinLocal(t *testing.T, hub *Hub, resume uint64, cols, rows int) (*Subscriber, string, bool) {
+	t.Helper()
+	sub := &Subscriber{Msgs: make(chan []byte, 256), CloseSlow: func() {}, Origin: "local"}
+	r := hub.Join(sub, resume, true)
+	for len(hub.TakePending(sub)) > 0 {
+	}
+	if err := hub.ResizeClient(sub, cols, rows); err != nil {
+		t.Fatal(err)
+	}
+	return sub, r.Mode, drainResize(sub)
+}
+
+// drainResize empties sub's queue and reports whether it held a grid frame.
+func drainResize(sub *Subscriber) bool {
+	seen := false
+	for {
+		select {
+		case f := <-sub.Msgs:
+			seen = seen || f[0] == MsgResize
+		default:
+			return seen
+		}
+	}
+}
+
+// TestHub_HandoffSettleKeepsGrid (V-02): after a handoff the local viewers
+// rejoin one by one. The 100x30 attach first, then the 85x29 GUI tab, must
+// leave the imported 85x29 grid alone, with no grid frame and no geomEnd
+// bump, so the tab's resume is a delta. A shrink still applies inside the
+// window; a grow waits for the window's end.
+func TestHub_HandoffSettleKeepsGrid(t *testing.T) {
+	hub, calls := settleHub(t)
+	hub.emuMu.Lock()
+	geomEnd := hub.geomEnd
+	hub.emuMu.Unlock()
+	end := hub.scrollback.End()
+
+	a, mode, grid := joinLocal(t, hub, end, 100, 30)
+	if mode != ReplayDelta || grid {
+		t.Fatalf("attach: mode %s, grid frame %v; want a delta and no grid frame", mode, grid)
+	}
+	b, mode, grid := joinLocal(t, hub, end, 85, 29)
+	if mode != ReplayDelta || grid {
+		t.Fatalf("GUI tab: mode %s, grid frame %v; want a delta and no grid frame", mode, grid)
+	}
+	hub.emuMu.Lock()
+	gotGeom := hub.geomEnd
+	hub.emuMu.Unlock()
+	if gotGeom != geomEnd || hub.Cols() != 85 || hub.Rows() != 29 || len(calls()) != 0 {
+		t.Fatalf("grid %dx%d geomEnd %d (was %d) resizeFn %v; want 85x29 untouched", hub.Cols(), hub.Rows(), gotGeom, geomEnd, calls())
+	}
+
+	// A shrink applies at once, and coming back up to the imported grid is allowed.
+	if err := hub.ResizeClient(b, 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	if err := hub.ResizeClient(b, 85, 29); err != nil {
+		t.Fatal(err)
+	}
+	if got := calls(); !slices.Equal(got, [][2]int{{80, 24}, {85, 29}}) {
+		t.Fatalf("resizeFn %v, want 80x24 then 85x29", got)
+	}
+
+	// Both viewers grow: capped until the window ends, then applied once.
+	if err := hub.ResizeClient(b, 110, 35); err != nil {
+		t.Fatal(err)
+	}
+	drainResize(a)
+	drainResize(b)
+	if hub.Cols() != 85 || hub.Rows() != 29 || len(calls()) != 2 {
+		t.Fatalf("grew inside the window: %dx%d, resizeFn %v", hub.Cols(), hub.Rows(), calls())
+	}
+	hub.endSettle() // what the settle timer does
+	if hub.Cols() != 100 || hub.Rows() != 30 || !drainResize(a) {
+		t.Fatalf("after the window: %dx%d, want 100x30 broadcast", hub.Cols(), hub.Rows())
+	}
+	if got := calls(); len(got) != 3 || got[2] != [2]int{100, 30} {
+		t.Fatalf("resizeFn %v, want a third call 100x30", got)
+	}
+	if err := hub.ResizeClient(a, 120, 40); err != nil {
+		t.Fatal(err)
+	}
+	if hub.Cols() != 110 || hub.Rows() != 35 {
+		t.Fatalf("a grow after the window: %dx%d, want 110x35", hub.Cols(), hub.Rows())
+	}
+}
+
+// TestHub_HandoffSettleSkipsFrozen: the window ending on a hub frozen for
+// the next handoff touches nothing; Thaw (a rollback) applies the grid.
+func TestHub_HandoffSettleSkipsFrozen(t *testing.T) {
+	hub, calls := settleHub(t)
+	if hub.settleTimer == nil {
+		t.Fatal("Start armed no settle timer on an imported hub")
+	}
+	a, _, _ := joinLocal(t, hub, hub.scrollback.End(), 100, 30)
+	if err := hub.Freeze(); err != nil {
+		t.Fatalf("Freeze: %v", err)
+	}
+	hub.endSettle()
+	if hub.Cols() != 85 || len(calls()) != 0 || drainResize(a) {
+		t.Fatalf("the window's end resized a frozen hub: %dx%d, resizeFn %v", hub.Cols(), hub.Rows(), calls())
+	}
+	hub.Thaw()
+	if hub.Cols() != 100 || hub.Rows() != 30 || len(calls()) != 1 {
+		t.Fatalf("after Thaw: %dx%d, resizeFn %v; want 100x30 once", hub.Cols(), hub.Rows(), calls())
 	}
 }
 

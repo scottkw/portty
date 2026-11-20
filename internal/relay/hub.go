@@ -101,6 +101,12 @@ type Hub struct {
 	// when no local host is connected (D-01). (VIEW-01, VIEW-02)
 	ptyCols int
 	ptyRows int
+	// settleCols, settleRows: the grid a hub imported from a handoff came
+	// with, a cap on the arbiter until settleTimer (armed by Start) fires
+	// (handoffSettle). Zero otherwise. All three under mu.
+	settleCols  int
+	settleRows  int
+	settleTimer *time.Timer
 
 	// Phase 175-04 (BUG-04, #119): live per-hub VT emulator + its own guard.
 	// liveEmu is nil until EnsureLiveEmulator's first call (lazy — T-175-04-01:
@@ -503,11 +509,15 @@ func (h *Hub) ResizeClient(sub *Subscriber, cols, rows int) error {
 // before any IO.
 func (h *Hub) applyGridLocked(by, client string) error {
 	// D-02 min-among-local: iterate only local-origin subscribers with a positive size.
-	minCols, minRows := 0, 0
+	// After a handoff import the imported grid counts as one more local size
+	// until the settle window ends, so viewers rejoining one by one cannot
+	// grow it and bump geomEnd (V-02).
+	minCols, minRows, local := h.settleCols, h.settleRows, false
 	for s := range h.subscribers {
 		if s.Origin != "local" || s.Cols <= 0 || s.Rows <= 0 {
 			continue
 		}
+		local = true
 		if minCols == 0 || s.Cols < minCols {
 			minCols = s.Cols
 		}
@@ -518,7 +528,7 @@ func (h *Hub) applyGridLocked(by, client string) error {
 
 	// D-01 freeze: if no local subscriber reports a positive size, leave ptyCols/ptyRows
 	// unchanged (last host grid persists). Only update when we have a valid min.
-	needResize := (minCols > 0 && minRows > 0) && (minCols != h.ptyCols || minRows != h.ptyRows)
+	needResize := local && (minCols > 0 && minRows > 0) && (minCols != h.ptyCols || minRows != h.ptyRows)
 	oldCols, oldRows := h.ptyCols, h.ptyRows
 	if needResize {
 		h.ptyCols = minCols
@@ -704,9 +714,35 @@ func (h *Hub) frozenLocked() bool {
 	}
 }
 
-// Start runs the read loop of a staged hub (NewHubFromState), once.
+// handoffSettle is how long an imported hub's grid may only shrink: local
+// viewers rejoin the new daemon one at a time within about 1.6 s (V-02).
+const handoffSettle = 3 * time.Second
+
+// Start runs the read loop of a staged hub (NewHubFromState), once, and
+// starts its settle window.
 func (h *Hub) Start() {
-	h.startOnce.Do(func() { go h.Run() })
+	h.startOnce.Do(func() {
+		h.mu.Lock()
+		if h.settleCols > 0 && !h.closed {
+			h.settleTimer = time.AfterFunc(handoffSettle, h.endSettle)
+		}
+		h.mu.Unlock()
+		go h.Run()
+	})
+}
+
+// endSettle ends the settle window and re-runs the arbiter without the
+// imported grid. A frozen hub is left to Thaw, which re-runs it anyway.
+func (h *Hub) endSettle() {
+	h.gridMu.Lock()
+	defer h.gridMu.Unlock()
+	h.mu.Lock()
+	h.settleCols, h.settleRows = 0, 0
+	if h.freezing || h.closed {
+		h.mu.Unlock()
+		return
+	}
+	_ = h.applyGridLocked("settle", "") // releases mu; a failed PTY resize stays the next resize's to retry
 }
 
 // recordFrameLocked appends the framed bytes to the scrollback ring AND feeds the
@@ -1379,6 +1415,9 @@ func (h *Hub) Shutdown() {
 	h.closeOnce.Do(func() {
 		h.mu.Lock()
 		h.closed = true
+		if h.settleTimer != nil {
+			h.settleTimer.Stop()
+		}
 		h.mu.Unlock()
 		close(h.done)
 	})
