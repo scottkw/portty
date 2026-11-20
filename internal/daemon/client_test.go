@@ -283,6 +283,37 @@ func TestShutdownDaemon_DroppedThenRechecked(t *testing.T) {
 			t.Fatalf("/shutdown sent %d times, want 1", shutdowns.Load())
 		}
 	})
+	// IN-03 (it2): the second /shutdown gets what is left of one budget, not
+	// a fresh one. 503 at 0 s, the drop at 1 s, 503s at 1 s and 2 s, then
+	// 2 s + 1 s is past the 2.5 s budget: 4 posts (a fresh budget makes 5).
+	t.Run("the second post shares the budget", func(t *testing.T) {
+		old := frozenRetryBudget
+		frozenRetryBudget = 2500 * time.Millisecond
+		t.Cleanup(func() { frozenRetryBudget = old })
+		path := shortProcTestSocket(t, "drop")
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { ln.Close() })
+		var shutdowns atomic.Int64
+		go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+			switch {
+			case r.URL.Path == "/health":
+				w.Write([]byte(`{"status":"ok","version":"v1.2.0-new"}`)) //nolint:errcheck
+			case shutdowns.Add(1) == 2:
+				conn, _, _ := w.(http.Hijacker).Hijack()
+				conn.Close()
+			default:
+				w.Header().Set("Retry-After", "1")
+				http.Error(w, "frozen for a handoff", http.StatusServiceUnavailable)
+			}
+		}))
+		err = NewDaemonClient(path).ShutdownDaemon()
+		if err == nil || !strings.Contains(err.Error(), "503") || shutdowns.Load() != 4 {
+			t.Fatalf("err %v after %d posts; want the 503 after 4", err, shutdowns.Load())
+		}
+	})
 }
 
 // TestClientFullLifecycle tests the full round-trip: create -> list -> rename -> list -> kill -> list.

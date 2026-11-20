@@ -259,9 +259,10 @@ func (c *DaemonClient) GetRelayPort() (int, error) {
 // and still returned as an error once the wait is spent.
 func (c *DaemonClient) ShutdownDaemon() error {
 	hc := *c.http
-	hc.Timeout = 2 * time.Second // per attempt
+	hc.Timeout = 2 * time.Second                  // per attempt
+	deadline := time.Now().Add(frozenRetryBudget) // IN-03 (it2): one budget for both posts
 	post := func() (*http.Response, error) {
-		return c.doRetrying(&hc, func() (*http.Request, error) {
+		return c.doRetrying(&hc, deadline, func() (*http.Request, error) {
 			return http.NewRequestWithContext(c.reqCtx(), http.MethodPost, c.base+"/shutdown", nil)
 		})
 	}
@@ -313,11 +314,11 @@ var frozenRetryBudget = 20 * time.Second
 // doRetrying sends the request newReq builds with hc, and sends a mutating one
 // again while the daemon answers 503 with Retry-After (09-04's handoff freeze),
 // waiting Retry-After seconds (1 s if unreadable, at most 2 s) each time, until
-// frozenRetryBudget is spent; then the last 503 is returned. A GET is never
+// deadline (now + frozenRetryBudget for one call); then the last 503 is
+// returned. The first attempt is always sent. A GET is never
 // retried: a frozen daemon still serves reads. A 503 without Retry-After is
 // no freeze (e.g. Tailscale off) and is returned at once.
-func (c *DaemonClient) doRetrying(hc *http.Client, newReq func() (*http.Request, error)) (*http.Response, error) {
-	deadline := time.Now().Add(frozenRetryBudget)
+func (c *DaemonClient) doRetrying(hc *http.Client, deadline time.Time, newReq func() (*http.Request, error)) (*http.Response, error) {
 	for {
 		req, err := newReq()
 		if err != nil {
@@ -373,7 +374,7 @@ func (c *DaemonClient) SetSessionShared(id string, shared bool) (ShareResponse, 
 	}
 	// Retried like every write: a share-on that meets a handoff's freeze lands
 	// on whichever daemon serves after it (WR-01 it2).
-	resp, err := c.doRetrying(c.http, func() (*http.Request, error) {
+	resp, err := c.doRetrying(c.http, time.Now().Add(frozenRetryBudget), func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(c.reqCtx(), http.MethodPut, c.base+"/sessions/"+id+"/share", bytes.NewReader(b))
 		if err == nil {
 			req.Header.Set("Content-Type", "application/json")
@@ -437,7 +438,7 @@ func (c *DaemonClient) doJSON(method, path string, body, result any) error {
 		}
 	}
 
-	resp, err := c.doRetrying(c.http, func() (*http.Request, error) {
+	resp, err := c.doRetrying(c.http, time.Now().Add(frozenRetryBudget), func() (*http.Request, error) {
 		var reqBody io.Reader
 		if body != nil {
 			reqBody = bytes.NewReader(b)
