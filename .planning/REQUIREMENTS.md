@@ -20,6 +20,7 @@
 - [ ] **INPT-02**: The "paste may have been cut short" notice never appears for a paste that fully arrived (08 IN-06).
 - [ ] **INPT-03**: The browser share viewer shows the same partial-paste notice as the app when a socket drops mid-paste.
 - [ ] **INPT-04**: Peer-tab snapshots are keyed by host plus session everywhere, including the Retry/daemon-reconnect tab replacement (08 IN-07).
+- [ ] **INPT-06**: The viewer you're typing on sets the session's size (user decision 2026-11-19, reported in v1.1.0). Zooming (Cmd+/Cmd−) or resizing in a peer tab, the browser viewer or `portty attach` makes the shell reflow to that viewer's grid. When the host, or another viewer, types again, it takes over the size. Today viewers never drive the grid and the peer tab's zoom handler is a no-op (WebShareSessionView.tsx:197).
 - [ ] **INPT-05**: `TestExitEvent_ListSessions_ExitCodePopulatedForStopped` is deterministic under the full `-race` suite.
 
 ### File preview
@@ -75,6 +76,7 @@
 | INPT-03 | Phase 10 | Pending |
 | INPT-04 | Phase 10 | Pending |
 | INPT-05 | Phase 10 | Pending |
+| INPT-06 | Phase 10 | Pending |
 | PREV-01 | Phase 11 | Pending |
 | PREV-02 | Phase 11 | Pending |
 | PREV-03 | Phase 11 | Pending |
@@ -90,8 +92,8 @@
 | MOB-04 | Phase 14 | Pending |
 
 **Coverage:**
-- v1.2 requirements: 23 total
-- Mapped to phases: 23
+- v1.2 requirements: 24 total
+- Mapped to phases: 24
 - Unmapped: 0 ✓
 
 ---

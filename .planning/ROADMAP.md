@@ -39,7 +39,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 **Holds for every phase:** token-gated, tailnet-only links; the CSP unchanged except for what a recorded security review approves; no new cloud dependencies; Wails v2; macOS-native look; radical simplicity. VM evidence comes from two Tart VMs on the real tailnet standing in for the office and home Macs, recorded in the phase's VM-CHECKS file and as M-NN items in TESTING.md.
 
 - [ ] **Phase 9: Upgrades Keep Sessions** - The new daemon takes over live PTYs and history on upgrade, viewers resume with a delta, a failed handoff loses nothing, the daemon reports an API version, and quitting is clean
-- [ ] **Phase 10: Input Path Reliability** - A bounded input queue keeps viewers connected through long pastes, the paste notice is honest in the app and the browser, peer snapshots are keyed by host, and the exit-code test is deterministic
+- [ ] **Phase 10: Input Path Reliability** - A bounded input queue keeps viewers connected through long pastes, the paste notice is honest in the app and the browser, peer snapshots are keyed by host, the viewer you're typing on sets the session's size, and the exit-code test is deterministic
 - [ ] **Phase 11: File Preview** - `portty open <file>` shows images, PDFs and Markdown in a preview tab for app and browser viewers, over the session's own stream, under a size cap and a reviewed CSP
 - [ ] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote
 - [ ] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent
@@ -71,13 +71,14 @@ Plans:
 ### Phase 10: Input Path Reliability
 **Goal**: Pasting into a shared session is trustworthy everywhere. A long paste never gets a healthy viewer dropped, the "paste may have been cut short" notice shows exactly when a paste may really have been cut short (in the app and in the browser), and peer tabs never mix up two Macs.
 **Depends on**: Phase 9 (the input queue and pong changes run through the read pump, daemon proxy and viewer reconnect code that the handoff reworks)
-**Requirements**: INPT-01, INPT-02, INPT-03, INPT-04, INPT-05
+**Requirements**: INPT-01, INPT-02, INPT-03, INPT-04, INPT-05, INPT-06
 **Success Criteria** (what must be TRUE):
   1. A multi-megabyte paste into a slow program that doesn't echo (for example `stty raw -echo; pv -L 50k > /tmp/f`) keeps every viewer connected (a home-VM peer tab, a browser share viewer and a local tab), even when draining takes several times the 15 s heartbeat timeout. The file matches the payload byte for byte, and a viewer whose network really dies is still dropped once its backlog drains. Automated with a blocking fake hub, then re-run as M-101 on the two Tart VMs. (INPT-01)
   2. A large paste that fully arrives in an echoing shell shows no "Paste may have been cut short" notice, even when the server's outgoing queue is full as the ping arrives. A paste cut short by a real drop still shows it. (INPT-02)
   3. A browser share viewer whose socket drops mid-paste shows the same "Paste may have been cut short" notice as the app, in its status bar, with no `innerHTML` and no CSP change. Checked in a jsdom harness and with `tailscale down` on the office VM during a paste. (INPT-03)
   4. After a daemon error and Retry, no snapshot of a removed peer tab is left behind. Two Macs that hand out the same session id open as two separate tabs, each rejoining with its own delta. (INPT-04)
   5. `TestExitEvent_ListSessions_ExitCodePopulatedForStopped` passes in repeated full-package `go test -race -count=20 ./internal/daemon/` runs, and the full `-race` suite passes with nothing skipped. (INPT-05)
+  6. The viewer you're typing on sets the session's size. On the home VM, Cmd+ in a peer tab on an office session makes the shell reflow to the home grid (`tput cols` changes, the text gets bigger), and so does resizing the home window. Typing in the office local tab hands the size back to the office Mac. The same works for a browser viewer and `portty attach`. Reported on v1.1.0. (INPT-06)
 **Plans**: TBD
 **UI hint**: no
 
