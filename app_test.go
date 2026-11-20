@@ -1057,6 +1057,19 @@ func TestAnswerDaemonRestart_ApprovesShownCountOnly(t *testing.T) {
 	}
 }
 
+// 08-06-REVIEW IN-08: with no ensureDaemonFunc, App.ensure hands EnsureDaemon
+// the GUI's restart consent: the policy raises the prompt and says no.
+func TestEnsure_DefaultSeamPassesRestartConsent(t *testing.T) {
+	policy := swapEnsureDaemon(t)
+	a := &App{emitEventFunc: func(string, any) {}}
+	if err := a.ensure()("sock"); err != nil {
+		t.Fatal(err)
+	}
+	if *policy == nil || (*policy)("v1", 2) || a.GetDaemonRestartPrompt() != 2 {
+		t.Fatalf("the default seam's policy is not restartConsent (prompt %d)", a.GetDaemonRestartPrompt())
+	}
+}
+
 // 08-06-REVIEW IN-01: Restart Now with no open question does nothing. It never
 // overrides a Not Now after the fact, and never runs EnsureDaemon.
 func TestAnswerDaemonRestart_NoPendingPrompt(t *testing.T) {

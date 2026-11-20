@@ -647,6 +647,34 @@ func TestCmdAttach_BareHostNotSharing(t *testing.T) {
 	}
 }
 
+// swapEnsureDaemon replaces the package's daemon.EnsureDaemon seam and returns
+// the restart policy the last call was given.
+func swapEnsureDaemon(t *testing.T) *daemon.RestartPolicy {
+	t.Helper()
+	var got daemon.RestartPolicy
+	orig := ensureDaemon
+	ensureDaemon = func(_ string, policy daemon.RestartPolicy) error { got = policy; return nil }
+	t.Cleanup(func() { ensureDaemon = orig })
+	return &got
+}
+
+// 08-06-REVIEW IN-08: the attach reconnect keeps a daemon from another build
+// that has live sessions, or an unknown count, and never ends them.
+func TestEnsureLocalDaemon_KeepsMismatchedDaemon(t *testing.T) {
+	policy := swapEnsureDaemon(t)
+	if err := ensureLocalDaemon("sock"); err != nil {
+		t.Fatal(err)
+	}
+	if *policy == nil {
+		t.Fatal("the reconnect passed no restart policy")
+	}
+	for _, n := range []int{2, 1, -1} {
+		if (*policy)("v1", n) {
+			t.Fatalf("the reconnect restarted a mismatched daemon with %d sessions", n)
+		}
+	}
+}
+
 // swapEnsureLocalDaemon replaces the CLI respawn seam with a counter that
 // returns err, restoring it after the test.
 func swapEnsureLocalDaemon(t *testing.T, err error) *int {

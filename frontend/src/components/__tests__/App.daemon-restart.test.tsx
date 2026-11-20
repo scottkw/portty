@@ -43,6 +43,26 @@ describe('App — daemon restart consent (DEBT-08)', () => {
     expect(dialog()).toBeNull()
   })
 
+  // 08-06-REVIEW IN-08 (WR-01): a rejected Restart Now (the count changed, or the
+  // restart failed with the old daemon still up) keeps the dialog with the error.
+  it('a rejected Restart Now keeps the dialog, shows the error and re-enables the buttons', async () => {
+    const msg = 'The number of running sessions changed. Check it and choose again.'
+    await mountApp({
+      GetDaemonRestartPrompt: () => 2,
+      AnswerDaemonRestart: (restart: unknown) => {
+        if (!restart) return null
+        wailsEvents.get('daemon:restart-needed')?.(3)
+        return Promise.reject(new Error(msg))
+      },
+    })
+    await act(async () => { button('Restart Now').click() })
+    await flush()
+    expect(dialog()?.textContent).toContain('3 sessions are running. Restarting ends them.')
+    expect(dialog()?.querySelector('[role="alert"]')?.textContent).toBe(msg)
+    expect(button('Restart Now').disabled).toBe(false)
+    expect(button('Not Now').disabled).toBe(false)
+  })
+
   // 08-06-REVIEW IN-02: Go closes the question and raises daemon:error once the old daemon is gone.
   it('a failed Restart Now that stopped the old daemon closes and shows the error banner', async () => {
     const msg = "Restarting Portty's background service failed: daemon exited during startup"

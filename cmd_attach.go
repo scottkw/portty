@@ -157,8 +157,11 @@ func attachRemote(client *daemon.DaemonClient, host, session string, opts attach
 // EnsureDaemon itself refuses to spawn from a test binary. A reconnect never
 // restarts a daemon from another build that has live sessions (DEBT-08): it keeps it.
 var ensureLocalDaemon = func(socketPath string) error {
-	return daemon.EnsureDaemon(socketPath, func(string, int) bool { return false })
+	return ensureDaemon(socketPath, keepMismatchedDaemon)
 }
+
+// keepMismatchedDaemon is the attach reconnect's restart policy: always keep.
+func keepMismatchedDaemon(string, int) bool { return false }
 
 // remoteReauth runs before each redial: it picks up a restarted daemon's
 // port, starting the daemon first if it died (R6), then re-runs the WhoIs- and

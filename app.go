@@ -300,8 +300,12 @@ func (a *App) ensure() func(socketPath string) error {
 	if a.ensureDaemonFunc != nil {
 		return a.ensureDaemonFunc
 	}
-	return func(socketPath string) error { return daemon.EnsureDaemon(socketPath, a.restartConsent) }
+	return func(socketPath string) error { return ensureDaemon(socketPath, a.restartConsent) }
 }
+
+// ensureDaemon is daemon.EnsureDaemon; tests swap it to see the restart policy
+// each production caller passes (08-06-REVIEW IN-08).
+var ensureDaemon = daemon.EnsureDaemon
 
 // restartConsent is the GUI's daemon.RestartPolicy (DEBT-08). It never blocks
 // startup: unless "Restart Now" approved this count, it keeps the old daemon and
