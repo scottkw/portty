@@ -351,14 +351,24 @@ func handOff(ctx context.Context, client *DaemonClient, h ensureHooks) (done boo
 	if err != nil {
 		fmt.Fprintf(h.stderr, "EnsureDaemon: cannot start the handoff: %v\n", err)
 	} else {
-		select {
-		case code = <-outcome:
-		case <-ctx.Done():
-			return false, "", ctx.Err()
+		// Only a takeover stopped by a signal never reports (09-04 threat I2);
+		// the line is for diagnosis and decides nothing.
+		note := time.NewTimer(h.noteAfter)
+		defer note.Stop()
+	wait:
+		for {
+			select {
+			case code = <-outcome:
+				break wait
+			case <-note.C:
+				fmt.Fprintf(h.stderr, "EnsureDaemon: still waiting for the handoff (pid %d)\n", pid)
+			case <-ctx.Done():
+				return false, "", ctx.Err()
+			}
 		}
 	}
-	_ = pid
-	if code == takeoverCommitted {
+	switch code {
+	case takeoverCommitted:
 		if err := waitForDaemon(ctx, client, h.readyWait, nil, ""); err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return false, "", ctxErr
@@ -366,8 +376,20 @@ func handOff(ctx context.Context, client *DaemonClient, h ensureHooks) (done boo
 			return false, "", fmt.Errorf("EnsureDaemon: the sessions moved to the new daemon, but it is not ready: %w", err)
 		}
 		return true, "", nil
+	case takeoverBusy: // another takeover may be winning
+		if err := waitForDaemon(ctx, client, h.readyWait, nil, ""); err == nil {
+			return true, "", nil
+		} else if ctxErr := ctx.Err(); ctxErr != nil {
+			return false, "", ctxErr
+		}
 	}
-	return false, "", nil
+	// This build answering means the sessions moved after all; asking would
+	// offer to restart the daemon that now owns them.
+	if v, err := client.GetDaemonVersion(); err == nil && !StaleVersion(v) {
+		return true, "", nil
+	}
+	fmt.Fprintf(h.stderr, "EnsureDaemon: the handoff failed (outcome %d: %s)\n", code, moveFailedReason(code))
+	return false, moveFailedReason(code), nil
 }
 
 // startDaemon calls spawn once no other process holds the lock at lockPath,

@@ -774,7 +774,9 @@ func TestStartDetachedTakeover_Outcomes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+			if tc.stillLive { // only the helper still running: a reaped pid is never signalled
+				t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+			}
 			select {
 			case got := <-outcome:
 				if got != tc.want {
