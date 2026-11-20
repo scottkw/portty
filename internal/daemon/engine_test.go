@@ -1344,3 +1344,28 @@ func TestGetSessionStyledTailLines_AllQueriesNoHang(t *testing.T) {
 		t.Fatal("GetSessionStyledTailLines hung on terminal query escape sequences — relay.StripTerminalQueries did not cover all blocking sequences (FIX-01 regression)")
 	}
 }
+
+// IN-03: an import that fails after Adopt leaves no backend registry entry
+// that a later resize or kill could reach.
+func TestImportSession_FailureForgetsAdopted(t *testing.T) {
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() })
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := NewSessionEngine()
+	meta := pty.AdoptMeta{ID: "in03", Pid: cmd.Process.Pid}
+	if _, _, err := e.importSession(meta, "n", "", relay.HubState{SessionID: "in03"}, r, w); err == nil {
+		t.Fatal("an invalid hub state imported")
+	}
+	if got := e.backend.(*pty.NativePTYBackend).List(); len(got) != 0 {
+		t.Errorf("the failed import left %d sessions in the backend registry", len(got))
+	}
+	if _, ok := e.registry.Get("in03"); ok {
+		t.Errorf("the failed import is in the engine registry")
+	}
+}

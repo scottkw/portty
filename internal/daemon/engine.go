@@ -348,6 +348,7 @@ func (e *SessionEngine) importSession(meta pty.AdoptMeta, name, workDir string, 
 		err = e.manager.AddStaged(id, hub)
 	}
 	if err != nil {
+		nb.Forget(id) // IN-03: no backend entry for a session this daemon never took
 		closeSessionFiles(sess)
 		return nil, nil, err
 	}

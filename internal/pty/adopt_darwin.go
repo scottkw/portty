@@ -28,9 +28,6 @@ func (b *NativePTYBackend) Adopt(meta AdoptMeta, master, slave *os.File) (*Sessi
 	if meta.ID == "" || meta.Pid <= 1 || master == nil || slave == nil { // pid 1: killAdopted's kill(-pid) would be kill(-1)
 		return nil, fmt.Errorf("adopt: incomplete session %q (pid %d)", meta.ID, meta.Pid)
 	}
-	// First, so an exit between receipt and here is still seen (Pitfall 8).
-	codes := WatchExit(meta.Pid)
-
 	// The open file description is already non-blocking (the sender set it);
 	// the dup makes sure ours is netpoller-managed whatever master's state.
 	ioFile, err := pollableDup(master, "ptmx")
@@ -38,6 +35,11 @@ func (b *NativePTYBackend) Adopt(meta AdoptMeta, master, slave *os.File) (*Sessi
 		return nil, fmt.Errorf("adopt %s: dup master: %w", meta.ID, err)
 	}
 	_ = master.Close()
+	// After the dup, so a failed dup leaves no watcher thread behind (IN-03).
+	// An exit before this is still seen (Pitfall 8): a shell that exited
+	// stays a zombie of the old daemon, frozen and not reaping, and the
+	// registration then reports it gone at once (ESRCH).
+	codes := WatchExit(meta.Pid)
 
 	sess := &Session{
 		ID:        meta.ID,
@@ -60,6 +62,12 @@ func (b *NativePTYBackend) Adopt(meta AdoptMeta, master, slave *os.File) (*Sessi
 	}()
 	b.registry.Add(sess)
 	return sess, nil
+}
+
+// Forget drops an adopted session from the registry without signalling it:
+// an import that failed after Adopt (IN-03). The caller closes its files.
+func (b *NativePTYBackend) Forget(id string) {
+	b.registry.Remove(id)
 }
 
 // HandoffFiles returns what a handoff sends for this session: the pollable
