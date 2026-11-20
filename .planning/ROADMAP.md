@@ -57,7 +57,13 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
   3. A handoff that fails at any step loses nothing. Fault injection at each step in tests, plus one VM run that kills the new daemon mid-handoff, shows the old daemon still serving every session and viewer, the GUI or CLI saying the sessions could not be moved, and the DEBT-08 choice (the dialog, or `--restart-daemon`) offered as before. An upgrade from a v1.1 daemon, which cannot hand off, gets the same DEBT-08 choice. (UPGR-03)
   4. `/health` reports an API version. A GUI or CLI facing a daemon it cannot talk to shows a clear "update needed" state (a banner in the app; a one-line message and a non-zero exit from the CLI) instead of failing calls. A compatible older daemon kept with Not Now keeps working. (UPGR-04)
   5. Quitting is clean. `kill -TERM` quits the GUI and leaves the daemon and its sessions running. Quit All during an approved daemon restart cancels the restart and quits within a few seconds, not ~30 s. Cmd-Q while the restart dialog is open never draws a second dialog underneath it (a vitest plus a VM click check). (UPGR-05)
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 09-01-PLAN.md — Lifecycle groundwork: /health API version and "update needed" in CLI and GUI (UPGR-04); ctx-aware EnsureDaemon with Quit All cancel, couldn't-move restart copy, 503 retry; SIGTERM, logout/restart and one-modal quit fixes (UPGR-05, UPGR-03 copy)
+- [ ] 09-02-PLAN.md — Kernel substrate: pollable PTY master, fd passing (internal/fdpass) with lock and listener pins, adopted sessions with kqueue exit status and safe kill, movable share listener with `api` on /info (UPGR-01, UPGR-04)
+- [ ] 09-03-PLAN.md — Relay state: Freeze/Thaw, HubState export/import with staged hubs, seed refactor carrying the alt screen, round trip vs a reference hub and fuzz, 1012 restart close (UPGR-01, UPGR-02)
+- [ ] 09-04-PLAN.md — Handoff protocol: /handoff and `daemon --takeover` with two-phase commit over SCM_RIGHTS, fault injection at every step, old-dies save, SIGTERM guard, EnsureDaemon handoff with the DEBT-08 fallback (UPGR-01, UPGR-03)
+- [ ] 09-05-PLAN.md — Local tab and local attach reconnect, env-gated two-binary integration test in the VM, TESTING.md, full gate once, two-build VM checks for SC1-SC5 incl. a killed takeover and a v1.1 upgrade (all UPGR)
 **UI hint**: no
 
 ### Phase 10: Input Path Reliability
@@ -127,7 +133,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 9. Upgrades Keep Sessions | v1.2 | 0/TBD | Not started | - |
+| 9. Upgrades Keep Sessions | v1.2 | 0/5 | Not started | - |
 | 10. Input Path Reliability | v1.2 | 0/TBD | Not started | - |
 | 11. File Preview | v1.2 | 0/TBD | Not started | - |
 | 12. File Path Click | v1.2 | 0/TBD | Not started | - |
