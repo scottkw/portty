@@ -35,6 +35,9 @@ type Config struct {
 	FQDN string
 	// TLSConfig is an override for tests; nil in production (uses lc.GetCertificate).
 	TLSConfig *tls.Config
+	// APIVersion is reported as "api" on GET /api/sessions/{id}/info so peers
+	// can gate on it (Phase 9, UPGR-04). 0 omits the field.
+	APIVersion int
 }
 
 // sessionMetaItem is the JSON shape returned by GET /api/sessions/meta.
@@ -60,6 +63,7 @@ type sessionListItem struct {
 	Status   string `json:"status"`
 	Hostname string `json:"hostname"`
 	Perms    string `json:"perms,omitempty"`
+	API      int    `json:"api,omitempty"` // only on /info (Config.APIVersion)
 }
 
 // WebServer serves the Portty dashboard and relays terminal I/O over WSS to
@@ -78,6 +82,7 @@ type WebServer struct {
 	mu         sync.RWMutex
 	webEnabled map[string]bool // sessionID -> enabled (WEB-01 toggle)
 	listener   net.Listener    // guarded by ws.mu; the TLS listener (tailscale cert or self-signed)
+	rawLn      net.Listener    // guarded by ws.mu; the TCP listener under it, exported for a handoff
 	srv        *http.Server    // guarded by ws.mu; Stop closes it with its connections
 	mux        *http.ServeMux
 
@@ -331,10 +336,23 @@ func (ws *WebServer) assertTailnetBindIP() {
 		"bind_ip", bind)
 }
 
-// Start opens the TLS listener on the tailnet bind IP using Tailscale's
-// lc.GetCertificate hook (or the TLSConfig override) and begins serving.
-// A taken port is ErrPortInUse.
+// Start opens the TCP listener on the tailnet bind IP and serves TLS on it
+// (see StartOn). A taken port is ErrPortInUse.
 func (ws *WebServer) Start() error {
+	raw, err := ws.listenTCP()
+	if err != nil {
+		return err
+	}
+	return ws.StartOn(raw)
+}
+
+// StartOn serves TLS on raw, a TCP listener opened by Start or handed over
+// from another process (Phase 9, Pattern 7), using Tailscale's
+// lc.GetCertificate hook (or the TLSConfig override).
+func (ws *WebServer) StartOn(raw net.Listener) error {
+	if raw == nil {
+		return errors.New("webserver: StartOn: nil listener")
+	}
 	// WR-03: belt-and-suspenders trust-boundary check for the open meta route.
 	ws.assertTailnetBindIP()
 
@@ -350,15 +368,13 @@ func (ws *WebServer) Start() error {
 		}
 	}
 
-	ln, err := ws.listenTLS(tlsCfg)
-	if err != nil {
-		return err
-	}
+	ln := tls.NewListener(raw, tlsCfg)
 
 	// Timeouts bound slow header reads and idle keep-alives from tailnet peers.
 	srv := &http.Server{Handler: ws.mux, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	ws.mu.Lock()
 	ws.listener = ln
+	ws.rawLn = raw
 	ws.srv = srv
 	ws.mu.Unlock()
 
@@ -371,10 +387,10 @@ func (ws *WebServer) Start() error {
 // is no random-port fallback: tailnet peers only probe the fixed share port.
 var ErrPortInUse = errors.New("address already in use")
 
-// listenTLS binds the configured port. Port 0 (tests) binds a random port.
-func (ws *WebServer) listenTLS(tlsCfg *tls.Config) (net.Listener, error) {
+// listenTCP binds the configured port. Port 0 (tests) binds a random port.
+func (ws *WebServer) listenTCP() (net.Listener, error) {
 	port := ws.config.Port
-	ln, err := tls.Listen("tcp", fmt.Sprintf("%s:%d", ws.config.BindIP, port), tlsCfg)
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ws.config.BindIP, port))
 	if err != nil {
 		if port != 0 && errors.Is(err, syscall.EADDRINUSE) {
 			return nil, fmt.Errorf("webserver: port %d is in use: %w", port, ErrPortInUse)
@@ -389,13 +405,23 @@ func (ws *WebServer) listenTLS(tlsCfg *tls.Config) (net.Listener, error) {
 // callers kick viewers before Stop.
 func (ws *WebServer) Stop() error {
 	// Snapshot under RLock and close after releasing it (Close() may block).
-	ws.mu.RLock()
+	ws.mu.Lock()
 	srv := ws.srv
-	ws.mu.RUnlock()
+	ws.rawLn = nil
+	ws.mu.Unlock()
 	if srv == nil {
 		return nil
 	}
 	return srv.Close()
+}
+
+// Listener returns the raw TCP listener under TLS, for a handoff to send its
+// descriptor (Phase 9), or nil when the server is not running. The caller
+// must not close it; Stop does.
+func (ws *WebServer) Listener() net.Listener {
+	ws.mu.RLock()
+	defer ws.mu.RUnlock()
+	return ws.rawLn
 }
 
 // Addr returns the listener's network address (host:port).
@@ -711,6 +737,7 @@ func (ws *WebServer) handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		Status:   status,
 		Hostname: hostname,
 		Perms:    claims.Perms,
+		API:      ws.config.APIVersion,
 	}) //nolint:errcheck
 }
 
