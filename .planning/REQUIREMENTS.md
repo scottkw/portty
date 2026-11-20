@@ -54,6 +54,7 @@
 - Clicking the "update available" notification shows Portty (needs a notarized build).
 - Overnight two-Mac test (VERF-01, M-84), M-85, and the first real release checks (M-93).
 - Native iOS app (only if the mobile web app proves too awkward).
+- Opt-in invited devices for a browser share (user decision 2026-11-19: future milestone, not v1.2). Per session, "Allow invited devices" shows a one-time code like `K7QM-2XPA` on the host. A browser outside the host's Tailscale account must enter it: 5 tries, then lockout; one use, short expiry. The paired device is remembered until sharing is turned off. Builds on MOB-05.
 
 ## Out of Scope
 
