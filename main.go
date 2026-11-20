@@ -56,7 +56,7 @@ func main() {
 			usage()
 			return
 		}
-		if os.Args[1] == restartDaemonFlag { // a CLI flag typed before the command, never a GUI launch (WR-04)
+		if os.Args[1] == restartDaemonFlag || os.Args[1] == keepDaemonFlag { // a CLI flag typed before the command, never a GUI launch (WR-04)
 			args, err := flagFirstArgs(os.Args[1:])
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "portty: %v\n", err)
@@ -197,6 +197,13 @@ func runCLI(args []string) {
 	}
 	cmd := args[0]
 	args, forceRestart, err := takeLeadingFlag(args, restartDaemonFlag)
+	var keepDaemon bool
+	if err == nil {
+		args, keepDaemon, err = takeLeadingFlag(args, keepDaemonFlag)
+	}
+	if err == nil && forceRestart && keepDaemon {
+		err = fmt.Errorf("use %s or %s, not both", restartDaemonFlag, keepDaemonFlag)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "portty: %v\n", err)
 		os.Exit(2)
@@ -216,9 +223,11 @@ func runCLI(args []string) {
 
 	// All other commands: auto-start daemon, create client, dispatch.
 	socketPath := daemon.DefaultSocketPath()
-	if err := ensureCLIDaemon(daemon.EnsureDaemon, socketPath, forceRestart); err != nil {
-		fmt.Fprintf(os.Stderr, "portty: %v\n", err)
-		os.Exit(1)
+	if cliNeedsDaemon(args) { // health, version and --help skip it (IN-04)
+		if err := ensureCLIDaemon(daemon.EnsureDaemon, socketPath, forceRestart, keepDaemon); err != nil {
+			fmt.Fprintf(os.Stderr, "portty: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	client := daemon.NewDaemonClient(socketPath)
 
@@ -241,6 +250,8 @@ func runCLI(args []string) {
 		err = cmdUnshare(client, cmdArgs, os.Stdout)
 	case "health":
 		err = cmdHealth(cmdArgs, os.Stdout)
+	case "version":
+		fmt.Println(Version)
 	case "settings":
 		err = cmdSettings(client, os.Stdout)
 	case "daemon":

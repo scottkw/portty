@@ -33,6 +33,7 @@ Commands:
   share <session>                             Share a session with your tailnet
   unshare <session>                           Stop sharing a session and disconnect viewers
   health                                      Check Tailscale health status
+  version                                     Print the Portty version
   settings                                    Open the settings panel
   daemon <subcommand>                         Manage the background daemon
     daemon run                                Run daemon in foreground
@@ -50,6 +51,7 @@ Updates:
   <command> --restart-daemon [args]           Restart a background daemon left running by an older or newer Portty,
                                               even though that ends its sessions (without it, the command refuses).
                                               The flag goes right after the command, before its arguments
+  <command> --keep-daemon [args]              Run the command on that daemon instead and leave it running
 
 Run 'portty <command> --help' for command-specific flags.
 `)
@@ -59,6 +61,28 @@ Run 'portty <command> --help' for command-specific flags.
 // ends the old daemon's live sessions (DEBT-08). runCLI takes it out of the
 // command's arguments (takeLeadingFlag).
 const restartDaemonFlag = "--restart-daemon"
+
+// keepDaemonFlag runs a command on a daemon from another build that has live
+// sessions, leaving it running (08-06-REVIEW IN-04), e.g. after a GUI Not Now.
+const keepDaemonFlag = "--keep-daemon"
+
+// cliNeedsDaemon reports whether a command line (args[0] is the command) uses
+// the daemon. health and version never do, nor does a --help (IN-04), so a
+// mismatched daemon never makes them refuse.
+func cliNeedsDaemon(args []string) bool {
+	if args[0] == "health" || args[0] == "version" {
+		return false
+	}
+	for _, a := range args[1:] {
+		switch a {
+		case "--":
+			return true
+		case "-h", "-help", "--help":
+			return false
+		}
+	}
+	return true
+}
 
 // takeLeadingFlag removes flag from a command line (args[0] is the command)
 // and reports whether it was there. 08-06-REVIEW WR-04: it counts only among
@@ -97,10 +121,14 @@ func flagFirstArgs(args []string) ([]string, error) {
 // ensureCLIDaemon runs ensure for a CLI command. A daemon from another build
 // with live sessions is restarted only with --restart-daemon (force); without
 // it the command fails with the reason, and the old daemon keeps running.
-func ensureCLIDaemon(ensure func(string, daemon.RestartPolicy) error, socketPath string, force bool) error {
+// IN-04: with --keep-daemon (keep) the command runs on the old daemon instead.
+func ensureCLIDaemon(ensure func(string, daemon.RestartPolicy) error, socketPath string, force, keep bool) error {
 	var refused error
 	err := ensure(socketPath, func(ver string, n int) bool {
-		if !force {
+		switch {
+		case keep:
+			fmt.Fprintf(os.Stderr, "portty: using the running daemon, version %s (this is %s)\n", ver, daemon.BuildVersion)
+		case !force:
 			count, them := fmt.Sprintf("%d live sessions", n), "them"
 			switch {
 			case n == 1:
@@ -108,8 +136,8 @@ func ensureCLIDaemon(ensure func(string, daemon.RestartPolicy) error, socketPath
 			case n < 0:
 				count = "live sessions"
 			}
-			refused = fmt.Errorf("the running daemon is version %s with %s; restarting it to version %s would end %s. Re-run as 'portty <command> %s …' to restart anyway.",
-				ver, count, daemon.BuildVersion, them, restartDaemonFlag)
+			refused = fmt.Errorf("the running daemon is version %s with %s; restarting it to version %s would end %s. Re-run as 'portty <command> %s …' to restart anyway, or as 'portty <command> %s …' to use it as it is.",
+				ver, count, daemon.BuildVersion, them, restartDaemonFlag, keepDaemonFlag)
 		}
 		return force
 	})

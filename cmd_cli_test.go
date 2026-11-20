@@ -561,27 +561,55 @@ func TestEnsureCLIDaemon_RestartConsent(t *testing.T) {
 	asking := func(n int) func(string, daemon.RestartPolicy) error {
 		return func(_ string, allow daemon.RestartPolicy) error { allowed = allow("v1", n); return nil }
 	}
-	err := ensureCLIDaemon(asking(2), "sock", false)
-	want := "the running daemon is version v1 with 2 live sessions; restarting it to version v2 would end them. Re-run as 'portty <command> --restart-daemon …' to restart anyway."
+	err := ensureCLIDaemon(asking(2), "sock", false, false)
+	want := "the running daemon is version v1 with 2 live sessions; restarting it to version v2 would end them. Re-run as 'portty <command> --restart-daemon …' to restart anyway, or as 'portty <command> --keep-daemon …' to use it as it is."
 	if err == nil || err.Error() != want || allowed {
 		t.Fatalf("no flag: err %v, allowed %v\nwant %q", err, allowed, want)
 	}
-	if err := ensureCLIDaemon(asking(1), "sock", false); err == nil || !strings.Contains(err.Error(), "with 1 live session; restarting it to version v2 would end it.") {
+	// 08-06-REVIEW IN-04: --keep-daemon runs the command on the old daemon.
+	allowed = true
+	if err := ensureCLIDaemon(asking(2), "sock", false, true); err != nil || allowed {
+		t.Fatalf("--keep-daemon: err %v, allowed %v; want nil, false", err, allowed)
+	}
+	if err := ensureCLIDaemon(asking(1), "sock", false, false); err == nil || !strings.Contains(err.Error(), "with 1 live session; restarting it to version v2 would end it.") {
 		t.Fatalf("one session: %v", err)
 	}
-	if err := ensureCLIDaemon(asking(-1), "sock", false); err == nil || !strings.Contains(err.Error(), "version v1 with live sessions;") {
+	if err := ensureCLIDaemon(asking(-1), "sock", false, false); err == nil || !strings.Contains(err.Error(), "version v1 with live sessions;") {
 		t.Fatalf("unknown count: %v", err)
 	}
-	if err := ensureCLIDaemon(asking(2), "sock", true); err != nil || !allowed {
+	if err := ensureCLIDaemon(asking(2), "sock", true, false); err != nil || !allowed {
 		t.Fatalf("--restart-daemon: err %v, allowed %v", err, allowed)
 	}
 	noAsk := func(string, daemon.RestartPolicy) error { return nil } // zero sessions: EnsureDaemon never asks
-	if err := ensureCLIDaemon(noAsk, "sock", false); err != nil {
+	if err := ensureCLIDaemon(noAsk, "sock", false, false); err != nil {
 		t.Fatalf("no prompt: %v", err)
 	}
 	failed := errors.New("spawn failed")
-	if err := ensureCLIDaemon(func(string, daemon.RestartPolicy) error { return failed }, "sock", false); err != failed {
+	if err := ensureCLIDaemon(func(string, daemon.RestartPolicy) error { return failed }, "sock", false, false); err != failed {
 		t.Fatalf("ensure error = %v", err)
+	}
+}
+
+// 08-06-REVIEW IN-04: health, version and any --help never touch the daemon,
+// so a mismatched one never makes them refuse (or start one).
+func TestCLINeedsDaemon(t *testing.T) {
+	for args, want := range map[string]bool{
+		"list":            true,
+		"list --json":     true,
+		"daemon status":   true,
+		"health":          false,
+		"health --json":   false,
+		"version":         false,
+		"list --help":     false,
+		"attach -h":       false,
+		"share -help":     false,
+		"new -- --help":   true, // a path named --help
+		"rename id -h":    false,
+		"attach host:sid": true,
+	} {
+		if got := cliNeedsDaemon(strings.Fields(args)); got != want {
+			t.Errorf("cliNeedsDaemon(%q) = %v, want %v", args, got, want)
+		}
 	}
 }
 
