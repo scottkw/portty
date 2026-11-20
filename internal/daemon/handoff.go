@@ -163,6 +163,10 @@ const (
 	maxSessionFrame    = relay.HandoffStateMaxBytes // its 1 MiB slack also covers the session's metadata
 	maxHandoffSessions = 256
 	maxHandoffText     = 4 << 10 // session name, workDir
+	// IN-01: HELLO is read before the peer is checked and READY carries only
+	// a digest per session, so neither gets maxFrame.
+	maxHelloFrame = 4 << 10
+	maxReadyFrame = maxHandoffSessions * (maxHandoffText + 128)
 )
 
 type hsHello struct {
@@ -437,7 +441,7 @@ func (a *API) serveHandoff(c *net.UnixConn) {
 	start := time.Now()
 	_ = c.SetDeadline(start.Add(takeoverStepTimeout))
 	var hello hsHello
-	if err := readFrame(c, frameHello, &hello, maxFrame); err != nil {
+	if err := readFrame(c, frameHello, &hello, maxHelloFrame); err != nil {
 		log.Printf("handoff: no HELLO: %v", err)
 		return
 	}
@@ -543,7 +547,7 @@ func (a *API) serveHandoff(c *net.UnixConn) {
 	_ = c.SetWriteDeadline(time.Time{})
 	_ = c.SetReadDeadline(time.Now().Add(readyTimeout))
 	var ready hsReady
-	if err := readFrame(c, frameReady, &ready, maxFrame); err != nil {
+	if err := readFrame(c, frameReady, &ready, maxReadyFrame); err != nil {
 		o.rollback("ready", err.Error())
 		return
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -766,6 +767,28 @@ func TestHandoff_RefusesOlderRelease(t *testing.T) {
 	BuildVersion = "v1.2.0-vmA"
 	if _, code := s.takeover("v1.2.0-vmB"); code != takeoverCommitted {
 		t.Errorf("v1.2.0-vmB -> v1.2.0-vmA = %d, want 0", code)
+	}
+}
+
+// IN-01: HELLO is read under a small cap, before anything about the peer is
+// known: a header claiming a large frame is refused at once, without the
+// daemon waiting for (or allocating) its body.
+func TestHandoff_HelloCapped(t *testing.T) {
+	s := newHandoffScene(t, tickScript(false))
+	tk := &takeover{}
+	if err := tk.dial(context.Background(), s.socket); err != nil {
+		t.Fatal(err)
+	}
+	defer tk.c.Close()
+	if _, err := tk.c.Write([]byte{frameHello, 0, 0x10, 0, 0}); err != nil { // a 1 MiB HELLO
+		t.Fatal(err)
+	}
+	_ = tk.c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := tk.c.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("read after an oversized HELLO = %v, want EOF (the daemon dropped it)", err)
+	}
+	if s.idx("old:peer-pid") >= 0 {
+		t.Errorf("an oversized HELLO went on: %v", s.events)
 	}
 }
 
