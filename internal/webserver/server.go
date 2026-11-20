@@ -841,6 +841,11 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	sub.Kick = func(reason string) {
 		conn.Close(websocket.StatusNormalClosure, reason)
 	}
+	// An upgrade handoff's commit (RestartViewers): retryable, so the browser
+	// reconnects to the new daemon with resume.
+	sub.Restart = func() {
+		conn.Close(websocket.StatusServiceRestart, relay.CloseReasonServiceRestart)
+	}
 
 	if ws.beforeSubscribeHookForTest != nil {
 		ws.beforeSubscribeHookForTest()

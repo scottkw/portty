@@ -33,7 +33,7 @@ var (
 	defaultShareHealth = webserver.CheckHealth
 
 	defaultNewShareServer = func(h webserver.TailscaleHealth, m *relay.HubManager) (*webserver.WebServer, error) {
-		return webserver.NewWebServer(webserver.Config{BindIP: h.IP, Port: tailnet.DefaultProbePort, FQDN: h.Domain}, m)
+		return webserver.NewWebServer(webserver.Config{BindIP: h.IP, Port: tailnet.DefaultProbePort, FQDN: h.Domain, APIVersion: APIVersion}, m)
 	}
 
 	// defaultWarmCert fetches the tailnet HTTPS certificate before the server
@@ -215,6 +215,21 @@ func (a *API) startShareServer(
 	if err != nil {
 		return &ShareError{ShareErrStartFailed, err.Error()}
 	}
+	a.wireShareServer(ws, h)
+	if err := ws.Start(); err != nil {
+		if errors.Is(err, webserver.ErrPortInUse) {
+			return &ShareError{ShareErrPortInUse, fmt.Sprintf("port %d is in use", tailnet.DefaultProbePort)}
+		}
+		return &ShareError{ShareErrStartFailed, err.Error()}
+	}
+	a.installShareServer(ws)
+	return nil
+}
+
+// wireShareServer connects a built share server to this daemon before it
+// starts: session names, plugin settings, share tokens and the signing key.
+// A handoff wires the server it builds from the received records the same way.
+func (a *API) wireShareServer(ws *webserver.WebServer, h webserver.TailscaleHealth) {
 	// The browser banner must name the host the way the GUI and CLI do (UAT
 	// gap 2); the certificate domain is this node's MagicDNS name.
 	host := magicDNSLabel(h.Domain)
@@ -239,13 +254,11 @@ func (a *API) startShareServer(
 	// Signing key BEFORE Start so requireCapability never sees nil (Pitfall 3).
 	ws.SetSigningKey(a.CurrentSigningKey())
 	ws.SetStaticAppFS(getStaticAppFS())
-	if err := ws.Start(); err != nil {
-		if errors.Is(err, webserver.ErrPortInUse) {
-			return &ShareError{ShareErrPortInUse, fmt.Sprintf("port %d is in use", tailnet.DefaultProbePort)}
-		}
-		return &ShareError{ShareErrStartFailed, err.Error()}
-	}
+}
 
+// installShareServer makes a started share server this daemon's, with a
+// grant for every share record.
+func (a *API) installShareServer(ws *webserver.WebServer) {
 	a.mu.Lock()
 	a.webServer = ws
 	// Re-read the key under a.mu: a regenerate between the SetSigningKey above
@@ -261,7 +274,6 @@ func (a *API) startShareServer(
 		ws.AddGrant(sid, rec.grantID)
 	}
 	a.mu.Unlock()
-	return nil
 }
 
 // mintShareRecord signs one full-control capability for the session with the

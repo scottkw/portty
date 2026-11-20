@@ -75,6 +75,20 @@ func runDaemonCore(ctx context.Context) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "daemon: listening on %s\n", socketPath)
+	api.lock = lock // a handoff sends it to the takeover
+	serveDaemon(ctx, api, engine, socketPath)
+}
+
+// serveDaemon is the daemon's serve tail once it holds the lock and serves
+// its socket and relay: shared by runDaemonCore and the takeover daemon
+// (09-05), which receives them in a handoff. It blocks until ctx ends or the
+// socket is lost.
+//
+// SIGTERM guard (Research Pitfall 4): when ctx ends during a handoff it waits
+// for the outcome. Handed off (or committed and still unresolved) means exit
+// with no api.Stop, no unlink and no session teardown: the takeover serves
+// that socket and owns the sessions. Rolled back means today's shutdown.
+func serveDaemon(ctx context.Context, api *API, engine *SessionEngine, socketPath string) {
 	startDaemonLog(daemonConfigDir()) // after the bind: a failed duplicate spawn never rotates
 
 	// Review it3 WR-03: a daemon whose socket path was removed or rebound is
@@ -94,6 +108,10 @@ func runDaemonCore(ctx context.Context) {
 
 	select {
 	case <-ctx.Done():
+		if api.waitHandoff(maxFrozen()) {
+			fmt.Fprintf(os.Stderr, "daemon: sessions were handed to the new daemon; exiting without cleanup\n")
+			return
+		}
 	case <-lost:
 		fmt.Fprintf(os.Stderr, "daemon: socket %s was removed or replaced; exiting to free the lock\n", socketPath)
 		// The path may now be another daemon's socket: close without unlinking it.

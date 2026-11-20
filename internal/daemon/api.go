@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/scottkw/portty/internal/capability"
@@ -21,6 +22,7 @@ import (
 type API struct {
 	engine       *SessionEngine
 	mux          *http.ServeMux
+	handler      http.Handler // mux behind the handoff freeze gate (freezeGate); what the socket serves
 	ln           net.Listener
 	relayPort    int                  // TCP port the relay server is listening on
 	relayLn      net.Listener         // TCP listener for the relay server
@@ -66,6 +68,22 @@ type API struct {
 	discoverPeers func(context.Context) ([]tailnet.Peer, error)
 	probePeers    func(context.Context) []tailnet.Peer
 	peerBaseURL   func(tailnet.Peer) string
+
+	// --- Phase 9 handoff (handoff.go) ------------------------------------
+	// lock is the open daemon.lock; a handoff sends it to the takeover, so
+	// the lock never drops while sessions move (flock follows the open file).
+	lock *os.File
+	// frozen is the freeze gate: mutating routes answer 503 Retry-After.
+	frozen atomic.Bool
+	// handoffDone is non-nil while a handoff runs and closes at its end
+	// (guarded by handoffMu): one handoff at a time, and the SIGTERM guard
+	// waits on it.
+	handoffMu   sync.Mutex
+	handoffDone chan struct{}
+	// committed: COMMIT was sent and not rolled back. handedOff: the takeover
+	// answered COMMITTED, so this daemon exits without unlinking the socket
+	// or ending a session.
+	committed, handedOff atomic.Bool
 }
 
 // NewAPI creates an API wired to the given SessionEngine and registers all routes.
@@ -88,7 +106,24 @@ func NewAPI(engine *SessionEngine) *API {
 		return a.tailnetCache.getOrRefresh(ctx, tailnet.DiscoverAndProbe)
 	}
 	a.registerRoutes()
+	a.handler = a.freezeGate(a.mux)
 	return a
+}
+
+// freezeGate answers 503 with Retry-After: 1 to every mutating request while
+// a handoff has the sessions frozen; reads keep serving. 09-01's client waits
+// out such a 503, so a write (and /shutdown: Quit All, a DEBT-08 restart)
+// lands once the handoff committed or rolled back. The handoff route itself
+// passes, so a second takeover is told it is busy.
+func (a *API) freezeGate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.frozen.Load() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.URL.Path != "/handoff" {
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "the daemon is handing its sessions to a new version", http.StatusServiceUnavailable)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // registerRoutes wires all HTTP routes using Go 1.22+ path parameters.
@@ -117,6 +152,9 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("PATCH /settings/image-config", a.handleSetImageConfig)
 	a.mux.HandleFunc("GET /relay-port", a.handleRelayPort)
 	a.mux.HandleFunc("POST /shutdown", a.handleShutdown)
+	// Phase 9 session handoff to a takeover daemon (handoff.go). Only on this
+	// 0600 unix socket mux: never on the relay port or the share server.
+	a.mux.HandleFunc("POST /handoff", a.handleHandoff)
 	// Tailnet peer discovery.
 	a.mux.HandleFunc("GET /tailnet/peers", a.handleTailnetPeers)
 	// Connect to a session shared from another Mac (CLI attach and the GUI).
@@ -192,15 +230,28 @@ func (a *API) RelayHandler() http.Handler {
 // StartRelay creates the relay HTTP server and starts it on a random TCP port.
 // Returns the allocated port. Must be called after NewAPI.
 func (a *API) StartRelay() (int, error) {
-	server := a.RelayHandler()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, fmt.Errorf("relay listener: %w", err)
 	}
+	a.serveRelay(ln)
+	return a.relayPort, nil
+}
+
+// serveRelay serves the relay on ln: one StartRelay opened, or one received
+// in a handoff (so the port stays the same).
+func (a *API) serveRelay(ln net.Listener) {
 	a.relayPort = ln.Addr().(*net.TCPAddr).Port
 	a.relayLn = ln
-	go http.Serve(ln, server) //nolint:errcheck
-	return a.relayPort, nil
+	go http.Serve(ln, a.RelayHandler()) //nolint:errcheck
+}
+
+// serveOn serves the API on a unix listener and the relay on a TCP listener
+// received in a handoff (the counterpart of Start and StartRelay).
+func (a *API) serveOn(ln, relayLn net.Listener) {
+	a.ln = ln
+	go http.Serve(ln, a.handler) //nolint:errcheck
+	a.serveRelay(relayLn)
 }
 
 // Start validates the socket path, cleans up any stale socket, and begins
@@ -217,7 +268,7 @@ func (a *API) Start(socketPath string) error {
 		return err
 	}
 	a.ln = ln
-	go http.Serve(ln, a.mux) //nolint:errcheck
+	go http.Serve(ln, a.handler) //nolint:errcheck
 	return nil
 }
 
@@ -275,7 +326,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func (a *API) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok", Version: BuildVersion, API: APIVersion})
+	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok", Version: BuildVersion, API: APIVersion, Handoff: HandoffVersion})
 }
 
 func (a *API) handleShutdown(w http.ResponseWriter, r *http.Request) {
@@ -312,23 +363,9 @@ func (a *API) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build onExit callback for the share grace period (D-12). When the
-	// session exits naturally, drop its share after 10 seconds so web viewers
-	// see final output first. A no-op for sessions that were never shared.
-	//
-	// Dropping the share clears its grants (D-15, RESEARCH Pitfall 1): session
-	// end invalidates all outstanding capabilities. Leaving grants in the map
-	// would leak memory AND could (theoretically) allow a recycled session ID
-	// to inherit stale grants.
-	onExit := func(sessionID string, exitCode int) {
-		time.AfterFunc(10*time.Second, func() {
-			a.runSessionExitCleanup(sessionID)
-		})
-	}
-
 	// Use background context — the PTY must outlive the HTTP request.
 	// r.Context() would kill the session when the response is sent.
-	id, err := a.engine.CreateSession(context.Background(), req.Name, req.WorkDir, req.Cols, req.Rows, onExit)
+	id, err := a.engine.CreateSession(context.Background(), req.Name, req.WorkDir, req.Cols, req.Rows, a.sessionOnExit())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -340,6 +377,23 @@ func (a *API) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	// newly-created sessions without an explicit share gesture.
 
 	writeJSON(w, http.StatusCreated, CreateResponse{ID: id})
+}
+
+// sessionOnExit is the onExit callback for the share grace period (D-12).
+// When the session exits naturally, drop its share after 10 seconds so web
+// viewers see final output first. A no-op for sessions that were never
+// shared. A handoff re-attaches it to every adopted session.
+//
+// Dropping the share clears its grants (D-15, RESEARCH Pitfall 1): session
+// end invalidates all outstanding capabilities. Leaving grants in the map
+// would leak memory AND could (theoretically) allow a recycled session ID
+// to inherit stale grants.
+func (a *API) sessionOnExit() func(string, int) {
+	return func(sessionID string, exitCode int) {
+		time.AfterFunc(10*time.Second, func() {
+			a.runSessionExitCleanup(sessionID)
+		})
+	}
 }
 
 // runSessionExitCleanup drops the session's share (grants cleared, session

@@ -263,13 +263,19 @@ func (e *SessionEngine) CreateSession(ctx context.Context, name, workDir string,
 	e.sessionWorkDirs[id] = resolvedWD
 	e.mu.Unlock()
 
-	// Watch for natural process exit (PTY EOF -> hub.Done closes).
-	// Transitions session state to StateStopped and captures exit code.
-	// Calls onExit callback if provided (used by API layer for web grace period per D-12).
-	//
-	// Does NOT call cmd.Wait() — killSession may be running concurrently and
-	// go-pty's cmd.Wait() is not safe for concurrent callers. Instead, reads
-	// the cached exit code from ExitCode() which checks ProcessState under mutex.
+	e.watchSessionExit(id, sess, hub, onExit)
+	return id, nil
+}
+
+// watchSessionExit watches for natural process exit (PTY EOF -> hub.Done
+// closes), for a created session and for one adopted in a handoff.
+// Transitions session state to StateStopped and captures exit code.
+// Calls onExit callback if provided (used by API layer for web grace period per D-12).
+//
+// Does NOT call cmd.Wait() — killSession may be running concurrently and
+// go-pty's cmd.Wait() is not safe for concurrent callers. Instead, reads
+// the cached exit code from ExitCode() which checks ProcessState under mutex.
+func (e *SessionEngine) watchSessionExit(id string, sess *pty.Session, hub *relay.Hub, onExit func(string, int)) {
 	go func() {
 		<-hub.Done() // blocks until PTY read loop returns EOF (D-07)
 		if sess.IsKilled() {
@@ -295,8 +301,70 @@ func (e *SessionEngine) CreateSession(ctx context.Context, name, workDir string,
 			onExit(id, exitCode)
 		}
 	}()
+}
 
-	return id, nil
+// handoffEntry is one live session a handoff moves (handoff.go).
+type handoffEntry struct {
+	id, name, workDir string
+	sess              *pty.Session
+	hub               *relay.Hub
+}
+
+// handoffEntries lists the live sessions with their hubs. A stopped session
+// has no shell and no fds, so it is not handed over.
+func (e *SessionEngine) handoffEntries() []handoffEntry {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	var out []handoffEntry
+	for _, s := range e.registry.List() {
+		if s.GetState() == pty.StateStopped {
+			continue
+		}
+		if hub, ok := e.manager.Get(s.ID); ok {
+			out = append(out, handoffEntry{id: s.ID, name: e.tabNames[s.ID], workDir: e.sessionWorkDirs[s.ID], sess: s, hub: hub})
+		}
+	}
+	return out
+}
+
+// importSession adopts a handed-over session from its PTY master and slave
+// and stages its hub from st: nothing reads the PTY until the hub's Start
+// after COMMIT. On success it owns master and slave; on error it has closed
+// them without signalling the shell.
+func (e *SessionEngine) importSession(meta pty.AdoptMeta, name, workDir string, st relay.HubState, master, slave *os.File) (*pty.Session, *relay.Hub, error) {
+	nb, ok := e.backend.(*pty.NativePTYBackend)
+	if !ok {
+		_, _ = master.Close(), slave.Close()
+		return nil, nil, fmt.Errorf("import %s: backend cannot adopt", relay.DiagID(meta.ID))
+	}
+	sess, err := nb.Adopt(meta, master, slave)
+	if err != nil {
+		_, _ = master.Close(), slave.Close()
+		return nil, nil, err
+	}
+	id := meta.ID
+	hub, err := relay.NewHubFromState(st, sess, sess, func(cols, rows int) error { return e.backend.Resize(id, cols, rows) })
+	if err == nil {
+		err = e.manager.AddStaged(id, hub)
+	}
+	if err != nil {
+		closeSessionFiles(sess)
+		return nil, nil, err
+	}
+	e.registry.Add(sess)
+	e.mu.Lock()
+	e.tabNames[id] = name
+	e.sessionWorkDirs[id] = workDir
+	e.mu.Unlock()
+	return sess, hub, nil
+}
+
+// closeSessionFiles closes a session's PTY master and slave without
+// signalling its shell: what this process dying would do to its copies.
+func closeSessionFiles(sess *pty.Session) {
+	if master, slave, _, err := sess.HandoffFiles(); err == nil {
+		_, _ = master.Close(), slave.Close()
+	}
 }
 
 // ListSessions returns a snapshot of all registered sessions.
