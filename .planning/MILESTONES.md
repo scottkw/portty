@@ -1,5 +1,23 @@
 # Milestones
 
+## v1.1 Hardening (Shipped: 2026-11-19)
+
+**Phases completed:** 2 phases (7 Hardening, 8 Debt Cleanup), 11 plans
+
+**Delivered:** v1.0's reliability and test debt is closed. Daemon memory stays bounded under full-screen apps. Every pasted byte arrives, from every surface. The catch-up replay is faithful and query-free. Launch and upgrades do no wasted or destructive recovery work. The full test suite passes with nothing skipped, and tests never touch the host's config or tailnet.
+
+**Closeout:** audit passed, 16/16 requirements (HARD-01..08, DEBT-01..08). 9 open items (8 todos plus the v1.2 seed) acknowledged and scheduled into v1.2 via SEED-261119-nus. Known verification overrides: 9 newly acknowledged, 25 carried forward.
+
+**Key accomplishments:**
+- A full-screen app no longer grows daemon memory: the alt screen keeps no scrollback (+0.1 MiB at 80 and 220 columns, where it used to grow 94-269 MiB). Main-screen history survives the app's exit.
+- Pastes over 32 KiB arrive complete and in order from local tabs, peer tabs, the browser share viewer and `portty attach`. The 32 KiB per-frame guard stays. A dropped connection mid-paste says so, and a large paste no longer pins the CPU.
+- Replays are faithful. They strip reply-eliciting queries, keep soft wraps, modes, charsets and OSC 8 links (with malicious links rejected), and binary output can no longer freeze a session.
+- Peer tabs rejoin with a delta from an in-memory snapshot (bounded, keyed by host plus session).
+- Launch and upgrade: the login-time launch blip has a root cause and a fix. A daemon that dies at spawn fails fast, an upgrade never leaves you with no daemon, and an upgrade with live sessions asks first (GUI dialog, or `--restart-daemon` on the CLI).
+- Tests are hermetic and deterministic: HOME isolation, a test-binary tailnet guard (tests no longer probe the user's tailnet devices), fixed fan-out and CLI attach races, no `-skip`. Phase 7 security audit: 20/20 threats closed.
+
+---
+
 ## v1.0 Portty v1.0 (Shipped: 2026-11-18)
 
 **Phases completed:** 6 phases, 61 plans, 50 tasks

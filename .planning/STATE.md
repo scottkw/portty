@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.1
 milestone_name: Hardening
-current_phase: 8
-current_phase_name: Hardening
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 8 complete — all phases complete
-last_updated: "2026-11-20T01:01:04.169Z"
+last_updated: "2026-11-20T01:02:30.515Z"
 last_activity: 2026-11-19
-last_activity_desc: Phase 8 complete
-state_head: f0d7da44836d0fe982ba9337166cb827f010a8b9
+last_activity_desc: Milestone v1.1 completed and archived
+state_head: 0655f19da18c89fa9d89aa54928205a82e2a1a14
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 11
   completed_plans: 11
   percent: 50
+current_phase: 8
+current_phase_name: Hardening
 ---
 
 # Project State
@@ -29,12 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 
 ## Current Position
 
-Phase: 8 of 7 (Hardening)
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-11-19 — Phase 8 complete
-
-Progress: [█████░░░░░] 50%
+Phase: Milestone v1.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-19 — Milestone v1.1 completed and archived
 
 
 ## Performance Metrics
@@ -360,4 +358,5 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Discuss Phase 7 with /gsd-discuss-phase 7, then plan it with /gsd-plan-phase 7
+
+- Start the next milestone with /gsd-new-milestone

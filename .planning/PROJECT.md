@@ -8,18 +8,17 @@ Portty is a macOS terminal emulator with built-in remote access over Tailscale. 
 
 A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
 
-## Current Milestone: v1.1 Hardening
+## Current State
 
-**Goal:** Fix the reliability and test-hygiene debt left from v1.0, with no new features.
+v1.1 Hardening shipped 2026-11-19 (Phases 7-8, 16/16 requirements). See `.planning/MILESTONES.md`.
 
-**Target features:**
-- Bounded daemon memory when full-screen apps scroll in the alternate screen
-- Large pastes (over 32 KiB) arrive intact on local, peer and browser sessions
-- Replay strips the remaining terminal queries so joiners never type into the shared shell
-- No spurious daemon respawn attempt at launch
-- Daemon tests isolated from the host's real settings; no skipped tests in gates
-- Switching between remote tabs rejoins with a delta, not a full replay
-- Relay fan-out flake fixed; multi-line prompt resize artifacts documented
+## Next Milestone: v1.2 (scope in `.planning/seeds/SEED-261119-nus-v1-2-preview-and-remote-urls.md`)
+
+1. Keep sessions alive across a Portty upgrade (PTY handoff to the new daemon), plus the paste/ack/input-queue todos. This is first: it serves the rock-solid priority.
+2. File preview tabs via `portty open <file>` (images, PDF, markdown), local or remote.
+3. Click a file path printed in the terminal to preview it (OSC 7 working directory).
+4. Remote `localhost:PORT` URLs proxied over the tailnet and opened in the normal browser (no embedded browser).
+5. A mobile-aware web app served by each host Mac over the tailnet. portty.app/app is a static launcher page only, owned by the website repo.
 
 ## Requirements
 

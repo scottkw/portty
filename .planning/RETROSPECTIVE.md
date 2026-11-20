@@ -43,3 +43,29 @@
 | Milestone | Phases | Plans | Days | Deferred human checks |
 |-----------|--------|-------|------|-----------------------|
 | v1.0 | 6 | 61 | 4 | ~15 (two-Mac + first release) |
+
+## Milestone: v1.1 — Hardening
+
+**Shipped:** 2026-11-19
+**Phases:** 2 (7 Hardening, 8 Debt Cleanup) | **Plans:** 11
+
+### What Was Built
+- Bounded alt-screen memory, intact large pastes everywhere, faithful query-free replays, delta rejoin on tab switch.
+- The launch blip found and fixed; fast daemon failure; safe upgrades (no missing daemon, consent before ending sessions).
+- Hermetic, deterministic tests: HOME isolation, a tailnet guard, race fixes, nothing skipped.
+
+### What Worked
+- Code review with probe overlays found real bugs every round: a session freeze from binary output, OSC 8 injection into viewers, an upgrade leaving no daemon.
+- VM checks after every fix round caught what unit tests can't: a no-argument launch crash, the CPU pinned by a paste, the root cause of the login-time blip.
+- The user's firewall alerts exposed tests probing the real tailnet.
+
+### What Was Inefficient
+- Fix rounds introduced regressions twice (wrap keying by line number; the lock-wait readiness check). Each needed another review round.
+- Worktrees always started from an old commit, and every executor needed a fast-forward step at startup.
+- A planning commit made on the phase branch while agents ran forced cherry-picks instead of fast-forwards.
+
+### Key Lessons
+- Never let a test binary reach the network: guard the choke points, not the call sites.
+- Anything touching `main()`'s argument routing needs a real launch check; unit tests don't run main.
+- "Ready" must mean the right version, not just answering.
+- An upgrade path is part of reliability: test it with live sessions.
