@@ -55,6 +55,27 @@ func (c *DaemonClient) GetDaemonVersion() (string, error) {
 	return h.Version, nil
 }
 
+// HealthInfo reads /health once: version, API and handoff support.
+func (c *DaemonClient) HealthInfo() (HealthResponse, error) {
+	var h HealthResponse
+	err := c.doJSON(http.MethodGet, "/health", nil, &h)
+	return h, err
+}
+
+// DaemonAPI is the API version h reports; an absent "api" means 1, the
+// v1.0/v1.1 route set (08-06-REVIEW-FIX IN-03).
+func DaemonAPI(h HealthResponse) int {
+	if h.API == 0 {
+		return 1
+	}
+	return h.API
+}
+
+// MinDaemonAPI is the lowest daemon API this GUI and CLI can use; below it
+// they say "update needed" (UPGR-04). 1 keeps a v1.1 daemon (no "api" field)
+// usable after Not Now or --keep-daemon. A var so tests and vmpreview raise it.
+var MinDaemonAPI = 1
+
 // ListSessions returns all current sessions.
 func (c *DaemonClient) ListSessions() ([]SessionInfo, error) {
 	var sessions []SessionInfo

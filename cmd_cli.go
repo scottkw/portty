@@ -144,7 +144,21 @@ func ensureCLIDaemon(ensure func(string, daemon.RestartPolicy) error, socketPath
 	if err != nil {
 		return err
 	}
-	return refused
+	if refused != nil {
+		return refused
+	}
+	// UPGR-04: a daemon too old for this build fails here with one line, not
+	// on the command's own calls. An unreadable health is no refusal.
+	if h, err := daemonHealthOf(socketPath); err == nil && daemon.DaemonAPI(h) < daemon.MinDaemonAPI {
+		return fmt.Errorf("the running daemon (version %s, API %d) is too old for this portty (version %s needs API %d): update needed. Re-run as 'portty <command> %s …' to restart it.",
+			h.Version, daemon.DaemonAPI(h), daemon.BuildVersion, daemon.MinDaemonAPI, restartDaemonFlag)
+	}
+	return nil
+}
+
+// daemonHealthOf reads the daemon's /health; tests swap it.
+var daemonHealthOf = func(socketPath string) (daemon.HealthResponse, error) {
+	return daemon.NewDaemonClient(socketPath).HealthInfo()
 }
 
 // unknownCommandMessage is what runCLI prints to stderr for an unrecognized command.

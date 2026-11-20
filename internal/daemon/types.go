@@ -57,10 +57,16 @@ type StyledTailLinesResponse struct {
 	Lines [][]StyledSpan `json:"lines"`
 }
 
+// APIVersion is the daemon API this build serves (UPGR-04). v1.0 and v1.1
+// send no "api" field and count as 1.
+const APIVersion = 2
+
 // HealthResponse is the response body for GET /health.
 type HealthResponse struct {
 	Status  string `json:"status"`
 	Version string `json:"version,omitempty"`
+	API     int    `json:"api,omitempty"`     // absent: 1, the v1.0/v1.1 route set
+	Handoff int    `json:"handoff,omitempty"` // absent: cannot hand off its sessions
 }
 
 // RelayPortResponse is the response body for GET /relay-port.
