@@ -3,6 +3,9 @@ created: 2026-11-19
 title: No API-compatibility check after "Not Now" keeps an older daemon (08-06 IN-03)
 area: daemon
 resolves_phase: null
+audit_acknowledged:
+  milestone: v1.1
+  at: 2026-11-19
 ---
 
 ## Problem

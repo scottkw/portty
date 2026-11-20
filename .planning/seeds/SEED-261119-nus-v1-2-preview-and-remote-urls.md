@@ -5,6 +5,10 @@ planted: 2026-11-19
 planted_during: v1.1 Hardening, Phase 8
 trigger_when: when v1.1 is complete; start milestone v1.2 with this scope (user approved 2026-11-19)
 scope: medium (about 4-6 days of agent work)
+audit_acknowledged:
+  milestone: v1.1
+  at: 2026-11-19
+  status: dormant
 ---
 
 # SEED-261119-nus: v1.2 — file preview tabs and remote localhost URLs

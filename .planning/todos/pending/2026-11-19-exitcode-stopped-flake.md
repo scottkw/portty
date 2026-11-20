@@ -3,6 +3,9 @@ created: 2026-11-19
 title: TestExitEvent_ListSessions_ExitCodePopulatedForStopped flakes under the full -race suite
 area: testing
 resolves_phase: null
+audit_acknowledged:
+  milestone: v1.1
+  at: 2026-11-19
 ---
 
 ## Problem

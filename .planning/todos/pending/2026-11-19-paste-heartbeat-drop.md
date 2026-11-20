@@ -9,6 +9,9 @@ files:
   - internal/relay/heartbeat.go
   - internal/daemon/remote_ws_proxy.go
   - frontend/src/lib/relayClient.ts
+audit_acknowledged:
+  milestone: v1.1
+  at: 2026-11-19
 ---
 
 ## Problem

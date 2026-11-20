@@ -3,6 +3,9 @@ created: 2026-11-19
 title: Cmd-Q while the daemon restart dialog is open draws the Quit dialog underneath it
 area: frontend
 resolves_phase: null
+audit_acknowledged:
+  milestone: v1.1
+  at: 2026-11-19
 ---
 
 ## Problem

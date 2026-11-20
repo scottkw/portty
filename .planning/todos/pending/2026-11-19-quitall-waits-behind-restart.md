@@ -3,6 +3,9 @@ created: 2026-11-19
 title: Quit All can wait up to ~30 s behind an approved daemon restart (08-06 IN-07)
 area: app
 resolves_phase: null
+audit_acknowledged:
+  milestone: v1.1
+  at: 2026-11-19
 ---
 
 ## Problem

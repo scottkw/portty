@@ -7,6 +7,9 @@ source: .planning/phases/08-debt-cleanup/08-VERIFICATION.md follow-up 2 (v1.2)
 files:
   - web/assets/terminal.js
   - frontend/src/lib/relayClient.ts
+audit_acknowledged:
+  milestone: v1.1
+  at: 2026-11-19
 ---
 
 ## Problem

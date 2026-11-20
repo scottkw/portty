@@ -7,6 +7,9 @@ source: .planning/phases/08-debt-cleanup/08-REVIEW.md IN-06 (deferred in 08-REVI
 files:
   - frontend/src/lib/relayClient.ts
   - internal/webserver/server.go
+audit_acknowledged:
+  milestone: v1.1
+  at: 2026-11-19
 ---
 
 ## Problem

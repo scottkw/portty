@@ -6,6 +6,9 @@ severity: minor
 source: .planning/phases/08-debt-cleanup/08-REVIEW.md IN-07 (deferred in 08-REVIEW-FIX.md)
 files:
   - frontend/src/App.tsx
+audit_acknowledged:
+  milestone: v1.1
+  at: 2026-11-19
 ---
 
 ## Problem
