@@ -2,6 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -342,6 +345,63 @@ func TestRespawnDaemon_RecoveryClearsError(t *testing.T) {
 	defer mu.Unlock()
 	if len(events) != 1 || events[0] != "daemon:recovered" {
 		t.Fatalf("events = %q, want one daemon:recovered", events)
+	}
+}
+
+// 08-06-REVIEW IN-05: a daemon that answers again after a failed startup is
+// adopted only through startup's version check and restart policy (ensure).
+// One from this build is adopted as before, without ensure; a failed ensure
+// keeps the error.
+func TestRespawnDaemon_RecoveryChecksVersion(t *testing.T) {
+	old := daemon.BuildVersion
+	daemon.BuildVersion = "v2"
+	t.Cleanup(func() { daemon.BuildVersion = old })
+	for _, tc := range []struct {
+		name          string
+		ver           string
+		ensureErr     error
+		wantEnsures   int
+		wantRecovered bool
+	}{
+		{"another build goes through ensure", "v1", nil, 1, true},
+		{"another build whose ensure fails stays an error", "v1", errors.New("lock held"), 1, false},
+		{"this build is adopted directly", "v2", nil, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sock := respawnHome(t)
+			ln, err := net.Listen("unix", sock)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { ln.Close() })
+			go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+				if r.URL.Path != "/health" {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"status":"ok","version":%q}`, tc.ver)
+			}))
+			rec := &respawnEnsures{err: tc.ensureErr}
+			var events []string
+			app := &App{
+				client:              daemon.NewDaemonClient(sock),
+				startupDone:         closedChan(),
+				ensureDaemonFunc:    rec.ensure,
+				applyAppearanceFunc: func(string) {},
+				emitEventFunc:       func(name string, _ any) { events = append(events, name) },
+			}
+			boom := errors.New("EnsureDaemon: daemon lock still held after 15s")
+			app.daemonErr.Store(&boom)
+			app.respawnDaemonIfDown(time.Now())
+			if rec.calls() != tc.wantEnsures {
+				t.Fatalf("ensure ran %d times, want %d", rec.calls(), tc.wantEnsures)
+			}
+			recovered := len(events) == 1 && events[0] == "daemon:recovered"
+			if recovered != tc.wantRecovered || (app.daemonErr.Load() == nil) != tc.wantRecovered {
+				t.Fatalf("events %q, daemon error %v; want recovered %v", events, app.daemonErr.Load() != nil, tc.wantRecovered)
+			}
+		})
 	}
 }
 

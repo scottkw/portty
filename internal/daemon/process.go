@@ -133,7 +133,7 @@ func EnsureDaemon(socketPath string, allowRestart RestartPolicy) error {
 			fmt.Fprintf(os.Stderr, "EnsureDaemon: daemon answered but its version could not be read (%v); keeping it\n", verErr)
 			return nil
 		}
-		if staleVersion(ver) {
+		if StaleVersion(ver) {
 			n := liveSessions(client)
 			if n != 0 && !allowRestart(ver, n) {
 				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q) with %d live sessions; keeping it\n", ver, BuildVersion, n)
@@ -237,10 +237,10 @@ func countGrew(before, after int) bool {
 	return after != 0 && after != before && (before < 0 || after < 0 || after > before)
 }
 
-// staleVersion reports whether a daemon reporting ver is from another build.
+// StaleVersion reports whether a daemon reporting ver is from another build.
 // Production builds (non-"dev") compare versions; a stale daemon from an older
 // release won't have newly added API routes (e.g. start-minimized).
-func staleVersion(ver string) bool {
+func StaleVersion(ver string) bool {
 	return BuildVersion != "" && BuildVersion != "dev" && ver != BuildVersion
 }
 
@@ -251,7 +251,7 @@ func daemonReady(client *DaemonClient) bool {
 	if client.Health() != nil {
 		return false
 	}
-	if ver, err := client.GetDaemonVersion(); err != nil || staleVersion(ver) {
+	if ver, err := client.GetDaemonVersion(); err != nil || StaleVersion(ver) {
 		return false
 	}
 	port, err := client.GetRelayPort()

@@ -441,6 +441,14 @@ func (a *App) respawnDaemonIfDown(now time.Time) {
 		// IN-01: the daemon is back (and stayed up through any streak), so drop
 		// the error and let the frontend reload as Retry would.
 		if a.respawnAttempts == 0 && a.daemonErr.Load() != nil {
+			// 08-06-REVIEW IN-05: a daemon from another build is adopted only
+			// through startup's version check and restart policy.
+			if ver, err := a.client.GetDaemonVersion(); err != nil || daemon.StaleVersion(ver) {
+				if err := a.ensure()(daemon.DefaultSocketPath()); err != nil {
+					fmt.Fprintf(os.Stderr, "portty: daemon answering again, but not adopted: %v\n", err)
+					return
+				}
+			}
 			a.daemonErr.Store(nil)
 			a.applyStoredAppearance() // skipped while startup failed
 			a.emitEvent("daemon:recovered", nil)
