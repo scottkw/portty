@@ -233,6 +233,58 @@ func TestShutdownDaemon(t *testing.T) {
 	}
 }
 
+// IN-05: a dropped /shutdown is not proof the sessions' daemon stopped:
+// during a handoff the exiting old daemon drops connections while a takeover
+// keeps the sessions. If a daemon still answers /health on a fresh
+// connection, /shutdown goes to it once more; if none answers, it stopped.
+func TestShutdownDaemon_DroppedThenRechecked(t *testing.T) {
+	serve := func(t *testing.T, stillAnswers bool) (*DaemonClient, *atomic.Int64) {
+		t.Helper()
+		path := shortProcTestSocket(t, "drop")
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { ln.Close() })
+		var shutdowns atomic.Int64
+		go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+			switch r.URL.Path {
+			case "/health":
+				w.Write([]byte(`{"status":"ok","version":"v1.2.0-new"}`)) //nolint:errcheck
+			case "/shutdown":
+				if shutdowns.Add(1) == 1 { // the old daemon leaving mid-request
+					if !stillAnswers {
+						ln.Close()
+					}
+					conn, _, _ := w.(http.Hijacker).Hijack()
+					conn.Close()
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}
+		}))
+		return NewDaemonClient(path), &shutdowns
+	}
+	t.Run("a takeover still answers", func(t *testing.T) {
+		c, shutdowns := serve(t, true)
+		if err := c.ShutdownDaemon(); err != nil {
+			t.Fatalf("ShutdownDaemon: %v", err)
+		}
+		if shutdowns.Load() != 2 {
+			t.Fatalf("/shutdown sent %d times, want 2 (the daemon that still answers is stopped too)", shutdowns.Load())
+		}
+	})
+	t.Run("nothing answers", func(t *testing.T) {
+		c, shutdowns := serve(t, false)
+		if err := c.ShutdownDaemon(); err != nil {
+			t.Fatalf("ShutdownDaemon: %v", err)
+		}
+		if shutdowns.Load() != 1 {
+			t.Fatalf("/shutdown sent %d times, want 1", shutdowns.Load())
+		}
+	})
+}
+
 // TestClientFullLifecycle tests the full round-trip: create -> list -> rename -> list -> kill -> list.
 func TestClientFullLifecycle(t *testing.T) {
 	_, client, _ := testDaemon(t)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -252,15 +253,22 @@ func (c *DaemonClient) GetRelayPort() (int, error) {
 
 // ShutdownDaemon sends POST /shutdown to terminate the daemon process.
 // Connection-reset errors are expected (daemon exits before response completes)
-// and are treated as success.
+// and are treated as success, unless a daemon still answers /health on a
+// fresh connection (a takeover after a handoff): it gets /shutdown once more.
 // A daemon frozen for a handoff answers 503: it is waited out (doRetrying)
 // and still returned as an error once the wait is spent.
 func (c *DaemonClient) ShutdownDaemon() error {
 	hc := *c.http
 	hc.Timeout = 2 * time.Second // per attempt
-	resp, err := c.doRetrying(&hc, func() (*http.Request, error) {
-		return http.NewRequestWithContext(c.reqCtx(), http.MethodPost, c.base+"/shutdown", nil)
-	})
+	post := func() (*http.Response, error) {
+		return c.doRetrying(&hc, func() (*http.Request, error) {
+			return http.NewRequestWithContext(c.reqCtx(), http.MethodPost, c.base+"/shutdown", nil)
+		})
+	}
+	resp, err := post()
+	if err != nil && c.answersAfterDrop(&hc, err) {
+		resp, err = post() // IN-05: once, to the daemon that still answers
+	}
 	if err != nil {
 		// Connection reset is expected — daemon exited. Treat as success.
 		return nil
@@ -270,6 +278,30 @@ func (c *DaemonClient) ShutdownDaemon() error {
 		return fmt.Errorf("daemon API POST /shutdown: status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// answersAfterDrop reports whether, after err ended a /shutdown, a daemon
+// still answers /health on a fresh connection (IN-05). During a handoff the
+// exiting old daemon drops connections while a takeover keeps the sessions,
+// so a drop alone does not prove the sessions' daemon stopped. A timeout is a
+// hung daemon, not a drop: Quit All does not wait on it a second time.
+// Whichever version answers is the one that owns the socket now.
+func (c *DaemonClient) answersAfterDrop(hc *http.Client, err error) bool {
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() || c.reqCtx().Err() != nil {
+		return false
+	}
+	c.http.CloseIdleConnections() // a pooled connection may still lead to the exiting daemon
+	req, err := http.NewRequestWithContext(c.reqCtx(), http.MethodGet, c.base+"/health", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return true
 }
 
 // frozenRetryBudget bounds how long a mutating call waits out a daemon frozen
