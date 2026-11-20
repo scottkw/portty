@@ -1,5 +1,7 @@
 package pty
 
+import "time"
+
 // ReapNaturalExit reaps a naturally-exited child (PTY master EOF already
 // observed) and caches its real exit code from ProcessState.
 //
@@ -16,13 +18,37 @@ package pty
 // is read in the same goroutine after Wait returns (happens-after; no race).
 func (s *Session) ReapNaturalExit() {
 	s.mu.Lock()
-	cmd := s.cmd
+	cmd, exited := s.cmd, s.exited
 	s.mu.Unlock()
 	if cmd == nil {
+		if exited != nil {
+			// Adopted session (Phase 9): not our child, so no Wait. EOF can
+			// arrive before the kqueue watcher fires; give it 500 ms, else
+			// the code stays -1 (unknown).
+			select {
+			case <-exited:
+				s.cacheWatchCode()
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
 		return
 	}
 	_ = cmd.Wait()
 	if cmd.ProcessState != nil {
 		s.SetExitCode(cmd.ProcessState.ExitCode())
+	}
+}
+
+// cacheWatchCode caches an adopted session's exit watcher result, if it fired.
+func (s *Session) cacheWatchCode() {
+	if s.exited == nil {
+		return
+	}
+	select {
+	case <-s.exited:
+		s.mu.Lock()
+		s.exitCode = s.watchCode
+		s.mu.Unlock()
+	default:
 	}
 }

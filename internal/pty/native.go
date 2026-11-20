@@ -112,13 +112,7 @@ func (b *NativePTYBackend) Resize(id string, cols, rows int) error {
 	if !ok {
 		return ErrSessionNotFound
 	}
-	sess.mu.Lock()
-	p := sess.pty
-	sess.mu.Unlock()
-	if p == nil {
-		return fmt.Errorf("session %s: PTY not initialised", id)
-	}
-	return p.Resize(cols, rows)
+	return sess.resize(cols, rows)
 }
 
 // Kill terminates the process for the given session and removes it from the

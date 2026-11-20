@@ -9,6 +9,7 @@ import (
 	"time"
 
 	gopty "github.com/aymanbagabas/go-pty"
+	"golang.org/x/sys/unix"
 )
 
 // SessionState represents the current lifecycle state of a Session.
@@ -50,6 +51,15 @@ type Session struct {
 	// pid is the child's pid (and process group id: go-pty uses Setsid).
 	pid int
 
+	// Adopted sessions only (Adopt; nil/zero for created ones). slave is the
+	// kept PTY slave (the daemon holds it, as go-pty does for created ones).
+	// exited closes once the kqueue exit watcher fires; until then the
+	// process is known alive, and after it the pid is never signalled again
+	// (Phase 9 Pitfall 9). watchCode is the watcher's result (-1 unknown).
+	slave     *os.File
+	exited    chan struct{}
+	watchCode int
+
 	// cmd is the PTY-attached command (holds the process reference).
 	cmd *gopty.Cmd
 
@@ -77,16 +87,44 @@ type Session struct {
 // even when killSession and the Linux exit detector race to clean up.
 func (s *Session) closePTY() {
 	s.mu.Lock()
-	p, f := s.pty, s.ioFile
+	p, f, sl := s.pty, s.ioFile, s.slave
 	s.mu.Unlock()
 	s.ptyCloseOnce.Do(func() {
 		if f != nil {
 			_ = f.Close()
 		}
+		if sl != nil {
+			_ = sl.Close()
+		}
 		if p != nil {
 			_ = p.Close()
 		}
 	})
+}
+
+// resize sets the terminal size: through go-pty for created sessions, and by
+// ioctl on the I/O file for adopted ones, which have no go-pty handle.
+func (s *Session) resize(cols, rows int) error {
+	s.mu.Lock()
+	p, f := s.pty, s.ioFile
+	s.mu.Unlock()
+	if p != nil {
+		return p.Resize(cols, rows)
+	}
+	if f == nil {
+		return fmt.Errorf("session %s: PTY not initialised", s.ID)
+	}
+	sc, err := f.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var ierr error
+	if err := sc.Control(func(fd uintptr) {
+		ierr = unix.IoctlSetWinsize(int(fd), unix.TIOCSWINSZ, &unix.Winsize{Row: uint16(rows), Col: uint16(cols)})
+	}); err != nil {
+		return err
+	}
+	return ierr
 }
 
 // rw returns the file session I/O goes through: the pollable dup when set.

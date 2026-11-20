@@ -18,6 +18,9 @@ import (
 // function is called — the exit watcher goroutine checks IsKilled() and skips
 // its own cmd.Wait(), so there is no concurrent caller.
 func killSession(s *Session) error {
+	if s.exited != nil {
+		return killAdopted(s)
+	}
 	if s.cmd == nil || s.cmd.Process == nil {
 		s.closePTY()
 		if s.cancel != nil {
@@ -78,5 +81,43 @@ func killSession(s *Session) error {
 		s.cancel()
 	}
 
+	return nil
+}
+
+// signalGroup sends a signal to a process group; a seam so tests can see
+// which signals killAdopted sends.
+var signalGroup = syscall.Kill
+
+// killAdopted is killSession for a session adopted in a handoff: there is no
+// exec.Cmd to Wait on, so the kqueue exit watcher is the only proof the
+// process lives. Pitfall 9: once the watcher has fired the pid may already
+// belong to an unrelated process, so it is never signalled again. Same
+// escalation as created sessions: SIGHUP to the group (go-pty started it
+// with Setsid, so pgid == pid), close the PTY, SIGKILL after 2 s.
+func killAdopted(s *Session) error {
+	alive := func() bool {
+		select {
+		case <-s.exited:
+			return false
+		default:
+			return true
+		}
+	}
+	if alive() {
+		_ = signalGroup(-s.pid, syscall.SIGHUP)
+	}
+	s.closePTY()
+	select {
+	case <-s.exited:
+	case <-time.After(2 * time.Second):
+		if alive() {
+			_ = signalGroup(-s.pid, syscall.SIGKILL)
+		}
+		select {
+		case <-s.exited:
+		case <-time.After(1 * time.Second): // stuck process; same SLA as killSession
+		}
+	}
+	s.cacheWatchCode()
 	return nil
 }

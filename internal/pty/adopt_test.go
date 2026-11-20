@@ -253,7 +253,8 @@ func recordSignals(t *testing.T) func() []syscall.Signal {
 func TestKillAdopted(t *testing.T) {
 	sent := recordSignals(t)
 
-	b2, sess := adoptVia(t, `trap "" HUP; sleep 30`)
+	b2, sess := adoptVia(t, `trap "" HUP; echo ready; sleep 30`)
+	readAll(sess).waitFor(t, "ready") // the HUP trap is in place
 	start := time.Now()
 	if err := b2.Kill(sess.ID); err != nil {
 		t.Fatalf("Kill: %v", err)
@@ -268,6 +269,7 @@ func TestKillAdopted(t *testing.T) {
 	}
 
 	b3, gone := adoptVia(t, `read x; exit 0`)
+	readAll(gone) // exit waits for the echoed output to drain, like the hub does
 	if _, err := gone.Write([]byte("\n")); err != nil {
 		t.Fatal(err)
 	}
