@@ -362,7 +362,11 @@ func (ws *WebServer) Start() error {
 	if err != nil {
 		return err
 	}
-	return ws.StartOn(raw)
+	if err := ws.StartOn(raw); err != nil {
+		_ = raw.Close() // a refused listener must not keep the share port bound
+		return err
+	}
+	return nil
 }
 
 // StartOn serves TLS on raw, a TCP listener opened by Start or handed over
