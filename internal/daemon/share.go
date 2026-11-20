@@ -154,9 +154,9 @@ func (a *API) shareOn(ctx context.Context, id string) (ShareResponse, *ShareErro
 	}
 
 	// WR-01 (it2): the first warm-up can take seconds and moves nothing, so
-	// it runs before the write gate; startShareServer's own warm-up then
-	// reads tailscaled's cache, and a handoff's drain waits only for the
-	// start and mint below.
+	// it runs before the write gate, and a handoff's drain waits only for the
+	// start and mint below. startShareServer warms only if the server stopped
+	// since this check.
 	a.mu.RLock()
 	running := a.webServer != nil
 	a.mu.RUnlock()
@@ -164,6 +164,7 @@ func (a *API) shareOn(ctx context.Context, id string) (ShareResponse, *ShareErro
 		if serr := warmShareCert(ctx, warmCert, h.Domain); serr != nil {
 			return ShareResponse{}, serr
 		}
+		warmCert = func(context.Context, string) error { return nil } // warmed once, just above
 	}
 	if !a.enterWrite() {
 		return ShareResponse{}, errShareFrozen
