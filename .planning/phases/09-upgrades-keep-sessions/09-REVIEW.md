@@ -278,3 +278,97 @@ The takeover exits after an import failure, so this is bounded. It would matter 
 _Reviewed: 2026-11-20T06:16:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+---
+
+## Iteration 2
+
+**Reviewed:** 2026-11-20
+**Depth:** standard. The fix commits were traced into the connected code: `handoff.go` (both sides), `api.go`, `client.go`, `engine.go`, `process.go`, `fdpass`, `adopt_darwin.go`, `exitwatch_darwin.go`, `handoff_state.go`, `webserver/server.go`, `share.go`, `peer_connect.go`, `app.go`, `App.tsx`, `hostReconnect.ts`, `relayClient.ts` and `TerminalPanel.tsx`.
+**Scope:** `git diff e299674d..e7c6ab82` (the iteration-1 review-fix commits). IN-04 is an accepted limit and is not raised again.
+**Evidence:** `GOTOOLCHAIN=go1.26.11 go vet ./internal/daemon/...` exits 0 with no output. No test suite was run.
+**Findings:** critical 0, warning 2, info 3 (total 5)
+
+### Verification of the iteration-1 fixes
+
+| Finding | Verdict | Notes |
+|---|---|---|
+| CR-01 | Correct | The watchdog exits only through `CAS(pending→dead)`. Once the main goroutine has won `CAS(pending→writing)`, the watchdog only closes the conn. A 5-byte unix-socket write either completes (the close waits for the in-flight write's fd reference) or fails with no bytes sent. A failure goes to `oldGone()` and then `die`, and the old daemon resumes on `peerGone`. A delivered COMMITTED is never followed by a watchdog exit. On the old side, `finish(peerGone)` checks before `closeListenerCopies`, so a resume still has its listeners. I found no path where both daemons exit, or where neither serves. |
+| WR-01 | Correct as a barrier, with a new availability regression (WR-01 below) | `frozen.Store` comes before `TryLock`, and the gate checks `frozen`, then `TryRLock`. That ordering leaves no window for a write to slip in. Every return after `o.gated = true` reaches `resume()` (rollback, `resumeAfterCommit`, the `finish` resume) or a process exit. `TryLock` never queues as a pending writer, so readers are not starved. |
+| WR-02 | Correct | The sender-side cap is checked before any byte goes out, so the stream stays clean for ABORT. The limit for grids larger than 500x200 is recorded as a `shortcut:`. |
+| WR-03 | The renderer dependence is gone, but the digest now depends on the struct schema (WR-02 below) | |
+| WR-04 | Correct | Both rejecting bindings are wired in, and the Quit handler's `.catch` is live. The `retry` verdict now loops with backoff while the daemon cannot be read. That matches the design: a respawned daemon that does not list the session still ends the tab. |
+| WR-05 | Correct | `lockPath` and `socketPath` match `runDaemonCore` (`filepath.Dir(socketPath)/daemon.lock`, `DefaultSocketPath()`). `SetUnlinkOnClose(false)` is set before any refusal can close the listener. Closing the refused lock dup does not drop the flock, which the old daemon's descriptor still holds. `CheckListener` runs only when `shareLn != nil` (`finalize` returns earlier otherwise). The one gap is a listener leak in `Start()` (IN-02 below). |
+| IN-01 | Correct | |
+| IN-02 | Correct | |
+| IN-03 | Correct | `Forget` targets the backend registry, which is a separate object from `e.registry`. |
+| IN-05 | Correct | The double-shutdown cost is in IN-03 below. |
+| IN-06 | Correct | Every `ensure()` caller after startup holds `daemonMu`, so `NoHandoff` applies only to the Restart Now call. |
+
+### Warnings
+
+#### WR-01 (it2): The 1 s write drain aborts the handoff whenever a slow but legitimate write is in flight
+
+**File:** `internal/daemon/api.go:132` (gate), `internal/daemon/api.go:145-154` (`drainWrites`), `internal/daemon/handoff.go:491-495`; slow writers at `internal/daemon/share.go:137-160` and `internal/daemon/peer_connect.go:140-163`
+**Issue:** every non-GET route now holds `writeGate` for its whole run, and the handoff waits only `writeDrainTimeout` (1 s) before it rolls back. Several gated routes run much longer than 1 s by design:
+- `PUT /sessions/{id}/share` can spend up to 5 s on `shareHealth`, then the cert warm-up in `startShareServer`, under `startMu`.
+- `POST /peers/connect` has a 20 s context and makes tailnet discovery and two HTTPS calls to another Mac. It changes nothing a handoff moves, so it has no reason to be behind the barrier.
+
+Before this fix, such a write did not block the handoff.
+**Failure scenario:**
+1. The user runs `portty attach office` in another terminal, and the office Mac is slow to answer, or toggles a share whose first certificate fetch takes several seconds.
+2. During that time the new GUI's EnsureDaemon starts the takeover.
+3. After 1 s the old daemon rolls back with "a write in flight did not finish", and the takeover gets ABORT and returns `takeoverTimedOut`.
+4. The GUI shows the restart question with "the handoff timed out". With IN-06, Restart Now no longer retries the move, so a user who accepts ends every session. A blocked handoff was a few seconds' wait; it is now the restart question.
+
+**Fix:** apply the barrier only to routes that change moved state, and let the rest pass with the plain `frozen` check:
+```go
+// freezeGate: routes that touch nothing a handoff moves skip the barrier.
+if r.URL.Path == "/handoff" || r.URL.Path == "/peers/connect" { next.ServeHTTP(w, r); return }
+```
+For share-on, either raise the drain to the 2 s of headroom the 20 s budget leaves, or report a failed drain as `takeoverBusy` rather than a rollback that reads as a timeout. EnsureDaemon could then retry the takeover once after a short wait. Add a fault test that holds a `PUT /share` for 3 s across a handoff.
+
+#### WR-02 (it2): The READY digest now depends on each build's `HubState` schema, so the first release that changes `HubState` can never hand off
+
+**File:** `internal/relay/handoff_state.go:425-477` (`HubState.Digest`), `internal/relay/handoff_state_test.go:754-755` (field-count pin), `internal/daemon/handoff.go:666`, `876`
+**Issue:** each side hashes with its own build's `Digest` code over its own build's struct:
+- The old side hashes the `HubState` it sent.
+- The takeover hashes the `HubState` it decoded, as a struct of the takeover's own build.
+
+gob tolerates a schema difference on decode: an unknown field is dropped, and a missing one is zero-filled. The digest does not tolerate it:
+- Suppose v1.3 adds a field and, as `TestHandoffState_StateDigest` requires ("hash the new one"), hashes it. Its digest stream then has extra bytes (8 bytes for a zero int, a length prefix for an empty slice) that v1.2's stream lacks.
+- A removed or retyped field breaks it the same way in reverse.
+
+`HandoffVersion` promises that "two independently installed builds speak it". This is the iteration-1 WR-03 failure moved from the renderer to the struct.
+**Failure scenario:**
+1. v1.3 adds `HubState.CursorStyle` with a gob-compatible zero default.
+2. Every v1.2 to v1.3 upgrade rolls back at READY with "digest mismatch for session …".
+3. The user is asked to restart on every upgrade, while the tests pass because both sides are built from one tree.
+
+**Fix:** hash the bytes on the wire, which do not depend on either build. `writeFrame` returns `sha256(b[5:])` for `frameSession`, and the old side keeps it as `o.sent[id]`. `readFrame` gives the takeover `sha256(p)` before decoding. Both hash the identical payload, so a schema difference that gob tolerates passes, and any corruption or reordering is still caught. Gob's non-deterministic map order does not matter, because each side hashes the same bytes rather than re-encoding. Then drop the field-count pin, or keep it only for a log-only fidelity diagnostic. Iteration 1 also asked to keep the render comparison as a log-only diagnostic, and the fix dropped it.
+
+### Info
+
+#### IN-01 (it2): `maxFrozen` leaves out `restartDrain`, and WR-01 halved the margin under the client's retry budget
+
+**File:** `internal/daemon/handoff.go:85-88`, `internal/daemon/handoff.go:746-761`, `internal/daemon/client.go:318-340`
+**Issue:** after COMMITTED, `finish` closes the listener copies, but the old daemon's `http.Serve` goroutines keep answering kept-alive client connections, with 503 and Retry-After, because `frozen` is still true. That lasts through `restartDrain` (1 s) until `handoffExit`. `doRetrying` returns the pooled connection after each 503, so a client can keep reaching the old daemon. The worst-case 503 window is drain 1 + freeze 2 + state 5 + ready 5 + watchdog 5 + restartDrain 1 = 19 s. The budget is 20 s, and `doRetrying` gives up when `now + wait > deadline` with a wait of 1 to 2 s. In that case a write gets a final 503 even though the handoff succeeded. Before WR-01 the window was 18 s.
+**Fix:** include `restartDrain` in `maxFrozen()`, so `TestHandoff_TimeoutsFitClientRetry` pins the real window, and raise `frozenRetryBudget` to about 25 s. Or close kept-alive connections at the start of `finish`, for example with an `http.Server` and `SetKeepAlivesEnabled(false)` or `Shutdown` on the API server.
+
+#### IN-02 (it2): `WebServer.Start` leaks its TCP listener, and holds port 7444, when the new `CheckListener` refuses it
+
+**File:** `internal/webserver/server.go:360-366`, `375-377`
+**Issue:** `Start` opens `raw` with `listenTCP` and passes it to `StartOn`. `StartOn` now returns early when `CheckListener` fails and never closes `raw`, so the fixed share port stays bound and the next share-on fails with `ErrPortInUse`. This is reachable only if `BindIP` parses but the kernel reports a different address, so it is unlikely today. The handoff caller (`commit` → `dropShares`) does close its listener.
+**Fix:** in `Start`, close the listener on error: `if err := ws.StartOn(raw); err != nil { _ = raw.Close(); return err }`.
+
+#### IN-03 (it2): IN-05's second `/shutdown` gets a fresh 20 s retry budget
+
+**File:** `internal/daemon/client.go:260-271`
+**Issue:** `post()` calls `doRetrying` each time, and each call starts its own `frozenRetryBudget`. When the re-checked daemon is frozen (the overlap window, or a second handoff), Quit All can wait about 40 s plus the 2 s per-attempt timeouts. The GUI shows nothing during that wait. The fix's own comment says the V-05b bound covers timeouts only.
+**Fix:** compute one deadline in `ShutdownDaemon` and pass it to both `doRetrying` calls, or give the second call only the budget left over.
+
+---
+
+_Iteration 2 reviewed: 2026-11-20_
+_Reviewer: Claude (gsd-code-reviewer)_
+_Depth: standard_
