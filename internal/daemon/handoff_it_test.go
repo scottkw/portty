@@ -154,6 +154,7 @@ func TestHandoffIT(t *testing.T) {
 	t.Run("from-v1.1", func(t *testing.T) {
 		r := newITRig(t, bins["OLD"])
 		ids := r.liveSessions(2)
+		pids := r.shellPids(len(ids))
 		v := r.viewer(ids[0])
 		tick0 := v.waitTicks(t, 5)
 
@@ -171,9 +172,14 @@ func TestHandoffIT(t *testing.T) {
 		if _, has := m["api"]; has || m["version"] != "v1.1.0-itOld" {
 			t.Fatalf("/health = %s; want version v1.1.0-itOld and no api key", raw)
 		}
+		for _, p := range pids {
+			if !itAlive(p) || itPpid(t, p) != r.daemonPid {
+				t.Fatalf("shell %d: alive=%v; want alive under the v1.1 daemon %d", p, itAlive(p), r.daemonPid)
+			}
+		}
 		last := v.waitTicksAfter(t, tick0+5)
 		first, n := v.contiguous(t)
-		t.Logf("viewer: reconnects=%d, TICK-1 %d..%d (%d lines)", v.reconnects.Load(), first, last, n)
+		t.Logf("v1.1 daemon %d and shells %v alive; viewer: reconnects=%d, TICK-1 %d..%d (%d lines, no gap, no repeat)", r.daemonPid, pids, v.reconnects.Load(), first, last, n)
 	})
 }
 
@@ -189,6 +195,7 @@ type itRig struct {
 	cmd        *exec.Cmd
 	stops      []func()
 	sessions   []string
+	shells     []int // shellPids' result, reaped in cleanup
 }
 
 func newITRig(t *testing.T, bin string) *itRig {
@@ -197,8 +204,9 @@ func newITRig(t *testing.T, bin string) *itRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// An empty .zshrc keeps zsh's new-user wizard out of the login shells.
-	if err := os.WriteFile(filepath.Join(home, ".zshrc"), nil, 0o600); err != nil {
+	// A .zshrc keeps zsh's new-user wizard out of the login shells; no
+	// history file, so no shell writes into the HOME after cleanup removed it.
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("unset HISTFILE\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	r := &itRig{t: t, home: home, sock: filepath.Join(home, "Library", "Application Support", "portty", "daemon.sock")}
@@ -259,6 +267,14 @@ func (r *itRig) cleanup() {
 		_ = r.client.ShutdownDaemon()
 		for i := 0; i < 50 && r.client.Health() == nil; i++ {
 			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	for i := 0; i < 50 && slices.ContainsFunc(r.shells, itAlive); i++ {
+		time.Sleep(100 * time.Millisecond) // the shells exit on the hangup
+	}
+	for _, p := range r.shells {
+		if itAlive(p) {
+			_ = syscall.Kill(p, syscall.SIGKILL)
 		}
 	}
 	for _, f := range []string{"started-daemon.log", "Library/Application Support/portty/daemon.log", "Library/Application Support/portty/daemon.log.1"} {
@@ -329,6 +345,7 @@ func (r *itRig) shellPids(want int) []int {
 		r.t.Fatalf("pgrep -P %d = %v; want the session shells", r.daemonPid, pids)
 	}
 	r.t.Logf("shell pids under daemon %d: %v", r.daemonPid, pids)
+	r.shells = pids
 	return pids
 }
 
