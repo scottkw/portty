@@ -4,7 +4,7 @@ verified: 2026-11-20T22:30:16Z
 status: passed
 score: 5/5 must-haves verified
 covered_files: [".planning/phases/09-upgrades-keep-sessions/09-01-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-01-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-02-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-02-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-03-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-03-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-04-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-04-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-05-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-05-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-06-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-06-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-07-FIX.md", ".planning/phases/09-upgrades-keep-sessions/09-07-FIX2.md", ".planning/phases/09-upgrades-keep-sessions/09-07-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-07-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-REVIEW-FIX.md", ".planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md", "TESTING.md", "app.go", "cmd_attach.go", "cmd_cli.go", "cmd_daemon.go", "frontend/src/App.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/lib/hostReconnect.ts", "internal/attach/loop.go", "internal/daemon/api.go", "internal/daemon/client.go", "internal/daemon/compat_vmpreview.go", "internal/daemon/engine.go", "internal/daemon/handoff.go", "internal/daemon/handoff_vmpreview.go", "internal/daemon/process.go", "internal/daemon/process_unix.go", "internal/daemon/share.go", "internal/daemon/types.go", "internal/fdpass/fdpass.go", "internal/pty/adopt_darwin.go", "internal/pty/exitwatch_darwin.go", "internal/pty/native.go", "internal/pty/session.go", "internal/relay/close_reasons.go", "internal/relay/handoff_state.go", "internal/relay/hub.go", "internal/relay/manager.go", "internal/relay/server.go", "internal/webserver/server.go", "terminate_darwin.go", "terminate_darwin.m"]
-covered_digest: "v4:sha256:c444a5e454e3151e09da75f7901b79d127aa9121d60772c4fcf9d6976f826a74"
+covered_digest: "v4:sha256:6895859274174a3891abfd2a41f7e6b4a0912ff9a01b4d1458a6ce9ea83fc4fd"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -163,3 +163,11 @@ Two non-blocking follow-ups:
 
 _Verified: 2026-11-20T22:30:16Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Addendum (2026-11-20, after this report; docs-only changes)
+
+The covered docs changed after the verifier ran, with no product code change (latest product commit is still `50903bee`):
+- 09-VM-CHECKS.md: V-03b PASS twice and V-03d PASS at `dc48674b`, which includes the CR-01 fix. This answers the report's optional follow-up 2: the post-CR-01 fault paths now have VM evidence. The TestHandoffIT re-runs at `e7c6ab82` and `bbb34439` (both PASS) are recorded in a table.
+- TESTING.md: the M-105, M-106, M-107, M-111, M-114 and M-115 "Last run" lines now cite these re-runs (optional follow-up 1).
+
+The verdict is unchanged: passed, 5/5. The digest above was recomputed over the same covered_files.

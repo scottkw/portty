@@ -8,11 +8,11 @@
 
 ### Upgrades keep sessions (first, rock-solid priority)
 
-- [ ] **UPGR-01**: Upgrading Portty while sessions are running keeps every session alive. The old daemon hands its PTYs and session state (ring, history, offsets, share records) to the new daemon. Shells, and the programs running in them (e.g. Claude Code), never notice. No consent dialog is needed for a successful handoff.
-- [ ] **UPGR-02**: Viewers attached during an upgrade (local tabs, peer tabs, browser share links, `portty attach`) reconnect to the new daemon on their own and resume with a delta, with no duplicated or missing output.
-- [ ] **UPGR-03**: If a handoff fails partway, no session is lost: the old daemon keeps serving, the user is told, and the DEBT-08 consent guard remains the fallback.
-- [ ] **UPGR-04**: The daemon reports an API/protocol version. A GUI or CLI facing an incompatible daemon shows a clear "update needed" state instead of failing calls (08-06 IN-03).
-- [ ] **UPGR-05**: The GUI quits cleanly on SIGTERM. Quit All can cancel an in-flight daemon restart instead of waiting behind it (08-06 IN-07). Cmd-Q while the restart dialog is open never stacks a second dialog underneath.
+- [x] **UPGR-01**: Upgrading Portty while sessions are running keeps every session alive. The old daemon hands its PTYs and session state (ring, history, offsets, share records) to the new daemon. Shells, and the programs running in them (e.g. Claude Code), never notice. No consent dialog is needed for a successful handoff.
+- [x] **UPGR-02**: Viewers attached during an upgrade (local tabs, peer tabs, browser share links, `portty attach`) reconnect to the new daemon on their own and resume with a delta, with no duplicated or missing output.
+- [x] **UPGR-03**: If a handoff fails partway, no session is lost: the old daemon keeps serving, the user is told, and the DEBT-08 consent guard remains the fallback.
+- [x] **UPGR-04**: The daemon reports an API/protocol version. A GUI or CLI facing an incompatible daemon shows a clear "update needed" state instead of failing calls (08-06 IN-03).
+- [x] **UPGR-05**: The GUI quits cleanly on SIGTERM. Quit All can cancel an in-flight daemon restart instead of waiting behind it (08-06 IN-07). Cmd-Q while the restart dialog is open never stacks a second dialog underneath.
 
 ### Input path reliability (scheduled v1.1 todos)
 
@@ -69,11 +69,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UPGR-01 | Phase 9 | Pending |
-| UPGR-02 | Phase 9 | Pending |
-| UPGR-03 | Phase 9 | Pending |
-| UPGR-04 | Phase 9 | Pending |
-| UPGR-05 | Phase 9 | Pending |
+| UPGR-01 | Phase 9 | Complete |
+| UPGR-02 | Phase 9 | Complete |
+| UPGR-03 | Phase 9 | Complete |
+| UPGR-04 | Phase 9 | Complete |
+| UPGR-05 | Phase 9 | Complete |
 | INPT-01 | Phase 10 | Pending |
 | INPT-02 | Phase 10 | Pending |
 | INPT-03 | Phase 10 | Pending |

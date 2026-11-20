@@ -38,7 +38,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 
 **Holds for every phase:** token-gated, tailnet-only links; the CSP unchanged except for what a recorded security review approves; no new cloud dependencies; Wails v2; macOS-native look; radical simplicity. VM evidence comes from two Tart VMs on the real tailnet standing in for the office and home Macs, recorded in the phase's VM-CHECKS file and as M-NN items in TESTING.md.
 
-- [ ] **Phase 9: Upgrades Keep Sessions** - The new daemon takes over live PTYs and history on upgrade, viewers resume with a delta, a failed handoff loses nothing, the daemon reports an API version, and quitting is clean
+- [x] **Phase 9: Upgrades Keep Sessions** - The new daemon takes over live PTYs and history on upgrade, viewers resume with a delta, a failed handoff loses nothing, the daemon reports an API version, and quitting is clean (completed 2026-11-20)
 - [ ] **Phase 10: Input Path Reliability** - A bounded input queue keeps viewers connected through long pastes, the paste notice is honest in the app and the browser, peer snapshots are keyed by host, the viewer you're typing on sets the session's size, and the exit-code test is deterministic
 - [ ] **Phase 11: File Preview** - `portty open <file>` shows images, PDFs and Markdown in a preview tab for app and browser viewers, over the session's own stream, under a size cap and a reviewed CSP
 - [ ] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote
@@ -57,15 +57,15 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
   3. A handoff that fails at any step loses nothing. Fault injection at each step in tests, plus one VM run that kills the new daemon mid-handoff, shows the old daemon still serving every session and viewer, the GUI or CLI saying the sessions could not be moved, and the DEBT-08 choice (the dialog, or `--restart-daemon`) offered as before. An upgrade from a v1.1 daemon, which cannot hand off, gets the same DEBT-08 choice. (UPGR-03)
   4. `/health` reports an API version. A GUI or CLI facing a daemon it cannot talk to shows a clear "update needed" state (a banner in the app; a one-line message and a non-zero exit from the CLI) instead of failing calls. A compatible older daemon kept with Not Now keeps working. (UPGR-04)
   5. Quitting is clean. `kill -TERM` quits the GUI and leaves the daemon and its sessions running. Quit All during an approved daemon restart cancels the restart and quits within a few seconds, not ~30 s. Cmd-Q while the restart dialog is open never draws a second dialog underneath it (a vitest plus a VM click check). (UPGR-05)
-**Plans**: 7 plans
+**Plans**: 7/7 plans complete
 Plans:
-- [ ] 09-01-PLAN.md — Lifecycle groundwork: /health API version and "update needed" in CLI and GUI (UPGR-04); ctx-aware EnsureDaemon with Quit All cancel, couldn't-move restart copy, 503 retry; SIGTERM, logout/restart and one-modal quit fixes (UPGR-05, UPGR-03 copy)
-- [ ] 09-02-PLAN.md — Kernel substrate: pollable PTY master, fd passing (internal/fdpass, peer uid and pid) with lock and listener pins, adopted sessions with kqueue exit status and safe kill, movable share listener with `api` on /info (UPGR-01, UPGR-04)
-- [ ] 09-03-PLAN.md — Relay state: Freeze/Thaw, HubState export/import with staged hubs, seed refactor carrying the alt screen, round trip vs a reference hub and fuzz, waitable 1012 restart close (UPGR-01, UPGR-02)
-- [ ] 09-04-PLAN.md — Handoff protocol: /handoff and in-process takeover with two-phase commit over SCM_RIGHTS, thaw after COMMIT only once the takeover has exited, fault injection at every step, old-dies save, SIGTERM guard (UPGR-01, UPGR-03)
-- [ ] 09-05-PLAN.md — `portty daemon --takeover` with a status pipe, EnsureDaemon deciding from the takeover's outcome with the DEBT-08 fallback, real launch check (UPGR-01, UPGR-03)
-- [ ] 09-06-PLAN.md — Env-gated two-binary integration test in the VM, local tab and local attach reconnect, TESTING.md, full gate once (all UPGR)
-- [ ] 09-07-PLAN.md — Two-build VM checks for SC1-SC5: upgrade, viewers, killed takeover and killed old daemon, v1.1 upgrade, update needed, quit paths (all UPGR)
+- [x] 09-01-PLAN.md — Lifecycle groundwork: /health API version and "update needed" in CLI and GUI (UPGR-04); ctx-aware EnsureDaemon with Quit All cancel, couldn't-move restart copy, 503 retry; SIGTERM, logout/restart and one-modal quit fixes (UPGR-05, UPGR-03 copy)
+- [x] 09-02-PLAN.md — Kernel substrate: pollable PTY master, fd passing (internal/fdpass, peer uid and pid) with lock and listener pins, adopted sessions with kqueue exit status and safe kill, movable share listener with `api` on /info (UPGR-01, UPGR-04)
+- [x] 09-03-PLAN.md — Relay state: Freeze/Thaw, HubState export/import with staged hubs, seed refactor carrying the alt screen, round trip vs a reference hub and fuzz, waitable 1012 restart close (UPGR-01, UPGR-02)
+- [x] 09-04-PLAN.md — Handoff protocol: /handoff and in-process takeover with two-phase commit over SCM_RIGHTS, thaw after COMMIT only once the takeover has exited, fault injection at every step, old-dies save, SIGTERM guard (UPGR-01, UPGR-03)
+- [x] 09-05-PLAN.md — `portty daemon --takeover` with a status pipe, EnsureDaemon deciding from the takeover's outcome with the DEBT-08 fallback, real launch check (UPGR-01, UPGR-03)
+- [x] 09-06-PLAN.md — Env-gated two-binary integration test in the VM, local tab and local attach reconnect, TESTING.md, full gate once (all UPGR)
+- [x] 09-07-PLAN.md — Two-build VM checks for SC1-SC5: upgrade, viewers, killed takeover and killed old daemon, v1.1 upgrade, update needed, quit paths (all UPGR)
 **UI hint**: no
 
 ### Phase 10: Input Path Reliability
@@ -138,7 +138,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 9. Upgrades Keep Sessions | v1.2 | 0/7 | Not started | - |
+| 9. Upgrades Keep Sessions | v1.2 | 7/7 | Complete    | 2026-11-20 |
 | 10. Input Path Reliability | v1.2 | 0/TBD | Not started | - |
 | 11. File Preview | v1.2 | 0/TBD | Not started | - |
 | 12. File Path Click | v1.2 | 0/TBD | Not started | - |
