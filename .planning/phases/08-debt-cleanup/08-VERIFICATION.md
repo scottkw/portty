@@ -245,3 +245,13 @@ _Verifier: Claude (gsd-verifier)_
 - **V-05:** the user accepted it. DEBT-05/SC4 is met with the "may have been cut short" wording on the proxy path; the 100 KB sub-run is not required.
 - **Follow-up 1 (upgrade ends sessions):** "Guard now, keep later". DEBT-08 / SC6 was added to Phase 8 as plan 08-06 (consent before a version-mismatch restart ends live sessions). Keeping sessions alive across upgrades is the first v1.2 phase.
 - **Follow-ups 2-4:** closed in 358550a8 (browser share viewer paste split, a HARD-02 gap), c5a0a7c8 (todos for IN-06 and IN-07) and 4356835a (charstate shortcut).
+
+## DEBT-08 / SC6 (added after the initial verification)
+
+- **Plan 08-06:** consent before a version-mismatch restart ends live sessions. One code review (0 critical, 4 warnings, 8 info) and one fix pass followed: 10 fixed, with IN-03 and IN-07 deferred for the v1.2 session handoff.
+- **VM:**
+  - G-01..G-03 PASS: Not Now keeps the sessions, Restart Now restarts, the CLI refuses without the flag.
+  - G-04 first run FAIL: a no-argument launch panicked. Fixed in dcbe999d with a `launchMode` unit test.
+  - Re-run G-00 and G-04..G-06 PASS: a bare launch works, the prompt is visible after a minimized start or a hidden GUI, all CLI flag positions behave, and a grown session count makes it ask again.
+- **Final gate at 14ad5b6e:** build and vet OK; `go test -race -short ./...` passes all 12 packages; vitest 93 files and 1288 tests pass; tsc OK; brand clean; 152 traceability paths.
+- **SC6: met.** Status for the phase is passed, 6/6.
