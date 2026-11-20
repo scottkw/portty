@@ -1257,3 +1257,73 @@ func TestRestartConsent_MoveFailed(t *testing.T) {
 func question(n int) daemon.RestartQuestion {
 	return daemon.RestartQuestion{DaemonVersion: "v1", Sessions: n}
 }
+
+// UPGR-05: SIGTERM quits the GUI only. Wails' own handler showed the quit
+// modal (or nothing, window hidden) and swallowed later SIGTERMs (G-01).
+func TestOnTerminate_QuitsGUIOnly(t *testing.T) {
+	path := fmt.Sprintf("/tmp/ot%d_%d.sock", os.Getpid(), time.Now().UnixNano()%100000)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close(); os.Remove(path) })
+	var shutdowns atomic.Int64
+	go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+		if r.URL.Path == "/shutdown" {
+			shutdowns.Add(1)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	quits := 0
+	a := &App{client: daemon.NewDaemonClient(path), quitFunc: func() { quits++ }}
+	a.onTerminate()
+	if quits != 1 || !a.quitting.Load() || shutdowns.Load() != 0 {
+		t.Fatalf("quits %d, quitting %v, /shutdown sent %d; want 1, true, 0", quits, a.quitting.Load(), shutdowns.Load())
+	}
+	if a.beforeClose(context.Background()) {
+		t.Fatal("beforeClose blocked the quit after SIGTERM")
+	}
+}
+
+// A macOS logout, restart or shutdown quits the GUI without the quit dialog
+// (Wails' applicationShouldTerminate cancelled it), and leaves the daemon alone.
+func TestSystemPowerOff_AllowsQuit(t *testing.T) {
+	var events []string
+	a := &App{emitEventFunc: func(name string, _ any) { events = append(events, name) }}
+	a.onSystemPowerOff()
+	if !a.quitting.Load() || a.beforeClose(context.Background()) || len(events) != 0 {
+		t.Fatalf("quitting %v, events %v; want true and a quit allowed with no dialog", a.quitting.Load(), events)
+	}
+}
+
+// UPGR-04: after an ensure, a daemon below MinDaemonAPI raises the Update
+// needed banner; with the default minimum nothing is raised.
+func TestDaemonUpdateNeeded(t *testing.T) {
+	origEnsure, origHealth, origMin := ensureDaemon, daemonHealthOf, daemon.MinDaemonAPI
+	t.Cleanup(func() { ensureDaemon, daemonHealthOf, daemon.MinDaemonAPI = origEnsure, origHealth, origMin })
+	ensureDaemon = func(context.Context, string, daemon.EnsureOptions) error { return nil }
+	daemonHealthOf = func(string) (daemon.HealthResponse, error) {
+		return daemon.HealthResponse{Status: "ok", Version: "v1.2.0", API: 2}, nil
+	}
+	var events []string
+	emit := func(name string, data any) { events = append(events, fmt.Sprint(name, " ", data)) }
+
+	daemon.MinDaemonAPI = 3
+	a := &App{emitEventFunc: emit}
+	if err := a.ensure()("sock"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.GetDaemonUpdateNeeded(); got != "v1.2.0" || strings.Join(events, "|") != "daemon:update-needed v1.2.0" {
+		t.Fatalf("update needed %q, events %q", got, events)
+	}
+
+	daemon.MinDaemonAPI = 1
+	events = nil
+	b := &App{emitEventFunc: emit}
+	if err := b.ensure()("sock"); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.GetDaemonUpdateNeeded(); got != "" || len(events) != 0 {
+		t.Fatalf("compatible daemon: update needed %q, events %q", got, events)
+	}
+}

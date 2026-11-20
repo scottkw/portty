@@ -90,4 +90,34 @@ describe('App — daemon restart consent (DEBT-08)', () => {
     await act(async () => { wailsEvents.get('daemon:restart-needed')?.(-1) })
     expect(dialog()?.textContent).toContain('Sessions may be running. Restarting ends them.')
   })
+
+  // UPGR-05: one modal at a time. Cmd-Q under the restart dialog answers Not
+  // Now, then shows Quit; the Quit dialog never sits under the restart dialog.
+  it('a quit request while the restart dialog is open answers Not Now and shows only the Quit dialog', async () => {
+    const answer = vi.fn(() => null)
+    await mountApp({ AnswerDaemonRestart: answer })
+    await act(async () => { wailsEvents.get('daemon:restart-needed')?.(2) })
+    expect(dialog()?.textContent).toContain("Update Portty's background service?")
+
+    await act(async () => { wailsEvents.get('app:quit-requested')?.() })
+    await flush()
+    expect(answer).toHaveBeenCalledWith(false)
+    const dialogs = document.querySelectorAll('[role="dialog"]')
+    expect(dialogs.length).toBe(1)
+    expect(dialogs[0].textContent).toContain('Quit Portty?')
+  })
+
+  // UPGR-03: a restart question after a failed handoff says so first.
+  it("says the sessions couldn't be moved when the handoff failed", async () => {
+    await mountApp({ GetDaemonRestartPrompt: () => 2, GetDaemonRestartMoveFailed: () => true })
+    const body = document.querySelector('[role="dialog"] .dialog__body')?.textContent ?? ''
+    expect(body.startsWith("Portty couldn't move your sessions to the new version. They're still running on the old version.")).toBe(true)
+    expect(body).toContain('2 sessions are running. Restarting ends them.')
+  })
+
+  it('shows only the count line when no handoff failed', async () => {
+    await mountApp({ GetDaemonRestartPrompt: () => 2, GetDaemonRestartMoveFailed: () => false })
+    const body = document.querySelector('[role="dialog"] .dialog__body')?.textContent ?? ''
+    expect(body).toBe('2 sessions are running. Restarting ends them.')
+  })
 })
