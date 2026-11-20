@@ -331,6 +331,9 @@ func (a *App) restartConsent(_ string, sessions int) bool {
 // not asked about (08-06-REVIEW WR-01); the dialog stays open with the new count.
 var errRestartCountChanged = errors.New("The number of running sessions changed. Check it and choose again.")
 
+// errNoRestartPending is Restart Now with no open question (08-06-REVIEW IN-01).
+var errNoRestartPending = errors.New("no restart is pending")
+
 // GetDaemonRestartPrompt returns the session count to ask about, or 0 when
 // there is no question. The frontend calls it after GetDaemonError, because
 // startup's daemon:restart-needed can fire before React subscribes.
@@ -359,6 +362,10 @@ func (a *App) AnswerDaemonRestart(restart bool) error {
 		return errors.New("quitting")
 	}
 	a.restartMu.Lock()
+	if a.restartPrompt == 0 { // no open question, or Not Now already answered it (IN-01)
+		a.restartMu.Unlock()
+		return errNoRestartPending
+	}
 	a.restartApproved = a.restartPrompt
 	a.restartMu.Unlock()
 	err := a.ensure()(daemon.DefaultSocketPath())

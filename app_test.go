@@ -1057,6 +1057,22 @@ func TestAnswerDaemonRestart_ApprovesShownCountOnly(t *testing.T) {
 	}
 }
 
+// 08-06-REVIEW IN-01: Restart Now with no open question does nothing. It never
+// overrides a Not Now after the fact, and never runs EnsureDaemon.
+func TestAnswerDaemonRestart_NoPendingPrompt(t *testing.T) {
+	events, ensures := 0, 0
+	a := &App{emitEventFunc: func(string, any) { events++ }}
+	a.ensureDaemonFunc = func(string) error { ensures++; a.restartConsent("v1", 3); return nil }
+	if err := a.AnswerDaemonRestart(true); !errors.Is(err, errNoRestartPending) || ensures != 0 {
+		t.Fatalf("no prompt: err %v, ensures %d", err, ensures)
+	}
+	a.restartConsent("v1", 3)
+	_ = a.AnswerDaemonRestart(false) // Not Now
+	if err := a.AnswerDaemonRestart(true); !errors.Is(err, errNoRestartPending) || ensures != 0 || events != 1 || a.GetDaemonRestartPrompt() != 0 {
+		t.Fatalf("after Not Now: err %v, ensures %d, events %d, prompt %d", err, ensures, events, a.GetDaemonRestartPrompt())
+	}
+}
+
 // 08-06-REVIEW WR-03: a restart question is never left in a hidden or
 // minimized window (start minimized, Quit GUI Only): raising it shows the
 // window and the Dock icon. No prompt (Not Now, or an approved count) shows nothing.
