@@ -46,6 +46,11 @@ type Subscriber struct {
 	// Called in its own goroutine; nil falls back to CloseSlow.
 	Kick func(reason string)
 
+	// Restart closes the connection with 1012 service restart
+	// (RestartViewers). Called in its own goroutine; nil falls back to
+	// CloseSlow.
+	Restart func()
+
 	// ID: per-hub connection number for viewer-diag log lines, assigned by
 	// Subscribe before it returns. Diagnostics only.
 	ID uint64
@@ -423,6 +428,36 @@ func (h *Hub) RevokeWebViewers(reason string) {
 			go sub.CloseSlow()
 		}
 	}
+}
+
+// RestartViewers closes every subscriber with 1012 service restart (via
+// Restart, else CloseSlow) when a handoff commits, and returns a channel
+// closed once every close call has returned, so the old daemon can let the
+// close handshakes finish before it exits. Done stays open: the session goes
+// on in the new daemon and viewers reconnect with resume. Like
+// RevokeWebViewers it collects under h.mu and closes after releasing it
+// (T-157-04).
+func (h *Hub) RestartViewers() <-chan struct{} {
+	h.mu.Lock()
+	targets := slices.Collect(maps.Keys(h.subscribers))
+	h.mu.Unlock()
+	log.Printf("viewer-diag: restart session=%s viewers=%d", DiagID(h.sessionID), len(targets))
+
+	var wg sync.WaitGroup
+	for _, sub := range targets {
+		closeFn := sub.Restart
+		if closeFn == nil {
+			closeFn = sub.CloseSlow
+		}
+		wg.Go(closeFn)
+	}
+	done := make(chan struct{})
+	if len(targets) == 0 {
+		close(done)
+		return done
+	}
+	go func() { wg.Wait(); close(done) }()
+	return done
 }
 
 // ResizeClient stores the subscriber's reported dimensions and applies the

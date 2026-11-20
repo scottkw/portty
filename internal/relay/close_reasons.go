@@ -15,6 +15,10 @@ const (
 	CloseReasonShareStopped = "share stopped"
 	// CloseReasonSessionEnded: the owner ended or stopped the session.
 	CloseReasonSessionEnded = "session ended"
+	// CloseReasonServiceRestart goes with StatusServiceRestart (1012) when an
+	// upgrade hands the sessions to a new daemon. Clients branch on the code
+	// and reconnect with resume; IsTerminalClose is false for it.
+	CloseReasonServiceRestart = "service restart"
 )
 
 // IsTerminalClose reports whether err is a close a reconnecting client must

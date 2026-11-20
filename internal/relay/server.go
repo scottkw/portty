@@ -92,6 +92,11 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	sub.CloseSlow = func() {
 		conn.Close(websocket.StatusPolicyViolation, "too slow")
 	}
+	// An upgrade handoff's commit (RestartViewers): the client reconnects to
+	// the new daemon with resume.
+	sub.Restart = func() {
+		conn.Close(websocket.StatusServiceRestart, CloseReasonServiceRestart)
+	}
 
 	sub.Origin = "local" // read by the host-authority resize arbiter
 
