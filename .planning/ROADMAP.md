@@ -26,7 +26,7 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`. Audit: `.planning/mileston
 **Milestone Goal:** Fix the reliability and test-hygiene debt left from v1.0, with no new features. Each requirement closes a v1.0 todo.
 
 - [x] **Phase 7: Hardening** - Bounded alt-screen memory, intact large pastes, a query-free catch-up replay, no spurious respawn, delta rejoin on tab switch, and a full test suite that passes with nothing skipped (completed 2026-11-18)
-- [ ] **Phase 8: Debt Cleanup** - Close the v1.1 audit's tech debt: a small alt-screen heap bound, wrapped lines kept in replay, full replay and rebuild fidelity, a bounded and leak-free peer snapshot store, honest partial pastes, the launch-blip root cause, and Phase 7 bookkeeping
+- [x] **Phase 8: Debt Cleanup** - Close the v1.1 audit's tech debt: a small alt-screen heap bound, wrapped lines kept in replay, full replay and rebuild fidelity, a bounded and leak-free peer snapshot store, honest partial pastes, the launch-blip root cause, and Phase 7 bookkeeping (completed 2026-11-19)
 
 ## Phase Details
 
@@ -66,12 +66,12 @@ Plans:
   4. A paste cut short by a dropped socket tells the user so. No frame is sent twice, and none is silently lost.
   5. The HARD-04 launch blip has a root-cause fix, or a documented VM non-reproduction with diagnostics in place. The Phase 7 SUMMARYs carry `requirements_completed`, and Phase 7 has a SECURITY.md.
   6. Upgrading Portty never silently ends live sessions. With sessions running, a version-mismatch restart needs consent: a GUI dialog, or the CLI's `--restart-daemon`. Declining keeps the old daemon and its sessions working. Proven by tests and a VM upgrade run.
-**Plans**: 6 plans
+**Plans**: 6/6 plans complete
 Plans:
-- [ ] 08-01-PLAN.md — Alt screen keeps no scrollback, with soak at 80/220 columns (DEBT-01); soft wraps recorded as vt makes them and replayed without CRLF (DEBT-02)
-- [ ] 08-02-PLAN.md — Mode restores before the text and the history, ?7 after (IN-06); rebuild keeps SO/G1 and OSC 8 links (IN-08); extended fuzz at 0 mismatches (DEBT-03)
-- [ ] 08-03-PLAN.md — Peer snapshot store keyed by host plus session, 8 MiB budget, dropped on tab close, flush timeout, quick-switch wait (DEBT-04); partial-paste notice with no resend (DEBT-05)
-- [ ] 08-04-PLAN.md — Five cold launches after VM reboots, root-cause fix or documented non-reproduction (DEBT-06); 07 SUMMARY requirements-completed and 07-SECURITY.md (DEBT-07)
-- [ ] 08-05-PLAN.md — TESTING.md reconciliation, full gate once with nothing skipped, Tart VM checks V-01..V-06 in 08-VM-CHECKS.md (all DEBT)
-- [ ] 08-06-PLAN.md — Upgrade guard: consent before a version-mismatch restart ends live sessions (DEBT-08)
+- [x] 08-01-PLAN.md — Alt screen keeps no scrollback, with soak at 80/220 columns (DEBT-01); soft wraps recorded as vt makes them and replayed without CRLF (DEBT-02)
+- [x] 08-02-PLAN.md — Mode restores before the text and the history, ?7 after (IN-06); rebuild keeps SO/G1 and OSC 8 links (IN-08); extended fuzz at 0 mismatches (DEBT-03)
+- [x] 08-03-PLAN.md — Peer snapshot store keyed by host plus session, 8 MiB budget, dropped on tab close, flush timeout, quick-switch wait (DEBT-04); partial-paste notice with no resend (DEBT-05)
+- [x] 08-04-PLAN.md — Five cold launches after VM reboots, root-cause fix or documented non-reproduction (DEBT-06); 07 SUMMARY requirements-completed and 07-SECURITY.md (DEBT-07)
+- [x] 08-05-PLAN.md — TESTING.md reconciliation, full gate once with nothing skipped, Tart VM checks V-01..V-06 in 08-VM-CHECKS.md (all DEBT)
+- [x] 08-06-PLAN.md — Upgrade guard: consent before a version-mismatch restart ends live sessions (DEBT-08)
 **UI hint**: no
