@@ -9,6 +9,9 @@ export const ListSessions   = ()             => Call('main.App.ListSessions', []
 export const RenameSession  = (id, name)     => Call('main.App.RenameSession', [id, name])
 export const KillSession    = (id)           => Call('main.App.KillSession', [id])
 export const GetRelayPort            = ()    => Call('main.App.GetRelayPort', [])
+// WR-04 — the same reads, rejecting on a failed read instead of resolving [] / 0.
+export const ListSessionsChecked     = ()    => Call('main.App.ListSessionsChecked', [])
+export const GetRelayPortChecked     = ()    => Call('main.App.GetRelayPortChecked', [])
 
 // CT disclosure bound methods
 export const HasCTDisclosure        = ()                    => Call('main.App.HasCTDisclosure', [])

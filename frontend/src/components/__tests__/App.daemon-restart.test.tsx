@@ -112,7 +112,7 @@ describe('App — daemon restart consent (DEBT-08)', () => {
   // does not turn that into "No active sessions."
   it('a hung ListSessions still shows the Quit dialog within 3 s, with an unknown count', async () => {
     let answerLate: (v: unknown) => void = () => {}
-    await mountApp({ ListSessions: () => new Promise((resolve) => { answerLate = resolve }) })
+    await mountApp({ ListSessionsChecked: () => new Promise((resolve) => { answerLate = resolve }) })
     vi.useFakeTimers()
     try {
       await act(async () => { wailsEvents.get('app:quit-requested')?.() })
@@ -126,6 +126,30 @@ describe('App — daemon restart consent (DEBT-08)', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // WR-04: a session read that fails fast is unknown, not "none": the Quit
+  // dialog must not invite Quit Everything over sessions it could not see.
+  it('a failed session read shows the unknown-count copy, not "No active sessions."', async () => {
+    await mountApp({
+      ListSessions: () => [], // the plain binding turns an error into []
+      ListSessionsChecked: () => Promise.reject(new Error('daemon closed the connection')),
+    })
+    await act(async () => { wailsEvents.get('app:quit-requested')?.() })
+    await flush()
+    expect(dialog()?.textContent).toContain('Quit Portty?')
+    expect(dialog()?.textContent).toContain("Portty couldn't check whether any sessions are running.")
+    expect(dialog()?.textContent).not.toContain('No active sessions.')
+  })
+
+  it('a session read that succeeds lists the running sessions in the Quit dialog', async () => {
+    await mountApp({
+      ListSessionsChecked: () => [{ id: 'a', name: 'build', state: 'running' }, { id: 'b', name: 'old', state: 'stopped' }],
+    })
+    await act(async () => { wailsEvents.get('app:quit-requested')?.() })
+    await flush()
+    expect(dialog()?.textContent).toContain('build')
+    expect(dialog()?.textContent).not.toContain("couldn't check")
   })
 
   // UPGR-03: a restart question after a failed handoff says so first.

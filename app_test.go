@@ -249,6 +249,33 @@ func TestGetRelayPort(t *testing.T) {
 	}
 }
 
+// WR-04: the checked bindings report a failed read as an error, so the
+// frontend promise rejects; the plain ones keep resolving [] and 0.
+func TestCheckedBindings_FailedReadIsAnError(t *testing.T) {
+	down := &App{ctx: context.Background(), client: daemon.NewDaemonClient("/tmp/portty-no-such-daemon.sock")}
+	for name, a := range map[string]*App{"unreachable daemon": down, "no client": {ctx: context.Background()}} {
+		if s := a.ListSessions(); s == nil || len(s) != 0 {
+			t.Errorf("%s: ListSessions = %v, want []", name, s)
+		}
+		if _, err := a.ListSessionsChecked(); err == nil {
+			t.Errorf("%s: ListSessionsChecked returned no error", name)
+		}
+		if p := a.GetRelayPort(); p != 0 {
+			t.Errorf("%s: GetRelayPort = %d, want 0", name, p)
+		}
+		if _, err := a.GetRelayPortChecked(); err == nil {
+			t.Errorf("%s: GetRelayPortChecked returned no error", name)
+		}
+	}
+	app := testApp(t)
+	if s, err := app.ListSessionsChecked(); err != nil || s == nil || len(s) != 0 {
+		t.Errorf("ListSessionsChecked on a live daemon = %v, %v; want [], nil", s, err)
+	}
+	if p, err := app.GetRelayPortChecked(); err != nil || p <= 0 || p != app.GetRelayPort() {
+		t.Errorf("GetRelayPortChecked on a live daemon = %d, %v; want %d", p, err, app.GetRelayPort())
+	}
+}
+
 // The share bindings flip the daemon's one share switch and never throw:
 // failures come back as ShareResult.ErrorCode (Portty 04-02).
 func TestSessionShareBindings(t *testing.T) {

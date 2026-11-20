@@ -2,8 +2,8 @@ import * as App from '../wailsjs/go/main/App'
 import type { ReconnectVerdict } from './relayClient'
 
 interface HostReconnectDeps {
-  GetRelayPort: () => Promise<number>
-  ListSessions: () => Promise<{ id: string; state: string }[]>
+  GetRelayPortChecked: () => Promise<number>
+  ListSessionsChecked: () => Promise<{ id: string; state: string }[]>
 }
 
 /**
@@ -11,15 +11,17 @@ interface HostReconnectDeps {
  * old daemon closes viewers with 1012 and the session lives on under the new
  * one, on the same relay port. After a crash the respawned daemon (on a new
  * port) lists no such session, so the tab ends as before. Any read failure is
- * a retry: the daemon may still be coming up. The bindings are read only here,
+ * a retry: the daemon may still be coming up. Only the checked bindings reject
+ * on a failed read; the plain ones resolve [] and 0, which reads as "ended"
+ * (WR-04). The bindings are read only here,
  * at call time, so component tests that mock App without them still load.
  */
 export async function hostReconnectVerdict(sessionId: string, deps: HostReconnectDeps = App): Promise<ReconnectVerdict> {
   let port: number
   let sessions: { id: string; state: string }[]
   try {
-    port = await deps.GetRelayPort()
-    sessions = await deps.ListSessions()
+    port = await deps.GetRelayPortChecked()
+    sessions = await deps.ListSessionsChecked()
   } catch {
     return { kind: 'retry' }
   }

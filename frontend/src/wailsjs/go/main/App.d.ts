@@ -23,6 +23,9 @@ export function ListSessions(): Promise<SessionInfo[]>
 export function RenameSession(id: string, name: string): Promise<void>
 export function KillSession(id: string): Promise<void>
 export function GetRelayPort(): Promise<number>
+// WR-04 — the same reads, rejecting on a failed read instead of resolving [] / 0.
+export function ListSessionsChecked(): Promise<SessionInfo[]>
+export function GetRelayPortChecked(): Promise<number>
 
 // CT disclosure bound methods
 export function HasCTDisclosure(): Promise<boolean>

@@ -12,6 +12,7 @@ import { detectMode, readWebModeParams } from './lib/webMode'
 import {
   CreateSession,
   ListSessions,
+  ListSessionsChecked,
   KillSession,
   RenameSession,
   GetRelayPort,
@@ -480,7 +481,8 @@ function App(): React.ReactElement {
           setShowQuitModal(true)
         }
         const timer = setTimeout(() => open(null), 2000)
-        ListSessions().then(sessions => {
+        // WR-04: the checked binding rejects on a failed read; the plain one resolves [] ("No active sessions.").
+        ListSessionsChecked().then(sessions => {
           clearTimeout(timer)
           open(sessions
             .filter((s: SessionInfo) => s.state !== 'stopped')

@@ -837,14 +837,26 @@ func (a *App) checkExits() {
 	}
 }
 
-// ListSessions returns a snapshot of all registered sessions.
+// ListSessions returns a snapshot of all registered sessions ([] when the
+// daemon cannot be read).
 func (a *App) ListSessions() []SessionInfo {
-	if a.client == nil {
+	sessions, err := a.ListSessionsChecked()
+	if err != nil {
 		return []SessionInfo{}
+	}
+	return sessions
+}
+
+// ListSessionsChecked is ListSessions with a failed read as an error, so the
+// frontend promise rejects. For the callers where "none" and "unknown" differ
+// (WR-04): a host tab's reconnect and the Quit dialog's count.
+func (a *App) ListSessionsChecked() ([]SessionInfo, error) {
+	if a.client == nil {
+		return nil, errors.New("daemon not connected")
 	}
 	sessions, err := a.client.ListSessions()
 	if err != nil {
-		return []SessionInfo{}
+		return nil, err
 	}
 	result := make([]SessionInfo, len(sessions))
 	for i, s := range sessions {
@@ -865,7 +877,7 @@ func (a *App) ListSessions() []SessionInfo {
 			WorkDir:     s.WorkDir,
 		}
 	}
-	return result
+	return result, nil
 }
 
 // RenameSession updates the display name of a session.
@@ -906,16 +918,29 @@ func (a *App) GetSessionTailLines(id string, n int) []string {
 	return lines
 }
 
-// GetRelayPort returns the TCP port the daemon's relay HTTP server is listening on.
+// GetRelayPort returns the TCP port the daemon's relay HTTP server is
+// listening on (0 when it cannot be read).
 func (a *App) GetRelayPort() int {
-	if a.client == nil {
-		return 0
-	}
-	port, err := a.client.GetRelayPort()
+	port, err := a.GetRelayPortChecked()
 	if err != nil {
 		return 0
 	}
 	return port
+}
+
+// GetRelayPortChecked is GetRelayPort with a failed read as an error (WR-04).
+func (a *App) GetRelayPortChecked() (int, error) {
+	if a.client == nil {
+		return 0, errors.New("daemon not connected")
+	}
+	port, err := a.client.GetRelayPort()
+	if err == nil && port <= 0 {
+		err = errors.New("the daemon's relay is not ready")
+	}
+	if err != nil {
+		return 0, err
+	}
+	return port, nil
 }
 
 // GetStartMinimized returns the persisted start-minimized preference.

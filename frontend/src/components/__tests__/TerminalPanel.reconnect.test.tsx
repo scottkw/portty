@@ -112,6 +112,8 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   SetSearchConfig: () => Promise.resolve(),
   GetRelayPort: () => Promise.resolve(hoisted.state.relayPort),
   ListSessions: () => Promise.resolve(hoisted.state.sessions),
+  GetRelayPortChecked: () => Promise.resolve(hoisted.state.relayPort),
+  ListSessionsChecked: () => Promise.resolve(hoisted.state.sessions),
 }))
 vi.mock('../../wailsjs/go/models', () => ({
   daemon: { SearchConfig: class { constructor(_o: unknown) {} } },

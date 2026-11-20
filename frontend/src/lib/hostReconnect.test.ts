@@ -3,13 +3,21 @@
  * old daemon leaving with 1012 after a handoff (the session lives on), or a
  * crash (the respawned daemon lists no such session).
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { hostReconnectVerdict } from './hostReconnect'
+
+// WR-04: the plain bindings resolve [] and 0 on a failed read; the checked ones reject.
+vi.mock('../wailsjs/go/main/App', () => ({
+  GetRelayPort: () => Promise.resolve(0),
+  ListSessions: () => Promise.resolve([]),
+  GetRelayPortChecked: () => Promise.resolve(4321),
+  ListSessionsChecked: () => Promise.reject(new Error('read failed')),
+}))
 
 const session = (id: string, state: string) => ({ id, state })
 const deps = (port: () => Promise<number>, list: () => Promise<{ id: string; state: string }[]>) => ({
-  GetRelayPort: port,
-  ListSessions: list,
+  GetRelayPortChecked: port,
+  ListSessionsChecked: list,
 })
 
 describe('hostReconnectVerdict', () => {
@@ -31,6 +39,10 @@ describe('hostReconnectVerdict', () => {
   it('stops (ended) when the session is stopped', async () => {
     const v = await hostReconnectVerdict('s1', deps(() => Promise.resolve(4321), () => Promise.resolve([session('s1', 'stopped')])))
     expect(v).toEqual({ kind: 'stop', reason: 'ended' })
+  })
+
+  it('reads the checked bindings by default, so a failed read retries instead of ending the tab (WR-04)', async () => {
+    expect(await hostReconnectVerdict('s1')).toEqual({ kind: 'retry' })
   })
 
   it('dials the re-read port when the session is still running (a handoff)', async () => {
