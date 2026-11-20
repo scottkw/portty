@@ -347,8 +347,9 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-18
-Stopped at: Phase 8 complete — all phases complete
+Last session: 2026-11-20
+Stopped at: Phase 9 (v1.2), paused by the user. Done: plans 09-01..09-07, VM checks, code review iteration 1 + fixes (e7c6ab82), review iteration 2 (5 findings: WR-01 it2, WR-02 it2, IN-01..03 it2; see the end of 09-REVIEW.md on branch worktree-agent-a725d63afb58130ac). TestHandoffIT passed in the office VM at e7c6ab82 (3/3, 2026-11-20 16:29 UTC).
+Resume: 1) branch `worktree-agent-a725d63afb58130ac` holds `cdf95204` (review iteration 2 doc) and `d9d4764c` (WR-02 it2 fix, gates NOT yet run); rebase it onto gsd/v1.2 and fix the remaining four (WR-01 it2, IN-01..03 it2) with gsd-code-fixer, then gates. 2) Re-run TestHandoffIT plus V-01, V-02 and V-05b on the Tart VMs (both stopped; start with `tart run --no-graphics <name> &`). 3) gsd-verifier, mark UPGR-01..05, phase.complete 9. Then Phase 10.
 Resume file: None
 
 ## Operator Next Steps
