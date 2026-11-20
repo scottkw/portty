@@ -55,7 +55,8 @@ func RunTakeover() {
 		AugmentServicePath() // before NewSessionEngine, as runDaemonCore
 		engine := NewSessionEngine()
 		api := NewAPI(engine)
-		if code = runTakeover(ctx, takeoverDeps{socketPath: socketPath, api: api, build: BuildVersion}); code == takeoverCommitted {
+		deps := takeoverDeps{socketPath: socketPath, lockPath: filepath.Join(filepath.Dir(socketPath), "daemon.lock"), api: api, build: BuildVersion}
+		if code = runTakeover(ctx, deps); code == takeoverCommitted {
 			reportTakeover(status, code)
 			serveDaemon(ctx, api, engine, socketPath)
 			return

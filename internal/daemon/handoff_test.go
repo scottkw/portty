@@ -290,7 +290,7 @@ func (s *handoffScene) takeover(build string) (*API, int) {
 	s.mu.Lock()
 	s.takeovers = append(s.takeovers, n)
 	s.mu.Unlock()
-	code := runTakeover(context.Background(), takeoverDeps{socketPath: s.socket, api: n, build: build})
+	code := runTakeover(context.Background(), takeoverDeps{socketPath: s.socket, lockPath: s.lockPath, api: n, build: build})
 	s.event(fmt.Sprintf("new:returned %d", code))
 	if code != 0 && !s.holdPeer {
 		s.closePeer()
@@ -767,6 +767,80 @@ func TestHandoff_RefusesOlderRelease(t *testing.T) {
 	if _, code := s.takeover("v1.2.0-vmB"); code != takeoverCommitted {
 		t.Errorf("v1.2.0-vmB -> v1.2.0-vmA = %d, want 0", code)
 	}
+}
+
+// fakeAddrListener is a listener that reports addr, for addresses a test
+// cannot bind (a relay on every interface).
+type fakeAddrListener struct {
+	net.Listener
+	addr net.Addr
+}
+
+func (l fakeAddrListener) Addr() net.Addr { return l.addr }
+
+// WR-05: the takeover refuses received fds that are not what the daemon
+// holds itself: daemon.lock, the daemon socket and a loopback relay (which
+// serves unauthenticated, full-write shells). Refused, it aborts and the old
+// daemon serves on.
+func TestHandoff_RefusesForeignFiles(t *testing.T) {
+	dir := t.TempDir()
+	lockPath := filepath.Join(dir, "daemon.lock")
+	lock, err := lockDaemon(lockPath, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { lock.Close() })
+	other, err := os.Create(filepath.Join(dir, "other.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { other.Close() })
+	sock := shortSocketPath(t, "wr05.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	otherSock := shortSocketPath(t, "other.sock")
+	otherLn, err := net.Listen("unix", otherSock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { otherLn.Close() })
+	loopRelay := fakeAddrListener{addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 4000}}
+	for name, tc := range map[string]struct {
+		lock         *os.File
+		api, relayLn net.Listener
+		ok           bool
+	}{
+		"as held":             {lock, ln, loopRelay, true},
+		"another lock file":   {other, ln, loopRelay, false},
+		"another socket":      {lock, otherLn, loopRelay, false},
+		"relay on every host": {lock, ln, fakeAddrListener{addr: &net.TCPAddr{IP: net.IPv4zero, Port: 4000}}, false},
+		"relay on the LAN":    {lock, ln, fakeAddrListener{addr: &net.TCPAddr{IP: net.IPv4(192, 168, 1, 20), Port: 4000}}, false},
+		"relay not TCP":       {lock, ln, otherLn, false},
+	} {
+		if err := checkGlobalFiles(tc.lock, lockPath, tc.api, tc.relayLn, sock); (err == nil) != tc.ok {
+			t.Errorf("%s: checkGlobalFiles = %v, want ok %v", name, err, tc.ok)
+		}
+	}
+
+	s := newHandoffScene(t, tickScript(false))
+	base := handoffFDCount(t, s.lockPath)
+	n := s.newAPI(true)
+	s.mu.Lock()
+	s.takeovers = append(s.takeovers, n)
+	s.mu.Unlock()
+	code := runTakeover(context.Background(), takeoverDeps{socketPath: s.socket, lockPath: other.Name(), api: n, build: BuildVersion})
+	s.closePeer()
+	if code != takeoverImport {
+		t.Fatalf("runTakeover with a foreign lock = %d, want %d", code, takeoverImport)
+	}
+	waitFor(t, "old daemon thawed", 5*time.Second, func() bool { return !s.old.frozen.Load() })
+	if got := handoffFDCount(t, s.lockPath); got != base {
+		t.Errorf("descriptor count %d after the refusal, %d before", got, base)
+	}
+	checkOldServes(t, s, n, nil, false)
 }
 
 // T-09-20: the log of a handoff with a shared session holds no token.

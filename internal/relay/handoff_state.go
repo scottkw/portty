@@ -431,7 +431,7 @@ func (st *HubState) Digest() [32]byte {
 			d.Write(n[:]) //nolint:errcheck // hash writes never fail
 		}
 	}
-	bs := func(b []byte) { num(int64(len(b))); d.Write(b) } //nolint:errcheck // hash writes never fail
+	bs := func(b []byte) { num(int64(len(b))); d.Write(b) }            //nolint:errcheck // hash writes never fail
 	str := func(s string) { num(int64(len(s))); io.WriteString(d, s) } //nolint:errcheck // hash writes never fail
 	flag := func(b bool) int64 {
 		if b {

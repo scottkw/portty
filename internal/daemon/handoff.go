@@ -763,6 +763,7 @@ wait:
 // and a fresh API over a fresh engine that serves nothing yet.
 type takeoverDeps struct {
 	socketPath string
+	lockPath   string // daemon.lock: the received lock fd must be it (WR-05)
 	api        *API
 	build      string // the release HELLO announces (BuildVersion)
 }
@@ -847,7 +848,7 @@ func runTakeover(ctx context.Context, d takeoverDeps) int {
 	if err != nil {
 		return t.readFailed(err)
 	}
-	if err := t.takeGlobalFiles(files); err != nil {
+	if err := t.takeGlobalFiles(files, d.socketPath, d.lockPath); err != nil {
 		return t.fail(takeoverImport, err.Error())
 	}
 	if code, done := t.preStep("after-global"); done {
@@ -975,9 +976,10 @@ func (t *takeover) readFailed(err error) int {
 	return t.lost(err)
 }
 
-// takeGlobalFiles keeps the lock and rebuilds the listeners. On error every
-// file not yet taken is closed (the rest closes in cleanup).
-func (t *takeover) takeGlobalFiles(files []*os.File) error {
+// takeGlobalFiles keeps the lock and rebuilds the listeners, and refuses
+// them unless they are what this daemon would hold (checkGlobalFiles). On
+// error every file not yet taken is closed (the rest closes in cleanup).
+func (t *takeover) takeGlobalFiles(files []*os.File, socketPath, lockPath string) error {
 	t.lock = files[0]
 	rest := files[1:]
 	defer func() { closeFiles(rest) }()
@@ -1007,6 +1009,27 @@ func (t *takeover) takeGlobalFiles(files []*os.File) error {
 		if t.shareLn, err = take("tcp"); err != nil {
 			return err
 		}
+	}
+	// The share listener is checked against the share server's own address
+	// in finalize (WebServer.CheckListener).
+	return checkGlobalFiles(t.lock, lockPath, t.ln, t.relayLn, socketPath)
+}
+
+// checkGlobalFiles refuses received fds that are not what this daemon holds
+// itself (WR-05): the lock must be daemon.lock, the API listener the daemon
+// socket, and the relay, which serves unauthenticated full-write shells,
+// loopback only.
+func checkGlobalFiles(lock *os.File, lockPath string, ln, relayLn net.Listener, socketPath string) error {
+	got, err := lock.Stat()
+	want, wantErr := os.Stat(lockPath)
+	if err != nil || wantErr != nil || !os.SameFile(got, want) {
+		return fmt.Errorf("the received lock is not %s", lockPath)
+	}
+	if ua, ok := ln.Addr().(*net.UnixAddr); !ok || ua.Name != socketPath {
+		return fmt.Errorf("the received API listener is %v, not the daemon socket", ln.Addr())
+	}
+	if ta, ok := relayLn.Addr().(*net.TCPAddr); !ok || !ta.IP.IsLoopback() {
+		return fmt.Errorf("the received relay listener is on %v, not loopback", relayLn.Addr())
 	}
 	return nil
 }
@@ -1071,6 +1094,9 @@ func (t *takeover) finalize() error {
 	a.mu.RUnlock()
 	ws, err := newServer(t.health, a.engine.Manager())
 	if err != nil {
+		return err
+	}
+	if err := ws.CheckListener(t.shareLn); err != nil { // WR-05: before COMMIT, so the old daemon keeps serving
 		return err
 	}
 	a.wireShareServer(ws, t.health)

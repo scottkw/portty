@@ -336,6 +336,25 @@ func (ws *WebServer) assertTailnetBindIP() {
 		"bind_ip", bind)
 }
 
+// CheckListener refuses a listener this server would not have opened itself
+// (Phase 9 WR-05): it must be TCP on the configured bind IP and, when one is
+// set, the configured port. A listener handed over by another process could
+// otherwise be bound anywhere while assertTailnetBindIP checks the config.
+// An unparseable bind IP is left to assertTailnetBindIP's warning.
+func (ws *WebServer) CheckListener(raw net.Listener) error {
+	ta, ok := raw.Addr().(*net.TCPAddr)
+	if !ok {
+		return fmt.Errorf("webserver: listener on %v is not TCP", raw.Addr())
+	}
+	if bind := net.ParseIP(ws.config.BindIP); bind != nil && !ta.IP.Equal(bind) {
+		return fmt.Errorf("webserver: listener on %v, want bind IP %s", ta, ws.config.BindIP)
+	}
+	if ws.config.Port != 0 && ta.Port != ws.config.Port {
+		return fmt.Errorf("webserver: listener on %v, want port %d", ta, ws.config.Port)
+	}
+	return nil
+}
+
 // Start opens the TCP listener on the tailnet bind IP and serves TLS on it
 // (see StartOn). A taken port is ErrPortInUse.
 func (ws *WebServer) Start() error {
@@ -353,7 +372,11 @@ func (ws *WebServer) StartOn(raw net.Listener) error {
 	if raw == nil {
 		return errors.New("webserver: StartOn: nil listener")
 	}
+	if err := ws.CheckListener(raw); err != nil {
+		return err
+	}
 	// WR-03: belt-and-suspenders trust-boundary check for the open meta route.
+	// CheckListener made the bind IP the address actually served.
 	ws.assertTailnetBindIP()
 
 	tlsCfg := ws.config.TLSConfig

@@ -34,6 +34,45 @@ func dupListener(t *testing.T, ln net.Listener) net.Listener {
 	return moved
 }
 
+// WR-05: a listener handed over by another process is served only on the
+// configured bind IP and port, so the WR-03 bind-IP check covers the address
+// actually served.
+func TestWebServer_StartOnRefusesForeignListener(t *testing.T) {
+	tlsCfg, _ := selfSignedTLSForTest(t)
+	for name, cfg := range map[string]func(port int) webserver.Config{
+		"another IP":  func(port int) webserver.Config { return webserver.Config{BindIP: "127.0.0.2", Port: port} },
+		"tailnet IP":  func(port int) webserver.Config { return webserver.Config{BindIP: "100.100.1.2", Port: port} },
+		"other port":  func(port int) webserver.Config { return webserver.Config{BindIP: "127.0.0.1", Port: port + 1} },
+		"matching ok": func(port int) webserver.Config { return webserver.Config{BindIP: "127.0.0.1", Port: port} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ln.Close() })
+			c := cfg(ln.Addr().(*net.TCPAddr).Port)
+			c.FQDN, c.TLSConfig = "127.0.0.1", tlsCfg
+			ws, err := webserver.NewWebServer(c, relay.NewHubManager())
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = ws.StartOn(ln)
+			if name == "matching ok" {
+				if err != nil {
+					t.Fatalf("StartOn on the configured address: %v", err)
+				}
+				_ = ws.Stop()
+				return
+			}
+			if err == nil {
+				_ = ws.Stop()
+				t.Fatalf("StartOn served a listener on %v with bind %s:%d", ln.Addr(), c.BindIP, c.Port)
+			}
+		})
+	}
+}
+
 // Phase 9 (Pattern 7): the share listener moves to another WebServer, which
 // keeps serving TLS on the same port after the first one stops.
 func TestWebServer_StartOnPassedListener(t *testing.T) {
