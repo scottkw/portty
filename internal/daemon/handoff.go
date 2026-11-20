@@ -429,7 +429,8 @@ type oldHandoff struct {
 	pid    int // the takeover's, from LOCAL_PEERPID
 	frozen []handoffEntry
 	start  time.Time
-	gated  bool // holds a.writeGate (drainWrites) until resume
+	gated  bool                // holds a.writeGate (drainWrites) until resume
+	sent   map[string][32]byte // session id -> digest of the state sent (WR-03)
 }
 
 func (a *API) serveHandoff(c *net.UnixConn) {
@@ -538,7 +539,7 @@ func (a *API) serveHandoff(c *net.UnixConn) {
 		return
 	}
 
-	// READY with a digest per hub, each equal to this hub's own.
+	// READY with a digest per session, each equal to the state sent (WR-03).
 	_ = c.SetWriteDeadline(time.Time{})
 	_ = c.SetReadDeadline(time.Now().Add(readyTimeout))
 	var ready hsReady
@@ -655,6 +656,10 @@ func (o *oldHandoff) sendSession(i int) error {
 	if err := writeFrame(o.c, frameSession, m); err != nil {
 		return fmt.Errorf("session %s: %w", relay.DiagID(e.id), err)
 	}
+	if o.sent == nil {
+		o.sent = map[string][32]byte{}
+	}
+	o.sent[e.id] = st.Digest()
 	return sendFDs(o.c, i+1, master, slave)
 }
 
@@ -663,7 +668,7 @@ func (o *oldHandoff) checkDigests(d map[string][32]byte) string {
 		return fmt.Sprintf("READY has %d digests for %d sessions", len(d), len(o.frozen))
 	}
 	for _, e := range o.frozen {
-		if got, ok := d[e.id]; !ok || got != e.hub.Digest() {
+		if got, ok := d[e.id]; !ok || got != o.sent[e.id] {
 			return "digest mismatch for session " + relay.DiagID(e.id)
 		}
 	}
@@ -763,9 +768,10 @@ type takeoverDeps struct {
 }
 
 type importedSession struct {
-	id   string
-	sess *pty.Session
-	hub  *relay.Hub
+	id     string
+	sess   *pty.Session
+	hub    *relay.Hub
+	digest [32]byte // of the state as decoded (WR-03)
 }
 
 // takeover is runTakeover's state: everything received, so that a failure
@@ -862,12 +868,13 @@ func runTakeover(ctx context.Context, d takeoverDeps) int {
 			closeFiles(files)
 			return t.fail(takeoverImport, why)
 		}
+		digest := m.Hub.Digest()
 		meta := pty.AdoptMeta{ID: m.ID, CLI: m.CLI, CreatedAt: m.CreatedAt, Pid: m.Pid}
 		sess, hub, err := t.a.engine.importSession(meta, m.Name, m.WorkDir, m.Hub, files[0], files[1])
 		if err != nil {
 			return t.fail(takeoverImport, err.Error())
 		}
-		t.sessions = append(t.sessions, importedSession{id: m.ID, sess: sess, hub: hub})
+		t.sessions = append(t.sessions, importedSession{id: m.ID, sess: sess, hub: hub, digest: digest})
 	}
 	if code, done := t.preStep("after-state"); done {
 		return code
@@ -881,7 +888,7 @@ func runTakeover(ctx context.Context, d takeoverDeps) int {
 
 	digests := make(map[string][32]byte, len(t.sessions))
 	for _, s := range t.sessions {
-		digests[s.id] = s.hub.Digest()
+		digests[s.id] = s.digest
 	}
 	if err := writeFrame(t.c, frameReady, hsReady{Digests: digests}); err != nil {
 		return t.lost(err)

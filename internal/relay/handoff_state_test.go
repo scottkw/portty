@@ -11,7 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -705,6 +708,100 @@ func TestHandoffState_DigestDetectsDifference(t *testing.T) {
 	}
 	if a.Digest() != again.Digest() {
 		t.Fatal("the same state gave two digests")
+	}
+}
+
+// TestHandoffState_StateDigest (WR-03): READY's digest is over the state as
+// moved, not over either build's render. A hub rebuilt from the state and
+// drawn differently leaves it alone; the gob round trip and map order keep
+// it; any changed field changes it, so a corrupted transfer is still caught.
+func TestHandoffState_StateDigest(t *testing.T) {
+	st := validState(t)
+	st.Modes = map[int]bool{1: true, 7: false, 25: true, 2004: true}
+	st.Wraps = WrapState{N: map[uint64]int{3: 1, 9: 2, 27: 1}, Ring: []uint64{3, 9, 9, 27}}
+	want := st.Digest()
+	for range 20 { // map iteration order changes between calls
+		if st.Digest() != want {
+			t.Fatal("the digest depends on map order")
+		}
+	}
+	if got := gobRoundTrip(t, st); got.Digest() != want {
+		t.Fatal("the gob round trip changed the digest")
+	}
+	h, err := NewHubFromState(st, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered := h.Digest()
+	h.emuMu.Lock()
+	h.liveEmu.Write([]byte("\x1b[1;1H\x1b[7mX")) //nolint:errcheck // emulator Write never returns a meaningful error
+	h.emuMu.Unlock()
+	if h.Digest() == rendered {
+		t.Fatal("setup: the rebuilt hub's render did not change")
+	}
+	if st.Digest() != want {
+		t.Fatal("a render change on the takeover's side changed the READY digest")
+	}
+
+	if len(st.History.Lines) == 0 || len(st.Ring.Buf) == 0 || len(st.Seed) == 0 {
+		t.Fatalf("setup: history %d lines, ring %d, seed %d", len(st.History.Lines), len(st.Ring.Buf), len(st.Seed))
+	}
+	// Every field, so a field added to HubState fails here until Digest hashes it.
+	for typ, n := range map[reflect.Type]int{
+		reflect.TypeOf(HubState{}): 16, reflect.TypeOf(RingState{}): 4, reflect.TypeOf(HistoryState{}): 4,
+		reflect.TypeOf(WrapState{}): 3, reflect.TypeOf(CharsetState{}): 6,
+	} {
+		if typ.NumField() != n {
+			t.Errorf("%s has %d fields, Digest hashes %d: hash the new one and add a case below", typ, typ.NumField(), n)
+		}
+	}
+	cases := map[string]func(*HubState){
+		"session id":     func(s *HubState) { s.SessionID += "x" },
+		"ring byte":      func(s *HubState) { s.Ring.Buf = bytes.Clone(s.Ring.Buf); s.Ring.Buf[0] ^= 1 },
+		"ring end":       func(s *HubState) { s.Ring.End++ },
+		"ring max":       func(s *HubState) { s.Ring.Max-- },
+		"ring truncated": func(s *HubState) { s.Ring.Truncated = !s.Ring.Truncated },
+		"history line": func(s *HubState) {
+			s.History.Lines = slices.Clone(s.History.Lines)
+			s.History.Lines[0] += "x"
+		},
+		"history wrap": func(s *HubState) {
+			s.History.Wrapped = slices.Clone(s.History.Wrapped)
+			s.History.Wrapped[0] = !s.History.Wrapped[0]
+		},
+		"history max lines": func(s *HubState) { s.History.MaxLines-- },
+		"history max bytes": func(s *HubState) { s.History.MaxBytes-- },
+		"mode value":        func(s *HubState) { s.Modes = maps.Clone(s.Modes); s.Modes[7] = true },
+		"mode added":        func(s *HubState) { s.Modes = maps.Clone(s.Modes); s.Modes[6] = false },
+		"geometry offset":   func(s *HubState) { s.GeomEnd++ },
+		"main region":       func(s *HubState) { s.MainRegion = [2]int{1, 5} },
+		"wrap count":        func(s *HubState) { s.Wraps.N = maps.Clone(s.Wraps.N); s.Wraps.N[3] = 2 },
+		"wrap ring":         func(s *HubState) { s.Wraps.Ring = []uint64{3, 9, 27, 9} },
+		"wrap next":         func(s *HubState) { s.Wraps.Next = 1 },
+		"last move":         func(s *HubState) { s.LastMove[1].X++ },
+		"charset":           func(s *HubState) { s.CS.G[1] = '0' },
+		"gl1":               func(s *HubState) { s.CS.GL1 = !s.CS.GL1 },
+		"link":              func(s *HubState) { s.CS.Link = [2]string{"", "https://x"} },
+		"scan state":        func(s *HubState) { s.CS.ScanState++ },
+		"scan need":         func(s *HubState) { s.CS.ScanNeed++ },
+		"esc":               func(s *HubState) { s.CS.Esc = !s.CS.Esc },
+		"pty cols":          func(s *HubState) { s.PtyCols++ },
+		"pty rows":          func(s *HubState) { s.PtyRows++ },
+		"emu cols":          func(s *HubState) { s.EmuCols++ },
+		"emu rows":          func(s *HubState) { s.EmuRows++ },
+		"has emu":           func(s *HubState) { s.HasEmu = !s.HasEmu },
+		"seed byte":         func(s *HubState) { s.Seed = bytes.Clone(s.Seed); s.Seed[len(s.Seed)-1] ^= 1 },
+		"tail":              func(s *HubState) { s.Tail = append(bytes.Clone(s.Tail), 'x') },
+	}
+	for name, mutate := range cases {
+		c := st
+		mutate(&c)
+		if c.Digest() == want {
+			t.Errorf("%s changed, the digest did not", name)
+		}
+	}
+	if st.Digest() != want {
+		t.Fatal("a case changed the shared state")
 	}
 }
 
