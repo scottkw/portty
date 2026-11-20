@@ -43,6 +43,23 @@ describe('App — daemon restart consent (DEBT-08)', () => {
     expect(dialog()).toBeNull()
   })
 
+  // 08-06-REVIEW IN-02: Go closes the question and raises daemon:error once the old daemon is gone.
+  it('a failed Restart Now that stopped the old daemon closes and shows the error banner', async () => {
+    const msg = "Restarting Portty's background service failed: daemon exited during startup"
+    await mountApp({
+      GetDaemonRestartPrompt: () => 2,
+      AnswerDaemonRestart: () => {
+        wailsEvents.get('daemon:restart-needed')?.(0)
+        wailsEvents.get('daemon:error')?.(msg)
+        return Promise.reject(new Error(msg))
+      },
+    })
+    await act(async () => { button('Restart Now').click() })
+    await flush()
+    expect(dialog()).toBeNull()
+    expect(document.querySelector('.banner[role="alert"]')?.textContent).toContain(msg)
+  })
+
   it('shows no dialog without a prompt, and asks on daemon:restart-needed', async () => {
     await mountApp({})
     expect(dialog()).toBeNull()

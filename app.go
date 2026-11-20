@@ -345,7 +345,8 @@ func (a *App) GetDaemonRestartPrompt() int {
 
 // AnswerDaemonRestart is the dialog's answer. "Not Now" (false) keeps the old
 // daemon for the rest of this launch. "Restart Now" (true) restarts it, which
-// ends its sessions, and tells the frontend to reload; a failure keeps the prompt.
+// ends its sessions, and tells the frontend to reload; a failure keeps the
+// prompt while the old daemon still answers, and raises daemon:error once it is gone.
 func (a *App) AnswerDaemonRestart(restart bool) error {
 	if !restart {
 		a.restartMu.Lock()
@@ -376,6 +377,17 @@ func (a *App) AnswerDaemonRestart(restart bool) error {
 		a.restartPrompt = 0
 	}
 	a.restartMu.Unlock()
+	if err != nil && a.client != nil && a.client.Health() != nil {
+		// IN-02: the old daemon stopped (and its sessions with it) but no new
+		// one answers. Close the question and hand over to the banner and Retry.
+		err = fmt.Errorf("Restarting Portty's background service failed: %w", err)
+		a.restartMu.Lock()
+		a.restartPrompt = 0
+		a.restartMu.Unlock()
+		a.daemonErr.Store(&err)
+		a.emitEvent("daemon:restart-needed", 0)
+		a.emitEvent("daemon:error", err.Error())
+	}
 	if err != nil {
 		return err
 	}

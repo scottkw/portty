@@ -1073,6 +1073,29 @@ func TestAnswerDaemonRestart_NoPendingPrompt(t *testing.T) {
 	}
 }
 
+// 08-06-REVIEW IN-02: a Restart Now that fails after the old daemon stopped
+// (its sessions are gone) closes the question and hands over to the
+// daemon:error banner and Retry. One that fails with the old daemon still up
+// keeps the question (TestAnswerDaemonRestart_RestartNow).
+func TestAnswerDaemonRestart_FailedAfterStopRaisesDaemonError(t *testing.T) {
+	sock := respawnHome(t) // nothing listens: the old daemon is gone
+	var events []string
+	a := &App{client: daemon.NewDaemonClient(sock), emitEventFunc: func(name string, data any) { events = append(events, fmt.Sprint(name, " ", data)) }}
+	a.ensureDaemonFunc = func(string) error { a.restartConsent("v1", 2); return errors.New("daemon exited during startup") }
+	a.restartConsent("v1", 2)
+	err := a.AnswerDaemonRestart(true)
+	want := "Restarting Portty's background service failed: daemon exited during startup"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err %v, want %q", err, want)
+	}
+	if a.GetDaemonRestartPrompt() != 0 || a.GetDaemonError() != want {
+		t.Fatalf("prompt %d, daemon error %q", a.GetDaemonRestartPrompt(), a.GetDaemonError())
+	}
+	if got := strings.Join(events[1:], "|"); got != "daemon:restart-needed 0|daemon:error "+want {
+		t.Fatalf("events after the prompt = %q", got)
+	}
+}
+
 // 08-06-REVIEW WR-03: a restart question is never left in a hidden or
 // minimized window (start minimized, Quit GUI Only): raising it shows the
 // window and the Dock icon. No prompt (Not Now, or an approved count) shows nothing.
