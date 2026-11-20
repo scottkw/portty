@@ -25,6 +25,8 @@ The user approved this as the v1.2 milestone on 2026-11-19 and chose option 2 fo
    - Also in this phase:
      - the GUI ignores SIGTERM (found in U-01);
      - pending todos: paste-heartbeat-drop (IN-05), paste-notice-false-positive (IN-06), peer-snapshot-tab-replace (IN-07), web-viewer-paste-notice. These share the ack/input-queue path.
+     - pending todos from 08-06: api-compat-after-not-now (an API version in /health, part of the handoff protocol), quitall-waits-behind-restart, quit-dialog-under-restart-dialog.
+     - test hygiene: exitcode-stopped-flake (TestExitEvent_ListSessions_ExitCodePopulatedForStopped).
 1. **File preview via `portty open <file>`**, run inside any session, local or remote.
    - The CLI talks to the daemon on the Mac where the shell runs. That daemon sends a preview message over the session's existing authenticated relay stream, chunked with a size cap. Viewers open a preview tab next to the terminal tabs.
    - Renderers:
