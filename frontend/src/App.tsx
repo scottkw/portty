@@ -32,6 +32,8 @@ import {
   GetTerminalFont,
   GetDaemonRestartPrompt,
   AnswerDaemonRestart,
+  GetDaemonRestartMoveFailed,
+  GetDaemonUpdateNeeded,
 } from './wailsjs/go/main/App'
 import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
@@ -185,6 +187,13 @@ function App(): React.ReactElement {
   const [showQuitModal, setShowQuitModal] = useState(false)
   // DEBT-08: live sessions in an old-version daemon Go kept; 0 means no question, -1 an unknown count.
   const [restartPrompt, setRestartPrompt] = useState(0)
+  // Read by the app:quit-requested listener, which subscribes once (one modal at a time, UPGR-05).
+  const restartPromptRef = useRef(0)
+  restartPromptRef.current = restartPrompt
+  // UPGR-03: the open restart question follows a failed session handoff.
+  const [restartMoveFailed, setRestartMoveFailed] = useState(false)
+  // UPGR-04: version of a daemon too old for this app ('' when compatible).
+  const [updateNeeded, setUpdateNeeded] = useState('')
   // NAV-03: Settings is a sheet over the window (menu Settings… ⌘,), never a tab.
   const [showSettings, setShowSettings] = useState(false)
   const [quitSessions, setQuitSessions] = useState<Array<{ id: string; name: string }>>([])
@@ -344,6 +353,8 @@ function App(): React.ReactElement {
       }
       // DEBT-08: startup's daemon:restart-needed may have fired before this subscribed.
       GetDaemonRestartPrompt().then((n) => { if (n) setRestartPrompt(n) }).catch(() => { /* no prompt */ })
+      // UPGR-04: likewise for daemon:update-needed (null from a stub means compatible).
+      GetDaemonUpdateNeeded().then((v) => { if (v) setUpdateNeeded(v) }).catch(() => { /* compatible */ })
       try {
         const healthSeq = healthEventSeqRef.current
         const [port, allSessions, health] = await Promise.all([
@@ -394,6 +405,7 @@ function App(): React.ReactElement {
       setDaemonError(msg)
     })
     const offRestartNeeded = EventsOn('daemon:restart-needed', (n: number) => setRestartPrompt(n))
+    const offUpdateNeeded = EventsOn('daemon:update-needed', (v: string) => setUpdateNeeded(v || ''))
 
     // Plugin settings (PLUG-03): initial fetch + change subscription. The
     // PluginsSection component does its own fetch on mount; this top-level
@@ -451,6 +463,12 @@ function App(): React.ReactElement {
 
     // Subscribe to quit-requested event from Go backend (Phase 85)
     const offQuit = EventsOn('app:quit-requested', () => {
+      // One modal at a time (UPGR-05): Cmd-Q under the restart dialog answers Not Now, then shows Quit.
+      if (restartPromptRef.current !== 0) {
+        restartPromptRef.current = 0
+        setRestartPrompt(0)
+        void AnswerDaemonRestart(false)
+      }
       setShowQuitModal(prev => {
         if (prev) return prev  // Ignore if modal already showing (double-fire guard)
         ListSessions().then(sessions => {
@@ -471,6 +489,7 @@ function App(): React.ReactElement {
       offHealth()
       offDaemonError()
       offRestartNeeded()
+      offUpdateNeeded()
       offPlugins()
       cancelTrayFocus()
       offExit()
@@ -482,6 +501,15 @@ function App(): React.ReactElement {
       offWake()
     }
   }, [])
+
+  // UPGR-03: whenever the restart dialog opens, read whether a session handoff failed first.
+  const restartOpen = restartPrompt !== 0
+  useEffect(() => {
+    if (!restartOpen) { setRestartMoveFailed(false); return }
+    let live = true
+    GetDaemonRestartMoveFailed().then((v) => { if (live) setRestartMoveFailed(v === true) }).catch(() => { /* plain copy */ })
+    return () => { live = false }
+  }, [restartOpen])
 
   const createTab = useCallback(async (workDir: string) => {
     const defaultName = `shell ${tabCounter}`
@@ -1028,6 +1056,7 @@ function App(): React.ReactElement {
             true but whose trigger is missing here will never mount (the whole stack is
             conditionally rendered). Phase 129 DNS-03 regressed exactly this way. */}
         {(tailscaleOff ||
+          updateNeeded !== '' ||
           showUpdateBanner ||
           ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
           saveBanner !== null ||
@@ -1035,6 +1064,17 @@ function App(): React.ReactElement {
           pluginToggleBanners.length > 0) && (
           <div className="banner-stack">
             {tailscaleOff && <TailscaleBanner />}
+            {/* UPGR-04: no action here may end sessions; relaunching hands off or asks (DEBT-08). */}
+            {updateNeeded !== '' && (
+              <div className="banner banner--warning" role="status">
+                <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
+                <span className="banner__message">
+                  <strong>Update needed</strong>
+                  <br />
+                  {`Portty's background service (version ${updateNeeded}) is too old for this version of the app. Relaunch Portty to update it.`}
+                </span>
+              </div>
+            )}
             {shareFailure && (
               <div className="banner banner--warning" role="status">
                 <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
@@ -1294,7 +1334,8 @@ function App(): React.ReactElement {
         />
       )}
 
-      {showQuitModal && (
+      {/* One modal at a time: never under the restart dialog (UPGR-05). */}
+      {showQuitModal && restartPrompt === 0 && (
         <QuitConfirmModal
           isOpen={showQuitModal}
           sessions={quitSessions}
@@ -1310,9 +1351,10 @@ function App(): React.ReactElement {
         titleId="daemon-restart-title"
         title="Update Portty's background service?"
         body={
-          restartPrompt < 0 ? 'Sessions may be running. Restarting ends them.'
+          (restartMoveFailed ? "Portty couldn't move your sessions to the new version. They're still running on the old version. " : '') +
+          (restartPrompt < 0 ? 'Sessions may be running. Restarting ends them.'
             : restartPrompt === 1 ? '1 session is running. Restarting ends it.'
-              : `${restartPrompt} sessions are running. Restarting ends them.`
+              : `${restartPrompt} sessions are running. Restarting ends them.`)
         }
         confirmLabel="Restart Now"
         actingLabel="Restarting…"

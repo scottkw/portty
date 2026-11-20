@@ -40,6 +40,8 @@ export function GetDaemonRestartPrompt(): Promise<number>
 export function AnswerDaemonRestart(restart: boolean): Promise<void>
 // UPGR-03 — true when the open restart question follows a failed session handoff ("couldn't move your sessions").
 export function GetDaemonRestartMoveFailed(): Promise<boolean>
+// UPGR-04 — the version of a daemon below this app's minimum API ("Update needed" banner), or "" when compatible.
+export function GetDaemonUpdateNeeded(): Promise<string>
 
 // Directory dialog bound method
 export function OpenDirectoryDialog(defaultDir: string): Promise<string>

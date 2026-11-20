@@ -26,6 +26,8 @@ export const GetDaemonRestartPrompt = ()                    => Call('main.App.Ge
 export const AnswerDaemonRestart  = (restart)               => Call('main.App.AnswerDaemonRestart', [restart])
 // UPGR-03 — the open restart question follows a failed session handoff.
 export const GetDaemonRestartMoveFailed = ()                => Call('main.App.GetDaemonRestartMoveFailed', [])
+// UPGR-04 — version of a daemon too old for this app ('' when compatible).
+export const GetDaemonUpdateNeeded = ()                     => Call('main.App.GetDaemonUpdateNeeded', [])
 
 // Directory dialog bound method
 export const OpenDirectoryDialog  = (defaultDir)            => Call('main.App.OpenDirectoryDialog', [defaultDir])

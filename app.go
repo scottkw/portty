@@ -1,14 +1,17 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/scottkw/portty/internal/daemon"
@@ -174,6 +177,10 @@ type App struct {
 
 	// quitFunc is the Wails quit seam; nil means runtime.Quit(a.ctx).
 	quitFunc func()
+
+	// updateNeeded is the version of a daemon below MinDaemonAPI ("" when
+	// compatible), for the Update needed banner (UPGR-04). Guarded by restartMu.
+	updateNeeded string
 }
 
 // defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
@@ -263,6 +270,19 @@ func (a *App) startup(ctx context.Context) {
 	// It is still hidden (StartHidden), and the serial main queue runs this before the later WindowShow.
 	applySidebarMaterial()
 
+	// UPGR-05: Wails' signal.Start (run before OnStartup) routes SIGTERM to the
+	// quit modal, and its one-shot listener swallows every later SIGTERM. Undo
+	// it for SIGTERM (SIGINT stays with Wails for dev Ctrl-C): quit the GUI only.
+	signal.Reset(syscall.SIGTERM)
+	term := make(chan os.Signal, 1)
+	signal.Notify(term, syscall.SIGTERM)
+	go func() {
+		<-term
+		a.onTerminate()
+	}()
+	// A logout, restart or shutdown must never be cancelled by the quit modal.
+	installTerminateHook()
+
 	// Start system tray icon immediately — it must be visible regardless of
 	// daemon state. The poller will set the error icon if daemon is unreachable.
 	a.initTray()
@@ -325,8 +345,44 @@ func (a *App) ensure() func(socketPath string) error {
 			a.ensureCancel = nil
 			a.ensureMu.Unlock()
 		}()
-		return ensureDaemon(ctx, socketPath, daemon.EnsureOptions{Restart: a.restartConsent})
+		if err := ensureDaemon(ctx, socketPath, daemon.EnsureOptions{Restart: a.restartConsent}); err != nil {
+			return err
+		}
+		a.checkDaemonAPI(socketPath)
+		return nil
 	}
+}
+
+// checkDaemonAPI raises the Update needed banner when the daemon an ensure
+// left running (one kept with Not Now included) is below MinDaemonAPI
+// (UPGR-04). An unreadable health changes nothing.
+func (a *App) checkDaemonAPI(socketPath string) {
+	h, err := daemonHealthOf(socketPath)
+	if err != nil {
+		return
+	}
+	ver := ""
+	if daemon.DaemonAPI(h) < daemon.MinDaemonAPI {
+		ver = cmp.Or(h.Version, "unknown")
+	}
+	a.restartMu.Lock()
+	a.updateNeeded = ver
+	a.restartMu.Unlock()
+	if ver != "" {
+		a.emitEvent("daemon:update-needed", ver)
+	}
+}
+
+// GetDaemonUpdateNeeded returns the version of a daemon too old for this app,
+// or "" (UPGR-04). It waits for startup, like GetDaemonError, because startup's
+// daemon:update-needed can fire before React subscribes.
+func (a *App) GetDaemonUpdateNeeded() string {
+	if !a.awaitStartup() {
+		return ""
+	}
+	a.restartMu.Lock()
+	defer a.restartMu.Unlock()
+	return a.updateNeeded
 }
 
 // cancelEnsure cancels the running EnsureDaemon, if any.
@@ -589,6 +645,24 @@ func (a *App) shutdown(_ context.Context) {
 	}
 	// Daemon is an independent process — GUI does NOT stop it.
 	// Sessions persist after GUI exits (DAEMON-03).
+}
+
+// onTerminate is the SIGTERM handler (UPGR-05): it quits the GUI only. The
+// daemon and its sessions keep running; shutdown() never stops them.
+func (a *App) onTerminate() {
+	a.quitting.Store(true) // beforeClose now allows the quit
+	if a.quitFunc != nil {
+		a.quitFunc()
+		return
+	}
+	runtime.Quit(a.ctx)
+}
+
+// onSystemPowerOff runs when macOS terminates the app for a logout, restart
+// or shutdown (terminate_darwin.m): the quit goes ahead with no dialog. The
+// daemon is left alone; the logout ends it anyway.
+func (a *App) onSystemPowerOff() {
+	a.quitting.Store(true)
 }
 
 // beforeClose intercepts the window close button and emits a Wails event so
