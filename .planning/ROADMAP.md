@@ -4,6 +4,7 @@
 
 - ✅ **v1.0 Portty v1.0** — Phases 1-6 (shipped 2026-11-18)
 - ✅ **v1.1 Hardening** — Phases 7-8 (shipped 2026-11-19)
+- 🚧 **v1.2 Previews, Remote URLs, Mobile** — Phases 9-14 (in progress)
 
 ## Phases
 
@@ -30,3 +31,105 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`. Audit: `.planning/mileston
 Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/milestones/v1.1-MILESTONE-AUDIT.md`.
 
 </details>
+
+### 🚧 v1.2 Previews, Remote URLs, Mobile
+
+**Milestone Goal:** Upgrades stop costing sessions, and a remote session gets easier to work in: preview files, open the remote Mac's `localhost` pages, and drive a session from an iPhone. Everything stays on the tailnet behind the share token.
+
+**Holds for every phase:** token-gated, tailnet-only links; the CSP unchanged except for what a recorded security review approves; no new cloud dependencies; Wails v2; macOS-native look; radical simplicity. VM evidence comes from two Tart VMs on the real tailnet standing in for the office and home Macs, recorded in the phase's VM-CHECKS file and as M-NN items in TESTING.md.
+
+- [ ] **Phase 9: Upgrades Keep Sessions** - The new daemon takes over live PTYs and history on upgrade, viewers resume with a delta, a failed handoff loses nothing, the daemon reports an API version, and quitting is clean
+- [ ] **Phase 10: Input Path Reliability** - A bounded input queue keeps viewers connected through long pastes, the paste notice is honest in the app and the browser, peer snapshots are keyed by host, and the exit-code test is deterministic
+- [ ] **Phase 11: File Preview** - `portty open <file>` shows images, PDFs and Markdown in a preview tab for app and browser viewers, over the session's own stream, under a size cap and a reviewed CSP
+- [ ] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote
+- [ ] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent
+- [ ] **Phase 14: Mobile Web App** - The share view on an iPhone: key bar, phone layout, Home Screen install, reconnect after sleep, and launcher copy for portty.app/app
+
+## Phase Details
+
+### Phase 9: Upgrades Keep Sessions
+**Goal**: Upgrading Portty never costs a session. The new daemon takes over the running shells and their history, every attached viewer carries on by itself, and if the takeover fails the old daemon keeps serving. Nobody has to be at the remote Mac.
+**Depends on**: Phase 8 (the DEBT-08 consent guard stays as the fallback)
+**Requirements**: UPGR-01, UPGR-02, UPGR-03, UPGR-04, UPGR-05
+**Success Criteria** (what must be TRUE):
+  1. On the office Tart VM, with two ticking sessions (one inside a full-screen program such as `vim`) and a share link on, installing build B over build A (the M-104 two-build rig) and launching it ends no session and asks nothing. `/health` reports B, each shell keeps its PID, each ticker counts on with no missing number, a viewer opened afterwards gets the pre-upgrade history, and the share link still works with the same token and still refuses a wrong one. (UPGR-01)
+  2. Viewers attached during that upgrade (an office local tab, plus a home-VM peer tab, a browser share link and `portty attach` over the real tailnet) reconnect on their own within seconds and resume with a delta. Each viewer's ticker sequence has no repeated or missing number. (UPGR-02)
+  3. A handoff that fails at any step loses nothing. Fault injection at each step in tests, plus one VM run that kills the new daemon mid-handoff, shows the old daemon still serving every session and viewer, the GUI or CLI saying the sessions could not be moved, and the DEBT-08 choice (the dialog, or `--restart-daemon`) offered as before. An upgrade from a v1.1 daemon, which cannot hand off, gets the same DEBT-08 choice. (UPGR-03)
+  4. `/health` reports an API version. A GUI or CLI facing a daemon it cannot talk to shows a clear "update needed" state (a banner in the app; a one-line message and a non-zero exit from the CLI) instead of failing calls. A compatible older daemon kept with Not Now keeps working. (UPGR-04)
+  5. Quitting is clean. `kill -TERM` quits the GUI and leaves the daemon and its sessions running. Quit All during an approved daemon restart cancels the restart and quits within a few seconds, not ~30 s. Cmd-Q while the restart dialog is open never draws a second dialog underneath it (a vitest plus a VM click check). (UPGR-05)
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 10: Input Path Reliability
+**Goal**: Pasting into a shared session is trustworthy everywhere. A long paste never gets a healthy viewer dropped, the "paste may have been cut short" notice shows exactly when a paste may really have been cut short (in the app and in the browser), and peer tabs never mix up two Macs.
+**Depends on**: Phase 9 (the input queue and pong changes run through the read pump, daemon proxy and viewer reconnect code that the handoff reworks)
+**Requirements**: INPT-01, INPT-02, INPT-03, INPT-04, INPT-05
+**Success Criteria** (what must be TRUE):
+  1. A multi-megabyte paste into a slow program that doesn't echo (for example `stty raw -echo; pv -L 50k > /tmp/f`) keeps every viewer connected (a home-VM peer tab, a browser share viewer and a local tab), even when draining takes several times the 15 s heartbeat timeout. The file matches the payload byte for byte, and a viewer whose network really dies is still dropped once its backlog drains. Automated with a blocking fake hub, then re-run as M-101 on the two Tart VMs. (INPT-01)
+  2. A large paste that fully arrives in an echoing shell shows no "Paste may have been cut short" notice, even when the server's outgoing queue is full as the ping arrives. A paste cut short by a real drop still shows it. (INPT-02)
+  3. A browser share viewer whose socket drops mid-paste shows the same "Paste may have been cut short" notice as the app, in its status bar, with no `innerHTML` and no CSP change. Checked in a jsdom harness and with `tailscale down` on the office VM during a paste. (INPT-03)
+  4. After a daemon error and Retry, no snapshot of a removed peer tab is left behind. Two Macs that hand out the same session id open as two separate tabs, each rejoining with its own delta. (INPT-04)
+  5. `TestExitEvent_ListSessions_ExitCodePopulatedForStopped` passes in repeated full-package `go test -race -count=20 ./internal/daemon/` runs, and the full `-race` suite passes with nothing skipped. (INPT-05)
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 11: File Preview
+**Goal**: A user in any Portty session, local or remote, can run `portty open <file>` and see an image, PDF or Markdown file in a preview tab beside the terminal, in the app and in a browser share viewer. The bytes never leave the session's authenticated stream.
+**Depends on**: Phase 9 (the API version lets an older daemon or viewer meet the new preview message with "update needed" instead of a failure)
+**Requirements**: PREV-01, PREV-02, PREV-03, PREV-04
+**Success Criteria** (what must be TRUE):
+  1. Running `portty open <file>` in an office-VM session opens a preview tab beside that session's terminal tab in every app viewer of it: the office VM's local tab and the home VM's peer tab over the real tailnet. Closing the preview leaves the terminal and the session as they were. A missing or unsupported file gets a one-line CLI error. (PREV-01)
+  2. PNG, JPEG, GIF, WebP and SVG images, PDFs and Markdown render in the preview tab with the macOS-native look, following system light and dark mode live. PDF rendering is proven inside the Wails v2 web view before anything is built on it. Hostile fixtures (SVG and Markdown carrying script, event handlers, `javascript:` links or remote images) run nothing and fetch nothing. (PREV-02)
+  3. A file over the size cap shows a clear "too large to preview" message, never a partial render. While a file near the cap streams, the terminal keeps updating and no viewer is dropped. Neither the daemon nor the share server gains any route that reads a file by path; tests and the security review confirm it. (PREV-03)
+  4. A browser share viewer on the home VM gets the same previews through the share link. The share page CSP (today `img-src 'self' data:`) changes only as far as the phase's security review approves, the review is recorded, and the token gate, the tailnet-only listener and `frame-ancestors 'none'` are unchanged. (PREV-04)
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 12: File Path Click
+**Goal**: A user can Cmd-click a file path that a program printed in the terminal and see it previewed, in local and remote sessions alike, because Portty tracks each shell's working directory.
+**Depends on**: Phase 11 (a click opens the file through the preview path)
+**Requirements**: PATH-01, PATH-02
+**Success Criteria** (what must be TRUE):
+  1. A new Portty zsh session reports its working directory through OSC 7 after every `cd`, with no setup by the user. A shell the user has set up to emit OSC 7 (bash, fish) is tracked the same way. Without OSC 7, absolute paths still work and relative ones do nothing. (PATH-01)
+  2. Cmd-clicking an absolute path, or one relative to the working directory (for example `docs/diagram.png` printed by `ls` after `cd ~/proj`), opens it in a preview tab. This works in a local tab, and in a home-VM peer tab on an office-VM session over the real tailnet. (PATH-02)
+  3. Cmd-clicking a path that doesn't exist does nothing: no tab, no dialog, and nothing typed into the shell. A plain click still selects text as before, and URLs keep their own click behavior. (PATH-02)
+  4. Path clicks keep the PREV-03 rule. The request rides that session's authenticated stream, the host resolves it against that session's own working directory, and the host previews only a path that the session itself printed, so there is still no way to read a file by arbitrary path. The security review records this. (PATH-02; keeps PREV-03)
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 13: Remote Localhost URLs
+**Goal**: A user viewing a remote session can click a `localhost` URL printed on the remote Mac and see that page in their normal browser, proxied over the tailnet, with no way to reach a port they didn't approve.
+**Depends on**: Phase 9 (the API version gates the new proxy route)
+**Requirements**: URL-01, URL-02, URL-03
+**Success Criteria** (what must be TRUE):
+  1. In a home-VM peer tab on an office-VM session running a dev server (for example `python3 -m http.server 8000`), clicking `http://localhost:8000/` or `http://127.0.0.1:8000/` opens the office VM's page in the home VM's default browser through Portty's proxy over the real tailnet. Paths, query strings and the page's own assets load. There is no in-app browser. (URL-01)
+  2. The first click on a port asks for consent in a macOS-style sheet that names the remote Mac and the port; declining opens nothing. Approval covers only that Mac and that port, and the viewing Mac's listener binds only to its loopback (checked with `lsof`). (URL-02)
+  3. The proxy refuses whatever wasn't asked for. Requests without the token, from outside the tailnet, or for a port nobody approved are refused before the remote Mac connects anywhere. It only ever connects to the remote Mac's own loopback, it cannot be used to scan ports, and once the host stops sharing the proxied page stops loading. The security review records the threat model. (URL-02)
+  4. Local URLs, and non-localhost URLs in remote tabs, work as today: the confirm popover, then the default browser. The existing link tests still pass. (URL-03)
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 14: Mobile Web App
+**Goal**: The user can drive a shared session from an iPhone. The share view fits the phone, adds the keys iOS lacks, installs to the Home Screen and picks up again after the phone sleeps or changes network. The host Mac serves all of it over the tailnet, and portty.app/app is only a static launcher page.
+**Depends on**: Phases 10 and 11 (it builds on the browser share viewer and its CSP as the paste-notice and preview work leave them)
+**Requirements**: MOB-01, MOB-02, MOB-03, MOB-04
+**Success Criteria** (what must be TRUE):
+  1. On an iPhone (Playwright's WebKit iPhone emulation first, then the real phone), the share view fits the session to the phone's width, keeps the cursor line above the on-screen keyboard, and shows a key bar above the keyboard (Esc, Tab, Ctrl, arrows, `|`) whose keys reach the shell; Ctrl then C stops a running command. Pinching changes the font size. The desktop browser view is unchanged. (MOB-01)
+  2. Add to Home Screen gives a Portty icon that opens the session full screen, with every asset served by the host Mac over the tailnet (nothing from portty.app or a CDN). The token still gates it: after the host stops sharing, the icon opens the "Link No Longer Works" page. The share page CSP changes only as far as the security review approves (for example `manifest-src 'self'`). (MOB-02)
+  3. **Human check (real iPhone):** with the Tailscale app connected, after the phone sleeps for several minutes or switches between Wi-Fi and cellular, the view reconnects on its own and resumes with no missing or duplicated output. Recorded as a new M-NN item in TESTING.md. The reconnect logic is unit-tested, but VMs cannot stand in for iOS suspension and the Tailscale app. (MOB-03)
+  4. This repo supplies the copy and the link format for portty.app/app (what Portty is, how to open your Mac's tailnet share link, how to add it to the Home Screen) for the website repo. That page holds no token, opens no WebSocket and has no shell access, and nothing in this repo's origin check, CSP or token handling trusts portty.app. (MOB-04)
+**Plans**: TBD
+**UI hint**: yes
+
+## Progress
+
+**Execution Order:** Phases run in numeric order: 9 → 10 → 11 → 12 → 13 → 14.
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 9. Upgrades Keep Sessions | v1.2 | 0/TBD | Not started | - |
+| 10. Input Path Reliability | v1.2 | 0/TBD | Not started | - |
+| 11. File Preview | v1.2 | 0/TBD | Not started | - |
+| 12. File Path Click | v1.2 | 0/TBD | Not started | - |
+| 13. Remote Localhost URLs | v1.2 | 0/TBD | Not started | - |
+| 14. Mobile Web App | v1.2 | 0/TBD | Not started | - |
