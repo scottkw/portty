@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -558,8 +559,11 @@ func TestEnsureCLIDaemon_RestartConsent(t *testing.T) {
 	daemon.BuildVersion = "v2"
 	t.Cleanup(func() { daemon.BuildVersion = old })
 	var allowed bool
-	asking := func(n int) func(string, daemon.RestartPolicy) error {
-		return func(_ string, allow daemon.RestartPolicy) error { allowed = allow("v1", n); return nil }
+	asking := func(n int) func(context.Context, string, daemon.EnsureOptions) error {
+		return func(_ context.Context, _ string, o daemon.EnsureOptions) error {
+			allowed = o.Restart(daemon.RestartQuestion{DaemonVersion: "v1", Sessions: n})
+			return nil
+		}
 	}
 	err := ensureCLIDaemon(asking(2), "sock", false, false)
 	want := "the running daemon is version v1 with 2 live sessions; restarting it to version v2 would end them. Re-run as 'portty <command> --restart-daemon …' to restart anyway, or as 'portty <command> --keep-daemon …' to use it as it is."
@@ -580,12 +584,12 @@ func TestEnsureCLIDaemon_RestartConsent(t *testing.T) {
 	if err := ensureCLIDaemon(asking(2), "sock", true, false); err != nil || !allowed {
 		t.Fatalf("--restart-daemon: err %v, allowed %v", err, allowed)
 	}
-	noAsk := func(string, daemon.RestartPolicy) error { return nil } // zero sessions: EnsureDaemon never asks
+	noAsk := func(context.Context, string, daemon.EnsureOptions) error { return nil } // zero sessions: EnsureDaemon never asks
 	if err := ensureCLIDaemon(noAsk, "sock", false, false); err != nil {
 		t.Fatalf("no prompt: %v", err)
 	}
 	failed := errors.New("spawn failed")
-	if err := ensureCLIDaemon(func(string, daemon.RestartPolicy) error { return failed }, "sock", false, false); err != failed {
+	if err := ensureCLIDaemon(func(context.Context, string, daemon.EnsureOptions) error { return failed }, "sock", false, false); err != failed {
 		t.Fatalf("ensure error = %v", err)
 	}
 }
@@ -602,8 +606,11 @@ func TestEnsureCLIDaemon_UpdateNeeded(t *testing.T) {
 		return daemon.HealthResponse{Status: "ok", Version: "v1.1.0"}, nil
 	}
 	daemonHealthOf = v11
-	ok := func(string, daemon.RestartPolicy) error { return nil }
-	keeping := func(_ string, allow daemon.RestartPolicy) error { allow("v1.1.0", 2); return nil }
+	ok := func(context.Context, string, daemon.EnsureOptions) error { return nil }
+	keeping := func(_ context.Context, _ string, o daemon.EnsureOptions) error {
+		o.Restart(daemon.RestartQuestion{DaemonVersion: "v1.1.0", Sessions: 2})
+		return nil
+	}
 
 	daemon.MinDaemonAPI = 3
 	want := "the running daemon (version v1.1.0, API 1) is too old for this portty (version v1.2.0 needs API 3): update needed. Re-run as 'portty <command> --restart-daemon …' to restart it."
@@ -628,6 +635,45 @@ func TestEnsureCLIDaemon_UpdateNeeded(t *testing.T) {
 	}
 	if err := ensureCLIDaemon(keeping, "sock", false, true); err != nil {
 		t.Fatalf("a v1.1 daemon kept with --keep-daemon: %v", err)
+	}
+}
+
+// UPGR-03: a restart question that says the handoff failed prints the
+// couldn't-move line first, then DEBT-08 applies unchanged: the refusal, the
+// restart with --restart-daemon, or --keep-daemon (which also asks for no handoff).
+func TestEnsureCLIDaemon_MoveFailedCopy(t *testing.T) {
+	oldVer, oldHealth := daemon.BuildVersion, daemonHealthOf
+	t.Cleanup(func() { daemon.BuildVersion, daemonHealthOf = oldVer, oldHealth })
+	daemon.BuildVersion = "v1.2.0-vmB"
+	daemonHealthOf = func(string) (daemon.HealthResponse, error) { return daemon.HealthResponse{}, errors.New("unused") }
+	var allowed, noHandoff bool
+	failedMove := func(_ context.Context, _ string, o daemon.EnsureOptions) error {
+		noHandoff = o.NoHandoff
+		allowed = o.Restart(daemon.RestartQuestion{DaemonVersion: "v1.2.0-vmA", Sessions: 2, MoveFailed: "the new version exited"})
+		return nil
+	}
+	line := "portty: couldn't move the running sessions to version v1.2.0-vmB (the new version exited); they are still running on version v1.2.0-vmA.\n"
+
+	var err error
+	out := captureStderr(t, func() { err = ensureCLIDaemon(failedMove, "sock", false, false) })
+	if out != line || err == nil || !strings.HasPrefix(err.Error(), "the running daemon is version v1.2.0-vmA with 2 live sessions;") || allowed || noHandoff {
+		t.Fatalf("refusal: stderr %q, err %v, allowed %v, noHandoff %v", out, err, allowed, noHandoff)
+	}
+	out = captureStderr(t, func() { err = ensureCLIDaemon(failedMove, "sock", true, false) })
+	if out != line || err != nil || !allowed {
+		t.Fatalf("--restart-daemon: stderr %q, err %v, allowed %v", out, err, allowed)
+	}
+	out = captureStderr(t, func() { err = ensureCLIDaemon(failedMove, "sock", false, true) })
+	if out != line+"portty: using the running daemon, version v1.2.0-vmA (this is v1.2.0-vmB)\n" || err != nil || allowed || !noHandoff {
+		t.Fatalf("--keep-daemon: stderr %q, err %v, allowed %v, noHandoff %v", out, err, allowed, noHandoff)
+	}
+	// No handoff tried (a v1.1 daemon): the plain question, no extra line.
+	plain := func(_ context.Context, _ string, o daemon.EnsureOptions) error {
+		o.Restart(daemon.RestartQuestion{DaemonVersion: "v1.1.0", Sessions: 2})
+		return nil
+	}
+	if out = captureStderr(t, func() { _ = ensureCLIDaemon(plain, "sock", false, false) }); out != "" {
+		t.Fatalf("plain question printed %q", out)
 	}
 }
 

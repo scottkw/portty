@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -103,7 +104,7 @@ func TestRunDaemon_Exports(t *testing.T) {
 	// We cannot call RunDaemon() in tests (it blocks on signal), but we verify
 	// the functions exist and are exported.
 	var _ func() = RunDaemon
-	var _ func(string, RestartPolicy) error = EnsureDaemon
+	var _ func(context.Context, string, EnsureOptions) error = EnsureDaemon
 }
 
 // WR-05: one daemon at a time. A second daemon cannot take the lock while the
@@ -167,7 +168,7 @@ func TestEnsureDaemon_NeverUnlinksSocket(t *testing.T) {
 					fmt.Fprint(w, `{}`)
 				}
 			}))
-			_ = EnsureDaemon(path, func(string, int) bool { return true }) // a test binary refuses the spawn
+			_ = EnsureDaemon(context.Background(), path, EnsureOptions{Restart: func(RestartQuestion) bool { return true }}) // a test binary refuses the spawn
 			if _, err := os.Stat(path); err != nil {
 				t.Fatalf("EnsureDaemon removed the socket path: %v", err)
 			}
@@ -213,7 +214,7 @@ func TestWaitForDaemon_SlowStart(t *testing.T) {
 		}
 	})
 
-	if err := waitForDaemon(NewDaemonClient(path), daemonReadyWait, nil, ""); err != nil {
+	if err := waitForDaemon(context.Background(), NewDaemonClient(path), daemonReadyWait, nil, ""); err != nil {
 		t.Fatalf("a daemon that binds after 4 s must count as started: %v", err)
 	}
 }
@@ -272,12 +273,12 @@ func TestWaitForDaemon_DiedAtSpawnFailsFast(t *testing.T) {
 	if err != nil {
 		t.Skip("no false binary")
 	}
-	exited, err := startDetachedDaemon(exe)
+	exited, _, err := startDetachedDaemon(exe)
 	if err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	err = waitForDaemon(NewDaemonClient(refusingSocket(t, "dead")), daemonReadyWait, exited, filepath.Join(t.TempDir(), "daemon.lock"))
+	err = waitForDaemon(context.Background(), NewDaemonClient(refusingSocket(t, "dead")), daemonReadyWait, exited, filepath.Join(t.TempDir(), "daemon.lock"))
 	if err == nil {
 		t.Fatal("a daemon that exited at spawn counted as started")
 	}
@@ -300,7 +301,7 @@ func TestWaitForDaemon_LostLockWaitsForHolder(t *testing.T) {
 	serveDaemonAfter(t, path, time.Second)
 	exited := make(chan struct{})
 	close(exited)
-	if err := waitForDaemon(NewDaemonClient(path), daemonReadyWait, exited, lockPath); err != nil {
+	if err := waitForDaemon(context.Background(), NewDaemonClient(path), daemonReadyWait, exited, lockPath); err != nil {
 		t.Fatalf("the lock holder bound after 1 s, but: %v", err)
 	}
 }
@@ -318,7 +319,7 @@ func TestWaitForDaemon_LockReleasedWithoutBindFailsFast(t *testing.T) {
 	exited := make(chan struct{})
 	close(exited)
 	start := time.Now()
-	if err := waitForDaemon(NewDaemonClient(refusingSocket(t, "released")), daemonReadyWait, exited, lockPath); err == nil {
+	if err := waitForDaemon(context.Background(), NewDaemonClient(refusingSocket(t, "released")), daemonReadyWait, exited, lockPath); err == nil {
 		t.Fatal("nothing bound, but the wait succeeded")
 	}
 	if d := time.Since(start); d > time.Second {
@@ -339,7 +340,7 @@ func TestStartDaemon_WaitsForOldDaemonLock(t *testing.T) {
 	}
 	time.AfterFunc(2500*time.Millisecond, func() { old.Close() })
 	path := refusingSocket(t, "restart")
-	spawn := func() (<-chan struct{}, error) {
+	spawn := func() (<-chan struct{}, func(), error) {
 		exited := make(chan struct{})
 		go func() {
 			lock, err := lockDaemon(lockPath, 2*time.Second)
@@ -350,10 +351,10 @@ func TestStartDaemon_WaitsForOldDaemonLock(t *testing.T) {
 			t.Cleanup(func() { lock.Close() })
 			serveDaemonAfter(t, path, 0)
 		}()
-		return exited, nil
+		return exited, nil, nil
 	}
 	start := time.Now()
-	if err := startDaemon(NewDaemonClient(path), daemonReadyWait, lockPath, spawn); err != nil {
+	if err := startDaemon(context.Background(), NewDaemonClient(path), daemonReadyWait, lockPath, spawn); err != nil {
 		t.Fatalf("the old daemon let go at 2.5 s, but: %v", err)
 	}
 	if d := time.Since(start); d > 5*time.Second {
@@ -373,11 +374,11 @@ func TestStartDaemon_LateLockReleaseKeepsSpawnWindow(t *testing.T) {
 	}
 	time.AfterFunc(800*time.Millisecond, func() { old.Close() })
 	path := refusingSocket(t, "late")
-	spawn := func() (<-chan struct{}, error) {
+	spawn := func() (<-chan struct{}, func(), error) {
 		serveDaemonAfter(t, path, 500*time.Millisecond)
-		return nil, nil
+		return nil, nil, nil
 	}
-	if err := startDaemon(NewDaemonClient(path), time.Second, lockPath, spawn); err != nil {
+	if err := startDaemon(context.Background(), NewDaemonClient(path), time.Second, lockPath, spawn); err != nil {
 		t.Fatalf("the daemon bound 0.5 s after the spawn, but: %v", err)
 	}
 }
@@ -422,7 +423,7 @@ func TestStartDaemon_MismatchedDaemonAnsweringIsNotReady(t *testing.T) {
 		t.Fatal(err)
 	}
 	var spawned atomic.Bool
-	spawn := func() (<-chan struct{}, error) {
+	spawn := func() (<-chan struct{}, func(), error) {
 		spawned.Store(true)
 		exited := make(chan struct{})
 		go func() {
@@ -434,9 +435,9 @@ func TestStartDaemon_MismatchedDaemonAnsweringIsNotReady(t *testing.T) {
 			t.Cleanup(func() { lock.Close() })
 			serveDaemonAfter(t, path, 0)
 		}()
-		return exited, nil
+		return exited, nil, nil
 	}
-	if err := startDaemon(client, daemonReadyWait, lockPath, spawn); err != nil {
+	if err := startDaemon(context.Background(), client, daemonReadyWait, lockPath, spawn); err != nil {
 		t.Fatalf("startDaemon: %v", err)
 	}
 	if !spawned.Load() {
@@ -570,10 +571,14 @@ func TestEnsureDaemon_StaleRestartConsent(t *testing.T) {
 
 			var asked []int
 			askedVer := ""
-			err = EnsureDaemon(path, func(ver string, n int) bool {
-				asked, askedVer = append(asked, n), ver
-				return tc.allow(n)
-			})
+			moveFailed := ""
+			err = EnsureDaemon(context.Background(), path, EnsureOptions{Restart: func(q RestartQuestion) bool {
+				asked, askedVer, moveFailed = append(asked, q.Sessions), q.DaemonVersion, moveFailed+q.MoveFailed
+				return tc.allow(q.Sessions)
+			}})
+			if moveFailed != "" { // no handoff was tried: the plain DEBT-08 question
+				t.Fatalf("policy got MoveFailed %q, want empty", moveFailed)
+			}
 			if !slices.Equal(asked, tc.wantAsked) {
 				t.Fatalf("policy asked with %v sessions, want %v", asked, tc.wantAsked)
 			}
@@ -641,10 +646,77 @@ func TestEnsureDaemon_UnreadableVersionIsNotAMismatch(t *testing.T) {
 				}
 			}))
 			asked := false
-			err = EnsureDaemon(path, func(string, int) bool { asked = true; return false })
+			err = EnsureDaemon(context.Background(), path, EnsureOptions{Restart: func(RestartQuestion) bool { asked = true; return false }})
 			if err != nil || asked != tc.wantAsked || shutdown.Load() {
 				t.Fatalf("err %v, asked %v, shutdown %v; want nil, %v, false", err, asked, shutdown.Load(), tc.wantAsked)
 			}
 		})
+	}
+}
+
+// UPGR-05 (08-06 IN-07): Quit All cancels the ensure. Cancelled before a
+// spawn, nothing is spawned: EnsureDaemon returns ctx.Err() ahead of the
+// test-binary refusal, and startDaemon never calls its spawn seam.
+func TestEnsureDaemon_CancelBeforeSpawn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := EnsureDaemon(ctx, refusingSocket(t, "cancel"), EnsureOptions{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("EnsureDaemon with a cancelled ctx = %v, want context.Canceled", err)
+	}
+	spawns := 0
+	spawn := func() (<-chan struct{}, func(), error) { spawns++; return nil, nil, nil }
+	err := startDaemon(ctx, NewDaemonClient(refusingSocket(t, "cancel2")), time.Second, filepath.Join(t.TempDir(), "daemon.lock"), spawn)
+	if !errors.Is(err, context.Canceled) || spawns != 0 {
+		t.Fatalf("startDaemon with a cancelled ctx: err %v, spawns %d; want context.Canceled, 0", err, spawns)
+	}
+}
+
+// IN-07: the wait for a held lock checks ctx on every tick.
+func TestStartDaemon_CancelDuringLockWait(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "daemon.lock")
+	holder, err := lockDaemon(lockPath, 0) // another file description holds it
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	spawns := 0
+	spawn := func() (<-chan struct{}, func(), error) { spawns++; return nil, nil, nil }
+	done := make(chan error, 1)
+	go func() {
+		done <- startDaemon(ctx, NewDaemonClient(refusingSocket(t, "lockwait")), daemonReadyWait, lockPath, spawn)
+	}()
+	time.Sleep(200 * time.Millisecond)
+	cancelled := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) || spawns != 0 {
+			t.Fatalf("err %v, spawns %d; want context.Canceled, 0", err, spawns)
+		}
+		if d := time.Since(cancelled); d > 100*time.Millisecond {
+			t.Fatalf("returned %v after the cancel, want within 100 ms", d)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("startDaemon kept waiting for the lock after the cancel")
+	}
+}
+
+// IN-07 (T-09-01): cancelled while a fresh daemon it spawned starts up, the
+// ensure kills that child (it owns no sessions yet), once, and returns ctx.Err().
+func TestStartDaemon_CancelAfterSpawnKillsChild(t *testing.T) {
+	var kills atomic.Int64
+	spawn := func() (<-chan struct{}, func(), error) {
+		return make(chan struct{}), func() { kills.Add(1) }, nil // never ready, never exits
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(200*time.Millisecond, cancel)
+	start := time.Now()
+	err := startDaemon(ctx, NewDaemonClient(refusingSocket(t, "kill")), daemonReadyWait, filepath.Join(t.TempDir(), "daemon.lock"), spawn)
+	if !errors.Is(err, context.Canceled) || kills.Load() != 1 {
+		t.Fatalf("err %v, kills %d; want context.Canceled, 1", err, kills.Load())
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("took %v, want soon after the 200 ms cancel", d)
 	}
 }

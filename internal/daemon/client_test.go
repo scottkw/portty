@@ -1,8 +1,11 @@
 package daemon
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -38,6 +41,67 @@ func TestHealthInfo(t *testing.T) {
 	if err != nil || DaemonAPI(h) != 2 || APIVersion != 2 {
 		t.Fatalf("this build's health = %+v, %v; want API 2", h, err)
 	}
+}
+
+// 09-04's handoff freeze answers mutating routes with 503 and Retry-After: 1.
+// Mutating calls and /shutdown wait it out within frozenRetryBudget, then
+// return the 503 as an error; a GET is never retried (reads still work).
+func TestDaemonClient_Waits503(t *testing.T) {
+	serve := func(t *testing.T, frozen int) (*DaemonClient, *atomic.Int64) {
+		t.Helper()
+		path := shortProcTestSocket(t, "frozen")
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { ln.Close() })
+		var calls atomic.Int64
+		go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+			if n := int(calls.Add(1)); frozen < 0 || n <= frozen { // frozen < 0: forever
+				w.Header().Set("Retry-After", "1")
+				http.Error(w, "frozen for a handoff", http.StatusServiceUnavailable)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		return NewDaemonClient(path), &calls
+	}
+
+	for name, call := range map[string]func(*DaemonClient) error{
+		"shutdown": (*DaemonClient).ShutdownDaemon,
+		"delete":   func(c *DaemonClient) error { return c.KillSession("a") },
+	} {
+		t.Run(name+" waits out two 503s", func(t *testing.T) {
+			c, calls := serve(t, 2)
+			start := time.Now()
+			if err := call(c); err != nil {
+				t.Fatalf("after two 503s: %v", err)
+			}
+			if d := time.Since(start); calls.Load() != 3 || d < 1900*time.Millisecond || d > 4*time.Second {
+				t.Fatalf("calls %d in %v; want 3 in about 2 s", calls.Load(), d)
+			}
+		})
+		t.Run(name+" gives up after the budget", func(t *testing.T) {
+			old := frozenRetryBudget
+			frozenRetryBudget = 1500 * time.Millisecond
+			t.Cleanup(func() { frozenRetryBudget = old })
+			c, _ := serve(t, -1)
+			start := time.Now()
+			if err := call(c); err == nil || !strings.Contains(err.Error(), "503") {
+				t.Fatalf("a daemon frozen forever: err %v, want the 503", err)
+			}
+			if d := time.Since(start); d > 3*time.Second {
+				t.Fatalf("took %v, want the 1.5 s budget", d)
+			}
+		})
+	}
+
+	t.Run("GET is not retried", func(t *testing.T) {
+		c, calls := serve(t, 2)
+		if err := c.Health(); err == nil || calls.Load() != 1 {
+			t.Fatalf("GET: err %v, calls %d; want the 503 at once", err, calls.Load())
+		}
+	})
 }
 
 func TestClientListSessions(t *testing.T) {

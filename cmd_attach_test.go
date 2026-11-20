@@ -653,7 +653,7 @@ func swapEnsureDaemon(t *testing.T) *daemon.RestartPolicy {
 	t.Helper()
 	var got daemon.RestartPolicy
 	orig := ensureDaemon
-	ensureDaemon = func(_ string, policy daemon.RestartPolicy) error { got = policy; return nil }
+	ensureDaemon = func(_ context.Context, _ string, opts daemon.EnsureOptions) error { got = opts.Restart; return nil }
 	t.Cleanup(func() { ensureDaemon = orig })
 	return &got
 }
@@ -669,7 +669,7 @@ func TestEnsureLocalDaemon_KeepsMismatchedDaemon(t *testing.T) {
 		t.Fatal("the reconnect passed no restart policy")
 	}
 	for _, n := range []int{2, 1, -1} {
-		if (*policy)("v1", n) {
+		if (*policy)(daemon.RestartQuestion{DaemonVersion: "v1", Sessions: n}) {
 			t.Fatalf("the reconnect restarted a mismatched daemon with %d sessions", n)
 		}
 	}

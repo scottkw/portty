@@ -955,7 +955,7 @@ func TestRestartConsent_NotNowKeepsDaemonWithoutAskingAgain(t *testing.T) {
 		emitEventFunc:    func(name string, data any) { events = append(events, fmt.Sprint(name, " ", data)) },
 		ensureDaemonFunc: func(string) error { ensures++; return nil },
 	}
-	if a.restartConsent("v1", 2) {
+	if a.restartConsent(question(2)) {
 		t.Fatal("the GUI policy restarted without consent")
 	}
 	if got := a.GetDaemonRestartPrompt(); got != 2 {
@@ -970,7 +970,7 @@ func TestRestartConsent_NotNowKeepsDaemonWithoutAskingAgain(t *testing.T) {
 	if got := a.GetDaemonRestartPrompt(); got != 0 || ensures != 0 {
 		t.Fatalf("after Not Now: prompt %d, ensures %d; want 0, 0", got, ensures)
 	}
-	if a.restartConsent("v1", 3) || a.GetDaemonRestartPrompt() != 0 || len(events) != 1 {
+	if a.restartConsent(question(3)) || a.GetDaemonRestartPrompt() != 0 || len(events) != 1 {
 		t.Fatalf("asked again after Not Now: prompt %d, events %q", a.GetDaemonRestartPrompt(), events)
 	}
 }
@@ -982,8 +982,8 @@ func TestAnswerDaemonRestart_RestartNow(t *testing.T) {
 	allowed := false
 	var ensureErr error
 	a := &App{emitEventFunc: func(name string, data any) { events = append(events, name) }}
-	a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent("v1", 2); return ensureErr }
-	a.restartConsent("v1", 2)
+	a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent(question(2)); return ensureErr }
+	a.restartConsent(question(2))
 
 	ensureErr = errors.New("spawn failed")
 	if err := a.AnswerDaemonRestart(true); err == nil || !allowed {
@@ -1000,7 +1000,7 @@ func TestAnswerDaemonRestart_RestartNow(t *testing.T) {
 	if a.GetDaemonRestartPrompt() != 0 || events[len(events)-1] != "daemon:recovered" {
 		t.Fatalf("after Restart Now: prompt %d, events %q", a.GetDaemonRestartPrompt(), events)
 	}
-	if a.restartConsent("v1", 2) {
+	if a.restartConsent(question(2)) {
 		t.Fatal("the approval outlived its restart")
 	}
 
@@ -1031,8 +1031,8 @@ func TestAnswerDaemonRestart_ApprovesShownCountOnly(t *testing.T) {
 			var events []string
 			a := &App{emitEventFunc: func(name string, data any) { events = append(events, fmt.Sprint(name, " ", data)) }}
 			allowed := false
-			a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent("v1", tc.live); return nil }
-			a.restartConsent("v1", tc.shown)
+			a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent(question(tc.live)); return nil }
+			a.restartConsent(question(tc.shown))
 			err := a.AnswerDaemonRestart(true)
 			if allowed != tc.allowed {
 				t.Fatalf("dialog showed %d, restart found %d: allowed %v, want %v", tc.shown, tc.live, allowed, tc.allowed)
@@ -1065,7 +1065,7 @@ func TestEnsure_DefaultSeamPassesRestartConsent(t *testing.T) {
 	if err := a.ensure()("sock"); err != nil {
 		t.Fatal(err)
 	}
-	if *policy == nil || (*policy)("v1", 2) || a.GetDaemonRestartPrompt() != 2 {
+	if *policy == nil || (*policy)(question(2)) || a.GetDaemonRestartPrompt() != 2 {
 		t.Fatalf("the default seam's policy is not restartConsent (prompt %d)", a.GetDaemonRestartPrompt())
 	}
 }
@@ -1075,11 +1075,11 @@ func TestEnsure_DefaultSeamPassesRestartConsent(t *testing.T) {
 func TestAnswerDaemonRestart_NoPendingPrompt(t *testing.T) {
 	events, ensures := 0, 0
 	a := &App{emitEventFunc: func(string, any) { events++ }}
-	a.ensureDaemonFunc = func(string) error { ensures++; a.restartConsent("v1", 3); return nil }
+	a.ensureDaemonFunc = func(string) error { ensures++; a.restartConsent(question(3)); return nil }
 	if err := a.AnswerDaemonRestart(true); !errors.Is(err, errNoRestartPending) || ensures != 0 {
 		t.Fatalf("no prompt: err %v, ensures %d", err, ensures)
 	}
-	a.restartConsent("v1", 3)
+	a.restartConsent(question(3))
 	_ = a.AnswerDaemonRestart(false) // Not Now
 	if err := a.AnswerDaemonRestart(true); !errors.Is(err, errNoRestartPending) || ensures != 0 || events != 1 || a.GetDaemonRestartPrompt() != 0 {
 		t.Fatalf("after Not Now: err %v, ensures %d, events %d, prompt %d", err, ensures, events, a.GetDaemonRestartPrompt())
@@ -1094,8 +1094,8 @@ func TestAnswerDaemonRestart_FailedAfterStopRaisesDaemonError(t *testing.T) {
 	sock := respawnHome(t) // nothing listens: the old daemon is gone
 	var events []string
 	a := &App{client: daemon.NewDaemonClient(sock), emitEventFunc: func(name string, data any) { events = append(events, fmt.Sprint(name, " ", data)) }}
-	a.ensureDaemonFunc = func(string) error { a.restartConsent("v1", 2); return errors.New("daemon exited during startup") }
-	a.restartConsent("v1", 2)
+	a.ensureDaemonFunc = func(string) error { a.restartConsent(question(2)); return errors.New("daemon exited during startup") }
+	a.restartConsent(question(2))
 	err := a.AnswerDaemonRestart(true)
 	want := "Restarting Portty's background service failed: daemon exited during startup"
 	if err == nil || err.Error() != want {
@@ -1115,23 +1115,23 @@ func TestAnswerDaemonRestart_FailedAfterStopRaisesDaemonError(t *testing.T) {
 func TestRestartConsent_ShowsWindowWhenAsking(t *testing.T) {
 	shown := 0
 	a := &App{emitEventFunc: func(string, any) {}, showWindowFunc: func() { shown++ }}
-	a.restartConsent("v1", 2)
+	a.restartConsent(question(2))
 	if shown != 1 {
 		t.Fatalf("window shown %d times for the prompt, want 1", shown)
 	}
 	allowed := false
-	a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent("v1", 3); return nil }
+	a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent(question(3)); return nil }
 	if err := a.AnswerDaemonRestart(true); !errors.Is(err, errRestartCountChanged) || allowed || shown != 2 {
 		t.Fatalf("re-ask: err %v, allowed %v, shown %d; want the window shown again", err, allowed, shown)
 	}
-	a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent("v1", 3); return nil }
+	a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent(question(3)); return nil }
 	if err := a.AnswerDaemonRestart(true); err != nil || !allowed || shown != 2 {
 		t.Fatalf("approved restart: err %v, allowed %v, shown %d", err, allowed, shown)
 	}
 	b := &App{emitEventFunc: func(string, any) {}, showWindowFunc: func() { shown++ }}
-	b.restartConsent("v1", 2)
+	b.restartConsent(question(2))
 	_ = b.AnswerDaemonRestart(false)
-	if b.restartConsent("v1", 2); shown != 3 {
+	if b.restartConsent(question(2)); shown != 3 {
 		t.Fatalf("shown %d; want no window after Not Now", shown)
 	}
 }
@@ -1173,7 +1173,7 @@ func TestCreateSession_WaitsOutRestarts(t *testing.T) {
 	close(a.startupDone)
 	ran(t, done)
 
-	a.restartConsent("v1", 2)
+	a.restartConsent(question(2))
 	done = created(a)
 	blocked(t, done, "while the restart question was open")
 	if err := a.AnswerDaemonRestart(false); err != nil {
@@ -1186,4 +1186,74 @@ func TestCreateSession_WaitsOutRestarts(t *testing.T) {
 	blocked(t, done, "beside an EnsureDaemon holding daemonMu")
 	a.daemonMu.Unlock()
 	ran(t, done)
+}
+
+// UPGR-05 (08-06 IN-07): Quit All cancels a running EnsureDaemon instead of
+// waiting behind it on daemonMu (up to ~30 s before).
+func TestQuitAll_CancelsRunningEnsure(t *testing.T) {
+	entered := make(chan struct{})
+	sawCancel := make(chan error, 1)
+	orig := ensureDaemon
+	ensureDaemon = func(ctx context.Context, _ string, _ daemon.EnsureOptions) error {
+		close(entered)
+		<-ctx.Done()
+		sawCancel <- ctx.Err()
+		return ctx.Err()
+	}
+	t.Cleanup(func() { ensureDaemon = orig })
+	var quits atomic.Int64
+	a := &App{
+		ctx:           context.Background(),
+		client:        daemon.NewDaemonClient(fmt.Sprintf("/tmp/qa%d_%d.sock", os.Getpid(), time.Now().UnixNano()%100000)), // nothing listens
+		emitEventFunc: func(string, any) {},
+		quitFunc:      func() { quits.Add(1) },
+	}
+	go a.RetryDaemon() //nolint:errcheck // holds daemonMu while its ensure runs
+	<-entered
+	start := time.Now()
+	a.QuitAll()
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Fatalf("QuitAll took %v behind a running ensure, want within 500 ms", d)
+	}
+	select {
+	case err := <-sawCancel:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("the ensure saw %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the running ensure was never cancelled")
+	}
+	if quits.Load() != 1 || !a.quitting.Load() {
+		t.Fatalf("quits %d, quitting %v; want 1, true", quits.Load(), a.quitting.Load())
+	}
+}
+
+// UPGR-03: a restart question that says the sessions couldn't be moved raises
+// the prompt as before, and the dialog reads MoveFailed when it opens. Not
+// Now clears both.
+func TestRestartConsent_MoveFailed(t *testing.T) {
+	var events []string
+	a := &App{emitEventFunc: func(name string, data any) { events = append(events, fmt.Sprint(name, " ", data)) }}
+	if a.restartConsent(daemon.RestartQuestion{DaemonVersion: "v1", Sessions: 2, MoveFailed: "the new version exited"}) {
+		t.Fatal("restarted without consent")
+	}
+	if a.GetDaemonRestartPrompt() != 2 || !a.GetDaemonRestartMoveFailed() || strings.Join(events, "|") != "daemon:restart-needed 2" {
+		t.Fatalf("prompt %d, moveFailed %v, events %q", a.GetDaemonRestartPrompt(), a.GetDaemonRestartMoveFailed(), events)
+	}
+	if err := a.AnswerDaemonRestart(false); err != nil {
+		t.Fatal(err)
+	}
+	if a.GetDaemonRestartPrompt() != 0 || a.GetDaemonRestartMoveFailed() {
+		t.Fatalf("after Not Now: prompt %d, moveFailed %v", a.GetDaemonRestartPrompt(), a.GetDaemonRestartMoveFailed())
+	}
+	b := &App{emitEventFunc: func(string, any) {}}
+	b.restartConsent(question(2))
+	if b.GetDaemonRestartMoveFailed() {
+		t.Fatal("a plain question reads as couldn't-move")
+	}
+}
+
+// question is a DEBT-08 restart question from daemon v1 with n sessions.
+func question(n int) daemon.RestartQuestion {
+	return daemon.RestartQuestion{DaemonVersion: "v1", Sessions: n}
 }
