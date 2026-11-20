@@ -19,8 +19,10 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // maxHandoffGrid bounds the grid and emulator sizes an import accepts.
@@ -119,7 +121,15 @@ func (h *Hub) exportLocked() HubState {
 		st.HasEmu = true
 		st.EmuCols, st.EmuRows = h.liveEmu.Width(), h.liveEmu.Height()
 		st.Tail = h.exportTailLocked(ring.Buf)
-		st.Seed = h.seedLocked(st.Tail)
+		modes, move := maps.Clone(h.modes), h.lastMove
+		st.Seed = h.handoffSeedLocked(st.Tail)
+		region, cs := h.mainRegion, h.cs // cs as the probes resynced it
+		// Pitfall 7: the probes and the ?1049l changed the live emulator, so
+		// it is rebuilt from the export, as the new daemon rebuilds it. A
+		// rolled-back handoff (Thaw) resumes on the very state it exported,
+		// and the READY digests compare like with like.
+		h.applySeedLocked(st.Seed, st.Tail, st.EmuCols, st.EmuRows)
+		h.modes, h.lastMove, h.mainRegion, h.cs = modes, move, region, cs // the seed's own writes are not the app's
 	}
 
 	hist := h.history
@@ -164,27 +174,161 @@ func NewHubFromState(st HubState, reader io.Reader, writer io.Writer, resizeFn f
 		return nil, fmt.Errorf("relay: import %s: %w", DiagID(st.SessionID), err)
 	}
 	h := NewHub(st.SessionID, reader, writer, st.Ring.Max, resizeFn)
+	if st.HasEmu {
+		// First, so the state below replaces what the seed's own writes set
+		// (modes, region, link, last move), as Export restores it on the old
+		// hub. A seed has no erase or reset, so history and wraps are untouched.
+		h.applySeedLocked(st.Seed, st.Tail, st.EmuCols, st.EmuRows)
+	}
 	h.scrollback.buf = append(h.scrollback.buf, st.Ring.Buf...)
 	h.scrollback.truncated, h.scrollback.end = st.Ring.Truncated, st.Ring.End
 	h.history = NewHistory(st.History.MaxLines, st.History.MaxBytes)
 	for i, l := range st.History.Lines {
 		h.history.Push(l, st.History.Wrapped[i])
 	}
+	h.modes = make(map[int]bool, len(st.Modes)) // never nil: the emulator's callbacks write to it
 	maps.Copy(h.modes, st.Modes)
 	h.geomEnd = st.GeomEnd
 	h.mainRegion = st.MainRegion
+	h.wraps = wrapSet{}
 	if len(st.Wraps.Ring) > 0 {
 		h.wraps = wrapSet{n: maps.Clone(st.Wraps.N), ring: slices.Clone(st.Wraps.Ring), next: st.Wraps.Next}
 	}
+	h.lastMove = st.LastMove
 	h.cs = charState{g: st.CS.G, gl1: st.CS.GL1, link: st.CS.Link, vt: vtScan{state: st.CS.ScanState, need: st.CS.ScanNeed}, esc: st.CS.Esc}
 	h.ptyCols, h.ptyRows = st.PtyCols, st.PtyRows
-	if st.HasEmu {
-		h.emuMu.Lock()
-		h.applySeedLocked(st.Seed, st.Tail, st.EmuCols, st.EmuRows)
-		h.lastMove = st.LastMove // the seed's own moves are not the app's
-		h.emuMu.Unlock()
-	}
 	return h, nil
+}
+
+// handoffSeedLocked returns the seed Export moves. On the main screen it is
+// seedLocked's. Inside a full-screen app it carries both screens (Pattern 6):
+// the alt screen is rendered and probed first, then ?1049l on the live
+// emulator (the trick resizeLiveEmulator uses) shows the main screen for
+// seedLocked, and the seed is the main seed, ?1047h, then the alt rows,
+// cursor, region, saved cursor and pen. Its probes and ?1049l change the live
+// emulator, so Export rebuilds it from the seed (Pitfall 7). Caller holds
+// emuMu.
+func (h *Hub) handoffSeedLocked(tail []byte) []byte {
+	emu := h.liveEmu
+	if !emu.IsAltScreen() {
+		var pre string
+		if h.screenBodyLocked() == nil {
+			// seedLocked restores the modes only with a body; a blank screen
+			// can still have them set (a `clear` after ?7l).
+			pre = h.modeRestoresLocked()
+			if aw, ok := h.modes[7]; ok {
+				pre += map[bool]string{true: "\x1b[?7h", false: "\x1b[?7l"}[aw]
+			}
+		}
+		return append([]byte(pre), h.seedLocked(tail)...)
+	}
+
+	body := bytes.TrimPrefix(h.screenBodyLocked(), []byte(altScreenEnterSeq))
+	w := emu.Width()
+	pos := emu.CursorPosition()
+	var posCell, edge uv.Cell // copies, before the probes overwrite cells
+	if c := emu.CellAt(pos.X, pos.Y); c != nil {
+		posCell = *c
+	}
+	edgeRow := -1 // a row whose last cell can be re-printed as is
+	for y := range emu.Height() {
+		if c := emu.CellAt(w-1, y); c != nil && c.Width == 1 && c.Content != "" {
+			edge, edgeRow = *c, y
+			break
+		}
+	}
+	p := h.probeCursorLocked(tail)
+	region := h.probeRegionLocked()
+	emu.Write([]byte("\x1b[?1049l"))                  //nolint:errcheck // emulator Write never returns a meaningful error
+	h.altExited = false                               // our exit, not the app's
+	main := h.seedLocked(nil)                         // the probes left the parser in ground
+	h.cs.setLink(p.cell.Link.URL, p.cell.Link.Params) // the alt cursor's link is the current one (WR-02 drops an unsafe one)
+
+	var b strings.Builder
+	b.Write(main)
+	if h.cs.g[0] != 0 {
+		b.WriteString("\x1b(B") // the alt rows print as rendered; the suffix designates again
+	}
+	b.WriteString(h.modeRestoresLocked()) // the main seed has them only with a main body; none moves the cursor
+	// ?1047h, not ?1049h: vt's ?1049h saves the cursor, which would replace
+	// the main screen's saved cursor the main seed restored. The alt cursor
+	// starts as a copy of the main one, pen and link included: reset both.
+	b.WriteString("\x1b[?1047h\x1b[m" + ansi.ResetHyperlink())
+	b.Write(body)
+	keepSaved := p.saved != (uv.Position{}) || !p.savedCell.Style.IsZero() || !p.savedCell.Link.IsZero()
+	if region != [2]int{} || keepSaved || p.inferred != p.pending {
+		om := h.modes[6] // DECOM makes the CUPs below region-relative
+		if om {
+			b.WriteString("\x1b[?6l")
+		}
+		if region != [2]int{} {
+			fmt.Fprintf(&b, "\x1b[%d;%dr", region[0], region[1]) // homes the cursor
+		}
+		if keepSaved {
+			fmt.Fprintf(&b, "%s%s\x1b[%d;%dH\x1b7", seedPen(p.savedCell), seedLink(p.savedCell), p.saved.Y+1, p.saved.X+1)
+			if !p.savedCell.Link.IsZero() {
+				b.WriteString(ansi.ResetHyperlink())
+			}
+		}
+		fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
+		if p.pending {
+			// Entering the alt screen clears vt's pending wrap, so the ?1047
+			// switch seedLocked uses cannot set it here. Printing a cell at
+			// the last column sets it, and DECRC keeps it.
+			// shortcut: pending wrap elsewhere than the last column or the
+			// saved cursor (a tab or DECRC to another place after the wrap)
+			// is lost; set it through a scratch saved cursor if that shows up.
+			switch {
+			case pos.X == w-1 && posCell.Width == 1 && posCell.Content != "":
+				b.WriteString(seedCell(posCell))
+			case pos == p.saved && edgeRow >= 0:
+				fmt.Fprintf(&b, "\x1b[%d;%dH%s\x1b8", edgeRow+1, w, seedCell(edge))
+			}
+		}
+		if om {
+			b.WriteString("\x1b[?6h") // vt's DECOM set does not move the cursor
+		}
+	}
+	b.WriteString(seedPen(p.cell))
+	b.WriteString(h.cs.suffix())
+	if p.cell.Link.Params == "" && p.cell.Link.URL != "" {
+		b.WriteString(seedLink(p.cell)) // vt keeps a link with params and no URI; the tracker does not
+	}
+	return []byte(b.String())
+}
+
+// seedCell re-prints c, a width-1 cell, in its own pen and link.
+func seedCell(c uv.Cell) string {
+	s := seedPen(c) + ansi.ResetHyperlink() + seedLink(c) + c.Content
+	if !c.Link.IsZero() {
+		s += ansi.ResetHyperlink()
+	}
+	return s
+}
+
+// probeRegionLocked reads the live emulator's active scroll region (1-based,
+// zero for the whole screen) through origin mode, where a CUP clamps to the
+// region; vt does not expose it. DECOM and h.modes[6] are put back. Caller
+// holds emuMu.
+func (h *Hub) probeRegionLocked() [2]int {
+	emu := h.liveEmu
+	om, had := h.modes[6]
+	emu.Write([]byte("\x1b[?6h\x1b[1;1H")) //nolint:errcheck // emulator Write never returns a meaningful error
+	top := emu.CursorPosition().Y
+	emu.Write([]byte("\x1b[9999;1H")) //nolint:errcheck // emulator Write never returns a meaningful error
+	bottom := emu.CursorPosition().Y
+	if !om {
+		emu.Write([]byte("\x1b[?6l")) //nolint:errcheck // emulator Write never returns a meaningful error
+	}
+	if had {
+		h.modes[6] = om
+	} else {
+		delete(h.modes, 6)
+	}
+	if top == 0 && bottom == emu.Height()-1 {
+		return [2]int{}
+	}
+	return [2]int{top + 1, bottom + 1}
 }
 
 // validate checks every field an import trusts before any hub exists.
@@ -255,18 +399,20 @@ func (st *HubState) validate() error {
 	return nil
 }
 
-// Digest summarises what a viewer gets from the hub: the ring end and
-// length, the history line count and the rendered screen. 09-04 compares the
-// old and new hubs' digests before COMMIT.
+// Digest summarises what a viewer gets from the hub: the ring end offset and
+// bytes (which every delta comes from), the history line count and the
+// rendered screen. 09-04 compares the old and new hubs' digests before COMMIT.
 func (h *Hub) Digest() [32]byte {
 	h.emuMu.Lock()
 	defer h.emuMu.Unlock()
+	ring := h.scrollback.Snapshot()
 	d := sha256.New()
 	var n [8]byte
-	for _, v := range []uint64{h.scrollback.End(), uint64(len(h.scrollback.Snapshot())), uint64(h.history.Len())} {
+	for _, v := range []uint64{h.scrollback.End(), uint64(len(ring)), uint64(h.history.Len())} {
 		binary.BigEndian.PutUint64(n[:], v)
 		d.Write(n[:]) //nolint:errcheck // hash writes never fail
 	}
+	d.Write(ring)                   //nolint:errcheck // hash writes never fail
 	d.Write(h.renderScreenLocked()) //nolint:errcheck // hash writes never fail
 	return [32]byte(d.Sum(nil))
 }

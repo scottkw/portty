@@ -595,6 +595,8 @@ func handoffCorpus() []handoffCase {
 			vim, []string{"1mX\x1b[m", "\x1b[r\x1b[?1049l\x1b[?1l\x1b>", "$ ls\r\nnotes.txt\r\n$ "}},
 		{"alt screen in pending wrap", 40, 10, DefaultScrollbackBytes,
 			[]string{"$ top\r\n", "\x1b[?1049h\x1b[3;1H" + strings.Repeat("p", 40)}, []string{"Q", "\x1b[?1049l$ "}},
+		{"alt screen in pending wrap, saved cursor elsewhere", 40, 10, DefaultScrollbackBytes,
+			[]string{"$ top\r\n", "\x1b[?1049h\x1b[2;5H\x1b7\x1b[3;1H" + strings.Repeat("p", 40)}, []string{"Q", "\x1b8R\x1b[?1049l$ "}},
 		{"alt screen in pending wrap at the saved cursor", 40, 10, DefaultScrollbackBytes,
 			[]string{"$ top\r\n", "\x1b[?1049h\x1b[2;5H\x1b7\x1b[4;1H" + strings.Repeat("p", 40) + "\x1b8"}, []string{"Q", "\x1b[?1049l$ "}},
 		{"1047 app keeps the shell's saved cursor", 40, 10, DefaultScrollbackBytes,

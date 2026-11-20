@@ -866,6 +866,73 @@ func (h *Hub) seedLocked(tail []byte) []byte {
 	if body := h.screenBodyLocked(); body != nil {
 		seed = append([]byte(h.modeRestoresLocked()), body...)
 	}
+	p := h.probeCursorLocked(tail)
+	pos, saved, cell, savedCell := p.pos, p.saved, p.cell, p.savedCell
+	inferred, pending := p.inferred, p.pending
+	// Resync the tracker: G0 and the current link as vt has them.
+	switch {
+	case cell.Content == "─":
+		h.cs.g[0] = '0'
+	case h.cs.g[0] == '0':
+		h.cs.g[0] = 0
+	}
+	h.cs.setLink(cell.Link.URL, cell.Link.Params) // drops an unsafe one (WR-02)
+
+	var b strings.Builder
+	b.Write(seed)
+	// A fresh emulator's saved cursor is home in the default pen, so restore
+	// only a different one. CUPs clear a pending wrap, so this runs only when
+	// needed, or when the seed's pending-wrap guess was wrong.
+	r := h.mainRegion
+	keepSaved := saved != (uv.Position{}) || !savedCell.Style.IsZero() || !savedCell.Link.IsZero()
+	if r != [2]int{} || keepSaved || inferred != pending {
+		om := h.modes[6] // DECOM makes the CUPs below region-relative
+		if om {
+			b.WriteString("\x1b[?6l")
+		}
+		if r != [2]int{} {
+			fmt.Fprintf(&b, "\x1b[%d;%dr", r[0], r[1]) // homes the cursor
+		}
+		if keepSaved {
+			fmt.Fprintf(&b, "%s%s\x1b[%d;%dH\x1b7", seedPen(savedCell), seedLink(savedCell), saved.Y+1, saved.X+1)
+			if !savedCell.Link.IsZero() {
+				b.WriteString(ansi.ResetHyperlink()) // the current link comes last
+			}
+		}
+		fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
+		if pending {
+			// vt keeps one pending-wrap flag for both screens (an app's exit
+			// or a DECRC can leave it set anywhere): set it at the alt
+			// screen's edge and switch back, which leaves the cursor at pos.
+			fmt.Fprintf(&b, "\x1b[?1047h\x1b[1;%dHx\x1b[?1047l", old.Width())
+		}
+		if om {
+			b.WriteString("\x1b[?6h") // vt's DECOM set does not move the cursor
+		}
+	}
+	b.WriteString(seedPen(cell))
+	b.WriteString(h.cs.suffix())
+	if cell.Link.Params == "" && cell.Link.URL != "" {
+		b.WriteString(seedLink(cell)) // vt keeps a link with params and no URI; the tracker does not
+	}
+	return []byte(b.String())
+}
+
+// cursorProbe is what probeCursorLocked reads from the live emulator's
+// active screen: the cursor, the saved cursor (DECRC), whether the cursor is
+// in pending wrap and whether the rendered body re-creates it (inferred),
+// and two probe cells printed in the current and the saved pen and link.
+type cursorProbe struct {
+	pos, saved        uv.Position
+	inferred, pending bool
+	cell, savedCell   uv.Cell
+}
+
+// probeCursorLocked prints probe cells into the live emulator's active
+// screen to read what vt does not expose (seedLocked). Call it after
+// rendering the screen: the probes overwrite cells. Caller holds emuMu.
+func (h *Hub) probeCursorLocked(tail []byte) cursorProbe {
+	old := h.liveEmu
 	pos := old.CursorPosition()
 	inferred := h.pendingWrapLocked(pos) != "" // what the seed re-created
 	var cell, savedCell uv.Cell                // copies: CellAt points into the buffer the next probe overwrites
@@ -902,66 +969,24 @@ func (h *Hub) seedLocked(tail []byte) []byte {
 	if c := old.CellAt(saved.X, saved.Y); c != nil {
 		savedCell = *c
 	}
-	pen := func(c uv.Cell) string {
-		if c.Style.IsZero() {
-			return "\x1b[m"
-		}
-		return "\x1b[m" + c.Style.String()
-	}
-	// vt stores OSC 8 params in Link.URL and the URI in Link.Params (charstate.go).
-	link := func(c uv.Cell) string {
-		if c.Link.IsZero() {
-			return ""
-		}
-		return ansi.SetHyperlink(c.Link.Params, c.Link.URL)
-	}
-	// Resync the tracker: G0 and the current link as vt has them.
-	switch {
-	case cell.Content == "─":
-		h.cs.g[0] = '0'
-	case h.cs.g[0] == '0':
-		h.cs.g[0] = 0
-	}
-	h.cs.setLink(cell.Link.URL, cell.Link.Params) // drops an unsafe one (WR-02)
+	return cursorProbe{pos: pos, saved: saved, inferred: inferred, pending: pending, cell: cell, savedCell: savedCell}
+}
 
-	var b strings.Builder
-	b.Write(seed)
-	// A fresh emulator's saved cursor is home in the default pen, so restore
-	// only a different one. CUPs clear a pending wrap, so this runs only when
-	// needed, or when the seed's pending-wrap guess was wrong.
-	r := h.mainRegion
-	keepSaved := saved != (uv.Position{}) || !savedCell.Style.IsZero() || !savedCell.Link.IsZero()
-	if r != [2]int{} || keepSaved || inferred != pending {
-		om := h.modes[6] // DECOM makes the CUPs below region-relative
-		if om {
-			b.WriteString("\x1b[?6l")
-		}
-		if r != [2]int{} {
-			fmt.Fprintf(&b, "\x1b[%d;%dr", r[0], r[1]) // homes the cursor
-		}
-		if keepSaved {
-			fmt.Fprintf(&b, "%s%s\x1b[%d;%dH\x1b7", pen(savedCell), link(savedCell), saved.Y+1, saved.X+1)
-			if !savedCell.Link.IsZero() {
-				b.WriteString(ansi.ResetHyperlink()) // the current link comes last
-			}
-		}
-		fmt.Fprintf(&b, "\x1b[%d;%dH", pos.Y+1, pos.X+1)
-		if pending {
-			// vt keeps one pending-wrap flag for both screens (an app's exit
-			// or a DECRC can leave it set anywhere): set it at the alt
-			// screen's edge and switch back, which leaves the cursor at pos.
-			fmt.Fprintf(&b, "\x1b[?1047h\x1b[1;%dHx\x1b[?1047l", old.Width())
-		}
-		if om {
-			b.WriteString("\x1b[?6h") // vt's DECOM set does not move the cursor
-		}
+// seedPen is the SGR that sets the pen c was printed in.
+func seedPen(c uv.Cell) string {
+	if c.Style.IsZero() {
+		return "\x1b[m"
 	}
-	b.WriteString(pen(cell))
-	b.WriteString(h.cs.suffix())
-	if cell.Link.Params == "" && cell.Link.URL != "" {
-		b.WriteString(link(cell)) // vt keeps a link with params and no URI; the tracker does not
+	return "\x1b[m" + c.Style.String()
+}
+
+// seedLink is the OSC 8 that opens c's link, or "".
+// vt stores OSC 8 params in Link.URL and the URI in Link.Params (charstate.go).
+func seedLink(c uv.Cell) string {
+	if c.Link.IsZero() {
+		return ""
 	}
-	return []byte(b.String())
+	return ansi.SetHyperlink(c.Link.Params, c.Link.URL)
 }
 
 // applySeedLocked replaces the live emulator with a fresh cols x rows one
