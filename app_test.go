@@ -1010,3 +1010,49 @@ func TestAnswerDaemonRestart_RestartNow(t *testing.T) {
 		t.Fatalf("while quitting: err %v, ensure ran %v", err, allowed)
 	}
 }
+
+// 08-06-REVIEW WR-01: "Restart Now" approves the session count the dialog
+// showed. A restart that finds more sessions, or a count that turned unknown
+// (or known after an unknown one), keeps the daemon and asks again.
+func TestAnswerDaemonRestart_ApprovesShownCountOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		shown, live int
+		allowed     bool
+	}{
+		{"same count", 2, 2, true},
+		{"fewer", 2, 1, true},
+		{"grew", 2, 5, false},
+		{"known count turned unknown", 2, -1, false},
+		{"unknown, still unknown", -1, -1, true},
+		{"unknown, now known", -1, 3, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var events []string
+			a := &App{emitEventFunc: func(name string, data any) { events = append(events, fmt.Sprint(name, " ", data)) }}
+			allowed := false
+			a.ensureDaemonFunc = func(string) error { allowed = a.restartConsent("v1", tc.live); return nil }
+			a.restartConsent("v1", tc.shown)
+			err := a.AnswerDaemonRestart(true)
+			if allowed != tc.allowed {
+				t.Fatalf("dialog showed %d, restart found %d: allowed %v, want %v", tc.shown, tc.live, allowed, tc.allowed)
+			}
+			if tc.allowed {
+				if err != nil || a.GetDaemonRestartPrompt() != 0 {
+					t.Fatalf("restart: err %v, prompt %d", err, a.GetDaemonRestartPrompt())
+				}
+				return
+			}
+			if !errors.Is(err, errRestartCountChanged) || a.GetDaemonRestartPrompt() != tc.live {
+				t.Fatalf("re-ask: err %v, prompt %d; want %v, %d", err, a.GetDaemonRestartPrompt(), errRestartCountChanged, tc.live)
+			}
+			if last := events[len(events)-1]; last != fmt.Sprint("daemon:restart-needed ", tc.live) {
+				t.Fatalf("last event %q, want the new count asked", last)
+			}
+			// Confirming the new count goes through.
+			if err := a.AnswerDaemonRestart(true); err != nil || !allowed {
+				t.Fatalf("second Restart Now: err %v, allowed %v", err, allowed)
+			}
+		})
+	}
+}

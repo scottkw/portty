@@ -156,12 +156,13 @@ type App struct {
 	// DEBT-08: a daemon from another build with live sessions is kept until
 	// the user agrees to restart it. restartPrompt is the session count the
 	// dialog shows (0: no prompt; -1: unknown); restartDeclined ("Not Now")
-	// stops further prompts this launch; restartApproved lets one "Restart
-	// Now" EnsureDaemon through. Guarded by restartMu (taken after daemonMu).
+	// stops further prompts this launch; restartApproved is the count one
+	// "Restart Now" EnsureDaemon agreed to end (0: none; WR-01). Guarded by
+	// restartMu (taken after daemonMu).
 	restartMu       sync.Mutex
 	restartPrompt   int
 	restartDeclined bool
-	restartApproved bool
+	restartApproved int
 }
 
 // defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
@@ -303,13 +304,20 @@ func (a *App) ensure() func(socketPath string) error {
 }
 
 // restartConsent is the GUI's daemon.RestartPolicy (DEBT-08). It never blocks
-// startup: unless "Restart Now" approved this call, it keeps the old daemon and
+// startup: unless "Restart Now" approved this count, it keeps the old daemon and
 // asks the frontend, once per launch at most once the user said "Not Now".
+// WR-01: an approval covers the count shown or fewer; an unknown (-1) one
+// covers only a count that is still unknown. Anything else is asked again.
 func (a *App) restartConsent(_ string, sessions int) bool {
 	a.restartMu.Lock()
 	defer a.restartMu.Unlock()
-	if a.restartApproved {
-		return true
+	if ok := a.restartApproved; ok != 0 {
+		if sessions == ok || (sessions > 0 && sessions < ok) {
+			return true
+		}
+		a.restartPrompt = sessions
+		a.emitEvent("daemon:restart-needed", sessions)
+		return false
 	}
 	if !a.restartDeclined {
 		a.restartPrompt = sessions
@@ -317,6 +325,10 @@ func (a *App) restartConsent(_ string, sessions int) bool {
 	}
 	return false
 }
+
+// errRestartCountChanged is "Restart Now" finding a session count the user was
+// not asked about (08-06-REVIEW WR-01); the dialog stays open with the new count.
+var errRestartCountChanged = errors.New("The number of running sessions changed. Check it and choose again.")
 
 // GetDaemonRestartPrompt returns the session count to ask about, or 0 when
 // there is no question. The frontend calls it after GetDaemonError, because
@@ -343,17 +355,21 @@ func (a *App) AnswerDaemonRestart(restart bool) error {
 		return errors.New("quitting")
 	}
 	a.restartMu.Lock()
-	a.restartApproved = true
+	a.restartApproved = a.restartPrompt
 	a.restartMu.Unlock()
 	err := a.ensure()(daemon.DefaultSocketPath())
 	a.restartMu.Lock()
-	a.restartApproved = false
-	if err == nil {
+	reasked := a.restartPrompt != a.restartApproved // the policy found another count
+	a.restartApproved = 0
+	if err == nil && !reasked {
 		a.restartPrompt = 0
 	}
 	a.restartMu.Unlock()
 	if err != nil {
 		return err
+	}
+	if reasked {
+		return errRestartCountChanged
 	}
 	a.emitEvent("daemon:recovered", nil) // new relay port; the exit watcher closes the ended tabs
 	return nil
