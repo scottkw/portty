@@ -45,13 +45,14 @@ func (c *DaemonClient) Health() error {
 }
 
 // GetDaemonVersion returns the version reported by the daemon's health endpoint.
-// Returns empty string if the daemon doesn't report a version (pre-v2.1.2).
-func (c *DaemonClient) GetDaemonVersion() string {
+// It is empty if the daemon doesn't report a version (pre-v2.1.2). A failed
+// read is an error, never "" (08-06-REVIEW IN-06: unknown is not a mismatch).
+func (c *DaemonClient) GetDaemonVersion() (string, error) {
 	var h HealthResponse
 	if err := c.doJSON(http.MethodGet, "/health", nil, &h); err != nil {
-		return ""
+		return "", err
 	}
-	return h.Version
+	return h.Version, nil
 }
 
 // ListSessions returns all current sessions.

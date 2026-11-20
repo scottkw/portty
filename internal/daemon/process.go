@@ -125,7 +125,15 @@ func EnsureDaemon(socketPath string, allowRestart RestartPolicy) error {
 	needsSpawn := true
 	if err := client.Health(); err == nil {
 		// Daemon is reachable — check version compatibility first.
-		if ver := client.GetDaemonVersion(); staleVersion(ver) {
+		ver, verErr := client.GetDaemonVersion()
+		if verErr != nil { // IN-06: a blip is not a mismatch; read once more
+			ver, verErr = client.GetDaemonVersion()
+		}
+		if verErr != nil {
+			fmt.Fprintf(os.Stderr, "EnsureDaemon: daemon answered but its version could not be read (%v); keeping it\n", verErr)
+			return nil
+		}
+		if staleVersion(ver) {
 			n := liveSessions(client)
 			if n != 0 && !allowRestart(ver, n) {
 				fmt.Fprintf(os.Stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q) with %d live sessions; keeping it\n", ver, BuildVersion, n)
@@ -240,7 +248,10 @@ func staleVersion(ver string) bool {
 // this build's version and relay port. 08-REVIEW CR-01: a version-mismatched
 // daemon told to stop still answers, and holds the lock, until it exits.
 func daemonReady(client *DaemonClient) bool {
-	if client.Health() != nil || staleVersion(client.GetDaemonVersion()) {
+	if client.Health() != nil {
+		return false
+	}
+	if ver, err := client.GetDaemonVersion(); err != nil || staleVersion(ver) {
 		return false
 	}
 	port, err := client.GetRelayPort()

@@ -78,7 +78,10 @@ func TestEnsureDaemon_VersionMismatchDetected(t *testing.T) {
 		base: srv.URL,
 	}
 
-	ver := client.GetDaemonVersion()
+	ver, err := client.GetDaemonVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ver != "v2.1.1" {
 		t.Fatalf("expected daemon version %q, got %q", "v2.1.1", ver)
 	}
@@ -88,10 +91,10 @@ func TestEnsureDaemon_VersionMismatchDetected(t *testing.T) {
 }
 
 func TestGetDaemonVersion_Empty(t *testing.T) {
-	// A client pointing at nothing should return empty string.
+	// A client pointing at nothing returns an empty string and the error (IN-06).
 	client := NewDaemonClient("/tmp/nonexistent-daemon.sock")
-	if ver := client.GetDaemonVersion(); ver != "" {
-		t.Errorf("expected empty version from unreachable daemon, got %q", ver)
+	if ver, err := client.GetDaemonVersion(); ver != "" || err == nil {
+		t.Errorf("expected empty version and an error from unreachable daemon, got %q, %v", ver, err)
 	}
 }
 
@@ -443,7 +446,7 @@ func TestStartDaemon_MismatchedDaemonAnsweringIsNotReady(t *testing.T) {
 	if err := client.Health(); err != nil {
 		t.Fatalf("no daemon left after the restart: %v", err)
 	}
-	if ver := client.GetDaemonVersion(); ver != BuildVersion {
+	if ver, _ := client.GetDaemonVersion(); ver != BuildVersion {
 		t.Fatalf("daemon version %q, want %q", ver, BuildVersion)
 	}
 }
@@ -586,6 +589,61 @@ func TestEnsureDaemon_StaleRestartConsent(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Fatalf("keeping the old daemon must succeed: %v", err)
+			}
+		})
+	}
+}
+
+// 08-06-REVIEW IN-06: a version read that fails right after a good /health is
+// unknown, not a mismatch. It is read once more; still unknown, the daemon is
+// kept with no question and no /shutdown.
+func TestEnsureDaemon_UnreadableVersionIsNotAMismatch(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		health    []string // successive /health answers after the first (ok) one; "" answers 500
+		wantAsked bool
+	}{
+		{"still unreadable: keep, no question", []string{"", ""}, false},
+		{"retry reads this build: no question", []string{"", "v2"}, false},
+		{"retry reads another build: the policy is asked", []string{"", "v1"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old := BuildVersion
+			BuildVersion = "v2"
+			t.Cleanup(func() { BuildVersion = old })
+			path := shortProcTestSocket(t, "verread")
+			ln, err := net.Listen("unix", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { ln.Close() })
+			var healths atomic.Int64
+			var shutdown atomic.Bool
+			go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/health":
+					ver := "v1"
+					if i := int(healths.Add(1)) - 2; i >= 0 {
+						ver = tc.health[min(i, len(tc.health)-1)]
+					}
+					if ver == "" {
+						http.Error(w, "boom", http.StatusInternalServerError)
+						return
+					}
+					fmt.Fprintf(w, `{"status":"ok","version":%q}`, ver)
+				case "/sessions":
+					fmt.Fprint(w, `[{"id":"a","state":"running"}]`)
+				case "/relay-port":
+					fmt.Fprint(w, `{"port":4242}`)
+				case "/shutdown":
+					shutdown.Store(true)
+				}
+			}))
+			asked := false
+			err = EnsureDaemon(path, func(string, int) bool { asked = true; return false })
+			if err != nil || asked != tc.wantAsked || shutdown.Load() {
+				t.Fatalf("err %v, asked %v, shutdown %v; want nil, %v, false", err, asked, shutdown.Load(), tc.wantAsked)
 			}
 		})
 	}
