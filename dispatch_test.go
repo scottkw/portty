@@ -110,3 +110,32 @@ func TestRunCLI_UnknownCommand(t *testing.T) {
 		t.Errorf("unknownCommandMessage(\"bogus\") = %q, want %q", got, want)
 	}
 }
+
+// TestLaunchMode pins how main routes a launch. Finder, the Dock, `open` and
+// login items start the app with no arguments; that must be a GUI launch and
+// never index past the argument list (VM G-04 found a panic there).
+func TestLaunchMode(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		mode    int
+		wantErr bool
+	}{
+		{"no args", nil, modeGUI, false},
+		{"empty", []string{}, modeGUI, false},
+		{"other flag", []string{"-NSDocumentRevisionsDebugMode"}, modeGUI, false},
+		{"help", []string{"--help"}, modeHelp, false},
+		{"short help", []string{"-h"}, modeHelp, false},
+		{"command", []string{"list"}, modeCLI, false},
+		{"restart flag first", []string{restartDaemonFlag, "list"}, modeCLI, false},
+		{"bare restart flag", []string{restartDaemonFlag}, modeCLI, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			mode, _, err := launchMode(c.args)
+			if mode != c.mode || (err != nil) != c.wantErr {
+				t.Fatalf("launchMode(%q) = %d, %v; want %d, err=%v", c.args, mode, err, c.mode, c.wantErr)
+			}
+		})
+	}
+}

@@ -50,26 +50,44 @@ func main() {
 	// desktop bundle, mounted under /app/ for remote/web-share viewers.
 	daemon.SetStaticAppFS(staticAppForDaemon())
 
-	// GUI mode: no args, or first arg is a flag (except help).
-	if len(os.Args) == 1 || strings.HasPrefix(os.Args[1], "-") {
-		if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
-			usage()
-			return
-		}
-		if os.Args[1] == restartDaemonFlag || os.Args[1] == keepDaemonFlag { // a CLI flag typed before the command, never a GUI launch (WR-04)
-			args, err := flagFirstArgs(os.Args[1:])
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "portty: %v\n", err)
-				os.Exit(2)
-			}
-			runCLI(args)
-			return
-		}
+	switch mode, cliArgs, err := launchMode(os.Args[1:]); mode {
+	case modeHelp:
+		usage()
+	case modeGUI:
 		runGUI()
-		return
+	default:
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "portty: %v\n", err)
+			os.Exit(2)
+		}
+		runCLI(cliArgs)
 	}
-	// CLI mode: dispatch to command handler.
-	runCLI(os.Args[1:])
+}
+
+const (
+	modeGUI = iota
+	modeHelp
+	modeCLI
+)
+
+// launchMode decides how a process with these arguments (os.Args[1:]) runs.
+// No args, or a leading flag other than help and the CLI daemon flags, is a GUI
+// launch (Finder, Dock, `open` and login items pass none).
+func launchMode(args []string) (int, []string, error) {
+	if len(args) == 0 || !strings.HasPrefix(args[0], "-") {
+		if len(args) == 0 {
+			return modeGUI, nil, nil
+		}
+		return modeCLI, args, nil
+	}
+	switch args[0] {
+	case "--help", "-h":
+		return modeHelp, nil, nil
+	case restartDaemonFlag, keepDaemonFlag: // a CLI flag typed before the command, never a GUI launch (WR-04)
+		cliArgs, err := flagFirstArgs(args)
+		return modeCLI, cliArgs, err
+	}
+	return modeGUI, nil, nil
 }
 
 func runGUI() {
