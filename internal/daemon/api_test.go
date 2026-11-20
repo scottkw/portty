@@ -132,9 +132,9 @@ func TestAPIHealth(t *testing.T) {
 	if h.Version != "v2.1.2-test" {
 		t.Errorf("health version: want %q, got %q", "v2.1.2-test", h.Version)
 	}
-	// UPGR-04: the API version is advertised; handoff stays unset until 09-04.
-	if !strings.Contains(string(body), `"api":2`) || strings.Contains(string(body), `"handoff"`) {
-		t.Errorf("health body %s: want \"api\":2 and no handoff key", body)
+	// UPGR-04: the API version is advertised, and the handoff protocol (09-04).
+	if !strings.Contains(string(body), `"api":2`) || !strings.Contains(string(body), `"handoff":1`) {
+		t.Errorf("health body %s: want \"api\":2 and \"handoff\":1", body)
 	}
 }
 
