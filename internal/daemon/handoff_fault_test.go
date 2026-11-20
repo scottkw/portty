@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -486,6 +488,97 @@ func TestHandoff_FreezeGate(t *testing.T) {
 	}
 }
 
+// WR-01: the freeze gate is a barrier. A write that passed it before the
+// freeze finishes before anything is exported, so the session it creates or
+// the signing key it replaces moves with the rest; a new write meets 503.
+func TestHandoff_FreezeGateDrainsWrites(t *testing.T) {
+	for _, route := range []string{"/sessions", "/capability/regenerate-key"} {
+		t.Run(route, func(t *testing.T) {
+			s := newHandoffScene(t, tickScript(false))
+			handler := map[string]http.HandlerFunc{
+				"/sessions":                  s.old.handleCreateSession,
+				"/capability/regenerate-key": s.old.handleRegenerateSigningKey,
+			}[route]
+			entered, release := make(chan struct{}), make(chan struct{})
+			s.old.mux.HandleFunc("POST /zz-held"+route, func(w http.ResponseWriter, r *http.Request) {
+				close(entered)
+				<-release
+				handler(w, r)
+			})
+			hc := &http.Client{Transport: &http.Transport{DialContext: dialUnix(s.socket)}}
+			type result struct {
+				code int
+				body []byte
+			}
+			held := make(chan result, 1)
+			go func() {
+				resp, err := hc.Post("http://daemon/zz-held"+route, "application/json", strings.NewReader(`{"name":"held"}`))
+				if err != nil {
+					held <- result{}
+					return
+				}
+				defer resp.Body.Close()
+				var b bytes.Buffer
+				_, _ = b.ReadFrom(resp.Body)
+				held <- result{resp.StatusCode, b.Bytes()}
+			}()
+			<-entered
+
+			codes := make(chan int, 1)
+			var n atomic.Pointer[API]
+			go func() {
+				a, code := s.takeover(BuildVersion)
+				n.Store(a)
+				codes <- code
+			}()
+			waitFor(t, "freeze gate closed", 5*time.Second, func() bool { return s.old.frozen.Load() })
+			for _, p := range []string{"/sessions", "/capability/regenerate-key"} {
+				resp, err := hc.Post("http://daemon"+p, "application/json", strings.NewReader(`{}`))
+				if err != nil {
+					t.Fatal(err)
+				}
+				resp.Body.Close()
+				if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") != "1" {
+					t.Errorf("POST %s while draining = %d Retry-After %q, want 503 1", p, resp.StatusCode, resp.Header.Get("Retry-After"))
+				}
+			}
+			time.Sleep(200 * time.Millisecond)
+			if s.idx("old:after-freeze") >= 0 {
+				t.Fatalf("the hubs froze with a write still in flight (events %v)", s.events)
+			}
+			close(release)
+			res := <-held
+			if code := <-codes; code != takeoverCommitted {
+				t.Fatalf("runTakeover = %d, want 0 (events %v)", code, s.events)
+			}
+			s.waitExit(s.oldExits, "old daemon", 0)
+			switch route {
+			case "/sessions":
+				var cr CreateResponse
+				if res.code != http.StatusCreated || json.Unmarshal(res.body, &cr) != nil {
+					t.Fatalf("held POST /sessions = %d %s", res.code, res.body)
+				}
+				sess, ok := n.Load().engine.registry.Get(cr.ID)
+				if old, okOld := s.old.engine.registry.Get(cr.ID); okOld {
+					s.mu.Lock()
+					s.extraPids = append(s.extraPids, old.Pid())
+					s.mu.Unlock()
+				}
+				if !ok || sess == nil {
+					t.Fatalf("session %s, created by a write in flight at the freeze, did not move", cr.ID)
+				}
+			default:
+				if res.code != http.StatusOK && res.code != http.StatusNoContent {
+					t.Fatalf("held regenerate = %d %s", res.code, res.body)
+				}
+				if !bytes.Equal(n.Load().CurrentSigningKey(), s.old.CurrentSigningKey()) {
+					t.Fatal("the takeover serves the signing key the held regenerate replaced")
+				}
+			}
+		})
+	}
+}
+
 // T-D6: a SIGTERM to the old daemon after COMMIT never unlinks the socket the
 // takeover serves; before COMMIT the handoff rolls back, then today's
 // shutdown runs.
@@ -590,9 +683,9 @@ func TestHandoff_LockHeldThroughout(t *testing.T) {
 
 // W3: the longest freeze fits 09-01's client retry budget.
 func TestHandoff_TimeoutsFitClientRetry(t *testing.T) {
-	if sum := freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog; sum >= frozenRetryBudget {
-		t.Errorf("freeze %v + state %v + ready %v + watchdog %v = %v, not below frozenRetryBudget %v",
-			freezeTimeout, stateSendTimeout, readyTimeout, committedWatchdog, sum, frozenRetryBudget)
+	if sum := writeDrainTimeout + freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog; sum >= frozenRetryBudget {
+		t.Errorf("drain %v + freeze %v + state %v + ready %v + watchdog %v = %v, not below frozenRetryBudget %v",
+			writeDrainTimeout, freezeTimeout, stateSendTimeout, readyTimeout, committedWatchdog, sum, frozenRetryBudget)
 	}
 	if maxFrozen() >= frozenRetryBudget {
 		t.Errorf("maxFrozen %v >= frozenRetryBudget %v", maxFrozen(), frozenRetryBudget)

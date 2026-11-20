@@ -65,11 +65,12 @@ const HandoffVersion = 1
 const handoffUpgrade = "portty-handoff/1"
 
 // Timeouts, vars so tests can shorten them. The longest the old daemon stays
-// frozen before it commits or rolls back is freezeTimeout + stateSendTimeout
-// + readyTimeout + committedWatchdog = 17 s, below the client's 20 s
-// frozenRetryBudget (client.go), so a write that met the freeze gate's 503
-// still lands (TestHandoff_TimeoutsFitClientRetry).
+// frozen before it commits or rolls back is writeDrainTimeout +
+// freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog = 18 s,
+// below the client's 20 s frozenRetryBudget (client.go), so a write that met
+// the freeze gate's 503 still lands (TestHandoff_TimeoutsFitClientRetry).
 var (
+	writeDrainTimeout   = 1 * time.Second  // old side: writes in flight at the freeze finish (WR-01)
 	freezeTimeout       = 2 * time.Second  // relay Hub.Freeze's own bound; hubs freeze concurrently
 	stateSendTimeout    = 5 * time.Second  // old side: one write deadline for the whole STATE send
 	readyTimeout        = 5 * time.Second  // old side: READY after the state was sent
@@ -83,7 +84,7 @@ var (
 
 // maxFrozen bounds the SIGTERM guard's wait for a handoff's outcome.
 func maxFrozen() time.Duration {
-	return freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog
+	return writeDrainTimeout + freezeTimeout + stateSendTimeout + readyTimeout + committedWatchdog
 }
 
 // Outcome codes of runTakeover; 09-05 maps them to the couldn't-move reason.
@@ -424,6 +425,7 @@ type oldHandoff struct {
 	pid    int // the takeover's, from LOCAL_PEERPID
 	frozen []handoffEntry
 	start  time.Time
+	gated  bool // holds a.writeGate (drainWrites) until resume
 }
 
 func (a *API) serveHandoff(c *net.UnixConn) {
@@ -475,8 +477,14 @@ func (a *API) serveHandoff(c *net.UnixConn) {
 	}
 
 	// FREEZE: the gate first, so no write lands between a hub's last read and
-	// its export; then every live hub concurrently.
+	// its export, and the writes already past it drain (WR-01); then every
+	// live hub concurrently.
 	a.frozen.Store(true)
+	if !a.drainWrites(writeDrainTimeout) {
+		o.rollback("freeze", "a write in flight did not finish")
+		return
+	}
+	o.gated = true
 	entries := a.engine.handoffEntries()
 	errs := make([]error, len(entries))
 	var wg sync.WaitGroup
@@ -679,6 +687,10 @@ func (o *oldHandoff) resume() {
 	}
 	o.a.committed.Store(false)
 	o.a.frozen.Store(false)
+	if o.gated {
+		o.gated = false
+		o.a.writeGate.Unlock()
+	}
 }
 
 // resumeAfterCommit runs once the takeover process has exited after COMMIT

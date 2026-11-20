@@ -75,6 +75,10 @@ type API struct {
 	lock *os.File
 	// frozen is the freeze gate: mutating routes answer 503 Retry-After.
 	frozen atomic.Bool
+	// writeGate makes the gate a barrier (WR-01): every mutating request
+	// holds it for reading while it runs, and a handoff holds it for writing
+	// from the drain before FREEZE until it resumes or exits.
+	writeGate sync.RWMutex
 	// handoffDone is non-nil while a handoff runs and closes at its end
 	// (guarded by handoffMu): one handoff at a time, and the SIGTERM guard
 	// waits on it.
@@ -115,15 +119,38 @@ func NewAPI(engine *SessionEngine) *API {
 // out such a 503, so a write (and /shutdown: Quit All, a DEBT-08 restart)
 // lands once the handoff committed or rolled back. The handoff route itself
 // passes, so a second takeover is told it is busy.
+//
+// WR-01: a write holds writeGate while it runs and the handoff drains them
+// before it exports (drainWrites), so no write that passed this check lands
+// after the snapshot.
 func (a *API) freezeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if a.frozen.Load() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.URL.Path != "/handoff" {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL.Path == "/handoff" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if a.frozen.Load() || !a.writeGate.TryRLock() {
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, "the daemon is handing its sessions to a new version", http.StatusServiceUnavailable)
 			return
 		}
+		defer a.writeGate.RUnlock()
 		next.ServeHTTP(w, r)
 	})
+}
+
+// drainWrites waits up to max for the writes in flight to finish, then holds
+// writeGate so none starts until the handoff resumes. The caller has set
+// frozen, so no new write joins the wait.
+func (a *API) drainWrites(max time.Duration) bool {
+	deadline := time.Now().Add(max)
+	for !a.writeGate.TryLock() {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return true
 }
 
 // registerRoutes wires all HTTP routes using Go 1.22+ path parameters.

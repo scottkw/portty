@@ -273,8 +273,7 @@ func (c *DaemonClient) ShutdownDaemon() error {
 }
 
 // frozenRetryBudget bounds how long a mutating call waits out a daemon frozen
-// for a handoff. It must outlast 09-04's longest freeze: freezeTimeout (2 s) +
-// readyTimeout (5 s) + committedWatchdog (5 s) + the transfer, about 12 s; a
+// for a handoff. It must outlast 09-04's longest freeze, maxFrozen (18 s); a
 // 09-04 test pins that sum below this. A var so tests can shrink it.
 var frozenRetryBudget = 20 * time.Second
 
