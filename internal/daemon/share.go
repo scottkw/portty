@@ -101,6 +101,11 @@ func (a *API) handlePutShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !req.Shared {
+		if !a.enterWrite() {
+			writeFrozen(w)
+			return
+		}
+		defer a.writeGate.RUnlock()
 		a.mu.Lock()
 		a.unshareLocked(id)
 		a.mu.Unlock()
@@ -108,6 +113,10 @@ func (a *API) handlePutShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, serr := a.shareOn(r.Context(), id)
+	if serr == errShareFrozen {
+		writeFrozen(w)
+		return
+	}
 	if serr != nil {
 		writeJSON(w, shareStatus(serr.Code), ShareErrorResponse{Error: serr.Code, Detail: serr.Detail})
 		return
@@ -143,6 +152,23 @@ func (a *API) shareOn(ctx context.Context, id string) (ShareResponse, *ShareErro
 	if !h.HasCerts || h.Domain == "" {
 		return ShareResponse{}, &ShareError{ShareErrHTTPSOff, "HTTPS certificates are off for your tailnet"}
 	}
+
+	// WR-01 (it2): the first warm-up can take seconds and moves nothing, so
+	// it runs before the write gate; startShareServer's own warm-up then
+	// reads tailscaled's cache, and a handoff's drain waits only for the
+	// start and mint below.
+	a.mu.RLock()
+	running := a.webServer != nil
+	a.mu.RUnlock()
+	if !running {
+		if serr := warmShareCert(ctx, warmCert, h.Domain); serr != nil {
+			return ShareResponse{}, serr
+		}
+	}
+	if !a.enterWrite() {
+		return ShareResponse{}, errShareFrozen
+	}
+	defer a.writeGate.RUnlock()
 
 	// One share-on at a time from start through mint: the port is fixed, so a
 	// second concurrent start would fail with port_in_use (WR-02), and a
@@ -205,11 +231,8 @@ func (a *API) startShareServer(
 	newServer func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error),
 	warmCert func(context.Context, string) error,
 ) *ShareError {
-	wctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	err := warmCert(wctx, h.Domain)
-	cancel()
-	if err != nil {
-		return &ShareError{ShareErrStartFailed, "couldn't get an HTTPS certificate: " + err.Error()}
+	if serr := warmShareCert(ctx, warmCert, h.Domain); serr != nil {
+		return serr
 	}
 	ws, err := newServer(h, a.engine.Manager())
 	if err != nil {
@@ -223,6 +246,18 @@ func (a *API) startShareServer(
 		return &ShareError{ShareErrStartFailed, err.Error()}
 	}
 	a.installShareServer(ws)
+	return nil
+}
+
+// errShareFrozen is shareOn's answer while a handoff has the sessions frozen.
+var errShareFrozen = &ShareError{Code: "frozen"}
+
+func warmShareCert(ctx context.Context, warmCert func(context.Context, string) error, domain string) *ShareError {
+	wctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	if err := warmCert(wctx, domain); err != nil {
+		return &ShareError{ShareErrStartFailed, "couldn't get an HTTPS certificate: " + err.Error()}
+	}
 	return nil
 }
 

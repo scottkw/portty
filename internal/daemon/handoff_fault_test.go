@@ -579,6 +579,102 @@ func TestHandoff_FreezeGateDrainsWrites(t *testing.T) {
 	}
 }
 
+// WR-01 (it2): a share-on held for seconds in its cert warm-up across a
+// handoff does not hold the write gate, so the handoff commits, and the
+// share-on's write lands on the takeover once the freeze ends.
+func TestHandoff_SlowShareOnDoesNotBlock(t *testing.T) {
+	s := newHandoffScene(t, tickScript(false))
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	s.old.SetShareSeamsForTest(healthyTailnet, loopbackShareServer, func(ctx context.Context, _ string) error {
+		once.Do(func() { close(entered) })
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return nil
+	})
+	c := NewDaemonClient(s.socket)
+	c.http.Transport.(*http.Transport).DisableKeepAlives = true // as the old daemon's exit would drop it
+	shared := make(chan error, 1)
+	go func() {
+		resp, err := c.SetSessionShared(s.ids[0], true)
+		if err == nil && !resp.Shared {
+			err = errors.New("not shared")
+		}
+		shared <- err
+	}()
+	<-entered
+	codes := make(chan int, 1)
+	var n atomic.Pointer[API]
+	go func() {
+		a, code := s.takeover(BuildVersion)
+		n.Store(a)
+		codes <- code
+	}()
+	var code int
+	select {
+	case code = <-codes:
+	case <-time.After(10 * time.Second): // the share-on stays held well past the 1 s drain
+		close(release)
+		t.Fatalf("no outcome while a share-on was held (events %v)", s.events)
+	}
+	close(release)
+	if code != takeoverCommitted {
+		t.Fatalf("runTakeover = %d, want 0 (events %v)", code, s.events)
+	}
+	s.waitExit(s.oldExits, "old daemon", 0)
+	if err := <-shared; err != nil {
+		t.Fatalf("the held share-on: %v", err)
+	}
+	a := n.Load()
+	a.mu.RLock()
+	_, ok := a.shares[s.ids[0]]
+	a.mu.RUnlock()
+	if !ok {
+		t.Fatal("the share-on did not land on the takeover")
+	}
+}
+
+// WR-01 (it2): /peers/connect and PUT share do not hold the write gate in
+// the middleware (a frozen daemon still runs them); every other write does.
+func TestFreezeGate_SlowRoutesSkipBarrier(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	a := NewAPI(NewSessionEngine())
+	var held bool
+	gate := a.freezeGate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		held = !a.writeGate.TryLock()
+		if !held {
+			a.writeGate.Unlock()
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	for _, tc := range []struct {
+		method, path string
+		gated        bool
+	}{
+		{http.MethodPost, "/peers/connect", false},
+		{http.MethodPut, "/sessions/abc/share", false},
+		{http.MethodPost, "/sessions", true},
+		{http.MethodDelete, "/sessions/abc", true},
+		{http.MethodPost, "/capability/regenerate-key", true},
+	} {
+		a.frozen.Store(false)
+		held = false
+		rec := httptest.NewRecorder()
+		gate.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+		if rec.Code != http.StatusNoContent || held != tc.gated {
+			t.Errorf("%s %s: status %d, gate held %v; want 204, held %v", tc.method, tc.path, rec.Code, held, tc.gated)
+		}
+		a.frozen.Store(true)
+		rec = httptest.NewRecorder()
+		gate.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+		if frozen := rec.Code == http.StatusServiceUnavailable; frozen != tc.gated {
+			t.Errorf("%s %s while frozen: status %d", tc.method, tc.path, rec.Code)
+		}
+	}
+}
+
 // T-D6: a SIGTERM to the old daemon after COMMIT never unlinks the socket the
 // takeover serves; before COMMIT the handoff rolls back, then today's
 // shutdown runs.

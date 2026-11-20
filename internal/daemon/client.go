@@ -370,12 +370,15 @@ func (c *DaemonClient) SetSessionShared(id string, shared bool) (ShareResponse, 
 	if err != nil {
 		return ShareResponse{}, err
 	}
-	req, err := http.NewRequestWithContext(c.reqCtx(), http.MethodPut, c.base+"/sessions/"+id+"/share", bytes.NewReader(b))
-	if err != nil {
-		return ShareResponse{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
+	// Retried like every write: a share-on that meets a handoff's freeze lands
+	// on whichever daemon serves after it (WR-01 it2).
+	resp, err := c.doRetrying(c.http, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(c.reqCtx(), http.MethodPut, c.base+"/sessions/"+id+"/share", bytes.NewReader(b))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		return req, err
+	})
 	if err != nil {
 		return ShareResponse{}, fmt.Errorf("do request: %w", err)
 	}

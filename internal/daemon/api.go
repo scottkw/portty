@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -123,20 +124,34 @@ func NewAPI(engine *SessionEngine) *API {
 // WR-01: a write holds writeGate while it runs and the handoff drains them
 // before it exports (drainWrites), so no write that passed this check lands
 // after the snapshot.
+//
+// WR-01 (it2): the drain is short, so no slow route may hold the gate.
+// /peers/connect only caches a peer's cap, which no handoff moves; PUT share
+// takes the gate itself after its slow health check and cert warm-up.
 func (a *API) freezeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL.Path == "/handoff" {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL.Path == "/handoff" ||
+			r.URL.Path == "/peers/connect" || r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/share") {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if a.frozen.Load() || !a.writeGate.TryRLock() {
-			w.Header().Set("Retry-After", "1")
-			http.Error(w, "the daemon is handing its sessions to a new version", http.StatusServiceUnavailable)
+		if !a.enterWrite() {
+			writeFrozen(w)
 			return
 		}
 		defer a.writeGate.RUnlock()
 		next.ServeHTTP(w, r)
 	})
+}
+
+// enterWrite holds writeGate for a write unless a handoff has the sessions
+// frozen; the caller releases it with a.writeGate.RUnlock.
+func (a *API) enterWrite() bool { return !a.frozen.Load() && a.writeGate.TryRLock() }
+
+// writeFrozen is the 503 a frozen daemon gives a write; the client retries it.
+func writeFrozen(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "1")
+	http.Error(w, "the daemon is handing its sessions to a new version", http.StatusServiceUnavailable)
 }
 
 // drainWrites waits up to max for the writes in flight to finish, then holds
