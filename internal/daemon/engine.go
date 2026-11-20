@@ -312,6 +312,10 @@ type handoffEntry struct {
 
 // handoffEntries lists the live sessions with their hubs. A stopped session
 // has no shell and no fds, so it is not handed over.
+// shortcut: a stopped session's card (exit code, duration, final output)
+// is gone after an upgrade (09-REVIEW IN-04, accepted in 09-CONTEXT); moving
+// it needs an fd-less SESSION frame, a stopped pty.Session and a hub without
+// a reader. Do that if users miss the cards.
 func (e *SessionEngine) handoffEntries() []handoffEntry {
 	e.mu.RLock()
 	defer e.mu.RUnlock()

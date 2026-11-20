@@ -34,6 +34,7 @@ Upgrading Portty never costs a session: the old daemon hands its sessions to the
 | UPGR-05 SIGTERM | `signal.Reset` of Wails' SIGTERM handler. Portty's handler quits the GUI only; the daemon and sessions keep running. | Matches criterion 9.5. |
 | Quit All vs an in-flight restart (IN-07) | EnsureDaemon takes a ctx that Quit All cancels. It never kills a takeover daemon that might already own the sessions: after READY or COMMIT, Quit All waits for the handoff to finish, then stops the daemon normally. | Never risk the sessions. |
 | Cmd-Q under the restart dialog | One modal at a time. Cmd-Q while the restart dialog is open answers "Not Now", then shows Quit. | Simple and predictable. |
+| Stopped sessions in a handoff (09-REVIEW IN-04) | Accepted loss: only live sessions move. A stopped session's card (exit code, duration, final output) is gone after an upgrade. A `shortcut:` comment on `handoffEntries` says what moving it would take. | Moving it needs an fd-less SESSION frame, a stopped session type and a hub without a reader, for a card the user can recreate by rerunning. No shell is lost. |
 | API version (UPGR-04) | An integer `api` in /health, starting at 2 (v1.1 is implicitly 1). A GUI or CLI that needs a higher version shows "update needed" (app banner; CLI one-line message, exit 1). A compatible older daemon kept with Not Now keeps working. | Satisfies the todo from 08-06 IN-03. |
 
 ### Claude's Discretion
