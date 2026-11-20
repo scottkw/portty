@@ -47,8 +47,9 @@ Remote Sessions:
   list --local                                Shows only this Mac's sessions
 
 Updates:
-  <command> --restart-daemon                  Restart a background daemon left running by an older or newer Portty,
-                                              even though that ends its sessions (without it, the command refuses)
+  <command> --restart-daemon [args]           Restart a background daemon left running by an older or newer Portty,
+                                              even though that ends its sessions (without it, the command refuses).
+                                              The flag goes right after the command, before its arguments
 
 Run 'portty <command> --help' for command-specific flags.
 `)
@@ -56,8 +57,42 @@ Run 'portty <command> --help' for command-specific flags.
 
 // restartDaemonFlag is the CLI's consent to a version-mismatch restart that
 // ends the old daemon's live sessions (DEBT-08). runCLI takes it out of the
-// command's arguments.
+// command's arguments (takeLeadingFlag).
 const restartDaemonFlag = "--restart-daemon"
+
+// takeLeadingFlag removes flag from a command line (args[0] is the command)
+// and reports whether it was there. 08-06-REVIEW WR-04: it counts only among
+// the flags right after the command, where it cannot be an argument's value
+// (every CLI flag is a bool); "daemon status" counts as the command. After
+// the first argument it is an error, never consent; after "--" it is a value.
+func takeLeadingFlag(args []string, flag string) ([]string, bool, error) {
+	out, found, leading := []string{args[0]}, false, true
+	for i, a := range args[1:] {
+		switch {
+		case a == "--":
+			return append(out, args[1+i:]...), found, nil
+		case a == flag && leading:
+			found = true
+			continue
+		case a == flag:
+			return nil, false, fmt.Errorf("%s goes right after the command, before its arguments: portty <command> %s …", flag, flag)
+		case !strings.HasPrefix(a, "-") && !(i == 0 && args[0] == "daemon" && a == "status"):
+			leading = false
+		}
+		out = append(out, a)
+	}
+	return out, found, nil
+}
+
+// flagFirstArgs turns `portty --restart-daemon <command> …` into
+// `portty <command> --restart-daemon …`, so the flag typed first runs the
+// command instead of launching the GUI (08-06-REVIEW WR-04).
+func flagFirstArgs(args []string) ([]string, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("%s needs a command: portty <command> %s …", args[0], args[0])
+	}
+	return append([]string{args[1], args[0]}, args[2:]...), nil
+}
 
 // ensureCLIDaemon runs ensure for a CLI command. A daemon from another build
 // with live sessions is restarted only with --restart-daemon (force); without
@@ -73,7 +108,7 @@ func ensureCLIDaemon(ensure func(string, daemon.RestartPolicy) error, socketPath
 			case n < 0:
 				count = "live sessions"
 			}
-			refused = fmt.Errorf("the running daemon is version %s with %s; restarting it to version %s would end %s. Re-run with %s to restart anyway.",
+			refused = fmt.Errorf("the running daemon is version %s with %s; restarting it to version %s would end %s. Re-run as 'portty <command> %s …' to restart anyway.",
 				ver, count, daemon.BuildVersion, them, restartDaemonFlag)
 		}
 		return force

@@ -13,7 +13,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/scottkw/portty/internal/daemon"
@@ -55,6 +54,15 @@ func main() {
 	if len(os.Args) == 1 || strings.HasPrefix(os.Args[1], "-") {
 		if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
 			usage()
+			return
+		}
+		if os.Args[1] == restartDaemonFlag { // a CLI flag typed before the command, never a GUI launch (WR-04)
+			args, err := flagFirstArgs(os.Args[1:])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "portty: %v\n", err)
+				os.Exit(2)
+			}
+			runCLI(args)
 			return
 		}
 		runGUI()
@@ -188,8 +196,11 @@ func runCLI(args []string) {
 		return
 	}
 	cmd := args[0]
-	forceRestart := slices.Contains(args, restartDaemonFlag)
-	args = slices.DeleteFunc(slices.Clone(args), func(s string) bool { return s == restartDaemonFlag })
+	args, forceRestart, err := takeLeadingFlag(args, restartDaemonFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "portty: %v\n", err)
+		os.Exit(2)
+	}
 
 	// Daemon sub-command: run daemon mode without EnsureDaemon, or manage service lifecycle.
 	// daemon status needs a running daemon — fall through to EnsureDaemon path.
@@ -212,7 +223,6 @@ func runCLI(args []string) {
 	client := daemon.NewDaemonClient(socketPath)
 
 	cmdArgs := args[1:]
-	var err error
 
 	switch cmd {
 	case "new":

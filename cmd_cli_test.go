@@ -562,7 +562,7 @@ func TestEnsureCLIDaemon_RestartConsent(t *testing.T) {
 		return func(_ string, allow daemon.RestartPolicy) error { allowed = allow("v1", n); return nil }
 	}
 	err := ensureCLIDaemon(asking(2), "sock", false)
-	want := "the running daemon is version v1 with 2 live sessions; restarting it to version v2 would end them. Re-run with --restart-daemon to restart anyway."
+	want := "the running daemon is version v1 with 2 live sessions; restarting it to version v2 would end them. Re-run as 'portty <command> --restart-daemon …' to restart anyway."
 	if err == nil || err.Error() != want || allowed {
 		t.Fatalf("no flag: err %v, allowed %v\nwant %q", err, allowed, want)
 	}
@@ -582,5 +582,53 @@ func TestEnsureCLIDaemon_RestartConsent(t *testing.T) {
 	failed := errors.New("spawn failed")
 	if err := ensureCLIDaemon(func(string, daemon.RestartPolicy) error { return failed }, "sock", false); err != failed {
 		t.Fatalf("ensure error = %v", err)
+	}
+}
+
+// 08-06-REVIEW WR-04: --restart-daemon is consent only among the flags right
+// after the command, never as an argument's value (rename <id> --restart-daemon
+// names the session, it must not end every session first). Typed before the
+// command it runs the command, not the GUI.
+func TestRestartDaemonFlagPlacement(t *testing.T) {
+	for _, tc := range []struct {
+		args    string
+		want    string // the command line runCLI dispatches
+		force   bool
+		wantErr bool
+	}{
+		{"list --restart-daemon", "list", true, false},
+		{"list --json --restart-daemon --local", "list --json --local", true, false},
+		{"rename --restart-daemon id name", "rename id name", true, false},
+		{"daemon status --restart-daemon --json", "daemon status --json", true, false},
+		{"daemon --restart-daemon status", "daemon status", true, false},
+		{"rename id --restart-daemon", "", false, true},
+		{"kill id --restart-daemon", "", false, true},
+		{"attach office-air:build --restart-daemon", "", false, true},
+		{"new -- --restart-daemon", "new -- --restart-daemon", false, false},
+		{"list --json", "list --json", false, false},
+	} {
+		t.Run(tc.args, func(t *testing.T) {
+			got, force, err := takeLeadingFlag(strings.Fields(tc.args), restartDaemonFlag)
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "goes right after the command, before its arguments: portty <command> --restart-daemon") {
+					t.Fatalf("got %q, %v, err %v; want the placement error", got, force, err)
+				}
+				return
+			}
+			if err != nil || strings.Join(got, " ") != tc.want || force != tc.force {
+				t.Fatalf("got %q, %v, err %v; want %q, %v", got, force, err, tc.want, tc.force)
+			}
+		})
+	}
+
+	args, err := flagFirstArgs([]string{"--restart-daemon", "list", "--json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, force, err := takeLeadingFlag(args, restartDaemonFlag); err != nil || !force || strings.Join(got, " ") != "list --json" {
+		t.Fatalf("portty --restart-daemon list --json: %q, %v, %v", got, force, err)
+	}
+	if _, err := flagFirstArgs([]string{"--restart-daemon"}); err == nil || !strings.Contains(err.Error(), "needs a command") {
+		t.Fatalf("a bare --restart-daemon: %v", err)
 	}
 }
