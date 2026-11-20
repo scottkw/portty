@@ -28,6 +28,24 @@ import (
 // maxHandoffGrid bounds the grid and emulator sizes an import accepts.
 const maxHandoffGrid = 1000
 
+// HandoffStateMaxBytes bounds one exported hub's gob (WR-02): the ring and
+// history at their maxima, gob's per-line cost (a length and a wrap flag, at
+// most 10 bytes a line), a seed of handoffSeedCells drawn twice (inside a
+// full-screen app it carries both screens) at handoffSeedCellBytes a cell (a
+// truecolor fg and bg, attributes and the character; truecolor on every cell
+// measured 34), and 1 MiB for the rest. A 400x120 truecolor hub with a full
+// history and the alt screen is 7.7 MB, under half of it.
+// shortcut: a window much larger than 500x200 with truecolor on every cell
+// can still exceed it, and its handoff aborts (the restart question); chunk
+// the seed if that shows up.
+const HandoffStateMaxBytes = DefaultScrollbackBytes + HistoryMaxBytes + 10*HistoryMaxLines +
+	2*handoffSeedCells*handoffSeedCellBytes + 1<<20
+
+const (
+	handoffSeedCells     = 500 * 200
+	handoffSeedCellBytes = 64
+)
+
 // HubState is a hub's exported state. Every field is plain data that gob
 // encodes; no slice aliases the hub it came from. It holds terminal contents,
 // which can include secrets: it moves memory to memory, never to a file.

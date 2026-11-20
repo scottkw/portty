@@ -707,3 +707,57 @@ func TestHandoffState_DigestDetectsDifference(t *testing.T) {
 		t.Fatal("the same state gave two digests")
 	}
 }
+
+// truecolorRow is cols cells, each with its own truecolor fg and bg.
+func truecolorRow(cols, seed int) string {
+	var b strings.Builder
+	for x := 0; x < cols; x++ {
+		v := (x*7 + seed*13) % 256
+		fmt.Fprintf(&b, "\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm%c", v, 255-v, (v*3)%256, (v*5)%256, v, 255-v, 'a'+rune(x%26))
+	}
+	return b.String()
+}
+
+// TestHandoffState_FitsSessionFrameCap (WR-02, the review's measured case):
+// a 400x120 hub with truecolor output, a full styled history and a
+// full-screen app exports to a gob that fits HandoffStateMaxBytes with
+// margin, so one heavy session does not abort the whole handoff.
+func TestHandoffState_FitsSessionFrameCap(t *testing.T) {
+	const cols, rows = 400, 120
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.Close(); _ = r.Close() })
+	h := NewHub("cap", r, io.Discard, DefaultScrollbackBytes, nil)
+	resizeHub(t, h, cols, rows)
+	var s strings.Builder
+	for i := 0; i < 600; i++ { // scrolls into history
+		s.WriteString(truecolorRow(cols, i) + "\x1b[m\r\n")
+	}
+	s.WriteString("\x1b[?1049h\x1b[H")
+	for i := 0; i < rows; i++ {
+		fmt.Fprintf(&s, "\x1b[%d;1H%s", i+1, truecolorRow(cols, i+1000))
+	}
+	feedHubs(s.String(), 16<<10, h)
+	freezeIdle(t, h)
+	st, err := h.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(st); err != nil {
+		t.Fatal(err)
+	}
+	hb := 0
+	for _, l := range st.History.Lines {
+		hb += len(l)
+	}
+	t.Logf("ring=%d history=%d (%d lines) seed=%d gob=%d cap=%d", len(st.Ring.Buf), hb, len(st.History.Lines), len(st.Seed), buf.Len(), HandoffStateMaxBytes)
+	if hb < HistoryMaxBytes*3/4 || !st.HasEmu || !strings.Contains(string(st.Seed), "\x1b[?1047h") {
+		t.Fatalf("setup: history %d bytes, seed %d bytes; want a near-full history inside a full-screen app", hb, len(st.Seed))
+	}
+	if 2*buf.Len() > HandoffStateMaxBytes {
+		t.Errorf("gob of %d bytes, want at most half of HandoffStateMaxBytes (%d)", buf.Len(), HandoffStateMaxBytes)
+	}
+}

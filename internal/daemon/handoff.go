@@ -160,7 +160,7 @@ const (
 
 const (
 	maxFrame           = 64 << 20
-	maxSessionFrame    = relay.DefaultScrollbackBytes + relay.HistoryMaxBytes + 1<<20
+	maxSessionFrame    = relay.HandoffStateMaxBytes // its 1 MiB slack also covers the session's metadata
 	maxHandoffSessions = 256
 	maxHandoffText     = 4 << 10 // session name, workDir
 )
@@ -224,8 +224,12 @@ func writeFrame(w io.Writer, typ byte, v any) error {
 		}
 	}
 	b := buf.Bytes()
-	if len(b)-5 > maxFrame {
-		return fmt.Errorf("handoff: frame type %d over the %d byte cap", typ, maxFrame)
+	limit := maxFrame
+	if typ == frameSession { // the receiver's cap, checked here so the log names the session (WR-02)
+		limit = maxSessionFrame
+	}
+	if len(b)-5 > limit {
+		return fmt.Errorf("handoff: frame type %d of %d bytes over the %d byte cap", typ, len(b)-5, limit)
 	}
 	binary.BigEndian.PutUint32(b[1:5], uint32(len(b)-5))
 	_, err := w.Write(b)
@@ -649,7 +653,7 @@ func (o *oldHandoff) sendSession(i int) error {
 	}
 	m := hsSession{ID: e.id, Name: e.name, WorkDir: e.workDir, CLI: e.sess.CLI, CreatedAt: e.sess.CreatedAt, Pid: pid, Hub: st}
 	if err := writeFrame(o.c, frameSession, m); err != nil {
-		return err
+		return fmt.Errorf("session %s: %w", relay.DiagID(e.id), err)
 	}
 	return sendFDs(o.c, i+1, master, slave)
 }
