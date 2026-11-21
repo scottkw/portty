@@ -12,11 +12,14 @@ import (
 
 // installFixture points the install seams at a temp dir: exe is a resolved
 // fake Portty binary, link a not-yet-existing bin/portty. runs counts runner
-// calls; dialogs records every alert.
+// calls; dialogs records every alert, confirms every Continue/Cancel question,
+// which gets answer.
 type installFixture struct {
 	exe, link string
 	runs      [][2]string
 	dialogs   []runtime.MessageDialogOptions
+	confirms  []runtime.MessageDialogOptions
+	answer    string
 	app       *App
 }
 
@@ -34,7 +37,12 @@ func newInstallFixture(t *testing.T, run func(exe, link string) error) *installF
 		t.Fatal(err)
 	}
 	f := &installFixture{exe: exe, link: filepath.Join(dir, "usr", "local", "bin", "portty")}
+	f.answer = "Continue"
 	f.app = &App{messageDialogFunc: func(o runtime.MessageDialogOptions) (string, error) {
+		if o.Type == runtime.QuestionDialog { // the confirm before the admin prompt (11-REVIEW IN-04)
+			f.confirms = append(f.confirms, o)
+			return f.answer, nil
+		}
 		f.dialogs = append(f.dialogs, o)
 		return "OK", nil
 	}}
@@ -92,6 +100,27 @@ func TestInstallCLI_Absent(t *testing.T) {
 		t.Errorf("link = %q (%v), want %q", got, err, f.exe)
 	}
 	f.wantDialog(t, runtime.InfoDialog, "The portty command is installed.", f.link+" now points to Portty. Try “portty list” in Terminal.")
+	if len(f.confirms) != 1 {
+		t.Fatalf("confirms = %+v, want one before the admin prompt", f.confirms)
+	}
+	c := f.confirms[0]
+	if c.Title != "Install Command-Line Tool" || c.Message != "macOS will ask for your password to put the portty command in /usr/local/bin." ||
+		strings.Join(c.Buttons, "|") != "Continue|Cancel" || c.DefaultButton != "Continue" || c.CancelButton != "Cancel" {
+		t.Errorf("confirm = %+v", c)
+	}
+}
+
+// 11-REVIEW IN-04: Cancel at the confirm shows no admin prompt, changes nothing and says nothing.
+func TestInstallCLI_ConfirmCancel(t *testing.T) {
+	f := newInstallFixture(t, nil)
+	f.answer = "Cancel"
+	f.app.installCommandLineTool()
+	if len(f.confirms) != 1 || len(f.runs) != 0 || len(f.dialogs) != 0 {
+		t.Errorf("confirms %d, runner calls %d, dialogs %+v; want 1, 0, none", len(f.confirms), len(f.runs), f.dialogs)
+	}
+	if _, err := os.Lstat(f.link); err == nil {
+		t.Error("Cancel left a link behind")
+	}
 }
 
 func TestInstallCLI_AlreadyOurs(t *testing.T) {

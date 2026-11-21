@@ -307,6 +307,12 @@ All results are native alerts through the existing `a.dialog` / `a.alert` seam (
 1. Portty checks `/usr/local/bin/portty` with `lstat` before asking for anything (no privileges needed), and checks where it is itself running from.
 2. Only if a link is needed does it show the macOS administrator prompt. It uses `do shell script … with administrator privileges with prompt "Portty wants to install the portty command in /usr/local/bin."` macOS adds its own "Enter your password to allow this." line. The script creates `/usr/local/bin` if needed and runs `ln -s` without `-f`, so a file that appears in the meantime makes it fail rather than be overwritten.
 
+**Amendment (11-REVIEW IN-04, 2026-11-21):** macOS 27.2 shows only its own admin-prompt copy (with Apple's malware-verification warning), never the `with prompt` text (11-VM-CHECKS P-08c/P-08d). So just before step 2, Portty shows one native confirm that says what the password is for. **Continue** goes on to the admin prompt. **Cancel** (also Escape) changes nothing and shows nothing more, like a cancelled admin prompt. `with prompt` stays for older macOS. This is the one install dialog with two buttons.
+
+| Case | Type | Title | Message |
+|------|------|-------|---------|
+| Before the admin prompt (a link is needed) | Question, buttons **Continue** (default) / **Cancel** | **Install Command-Line Tool** | **macOS will ask for your password to put the portty command in /usr/local/bin.** |
+
 | Case | Type | Title | Message |
 |------|------|-------|---------|
 | Success | Info | **The portty command is installed.** | **/usr/local/bin/portty now points to Portty. Try “portty list” in Terminal.** |
@@ -361,6 +367,7 @@ Style follows `cmd_share.go`: plain text, no color. Errors go to stderr as one l
 | Arrival announcement (screen readers) | **Preview opened: <file name>** |
 | Menu item | **Install Command-Line Tool…** |
 | Admin prompt text | **Portty wants to install the portty command in /usr/local/bin.** |
+| Install confirm (amendment, 11-REVIEW IN-04) | **Install Command-Line Tool** / **macOS will ask for your password to put the portty command in /usr/local/bin.** · **Continue** / **Cancel** |
 | Install dialogs | See the table above (7 cases, 6 with a dialog) |
 | CLI | See CLI Copy (10 lines) |
 | Destructive confirmation | None. Closing a preview is not destructive (the file is untouched and can be opened again), so there is no confirm |

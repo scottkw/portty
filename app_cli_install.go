@@ -28,7 +28,11 @@ var (
 	cliInstallRun = runOsascriptInstall
 )
 
-const cliInstallPrompt = "Portty wants to install the portty command in /usr/local/bin."
+const (
+	cliInstallPrompt  = "Portty wants to install the portty command in /usr/local/bin."
+	cliConfirmTitle   = "Install Command-Line Tool"
+	cliConfirmMessage = "macOS will ask for your password to put the portty command in /usr/local/bin."
+)
 
 // installError is a failed privileged run: osascript's exit code and stderr.
 type installError struct {
@@ -113,6 +117,13 @@ func (a *App) installCommandLineTool() {
 	case !errors.Is(err, fs.ErrNotExist):
 		a.installFailed(exe, err)
 		return
+	}
+	// macOS 27 shows only its own prompt copy, not ours, so say first what the password is for (11-REVIEW IN-04).
+	if a.dialog(runtime.MessageDialogOptions{
+		Type: runtime.QuestionDialog, Title: cliConfirmTitle, Message: cliConfirmMessage,
+		Buttons: []string{"Continue", "Cancel"}, DefaultButton: "Continue", CancelButton: "Cancel",
+	}) != "Continue" {
+		return // Cancel (or no dialog at all) changes nothing
 	}
 	if err := cliInstallRun(exe, link); err != nil {
 		var ie *installError
