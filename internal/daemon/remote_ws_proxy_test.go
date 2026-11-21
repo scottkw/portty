@@ -566,7 +566,9 @@ func TestRemoteWSProxy_DiagLog(t *testing.T) {
 	defer relaySrv.Close()
 	depositCap(t, api, "sid1", upstream.URL, fixtureCap)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 20 s: one context covers three dials (two to a dead peer); a -race host stall of 1-2 s per dial
+	// used up the old 5 s (10-07 gate).
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	conn, _, err := dialProxy(ctx, t, relaySrv.URL, "sid1", "")
 	if err != nil {
@@ -574,7 +576,7 @@ func TestRemoteWSProxy_DiagLog(t *testing.T) {
 	}
 	_, _, _ = conn.Read(ctx)
 	conn.CloseNow()
-	testutil.WaitFor(t, 2*time.Second, func() bool { return strings.Contains(buf.String(), "viewer-diag: proxy end") }, "no proxy end line:\n%s", buf.String())
+	testutil.WaitFor(t, 10*time.Second, func() bool { return strings.Contains(buf.String(), "viewer-diag: proxy end") }, "no proxy end line:\n%s", buf.String())
 	if !regexp.MustCompile(`viewer-diag: proxy open session=sid1 host=127\.0\.0\.1 dial=\S+`).MatchString(buf.String()) {
 		t.Fatalf("no proxy open line with a dial duration:\n%s", buf.String())
 	}
@@ -593,7 +595,7 @@ func TestRemoteWSProxy_DiagLog(t *testing.T) {
 	}
 	_, _, _ = conn2.Read(ctx)
 	conn2.CloseNow()
-	testutil.WaitFor(t, 2*time.Second, func() bool {
+	testutil.WaitFor(t, 10*time.Second, func() bool {
 		return strings.Contains(buf.String(), "viewer-diag: proxy dial failed session=sid2 host=127.0.0.1 err=")
 	}, "no proxy dial failed line:\n%s", buf.String())
 
@@ -609,7 +611,7 @@ func TestRemoteWSProxy_DiagLog(t *testing.T) {
 	}
 	_, _, _ = conn3.Read(ctx)
 	conn3.CloseNow()
-	testutil.WaitFor(t, 2*time.Second, func() bool {
+	testutil.WaitFor(t, 10*time.Second, func() bool {
 		return strings.Count(buf.String(), "viewer-diag: proxy dial failed session=sid2") >= 2
 	}, "no second proxy dial failed line:\n%s", buf.String())
 	if got := buf.String(); strings.Contains(got, "resume=") || strings.Contains(got, "4242") {
@@ -636,7 +638,8 @@ func TestRemoteWSProxy_ForwardsResume(t *testing.T) {
 			defer relaySrv.Close()
 			depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			// 20 s: headroom for a 1-2 s -race host stall (10-07 gate); still bounded.
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			wsURL := "ws://" + strings.TrimPrefix(relaySrv.URL, "http://") + "/api/relay/remote/sid1/ws" + tc.query
 			conn, _, err := websocket.Dial(ctx, wsURL, nil)
@@ -669,8 +672,14 @@ func TestRemoteWSProxy_ForwardsResume(t *testing.T) {
 // heartbeat and dials the proxy for sid1.
 func proxyWithHeartbeat(t *testing.T, peer *fixtureWSPeer) *websocket.Conn {
 	t.Helper()
+	return proxyWithHeartbeatEvery(t, peer, 50*time.Millisecond, 100*time.Millisecond)
+}
+
+// proxyWithHeartbeatEvery is proxyWithHeartbeat with a chosen ping interval and timeout.
+func proxyWithHeartbeatEvery(t *testing.T, peer *fixtureWSPeer, every, timeout time.Duration) *websocket.Conn {
+	t.Helper()
 	api := newDaemonAPIWithUpstreamCert(t, peer.srv)
-	api.SetHeartbeatForTest(50*time.Millisecond, 100*time.Millisecond)
+	api.SetHeartbeatForTest(every, timeout)
 	relaySrv := httptest.NewServer(api.RelayHandler())
 	t.Cleanup(relaySrv.Close)
 	depositCap(t, api, "sid1", peer.srv.URL, fixtureCap)
@@ -780,8 +789,13 @@ func newSlowSinkPeer(t *testing.T, perFrame time.Duration) (*fixtureWSPeer, func
 // heartbeat timeout and every frame is forwarded in order.
 func TestRemoteWSProxy_PasteBackpressureStaysOpen(t *testing.T) {
 	const frames, size = 256, relay.MaxInputPayload
-	peer, sum := newSlowSinkPeer(t, 4*time.Millisecond) // ~1 s to drain 256 frames
-	conn := proxyWithHeartbeat(t, peer)                 // 50 ms ping, 100 ms timeout
+	// 200 ms ping, 500 ms timeout (10-03's share-test precedent): under -race a host stall can delay
+	// a pong past 100 ms, which is not the bug (10-07 gate). The drain (~2 s) and the hold after the
+	// whole paste is written (3x the timeout) both stay well past the timeout, so a proxy that held
+	// its ping behind the backpressured paste would still be dropped.
+	const pingEvery, pingTimeout = 200 * time.Millisecond, 500 * time.Millisecond
+	peer, sum := newSlowSinkPeer(t, 8*time.Millisecond) // ~2 s to drain 256 frames
+	conn := proxyWithHeartbeatEvery(t, peer, pingEvery, pingTimeout)
 	closed := make(chan struct{})
 	go func() {
 		defer close(closed)
@@ -807,7 +821,7 @@ func TestRemoteWSProxy_PasteBackpressureStaysOpen(t *testing.T) {
 		stream = append(stream, f...)
 	}
 
-	hold := time.Now().Add(3 * 100 * time.Millisecond)
+	hold := time.Now().Add(3 * pingTimeout)
 	testutil.WaitFor(t, 20*time.Second, func() bool {
 		select {
 		case <-closed:
