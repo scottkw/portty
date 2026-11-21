@@ -198,41 +198,6 @@ func TestHubDoneChannel(t *testing.T) {
 	}
 }
 
-func TestHubWriteInput(t *testing.T) {
-	r, w := io.Pipe()
-	hub := NewHub("test-write", r, w, DefaultScrollbackBytes, nil)
-
-	// Read what WriteInput produces from the writer end (w writes to itself here).
-	// Use a separate pipe for the writer to capture what WriteInput sends.
-	rIn, wIn := io.Pipe()
-	hub2 := NewHub("test-write-in", r, wIn, DefaultScrollbackBytes, nil)
-	_ = hub2
-
-	// Simpler: just verify WriteInput writes to the writer without error.
-	// We'll use a bytes-based approach: create a pipe and read from the read end.
-	pr, pw := io.Pipe()
-	hub3 := NewHub("test-wi", pr, pw, DefaultScrollbackBytes, nil)
-
-	readDone := make(chan []byte, 1)
-	go func() {
-		buf := make([]byte, 64)
-		n, _ := pr.Read(buf)
-		readDone <- buf[:n]
-	}()
-
-	data := []byte("input data")
-	if err := hub3.WriteInput(data); err != nil {
-		t.Fatalf("WriteInput returned error: %v", err)
-	}
-
-	// Close so the goroutine doesn't block
-	pw.Close()
-
-	_ = rIn
-	_ = hub
-	_ = w
-}
-
 func TestHubScrollbackSnapshot(t *testing.T) {
 	hub, ptyWriter := makeTestHub(t)
 

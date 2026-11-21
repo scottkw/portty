@@ -1507,14 +1507,6 @@ func (h *Hub) Shutdown() {
 	})
 }
 
-// WriteInput writes raw input bytes to the underlying PTY writer (stdin),
-// blocking. The read pumps use the input FIFO (OpenInput) instead; this stays
-// for direct callers and tests.
-func (h *Hub) WriteInput(data []byte) error {
-	_, err := h.writer.Write(data)
-	return err
-}
-
 // ScrollbackSnapshot returns a copy of the current scrollback buffer contents.
 // Callers should Subscribe before calling ScrollbackSnapshot to avoid missing
 // frames written between the snapshot and the first message in Msgs.

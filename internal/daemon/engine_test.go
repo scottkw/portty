@@ -343,8 +343,8 @@ func TestCreateSession_LoginShell(t *testing.T) {
 	if !ok {
 		t.Fatal("hub not found")
 	}
-	if err := hub.WriteInput([]byte("[[ -o login ]] && [[ -n $ZSH_VERSION ]] && echo LOGIN_OK_$((40+2))\n")); err != nil {
-		t.Fatalf("WriteInput: %v", err)
+	if err := hub.OpenInput(nil).Write([]byte("[[ -o login ]] && [[ -n $ZSH_VERSION ]] && echo LOGIN_OK_$((40+2))\n")); err != nil {
+		t.Fatalf("input Write: %v", err)
 	}
 	if !hubReadUntil(t, e, id, "LOGIN_OK_42", 10*time.Second) {
 		t.Fatal("shell did not report a zsh login shell (LOGIN_OK_42 never appeared)")
