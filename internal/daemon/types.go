@@ -61,6 +61,16 @@ type StyledTailLinesResponse struct {
 // send no "api" field and count as 1.
 const APIVersion = 2
 
+// PreviewAPI is the lowest daemon API that serves POST /sessions/{id}/preview;
+// `portty open` needs it (CONTEXT "Session id").
+const PreviewAPI = 3
+
+// PreviewResponse is the 202 body of POST /sessions/{id}/preview: how many
+// viewers the preview streams to.
+type PreviewResponse struct {
+	Viewers int `json:"viewers"`
+}
+
 // HealthResponse is the response body for GET /health.
 type HealthResponse struct {
 	Status  string `json:"status"`

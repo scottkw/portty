@@ -197,6 +197,9 @@ func (a *API) registerRoutes() {
 	// Phase 9 session handoff to a takeover daemon (handoff.go). Only on this
 	// 0600 unix socket mux: never on the relay port or the share server.
 	a.mux.HandleFunc("POST /handoff", a.handleHandoff)
+	// File preview bytes for a session's viewers (preview.go). Socket only,
+	// like /handoff: the relay port is reachable by browser pages.
+	a.mux.HandleFunc("POST /sessions/{id}/preview", a.handlePreview)
 	// Tailnet peer discovery.
 	a.mux.HandleFunc("GET /tailnet/peers", a.handleTailnetPeers)
 	// Connect to a session shared from another Mac (CLI attach and the GUI).
