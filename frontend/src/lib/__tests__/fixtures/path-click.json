@@ -34,5 +34,12 @@
     { "line": "日本/画像.png", "links": [{ "text": "日本/画像.png", "request": "日本/画像.png" }] },
     { "line": "https://example.com/docs/a.png and mailto:a@b.co", "links": [] },
     { "line": "file:///etc/hosts", "links": [] }
-  ]
+  ],
+  "frames": {
+    "pathClickText": "docs/diagram.png",
+    "pathClickHex": "13646f63732f6469616772616d2e706e67",
+    "replayMetaHex": "207b227265706c6179223a2266756c6c222c2270617468436c69636b223a747275657d",
+    "noticeUnsupportedHex": "207b226e6f74696365223a22706174682d756e737570706f72746564227d",
+    "noticeTooLargeHex": "207b226e6f74696365223a22706174682d746f6f2d6c61726765227d"
+  }
 }

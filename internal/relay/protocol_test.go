@@ -2,7 +2,9 @@ package relay
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -206,5 +208,46 @@ func TestParseResize(t *testing.T) {
 					c.payload, cols, rows, claim, ok, c.cols, c.rows, c.claim, c.ok)
 			}
 		})
+	}
+}
+
+// TestPathClickFrames_Fixture pins the click frame and the three metas byte
+// for byte against the hand-written fixture the viewer tests (12-06) read.
+func TestPathClickFrames_Fixture(t *testing.T) {
+	raw, err := os.ReadFile(pathClickFixturePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fx struct {
+		Frames struct {
+			PathClickText        string `json:"pathClickText"`
+			PathClickHex         string `json:"pathClickHex"`
+			ReplayMetaHex        string `json:"replayMetaHex"`
+			NoticeUnsupportedHex string `json:"noticeUnsupportedHex"`
+			NoticeTooLargeHex    string `json:"noticeTooLargeHex"`
+		} `json:"frames"`
+	}
+	if err := json.Unmarshal(raw, &fx); err != nil {
+		t.Fatal(err)
+	}
+	f := fx.Frames
+	yes, full := true, ReplayFull
+	unsupported, tooLarge := NoticePathUnsupported, NoticePathTooLarge
+	for name, c := range map[string]struct {
+		got  []byte
+		want string
+	}{
+		"click":         {MakePathClickFrame(f.PathClickText), f.PathClickHex},
+		"replay meta":   {MakeMeta(MetaPayload{Replay: &full, PathClick: &yes}), f.ReplayMetaHex},
+		"replay frames": {Replay{Mode: ReplayFull, PathClick: true}.Frames()[0], f.ReplayMetaHex},
+		"unsupported":   {MakeMeta(MetaPayload{Notice: &unsupported}), f.NoticeUnsupportedHex},
+		"too large":     {MakeMeta(MetaPayload{Notice: &tooLarge}), f.NoticeTooLargeHex},
+	} {
+		if got := hex.EncodeToString(c.got); got != c.want {
+			t.Errorf("%s: %s, want %s", name, got, c.want)
+		}
+	}
+	if MsgPathClick != 0x13 {
+		t.Errorf("MsgPathClick = 0x%02x, want 0x13", MsgPathClick)
 	}
 }

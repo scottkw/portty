@@ -774,3 +774,33 @@ func TestPathClick_NeverLogsPath(t *testing.T) {
 		}
 	}
 }
+
+func TestPathClick_CapabilityBit(t *testing.T) {
+	hub, w := makeTestHub(t)
+	defer w.Close()
+	metaOf := func(frame []byte) map[string]any {
+		t.Helper()
+		var m map[string]any
+		if frame[0] != MsgMeta || json.Unmarshal(frame[1:], &m) != nil {
+			t.Fatalf("not a meta frame: %q", frame)
+		}
+		return m
+	}
+	writer, _ := previewSub()
+	readOnly, _ := previewSub()
+	readOnly.ReadOnly = true
+
+	frames := hub.Join(writer, 0, false).Frames()
+	if m := metaOf(frames[0]); m["replay"] == nil || m["pathClick"] != true {
+		t.Errorf("writable replay meta %v, want replay and pathClick true", m)
+	}
+	frames = hub.Join(readOnly, 0, false).Frames()
+	if m := metaOf(frames[0]); m["replay"] == nil || m["pathClick"] != nil {
+		t.Errorf("read-only replay meta %v, want replay and no pathClick", m)
+	}
+	for _, fr := range [][][]byte{hub.Join(writer, 0, false).Frames(), frames} {
+		if m := metaOf(fr[len(fr)-1]); m["offset"] == nil || m["pathClick"] != nil {
+			t.Errorf("offset meta %v, want offset and no pathClick", m)
+		}
+	}
+}

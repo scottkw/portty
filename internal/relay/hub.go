@@ -1744,6 +1744,10 @@ type Replay struct {
 	Mode   string
 	Chunks [][]byte
 	End    uint64
+	// PathClick: the subscriber may write, so the host honours its path clicks
+	// (PATH-02). Frames puts it on the replay meta; read-only viewers, and any
+	// host older than Phase 12, never get it, and the viewer offers no links.
+	PathClick bool
 }
 
 // Join subscribes sub and captures its catch-up replay as one atomic step, and
@@ -1805,6 +1809,7 @@ type Replay struct {
 // grid), so the #109 raw replay keeps the common never-resized case.
 func (h *Hub) Join(sub *Subscriber, resume uint64, hasResume bool) Replay {
 	r, data, raw := h.joinLocked(sub, resume, hasResume)
+	r.PathClick = !sub.ReadOnly
 	// Strip and chunk outside emuMu so the drain loop is not held up.
 	if raw {
 		data = stripRingQueries(data)
@@ -1822,7 +1827,11 @@ func (h *Hub) Join(sub *Subscriber, resume uint64, hasResume bool) Replay {
 func (r Replay) Frames() [][]byte {
 	mode, end := r.Mode, r.End
 	frames := make([][]byte, 0, len(r.Chunks)+2)
-	frames = append(frames, MakeMeta(MetaPayload{Replay: &mode}))
+	meta := MetaPayload{Replay: &mode}
+	if r.PathClick {
+		meta.PathClick = &r.PathClick
+	}
+	frames = append(frames, MakeMeta(meta))
 	frames = append(frames, r.Chunks...)
 	return append(frames, MakeMeta(MetaPayload{Offset: &end}))
 }
