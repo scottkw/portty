@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -423,5 +424,195 @@ func TestZshShim_UserFilesUntouched(t *testing.T) {
 		if _, ok := before[en.Name()]; !ok && en.Name() != ".zsh_history" && en.Name() != ".zsh_sessions" && en.Name() != "Library" {
 			t.Errorf("unexpected new entry in HOME: %s", en.Name())
 		}
+	}
+}
+
+// The writer makes a 0700 dir and a 0600 file equal to the script, leaves a
+// matching file alone, repairs a differing one, and 8 concurrent writers
+// leave one correct file and no temporaries.
+func TestZshShim_WriterAtomic(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "zsh")
+	f := filepath.Join(dir, ".zshenv")
+	check := func(when string) {
+		t.Helper()
+		if b, err := os.ReadFile(f); err != nil || string(b) != zshShim {
+			t.Errorf("%s: .zshenv differs from the script (%v)", when, err)
+		}
+		if fi, err := os.Stat(f); err != nil || fi.Mode().Perm() != 0600 {
+			t.Errorf("%s: .zshenv mode = %v (%v), want 0600", when, fi, err)
+		}
+	}
+	if err := refreshZshShim(dir); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(dir); err != nil || fi.Mode().Perm() != 0700 {
+		t.Errorf("dir mode = %v (%v), want 0700", fi, err)
+	}
+	check("fresh")
+
+	first, err := os.Stat(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond) // a rewrite would move the mtime
+	if err := refreshZshShim(dir); err != nil {
+		t.Fatal(err)
+	}
+	if second, err := os.Stat(f); err != nil || !os.SameFile(first, second) || !first.ModTime().Equal(second.ModTime()) {
+		t.Errorf("an unchanged script was rewritten (%v)", err)
+	}
+
+	if err := os.WriteFile(f, []byte("# stale\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := refreshZshShim(dir); err != nil {
+		t.Fatal(err)
+	}
+	check("repaired")
+
+	dir = filepath.Join(t.TempDir(), "zsh")
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := refreshZshShim(dir); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent refreshZshShim: %v", err)
+	}
+	f = filepath.Join(dir, ".zshenv")
+	check("concurrent")
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ents) != 1 || ents[0].Name() != ".zshenv" {
+		t.Errorf("dir holds %d entries, want only .zshenv", len(ents))
+	}
+}
+
+// Write failures are errors and leave no temporary file behind.
+func TestZshShim_WriterFailures(t *testing.T) {
+	t.Run("unwritable-dir", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "zsh")
+		if err := os.MkdirAll(dir, 0500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+		if err := refreshZshShim(dir); err == nil {
+			t.Error("refreshZshShim succeeded in a read-only dir")
+		}
+	})
+	t.Run("zshenv-is-a-directory", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, ".zshenv", "x"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := refreshZshShim(dir); err == nil {
+			t.Error("refreshZshShim replaced a directory named .zshenv")
+		}
+		ents, err := os.ReadDir(dir)
+		if err != nil || len(ents) != 1 {
+			t.Errorf("dir entries = %v (%v), want only .zshenv", ents, err)
+		}
+	})
+}
+
+// A failed shim write sets nothing: the session starts with the user's own
+// startup files and the log says why.
+func TestZshShim_FailureStillSpawns(t *testing.T) {
+	requireZsh(t)
+	logs := captureLog(t)
+	orderLog := filepath.Join(t.TempDir(), "order.log")
+	home := shimHome(t, markerFiles(orderLog))
+	e, cfg := newShimEngine(t)
+	if err := os.WriteFile(filepath.Join(cfg, "zsh"), nil, 0600); err != nil { // dir can't be made
+		t.Fatal(err)
+	}
+	if env := e.zshEnv(); env != nil {
+		t.Errorf("zshEnv = %v, want none", env)
+	}
+	if !logs.has("zsh shim: ") {
+		t.Errorf("no zsh shim log line; log = %q", logs.bytes())
+	}
+	id := startShimSession(t, e, home)
+
+	out := printVars(t, e, id, "FAILSPAWN")
+	if !strings.Contains(out, "Z=[] H=["+home+"/.zsh_history] P=[unset]") {
+		t.Errorf("ZDOTDIR not empty inside the shell; output %q", out)
+	}
+	if got := strings.Join(readOrderLog(t, orderLog), " "); got != ".zshenv .zprofile .zshrc .zlogin" {
+		t.Errorf("startup order = %q", got)
+	}
+	if strings.Contains(out, "\x1b]7;") {
+		t.Errorf("a shell without the shim reported OSC 7; output %q", out)
+	}
+}
+
+// An empty or relative config dir would write relative to the daemon's cwd:
+// refused, logged, nothing written.
+func TestZshShim_RefusesRelativeConfigDir(t *testing.T) {
+	logs := captureLog(t)
+	e := NewSessionEngine()
+	for _, dir := range []string{"", "rel/dir"} {
+		e.ConfigDirForTest(dir)
+		if env := e.zshEnv(); env != nil {
+			t.Errorf("config dir %q: zshEnv = %v, want none", dir, env)
+		}
+	}
+	if !logs.has("zsh shim: ") {
+		t.Errorf("no zsh shim log line; log = %q", logs.bytes())
+	}
+	for _, p := range []string{"zsh", "rel"} {
+		if _, err := os.Lstat(p); !os.IsNotExist(err) {
+			t.Errorf("%s exists relative to the test cwd: %v", p, err)
+		}
+	}
+}
+
+// The env entries: ZDOTDIR is the shim dir; PORTTY_ZSH_ZDOTDIR carries the
+// daemon's own ZDOTDIR, or is present and empty when it has none.
+func TestZshShim_EnvEntries(t *testing.T) {
+	e, cfg := newEnvEngine(t)
+	shimDir := filepath.Join(cfg, "zsh")
+	t.Setenv("ZDOTDIR", "") // registers the restore
+	if err := os.Unsetenv("ZDOTDIR"); err != nil {
+		t.Fatal(err)
+	}
+	if env := e.zshEnv(); len(env) != 2 || env[0] != "ZDOTDIR="+shimDir || env[1] != "PORTTY_ZSH_ZDOTDIR=" {
+		t.Errorf("zshEnv = %q", env)
+	}
+	t.Setenv("ZDOTDIR", "/custom/dir")
+	if env := e.zshEnv(); len(env) != 2 || env[1] != "PORTTY_ZSH_ZDOTDIR=/custom/dir" {
+		t.Errorf("zshEnv with a daemon ZDOTDIR = %q", env)
+	}
+}
+
+// Only the real session shell gets the shim env: a test spawn of another
+// binary sees neither variable.
+func TestZshShim_NonShellSpawnUntouched(t *testing.T) {
+	for _, k := range []string{"ZDOTDIR", "PORTTY_ZSH_ZDOTDIR"} {
+		t.Setenv(k, "") // registers the restore
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setCLIExecutable(t, fakeExe(t))
+	e, cfg := newEnvEngine(t)
+	_, env := envSession(t, e)
+	for _, k := range []string{"ZDOTDIR", "PORTTY_ZSH_ZDOTDIR"} {
+		if v, ok := env[k]; ok {
+			t.Errorf("%s = %q in a non-shell spawn", k, v)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(cfg, "zsh")); !os.IsNotExist(err) {
+		t.Errorf("shim dir written for a non-shell spawn: %v", err)
 	}
 }

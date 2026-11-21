@@ -297,3 +297,46 @@ func TestCLILink_SurvivesZshLoginPathHelper(t *testing.T) {
 		t.Errorf("command -v portty = %q, want %q", lines[1], want)
 	}
 }
+
+// PREV-05 with the shim: ZDOTDIR on the real shim dir (as CreateSession sets
+// it) changes nothing about where portty resolves after path_helper.
+func TestCLILink_SurvivesZshLoginPathHelperWithShim(t *testing.T) {
+	for _, p := range []string{"/bin/zsh", "/usr/libexec/path_helper"} {
+		if _, err := os.Stat(p); err != nil {
+			t.Skipf("%s missing: %v", p, err)
+		}
+	}
+	setCLIExecutable(t, fakeExe(t))
+	root := filepath.Join(t.TempDir(), "Application Support", "portty")
+	binDir := filepath.Join(root, "bin")
+	shimDir := filepath.Join(root, "zsh")
+	if err := refreshCLILink(binDir); err != nil {
+		t.Fatalf("refreshCLILink: %v", err)
+	}
+	if err := refreshZshShim(shimDir); err != nil {
+		t.Fatalf("refreshZshShim: %v", err)
+	}
+	cmd := exec.Command("/bin/zsh", "-l", "-c", "print -r -- $PATH; command -v portty")
+	cmd.Env = []string{
+		"PATH=" + binDir + ":/usr/bin:/bin",
+		"ZDOTDIR=" + shimDir,
+		"PORTTY_ZSH_ZDOTDIR=",
+		"HOME=" + t.TempDir(),
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("zsh -l: %v (output %q)", err, out)
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("zsh output = %q, want PATH and the portty path", out)
+	}
+	dirs := strings.Split(lines[0], ":")
+	bi, ui := slices.Index(dirs, binDir), slices.Index(dirs, "/usr/bin")
+	if bi < 0 || ui < 0 || bi < ui {
+		t.Errorf("login PATH = %q, want %q after /usr/bin", lines[0], binDir)
+	}
+	if want := filepath.Join(binDir, "portty"); lines[1] != want {
+		t.Errorf("command -v portty = %q, want %q", lines[1], want)
+	}
+}
