@@ -155,7 +155,8 @@ type Hub struct {
 	// change (0: none). Raw ring bytes are laid out for the width they were
 	// written at; replayed at another width, Claude Code's relative redraws
 	// land in the wrong rows (05-08, the reattach jumble). Join sends no delta
-	// or raw replay that reaches back before it. Only touched under emuMu.
+	// or raw replay that reaches back before it (a delta from exactly geomEnd
+	// holds only post-resize bytes). Only touched under emuMu.
 	geomEnd uint64
 	// altExited is set by the vt AltScreen callback when the app leaves the
 	// alternate screen; recordFrameLocked rebuilds the emulator after the
@@ -1750,8 +1751,8 @@ type Replay struct {
 // Geometry (05-08): the ring stores raw bytes but not resizes. Bytes written
 // before a genuine host resize, replayed into a viewer at the new width, put
 // relative redraws (Claude Code's Ink frames) in the wrong rows: the reattach
-// jumble. So a delta is sent only from an offset past the last genuine resize
-// (geomEnd), and the raw full replay only while no genuine resize was
+// jumble. So a delta is sent only from an offset at or past the last genuine
+// resize (geomEnd), and the raw full replay only while no genuine resize was
 // recorded; otherwise the rendered history + screen goes out. The hub's first
 // resize from its unknown grid is not genuine (the PTY was spawned at that
 // grid), so the #109 raw replay keeps the common never-resized case.
@@ -1797,9 +1798,11 @@ func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Repl
 	h.Subscribe(sub)     // lock order emuMu then hub.mu, as Cols()/Rows()
 	h.ensureLiveEmulatorLocked()
 
-	// A resume exactly at geomEnd may predate the resize (no output in between),
-	// so only an offset past it is known to be laid out for the current grid.
-	if hasResume && (h.geomEnd == 0 || resume > h.geomEnd) {
+	// Every byte at or after geomEnd follows the resize, and the caller sends
+	// the current grid frame first, so a viewer resuming at geomEnd ends like
+	// one that stayed connected through it; only a resume before geomEnd would
+	// replay pre-resize bytes at the new width (05-08). R-05 (10-07-FIX).
+	if hasResume && (h.geomEnd == 0 || resume >= h.geomEnd) {
 		if tail, end, ok := h.scrollback.SnapshotFrom(resume); ok {
 			return Replay{Mode: ReplayDelta, End: end}, tail, true
 		}

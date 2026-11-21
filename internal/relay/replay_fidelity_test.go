@@ -273,14 +273,18 @@ func TestReplayFidelity_DetectsPre0503Staircase(t *testing.T) {
 	t.Logf("pre-05-03 replay differs at row %d:\n host    %q\n pre0503 %q", row, w, g)
 }
 
-// TestReplayFidelity_ResumeAcrossResizeIsFull: ring bytes after an offset taken
-// before a genuine host resize are laid out for the old width, so that resume
-// gets a full replay; an offset taken after the resize still gets a delta.
+// TestReplayFidelity_ResumeAcrossResizeIsFull: ring bytes between an offset
+// and a later genuine host resize are laid out for the old width, so that
+// resume gets a full replay; an offset taken after the resize still gets a
+// delta. (Until 10-07-FIX the offset sat exactly at the resize, with no
+// pre-resize bytes after it; that case is a delta now, see
+// TestReplayFidelity_ResumeAtResizeIsDelta.)
 func TestReplayFidelity_ResumeAcrossResizeIsFull(t *testing.T) {
 	hub, w := runJoinHub(t, DefaultScrollbackBytes)
 	resizeHub(t, hub, fidCols, fidRows)
 	emit(t, hub, w, claudeLikeTurn(0, fidCols))
 	before := join(t, hub, 0, false).End
+	emit(t, hub, w, claudeLikeRedraw(1, fidCols)) // pre-resize bytes after the offset
 	resizeHub(t, hub, 80, fidRows)
 	emit(t, hub, w, claudeLikeTurn(1, 80))
 	if r := join(t, hub, before, true); r.Mode != ReplayFull {
@@ -291,6 +295,54 @@ func TestReplayFidelity_ResumeAcrossResizeIsFull(t *testing.T) {
 	if r := join(t, hub, after, true); r.Mode != ReplayDelta {
 		t.Fatalf("resume from after the resize: mode %q, want %q", r.Mode, ReplayDelta)
 	}
+}
+
+// TestReplayFidelity_ResumeAtResizeIsDelta (R-05, 10-07-FIX): a resume exactly
+// at geomEnd has no pre-resize bytes after it, so it is a delta of only the
+// post-resize bytes (the join's grid frame goes first), the same bytes a viewer
+// that stayed connected got after its grid frame. Before the fix a typing
+// claim with no output after it (a quiet shell, a raw -echo reader) made every
+// reconnect a full replay. A resume before geomEnd stays full.
+func TestReplayFidelity_ResumeAtResizeIsDelta(t *testing.T) {
+	setup := func(t *testing.T) (*Hub, io.Writer, uint64, uint64) {
+		hub, w := runJoinHub(t, DefaultScrollbackBytes)
+		resizeHub(t, hub, fidCols, fidRows)
+		emit(t, hub, w, "BEFORE-OFFSET\r\n")
+		early := hub.scrollback.End()
+		emit(t, hub, w, "PRE-RESIZE\r\n")
+		at := join(t, hub, 0, false).End
+		resizeHub(t, hub, 80, fidRows) // genuine: the hub had a grid
+		hub.emuMu.Lock()
+		geomEnd := hub.geomEnd
+		hub.emuMu.Unlock()
+		if geomEnd != at {
+			t.Fatalf("fixture: geomEnd %d, want the ring end %d at the resize", geomEnd, at)
+		}
+		return hub, w, early, at
+	}
+
+	t.Run("no output after the resize", func(t *testing.T) {
+		hub, _, early, at := setup(t)
+		r := join(t, hub, at, true)
+		if r.Mode != ReplayDelta || len(r.Chunks) != 0 || r.End != at {
+			t.Fatalf("resume at geomEnd: mode %q, %d chunks, end %d; want an empty delta ending at %d", r.Mode, len(r.Chunks), r.End, at)
+		}
+		if r := join(t, hub, early, true); r.Mode != ReplayFull {
+			t.Fatalf("resume before geomEnd: mode %q, want %q", r.Mode, ReplayFull)
+		}
+	})
+
+	t.Run("output after the resize", func(t *testing.T) {
+		hub, w, early, at := setup(t)
+		emit(t, hub, w, "POST-RESIZE\r\n")
+		r := join(t, hub, at, true)
+		if got, want := string(payloads(r)), "\x01POST-RESIZE\r\n"; r.Mode != ReplayDelta || got != want {
+			t.Fatalf("resume at geomEnd: mode %q payload %q; want a delta of exactly %q", r.Mode, got, want)
+		}
+		if r := join(t, hub, early, true); r.Mode != ReplayFull {
+			t.Fatalf("resume before geomEnd: mode %q, want %q", r.Mode, ReplayFull)
+		}
+	})
 }
 
 // hubScreen returns the hub's live emulator screen and cursor.
