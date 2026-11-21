@@ -214,10 +214,13 @@ func runCLI(args []string) {
 		return
 	}
 	cmd := args[0]
-	args, forceRestart, err := takeLeadingFlag(args, restartDaemonFlag)
-	var keepDaemon bool
-	if err == nil {
-		args, keepDaemon, err = takeLeadingFlag(args, keepDaemonFlag)
+	var forceRestart, keepDaemon bool
+	var err error
+	if cmd != "open" { // open ignores both daemon flags (cmdOpen drops them) and never restarts the daemon
+		args, forceRestart, err = takeLeadingFlag(args, restartDaemonFlag)
+		if err == nil {
+			args, keepDaemon, err = takeLeadingFlag(args, keepDaemonFlag)
+		}
 	}
 	if err == nil && forceRestart && keepDaemon {
 		err = fmt.Errorf("use %s or %s, not both", restartDaemonFlag, keepDaemonFlag)
@@ -241,7 +244,7 @@ func runCLI(args []string) {
 
 	// All other commands: auto-start daemon, create client, dispatch.
 	socketPath := daemon.DefaultSocketPath()
-	if cliNeedsDaemon(args) { // health, version and --help skip it (IN-04)
+	if cliNeedsDaemon(args) { // health, version, open and --help skip it (IN-04)
 		if err := ensureCLIDaemon(daemon.EnsureDaemon, socketPath, forceRestart, keepDaemon); err != nil {
 			fmt.Fprintf(os.Stderr, "portty: %v\n", err)
 			os.Exit(1)
@@ -266,6 +269,8 @@ func runCLI(args []string) {
 		err = cmdShare(client, cmdArgs, os.Stdout)
 	case "unshare":
 		err = cmdUnshare(client, cmdArgs, os.Stdout)
+	case "open":
+		err = cmdOpen(client, cmdArgs, os.Stdout)
 	case "health":
 		err = cmdHealth(cmdArgs, os.Stdout)
 	case "version":

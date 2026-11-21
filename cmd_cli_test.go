@@ -693,6 +693,8 @@ func TestCLINeedsDaemon(t *testing.T) {
 		"new -- --help":   true, // a path named --help
 		"rename id -h":    false,
 		"attach host:sid": true,
+		"open x.png":      false, // never starts or restarts the daemon hosting its shell
+		"open":            false,
 	} {
 		if got := cliNeedsDaemon(strings.Fields(args)); got != want {
 			t.Errorf("cliNeedsDaemon(%q) = %v, want %v", args, got, want)

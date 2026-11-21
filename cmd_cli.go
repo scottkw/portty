@@ -32,6 +32,7 @@ Commands:
   attach <host>:<session>                     Attach to a session shared from another Mac (e.g., office-air:build)
   share <session>                             Share a session with your tailnet
   unshare <session>                           Stop sharing a session and disconnect viewers
+  open <file>                                 Show an image, PDF or Markdown file in a preview tab
   health                                      Check Tailscale health status
   version                                     Print the Portty version
   settings                                    Open the settings panel
@@ -68,9 +69,11 @@ const keepDaemonFlag = "--keep-daemon"
 
 // cliNeedsDaemon reports whether a command line (args[0] is the command) uses
 // the daemon. health and version never do, nor does a --help (IN-04), so a
-// mismatched daemon never makes them refuse.
+// mismatched daemon never makes them refuse. open talks to the running daemon
+// that hosts its shell but must never start or restart it (its ensure path
+// could end the session the user is typing in; 11-RESEARCH Pattern 4).
 func cliNeedsDaemon(args []string) bool {
-	if args[0] == "health" || args[0] == "version" {
+	if args[0] == "health" || args[0] == "version" || args[0] == "open" {
 		return false
 	}
 	for _, a := range args[1:] {
