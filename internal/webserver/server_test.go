@@ -928,9 +928,9 @@ func TestWebJoin_PushesResizeBeforeScrollback(t *testing.T) {
 	}
 }
 
-// TestWebReadPump_DropsGuestResize asserts VIEW-02 / T-157-02 on the web path:
-// a MsgResize2 (0x11) frame sent by a web guest must NOT change the hub's
-// authoritative PTY grid.
+// TestWebReadPump_DropsGuestResize (T-157-02, now INPT-06) on the web path:
+// a plain 4-byte MsgResize2 (0x11) report from a web guest must NOT change
+// the hub's known PTY grid; only a claim does (claim_test.go).
 func TestWebReadPump_DropsGuestResize(t *testing.T) {
 	const sessionID = "web-drop-resize-test"
 	ws, httpClient, hub, _ := newWebTestHub(t, sessionID, 100, 40)
@@ -964,8 +964,7 @@ func TestWebReadPump_DropsGuestResize(t *testing.T) {
 	// Give the server's read pump time to process the frame.
 	time.Sleep(50 * time.Millisecond)
 
-	// Hub grid must be unchanged — web guest resize is dropped at the call site
-	// (VIEW-02 / T-157-02) in addition to the hub origin gate.
+	// Hub grid must be unchanged — a report never moves a known grid (INPT-06).
 	if hub.Cols() != 100 || hub.Rows() != 40 {
 		t.Errorf("hub grid changed after guest MsgResize2: got %dx%d, want 100x40",
 			hub.Cols(), hub.Rows())

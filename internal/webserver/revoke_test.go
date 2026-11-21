@@ -205,7 +205,7 @@ func (s *syncBuf) String() string {
 	return s.b.String()
 }
 
-// CR-01: a link holder flooding resize frames gets one "web resize ignored"
+// CR-01: a link holder flooding resize frames gets one "web resize"
 // line per connection, with the total in the input total line.
 func TestResizeFlood_LogsOncePerConnection(t *testing.T) {
 	diag := &syncBuf{}
@@ -232,8 +232,8 @@ func TestResizeFlood_LogsOncePerConnection(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	out := diag.String()
-	if c := strings.Count(out, "web resize ignored"); c != 1 {
-		t.Errorf("resize ignored lines = %d; want 1:\n%s", c, out)
+	if c := strings.Count(out, "viewer-diag: web resize "); c != 1 {
+		t.Errorf("web resize lines = %d; want 1:\n%s", c, out)
 	}
 	if !strings.Contains(out, "frames=0 bytes=0 resizes=50") {
 		t.Errorf("input total line lacks resizes=%d:\n%s", n, out)

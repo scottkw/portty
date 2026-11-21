@@ -15,8 +15,9 @@ package daemon
 // Verdicts (04-07, ranked hypotheses; results on unmodified code):
 //
 //   - H-grid (host-local tiny grid push, the best fit for "guests blank, office
-//     fine"): no in-process trigger. Only Hub.ResizeClient broadcasts a 0x02 and
-//     only for an Origin "local" subscriber; the remote CLI is Origin "web".
+//     fine"): no in-process trigger. A grid change (0x02) comes only from a
+//     claim or a local viewer's first report on a never-sized grid (INPT-06);
+//     the remote CLI is Origin "web" and its plain reports never move a known grid.
 //     Not reproducible in-process. Live evidence: 04-08 viewer-diag grid lines,
 //     TESTING.md M-83.
 //   - H-net (first-contact tailnet path stall, fits `[reconnecting]` and the
@@ -35,7 +36,7 @@ package daemon
 // Root cause: not pinned — no in-process variant reproduces the UAT signature (guests lose output or get a non-host grid while the office panel is fine), so the live repro relies on the 04-08 diagnostic log and TESTING.md M-83.
 //
 // Live evidence (04-08): the daemon writes `viewer-diag:` lines to daemon.log
-// (grid, join, leave, slow, revoke, first input, web resize ignored on the host;
+// (grid, join, leave, slow, revoke, first input, web resize on the host;
 // proxy open, dial failed, end on the viewing Mac). TestCLIAttach_OtherViewersKeepOutput
 // checks a whole CLI attach logs that timeline without the cap.
 //
@@ -684,12 +685,12 @@ func TestCLIAttach_OtherViewersKeepOutput(t *testing.T) {
 
 	s.checkUndisturbed(t, "guiTab", "browser")
 
-	// 04-08 viewer-diag timeline: four joins, the CLI's ignored 80x24 resize
+	// 04-08 viewer-diag timeline: four joins, the CLI's 80x24 report (claim=false)
 	// and its leave under the same conn number, the proxy's open and end lines.
 	id8 := relay.DiagID(s.sid)
-	resize := regexp.MustCompile(`viewer-diag: web resize ignored session=` + regexp.QuoteMeta(id8) + ` conn=(\d+) cols=80 rows=24`)
+	resize := regexp.MustCompile(`viewer-diag: web resize session=` + regexp.QuoteMeta(id8) + ` conn=(\d+) cols=80 rows=24 claim=false`)
 	var cliConn string
-	waitUntil(t, "web resize ignored line for the CLI", func() bool {
+	waitUntil(t, "web resize line for the CLI", func() bool {
 		if m := resize.FindSubmatch(diag.bytes()); m != nil {
 			cliConn = string(m[1])
 			return true
@@ -724,8 +725,8 @@ var queryReplies = []struct{ query, reply string }{
 
 func TestCLIAttach_Hypotheses(t *testing.T) {
 	// H-resize: the CLI reports a tiny size. Checks webserver/server.go
-	// handleWSSRelay (MsgResize2 from a web viewer is dropped) and
-	// relay/hub.go Hub.ResizeClient (non-local origin never drives the grid).
+	// handleWSSRelay (a plain MsgResize2 is a report) and relay/hub.go
+	// Hub.ResizeClient (a web report never moves a known grid; INPT-06).
 	for _, sz := range []struct {
 		name       string
 		cols, rows uint16

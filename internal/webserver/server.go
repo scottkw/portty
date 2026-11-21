@@ -856,7 +856,7 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 		Msgs:     make(chan []byte, 256),
 		ReadOnly: readonly,
 		Name:     clientName,
-		Origin:   "web", // read by the host-authority resize arbiter
+		Origin:   "web", // a web report never bootstraps the grid (Hub.ResizeClient)
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		sub.Remote = host // viewer-diag only
@@ -932,7 +932,7 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	// Read pump — client → PTY
 	readDone := make(chan struct{})
 	absorber := &relay.InputAbsorber{} // Phase 111 / Issue #54: absorb OSC 10/11/DA1 replies. Phase 115: type moved to relay package.
-	in := hub.OpenInput(sub) // INPT-01: queue input so the pump never blocks on the PTY
+	in := hub.OpenInput(sub)           // INPT-01: queue input so the pump never blocks on the PTY
 	pongs := relay.NewPongOwed()
 	go func() {
 		defer close(readDone)
@@ -975,17 +975,29 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 						relay.DiagID(sessionID), sub.ID, sub.Name, time.Since(joined), len(payload), passed)
 				}
 			case relay.MsgResize2:
-				// VIEW-02 / T-157-02: a web guest is a read-only viewer of the host PTY grid.
-				// The host-authority arbiter also rejects non-local origin, but dropping the
-				// call here avoids a needless lock acquisition per guest resize and makes the
-				// intent explicit: a remote web client never drives the shared PTY size.
-				// The bundled guest never sends this frame, so the line marks a CLI connection.
+				// INPT-06 ("viewer takes over size"): a write-cap viewer's claim takes the
+				// PTY grid; a plain report (every older client) only stores its size and
+				// never moves a known grid. This replaces VIEW-02 / T-157-02, which kept
+				// a web guest from driving or DoS-ing the grid: a read-only cap is still
+				// skipped here and in the hub (T-10-12), sizes are clamped in the hub
+				// (T-10-13), and a write-cap holder already has the shell.
 				// Logged once per connection (CR-01): any link holder can send these frames
 				// at line rate; the total goes in the input total line.
 				resizes++
-				if resizes == 1 && len(payload) >= 4 {
-					log.Printf("viewer-diag: web resize ignored session=%s conn=%d cols=%d rows=%d",
-						relay.DiagID(sessionID), sub.ID, uint16(payload[0])<<8|uint16(payload[1]), uint16(payload[2])<<8|uint16(payload[3]))
+				cols, rows, claim, ok := relay.ParseResize(payload)
+				if !ok {
+					break
+				}
+				if resizes == 1 {
+					log.Printf("viewer-diag: web resize session=%s conn=%d cols=%d rows=%d claim=%t",
+						relay.DiagID(sessionID), sub.ID, cols, rows, claim)
+				}
+				if !sub.ReadOnly {
+					if claim {
+						_ = hub.ClaimGrid(sub, cols, rows)
+					} else {
+						_ = hub.ResizeClient(sub, cols, rows)
+					}
 				}
 			case relay.MsgPing:
 				pongs.Owe() // INPT-02: the write pump writes it ahead of queued output
