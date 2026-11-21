@@ -1081,7 +1081,7 @@ function App(): React.ReactElement {
       console.error('[App] retry init failed:', err)
       setDaemonError(String(err))
     }
-  }, [previewStore])
+  }, []) // previewStore is a stable useState value
 
   // Review IN-01: the poller brought the daemon back after an error. With no tabs, reload
   // as Retry would; otherwise only clear the error, since retryInit replaces the tab list
