@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -86,6 +87,43 @@ func (l *cwdLog) dropOldest(n int) {
 		l.bytes -= len(r.Dir)
 	}
 	l.recs = slices.Delete(l.recs, 0, n)
+}
+
+// records returns a copy of the records, for the upgrade handoff.
+func (l *cwdLog) records() []CwdRecord { return slices.Clone(l.recs) }
+
+// load replaces the log with recs, which checkCwdRecords has accepted.
+func (l *cwdLog) load(recs []CwdRecord) {
+	l.clear()
+	l.recs = slices.Clone(recs)
+	for _, r := range recs {
+		l.bytes += len(r.Dir)
+	}
+}
+
+// checkCwdRecords validates imported records: within the caps, each directory
+// absolute, clean, short and free of control characters, rows strictly
+// increasing and none past maxRow.
+func checkCwdRecords(recs []CwdRecord, maxRow uint64) error {
+	if len(recs) > cwdLogMaxRecords {
+		return fmt.Errorf("%d cwd records, over %d", len(recs), cwdLogMaxRecords)
+	}
+	total := 0
+	for i, r := range recs {
+		total += len(r.Dir)
+		switch {
+		case !filepath.IsAbs(r.Dir) || filepath.Clean(r.Dir) != r.Dir || len(r.Dir) > cwdMaxPathBytes || hasControl(r.Dir):
+			return fmt.Errorf("cwd record %d has an unusable directory", i)
+		case i > 0 && r.Row <= recs[i-1].Row:
+			return fmt.Errorf("cwd record %d row %d does not follow row %d", i, r.Row, recs[i-1].Row)
+		case r.Row > maxRow:
+			return fmt.Errorf("cwd record %d row %d past %d", i, r.Row, maxRow)
+		}
+	}
+	if total > cwdLogMaxBytes {
+		return fmt.Errorf("cwd records hold %d bytes, over %d", total, cwdLogMaxBytes)
+	}
+	return nil
 }
 
 // at returns the directory in effect at row: the newest record at or before it.

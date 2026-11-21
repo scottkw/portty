@@ -625,6 +625,101 @@ func TestHandoffState_ImportValidates(t *testing.T) {
 	}
 }
 
+// TestHandoffState_CwdRoundTrip (PATH-01): the cwd log and the history row
+// counter cross an export, a gob round trip and an import, and every line
+// resolves to the directory it did before.
+func TestHandoffState_CwdRoundTrip(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.Close(); _ = r.Close() })
+	orig := NewHub("cwd", r, io.Discard, DefaultScrollbackBytes, nil)
+	resizeHub(t, orig, 80, 24)
+	feedHubs(osc7("/a")+"MARK-A\r\n"+osc7("/b%20c")+"MARK-B\r\n"+fillerLines(60)+
+		osc7("/d")+"MARK-D\r\n"+osc7("/e")+"MARK-E\r\n", 1<<10, orig)
+	if orig.history.Len() == 0 {
+		t.Fatal("fixture: nothing in history")
+	}
+
+	freezeIdle(t, orig)
+	got, _, st := importedHub(t, orig)
+	if len(st.Cwds) == 0 || st.HistoryPushed != orig.history.Pushed() {
+		t.Fatalf("state: %d records, counter %d (hub %d)", len(st.Cwds), st.HistoryPushed, orig.history.Pushed())
+	}
+	if got.history.Pushed() != orig.history.Pushed() || !slices.Equal(got.cwds.recs, orig.cwds.recs) {
+		t.Fatalf("imported counter %d log %v, want %d %v", got.history.Pushed(), got.cwds.recs, orig.history.Pushed(), orig.cwds.recs)
+	}
+	for m, want := range map[string]string{"MARK-A": "/a", "MARK-B": "/b c", "MARK-D": "/d", "MARK-E": "/e"} {
+		wantCwd(t, orig, m, want)
+		wantCwd(t, got, m, want)
+	}
+}
+
+// TestHandoffState_CwdOldShape: a state from a daemon before PATH-01 has no
+// Cwds and no HistoryPushed; it imports with an empty log and the counter at
+// the number of history lines.
+func TestHandoffState_CwdOldShape(t *testing.T) {
+	st := validState(t)
+	if len(st.History.Lines) == 0 {
+		t.Fatal("fixture: no history lines")
+	}
+	st.Cwds, st.HistoryPushed = nil, 0
+	got, err := NewHubFromState(gobRoundTrip(t, st), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("old-shape state refused: %v", err)
+	}
+	if len(got.cwds.recs) != 0 || got.history.Pushed() != uint64(len(st.History.Lines)) {
+		t.Fatalf("log %v, counter %d; want empty and %d", got.cwds.recs, got.history.Pushed(), len(st.History.Lines))
+	}
+}
+
+// TestHandoffState_CwdValidates (T-12-13): malformed cwd state is refused, so
+// the old daemon keeps the session.
+func TestHandoffState_CwdValidates(t *testing.T) {
+	many := func(n, size int) []CwdRecord {
+		recs := make([]CwdRecord, n)
+		for i := range recs {
+			d := fmt.Sprintf("/d%04d", i)
+			recs[i] = CwdRecord{Row: uint64(i + 1), Dir: d + strings.Repeat("x", size-len(d))}
+		}
+		return recs
+	}
+	cases := map[string]func(*HubState){
+		"relative directory":     func(s *HubState) { s.Cwds = []CwdRecord{{1, "rel/dir"}} },
+		"empty directory":        func(s *HubState) { s.Cwds = []CwdRecord{{1, ""}} },
+		"unclean directory":      func(s *HubState) { s.Cwds = []CwdRecord{{1, "/a/../b"}} },
+		"trailing slash":         func(s *HubState) { s.Cwds = []CwdRecord{{1, "/a/"}} },
+		"newline in directory":   func(s *HubState) { s.Cwds = []CwdRecord{{1, "/a\nb"}} },
+		"directory over 1024":    func(s *HubState) { s.Cwds = many(1, cwdMaxPathBytes+1) },
+		"equal rows":             func(s *HubState) { s.Cwds = []CwdRecord{{5, "/a"}, {5, "/b"}} },
+		"decreasing rows":        func(s *HubState) { s.Cwds = []CwdRecord{{6, "/a"}, {5, "/b"}} },
+		"row past the grid":      func(s *HubState) { s.Cwds = []CwdRecord{{s.HistoryPushed + maxHandoffGrid + 1, "/a"}} },
+		"1025 records":           func(s *HubState) { s.Cwds = many(cwdLogMaxRecords+1, 8) },
+		"over 64 KiB":            func(s *HubState) { s.Cwds = many(70, 1000) },
+		"counter below the line": func(s *HubState) { s.HistoryPushed = uint64(len(s.History.Lines)) - 1 },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			st := validState(t)
+			if len(st.History.Lines) < 2 {
+				t.Fatal("fixture: too few history lines")
+			}
+			mutate(&st)
+			hub, err := NewHubFromState(st, nil, nil, nil)
+			if err == nil || hub != nil {
+				t.Fatalf("imported an invalid state: hub %v err %v", hub, err)
+			}
+		})
+	}
+
+	st := validState(t) // the limits themselves are accepted
+	st.Cwds = append(many(cwdLogMaxRecords-1, 8), CwdRecord{Row: st.HistoryPushed + maxHandoffGrid, Dir: "/last"})
+	if _, err := NewHubFromState(st, nil, nil, nil); err != nil {
+		t.Fatalf("a log at its limits was refused: %v", err)
+	}
+}
+
 // TestHandoffState_StagedReadsNothing: an imported hub reads no byte until
 // Start, so the old daemon still owns the PTY until COMMIT.
 func TestHandoffState_StagedReadsNothing(t *testing.T) {

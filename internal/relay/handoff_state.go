@@ -60,6 +60,12 @@ type HubState struct {
 	Wraps      WrapState
 	LastMove   [2]uv.Position
 	CS         CharsetState
+	// Cwds is the working-directory log (Hub.cwds) and HistoryPushed the
+	// history's lines-ever-pushed counter its rows are numbered by (PATH-01).
+	// Additive: a state from an older daemon has neither, and imports with an
+	// empty log and the counter at the number of history lines.
+	Cwds          []CwdRecord
+	HistoryPushed uint64
 	// PtyCols, PtyRows: the host-authority grid; zero when no local viewer
 	// ever sized it.
 	PtyCols, PtyRows int
@@ -157,6 +163,7 @@ func (h *Hub) exportLocked() HubState {
 		MaxLines: hist.maxLines,
 		MaxBytes: hist.maxBytes,
 	}
+	st.Cwds, st.HistoryPushed = h.cwds.records(), hist.pushed
 	st.Modes = maps.Clone(h.modes)
 	st.GeomEnd = h.geomEnd
 	st.MainRegion = h.mainRegion
@@ -204,6 +211,10 @@ func NewHubFromState(st HubState, reader io.Reader, writer io.Writer, resizeFn f
 	for i, l := range st.History.Lines {
 		h.history.Push(l, st.History.Wrapped[i])
 	}
+	if st.HistoryPushed != 0 { // zero: an older daemon's state, pushed is the line count
+		h.history.pushed = st.HistoryPushed
+	}
+	h.cwds.load(st.Cwds)
 	h.modes = make(map[int]bool, len(st.Modes)) // never nil: the emulator's callbacks write to it
 	maps.Copy(h.modes, st.Modes)
 	h.geomEnd = st.GeomEnd
@@ -377,6 +388,16 @@ func (st *HubState) validate() error {
 		return fmt.Errorf("history of %d lines, %d bytes is over its caps", len(hs.Lines), n)
 	case len(hs.Wrapped) != len(hs.Lines):
 		return fmt.Errorf("history has %d wrap flags for %d lines", len(hs.Wrapped), len(hs.Lines))
+	}
+
+	pushed := st.HistoryPushed
+	if pushed == 0 {
+		pushed = uint64(len(hs.Lines))
+	} else if pushed < uint64(len(hs.Lines)) {
+		return fmt.Errorf("history counter %d below its %d lines", pushed, len(hs.Lines))
+	}
+	if err := checkCwdRecords(st.Cwds, pushed+maxHandoffGrid); err != nil {
+		return err
 	}
 
 	w := st.Wraps
