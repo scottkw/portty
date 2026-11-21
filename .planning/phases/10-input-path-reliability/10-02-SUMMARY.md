@@ -2,7 +2,7 @@
 phase: 10-input-path-reliability
 plan: 02
 subsystem: frontend
-status: blocked  # code tasks done; Go gate blocked by host PTY exhaustion, set to complete after a clean re-run
+status: complete  # code tasks done; Go gate blocked by host PTY exhaustion, set to complete after a clean re-run
 tags: [peer-tabs, snapshots, retry, sidebar, INPT-04]
 requires: []
 provides:
@@ -145,3 +145,7 @@ None.
 - FOUND: frontend/src/lib/tabs.ts (webSessionTabId, peerTabsRemoved)
 - FOUND commits: 9a45019a, d9007e74, 1d622876, f5e10b7a (d2998ad2..HEAD = 4)
 - The gate's Go step is BLOCKED (see Gate). That is an environment block, not a missing artifact.
+
+## Gate re-run (orchestrator, after rebase onto 10-03 at 5d363351)
+
+The first Go gate failed only on host PTY exhaustion (`open pty: device not configured`) caused by a concurrent `-count=20` daemon run. After the rebase, one re-run of each gate: `go build/vet` ok; `go test -race -short -count=1 ./...` rc 0 (scratchpad p10-02-regate-go.log); vitest 95 files / 1319 tests passed; tsc rc 0.
