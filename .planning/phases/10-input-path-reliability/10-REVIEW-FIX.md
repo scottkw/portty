@@ -121,3 +121,68 @@ Logic fixes that need human verification (they pass the tests, but they change b
 _Fixed: 2026-11-21T06:45:53Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+## Iteration 2
+
+**Fixed at:** 2026-11-21T07:10:00Z
+**Source review:** 10-REVIEW.md "## Iteration 2" (committed as 22a3d51e)
+**Findings in scope:** 4 (CR-02, WR-05, IN-08, IN-09). **Fixed:** 4 (IN-08 as a comment, as asked). **Skipped:** 0.
+
+Lock order is unchanged: the new `webEpoch` is read and written only under `inMu` (a leaf; `OpenInput` takes it alone), and the new `Subscriber.revoked` only under `mu` (set in `RevokeWebViewers` before it releases `mu`, read in `NoteTyping` and `sizeClient` under `gridMu` then `mu`). No IO runs under either lock.
+
+### CR-02: Stop Sharing still types the queued input of a web viewer that already disconnected
+
+**Status:** fixed: requires human verification
+**Files modified:** `internal/relay/input.go`, `internal/relay/hub.go`, `internal/relay/input_test.go`
+**Commit:** 973af88b
+**Applied fix:** the reviewer's epoch design. `Hub.webEpoch` (under `inMu`) counts `revokeInput` calls; `OpenInput` records it in `InputConn.epoch`. `InputConn.revoked()` is now true for a web conn opened before the last revoke, or whose viewer was a revoke target (`inputRevoked`, which still covers Join before the revoke and OpenInput after). So the revoke's compaction loop drops every queued web frame of the hub, including those of closed and unsubscribed conns, and a pump blocked in `Write` after its handler unsubscribed wakes on the revoke's `Broadcast` and returns nil (dropped). Local-origin input and `nil`-sub conns are never revoked. A disconnect without a revoke still delivers (`TestHubInput_CloseKeepsBacklog` unchanged). Both production callers (`unshareLocked`, `remintSharesLocked`) revoke every web link of the session, so dropping all web input is the intended scope.
+Tests: `TestHubInput_RevokeDropsDepartedBacklog` (web frames queued behind an in-flight frame, then the conn is closed and unsubscribed, then revoked: the PTY gets the in-flight frame, the local frame, and a frame from a web viewer that joined after the revoke, nothing else). `TestHubInput_RevokeDropsBlockedPumpAfterUnsubscribe` (a pump at quota blocked in Write, unsubscribed, revoked: the Write returns nil, and after the in-flight frame the PTY gets only a later local frame).
+
+### WR-05: The hub cap makes a typing viewer block behind another connection's backlog
+
+**Status:** fixed
+**Files modified:** `internal/relay/input.go`, `internal/relay/input_test.go`
+**Commit:** 4d32b433
+**Applied fix:** `InputConnHubAllowance = 64 KiB`. The hub-cap term in `Write` applies only once the connection's own queue would pass the allowance, so typing and small pastes never wait on another connection's backlog. Hard bound: `InputHubMaxBytes` + 64 KiB per connection (a frame is at most `MaxInputPayload` = 32,767 bytes, below the allowance). The shortcut comment now says a viewer with over 64 KiB queued can be dropped because of another connection's backlog, and that the partial-paste notice covers only split pastes.
+Tests: `TestHubInput_HubCapAllowsTyping` (new `fillHub` puts the hub exactly at the cap; a fresh connection's 100 one-byte writes all return). `TestHubInput_HubCapBlocks` now uses `fillHub`: a connection gets two full frames in (the allowance), blocks on the third, and is released once the PTY drains.
+
+### IN-09: A revoked viewer can still move the grid until its socket closes
+
+**Status:** fixed
+**Files modified:** `internal/relay/hub.go`, `internal/relay/hub_grid_owner_test.go`
+**Commit:** 4df30b42
+**Applied fix:** the reviewer's flag option, not removal from `h.subscribers` (removal would drop the viewer's output and its `leave` diag line before the kick). `RevokeWebViewers` sets `Subscriber.revoked` on each target under `mu`. `NoteTyping` and `sizeClient` ignore a revoked viewer, and `sizeClient` now also ignores a viewer that is no longer subscribed, as `NoteTyping` already did, so a late claim cannot leave a departed owner behind. The relay package passed in full with the membership check before the commit (`it2-in09-relay.txt`), and the full gate covers the daemon and webserver callers.
+Test: `TestHub_GridRevokedOrGoneViewerCannotClaim` (after a revoke, a web viewer's claim and typing, and a departed local viewer's claim, leave the owner and the 100x30 grid unchanged and call resizeFn no more).
+
+### IN-08: WR-03's focus gate stands in for "a person is here"
+
+**Status:** fixed (comment only, as asked)
+**Files modified:** `frontend/src/components/TerminalPanel.tsx`
+**Commit:** 1d9cf77d
+**Applied fix:** behavior unchanged. The WR-03 comment now says visible-and-focused is a proxy for a person being present, and a `shortcut:` comment records both residual gaps (a key window on an unlocked, unattended Mac still claims on a display change; a drag of an inactive window only reports) and the upgrade (gate on recent `pointerdown`/`keydown`).
+
+### TESTING.md
+
+No test files added or removed (Go 152, vitest 95). An iteration-2 note was added and the Section 4 INPT-01 `internal/relay/input_test.go` and INPT-06 `internal/relay/hub_grid_owner_test.go` rows extended (commit feea6a73). `bash tests/check-traceability-paths.sh`: OK, 174 traceability paths exist (`it2-traceability.txt`).
+
+### Verification
+
+Gates ran once each in this isolated worktree (`.claude/worktrees/agent-a3113eab6d807198a`, fast-forwarded to gsd/v1.2 46f49642), not in the main checkout. Output files are in `/private/tmp/claude-501/-Users-ken-dev-portty/66f0384b-8902-40e9-9d84-68c47b57f8f8/scratchpad/`:
+
+| Gate | Result | File |
+|---|---|---|
+| `GOTOOLCHAIN=go1.26.11 go build ./... && go vet ./...` | rc 0 | it2-gate-build-vet.txt |
+| `go test -race -short -count=1 ./...` | rc 0, every package ok, no reruns needed | it2-gate-go-test.txt |
+| `cd frontend && pnpm vitest run` (after `pnpm install --frozen-lockfile --offline`) | 95 files, 1338 tests passed | it2-gate-vitest.txt |
+| `pnpm tsc --noEmit` | rc 0 | it2-gate-tsc.txt |
+| `bash tests/check-brand.sh` | OK: brand gate clean | it2-gate-check-brand.txt |
+
+Focused runs during the fixes: it2-cr02-focused.txt, it2-wr05-focused.txt, it2-in09-relay.txt, it2-in09-focused.txt (all ok).
+
+Needs human verification: CR-02 changes what Stop Sharing discards on the real two-Mac path (worth a VM check: paste into `sleep 600` from a guest, close the guest tab, Stop Sharing, confirm nothing runs when `sleep` ends, while the host's own tab still types).
+
+---
+
+_Fixed: 2026-11-21T07:10:00Z_
+_Fixer: Claude (gsd-code-fixer)_
+_Iteration: 2_
