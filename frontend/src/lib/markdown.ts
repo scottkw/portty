@@ -12,15 +12,49 @@
  *     modes, where the 2026 advisories live.
  * The caller assigns the returned string once; unsanitized HTML never reaches a DOM node.
  */
-import { Marked } from 'marked'
+import { Marked, Tokenizer, type Tokens } from 'marked'
 import DOMPurify from 'dompurify'
 
 const ENTITIES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 const escapeHtml = (s: string): string => s.replace(/[&<>"']/g, (c) => ENTITIES[c])
 
+/**
+ * marked recurses once per blockquote or list level, and its time grows with the
+ * square of the depth (about 1 s at 1,000 levels; the stack overflows near 2,000).
+ * Past MAX_DEPTH a container line stays literal paragraph text, as markdown-it's
+ * maxNesting does (its strict presets use 20).
+ */
+export const MAX_DEPTH = 20
+let depth = 0
+
+type Tok = (this: Tokenizer, src: string) => Tokens.Blockquote | Tokens.List | Tokens.Paragraph | undefined
+
+function capped(kind: 'blockquote' | 'list'): Tok {
+  const original = Tokenizer.prototype[kind] as Tok
+  return function (this: Tokenizer, src: string) {
+    if (depth >= MAX_DEPTH) {
+      if (!this.rules.block[kind].exec(src)) return undefined
+      const raw = /^[^\n]*\n?/.exec(src)![0]
+      const text = raw.trim()
+      return { type: 'paragraph', raw, text, tokens: this.lexer.inline(text) }
+    }
+    depth++
+    try {
+      return original.call(this, src)
+    } finally {
+      depth--
+    }
+  }
+}
+
 const md = new Marked({
   gfm: true,
   async: false,
+  // A capped container returns a paragraph token; marked's per-key types don't allow that, hence the casts.
+  tokenizer: {
+    blockquote: capped('blockquote') as unknown as Tokenizer['blockquote'],
+    list: capped('list') as unknown as Tokenizer['list'],
+  },
   renderer: {
     html: () => '',
     image({ text, tokens }) {

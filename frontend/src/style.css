@@ -1762,6 +1762,164 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   overflow-wrap: anywhere;
 }
 
+/* --- Markdown preview (Portty 11-07, 11-UI-SPEC "Markdown", "Markdown document
+   scale"): 4 sizes (24, 20, 17, 14 plus 12 mono), weights 400 and 600, tokens only. */
+.preview-markdown-pane {
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding: 32px 24px;
+  background-color: var(--color-window);
+}
+
+.preview-markdown {
+  max-width: 720px;
+  margin: 0 auto;
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  overflow-wrap: break-word;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.preview-markdown > :first-child {
+  margin-top: 0;
+}
+
+.preview-markdown :is(p, ul, ol, pre, blockquote, .md-table-wrap) {
+  margin: 0 0 16px;
+}
+
+.preview-markdown :is(ul, ol) {
+  padding-left: 24px;
+}
+
+.preview-markdown li :is(ul, ol) {
+  margin: 0;
+}
+
+.preview-markdown li + li {
+  margin-top: 4px;
+}
+
+.preview-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.preview-markdown h1 {
+  margin-top: 24px;
+  font-size: 24px;
+  line-height: 32px;
+}
+
+.preview-markdown h2 {
+  margin-top: 24px;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.preview-markdown h3 {
+  font-size: 17px;
+  line-height: 24px;
+}
+
+.preview-markdown :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+}
+
+.preview-markdown :is(strong, th) {
+  font-weight: 600;
+}
+
+.preview-markdown em {
+  font-style: italic;
+}
+
+.preview-markdown :is(code, pre) {
+  font-family: var(--hub-font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  background-color: var(--color-chip);
+}
+
+.preview-markdown code {
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.preview-markdown pre {
+  padding: 12px 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.preview-markdown pre code {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.preview-markdown blockquote {
+  padding-left: 16px;
+  border-left: 3px solid var(--color-separator);
+  color: var(--color-text-secondary);
+}
+
+/* A table wider than the column scrolls in its own wrapper. */
+.preview-markdown .md-table-wrap {
+  overflow-x: auto;
+}
+
+.preview-markdown table {
+  border-collapse: collapse;
+}
+
+.preview-markdown :is(th, td) {
+  padding: 4px 12px;
+  border: 1px solid var(--color-separator);
+}
+
+/* Left unless the Markdown set an alignment (kept as the align attribute). */
+.preview-markdown th:not([align]) {
+  text-align: left;
+}
+
+.preview-markdown hr {
+  margin: 24px 0;
+  border: none;
+  border-top: 1px solid var(--color-separator);
+}
+
+/* Only real links: anchors whose unsafe href the sanitizer removed stay plain text. */
+.preview-markdown a[href] {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.preview-markdown a[href]:is(:hover, :focus-visible) {
+  text-decoration: underline;
+}
+
+.preview-markdown .md-image {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-secondary);
+}
+
+.preview-markdown .md-image__icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
 /* --- Colour tokens (Portty 02-03, THEM-01 / LOOK-01) ---
    Values from 02-UI-SPEC.md "Color". Light on :root, Dark in the
    prefers-color-scheme block; both blocks declare the same names. */
