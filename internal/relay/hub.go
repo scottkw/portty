@@ -62,6 +62,10 @@ type Subscriber struct {
 	// slowLogged: the first slow kick has been logged. Read/written under hub.mu.
 	slowLogged bool
 
+	// revoked: RevokeWebViewers is closing this viewer, so it can no longer
+	// size or claim the grid while the close handshake runs (IN-09). Under hub.mu.
+	revoked bool
+
 	// inputRevoked: RevokeWebViewers dropped this viewer's queued input and
 	// every frame its pump queues from now on (CR-01). Under hub.inMu.
 	inputRevoked bool
@@ -456,6 +460,7 @@ func (h *Hub) RevokeWebViewers(reason string) {
 	targets := make([]*Subscriber, 0, len(h.subscribers))
 	for s := range h.subscribers {
 		if s.Origin == "web" {
+			s.revoked = true
 			targets = append(targets, s)
 		}
 	}
@@ -553,8 +558,8 @@ func (h *Hub) ClaimGrid(sub *Subscriber, cols, rows int) error {
 // (a sidebar toggle or settle refit, which only reported) on the next
 // keystroke. A read-only viewer, a viewer that never reported a size (an
 // older client: it keeps today's behaviour of never sizing the PTY) and one
-// that already left change nothing. When nothing changed, the owner's
-// keystroke costs two atomic loads and no lock.
+// that already left or is being revoked (IN-09) change nothing. When nothing
+// changed, the owner's keystroke costs two atomic loads and no lock.
 func (h *Hub) NoteTyping(sub *Subscriber) error {
 	if h.ownerFast.Load() == sub && !h.ownerStale.Load() {
 		return nil
@@ -565,7 +570,7 @@ func (h *Hub) NoteTyping(sub *Subscriber) error {
 	h.gridMu.Lock()
 	defer h.gridMu.Unlock()
 	h.mu.Lock()
-	if _, ok := h.subscribers[sub]; !ok || sub.Cols <= 0 || sub.Rows <= 0 {
+	if _, ok := h.subscribers[sub]; !ok || sub.revoked || sub.Cols <= 0 || sub.Rows <= 0 {
 		h.mu.Unlock()
 		return nil
 	}
@@ -589,9 +594,10 @@ func (h *Hub) setOwnerLocked(sub *Subscriber) {
 }
 
 // sizeClient is ResizeClient and ClaimGrid. Read-only viewers can neither
-// report nor claim (T-10-12; the pumps skip them too). Sizes are clamped and
-// zero or negative ones ignored. On a frozen hub the owner and target are
-// recorded and Thaw applies them.
+// report nor claim (T-10-12; the pumps skip them too), nor can a viewer that
+// left or is being revoked (IN-09). Sizes are clamped and zero or negative
+// ones ignored. On a frozen hub the owner and target are recorded and Thaw
+// applies them.
 func (h *Hub) sizeClient(sub *Subscriber, cols, rows int, claim bool) error {
 	if sub.ReadOnly || cols <= 0 || rows <= 0 {
 		return nil
@@ -600,6 +606,10 @@ func (h *Hub) sizeClient(sub *Subscriber, cols, rows int, claim bool) error {
 	h.gridMu.Lock()
 	defer h.gridMu.Unlock()
 	h.mu.Lock()
+	if _, ok := h.subscribers[sub]; !ok || sub.revoked {
+		h.mu.Unlock()
+		return nil // gone or being kicked: it must not become the owner (IN-09)
+	}
 	sub.Cols, sub.Rows = cols, rows
 	why := "claim"
 	if !claim {

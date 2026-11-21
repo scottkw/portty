@@ -488,3 +488,24 @@ func TestHub_GridOwnerLeaveClearsFast(t *testing.T) {
 		t.Fatalf("a departed viewer's typing took the grid: owner %p grid %v", hubOwner(hub), hubGrid(hub))
 	}
 }
+
+// TestHub_GridRevokedOrGoneViewerCannotClaim (IN-09): a web viewer being
+// kicked by a revoke, and a viewer that already left, can neither claim nor
+// take the grid by typing; the owner and grid stay.
+func TestHub_GridRevokedOrGoneViewerCannotClaim(t *testing.T) {
+	hub, calls, a := ownedAt100x30(t)
+	web := gridSub(hub, "web")
+	mustSize(t, hub.ResizeClient(web, 80, 24)) // a known size, so NoteTyping could apply it
+	gone := gridSub(hub, "local")
+	hub.Unsubscribe(gone)
+
+	hub.RevokeWebViewers(CloseReasonShareStopped)
+	mustSize(t, hub.ClaimGrid(web, 90, 25))
+	mustSize(t, hub.NoteTyping(web))
+	mustSize(t, hub.ClaimGrid(gone, 70, 20))
+
+	if hubOwner(hub) != a || hubGrid(hub) != [2]int{100, 30} || len(calls()) != 1 {
+		t.Fatalf("a revoked or departed viewer took the grid: owner %p (want %p) grid %v resizeFn %v",
+			hubOwner(hub), a, hubGrid(hub), calls())
+	}
+}
