@@ -43,6 +43,7 @@ Portty tracks each shell's working directory through OSC 7 (zsh emits it with no
 - [Gating] Q: "How do viewers know path click is available?" → Selected: "A host-authoritative pathClick capability bit on the replay MsgMeta (covers read-only, old hosts, peer and browser), plus APIVersion 4 with a PathClickAPI constant" — additive.
 - [Handoff] Q: "Carry the cwd log across a Phase 9 upgrade handoff?" → Selected: "Yes, additive gob fields in HubState with a round-trip test" — otherwise relative paths go silent until the next prompt after an upgrade.
 - [Printed check] Q: "Substring or token match?" → Selected: "Token-boundary match against Hub.history plus the live screen (not the raw ring), so id_rsa does not pass because id_rsa.pub was printed" — security-relevant, resolver logic only.
+- [Printed check] Full-row fallback for soft wraps built in 12-04 (orchestrator, revision round 2) — the viewer underlines wrapped paths, so the host must be able to serve them.
 - [Corrections] Sessions always run /bin/zsh -l ($SHELL is ignored, engine.go:178-198), so the non-zsh login-shell case can't occur at spawn. Every minted share is read,write (SHAR-02); read-only viewers exist only via legacy/hand-signed caps, but the refusal is still implemented and tested in both the pump and the hub.
 
 ### Claude's Discretion
