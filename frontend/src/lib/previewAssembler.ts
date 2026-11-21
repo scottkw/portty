@@ -50,6 +50,7 @@ export function createPreviewAssembler(emit: (e: PreviewEvent) => void) {
 
   const feed = (f: PreviewFrame): void => {
     if (f.kind === 'header') {
+      if (open) fail('incomplete') // one preview at a time per hub: a new header means the old one is dead
       const entry = PREVIEW_MIMES.find(([m]) => m === f.mime)
       if (!entry) {
         console.warn('[preview] ignored a preview of an unsupported type')
@@ -57,13 +58,17 @@ export function createPreviewAssembler(emit: (e: PreviewEvent) => void) {
       }
       if (!/^[0-9a-f]{32}$/.test(f.key)) return
       const [mime, kind] = entry
-      open = { id: f.id, size: f.size, mime, chunks: [], received: 0, lastProgress: -Infinity }
       emit({ type: 'start', id: f.id, name: cleanPreviewName(f.name), kind, mime, size: f.size, key: f.key, focus: f.focus })
+      // Checked before any byte is accepted; nothing is ever preallocated from the header.
+      if (f.size > PREVIEW_MAX_BYTES) emit({ type: 'failed', id: f.id, reason: 'tooLarge' })
+      else open = { id: f.id, size: f.size, mime, chunks: [], received: 0, lastProgress: -Infinity }
       return
     }
     if (!open || f.id !== open.id) return
     if (f.kind === 'chunk') {
       open.received += f.payload.length
+      if (open.received > PREVIEW_MAX_BYTES) return fail('tooLarge')
+      if (open.received > open.size) return fail('incomplete')
       open.chunks.push(f.payload)
       const now = Date.now()
       if (now - open.lastProgress >= PROGRESS_MS || open.received === open.size) {
@@ -72,8 +77,10 @@ export function createPreviewAssembler(emit: (e: PreviewEvent) => void) {
       }
       return
     }
+    if (f.status === 2) return fail('tooLarge')
+    if (f.status !== 0 || open.received !== open.size) return fail('incomplete')
     const { id, chunks, mime } = open
-    open = null
+    open = null // the chunk array goes with it once the Blob holds the bytes
     emit({ type: 'complete', id, blob: new Blob(chunks as BlobPart[], { type: mime }) })
   }
 

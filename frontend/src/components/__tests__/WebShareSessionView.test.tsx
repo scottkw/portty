@@ -296,3 +296,22 @@ describe('WebShareSessionView — pre-redial check (SHAR-07)', () => {
     unmount()
   })
 })
+
+// Phase 11 (PREV-01): App (11-09) keeps a peer or browser view mounted but hidden while one
+// of its previews is the active tab, and binds onPreview to the owner tab.
+describe('WebShareSessionView — preview pass-through (PREV-01)', () => {
+  it('a passed onPreview and isActive={false} reach TerminalPanel', () => {
+    const onPreview = vi.fn()
+    const { unmount } = mountView({ onPreview, isActive: false })
+    expect(capturedTerminalProps?.onPreview).toBe(onPreview)
+    expect(capturedTerminalProps?.isActive).toBe(false)
+    unmount()
+  })
+
+  it('without them TerminalPanel gets isActive true (as before) and no onPreview', () => {
+    const { unmount } = mountView()
+    expect(capturedTerminalProps?.isActive).toBe(true)
+    expect(capturedTerminalProps?.onPreview).toBeUndefined()
+    unmount()
+  })
+})

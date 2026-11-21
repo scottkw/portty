@@ -3,6 +3,7 @@ import type { ITheme } from '@xterm/xterm'
 import { daemon } from '../wailsjs/go/models'
 import { TerminalPanel } from './TerminalPanel'
 import type { ReconnectVerdict } from '../lib/relayClient'
+import type { PreviewEvent } from '../lib/previewAssembler'
 import { shareInfoVerdict } from '../lib/closeReasons'
 import { DEFAULT_TERMINAL_FONT_SIZE, parseTerminalFont, terminalFontFamily } from '../lib/terminalFont'
 
@@ -63,6 +64,10 @@ export interface WebShareSessionViewProps {
   onReconnectingChange?: (reconnecting: boolean) => void
   /** DEBT-04: passed through to TerminalPanel, the host half of a peer tab's snapshot key. */
   snapshotHost?: string
+  /** Phase 11: passed through to TerminalPanel, this view's preview events. */
+  onPreview?: (event: PreviewEvent) => void
+  /** Phase 11: false while App keeps this view mounted but hidden behind one of its previews. Default true. */
+  isActive?: boolean
 }
 
 // Review it3 IN-02: AbortSignal.timeout is missing before Safari 16 / Chrome 103, and
@@ -100,6 +105,8 @@ export function WebShareSessionView({
   beforeReconnect,
   onReconnectingChange,
   snapshotHost,
+  onPreview,
+  isActive = true,
 }: WebShareSessionViewProps): React.ReactElement {
   // FIX-03 (plan 09) RC-A transport switch. When true, the terminal routes
   // through the daemon proxy (remote:true, wsURL undefined).
@@ -194,10 +201,9 @@ export function WebShareSessionView({
 
   return (
     <div className="hub-modal__body hub-modal__body--interactive">
-      {/* isActive={true}: constant on web-share (no grow animation). */}
       <TerminalPanel
         sessionId={sessionId}
-        isActive={true}
+        isActive={isActive}
         relayPort={relayPort}
         fontFamily={effectiveFontFamily}
         fontSize={effectiveFontSize}
@@ -212,6 +218,7 @@ export function WebShareSessionView({
         hostUnreachable={hostUnreachable}
         onReconnectingChange={onReconnectingChange}
         snapshotHost={snapshotHost}
+        onPreview={onPreview}
       />
     </div>
   )
