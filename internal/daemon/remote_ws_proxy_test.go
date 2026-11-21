@@ -838,3 +838,49 @@ func TestRemoteWSProxy_PasteBackpressureStaysOpen(t *testing.T) {
 		t.Fatalf("tab closed after the paste: %v", err)
 	}
 }
+
+// TestRemoteWSProxy_SessionEndedMidPaste (RF-03): the peer ends the session
+// (1000 "session ended") while the tab is still pasting. The proxy's upstream
+// write then often fails before its peer copy reads the close frame; the tab
+// must still get 1000 "session ended", not an abnormal close. Several rounds,
+// because which proxy direction ends first is a race.
+func TestRemoteWSProxy_SessionEndedMidPaste(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+		if err != nil {
+			return
+		}
+		conn.SetReadLimit(relay.ViewerReadLimit)
+		if _, _, err := conn.Read(r.Context()); err != nil { // the paste is arriving
+			return
+		}
+		_ = conn.Close(websocket.StatusNormalClosure, relay.CloseReasonSessionEnded)
+	}))
+	defer upstream.Close()
+	api := newDaemonAPIWithUpstreamCert(t, upstream)
+	relaySrv := httptest.NewServer(api.RelayHandler())
+	defer relaySrv.Close()
+	depositCap(t, api, "sid1", upstream.URL, fixtureCap)
+
+	frame := make([]byte, relay.MaxInputPayload+1)
+	frame[0] = relay.MsgInput
+	for round := 0; round < 10; round++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		conn, _, err := dialProxy(ctx, t, relaySrv.URL, "sid1", "")
+		if err != nil {
+			cancel()
+			t.Fatalf("round %d: dial proxy: %v", round, err)
+		}
+		go func() { // paste until the socket goes away
+			for conn.Write(ctx, websocket.MessageBinary, frame) == nil {
+			}
+		}()
+		_, _, err = conn.Read(ctx)
+		conn.CloseNow()
+		cancel()
+		var ce websocket.CloseError
+		if !errors.As(err, &ce) || ce.Code != websocket.StatusNormalClosure || ce.Reason != relay.CloseReasonSessionEnded {
+			t.Fatalf("round %d: tab read err = %v, want close 1000 %q", round, err, relay.CloseReasonSessionEnded)
+		}
+	}
+}

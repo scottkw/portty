@@ -153,6 +153,18 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	end := <-errc
+	if end.side == "client" && end.write {
+		// A failed upstream write usually means the peer just closed (RF-03): its
+		// close frame (e.g. 1000 "session ended") may still be on its way through
+		// the peer copy, so wait briefly for it instead of dropping the viewer.
+		select {
+		case peerEnd := <-errc:
+			if websocket.CloseStatus(peerEnd.err) != -1 {
+				end = peerEnd
+			}
+		case <-time.After(peerCloseGrace):
+		}
+	}
 	err = end.err
 	code := int(websocket.CloseStatus(err))
 	if code == -1 {
@@ -172,11 +184,17 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 }
 
 // copyEnd is how one copy direction ended; side names the conn it read from
-// ("peer" or "client") for the viewer-diag proxy end line.
+// ("peer" or "client") for the viewer-diag proxy end line; write is true when
+// the write to the other conn failed, not the read.
 type copyEnd struct {
-	side string
-	err  error
+	side  string
+	err   error
+	write bool
 }
+
+// peerCloseGrace bounds the wait for the peer's close frame after an upstream
+// write fails, so the viewer still learns why the session ended.
+const peerCloseGrace = 2 * time.Second
 
 // copyWS reads whole messages from src and writes them verbatim to dst until
 // either side errors. The PTY frame protocol is end-to-end between xterm and the
@@ -185,11 +203,11 @@ func copyWS(ctx context.Context, dst, src *websocket.Conn, side string, errc cha
 	for {
 		typ, data, err := src.Read(ctx)
 		if err != nil {
-			errc <- copyEnd{side, err}
+			errc <- copyEnd{side, err, false}
 			return
 		}
 		if err := dst.Write(ctx, typ, data); err != nil {
-			errc <- copyEnd{side, err}
+			errc <- copyEnd{side, err, true}
 			return
 		}
 	}
