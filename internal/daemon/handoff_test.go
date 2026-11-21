@@ -334,13 +334,29 @@ func (s *handoffScene) cleanup() {
 	pids := append(slices.Clone(s.pids), s.extraPids...)
 	takeovers := slices.Clone(s.takeovers)
 	s.mu.Unlock()
+	s.closePeer()
+	// Release every engine's PTYs (in production the old daemon's exit, or a
+	// dead takeover's, does; in-process they piled up across -count runs).
+	// Live sessions are killed before any shell dies, so no exit watcher
+	// starts a Wait; the SIGKILL then ends shells whose hubs a shutdown
+	// already ended, and their sessions go once their watchers are done.
+	var engines []*SessionEngine
+	if s.old != nil {
+		s.old.waitHandoff(5 * time.Second)
+		engines = append(engines, s.old.engine) // first: it forked the shells
+	}
+	for _, n := range takeovers {
+		engines = append(engines, n.engine)
+	}
+	for _, e := range engines {
+		killSessions(e, true)
+	}
 	for _, pid := range pids {
 		_ = syscall.Kill(-pid, syscall.SIGKILL)
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 	}
-	s.closePeer()
-	if s.old != nil {
-		s.old.waitHandoff(5 * time.Second)
+	for _, e := range engines {
+		killAllSessions(e)
 	}
 	for _, n := range takeovers {
 		_ = n.Stop()

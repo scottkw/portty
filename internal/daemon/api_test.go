@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/capability"
+	"github.com/scottkw/portty/internal/pty"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/tailnet"
 )
@@ -38,11 +39,45 @@ func testDaemon(t *testing.T) (*API, *DaemonClient, string) {
 		t.Fatalf("api.Start: %v", err)
 	}
 	t.Cleanup(func() { api.Stop() })
+	t.Cleanup(func() { killAllSessions(engine) }) // runs first (LIFO)
 	client := NewDaemonClient(socketPath)
 	// Brief sleep to let server goroutine start accepting.
 	time.Sleep(10 * time.Millisecond)
 	return api, client, socketPath
 }
+
+// killAllSessions kills every session e still holds, closing its PTY master,
+// pollable dup and slave. A test that leaves a live session behind keeps
+// those open for the life of the test binary (the hub's blocked read keeps
+// the files reachable, so GC never closes them): under -count=20 they piled
+// up until kern.tty.ptmx_max (511) failed later tests' opens.
+//
+// A session whose hub already ended (its shell exited, or Manager().Shutdown,
+// which watchSessionExit takes for an exit) has its exit watcher in Wait:
+// KillSession's own Wait would race it, so it waits for the watcher to mark
+// the session stopped first. With liveOnly it skips those sessions, for a
+// caller that must still end their shells (handoffScene.cleanup).
+func killSessions(e *SessionEngine, liveOnly bool) {
+	for _, s := range e.registry.List() {
+		ended := true
+		if hub, ok := e.manager.Get(s.ID); ok {
+			select {
+			case <-hub.Done():
+			default:
+				ended = false
+			}
+		}
+		if ended && liveOnly {
+			continue
+		}
+		for deadline := time.Now().Add(5 * time.Second); ended && s.GetState() != pty.StateStopped && time.Now().Before(deadline); {
+			time.Sleep(10 * time.Millisecond)
+		}
+		_ = e.KillSession(s.ID)
+	}
+}
+
+func killAllSessions(e *SessionEngine) { killSessions(e, false) }
 
 // dialUnix returns an http.Transport dialer that dials the given Unix socket.
 func dialUnix(socketPath string) func(context.Context, string, string) (net.Conn, error) {
