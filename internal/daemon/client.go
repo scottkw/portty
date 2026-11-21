@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -312,7 +313,8 @@ func (c *DaemonClient) answersAfterDrop(hc *http.Client, err error) bool {
 var frozenRetryBudget = 20 * time.Second
 
 // doRetrying sends the request newReq builds with hc, and sends a mutating one
-// again while the daemon answers 503 with Retry-After (09-04's handoff freeze),
+// again while the daemon answers 503 with Retry-After (09-04's handoff freeze)
+// or 429 with Retry-After (a preview still streaming on that session),
 // waiting Retry-After seconds (1 s if unreadable, at most 2 s) each time, until
 // deadline (now + frozenRetryBudget for one call); then the last 503 is
 // returned. The first attempt is always sent. A GET is never
@@ -325,7 +327,8 @@ func (c *DaemonClient) doRetrying(hc *http.Client, deadline time.Time, newReq fu
 			return nil, err
 		}
 		resp, err := hc.Do(req)
-		if err != nil || req.Method == http.MethodGet || resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") == "" {
+		waitable := resp != nil && (resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusTooManyRequests)
+		if err != nil || req.Method == http.MethodGet || !waitable || resp.Header.Get("Retry-After") == "" {
 			return resp, err
 		}
 		wait := time.Second
@@ -398,6 +401,56 @@ func (c *DaemonClient) SetSessionShared(id string, shared bool) (ShareResponse, 
 		return ShareResponse{}, fmt.Errorf("decode response: %w", err)
 	}
 	return out, nil
+}
+
+// SendPreview errors, one per refusal the CLI words differently (11-08).
+var (
+	ErrPreviewNoSession   = errors.New("no such session")
+	ErrPreviewEnded       = errors.New("the session has ended")
+	ErrPreviewTooLarge    = errors.New("file is larger than 20 MB")
+	ErrPreviewUnsupported = errors.New("unsupported file type")
+	ErrPreviewBusy        = errors.New("a preview is still streaming")
+)
+
+// SendPreview hands a file's bytes to the session's viewers (POST
+// /sessions/{id}/preview). name is the base name, sent percent-encoded; key
+// is 32 lowercase hex identifying the file. No path is ever sent. It waits
+// out a frozen daemon and a preview still streaming within frozenRetryBudget.
+func (c *DaemonClient) SendPreview(sessionID, name, mime, key string, data []byte) (PreviewResponse, error) {
+	resp, err := c.doRetrying(c.http, time.Now().Add(frozenRetryBudget), func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(c.reqCtx(), http.MethodPost, c.base+"/sessions/"+sessionID+"/preview", bytes.NewReader(data))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/octet-stream")
+			req.Header.Set("X-Portty-Name", url.QueryEscape(name))
+			req.Header.Set("X-Portty-Mime", mime)
+			req.Header.Set("X-Portty-Key", key)
+		}
+		return req, err
+	})
+	if err != nil {
+		return PreviewResponse{}, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	switch resp.StatusCode {
+	case http.StatusAccepted:
+		var out PreviewResponse
+		if err := json.Unmarshal(body, &out); err != nil {
+			return PreviewResponse{}, fmt.Errorf("decode response: %w", err)
+		}
+		return out, nil
+	case http.StatusNotFound:
+		return PreviewResponse{}, ErrPreviewNoSession
+	case http.StatusConflict:
+		return PreviewResponse{}, ErrPreviewEnded
+	case http.StatusRequestEntityTooLarge:
+		return PreviewResponse{}, ErrPreviewTooLarge
+	case http.StatusUnsupportedMediaType:
+		return PreviewResponse{}, ErrPreviewUnsupported
+	case http.StatusTooManyRequests:
+		return PreviewResponse{}, ErrPreviewBusy
+	}
+	return PreviewResponse{}, fmt.Errorf("daemon API POST preview: status %d: %s", resp.StatusCode, bytes.TrimSpace(body))
 }
 
 // ConnectPeer asks the daemon to connect to a session shared from another Mac

@@ -58,8 +58,8 @@ type StyledTailLinesResponse struct {
 }
 
 // APIVersion is the daemon API this build serves (UPGR-04). v1.0 and v1.1
-// send no "api" field and count as 1.
-const APIVersion = 2
+// send no "api" field and count as 1. 3 adds the preview route (PreviewAPI).
+const APIVersion = 3
 
 // PreviewAPI is the lowest daemon API that serves POST /sessions/{id}/preview;
 // `portty open` needs it (CONTEXT "Session id").

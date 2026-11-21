@@ -1,10 +1,16 @@
 package daemon
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -38,8 +44,8 @@ func TestHealthInfo(t *testing.T) {
 
 	_, client, _ := testDaemon(t)
 	h, err = client.HealthInfo()
-	if err != nil || DaemonAPI(h) != 2 || APIVersion != 2 {
-		t.Fatalf("this build's health = %+v, %v; want API 2", h, err)
+	if err != nil || DaemonAPI(h) != 3 || APIVersion != 3 || PreviewAPI != 3 {
+		t.Fatalf("this build's health = %+v, %v; want API 3", h, err)
 	}
 }
 
@@ -368,6 +374,127 @@ func TestClientFullLifecycle(t *testing.T) {
 	for _, s := range sessions {
 		if s.ID == id {
 			t.Errorf("killed session %q still in list", id)
+		}
+	}
+}
+
+type previewCall struct {
+	path, name, mime, key, query string
+	body                         []byte
+}
+
+// previewServer answers the n-th request (from 1) with answer(n, w) on a unix
+// socket and records each request's body and headers.
+func previewServer(t *testing.T, answer func(n int, w http.ResponseWriter)) (*DaemonClient, func() []previewCall) {
+	t.Helper()
+	path := shortProcTestSocket(t, "prev")
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	var mu sync.Mutex
+	var calls []previewCall
+	go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:errcheck
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		calls = append(calls, previewCall{r.URL.Path, r.Header.Get("X-Portty-Name"), r.Header.Get("X-Portty-Mime"), r.Header.Get("X-Portty-Key"), r.URL.RawQuery, body})
+		n := len(calls)
+		mu.Unlock()
+		answer(n, w)
+	}))
+	return NewDaemonClient(path), func() []previewCall {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(calls)
+	}
+}
+
+func retryAfter(w http.ResponseWriter, status int) {
+	w.Header().Set("Retry-After", "1")
+	http.Error(w, "wait", status)
+}
+
+func accepted(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusAccepted)
+	w.Write([]byte(`{"viewers":2}`)) //nolint:errcheck
+}
+
+func TestSendPreview_RetriesFrozenWithFreshBody(t *testing.T) {
+	data := []byte("\x89PNG fake image bytes")
+	c, calls := previewServer(t, func(n int, w http.ResponseWriter) {
+		if n == 1 {
+			retryAfter(w, http.StatusServiceUnavailable)
+			return
+		}
+		accepted(w)
+	})
+	resp, err := c.SendPreview("s1", "ré sumé/x.png", "image/png", previewTestKey, data)
+	if err != nil || resp.Viewers != 2 {
+		t.Fatalf("SendPreview = %+v, %v; want Viewers 2", resp, err)
+	}
+	got := calls()
+	if len(got) != 2 {
+		t.Fatalf("%d requests; want 2", len(got))
+	}
+	for i, call := range got {
+		if !bytes.Equal(call.body, data) {
+			t.Errorf("attempt %d body %q; want the full body", i+1, call.body)
+		}
+		if call.path != "/sessions/s1/preview" || call.query != "" || call.mime != "image/png" || call.key != previewTestKey {
+			t.Errorf("attempt %d request %+v", i+1, call)
+		}
+		if call.name != url.QueryEscape("ré sumé/x.png") {
+			t.Errorf("attempt %d name header %q; want it percent-encoded", i+1, call.name)
+		}
+	}
+}
+
+func TestSendPreview_WaitsOutBusy(t *testing.T) {
+	c, calls := previewServer(t, func(n int, w http.ResponseWriter) {
+		if n <= 2 {
+			retryAfter(w, http.StatusTooManyRequests)
+			return
+		}
+		accepted(w)
+	})
+	if _, err := c.SendPreview("s1", "a.md", "text/markdown", previewTestKey, []byte("# a")); err != nil || len(calls()) != 3 {
+		t.Fatalf("after two 429s: err %v, %d requests; want success on the third", err, len(calls()))
+	}
+
+	old := frozenRetryBudget
+	frozenRetryBudget = 1500 * time.Millisecond
+	t.Cleanup(func() { frozenRetryBudget = old })
+	c, _ = previewServer(t, func(_ int, w http.ResponseWriter) { retryAfter(w, http.StatusTooManyRequests) })
+	start := time.Now()
+	if _, err := c.SendPreview("s1", "a.md", "text/markdown", previewTestKey, []byte("# a")); !errors.Is(err, ErrPreviewBusy) {
+		t.Fatalf("busy until the budget ends: err %v; want ErrPreviewBusy", err)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Fatalf("took %v; want the 1.5 s budget", d)
+	}
+}
+
+func TestSendPreview_TypedErrors(t *testing.T) {
+	for status, want := range map[int]error{
+		http.StatusNotFound:              ErrPreviewNoSession,
+		http.StatusConflict:              ErrPreviewEnded,
+		http.StatusRequestEntityTooLarge: ErrPreviewTooLarge,
+		http.StatusUnsupportedMediaType:  ErrPreviewUnsupported,
+	} {
+		c, _ := previewServer(t, func(_ int, w http.ResponseWriter) { http.Error(w, "no", status) })
+		if _, err := c.SendPreview("s1", "a.png", "image/png", previewTestKey, []byte("x")); !errors.Is(err, want) {
+			t.Errorf("status %d: err %v; want %v", status, err, want)
+		}
+	}
+	c, _ := previewServer(t, func(_ int, w http.ResponseWriter) { http.Error(w, "invalid key", http.StatusBadRequest) })
+	_, err := c.SendPreview("s1", "a.png", "image/png", "bad", []byte("x"))
+	if err == nil || !strings.Contains(err.Error(), "400") {
+		t.Fatalf("status 400: err %v; want an error carrying the status", err)
+	}
+	for _, typed := range []error{ErrPreviewNoSession, ErrPreviewEnded, ErrPreviewTooLarge, ErrPreviewUnsupported, ErrPreviewBusy} {
+		if errors.Is(err, typed) {
+			t.Errorf("status 400 matched %v", typed)
 		}
 	}
 }
