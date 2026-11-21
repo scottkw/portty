@@ -598,9 +598,9 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
   })
 
   it('the __websession__ render branch resolves per-tab params from the active tab, not the global webParams, for remote tabs (RESEARCH Pitfall 3)', () => {
-    const idx = raw.indexOf("activeId.startsWith('__websession__')")
+    const idx = raw.indexOf("sessionTabId.startsWith('__websession__')")
     expect(idx, 'the __websession__ render branch must be present').toBeGreaterThan(-1)
-    const slice = raw.slice(idx, idx + 3500)
+    const slice = raw.slice(idx, raw.indexOf('})()}', idx))
     expect(slice).toContain('activeWebTab')
     expect(slice).toContain('isRemoteWebTab')
     expect(slice).toContain('baseURL={activeWebTab?.baseURL}')
@@ -615,15 +615,15 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
   // fallback dialed window.location.origin (wails://), whose WebSocket threw and
   // took the root down. Unreachable through the UI after the dedupe fixes.
   it('the __websession__ branch renders nothing on the desktop when the active web tab is missing', () => {
-    const idx = raw.indexOf("activeId.startsWith('__websession__')")
+    const idx = raw.indexOf("sessionTabId.startsWith('__websession__')")
     const slice = raw.slice(idx, idx + 600)
     expect(slice).toContain("if (!activeWebTab && mode !== 'web') return null")
   })
 
   it('RC-B/RC-A: the __websession__ branch wraps WebShareSessionView in .terminal-wrapper and threads remote={isRemoteWebTab}', () => {
-    const idx = raw.indexOf("activeId.startsWith('__websession__')")
+    const idx = raw.indexOf("sessionTabId.startsWith('__websession__')")
     expect(idx, 'the __websession__ render branch must be present').toBeGreaterThan(-1)
-    const slice = raw.slice(idx, idx + 3500)
+    const slice = raw.slice(idx, raw.indexOf('})()}', idx))
     expect(slice).toContain('terminal-wrapper')
     expect(slice).toContain('remote={isRemoteWebTab}')
   })
@@ -635,16 +635,18 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
   // sessionId prop, forcing a clean remount whenever the active
   // __websession__ tab changes to a different session.
   // INPT-04: keyed by the tab id (host plus session), so two hosts' equal session ids still remount.
+  // Phase 11: the session's tab id (the owner's while one of its previews is active), so
+  // showing a preview never remounts the view (App.preview.test.tsx covers the behavior).
   it('CR-03: <WebShareSessionView> is keyed by the tab id and cap so switching remote tabs forces a remount (no cross-session state leak)', () => {
-    const idx = raw.indexOf("activeId.startsWith('__websession__')")
+    const idx = raw.indexOf("sessionTabId.startsWith('__websession__')")
     expect(idx, 'the __websession__ render branch must be present').toBeGreaterThan(-1)
-    const slice = raw.slice(idx, idx + 3500)
+    const slice = raw.slice(idx, raw.indexOf('})()}', idx))
     const wsvIdx = slice.indexOf('<WebShareSessionView')
     expect(wsvIdx, '<WebShareSessionView> element must be present in this branch').toBeGreaterThan(-1)
     // The key prop must appear on the element itself (before sessionId prop),
     // not merely somewhere later in the file.
     const elementSlice = slice.slice(wsvIdx, wsvIdx + 400)
-    expect(elementSlice).toContain("key={`${activeId}:${wsCapToken}`}")
+    expect(elementSlice).toContain("key={`${sessionTabId}:${wsCapToken}`}")
   })
 })
 

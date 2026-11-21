@@ -39,6 +39,8 @@ export interface Tab {
   ownerTabId?: string
   /** Phase 11: a preview tab's file type (its icon). */
   previewKind?: PreviewKind
+  /** Phase 11: the owner tab as it was when the preview arrived, for the label once that tab is closed. */
+  owner?: Pick<Tab, 'name' | 'type' | 'peerHost'>
 }
 
 /** UI-SPEC "Anatomy": the preview tab's leading type icon. */
@@ -213,11 +215,16 @@ export function TabBar({
           const active = tab.id === activeId
           const peer = peerTabParts(tab)
           const label = peer ? `${peer.session} · ${peer.host}` : tab.name
+          // UI-SPEC "Anatomy": a preview names its session (live while that tab is open) and, for a peer, the Mac.
+          const isPreview = tab.type === 'preview'
+          const owner = isPreview ? tabs.find((t) => t.id === tab.ownerTabId) ?? tab.owner : undefined
+          const ownerPeer = owner ? peerTabParts(owner) : null
+          const ownerSession = ownerPeer?.session ?? owner?.name ?? ''
           return (
           <div
             key={tab.id}
             className={`tab${active ? ' tab--active' : ''}`}
-            title={label}
+            title={isPreview ? `${tab.name} — ${ownerPeer ? `${ownerSession} · ${ownerPeer.host}` : ownerSession}` : label}
           >
             {editingId === tab.id ? (
               <InlineSessionName
@@ -235,6 +242,7 @@ export function TabBar({
                 className="tab__label"
                 aria-selected={active}
                 aria-controls={`tabpanel-${tab.id}`}
+                aria-label={isPreview ? `${tab.name}, preview from ${ownerSession}${ownerPeer ? ` on ${ownerPeer.host}` : ''}` : undefined}
                 tabIndex={active ? 0 : -1}
                 onClick={() => onSelect(tab.id)}
                 onKeyDown={(e) => {
@@ -252,7 +260,7 @@ export function TabBar({
                 }}
               >
                 {peer && <GlobeAltIcon className="tab__remote-icon" aria-hidden="true" />}
-                {tab.type === 'preview' && <PreviewIcon kind={tab.previewKind} />}
+                {isPreview && <PreviewIcon kind={tab.previewKind} />}
                 <span
                   className="tab__name"
                   onDoubleClick={webMode || !isLocal(tab) ? undefined : () => setEditingId(tab.id)}
@@ -260,10 +268,11 @@ export function TabBar({
                   {peer ? <>{peer.session}<span className="tab__host"> · {peer.host}</span></> : tab.name}
                 </span>
                 {peer && tab.peerHost && <PeerDot hostname={tab.peerHost} />}
+                {ownerPeer && owner?.peerHost && <PeerDot hostname={owner.peerHost} />}
               </button>
             )}
-            {/* Web share page: one static pill, no close (UI-SPEC "Web share page"). */}
-            {!webMode && (
+            {/* Web share page: the session is one static pill with no close; its previews close (UI-SPEC "Browser Share Viewer"). */}
+            {(!webMode || isPreview) && (
               <button
                 type="button"
                 className="tab__close"

@@ -3,6 +3,8 @@ import { act } from 'react'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { DocumentIcon, DocumentTextIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import { TabBar } from '../TabBar'
 import raw from '../TabBar.tsx?raw'
 
@@ -589,5 +591,103 @@ describe('TabBar Share button and "On <host>" chip (Portty 02-08)', () => {
     expect(raw).not.toMatch(/&#8249;|&#8250;/)
     expect(raw).toContain('<ChevronLeftIcon aria-hidden="true" />')
     expect(raw).toContain('<ChevronRightIcon aria-hidden="true" />')
+  })
+})
+
+// Phase 11 (UI-SPEC "Preview Tab", "Browser Share Viewer", "Accessibility Contract").
+describe('TabBar preview tabs (PREV-01, PREV-04)', () => {
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+
+  afterEach(() => {
+    flushSync(() => root.unmount())
+    container.remove()
+    document.querySelectorAll('.context-menu').forEach((m) => m.remove())
+  })
+
+  const local = { id: 's1', name: 'build', sessionId: 's1' }
+  const peer = { id: '__websession__office-air.ts.net/p1', name: 'office-air › logs', sessionId: 'p1', type: 'web-session' as const, peerHost: 'office-air.ts.net' }
+  const preview = (id: string, name: string, ownerTabId: string, previewKind: 'image' | 'svg' | 'pdf' | 'markdown') =>
+    ({ id, name, sessionId: id, type: 'preview' as const, ownerTabId, previewKind })
+  const tabOf = (name: string) =>
+    Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((t) => t.textContent === name)!
+  const iconHTML = (Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>) =>
+    renderToStaticMarkup(React.createElement(Icon, { className: 'tab__remote-icon', 'aria-hidden': 'true' }))
+
+  it('shows the type icon by kind: PhotoIcon for images and SVG, DocumentIcon for PDF, DocumentTextIcon for Markdown', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      tabs: [local, preview('p-a', 'a.png', 's1', 'image'), preview('p-b', 'b.svg', 's1', 'svg'), preview('p-c', 'c.pdf', 's1', 'pdf'), preview('p-d', 'd.md', 's1', 'markdown')],
+      activeId: 's1',
+    }))
+    const icon = (name: string) => tabOf(name).querySelector('svg')!.outerHTML
+    expect(icon('a.png')).toBe(iconHTML(PhotoIcon))
+    expect(icon('b.svg')).toBe(iconHTML(PhotoIcon))
+    expect(icon('c.pdf')).toBe(iconHTML(DocumentIcon))
+    expect(icon('d.md')).toBe(iconHTML(DocumentTextIcon))
+    expect(tabOf('a.png').querySelector('svg')!.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('a local preview: tooltip "<name> — <session>", accessible name "<name>, preview from <session>", Close <name>', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs: [local, preview('p-a', 'diagram.png', 's1', 'image')], activeId: 's1' }))
+    const tab = tabOf('diagram.png')
+    expect(tab.closest('.tab')!.getAttribute('title')).toBe('diagram.png — build')
+    expect(tab.getAttribute('aria-label')).toBe('diagram.png, preview from build')
+    expect(tab.querySelector('.peer-dot')).toBeNull()
+    expect(tab.closest('.tab')!.querySelector('.tab__close')!.getAttribute('aria-label')).toBe('Close diagram.png')
+  })
+
+  it('a peer preview names the Mac in the tooltip and accessible name and adds the peer dot', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs: [peer, preview('p-a', 'diagram.png', peer.id, 'image')], activeId: peer.id }))
+    const tab = tabOf('diagram.png')
+    expect(tab.closest('.tab')!.getAttribute('title')).toBe('diagram.png — logs · office-air')
+    expect(tab.getAttribute('aria-label')).toBe('diagram.png, preview from logs on office-air')
+    expect(tab.querySelector('.peer-dot')!.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('keeps naming its session after that tab closes (the owner snapshot)', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      tabs: [{ ...preview('p-a', 'diagram.png', peer.id, 'image'), owner: { name: peer.name, type: peer.type, peerHost: peer.peerHost } }],
+      activeId: 'p-a',
+    }))
+    expect(tabOf('diagram.png').getAttribute('aria-label')).toBe('diagram.png, preview from logs on office-air')
+  })
+
+  it('double-click on a preview name does not rename', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs: [local, preview('p-a', 'diagram.png', 's1', 'image')], activeId: 's1' }))
+    flushSync(() => tabOf('diagram.png').querySelector('.tab__name')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+    expect(container.querySelector('input')).toBeNull()
+  })
+
+  it('desktop: the preview tab menu is Close Tab only, and it closes the preview', () => {
+    const onClose = vi.fn()
+    ;({ container, root } = renderTabBarWithTabs({ tabs: [local, preview('p-a', 'diagram.png', 's1', 'image')], activeId: 's1', onClose }))
+    flushSync(() => tabOf('diagram.png').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
+    const items = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]'))
+    expect(items.map((b) => b.textContent)).toEqual(['Close Tab'])
+    flushSync(() => items[0].click())
+    expect(onClose).toHaveBeenCalledWith('p-a')
+  })
+
+  it('web mode: the preview has × (Close <name>) while the session pill has none, and no context menu', () => {
+    const onClose = vi.fn()
+    const web = { id: '__websession__s', name: 'Session', sessionId: 's', type: 'web-session' as const }
+    ;({ container, root } = renderTabBarWithTabs({ webMode: true, tabs: [web, preview('p-a', 'diagram.png', web.id, 'pdf')], activeId: web.id, onClose }))
+    const closes = container.querySelectorAll<HTMLButtonElement>('.tab__close')
+    expect(closes).toHaveLength(1)
+    expect(closes[0].getAttribute('aria-label')).toBe('Close diagram.png')
+    expect(tabOf('Session').closest('.tab')!.querySelector('.tab__close')).toBeNull()
+    flushSync(() => closes[0].click())
+    expect(onClose).toHaveBeenCalledWith('p-a')
+    flushSync(() => tabOf('diagram.png').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+  })
+
+  it('the progress underline follows tabProgress under the preview id', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs: [local, preview('p-a', 'diagram.png', 's1', 'image')], activeId: 's1', tabProgress: { 'p-a': 50 } }))
+    expect((container.querySelector('[data-testid="tab-progress-p-a"]') as HTMLElement).style.transform).toBe('scaleX(0.5)')
+  })
+
+  it('renders preview names as text only', () => {
+    expect(raw).not.toMatch(/innerHTML|dangerouslySetInnerHTML/)
   })
 })

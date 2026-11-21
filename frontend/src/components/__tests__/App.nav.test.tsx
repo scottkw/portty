@@ -52,7 +52,8 @@ describe('Portty NAV-01: always-on session poll feeds the sidebar', () => {
   it('renders Sidebar with sessions, the active tab and onOpenLocal', () => {
     const block = slice('<Sidebar', '/>')
     expect(block).toContain('sessions={sessions}')
-    expect(block).toContain('activeTab={tabs.find((t) => t.id === activeId) ?? null}')
+    // Phase 11: the session's tab (sessionTabId), so a preview keeps its session's row selected.
+    expect(block).toContain('activeTab={tabs.find((t) => t.id === sessionTabId) ?? null}')
     expect(block).toContain('onOpenLocal={handleOpenSessionTab}')
   })
 

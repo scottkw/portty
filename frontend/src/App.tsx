@@ -223,6 +223,12 @@ function App(): React.ReactElement {
   // Phase 11: this viewer's previews, held outside every terminal view so they outlive it.
   const [previewStore] = useState(() => new PreviewStore())
   const previews = useSyncExternalStore(previewStore.subscribe, previewStore.getSnapshot)
+  // The preview tab a focused arrival switched to; its pane takes keyboard focus once.
+  const [focusPreview, setFocusPreview] = useState<string | null>(null)
+  // The session tab whose terminal takes focus once it is shown (closing its active preview).
+  const focusTerminalRef = useRef<string | null>(null)
+  // UI-SPEC "Accessibility Contract": one polite announcement per arrival.
+  const [previewAnnouncement, setPreviewAnnouncement] = useState('')
   // Every session:exit id, so createTab and the init/retryInit restore skip a
   // shell that exited while their RPCs were pending (exits are reported once).
   const exitedIdsRef = useRef(new Set<string>())
@@ -606,7 +612,10 @@ function App(): React.ReactElement {
       setActiveId((cur) => nextActiveTabId(prev, id, cur))
       return prev.filter((t) => t.id !== id)
     })
-    if (owner && activeIdRef.current === id) setActiveId(owner)
+    if (owner && activeIdRef.current === id) {
+      focusTerminalRef.current = owner
+      setActiveId(owner)
+    }
     // Clean up font size for the closed session.
     setFontSizes((prev) => { const n = { ...prev }; delete n[id]; return n })
     delete spawnGridRef.current[id]
@@ -624,12 +633,33 @@ function App(): React.ReactElement {
   const handlePreview = useCallback((ownerTabId: string, ev: PreviewEvent) => {
     const r = previewStore.handle(ownerTabId, ev)
     if (!r || ev.type !== 'start') return
-    if (r.isNew) {
-      const tab: Tab = { id: r.tabId, name: ev.name, sessionId: r.tabId, type: 'preview', ownerTabId, previewKind: ev.kind }
-      setTabs((prev) => insertPreviewTab(prev, tab))
+    // A refresh keeps its tab (insertPreviewTab skips an id already open).
+    const o = tabsRef.current.find((t) => t.id === ownerTabId)
+    const tab: Tab = {
+      id: r.tabId, name: ev.name, sessionId: r.tabId, type: 'preview', ownerTabId, previewKind: ev.kind,
+      owner: o && { name: o.name, type: o.type, peerHost: o.peerHost },
     }
-    if (ev.focus) setActiveId(r.tabId)
+    setTabs((prev) => insertPreviewTab(prev, tab))
+    setPreviewAnnouncement(`Preview opened: ${ev.name}`)
+    // Locked (CONTEXT "Preview tab focus"): only the viewer that typed last switches, and only
+    // while it shows this session's tab or one of its previews. Everything else is a background tab.
+    const cur = activeIdRef.current
+    const curOwner = tabsRef.current.find((t) => t.id === cur)?.ownerTabId
+    if (ev.focus && cur !== null && (cur === ownerTabId || curOwner === ownerTabId)) {
+      setActiveId(r.tabId)
+      setFocusPreview(r.tabId)
+    }
   }, [previewStore])
+
+  useEffect(() => { previewStore.setActive(activeId) }, [previewStore, activeId])
+  useEffect(() => () => previewStore.closeAll(), [previewStore])
+  useEffect(() => {
+    setFocusPreview((f) => (f === activeId ? f : null))
+    if (activeId !== null && focusTerminalRef.current === activeId) {
+      focusTerminalRef.current = null
+      document.getElementById(`tabpanel-${activeId}`)?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus()
+    }
+  }, [activeId])
 
   // Entries the store dropped (the 10-tab and 100 MiB limits) take their tabs with them.
   useEffect(() => {
@@ -1068,8 +1098,18 @@ function App(): React.ReactElement {
   // sidebar's New Session row, so the empty state's button is the only labelled CTA.
   const showEmptyState = mode !== 'web' && relayPort !== null && tabs.length === 0
 
+  // Phase 11 (UI-SPEC "Viewer Connection Requirement"): while a preview is active, its
+  // session's tab stays the session tab: its view stays mounted (hidden) and connected,
+  // and the sidebar keeps its row selected.
+  const activePreview = tabs.find((t) => t.id === activeId && t.type === 'preview')
+  const sessionTabId = activePreview?.ownerTabId ?? activeId
+  const previewProgress = useMemo(() => Object.fromEntries(previews
+    .filter((e) => e.state === 'receiving' || e.refreshing)
+    .map((e) => [e.tabId, e.size > 0 ? (100 * e.received) / e.size : 0])), [previews])
+
   return (
     <div className="app">
+      <div className="visually-hidden" aria-live="polite">{previewAnnouncement}</div>
       <div className="app__row">
       {/* Phase 159-02 (WEBCHAT-03) — web-share guest scope. In web mode the SPA
           is served to a remote guest holding a capability for ONE session; the
@@ -1080,7 +1120,7 @@ function App(): React.ReactElement {
       {mode !== 'web' && !sidebarHidden && (
       <Sidebar
         sessions={sessions}
-        activeTab={tabs.find((t) => t.id === activeId) ?? null}
+        activeTab={tabs.find((t) => t.id === sessionTabId) ?? null}
         onOpenLocal={handleOpenSessionTab}
         peerView={peerView(tailscaleOff, remoteLoaded, remotePeers, reconnectingHost)}
         onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}
@@ -1103,7 +1143,7 @@ function App(): React.ReactElement {
           onRename={(id, name) => void renameSession(id, name)}
           onEndSession={setEndSessionTarget}
           onRequestSave={pluginConfig?.serialize ? handleRequestSave : undefined}
-          tabProgress={tabProgress}
+          tabProgress={{ ...tabProgress, ...previewProgress }}
           webMode={mode === 'web'}
           sidebarHidden={mode !== 'web' && sidebarHidden}
           onShowSidebar={() => setSidebarHidden(false)}
@@ -1215,21 +1255,23 @@ function App(): React.ReactElement {
             irrelevant to a different peer's session; passing it through for
             a remote tab would suppress WebShareSessionView's web-guest
             self-fetch (isWebGuest) and apply the wrong peer's config. */}
-        {activeId !== null && activeId.startsWith('__websession__') && (() => {
-          const activeWebTab = tabs.find((t) => t.id === activeId)
+        {sessionTabId !== null && sessionTabId.startsWith('__websession__') && (() => {
+          const activeWebTab = tabs.find((t) => t.id === sessionTabId)
           // Portty 05-09: never fall back to window.location.origin on the desktop (wails://, the WebSocket throws).
           if (!activeWebTab && mode !== 'web') return null
           // IN-05: a missing peer tab's id is host/id, never a session id to dial.
-          const fallbackId = hostlessWebSessionId(activeId)
+          const fallbackId = hostlessWebSessionId(sessionTabId)
           if (!activeWebTab && fallbackId === null) return null
           const isRemoteWebTab = activeWebTab?.baseURL !== undefined
           const wsSessionId = activeWebTab?.sessionId ?? webParams.sessionId ?? fallbackId ?? ''
           const wsCapToken = isRemoteWebTab ? (activeWebTab?.capToken ?? '') : (webParams.capToken ?? '')
           const peerHost = activeWebTab?.peerHost
+          // Hidden behind one of its previews: mounted and connected, never claiming the grid.
+          const display = activePreview ? 'none' : 'flex'
           // Portty 04-06: a peer tab whose connect failed shows only the warning banner.
           if (activeWebTab?.connectFailed) {
             return (
-              <div className="terminal-wrapper" id={`tabpanel-${activeId}`} role="tabpanel" style={{ display: 'flex' }}>
+              <div className="terminal-wrapper" id={`tabpanel-${sessionTabId}`} role="tabpanel" style={{ display }}>
                 <div className="banner banner--warning" role="status">
                   <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
                   <span className="banner__message">
@@ -1248,15 +1290,17 @@ function App(): React.ReactElement {
             // terminal tabs use — so flex:1 fills the pane. Fixes both the remote
             // tab and the native web-guest bootstrap tab without touching the
             // shared Hub-modal classes (still used by HubInteractiveModal).
-            <div className="terminal-wrapper" id={`tabpanel-${activeId}`} role="tabpanel" style={{ display: 'flex' }}>
-              {/* CR-03: key on the tab id (host plus session, INPT-04) so
+            <div className="terminal-wrapper" id={`tabpanel-${sessionTabId}`} role="tabpanel" style={{ display }}>
+              {/* CR-03: key on the session's tab id (host plus session, INPT-04) so
                   React remounts (drops stale plugin-config useState) when
                   the active tab switches to a different remote session,
                   even one with the same id on another Mac; the cap too, so
-                  a reconnect after a re-share dials afresh (WR-06). */}
-              <ErrorBoundary label="web-session" resetKey={activeId}>
+                  a reconnect after a re-share dials afresh (WR-06). Phase 11:
+                  the session's tab id, not the active one, so showing one of
+                  its previews never remounts it or closes its socket. */}
+              <ErrorBoundary label="web-session" resetKey={sessionTabId}>
               <WebShareSessionView
-                key={`${activeId}:${wsCapToken}`}
+                key={`${sessionTabId}:${wsCapToken}`}
                 sessionId={wsSessionId}
                 capToken={wsCapToken}
                 baseURL={activeWebTab?.baseURL}
@@ -1274,6 +1318,8 @@ function App(): React.ReactElement {
                 beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId) : undefined}
                 onReconnectingChange={peerHost ? (on) => setReconnectingHost((h) => (on ? peerHost : h === peerHost ? null : h)) : undefined}
                 snapshotHost={peerHost && activeWebTab ? peerSnapshotHost(activeWebTab) : undefined}
+                isActive={!activePreview}
+                onPreview={(ev) => handlePreview(sessionTabId, ev)}
               />
               </ErrorBoundary>
             </div>
@@ -1347,7 +1393,7 @@ function App(): React.ReactElement {
         {(() => {
           // Only the visible preview renders (11-CONTEXT: a slow parser must never run for a background tab).
           const entry = activeId !== null ? previews.find((e) => e.tabId === activeId) : undefined
-          return entry ? <PreviewPanel key={entry.tabId} entry={entry} webMode={mode === 'web'} /> : null
+          return entry ? <PreviewPanel key={entry.tabId} entry={entry} webMode={mode === 'web'} autoFocus={focusPreview === entry.tabId} /> : null
         })()}
         </div>
       </div>
