@@ -158,7 +158,10 @@ export interface RelayClientCallbacks {
    * DEBT-05: a socket this client did not close died while a split paste may not
    * have reached the host. sentBytes counts the payload of whole frames that left
    * the browser; null when nothing was left here but the host never acknowledged
-   * the paste (kernel-buffered bytes die with the connection). Never resent.
+   * the paste (kernel-buffered bytes die with the connection). The ack is a pong:
+   * the host read the paste and queued it for the PTY in order, and queued bytes
+   * still reach the shell after a drop (INPT-01), so the notice covers only bytes
+   * sent after the last pong. Never resent.
    */
   onPasteInterrupted?: (info: { sentBytes: number | null; totalBytes: number }) => void
 }
@@ -194,9 +197,10 @@ export class RelayClient {
   private offsetValid = false
   private hasRendered = false
   private awaitingReplayMeta = true
-  // DEBT-05, per socket: the last split paste not yet acknowledged, as queued segments
-  // (payload 0 marks bytes queued between two folded pastes) plus the bytes queued
-  // after it; and pings sent / pongs received, so a pong can be matched to its ping.
+  // DEBT-05, per socket: the last split paste not yet acknowledged (no pong yet to
+  // say the host read it and queued it for the PTY), as queued segments (payload 0
+  // marks bytes queued between two folded pastes) plus the bytes queued after it;
+  // and pings sent / pongs received, so a pong can be matched to its ping.
   private paste: { segs: { bytes: number; payload: number }[]; after: number; totalBytes: number; ackPing: number } | null = null
   private pingsSent = 0
   private pongsReceived = 0
@@ -369,7 +373,8 @@ export class RelayClient {
         break
       case 'pong':
         this.pongSeen = true
-        // The server answers frames in order, so the pong to the paste's ping proves it read every paste frame.
+        // The server reads a socket's frames in order, so the pong to the paste's ping proves it read every
+        // paste frame and queued it for the PTY in order; queued bytes still reach the shell after a drop.
         this.pongsReceived++
         if (this.paste && this.pongsReceived >= this.paste.ackPing) this.paste = null
         break
@@ -554,7 +559,8 @@ export class RelayClient {
       return
     }
     // DEBT-05: record the split paste (folded into one still unacknowledged), then ping:
-    // the server handles a socket's frames in order, so the pong acknowledges the paste.
+    // the server reads a socket's frames in order, so the pong acknowledges the paste as
+    // read and queued for the PTY (it may still be draining into a slow shell).
     const p = this.paste ?? { segs: [], after: 0, totalBytes: 0, ackPing: 0 }
     if (p.after > 0) p.segs.push({ bytes: p.after, payload: 0 })
     p.after = 0
@@ -588,7 +594,8 @@ export class RelayClient {
    * paste bytes left = what is buffered beyond the bytes queued after the paste. Only
    * whole frames count as sent: the server's reader drops a partial frame. Nothing
    * buffered still is not delivered until the ack pong: bytes in the kernel's send
-   * buffer die with the connection. A time window would not do: a dead socket is
+   * buffer die with the connection, while bytes the server read before its pong are
+   * queued for the PTY and still land. A time window would not do: a dead socket is
    * noticed up to RECONNECT.deadMs + probeGraceMs late. No resend: a double paste
    * into a shell is worse than a short one.
    */

@@ -764,6 +764,9 @@ func (o *oldHandoff) finish(peerGone <-chan int) {
 			dones = append(dones, h.RestartViewers())
 		}
 	}
+	// One deadline for the whole tail: the viewers' close handshakes, then the
+	// input they queued reaching the PTYs. Never longer (maxFrozen counts it).
+	deadline := time.Now().Add(restartDrain)
 	drain := time.NewTimer(restartDrain)
 	defer drain.Stop()
 wait:
@@ -774,6 +777,11 @@ wait:
 			break wait
 		}
 	}
+	// shortcut: an upgrade during a slow multi-MB paste can lose the bytes still
+	// queued here when the old daemon exits, after a pong told the client they
+	// were queued, so no notice shows; the loss is logged. Handing the queue to
+	// the takeover would close it.
+	waitHubsInputIdle(m, deadline)
 	if a.lock != nil {
 		_ = a.lock.Close() // the takeover holds its own copy
 	}
@@ -782,8 +790,26 @@ wait:
 	handoffExit(0)
 }
 
-// waitHubsInputIdle: RED stub (10-03 Task 3), replaced in the GREEN commit.
-func waitHubsInputIdle(m *relay.HubManager, deadline time.Time) map[string]int { return nil }
+// waitHubsInputIdle waits until every hub's queued viewer input reached its
+// PTY or the deadline passes, logs each session still holding some, and
+// returns those sessions' queued bytes (INPT-01, Research Pitfall 7).
+func waitHubsInputIdle(m *relay.HubManager, deadline time.Time) map[string]int {
+	var lost map[string]int
+	for _, id := range m.SessionIDs() {
+		h, ok := m.Get(id)
+		if !ok {
+			continue
+		}
+		if idle, queued := h.WaitInputIdle(time.Until(deadline)); !idle {
+			log.Printf("handoff: input still queued at exit session=%s bytes=%d", relay.DiagID(id), queued)
+			if lost == nil {
+				lost = make(map[string]int)
+			}
+			lost[id] = queued
+		}
+	}
+	return lost
+}
 
 // ---- new side --------------------------------------------------------------
 
