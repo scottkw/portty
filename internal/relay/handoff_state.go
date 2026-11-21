@@ -215,7 +215,6 @@ func NewHubFromState(st HubState, reader io.Reader, writer io.Writer, resizeFn f
 	h.lastMove = st.LastMove
 	h.cs = charState{g: st.CS.G, gl1: st.CS.GL1, link: st.CS.Link, vt: vtScan{state: st.CS.ScanState, need: st.CS.ScanNeed}, esc: st.CS.Esc}
 	h.ptyCols, h.ptyRows = st.PtyCols, st.PtyRows
-	h.settleCols, h.settleRows = st.PtyCols, st.PtyRows // Start begins the settle window
 	return h, nil
 }
 

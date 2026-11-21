@@ -114,7 +114,12 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	// VIEW-03: push authoritative host grid BEFORE scrollback replay so that
 	// replayed raw bytes land in a correctly-sized terminal grid. Direct conn.Write
 	// (not sub.Msgs) guarantees ordering before any queued live output.
-	if c, r := hub.Cols(), hub.Rows(); c > 0 && r > 0 {
+	// Only for a known grid (INPT-06): Cols/Rows give the 220x50 fallback on a
+	// never-sized hub, and a local tab that follows the server grid would
+	// flash it on every new session; its own first report bootstraps the grid
+	// and broadcasts it. The share server keeps the fallback push for web
+	// guests, which only ever follow the host's grid until they claim.
+	if c, r := hub.Cols(), hub.Rows(); hub.GridKnown() && c > 0 && r > 0 {
 		if err := conn.Write(ctx, websocket.MessageBinary, MakeResizeFrame(uint16(c), uint16(r))); err != nil {
 			return
 		}

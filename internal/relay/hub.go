@@ -119,12 +119,6 @@ type Hub struct {
 	wantCols int
 	wantRows int
 	owner    *Subscriber
-	// settleCols, settleRows: the grid a hub imported from a handoff came
-	// with, a cap on the arbiter until settleTimer (armed by Start) fires
-	// (handoffSettle). Zero otherwise. All three under mu.
-	settleCols  int
-	settleRows  int
-	settleTimer *time.Timer
 
 	// Phase 175-04 (BUG-04, #119): live per-hub VT emulator + its own guard.
 	// liveEmu is nil until EnsureLiveEmulator's first call (lazy — T-175-04-01:
@@ -757,35 +751,16 @@ func (h *Hub) frozenLocked() bool {
 	}
 }
 
-// handoffSettle is how long an imported hub's grid may only shrink: local
-// viewers rejoin the new daemon one at a time within about 1.6 s (V-02).
-const handoffSettle = 3 * time.Second
-
-// Start runs the read loop of a staged hub (NewHubFromState), once, and
-// starts its settle window.
+// Start runs the read loop of a staged hub (NewHubFromState), once.
+//
+// No post-handoff grace period is needed (Phase 9 had one, 09-07-FIX2.md):
+// under min-among-local, viewers rejoining one by one grew and then shrank
+// the imported grid, and each change bumped geomEnd so later resumes were
+// full replays. An imported hub's grid is known, so the bootstrap cannot
+// fire, and joins and reports never move a known grid; only a claim does
+// (INPT-06). TestHub_HandoffRejoinKeepsGrid pins V-02.
 func (h *Hub) Start() {
-	h.startOnce.Do(func() {
-		h.mu.Lock()
-		if h.settleCols > 0 && !h.closed {
-			h.settleTimer = time.AfterFunc(handoffSettle, h.endSettle)
-		}
-		h.mu.Unlock()
-		go h.Run()
-	})
-}
-
-// endSettle ends the settle window and re-runs the arbiter without the
-// imported grid. A frozen hub is left to Thaw, which re-runs it anyway.
-func (h *Hub) endSettle() {
-	h.gridMu.Lock()
-	defer h.gridMu.Unlock()
-	h.mu.Lock()
-	h.settleCols, h.settleRows = 0, 0
-	if h.freezing || h.closed {
-		h.mu.Unlock()
-		return
-	}
-	_ = h.applyGridLocked("settle") // releases mu; a failed PTY resize stays the next resize's to retry
+	h.startOnce.Do(func() { go h.Run() })
 }
 
 // recordFrameLocked appends the framed bytes to the scrollback ring AND feeds the
@@ -1458,9 +1433,6 @@ func (h *Hub) Shutdown() {
 	h.closeOnce.Do(func() {
 		h.mu.Lock()
 		h.closed = true
-		if h.settleTimer != nil {
-			h.settleTimer.Stop()
-		}
 		h.mu.Unlock()
 		close(h.done)
 	})
@@ -1811,8 +1783,8 @@ func (h *Hub) joinLocked(sub *Subscriber, resume uint64, hasResume bool) (r Repl
 	return r, h.scrollback.Snapshot(), true
 }
 
-// Cols returns the current PTY column width as set by the host-authority resize
-// arbiter. Returns 220 when no resize has been applied (fallback for
+// Cols returns the current PTY column width as set by a claim, the bootstrap
+// or a handoff import. Returns 220 when no resize has been applied (fallback for
 // scrollback VT extraction — wide enough to avoid spurious line wrapping).
 // Phase 139 / CARD-05.
 func (h *Hub) Cols() int {
@@ -1824,8 +1796,8 @@ func (h *Hub) Cols() int {
 	return h.ptyCols
 }
 
-// Rows returns the current PTY row height as set by the host-authority resize
-// arbiter. Returns 50 when no resize has been applied (fallback mirrors
+// Rows returns the current PTY row height as set by a claim, the bootstrap
+// or a handoff import. Returns 50 when no resize has been applied (fallback mirrors
 // engine.go emuRows default; needed by VIEW-03 join-push in Plan 02).
 func (h *Hub) Rows() int {
 	h.mu.Lock()
@@ -1834,6 +1806,14 @@ func (h *Hub) Rows() int {
 		return 50
 	}
 	return h.ptyRows
+}
+
+// GridKnown reports whether the grid was ever set (bootstrap, claim or a
+// handoff import), so Cols and Rows are not the 220x50 fallback.
+func (h *Hub) GridKnown() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.ptyCols > 0 && h.ptyRows > 0
 }
 
 // Done returns a channel that is closed when the hub shuts down.
