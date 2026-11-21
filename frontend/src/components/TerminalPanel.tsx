@@ -999,7 +999,12 @@ export function TerminalPanel({
     // A window resize is the user taking the size: claim once the drag settles,
     // but only if a person can have caused it (WR-03). macOS also resizes an
     // unattended window (display unplugged or asleep, wake, Stage Manager); that
-    // only reports, so it cannot take the grid from the viewer in use.
+    // only reports, so it cannot take the grid from the viewer in use. Visible
+    // and focused is a proxy for "a person is here", not proof (IN-08).
+    // shortcut: a key window on an unlocked, unattended Mac still claims on a
+    // display change (monitor power-off, dock or KVM switch, resolution change),
+    // and a user dragging the edge of an inactive window only reports; gate on
+    // recent pointerdown/keydown instead if either shows up for real.
     let claimTimer: ReturnType<typeof setTimeout> | undefined
     const onWindowResize = () => {
       clearTimeout(claimTimer)
