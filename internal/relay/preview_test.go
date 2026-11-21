@@ -279,3 +279,358 @@ func TestPreviewFrames_Fixture(t *testing.T) {
 		t.Fatalf("fixture stale: run go test ./internal/relay -run TestPreviewFrames_Fixture -update-preview-fixture (read err: %v)", err)
 	}
 }
+
+// drainUntil keeps reading sub's queue until stop closes, so a viewer that
+// finished its preview never fills up on terminal output and gets kicked.
+func drainUntil(sub *Subscriber, stop <-chan struct{}) {
+	for {
+		select {
+		case <-sub.Msgs:
+		case <-stop:
+			return
+		}
+	}
+}
+
+// TestHubSendPreview_NearCapNoKick: a 20,000,000-byte preview to two
+// throttled viewers (one read-only) while the terminal ticks: nobody is
+// kicked, every byte arrives in order, and terminal output keeps flowing
+// during the stream (ROADMAP Phase 11 SC3).
+func TestHubSendPreview_NearCapNoKick(t *testing.T) {
+	hub, w := makeTestHub(t)
+	a, kickedA := previewSub()
+	b, kickedB := previewSub()
+	b.ReadOnly = true
+	hub.Subscribe(a)
+	hub.Subscribe(b)
+	go hub.Run()
+
+	stopTick := make(chan struct{})
+	tickDone := make(chan struct{})
+	go func() {
+		defer close(tickDone)
+		tk := time.NewTicker(5 * time.Millisecond)
+		defer tk.Stop()
+		for n := 0; ; n++ {
+			select {
+			case <-stopTick:
+				return
+			case <-tk.C:
+				if _, err := fmt.Fprintf(w, "TICK %d\r\n", n); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	data := previewData(PreviewMaxBytes)
+	stopDrain := make(chan struct{})
+	results := make(chan previewGot, 2)
+	for _, sub := range []*Subscriber{a, b} {
+		go func() {
+			sent := false
+			defer func() { // readPreview's t.Fatalf exits this goroutine: unblock the test
+				if !sent {
+					results <- previewGot{status: 0xff}
+				}
+			}()
+			g := readPreview(t, sub, time.Millisecond, 50*time.Second)
+			results <- g
+			sent = true
+			drainUntil(sub, stopDrain)
+		}()
+	}
+	start := time.Now()
+	ps, err := hub.SendPreview(Preview{Name: "big.pdf", MIME: "application/pdf", Key: testPreviewKey, Data: data})
+	if err != nil || ps.Viewers != 2 {
+		t.Fatalf("SendPreview: %+v err=%v", ps, err)
+	}
+	g1, g2 := <-results, <-results
+	waitDone(t, ps.Done, 5*time.Second)
+	t.Logf("near-cap preview to 2 throttled viewers took %s", time.Since(start).Round(time.Millisecond))
+	close(stopTick)
+	<-tickDone
+	w.Close()
+	<-hub.Done()
+	close(stopDrain)
+
+	for i, g := range []previewGot{g1, g2} {
+		if g.status != PreviewOK || !bytes.Equal(g.data, data) {
+			t.Errorf("viewer %d: status=%d bytes=%d equal=%v", i, g.status, len(g.data), bytes.Equal(g.data, data))
+		}
+		if g.outputs < 20 {
+			t.Errorf("viewer %d: %d terminal frames during the preview, want >= 20", i, g.outputs)
+		}
+	}
+	if kickedA.Load() || kickedB.Load() {
+		t.Errorf("kicked: a=%v b=%v", kickedA.Load(), kickedB.Load())
+	}
+}
+
+func hasPreviewFrame(frames [][]byte) bool {
+	for _, f := range frames {
+		if f[0] == MsgPreview {
+			return true
+		}
+	}
+	return false
+}
+
+func queued(sub *Subscriber) [][]byte {
+	var out [][]byte
+	for {
+		select {
+		case f := <-sub.Msgs:
+			out = append(out, f)
+		default:
+			return out
+		}
+	}
+}
+
+func TestHubSendPreview_SkipsReplayingAndLateJoiners(t *testing.T) {
+	hub, w := makeTestHub(t)
+	defer w.Close()
+	replaying, kickedR := previewSub()
+	hub.Join(replaying, 0, false) // replay not finished: TakePending never called
+	n, kickedN := previewSub()
+	hub.Subscribe(n)
+
+	data := previewData(1 << 20)
+	ps, err := hub.SendPreview(Preview{Name: "a.png", MIME: "image/png", Key: testPreviewKey, Data: data})
+	if err != nil || ps.Viewers != 1 {
+		t.Fatalf("SendPreview: %+v err=%v, want 1 viewer", ps, err)
+	}
+	late, kickedL := previewSub()
+	hub.Subscribe(late)
+	if g := readPreview(t, n, time.Millisecond, 10*time.Second); g.status != PreviewOK || !bytes.Equal(g.data, data) {
+		t.Fatalf("viewer: status=%d bytes=%d", g.status, len(g.data))
+	}
+	waitDone(t, ps.Done, 5*time.Second)
+
+	hub.mu.Lock()
+	pending := replaying.pending
+	hub.mu.Unlock()
+	if hasPreviewFrame(pending) || hasPreviewFrame(queued(replaying)) {
+		t.Error("replaying viewer got a preview frame")
+	}
+	if hasPreviewFrame(queued(late)) {
+		t.Error("late joiner got a preview frame")
+	}
+	if kickedR.Load() || kickedN.Load() || kickedL.Load() {
+		t.Error("a viewer was kicked")
+	}
+}
+
+func TestHubSendPreview_NoOwnerNobodyFocuses(t *testing.T) {
+	hub, w := makeTestHub(t)
+	defer w.Close()
+	a, _ := previewSub()
+	b, _ := previewSub()
+	hub.Subscribe(a)
+	hub.Subscribe(b)
+	p := Preview{Name: "a.png", MIME: "image/png", Key: testPreviewKey, Data: previewData(10)}
+
+	ps, err := hub.SendPreview(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sub := range []*Subscriber{a, b} {
+		if g := readPreview(t, sub, 0, 5*time.Second); g.header.Focus {
+			t.Error("focus true with no owner")
+		}
+	}
+	waitDone(t, ps.Done, 5*time.Second)
+
+	makeOwner(t, hub, a)
+	hub.Unsubscribe(a)
+	ps, err = hub.SendPreview(p)
+	if err != nil || ps.Viewers != 1 {
+		t.Fatalf("SendPreview: %+v err=%v", ps, err)
+	}
+	if g := readPreview(t, b, 0, 5*time.Second); g.header.Focus {
+		t.Error("focus true after the owner left")
+	}
+	waitDone(t, ps.Done, 5*time.Second)
+}
+
+func TestHubSendPreview_Busy(t *testing.T) {
+	hub, w := makeTestHub(t)
+	defer w.Close()
+	stuck, _ := previewSub() // never drains: the first preview stays in flight
+	hub.Subscribe(stuck)
+	p := Preview{Name: "a.png", MIME: "image/png", Key: testPreviewKey, Data: previewData(1 << 20)}
+	first, err := hub.SendPreview(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hub.SendPreview(p); err != ErrPreviewBusy {
+		t.Fatalf("second SendPreview: %v, want ErrPreviewBusy", err)
+	}
+	hub.Unsubscribe(stuck)
+	waitDone(t, first.Done, 5*time.Second)
+
+	next, _ := previewSub()
+	hub.Subscribe(next)
+	ps, err := hub.SendPreview(p)
+	if err != nil || ps.Viewers != 1 {
+		t.Fatalf("after Done: %+v err=%v", ps, err)
+	}
+	if g := readPreview(t, next, 0, 10*time.Second); g.status != PreviewOK || g.header.ID != 2 {
+		t.Errorf("after Done: status=%d id=%d", g.status, g.header.ID)
+	}
+	waitDone(t, ps.Done, 5*time.Second)
+}
+
+func waitQueued(t *testing.T, sub *Subscriber, n int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for len(sub.Msgs) < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("queue reached %d, want %d", len(sub.Msgs), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestHubSendPreview_ViewerLeavesMidStream(t *testing.T) {
+	hub, w := makeTestHub(t)
+	defer w.Close()
+	stays, kickedS := previewSub()
+	leaves, kickedL := previewSub()
+	hub.Subscribe(stays)
+	hub.Subscribe(leaves)
+	data := previewData(1 << 20)
+	ps, err := hub.SendPreview(Preview{Name: "a.png", MIME: "image/png", Key: testPreviewKey, Data: data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitQueued(t, leaves, PreviewWindow) // leaves never drains: its sender waits at the window
+	hub.Unsubscribe(leaves)
+	if g := readPreview(t, stays, time.Millisecond, 10*time.Second); g.status != PreviewOK || !bytes.Equal(g.data, data) {
+		t.Errorf("staying viewer: status=%d bytes=%d", g.status, len(g.data))
+	}
+	waitDone(t, ps.Done, 5*time.Second)
+	frames := queued(leaves)
+	if len(frames) > PreviewWindow {
+		t.Errorf("leaver got %d frames, want <= %d", len(frames), PreviewWindow)
+	}
+	for _, f := range frames {
+		if f[0] == MsgPreview && f[1] == previewKindEnd {
+			t.Error("leaver got an end frame")
+		}
+	}
+	if kickedS.Load() || kickedL.Load() {
+		t.Error("a viewer was kicked")
+	}
+}
+
+func TestHubSendPreview_HubEnds(t *testing.T) {
+	hub, w := makeTestHub(t)
+	a, kickedA := previewSub()
+	b, kickedB := previewSub()
+	hub.Subscribe(a)
+	hub.Subscribe(b)
+	go hub.Run()
+	ps, err := hub.SendPreview(Preview{Name: "a.png", MIME: "image/png", Key: testPreviewKey, Data: previewData(1 << 20)})
+	if err != nil || ps.Viewers != 2 {
+		t.Fatalf("SendPreview: %+v err=%v", ps, err)
+	}
+	waitQueued(t, a, PreviewWindow)
+	waitQueued(t, b, PreviewWindow)
+	w.Close() // the shell exits: Run sees EOF and shuts the hub down
+	waitDone(t, ps.Done, 5*time.Second)
+	for name, sub := range map[string]*Subscriber{"a": a, "b": b} {
+		frames := queued(sub)
+		_, status, err := ParsePreviewEnd(frames[len(frames)-1])
+		if err != nil || status != PreviewAborted {
+			t.Errorf("%s: last frame not an aborted end (err=%v status=%d)", name, err, status)
+		}
+	}
+	if kickedA.Load() || kickedB.Load() {
+		t.Error("a viewer was kicked")
+	}
+	if _, err := hub.SendPreview(Preview{Name: "a.png", MIME: "image/png", Key: testPreviewKey}); err != ErrHubEnded {
+		t.Errorf("SendPreview on an ended hub: %v, want ErrHubEnded", err)
+	}
+}
+
+func TestHubSendPreview_StallAborts(t *testing.T) {
+	old := previewStallTimeout
+	previewStallTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { previewStallTimeout = old })
+	hub, w := makeTestHub(t)
+	defer w.Close()
+	stuck, kicked := previewSub()
+	hub.Subscribe(stuck)
+	ps, err := hub.SendPreview(Preview{Name: "a.png", MIME: "image/png", Key: testPreviewKey, Data: previewData(1 << 20)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, ps.Done, 5*time.Second)
+	frames := queued(stuck)
+	if len(frames) != PreviewWindow+1 {
+		t.Errorf("stuck viewer holds %d frames, want the window (%d) plus the end", len(frames), PreviewWindow)
+	}
+	if _, status, err := ParsePreviewEnd(frames[len(frames)-1]); err != nil || status != PreviewAborted {
+		t.Errorf("last frame not an aborted end (err=%v status=%d)", err, status)
+	}
+	if kicked.Load() {
+		t.Error("stuck viewer was kicked")
+	}
+	hub.mu.Lock()
+	_, still := hub.subscribers[stuck]
+	hub.mu.Unlock()
+	if !still {
+		t.Error("stuck viewer was unsubscribed")
+	}
+}
+
+func TestHubSendPreview_Invalid(t *testing.T) {
+	hub, w := makeTestHub(t)
+	defer w.Close()
+	sub, _ := previewSub()
+	hub.Subscribe(sub)
+	ok := Preview{Name: "a.png", MIME: "image/png", Key: testPreviewKey, Data: previewData(10)}
+	bad := map[string]func(p *Preview){
+		"oversize":     func(p *Preview) { p.Data = make([]byte, PreviewMaxBytes+1) },
+		"mime":         func(p *Preview) { p.MIME = "text/html" },
+		"key short":    func(p *Preview) { p.Key = testPreviewKey[1:] },
+		"key upper":    func(p *Preview) { p.Key = strings.ToUpper(testPreviewKey) },
+		"name control": func(p *Preview) { p.Name = "a\x1b[2J.png" },
+		"name c1":      func(p *Preview) { p.Name = "a\u009b.png" },
+		"name empty":   func(p *Preview) { p.Name = "" },
+		"name long":    func(p *Preview) { p.Name = strings.Repeat("a", 256) },
+		"name utf8":    func(p *Preview) { p.Name = "a\xff.png" },
+	}
+	for name, mutate := range bad {
+		p := ok
+		mutate(&p)
+		if _, err := hub.SendPreview(p); err != ErrPreviewInvalid {
+			t.Errorf("%s: %v, want ErrPreviewInvalid", name, err)
+		}
+	}
+	if n := len(sub.Msgs); n != 0 {
+		t.Errorf("invalid previews queued %d frames", n)
+	}
+	ps, err := hub.SendPreview(ok) // and nothing was left busy
+	if err != nil {
+		t.Fatal(err)
+	}
+	readPreview(t, sub, 0, 5*time.Second)
+	waitDone(t, ps.Done, 5*time.Second)
+}
+
+func TestHubSendPreview_NoViewers(t *testing.T) {
+	hub, w := makeTestHub(t)
+	defer w.Close()
+	ps, err := hub.SendPreview(Preview{Name: "a.png", MIME: "image/png", Key: testPreviewKey, Data: previewData(10)})
+	if err != nil || ps.Viewers != 0 {
+		t.Fatalf("SendPreview: %+v err=%v", ps, err)
+	}
+	select {
+	case <-ps.Done:
+	default:
+		t.Error("Done not closed with no viewers")
+	}
+}
