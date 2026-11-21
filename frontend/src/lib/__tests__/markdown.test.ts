@@ -1,5 +1,6 @@
 // Phase 11 (PREV-02): the Markdown renderer and its sanitizer configuration.
 import { describe, it, expect } from 'vitest'
+import DOMPurify from 'dompurify'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
@@ -120,6 +121,17 @@ describe('renderMarkdown (PREV-02)', () => {
     expect(tasks[1].textContent).toBe('☐')
     expect(out).not.toMatch(/<input/i)
   })
+})
+
+// 11-REVIEW WR-02: where DOMPurify can't run it returns its input unchanged; sanitizeMarkdown throws instead.
+it('sanitizeMarkdown fails closed when DOMPurify is unsupported', () => {
+  const was = DOMPurify.isSupported
+  DOMPurify.isSupported = false
+  try {
+    expect(() => sanitizeMarkdown('<img src=x onerror=alert(1)>')).toThrow('sanitizer unavailable')
+  } finally {
+    DOMPurify.isSupported = was
+  }
 })
 
 describe('renderMarkdown hostile fixture (PREV-02)', () => {

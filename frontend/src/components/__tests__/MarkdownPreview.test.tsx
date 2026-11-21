@@ -98,6 +98,10 @@ describe('MarkdownPreview (PREV-02)', () => {
     const client = readFileSync(resolve(here, '../../lib/parseMarkdownInWorker.ts'), 'utf8')
     expect(client).not.toMatch(/^import /m)
     expect(client).toContain("new Worker(new URL('./markdownWorker.ts', import.meta.url), { type: 'module' })")
+    // 11-REVIEW WR-02: the worker side never sees the sanitizer (in a worker DOMPurify passes HTML through).
+    for (const f of ['../../lib/markdownWorker.ts', '../../lib/markdown.ts']) {
+      expect(readFileSync(resolve(here, f), 'utf8'), f).not.toMatch(/(from|import\()\s*['"][^'"]*(dompurify|markdownSanitize)/i)
+    }
   })
 
   it('calls onFail when the blob cannot be read', async () => {

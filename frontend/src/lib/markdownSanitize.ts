@@ -26,5 +26,7 @@ const SANITIZE = {
 }
 
 export function sanitizeMarkdown(html: string): string {
+  // DOMPurify returns its input unchanged where it can't run (e.g. a worker): fail closed (11-REVIEW WR-02).
+  if (!DOMPurify.isSupported || typeof document === 'undefined') throw new Error('sanitizer unavailable')
   return DOMPurify.sanitize(html, SANITIZE)
 }
