@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"unicode/utf8"
@@ -31,11 +30,17 @@ const openUsage = "usage: portty open <file>"
 //
 //	portty open <file>
 func cmdOpen(client *daemon.DaemonClient, args []string, out io.Writer) error {
-	args = slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == restartDaemonFlag || a == keepDaemonFlag })
+	// The daemon flags (ignored) only lead, and -- ends the options, so any file name can be opened (11-REVIEW IN-06).
+	for len(args) > 0 && (args[0] == restartDaemonFlag || args[0] == keepDaemonFlag) {
+		args = args[1:]
+	}
 	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
 		fmt.Fprintln(out, openUsage)
 		fmt.Fprintln(out, "Show an image, PDF or Markdown file in a preview tab.")
 		return nil
+	}
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
 	}
 	if len(args) != 1 {
 		return errors.New(openUsage)

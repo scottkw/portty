@@ -312,11 +312,36 @@ func TestCmdOpen_Help(t *testing.T) {
 			t.Errorf("cmdOpen(%s) printed %q", arg, out.String())
 		}
 	}
-	// The daemon flags are dropped, not read as a second argument (or a file).
+	// Leading daemon flags are dropped, not read as a second argument (or a file).
 	t.Setenv("PORTTY_SESSION_ID", "")
-	err := cmdOpen(nil, []string{"--restart-daemon", "x.png", "--keep-daemon"}, io.Discard)
+	err := cmdOpen(nil, []string{"--restart-daemon", "--keep-daemon", "x.png"}, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "isn't a Portty session") {
 		t.Errorf("with daemon flags: %v, want the not-a-session line", err)
+	}
+}
+
+// 11-REVIEW IN-06: after the file, or after --, a flag-like word is a file name.
+func TestCmdOpen_EndOfOptions(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	for _, name := range []string{"-h", "--help", "--keep-daemon"} {
+		writeFile(t, dir, name, pngBytes)
+	}
+	t.Setenv("PORTTY_SESSION_ID", openTestSession)
+	var posts atomic.Int32
+	d := previewDaemon(t, 3, http.StatusAccepted, `{"viewers":1}`, &posts)
+	for _, args := range [][]string{{"--", "-h"}, {"--", "--help"}, {"--restart-daemon", "--", "--keep-daemon"}} {
+		var out bytes.Buffer
+		if err := cmdOpen(d, args, &out); err != nil || out.Len() != 0 {
+			t.Errorf("cmdOpen(%q) = %v, printed %q; want the file sent quietly", args, err, out.String())
+		}
+	}
+	if n := posts.Load(); n != 3 {
+		t.Errorf("previews sent = %d, want 3", n)
+	}
+	// A daemon flag after the file is a second file, not a dropped flag.
+	if err := cmdOpen(d, []string{"x.png", "--keep-daemon"}, io.Discard); err == nil || err.Error() != openUsage {
+		t.Errorf("trailing flag: %v, want the usage line", err)
 	}
 }
 
