@@ -100,7 +100,18 @@ Plans:
   3. A file over the size cap shows a clear "too large to preview" message, never a partial render. While a file near the cap streams, the terminal keeps updating and no viewer is dropped. Neither the daemon nor the share server gains any route that reads a file by path; tests and the security review confirm it. (PREV-03)
   4. A browser share viewer on the home VM gets the same previews through the share link. The share page CSP (today `img-src 'self' data:`) changes only as far as the phase's security review approves, the review is recorded, and the token gate, the tailnet-only listener and `frame-ancestors 'none'` are unchanged. (PREV-04)
   5. On a VM with nothing on the PATH by hand, `portty open` works in a new Portty session (zsh login shell) with no setup. In Terminal.app, `portty` is not found until Portty menu → "Install Command-Line Tool…" is used; after the macOS administrator prompt, `/usr/local/bin/portty` points into /Applications/Portty.app and `portty list` works there. Cancelling the prompt changes nothing, and an existing link to something else is reported, not overwritten. (PREV-05)
-**Plans**: TBD
+**Plans**: 10 plans
+Plans:
+- [ ] 11-01-PLAN.md — PDF and SVG spike first: a blob: PDF in the real Wails v2 web view (iframe/object/embed) and on the share page in Safari under the real CSP with candidate directives; verdict, PDF element and CSP delta in 11-SPIKE.md (PREV-02, PREV-04)
+- [ ] 11-02-PLAN.md — Relay wire format MsgPreview (0x21) and Hub.SendPreview: paced per-viewer sender that never kicks, owner-only focus bit, near-cap test with a ticking terminal, golden fixture for the frontend (PREV-01, PREV-03)
+- [ ] 11-03-PLAN.md — Session identity and PATH: PORTTY_SESSION_ID set before spawn, per-user `portty` link refreshed atomically and prepended to each new session's PATH, path_helper survival test (PREV-01, PREV-05)
+- [ ] 11-04-PLAN.md — Daemon route POST /sessions/{id}/preview on the unix socket only: validation, 202 then async streaming (handoff drain not blocked), route absence and source gate, API 3, DaemonClient.SendPreview (PREV-01, PREV-03)
+- [ ] 11-05-PLAN.md — Frontend data path: MSG_PREVIEW parsing against the Go fixture, bounded assembler, PreviewStore (refresh in place, 10 tabs, 100 MiB, URL revoke), onPreview through TerminalPanel and WebShareSessionView (PREV-01, PREV-03)
+- [ ] 11-06-PLAN.md — Image and PDF renderers and the share CSP: ImagePreview (fit, Actual Size, checkerboard; hostile SVG fixtures), PdfPreview per the spike, base preview styles, minimal reviewed CSP delta with tests, 11-SECURITY-REVIEW.md (PREV-02, PREV-04)
+- [ ] 11-07-PLAN.md — Markdown renderer: marked 18.1.3 and dompurify 3.4.17 exact-pinned and lazy-loaded, strict sanitizer, hostile Markdown fixture, gated links, Markdown styles, the review's Dependencies section (PREV-02)
+- [ ] 11-08-PLAN.md — `portty open` CLI (type detection, cap, UI-SPEC one-line errors, never restarts the daemon, real-launch check) and Portty ▸ Install Command-Line Tool… (lstat first, osascript argv, cancel, foreign link, DMG), README step 2 (PREV-01, PREV-03, PREV-05)
+- [ ] 11-09-PLAN.md — Preview tabs and pane: tab beside its session, focus only for the typist, keep-mounted peer and browser views, close/refresh/limit rules, browser tab bar, PreviewPanel states and accessibility (PREV-01, PREV-02, PREV-04)
+- [ ] 11-10-PLAN.md — Gate once, TESTING.md (Sections 2, 4, Category BA), Tart VM checks for SC1-SC5 (beacons, near-cap with four viewers, Safari CSP, admin prompt), upgrade sanity A→B and B→B2 mid-preview, old viewer, security review verdict (all PREV)
 **UI hint**: yes
 
 ### Phase 12: File Path Click
