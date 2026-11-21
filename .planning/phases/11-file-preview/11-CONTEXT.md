@@ -54,6 +54,11 @@
 | Extra copy | Accept the planner's CLI busy line, the Open PDF pane copy (spike verdict b), the old-session wording (verbatim UI-SPEC line), and task lists as ☑/☐ glyphs. | Consistent with UI-SPEC style. |
 | Spike gate | 11-01 changes no repo code, so its gate is "only 11-SPIKE.md changed" (no Go suite). | Saves firewall alerts. |
 
+### Decided during execution (2026-11-21, autonomous)
+| Question | Decision | Why |
+|---|---|---|
+| marked slowdown on unclosed emphasis (11-07: 80 KB takes 23 s; 2 MB never finishes; upstream, no advisory) | Parse Markdown in a Web Worker with a hard timeout (3 s; on timeout terminate the worker and show "Couldn't Show File"), AND render a preview pane only while its tab is visible (11-09). The share page CSP gains `worker-src 'self'` (same-origin only; the security review records it; `frame-ancestors 'none'` unchanged). Keep marked; markdown-it is the fallback if the worker approach fails. | A frozen main thread would freeze the whole window, terminal tabs included, on an unattended Mac. The timeout bounds any parser pathology, not just this one. |
+
 ### Claude's Discretion
 - Plan split, file names, test names, chunk size, exact MIME sniffing, the preview tab's visual details within the UI spec.
 </decisions>
