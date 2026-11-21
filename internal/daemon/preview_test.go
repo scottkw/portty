@@ -3,11 +3,15 @@ package daemon
 import (
 	"bytes"
 	"encoding/json"
+	"go/parser"
+	"go/token"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -142,3 +146,203 @@ func TestPreview_NameIsPercentDecodedAndCleaned(t *testing.T) {
 	}
 }
 
+// noPreviewFrame fails if sub holds a preview frame.
+func noPreviewFrame(t *testing.T, sub *relay.Subscriber, what string) {
+	t.Helper()
+	for {
+		select {
+		case f := <-sub.Msgs:
+			if len(f) > 0 && f[0] == relay.MsgPreview {
+				t.Errorf("%s: a preview frame reached the viewer", what)
+			}
+		default:
+			return
+		}
+	}
+}
+
+// readCounter fails the test if the handler reads a body it should refuse
+// from Content-Length alone.
+type readCounter struct{ n atomic.Int64 }
+
+func (r *readCounter) Read(p []byte) (int, error) { r.n.Add(int64(len(p))); return len(p), nil }
+
+func TestPreview_Refusals(t *testing.T) {
+	a, hub, _ := previewAPI(t)
+	sub := previewSubscriber(hub)
+
+	endedAPI, ended, pw := previewAPI(t)
+	endedSub := previewSubscriber(ended)
+	pw.Close()
+	select {
+	case <-ended.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("hub did not end after its pipe closed")
+	}
+	if rec := serve(endedAPI, previewRequest("s1", "a.png", "image/png", previewTestKey, []byte("x"))); rec.Code != http.StatusConflict {
+		t.Errorf("ended hub = %d %s; want 409", rec.Code, rec.Body)
+	}
+	noPreviewFrame(t, endedSub, "ended hub")
+
+	small := []byte("x")
+	cases := []struct {
+		name string
+		req  func() *http.Request
+		want int
+	}{
+		{"unknown session", func() *http.Request {
+			return previewRequest("nope", "a.png", "image/png", previewTestKey, small)
+		}, http.StatusNotFound},
+		{"content-length over cap", func() *http.Request {
+			rc := &readCounter{}
+			req := httptest.NewRequest(http.MethodPost, "/sessions/s1/preview", rc)
+			req.Header.Set("X-Portty-Name", "a.png")
+			req.Header.Set("X-Portty-Mime", "image/png")
+			req.Header.Set("X-Portty-Key", previewTestKey)
+			req.ContentLength = relay.PreviewMaxBytes + 1
+			t.Cleanup(func() {
+				if rc.n.Load() != 0 {
+					t.Errorf("content-length over cap: handler read %d bytes; want 0", rc.n.Load())
+				}
+			})
+			return req
+		}, http.StatusRequestEntityTooLarge},
+		{"chunked body over cap", func() *http.Request {
+			req := previewRequest("s1", "a.png", "image/png", previewTestKey, make([]byte, relay.PreviewMaxBytes+1))
+			req.ContentLength = -1
+			return req
+		}, http.StatusRequestEntityTooLarge},
+		{"mime text/html", func() *http.Request {
+			return previewRequest("s1", "a.html", "text/html", previewTestKey, small)
+		}, http.StatusUnsupportedMediaType},
+		{"mime image/svg", func() *http.Request {
+			return previewRequest("s1", "a.svg", "image/svg", previewTestKey, small)
+		}, http.StatusUnsupportedMediaType},
+		{"missing key", func() *http.Request {
+			return previewRequest("s1", "a.png", "image/png", "", small)
+		}, http.StatusBadRequest},
+		{"31-hex key", func() *http.Request {
+			return previewRequest("s1", "a.png", "image/png", previewTestKey[1:], small)
+		}, http.StatusBadRequest},
+		{"uppercase key", func() *http.Request {
+			return previewRequest("s1", "a.png", "image/png", strings.ToUpper(previewTestKey), small)
+		}, http.StatusBadRequest},
+		{"empty name after cleaning", func() *http.Request {
+			return previewRequest("s1", "dir/‮\x01 ", "image/png", previewTestKey, small)
+		}, http.StatusBadRequest},
+		{"malformed percent-encoding", func() *http.Request {
+			req := previewRequest("s1", "", "image/png", previewTestKey, small)
+			req.Header.Set("X-Portty-Name", "a%zz.png")
+			return req
+		}, http.StatusBadRequest},
+	}
+	for _, c := range cases {
+		if rec := serve(a, c.req()); rec.Code != c.want {
+			t.Errorf("%s = %d %s; want %d", c.name, rec.Code, rec.Body, c.want)
+		}
+		noPreviewFrame(t, sub, c.name)
+	}
+}
+
+func TestPreview_BusyIs429(t *testing.T) {
+	a, hub, _ := previewAPI(t)
+	sub := previewSubscriber(hub) // never drained: the first preview stays in flight
+	defer hub.Unsubscribe(sub)
+	if rec := serve(a, previewRequest("s1", "a.png", "image/png", previewTestKey, previewBody(1<<20))); rec.Code != http.StatusAccepted {
+		t.Fatalf("first POST = %d %s", rec.Code, rec.Body)
+	}
+	rec := serve(a, previewRequest("s1", "b.png", "image/png", previewTestKey, []byte("x")))
+	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") != "1" {
+		t.Fatalf("second POST = %d Retry-After=%q; want 429 with Retry-After: 1", rec.Code, rec.Header().Get("Retry-After"))
+	}
+}
+
+func TestPreview_ZeroViewers(t *testing.T) {
+	a, _, _ := previewAPI(t)
+	rec := serve(a, previewRequest("s1", "a.pdf", "application/pdf", previewTestKey, []byte("%PDF-")))
+	if rec.Code != http.StatusAccepted || strings.TrimSpace(rec.Body.String()) != `{"viewers":0}` {
+		t.Fatalf("POST = %d %s; want 202 {\"viewers\":0}", rec.Code, rec.Body)
+	}
+}
+
+// RESEARCH Pitfall 4: a handoff drains writes for only writeDrainTimeout, so
+// the route must not hold the write gate while it streams.
+func TestPreview_HandoffDrainNotBlocked(t *testing.T) {
+	a, hub, _ := previewAPI(t)
+	sub := previewSubscriber(hub)
+	defer hub.Unsubscribe(sub) // ends the paced sender
+	body := previewBody(relay.PreviewMaxBytes)
+
+	recCh := make(chan *httptest.ResponseRecorder, 1)
+	go func() { recCh <- serve(a, previewRequest("s1", "big.pdf", "application/pdf", previewTestKey, body)) }()
+
+	var first, ended atomic.Bool
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() { // one frame per 10 ms: ~12 s for the whole preview
+		for {
+			select {
+			case f := <-sub.Msgs:
+				if len(f) > 0 && f[0] == relay.MsgPreview {
+					first.Store(true)
+					if _, _, err := relay.ParsePreviewEnd(f); err == nil {
+						ended.Store(true)
+					}
+				}
+				time.Sleep(10 * time.Millisecond)
+			case <-stop:
+				return
+			}
+		}
+	}()
+	for start := time.Now(); !first.Load(); time.Sleep(5 * time.Millisecond) {
+		if time.Since(start) > 10*time.Second {
+			t.Fatal("no preview frame reached the viewer")
+		}
+	}
+
+	start := time.Now()
+	if !a.drainWrites(writeDrainTimeout) {
+		t.Fatalf("drainWrites failed while the preview streamed (the route held the write gate)")
+	}
+	a.writeGate.Unlock()
+	if d := time.Since(start); d > writeDrainTimeout/2 {
+		t.Errorf("drainWrites took %s; want well within %s", d, writeDrainTimeout)
+	}
+	if ended.Load() {
+		t.Fatal("the preview finished before the drain; the test proved nothing")
+	}
+	if rec := <-recCh; rec.Code != http.StatusAccepted {
+		t.Fatalf("POST = %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestPreview_NotOnRelayHandler(t *testing.T) {
+	a, _, _ := previewAPI(t)
+	h := a.RelayHandler()
+	for _, m := range []string{http.MethodPost, http.MethodGet} {
+		req := previewRequest("s1", "a.png", "image/png", previewTestKey, []byte("x"))
+		req.Method = m
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("relay loopback %s /sessions/s1/preview = %d; want 404 or 405", m, rec.Code)
+		}
+	}
+}
+
+// PREV-03: no preview code can read a file by path.
+func TestPreview_SourceGate(t *testing.T) {
+	for _, path := range []string{"preview.go", "../relay/preview.go"} {
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, imp := range f.Imports {
+			p, _ := strconv.Unquote(imp.Path.Value)
+			if p == "os" || p == "io/fs" || p == "path/filepath" {
+				t.Errorf("%s imports %q; preview code must never touch the file system", path, p)
+			}
+		}
+	}
+}
