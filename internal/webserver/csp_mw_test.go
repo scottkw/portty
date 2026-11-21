@@ -354,6 +354,23 @@ func TestCSPHeaders_PreviewDelta(t *testing.T) {
 	if !strings.HasSuffix(csp, "; frame-ancestors 'none'") {
 		t.Errorf("frame-ancestors 'none' must be the last directive, unchanged: %s", csp)
 	}
+
+	// The whole policy: the pre-phase policy (Amendment 2) plus " blob:" in
+	// img-src. 11-SPIKE.md's Share CSP delta adds no frame-src and no
+	// object-src (browsers get Open PDF instead of a framed PDF).
+	wss := "wss://" + strings.TrimPrefix(ws.BaseURL(), "https://")
+	prePhase := "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
+		"connect-src 'self' " + wss + "; img-src 'self' data:; font-src 'self'; base-uri 'none'; " +
+		"form-action 'self'; frame-ancestors 'none'"
+	want := strings.Replace(prePhase, "img-src 'self' data:;", "img-src 'self' data: blob:;", 1)
+	if csp != want {
+		t.Errorf("CSP drifted from the reviewed policy (11-SECURITY-REVIEW.md):\n got %s\nwant %s", csp, want)
+	}
+	for _, name := range []string{"frame-src", "object-src", "child-src", "worker-src"} {
+		if strings.Contains(csp, name) {
+			t.Errorf("CSP must not carry %s (11-SPIKE.md Share CSP delta): %s", name, csp)
+		}
+	}
 }
 
 // extractDirective returns the value portion of a single CSP directive

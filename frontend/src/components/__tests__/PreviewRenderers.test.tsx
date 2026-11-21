@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { ImagePreview } from '../ImagePreview'
+import { PdfPreview } from '../PdfPreview'
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const fixtureDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../lib/__tests__/fixtures/preview')
@@ -153,4 +154,58 @@ describe('ImagePreview (PREV-02)', () => {
       expect(document.title).not.toMatch(/RAN/)
     },
   )
+})
+
+// 11-SPIKE.md decision: **PDF element:** iframe; **Browser PDF mode:** open-pdf.
+describe('PdfPreview (PREV-02, PREV-04)', () => {
+  it('desktop: one full-bleed iframe from the blob URL, titled with the file name', () => {
+    const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode={false} onFail={() => {}} />)
+    const frames = c.querySelectorAll('iframe')
+    expect(frames).toHaveLength(1)
+    expect(frames[0].getAttribute('src')).toBe('blob:test/pdf')
+    expect(frames[0].getAttribute('title')).toBe('report.pdf')
+    expect(frames[0].classList.contains('preview-pdf')).toBe(true)
+    expect(c.querySelector('object, embed, button')).toBeNull()
+  })
+
+  it.each([
+    ['application/pdf', 0],
+    ['text/html', 1],
+    [null, 0],
+  ] as const)('desktop: an iframe load whose document is %s calls onFail %d times', (contentType, calls) => {
+    const onFail = vi.fn()
+    const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode={false} onFail={onFail} />)
+    const frame = c.querySelector('iframe')!
+    onFail.mockClear()
+    // null is a document the page can't read (cross-origin): not treated as a failure.
+    Object.defineProperty(frame, 'contentDocument', {
+      configurable: true,
+      value: contentType === null ? null : { contentType },
+    })
+    act(() => {
+      frame.dispatchEvent(new Event('load'))
+    })
+    expect(onFail).toHaveBeenCalledTimes(calls)
+  })
+
+  it('desktop: autoFocus focuses the frame', () => {
+    const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode={false} onFail={() => {}} autoFocus />)
+    expect(document.activeElement).toBe(c.querySelector('iframe'))
+  })
+
+  it('web mode (open-pdf): no frame; the pane shows the accepted copy and Open PDF opens the blob top-level', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode onFail={() => {}} autoFocus />)
+    expect(c.querySelector('iframe, object, embed')).toBeNull()
+    expect(c.querySelector('h2')?.textContent).toBe('report.pdf')
+    expect(c.textContent).toContain("This browser can't show the PDF inside the page.")
+    const btn = c.querySelector('button') as HTMLButtonElement
+    expect(btn.textContent).toBe('Open PDF')
+    expect(document.activeElement).toBe(btn)
+    expect(open).not.toHaveBeenCalled()
+    act(() => btn.click())
+    // noopener makes window.open return null; that is not a failure (11-SPIKE.md S-04).
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledWith('blob:test/pdf', '_blank', 'noopener,noreferrer')
+  })
 })

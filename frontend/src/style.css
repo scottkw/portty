@@ -1749,6 +1749,19 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   max-height: none;
 }
 
+/* PDF (11-SPIKE.md: iframe): full-bleed, the native viewer draws everything. */
+.preview-pdf {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Browser share viewer, open-pdf mode: the empty-state stack with Open PDF. */
+.preview-pdf-open .empty-state__heading {
+  overflow-wrap: anywhere;
+}
+
 /* --- Colour tokens (Portty 02-03, THEM-01 / LOOK-01) ---
    Values from 02-UI-SPEC.md "Color". Light on :root, Dark in the
    prefers-color-scheme block; both blocks declare the same names. */

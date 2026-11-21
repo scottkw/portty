@@ -135,6 +135,25 @@ func TestCSPHeaderStrict_App(t *testing.T) {
 		t.Fatalf("expected 200 for /app/, got %d", resp.StatusCode)
 	}
 	assertCSPHeaderStrict(t, resp, ws.BaseURL(), "/app/")
+
+	// Phase 11 Amendment 3 (PREV-04): the served share page carries blob: in
+	// img-src only, no frame-src or object-src (11-SPIKE.md Share CSP delta),
+	// and frame-ancestors 'none' stays last.
+	csp := resp.Header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "; img-src 'self' data: blob:; ") {
+		t.Errorf("/app/: CSP missing img-src 'self' data: blob: (Amendment 3): %s", csp)
+	}
+	if strings.Count(csp, "blob:") != 1 {
+		t.Errorf("/app/: blob: must appear exactly once, in img-src (Amendment 3): %s", csp)
+	}
+	for _, name := range []string{"frame-src", "object-src"} {
+		if strings.Contains(csp, name) {
+			t.Errorf("/app/: CSP must not carry %s (11-SPIKE.md Share CSP delta): %s", name, csp)
+		}
+	}
+	if !strings.HasSuffix(csp, "; frame-ancestors 'none'") {
+		t.Errorf("/app/: frame-ancestors 'none' must be the last directive: %s", csp)
+	}
 }
 
 // TestAppBundle_HashedAsset_CacheableNotNoStore locks the Phase 176 WR-02 fix:

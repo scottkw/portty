@@ -72,6 +72,14 @@
 // connect-src (TestCSPHeaders_PreviewDelta). The review is
 // .planning/phases/11-file-preview/11-SECURITY-REVIEW.md.
 //
+// No frame-src and no object-src: 11-SPIKE.md's "Share CSP delta" line is
+// img-src 'self' data: blob: only. Its Safari rows found that no candidate
+// directive shows a framed blob: PDF on this page while frame-ancestors
+// 'none' stays (the blob document inherits it, and Safari's PDF plugin loads
+// under connect-src), so browser viewers get an Open PDF button that opens
+// the PDF blob top-level instead, which works under this policy. The desktop
+// app frames the PDF in an iframe; its page has no CSP.
+//
 // Per-request composition (D-10): the wss:// origin is derived from
 // ws.BaseURL() on every request so it tracks the listener address
 // automatically — including the random-port fallback that Phase 87/88
