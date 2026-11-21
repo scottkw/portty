@@ -172,6 +172,9 @@ type pathRow struct {
 	row  uint64
 	wrap bool
 	full bool
+	// seam: nothing follows this row (the newest history row above an alt
+	// screen), so the fallback never joins it to the next.
+	seam bool
 }
 
 // pathSnap is what a click searches: a copy taken under emuMu, so the search
@@ -212,6 +215,9 @@ func (h *Hub) pathSnapshot() (pathSnap, bool) {
 	}
 	snap := pathSnap{rows: rows, cwds: cwdLog{recs: h.cwds.records()}}
 	if alt {
+		if len(hist) > 0 {
+			rows[len(hist)-1].seam = true
+		}
 		// A full-screen program's rows have no cwd of their own: the newest
 		// directory applies.
 		for i := len(hist); i < len(rows); i++ {
@@ -235,9 +241,13 @@ func (s *pathSnap) finish(nHist, width int) {
 }
 
 // findPrinted returns the absolute row of the newest logical line holding text
-// as a whole token.
+// as a whole token. The full-row fallback runs only when the first pass finds
+// nothing.
 func (s *pathSnap) findPrinted(text string) (uint64, bool) {
-	return s.firstPass(text)
+	if row, ok := s.firstPass(text); ok {
+		return row, true
+	}
+	return s.fallbackPass(text)
 }
 
 // firstPass joins rows the hub marked as soft-wrapped into logical lines, walks
@@ -258,6 +268,37 @@ func (s *pathSnap) firstPass(text string) (uint64, bool) {
 			return s.rows[start].row, true
 		}
 		end = start - 1
+	}
+	return 0, false
+}
+
+// fallbackPass serves a soft-wrapped path the hub's wrap marks miss. The marks
+// are a hash heuristic (wraps.go): a hard full-width row identical to a wrapped
+// row, printed above it, takes the wrapped row's mark, so the first pass
+// over-joins on screen and under-joins in history. Here rows join by fullness
+// alone: a row joins the next non-empty row when it is full (the live width;
+// history keeps no drawn width, so rows drawn before a resize are never full
+// here and rely on the first pass). A run may start at any row except one whose
+// row above is full, wrap-marked and different: the hub saw that row wrap onto
+// this one, and the only known way it is wrong is a mark traded between
+// identical rows. The text must still be a whole token of the run, rows that
+// are not full are never joined, and a run stops once a token starting in its
+// first row cannot need more, so the pass stays linear in the retained rows.
+// Where the hub has no mark for a full row both readings count as printed.
+func (s *pathSnap) fallbackPass(text string) (uint64, bool) {
+	for k := len(s.rows) - 1; k >= 0; k-- {
+		if k > 0 {
+			if up := s.rows[k-1]; up.full && up.wrap && up.text != s.rows[k].text {
+				continue
+			}
+		}
+		run, bound := s.rows[k].text, len(s.rows[k].text)+len(text)+2
+		for j := k; j+1 < len(s.rows) && len(run) < bound && s.rows[j].full && !s.rows[j].seam && s.rows[j+1].text != ""; j++ {
+			run += s.rows[j+1].text
+		}
+		if hasToken(run, text) {
+			return s.rows[k].row, true
+		}
 	}
 	return 0, false
 }

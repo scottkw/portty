@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -344,5 +345,53 @@ func TestPreview_SourceGate(t *testing.T) {
 				t.Errorf("%s imports %q; preview code must never touch the file system", path, p)
 			}
 		}
+	}
+}
+
+// PATH-02: the one file read a viewer's click can cause goes through
+// previewfile (the `portty open` checks): the click file has no file-system
+// imports, previewfile starts no process, and no other relay file reads files
+// through it.
+func TestPathClick_SourceGate(t *testing.T) {
+	imports := func(path string) []string {
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, imp := range f.Imports {
+			p, _ := strconv.Unquote(imp.Path.Value)
+			out = append(out, p)
+		}
+		return out
+	}
+	for _, p := range imports("../relay/pathclick.go") {
+		switch p {
+		case "os", "os/exec", "io/fs", "path/filepath", "syscall", "io/ioutil":
+			t.Errorf("relay/pathclick.go imports %q; every host file read must go through previewfile", p)
+		}
+	}
+	for _, p := range imports("../previewfile/previewfile.go") {
+		if p == "os/exec" {
+			t.Errorf("previewfile.go imports %q; a path click must never start a process", p)
+		}
+	}
+	files, err := filepath.Glob("../relay/*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no relay sources found: %v", err)
+	}
+	var users []string
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		for _, p := range imports(f) {
+			if p == "github.com/scottkw/portty/internal/previewfile" {
+				users = append(users, filepath.Base(f))
+			}
+		}
+	}
+	if len(users) != 1 || users[0] != "pathclick.go" {
+		t.Errorf("relay files importing previewfile: %v, want only pathclick.go", users)
 	}
 }

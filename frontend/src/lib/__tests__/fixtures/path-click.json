@@ -1,0 +1,38 @@
+{
+  "tokens": [
+    { "line": "/Users/k/.ssh/id_rsa.pub", "text": "/Users/k/.ssh/id_rsa", "printed": false },
+    { "line": "/Users/k/.ssh/id_rsa.pub", "text": "/Users/k/.ssh/id_rsa.pub", "printed": true },
+    { "line": "docs/diagram.png  notes.md", "text": "docs/diagram.png", "printed": true },
+    { "line": "see (docs/x.png).", "text": "docs/x.png", "printed": true },
+    { "line": "--out=/tmp/a.png", "text": "/tmp/a.png", "printed": true },
+    { "line": "a/b.png:12:3: error", "text": "a/b.png", "printed": true },
+    { "line": "x/docs/a.png", "text": "docs/a.png", "printed": false },
+    { "line": "docs/a.pngx", "text": "docs/a.png", "printed": false },
+    { "line": "'~/notes/a.md'", "text": "~/notes/a.md", "printed": true },
+    { "line": "https://example.com/docs/a.png", "text": "/docs/a.png", "printed": false },
+    { "line": "./run.sh,", "text": "./run.sh", "printed": true },
+    { "line": "../up/x.pdf;", "text": "../up/x.pdf", "printed": true }
+  ],
+  "detect": [
+    { "line": "docs/diagram.png  notes.md", "links": [{ "text": "docs/diagram.png", "request": "docs/diagram.png" }] },
+    { "line": "/tmp/a.png:12:3: warning", "links": [{ "text": "/tmp/a.png:12:3", "request": "/tmp/a.png" }] },
+    { "line": "see (docs/x.png).", "links": [{ "text": "docs/x.png", "request": "docs/x.png" }] },
+    { "line": "--out=/tmp/a.png", "links": [{ "text": "/tmp/a.png", "request": "/tmp/a.png" }] },
+    {
+      "line": "~/notes/todo.md and ./run.sh",
+      "links": [
+        { "text": "~/notes/todo.md", "request": "~/notes/todo.md" },
+        { "text": "./run.sh", "request": "./run.sh" }
+      ]
+    },
+    { "line": "../up/x.pdf;", "links": [{ "text": "../up/x.pdf", "request": "../up/x.pdf" }] },
+    { "line": "\"/tmp/q.png\"", "links": [{ "text": "/tmp/q.png", "request": "/tmp/q.png" }] },
+    { "line": "/a/b.png.", "links": [{ "text": "/a/b.png", "request": "/a/b.png" }] },
+    { "line": "/usr/bin", "links": [{ "text": "/usr/bin", "request": "/usr/bin" }] },
+    { "line": "src/main", "links": [] },
+    { "line": "a/b", "links": [] },
+    { "line": "日本/画像.png", "links": [{ "text": "日本/画像.png", "request": "日本/画像.png" }] },
+    { "line": "https://example.com/docs/a.png and mailto:a@b.co", "links": [] },
+    { "line": "file:///etc/hosts", "links": [] }
+  ]
+}
