@@ -1920,6 +1920,71 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   height: 14px;
 }
 
+/* --- Preview pane and its states (Portty 11-09, 11-UI-SPEC "States") --- */
+.preview-panel {
+  height: 100%;
+  background-color: var(--color-window);
+}
+
+.preview-panel:focus {
+  outline: none; /* a focus target for a focused arrival, never a visible control */
+}
+
+/* A long file name wraps inside the 320px stack. */
+.preview-message .empty-state__heading {
+  overflow-wrap: anywhere;
+}
+
+.preview-receiving__bar {
+  display: block;
+  width: 200px;
+  height: 4px;
+  margin: 8px 0 0;
+  border: none;
+  border-radius: 2px;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--color-separator);
+  color: var(--color-selection-fill);
+}
+.preview-receiving__bar::-webkit-progress-bar {
+  background-color: var(--color-separator);
+}
+.preview-receiving__bar::-webkit-progress-value {
+  background-color: var(--color-selection-fill);
+}
+.preview-receiving__bar::-moz-progress-bar {
+  background-color: var(--color-selection-fill);
+}
+
+.preview-receiving__caption {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+/* The one app-wide arrival announcement: read by screen readers, never shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab__progress {
+    transition: none;
+  }
+}
+
 /* --- Colour tokens (Portty 02-03, THEM-01 / LOOK-01) ---
    Values from 02-UI-SPEC.md "Color". Light on :root, Dark in the
    prefers-color-scheme block; both blocks declare the same names. */

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { DocumentIcon, DocumentTextIcon, ExclamationTriangleIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import type { PreviewEntry } from '../lib/previewStore'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ImagePreview } from './ImagePreview'
@@ -11,6 +11,35 @@ interface PreviewPanelProps {
   webMode: boolean
   /** A focused arrival: move keyboard focus into the pane (UI-SPEC "Accessibility Contract"). */
   autoFocus?: boolean
+}
+
+/** UI-SPEC "Size display": decimal units as Finder counts them; one decimal from 1 MB, whole KB below. */
+function formatSize(n: number): string {
+  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.round(n / 1000)} KB`
+}
+
+/** UI-SPEC: the receiving stack shows only if bytes are still arriving 300 ms after the header. */
+const RECEIVING_DELAY_MS = 300
+
+function Receiving({ entry }: { entry: PreviewEntry }): React.ReactElement | null {
+  const [shown, setShown] = useState(() => Date.now() - entry.arrivedAt >= RECEIVING_DELAY_MS)
+  useEffect(() => {
+    if (shown) return
+    const t = setTimeout(() => setShown(true), Math.max(0, entry.arrivedAt + RECEIVING_DELAY_MS - Date.now()))
+    return () => clearTimeout(t)
+  }, [shown, entry.arrivedAt])
+  if (!shown) return null
+  const Icon = entry.kind === 'pdf' ? DocumentIcon : entry.kind === 'markdown' ? DocumentTextIcon : PhotoIcon
+  return (
+    <div className="empty-state preview-message">
+      <div className="empty-state__content">
+        <Icon className="empty-state__icon" aria-hidden="true" />
+        <h2 className="empty-state__heading">{entry.name}</h2>
+        <progress className="preview-receiving__bar" max={entry.size} value={entry.received} aria-label={`Receiving ${entry.name}`} />
+        <p className="preview-receiving__caption">{`Receiving… ${formatSize(entry.received)} of ${formatSize(entry.size)}`}</p>
+      </div>
+    </div>
+  )
 }
 
 function MessagePane({ heading, body }: { heading: string; body: string }): React.ReactElement {
@@ -44,7 +73,13 @@ export function PreviewPanel({ entry, webMode, autoFocus = false }: PreviewPanel
   const cantShow = <MessagePane heading="Couldn't Show File" body={`${name} may be damaged, or its format isn't supported.`} />
 
   let content: React.ReactNode = null
-  if (url && blob) {
+  if (entry.state === 'tooLarge') {
+    content = <MessagePane heading="Too Large to Preview" body={`${name} is larger than 20 MB.`} />
+  } else if (entry.state === 'failed') {
+    content = <MessagePane heading="Couldn't Receive File" body={`${name} didn't arrive completely. Run portty open again.`} />
+  } else if (entry.state === 'receiving') {
+    content = <Receiving entry={entry} />
+  } else if (url && blob) {
     const onFail = () => setFailedUrl(url)
     content = failedUrl === url ? cantShow : (
       <ErrorBoundary label="preview" resetKey={url} fallback={cantShow}>
