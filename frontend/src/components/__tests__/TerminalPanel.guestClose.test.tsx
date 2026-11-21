@@ -109,6 +109,7 @@ vi.mock('../../lib/relayClient', () => ({
     }
     sendInput() {}
     sendResize() {}
+    sendClaim() {} // INPT-06
     resumePoint() { return null } // HARD-05: no offset known, so no tab-switch snapshot
     close() {}
   },

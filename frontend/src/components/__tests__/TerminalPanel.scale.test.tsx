@@ -46,6 +46,8 @@ const hoisted = vi.hoisted(() => {
     lastElement: null as HTMLElement | null,
     // When set, write callbacks queue here instead of running at once (xterm parses async)
     pendingWrites: null as Array<() => void> | null,
+    // ResizeObserver callbacks, newest last (INPT-06: a test fires a container change)
+    roCallbacks: [] as Array<() => void>,
   }
 })
 
@@ -187,8 +189,9 @@ vi.mock('../../wailsjs/go/models', () => ({
   daemon: { SearchConfig: class { constructor(_o: unknown) {} } },
 }))
 
-// jsdom has no ResizeObserver. Stub with a no-op.
+// jsdom has no ResizeObserver. Stub that records its callback so a test can fire it.
 class MockResizeObserver {
+  constructor(cb: () => void) { hoisted.roCallbacks.push(cb) }
   observe() {}
   unobserve() {}
   disconnect() {}
@@ -676,6 +679,73 @@ describe('INPT-06 TerminalPanel — report the fit, follow the grid, claim on zo
     expect(hoisted.lastElement!.style.transform).toBe('')
     open()
     expect(hoisted.sendResizeCalls).toContainEqual([100, 30])
+  })
+
+  const resizeTo = (node: HTMLElement, w: number) => Object.defineProperty(node, 'clientWidth', { value: w, configurable: true })
+  const windowResize = () => window.dispatchEvent(new Event('resize'))
+  const containerChange = () => flushSync(() => { hoisted.roCallbacks[hoisted.roCallbacks.length - 1]() })
+
+  it('three window resizes within 150 ms on the active panel send one claim, with the fit measured after the last', async () => {
+    const node = mountSized({ remote: false })
+    grid(100, 30)
+    vi.useFakeTimers()
+    try {
+      windowResize()
+      await vi.advanceTimersByTimeAsync(50)
+      resizeTo(node, 810) // 90 cols
+      windowResize()
+      await vi.advanceTimersByTimeAsync(50)
+      resizeTo(node, 720) // 80 cols
+      windowResize()
+      await vi.advanceTimersByTimeAsync(149)
+      expect(hoisted.sendClaimCalls).toEqual([])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(hoisted.sendClaimCalls).toEqual([[80, 30]])
+      await vi.advanceTimersByTimeAsync(500)
+      expect(hoisted.sendClaimCalls).toEqual([[80, 30]])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('an inactive panel sends no claim on a window resize', async () => {
+    const node = render({ remote: false, isActive: false })
+    Object.defineProperty(node, 'clientWidth', { value: 900, configurable: true })
+    Object.defineProperty(node, 'clientHeight', { value: 510, configurable: true })
+    windowResize()
+    await new Promise((r) => setTimeout(r, 200))
+    expect(hoisted.sendClaimCalls).toEqual([])
+  })
+
+  it('a panel that becomes inactive stops claiming on window resizes', async () => {
+    mountSized({ remote: false })
+    render({ remote: false, isActive: false })
+    windowResize()
+    await new Promise((r) => setTimeout(r, 200))
+    expect(hoisted.sendClaimCalls).toEqual([])
+  })
+
+  it('a container change (banner, sidebar) reports the new fit once and never claims; an unchanged fit sends nothing', () => {
+    const node = mountSized({ remote: true })
+    grid(120, 40)
+    open()
+    expect(hoisted.sendResizeCalls).toEqual([[100, 30]])
+    containerChange() // same size
+    expect(hoisted.sendResizeCalls).toEqual([[100, 30]])
+    resizeTo(node, 810)
+    containerChange()
+    expect(hoisted.sendResizeCalls).toEqual([[100, 30], [90, 30]])
+    expect(hoisted.sendClaimCalls).toEqual([])
+    expect(hoisted.termResizeCalls).toEqual([[120, 40]]) // still following the server grid
+  })
+
+  it('a theme change on a panel following a 120x40 grid does not resize xterm to its own fit', () => {
+    mountSized({ remote: false })
+    grid(120, 40)
+    hoisted.termResizeCalls = []
+    render({ remote: false, theme: { background: '#111', foreground: '#eee' } })
+    expect(hoisted.termResizeCalls).toEqual([])
+    expect(hoisted.sendClaimCalls).toEqual([])
   })
 
   it('a font size change on the active panel claims its new fit once, without resizing xterm before the next grid frame', () => {

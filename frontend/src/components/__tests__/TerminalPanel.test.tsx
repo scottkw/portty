@@ -70,17 +70,17 @@ describe('font size control', () => {
   })
 
   // Quick 261116-ku9 R1: one font effect applies family and size live.
-  it('font effect sets family and size, then fits on host and rescales on guest', () => {
+  // INPT-06: the same path for every panel; a change on the shown panel then claims.
+  it('font effect sets family and size, lays out, then claims (INPT-06)', () => {
     const start = raw.indexOf('// Apply Terminal Font family/size changes live')
     const body = raw.slice(start, raw.indexOf('}, [fontFamily, fontSize, isActive])', start))
     expect(start).toBeGreaterThan(-1)
     expect(body).toContain('if (!term || !isActive) return')
     expect(body).toContain('term.options.fontFamily = fontFamily')
     expect(body).toContain('term.options.fontSize = fontSize')
-    const guest = body.indexOf('if (isGuestRef.current) {')
-    expect(guest).toBeGreaterThan(-1)
-    expect(body.indexOf('recomputeScale()', guest)).toBeGreaterThan(guest)
-    expect(body.indexOf('fitTerminal(term)', guest)).toBeGreaterThan(body.indexOf('} else {', guest))
+    expect(body).not.toContain('isGuestRef')
+    expect(body.indexOf('relayout()')).toBeGreaterThan(body.indexOf('term.options.fontSize = fontSize'))
+    expect(body.indexOf('claimFit()')).toBeGreaterThan(body.indexOf('relayout()'))
   })
 
   // Quick 261116-ku9 R2: shared grid math and the PTY's spawn grid at construction.
@@ -149,11 +149,13 @@ describe('FILL-01..06 rAF retry loop initial fit', () => {
     expect(raw).toContain('fitTerminal(termRef.current!)')
   })
 
-  it('sends terminal dimensions on WebSocket open to sync PTY size', () => {
-    // The onOpen callback must send the current terminal size to the PTY.
-    // Without this, the resize from fitTerminal() is dropped (WS not yet open)
-    // and the CLI process renders to the wrong width.
-    expect(raw).toContain('sendResize(term.cols, term.rows)')
+  it('reports its measured fit on WebSocket open, never the grid it shows (INPT-06)', () => {
+    // The fit measured before the socket opened was never delivered, so onOpen
+    // reports it. INPT-06: a report carries measureFit's result; term.cols/rows
+    // is the server's grid while the panel follows it.
+    const onOpen = raw.slice(raw.indexOf('onOpen: '), raw.indexOf('\n', raw.indexOf('onOpen: ')))
+    expect(onOpen).toContain('reportFit(')
+    expect(raw).not.toContain('sendResize(term.cols')
   })
 })
 

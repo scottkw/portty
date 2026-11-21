@@ -136,6 +136,7 @@ vi.mock('../../lib/relayClient', () => ({
     constructor(_p: number, _id: string, _cbs: unknown) {}
     sendInput() {}
     sendResize() {}
+    sendClaim() {} // INPT-06
     close() {}
   },
   MSG_OUTPUT: 0x01,
