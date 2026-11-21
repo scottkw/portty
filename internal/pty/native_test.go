@@ -136,6 +136,43 @@ func TestSpawnPTY_EnvSet(t *testing.T) {
 	}
 }
 
+// Phase 11 (PREV-01): every session carries its own id in PORTTY_SESSION_ID,
+// never one inherited by the daemon (a daemon started from a Portty shell).
+func TestSpawnPTY_EnvSessionID(t *testing.T) {
+	t.Setenv("PORTTY_SESSION_ID", "stale")
+	b := NewNativePTYBackend()
+	envLine := func() (string, string) {
+		sess, err := b.Create(context.Background(), CreateRequest{CLI: "/usr/bin/env", Cols: 80, Rows: 24, WorkDir: t.TempDir()})
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		t.Cleanup(func() { _ = b.Kill(sess.ID) })
+		var out bytes.Buffer
+		var mu sync.Mutex
+		go readUntilErr(sess, &out, &mu, make(chan error, 1))
+		for deadline := time.Now().Add(4 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			mu.Lock()
+			text := out.String()
+			mu.Unlock()
+			for _, line := range strings.Split(text, "\n") {
+				if v, ok := strings.CutPrefix(strings.TrimSpace(line), "PORTTY_SESSION_ID="); ok && strings.HasSuffix(line, "\r") {
+					return sess.ID, v
+				}
+			}
+		}
+		t.Fatalf("no complete PORTTY_SESSION_ID line in env output: %q", out.String())
+		return "", ""
+	}
+	id1, got1 := envLine()
+	id2, got2 := envLine()
+	if got1 != id1 || got2 != id2 {
+		t.Errorf("PORTTY_SESSION_ID = %q, %q; want the session ids %q, %q (never the inherited \"stale\")", got1, got2, id1, id2)
+	}
+	if id1 == id2 {
+		t.Errorf("two sessions share id %q", id1)
+	}
+}
+
 func TestResize(t *testing.T) {
 	b := NewNativePTYBackend()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

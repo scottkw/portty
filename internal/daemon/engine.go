@@ -231,6 +231,7 @@ func (e *SessionEngine) CreateSession(ctx context.Context, name, workDir string,
 		Cols:    cols,
 		Rows:    rows,
 		WorkDir: workDir,
+		Env:     e.cliPathEnv(), // portty on the session PATH (PREV-05)
 	})
 	if err != nil {
 		return "", fmt.Errorf("create session: %w", err)

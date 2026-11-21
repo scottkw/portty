@@ -27,8 +27,9 @@ func NewNativePTYBackend() *NativePTYBackend {
 }
 
 // Create starts a new CLI process in a PTY and returns a Session handle.
-// The process receives TERM=xterm-256color and COLORTERM=truecolor in addition
-// to the caller's Env slice and the current process environment.
+// The process receives TERM=xterm-256color, COLORTERM=truecolor and
+// PORTTY_SESSION_ID=<its session id> in addition to the caller's Env slice and
+// the current process environment.
 // On POSIX the process is placed in its own process group (Setpgid: true).
 func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Session, error) {
 	p, err := gopty.New()
@@ -50,13 +51,22 @@ func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Sess
 		return nil, fmt.Errorf("dup pty master: %w", err)
 	}
 
+	// The id exists before the shell starts so the shell can carry it (PREV-01).
+	id, err := generateID()
+	if err != nil {
+		_ = ioFile.Close()
+		_ = p.Close()
+		return nil, fmt.Errorf("generate session ID: %w", err)
+	}
+
 	childCtx, cancel := context.WithCancel(ctx)
 	cmd := p.CommandContext(childCtx, req.CLI, req.Args...)
 	cmd.Dir = req.WorkDir
 
 	// Merge environment: inherit from current process, apply caller extras, enforce
-	// required terminal vars.
-	cmd.Env = mergeEnv(os.Environ(), req.Env, "TERM=xterm-256color", "COLORTERM=truecolor")
+	// required terminal vars and the session's own id (required, so an id the
+	// daemon inherited from a Portty shell never leaks into a new session).
+	cmd.Env = mergeEnv(os.Environ(), req.Env, "TERM=xterm-256color", "COLORTERM=truecolor", "PORTTY_SESSION_ID="+id)
 
 	// On POSIX, go-pty's start() already sets Setsid: true which creates a new
 	// session — the child's process group ID equals its PID. We do NOT set
@@ -78,14 +88,6 @@ func (b *NativePTYBackend) Create(ctx context.Context, req CreateRequest) (*Sess
 		_ = ioFile.Close()
 		_ = p.Close()
 		return nil, fmt.Errorf("start process: %w", err)
-	}
-
-	id, err := generateID()
-	if err != nil {
-		cancel()
-		_ = ioFile.Close()
-		_ = p.Close()
-		return nil, fmt.Errorf("generate session ID: %w", err)
 	}
 
 	sess := &Session{
