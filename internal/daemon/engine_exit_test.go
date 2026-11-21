@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/pty"
+	"github.com/scottkw/portty/internal/testutil"
 )
 
 // TestExitEvent_ExitWatcher_TransitionsToStopped verifies that when a session's
@@ -106,62 +107,67 @@ func TestExitEvent_ExitWatcher_NilOnExitNoIsPanic(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 }
 
-// TestExitEvent_ListSessions_ExitCodePopulatedForStopped verifies that ListSessions
-// populates ExitCode and Duration for sessions that are in the StateStopped state,
-// and leaves ExitCode nil for running sessions.
-func TestExitEvent_ListSessions_ExitCodePopulatedForStopped(t *testing.T) {
-	spy := &spyBackend{}
+// TestExitEvent_ListSessions_RunningHasNoExitCode verifies that ListSessions
+// leaves ExitCode and Duration nil for a running session. It uses the real cat
+// backend: /bin/cat on a real PTY stays running until cleanup kills it, so no
+// exit watcher can flip the state under the assertion.
+func TestExitEvent_ListSessions_RunningHasNoExitCode(t *testing.T) {
 	e := newCatEngine()
-	e.backend = spy
+	id, err := e.CreateSession(context.Background(), "running-session", "", 80, 24, nil)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	t.Cleanup(func() { _ = e.KillSession(id) })
 
-	// Create a session and manually transition it to stopped state.
+	info := findSessionByID(e.ListSessions(), id)
+	if info.ID == "" {
+		t.Fatal("session not found in ListSessions")
+	}
+	if info.State != "running" {
+		t.Fatalf("State: got %q, want running", info.State)
+	}
+	if info.ExitCode != nil {
+		t.Errorf("ExitCode for running session: want nil, got %d", *info.ExitCode)
+	}
+	if info.Duration != nil {
+		t.Errorf("Duration for running session: want nil, got %d", *info.Duration)
+	}
+}
+
+// TestExitEvent_ListSessions_ExitCodePopulatedForStopped verifies that ListSessions
+// populates ExitCode and Duration for a session the exit watcher stopped.
+//
+// The spy session has no PTY, so the hub's first Read fails and the exit watcher
+// sets StateStopped by itself within microseconds. The test waits for that
+// instead of forcing SetState: the old version asserted "running" first and then
+// set the state manually, both racing the watcher (INPT-05).
+func TestExitEvent_ListSessions_ExitCodePopulatedForStopped(t *testing.T) {
+	e := newCatEngine()
+	e.backend = &spyBackend{}
+
 	id, err := e.CreateSession(context.Background(), "stopped-session", "", 80, 24, nil)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
-
-	// Initially the session should be running — ExitCode should be nil.
-	sessions := e.ListSessions()
-	var info SessionInfo
-	for _, s := range sessions {
-		if s.ID == id {
-			info = s
-			break
-		}
-	}
-	if info.ID == "" {
-		t.Fatal("session not found in ListSessions")
-	}
-	if info.ExitCode != nil {
-		t.Errorf("ExitCode for running session: want nil, got %v", info.ExitCode)
-	}
-	if info.Duration != nil {
-		t.Errorf("Duration for running session: want nil, got %v", info.Duration)
-	}
-
-	// Transition to stopped via SetState.
 	sess, ok := e.registry.Get(id)
 	if !ok {
 		t.Fatal("session not found in registry")
 	}
-	sess.SetState(pty.StateStopped)
+	testutil.WaitFor(t, 3*time.Second, func() bool { return sess.GetState() == pty.StateStopped },
+		"exit watcher never stopped the spy session")
 
-	// Now ListSessions must populate ExitCode and Duration.
-	sessions = e.ListSessions()
-	for _, s := range sessions {
-		if s.ID == id {
-			info = s
-			break
-		}
+	info := findSessionByID(e.ListSessions(), id)
+	if info.ID == "" {
+		t.Fatal("session not found in ListSessions")
 	}
 	if info.ExitCode == nil {
-		t.Error("ExitCode for stopped session: want non-nil *int, got nil")
+		t.Fatal("ExitCode for stopped session: want non-nil *int, got nil")
+	}
+	// The spy session has no cmd, so the cached exit code normalizes to 0.
+	if *info.ExitCode != 0 {
+		t.Errorf("ExitCode value for stopped spy session: got %d, want 0", *info.ExitCode)
 	}
 	if info.Duration == nil {
 		t.Error("Duration for stopped session: want non-nil *int, got nil")
-	}
-	// ExitCode should be 0 (default cached value since spy session has no cmd).
-	if info.ExitCode != nil && *info.ExitCode != 0 {
-		t.Errorf("ExitCode value for stopped spy session: got %d, want 0 (default)", *info.ExitCode)
 	}
 }
