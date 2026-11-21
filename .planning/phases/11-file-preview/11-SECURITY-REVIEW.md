@@ -21,8 +21,10 @@ default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsa
 ### After (Amendment 3, Phase 11)
 
 ```
-default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://<host>; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://<host>; img-src 'self' data: blob:; worker-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 ```
+
+`worker-src 'self'` was added by the 11-07 fix (11-07-FIX.md); 11-06 added only `blob:` in img-src.
 
 ### Directive by directive
 
@@ -33,6 +35,7 @@ default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsa
 | `style-src` | `'self' 'unsafe-inline'` | same | Unchanged |
 | `connect-src` | `'self' wss://<host>` | same | Unchanged. No `blob:`. This is also why Safari can't show a framed or embedded blob PDF (S-03); loosening it was not tried and is not proposed |
 | `img-src` | `'self' data:` | `'self' data: blob:` | **Changed.** Image and SVG previews are `<img src=blob:…>` built from bytes that arrived over the session's own authenticated socket. `blob:` URLs are same-origin objects the page itself created; no network origin is added, so an image can still fetch nothing from elsewhere. An SVG inside an `<img>` runs no script and loads no sub-resource (S-05) |
+| `worker-src` | absent (falls back to `script-src 'self'`) | `'self'` | **Added (11-07 fix).** The Markdown preview parses in a dedicated module Web Worker that is terminated after 3 s (see "Residual risk" below, now mitigated). Vite emits it as a hashed same-origin file, `assets/markdownWorker-*.js`, loaded with `new Worker(new URL(…, import.meta.url), {type: 'module'})`; the production build was inspected and the URL is never `blob:` or `data:`, which this directive keeps blocked. Without the directive a worker would fall back to `script-src 'self'`, the same sources, so this loosens nothing; naming it pins the intent and stops a later `script-src` change from widening workers. The worker script is served by the same `/app/` handler with this same CSP and fetches nothing |
 | `font-src` | `'self'` | same | Unchanged |
 | `base-uri` | `'none'` | same | Unchanged |
 | `form-action` | `'self'` | same | Unchanged |
@@ -50,7 +53,7 @@ The browser viewer's PDF path is the spike's Browser PDF mode `open-pdf`: the pr
 
 ### Tests that pin it
 
-- `internal/webserver/csp_mw_test.go` `TestCSPHeaders_PreviewDelta`: the whole policy equals Amendment 2 plus ` blob:` in img-src; `blob:` only in img-src; no `frame-src`, `object-src`, `child-src` or `worker-src`; `frame-ancestors 'none'` last.
+- `internal/webserver/csp_mw_test.go` `TestCSPHeaders_PreviewDelta`: the whole policy equals Amendment 2 plus ` blob:` in img-src and `worker-src 'self'` after it; `blob:` only in img-src; `worker-src` exactly `'self'`; no `frame-src`, `object-src` or `child-src`; `frame-ancestors 'none'` last.
 - `internal/webserver/csp_mw_test.go` `TestCSPHeaders_RequiredTokens`: now expects `img-src 'self' data: blob:`.
 - `internal/webserver/csp_integration_test.go` `TestCSPHeaderStrict_App`: the served `/app/` page carries `img-src 'self' data: blob:`, `blob:` exactly once, no `frame-src` or `object-src`, and `frame-ancestors 'none'` last.
 - `frontend/src/components/__tests__/PreviewRenderers.test.tsx`: each hostile SVG fixture (`frontend/src/lib/__tests__/fixtures/preview/hostile-script.svg`, `hostile-external.svg`) is shown only as one `<img>` from its blob URL, with no `svg`, `script`, `iframe`, `foreignObject`, `object` or `embed` element in the document; Open PDF calls `window.open` with the blob URL, `_blank` and `noopener,noreferrer`, and only on click.
@@ -114,16 +117,18 @@ Checked on 2026-11-21, before install. The evidence was saved under `/tmp/p11-07
 
 **Why DOMPurify 3.4.17 is acceptable.** The only fix in 3.4.18 is GHSA-qm7q-q8h9-jg8q, in `SAFE_FOR_TEMPLATES` mode. This configuration never enables `SAFE_FOR_TEMPLATES`, or any of the other modes where the 2026 DOMPurify advisories cluster (`IN_PLACE`, `RETURN_DOM`, custom element handling, hooks, `PARSER_MEDIA_TYPE`). 3.4.17 contains every earlier fix, including the `high` "selectedcontent re-clone" XSS fixed in 3.4.5. The move to 3.4.18 or later is the todo `.planning/todos/pending/2026-11-21-dompurify-3418.md`, due 2026-11-28, once 3.4.18 is 14 days old. DOMPurify is the desktop page's only XSS layer and has frequent advisories, so it needs periodic bumps: re-check its advisory list at each milestone.
 
-### Configuration (`frontend/src/lib/markdown.ts`)
+### Configuration (`frontend/src/lib/markdown.ts`, `frontend/src/lib/markdownSanitize.ts`)
 
 The configuration has two layers. Unsanitized HTML never reaches a live or detached DOM node: DOMPurify returns a string, which `MarkdownPreview` assigns once.
 
-1. **marked** (`new Marked({gfm: true, async: false})`):
+Since the 11-07 fix the two layers run in different places. marked (`markdown.ts`, `parseMarkdown`) runs in a Web Worker (`markdownWorker.ts`) started by `parseMarkdownInWorker.ts` and terminated when the parse settles or after `MARKDOWN_PARSE_TIMEOUT_MS` (3000). Its output, still unsanitized, comes back as a string. DOMPurify (`markdownSanitize.ts`, `sanitizeMarkdown`) runs on the main thread: in a worker there is no `document`, DOMPurify sets `isSupported = false`, and `sanitize()` returns its input unchanged (purify.es.mjs: `if (!DOMPurify.isSupported) return dirty`). Sanitizing in the worker would therefore have been a silent bypass. The sanitizer configuration below is byte for byte the 11-07 one.
+
+1. **marked** (`new Marked({gfm: true, async: false})`, in the worker):
    - The `html` renderer returns `''`, so raw HTML, block and inline, is dropped.
    - `image` returns `<span class="md-image">` holding the escaped alt text (or `Image`). No `<img>` is ever produced, so nothing is fetched or decoded.
    - `checkbox` returns a `md-task` span with ☑ or ☐, so no `<input>` is produced.
    - Blockquote and list nesting is capped at 20 levels (`MAX_DEPTH`). Past it, a container line stays literal paragraph text (markdown-it's `maxNesting` idea). Without the cap, marked 18.1.3 takes time that grows with the square of the depth (about 1 s at 1,000 levels) and overflows the stack near 2,000.
-2. **DOMPurify** in plain string mode:
+2. **DOMPurify** in plain string mode, on the main thread:
    - `ALLOWED_TAGS`: h1-h6, p, br, hr, ul, ol, li, blockquote, pre, code, em, strong, del, a, table, thead, tbody, tr, th, td, span.
    - `ALLOWED_ATTR`: href, class, title, align.
    - `ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|#)/i`.
@@ -140,7 +145,18 @@ Links never navigate the pane (`frontend/src/components/MarkdownPreview.tsx`):
 
 ### Lazy-load proof
 
-`MarkdownPreview` reaches the renderer only through `import('../lib/markdown')`; a source test in `MarkdownPreview.test.tsx` rejects a static import of `marked`, `dompurify` or `lib/markdown`.
+Since the 11-07 fix, `MarkdownPreview` reaches marked only through the worker and DOMPurify only through `import('../lib/markdownSanitize')`; a source test in `MarkdownPreview.test.tsx` rejects a static import of `marked`, `dompurify`, `lib/markdown` or `lib/markdownSanitize`, and checks that `parseMarkdownInWorker.ts` imports nothing and builds the worker with `new Worker(new URL('./markdownWorker.ts', import.meta.url), { type: 'module' })`.
+
+11-07 fix build check (2026-11-21, output not committed): the standard `pnpm build` still has a single entry chunk with no marked or DOMPurify code (MarkdownPreview is not imported until 11-09). A throwaway build with a second entry importing MarkdownPreview gave:
+
+| Chunk | Contents |
+|-------|----------|
+| `index-*.js` (entry) | no marked, no `ALLOWED_URI_REGEXP` |
+| the MarkdownPreview chunk | the `new Worker(new URL("markdownWorker-*.js", import.meta.url), {type: "module"})` call and `import("./markdownSanitize-*.js")` |
+| `markdownWorker-*.js` (49.5 KB) | marked only, a self-contained IIFE with no imports; a separate same-origin file, not a `blob:` or `data:` URL |
+| `markdownSanitize-*.js` (29 KB) | DOMPurify and the configuration (`ALLOWED_URI_REGEXP`) |
+
+The 11-07 build check that follows predates the split.
 
 - **Standard production build** (`vite build --outDir /tmp/p11-07-dist`): the entry chunk `assets/index-*.js` contains no `ALLOWED_URI_REGEXP`. It is the build's only JS chunk, because nothing imports `MarkdownPreview` until 11-09 composes it into PreviewPanel, so Rollup leaves the Markdown code out entirely.
 - **Build with MarkdownPreview reachable** (a throwaway second entry that imports it, the way 11-09 will; nothing committed; `/tmp/p11-07-dist-probe`):
@@ -155,7 +171,7 @@ Links never navigate the pane (`frontend/src/components/MarkdownPreview.tsx`):
 
 ### Tests that pin it
 
-- `frontend/src/lib/__tests__/markdown.test.ts`:
+- `frontend/src/lib/__tests__/markdown.test.ts` (since the 11-07 fix, through `sanitizeMarkdown(parseMarkdown(src))`, the two steps MarkdownPreview runs):
   - The allowed tags render, raw HTML is dropped, images become placeholders and tasks become glyphs.
   - Every section of `frontend/src/lib/__tests__/fixtures/preview/hostile.md` renders with no `img`, `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `meta`, `base`, `link`, `svg` or `math` markup, no `on*` attribute, no `style=`, `src=`, `srcset`, `url(` or `@import`, and only `href`, `class`, `title` and `align` attributes.
   - `javascript:` links (every obfuscation), `data:`, `vbscript:`, `file:` and relative links keep no href. `https:`, `mailto:` and `#intro` keep theirs. Tables keep `align`.
@@ -163,8 +179,14 @@ Links never navigate the pane (`frontend/src/components/MarkdownPreview.tsx`):
 - `frontend/src/components/__tests__/MarkdownPreview.test.tsx`:
   - Links: clicks are prevented, and safe links go to `openLink` while a mismatch shows `LinkConfirmPopover`. `auxclick` and Enter are prevented. Fragments scroll with no `id`. A stripped anchor isn't focusable.
   - Decoration: placeholders get `role="img"` and an `aria-label`, links get title = href, and tables sit in `.md-table-wrap`. The hostile fixture leaves no fetching, scripting or styled element in the pane.
+  - 11-07 fix: jsdom has no Worker, so an in-thread stub runs the real `parseMarkdown`. A parse that never finishes calls `onFail` within 3.5 s, the worker is terminated, and a main-thread timer keeps firing. Unmounting terminates a running parse.
+- `frontend/src/lib/__tests__/parseMarkdownInWorker.test.ts` (11-07 fix): the timeout, error, abort and termination logic with a fake worker, and a real `worker_threads` thread running `parseMarkdown`, where 81 KB of `*a **b _c` is rejected within 3.5 s, the thread is terminated, and a 50 ms main-thread timer keeps ticking.
 
-### Residual risk: marked's emphasis parsing time (open)
+### Residual risk: marked's emphasis parsing time (mitigated by the 11-07 fix)
+
+**Status: mitigated (2026-11-21, 11-07-FIX.md; decision in 11-CONTEXT.md "Decided during execution").** The parse now runs in a dedicated Web Worker, never on the main thread. Each render gets a fresh worker; it is terminated when the parse settles, when the pane unmounts, or after `MARKDOWN_PARSE_TIMEOUT_MS` (3000 ms), and on timeout the pane shows "Couldn't Show File". A hostile file therefore costs a viewer at most 3 s of one background thread, and the window, terminal tabs included, stays responsive throughout. The limit bounds any parser pathology, not just this one. The share CSP gained `worker-src 'self'` for it (above). marked stays at 18.1.3; the slowdown itself is unchanged and still unreported upstream. Per the same decision, 11-09 renders a preview pane only while its tab is visible. What remains: a legitimate Markdown file that takes marked more than 3 s (about 40 KB of dense unclosed emphasis) shows "Couldn't Show File" instead of rendering, and the worker has to load on the desktop page's `wails://` origin too (11-10 VM check).
+
+The original finding, as recorded by 11-07:
 
 Found while measuring the DoS bounds. marked 18.1.3 takes time that grows with the square of the number of unclosed emphasis delimiters in one paragraph. The same timings show with and without this configuration, so it is marked's own inline tokenizer. Measured in jsdom (`*a **b _c` repeated):
 
@@ -184,7 +206,9 @@ The parse runs on the page's main thread, so such a file freezes that viewer's w
 - a much lower size cap for Markdown than the 20 MB transfer cap;
 - markdown-it, research's alternative, if it proves linear here.
 
-Recorded in `.planning/phases/11-file-preview/deferred-items.md`.
+Recorded in `.planning/phases/11-file-preview/deferred-items.md` (now closed there).
+
+Reproduction note from the fix: the input is `'*a **b _c'` repeated with no separator. With a trailing space (`'*a **b _c '`) marked is linear (80 KB in 18 ms). In a node worker thread the no-separator string took 0.3 s at 10 KB and 1.2 s at 20 KB, and was killed at 3 s at 40 KB.
 
 ## VM evidence and verdict
 
