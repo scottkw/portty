@@ -70,6 +70,9 @@ function measureFit(term: Terminal): { cols: number; rows: number } | null {
   return gridForContentBox(parentW, parentH, dims.css.cell.width, dims.css.cell.height)
 }
 
+// INPT-06: trailing debounce for the window-resize claim (a drag fires many events).
+const CLAIM_DEBOUNCE_MS = 150
+
 interface TerminalPanelProps {
   sessionId: string
   isActive: boolean
@@ -944,8 +947,9 @@ export function TerminalPanel({
 
   // INPT-06: when this panel becomes active, lay it out (fit a never-sized
   // session, else rescale to the server grid) and report its fit; track
-  // container size changes via ResizeObserver, the same way. One path for local
-  // tabs, peer tabs and the browser viewer.
+  // container size changes via ResizeObserver, the same way. While active, a
+  // window resize (also fired by browser zoom and fullscreen) claims. One path
+  // for local tabs, peer tabs and the browser viewer.
   useEffect(() => {
     if (!isActive || !containerRef.current) return
 
@@ -992,13 +996,23 @@ export function TerminalPanel({
     const ro = new ResizeObserver(() => { relayout() })
     ro.observe(container)
 
+    // A window resize is the user taking the size: claim once the drag settles.
+    let claimTimer: ReturnType<typeof setTimeout> | undefined
+    const onWindowResize = () => {
+      clearTimeout(claimTimer)
+      claimTimer = setTimeout(claimFit, CLAIM_DEBOUNCE_MS)
+    }
+    window.addEventListener('resize', onWindowResize)
+
     return () => {
       cancelled = true
       if (rafId !== undefined) cancelAnimationFrame(rafId)
       ro.disconnect()
+      window.removeEventListener('resize', onWindowResize)
+      clearTimeout(claimTimer)
     }
-  // relayout is a stable useCallback and reads only refs, so it is safely
-  // closure-captured and does not belong in the dep array. Keeping [isActive]
+  // relayout and claimFit are stable useCallbacks that read only refs, so they are
+  // safely closure-captured and do not belong in the dep array. Keeping [isActive]
   // as the sole dependency preserves the Phase 35 FILL-01..06 rAF retry-loop invariant
   // (the fit/activation effect must re-run only when the panel becomes active).
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1031,8 +1045,10 @@ export function TerminalPanel({
   // for when the panel next becomes visible.  Instead, stash the theme in
   // pendingThemeRef and apply it synchronously at the top of the isActive
   // effect when the panel next becomes active (before the rAF fit loop runs).
-  // On the active path: clearTextureAtlas() then fitTerminal() — NOT
-  // refresh() — so cell dims are recalculated after the atlas rebuild.
+  // On the active path: clearTextureAtlas() then relayout() — NOT refresh() —
+  // so the layout uses the cell dims recalculated after the atlas rebuild.
+  // INPT-06: relayout, not fitTerminal, so a panel following the server grid
+  // keeps it (it only rescales) and the theme never resizes the shell.
   useEffect(() => {
     if (!termRef.current) return
     if (!isActive) {
@@ -1042,7 +1058,9 @@ export function TerminalPanel({
     }
     termRef.current.options.theme = theme
     termRef.current.clearTextureAtlas()
-    fitTerminal(termRef.current)   // NOT refresh() — recalculates cell dims after atlas clear
+    relayout()   // NOT refresh() — recalculates cell dims after atlas clear
+  // relayout is a stable useCallback that reads only refs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, isActive])
 
   // Phase 94 SRC-01: focus-conditioned Cmd-F (Mac) / Ctrl-F (Win/Linux)
