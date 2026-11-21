@@ -1072,6 +1072,8 @@ function App(): React.ReactElement {
         if (removed.length > 0) {
           setFontSizes((prev) => { const n = { ...prev }; removed.forEach((t) => { delete n[t.id] }); return n })
         }
+        // The restored tabs hold no preview tab, so release every preview's blob and URL (11-REVIEW WR-04).
+        previewStore.closeAll()
         setTabs(restoredTabs)
         setActiveId(restoredTabs[0].id)
       }
@@ -1079,7 +1081,7 @@ function App(): React.ReactElement {
       console.error('[App] retry init failed:', err)
       setDaemonError(String(err))
     }
-  }, [])
+  }, [previewStore])
 
   // Review IN-01: the poller brought the daemon back after an error. With no tabs, reload
   // as Retry would; otherwise only clear the error, since retryInit replaces the tab list

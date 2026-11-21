@@ -333,6 +333,36 @@ describe('App preview tabs: the session view stays mounted (UI-SPEC "Viewer Conn
     expect(c.querySelector('.preview-panel')).toBeNull()
   })
 
+  // 11-REVIEW WR-04: Retry's restored tabs replace a peer tab opened while it awaited, and its preview tab with it.
+  it('Retry that replaces the tabs releases every preview: URLs revoked, no slot held against the 10-tab limit', async () => {
+    let resolveRetry!: (v: unknown) => void
+    let sessions: ReturnType<typeof session>[] = []
+    const c = await mountApp({
+      RetryDaemon: () => new Promise((r) => { resolveRetry = r }),
+      GetRelayPort: () => 4321,
+      ListSessions: () => sessions,
+      GetTailscaleStatus: () => ({ connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'home-air.tail1234.ts.net' }),
+      GetRemoteSessionsWithMeta: () => [remotePeer],
+      ConnectPeerSession: () => ({ sessionId: 'sess-remote-1', name: 'Remote Session', host: 'office-air', url: 'https://office-air.tail1234.ts.net:7444/sessions/sess-remote-1?cap=CAP123', errorCode: '' }),
+    })
+    await act(async () => { wailsEvents.get('daemon:recovered')?.() })
+    await flush()
+    await click(Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find((b) => b.textContent === 'Remote Session'))
+    await play(stub.views.get('sess-remote-1')?.onPreview, png(1, 'shot.png', KEY_A, true))
+    expect(tabNames(c)).toContain('shot.png')
+
+    sessions = [session('s1', 's1 shell')]
+    await act(async () => { resolveRetry(null) })
+    await flush()
+    expect(tabNames(c)).toEqual(['s1 shell'])
+    expect(revoked).toEqual(['blob:test/1'])
+
+    // The store is empty: ten new previews all get tabs, none evicted.
+    for (let i = 1; i <= 10; i++) await play(stub.panels.get('s1')?.onPreview, png(i, `p${i}.png`, keyN(i), false))
+    expect(tabNames(c).filter((n) => n.endsWith('.png'))).toHaveLength(10)
+    expect(revoked).toEqual(['blob:test/1'])
+  })
+
   it('the browser viewer keeps its view mounted behind a preview, and the preview closes with ×', async () => {
     window.history.pushState({}, '', '/app/?session=sess-web-1&cap=CAPW')
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ hostname: 'office-air' }), { status: 200 })))
