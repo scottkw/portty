@@ -22,14 +22,20 @@ import (
 // write fails or the hub shuts down; blocked pumps then get ErrInputClosed.
 // A revoked viewer's frames are dropped too (RevokeWebViewers, CR-01).
 //
-// shortcut: past InputMaxFrames / InputMaxBytes queued for one connection its
-// pump blocks again, so a paste over 32 MiB into a slow reader can still get
-// that viewer dropped by the heartbeat (the client's partial-paste notice then
-// shows); raise the quota or spill to disk if that is ever hit for real.
+// shortcut: past InputMaxFrames / InputMaxBytes queued for one connection, or
+// InputHubMaxBytes for the whole hub, a pump blocks again, so a paste over
+// the quota into a slow reader can still get that viewer dropped by the
+// heartbeat (the client's partial-paste notice then shows); raise the quota or
+// spill to disk if that is ever hit for real.
 
 const (
 	InputMaxFrames = 1024     // per connection, queued plus in flight
 	InputMaxBytes  = 32 << 20 // per connection; frames are <= MaxInputPayload, so frames bind first
+	// InputHubMaxBytes bounds the whole hub (WR-01): every connection and every
+	// reconnect has its own quota, and closed ones keep theirs until drained.
+	// A connection with nothing queued may still add one frame, so the bound
+	// is this plus one frame per connection.
+	InputHubMaxBytes = 64 << 20
 )
 
 // ErrInputClosed: the hub's input writer stopped (PTY write failed or the hub
@@ -62,8 +68,8 @@ func (h *Hub) OpenInput(sub *Subscriber) *InputConn {
 	return c
 }
 
-// Write queues b for the PTY. It blocks only while this connection is at its
-// quota, and returns only once b is queued or the input is dead
+// Write queues b for the PTY. It blocks only while this connection or the hub
+// is at its quota, and returns only once b is queued or the input is dead
 // (ErrInputClosed). It deliberately takes no context: a frame already read
 // must not be dropped because its socket died. The caller must not reuse b
 // (InputAbsorber.Filter allocates per call).
@@ -72,7 +78,8 @@ func (c *InputConn) Write(b []byte) error {
 	h.inMu.Lock()
 	defer h.inMu.Unlock()
 	h.startInputLocked()
-	for !h.inDead && !c.revoked() && (c.frames >= InputMaxFrames || (c.frames > 0 && c.bytes+len(b) > InputMaxBytes)) {
+	for !h.inDead && !c.revoked() && (c.frames >= InputMaxFrames ||
+		(c.frames > 0 && (c.bytes+len(b) > InputMaxBytes || h.inBytes+len(b) > InputHubMaxBytes))) {
 		h.inCond.Wait() // woken after each written frame, on death and on revoke
 	}
 	if h.inDead {

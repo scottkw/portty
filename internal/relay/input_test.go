@@ -102,6 +102,38 @@ func TestHubInput_QuotaBlocksOnlyThatConn(t *testing.T) {
 	}
 }
 
+// TestHubInput_HubCapBlocks (WR-01): two connections at their frame quota of
+// full-size frames fill the hub; a third gets one frame in, then blocks far
+// below its own quota until the PTY drains.
+func TestHubInput_HubCapBlocks(t *testing.T) {
+	h, r := inputHub(t)
+	frame := bytes.Repeat([]byte{'p'}, MaxInputPayload) // read-only, so shared
+	for _, c := range []*InputConn{h.OpenInput(nil), h.OpenInput(nil)} {
+		for i := 0; i < InputMaxFrames; i++ {
+			if err := c.Write(frame); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	c := h.OpenInput(nil)
+	if _, ok := returnsWithin(time.Second, func() error { return c.Write(frame) }); !ok {
+		t.Fatal("a connection with nothing queued blocked on the hub cap")
+	}
+	blocked, returned := returnsWithin(100*time.Millisecond, func() error { return c.Write(frame) })
+	if returned {
+		t.Fatalf("Write over the hub cap returned (%v), want it to block", <-blocked)
+	}
+	go func() { _, _ = io.Copy(io.Discard, r) }()
+	select {
+	case err := <-blocked:
+		if err != nil {
+			t.Fatalf("Write after drain: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Write still blocked after the PTY drained")
+	}
+}
+
 // gateWriter blocks every Write until release is closed, then fails.
 type gateWriter struct{ release chan struct{} }
 
