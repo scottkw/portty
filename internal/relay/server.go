@@ -179,6 +179,9 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 				if !sub.ReadOnly { // MC-03: discard input for read-only clients
 					filtered := absorber.Filter(payload)
 					if len(filtered) > 0 {
+						if IsUserInput(filtered) { // INPT-06: typing claims; terminal auto-replies never do
+							_ = hub.NoteTyping(sub)
+						}
 						if err := in.Write(filtered); err != nil {
 							return // the hub's input is dead: the session is ending
 						}

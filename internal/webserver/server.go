@@ -962,6 +962,9 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 					filtered := absorber.Filter(payload)
 					passed = len(filtered)
 					if len(filtered) > 0 {
+						if relay.IsUserInput(filtered) { // INPT-06: typing claims; terminal auto-replies never do
+							_ = hub.NoteTyping(sub)
+						}
 						if err := in.Write(filtered); err != nil {
 							return // the hub's input is dead: the session is ending
 						}

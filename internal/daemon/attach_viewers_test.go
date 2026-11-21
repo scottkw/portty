@@ -830,6 +830,8 @@ func TestCLIAttach_Hypotheses(t *testing.T) {
 				t.Errorf("%s received %d output bytes after the CLI attached, with no one typing: %q", name, len(extra), extra)
 			}
 		}
+		// INPT-06: the answers are not typing, so the CLI's 80x24 never took the grid.
+		s.checkUndisturbed(t, "guiTab", "browser")
 
 		s.typeLine(t, "MARKER-2")
 		s.waitAll(t, "MARKER-2", "local", "guiTab", "browser")

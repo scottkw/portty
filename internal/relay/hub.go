@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -119,6 +120,12 @@ type Hub struct {
 	wantCols int
 	wantRows int
 	owner    *Subscriber
+	// ownerFast mirrors owner and ownerStale is set while the owner's newest
+	// report differs from the target, so the owner's own keystrokes skip every
+	// lock in NoteTyping (and a fast path that took mu could not then take
+	// gridMu). Both are written under mu, by setOwnerLocked and sizeClient.
+	ownerFast  atomic.Pointer[Subscriber]
+	ownerStale atomic.Bool
 
 	// Phase 175-04 (BUG-04, #119): live per-hub VT emulator + its own guard.
 	// liveEmu is nil until EnsureLiveEmulator's first call (lazy — T-175-04-01:
@@ -334,7 +341,7 @@ func (h *Hub) Unsubscribe(sub *Subscriber) {
 	_, present := h.subscribers[sub]
 	delete(h.subscribers, sub)
 	if h.owner == sub {
-		h.owner = nil // the grid and its target stay until someone claims (D-01)
+		h.setOwnerLocked(nil) // the grid and its target stay until someone claims (D-01)
 	}
 	total := len(h.subscribers)
 	h.mu.Unlock()
@@ -524,8 +531,46 @@ func (h *Hub) ClaimGrid(sub *Subscriber, cols, rows int) error {
 	return h.sizeClient(sub, cols, rows, true)
 }
 
-// NoteTyping is a typing claim (INPT-06). RED stub: does nothing yet.
-func (h *Hub) NoteTyping(sub *Subscriber) error { return nil }
+// NoteTyping is a typing claim (INPT-06): the pumps call it for MsgInput
+// whose filtered bytes pass IsUserInput. sub becomes the owner and the grid
+// moves to its last reported size; for the owner that applies a newer report
+// (a sidebar toggle or settle refit, which only reported) on the next
+// keystroke. A read-only viewer, a viewer that never reported a size (an
+// older client: it keeps today's behaviour of never sizing the PTY) and one
+// that already left change nothing. When nothing changed, the owner's
+// keystroke costs two atomic loads and no lock.
+func (h *Hub) NoteTyping(sub *Subscriber) error {
+	if h.ownerFast.Load() == sub && !h.ownerStale.Load() {
+		return nil
+	}
+	if sub.ReadOnly {
+		return nil
+	}
+	h.gridMu.Lock()
+	defer h.gridMu.Unlock()
+	h.mu.Lock()
+	if _, ok := h.subscribers[sub]; !ok || sub.Cols <= 0 || sub.Rows <= 0 {
+		h.mu.Unlock()
+		return nil
+	}
+	h.setOwnerLocked(sub)
+	if h.freezing {
+		h.mu.Unlock() // Thaw applies it, as for a claim
+		return nil
+	}
+	return h.applyGridLocked("input")
+}
+
+// setOwnerLocked makes sub the owner and its stored size the grid target
+// (nil: nobody owns the grid; the target stays). Caller holds mu.
+func (h *Hub) setOwnerLocked(sub *Subscriber) {
+	h.owner = sub
+	h.ownerFast.Store(sub)
+	if sub != nil {
+		h.wantCols, h.wantRows = sub.Cols, sub.Rows
+		h.ownerStale.Store(false)
+	}
+}
 
 // sizeClient is ResizeClient and ClaimGrid. Read-only viewers can neither
 // report nor claim (T-10-12; the pumps skip them too). Sizes are clamped and
@@ -543,12 +588,15 @@ func (h *Hub) sizeClient(sub *Subscriber, cols, rows int, claim bool) error {
 	why := "claim"
 	if !claim {
 		if sub.Origin != "local" || h.owner != nil || (h.ptyCols > 0 && h.ptyRows > 0) {
+			if sub == h.owner {
+				h.ownerStale.Store(cols != h.wantCols || rows != h.wantRows) // NoteTyping applies it
+			}
 			h.mu.Unlock()
 			return nil // a report: stored only
 		}
 		why = "bootstrap"
 	}
-	h.owner, h.wantCols, h.wantRows = sub, cols, rows
+	h.setOwnerLocked(sub)
 	if h.freezing {
 		// Frozen: the PTY grid and the emulator stay as exported. Thaw
 		// re-runs applyGridLocked, so a claim during a rolled-back freeze
@@ -561,7 +609,7 @@ func (h *Hub) sizeClient(sub *Subscriber, cols, rows int, claim bool) error {
 
 // applyGridLocked moves the PTY to the grid target when one is set and
 // differs. It never reads a viewer's reported size. why (bootstrap, claim,
-// thaw) goes in the diag line. Caller holds gridMu and mu; mu is released
+// input, thaw) goes in the diag line. Caller holds gridMu and mu; mu is released
 // before any IO (lock order gridMu then mu).
 func (h *Hub) applyGridLocked(why string) error {
 	oldCols, oldRows := h.ptyCols, h.ptyRows

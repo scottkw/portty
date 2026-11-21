@@ -3,6 +3,7 @@ package relay
 import (
 	"bytes"
 	"log/slog"
+	"strings"
 )
 
 // Phase 111 / Issue #54: streaming state machine that absorbs xterm.js's
@@ -180,6 +181,96 @@ func (a *InputAbsorber) completeCSI(out []byte) []byte {
 	return out
 }
 
-// IsUserInput reports whether filtered holds any byte a person typed (INPT-06).
-// RED stub: nothing counts yet.
-func IsUserInput(filtered []byte) bool { return false }
+// IsUserInput reports whether filtered (the bytes InputAbsorber.Filter
+// returned) holds any byte a person typed, so the viewer that sent it claims
+// the grid (INPT-06 typing). Terminals answer queries on their own, on every
+// connected viewer, and those answers must never claim, or idle viewers and
+// reconnects would fight over the grid. A byte is not user input when it
+// belongs to:
+//   - a CSI sequence with a private marker (< = > ?) or an intermediate byte
+//     (0x20-0x2F), or whose final byte is one of R n c t y I O M m (cursor
+//     and status reports, DA, window reports, DECRPM, focus, mouse);
+//   - an X10 mouse report, ESC [ M plus three raw bytes;
+//   - an OSC, DCS, APC, PM or SOS string, up to BEL or ST;
+//   - an unterminated sequence at the end of the frame.
+//
+// Everything else is user input: text, C0 controls, DEL, ESC + character
+// (Alt keys), SS3 keys, and CSI keys with no marker (arrows, Home/End,
+// function keys, bracketed paste markers, kitty CSI code;mods u). So a paste
+// claims and the kitty flags report ESC [ ? 0 u does not. Conservative on
+// purpose: a missed claim costs one more keystroke, a false one makes viewers
+// fight over the grid. Known collision: a modified F3 (CSI 1;5R) reads as a
+// cursor report and does not claim. filtered is never modified.
+//
+// shortcut: stateless per frame, so a reply split across two frames can claim
+// once from its tail; xterm.js sends each reply in one onData call, so only a
+// raw terminal behind portty attach could split one. Keep state per
+// connection (like InputAbsorber) if the VM check ever sees that.
+func IsUserInput(filtered []byte) bool {
+	b := filtered
+	for i := 0; i < len(b); {
+		if b[i] != 0x1b {
+			return true
+		}
+		if i+1 >= len(b) {
+			return false // a lone trailing ESC: unterminated
+		}
+		switch b[i+1] {
+		case '[':
+			end, user := scanCSI(b, i+2)
+			if user {
+				return true
+			}
+			i = end
+		case ']', 'P', '_', '^', 'X':
+			i = scanString(b, i+2)
+		case 'O':
+			return i+2 < len(b) // an SS3 key (F1-F4, keypad); unterminated at the end
+		default:
+			return true // ESC + character: an Alt key
+		}
+	}
+	return false
+}
+
+// scanCSI scans the CSI sequence whose parameters start at b[j] and returns
+// the index after it and whether it is a user key. A C0 byte, ESC or a byte
+// past 0x7E before the final byte aborts the sequence: scanning resumes there.
+func scanCSI(b []byte, j int) (end int, user bool) {
+	if j < len(b) && b[j] == 'M' {
+		return min(j+4, len(b)), false // X10 mouse: M plus three raw bytes
+	}
+	marker := false
+	for ; j < len(b); j++ {
+		c := b[j]
+		switch {
+		case c >= 0x30 && c <= 0x3F: // parameter bytes; < = > ? are private markers
+			marker = marker || c >= '<'
+		case c >= 0x20 && c <= 0x2F: // intermediate bytes ($ in DECRPM)
+			marker = true
+		case c >= 0x40 && c <= 0x7E: // final byte
+			return j + 1, !marker && !strings.ContainsRune("RnctyIOMm", rune(c))
+		default:
+			return j, false
+		}
+	}
+	return j, false // unterminated
+}
+
+// scanString returns the index after the OSC, DCS, APC, PM or SOS string
+// whose body starts at b[j]: after BEL or ST, at an ESC that starts anything
+// else (it aborts the string), or at the end of b.
+func scanString(b []byte, j int) int {
+	for ; j < len(b); j++ {
+		if b[j] == 0x07 {
+			return j + 1
+		}
+		if b[j] == 0x1b && j+1 < len(b) {
+			if b[j+1] == '\\' {
+				return j + 2
+			}
+			return j
+		}
+	}
+	return j
+}
