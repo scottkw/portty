@@ -240,7 +240,14 @@ func TestCmdOpen_TypeDetection(t *testing.T) {
 		{"icon.svg", append(bytes.Clone(prolog), svgBody...), "image/svg+xml"},
 		{"icon.svg", []byte(`<html><svg/></html>`), ""},
 		{"icon.svg", []byte(`<svgx/>`), ""},
-		{"icon.svg", append(bytes.Repeat([]byte(" "), 1100), svgBody...), ""}, // root past the first 1 KiB
+		{"icon.svg", append(bytes.Repeat([]byte(" "), 9000), svgBody...), ""}, // root past the first 8 KiB
+		// 11-REVIEW WR-01: an Illustrator header (internal subset of plain entities) and a long licence comment.
+		{"logo.svg", append([]byte(illustratorProlog), svgBody...), "image/svg+xml"},
+		{"logo.svg", append([]byte("<!-- "+strings.Repeat("licence text ", 160)+"-->\n"), svgBody...), "image/svg+xml"},
+		// Entity expansion stays refused: nested references (billion laughs) or a parameter entity in the subset.
+		{"lol.svg", readFixture(t, "hostile-external.svg"), ""},
+		{"pe.svg", append([]byte("<!DOCTYPE svg [\n  <!ENTITY\t% x \"<!ENTITY y 'z'>\">\n]>\n"), svgBody...), ""},
+		{"open.svg", append([]byte("<!DOCTYPE svg [ <!ENTITY a \"b\">\n"), svgBody...), ""}, // subset never closes
 		{"icon.txt", svgBody, ""},
 		{"README.md", []byte("# Title\n\nText — with UTF-8.\n"), "text/markdown"},
 		{"notes.markdown", []byte("*hi*"), "text/markdown"},
@@ -254,6 +261,25 @@ func TestCmdOpen_TypeDetection(t *testing.T) {
 			t.Errorf("previewMIME(%q, % x…) = %q, want %q", c.name, c.data[:min(len(c.data), 8)], got, c.want)
 		}
 	}
+}
+
+// illustratorProlog is the header Adobe Illustrator's "SVG 1.1" export writes.
+const illustratorProlog = `<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 27.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+	<!ENTITY ns_extend "http://ns.adobe.com/Extensibility/1.0/">
+	<!ENTITY ns_ai "http://ns.adobe.com/AdobeIllustrator/10.0/">
+	<!ENTITY ns_graphs "http://ns.adobe.com/Graphs/1.0/">
+]>
+`
+
+func readFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("frontend", "src", "lib", "__tests__", "fixtures", "preview", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func TestCmdOpen_Help(t *testing.T) {

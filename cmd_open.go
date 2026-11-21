@@ -166,9 +166,13 @@ func previewMIME(name string, data []byte) string {
 }
 
 // hasSVGRoot reports whether an <svg> root element starts within the first
-// 1 KiB, after an optional BOM, XML declaration, comments and DOCTYPE.
+// 8 KiB (licence and generator headers often exceed 1 KiB), after an optional
+// BOM, XML declaration, comments and DOCTYPE. A DOCTYPE internal subset is
+// allowed (Illustrator exports declare plain namespace entities there) unless
+// it holds an entity reference (&) or a parameter entity (%): the
+// entity-expansion shape, which is refused (11-REVIEW WR-01).
 func hasSVGRoot(data []byte) bool {
-	b := data[:min(len(data), 1024)]
+	b := data[:min(len(data), 8<<10)]
 	b = bytes.TrimPrefix(b, []byte("\xEF\xBB\xBF"))
 	for {
 		b = bytes.TrimLeft(b, " \t\r\n")
@@ -178,8 +182,23 @@ func hasSVGRoot(data []byte) bool {
 			end = "?>"
 		case bytes.HasPrefix(b, []byte("<!--")):
 			end = "-->"
-		case bytes.HasPrefix(b, []byte("<!DOCTYPE")): // shortcut: an internal subset holding '>' reads as unsupported, safe
-			end = ">"
+		case bytes.HasPrefix(b, []byte("<!DOCTYPE")):
+			gt, lb := bytes.IndexByte(b, '>'), bytes.IndexByte(b, '[')
+			if lb < 0 || (gt >= 0 && gt < lb) { // no internal subset
+				end = ">"
+				break
+			}
+			// shortcut: a ']' inside a quoted value ends the subset early and the file is refused, safe.
+			rb := bytes.IndexByte(b[lb:], ']')
+			if rb < 0 || bytes.ContainsAny(b[lb+1:lb+rb], "&%") {
+				return false
+			}
+			rest := bytes.TrimLeft(b[lb+rb+1:], " \t\r\n")
+			if !bytes.HasPrefix(rest, []byte(">")) {
+				return false
+			}
+			b = rest[1:]
+			continue
 		case bytes.HasPrefix(b, []byte("<svg")):
 			return len(b) > 4 && bytes.IndexByte([]byte(" \t\r\n>/"), b[4]) >= 0
 		default:
