@@ -142,7 +142,7 @@ class MockWS {
 }
 
 import { TerminalPanel } from '../TerminalPanel'
-import { PEER_FLUSH_TIMEOUT_MS, PEER_SAVE_WAIT_MS, dropPeerSnapshot, peerSnapshotKey, takePeerSnapshot } from '../../lib/peerSnapshots'
+import { PEER_FLUSH_TIMEOUT_MS, PEER_SAVE_WAIT_MS, dropPeerSnapshot, peerSnapshotKey, putPeerSnapshot, takePeerSnapshot } from '../../lib/peerSnapshots'
 
 const enc = new TextEncoder()
 const metaFrame = (m: object) => new Uint8Array([0x20, ...enc.encode(JSON.stringify(m))])
@@ -176,6 +176,8 @@ describe('TerminalPanel peer tab switch (HARD-05)', () => {
     container.remove()
     takePeerSnapshot(peerSnapshotKey('', 's1')) // never leak a snapshot into the next case
     takePeerSnapshot(peerSnapshotKey('h', 's1'))
+    takePeerSnapshot(peerSnapshotKey('host-a', 's1'))
+    takePeerSnapshot(peerSnapshotKey('host-b', 's1'))
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     vi.useRealTimers()
@@ -351,6 +353,56 @@ describe('TerminalPanel peer tab switch (HARD-05)', () => {
     dropPeerSnapshot('h', 's1')
     unmount()
     expect(takePeerSnapshot(peerSnapshotKey('h', 's1'))).toBeUndefined()
+  })
+
+  // INPT-04 (SC4): App renders one peer tab at a time, so two hosts' tabs with one
+  // session id mount one after the other. The tab's snapshot host picks the snapshot
+  // key, which picks the restored content and the resume offset.
+  it('two hosts with one session id each rejoin with their own delta (resume=104 for host-a, resume=204 for host-b)', async () => {
+    const base = 'ws://127.0.0.1:1234/api/relay/remote/s1/ws'
+    const drop = async (s: MockWS) => {
+      act(() => { s.readyState = 3; s.onclose?.({ code: 1006, reason: '' }) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    }
+    putPeerSnapshot(peerSnapshotKey('host-a', 's1'), { data: 'A-SNAP', cols: 80, rows: 24, offset: 104 })
+    putPeerSnapshot(peerSnapshotKey('host-b', 's1'), { data: 'B-SNAP', cols: 80, rows: 24, offset: 204 })
+
+    const a = mount({ remote: true, snapshotHost: 'host-a' })
+    expect(writes(a)[0]).toBe('A-SNAP')
+    expect(ws(0).url).toBe(`${base}?resume=104`)
+    joined(ws(0))
+    send(ws(0), metaFrame({ replay: 'delta' }))
+    send(ws(0), outFrame('a1'))
+    send(ws(0), metaFrame({ offset: 150 }))
+    await drop(ws(0))
+    expect(MockWS.instances).toHaveLength(2)
+    expect(ws(1).url).toBe(`${base}?resume=150`)
+    joined(ws(1))
+    send(ws(1), metaFrame({ replay: 'delta' }))
+    send(ws(1), outFrame('a2'))
+    send(ws(1), metaFrame({ offset: 160 }))
+    expect(writes(a)).toEqual(['A-SNAP', 'a1', 'a2'])
+    unmount()
+
+    const b = mount({ remote: true, snapshotHost: 'host-b' })
+    expect(writes(b)[0]).toBe('B-SNAP')
+    expect(writes(b)).not.toContain('A-SNAP')
+    expect(ws(2).url).toBe(`${base}?resume=204`)
+    joined(ws(2))
+    send(ws(2), metaFrame({ replay: 'delta' }))
+    send(ws(2), outFrame('b1'))
+    send(ws(2), metaFrame({ offset: 250 }))
+    await drop(ws(2))
+    expect(MockWS.instances).toHaveLength(4)
+    expect(ws(3).url).toBe(`${base}?resume=250`)
+    joined(ws(3))
+    send(ws(3), metaFrame({ replay: 'delta' }))
+    send(ws(3), outFrame('b2'))
+    expect(writes(b)).toEqual(['B-SNAP', 'b1', 'b2'])
+    expect(writes(a)).not.toContain(RIS)
+    expect(writes(b)).not.toContain(RIS)
+    // host-a's own tab state is still under its own key; host-b's mount never took it.
+    expect(takePeerSnapshot(peerSnapshotKey('host-a', 's1'))).toMatchObject({ data: 'SNAPSHOT-DATA', offset: 160 })
   })
 
   it('unmounting while still waiting on a pending save creates no RelayClient and disposes the terminal', async () => {

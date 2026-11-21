@@ -153,7 +153,7 @@ describe('App — peer row opens its tab through ConnectPeerSession (SHAR-01)', 
     await flush()
     expect(connect).toHaveBeenCalledTimes(1)
     expect(c.querySelectorAll('[data-testid="web-session-view"]')).toHaveLength(1)
-    expect(c.querySelectorAll('[id="tabpanel-__websession__sess-remote-1"]')).toHaveLength(1)
+    expect(c.querySelectorAll('[id="tabpanel-__websession__office-air.tail1234.ts.net/sess-remote-1"]')).toHaveLength(1)
     expect(Array.from(c.querySelectorAll('[role="tab"]')).filter((t) => t.textContent?.includes('Remote Session · office-air'))).toHaveLength(1)
     await click(peerRow(c)!) // a third click after it opened only activates it
     expect(connect).toHaveBeenCalledTimes(1)
@@ -246,6 +246,61 @@ describe('App — peer tab snapshots (DEBT-04)', () => {
     await flush()
     expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
     expect(takePeerSnapshot(saveKey)).toBeUndefined()
+  })
+})
+
+// INPT-04: two Macs' daemons can hand out the same session id. Each gets its own
+// tab (id and snapshot key carry the host), and every lookup matches host plus session.
+describe('App — two peers with the same session id (INPT-04)', () => {
+  const peerA: RemotePeerSessions = { hostname: 'A', dnsName: 'a.tail.ts.net', reachable: true, sessions: [{ id: 's1', name: 'Alpha', status: 'idle', url: '' }] }
+  const peerB: RemotePeerSessions = { hostname: 'B', reachable: true, sessions: [{ id: 's1', name: 'Bravo', status: 'idle', url: '' }] }
+  const ok = (host: unknown, id: unknown) => ({ sessionId: id, name: '', host: '', url: `https://${host}:7444/sessions/${id}?cap=C-${host}`, errorCode: '' })
+
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks() })
+
+  const row = (c: HTMLElement, name: string) => Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find((b) => b.textContent === name)!
+  const view = (c: HTMLElement) => c.querySelector('[data-testid="web-session-view"]')!
+  const tabCount = (c: HTMLElement) => c.querySelectorAll('[role="tab"]').length
+
+  it('same session id on two hosts opens two tabs with two snapshot hosts; re-clicking A only activates A', async () => {
+    const connect = vi.fn(ok)
+    const c = await mountApp({ ...baseImpl(connect), GetRemoteSessionsWithMeta: () => [peerA, peerB] })
+    await click(row(c, 'Alpha'))
+    expect(view(c).getAttribute('data-snapshot-host')).toBe('a.tail.ts.net')
+    await click(row(c, 'Bravo'))
+    expect(tabCount(c)).toBe(2)
+    expect(view(c).getAttribute('data-snapshot-host')).toBe('B')
+    expect(view(c).getAttribute('data-cap')).toBe('C-B')
+    expect(connect).toHaveBeenCalledTimes(2)
+    await click(row(c, 'Alpha'))
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(tabCount(c)).toBe(2)
+    expect(view(c).getAttribute('data-snapshot-host')).toBe('a.tail.ts.net')
+    expect(view(c).getAttribute('data-cap')).toBe('C-a.tail.ts.net')
+  })
+
+  it('share stopped on B marks only B\'s tab: re-clicking A still only activates A', async () => {
+    const connect = vi.fn(ok)
+    const c = await mountApp({ ...baseImpl(connect), GetRemoteSessionsWithMeta: () => [peerA, peerB] })
+    await click(row(c, 'Alpha'))
+    await click(row(c, 'Bravo'))
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-share-stopped"]')!)
+    await click(row(c, 'Alpha'))
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(view(c).getAttribute('data-snapshot-host')).toBe('a.tail.ts.net')
+  })
+
+  it('a MagicDNS peer whose connect fails, then succeeds on a re-click, has exactly one tab', async () => {
+    const connect = vi.fn()
+      .mockReturnValueOnce({ sessionId: '', name: '', host: '', url: '', errorCode: 'unreachable' })
+      .mockImplementationOnce(ok)
+    const c = await mountApp({ ...baseImpl(connect), GetRemoteSessionsWithMeta: () => [peerA] })
+    await click(row(c, 'Alpha'))
+    expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
+    await click(row(c, 'Alpha'))
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(tabCount(c)).toBe(1)
+    expect(view(c).getAttribute('data-snapshot-host')).toBe('a.tail.ts.net')
   })
 })
 
@@ -464,18 +519,19 @@ describe('Sidebar peer row — open entry point (NAV-02)', () => {
 // openWebSessionTab is internal to the App component (not exported), so this suite
 // follows the established source-inspection convention (see App.test.tsx) rather than
 // mounting the full App tree. Together the two assertions below prove per-call
-// isolation: (1) the tab id is deterministically keyed by the sessionId ARGUMENT
-// (webSessionTabId(sessionId)), so two different remote sessionIds always produce two
-// different tab ids; and (2) the created Tab's baseURL/capToken are sourced directly
+// isolation: (1) the tab id is deterministically keyed by the sessionId ARGUMENT and,
+// for a peer tab, its host (webSessionTabId(sessionId, host), INPT-04), so two different
+// remote sessionIds (or one id on two hosts) always produce two different tab ids; and (2) the created Tab's baseURL/capToken are sourced directly
 // from THIS call's own parameters — never from the shared/global webParams — so two
 // concurrent remote tabs can never cross-contaminate each other's cap/host
 // (RESEARCH Pitfall 3 / T-168-04).
 describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote sessions)', () => {
-  it('tab id is keyed by the sessionId argument, not a shared value (distinct sessions -> distinct tab ids)', () => {
+  // INPT-04: plus this call's own peer host, so two hosts' equal session ids get two tab ids.
+  it('tab id is keyed by the sessionId argument and this call\'s peer host, not a shared value (distinct sessions or hosts -> distinct tab ids)', () => {
     const idx = raw.indexOf('const openWebSessionTab')
     expect(idx, 'openWebSessionTab must be present in App.tsx').toBeGreaterThan(-1)
     const slice = raw.slice(idx, idx + 900)
-    expect(slice).toContain('webSessionTabId(sessionId)')
+    expect(slice).toContain('webSessionTabId(sessionId, peer ? peerSnapshotHost(peer) : undefined)')
   })
 
   it('openWebSessionTab signature is (sessionId, baseURL?, capToken?) — extended for FIX-03', () => {
@@ -531,7 +587,8 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
   // by keying on the same wsSessionId used to resolve this render's own
   // sessionId prop, forcing a clean remount whenever the active
   // __websession__ tab changes to a different session.
-  it('CR-03: <WebShareSessionView> is keyed by wsSessionId so switching remote tabs forces a remount (no cross-session state leak)', () => {
+  // INPT-04: keyed by the tab id (host plus session), so two hosts' equal session ids still remount.
+  it('CR-03: <WebShareSessionView> is keyed by the tab id and cap so switching remote tabs forces a remount (no cross-session state leak)', () => {
     const idx = raw.indexOf("activeId.startsWith('__websession__')")
     expect(idx, 'the __websession__ render branch must be present').toBeGreaterThan(-1)
     const slice = raw.slice(idx, idx + 3500)
@@ -540,7 +597,7 @@ describe('App.tsx — openWebSessionTab per-tab isolation (FIX-03, two remote se
     // The key prop must appear on the element itself (before sessionId prop),
     // not merely somewhere later in the file.
     const elementSlice = slice.slice(wsvIdx, wsvIdx + 400)
-    expect(elementSlice).toContain("key={`${wsSessionId}:${wsCapToken}`}")
+    expect(elementSlice).toContain("key={`${activeId}:${wsCapToken}`}")
   })
 })
 
