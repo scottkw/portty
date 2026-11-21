@@ -11,6 +11,7 @@ import {
   encodeInputFrames,
   MAX_INPUT_PAYLOAD,
   encodeResizeFrame,
+  encodeClaimFrame,
   parseServerFrame,
   RelayClient,
   type ReconnectVerdict,
@@ -107,6 +108,46 @@ describe('encodeResizeFrame', () => {
   it('handles 80x24 standard terminal size', () => {
     const result = encodeResizeFrame(80, 24)
     expect(Array.from(result)).toEqual([0x11, 0, 80, 0, 24])
+  })
+})
+
+// INPT-06: a claim is the 5-byte report plus byte 5 bit 0 (Research Pattern 3).
+describe('encodeClaimFrame and sendClaim (INPT-06)', () => {
+  class WS {
+    static OPEN = 1
+    static last: WS
+    binaryType = ''
+    readyState = 1
+    onopen: (() => void) | null = null
+    onmessage: ((e: { data: ArrayBuffer }) => void) | null = null
+    onclose: ((e: { code: number; reason: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    send = vi.fn()
+    close = vi.fn()
+    constructor() { WS.last = this }
+  }
+  beforeEach(() => { vi.stubGlobal('WebSocket', WS) })
+  afterEach(() => { vi.unstubAllGlobals() })
+  const sent = () => WS.last.send.mock.calls.map((c) => Array.from(c[0] as Uint8Array))
+
+  it('encodeClaimFrame is [MSG_RESIZE2, cols_hi, cols_lo, rows_hi, rows_lo, 0x01]', () => {
+    expect(Array.from(encodeClaimFrame(256, 128))).toEqual([0x11, 1, 0, 0, 128, 0x01])
+  })
+
+  it('sendClaim(120, 30) on an open socket sends exactly [0x11, 0, 120, 0, 30, 0x01]; sendResize still sends 5 bytes', () => {
+    const client = new RelayClient(34115, 'sess-1', { onOutput: vi.fn() })
+    client.sendClaim(120, 30)
+    client.sendResize(100, 30)
+    expect(sent()).toEqual([[0x11, 0, 120, 0, 30, 0x01], [0x11, 0, 100, 0, 30]])
+    client.close()
+  })
+
+  it('sendClaim on a closed socket sends nothing', () => {
+    const client = new RelayClient(34115, 'sess-1', { onOutput: vi.fn() })
+    WS.last.readyState = 3
+    client.sendClaim(120, 30)
+    expect(sent()).toEqual([])
+    client.close()
   })
 })
 
@@ -630,6 +671,25 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     expect(cbs.onStateChange).toHaveBeenLastCalledWith('open')
     client!.sendInput('ls\r')
     expect(ws(1).send.mock.calls.some((c) => (c[0] as Uint8Array)[0] === MSG_INPUT)).toBe(true)
+  })
+
+  it('sendClaim is dropped while reconnecting or not yet open, and sent once open (INPT-06)', async () => {
+    const claims = (i: number) => ws(i).send.mock.calls.filter((c) => (c[0] as Uint8Array).length === 6).length
+    make()
+    joined(0) // the grid arrived, the replay has not ended: not open
+    client!.sendClaim(120, 30)
+    expect(claims(0)).toBe(0)
+    send(0, meta({ replay: 'full' }))
+    send(0, meta({ offset: 0 }))
+    client!.sendClaim(120, 30)
+    expect(claims(0)).toBe(1)
+    drop(0)
+    client!.sendClaim(120, 30)
+    await advance(1000)
+    joined(1)
+    client!.sendClaim(120, 30)
+    expect(claims(0)).toBe(1)
+    expect(claims(1)).toBe(0)
   })
 
   it('input is dropped until the replay ends: open comes at the offset meta, not the grid (WR-01 it3)', async () => {

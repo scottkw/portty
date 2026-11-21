@@ -3,12 +3,13 @@
  * Phase 175-03 BUG-01 — extended with floor-aware guest viewport (readability
  * floor + horizontal-scroll fallback) behavioral tests.
  *
- * Guest path: a RelayClient onResize(cols,rows) callback calls term.resize(cols,rows)
+ * INPT-06 (Phase 10): every panel (local tab, peer tab, browser) follows the server
+ *   grid: a RelayClient onResize(cols,rows) callback calls term.resize(cols,rows)
  *   then applies a CSS transform via computeGuestViewport, toggling the
  *   .terminal-guest--scroll-x class when the natural scale falls below the
- *   readability floor. Guest never calls sendResize.
- * Host path: fitTerminal + sendResize on open preserved; no transform applied,
- *   scroll-x class never toggled.
+ *   readability floor. Every panel reports its own measured fit (sendResize) on
+ *   open, never the grid it shows; a font change on the active panel claims
+ *   (sendClaim). A local tab before any grid frame fits itself, with no transform.
  *
  * Source-inspection assertions pin the isGuest gate and computeGuestViewport import;
  * behavioral assertions use mock-captured RelayClient callbacks to drive onResize.
@@ -34,8 +35,11 @@ const hoisted = vi.hoisted(() => {
   return {
     // Captured from the most-recent RelayClient constructor call
     lastCallbacks: null as Record<string, unknown> | null,
-    // Track sendResize calls so we can assert host vs guest behavior
+    // Track sendResize (report) and sendClaim (INPT-06) calls
     sendResizeCalls: [] as Array<[number, number]>,
+    sendClaimCalls: [] as Array<[number, number]>,
+    // Cell metrics every mock terminal reads; mutate the fields (a font change)
+    cell: { width: 9, height: 17 },
     // Track term.resize calls
     termResizeCalls: [] as Array<[number, number]>,
     // The most recent terminal element (to inspect style.transform)
@@ -54,9 +58,11 @@ vi.mock('../../lib/relayClient', async () => {
     constructor(_p: number, _id: string, cbs: Record<string, unknown>) {
       hoisted.lastCallbacks = cbs
       hoisted.sendResizeCalls = []
+      hoisted.sendClaimCalls = []
     }
     sendInput() {}
     sendResize(cols: number, rows: number) { hoisted.sendResizeCalls.push([cols, rows]) }
+    sendClaim(cols: number, rows: number) { hoisted.sendClaimCalls.push([cols, rows]) }
     resumePoint() { return null } // HARD-05: no offset known, so no tab-switch snapshot
     close() {}
   }
@@ -111,7 +117,7 @@ vi.mock('@xterm/xterm', async () => {
     constructor(_opts: Record<string, unknown>) {
       this._core = {
         _renderService: {
-          dimensions: { css: { cell: { width: 9, height: 17 } } },
+          dimensions: { css: { cell: hoisted.cell } },
           clear: vi.fn(),
         },
       }
@@ -220,10 +226,11 @@ describe('Phase 157 TerminalPanel — source gates (VIEW-04/05)', () => {
     expect(src).toMatch(/isGuest\s*=\s*remote\s*\|\|\s*!!wsURL/)
   })
 
-  it('guest onResize goes through applyHostGrid with recomputeScale as its follow-up (05-12)', () => {
+  it('every panel\'s onResize stores the server grid and goes through applyHostGrid with recomputeScale (05-12, INPT-06)', () => {
     expect(src).toContain("from '../lib/guestTerminal'")
-    // Whitespace-tolerant: DEBT-04 moved the client into start(), one level deeper.
-    expect(src).toMatch(/onResize: isGuest\n\s+\? \(cols, rows\) => applyHostGrid\(term, cols, rows, recomputeScale\)/)
+    const cb = src.slice(src.indexOf('onResize: (cols, rows) => {'), src.indexOf('onReset:'))
+    expect(cb).toContain('serverGridRef.current = { cols, rows }')
+    expect(cb).toContain('applyHostGrid(term, cols, rows, recomputeScale)')
   })
 
   it('applyHostGrid clamps and resizes inside a write callback (guest honor, stream order)', () => {
@@ -231,10 +238,10 @@ describe('Phase 157 TerminalPanel — source gates (VIEW-04/05)', () => {
     expect(helperSrc).toContain('term.resize(Math.max(1, cols), Math.max(1, rows))')
   })
 
-  it('guest path: does not call client.sendResize from onOpen', () => {
-    // The onOpen for guests is gated by isGuest — the sendResize call is in the !isGuest branch
-    // Verify the ternary structure is present
-    expect(src).toMatch(/isGuest\s*\?\s*undefined\s*:\s*\(\)\s*=>\s*\{/)
+  it('reports carry the measured fit, never the grid shown (INPT-06 invariant)', () => {
+    expect(src).not.toContain('sendResize(term.cols')
+    expect(src).not.toMatch(/term\.onResize\(/)
+    expect(src).toContain('function measureFit(')
   })
 
   it('guest path: applyHostGrid calls its follow-up (recomputeScale) after term.resize (Pitfall 5 order)', () => {
@@ -245,23 +252,11 @@ describe('Phase 157 TerminalPanel — source gates (VIEW-04/05)', () => {
     expect(resizeIdx).toBeLessThan(afterIdx)
   })
 
-  it('guest ResizeObserver path does NOT call fitTerminal', () => {
-    // Find the guest branch of the isActive effect and verify it calls recomputeScale, not fitTerminal
-    const guestBranch = src.slice(
-      src.indexOf('GUEST path (VIEW-04/05)'),
-      src.indexOf('HOST path: fit terminal'),
-    )
-    expect(guestBranch).toContain('recomputeScale()')
-    // Must not contain a fitTerminal() call (comments mentioning the name are OK)
-    expect(guestBranch).not.toMatch(/fitTerminal\s*\(/)
-  })
-
-  it('host ResizeObserver path still calls fitTerminal', () => {
-    const hostBranch = src.slice(
-      src.indexOf('HOST path: fit terminal'),
-      src.indexOf('Apply font size changes'),
-    )
-    expect(hostBranch).toContain('fitTerminal(')
+  it('relayout fits only before any grid is known, otherwise rescales, then reports', () => {
+    const body = src.slice(src.indexOf('const relayout = useCallback('), src.indexOf('}, [recomputeScale, reportFit])'))
+    expect(body).toContain('if (serverGridRef.current) recomputeScale()')
+    expect(body).toContain('else fitTerminal(termRef.current!)')
+    expect(body).toContain('reportFit()')
   })
 
   it('CSS contains transform-origin: top left for .xterm', () => {
@@ -372,22 +367,6 @@ describe('Phase 157 TerminalPanel — guest path behavioral (VIEW-04/05)', () =>
     flushSync(() => { onResize?.(80, 24) })
 
     expect(hoisted.lastElement?.style.transform).toMatch(/^scale\(/)
-  })
-
-  // D-03 invariant: guests never drive PTY resize
-  it('guest (remote=true): sendResize is never called (onOpen is undefined or no-op)', () => {
-    mountGuest(true)
-    // Simulate WS open — even if onOpen fires, it must not call sendResize for guests
-    const onOpen = hoisted.lastCallbacks?.['onOpen'] as (() => void) | undefined
-    if (typeof onOpen === 'function') flushSync(() => { onOpen() })
-    expect(hoisted.sendResizeCalls).toHaveLength(0)
-  })
-
-  it('guest (wsURL set): sendResize is never called', () => {
-    mountGuest(undefined, 'wss://host/sessions/s/ws?cap=x')
-    const onOpen = hoisted.lastCallbacks?.['onOpen'] as (() => void) | undefined
-    if (typeof onOpen === 'function') flushSync(() => { onOpen() })
-    expect(hoisted.sendResizeCalls).toHaveLength(0)
   })
 
   // Scale cap: transform never exceeds scale(1)
@@ -566,7 +545,7 @@ describe('05-12 TerminalPanel — guest element spans the pane (scrollbar at the
 
 // ─── Behavioral tests — host path ────────────────────────────────────────────
 
-describe('Phase 157 TerminalPanel — host path invariance (VIEW-04/05)', () => {
+describe('Phase 157 TerminalPanel — local tab before any grid frame (VIEW-04/05)', () => {
   let container: HTMLElement
   let root: Root
 
@@ -594,25 +573,6 @@ describe('Phase 157 TerminalPanel — host path invariance (VIEW-04/05)', () => 
     })
   }
 
-  // Host: sendResize fires from onOpen (existing behavior preserved)
-  it('host: sendResize is called when onOpen fires (host drives PTY grid)', () => {
-    mountHost()
-    const onOpen = hoisted.lastCallbacks?.['onOpen'] as (() => void) | undefined
-    expect(onOpen).toBeTypeOf('function')
-
-    flushSync(() => { onOpen?.() })
-
-    expect(hoisted.sendResizeCalls.length).toBeGreaterThan(0)
-  })
-
-  // Host: no onResize callback wired (host never honors 0x02)
-  it('host: onResize callback is not provided (host never honors server 0x02)', () => {
-    mountHost()
-    const onResize = hoisted.lastCallbacks?.['onResize']
-    // Host path: onResize must be undefined (Pitfall 7)
-    expect(onResize).toBeUndefined()
-  })
-
   // Host: no transform applied (host renders natively, never scaled)
   it('host: no CSS transform applied to term.element after open', () => {
     mountHost()
@@ -633,6 +593,101 @@ describe('Phase 157 TerminalPanel — host path invariance (VIEW-04/05)', () => 
     const onOpen = hoisted.lastCallbacks?.['onOpen'] as (() => void) | undefined
     flushSync(() => { onOpen?.() })
     expect(node.classList.contains('terminal-guest--scroll-x')).toBe(false)
+  })
+})
+
+// ─── INPT-06: report the fit, follow the grid, claim on zoom ─────────────────
+//
+// The container is sized to a 100x30 fit at the mock's 9x17 cells (900 x 510,
+// no padding in jsdom).
+
+describe('INPT-06 TerminalPanel — report the fit, follow the grid, claim on zoom', () => {
+  let container: HTMLElement
+  let root: Root
+
+  beforeEach(() => {
+    hoisted.lastCallbacks = null
+    hoisted.sendResizeCalls = []
+    hoisted.sendClaimCalls = []
+    hoisted.termResizeCalls = []
+    hoisted.lastElement = null
+    hoisted.pendingWrites = null
+    hoisted.cell.width = 9
+    hoisted.cell.height = 17
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(() => {
+    try { flushSync(() => root.unmount()) } catch { /* ignore */ }
+    container.remove()
+    hoisted.cell.width = 9
+    hoisted.cell.height = 17
+    vi.clearAllMocks()
+  })
+
+  function render(props: Partial<React.ComponentProps<typeof TerminalPanel>>) {
+    flushSync(() => { root.render(React.createElement(TerminalPanel, makeBaseProps(props))) })
+    return container.querySelector('.terminal-session-container') as HTMLElement
+  }
+  function mountSized(props: Partial<React.ComponentProps<typeof TerminalPanel>>) {
+    const node = render(props)
+    Object.defineProperty(node, 'clientWidth', { value: 900, configurable: true })
+    Object.defineProperty(node, 'clientHeight', { value: 510, configurable: true })
+    return node
+  }
+  const cb = <T,>(name: string) => hoisted.lastCallbacks?.[name] as T
+  const grid = (cols: number, rows: number) => flushSync(() => { cb<(c: number, r: number) => void>('onResize')(cols, rows) })
+  const open = () => flushSync(() => { cb<() => void>('onOpen')() })
+  const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()))
+  const scaleOf = () => parseFloat(/^scale\(([\d.]+)\)/.exec(hoisted.lastElement!.style.transform)?.[1] ?? 'NaN')
+
+  const kinds: Array<[string, Partial<React.ComponentProps<typeof TerminalPanel>>]> = [
+    ['local tab', { remote: false }],
+    ['peer tab (remote)', { remote: true }],
+    ['browser viewer (wsURL)', { wsURL: 'wss://host/sessions/s/ws?cap=x' }],
+  ]
+  for (const [kind, props] of kinds) {
+    it(`${kind}: onOpen reports the measured fit (100x30), not the 120x40 grid it shows`, () => {
+      mountSized(props)
+      grid(120, 40)
+      expect(hoisted.termResizeCalls).toContainEqual([120, 40])
+      open()
+      expect(hoisted.sendResizeCalls).toEqual([[100, 30]])
+      expect(hoisted.sendClaimCalls).toEqual([])
+    })
+  }
+
+  it('local tab follows a 120x40 grid frame: term.resize(120, 40) and a scale below 1', () => {
+    mountSized({ remote: false })
+    grid(120, 40)
+    expect(hoisted.termResizeCalls).toContainEqual([120, 40])
+    expect(scaleOf()).toBeLessThan(1)
+    expect(scaleOf()).toBeCloseTo(0.75, 3) // min(900/1080, 510/680)
+  })
+
+  it('local tab with no grid frame yet fits itself and reports (the hub bootstraps from it)', async () => {
+    mountSized({ remote: false })
+    await nextFrame() // the activation fit runs in a rAF
+    expect(hoisted.termResizeCalls).toContainEqual([100, 30])
+    expect(hoisted.lastElement!.style.transform).toBe('')
+    open()
+    expect(hoisted.sendResizeCalls).toContainEqual([100, 30])
+  })
+
+  it('a font size change on the active panel claims its new fit once, without resizing xterm before the next grid frame', () => {
+    mountSized({ remote: true, fontSize: 14 })
+    grid(100, 30)
+    hoisted.termResizeCalls = []
+    hoisted.cell.width = 10 // a bigger font: the fit is now 90x30
+    render({ remote: true, fontSize: 15 })
+    expect(hoisted.sendClaimCalls).toEqual([[90, 30]])
+    expect(hoisted.termResizeCalls).toEqual([])
+    render({ remote: true, fontSize: 15 }) // unchanged font: nothing
+    expect(hoisted.sendClaimCalls).toEqual([[90, 30]])
+    grid(90, 30) // the claim's echo: the panel follows
+    expect(hoisted.termResizeCalls).toEqual([[90, 30]])
   })
 })
 
