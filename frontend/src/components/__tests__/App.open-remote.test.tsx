@@ -26,7 +26,7 @@ import { peerSnapshotKey, putPeerSnapshot, takePeerSnapshot } from '../../lib/pe
 const stub = vi.hoisted(() => ({ mounts: 0, verdict: undefined as unknown, throwFor: '' }))
 
 vi.mock('../WebShareSessionView', () => ({
-  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown>; onReconnectingChange?: (on: boolean) => void; snapshotHost?: string }) => {
+  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown>; onReconnectingChange?: (on: boolean) => void; snapshotHost?: string; fontSize?: number; onFontSizeChange?: (delta: number) => void }) => {
     React.useEffect(() => { stub.mounts++ }, [])
     if (p.sessionId === stub.throwFor) throw new SyntaxError(`bad URL wss://x/ws?cap=${p.capToken}`)
     return React.createElement('div', {
@@ -38,7 +38,9 @@ vi.mock('../WebShareSessionView', () => ({
       'data-remote': String(p.remote),
       'data-has-reconnect': String(p.beforeReconnect !== undefined),
       'data-snapshot-host': p.snapshotHost ?? '',
+      'data-font-size': String(p.fontSize),
     },
+    React.createElement('button', { type: 'button', 'data-testid': 'fire-font-up', onClick: () => p.onFontSizeChange?.(+1) }),
     React.createElement('button', { type: 'button', 'data-testid': 'fire-share-stopped', onClick: () => p.onShareStopped?.() }),
     React.createElement('button', { type: 'button', 'data-testid': 'fire-before-reconnect', onClick: () => { void p.beforeReconnect?.().then((v) => { stub.verdict = v }) } }),
     React.createElement('button', { type: 'button', 'data-testid': 'fire-reconnecting', onClick: () => p.onReconnectingChange?.(true) }),
@@ -246,6 +248,36 @@ describe('App — peer tab snapshots (DEBT-04)', () => {
     await flush()
     expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
     expect(takePeerSnapshot(saveKey)).toBeUndefined()
+  })
+})
+
+// INPT-06: a peer tab's Cmd+/Cmd− is that tab's own font size (kept per tab id),
+// and it makes the tab's panel claim the session grid.
+describe('App — peer tab font size per tab (INPT-06)', () => {
+  const peerA: RemotePeerSessions = { hostname: 'Kens-MacBook-Air', dnsName: 'office-air-1.tail1234.ts.net', reachable: true, sessions: [{ id: 's1', name: 'Alpha', status: 'idle', url: '' }] }
+  const peerC: RemotePeerSessions = { hostname: 'studio-mac', reachable: true, sessions: [{ id: 's2', name: 'Charlie', status: 'idle', url: '' }] }
+  const connect = vi.fn((host: unknown, id: unknown) => ({ sessionId: id, name: '', host: '', url: `https://${host}:7444/sessions/${id}?cap=C`, errorCode: '' }))
+
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks() })
+
+  const row = (c: HTMLElement, name: string) => Array.from(c.querySelectorAll<HTMLButtonElement>('button.sidebar__row')).find((b) => b.textContent === name)!
+  const fontSize = (c: HTMLElement) => Number(c.querySelector('[data-testid="web-session-view"]')!.getAttribute('data-font-size'))
+  const closeButton = (c: HTMLElement, name: string) => c.querySelector<HTMLButtonElement>(`button[aria-label^="Close ${name} "]`)!
+
+  it('Cmd+ raises only that peer tab\'s font; a second peer tab keeps the default; a reopened tab starts from the default', async () => {
+    const c = await mountApp({ ...baseImpl(connect), GetRemoteSessionsWithMeta: () => [peerA, peerC] })
+    await click(row(c, 'Alpha'))
+    const base = fontSize(c)
+    expect(base).toBeGreaterThan(0)
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-font-up"]')!)
+    expect(fontSize(c)).toBe(base + 1)
+    await click(row(c, 'Charlie'))
+    expect(fontSize(c)).toBe(base)
+    await click(row(c, 'Alpha'))
+    expect(fontSize(c)).toBe(base + 1)
+    await click(closeButton(c, 'Alpha'))
+    await click(row(c, 'Alpha'))
+    expect(fontSize(c)).toBe(base)
   })
 })
 

@@ -170,6 +170,26 @@ describe('WebShareSessionView — remote-tab daemon-proxy transport (FIX-03 RC-A
 
 // Portty 04-06 (SHAR-04): the stopped-sharing banner is rendered by TerminalPanel
 // (TerminalPanel.guestClose.test.tsx); this view hands it the host label and callback.
+// INPT-06: a desktop peer tab's Cmd+/Cmd− changes that tab's font size in App,
+// which makes its TerminalPanel claim the session grid.
+describe('WebShareSessionView — font size handler (INPT-06)', () => {
+  it('a passed onFontSizeChange reaches TerminalPanel', () => {
+    const onFontSizeChange = vi.fn()
+    const { unmount } = mountView({ onFontSizeChange })
+    ;(capturedTerminalProps?.onFontSizeChange as (delta: number) => void)(+1)
+    expect(onFontSizeChange).toHaveBeenCalledWith(1)
+    unmount()
+  })
+
+  it('without one (the browser viewer zooms with the browser), TerminalPanel still gets a callable function', () => {
+    const { unmount } = mountView()
+    const handler = capturedTerminalProps?.onFontSizeChange as (delta: number) => void
+    expect(handler).toBeTypeOf('function')
+    expect(() => handler(+1)).not.toThrow()
+    unmount()
+  })
+})
+
 describe('WebShareSessionView — stopped-sharing props (SHAR-04)', () => {
   it('passes hostLabel and onShareStopped through to TerminalPanel', () => {
     const onShareStopped = vi.fn()
