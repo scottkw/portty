@@ -3,8 +3,10 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -171,5 +173,255 @@ func TestZshShim_SessionReportsCwd(t *testing.T) {
 	}
 	if b, err := os.ReadFile(f); err != nil || string(b) != zshShim {
 		t.Errorf(".zshenv differs from the embedded script (%v)", err)
+	}
+}
+
+const osc7Home = "\x1b]7;file:///"
+
+// markersIn writes the four marker startup files into dir.
+func markersIn(t *testing.T, dir, orderLog string) {
+	t.Helper()
+	for name, content := range markerFiles(orderLog) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// printVars prints $ZDOTDIR, $HISTFILE and the shim variable behind a marker.
+func printVars(t *testing.T, e *SessionEngine, id, tag string) string {
+	t.Helper()
+	return syncShell(t, e, id, `print -r -- "Z=[$ZDOTDIR] H=[$HISTFILE] P=[${PORTTY_ZSH_ZDOTDIR-unset}]"`, tag)
+}
+
+// A custom ZDOTDIR exported to the daemon: its four files run, HISTFILE
+// follows it, and OSC 7 is still emitted.
+func TestZshShim_CustomZDOTDIR(t *testing.T) {
+	requireZsh(t)
+	home := shimHome(t, nil)
+	zd := t.TempDir()
+	orderLog := filepath.Join(t.TempDir(), "order.log")
+	markersIn(t, zd, orderLog)
+	t.Setenv("ZDOTDIR", zd)
+	e, _ := newShimEngine(t)
+	id := startShimSession(t, e, home)
+
+	out := printVars(t, e, id, "CUSTOM")
+	if want := "Z=[" + zd + "] H=[" + zd + "/.zsh_history] P=[unset]"; !strings.Contains(out, want) {
+		t.Errorf("want %q in output %q", want, out)
+	}
+	if got := strings.Join(readOrderLog(t, orderLog), " "); got != ".zshenv .zprofile .zshrc .zlogin" {
+		t.Errorf("startup order = %q", got)
+	}
+	if !strings.Contains(out, osc7Home) {
+		t.Errorf("no OSC 7 report; output %q", out)
+	}
+}
+
+// A user ~/.zshenv that sets ZDOTDIR itself: the later files come from there.
+func TestZshShim_ZDOTDIRSetInUserZshenv(t *testing.T) {
+	requireZsh(t)
+	other := t.TempDir()
+	orderLog := filepath.Join(t.TempDir(), "order.log")
+	home := shimHome(t, map[string]string{
+		".zshenv": "print -r -- .zshenv >> '" + orderLog + "'\nexport ZDOTDIR='" + other + "'\n",
+	})
+	markersIn(t, other, orderLog)
+	if err := os.Remove(filepath.Join(other, ".zshenv")); err != nil {
+		t.Fatal(err)
+	}
+	e, _ := newShimEngine(t)
+	id := startShimSession(t, e, home)
+
+	out := printVars(t, e, id, "ZSETZ")
+	if want := "Z=[" + other + "] H=[" + other + "/.zsh_history]"; !strings.Contains(out, want) {
+		t.Errorf("want %q in output %q", want, out)
+	}
+	if got := strings.Join(readOrderLog(t, orderLog), " "); got != ".zshenv .zprofile .zshrc .zlogin" {
+		t.Errorf("startup order = %q", got)
+	}
+}
+
+// A user ~/.zshenv with a syntax error or a `return 1` neither hides the rest
+// of the startup files nor the OSC 7 hooks.
+func TestZshShim_BrokenUserZshenv(t *testing.T) {
+	for name, zshenv := range map[string]string{
+		"syntax-error": "echo (\n",
+		"return-1":     "return 1\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			requireZsh(t)
+			orderLog := filepath.Join(t.TempDir(), "order.log")
+			files := markerFiles(orderLog)
+			files[".zshenv"] = zshenv
+			home := shimHome(t, files)
+			e, _ := newShimEngine(t)
+			id := startShimSession(t, e, home)
+
+			syncShell(t, e, id, "true", "BROKENA")
+			out := syncShell(t, e, id, "cd /usr", "BROKENB")
+			if got := strings.Join(readOrderLog(t, orderLog), " "); got != ".zprofile .zshrc .zlogin" {
+				t.Errorf("startup order = %q", got)
+			}
+			if !strings.Contains(out, "\x1b]7;file:///usr\x07") {
+				t.Errorf("cd /usr did not report; output %q", out)
+			}
+		})
+	}
+}
+
+// Reports go to /dev/tty from the parent shell only: a subshell or command
+// substitution reports nothing and captures no escape bytes; a redirect on
+// the cd does not hide the report.
+func TestZshShim_SubshellAndRedirect(t *testing.T) {
+	requireZsh(t)
+	home := shimHome(t, markerFiles(filepath.Join(t.TempDir(), "order.log")))
+	e, _ := newShimEngine(t)
+	id := startShimSession(t, e, home)
+
+	syncShell(t, e, id, "x=$(cd /tmp && pwd)", "SUBA")
+	out := syncShell(t, e, id, `print -r -- "X=[$x]"`, "SUBB")
+	if !strings.Contains(out, "X=[/tmp]") {
+		t.Errorf("command substitution captured something else; output %q", out)
+	}
+	out = syncShell(t, e, id, "(cd /usr)", "SUBC")
+	if strings.Contains(out, "file:///usr") || strings.Contains(out, "file:///tmp") {
+		t.Errorf("a subshell cd reported; output %q", out)
+	}
+	out = syncShell(t, e, id, "cd /tmp >/dev/null", "SUBD")
+	if !strings.Contains(out, "\x1b]7;file:///tmp\x07") {
+		t.Errorf("redirected cd did not report /tmp; output %q", out)
+	}
+}
+
+// A user .zshrc that empties chpwd_functions gets reporting back at the next
+// prompt (the precmd hook re-adds it).
+func TestZshShim_RcResetsChpwd(t *testing.T) {
+	requireZsh(t)
+	orderLog := filepath.Join(t.TempDir(), "order.log")
+	files := markerFiles(orderLog)
+	files[".zshrc"] += "chpwd_functions=()\n"
+	home := shimHome(t, files)
+	e, _ := newShimEngine(t)
+	id := startShimSession(t, e, home)
+
+	syncShell(t, e, id, "true", "RCA")
+	out := syncShell(t, e, id, "cd /usr", "RCB")
+	if !strings.Contains(out, "\x1b]7;file:///usr\x07") {
+		t.Errorf("cd /usr did not report after the rc emptied chpwd_functions; output %q", out)
+	}
+}
+
+// A nested interactive zsh has no hooks (the shim unset its own variables)
+// but runs the user's files; a non-interactive login zsh emits no OSC 7.
+func TestZshShim_NestedAndNonInteractive(t *testing.T) {
+	requireZsh(t)
+	orderLog := filepath.Join(t.TempDir(), "order.log")
+	home := shimHome(t, markerFiles(orderLog))
+	e, cfg := newShimEngine(t)
+	id := startShimSession(t, e, home)
+
+	out := syncShell(t, e, id, `/bin/zsh -i -c 'print -r -- "N=[${+functions[__portty_osc7]}]"'`, "NESTED")
+	if !strings.Contains(out, "N=[0]") {
+		t.Errorf("nested shell has the hook function; output %q", out)
+	}
+	n := 0
+	for _, f := range readOrderLog(t, orderLog) {
+		if f == ".zshrc" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf(".zshrc ran %d times, want 2 (session plus nested shell)", n)
+	}
+
+	if err := os.WriteFile(orderLog, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("/bin/zsh", "-l", "-c", "cd /usr")
+	cmd.Env = []string{
+		"PATH=/usr/bin:/bin", "HOME=" + home,
+		"ZDOTDIR=" + filepath.Join(cfg, "zsh"), "PORTTY_ZSH_ZDOTDIR=",
+	}
+	got, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("zsh -l -c: %v (output %q)", err, got)
+	}
+	if bytes.Contains(got, []byte("\x1b]7")) {
+		t.Errorf("non-interactive shell emitted OSC 7: %q", got)
+	}
+	if got := strings.Join(readOrderLog(t, orderLog), " "); got != ".zshenv .zprofile .zlogin" {
+		t.Errorf("non-interactive startup order = %q", got)
+	}
+}
+
+// A stale PORTTY_ZSH_ZDOTDIR inherited by the daemon is overwritten, not honoured.
+func TestZshShim_StaleInheritedVar(t *testing.T) {
+	requireZsh(t)
+	orderLog := filepath.Join(t.TempDir(), "order.log")
+	home := shimHome(t, markerFiles(orderLog))
+	t.Setenv("PORTTY_ZSH_ZDOTDIR", "/nonexistent-stale")
+	e, _ := newShimEngine(t)
+	id := startShimSession(t, e, home)
+
+	out := printVars(t, e, id, "STALE")
+	if !strings.Contains(out, "Z=[] H=["+home+"/.zsh_history] P=[unset]") {
+		t.Errorf("ZDOTDIR not empty inside the shell; output %q", out)
+	}
+	if got := strings.Join(readOrderLog(t, orderLog), " "); got != ".zshenv .zprofile .zshrc .zlogin" {
+		t.Errorf("startup order = %q", got)
+	}
+}
+
+// A HOME with only an empty .zshrc starts without any zsh error line.
+func TestZshShim_CleanStartupNoErrors(t *testing.T) {
+	requireZsh(t)
+	home := shimHome(t, map[string]string{".zshrc": ""})
+	e, _ := newShimEngine(t)
+	id := startShimSession(t, e, home)
+
+	out := syncShell(t, e, id, "true", "CLEAN")
+	if strings.Contains(out, "zsh:") || strings.Contains(out, ".zshenv:") {
+		t.Errorf("startup printed an error; output %q", out)
+	}
+}
+
+// The daemon never touches the user's own startup files or HOME.
+func TestZshShim_UserFilesUntouched(t *testing.T) {
+	requireZsh(t)
+	files := markerFiles(filepath.Join(t.TempDir(), "order.log"))
+	home := shimHome(t, files)
+	type snap struct {
+		data string
+		mode os.FileMode
+	}
+	before := map[string]snap{}
+	for name := range files {
+		fi, err := os.Stat(filepath.Join(home, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		before[name] = snap{files[name], fi.Mode()}
+	}
+	e, _ := newShimEngine(t)
+	id := startShimSession(t, e, home)
+	syncShell(t, e, id, "cd /usr", "UNTOUCHED")
+
+	for name, b := range before {
+		got, err := os.ReadFile(filepath.Join(home, name))
+		fi, err2 := os.Stat(filepath.Join(home, name))
+		if err != nil || err2 != nil || string(got) != b.data || fi.Mode() != b.mode {
+			t.Errorf("%s changed (%v %v)", name, err, err2)
+		}
+	}
+	ents, err := os.ReadDir(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, en := range ents {
+		// Library: NewSessionEngine creates its own config dir under HOME.
+		if _, ok := before[en.Name()]; !ok && en.Name() != ".zsh_history" && en.Name() != ".zsh_sessions" && en.Name() != "Library" {
+			t.Errorf("unexpected new entry in HOME: %s", en.Name())
+		}
 	}
 }
