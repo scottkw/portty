@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -170,4 +171,78 @@ func TestInputAbsorber_R2_MalformedOSCInterruptedByNonStEsc(t *testing.T) {
 	if !bytes.Equal(got, in) {
 		t.Errorf("R2 malformed OSC: want round-trip %q got %q", in, got)
 	}
+}
+
+// autoReplies are terminal answers that must never count as typing
+// (INPT-06): reports, DA, DECRPM, focus, mouse and string replies, plus every
+// reply in internal/daemon/attach_viewers_test.go's queryReplies.
+var autoReplies = []string{
+	"",
+	"\x1b[12;40R",                    // CPR
+	"\x1b[>0;276;0c",                 // DA2
+	"\x1b[?2004;2$y",                 // DECRPM (private)
+	"\x1b[4;2$y",                     // DECRPM (ANSI)
+	"\x1b[I",                         // focus in
+	"\x1b[O",                         // focus out
+	"\x1bP>|xterm.js\x1b\\",          // XTVERSION
+	"\x1b[?0u",                       // kitty flags report
+	"\x1b]11;rgb:0000/0000/0000\x07", // OSC 11
+	"\x1b[<0;10;5M",                  // SGR mouse press
+	"\x1b[<0;10;5m",                  // SGR mouse release
+	"\x1b[M !!",                      // X10 mouse
+	"\x1b[8;24;80t",                  // window size report
+	"\x1b[0n",                        // DSR status
+	// queryReplies (attach_viewers_test.go)
+	"\x1b[24;1R",
+	"\x1b[>1;10;0c",
+	"\x1b[?2026;2$y",
+	"\x1bP>|fake-term\x1b\\",
+	"\x1b]10;rgb:ffff/ffff/ffff\x1b\\",
+	"\x1b[", // unterminated CSI at the end of a frame
+}
+
+func TestIsUserInput(t *testing.T) {
+	for _, in := range autoReplies {
+		if IsUserInput([]byte(in)) {
+			t.Errorf("IsUserInput(%q) = true; an auto-reply must not claim", in)
+		}
+	}
+	all := strings.Join(autoReplies, "")
+	if IsUserInput([]byte(all)) {
+		t.Errorf("IsUserInput(all replies concatenated) = true")
+	}
+	for _, in := range []string{
+		"a", "\r", "\x03", "\x7f", "\x1b[A", "\x1b[1;5C", "\x1bb", "\x1bOP", "\x1b[3~",
+		"\x1b[200~pasted\x1b[201~", "\x1b[97;5u", "\x1b[12;40Ra", "\x1b[H", "\x1b[Z", "é",
+		"\x1b[?0u" + "x", "\x1bP>|xterm.js\x1b\\" + "\t",
+	} {
+		if !IsUserInput([]byte(in)) {
+			t.Errorf("IsUserInput(%q) = false; typing must claim", in)
+		}
+	}
+}
+
+// FuzzIsUserInput: never panics, never modifies its input, and any frame made
+// only of auto-replies stays false (the fuzz bytes pick which replies).
+func FuzzIsUserInput(f *testing.F) {
+	for _, s := range autoReplies {
+		f.Add([]byte(s))
+	}
+	for _, s := range []string{"a", "\x1b[A", "\x1b[200~x\x1b[201~", "\x1b[97;5u", "\x1b[12;40Ra"} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		orig := bytes.Clone(data)
+		IsUserInput(data)
+		if !bytes.Equal(data, orig) {
+			t.Fatalf("IsUserInput modified its input")
+		}
+		var replies []byte
+		for _, c := range data {
+			replies = append(replies, autoReplies[int(c)%len(autoReplies)]...)
+		}
+		if IsUserInput(replies) {
+			t.Fatalf("auto-replies only claimed: %q", replies)
+		}
+	})
 }

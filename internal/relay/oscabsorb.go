@@ -179,3 +179,7 @@ func (a *InputAbsorber) completeCSI(out []byte) []byte {
 	out = append(out, a.csiBuf...)
 	return out
 }
+
+// IsUserInput reports whether filtered holds any byte a person typed (INPT-06).
+// RED stub: nothing counts yet.
+func IsUserInput(filtered []byte) bool { return false }

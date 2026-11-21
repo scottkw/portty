@@ -351,3 +351,140 @@ func TestRelayPump_ClaimTakesGrid(t *testing.T) {
 		t.Fatalf("a 4-byte report moved the grid to %v", g)
 	}
 }
+
+// captureDiag sends the log to a buffer for the rest of the test.
+func captureDiag(t *testing.T) *diagBuf {
+	t.Helper()
+	buf := &diagBuf{}
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(buf)
+	log.SetFlags(0)
+	t.Cleanup(func() { log.SetOutput(prevOut); log.SetFlags(prevFlags) })
+	return buf
+}
+
+// gridLine is the last grid diag line that moved the grid to `to` (CxR).
+func gridLine(buf *diagBuf, to string) string {
+	var line string
+	for _, l := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(l, "viewer-diag: grid ") && strings.Contains(l, "-> "+to+" ") {
+			line = l
+		}
+	}
+	return line
+}
+
+// typingReturnsUnderGridMu reports whether NoteTyping(sub) returns while the
+// test holds gridMu, which only the lock-free owner fast path can do.
+func typingReturnsUnderGridMu(t *testing.T, hub *Hub, sub *Subscriber) bool {
+	t.Helper()
+	hub.gridMu.Lock()
+	done := make(chan struct{})
+	go func() { _ = hub.NoteTyping(sub); close(done) }()
+	select {
+	case <-done:
+		hub.gridMu.Unlock()
+		return true
+	case <-time.After(200 * time.Millisecond):
+		hub.gridMu.Unlock()
+		<-done
+		return false
+	}
+}
+
+func hubOwner(hub *Hub) *Subscriber {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	return hub.owner
+}
+
+func TestHub_GridTypingClaims(t *testing.T) {
+	buf := captureDiag(t)
+	hub, calls, a := ownedAt100x30(t)
+	b := gridSub(hub, "local")
+	mustSize(t, hub.ResizeClient(b, 80, 24))
+	mustSize(t, hub.NoteTyping(b))
+	if g := hubGrid(hub); g != [2]int{80, 24} || len(calls()) != 2 {
+		t.Fatalf("B typing: grid %v resizeFn %v; want 80x24", g, calls())
+	}
+	for name, s := range map[string]*Subscriber{"a": a, "b": b} {
+		if got := gridFrames(s); !slices.Equal(got, [][2]int{{80, 24}}) {
+			t.Fatalf("viewer %s grid frames %v, want one 80x24", name, got)
+		}
+	}
+	if l := gridLine(buf, "80x24"); !strings.HasSuffix(l, "why=input") {
+		t.Fatalf("grid diag line %q does not end with why=input:\n%s", l, buf.String())
+	}
+	mustSize(t, hub.NoteTyping(a))
+	if g := hubGrid(hub); g != [2]int{100, 30} || len(calls()) != 3 || hubOwner(hub) != a {
+		t.Fatalf("A typing: grid %v resizeFn %v; want 100x30 back, A the owner", g, calls())
+	}
+}
+
+func TestHub_GridTypingOwnerFastPath(t *testing.T) {
+	hub, calls, a := ownedAt100x30(t)
+	if !typingReturnsUnderGridMu(t, hub, a) {
+		t.Fatal("the owner's typing took gridMu with nothing to change")
+	}
+	if g := hubGrid(hub); g != [2]int{100, 30} || len(calls()) != 1 || len(gridFrames(a)) != 0 {
+		t.Fatalf("the owner's typing changed something: grid %v resizeFn %v", g, calls())
+	}
+}
+
+func TestHub_GridTypingOwnerNewerReport(t *testing.T) {
+	buf := captureDiag(t)
+	hub, calls, a := ownedAt100x30(t)
+	mustSize(t, hub.ResizeClient(a, 90, 30))
+	if g := hubGrid(hub); g != [2]int{100, 30} || len(calls()) != 1 {
+		t.Fatalf("the owner's report moved the grid: %v, resizeFn %v", g, calls())
+	}
+	mustSize(t, hub.NoteTyping(a))
+	if g := hubGrid(hub); g != [2]int{90, 30} || len(calls()) != 2 {
+		t.Fatalf("the owner's typing after a newer report: grid %v resizeFn %v; want 90x30 once", g, calls())
+	}
+	if l := gridLine(buf, "90x30"); !strings.HasSuffix(l, "why=input") {
+		t.Fatalf("grid diag line %q does not end with why=input", l)
+	}
+	mustSize(t, hub.NoteTyping(a))
+	if len(calls()) != 2 || !typingReturnsUnderGridMu(t, hub, a) {
+		t.Fatalf("a second keystroke was not a no-op on the fast path: resizeFn %v", calls())
+	}
+	// Reporting the grid's own size again leaves nothing to apply.
+	mustSize(t, hub.ResizeClient(a, 90, 30))
+	if !typingReturnsUnderGridMu(t, hub, a) {
+		t.Fatal("a report equal to the grid left the owner on the slow path")
+	}
+}
+
+func TestHub_GridTypingNeedsReport(t *testing.T) {
+	hub, calls, a := ownedAt100x30(t)
+	b := gridSub(hub, "web") // never reported a size: an older viewer
+	mustSize(t, hub.NoteTyping(b))
+	if g := hubGrid(hub); g != [2]int{100, 30} || len(calls()) != 1 || hubOwner(hub) != a {
+		t.Fatalf("a viewer with no reported size took the grid: %v, resizeFn %v", g, calls())
+	}
+}
+
+func TestHub_GridTypingReadOnly(t *testing.T) {
+	hub, calls, a := ownedAt100x30(t)
+	ro := &Subscriber{Msgs: make(chan []byte, 256), CloseSlow: func() {}, Origin: "web", ReadOnly: true, Cols: 80, Rows: 24}
+	hub.Subscribe(ro)
+	mustSize(t, hub.NoteTyping(ro))
+	if g := hubGrid(hub); g != [2]int{100, 30} || len(calls()) != 1 || hubOwner(hub) != a {
+		t.Fatalf("a read-only viewer's typing took the grid: %v, resizeFn %v", g, calls())
+	}
+}
+
+func TestHub_GridOwnerLeaveClearsFast(t *testing.T) {
+	hub, calls, a := ownedAt100x30(t)
+	if !typingReturnsUnderGridMu(t, hub, a) {
+		t.Fatal("precondition: the owner's typing should take the fast path")
+	}
+	hub.Unsubscribe(a)
+	if typingReturnsUnderGridMu(t, hub, a) {
+		t.Fatal("a departed owner's typing still took the lock-free fast path")
+	}
+	if hubOwner(hub) != nil || hubGrid(hub) != [2]int{100, 30} || len(calls()) != 1 {
+		t.Fatalf("a departed viewer's typing took the grid: owner %p grid %v", hubOwner(hub), hubGrid(hub))
+	}
+}

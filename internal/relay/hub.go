@@ -524,6 +524,9 @@ func (h *Hub) ClaimGrid(sub *Subscriber, cols, rows int) error {
 	return h.sizeClient(sub, cols, rows, true)
 }
 
+// NoteTyping is a typing claim (INPT-06). RED stub: does nothing yet.
+func (h *Hub) NoteTyping(sub *Subscriber) error { return nil }
+
 // sizeClient is ResizeClient and ClaimGrid. Read-only viewers can neither
 // report nor claim (T-10-12; the pumps skip them too). Sizes are clamped and
 // zero or negative ones ignored. On a frozen hub the owner and target are

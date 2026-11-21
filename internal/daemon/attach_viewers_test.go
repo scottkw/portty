@@ -68,6 +68,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -710,6 +711,41 @@ func TestCLIAttach_OtherViewersKeepOutput(t *testing.T) {
 	if diag.has(s.capToken) || diag.has(url.QueryEscape(s.capToken)) || diag.has("cap=") {
 		t.Errorf("diagnostic log leaks the share link's cap")
 	}
+}
+
+// TestCLIAttach_TypingTakesGrid (INPT-06): through the real viewing-daemon
+// proxy, a CLI attach that types takes the grid with the size it reported on
+// connect (a report, which moved nothing), and the host's typing takes it back.
+func TestCLIAttach_TypingTakesGrid(t *testing.T) {
+	s := newAttachScene(t)
+	cli := s.attachCLI(t, s.dialCLI(t, 80, 24))
+	s.checkUndisturbed(t, "guiTab", "browser") // the connect-time report moved nothing
+
+	hasGrid := func(name string, want [2]int) func() bool {
+		return func() bool {
+			_, grids, _ := s.viewers[name].state()
+			return slices.Contains(grids, want)
+		}
+	}
+	if _, err := cli.stdin.Write([]byte("CLI-TYPED\n")); err != nil {
+		t.Fatalf("cli stdin: %v", err)
+	}
+	waitUntil(t, "host hub grid 80x24 after the CLI typed", func() bool { return s.hub.Cols() == 80 && s.hub.Rows() == 24 })
+	for _, name := range []string{"guiTab", "browser"} {
+		waitUntil(t, name+" 80x24 grid frame", hasGrid(name, [2]int{80, 24}))
+	}
+	s.waitAll(t, "CLI-TYPED", "local", "guiTab", "browser")
+
+	s.typeLine(t, "HOST-TYPED")
+	waitUntil(t, "host hub grid back to 120x40 after the host typed", func() bool { return s.hub.Cols() == 120 && s.hub.Rows() == 40 })
+	for _, name := range []string{"guiTab", "browser"} {
+		v := s.viewers[name]
+		waitUntil(t, name+" 120x40 grid frame after the hand-back", func() bool {
+			_, grids, _ := v.state()
+			return len(grids) > 0 && grids[len(grids)-1] == [2]int{120, 40}
+		})
+	}
+	cli.detach(t)
 }
 
 // Terminal queries the replayed_query_replies variant puts in the session
