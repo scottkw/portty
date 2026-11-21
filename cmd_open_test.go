@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -260,6 +261,25 @@ func TestCmdOpen_TypeDetection(t *testing.T) {
 		if got := previewMIME(c.name, c.data); got != c.want {
 			t.Errorf("previewMIME(%q, % x…) = %q, want %q", c.name, c.data[:min(len(c.data), 8)], got, c.want)
 		}
+	}
+}
+
+// A FIFO is refused without blocking (11-REVIEW IN-02: the open is non-blocking and checked on the descriptor too).
+func TestCmdOpen_FIFORefusedPromptly(t *testing.T) {
+	fifo := filepath.Join(t.TempDir(), "pipe.png")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PORTTY_SESSION_ID", openTestSession)
+	errc := make(chan error, 1)
+	go func() { errc <- cmdOpen(nil, []string{fifo}, io.Discard) }()
+	select {
+	case err := <-errc:
+		if err == nil || !strings.Contains(err.Error(), "can't preview this file type") {
+			t.Errorf("err = %v, want the unsupported line", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cmdOpen blocked on a FIFO")
 	}
 }
 

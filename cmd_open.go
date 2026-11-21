@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 
 	"github.com/scottkw/portty/internal/daemon"
@@ -59,12 +60,19 @@ func cmdOpen(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	case fi.Size() > relay.PreviewMaxBytes:
 		return tooLargeErr(arg, fi.Size())
 	}
-	f, err := os.Open(arg)
+	// Non-blocking, then checked on the descriptor: a path swapped for a FIFO
+	// after the stat can't hang the open (11-REVIEW IN-02).
+	f, err := os.OpenFile(arg, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return readErr(arg, err)
 	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil {
+		return readErr(arg, err)
+	} else if !fi.Mode().IsRegular() {
+		return unsupportedErr(arg)
+	}
 	data, err := io.ReadAll(io.LimitReader(f, relay.PreviewMaxBytes+1))
-	f.Close()
 	if err != nil {
 		return readErr(arg, err)
 	}
