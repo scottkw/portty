@@ -2,7 +2,7 @@
 phase: 10-input-path-reliability
 plan: 02
 subsystem: frontend
-status: complete  # code tasks done; Go gate blocked by host PTY exhaustion, set to complete after a clean re-run
+status: complete
 tags: [peer-tabs, snapshots, retry, sidebar, INPT-04]
 requires: []
 provides:
