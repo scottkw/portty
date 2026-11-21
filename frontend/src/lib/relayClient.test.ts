@@ -1099,7 +1099,8 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
 // DEBT-05 (IN-05): a paste split into frames and cut short by a socket drop says so.
 // bufferedAmount keeps the bytes a closed socket never sent (WHATWG), so the client
 // counts the whole paste frames that left; a pong to the ping sent right after the
-// paste proves the host read them all. Nothing is queued or resent.
+// paste proves the host read them all and queued them for the PTY in order (INPT-01:
+// queued bytes still reach the shell after a drop). Nothing is queued or resent here.
 describe('partial paste on a socket drop (DEBT-05)', () => {
   class WS {
     static OPEN = 1
@@ -1166,6 +1167,16 @@ describe('partial paste on a socket drop (DEBT-05)', () => {
 
   it('nothing buffered and the ack pong received: no notice', () => {
     host().sendInput(PASTE)
+    msg(0, pong())
+    drop(0, 0)
+    expect(onPasteInterrupted).not.toHaveBeenCalled()
+  })
+
+  // INPT-02: the host writes the pong ahead of its queued output, but a pong that
+  // still lands after a burst of output frames acks the paste just the same.
+  it('the ack pong arriving after a burst of output frames still clears the paste: no notice', () => {
+    host().sendInput(PASTE)
+    for (let i = 0; i < 300; i++) msg(0, new Uint8Array([0x01, ...enc.encode(`line ${i}\r\n`)]))
     msg(0, pong())
     drop(0, 0)
     expect(onPasteInterrupted).not.toHaveBeenCalled()

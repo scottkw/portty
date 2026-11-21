@@ -782,6 +782,9 @@ wait:
 	handoffExit(0)
 }
 
+// waitHubsInputIdle: RED stub (10-03 Task 3), replaced in the GREEN commit.
+func waitHubsInputIdle(m *relay.HubManager, deadline time.Time) map[string]int { return nil }
+
 // ---- new side --------------------------------------------------------------
 
 // takeoverDeps is what runTakeover needs: the socket of the running daemon

@@ -288,6 +288,39 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     expect(container.textContent).toContain('Paste may have been cut short (98 KB)')
   })
 
+  // INPT-03 (SC3): the browser viewer is WebShareSessionView -> TerminalPanel
+  // with wsURL (the share server's socket, not the daemon proxy); its partial-
+  // paste notice is React text in a role="status" element (no innerHTML).
+  function mountBrowser() {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
+    act(() => {
+      root.render(React.createElement(WebShareSessionView, {
+        sessionId: 's1', capToken: 'tok', relayPort: 0, pluginConfig: null, hostLabel: 'office-air',
+      }))
+    })
+    expect(MockWS.instances).toHaveLength(1)
+    expect(ws(0).url).toMatch(/^wss?:\/\/[^/]+\/sessions\/s1\/ws\?cap=tok$/) // the wsURL path
+  }
+  const statusWith = (text: string) =>
+    Array.from(container.querySelectorAll('[role="status"]')).find((n) => n.textContent?.includes(text))
+
+  it('browser view (wsURL): a drop with nothing buffered and no ack pong shows "Paste may have been cut short (98 KB)" in role=status', () => {
+    mountBrowser()
+    openAt100()
+    paste('x'.repeat(100_000))
+    drop(ws(0))
+    expect(statusWith('Paste may have been cut short (98 KB)')).toBeDefined()
+  })
+
+  it('browser view (wsURL): a drop with 40,000 bytes buffered shows "Paste interrupted: 31 of 98 KB sent" in role=status', () => {
+    mountBrowser()
+    openAt100()
+    paste('x'.repeat(100_000))
+    ws(0).bufferedAmount = 40_000
+    drop(ws(0))
+    expect(statusWith('Paste interrupted: 31 of 98 KB sent')).toBeDefined()
+  })
+
   it('UI polish: onReconnectingChange follows the banner (true at 3 s, false on reopen), and false on unmount', async () => {
     const onReconnectingChange = vi.fn()
     mount({ remote: true, onReconnectingChange })

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -643,6 +644,67 @@ func TestHandoff_RestartDrainBounded(t *testing.T) {
 	d := s.at("old:exit").Sub(s.at("new:after-serve-before-committed"))
 	if d > 1500*time.Millisecond || d < restartDrain-100*time.Millisecond {
 		t.Errorf("old daemon exited %v after COMMITTED; want about restartDrain (%v), at most 1.5 s", d, restartDrain)
+	}
+}
+
+// TestHandoff_FinishWaitsForInput (INPT-01, Research Pitfall 7): before the
+// old daemon exits, finish waits for queued input to reach each PTY within the
+// shared deadline, and reports (and logs) whatever is still queued at it.
+func TestHandoff_FinishWaitsForInput(t *testing.T) {
+	diag := &lockedBuffer{}
+	prev := log.Writer()
+	log.SetOutput(diag)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	m := relay.NewHubManager()
+	t.Cleanup(m.Shutdown)
+	slowR, slowW := io.Pipe()
+	stuckR, stuckW := io.Pipe() // never read: a shell that stopped reading
+	t.Cleanup(func() { _ = slowR.Close(); _ = stuckR.Close() })
+	outR, outW := io.Pipe() // PTY output that never ends: EOF would end the hubs
+	t.Cleanup(func() { _ = outW.Close() })
+	slow := m.Create("slow-session", outR, slowW, nil)
+	stuck := m.Create("stuck-session", outR, stuckW, nil)
+
+	in := slow.OpenInput(nil)
+	for i := 0; i < 20; i++ {
+		if err := in.Write(bytes.Repeat([]byte{'s'}, 1024)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	go func() { // drains, slowly
+		buf := make([]byte, 1024)
+		for {
+			if _, err := slowR.Read(buf); err != nil {
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+	start := time.Now()
+	if lost := waitHubsInputIdle(m, start.Add(2*time.Second)); len(lost) != 0 {
+		t.Fatalf("lost %v, want nothing (the slow PTY drains well within the deadline)", lost)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("waited %v for a queue that drains in ~100 ms", d)
+	}
+
+	sin := stuck.OpenInput(nil)
+	for i := 0; i < 3; i++ {
+		if err := sin.Write(bytes.Repeat([]byte{'x'}, 100)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start = time.Now()
+	lost := waitHubsInputIdle(m, start.Add(200*time.Millisecond))
+	if d := time.Since(start); d > 600*time.Millisecond {
+		t.Fatalf("returned %v after a 200 ms deadline", d)
+	}
+	if len(lost) != 1 || lost["stuck-session"] != 300 {
+		t.Fatalf("lost %v, want stuck-session: 300 bytes", lost)
+	}
+	if want := "handoff: input still queued at exit session=stuck-se bytes=300"; !diag.has(want) {
+		t.Fatalf("log lacks %q:\n%s", want, diag.bytes())
 	}
 }
 

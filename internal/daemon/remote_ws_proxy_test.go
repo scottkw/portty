@@ -17,6 +17,7 @@ package daemon_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"log"
 	"net/http"
@@ -717,5 +718,109 @@ func TestRemoteWSProxy_LiveUpstreamStaysOpen(t *testing.T) {
 	}
 	if _, got, err := conn.Read(ctx); err != nil || string(got) != "still-here" {
 		t.Fatalf("echo after 1s = %q, %v", got, err)
+	}
+}
+
+// newSlowSinkPeer is a fixture peer that behaves like the share server after
+// INPT-01: its read loop never blocks (so it keeps answering the proxy's
+// pings) and hands every frame to a sink goroutine that drains slowly, like a
+// shell reading a long paste. sum returns the sha256 of the bytes drained so
+// far and their count.
+func newSlowSinkPeer(t *testing.T, perFrame time.Duration) (*fixtureWSPeer, func() ([32]byte, int)) {
+	t.Helper()
+	var mu sync.Mutex
+	h := sha256.New()
+	n := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /sessions/{id}/ws", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cap") != fixtureCap {
+			http.Error(w, "cap rejected", http.StatusUnauthorized)
+			return
+		}
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		conn.SetReadLimit(relay.ViewerReadLimit)
+		frames := make(chan []byte, 4096)
+		defer close(frames)
+		go func() {
+			for f := range frames {
+				time.Sleep(perFrame)
+				mu.Lock()
+				h.Write(f)
+				n += len(f)
+				mu.Unlock()
+			}
+		}()
+		for {
+			_, data, err := conn.Read(r.Context())
+			if err != nil {
+				return
+			}
+			frames <- data
+		}
+	})
+	peer := &fixtureWSPeer{srv: httptest.NewTLSServer(mux), done: make(chan struct{})}
+	t.Cleanup(peer.srv.Close)
+	return peer, func() ([32]byte, int) {
+		mu.Lock()
+		defer mu.Unlock()
+		var sum [32]byte
+		copy(sum[:], h.Sum(nil))
+		return sum, n
+	}
+}
+
+// TestRemoteWSProxy_PasteBackpressureStaysOpen (INPT-01, Research Open
+// Question 4): a peer tab pastes 8 MiB through the daemon proxy into a healthy
+// peer whose shell drains slowly. The proxy's own upstream ping still gets
+// through between frames, so the tab stays connected for well past 3x the
+// heartbeat timeout and every frame is forwarded in order.
+func TestRemoteWSProxy_PasteBackpressureStaysOpen(t *testing.T) {
+	const frames, size = 256, relay.MaxInputPayload
+	peer, sum := newSlowSinkPeer(t, 4*time.Millisecond) // ~1 s to drain 256 frames
+	conn := proxyWithHeartbeat(t, peer)                 // 50 ms ping, 100 ms timeout
+	closed := make(chan struct{})
+	go func() {
+		defer close(closed)
+		for {
+			if _, _, err := conn.Read(context.Background()); err != nil {
+				return
+			}
+		}
+	}()
+
+	var stream []byte
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	for i := 0; i < frames; i++ {
+		f := make([]byte, size+1)
+		f[0] = relay.MsgInput
+		for j := 1; j < len(f); j++ {
+			f[j] = byte('!' + (i*7+j)%90)
+		}
+		if err := conn.Write(ctx, websocket.MessageBinary, f); err != nil {
+			t.Fatalf("write frame %d: %v", i, err)
+		}
+		stream = append(stream, f...)
+	}
+
+	hold := time.Now().Add(3 * 100 * time.Millisecond)
+	testutil.WaitFor(t, 20*time.Second, func() bool {
+		select {
+		case <-closed:
+			t.Fatal("proxy dropped the tab during the paste")
+		default:
+		}
+		_, n := sum()
+		return n == len(stream) && time.Now().After(hold)
+	}, "the peer never received the whole paste")
+	if got, _ := sum(); got != sha256.Sum256(stream) {
+		t.Fatal("peer bytes differ from the paste (reordered or lost)")
+	}
+	if err := conn.Write(ctx, websocket.MessageBinary, []byte{relay.MsgInput, 'x'}); err != nil {
+		t.Fatalf("tab closed after the paste: %v", err)
 	}
 }
