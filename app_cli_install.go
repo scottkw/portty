@@ -75,6 +75,11 @@ func runOsascriptInstall(exe, link string) error {
 // unprivileged, and nothing that exists at the link path is ever replaced.
 // It shows native alerts, so call it off the main thread.
 func (a *App) installCommandLineTool() {
+	// A second click while the first run's prompt or alert is up does nothing (11-REVIEW IN-01).
+	if !a.cliInstalling.CompareAndSwap(false, true) {
+		return
+	}
+	defer a.cliInstalling.Store(false)
 	link := cliInstallLink
 	exe, err := cliInstallExecutable()
 	if err != nil {

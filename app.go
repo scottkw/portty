@@ -69,6 +69,7 @@ type App struct {
 	lastTrayQuartile atomic.Int32          // Phase 98 PRG-03 — last applied tray progress quartile [0..4]; -1 = unset. Atomic because written by Wails RPC goroutine (SetTrayProgress) and read by startTrayPoller goroutine via trayIconBytesForState (CR-01).
 	daemonErr        atomic.Pointer[error] // non-nil when EnsureDaemon failed; atomic: Retry writes it while init reads it (IN-08)
 	quitting         atomic.Bool           // set first by QuitAll and shutdown: beforeClose allows exit and the poller never respawns (WR-04)
+	cliInstalling    atomic.Bool           // one Install Command-Line Tool… run at a time (11-REVIEW IN-01)
 	// updates is the update state machine (app_update.go); set in NewApp.
 	updates *updater.Service
 	// updateAfter and updateNow are the update loop's timer and clock seams; nil means time.After and time.Now.

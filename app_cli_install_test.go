@@ -176,6 +176,30 @@ func TestInstallCLI_Cancel(t *testing.T) {
 	}
 }
 
+// 11-REVIEW IN-01: choosing the item again while the first prompt is up starts no second run.
+func TestInstallCLI_OneAtATime(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	f := newInstallFixture(t, func(exe, link string) error {
+		close(entered)
+		<-release
+		return unprivilegedLink(exe, link)
+	})
+	done := make(chan struct{})
+	go func() { f.app.installCommandLineTool(); close(done) }()
+	<-entered
+	f.app.installCommandLineTool() // returns at once: the first run holds the guard
+	if len(f.runs) != 1 {
+		t.Errorf("runner calls = %d while the first prompt is up, want 1", len(f.runs))
+	}
+	close(release)
+	<-done
+	f.wantDialog(t, runtime.InfoDialog, "The portty command is installed.", f.link+" now points to Portty. Try “portty list” in Terminal.")
+	// The guard is released: a later run checks again (and finds the link already ours).
+	f.dialogs = nil
+	f.app.installCommandLineTool()
+	f.wantDialog(t, runtime.InfoDialog, "The portty command is already installed.", f.link+" already points to this copy of Portty.")
+}
+
 func TestInstallCLI_Failure(t *testing.T) {
 	for _, c := range []struct {
 		err    error
