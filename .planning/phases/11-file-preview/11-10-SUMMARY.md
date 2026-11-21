@@ -2,12 +2,12 @@
 phase: 11-file-preview
 plan: 10
 subsystem: verification
-status: checkpoint
+status: complete
 tags: [vm-check, gate, testing-md, security-review, preview, upgrade, safari, csp]
 requires: [11-01, 11-02, 11-03, 11-04, 11-05, 11-06, 11-07, 11-08, 11-09]
 provides:
   - "The Phase 11 gate, run once and green"
-  - "11-VM-CHECKS.md: P-00..P-07, P-08a/b/d/e/f, P-10, U-01..U-03, all PASS; P-08c pending the user"
+  - "11-VM-CHECKS.md: P-00..P-07, P-08a..P-08f, P-10, U-01..U-03, all PASS (P-08c entered by the user over Screen Sharing)"
   - "TESTING.md: Phase 11 Section 2 note and counts, 30 PREV rows in Section 4, Category BA (M-121..M-127)"
   - "11-SECURITY-REVIEW.md: VM evidence and verdict (approved)"
 affects: [ROADMAP Phase 11 SC1-SC5 evidence, /gsd-verify-work]
@@ -25,13 +25,13 @@ key-files:
 decisions:
   - "P-07's one 200 (GET /app/sessions/<id>/preview) is the /app/* SPA fallback, byte-identical to GET /app/ (11-04 Deviation 1); recorded as PASS with the evidence"
   - "hostile-external.svg is refused by portty open (DOCTYPE internal subset); its fetch vectors were tested with the same file minus the DOCTYPE block"
-  - "P-08c not run: no VM password; the office VM is left ready for the user to type it over Screen Sharing"
+  - "P-08c: the run has no VM password, so the user typed it into the prompt over Screen Sharing; the orchestrator verified the link and `portty list`; PASS"
 metrics:
   duration: "~55 min"
   completed: 2026-11-21
 actuals:
   tokens: 21500    # chars/4 over the realized diff (86,108 chars)
-  tasks: 3         # Task 3 complete except row P-08c
+  tasks: 3         # all complete (P-08c after the checkpoint)
   commits: 6
 plan_head_before: 7042f5ce3a8bb1afc3d62c89f13b0a3b326a8fd1
 plan_head_after: affbc988c22736900b2330ec181dcaa5ffcd2c9c
@@ -39,7 +39,7 @@ plan_head_after: affbc988c22736900b2330ec181dcaa5ffcd2c9c
 
 # Phase 11 Plan 10: Phase gate, TESTING.md and VM checks Summary
 
-The merged Phase 11 passed the full gate in one run, and every VM row but one passed on the two Tart VMs over the real tailnet: previews in both GUIs and Safari, all seven types in light and dark, hostile files silent against loopback beacons, a 19.9 MB preview to four viewers with a ticking terminal, over-cap refusal, route absence, the PATH link, the install menu's warnings and cancel, and three upgrade rows. **P-08c (the actual install through the administrator prompt) needs the VM password and is waiting for the user.**
+The merged Phase 11 passed the full gate in one run, and every VM row but one passed on the two Tart VMs over the real tailnet: previews in both GUIs and Safari, all seven types in light and dark, hostile files silent against loopback beacons, a 19.9 MB preview to four viewers with a ticking terminal, over-cap refusal, route absence, the PATH link, the install menu's warnings and cancel, and three upgrade rows. P-08c (the actual install through the administrator prompt) also passed, once the user typed the VM password over Screen Sharing. Every row is PASS.
 
 ## Gate (host, once, 17:39:40-17:42:09 UTC, `GOTOOLCHAIN=go1.26.11`)
 
@@ -56,7 +56,7 @@ Logs in the session scratchpad (`gate/*.log`):
 
 ## TESTING.md counts (final)
 
-Go 157, vitest 104, Playwright 7, build-script 1, total 269. The plan expected vitest 103. The 104th file is the 11-07 fix's parseMarkdownInWorker.test.ts. Section 4 has 30 PREV rows (PREV-01..PREV-05). Section 5 has Category BA, M-121..M-127. M-126's last-run line marks P-08c as pending.
+Go 157, vitest 104, Playwright 7, build-script 1, total 269. The plan expected vitest 103. The 104th file is the 11-07 fix's parseMarkdownInWorker.test.ts. Section 4 has 30 PREV rows (PREV-01..PREV-05). Section 5 has Category BA, M-121..M-127. M-126's last-run line records P-08c as PASS.
 
 ## Builds (ad-hoc, `Signature=adhoc`, `TeamIdentifier=not set`)
 
@@ -82,7 +82,7 @@ Go 157, vitest 104, Playwright 7, build-script 1, total 269. The plan expected v
 | P-07 | PASS | over.png printed the too-large line in every viewer, with no tab and no `preview accepted`. Probes: 405/405/404 on the share server, plus the SPA-fallback 200 (byte-identical to `/app/`). The relay answered 404/404 |
 | P-08a | PASS | From /Applications, a new session resolves the bin link (pointing to /Applications), and `portty open` works |
 | P-08b | PASS | Terminal.app: `command -v portty` gave rc=1 |
-| P-08c | **not run** | Needs the VM password typed into SecurityAgent (user over Screen Sharing) |
+| P-08c | PASS | The user typed the VM password over Screen Sharing. `/usr/local/bin/portty` became a root link to `/Applications/Portty.app/Contents/MacOS/Portty`. In a clean `env -i` login zsh, `command -v portty` gave `/usr/local/bin/portty` and `portty list` exited 0. The success dialog text was not captured |
 | P-08d | PASS | Prompt appeared. A synthesized Don't Allow click was accepted. No dialog, no link, nothing logged |
 | P-08e | PASS | Foreign link: warning naming `/bin/echo`, no prompt, link unchanged. Our own link: already-installed notice, no prompt |
 | P-08f | PASS | DMG copy: move-to-Applications warning naming `/Volumes/PorttyTest`, no prompt |
@@ -109,7 +109,7 @@ Office local tab 168 ms, home peer tab 14.953 s, home attach 19.372 s, home Safa
 
 ### Admin-prompt path
 
-The prompt appeared and SecurityAgent accepted a synthesized click (Don't Allow, P-08d). The password itself was not entered: this run has no VM password and must not guess or store one. **Checkpoint raised for P-08c**: the user types the password over Screen Sharing.
+The prompt appeared and SecurityAgent accepted a synthesized click (Don't Allow, P-08d). This run has no VM password and must not guess or store one, so a checkpoint was raised for P-08c. The user typed the password over Screen Sharing, and the orchestrator verified the result at 18:35 UTC. The success dialog's exact text was not captured.
 
 ## Security review
 
@@ -131,7 +131,7 @@ The prompt appeared and SecurityAgent accepted a synthesized click (Don't Allow,
 
 ## Deviations from Plan
 
-1. **P-08c not run (checkpoint).** P-08d ran before P-08c: Cancel with no link present, so no `sudo rm` was needed. The office is left with B in /Applications for the user (see 11-VM-CHECKS.md Cleanup, "left for P-08c").
+1. **P-08c by checkpoint.** P-08d ran before P-08c: Cancel with no link present, so no `sudo rm` was needed. The user then entered the password for P-08c over Screen Sharing (PASS; the success dialog text was not captured). Afterwards the office was cleaned up: link removed, /Applications/Portty.app gone, settings restored, HEAD `dev` running with 0 sessions, and stage removed (11-VM-CHECKS.md Cleanup, "office (final …)").
 2. **P-07 bar.** `GET /app/sessions/<id>/preview` answers 200. That is the `/app/*` SPA fallback, byte-identical to `GET /app/`, which 11-04 recorded as a production behaviour the plan's "never 2xx" can't meet. Recorded as PASS with the body hash. Flagged for the user.
 3. **hostile-external.svg.** `portty open` refuses the committed fixture: its DOCTYPE internal subset contains `>`, which hits the 11-08 shortcut. The fetch vectors were tested with `hostile-external-nodtd.svg` (the same file minus the DOCTYPE block).
 4. **Rendering evidence.** `screencapture` over SSH draws no web content in these VMs, so screenshots were not usable. Rendering came from AX (desktop) and WebDriver DOM reads (Safari), as 11-01 did. Dark-mode colours were checked in Safari.
@@ -161,4 +161,4 @@ None. No product code changed. Evidence records codes and directive names only, 
 
 - FOUND: .planning/phases/11-file-preview/11-VM-CHECKS.md, TESTING.md (Category BA), 11-SECURITY-REVIEW.md (`**Verdict:**`)
 - FOUND: f43f20bb, 28132fe1, e73fb9f5, 909c7521, df0e80ed, affbc988 (ancestors of HEAD)
-- Task 3's automated verify still fails on P-08c alone until that row is recorded.
+- P-08c recorded as PASS, so Task 3's row check has no pending row.
