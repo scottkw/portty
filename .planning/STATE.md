@@ -6,15 +6,15 @@ current_phase: 12
 current_phase_name: File Path Click
 status: executing
 stopped_at: Phase 11 complete, ready to plan Phase 12
-last_updated: "2026-11-21T23:15:47.225Z"
+last_updated: "2026-11-21T23:36:04.697Z"
 last_activity: 2026-11-21
 last_activity_desc: Phase 12 execution started
-state_head: 3f2175da5903d50f345422f422be3ab5b571d789
+state_head: 10da938d2b5e1c59bfcfc4575d6842165013d6fc
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 31
-  completed_plans: 26
+  completed_plans: 27
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 12 (File Path Click) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-11-21 — Phase 12 execution started
 
@@ -110,6 +110,7 @@ Last activity: 2026-11-21 — Phase 12 execution started
 | Phase 6 P04 | 95min | 3 tasks | 7 files |
 | Phase 12 P01 | 20 min | 2 tasks | 6 files |
 | Phase 12 P02 | 2h | 3 tasks | 5 files |
+| Phase 12 P03 | 19 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -251,6 +252,7 @@ Recent decisions affecting current work:
 - [Phase 6]: 06-04: M-92 VM checks U-01..U-06 PASS with a real notarized same-team DMG (no verify bypass); notification delivery is left to M-93 on the notarized release
 - [Phase 12]: 12-01: previewfile.Open takes maxBytes as an argument so it imports no module package; CleanPreviewName lives in relay (wire contract), not previewfile
 - [Phase 12]: 12-02: zsh shim script is RESEARCH Pattern 1 verbatim; zshEnv returns nil and logs 'zsh shim:' on any failure so the session keeps the user's startup files
+- [Phase 12]: 12-03: OSC 7 parsed by our own emulator handler (not vt's WorkingDirectory callback) and keyed to absolute output rows (History.Pushed + scrollback + cursor Y); log capped at 1024 records / 64 KiB, carried in HubState.Cwds and HistoryPushed
 
 ### Pending Todos
 
