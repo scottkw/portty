@@ -11,6 +11,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { ProgressAddon, type IProgressState } from '@xterm/addon-progress'
 import { RelayClient, RECONNECT, type ReconnectVerdict } from '../lib/relayClient'
+import { createPreviewAssembler, type PreviewEvent } from '../lib/previewAssembler'
 import { computeGuestViewport, DEFAULT_GUEST_MIN_SCALE } from '../lib/terminalScale'
 import { applyHostGrid, resetForFullReplay } from '../lib/guestTerminal'
 import { PEER_FLUSH_TIMEOUT_MS, awaitPeerSave, beginPeerSave, peerSnapshotGeneration, peerSnapshotKey, putPeerSnapshot, takePeerSnapshot, watchPeerTerm } from '../lib/peerSnapshots'
@@ -135,6 +136,8 @@ interface TerminalPanelProps {
   onReconnectingChange?: (reconnecting: boolean) => void
   /** DEBT-04: the peer's connect host, the first half of this panel's snapshot key (App's peerSnapshotHost). */
   snapshotHost?: string
+  /** Phase 11: this panel's preview events (one assembler per RelayClient); unmount fails an in-flight one. */
+  onPreview?: (event: PreviewEvent) => void
 }
 
 /**
@@ -164,6 +167,7 @@ export function TerminalPanel({
   hostUnreachable,
   onReconnectingChange,
   snapshotHost,
+  onPreview,
 }: TerminalPanelProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   // The relay onClose closure is built once at mount; read the latest callback through a ref.
@@ -173,6 +177,8 @@ export function TerminalPanel({
   beforeReconnectRef.current = beforeReconnect
   const onReconnectingChangeRef = useRef(onReconnectingChange)
   onReconnectingChangeRef.current = onReconnectingChange
+  const onPreviewRef = useRef(onPreview)
+  onPreviewRef.current = onPreview
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   // POL-04: deferred theme ref — stashes the theme when the panel is hidden (isActive=false)
@@ -478,7 +484,7 @@ export function TerminalPanel({
     // DEBT-04 IN-03: a quick switch back can land while the hidden panel's save is
     // still in flight; wait for it (capped) so the restore gets a delta, not a full
     // replay. start() runs at once when nothing is pending.
-    let live: { client: RelayClient; disposeData: IDisposable } | null = null
+    let live: { client: RelayClient; disposeData: IDisposable; preview: ReturnType<typeof createPreviewAssembler> } | null = null
     let cancelled = false
     const start = () => {
       if (cancelled) return
@@ -493,7 +499,10 @@ export function TerminalPanel({
       // INPT-06: every panel reports its own fit once per (re)connect; in
       // reconnect mode onOpen fires after the join's grid frame and the replay.
       // The fit measured before the socket opened was never delivered.
+      const preview = createPreviewAssembler((e) => onPreviewRef.current?.(e))
       const client = new RelayClient(relayPort, sessionId, {
+        onPreview: preview.feed,
+        onPreviewReset: preview.reset,
         onOutput: (data) => { peerWatch?.feed(data); term.write(data) },
         onOpen: () => { lastReportRef.current = null; reportFit() },
         // Phase 175-06 (BUG-02 / #125): show the end banner on the guest path
@@ -561,7 +570,7 @@ export function TerminalPanel({
       // INPT-06: xterm's own resizes are not sent: in follow mode they are the
       // server's grid, and reports carry measureFit's result (reportFit).
       const disposeData = term.onData((data) => client.sendInput(data))
-      live = { client, disposeData }
+      live = { client, disposeData, preview }
     }
     const pendingSave = snapSerializer ? awaitPeerSave(snapKey) : null
     if (pendingSave) void pendingSave.then(start)
@@ -573,6 +582,7 @@ export function TerminalPanel({
       live?.disposeData.dispose()
       const resumePoint = snapSerializer && live ? live.client.resumePoint() : null // read before close
       live?.client.close()
+      live?.preview.reset()
       if (bannerTimer !== null) clearTimeout(bannerTimer)
       // Phase 93: dispose hot-swap addons before disposing the terminal
       // itself to avoid orphaned references. dispose() on the addon detaches

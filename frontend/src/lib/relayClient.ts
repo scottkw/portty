@@ -5,9 +5,16 @@ export const MSG_OUTPUT  = 0x01  // server → client: PTY output
 export const MSG_RESIZE  = 0x02  // server → client: resize notification
 export const MSG_PONG    = 0x04  // server → client: answer to MSG_PING (relay.MsgPong, pinned in tests)
 export const MSG_META    = 0x20  // server → client: JSON metadata (relay.MsgMeta)
+export const MSG_PREVIEW = 0x21  // server → client: file preview push (relay.MsgPreview)
 export const MSG_INPUT   = 0x10  // client → server: keyboard input
 export const MSG_RESIZE2 = 0x11  // client → server: resize request
 export const MSG_PING    = 0x12  // client → server: keep-alive
+
+// MSG_PREVIEW sub-kinds and the largest chunk payload (relay.PreviewChunk).
+export const PREVIEW_HEADER = 0x01
+export const PREVIEW_CHUNK = 0x02
+export const PREVIEW_END = 0x03
+export const PREVIEW_CHUNK_MAX = 16384
 
 // Largest MSG_INPUT payload per frame: relay.MaxInputPayload (32768 read limit minus the type byte).
 export const MAX_INPUT_PAYLOAD = 32767
@@ -21,7 +28,43 @@ export type ServerFrame =
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'pong' }
   | { type: 'meta'; payload: Uint8Array }
+  | { type: 'preview'; preview: PreviewFrame }
   | { type: 'unknown' }
+
+/** A decoded MSG_PREVIEW frame (wire layout: internal/relay/preview.go). Fields are untrusted. */
+export type PreviewFrame =
+  | { kind: 'header'; id: number; name: string; mime: string; size: number; key: string; focus: boolean }
+  | { kind: 'chunk'; id: number; payload: Uint8Array }
+  | { kind: 'end'; id: number; status: number }
+
+const isUint32 = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 0xffffffff
+
+// Same shape checks as relay.ParsePreview*; anything else is dropped like an unknown frame.
+function parsePreviewFrame(data: Uint8Array): ServerFrame {
+  const id = data.length >= 6 ? new DataView(data.buffer, data.byteOffset + 2, 4).getUint32(0) : 0
+  switch (data[1]) {
+    case PREVIEW_HEADER: {
+      let h: Record<string, unknown>
+      try {
+        h = JSON.parse(new TextDecoder().decode(data.subarray(2)))
+      } catch {
+        return { type: 'unknown' }
+      }
+      if (typeof h !== 'object' || h === null || !isUint32(h.id) || typeof h.name !== 'string' ||
+        typeof h.mime !== 'string' || !Number.isSafeInteger(h.size) || (h.size as number) < 0 ||
+        typeof h.key !== 'string' || typeof h.focus !== 'boolean') return { type: 'unknown' }
+      return { type: 'preview', preview: { kind: 'header', id: h.id, name: h.name, mime: h.mime, size: h.size as number, key: h.key, focus: h.focus } }
+    }
+    case PREVIEW_CHUNK:
+      if (data.length < 6 || data.length - 6 > PREVIEW_CHUNK_MAX) return { type: 'unknown' }
+      return { type: 'preview', preview: { kind: 'chunk', id, payload: data.subarray(6) } }
+    case PREVIEW_END:
+      if (data.length !== 7) return { type: 'unknown' }
+      return { type: 'preview', preview: { kind: 'end', id, status: data[6] } }
+    default:
+      return { type: 'unknown' }
+  }
+}
 
 /**
  * Encode keyboard input into MSG_INPUT frames of at most MAX_INPUT_PAYLOAD
@@ -95,6 +138,9 @@ export function parseServerFrame(data: Uint8Array): ServerFrame {
 
     case MSG_META:
       return { type: 'meta', payload: data.slice(1) }
+
+    case MSG_PREVIEW:
+      return parsePreviewFrame(data)
 
     default:
       return { type: 'unknown' }
@@ -176,6 +222,10 @@ export interface RelayClientCallbacks {
    * sent after the last pong. Never resent.
    */
   onPasteInterrupted?: (info: { sentBytes: number | null; totalBytes: number }) => void
+  /** Phase 11: every MSG_PREVIEW frame, in order. Never moves the stream offset. */
+  onPreview?: (frame: PreviewFrame) => void
+  /** Phase 11: the socket closed (or was abandoned); a partial preview is discarded, never resumed. */
+  onPreviewReset?: () => void
 }
 
 /**
@@ -336,6 +386,7 @@ export class RelayClient {
 
     ws.onclose = (evt: CloseEvent) => {
       if (gen !== this.socketGen) return
+      this.callbacks.onPreviewReset?.()
       this._clearPing()
       this._clearConnect()
       this.checkPaste(ws) // close() already cleared the record: a user close says nothing
@@ -388,6 +439,9 @@ export class RelayClient {
         // paste frame and queued it for the PTY in order; queued bytes still reach the shell after a drop.
         this.pongsReceived++
         if (this.paste && this.pongsReceived >= this.paste.ackPing) this.paste = null
+        break
+      case 'preview':
+        this.callbacks.onPreview?.(frame.preview)
         break
       // 'unknown' frames are dropped
     }
@@ -458,6 +512,7 @@ export class RelayClient {
     ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
     this.checkPaste(ws)
     ws.close()
+    this.callbacks.onPreviewReset?.()
     this.resetBackoffIfHealthy()
     this.openedAt = 0
     this.setState('reconnecting')

@@ -16,7 +16,11 @@ import {
   RelayClient,
   type ReconnectVerdict,
   type RelayClientCallbacks,
+  MSG_PREVIEW,
+  PREVIEW_CHUNK_MAX,
+  type PreviewFrame,
 } from './relayClient'
+import previewFixture from './__tests__/fixtures/preview-frames.json'
 
 const concat = (frames: Uint8Array[]) => {
   const out: number[] = []
@@ -1334,5 +1338,96 @@ describe('partial paste on a socket drop (DEBT-05)', () => {
     expect(frames(0).map((f) => f[0])).toEqual([MSG_INPUT])
     drop(0, 4)
     expect(onPasteInterrupted).not.toHaveBeenCalled()
+  })
+})
+
+// Phase 11 (PREV-01): MSG_PREVIEW frames as the Go side builds them (internal/relay/preview_test.go
+// writes preview-frames.json with -update-preview-fixture), so this parser cannot drift from Go.
+describe('MSG_PREVIEW parsing against the Go fixture (PREV-01)', () => {
+  type Case = { name: string; kind: string; frame: string; header?: Record<string, unknown>; id?: number; payload?: string; status?: number }
+  const cases = (previewFixture as { cases: Case[] }).cases
+  const b64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
+
+  it('pins the type byte and the chunk size', () => {
+    expect(MSG_PREVIEW).toBe(0x21)
+    expect(previewFixture.chunkMax).toBe(PREVIEW_CHUNK_MAX)
+    expect(cases.map((c) => c.kind).sort()).toEqual(['chunk', 'chunk', 'end', 'end', 'end', 'header', 'header'])
+  })
+
+  for (const c of cases) {
+    it(`decodes ${c.name}`, () => {
+      const f = parseServerFrame(b64(c.frame))
+      expect(f.type).toBe('preview')
+      if (f.type !== 'preview') return
+      const p = f.preview
+      expect(p.kind).toBe(c.kind)
+      if (p.kind === 'header') expect(p).toEqual({ kind: 'header', ...c.header })
+      if (p.kind === 'chunk') {
+        expect(p.id).toBe(c.id)
+        expect(Array.from(p.payload)).toEqual(Array.from(b64(c.payload!)))
+      }
+      if (p.kind === 'end') expect({ id: p.id, status: p.status }).toEqual({ id: c.id, status: c.status })
+    })
+  }
+
+  it('drops a truncated chunk, an unknown sub-kind, broken header JSON, a mistyped header and a short end', () => {
+    const enc = new TextEncoder()
+    expect(parseServerFrame(new Uint8Array([0x21, 0x02, 0, 0, 1])).type).toBe('unknown')
+    expect(parseServerFrame(new Uint8Array([0x21, 0x09, 0, 0, 0, 1, 0])).type).toBe('unknown')
+    expect(parseServerFrame(new Uint8Array([0x21, 0x01, ...enc.encode('{"id":1,')])).type).toBe('unknown')
+    expect(parseServerFrame(new Uint8Array([0x21, 0x01, ...enc.encode('{"id":"1","name":"a","mime":"image/png","size":1,"key":"k","focus":true}')])).type).toBe('unknown')
+    expect(parseServerFrame(new Uint8Array([0x21, 0x01, ...enc.encode('null')])).type).toBe('unknown')
+    expect(parseServerFrame(new Uint8Array([0x21, 0x03, 0, 0, 0, 1])).type).toBe('unknown')
+    expect(parseServerFrame(new Uint8Array([0x21])).type).toBe('unknown')
+  })
+
+  describe('RelayClient delivery', () => {
+    class WS {
+      static OPEN = 1
+      static instances: WS[] = []
+      binaryType = ''
+      readyState = 1
+      onopen: (() => void) | null = null
+      onmessage: ((e: { data: ArrayBuffer }) => void) | null = null
+      onclose: ((e: { code: number; reason: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      send = vi.fn()
+      close = vi.fn()
+      constructor(public url: string) { WS.instances.push(this) }
+    }
+    const enc = new TextEncoder()
+    const send = (i: number, f: Uint8Array) => WS.instances[i].onmessage?.({ data: f.slice().buffer as ArrayBuffer })
+    let client: RelayClient | null = null
+    beforeEach(() => { vi.useFakeTimers(); WS.instances = []; vi.stubGlobal('WebSocket', WS) })
+    afterEach(() => { client?.close(); client = null; vi.unstubAllGlobals(); vi.useRealTimers() })
+
+    it('passes preview frames to onPreview in order and never moves the resume offset', () => {
+      const onPreview = vi.fn()
+      client = new RelayClient(1, 's', { onOutput: vi.fn(), onPreview }, { remote: true, reconnect: {} })
+      WS.instances[0].onopen?.()
+      send(0, new Uint8Array([0x20, ...enc.encode(JSON.stringify({ replay: 'full' }))]))
+      send(0, new Uint8Array([0x20, ...enc.encode(JSON.stringify({ offset: 10 }))]))
+      send(0, new Uint8Array([0x01, 0x61]))
+      expect(client.resumePoint()).toBe(12)
+      for (const c of cases) send(0, b64(c.frame))
+      expect(client.resumePoint()).toBe(12)
+      expect(onPreview.mock.calls.map((c) => (c[0] as PreviewFrame).kind)).toEqual(cases.map((c) => c.kind))
+    })
+
+    it('fires onPreviewReset when the socket closes, before the reconnect', () => {
+      const onPreviewReset = vi.fn()
+      client = new RelayClient(1, 's', { onOutput: vi.fn(), onPreviewReset }, { remote: true, reconnect: {} })
+      WS.instances[0].onopen?.()
+      WS.instances[0].onclose?.({ code: 1006, reason: '' })
+      expect(onPreviewReset).toHaveBeenCalledTimes(1)
+      expect(WS.instances).toHaveLength(1) // the redial waits for its backoff
+    })
+
+    it('fires onPreviewReset on a plain (non-reconnect) close too', () => {
+      const onPreviewReset = vi.fn()
+      client = new RelayClient(1, 's', { onOutput: vi.fn(), onPreviewReset })
+      WS.instances[0].onclose?.({ code: 1000, reason: '' })
+      expect(onPreviewReset).toHaveBeenCalledTimes(1)
+    })
   })
 })
