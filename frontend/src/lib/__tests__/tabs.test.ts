@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nextActiveTabId, renameInList, tabLabel, webSessionTabId } from '../tabs'
+import { nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from '../tabs'
 
 const tabs = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
 
@@ -74,5 +74,25 @@ describe('webSessionTabId (INPT-04 peer tab identity)', () => {
 
   it('two hosts with one session id give two ids', () => {
     expect(webSessionTabId('s1', 'a.tail.ts.net')).not.toBe(webSessionTabId('s1', 'B'))
+  })
+})
+
+// INPT-04: Retry replaces the tab list; the peer tabs it drops lose their snapshots.
+describe('peerTabsRemoved (INPT-04 Retry cleanup)', () => {
+  const local = { id: 'l1', sessionId: 'l1' }
+  const bootstrap = { id: '__websession__w1', sessionId: 'w1', type: 'web-session' }
+  const peerA = { id: '__websession__a.ts.net/s1', sessionId: 's1', type: 'web-session', peerHost: 'A', connectHost: 'a.ts.net' }
+  const peerB = { id: '__websession__B/s1', sessionId: 's1', type: 'web-session', peerHost: 'B' }
+
+  it('returns the peer tabs the next list lacks', () => {
+    expect(peerTabsRemoved([local, peerA, peerB], [local, peerB])).toEqual([peerA])
+  })
+
+  it('returns nothing for local tabs or the hostless web bootstrap tab', () => {
+    expect(peerTabsRemoved([local, bootstrap], [])).toEqual([])
+  })
+
+  it('returns nothing when every peer tab stays', () => {
+    expect(peerTabsRemoved([peerA, peerB], [peerB, peerA])).toEqual([])
   })
 })

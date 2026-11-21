@@ -317,11 +317,26 @@ describe('Sidebar: peer groups (NAV-02)', () => {
     const { c } = render({
       sessions,
       peerView: peerView(false, true, [p]),
-      activeTab: { id: '__websession__p2', name: 'home-air › logs', sessionId: 'p2', type: 'web-session', baseURL: 'https://h', capToken: 'x' },
+      activeTab: { id: '__websession__home-air.tail1.ts.net/p2', name: 'home-air › logs', sessionId: 'p2', type: 'web-session', baseURL: 'https://h', capToken: 'x', peerHost: 'home-air.tail1.ts.net' },
     })
     const current = c.querySelectorAll('[aria-current="page"]')
     expect(current.length).toBe(1)
     expect(current[0].textContent).toBe('logs')
+  })
+
+  // INPT-04: two Macs can hand out the same session id; only the active tab's host row is current.
+  it('with two hosts listing the same session id, aria-current marks only the active host\'s row', () => {
+    const v = peerView(false, true, [
+      peer('office-air.tail1.ts.net', true, [['s1', 'office shell']]),
+      peer('studio-mac.tail1.ts.net', true, [['s1', 'studio shell']]),
+    ])
+    const { c } = render({
+      peerView: v,
+      activeTab: { id: '__websession__studio-mac.tail1.ts.net/s1', name: 'studio-mac › studio shell', sessionId: 's1', type: 'web-session', peerHost: 'studio-mac.tail1.ts.net' },
+    })
+    const current = c.querySelectorAll('[aria-current="page"]')
+    expect(current.length).toBe(1)
+    expect(current[0].textContent).toBe('studio shell')
   })
 })
 

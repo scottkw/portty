@@ -6,10 +6,15 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import React, { act } from 'react'
 
 import { mountApp, unmountApp, flush, wailsEvents } from './appHarness'
+import { peerSnapshotKey, putPeerSnapshot, takePeerSnapshot } from '../../lib/peerSnapshots'
 
 // jsdom has no xterm.
 vi.mock('../TerminalPanel', () => ({
   TerminalPanel: () => React.createElement('div', { 'data-testid': 'terminal-panel' }),
+}))
+// jsdom has no EventSource either (the peer view's plugin-config stream).
+vi.mock('../WebShareSessionView', () => ({
+  WebShareSessionView: () => React.createElement('div', { 'data-testid': 'web-session-view' }),
 }))
 
 const session = (id: string, name: string) => ({
@@ -69,5 +74,43 @@ describe('App — daemon:recovered (review IN-01)', () => {
     expect(tabs().join('|')).not.toContain('respawned shell')
     expect(selected()).toContain('second shell')
     expect(relayPort.mock.calls.length).toBe(portCalls + 1)
+  })
+
+  // INPT-04: both Retry entry points need zero tabs, so a peer tab exists only if it
+  // opened while retryInit awaited. Retry's restored tabs replace it; its snapshot goes too.
+  it('Retry that replaces a peer tab opened while it awaited drops that tab\'s snapshot (takePeerSnapshot is undefined)', async () => {
+    let resolveRetry!: (v: unknown) => void
+    const retry = vi.fn(() => new Promise((r) => { resolveRetry = r }))
+    let sessions: ReturnType<typeof session>[] = []
+    const peer = { hostname: 'office-air', dnsName: 'office-air.tail1234.ts.net', reachable: true, sessions: [{ id: 'p1', name: 'Remote Shell', status: 'idle', url: '' }] }
+    const container = await mountApp({
+      RetryDaemon: retry,
+      GetRelayPort: () => 4321,
+      ListSessions: () => sessions,
+      GetTailscaleStatus: () => ({ connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'home-air.tail1234.ts.net' }),
+      GetRemoteSessionsWithMeta: () => [peer],
+      ConnectPeerSession: (host: unknown, id: unknown) => ({ sessionId: id, name: 'Remote Shell', host: 'office-air', url: `https://${host}:7444/sessions/${id}?cap=C`, errorCode: '' }),
+    })
+    const tabs = () => [...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent ?? '')
+    expect(tabs()).toHaveLength(0)
+
+    await act(async () => { wailsEvents.get('daemon:recovered')?.() })
+    await flush()
+    expect(retry).toHaveBeenCalledTimes(1) // retryInit is now waiting on RetryDaemon
+
+    const row = [...container.querySelectorAll<HTMLButtonElement>('button.sidebar__row')].find((b) => b.textContent === 'Remote Shell')!
+    await act(async () => { row.click() })
+    await flush()
+    expect(tabs().some((t) => t.includes('Remote Shell'))).toBe(true)
+    const key = peerSnapshotKey('office-air.tail1234.ts.net', 'p1')
+    putPeerSnapshot(key, { data: 'x', cols: 80, rows: 24, offset: 1 })
+
+    sessions = [session('s1', 'local shell')]
+    await act(async () => { resolveRetry(null) })
+    await flush()
+
+    expect(takePeerSnapshot(key)).toBeUndefined()
+    expect(tabs().some((t) => t.includes('Remote Shell'))).toBe(false)
+    expect(tabs().some((t) => t.includes('local shell'))).toBe(true)
   })
 })
