@@ -3,7 +3,10 @@ package attach
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -42,6 +45,76 @@ func TestMakeClientResizeFrame(t *testing.T) {
 	}
 	if rows != 24 {
 		t.Errorf("expected rows=24, got %d", rows)
+	}
+}
+
+// INPT-06: a claim is the report plus relay.ResizeClaim in byte 5.
+func TestMakeClientClaimFrame(t *testing.T) {
+	if got, want := MakeClientClaimFrame(80, 24), []byte{0x11, 0, 80, 0, 24, 0x01}; !bytes.Equal(got, want) {
+		t.Fatalf("MakeClientClaimFrame(80, 24) = %v, want %v", got, want)
+	}
+}
+
+// INPT-06: a SIGWINCH (the attach user resized the terminal) sends a claim
+// with the new size; a size lookup error sends nothing; ctx cancel stops it.
+func TestWatchResize_SendsClaim(t *testing.T) {
+	frames := make(chan []byte, 8)
+	readCtx, stopRead := context.WithCancel(context.Background())
+	t.Cleanup(stopRead)
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		for {
+			_, msg, err := c.Read(readCtx)
+			if err != nil {
+				return
+			}
+			frames <- msg
+		}
+	}, nil)
+	conn := f.dial(t)
+
+	type size struct {
+		cols, rows int
+		err        error
+	}
+	sizes := make(chan size, 4)
+	winch := make(chan os.Signal, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		watchResize(ctx, conn, winch, func() (int, int, error) { s := <-sizes; return s.cols, s.rows, s.err })
+		close(done)
+	}()
+
+	next := func() []byte {
+		t.Helper()
+		select {
+		case m := <-frames:
+			return m
+		case <-time.After(loopWait):
+			t.Fatal("no frame from the resize watcher")
+			return nil
+		}
+	}
+	sizes <- size{cols: 90, rows: 30}
+	winch <- syscall.SIGWINCH
+	if got, want := next(), MakeClientClaimFrame(90, 30); !bytes.Equal(got, want) || len(got) != 6 {
+		t.Fatalf("frame after SIGWINCH = %v, want the claim %v", got, want)
+	}
+
+	sizes <- size{err: errors.New("not a terminal")}
+	winch <- syscall.SIGWINCH
+	sizes <- size{cols: 70, rows: 20}
+	winch <- syscall.SIGWINCH
+	if got, want := next(), MakeClientClaimFrame(70, 20); !bytes.Equal(got, want) {
+		t.Fatalf("frame after a size error and a good SIGWINCH = %v, want only the claim %v", got, want)
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(loopWait):
+		t.Fatal("the resize watcher did not stop on ctx cancel")
 	}
 }
 

@@ -159,3 +159,8 @@ func MakeClientResizeFrame(cols, rows uint16) []byte {
 		byte(rows >> 8), byte(rows),
 	}
 }
+
+// MakeClientClaimFrame is a size claim (INPT-06). RED stub: still a report.
+func MakeClientClaimFrame(cols, rows uint16) []byte {
+	return MakeClientResizeFrame(cols, rows)
+}
