@@ -225,13 +225,19 @@ func (e *SessionEngine) CreateSession(ctx context.Context, name, workDir string,
 		rows = 24
 	}
 
+	env := e.cliPathEnv() // portty on the session PATH (PREV-05)
+	if cliPath == sessionShell {
+		// OSC 7 cwd reports (PATH-01); never for test spawns like /bin/cat.
+		env = append(env, e.zshEnv()...)
+	}
+
 	sess, err := e.backend.Create(ctx, pty.CreateRequest{
 		CLI:     cliPath,
 		Args:    args,
 		Cols:    cols,
 		Rows:    rows,
 		WorkDir: workDir,
-		Env:     e.cliPathEnv(), // portty on the session PATH (PREV-05)
+		Env:     env,
 	})
 	if err != nil {
 		return "", fmt.Errorf("create session: %w", err)
