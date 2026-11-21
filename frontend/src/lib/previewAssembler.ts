@@ -84,9 +84,9 @@ export function createPreviewAssembler(emit: (e: PreviewEvent) => void) {
     emit({ type: 'complete', id, blob: new Blob(chunks as BlobPart[], { type: mime }) })
   }
 
-  const reset = (): void => {
+  const discard = (): void => {
     if (open) fail('incomplete')
   }
 
-  return { feed, reset }
+  return { feed, discard }
 }

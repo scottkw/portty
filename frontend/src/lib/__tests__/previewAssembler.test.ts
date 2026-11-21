@@ -11,13 +11,13 @@ const end = (status = 0, id = 1): PreviewFrame => ({ kind: 'end', id, status })
 
 let events: PreviewEvent[]
 let feed: (f: PreviewFrame) => void
-let reset: () => void
+let discard: () => void
 beforeEach(() => {
   vi.useFakeTimers()
   events = []
   const a = createPreviewAssembler((e) => events.push(e))
   feed = a.feed
-  reset = a.reset
+  discard = a.discard
 })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 const types = () => events.map((e) => e.type)
@@ -52,12 +52,12 @@ describe('previewAssembler happy path (PREV-01)', () => {
     })
   }
 
-  it('reset mid-stream fails the open preview as incomplete', () => {
+  it('discard (socket reset) mid-stream fails the open preview as incomplete', () => {
     feed(header())
     feed(chunk(3))
-    reset()
+    discard()
     expect(events[events.length - 1]).toEqual({ type: 'failed', id: 1, reason: 'incomplete' })
-    reset()
+    discard()
     expect(types().filter((t) => t === 'failed')).toHaveLength(1)
   })
 })

@@ -502,7 +502,7 @@ export function TerminalPanel({
       const preview = createPreviewAssembler((e) => onPreviewRef.current?.(e))
       const client = new RelayClient(relayPort, sessionId, {
         onPreview: preview.feed,
-        onPreviewReset: preview.reset,
+        onPreviewReset: preview.discard,
         onOutput: (data) => { peerWatch?.feed(data); term.write(data) },
         onOpen: () => { lastReportRef.current = null; reportFit() },
         // Phase 175-06 (BUG-02 / #125): show the end banner on the guest path
@@ -582,7 +582,7 @@ export function TerminalPanel({
       live?.disposeData.dispose()
       const resumePoint = snapSerializer && live ? live.client.resumePoint() : null // read before close
       live?.client.close()
-      live?.preview.reset()
+      live?.preview.discard()
       if (bannerTimer !== null) clearTimeout(bannerTimer)
       // Phase 93: dispose hot-swap addons before disposing the terminal
       // itself to avoid orphaned references. dispose() on the addon detaches
