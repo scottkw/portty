@@ -81,8 +81,11 @@ func TestAppMenu_Structure(t *testing.T) {
 		t.Fatalf("items[0] = %+v, want Portty submenu", items[0])
 	}
 	app := items[0].SubMenu.Items
-	if app[0].Label != "About Portty" || !app[1].IsSeparator() || app[2].Label != "Settings…" {
-		t.Errorf("app submenu starts %q, sep=%v, %q; want About Portty, separator, Settings…", app[0].Label, app[1].IsSeparator(), app[2].Label)
+	if len(app) < 5 || app[0].Label != "About Portty" || !app[1].IsSeparator() || app[2].Label != "Settings…" || app[3].Label != "Install Command-Line Tool…" || !app[4].IsSeparator() {
+		t.Fatalf("app submenu = %v; want About Portty, separator, Settings…, Install Command-Line Tool…, separator", labels(app))
+	}
+	if app[3].Accelerator != nil || app[3].Click == nil {
+		t.Errorf("Install Command-Line Tool…: accelerator %v, click set %v; want no shortcut and a callback", app[3].Accelerator, app[3].Click != nil)
 	}
 	if items[1].Label != "File" {
 		t.Errorf("items[1] = %q, want File", items[1].Label)
@@ -179,4 +182,16 @@ func TestAppMenu_AboutOpensNativePanel(t *testing.T) {
 	if about != 1 || len(*emitted) != 0 || len(opened) != 0 {
 		t.Fatalf("about=%d emitted=%v opened=%v, want 1 About call and nothing else", about, *emitted, opened)
 	}
+}
+
+func labels(items []*menu.MenuItem) []string {
+	var out []string
+	for _, it := range items {
+		if it.IsSeparator() {
+			out = append(out, "─")
+		} else {
+			out = append(out, it.Label)
+		}
+	}
+	return out
 }

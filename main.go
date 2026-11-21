@@ -168,6 +168,7 @@ func appMenu() *menu.Menu {
 	appSub.AddText("About Portty", nil, func(_ *menu.CallbackData) { menuShowAbout() })
 	appSub.AddSeparator()
 	appSub.AddText("Settings…", keys.CmdOrCtrl(","), emitMenuEvent("menu:settings"))
+	appSub.AddText("Install Command-Line Tool…", nil, installCLICallback)
 	appSub.AddSeparator()
 	appSub.AddText("Hide Portty", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
 		if appCtx != nil {
@@ -205,6 +206,14 @@ func appMenu() *menu.Menu {
 func checkForUpdatesCallback(_ *menu.CallbackData) {
 	if appInstance != nil {
 		go appInstance.checkForUpdatesManually()
+	}
+}
+
+// installCLICallback runs Install Command-Line Tool… (PREV-05) in a goroutine:
+// its admin prompt and native alerts block, like Check for Updates….
+func installCLICallback(_ *menu.CallbackData) {
+	if appInstance != nil {
+		go appInstance.installCommandLineTool()
 	}
 }
 
