@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 	"unicode"
@@ -287,4 +288,24 @@ func queueIfRoom(sub *Subscriber, frame []byte) bool {
 	default:
 		return false
 	}
+}
+
+// CleanPreviewName reduces a name to its base name without control, bidi
+// override or isolate characters, trimmed and capped at 255 bytes on a rune
+// boundary. Viewers show it as text and clean it again (11-05). The daemon's
+// preview route and the path click both use it.
+func CleanPreviewName(s string) string {
+	s = s[strings.LastIndex(s, "/")+1:]
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || r == utf8.RuneError || r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069 {
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.TrimSpace(s)
+	for len(s) > 255 {
+		_, n := utf8.DecodeLastRuneInString(s)
+		s = s[:len(s)-n]
+	}
+	return strings.TrimSpace(s)
 }

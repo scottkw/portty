@@ -8,8 +8,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/scottkw/portty/internal/relay"
 )
@@ -44,7 +42,7 @@ func (a *API) handlePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw, err := url.QueryUnescape(r.Header.Get("X-Portty-Name"))
-	name := cleanPreviewName(raw)
+	name := relay.CleanPreviewName(raw)
 	if err != nil || name == "" {
 		http.Error(w, "invalid name", http.StatusBadRequest)
 		return
@@ -79,23 +77,4 @@ func (a *API) handlePreview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, PreviewResponse{Viewers: sent.Viewers})
 	log.Printf("viewer-diag: preview accepted session=%s bytes=%d mime=%s viewers=%d",
 		relay.DiagID(id), len(data), mime, sent.Viewers)
-}
-
-// cleanPreviewName reduces a name to its base name without control, bidi
-// override or isolate characters, trimmed and capped at 255 bytes on a rune
-// boundary. Viewers show it as text and clean it again (11-05).
-func cleanPreviewName(s string) string {
-	s = s[strings.LastIndex(s, "/")+1:]
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r == utf8.RuneError || r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069 {
-			return -1
-		}
-		return r
-	}, s)
-	s = strings.TrimSpace(s)
-	for len(s) > 255 {
-		_, n := utf8.DecodeLastRuneInString(s)
-		s = s[:len(s)-n]
-	}
-	return strings.TrimSpace(s)
 }
