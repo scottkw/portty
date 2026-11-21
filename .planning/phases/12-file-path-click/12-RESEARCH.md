@@ -478,20 +478,20 @@ export function registerPathLinks(term: Terminal, deps: {
 | A5 | Adding `precmd` emission to the shim is acceptable although CONTEXT says "chpwd hook (plus one initial emit)" | Pattern 1 | Needs the user's/planner's nod (Open Question 1); dropping it costs handoff recovery and rc-reset recovery |
 | A6 | A host-authoritative capability bit in `MsgMeta` is acceptable instead of a frontend API-version check | Pattern 4 | UI-SPEC's observable behaviour is identical; if the user wants the API check literally, add `api` plumbing for peer tabs |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Add `precmd` emission to the shim?**
+1. **Add `precmd` emission to the shim?** **RESOLVED:** yes, chpwd + precmd + initial emit (12-CONTEXT "Decided at planning" [Shell], first item; built in 12-02 Task 1, rc-reset case in 12-02 Task 2).
    - What we know: CONTEXT locks "chpwd hook (plus one initial emit)". Ghostty uses chpwd + precmd + initial; Terminal.app uses precmd. I verified that without precmd a user `.zshrc` doing `chpwd_functions=()` silences tracking, and that precmd also re-publishes state after a handoff.
    - What's unclear: whether the user counts this as within the locked decision.
    - Recommendation: include it (about 6 lines, verified); flag it in the plan as the one deliberate addition. The shim is daemon-written and refreshed per session, so it can be edited later for new sessions.
-2. **Gate the viewer on a stream capability bit instead of the API version?**
+2. **Gate the viewer on a stream capability bit instead of the API version?** **RESOLVED:** both: the `pathClick` bit on the replay MsgMeta is the viewer-side switch, and APIVersion 4 with `PathClickAPI` is reported (12-CONTEXT "Decided at planning" [Gating]; bit in 12-04 Task 3, API in 12-05 Task 2, viewer gate in 12-06 Task 1).
    - What we know: peer tabs get the host's API only via a fetch the proxy path does not make; local tabs have no API binding; the stream already carries per-connection `MsgMeta`.
    - What's unclear: CONTEXT says "gated by an API version bump like PreviewAPI".
    - Recommendation: do both: bump `APIVersion` to 4 with `PathClickAPI` (reported on `/health` and `/info`), and use the `pathClick` meta bit as the viewer-side switch (it also encodes read-only).
-3. **Export the cwd log in `HubState`?**
+3. **Export the cwd log in `HubState`?** **RESOLVED:** yes, additive gob fields `Cwds` and `HistoryPushed` with a round-trip test (12-CONTEXT "Decided at planning" [Handoff]; 12-03 Task 3).
    - Recommendation: yes (additive gob fields, one round-trip test); otherwise pre-upgrade relative paths are silent until the next prompt.
-4. **Hostname equality details** (`os.Hostname()` vs `.local`, case): the shim emits an empty host, so only third-party emitters hit this. Keep to case-insensitive equality plus `.local` tolerance; planner's call.
-5. **Fixture sharing:** share one JSON table between Go and vitest for the path-token boundary rule and the `MsgPathClick`/meta frame bytes (Phase 11 precedent).
+4. **Hostname equality details** (`os.Hostname()` vs `.local`, case): the shim emits an empty host, so only third-party emitters hit this. Keep to case-insensitive equality plus `.local` tolerance; planner's call. **RESOLVED:** case-insensitive equality with `os.Hostname()` (looked up once), trailing dot trimmed, `.local` suffix difference tolerated, plus empty and `localhost` (12-03 Flagged decisions "parseOSC7"; TestParseOSC7 in 12-03 Task 2).
+5. **Fixture sharing:** share one JSON table between Go and vitest for the path-token boundary rule and the `MsgPathClick`/meta frame bytes (Phase 11 precedent). **RESOLVED:** one hand-written fixture, `frontend/src/lib/__tests__/fixtures/path-click.json`, with `tokens`, `detect` and `frames`, written by 12-04 (Flagged decisions "Shared fixture"; Tasks 2 and 3) and read unchanged by 12-06.
 
 ## Environment Availability
 
