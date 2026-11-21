@@ -39,7 +39,7 @@ type Subscriber struct {
 	Rows int
 
 	// Origin: "local" (relay loopback) or "web" (webserver Tailscale). Set once
-	// at subscribe time; the host-authority resize arbiter and RemoteViewerCount read it.
+	// at subscribe time; the grid bootstrap (ResizeClient) and RemoteViewerCount read it.
 	Origin string
 
 	// Kick closes the connection with the given reason (RevokeWebViewers).
@@ -110,11 +110,15 @@ type Hub struct {
 	inDead    bool
 	inStarted bool
 
-	// ptyCols, ptyRows: current PTY dimensions as set by the host-authority arbiter.
-	// Only local-origin subscribers drive these fields; the last host grid is frozen
-	// when no local host is connected (D-01). (VIEW-01, VIEW-02)
-	ptyCols int
-	ptyRows int
+	// ptyCols, ptyRows: current PTY dimensions. They move only to the grid
+	// target (wantCols, wantRows), which only a claim or the bootstrap sets
+	// (INPT-06, see ResizeClient). owner: the viewer that set the target
+	// last, nil once it leaves; the grid stays (D-01). All under mu.
+	ptyCols  int
+	ptyRows  int
+	wantCols int
+	wantRows int
+	owner    *Subscriber
 	// settleCols, settleRows: the grid a hub imported from a handoff came
 	// with, a cap on the arbiter until settleTimer (armed by Start) fires
 	// (handoffSettle). Zero otherwise. All three under mu.
@@ -335,6 +339,9 @@ func (h *Hub) Unsubscribe(sub *Subscriber) {
 	h.mu.Lock()
 	_, present := h.subscribers[sub]
 	delete(h.subscribers, sub)
+	if h.owner == sub {
+		h.owner = nil // the grid and its target stay until someone claims (D-01)
+	}
 	total := len(h.subscribers)
 	h.mu.Unlock()
 	if present {
@@ -482,96 +489,111 @@ func (h *Hub) RestartViewers() <-chan struct{} {
 	return done
 }
 
-// ResizeClient stores the subscriber's reported dimensions and applies the
-// host-authority PTY-size policy (VIEW-01, VIEW-02):
+// Grid bounds for reported and claimed sizes (INPT-06, T-10-13). With web
+// claims allowed a viewer could otherwise make resizeLiveEmulator allocate
+// a 65535x65535 emulator.
+const (
+	MinGridCols = 20
+	MaxGridCols = 500
+	MinGridRows = 5
+	MaxGridRows = 200
+)
+
+// ResizeClient stores a viewer's reported size (a plain MsgResize2 frame) and
+// nothing else: a report never moves a known grid, whether or not it comes
+// from the owner, so an owner's sidebar toggle, a banner or a reconnect's
+// refit cannot reflow the shell (INPT-06, "viewer takes over size"). The one
+// exception is the bootstrap: a local viewer reporting while the grid was
+// never known and nobody owns it takes it, so a fresh session adopts its
+// first tab's fit. Joins, replays, reconnects and output never claim.
 //
-//   - VIEW-02 origin gate: non-local (web/remote) subscribers return immediately;
-//     their reported size never enters the arbiter and cannot drive or DoS the PTY
-//     grid (T-157-01 mitigation).
-//   - D-02 min-among-local: the PTY grid tracks the smallest terminal among all
-//     connected local-origin subscribers so every host viewer sees the full output.
-//   - D-01 freeze: when no local subscriber currently reports a positive size the
-//     last host grid is preserved — the PTY is never reset to zero or to a guest size.
-//   - VIEW-01 broadcast: each grid change is broadcast to all subscribers via a
-//     MsgResize (0x02) frame before resizeFn is called, so guests learn the new
-//     authoritative grid immediately.
+// shortcut: a relaunched GUI (or a tab rejoining after a handoff) shows the
+// current grid, scaled, until its user types, zooms or resizes; add "a lone
+// local viewer on an ownerless hub adopts its fit" if the VM check finds it
+// confusing (10-RESEARCH Pitfall 11).
 //
-// broadcastResize and resizeFn are called AFTER releasing hub.mu (unlock-before-IO
-// discipline) to avoid self-deadlock and PTY-syscall contention.
+// Chesterton's Fence for what this replaces: the VIEW-02 origin gate kept a
+// web guest from driving or DoS-ing the PTY grid (T-157-01); the read-only
+// gate, the clamp and "reports never move a known grid" do that job now, and
+// a write-cap guest already has the shell. D-02 min-among-local let every
+// host viewer see all output; the user chose instead that the viewer in use
+// sets the size and the others scale (10-CONTEXT INPT-06).
 func (h *Hub) ResizeClient(sub *Subscriber, cols, rows int) error {
-	// VIEW-02: non-local origin is a read-only guest — it may not drive the PTY grid.
-	// Return immediately; the guest's reported size is not recorded anywhere.
-	if sub.Origin != "local" {
+	return h.sizeClient(sub, cols, rows, false)
+}
+
+// ClaimGrid is a user-initiated size change (MsgResize2 with ResizeClaim):
+// it stores the size, makes sub the owner and moves the grid to it. Each grid
+// change is broadcast to every viewer as a MsgResize (0x02) before resizeFn
+// (VIEW-01).
+func (h *Hub) ClaimGrid(sub *Subscriber, cols, rows int) error {
+	return h.sizeClient(sub, cols, rows, true)
+}
+
+// sizeClient is ResizeClient and ClaimGrid. Read-only viewers can neither
+// report nor claim (T-10-12; the pumps skip them too). Sizes are clamped and
+// zero or negative ones ignored. On a frozen hub the owner and target are
+// recorded and Thaw applies them.
+func (h *Hub) sizeClient(sub *Subscriber, cols, rows int, claim bool) error {
+	if sub.ReadOnly || cols <= 0 || rows <= 0 {
 		return nil
 	}
-
+	cols, rows = min(max(cols, MinGridCols), MaxGridCols), min(max(rows, MinGridRows), MaxGridRows)
 	h.gridMu.Lock()
 	defer h.gridMu.Unlock()
 	h.mu.Lock()
-	sub.Cols = cols
-	sub.Rows = rows
+	sub.Cols, sub.Rows = cols, rows
+	why := "claim"
+	if !claim {
+		if sub.Origin != "local" || h.owner != nil || (h.ptyCols > 0 && h.ptyRows > 0) {
+			h.mu.Unlock()
+			return nil // a report: stored only
+		}
+		why = "bootstrap"
+	}
+	h.owner, h.wantCols, h.wantRows = sub, cols, rows
 	if h.freezing {
-		// Frozen: the PTY grid and the emulator stay as exported. Thaw re-runs
-		// the arbiter, so a resize during a rolled-back freeze still lands.
+		// Frozen: the PTY grid and the emulator stay as exported. Thaw
+		// re-runs applyGridLocked, so a claim during a rolled-back freeze
+		// still lands.
 		h.mu.Unlock()
 		return nil
 	}
-	return h.applyGridLocked(sub.Origin, sub.Name)
+	return h.applyGridLocked(why)
 }
 
-// ClaimGrid is a user-initiated size change. RED stub: a plain report.
-func (h *Hub) ClaimGrid(sub *Subscriber, cols, rows int) error {
-	return h.ResizeClient(sub, cols, rows)
-}
-
-// applyGridLocked runs the host-authority arbiter over the local
-// subscribers' sizes and applies a changed grid. by and client name the
-// trigger for the diag line. Caller holds gridMu and mu; mu is released
-// before any IO.
-func (h *Hub) applyGridLocked(by, client string) error {
-	// D-02 min-among-local: iterate only local-origin subscribers with a positive size.
-	// After a handoff import the imported grid counts as one more local size
-	// until the settle window ends, so viewers rejoining one by one cannot
-	// grow it and bump geomEnd (V-02).
-	minCols, minRows, local := h.settleCols, h.settleRows, false
-	for s := range h.subscribers {
-		if s.Origin != "local" || s.Cols <= 0 || s.Rows <= 0 {
-			continue
-		}
-		local = true
-		if minCols == 0 || s.Cols < minCols {
-			minCols = s.Cols
-		}
-		if minRows == 0 || s.Rows < minRows {
-			minRows = s.Rows
-		}
-	}
-
-	// D-01 freeze: if no local subscriber reports a positive size, leave ptyCols/ptyRows
-	// unchanged (last host grid persists). Only update when we have a valid min.
-	needResize := local && (minCols > 0 && minRows > 0) && (minCols != h.ptyCols || minRows != h.ptyRows)
+// applyGridLocked moves the PTY to the grid target when one is set and
+// differs. It never reads a viewer's reported size. why (bootstrap, claim,
+// thaw) goes in the diag line. Caller holds gridMu and mu; mu is released
+// before any IO (lock order gridMu then mu).
+func (h *Hub) applyGridLocked(why string) error {
 	oldCols, oldRows := h.ptyCols, h.ptyRows
-	if needResize {
-		h.ptyCols = minCols
-		h.ptyRows = minRows
+	pc, pr := h.wantCols, h.wantRows
+	if pc <= 0 || pr <= 0 || (pc == oldCols && pr == oldRows) {
+		h.mu.Unlock()
+		return nil // D-01: no target yet, or already there
 	}
-	pc, pr := h.ptyCols, h.ptyRows
+	h.ptyCols, h.ptyRows = pc, pr
+	var by, client string
+	var conn uint64
+	if o := h.owner; o != nil {
+		by, client, conn = o.Origin, o.Name, o.ID
+	}
 	h.mu.Unlock() // unlock-before-IO: broadcastResize and resizeFn must not run under mu
 
-	if needResize {
-		// Diagnostic for UAT gap 1 (04-07 H-grid): who changed the host grid, and to what.
-		log.Printf("viewer-diag: grid session=%s %dx%d -> %dx%d by=%s client=%q", DiagID(h.sessionID), oldCols, oldRows, pc, pr, by, client)
-		// VIEW-01: broadcast the new authoritative grid to all subscribers.
-		h.broadcastResize(uint16(pc), uint16(pr))
-		// CR-01: keep the live emulator's geometry in lockstep with the PTY so a
-		// later reconnect preamble (RenderSnapshot) is not mis-dimensioned. Safe
-		// here — hub.mu is already released (resizeLiveEmulator takes only emuMu).
-		// Genuine only when the hub already had a real grid: the first resize from
-		// the unknown grid matches the size the PTY was spawned at.
-		h.resizeLiveEmulator(pc, pr, oldCols > 0 && oldRows > 0)
-		if h.resizeFn != nil {
-			return h.resizeFn(minCols, minRows)
-		}
+	// Diagnostic for UAT gap 1 (04-07 H-grid): who changed the host grid, to what, and why.
+	log.Printf("viewer-diag: grid session=%s %dx%d -> %dx%d by=%s client=%q conn=%d why=%s",
+		DiagID(h.sessionID), oldCols, oldRows, pc, pr, by, client, conn, why)
+	// VIEW-01: broadcast the new authoritative grid to all subscribers.
+	h.broadcastResize(uint16(pc), uint16(pr))
+	// CR-01: keep the live emulator's geometry in lockstep with the PTY so a
+	// later reconnect preamble (RenderSnapshot) is not mis-dimensioned. Safe
+	// here — hub.mu is already released (resizeLiveEmulator takes only emuMu).
+	// Genuine only when the hub already had a real grid: the first resize from
+	// the unknown grid matches the size the PTY was spawned at.
+	h.resizeLiveEmulator(pc, pr, oldCols > 0 && oldRows > 0)
+	if h.resizeFn != nil {
+		return h.resizeFn(pc, pr)
 	}
 	return nil
 }
@@ -715,7 +737,7 @@ func (h *Hub) unfreeze(d deadliner) {
 	h.mu.Lock()
 	stopped := h.frozenLocked()
 	h.freezing = false
-	_ = h.applyGridLocked("thaw", "") // releases mu; a failed PTY resize stays the next resize's to retry
+	_ = h.applyGridLocked("thaw") // releases mu; a failed PTY resize stays the next resize's to retry
 	if stopped {
 		go h.Run()
 	}
@@ -763,7 +785,7 @@ func (h *Hub) endSettle() {
 		h.mu.Unlock()
 		return
 	}
-	_ = h.applyGridLocked("settle", "") // releases mu; a failed PTY resize stays the next resize's to retry
+	_ = h.applyGridLocked("settle") // releases mu; a failed PTY resize stays the next resize's to retry
 }
 
 // recordFrameLocked appends the framed bytes to the scrollback ring AND feeds the

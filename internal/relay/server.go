@@ -98,7 +98,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		conn.Close(websocket.StatusServiceRestart, CloseReasonServiceRestart)
 	}
 
-	sub.Origin = "local" // read by the host-authority resize arbiter
+	sub.Origin = "local" // read by the grid bootstrap (Hub.ResizeClient)
 
 	// Join subscribes and captures the catch-up replay atomically (SHAR-07):
 	// every frame reaches this viewer exactly once, in the replay or in Msgs.
@@ -180,10 +180,13 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			case MsgResize2:
-				if len(payload) >= 4 {
-					cols := uint16(payload[0])<<8 | uint16(payload[1])
-					rows := uint16(payload[2])<<8 | uint16(payload[3])
-					_ = hub.ResizeClient(sub, int(cols), int(rows)) // host-authority arbiter (VIEW-01/VIEW-02)
+				// INPT-06: a claim takes the grid, a report only stores the size.
+				if cols, rows, claim, ok := ParseResize(payload); ok && !sub.ReadOnly {
+					if claim {
+						_ = hub.ClaimGrid(sub, cols, rows)
+					} else {
+						_ = hub.ResizeClient(sub, cols, rows)
+					}
 				}
 			case MsgPing:
 				// INPT-02: the write pump writes it ahead of queued output.

@@ -398,23 +398,22 @@ func TestHub_ClientNameStored(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Host-authority PTY-size arbiter tests (VIEW-01, VIEW-02, D-01, D-02)
-// Replaces the three MC-06 max-wins tests (TestHub_ResizeMaxWinsPolicy,
-// TestHub_ResizeClientNoOpWhenDimensionsUnchanged,
-// TestHub_ResizeClientUnsubscribeDoesNotShrink).
+// PTY-size tests (VIEW-01, D-01; INPT-06 grid owner, which replaced the
+// VIEW-02 origin gate and D-02 min-among-local). The owner rules themselves
+// are in hub_grid_owner_test.go.
 // ---------------------------------------------------------------------------
 
-// TestHub_ResizeHostAuthority_MinAmongLocal verifies D-02: with two local-origin
-// subscribers reporting different sizes the PTY grid tracks the smaller (min),
-// not the larger (max). Each time the min changes resizeFn is called once.
-func TestHub_ResizeHostAuthority_MinAmongLocal(t *testing.T) {
+// TestHub_ResizeOwner_SecondLocalReportKeepsGrid: under the grid owner model
+// a second local viewer's plain report does not move the grid (min-among-local
+// would have shrunk it); its claim does, with one more resizeFn call.
+func TestHub_ResizeOwner_SecondLocalReportKeepsGrid(t *testing.T) {
 	r, w := io.Pipe()
 	defer w.Close()
 
 	var mu sync.Mutex
 	var resizeCalls [][]int
 
-	hub := NewHub("test-resize-min", r, w, DefaultScrollbackBytes, func(cols, rows int) error {
+	hub := NewHub("test-resize-owner", r, w, DefaultScrollbackBytes, func(cols, rows int) error {
 		mu.Lock()
 		resizeCalls = append(resizeCalls, []int{cols, rows})
 		mu.Unlock()
@@ -426,19 +425,27 @@ func TestHub_ResizeHostAuthority_MinAmongLocal(t *testing.T) {
 	hub.Subscribe(sub1)
 	hub.Subscribe(sub2)
 
-	// sub1 claims 220x50 — only local subscriber so far; grid becomes 220x50.
+	// sub1's first report bootstraps the never-sized grid to 220x50.
 	if err := hub.ResizeClient(sub1, 220, 50); err != nil {
 		t.Fatalf("ResizeClient(sub1, 220, 50) error: %v", err)
 	}
-
-	// sub2 claims 80x24 — min across local subscribers is now 80x24; grid shrinks.
+	// sub2's report is stored only.
 	if err := hub.ResizeClient(sub2, 80, 24); err != nil {
 		t.Fatalf("ResizeClient(sub2, 80, 24) error: %v", err)
+	}
+	hub.mu.Lock()
+	gotCols, gotRows := hub.ptyCols, hub.ptyRows
+	hub.mu.Unlock()
+	if gotCols != 220 || gotRows != 50 {
+		t.Errorf("ptyCols/ptyRows = %d/%d after sub2's report, want 220/50", gotCols, gotRows)
+	}
+	// sub2's claim takes the grid.
+	if err := hub.ClaimGrid(sub2, 80, 24); err != nil {
+		t.Fatalf("ClaimGrid(sub2, 80, 24) error: %v", err)
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
-
 	if len(resizeCalls) != 2 {
 		t.Fatalf("expected 2 resizeFn calls, got %d: %v", len(resizeCalls), resizeCalls)
 	}
@@ -447,14 +454,6 @@ func TestHub_ResizeHostAuthority_MinAmongLocal(t *testing.T) {
 	}
 	if resizeCalls[1][0] != 80 || resizeCalls[1][1] != 24 {
 		t.Errorf("resizeCalls[1] = %v, want [80, 24]", resizeCalls[1])
-	}
-
-	// PTY grid must reflect min-among-local (80x24), not max (220x50).
-	hub.mu.Lock()
-	gotCols, gotRows := hub.ptyCols, hub.ptyRows
-	hub.mu.Unlock()
-	if gotCols != 80 || gotRows != 24 {
-		t.Errorf("ptyCols/ptyRows = %d/%d, want 80/24 (min-among-local)", gotCols, gotRows)
 	}
 }
 
@@ -497,8 +496,9 @@ func TestHub_ResizeClientNoOpWhenDimensionsUnchanged(t *testing.T) {
 }
 
 // TestHub_ResizeFreezeLastHostSize verifies D-01: when the last local-origin host
-// disconnects the PTY grid is frozen at the last host size. A subsequent web-origin
-// guest resize MUST NOT change the PTY grid or trigger resizeFn (VIEW-02).
+// disconnects the PTY grid is frozen at the last host size. A subsequent web
+// guest's plain report MUST NOT change the PTY grid or trigger resizeFn: a
+// report never moves a known grid (INPT-06; it was the VIEW-02 origin gate).
 func TestHub_ResizeFreezeLastHostSize(t *testing.T) {
 	r, w := io.Pipe()
 	defer w.Close()
@@ -526,7 +526,7 @@ func TestHub_ResizeFreezeLastHostSize(t *testing.T) {
 	// Host disconnects — no local subscribers remain.
 	hub.Unsubscribe(host)
 
-	// Guest reports 80x24 — origin gate must reject; resizeFn must NOT be called again.
+	// Guest reports 80x24 — a report is stored only; resizeFn must NOT be called again.
 	if err := hub.ResizeClient(guest, 80, 24); err != nil {
 		t.Fatalf("ResizeClient(guest, 80, 24) error: %v", err)
 	}
@@ -551,10 +551,10 @@ func TestHub_ResizeFreezeLastHostSize(t *testing.T) {
 	}
 }
 
-// TestHub_ResizeIgnoresWebOrigin verifies VIEW-02 (T-157-01): a web-origin
-// subscriber can never drive the PTY grid regardless of the dimensions it reports.
-// resizeFn must not be called and ptyCols/ptyRows must remain at zero (no resize
-// has occurred from an authoritative local-origin host).
+// TestHub_ResizeIgnoresWebOrigin (T-157-01, now INPT-06): a web viewer's plain
+// report never moves the grid, not even a never-sized one (only a local
+// report bootstraps it; a web viewer takes the grid only by claiming).
+// resizeFn must not be called and ptyCols/ptyRows must remain at zero.
 func TestHub_ResizeIgnoresWebOrigin(t *testing.T) {
 	r, w := io.Pipe()
 	defer w.Close()
@@ -573,7 +573,7 @@ func TestHub_ResizeIgnoresWebOrigin(t *testing.T) {
 	}
 
 	if resizeCalled {
-		t.Error("resizeFn was called for a web-origin subscriber; want no-op (VIEW-02)")
+		t.Error("resizeFn was called for a web viewer's report; want no-op (INPT-06)")
 	}
 
 	hub.mu.Lock()

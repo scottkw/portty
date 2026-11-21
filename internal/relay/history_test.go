@@ -26,13 +26,14 @@ func historyHub(t *testing.T) (*Hub, *io.PipeWriter) {
 	return hub, w
 }
 
-// resizeHub drives a host-authority resize the way a local window does.
+// resizeHub sets the grid the way a local window resize does: a claim
+// (INPT-06; a plain report would not move a known grid).
 func resizeHub(t *testing.T, hub *Hub, cols, rows int) {
 	t.Helper()
 	sub := &Subscriber{Msgs: make(chan []byte, 256), CloseSlow: func() {}, Origin: "local"}
 	hub.Subscribe(sub)
-	if err := hub.ResizeClient(sub, cols, rows); err != nil {
-		t.Fatalf("ResizeClient: %v", err)
+	if err := hub.ClaimGrid(sub, cols, rows); err != nil {
+		t.Fatalf("ClaimGrid: %v", err)
 	}
 	hub.Unsubscribe(sub)
 }

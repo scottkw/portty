@@ -53,15 +53,22 @@ func MakeResizeFrame(cols, rows uint16) []byte {
 	}
 }
 
-// ResizeClaim is bit 0 of MsgResize2 payload[4]. RED stub: not parsed yet.
+// ResizeClaim is bit 0 of MsgResize2 payload[4] (INPT-06): set, the size
+// change is the user's (window resize, font change, SIGWINCH) and the viewer
+// takes the grid; clear or absent, the frame only reports the viewer's size.
+// Older viewers send 4 bytes and older hosts read only 4, so mixed versions
+// degrade to plain reports. Other bits are reserved and ignored.
 const ResizeClaim byte = 0x01
 
-// ParseResize decodes a MsgResize2 payload. RED stub: every frame is a report.
+// ParseResize decodes a client MsgResize2 payload:
+// [cols_hi, cols_lo, rows_hi, rows_lo, flags?]. ok is false under 4 bytes.
 func ParseResize(payload []byte) (cols, rows int, claim, ok bool) {
 	if len(payload) < 4 {
 		return 0, 0, false, false
 	}
-	return int(payload[0])<<8 | int(payload[1]), int(payload[2])<<8 | int(payload[3]), false, true
+	cols = int(payload[0])<<8 | int(payload[1])
+	rows = int(payload[2])<<8 | int(payload[3])
+	return cols, rows, len(payload) >= 5 && payload[4]&ResizeClaim != 0, true
 }
 
 // ParseFrame splits a raw frame into its type byte and payload.
