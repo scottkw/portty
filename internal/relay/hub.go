@@ -103,7 +103,8 @@ type Hub struct {
 
 	// Input FIFO (input.go, INPT-01): every viewer's MsgInput frames in
 	// arrival order, written to the PTY by one goroutine with inMu released
-	// around the write. inMu is a leaf lock: nothing else is taken under it.
+	// around the write. inMu is a leaf lock: nothing else is taken under it,
+	// and nothing logs under it (IN-02).
 	// inq[inHead:] is the queue; inBytes counts queued plus in-flight bytes;
 	// inDead: the writer stopped (write error or done) and the queue is gone;
 	// inStarted: the writer and its done watcher are running; inHeld: the

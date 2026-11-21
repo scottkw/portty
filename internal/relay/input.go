@@ -2,6 +2,7 @@ package relay
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"time"
 )
@@ -102,14 +103,16 @@ func (c *InputConn) Write(b []byte) error {
 func (c *InputConn) Close() {
 	h := c.h
 	h.inMu.Lock()
-	defer h.inMu.Unlock()
 	if c.closed {
+		h.inMu.Unlock()
 		return
 	}
 	c.closed = true
-	if c.frames > 0 && !h.inDead {
-		c.backlogged = true
-		log.Printf("viewer-diag: input backlog session=%s conn=%d frames=%d bytes=%d", DiagID(h.sessionID), c.id, c.frames, c.bytes)
+	backlogged, frames, bytes := c.frames > 0 && !h.inDead, c.frames, c.bytes
+	c.backlogged = backlogged
+	h.inMu.Unlock()
+	if backlogged { // logged after the unlock: daemonLog.Write can rotate (IN-02)
+		log.Printf("viewer-diag: input backlog session=%s conn=%d frames=%d bytes=%d", DiagID(h.sessionID), c.id, frames, bytes)
 	}
 }
 
@@ -190,16 +193,20 @@ func (h *Hub) startInputLocked() {
 	go func() {
 		<-h.done
 		h.inMu.Lock()
-		h.killInputLocked(nil)
+		msg := h.killInputLocked(nil)
 		h.inMu.Unlock()
+		if msg != "" {
+			log.Print(msg)
+		}
 	}()
 }
 
 // killInputLocked drops the queue and wakes every waiter. Bytes in flight
-// stay counted until their write returns.
-func (h *Hub) killInputLocked(err error) {
+// stay counted until their write returns. It returns the diag line for the
+// caller to log once inMu is released (empty if already dead).
+func (h *Hub) killInputLocked(err error) string {
 	if h.inDead {
-		return
+		return ""
 	}
 	h.inDead = true
 	dropped := 0
@@ -209,7 +216,7 @@ func (h *Hub) killInputLocked(err error) {
 	h.inBytes -= dropped
 	h.inq, h.inHead = nil, 0
 	h.inCond.Broadcast()
-	log.Printf("viewer-diag: input writer stopped session=%s queued=%d err=%v", DiagID(h.sessionID), dropped, err)
+	return fmt.Sprintf("viewer-diag: input writer stopped session=%s queued=%d err=%v", DiagID(h.sessionID), dropped, err)
 }
 
 func (h *Hub) inputWriter() {
@@ -241,11 +248,17 @@ func (h *Hub) inputWriter() {
 		r.c.frames--
 		r.c.bytes -= len(r.data)
 		h.inBytes -= len(r.data)
+		var msg string
 		if err != nil {
-			h.killInputLocked(err)
+			msg = h.killInputLocked(err)
 		} else if r.c.backlogged && r.c.frames == 0 {
-			log.Printf("viewer-diag: input backlog drained session=%s conn=%d", DiagID(h.sessionID), r.c.id)
+			msg = fmt.Sprintf("viewer-diag: input backlog drained session=%s conn=%d", DiagID(h.sessionID), r.c.id)
 		}
 		h.inCond.Broadcast()
+		if msg != "" { // never log under inMu (IN-02); the loop re-checks state after
+			h.inMu.Unlock()
+			log.Print(msg)
+			h.inMu.Lock()
+		}
 	}
 }
