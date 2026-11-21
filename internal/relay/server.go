@@ -153,8 +153,11 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	// &InputAbsorber{} is the legitimate "outside, empty buffers" state.
 	readDone := make(chan struct{})
 	absorber := &InputAbsorber{}
+	in := hub.OpenInput(sub) // INPT-01: queue input so the pump never blocks on the PTY
+	pongs := NewPongOwed()
 	go func() {
 		defer close(readDone)
+		defer in.Close() // queued frames are still delivered after the socket goes
 		for {
 			_, msg, err := conn.Read(ctx)
 			if err != nil {
@@ -171,7 +174,9 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 				if !sub.ReadOnly { // MC-03: discard input for read-only clients
 					filtered := absorber.Filter(payload)
 					if len(filtered) > 0 {
-						_ = hub.WriteInput(filtered)
+						if err := in.Write(filtered); err != nil {
+							return // the hub's input is dead: the session is ending
+						}
 					}
 				}
 			case MsgResize2:
@@ -181,38 +186,15 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 					_ = hub.ResizeClient(sub, int(cols), int(rows)) // host-authority arbiter (VIEW-01/VIEW-02)
 				}
 			case MsgPing:
-				// Answer without blocking: a full queue means a "too slow" kick is
-				// coming (T-05-06). No WebSocket heartbeat on this loopback relay.
-				select {
-				case sub.Msgs <- PongFrame:
-				default:
-				}
+				// INPT-02: the write pump writes it ahead of queued output.
+				// No WebSocket heartbeat on this loopback relay.
+				pongs.Owe()
 			}
 		}
 	}()
 
 	// Write pump — forwards Hub broadcast frames to the WebSocket client.
-	for {
-		select {
-		case frame := <-sub.Msgs:
-			if err := conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
-				return
-			}
-		case <-ctx.Done():
-			return
-		case <-hub.Done():
-			// BUG-02 (#125): the owner ended/stopped the session — tell every
-			// connected viewer instead of a bare return (which the deferred
-			// conn.CloseNow() would then turn into a silent abnormal close
-			// with no code/reason). Fixed generic reason only — never a raw
-			// Go error string or a user-set session name (IN-01 convention,
-			// T-175-06-01).
-			conn.Close(websocket.StatusNormalClosure, CloseReasonSessionEnded)
-			return
-		case <-readDone:
-			return
-		}
-	}
+	WritePump(ctx, conn, hub, sub, pongs, readDone)
 }
 
 // loopbackOriginPatterns returns the allowlist of origin patterns

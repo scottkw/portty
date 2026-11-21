@@ -933,6 +933,7 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	readDone := make(chan struct{})
 	absorber := &relay.InputAbsorber{} // Phase 111 / Issue #54: absorb OSC 10/11/DA1 replies. Phase 115: type moved to relay package.
 	in := hub.OpenInput(sub) // INPT-01: queue input so the pump never blocks on the PTY
+	pongs := relay.NewPongOwed()
 	go func() {
 		defer close(readDone)
 		defer in.Close() // queued frames are still delivered after the socket goes
@@ -987,11 +988,7 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 						relay.DiagID(sessionID), sub.ID, uint16(payload[0])<<8|uint16(payload[1]), uint16(payload[2])<<8|uint16(payload[3]))
 				}
 			case relay.MsgPing:
-				// Answer without blocking: a full queue means a "too slow" kick is coming (T-05-06).
-				select {
-				case sub.Msgs <- relay.PongFrame:
-				default:
-				}
+				pongs.Owe() // INPT-02: the write pump writes it ahead of queued output
 			}
 		}
 	}()
@@ -1009,27 +1006,7 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Write pump — hub → browser
-	for {
-		select {
-		case frame := <-sub.Msgs:
-			if err := conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
-				return
-			}
-		case <-ctx.Done():
-			return
-		case <-hub.Done():
-			// BUG-02 (#125): the owner ended/stopped the session — tell every
-			// connected viewer instead of a bare return (which the deferred
-			// conn.CloseNow() would then turn into a silent abnormal close
-			// with no code/reason). Fixed generic reason only — never a raw
-			// Go error string or a user-set session name (IN-01 convention,
-			// T-175-06-01).
-			conn.Close(websocket.StatusNormalClosure, relay.CloseReasonSessionEnded)
-			return
-		case <-readDone:
-			return
-		}
-	}
+	relay.WritePump(ctx, conn, hub, sub, pongs, readDone)
 }
 
 // assetsNoStore wraps an http.Handler with Cache-Control: no-store (D-16) and
