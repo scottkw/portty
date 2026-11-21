@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { parseMarkdown, MAX_DEPTH } from '../markdown'
+import { parseMarkdown, MAX_DEPTH, MARKDOWN_MAX_HTML_LENGTH } from '../markdown'
 import { sanitizeMarkdown } from '../markdownSanitize'
 
 // The two steps MarkdownPreview runs: parse (in the worker), then sanitize (on the main thread).
@@ -203,8 +203,9 @@ describe('renderMarkdown DoS bounds (PREV-02, T-11-25)', () => {
     expect(depthOf(out, 'ul')).toBe(MAX_DEPTH)
   })
 
+  // Sizes stay under MARKDOWN_MAX_HTML_LENGTH (11-REVIEW WR-03); larger output is refused, not rendered.
   it('caps an indentation-nested list too', () => {
-    const src = Array.from({ length: 2_000 }, (_, i) => '  '.repeat(i) + '- x').join('\n')
+    const src = Array.from({ length: 1_000 }, (_, i) => '  '.repeat(i) + '- x').join('\n')
     expect(depthOf(renderMarkdown(src), 'ul')).toBeLessThanOrEqual(MAX_DEPTH)
   })
 
@@ -214,8 +215,12 @@ describe('renderMarkdown DoS bounds (PREV-02, T-11-25)', () => {
     expect(depthOf(out, 'ul')).toBe(3)
   })
 
-  it('renders a 2 MB single line without throwing', () => {
-    const out = renderMarkdown('a'.repeat(2_000_000))
-    expect(out.length).toBeGreaterThanOrEqual(2_000_000)
+  it('renders a 1.99 MB single line without throwing', () => {
+    const out = renderMarkdown('a'.repeat(1_990_000))
+    expect(out.length).toBeGreaterThanOrEqual(1_990_000)
+  })
+
+  it('refuses output past MARKDOWN_MAX_HTML_LENGTH', () => {
+    expect(() => parseMarkdown('a'.repeat(MARKDOWN_MAX_HTML_LENGTH))).toThrow('Markdown too large to format')
   })
 })

@@ -3,7 +3,9 @@
  * import() from MarkdownPreview, so DOMPurify stays out of the entry chunk. It runs
  * on the main thread, never in the worker: DOMPurify needs a DOM, and in a worker
  * (no document) it reports isSupported = false and sanitize() returns its input
- * unchanged. Sanitizing is linear in the input, so it can't freeze the window.
+ * unchanged. Sanitizing is linear in the input but not free on a huge tree, so
+ * parseMarkdown refuses output past MARKDOWN_MAX_HTML_LENGTH / MARKDOWN_MAX_ELEMENTS
+ * before it gets here (11-REVIEW WR-03).
  *
  * DOMPurify in plain string mode with explicit allowlists (11-RESEARCH "Sanitizer
  * configuration"). No profile (a profile replaces the allowlists and turns

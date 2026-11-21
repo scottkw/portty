@@ -280,6 +280,7 @@ The menu item's administrator prompt appeared through `osascript` only when no l
 - Wails v2.10.2 accepts IPC messages from any frame. The desktop CSP's `frame-src blob:` stops a PDF link from loading a foreign page into the preview iframe (11-REVIEW CR-01, amendment above); the handler itself is an upstream issue.
 - DOMPurify is the desktop page's only XSS layer and needs periodic bumps; the move to 3.4.18 or later is tracked in `.planning/todos/pending/2026-11-21-dompurify-3418.md` (due 2026-11-28). Re-check its advisories at each milestone.
 - A legitimate Markdown file that takes marked more than 3 s shows Couldn't Show File.
+- So does one whose HTML passes `MARKDOWN_MAX_HTML_LENGTH` (2,000,000 characters) or `MARKDOWN_MAX_ELEMENTS` (50,000). The worker refuses it before the main thread sanitizes, inserts or lays out anything, which the 3 s limit doesn't cover (11-REVIEW WR-03).
 - `PORTTY_SESSION_ID` is inherited: inside `tmux` or `screen` started in another session, `portty open` targets the session that started the server (11-03 documented limit).
 - The share server's `/app/*` fallback answers 200 with the app shell for any path, including `/app/sessions/<id>/preview`; it serves no file bytes.
 

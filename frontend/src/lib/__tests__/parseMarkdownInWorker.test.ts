@@ -6,6 +6,7 @@ import { Worker as NodeWorker } from 'node:worker_threads'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseMarkdownInWorker, MARKDOWN_PARSE_TIMEOUT_MS } from '../parseMarkdownInWorker'
+import { MARKDOWN_MAX_ELEMENTS, MARKDOWN_MAX_HTML_LENGTH } from '../markdown'
 
 class FakeWorker {
   onmessage: ((e: { data: unknown }) => void) | null = null
@@ -148,6 +149,27 @@ describe('parseMarkdownInWorker in a real thread (PREV-02, 11-07 fix)', () => {
     expect(elapsed).toBeLessThan(3500)
     // About 60 ticks at 50 ms over 3 s; a frozen main thread would manage at most one.
     expect(ticks).toBeGreaterThanOrEqual(20)
+    await thread.exited()
+  }, 10_000)
+
+  // 11-REVIEW WR-03: output the main thread would have to sanitize and lay out is refused in the worker.
+  it.each([
+    ['a table past MARKDOWN_MAX_ELEMENTS', '|h|\n|-|\n' + '|a|\n'.repeat(MARKDOWN_MAX_ELEMENTS / 2 + 1)],
+    ['a code block past MARKDOWN_MAX_HTML_LENGTH', '```\n' + `${'x'.repeat(99)}\n`.repeat(MARKDOWN_MAX_HTML_LENGTH / 100 + 1) + '```\n'],
+  ])('%s: rejected inside the time limit, never returned to the main thread', async (_, src) => {
+    const thread = nodeThread()
+    const start = performance.now()
+    await expect(parseMarkdownInWorker(src, undefined, thread.make)).rejects.toThrow('Markdown worker failed')
+    expect(performance.now() - start).toBeLessThan(MARKDOWN_PARSE_TIMEOUT_MS)
+    // once(t, 'exit') rejects with the thread's error: the budget threw, not the parser.
+    await expect(thread.exited()).rejects.toThrow('Markdown too large to format')
+  }, 10_000)
+
+  it('a table just under MARKDOWN_MAX_ELEMENTS still renders', async () => {
+    const thread = nodeThread()
+    // header row (tr + th) plus thead and tbody, then a tr + td per row.
+    const html = await parseMarkdownInWorker('|h|\n|-|\n' + '|a|\n'.repeat(MARKDOWN_MAX_ELEMENTS / 2 - 3), undefined, thread.make)
+    expect(html.startsWith('<table>')).toBe(true)
     await thread.exited()
   }, 10_000)
 })

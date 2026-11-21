@@ -62,7 +62,22 @@ const md = new Marked({
   },
 })
 
+/**
+ * The formatted-render budget (11-REVIEW WR-03). The main thread sanitizes, inserts and lays out
+ * every element parseMarkdown returns, and the worker's time limit covers none of that, so output
+ * past either cap throws here, in the worker, and the pane shows "Couldn't Show File".
+ */
+export const MARKDOWN_MAX_HTML_LENGTH = 2_000_000
+export const MARKDOWN_MAX_ELEMENTS = 50_000
+
 /** Unsanitized HTML: always pass it through sanitizeMarkdown before it reaches the DOM. */
 export function parseMarkdown(src: string): string {
-  return md.parse(src) as string
+  const html = md.parse(src) as string
+  if (html.length > MARKDOWN_MAX_HTML_LENGTH) throw new Error('Markdown too large to format')
+  // marked escapes '<' in text, so every '<' not followed by '/' opens an element.
+  let elements = 0
+  for (let i = html.indexOf('<'); i >= 0; i = html.indexOf('<', i + 1)) {
+    if (html[i + 1] !== '/' && ++elements > MARKDOWN_MAX_ELEMENTS) throw new Error('Markdown too large to format')
+  }
+  return html
 }
