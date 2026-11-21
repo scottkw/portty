@@ -37,27 +37,37 @@ type PluginSettings = daemon.PluginSettings
 // FitAddon.fit() always subtracts DEFAULT_SCROLL_BAR_WIDTH (14px) even when the
 // scrollbar is hidden via CSS and takes 0px — causing a permanent right-side gap.
 function fitTerminal(term: Terminal): void {
+  const fit = measureFit(term)
+  if (!fit) return
+  if (term.rows !== fit.rows || term.cols !== fit.cols) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(term as any)._core._renderService.clear()
+    term.resize(fit.cols, fit.rows)
+  }
+}
+
+// The grid this panel's container fits at the current cell size (INPT-06: what a
+// report or claim carries), or null when it cannot be measured: zero cell metrics
+// (a hidden panel, or a test terminal with no render service), no parent, or an
+// empty content box.
+function measureFit(term: Terminal): { cols: number; rows: number } | null {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const core = (term as any)._core
-  const dims = core._renderService.dimensions
-  if (dims.css.cell.width === 0 || dims.css.cell.height === 0) return
+  const dims = (term as any)._core?._renderService?.dimensions
+  if (!dims?.css?.cell || dims.css.cell.width === 0 || dims.css.cell.height === 0) return null
 
   const parent = term.element?.parentElement
-  if (!parent) return
+  if (!parent) return null
 
   // Use clientWidth/Height minus padding for an unambiguous content-box size.
   // getComputedStyle().width can return border-box values with box-sizing:border-box,
   // which would include the container padding and make cols/rows too large.
   const parentStyle = window.getComputedStyle(parent)
-  const parentW = parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight)
-  const parentH = parent.clientHeight - parseFloat(parentStyle.paddingTop) - parseFloat(parentStyle.paddingBottom)
+  const px = (v: string) => parseFloat(v) || 0 // jsdom leaves unset padding ''
+  const parentW = parent.clientWidth - px(parentStyle.paddingLeft) - px(parentStyle.paddingRight)
+  const parentH = parent.clientHeight - px(parentStyle.paddingTop) - px(parentStyle.paddingBottom)
+  if (!(parentW > 0) || !(parentH > 0)) return null
 
-  const { cols, rows } = gridForContentBox(parentW, parentH, dims.css.cell.width, dims.css.cell.height)
-
-  if (term.rows !== rows || term.cols !== cols) {
-    core._renderService.clear()
-    term.resize(cols, rows)
-  }
+  return gridForContentBox(parentW, parentH, dims.css.cell.width, dims.css.cell.height)
 }
 
 interface TerminalPanelProps {
@@ -200,26 +210,25 @@ export function TerminalPanel({
   const progressOnChangeDisposable = useRef<{ dispose(): void } | null>(null)
 
   // Phase 157 VIEW-04/05: isGuest = true when this panel is a guest viewer
-  // (remote peer or web-share). Stored as a ref so effects read it at call-
-  // time without capturing it in dep arrays (it's derived from mount-time
-  // props that never change while the panel is mounted — same rationale as
-  // remote in the mount useEffect below).
+  // (remote peer or web-share). INPT-06: sizing no longer depends on it (every
+  // panel follows the server grid); it gates only what is really guest-only,
+  // the session-ended banner. Stored as a ref, derived from mount-time props
+  // that never change while the panel is mounted.
   const isGuestRef = useRef<boolean>(false)
   isGuestRef.current = remote || !!wsURL
 
-  // Phase 157 VIEW-05 / Phase 175-03 BUG-01: scale helper for the guest path.
-  // Reads cell metrics from xterm's private renderService (same source as
+  // Phase 157 VIEW-05 / Phase 175-03 BUG-01: scale the server grid into the pane.
+  // INPT-06: every panel that follows a server grid uses it (a local tab that
+  // lost the size scales like a guest; at scale 1 it looks as before). Reads
+  // cell metrics from xterm's private renderService (same source as
   // fitTerminal) to avoid transform-feedback oscillation (Pitfall 6). Called
-  // from both the RelayClient onResize callback and the container
-  // ResizeObserver. useCallback([]) is correct: the function only reads from
-  // refs whose .current is always up-to-date.
+  // from the RelayClient onResize callback and relayout. useCallback([]) is
+  // correct: the function only reads from refs whose .current is always up-to-date.
   //
   // BUG-01 (#128): below DEFAULT_GUEST_MIN_SCALE the grid would keep
   // shrinking to unreadable text on a narrow phone viewport. computeGuestViewport
-  // clamps at the floor and reports overflowX so the guest container can
-  // switch to horizontal scroll instead of shrinking further. Only the guest
-  // path toggles the scroll-x class — recomputeScale is never called on the
-  // host path, but the isGuestRef.current guard makes that invariant explicit.
+  // clamps at the floor and reports overflowX so the container can switch to
+  // horizontal scroll instead of shrinking further.
   const recomputeScale = useCallback(() => {
     const term = termRef.current
     const container = containerRef.current
@@ -244,15 +253,52 @@ export function TerminalPanel({
       DEFAULT_GUEST_MIN_SCALE,
     )
     term.element.style.transform = `scale(${s})`
-    if (isGuestRef.current) {
-      container.classList.toggle('terminal-guest--scroll-x', overflowX)
-      // 05-12: xterm 6 puts its vertical scrollbar at the right edge of a block
-      // child of term.element, which the scale shrinks with it. Stretch the
-      // element to contentW / s so the scrollbar meets the pane edge, or to the
-      // grid's width when the grid overflows the pane (overflow-x branch). The
-      // screen stays host cols wide either way.
-      term.element.style.width = `${Math.max(contentW / s, term.cols * cellW)}px`
-    }
+    container.classList.toggle('terminal-guest--scroll-x', overflowX)
+    // 05-12: xterm 6 puts its vertical scrollbar at the right edge of a block
+    // child of term.element, which the scale shrinks with it. Stretch the
+    // element to contentW / s so the scrollbar meets the pane edge, or to the
+    // grid's width when the grid overflows the pane (overflow-x branch). The
+    // screen stays the server grid's cols wide either way.
+    term.element.style.width = `${Math.max(contentW / s, term.cols * cellW)}px`
+  }, [])
+
+  // INPT-06 (Research Pattern 6): the last 0x02 grid (null before any) and the fit
+  // last reported on this socket. Reports and claims carry measureFit's result,
+  // never term.cols/rows: while following, those are another viewer's grid.
+  const serverGridRef = useRef<{ cols: number; rows: number } | null>(null)
+  const lastReportRef = useRef<string | null>(null)
+
+  // Tell the hub this panel's fit (a report never takes the grid). Deduped per socket.
+  const reportFit = useCallback(() => {
+    const term = termRef.current
+    const fit = term && measureFit(term)
+    if (!fit || !clientRef.current) return
+    const key = `${fit.cols}x${fit.rows}`
+    if (key === lastReportRef.current) return
+    lastReportRef.current = key
+    clientRef.current.sendResize(fit.cols, fit.rows)
+  }, [])
+
+  // Every container change (activation, ResizeObserver, theme). A never-sized
+  // session (no grid frame yet: the local relay sends none then) fits itself and
+  // the hub adopts this report; otherwise the panel keeps the server grid and
+  // rescales.
+  const relayout = useCallback(() => {
+    if (!termRef.current) return
+    if (serverGridRef.current) recomputeScale()
+    else fitTerminal(termRef.current!)
+    reportFit()
+  }, [recomputeScale, reportFit])
+
+  // A user-initiated size change (window resize, zoom) claims the grid at this
+  // panel's fit. xterm is not resized here: the claim's 0x02 echo makes the panel
+  // follow, and an old host that ignores claims leaves the view consistent.
+  const claimFit = useCallback(() => {
+    const term = termRef.current
+    const fit = term && measureFit(term)
+    if (!fit || !clientRef.current) return
+    lastReportRef.current = `${fit.cols}x${fit.rows}`
+    clientRef.current.sendClaim(fit.cols, fit.rows)
   }, [])
 
   // Phase 94 SRC-01/02: FindBar UI state. Owned at TerminalPanel level so
@@ -429,26 +475,24 @@ export function TerminalPanel({
     // DEBT-04 IN-03: a quick switch back can land while the hidden panel's save is
     // still in flight; wait for it (capped) so the restore gets a delta, not a full
     // replay. start() runs at once when nothing is pending.
-    let live: { client: RelayClient; disposeData: IDisposable; disposeResize: IDisposable } | null = null
+    let live: { client: RelayClient; disposeData: IDisposable } | null = null
     let cancelled = false
     const start = () => {
       if (cancelled) return
       const snap = snapSerializer ? takePeerSnapshot(snapKey) : undefined
       if (snap) {
+        serverGridRef.current = { cols: snap.cols, rows: snap.rows }
         applyHostGrid(term, snap.cols, snap.rows, recomputeScale)
         term.write(snap.data)
       }
 
       // Connect relay client — one per terminal (TERM-01 independent sessions).
-      // HOST path: onOpen sends current terminal dims to the PTY (critical —
-      // fitTerminal runs before WS connects so the fit resize event is dropped).
-      // GUEST path: server pushes 0x02 on join (VIEW-03); guest never drives the
-      // grid, so onOpen does not send dims. onResize honors the server-pushed grid.
+      // INPT-06: every panel reports its own fit once per (re)connect; in
+      // reconnect mode onOpen fires after the join's grid frame and the replay.
+      // The fit measured before the socket opened was never delivered.
       const client = new RelayClient(relayPort, sessionId, {
         onOutput: (data) => { peerWatch?.feed(data); term.write(data) },
-        onOpen: isGuest
-          ? undefined
-          : () => { client.sendResize(term.cols, term.rows) },
+        onOpen: () => { lastReportRef.current = null; reportFit() },
         // Phase 175-06 (BUG-02 / #125): show the end banner on the guest path
         // only — the host is the owner and does not need a "session ended"
         // notice about its own session (the App exit flow reports it). Both
@@ -463,14 +507,15 @@ export function TerminalPanel({
           setSessionEnded({ ended: true, reason, shareStopped })
           if (shareStopped) onShareStoppedRef.current?.()
         },
-        // VIEW-04/05 (Phase 157): guest honors server-pushed 0x02 → term.resize +
-        // scale recompute. 05-12: applyHostGrid queues the resize behind output
-        // already written, so old-width bytes parse at the old width. Pitfall 5:
-        // it resizes BEFORE calling recomputeScale, so scale math reads the new
-        // term.cols/rows. Clamp to ≥1 (T-157-03 / xterm guard) lives in the helper.
-        onResize: isGuest
-          ? (cols, rows) => applyHostGrid(term, cols, rows, recomputeScale)
-          : undefined,
+        // INPT-06: every panel shows the session at the server's grid (0x02) →
+        // term.resize + scale recompute. 05-12: applyHostGrid queues the resize
+        // behind output already written, so old-width bytes parse at the old
+        // width. Pitfall 5: it resizes BEFORE calling recomputeScale, so scale math
+        // reads the new term.cols/rows. Clamp to ≥1 (T-157-03) lives in the helper.
+        onResize: (cols, rows) => {
+          serverGridRef.current = { cols, rows }
+          applyHostGrid(term, cols, rows, recomputeScale)
+        },
         // 05-12: an in-band reset, so output still queued is not drawn after it.
         // IN-09: the RIS goes through term.write, not feed, so re-sync the ground
         // tracker too (CAN aborts any sequence a dropped socket left open).
@@ -510,14 +555,10 @@ export function TerminalPanel({
       clientRef.current = client
 
       // Wire terminal input to relay (TERM-05: paste support via terminal.onData).
+      // INPT-06: xterm's own resizes are not sent: in follow mode they are the
+      // server's grid, and reports carry measureFit's result (reportFit).
       const disposeData = term.onData((data) => client.sendInput(data))
-
-      // Wire terminal resize to relay — HOST only.
-      // GUEST must NOT send 0x11 (D-03: guests never drive PTY resize).
-      const disposeResize = isGuest
-        ? { dispose: () => {} }
-        : term.onResize(({ cols, rows }) => { client.sendResize(cols, rows) })
-      live = { client, disposeData, disposeResize }
+      live = { client, disposeData }
     }
     const pendingSave = snapSerializer ? awaitPeerSave(snapKey) : null
     if (pendingSave) void pendingSave.then(start)
@@ -527,7 +568,6 @@ export function TerminalPanel({
       cancelled = true // start() may not have run: no client, nothing to save
       unguardPaste()
       live?.disposeData.dispose()
-      live?.disposeResize.dispose()
       const resumePoint = snapSerializer && live ? live.client.resumePoint() : null // read before close
       live?.client.close()
       if (bannerTimer !== null) clearTimeout(bannerTimer)
@@ -902,15 +942,16 @@ export function TerminalPanel({
     }
   }, [pluginConfig?.webgl, pluginConfig?.clipboard, pluginConfig?.search, pluginConfig?.webLinks, pluginConfig?.serialize, pluginConfig?.progress, onWebGLContextLost, onRegisterSaver, onProgressChange, sessionId])
 
-  // Fit (host) or scale-recompute (guest) when this panel becomes active,
-  // and track container size changes via ResizeObserver.
+  // INPT-06: when this panel becomes active, lay it out (fit a never-sized
+  // session, else rescale to the server grid) and report its fit; track
+  // container size changes via ResizeObserver, the same way. One path for local
+  // tabs, peer tabs and the browser viewer.
   useEffect(() => {
     if (!isActive || !containerRef.current) return
 
     // POL-04: drain any theme that arrived while this panel was hidden.
     // Must happen synchronously before the rAF loop so the first fit uses the
-    // correct theme. No extra fitTerminal call needed here — the rAF loop below
-    // calls it (host) or the initial rAF calls recomputeScale (guest).
+    // correct theme. No extra relayout call needed here — the rAF loop below runs it.
     if (pendingThemeRef.current && termRef.current) {
       termRef.current.options.theme = pendingThemeRef.current
       termRef.current.clearTextureAtlas()
@@ -919,22 +960,6 @@ export function TerminalPanel({
 
     const container = containerRef.current
     let rafId: number | undefined
-
-    if (isGuestRef.current) {
-      // GUEST path (VIEW-04/05): observe container for scale recompute only.
-      // No fitTerminal — the host PTY grid is authoritative; guests receive the
-      // correct size via 0x02 push (VIEW-03) and honor it in the onResize callback.
-      // A single rAF ensures the layout is committed before we measure clientWidth.
-      rafId = requestAnimationFrame(() => { recomputeScale() })
-      const ro = new ResizeObserver(() => { recomputeScale() })
-      ro.observe(container)
-      return () => {
-        if (rafId !== undefined) cancelAnimationFrame(rafId)
-        ro.disconnect()
-      }
-    }
-
-    // HOST path: fit terminal and track container size changes.
     let cancelled = false
     const MAX_ATTEMPTS = 20  // ~333ms at 60fps; covers slow CLI startup delays
 
@@ -945,7 +970,7 @@ export function TerminalPanel({
       // (CharSizeService hasn't measured font yet — zero cell dims from display:none open())
       const dims = fitAddonRef.current?.proposeDimensions()
       if (dims !== undefined) {
-        fitTerminal(termRef.current!)
+        relayout()
         return
       }
 
@@ -954,15 +979,17 @@ export function TerminalPanel({
         rafId = requestAnimationFrame(() => tryFit(attempt + 1))
       } else {
         // Best-effort fallback after max attempts
-        fitTerminal(termRef.current!)
+        relayout()
       }
     }
 
     // Initial rAF: ensure display:none -> flex layout change is committed
     rafId = requestAnimationFrame(() => tryFit(0))
 
-    // ResizeObserver handles all subsequent size changes (window resize, font size change)
-    const ro = new ResizeObserver(() => { if (termRef.current) fitTerminal(termRef.current) })
+    // ResizeObserver handles all subsequent container changes. They only report:
+    // the reconnecting banner, the paste notice and the sidebar change the
+    // container too, and none of those is the user taking the size (INPT-06).
+    const ro = new ResizeObserver(() => { relayout() })
     ro.observe(container)
 
     return () => {
@@ -970,8 +997,8 @@ export function TerminalPanel({
       if (rafId !== undefined) cancelAnimationFrame(rafId)
       ro.disconnect()
     }
-  // recomputeScale is a stable useCallback([]) and isGuestRef is a ref — both are
-  // safely closure-captured, so neither belongs in the dep array. Keeping [isActive]
+  // relayout is a stable useCallback and reads only refs, so it is safely
+  // closure-captured and does not belong in the dep array. Keeping [isActive]
   // as the sole dependency preserves the Phase 35 FILL-01..06 rAF retry-loop invariant
   // (the fit/activation effect must re-run only when the panel becomes active).
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -979,20 +1006,22 @@ export function TerminalPanel({
 
   // Apply Terminal Font family/size changes live (quick 261116-ku9 R1).
   // POL-04: never touch render options on a hidden panel; isActive re-runs this
-  // on activation. Host refits (onResize then resizes the PTY); a guest only
-  // rescales because guests never drive the grid (VIEW-04).
+  // on activation. INPT-06: a change made while the panel is shown (Cmd+/Cmd−,
+  // Settings) is the user zooming, so it lays out and claims the grid at the new
+  // fit (A8: xterm updates its cell metrics synchronously on the option set). A
+  // change applied on activation (made while hidden) is a tab switch: report only.
+  const fontShownRef = useRef(false)
   useEffect(() => {
+    const wasShown = fontShownRef.current
+    fontShownRef.current = isActive
     const term = termRef.current
     if (!term || !isActive) return
     if (term.options.fontFamily === fontFamily && term.options.fontSize === fontSize) return
     term.options.fontFamily = fontFamily
     term.options.fontSize = fontSize
-    if (isGuestRef.current) {
-      recomputeScale()
-    } else {
-      fitTerminal(term)
-    }
-  // recomputeScale is a stable useCallback([]) and isGuestRef is a ref.
+    relayout()
+    if (wasShown) claimFit()
+  // relayout and claimFit are stable useCallbacks that read only refs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fontFamily, fontSize, isActive])
 

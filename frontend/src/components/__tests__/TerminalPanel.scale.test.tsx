@@ -202,6 +202,8 @@ import { DEFAULT_GUEST_MIN_SCALE } from '../../lib/terminalScale'
 
 // ─── Shared test helpers ──────────────────────────────────────────────────────
 
+const THEME = { background: '#000', foreground: '#fff' }
+
 function makeBaseProps(overrides: Partial<React.ComponentProps<typeof TerminalPanel>> = {}) {
   return {
     sessionId: 'test-session',
@@ -209,7 +211,7 @@ function makeBaseProps(overrides: Partial<React.ComponentProps<typeof TerminalPa
     relayPort: 0,
     fontSize: 14,
     onFontSizeChange: () => {},
-    theme: { background: '#000', foreground: '#fff' },
+    theme: THEME, // one object, as App passes: a new theme object would re-run the theme effect
     ...overrides,
   } as React.ComponentProps<typeof TerminalPanel>
 }

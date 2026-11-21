@@ -58,6 +58,18 @@ export function encodeResizeFrame(cols: number, rows: number): Uint8Array {
 }
 
 /**
+ * INPT-06: a claim is a report with byte 5 bit 0 set (a user-initiated size change).
+ * Format: [MSG_RESIZE2, cols_hi, cols_lo, rows_hi, rows_lo, 0x01]. Old hosts read the
+ * first 4 payload bytes (a plain resize) or drop the frame, so no version check.
+ */
+export function encodeClaimFrame(cols: number, rows: number): Uint8Array {
+  const frame = new Uint8Array(6)
+  frame.set(encodeResizeFrame(cols, rows))
+  frame[5] = 0x01
+  return frame
+}
+
+/**
  * Parse a server-sent binary frame into a typed union.
  */
 export function parseServerFrame(data: Uint8Array): ServerFrame {
@@ -145,9 +157,9 @@ export interface RelayClientCallbacks {
    */
   onClose?: (code?: number, reason?: string) => void
   /**
-   * Phase 157 VIEW-04: called when the server pushes a 0x02 MsgResize frame.
-   * Guest viewers (remote || wsURL) use this to honor the host-authority grid.
-   * Optional so host-path callers (no remote, no wsURL) can omit it without change.
+   * Called when the server pushes a 0x02 MsgResize frame: the session's grid.
+   * INPT-06: every TerminalPanel (local tab, peer tab, browser) shows the session
+   * at this grid, scaled down when it is not the panel's own fit.
    */
   onResize?: (cols: number, rows: number) => void
   /** SHAR-07: reconnect-mode state transitions (fired on change only). */
@@ -363,9 +375,8 @@ export class RelayClient {
         this.callbacks.onOutput(frame.payload)
         break
       case 'resize':
-        // VIEW-04 (Phase 157): the server is the host-authority for the PTY grid.
-        // Guest viewers (remote || wsURL) pass onResize to honor the server-pushed
-        // grid; host-path callers omit it so 0x02 is a no-op for local sessions.
+        // The server owns the session grid (INPT-06: the viewer that last typed or
+        // claimed sets it); every panel follows it through onResize.
         this.callbacks.onResize?.(frame.cols, frame.rows)
         break
       case 'meta':
@@ -574,11 +585,18 @@ export class RelayClient {
     p.ackPing = this.pingsSent
   }
 
-  /** Notify the PTY of a terminal resize. */
+  /** Report this viewer's fit (INPT-06: a report never takes the grid). */
   sendResize(cols: number, rows: number): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.send(encodeResizeFrame(cols, rows))
     }
+  }
+
+  /** INPT-06: claim the session grid at this fit. Dropped (never queued) unless open, like sendInput. */
+  sendClaim(cols: number, rows: number): void {
+    if (this.reconnect && this.state !== 'open') return
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    this.send(encodeClaimFrame(cols, rows))
   }
 
   // Every frame leaves through here, so bytes queued after a paste and pings are counted.
