@@ -152,6 +152,11 @@ func WsOutputPump(ctx context.Context, conn *websocket.Conn, w io.Writer, bar *s
 // Uses MsgResize2 (0x11) which the server's read pump handles at relay/server.go.
 // Do NOT use relay.MakeResizeFrame() — it uses MsgResize (0x02) which the
 // server ignores for client-originated resize messages.
+//
+// It is a report (INPT-06): the hub stores the size and a join never moves
+// the grid. shortcut: portty attach can show a grid wider than its terminal
+// until its user types or resizes; claim on connect only if the VM check finds
+// that confusing (10-CONTEXT "Accepted limits").
 func MakeClientResizeFrame(cols, rows uint16) []byte {
 	return []byte{
 		relay.MsgResize2,
@@ -160,7 +165,9 @@ func MakeClientResizeFrame(cols, rows uint16) []byte {
 	}
 }
 
-// MakeClientClaimFrame is a size claim (INPT-06). RED stub: still a report.
+// MakeClientClaimFrame is a size claim (INPT-06): the report frame plus
+// relay.ResizeClaim, sent when the attach user resized the terminal
+// (WatchResize), so the shell reflows to it.
 func MakeClientClaimFrame(cols, rows uint16) []byte {
-	return MakeClientResizeFrame(cols, rows)
+	return append(MakeClientResizeFrame(cols, rows), relay.ResizeClaim)
 }

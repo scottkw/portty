@@ -13,8 +13,9 @@ import (
 )
 
 // WatchResize listens for SIGWINCH (terminal resize) signals on Unix platforms
-// and sends a MsgResize2 frame to the relay whenever the terminal dimensions
-// change. It runs in a background goroutine and exits when ctx is cancelled.
+// and sends a size claim (MakeClientClaimFrame, INPT-06: the user resized the
+// terminal, so it takes the grid) whenever the terminal dimensions change. It
+// runs in a background goroutine and exits when ctx is cancelled.
 func WatchResize(ctx context.Context, conn *websocket.Conn) {
 	winchCh := make(chan os.Signal, 1)
 	signal.Notify(winchCh, syscall.SIGWINCH)
@@ -34,7 +35,7 @@ func watchResize(ctx context.Context, conn *websocket.Conn, winch <-chan os.Sign
 			if err != nil {
 				continue
 			}
-			_ = conn.Write(ctx, websocket.MessageBinary, MakeClientResizeFrame(uint16(cols), uint16(rows)))
+			_ = conn.Write(ctx, websocket.MessageBinary, MakeClientClaimFrame(uint16(cols), uint16(rows)))
 		case <-ctx.Done():
 			return
 		}
