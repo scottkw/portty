@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import type { IProgressState } from '@xterm/addon-progress'
 import { TabBar, type Tab } from './components/TabBar'
 import { EmptyState } from './components/EmptyState'
-import { nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from './lib/tabs'
+import { hostlessWebSessionId, nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from './lib/tabs'
 import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
 import { SettingsSheet, type Appearance } from './components/SettingsSheet'
@@ -1174,8 +1174,11 @@ function App(): React.ReactElement {
           const activeWebTab = tabs.find((t) => t.id === activeId)
           // Portty 05-09: never fall back to window.location.origin on the desktop (wails://, the WebSocket throws).
           if (!activeWebTab && mode !== 'web') return null
+          // IN-05: a missing peer tab's id is host/id, never a session id to dial.
+          const fallbackId = hostlessWebSessionId(activeId)
+          if (!activeWebTab && fallbackId === null) return null
           const isRemoteWebTab = activeWebTab?.baseURL !== undefined
-          const wsSessionId = activeWebTab?.sessionId ?? webParams.sessionId ?? activeId.slice('__websession__'.length)
+          const wsSessionId = activeWebTab?.sessionId ?? webParams.sessionId ?? fallbackId ?? ''
           const wsCapToken = isRemoteWebTab ? (activeWebTab?.capToken ?? '') : (webParams.capToken ?? '')
           const peerHost = activeWebTab?.peerHost
           // Portty 04-06: a peer tab whose connect failed shows only the warning banner.

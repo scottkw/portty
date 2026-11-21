@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from '../tabs'
+import { hostlessWebSessionId, nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from '../tabs'
 
 const tabs = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
 
@@ -63,6 +63,15 @@ describe('tabLabel and renameInList (one source of truth for names)', () => {
 })
 
 // INPT-04: two Macs' daemons can hand out equal session ids; their tabs must differ.
+describe('hostlessWebSessionId (IN-05)', () => {
+  it('returns the session id of a hostless web-session tab id', () => {
+    expect(hostlessWebSessionId(webSessionTabId('s1'))).toBe('s1')
+  })
+  it('returns null for a peer tab id (host/id), so it is never dialed as a session id', () => {
+    expect(hostlessWebSessionId(webSessionTabId('s1', 'office.tail.ts.net'))).toBeNull()
+  })
+})
+
 describe('webSessionTabId (INPT-04 peer tab identity)', () => {
   it('a peer tab id carries the host and the session id', () => {
     expect(webSessionTabId('s1', 'office.tail.ts.net')).toBe('__websession__office.tail.ts.net/s1')

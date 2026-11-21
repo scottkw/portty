@@ -51,6 +51,12 @@ export function webSessionTabId(sessionId: string, host?: string): string {
   return host ? `__websession__${host}/${sessionId}` : `__websession__${sessionId}`
 }
 
+/** IN-05: the session id of a hostless web-session tab id; null for a peer tab's `host/id`. */
+export function hostlessWebSessionId(tabId: string): string | null {
+  const rest = tabId.slice('__websession__'.length)
+  return rest.includes('/') ? null : rest
+}
+
 /**
  * INPT-04: the peer tabs (web-session tabs with a peerHost) that `next` no longer
  * holds, so a caller replacing the whole tab list (Retry) can drop their
