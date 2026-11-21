@@ -33,13 +33,13 @@ func pastePayload() []byte {
 }
 
 // joinPasteViewer joins a share viewer on a hub whose PTY input is a pipe the
-// test controls, with a 50 ms / 100 ms heartbeat.
-func joinPasteViewer(t *testing.T, sid string) (*websocket.Conn, *relay.Hub, *io.PipeReader) {
+// test controls, with a 50 ms ping and the given heartbeat timeout.
+func joinPasteViewer(t *testing.T, sid string, timeout time.Duration) (*websocket.Conn, *relay.Hub, *io.PipeReader) {
 	t.Helper()
 	ws, client, _, input := testServerWithHub(t, sid)
 	ws.SetSigningKey(capTestKey)
 	token := issueCapFor(t, ws, sid, "read,write")
-	ws.heartbeatEvery, ws.heartbeatTimeout = 50*time.Millisecond, 100*time.Millisecond
+	ws.heartbeatEvery, ws.heartbeatTimeout = 50*time.Millisecond, timeout
 	hub, _ := ws.manager.Get(sid)
 	conn := dialResume(t, ws, client, sid, token, "")
 	if typ, _ := readWSFrame(t, conn); typ != relay.MsgResize {
@@ -92,7 +92,10 @@ func (s *pipeSink) bytes() []byte {
 // frames and keeps reading, so pings get answered and the heartbeat never drops
 // the viewer; once the PTY drains, every byte arrives in order.
 func TestShare_PasteBacklogKeepsViewer(t *testing.T) {
-	conn, hub, input := joinPasteViewer(t, "paste-backlog")
+	// 500 ms, not 100: under -race the burst itself can delay a pong past
+	// 100 ms while the server unmasks megabytes, which is not the bug.
+	const timeout = 500 * time.Millisecond
+	conn, hub, input := joinPasteViewer(t, "paste-backlog", timeout)
 	closed := make(chan struct{})
 	go func() { // a live viewer: coder/websocket answers pings inside Read
 		defer close(closed)
@@ -105,14 +108,24 @@ func TestShare_PasteBacklogKeepsViewer(t *testing.T) {
 	payload := pastePayload()
 	go sendPaste(conn, payload)
 
-	// Hold the PTY for 4x the 100 ms heartbeat timeout. A pump stuck on the PTY
-	// stays subscribed, so the socket closing is the drop to watch for.
-	for end := time.Now().Add(400 * time.Millisecond); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+	// A pump stuck on the PTY stays subscribed, so the socket closing is the
+	// drop to watch for.
+	alive := func() {
 		select {
 		case <-closed:
 			t.Fatal("viewer dropped while the paste is queued (heartbeat timeout)")
 		default:
 		}
+	}
+	testutil.WaitFor(t, 10*time.Second, func() bool {
+		alive()
+		_, queued := hub.WaitInputIdle(0)
+		return queued == len(payload)
+	}, "the server never queued the whole paste")
+
+	// Hold the whole paste queued behind the PTY for 3x the heartbeat timeout.
+	for end := time.Now().Add(3 * timeout); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+		alive()
 		if n := hub.RemoteViewerCount(); n != 1 {
 			t.Fatalf("viewer count %d while the paste is queued, want 1", n)
 		}
@@ -148,21 +161,22 @@ func TestShare_DeadViewerReapedBacklogDelivered(t *testing.T) {
 	log.SetOutput(diag)
 	t.Cleanup(func() { log.SetOutput(prev) })
 
-	conn, hub, input := joinPasteViewer(t, "paste-dead")
+	const sid = "dead-paste" // log lines are matched by its DiagID: other tests' late lines land in diag too
+	conn, hub, input := joinPasteViewer(t, sid, 100*time.Millisecond)
 	payload := pastePayload()
 	go sendPaste(conn, payload) // no read loop: pings go unanswered
 
 	testutil.WaitFor(t, 3*time.Second, func() bool { return hub.RemoteViewerCount() == 0 },
 		"silent viewer was never reaped")
 	testutil.WaitFor(t, 2*time.Second, func() bool {
-		return bytes.Contains([]byte(diag.String()), []byte("viewer-diag: heartbeat timeout"))
+		return bytes.Contains([]byte(diag.String()), []byte("viewer-diag: heartbeat timeout session="+relay.DiagID(sid)))
 	}, "no heartbeat timeout logged:\n%s", diag.String())
 	if idle, _ := hub.WaitInputIdle(0); idle {
 		t.Fatal("input idle at the reap, want the backlog still queued behind the blocked PTY")
 	}
 
 	// The pump logs its frame count when it exits.
-	totalRE := regexp.MustCompile(`viewer-diag: input total session=\S+ conn=\d+ frames=(\d+)`)
+	totalRE := regexp.MustCompile(`viewer-diag: input total session=` + relay.DiagID(sid) + ` conn=\d+ frames=(\d+)`)
 	var frames int
 	testutil.WaitFor(t, 2*time.Second, func() bool {
 		m := totalRE.FindStringSubmatch(diag.String())
@@ -181,7 +195,7 @@ func TestShare_DeadViewerReapedBacklogDelivered(t *testing.T) {
 	testutil.WaitFor(t, 10*time.Second, func() bool {
 		idle, _ := hub.WaitInputIdle(0)
 		return idle && len(sink.bytes()) >= frames*pasteFrameSize
-	}, "backlog never drained")
+	}, "backlog never drained: frames=%d sink=%d\n%s", frames, len(sink.bytes()), diag.String())
 	got := sink.bytes()
 	if len(got) != frames*pasteFrameSize {
 		t.Fatalf("PTY got %d bytes, want %d (every frame the server read)", len(got), frames*pasteFrameSize)

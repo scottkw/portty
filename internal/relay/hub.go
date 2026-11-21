@@ -96,6 +96,20 @@ type Hub struct {
 	gridMu    sync.Mutex
 	startOnce sync.Once
 
+	// Input FIFO (input.go, INPT-01): every viewer's MsgInput frames in
+	// arrival order, written to the PTY by one goroutine with inMu released
+	// around the write. inMu is a leaf lock: nothing else is taken under it.
+	// inq[inHead:] is the queue; inBytes counts queued plus in-flight bytes;
+	// inDead: the writer stopped (write error or done) and the queue is gone;
+	// inStarted: the writer and its done watcher are running. All under inMu.
+	inMu      sync.Mutex
+	inCond    *sync.Cond
+	inq       []inputReq
+	inHead    int
+	inBytes   int
+	inDead    bool
+	inStarted bool
+
 	// ptyCols, ptyRows: current PTY dimensions as set by the host-authority arbiter.
 	// Only local-origin subscribers drive these fields; the last host grid is frozen
 	// when no local host is connected (D-01). (VIEW-01, VIEW-02)
@@ -271,7 +285,7 @@ func NewQuietEmulator(cols, rows int) *xvt.Emulator {
 // scrollbackBytes controls the scrollback buffer capacity.
 // resizeFn is called when a resize event is received; may be nil.
 func NewHub(sessionID string, reader io.Reader, writer io.Writer, scrollbackBytes int, resizeFn func(cols, rows int) error) *Hub {
-	return &Hub{
+	h := &Hub{
 		sessionID:   sessionID,
 		reader:      reader,
 		writer:      writer,
@@ -282,6 +296,8 @@ func NewHub(sessionID string, reader io.Reader, writer io.Writer, scrollbackByte
 		history:     NewHistory(HistoryMaxLines, HistoryMaxBytes),
 		modes:       make(map[int]bool),
 	}
+	h.inCond = sync.NewCond(&h.inMu)
+	return h
 }
 
 // DiagID is a session ID shortened for viewer-diag log lines.
@@ -1423,7 +1439,9 @@ func (h *Hub) Shutdown() {
 	})
 }
 
-// WriteInput writes raw input bytes to the underlying PTY writer (stdin).
+// WriteInput writes raw input bytes to the underlying PTY writer (stdin),
+// blocking. The read pumps use the input FIFO (OpenInput) instead; this stays
+// for direct callers and tests.
 func (h *Hub) WriteInput(data []byte) error {
 	_, err := h.writer.Write(data)
 	return err

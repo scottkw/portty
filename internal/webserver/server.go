@@ -932,8 +932,10 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 	// Read pump — client → PTY
 	readDone := make(chan struct{})
 	absorber := &relay.InputAbsorber{} // Phase 111 / Issue #54: absorb OSC 10/11/DA1 replies. Phase 115: type moved to relay package.
+	in := hub.OpenInput(sub) // INPT-01: queue input so the pump never blocks on the PTY
 	go func() {
 		defer close(readDone)
+		defer in.Close() // queued frames are still delivered after the socket goes
 		// viewer-diag counts only: input payloads are never logged (they can be passwords).
 		var inFrames, inBytes, resizes int
 		defer func() {
@@ -959,7 +961,9 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 					filtered := absorber.Filter(payload)
 					passed = len(filtered)
 					if len(filtered) > 0 {
-						_ = hub.WriteInput(filtered)
+						if err := in.Write(filtered); err != nil {
+							return // the hub's input is dead: the session is ending
+						}
 					}
 				}
 				inFrames++
