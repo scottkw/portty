@@ -182,3 +182,29 @@ func TestMsgPongWireValue(t *testing.T) {
 		t.Errorf("PongFrame = %v, want [4]", PongFrame)
 	}
 }
+
+// TestParseResize pins the INPT-06 claim bit: MsgResize2 payload[4] bit 0.
+// 4 bytes is a report (every older viewer), other bits are ignored.
+func TestParseResize(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		payload    []byte
+		cols, rows int
+		claim, ok  bool
+	}{
+		{"4 bytes is a report", []byte{0, 80, 0, 24}, 80, 24, false, true},
+		{"claim bit", []byte{0, 80, 0, 24, 0x01}, 80, 24, true, true},
+		{"zero byte 5 is a report", []byte{0, 80, 0, 24, 0x00}, 80, 24, false, true},
+		{"other bits ignored", []byte{0, 80, 0, 24, 0x02}, 80, 24, false, true},
+		{"big-endian", []byte{0x12, 0x34, 0x00, 0x30, 0x01}, 0x1234, 0x30, true, true},
+		{"3 bytes is not ok", []byte{0, 80, 0}, 0, 0, false, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cols, rows, claim, ok := ParseResize(c.payload)
+			if cols != c.cols || rows != c.rows || claim != c.claim || ok != c.ok {
+				t.Fatalf("ParseResize(%v) = %d, %d, %t, %t; want %d, %d, %t, %t",
+					c.payload, cols, rows, claim, ok, c.cols, c.rows, c.claim, c.ok)
+			}
+		})
+	}
+}

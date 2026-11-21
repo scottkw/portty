@@ -53,6 +53,17 @@ func MakeResizeFrame(cols, rows uint16) []byte {
 	}
 }
 
+// ResizeClaim is bit 0 of MsgResize2 payload[4]. RED stub: not parsed yet.
+const ResizeClaim byte = 0x01
+
+// ParseResize decodes a MsgResize2 payload. RED stub: every frame is a report.
+func ParseResize(payload []byte) (cols, rows int, claim, ok bool) {
+	if len(payload) < 4 {
+		return 0, 0, false, false
+	}
+	return int(payload[0])<<8 | int(payload[1]), int(payload[2])<<8 | int(payload[3]), false, true
+}
+
 // ParseFrame splits a raw frame into its type byte and payload.
 // Returns an error if the frame is empty.
 func ParseFrame(frame []byte) (msgType byte, payload []byte, err error) {

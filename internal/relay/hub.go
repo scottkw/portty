@@ -519,6 +519,11 @@ func (h *Hub) ResizeClient(sub *Subscriber, cols, rows int) error {
 	return h.applyGridLocked(sub.Origin, sub.Name)
 }
 
+// ClaimGrid is a user-initiated size change. RED stub: a plain report.
+func (h *Hub) ClaimGrid(sub *Subscriber, cols, rows int) error {
+	return h.ResizeClient(sub, cols, rows)
+}
+
 // applyGridLocked runs the host-authority arbiter over the local
 // subscribers' sizes and applies a changed grid. by and client name the
 // trigger for the diag line. Caller holds gridMu and mu; mu is released
