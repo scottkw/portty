@@ -1216,8 +1216,10 @@ function App(): React.ReactElement {
                 pluginConfig={isRemoteWebTab ? undefined : (pluginConfig ?? undefined)}
                 remote={isRemoteWebTab}
                 // Desktop: the viewer's own font (it must be installed here). Web: the host's, self-fetched.
+                // INPT-06: a desktop peer tab keeps its own size under its tab id (removeTabState drops it).
                 fontFamily={mode !== 'web' ? terminalFontStack : undefined}
-                fontSize={mode !== 'web' ? terminalFont.size : undefined}
+                fontSize={mode !== 'web' && activeWebTab ? fontSizes[activeWebTab.id] ?? terminalFont.size : undefined}
+                onFontSizeChange={mode !== 'web' && activeWebTab ? (delta) => handleFontSizeChange(activeWebTab.id, delta) : undefined}
                 hostLabel={peerHost ? shortHost(peerHost) : (mode === 'web' ? webHost : undefined)}
                 onShareStopped={peerHost ? () => dropPeerSession(peerHost, wsSessionId) : undefined}
                 beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId) : undefined}

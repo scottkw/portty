@@ -47,6 +47,12 @@ export interface WebShareSessionViewProps {
    */
   fontFamily?: string
   fontSize?: number
+  /**
+   * INPT-06: a desktop peer tab's Cmd+/Cmd− (App keeps the size per tab), which
+   * makes the panel claim the session grid. Absent on the browser viewer, which
+   * zooms with the browser (a window resize, also a claim).
+   */
+  onFontSizeChange?: (delta: number) => void
   /** Portty 04-06: host label for the stopped-sharing banner (local tab state or cap-verified session info). */
   hostLabel?: string
   /** Portty 04-06: the share stopped (close reason constant); the caller drops the sidebar row. */
@@ -88,6 +94,7 @@ export function WebShareSessionView({
   remote,
   fontFamily,
   fontSize,
+  onFontSizeChange,
   hostLabel,
   onShareStopped,
   beforeReconnect,
@@ -194,7 +201,7 @@ export function WebShareSessionView({
         relayPort={relayPort}
         fontFamily={effectiveFontFamily}
         fontSize={effectiveFontSize}
-        onFontSizeChange={() => {}}
+        onFontSizeChange={onFontSizeChange ?? (() => {})}
         theme={theme ?? {}}
         pluginConfig={effectivePluginConfig}
         remote={useProxy}
