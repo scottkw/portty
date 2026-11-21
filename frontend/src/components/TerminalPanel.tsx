@@ -996,11 +996,17 @@ export function TerminalPanel({
     const ro = new ResizeObserver(() => { relayout() })
     ro.observe(container)
 
-    // A window resize is the user taking the size: claim once the drag settles.
+    // A window resize is the user taking the size: claim once the drag settles,
+    // but only if a person can have caused it (WR-03). macOS also resizes an
+    // unattended window (display unplugged or asleep, wake, Stage Manager); that
+    // only reports, so it cannot take the grid from the viewer in use.
     let claimTimer: ReturnType<typeof setTimeout> | undefined
     const onWindowResize = () => {
       clearTimeout(claimTimer)
-      claimTimer = setTimeout(claimFit, CLAIM_DEBOUNCE_MS)
+      claimTimer = setTimeout(() => {
+        if (document.visibilityState === 'visible' && document.hasFocus()) claimFit()
+        else reportFit()
+      }, CLAIM_DEBOUNCE_MS)
     }
     window.addEventListener('resize', onWindowResize)
 
@@ -1011,7 +1017,7 @@ export function TerminalPanel({
       window.removeEventListener('resize', onWindowResize)
       clearTimeout(claimTimer)
     }
-  // relayout and claimFit are stable useCallbacks that read only refs, so they are
+  // relayout, claimFit and reportFit are stable useCallbacks that read only refs, so they are
   // safely closure-captured and do not belong in the dep array. Keeping [isActive]
   // as the sole dependency preserves the Phase 35 FILL-01..06 rAF retry-loop invariant
   // (the fit/activation effect must re-run only when the panel becomes active).

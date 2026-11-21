@@ -688,6 +688,7 @@ describe('INPT-06 TerminalPanel — report the fit, follow the grid, claim on zo
   it('three window resizes within 150 ms on the active panel send one claim, with the fit measured after the last', async () => {
     const node = mountSized({ remote: false })
     grid(100, 30)
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true) // a person is at this window
     vi.useFakeTimers()
     try {
       windowResize()
@@ -705,6 +706,25 @@ describe('INPT-06 TerminalPanel — report the fit, follow the grid, claim on zo
       expect(hoisted.sendClaimCalls).toEqual([[80, 30]])
     } finally {
       vi.useRealTimers()
+      focus.mockRestore()
+    }
+  })
+
+  it('a window resize while the window lacks focus (macOS display change) reports the new fit and never claims (WR-03)', async () => {
+    const node = mountSized({ remote: false })
+    grid(100, 30)
+    open()
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    vi.useFakeTimers()
+    try {
+      resizeTo(node, 720) // 80 cols
+      windowResize()
+      await vi.advanceTimersByTimeAsync(200)
+      expect(hoisted.sendClaimCalls).toEqual([])
+      expect(hoisted.sendResizeCalls).toEqual([[100, 30], [80, 30]])
+    } finally {
+      vi.useRealTimers()
+      focus.mockRestore()
     }
   })
 
