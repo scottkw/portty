@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/previewfile"
 	"github.com/scottkw/portty/internal/relay"
 )
 
@@ -258,8 +259,8 @@ func TestCmdOpen_TypeDetection(t *testing.T) {
 		{"empty.png", nil, ""},
 		{"empty.pdf", nil, ""},
 	} {
-		if got := previewMIME(c.name, c.data); got != c.want {
-			t.Errorf("previewMIME(%q, % x…) = %q, want %q", c.name, c.data[:min(len(c.data), 8)], got, c.want)
+		if got := previewfile.MIME(c.name, c.data); got != c.want {
+			t.Errorf("previewfile.MIME(%q, % x…) = %q, want %q", c.name, c.data[:min(len(c.data), 8)], got, c.want)
 		}
 	}
 }
@@ -356,12 +357,12 @@ func TestCmdOpen_SameFileSameKey(t *testing.T) {
 	t.Chdir(dir)
 	keys := map[string]string{}
 	for _, path := range []string{p, "a.png", "./sub/../a.png", link, other} {
-		k, err := previewKey(path)
+		k, err := previewfile.Key(path)
 		if err != nil {
-			t.Fatalf("previewKey(%q): %v", path, err)
+			t.Fatalf("previewfile.Key(%q): %v", path, err)
 		}
 		if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(k) {
-			t.Errorf("previewKey(%q) = %q, want 32 lowercase hex", path, k)
+			t.Errorf("previewfile.Key(%q) = %q, want 32 lowercase hex", path, k)
 		}
 		keys[path] = k
 	}

@@ -1,22 +1,17 @@
 package main
 
 import (
-	"bytes"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net"
-	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
-	"syscall"
-	"unicode/utf8"
 
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/previewfile"
 	"github.com/scottkw/portty/internal/relay"
 )
 
@@ -52,46 +47,21 @@ func cmdOpen(client *daemon.DaemonClient, args []string, out io.Writer) error {
 		return errNoSession
 	}
 
-	fi, err := os.Stat(arg)
+	file, err := previewfile.Open(arg, relay.PreviewMaxBytes)
+	var tl *previewfile.TooLargeError
 	switch {
-	case errors.Is(err, fs.ErrNotExist):
+	case errors.Is(err, previewfile.ErrNotExist):
 		return fmt.Errorf("portty: %q doesn't exist.", arg)
+	case errors.Is(err, previewfile.ErrDir):
+		return fmt.Errorf("portty: %q is a folder, not a file.", arg)
+	case errors.Is(err, previewfile.ErrUnsupported):
+		return unsupportedErr(arg)
+	case errors.As(err, &tl):
+		return tooLargeErr(arg, tl.Size)
 	case err != nil:
 		return readErr(arg, err)
-	case fi.IsDir():
-		return fmt.Errorf("portty: %q is a folder, not a file.", arg)
-	case !fi.Mode().IsRegular(): // a FIFO or device would block or never end
-		return unsupportedErr(arg)
-	case fi.Size() > relay.PreviewMaxBytes:
-		return tooLargeErr(arg, fi.Size())
 	}
-	// Non-blocking, then checked on the descriptor: a path swapped for a FIFO
-	// after the stat can't hang the open (11-REVIEW IN-02).
-	f, err := os.OpenFile(arg, os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return readErr(arg, err)
-	}
-	defer f.Close()
-	if fi, err := f.Stat(); err != nil {
-		return readErr(arg, err)
-	} else if !fi.Mode().IsRegular() {
-		return unsupportedErr(arg)
-	}
-	data, err := io.ReadAll(io.LimitReader(f, relay.PreviewMaxBytes+1))
-	if err != nil {
-		return readErr(arg, err)
-	}
-	if len(data) > relay.PreviewMaxBytes { // it grew after the stat
-		return tooLargeErr(arg, int64(len(data)))
-	}
-	mime := previewMIME(arg, data)
-	if mime == "" {
-		return unsupportedErr(arg)
-	}
-	key, err := previewKey(arg)
-	if err != nil {
-		return readErr(arg, err)
-	}
+	data := file.Data
 
 	h, err := client.HealthInfo()
 	if err != nil {
@@ -104,7 +74,7 @@ func cmdOpen(client *daemon.DaemonClient, args []string, out io.Writer) error {
 		}
 		return fmt.Errorf("portty: update needed. Portty's background service (version %s) can't show previews; relaunch Portty to update it.", v)
 	}
-	resp, err := client.SendPreview(session, filepath.Base(arg), mime, key, data)
+	resp, err := client.SendPreview(session, file.Name, file.MIME, file.Key, data)
 	switch {
 	case errors.Is(err, daemon.ErrPreviewNoSession), errors.Is(err, daemon.ErrPreviewEnded):
 		return errNoSession // unknown id or ended session, e.g. a stale id inside tmux
@@ -154,88 +124,4 @@ func reachErr(err error) error {
 		err = oe
 	}
 	return fmt.Errorf("portty: couldn't reach Portty's background service: %s.", strings.TrimRight(strings.TrimSpace(err.Error()), "."))
-}
-
-// previewMIME decides the type: raster images and PDF by content whatever the
-// name; SVG and Markdown by extension plus content. "" means unsupported.
-func previewMIME(name string, data []byte) string {
-	if len(data) > 0 {
-		switch ct := http.DetectContentType(data); ct {
-		case "image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf":
-			return ct
-		}
-	}
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".svg":
-		if hasSVGRoot(data) {
-			return "image/svg+xml"
-		}
-	case ".md", ".markdown":
-		if utf8.Valid(data) && bytes.IndexByte(data, 0) < 0 {
-			return "text/markdown"
-		}
-	}
-	return ""
-}
-
-// hasSVGRoot reports whether an <svg> root element starts within the first
-// 8 KiB (licence and generator headers often exceed 1 KiB), after an optional
-// BOM, XML declaration, comments and DOCTYPE. A DOCTYPE internal subset is
-// allowed (Illustrator exports declare plain namespace entities there) unless
-// it holds an entity reference (&) or a parameter entity (%): the
-// entity-expansion shape, which is refused (11-REVIEW WR-01).
-func hasSVGRoot(data []byte) bool {
-	b := data[:min(len(data), 8<<10)]
-	b = bytes.TrimPrefix(b, []byte("\xEF\xBB\xBF"))
-	for {
-		b = bytes.TrimLeft(b, " \t\r\n")
-		var end string
-		switch {
-		case bytes.HasPrefix(b, []byte("<?")):
-			end = "?>"
-		case bytes.HasPrefix(b, []byte("<!--")):
-			end = "-->"
-		case bytes.HasPrefix(b, []byte("<!DOCTYPE")):
-			gt, lb := bytes.IndexByte(b, '>'), bytes.IndexByte(b, '[')
-			if lb < 0 || (gt >= 0 && gt < lb) { // no internal subset
-				end = ">"
-				break
-			}
-			// shortcut: a ']' inside a quoted value ends the subset early and the file is refused, safe.
-			rb := bytes.IndexByte(b[lb:], ']')
-			if rb < 0 || bytes.ContainsAny(b[lb+1:lb+rb], "&%") {
-				return false
-			}
-			rest := bytes.TrimLeft(b[lb+rb+1:], " \t\r\n")
-			if !bytes.HasPrefix(rest, []byte(">")) {
-				return false
-			}
-			b = rest[1:]
-			continue
-		case bytes.HasPrefix(b, []byte("<svg")):
-			return len(b) > 4 && bytes.IndexByte([]byte(" \t\r\n>/"), b[4]) >= 0
-		default:
-			return false
-		}
-		i := bytes.Index(b, []byte(end))
-		if i < 0 {
-			return false
-		}
-		b = b[i+len(end):]
-	}
-}
-
-// previewKey is the first 16 bytes of SHA-256 over the absolute,
-// symlink-resolved path, in lowercase hex: the same file always gets the same
-// key, and the path itself never leaves the CLI.
-func previewKey(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	if abs, err = filepath.EvalSymlinks(abs); err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256([]byte(abs))
-	return hex.EncodeToString(sum[:16]), nil
 }
