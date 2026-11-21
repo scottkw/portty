@@ -109,13 +109,15 @@ type handoffScene struct {
 	ids      []string
 	pids     []int
 
-	peerExit   chan int
-	peerClosed sync.Once
-	holdPeer   bool // a non-zero takeover does not close peerExit by itself
-	newExits   chan int
-	oldExits   chan int
-	oldAlive   atomic.Bool // what pidAlive reports for the old daemon
-	lockFree   atomic.Bool
+	peerExit    chan int
+	peerClosed  sync.Once
+	holdPeer    bool // a non-zero takeover does not close peerExit by itself
+	newExits    chan int
+	oldExits    chan int
+	oldGone     chan int // closed at the old daemon's first exit (watchOldExit)
+	oldGoneOnce sync.Once
+	oldAlive    atomic.Bool // what pidAlive reports for the old daemon
+	lockFree    atomic.Bool
 
 	mu        sync.Mutex
 	fault     func(side, step string) error
@@ -134,7 +136,7 @@ func newHandoffScene(t *testing.T, scripts ...string) *handoffScene {
 	t.Setenv("HOME", t.TempDir())
 	s := &handoffScene{
 		t: t, cfg: t.TempDir(),
-		peerExit: make(chan int), newExits: make(chan int, 4), oldExits: make(chan int, 4),
+		peerExit: make(chan int), newExits: make(chan int, 4), oldExits: make(chan int, 4), oldGone: make(chan int),
 		times: map[string]time.Time{},
 	}
 	s.oldAlive.Store(true)
@@ -198,10 +200,11 @@ func (s *handoffScene) warmSeam(ctx context.Context, domain string) error {
 }
 
 func (s *handoffScene) installSeams() {
-	f, uid, pid, watch, alive, hx, tx := handoffFault, peerUID, peerPID, watchPeerExit, pidAlive, handoffExit, takeoverExit
+	f, uid, pid, watch, watchOld, alive, hx, tx := handoffFault, peerUID, peerPID, watchPeerExit, watchOldExit, pidAlive, handoffExit, takeoverExit
 	s.restore = func() {
-		handoffFault, peerUID, peerPID, watchPeerExit, pidAlive, handoffExit, takeoverExit = f, uid, pid, watch, alive, hx, tx
+		handoffFault, peerUID, peerPID, watchPeerExit, watchOldExit, pidAlive, handoffExit, takeoverExit = f, uid, pid, watch, watchOld, alive, hx, tx
 	}
+	watchOldExit = func(int) <-chan int { return s.oldGone }
 	peerPID = func(c *net.UnixConn) (int, error) {
 		s.event("old:peer-pid")
 		return fdpass.PeerPID(c)
@@ -213,6 +216,7 @@ func (s *handoffScene) installSeams() {
 	pidAlive = func(int) bool { return s.oldAlive.Load() }
 	handoffExit = func(code int) {
 		s.event("old:exit")
+		s.oldGoneOnce.Do(func() { close(s.oldGone) })
 		s.oldExits <- code
 	}
 	takeoverExit = func(code int) {
@@ -696,6 +700,39 @@ func TestHandoff_RestartDrainBounded(t *testing.T) {
 	d := s.at("old:exit").Sub(s.at("new:after-serve-before-committed"))
 	if d > 1500*time.Millisecond || d < restartDrain-100*time.Millisecond {
 		t.Errorf("old daemon exited %v after COMMITTED; want about restartDrain (%v), at most 1.5 s", d, restartDrain)
+	}
+}
+
+// TestHandoff_TakeoverHoldsInputUntilOldExits (WR-02): after COMMIT the
+// takeover queues its viewers' input but writes none of it to the PTYs until
+// the old daemon, which still drains its own viewers' backlog there, exits.
+func TestHandoff_TakeoverHoldsInputUntilOldExits(t *testing.T) {
+	s := newHandoffScene(t, tickScript(false))
+	release := make(chan struct{})
+	s.setFault(func(side, step string) error {
+		if side+":"+step == "old:committed-received" {
+			<-release // the old daemon is still in finish
+		}
+		return nil
+	})
+	n, code := s.takeover(BuildVersion)
+	if code != 0 {
+		t.Fatalf("runTakeover = %d", code)
+	}
+	hub, ok := n.engine.Manager().Get(s.ids[0])
+	if !ok {
+		t.Fatal("the takeover has no hub for the session")
+	}
+	if err := hub.OpenInput(nil).Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if idle, queued := hub.WaitInputIdle(200 * time.Millisecond); idle || queued != 1 {
+		t.Fatalf("takeover input before the old daemon exited: idle=%t queued=%d, want held (false, 1)", idle, queued)
+	}
+	close(release)
+	s.waitExit(s.oldExits, "old daemon", 0)
+	if idle, queued := hub.WaitInputIdle(2 * time.Second); !idle {
+		t.Fatalf("takeover input still held after the old daemon exited: queued=%d", queued)
 	}
 }
 

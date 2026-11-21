@@ -13,8 +13,9 @@ import (
 // order and writes them to the PTY with no lock held.
 //
 // Order is arrival order across every viewer of the session, so a dropped
-// viewer's backlog can't interleave with its reconnect's input. The
-// consequence: a Ctrl-C typed after a large backlog waits behind it, as it did
+// viewer's backlog can't interleave with its reconnect's input; across an
+// upgrade handoff the takeover holds its writer until the old daemon, which
+// drains its own backlog, has exited (HoldInput, WR-02). The consequence: a Ctrl-C typed after a large backlog waits behind it, as it did
 // behind the paste in the TCP stream before.
 //
 // The writer outlives the socket: a pump that exits (InputConn.Close) leaves
@@ -140,6 +141,24 @@ func (h *Hub) revokeInput(subs []*Subscriber) (frames, bytes int) {
 	return frames, bytes
 }
 
+// HoldInput stops the writer taking frames until ReleaseInput; Write still
+// queues within the quotas. A handoff takeover holds its imported hubs until
+// the old daemon, which still writes its own viewers' backlog to the same
+// PTYs, has exited (WR-02).
+func (h *Hub) HoldInput() {
+	h.inMu.Lock()
+	h.inHeld = true
+	h.inMu.Unlock()
+}
+
+// ReleaseInput lets the writer go on in queue order.
+func (h *Hub) ReleaseInput() {
+	h.inMu.Lock()
+	h.inHeld = false
+	h.inCond.Broadcast()
+	h.inMu.Unlock()
+}
+
 // WaitInputIdle waits up to timeout for every queued input byte to reach the
 // PTY. It returns whether the input is idle (or dead, so nothing more will be
 // written) and the bytes still queued or in flight.
@@ -196,7 +215,7 @@ func (h *Hub) inputWriter() {
 	h.inMu.Lock()
 	defer h.inMu.Unlock()
 	for {
-		for h.inHead == len(h.inq) && !h.inDead {
+		for (h.inHead == len(h.inq) || h.inHeld) && !h.inDead {
 			h.inCond.Wait()
 		}
 		if h.inDead {

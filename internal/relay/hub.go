@@ -106,7 +106,8 @@ type Hub struct {
 	// around the write. inMu is a leaf lock: nothing else is taken under it.
 	// inq[inHead:] is the queue; inBytes counts queued plus in-flight bytes;
 	// inDead: the writer stopped (write error or done) and the queue is gone;
-	// inStarted: the writer and its done watcher are running. All under inMu.
+	// inStarted: the writer and its done watcher are running; inHeld: the
+	// writer takes no frame until ReleaseInput (WR-02). All under inMu.
 	inMu      sync.Mutex
 	inCond    *sync.Cond
 	inq       []inputReq
@@ -114,6 +115,7 @@ type Hub struct {
 	inBytes   int
 	inDead    bool
 	inStarted bool
+	inHeld    bool
 
 	// ptyCols, ptyRows: current PTY dimensions. They move only to the grid
 	// target (wantCols, wantRows), which only a claim or the bootstrap sets

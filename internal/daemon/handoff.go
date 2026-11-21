@@ -128,7 +128,8 @@ var (
 
 	peerUID       = fdpass.PeerUID
 	peerPID       = fdpass.PeerPID
-	watchPeerExit = pty.WatchExit
+	watchPeerExit = pty.WatchExit // old side: the takeover's exit
+	watchOldExit  = pty.WatchExit // new side: the old daemon's exit (holdInputUntilOldExits)
 	pidAlive      = func(pid int) bool {
 		err := unix.Kill(pid, 0)
 		return err == nil || errors.Is(err, unix.EPERM)
@@ -780,7 +781,8 @@ wait:
 	// shortcut: an upgrade during a slow multi-MB paste can lose the bytes still
 	// queued here when the old daemon exits, after a pong told the client they
 	// were queued, so no notice shows; the loss is logged. Handing the queue to
-	// the takeover would close it.
+	// the takeover would close it. Nothing reorders: the takeover writes no
+	// input until this process is gone (holdInputUntilOldExits, WR-02).
 	waitHubsInputIdle(m, deadline)
 	if a.lock != nil {
 		_ = a.lock.Close() // the takeover holds its own copy
@@ -1269,6 +1271,9 @@ func (t *takeover) commit(withCommitted bool) int {
 		t.cleanup()
 		return takeoverFailed
 	}
+	if withCommitted {
+		t.holdInputUntilOldExits() // before any viewer can reach these hubs
+	}
 	a.lock = t.lock
 	a.serveOn(t.ln, t.relayLn)
 	if t.ws != nil {
@@ -1315,6 +1320,39 @@ func (t *takeover) commit(withCommitted bool) int {
 	_ = t.c.Close()
 	log.Printf("handoff: committed: serving %d sessions handed over by pid %d", len(t.sessions), t.oldPID)
 	return takeoverCommitted
+}
+
+// holdInputUntilOldExits keeps the imported hubs' input writers from writing
+// until the old daemon process is gone (WR-02). After COMMITTED its finish
+// still writes the input its own viewers queued to the same PTYs, for up to
+// restartDrain, so a write from here could splice into that backlog. Frames
+// queue here meanwhile (nothing is dropped), and the old daemon's input
+// all lands before any of this side's. Draining the old queue before COMMIT
+// instead would not close it: viewers keep typing into the old daemon until
+// its 1012, so it would have to hold or drop those bytes, and they would die
+// with it. maxFrozen bounds the hold if the exit is never seen.
+func (t *takeover) holdInputUntilOldExits() {
+	if t.oldPID <= 0 {
+		return
+	}
+	hubs := make([]*relay.Hub, len(t.sessions))
+	for i, s := range t.sessions {
+		hubs[i] = s.hub
+		s.hub.HoldInput()
+	}
+	gone, limit, pid := watchOldExit(t.oldPID), maxFrozen(), t.oldPID // read here: tests change the timeouts
+	go func() {
+		timer := time.NewTimer(limit)
+		defer timer.Stop()
+		select {
+		case <-gone:
+		case <-timer.C:
+			log.Printf("handoff: old daemon pid %d still alive %v after COMMIT; releasing input", pid, limit)
+		}
+		for _, h := range hubs {
+			h.ReleaseInput()
+		}
+	}()
 }
 
 // postStep runs the fault seam at a new-side step after COMMIT, where any
