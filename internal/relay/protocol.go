@@ -21,6 +21,9 @@ const (
 	// MsgMeta is the server-to-client metadata push channel (JSON payload).
 	// Reserved range 0x20-0x2F for future server-push frame types.
 	MsgMeta byte = 0x20
+	// MsgPreview carries a file preview (preview.go): server push only, never
+	// written to the scrollback ring, so offsets and resume ignore it.
+	MsgPreview byte = 0x21
 )
 
 // PongFrame is the whole MsgPong frame. Shared by every connection: never mutate it.

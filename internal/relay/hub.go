@@ -90,6 +90,10 @@ type Hub struct {
 	mu          sync.Mutex
 	subscribers map[*Subscriber]struct{}
 	nextConnID  uint64 // last Subscriber.ID handed out; under mu
+	// previewID: last preview id handed out; previewBusy: a preview is
+	// streaming (preview.go, one per hub). Both under mu.
+	previewID   uint32
+	previewBusy bool
 	done        chan struct{}
 	closed      bool
 	closeOnce   sync.Once
