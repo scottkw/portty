@@ -938,13 +938,14 @@ function App(): React.ReactElement {
   // Portty 04-06: the host stopped sharing a session this Mac has a tab on. Drop
   // its row at once (the tab stays); the next peer poll reconciles. The tab is
   // marked so clicking the row again, once it is re-shared, reconnects (WR-06).
-  const dropPeerSession = useCallback((peerHost: string, sessionId: string) => {
+  // host is the connect host (peerSnapshotHost): HostNames can repeat, MagicDNS names can't.
+  const dropPeerSession = useCallback((host: string, sessionId: string) => {
     setRemotePeers((prev) => prev.map((p) => (
-      p.hostname === peerHost ? { ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) } : p
+      (p.dnsName || p.hostname) === host ? { ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) } : p
     )))
     // INPT-04: host plus session; another Mac's tab with the same id stays live.
     setTabs((prev) => prev.map((t) => (
-      t.type === 'web-session' && t.peerHost === peerHost && t.sessionId === sessionId ? { ...t, shareStopped: true } : t
+      t.type === 'web-session' && t.peerHost && peerSnapshotHost(t) === host && t.sessionId === sessionId ? { ...t, shareStopped: true } : t
     )))
   }, [])
 
@@ -1221,7 +1222,7 @@ function App(): React.ReactElement {
                 fontSize={mode !== 'web' && activeWebTab ? fontSizes[activeWebTab.id] ?? terminalFont.size : undefined}
                 onFontSizeChange={mode !== 'web' && activeWebTab ? (delta) => handleFontSizeChange(activeWebTab.id, delta) : undefined}
                 hostLabel={peerHost ? shortHost(peerHost) : (mode === 'web' ? webHost : undefined)}
-                onShareStopped={peerHost ? () => dropPeerSession(peerHost, wsSessionId) : undefined}
+                onShareStopped={peerHost && activeWebTab ? () => dropPeerSession(peerSnapshotHost(activeWebTab)!, wsSessionId) : undefined}
                 beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId) : undefined}
                 onReconnectingChange={peerHost ? (on) => setReconnectingHost((h) => (on ? peerHost : h === peerHost ? null : h)) : undefined}
                 snapshotHost={peerHost && activeWebTab ? peerSnapshotHost(activeWebTab) : undefined}

@@ -338,6 +338,21 @@ describe('Sidebar: peer groups (NAV-02)', () => {
     expect(current.length).toBe(1)
     expect(current[0].textContent).toBe('studio shell')
   })
+
+  // IN-04: two Macs can share a HostName; the MagicDNS name tells them apart.
+  it('with two peers sharing a hostname and a session id, aria-current marks only the tab\'s MagicDNS host', () => {
+    const v = peerView(false, true, [
+      { ...peer('air', true, [['s1', 'office shell']]), dnsName: 'air.tail-a.ts.net' },
+      { ...peer('air', true, [['s1', 'home shell']]), dnsName: 'air.tail-b.ts.net' },
+    ])
+    const { c } = render({
+      peerView: v,
+      activeTab: { id: '__websession__air.tail-b.ts.net/s1', name: 'air › home shell', sessionId: 's1', type: 'web-session', peerHost: 'air', connectHost: 'air.tail-b.ts.net' },
+    })
+    const current = c.querySelectorAll('[aria-current="page"]')
+    expect(current.length).toBe(1)
+    expect(current[0].textContent).toBe('home shell')
+  })
 })
 
 describe('Sidebar: Hide Sidebar button', () => {

@@ -5,6 +5,7 @@ import type { SessionInfo } from '../wailsjs/go/main/App'
 import type { RemotePeerSessions, RemoteSession } from '../lib/remoteSession'
 import type { TailscaleHealth } from '../lib/tailscale'
 import { peerColorIndex, shortHost, type PeerView } from '../lib/sidebarPeers'
+import { peerSnapshotHost } from '../lib/peerSnapshots'
 import { ContextMenu, isMenuKey } from './ContextMenu'
 import { InlineSessionName } from './InlineSessionName'
 
@@ -78,9 +79,10 @@ export function Sidebar({
   const activeLocalId =
     activeTab && (!activeTab.type || activeTab.type === 'terminal') ? activeTab.sessionId : null
   // Peer tabs are web-session tabs. INPT-04: two Macs can hand out the same session
-  // id, so a row is current only when its host matches the tab's too.
+  // id, so a row is current only when its host matches the tab's too, by the
+  // connect host (HostNames can repeat, MagicDNS names can't).
   const activePeer = activeTab?.type === 'web-session' && activeTab.peerHost
-    ? { host: activeTab.peerHost, id: activeTab.sessionId }
+    ? { host: peerSnapshotHost(activeTab), id: activeTab.sessionId }
     : null
 
   const footerText =
@@ -220,7 +222,7 @@ export function Sidebar({
                           <button
                             type="button"
                             className="sidebar__row"
-                            aria-current={s.id === activePeer?.id && g.peer.hostname === activePeer.host ? 'page' : undefined}
+                            aria-current={s.id === activePeer?.id && (g.peer.dnsName || g.peer.hostname) === activePeer.host ? 'page' : undefined}
                             onClick={() => onOpenPeer(g.peer, s)}
                           >
                             <CommandLineIcon className="sidebar__row-icon" aria-hidden="true" />

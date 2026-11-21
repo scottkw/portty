@@ -322,6 +322,21 @@ describe('App — two peers with the same session id (INPT-04)', () => {
     expect(view(c).getAttribute('data-snapshot-host')).toBe('a.tail.ts.net')
   })
 
+  // IN-04: two Macs can share a HostName; share stopped matches by the MagicDNS name.
+  it('share stopped on one of two peers sharing a hostname keeps the other\'s row and live tab', async () => {
+    const airA: RemotePeerSessions = { hostname: 'Air', dnsName: 'air-a.tail.ts.net', reachable: true, sessions: [{ id: 's1', name: 'Alpha', status: 'idle', url: '' }] }
+    const airB: RemotePeerSessions = { hostname: 'Air', dnsName: 'air-b.tail.ts.net', reachable: true, sessions: [{ id: 's1', name: 'Bravo', status: 'idle', url: '' }] }
+    const connect = vi.fn(ok)
+    const c = await mountApp({ ...baseImpl(connect), GetRemoteSessionsWithMeta: () => [airA, airB] })
+    await click(row(c, 'Alpha'))
+    await click(row(c, 'Bravo'))
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-share-stopped"]')!)
+    expect(row(c, 'Bravo')).toBeUndefined()
+    await click(row(c, 'Alpha'))
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(view(c).getAttribute('data-snapshot-host')).toBe('air-a.tail.ts.net')
+  })
+
   it('a MagicDNS peer whose connect fails, then succeeds on a re-click, has exactly one tab', async () => {
     const connect = vi.fn()
       .mockReturnValueOnce({ sessionId: '', name: '', host: '', url: '', errorCode: 'unreachable' })
