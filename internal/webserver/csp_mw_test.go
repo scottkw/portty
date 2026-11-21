@@ -12,6 +12,9 @@
 //  6. TestCSPHeaders_CacheControlNoStore     — D-16 Cache-Control: no-store
 //  7. TestCSPHeaders_CallsNext               — D-13 always delegates on success
 //  8. TestCSPHeaders_FailsClosedOnEmptyBaseURL — fail-closed when listener not ready
+//
+// Phase 11 (PREV-04, Amendment 3): TestCSPHeaders_PreviewDelta pins where
+// blob: may appear and that frame-ancestors 'none' stays last.
 package webserver
 
 import (
@@ -58,7 +61,7 @@ func TestCSPHeaders_RequiredTokens(t *testing.T) {
 		"default-src 'none'",
 		"script-src 'self'",
 		"style-src 'self'",
-		"img-src 'self' data:",
+		"img-src 'self' data: blob:",
 		"font-src 'self'",
 		"base-uri 'none'",
 		"form-action 'self'",
@@ -318,6 +321,39 @@ func TestCSPHeaders_NoUnsafeEvalToken_TokenAware(t *testing.T) {
 	// Sanity check: 'wasm-unsafe-eval' IS expected (Amendment 2). If it
 	// is absent, TestCSPHeaders_HasWasmUnsafeEval will already fail —
 	// we don't duplicate that assertion here.
+}
+
+// TestCSPHeaders_PreviewDelta (Phase 11 PREV-04, Amendment 3): blob: is
+// allowed only in img-src (the preview renderers show images from blob: URLs);
+// never in default-src, script-src or connect-src, and frame-ancestors 'none'
+// stays the last directive.
+func TestCSPHeaders_PreviewDelta(t *testing.T) {
+	ws, _ := testServer(t)
+	handler := ws.cspHeaders(func(w http.ResponseWriter, r *http.Request) {})
+	rec := httptest.NewRecorder()
+	handler(rec, httptest.NewRequest("GET", ws.BaseURL()+"/app/", nil))
+	csp := rec.Header().Get("Content-Security-Policy")
+
+	allowed := map[string]bool{"img-src": true}
+	for _, clause := range strings.Split(csp, ";") {
+		fields := strings.Fields(clause)
+		if len(fields) == 0 {
+			continue
+		}
+		for _, tok := range fields[1:] {
+			if tok == "blob:" && !allowed[fields[0]] {
+				t.Errorf("blob: is not allowed in %s (Amendment 3): %s", fields[0], csp)
+			}
+		}
+	}
+	for _, name := range []string{"default-src", "script-src", "connect-src"} {
+		if strings.Contains(extractDirective(csp, name), "blob:") {
+			t.Errorf("%s must not carry blob: (Amendment 3): %s", name, csp)
+		}
+	}
+	if !strings.HasSuffix(csp, "; frame-ancestors 'none'") {
+		t.Errorf("frame-ancestors 'none' must be the last directive, unchanged: %s", csp)
+	}
 }
 
 // extractDirective returns the value portion of a single CSP directive

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Phase 11 hostile SVG fixture (PREV-02, T-11-21). Shown in an <img> it must
+     draw the shapes and run nothing: the title never changes and the beacon
+     gets no request. 11-10 replaces BEACON with the VM's loopback beacon. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120" viewBox="0 0 240 120"
+     onload="top.document.title='SVG-ONLOAD-RAN'; fetch('http://BEACON/svg-onload')">
+  <rect x="8" y="8" width="104" height="104" rx="12" fill="#FF9500"/>
+  <circle cx="176" cy="60" r="52" fill="#0A84FF"/>
+  <text x="120" y="116" text-anchor="middle" font-size="12" font-family="sans-serif">SVG hostile script</text>
+  <script type="text/javascript"><![CDATA[
+    top.document.title = 'SVG-SCRIPT-RAN';
+    fetch('http://BEACON/svg-script');
+    new Image().src = 'http://BEACON/svg-script-img';
+  ]]></script>
+</svg>

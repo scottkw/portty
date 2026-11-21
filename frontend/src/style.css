@@ -1688,6 +1688,67 @@ html.is-inactive .sidebar__row[aria-current="page"] {
    hex color is a reinforcement signal only.
    ============================================================ */
 
+/* --- File preview (Portty 11-06, 11-UI-SPEC "Images", "SVG", "PDF") --- */
+.preview-image {
+  position: relative;
+  display: flex;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  overflow: auto;
+  background-color: var(--color-window);
+}
+
+/* Auto margins centre the image at Fit and fall back to the start edge when it
+   overflows, so Actual Size opens at the top-left. The checkerboard is the
+   img's own background: 8px squares, 16px tile. */
+.preview-image__img {
+  display: block;
+  flex-shrink: 0;
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  background-color: var(--color-checker-a);
+  background-image: conic-gradient(
+    var(--color-checker-b) 25%,
+    var(--color-checker-a) 0 50%,
+    var(--color-checker-b) 0 75%,
+    var(--color-checker-a) 0
+  );
+  background-size: 16px 16px;
+}
+
+/* SVG is vector: always fit, upscaling too. */
+.preview-image__img--svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* At Fit the toggle fills the padded pane so the img's 100% limits resolve. */
+.preview-image__toggle {
+  position: absolute;
+  inset: 16px;
+  display: flex;
+  padding: 0;
+  border: none;
+  background: none;
+  appearance: none;
+  cursor: zoom-in;
+}
+
+.preview-image--actual .preview-image__toggle {
+  position: static;
+  flex-shrink: 0;
+  margin: auto;
+  cursor: zoom-out;
+}
+
+.preview-image--actual .preview-image__img {
+  max-width: none;
+  max-height: none;
+}
+
 /* --- Colour tokens (Portty 02-03, THEM-01 / LOOK-01) ---
    Values from 02-UI-SPEC.md "Color". Light on :root, Dark in the
    prefers-color-scheme block; both blocks declare the same names. */
@@ -1724,6 +1785,9 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   --color-group: #FFFFFF;
   --color-group-border: #E0E0E4;
   --color-pane-tab-selected: #E5E5EA;
+  /* Transparency checkerboard (11-UI-SPEC "Color"): light in both appearances on purpose. */
+  --color-checker-a: #FFFFFF;
+  --color-checker-b: #E0E0E4;
   --color-status-on: #30D158;
   --color-status-warn: #FF9F0A;
   --color-status-off: #8E8E93;
@@ -1777,6 +1841,8 @@ html.is-inactive .sidebar__row[aria-current="page"] {
     --color-group: #2A2A2C;
     --color-group-border: #3A3A3C;
     --color-pane-tab-selected: #333335;
+    --color-checker-a: #FFFFFF;
+    --color-checker-b: #E0E0E4;
     --color-status-on: #30D158;
     --color-status-warn: #FF9F0A;
     --color-status-off: #8E8E93;

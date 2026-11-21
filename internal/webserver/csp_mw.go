@@ -57,6 +57,21 @@
 // 'wasm-unsafe-eval' with multi-year headroom; no fallback strategy
 // required.
 //
+// Amendment 3 (Phase 11, PREV-04, 2026-11-21):
+//
+//	default-src 'none'; script-src 'self' 'wasm-unsafe-eval';
+//	style-src 'self' 'unsafe-inline'; connect-src 'self' wss://<host>;
+//	img-src 'self' data: blob:; font-src 'self'; base-uri 'none';
+//	form-action 'self'; frame-ancestors 'none'
+//
+// Amendment rationale: file previews (`portty open`) render images and SVG
+// as <img src=blob:...> built from bytes that arrived over the session's
+// own socket, so img-src gains blob: and nothing else. An SVG inside an
+// <img> runs no script and fetches nothing, and img-src still names no
+// network origin. blob: is never added to default-src, script-src or
+// connect-src (TestCSPHeaders_PreviewDelta). The review is
+// .planning/phases/11-file-preview/11-SECURITY-REVIEW.md.
+//
 // Per-request composition (D-10): the wss:// origin is derived from
 // ws.BaseURL() on every request so it tracks the listener address
 // automatically — including the random-port fallback that Phase 87/88
@@ -115,7 +130,8 @@ func (ws *WebServer) cspHeaders(next http.HandlerFunc) http.HandlerFunc {
 		b.WriteString("connect-src 'self' ")
 		b.WriteString(wssOrigin)
 		b.WriteString("; ")
-		b.WriteString("img-src 'self' data:; ")
+		// Phase 11 Amendment 3: blob: for the image and SVG previews.
+		b.WriteString("img-src 'self' data: blob:; ")
 		b.WriteString("font-src 'self'; ")
 		b.WriteString("base-uri 'none'; ")
 		b.WriteString("form-action 'self'; ")

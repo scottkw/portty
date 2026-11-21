@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Phase 11 hostile SVG fixture (PREV-02, T-11-21). Shown in an <img> it must
+     fetch nothing (external image, use, foreignObject iframe, style @import),
+     and the entity block must not take the tab down. 11-10 replaces BEACON
+     with the VM's loopback beacon. -->
+<!DOCTYPE svg [
+  <!ENTITY lol "lol">
+  <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+  <!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">
+  <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+  <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">
+  <!ENTITY lol5 "&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;">
+  <!ENTITY lol6 "&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;">
+  <!ENTITY lol7 "&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;">
+  <!ENTITY lol8 "&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;">
+  <!ENTITY lol9 "&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;">
+]>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="240" height="120" viewBox="0 0 240 120">
+  <style>@import url("http://BEACON/svg-style-import.css");</style>
+  <rect x="8" y="8" width="224" height="104" rx="12" fill="#34C759"/>
+  <image href="http://BEACON/svg-image" x="0" y="0" width="240" height="120"/>
+  <image xlink:href="http://BEACON/svg-image-xlink" x="0" y="0" width="240" height="120"/>
+  <use href="http://BEACON/svg-use.svg#shape"/>
+  <foreignObject x="0" y="0" width="240" height="120">
+    <iframe xmlns="http://www.w3.org/1999/xhtml" src="http://BEACON/svg-foreignobject-iframe"></iframe>
+  </foreignObject>
+  <text x="120" y="64" text-anchor="middle" font-size="12" font-family="sans-serif">&lol9;</text>
+</svg>
