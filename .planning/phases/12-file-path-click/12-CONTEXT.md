@@ -37,6 +37,14 @@ Portty tracks each shell's working directory through OSC 7 (zsh emits it with no
 - [File read] Q: "Which checks before reading?" → Selected: "Move portty open's file checks into shared code used by both the CLI and the daemon" — code is moved, not reinvented.
 - [Shells] Q: "bash and fish?" → Selected: "No injection; tracked only when the user's own setup emits OSC 7. Without OSC 7, absolute paths still work and relative ones do nothing" — matches the PATH-01 wording.
 
+### Decided at planning (2026-11-21, autonomous, after research)
+- [Shell] Q: "precmd emission in addition to chpwd + initial emit?" → Selected: "Yes, the shim also emits OSC 7 from precmd (as Ghostty and Terminal.app do); it heals rc files that reset chpwd_functions" — about 6 lines, verified by research, easy to drop.
+- [Shell] Q: "Shim write failure?" → Selected: "Write the shim atomically and verify it before setting ZDOTDIR; on any failure set nothing and spawn without integration" — a ZDOTDIR without a readable .zshenv silently skips every user rc file (research, verified).
+- [Gating] Q: "How do viewers know path click is available?" → Selected: "A host-authoritative pathClick capability bit on the replay MsgMeta (covers read-only, old hosts, peer and browser), plus APIVersion 4 with a PathClickAPI constant" — additive.
+- [Handoff] Q: "Carry the cwd log across a Phase 9 upgrade handoff?" → Selected: "Yes, additive gob fields in HubState with a round-trip test" — otherwise relative paths go silent until the next prompt after an upgrade.
+- [Printed check] Q: "Substring or token match?" → Selected: "Token-boundary match against Hub.history plus the live screen (not the raw ring), so id_rsa does not pass because id_rsa.pub was printed" — security-relevant, resolver logic only.
+- [Corrections] Sessions always run /bin/zsh -l ($SHELL is ignored, engine.go:178-198), so the non-zsh login-shell case can't occur at spawn. Every minted share is read,write (SHAR-02); read-only viewers exist only via legacy/hand-signed caps, but the refusal is still implemented and tested in both the pump and the hub.
+
 ### Claude's Discretion
 - Plan split, file names, test names, path-detection regex details, the notice's visual details within the macOS-native look.
 
