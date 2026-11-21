@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -1002,14 +1003,30 @@ func TestEnsureDaemon_HandoffFailedButNowCurrent(t *testing.T) {
 	}
 }
 
-// slowBuild sets this build for the two 12 s tests before t.Parallel().
-// shortcut: never restored (a restore in one parallel test's cleanup would
-// race the other's reads); parallel tests run after every sequential test and
-// these two are the package's only ones. Upgrade if another parallel test
-// needs a different BuildVersion.
+// slowBuild sets this build for the two parallel 12 s tests and restores it
+// when the last of them ends. Set after t.Parallel(), so no sequential test
+// sees it, and restored per pass, so -count>1 does not leave "v2" behind for
+// TestWaitForDaemon_SlowStart. The count makes the restore happen after the
+// other test's reads (mutex order), so it does not race them.
+var slowBuildMu sync.Mutex
+var slowBuildUsers int
+var slowBuildPrev string
+
 func slowBuild(t *testing.T) {
-	BuildVersion = "v2"
 	t.Parallel()
+	slowBuildMu.Lock()
+	if slowBuildUsers == 0 {
+		slowBuildPrev, BuildVersion = BuildVersion, "v2"
+	}
+	slowBuildUsers++
+	slowBuildMu.Unlock()
+	t.Cleanup(func() {
+		slowBuildMu.Lock()
+		defer slowBuildMu.Unlock()
+		if slowBuildUsers--; slowBuildUsers == 0 {
+			BuildVersion = slowBuildPrev
+		}
+	})
 }
 
 // T-09-29 (plan check B2): a takeover that commits after 12 s gets no
