@@ -2,7 +2,10 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  DocumentIcon,
+  DocumentTextIcon,
   GlobeAltIcon,
+  PhotoIcon,
   PlusIcon,
   SignalIcon,
   XMarkIcon,
@@ -11,12 +14,13 @@ import { PeerDot, SidebarToggleIcon } from './Sidebar'
 import { peerTabParts } from '../lib/tabs'
 import { ContextMenu, isMenuKey, type ContextMenuItem } from './ContextMenu'
 import { InlineSessionName } from './InlineSessionName'
+import type { PreviewKind } from '../lib/previewAssembler'
 
 export interface Tab {
   id: string
   name: string
   sessionId: string
-  type?: 'terminal' | 'web-session'
+  type?: 'terminal' | 'web-session' | 'preview'
   /** Phase 168-03 (FIX-03) — per-tab remote peer origin for 'web-session' tabs
    *  opened via handleOpenRemoteSession. undefined for the app's own web-share
    *  bootstrap tab (which falls back to the mount-stable webParams). */
@@ -31,6 +35,16 @@ export interface Tab {
   connectFailed?: boolean
   /** The host stopped sharing this peer tab's session; a row click reconnects (WR-06). */
   shareStopped?: boolean
+  /** Phase 11: a preview tab's session tab id (its owner). A preview's sessionId is its own tab id. */
+  ownerTabId?: string
+  /** Phase 11: a preview tab's file type (its icon). */
+  previewKind?: PreviewKind
+}
+
+/** UI-SPEC "Anatomy": the preview tab's leading type icon. */
+function PreviewIcon({ kind }: { kind?: PreviewKind }): React.ReactElement {
+  const Icon = kind === 'pdf' ? DocumentIcon : kind === 'markdown' ? DocumentTextIcon : PhotoIcon
+  return <Icon className="tab__remote-icon" aria-hidden="true" />
 }
 interface TabBarProps {
   tabs: Tab[]
@@ -217,6 +231,7 @@ export function TabBar({
               <button
                 type="button"
                 role="tab"
+                id={`tab-${tab.id}`}
                 className="tab__label"
                 aria-selected={active}
                 aria-controls={`tabpanel-${tab.id}`}
@@ -237,6 +252,7 @@ export function TabBar({
                 }}
               >
                 {peer && <GlobeAltIcon className="tab__remote-icon" aria-hidden="true" />}
+                {tab.type === 'preview' && <PreviewIcon kind={tab.previewKind} />}
                 <span
                   className="tab__name"
                   onDoubleClick={webMode || !isLocal(tab) ? undefined : () => setEditingId(tab.id)}

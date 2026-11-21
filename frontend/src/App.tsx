@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo, useSyncExternalStore } from 'react'
 import type { IProgressState } from '@xterm/addon-progress'
 import { TabBar, type Tab } from './components/TabBar'
 import { EmptyState } from './components/EmptyState'
@@ -66,9 +66,23 @@ import { LIGHT_PALETTE, DARK_PALETTE } from './lib/terminalPalettes'
 import { DEFAULT_TERMINAL_FONT_SIZE, terminalFontFamily, type TerminalFont } from './lib/terminalFont'
 import { measureInitialGrid } from './lib/initialGrid'
 import { dropPeerSnapshot, peerSnapshotHost } from './lib/peerSnapshots'
+import { PreviewStore } from './lib/previewStore'
+import type { PreviewEvent } from './lib/previewAssembler'
+import { PreviewPanel } from './components/PreviewPanel'
 
 
 const SHARE_POPOVER_ID = 'share-popover'
+
+/**
+ * Phase 11 (UI-SPEC "Position"): a new preview tab goes right after its session's tab and
+ * that session's earlier previews; with neither open, at the end.
+ */
+function insertPreviewTab(prev: Tab[], tab: Tab): Tab[] {
+  if (prev.some((t) => t.id === tab.id)) return prev
+  let at = -1
+  prev.forEach((t, i) => { if (t.id === tab.ownerTabId || t.ownerTabId === tab.ownerTabId) at = i })
+  return at === -1 ? [...prev, tab] : [...prev.slice(0, at + 1), tab, ...prev.slice(at + 1)]
+}
 
 /**
  * App is the root component — it owns all tab state and wires
@@ -206,6 +220,9 @@ function App(): React.ReactElement {
   activeIdRef.current = activeId
   const tabsRef = useRef(tabs)
   tabsRef.current = tabs
+  // Phase 11: this viewer's previews, held outside every terminal view so they outlive it.
+  const [previewStore] = useState(() => new PreviewStore())
+  const previews = useSyncExternalStore(previewStore.subscribe, previewStore.getSnapshot)
   // Every session:exit id, so createTab and the init/retryInit restore skip a
   // shell that exited while their RPCs were pending (exits are reported once).
   const exitedIdsRef = useRef(new Set<string>())
@@ -581,15 +598,19 @@ function App(): React.ReactElement {
     const tab = tabsRef.current.find((t) => t.id === id)
     const host = tab?.type === 'web-session' && tab.peerHost ? peerSnapshotHost(tab) : undefined
     if (tab && host) dropPeerSnapshot(host, tab.sessionId)
+    // Phase 11: closing a preview releases its URL; closing the active one returns to its session's tab.
+    const owner = tab?.type === 'preview' && tabsRef.current.some((t) => t.id === tab.ownerTabId) ? tab.ownerTabId : undefined
+    if (tab?.type === 'preview') previewStore.close(id)
     setTabs((prev) => {
       // Right neighbour, else left, else the empty state (TERM-03).
       setActiveId((cur) => nextActiveTabId(prev, id, cur))
       return prev.filter((t) => t.id !== id)
     })
+    if (owner && activeIdRef.current === id) setActiveId(owner)
     // Clean up font size for the closed session.
     setFontSizes((prev) => { const n = { ...prev }; delete n[id]; return n })
     delete spawnGridRef.current[id]
-  }, [])
+  }, [previewStore])
   // Keep the ref in sync so the session:exit event handler ([] deps) always calls the latest version
   removeTabStateRef.current = removeTabState
 
@@ -598,6 +619,25 @@ function App(): React.ReactElement {
   const closeTab = useCallback((id: string) => {
     removeTabState(id)
   }, [removeTabState])
+
+  // Phase 11: a session view's preview events. A new preview opens its tab beside the session's tab.
+  const handlePreview = useCallback((ownerTabId: string, ev: PreviewEvent) => {
+    const r = previewStore.handle(ownerTabId, ev)
+    if (!r || ev.type !== 'start') return
+    if (r.isNew) {
+      const tab: Tab = { id: r.tabId, name: ev.name, sessionId: r.tabId, type: 'preview', ownerTabId, previewKind: ev.kind }
+      setTabs((prev) => insertPreviewTab(prev, tab))
+    }
+    if (ev.focus) setActiveId(r.tabId)
+  }, [previewStore])
+
+  // Entries the store dropped (the 10-tab and 100 MiB limits) take their tabs with them.
+  useEffect(() => {
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.type !== 'preview' || previews.some((e) => e.tabId === t.id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [previews])
 
   // End Session… after its confirm (TERM-03). The daemon's kill path drops
   // the session's share and disconnects its viewers (Portty 04-02). Errors
@@ -1273,7 +1313,7 @@ function App(): React.ReactElement {
         )}
         {relayPort != null && relayPort > 0 &&
           tabs.map((tab) => {
-            if (tab.type === 'web-session') return null
+            if (tab.type === 'web-session' || tab.type === 'preview') return null
             const isActive = tab.id === activeId
             return (
               <div
@@ -1298,11 +1338,17 @@ function App(): React.ReactElement {
                   onWebGLContextLost={handleWebGLContextLost}
                   onRegisterSaver={handleRegisterSaver}
                   onProgressChange={handleProgressChange}
+                  onPreview={(ev) => handlePreview(tab.id, ev)}
                 />
                 </ErrorBoundary>
               </div>
             )
           })}
+        {(() => {
+          // Only the visible preview renders (11-CONTEXT: a slow parser must never run for a background tab).
+          const entry = activeId !== null ? previews.find((e) => e.tabId === activeId) : undefined
+          return entry ? <PreviewPanel key={entry.tabId} entry={entry} webMode={mode === 'web'} /> : null
+        })()}
         </div>
       </div>
       </div>{/* end app__row */}
