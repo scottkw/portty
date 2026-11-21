@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
-current_phase: 10
-current_phase_name: Input Path Reliability
-status: executing
-stopped_at: Phase 9 complete, ready to plan Phase 10
-last_updated: "2026-11-21T01:33:02.548Z"
-last_activity: 2026-11-20
-last_activity_desc: Phase 9 complete, transitioned to Phase 10
-state_head: d027e86d7ae0a43abce5271754d31b521b87c1da
+current_phase: 11
+current_phase_name: File Preview
+status: planning
+stopped_at: Phase 10 complete, ready to plan Phase 11
+last_updated: "2026-11-21T14:23:19.806Z"
+last_activity: 2026-11-21
+last_activity_desc: Phase 10 complete, transitioned to Phase 11
+state_head: 2a6ad45ee22e439134986b2bf6ed023b233c7d3a
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 14
-  completed_plans: 7
-  percent: 17
+  completed_plans: 14
+  percent: 33
 ---
 
 # Project State
@@ -25,20 +25,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-18)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 10 — Input Path Reliability (v1.2)
+**Current focus:** Phase 11 — File Preview (v1.2)
 
 ## Current Position
 
-Phase: 10 (Input Path Reliability) — READY TO EXECUTE
+Phase: 11 — File Preview
 Plan: Not started
-Status: Ready to execute
-Last activity: 2026-11-20 — Phase 9 complete, transitioned to Phase 10
+Status: Ready to plan
+Last activity: 2026-11-21 — Phase 10 complete, transitioned to Phase 11
 
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 30
+- Total plans completed: 37
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -50,6 +50,7 @@ Last activity: 2026-11-20 — Phase 9 complete, transitioned to Phase 10
 | 7 | 5 | - | - |
 | 8 | 6 | - | - |
 | 9 | 7 | - | - |
+| 10 | 7 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -354,7 +355,7 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 ## Session Continuity
 
 Last session: 2026-11-20
-Stopped at: Phase 9 complete, ready to plan Phase 10
+Stopped at: Phase 10 complete, ready to plan Phase 11
 Resume: 1) branch `worktree-agent-a725d63afb58130ac` holds `cdf95204` (review iteration 2 doc) and `d9d4764c` (WR-02 it2 fix, gates NOT yet run); rebase it onto gsd/v1.2 and fix the remaining four (WR-01 it2, IN-01..03 it2) with gsd-code-fixer, then gates. 2) Re-run TestHandoffIT plus V-01, V-02 and V-05b on the Tart VMs (both stopped; start with `tart run --no-graphics <name> &`). 3) gsd-verifier, mark UPGR-01..05, phase.complete 9. Then Phase 10.
 Resume file: None
 

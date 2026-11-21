@@ -39,7 +39,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 **Holds for every phase:** token-gated, tailnet-only links; the CSP unchanged except for what a recorded security review approves; no new cloud dependencies; Wails v2; macOS-native look; radical simplicity. VM evidence comes from two Tart VMs on the real tailnet standing in for the office and home Macs, recorded in the phase's VM-CHECKS file and as M-NN items in TESTING.md.
 
 - [x] **Phase 9: Upgrades Keep Sessions** - The new daemon takes over live PTYs and history on upgrade, viewers resume with a delta, a failed handoff loses nothing, the daemon reports an API version, and quitting is clean (completed 2026-11-20)
-- [ ] **Phase 10: Input Path Reliability** - A bounded input queue keeps viewers connected through long pastes, the paste notice is honest in the app and the browser, peer snapshots are keyed by host, the viewer you're typing on sets the session's size, and the exit-code test is deterministic
+- [x] **Phase 10: Input Path Reliability** - A bounded input queue keeps viewers connected through long pastes, the paste notice is honest in the app and the browser, peer snapshots are keyed by host, the viewer you're typing on sets the session's size, and the exit-code test is deterministic (completed 2026-11-21)
 - [ ] **Phase 11: File Preview** - `portty open <file>` shows images, PDFs and Markdown in a preview tab for app and browser viewers, over the session's own stream, under a size cap and a reviewed CSP
 - [ ] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote
 - [ ] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent
@@ -79,15 +79,15 @@ Plans:
   4. After a daemon error and Retry, no snapshot of a removed peer tab is left behind. Two Macs that hand out the same session id open as two separate tabs, each rejoining with its own delta. (INPT-04)
   5. `TestExitEvent_ListSessions_ExitCodePopulatedForStopped` passes in repeated full-package `go test -race -count=20 ./internal/daemon/` runs, and the full `-race` suite passes with nothing skipped. (INPT-05)
   6. The viewer you're typing on sets the session's size. On the home VM, Cmd+ in a peer tab on an office session makes the shell reflow to the home grid (`tput cols` changes, the text gets bigger), and so does resizing the home window. Typing in the office local tab hands the size back to the office Mac. The same works for a browser viewer and `portty attach`. Reported on v1.1.0. (INPT-06)
-**Plans**: 7 plans
+**Plans**: 7/7 plans complete
 Plans:
-- [ ] 10-01-PLAN.md — Wave 1: hermetic exit-code ListSessions test, reproduced and proven with full-package `-race -count=20` (INPT-05)
-- [ ] 10-02-PLAN.md — Wave 1: peer tabs keyed by host plus session everywhere, Retry drops removed peer tabs' snapshots, host-aware sidebar highlight (INPT-04)
-- [ ] 10-03-PLAN.md — Wave 1: hub-owned input FIFO with per-connection quotas for both read pumps, owed pongs via a shared write pump, proxy backpressure test, handoff input wait, pong-ack comments, browser-viewer notice vitest (INPT-01, INPT-02, INPT-03)
-- [ ] 10-04-PLAN.md — Wave 2: grid owner replaces min-among-local, claim bit on MsgResize2, clamp and read-only gate, web claims, settle window removed with a rejoin test, no fallback grid push on local join (INPT-06)
-- [ ] 10-05-PLAN.md — Wave 2: viewers follow the server grid and report their own fit, claims on window resize and zoom, per-tab Cmd+ for peer tabs (INPT-06)
-- [ ] 10-06-PLAN.md — Wave 3: typed-input classifier and typing claims in both pumps, `portty attach` SIGWINCH claim, end-to-end attach test through the proxy (INPT-06)
-- [ ] 10-07-PLAN.md — Wave 4: full gate, TESTING.md, and Tart VM rows for SC1-SC3 and SC6 plus the Phase 9 V-02 re-run (all INPT)
+- [x] 10-01-PLAN.md — Wave 1: hermetic exit-code ListSessions test, reproduced and proven with full-package `-race -count=20` (INPT-05)
+- [x] 10-02-PLAN.md — Wave 1: peer tabs keyed by host plus session everywhere, Retry drops removed peer tabs' snapshots, host-aware sidebar highlight (INPT-04)
+- [x] 10-03-PLAN.md — Wave 1: hub-owned input FIFO with per-connection quotas for both read pumps, owed pongs via a shared write pump, proxy backpressure test, handoff input wait, pong-ack comments, browser-viewer notice vitest (INPT-01, INPT-02, INPT-03)
+- [x] 10-04-PLAN.md — Wave 2: grid owner replaces min-among-local, claim bit on MsgResize2, clamp and read-only gate, web claims, settle window removed with a rejoin test, no fallback grid push on local join (INPT-06)
+- [x] 10-05-PLAN.md — Wave 2: viewers follow the server grid and report their own fit, claims on window resize and zoom, per-tab Cmd+ for peer tabs (INPT-06)
+- [x] 10-06-PLAN.md — Wave 3: typed-input classifier and typing claims in both pumps, `portty attach` SIGWINCH claim, end-to-end attach test through the proxy (INPT-06)
+- [x] 10-07-PLAN.md — Wave 4: full gate, TESTING.md, and Tart VM rows for SC1-SC3 and SC6 plus the Phase 9 V-02 re-run (all INPT)
 **UI hint**: no
 
 ### Phase 11: File Preview
@@ -147,7 +147,7 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 9. Upgrades Keep Sessions | v1.2 | 7/7 | Complete    | 2026-11-20 |
-| 10. Input Path Reliability | v1.2 | 0/TBD | Not started | - |
+| 10. Input Path Reliability | v1.2 | 7/7 | Complete    | 2026-11-21 |
 | 11. File Preview | v1.2 | 0/TBD | Not started | - |
 | 12. File Path Click | v1.2 | 0/TBD | Not started | - |
 | 13. Remote Localhost URLs | v1.2 | 0/TBD | Not started | - |

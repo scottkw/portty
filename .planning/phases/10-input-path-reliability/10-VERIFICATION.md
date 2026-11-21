@@ -1,8 +1,8 @@
 ---
 phase: 10-input-path-reliability
 verified: 2026-11-21T08:02:23Z
-status: human_needed
-score: 5/6 must-haves verified
+status: passed
+score: 6/6 must-haves verified
 covered_files:
   - ".planning/phases/10-input-path-reliability/10-01-PLAN.md"
   - ".planning/phases/10-input-path-reliability/10-01-SUMMARY.md"
@@ -223,3 +223,12 @@ Informational follow-ups already captured: the RF-03 re-run's "ended peer tab sh
 
 _Verified: 2026-11-21T08:02:23Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Addendum (2026-11-21, human items resolved; docs-only changes after this report)
+
+- **SC3 drop mechanism and "status bar" wording:** accepted by the user on 2026-11-21 ("Accept both"). The pf `block drop` of the share port stands in for `tailscale down`, and the `role="status"` banner is the accepted surface. SC3 is VERIFIED, so the score is 6/6.
+- **Item 3, WR-03 focus gate:** VM row WR3-01 PASS (10-VM-CHECKS.md, "WR-03 focus gate re-check"). A focused peer tab or Safari resize claims, while unfocused or background resizes (home, Safari, office) don't, and typing after focusing claims.
+- **Item 4, SC5 re-run at current product code:** `go test -race -count=20 -timeout 60m ./internal/daemon/` gave `ok ... 1954.929s` with 0 DATA RACE and 0 `device not configured` (scratchpad p10-sc5-final.log). The user approved the run on 2026-11-21.
+- RF-01's 300 KB payload is a test-method choice, not tied to a success criterion. It is recorded in 10-VM-CHECKS.md.
+
+The digest above was recomputed over the same covered_files after the 10-VM-CHECKS.md append.
