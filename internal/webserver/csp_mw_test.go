@@ -14,7 +14,8 @@
 //  8. TestCSPHeaders_FailsClosedOnEmptyBaseURL — fail-closed when listener not ready
 //
 // Phase 11 (PREV-04, Amendment 3): TestCSPHeaders_PreviewDelta pins where
-// blob: may appear and that frame-ancestors 'none' stays last.
+// blob: may appear, worker-src 'self' (11-07 fix), and that frame-ancestors
+// 'none' stays last.
 package webserver
 
 import (
@@ -325,7 +326,8 @@ func TestCSPHeaders_NoUnsafeEvalToken_TokenAware(t *testing.T) {
 
 // TestCSPHeaders_PreviewDelta (Phase 11 PREV-04, Amendment 3): blob: is
 // allowed only in img-src (the preview renderers show images from blob: URLs);
-// never in default-src, script-src or connect-src, and frame-ancestors 'none'
+// never in default-src, script-src or connect-src; worker-src is exactly
+// 'self' (the Markdown parse worker, 11-07 fix); and frame-ancestors 'none'
 // stays the last directive.
 func TestCSPHeaders_PreviewDelta(t *testing.T) {
 	ws, _ := testServer(t)
@@ -356,17 +358,21 @@ func TestCSPHeaders_PreviewDelta(t *testing.T) {
 	}
 
 	// The whole policy: the pre-phase policy (Amendment 2) plus " blob:" in
-	// img-src. 11-SPIKE.md's Share CSP delta adds no frame-src and no
-	// object-src (browsers get Open PDF instead of a framed PDF).
+	// img-src and worker-src 'self' after it (the 11-07 fix: the Markdown parse
+	// worker, a same-origin file). 11-SPIKE.md's Share CSP delta adds no
+	// frame-src and no object-src (browsers get Open PDF instead of a framed PDF).
 	wss := "wss://" + strings.TrimPrefix(ws.BaseURL(), "https://")
 	prePhase := "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
 		"connect-src 'self' " + wss + "; img-src 'self' data:; font-src 'self'; base-uri 'none'; " +
 		"form-action 'self'; frame-ancestors 'none'"
-	want := strings.Replace(prePhase, "img-src 'self' data:;", "img-src 'self' data: blob:;", 1)
+	want := strings.Replace(prePhase, "img-src 'self' data:;", "img-src 'self' data: blob:; worker-src 'self';", 1)
 	if csp != want {
 		t.Errorf("CSP drifted from the reviewed policy (11-SECURITY-REVIEW.md):\n got %s\nwant %s", csp, want)
 	}
-	for _, name := range []string{"frame-src", "object-src", "child-src", "worker-src"} {
+	if got := extractDirective(csp, "worker-src"); got != "'self'" {
+		t.Errorf("worker-src must be exactly 'self' (no blob:, data: or host), got %q: %s", got, csp)
+	}
+	for _, name := range []string{"frame-src", "object-src", "child-src"} {
 		if strings.Contains(csp, name) {
 			t.Errorf("CSP must not carry %s (11-SPIKE.md Share CSP delta): %s", name, csp)
 		}

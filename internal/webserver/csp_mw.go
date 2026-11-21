@@ -61,8 +61,8 @@
 //
 //	default-src 'none'; script-src 'self' 'wasm-unsafe-eval';
 //	style-src 'self' 'unsafe-inline'; connect-src 'self' wss://<host>;
-//	img-src 'self' data: blob:; font-src 'self'; base-uri 'none';
-//	form-action 'self'; frame-ancestors 'none'
+//	img-src 'self' data: blob:; worker-src 'self'; font-src 'self';
+//	base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 //
 // Amendment rationale: file previews (`portty open`) render images and SVG
 // as <img src=blob:...> built from bytes that arrived over the session's
@@ -79,6 +79,15 @@
 // under connect-src), so browser viewers get an Open PDF button that opens
 // the PDF blob top-level instead, which works under this policy. The desktop
 // app frames the PDF in an iframe; its page has no CSP.
+//
+// Amendment 3 addition (Phase 11, 11-07 fix, 2026-11-21): worker-src 'self',
+// inserted after img-src. The Markdown preview parses in a dedicated Web
+// Worker that is terminated after 3 s, because marked can take minutes on
+// hostile emphasis and the parse would otherwise freeze the viewer's window.
+// Vite emits the worker as a hashed same-origin file under /app/assets/, so
+// 'self' is enough; blob: and data: workers stay blocked. Without the
+// directive, workers fall back to script-src 'self' (the same sources); naming
+// it pins the intent. No child-src, frame-src or object-src.
 //
 // Per-request composition (D-10): the wss:// origin is derived from
 // ws.BaseURL() on every request so it tracks the listener address
@@ -140,6 +149,8 @@ func (ws *WebServer) cspHeaders(next http.HandlerFunc) http.HandlerFunc {
 		b.WriteString("; ")
 		// Phase 11 Amendment 3: blob: for the image and SVG previews.
 		b.WriteString("img-src 'self' data: blob:; ")
+		// Phase 11 Amendment 3 (11-07 fix): the Markdown parse worker, same origin only.
+		b.WriteString("worker-src 'self'; ")
 		b.WriteString("font-src 'self'; ")
 		b.WriteString("base-uri 'none'; ")
 		b.WriteString("form-action 'self'; ")
