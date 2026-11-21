@@ -46,6 +46,10 @@ Portty tracks each shell's working directory through OSC 7 (zsh emits it with no
 - [Printed check] Full-row fallback for soft wraps built in 12-04 (orchestrator, revision round 2) — the viewer underlines wrapped paths, so the host must be able to serve them.
 - [Corrections] Sessions always run /bin/zsh -l ($SHELL is ignored, engine.go:178-198), so the non-zsh login-shell case can't occur at spawn. Every minted share is read,write (SHAR-02); read-only viewers exist only via legacy/hand-signed caps, but the refusal is still implemented and tested in both the pump and the hub.
 
+### Decided by the user after plan check (2026-11-21)
+- [Read-only] A read-only viewer cannot trigger a path click, but it does receive the preview a writable viewer's click triggers, the same as Phase 11's `portty open` (user: "Keep, record as risk"). Recorded as an accepted risk in 12-SECURITY-REVIEW.md; VM row C-05 records it.
+- [Hard breaks] A path split by a real newline in the output (e.g. `docs/dia` then `gram.png`) is never clickable; only soft wraps are joined (user: "Accept as known limit"). Joining across hard breaks would loosen the printed check.
+
 ### Claude's Discretion
 - Plan split, file names, test names, path-detection regex details, the notice's visual details within the macOS-native look.
 
