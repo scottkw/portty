@@ -40,6 +40,17 @@ export function peerTabParts(tab: { name: string; type?: string; peerHost?: stri
   return i === -1 ? null : { host: tab.name.slice(0, i), session: tab.name.slice(i + 3) }
 }
 
+/**
+ * INPT-04: a web-session tab's id. A peer tab carries its host (the same value as
+ * its snapshot key, peerSnapshotHost) because two Macs' daemons can hand out equal
+ * session ids, and those must never share a tab. '/' cannot appear in a host name
+ * or a hex session id, so no pair fakes another. The hostless web bootstrap tab
+ * keeps `__websession__<id>`.
+ */
+export function webSessionTabId(sessionId: string, host?: string): string {
+  return host ? `__websession__${host}/${sessionId}` : `__websession__${sessionId}`
+}
+
 /** A copy of `sessions` with session `id` renamed. */
 export function renameInList<T extends Named>(sessions: T[], id: string, name: string): T[] {
   return sessions.map((s) => (s.id === id ? { ...s, name } : s))

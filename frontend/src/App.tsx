@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import type { IProgressState } from '@xterm/addon-progress'
 import { TabBar, type Tab } from './components/TabBar'
 import { EmptyState } from './components/EmptyState'
-import { nextActiveTabId, renameInList, tabLabel } from './lib/tabs'
+import { nextActiveTabId, renameInList, tabLabel, webSessionTabId } from './lib/tabs'
 import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
 import { SettingsSheet, type Appearance } from './components/SettingsSheet'
@@ -793,10 +793,6 @@ function App(): React.ReactElement {
     ['available', 'downloading', 'verifying', 'revealed'].includes(updateStatus.state) &&
     updateStatus.latest !== dismissedUpdate
 
-  // Phase 155-03 — stable tab id for the web-session view. One view per
-  // session (find-or-focus semantics).
-  const webSessionTabId = (sessionId: string) => `__websession__${sessionId}`
-
   // Phase 155-03 — open (or focus) the WebShareSessionView tab for a web-share
   // session.
   //
@@ -809,8 +805,9 @@ function App(): React.ReactElement {
   // Portty 02-04: name is the tab label; peer tabs pass '<host> › <session>'.
   // Portty 04-06: peer tabs also pass peerHost and connectFailed; reopening an
   // existing tab with peer fields (a retry) replaces them.
+  // INPT-04: one view per host plus session (find-or-focus); the bootstrap tab has no host.
   const openWebSessionTab = useCallback((sessionId: string, baseURL?: string, capToken?: string, name = 'Session', peer?: { peerHost: string; connectHost?: string; connectFailed?: boolean }) => {
-    const tabId = webSessionTabId(sessionId)
+    const tabId = webSessionTabId(sessionId, peer ? peerSnapshotHost(peer) : undefined)
     const newTab: Tab = {
       id: tabId,
       name,
@@ -885,13 +882,17 @@ function App(): React.ReactElement {
   // asks the peer through the same-account routes (no code) and keeps the cap;
   // the returned URL gives the tab's origin and cap. A failure opens the tab
   // with the connect-failed banner, and clicking the row again retries.
-  // Portty 05-09: session ids whose connect is in flight. A repeat click
-  // during a slow connect only activates an existing tab.
+  // Portty 05-09: tab ids (host plus session, INPT-04) whose connect is in
+  // flight. A repeat click during a slow connect only activates an existing tab.
   const connectingRef = useRef(new Set<string>())
   const handleOpenRemoteSession = useCallback(
     async (session: AdaptedRemoteSessionInfo): Promise<void> => {
-      const existing = tabs.find((t) => t.id === webSessionTabId(session.id))
-      if (connectingRef.current.has(session.id)) {
+      const peerHost = session.hostname
+      const connectHost = session.peerDNSName || peerHost
+      // INPT-04: the same host value openWebSessionTab keys the tab by (peerSnapshotHost).
+      const tabId = webSessionTabId(session.id, connectHost)
+      const existing = tabs.find((t) => t.id === tabId)
+      if (connectingRef.current.has(tabId)) {
         if (existing) setActiveId(existing.id)
         return
       }
@@ -899,9 +900,7 @@ function App(): React.ReactElement {
         setActiveId(existing.id)
         return
       }
-      connectingRef.current.add(session.id)
-      const peerHost = session.hostname
-      const connectHost = session.peerDNSName || peerHost
+      connectingRef.current.add(tabId)
       let label = `${shortHost(peerHost)} › ${session.name}`
       try {
         const result = await ConnectPeerSession(connectHost, session.id)
@@ -914,9 +913,10 @@ function App(): React.ReactElement {
       } catch {
         // A rejected binding or a malformed URL is a failed connect, shown the same way.
       } finally {
-        connectingRef.current.delete(session.id)
+        connectingRef.current.delete(tabId)
       }
-      openWebSessionTab(session.id, undefined, undefined, label, { peerHost, connectFailed: true })
+      // connectHost too, so the re-click's retry finds this tab by the same id.
+      openWebSessionTab(session.id, undefined, undefined, label, { peerHost, connectHost, connectFailed: true })
     },
     [tabs, openWebSessionTab],
   )
@@ -942,7 +942,10 @@ function App(): React.ReactElement {
     setRemotePeers((prev) => prev.map((p) => (
       p.hostname === peerHost ? { ...p, sessions: p.sessions.filter((x) => x.id !== sessionId) } : p
     )))
-    setTabs((prev) => prev.map((t) => (t.id === webSessionTabId(sessionId) ? { ...t, shareStopped: true } : t)))
+    // INPT-04: host plus session; another Mac's tab with the same id stays live.
+    setTabs((prev) => prev.map((t) => (
+      t.type === 'web-session' && t.peerHost === peerHost && t.sessionId === sessionId ? { ...t, shareStopped: true } : t
+    )))
   }, [])
 
   const retryInit = useCallback(async () => {
@@ -1191,13 +1194,14 @@ function App(): React.ReactElement {
             // tab and the native web-guest bootstrap tab without touching the
             // shared Hub-modal classes (still used by HubInteractiveModal).
             <div className="terminal-wrapper" id={`tabpanel-${activeId}`} role="tabpanel" style={{ display: 'flex' }}>
-              {/* CR-03: key on wsSessionId so React remounts (drops stale
-                  plugin-config useState) when the active tab switches
-                  to a different remote session; the cap too, so a
-                  reconnect after a re-share dials afresh (WR-06). */}
+              {/* CR-03: key on the tab id (host plus session, INPT-04) so
+                  React remounts (drops stale plugin-config useState) when
+                  the active tab switches to a different remote session,
+                  even one with the same id on another Mac; the cap too, so
+                  a reconnect after a re-share dials afresh (WR-06). */}
               <ErrorBoundary label="web-session" resetKey={activeId}>
               <WebShareSessionView
-                key={`${wsSessionId}:${wsCapToken}`}
+                key={`${activeId}:${wsCapToken}`}
                 sessionId={wsSessionId}
                 capToken={wsCapToken}
                 baseURL={activeWebTab?.baseURL}
