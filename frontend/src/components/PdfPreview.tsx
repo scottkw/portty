@@ -32,6 +32,8 @@ export function PdfPreview({ url, name, webMode, onFail, autoFocus }: PdfPreview
       const doc = e.currentTarget.contentDocument
       if (doc && doc.contentType !== 'application/pdf') onFail()
     }
+    // index.html's frame-src blob: keeps a PDF link from navigating this frame away (11-REVIEW CR-01).
+    // No sandbox: it would null contentDocument (breaking the check above) and is unproven with the PDF view.
     return <iframe ref={focusRef} className="preview-pdf" src={url} title={name} onLoad={onLoad} />
   }
 

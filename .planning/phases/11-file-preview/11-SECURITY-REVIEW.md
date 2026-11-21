@@ -82,6 +82,30 @@ The Wails desktop page has no Content-Security-Policy and Wails injects none (S-
 
 Recorded as an observation, not a finding to fix in this phase.
 
+### Amendment (11-REVIEW CR-01): a frames-only desktop CSP
+
+The observation above missed one path. Wails v2.10.2 is the web view's `WKNavigationDelegate` but implements no navigation policy (`WailsContext.m:281`), and its `external` script-message handler accepts messages from any frame without checking `message.frameInfo` (`:249`, `:479-494`). So if a link in an untrusted PDF navigated the preview iframe to an attacker page, that page could blindly call no-argument bindings such as `main.App.QuitAll` (ends every session on an unreachable Mac), `RegenerateSigningKey` or `DownloadUpdate`.
+
+The desktop page now has a CSP, set by a `<meta http-equiv>` in `frontend/index.html`, and it restricts frames and workers only:
+
+```
+frame-src blob:; child-src blob:; worker-src 'self'
+```
+
+- `frame-src blob:` allows the PDF preview's `blob:` document and nothing else. WebKit checks the embedding document's `frame-src` on every load into a child frame, including a navigation the frame starts itself, so a PDF link to `https:`, `http:`, `data:` or `wails:` is blocked and the iframe keeps the PDF.
+- `child-src blob:` is the CSP2 fallback for the same frames.
+- `worker-src 'self'` keeps the Markdown worker loading. Without it, workers would fall back to `child-src blob:` and the worker (a hashed same-origin file, `wails://wails/assets/markdownWorker-*.js` on the desktop) would be blocked.
+- No `default-src`, `script-src`, `connect-src` or `style-src`, so Wails' injected `/wails/runtime.js` and `/wails/ipc.js`, its IPC and every existing load are unaffected. Wails' asset server parses and re-renders `index.html` (`processIndexHTML` in `pkg/assetserver/assetserver.go`): it only inserts its scripts at the top of `<head>` and keeps the meta.
+- The app has no other frame or worker: a grep of `frontend/src` finds only the PDF iframe and the Markdown worker.
+- On the share page the same meta combines with the header policy. Both must allow a load, so the header's `default-src 'none'` still blocks every frame and its `worker-src 'self'` is unchanged.
+- `PreviewRenderers.test.tsx` pins the meta: exactly one CSP meta in `index.html`, with exactly this content.
+
+**Not done: `sandbox` on the PDF iframe.** A sandboxed frame without `allow-same-origin` gets an opaque origin. Then `contentDocument` is null, so the load check that detects a non-PDF document stops working, and WebKit may refuse the PDF plugin in a sandboxed frame. 11-SPIKE.md proved the plain iframe only, so this is left out until a spike proves `sandbox` keeps the native PDF view.
+
+**Upstream:** the frame-agnostic `external` handler is a Wails v2 issue. Wails could check `message.frameInfo.isMainFrame` in `didReceiveScriptMessage` and deny subframe navigations to anything but `wails:` and `blob:`. Raise it with the Wails project. The CSP above closes the path in Portty regardless.
+
+**VM check needed (pending):** make a PDF with a `/URI` link to a loopback beacon, open it on the desktop and click the link. Expect 0 beacon requests and the iframe still showing the PDF. Also open a normal `.md` on the desktop and confirm it still renders, which proves `worker-src 'self'` matches the `wails://` origin.
+
 ## PREV-03: no file-by-path route
 
 There is no route that reads a file by path. File bytes travel only over the session's existing authenticated stream: the user's own shell process opens the file (`portty open`), and the daemon relays it to viewers. 11-04 pins this:
@@ -253,6 +277,7 @@ The menu item's administrator prompt appeared through `osascript` only when no l
 ### Residual risks
 
 - PDFs are parsed by the OS's PDF viewer inside WKWebView (desktop) and Safari's viewer (browser, top-level `blob:`); accepted (T-11-26).
+- Wails v2.10.2 accepts IPC messages from any frame. The desktop CSP's `frame-src blob:` stops a PDF link from loading a foreign page into the preview iframe (11-REVIEW CR-01, amendment above); the handler itself is an upstream issue.
 - DOMPurify is the desktop page's only XSS layer and needs periodic bumps; the move to 3.4.18 or later is tracked in `.planning/todos/pending/2026-11-21-dompurify-3418.md` (due 2026-11-28). Re-check its advisories at each milestone.
 - A legitimate Markdown file that takes marked more than 3 s shows Couldn't Show File.
 - `PORTTY_SESSION_ID` is inherited: inside `tmux` or `screen` started in another session, `portty open` targets the session that started the server (11-03 documented limit).

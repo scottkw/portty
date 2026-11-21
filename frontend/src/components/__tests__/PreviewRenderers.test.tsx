@@ -188,6 +188,15 @@ describe('PdfPreview (PREV-02, PREV-04)', () => {
     expect(onFail).toHaveBeenCalledTimes(calls)
   })
 
+  // 11-REVIEW CR-01: the desktop page has no CSP header, so index.html's meta is the only thing stopping a
+  // PDF link from navigating this iframe to a page that can post to Wails' IPC handler.
+  it('desktop: index.html restricts frames to blob: and nothing else (no default-src or script-src)', () => {
+    const html = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../index.html'), 'utf8')
+    const metas = [...html.matchAll(/<meta http-equiv="Content-Security-Policy" content="([^"]*)"/g)]
+    expect(metas).toHaveLength(1)
+    expect(metas[0][1]).toBe("frame-src blob:; child-src blob:; worker-src 'self'")
+  })
+
   it('desktop: autoFocus focuses the frame', () => {
     const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode={false} onFail={() => {}} autoFocus />)
     expect(document.activeElement).toBe(c.querySelector('iframe'))
