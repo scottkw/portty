@@ -102,11 +102,10 @@ func TestHubInput_QuotaBlocksOnlyThatConn(t *testing.T) {
 	}
 }
 
-// TestHubInput_HubCapBlocks (WR-01): two connections at their frame quota of
-// full-size frames fill the hub; a third gets one frame in, then blocks far
-// below its own quota until the PTY drains.
-func TestHubInput_HubCapBlocks(t *testing.T) {
-	h, r := inputHub(t)
+// fillHub fills h to InputHubMaxBytes: two connections at their frame quota
+// of full-size frames, topped up exactly by a third.
+func fillHub(t *testing.T, h *Hub) {
+	t.Helper()
 	frame := bytes.Repeat([]byte{'p'}, MaxInputPayload) // read-only, so shared
 	for _, c := range []*InputConn{h.OpenInput(nil), h.OpenInput(nil)} {
 		for i := 0; i < InputMaxFrames; i++ {
@@ -115,9 +114,26 @@ func TestHubInput_HubCapBlocks(t *testing.T) {
 			}
 		}
 	}
+	h.inMu.Lock()
+	rest := InputHubMaxBytes - h.inBytes
+	h.inMu.Unlock()
+	if err := h.OpenInput(nil).Write(bytes.Repeat([]byte{'p'}, rest)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestHubInput_HubCapBlocks (WR-01): with the hub full, a connection gets in
+// only its InputConnHubAllowance (two full-size frames), then blocks far
+// below its own quota until the PTY drains.
+func TestHubInput_HubCapBlocks(t *testing.T) {
+	h, r := inputHub(t)
+	fillHub(t, h)
+	frame := bytes.Repeat([]byte{'p'}, MaxInputPayload)
 	c := h.OpenInput(nil)
-	if _, ok := returnsWithin(time.Second, func() error { return c.Write(frame) }); !ok {
-		t.Fatal("a connection with nothing queued blocked on the hub cap")
+	for i := 0; i < 2; i++ {
+		if _, ok := returnsWithin(time.Second, func() error { return c.Write(frame) }); !ok {
+			t.Fatalf("frame %d within the allowance blocked on the hub cap", i)
+		}
 	}
 	blocked, returned := returnsWithin(100*time.Millisecond, func() error { return c.Write(frame) })
 	if returned {
@@ -131,6 +147,25 @@ func TestHubInput_HubCapBlocks(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Write still blocked after the PTY drained")
+	}
+}
+
+// TestHubInput_HubCapAllowsTyping (WR-05): another connection's backlog
+// holds the hub at its cap; a viewer that is only typing keeps queueing
+// keystrokes without blocking, so its pump keeps reading and answering pings.
+func TestHubInput_HubCapAllowsTyping(t *testing.T) {
+	h, _ := inputHub(t)
+	fillHub(t, h)
+	c := h.OpenInput(nil)
+	if _, ok := returnsWithin(2*time.Second, func() error {
+		for i := 0; i < 100; i++ {
+			if err := c.Write([]byte{'k'}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); !ok {
+		t.Fatal("small writes blocked behind another connection's backlog")
 	}
 }
 

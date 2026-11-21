@@ -26,19 +26,24 @@ import (
 // that already left (RevokeWebViewers, CR-01/CR-02).
 //
 // shortcut: past InputMaxFrames / InputMaxBytes queued for one connection, or
-// InputHubMaxBytes for the whole hub, a pump blocks again, so a paste over
-// the quota into a slow reader can still get that viewer dropped by the
-// heartbeat (the client's partial-paste notice then shows); raise the quota or
-// spill to disk if that is ever hit for real.
+// past its InputConnHubAllowance once the hub holds InputHubMaxBytes, a pump
+// blocks again and stops reading, so the heartbeat can drop it with the
+// frames still unread in its socket (the client's partial-paste notice shows
+// only for split pastes). The hub term means that can happen to a viewer
+// with over 64 KiB queued because of another connection's backlog; raise the
+// quota or spill to disk if that is ever hit for real.
 
 const (
 	InputMaxFrames = 1024     // per connection, queued plus in flight
 	InputMaxBytes  = 32 << 20 // per connection; frames are <= MaxInputPayload, so frames bind first
 	// InputHubMaxBytes bounds the whole hub (WR-01): every connection and every
 	// reconnect has its own quota, and closed ones keep theirs until drained.
-	// A connection with nothing queued may still add one frame, so the bound
-	// is this plus one frame per connection.
-	InputHubMaxBytes = 64 << 20
+	// Each connection may queue InputConnHubAllowance past it, so typing never
+	// waits on another connection's backlog (WR-05); the bound is this plus
+	// InputConnHubAllowance per connection (a frame is <= MaxInputPayload,
+	// below the allowance).
+	InputHubMaxBytes      = 64 << 20
+	InputConnHubAllowance = 64 << 10
 )
 
 // ErrInputClosed: the hub's input writer stopped (PTY write failed or the hub
@@ -86,7 +91,8 @@ func (c *InputConn) Write(b []byte) error {
 	defer h.inMu.Unlock()
 	h.startInputLocked()
 	for !h.inDead && !c.revoked() && (c.frames >= InputMaxFrames ||
-		(c.frames > 0 && (c.bytes+len(b) > InputMaxBytes || h.inBytes+len(b) > InputHubMaxBytes))) {
+		(c.frames > 0 && (c.bytes+len(b) > InputMaxBytes ||
+			(c.bytes+len(b) > InputConnHubAllowance && h.inBytes+len(b) > InputHubMaxBytes)))) {
 		h.inCond.Wait() // woken after each written frame, on death and on revoke
 	}
 	if h.inDead {
