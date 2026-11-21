@@ -84,6 +84,7 @@ type Preview struct {
 
 // PreviewSend reports a started preview: how many viewers it targets, and a
 // channel closed once every one of them finished (ok, aborted, left or ended).
+// handlePreview doesn't wait on Done; tests do, to know a send has settled (11-REVIEW IN-07: kept).
 type PreviewSend struct {
 	Viewers int
 	Done    <-chan struct{}
@@ -110,6 +111,11 @@ func MakePreviewEnd(id uint32, status byte) []byte {
 	return f
 }
 
+// The Parse* decoders have no production caller (the peer proxy copies frames
+// verbatim; the frontend parses them). They stay exported because relay and
+// daemon tests both decode frames with them against the shared wire fixture,
+// and a _test.go helper can't cross packages (11-REVIEW IN-07: kept).
+//
 // ParsePreviewHeader decodes a header frame.
 func ParsePreviewHeader(frame []byte) (PreviewHeader, error) {
 	var hd PreviewHeader
