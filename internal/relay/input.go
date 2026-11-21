@@ -22,7 +22,8 @@ import (
 // The writer outlives the socket: a pump that exits (InputConn.Close) leaves
 // its queued frames to be delivered. The queue is dropped only when the PTY
 // write fails or the hub shuts down; blocked pumps then get ErrInputClosed.
-// A revoked viewer's frames are dropped too (RevokeWebViewers, CR-01).
+// A revoked share's web frames are dropped too, including those of viewers
+// that already left (RevokeWebViewers, CR-01/CR-02).
 //
 // shortcut: past InputMaxFrames / InputMaxBytes queued for one connection, or
 // InputHubMaxBytes for the whole hub, a pump blocks again, so a paste over
@@ -56,6 +57,7 @@ type InputConn struct {
 	h             *Hub
 	sub           *Subscriber // nil in tests; its inputRevoked drops this conn's input
 	id            uint64      // Subscriber.ID, for diag lines only
+	epoch         uint64      // hub.webEpoch when opened (CR-02)
 	frames, bytes int         // queued plus in flight
 	closed        bool        // the pump is gone; queued frames are still delivered
 	backlogged    bool        // closed with frames queued (the drained line follows)
@@ -64,7 +66,9 @@ type InputConn struct {
 // OpenInput returns a handle for one read pump. sub only tags diag lines with
 // its conn id and may be nil.
 func (h *Hub) OpenInput(sub *Subscriber) *InputConn {
-	c := &InputConn{h: h, sub: sub}
+	h.inMu.Lock()
+	c := &InputConn{h: h, sub: sub, epoch: h.webEpoch}
+	h.inMu.Unlock()
 	if sub != nil {
 		c.id = sub.ID
 	}
@@ -116,13 +120,22 @@ func (c *InputConn) Close() {
 	}
 }
 
-func (c *InputConn) revoked() bool { return c.sub != nil && c.sub.inputRevoked }
+// revoked: a web conn opened before the last revoke, whether or not its
+// viewer is still subscribed (CR-02), or whose viewer was subscribed at it
+// (Join before the revoke, OpenInput after). Local input is never revoked.
+// Origin never changes after Subscribe, so reading it here is safe.
+func (c *InputConn) revoked() bool {
+	return c.sub != nil && c.sub.Origin == "web" &&
+		(c.epoch < c.h.webEpoch || c.sub.inputRevoked)
+}
 
-// revokeInput marks subs' input revoked and drops their queued frames
-// (CR-01). It returns what was dropped.
+// revokeInput drops every queued web frame of the hub, from current and
+// departed viewers alike, and marks subs' input revoked so frames their pumps
+// queue later are dropped too (CR-01, CR-02). It returns what was dropped.
 func (h *Hub) revokeInput(subs []*Subscriber) (frames, bytes int) {
 	h.inMu.Lock()
 	defer h.inMu.Unlock()
+	h.webEpoch++
 	for _, s := range subs {
 		s.inputRevoked = true
 	}

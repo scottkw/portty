@@ -269,3 +269,96 @@ func TestHubInput_RevokeDropsBacklog(t *testing.T) {
 		return idle && queued == 0
 	}, "revoked input still queued")
 }
+
+// waitInFlight waits until the writer has popped every queued frame (the
+// last one is then in the blocked PTY write).
+func waitInFlight(t *testing.T, h *Hub) {
+	t.Helper()
+	testutil.WaitFor(t, 2*time.Second, func() bool {
+		h.inMu.Lock()
+		defer h.inMu.Unlock()
+		return h.inHead == len(h.inq)
+	}, "the writer never took the queued frame")
+}
+
+// TestHubInput_RevokeDropsDepartedBacklog (CR-02): a web viewer that closed
+// its tab (pump closed, unsubscribed) with input queued is no longer a
+// revoke target, but Stop Sharing still drops its backlog. A local viewer's
+// input is still written, and a web viewer that joins after the revoke (a
+// new share) types normally.
+func TestHubInput_RevokeDropsDepartedBacklog(t *testing.T) {
+	h, r := inputHub(t)
+	web := &Subscriber{Msgs: make(chan []byte, 8), Origin: "web", Kick: func(string) {}}
+	local := &Subscriber{Msgs: make(chan []byte, 8), Origin: "local"}
+	h.Subscribe(web)
+	h.Subscribe(local)
+	wc, lc := h.OpenInput(web), h.OpenInput(local)
+	if err := wc.Write([]byte("first|")); err != nil {
+		t.Fatal(err)
+	}
+	waitInFlight(t, h)
+	for _, w := range []struct {
+		c *InputConn
+		b string
+	}{{wc, "w2|"}, {lc, "local|"}, {wc, "w3|"}} {
+		if err := w.c.Write([]byte(w.b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wc.Close()
+	h.Unsubscribe(web)
+
+	h.RevokeWebViewers(CloseReasonShareStopped)
+
+	next := &Subscriber{Msgs: make(chan []byte, 8), Origin: "web", Kick: func(string) {}}
+	h.Subscribe(next)
+	if err := h.OpenInput(next).Write([]byte("new|")); err != nil {
+		t.Fatal(err)
+	}
+	want := []byte("first|local|new|")
+	got := make([]byte, len(want))
+	if _, err := io.ReadFull(r, got); err != nil {
+		t.Fatalf("read pipe: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("PTY got %q, want %q", got, want)
+	}
+}
+
+// TestHubInput_RevokeDropsBlockedPumpAfterUnsubscribe (CR-02): the write pump
+// ended and the handler unsubscribed while the read pump is still blocked in
+// Write at quota. The revoke wakes it with the frame dropped, and its queued
+// frames go too: after the in-flight frame the PTY gets only local input.
+func TestHubInput_RevokeDropsBlockedPumpAfterUnsubscribe(t *testing.T) {
+	h, r := inputHub(t)
+	web := &Subscriber{Msgs: make(chan []byte, 8), Origin: "web", Kick: func(string) {}}
+	h.Subscribe(web)
+	wc := h.OpenInput(web)
+	fillToQuota(t, wc)
+	blocked, returned := returnsWithin(100*time.Millisecond, func() error { return wc.Write([]byte{'x'}) })
+	if returned {
+		t.Fatalf("Write at quota returned (%v), want it to block", <-blocked)
+	}
+	h.Unsubscribe(web)
+
+	h.RevokeWebViewers(CloseReasonShareStopped)
+	select {
+	case err := <-blocked:
+		if err != nil {
+			t.Fatalf("blocked Write after revoke = %v, want nil (dropped)", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("blocked Write never woke on the revoke")
+	}
+	if err := h.OpenInput(nil).Write([]byte("L")); err != nil {
+		t.Fatal(err)
+	}
+	want := []byte("qL") // the in-flight frame, then the local one
+	got := make([]byte, len(want))
+	if _, err := io.ReadFull(r, got); err != nil {
+		t.Fatalf("read pipe: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("PTY got %q, want %q", got, want)
+	}
+}

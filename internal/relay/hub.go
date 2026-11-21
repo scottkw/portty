@@ -108,7 +108,9 @@ type Hub struct {
 	// inq[inHead:] is the queue; inBytes counts queued plus in-flight bytes;
 	// inDead: the writer stopped (write error or done) and the queue is gone;
 	// inStarted: the writer and its done watcher are running; inHeld: the
-	// writer takes no frame until ReleaseInput (WR-02). All under inMu.
+	// writer takes no frame until ReleaseInput (WR-02); webEpoch counts
+	// revokeInput calls, so web conns opened before one are revoked (CR-02).
+	// All under inMu.
 	inMu      sync.Mutex
 	inCond    *sync.Cond
 	inq       []inputReq
@@ -117,6 +119,7 @@ type Hub struct {
 	inDead    bool
 	inStarted bool
 	inHeld    bool
+	webEpoch  uint64
 
 	// ptyCols, ptyRows: current PTY dimensions. They move only to the grid
 	// target (wantCols, wantRows), which only a claim or the bootstrap sets
@@ -457,9 +460,10 @@ func (h *Hub) RevokeWebViewers(reason string) {
 		}
 	}
 	h.mu.Unlock()
-	// CR-01: revoked access must stop the shell receiving this viewer's input,
-	// so its queued frames go before the kick (only one already in the PTY
-	// write can still land). A plain disconnect keeps its backlog (INPT-01).
+	// CR-01/CR-02: revoked access must stop the shell receiving web input, so
+	// every queued web frame goes before the kick, including those of viewers
+	// that already left (only one already in the PTY write can still land).
+	// A plain disconnect without a revoke keeps its backlog (INPT-01).
 	frames, bytes := h.revokeInput(targets)
 	log.Printf("viewer-diag: revoke session=%s reason=%q web=%d input-dropped frames=%d bytes=%d", DiagID(h.sessionID), reason, len(targets), frames, bytes)
 
