@@ -576,10 +576,12 @@ describe('empty state (LOOK-01)', () => {
   })
 
   // Quick 261116-ku9 R1: in-app remote tabs use the viewer's font; web guests self-fetch the host's.
+  // INPT-06: the desktop size is the peer tab's own (fontSizes by tab id, default terminalFont.size).
   it('passes the viewer font to WebShareSessionView only on the desktop', () => {
     const view = raw.slice(raw.indexOf('<WebShareSessionView'), raw.indexOf('/>', raw.indexOf('<WebShareSessionView')))
     expect(view).toContain("fontFamily={mode !== 'web' ? terminalFontStack : undefined}")
-    expect(view).toContain("fontSize={mode !== 'web' ? terminalFont.size : undefined}")
+    expect(view).toContain("fontSize={mode !== 'web' && activeWebTab ? fontSizes[activeWebTab.id] ?? terminalFont.size : undefined}")
+    expect(view).toContain("onFontSizeChange={mode !== 'web' && activeWebTab ? (delta) => handleFontSizeChange(activeWebTab.id, delta) : undefined}")
   })
 
   it('renders EmptyState in desktop mode once init has run and no tab is open', () => {
