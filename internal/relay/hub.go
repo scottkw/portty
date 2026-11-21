@@ -612,6 +612,12 @@ func (h *Hub) sizeClient(sub *Subscriber, cols, rows int, claim bool) error {
 		// Frozen: the PTY grid and the emulator stay as exported. Thaw
 		// re-runs applyGridLocked, so a claim during a rolled-back freeze
 		// still lands.
+		// shortcut: a committed handoff never thaws this hub and HubState
+		// carries no target or owner, so a claim (or NoteTyping's) made while
+		// frozen is lost; the viewer shows the old grid scaled until it claims
+		// again. Exporting the target would not cover claims after Export;
+		// have TerminalPanel re-send its last unanswered claim on reconnect if
+		// this shows up (IN-01).
 		h.mu.Unlock()
 		return nil
 	}
