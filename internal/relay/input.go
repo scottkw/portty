@@ -20,6 +20,7 @@ import (
 // The writer outlives the socket: a pump that exits (InputConn.Close) leaves
 // its queued frames to be delivered. The queue is dropped only when the PTY
 // write fails or the hub shuts down; blocked pumps then get ErrInputClosed.
+// A revoked viewer's frames are dropped too (RevokeWebViewers, CR-01).
 //
 // shortcut: past InputMaxFrames / InputMaxBytes queued for one connection its
 // pump blocks again, so a paste over 32 MiB into a slow reader can still get
@@ -44,16 +45,17 @@ type inputReq struct {
 // under hub.inMu.
 type InputConn struct {
 	h             *Hub
-	id            uint64 // Subscriber.ID, for diag lines only
-	frames, bytes int    // queued plus in flight
-	closed        bool   // the pump is gone; queued frames are still delivered
-	backlogged    bool   // closed with frames queued (the drained line follows)
+	sub           *Subscriber // nil in tests; its inputRevoked drops this conn's input
+	id            uint64      // Subscriber.ID, for diag lines only
+	frames, bytes int         // queued plus in flight
+	closed        bool        // the pump is gone; queued frames are still delivered
+	backlogged    bool        // closed with frames queued (the drained line follows)
 }
 
 // OpenInput returns a handle for one read pump. sub only tags diag lines with
 // its conn id and may be nil.
 func (h *Hub) OpenInput(sub *Subscriber) *InputConn {
-	c := &InputConn{h: h}
+	c := &InputConn{h: h, sub: sub}
 	if sub != nil {
 		c.id = sub.ID
 	}
@@ -70,11 +72,14 @@ func (c *InputConn) Write(b []byte) error {
 	h.inMu.Lock()
 	defer h.inMu.Unlock()
 	h.startInputLocked()
-	for !h.inDead && (c.frames >= InputMaxFrames || (c.frames > 0 && c.bytes+len(b) > InputMaxBytes)) {
-		h.inCond.Wait() // woken after each written frame and on death
+	for !h.inDead && !c.revoked() && (c.frames >= InputMaxFrames || (c.frames > 0 && c.bytes+len(b) > InputMaxBytes)) {
+		h.inCond.Wait() // woken after each written frame, on death and on revoke
 	}
 	if h.inDead {
 		return ErrInputClosed
+	}
+	if c.revoked() {
+		return nil // dropped; the kick closes the socket and ends the pump
 	}
 	h.inq = append(h.inq, inputReq{c, b})
 	c.frames++
@@ -97,6 +102,35 @@ func (c *InputConn) Close() {
 		c.backlogged = true
 		log.Printf("viewer-diag: input backlog session=%s conn=%d frames=%d bytes=%d", DiagID(h.sessionID), c.id, c.frames, c.bytes)
 	}
+}
+
+func (c *InputConn) revoked() bool { return c.sub != nil && c.sub.inputRevoked }
+
+// revokeInput marks subs' input revoked and drops their queued frames
+// (CR-01). It returns what was dropped.
+func (h *Hub) revokeInput(subs []*Subscriber) (frames, bytes int) {
+	h.inMu.Lock()
+	defer h.inMu.Unlock()
+	for _, s := range subs {
+		s.inputRevoked = true
+	}
+	q := h.inq[h.inHead:]
+	kept := q[:0]
+	for _, r := range q {
+		if r.c.revoked() {
+			r.c.frames--
+			r.c.bytes -= len(r.data)
+			h.inBytes -= len(r.data)
+			frames++
+			bytes += len(r.data)
+			continue
+		}
+		kept = append(kept, r)
+	}
+	clear(q[len(kept):])
+	h.inq = h.inq[:h.inHead+len(kept)]
+	h.inCond.Broadcast()
+	return frames, bytes
 }
 
 // WaitInputIdle waits up to timeout for every queued input byte to reach the

@@ -62,6 +62,10 @@ type Subscriber struct {
 	// slowLogged: the first slow kick has been logged. Read/written under hub.mu.
 	slowLogged bool
 
+	// inputRevoked: RevokeWebViewers dropped this viewer's queued input and
+	// every frame its pump queues from now on (CR-01). Under hub.inMu.
+	inputRevoked bool
+
 	// replaying: Join set it and the caller is still writing the replay, so
 	// frames go to pending (capped at ReplayPendingMax bytes) instead of Msgs,
 	// which nothing drains yet (WR-01). Read/written under hub.mu.
@@ -450,7 +454,11 @@ func (h *Hub) RevokeWebViewers(reason string) {
 		}
 	}
 	h.mu.Unlock()
-	log.Printf("viewer-diag: revoke session=%s reason=%q web=%d", DiagID(h.sessionID), reason, len(targets))
+	// CR-01: revoked access must stop the shell receiving this viewer's input,
+	// so its queued frames go before the kick (only one already in the PTY
+	// write can still land). A plain disconnect keeps its backlog (INPT-01).
+	frames, bytes := h.revokeInput(targets)
+	log.Printf("viewer-diag: revoke session=%s reason=%q web=%d input-dropped frames=%d bytes=%d", DiagID(h.sessionID), reason, len(targets), frames, bytes)
 
 	for _, sub := range targets {
 		if sub.Kick != nil {

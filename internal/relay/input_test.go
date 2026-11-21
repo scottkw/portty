@@ -189,3 +189,51 @@ func TestHubInput_CloseKeepsBacklog(t *testing.T) {
 		return idle && queued == 0
 	}, "input never went idle after the backlog drained")
 }
+
+// TestHubInput_RevokeDropsBacklog (CR-01): Stop Sharing drops a web viewer's
+// queued input, so after the revoke only the frame already in the PTY write
+// lands; frames its pump queues later are dropped too. A local viewer's
+// queued input on the same hub is still written, in order.
+func TestHubInput_RevokeDropsBacklog(t *testing.T) {
+	h, r := inputHub(t)
+	web := &Subscriber{Msgs: make(chan []byte, 8), Origin: "web", Kick: func(string) {}}
+	local := &Subscriber{Msgs: make(chan []byte, 8), Origin: "local"}
+	h.Subscribe(web)
+	h.Subscribe(local)
+	wc, lc := h.OpenInput(web), h.OpenInput(local)
+
+	if err := wc.Write([]byte("first|")); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WaitFor(t, 2*time.Second, func() bool { // the writer popped it: in flight
+		h.inMu.Lock()
+		defer h.inMu.Unlock()
+		return h.inHead == len(h.inq)
+	}, "the writer never took the first frame")
+	for _, w := range []struct {
+		c *InputConn
+		b string
+	}{{wc, "w2|"}, {lc, "local|"}, {wc, "w3|"}} {
+		if err := w.c.Write([]byte(w.b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	h.RevokeWebViewers(CloseReasonShareStopped)
+	if err := wc.Write([]byte("after|")); err != nil {
+		t.Fatalf("Write after revoke = %v, want nil (dropped)", err)
+	}
+
+	want := []byte("first|local|")
+	got := make([]byte, len(want))
+	if _, err := io.ReadFull(r, got); err != nil {
+		t.Fatalf("read pipe: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("PTY got %q, want %q", got, want)
+	}
+	testutil.WaitFor(t, 2*time.Second, func() bool {
+		idle, queued := h.WaitInputIdle(0)
+		return idle && queued == 0
+	}, "revoked input still queued")
+}
