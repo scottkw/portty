@@ -1,6 +1,9 @@
 package relay
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // HistoryMaxLines and HistoryMaxBytes bound the hub's rendered-line history
 // (SHAR-07, Phase 5 scrollback decision: about 10,000 lines, memory only).
@@ -27,6 +30,11 @@ type History struct {
 	bytes    int // total bytes of the retained lines
 	maxLines int
 	maxBytes int
+	// pushed counts every Push ever made, including lines trimmed since and
+	// lines dropped at once. Clear does not reset it: the retained line i has
+	// absolute output row FirstRow()+i, which the working-directory log
+	// (cwd.go) keys on.
+	pushed uint64
 }
 
 // NewHistory returns an empty History holding at most maxLines lines and
@@ -39,6 +47,7 @@ func NewHistory(maxLines, maxBytes int) *History {
 // single line over the byte cap is dropped too. wrapped means line continues
 // onto the next line pushed.
 func (h *History) Push(line string, wrapped bool) {
+	h.pushed++
 	h.lines = append(h.lines, line)
 	h.wrapped = append(h.wrapped, wrapped)
 	h.bytes += len(line)
@@ -65,6 +74,21 @@ func (h *History) Clear() {
 
 // Len returns the number of retained lines.
 func (h *History) Len() int { return len(h.lines) - h.head }
+
+// Pushed returns the number of lines ever pushed: the absolute row of the
+// first line the next Push adds, and of the main screen's row 0 once the
+// emulator's scrollback is drained.
+func (h *History) Pushed() uint64 { return h.pushed }
+
+// FirstRow returns the absolute row of the oldest retained line.
+func (h *History) FirstRow() uint64 { return h.pushed - uint64(h.Len()) }
+
+// Snapshot copies the retained lines and their wrap marks, oldest first, with
+// the absolute row of lines[0]. The caller takes it under emuMu and may search
+// it after releasing the lock.
+func (h *History) Snapshot() (lines []string, wrapped []bool, firstRow uint64) {
+	return slices.Clone(h.lines[h.head:]), slices.Clone(h.wrapped[h.head:]), h.FirstRow()
+}
 
 // EndsWrapped reports whether the newest line continues onto what follows the
 // history (the screen's first row).

@@ -196,6 +196,10 @@ type Hub struct {
 	// (charstate.go, IN-08), which every replay body ends with. Hub-owned so
 	// it survives rebuilds. Only touched under emuMu.
 	cs charState
+	// cwds is the working-directory log (cwd.go, PATH-01): OSC 7 reports
+	// keyed to absolute output rows. Hub-owned so it survives rebuilds. Only
+	// touched under emuMu.
+	cwds cwdLog
 }
 
 // altScreenEnterSeq is the DEC private-mode sequence a full-screen TUI emits
@@ -1338,6 +1342,7 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 		clear(h.modes)
 		h.mainRegion = [2]int{}
 		h.cs.reset()
+		h.cwds.clear() // rows dropped here go uncounted; the next prompt reports again
 		emu.ClearScrollback()
 		return false
 	})
@@ -1353,6 +1358,16 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 	}
 	emu.RegisterOscHandler(8, func(data []byte) bool {
 		h.cs.osc8(data)
+		return false
+	})
+	// OSC 7 (PATH-01): the shell's directory, against the absolute row the
+	// cursor is on (cwd.go). A full-screen program is not the shell, so the
+	// alt screen's reports are ignored.
+	emu.RegisterOscHandler(7, func(data []byte) bool {
+		if dir, ok := parseOSC7(data); ok && !emu.IsAltScreen() {
+			row := h.history.Pushed() + uint64(emu.ScrollbackLen()) + uint64(emu.CursorPosition().Y)
+			h.cwds.add(row, dir, h.history.FirstRow())
+		}
 		return false
 	})
 	return emu
