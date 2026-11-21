@@ -35,7 +35,8 @@ const (
 	cwdLogMaxRecords = 1024
 	cwdLogMaxBytes   = 64 << 10
 
-	// osc7MaxPayload and cwdMaxPathBytes bound what one report may carry.
+	// osc7MaxPayload bounds the URL after "7;"; cwdMaxPathBytes bounds the
+	// decoded path.
 	osc7MaxPayload  = 2048
 	cwdMaxPathBytes = 1024
 )
