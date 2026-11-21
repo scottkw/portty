@@ -125,12 +125,19 @@ Plans:
   4. Path clicks keep the PREV-03 rule. The request rides that session's authenticated stream, the host resolves it against that session's own working directory, and the host previews only a path that the session itself printed, so there is still no way to read a file by arbitrary path. The security review records this. (PATH-02; keeps PREV-03)
 **Plans**: 7 plans
 Plans:
+**Wave 1**
 - [ ] 12-01-PLAN.md — Move `portty open`'s file checks into the leaf package internal/previewfile (CLI lines unchanged) and CleanPreviewName into relay (PATH-02)
 - [ ] 12-02-PLAN.md — zsh ZDOTDIR shim: one embedded .zshenv (restore ZDOTDIR, source the user's .zshenv, chpwd + precmd + initial OSC 7 to /dev/tty), written atomically and verified before ZDOTDIR is set, real-zsh startup matrix (PATH-01)
 - [ ] 12-03-PLAN.md — Hub cwd tracking: OSC 7 parsed in the live emulator, bounded row-keyed cwd log interleaved with History, carried across upgrade handoffs (PATH-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 12-04-PLAN.md — Hub.PathClick on the session stream: MsgPathClick 0x13, read-only refusal, printed-token check over History + screen, cwd-at-print resolution, previewfile checks, SendPreview with FocusSub, unicast notices, capability bit, source gate, shared fixture (PATH-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 12-05-PLAN.md — Share server arm (peer and browser viewers; read-only capabilities refused), API 4 with PathClickAPI, 12-SECURITY-REVIEW.md recording the PREV-03 amendment (PATH-02)
 - [ ] 12-06-PLAN.md — Viewer: path link provider in lib/pathLinks.ts (fixture-pinned detection, wrapped rows, modifier-held underline), sendPathClick gated by the host's bit, the two fixed notices, the Phase 95 guard test edited deliberately (PATH-02)
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 12-07-PLAN.md — Gate once, TESTING.md (Sections 2, 4, Category BB M-128..M-135), Tart VM checks for SC1-SC4 (local, peer, Safari, read-only, notices, shell integrity, TUI, wrap, upgrades), security review verdict (PATH-01, PATH-02)
 **UI hint**: yes
 

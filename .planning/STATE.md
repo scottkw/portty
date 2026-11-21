@@ -4,16 +4,16 @@ milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
 current_phase: 12
 current_phase_name: File Path Click
-status: planning
+status: executing
 stopped_at: Phase 11 complete, ready to plan Phase 12
-last_updated: "2026-11-21T20:04:51.688Z"
+last_updated: "2026-11-21T22:08:07.914Z"
 last_activity: 2026-11-21
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
-state_head: 070119060c185d8c451854876761a5879feef449
+state_head: f1101bb81b5d378a784a7da2b6223f68d347a2fa
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 24
+  total_plans: 31
   completed_plans: 24
   percent: 50
 ---
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 
 ## Current Position
 
-Phase: 12 — File Path Click
+Phase: 12 (File Path Click) — READY TO EXECUTE
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-11-21 — Phase 11 complete, transitioned to Phase 12
 
 
@@ -355,10 +355,10 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-20
+Last session: 2026-11-21T20:18:15.959Z
 Stopped at: Phase 11 complete, ready to plan Phase 12
 Resume: 1) branch `worktree-agent-a725d63afb58130ac` holds `cdf95204` (review iteration 2 doc) and `d9d4764c` (WR-02 it2 fix, gates NOT yet run); rebase it onto gsd/v1.2 and fix the remaining four (WR-01 it2, IN-01..03 it2) with gsd-code-fixer, then gates. 2) Re-run TestHandoffIT plus V-01, V-02 and V-05b on the Tart VMs (both stopped; start with `tart run --no-graphics <name> &`). 3) gsd-verifier, mark UPGR-01..05, phase.complete 9. Then Phase 10.
-Resume file: None
+Resume file: .planning/phases/12-file-path-click/12-UI-SPEC.md
 
 ## Operator Next Steps
 
