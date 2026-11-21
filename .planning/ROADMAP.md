@@ -79,7 +79,15 @@ Plans:
   4. After a daemon error and Retry, no snapshot of a removed peer tab is left behind. Two Macs that hand out the same session id open as two separate tabs, each rejoining with its own delta. (INPT-04)
   5. `TestExitEvent_ListSessions_ExitCodePopulatedForStopped` passes in repeated full-package `go test -race -count=20 ./internal/daemon/` runs, and the full `-race` suite passes with nothing skipped. (INPT-05)
   6. The viewer you're typing on sets the session's size. On the home VM, Cmd+ in a peer tab on an office session makes the shell reflow to the home grid (`tput cols` changes, the text gets bigger), and so does resizing the home window. Typing in the office local tab hands the size back to the office Mac. The same works for a browser viewer and `portty attach`. Reported on v1.1.0. (INPT-06)
-**Plans**: TBD
+**Plans**: 7 plans
+Plans:
+- [ ] 10-01-PLAN.md — Wave 1: hermetic exit-code ListSessions test, reproduced and proven with full-package `-race -count=20` (INPT-05)
+- [ ] 10-02-PLAN.md — Wave 1: peer tabs keyed by host plus session everywhere, Retry drops removed peer tabs' snapshots, host-aware sidebar highlight (INPT-04)
+- [ ] 10-03-PLAN.md — Wave 1: hub-owned input FIFO with per-connection quotas for both read pumps, owed pongs via a shared write pump, proxy backpressure test, handoff input wait, pong-ack comments, browser-viewer notice vitest (INPT-01, INPT-02, INPT-03)
+- [ ] 10-04-PLAN.md — Wave 2: grid owner replaces min-among-local, claim bit on MsgResize2, clamp and read-only gate, web claims, settle window removed with a rejoin test, no fallback grid push on local join (INPT-06)
+- [ ] 10-05-PLAN.md — Wave 2: viewers follow the server grid and report their own fit, claims on window resize and zoom, per-tab Cmd+ for peer tabs (INPT-06)
+- [ ] 10-06-PLAN.md — Wave 3: typed-input classifier and typing claims in both pumps, `portty attach` SIGWINCH claim, end-to-end attach test through the proxy (INPT-06)
+- [ ] 10-07-PLAN.md — Wave 4: full gate, TESTING.md, and Tart VM rows for SC1-SC3 and SC6 plus the Phase 9 V-02 re-run (all INPT)
 **UI hint**: no
 
 ### Phase 11: File Preview
