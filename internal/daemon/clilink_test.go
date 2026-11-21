@@ -293,7 +293,7 @@ func TestCLILink_SurvivesZshLoginPathHelper(t *testing.T) {
 	if bi < 0 || ui < 0 || bi < ui {
 		t.Errorf("login PATH = %q, want %q after /usr/bin", lines[0], binDir)
 	}
-	if want := filepath.Join(binDir, "portty"); lines[1] != want {
+	if want := firstPortty(dirs); lines[1] != want {
 		t.Errorf("command -v portty = %q, want %q", lines[1], want)
 	}
 }
@@ -336,7 +336,20 @@ func TestCLILink_SurvivesZshLoginPathHelperWithShim(t *testing.T) {
 	if bi < 0 || ui < 0 || bi < ui {
 		t.Errorf("login PATH = %q, want %q after /usr/bin", lines[0], binDir)
 	}
-	if want := filepath.Join(binDir, "portty"); lines[1] != want {
+	if want := firstPortty(dirs); lines[1] != want {
 		t.Errorf("command -v portty = %q, want %q", lines[1], want)
 	}
+}
+
+// firstPortty is the portty a login shell should find on dirs: ours in the
+// bin dir, unless an installed copy (/usr/local/bin/portty from Install
+// Command-Line Tool) comes earlier, as path_helper puts it before ours.
+func firstPortty(dirs []string) string {
+	for _, d := range dirs {
+		p := filepath.Join(d, "portty")
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+			return p
+		}
+	}
+	return ""
 }
