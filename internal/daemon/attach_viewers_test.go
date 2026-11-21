@@ -518,10 +518,13 @@ func TestCLIAttach_ReconnectsWithDelta(t *testing.T) {
 func TestCLIAttach_IdleNoReconnecting(t *testing.T) {
 	s := newAttachScene(t)
 	tm := fastTiming
-	tm.PingEvery, tm.DeadAfter = 50*time.Millisecond, 200*time.Millisecond
+	// 200 ms ping, 1 s watchdog, idle 3x the watchdog: under -race a host stall of a few hundred ms
+	// tripped the old 200 ms watchdog with pongs flowing (10-07 gate); a CLI that ignored pongs still
+	// goes reconnecting within the 3 s idle.
+	tm.PingEvery, tm.DeadAfter = 200*time.Millisecond, time.Second
 	cli := s.runCLI(t, s.dialCLI(t, 80, 24), attach.RunOptions{Timing: tm})
 
-	time.Sleep(time.Second)
+	time.Sleep(3 * tm.DeadAfter)
 	if cli.stateSeen("reconnecting") {
 		t.Error("idle CLI with pongs flowing went reconnecting")
 	}
