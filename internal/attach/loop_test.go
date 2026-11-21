@@ -251,6 +251,8 @@ func TestRun_AbruptCloseRetries(t *testing.T) {
 	}, nil)
 	r := startRun(t, f, RunOptions{Timing: fast})
 	waitFor(t, "output from the redialed connection", func() bool { return strings.Contains(r.stdout(), "BACK") })
+	// The reader writes the first output before the loop reports "" (connected), so wait for the state too (10-07 gate).
+	waitFor(t, "the connected state", func() bool { return len(r.stateList()) >= 2 })
 	if got := r.stateList(); len(got) != 2 || got[0] != "reconnecting" || got[1] != "" {
 		t.Errorf("states = %q; want [reconnecting \"\"]", got)
 	}
