@@ -35,7 +35,14 @@ func (e *SessionEngine) cliPathEnv() []string {
 		log.Printf("cli link: %v", err)
 		return nil
 	}
-	return []string{"PATH=" + binDir + string(os.PathListSeparator) + os.Getenv("PATH")}
+	// A daemon started from a Portty session inherits a PATH that already has binDir: keep one copy (11-REVIEW IN-03).
+	path := []string{binDir}
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		if p != binDir {
+			path = append(path, p)
+		}
+	}
+	return []string{"PATH=" + strings.Join(path, string(os.PathListSeparator))}
 }
 
 // refreshCLILink makes binDir/portty a symlink to cliExecutable's target. A

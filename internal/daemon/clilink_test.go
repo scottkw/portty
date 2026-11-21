@@ -195,6 +195,19 @@ func TestCLILink_ConcurrentRefresh(t *testing.T) {
 	}
 }
 
+// 11-REVIEW IN-03: a daemon started from inside a Portty session inherits a PATH that
+// already holds the bin dir; new sessions get it once, first, with the rest in order.
+func TestCLILink_PathHasBinDirOnce(t *testing.T) {
+	e, cfg := newEnvEngine(t)
+	setCLIExecutable(t, fakeExe(t))
+	binDir := filepath.Join(cfg, "bin")
+	t.Setenv("PATH", binDir+":/usr/bin:"+binDir+":/bin")
+	env := e.cliPathEnv()
+	if want := "PATH=" + binDir + ":/usr/bin:/bin"; len(env) != 1 || env[0] != want {
+		t.Errorf("cliPathEnv = %v, want [%s]", env, want)
+	}
+}
+
 // A target inside the bin dir would make portty a link to itself (or to a
 // file the link dir owns): refused, logged, no PATH entry.
 func TestCLILink_RefusesTargetInsideBin(t *testing.T) {
