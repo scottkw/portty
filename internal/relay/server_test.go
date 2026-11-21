@@ -414,6 +414,22 @@ func TestRelayJoin_PushesResizeBeforeScrollback(t *testing.T) {
 	}
 }
 
+// TestRelayJoin_NoGridPushWhenUnknown: a local viewer joining a never-sized
+// hub gets no grid frame before the replay meta. Cols/Rows would give the
+// 220x50 fallback, and a local tab that follows the server grid would flash
+// it on every new session (INPT-06).
+func TestRelayJoin_NoGridPushWhenUnknown(t *testing.T) {
+	srv, _, _, _, sessionID := setupTestServer(t)
+	conn := dialWS(t, srv.URL, sessionID)
+	typ, payload := readFrame(t, conn)
+	if typ == MsgResize {
+		t.Fatalf("a never-sized hub pushed a grid frame %v at join", payload)
+	}
+	if typ != MsgMeta {
+		t.Fatalf("first frame type 0x%02x, want the replay meta", typ)
+	}
+}
+
 // readJoinReplay reads frames up to the offset meta and returns the replay
 // mode, the concatenated replay output and the offset.
 func readJoinReplay(t *testing.T, conn *websocket.Conn) (string, []byte, uint64) {
