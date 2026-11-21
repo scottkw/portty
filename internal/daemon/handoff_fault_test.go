@@ -72,7 +72,7 @@ func TestHandoffFault_EveryStep(t *testing.T) {
 			v := s.dialViewer(s.old.relayPort, s.ids[0], "")
 			waitTicks(t, "viewer ticks", v.ticks, 3)
 			out0, off0 := v.state()
-			base := handoffFDCount(t, s.lockPath)
+			base := handoffFDBaseline(t, s.lockPath)
 			s.failAt(step, errInjected)
 
 			n, code := s.takeover(BuildVersion)
@@ -84,9 +84,7 @@ func TestHandoffFault_EveryStep(t *testing.T) {
 			}
 			s.setFault(nil)
 			waitFor(t, "old daemon thawed", 5*time.Second, func() bool { return !s.old.frozen.Load() })
-			if got := handoffFDCount(t, s.lockPath); got != base {
-				t.Errorf("descriptor count %d after the outcome, %d before", got, base)
-			}
+			checkNewHandoffFDs(t, s.lockPath, base, "after the outcome")
 			checkOldServes(t, s, n, v, postServe(step))
 			if !postServe(step) {
 				for _, id := range s.ids {

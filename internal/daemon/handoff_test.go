@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -487,11 +488,18 @@ func listByID(t *testing.T, c *DaemonClient) map[string]SessionInfo {
 	return m
 }
 
-// handoffFDCount counts the descriptors a takeover can receive: PTYs and
-// other character devices, listening sockets and the daemon lock. Pollers'
-// sockets come and go and kqueue exit watchers live until their shell exits,
-// so neither is counted.
-func handoffFDCount(t *testing.T, lockPath string) int {
+// handoffFD identifies one descriptor a takeover can receive.
+type handoffFD struct {
+	fd       int
+	dev, ino uint64
+	rdev     int64
+}
+
+// handoffFDs lists the descriptors a takeover can receive: PTYs and other
+// character devices, listening sockets and the daemon lock. Pollers' sockets
+// come and go and kqueue exit watchers live until their shell exits, so
+// neither is listed.
+func handoffFDs(t *testing.T, lockPath string) map[handoffFD]bool {
 	t.Helper()
 	lockFI, err := os.Stat(lockPath)
 	if err != nil {
@@ -507,7 +515,7 @@ func handoffFDCount(t *testing.T, lockPath string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := 0
+	fds := map[handoffFD]bool{}
 	for _, name := range names {
 		fd, err := strconv.Atoi(name)
 		if err != nil {
@@ -517,20 +525,48 @@ func handoffFDCount(t *testing.T, lockPath string) int {
 		if syscall.Fstat(fd, &st) != nil {
 			continue
 		}
+		id := handoffFD{fd: fd, dev: uint64(st.Dev), ino: st.Ino, rdev: int64(st.Rdev)}
 		switch st.Mode & syscall.S_IFMT {
 		case syscall.S_IFCHR:
-			n++
+			fds[id] = true
 		case syscall.S_IFREG:
 			if st.Dev == lock.Dev && st.Ino == lock.Ino {
-				n++
+				fds[id] = true
 			}
 		case syscall.S_IFSOCK:
 			if v, err := syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ACCEPTCONN); err == nil && v != 0 {
-				n++
+				fds[id] = true
 			}
 		}
 	}
-	return n
+	return fds
+}
+
+// handoffFDBaseline lists the receivable descriptors once pending *os.File
+// finalizers have run (ptyFDBaseline's GC barrier), so a file an earlier
+// test dropped is not in the baseline only to close mid-measurement.
+func handoffFDBaseline(t *testing.T, lockPath string) map[handoffFD]bool {
+	t.Helper()
+	_ = ptyFDBaseline(t) // for its GC barrier
+	return handoffFDs(t, lockPath)
+}
+
+// checkNewHandoffFDs fails on receivable descriptors open now that were not
+// open at base: a leak. A baseline descriptor that closed meanwhile is fine
+// (another test's leftover, or a file finalized late); the callers prove the
+// old daemon kept its own PTYs by checking that it still serves.
+func checkNewHandoffFDs(t *testing.T, lockPath string, base map[handoffFD]bool, what string) {
+	t.Helper()
+	var extra []string
+	for id := range handoffFDs(t, lockPath) {
+		if !base[id] {
+			extra = append(extra, fmt.Sprintf("fd %d (dev %d ino %d rdev %d)", id.fd, id.dev, id.ino, id.rdev))
+		}
+	}
+	if len(extra) > 0 {
+		sort.Strings(extra)
+		t.Errorf("%s: %d descriptors not open before: %s", what, len(extra), strings.Join(extra, ", "))
+	}
 }
 
 // T-D1: a live session (and one in the alt screen) and its share move from
@@ -793,16 +829,14 @@ func TestHandoff_RouteOnlyOnUnixSocket(t *testing.T) {
 func TestHandoff_RefusesOtherUID(t *testing.T) {
 	s := newHandoffScene(t, tickScript(false))
 	peerUID = func(*net.UnixConn) (uint32, error) { return uint32(os.Getuid()) + 1, nil }
-	base := handoffFDCount(t, s.lockPath)
+	base := handoffFDBaseline(t, s.lockPath)
 	if _, code := s.takeover(BuildVersion); code != takeoverRefused {
 		t.Fatalf("runTakeover = %d, want %d", code, takeoverRefused)
 	}
 	if s.idx("old:after-hello") >= 0 || s.idx("old:watch-peer") >= 0 || s.old.frozen.Load() {
 		t.Errorf("a refused HELLO went on: %v", s.events)
 	}
-	if got := handoffFDCount(t, s.lockPath); got != base {
-		t.Errorf("descriptor count %d after the refusal, %d before", got, base)
-	}
+	checkNewHandoffFDs(t, s.lockPath, base, "after the refusal")
 	last := lastTick(ringTicks(s.old, s.ids[0]))
 	waitFor(t, "old ticks advance", 5*time.Second, func() bool { return lastTick(ringTicks(s.old, s.ids[0])) >= last+3 })
 }
@@ -994,7 +1028,7 @@ func TestHandoff_RefusesForeignFiles(t *testing.T) {
 	}
 
 	s := newHandoffScene(t, tickScript(false))
-	base := handoffFDCount(t, s.lockPath)
+	base := handoffFDBaseline(t, s.lockPath)
 	n := s.newAPI(true)
 	s.mu.Lock()
 	s.takeovers = append(s.takeovers, n)
@@ -1005,9 +1039,7 @@ func TestHandoff_RefusesForeignFiles(t *testing.T) {
 		t.Fatalf("runTakeover with a foreign lock = %d, want %d", code, takeoverImport)
 	}
 	waitFor(t, "old daemon thawed", 5*time.Second, func() bool { return !s.old.frozen.Load() })
-	if got := handoffFDCount(t, s.lockPath); got != base {
-		t.Errorf("descriptor count %d after the refusal, %d before", got, base)
-	}
+	checkNewHandoffFDs(t, s.lockPath, base, "after the refusal")
 	checkOldServes(t, s, n, nil, false)
 }
 
