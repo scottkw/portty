@@ -89,7 +89,102 @@ There is no route that reads a file by path. File bytes travel only over the ses
 
 ## Dependencies
 
-_11-07 fills this section (the Markdown renderer and sanitizer: versions, legitimacy check, configuration)._
+Phase 11 adds two runtime npm packages to the frontend, both for the Markdown preview (PREV-02). The Go side adds none. Both reach the desktop app and the share page's `/app/` bundle, and both load only lazily (proof below).
+
+### The two packages
+
+Checked on 2026-11-21, before install. The evidence was saved under `/tmp/p11-07-deps-*` (`npm view <pkg>@<version> time maintainers scripts dist.integrity` and `gsd-tools package-legitimacy check --ecosystem npm marked dompurify`).
+
+| | `marked` | `dompurify` |
+|---|---|---|
+| Version (exact pin, `--save-exact`) | **18.1.3** | **3.4.17** |
+| Published | 2026-11-02T18:00:32Z | 2026-10-12T12:41:28Z |
+| Age at install (2026-11-21) | 19 days | 40 days |
+| Maintainers (npm) | chjj, styfle, amidknight, tonybrix | cure53 |
+| Repository | github.com/markedjs/marked | github.com/cure53/DOMPurify |
+| Integrity (npm and lockfile, identical) | `sha512-9ChMH8EVVgjgID49nsL6IWxWk5c6GtAsq/xw7U1ggkjkU5AGuv68oLTVlFRtvcUYZtpbNyjyvGo3YDu0fGapiw==` | `sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==` |
+| Install scripts | none (no `preinstall`, `install` or `postinstall`) | none (its `prepare: husky` runs only for git or local installs, never for a registry tarball) |
+| Runtime dependencies | none | `@types/trusted-types` 2.0.7 (optional, types only) |
+| License | MIT | MPL-2.0 OR Apache-2.0 |
+| Legitimacy check | `SUS`, reason `too-new` only | `SUS`, reason `too-new` only |
+
+**Legitimacy result.** The checker rates each package's newest release (marked 18.2.1 of 2026-11-16, dompurify 3.4.18 of 2026-11-14), and both of those are under 14 days old, hence `too-new`. Both packages exist, are years old, have 137.9M and 107.6M weekly downloads, have their source repositories, aren't deprecated and have no postinstall. CONTEXT "Decided at planning" replaces the human checkpoint for `too-new` with the 14-day rule: the pinned versions are older, and their publish dates match the planned ones. There was no `SLOP` verdict and no other `SUS` reason, so the install went ahead. After `pnpm add --save-exact`, `pnpm install --frozen-lockfile` is clean.
+
+**marked 18.1.3** is above 18.0.2, which fixed the OOM denial of service GHSA-6v9c-7cg6-27q7 (infinite recursion in the 18.0.0 tokenizer). It is the newest marked that is at least 14 days old.
+
+**Why DOMPurify 3.4.17 is acceptable.** The only fix in 3.4.18 is GHSA-qm7q-q8h9-jg8q, in `SAFE_FOR_TEMPLATES` mode. This configuration never enables `SAFE_FOR_TEMPLATES`, or any of the other modes where the 2026 DOMPurify advisories cluster (`IN_PLACE`, `RETURN_DOM`, custom element handling, hooks, `PARSER_MEDIA_TYPE`). 3.4.17 contains every earlier fix, including the `high` "selectedcontent re-clone" XSS fixed in 3.4.5. The move to 3.4.18 or later is the todo `.planning/todos/pending/2026-11-21-dompurify-3418.md`, due 2026-11-28, once 3.4.18 is 14 days old. DOMPurify is the desktop page's only XSS layer and has frequent advisories, so it needs periodic bumps: re-check its advisory list at each milestone.
+
+### Configuration (`frontend/src/lib/markdown.ts`)
+
+The configuration has two layers. Unsanitized HTML never reaches a live or detached DOM node: DOMPurify returns a string, which `MarkdownPreview` assigns once.
+
+1. **marked** (`new Marked({gfm: true, async: false})`):
+   - The `html` renderer returns `''`, so raw HTML, block and inline, is dropped.
+   - `image` returns `<span class="md-image">` holding the escaped alt text (or `Image`). No `<img>` is ever produced, so nothing is fetched or decoded.
+   - `checkbox` returns a `md-task` span with ☑ or ☐, so no `<input>` is produced.
+   - Blockquote and list nesting is capped at 20 levels (`MAX_DEPTH`). Past it, a container line stays literal paragraph text (markdown-it's `maxNesting` idea). Without the cap, marked 18.1.3 takes time that grows with the square of the depth (about 1 s at 1,000 levels) and overflows the stack near 2,000.
+2. **DOMPurify** in plain string mode:
+   - `ALLOWED_TAGS`: h1-h6, p, br, hr, ul, ol, li, blockquote, pre, code, em, strong, del, a, table, thead, tbody, tr, th, td, span.
+   - `ALLOWED_ATTR`: href, class, title, align.
+   - `ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|#)/i`.
+   - `ALLOW_DATA_ATTR: false`, `ALLOW_ARIA_ATTR: false`, `FORBID_ATTR: ['style']`.
+   - `ADD_URI_SAFE_ATTR: ['align']`. DOMPurify checks every allowed attribute that isn't URI-safe against `ALLOWED_URI_REGEXP`, so without this, `align="center"` would be stripped. It exempts only `align` from the URI check and adds no tag or attribute.
+   - No `USE_PROFILES` (a profile replaces the allowlists and turns SVG and MathML on), no `ADD_TAGS` or `ADD_ATTR`, no hooks, and none of the `IN_PLACE`, `SAFE_FOR_TEMPLATES` or `RETURN_DOM*` modes.
+
+Links never navigate the pane (`frontend/src/components/MarkdownPreview.tsx`):
+
+- One delegated handler prevents the default of every anchor `click`, `auxclick` and Enter.
+- `#fragment` links scroll to the first heading whose slug matches, and no `id` is ever added.
+- Any other link goes through `isAllowedScheme`, then `getRisk(text, href)`, then `LinkConfirmPopover` (risky) or `openLink` (desktop `BrowserOpenURL`; browser `window.open` with `noopener,noreferrer`).
+- An anchor whose href the sanitizer stripped has no href, so it is neither focusable nor styled as a link.
+
+### Lazy-load proof
+
+`MarkdownPreview` reaches the renderer only through `import('../lib/markdown')`; a source test in `MarkdownPreview.test.tsx` rejects a static import of `marked`, `dompurify` or `lib/markdown`.
+
+- **Standard production build** (`vite build --outDir /tmp/p11-07-dist`): the entry chunk `assets/index-*.js` contains no `ALLOWED_URI_REGEXP`. It is the build's only JS chunk, because nothing imports `MarkdownPreview` until 11-09 composes it into PreviewPanel, so Rollup leaves the Markdown code out entirely.
+- **Build with MarkdownPreview reachable** (a throwaway second entry that imports it, the way 11-09 will; nothing committed; `/tmp/p11-07-dist-probe`):
+
+  | Chunk | Contains `ALLOWED_URI_REGEXP` |
+  |-------|-------------------------------|
+  | `index-*.js` (entry) | no |
+  | the MarkdownPreview chunk | no; it reaches `markdown-*.js` only through `import("./markdown-…")` |
+  | `markdown-*.js` (79 KB, marked and DOMPurify) | yes |
+
+11-09's gate should re-run the standard-build check once PreviewPanel imports MarkdownPreview: `ALLOWED_URI_REGEXP` absent from the entry chunk and present in exactly one lazy chunk.
+
+### Tests that pin it
+
+- `frontend/src/lib/__tests__/markdown.test.ts`:
+  - The allowed tags render, raw HTML is dropped, images become placeholders and tasks become glyphs.
+  - Every section of `frontend/src/lib/__tests__/fixtures/preview/hostile.md` renders with no `img`, `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `meta`, `base`, `link`, `svg` or `math` markup, no `on*` attribute, no `style=`, `src=`, `srcset`, `url(` or `@import`, and only `href`, `class`, `title` and `align` attributes.
+  - `javascript:` links (every obfuscation), `data:`, `vbscript:`, `file:` and relative links keep no href. `https:`, `mailto:` and `#intro` keep theirs. Tables keep `align`.
+  - 10,000-level blockquote and list nesting renders, capped at 20. A 2 MB line renders.
+- `frontend/src/components/__tests__/MarkdownPreview.test.tsx`:
+  - Links: clicks are prevented, and safe links go to `openLink` while a mismatch shows `LinkConfirmPopover`. `auxclick` and Enter are prevented. Fragments scroll with no `id`. A stripped anchor isn't focusable.
+  - Decoration: placeholders get `role="img"` and an `aria-label`, links get title = href, and tables sit in `.md-table-wrap`. The hostile fixture leaves no fetching, scripting or styled element in the pane.
+
+### Residual risk: marked's emphasis parsing time (open)
+
+Found while measuring the DoS bounds. marked 18.1.3 takes time that grows with the square of the number of unclosed emphasis delimiters in one paragraph. The same timings show with and without this configuration, so it is marked's own inline tokenizer. Measured in jsdom (`*a **b _c` repeated):
+
+| Size | Time |
+|------|------|
+| 10 KB | 0.3 s |
+| 20 KB | 1.3 s |
+| 40 KB | 5 s |
+| 80 KB | 23 s |
+
+A 2 MB paragraph of this did not finish in several minutes. No marked advisory covers it (`gh api repos/markedjs/marked/security-advisories`, 2026-11-21).
+
+The parse runs on the page's main thread, so such a file freezes that viewer's window until it finishes. That includes an unattended viewer, if 11-09 renders a background preview eagerly. The source is a file someone in the session explicitly ran `portty open` on, and it runs no script and fetches nothing, so this is availability only. The mitigations are a decision for the planner and the user, not something to improvise here:
+
+- render only the visible preview tab (11-09);
+- parse in a Web Worker that is terminated after a time limit (the share CSP would need `worker-src 'self'`);
+- a much lower size cap for Markdown than the 20 MB transfer cap;
+- markdown-it, research's alternative, if it proves linear here.
+
+Recorded in `.planning/phases/11-file-preview/deferred-items.md`.
 
 ## VM evidence and verdict
 
