@@ -1,7 +1,7 @@
 ---
 phase: "12"
 slug: "file-path-click"
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: "2026-11-21"
@@ -28,12 +28,12 @@ The UI surface is two things: (1) how path-like text looks and behaves under the
 | Tool | none. No shadcn and no Tailwind: React 19 + Vite + plain CSS in `frontend/src/style.css` (project constraint: keep the inherited stack) |
 | Preset | not applicable |
 | Component library | none (hand-written React components) |
-| Icon library | `@heroicons/react` 2.2.0, `24/outline` only. Version from the installed `frontend/node_modules/@heroicons/react/package.json`. `ls frontend/node_modules/@heroicons/react/24/outline/*Icon.js \| wc -l` gives 324 icons. This phase adds no icon: the notice reuses `InformationCircleIcon` and `XMarkIcon`, which `SessionEndedBanner.tsx` already imports |
+| Icon library | `@heroicons/react` 2.2.0, `24/outline` only. Version from the installed `frontend/node_modules/@heroicons/react/package.json`. `ls frontend/node_modules/@heroicons/react/24/outline/*Icon.js \| wc -l` gives 324 icons (informational count, 2026-11-21; not an allowlist). This phase adds no icon: the notice reuses `InformationCircleIcon` and `XMarkIcon`, which `SessionEndedBanner.tsx` already imports |
 | Font | UI: `--hub-font-ui`. Terminal text keeps the user's terminal font. The path link adds no font change |
 
 ### Existing pieces reused (not a design-system inventory)
 
-`ls frontend/src/components/*.tsx | wc -l` gives 26 component files on disk. The ones this phase touches:
+`ls frontend/src/components/*.tsx | wc -l` gives 26 component files on disk (informational, 2026-11-21). The ones this phase touches:
 
 | Piece | Used for |
 |-------|----------|
@@ -197,7 +197,7 @@ Writing rules (Phase 2 and 11): sentence case for body text, no exclamation mark
 
 ## UI Considerations
 
-Applicable state considerations resolved: 8 covered, 3 backstop, 0 unresolved.
+Applicable state considerations resolved: 10 covered, 3 backstop, 0 unresolved (probe re-run after checker approval, 2026-11-21).
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
@@ -209,6 +209,8 @@ Applicable state considerations resolved: 8 covered, 3 backstop, 0 unresolved.
 | long-text | notice | ✅ covered | The notice message wraps inside the full-width banner (existing `.banner__message` `min-width: 0`). The copy is fixed and short |
 | zero-one-many | notices in quick succession | ✅ covered | A new notice replaces the showing one and restarts the 5000ms timer. They never stack |
 | zero-one-many | clicks while a preview is in flight | ✅ covered | Ignored silently. The Phase 11 tab progress shows the transfer |
+| partial | preview tab from a path click | ✅ covered | Phase 11 rule unchanged: the tab shows its receiving state until the transfer ends, a cap tripped mid-stream shows Too Large, never a partial render |
+| overflow | preview tabs from many clicks | ✅ covered | Phase 11's 10-tab limit and same-file refresh-in-place apply unchanged; clicking the same path again refreshes its tab rather than adding one |
 | populated | light/dark repaint | 🧪 backstop | A live appearance switch repaints the notice with no reload. Needs a VM check in both modes |
 | populated | path click in a mouse-reporting TUI (Claude Code, vim with mouse on) | 🧪 backstop | xterm may pass the click to the program instead of the link layer. The contract is that a Cmd-click on printed paths works in the normal shell and is checked in the TUI the user runs. A failure there is reported, and is not fixed by guessing a new modifier. Needs a VM check |
 | error | local, peer and `/app/` viewers | 🧪 backstop | The click, the missing-file silence, the wrong-type notice and the read-only refusal are checked in the Tart VM across a local tab, a home-VM peer tab on an office-VM session and a browser share link (SC) |

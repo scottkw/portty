@@ -26,7 +26,7 @@ Portty tracks each shell's working directory through OSC 7 (zsh emits it with no
 - A plain click still selects text; URLs keep their existing click behaviour (confirm popover, then browser).
 
 ### Scope
-- Path clicks also work in the browser share view (`web/assets/terminal.js`), not only app and peer tabs — parity with Phase 11 previews. Read-only browser viewers get no clickable paths (or their clicks are refused host-side; host-side refusal is mandatory either way).
+- Path clicks also work in the browser share view, not only app and peer tabs — parity with Phase 11 previews. (Corrected 2026-11-21 after UI research: share links redirect to `/app/?session=…&cap=…` (`internal/webserver/server.go` handleTerminalPage), which mounts the same React `TerminalPanel`, so one implementation covers local, peer and browser. `web/assets/terminal.js` has no preview support and is out of scope; the original pointer to it was the orchestrator's mistake, not the user's choice.) Read-only browser viewers get no clickable paths (or their clicks are refused host-side; host-side refusal is mandatory either way).
 
 ### Decided autonomously
 - [CWD tracking] Q: "Where is OSC 7 parsed?" → Selected: "In the daemon, from the PTY output stream; cwd changes are kept interleaved with the retained output history" — internal to the daemon.
