@@ -51,6 +51,15 @@ export function webSessionTabId(sessionId: string, host?: string): string {
   return host ? `__websession__${host}/${sessionId}` : `__websession__${sessionId}`
 }
 
+/**
+ * INPT-04: the peer tabs (web-session tabs with a peerHost) that `next` no longer
+ * holds, so a caller replacing the whole tab list (Retry) can drop their
+ * snapshots. Local tabs and the hostless web bootstrap tab have none.
+ */
+export function peerTabsRemoved<T extends { id: string; type?: string; peerHost?: string }>(prev: T[], next: { id: string }[]): T[] {
+  return prev.filter((t) => t.type === 'web-session' && t.peerHost && !next.some((n) => n.id === t.id))
+}
+
 /** A copy of `sessions` with session `id` renamed. */
 export function renameInList<T extends Named>(sessions: T[], id: string, name: string): T[] {
   return sessions.map((s) => (s.id === id ? { ...s, name } : s))

@@ -77,8 +77,11 @@ export function Sidebar({
   // Local terminal tabs carry no type (or 'terminal'); other tab kinds never select a local row.
   const activeLocalId =
     activeTab && (!activeTab.type || activeTab.type === 'terminal') ? activeTab.sessionId : null
-  // Peer tabs are web-session tabs; session ids are random 16-byte hex, unique across machines.
-  const activePeerId = activeTab?.type === 'web-session' ? activeTab.sessionId : null
+  // Peer tabs are web-session tabs. INPT-04: two Macs can hand out the same session
+  // id, so a row is current only when its host matches the tab's too.
+  const activePeer = activeTab?.type === 'web-session' && activeTab.peerHost
+    ? { host: activeTab.peerHost, id: activeTab.sessionId }
+    : null
 
   const footerText =
     tailscaleHealth === null
@@ -217,7 +220,7 @@ export function Sidebar({
                           <button
                             type="button"
                             className="sidebar__row"
-                            aria-current={s.id === activePeerId ? 'page' : undefined}
+                            aria-current={s.id === activePeer?.id && g.peer.hostname === activePeer.host ? 'page' : undefined}
                             onClick={() => onOpenPeer(g.peer, s)}
                           >
                             <CommandLineIcon className="sidebar__row-icon" aria-hidden="true" />

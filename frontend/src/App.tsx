@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import type { IProgressState } from '@xterm/addon-progress'
 import { TabBar, type Tab } from './components/TabBar'
 import { EmptyState } from './components/EmptyState'
-import { nextActiveTabId, renameInList, tabLabel, webSessionTabId } from './lib/tabs'
+import { nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from './lib/tabs'
 import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
 import { SettingsSheet, type Appearance } from './components/SettingsSheet'
@@ -990,6 +990,12 @@ function App(): React.ReactElement {
           name: s.name || 'shell',
           sessionId: s.id,
         }))
+        // INPT-04: a peer tab opened while RetryDaemon was pending is replaced here;
+        // drop its snapshot as removeTabState would (outside the updater, which must stay pure).
+        peerTabsRemoved(tabsRef.current, restoredTabs).forEach((t) => {
+          const host = peerSnapshotHost(t)
+          if (host) dropPeerSnapshot(host, t.sessionId)
+        })
         setTabs(restoredTabs)
         setActiveId(restoredTabs[0].id)
       }
