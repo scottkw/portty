@@ -348,27 +348,33 @@ func TestCmdAttach_RemoteBannerShowsHostname(t *testing.T) {
 	}
 }
 
-// TestRemoteAttachEnd (SHAR-04, SHAR-07): the host's "share stopped" and
+// TestAttachEnd (SHAR-04, SHAR-07, RF-03): the host's "share stopped" and
 // "session ended" closes, even wrapped, end a remote attach with fixed copy;
-// anything else is not a final end.
-func TestRemoteAttachEnd(t *testing.T) {
+// a local attach ends cleanly on "session ended" only; anything else is not a
+// final end.
+func TestAttachEnd(t *testing.T) {
 	stopped := websocket.CloseError{Code: websocket.StatusNormalClosure, Reason: relay.CloseReasonShareStopped}
+	ended := websocket.CloseError{Code: websocket.StatusNormalClosure, Reason: relay.CloseReasonSessionEnded}
 	cases := []struct {
 		name    string
 		err     error
+		remote  bool
 		wantMsg string // "" means not a final end
 	}{
-		{"share stopped", stopped, "Portty: office-air stopped sharing build."},
-		{"wrapped", fmt.Errorf("read: %w", stopped), "Portty: office-air stopped sharing build."},
-		{"session ended", websocket.CloseError{Code: websocket.StatusNormalClosure, Reason: relay.CloseReasonSessionEnded}, "Portty: build on office-air ended."},
-		{"plain error", errors.New("connection reset"), ""},
-		{"nil", nil, ""},
+		{"share stopped", stopped, true, "Portty: office-air stopped sharing build."},
+		{"wrapped", fmt.Errorf("read: %w", stopped), true, "Portty: office-air stopped sharing build."},
+		{"session ended", ended, true, "Portty: build on office-air ended."},
+		{"plain error", errors.New("connection reset"), true, ""},
+		{"nil", nil, true, ""},
+		{"local session ended", fmt.Errorf("failed to get reader: %w", ended), false, "Portty: build on office-air ended."},
+		{"local share stopped", stopped, false, ""},
+		{"local plain error", errors.New("connection reset"), false, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			msg, ended := remoteAttachEnd(tc.err, "office-air", "build")
+			msg, ended := attachEnd(tc.err, "office-air", "build", tc.remote)
 			if ended != (tc.wantMsg != "") || msg != tc.wantMsg {
-				t.Fatalf("remoteAttachEnd = (%q, %v); want (%q, %v)", msg, ended, tc.wantMsg, tc.wantMsg != "")
+				t.Fatalf("attachEnd = (%q, %v); want (%q, %v)", msg, ended, tc.wantMsg, tc.wantMsg != "")
 			}
 		})
 	}

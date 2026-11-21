@@ -312,16 +312,20 @@ func remoteRelayURL(relayPort int, sessionID string) string {
 	return fmt.Sprintf("ws://127.0.0.1:%d/api/relay/remote/%s/ws", relayPort, url.PathEscape(sessionID))
 }
 
-// remoteAttachEnd recognises the host ending a remote attach for good: the
-// proxy forwards the host's close (1000, "share stopped" or "session ended").
-// msg is fixed copy with the host and session names only.
-func remoteAttachEnd(err error, host, name string) (msg string, ended bool) {
+// attachEnd recognises the host ending an attach for good: the close is 1000
+// "session ended", or for a remote attach (the proxy forwards the host's
+// close) also "share stopped". msg is fixed copy with the host and session
+// names only.
+func attachEnd(err error, host, name string, remote bool) (msg string, ended bool) {
 	var ce websocket.CloseError
 	if !errors.As(err, &ce) {
 		return "", false
 	}
 	switch ce.Reason {
 	case relay.CloseReasonShareStopped:
+		if !remote {
+			return "", false
+		}
 		return fmt.Sprintf("Portty: %s stopped sharing %s.", host, name), true
 	case relay.CloseReasonSessionEnded:
 		return fmt.Sprintf("Portty: %s on %s ended.", name, host), true
@@ -332,9 +336,9 @@ func remoteAttachEnd(err error, host, name string) (msg string, ended bool) {
 // runAttach dials wsURL and runs the interactive attach with the banner or
 // status bar. It reconnects on its own after drops, silent connections and a
 // restart or upgrade handoff of this Mac's daemon (attach.Run), starting a
-// crashed local daemon again before the redial. A remote target ends with a
-// fixed message when the host stops sharing or the session ends; a local one
-// ends with "Detached." as before (09-06). Raw mode and the bar last for the
+// crashed local daemon again before the redial. Any target ends with a fixed
+// message when the session ends, a remote one also when the host stops
+// sharing; anything else ends with "Detached." (09-06). Raw mode and the bar last for the
 // whole attach and are restored on every exit path.
 func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpts, target *attachTarget) error {
 	// Create signal context that cancels on SIGTERM or SIGHUP.
@@ -414,7 +418,7 @@ func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpt
 		ClearOnFull: stdoutTTY,
 		Wake:        wakewatch.Watch(ctx),
 	})
-	if msg, ended := remoteAttachEnd(err, hostname, name); target.remote && ended {
+	if msg, ended := attachEnd(err, hostname, name, target.remote); ended {
 		// Restore the terminal and remove the bar before printing; the deferred
 		// calls would run after the message. Both are safe to repeat.
 		term.Restore(int(os.Stdin.Fd()), oldState) //nolint:errcheck
