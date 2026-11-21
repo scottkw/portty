@@ -162,8 +162,10 @@ func TestShare_DeadViewerReapedBacklogDelivered(t *testing.T) {
 	t.Cleanup(func() { log.SetOutput(prev) })
 
 	const sid = "dead-paste" // log lines are matched by its DiagID: other tests' late lines land in diag too
-	conn, hub, input := joinPasteViewer(t, sid, 100*time.Millisecond)
+	// Built before the join: the viewer answers no pings from then on, and under
+	// -race this loop can outlast the 150 ms heartbeat, reaping it before it sends.
 	payload := pastePayload()
+	conn, hub, input := joinPasteViewer(t, sid, 100*time.Millisecond)
 	go sendPaste(conn, payload) // no read loop: pings go unanswered
 
 	testutil.WaitFor(t, 3*time.Second, func() bool { return hub.RemoteViewerCount() == 0 },
@@ -171,11 +173,11 @@ func TestShare_DeadViewerReapedBacklogDelivered(t *testing.T) {
 	testutil.WaitFor(t, 2*time.Second, func() bool {
 		return bytes.Contains([]byte(diag.String()), []byte("viewer-diag: heartbeat timeout session="+relay.DiagID(sid)))
 	}, "no heartbeat timeout logged:\n%s", diag.String())
-	if idle, _ := hub.WaitInputIdle(0); idle {
-		t.Fatal("input idle at the reap, want the backlog still queued behind the blocked PTY")
-	}
 
-	// The pump logs its frame count when it exits.
+	// The pump logs its frame count when it exits. Checked before the idle
+	// sample so a reap before any frame was read fails as setup, not as a
+	// discard; nothing reads the PTY pipe until the sink starts, so the backlog
+	// can't drain meanwhile.
 	totalRE := regexp.MustCompile(`viewer-diag: input total session=` + relay.DiagID(sid) + ` conn=\d+ frames=(\d+)`)
 	var frames int
 	testutil.WaitFor(t, 2*time.Second, func() bool {
@@ -188,6 +190,9 @@ func TestShare_DeadViewerReapedBacklogDelivered(t *testing.T) {
 	}, "the read pump never logged its input total")
 	if frames == 0 {
 		t.Fatal("the server read no frames before the reap")
+	}
+	if idle, _ := hub.WaitInputIdle(0); idle {
+		t.Fatal("input idle at the reap, want the backlog still queued behind the blocked PTY")
 	}
 
 	sink := &pipeSink{}
