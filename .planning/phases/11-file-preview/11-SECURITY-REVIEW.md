@@ -212,4 +212,50 @@ Reproduction note from the fix: the input is `'*a **b _c'` repeated with no sepa
 
 ## VM evidence and verdict
 
-_11-10 fills this section (hostile fixtures and beacons in a real build, Safari share viewer, verdict)._
+Run 2026-11-21 by 11-10 in the two Tart VMs with the real ad-hoc build B (`v1.2.0-vmB`, product code `7042f5ce`, sha256 `248f596870e4…`); rows in `.planning/phases/11-file-preview/11-VM-CHECKS.md`. Host names are written `<host>`; no link, token or capability is recorded.
+
+### Served share CSP (P-04)
+
+From the home VM, `curl` of a live share link (302 to `/app/`) and of `/app/` (200): both responses carry
+
+```
+default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://<host>; img-src 'self' data: blob:; worker-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+```
+
+character for character the "After (Amendment 3)" policy above, `frame-ancestors 'none'` last. The token gate held: a one-character-wrong token got 401 on the link and on the info API (the valid token got 302 and 200).
+
+### Safari under that policy (P-03, P-04)
+
+- A `securitypolicyviolation` listener, error and `unhandledrejection` hooks and a `window.open` counter were installed through WebDriver before each Safari row. Over P-03, P-04, P-06 and U-02 Safari logged **0 violations and 0 errors**.
+- Image and SVG previews were `<img src=blob:…>` (PNG 1600x900, SVG 240x120); the PDF pane showed the Open PDF button, and Open PDF opened a top-level `blob:` window of `application/pdf` (the only `window.open`).
+- The Markdown parse worker loaded as `/app/assets/markdownWorker-*.js` (same origin) and the sanitizer as `/app/assets/markdownSanitize-*.js`, with no violation, so `worker-src 'self'` is enough and nothing needed `blob:` or `data:` for a worker. An 81,000-byte `*a **b _c` file hit the 3 s limit and showed Couldn't Show File while a 50 ms page timer never gapped more than 59 ms. The same worker loaded on the desktop page's `wails://` origin (P-02), so the residual-risk check above is closed.
+
+### Hostile fixtures against loopback beacons (P-03)
+
+The office local tab (WKWebView), a home peer tab (WKWebView, through the home daemon's proxy) and home Safari each showed hostile.md, hostile-script.svg and an external-fetch SVG, with every network reference pointed at a loopback beacon on 127.0.0.1:8765 in each VM. Both beacons logged **0 connections** during the run and for more than 30 s after (only their self-tests). Window and page titles were unchanged, no window or tab opened, the Markdown had no `on*` attribute and no fetching element (the only `svg` elements were the app's own image-placeholder icons), and typing still worked.
+
+One finding about the fixture, not the renderer: `hostile-external.svg` as committed is **refused by `portty open`** as an unsupported type, because its billion-laughs `<!DOCTYPE svg [ … ]>` internal subset contains `>`, which 11-08's SVG sniffer treats as not-an-SVG (the documented safe-direction shortcut). So a billion-laughs SVG never reaches a viewer through the CLI. Its fetch vectors (`@import`, `<image href>`, `<image xlink:href>`, `<use href>`, a `<foreignObject>` iframe) were tested with the same file minus the DOCTYPE block, with the result above. Side effect for users: a real SVG with an internal DTD subset (some editors write entity declarations there) is refused too.
+
+### Route probes (P-07)
+
+- Share server, with p1's valid token: `POST /sessions/<id>/preview` 405, `POST /app/sessions/<id>/preview` 405, `GET /sessions/<id>/preview` 404, and `GET /app/sessions/<id>/preview` 200 with a body byte-identical to `GET /app/` (620 bytes, the app's HTML shell): the `/app/*` single-page-app fallback that 11-04 recorded, not a preview route, and never file bytes.
+- Office loopback relay (`127.0.0.1:<port>`, the daemon's only loopback listener): `POST` and `GET /sessions/<id>/preview` both 404.
+- Previews still reached viewers only as MsgPreview frames over each viewer's existing session socket (`preview end … conn=N … status=ok` in the office log for every viewer).
+
+### Desktop page (observation, P-02 and P-03)
+
+As the spike found, the desktop page has no CSP. In the real build its defences held on their own: SVG only as `<img>` (0 beacon requests), PDF in WKWebView's own viewer, Markdown sanitized (no script, no fetch). A damaged PDF (a PDF header followed by random bytes) loaded WKWebView's PDF plugin with 0 pages and a blank view instead of Couldn't Show File (11-06's predicted limit); parsing it is the OS viewer's job (T-11-26).
+
+### Install path (P-08, partial)
+
+The menu item's administrator prompt appeared through `osascript` only when no link existed; a foreign link, the app's own link and a disk-image copy each got their warning or notice with no prompt and no change (P-08d..f). Don't Allow changed nothing and logged nothing. macOS 27.2 shows its own prompt copy ("Allow administrator access for a script started by “Portty”?" with Apple's malware-verification warning) and does **not** display the app's `with prompt` text. The successful install (P-08c) needs the VM password typed into that prompt and is pending the user; it is not one of the rows this verdict rests on.
+
+### Residual risks
+
+- PDFs are parsed by the OS's PDF viewer inside WKWebView (desktop) and Safari's viewer (browser, top-level `blob:`); accepted (T-11-26).
+- DOMPurify is the desktop page's only XSS layer and needs periodic bumps; the move to 3.4.18 or later is tracked in `.planning/todos/pending/2026-11-21-dompurify-3418.md` (due 2026-11-28). Re-check its advisories at each milestone.
+- A legitimate Markdown file that takes marked more than 3 s shows Couldn't Show File.
+- `PORTTY_SESSION_ID` is inherited: inside `tmux` or `screen` started in another session, `portty open` targets the session that started the server (11-03 documented limit).
+- The share server's `/app/*` fallback answers 200 with the app shell for any path, including `/app/sessions/<id>/preview`; it serves no file bytes.
+
+**Verdict:** approved. Every row this review cites (P-03, P-04, P-07) is PASS: the served share CSP is exactly the reviewed Amendment 3 policy with `frame-ancestors 'none'` last, the token gate refuses a wrong token, Safari logged no violation, hostile content fetched and ran nothing in either engine, and neither the share server nor the loopback relay has a preview route.
