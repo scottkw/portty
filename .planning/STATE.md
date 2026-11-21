@@ -6,15 +6,15 @@ current_phase: 12
 current_phase_name: File Path Click
 status: executing
 stopped_at: Phase 11 complete, ready to plan Phase 12
-last_updated: "2026-11-21T22:08:07.914Z"
+last_updated: "2026-11-21T22:32:50.670Z"
 last_activity: 2026-11-21
-last_activity_desc: Phase 11 complete, transitioned to Phase 12
-state_head: f1101bb81b5d378a784a7da2b6223f68d347a2fa
+last_activity_desc: Phase 12 execution started
+state_head: b12f01497718c1c8e55ee9ae46127e03d9acd0cd
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 31
-  completed_plans: 24
+  completed_plans: 25
   percent: 50
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-18)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 12 — File Path Click (v1.2)
+**Current focus:** Phase 12 — File Path Click
 
 ## Current Position
 
-Phase: 12 (File Path Click) — READY TO EXECUTE
-Plan: Not started
+Phase: 12 (File Path Click) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-11-21 — Phase 11 complete, transitioned to Phase 12
+Last activity: 2026-11-21 — Phase 12 execution started
 
 
 ## Performance Metrics
@@ -108,6 +108,7 @@ Last activity: 2026-11-21 — Phase 11 complete, transitioned to Phase 12
 | Phase 05 P15 | 20min | 2 tasks | 6 files |
 | Phase 6 P02 | 10 min | 3 tasks | 13 files |
 | Phase 6 P04 | 95min | 3 tasks | 7 files |
+| Phase 12 P01 | 20 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -247,6 +248,7 @@ Recent decisions affecting current work:
 - [Phase 6]: 06-02: update cadence is an hourly tick checking when 24h of wall clock passed since the last completed check, so sleep does not stretch it; failures retry on the next tick
 - [Phase 6]: 06-04: TestUpdateDefaults_ReleaseBuild lives in a !vmpreview file; the VM-only fake update feed reuses the vmpreview tag guarded by check-brand.sh
 - [Phase 6]: 06-04: M-92 VM checks U-01..U-06 PASS with a real notarized same-team DMG (no verify bypass); notification delivery is left to M-93 on the notarized release
+- [Phase 12]: 12-01: previewfile.Open takes maxBytes as an argument so it imports no module package; CleanPreviewName lives in relay (wire contract), not previewfile
 
 ### Pending Todos
 
@@ -355,10 +357,10 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-21T20:18:15.959Z
+Last session: 2026-11-21T22:32:50.036Z
 Stopped at: Phase 11 complete, ready to plan Phase 12
 Resume: 1) branch `worktree-agent-a725d63afb58130ac` holds `cdf95204` (review iteration 2 doc) and `d9d4764c` (WR-02 it2 fix, gates NOT yet run); rebase it onto gsd/v1.2 and fix the remaining four (WR-01 it2, IN-01..03 it2) with gsd-code-fixer, then gates. 2) Re-run TestHandoffIT plus V-01, V-02 and V-05b on the Tart VMs (both stopped; start with `tart run --no-graphics <name> &`). 3) gsd-verifier, mark UPGR-01..05, phase.complete 9. Then Phase 10.
-Resume file: .planning/phases/12-file-path-click/12-UI-SPEC.md
+Resume file: None
 
 ## Operator Next Steps
 
