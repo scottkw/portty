@@ -46,6 +46,14 @@
 | PDF in Safari | If the spike shows Safari can't render the PDF blob under the share CSP without loosening `frame-ancestors`, use the "Open PDF" fallback (opens the blob top-level). Never loosen `frame-ancestors`; pdf.js only with the user's sign-off. If PDF fails in the Wails app itself, stop and report. | Research decision tree. |
 | PATH entry | A per-user symlink `<UserConfigDir>/portty/bin/portty` → resolved `os.Executable()`, refreshed atomically on each CreateSession, prepended to the session PATH (it survives zsh `path_helper`, searched after system dirs). | Proper lowercase name; tab completion works. |
 
+### Decided at planning (2026-11-21, autonomous)
+| Question | Decision | Why |
+|---|---|---|
+| DOMPurify version | Pin `dompurify@3.4.17` (the newest at least 14 days old). The only fix in 3.4.18 (GHSA-qm7q-q8h9-jg8q) is in `SAFE_FOR_TEMPLATES` mode, which our config doesn't use; the security review records this. Todo: move to 3.4.18 or later once it is 14 days old (2026-11-28). `marked@18.1.3` meets both rules. | The two-week rule holds, and the advisory doesn't apply to our config. |
+| Package legitimacy | The 14-day rule replaces the human checkpoint for "too-new" only; 11-06 still stops on SLOP or any other reason. | Confirmed as planned. |
+| Extra copy | Accept the planner's CLI busy line, the Open PDF pane copy (spike verdict b), the old-session wording (verbatim UI-SPEC line), and task lists as ☑/☐ glyphs. | Consistent with UI-SPEC style. |
+| Spike gate | 11-01 changes no repo code, so its gate is "only 11-SPIKE.md changed" (no Go suite). | Saves firewall alerts. |
+
 ### Claude's Discretion
 - Plan split, file names, test names, chunk size, exact MIME sniffing, the preview tab's visual details within the UI spec.
 </decisions>
