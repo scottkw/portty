@@ -67,7 +67,7 @@ var (
 )
 
 // PreviewHeader is the JSON body of a header frame. Key identifies "the same
-// file again" for the viewer; Focus is true only in the owner's copy.
+// file again" for the viewer; Focus is true only in the focused viewer's copy (the owner, or a path click's clicker).
 type PreviewHeader struct {
 	ID    uint32 `json:"id"`
 	Name  string `json:"name"`
@@ -81,6 +81,10 @@ type PreviewHeader struct {
 type Preview struct {
 	Name, MIME, Key string
 	Data            []byte
+	// FocusSub, when set, is the one viewer whose header has focus: the
+	// clicker of a path click, who didn't claim the grid. Nil keeps the owner
+	// rule (the last typist).
+	FocusSub *Subscriber
 }
 
 // PreviewSend reports a started preview: how many viewers it targets, and a
@@ -200,14 +204,17 @@ func (h *Hub) SendPreview(p Preview) (PreviewSend, error) {
 	}
 	h.previewID++
 	h.previewBusy = true
-	id, owner := h.previewID, h.owner
+	id, focus := h.previewID, h.owner
+	if p.FocusSub != nil {
+		focus = p.FocusSub
+	}
 	h.mu.Unlock()
 
 	log.Printf("viewer-diag: preview start session=%s id=%d viewers=%d bytes=%d mime=%s",
 		DiagID(h.sessionID), id, len(targets), len(p.Data), p.MIME)
 	var wg sync.WaitGroup
 	for _, sub := range targets {
-		header := MakePreviewHeader(PreviewHeader{ID: id, Name: p.Name, MIME: p.MIME, Size: len(p.Data), Key: p.Key, Focus: sub == owner})
+		header := MakePreviewHeader(PreviewHeader{ID: id, Name: p.Name, MIME: p.MIME, Size: len(p.Data), Key: p.Key, Focus: sub == focus})
 		wg.Go(func() { h.sendPreviewTo(sub, id, header, p.Data) })
 	}
 	go func() {

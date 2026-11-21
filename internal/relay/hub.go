@@ -98,6 +98,11 @@ type Hub struct {
 	closed      bool
 	closeOnce   sync.Once
 
+	// pathClickBusy: a path click is resolving (pathclick.go, one per hub);
+	// pathClickResolved is a test seam, nil in production.
+	pathClickBusy     atomic.Bool
+	pathClickResolved func(outcome string)
+
 	// Phase 9 handoff (UPGR-01): freezing is set from Freeze until Thaw (or
 	// a failed freeze) and frozen is closed by Run when it stops for it, so
 	// a frozen hub has freezing set and frozen closed. Both under mu.

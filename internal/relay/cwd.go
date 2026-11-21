@@ -138,6 +138,10 @@ func (l *cwdLog) at(row uint64) (string, bool) {
 // clear forgets every record (RIS: the next prompt reports again).
 func (l *cwdLog) clear() { *l = cwdLog{} }
 
+// userHomeDir is the home a clicked `~/…` resolves under (pathclick.go keeps no
+// os import). A var so tests can point it at a temp dir.
+var userHomeDir = os.UserHomeDir
+
 // ownHost is this Mac's hostname, looked up once. An error leaves it empty, so
 // only the empty host and localhost match.
 var ownHost = sync.OnceValue(func() string {

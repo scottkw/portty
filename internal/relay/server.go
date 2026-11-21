@@ -15,6 +15,10 @@ type Server struct {
 	manager *HubManager
 	backend pty.SessionBackend
 	mux     *http.ServeMux
+	// testReadOnly marks every new local subscriber read-only. Production never
+	// sets it; only an in-package test does, to reach the pump's read-only
+	// arms through a real connection.
+	testReadOnly bool
 }
 
 // NewServer creates a Server backed by the given HubManager and SessionBackend
@@ -88,6 +92,8 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	sub := &Subscriber{
 		Msgs: make(chan []byte, 256),
 		Name: clientName,
+
+		ReadOnly: s.testReadOnly,
 	}
 	sub.CloseSlow = func() {
 		conn.Close(websocket.StatusPolicyViolation, "too slow")
@@ -197,6 +203,13 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 					} else {
 						_ = hub.ResizeClient(sub, cols, rows)
 					}
+				}
+			case MsgPathClick:
+				// PATH-02: a click resolves on its own goroutine, so the pump keeps
+				// answering pings. Read-only subscribers are refused here and in
+				// Hub.PathClick (MC-03).
+				if !sub.ReadOnly {
+					hub.PathClick(sub, payload)
 				}
 			case MsgPing:
 				// INPT-02: the write pump writes it ahead of queued output.

@@ -17,6 +17,10 @@ const (
 	MsgInput   byte = 0x10 // Client keyboard input → PTY stdin
 	MsgResize2 byte = 0x11 // Alternative resize format (reserved)
 	MsgPing    byte = 0x12 // Keep-alive ping
+	// MsgPathClick is a viewer asking the host to preview a path the session
+	// printed (PATH-02, pathclick.go): the payload is the clicked text, UTF-8,
+	// at most PathClickMaxBytes. Old hosts drop it (no case, no default arm).
+	MsgPathClick byte = 0x13
 
 	// MsgMeta is the server-to-client metadata push channel (JSON payload).
 	// Reserved range 0x20-0x2F for future server-push frame types.
@@ -43,6 +47,15 @@ func MakeInputFrame(data []byte) []byte {
 	frame[0] = MsgInput
 	copy(frame[1:], data)
 	return frame
+}
+
+// PathClickMaxBytes is the largest clicked-text payload a MsgPathClick may
+// carry; a longer one is dropped.
+const PathClickMaxBytes = 1024
+
+// MakePathClickFrame prepends the MsgPathClick type byte to text.
+func MakePathClickFrame(text string) []byte {
+	return append([]byte{MsgPathClick}, text...)
 }
 
 // MakeResizeFrame encodes cols and rows as a 5-byte big-endian frame.
@@ -95,7 +108,20 @@ type MetaPayload struct {
 	// bytes. The client adds the length of every later MsgOutput frame to it and
 	// sends the total back as ?resume= when it reconnects.
 	Offset *uint64 `json:"offset,omitempty"`
+	// PathClick rides the replay meta of a subscriber that may write: the host
+	// understands MsgPathClick and will honour this viewer's clicks (PATH-02).
+	// Hosts older than Phase 12 never send it, so viewers offer no path links.
+	PathClick *bool `json:"pathClick,omitempty"`
+	// Notice is a one-viewer message with a fixed code (NoticePath*), sent only
+	// to the viewer that clicked, never broadcast.
+	Notice *string `json:"notice,omitempty"`
 }
+
+// Notice codes carried in MetaPayload.Notice.
+const (
+	NoticePathUnsupported = "path-unsupported" // the clicked file's type can't be previewed
+	NoticePathTooLarge    = "path-too-large"   // the clicked file is over PreviewMaxBytes
+)
 
 // Replay modes carried in MetaPayload.Replay.
 const (
