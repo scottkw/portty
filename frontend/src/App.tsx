@@ -992,11 +992,16 @@ function App(): React.ReactElement {
           sessionId: s.id,
         }))
         // INPT-04: a peer tab opened while RetryDaemon was pending is replaced here;
-        // drop its snapshot as removeTabState would (outside the updater, which must stay pure).
-        peerTabsRemoved(tabsRef.current, restoredTabs).forEach((t) => {
+        // drop its snapshot and font size as removeTabState would (IN-06; outside
+        // the updater, which must stay pure).
+        const removed = peerTabsRemoved(tabsRef.current, restoredTabs)
+        removed.forEach((t) => {
           const host = peerSnapshotHost(t)
           if (host) dropPeerSnapshot(host, t.sessionId)
         })
+        if (removed.length > 0) {
+          setFontSizes((prev) => { const n = { ...prev }; removed.forEach((t) => { delete n[t.id] }); return n })
+        }
         setTabs(restoredTabs)
         setActiveId(restoredTabs[0].id)
       }

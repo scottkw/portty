@@ -14,7 +14,9 @@ vi.mock('../TerminalPanel', () => ({
 }))
 // jsdom has no EventSource either (the peer view's plugin-config stream).
 vi.mock('../WebShareSessionView', () => ({
-  WebShareSessionView: () => React.createElement('div', { 'data-testid': 'web-session-view' }),
+  WebShareSessionView: (p: { fontSize?: number; onFontSizeChange?: (delta: number) => void }) =>
+    React.createElement('div', { 'data-testid': 'web-session-view', 'data-font-size': p.fontSize },
+      React.createElement('button', { type: 'button', 'data-testid': 'fire-font-up', onClick: () => p.onFontSizeChange?.(1) })),
 }))
 
 const session = (id: string, name: string) => ({
@@ -112,5 +114,41 @@ describe('App — daemon:recovered (review IN-01)', () => {
     expect(takePeerSnapshot(key)).toBeUndefined()
     expect(tabs().some((t) => t.includes('Remote Shell'))).toBe(false)
     expect(tabs().some((t) => t.includes('local shell'))).toBe(true)
+  })
+
+  // IN-06: the replaced peer tab's font size goes too, so reopening it starts from the default.
+  it('Retry that replaces a peer tab drops its font size: the reopened tab starts from the default', async () => {
+    let resolveRetry!: (v: unknown) => void
+    const retry = vi.fn(() => new Promise((r) => { resolveRetry = r }))
+    let sessions: ReturnType<typeof session>[] = []
+    const peer = { hostname: 'office-air', dnsName: 'office-air.tail1234.ts.net', reachable: true, sessions: [{ id: 'p1', name: 'Remote Shell', status: 'idle', url: '' }] }
+    const container = await mountApp({
+      RetryDaemon: retry,
+      GetRelayPort: () => 4321,
+      ListSessions: () => sessions,
+      GetTailscaleStatus: () => ({ connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'home-air.tail1234.ts.net' }),
+      GetRemoteSessionsWithMeta: () => [peer],
+      ConnectPeerSession: (host: unknown, id: unknown) => ({ sessionId: id, name: 'Remote Shell', host: 'office-air', url: `https://${host}:7444/sessions/${id}?cap=C`, errorCode: '' }),
+    })
+    const openPeer = async () => {
+      const row = [...container.querySelectorAll<HTMLButtonElement>('button.sidebar__row')].find((b) => b.textContent === 'Remote Shell')!
+      await act(async () => { row.click() })
+      await flush()
+    }
+    const fontSize = () => Number(container.querySelector('[data-testid="web-session-view"]')!.getAttribute('data-font-size'))
+
+    await act(async () => { wailsEvents.get('daemon:recovered')?.() })
+    await flush()
+    await openPeer()
+    const base = fontSize()
+    await act(async () => { container.querySelector<HTMLButtonElement>('[data-testid="fire-font-up"]')!.click() })
+    await flush()
+    expect(fontSize()).toBe(base + 1)
+
+    sessions = [session('s1', 'local shell')]
+    await act(async () => { resolveRetry(null) })
+    await flush()
+    await openPeer()
+    expect(fontSize()).toBe(base)
   })
 })
