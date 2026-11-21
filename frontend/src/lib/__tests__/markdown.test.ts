@@ -3,7 +3,11 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { renderMarkdown, MAX_DEPTH } from '../markdown'
+import { parseMarkdown, MAX_DEPTH } from '../markdown'
+import { sanitizeMarkdown } from '../markdownSanitize'
+
+// The two steps MarkdownPreview runs: parse (in the worker), then sanitize (on the main thread).
+const renderMarkdown = (src: string): string => sanitizeMarkdown(parseMarkdown(src))
 
 const hostile = readFileSync(
   resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures/preview/hostile.md'),

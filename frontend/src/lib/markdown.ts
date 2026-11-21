@@ -1,19 +1,16 @@
 /**
- * Phase 11 (PREV-02): Markdown from a remote shell to a sanitized HTML string.
- * Loaded only through import() from MarkdownPreview, so marked and DOMPurify
- * stay out of the entry chunk.
+ * Phase 11 (PREV-02): Markdown from a remote shell to an HTML string that is NOT
+ * yet safe. It runs only inside markdownWorker.ts (11-07 fix): marked's inline
+ * tokenizer can take minutes on hostile input, so the parse runs off the main
+ * thread under a hard timeout (parseMarkdownInWorker.ts). The main thread then
+ * passes the result through sanitizeMarkdown (markdownSanitize.ts); unsanitized
+ * HTML never reaches a DOM node.
  *
- * Two layers (11-RESEARCH "Sanitizer configuration", Pitfalls 8-9):
- *  1. marked drops raw HTML and never emits <img> or <input>: images become
- *     placeholder spans (nothing is fetched) and task boxes become glyphs.
- *  2. DOMPurify in plain string mode with explicit allowlists. No profile (a
- *     profile replaces the allowlists and turns SVG/MathML on), no hooks, no
- *     ADD_TAGS, and none of the IN_PLACE, SAFE_FOR_TEMPLATES or RETURN_DOM
- *     modes, where the 2026 advisories live.
- * The caller assigns the returned string once; unsanitized HTML never reaches a DOM node.
+ * marked drops raw HTML and never emits <img> or <input>: images become
+ * placeholder spans (nothing is fetched) and task boxes become glyphs
+ * (11-RESEARCH "Sanitizer configuration", Pitfalls 8-9).
  */
 import { Marked, Tokenizer, type Tokens } from 'marked'
-import DOMPurify from 'dompurify'
 
 const ENTITIES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 const escapeHtml = (s: string): string => s.replace(/[&<>"']/g, (c) => ENTITIES[c])
@@ -65,18 +62,7 @@ const md = new Marked({
   },
 })
 
-const SANITIZE = {
-  ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'hr', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code',
-    'em', 'strong', 'del', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span'],
-  ALLOWED_ATTR: ['href', 'class', 'title', 'align'],
-  // Every allowed attribute not marked URI-safe is checked against ALLOWED_URI_REGEXP, so align must be marked.
-  ADD_URI_SAFE_ATTR: ['align'],
-  ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|#)/i,
-  ALLOW_DATA_ATTR: false,
-  ALLOW_ARIA_ATTR: false,
-  FORBID_ATTR: ['style'],
-}
-
-export function renderMarkdown(src: string): string {
-  return DOMPurify.sanitize(md.parse(src) as string, SANITIZE)
+/** Unsanitized HTML: always pass it through sanitizeMarkdown before it reaches the DOM. */
+export function parseMarkdown(src: string): string {
+  return md.parse(src) as string
 }

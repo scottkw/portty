@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { LinkConfirmPopover } from './LinkConfirmPopover'
 import { getRisk, isAllowedScheme, type RiskKind } from '../lib/urlSafety'
 import { openLink } from '../lib/openLink'
+import { parseMarkdownInWorker } from '../lib/parseMarkdownInWorker'
 
 interface MarkdownPreviewProps {
   blob: Blob
@@ -62,9 +63,11 @@ interface Confirm {
 
 /**
  * Phase 11 (PREV-02): a Markdown preview. The text comes from blob.text(), never
- * from fetching the blob URL (the share page's connect-src has no blob:). The
- * renderer is imported lazily so marked and DOMPurify stay out of the entry chunk,
- * and its sanitized string is assigned once. Links never navigate the pane
+ * from fetching the blob URL (the share page's connect-src has no blob:). marked
+ * runs in a Web Worker under a hard time limit (11-07 fix: a hostile file can make
+ * it take minutes); on timeout the worker is terminated and onFail shows "Couldn't
+ * Show File". The sanitizer is imported lazily so marked and DOMPurify stay out of
+ * the entry chunk, and its sanitized string is assigned once. Links never navigate the pane
  * (RESEARCH Pitfall 7): every anchor event is prevented, #fragments scroll to the
  * matching heading, and other links go through the terminal's scheme and risk gate.
  */
@@ -76,17 +79,16 @@ export function MarkdownPreview({ blob, name, onFail, autoFocus }: MarkdownPrevi
   onFailRef.current = onFail
 
   useEffect(() => {
-    let live = true
-    Promise.all([blob.text(), import('../lib/markdown')])
-      .then(([src, { renderMarkdown }]) => {
-        if (live) setHtml(renderMarkdown(src))
+    const stop = new AbortController()
+    Promise.all([blob.text().then((src) => parseMarkdownInWorker(src, stop.signal)), import('../lib/markdownSanitize')])
+      .then(([raw, { sanitizeMarkdown }]) => {
+        if (!stop.signal.aborted) setHtml(sanitizeMarkdown(raw))
       })
       .catch(() => {
-        if (live) onFailRef.current()
+        if (!stop.signal.aborted) onFailRef.current()
       })
-    return () => {
-      live = false
-    }
+    // Aborting terminates a running worker.
+    return () => stop.abort()
   }, [blob])
 
   // React 19 reassigns innerHTML whenever this object changes identity, which would drop the decoration.

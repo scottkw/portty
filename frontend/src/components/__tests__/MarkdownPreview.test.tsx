@@ -1,5 +1,5 @@
 // Phase 11 (PREV-02): the Markdown preview pane.
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { readFileSync } from 'node:fs'
@@ -7,11 +7,42 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { MarkdownPreview } from '../MarkdownPreview'
 import { openLink } from '../../lib/openLink'
+import { parseMarkdown } from '../../lib/markdown'
+import { MARKDOWN_PARSE_TIMEOUT_MS } from '../../lib/parseMarkdownInWorker'
 
 vi.mock('../../lib/openLink', () => ({ openLink: vi.fn() }))
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const here = dirname(fileURLToPath(import.meta.url))
+
+/** jsdom has no Worker: this one runs the real parse on a later tick. */
+class InlineWorker {
+  static all: InlineWorker[] = []
+  onmessage: ((e: { data: unknown }) => void) | null = null
+  onerror: ((e: unknown) => void) | null = null
+  terminated = false
+  constructor() {
+    InlineWorker.all.push(this)
+  }
+  postMessage(src: string): void {
+    setTimeout(() => {
+      if (!this.terminated) this.onmessage?.({ data: parseMarkdown(src) })
+    })
+  }
+  terminate(): void {
+    this.terminated = true
+  }
+}
+
+/** A parse that never finishes, as marked does on hostile emphasis. */
+class HangingWorker extends InlineWorker {
+  postMessage(): void {}
+}
+
+beforeEach(() => {
+  InlineWorker.all = []
+  vi.stubGlobal('Worker', InlineWorker)
+})
 
 let root: Root | null = null
 let container: HTMLDivElement | null = null
@@ -59,11 +90,14 @@ describe('MarkdownPreview (PREV-02)', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('imports marked and DOMPurify only dynamically', () => {
+  it('imports marked and DOMPurify only dynamically: marked in the worker, the sanitizer through import()', () => {
     const src = readFileSync(resolve(here, '../MarkdownPreview.tsx'), 'utf8')
     expect(src).not.toMatch(/^import .*(marked|dompurify)/m)
-    expect(src).not.toMatch(/^import .*lib\/markdown['"]/m)
-    expect(src).toMatch(/import\(['"]\.\.\/lib\/markdown['"]\)/)
+    expect(src).not.toMatch(/^import .*lib\/markdown(Sanitize)?['"]/m)
+    expect(src).toMatch(/import\(['"]\.\.\/lib\/markdownSanitize['"]\)/)
+    const client = readFileSync(resolve(here, '../../lib/parseMarkdownInWorker.ts'), 'utf8')
+    expect(client).not.toMatch(/^import /m)
+    expect(client).toContain("new Worker(new URL('./markdownWorker.ts', import.meta.url), { type: 'module' })")
   })
 
   it('calls onFail when the blob cannot be read', async () => {
@@ -75,6 +109,45 @@ describe('MarkdownPreview (PREV-02)', () => {
     root = createRoot(container)
     act(() => root!.render(<MarkdownPreview blob={blob} name="a.md" webMode={false} onFail={onFail} />))
     await vi.waitFor(() => expect(onFail).toHaveBeenCalledTimes(1))
+  })
+
+  it('a parse that never finishes: onFail within 3.5 s, the worker is terminated, and the main thread keeps running', async () => {
+    vi.stubGlobal('Worker', HangingWorker)
+    const onFail = vi.fn()
+    let ticks = 0
+    const timer = setInterval(() => ticks++, 50)
+    const start = performance.now()
+    try {
+      container = document.createElement('div')
+      document.body.appendChild(container)
+      root = createRoot(container)
+      act(() =>
+        root!.render(<MarkdownPreview blob={md('*a **b _c'.repeat(9_000))} name="a.md" webMode={false} onFail={onFail} />),
+      )
+      await vi.waitFor(() => expect(onFail).toHaveBeenCalledTimes(1), { timeout: 3500, interval: 20 })
+    } finally {
+      clearInterval(timer)
+    }
+    expect(performance.now() - start).toBeGreaterThanOrEqual(MARKDOWN_PARSE_TIMEOUT_MS - 50)
+    expect(InlineWorker.all).toHaveLength(1)
+    expect(InlineWorker.all[0].terminated).toBe(true)
+    expect(ticks).toBeGreaterThanOrEqual(20)
+    expect(container.querySelector('article')!.hasChildNodes()).toBe(false)
+  }, 10_000)
+
+  it('unmounting terminates a running parse and never calls onFail', async () => {
+    vi.stubGlobal('Worker', HangingWorker)
+    const onFail = vi.fn()
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    act(() => root!.render(<MarkdownPreview blob={md('# T')} name="a.md" webMode={false} onFail={onFail} />))
+    await vi.waitFor(() => expect(InlineWorker.all).toHaveLength(1))
+    act(() => root!.unmount())
+    root = null
+    expect(InlineWorker.all[0].terminated).toBe(true)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(onFail).not.toHaveBeenCalled()
   })
 })
 
