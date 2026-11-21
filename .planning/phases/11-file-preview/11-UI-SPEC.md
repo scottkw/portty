@@ -321,7 +321,7 @@ All results are native alerts through the existing `a.dialog` / `a.alert` seam (
 | Foreign file (exists and isn't a link) | Warning | **Another portty command is already installed.** | **/usr/local/bin/portty is a file Portty didn't install. Portty didn't change it. To use this copy instead, remove that file, then choose Install Command-Line Tool… again.** |
 | Running from a disk image or a translocated copy (`/Volumes/…` or an `AppTranslocation` path) | Warning | **Move Portty to the Applications folder first.** | **Portty is running from <folder>, so a command installed now would stop working. Move Portty to Applications, open it from there, then try again.** Checked before the admin prompt |
 | The user cancels the admin prompt | — | No dialog. Nothing is changed (the macOS convention for a cancelled prompt) | — |
-| Failure (any other script error) | Warning | **Couldn't install the portty command.** | **<error detail>. Try again, or create the link yourself in Terminal: sudo ln -s "<binary path>" /usr/local/bin/portty** |
+| Failure (any other script error) | Warning | **Couldn't install the portty command.** | **<error detail>. Try again, or create the link yourself in Terminal: sudo ln -s '<binary path>' /usr/local/bin/portty** (amendment, 11-REVIEW IN-05: the path is single-quoted, each `'` in it written `'\''`, so it pastes into a shell unchanged) |
 
 `<link target>` is the raw `readlink` value. `<folder>` is the directory that contains `Portty.app`. Both are shown as text with no truncation.
 

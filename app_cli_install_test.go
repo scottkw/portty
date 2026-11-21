@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -241,7 +242,20 @@ func TestInstallCLI_Failure(t *testing.T) {
 		f := newInstallFixture(t, func(_, _ string) error { return c.err })
 		f.app.installCommandLineTool()
 		f.wantDialog(t, runtime.WarningDialog, "Couldn't install the portty command.",
-			c.detail+`. Try again, or create the link yourself in Terminal: sudo ln -s "`+f.exe+`" /usr/local/bin/portty`)
+			c.detail+`. Try again, or create the link yourself in Terminal: sudo ln -s '`+f.exe+`' /usr/local/bin/portty`)
+	}
+}
+
+// 11-REVIEW IN-05: the manual hint's path survives a shell unchanged, whatever the folder is called.
+func TestInstallCLI_HintQuoting(t *testing.T) {
+	for _, p := range []string{
+		"/Applications/Portty.app/Contents/MacOS/Portty",
+		`/Applications/Ken's "Portty" $(touch /tmp/x) ` + "`id` $HOME \\ ''.app/Contents/MacOS/Portty",
+	} {
+		out, err := exec.Command("/bin/sh", "-c", "printf %s "+shellQuote(p)).Output()
+		if err != nil || string(out) != p {
+			t.Errorf("sh read %q (%v), want %q", out, err, p)
+		}
 	}
 }
 

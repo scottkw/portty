@@ -139,7 +139,13 @@ func (a *App) installCommandLineTool() {
 
 func (a *App) installFailed(exe string, err error) {
 	a.cliAlert(runtime.WarningDialog, "Couldn't install the portty command.",
-		strings.TrimRight(err.Error(), ".")+`. Try again, or create the link yourself in Terminal: sudo ln -s "`+exe+`" /usr/local/bin/portty`)
+		strings.TrimRight(err.Error(), ".")+". Try again, or create the link yourself in Terminal: sudo ln -s "+shellQuote(exe)+" /usr/local/bin/portty")
+}
+
+// shellQuote single-quotes s for a POSIX shell, so a renamed folder holding
+// quotes, $ or backticks can't change the pasted command (11-REVIEW IN-05).
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func (a *App) cliAlert(typ runtime.DialogType, title, message string) {
