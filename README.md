@@ -10,11 +10,7 @@ Portty is a macOS terminal with remote access over Tailscale.
 ## Install
 
 1. Download the DMG from https://portty.app, open it, and drag Portty to Applications.
-2. To use `portty` from a terminal, put it on your PATH:
-
-   ```sh
-   sudo mkdir -p /usr/local/bin && sudo ln -sf /Applications/Portty.app/Contents/MacOS/Portty /usr/local/bin/portty
-   ```
+2. In Portty, choose **Portty ▸ Install Command-Line Tool…** to use `portty` in Terminal and other apps. Inside Portty it already works.
 
 ## Use It From Another Mac
 
