@@ -965,9 +965,11 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 						if relay.IsUserInput(filtered) { // INPT-06: typing claims; terminal auto-replies never do
 							_ = hub.NoteTyping(sub)
 						}
-						if err := in.Write(filtered); err != nil {
-							return // the hub's input is dead: the session is ending
-						}
+						// ErrInputClosed (the session is ending, or its PTY write failed) is not
+						// an exit: the write pump closes with "session ended" on hub.Done, and
+						// returning here would race that with an abnormal close or drop a
+						// live hub's viewer into a reconnect loop (WR-04). Input is dropped.
+						_ = in.Write(filtered)
 					}
 				}
 				inFrames++

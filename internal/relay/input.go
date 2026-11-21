@@ -40,7 +40,8 @@ const (
 )
 
 // ErrInputClosed: the hub's input writer stopped (PTY write failed or the hub
-// shut down). The session is ending; the pump should exit.
+// shut down). The pump keeps reading and drops the input: the write pump ends
+// the connection with "session ended" on hub.Done (WR-04).
 var ErrInputClosed = errors.New("relay: input writer stopped")
 
 type inputReq struct {
