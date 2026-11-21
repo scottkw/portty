@@ -228,3 +228,115 @@ Also consider closing with a fixed reason (for example `CloseReasonSessionEnded`
 _Reviewed: 2026-11-21T06:25:02Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+
+## Iteration 2
+
+**Reviewed:** 2026-11-21T06:55:38Z
+**Scope:** the review-fix commits only, `git diff 9a18160c..46f49642 -- '*.go' '*.ts' '*.tsx'` (HEAD 46f49642), plus the code they connect to: `RevokeWebViewers` and its callers (`unshareLocked`, `remintSharesLocked`), both read pumps and their defer order, `WritePump`, `pty.WatchExit`, `takeover.commit`/`lost`/`oldGone`, `oldHandoff.finish`, `watchSessionExit`, `relayClient` liveness, and the `peerSnapshotHost`/`connectHost` wiring.
+**Depth:** standard, with cross-file tracing of the revoke path, the handoff tail and the lock order.
+**Status:** issues_found
+**Counts:** critical 1, warning 1, info 2 (total 4, necessity 0). IN-07 and IN-01 (the shortcut comment) are accepted and not raised again.
+
+Checks: `GOTOOLCHAIN=go1.26.11 go vet ./...` returned rc 0 (`/private/tmp/claude-501/-Users-ken-dev-portty/66f0384b-8902-40e9-9d84-68c47b57f8f8/scratchpad/review2-vet.txt`). `go test -race -count=3 -run 'TestHubInput_' ./internal/relay/` returned ok (`.../scratchpad/review2-relay-input.txt`). No full suites were run.
+
+### What the fixes get right
+
+- **Lock order still holds.** `revokeInput`, `HoldInput` and `ReleaseInput` take only `inMu`. `RevokeWebViewers` releases `mu` before it calls `revokeInput`, and nothing takes `mu`, `gridMu` or `emuMu` under `inMu`. `unshareLocked` holds `a.mu` across the call, but `inMu` is a leaf and is never held across IO, so this is safe. IN-02 is complete: `Close`, the done watcher and the writer all log after unlocking. The writer re-locks and re-checks `inDead`/`inHeld` at the top of its loop, so a kill or hold that happens while it logs is seen.
+- **No lost wakeups.** Every state change a waiting `Write` or the writer depends on calls `Broadcast`: a written frame, kill, revoke and release. `HoldInput` needs none because it only adds a wait.
+- **The hub cap (WR-01) cannot deadlock.** A blocked `Write` waits only on the writer, never on another connection. A connection with nothing queued always gets one frame in. The only time no frame can drain is the takeover hold, and that ends at the old daemon's exit or after `maxFrozen()`.
+- **WR-02 orders writes correctly.** The hold is set before `serveOn` (and before `hub.Start`). `WatchExit` returns -1 at once on ESRCH, so an old daemon that exits before the watch is registered cannot leave the hold stuck, and NOTE_EXIT fires at exit even if nobody reaps the process. Every failure path after the hold ends this process (`postStep` death, the watchdog's `die`, or "COMMITTED not delivered" while the old daemon is alive), so the release goroutine and the kqueue thread do not leak in production. `commit(false)` skips the hold only when `pidAlive` reports the old daemon gone; `kill(pid, 0)` still succeeds on a zombie, so "gone" means the process was really reaped. Both of the old daemon's writers (its FIFO writer, or a pre-Phase-10 build's blocking `WriteInput`) live inside the old process, so "old daemon exited" really does mean "old writes are done".
+- **WR-04 is sound.** `Hub.Done` closes when the PTY read loop returns (`watchSessionExit`), and a write error on the master (EIO, no slave open) comes with a read EIO, so a hub whose input died while the hub stays live is at most a transient state. `readDone` now closes only when `conn.Read` fails, so the `hub.Done` branch reliably wins and sends 1000 "session ended".
+- **The frontend fixes.** IN-04, IN-05 and IN-06 are correct. `connectHost = peerDNSName || hostname` (App.tsx:891), `remoteAdapter` maps `peerDNSName` from `peer.dnsName`, and `peerSnapshotHost` falls back to `peerHost`, so the tab key, the Sidebar `aria-current` key and the `dropPeerSession` key are now built the same way. The zoom path (the font-size effect, TerminalPanel.tsx:1031-1045) still claims unconditionally, so WR-03 does not affect zoom by menu or by Cmd+=.
+
+### Critical Issues
+
+#### CR-02: Stop Sharing still types the queued input of a web viewer that already disconnected (CR-01 is incomplete)
+
+**File:** `internal/relay/hub.go:451-458` (targets come only from `h.subscribers`), `internal/relay/input.go:102-146`, `internal/webserver/server.go:886-890` and `939`
+**Issue:** `revokeInput` drops only frames whose `InputConn.sub` is in `targets`, and `targets` holds only the viewers *currently subscribed*. When a web pump ends, `defer in.Close()` keeps its queued frames on purpose (input.go:102, "Its queued frames are still written"). The handler's deferred `hub.Unsubscribe(sub)` (webserver/server.go:887) then removes the viewer from `h.subscribers`. Its backlog stays in `h.inq`, with `inputRevoked == false`, and no later revoke can reach it.
+
+That is the most common way a backlog exists at all. A pump that sits at its quota stops reading, so the server heartbeat (45 s) or the client's liveness probe drops the socket. The pump then closes with frames queued, and `relayClient` redials.
+
+Failure scenario: a write-cap guest pastes a script while the foreground program is not reading stdin (`sleep 600`, a long `make`). The guest then closes the browser tab, or its connection drops at quota. The host sees zero web viewers and clicks Stop Sharing. `RevokeWebViewers` finds no targets, the diag line says `input-dropped frames=0`, and when `sleep` exits the shell runs the whole queued script. This is the same threat as CR-01. It is still present for any viewer that disconnected before the revoke, including one between reconnects.
+
+A second path: `WritePump` can return first (ctx cancelled, or a write error). The handler returns and unsubscribes while the read-pump goroutine is still blocked in `in.Write` at quota. That pump is not a target either, so once it is unblocked it queues another frame after the revoke.
+
+`TestHubInput_RevokeDropsBacklog` covers only a viewer that is still subscribed.
+**Fix:** Revoke web input by origin and by epoch, not by subscriber set. A viewer's backlog belongs to the share whatever its socket state is. Both callers (`unshareLocked`, `remintSharesLocked`) revoke every web link of the session, so every web frame queued before the revoke should go:
+```go
+// hub.go, Hub (under inMu): webEpoch counts RevokeWebViewers calls.
+webEpoch uint64
+
+// input.go
+type InputConn struct {
+	// ...
+	epoch uint64 // h.webEpoch when opened
+}
+
+func (h *Hub) OpenInput(sub *Subscriber) *InputConn {
+	h.inMu.Lock()
+	c := &InputConn{h: h, sub: sub, epoch: h.webEpoch}
+	h.inMu.Unlock()
+	if sub != nil {
+		c.id = sub.ID
+	}
+	return c
+}
+
+// revoked: a web conn opened before the last revoke, or whose viewer was
+// subscribed at it (Join before the revoke, OpenInput after).
+func (c *InputConn) revoked() bool {
+	return c.sub != nil && c.sub.Origin == "web" &&
+		(c.epoch < c.h.webEpoch || c.sub.inputRevoked)
+}
+
+func (h *Hub) revokeInput(subs []*Subscriber) (frames, bytes int) {
+	h.inMu.Lock()
+	defer h.inMu.Unlock()
+	h.webEpoch++
+	for _, s := range subs {
+		s.inputRevoked = true
+	}
+	// ... the existing compaction loop, unchanged: it now also drops closed
+	// and unsubscribed web conns' frames, since revoked() is epoch-based.
+}
+```
+`Origin` is set when the `Subscriber` is built and never changes, so reading it under `inMu` is safe. Add a test: a web conn queues frames on a stuck PTY, then `Close()`s and `Unsubscribe`s; next `RevokeWebViewers` runs; assert that at most the in-flight frame reaches the PTY. Also cover a pump blocked in `Write` after `Unsubscribe`.
+
+### Warnings
+
+#### WR-05: The hub cap makes a viewer that is only typing block behind another connection's backlog, and its keystrokes are lost when it is dropped
+
+**File:** `internal/relay/input.go:84-87` (the `h.inBytes+len(b) > InputHubMaxBytes` term), with the shortcut comment at `input.go:27-31`
+**Issue:** Before WR-01, a pump blocked only on its *own* quota, so a viewer that was just typing never stopped reading. Now any connection with one frame queued blocks while the hub holds 64 MiB, and those 64 MiB can all belong to other connections. A blocked pump does not read. On the share path it misses WebSocket pings (`relay.Heartbeat`, dropped after about 45 s). On the local relay it stops answering `MsgPing`, so `relayClient` probes after 40 s of silence and abandons the socket 5 s later. Every frame the client sent after the pump blocked is still unread in that socket and dies with it. `relayClient` never resends, and the DEBT-05 notice covers only split pastes, so the lost keystrokes are silent.
+
+Failure scenario: this is exactly the WR-01 state. A guest's connection flaps during a large paste into a stalled reader, so a closed connection still holds about 32 MiB and its redial queues another 32 MiB. The owner, at home on the peer tab, presses Ctrl-C (one frame gets in), then types a few more keys. Its pump blocks on the hub cap and its pongs stop. After about 45 s the owner's socket is dropped, those keys are gone, and the tab shows "reconnecting". Before this fix, the same keys would have queued behind the backlog and landed once it drained. The shortcut comment still says only the pasting "viewer" can be dropped, which is no longer true.
+**Fix:** Keep the cap for bulk input, but give each connection a small allowance that ignores it, so typing never blocks a pump:
+```go
+const inputHubExempt = 64 << 10 // per conn: typing and small pastes never wait on the hub cap
+for !h.inDead && !c.revoked() && (c.frames >= InputMaxFrames ||
+	(c.frames > 0 && (c.bytes+len(b) > InputMaxBytes ||
+		(c.bytes+len(b) > inputHubExempt && h.inBytes+len(b) > InputHubMaxBytes)))) {
+```
+The bound becomes the cap plus 64 KiB per connection. If you keep the current behaviour instead, at least fix the shortcut comment so it says a viewer can be dropped because of *another* connection's backlog. Add a test: fill the hub to the cap with two connections, then check that a third connection's second small frame does not block.
+
+### Info
+
+#### IN-08: WR-03's focus gate stands in for "a person is here"; a key window on an unattended Mac passes it, and a real resize of an inactive window fails it
+
+**File:** `frontend/src/components/TerminalPanel.tsx:1003-1010`
+**Issue:** `document.hasFocus()` is true whenever Portty is the active app and its window is key. That says nothing about whether anyone is at the Mac. An office Air left unlocked with Portty in front stays focused. A display change while it is awake and unlocked therefore still claims: a monitor that powers itself off, a dock or KVM switch, or a resolution change. When the display sleeps or the screen locks, WebKit marks the window occluded and `visibilityState` becomes `hidden`, so the common case is covered and the remaining gap is narrow. The opposite case: macOS lets a user drag the edge of an *inactive* window without making it key, and that deliberate resize now only reports, so the user's panel stays scaled to the other viewer's grid. Zoom, fullscreen and the Window > Zoom menu all run with the window key, so they are not affected.
+**Fix:** A tighter signal is "user input on this document within the last N seconds": record `pointerdown`/`keydown` timestamps on `window`, and claim only if `Date.now() - lastInputAt < 2000` or the window has focus *and* an input arrived since the last claim. At minimum, record this residual gap in the WR-03 comment.
+
+#### IN-09: A revoked viewer can still move the grid until its socket closes
+
+**File:** `internal/webserver/server.go:965-967` and `998-1003`; `internal/relay/hub.go:554-573` (`NoteTyping` checks only that the viewer is subscribed), `hub.go:542` (`ClaimGrid`/`sizeClient` does not check that)
+**Issue:** CR-01 drops a revoked viewer's input, but the pump still calls `hub.NoteTyping(sub)` before `in.Write` (which is then dropped), and it still applies `MsgResize2` claims. The viewer stays subscribed until `go sub.Kick(...)` finishes the close handshake and the handler unsubscribes it. A guest client that ignores the close frame can resize the host's shell, and take grid ownership, for the length of the handshake timeout. Each claim also bumps `geomEnd` (full replays for later reconnects). This is minor: it changes only the grid, not the shell's input.
+**Fix:** In `RevokeWebViewers`, under `mu`, either remove the targets from `h.subscribers` before kicking (so `NoteTyping`'s membership check fails), or set a `revoked` flag that `sizeClient` and `NoteTyping` check under `mu`. Also have `sizeClient` ignore viewers that are not subscribed, as `NoteTyping` already does.
+
+---
+
+_Iteration 2 reviewed: 2026-11-21T06:55:38Z_
+_Reviewer: Claude (gsd-code-reviewer)_
+_Depth: standard_
