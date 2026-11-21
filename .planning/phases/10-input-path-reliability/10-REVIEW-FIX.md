@@ -186,3 +186,21 @@ Needs human verification: CR-02 changes what Stop Sharing discards on the real t
 _Fixed: 2026-11-21T07:10:00Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 2_
+
+## RF-03 fix
+
+Source: 10-VM-CHECKS.md "Review-fix spot checks", row RF-03 (FAIL, run 2). Fixed in this isolated worktree (`.claude/worktrees/agent-ae9f5b83f90b7f661`, fast-forwarded to gsd/v1.2 1e0c8a23).
+
+- **Proxy (commit a44a60c8, needs human verification on the VM path):** `internal/daemon/remote_ws_proxy.go` acted on whichever copy direction ended first. Mid-paste, the client→peer `upstream.Write` failed with `use of closed network connection` (coder/websocket sets its close-sent state while the peer copy is still handling the close frame), so no close code reached the GUI. Now, when the client→peer direction ends with a write error (`copyEnd.write`), the proxy waits up to `peerCloseGrace` (2 s) for the peer copy's end and, if it is a close frame, logs and forwards that code and reason. A client close, a client read error and everything else behave as before; the heartbeat path is unchanged (a dropped upstream fails the peer read at once, so the wait does not add 2 s there). Test `TestRemoteWSProxy_SessionEndedMidPaste` (10 rounds, peer closes 1000 "session ended" after the first paste frame while the tab keeps writing): on the old code it failed in round 0 with the VM's exact log line (`first=client code=-1 … err=failed to write msg: use of closed network connection`; rf03-new-test-oldcode.txt); with the fix it passes (rf03-new-test-fixed.txt).
+- **Local attach (commit d69789c3):** `remoteAttachEnd` became `attachEnd(err, host, name, remote)`. A local `portty attach` whose session ends (1000 "session ended") now prints `Portty: <session> on <host> ended.` and exits 0, as a remote attach does; "share stopped" stays remote-only. `TestAttachEnd` (renamed from `TestRemoteAttachEnd`) adds local cases.
+- **TESTING.md (commit 4acac3be):** RF-03 note; INPT-01 remote_ws_proxy_test.go, SHAR-06 and SHAR-07 cmd_attach_test.go rows updated. No test files added (Go 152). `bash tests/check-traceability-paths.sh`: OK, 174 paths.
+
+Gates ran once each in the worktree; files in `/private/tmp/claude-501/-Users-ken-dev-portty/66f0384b-8902-40e9-9d84-68c47b57f8f8/scratchpad/`:
+
+| Gate | Result | File |
+|---|---|---|
+| `GOTOOLCHAIN=go1.26.11 go build ./... && go vet ./...` | rc 0 | rf03-build-vet.txt |
+| `go test -race -short -count=1 ./...` | rc 0, every package ok, no reruns | rf03-test-race-short.txt |
+| `bash tests/check-brand.sh` | OK: brand gate clean | rf03-check-brand.txt |
+
+Needs a VM re-run of RF-03 run 2 (kill 1 s into the peer-tab paste): the peer tab should show the ended banner, and the office-local attach should print the ended message with rc 0.
