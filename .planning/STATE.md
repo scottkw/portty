@@ -6,16 +6,16 @@ current_phase: 14
 current_phase_name: mobile-web-app
 status: executing
 stopped_at: Phase 13 complete, ready to plan Phase 14
-last_updated: "2026-11-22T23:41:06.856Z"
+last_updated: "2026-11-22T23:54:11.446Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 14 execution started
-state_head: 1d07120a076ff46d0b934d90d87d3df75a4c7227
+state_head: 55953d3d67403b0f284c81d9d98da45dc03dca5f
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 54
-  completed_plans: 41
-  percent: 76
+  completed_plans: 42
+  percent: 78
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 14 (mobile-web-app) — EXECUTING
-Plan: 2 of 14
+Plan: 3 of 14
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 14 execution started
 
@@ -126,6 +126,7 @@ Last activity: 2026-11-22 — Phase 14 execution started
 | Phase 13 P06 | 12min | 3 tasks | 3 files |
 | Phase 13 P07 | approx 2h | 4 tasks | 3 files |
 | Phase 14 P01 | ~1h | 3 tasks | 14 files |
+| Phase 14 P02 | 20m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -285,6 +286,7 @@ Recent decisions affecting current work:
 - [Phase 13]: UI-1 (a different tailnet user) accepted as automated-only; UI-2 (real Vite or webpack HMR) is a check on the user's own Macs (M-140)
 - [Phase 13]: G-1 (internal/pty TestKillClean_NoOrphans, one gate FAIL) recorded as the known flake; a re-run alone with -count=5 passed
 - [Phase 14]: 14-01: no WhoIs verdict cache; every gated request does its own StatusWithoutPeers and WhoIs (measurement is M-149 in 14-12, decision at 14-14)
+- [Phase 14]: 14-02: a bare ESC ending a MsgInput frame is forwarded at once by InputAbsorber.Filter; the only accepted cost is a reply split exactly between ESC and the introducer (pinned by test, T-14-09); IsUserInput unchanged so a lone Esc does not claim the grid
 
 ### Pending Todos
 
