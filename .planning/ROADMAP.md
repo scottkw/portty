@@ -123,7 +123,7 @@ Plans:
   2. Cmd-clicking an absolute path, or one relative to the working directory (for example `docs/diagram.png` printed by `ls` after `cd ~/proj`), opens it in a preview tab. This works in a local tab, and in a home-VM peer tab on an office-VM session over the real tailnet. (PATH-02)
   3. Cmd-clicking a path that doesn't exist does nothing: no tab, no dialog, and nothing typed into the shell. A plain click still selects text as before, and URLs keep their own click behavior. (PATH-02)
   4. Path clicks keep the PREV-03 rule. The request rides that session's authenticated stream, the host resolves it against that session's own working directory, and the host previews only a path that the session itself printed, so there is still no way to read a file by arbitrary path. The security review records this. (PATH-02; keeps PREV-03)
-**Plans**: 4/7 plans executed
+**Plans**: 5/7 plans executed
 Plans:
 **Wave 1**
 - [x] 12-01-PLAN.md — Move `portty open`'s file checks into the leaf package internal/previewfile (CLI lines unchanged) and CleanPreviewName into relay (PATH-02)
@@ -134,7 +134,7 @@ Plans:
 - [x] 12-04-PLAN.md — Hub.PathClick on the session stream: MsgPathClick 0x13, read-only refusal, printed-token check over History + screen, cwd-at-print resolution, previewfile checks, SendPreview with FocusSub, unicast notices, capability bit, source gate, shared fixture (PATH-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 12-05-PLAN.md — Share server arm (peer and browser viewers; read-only capabilities refused), API 4 with PathClickAPI, 12-SECURITY-REVIEW.md recording the PREV-03 amendment (PATH-02)
+- [x] 12-05-PLAN.md — Share server arm (peer and browser viewers; read-only capabilities refused), API 4 with PathClickAPI, 12-SECURITY-REVIEW.md recording the PREV-03 amendment (PATH-02)
 - [ ] 12-06-PLAN.md — Viewer: path link provider in lib/pathLinks.ts (fixture-pinned detection, wrapped rows, modifier-held underline), sendPathClick gated by the host's bit, the two fixed notices, the Phase 95 guard test edited deliberately (PATH-02)
 
 **Wave 4** *(blocked on Wave 3 completion)*
@@ -175,6 +175,6 @@ Plans:
 | 9. Upgrades Keep Sessions | v1.2 | 7/7 | Complete    | 2026-11-20 |
 | 10. Input Path Reliability | v1.2 | 7/7 | Complete    | 2026-11-21 |
 | 11. File Preview | v1.2 | 10/10 | Complete    | 2026-11-21 |
-| 12. File Path Click | v1.2 | 4/7 | In Progress | - |
+| 12. File Path Click | v1.2 | 5/7 | In Progress | - |
 | 13. Remote Localhost URLs | v1.2 | 0/TBD | Not started | - |
 | 14. Mobile Web App | v1.2 | 0/TBD | Not started | - |
