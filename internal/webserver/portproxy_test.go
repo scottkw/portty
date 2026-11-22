@@ -7,6 +7,7 @@ package webserver
 // loopback server with a test certificate.
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,10 +15,12 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -205,9 +208,10 @@ func (e *ppEnv) ownPort(t *testing.T) int {
 
 // answer is what a refusal is compared by: status, headers without Date, body.
 type answer struct {
-	status int
-	hdr    http.Header
-	body   string
+	status     int
+	hdr        http.Header
+	body       string
+	protoMajor int
 }
 
 func (a answer) sig() string {
@@ -241,7 +245,7 @@ func (e *ppEnv) send(t *testing.T, method, path string, hdr http.Header, body io
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
-	return answer{resp.StatusCode, resp.Header, string(raw)}
+	return answer{resp.StatusCode, resp.Header, string(raw), resp.ProtoMajor}
 }
 
 func grantHdr(capTok, contentType string) http.Header {
@@ -465,6 +469,370 @@ func TestPortGrant_LogsNoSecrets(t *testing.T) {
 	for _, want := range []string{"portproxy: grant session=" + relay.DiagID(e.sid), "outcome=granted", "outcome=refused"} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("log lacks %q:\n%s", want, logs)
+		}
+	}
+}
+
+// ---- the proxy route ----
+
+// portToken signs a port token the way the grant route does, for a chosen
+// session, port, grant and key (a hand-minted one for the deny rows).
+func portToken(t *testing.T, sid string, port int, grantID string, key []byte) string {
+	t.Helper()
+	tok, err := capability.SignPort(capability.PortClaims{
+		SID: sid, Port: port, IAT: time.Now().Unix(), GrantID: grantID,
+		Kind: capability.PortTokenKind, V: 1,
+	}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tok
+}
+
+const writeGrantID = "grant-" + ppSID + "-read,write"
+
+// proxyReq is one request to the proxy route; the zero value of every field
+// but port is filled in as a good request by good().
+type proxyReq struct {
+	method   string
+	portStr  string
+	capTok   string
+	token    string
+	target   string
+	noTarget bool
+	hdr      http.Header
+	body     io.Reader
+}
+
+// good is a request the host should proxy: write capability, a token for port,
+// target /x.
+func (e *ppEnv) good(t *testing.T, port int) proxyReq {
+	return proxyReq{
+		method:  http.MethodGet,
+		portStr: strconv.Itoa(port),
+		capTok:  e.capTok,
+		token:   portToken(t, e.sid, port, writeGrantID, capTestKey),
+		target:  "/x",
+	}
+}
+
+func (e *ppEnv) proxy(t *testing.T, r proxyReq) answer {
+	t.Helper()
+	h := http.Header{}
+	for k, v := range r.hdr {
+		h[k] = v
+	}
+	if r.capTok != "" {
+		h.Set("X-Portty-Cap", r.capTok)
+	}
+	if r.token != "" {
+		h.Set("X-Portty-Port-Token", r.token)
+	}
+	if !r.noTarget {
+		h.Set("X-Portty-Target", r.target)
+	}
+	return e.send(t, r.method, "/api/peer/sessions/"+e.sid+"/ports/"+r.portStr, h, r.body)
+}
+
+func TestPortProxy_Refusals(t *testing.T) {
+	otherKey := bytes.Repeat([]byte{9}, 32)
+	cases := []struct {
+		name   string
+		who    tailcfg.UserID
+		denied bool
+		prep   func(t *testing.T, e *ppEnv, r *proxyReq, port int)
+	}{
+		{name: "no port token", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.token = "" }},
+		{name: "token for another port", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) {
+			r.token = portToken(t, e.sid, port+1, writeGrantID, capTestKey)
+		}},
+		{name: "token for another session", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) {
+			r.token = portToken(t, "other-session", port, writeGrantID, capTestKey)
+		}},
+		{name: "token from before a key change", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) {
+			old := portToken(t, e.sid, port, writeGrantID, capTestKey)
+			e.ws.SetSigningKey(otherKey)
+			cap, err := capability.Sign(capability.Claims{SID: e.sid, Perms: "read,write", IAT: time.Now().Unix(), GrantID: "g-new", V: 1}, otherKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.ws.AddGrant(e.sid, "g-new")
+			r.capTok, r.token = cap, old
+		}},
+		{name: "token whose grant was cleared and replaced", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) {
+			e.ws.ClearGrants(e.sid)
+			r.capTok = issueCapFor(t, e.ws, e.sid, "write,read") // a different grant id
+		}},
+		{name: "disabled session", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { e.ws.DisableSession(e.sid) }},
+		{name: "no capability", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.capTok = "" }},
+		{name: "read-only capability", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) {
+			r.capTok = issueCapFor(t, e.ws, e.sid, "read")
+			r.token = portToken(t, e.sid, port, "grant-"+e.sid+"-read", capTestKey) // only the permission refuses
+		}},
+		{name: "another user", who: 7},
+		{name: "denied port with a hand-minted token", denied: true},
+		{name: "missing target", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.noTarget = true }},
+		{name: "target x", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.target = "x" }},
+		{name: "absolute target", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.target = "http://evil.example/" }},
+		{name: "9000-byte target", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.target = "/" + strings.Repeat("a", 9000) }},
+		{name: "port 8000x", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.portStr = "8000x" }},
+		{name: "port 0", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.portStr = "0" }},
+		{name: "port 08000", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.portStr = "08000" }},
+		{name: "port 65536", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.portStr = "65536" }},
+	}
+	var ref string
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tw := newTripwire(t)
+			who := whoIsAs(testSelfUser)
+			if c.who != 0 {
+				who = whoIsAs(c.who)
+			}
+			var denied []int
+			if c.denied {
+				denied = []int{tw.port}
+			}
+			e := newPPEnv(t, ppOpts{who: who, denied: denied})
+			r := e.good(t, tw.port)
+			if c.prep != nil {
+				c.prep(t, e, &r, tw.port)
+			}
+			a := e.proxy(t, r)
+			assertRefusedAnswer(t, a)
+			if ref == "" {
+				ref = a.sig()
+			} else if a.sig() != ref {
+				t.Errorf("answer differs from the first refusal:\n%s\nvs\n%s", a.sig(), ref)
+			}
+			if n := tw.n.Load(); n != 0 {
+				t.Errorf("tripwire on %d counted %d connections", tw.port, n)
+			}
+		})
+	}
+}
+
+// seen is what a dev server recorded about the last request.
+type seen struct {
+	mu         sync.Mutex
+	method     string
+	uri, host  string
+	proto      string
+	hdr        http.Header
+	body       string
+	respHeader func(http.Header)
+}
+
+func (s *seen) handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		s.mu.Lock()
+		s.method, s.uri, s.host, s.proto, s.hdr, s.body = r.Method, r.RequestURI, r.Host, r.Proto, r.Header.Clone(), string(b)
+		fn := s.respHeader
+		s.mu.Unlock()
+		w.Header().Set("X-Seen-Method", r.Method)
+		if fn != nil {
+			fn(w.Header())
+		}
+		w.Write(b) //nolint:errcheck
+	})
+}
+
+func (s *seen) get() (method, uri, host, proto string, hdr http.Header, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.method, s.uri, s.host, s.proto, s.hdr, s.body
+}
+
+func TestPortProxy_PathAndHeaders(t *testing.T) {
+	var rec seen
+	rec.respHeader = func(h http.Header) {
+		h.Set("X-Portty", "1")
+		h.Set("X-Portty-Debug", "leak")
+		h.Set("Content-Security-Policy", "default-src 'none'")
+		h.Add("Set-Cookie", "sid=abc; Path=/")
+	}
+	dev := httptest.NewServer(rec.handler())
+	defer dev.Close()
+	port := dev.Listener.Addr().(*net.TCPAddr).Port
+	e := newPPEnv(t, ppOpts{})
+	own := "http://127.0.0.1:" + strconv.Itoa(port)
+
+	const target = "/a//b/%2e%2e/c%2Fd?x=1&cap=page"
+	r := e.good(t, port)
+	r.target = target
+	r.hdr = http.Header{
+		"X-Forwarded-For":  {"1.2.3.4"},
+		"X-Forwarded-Port": {"9"},
+		"Forwarded":        {"for=1.2.3.4"},
+		"X-Portty-Extra":   {"smuggled"},
+	}
+	a := e.proxy(t, r)
+	if a.status != http.StatusOK || a.body != "" {
+		t.Fatalf("proxy = %d %q", a.status, a.body)
+	}
+	_, uri, host, proto, hdr, _ := rec.get()
+	if uri != target {
+		t.Errorf("dev server RequestURI = %q, want %q byte for byte", uri, target)
+	}
+	if host != "localhost:"+strconv.Itoa(port) {
+		t.Errorf("dev server Host = %q, want localhost:%d", host, port)
+	}
+	if proto != "HTTP/1.1" || a.protoMajor != 1 {
+		t.Errorf("hop proto = %q, client proto major = %d; want HTTP/1.1", proto, a.protoMajor)
+	}
+	for k := range hdr {
+		if strings.HasPrefix(k, "X-Portty") || strings.HasPrefix(k, "X-Forwarded") || k == "Forwarded" {
+			t.Errorf("dev server saw header %s", k)
+		}
+	}
+	// Response side: the dev server's marker never reaches the viewer, its own
+	// CSP and cookies do, and the share server adds none of its own.
+	for k := range a.hdr {
+		if strings.HasPrefix(k, "X-Portty") {
+			t.Errorf("response carries %s", k)
+		}
+		if strings.HasPrefix(k, "Access-Control-") {
+			t.Errorf("response carries %s", k)
+		}
+	}
+	if got := a.hdr.Values("Content-Security-Policy"); len(got) != 1 || got[0] != "default-src 'none'" {
+		t.Errorf("Content-Security-Policy = %q, want only the dev server's", got)
+	}
+	if got := a.hdr.Values("Set-Cookie"); len(got) != 1 || got[0] != "sid=abc; Path=/" {
+		t.Errorf("Set-Cookie = %q", got)
+	}
+
+	// Origin: only the typed-127.0.0.1 form of this very port is rewritten.
+	for _, o := range []struct{ in, want string }{
+		{own, "http://localhost:" + strconv.Itoa(port)},
+		{"https://evil.example", "https://evil.example"},
+		{"http://localhost:" + strconv.Itoa(port), "http://localhost:" + strconv.Itoa(port)},
+		{"http://127.0.0.1:" + strconv.Itoa(port+1), "http://127.0.0.1:" + strconv.Itoa(port+1)},
+		{"", ""},
+	} {
+		r := e.good(t, port)
+		if o.in != "" {
+			r.hdr = http.Header{"Origin": {o.in}}
+		}
+		if a := e.proxy(t, r); a.status != http.StatusOK {
+			t.Fatalf("Origin %q: status %d", o.in, a.status)
+		}
+		_, _, _, _, hdr, _ := rec.get()
+		if got := hdr.Get("Origin"); got != o.want {
+			t.Errorf("Origin %q reached the dev server as %q, want %q", o.in, got, o.want)
+		}
+	}
+}
+
+// listenBoth listens on one port on 127.0.0.1 and [::1]; false when this Mac
+// has no IPv6 loopback.
+func listenBoth(t *testing.T) (l4, l6 net.Listener, ok bool) {
+	t.Helper()
+	if !hasIPv6Loopback() {
+		return nil, nil, false
+	}
+	for i := 0; i < 50; i++ {
+		l4, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		l6, err := net.Listen("tcp6", "[::1]:"+strconv.Itoa(l4.Addr().(*net.TCPAddr).Port))
+		if err == nil {
+			t.Cleanup(func() { l4.Close(); l6.Close() })
+			return l4, l6, true
+		}
+		l4.Close()
+	}
+	t.Fatal("no port free on both loopbacks")
+	return nil, nil, false
+}
+
+// serveOn serves handler on an already-open listener, closed with the test.
+func serveOn(t *testing.T, l net.Listener, h http.Handler) {
+	t.Helper()
+	s := httptest.NewUnstartedServer(h)
+	s.Listener.Close()
+	s.Listener = l
+	s.Start()
+	t.Cleanup(s.Close)
+}
+
+func TestPortProxy_DialOrder(t *testing.T) {
+	e := newPPEnv(t, ppOpts{})
+	body := func(port int) answer { return e.proxy(t, e.good(t, port)) }
+	text := func(s string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, s) })
+	}
+
+	t.Run("::1 only", func(t *testing.T) {
+		if !hasIPv6Loopback() {
+			t.Skip("no IPv6 loopback on this Mac")
+		}
+		l, err := net.Listen("tcp6", "[::1]:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		serveOn(t, l, text("v6"))
+		if a := body(l.Addr().(*net.TCPAddr).Port); a.status != 200 || a.body != "v6" {
+			t.Fatalf("::1-only server = %d %q", a.status, a.body)
+		}
+	})
+	t.Run("127.0.0.1 only", func(t *testing.T) {
+		l, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		serveOn(t, l, text("v4"))
+		if a := body(l.Addr().(*net.TCPAddr).Port); a.status != 200 || a.body != "v4" {
+			t.Fatalf("127.0.0.1-only server = %d %q", a.status, a.body)
+		}
+	})
+	t.Run("::1 wins when both answer", func(t *testing.T) {
+		l4, l6, ok := listenBoth(t)
+		if !ok {
+			t.Skip("no IPv6 loopback on this Mac")
+		}
+		serveOn(t, l4, text("v4"))
+		serveOn(t, l6, text("v6"))
+		if a := body(l4.Addr().(*net.TCPAddr).Port); a.body != "v6" {
+			t.Fatalf("body = %q, want the [::1] server first", a.body)
+		}
+	})
+	t.Run("nothing answering", func(t *testing.T) {
+		a := body(closedPort(t))
+		if a.status != http.StatusBadGateway || a.hdr.Get(tailnet.MarkerHeader) != tailnet.MarkerValue || a.body != "nothing is answering\n" {
+			t.Fatalf("answer = %d marker %q body %q", a.status, a.hdr.Get(tailnet.MarkerHeader), a.body)
+		}
+		for _, leak := range []string{"127.0.0.1", "::1", "dial", "refused", "connect"} {
+			if strings.Contains(a.body, leak) {
+				t.Errorf("502 body leaks %q", leak)
+			}
+		}
+	})
+}
+
+func TestPortProxy_Methods(t *testing.T) {
+	var rec seen
+	dev := httptest.NewServer(rec.handler())
+	defer dev.Close()
+	port := dev.Listener.Addr().(*net.TCPAddr).Port
+	e := newPPEnv(t, ppOpts{})
+
+	for _, m := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"} {
+		r := e.good(t, port)
+		r.method = m
+		if m == "POST" || m == "PUT" || m == "PATCH" {
+			r.body = strings.NewReader("payload-" + m)
+		}
+		a := e.proxy(t, r)
+		method, _, _, _, _, body := rec.get()
+		if a.status != http.StatusOK || a.hdr.Get("X-Seen-Method") != m || method != m {
+			t.Errorf("%s: status %d, dev server saw %q", m, a.status, method)
+		}
+		if m == "POST" || m == "PUT" || m == "PATCH" {
+			if body != "payload-"+m || a.body != "payload-"+m {
+				t.Errorf("%s: body at dev server %q, echoed %q", m, body, a.body)
+			}
 		}
 	}
 }
