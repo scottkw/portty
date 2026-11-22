@@ -196,6 +196,13 @@ func (a *API) handlePeerConnect(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, PeerConnectErrorResponse{Error: PeerErrUnreachable, Detail: host})
 		return
 	}
+	// A different capability for a session we already hold means a re-share or a
+	// re-mint: end its loopback forwards and approvals before the new one lands.
+	if prevBase, _, prevCap, held := a.remoteCaps.Get(sess.ID); held && prevCap != capToken {
+		if pu, perr := url.Parse(prevBase); perr == nil {
+			a.portForwards.RevokeSession(pu.Hostname(), sess.ID)
+		}
+	}
 	if err := a.remoteCaps.Put(sess.ID, baseURL, ip, capToken); err != nil {
 		log.Printf("peers/connect: store cap for %s: %s", host, redactCapTokenFromError(err, capToken))
 		writeJSON(w, http.StatusBadGateway, PeerConnectErrorResponse{Error: PeerErrUnreachable, Detail: host})

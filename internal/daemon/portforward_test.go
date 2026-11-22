@@ -17,12 +17,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
+	"github.com/scottkw/portty/internal/tailnet"
 )
 
 // freeLoopbackPort returns a port free on 127.0.0.1 and [::1].
@@ -77,12 +81,35 @@ type stubHost struct {
 	proxyMarker bool
 	proxyHdr    http.Header // extra headers on a 200
 	hits        []stubHit
+	capVal      string // what POST /api/peer/sessions/{id}/cap hands out
+	wsConns     chan *websocket.Conn
 }
 
 func newStubHost(t *testing.T) *stubHost {
 	t.Helper()
-	s := &stubHost{}
+	s := &stubHost{capVal: "CAP", wsConns: make(chan *websocket.Conn, 4)}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/sessions/meta", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `[{"id":"s1","name":"build","status":"running"}]`)
+	})
+	mux.HandleFunc("POST /api/peer/sessions/{id}/cap", func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		c := s.capVal
+		s.mu.Unlock()
+		fmt.Fprintf(w, `{"cap":%q}`, c)
+	})
+	mux.HandleFunc("GET /sessions/{id}/ws", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+		if err != nil {
+			return
+		}
+		s.wsConns <- conn
+		for {
+			if _, _, err := conn.Read(r.Context()); err != nil {
+				return
+			}
+		}
+	})
 	mux.HandleFunc("POST /api/peer/sessions/{id}/ports", s.handleGrant)
 	mux.HandleFunc("/api/peer/sessions/{id}/ports/{port}", s.handleProxy)
 	s.srv = httptest.NewTLSServer(mux)
@@ -555,5 +582,382 @@ func TestPortOpen_NoApprovalAfterPortInUse(t *testing.T) {
 	waitClosed(t, port)
 	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
 		t.Fatalf("after the holder left = %+v, want consent (no approval was recorded)", got)
+	}
+}
+
+func TestForwardHostAllowed(t *testing.T) {
+	cases := []struct {
+		host string
+		port int
+		want bool
+	}{
+		{"localhost:8000", 8000, true},
+		{"127.0.0.1:8000", 8000, true},
+		{"[::1]:8000", 8000, false},
+		{"evil.test:8000", 8000, false},
+		{"localhost:8001", 8000, false},
+		{"localhost:80000", 8000, false},
+		{"localhost", 8000, false},
+		{"127.0.0.1", 8000, false},
+		{"", 8000, false},
+		{"localhost", 80, true},
+		{"127.0.0.1", 80, true},
+		{"localhost:80", 80, true},
+		{"LOCALHOST:8000", 8000, false},
+	}
+	for _, c := range cases {
+		if got := forwardHostAllowed(c.host, c.port); got != c.want {
+			t.Errorf("forwardHostAllowed(%q, %d) = %v, want %v", c.host, c.port, got, c.want)
+		}
+	}
+}
+
+// openForward opens a forward on a fresh port for s1 and returns the port.
+func (e *portEnv) openForward(t *testing.T) int {
+	t.Helper()
+	port := freeLoopbackPort(t)
+	if _, got, errCode := e.open(t, "s1", localhostURL(port, "/"), true); got.Status != PortStatusOpen {
+		t.Fatalf("open = %+v %q", got, errCode)
+	}
+	return port
+}
+
+// do sends a request to the forward on port with the given Host and headers.
+func do(t *testing.T, port int, host string, hdr map[string]string) (*http.Response, string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+strconv.Itoa(port)+"/p?q=1", nil)
+	if host != "" {
+		req.Host = host
+	}
+	for k, v := range hdr {
+		req.Header[k] = []string{v} // set verbatim, even a non-canonical name
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp, string(b)
+}
+
+func TestPortForward_HostRefused(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	resp, body := do(t, port, "evil.test:"+strconv.Itoa(port), nil)
+	if resp.StatusCode != http.StatusForbidden || strings.Contains(body, "evil.test") {
+		t.Fatalf("answer = %d %q, want 403 reflecting nothing", resp.StatusCode, body)
+	}
+	if n := e.stub.hitCount(); n != 0 {
+		t.Fatalf("the stub saw %d requests", n)
+	}
+}
+
+func TestPortForward_CrossSite(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	resp, body := do(t, port, "", map[string]string{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "no-cors"})
+	if resp.StatusCode != http.StatusForbidden || body != "forbidden\n" || e.stub.hitCount() != 0 {
+		t.Fatalf("cross-site no-cors = %d %q with %d stub hits, want 403 and none", resp.StatusCode, body, e.stub.hitCount())
+	}
+	for i, hdr := range []map[string]string{
+		{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"},
+		{"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "cors"},
+		nil,
+	} {
+		if resp, _ := do(t, port, "", hdr); resp.StatusCode != http.StatusOK || e.stub.hitCount() != i+1 {
+			t.Fatalf("%v = %d with %d stub hits, want it to reach the stub", hdr, resp.StatusCode, e.stub.hitCount())
+		}
+	}
+}
+
+func TestPortForward_HeaderHygiene(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	e.stub.mu.Lock()
+	e.stub.proxyHdr = http.Header{
+		"X-Portty":                {"1"},
+		"X-Portty-Debug":          {"x"},
+		"Content-Security-Policy": {"default-src 'self'"},
+		"Set-Cookie":              {"sid=abc; Path=/"},
+	}
+	e.stub.mu.Unlock()
+	resp, _ := do(t, port, "", map[string]string{"X-Portty-Cap": "evil", "X-Portty-Target": "/evil", "x-portty-port-token": "evil", "X-Portty-Extra": "evil"})
+	hit := e.stub.lastHit(t)
+	if hit.hdr.Get("X-Portty-Cap") != "CAP" || hit.hdr.Get("X-Portty-Target") != "/p?q=1" || hit.hdr.Get("X-Portty-Port-Token") != e.stub.token() {
+		t.Errorf("the stub saw cap %q target %q token %q", hit.hdr.Get("X-Portty-Cap"), hit.hdr.Get("X-Portty-Target"), hit.hdr.Get("X-Portty-Port-Token"))
+	}
+	if hit.hdr.Get("X-Portty-Extra") != "" {
+		t.Error("an extra X-Portty header from the page reached the stub")
+	}
+	for k := range resp.Header {
+		if strings.HasPrefix(k, "X-Portty") {
+			t.Errorf("response header %s reached the browser", k)
+		}
+	}
+	if resp.Header.Get("Content-Security-Policy") != "default-src 'self'" || resp.Header.Get("Set-Cookie") != "sid=abc; Path=/" {
+		t.Errorf("the dev server's own headers changed: csp %q cookie %q", resp.Header.Get("Content-Security-Policy"), resp.Header.Get("Set-Cookie"))
+	}
+}
+
+func checkPage(t *testing.T, resp *http.Response, body string, wants ...string) {
+	t.Helper()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", resp.StatusCode)
+	}
+	for k, v := range map[string]string{
+		"Content-Type":            "text/html; charset=utf-8",
+		"Content-Security-Policy": "default-src 'none'",
+		"X-Content-Type-Options":  "nosniff",
+		"Cache-Control":           "no-store",
+	} {
+		if resp.Header.Get(k) != v {
+			t.Errorf("%s = %q, want %q", k, resp.Header.Get(k), v)
+		}
+	}
+	for _, w := range wants {
+		if !strings.Contains(body, w) {
+			t.Errorf("page lacks %q: %s", w, body)
+		}
+	}
+	if strings.Contains(body, "/p?q=1") {
+		t.Errorf("page reflects the request: %s", body)
+	}
+}
+
+func TestPortForward_StoppedSharing(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	e.stub.mu.Lock()
+	e.stub.proxyStatus, e.stub.proxyMarker = 403, true
+	e.stub.mu.Unlock()
+	resp, body := do(t, port, "", map[string]string{"X-Portty": "1"})
+	checkPage(t, resp, body, "127.0.0.1 stopped sharing", "port "+strconv.Itoa(port))
+	if hit := e.stub.lastHit(t); hit.hdr.Get("X-Portty") != "" {
+		t.Error("the page's X-Portty header reached the stub")
+	}
+	if resp.Header.Get("X-Portty") != "" {
+		t.Error("X-Portty reached the browser")
+	}
+	waitClosed(t, port)
+	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
+		t.Fatalf("after the stopped page = %+v, want consent", got)
+	}
+}
+
+func TestPortForward_NothingAnswering(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	e.stub.mu.Lock()
+	e.stub.proxyStatus, e.stub.proxyMarker = 502, true
+	e.stub.mu.Unlock()
+	resp, body := do(t, port, "", nil)
+	checkPage(t, resp, body, "Nothing is answering on 127.0.0.1's port "+strconv.Itoa(port))
+	if resp, _ := do(t, port, "", nil); resp.StatusCode != http.StatusBadGateway || e.stub.hitCount() != 2 {
+		t.Fatalf("second request: %d with %d stub hits, want the forward kept open", resp.StatusCode, e.stub.hitCount())
+	}
+}
+
+func TestPortForward_HostGone(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	e.stub.srv.Close()
+	resp, body := do(t, port, "", nil)
+	checkPage(t, resp, body, "stopped sharing")
+	waitClosed(t, port)
+}
+
+// dialRemoteWS opens the webview-side stream to the daemon's relay proxy.
+func dialRemoteWS(t *testing.T, relayURL, sid string) *websocket.Conn {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws://"+strings.TrimPrefix(relayURL, "http://")+"/api/relay/remote/"+sid+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	t.Cleanup(func() { conn.CloseNow() })
+	return conn
+}
+
+// streamClose has the stub close the proxied session stream with code and
+// reason, and waits until the proxy forwarded it to the viewer.
+func (e *portEnv) streamClose(t *testing.T, code websocket.StatusCode, reason string) {
+	t.Helper()
+	relaySrv := httptest.NewServer(e.api.RelayHandler())
+	t.Cleanup(relaySrv.Close)
+	client := dialRemoteWS(t, relaySrv.URL, "s1")
+	var host *websocket.Conn
+	select {
+	case host = <-e.stub.wsConns:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the proxy never reached the stub's stream")
+	}
+	go host.Close(code, reason)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, _, err := client.Read(ctx)
+	if websocket.CloseStatus(err) != code {
+		t.Fatalf("viewer saw %v, want close %d", err, code)
+	}
+}
+
+func TestPortForward_StreamCloseRevokes(t *testing.T) {
+	for _, reason := range []string{"share stopped", "session ended"} {
+		t.Run(reason, func(t *testing.T) {
+			logs := captureLog(t)
+			e := newPortEnv(t)
+			port := e.openForward(t)
+			e.streamClose(t, websocket.StatusNormalClosure, reason)
+			waitClosed(t, port) // no request was ever sent to the forward
+			if !strings.Contains(string(logs.bytes()), "outcome=revoked") {
+				t.Errorf("no outcome=revoked line in %q", string(logs.bytes()))
+			}
+			if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
+				t.Fatalf("click after = %+v, want consent", got)
+			}
+			if e.stub.hitCount() != 0 {
+				t.Fatal("a request reached the stub")
+			}
+		})
+	}
+	t.Run("service restart", func(t *testing.T) {
+		e := newPortEnv(t)
+		port := e.openForward(t)
+		e.streamClose(t, websocket.StatusServiceRestart, "service restart")
+		if !listening(port) {
+			t.Fatal("a 1012 close closed the forward")
+		}
+		if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusOpen {
+			t.Fatalf("click after = %+v, want open (approval still live)", got)
+		}
+	})
+}
+
+// connect posts /peers/connect for session s1 against the stub host.
+func (e *portEnv) connect(t *testing.T) {
+	t.Helper()
+	peer := tailnet.Peer{Hostname: "office-air", DNSName: "office-air.tail1234.ts.net.", Online: true}
+	e.api.SetPeerSeamsForTest(
+		func(context.Context) ([]tailnet.Peer, error) { return []tailnet.Peer{peer}, nil },
+		nil,
+		func(tailnet.Peer) string { return e.stub.srv.URL },
+	)
+	b, _ := json.Marshal(PeerConnectRequest{Host: "office-air", Session: "s1"})
+	resp, err := e.client.Post("http://daemon/peers/connect", "application/json", bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("POST /peers/connect = %d %s", resp.StatusCode, raw)
+	}
+}
+
+func (e *portEnv) setStubCap(c string) {
+	e.stub.mu.Lock()
+	e.stub.capVal = c
+	e.stub.mu.Unlock()
+}
+
+func TestPortForward_NewCapRevokes(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	e.connect(t) // the same capability: nothing is revoked
+	if !listening(port) {
+		t.Fatal("a reconnect with the same capability closed the forward")
+	}
+	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusOpen {
+		t.Fatalf("click after the same capability = %+v, want open", got)
+	}
+	e.setStubCap("CAP2") // a re-mint
+	e.connect(t)
+	waitClosed(t, port)
+	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
+		t.Fatalf("click after a new capability = %+v, want consent", got)
+	}
+	if e.stub.hitCount() != 0 {
+		t.Fatal("a request reached the stub")
+	}
+}
+
+func TestPortForward_StopReshareClickAsksConsent(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	e.streamClose(t, websocket.StatusNormalClosure, "share stopped") // stop
+	e.setStubCap("CAP2")
+	e.connect(t) // re-share
+	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
+		t.Fatalf("click = %+v, want consent", got)
+	}
+	if e.stub.hitCount() != 0 {
+		t.Fatal("a request reached the stub")
+	}
+}
+
+func TestPortForward_CloseAll(t *testing.T) {
+	t.Run("Stop", func(t *testing.T) {
+		e := newPortEnv(t)
+		port := e.openForward(t)
+		_ = e.api.Stop()
+		waitClosed(t, port)
+	})
+	t.Run("handoff", func(t *testing.T) {
+		e := newPortEnv(t)
+		port := e.openForward(t)
+		e.api.closeListenerCopies()
+		waitClosed(t, port)
+		if len(e.api.portForwards.approvals) != 0 {
+			t.Fatal("an approval survived the handoff")
+		}
+	})
+}
+
+func TestPortForward_NotOnRelayHandler(t *testing.T) {
+	e := newPortEnv(t)
+	h := e.api.RelayHandler()
+	for _, method := range []string{http.MethodPost, http.MethodGet} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(method, "/peers/ports", strings.NewReader(`{"sessionId":"s1","url":"http://localhost:1/","consent":true}`)))
+		if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s /peers/ports on the relay handler = %d, want 404 or 405", method, rec.Code)
+		}
+	}
+}
+
+func TestPortForward_NoDiskWriteAPIs(t *testing.T) {
+	banned := regexp.MustCompile(`os\.WriteFile|ioutil\.WriteFile|os\.Create|os\.OpenFile|os\.Mkdir`)
+	comments := regexp.MustCompile(`(?m)^\s*//.*$`)
+	for _, name := range []string{"portforward.go", "portforward_api.go"} {
+		src, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loc := banned.FindIndex(comments.ReplaceAll(src, nil)); loc != nil {
+			t.Errorf("%s references a disk-write API", name)
+		}
+	}
+}
+
+func TestPortForward_LogsNoSecrets(t *testing.T) {
+	logs := captureLog(t)
+	e := newPortEnv(t)
+	if err := e.api.remoteCaps.Put("s1", e.stub.srv.URL, "", "CAP-SECRET"); err != nil {
+		t.Fatal(err)
+	}
+	port := e.openForward(t)
+	if st, _ := get(t, port, "/hmr?token=SECRET-TARGET"); st != http.StatusOK {
+		t.Fatalf("GET = %d", st)
+	}
+	if hit := e.stub.lastHit(t); hit.hdr.Get("X-Portty-Cap") != "CAP-SECRET" {
+		t.Fatalf("the stub saw cap %q", hit.hdr.Get("X-Portty-Cap"))
+	}
+	out := string(logs.bytes())
+	if strings.Contains(out, "SECRET") {
+		t.Errorf("log leaks a secret: %q", out)
+	}
+	if !strings.Contains(out, "port forward: session=s1 port="+strconv.Itoa(port)+" outcome=open") {
+		t.Errorf("no outcome=open line in %q", out)
 	}
 }

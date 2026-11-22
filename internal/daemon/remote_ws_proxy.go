@@ -174,6 +174,13 @@ func (a *API) handleRemoteSessionWS(w http.ResponseWriter, r *http.Request) {
 		errors.As(err, &ce)
 		log.Printf("viewer-diag: proxy end session=%s first=%s code=%d reason=%q after=%s", id8, end.side, code, ce.Reason, time.Since(opened))
 	}
+	// A terminal close from the peer (1000 "share stopped" or "session ended":
+	// share-off, a re-minted link, the session ending) ends the loopback forwards
+	// and approvals for this session with no request needed. A 1012 or a dropped
+	// network is not terminal: the peer tab reconnects.
+	if end.side == "peer" && relay.IsTerminalClose(err) {
+		a.portForwards.RevokeSession(u.Hostname(), sid)
+	}
 	// Forward a close code and reason (e.g. 1000 "share stopped") so the viewer
 	// can say why it ended. Reasons come from the peer's fixed constants and
 	// never carry the cap.

@@ -401,6 +401,9 @@ func (a *API) closeListenerCopies() {
 	if ws != nil {
 		_ = ws.Stop() // hijacked viewer WebSockets survive Stop and get 1012 next
 	}
+	// Loopback forwards for remote localhost URLs are not carried by a handoff:
+	// the next click asks again and reopens them.
+	a.portForwards.CloseAll()
 }
 
 // handleHandoff upgrades POST /handoff (unix socket only) to the handoff
