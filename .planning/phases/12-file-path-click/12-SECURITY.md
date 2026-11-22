@@ -102,8 +102,9 @@ Evidence (file:line) for every row is in the audit return of 2026-11-22. Key con
 | AR-12-06 | — | Paths split by a real newline, and hard-wrapped TUI paths, are never clickable | user | 2026-11-21 |
 | AR-12-07 | — | F-1 (row-0 relative path resolves against the start dir) and F-2 (first click after returning to the same cell): todos, not blockers | user | 2026-11-22 |
 | AR-12-08 | — | Desktop underline, dark repaint, `ssh localhost`, Claude Code: manual checks on the user's Macs (M-131..M-133) | user | 2026-11-22 |
+| AR-12-09 | — | WR-01: a relative path resolves against the latest print of that text, so clicking old output can open a same-named file in a newer directory (12-CONTEXT "last occurrence"); the printed check is not loosened | user ("accept") | 2026-11-22 |
 
-**Pending user decision:** WR-01 (12-REVIEW): a relative path resolves against the latest print of that text, so clicking old output can open a same-named file in a newer directory. This is a 12-CONTEXT design choice, and it does not loosen the printed check. Accept or refuse-ambiguous, awaiting the user.
+WR-01 accepted by the user on 2026-11-22: see AR-12-09.
 
 ---
 
