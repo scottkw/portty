@@ -45,7 +45,7 @@ In a desktop peer tab (this Mac viewing another Mac's session), Cmd-clicking a `
 - [Proxy] Q: "Where does the viewing-side listener live?" → Selected: "The viewing Mac's daemon (RemoteCapStore, the verified peer client and the remote_ws_proxy template already live there)" — internal to one Mac, no cross-Mac contract.
 - [Proxy] Q: "WebSockets, streaming and stopping the share" → Selected: "Track proxied upgrades and long responses per session; close them on ClearGrants/revokeSignal because hijacked conns survive Stop; the upstream client uses a dial timeout only, not peerClient's 10 s total timeout" — internal plumbing.
 - [Proxy] Q: "Version gating and upgrades" → Selected: "APIVersion 5 with PortProxyAPI on both daemons; the viewing daemon learns host support at click time and returns a typed error; an old local daemon shows update needed; forwards end on a Phase 9 handoff and the next click reopens them" — additive gate.
-- [URL] Q: "Rewriting Host, Origin and bodies" → Selected: "Host sets Host (and Origin on upgrades) to localhost:PORT; no body rewriting; cookies untouched; Location rewritten only if the local port ever differs" — host-side header logic.
+- [URL] Q: "Rewriting Host, Origin and bodies" → Selected: "Host sets Host to localhost:PORT; Origin is rewritten only when it is exactly http://127.0.0.1:PORT (narrowed by the planner so a cross-site WebSocket cannot become same-origin at the dev server); no body rewriting; cookies untouched; Location rewritten only if the local port ever differs" — host-side header logic.
 
 ### Claude's Discretion
 Consent surface, copy, approval lifetime, revocation visibility, URL scope and failure handling, as recorded above. The planner may adjust details within these choices.
