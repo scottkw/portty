@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/tailnet"
+	webfs "github.com/scottkw/portty/web"
 	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/ipn/ipnstate"
@@ -81,38 +82,86 @@ func refuseLocalFault(w http.ResponseWriter) {
 	http.Error(w, "unavailable", http.StatusServiceUnavailable)
 }
 
+// sameUserStatus is the one same-user decision: 0 admits the caller, 403 means
+// another account (or no tailnet peer), 503 means this Mac's tailscaled failed
+// to answer. Every error fails closed.
+func (ws *WebServer) sameUserStatus(r *http.Request) int {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	st, err := ws.whois.StatusWithoutPeers(ctx)
+	if err != nil || st == nil || st.Self == nil {
+		slog.Debug("webserver: same-user check: no self status", "err", err)
+		return http.StatusServiceUnavailable
+	}
+	who, err := ws.whois.WhoIs(ctx, r.RemoteAddr)
+	if err != nil && !errors.Is(err, local.ErrPeerNotFound) {
+		slog.Debug("webserver: same-user check: whois failed", "err", err)
+		return http.StatusServiceUnavailable
+	}
+	if err != nil || !sameUser(who, st.Self) {
+		var peerUser int64
+		if who != nil && who.Node != nil {
+			peerUser = int64(who.Node.User)
+		}
+		// Numeric IDs only, no names (RESEARCH A2: the two-Mac UAT reads this).
+		slog.Debug("webserver: same-user check refused", "peer_user", peerUser, "self_user", int64(st.Self.UserID), "err", err)
+		return http.StatusForbidden
+	}
+	return 0
+}
+
 // requireSameUser admits only callers whose tailnet node is logged in as this
 // Mac's Tailscale user. Every error fails closed: 403 with the marker when the
 // answer says another account (or no tailnet peer), 503 when this Mac's
 // tailscaled fails to answer.
 func (ws *WebServer) requireSameUser(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-		defer cancel()
-		st, err := ws.whois.StatusWithoutPeers(ctx)
-		if err != nil || st == nil || st.Self == nil {
-			slog.Debug("webserver: same-user check: no self status", "err", err)
-			refuseLocalFault(w)
-			return
-		}
-		who, err := ws.whois.WhoIs(ctx, r.RemoteAddr)
-		if err != nil && !errors.Is(err, local.ErrPeerNotFound) {
-			slog.Debug("webserver: same-user check: whois failed", "err", err)
-			refuseLocalFault(w)
-			return
-		}
-		if err != nil || !sameUser(who, st.Self) {
-			var peerUser int64
-			if who != nil && who.Node != nil {
-				peerUser = int64(who.Node.User)
-			}
-			// Numeric IDs only, no names (RESEARCH A2: the two-Mac UAT reads this).
-			slog.Debug("webserver: same-user check refused", "peer_user", peerUser, "self_user", int64(st.Self.UserID), "err", err)
+		switch ws.sameUserStatus(r) {
+		case 0:
+			next(w, r)
+		case http.StatusForbidden:
 			refuseOtherUser(w)
+		default:
+			refuseLocalFault(w)
+		}
+	}
+}
+
+// requireSameUserPage is requireSameUser for the browser-facing page routes:
+// the refusal is a fixed static page (403 with the marker, or 503 with a retry
+// link and no marker). Nothing from the request is rendered into either page.
+func (ws *WebServer) requireSameUserPage(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status := ws.sameUserStatus(r)
+		if status == 0 {
+			next(w, r)
 			return
 		}
-		next(w, r)
+		page := serviceRetryPage
+		if status == http.StatusForbidden {
+			w.Header().Set(tailnet.MarkerHeader, tailnet.MarkerValue)
+			page = userRefusedPage
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(status)
+		_, _ = w.Write(page)
 	}
+}
+
+// userRefusedPage and serviceRetryPage are the embedded web/user-refused.html
+// and web/service-retry.html.
+var (
+	userRefusedPage  = mustWebFile("user-refused.html")
+	serviceRetryPage = mustWebFile("service-retry.html")
+)
+
+func mustWebFile(name string) []byte {
+	b, err := webfs.WebFS.ReadFile(name)
+	if err != nil {
+		panic("webserver: embedded " + name + ": " + err.Error())
+	}
+	return b
 }
 
 // handlePeerCap handles POST /api/peer/sessions/{id}/cap: a same-account

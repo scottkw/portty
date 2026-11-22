@@ -2,7 +2,7 @@ package web
 
 import "embed"
 
-//go:embed dashboard.html terminal.html link-invalid.html
+//go:embed dashboard.html terminal.html link-invalid.html user-refused.html service-retry.html
 //go:embed assets/terminal.js assets/terminal.css
 //go:embed assets/dashboard.css
 //go:embed vendor/xterm/xterm.js vendor/xterm/xterm.css vendor/xterm/addon-fit.js vendor/xterm/VERSION

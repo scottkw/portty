@@ -654,9 +654,14 @@ func (ws *WebServer) setupRoutes() {
 	// Phase 120-04 — /app/ serves the React frontend SPA for remote/web-share viewers. The fs.FS is wired from
 	// the daemon at web-start time via SetStaticAppFS; the closure reads
 	// ws.staticAppFS at request time so a missing wiring surfaces as a 503
-	// instead of a nil-deref panic. Public
-	// tier: no capability gate here — the React bundle is static client code,
-	// and any /api/ call it makes is independently gated.
+	// instead of a nil-deref panic. No capability gate here — the React bundle
+	// is static client code, and any /api/ call it makes is independently gated.
+	//
+	// MOB-05: the whole bundle (index.html, chunks, manifest, icons) sits behind
+	// requireSameUserPage, inside cspHeaders, so another account gets the static
+	// refusal page (or the retry page on a tailscaled fault) before the SPA, any
+	// /info request or any WebSocket. /assets/ stays open so those pages can load
+	// /assets/dashboard.css.
 	//
 	// Phase 176 BUG-06 — wrapped in ws.cspHeaders (D-05): the guest SPA
 	// previously served with NO Content-Security-Policy header. Reuses the existing strict policy
@@ -679,7 +684,7 @@ func (ws *WebServer) setupRoutes() {
 	// Cache-Control: no-store on all responses. The hashed-asset branch below
 	// deletes that header (w.Header().Del) so this content-hash caching contract
 	// still holds; do not remove that Del without re-homing the CSP header.
-	mux.HandleFunc("GET /app/", ws.cspHeaders(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /app/", ws.cspHeaders(ws.requireSameUserPage(func(w http.ResponseWriter, r *http.Request) {
 		appFS := ws.staticAppFS
 		if appFS == nil {
 			http.Error(w, "app bundle not configured", http.StatusServiceUnavailable)
@@ -720,7 +725,7 @@ func (ws *WebServer) setupRoutes() {
 		// no-store on this branch only to preserve that contract.
 		w.Header().Del("Cache-Control")
 		stripped.ServeHTTP(w, r)
-	}))
+	})))
 }
 
 // serveIndex serves the React bundle's index.html with the correct

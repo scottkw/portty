@@ -1,9 +1,13 @@
 package webserver
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/coder/websocket"
@@ -253,6 +257,53 @@ func TestSameUserGate_OpenRoutes(t *testing.T) {
 			defer resp.Body.Close()
 			if resp.StatusCode != want {
 				t.Errorf("status = %d, want %d", resp.StatusCode, want)
+			}
+		})
+	}
+}
+
+// pageGateServer is gateServer with a static app bundle installed, so /app/
+// has something to serve for the same user.
+func pageGateServer(t *testing.T, sid string) (*WebServer, *http.Client, string) {
+	t.Helper()
+	ws, client, tok := gateServer(t, sid)
+	ws.SetStaticAppFS(fstest.MapFS{
+		"index.html":  {Data: []byte(fakeIndexHTML)},
+		"assets/x.js": {Data: []byte("// js")},
+	})
+	return ws, client, tok
+}
+
+// checkPage asserts a refused page route answered with the gate's status and
+// marker, the fixed embedded body for that status, and the share CSP.
+func checkPage(t *testing.T, resp *http.Response, c gateCase) {
+	t.Helper()
+	checkGateAnswer(t, resp, c)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("%s: read body: %v", c.name, err)
+	}
+	want := userRefusedPage
+	if c.status == http.StatusServiceUnavailable {
+		want = serviceRetryPage
+	}
+	if !bytes.Equal(body, want) {
+		t.Errorf("%s: body is not the embedded page for status %d", c.name, c.status)
+	}
+	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") {
+		t.Errorf("%s: Content-Security-Policy = %q, want default-src 'none'", c.name, csp)
+	}
+}
+
+func TestSameUserGate_AppPage(t *testing.T) {
+	ws, client, tok := pageGateServer(t, "sess-gate-app")
+	for _, path := range []string{"/app/?session=sess-gate-app&cap=" + tok, "/app/assets/x.js"} {
+		t.Run(path, func(t *testing.T) {
+			if resp := gateGet(t, ws, client, webservertest.Same, path); resp.StatusCode != http.StatusOK {
+				t.Errorf("same user: status = %d, want 200", resp.StatusCode)
+			}
+			for _, c := range gateRefusals {
+				checkPage(t, gateGet(t, ws, client, c.id, path), c)
 			}
 		})
 	}
