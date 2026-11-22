@@ -57,6 +57,7 @@ import (
 	"github.com/scottkw/portty/internal/capability"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/webserver"
+	"github.com/scottkw/portty/internal/webserver/webservertest"
 )
 
 const (
@@ -106,6 +107,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("NewWebServer: %v", err)
 	}
+	// MOB-05: every session route is same-account gated. Answer as the same
+	// user by default; the fixture is not a test binary, so without a fake it
+	// would ask the host's live tailscaled.
+	who := webservertest.SameUser()
+	ws.SetWhoIsClientForTest(who)
 	ws.SetSigningKey(fixedTestKey)
 	// Phase 120-06 Task 3 — wire the embedded React bundle so /app/ serves
 	// the SPA under playwright tests. staticAppFixture() returns nil under
@@ -183,6 +189,26 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(data)
+	})
+	adminMux.HandleFunc("/__test__/whois", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			As string `json:"as"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "decode body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		id, err := webservertest.ParseIdentity(body.As)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		who.Set(id)
+		w.WriteHeader(http.StatusOK)
 	})
 	adminMux.HandleFunc("/__test__/ready", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

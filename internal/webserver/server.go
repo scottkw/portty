@@ -582,10 +582,11 @@ func (ws *WebServer) setupRoutes() {
 	// cap check so the unauthenticated 401 that peer discovery sees carries it too.
 	mux.HandleFunc("GET /api/sessions", porttyMarker(ws.requireCapability(ws.handleListSessions)))
 
-	// GET /api/sessions/{id}/info — capability-gated; cap must match {id}
-	// (SEC-03). Used by the terminal page to populate status bar + perms
-	// (D-19, D-23).
-	mux.HandleFunc("GET /api/sessions/{id}/info", ws.requireCapability(ws.handleSessionInfo))
+	// GET /api/sessions/{id}/info — same-user first (MOB-05: another account
+	// is refused with 403 + marker before the capability is read), then
+	// capability-gated; cap must match {id} (SEC-03). Used by the terminal page
+	// to populate status bar + perms (D-19, D-23).
+	mux.HandleFunc("GET /api/sessions/{id}/info", ws.requireSameUser(ws.requireCapability(ws.handleSessionInfo)))
 
 	// Phase 93 PLUG-04: capability-gated plugin config endpoint. Per
 	// capability_mw.go path-ID logic, an empty path-ID short-circuits the

@@ -1,5 +1,11 @@
 // Package webserver test helpers relocated from security-review/ for Phase 87.
 //
+// Phase 14 (Plan 14-01): moved from capability_test_helpers.go to a _test.go
+// file. The old name was not a test file, so these helpers (and the testing
+// import) were compiled into the release package; nothing outside _test.go
+// referenced them. As a test file, testServer and testServerWithHub can install
+// the webservertest same-user WhoIs fake without putting it in a release build.
+//
 // Plan 03 removed the phase87_wave2 build tag that previously guarded this
 // file — the capability package is now wired into WebServer and these helpers
 // are part of the active test suite.
@@ -36,6 +42,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/webserver/webservertest"
 )
 
 // selfSignedTLSForTest generates an in-memory self-signed CA and leaf cert for
@@ -117,6 +124,7 @@ func testServer(t *testing.T) (*WebServer, *http.Client) {
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
+	ws.SetWhoIsClientForTest(webservertest.SameUser())
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
 	}
@@ -147,6 +155,7 @@ func testServerWithHub(t *testing.T, sessionID string) (*WebServer, *http.Client
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
+	ws.SetWhoIsClientForTest(webservertest.SameUser())
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
 	}

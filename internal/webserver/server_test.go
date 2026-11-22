@@ -25,6 +25,7 @@ import (
 	"github.com/scottkw/portty/internal/capability"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/webserver"
+	"github.com/scottkw/portty/internal/webserver/webservertest"
 )
 
 // ssExtTestKey is a deterministic 32-byte HMAC key used by external-package
@@ -137,6 +138,7 @@ func testServer(t *testing.T) (*webserver.WebServer, *http.Client) {
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
+	ws.SetWhoIsClientForTest(webservertest.SameUser())
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
 	}
