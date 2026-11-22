@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
+import terminalPanelSource from '../TerminalPanel.tsx?raw'
 
 type Link = { range: unknown; text: string; activate: (e: MouseEvent, text: string) => void }
 type Provider = { provideLinks: (y: number, cb: (links: Link[] | undefined) => void) => void }
@@ -207,6 +208,14 @@ describe('path link gating (PATH-02)', () => {
     flushSync(() => root.unmount())
     mounted = false
     expect(hoisted.state.disposed).toBe(2)
+  })
+
+  // 12-08 gap 2: xterm's Linkifier caches a row's answer, so every capability report must refresh it.
+  it('the capability callback refreshes the link state', () => {
+    const cb = /onPathClickCapability:\s*\(enabled\)\s*=>\s*\{([^}]*)\}/.exec(terminalPanelSource)
+    expect(cb, 'onPathClickCapability callback found').not.toBeNull()
+    expect(cb![1]).toContain('pathClickEnabledRef.current = enabled')
+    expect(cb![1]).toContain('pathLinksRef.current?.invalidate()')
   })
 })
 

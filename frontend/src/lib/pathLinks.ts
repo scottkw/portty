@@ -77,9 +77,18 @@ export interface PathLinkOptions {
   onClick: (request: string) => void
 }
 
-export function registerPathLinks(term: Terminal, opts: PathLinkOptions): IDisposable {
+export type PathLinksHandle = IDisposable & {
+  /** Drop xterm's cached link state and re-hover at the pointer's last position (see below). */
+  invalidate(): void
+}
+
+export function registerPathLinks(term: Terminal, opts: PathLinkOptions): PathLinksHandle {
   let modDown = false
   let hovered: ILink | null = null
+  let disposed = false
+  let refreshing = false // set while this module dispatches its own mousemove
+  let pointerInside = false
+  let lastMove: MouseEvent | null = null
   const held = () => modDown || opts.modifier() === 'none'
 
   const paint = () => {
@@ -95,7 +104,13 @@ export function registerPathLinks(term: Terminal, opts: PathLinkOptions): IDispo
     paint()
   }
   const onKey = (e: KeyboardEvent) => setMod(isModifierPressed(e, opts.modifier()))
-  const onMove = (e: MouseEvent) => setMod(isModifierPressed(e, opts.modifier()))
+  const onMove = (e: MouseEvent) => {
+    if (refreshing) return
+    lastMove = e
+    pointerInside = true
+    setMod(isModifierPressed(e, opts.modifier()))
+  }
+  const onLeave = () => { pointerInside = false }
   const onLost = () => setMod(false) // a Cmd keyup is lost on Cmd-Tab
 
   window.addEventListener('keydown', onKey, true)
@@ -104,6 +119,35 @@ export function registerPathLinks(term: Terminal, opts: PathLinkOptions): IDispo
   document.addEventListener('visibilitychange', onLost)
   const el = term.element!
   el.addEventListener('mousemove', onMove, true)
+  const screen = el.querySelector('.xterm-screen') ?? el
+  screen.addEventListener('mouseleave', onLeave)
+
+  // xterm's Linkifier caches each row's provider reply and remembers the last hovered cell, so a link
+  // that was not offered when a row was last asked (capability off during a drop) or was cleared (a
+  // resize) stays gone until the pointer reaches a different cell. This drops that state and re-hovers.
+  //  - Deferred with queueMicrotask: term.onResize fires before the Linkifier's own resize listener,
+  //    which would undo synchronous work.
+  //  - Private fields `_lastBufferCell` and `_activeLine` (xterm 6 has no public way to reset them):
+  //    guarded, never throws inside a resize handler; pathLinks.linkifier.test.ts pins the names.
+  //  - Non-bubbling mousemove on .xterm-screen: the Linkifier hears it, but xterm's mouse-report
+  //    listener is a bubble-phase listener on term.element, so a mouse-tracking program gets no input.
+  const invalidate = () => queueMicrotask(() => {
+    if (disposed) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lk = (term as any)._core?.linkifier
+    // _lastBufferCell is not an own property until the first hover, so _activeLine is the presence check.
+    if (!lk || !('_activeLine' in lk)) return
+    lk._lastBufferCell = undefined
+    lk._activeLine = -1
+    if (!pointerInside || !lastMove) return
+    refreshing = true
+    try {
+      screen.dispatchEvent(new MouseEvent('mousemove', {
+        clientX: lastMove.clientX, clientY: lastMove.clientY, metaKey: lastMove.metaKey,
+        ctrlKey: lastMove.ctrlKey, altKey: lastMove.altKey, shiftKey: lastMove.shiftKey, bubbles: false,
+      }))
+    } finally { refreshing = false }
+  })
 
   const provider = term.registerLinkProvider({
     provideLinks(y, callback) {
@@ -131,13 +175,16 @@ export function registerPathLinks(term: Terminal, opts: PathLinkOptions): IDispo
   })
 
   return {
+    invalidate,
     dispose() {
+      disposed = true
       provider.dispose()
       window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('keyup', onKey, true)
       window.removeEventListener('blur', onLost)
       document.removeEventListener('visibilitychange', onLost)
       el.removeEventListener('mousemove', onMove, true)
+      screen.removeEventListener('mouseleave', onLeave)
       hovered = null
     },
   }

@@ -24,7 +24,7 @@ import { SetSearchConfig } from '../wailsjs/go/main/App'
 import { daemon } from '../wailsjs/go/models'
 import { isAllowedScheme, getRisk, type RiskKind } from '../lib/urlSafety'
 import { openLink, isModifierPressed, type ModifierMode } from '../lib/openLink'
-import { registerPathLinks } from '../lib/pathLinks'
+import { registerPathLinks, type PathLinksHandle } from '../lib/pathLinks'
 import { LinkConfirmPopover } from './LinkConfirmPopover'
 import { SessionEndedBanner } from './SessionEndedBanner'
 import { CLOSE_REASON_SHARE_STOPPED } from '../lib/closeReasons'
@@ -208,7 +208,7 @@ export function TerminalPanel({
   // Phase 12 PATH-02: path links (lib/pathLinks.ts) ride the web-links toggle. The provider is registered once
   // per terminal; pathClickEnabledRef says whether the host offered path clicks on the current socket
   // (replay meta pathClick:true), so a read-only viewer or an older host sees no links.
-  const pathLinksRef = useRef<IDisposable | null>(null)
+  const pathLinksRef = useRef<PathLinksHandle | null>(null)
   const pathClickEnabledRef = useRef(false)
   // Phase 96 IMG-01/IMG-02: ImageAddon ref. Construction is NEXT-SESSION-ONLY
   // (mount useEffect, NOT hot-swap useEffect) — toggling pluginConfig.image
@@ -534,7 +534,10 @@ export function TerminalPanel({
       const client = new RelayClient(relayPort, sessionId, {
         onPreview: preview.feed,
         onPreviewReset: preview.discard,
-        onPathClickCapability: (enabled) => { pathClickEnabledRef.current = enabled },
+        onPathClickCapability: (enabled) => {
+          pathClickEnabledRef.current = enabled
+          pathLinksRef.current?.invalidate()
+        },
         onPathNotice: showPathNotice,
         onOutput: (data) => { peerWatch?.feed(data); term.write(data) },
         onOpen: () => { lastReportRef.current = null; reportFit() },
