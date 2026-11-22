@@ -9,6 +9,10 @@ export const MSG_PREVIEW = 0x21  // server → client: file preview push (relay.
 export const MSG_INPUT   = 0x10  // client → server: keyboard input
 export const MSG_RESIZE2 = 0x11  // client → server: resize request
 export const MSG_PING    = 0x12  // client → server: keep-alive
+export const MSG_PATH_CLICK = 0x13  // client → server: UTF-8 path text the user clicked (relay.MsgPathClick)
+
+// Largest MSG_PATH_CLICK text in bytes (relay.PathClickMaxBytes).
+export const PATH_CLICK_MAX_BYTES = 1024
 
 // MSG_PREVIEW sub-kinds and the largest chunk payload (relay.PreviewChunk).
 export const PREVIEW_HEADER = 0x01
@@ -226,6 +230,10 @@ export interface RelayClientCallbacks {
   onPreview?: (frame: PreviewFrame) => void
   /** Phase 11: the socket closed (or was abandoned); a partial preview is discarded, never resumed. */
   onPreviewReset?: () => void
+  /** Phase 12: the host offers path clicks on this socket (replay meta pathClick:true); false on close and abandon. */
+  onPathClickCapability?: (enabled: boolean) => void
+  /** Phase 12: the host refused a clicked file; only the two known codes arrive, never the wire string. */
+  onPathNotice?: (kind: 'path-unsupported' | 'path-too-large') => void
 }
 
 /**
@@ -387,6 +395,7 @@ export class RelayClient {
     ws.onclose = (evt: CloseEvent) => {
       if (gen !== this.socketGen) return
       this.callbacks.onPreviewReset?.()
+      this.callbacks.onPathClickCapability?.(false)
       this._clearPing()
       this._clearConnect()
       this.checkPaste(ws) // close() already cleared the record: a user close says nothing
@@ -513,6 +522,7 @@ export class RelayClient {
     this.checkPaste(ws)
     ws.close()
     this.callbacks.onPreviewReset?.()
+    this.callbacks.onPathClickCapability?.(false)
     this.resetBackoffIfHealthy()
     this.openedAt = 0
     this.setState('reconnecting')
@@ -531,8 +541,13 @@ export class RelayClient {
       this.offsetValid = false
       return
     }
-    const { replay, offset } = m as { replay?: unknown; offset?: unknown }
+    const { replay, offset, pathClick, notice } = m as {
+      replay?: unknown; offset?: unknown; pathClick?: unknown; notice?: unknown
+    }
+    // A notice meta carries no replay or offset, so the resume logic below is untouched.
+    if (notice === 'path-unsupported' || notice === 'path-too-large') this.callbacks.onPathNotice?.(notice)
     if (typeof replay === 'string') {
+      this.callbacks.onPathClickCapability?.(pathClick === true)
       if (replay === 'full' && this.hasRendered) this.callbacks.onReset?.()
       this.awaitingReplayMeta = false
       this.offsetValid = false // trusted again only after this socket's offset meta
@@ -652,6 +667,18 @@ export class RelayClient {
     if (this.reconnect && this.state !== 'open') return
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.send(encodeClaimFrame(cols, rows))
+  }
+
+  /** Phase 12: ask the host to preview a path. Dropped (never queued) unless open, so a click never replays after a reconnect. */
+  sendPathClick(text: string): void {
+    if (this.reconnect && this.state !== 'open') return
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    const bytes = new TextEncoder().encode(text)
+    if (bytes.length === 0 || bytes.length > PATH_CLICK_MAX_BYTES) return
+    const frame = new Uint8Array(bytes.length + 1)
+    frame[0] = MSG_PATH_CLICK
+    frame.set(bytes, 1)
+    this.send(frame)
   }
 
   // Every frame leaves through here, so bytes queued after a paste and pings are counted.

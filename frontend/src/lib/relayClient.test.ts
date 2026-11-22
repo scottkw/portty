@@ -19,8 +19,10 @@ import {
   MSG_PREVIEW,
   PREVIEW_CHUNK_MAX,
   type PreviewFrame,
+  MSG_PATH_CLICK,
 } from './relayClient'
 import previewFixture from './__tests__/fixtures/preview-frames.json'
+import pathClickFixture from './__tests__/fixtures/path-click.json'
 
 const concat = (frames: Uint8Array[]) => {
   const out: number[] = []
@@ -1429,5 +1431,120 @@ describe('MSG_PREVIEW parsing against the Go fixture (PREV-01)', () => {
       WS.instances[0].onclose?.({ code: 1000, reason: '' })
       expect(onPreviewReset).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+// Phase 12 (PATH-02): the click frame and the host's capability and notice metas, pinned to the
+// bytes internal/relay/protocol_test.go checks against the same fixture.
+describe('MSG_PATH_CLICK (PATH-02)', () => {
+  class WS {
+    static OPEN = 1
+    static instances: WS[] = []
+    binaryType = ''
+    readyState = 1
+    onopen: (() => void) | null = null
+    onmessage: ((e: { data: ArrayBuffer }) => void) | null = null
+    onclose: ((e: { code: number; reason: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    send = vi.fn()
+    close = vi.fn()
+    constructor(public url: string) { WS.instances.push(this) }
+  }
+  const { frames } = pathClickFixture
+  const hex = (h: string) => Uint8Array.from(h.match(/../g)!.map((b) => parseInt(b, 16)))
+  const feed = (f: Uint8Array) => WS.instances[0].onmessage?.({ data: f.slice().buffer as ArrayBuffer })
+  const enc = new TextEncoder()
+  let client: RelayClient | null = null
+  const make = (cbs: Partial<RelayClientCallbacks> = {}) => {
+    client = new RelayClient(1, 's', { onOutput: vi.fn(), ...cbs }, { remote: true, reconnect: {} })
+    WS.instances[0].onopen?.()
+  }
+  const open = () => {
+    feed(hex(frames.replayMetaHex))
+    feed(new Uint8Array([0x20, ...enc.encode(JSON.stringify({ offset: 0 }))]))
+  }
+  beforeEach(() => { vi.useFakeTimers(); WS.instances = []; vi.stubGlobal('WebSocket', WS) })
+  afterEach(() => { client?.close(); client = null; vi.unstubAllGlobals(); vi.useRealTimers() })
+
+  it('pins the type byte', () => {
+    expect(MSG_PATH_CLICK).toBe(0x13)
+  })
+
+  it('sends exactly the fixture frame on an open socket', () => {
+    make()
+    open()
+    client!.sendPathClick(frames.pathClickText)
+    expect(WS.instances[0].send).toHaveBeenCalledTimes(1)
+    expect(Array.from(WS.instances[0].send.mock.calls[0][0] as Uint8Array)).toEqual(Array.from(hex(frames.pathClickHex)))
+  })
+
+  it('sends nothing before the socket is open, for empty text or for 1025 bytes', () => {
+    make()
+    client!.sendPathClick('a/b.png') // reconnect mode, replay not yet written
+    open()
+    client!.sendPathClick('')
+    client!.sendPathClick('a'.repeat(1025))
+    expect(WS.instances[0].send).not.toHaveBeenCalled()
+    client!.sendPathClick('a'.repeat(1024))
+    expect(WS.instances[0].send).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends nothing while reconnecting', () => {
+    make()
+    open()
+    WS.instances[0].onclose?.({ code: 1006, reason: '' })
+    client!.sendPathClick('a/b.png')
+    expect(WS.instances[0].send).not.toHaveBeenCalled()
+  })
+
+  it('the replay meta with pathClick:true enables the capability; one without does not', () => {
+    const onPathClickCapability = vi.fn()
+    make({ onPathClickCapability })
+    feed(hex(frames.replayMetaHex))
+    expect(onPathClickCapability).toHaveBeenLastCalledWith(true)
+    feed(new Uint8Array([0x20, ...enc.encode(JSON.stringify({ replay: 'full' }))]))
+    expect(onPathClickCapability).toHaveBeenLastCalledWith(false)
+    feed(new Uint8Array([0x20, ...enc.encode(JSON.stringify({ replay: 'full', pathClick: 'true' }))]))
+    expect(onPathClickCapability).toHaveBeenLastCalledWith(false)
+  })
+
+  it('close clears the capability', () => {
+    const onPathClickCapability = vi.fn()
+    make({ onPathClickCapability })
+    feed(hex(frames.replayMetaHex))
+    WS.instances[0].onclose?.({ code: 1006, reason: '' })
+    expect(onPathClickCapability).toHaveBeenLastCalledWith(false)
+  })
+
+  it('abandoning a silent socket clears the capability', () => {
+    const onPathClickCapability = vi.fn()
+    make({ onPathClickCapability })
+    feed(hex(frames.replayMetaHex))
+    feed(new Uint8Array([MSG_PONG])) // the watchdog only judges a host that has ponged before
+    onPathClickCapability.mockClear()
+    vi.advanceTimersByTime(RECONNECT.deadMs + RECONNECT.probeGraceMs + 2000)
+    expect(onPathClickCapability).toHaveBeenCalledWith(false)
+  })
+
+  it('maps the two notice metas to their kinds and leaves the resume offset alone', () => {
+    const onPathNotice = vi.fn()
+    make({ onPathNotice })
+    open()
+    feed(new Uint8Array([0x01, 0x61]))
+    const before = client!.resumePoint()
+    feed(hex(frames.noticeUnsupportedHex))
+    feed(hex(frames.noticeTooLargeHex))
+    expect(onPathNotice.mock.calls).toEqual([['path-unsupported'], ['path-too-large']])
+    expect(client!.resumePoint()).toBe(before)
+  })
+
+  it('ignores any other notice string or a non-string', () => {
+    const onPathNotice = vi.fn()
+    make({ onPathNotice })
+    open()
+    for (const notice of ['Path-Unsupported', 'path-unsupported ', 'other', 1, null, {}]) {
+      feed(new Uint8Array([0x20, ...enc.encode(JSON.stringify({ notice }))]))
+    }
+    expect(onPathNotice).not.toHaveBeenCalled()
   })
 })

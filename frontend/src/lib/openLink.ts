@@ -25,7 +25,7 @@ export type ModifierMode = 'platform' | 'cmd' | 'ctrl' | 'none';
  * (not the Ctrl key) — so 'platform' mode explicitly checks ctrlKey when
  * navigator.platform is non-Mac, NOT metaKey.
  */
-export function isModifierPressed(event: MouseEvent, mode: ModifierMode): boolean {
+export function isModifierPressed(event: Pick<MouseEvent, 'metaKey' | 'ctrlKey'>, mode: ModifierMode): boolean {
   if (mode === 'none') return true;
   const isMac =
     typeof navigator !== 'undefined' &&

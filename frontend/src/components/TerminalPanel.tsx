@@ -24,6 +24,7 @@ import { SetSearchConfig } from '../wailsjs/go/main/App'
 import { daemon } from '../wailsjs/go/models'
 import { isAllowedScheme, getRisk, type RiskKind } from '../lib/urlSafety'
 import { openLink, isModifierPressed, type ModifierMode } from '../lib/openLink'
+import { registerPathLinks } from '../lib/pathLinks'
 import { LinkConfirmPopover } from './LinkConfirmPopover'
 import { SessionEndedBanner } from './SessionEndedBanner'
 import { CLOSE_REASON_SHARE_STOPPED } from '../lib/closeReasons'
@@ -202,6 +203,11 @@ export function TerminalPanel({
   // changing those does NOT re-attach the addon (Pitfall #8).
   const webLinksAddonRef = useRef<WebLinksAddon | null>(null)
   const webLinksConfigRef = useRef(pluginConfig?.webLinksConfig)
+  // Phase 12 PATH-02: path links (lib/pathLinks.ts) ride the web-links toggle. The provider is registered once
+  // per terminal; pathClickEnabledRef says whether the host offered path clicks on the current socket
+  // (replay meta pathClick:true), so a read-only viewer or an older host sees no links.
+  const pathLinksRef = useRef<IDisposable | null>(null)
+  const pathClickEnabledRef = useRef(false)
   // Phase 96 IMG-01/IMG-02: ImageAddon ref. Construction is NEXT-SESSION-ONLY
   // (mount useEffect, NOT hot-swap useEffect) — toggling pluginConfig.image
   // in Settings does NOT re-attach on already-open terminals. The italic
@@ -503,6 +509,7 @@ export function TerminalPanel({
       const client = new RelayClient(relayPort, sessionId, {
         onPreview: preview.feed,
         onPreviewReset: preview.discard,
+        onPathClickCapability: (enabled) => { pathClickEnabledRef.current = enabled },
         onOutput: (data) => { peerWatch?.feed(data); term.write(data) },
         onOpen: () => { lastReportRef.current = null; reportFit() },
         // Phase 175-06 (BUG-02 / #125): show the end banner on the guest path
@@ -606,6 +613,10 @@ export function TerminalPanel({
       if (searchAddonRef.current) {
         searchAddonRef.current.dispose()
         searchAddonRef.current = null
+      }
+      if (pathLinksRef.current) {
+        pathLinksRef.current.dispose()
+        pathLinksRef.current = null
       }
       // Phase 95 LNK-01..04: dispose WebLinksAddon on unmount so the
       // addon's link provider releases the buffer-scan subscription.
@@ -893,7 +904,18 @@ export function TerminalPanel({
         term.loadAddon(addon)
         webLinksAddonRef.current = addon
       }
+      if (!pathLinksRef.current) {
+        pathLinksRef.current = registerPathLinks(term, {
+          enabled: () => pathClickEnabledRef.current,
+          modifier: () => (webLinksConfigRef.current?.modifier || 'platform') as ModifierMode,
+          onClick: (request) => clientRef.current?.sendPathClick(request),
+        })
+      }
     } else {
+      if (pathLinksRef.current) {
+        pathLinksRef.current.dispose()
+        pathLinksRef.current = null
+      }
       // Toggle OFF — dispose addon. Terminal buffer (scrollback) survives;
       // only the link provider detaches.
       if (webLinksAddonRef.current) {
