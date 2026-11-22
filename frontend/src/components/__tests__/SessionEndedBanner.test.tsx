@@ -181,4 +181,35 @@ describe('SessionEndedBanner', () => {
       expect(renderKind({ reason: '<b>hostile</b> wire text' }).textContent).not.toContain('hostile')
     })
   })
+
+  // Phase 13 (URL-01): why a clicked remote localhost URL did not open.
+  describe.each([
+    ['port-host-outdated', 'office-air', 8000, 'office-air needs a Portty update to open its local pages.', 'The host Mac needs a Portty update to open its local pages.'],
+    ['port-daemon-outdated', 'office-air', 8000, "Portty's background service on this Mac is too old to open remote pages. Relaunch Portty to update it.", "Portty's background service on this Mac is too old to open remote pages. Relaunch Portty to update it."],
+    ['port-in-use', 'office-air', 8000, 'Port 8000 is in use on this Mac.', 'Port 8000 is in use on this Mac.'],
+    ['port-refused', 'office-air', 8000, 'office-air refused access to port 8000.', 'The host Mac refused access to port 8000.'],
+    ['port-unreachable', 'office-air', 8000, "Couldn't reach office-air.", "Couldn't reach the host Mac."],
+  ] as const)('kind %s (URL-01)', (kind, host, port, copy, fallbackCopy) => {
+    function renderKind(extra: object = {}) {
+      container = document.createElement('div')
+      document.body.appendChild(container)
+      root = createRoot(container)
+      flushSync(() => { root!.render(React.createElement(SessionEndedBanner, { kind, host, port, onDismiss: vi.fn(), ...extra })) })
+      return container
+    }
+
+    it('renders exactly the fixed copy', () => {
+      expect(renderKind().querySelector('.banner__message')?.textContent).toBe(copy)
+    })
+
+    it('falls back to the generic host text when the host label is absent', () => {
+      expect(renderKind({ host: undefined }).querySelector('.banner__message')?.textContent).toBe(fallbackCopy)
+    })
+
+    it('is a polite status with a Dismiss button', () => {
+      const c = renderKind()
+      expect(c.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite')
+      expect(c.querySelector('[aria-label="Dismiss"]')).not.toBeNull()
+    })
+  })
 })
