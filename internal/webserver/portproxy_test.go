@@ -574,6 +574,8 @@ func TestPortProxy_Refusals(t *testing.T) {
 		{name: "missing target", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.noTarget = true }},
 		{name: "target x", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.target = "x" }},
 		{name: "absolute target", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.target = "http://evil.example/" }},
+		{name: "target with a space in the query", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.target = "/a?x y HTTP/1.0" }},
+		{name: "target with a raw non-ASCII byte", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.target = "/a\xc3\xa9" }},
 		{name: "9000-byte target", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.target = "/" + strings.Repeat("a", 9000) }},
 		{name: "port 8000x", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.portStr = "8000x" }},
 		{name: "port 0", prep: func(t *testing.T, e *ppEnv, r *proxyReq, port int) { r.portStr = "0" }},

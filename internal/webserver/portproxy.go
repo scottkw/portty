@@ -168,6 +168,14 @@ func (ws *WebServer) handlePortProxy(w http.ResponseWriter, r *http.Request) {
 		refusePort(w)
 		return
 	}
+	// ParseRequestURI keeps a space in the query, and RawQuery is copied into the
+	// outbound request line: a target can carry only printable, non-space ASCII.
+	for i := 0; i < len(target); i++ {
+		if c := target[i]; c <= 0x20 || c >= 0x7f {
+			refusePort(w)
+			return
+		}
+	}
 	tu, err := url.ParseRequestURI(target)
 	if err != nil {
 		refusePort(w)
