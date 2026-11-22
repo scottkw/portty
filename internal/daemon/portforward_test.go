@@ -150,6 +150,19 @@ func (s *stubHost) handleProxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "stub refusal", status)
 		return
 	}
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") { // an HMR-style echo
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		for {
+			typ, data, err := conn.Read(r.Context())
+			if err != nil || conn.Write(r.Context(), typ, data) != nil {
+				return
+			}
+		}
+	}
 	for k, v := range extra {
 		w.Header()[k] = v
 	}
@@ -959,5 +972,35 @@ func TestPortForward_LogsNoSecrets(t *testing.T) {
 	}
 	if !strings.Contains(out, "port forward: session=s1 port="+strconv.Itoa(port)+" outcome=open") {
 		t.Errorf("no outcome=open line in %q", out)
+	}
+}
+
+// A WebSocket upgrade goes through the forward like any request, carries the
+// Portty headers, and is torn down when the forward closes.
+func TestPortForward_WebSocketUpgrade(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws://127.0.0.1:"+strconv.Itoa(port)+"/hmr?token=x", nil)
+	if err != nil {
+		t.Fatalf("upgrade through the forward: %v", err)
+	}
+	defer conn.CloseNow()
+	if err := conn.Write(ctx, websocket.MessageText, []byte("hi")); err != nil {
+		t.Fatal(err)
+	}
+	if _, data, err := conn.Read(ctx); err != nil || string(data) != "hi" {
+		t.Fatalf("echo = %q %v", data, err)
+	}
+	hit := e.stub.lastHit(t)
+	if hit.hdr.Get("X-Portty-Target") != "/hmr?token=x" || hit.hdr.Get("X-Portty-Cap") != "CAP" || hit.hdr.Get("X-Portty-Port-Token") != e.stub.token() {
+		t.Errorf("upgrade request carried target %q cap %q token %q", hit.hdr.Get("X-Portty-Target"), hit.hdr.Get("X-Portty-Cap"), hit.hdr.Get("X-Portty-Port-Token"))
+	}
+	e.api.portForwards.CloseAll()
+	rctx, rcancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer rcancel()
+	if _, _, err := conn.Read(rctx); err == nil || rctx.Err() != nil {
+		t.Fatalf("the tunnel survived the forward closing: %v", err)
 	}
 }
