@@ -6,15 +6,15 @@ current_phase: 12
 current_phase_name: File Path Click
 status: executing
 stopped_at: Phase 11 complete, ready to plan Phase 12
-last_updated: "2026-11-22T01:10:39.544Z"
+last_updated: "2026-11-22T03:53:01.693Z"
 last_activity: 2026-11-21
 last_activity_desc: Phase 12 execution started
-state_head: 79cab1e34a0fa5ab88769683e5ceef5f2e6a2aad
+state_head: 0a76d02bb60b337c011ed9500ce5c80d4bc69060
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 31
-  completed_plans: 30
+  total_plans: 33
+  completed_plans: 32
   percent: 50
 ---
 
@@ -114,6 +114,7 @@ Last activity: 2026-11-21 — Phase 12 execution started
 | Phase 12 P04 | 16 min | 3 tasks | 10 files |
 | Phase 12 P05 | 25min | 2 tasks | 6 files |
 | Phase 12 P06 | 35min | 3 tasks | 10 files |
+| Phase 12 P08 | 45min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -260,6 +261,8 @@ Recent decisions affecting current work:
 - [Phase 12]: 12-05: read-only path clicks refused in the share pump, the relay pump and Hub.PathClick on purpose; PathClickAPI 4 documents the feature, viewers follow the replay-meta bit
 - [Phase 12]: 12-06: bare-form path links may not start with ~ and anchored ones need a non-slash after the prefix (~user/x.png and // are not links)
 - [Phase 12]: 12-06: path notice is cleared when another banner takes the slot and hidden while the pane is inactive, not only dropped on arrival
+- [Phase 12]: 12-08: desktop peer tabs follow this Mac's own webLinks and webLinksConfig only (user-ratified 2026-11-21); no CORS header, no cross-origin config fetch
+- [Phase 12]: 12-08: link refresh guards on xterm Linkifier _activeLine (_lastBufferCell is not an own property before the first hover); pin test hovers first
 
 ### Pending Todos
 
