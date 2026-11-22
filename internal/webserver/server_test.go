@@ -251,6 +251,7 @@ func TestWebServerWSS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
+	ws.SetWhoIsClientForTest(webservertest.SameUser())
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
 	}
@@ -851,6 +852,7 @@ func newWebTestHub(t *testing.T, sessionID string, cols, rows int) (*webserver.W
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
+	ws.SetWhoIsClientForTest(webservertest.SameUser())
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
 	}

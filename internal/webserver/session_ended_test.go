@@ -31,6 +31,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/webserver/webservertest"
 )
 
 func TestSessionEnd_HubDone_CarriesCloseReason(t *testing.T) {
@@ -54,6 +55,7 @@ func TestSessionEnd_HubDone_CarriesCloseReason(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
+	ws.SetWhoIsClientForTest(webservertest.SameUser())
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
 	}

@@ -90,12 +90,13 @@ func DiscoverPeers(ctx context.Context) ([]Peer, error) {
 	return discoverPeers(ctx, lc.Status)
 }
 
-// isPorttyProbeResponse reports whether a probe response comes from a running
+// IsPorttyProbeResponse reports whether a probe response comes from a running
 // Portty peer: the reply must carry the Portty marker header, and the status
 // must be 200 (open endpoint) or 401 (a shared, cap-protected peer; every real
 // tailnet share is cap-gated). Replies without the marker, including the
-// upstream app's 401, are rejected. The body is never read.
-func isPorttyProbeResponse(resp *http.Response) bool {
+// upstream app's 401, are rejected. The body is never read. Exported so the
+// share server's gate test applies the probe's own rule to its real answers.
+func IsPorttyProbeResponse(resp *http.Response) bool {
 	if resp.Header.Get(MarkerHeader) != MarkerValue {
 		return false
 	}
@@ -118,7 +119,7 @@ func probePeer(ctx context.Context, peer Peer, client *http.Client) bool {
 	}
 	resp, err := client.Do(req)
 	if err == nil {
-		ok := isPorttyProbeResponse(resp)
+		ok := IsPorttyProbeResponse(resp)
 		resp.Body.Close()
 		return ok
 	}
@@ -158,7 +159,7 @@ func probePeerByIP(ctx context.Context, peer Peer, client *http.Client) bool {
 			return false
 		}
 	}
-	ok := isPorttyProbeResponse(resp)
+	ok := IsPorttyProbeResponse(resp)
 	resp.Body.Close()
 	return ok
 }

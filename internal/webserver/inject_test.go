@@ -18,6 +18,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/webserver/webservertest"
 )
 
 // writerFuncWeb adapts a func to io.Writer for the counting PTY writer.
@@ -52,6 +53,7 @@ func setupInjectWebServer(t *testing.T) (*WebServer, *http.Client, string, *atom
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
+	ws.SetWhoIsClientForTest(webservertest.SameUser())
 	if err := ws.Start(); err != nil {
 		t.Fatalf("ws.Start: %v", err)
 	}

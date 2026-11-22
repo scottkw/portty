@@ -13,6 +13,7 @@ import (
 	"github.com/scottkw/portty/internal/daemon"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/webserver"
+	"github.com/scottkw/portty/internal/webserver/webservertest"
 )
 
 func healthyTailnetForTest(context.Context) webserver.TailscaleHealth {
@@ -25,7 +26,12 @@ func loopbackShareServerForTest(_ webserver.TailscaleHealth, m *relay.HubManager
 	if err != nil {
 		return nil, err
 	}
-	return webserver.NewWebServer(webserver.Config{BindIP: "127.0.0.1", Port: 0, FQDN: "127.0.0.1", TLSConfig: cfg}, m)
+	ws, err := webserver.NewWebServer(webserver.Config{BindIP: "127.0.0.1", Port: 0, FQDN: "127.0.0.1", TLSConfig: cfg}, m)
+	if err != nil {
+		return nil, err
+	}
+	ws.SetWhoIsClientForTest(webservertest.SameUser())
+	return ws, nil
 }
 
 // testShareSetup is testSetup with a bootstrapped signing key and share seams

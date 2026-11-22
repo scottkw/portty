@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/webserver/webservertest"
 )
 
 // TestRequireAllowedOrigin_MatchingOriginPasses asserts that an Origin header
@@ -142,6 +143,7 @@ func TestRequireAllowedOrigin_FailClosedWhenListenerNotReady(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
+	ws.SetWhoIsClientForTest(webservertest.SameUser()) // never started; named so no test server defaults to a live lookup
 	// DO NOT call ws.Start() — BaseURL() must return "".
 	if got := ws.BaseURL(); got != "" {
 		t.Fatalf("expected BaseURL() == \"\" before Start(), got %q", got)
@@ -189,6 +191,7 @@ func TestAllowedOrigins_ReturnsBaseURLSingleton(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWebServer: %v", err)
 	}
+	wsDown.SetWhoIsClientForTest(webservertest.SameUser())
 	// DO NOT call wsDown.Start().
 	nilOrigins := wsDown.allowedOrigins()
 	if nilOrigins != nil {

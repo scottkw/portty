@@ -20,9 +20,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/webserver"
-	"tailscale.com/client/tailscale/apitype"
-	"tailscale.com/ipn/ipnstate"
-	"tailscale.com/tailcfg"
+	"github.com/scottkw/portty/internal/webserver/webservertest"
 )
 
 func healthyTailnet(context.Context) webserver.TailscaleHealth {
@@ -40,19 +38,8 @@ func loopbackShareServer(_ webserver.TailscaleHealth, m *relay.HubManager) (*web
 	if err != nil {
 		return nil, err
 	}
-	ws.SetWhoIsClientForTest(sameUserWhoIs{})
+	ws.SetWhoIsClientForTest(webservertest.SameUser())
 	return ws, nil
-}
-
-// sameUserWhoIs reports every caller as a node of this Mac's Tailscale user.
-type sameUserWhoIs struct{}
-
-func (sameUserWhoIs) WhoIs(context.Context, string) (*apitype.WhoIsResponse, error) {
-	return &apitype.WhoIsResponse{Node: &tailcfg.Node{User: 42}}, nil
-}
-
-func (sameUserWhoIs) StatusWithoutPeers(context.Context) (*ipnstate.Status, error) {
-	return &ipnstate.Status{Self: &ipnstate.PeerStatus{UserID: 42}}, nil
 }
 
 func noWarm(context.Context, string) error { return nil }

@@ -526,9 +526,15 @@ func (ws *WebServer) BaseURL() string {
 // Route access model (Phase 87, SEC-02..SEC-05):
 //   - /dashboard and / — open (landing page; Plan 06 rewrites the dashboard
 //     to have no session list).
-//   - /api/sessions, /api/sessions/{id}/info, /sessions/{id}, /sessions/{id}/ws
-//     — gated by requireCapability. The session-bound cap enforces enumeration,
+//   - /api/sessions, /api/sessions/{id}/info, /api/plugin-config,
+//     /api/plugin-config/stream, /sessions/{id}, /sessions/{id}/ws — gated by
+//     requireCapability. The session-bound cap enforces enumeration,
 //     cross-session isolation, and write permission via claims.Perms (D-24).
+//   - MOB-05: the discovery probe, info, both plugin-config routes and the
+//     WebSocket are also behind requireSameUser, outermost (the WebSocket:
+//     Origin, then WhoIs, then capability), so another account is refused
+//     before any capability work. /assets/, / and /dashboard stay open: they
+//     carry no session data.
 //   - /api/sessions/meta and POST /api/peer/sessions/{id}/cap — gated by
 //     requireSameUser (same Tailscale user via WhoIs, fail closed).
 //   - POST /api/peer/sessions/{id}/ports and /api/peer/sessions/{id}/ports/{port}
@@ -577,10 +583,16 @@ func (ws *WebServer) setupRoutes() {
 		mux.HandleFunc(m+" /api/peer/sessions/{id}/ports/{port}", ws.requireSameUser(ws.handlePortProxy))
 	}
 
-	// GET /api/sessions — capability-gated; handleListSessions returns ONLY
-	// the single session bound to the cap (D-18). porttyMarker sits outside the
-	// cap check so the unauthenticated 401 that peer discovery sees carries it too.
-	mux.HandleFunc("GET /api/sessions", porttyMarker(ws.requireCapability(ws.handleListSessions)))
+	// GET /api/sessions — the discovery probe. Same-user gated (MOB-05, user
+	// decision 2026-11-22: it returns the session name, status and hostname),
+	// then capability-gated; handleListSessions returns ONLY the single session
+	// bound to the cap (D-18). requireSameUser is outermost so a local tailscaled
+	// fault is a bare 503 with no marker (WR-08) and another account gets the
+	// marker 403; porttyMarker sits outside the cap check so the unauthenticated
+	// 401 a same-user peer's discovery sees carries it too. Accepted cost: while
+	// this Mac's tailscaled cannot answer, peers get the 503, which the probe
+	// rejects, and drop this host's group until their next refresh (5-30 s).
+	mux.HandleFunc("GET /api/sessions", ws.requireSameUser(porttyMarker(ws.requireCapability(ws.handleListSessions))))
 
 	// GET /api/sessions/{id}/info — same-user first (MOB-05: another account
 	// is refused with 403 + marker before the capability is read), then
@@ -588,16 +600,16 @@ func (ws *WebServer) setupRoutes() {
 	// to populate status bar + perms (D-19, D-23).
 	mux.HandleFunc("GET /api/sessions/{id}/info", ws.requireSameUser(ws.requireCapability(ws.handleSessionInfo)))
 
-	// Phase 93 PLUG-04: capability-gated plugin config endpoint. Per
+	// Phase 93 PLUG-04: same-user then capability-gated plugin config endpoint. Per
 	// capability_mw.go path-ID logic, an empty path-ID short-circuits the
 	// SID check, so any valid cap passes. Plugin config is global (not
 	// session-specific) but the caller must still hold a verified cap.
-	mux.HandleFunc("GET /api/plugin-config", ws.requireCapability(ws.handleGetPluginConfig))
+	mux.HandleFunc("GET /api/plugin-config", ws.requireSameUser(ws.requireCapability(ws.handleGetPluginConfig)))
 
 	// Phase 93 PLUG-04 push channel — SSE stream of plugin-config changes.
 	// Closes ROADMAP SC#4 ("no manual page reload for hot-swappable plugins").
-	// Capability-gated like the read endpoint above.
-	mux.HandleFunc("GET /api/plugin-config/stream", ws.requireCapability(ws.handleStreamPluginConfig))
+	// Gated like the read endpoint above (same-user, then capability).
+	mux.HandleFunc("GET /api/plugin-config/stream", ws.requireSameUser(ws.requireCapability(ws.handleStreamPluginConfig)))
 
 	// GET /sessions/{id} — capability-gated terminal HTML page. The old
 	// webEnabled-only pre-check is removed — requireCapability's grant-list
@@ -606,14 +618,16 @@ func (ws *WebServer) setupRoutes() {
 	mux.HandleFunc("GET /sessions/{id}",
 		ws.cspHeaders(ws.requireCapabilityPage(ws.handleTerminalPage)))
 
-	// GET /sessions/{id}/ws — Origin allowlist + capability-gated WebSocket
-	// upgrade. Phase 88 (D-10) wraps requireAllowedOrigin OUTSIDE
+	// GET /sessions/{id}/ws — Origin allowlist + same-user + capability-gated
+	// WebSocket upgrade. Phase 88 (D-10) wraps requireAllowedOrigin OUTSIDE
 	// requireCapability so a cross-site Origin is rejected BEFORE any HMAC
-	// verification work runs. The wrapper ordering matches composition
-	// outermost->innermost: basicAuth (local only) -> requireAllowedOrigin
-	// -> requireCapability -> handleWSSRelay.
+	// verification work runs; MOB-05 puts requireSameUser between them, so
+	// another account is refused by WhoIs before any HMAC work too. The wrapper
+	// ordering matches composition outermost->innermost: basicAuth (local only)
+	// -> requireAllowedOrigin -> requireSameUser -> requireCapability ->
+	// handleWSSRelay.
 	mux.HandleFunc("GET /sessions/{id}/ws",
-		ws.requireAllowedOrigin(ws.requireCapability(ws.handleWSSRelay)))
+		ws.requireAllowedOrigin(ws.requireSameUser(ws.requireCapability(ws.handleWSSRelay))))
 
 	// GET /assets/ and /assets/xterm/ — public static assets from the embedded web.WebFS.
 	// Per D-14: http.FileServerFS mounted via fs.Sub. Two separate mounts because
