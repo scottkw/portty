@@ -123,14 +123,22 @@ describe('Phase 95 LNK-01..04 — TerminalPanel WebLinksAddon integration', () =
     expect(src).toContain('setLinkConfirmState(null)')
   })
 
-  it('Plan B (Wave 0 spike outcome): no OSC 8 secondary registerLinkProvider call', () => {
+  it('Plan B (Wave 0 spike outcome), updated for Phase 12: no OSC 8 provider in TerminalPanel; path links live in lib/pathLinks.ts', () => {
     // Plan B selected per 95-RESEARCH §"Wave 0 Spike Outcome": OSC 8 mismatch
     // detection deferred to v3.3 because IBufferCell.getHyperlinkId absent
     // from @xterm/xterm@6.0.0 public typings. The osc8 branch in
     // LinkConfirmPopover ships dormant; TerminalPanel does NOT register a
-    // secondary provider for OSC 8 walking.
+    // link provider or walk hyperlink ids. Phase 12 (PATH-02) path links are
+    // the only provider in the app and sit in lib/pathLinks.ts, which
+    // TerminalPanel only calls through registerPathLinks.
     expect(src).not.toContain('registerLinkProvider')
     expect(src).not.toContain('getHyperlinkId')
+    expect(src).toMatch(/import\s+\{\s*registerPathLinks\s*\}\s+from\s+['"]\.\.\/lib\/pathLinks['"]/)
+    const files = import.meta.glob(['../../**/*.ts', '../../**/*.tsx', '!../../**/__tests__/**', '!../../**/*.test.*'], {
+      query: '?raw', import: 'default', eager: true,
+    }) as Record<string, string>
+    const providers = Object.entries(files).filter(([, text]) => text.includes('registerLinkProvider')).map(([f]) => f)
+    expect(providers).toEqual(['../../lib/pathLinks.ts'])
   })
 
   it('handler honors confirmIDN flag from webLinksConfig (LNK-03)', () => {

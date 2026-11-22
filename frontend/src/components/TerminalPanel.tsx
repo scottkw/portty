@@ -829,10 +829,11 @@ export function TerminalPanel({
     //
     // Plan B (Wave 0 spike outcome — 95-RESEARCH §"Wave 0 Spike Outcome"):
     // OSC 8 mismatch detection deferred to v3.3 because the public
-    // hyperlink-id accessor is absent from @xterm/xterm@6.0.0 typings. We
-    // do NOT register a secondary link provider; v3.2 ships IDN +
-    // typosquat detectors only. The osc8 branch in LinkConfirmPopover
-    // ships dormant for the v3.3 wiring slice.
+    // hyperlink-id accessor is absent from @xterm/xterm@6.0.0 typings, so no
+    // OSC 8 secondary provider exists; v3.2 ships IDN + typosquat detectors
+    // only. The osc8 branch in LinkConfirmPopover ships dormant for the v3.3
+    // wiring slice. Phase 12 path links come from lib/pathLinks.ts (registered
+    // below, same toggle); this file still holds no provider code of its own.
     if (pluginConfig?.webLinks) {
       if (!webLinksAddonRef.current) {
         const handler = (event: MouseEvent, uri: string) => {
