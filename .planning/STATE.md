@@ -6,15 +6,15 @@ current_phase: 13
 current_phase_name: remote-localhost-urls
 status: executing
 stopped_at: Phase 12 complete, ready to plan Phase 13
-last_updated: "2026-11-22T16:56:11.967Z"
+last_updated: "2026-11-22T17:09:46.720Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 13 execution started
-state_head: 3716dbe7ef4500f1af534f7f0ef4d7f10c3feabc
+state_head: ffa7414685c9086449406ad5cad51226615460b6
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 40
-  completed_plans: 34
+  completed_plans: 35
   percent: 67
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 13 (remote-localhost-urls) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 13 execution started
 
@@ -118,6 +118,7 @@ Last activity: 2026-11-22 — Phase 13 execution started
 | Phase 12 P08 | 45min | 3 tasks | 10 files |
 | Phase 12 P09 | multi-session | 4 tasks | 5 files |
 | Phase 13 P01 | ~25m | 3 tasks | 6 files |
+| Phase 13 P02 | ~75min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -267,6 +268,9 @@ Recent decisions affecting current work:
 - [Phase 12]: 12-08: desktop peer tabs follow this Mac's own webLinks and webLinksConfig only (user-ratified 2026-11-21); no CORS header, no cross-origin config fetch
 - [Phase 12]: 12-08: link refresh guards on xterm Linkifier _activeLine (_lastBufferCell is not an own property before the first hover); pin test hovers first
 - [Phase 12]: 12-09: Phase 12 approved on the VM re-run; C-08 ssh localhost, C-06 desktop underline and Claude Code are manual checks for the user's own Macs (M-133, M-131, M-132); F-1 and F-2 are todos, not blockers
+- [Phase 13]: Hop-1 URL host is the stored base URL host (hostname:port) so the stub-host tests and production share one path
+- [Phase 13]: Stream-close revocation requires the close to come from the peer side, so a local webview close frame cannot revoke forwards
+- [Phase 13]: Forward refuses request targets over 8192 bytes or not starting with / (414/400) so a long URL cannot close the forward via the host's identical 403
 
 ### Pending Todos
 
