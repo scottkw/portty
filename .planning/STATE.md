@@ -3,19 +3,19 @@ gsd_state_version: "1.0"
 milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
 current_phase: 14
-current_phase_name: Mobile Web App
-status: planning
+current_phase_name: mobile-web-app
+status: executing
 stopped_at: Phase 13 complete, ready to plan Phase 14
-last_updated: "2026-11-22T20:56:59.484Z"
+last_updated: "2026-11-22T23:09:50.654Z"
 last_activity: 2026-11-22
-last_activity_desc: Phase 13 complete, transitioned to Phase 14
-state_head: f2652e227df6885feac069607ba99c19ac96eed3
+last_activity_desc: Phase 14 execution started
+state_head: 21d78a98895c234e229cc4c600a3fda2c3f43927
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 40
+  total_plans: 54
   completed_plans: 40
-  percent: 83
+  percent: 74
 ---
 
 # Project State
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-18)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 13 — remote-localhost-urls
+**Current focus:** Phase 14 — mobile-web-app
 
 ## Current Position
 
-Phase: 14 — Mobile Web App
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-22 — Phase 13 complete, transitioned to Phase 14
+Phase: 14 (mobile-web-app) — EXECUTING
+Plan: 1 of 14
+Status: Executing Phase 14
+Last activity: 2026-11-22 — Phase 14 execution started
 
 
 ## Performance Metrics
