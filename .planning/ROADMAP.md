@@ -41,7 +41,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 - [x] **Phase 9: Upgrades Keep Sessions** - The new daemon takes over live PTYs and history on upgrade, viewers resume with a delta, a failed handoff loses nothing, the daemon reports an API version, and quitting is clean (completed 2026-11-20)
 - [x] **Phase 10: Input Path Reliability** - A bounded input queue keeps viewers connected through long pastes, the paste notice is honest in the app and the browser, peer snapshots are keyed by host, the viewer you're typing on sets the session's size, and the exit-code test is deterministic (completed 2026-11-21)
 - [x] **Phase 11: File Preview** - `portty open <file>` shows images, PDFs and Markdown in a preview tab for app and browser viewers, over the session's own stream, under a size cap and a reviewed CSP (completed 2026-11-21)
-- [ ] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote
+- [x] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote (completed 2026-11-22)
 - [ ] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent
 - [ ] **Phase 14: Mobile Web App** - Browser links limited to your own Tailscale account, then the share view on an iPhone: key bar, phone layout, Home Screen install, reconnect after sleep, and launcher copy for portty.app/app
 
@@ -123,7 +123,7 @@ Plans:
   2. Cmd-clicking an absolute path, or one relative to the working directory (for example `docs/diagram.png` printed by `ls` after `cd ~/proj`), opens it in a preview tab. This works in a local tab, and in a home-VM peer tab on an office-VM session over the real tailnet. (PATH-02)
   3. Cmd-clicking a path that doesn't exist does nothing: no tab, no dialog, and nothing typed into the shell. A plain click still selects text as before, and URLs keep their own click behavior. (PATH-02)
   4. Path clicks keep the PREV-03 rule. The request rides that session's authenticated stream, the host resolves it against that session's own working directory, and the host previews only a path that the session itself printed, so there is still no way to read a file by arbitrary path. The security review records this. (PATH-02; keeps PREV-03)
-**Plans**: 9/9 plans executed
+**Plans**: 9/9 plans complete
 Plans:
 **Wave 1**
 - [x] 12-01-PLAN.md — Move `portty open`'s file checks into the leaf package internal/previewfile (CLI lines unchanged) and CleanPreviewName into relay (PATH-02)
@@ -179,6 +179,6 @@ Plans:
 | 9. Upgrades Keep Sessions | v1.2 | 7/7 | Complete    | 2026-11-20 |
 | 10. Input Path Reliability | v1.2 | 7/7 | Complete    | 2026-11-21 |
 | 11. File Preview | v1.2 | 10/10 | Complete    | 2026-11-21 |
-| 12. File Path Click | v1.2 | 9/9 | In Progress | - |
+| 12. File Path Click | v1.2 | 9/9 | Complete    | 2026-11-22 |
 | 13. Remote Localhost URLs | v1.2 | 0/TBD | Not started | - |
 | 14. Mobile Web App | v1.2 | 0/TBD | Not started | - |

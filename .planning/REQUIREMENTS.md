@@ -33,8 +33,8 @@
 
 ### File path click
 
-- [ ] **PATH-01**: The terminal knows each session's working directory through OSC 7. Portty's zsh setup emits it, and other shells that emit it work too.
-- [ ] **PATH-02**: Cmd-clicking a file path printed in the terminal (absolute, or relative to the working directory) previews it, using the PREV path for local and remote sessions alike. The host previews only paths that session itself printed (user decision 2026-11-19), so there is still no general file-read API. Paths that don't exist do nothing.
+- [x] **PATH-01**: The terminal knows each session's working directory through OSC 7. Portty's zsh setup emits it, and other shells that emit it work too.
+- [x] **PATH-02**: Cmd-clicking a file path printed in the terminal (absolute, or relative to the working directory) previews it, using the PREV path for local and remote sessions alike. The host previews only paths that session itself printed (user decision 2026-11-19), so there is still no general file-read API. Paths that don't exist do nothing.
 
 ### Remote localhost URLs
 
@@ -85,8 +85,8 @@
 | PREV-03 | Phase 11 | Complete |
 | PREV-04 | Phase 11 | Complete |
 | PREV-05 | Phase 11 | Complete |
-| PATH-01 | Phase 12 | Pending |
-| PATH-02 | Phase 12 | Pending |
+| PATH-01 | Phase 12 | Complete |
+| PATH-02 | Phase 12 | Complete |
 | URL-01 | Phase 13 | Pending |
 | URL-02 | Phase 13 | Pending |
 | URL-03 | Phase 13 | Pending |

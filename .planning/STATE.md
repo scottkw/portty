@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
-current_phase: 12
-current_phase_name: File Path Click
-status: verifying
-stopped_at: Phase 11 complete, ready to plan Phase 12
-last_updated: "2026-11-22T13:32:05.838Z"
-last_activity: 2026-11-21
-last_activity_desc: Phase 12 execution started
-state_head: 264a983c7cc37880a278d32e7a58ddd6924df90a
+current_phase: 13
+current_phase_name: Remote Localhost URLs
+status: planning
+stopped_at: Phase 12 complete, ready to plan Phase 13
+last_updated: "2026-11-22T13:56:30.158Z"
+last_activity: 2026-11-22
+last_activity_desc: Phase 12 complete, transitioned to Phase 13
+state_head: ec2f4ba4c24de64ee9eb903fead0e889794edfe9
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 33
   completed_plans: 33
-  percent: 50
+  percent: 67
 ---
 
 # Project State
@@ -29,16 +29,16 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 
 ## Current Position
 
-Phase: 12 (File Path Click) — EXECUTING
-Plan: 7 of 7
-Status: Phase complete — ready for verification
-Last activity: 2026-11-21 — Phase 12 execution started
+Phase: 13 — Remote Localhost URLs
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-22 — Phase 12 complete, transitioned to Phase 13
 
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 47
+- Total plans completed: 56
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -52,6 +52,7 @@ Last activity: 2026-11-21 — Phase 12 execution started
 | 9 | 7 | - | - |
 | 10 | 7 | - | - |
 | 11 | 10 | - | - |
+| 12 | 9 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -374,7 +375,7 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 ## Session Continuity
 
 Last session: 2026-11-21T22:32:50.036Z
-Stopped at: Phase 11 complete, ready to plan Phase 12
+Stopped at: Phase 12 complete, ready to plan Phase 13
 Resume: 1) branch `worktree-agent-a725d63afb58130ac` holds `cdf95204` (review iteration 2 doc) and `d9d4764c` (WR-02 it2 fix, gates NOT yet run); rebase it onto gsd/v1.2 and fix the remaining four (WR-01 it2, IN-01..03 it2) with gsd-code-fixer, then gates. 2) Re-run TestHandoffIT plus V-01, V-02 and V-05b on the Tart VMs (both stopped; start with `tart run --no-graphics <name> &`). 3) gsd-verifier, mark UPGR-01..05, phase.complete 9. Then Phase 10.
 Resume file: None
 
