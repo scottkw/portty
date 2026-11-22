@@ -148,6 +148,7 @@ export function registerPathLinks(term: Terminal, opts: PathLinkOptions): PathLi
       }))
     } finally { refreshing = false }
   })
+  const resizeSub = term.onResize(invalidate)
 
   const provider = term.registerLinkProvider({
     provideLinks(y, callback) {
@@ -178,6 +179,7 @@ export function registerPathLinks(term: Terminal, opts: PathLinkOptions): PathLi
     invalidate,
     dispose() {
       disposed = true
+      resizeSub.dispose()
       provider.dispose()
       window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('keyup', onKey, true)

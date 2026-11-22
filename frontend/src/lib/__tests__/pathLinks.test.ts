@@ -58,6 +58,7 @@ function fakeTerm(rows: Row[], cols = 20) {
     element,
     buffer: { active: { getLine: (i: number) => (rows[i] ? lineOf(rows[i]) : undefined) } },
     registerLinkProvider: (p: typeof provider) => { provider = p; return { dispose: providerDispose } },
+    onResize: () => ({ dispose: () => {} }),
   } as unknown as Terminal
   const provide = (y: number) => {
     let out: ILink[] | undefined
