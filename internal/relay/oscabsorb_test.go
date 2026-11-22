@@ -52,20 +52,53 @@ func TestInputAbsorber_AbsorbAndPassthrough(t *testing.T) {
 	}
 }
 
-// TestInputAbsorber_BareEscDelayedPassthrough is Test P9: a bare ESC followed
-// by a non-control byte must round-trip across two Filter calls.
+// TestInputAbsorber_P9_BareEscThenColon is Test P9, changed on purpose for
+// MOB-01: a bare ESC that ends a frame is forwarded at once, so an ESC split
+// from the next byte across two frames arrives as two writes.
 //
-// Call 1: Filter("\x1b")        → "" (state moves to stateGotEsc; ESC buffered)
-// Call 2: Filter(":")           → "\x1b:" (state returns to stateOutside)
+// Call 1: Filter("\x1b") -> "\x1b" (a lone Esc must not wait for the next key)
+// Call 2: Filter(":")    -> ":"
 func TestInputAbsorber_P9_BareEscThenColon(t *testing.T) {
 	a := &InputAbsorber{}
 	got1 := a.Filter([]byte("\x1b"))
-	if len(got1) != 0 {
-		t.Errorf("call1: want empty (ESC buffered), got %q", got1)
+	if !bytes.Equal(got1, []byte("\x1b")) {
+		t.Errorf("call1: want %q (a lone Esc is forwarded at once), got %q", "\x1b", got1)
 	}
 	got2 := a.Filter([]byte(":"))
-	if !bytes.Equal(got2, []byte("\x1b:")) {
-		t.Errorf("call2: want %q, got %q", "\x1b:", got2)
+	if !bytes.Equal(got2, []byte(":")) {
+		t.Errorf("call2: want %q, got %q", ":", got2)
+	}
+}
+
+// TestInputAbsorber_LoneEscEndsFrame: an ESC at the end of a frame passes at
+// once, alone or after other bytes, and the absorber is back outside, so the
+// next plain byte passes alone and an ESC ESC frame gives two ESC bytes.
+func TestInputAbsorber_LoneEscEndsFrame(t *testing.T) {
+	for _, in := range []string{"\x1b", "abc\x1b", "\x1b\x1b"} {
+		a := &InputAbsorber{}
+		if got := a.Filter([]byte(in)); !bytes.Equal(got, []byte(in)) {
+			t.Errorf("Filter(%q) = %q, want it forwarded unchanged", in, got)
+		}
+		if got := a.Filter([]byte("x")); !bytes.Equal(got, []byte("x")) {
+			t.Errorf("after %q: next byte gave %q, want %q alone", in, got, "x")
+		}
+	}
+	// A lone Esc still does not claim the grid (INPT-06 stays conservative).
+	if IsUserInput([]byte("\x1b")) {
+		t.Errorf("IsUserInput(lone ESC) = true; a lone Esc must not claim")
+	}
+}
+
+// TestInputAbsorber_EscBracketSplitLeaks pins the one accepted cost of the
+// end-of-frame flush (threat T-14-09): a reply split exactly between ESC and
+// the introducer leaks the rest as text. xterm.js never splits a reply that way
+// (RESEARCH Q10); only a raw terminal behind `portty attach` could.
+func TestInputAbsorber_EscBracketSplitLeaks(t *testing.T) {
+	a := &InputAbsorber{}
+	got1 := a.Filter([]byte("\x1b"))
+	got2 := a.Filter([]byte("]11;rgb:0000/0000/0000\x07"))
+	if !bytes.Equal(got1, []byte("\x1b")) || !bytes.Equal(got2, []byte("]11;rgb:0000/0000/0000\x07")) {
+		t.Errorf("want the ESC then the reply body forwarded as text; got %q then %q", got1, got2)
 	}
 }
 

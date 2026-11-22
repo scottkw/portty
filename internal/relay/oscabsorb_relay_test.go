@@ -133,6 +133,25 @@ func TestRelay_handleSession_KeystrokesStillForwarded(t *testing.T) {
 	}
 }
 
+// TestRelay_handleSession_LoneEscReachesPTY - MOB-01: one frame holding only
+// ESC reaches the local relay's PTY writer at once, with no later frame.
+func TestRelay_handleSession_LoneEscReachesPTY(t *testing.T) {
+	srv, _, _, inputRead, sessionID := setupTestServer(t)
+	conn := dialWS(t, srv.URL, sessionID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	payload := []byte("\x1b")
+	if err := conn.Write(ctx, websocket.MessageBinary, MakeInputFrame(payload)); err != nil {
+		t.Fatalf("write input frame: %v", err)
+	}
+	got := readPipeWithTimeout(t, inputRead, 500*time.Millisecond)
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("lone Esc did not arrive at PTY at once: got %q, want %q", got, payload)
+	}
+}
+
 // TestRelay_handleSession_OSC11SplitAcrossTwoFrames proves per-subscriber
 // absorber state survives MsgInput frame boundaries on the daemon-direct
 // relay path (mirrors the webserver-layer test).
