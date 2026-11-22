@@ -248,6 +248,50 @@ func TestPathClick_RelayPumpReadOnly(t *testing.T) {
 	}
 }
 
+// A click from a viewer that left or was revoked reads no file, previews to
+// nobody and logs nothing (WR-02).
+func TestPathClick_DepartedOrRevokedRefused(t *testing.T) {
+	for name, drop := range map[string]func(*Hub, *Subscriber){
+		"departed": func(h *Hub, s *Subscriber) { h.Unsubscribe(s) },
+		"revoked": func(h *Hub, s *Subscriber) {
+			h.mu.Lock()
+			s.revoked = true
+			h.mu.Unlock()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			hub, seam := pcHub(t, 200, 24)
+			png := pcWrite(t, t.TempDir(), "a.png", pcPNG)
+			feedHubs(png+"\r\n", 4096, hub)
+			sub, _ := previewSub()
+			other, _ := previewSub()
+			hub.Subscribe(sub)
+			hub.Subscribe(other)
+			drop(hub, sub)
+			queued(sub)
+			queued(other)
+
+			var logs bytes.Buffer
+			log.SetOutput(&logs)
+			t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+			if hub.PathClick(sub, []byte(png)) {
+				t.Fatal("PathClick accepted a click from a subscriber that is gone")
+			}
+			pcWaitNone(t, seam)
+			if hub.pathClickBusy.Load() {
+				t.Error("the refused click started a resolve")
+			}
+			if n := len(queued(other)) + len(queued(sub)); n != 0 {
+				t.Errorf("%d frames queued after a refused click", n)
+			}
+			if logs.Len() != 0 {
+				t.Errorf("log line after a refused click: %q", logs.String())
+			}
+		})
+	}
+}
+
 const pathClickFixturePath = "../../frontend/src/lib/__tests__/fixtures/path-click.json"
 
 type pathClickFixture struct {

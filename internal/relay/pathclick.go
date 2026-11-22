@@ -50,7 +50,8 @@ const (
 // keeps answering pings (a slow disk must not get the viewer dropped as dead).
 // Cheap checks come first and every refusal is silent: a nil or read-only
 // subscriber, a payload that is empty, over PathClickMaxBytes, not UTF-8 or
-// holds a control character, a hub that ended or is freezing for an upgrade,
+// holds a control character, a subscriber that left or was revoked, a hub that
+// ended or is freezing for an upgrade,
 // a preview still streaming, a click already resolving. A dropped click is
 // never queued; the user clicks again.
 func (h *Hub) PathClick(sub *Subscriber, payload []byte) bool {
@@ -62,7 +63,8 @@ func (h *Hub) PathClick(sub *Subscriber, payload []byte) bool {
 		return false
 	}
 	h.mu.Lock()
-	idle := !h.closed && !h.freezing && !h.previewBusy
+	_, joined := h.subscribers[sub]
+	idle := joined && !sub.revoked && !h.closed && !h.freezing && !h.previewBusy
 	h.mu.Unlock()
 	if !idle || !h.pathClickBusy.CompareAndSwap(false, true) {
 		return false
