@@ -26,7 +26,7 @@ import { peerSnapshotKey, putPeerSnapshot, takePeerSnapshot } from '../../lib/pe
 const stub = vi.hoisted(() => ({ mounts: 0, verdict: undefined as unknown, throwFor: '' }))
 
 vi.mock('../WebShareSessionView', () => ({
-  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown>; onReconnectingChange?: (on: boolean) => void; snapshotHost?: string; fontSize?: number; onFontSizeChange?: (delta: number) => void }) => {
+  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown>; onReconnectingChange?: (on: boolean) => void; snapshotHost?: string; fontSize?: number; onFontSizeChange?: (delta: number) => void; pluginConfig?: Record<string, unknown> | null }) => {
     React.useEffect(() => { stub.mounts++ }, [])
     if (p.sessionId === stub.throwFor) throw new SyntaxError(`bad URL wss://x/ws?cap=${p.capToken}`)
     return React.createElement('div', {
@@ -39,6 +39,9 @@ vi.mock('../WebShareSessionView', () => ({
       'data-has-reconnect': String(p.beforeReconnect !== undefined),
       'data-snapshot-host': p.snapshotHost ?? '',
       'data-font-size': String(p.fontSize),
+      'data-weblinks': String(p.pluginConfig?.webLinks),
+      'data-link-modifier': String((p.pluginConfig?.webLinksConfig as { modifier?: string } | undefined)?.modifier),
+      'data-other-addons': JSON.stringify(['webgl', 'clipboard', 'search', 'serialize', 'progress'].filter((k) => p.pluginConfig?.[k])),
     },
     React.createElement('button', { type: 'button', 'data-testid': 'fire-font-up', onClick: () => p.onFontSizeChange?.(+1) }),
     React.createElement('button', { type: 'button', 'data-testid': 'fire-share-stopped', onClick: () => p.onShareStopped?.() }),
@@ -81,6 +84,35 @@ async function click(el: HTMLElement) {
   await act(async () => { el.click() })
   await flush()
 }
+
+// Phase 12 gap 1: a desktop peer tab cannot read the host's /api/plugin-config (cross-origin, no CORS
+// header), so it follows this Mac's own link settings and nothing else.
+describe('App — a desktop peer tab gets this Mac\'s link settings (PATH-02 gap 1)', () => {
+  afterEach(async () => { await unmountApp(); vi.clearAllMocks() })
+
+  const openPeerTab = async (settings: object) => {
+    const c = await mountApp({ ...baseImpl(vi.fn(() => okResult)), GetPluginSettings: () => settings })
+    await click(peerRow(c)!)
+    return c.querySelector('[data-testid="web-session-view"]')!
+  }
+
+  it('a peer tab follows this Mac\'s web-links toggle and modifier and turns on no other addon', async () => {
+    const view = await openPeerTab({
+      webLinks: true,
+      webLinksConfig: { modifier: 'ctrl' },
+      webgl: true, clipboard: true, search: true, serialize: true, progress: true,
+    })
+    expect(view.getAttribute('data-remote')).toBe('true')
+    expect(view.getAttribute('data-weblinks')).toBe('true')
+    expect(view.getAttribute('data-link-modifier')).toBe('ctrl')
+    expect(view.getAttribute('data-other-addons')).toBe('[]')
+  })
+
+  it('with web links off on this Mac, a peer tab gets no links', async () => {
+    const view = await openPeerTab({ webLinks: false, webLinksConfig: { modifier: 'cmd' } })
+    expect(view.getAttribute('data-weblinks')).toBe('false')
+  })
+})
 
 const CONNECT_FAILED = "Couldn't connect to office-air. Check that it's awake and signed in to your Tailscale account."
 

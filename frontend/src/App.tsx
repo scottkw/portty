@@ -38,7 +38,7 @@ import {
 } from './wailsjs/go/main/App'
 import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
-import type { daemon } from './wailsjs/go/models'
+import { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
 import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
 import { NewSessionModal } from './components/NewSessionModal'
@@ -138,6 +138,15 @@ function App(): React.ReactElement {
   // open TerminalPanel via prop. Phase 92 contract: TerminalPanel accepts the
   // prop but does not consume it; Phase 93 wires consumption.
   const [pluginConfig, setPluginConfig] = useState<PluginSettings | null>(null)
+  // Phase 12 gap 1: a desktop peer tab follows this Mac's own web-links toggle and modifier, and nothing
+  // else (no webgl, clipboard, search, serialize or progress). See the comment at the peer tab below.
+  const peerPluginConfig = useMemo(
+    () => daemon.PluginSettings.createFrom({
+      webLinks: pluginConfig?.webLinks === true,
+      webLinksConfig: pluginConfig?.webLinksConfig,
+    }),
+    [pluginConfig],
+  )
 
   // Phase 97 SER-01: saver registry. TerminalPanel registers a closure
   // that returns the addon's serialize() output keyed by sessionId; App
@@ -1252,11 +1261,14 @@ function App(): React.ReactElement {
             FIRST remote session's cap/host for a SECOND one). The app's own
             web-share bootstrap tab (mode==='web', no per-tab baseURL) still
             falls back to webParams, preserving prior behavior. pluginConfig
-            is likewise only meaningful for the local bootstrap tab — App's
-            own pluginConfig state describes THIS daemon's plugins, which is
-            irrelevant to a different peer's session; passing it through for
-            a remote tab would suppress WebShareSessionView's web-guest
-            self-fetch (isWebGuest) and apply the wrong peer's config. */}
+            is this daemon's own config for the local bootstrap tab. A
+            remote tab cannot read the host's /api/plugin-config from the
+            app's wails:// origin (the share server deliberately sends no
+            CORS response header), so it gets peerPluginConfig: this Mac's
+            own web-links toggle and modifier and nothing else (Phase 12
+            gap 1, ratified by the user 2026-11-21), and makes no request
+            for the host's config. The host still enforces the printed-token
+            check and the write capability on every path click. */}
         {sessionTabId !== null && sessionTabId.startsWith('__websession__') && (() => {
           const activeWebTab = tabs.find((t) => t.id === sessionTabId)
           // Portty 05-09: never fall back to window.location.origin on the desktop (wails://, the WebSocket throws).
@@ -1308,7 +1320,7 @@ function App(): React.ReactElement {
                 baseURL={activeWebTab?.baseURL}
                 relayPort={relayPort ?? 0}
                 theme={terminalTheme}
-                pluginConfig={isRemoteWebTab ? undefined : (pluginConfig ?? undefined)}
+                pluginConfig={isRemoteWebTab ? peerPluginConfig : (pluginConfig ?? undefined)}
                 remote={isRemoteWebTab}
                 // Desktop: the viewer's own font (it must be installed here). Web: the host's, self-fetched.
                 // INPT-06: a desktop peer tab keeps its own size under its tab id (removeTabState drops it).

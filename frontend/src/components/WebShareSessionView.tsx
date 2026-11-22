@@ -149,14 +149,14 @@ export function WebShareSessionView({
         },
       )
 
-  // Phase 168 FIX-01 (#112) — web-guest plugin-config self-fetch + SSE
-  // hot-swap. Restores the config that only ever arrived via a Wails
-  // `pluginConfig` prop pre-Phase-159; a web guest (or FIX-03's in-app
-  // remote-peer tab, which has no local pluginConfig for a different peer)
-  // has no such prop and must self-fetch from the same origin the wsURL
-  // above targets.
+  // Phase 168 FIX-01 (#112) — web-guest plugin-config self-fetch + SSE hot-swap, for the browser
+  // viewer at /app/ only: it is same-origin with the share server, so it keeps the host's config and
+  // live updates. A remote desktop peer tab never self-fetches (Phase 12 gap 1): from the app's
+  // wails:// origin the request is cross-origin and the share server sends no CORS header, so it
+  // always failed and its EventSource retried forever. App hands a peer tab this Mac's link
+  // settings instead.
   const [livePluginConfig, setLivePluginConfig] = useState<PluginSettings | null>(null)
-  const isWebGuest = pluginConfig === undefined
+  const isWebGuest = pluginConfig === undefined && remote !== true
 
   useEffect(() => {
     if (!isWebGuest) return
