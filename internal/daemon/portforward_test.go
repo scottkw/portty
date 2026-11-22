@@ -593,6 +593,9 @@ func TestPortOpen_NoApprovalAfterPortInUse(t *testing.T) {
 	}
 	h.ln.Close()
 	waitClosed(t, port)
+	e.stub.mu.Lock()
+	e.stub.grantStatus, e.stub.grantMarker = 0, false // the host shares again
+	e.stub.mu.Unlock()
 	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
 		t.Fatalf("after the holder left = %+v, want consent (no approval was recorded)", got)
 	}
@@ -765,6 +768,7 @@ func TestPortForward_StoppedSharing(t *testing.T) {
 	port := e.openForward(t)
 	e.stub.mu.Lock()
 	e.stub.proxyStatus, e.stub.proxyMarker = 403, true
+	e.stub.grantStatus, e.stub.grantMarker = 403, true // the re-grant is refused too: the share is gone
 	e.stub.mu.Unlock()
 	resp, body := do(t, port, "", map[string]string{"X-Portty": "1"})
 	checkPage(t, resp, body, "127.0.0.1 stopped sharing", "port "+strconv.Itoa(port))
@@ -775,8 +779,41 @@ func TestPortForward_StoppedSharing(t *testing.T) {
 		t.Error("X-Portty reached the browser")
 	}
 	waitClosed(t, port)
+	e.stub.mu.Lock()
+	e.stub.grantStatus, e.stub.grantMarker = 0, false // the host shares again
+	e.stub.mu.Unlock()
 	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
 		t.Fatalf("after the stopped page = %+v, want consent", got)
+	}
+}
+
+// WR-03: the host answers a WhoIs miss with the same marked 403 as a gone
+// share. One such answer must not close a healthy forward: the daemon asks for
+// a new grant, and only a refusal of that closes it.
+func TestPortForward_TransientRefusalKeepsForward(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	grantsBefore := len(e.stub.grants)
+	e.stub.mu.Lock()
+	e.stub.proxyStatus, e.stub.proxyMarker = 403, true
+	e.stub.mu.Unlock()
+	resp, body := do(t, port, "", nil)
+	checkPage(t, resp, body, "Couldn't reach")
+	e.stub.mu.Lock()
+	e.stub.proxyStatus, e.stub.proxyMarker = 0, false
+	regrants := len(e.stub.grants) - grantsBefore
+	e.stub.mu.Unlock()
+	if regrants != 1 {
+		t.Fatalf("%d re-grants after a marked 403, want 1", regrants)
+	}
+	if !listening(port) {
+		t.Fatal("the forward closed on a single marked 403")
+	}
+	if code, body := get(t, port, "/p?q=1"); code != http.StatusOK || body != "stub-body" {
+		t.Fatalf("next request = %d %q, want 200 through the same forward", code, body)
+	}
+	if hit := e.stub.lastHit(t); hit.hdr.Get("X-Portty-Port-Token") != e.stub.token() {
+		t.Errorf("the next request used token %q, want the re-granted %q", hit.hdr.Get("X-Portty-Port-Token"), e.stub.token())
 	}
 }
 

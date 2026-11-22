@@ -38,6 +38,9 @@ var (
 	// ErrorHandler for a host 403 / 502 that carries the X-Portty marker.
 	errStopped          = errors.New("host stopped sharing")
 	errNothingAnswering = errors.New("nothing answering on the host's port")
+	// errTransient is a refusal that may be a passing WhoIs miss: show the
+	// unreachable page and keep the forward.
+	errTransient = errors.New("host refused once; re-granted")
 )
 
 // approvalKey is (Mac, port); host is the lower-cased base-URL hostname.
@@ -293,6 +296,28 @@ func (a *API) forwardTransport(fqdn, ip string) *http.Transport {
 	return t
 }
 
+// refusedOrTransient decides what a marked 403 from the host means. The host
+// answers a gone share and a WhoIs miss (tailscaled not yet knowing this node
+// after sleep or a path change) identically, so it asks for a fresh grant once:
+// only a refusal of that is errStopped; a new token is kept and the page says
+// to reload (WR-03).
+func (f *portForward) refusedOrTransient(a *API) error {
+	sid, _ := f.creds()
+	_, ip, capToken, held := a.remoteCaps.Get(sid)
+	if !held {
+		return errStopped
+	}
+	token, code := a.requestPortGrant(f.ctx, f.base, f.base.Hostname(), ip, sid, capToken, f.port)
+	switch code {
+	case "":
+		f.rebind(sid, token)
+		return errTransient
+	case PortErrRefused:
+		return errStopped
+	}
+	return errTransient
+}
+
 // newPortForward builds a forward (not yet listening) bound to sid and token.
 func (a *API) newPortForward(pfs *PortForwards, port int, host string, base *url.URL, fqdn, ip, label, sid, token string) *portForward {
 	f := &portForward{pfs: pfs, port: port, host: host, label: label, base: base, sid: sid, token: token}
@@ -325,7 +350,7 @@ func (a *API) newPortForward(pfs *PortForwards, port int, host string, base *url
 			if resp.Header.Get(tailnet.MarkerHeader) == tailnet.MarkerValue {
 				switch resp.StatusCode {
 				case http.StatusForbidden:
-					return errStopped
+					return f.refusedOrTransient(a)
 				case http.StatusBadGateway:
 					return errNothingAnswering
 				}
