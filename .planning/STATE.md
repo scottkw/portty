@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
 current_phase: 13
-current_phase_name: Remote Localhost URLs
-status: planning
+current_phase_name: remote-localhost-urls
+status: executing
 stopped_at: Phase 12 complete, ready to plan Phase 13
-last_updated: "2026-11-22T13:56:30.158Z"
+last_updated: "2026-11-22T16:51:10.777Z"
 last_activity: 2026-11-22
-last_activity_desc: Phase 12 complete, transitioned to Phase 13
-state_head: ec2f4ba4c24de64ee9eb903fead0e889794edfe9
+last_activity_desc: Phase 13 execution started
+state_head: c9472de3e9d167d5e6cd992b1e0278e699357123
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 33
+  total_plans: 40
   completed_plans: 33
   percent: 67
 ---
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-18)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 12 — File Path Click
+**Current focus:** Phase 13 — remote-localhost-urls
 
 ## Current Position
 
-Phase: 13 — Remote Localhost URLs
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-22 — Phase 12 complete, transitioned to Phase 13
+Phase: 13 (remote-localhost-urls) — EXECUTING
+Plan: 1 of 7
+Status: Executing Phase 13
+Last activity: 2026-11-22 — Phase 13 execution started
 
 
 ## Performance Metrics
