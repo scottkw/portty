@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -674,18 +675,18 @@ func (ws *WebServer) setupRoutes() {
 	//
 	// Phase 120 WR-02 — caching policy: index.html is forced Cache-Control:
 	// no-store via serveIndex so clients always pick up the latest entry
-	// point. Other /app/* assets (hashed JS/CSS bundles) inherit Go's
+	// point. Files under assets/ (Vite's hashed JS/CSS bundles) inherit Go's
 	// FileServerFS default (Last-Modified from the embed.FS) with NO
 	// Cache-Control header. This is intentional and safe because Vite
 	// content-hashes every asset URL (e.g. index-aB12.js); the hash IS the
 	// cache key, so stale browser caches cannot serve a mismatched bundle
-	// against a fresh index.html. If a future deploy ships unhashed assets
-	// under /app/, this contract breaks — wrap the FileServerFS call in
-	// assetsNoStore (as /assets/ does) before that lands.
+	// against a fresh index.html. Every other file (the manifest, icons) is not
+	// content-hashed and gets Cache-Control: no-cache, so it is revalidated and
+	// never served stale (MOB-02).
 	//
 	// NOTE (Phase 176): this route is wrapped in ws.cspHeaders, which sets
-	// Cache-Control: no-store on all responses. The hashed-asset branch below
-	// deletes that header (w.Header().Del) so this content-hash caching contract
+	// Cache-Control: no-store on all responses. The assets/ branch below
+	// deletes that header (w.Header().Del) so the content-hash caching contract
 	// still holds; do not remove that Del without re-homing the CSP header.
 	mux.HandleFunc("GET /app/", ws.cspHeaders(ws.requireSameUserPage(func(w http.ResponseWriter, r *http.Request) {
 		appFS := ws.staticAppFS
@@ -722,11 +723,16 @@ func (ws *WebServer) setupRoutes() {
 		// Phase 176 WR-02: cspHeaders (which now wraps this route) sets
 		// Cache-Control: no-store on every response. That is correct for the
 		// index.html branches (serveIndex re-sets no-store itself) but WRONG for
-		// the hashed JS/CSS bundles served here — they must inherit FileServerFS's
-		// default (no Cache-Control) so browsers cache by content-hash, per the
-		// Phase 120 WR-02 contract documented above. Drop the middleware's
-		// no-store on this branch only to preserve that contract.
-		w.Header().Del("Cache-Control")
+		// the hashed JS/CSS bundles under assets/ — they must inherit
+		// FileServerFS's default (no Cache-Control) so browsers cache by
+		// content-hash, per the Phase 120 WR-02 contract documented above. Drop
+		// the middleware's no-store for assets/ only; the manifest and icons are
+		// not hashed, so they revalidate (no-cache) instead.
+		if strings.HasPrefix(rel, "assets/") {
+			w.Header().Del("Cache-Control")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		stripped.ServeHTTP(w, r)
 	})))
 }
