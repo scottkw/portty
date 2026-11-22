@@ -12,7 +12,7 @@ import { SerializeAddon } from '@xterm/addon-serialize'
 import { ProgressAddon, type IProgressState } from '@xterm/addon-progress'
 import { RelayClient, RECONNECT, type ReconnectVerdict } from '../lib/relayClient'
 import { createPreviewAssembler, type PreviewEvent } from '../lib/previewAssembler'
-import { computeGuestViewport, DEFAULT_GUEST_MIN_SCALE } from '../lib/terminalScale'
+import { compensatePointerScale, computeGuestViewport, DEFAULT_GUEST_MIN_SCALE } from '../lib/terminalScale'
 import { applyHostGrid, resetForFullReplay } from '../lib/guestTerminal'
 import { PEER_FLUSH_TIMEOUT_MS, awaitPeerSave, beginPeerSave, peerSnapshotGeneration, peerSnapshotKey, putPeerSnapshot, takePeerSnapshot, watchPeerTerm } from '../lib/peerSnapshots'
 import { isSoftwareWebGL } from '../lib/webglProbe'
@@ -423,6 +423,8 @@ export function TerminalPanel({
       fontFamily,
       fontSize,
       theme,
+      // Option-drag selects even when a TUI (Claude Code fullscreen) has the mouse, so Cmd-C has text to copy.
+      macOptionClickForcesSelection: true,
       // Start at the PTY's spawn grid (else xterm's 80×24) until the first fit.
       ...(initialCols && initialCols > 0 && initialRows && initialRows > 0 ? { cols: initialCols, rows: initialRows } : {}),
     })
@@ -475,6 +477,7 @@ export function TerminalPanel({
 
     term.open(containerRef.current)
     const unguardPaste = guardPasteInsert(term.textarea) // WR-01: no paste left in the helper textarea
+    compensatePointerScale(term) // selection and mouse reports follow the pointer under recomputeScale's scale()
     // Don't fit here — hidden panels have zero dimensions.
     // The isActive effect handles fitting when a panel becomes visible.
 

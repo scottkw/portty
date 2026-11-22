@@ -60,3 +60,57 @@ export function computeGuestViewport(
   }
   return { scale: minScale, overflowX: true }
 }
+
+type Pointer = { clientX: number; clientY: number }
+
+/**
+ * unscalePointer — maps a pointer into an element's untransformed box
+ * (selection-offset-copy). recomputeScale puts transform: scale(s) on
+ * term.element, but xterm 6 turns a pointer into a cell as
+ * (clientY - rect.top) / cellHeight, with a post-transform rect over an
+ * unscaled cell, so hits land at row * s, above the pointer. Moving the
+ * pointer (not the rect or the cell size) keeps xterm's padding and clamp
+ * math right. s = rect.width / offsetWidth; an unmeasurable box passes through.
+ */
+export function unscalePointer(
+  ev: Pointer,
+  rect: { left: number; top: number; width: number },
+  offsetWidth: number,
+): Pointer {
+  if (!(offsetWidth > 0) || !(rect.width > 0)) return { clientX: ev.clientX, clientY: ev.clientY }
+  const s = rect.width / offsetWidth
+  return {
+    clientX: rect.left + (ev.clientX - rect.left) / s,
+    clientY: rect.top + (ev.clientY - rect.top) / s,
+  }
+}
+
+interface MouseServiceLike {
+  getCoords(ev: Pointer, el: HTMLElement, ...rest: unknown[]): unknown
+  getMouseReportCoords(ev: Pointer, el: HTMLElement): unknown
+}
+
+let warnedNoMouseService = false
+
+/**
+ * compensatePointerScale — routes xterm's one MouseService (shared by
+ * selection, link hover/click and TUI mouse reports) through unscalePointer.
+ * Call once per Terminal, after term.open.
+ */
+export function compensatePointerScale(term: { element?: HTMLElement | null }): void {
+  const ms = (term as { _core?: { _mouseService?: MouseServiceLike } })._core?._mouseService
+  if (!ms) {
+    // No silent fallback: an xterm upgrade that renames this would bring the offset back.
+    if (term.element && !warnedNoMouseService) {
+      warnedNoMouseService = true
+      console.warn('compensatePointerScale: xterm _core._mouseService not found; selection will drift on a scaled pane')
+    }
+    return
+  }
+  // A fresh { clientX, clientY } each call: spreading a MouseEvent yields {} (getters).
+  const unscale = (ev: Pointer, el: HTMLElement) => unscalePointer(ev, el.getBoundingClientRect(), el.offsetWidth)
+  const getCoords = ms.getCoords
+  const getReport = ms.getMouseReportCoords
+  ms.getCoords = (ev, el, ...rest) => getCoords.call(ms, unscale(ev, el), el, ...rest)
+  ms.getMouseReportCoords = (ev, el) => getReport.call(ms, unscale(ev, el), el)
+}
