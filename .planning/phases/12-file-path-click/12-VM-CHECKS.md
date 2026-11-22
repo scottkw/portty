@@ -59,3 +59,32 @@ Run after the last row, before Task 3, on both VMs.
 - settings.json restored (`cmp` against the backup clean, before and after the HEAD launch; `"webgl":true` again in both).
 - Files removed: samples (`~/p12/proj`, `~/p12/lng`, `~/p12/longpath.txt`), share link files (`/tmp/b86.url` and the per-session link files, 0 `*.url` left), the read-capability link (deleted in C-05) and every token file, `~/p12/dotbak.tgz` and `~/p12/bak`, the staged builds (`~/ptest/stage`), `/tmp/p12*`. The signer binary, its output and its worktree were deleted in C-05 (`/tmp/p12-sign` does not exist). Helpers stay in `~/p12` (`p12ui`, `appear`, `cursor`, `seed`, `p.sh`, `c08chk.zsh`, `c09.sh` and small scripts; no secrets).
 - The VMs themselves were never stopped; both are still on the tailnet (`tailscale status` in the home VM lists the office as active; `portty-vm-office` is not offline).
+
+## Re-run after the gap plans (12-08), plan 12-09
+
+- **Date:** 2026-11-21 local (host CST); the VM clocks and every log timestamp below are UTC, so they read 2026-11-22 from 03:50. Claude ran every row over SSH from the host.
+- **Base commit:** builds from `3a8972a6` (gsd/v1.2, 12-01..12-08 complete); no product code is changed by this plan.
+- **What 12-08 changed (two lines from its SUMMARY):** a surviving viewer keeps its clickable paths and URLs after a reconnect or a grid resize (xterm's Linkifier state is refreshed on every capability report and every terminal resize); a desktop peer tab gets path and URL links from this Mac's own `webLinks` and `webLinksConfig` instead of a refused cross-origin config fetch. The selection-offset fix (`7a37bfb4`, a transform-aware mapping of xterm's MouseService) is on HEAD, so a CSS-scaled panel hit-tests links at the visual cell.
+- **Rows re-run on build C, and why:** C-00R preflight; C-01R, C-03R, C-05R, C-06R, C-07R (regressions 12-08's viewer changes could break); C-02R and the peer clause of C-04R (gap 1, first-run C-02 and C-04); C-09R (gap 2, first-run C-09); U-01R (gap 2, first-run U-01).
+- **Carried from the first run, not re-run:** C-08 (no 12-08 change touches the shell shim or the host) with its `ssh localhost` clause put to the user at Task 3 (UI-1); U-01's A to B clauses (host side, unchanged by 12-08). C-06's desktop-app clauses are user item UI-2.
+- **Rig, rules and helpers:** unchanged from the first run (see the header above): two Tart VMs, both ephemeral tailnet nodes (never stopped, suspended or rebooted; no `tailscale down`, `logout` or auth key), every install, click, key event, appearance switch and app launch inside a VM, WebGL off for the run, link files, token files and the signer binary in private `mktemp -d` directories (0700) deleted after use, no secrets in this file.
+- **Each clicking viewer's scale is recorded** (Safari: the `.xterm` element's `style.transform`; desktop tabs: pane size against the grid).
+
+### Re-run gate (host, run once, 03:53 to 04:03 UTC)
+
+`GOTOOLCHAIN=go1.26.11`: `go build ./...` and `go vet ./...` clean. **`go test -race -short -count=1 ./...`: 13 package lines `ok`, one FAIL: `internal/pty` `TestKillClean_NoOrphans` (`native_test.go:287: process group 19582 still exists after Kill — orphan processes`).** That test spawns `sh -c 'sleep 300 & cat'`, kills the session, sleeps 300 ms and asserts the process group is gone; it ran while the same `go test` invocation was running the 231 s daemon and 123 s relay packages in parallel on the host. `internal/pty` has no diff since `81ada526` (its last commit is Phase 11's `5e513422`), so no Phase 12 change reaches it. By the plan's rule this failure is a finding and not patched here, and the test is not re-run (the gate runs once): it is put to the user at Task 3 (item G-1). The Go step's failure ended the gate script before its frontend and script steps, so those were run next, once, as the remainder of the same gate: `pnpm install --frozen-lockfile` clean; `pnpm vitest run` 108 files / 1600 tests passed; `tsc --noEmit` clean; `check-brand`, `check-share-removal` and `check-traceability-paths` (199 paths) clean; `tests/build-script.test.sh` 40 passed, 0 failed. `git status --porcelain -- frontend/src/wailsjs` empty afterwards; `frontend/index.html` and `internal/webserver/csp_mw.go` identical to `81ada526`. TESTING.md Section 2 counts (Go 162, vitest 108) equal `git ls-files`.
+
+### Re-run builds
+
+Host, in this checkout after one `pnpm run build`: C, C2 (C's tree, only the version changed) and HEAD, each with `GOTOOLCHAIN=go1.26.11 wails build -s -platform darwin/arm64 -tags wailsassets` and `-ldflags "-X main.Version=<v>"` (none for HEAD); `frontend/src/wailsjs` restored after each. `codesign -dv` on all three: `Signature=adhoc`, `TeamIdentifier=not set`. Staged to the VMs by tar over SSH (office C, C2, HEAD; home C, HEAD); the sha256 of each staged binary in the VMs equals the host's.
+
+| App | Version | Binary sha256 |
+|-----|---------|---------------|
+| C | v1.2.0-vmC | `d779668ee89c8c9777dad86a8ab72c9a4d74d75a522a7937598c8016da3f7dbc` |
+| C2 (C's tree, only the version changed) | v1.2.0-vmC2 | `b1b1f39aded09c581a415937a42d68d71e73844104acbe466a5038a0199acb62` |
+| HEAD (deployed on both at the end) | dev | `4e6452ecb8f06705d994ff6f8690753472b175377c4e88b425cc7133b4dcc09f` |
+
+### Re-run evidence
+
+| Check | Result | What was checked | Evidence |
+|-------|--------|------------------|----------|
