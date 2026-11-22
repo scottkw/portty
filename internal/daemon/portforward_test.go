@@ -16,7 +16,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -160,13 +162,21 @@ type portEnv struct {
 
 func newPortEnv(t *testing.T) *portEnv {
 	t.Helper()
-	api, _, socket := testDaemon(t)
 	stub := newStubHost(t)
-	api.SetPeerClientForTest(stub.srv.Client())
-	if err := api.remoteCaps.Put("s1", stub.srv.URL, "", "CAP"); err != nil {
+	e := newPortEnvFor(t, stub.srv)
+	e.stub = stub
+	return e
+}
+
+// newPortEnvFor is a daemon whose session s1 is held against srv.
+func newPortEnvFor(t *testing.T, srv *httptest.Server) *portEnv {
+	t.Helper()
+	api, _, socket := testDaemon(t)
+	api.SetPeerClientForTest(srv.Client())
+	if err := api.remoteCaps.Put("s1", srv.URL, "", "CAP"); err != nil {
 		t.Fatal(err)
 	}
-	return &portEnv{api: api, stub: stub, socket: socket, client: unixClient(socket)}
+	return &portEnv{api: api, socket: socket, client: unixClient(socket)}
 }
 
 func unixClient(socket string) *http.Client {
@@ -266,5 +276,284 @@ func TestPortForward_ConsentFirst(t *testing.T) {
 	}
 	if listening(port) {
 		t.Fatalf("a forward listens on %d before consent", port)
+	}
+}
+
+// get fetches target through the forward on port and returns status and body.
+func get(t *testing.T, port int, target string) (int, string) {
+	t.Helper()
+	resp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body)
+}
+
+type localhostURLFixture struct {
+	Cases []struct {
+		Input string `json:"input"`
+		Match bool   `json:"match"`
+		Port  int    `json:"port"`
+		Rest  string `json:"rest"`
+		Note  string `json:"note"`
+	} `json:"cases"`
+}
+
+const localhostURLFixturePath = "../../frontend/src/lib/__tests__/fixtures/localhost-url.json"
+
+func TestClassifyLoopbackURL_Fixture(t *testing.T) {
+	raw, err := os.ReadFile(localhostURLFixturePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f localhostURLFixture
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Cases) < 28 {
+		t.Fatalf("fixture holds %d cases, want at least 28", len(f.Cases))
+	}
+	for _, c := range f.Cases {
+		port, rest, ok := classifyLoopbackURL(c.Input)
+		if ok != c.Match || port != c.Port || rest != c.Rest {
+			t.Errorf("classifyLoopbackURL(%q) = %d %q %v, want %d %q %v (%s)", c.Input, port, rest, ok, c.Port, c.Rest, c.Match, c.Note)
+		}
+	}
+}
+
+func TestPortOpen_ErrorCodes(t *testing.T) {
+	good := func(p int) string { return localhostURL(p, "/") }
+	cases := []struct {
+		name   string
+		setup  func(e *portEnv)
+		sid    string
+		url    func(p int) string
+		status int
+		code   string
+	}{
+		{"no held cap", nil, "nope", good, 404, PortErrNoCap},
+		{"https", nil, "s1", func(p int) string { return "https://localhost:" + strconv.Itoa(p) + "/" }, 400, PortErrBadURL},
+		{"upper case host", nil, "s1", func(p int) string { return "http://LOCALHOST:" + strconv.Itoa(p) + "/" }, 400, PortErrBadURL},
+		{"userinfo", nil, "s1", func(p int) string { return "http://localhost:" + strconv.Itoa(p) + "@evil.com/" }, 400, PortErrBadURL},
+		{"host refuses", func(e *portEnv) { e.stub.grantStatus, e.stub.grantMarker = 403, true }, "s1", good, 403, PortErrRefused},
+		{"403 without the marker", func(e *portEnv) { e.stub.grantStatus = 403 }, "s1", good, 502, PortErrUnreachable},
+		{"503 without the marker", func(e *portEnv) { e.stub.grantStatus = 503 }, "s1", good, 502, PortErrUnreachable},
+		{"host closed", func(e *portEnv) { e.stub.srv.Close() }, "s1", good, 502, PortErrUnreachable},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newPortEnv(t)
+			if c.setup != nil {
+				c.setup(e)
+			}
+			port := freeLoopbackPort(t)
+			status, _, code := e.open(t, c.sid, c.url(port), true)
+			if status != c.status || code != c.code {
+				t.Fatalf("answer = %d %q, want %d %q", status, code, c.status, c.code)
+			}
+			if listening(port) {
+				t.Fatalf("something listens on %d after %s", port, c.code)
+			}
+		})
+	}
+
+	t.Run("old host", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "old") })
+		srv := httptest.NewTLSServer(mux)
+		t.Cleanup(srv.Close)
+		e := newPortEnvFor(t, srv)
+		port := freeLoopbackPort(t)
+		status, _, code := e.open(t, "s1", localhostURL(port, "/"), true)
+		if status != 409 || code != PortErrHostOutdated {
+			t.Fatalf("answer = %d %q, want 409 host_outdated", status, code)
+		}
+		if listening(port) {
+			t.Fatalf("something listens on %d", port)
+		}
+	})
+}
+
+// holder is a foreign listener that counts accepted connections.
+type holder struct {
+	ln      net.Listener
+	accepts chan struct{}
+}
+
+func newHolder(t *testing.T, network, addr string) *holder {
+	t.Helper()
+	ln, err := net.Listen(network, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &holder{ln: ln, accepts: make(chan struct{}, 64)}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+			h.accepts <- struct{}{}
+		}
+	}()
+	return h
+}
+
+// answers reports whether a dial to addr still reaches the holder.
+func (h *holder) answers(t *testing.T, addr string) bool {
+	t.Helper()
+	for len(h.accepts) > 0 {
+		<-h.accepts
+	}
+	c, err := net.DialTimeout("tcp", addr, time.Second)
+	if err != nil {
+		return false
+	}
+	c.Close()
+	select {
+	case <-h.accepts:
+		return true
+	case <-time.After(time.Second):
+		return false
+	}
+}
+
+func TestPortOpen_PortInUse(t *testing.T) {
+	t.Run("wildcard holder", func(t *testing.T) {
+		e := newPortEnv(t)
+		port := freeLoopbackPort(t)
+		h := newHolder(t, "tcp", ":"+strconv.Itoa(port))
+		status, _, code := e.open(t, "s1", localhostURL(port, "/"), true)
+		if status != 409 || code != PortErrPortInUse {
+			t.Fatalf("answer = %d %q, want 409 port_in_use", status, code)
+		}
+		if !h.answers(t, "127.0.0.1:"+strconv.Itoa(port)) {
+			t.Fatal("the foreign holder no longer answers on 127.0.0.1")
+		}
+		h.ln.Close()
+		waitClosed(t, port) // nothing of ours is left behind
+	})
+	t.Run("::1 only holder", func(t *testing.T) {
+		if !hasIPv6Loopback() {
+			t.Skip("no IPv6 loopback on this Mac")
+		}
+		e := newPortEnv(t)
+		port := freeLoopbackPort(t)
+		h := newHolder(t, "tcp6", "[::1]:"+strconv.Itoa(port))
+		status, _, code := e.open(t, "s1", localhostURL(port, "/"), true)
+		if status != 409 || code != PortErrPortInUse {
+			t.Fatalf("answer = %d %q, want 409 port_in_use", status, code)
+		}
+		if listening(port) {
+			t.Fatal("a forward was bound on 127.0.0.1 next to a ::1 holder")
+		}
+		if !h.answers(t, "[::1]:"+strconv.Itoa(port)) {
+			t.Fatal("the ::1 holder no longer answers")
+		}
+	})
+}
+
+func TestPortOpen_Approvals(t *testing.T) {
+	e := newPortEnv(t)
+	port := freeLoopbackPort(t)
+	other := freeLoopbackPort(t)
+
+	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
+		t.Fatalf("first click = %+v, want consent", got)
+	}
+	if _, got, errCode := e.open(t, "s1", localhostURL(port, "/"), true); got.Status != PortStatusOpen {
+		t.Fatalf("consented click = %+v %q, want open", got, errCode)
+	}
+	if _, got, _ := e.open(t, "s1", localhostURL(port, "/x"), false); got.Status != PortStatusOpen || got.URL != localhostURL(port, "/x") {
+		t.Fatalf("approved click = %+v, want open without asking", got)
+	}
+	if _, got, _ := e.open(t, "s1", localhostURL(other, "/"), false); got.Status != PortStatusConsent {
+		t.Fatalf("another port = %+v, want consent", got)
+	}
+
+	// A second Mac (example.com, dialled to its own stub) cannot take the port.
+	second := newStubHost(t)
+	tr := e.stub.srv.Client().Transport.(*http.Transport).Clone()
+	tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if strings.HasPrefix(addr, "example.com:") {
+			addr = second.srv.Listener.Addr().String()
+		}
+		return (&net.Dialer{}).DialContext(ctx, network, addr)
+	}
+	e.api.SetPeerClientForTest(&http.Client{Transport: tr})
+	if err := e.api.remoteCaps.Put("s2", "https://example.com:1", "", "CAP-B"); err != nil {
+		t.Fatal(err)
+	}
+	status, _, code := e.open(t, "s2", localhostURL(port, "/"), true)
+	if status != 409 || code != PortErrPortInUse {
+		t.Fatalf("second Mac = %d %q, want 409 port_in_use", status, code)
+	}
+	if n := e.stub.hitCount(); n != 0 {
+		t.Fatalf("first Mac's stub saw %d requests", n)
+	}
+	if st, _ := get(t, port, "/"); st != 200 || e.stub.hitCount() != 1 {
+		t.Fatal("the first Mac's forward no longer answers")
+	}
+	if second.hitCount() != 0 {
+		t.Fatal("the second Mac's stub was reached through the first Mac's forward")
+	}
+
+	// The same Mac, another session, while the approval is live: rebound with no consent.
+	if err := e.api.remoteCaps.Put("s3", e.stub.srv.URL, "", "CAP3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, got, errCode := e.open(t, "s3", localhostURL(port, "/"), false); got.Status != PortStatusOpen {
+		t.Fatalf("same Mac, other session = %+v %q, want open", got, errCode)
+	}
+	get(t, port, "/")
+	if hit := e.stub.lastHit(t); hit.path != "/api/peer/sessions/s3/ports/"+strconv.Itoa(port) || hit.hdr.Get("X-Portty-Cap") != "CAP3" {
+		t.Fatalf("after the rebind the stub saw %q with cap %q", hit.path, hit.hdr.Get("X-Portty-Cap"))
+	}
+}
+
+// With every revocation signal bypassed: a capability replaced behind the
+// daemon's back (a re-share whose signals were missed) must not leave `open`
+// answerable.
+func TestPortOpen_ApprovalLiveCheck(t *testing.T) {
+	e := newPortEnv(t)
+	port := freeLoopbackPort(t)
+	if _, got, errCode := e.open(t, "s1", localhostURL(port, "/"), true); got.Status != PortStatusOpen {
+		t.Fatalf("open = %+v %q", got, errCode)
+	}
+	if err := e.api.remoteCaps.Put("s1", e.stub.srv.URL, "", "CAP2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
+		t.Fatalf("after a new capability = %+v, want consent, never open", got)
+	}
+	if listening(port) {
+		t.Fatal("the old forward still listens")
+	}
+	if _, got, errCode := e.open(t, "s1", localhostURL(port, "/"), true); got.Status != PortStatusOpen {
+		t.Fatalf("consented again = %+v %q", got, errCode)
+	}
+	get(t, port, "/")
+	hit := e.stub.lastHit(t)
+	if hit.hdr.Get("X-Portty-Port-Token") != e.stub.token() || hit.hdr.Get("X-Portty-Cap") != "CAP2" {
+		t.Fatalf("stub saw token %q cap %q, want the new grant under CAP2", hit.hdr.Get("X-Portty-Port-Token"), hit.hdr.Get("X-Portty-Cap"))
+	}
+}
+
+// A port_in_use after consent must not leave an approval behind.
+func TestPortOpen_NoApprovalAfterPortInUse(t *testing.T) {
+	e := newPortEnv(t)
+	port := freeLoopbackPort(t)
+	h := newHolder(t, "tcp", ":"+strconv.Itoa(port))
+	if status, _, code := e.open(t, "s1", localhostURL(port, "/"), true); status != 409 || code != PortErrPortInUse {
+		t.Fatalf("answer = %d %q, want 409 port_in_use", status, code)
+	}
+	h.ln.Close()
+	waitClosed(t, port)
+	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusConsent {
+		t.Fatalf("after the holder left = %+v, want consent (no approval was recorded)", got)
 	}
 }

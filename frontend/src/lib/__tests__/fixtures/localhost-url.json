@@ -1,0 +1,32 @@
+{
+  "cases": [
+    { "input": "http://localhost:8000/", "match": true, "port": 8000, "rest": "/", "note": "plain localhost with a slash" },
+    { "input": "http://localhost:8000", "match": true, "port": 8000, "rest": "", "note": "no path: the opened URL gets a slash" },
+    { "input": "http://127.0.0.1:8000/sub/page.html?q=a%20b", "match": true, "port": 8000, "rest": "/sub/page.html?q=a%20b", "note": "path and query kept byte for byte" },
+    { "input": "http://[::]:19106/)", "match": true, "port": 19106, "rest": "/", "note": "trailing ) with no ( is trimmed (Python http.server banner)" },
+    { "input": "http://[::1]:3000", "match": true, "port": 3000, "rest": "", "note": "IPv6 loopback" },
+    { "input": "http://0.0.0.0:8000/", "match": true, "port": 8000, "rest": "/", "note": "wildcard address a server prints" },
+    { "input": "http://localhost:5173/wiki/Foo_(bar)", "match": true, "port": 5173, "rest": "/wiki/Foo_(bar)", "note": "balanced parentheses stay" },
+    { "input": "http://localhost:8000/.", "match": true, "port": 8000, "rest": "/", "note": "trailing period trimmed" },
+    { "input": "http://localhost:8000/,", "match": true, "port": 8000, "rest": "/", "note": "trailing comma trimmed" },
+    { "input": "http://localhost:8000/x'", "match": true, "port": 8000, "rest": "/x", "note": "trailing quote trimmed" },
+    { "input": "http://localhost:8000?x=1", "match": true, "port": 8000, "rest": "?x=1", "note": "query straight after the port" },
+    { "input": "http://localhost:8000#top", "match": true, "port": 8000, "rest": "#top", "note": "fragment straight after the port" },
+    { "input": "http://localhost:80/", "match": true, "port": 80, "rest": "/", "note": "lowest common port" },
+    { "input": "http://localhost:65535/", "match": true, "port": 65535, "rest": "/", "note": "highest port" },
+    { "input": "https://localhost:8000/", "match": false, "note": "https is not a forwarded scheme" },
+    { "input": "http://LOCALHOST:8000/", "match": false, "note": "upper case host is not folded" },
+    { "input": "http://localhost/", "match": false, "note": "no port" },
+    { "input": "http://localhost:0/", "match": false, "note": "port 0" },
+    { "input": "http://localhost:65536/", "match": false, "note": "port above 65535" },
+    { "input": "http://localhost:08000/", "match": false, "note": "leading zero" },
+    { "input": "http://localhost:8000@evil.com/", "match": false, "note": "userinfo trick: the host is evil.com" },
+    { "input": "http://localhost:8000.evil.com/", "match": false, "note": "suffix domain" },
+    { "input": "http://localhost.:8000/", "match": false, "note": "trailing dot host" },
+    { "input": "http://127.1:8000/", "match": false, "note": "short IPv4 form" },
+    { "input": "http://example.com:8000/", "match": false, "note": "not a loopback host" },
+    { "input": "http://[::ffff:127.0.0.1]:8000/", "match": false, "note": "IPv4-mapped IPv6 form" },
+    { "input": "http://localhost:8000:12/", "match": false, "note": "second port" },
+    { "input": "mailto:a@localhost", "match": false, "note": "not http" }
+  ]
+}
