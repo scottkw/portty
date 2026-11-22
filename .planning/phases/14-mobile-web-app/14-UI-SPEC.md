@@ -32,12 +32,16 @@ created: "2026-11-22"
 | Tool | none. No shadcn and no Tailwind: React 19 + Vite + plain CSS in `frontend/src/style.css` (project constraint: keep the inherited stack) |
 | Preset | not applicable |
 | Component library | none (hand-written React components) |
-| Icon library | `@heroicons/react` 2.2.0, `24/outline` only. Enumerated by `ls frontend/node_modules/@heroicons/react/24/outline/*Icon.js \| wc -l` (324 icons, 2026-11-22; informational, not an allowlist). Version from the installed `node_modules/@heroicons/react/package.json`. New use in this phase: `ArrowLeftIcon`, `ArrowUpIcon`, `ArrowDownIcon`, `ArrowRightIcon` (key bar), all four checked on disk. `InformationCircleIcon`, `XMarkIcon`, `ExclamationTriangleIcon` are reused as they are today |
+| Icon library | `@heroicons/react` 2.2.0, `24/outline` only. Provenance line below. New use in this phase: `ArrowLeftIcon`, `ArrowUpIcon`, `ArrowDownIcon`, `ArrowRightIcon` (key bar), all four checked on disk. `InformationCircleIcon`, `XMarkIcon`, `ExclamationTriangleIcon` are reused as they are today |
+
+Enumerated by `ls frontend/node_modules/@heroicons/react/24/outline/*Icon.js | wc -l` — 324 components — @heroicons/react@2.2.0 (from the installed `node_modules/@heroicons/react/package.json`) — 2026-11-22.
+
+Enumerated by `ls frontend/src/components/*.tsx | wc -l` — 26 components — project-local, hand-written (`frontend/src/components/`, no design-system package) — 2026-11-22.
+
+Both lists are non-exhaustive, never a closed allowlist. There is no `## Component Inventory` table because `Tool: none`; the project-local components this phase touches are in the next table.
 | Font | UI: `--hub-font-ui` (`-apple-system, BlinkMacSystemFont, system-ui, sans-serif`). Terminal text keeps the host's terminal font. The static server pages keep `dashboard.css` (same system stack) |
 
 ### Existing pieces reused (not a design-system inventory)
-
-`ls frontend/src/components/*.tsx | wc -l` gives 26 component files on disk (informational, 2026-11-22).
 
 | Piece | Used for |
 |-------|----------|
@@ -74,9 +78,9 @@ Unchanged from Phase 2 and 11. All values are multiples of 4.
 | Key (hit box) | `flex: 1 1 0`, `min-width: 44px`, `height: 44px`. Adjacent, no gap, so the hit boxes touch and every tap lands on a key |
 | Key (visible pill) | The hit box inset by 2px on every side (a `::before` pill, radius 8px = `--hub-radius-sm`). Visible gap between pills is 4px |
 | Arrow icon | 20px |
-| Ctrl armed dot | 6px circle, 4px from the pill's top-right inside corner |
+| Ctrl armed dot | 8px circle, 4px from the pill's top-right inside corner |
 | Reload action (phone) | `min-height: 44px`, `min-width: 44px`, padding `0 8px`. The visible text stays 12px |
-| Retry link, static page | `min-height: 44px`, full width, same box as the dashboard `button` rule |
+| Retry link, static page | `min-height: 44px`, padding `12px 20px`, full width, same look as the dashboard `button` rule |
 | Phone terminal padding | `4px 8px` (desktop is `12px 16px`) |
 
 Exceptions:
@@ -88,14 +92,14 @@ Exceptions:
 
 ## Typography
 
-No new sizes or weights. 4 sizes (11, 12, 13, 17) and 2 weights (400, 600), as in Phase 11.
+No new sizes or weights. 4 sizes (12, 13, 16, 17) and 2 weights (400, 600). 12, 13 and 17 are the existing UI scale; 16 is the phone form-control size below.
 
 | Role | Size | Weight | Line Height | Used in this phase |
 |------|------|--------|-------------|--------------------|
 | Caption | 12px | 400 / 600 | 16px | Banner message (400) and the Reload action (600, existing `.banner__action`) |
 | Body | 13px | 600 | 18px | Key labels `Esc`, `Tab`, `Ctrl`; in-app refusal body (400) |
 | Display | 17px | 400 / 600 | 22px | The `\|` key glyph (400); in-app refusal heading (600) |
-| Label | 11px | 600 | 14px | Not used |
+| Control (phone only) | 16px | 400 | 20px | Form controls under `@media (pointer: coarse)` (see the exception below) |
 
 Static server pages keep the `dashboard.css` scale (h1 1.5rem, h2 1.1rem, p 0.9rem, line-height 1.5). They are separate pages with their own stylesheet, the same as `link-invalid.html` today, and are not part of the in-app scale.
 
@@ -113,7 +117,7 @@ All colors are existing tokens with light and dark values. They repaint live whe
 |------|-------|-------|
 | Dominant (60%) | `--color-terminal-bg` (`#FFFFFF` · `#1C1C1E`) and `--color-window` | The terminal, the in-app refusal screen, the static pages (`--color-window`) |
 | Secondary (30%) | `--color-toolbar` (`#F6F6F7` · `#2B2B2D`) for the key bar surface, `--color-button` (`#FFFFFF` · `#3A3A3C`) for key pills, `--color-separator` for the bar's top border, `--color-control-border` for the pill outline, `--color-banner-info-*` and `--color-banner-warning-*` for banners | Key bar, banners |
-| Accent (10%) | `--color-accent` / `--color-selection-fill`, text on it `--color-on-accent` | Reserved list below |
+| Accent (10%) | `--color-selection-fill` (`#0063CC` light, `#0058D0` dark), text on it `--color-on-accent`. This is the single Accent token for this phase; `--color-accent` (the lighter dark-mode blue used for text links) is not used, because both uses here are fills with white text, and `--color-selection-fill` is the token the dashboard `button` rule already uses | Reserved list below |
 | Destructive | `--color-destructive` | Not used (no destructive action in this phase) |
 
 Key colors, light and dark follow the tokens:
@@ -122,7 +126,7 @@ Key colors, light and dark follow the tokens:
 |-----------|------|---------------|---------|--------------|
 | Rest | `--color-button` | `--color-text` | 1px `--color-control-border` | none |
 | Pressed (finger down) | `--color-selection-inactive` | `--color-text` | same | none. No animation |
-| Ctrl armed | `--color-selection-fill` | `--color-on-accent` | none | 6px `--color-on-accent` dot at the top-right of the pill, `aria-pressed="true"`. The dot is a shape signal, so the state is not color-only |
+| Ctrl armed | `--color-selection-fill` | `--color-on-accent` | none | 8px `--color-on-accent` dot at the top-right of the pill, `aria-pressed="true"`. The dot is a shape signal, so the state is not color-only |
 | Disabled | not used (see Key bar, "No disabled state") | | | |
 
 Accent reserved for (Phase 2 list plus one, nothing else):
@@ -149,8 +153,8 @@ Status bar: no `apple-mobile-web-app-status-bar-style` tag, so iOS uses its defa
 | Surface | Key bar |
 |---------|---------|
 | Browser share view (`/app/`) on a phone, session pane active, read-write cap | **Shown** |
-| Browser share view with a read-only cap | Not rendered. `term.input` is already a no-op under `disableStdin` (RESEARCH T-14-10); the bar is hidden so it does not look like it works |
-| Browser share view while a preview tab is active | Not rendered (the bar belongs to the session pane; nothing there can take a keystroke). **[default]** |
+| Browser share view with a read-only cap | Not rendered. `term.input` is already a no-op under `disableStdin` (RESEARCH T-14-10); the bar is hidden so it does not look like it works. **[default]** within 14-CONTEXT "Claude's Discretion" (key set, bar placement) |
+| Browser share view while a preview tab is active | Not rendered (the bar belongs to the session pane; nothing there can take a keystroke). **[default]** within 14-CONTEXT "Claude's Discretion" (bar placement) |
 | Desktop browser (mouse or trackpad: `hover: hover`) and iPad with a pointer | Not rendered. CSS backstop: `@media not all and (pointer: coarse) and (hover: none) { .keybar { display: none } }`. The React side also checks the query, so no hidden DOM is mounted |
 | The Wails desktop app, local tabs and peer tabs | Not rendered (the bar is mounted by the web-mode session view only) |
 
@@ -216,6 +220,7 @@ Ctrl never stays armed past one key and has no timeout. There is no sticky or lo
 | Page scroll and zoom | `html, body, #root` already have `overflow: hidden`. Add `touch-action: pan-x pan-y` on `html` (no double-tap zoom, no page pinch) and a non-passive `touchmove` handler for two touches. `user-scalable=no` is not relied on (iOS ignores it) |
 | Auto-zoom on focus | 16px form controls (see Typography) |
 | Orientation | Both allowed. The manifest has no `orientation` field |
+| Focal point | The terminal is the primary focal point and takes all remaining space. The key bar (and, when shown, the tab strip and banners) is secondary chrome: quiet toolbar-colored surface, no accent fill at rest, so the eye stays on the output. Accent appears only on an armed Ctrl (and the retry link on the static retry page) |
 | Splash | The existing `#splash-static` (`background: Canvas`) already follows light and dark. No new splash |
 
 ---
@@ -274,7 +279,7 @@ HTTP 503, no marker, page routes only (`GET /sessions/{id}` and `GET /app/`). AP
 | Action | **Try again** |
 
 - The action is an `<a class="button" href="">` that reloads the same URL, token included, because an empty `href` resolves to the current URL. The share CSP blocks inline script and style, so it is a link, not a `<button>`.
-- Add one rule to `web/assets/dashboard.css`: `a.button` mirrors the existing `button` rule (`padding: 0.75rem 1.2rem`, `background: var(--color-selection-fill)`, `color: var(--color-on-accent)`, `border-radius: 4px`, `font-weight: 600`) with `display: block`, `text-align: center`, `text-decoration: none` and `min-height: 44px`. Phone tap target is therefore 44px or more.
+- Add one rule to `web/assets/dashboard.css`: `a.button` mirrors the existing `button` rule with `padding: 12px 20px` (`background: var(--color-selection-fill)`, `color: var(--color-on-accent)`, `border-radius: 4px`, `font-weight: 600`) with `display: block`, `text-align: center`, `text-decoration: none` and `min-height: 44px`. Phone tap target is therefore 44px or more.
 - No auto-refresh, no countdown, no spinner. **[default]** The page is static; the person taps when ready.
 - It names no account and no host.
 
@@ -473,11 +478,12 @@ Notes for the copy: no input field, no button that posts anything, no QR code, n
 
 ## UI Considerations
 
-Applicable state considerations resolved: 11 covered, 4 backstop, 0 unresolved (probe run 2026-11-22).
+Applicable state considerations resolved: 12 covered, 4 backstop, 0 unresolved (probe run 2026-11-22).
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
 | loading | key bar while the socket is connecting or reconnecting | ✅ covered | The bar stays visible and enabled and behaves as typing does; the reconnecting banner is the signal. No disabled state |
+| empty | connected session with no output yet | ✅ covered | The terminal is blank on purpose: no placeholder, spinner or hint text. The cursor and the key bar show the view is live; the connecting and reconnecting banners cover the not-connected cases |
 | error | key bar for a read-only cap | ✅ covered | The bar is not rendered for a read-only cap |
 | empty | key bar on a desktop pointer device | ✅ covered | Not rendered: React checks `(pointer: coarse) and (hover: none)` and a CSS backstop hides it |
 | overflow | key bar at 375 pt, in landscape with notch insets, and below 352 pt | ✅ covered | 8 hit boxes of 44 pt fit 375 pt with no gap. Landscape side insets leave more than 352 pt. Below 352 pt the row scrolls horizontally |
