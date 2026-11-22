@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -609,6 +610,100 @@ func TestOpenRemotePort(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK || string(body) != "remote page" {
 		t.Fatalf("forward answered %d %q; want 200 \"remote page\"", resp.StatusCode, body)
+	}
+}
+
+// stubDaemonApp is an App whose client talks to a stub daemon serving mux on a
+// unix socket under a short temp dir (t.TempDir paths can exceed the socket limit).
+func stubDaemonApp(t *testing.T, mux *http.ServeMux) *App {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "pp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	sock := dir + "/d.sock"
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: mux}
+	go srv.Serve(ln) //nolint:errcheck
+	t.Cleanup(func() { srv.Close() })
+	return &App{ctx: context.Background(), client: daemon.NewDaemonClient(sock)}
+}
+
+func healthMux(api int, ports http.HandlerFunc) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"status":"ok","version":"v-test","api":%d}`, api)
+	})
+	if ports != nil {
+		mux.HandleFunc("POST /peers/ports", ports)
+	}
+	return mux
+}
+
+// TestOpenRemotePort_DaemonOutdated (T-13-24): an API 4 daemon is never asked;
+// an API 5 daemon without the route is outdated too.
+func TestOpenRemotePort_DaemonOutdated(t *testing.T) {
+	var calls atomic.Int32
+	app := stubDaemonApp(t, healthMux(4, func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
+	if got := app.OpenRemotePort("s1", "http://localhost:3000/", true); got.ErrorCode != daemon.PortErrDaemonOutdated || got.Status != "" || got.URL != "" {
+		t.Fatalf("api 4: %+v; want daemon_outdated", got)
+	}
+	if n := calls.Load(); n != 0 {
+		t.Fatalf("POST /peers/ports called %d times on an API 4 daemon; want 0", n)
+	}
+	app = stubDaemonApp(t, healthMux(5, nil))
+	if got := app.OpenRemotePort("s1", "http://localhost:3000/", true); got.ErrorCode != daemon.PortErrDaemonOutdated {
+		t.Fatalf("api 5 without the route: %+v; want daemon_outdated", got)
+	}
+}
+
+// TestOpenRemotePort_Codes (T-13-26): every daemon error code reaches errorCode
+// unchanged, with nothing else filled in; a plain failure is unreachable.
+func TestOpenRemotePort_Codes(t *testing.T) {
+	for _, code := range []string{daemon.PortErrBadURL, daemon.PortErrNoCap, daemon.PortErrRefused, daemon.PortErrHostOutdated, daemon.PortErrPortInUse, daemon.PortErrUnreachable} {
+		app := stubDaemonApp(t, healthMux(5, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":%q}`, code)
+		}))
+		if got := app.OpenRemotePort("s1", "http://localhost:3000/", false); got != (RemotePortResult{ErrorCode: code}) {
+			t.Errorf("%s: %+v", code, got)
+		}
+	}
+	app := stubDaemonApp(t, healthMux(5, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	if got := app.OpenRemotePort("s1", "http://localhost:3000/", false); got != (RemotePortResult{ErrorCode: daemon.PortErrUnreachable}) {
+		t.Errorf("plain 500: %+v; want unreachable", got)
+	}
+}
+
+// TestOpenRemotePort_NoSecrets (T-13-25): neither the capability nor the port
+// token appears in what the webview receives.
+func TestOpenRemotePort_NoSecrets(t *testing.T) {
+	f := newRemotePortFixture(t)
+	rawURL := fmt.Sprintf("http://localhost:%d/x?y=1", f.port)
+	for _, consent := range []bool{false, true} {
+		b, err := json.Marshal(f.app.OpenRemotePort("aaaa1111", rawURL, consent))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "TOKEN") {
+			t.Fatalf("consent=%v: result %s carries a token", consent, b)
+		}
+		if !strings.Contains(string(b), `"status"`) {
+			t.Fatalf("consent=%v: result %s has no status", consent, b)
+		}
+	}
+}
+
+func TestOpenRemotePort_NoDaemon(t *testing.T) {
+	if got := (&App{}).OpenRemotePort("s1", "http://localhost:3000/", false); got != (RemotePortResult{ErrorCode: daemon.PortErrUnreachable}) {
+		t.Fatalf("no daemon: %+v; want unreachable", got)
 	}
 }
 

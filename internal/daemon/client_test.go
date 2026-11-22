@@ -2,12 +2,15 @@ package daemon
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -44,8 +47,75 @@ func TestHealthInfo(t *testing.T) {
 
 	_, client, _ := testDaemon(t)
 	h, err = client.HealthInfo()
-	if err != nil || DaemonAPI(h) != 4 || APIVersion != 4 || PreviewAPI != 3 || PathClickAPI != 4 {
-		t.Fatalf("this build's health = %+v, %v; want API 4 (PreviewAPI 3, PathClickAPI 4)", h, err)
+	if err != nil || DaemonAPI(h) != 5 || APIVersion != 5 || PortProxyAPI != 5 || PreviewAPI != 3 || PathClickAPI != 4 {
+		t.Fatalf("this build's health = %+v, %v; want API 5 (PortProxyAPI 5, PreviewAPI 3, PathClickAPI 4)", h, err)
+	}
+}
+
+// stubPortDaemon serves handler on a unix socket under a short temp dir and
+// returns a client for it.
+func stubPortDaemon(t *testing.T, handler http.Handler) *DaemonClient {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "pp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "d.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: handler}
+	go srv.Serve(ln) //nolint:errcheck
+	t.Cleanup(func() { srv.Close() })
+	return NewDaemonClient(sock)
+}
+
+// TestOpenRemotePortClient (URL-01, URL-02): every JSON error code reaches the
+// caller unchanged; a daemon without the route is daemon_outdated; any other
+// failure is a plain error; a 200 decodes.
+func TestOpenRemotePortClient(t *testing.T) {
+	for _, code := range []string{PortErrBadURL, PortErrNoCap, PortErrRefused, PortErrHostOutdated, PortErrPortInUse, PortErrUnreachable} {
+		c := stubPortDaemon(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, portErrStatus[code], PortOpenErrorResponse{Error: code})
+		}))
+		_, err := c.OpenRemotePort("s1", "http://localhost:3000/", false)
+		var pe *PortOpenError
+		if !errors.As(err, &pe) || pe.Code != code {
+			t.Errorf("%s: err = %v; want *PortOpenError{%s}", code, err, code)
+		}
+	}
+	for _, status := range []int{http.StatusNotFound, http.StatusMethodNotAllowed} {
+		c := stubPortDaemon(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "nope", status)
+		}))
+		_, err := c.OpenRemotePort("s1", "http://localhost:3000/", false)
+		var pe *PortOpenError
+		if !errors.As(err, &pe) || pe.Code != PortErrDaemonOutdated {
+			t.Errorf("plain %d: err = %v; want daemon_outdated", status, err)
+		}
+	}
+	c := stubPortDaemon(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	_, err := c.OpenRemotePort("s1", "http://localhost:3000/", false)
+	var pe *PortOpenError
+	if err == nil || errors.As(err, &pe) {
+		t.Errorf("plain 500: err = %v; want a plain error", err)
+	}
+
+	var got PortOpenRequest
+	c = stubPortDaemon(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		writeJSON(w, http.StatusOK, PortOpenResponse{Status: PortStatusOpen, URL: "http://localhost:3000/a", Host: "office-air", Port: 3000})
+	}))
+	res, err := c.OpenRemotePort("s1", "http://localhost:3000/a", true)
+	if err != nil || res.Status != PortStatusOpen || res.URL != "http://localhost:3000/a" || res.Host != "office-air" || res.Port != 3000 {
+		t.Fatalf("200: %+v, %v", res, err)
+	}
+	if got != (PortOpenRequest{SessionID: "s1", URL: "http://localhost:3000/a", Consent: true}) {
+		t.Fatalf("request body = %+v", got)
 	}
 }
 
