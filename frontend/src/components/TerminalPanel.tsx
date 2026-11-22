@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Terminal } from '@xterm/xterm'
 import type { ITheme, IDisposable } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -20,14 +21,16 @@ import { isXtermFocused } from '../lib/isXtermFocused'
 import { guardPasteInsert } from '../lib/pasteGuard'
 import { hostReconnectVerdict } from '../lib/hostReconnect'
 import { FindBar, type FindBarSearchOptions } from './FindBar/FindBar'
-import { SetSearchConfig } from '../wailsjs/go/main/App'
+import { OpenRemotePort, SetSearchConfig, type RemotePortResult } from '../wailsjs/go/main/App'
 import { daemon } from '../wailsjs/go/models'
 import { isAllowedScheme, getRisk, type RiskKind } from '../lib/urlSafety'
 import { openLink, isModifierPressed, type ModifierMode } from '../lib/openLink'
 import { registerPathLinks } from '../lib/pathLinks'
+import { classifyLoopbackUrl, trimLinkTail } from '../lib/localhostUrl'
 import type { PathLinksHandle } from '../lib/pathLinks'
 import { LinkConfirmPopover } from './LinkConfirmPopover'
-import { SessionEndedBanner } from './SessionEndedBanner'
+import { SessionEndedBanner, type SessionEndedBannerProps } from './SessionEndedBanner'
+import { RegenerateKeyModal } from './RegenerateKeyModal'
 import { CLOSE_REASON_SHARE_STOPPED } from '../lib/closeReasons'
 // Phase 113 UI-03 / UI-04 — iPad single-finger scrollback. xterm.js v6 has
 // no built-in touch handling; this helper attaches the missing handlers.
@@ -77,6 +80,15 @@ function measureFit(term: Terminal): { cols: number; rows: number } | null {
 const CLAIM_DEBOUNCE_MS = 150
 // Phase 12 PATH-02: how long the refused-file notice stays in the clicking pane.
 const PATH_NOTICE_MS = 5000
+
+type PortNoticeKind = Extract<SessionEndedBannerProps['kind'], `port-${string}`>
+// Phase 13: binding errorCode to banner kind; any other code (and a rejection) is port-unreachable.
+const PORT_NOTICE_KIND: Record<string, PortNoticeKind> = {
+  host_outdated: 'port-host-outdated',
+  daemon_outdated: 'port-daemon-outdated',
+  port_in_use: 'port-in-use',
+  refused: 'port-refused',
+}
 
 interface TerminalPanelProps {
   sessionId: string
@@ -206,6 +218,11 @@ export function TerminalPanel({
   // changing those does NOT re-attach the addon (Pitfall #8).
   const webLinksAddonRef = useRef<WebLinksAddon | null>(null)
   const webLinksConfigRef = useRef(pluginConfig?.webLinksConfig)
+  // Phase 13 URL-01: a desktop peer tab (remote, no wsURL) sends a clicked loopback URL to the viewing daemon.
+  // The click handler is built once, so it reads the tab kind and the flow through refs.
+  const desktopPeerRef = useRef(false)
+  const runRemotePortRef = useRef<((trimmedUrl: string, port: number) => void) | null>(null)
+  const remotePortBusyRef = useRef(false)
   // Phase 12 PATH-02: path links (lib/pathLinks.ts) ride the web-links toggle. The provider is registered once
   // per terminal; pathClickEnabledRef says whether the host offered path clicks on the current socket
   // (replay meta pathClick:true), so a read-only viewer or an older host sees no links.
@@ -353,8 +370,57 @@ export function TerminalPanel({
     setPathNotice(kind)
     pathNoticeTimerRef.current = window.setTimeout(clearPathNotice, PATH_NOTICE_MS)
   }, [clearPathNotice])
-  useEffect(() => { if (!isActive || otherBannerRef.current) clearPathNotice() }, [isActive, pasteNotice, reconnecting, sessionEnded.ended, clearPathNotice])
-  useEffect(() => () => { if (pathNoticeTimerRef.current !== null) window.clearTimeout(pathNoticeTimerRef.current) }, [])
+  // Phase 13 URL-01: why a clicked remote localhost URL did not open. Same slot, timer and yielding rules as
+  // pathNotice; showing one of the two removes the other. Only the host label and a numeric port are rendered.
+  const [portNotice, setPortNotice] = useState<{ kind: PortNoticeKind; port: number } | null>(null)
+  const portNoticeTimerRef = useRef<number | null>(null)
+  const clearPortNotice = useCallback(() => {
+    if (portNoticeTimerRef.current !== null) window.clearTimeout(portNoticeTimerRef.current)
+    portNoticeTimerRef.current = null
+    setPortNotice(null)
+  }, [])
+  const showPortNotice = useCallback((kind: PortNoticeKind, port: number) => {
+    if (otherBannerRef.current) return
+    clearPathNotice()
+    if (portNoticeTimerRef.current !== null) window.clearTimeout(portNoticeTimerRef.current)
+    setPortNotice({ kind, port })
+    portNoticeTimerRef.current = window.setTimeout(clearPortNotice, PATH_NOTICE_MS)
+  }, [clearPathNotice, clearPortNotice])
+  useEffect(() => { if (!isActive || otherBannerRef.current) { clearPathNotice(); clearPortNotice() } }, [isActive, pasteNotice, reconnecting, sessionEnded.ended, clearPathNotice, clearPortNotice])
+  useEffect(() => () => {
+    if (pathNoticeTimerRef.current !== null) window.clearTimeout(pathNoticeTimerRef.current)
+    if (portNoticeTimerRef.current !== null) window.clearTimeout(portNoticeTimerRef.current)
+  }, [])
+  // The consent sheet for a (Mac, port) the user has not approved yet; holds the URL to send again on Allow.
+  const [portConsent, setPortConsent] = useState<{ host: string; port: number; url: string } | null>(null)
+  // Never throws: a rejected binding is the same notice as an unreachable host. Only the binding's own
+  // answer is ever opened, and only when it says open; every other answer opens nothing.
+  const answerRemotePort = useCallback((trimmedUrl: string, port: number, res: RemotePortResult | null, afterConsent: boolean) => {
+    if (res?.status === 'open') {
+      openLink(res.url)
+    } else if (res?.status === 'consent' && !afterConsent) {
+      setPortConsent({ host: res.host || hostLabel || 'the host Mac', port: res.port || port, url: trimmedUrl })
+    } else {
+      showPortNotice((res && PORT_NOTICE_KIND[res.errorCode]) || 'port-unreachable', port)
+    }
+  }, [hostLabel, showPortNotice])
+  const callRemotePort = useCallback(async (trimmedUrl: string, consent: boolean): Promise<RemotePortResult | null> => {
+    try {
+      return await OpenRemotePort(sessionId, trimmedUrl, consent)
+    } catch {
+      return null
+    }
+  }, [sessionId])
+  const runRemotePort = useCallback((trimmedUrl: string, port: number) => {
+    if (remotePortBusyRef.current) return
+    remotePortBusyRef.current = true
+    void callRemotePort(trimmedUrl, false).then((res) => {
+      remotePortBusyRef.current = false
+      answerRemotePort(trimmedUrl, port, res, false)
+    })
+  }, [callRemotePort, answerRemotePort])
+  runRemotePortRef.current = runRemotePort
+  useEffect(() => { desktopPeerRef.current = !!remote && !wsURL }, [remote, wsURL])
   // The cleanup reports false when the banner hides and when the panel unmounts mid-reconnect.
   useEffect(() => {
     if (!reconnecting) return
@@ -888,6 +954,13 @@ export function TerminalPanel({
           // is the primary defense; this is the secondary belt-and-braces.
           const modifier = (cfg?.modifier || 'platform') as ModifierMode
           if (!isModifierPressed(event, modifier)) return
+          // Phase 13 URL-01: in a desktop peer tab a printed loopback URL names a port on the host Mac, so the
+          // viewing daemon opens it through a forward. Every other tab and URL falls through to today's path.
+          const loopback = desktopPeerRef.current ? classifyLoopbackUrl(uri) : null
+          if (loopback) {
+            runRemotePortRef.current?.(trimLinkTail(uri), loopback.port)
+            return
+          }
           // LNK-03: risk detection. For plain-text URL matches the addon
           // emits, displayText === uri, so osc8Mismatch never fires here —
           // OSC 8 mismatch is a v3.3 follow-up (Plan B; see header).
@@ -1287,6 +1360,28 @@ export function TerminalPanel({
       )}
       {pathNotice && isActive && !otherBannerRef.current && (
         <SessionEndedBanner kind={pathNotice} onDismiss={clearPathNotice} />
+      )}
+      {portNotice && isActive && !otherBannerRef.current && (
+        <SessionEndedBanner kind={portNotice.kind} host={hostLabel} port={portNotice.port} onDismiss={clearPortNotice} />
+      )}
+      {portConsent && createPortal(
+        <RegenerateKeyModal
+          isOpen
+          title={`Allow access to ${portConsent.host}'s localhost:${portConsent.port}?`}
+          body="Pages from this port open in your browser through Portty over your tailnet. Other ports stay closed."
+          confirmLabel="Allow"
+          cancelLabel="Don't Allow"
+          actingLabel="Opening…"
+          titleId="port-consent-title"
+          onCancel={() => setPortConsent(null)}
+          onConfirm={async () => {
+            const { url, port } = portConsent
+            const res = await callRemotePort(url, true)
+            setPortConsent(null)
+            answerRemotePort(url, port, res, true)
+          }}
+        />,
+        document.body,
       )}
       {(findBarOpen || findBarExiting) && pluginConfig?.search && (
         <FindBar

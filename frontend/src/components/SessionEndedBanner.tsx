@@ -28,6 +28,9 @@ import { InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
  * refused a clicked file. The kind is chosen from the host's two exact notice codes, so the copy is
  * fixed and the wire value is never rendered.
  *
+ * Phase 13 (URL-01): the five 'port-*' kinds tell the clicking pane why a remote localhost URL did not open.
+ * They are chosen from the binding's error codes and show only the host label and a numeric port.
+ *
  * Colorblind-safe (MEMORY: user is colorblind): the message is conveyed via
  * text + an accessible status role, never via color alone.
  *
@@ -53,9 +56,13 @@ export interface SessionEndedBannerProps {
    * dropped guest socket is being replaced; B5: 'unreachable' once the browser's
    * probes have failed for minutes (still reconnecting, never final).
    */
-  kind?: 'ended' | 'share-stopped' | 'reconnecting' | 'unreachable' | 'paste-interrupted' | 'path-unsupported' | 'path-too-large'
-  /** Local host label (peer tab or cap-verified session info) for 'share-stopped' and 'unreachable'. */
+  kind?:
+    | 'ended' | 'share-stopped' | 'reconnecting' | 'unreachable' | 'paste-interrupted' | 'path-unsupported' | 'path-too-large'
+    | 'port-host-outdated' | 'port-daemon-outdated' | 'port-in-use' | 'port-refused' | 'port-unreachable'
+  /** Local host label (peer tab or cap-verified session info) for 'share-stopped', 'unreachable' and the 'port-*' kinds. */
   host?: string
+  /** 'port-in-use' and 'port-refused': the port number clicked. */
+  port?: number
   /** 'paste-interrupted': KB of the paste that left the browser; absent when the host never confirmed it. */
   pasteSentKB?: number
   /** 'paste-interrupted': the paste's size in KB. */
@@ -70,6 +77,7 @@ export function SessionEndedBanner({
   host,
   pasteSentKB,
   pasteTotalKB,
+  port,
 }: SessionEndedBannerProps): React.ReactElement {
   useEffect(() => {
     if (reason) {
@@ -93,6 +101,16 @@ export function SessionEndedBanner({
             ? "Can't preview this file type. Portty previews images, PDFs and Markdown files."
           : kind === 'path-too-large'
             ? 'Too large to preview. The limit is 20 MB.'
+          : kind === 'port-host-outdated'
+            ? `${host || 'The host Mac'} needs a Portty update to open its local pages.`
+          : kind === 'port-daemon-outdated'
+            ? "Portty's background service on this Mac is too old to open remote pages. Relaunch Portty to update it."
+          : kind === 'port-in-use'
+            ? `Port ${port} is in use on this Mac.`
+          : kind === 'port-refused'
+            ? `${host || 'The host Mac'} refused access to port ${port}.`
+          : kind === 'port-unreachable'
+            ? `Couldn't reach ${host || 'the host Mac'}.`
           : kind === 'reconnecting'
             ? 'Connection lost — reconnecting…'
             : kind === 'unreachable'

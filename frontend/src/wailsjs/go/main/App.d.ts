@@ -169,6 +169,19 @@ export interface PeerConnectResult {
 }
 export function ConnectPeerSession(host: string, sessionID: string): Promise<PeerConnectResult>
 
+// Portty 13-05: open a remote session's localhost URL through a loopback forward on this Mac. Never
+// rejects: status is 'open' (url is http://localhost:<port><rest>), 'consent' (host and port set,
+// nothing bound), or '' with errorCode one of bad_url, no_cap, refused, host_outdated, port_in_use,
+// unreachable, daemon_outdated.
+export interface RemotePortResult {
+  status: string
+  url: string
+  host: string
+  port: number
+  errorCode: string
+}
+export function OpenRemotePort(sessionID: string, rawURL: string, consent: boolean): Promise<RemotePortResult>
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export function RegenerateSigningKey(): Promise<void>
 
