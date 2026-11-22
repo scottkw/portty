@@ -246,16 +246,32 @@ func (s *pathSnap) finish(nHist, width int) {
 // as a whole token. The full-row fallback runs only when the first pass finds
 // nothing.
 func (s *pathSnap) findPrinted(text string) (uint64, bool) {
-	if row, ok := s.firstPass(text); ok {
-		return row, true
-	}
-	return s.fallbackPass(text)
+	return s.findMatch(func(run string) bool { return hasToken(run, text) }, len(text))
 }
 
-// firstPass joins rows the hub marked as soft-wrapped into logical lines, walks
-// them newest to oldest and returns the row of the first row of the first line
-// that holds text as a token.
+// findMatch is findPrinted for any predicate over a logical line: the first
+// pass, then the full-row fallback. needleLen bounds how far the fallback
+// joins rows: the longest text the predicate can accept.
+func (s *pathSnap) findMatch(match func(string) bool, needleLen int) (uint64, bool) {
+	if row, ok := s.firstMatch(match); ok {
+		return row, true
+	}
+	return s.fallbackMatch(match, needleLen)
+}
+
+// firstPass and fallbackPass are the two passes for a path token.
 func (s *pathSnap) firstPass(text string) (uint64, bool) {
+	return s.firstMatch(func(run string) bool { return hasToken(run, text) })
+}
+
+func (s *pathSnap) fallbackPass(text string) (uint64, bool) {
+	return s.fallbackMatch(func(run string) bool { return hasToken(run, text) }, len(text))
+}
+
+// firstMatch joins rows the hub marked as soft-wrapped into logical lines, walks
+// them newest to oldest and returns the row of the first row of the first line
+// that match accepts.
+func (s *pathSnap) firstMatch(match func(string) bool) (uint64, bool) {
 	// Walk backwards: a logical line ends at a row with no wrap mark.
 	for end := len(s.rows) - 1; end >= 0; {
 		start := end
@@ -266,7 +282,7 @@ func (s *pathSnap) firstPass(text string) (uint64, bool) {
 		for i := start; i <= end; i++ {
 			b.WriteString(s.rows[i].text)
 		}
-		if hasToken(b.String(), text) {
+		if match(b.String()) {
 			return s.rows[start].row, true
 		}
 		end = start - 1
@@ -274,7 +290,7 @@ func (s *pathSnap) firstPass(text string) (uint64, bool) {
 	return 0, false
 }
 
-// fallbackPass serves a soft-wrapped path the hub's wrap marks miss. The marks
+// fallbackMatch serves a soft-wrapped path the hub's wrap marks miss. The marks
 // are a hash heuristic (wraps.go): a hard full-width row identical to a wrapped
 // row, printed above it, takes the wrapped row's mark, so the first pass
 // over-joins on screen and under-joins in history. Here rows join by fullness
@@ -287,18 +303,18 @@ func (s *pathSnap) firstPass(text string) (uint64, bool) {
 // are not full are never joined, and a run stops once a token starting in its
 // first row cannot need more, so the pass stays linear in the retained rows.
 // Where the hub has no mark for a full row both readings count as printed.
-func (s *pathSnap) fallbackPass(text string) (uint64, bool) {
+func (s *pathSnap) fallbackMatch(match func(string) bool, needleLen int) (uint64, bool) {
 	for k := len(s.rows) - 1; k >= 0; k-- {
 		if k > 0 {
 			if up := s.rows[k-1]; up.full && up.wrap && up.text != s.rows[k].text {
 				continue
 			}
 		}
-		run, bound := s.rows[k].text, len(s.rows[k].text)+len(text)+2
+		run, bound := s.rows[k].text, len(s.rows[k].text)+needleLen+2
 		for j := k; j+1 < len(s.rows) && len(run) < bound && s.rows[j].full && !s.rows[j].seam && s.rows[j+1].text != ""; j++ {
 			run += s.rows[j+1].text
 		}
-		if hasToken(run, text) {
+		if match(run) {
 			return s.rows[k].row, true
 		}
 	}

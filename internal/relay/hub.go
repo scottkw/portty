@@ -103,6 +103,10 @@ type Hub struct {
 	pathClickBusy     atomic.Bool
 	pathClickResolved func(outcome string)
 
+	// portPrintedBusy: a port-printed search is running (portprinted.go, one
+	// per hub); a second one answers false.
+	portPrintedBusy atomic.Bool
+
 	// Phase 9 handoff (UPGR-01): freezing is set from Freeze until Thaw (or
 	// a failed freeze) and frozen is closed by Run when it stops for it, so
 	// a frozen hub has freezing set and frozen closed. Both under mu.
