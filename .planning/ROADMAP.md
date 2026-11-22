@@ -154,7 +154,7 @@ Plans:
   2. The first click on a port asks for consent in a macOS-style sheet that names the remote Mac and the port; declining opens nothing. Approval covers only that Mac and that port, and the viewing Mac's listener binds only to its loopback (checked with `lsof`). (URL-02)
   3. The proxy refuses whatever wasn't asked for. Requests without the token, from outside the tailnet, or for a port nobody approved are refused before the remote Mac connects anywhere. It only ever connects to the remote Mac's own loopback, it cannot be used to scan ports, and once the host stops sharing the proxied page stops loading. The security review records the threat model. (URL-02)
   4. Local URLs, and non-localhost URLs in remote tabs, work as today: the confirm popover, then the default browser. The existing link tests still pass. (URL-03)
-**Plans**: 6/7 plans executed
+**Plans**: 7/7 plans executed
 Plans:
 - [x] 13-01-PLAN.md — Wave 1: host gate primitives: Hub.PortPrinted (printed loopback URL check over the Phase 12 snapshot, URL boundaries) and port tokens under an HKDF-derived key (URL-02)
 - [x] 13-02-PLAN.md — Wave 1: the viewing daemon's loopback forward: POST /peers/ports, grant call, per-(Mac, port) consent, probe then bind on 127.0.0.1 and [::1], Host and cross-site checks, hop-1 proxy, fixed pages, lifetimes; shared classifier fixture (URL-01, URL-02)
@@ -162,7 +162,7 @@ Plans:
 - [x] 13-04-PLAN.md — Wave 2: API 5 with PortProxyAPI, DaemonClient.OpenRemotePort and the App.OpenRemotePort binding (never throws; daemon_outdated) (URL-01, URL-02)
 - [x] 13-05-PLAN.md — Wave 2: TerminalPanel peer-tab branch, consent sheet, five notices, classifier with fixture parity, URL-03 regressions (URL-01, URL-02, URL-03)
 - [x] 13-06-PLAN.md — Wave 3: WebSocket and SSE through both hops; streams end on stop-share, session exit, key regeneration and Stop; 13-SECURITY-REVIEW.md parts 1 (URL-01, URL-02)
-- [ ] 13-07-PLAN.md — Wave 4: full gate, TESTING.md, two-Tart-VM checks L-00..L-08 over the real tailnet, blocking-human checkpoint, Section 5 and the review's verdict (URL-01, URL-02, URL-03)
+- [x] 13-07-PLAN.md — Wave 4: full gate, TESTING.md, two-Tart-VM checks L-00..L-08 over the real tailnet, blocking-human checkpoint, Section 5 and the review's verdict (URL-01, URL-02, URL-03)
 **UI hint**: no
 
 ### Phase 14: Mobile Web App
@@ -188,5 +188,5 @@ Plans:
 | 10. Input Path Reliability | v1.2 | 7/7 | Complete    | 2026-11-21 |
 | 11. File Preview | v1.2 | 10/10 | Complete    | 2026-11-21 |
 | 12. File Path Click | v1.2 | 9/9 | Complete    | 2026-11-22 |
-| 13. Remote Localhost URLs | v1.2 | 6/7 | In Progress | - |
+| 13. Remote Localhost URLs | v1.2 | 7/7 | In Progress | - |
 | 14. Mobile Web App | v1.2 | 0/TBD | Not started | - |

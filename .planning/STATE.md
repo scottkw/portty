@@ -4,17 +4,17 @@ milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
 current_phase: 13
 current_phase_name: remote-localhost-urls
-status: executing
+status: verifying
 stopped_at: Phase 12 complete, ready to plan Phase 13
-last_updated: "2026-11-22T17:42:46.529Z"
+last_updated: "2026-11-22T18:25:15.427Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 13 execution started
-state_head: 39402801a16b0c29a17ed3ebaaade8b3be5402dc
+state_head: e0efb81bfb71a337abae000829c84d55686c71ee
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 40
-  completed_plans: 39
+  completed_plans: 40
   percent: 67
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 
 Phase: 13 (remote-localhost-urls) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-22 — Phase 13 execution started
 
 
@@ -123,6 +123,7 @@ Last activity: 2026-11-22 — Phase 13 execution started
 | Phase 13 P04 | 12min | 2 tasks | 6 files |
 | Phase 13 P05 | 25min | 3 tasks | 8 files |
 | Phase 13 P06 | 12min | 3 tasks | 3 files |
+| Phase 13 P07 | approx 2h | 4 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -278,6 +279,9 @@ Recent decisions affecting current work:
 - [Phase 13]: 13-03: one shared HTTP/1.1 transport for the host port proxy; its dialer ignores the URL host and takes only a validated port
 - [Phase 13]: 13-05: a consent answer to the consent-true call ends in the unreachable notice, never a second sheet
 - [Phase 13]: 13-06: re-share steps use a real POST /peers/connect against the host's share server, with a second shared session keeping the share server up so only the grant revoke can end streams
+- [Phase 13]: Phase 13 approved on the real-machine run: all nine rows L-00..L-08 PASS (user, 2026-11-22: approve)
+- [Phase 13]: UI-1 (a different tailnet user) accepted as automated-only; UI-2 (real Vite or webpack HMR) is a check on the user's own Macs (M-140)
+- [Phase 13]: G-1 (internal/pty TestKillClean_NoOrphans, one gate FAIL) recorded as the known flake; a re-run alone with -count=5 passed
 
 ### Pending Todos
 
