@@ -1004,6 +1004,13 @@ func (ws *WebServer) handleWSSRelay(w http.ResponseWriter, r *http.Request) {
 						_ = hub.ResizeClient(sub, cols, rows)
 					}
 				}
+			case relay.MsgPathClick:
+				// Phase 12: a path click needs the same capability as typing (MC-03 shape);
+				// Hub.PathClick refuses read-only subscribers again. Not logged per click:
+				// any link holder can send these at line rate (the hub logs one outcome line).
+				if !sub.ReadOnly {
+					hub.PathClick(sub, payload)
+				}
 			case relay.MsgPing:
 				pongs.Owe() // INPT-02: the write pump writes it ahead of queued output
 			}
