@@ -20,6 +20,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Terminal, type IDisposable } from '@xterm/xterm'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import { RelayClient } from '../relayClient'
 import { registerPathLinks } from '../pathLinks'
 import fixture from './fixtures/path-click.json'
@@ -192,6 +193,74 @@ describe('real xterm Linkifier (PATH-02 gap 2)', () => {
     hover(9, 1)
     click(9, 1)
     expect(pathClicks()).toEqual([PATH])
+  })
+
+  // The host's grid frame (0x02) reaches the terminal through the same queued term.resize as applyHostGrid.
+  const resizeTo = async (cols: number, rows: number) => {
+    const before = renders
+    feed(new Uint8Array([0x02, cols >> 8, cols & 0xff, rows >> 8, rows & 0xff]))
+    await sleep(150)
+    expect(term.cols, 'the grid changed').toBe(cols)
+    expect(renders, 'term.onRender fired after the resize').toBeGreaterThan(before)
+  }
+
+  it('after a resize, a Cmd-click at the same cell sends the path click with no pointer move', async () => {
+    assertRig()
+    hover(3, 1)
+    click(3, 1)
+    expect(pathClicks()).toEqual([PATH])
+    await resizeTo(60, 10)
+    click(3, 1) // no mousemove after the resize
+    expect(pathClicks()).toEqual([PATH, PATH])
+  })
+
+  it('after a resize while the pointer was outside, returning to the same cell offers the link', async () => {
+    assertRig()
+    hover(3, 1)
+    click(3, 1)
+    expect(pathClicks()).toEqual([PATH])
+    screen.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
+    await resizeTo(60, 10)
+    hover(3, 1)
+    click(3, 1)
+    expect(pathClicks()).toEqual([PATH, PATH])
+  })
+
+  it('after a resize, a Cmd-click on a URL at the same cell opens it', async () => {
+    assertRig()
+    const opened = vi.fn()
+    term.loadAddon(new WebLinksAddon((_e, uri) => opened(uri)))
+    await write('\r\nhttps://example.com/docs\r\n') // row 2 holds the prompt, so the URL lands on row 3
+    await sleep(100)
+    hover(5, 3)
+    click(5, 3)
+    expect(opened.mock.calls).toEqual([['https://example.com/docs']])
+    await resizeTo(60, 10)
+    click(5, 3)
+    expect(opened.mock.calls).toEqual([['https://example.com/docs'], ['https://example.com/docs']])
+  })
+
+  it('the link refresh sends no input to a program with mouse tracking on', async () => {
+    assertRig()
+    const sent: string[] = []
+    subs.push(term.onData((d) => sent.push(d)))
+    await write('\x1b[?1003h\x1b[?1006h')
+    hover(3, 1) // a real bubbling move: xterm reports it to the program
+    expect(sent.length, 'mouse tracking is live (the real move was reported)').toBeGreaterThanOrEqual(1)
+    sent.length = 0
+    handle!.invalidate!()
+    await sleep(20)
+    await resizeTo(60, 10)
+    expect(sent).toEqual([])
+  })
+
+  it('xterm 6 still has the Linkifier fields the refresh resets', () => {
+    assertRig()
+    hover(3, 1) // _lastBufferCell does not exist until the first hover
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const linkifier = (term as any)._core.linkifier
+    expect('_lastBufferCell' in linkifier).toBe(true)
+    expect('_activeLine' in linkifier).toBe(true)
   })
 
   it('while the capability is false, no link is offered and nothing is sent', async () => {
