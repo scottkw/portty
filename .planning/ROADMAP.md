@@ -123,7 +123,7 @@ Plans:
   2. Cmd-clicking an absolute path, or one relative to the working directory (for example `docs/diagram.png` printed by `ls` after `cd ~/proj`), opens it in a preview tab. This works in a local tab, and in a home-VM peer tab on an office-VM session over the real tailnet. (PATH-02)
   3. Cmd-clicking a path that doesn't exist does nothing: no tab, no dialog, and nothing typed into the shell. A plain click still selects text as before, and URLs keep their own click behavior. (PATH-02)
   4. Path clicks keep the PREV-03 rule. The request rides that session's authenticated stream, the host resolves it against that session's own working directory, and the host previews only a path that the session itself printed, so there is still no way to read a file by arbitrary path. The security review records this. (PATH-02; keeps PREV-03)
-**Plans**: 6/7 plans executed
+**Plans**: 6/9 plans executed
 Plans:
 **Wave 1**
 - [x] 12-01-PLAN.md — Move `portty open`'s file checks into the leaf package internal/previewfile (CLI lines unchanged) and CleanPreviewName into relay (PATH-02)
@@ -139,6 +139,10 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 12-07-PLAN.md — Gate once, TESTING.md (Sections 2, 4, Category BB M-128..M-135), Tart VM checks for SC1-SC4 (local, peer, Safari, read-only, notices, shell integrity, TUI, wrap, upgrades), security review verdict (PATH-01, PATH-02)
+
+**Gap closure** *(from 12-VERIFICATION.md, 2026-11-22)*
+- [ ] 12-08-PLAN.md — Viewer gaps: reproduce the reconnect and resize link loss against a real xterm 6 Linkifier (RED), refresh xterm's link state on capability changes and resizes (GREEN, paths and URLs); desktop peer tabs take this Mac's own link settings with no cross-origin config request; TESTING.md Sections 2 and 4 (PATH-02)
+- [ ] 12-09-PLAN.md — Re-run of 12-07 on the gap-closed build: gate once, VM rows C-00R..C-07R, C-09R, U-01R, user checkpoint (FAILs, C-08 ssh and C-06 desktop-app items), TESTING.md Section 5 M-128..M-135, security review gap-closure section and verdict (PATH-01, PATH-02) *(blocked on 12-08)*
 **UI hint**: yes
 
 ### Phase 13: Remote Localhost URLs
