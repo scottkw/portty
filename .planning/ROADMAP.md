@@ -141,7 +141,7 @@ Plans:
 - [ ] 12-07-PLAN.md — Gate once, TESTING.md (Sections 2, 4, Category BB M-128..M-135), Tart VM checks for SC1-SC4 (local, peer, Safari, read-only, notices, shell integrity, TUI, wrap, upgrades), security review verdict (PATH-01, PATH-02)
 
 **Gap closure** *(from 12-VERIFICATION.md, 2026-11-22)*
-- [ ] 12-08-PLAN.md — Viewer gaps: reproduce the reconnect and resize link loss against a real xterm 6 Linkifier (RED), refresh xterm's link state on capability changes and resizes (GREEN, paths and URLs); desktop peer tabs take this Mac's own link settings with no cross-origin config request; TESTING.md Sections 2 and 4 (PATH-02)
+- [ ] 12-08-PLAN.md — Viewer gaps: reproduce the reconnect and resize link loss against a real xterm 6 Linkifier (RED), refresh xterm's link state whenever the capability is reported and after every resize (GREEN, paths and URLs), after the selection-offset fix lands; desktop peer tabs take this Mac's own link settings with no cross-origin config request; TESTING.md Sections 2 and 4 (PATH-02)
 - [ ] 12-09-PLAN.md — Re-run of 12-07 on the gap-closed build: gate once, VM rows C-00R..C-07R, C-09R, U-01R, user checkpoint (FAILs, C-08 ssh and C-06 desktop-app items), TESTING.md Section 5 M-128..M-135, security review gap-closure section and verdict (PATH-01, PATH-02) *(blocked on 12-08)*
 **UI hint**: yes
 
