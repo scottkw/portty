@@ -150,4 +150,35 @@ describe('SessionEndedBanner', () => {
     expect(container.textContent).toBe(text)
     expect(container.querySelector('[aria-label="Dismiss"]')).toBeNull()
   })
+
+  // Phase 12 (PATH-02): the two notices a refused path click shows in the clicking pane.
+  describe.each([
+    ['path-unsupported', "Can't preview this file type. Portty previews images, PDFs and Markdown files."],
+    ['path-too-large', 'Too large to preview. The limit is 20 MB.'],
+  ] as const)('kind %s (PATH-02)', (kind, copy) => {
+    function renderKind(extra: object = {}) {
+      container = document.createElement('div')
+      document.body.appendChild(container)
+      root = createRoot(container)
+      flushSync(() => { root!.render(React.createElement(SessionEndedBanner, { kind, onDismiss: vi.fn(), ...extra })) })
+      return container
+    }
+
+    it('renders exactly the fixed copy', () => {
+      expect(renderKind().querySelector('.banner__message')?.textContent).toBe(copy)
+    })
+
+    it('is a polite status with the info icon and a Dismiss button', () => {
+      const c = renderKind()
+      const status = c.querySelector('[role="status"]')
+      expect(status?.getAttribute('aria-live')).toBe('polite')
+      expect(status?.classList.contains('banner--info')).toBe(true)
+      expect(c.querySelector('.banner__icon')).not.toBeNull()
+      expect(c.querySelector('[aria-label="Dismiss"]')).not.toBeNull()
+    })
+
+    it('never renders a reason', () => {
+      expect(renderKind({ reason: '<b>hostile</b> wire text' }).textContent).not.toContain('hostile')
+    })
+  })
 })

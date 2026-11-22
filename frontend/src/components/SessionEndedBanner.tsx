@@ -24,6 +24,10 @@ import { InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
  * drop. Its numbers are computed on the client from bytes it queued, never taken
  * from wire text, so the rule above holds.
  *
+ * Phase 12 (PATH-02): kinds 'path-unsupported' and 'path-too-large' tell the clicking pane the host
+ * refused a clicked file. The kind is chosen from the host's two exact notice codes, so the copy is
+ * fixed and the wire value is never rendered.
+ *
  * Colorblind-safe (MEMORY: user is colorblind): the message is conveyed via
  * text + an accessible status role, never via color alone.
  *
@@ -49,7 +53,7 @@ export interface SessionEndedBannerProps {
    * dropped guest socket is being replaced; B5: 'unreachable' once the browser's
    * probes have failed for minutes (still reconnecting, never final).
    */
-  kind?: 'ended' | 'share-stopped' | 'reconnecting' | 'unreachable' | 'paste-interrupted'
+  kind?: 'ended' | 'share-stopped' | 'reconnecting' | 'unreachable' | 'paste-interrupted' | 'path-unsupported' | 'path-too-large'
   /** Local host label (peer tab or cap-verified session info) for 'share-stopped' and 'unreachable'. */
   host?: string
   /** 'paste-interrupted': KB of the paste that left the browser; absent when the host never confirmed it. */
@@ -85,6 +89,10 @@ export function SessionEndedBanner({
           ? (pasteSentKB !== undefined
               ? `Paste interrupted: ${pasteSentKB} of ${pasteTotalKB} KB sent`
               : `Paste may have been cut short (${pasteTotalKB} KB)`)
+          : kind === 'path-unsupported'
+            ? "Can't preview this file type. Portty previews images, PDFs and Markdown files."
+          : kind === 'path-too-large'
+            ? 'Too large to preview. The limit is 20 MB.'
           : kind === 'reconnecting'
             ? 'Connection lost — reconnecting…'
             : kind === 'unreachable'

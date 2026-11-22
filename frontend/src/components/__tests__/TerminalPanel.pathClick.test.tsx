@@ -209,3 +209,149 @@ describe('path link gating (PATH-02)', () => {
     expect(hoisted.state.disposed).toBe(2)
   })
 })
+
+const COPY = {
+  'path-unsupported': "Can't preview this file type. Portty previews images, PDFs and Markdown files.",
+  'path-too-large': 'Too large to preview. The limit is 20 MB.',
+} as const
+
+describe('path click adds no announcement (PATH-02)', () => {
+  let container: HTMLElement
+  let root: Root
+  const origPlatform = Object.getOwnPropertyDescriptor(navigator, 'platform')
+
+  beforeEach(() => {
+    Object.assign(hoisted.state, { cbs: null, sent: [], provider: null, registered: 0, disposed: 0, rows: ['docs/diagram.png'] })
+    Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    flushSync(() => {
+      root.render(React.createElement(TerminalPanel, {
+        sessionId: 's1', isActive: true, relayPort: 1234, fontSize: 13,
+        onFontSizeChange: () => {}, theme: {}, pluginConfig: { webLinks: true },
+      } as never))
+    })
+  })
+  afterEach(() => {
+    flushSync(() => root.unmount())
+    container.remove()
+    if (origPlatform) Object.defineProperty(navigator, 'platform', origPlatform)
+  })
+
+  it('sending a click adds no aria-live element; only an arriving notice renders one, the banner itself', () => {
+    const live = () => container.querySelectorAll('[aria-live]').length
+    const before = live()
+    hoisted.state.cbs!.onPathClickCapability!(true)
+    let links: Link[] | undefined
+    hoisted.state.provider!.provideLinks(1, (l) => { links = l })
+    links![0].activate(click({ metaKey: true }), links![0].text)
+    expect(hoisted.state.sent).toEqual(['docs/diagram.png'])
+    expect(live()).toBe(before)
+    flushSync(() => hoisted.state.cbs!.onPathNotice!('path-unsupported'))
+    expect(live()).toBe(before + 1)
+    expect(container.querySelector('[aria-live]')?.getAttribute('role')).toBe('status')
+  })
+})
+
+describe('path notice (PATH-02)', () => {
+  let container: HTMLElement
+  let root: Root
+  let mounted: boolean
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    Object.assign(hoisted.state, { cbs: null, sent: [], provider: null, registered: 0, disposed: 0, rows: [] })
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    mounted = false
+  })
+  afterEach(() => {
+    if (mounted) flushSync(() => root.unmount())
+    container.remove()
+    vi.useRealTimers()
+  })
+
+  function render(extra: object = {}) {
+    flushSync(() => {
+      root.render(React.createElement(TerminalPanel, {
+        sessionId: 's1', isActive: true, relayPort: 1234, fontSize: 13,
+        onFontSizeChange: () => {}, theme: {}, ...extra,
+      } as never))
+    })
+    mounted = true
+  }
+  const notice = (k: keyof typeof COPY) => flushSync(() => hoisted.state.cbs!.onPathNotice!(k))
+  const shown = () => container.querySelector('.banner__message')?.textContent ?? null
+  const tick = (ms: number) => flushSync(() => { vi.advanceTimersByTime(ms) })
+
+  it('shows the fixed copy and goes after 5000 ms', () => {
+    render()
+    notice('path-too-large')
+    expect(shown()).toBe(COPY['path-too-large'])
+    tick(4999)
+    expect(shown()).toBe(COPY['path-too-large'])
+    tick(1)
+    expect(shown()).toBeNull()
+  })
+
+  it('a second notice replaces the first and restarts the timer; they never stack', () => {
+    render()
+    notice('path-unsupported')
+    tick(3000)
+    notice('path-too-large')
+    expect(container.querySelectorAll('.banner')).toHaveLength(1)
+    expect(shown()).toBe(COPY['path-too-large'])
+    tick(4000) // 7000 ms after the first
+    expect(shown()).toBe(COPY['path-too-large'])
+    tick(1000) // 8000 ms
+    expect(shown()).toBeNull()
+  })
+
+  it('Dismiss removes it at once', () => {
+    render()
+    notice('path-unsupported')
+    flushSync(() => { (container.querySelector('[aria-label="Dismiss"]') as HTMLButtonElement).click() })
+    expect(shown()).toBeNull()
+  })
+
+  it('is dropped, not queued, while the paste-interrupted banner holds the slot', () => {
+    render()
+    flushSync(() => hoisted.state.cbs!.onPasteInterrupted!({ sentBytes: 10, totalBytes: 50_000 }))
+    expect(shown()).toContain('Paste interrupted')
+    notice('path-unsupported')
+    expect(shown()).toContain('Paste interrupted')
+    flushSync(() => { (container.querySelector('[aria-label="Dismiss"]') as HTMLButtonElement).click() })
+    expect(shown()).toBeNull()
+  })
+
+  it('is dropped while the reconnecting banner shows and does not appear after it goes', () => {
+    render()
+    flushSync(() => hoisted.state.cbs!.onStateChange!('reconnecting'))
+    tick(3000) // RECONNECT.bannerDelayMs in the mock
+    expect(shown()).toContain('reconnecting')
+    notice('path-too-large')
+    expect(shown()).toContain('reconnecting')
+    flushSync(() => hoisted.state.cbs!.onStateChange!('open'))
+    expect(shown()).toBeNull()
+  })
+
+  it('is removed when another banner takes the slot', () => {
+    render()
+    notice('path-unsupported')
+    flushSync(() => hoisted.state.cbs!.onPasteInterrupted!({ sentBytes: 10, totalBytes: 50_000 }))
+    expect(shown()).toContain('Paste interrupted')
+    flushSync(() => { (container.querySelector('[aria-label="Dismiss"]') as HTMLButtonElement).click() })
+    expect(shown()).toBeNull()
+  })
+
+  it('is removed when the pane becomes inactive and never takes focus', () => {
+    render()
+    const focused = document.activeElement
+    notice('path-unsupported')
+    expect(document.activeElement).toBe(focused)
+    render({ isActive: false })
+    expect(shown()).toBeNull()
+  })
+})

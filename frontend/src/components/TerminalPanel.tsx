@@ -74,6 +74,8 @@ function measureFit(term: Terminal): { cols: number; rows: number } | null {
 
 // INPT-06: trailing debounce for the window-resize claim (a drag fires many events).
 const CLAIM_DEBOUNCE_MS = 150
+// Phase 12 PATH-02: how long the refused-file notice stays in the clicking pane.
+const PATH_NOTICE_MS = 5000
 
 interface TerminalPanelProps {
   sessionId: string
@@ -332,6 +334,26 @@ export function TerminalPanel({
   const [reconnecting, setReconnecting] = useState(false)
   // DEBT-05: the last paste a socket drop cut short, in KB (sent absent when unconfirmed); kept until dismissed.
   const [pasteNotice, setPasteNotice] = useState<{ sentKB?: number; totalKB: number } | null>(null)
+  // Phase 12 PATH-02: the host refused a clicked file (unsupported type or too large). One notice at a time,
+  // auto-dismissed after PATH_NOTICE_MS; a newer one replaces it and restarts the timer. It yields to every
+  // other banner: dropped (not queued) if one holds the slot, removed if one takes it, never moves focus.
+  const [pathNotice, setPathNotice] = useState<'path-unsupported' | 'path-too-large' | null>(null)
+  const pathNoticeTimerRef = useRef<number | null>(null)
+  const otherBannerRef = useRef(false)
+  otherBannerRef.current = !!pasteNotice || reconnecting || (isGuestRef.current && sessionEnded.ended)
+  const clearPathNotice = useCallback(() => {
+    if (pathNoticeTimerRef.current !== null) window.clearTimeout(pathNoticeTimerRef.current)
+    pathNoticeTimerRef.current = null
+    setPathNotice(null)
+  }, [])
+  const showPathNotice = useCallback((kind: 'path-unsupported' | 'path-too-large') => {
+    if (otherBannerRef.current) return
+    if (pathNoticeTimerRef.current !== null) window.clearTimeout(pathNoticeTimerRef.current)
+    setPathNotice(kind)
+    pathNoticeTimerRef.current = window.setTimeout(clearPathNotice, PATH_NOTICE_MS)
+  }, [clearPathNotice])
+  useEffect(() => { if (!isActive || otherBannerRef.current) clearPathNotice() }, [isActive, pasteNotice, reconnecting, sessionEnded.ended, clearPathNotice])
+  useEffect(() => () => { if (pathNoticeTimerRef.current !== null) window.clearTimeout(pathNoticeTimerRef.current) }, [])
   // The cleanup reports false when the banner hides and when the panel unmounts mid-reconnect.
   useEffect(() => {
     if (!reconnecting) return
@@ -510,6 +532,7 @@ export function TerminalPanel({
         onPreview: preview.feed,
         onPreviewReset: preview.discard,
         onPathClickCapability: (enabled) => { pathClickEnabledRef.current = enabled },
+        onPathNotice: showPathNotice,
         onOutput: (data) => { peerWatch?.feed(data); term.write(data) },
         onOpen: () => { lastReportRef.current = null; reportFit() },
         // Phase 175-06 (BUG-02 / #125): show the end banner on the guest path
@@ -1254,6 +1277,9 @@ export function TerminalPanel({
       )}
       {reconnecting && !sessionEnded.ended && (
         <SessionEndedBanner kind={hostUnreachable ? 'unreachable' : 'reconnecting'} host={hostLabel} />
+      )}
+      {pathNotice && isActive && !otherBannerRef.current && (
+        <SessionEndedBanner kind={pathNotice} onDismiss={clearPathNotice} />
       )}
       {(findBarOpen || findBarExiting) && pluginConfig?.search && (
         <FindBar
