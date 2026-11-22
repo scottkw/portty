@@ -215,10 +215,13 @@ func (ws *WebServer) SetStaticAppFS(appFS fs.FS) {
 // SetDeniedPorts adds ports the Phase 13 port routes refuse to grant or proxy.
 // The daemon passes its relay port: the relay accepts Origins naming its own
 // port, so a proxied request would satisfy that check. Set once before Start.
+// 0 is ignored: it means "not known yet", and portDenied already refuses 0.
 func (ws *WebServer) SetDeniedPorts(ports ...int) {
 	ws.deniedPorts = make(map[int]struct{}, len(ports))
 	for _, p := range ports {
-		ws.deniedPorts[p] = struct{}{}
+		if p != 0 {
+			ws.deniedPorts[p] = struct{}{}
+		}
 	}
 }
 

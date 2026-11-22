@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/scottkw/portty/internal/capability"
 	"github.com/scottkw/portty/internal/fdpass"
 	"github.com/scottkw/portty/internal/relay"
 )
@@ -1096,5 +1097,136 @@ func TestHandoff_NoSecretsInLog(t *testing.T) {
 	}
 	if strings.Contains(out, token) {
 		t.Errorf("a share token appears in the handoff log")
+	}
+}
+
+// CR-01 (Phase 13): the relay accepts Origins naming its own port, so the port
+// routes must refuse it. A takeover daemon wires its share server in finalize,
+// before commit serves the received relay listener, so the deny list must come
+// from the received listener, not from a.relayPort (still 0 at that point).
+func TestTakeover_FinalizeDeniesRelayPort(t *testing.T) {
+	api, _, _ := testDaemon(t)
+	api.SetShareSeamsForTest(healthyTailnet, loopbackShareServer, noWarm)
+
+	const sid = "takeover-sid"
+	if err := api.BootstrapCapabilityState(); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := api.mintShareRecord(sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relayLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relayLn.Close()
+	shareLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer shareLn.Close()
+	relayPort := relayLn.Addr().(*net.TCPAddr).Port
+
+	tk := &takeover{
+		a:        api,
+		health:   healthyTailnet(context.Background()),
+		certOK:   true,
+		relayLn:  relayLn,
+		shareLn:  shareLn,
+		sessions: []importedSession{{id: sid}},
+		global:   hsGlobal{Shares: map[string]hsShare{sid: {GrantID: rec.grantID, Token: rec.token}}},
+	}
+	if api.relayPort != 0 {
+		t.Fatalf("precondition: a.relayPort = %d before serveRelay; want 0 (the takeover ordering)", api.relayPort)
+	}
+	if err := tk.finalize(); err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+	if tk.ws == nil {
+		t.Fatal("finalize built no share server")
+	}
+	if err := tk.ws.StartOn(shareLn); err != nil {
+		t.Fatal(err)
+	}
+	defer tk.ws.Stop()
+	api.installShareServer(tk.ws)
+
+	var dialed atomic.Int32
+	tk.ws.SetPortDialerForTest(func(_ context.Context, port int) (net.Conn, error) {
+		if port == relayPort {
+			dialed.Add(1)
+		}
+		return nil, errors.New("test dialer: nothing listens")
+	})
+
+	// The hub has "printed" both ports, so only the deny list can refuse one.
+	ptyR, ptyW := io.Pipe()
+	_, inW := io.Pipe()
+	defer ptyW.Close()
+	api.engine.Manager().Create(sid, ptyR, inW, nil)
+	otherPort := relayPort + 1
+	if otherPort == shareLn.Addr().(*net.TCPAddr).Port { // the ephemeral ports can be adjacent
+		otherPort++
+	}
+	for _, p := range []int{relayPort, otherPort} {
+		io.WriteString(ptyW, fmt.Sprintf("Serving on http://localhost:%d/\r\n", p)) //nolint:errcheck
+	}
+	hub, _ := api.engine.Manager().Get(sid)
+	deadline := time.Now().Add(5 * time.Second)
+	for !(hub.PortPrinted(relayPort) && hub.PortPrinted(otherPort)) {
+		if time.Now().After(deadline) {
+			t.Fatal("hub never saw the printed ports")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	client := insecureNoRedirectClient()
+	base := tk.ws.BaseURL() + "/api/peer/sessions/" + sid + "/ports"
+	grant := func(port int) int {
+		req, _ := http.NewRequest(http.MethodPost, base, strings.NewReader(fmt.Sprintf(`{"port":%d}`, port)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Portty-Cap", rec.token)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := grant(otherPort); got != http.StatusOK {
+		t.Fatalf("control grant for port %d = %d; want 200", otherPort, got)
+	}
+	if got := grant(relayPort); got == http.StatusOK {
+		t.Fatalf("grant for the relay port %d was minted on a takeover daemon", relayPort)
+	}
+
+	proxy := func(port int) int {
+		ptok, err := capability.SignPort(capability.PortClaims{
+			SID: sid, Port: port, IAT: time.Now().Unix(), GrantID: rec.grantID,
+			Kind: capability.PortTokenKind, V: 1,
+		}, api.CurrentSigningKey())
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, _ := http.NewRequest(http.MethodGet, base+"/"+strconv.Itoa(port), nil)
+		req.Header.Set("X-Portty-Cap", rec.token)
+		req.Header.Set("X-Portty-Port-Token", ptok)
+		req.Header.Set("X-Portty-Target", "/")
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := proxy(otherPort); got != http.StatusBadGateway {
+		t.Fatalf("control proxy to port %d = %d; want 502 (dial attempted)", otherPort, got)
+	}
+	if got := proxy(relayPort); got != http.StatusForbidden {
+		t.Fatalf("proxy to the relay port = %d; want 403", got)
+	}
+	if n := dialed.Load(); n != 0 {
+		t.Fatalf("the relay port was dialled %d time(s)", n)
 	}
 }

@@ -1159,6 +1159,9 @@ func (t *takeover) finalize() error {
 	if err := ws.CheckListener(t.shareLn); err != nil { // WR-05: before COMMIT, so the old daemon keeps serving
 		return err
 	}
+	// wireShareServer denies a.relayPort, but commit serves the relay (and sets
+	// it) only later: take it from the received listener now (CR-01).
+	a.relayPort = t.relayLn.Addr().(*net.TCPAddr).Port
 	a.wireShareServer(ws, t.health)
 	a.mu.Lock()
 	a.shares = shares
