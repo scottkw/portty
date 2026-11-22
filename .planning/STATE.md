@@ -4,17 +4,17 @@ milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
 current_phase: 12
 current_phase_name: File Path Click
-status: executing
+status: verifying
 stopped_at: Phase 11 complete, ready to plan Phase 12
-last_updated: "2026-11-22T03:53:01.693Z"
+last_updated: "2026-11-22T13:32:05.838Z"
 last_activity: 2026-11-21
 last_activity_desc: Phase 12 execution started
-state_head: 0a76d02bb60b337c011ed9500ce5c80d4bc69060
+state_head: 264a983c7cc37880a278d32e7a58ddd6924df90a
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 33
-  completed_plans: 32
+  completed_plans: 33
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 
 Phase: 12 (File Path Click) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-21 — Phase 12 execution started
 
 
@@ -115,6 +115,7 @@ Last activity: 2026-11-21 — Phase 12 execution started
 | Phase 12 P05 | 25min | 2 tasks | 6 files |
 | Phase 12 P06 | 35min | 3 tasks | 10 files |
 | Phase 12 P08 | 45min | 3 tasks | 10 files |
+| Phase 12 P09 | multi-session | 4 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -263,6 +264,7 @@ Recent decisions affecting current work:
 - [Phase 12]: 12-06: path notice is cleared when another banner takes the slot and hidden while the pane is inactive, not only dropped on arrival
 - [Phase 12]: 12-08: desktop peer tabs follow this Mac's own webLinks and webLinksConfig only (user-ratified 2026-11-21); no CORS header, no cross-origin config fetch
 - [Phase 12]: 12-08: link refresh guards on xterm Linkifier _activeLine (_lastBufferCell is not an own property before the first hover); pin test hovers first
+- [Phase 12]: 12-09: Phase 12 approved on the VM re-run; C-08 ssh localhost, C-06 desktop underline and Claude Code are manual checks for the user's own Macs (M-133, M-131, M-132); F-1 and F-2 are todos, not blockers
 
 ### Pending Todos
 
