@@ -141,9 +141,10 @@ async function copied(page: Page): Promise<string> {
   return page.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const t = (window as any).__terms.find((x: any) => x.element?.isConnected)
-    const dt = new DataTransfer()
-    t.element.dispatchEvent(new ClipboardEvent('copy', { clipboardData: dt, bubbles: true, cancelable: true }))
-    return dt.getData('text/plain')
+    const ev = new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true })
+    t.element.dispatchEvent(ev)
+    // Read the event's own clipboardData: Firefox replaces the DataTransfer passed in the init dict.
+    return ev.clipboardData?.getData('text/plain') ?? ''
   })
 }
 
