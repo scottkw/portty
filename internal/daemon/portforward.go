@@ -252,6 +252,20 @@ func forwardHostAllowed(host string, port int) bool {
 	return false
 }
 
+// loopbackOrigin reports whether an Origin header names localhost, 127.0.0.1
+// or [::1] on any port. "null" and anything unparseable are not loopback.
+func loopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
+}
+
 // forwardTransport is the transport for hop 1: no total timeout (dev servers
 // stream and upgrade), HTTP/1.1 only. In tests it clones the test client's.
 func (a *API) forwardTransport(fqdn, ip string) *http.Transport {
@@ -365,6 +379,13 @@ func (f *portForward) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// (no-cors requests, WebSocket hijacking) once Host and Origin look local.
 	// A cross-site navigation (an OAuth callback) still passes.
 	if r.Header.Get("Sec-Fetch-Site") == "cross-site" && r.Header.Get("Sec-Fetch-Mode") != "navigate" {
+		refuseForward(w, http.StatusForbidden, "forbidden\n")
+		return
+	}
+	// Sec-Fetch-* depends on the browser; Origin is always sent on a WebSocket
+	// handshake and a cross-origin POST. Any loopback port is fine (a multi-port
+	// app), any other site is not.
+	if o := r.Header.Get("Origin"); o != "" && r.Header.Get("Sec-Fetch-Mode") != "navigate" && !loopbackOrigin(o) {
 		refuseForward(w, http.StatusForbidden, "forbidden\n")
 		return
 	}

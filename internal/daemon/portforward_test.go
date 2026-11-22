@@ -682,6 +682,28 @@ func TestPortForward_CrossSite(t *testing.T) {
 			t.Fatalf("%v = %d with %d stub hits, want it to reach the stub", hdr, resp.StatusCode, e.stub.hitCount())
 		}
 	}
+
+	// WR-02: Sec-Fetch-* is only as good as the browser's support, but Origin is
+	// always sent on a WebSocket handshake and a cross-origin POST. A
+	// non-navigation request whose Origin is not a loopback host is refused.
+	hits := e.stub.hitCount()
+	for _, origin := range []string{"https://evil.example", "http://evil.example:3000", "http://localhost.evil.example", "http://127.0.0.1.evil.example", "null"} {
+		resp, body := do(t, port, "", map[string]string{"Origin": origin})
+		if resp.StatusCode != http.StatusForbidden || body != "forbidden\n" || e.stub.hitCount() != hits {
+			t.Fatalf("Origin %q = %d %q with %d stub hits, want 403 and none", origin, resp.StatusCode, body, e.stub.hitCount()-hits)
+		}
+	}
+	for _, hdr := range []map[string]string{
+		{"Origin": "http://localhost:3000"}, // a multi-port app: any port
+		{"Origin": "http://127.0.0.1:8000", "Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "cors"},
+		{"Origin": "http://[::1]:9000"},
+		{"Origin": "https://evil.example", "Sec-Fetch-Mode": "navigate"}, // a navigation (OAuth callback) still passes
+	} {
+		hits++
+		if resp, _ := do(t, port, "", hdr); resp.StatusCode != http.StatusOK || e.stub.hitCount() != hits {
+			t.Fatalf("%v = %d with %d stub hits, want it to reach the stub", hdr, resp.StatusCode, e.stub.hitCount())
+		}
+	}
 }
 
 func TestPortForward_HeaderHygiene(t *testing.T) {
