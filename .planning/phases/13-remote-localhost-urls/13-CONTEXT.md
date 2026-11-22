@@ -30,8 +30,16 @@ In a desktop peer tab (this Mac viewing another Mac's session), Cmd-clicking a `
 - Revocation: implicit only (stop sharing, session end, daemon restart). No indicator or settings list this phase (radical simplicity); revisit if the user asks.
 
 ### Scope and failures (Claude's discretion)
-- URLs: `http://localhost:PORT`, `http://127.0.0.1:PORT`, plus `http://[::1]:PORT`, `http://0.0.0.0:PORT` and `http://[::]:PORT`, which servers like `python3 -m http.server` print. The host always dials its own loopback (127.0.0.1, or ::1 for the IPv6 forms), never another address. The browser always opens `http://localhost:PORT`. Desktop peer tabs only; the browser share view and https://localhost keep today's behaviour.
+- URLs: `http://localhost:PORT`, `http://127.0.0.1:PORT`, plus `http://[::1]:PORT`, `http://0.0.0.0:PORT` and `http://[::]:PORT`, which servers like `python3 -m http.server` print. The host always dials its own loopback only: ::1 first, then 127.0.0.1, for every accepted form (Node binds `localhost` to ::1 only; research 13-RESEARCH.md), never another address. The host hard-denies port 0, its share port and its relay port (the relay's Origin allowlist would otherwise be bypassed by the rewritten Origin). The browser always opens `http://localhost:PORT`. Desktop peer tabs only; the browser share view and https://localhost keep today's behaviour.
 - Failures: before opening, a transient notice in the clicking pane (Phase 12 notice pattern; e.g. "{host} needs a Portty update to open its local pages", "Couldn't reach {host}", "Port {port} is in use on this Mac"). After opening, a plain error page served by the viewing daemon in the browser (e.g. "Nothing is answering on {host}'s port {port}", "{host} stopped sharing"). Never fall back to opening this Mac's own localhost.
+
+### Post-research refinements (Claude's discretion, 2026-11-22)
+- Host route carries the original request target in a header (`X-Portty-Target`) on a fixed route `/api/peer/sessions/{id}/ports/{port}`, because ServeMux rewrites `//` and `..` paths and a subtree pattern conflicts with `GET /`. Exact names may be adjusted by the planner before API 5 ships.
+- Port tokens use a separate key derived with stdlib `crypto/hkdf` and a distinct claims kind, so they can never authenticate on session routes; regenerating the share key kills them.
+- Port-taken detection on this Mac: dial-probe both loopbacks and require connection-refused (IPv6 absent tolerated), then bind 127.0.0.1:P and [::1]:P. Fail closed with the "port in use" notice.
+- No extra hard-deny list for well-known sensitive ports (9222, 2375, 5432…): the printed check, same-user, write access and per-port consent are the controls; record it as a residual risk in the security review.
+- Every new-host refusal carries the `X-Portty` marker so an old host's plain 405 maps to "needs a Portty update".
+- The click branch trims trailing punctuation from the matched URL (xterm's regex keeps a trailing `)`).
 
 ### Decided autonomously
 - [Proxy] Q: "Where does the viewing-side listener live?" → Selected: "The viewing Mac's daemon (RemoteCapStore, the verified peer client and the remote_ws_proxy template already live there)" — internal to one Mac, no cross-Mac contract.
