@@ -5,7 +5,7 @@
 Scope: what Phase 12 (PATH-02) changes at the security boundary. A viewer that can write may click a path the session printed, and the host then previews that file. That amends the Phase 11 rule "the daemon never opens a path given to it" (PREV-03). This file is written in two parts:
 
 - **12-05 (this part):** the amendment, the argument, the honest scope, accepted risks, shell-integration rules, what stays unchanged, the threat register and the tests that pin each point.
-- **12-07:** the "VM evidence and verdict" section, appended after this one.
+- **12-09 (appended, after 12-07 ended at its checkpoint and 12-08 closed the viewer gaps):** "Gap closure (12-08)", then "VM evidence and verdict" with the residual risks.
 
 No share link, capability token, tailnet host or path from a real Mac appears in this file. Hosts in policies are written as `<host>`.
 
@@ -108,7 +108,7 @@ Rows from the threat models of 12-01 to 12-05. The T-12-SC row (package installs
 | T-12-24 | Information disclosure: a write-capable viewer reads any file the user can | low | accept | none (accepted; see Honest scope) |
 | T-12-25 | Elevation: share pump with a read-only capability | high | mitigate | `TestWebPathClick_ReadCapRefused` (with a write-capability positive control), `TestWebPathClick_ReadCapNoCapabilityBit` |
 | T-12-26 | Spoofing: version confusion between hosts and viewers | low | mitigate | `TestWebPathClick_WriteCapPreviews` (the bit, not the version, enables it); `TestHealthInfo`, `TestAPIHealth` |
-| T-12-27 | Repudiation: the PREV-03 amendment | medium | mitigate | this file, with the verdict added by 12-07 |
+| T-12-27 | Repudiation: the PREV-03 amendment | medium | mitigate | this file, with the verdict added by 12-09 |
 | T-12-28 | Information disclosure: this file | medium | mitigate | the 12-05 gate greps this file for capability and tailnet link patterns |
 
 ## Tests that pin it
@@ -121,3 +121,52 @@ Rows from the threat models of 12-01 to 12-05. The T-12-SC row (package installs
 - Directory reports: `TestParseOSC7` (`internal/relay/cwd_test.go`), `TestHandoffState_CwdValidates` (`internal/relay/handoff_state_test.go`)
 - CSP, unchanged: `TestCSPHeaders_PreviewDelta` (`internal/webserver/csp_mw_test.go`)
 - API values: `TestHealthInfo` (`internal/daemon/client_test.go`), `TestAPIHealth` (`internal/daemon/api_test.go`)
+
+## Gap closure (12-08)
+
+12-08 changed the viewer only (no Go file, no CORS header, no route, no listener, no CSP). What it changed at the security boundary:
+
+- **Desktop peer tabs take this Mac's own `webLinks` and `webLinksConfig` and no other setting** (user-ratified 2026-11-21, "This Mac's setting"). `App.tsx` builds the peer config from this Mac's plugin settings; `WebShareSessionView` no longer self-fetches the host's plugin config for a remote tab. WebGL, clipboard, search, serialize and progress stay off in a peer tab (pinned by `a peer tab follows this Mac's web-links toggle and modifier and turns on no other addon`).
+- **No CORS header, route, listener or CSP change.** The peer tab's cross-origin request had no `Access-Control-*` answer and was refused; the fix removes the request instead of allowing it. No `Access-Control-Allow-Origin` exists in non-test `internal/webserver` code, and `frontend/index.html` and `internal/webserver/csp_mw.go` are identical to `81ada526` (checked by the 12-08 and 12-09 gates).
+- **Peer tabs no longer send cap-bearing cross-origin requests** for the plugin config or its event stream, and the retry loop that went with them is gone (pinned by `a peer tab never requests /api/plugin-config or its stream, even with no config`).
+- **URL links in peer tabs go through the existing handler**: the allowed-scheme check, the modifier gate and the IDN, typosquat and OSC 8 confirm switches, all from this Mac's own settings, exactly as in a local tab. The VM check opened the confirm popover for a punycode URL in a peer tab and Cancel closed it (C-02R).
+- **The link refresh** (a surviving viewer keeps its links after a reconnect or resize) resets two private xterm Linkifier fields (`_lastBufferCell`, `_activeLine`) behind a presence guard, then re-hovers with a **non-bubbling** synthetic `mousemove` on `.xterm-screen`. xterm's mouse-report listener sits on `term.element` in the bubble phase and never sees it, so a mouse-tracking program gets no input (pinned by the zero-`onData` test with mouse modes 1003 and 1006 on; the vim `mouse=a` row C-07R found 0 SGR reports). An xterm upgrade that renames the fields fails `xterm 6 still has the Linkifier fields the refresh resets`.
+- **Read-only viewers still get no link.** `provideLinks` is unchanged and offers nothing while the capability bit is false; the host refusal is unchanged (C-05R).
+
+Threat register additions (rows from the 12-08 threat model):
+
+| ID | Threat | Severity | Disposition | Pinned by |
+|----|--------|----------|-------------|-----------|
+| T-12-40 | Tampering: `pathLinks.ts` link refresh (synthetic `mousemove`) | high | mitigate | dispatched with `bubbles: false` on `.xterm-screen`; `the link refresh sends no input to a program with mouse tracking on` (zero `onData` with 1003 and 1006 on) |
+| T-12-41 | Information disclosure: `WebShareSessionView` peer-tab config fetch and stream | medium | mitigate | `a peer tab never requests /api/plugin-config or its stream, even with no config` |
+| T-12-42 | Elevation of privilege: share server CORS | high | mitigate | no CORS header added; the 12-08 gate greps non-test `internal/webserver` code for it and fails on any Go change |
+| T-12-43 | Spoofing: URL links now present in peer tabs | medium | mitigate | the existing WebLinksAddon handler and its confirm switches, from this Mac's own settings; C-02R opened the popover |
+| T-12-44 | Tampering: private xterm fields `_lastBufferCell`, `_activeLine` | low | mitigate | guarded access; `xterm 6 still has the Linkifier fields the refresh resets` |
+| T-12-45 | Information disclosure: read-only viewers and the link refresh | high | mitigate | `provideLinks` unchanged; `while the capability is false, no link is offered and nothing is sent` and the 12-06 gating tests; C-05R |
+
+(12-09's own register, T-12-46..T-12-50 and T-12-SC, covers the VM run: host untouched, no secrets in the evidence, the throwaway signer deleted, no network drop, VM settings and dotfiles restored.)
+
+## VM evidence and verdict
+
+Evidence is in `12-VM-CHECKS.md`: the first run (12-07, builds A, B, B2) and the re-run after the gap plans (12-09, builds C, C2, HEAD), both on two Tart VMs over a real tailnet. Decisions by the user on 2026-11-22 are quoted as the user's words.
+
+- **Read-only refusal (C-05R, first run C-05): PASS.** A read-only Safari viewer's typing was refused (`passed=0`, tail unchanged); a Meta-hover over 12 positions on the printed path never turned the cursor to a pointer and drew no underline; a hand-sent `0x13` plus the printed path left no `path click` line for its conn, no preview and no notice anywhere. A writable viewer's click then reached the read-only viewer as a background tab: the accepted risk, as `portty open`.
+- **Notices only to the clicker, including a peer tab (C-04R): PASS.** From the office tab, home Safari and the home peer tab (the clause the first run could not make), the `.txt` and the 20,000,001-byte file showed their exact fixed notices only in the clicking window, gone after about 5 s; a missing path and a folder were silent everywhere with the session tail unchanged.
+- **The TUI click (C-07R): PASS.** In vim with `mouse=a` the Cmd-click previewed, 0 SGR mouse reports reached the session, vim quit cleanly and the shell click previewed. Claude Code inside a session is a check for the user's own Macs (M-132).
+- **Shell integrity and the ssh decision (C-08, UI-1): PASS by an accepted limit.** With and without a `~/.zshenv` that exports `ZDOTDIR` and a heavy oh-my-zsh rc, the prompt, alias, `$ZDOTDIR`, `$HISTFILE`, PATH and `portty open` matched a plain login zsh, `$(cd …)` captured no escape byte, nested zsh worked, the cwd was reported after `cd`, and the log had no `zsh shim:` line. The one clause the rig could not reach, `ssh localhost`, is accepted as a check for the user's own Macs (M-133): "Check on my Macs" (user decision 2026-11-22).
+- **Upgrades with surviving viewers (U-01, U-01R): PASS.** A to B in the first run (3 of 3 `mode=delta` within 1.9 s, 0 grid lines, old shell `no-cwd`, new session resolves) and C to C2 in the re-run (3 of 3 `mode=delta` within 1.62 s, 0 grid lines; the office tab, the home peer tab and the same Safari page each previewed the pre-upgrade relative path on the first click with nothing typed and no pointer move).
+- **Resize and wrap on a real Mac (C-09R, first run C-09): PASS.** After narrowing, widening, a grid claim by the home tab and its restore, the first Cmd-click at the same point previewed each time; wrapped rows, history, the identical hard row and the hard-break limit behaved as specified.
+- **Other re-run rows PASS:** C-00R, C-01R, C-02R (the peer tab previews and its URL click opens the confirm popover), C-03R, C-06R (Safari underline follows Meta; the notice repaints dark on the same conn). The desktop app's Cmd-held underline and live dark repaint cannot be observed in the VMs; the user kept the Cmd-held underline with no fallback and left the check to their own Macs (M-131): "Check on my Macs" (user decision 2026-11-22).
+- **Gate:** one `internal/pty` `TestKillClean_NoOrphans` failure under load in the re-run's full gate, accepted by the user (2026-11-22) as an unrelated timing flake: alone with `-count=5` and the full package once it passed, and `internal/pty` has no diff since `81ada526`.
+
+### Residual risks
+
+1. A program in the session can print any path or forge OSC 7 (T-12-10, T-12-23); the printed check bounds viewer-originated requests only.
+2. Nested shells, `ssh` and bash or fish without their own OSC 7 leave the outer directory; a relative click after a remote `cd` can name a same-named file in the outer directory. The `ssh localhost` run itself is left to the user's own Macs (UI-1).
+3. Hard-wrapped TUI paths and paths split by a real newline are never clickable (accepted 2026-11-21).
+4. **F-1 (todo, not a blocker; user: "Todos, not blockers"):** a relative path printed on screen row 0 of a never-scrolled session resolves against the shell's start directory (seen as `outcome=missing`; a same-named file in the start directory would be previewed instead, the same class as the nested-shell limit above, and the text is still a printed token). Rows 1 and below and absolute paths are unaffected. Todo `.planning/todos/pending/2026-11-22-row0-relative-path-start-dir.md`.
+5. **F-2 (todo, not a blocker; user: "Todos, not blockers"):** the first Cmd-click fails after the pointer returns to the same cell whose text changed; the viewer sends nothing (no host involvement). Todo `.planning/todos/pending/2026-11-22-first-cmd-click-same-cell-after-leave.md`.
+6. The desktop app's Cmd-held underline and dark-mode notice repaint, `ssh localhost` and Claude Code inside a session were not observed in the VMs; the user checks them on their own Macs (M-131, M-133, M-132).
+7. Read-only viewers receive previews triggered by writable viewers (user decision 2026-11-21, as Phase 11).
+
+**Verdict:** APPROVED. C-04R PASS (notices only to the clicker, peer tab included), C-05R PASS (a read-only viewer gets no link and its hand-sent click is refused), C-07R PASS (a TUI click previews and types nothing) and C-08 PASS (shell startup unchanged; the `ssh localhost` clause accepted as a check for the user's own Macs, user decision 2026-11-22); the PREV-03 amendment holds with the residual risks above.
