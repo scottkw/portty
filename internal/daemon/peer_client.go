@@ -19,22 +19,24 @@ import (
 	"github.com/scottkw/portty/internal/tailnet"
 )
 
-// peerHTTPClient dials addr whatever host the URL names, and verifies the
+// peerTransport dials addr whatever host the URL names, and verifies the
 // server certificate against fqdn. An empty addr fails every dial.
-func peerHTTPClient(fqdn, addr string) *http.Client {
+func peerTransport(fqdn, addr string) *http.Transport {
 	d := &net.Dialer{Timeout: 10 * time.Second}
-	return &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				if addr == "" {
-					return nil, errors.New("peer has no Tailscale IP")
-				}
-				return d.DialContext(ctx, network, addr)
-			},
-			TLSClientConfig: &tls.Config{ServerName: fqdn, MinVersion: tls.VersionTLS12},
+	return &http.Transport{
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			if addr == "" {
+				return nil, errors.New("peer has no Tailscale IP")
+			}
+			return d.DialContext(ctx, network, addr)
 		},
+		TLSClientConfig: &tls.Config{ServerName: fqdn, MinVersion: tls.VersionTLS12},
 	}
+}
+
+// peerHTTPClient is peerTransport behind a 10 s total timeout.
+func peerHTTPClient(fqdn, addr string) *http.Client {
+	return &http.Client{Timeout: 10 * time.Second, Transport: peerTransport(fqdn, addr)}
 }
 
 // peerClient returns the verified client for one peer: it dials

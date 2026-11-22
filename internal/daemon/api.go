@@ -55,6 +55,10 @@ type API struct {
 	// daemon restart wipes the cache (Phase 122-01 / REMOTE-01).
 	remoteCaps *RemoteCapStore
 
+	// portForwards holds the loopback forwards for remote localhost URLs and
+	// the consent behind them (portforward.go). In-memory only.
+	portForwards *PortForwards
+
 	// peerClientForTest, when non-nil, replaces the verified per-peer client
 	// (peer_client.go) for /peers/connect and the remote terminal WS proxy.
 	// Tests inject httptest.NewTLSServer's Client(); production leaves it nil.
@@ -98,6 +102,7 @@ func NewAPI(engine *SessionEngine) *API {
 		mux:          http.NewServeMux(),
 		tailnetCache: &tailnetCache{},
 		remoteCaps:   NewRemoteCapStore(),
+		portForwards: newPortForwards(),
 
 		shares:         map[string]shareRecord{},
 		shareHealth:    defaultShareHealth,
@@ -204,6 +209,9 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /tailnet/peers", a.handleTailnetPeers)
 	// Connect to a session shared from another Mac (CLI attach and the GUI).
 	a.mux.HandleFunc("POST /peers/connect", a.handlePeerConnect)
+	// Open a loopback forward for a clicked remote localhost URL. Socket only,
+	// like /handoff and /preview: the relay port is reachable by browser pages.
+	a.mux.HandleFunc("POST /peers/ports", a.handlePortOpen)
 	// Phase 87 D-16 panic button: new signing key; shares are re-minted.
 	a.mux.HandleFunc("POST /capability/regenerate-key", a.handleRegenerateSigningKey)
 }
@@ -338,6 +346,8 @@ func (a *API) Stop() error {
 	if ws != nil {
 		_ = ws.Stop()
 	}
+
+	a.portForwards.CloseAll()
 
 	// Close relay listener if open.
 	if a.relayLn != nil {
