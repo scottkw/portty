@@ -614,9 +614,12 @@ func (ws *WebServer) setupRoutes() {
 	// GET /sessions/{id} — capability-gated terminal HTML page. The old
 	// webEnabled-only pre-check is removed — requireCapability's grant-list
 	// lookup already implies web-enabled (grants are cleared on toggle-off).
-	// A failed check shows the static "Link No Longer Works" page.
+	// MOB-05: same-user first, so another account sees the refusal page (403,
+	// marker) and a tailscaled fault the retry page (503) before any capability
+	// work; then a failed capability check shows the static "Link No Longer
+	// Works" page.
 	mux.HandleFunc("GET /sessions/{id}",
-		ws.cspHeaders(ws.requireCapabilityPage(ws.handleTerminalPage)))
+		ws.cspHeaders(ws.requireSameUserPage(ws.requireCapabilityPage(ws.handleTerminalPage))))
 
 	// GET /sessions/{id}/ws — Origin allowlist + same-user + capability-gated
 	// WebSocket upgrade. Phase 88 (D-10) wraps requireAllowedOrigin OUTSIDE

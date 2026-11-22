@@ -308,3 +308,61 @@ func TestSameUserGate_AppPage(t *testing.T) {
 		})
 	}
 }
+
+func TestSameUserGate_LinkPage(t *testing.T) {
+	const sid = "sess-gate-link"
+	ws, client, tok := gateServer(t, sid)
+	noRedirect := *client
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	get := func(t *testing.T, id webservertest.Identity, cap string) *http.Response {
+		t.Helper()
+		ws.SetWhoIsClientForTest(webservertest.New(id))
+		resp, err := noRedirect.Get(ws.BaseURL() + "/sessions/" + sid + "?cap=" + cap)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { resp.Body.Close() })
+		return resp
+	}
+
+	t.Run("same", func(t *testing.T) {
+		resp := get(t, webservertest.Same, tok)
+		if resp.StatusCode != http.StatusFound {
+			t.Fatalf("status = %d, want 302", resp.StatusCode)
+		}
+		if loc := resp.Header.Get("Location"); !strings.HasPrefix(loc, "/app/?session="+sid+"&cap=") {
+			t.Errorf("Location = %q, want /app/?session=%s&cap=…", loc, sid)
+		}
+	})
+	for _, c := range gateRefusals {
+		t.Run(c.name, func(t *testing.T) { checkPage(t, get(t, c.id, tok), c) })
+	}
+	// The gate runs before the capability: another account with a garbage cap
+	// still gets the refusal page, not "Link No Longer Works".
+	t.Run("other-garbage-cap", func(t *testing.T) {
+		checkPage(t, get(t, webservertest.Other, "garbage"), gateCase{"other-garbage-cap", 0, http.StatusForbidden, true})
+	})
+}
+
+func TestSameUserGate_PagesNameNoAccount(t *testing.T) {
+	const sid = "sess-gate-noname"
+	ws, client, tok := pageGateServer(t, sid)
+	// 42 and 7 are the webservertest user IDs; the fake's tailnet is a ts.net name.
+	for _, bad := range []string{"42", "7", ".ts.net", "ts.net", sid, tok} {
+		for name, page := range map[string][]byte{"refused": userRefusedPage, "retry": serviceRetryPage} {
+			if bytes.Contains(page, []byte(bad)) {
+				t.Errorf("%s page embeds %q", name, bad)
+			}
+		}
+	}
+	// And what the server actually sends for a request naming the session.
+	for _, c := range []gateCase{gateRefusals[0], gateRefusals[4]} {
+		body, err := io.ReadAll(gateGet(t, ws, client, c.id, "/app/?session="+sid+"&cap="+tok).Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(body, []byte(sid)) || bytes.Contains(body, []byte(tok)) {
+			t.Errorf("%s: response echoes the session id or capability", c.name)
+		}
+	}
+}

@@ -39,6 +39,22 @@ test.describe('Phase 14-03 — same-account gate on the page routes (MOB-05)', (
     expect(requests.filter((u) => u.includes('/api/sessions/'))).toEqual([])
   })
 
+  test('a tailscaled fault gets the retry page, and Try again reloads the same URL', async ({ page }) => {
+    await setIdentity('status-fault')
+    const resp = await page.goto(appUrl(), { waitUntil: 'domcontentloaded' })
+    expect(resp?.status()).toBe(503)
+    expect(resp?.headers()['x-portty']).toBeUndefined()
+    await expect(page.getByRole('heading', { name: "Can't check this device right now" })).toBeVisible()
+    const retry = page.getByRole('link', { name: 'Try again' })
+    await expect(retry).toHaveAttribute('href', '')
+    // 44 px minimum tap target (UI-SPEC).
+    expect((await retry.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+
+    await setIdentity('same')
+    await retry.click()
+    await expect(page.locator('.xterm').first()).toBeVisible({ timeout: 15_000 })
+  })
+
   test('the same account opens the share view', async ({ page }) => {
     await page.goto(appUrl(), { waitUntil: 'domcontentloaded' })
     await expect(page.locator('.xterm').first()).toBeVisible({ timeout: 15_000 })
