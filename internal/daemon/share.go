@@ -290,6 +290,9 @@ func (a *API) wireShareServer(ws *webserver.WebServer, h webserver.TailscaleHeal
 	// Signing key BEFORE Start so requireCapability never sees nil (Pitfall 3).
 	ws.SetSigningKey(a.CurrentSigningKey())
 	ws.SetStaticAppFS(getStaticAppFS())
+	// The relay accepts Origins naming its own port, so a proxied request to it
+	// (Phase 13 port routes) would pass that check; never grant or proxy it.
+	ws.SetDeniedPorts(a.relayPort)
 }
 
 // installShareServer makes a started share server this daemon's, with a

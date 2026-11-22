@@ -75,7 +75,14 @@ var linkInvalidPage = func() []byte {
 // verifyCapability runs the enforcement sequence above. On failure it returns
 // a non-zero status and the plain-text body requireCapability writes.
 func (ws *WebServer) verifyCapability(r *http.Request) (capability.Claims, int, string) {
-	token := r.URL.Query().Get("cap")
+	return ws.verifyCapabilityToken(r.URL.Query().Get("cap"), r.PathValue("id"))
+}
+
+// verifyCapabilityToken is verifyCapability's sequence for a token the caller
+// already read: the ?cap= query for the page routes, the X-Portty-Cap header
+// for the Phase 13 port routes. pathID is the {id} path value ("" skips the
+// session match).
+func (ws *WebServer) verifyCapabilityToken(token, pathID string) (capability.Claims, int, string) {
 	if token == "" {
 		return capability.Claims{}, http.StatusUnauthorized, "capability required"
 	}
@@ -90,7 +97,7 @@ func (ws *WebServer) verifyCapability(r *http.Request) (capability.Claims, int, 
 		// unparseable claims (T-87-08).
 		return capability.Claims{}, http.StatusUnauthorized, "capability required"
 	}
-	if pathID := r.PathValue("id"); pathID != "" && claims.SID != pathID {
+	if pathID != "" && claims.SID != pathID {
 		return capability.Claims{}, http.StatusForbidden, "capability does not match session"
 	}
 	if !ws.isGrantActive(claims.SID, claims.GrantID) {

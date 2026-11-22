@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -140,6 +141,24 @@ type WebServer struct {
 	// heartbeatEvery / heartbeatTimeout override relay.PingEvery and
 	// relay.PingTimeout for viewer heartbeats when non-zero. Test-only.
 	heartbeatEvery, heartbeatTimeout time.Duration
+
+	// deniedPorts are loopback ports the Phase 13 port routes never grant or
+	// proxy, on top of 0, this listener's own port and 7444. Set once before
+	// Start via SetDeniedPorts; not mutex-protected.
+	deniedPorts map[int]struct{}
+
+	// stopCh is closed once by Stop. A proxied request (a WebSocket or SSE
+	// stream especially) ends with it, because a handoff or shutdown stops the
+	// server without ClearGrants.
+	stopCh   chan struct{}
+	stopOnce sync.Once
+
+	// portDialForTest replaces dialLoopback when non-nil. Test-only.
+	portDialForTest func(ctx context.Context, port int) (net.Conn, error)
+
+	// portTransport carries every proxied request to the host's loopback
+	// (portproxy.go); Stop closes its idle connections.
+	portTransport *http.Transport
 }
 
 // NewWebServer creates a WebServer and sets up routes.
@@ -153,7 +172,9 @@ func NewWebServer(cfg Config, manager *relay.HubManager) (*WebServer, error) {
 		revokeSignals:           make(map[string]chan struct{}),
 		mux:                     http.NewServeMux(),
 		pluginConfigSubscribers: make(map[chan []byte]struct{}),
+		stopCh:                  make(chan struct{}),
 	}
+	ws.portTransport = ws.newPortTransport()
 	ws.whois = &ws.lc
 	if !tailnet.LiveAllowed() {
 		ws.whois = noLiveWhoIs{}
@@ -189,6 +210,23 @@ func (ws *WebServer) SetPluginSettingsProvider(fn func() []byte) {
 // SetSessionResolver pattern.
 func (ws *WebServer) SetStaticAppFS(appFS fs.FS) {
 	ws.staticAppFS = appFS
+}
+
+// SetDeniedPorts adds ports the Phase 13 port routes refuse to grant or proxy.
+// The daemon passes its relay port: the relay accepts Origins naming its own
+// port, so a proxied request would satisfy that check. Set once before Start.
+func (ws *WebServer) SetDeniedPorts(ports ...int) {
+	ws.deniedPorts = make(map[int]struct{}, len(ports))
+	for _, p := range ports {
+		ws.deniedPorts[p] = struct{}{}
+	}
+}
+
+// SetPortDialerForTest replaces the loopback dialer the port proxy uses.
+// Test-only: the cross-daemon test runs both Macs on one machine, so the
+// browser-facing port and the dev server's real port differ.
+func (ws *WebServer) SetPortDialerForTest(fn func(ctx context.Context, port int) (net.Conn, error)) {
+	ws.portDialForTest = fn
 }
 
 // EnableSession marks a session as web-served (WEB-01 toggle).
@@ -431,6 +469,8 @@ func (ws *WebServer) listenTCP() (net.Listener, error) {
 // stop reaching this server's mux (WR-01). Hijacked WebSockets survive Close;
 // callers kick viewers before Stop.
 func (ws *WebServer) Stop() error {
+	ws.stopOnce.Do(func() { close(ws.stopCh) })
+	ws.portTransport.CloseIdleConnections()
 	// Snapshot under RLock and close after releasing it (Close() may block).
 	ws.mu.Lock()
 	srv := ws.srv
@@ -488,6 +528,9 @@ func (ws *WebServer) BaseURL() string {
 //     cross-session isolation, and write permission via claims.Perms (D-24).
 //   - /api/sessions/meta and POST /api/peer/sessions/{id}/cap — gated by
 //     requireSameUser (same Tailscale user via WhoIs, fail closed).
+//   - POST /api/peer/sessions/{id}/ports and /api/peer/sessions/{id}/ports/{port}
+//     (Phase 13) — requireSameUser, then a write capability in X-Portty-Cap;
+//     the proxy route also needs the port token (portproxy.go).
 func (ws *WebServer) setupRoutes() {
 	mux := ws.mux
 
@@ -515,6 +558,21 @@ func (ws *WebServer) setupRoutes() {
 	// share's capability with nothing to type. POST + application/json only, no
 	// Access-Control-* headers, Cache-Control: no-store (whois.go handlePeerCap).
 	mux.HandleFunc("POST /api/peer/sessions/{id}/cap", ws.requireSameUser(ws.handlePeerCap))
+
+	// Phase 13, URL-02: the host half of a remote localhost URL. The grant mints
+	// a port token for a port the session printed; the proxy route forwards to
+	// this Mac's own loopback. Both sit behind requireSameUser, then check the
+	// X-Portty-Cap write capability (and, for the proxy, the port token) before
+	// anything is dialled (portproxy.go has the check order).
+	//
+	// They are NOT wrapped in cspHeaders or porttyMarker: the proxied app's own
+	// Content-Security-Policy must reach the browser untouched, and every
+	// refusal sets the marker itself. Registered per method because a
+	// method-less pattern conflicts with the existing "GET /" and panics.
+	mux.HandleFunc("POST /api/peer/sessions/{id}/ports", ws.requireSameUser(ws.handlePortGrant))
+	for _, m := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"} {
+		mux.HandleFunc(m+" /api/peer/sessions/{id}/ports/{port}", ws.requireSameUser(ws.handlePortProxy))
+	}
 
 	// GET /api/sessions — capability-gated; handleListSessions returns ONLY
 	// the single session bound to the cap (D-18). porttyMarker sits outside the
