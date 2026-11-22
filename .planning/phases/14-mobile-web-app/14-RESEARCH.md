@@ -394,15 +394,19 @@ expect(m.data).toContain('"display":"standalone"')
 | A11 | `window.open(blob)` in a standalone app is escapable | Pitfall 9 | Strands the user; hide Open PDF in standalone |
 | A12 | Tailscale iOS app keeps the tunnel through sleep so the socket dies half-open rather than cleanly | Q3 | Different recovery timing; M-148 measures |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does the Add to Home Screen flow keep `?session=…&cap=…` on iOS 26/27?**
    - What we know: WebKit's parser uses the document URL; some reports on older iOS say the path or query is dropped.
    - What's unclear: current behaviour. No iPhone was available.
    - Recommendation: do M-145 first in the phase (before polishing the launcher copy). If it fails, stop and re-discuss; the token-less `start_url` option is deferred in CONTEXT.
+   - **RESOLVED (planning, 2026-11-22):** an early headless iOS Simulator spike, 14-07 (row H-01), runs right after the manifest plan (14-05) and before the key bar, phone layout and launcher plans; its blocking checkpoint offers continue, redesign (route `/gsd-discuss-phase 14`) or continue with the real phone as the primary check. The full simulator run repeats it (14-13, S-04) and 14-14's checkpoint asks for one real-iPhone look, again with the redesign route.
 2. **Should the verdict cache exist?** The locked text says "measure the cost"; the measurement says it matters on this rig. Recommend yes, with security-review sign-off; alternative is no cache plus a note that `/app/` load is ~0.5 to 1 s slower.
+   - **RESOLVED (planning, 2026-11-22):** no cache now (the earlier host measurement was withdrawn, see Pitfall 1, so there is no evidence for it). 14-12's VM row P-04 measures `StatusWithoutPeers` and `WhoIs` on the VM's own tailscaled and a cold `/app/` load, with the rule "worth discussing above 300 ms per cold load or a p95 over 50 ms"; the user decides at 14-14's checkpoint (UI-B), and a cache would be a gap plan with the TTL signed off in the security review.
 3. **Does a lone Esc need to claim the grid?** Currently no. Recommend no change.
+   - **RESOLVED (planning, 2026-11-22):** no change; `IsUserInput` keeps returning false for a trailing lone ESC (14-02 pins it).
 4. **Where does `docs/launcher-app.md` live?** CONTEXT says a markdown file in this repo; `docs/` currently holds only logos.
+   - **RESOLVED (planning, 2026-11-22):** `docs/launcher-app.md`, pinned by the repo-root `launcher_copy_test.go` (14-09).
 
 ## Environment Availability
 
