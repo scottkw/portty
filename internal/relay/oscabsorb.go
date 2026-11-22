@@ -52,6 +52,17 @@ type InputAbsorber struct {
 
 // Filter consumes in and returns the bytes that should be forwarded to the PTY.
 // An empty (but non-nil) slice means "all input was absorbed; write nothing."
+//
+// A bare ESC at the end of a frame is forwarded at once. It used to be held
+// until the next frame, so a lone Esc (the key bar's Esc, Claude Code's "Esc to
+// interrupt", leaving vim's Insert mode) did nothing until the next key. xterm.js
+// sends every key and every reply to a query in one onData call, so one
+// MsgInput frame never ends between the ESC and the introducer of a reply (only
+// encodeInputFrames' 32767-byte chunking splits a frame, and only pastes get
+// that large). The one accepted cost: a raw terminal behind `portty attach` that
+// split a reply exactly between ESC and ']' (or '[') now leaks the rest of the
+// reply to the PTY as text; a split after the introducer is still absorbed
+// (stateInOSC and stateInCSI persist across frames).
 func (a *InputAbsorber) Filter(in []byte) []byte {
 	out := make([]byte, 0, len(in))
 	for _, b := range in {
@@ -140,6 +151,10 @@ func (a *InputAbsorber) Filter(in []byte) []byte {
 			}
 		}
 	}
+	if a.state == stateGotEsc {
+		out = append(out, 0x1b)
+		a.state = stateOutside
+	}
 	return out
 }
 
@@ -201,6 +216,9 @@ func (a *InputAbsorber) completeCSI(out []byte) []byte {
 // purpose: a missed claim costs one more keystroke, a false one makes viewers
 // fight over the grid. Known collision: a modified F3 (CSI 1;5R) reads as a
 // cursor report and does not claim. filtered is never modified.
+//
+// A lone trailing ESC is not user input, even though Filter now forwards it at
+// once: an Esc key alone does not claim the grid (INPT-06, conservative).
 //
 // shortcut: stateless per frame, so a reply split across two frames can claim
 // once from its tail; xterm.js sends each reply in one onData call, so only a

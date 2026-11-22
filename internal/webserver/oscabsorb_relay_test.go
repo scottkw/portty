@@ -116,6 +116,33 @@ func TestRelay_KeystrokesStillForwarded(t *testing.T) {
 	}
 }
 
+// TestRelay_LoneEscReachesPTY — MOB-01: one MsgInput frame holding only ESC
+// (the key bar's Esc, Esc to interrupt) reaches the PTY at once through the
+// share server's pump, with no further frame sent to release it.
+func TestRelay_LoneEscReachesPTY(t *testing.T) {
+	ws, client, _, inputReader := testServerWithHub(t, "sess-lone-esc")
+	ws.SetSigningKey(capTestKey)
+	token := issueCapFor(t, ws, "sess-lone-esc", "read,write")
+
+	conn := dialWebServerWS(t, client,
+		ws.BaseURL(),
+		"/sessions/sess-lone-esc/ws?cap="+token,
+		originHeader(ws.BaseURL()),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	want := []byte("\x1b")
+	if err := conn.Write(ctx, websocket.MessageBinary, relay.MakeInputFrame(want)); err != nil {
+		t.Fatalf("write input frame: %v", err)
+	}
+	got := readPipeWithTimeout(t, inputReader, 500*time.Millisecond)
+	if !bytes.Equal(got, want) {
+		t.Errorf("lone Esc: want %q got %q", want, got)
+	}
+}
+
 // TestRelay_OSC11SplitAcrossTwoFrames proves per-subscriber state survives
 // across MsgInput frame boundaries: send two halves of an OSC 11 reply in two
 // separate WebSocket binary frames; assert ZERO bytes reach the PTY pipe.
