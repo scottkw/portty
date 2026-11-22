@@ -201,4 +201,42 @@ Rows from the threat models of 13-01 to 13-06. T-13-SC (package installs) is in 
 - Viewer: `frontend/src/lib/__tests__/localhostUrl.test.ts`, `frontend/src/components/__tests__/TerminalPanel.remotePort.test.tsx`, `frontend/src/components/__tests__/SessionEndedBanner.test.tsx`, and the shared fixture `frontend/src/lib/__tests__/fixtures/localhost-url.json`
 - Unchanged, still passing: `internal/webserver/capability_test.go`, `internal/webserver/whois_test.go`, `internal/relay/pathclick_test.go`, `internal/webserver/web_links_test.go`
 
-13-07 appends `## VM evidence and verdict`.
+## VM evidence and verdict
+
+Evidence from 13-07 on the two Tart VMs over the real tailnet (office `portty-vm-office` is the host, home `portty-vm-home` the viewing Mac), 2026-11-22, all in `13-VM-CHECKS.md`. Builds A13 (pre-phase, API 4), B13 and HEAD (API 5), ad-hoc signed. No link, capability, port token or tailnet URL is written here.
+
+- **Old host and upgrade (L-01, PASS).** Against an API 4 office the click showed exactly `portty-vm-office needs a Portty update to open its local pages.` with no sheet, nothing bound and no browser (`outcome=host-outdated`). After the office's upgrade by handoff the session survived, the tab reconnected with `mode=delta`, and the same pre-upgrade URL asked for consent (`outcome=consent`): the printed check read output carried across the handoff, and no approval carried over. Don't Allow opened nothing.
+- **The page through the forward (L-02, PASS).** The printed `http://[::]:8000/` opened the office page in home Safari after one sheet: title `p13 site`, `GET /`, `/app.js` and `/logo.png` each 200 at the dev server with `host=localhost:8000` and no `X-Portty` or forwarded header; the `127.0.0.1` form with `sub/page.html?q=a%20b` opened with no second sheet and the target arrived byte-exact. The home listener was the daemon's, with Safari's WebKit networking process as its client; no in-app browser.
+- **Consent and the loopback-only listener (L-03, PASS).** The sheet read exactly `Allow access to portty-vm-office's localhost:8001?` with the fixed body. Return and Esc opened and bound nothing; Allow opened the page. `lsof` listed exactly `127.0.0.1:8001` and `[::1]:8001` for the daemon and no `*:8001`. Approval of one port did not cover another.
+- **Refusals before any connection, scan resistance and tailnet-only (L-04, PASS).** A grant for a printed port returned 200; six refusals (no capability, garbage capability, a never-printed port with a tripwire, a closed port, the share port, the relay port) were all 403 with `X-Portty: 1` and one normalised hash; the proxy route refused a missing token and another port's token the same way. **The tripwire count stayed 0.** From the home VM the office's LAN address on 7444 failed to connect (curl exit 7) and `lsof` showed 7444 only on the tailnet address.
+- **Streams and hot reload (L-05, PASS).** WebSocket and SSE counters rose through both hops, a touch of the hot file reloaded the page in about 1.2 s, the WebSocket request carried `host=localhost:8100 origin=http://localhost:8100` with no `X-Portty` or forwarded header, and a `::1`-only server worked.
+- **Revoke on stop-sharing (L-06, PASS).** `portty unshare` produced the home log line `outcome=revoked` 50 ms later with nothing done on the home VM; the page's WebSocket and SSE closed and the listener was gone in under 0.7 s (poll granularity), and the peer tab showed `portty-vm-office stopped sharing this session.` After a re-share and reopening the tab, a click asked for consent again. The no-stream window behaved as recorded below.
+- **The taken port (L-07, PASS).** A wildcard holder and a `::1`-only holder each gave `Port N is in use on this Mac.` with no sheet, and the home servers kept answering.
+- **Unchanged links and the `https://localhost` gap (L-08, PASS).** A local tab opened `localhost:8600` directly with no sheet and no forward; the punycode link showed the confirm popover in a local tab and a peer tab; `https://example.com/` opened with no dialog; `https://localhost:8600/` asked home Safari for its own `https://localhost:8600` with no sheet and no forward, the accepted gap.
+- **UI-1, another tailnet user.** "Accept automated-only" (the user, 2026-11-22). One account serves every machine in the rig, so a refusal for another user was not shown on real machines; `TestPortGrant_Refusals` and `TestPortProxy_Refusals` (other-user rows) pin it.
+- **UI-2, a real Vite or webpack HMR project.** "Check on my Macs" (the user, 2026-11-22). Neither VM has node, so L-05 used the `p13dev` helper; a real project's HMR is manual check M-140 for the user's own Macs.
+- **Gate finding G-1.** One `internal/pty` `TestKillClean_NoOrphans` FAIL in the single gate run, recorded by the user as the known G-1 flake; a re-run alone with `-count=5` passed and `internal/pty` has no diff since `9574fd49`. It does not touch this feature.
+
+### Residual risks
+
+The accepted risks listed in "Accepted risks" above stand. In addition, from the VM run:
+
+- **The no-stream window.** With no peer-tab session stream open, a share-off sends the viewing daemon no signal, so the forward keeps listening. On real machines it stayed open about 4.1 s after the re-share, until the page's own EventSource retry made the first request; that request got the stopped page (`outcome=stopped`), the forward closed within 0.6 s, and the office dev server logged no request, so nothing was proxied. Safe because each share mints a fresh grant id.
+- **`https://localhost`, `*.localhost` and other non-canonical forms keep today's behaviour.** `https://localhost:8600/` opened this Mac's own localhost in L-08. Names such as `app.localhost`, portless forms and upper-case hosts are not classified as remote localhost URLs and are not proxied either.
+- **No deny list for well-known ports.** A session that prints a URL for a debugging or database port can be clicked and approved; the sheet names the port, and the printed check, same-user, write access and consent are the controls.
+- **A `::1`-only page starts more slowly.** In L-05 the `::1`-only server's page was still `Untitled` at +2 s and counting by +7 s, while IPv4 pages counted by +2 s. Observed once, not investigated, and not a refusal or a leak.
+- **UI-1 and UI-2 are not shown on real machines** (see above): another tailnet user is automated-only, and a real Vite or webpack HMR project is a check for the user's own Macs.
+
+### Threat register for 13-07
+
+| ID | Threat | Severity | Disposition | Result |
+|----|--------|----------|-------------|--------|
+| T-13-36 | Tampering: the host machine | high | mitigate | every GUI, daemon and app action ran only in the VMs; the host ran the gate, builds, the helper build and SSH; ad-hoc signing only |
+| T-13-37 | Information disclosure: evidence and this review | high | mitigate | links, capabilities and port tokens only in 0600 files in deleted private directories; evidence holds codes, header names and hashes; both files grep clean for link, token and tailnet URL patterns |
+| T-13-38 | Denial of service: ephemeral VM tailnet nodes | high | mitigate | no network drop; the VMs were never stopped or re-authenticated and are still on the tailnet |
+| T-13-39 | Tampering: VM settings and dotfiles after the run | medium | mitigate | settings.json restored (`cmp` clean); dotfile sha256 equal to L-00 (the office history restored from the L-00 copy); HEAD deployed on both |
+| T-13-40 | Tampering: temporary worktrees and helper source left behind | medium | mitigate | the A13 and helper worktrees were removed; none is registered; the helper source and binary were deleted from the host and never committed |
+| T-13-41 | Elevation of privilege: helper servers and tripwires left listening | low | mitigate | every `p13dev` process was killed and the sessions stopped; only the p13dev binary stays in `~/p13` |
+| T-13-SC | Tampering: package installs | high | mitigate | only `pnpm install --frozen-lockfile`; no package installed in the VMs; the Command Line Tools install prompt opened by a stray `strings` call was killed with nothing installed |
+
+**Verdict:** approved. L-03 (consent per Mac and port, loopback-only listener), L-04 (refusals before any connection, tripwire 0, tailnet-only) and L-06 (revoke on stop-sharing with no request, consent again after a re-share, the recorded no-stream window) are each PASS, as are L-00..L-02, L-05, L-07 and L-08; UI-1 is accepted as automated-only and UI-2 is a check on the user's own Macs, both in the user's words above (2026-11-22).

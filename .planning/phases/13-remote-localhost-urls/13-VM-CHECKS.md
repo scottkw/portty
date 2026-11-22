@@ -19,6 +19,8 @@ Evidence for plan 13-07 from real app builds in the two Tart VMs over the real t
 
 **`go test -race -short -count=1 ./...`: 15 package lines `ok`, one FAIL: `internal/pty` `TestKillClean_NoOrphans` (`native_test.go:287: process group 61888 still exists after Kill — orphan processes`).** This is the same test, assertion and symptom as Phase 12's G-1 (12-VM-CHECKS.md, "Re-run gate"), which the user accepted on 2026-11-22 as an unrelated timing flake under load; it ran while the same invocation was running the 233 s daemon and 123 s relay packages in parallel. `internal/pty` has no diff since `9574fd49` (`git diff --stat 9574fd49..HEAD -- internal/pty` is empty), so no Phase 13 change reaches it. By the plan's rule (any gate failure is a finding; no patch here; the gate runs once) it is not patched and not re-run on the host; the remaining gate steps and the VM rows ran regardless (the rows do not depend on it) and the finding goes to Task 3 as G-1. No `--- SKIP` line was printed (the run is not `-v`, so skipped tests print nothing). No DATA RACE or panic line.
 
+**G-1 resolved (user decision 2026-11-22):** recorded as the known G-1 flake (`internal/pty` `TestKillClean_NoOrphans`, the same as Phase 12's G-1). After the gate the orchestrator re-ran that test alone with `-count=5`: it passed. `internal/pty` has no diff since `9574fd49`. Nothing was patched; the gate run above stays as recorded (one FAIL line, which the later re-run did not reproduce).
+
 ## Builds
 
 Host: A13 from a detached worktree at `9574fd49` (`pnpm install --frozen-lockfile --prefer-offline`, `pnpm run build`, removed afterwards with its directory); B13 and HEAD in this checkout after one `pnpm run build`. Each with `GOTOOLCHAIN=go1.26.11 wails build -s -platform darwin/arm64 -tags wailsassets` and `-ldflags "-X main.Version=<v>"` (none for HEAD); `frontend/src/wailsjs` restored after each. `codesign -dv` on all three: `Signature=adhoc`, `TeamIdentifier=not set`. p13dev: `GOOS=darwin GOARCH=arm64 go build` in a detached worktree at HEAD (`cmd/p13dev` written into the tree, never committed), the worktree and its directory removed after the binary was copied out (0 `p13-(A|help)` worktrees registered).
@@ -58,3 +60,12 @@ Run after the last row, before Task 3, on both VMs.
 - settings.json restored (`cmp` against the backup clean before the HEAD launch and again after it; `"webgl":true` again in both); the staged builds and the backup directory `~/ptest/stage` were removed by `cleanup.sh` after that `cmp`.
 - Host: the staged builds' directory and the helper binary and source were deleted; 0 `p13-(A|help)` worktrees registered; `frontend/src/wailsjs` clean.
 - The VMs themselves were never stopped, suspended or rebooted and are still on the tailnet (`tailscale status` in each lists the other as active); no `tailscale down`, `logout` or auth key.
+
+## User decisions
+
+Task 3 (checkpoint:decision, gate blocking-human), answered through the orchestrator on 2026-11-22. All nine rows L-00..L-08 are PASS (none through acceptance; L-05 PASS rests on its own `load:2` reload evidence). Answers, in the user's words:
+
+- **Verdict:** "approve (Recommended)".
+- **G-1** (`internal/pty` `TestKillClean_NoOrphans` once in the full gate): recorded as the known G-1 flake; the orchestrator's `-count=5` re-run of that test alone passed and `internal/pty` has no diff since `9574fd49`.
+- **UI-1** (a different tailnet user): "Accept automated-only". Covered only by `TestPortGrant_Refusals` and `TestPortProxy_Refusals` (other-user rows); recorded in TESTING.md M-139.
+- **UI-2** (a real Vite or webpack HMR project): "Check on my Macs". A manual check for the user's own Macs, TESTING.md M-140; no node exists in either VM.
