@@ -480,6 +480,42 @@ func (c *DaemonClient) ConnectPeer(host, session string) (PeerConnectResponse, e
 	return out, nil
 }
 
+// PortOpenError is a POST /peers/ports failure with a stable PortErr* code.
+type PortOpenError struct{ Code string }
+
+func (e *PortOpenError) Error() string { return e.Code }
+
+// OpenRemotePort asks the daemon to open a loopback forward for a remote
+// session's localhost URL (POST /peers/ports). Failures come back as
+// *PortOpenError; a daemon whose mux lacks the route gives PortErrDaemonOutdated.
+func (c *DaemonClient) OpenRemotePort(sessionID, rawURL string, consent bool) (PortOpenResponse, error) {
+	b, err := json.Marshal(PortOpenRequest{SessionID: sessionID, URL: rawURL, Consent: consent})
+	if err != nil {
+		return PortOpenResponse{}, err
+	}
+	resp, err := c.http.Post(c.base+"/peers/ports", "application/json", bytes.NewReader(b))
+	if err != nil {
+		return PortOpenResponse{}, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		var e PortOpenErrorResponse
+		if json.Unmarshal(body, &e) == nil && e.Error != "" {
+			return PortOpenResponse{}, &PortOpenError{Code: e.Error}
+		}
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+			return PortOpenResponse{}, &PortOpenError{Code: PortErrDaemonOutdated}
+		}
+		return PortOpenResponse{}, fmt.Errorf("daemon API POST /peers/ports: status %d: %s", resp.StatusCode, bytes.TrimSpace(body))
+	}
+	var out PortOpenResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return PortOpenResponse{}, fmt.Errorf("decode response: %w", err)
+	}
+	return out, nil
+}
+
 // doJSON is a shared request/response helper. It marshals body (if non-nil),
 // sends the request, checks the status code, and decodes result (if non-nil).
 func (c *DaemonClient) doJSON(method, path string, body, result any) error {

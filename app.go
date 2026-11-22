@@ -1473,6 +1473,45 @@ func (a *App) ConnectPeerSession(host, sessionID string) PeerConnectResult {
 	return PeerConnectResult{SessionID: res.SessionID, Name: res.Name, Host: res.Host, URL: res.URL}
 }
 
+// RemotePortResult is what OpenRemotePort returns. It never throws: a failure
+// fills ErrorCode (a daemon.PortErr* code, or "unreachable"). The frontend
+// opens URL only when Status is "open" and shows the consent sheet when it is
+// "consent". It carries no capability or port token.
+type RemotePortResult struct {
+	Status    string `json:"status"`
+	URL       string `json:"url"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	ErrorCode string `json:"errorCode"`
+}
+
+// OpenRemotePort asks the daemon to open a loopback forward for a remote
+// session's localhost URL. consent is false on the first click (the daemon
+// answers "consent" when the user has not yet approved this Mac and port) and
+// true once the user has approved.
+func (a *App) OpenRemotePort(sessionID, rawURL string, consent bool) RemotePortResult {
+	if a.client == nil {
+		return RemotePortResult{ErrorCode: daemon.PortErrUnreachable}
+	}
+	h, err := a.client.HealthInfo()
+	if err != nil {
+		return RemotePortResult{ErrorCode: daemon.PortErrUnreachable}
+	}
+	// An API 4 daemon kept running after an upgrade has no forward code.
+	if daemon.DaemonAPI(h) < daemon.PortProxyAPI {
+		return RemotePortResult{ErrorCode: daemon.PortErrDaemonOutdated}
+	}
+	res, err := a.client.OpenRemotePort(sessionID, rawURL, consent)
+	if err != nil {
+		var pe *daemon.PortOpenError
+		if errors.As(err, &pe) {
+			return RemotePortResult{ErrorCode: pe.Code}
+		}
+		return RemotePortResult{ErrorCode: daemon.PortErrUnreachable}
+	}
+	return RemotePortResult{Status: res.Status, URL: res.URL, Host: res.Host, Port: res.Port}
+}
+
 // startTrayPoller starts a background goroutine that refreshes tray state
 // (icon, tooltip, session list) immediately and then every 5 seconds.
 // The goroutine exits when ctx is cancelled (Wails shutdown).

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -513,6 +514,101 @@ func TestConnectPeerSession(t *testing.T) {
 	}
 	if got := (&App{}).ConnectPeerSession("office-air", "build"); got.ErrorCode != daemon.PeerErrUnreachable {
 		t.Fatalf("no daemon: %+v; want unreachable", got)
+	}
+}
+
+// freeLoopbackPortForTest returns a port free on 127.0.0.1 and [::1].
+func freeLoopbackPortForTest(t *testing.T) int {
+	t.Helper()
+	for i := 0; i < 50; i++ {
+		l4, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := l4.Addr().(*net.TCPAddr).Port
+		l6, err := net.Listen("tcp6", fmt.Sprintf("[::1]:%d", port))
+		l4.Close()
+		if err == nil {
+			l6.Close()
+			return port
+		}
+	}
+	t.Fatal("no loopback port free on both families")
+	return 0
+}
+
+// remotePortFixture is a daemon with a stub peer sharing session aaaa1111 and a
+// connected capability, so OpenRemotePort has something to ask the host for.
+type remotePortFixture struct {
+	app  *App
+	port int
+}
+
+func newRemotePortFixture(t *testing.T) *remotePortFixture {
+	t.Helper()
+	port := freeLoopbackPortForTest(t)
+	proxyPath := fmt.Sprintf("/api/peer/sessions/aaaa1111/ports/%d", port)
+	peer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/sessions/meta":
+			_, _ = w.Write([]byte(`[{"id":"aaaa1111","name":"build","status":"running"}]`))
+		case r.URL.Path == "/api/peer/sessions/aaaa1111/cap":
+			_, _ = w.Write([]byte(`{"cap":"TOKEN"}`))
+		case r.URL.Path == "/api/peer/sessions/aaaa1111/ports" && r.Method == http.MethodPost:
+			if r.Header.Get("X-Portty-Cap") != "TOKEN" {
+				http.Error(w, "bad cap", http.StatusForbidden)
+				return
+			}
+			_, _ = w.Write([]byte(`{"token":"PTOKEN"}`))
+		case r.URL.Path == proxyPath:
+			if r.Header.Get("X-Portty-Port-Token") != "PTOKEN" || r.Header.Get("X-Portty-Target") != "/x?y=1" {
+				http.Error(w, "bad proxy headers", http.StatusForbidden)
+				return
+			}
+			_, _ = w.Write([]byte("remote page"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(peer.Close)
+	api, client := testShareSetup(t)
+	api.SetPeerClientForTest(peer.Client())
+	api.SetPeerSeamsForTest(
+		func(context.Context) ([]tailnet.Peer, error) {
+			return []tailnet.Peer{{Hostname: "Office", DNSName: "office-air.tail1.ts.net.", Online: true}}, nil
+		},
+		func(context.Context) []tailnet.Peer { return nil },
+		func(tailnet.Peer) string { return peer.URL },
+	)
+	app := &App{ctx: context.Background(), client: client}
+	if got := app.ConnectPeerSession("office-air", "build"); got.ErrorCode != "" {
+		t.Fatalf("ConnectPeerSession = %+v", got)
+	}
+	return &remotePortFixture{app: app, port: port}
+}
+
+// TestOpenRemotePort (URL-01, URL-02): the binding asks first, then hands back a
+// localhost URL that reaches the remote page through the daemon's forward.
+func TestOpenRemotePort(t *testing.T) {
+	f := newRemotePortFixture(t)
+	rawURL := fmt.Sprintf("http://localhost:%d/x?y=1", f.port)
+
+	got := f.app.OpenRemotePort("aaaa1111", rawURL, false)
+	if got.Status != daemon.PortStatusConsent || got.Port != f.port || got.Host == "" || got.URL != "" || got.ErrorCode != "" {
+		t.Fatalf("first click = %+v; want consent for port %d with a host", got, f.port)
+	}
+	got = f.app.OpenRemotePort("aaaa1111", rawURL, true)
+	if got.Status != daemon.PortStatusOpen || got.URL != rawURL || got.ErrorCode != "" {
+		t.Fatalf("after consent = %+v; want open %s", got, rawURL)
+	}
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/x?y=1", f.port))
+	if err != nil {
+		t.Fatalf("GET through the forward: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || string(body) != "remote page" {
+		t.Fatalf("forward answered %d %q; want 200 \"remote page\"", resp.StatusCode, body)
 	}
 }
 
