@@ -251,7 +251,9 @@ func (a *API) handlePortOpen(w http.ResponseWriter, r *http.Request) {
 		writePortErr(w, sid, port, PortErrPortInUse)
 		return
 	}
-	if f != nil && live {
+	// A forward's transport is pinned to the address it was built for: a changed
+	// address or base host rebuilds it (the approval is carried across below).
+	if f != nil && live && f.ip == ip && f.base.Host == base.Host {
 		f.rebind(sid, token)
 		pf.approvals[key] = ap
 		logPortOutcome(sid, port, "open")

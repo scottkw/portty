@@ -817,6 +817,49 @@ func TestPortForward_TransientRefusalKeepsForward(t *testing.T) {
 	}
 }
 
+// WR-04: a second click while the approval is live reused a transport pinned
+// to the first click's host address. When the address or base host differs,
+// the forward is rebuilt (keeping the approval the user already gave).
+func TestPortForward_ReclickRebuildsOnNewAddress(t *testing.T) {
+	e := newPortEnv(t)
+	port := e.openForward(t)
+	pf := e.api.portForwards
+	pf.mu.Lock()
+	first := pf.forwards[port]
+	pf.mu.Unlock()
+
+	// Same address: the live forward is reused.
+	if _, got, _ := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusOpen {
+		t.Fatalf("re-click = %+v, want open", got)
+	}
+	pf.mu.Lock()
+	same := pf.forwards[port]
+	pf.mu.Unlock()
+	if same != first {
+		t.Fatal("a re-click with an unchanged address rebuilt the forward")
+	}
+
+	// The host's tailnet address changed; the capability did not.
+	if err := e.api.remoteCaps.Put("s1", e.stub.srv.URL, "100.64.0.9", "CAP"); err != nil {
+		t.Fatal(err)
+	}
+	if _, got, ec := e.open(t, "s1", localhostURL(port, "/"), false); got.Status != PortStatusOpen {
+		t.Fatalf("re-click after an address change = %+v %q, want open without a new consent", got, ec)
+	}
+	pf.mu.Lock()
+	second := pf.forwards[port]
+	pf.mu.Unlock()
+	if second == nil || second == first {
+		t.Fatal("the forward kept its transport pinned to the old address")
+	}
+	if second.ip != "100.64.0.9" {
+		t.Errorf("the rebuilt forward ip = %q, want 100.64.0.9", second.ip)
+	}
+	if code, body := get(t, port, "/p?q=1"); code != http.StatusOK || body != "stub-body" {
+		t.Fatalf("request through the rebuilt forward = %d %q", code, body)
+	}
+}
+
 func TestPortForward_NothingAnswering(t *testing.T) {
 	e := newPortEnv(t)
 	port := e.openForward(t)

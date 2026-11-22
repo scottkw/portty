@@ -147,6 +147,7 @@ type portForward struct {
 	host  string // lower-cased base-URL hostname
 	label string // MagicDNS short label, for pages
 	base  *url.URL
+	ip    string // the host address the transport was built for (WR-04)
 
 	mu         sync.Mutex // guards sid and token
 	sid, token string
@@ -320,7 +321,7 @@ func (f *portForward) refusedOrTransient(a *API) error {
 
 // newPortForward builds a forward (not yet listening) bound to sid and token.
 func (a *API) newPortForward(pfs *PortForwards, port int, host string, base *url.URL, fqdn, ip, label, sid, token string) *portForward {
-	f := &portForward{pfs: pfs, port: port, host: host, label: label, base: base, sid: sid, token: token}
+	f := &portForward{pfs: pfs, port: port, host: host, label: label, base: base, ip: ip, sid: sid, token: token}
 	f.ctx, f.cancel = context.WithCancel(context.Background())
 	f.transport = a.forwardTransport(fqdn, ip)
 	f.proxy = &httputil.ReverseProxy{
