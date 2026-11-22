@@ -42,7 +42,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 - [x] **Phase 10: Input Path Reliability** - A bounded input queue keeps viewers connected through long pastes, the paste notice is honest in the app and the browser, peer snapshots are keyed by host, the viewer you're typing on sets the session's size, and the exit-code test is deterministic (completed 2026-11-21)
 - [x] **Phase 11: File Preview** - `portty open <file>` shows images, PDFs and Markdown in a preview tab for app and browser viewers, over the session's own stream, under a size cap and a reviewed CSP (completed 2026-11-21)
 - [x] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote (completed 2026-11-22)
-- [ ] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent
+- [x] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent (completed 2026-11-22)
 - [ ] **Phase 14: Mobile Web App** - Browser links limited to your own Tailscale account, then the share view on an iPhone: key bar, phone layout, Home Screen install, reconnect after sleep, and launcher copy for portty.app/app
 
 ## Phase Details
@@ -154,7 +154,7 @@ Plans:
   2. The first click on a port asks for consent in a macOS-style sheet that names the remote Mac and the port; declining opens nothing. Approval covers only that Mac and that port, and the viewing Mac's listener binds only to its loopback (checked with `lsof`). (URL-02)
   3. The proxy refuses whatever wasn't asked for. Requests without the token, from outside the tailnet, or for a port nobody approved are refused before the remote Mac connects anywhere. It only ever connects to the remote Mac's own loopback, it cannot be used to scan ports, and once the host stops sharing the proxied page stops loading. The security review records the threat model. (URL-02)
   4. Local URLs, and non-localhost URLs in remote tabs, work as today: the confirm popover, then the default browser. The existing link tests still pass. (URL-03)
-**Plans**: 7/7 plans executed
+**Plans**: 7/7 plans complete
 Plans:
 - [x] 13-01-PLAN.md — Wave 1: host gate primitives: Hub.PortPrinted (printed loopback URL check over the Phase 12 snapshot, URL boundaries) and port tokens under an HKDF-derived key (URL-02)
 - [x] 13-02-PLAN.md — Wave 1: the viewing daemon's loopback forward: POST /peers/ports, grant call, per-(Mac, port) consent, probe then bind on 127.0.0.1 and [::1], Host and cross-site checks, hop-1 proxy, fixed pages, lifetimes; shared classifier fixture (URL-01, URL-02)
@@ -188,5 +188,5 @@ Plans:
 | 10. Input Path Reliability | v1.2 | 7/7 | Complete    | 2026-11-21 |
 | 11. File Preview | v1.2 | 10/10 | Complete    | 2026-11-21 |
 | 12. File Path Click | v1.2 | 9/9 | Complete    | 2026-11-22 |
-| 13. Remote Localhost URLs | v1.2 | 7/7 | In Progress | - |
+| 13. Remote Localhost URLs | v1.2 | 7/7 | Complete    | 2026-11-22 |
 | 14. Mobile Web App | v1.2 | 0/TBD | Not started | - |

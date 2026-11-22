@@ -38,9 +38,9 @@
 
 ### Remote localhost URLs
 
-- [ ] **URL-01**: Clicking `http://localhost:PORT` or `http://127.0.0.1:PORT` in a remote session opens that page from the remote Mac in the user's normal browser, proxied over the tailnet by Portty, including WebSocket upgrades so dev-server hot reload works (user decision 2026-11-19).
-- [ ] **URL-02**: The proxy is token-gated and tailnet-only, asks consent per port, binds only on the viewing Mac's loopback, and never allows arbitrary port scanning.
-- [ ] **URL-03**: Local URLs keep today's behaviour: confirm popover, then the default browser.
+- [x] **URL-01**: Clicking `http://localhost:PORT` or `http://127.0.0.1:PORT` in a remote session opens that page from the remote Mac in the user's normal browser, proxied over the tailnet by Portty, including WebSocket upgrades so dev-server hot reload works (user decision 2026-11-19).
+- [x] **URL-02**: The proxy is token-gated and tailnet-only, asks consent per port, binds only on the viewing Mac's loopback, and never allows arbitrary port scanning.
+- [x] **URL-03**: Local URLs keep today's behaviour: confirm popover, then the default browser.
 
 ### Mobile web app
 
@@ -87,9 +87,9 @@
 | PREV-05 | Phase 11 | Complete |
 | PATH-01 | Phase 12 | Complete |
 | PATH-02 | Phase 12 | Complete |
-| URL-01 | Phase 13 | Pending |
-| URL-02 | Phase 13 | Pending |
-| URL-03 | Phase 13 | Pending |
+| URL-01 | Phase 13 | Complete |
+| URL-02 | Phase 13 | Complete |
+| URL-03 | Phase 13 | Complete |
 | MOB-01 | Phase 14 | Pending |
 | MOB-02 | Phase 14 | Pending |
 | MOB-03 | Phase 14 | Pending |
