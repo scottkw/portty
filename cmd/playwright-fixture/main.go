@@ -13,6 +13,14 @@
 //   - A separate plain-HTTP admin listener on 127.0.0.1 (random port) exposing
 //     POST /__test__/plugin-config for the SSE hot-swap spec to flip server-
 //     side settings + trigger BroadcastPluginConfig().
+//   - POST /__test__/whois {"as":"same|other|tagged|shared-in|not-found|
+//     status-fault|whois-fault"} switches the identity the WhoIs fake answers
+//     with (MOB-05); 400 on an unknown name. The default is the same user. The
+//     fixture never asks the host's live tailscaled.
+//   - GET /__test__/input returns {"hex":"<lowercase hex>"} of every byte the
+//     hub has written to the PTY input stub since the last reset; POST
+//     /__test__/input/reset empties it (204). The fixture drains the stub, so
+//     key-bar e2e tests read what a page sent to the shell.
 //
 // Build-tagged 'playwrightfixture' so it never compiles into release builds
 // (T-93-iPad-UAT-EVASION mitigation: the /__test__ surface is fixture-only).
@@ -33,6 +41,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -40,6 +49,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -50,6 +60,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -92,7 +103,27 @@ func main() {
 	manager := relay.NewHubManager()
 	ptyOutR, ptyOutW := io.Pipe()
 	inputCaptureR, inputCaptureW := io.Pipe()
-	_ = inputCaptureR
+	// Drain every byte the hub writes to its PTY input stub into a buffer the
+	// admin /__test__/input routes read. Ends at EOF when shutdown closes
+	// inputCaptureW.
+	var (
+		inputMu  sync.Mutex
+		inputBuf bytes.Buffer
+	)
+	go func() {
+		chunk := make([]byte, 4096)
+		for {
+			n, err := inputCaptureR.Read(chunk)
+			if n > 0 {
+				inputMu.Lock()
+				inputBuf.Write(chunk[:n])
+				inputMu.Unlock()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
 	manager.Create(sessionID, ptyOutR, inputCaptureW, nil)
 
 	// 3. WebServer in tailscale-mode with TLSConfig override (mirrors
@@ -209,6 +240,27 @@ func main() {
 		}
 		who.Set(id)
 		w.WriteHeader(http.StatusOK)
+	})
+	adminMux.HandleFunc("/__test__/input", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		inputMu.Lock()
+		h := hex.EncodeToString(inputBuf.Bytes())
+		inputMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"hex": h})
+	})
+	adminMux.HandleFunc("/__test__/input/reset", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		inputMu.Lock()
+		inputBuf.Reset()
+		inputMu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
 	})
 	adminMux.HandleFunc("/__test__/ready", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
