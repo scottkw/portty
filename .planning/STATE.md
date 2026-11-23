@@ -5,16 +5,16 @@ milestone_name: Previews, Remote URLs, Mobile
 current_phase: 15
 current_phase_name: v1.2 Hardening
 status: executing
-stopped_at: Phase 14 complete — all phases complete
-last_updated: "2026-11-23T14:26:14.421Z"
+stopped_at: Completed 15-04-PLAN.md
+last_updated: "2026-11-23T14:37:22.418Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 15 execution started
-state_head: d6b839cfbe65b1331e4791a5db3348ffaf5f5b95
+state_head: b2b9d152bf708cf6a72344e5378a329a2f71ed86
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 63
-  completed_plans: 57
+  completed_plans: 58
   percent: 86
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 15 (v1.2 Hardening) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-11-23 — Phase 15 execution started
 
@@ -142,6 +142,7 @@ Last activity: 2026-11-23 — Phase 15 execution started
 | Phase 15 P01 | ~10m | 2 tasks | 9 files |
 | Phase 15 P02 | 25min | 2 tasks | 9 files |
 | Phase 15 P03 | 2 min | 2 tasks | 4 files |
+| Phase 15 P04 | 14 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -321,6 +322,8 @@ Recent decisions affecting current work:
 - [Phase 15]: 15-02: Session.reaped is set explicitly after cmd.Wait, never inferred from ExitCode; killSession skips signals and a second Wait on a reaped session
 - [Phase 15]: 15-02: todo 2026-11-20 items 2 and 3 documented at HubManager.Shutdown and closeSessionFiles, not fixed (no caller today)
 - [Phase 15]: Daemon socket: chmod 0600 after listen (fails closed), not a umask change; takeover tightens the inherited socket after COMMIT, log-only on failure
+- [Phase 15]: 15-04: F-1 fixed in row numbering (History.Skip in the ED 3 handler); Hub.PathClick and cwdLog.at unchanged
+- [Phase 15]: 15-04: linkifier test keeps one 20 ms sleep for the no-input window; all other waits use vi.waitFor
 
 ### Pending Todos
 
@@ -429,8 +432,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-23T14:26:12.051Z
-Stopped at: Phase 14 complete — all phases complete
+Last session: 2026-11-23T14:37:20.059Z
+Stopped at: Completed 15-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
