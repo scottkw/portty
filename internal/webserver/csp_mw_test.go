@@ -366,8 +366,9 @@ func TestCSPHeaders_PreviewDelta(t *testing.T) {
 		"connect-src 'self' " + wss + "; img-src 'self' data:; font-src 'self'; base-uri 'none'; " +
 		"form-action 'self'; frame-ancestors 'none'"
 	want := strings.Replace(prePhase, "img-src 'self' data:;", "img-src 'self' data: blob:; worker-src 'self';", 1)
-	if csp != want {
-		t.Errorf("CSP drifted from the reviewed policy (11-SECURITY-REVIEW.md):\n got %s\nwant %s", csp, want)
+	// Amendment 4's manifest-src is pinned by TestCSPHeaders_ManifestDelta; compare the rest here.
+	if got := strings.Replace(csp, "manifest-src 'self'; ", "", 1); got != want {
+		t.Errorf("CSP drifted from the reviewed policy (11-SECURITY-REVIEW.md):\n got %s\nwant %s", got, want)
 	}
 	if got := extractDirective(csp, "worker-src"); got != "'self'" {
 		t.Errorf("worker-src must be exactly 'self' (no blob:, data: or host), got %q: %s", got, csp)
@@ -382,6 +383,32 @@ func TestCSPHeaders_PreviewDelta(t *testing.T) {
 // extractDirective returns the value portion of a single CSP directive
 // (e.g. extractDirective("default-src 'none'; script-src 'self'", "script-src")
 // returns "'self'"). Returns empty string if the directive is not present.
+// TestCSPHeaders_ManifestDelta (Phase 14 MOB-02, Amendment 4): the policy is
+// Amendment 3's with `manifest-src 'self'; ` inserted after `worker-src 'self'; `
+// and nothing else; manifest-src lists only 'self'; default-src stays 'none'.
+func TestCSPHeaders_ManifestDelta(t *testing.T) {
+	ws, _ := testServer(t)
+	handler := ws.cspHeaders(func(w http.ResponseWriter, r *http.Request) {})
+	rec := httptest.NewRecorder()
+	handler(rec, httptest.NewRequest("GET", ws.BaseURL()+"/app/", nil))
+	csp := rec.Header().Get("Content-Security-Policy")
+
+	wss := "wss://" + strings.TrimPrefix(ws.BaseURL(), "https://")
+	amendment3 := "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
+		"connect-src 'self' " + wss + "; img-src 'self' data: blob:; worker-src 'self'; font-src 'self'; " +
+		"base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+	want := strings.Replace(amendment3, "worker-src 'self'; ", "worker-src 'self'; manifest-src 'self'; ", 1)
+	if csp != want {
+		t.Errorf("CSP drifted from Amendment 4:\n got %s\nwant %s", csp, want)
+	}
+	if got := extractDirective(csp, "manifest-src"); got != "'self'" {
+		t.Errorf("manifest-src must be exactly 'self', got %q: %s", got, csp)
+	}
+	if got := extractDirective(csp, "default-src"); got != "'none'" {
+		t.Errorf("default-src must stay 'none', got %q: %s", got, csp)
+	}
+}
+
 func extractDirective(csp, name string) string {
 	for _, clause := range strings.Split(csp, ";") {
 		clause = strings.TrimSpace(clause)

@@ -12,7 +12,7 @@
 //      catches the rare case where a violation is thrown rather than logged.
 
 import { test, expect } from '@playwright/test'
-import { sessionURL } from './fixture-env'
+import { appUrl, sessionURL } from './fixture-env'
 
 test.describe('Phase 93 WEB-02 web-csp zero-violation', () => {
   test('no CSP violations during attach/scroll session', async ({ page }) => {
@@ -43,5 +43,26 @@ test.describe('Phase 93 WEB-02 web-csp zero-violation', () => {
     await page.waitForTimeout(500)
 
     expect(cspViolations, 'No CSP violations on web terminal page').toEqual([])
+  })
+
+  // Phase 14 MOB-02 (Amendment 4): the Home Screen manifest loads under the share CSP.
+  test('Chromium parses /app/manifest.json under the share CSP', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'Page.getAppManifest is a CDP call')
+    const cspViolations: string[] = []
+    page.on('console', (msg) => {
+      if (/content security policy|csp/i.test(msg.text())) cspViolations.push(msg.text())
+    })
+
+    await page.goto(appUrl())
+    await page.locator('.xterm').first().waitFor()
+
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Page.enable')
+    const res = await cdp.send('Page.getAppManifest')
+
+    expect(res.errors, 'manifest parse errors').toEqual([])
+    expect(res.url).toMatch(/\/app\/manifest\.json$/)
+    expect(JSON.parse(res.data ?? '{}').display).toBe('standalone')
+    expect(cspViolations, 'No CSP violations loading the manifest').toEqual([])
   })
 })

@@ -89,6 +89,24 @@
 // directive, workers fall back to script-src 'self' (the same sources); naming
 // it pins the intent. No child-src, frame-src or object-src.
 //
+// Amendment 4 (Phase 14, MOB-02, 2026-11-22):
+//
+//	default-src 'none'; script-src 'self' 'wasm-unsafe-eval';
+//	style-src 'self' 'unsafe-inline'; connect-src 'self' wss://<host>;
+//	img-src 'self' data: blob:; worker-src 'self'; manifest-src 'self';
+//	font-src 'self'; base-uri 'none'; form-action 'self';
+//	frame-ancestors 'none'
+//
+// Amendment rationale: Add to Home Screen reads /app/manifest.json, and
+// Chromium blocks the manifest fetch under default-src 'none' (reproduced in
+// 14-RESEARCH.md Q2); WebKit also checks manifests against the page CSP. The
+// delta is manifest-src 'self' and nothing else: the manifest is a static
+// same-origin file with no start_url and no id (WebKit rejects a cross-origin
+// start_url or scope), so the launch URL stays the exact share link. The
+// manifest icons load under the existing img-src 'self'. default-src stays
+// 'none' and 'unsafe-eval' stays absent (TestCSPHeaders_ManifestDelta). The
+// sign-off is carried by .planning/phases/14-mobile-web-app/14-SECURITY-REVIEW.md.
+//
 // Per-request composition (D-10): the wss:// origin is derived from
 // ws.BaseURL() on every request so it tracks the listener address
 // automatically — including the random-port fallback that Phase 87/88
@@ -151,6 +169,8 @@ func (ws *WebServer) cspHeaders(next http.HandlerFunc) http.HandlerFunc {
 		b.WriteString("img-src 'self' data: blob:; ")
 		// Phase 11 Amendment 3 (11-07 fix): the Markdown parse worker, same origin only.
 		b.WriteString("worker-src 'self'; ")
+		// Phase 14 Amendment 4 (MOB-02): the static Home Screen manifest, same origin only.
+		b.WriteString("manifest-src 'self'; ")
 		b.WriteString("font-src 'self'; ")
 		b.WriteString("base-uri 'none'; ")
 		b.WriteString("form-action 'self'; ")

@@ -146,6 +146,10 @@ func TestCSPHeaderStrict_App(t *testing.T) {
 	if strings.Count(csp, "blob:") != 1 {
 		t.Errorf("/app/: blob: must appear exactly once, in img-src (Amendment 3): %s", csp)
 	}
+	// Phase 14 Amendment 4 (MOB-02): the Home Screen manifest, same origin only.
+	if !strings.Contains(csp, "; manifest-src 'self'; ") {
+		t.Errorf("/app/: CSP missing manifest-src 'self' (Amendment 4): %s", csp)
+	}
 	for _, name := range []string{"frame-src", "object-src"} {
 		if strings.Contains(csp, name) {
 			t.Errorf("/app/: CSP must not carry %s (11-SPIKE.md Share CSP delta): %s", name, csp)
