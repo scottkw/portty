@@ -1,10 +1,12 @@
 ---
 phase: 09-upgrades-keep-sessions
-verified: 2026-11-20T22:30:16Z
+verified: 2026-11-22T22:15:00Z
 status: passed
 score: 5/5 must-haves verified
-covered_files: [".planning/phases/09-upgrades-keep-sessions/09-01-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-01-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-02-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-02-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-03-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-03-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-04-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-04-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-05-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-05-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-06-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-06-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-07-FIX.md", ".planning/phases/09-upgrades-keep-sessions/09-07-FIX2.md", ".planning/phases/09-upgrades-keep-sessions/09-07-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-07-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-REVIEW-FIX.md", ".planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md", "TESTING.md", "app.go", "cmd_attach.go", "cmd_cli.go", "cmd_daemon.go", "frontend/src/App.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/lib/hostReconnect.ts", "internal/attach/loop.go", "internal/daemon/api.go", "internal/daemon/client.go", "internal/daemon/compat_vmpreview.go", "internal/daemon/engine.go", "internal/daemon/handoff.go", "internal/daemon/handoff_vmpreview.go", "internal/daemon/process.go", "internal/daemon/process_unix.go", "internal/daemon/share.go", "internal/daemon/types.go", "internal/fdpass/fdpass.go", "internal/pty/adopt_darwin.go", "internal/pty/exitwatch_darwin.go", "internal/pty/native.go", "internal/pty/session.go", "internal/relay/close_reasons.go", "internal/relay/handoff_state.go", "internal/relay/hub.go", "internal/relay/manager.go", "internal/relay/server.go", "internal/webserver/server.go", "terminate_darwin.go", "terminate_darwin.m"]
-covered_digest: "v4:sha256:6895859274174a3891abfd2a41f7e6b4a0912ff9a01b4d1458a6ce9ea83fc4fd"
+re_verification: true
+previous_verified: 2026-11-20T22:30:16Z
+covered_files: [".planning/phases/09-upgrades-keep-sessions/09-01-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-01-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-02-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-02-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-03-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-03-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-04-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-04-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-05-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-05-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-06-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-06-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-07-FIX.md", ".planning/phases/09-upgrades-keep-sessions/09-07-FIX2.md", ".planning/phases/09-upgrades-keep-sessions/09-07-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-07-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-REVIEW-FIX.md", ".planning/phases/09-upgrades-keep-sessions/09-SECURITY.md", ".planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md", "TESTING.md", "app.go", "cmd_attach.go", "cmd_cli.go", "cmd_daemon.go", "frontend/src/App.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/lib/hostReconnect.ts", "internal/attach/loop.go", "internal/daemon/api.go", "internal/daemon/client.go", "internal/daemon/compat_vmpreview.go", "internal/daemon/engine.go", "internal/daemon/handoff.go", "internal/daemon/handoff_vmpreview.go", "internal/daemon/process.go", "internal/daemon/process_unix.go", "internal/daemon/share.go", "internal/daemon/types.go", "internal/fdpass/fdpass.go", "internal/pty/adopt_darwin.go", "internal/pty/exitwatch_darwin.go", "internal/pty/native.go", "internal/pty/session.go", "internal/relay/close_reasons.go", "internal/relay/handoff_state.go", "internal/relay/hub.go", "internal/relay/manager.go", "internal/relay/server.go", "internal/webserver/server.go", "terminate_darwin.go", "terminate_darwin.m"]
+covered_digest: "v4:sha256:e28fa75bc4db2d51faf0a09eb4a772ea7d1c87dd06bb1a69dd762aeb2f0a72de"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -12,11 +14,83 @@ overrides_applied: 0
 # Phase 9: Upgrades Keep Sessions — Verification Report
 
 **Phase Goal:** Upgrading Portty never costs a session. The new daemon takes over the running shells and their history, every attached viewer carries on by itself, and if the takeover fails the old daemon keeps serving. Nobody has to be at the remote Mac.
+**Verified:** 2026-11-22, at HEAD `52d960a5` (branch gsd/v1.2), before the v1.2 close.
+**Status:** passed, 5/5
+**Re-verification:** Yes. The 2026-11-20 report passed. The GSD tool marked it stale because Phases 10–14 changed files it covered: hub.go, handoff.go, handoff_state.go, relay/server.go, webserver/server.go, client.go, types.go, api.go, app.go, App.tsx, TerminalPanel.tsx and TESTING.md. 09-SECURITY.md was also added after that report.
+
+## What was re-checked against the current code
+
+**Targeted tests run now.** I ran only the named tests, because other verifiers were running at the same time. I used `GOTOOLCHAIN=go1.26.11`, and node v24.22.1 with `NO_COLOR=1` for vitest. All passed:
+
+| Package / files | Selection | Result |
+|---|---|---|
+| `./internal/daemon/` | `-run 'TestHandoff\|TestTakeover\|TestEnsureDaemon\|TestStartDetachedTakeover\|TestTakeoverStatus\|TestStartDaemon_Cancel\|TestSessionInfo_ReportsAPIVersion\|Health\|DaemonAPI'`. This covers HappyPath, every `TestHandoffFault_*` (EveryStep, NoThawUntilTakeoverExits, CommittedWriteFailsOldAlive, OldDies*, NewHangsAfterCommit, WatchdogAfterCommittedWritten, TakeoverGoneAtFinish, AbortBeforeThaw, SeamNilInRelease), FreezeGate, OneAtATime, SIGTERMAfterCommitKeepsSocket, TakeoverHoldsInputUntilOldExits, `TestTakeover_FinalizeDeniesRelayPort`, and every `TestEnsureDaemon_*` (HandsOff, HandoffFailsToDebt08, V11GetsPlainDebt08, SlowCommitNoQuestion, CancelNeverKillsTakeover, CancelUnblocksHungDaemon …) | ok (38 s) |
+| `./internal/relay/` | `-run 'Handoff\|Freeze\|Thaw\|Restart\|AddStaged'`: 26 tests, including RoundTripCorpus, `TestHub_HandoffRejoinKeepsGrid`, `TestHub_HandoffFrozenClaimAppliedOnThaw`, CwdRoundTrip, FitsSessionFrameCap and `TestRestartViewers_Close1012` | ok |
+| `./internal/fdpass/`, `./internal/pty/` | whole packages (small: fdpass, adopt, exit watch, native) | ok |
+| `.` (root), `./internal/attach/` | `-run 'TestEnsure_DefaultSeamPassesRestartConsent\|TestQuitAll\|TestRestartConsent_MoveFailed\|TestOnTerminate_QuitsGUIOnly\|TestDaemonUpdateNeeded\|TestEnsureCLIDaemon\|TestTakeover\|TestRunAttach\|Reconnect'` | ok |
+| vitest | `hostReconnect.test.ts`, `TerminalPanel.reconnect.test.tsx`, `App.daemon-restart.test.tsx`, `App.update-needed.test.tsx`, `QuitConfirmModal.test.tsx` | 5 files, 61 tests passed |
+| build / vet | `go build ./...`; `go vet ./internal/daemon/ ./internal/relay/ .` | rc 0 |
+| traceability | `bash tests/check-traceability-paths.sh` | `OK: 228 traceability paths exist` |
+
+**Code wiring confirmed at HEAD:**
+- The handoff branch in EnsureDaemon (process.go:275, `health.Handoff == HandoffVersion`, skipped for a v1.1 daemon and for `NoHandoff`).
+- `/health` with `API: APIVersion, Handoff: HandoffVersion` (api.go:384).
+- `MinDaemonAPI = 1` (client.go:97).
+- The CLI couldn't-move line and the update-needed check (cmd_cli.go:133, 160).
+- `signal.Reset(SIGTERM)` and `onTerminate` (app.go:277, 661).
+- `checkDaemonAPI` and the `daemon:update-needed` event (app.go:368–381).
+- `cancelEnsure()` in QuitAll (app.go:723).
+- App.tsx: the quit request answers Not Now while the restart dialog is open (App.tsx:510), the Quit modal renders only when `restartPrompt === 0` (App.tsx:1496), and the update-needed banner is at App.tsx:1201.
+- The 1012 restart close in both the relay and the share server (relay/server.go:101, webserver/server.go:961).
+
+## Supersessions by later phases (judged against the intended current behaviour)
+
+| Phase 9 item | Later change | Judgement |
+|---|---|---|
+| SC2: the `50903bee` 3 s settle window in hub.go (`applyGridLocked`/`endSettle`) and its tests `TestHub_HandoffSettleKeepsGrid` / `SkipsFrozen` | Phase 10-04 (`b3836aa9`) dropped the settle window when INPT-06's grid owner replaced min-among-local. A rejoining viewer no longer bumps `geomEnd`, because only a claim takes the grid | Still satisfied. The tests are now `TestHub_HandoffRejoinKeepsGrid` and `TestHub_HandoffFrozenClaimAppliedOnThaw` (both pass). 10-VM-CHECKS **V-02r PASS ×2** re-ran Phase 9 V-02 without the settle window: all 5 viewers back in about 1.0–1.6 s, 5/5 `mode=delta`, 0 duplicate or missing ticks. **RF-02 PASS** after the Phase 10 review fixes repeats it with a typist on s3. The only loss was keystrokes typed while `portty attach` was disconnected (about 0.95 s), which the row allows when reported. `9cda1853` (a delta resume exactly at `geomEnd`) closed the related R-05 full-replay case |
+| SC1/SC2: input during the handoff | Phase 10 added the hub input FIFO. The handoff waits for queued input (`e8b3331a`), and the takeover writes no input until the old daemon exits (`1857e271`, WR-02) | Strengthens UPGR-01/02. `TestHandoff_TakeoverHoldsInputUntilOldExits` and `TestHandoff_FinishWaitsForInput` pass |
+| SC4: `APIVersion = 2` | Bumped to 3 (preview, Phase 11), 4 (path click, Phase 12) and 5 (localhost forwards, Phase 13). `MinDaemonAPI` stays 1 | The intended design: the API version is the compatibility channel Phase 9 built. "Update needed" still triggers only below `MinDaemonAPI`, and newer features check `PreviewAPI`/`PathClickAPI` per feature. An older compatible daemon kept with Not Now still works |
+| SC1: handoff state | Phase 12-03 carries the cwd log across handoffs, and Phase 13-02 hands over or ends localhost forwards. Phase 13 CR-01 (`32a2b551`) makes a takeover daemon deny the relay port (`TestTakeover_FinalizeDeniesRelayPort`) | Extends the handoff. The Phase 9 contract holds (`TestHandoff_HappyPath`, `TestHandoffState_RoundTripCorpus`, `CwdRoundTrip`, `CwdOldShape`) |
+| SC1: "the share link still works with the same token and still refuses a wrong one" | Phase 14-01/14-03 added a same-Tailscale-account gate (`requireSameUser`/WhoIs) on the share server routes, the discovery probe, `/app/` and the WebSocket. The token check is unchanged | An intended tightening (a user decision in Phase 14). After an upgrade the share listener and records still move (`TestHandoff_HappyPath`). Access now needs the same token **and** the same account. The Phase 9 VM rows ran before the gate. Phase 14's own verification covers the gate |
+| SC2: the browser viewer's reconnect path | Phase 14 reworked webserver/server.go (gates, `/app/`, the retry link) and the Phase 14 selection and lone-Esc fixes changed TerminalPanel.tsx | No change to the 1012 close or to the resume. `TestRestartViewers_Close1012`, hostReconnect.test.ts and TerminalPanel.reconnect.test.tsx pass at HEAD |
+
+## Accepted limits and earlier decisions (carried forward; not gaps)
+
+- **IN-04:** stopped sessions are dropped on handoff (09-CONTEXT.md:37; `shortcut:` on `handoffEntries`). No live shell is lost.
+- **09-SECURITY.md** (status verified) accepted risks, all low and accepted at plan time:
+  - AR-09-01 / T-09-04: the copy names versions only;
+  - AR-09-02 / T-09-22: the COMMIT-to-COMMITTED window;
+  - AR-09-03 / T-09-26: a takeover stopped by SIGSTOP after COMMIT, where the old side waits on `peerGone` with no timer.
+- **09-VM-CHECKS.md:**
+  - The V-02 FAIL at `bbb34439` was kept as history and fixed. V-05b's first FAIL (54.76 s) was fixed and passed.
+  - V-03b/V-03d were re-run after CR-01 at `dc48674b`.
+  - The V-03a first attempt was discarded (a check viewer used the B binary), and the row was re-run.
+- **10-VM-CHECKS RF-02:** `portty attach` drops stdin typed during its roughly 1 s reconnect. The row allows this when reported. Nothing was reordered or doubled.
+
+## Status rationale
+
+All five success criteria still hold at HEAD.
+- **Code:** the handoff core, rollback, thaw only after the takeover exits, the 1012 close plus delta resume, the API version with update-needed, and the SIGTERM, Quit All and one-modal quit paths are all present and wired.
+- **Tests:** the targeted Phase 9 tests pass on the current code.
+- **VM evidence:** the VM-only parts have PASS rows. The SC2 grid behaviour that later phases changed was re-proven in the VMs on the new design (10-VM-CHECKS V-02r ×2 and RF-02).
+
+No human verification is required. A fresh VM re-run of V-01 under the Phase 14 account gate would only confirm the gate, and Phase 14's verification owns the gate.
+
+---
+
+_Re-verified: 2026-11-22_
+_Verifier: Claude (gsd-verifier)_
+
+## Original verification (2026-11-20, HEAD `dc827079`), kept for its evidence
+
+_The line numbers, test names and the settle window below describe the code at that time. See the supersessions table above for what changed._
+
+**Phase Goal:** Upgrading Portty never costs a session. The new daemon takes over the running shells and their history, every attached viewer carries on by itself, and if the takeover fails the old daemon keeps serving. Nobody has to be at the remote Mac.
 **Verified:** 2026-11-20T22:30:16Z, at HEAD `dc827079`. The latest product commit is `50903bee`; everything after it is docs.
 **Status:** passed
 **Re-verification:** No. This is the first verification.
 
-## How this was verified
+### How this was verified
 
 - I read the production code for each criterion: handoff.go (the old side and the takeover), process.go (EnsureDaemon, handOff, serveDaemon's SIGTERM guard), api.go (the /handoff route, the freeze gate, /health), client.go and cmd_cli.go (API version and update needed), app.go (onTerminate, cancelEnsure, QuitAll, checkDaemonAPI), App.tsx (one modal, the Update needed banner), engine.go handoffEntries (the IN-04 shortcut), and the 50903bee settle-window diff in hub.go and handoff_state.go.
 - I checked that the tests named for each criterion exist (grep for `func Test` / `it(`). Per the caller's instruction I ran no test binary.
@@ -24,7 +98,7 @@ overrides_applied: 0
 - I ran `GOTOOLCHAIN=go1.26.11 go build ./... && go vet ./...` myself at HEAD: rc 0. I also ran `bash tests/check-traceability-paths.sh`: `OK: 163 traceability paths exist`.
 - I read 09-VM-CHECKS.md in full and set the commit each row ran at against the product diff since that commit.
 
-## Goal Achievement
+### Goal Achievement
 
 ### Observable Truths (ROADMAP success criteria)
 
@@ -164,10 +238,11 @@ Two non-blocking follow-ups:
 _Verified: 2026-11-20T22:30:16Z_
 _Verifier: Claude (gsd-verifier)_
 
-## Addendum (2026-11-20, after this report; docs-only changes)
+### Addendum (2026-11-20, after this report; docs-only changes)
 
 The covered docs changed after the verifier ran, with no product code change (latest product commit is still `50903bee`):
 - 09-VM-CHECKS.md: V-03b PASS twice and V-03d PASS at `dc48674b`, which includes the CR-01 fix. This answers the report's optional follow-up 2: the post-CR-01 fault paths now have VM evidence. The TestHandoffIT re-runs at `e7c6ab82` and `bbb34439` (both PASS) are recorded in a table.
 - TESTING.md: the M-105, M-106, M-107, M-111, M-114 and M-115 "Last run" lines now cite these re-runs (optional follow-up 1).
 
 The verdict is unchanged: passed, 5/5. The digest above was recomputed over the same covered_files.
+
