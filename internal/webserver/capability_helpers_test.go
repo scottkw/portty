@@ -15,6 +15,7 @@
 //   - testServer:           webserver.WebServer in tailnet-equivalent test mode
 //   - testServerWithHub:    WebServer + live relay.Hub backed by pipes
 //   - dialWebServerWS:      dial a wss:// WebSocket against the test server
+//   - dialWebServerWSPing:  the same dial with an OnPingReceived hook
 //   - readPipeWithTimeout:  read from an io.PipeReader with a deadline
 //
 // Source: security-review/internal_webserver_server_test.go:29-198 (copied
@@ -212,6 +213,14 @@ func readPipeWithTimeout(t *testing.T, r *io.PipeReader, timeout time.Duration) 
 // overrides). The returned connection is closed in t.Cleanup.
 func dialWebServerWS(t *testing.T, httpClient *http.Client, baseURL, path string, headers http.Header) *websocket.Conn {
 	t.Helper()
+	return dialWebServerWSPing(t, httpClient, baseURL, path, headers, nil)
+}
+
+// dialWebServerWSPing is dialWebServerWS with an OnPingReceived hook, so a
+// test can count the server's heartbeat pings. The hook must return true or
+// the library sends no pong; a nil hook is the library default.
+func dialWebServerWSPing(t *testing.T, httpClient *http.Client, baseURL, path string, headers http.Header, onPing func(context.Context, []byte) bool) *websocket.Conn {
+	t.Helper()
 
 	wsURL := "wss" + strings.TrimPrefix(baseURL, "https") + path
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -220,6 +229,8 @@ func dialWebServerWS(t *testing.T, httpClient *http.Client, baseURL, path string
 	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 		HTTPClient: httpClient,
 		HTTPHeader: headers,
+
+		OnPingReceived: onPing,
 	})
 	if err != nil {
 		t.Fatalf("websocket.Dial(%s): %v", wsURL, err)

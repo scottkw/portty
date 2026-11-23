@@ -6,9 +6,11 @@ import (
 	"crypto/sha256"
 	"io"
 	"log"
+	"net/http"
 	"regexp"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,15 +35,19 @@ func pastePayload() []byte {
 }
 
 // joinPasteViewer joins a share viewer on a hub whose PTY input is a pipe the
-// test controls, with a 50 ms ping and the given heartbeat timeout.
-func joinPasteViewer(t *testing.T, sid string, timeout time.Duration) (*websocket.Conn, *relay.Hub, *io.PipeReader) {
+// test controls, with a 50 ms ping and the given heartbeat timeout. onPing, if
+// not nil, sees every server ping and must return true so the pong is sent.
+func joinPasteViewer(t *testing.T, sid string, timeout time.Duration, onPing func(context.Context, []byte) bool) (*websocket.Conn, *relay.Hub, *io.PipeReader) {
 	t.Helper()
 	ws, client, _, input := testServerWithHub(t, sid)
 	ws.SetSigningKey(capTestKey)
 	token := issueCapFor(t, ws, sid, "read,write")
 	ws.heartbeatEvery, ws.heartbeatTimeout = 50*time.Millisecond, timeout
 	hub, _ := ws.manager.Get(sid)
-	conn := dialResume(t, ws, client, sid, token, "")
+	hdr := http.Header{}
+	hdr.Set("Origin", ws.BaseURL())
+	conn := dialWebServerWSPing(t, client, ws.BaseURL(), "/sessions/"+sid+"/ws?cap="+token, hdr, onPing)
+	conn.SetReadLimit(relay.ViewerReadLimit)
 	if typ, _ := readWSFrame(t, conn); typ != relay.MsgResize {
 		t.Fatalf("first frame type 0x%02x, want grid frame", typ)
 	}
@@ -92,10 +98,15 @@ func (s *pipeSink) bytes() []byte {
 // frames and keeps reading, so pings get answered and the heartbeat never drops
 // the viewer; once the PTY drains, every byte arrives in order.
 func TestShare_PasteBacklogKeepsViewer(t *testing.T) {
-	// 500 ms, not 100: under -race the burst itself can delay a pong past
-	// 100 ms while the server unmasks megabytes, which is not the bug.
-	const timeout = 500 * time.Millisecond
-	conn, hub, input := joinPasteViewer(t, "paste-backlog", timeout)
+	// Only a per-ping ceiling: pings still flow every 50 ms, and a stuck read
+	// pump still fails the viewer after 5 s. Under -race and machine load the
+	// burst can delay a pong far past 100 ms, which is not the bug.
+	const timeout = 5 * time.Second
+	var pings atomic.Int64
+	conn, hub, input := joinPasteViewer(t, "paste-backlog", timeout, func(context.Context, []byte) bool {
+		pings.Add(1)
+		return true // the library only sends the pong when the hook returns true
+	})
 	closed := make(chan struct{})
 	go func() { // a live viewer: coder/websocket answers pings inside Read
 		defer close(closed)
@@ -123,13 +134,17 @@ func TestShare_PasteBacklogKeepsViewer(t *testing.T) {
 		return queued == len(payload)
 	}, "the server never queued the whole paste")
 
-	// Hold the whole paste queued behind the PTY for 3x the heartbeat timeout.
-	for end := time.Now().Add(3 * timeout); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+	// Hold the paste queued until 8 more pings arrived. relay.Heartbeat pings
+	// synchronously, so 8 pings seen means at least 7 completed round trips
+	// while the backlog sat behind the PTY: counted, not timed.
+	start := pings.Load()
+	testutil.WaitFor(t, 30*time.Second, func() bool {
 		alive()
 		if n := hub.RemoteViewerCount(); n != 1 {
 			t.Fatalf("viewer count %d while the paste is queued, want 1", n)
 		}
-	}
+		return pings.Load() >= start+8
+	}, "fewer than 8 pings answered while the paste was queued")
 
 	got := make([]byte, len(payload))
 	done := make(chan error, 1)
@@ -165,7 +180,7 @@ func TestShare_DeadViewerReapedBacklogDelivered(t *testing.T) {
 	// Built before the join: the viewer answers no pings from then on, and under
 	// -race this loop can outlast the 150 ms heartbeat, reaping it before it sends.
 	payload := pastePayload()
-	conn, hub, input := joinPasteViewer(t, sid, 100*time.Millisecond)
+	conn, hub, input := joinPasteViewer(t, sid, 100*time.Millisecond, nil)
 	go sendPaste(conn, payload) // no read loop: pings go unanswered
 
 	testutil.WaitFor(t, 3*time.Second, func() bool { return hub.RemoteViewerCount() == 0 },

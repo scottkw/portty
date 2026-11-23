@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/scottkw/portty/internal/testutil"
 )
 
 func TestSpawnPTY(t *testing.T) {
@@ -253,12 +255,12 @@ func TestKillClean_NoOrphans(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Spawn a shell that starts a background sleep — killing the session must
-	// also terminate the sleep (no orphan process).
+	// Spawn a shell that starts a background sleep and says so — killing the
+	// session must also terminate the sleep (no orphan process).
 	// We use a short sleep so even if cleanup fails the test doesn't hang long.
 	sess, err := b.Create(ctx, CreateRequest{
 		CLI:  "sh",
-		Args: []string{"-c", "sleep 300 & cat"},
+		Args: []string{"-c", "sleep 300 & echo portty-bg-started; cat"},
 		Cols: 80,
 		Rows: 24,
 	})
@@ -266,15 +268,20 @@ func TestKillClean_NoOrphans(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	// Let the shell start the sleep process.
-	time.Sleep(200 * time.Millisecond)
+	var out bytes.Buffer
+	var mu sync.Mutex
+	go readUntilErr(sess, &out, &mu, make(chan error, 1))
+
+	// Wait for the shell to have started the sleep.
+	testutil.WaitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Contains(out.String(), "portty-bg-started")
+	}, "the shell never started the background job")
 
 	if err := b.Kill(sess.ID); err != nil {
 		t.Fatalf("Kill failed: %v", err)
 	}
-
-	// Give the OS a moment to reap.
-	time.Sleep(300 * time.Millisecond)
 
 	// The spawned process group should be gone. We verify by checking that
 	// sending signal 0 to the (negated) pgid returns an error — meaning the
@@ -282,10 +289,8 @@ func TestKillClean_NoOrphans(t *testing.T) {
 	// pgid == pid because go-pty uses Setsid.
 	if sess.cmd != nil && sess.cmd.Process != nil {
 		pgid := sess.cmd.Process.Pid
-		err := killSignal0(-pgid)
-		if err == nil {
-			t.Errorf("process group %d still exists after Kill — orphan processes", pgid)
-		}
+		testutil.WaitFor(t, 5*time.Second, func() bool { return killSignal0(-pgid) != nil },
+			"process group %d still exists after Kill — orphan processes", pgid)
 	}
 }
 
