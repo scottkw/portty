@@ -1,6 +1,6 @@
 ---
 phase: 15-v1-2-hardening
-reviewed: 2026-11-23T15:30:00Z
+reviewed: 2026-11-23T17:05:00Z
 depth: standard
 files_reviewed: 46
 files_reviewed_list:
@@ -28,6 +28,7 @@ files_reviewed_list:
   - internal/daemon/handoff.go
   - internal/daemon/handoff_test.go
   - internal/daemon/ipc.go
+  - internal/daemon/socket.go
   - internal/daemon/socket_test.go
   - internal/fdpass/fdpass.go
   - internal/fdpass/fdpass_test.go
@@ -61,66 +62,56 @@ status: issues_found
 
 # Phase 15: Code Review Report
 
-**Reviewed:** 2026-11-23T15:30:00Z
+**Reviewed:** 2026-11-23T17:05:00Z
 **Depth:** standard
 **Files Reviewed:** 46
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the Phase 15 diff (`b0cb288f..HEAD`) of the 46 files in scope, reading each changed hunk in the context of its callers. The necessity reference was read; no necessity findings resulted.
+Iteration 3 (final) of the `--auto` loop. `git diff --stat cc7e67fb~1 HEAD` outside `.planning` shows only `internal/daemon/ipc.go` and `internal/daemon/socket_test.go` changed, so the other 44 files keep their earlier assessment. The necessity reference was not re-read because no new code outside the fix was assessed; no necessity findings.
 
-Verification run (read-only, no tailnet contact, `GOTOOLCHAIN=go1.26.11`):
-- `go test -count=1` for `internal/attach`, `internal/fdpass`, `internal/pty`, `internal/statusbar`, `internal/tailnet`: all pass.
-- Targeted `go test` for the relay cwd/pathclick/grid tests, the daemon handoff/socket tests and the root `NotificationClick`/`InitialResize` tests: pass.
-- `vitest` for pathLinks.linkifier, closeReasons, App.update and TerminalPanel.guestClose: 58 pass.
-- `bash tests/check-traceability-paths.sh`: OK.
-- A throwaway probe (scratchpad, unix socket only) of macOS `LOCAL_PEERPID` on the dialing side after a listener fd was inherited by a second process: it reported the accepting process, not the listener's creator. This supports the 15-08 pid check for the handoff chain; M-155 still has to confirm it across real daemons.
+**Verification of cc7e67fb**
+- The process-wide umask is gone. `grep` finds no `syscall.Umask` or `umaskMu` anywhere in the repo. The previous WR-01 (umask leaking into forked shells and concurrent `Mkdir` calls) is resolved.
+- `listenDaemonSocket` is `net.Listen`, then `os.Chmod(0600)`. A failed chmod closes the listener and fails the start, so the socket is never served wider than 0600. This matches the old behaviour, and the only caller is `API.Start` (`api.go:319`).
+- `DefaultSocketPath` creates the config dir 0700 and tightens an existing one (`socket.go:16-28`). On the production path that closes the bind-to-chmod window, because another user cannot traverse to the inode.
+- `go vet ./internal/daemon` is clean. `TestListenDaemonSocket_Mode0600`, `TestDefaultSocketPath_TightensExistingDir`, `TestSocketPath*` and `TestTestMain_IsolatesConfigDir` pass with `GOTOOLCHAIN=go1.26.11`. Removing `TestListenDaemonSocket_RestoresUmask` was correct, since it tested code that no longer exists.
+- One claim in the new comment does not hold (WR-01 below). It does not change runtime behaviour, but it misstates the security model.
 
-No correctness or security defects that would block shipping were found. Every fix does what its commit says, the fd-leak, stale-pgid, pid-check and rows-1 paths are tested, and the failure modes are mostly handled in the safe direction. The one Warning is that the 0600 socket hardening (O-2) has a gap the new test comment claims it does not have. The Info items are behaviour trade-offs and small quality notes.
+No Critical findings. IN-01 to IN-06 are carried forward unchanged from the previous review.
 
 ## Warnings
 
-### WR-01: Daemon socket is group/world-connectable between `bind` and `chmod`, and the "0700 second fence" is not enforced
+### WR-01: The `listenDaemonSocket` comment cites a peer-UID check that does not exist on the control socket, and the 0700 fence is assumed rather than enforced
 
-**File:** `internal/daemon/ipc.go:17-30`, `internal/daemon/socket.go:14-22`
-**Issue:** `listenDaemonSocket` binds with `net.Listen` (the socket inode is created with `0777 &^ umask`, typically 0755) and only then calls `os.Chmod(path, 0600)`. For that interval the control socket, which gives write access to every shell, has its looser mode. The comment on `daemonSocketMode` and the test comment ("private to its user from the moment it listens") say the parent directory is the second fence, but `DefaultSocketPath` calls `os.MkdirAll(dir, 0700)` with the error discarded. `MkdirAll` does not tighten a directory that already exists, so a `portty` config dir created by an earlier build or by hand with a looser mode is never repaired. On macOS connecting to a unix socket needs write permission on the socket file, so 0755 only admits the owner and root, but a umask of 000 or 002 (some shell profiles set it) makes the window real, and `tightenSocketMode` on the handoff path has the same post-hoc shape. The test `TestListenDaemonSocket_Mode0600` can only observe the end state, so it cannot catch this.
-**Fix:** Close the window instead of narrowing it afterwards. Either bind under a restrictive umask held for the `Listen` call only, serialised with a package mutex because umask is process-wide:
+**File:** `internal/daemon/ipc.go:16-21` (comment), `internal/daemon/api.go:313-324` (`Start`), `internal/daemon/socket.go:21-26`
+**Issue:** The comment, and the commit message of cc7e67fb, say the bind-to-chmod window is fenced by the 0700 parent directory "and the daemon also checks the peer UID". The only `peerUID` use is in `serveHandoff` (`handoff.go:465`), which guards the takeover handshake. The control socket is served by plain `http.Serve(ln, a.handler)` (`api.go:310, 324`) with no `ConnState`, `ConnContext` or peer-credential check. `grep` for `PeerUID`/`Getuid` in non-test code finds only the handoff site. So for control-socket requests the protection is the 0600 mode and the 0700 directory, and nothing else. A future change that loosens the directory would be justified by a check that is not there.
+
+The fence also depends on callers. `Start(socketPath)` validates only the path length and does not check that the parent directory is private. `DefaultSocketPath` ignores a `MkdirAll` failure, and an `os.Chmod` failure is only logged (`socket.go:23-26`). If the chmod fails, for example on a directory owned by another uid, the daemon still binds in a directory it did not secure. The earlier review suggested stat-ing the parent and rejecting group/other bits. That was not adopted, so the guarantee has no enforcement point. For the production path (the user's own `~/Library/Application Support/portty`) the exposure is a microsecond window inside a 0700 directory the user owns. This is a robustness and accuracy defect, not an exploitable hole.
+**Fix:** Correct the comment to say what is true. For example: "The bind-to-chmod window is fenced only by the 0700 parent directory; the control socket does not check the peer UID (only the handoff handshake does)." Then add a cheap enforcement in `Start`, or at the top of `listenDaemonSocket`, that fails closed:
 
 ```go
-var umaskMu sync.Mutex
-
-func listenDaemonSocket(path string) (net.Listener, error) {
-	umaskMu.Lock()
-	old := syscall.Umask(0o177) // socket is created 0600
-	ln, err := net.Listen("unix", path)
-	syscall.Umask(old)
-	umaskMu.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(path, daemonSocketMode); err != nil { // belt and braces
-		ln.Close()
-		return nil, fmt.Errorf("daemon socket: set mode %o on %s: %w", daemonSocketMode, path, err)
-	}
-	return ln, nil
+fi, err := os.Stat(filepath.Dir(path))
+if err != nil { return nil, err }
+if fi.Mode().Perm()&0o077 != 0 {
+	return nil, fmt.Errorf("daemon socket: parent dir %s is mode %o; refusing to bind", filepath.Dir(path), fi.Mode().Perm())
 }
 ```
 
-and make `DefaultSocketPath` (or `Start`) `os.Chmod(dir, 0o700)` after `MkdirAll`, logging a failure. Alternatively, soften the comments so they do not claim a guarantee the code does not provide.
+Tests that bind under `shortSocketPath` temp dirs need to create those dirs 0700 (`MkdirTemp` already does).
 
 ## Info
 
 ### IN-01: A reaped session's leftover process group is no longer signalled on dismiss
 
 **File:** `internal/pty/cleanup.go:40-46` (guard), `internal/pty/cleanup.go:20-28` (rationale)
-**Issue:** The new `reaped` branch skips SIGHUP/SIGKILL for any created session whose shell was already `Wait`ed. The rationale is that the pgid may have been reused. That is only possible once the group is empty: the kernel does not hand out a pid that is still a live process-group id, so while background jobs (`nohup`/`disown`ed servers, a `sleep &` after the shell exited) remain in the group, killing it was both safe and the only way dismiss cleaned them up. After this change they are orphaned on dismiss. Practical impact is small (a shell that exits normally usually HUPs its jobs, and `TestKillClean_NoOrphans` still covers the running case), and the guard cannot tell an empty group from a live one without extra bookkeeping, so this is a trade-off, not a defect. It is worth recording next to the existing "accepted residual windows" note so the behaviour change is a decision on the record.
-**Fix:** Add a sentence to the `killSession` doc comment that leftover members of a reaped shell's group are intentionally left running, or, if that is not wanted, signal only when `kill(-pgid, 0)` succeeds and `ps` confirms the leader pid still maps to this child (not worth the complexity unless dismiss orphans show up in practice).
+**Issue:** Carried forward, unchanged. The new `reaped` branch skips SIGHUP/SIGKILL for any created session whose shell was already `Wait`ed, on the grounds that the pgid may have been reused. The kernel does not hand out a pid that is still a live process-group id, so while background jobs remain in the group, killing it was safe and was the only way dismiss cleaned them up. They are now orphaned on dismiss. Practical impact is small and the guard cannot tell an empty group from a live one without extra bookkeeping, so this is a trade-off, not a defect.
+**Fix:** Add a sentence to the `killSession` doc comment recording that leftover members of a reaped shell's group are intentionally left running.
 
 ### IN-02: Duplicate cleanup branches in `killSession`
 
 **File:** `internal/pty/cleanup.go:30-46`
-**Issue:** The `s.cmd == nil || s.cmd.Process == nil` branch and the new `s.reaped.Load()` branch have identical bodies (`closePTY`, then `cancel`).
+**Issue:** Carried forward, unchanged. The `s.cmd == nil || s.cmd.Process == nil` branch and the `s.reaped.Load()` branch have identical bodies.
 **Fix:**
 
 ```go
@@ -136,29 +127,29 @@ if s.cmd == nil || s.cmd.Process == nil || s.reaped.Load() {
 ### IN-03: ED 3 `History.Skip` counts main-screen scrollback even while the alternate screen is active
 
 **File:** `internal/relay/hub.go:1301-1305`
-**Issue:** The hook adds `emu.ScrollbackLen()` to `pushed`, on the premise that vt's own ED 3 handler then drops exactly those lines. vt's handler clears `e.scr.Scrollback()`, the current screen's buffer, whereas `emu.ScrollbackLen()` reads `scrs[0]` (the main screen) always (`vt/emulator.go:451-463`, `vt/handlers.go:559-566`). With the alternate screen active, the alt screen has no scrollback, so the main screen's undrained lines are not dropped; they are drained into history later and counted a second time, so absolute rows overshoot by that many. The window is narrow because `drainScrollbackLocked` empties the main scrollback after every write, so it takes lines scrolled into the main scrollback and an alt-screen switch plus ED 3 in the same write chunk. The pre-existing `h.history.Clear()` on the line above has the same alt-screen looseness.
-**Fix:** Guard the count the same way `row0ErasedLocked` does: `if !emu.IsAltScreen() { h.history.Skip(emu.ScrollbackLen()) }`, and add a case to `cwd_test.go`.
+**Issue:** Carried forward, unchanged. The hook adds `emu.ScrollbackLen()` (always the main screen's) to `pushed`, but vt's ED 3 handler clears the current screen's scrollback. With the alternate screen active the main-screen lines are not dropped, then drain into history later and are counted twice, so absolute rows overshoot. The window is narrow (an alt-screen switch plus ED 3 in the same write chunk, with undrained main scrollback). The older `h.history.Clear()` on the preceding line has the same alt-screen looseness.
+**Fix:** `if !emu.IsAltScreen() { h.history.Skip(emu.ScrollbackLen()) }`, and add a case to `cwd_test.go`.
 
 ### IN-04: A tailnet peer that does not run Portty at all now reads as "reachable, nothing shared"
 
 **File:** `internal/tailnet/sessions.go:83-86, 236`, `frontend/src/lib/sidebarPeers.ts:54-58`, `cmd_cli.go:242-246`
-**Issue:** `discoverPeers` keeps every online peer (`tailnet.go:63-67`, no OS or Portty filter), and a refused TCP connection is now `MetaRefused`, rendered "Nothing shared" and included in `portty list --json` `remote` as an empty group. A phone, NAS or Linux box that RSTs the share port is indistinguishable from a Portty Mac with its share server stopped. Before, such peers showed the "Can't reach this Mac" line, so neither message was right for them. This matches the stated intent of 15-07 (a stopped share server must not look like an unreachable Mac) and is acceptable on a two-Mac tailnet; recording it as a known limit.
-**Fix:** No code change needed. If a larger tailnet ever makes it noisy, filter the sidebar by `peer.OS == "macOS"`, or by a prior successful probe that carried `X-Portty: 1`.
+**Issue:** Carried forward, unchanged. `discoverPeers` keeps every online peer, and a refused TCP connection is now `MetaRefused`, rendered "Nothing shared". A phone, NAS or Linux box that RSTs the share port looks the same as a Portty Mac with its share server stopped. Acceptable on a two-Mac tailnet and matches the stated intent of 15-07; recorded as a known limit.
+**Fix:** No code change needed. If a larger tailnet gets noisy, filter by `peer.OS == "macOS"` or by a prior successful probe that carried `X-Portty: 1`.
 
 ### IN-05: Notification delegate is registered after launch, so the cold-launch click path is unproven
 
 **File:** `tray_objc_darwin.m:173-180`
-**Issue:** The comment says registering at launch lets a click on a notification from an earlier run reach the delegate. The registration runs inside a `dispatch_async` block queued from `initStatusItem` (called from Wails startup), so it can run after `applicationDidFinishLaunching` returns. Apple documents that a delegate meant to receive a launch-from-notification response should be set before launch finishes; whether a late assignment still receives the pending response is system behaviour I could not confirm from the code. The Go side drops the click if `trayCallbackApp` is nil. M-152 ("the click after relaunch also works") is the right check and is still "not yet run".
-**Fix:** Make M-152's relaunch step a hard PASS condition. If it fails, call `registerNotificationDelegate()` synchronously (it is idempotent and bundle-guarded) from the earliest cgo init point rather than from the main-queue block.
+**Issue:** Carried forward, unchanged. Registration runs inside a `dispatch_async` block queued from `initStatusItem`, so it can run after `applicationDidFinishLaunching` returns. Whether a late assignment still receives a pending launch-from-notification response is system behaviour not confirmed from the code. M-152's relaunch step is the right check and is still "not yet run".
+**Fix:** Make M-152's relaunch step a hard PASS condition. If it fails, call `registerNotificationDelegate()` synchronously from the earliest cgo init point.
 
 ### IN-06: `joinPasteViewer` copies `dialResume` instead of extending it
 
 **File:** `internal/webserver/input_queue_test.go:46-50`, `internal/webserver/resume_test.go:117-124`
-**Issue:** To pass an `OnPingReceived` hook, `joinPasteViewer` re-implements `dialResume` (Origin header, URL, `SetReadLimit`). A later change to `dialResume` (for example a new required header) would silently diverge for the paste tests only.
-**Fix:** Give `dialResume` an optional ping hook (a variadic option or a sibling that `dialResume` calls) and have `joinPasteViewer` use it.
+**Issue:** Carried forward, unchanged. To pass an `OnPingReceived` hook, `joinPasteViewer` re-implements `dialResume` (Origin header, URL, `SetReadLimit`), so a later change to `dialResume` would silently diverge for the paste tests only.
+**Fix:** Give `dialResume` an optional ping hook and have `joinPasteViewer` use it.
 
 ---
 
-_Reviewed: 2026-11-23T15:30:00Z_
+_Reviewed: 2026-11-23T17:05:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
