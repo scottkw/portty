@@ -57,7 +57,7 @@ export function KeyBar({ send, applicationCursor, ctrlArmed, onCtrlChange, keybo
       {key('Up arrow', icon(ArrowUpIcon), () => fire(arrow('up')))}
       {key('Down arrow', icon(ArrowDownIcon), () => fire(arrow('down')))}
       {key('Right arrow', icon(ArrowRightIcon), () => fire(arrow('right')))}
-      {key('Vertical bar', PIPE, () => fire(() => PIPE), { className: 'keybar__key--pipe' })}
+      {key('Vertical bar', <span aria-hidden="true">{PIPE}</span>, () => fire(() => PIPE), { className: 'keybar__key--pipe' })}
     </div>
   )
 }

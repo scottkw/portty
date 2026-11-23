@@ -83,6 +83,14 @@ describe('KeyBar', () => {
     }
   })
 
+  it('the | glyph is aria-hidden and the accessible name stays Vertical bar', () => {
+    const { btn } = mount()
+    const glyph = btn('Vertical bar').querySelector('span')!
+    expect(glyph.textContent).toBe('|')
+    expect(glyph.getAttribute('aria-hidden')).toBe('true')
+    expect(btn('Vertical bar').getAttribute('aria-label')).toBe('Vertical bar')
+  })
+
   it('application cursor mode sends ESC O x', () => {
     const { send, btn } = mount({ appCursor: true })
     pointerDown(btn('Up arrow'))
