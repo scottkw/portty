@@ -6,15 +6,15 @@ current_phase: 14
 current_phase_name: mobile-web-app
 status: executing
 stopped_at: Phase 13 complete, ready to plan Phase 14
-last_updated: "2026-11-23T01:01:37.684Z"
+last_updated: "2026-11-23T01:09:12.393Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 14 execution started
-state_head: 963579d0712f304e7fdedd597be0a41d1bac87e7
+state_head: ab5e7cde94e0cb4847ab5624e9e6f73778a3dac1
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 54
-  completed_plans: 49
+  completed_plans: 50
   percent: 83
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 14 (mobile-web-app) — EXECUTING
-Plan: 9 of 14
+Plan: 10 of 14
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 14 execution started
 
@@ -133,6 +133,7 @@ Last activity: 2026-11-22 — Phase 14 execution started
 | Phase 14 P06 | 10min | 3 tasks | 5 files |
 | Phase 14 P08 | 35min | 3 tasks | 13 files |
 | Phase 14 P09 | 20min | 3 tasks | 10 files |
+| Phase 14 P10 | 35min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -298,6 +299,7 @@ Recent decisions affecting current work:
 - [Phase 14]: 14-05: CSP Amendment 4 is exactly manifest-src 'self'; manifest has no start_url or id; icon is full-bleed opaque RGB derived from appicon.png
 - [Phase 14]: 14-06: vmwhois keeps the real tailnet server and changes only the WhoIs answer via $HOME/p14/whois-mode (other/pass/fault, unknown fails closed); this Mac's own node always passes
 - [Phase 14]: 14-08: the unreachable banner always carries Reload on a phone; reconnecting only while connectStuck
+- [Phase 14]: 14-10: KeyBar disarms Ctrl before send so the input transform never double-maps bar bytes; canWrite undefined (info failed) shows the bar
 
 ### Pending Todos
 
