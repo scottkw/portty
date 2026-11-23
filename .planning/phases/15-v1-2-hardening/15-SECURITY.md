@@ -19,7 +19,7 @@ created: "2026-11-23"
 | Boundary | Description | Data Crossing |
 |----------|-------------|---------------|
 | CLI attach ↔ relay hub | `portty attach` resize/claim frames set the shared PTY grid | grid size (cols/rows) |
-| Local user ↔ daemon control socket | Unix socket under the 0700 config dir, PeerUID-checked | full daemon control (session create/kill/handoff) |
+| Local user ↔ daemon control socket | Unix socket (0600) under the 0700 config dir; no peer-UID check on the control socket (only the handoff socket has one) | full daemon control (session create/kill/handoff) |
 | Old daemon ↔ new daemon (takeover) | HELLO/HELLO-OK handshake and fd passing during upgrade | live PTY fds, session state, old daemon pid |
 | macOS notification center ↔ app | Notification click enters Go via the `onNotificationClick` cgo export | notification identifier string |
 | Viewer ↔ peer share server (tailnet) | Sessions-meta fetch over the tailnet; refused vs timeout classification | session list, reachability |
