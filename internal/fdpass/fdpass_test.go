@@ -48,11 +48,18 @@ func pipe(t *testing.T) (*os.File, *os.File) {
 
 func openFds(t *testing.T) int {
 	t.Helper()
-	ents, err := os.ReadDir("/dev/fd")
+	// Readdirnames, not ReadDir: ReadDir stats each entry, and on the macOS 26
+	// CI runner a /dev/fd entry fails fstatat with EBADF. A count needs no stat.
+	d, err := os.Open("/dev/fd")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return len(ents)
+	defer d.Close()
+	names, err := d.Readdirnames(-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(names)
 }
 
 // shortTempDir is under /tmp so unix socket paths fit sun_path.
