@@ -36,6 +36,7 @@ import { CLOSE_REASON_OTHER_ACCOUNT, CLOSE_REASON_SHARE_STOPPED } from '../lib/c
 // Phase 113 UI-03 / UI-04 — iPad single-finger scrollback. xterm.js v6 has
 // no built-in touch handling; this helper attaches the missing handlers.
 import { attachTouchScroll } from '../lib/touchScrollHandler'
+import { attachPinchZoom } from '../lib/pinchZoom'
 import { DEFAULT_TERMINAL_FONT_STACK } from '../lib/terminalFont'
 import { gridForContentBox } from '../lib/initialGrid'
 type PluginSettings = daemon.PluginSettings
@@ -209,6 +210,16 @@ export function TerminalPanel({
   onPreviewRef.current = onPreview
   const inputTransformRef = useRef(inputTransform)
   inputTransformRef.current = inputTransform
+  // 14-11: the pinch effect outlives renders, so it reads the latest size and handler through refs.
+  const fontSizeRef = useRef(fontSize)
+  fontSizeRef.current = fontSize
+  const onFontSizeChangeRef = useRef(onFontSizeChange)
+  onFontSizeChangeRef.current = onFontSizeChange
+  // True from a pinch's first size change until its onEnd: the font effect lays out and reports
+  // but does not claim, so a pinch makes one claim, not one per size (INPT-06).
+  const pinchingRef = useRef(false)
+  // The size the pinch last asked for; the rendered fontSize lags it between renders.
+  const pinchSizeRef = useRef(0)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   // POL-04: deferred theme ref — stashes the theme when the panel is hidden (isActive=false)
@@ -838,8 +849,29 @@ export function TerminalPanel({
     const container = containerRef.current
     const term = termRef.current
     if (!container || !term) return
-    const cleanup = attachTouchScroll(container, term)
-    return cleanup
+    const cleanupScroll = attachTouchScroll(container, term)
+    // 14-11 MOB-01: two fingers change the font (one finger is attachTouchScroll's). setSize
+    // converts to the delta onFontSizeChange takes; onEnd makes the pinch's single claim.
+    const cleanupPinch = attachPinchZoom(container, {
+      getSize: () => (pinchingRef.current ? pinchSizeRef.current : fontSizeRef.current),
+      setSize: (px) => {
+        const from = pinchingRef.current ? pinchSizeRef.current : fontSizeRef.current
+        pinchingRef.current = true
+        pinchSizeRef.current = px
+        onFontSizeChangeRef.current(px - from)
+      },
+      onEnd: () => {
+        pinchingRef.current = false
+        claimFit()
+      },
+    })
+    return () => {
+      cleanupPinch()
+      cleanupScroll()
+      pinchingRef.current = false
+    }
+  // claimFit is a stable useCallback that reads only refs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
   // Phase 93 hot-swap useEffect (WGL-01 + CLIP-01 + WGL-02 + WGL-03).
@@ -1213,7 +1245,7 @@ export function TerminalPanel({
     term.options.fontFamily = fontFamily
     term.options.fontSize = fontSize
     relayout()
-    if (wasShown) claimFit()
+    if (wasShown && !pinchingRef.current) claimFit() // a pinch claims once, at its end
   // relayout and claimFit are stable useCallbacks that read only refs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fontFamily, fontSize, isActive])

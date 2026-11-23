@@ -33,7 +33,7 @@ describe('Phase 113 UI-03 / UI-04: TerminalPanel touch-scroll wiring', () => {
     expect(callIdx).toBeGreaterThan(-1)
     // Grab the chunk after the call and verify the next useEffect-style
     // closer is `}, [sessionId])`. We allow whitespace/newlines.
-    const tail = raw.slice(callIdx, callIdx + 600)
+    const tail = raw.slice(callIdx, callIdx + 1500) // 14-11: the effect also attaches the pinch handler
     expect(tail).toMatch(/\}\s*,\s*\[sessionId\]\s*\)/)
   })
 })
