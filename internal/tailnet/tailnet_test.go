@@ -793,8 +793,8 @@ func TestMetaStatus_TriState(t *testing.T) {
 		url, client := srv.URL, srv.Client()
 		srv.Close()
 		_, status, err := FetchPeerSessionsMetaWithClient(ctx, url, client)
-		if status != MetaUnreachable || !errors.Is(err, syscall.ECONNREFUSED) {
-			t.Fatalf("status = %v err = %v, want unreachable with ECONNREFUSED", status, err)
+		if status != MetaRefused || !errors.Is(err, syscall.ECONNREFUSED) {
+			t.Fatalf("status = %v err = %v, want MetaRefused with ECONNREFUSED", status, err)
 		}
 	})
 }
@@ -857,5 +857,33 @@ func TestFetchAllPeerSessionsMeta_DropsForbiddenPeers(t *testing.T) {
 	}
 	if groups[0].Reachable || groups[0].Sessions == nil || !groups[1].Reachable || len(groups[1].Sessions) != 1 {
 		t.Fatalf("groups = %+v", groups)
+	}
+}
+
+func TestFetchAllPeerSessionsMeta_RefusedIsReachableEmpty(t *testing.T) {
+	fetch := func(_ context.Context, p Peer) ([]ShareableSessionMeta, MetaStatus) {
+		switch p.Hostname {
+		case "same":
+			return []ShareableSessionMeta{{ID: "s1", Name: "build"}}, MetaOK
+		case "refused":
+			return nil, MetaRefused
+		case "other-account":
+			return nil, MetaForbidden
+		default:
+			return nil, MetaUnreachable
+		}
+	}
+	groups := fetchAllPeerSessionsMeta(context.Background(), []Peer{{Hostname: "same"}, {Hostname: "other-account"}, {Hostname: "asleep"}, {Hostname: "refused"}}, fetch)
+	if len(groups) != 3 || groups[0].Hostname != "asleep" || groups[1].Hostname != "refused" || groups[2].Hostname != "same" {
+		t.Fatalf("groups = %+v, want asleep, refused, same", groups)
+	}
+	if groups[0].Reachable {
+		t.Fatalf("asleep must stay unreachable: %+v", groups[0])
+	}
+	if !groups[1].Reachable || groups[1].Sessions == nil || len(groups[1].Sessions) != 0 {
+		t.Fatalf("refused must be reachable with a non-nil empty list: %+v", groups[1])
+	}
+	if !groups[2].Reachable || len(groups[2].Sessions) != 1 {
+		t.Fatalf("same = %+v", groups[2])
 	}
 }

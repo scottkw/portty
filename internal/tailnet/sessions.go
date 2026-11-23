@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -52,6 +53,11 @@ const (
 	// MetaForbidden: 403 carrying X-Portty: 1, i.e. the peer runs Portty but is
 	// signed in to a different Tailscale account. Callers hide these peers.
 	MetaForbidden
+	// MetaRefused: the peer answered the connection with a reset, so nothing
+	// listens on its share port. A Portty host stops its share server when its
+	// last share ends, so the Mac is reachable with nothing shared. A timeout or
+	// no route is not this.
+	MetaRefused
 )
 
 // Errors returned by FetchPeerCap.
@@ -63,7 +69,8 @@ var (
 // doFetchSessionsMeta performs the HTTP GET and JSON decode for /api/sessions/meta.
 // If host is non-empty, it is set as the request Host header (used for IP-fallback
 // TLS validation). On MetaOK the slice is non-nil (possibly empty). err carries the
-// transport or decode error when the status is MetaUnreachable.
+// transport or decode error for MetaUnreachable and the transport error for
+// MetaRefused (the daemon's peer connect route reads ECONNREFUSED from it).
 func doFetchSessionsMeta(ctx context.Context, url string, client *http.Client, host string) ([]ShareableSessionMeta, MetaStatus, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -74,6 +81,9 @@ func doFetchSessionsMeta(ctx context.Context, url string, client *http.Client, h
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			return nil, MetaRefused, err
+		}
 		return nil, MetaUnreachable, err
 	}
 	defer resp.Body.Close()
@@ -112,6 +122,8 @@ func FetchPeerSessionsMeta(ctx context.Context, peer Peer) ([]ShareableSessionMe
 	}
 	url := fmt.Sprintf("https://%s:%d/api/sessions/meta", fqdn, DefaultProbePort)
 	sessions, status, _ := doFetchSessionsMeta(ctx, url, client, "")
+	// Only MetaUnreachable falls back to the IP: a refusal by the DNS name is the
+	// host's own answer (nothing shared), so retrying by IP would not change it.
 	if status == MetaUnreachable && len(peer.TailscaleIPs) > 0 {
 		// The TailscaleIP may include a port (e.g. in test environments); parse it.
 		ipHost, ipPort, err := net.SplitHostPort(peer.TailscaleIPs[0])
@@ -148,8 +160,9 @@ func FetchPeerSessionsMeta(ctx context.Context, peer Peer) ([]ShareableSessionMe
 }
 
 // FetchPeerSessionsMetaWithClient fetches baseURL + /api/sessions/meta with the
-// given client. The daemon's peer connect route and tests use it. err is set only
-// when the status is MetaUnreachable, so callers can tell a refused port apart.
+// given client. The daemon's peer connect route and tests use it. err is set for
+// MetaUnreachable and MetaRefused; the daemon's peer connect route reads
+// ECONNREFUSED from it to tell a refused port apart.
 func FetchPeerSessionsMetaWithClient(ctx context.Context, baseURL string, client *http.Client) ([]ShareableSessionMeta, MetaStatus, error) {
 	return doFetchSessionsMeta(ctx, baseURL+"/api/sessions/meta", client, "")
 }
@@ -193,7 +206,8 @@ func FetchPeerCap(ctx context.Context, baseURL, sessionID string, client *http.C
 // FetchAllPeerSessionsMeta fetches shareable-session metadata from all given peers
 // concurrently (max 5 goroutines). Unreachable peers stay in the result
 // (Reachable=false, Sessions=[]) and so do reachable peers with zero sessions
-// (RB-01/RB-04). Peers that answer MetaForbidden (different Tailscale account) are
+// (RB-01/RB-04). A peer that refuses the connection (MetaRefused) is reachable with
+// zero sessions: its share server is stopped because nothing is shared. Peers that answer MetaForbidden (different Tailscale account) are
 // dropped entirely. Results are sorted by Hostname for determinism.
 func FetchAllPeerSessionsMeta(ctx context.Context, peers []Peer) []PeerSessionMetaGroup {
 	return fetchAllPeerSessionsMeta(ctx, peers, FetchPeerSessionsMeta)
@@ -219,7 +233,7 @@ func fetchAllPeerSessionsMeta(ctx context.Context, peers []Peer, fetch func(cont
 			groups = append(groups, PeerSessionMetaGroup{
 				Hostname:  p.Hostname,
 				DNSName:   strings.TrimSuffix(p.DNSName, "."),
-				Reachable: status == MetaOK,
+				Reachable: status == MetaOK || status == MetaRefused,
 				Sessions:  sessions,
 			})
 			mu.Unlock()
