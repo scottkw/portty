@@ -21,6 +21,20 @@
 //     hub has written to the PTY input stub since the last reset; POST
 //     /__test__/input/reset empties it (204). The fixture drains the stub, so
 //     key-bar e2e tests read what a page sent to the shell.
+//   - GET /__test__/grid returns {"cols":N,"rows":N,"resizes":N}: the last
+//     grid the hub asked the PTY for, and how many times. GET
+//     /__test__/info-hits returns {"count":N}: info requests answered for the
+//     session (past the capability check).
+//   - POST /__test__/share-off ends the share the way the daemon does (grants
+//     cleared, session disabled, web viewers closed "share stopped"; 204).
+//     POST /__test__/share-on re-enables it with a new grant and returns
+//     {"cap":"<token>"} (read,write). POST /__test__/end closes the PTY output
+//     so the hub ends and live sockets close "session ended" (204).
+//     POST /__test__/preview-pdf sends a one-page PDF preview to every viewer
+//     ({"viewers":N}; 409 while one is streaming).
+//   - PLAYWRIGHT_FIXTURE_CA_PEM=<path> writes the fixture's CA certificate
+//     there (0644), for the iOS Simulator's trust store. The key never leaves
+//     memory.
 //
 // Build-tagged 'playwrightfixture' so it never compiles into release builds
 // (T-93-iPad-UAT-EVASION mitigation: the /__test__ surface is fixture-only).
@@ -35,6 +49,7 @@
 //	BASE_URL=https://127.0.0.1:PORT
 //	CAP=<token>
 //	ADMIN_URL=http://127.0.0.1:ADMIN_PORT
+//	CA_PEM=<path>      (only when PLAYWRIGHT_FIXTURE_CA_PEM is set)
 //	READY=1
 //
 // The Playwright config's webServer.url field is used to wait for readiness.
@@ -52,6 +67,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -94,7 +110,7 @@ func main() {
 	log.SetPrefix("[playwright-fixture] ")
 
 	// 1. Self-signed TLS for 127.0.0.1.
-	tlsCfg, err := selfSignedTLS()
+	tlsCfg, caPEM, err := selfSignedTLS()
 	if err != nil {
 		log.Fatalf("selfSignedTLS: %v", err)
 	}
@@ -124,7 +140,18 @@ func main() {
 			}
 		}
 	}()
-	manager.Create(sessionID, ptyOutR, inputCaptureW, nil)
+	// The hub's resize hook: the last grid it asked the PTY for, and how often.
+	var (
+		gridMu                          sync.Mutex
+		gridCols, gridRows, gridResizes int
+	)
+	hub := manager.Create(sessionID, ptyOutR, inputCaptureW, func(cols, rows int) error {
+		gridMu.Lock()
+		gridCols, gridRows = cols, rows
+		gridResizes++
+		gridMu.Unlock()
+		return nil
+	})
 
 	// 3. WebServer in tailscale-mode with TLSConfig override (mirrors
 	//    testServerWithHub but without *testing.T).
@@ -153,8 +180,10 @@ func main() {
 	// stub case.
 	ws.SetStaticAppFS(staticAppFixture())
 	ws.EnableSession(sessionID)
+	var infoHits atomic.Int64
 	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
 		if id == sessionID {
+			infoHits.Add(1) // runs only after the capability check passes
 			return sessionName, "running", sessionHost, true
 		}
 		return "", "", "", false
@@ -262,6 +291,90 @@ func main() {
 		inputMu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 	})
+	adminMux.HandleFunc("/__test__/grid", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		gridMu.Lock()
+		g := map[string]int{"cols": gridCols, "rows": gridRows, "resizes": gridResizes}
+		gridMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(g)
+	})
+	adminMux.HandleFunc("/__test__/info-hits", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int64{"count": infoHits.Load()})
+	})
+	// share-off: the daemon's order (grants, session, then the viewers).
+	adminMux.HandleFunc("/__test__/share-off", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		ws.ClearGrants(sessionID)
+		ws.DisableSession(sessionID)
+		hub.RevokeWebViewers(relay.CloseReasonShareStopped)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	var shareOns atomic.Int64
+	adminMux.HandleFunc("/__test__/share-on", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		claims := capability.Claims{
+			SID:     sessionID,
+			Perms:   "read,write",
+			IAT:     time.Now().Unix(),
+			GrantID: fmt.Sprintf("grant-playwright-fixture-%d", shareOns.Add(1)),
+			V:       1,
+		}
+		tok, err := capability.Sign(claims, fixedTestKey)
+		if err != nil {
+			http.Error(w, "sign: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		ws.EnableSession(sessionID)
+		ws.AddGrant(sessionID, claims.GrantID)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"cap": tok})
+	})
+	// end: EOF on the PTY output ends the hub; the write pump closes every
+	// live socket with the "session ended" reason on hub.Done.
+	adminMux.HandleFunc("/__test__/end", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		_ = ptyOutW.Close()
+		w.WriteHeader(http.StatusNoContent)
+	})
+	adminMux.HandleFunc("/__test__/preview-pdf", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		send, err := hub.SendPreview(relay.Preview{
+			Name: "fixture.pdf",
+			MIME: "application/pdf",
+			Key:  "0123456789abcdef0123456789abcdef",
+			Data: []byte(fixturePDF),
+		})
+		switch {
+		case errors.Is(err, relay.ErrPreviewBusy):
+			http.Error(w, err.Error(), http.StatusConflict)
+		case err != nil:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]int{"viewers": send.Viewers})
+		}
+	})
 	adminMux.HandleFunc("/__test__/ready", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -283,6 +396,12 @@ func main() {
 	fmt.Printf("BASE_URL=%s\n", baseURL)
 	fmt.Printf("CAP=%s\n", token)
 	fmt.Printf("ADMIN_URL=%s\n", adminURL)
+	if p := os.Getenv("PLAYWRIGHT_FIXTURE_CA_PEM"); p != "" {
+		if err := os.WriteFile(p, caPEM, 0o644); err != nil {
+			log.Fatalf("write CA PEM: %v", err)
+		}
+		fmt.Printf("CA_PEM=%s\n", p)
+	}
 	fmt.Println("READY=1")
 
 	// 9. Wait for SIGTERM/SIGINT, then clean up.
@@ -322,10 +441,10 @@ func mustMarshal(v any) []byte {
 
 // selfSignedTLS generates an in-memory self-signed CA + leaf for 127.0.0.1.
 // Mirrors the helper used by `testServerWithHub` in the non-test package.
-func selfSignedTLS() (*tls.Config, error) {
+func selfSignedTLS() (*tls.Config, []byte, error) {
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	caTmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
@@ -338,15 +457,16 @@ func selfSignedTLS() (*tls.Config, error) {
 	}
 	caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
 	caCert, err := x509.ParseCertificate(caDER)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	leafTmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(2),
@@ -359,20 +479,23 @@ func selfSignedTLS() (*tls.Config, error) {
 	}
 	leafDER, err := x509.CreateCertificate(rand.Reader, leafTmpl, caCert, &leafKey.PublicKey, caKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	leafCertPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER})
 	leafKeyDER, err := x509.MarshalECPrivateKey(leafKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	leafKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: leafKeyDER})
 	tlsCert, err := tls.X509KeyPair(leafCertPEM, leafKeyPEM)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
 		MinVersion:   tls.VersionTLS12,
-	}, nil
+	}, caPEM, nil
 }
+
+// fixturePDF is a one-page blank PDF, 329 bytes, with a correct xref table.
+const fixturePDF = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>\nendobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n186\n%%EOF\n"
