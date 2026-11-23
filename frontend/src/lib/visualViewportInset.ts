@@ -23,13 +23,12 @@ export function useVisualViewportInset(enabled: boolean): { keyboardUp: boolean 
     const root = document.querySelector<HTMLElement>('.app')
     if (!root) return
 
-    let maxInner = window.innerHeight
     let frame = 0
+    let healFrame = 0
     let healTimer: ReturnType<typeof setTimeout> | null = null
 
     const update = (): void => {
       frame = 0
-      maxInner = Math.max(maxInner, window.innerHeight)
       root.style.setProperty('--vv-height', `${vv.height}px`)
       root.style.setProperty('--vv-top', `${vv.offsetTop}px`)
       setKeyboardUp(window.innerHeight - vv.height > KEYBOARD_MIN_PX)
@@ -41,10 +40,12 @@ export function useVisualViewportInset(enabled: boolean): { keyboardUp: boolean 
     const heal = (): void => {
       healTimer = null
       if (document.activeElement?.matches('.xterm-helper-textarea')) return
-      if (maxInner - vv.height <= KEYBOARD_MIN_PX) return
+      // The layout viewport does not shrink for the keyboard, so the live innerHeight is the baseline
+      // (a remembered maximum would read a landscape rotation as a stuck keyboard).
+      if (window.innerHeight - vv.height <= KEYBOARD_MIN_PX) return
       root.style.display = 'none'
       void root.offsetHeight // commit the hidden state before restoring it
-      requestAnimationFrame(() => { root.style.display = ''; update() })
+      healFrame = requestAnimationFrame(() => { healFrame = 0; root.style.display = ''; update() })
     }
     const onFocusOut = (e: FocusEvent): void => {
       if (!(e.target as Element | null)?.matches?.('.xterm-helper-textarea')) return
@@ -62,6 +63,7 @@ export function useVisualViewportInset(enabled: boolean): { keyboardUp: boolean 
       vv.removeEventListener('scroll', schedule)
       document.removeEventListener('focusout', onFocusOut)
       if (frame) cancelAnimationFrame(frame)
+      if (healFrame) { cancelAnimationFrame(healFrame); root.style.display = '' } // never leave the app hidden
       if (healTimer !== null) clearTimeout(healTimer)
       root.style.removeProperty('--vv-height')
       root.style.removeProperty('--vv-top')

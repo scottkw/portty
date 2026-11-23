@@ -155,6 +155,34 @@ describe('useVisualViewportInset', () => {
       expect(displays).toEqual(['none', ''])
     })
 
+    it('after a portrait to landscape rotation, a blur neither hides nor restores the root', () => {
+      setInner(850); vv.height = 850
+      mount(true)
+      flushFrames()
+      setInner(390); vv.height = 390 // landscape, keyboard closed: the live innerHeight is the baseline
+      act(() => { vv.dispatchEvent(new Event('resize')) })
+      flushFrames()
+      blur()
+      act(() => { vi.advanceTimersByTime(500) })
+      flushFrames()
+      expect(displays).toEqual([])
+    })
+
+    it('cleanup cancels a pending heal frame, so it cannot rewrite the root after unmount', () => {
+      const cancelled: number[] = []
+      vi.stubGlobal('cancelAnimationFrame', (id: number) => { cancelled.push(id) })
+      mount(true)
+      flushFrames()
+      vv.height = 500
+      blur()
+      act(() => { vi.advanceTimersByTime(140) }) // heal ran: its restore frame is pending
+      expect(displays).toEqual(['none'])
+      act(() => root.render(null))
+      expect(cancelled).toHaveLength(1)
+      expect(displays).toEqual(['none', '']) // the root is not left hidden
+      expect(appEl.style.getPropertyValue('--vv-height')).toBe('')
+    })
+
     it('does nothing with no shortfall', () => {
       mount(true)
       flushFrames()
