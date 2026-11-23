@@ -43,6 +43,8 @@
 | Milestone | Phases | Plans | Days | Deferred human checks |
 |-----------|--------|-------|------|-----------------------|
 | v1.0 | 6 | 61 | 4 | ~15 (two-Mac + first release) |
+| v1.1 | 2 | 11 | 1 | 0 new |
+| v1.2 | 8 | 67 | 4 | 2 (real-Mac preview look, M-93 notarized delivery) |
 
 ## Milestone: v1.1 — Hardening
 
@@ -69,3 +71,30 @@
 - Anything touching `main()`'s argument routing needs a real launch check; unit tests don't run main.
 - "Ready" must mean the right version, not just answering.
 - An upgrade path is part of reliability: test it with live sessions.
+
+## Milestone: v1.2 — Previews, Remote URLs, Mobile
+
+**Shipped:** 2026-11-23 (released as v1.2.0)
+**Phases:** 8 (9-16) | **Plans:** 67
+
+### What Was Built
+- Upgrades keep sessions: fd passing and a two-phase handoff to the new daemon; viewers resume with a delta; a failed handoff falls back to the old daemon.
+- Preview tabs (`portty open`, Cmd-click printed paths) over the session's own stream, for app and browser viewers.
+- Remote `localhost` links through a consented, token-gated tailnet proxy.
+- The iPhone share view, and browser links limited to the host's Tailscale account.
+
+### What Worked
+- Spikes before building on uncertain platform behaviour (PDF in the Wails web view and Safari, Home Screen launch on the iOS Simulator) settled design questions before plans depended on them.
+- Security reviews recorded per phase, with CSP changes amended explicitly, kept the "token-gated, tailnet-only" constraint intact across four new surfaces.
+- Two Tart VMs on the real tailnet caught handoff and proxy issues unit tests could not.
+
+### What Was Inefficient
+- Two hardening/cleanup phases (15, 16) were needed after the feature phases; several items were review findings that a tighter first pass would have caught.
+- Verification goes "stale" on any TESTING.md edit, which forced a re-verification sweep and still showed stale at close.
+- Deferred-items files written as prose with tables confuse the audit scanner (table rows read as open items).
+
+### Key Lessons
+- Destructive CLI commands need one shared strict resolver; the unshare gap (W-2) existed because only kill/rename got it.
+- A dependency age rule (14 days) and a known-not-affected advisory are a reason to patch after release, not to hold one.
+- Write deferred entries in the scanner's heading-plus-status shape from the start.
+
