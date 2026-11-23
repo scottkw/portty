@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -165,6 +166,96 @@ func TestCmdRename_Success(t *testing.T) {
 	}
 	if sessions[0].Name != "newname" {
 		t.Errorf("expected name %q, got %q", "newname", sessions[0].Name)
+	}
+}
+
+// mustCreate creates a session and returns its ID.
+func mustCreate(t *testing.T, client *daemon.DaemonClient, name string) string {
+	t.Helper()
+	id, err := client.CreateSession(name, "/tmp", 0, 0)
+	if err != nil {
+		t.Fatalf("CreateSession(%q): %v", name, err)
+	}
+	return id
+}
+
+// sessionNames returns the names of the daemon's sessions, sorted.
+func sessionNames(t *testing.T, client *daemon.DaemonClient) []string {
+	t.Helper()
+	sessions, err := client.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	names := make([]string, len(sessions))
+	for i, s := range sessions {
+		names[i] = s.Name
+	}
+	slices.Sort(names)
+	return names
+}
+
+// TestCmdKill_ByName pins kill resolving its argument like share/attach: exact
+// name, then ID prefix; an ambiguous or unknown name kills nothing
+// (todo 2026-11-23-kill-by-name-fails).
+func TestCmdKill_ByName(t *testing.T) {
+	client := testSetup(t)
+	mustCreate(t, client, "alpha")
+	betaID := mustCreate(t, client, "beta")
+
+	if err := cmdKill(client, []string{"alpha"}); err != nil {
+		t.Fatalf("cmdKill by name: %v", err)
+	}
+	if got := sessionNames(t, client); !slices.Equal(got, []string{"beta"}) {
+		t.Fatalf("after killing alpha, sessions = %q, want [beta]", got)
+	}
+
+	mustCreate(t, client, "dup")
+	mustCreate(t, client, "dup")
+	err := cmdKill(client, []string{"dup"})
+	if err == nil || !strings.HasPrefix(err.Error(), `portty: more than one session is named "dup".`) {
+		t.Fatalf("cmdKill ambiguous name error = %v", err)
+	}
+	if got := sessionNames(t, client); !slices.Equal(got, []string{"beta", "dup", "dup"}) {
+		t.Fatalf("ambiguous kill changed sessions: %q", got)
+	}
+
+	err = cmdKill(client, []string{"nope"})
+	wantNo := `portty: no session named "nope". Run 'portty list' to see your sessions.`
+	if err == nil || err.Error() != wantNo {
+		t.Fatalf("cmdKill unknown name error = %v, want %q", err, wantNo)
+	}
+	if got := sessionNames(t, client); len(got) != 3 {
+		t.Fatalf("unknown-name kill changed sessions: %q", got)
+	}
+
+	if err := cmdKill(client, []string{betaID[:8]}); err != nil {
+		t.Fatalf("cmdKill by ID prefix: %v", err)
+	}
+	if got := sessionNames(t, client); !slices.Equal(got, []string{"dup", "dup"}) {
+		t.Fatalf("after killing beta by prefix, sessions = %q, want [dup dup]", got)
+	}
+}
+
+// TestCmdRename_ByName pins rename resolving its first argument the same way,
+// including the ambiguity refusal.
+func TestCmdRename_ByName(t *testing.T) {
+	client := testSetup(t)
+	mustCreate(t, client, "oldname")
+	if err := cmdRename(client, []string{"oldname", "newname"}); err != nil {
+		t.Fatalf("cmdRename by name: %v", err)
+	}
+	if got := sessionNames(t, client); !slices.Equal(got, []string{"newname"}) {
+		t.Fatalf("after rename, sessions = %q, want [newname]", got)
+	}
+
+	mustCreate(t, client, "dup")
+	mustCreate(t, client, "dup")
+	err := cmdRename(client, []string{"dup", "x"})
+	if err == nil || !strings.HasPrefix(err.Error(), `portty: more than one session is named "dup".`) {
+		t.Fatalf("cmdRename ambiguous name error = %v", err)
+	}
+	if got := sessionNames(t, client); !slices.Equal(got, []string{"dup", "dup", "newname"}) {
+		t.Fatalf("ambiguous rename changed sessions: %q", got)
 	}
 }
 

@@ -26,8 +26,8 @@ Run with no arguments to launch the desktop GUI.
 Commands:
   new [<path>]                                Create a new login-shell session (default: home directory)
   list [--json] [--local]                     List local and remote sessions
-  kill <id>                                   Kill a session
-  rename <id> <name>                          Rename a session
+  kill <session>                              Kill a session, given by name or ID
+  rename <session> <name>                     Rename a session, given by name or ID
   attach <session>                            Attach to a session on this Mac
   attach <host>:<session>                     Attach to a session shared from another Mac (e.g., office-air:build)
   share <session>                             Share a session with your tailnet
@@ -310,23 +310,35 @@ func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	return nil
 }
 
-// cmdKill terminates a session silently.
+// cmdKill terminates a session silently. The argument resolves like share and
+// attach (exact name, exact ID, unique ID prefix); an ambiguous or unknown name
+// kills nothing.
 func cmdKill(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: portty kill <session-id>")
+		return fmt.Errorf("usage: portty kill <session>")
 	}
-	if err := client.KillSession(args[0]); err != nil {
+	s, err := lookupSession(client, args[0])
+	if err != nil {
+		return err
+	}
+	if err := client.KillSession(s.ID); err != nil {
 		return fmt.Errorf("portty kill: %w", err)
 	}
 	return nil
 }
 
-// cmdRename renames a session silently.
+// cmdRename renames a session silently. The first argument resolves like
+// share and attach (exact name, exact ID, unique ID prefix); an ambiguous or
+// unknown name renames nothing.
 func cmdRename(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: portty rename <session-id> <name>")
+		return fmt.Errorf("usage: portty rename <session> <name>")
 	}
-	if err := client.RenameSession(args[0], args[1]); err != nil {
+	s, err := lookupSession(client, args[0])
+	if err != nil {
+		return err
+	}
+	if err := client.RenameSession(s.ID, args[1]); err != nil {
 		return fmt.Errorf("portty rename: %w", err)
 	}
 	return nil
