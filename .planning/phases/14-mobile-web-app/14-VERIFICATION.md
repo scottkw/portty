@@ -1,8 +1,8 @@
 ---
 phase: 14-mobile-web-app
-verified: 2026-11-22T22:15:00Z
+verified: 2026-11-23T17:25:00Z
 re_verification: true
-previous_verified: 2026-11-22T21:45:00Z
+previous_verified: 2026-11-22T22:15:00Z
 status: passed
 score: 5/5 must-haves verified
 covered_files:
@@ -124,7 +124,7 @@ covered_files:
   - "web/embed.go"
   - "web/service-retry.html"
   - "web/user-refused.html"
-covered_digest: "v4:sha256:be2069b37299bd68e1f04cef4ec72e05d107596a16827e27f704058423d4d4b7"
+covered_digest: "v4:sha256:a6f3599d7ff6773b90b64f7fc32a34c1f6c610f5d2628019c6876842a6d28912"
 behavior_unverified: 0
 overrides_applied: 0
 accepted_limits: # Recorded in the user's own words in 14-VM-CHECKS.md "User decisions"; not gaps
@@ -132,9 +132,9 @@ accepted_limits: # Recorded in the user's own words in 14-VM-CHECKS.md "User dec
   - "UI-A: another account shown with the vmwhois build on the VMs; tagged and shared-in nodes pinned by tests"
   - "UI-B: WhoIs kept uncached (82.8 ms per cold load against the 300 ms rule)"
   - "UI-C: simulator rows accepted as evidence, backed by the real-phone checks"
-known_flakes:
-  - "G-1 internal/pty TestKillClean_NoOrphans (accepted in Phases 12 and 13)"
-  - "pathLinks.linkifier.test.ts reconnect flake (todo: .planning/todos/pending/2026-11-22-linkifier-reconnect-flake.md); passed in this run"
+known_flakes: # both were fixed in Phase 15 (15-02 event-based waits, 15-04 linkifier on vi.waitFor); none exercised by this run
+  - "G-1 internal/pty TestKillClean_NoOrphans (fixed in 15-02)"
+  - "pathLinks.linkifier.test.ts reconnect flake (fixed in 15-04)"
 post_run_fixes: # 14-REVIEW-FIX.md, committed after every VM, simulator and real-phone run
   - id: WR-01
     new_device_evidence_needed: false
@@ -158,14 +158,36 @@ post_verification_changes: # UI-REVIEW fixes committed after the first verificat
   - id: UI-REVIEW aria-hidden on the | glyph (924ad01e)
     new_device_evidence_needed: false
     reason: "Accessibility-only: the button keeps aria-label 'Vertical bar'; the pipe still sends 7c (iPhone emulation test passes)."
+post_verification_phase15_changes: # Phase 15 (v1.2 Hardening) edits to covered files; re-judged in this run
+  - id: "15-05 ended peer tab keeps Session ended (aff658fc, 7ca43451)"
+    files: "App.tsx, TabBar.tsx, TerminalPanel.tsx, WebShareSessionView.tsx, closeReasons.ts"
+    new_device_evidence_needed: false
+    reason: "Desktop peer-tab reconnect verdict only. peerConnectVerdict is called from App.reconnectPeerTab, which only peer tabs use (beforeReconnect={peerHost ? ... : undefined} for the GUI; the browser share path passes its own probeShare). App passes onSessionEnded only when peerHost is set, so it is undefined in web mode. shareInfoVerdict, CLOSE_REASON_OTHER_ACCOUNT, the pageshow wake and the stuck signal are untouched. M-154 on the real tailnet covered the changed behaviour."
+  - id: "15-02 paste-backlog test uses a ping-counting dial helper (capability_helpers_test.go)"
+    files: "internal/webserver/capability_helpers_test.go, input_queue_test.go"
+    new_device_evidence_needed: false
+    reason: "Test helper only: dialWebServerWS keeps its exact behaviour (delegates with a nil hook). The gate tests that use it still pass."
+  - id: "15-07 / 15-04 / 15-03 / 15-08 / 15-06 / 15-01 non-covered production edits"
+    files: "internal/tailnet/sessions.go, internal/relay/history.go and hub.go, internal/daemon/ipc.go and handoff.go, fdpass, attach, statusbar, tray"
+    new_device_evidence_needed: false
+    reason: "None is on the share server's gate, CSP, origin check, key bar, reconnect client or manifest path. relay history.go/hub.go only keep absolute row numbering monotonic across ED 3 (path click); the relay package targeted tests pass."
 ---
 
 # Phase 14: Mobile Web App Verification Report
 
 **Phase Goal:** The user can drive a shared session from an iPhone. The share view fits the phone, adds the keys iOS lacks, installs to the Home Screen and picks up again after the phone sleeps or changes network. The host Mac serves all of it over the tailnet, and portty.app/app is only a static launcher page.
-**Verified:** 2026-11-22 (re-verified 22:15 UTC; first verified 21:45 UTC)
+**Verified:** 2026-11-23 17:25 UTC (re-verified; previous 2026-11-22 22:15 UTC)
 **Status:** passed
-**Re-verification:** Yes (2026-11-22, before v1.2 close). The first report (status passed) went stale because later commits changed covered files. The only non-planning changes since `cdaff2ce` are the three UI-REVIEW fixes (`dee38c70`, `85c683d7`, `924ad01e`) in `KeyBar.tsx`, `style.css`, `manifest.json` and their tests. No Go file, CSP, gate, relay or reconnect code changed, so every row below still holds against the current code; this run re-ran the targeted tests listed under Behavioral Spot-Checks. Intended behaviour Phase 14 itself changed (the discovery probe and every session route gated by `requireSameUser`; the lone-Esc end-of-frame flush with P9 changed on purpose) is the behaviour judged here. The terminal selection fix `7a37bfb4` predates the first verification and touches no Phase 14 must-have.
+**Re-verification:** Yes (2026-11-23, after Phase 15 "v1.2 Hardening"). The report was stale only because Phase 15 edited nine files it covers. Nothing else changed the phase's behaviour. Each of the nine was diffed against `b0cb288f` (the previous verification commit) and judged against the three truths the caller named (mobile share view, reconnect after sleep, same-user gate):
+
+- `frontend/src/App.tsx`, `TabBar.tsx`, `TerminalPanel.tsx`, `WebShareSessionView.tsx`, `lib/closeReasons.ts` (15-05, 15-06): a new `onSessionEnded` prop and a `sessionEnded` tab flag feed `peerConnectVerdict(errorCode, sawEnded)`. This is the desktop **peer-tab** reconnect verdict only: `reconnectPeerTab` is built for peer tabs, and `onSessionEnded` is passed only when `peerHost` is set (`App.tsx:1362`), so it is `undefined` in web (browser/iPhone) mode, where `beforeReconnect` is `probeShare`. `shareInfoVerdict` (`closeReasons.ts:45`, used at `WebShareSessionView.tsx:177`), `CLOSE_REASON_OTHER_ACCOUNT` (`App.tsx:664`), the `pageshow` wake (`relayClient.ts:310`), `onConnectStuck`, the key bar seam (`TerminalPanel.tsx:598`) and `attachPinchZoom` (`:861`) are untouched. The one extra App.tsx change is the `update:show` listener (15-06), unrelated to the share view.
+- `internal/webserver/capability_helpers_test.go` (15-02): `dialWebServerWS` now delegates to `dialWebServerWSPing` with a nil hook, so its behaviour is identical; `input_queue_test.go` (not covered) counts pings. Test-only.
+- `TESTING.md`: a Phase 15 note and Category BF (M-152..M-155) were added above Phase 14's note. Phase 14's note and Category BE (M-145..M-151) are unchanged, and `check-traceability-paths.sh` still passes in the orchestrator's evidence.
+- `closeReasons.test.ts`, `TerminalPanel.guestClose.test.tsx`: new cases for the ended verdict; the Phase 14 cases (`other-account`, client-only reason, share-stopped) still pass in this run.
+
+Not covered but touched by Phase 15 and checked for reach into this phase: `internal/tailnet/sessions.go` (a refused share port reads as reachable: the sidebar/peer list, not the share server), `internal/relay/history.go`/`hub.go` (absolute row numbering across ED 3, for path click), `internal/daemon/ipc.go`/`handoff.go`, `internal/fdpass`, `internal/attach`, `internal/statusbar`, `tray`. `git diff b0cb288f HEAD` shows no change to `internal/webserver/server.go`, `whois.go`, `csp_mw.go`, `internal/relay/oscabsorb.go`, `relayClient.ts`, `KeyBar.tsx`, `pinchZoom.ts`, `visualViewportInset.ts`, `manifest.json`, `index.html` or `style.css`. So no gate, CSP, origin, key-bar, reconnect-client or Home Screen code moved.
+
+Human-verification history (PHONE-1, PHONE-2, the VM rows P-00..P-07, simulator rows S-00..S-08 and the user's accepted limits) stays as verified: Phase 15 did not change the behaviour those runs checked, and M-154 (Phase 15, real tailnet) separately re-ran the peer-tab path that did change.
 
 ## Goal Achievement
 
@@ -174,9 +196,9 @@ post_verification_changes: # UI-REVIEW fixes committed after the first verificat
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
 | SC5 | Built first: a browser share link opens only for devices on the host's own Tailscale account; another user's WhoIs is refused with "This link only works on your own devices" before any terminal data; page, info and WebSocket routes all gated; fails closed when WhoIs errors (MOB-05) | VERIFIED | `internal/webserver/server.go`: every session-bearing route is wrapped: `GET /api/sessions` :596, `/info` :602, plugin-config :608 and :613 with `requireSameUser(requireCapability(...))`; `/sessions/{id}` :623 and `/app/` :691 with `cspHeaders(requireSameUserPage(...))`; `/sessions/{id}/ws` :634 with `requireAllowedOrigin(requireSameUser(requireCapability(...)))`. Only `/`, `/dashboard` and `/assets/` stay open (no session data), as decided. `whois.go:87-109` `sameUserStatus`: 3 s timeout, status error or nil Self gives 503, WhoIs error gives 503, not-found or another user gives 403. `requireSameUserPage` serves the embedded `web/user-refused.html` (403 + marker) or `web/service-retry.html` (503). Tests run now: `go test -race ./internal/webserver/` ok (includes `whois_gate_test.go`), Playwright `web-same-user.spec.ts` 3/3 on chromium and webkit. Real tailnet: P-01 (same account, no prompt), P-02 (vmwhois other account: 403 + marker on page, info, WS; no join logged), P-03 (fault page). |
-| SC1 | On an iPhone the share view fits the phone's width, keeps the cursor line above the keyboard, shows a key bar (Esc, Tab, Ctrl, arrows, `\|`) whose keys reach the shell; Ctrl then C stops a running command; pinching changes the font; desktop browser view unchanged (MOB-01) | VERIFIED | `KeyBar.tsx` rendered by `WebShareSessionView.tsx:268` only when `phone && isActive && canWrite !== false && !useProxy`; keys go through `TerminalPanel.tsx:593` `term.input(seq, true)` (the typing path); `ctrlMap.ts` maps Ctrl; `inputTransform` applies an armed Ctrl to keyboard input. `pinchZoom.ts` attached at `TerminalPanel.tsx:855`. `visualViewportInset.ts` drives `--vv-height`/`--vv-top` and `keyboardUp` (App.tsx:116, passed at :1356). Lone Esc: `oscabsorb.go:154` end-of-frame flush. Tests run now: Playwright iphone project `mobile-iphone.spec.ts` 12/12 (Esc 1b, Tab 09, pipe 7c, Up, Ctrl+Up CSI 1;5A, Ctrl then c gives 03, 44 pt fit, chrome, terminal-only touch-action); `web-share-scope.spec.ts` (desktop: no "Terminal keys" toolbar) on chromium and webkit; full vitest 122 files / 1813 tests. Device: S-01, S-02 (accepted iOS limit), S-03, P-05 (lone Esc acts at once in vim through all three viewers), P-06 (desktop unchanged), PHONE-1 (real iPhone, standalone, key bar directly above iOS's form-assist bar). "Stops a running command": 0x03 reaches the PTY input on the same pump the VM rows exercised; the tty line discipline turns it into SIGINT. |
+| SC1 | On an iPhone the share view fits the phone's width, keeps the cursor line above the keyboard, shows a key bar (Esc, Tab, Ctrl, arrows, `\|`) whose keys reach the shell; Ctrl then C stops a running command; pinching changes the font; desktop browser view unchanged (MOB-01) | VERIFIED | `KeyBar.tsx` rendered by `WebShareSessionView.tsx:268` only when `phone && isActive && canWrite !== false && !useProxy`; keys go through `TerminalPanel.tsx:598` `term.input(seq, true)` (the typing path); `ctrlMap.ts` maps Ctrl; `inputTransform` applies an armed Ctrl to keyboard input. `pinchZoom.ts` attached at `TerminalPanel.tsx:861`. `visualViewportInset.ts` drives `--vv-height`/`--vv-top` and `keyboardUp` (App.tsx:116, passed at :1356). Lone Esc: `oscabsorb.go:154` end-of-frame flush. Tests run now: Playwright iphone project `mobile-iphone.spec.ts` 12/12 (Esc 1b, Tab 09, pipe 7c, Up, Ctrl+Up CSI 1;5A, Ctrl then c gives 03, 44 pt fit, chrome, terminal-only touch-action); `web-share-scope.spec.ts` (desktop: no "Terminal keys" toolbar) on chromium and webkit; full vitest 122 files / 1826 tests (orchestrator, HEAD). Device: S-01, S-02 (accepted iOS limit), S-03, P-05 (lone Esc acts at once in vim through all three viewers), P-06 (desktop unchanged), PHONE-1 (real iPhone, standalone, key bar directly above iOS's form-assist bar). "Stops a running command": 0x03 reaches the PTY input on the same pump the VM rows exercised; the tty line discipline turns it into SIGINT. |
 | SC2 | Add to Home Screen gives a Portty icon that opens the session full screen, every asset from the host; token still gates it (icon shows Link No Longer Works after sharing stops); CSP changes only as approved (MOB-02) | VERIFIED | `frontend/public/manifest.json`: name/short_name Portty, `display: standalone`, `scope: ./`, no `start_url`, no `id`, local icons only. `frontend/index.html:9-15` head tags; built `dist/index.html` uses `./manifest.json` and `./apple-touch-icon.png` (relative under `/app/`). `csp_mw.go`: Phase 14 commit f26647f8 adds exactly one line, `manifest-src 'self'`; `default-src 'none'` kept. Playwright `web-csp.spec.ts` (Chromium parses the manifest under the share CSP; zero violations on chromium and webkit) passed now. Device: H-01 and S-04 (query kept on Home Screen launch), S-05 (safe areas), S-06 (Open PDF Done), S-07 (share off: stopped banner, Reload, Link No Longer Works, relaunch shows it too), PHONE-1 (real iPhone: icon on a Home Screen page, full screen, ticks counting). CSP Amendment 4 approved by the user (14-VM-CHECKS.md User decisions; 14-SECURITY-REVIEW.md). |
-| SC3 | Human check (real iPhone): after sleep or a Wi-Fi/cellular switch the view reconnects on its own and resumes with no missing or duplicated output; recorded as an M-NN item; reconnect logic unit-tested (MOB-03) | VERIFIED | `relayClient.ts:310` pageshow wake (removed at :649), `onConnectStuck` at :590; Reload on stopped/ended/unreachable/stuck banners (`TerminalPanel.tsx:1412`, `:1429`), ErrorBoundary web copy with Reload. Unit tests: `relayClient.test.ts:962` (pageshow) and `:1090` (iOS-like suspend with no visibility or pageshow event still probes and redials), in the passing vitest run. Recorded as M-148 in TESTING.md Category BE. PHONE-2 PASS on the user's real iPhone 2026-11-22: 10-minute lock, Wi-Fi off and on, 2-minute app switch: "All three worked, no gaps". |
+| SC3 | Human check (real iPhone): after sleep or a Wi-Fi/cellular switch the view reconnects on its own and resumes with no missing or duplicated output; recorded as an M-NN item; reconnect logic unit-tested (MOB-03) | VERIFIED | `relayClient.ts:310` pageshow wake (removed at :649), `onConnectStuck` at :590; Reload on stopped/ended/unreachable/stuck banners (`TerminalPanel.tsx`, Reload on the stopped/ended/unreachable/stuck banners), ErrorBoundary web copy with Reload. Unit tests: `relayClient.test.ts:962` (pageshow) and `:1090` (iOS-like suspend with no visibility or pageshow event still probes and redials), in the passing vitest run. Recorded as M-148 in TESTING.md Category BE. PHONE-2 PASS on the user's real iPhone 2026-11-22: 10-minute lock, Wi-Fi off and on, 2-minute app switch: "All three worked, no gaps". |
 | SC4 | This repo supplies the copy and link format for portty.app/app; that page holds no token, opens no WebSocket and has no shell access; nothing in the origin check, CSP or token handling trusts portty.app (MOB-04) | VERIFIED | `docs/launcher-app.md` (header comment: static, no inputs, no token, no WebSocket; link format `https://<your-mac>.<your-tailnet>.ts.net:7444/sessions/…`; Messages/iCloud warning; Add to Home Screen steps). `launcher_copy_test.go` `TestLauncherCopy` passed now. `grep portty.app` over internal/, cmd/, frontend/src and root Go sources finds only `main.go:158 helpURL` (a Help-menu link), nothing in origin, CSP or capability code. P-07: launcher steps match the real Share popover. |
 
 **Score:** 5/5 roadmap success criteria verified (0 present-but-behavior-unverified).
@@ -204,31 +226,31 @@ All 14 plans' frontmatter truths were checked against the code and the evidence 
 
 ### Key Link Verification
 
-`gsd-tools verify.key-links`: 26/31 verified by the tool. The other 5 failed only because their patterns contain an unescaped `(` (not valid RE2); each was checked literally with `grep -F` and is WIRED:
+`gsd-tools verify.key-links`: 25/30 verified by the tool. The other 5 failed only because their patterns contain an unescaped `(` (not valid RE2); each was checked literally with `grep -F` and is WIRED:
 
 | From | To | Pattern | Status |
 |------|----|---------|--------|
 | server.go | whois.go | `ws.requireSameUser(ws.requireCapability(` | WIRED (:602, :608, :613, :634) |
 | server.go | whois.go | `ws.cspHeaders(ws.requireSameUserPage(` | WIRED (:623, :691) |
 | WebShareSessionView.tsx | closeReasons.ts | `shareInfoVerdict(res.status` | WIRED (:174) |
-| KeyBar.tsx | TerminalPanel.tsx | `term.input(` | WIRED (:593) |
-| pinchZoom.ts | TerminalPanel.tsx | `attachPinchZoom(` | WIRED (:855) |
+| KeyBar.tsx | TerminalPanel.tsx | `term.input(` | WIRED (:598) |
+| pinchZoom.ts | TerminalPanel.tsx | `attachPinchZoom(` | WIRED (:861) |
 
-### Behavioral Spot-Checks (run by the verifier)
+### Behavioral Spot-Checks (run by the verifier at HEAD, targeted, `-count=1`)
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Gate, CSP, origin, static pages (re-run, targeted) | `GOTOOLCHAIN=go1.26.11 go test -count=1 -run 'WhoIs\|SameUser\|Gate\|AppStatic\|CSP\|Csp\|Origin\|Manifest\|UserRefused\|ServiceRetry' ./internal/webserver/` | ok, 46 tests passed | PASS |
-| Lone-Esc absorber (re-run, targeted) | `go test -count=1 -run 'Absorb\|Esc\|P9' ./internal/relay/` | ok, 17 tests passed | PASS |
-| vmwhois modes | `go test -tags vmwhois -run TestVMWhoIs_Modes ./internal/daemon/` | PASS | PASS |
-| Launcher copy, release guard, share CLI | `go test -run 'TestLauncherCopy\|TestNoFakeWhoIsInRelease\|TestShare' .` | ok | PASS |
-| Frontend unit files (re-run, targeted; no full suite) | `NO_COLOR=1 npx vitest run` on 18 named Phase 14 files (KeyBar, homeScreen, style.keybar, style.mobile, WebShareSessionView keybar/base, ctrlMap, pinchZoom, visualViewportInset, phoneQuery, closeReasons, relayClient, UserRefused, TerminalPanel pinch/reconnect, App.webLink, ErrorBoundary, PreviewRenderers) (node v24.22.1) | 18 files, 326 tests passed | PASS |
-| iPhone emulation | `npx playwright test --project=iphone e2e/mobile-iphone.spec.ts` | 12 passed | PASS |
-| Gate pages, manifest under CSP, desktop scope | `npx playwright test --project=webkit --project=chromium e2e/web-csp.spec.ts e2e/web-same-user.spec.ts e2e/web-share-scope.spec.ts` | 13 passed, 1 skipped | PASS |
-| Types | `npx tsc --noEmit` | exit 0 | PASS |
-| Guards | `bash tests/check-traceability-paths.sh`; `bash tests/check-brand.sh` | OK; OK | PASS |
+| Gate, CSP, origin, manifest, static pages, paste-backlog helper users | `GOTOOLCHAIN=go1.26.11 go test -count=1 -run 'WhoIs\|SameUser\|Gate\|AppStatic\|CSP\|Csp\|Origin\|Manifest\|UserRefused\|ServiceRetry\|PasteBacklog\|DeadViewer' ./internal/webserver/` | ok | PASS |
+| Lone-Esc absorber | `go test -count=1 -run 'Absorb\|Esc\|P9' ./internal/relay/` | ok | PASS |
+| Launcher copy, release guard, share CLI | `go test -count=1 -run 'TestLauncherCopy\|TestNoFakeWhoIsInRelease\|TestShare' .` | ok | PASS |
+| vmwhois modes | `go test -count=1 -tags vmwhois -run TestVMWhoIs_Modes ./internal/daemon/` | ok | PASS |
+| Frontend files for the changed code and the phase's reconnect/refusal/key-bar paths | `NO_COLOR=1 npx vitest run` on closeReasons, TerminalPanel.guestClose, TerminalPanel.reconnect, relayClient, App.webLink, App.open-remote, WebShareSessionView (base and keybar), TabBar, UserRefused, KeyBar, ctrlMap | 12 files, 359 tests passed | PASS |
+| Whole-repo evidence (orchestrator, not re-run here) | full Go `-race` 14/14 ok; full vitest 122 files / 1826 tests | green | PASS |
+| Artifacts / links | `verify.artifacts` on 14 plans: 40/40 passed; `verify.key-links`: 25/30 by the tool, the other 5 have patterns that are not RE2 and were re-checked literally (server.go `requireSameUser` at :602/:608/:613/:634 and `requireSameUserPage` at :623/:691; `shareInfoVerdict` at WebShareSessionView.tsx:177; `term.input(seq, true)` at TerminalPanel.tsx:598; `attachPinchZoom(` at :861) | WIRED | PASS |
 
-Nothing touched the host's tailscaled or a 100.x address: every Go test installs the fake, and Playwright serves from the loopback fixture.
+Not re-run (orchestrator is running them in parallel): Playwright (iphone, webkit, chromium). The last Playwright results (iphone 12/12, same-user 3/3, csp, scope) are from 2026-11-22; no Playwright-covered production file changed since (see above), only the peer-tab reconnect code.
+
+Nothing touched the host's tailscaled or a 100.x address: every Go test installs the WhoIs fake and the vitest files use mocks.
 
 ### Probe Execution
 
@@ -256,7 +278,7 @@ WR-01, WR-02, WR-03 and IN-02 were committed (21:14-21:16) after every VM, simul
 
 ### Anti-Patterns Found
 
-None. No `TBD`/`FIXME`/`XXX` and no `TODO`/`HACK`/`PLACEHOLDER` lines were added across the 90 non-planning files changed since `64cf4e69` (the base before Phase 14). The two known shortcuts are commented on purpose (WR-02's "typed arrow or Alt while Ctrl is armed does not release it"; S-02's iOS form-assist bar).
+None. `grep -nE 'TBD|FIXME|XXX|TODO|HACK|PLACEHOLDER'` over the added lines of the nine covered files changed by Phase 15 (and the Phase 15 diff of the touched peer-tab code) found no new marker. The two known shortcuts are still commented on purpose (WR-02's "typed arrow or Alt while Ctrl is armed does not release it"; S-02's iOS form-assist bar).
 
 ### Human Verification Required
 
@@ -264,9 +286,9 @@ None outstanding. The real-phone items, PHONE-1 (M-145) and PHONE-2 (M-148/MOB-0
 
 ### Gaps Summary
 
-No gaps. Re-verification found no regression: the only code changed since the first verification is the three UI-REVIEW fixes, which touch the key bar's pressed look, the | glyph's accessibility and the manifest's theme_color, and their targeted tests and the iPhone emulation pass. Every roadmap success criterion has evidence in code and passing tests, and the iOS-only behaviours (Home Screen launch, keyboard inset, sleep and network-switch reconnect) are backed by simulator rows and the user's real-iPhone checks. Accepted limits (S-02, UI-A, UI-B, UI-C) stay accepted in the user's words. The known flakes (G-1, linkifier) are tracked and were not exercised by this targeted run.
+No gaps. Phase 15 changed only the desktop peer-tab "Session ended" verdict in the covered files (plus test helpers and TESTING.md); the browser/iPhone share view, the same-account gate, the CSP, the key bar, the pinch and inset code and the reconnect client are byte-for-byte as verified before. Every roadmap success criterion still has evidence in code and passing tests at HEAD, and the real-phone and simulator results stand. The accepted limits (S-02, UI-A, UI-B, UI-C) stay accepted in the user's words. The two known flakes (G-1, linkifier) were fixed by Phase 15.
 
 ---
 
-_Verified: 2026-11-22 (re-verification before v1.2 close)_
+_Verified: 2026-11-23 (re-verification after Phase 15)_
 _Verifier: Claude (gsd-verifier)_
