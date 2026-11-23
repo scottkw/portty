@@ -61,8 +61,8 @@ func TestHandoffIT(t *testing.T) {
 		}
 		h := r.health()
 		t.Logf("/health after: %+v", h)
-		if h.Version != "v1.2.0-itB" || h.API != 2 || h.Handoff != 1 {
-			t.Fatalf("/health = %+v; want version v1.2.0-itB, api 2, handoff 1", h)
+		if h.Version != "v1.2.0-itB" || h.API != APIVersion || h.Handoff != 1 {
+			t.Fatalf("/health = %+v; want version v1.2.0-itB, api %d, handoff 1", h, APIVersion)
 		}
 		after := r.sessionIDs()
 		want := append(slices.Clone(ids), chk)
