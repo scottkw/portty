@@ -221,18 +221,20 @@ Plans:
   7. Flaky tests are made deterministic without loosening product behaviour: pathLinks.linkifier "after a reconnect…" and TestShare_PasteBacklogKeepsViewer. The full Go and vitest suites pass once, clean.
   8. Each fixed todo moves to .planning/todos/completed/, and TESTING.md is updated per the standing rule.
 **Depends on:** Phase 14
-**Plans:** 7 plans
+**Plans:** 9 plans
 
 Plans:
 **Wave 1**
 - [ ] 15-01-PLAN.md — `portty attach` tells the PTY rows-1 while its bar is shown (initial frame and every SIGWINCH claim, bottom and --status-top), pinned at the frame and the hub grid owner (SC1)
 - [ ] 15-02-PLAN.md — Dismiss never signals a reaped session's process group (todo items 2-3 documented); TestKillClean_NoOrphans and TestShare_PasteBacklogKeepsViewer wait on events (SC3, SC7)
-- [ ] 15-03-PLAN.md — Daemon socket hardening: 0600 at listen and after a takeover COMMIT, takeover refuses a HELLO-OK pid the kernel does not confirm, fdpass.Recv frees fds from unparsed control messages (SC4)
+- [ ] 15-03-PLAN.md — Daemon socket mode (O-2): 0600 at listen (fail closed) and a best-effort tighten after a takeover COMMIT (SC4)
 - [ ] 15-04-PLAN.md — Path click F-1 (rows stay monotonic across ED 3) and F-2 (mouseleave invalidates the Linkifier), linkifier test on vi.waitFor (SC6, SC7)
-- [ ] 15-05-PLAN.md — An ended peer tab keeps "Session ended"; a refused share port reads as reachable with nothing shared, a timeout stays "Can't reach this Mac" (SC2)
+- [ ] 15-05-PLAN.md — An ended peer tab keeps "Session ended" when clicked again (ended flag feeds the reconnect verdict) (SC2)
+- [ ] 15-07-PLAN.md — A refused share port reads as reachable with nothing shared; a timeout stays "Can't reach this Mac"; no grace (SC2)
 
-**Wave 2** *(blocked on 15-05: App.tsx)*
+**Wave 2** *(15-06 blocked on 15-05: App.tsx; 15-08 blocked on 15-03: handoff.go)*
 - [ ] 15-06-PLAN.md — Clicking the update notification shows Portty with the available banner and starts no download (native delegate, Go handler, React un-dismiss; live click is M-152) (SC5)
+- [ ] 15-08-PLAN.md — Takeover refuses a HELLO-OK pid the kernel does not confirm (O-6) and fdpass.Recv frees fds from unparsed control messages (O-1); daemon and fdpass packages pass once (SC4)
 
 **Wave 3** *(blocked on Waves 1-2)*
-- [ ] 15-07-PLAN.md — TESTING.md (Phase 15 note, Category BF M-152..M-154), one clean full Go -race and vitest run, nine todos moved to completed (SC7, SC8)
+- [ ] 15-09-PLAN.md — TESTING.md (Phase 15 note, Category BF M-152..M-155, M-155 = TestHandoffIT plus a pre-phase upgrade chain in portty-test before ship), one clean full Go -race and vitest run, nine todos moved to completed (SC7, SC8)
