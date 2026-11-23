@@ -13,6 +13,10 @@ import (
 // resolveSession finds a session by exact name, then exact ID, then a unique
 // ID prefix. Errors carry the CLI copy, including the `portty: ` prefix.
 func resolveSession(sessions []daemon.SessionInfo, arg string) (daemon.SessionInfo, error) {
+	if arg == "" {
+		// An unset shell variable must not match a session with an empty name.
+		return daemon.SessionInfo{}, noSessionError{arg}
+	}
 	var named []daemon.SessionInfo
 	for _, s := range sessions {
 		if s.Name == arg {

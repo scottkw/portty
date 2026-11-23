@@ -68,6 +68,7 @@ func TestResolveSession(t *testing.T) {
 		{ID: "bbbb2222-0000", Name: "dup"},
 		{ID: "bbbb3333-0000", Name: "dup"},
 		{ID: "cccc4444-0000", Name: "aaaa1111-0000"}, // a name that equals another session's ID
+		{ID: "dddd5555-0000", Name: ""},              // unnamed: an empty argument must not match it
 	}
 	cases := []struct {
 		arg, wantID, wantErr string
@@ -78,6 +79,7 @@ func TestResolveSession(t *testing.T) {
 		{arg: "cccc", wantID: "cccc4444-0000"},
 		{arg: "dup", wantErr: `portty: more than one session is named "dup". Use an ID prefix instead: bbbb2222, bbbb3333.`},
 		{arg: "bbbb", wantErr: `portty: no session named "bbbb". Run 'portty list' to see your sessions.`},
+		{arg: "", wantErr: `portty: no session named "". Run 'portty list' to see your sessions.`},
 		{arg: "nope", wantErr: `portty: no session named "nope". Run 'portty list' to see your sessions.`},
 	}
 	for _, tc := range cases {
