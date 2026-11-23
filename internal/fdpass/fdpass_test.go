@@ -2,11 +2,13 @@ package fdpass
 
 import (
 	"bufio"
+	"encoding/binary"
 	"errors"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"testing"
 	"time"
@@ -120,6 +122,36 @@ func TestRecv_CountMismatch(t *testing.T) {
 	}
 	if after := openFds(t); after != before {
 		t.Fatalf("open fds %d after mismatched Recv, want %d (leak)", after, before)
+	}
+}
+
+// T-15-07: a malformed control message must not hide the descriptors of the
+// messages before it; the caller (Recv) closes whatever is returned.
+func TestRightsFromOOB(t *testing.T) {
+	r, w := pipe(t)
+	a, b := int(r.Fd()), int(w.Fd())
+	bad := make([]byte, unix.CmsgSpace(4))
+	binary.NativeEndian.PutUint32(bad, 1) // Cmsghdr.Len = 1, below the header size
+	for _, tc := range []struct {
+		name    string
+		oob     []byte
+		want    []int
+		wantErr bool
+	}{
+		{"one message, two fds", unix.UnixRights(a, b), []int{a, b}, false},
+		{"two messages", append(unix.UnixRights(a), unix.UnixRights(b)...), []int{a, b}, false},
+		{"malformed after a good message", append(unix.UnixRights(a, b), bad...), []int{a, b}, true},
+		{"empty", nil, nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := rightsFromOOB(tc.oob)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("fds = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

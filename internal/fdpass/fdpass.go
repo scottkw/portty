@@ -73,19 +73,7 @@ func Recv(c *net.UnixConn, header []byte, nfds int) (n int, files []*os.File, er
 	var fds []int
 	var perr error
 	if oobn > 0 {
-		var msgs []unix.SocketControlMessage
-		msgs, perr = unix.ParseSocketControlMessage(oob[:oobn])
-		for i := range msgs {
-			if msgs[i].Header.Level != unix.SOL_SOCKET || msgs[i].Header.Type != unix.SCM_RIGHTS {
-				continue
-			}
-			got, e := unix.ParseUnixRights(&msgs[i])
-			if e != nil {
-				perr = e
-				break
-			}
-			fds = append(fds, got...)
-		}
+		fds, perr = rightsFromOOB(oob[:oobn])
 	}
 	switch {
 	case flags&unix.MSG_CTRUNC != 0:
@@ -108,6 +96,29 @@ func Recv(c *net.UnixConn, header []byte, nfds int) (n int, files []*os.File, er
 		files[i] = os.NewFile(uintptr(fd), "fdpass")
 	}
 	return n, files, nil
+}
+
+// rightsFromOOB returns the SCM_RIGHTS descriptors in oob. It walks the
+// control messages one at a time, so a malformed message still returns the
+// descriptors of every message before it (the whole-buffer parser returns
+// none). The caller closes them; this never closes anything itself.
+func rightsFromOOB(oob []byte) ([]int, error) {
+	var fds []int
+	for len(oob) >= unix.CmsgLen(0) {
+		hdr, data, rest, err := unix.ParseOneSocketControlMessage(oob)
+		if err != nil {
+			return fds, err
+		}
+		if hdr.Level == unix.SOL_SOCKET && hdr.Type == unix.SCM_RIGHTS {
+			got, err := unix.ParseUnixRights(&unix.SocketControlMessage{Header: hdr, Data: data})
+			if err != nil {
+				return fds, err
+			}
+			fds = append(fds, got...)
+		}
+		oob = rest
+	}
+	return fds, nil
 }
 
 // PeerUID returns the effective uid of the process at the other end of c,
