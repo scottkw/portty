@@ -874,7 +874,9 @@ function App(): React.ReactElement {
     let gotEvent = false
     const offUpdate = EventsOn('update:status', (s: UpdateStatus | null) => { gotEvent = true; apply(s) })
     GetUpdateStatus().then((s) => { if (!gotEvent) apply(s) }).catch(() => {})
-    return () => { offUpdate() }
+    // The notification click asks for the banner again; showUpdateBanner still needs an available-like state.
+    const offShow = EventsOn('update:show', () => setDismissedUpdate(null))
+    return () => { offUpdate(); offShow() }
   }, [])
 
   const showUpdateBanner =

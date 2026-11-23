@@ -133,6 +133,27 @@ describe('App — update banner rules (06-03)', () => {
     expect(download).toHaveBeenCalledTimes(2)
   })
 
+  it('update:show after a dismissal shows the available banner again and downloads nothing', async () => {
+    const download = vi.fn(() => available)
+    const c = await mountApp({ GetUpdateStatus: () => available, DownloadUpdate: download })
+    await dismiss(c)
+    expect(c.textContent).not.toContain('Portty 9.9.9')
+
+    await act(async () => { wailsEvents.get('update:show')!() })
+    await flush()
+    expect(c.textContent).toContain('Portty 9.9.9 is available.')
+    expect(button(c, 'Download')).toBeDefined()
+    expect(download).not.toHaveBeenCalled()
+  })
+
+  it('update:show with an idle status shows no banner', async () => {
+    const c = await mountApp({ GetUpdateStatus: () => ({ ...available, state: 'idle', latest: '' }) })
+    await act(async () => { wailsEvents.get('update:show')!() })
+    await flush()
+    expect(c.textContent).not.toContain('is available')
+    expect(banner(c)).toBeNull()
+  })
+
   it('web mode never reads the update status or subscribes to update:status', async () => {
     window.history.pushState({}, '', '/app/?session=s1&cap=c1')
     vi.stubGlobal('fetch', vi.fn(async () => new Response('forbidden', { status: 403 })))
@@ -140,5 +161,6 @@ describe('App — update banner rules (06-03)', () => {
     await mountApp({ GetUpdateStatus: getStatus })
     expect(getStatus).not.toHaveBeenCalled()
     expect(wailsEvents.has('update:status')).toBe(false)
+    expect(wailsEvents.has('update:show')).toBe(false)
   })
 })
