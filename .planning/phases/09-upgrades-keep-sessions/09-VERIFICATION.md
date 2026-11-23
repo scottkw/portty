@@ -1,17 +1,115 @@
 ---
 phase: 09-upgrades-keep-sessions
-verified: 2026-11-22T22:15:00Z
+verified: 2026-11-23T11:30:00Z
 status: passed
 score: 5/5 must-haves verified
 re_verification: true
-previous_verified: 2026-11-20T22:30:16Z
-covered_files: [".planning/phases/09-upgrades-keep-sessions/09-01-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-01-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-02-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-02-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-03-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-03-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-04-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-04-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-05-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-05-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-06-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-06-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-07-FIX.md", ".planning/phases/09-upgrades-keep-sessions/09-07-FIX2.md", ".planning/phases/09-upgrades-keep-sessions/09-07-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-07-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-REVIEW-FIX.md", ".planning/phases/09-upgrades-keep-sessions/09-SECURITY.md", ".planning/phases/09-upgrades-keep-sessions/09-VM-CHECKS.md", "TESTING.md", "app.go", "cmd_attach.go", "cmd_cli.go", "cmd_daemon.go", "frontend/src/App.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/lib/hostReconnect.ts", "internal/attach/loop.go", "internal/daemon/api.go", "internal/daemon/client.go", "internal/daemon/compat_vmpreview.go", "internal/daemon/engine.go", "internal/daemon/handoff.go", "internal/daemon/handoff_vmpreview.go", "internal/daemon/process.go", "internal/daemon/process_unix.go", "internal/daemon/share.go", "internal/daemon/types.go", "internal/fdpass/fdpass.go", "internal/pty/adopt_darwin.go", "internal/pty/exitwatch_darwin.go", "internal/pty/native.go", "internal/pty/session.go", "internal/relay/close_reasons.go", "internal/relay/handoff_state.go", "internal/relay/hub.go", "internal/relay/manager.go", "internal/relay/server.go", "internal/webserver/server.go", "terminate_darwin.go", "terminate_darwin.m"]
-covered_digest: "v4:sha256:e28fa75bc4db2d51faf0a09eb4a772ea7d1c87dd06bb1a69dd762aeb2f0a72de"
+previous_verified: 2026-11-22T22:15:00Z
+covered_files: [".planning/phases/09-upgrades-keep-sessions/09-01-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-01-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-02-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-02-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-03-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-03-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-04-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-04-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-05-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-05-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-06-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-06-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-07-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-07-SUMMARY.md", "TESTING.md", "app.go", "cmd_attach.go", "cmd_attach_resize.go", "cmd_cli.go", "cmd_daemon.go", "frontend/src/App.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/lib/closeReasons.ts", "frontend/src/lib/hostReconnect.ts", "internal/attach/attach.go", "internal/attach/attach_unix.go", "internal/attach/loop.go", "internal/daemon/api.go", "internal/daemon/client.go", "internal/daemon/compat_vmpreview.go", "internal/daemon/engine.go", "internal/daemon/handoff.go", "internal/daemon/handoff_test.go", "internal/daemon/handoff_vmpreview.go", "internal/daemon/ipc.go", "internal/daemon/process.go", "internal/daemon/process_unix.go", "internal/daemon/share.go", "internal/daemon/socket.go", "internal/daemon/socket_test.go", "internal/daemon/types.go", "internal/fdpass/fdpass.go", "internal/fdpass/fdpass_test.go", "internal/pty/adopt_darwin.go", "internal/pty/cleanup.go", "internal/pty/exitwatch_darwin.go", "internal/pty/native.go", "internal/pty/session.go", "internal/relay/close_reasons.go", "internal/relay/handoff_state.go", "internal/relay/history.go", "internal/relay/hub.go", "internal/relay/manager.go", "internal/relay/server.go", "internal/webserver/server.go", "terminate_darwin.go", "terminate_darwin.m"]
+covered_digest: "v4:sha256:e3d428d4a79935797a2b5c4cb634406df665dbaf2a7e2953da154b8dca0592bd"
 behavior_unverified: 0
 overrides_applied: 0
+re_verification_detail:
+  previous_status: passed
+  previous_score: 5/5
+  gaps_closed: []
+  gaps_remaining: []
+  regressions: []
 ---
 
 # Phase 9: Upgrades Keep Sessions — Verification Report
+
+**Phase Goal:** Upgrading Portty never costs a session. The new daemon takes over the running shells and their history, every attached viewer carries on by itself, and if the takeover fails the old daemon keeps serving. Nobody has to be at the remote Mac.
+**Verified:** 2026-11-23, at HEAD `c818e1e1` (branch gsd/v1.2), after Phase 15 (v1.2 Hardening)
+**Status:** passed, 5/5
+**Re-verification:** Yes. The 2026-11-22 report passed at `52d960a5`. It went stale because Phase 15 edited files it covers. This pass checks that no Phase 15 change broke a Phase 9 truth.
+
+## What Phase 15 changed in Phase 9's code (`git diff 52d960a5 HEAD`)
+
+| Phase 15 change | Files | Effect on Phase 9 truths |
+|---|---|---|
+| 15-03: daemon socket chmod 0600 right after listen (a failed chmod closes the listener and fails the start). The config dir is tightened to 0700. A takeover calls `tightenSocketMode` after COMMIT, which only logs on failure | `ipc.go` (`listenDaemonSocket`, `tightenSocketMode`), `socket.go` (`DefaultSocketPath`), `handoff.go` (`commit`) | Safe for UPGR-01/03. The chmod runs after `t.c.Close()` and after the sessions have moved, so it cannot cost a session. The inherited listener is not rebound. The owner still connects |
+| 15-08: the takeover trusts only the kernel's pid for the old daemon (`takeoverPeerPID`, LOCAL_PEERPID). A HELLO-OK pid mismatch or a failed lookup returns `takeoverRefused` through `t.fail`, before any state is received | `handoff.go` (`runTakeover`) | This is a new refuse-before-COMMIT path, so the old daemon keeps serving, which is the UPGR-03 rollback. The real-process risk is whether a genuine old daemon is accepted. M-155 proves that in the VM (see below) |
+| 15-08: `fdpass.rightsFromOOB` parses control messages one at a time, so descriptors that came before a malformed message are still returned for `Recv` to close | `fdpass.go` | The SCM_RIGHTS path is unchanged for well-formed input (`TestHandoff_HappyPath` passes, so does the whole fdpass package). Malformed input now leaks fewer descriptors |
+| 15-02: `Session.reaped` guard in `killSession`. The SIGHUP and SIGKILL calls go through the `signalGroup` seam | `pty/session.go`, `pty/cleanup.go` | Created sessions only. `killAdopted` (the handed-over path) is untouched, and an adopted session is not a created session. A reaped group is never signalled, which cannot hurt a handoff |
+| 15-04: `History.Skip(n)` on ED 3 keeps `Pushed` monotonic | `relay/history.go`, `relay/hub.go` | `Clear` still leaves `pushed` alone. The hub export and import (`TestHandoffState_RoundTripCorpus`, `CwdRoundTrip`) pass |
+| 15-05 and 15-07: `peerConnectVerdict(errorCode, sawEnded)` and `MetaRefused` | `closeReasons.ts`, `App.tsx`, `TerminalPanel.tsx`, `tailnet/sessions.go`, `WebShareSessionView.tsx` | A tab only reads "ended" after it got the session-ended close. A restart close (1012) leaves `sawEnded` false, so a viewer reconnecting after an upgrade takes the same retry path as before. `peer_connect.go` is unchanged and already mapped ECONNREFUSED to `not_sharing`. `hostReconnect.test.ts` and `TerminalPanel.reconnect.test.tsx` pass |
+| 15-01: `portty attach` reports rows-1 in the first resize frame and in each SIGWINCH claim while the bar is sized | `cmd_attach.go`, `cmd_attach_resize.go`, `attach/attach.go`, `attach/attach_unix.go` | The initial frame has no claim bit, so a rejoining attach does not take the grid (the Phase 10 contract that V-02r/RF-02 re-proved). The reconnect loop (`attach/loop.go`) is not edited |
+| 15-06: notification click shows the update banner | `app_update.go`, `tray.go`, `tray_objc_darwin.m`, `App.tsx` (`update:show`) | Touches no quit, SIGTERM, `onTerminate`, `cancelEnsure` or Quit modal code. `terminate_darwin.m` and `app.go` are untouched since `52d960a5` |
+
+`git diff 52d960a5 HEAD` shows no edit to `process.go`, `process_unix.go`, `api.go`, `client.go`, `types.go`, `cmd_cli.go`, `app.go`, `relay/server.go`, `webserver/server.go`, `relay/handoff_state.go`, `adopt_darwin.go`, `exitwatch_darwin.go` or `terminate_darwin.*`. These are the files the Phase 9 truths rest on (EnsureDaemon's handoff branch, `/health` API fields, update-needed, the SIGTERM, Quit All and one-modal quit paths, the 1012 restart close, and the pty adopt and exit watch).
+
+## Targeted tests run now (HEAD `c818e1e1`, `GOTOOLCHAIN=go1.26.11`, `-count=1`)
+
+I ran only named selections, because other verifiers were running at the same time.
+
+| Package / files | Selection | Result |
+|---|---|---|
+| `./internal/daemon/` (`-race`) | `TestHandoff\|TestTakeover\|TestEnsureDaemon\|TestStartDetachedTakeover\|TestTakeoverStatus\|TestStartDaemon_Cancel\|TestSessionInfo_ReportsAPIVersion\|Health\|DaemonAPI\|TestListenDaemonSocket`. This includes `TestHandoff_HappyPath`, `TestHandoffFault_EveryStep`, `TestHandoffFault_NoThawUntilTakeoverExits`, `TestHandoff_RefusesPIDMismatch`, `TestHandoff_TightensSocketMode`, `TestTakeover_FinalizeDeniesRelayPort`, `TestListenDaemonSocket_Mode0600` and every `TestEnsureDaemon_*` (confirmed with `-list`) | ok (43 s) |
+| `./internal/relay/` (`-race`) | `Handoff\|Freeze\|Thaw\|Restart\|AddStaged\|Cwd\|PathClick` | ok (109 s) |
+| `./internal/fdpass/`, `./internal/pty/` (`-race`) | whole packages | ok, ok |
+| `.` (root) and `./internal/attach/` (`-race`) | `TestEnsure_DefaultSeamPassesRestartConsent\|TestQuitAll\|TestRestartConsent_MoveFailed\|TestOnTerminate_QuitsGUIOnly\|TestDaemonUpdateNeeded\|TestEnsureCLIDaemon\|TestTakeover\|TestRunAttach\|Reconnect\|TestBarRows\|TestInitialResizeFrame\|TestWatchResize` | ok, ok |
+| vitest | `src/lib/hostReconnect.test.ts`, `closeReasons.test.ts`, `TerminalPanel.reconnect.test.tsx`, `App.daemon-restart.test.tsx`, `App.update-needed.test.tsx`, `QuitConfirmModal.test.tsx`, `TerminalPanel.guestClose.test.tsx` | 7 files passed, 97 tests |
+| build / vet | `go build ./...`; `go vet` over daemon, relay, fdpass, pty and root | rc 0 |
+| traceability | `bash tests/check-traceability-paths.sh` | `OK: 228 traceability paths exist` |
+
+The orchestrator's earlier full-suite run on HEAD (Go `-race -short` 14/14 ok, vitest 122 files and 1826 tests) agrees with these results. I did not repeat it.
+
+## Observable truths (ROADMAP Phase 9 success criteria), re-checked at HEAD
+
+| # | Truth | Status | Evidence at HEAD |
+|---|---|---|---|
+| 1 | SC1 / UPGR-01: an upgrade ends no session and asks nothing. `/health` reports B, shell PIDs are kept, tickers have no gap, a fresh viewer gets the history, and the share link works with the same token | ✓ VERIFIED | The two-phase handoff in `handoff.go` is intact, and Phase 15 added only a pre-state pid check and a post-COMMIT chmod. `TestHandoff_HappyPath` and `TestEnsureDaemon_HandsOff` pass. The EnsureDaemon handoff branch (`process.go`) is unchanged. **Real processes after Phase 15:** M-155 (2026-11-23, office VM) ran TestHandoffIT `upgrade`, in which B's LOCAL_PEERPID check accepted A across real processes, and a two-build chain P, A, B. The chain gave the same two session ids after each step, `/health` `it0`, `itA`, `itB`, both `list --local` runs with rc 0 and no "couldn't move" line, and 0 `does not match the socket peer` in the daemon logs. The Phase 9 VM rows V-01 and V-02 remain recorded in 09-VM-CHECKS.md |
+| 2 | SC2 / UPGR-02: viewers attached during the upgrade reconnect on their own and resume with a delta, with no repeated or missing tick | ✓ VERIFIED | `RestartViewers` sends 1012, unchanged. `TestRestartViewers_Close1012`, `TestHandoffState_RoundTripCorpus`, `TestHub_HandoffRejoinKeepsGrid` and the hostReconnect, TerminalPanel.reconnect and attach `Reconnect` tests pass. Phase 15's `sawEnded` verdict applies only after a session-ended close, never after a restart close. attach rows-1 changes only the reported height, and the initial frame carries no claim. The VM evidence (V-02 PASS ×2, 10-VM-CHECKS V-02r ×2 and RF-02) predates Phase 15. None of the code those runs exercised (hub resume, 1012, hostReconnect, attach/loop.go) was edited by Phase 15, except the attach size frame described above |
+| 3 | SC3 / UPGR-03: a handoff that fails at any step loses nothing; the old daemon keeps serving; the DEBT-08 choice is offered; a v1.1 daemon gets DEBT-08 | ✓ VERIFIED | `TestHandoffFault_EveryStep`, `NoThawUntilTakeoverExits` and the other `TestHandoffFault_*` and `TestEnsureDaemon_HandoffFailsToDebt08` / `V11GetsPlainDebt08` pass under `-race`. The new pid refusal is covered by `TestHandoff_RefusesPIDMismatch`: the takeover is refused and the old daemon keeps serving. M-155 `fault` (the takeover killed at new:before-ready, A keeps serving, "couldn't move" line, DEBT-08 refusal, rc 1) and `from-v1.1` PASS in the VM after Phase 15 |
+| 4 | SC4 / UPGR-04: `/health` reports an API version. Update needed shows in the GUI and CLI. A compatible older daemon kept with Not Now keeps working | ✓ VERIFIED | `api.go`, `client.go`, `types.go` and `cmd_cli.go` are not edited by Phase 15. `TestEnsureCLIDaemon_UpdateNeeded`, `TestSessionInfo_ReportsAPIVersion`, `TestHealthInfo`-class tests and App.update-needed.test.tsx pass. The stale `API != 2` assertion in TestHandoffIT was fixed in `1c8d3a09`, which moves it to the current API version. `MinDaemonAPI = 1` is unchanged |
+| 5 | SC5 / UPGR-05: `kill -TERM` quits the GUI only. Quit All cancels an in-flight restart. Cmd-Q with the restart dialog open draws no second dialog | ✓ VERIFIED | `app.go` and `terminate_darwin.*` are not edited since `52d960a5`. The `App.tsx` diff adds only the `update:show` listener and the `sawEnded` threading, and does not touch the `app:quit-requested` handler or the `restartPrompt` gating. `TestOnTerminate_QuitsGUIOnly`, `TestQuitAll_*`, `App.daemon-restart.test.tsx` and `QuitConfirmModal.test.tsx` pass |
+
+**Score:** 5/5 truths verified (0 present, behavior-unverified). No truth needed an override.
+
+## Requirements coverage (REQUIREMENTS.md)
+
+| Requirement | Plans | Status | Evidence |
+|---|---|---|---|
+| UPGR-01 | 09-02, 09-03, 09-04, 09-05, 09-06, 09-07 | ✓ SATISFIED | SC1 above. REQUIREMENTS.md: `[x]`, Phase 9 Complete |
+| UPGR-02 | 09-03, 09-04, 09-06, 09-07 | ✓ SATISFIED | SC2 above |
+| UPGR-03 | 09-01, 09-04, 09-05, 09-07 | ✓ SATISFIED | SC3 above |
+| UPGR-04 | 09-01, 09-02, 09-07 | ✓ SATISFIED | SC4 above |
+| UPGR-05 | 09-01, 09-07 | ✓ SATISFIED | SC5 above |
+
+REQUIREMENTS.md maps exactly UPGR-01..UPGR-05 to Phase 9. All five are claimed by plans, so there are no orphaned requirements.
+
+## Human verification history
+
+The VM runs recorded in 09-VM-CHECKS.md (V-01..V-05 with their recorded FAILs and re-runs), 10-VM-CHECKS.md (V-02r, RF-02) and TESTING.md M-114 remain valid as already verified. Phase 15 did not change the behaviour those runs checked (see the table above). Phase 15's own VM run, M-155, repeated the Phase 9 real-process upgrade (`upgrade`, `fault`, `from-v1.1`, and a two-build chain) on the product code that Phase 15 shipped, and all of it passed. The only product change after that run is `7ca43451` (the `closeReasons.ts` ended-verdict mapping, which does not touch the daemon).
+
+No human verification is required.
+
+## Anti-patterns
+
+I scanned the Phase 15 diff of the covered files for `TBD|FIXME|XXX`. No unreferenced debt marker was added. The two "Known gap" comments (engine.go `closeSessionFiles`, manager.go `Shutdown`) cite todo 2026-11-20 items, so they are referenced follow-up. There are no stubs. `takeoverPeerPID = fdpass.PeerPID` is a real kernel lookup, not a stub.
+
+## Accepted limits (carried forward, not gaps)
+
+- IN-04: stopped sessions are dropped on handoff.
+- 09-SECURITY.md accepted risks AR-09-01..03.
+- The `killSession` residual windows documented by 15-02 are for created sessions only.
+
+## Gaps Summary
+
+None. Phase 15 did not break any Phase 9 truth. The two Phase 15 changes inside the handoff itself (the pid check and the post-COMMIT chmod) each have their own in-process tests, and M-155 proves them across real processes.
+
+---
+
+_Re-verified: 2026-11-23_
+_Verifier: Claude (gsd-verifier)_
+
+# Previous reports, kept for their evidence
+
+_The sections below are the 2026-11-22 re-verification and the 2026-11-20 original, unchanged. Line numbers and test names in them describe the code at those dates._
+
+## Re-verification of 2026-11-22 (at HEAD `52d960a5`)
+
 
 **Phase Goal:** Upgrading Portty never costs a session. The new daemon takes over the running shells and their history, every attached viewer carries on by itself, and if the takeover fails the old daemon keeps serving. Nobody has to be at the remote Mac.
 **Verified:** 2026-11-22, at HEAD `52d960a5` (branch gsd/v1.2), before the v1.2 close.
@@ -80,6 +178,7 @@ No human verification is required. A fresh VM re-run of V-01 under the Phase 14 
 
 _Re-verified: 2026-11-22_
 _Verifier: Claude (gsd-verifier)_
+
 
 ## Original verification (2026-11-20, HEAD `dc827079`), kept for its evidence
 
