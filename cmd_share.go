@@ -67,7 +67,7 @@ func lookupSession(client *daemon.DaemonClient, arg string) (daemon.SessionInfo,
 	return resolveSession(sessions, arg)
 }
 
-// minDestructivePrefix is the shortest ID prefix kill and rename accept. A
+// minDestructivePrefix is the shortest ID prefix kill, rename and unshare accept. A
 // short name abbreviation like "b" must not fall through to a hex ID prefix and
 // hit an unrelated session; 8 matches the prefixes the ambiguity error prints.
 const minDestructivePrefix = 8
@@ -122,13 +122,15 @@ func cmdShare(client *daemon.DaemonClient, args []string, out io.Writer) error {
 }
 
 // cmdUnshare turns sharing off, which revokes the link and disconnects viewers.
+// The argument resolves like kill (exact name, exact ID, unique ID prefix of 8+
+// characters), so an unknown or short argument unshares nothing.
 //
 //	portty unshare <session>
 func cmdUnshare(client *daemon.DaemonClient, args []string, out io.Writer) error {
 	if len(args) != 1 {
 		return errors.New("usage: portty unshare <session>")
 	}
-	s, err := lookupSession(client, args[0])
+	s, err := lookupSessionStrict(client, args[0])
 	if err != nil {
 		return err
 	}
