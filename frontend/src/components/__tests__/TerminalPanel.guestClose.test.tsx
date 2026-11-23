@@ -240,6 +240,35 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
     expect(root0.getAttribute('data-connect-stuck')).toBeNull()
   })
 
+  // Phase 14 (MOB-03): Reload only on a phone ((pointer: coarse) and (hover: none)).
+  describe('Reload (MOB-03)', () => {
+    const realMatchMedia = window.matchMedia
+    const phoneMedia = (phone: boolean) => {
+      window.matchMedia = ((media: string) => ({
+        matches: phone && media === '(pointer: coarse) and (hover: none)', media,
+        addEventListener() {}, removeEventListener() {},
+      })) as unknown as typeof window.matchMedia
+    }
+    const reloadBtn = () => Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Reload')
+    afterEach(() => { window.matchMedia = realMatchMedia })
+
+    it("a phone's share-stopped banner carries Reload", () => {
+      phoneMedia(true)
+      mountGuest(vi.fn())
+      close('share stopped')
+      expect(container.textContent).toContain('office-air stopped sharing this session.')
+      expect(reloadBtn()).not.toBeUndefined()
+    })
+
+    it('without the phone query there is no Reload', () => {
+      phoneMedia(false)
+      mountGuest(vi.fn())
+      close('share stopped')
+      expect(container.textContent).toContain('office-air stopped sharing this session.')
+      expect(reloadBtn()).toBeUndefined()
+    })
+  })
+
   it("'share stopped' with an empty host label (web page, host unknown) shows the fallback", () => {
     mountGuest(vi.fn(), '')
     close('share stopped')

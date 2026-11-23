@@ -44,6 +44,12 @@ export interface SessionEndedBannerProps {
   /** Renders the Dismiss button when given; kinds 'reconnecting' and 'unreachable' never have one. */
   onDismiss?: () => void
   /**
+   * Phase 14 (MOB-03): renders a fixed-label "Reload" button, only for the kinds a phone cannot
+   * leave any other way: 'share-stopped', 'ended', 'unreachable' and 'reconnecting'. Never for the
+   * paste, path or port notices. The caller decides when (a phone; reconnecting only while stuck).
+   */
+  onReload?: () => void
+  /**
    * Raw WebSocket CloseEvent.reason, if any. Used only for logging/
    * branching — see the Security note above. Never rendered.
    */
@@ -69,8 +75,11 @@ export interface SessionEndedBannerProps {
   pasteTotalKB?: number
 }
 
+const RELOAD_KINDS = ['share-stopped', 'ended', 'unreachable', 'reconnecting']
+
 export function SessionEndedBanner({
   onDismiss,
+  onReload,
   reason,
   className,
   kind = 'ended',
@@ -119,6 +128,9 @@ export function SessionEndedBanner({
                 ? (host ? `${host} stopped sharing this session.` : 'This session is no longer shared.')
                 : 'Session ended — the owner stopped this session.'}
       </span>
+      {onReload && RELOAD_KINDS.includes(kind) && (
+        <button type="button" className="banner__action" onClick={onReload}>Reload</button>
+      )}
       {onDismiss && kind !== 'reconnecting' && kind !== 'unreachable' && (
         <button
           type="button"

@@ -212,4 +212,44 @@ describe('SessionEndedBanner', () => {
       expect(c.querySelector('[aria-label="Dismiss"]')).not.toBeNull()
     })
   })
+
+  // Phase 14 (MOB-03): the Reload action.
+  function renderReload(kind: string, onReload?: () => void) {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    const r = createRoot(c)
+    flushSync(() => {
+      r.render(React.createElement(SessionEndedBanner, { onDismiss: vi.fn(), onReload, kind } as never))
+    })
+    return { container: c, root: r }
+  }
+  const reloadBtn = (c: HTMLElement) =>
+    Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Reload') ?? null
+
+  it.each(['share-stopped', 'ended', 'unreachable', 'reconnecting'])(
+    "kind '%s' with onReload renders Reload before Dismiss and it fires onReload", (kind) => {
+      const onReload = vi.fn()
+      ;({ container, root } = renderReload(kind, onReload))
+      const btn = reloadBtn(container)!
+      expect(btn).not.toBeNull()
+      expect(btn.className).toBe('banner__action')
+      expect(btn.type).toBe('button')
+      const dismiss = container.querySelector('.banner__dismiss')
+      if (dismiss) expect(btn.compareDocumentPosition(dismiss) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      flushSync(() => { btn.click() })
+      expect(onReload).toHaveBeenCalledTimes(1)
+    })
+
+  it('without onReload no kind renders Reload', () => {
+    ;({ container, root } = renderReload('share-stopped'))
+    expect(reloadBtn(container)).toBeNull()
+  })
+
+  it.each([
+    'paste-interrupted', 'path-unsupported', 'path-too-large',
+    'port-host-outdated', 'port-daemon-outdated', 'port-in-use', 'port-refused', 'port-unreachable',
+  ])("kind '%s' never renders Reload even when onReload is passed", (kind) => {
+    ;({ container, root } = renderReload(kind, vi.fn()))
+    expect(reloadBtn(container)).toBeNull()
+  })
 })
