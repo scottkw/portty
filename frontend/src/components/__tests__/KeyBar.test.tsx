@@ -30,6 +30,8 @@ function pointerDown(el: HTMLElement) {
   act(() => { el.dispatchEvent(ev) })
   return ev
 }
+// React derives onPointerLeave from a native pointerout with no relatedTarget, not from a native pointerleave.
+const fireEvt = (el: HTMLElement, type: string) => act(() => { el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true })) })
 const click = (el: HTMLElement, detail: number) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail })) })
 
 describe('KeyBar', () => {
@@ -68,6 +70,18 @@ describe('KeyBar', () => {
       expect(ev.defaultPrevented).toBe(true)
     })
   }
+
+  it('pointerdown adds keybar__key--down; pointerup, pointercancel and leave (pointerout) remove it', () => {
+    const { btn } = mount()
+    for (const end of ['pointerup', 'pointercancel', 'pointerout']) {
+      expect(btn('Esc').classList.contains('keybar__key--down')).toBe(false)
+      pointerDown(btn('Esc'))
+      expect(btn('Esc').classList.contains('keybar__key--down')).toBe(true)
+      expect(btn('Tab').classList.contains('keybar__key--down')).toBe(false)
+      fireEvt(btn('Esc'), end)
+      expect(btn('Esc').classList.contains('keybar__key--down')).toBe(false)
+    }
+  })
 
   it('application cursor mode sends ESC O x', () => {
     const { send, btn } = mount({ appCursor: true })

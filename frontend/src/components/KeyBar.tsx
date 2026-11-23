@@ -20,6 +20,9 @@ interface KeyBarProps {
  * detail >= 1 and is ignored, so one tap sends once. Ctrl is one-shot: it arms, the next key gets it.
  */
 export function KeyBar({ send, applicationCursor, ctrlArmed, onCtrlChange, keyboardUp }: KeyBarProps): React.ReactElement {
+  // The key being pressed: iOS may not apply :active when pointerdown is prevented, so the class is explicit.
+  const [down, setDown] = React.useState<string | null>(null)
+  const release = () => setDown(null)
   // Disarm first: the transform on the input path then sees an unarmed Ctrl for these bytes.
   const fire = (seq: () => string) => {
     const bytes = seq()
@@ -31,10 +34,13 @@ export function KeyBar({ send, applicationCursor, ctrlArmed, onCtrlChange, keybo
   const key = (name: string, label: React.ReactNode, onFire: () => void, extra?: { armed?: boolean; className?: string }) => (
     <button
       type="button"
-      className={`keybar__key${extra?.className ? ` ${extra.className}` : ''}${extra?.armed ? ' keybar__key--armed' : ''}`}
+      className={`keybar__key${extra?.className ? ` ${extra.className}` : ''}${extra?.armed ? ' keybar__key--armed' : ''}${down === name ? ' keybar__key--down' : ''}`}
       aria-label={name === label ? undefined : name}
       aria-pressed={extra?.armed === undefined ? undefined : extra.armed}
-      onPointerDown={(e) => { e.preventDefault(); onFire() }}
+      onPointerDown={(e) => { e.preventDefault(); setDown(name); onFire() }}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onPointerLeave={release}
       onClick={(e) => { if (e.detail === 0) onFire() }}
     >
       {label}

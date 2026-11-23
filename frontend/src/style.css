@@ -2420,6 +2420,10 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
 .keybar__key:active::before {
   background: var(--color-selection-inactive);
 }
+/* Explicit pressed state: iOS Safari may skip :active when pointerdown is prevented. */
+.keybar__key--down::before {
+  background: var(--color-selection-inactive);
+}
 .keybar__key--pipe {
   font-size: 17px;
   font-weight: 400;

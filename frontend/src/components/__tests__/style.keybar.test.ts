@@ -46,6 +46,10 @@ describe('Phase 14-10: .keybar CSS', () => {
     expect(rule('.keybar__key:active::before')).toContain('background: var(--color-selection-inactive)')
   })
 
+  it('the explicit pressed class has the same fill as :active (iOS may not apply :active)', () => {
+    expect(rule('.keybar__key--down::before')).toContain('background: var(--color-selection-inactive)')
+  })
+
   it('armed Ctrl is the accent fill with on-accent text and an 8px on-accent dot', () => {
     expect(rule('.keybar__key--armed[aria-pressed="true"]')).toContain('color: var(--color-on-accent)')
     expect(rule('.keybar__key--armed[aria-pressed="true"]::before')).toContain('background: var(--color-selection-fill)')
