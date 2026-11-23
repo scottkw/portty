@@ -5,10 +5,10 @@ milestone_name: Previews, Remote URLs, Mobile
 current_phase: 16
 status: completed
 stopped_at: Phase 16 complete — all phases complete
-last_updated: "2026-11-23T20:03:52.481Z"
+last_updated: "2026-11-23T20:51:07.297Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 16 complete
-state_head: af8c9c73e0a92ca7000a889c32732abba11fe68b
+state_head: 1e476af0eccd6610a89b58aab7eb773e48bf6d1d
 progress:
   total_phases: 8
   completed_phases: 7
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-23)
 Phase: 16
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-23 — Phase 16 complete
+Last activity: 2026-11-23 - Completed quick task 261123-kcr: unshare requires an 8-character minimum ID prefix like kill/rename (cmd_share.go lookupSessionStrict), with a test
 
 
 ## Performance Metrics
@@ -393,6 +393,7 @@ Recent decisions affecting current work:
 | 3 | Terminal font: Nerd Font fallbacks after SF Mono so Powerlevel10k icons render | 2026-11-16 | ffe5a118 | — |
 | 5 | Menu bar dead at launch: Dock hand-off after Accessory→Regular switch | 2026-11-16 | 3740b04a | — |
 | 6 | Share dialog: 12px gap between link cards | 2026-11-16 | 09da9268 | — |
+| 261123-kcr | unshare requires an 8-character minimum ID prefix like kill/rename (cmd_share.go lookupSessionStrict), with a test | 2026-11-23 | 1e476af0 | [261123-kcr-unshare-requires-an-8-character-minimum-](./quick/261123-kcr-unshare-requires-an-8-character-minimum-/) |
 
 ## Deferred Items
 
