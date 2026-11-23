@@ -4,17 +4,17 @@ milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
 current_phase: 15
 status: completed
-stopped_at: Phase 15 complete — all phases complete
-last_updated: "2026-11-23T16:43:48.547Z"
+stopped_at: Phase 15 complete; v1.2 re-audited (tech_debt); Phase 16 v1.2 Cleanup added — next /gsd-autonomous --from 16
+last_updated: "2026-11-23T17:27:36.392Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 15 complete
-state_head: f96ae08a9c539a440ac25e55f42f6e5cca4c82e8
+state_head: cd5ddf1fdd887f00e9424613d55db63c35595985
 progress:
-  total_phases: 7
-  completed_phases: 6
+  total_phases: 8
+  completed_phases: 7
   total_plans: 63
   completed_plans: 63
-  percent: 86
+  percent: 88
 ---
 
 # Project State
@@ -443,9 +443,9 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-23T14:59:21.452Z
-Stopped at: Phase 15 complete — all phases complete
-Resume file: None
+Last session: 2026-11-23T17:27:36.217Z
+Stopped at: Phase 15 complete; v1.2 re-audited (tech_debt); Phase 16 v1.2 Cleanup added — next /gsd-autonomous --from 16
+Resume file: .planning/v1.2-MILESTONE-AUDIT.md
 
 ## Operator Next Steps
 
