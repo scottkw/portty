@@ -1,7 +1,8 @@
 ---
 phase: "15"
 slug: "v1-2-hardening"
-status: draft
+status: approved
+reviewed_at: "2026-11-22"
 shadcn_initialized: false
 preset: none
 created: "2026-11-22"
@@ -135,12 +136,12 @@ Empty-state and error-state copy lives in `## Copywriting Contract`; rows here r
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS (not applicable, `Tool: none`)
+- [x] Dimension 1 Copywriting: FLAG (non-blocking)
+- [x] Dimension 2 Visuals: FLAG (non-blocking)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS (not applicable, `Tool: none`)
 
 **Approval:** pending
