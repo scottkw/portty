@@ -139,7 +139,7 @@ Accent reserved for (Phase 2 list plus one, nothing else):
 | Property | Light | Dark | Where |
 |----------|-------|------|-------|
 | `<meta name="theme-color">` | `#FFFFFF` (`--color-terminal-bg` light) | `#1C1C1E` (`--color-terminal-bg` dark) | Two tags in `frontend/index.html`, each with `media="(prefers-color-scheme: …)"` |
-| manifest `theme_color` | `#1C1C1E` | same (a manifest has one value) | `frontend/public/manifest.json`. **[default]** dark, because the terminal is the dominant surface and the media-query tags win where they are honored |
+| manifest `theme_color` | absent | absent | UI-REVIEW fix: dropped so the two media-query `theme-color` tags decide the status-bar colour per appearance. Trade-off: no manifest fallback for a client that ignores the media-query tags; `background_color` stays dark, so a light-mode launch splash can still flash dark |
 | manifest `background_color` | `#1C1C1E` | same | same. **[default]** |
 
 Status bar: no `apple-mobile-web-app-status-bar-style` tag, so iOS uses its default, which follows the system appearance and stays readable in both modes. `black-translucent` is rejected: its status text is always white and unreadable on the light terminal. Whether `env(safe-area-inset-top)` is nonzero in this mode is checked on the phone (M-145); the CSS handles either value.
@@ -325,7 +325,7 @@ On desktop, local and peer tabs keep the existing copy unchanged. The preview-pa
 | `display` | `standalone` |
 | `scope` | `./` |
 | `background_color` | `#1C1C1E` |
-| `theme_color` | `#1C1C1E` |
+| `theme_color` | absent on purpose (the media-query meta tags decide, see Page chrome) |
 | `icons` | `icon-192.png` (`192x192`, `image/png`) and `icon-512.png` (`512x512`, `image/png`), relative `src`, no `purpose` |
 | Absent on purpose | `start_url` and `id` (a launch from the icon opens the exact link; either field would pin a path), `orientation`, `description`, `lang`, `shortcuts` |
 

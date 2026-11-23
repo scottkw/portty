@@ -29,14 +29,13 @@ const links = tags('link')
 const meta = (name: string) => metas.filter((t) => t.name === name)
 
 describe('manifest.json', () => {
-  it('has the Home Screen fields and no start_url, id or orientation', () => {
+  it('has the Home Screen fields and no start_url, id, orientation or theme_color (the two media-query meta tags set the status bar per appearance)', () => {
     expect(manifest.name).toBe('Portty')
     expect(manifest.short_name).toBe('Portty')
     expect(manifest.display).toBe('standalone')
     expect(manifest.scope).toBe('./')
     expect(manifest.background_color).toBe('#1C1C1E')
-    expect(manifest.theme_color).toBe('#1C1C1E')
-    for (const k of ['start_url', 'id', 'orientation']) expect(manifest).not.toHaveProperty(k)
+    for (const k of ['start_url', 'id', 'orientation', 'theme_color']) expect(manifest).not.toHaveProperty(k)
   })
 
   it('lists icon-192 and icon-512 with relative src and no purpose', () => {

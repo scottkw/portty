@@ -62,7 +62,9 @@ test.describe('Phase 93 WEB-02 web-csp zero-violation', () => {
 
     expect(res.errors, 'manifest parse errors').toEqual([])
     expect(res.url).toMatch(/\/app\/manifest\.json$/)
-    expect(JSON.parse(res.data ?? '{}').display).toBe('standalone')
+    const manifest = JSON.parse(res.data ?? '{}')
+    expect(manifest.display).toBe('standalone')
+    expect(manifest, 'theme_color is left to the media-query meta tags').not.toHaveProperty('theme_color')
     expect(cspViolations, 'No CSP violations loading the manifest').toEqual([])
   })
 })
