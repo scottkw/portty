@@ -182,3 +182,58 @@ func TestCmdUnshare(t *testing.T) {
 		}
 	}
 }
+
+// TestCmdUnshare_ShortPrefixRefused pins that unshare, which revokes the link
+// and disconnects viewers, needs an 8-character ID prefix like kill and rename
+// (audit W-2); share and attach still accept a short one.
+func TestCmdUnshare_ShortPrefixRefused(t *testing.T) {
+	_, client := testShareSetup(t)
+	id, err := client.CreateSession("build", "/tmp", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(id) <= minDestructivePrefix {
+		t.Fatalf("session id %q too short to exercise the prefix boundary", id)
+	}
+	if err := cmdShare(client, []string{"build"}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	shared := func() bool {
+		sessions, err := client.ListSessions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range sessions {
+			if s.ID == id {
+				return s.WebEnabled
+			}
+		}
+		t.Fatalf("session %s missing", id)
+		return false
+	}
+
+	for _, arg := range []string{id[:1], id[:minDestructivePrefix-1]} {
+		wantNo := fmt.Sprintf(`portty: no session named %q. Run 'portty list' to see your sessions.`, arg)
+		var buf bytes.Buffer
+		if err := cmdUnshare(client, []string{arg}, &buf); err == nil || err.Error() != wantNo {
+			t.Fatalf("cmdUnshare(%q) error = %v, want %q", arg, err, wantNo)
+		}
+		if buf.Len() != 0 {
+			t.Fatalf("cmdUnshare(%q) wrote %q", arg, buf.String())
+		}
+		if !shared() {
+			t.Fatalf("cmdUnshare(%q) stopped sharing", arg)
+		}
+	}
+	if s, err := lookupSession(client, id[:1]); err != nil || s.ID != id {
+		t.Fatalf("lookupSession (share/attach path) short prefix = %v, %v; want %s", s.ID, err, id)
+	}
+
+	var buf bytes.Buffer
+	if err := cmdUnshare(client, []string{id[:minDestructivePrefix]}, &buf); err != nil || buf.String() != "Stopped sharing \"build\". Remote viewers were disconnected.\n" {
+		t.Fatalf("cmdUnshare 8-char prefix = %q, %v", buf.String(), err)
+	}
+	if shared() {
+		t.Fatal("8-char prefix did not stop sharing")
+	}
+}
