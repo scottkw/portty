@@ -1,7 +1,7 @@
 ---
 phase: 16-v1-2-cleanup
 verified: 2026-11-23T14:05:00Z
-status: human_needed
+status: passed
 score: 6/6 must-haves verified
 covered_files:
   - ".planning/phases/11-file-preview/11-SECURITY.md"
@@ -49,7 +49,7 @@ human_verification:
 
 **Phase Goal:** Clear the doable tech debt from the v1.2 re-audit before the milestone closes (CLI kill-by-name, `--version`/unknown flags, load-robust DoS tests, Phase 15 review info items, planning hygiene, one clean full suite run, TESTING.md). Out of scope: real-Mac/release-gated checks, dompurify-3418, user-accepted limits.
 **Verified:** 2026-11-23
-**Status:** human_needed (all automated truths verified; one planned real-bundle launch check remains before ship)
+**Status:** passed (all automated truths verified; M-156 real-bundle launch check PASSED in the Tart VM `portty-test` on 2026-11-23, build v1.2.0-vm17; see TESTING.md Category BG)
 **Re-verification:** Yes, after gap closure (SC5 11-SECURITY.md; TESTING.md drift)
 
 ## Goal Achievement
@@ -129,3 +129,7 @@ No gaps. The one prior gap (11-SECURITY.md) is closed with a committed, verified
 
 _Verified: 2026-11-23_
 _Verifier: Claude (gsd-verifier)_
+
+## Human Verification Result
+
+M-156 PASS on 2026-11-23 in `portty-test` (macOS 27.2), build `v1.2.0-vm17` from 57cb9ca2: every launch path (Finder, Dock reopen, cold Dock launch, `open -a`, `--args -NS…`, `--args -Apple…`) showed the window; `--version`/`-v` rc 0 and `--bogus` rc 2 with no Portty process; duplicate name and 4-character ID prefix refused, rename/kill by name and by 8-character prefix worked. Status set to passed per the autonomous human-validation route.
