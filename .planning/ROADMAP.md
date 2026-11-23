@@ -252,7 +252,7 @@ Plans:
   5. Planning hygiene: SUMMARY `requirements-completed` lists cover INPT-01..06 (Phase 10), PREV-02/PREV-04 (Phase 11) and MOB-01..05 (Phase 14); `/gsd-secure-phase 11` produces 11-SECURITY.md; the selection-offset-and-copy todo is triaged (fixed here or explicitly carried to v1.3 with a reason).
   6. The full Go -race and vitest suites pass once, clean; fixed todos move to completed; TESTING.md is updated per the standing rule.
 **Depends on:** Phase 15
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -261,4 +261,4 @@ Plans:
 - [x] 16-03-PLAN.md — Wave 1: Planning hygiene: SUMMARY `requirements-completed` for INPT-01..06, PREV-02/PREV-04 and MOB-01..05 read back through summary-extract; selection-offset todo triage recorded (SC5)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 16-04-PLAN.md — Wave 2: TESTING.md (Section 2 note, PATH-02 row, Category BG M-156), IN-02/03/06 dispositions, one clean full Go -race and vitest run, three todos to completed (SC4, SC6); orchestrator then runs `/gsd-secure-phase 11` (SC5)
+- [x] 16-04-PLAN.md — Wave 2: TESTING.md (Section 2 note, PATH-02 row, Category BG M-156), IN-02/03/06 dispositions, one clean full Go -race and vitest run, three todos to completed (SC4, SC6); orchestrator then runs `/gsd-secure-phase 11` (SC5)
