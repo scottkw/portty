@@ -1,5 +1,6 @@
 import React from 'react'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { isPhone } from '../lib/phoneQuery'
 
 /**
  * Portty 05-09 (SHAR-07): contains a render or effect error to one pane, so the
@@ -12,6 +13,11 @@ interface Props {
   /** A change clears the error and renders the children again. */
   resetKey?: unknown
   fallback?: React.ReactNode
+  /**
+   * Phase 14 (MOB-03): the browser share view has no tabs to close, so the fallback says to reload
+   * (with a Reload button on a phone). Desktop and peer tabs keep the close-the-tab copy.
+   */
+  webMode?: boolean
   children?: React.ReactNode
 }
 
@@ -32,10 +38,16 @@ export class ErrorBoundary extends React.Component<Props, { hasError: boolean }>
 
   render() {
     if (!this.state.hasError) return this.props.children
+    const { webMode } = this.props
     return this.props.fallback ?? (
       <div className="banner banner--warning" role="status">
         <ExclamationTriangleIcon className="banner__icon" aria-hidden="true" />
-        <span className="banner__message">This tab hit an error. Close it and open the session again.</span>
+        <span className="banner__message">
+          {webMode ? 'This view hit an error. Reload to try again.' : 'This tab hit an error. Close it and open the session again.'}
+        </span>
+        {webMode && isPhone() && (
+          <button type="button" className="banner__action" onClick={() => location.reload()}>Reload</button>
+        )}
       </div>
     )
   }

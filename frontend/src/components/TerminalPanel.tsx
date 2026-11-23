@@ -1375,7 +1375,12 @@ export function TerminalPanel({
         />
       )}
       {reconnecting && !sessionEnded.ended && (
-        <SessionEndedBanner kind={hostUnreachable ? 'unreachable' : 'reconnecting'} host={hostLabel} />
+        <SessionEndedBanner
+          kind={hostUnreachable ? 'unreachable' : 'reconnecting'}
+          host={hostLabel}
+          // Reconnecting shows Reload only once two connect timeouts say it is stuck (14-04).
+          onReload={hostUnreachable || connectStuck ? reload : undefined}
+        />
       )}
       {pathNotice && isActive && !otherBannerRef.current && (
         <SessionEndedBanner kind={pathNotice} onDismiss={clearPathNotice} />

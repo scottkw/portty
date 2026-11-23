@@ -76,4 +76,43 @@ describe('ErrorBoundary', () => {
     const c = render(React.createElement(ErrorBoundary, { label: 'root', fallback: React.createElement('p', null, 'custom') }, React.createElement(Bomb)))
     expect(c.textContent).toBe('custom')
   })
+
+  // Phase 14 (MOB-03): the browser share view's fallback says Reload.
+  describe('webMode (MOB-03)', () => {
+    const realMatchMedia = window.matchMedia
+    const phoneMedia = (phone: boolean) => {
+      window.matchMedia = ((media: string) => ({
+        matches: phone && media === '(pointer: coarse) and (hover: none)', media,
+        addEventListener() {}, removeEventListener() {},
+      })) as unknown as typeof window.matchMedia
+    }
+    afterEach(() => { window.matchMedia = realMatchMedia })
+    const webTree = () => React.createElement(ErrorBoundary, { label: 'test', webMode: true }, React.createElement(Bomb))
+    const reloadBtn = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Reload')
+
+    it('webMode on a phone reads the reload copy and has a Reload button', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      phoneMedia(true)
+      const c = render(webTree())
+      expect(c.querySelector('[role="status"]')!.textContent).toBe('This view hit an error. Reload to try again.Reload')
+      expect(c.querySelector('.banner__message')!.textContent).toBe('This view hit an error. Reload to try again.')
+      expect(reloadBtn(c)).not.toBeUndefined()
+    })
+
+    it('webMode without a phone shows the message only', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      phoneMedia(false)
+      const c = render(webTree())
+      expect(c.querySelector('[role="status"]')!.textContent).toBe('This view hit an error. Reload to try again.')
+      expect(reloadBtn(c)).toBeUndefined()
+    })
+
+    it('no webMode keeps the close-the-tab copy, even on a phone', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      phoneMedia(true)
+      const c = render(tree(React.createElement(Bomb)))
+      expect(c.querySelector('[role="status"]')!.textContent).toBe('This tab hit an error. Close it and open the session again.')
+      expect(reloadBtn(c)).toBeUndefined()
+    })
+  })
 })

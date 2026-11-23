@@ -363,6 +363,87 @@ describe('TerminalPanel guest reconnect (SHAR-07)', () => {
     expect(container.textContent).not.toContain(BANNER)
   })
 
+  // Phase 14 (MOB-03): Reload on a phone. Reconnecting shows it only once two connect timeouts say stuck.
+  describe('Reload (MOB-03)', () => {
+    const realMatchMedia = window.matchMedia
+    const phoneMedia = (phone: boolean) => {
+      window.matchMedia = ((media: string) => ({
+        matches: phone && media === '(pointer: coarse) and (hover: none)', media,
+        addEventListener() {}, removeEventListener() {},
+      })) as unknown as typeof window.matchMedia
+    }
+    afterEach(() => { window.matchMedia = realMatchMedia })
+    const reloadBtn = () => Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Reload')
+
+    // Socket 0 joins and drops; each redial then never gets a host frame, so connectMs (15 s) fires per dial.
+    async function dropThenStall() {
+      mount()
+      joined(ws(0))
+      send(ws(0), metaFrame({ offset: 0 }))
+      drop(ws(0))
+      await advance(3_000)
+      expect(container.textContent).toContain(BANNER)
+    }
+
+    it('reconnecting: no Reload until two connect timeouts, and none again once a host frame arrives', async () => {
+      phoneMedia(true)
+      await dropThenStall()
+      expect(reloadBtn()).toBeUndefined()
+      await advance(40_000) // dial at 1 s, timeout at 16 s, redial at 18 s, timeout at 33 s
+      expect(container.querySelector('.terminal-session-container')!.getAttribute('data-connect-stuck')).toBe('true')
+      expect(container.textContent).toContain(BANNER)
+      expect(reloadBtn()).not.toBeUndefined()
+      await advance(20_000)
+      joined(ws(MockWS.instances.length - 1)) // the host's first frame clears stuck
+      expect(reloadBtn()).toBeUndefined()
+    })
+
+    it('reconnecting stuck without the phone query shows no Reload', async () => {
+      phoneMedia(false)
+      await dropThenStall()
+      await advance(40_000)
+      expect(container.querySelector('.terminal-session-container')!.getAttribute('data-connect-stuck')).toBe('true')
+      expect(reloadBtn()).toBeUndefined()
+    })
+
+    it('ended (guest final close) on a phone carries Reload, and on desktop does not', () => {
+      phoneMedia(true)
+      mount()
+      joined(ws(0))
+      drop(ws(0), 1000, 'session ended')
+      expect(container.textContent).toContain('Session ended')
+      expect(reloadBtn()).not.toBeUndefined()
+      act(() => root.unmount())
+      container.remove()
+      container = document.createElement('div')
+      document.body.appendChild(container)
+      root = createRoot(container)
+      MockWS.instances = []
+      phoneMedia(false)
+      mount()
+      joined(ws(0))
+      drop(ws(0), 1000, 'session ended')
+      expect(container.textContent).toContain('Session ended')
+      expect(reloadBtn()).toBeUndefined()
+    })
+
+    it('unreachable (browser view, probes failing 2+ min) on a phone carries Reload', async () => {
+      phoneMedia(true)
+      vi.stubGlobal('fetch', vi.fn(async (): Promise<Response> => { throw new TypeError('Failed to fetch') }))
+      act(() => {
+        root.render(React.createElement(WebShareSessionView, {
+          sessionId: 's1', capToken: 'tok', relayPort: 0, pluginConfig: null, hostLabel: 'office-air',
+        }))
+      })
+      joined(ws(0))
+      send(ws(0), metaFrame({ offset: 0 }))
+      drop(ws(0))
+      await advance(121_000)
+      expect(container.textContent).toContain("Can't reach office-air.")
+      expect(reloadBtn()).not.toBeUndefined()
+    })
+  })
+
   // B5: the browser cannot tell a refused probe (host daemon dead) from a sleeping
   // host, so it never stops on one; after 2 min failing the banner says so.
   it('browser view: probes refused for 2+ min show the long-outage banner, never stop, and a success restores it', async () => {

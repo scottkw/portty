@@ -1325,6 +1325,14 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   outline: 3px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
+/* Phase 14 (MOB-03): Reload is a 44 pt tap target on a phone; the visible text stays 12px. */
+@media (pointer: coarse) and (hover: none) {
+  .banner__action {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 8px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .banner {
     transition: none;

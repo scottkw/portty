@@ -1322,7 +1322,7 @@ function App(): React.ReactElement {
                   a reconnect after a re-share dials afresh (WR-06). Phase 11:
                   the session's tab id, not the active one, so showing one of
                   its previews never remounts it or closes its socket. */}
-              <ErrorBoundary label="web-session" resetKey={sessionTabId}>
+              <ErrorBoundary label="web-session" resetKey={sessionTabId} webMode={mode === 'web'}>
               <WebShareSessionView
                 key={`${sessionTabId}:${wsCapToken}`}
                 sessionId={wsSessionId}
