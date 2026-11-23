@@ -5,16 +5,16 @@ milestone_name: Previews, Remote URLs, Mobile
 current_phase: 16
 current_phase_name: v1.2 Cleanup
 status: executing
-stopped_at: Completed 16-02-PLAN.md
-last_updated: "2026-11-23T19:18:35.424Z"
+stopped_at: Completed 16-03-PLAN.md
+last_updated: "2026-11-23T19:21:02.479Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 16 execution started
-state_head: 71e4cd5eede6b0ab247bf882e0b7d6aabe4b523a
+state_head: 6b464fc1c6cb5a3008cac20b6523826e054db9a7
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 67
-  completed_plans: 65
+  completed_plans: 66
   percent: 88
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 16 (v1.2 Cleanup) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-11-23 — Phase 16 execution started
 
@@ -151,6 +151,7 @@ Last activity: 2026-11-23 — Phase 16 execution started
 | Phase 15 P09 | 50min | 3 tasks | 10 files |
 | Phase 16 P01 | 15 min | 2 tasks | 4 files |
 | Phase 16 P02 | 8 min | 3 tasks | 9 files |
+| Phase 16 P03 | 6 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -343,6 +344,7 @@ Recent decisions affecting current work:
 - [Phase 16]: 16-02 IN-03: guard History.Skip with !emu.IsAltScreen() only; Clear() left unchanged
 - [Phase 16]: 16-02 IN-06: optional ping hook lives in dialResumePing; dialResume wraps it with a nil hook (Go has no optional params)
 - [Phase 16]: 16-02 DoS-bound vitest tests: 30 s per-test timeout, inputs and assertions unchanged
+- [Phase 16]: 16-03: PREV-02/PREV-04 recorded on 11-10 and MOB-01..05 on 14-14 as requirements-completed, each citing its passed VERIFICATION.md inline; selection-offset todo triaged as already fixed at 7a37bfb4
 
 ### Pending Todos
 
@@ -451,8 +453,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-23T19:18:33.097Z
-Stopped at: Completed 16-02-PLAN.md
+Last session: 2026-11-23T19:20:59.389Z
+Stopped at: Completed 16-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
