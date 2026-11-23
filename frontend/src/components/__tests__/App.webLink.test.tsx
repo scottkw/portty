@@ -17,8 +17,8 @@ function atLink(query: string) {
   window.history.pushState({}, '', `/app/${query}`)
 }
 
-function stubInfo(status: number, body: unknown = {}) {
-  const fetchMock = vi.fn(async () => new Response(status === 200 ? JSON.stringify(body) : 'forbidden', { status }))
+function stubInfo(status: number, body: unknown = {}, headers?: Record<string, string>) {
+  const fetchMock = vi.fn(async () => new Response(status === 200 ? JSON.stringify(body) : 'forbidden', { status, headers }))
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
@@ -39,6 +39,25 @@ describe('App web mode — link states', () => {
     expect(c.querySelectorAll('[role="tab"]').length).toBe(0)
     expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
     expect(c.textContent).not.toContain(SID)
+  })
+
+  it('403 with X-Portty shows the own-devices screen, no tab, never the session id', async () => {
+    atLink(`?session=${SID}&cap=good`)
+    stubInfo(403, {}, { 'X-Portty': '1' })
+    const c = await mountApp({})
+    expect(c.textContent).toContain('This link only works on your own devices')
+    expect(c.textContent).not.toContain('Link No Longer Works')
+    expect(c.querySelectorAll('[role="tab"]').length).toBe(0)
+    expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
+    expect(c.textContent).not.toContain(SID)
+  })
+
+  it('503 opens the tab', async () => {
+    atLink(`?session=${SID}&cap=good`)
+    stubInfo(503)
+    const c = await mountApp({})
+    expect(c.textContent).not.toContain('Link No Longer Works')
+    expect(c.querySelector('[data-testid="web-session-view"]')).not.toBeNull()
   })
 
   it('401 is a dead link too', async () => {

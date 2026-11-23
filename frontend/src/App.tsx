@@ -54,6 +54,7 @@ import { TailscaleBanner } from './components/TailscaleBanner'
 import type { TailscaleHealth } from './lib/tailscale'
 import { WebShareSessionView } from './components/WebShareSessionView'
 import { LinkNoLongerWorks } from './components/LinkNoLongerWorks'
+import { UserRefused } from './components/UserRefused'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { UpdateBanner } from './components/UpdateBanner'
@@ -102,6 +103,8 @@ function App(): React.ReactElement {
   // Portty 04-06 (SHAR-03): web mode with an incomplete link, or a cap the server
   // refuses, shows Link No Longer Works and no tab.
   const [webLinkDead, setWebLinkDead] = useState(() => mode === 'web' && (!webParams.sessionId || !webParams.capToken))
+  // Portty 14-04 (MOB-05): the share server refused this device's Tailscale account. Final, no redial.
+  const [webOtherUser, setWebOtherUser] = useState(false)
   // Host label from the cap-verified session info, for the stopped-sharing banner.
   const [webHost, setWebHost] = useState('')
   // NAV-03: both modes start with no tabs. Desktop init restores running
@@ -935,6 +938,8 @@ function App(): React.ReactElement {
   // Effect runs exactly once because mode + webParams are mount-stable.
   // Portty 04-06: check the cap first. 401/403 is a dead link; any other answer
   // (or a network error) opens the tab, and the WebSocket reports the real state.
+  // Portty 14-04 (MOB-05): a 403 carrying X-Portty: 1 is the same-account refusal
+  // (refuseOtherUser), not a revoked cap: show the own-devices screen instead.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const { sessionId, capToken } = webParams
@@ -943,6 +948,10 @@ function App(): React.ReactElement {
     fetch(`/api/sessions/${encodeURIComponent(sessionId)}/info?cap=${encodeURIComponent(capToken)}`)
       .then(async (res) => {
         if (cancelled) return
+        if (res.status === 403 && res.headers.get('X-Portty') === '1') {
+          setWebOtherUser(true)
+          return
+        }
         if (res.status === 401 || res.status === 403) {
           setWebLinkDead(true)
           return
@@ -1245,6 +1254,7 @@ function App(): React.ReactElement {
         )}
         <div className="terminal-container">
         {webLinkDead && <LinkNoLongerWorks />}
+        {webOtherUser && <UserRefused />}
         {/* Phase 155-03 — WebShareSessionView render branch. Activated when
             the active tab id starts with __websession__. This is the primary
             surface for web-share viewers: TerminalPanel
@@ -1269,7 +1279,7 @@ function App(): React.ReactElement {
             gap 1, ratified by the user 2026-11-21), and makes no request
             for the host's config. The host still enforces the printed-token
             check and the write capability on every path click. */}
-        {sessionTabId !== null && sessionTabId.startsWith('__websession__') && (() => {
+        {!webOtherUser && sessionTabId !== null && sessionTabId.startsWith('__websession__') && (() => {
           const activeWebTab = tabs.find((t) => t.id === sessionTabId)
           // Portty 05-09: never fall back to window.location.origin on the desktop (wails://, the WebSocket throws).
           if (!activeWebTab && mode !== 'web') return null
