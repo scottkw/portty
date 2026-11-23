@@ -217,4 +217,79 @@ describe('PdfPreview (PREV-02, PREV-04)', () => {
     expect(open).toHaveBeenCalledTimes(1)
     expect(open).toHaveBeenCalledWith('blob:test/pdf', '_blank', 'noopener,noreferrer')
   })
+
+  // Phase 14 (MOB-03, T-14-13): in a Home Screen web app Open PDF stays in the app and has a way back.
+  describe('standalone (Home Screen web app)', () => {
+    const realMatchMedia = window.matchMedia
+    const standalone = (on: boolean) => {
+      window.matchMedia = ((media: string) => ({
+        matches: on && media === '(display-mode: standalone)', media,
+        addEventListener() {}, removeEventListener() {},
+      })) as unknown as typeof window.matchMedia
+    }
+    afterEach(() => { window.matchMedia = realMatchMedia })
+    const btn = (c: HTMLElement, label: string) =>
+      Array.from(c.querySelectorAll('button')).find((b) => b.textContent === label) as HTMLButtonElement | undefined
+
+    it('not standalone: Open PDF still calls window.open and shows no dialog', () => {
+      standalone(false)
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode onFail={() => {}} />)
+      act(() => btn(c, 'Open PDF')!.click())
+      expect(open).toHaveBeenCalledWith('blob:test/pdf', '_blank', 'noopener,noreferrer')
+      expect(c.querySelector('[role="dialog"]')).toBeNull()
+    })
+
+    it('standalone: Open PDF opens a dialog named after the file with the PDF as an img, focus on Done, no window.open', () => {
+      standalone(true)
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode onFail={() => {}} />)
+      expect(c.querySelector('[role="dialog"]')).toBeNull()
+      act(() => btn(c, 'Open PDF')!.click())
+      expect(open).not.toHaveBeenCalled()
+      const dlg = c.querySelector('[role="dialog"]')!
+      expect(dlg.getAttribute('aria-modal')).toBe('true')
+      expect(dlg.getAttribute('aria-label')).toBe('report.pdf')
+      const img = dlg.querySelector('img')!
+      expect(img.getAttribute('src')).toBe('blob:test/pdf')
+      expect(img.getAttribute('alt')).toBe('report.pdf')
+      expect(document.activeElement).toBe(btn(c, 'Done'))
+      expect(btn(c, 'Open full PDF')).not.toBeUndefined()
+    })
+
+    it('standalone: Done closes the dialog and returns focus to Open PDF', () => {
+      standalone(true)
+      const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode onFail={() => {}} />)
+      act(() => btn(c, 'Open PDF')!.click())
+      act(() => btn(c, 'Done')!.click())
+      expect(c.querySelector('[role="dialog"]')).toBeNull()
+      expect(document.activeElement).toBe(btn(c, 'Open PDF'))
+    })
+
+    it('standalone: Esc closes the dialog and returns focus to Open PDF', () => {
+      standalone(true)
+      const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode onFail={() => {}} />)
+      act(() => btn(c, 'Open PDF')!.click())
+      act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
+      expect(c.querySelector('[role="dialog"]')).toBeNull()
+      expect(document.activeElement).toBe(btn(c, 'Open PDF'))
+    })
+
+    it('standalone: Open full PDF opens the whole document top-level', () => {
+      standalone(true)
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode onFail={() => {}} />)
+      act(() => btn(c, 'Open PDF')!.click())
+      act(() => btn(c, 'Open full PDF')!.click())
+      expect(open).toHaveBeenCalledTimes(1)
+      expect(open).toHaveBeenCalledWith('blob:test/pdf', '_blank', 'noopener,noreferrer')
+    })
+
+    it('desktop iframe path is unchanged in standalone mode', () => {
+      standalone(true)
+      const c = render(<PdfPreview url="blob:test/pdf" name="report.pdf" webMode={false} onFail={() => {}} />)
+      expect(c.querySelectorAll('iframe')).toHaveLength(1)
+      expect(c.querySelector('[role="dialog"]')).toBeNull()
+    })
+  })
 })
