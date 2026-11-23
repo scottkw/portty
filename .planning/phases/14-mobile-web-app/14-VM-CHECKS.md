@@ -138,4 +138,33 @@ Run after P-07, on both VMs.
 
 - Session `phone` on the office VM (HEAD, `v1.2.0-vm14`), shared, running a tick counter (`tick <n>` once a second), open in the office GUI.
 - Link directory on the host: `/var/folders/lb/2__vrh3n2n155kwhrvz08lv80000gn/T/p14-phone.9XH3D6uSdM`
-- `phone.url` in that directory is a 0600 file that holds the link (one line, 315 bytes). 14-14 ends the share and deletes the directory.
+- `phone.url` in that directory is a 0600 file that holds the link (one line, 315 bytes). 14-14 ends the share and deletes the directory. Ended and deleted by 14-14 on 2026-11-22 (see `## Cleanup (14-14)`).
+
+## User decisions
+
+**Decision:** accept-limit
+
+Date: 2026-11-22. The user answered the 14-14 checkpoint through the question labelled "Approve (Recommended)". As that question offered it, it is an approval of every row, the CSP delta and the real-phone items, plus one accepted limit (S-02). The recorded decision word is `accept-limit` because a limit is accepted. The user's words and answers, as relayed by the coordinator:
+
+- **S-02 (accepted limit):** accepted limit, user decision 2026-11-22: "the gap is iOS's own form-assist bar (⌃ ⌄ ✓), which iOS shows above the keyboard for any web text field even in the standalone app; Portty's key bar sits directly on top of it (confirmed in the user's real-iPhone screenshot, standalone)". The row in 14-SIM-CHECKS.md is rewritten as PASS with this note; its measured numbers are unchanged.
+- **PHONE-1 (M-145, real iPhone):** PASS. The page loaded in "less then 5 sec". The icon landed "on the home page" (a Home Screen page, not only the App Library). The standalone launch kept the query: full screen, ticks counting, key bar shown. The key bar sits directly above iOS's form-assist bar (the user's screenshot, which is not in the repository). iOS version: not reported. Pinch: not reported.
+- **PHONE-2 (MOB-03, M-148, real iPhone):** PASS. "All three worked, no gaps": the 10-minute lock, Wi-Fi off and on, and the 2-minute app switch. Seconds to resume: not reported.
+- **UI-A (another account on real machines):** accepted. The other account is shown with the `vmwhois` build, and tests pin the rest (tagged and shared-in nodes).
+- **UI-B (WhoIs cost):** keep uncached. The estimate was 82.8 ms per cold load against the rule's 300 ms; no verdict cache is built.
+- **UI-C (simulator fidelity):** accept the simulator rows as evidence; the real-phone checks back them up.
+- **CSP Amendment 4 (`manifest-src 'self'` only):** approved.
+- **The 64 s Safari load after Try again (P-03):** a VM Safari effect; the real phone loaded in under 5 s. Kept as a residual note, not investigated further.
+- **Linkifier flake (`pathLinks.linkifier.test.ts`):** "Todo to fix later". Filed as `.planning/todos/pending/2026-11-22-linkifier-reconnect-flake.md`.
+- **G-1 (`internal/pty` `TestKillClean_NoOrphans`):** already accepted by the user (2026-11-22, Phases 12 and 13).
+- **Firefox 14-01 deferral (`selection-offset.spec.ts:179`):** fixed at `9b3e6b2a`; marked resolved in `deferred-items.md`.
+
+## Cleanup (14-14)
+
+Run 2026-11-22 after the user's answer.
+
+- **Phone-check share ended inside the office VM** (SSH from the host with the rig key; no link printed): `portty unshare phone` printed `Stopped sharing "phone". Remote viewers were disconnected.` A first `portty kill phone` by name failed with "session not found" (the CLI needs the session id); `portty kill` by id (looked up with the VM's `sid` helper) succeeded and `portty list --local` is empty on both VMs.
+- **Dotfiles:** office `~/.zsh_history` sha256 prefix `e09568dbf568fc9a` and `~/.zshrc` `e3b0c44298fc1c14` are equal to P-00, so no restore from a copy was needed (the `phone` shell ran with `unset HISTFILE`). No `expect`, `vim` or `keys.zsh` process was running.
+- **`/health` still HEAD on both VMs:** `{"status":"ok","version":"v1.2.0-vm14","api":5,"handoff":1}` on the office and on the home VM. The VMs were never stopped, suspended or rebooted; no `tailscale down`, `logout` or auth key.
+- **Host files deleted:** the phone-check directory `p14-phone.9XH3D6uSdM` (with the 0600 link file), the full-run screenshot directory `p14-shots.TJxqBvzGDp` (30 files) and the spike screenshot directory `p14-spike-shots.DL4VYuu3Bn` (10 files). Before deleting, the sha256 (first 12 hex) of every file in both screenshot directories was checked against the list in 14-SIM-CHECKS.md: 30 of 30 and 10 of 10 matched. `ls` finds no `p14-*` entry under the host temporary directory, and the host clipboard is empty (0 bytes).
+- **Not cleaned by this plan:** the user's iPhone (the Home Screen icon and Safari's history for the link). The icon is dead now that the share has ended; the user was asked to delete it and clear that history.
+- **Slip recorded earlier:** 14-12 noted a link prefix once in a tool transcript (P-07, session `p4`), now ended. No repository file holds a link.

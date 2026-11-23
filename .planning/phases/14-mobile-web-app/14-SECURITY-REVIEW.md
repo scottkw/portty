@@ -241,3 +241,46 @@ Rows from the threat models of 14-01 to 14-14. T-14-SC (package installs) is in 
 - Marker branch, close reasons, reconnect, Reload, Open PDF: `frontend/src/components/__tests__/App.webLink.test.tsx`, `frontend/src/components/__tests__/UserRefused.test.tsx`, `frontend/src/lib/__tests__/closeReasons.test.ts`, `frontend/src/lib/relayClient.test.ts`, `frontend/src/components/__tests__/TerminalPanel.guestClose.test.tsx`, `frontend/src/components/__tests__/TerminalPanel.reconnect.test.tsx`, `frontend/src/components/__tests__/SessionEndedBanner.test.tsx`, `frontend/src/components/__tests__/PreviewRenderers.test.tsx`
 - Home Screen head tags and manifest: `frontend/src/__tests__/homeScreen.test.ts`
 - Not automated (VM, simulator and real-phone rows): E-00, E-01, P-00..P-07 (`14-VM-CHECKS.md`), H-00, H-01, S-00..S-08 (`14-SIM-CHECKS.md`), PHONE-1 and PHONE-2 (the checkpoint)
+
+## Evidence and verdict
+
+Written after the user answered the 14-14 checkpoint (2026-11-22). The rows are in `14-VM-CHECKS.md` (E, I, P rows) and `14-SIM-CHECKS.md` (H and S rows). No link, capability, token or tailnet address is written here. The user's words are quoted as relayed to the executor.
+
+### Rows in brief
+
+- **VM rows over the real tailnet (HEAD build, two Tart VMs), all PASS.** P-00 preflight. P-01 same account: app 200, info 200, link page 302, discovery probe 401 with the marker, WebSocket 101, the home sidebar lists the host's session. P-02 another account (the `vmwhois` build): every gated route 403 with the marker, the refusal page body byte-identical to `web/user-refused.html`, the WebSocket refused, no join in the host log, the open routes still 200, the host's own Safari still opens. P-03 fault mode: 503 with no marker and the retry page, the sidebar group dropped 21 to 26 s after the fault and returned 31 s after it ended (T-14-43's measured cost). P-04 cost: peer status p95 6.88 ms, WhoIs p95 4.95 ms, 7 gated requests per cold load, estimate 82.8 ms, the host's own address resolves to itself with the same user. P-05 lone Esc after the change (the before rows E-00 and E-01 reproduced the hold). P-06 desktop unchanged. P-07 launcher steps and link form match the real Share popover.
+- **Emulation rows (Playwright, all projects), I-01..I-24 PASS:** the key bar bytes and size in the iPhone 15 emulation, the phone chrome, the gate's refusal page, retry page and same-account open in Chromium, Firefox and WebKit, Chromium parsing the manifest under the share CSP, and the desktop no-key-bar assertions.
+- **Simulator rows (iOS 26.5, headless), H-00, H-01 and S-00..S-08 PASS;** S-02 failed its literal 8 pt criterion as measured and is an accepted limit (below). S-04 (Home Screen launch keeps the `session` and `cap` query parameters) PASS: the icon launch hit the info route once more, full screen, key bar shown, no error page. S-06 Open PDF in the Home Screen app: Done visible and returns without a relaunch (T-14-41 closed). S-07 and S-08: the stopped and ended banners with Reload (T-14-42), and the icon showing "Link No Longer Works" after the share stops.
+- **Gate (14-12):** two flakes, each green when re-run alone: `internal/pty` `TestKillClean_NoOrphans` (G-1, already accepted by the user) and `pathLinks.linkifier.test.ts` (filed as a todo, below).
+
+### Real iPhone, in the user's words
+
+- **PHONE-1 (M-145), PASS.** The page loaded in "less then 5 sec". The icon landed "on the home page" (a Home Screen page). The standalone launch kept the query: full screen, ticks counting, key bar shown. The user's screenshot shows the key bar directly above iOS's form-assist bar. The iOS version and the pinch were not reported.
+- **PHONE-2 (MOB-03, M-148), PASS.** "All three worked, no gaps": the 10-minute lock, Wi-Fi off and on, and the 2-minute app switch. Seconds to resume were not reported.
+- This is the first evidence that the wake, `pageshow` and Reload mitigations (against WebKit bug 308073) work on a real device; the evidence is the user's own report, and no timing was taken.
+
+### The user's decisions on the open items
+
+- **CSP delta, approved:** Amendment 4, `manifest-src 'self'` and nothing else. On iOS the manifest was accepted under the policy (S-04, and PHONE-1 with the icon and full-screen launch).
+- **S-02, accepted limit, user decision 2026-11-22:** "the gap is iOS's own form-assist bar (⌃ ⌄ ✓), which iOS shows above the keyboard for any web text field even in the standalone app; Portty's key bar sits directly on top of it (confirmed in the user's real-iPhone screenshot, standalone)". The measured numbers stay in the row (117 pt in a Safari tab, 85 pt in the Home Screen app, 68 pt in landscape).
+- **UI-A (another account on real machines), accepted:** the other account is shown with `vmwhois`, and tests pin the rest (tagged and shared-in nodes).
+- **UI-B (WhoIs cost), keep uncached:** 82.8 ms estimate against the rule's 300 ms; no verdict cache is built (T-14-07 stays accepted).
+- **UI-C (simulator fidelity), accepted:** the simulator rows are the evidence for the key bar, keyboard inset, pinch and safe areas, and the real-phone checks back them up.
+
+### Threat results for this plan
+
+- **T-14-37 (this review, TESTING.md and the decision record hold no secret):** the Task 1 and Task 3 greps for link, token, tailnet URL and address patterns count 0 over this file, 14-VM-CHECKS.md and the Category BE region of TESTING.md.
+- **T-14-38 (the phone-check share left behind):** ended inside the office VM, the host link directory and both simulator screenshot directories deleted after their sha256 lists matched, the host clipboard empty; recorded in `## Cleanup (14-14)` of 14-VM-CHECKS.md.
+
+### Residual risks
+
+- Every accepted risk in part 1 stands: the Home Screen icon stores the share URL (T-14-04), the sidebar drop while the host's tailscaled fails (T-14-43), no verdict cache (T-14-07), the source address trusted as tailscaled trusts it (T-14-02), the lone-Esc split-reply cost (T-14-09), and a write-capability holder controlling the shell as before.
+- **S-02 accepted limit** (above): the key bar is above iOS's form-assist bar, not within 8 pt of the keys.
+- **Fidelity caveat stands:** the simulator has no real suspension, cellular or Tailscale VPN, and Playwright's WebKit is not iOS Safari; WebKit bugs 308073, 218983 and 254861 are covered only by the unit tests plus the user's real-phone report.
+- **Not run on the real phone:** the pinch (so the relaunch-returns-to-the-host-font half of M-147 is test-pinned only), Open PDF in the Home Screen app, re-share and add the icon again, and the iOS version and resume timings were not reported.
+- **The 64 s Safari load after Try again (P-03)** was recorded as a VM Safari effect; the real iPhone loaded the page in under 5 s. It was not investigated further.
+- **Another account** is shown only through the `vmwhois` rewrite of the real answer (UI-A); there was no second Tailscale login.
+- **Tests:** `pathLinks.linkifier.test.ts` "after a reconnect, another cell of the same row offers the link" flakes under full-suite load (todo `.planning/todos/pending/2026-11-22-linkifier-reconnect-flake.md`); G-1 is the known `internal/pty` timing flake. Neither touches this feature.
+- **Rig limits recorded in the rows:** terminal rows are not readable over AX, so several VM "shown" claims rest on function and timing probes, not on pixels.
+
+**Verdict:** approved. P-02 (another account refused on every gated route on real machines), S-04 (the Home Screen launch keeps the query on the finished UI, with PHONE-1 on a real iPhone) and the CSP delta (`manifest-src 'self'` only, approved by the user) are each PASS or approved; S-02 is an accepted limit and UI-A, UI-B and UI-C are accepted in the user's words above (2026-11-22).
