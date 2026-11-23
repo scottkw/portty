@@ -1,15 +1,16 @@
 ---
 phase: 13-remote-localhost-urls
-verified: 2026-11-23T19:30:00Z
+verified: 2026-11-23T20:15:00Z
 status: passed
 score: 4/4 roadmap success criteria verified (43/43 plan must-have truths verified)
 covered_files: [".planning/phases/13-remote-localhost-urls/13-01-PLAN.md", ".planning/phases/13-remote-localhost-urls/13-01-SUMMARY.md", ".planning/phases/13-remote-localhost-urls/13-02-PLAN.md", ".planning/phases/13-remote-localhost-urls/13-02-SUMMARY.md", ".planning/phases/13-remote-localhost-urls/13-03-PLAN.md", ".planning/phases/13-remote-localhost-urls/13-03-SUMMARY.md", ".planning/phases/13-remote-localhost-urls/13-04-PLAN.md", ".planning/phases/13-remote-localhost-urls/13-04-SUMMARY.md", ".planning/phases/13-remote-localhost-urls/13-05-PLAN.md", ".planning/phases/13-remote-localhost-urls/13-05-SUMMARY.md", ".planning/phases/13-remote-localhost-urls/13-06-PLAN.md", ".planning/phases/13-remote-localhost-urls/13-06-SUMMARY.md", ".planning/phases/13-remote-localhost-urls/13-07-PLAN.md", ".planning/phases/13-remote-localhost-urls/13-07-SUMMARY.md", "TESTING.md", "app.go", "app_test.go", "frontend/src/components/SessionEndedBanner.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/components/__tests__/SessionEndedBanner.test.tsx", "frontend/src/components/__tests__/TerminalPanel.remotePort.test.tsx", "frontend/src/lib/__tests__/fixtures/localhost-url.json", "frontend/src/lib/__tests__/localhostUrl.test.ts", "frontend/src/lib/localhostUrl.ts", "frontend/src/wailsjs/go/main/App.d.ts", "frontend/src/wailsjs/go/main/App.js", "internal/capability/porttoken.go", "internal/capability/porttoken_test.go", "internal/daemon/api.go", "internal/daemon/api_test.go", "internal/daemon/client.go", "internal/daemon/client_test.go", "internal/daemon/handoff.go", "internal/daemon/handoff_test.go", "internal/daemon/ipc.go", "internal/daemon/peer_client.go", "internal/daemon/peer_connect.go", "internal/daemon/portforward.go", "internal/daemon/portforward_api.go", "internal/daemon/portforward_e2e_test.go", "internal/daemon/portforward_test.go", "internal/daemon/remote_ws_proxy.go", "internal/daemon/share.go", "internal/daemon/types.go", "internal/relay/history.go", "internal/relay/hub.go", "internal/relay/pathclick.go", "internal/relay/portprinted.go", "internal/relay/portprinted_test.go", "internal/tailnet/sessions.go", "internal/webserver/capability_mw.go", "internal/webserver/portproxy.go", "internal/webserver/portproxy_revoke_test.go", "internal/webserver/portproxy_test.go", "internal/webserver/server.go"]
-covered_digest: "v4:sha256:8ec448e0f22a1a9de8490c287a1c5010803bcc89b82b95c87628d7376774b97e"
+covered_digest: "v4:sha256:87db7c8b05edba1f4452c8af706cb23f3571d3c2e9e8fff5d573652b7213807d"
 re_verification: true
 previous_status: passed
-previous_digest: "v4:sha256:26d6292015dbb313ddf90f0eeeac42129ca86fc3d9b5c9d70c280b84f9c55641"
+previous_digest: "v4:sha256:8ec448e0f22a1a9de8490c287a1c5010803bcc89b82b95c87628d7376774b97e"
 behavior_unverified: 0
 overrides_applied: 0
+re_verification_after_phase_16: "stale after Phase 16 moved hub.go, types.go, client_test.go, localhostUrl.test.ts, TESTING.md; all re-checked at HEAD, no gap"
 ---
 
 # Phase 13: Remote Localhost URLs Verification Report
@@ -36,6 +37,36 @@ Of the 48 files Phase 15 changed outside `.planning`, only five are in the Phase
 | `TESTING.md` | Phase 15 rows and Category BF added | No removed lines. Category BD (M-137..M-144) and the Phase 13 Section 2/4 rows are intact. `check-traceability-paths.sh`: `OK: 228 traceability paths exist`. |
 
 Every other file changed in the Phase 13 production path (`portforward*.go`, `portproxy.go`, `porttoken.go`, `portprinted.go`, `peer_connect.go`, `remote_ws_proxy.go`, `share.go`, `server.go`, `api.go`, `client.go`, `types.go`, `app.go`, `localhostUrl.ts`, `SessionEndedBanner.tsx`) has no diff since the previous verification, so every file:line anchor the earlier report gave still holds.
+
+## Re-verification after Phase 16
+
+Phase 16 "v1.2 Cleanup" (`git diff cc595307..HEAD`, HEAD 3c09f851) moved five files this report covers. This pass reads each hunk, judges it against the truths that depend on it, and re-runs the tests that pin them. The other Phase 16 code changes (`main.go` launch dispatch, `cmd_cli.go`/`cmd_share.go` kill, rename and empty-argument handling, `internal/pty/cleanup.go`, the webserver test helper) are not in this phase's covered set and sit off the port-forward path: no port grant, proxy, token or consent code calls them.
+
+| Moved file | Phase 16 change | Effect on Phase 13 truths |
+|------------|-----------------|---------------------------|
+| `internal/relay/hub.go` | ED 3 now calls `h.history.Skip(emu.ScrollbackLen())` only when `!emu.IsAltScreen()` (15-REVIEW IN-03) | None on SC3's printed-URL check. `Hub.PortPrinted` reads the same `pathSnapshot`; `Skip` only advances `History.pushed` (row numbering) and no retained text changes. The guard only narrows when it counts. `PortPrinted`, `HasURLPort`, `PathClick`, `Cwd_` tests pass at HEAD. |
+| `internal/daemon/types.go` | Unused `PathClickAPI` constant removed; comment for API 4 reworded. `APIVersion` stays 5, `PortProxyAPI` stays 5, `PreviewAPI` stays 3 | None. `grep PathClickAPI` over Go and TS finds no reference left; the build and vet are clean. Viewers gate path clicks on the replay meta bit, not this constant. The API 5 marker that `POST /peers/ports` and the takeover rely on is untouched. |
+| `internal/daemon/client_test.go` | `TestHealthInfo` drops the `PathClickAPI != 4` operand and its message | Still asserts `APIVersion == 5` and `PortProxyAPI == 5`, the Phase 13 pin. Passes. |
+| `frontend/src/lib/__tests__/localhostUrl.test.ts` | The 10,000-character hostile-input case gets an explicit 30 s timeout (`}, 30_000)`) | Test-only; inputs and assertions unchanged, so the SC1/SC3 classifier checks are the same. Passes. |
+| `TESTING.md` | Phase 16 note and Category BG (M-156) added; one PATH-02 traceability row reworded | No Phase 13 row removed (Category BD, M-137..M-144, and the Phase 13 rows are intact). `bash tests/check-traceability-paths.sh`: `OK: 228 traceability paths exist`. |
+
+Verdict: every roadmap success criterion (SC1..SC4), the 43 plan truths and URL-01..URL-03 stand as verified above. The VM evidence (13-VM-CHECKS.md L-00..L-08) carries forward: Phase 16 changed no code those runs exercised.
+
+Checks run at HEAD (`GOTOOLCHAIN=go1.26.11`, `-race -short -count=1`, named runs only, no GUI, no tailnet, no host tailscaled):
+
+| Check | Result |
+|-------|--------|
+| `go build ./...`; `go vet` on root, daemon, relay, webserver, pty; `gofmt -l *.go internal` | clean |
+| `./internal/daemon -run 'PortForward\|PortOpen\|ForwardHostAllowed\|ClassifyLoopback\|Takeover_FinalizeDeniesRelayPort\|HealthInfo\|APIHealth\|OpenRemotePortClient\|Handoff_\|ListenDaemonSocket\|PeerConnect'` | ok |
+| `./internal/relay -run 'PortPrinted\|HasURLPort\|PathClick\|Cwd_\|Hub_Grid'` | ok |
+| `./internal/webserver` (whole package: Port, SameUser, Capability, grant and proxy refusals) | ok |
+| `./internal/capability`, `./internal/tailnet` | ok |
+| root `-run TestOpenRemotePort` (5 tests incl. `_Codes`, `_NoSecrets`) | PASS |
+| vitest: `localhostUrl`, `TerminalPanel.remotePort`, `SessionEndedBanner`, `App.webLink`, `markdown` (5 files) | 151 of 151 PASS |
+| `bash tests/check-traceability-paths.sh` | OK: 228 |
+| Phase 16's own full `go test -race -short ./...` (14/14 ok) and full vitest (1826/1826) at f1e7280d, reported by the orchestrator | not re-run here; only `cmd_cli.go`/`cmd_share.go` changed afterwards and the root package was re-tested clean |
+
+No failure, no new gap. Status stays `passed`.
 
 ## Goal Achievement
 
@@ -138,4 +169,6 @@ No gaps at HEAD. A printed loopback URL in a desktop peer tab still goes through
 ---
 
 _Verified: 2026-11-23 (re-verification at c818e1e1, after Phase 15)_
+_Verifier: Claude (gsd-verifier)_
+_Re-verified: 2026-11-23 (after Phase 16, at HEAD 3c09f851)_
 _Verifier: Claude (gsd-verifier)_

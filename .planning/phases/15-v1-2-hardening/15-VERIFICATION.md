@@ -1,6 +1,6 @@
 ---
 phase: 15-v1-2-hardening
-verified: 2026-11-23T18:45:00Z
+verified: 2026-11-23T20:15:00Z
 status: passed
 score: 8/8 roadmap success criteria verified
 covered_files:
@@ -28,6 +28,7 @@ covered_files:
   - "cmd_attach.go"
   - "cmd_attach_resize.go"
   - "cmd_attach_test.go"
+  - "cmd_share.go"
   - "frontend/src/App.tsx"
   - "frontend/src/components/TabBar.tsx"
   - "frontend/src/components/TerminalPanel.tsx"
@@ -70,19 +71,16 @@ covered_files:
   - "internal/webserver/input_queue_test.go"
   - "tray.go"
   - "tray_objc_darwin.m"
-covered_digest: "v4:sha256:b47bf98c044617c4f83a4b559432738beb2bc50ebe92fd7bad4a2dc32cbe9485"
+covered_digest: "v4:sha256:69bc6879785a1852f90ddba99e1511eb3455cdcc345f2fa67b5f8a0db67dcfba"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
-  previous_status: human_needed
-  previous_score: 8/8 in code (4 human items pending)
-  gaps_closed:
-    - "M-152 live notification click: PASS in VM (TESTING.md, 15-UAT.md)"
-    - "M-153 attach bar with real terminal apps: PASS in VM"
-    - "M-154 ended peer tab and sidebar over the two-VM tailnet: first run FAILED (not_sharing after the ended close), fixed in 7ca43451, rerun PASS"
-    - "M-155 TestHandoffIT and the pre-phase upgrade chain: PASS in VM (first run hit a stale API assertion, fixed in 1c8d3a09)"
+  previous_status: passed
+  previous_score: 8/8 roadmap success criteria verified
+  gaps_closed: []
   gaps_remaining: []
   regressions: []
+  note: "after Phase 16 (moved cleanup.go, hub.go, cwd_test.go, input_queue_test.go, TESTING.md); IN-02, IN-03, IN-06 resolved by Phase 16"
 ---
 
 # Phase 15: v1.2 Hardening Verification Report
@@ -101,6 +99,39 @@ All eight roadmap success criteria hold in the current tree. The four live check
 | 7ca43451 | `peerConnectVerdict` maps `not_sharing` to `ended` after the session-ended close (`closeReasons.ts:33`). `forbidden` still stops as `share-stopped`. | Read the code and diff. Vitest on closeReasons, App.open-remote and TerminalPanel.guestClose: 3 files, 82 of 82 pass. The tests cover `no_such_session`, `not_sharing` and `forbidden` after the ended close, and `unreachable` still retries. |
 | 1c8d3a09 | `TestHandoffIT` asserts `APIVersion` instead of the stale literal 2. | Read the diff. The file is env-gated, and `go vet` (default and `-tags integration`) is clean. The VM run at 1c8d3a09 passed. |
 | ce95e76f, TESTING.md | The M-152..M-155 "Last run" lines record PASS on 2026-11-23, with M-154 re-run after 7ca43451. | Read the lines at TESTING.md 1855 to 1880. The M-154 line records the first FAIL honestly, then the rerun PASS (2 of 2 runs, pf drop showed the can't-reach line, tab recovered). |
+
+## Re-verification after Phase 16
+
+Phase 16 "v1.2 Cleanup" (`git diff cc595307..HEAD`, HEAD 3c09f851) moved five files this report covers: `TESTING.md`, `internal/pty/cleanup.go`, `internal/relay/cwd_test.go`, `internal/relay/hub.go` and `internal/webserver/input_queue_test.go`. `cmd_share.go` is now also in the fingerprint because `portty attach` resolves its target through `resolveSession`. Phase 16 resolved three of this phase's open review items (15-REVIEW-DISPOSITION.md): **IN-02** (duplicate `killSession` branches, fixed in 97611082), **IN-03** (ED 3 `History.Skip` counted main-screen scrollback in the alternate screen, fixed in 0af0cd46) and **IN-06** (`joinPasteViewer` copied `dialResume`, fixed in 97611082). IN-05 was covered by M-152 (passed).
+
+| Moved file | Phase 16 change | Effect on Phase 15 truths |
+|------------|-----------------|---------------------------|
+| `internal/pty/cleanup.go` (SC3, IN-02) | The two early-return branches (`cmd == nil || cmd.Process == nil` and `reaped.Load()`) are one `||` condition with the same body (`closePTY`, `cancel`, return nil); a doc sentence records the accepted IN-01 residual | Behaviour-identical, read line by line: `exited != nil` still goes to `killAdopted` first, a reaped session is still never signalled or re-waited, a running one still gets SIGHUP to the group. `TestKillSession_ReapedSkipsGroupSignal`, `_RunningSignalsGroup`, `_NoGoroutineLeak_NormalCase`, `TestKillClean`, `_NoOrphans`, `_NotFound` and the whole `./internal/pty` package pass under `-race`. |
+| `internal/relay/hub.go` (SC6, IN-03) | ED 3 calls `History.Skip(emu.ScrollbackLen())` only when `!emu.IsAltScreen()` | The F-1 fix (rows stay monotonic after `clear`) is kept for the main screen; the guard only stops over-counting while the alternate screen is active (vt's ED 3 clears the active screen's scrollback, `ScrollbackLen` is always the main screen's). `TestCwd_ClearKeepsRowsMonotonic`, `TestCwd_ScrollbackEraseKeepsRows` and `TestPathClick_RelativeAfterClear` still pass. Mutation check: with the guard replaced by `if true`, the new `TestCwd_AltScreenScrollbackEraseKeepsRows` fails (`MARK-A resolves to "/b", want "/a"`); the file was restored and `git diff` is back to the committed state. |
+| `internal/relay/cwd_test.go` | Adds `TestCwd_AltScreenScrollbackEraseKeepsRows` | The pin for IN-03 above. Passes with the guard, fails without it. |
+| `internal/webserver/input_queue_test.go` (SC7, IN-06) | `joinPasteViewer` calls the shared `dialResumePing` helper in `resume_test.go` instead of copying the dial code; same `OnPingReceived` hook, same Origin header, same read limit | `TestShare_PasteBacklogKeepsViewer` (the 15-02 deterministic ping-counting test) still passes; the whole `./internal/webserver` package passes. Test-only. |
+| `TESTING.md` | Phase 16 note and Category BG (M-156) added; Phase 15's note and Category BF (M-152..M-155, with their PASS lines) are intact | Traceability script: OK 228. |
+| `cmd_share.go` (added to the fingerprint) | `resolveSession` rejects `""`; `lookupSessionStrict` is used by kill and rename only | `portty attach` still resolves by exact name, exact ID and unique prefix; only an empty target now returns `noSessionError`, which attach already handles. `TestAttach*`, `TestInitialResizeFrame` and the attach package pass. The SC1 attach-bar truth is not affected. |
+
+The two CLI bugs recorded as non-blocking observations in this report (`kill-by-name-fails`, `version-flag-hangs`) and the DoS-bound timeout todo are fixed in Phase 16 and sit in `.planning/todos/completed/`. The pending todos are now `dompurify-3418` and `v12-release-checks` only. The untracked `agenthub` binary in the observations is still untracked and still not phase output.
+
+Verdict: all eight roadmap success criteria hold. The VM results for M-152..M-155 carry forward: Phase 16 changed none of the code those four checks exercised (notification delegate, attach bar, ended peer tab and sidebar, daemon handoff and socket mode).
+
+Checks run at HEAD (`GOTOOLCHAIN=go1.26.11`, `-race -short -count=1`, named runs only, no GUI, no tailnet, no host tailscaled):
+
+| Check | Result |
+|-------|--------|
+| `go build ./...`; `go vet` on root, daemon, relay, webserver, pty; `gofmt -l` | clean |
+| `./internal/pty` (whole package) and the named kill tests with `-v` | ok, 6 of 6 named PASS |
+| `./internal/relay -run 'PortPrinted\|HasURLPort\|PathClick\|Cwd_\|Hub_Grid'` and the four ED 3 / clear tests with `-v` | ok |
+| IN-03 mutation check (guard removed, test must fail) | FAILED as required; file restored |
+| `./internal/webserver` (whole package, includes `PasteBacklog`) | ok |
+| `./internal/daemon -run 'Handoff_\|ListenDaemonSocket\|...'`, `./internal/attach`, `./internal/statusbar`, `./internal/tailnet`, `./internal/fdpass`, `./internal/capability` | all ok |
+| root `-run 'TestInitialResizeFrame\|TestNotificationClick\|TestResolveSession\|TestCmdKill\|TestCmdRename\|TestLaunchMode'` | all PASS |
+| `bash tests/check-traceability-paths.sh` | OK: 228 |
+| Phase 16's own full `go test -race -short ./...` (14/14) and full vitest (1826/1826) at f1e7280d, reported by the orchestrator | not re-run here; root package re-tested clean after the later `cmd_cli.go`/`cmd_share.go` edits |
+
+No failure, no new gap. Status stays `passed`.
 
 ## Goal Achievement
 
@@ -171,4 +202,6 @@ No gaps. All eight success criteria are delivered in code, covered by tests I re
 ---
 
 _Verified: 2026-11-23_
+_Verifier: Claude (gsd-verifier)_
+_Re-verified: 2026-11-23 (after Phase 16, at HEAD 3c09f851)_
 _Verifier: Claude (gsd-verifier)_

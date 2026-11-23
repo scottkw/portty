@@ -1,8 +1,8 @@
 ---
 phase: 14-mobile-web-app
-verified: 2026-11-23T17:25:00Z
+verified: 2026-11-23T20:15:00Z
 re_verification: true
-previous_verified: 2026-11-22T22:15:00Z
+previous_verified: 2026-11-23T17:25:00Z
 status: passed
 score: 5/5 must-haves verified
 covered_files:
@@ -118,13 +118,14 @@ covered_files:
   - "internal/webserver/whois.go"
   - "internal/webserver/whois_gate_test.go"
   - "launcher_copy_test.go"
+  - "main.go"
   - "release_guard_test.go"
   - "tests/check-brand.sh"
   - "web/assets/dashboard.css"
   - "web/embed.go"
   - "web/service-retry.html"
   - "web/user-refused.html"
-covered_digest: "v4:sha256:a6f3599d7ff6773b90b64f7fc32a34c1f6c610f5d2628019c6876842a6d28912"
+covered_digest: "v4:sha256:d4fa6eb6f08adacd5d59e4d447d9d09fcf1c69cb980d243fe4e98a97e453c7de"
 behavior_unverified: 0
 overrides_applied: 0
 accepted_limits: # Recorded in the user's own words in 14-VM-CHECKS.md "User decisions"; not gaps
@@ -171,6 +172,7 @@ post_verification_phase15_changes: # Phase 15 (v1.2 Hardening) edits to covered 
     files: "internal/tailnet/sessions.go, internal/relay/history.go and hub.go, internal/daemon/ipc.go and handoff.go, fdpass, attach, statusbar, tray"
     new_device_evidence_needed: false
     reason: "None is on the share server's gate, CSP, origin check, key bar, reconnect client or manifest path. relay history.go/hub.go only keep absolute row numbering monotonic across ED 3 (path click); the relay package targeted tests pass."
+re_verification_after_phase_16: "stale after Phase 16 moved cmd_share.go, cmd_share_test.go, TESTING.md, 14-14-SUMMARY.md; all re-checked at HEAD, no gap"
 ---
 
 # Phase 14: Mobile Web App Verification Report
@@ -188,6 +190,38 @@ post_verification_phase15_changes: # Phase 15 (v1.2 Hardening) edits to covered 
 Not covered but touched by Phase 15 and checked for reach into this phase: `internal/tailnet/sessions.go` (a refused share port reads as reachable: the sidebar/peer list, not the share server), `internal/relay/history.go`/`hub.go` (absolute row numbering across ED 3, for path click), `internal/daemon/ipc.go`/`handoff.go`, `internal/fdpass`, `internal/attach`, `internal/statusbar`, `tray`. `git diff b0cb288f HEAD` shows no change to `internal/webserver/server.go`, `whois.go`, `csp_mw.go`, `internal/relay/oscabsorb.go`, `relayClient.ts`, `KeyBar.tsx`, `pinchZoom.ts`, `visualViewportInset.ts`, `manifest.json`, `index.html` or `style.css`. So no gate, CSP, origin, key-bar, reconnect-client or Home Screen code moved.
 
 Human-verification history (PHONE-1, PHONE-2, the VM rows P-00..P-07, simulator rows S-00..S-08 and the user's accepted limits) stays as verified: Phase 15 did not change the behaviour those runs checked, and M-154 (Phase 15, real tailnet) separately re-ran the peer-tab path that did change.
+
+## Re-verification after Phase 16
+
+Phase 16 "v1.2 Cleanup" (`git diff cc595307..HEAD`, HEAD 3c09f851) moved four files this report covers: `cmd_share.go`, `cmd_share_test.go`, `TESTING.md` and `.planning/phases/14-mobile-web-app/14-14-SUMMARY.md`. `main.go` is now also in the fingerprint because this report cites it (the `helpURL` anchor for SC4). Each hunk was read and judged against the truths that depend on it.
+
+| Moved file | Phase 16 change | Effect on Phase 14 truths |
+|------------|-----------------|---------------------------|
+| `cmd_share.go` | `resolveSession` rejects an empty argument (`noSessionError{""}`) so an unset shell variable cannot match an unnamed session; new `lookupSessionStrict` (ID prefix of 8+ characters) is used by kill and rename only. `cmdShare` and `cmdUnshare` still call `lookupSession` and the share copy line is byte-identical | 14-09 (share copy true in the CLI) and MOB-04: the line "Treat this link like a password. It only opens on devices signed in to your Tailscale account." is unchanged at `cmd_share.go` (`cmdShare`), and `TestLauncherCopy` and `TestCmdShare_PrintsLinkAndCTOnFirstShare` pass. Share and unshare by name, exact ID and unique prefix behave as before; only `""` changed, and it now errors with `portty: no session named ""`. Nothing in the browser share path (server, whois gate, CSP, key bar, reconnect client) is touched. |
+| `cmd_share_test.go` | One unnamed-session fixture row and one `arg: ""` expectation in `TestResolveSession` | Strengthens the share/attach resolver pin. Passes. |
+| `TESTING.md` | Phase 16 note and Category BG (M-156) added; one PATH-02 row reworded | Phase 14's note and Category BE (M-145..M-151) are intact; traceability script OK (228). |
+| `14-14-SUMMARY.md` | Frontmatter `requirements-completed` now lists MOB-01..MOB-05 with an inline comment | Consistent with this report: SC1..SC5 are VERIFIED and map MOB-01..MOB-05 one to one (Requirements Coverage above). No code. |
+
+The SC4 anchor moved: `grep portty.app` over Go sources, `internal/`, `cmd/` and `frontend/src` still finds only `main.go` `const helpURL = "https://portty.app"` (now line 178, was 158), a Help-menu link, and nothing in origin, CSP or capability code.
+
+Other Phase 16 code changes (`main.go` launch dispatch, `cmd_cli.go` kill/rename by name, `internal/relay/hub.go`, `internal/pty/cleanup.go`, `internal/daemon/types.go`, webserver test helper) are outside this phase's covered files and off the share server gate path. The webserver package, including the whois gate, CSP, origin and static page tests, passes at HEAD, so the MOB-05 gate truth was re-run rather than assumed.
+
+Verdict: SC1..SC5 and the 14 plans' truths stand. The device evidence (14-VM-CHECKS.md, 14-SIM-CHECKS.md, PHONE-1, PHONE-2) carries forward; Phase 16 changed no code those runs exercised.
+
+Checks run at HEAD (`GOTOOLCHAIN=go1.26.11`, `-race -short -count=1`, named runs only, no GUI, no tailnet, no host tailscaled):
+
+| Check | Result |
+|-------|--------|
+| `go build ./...`; `go vet` on root, daemon, relay, webserver, pty; `gofmt -l` | clean |
+| root `-run 'TestLaunchMode\|TestResolveSession\|TestCmdShare\|TestCmdUnshare\|TestCmdKill\|TestCmdRename\|TestLauncherCopy\|TestNoFakeWhoIsInRelease'` | all PASS (TestResolveSession incl. the empty-argument row) |
+| `./internal/webserver` (whole package: `WhoIs`, `SameUser`, gate, CSP, origin, app-static, manifest) | ok |
+| `./internal/relay` targeted (oscabsorb, path click, cwd) | ok |
+| vitest: `App.webLink`, `SessionEndedBanner`, `TerminalPanel.remotePort`, `localhostUrl`, `markdown` | 151 of 151 PASS |
+| `bash tests/check-traceability-paths.sh` | OK: 228 |
+| Phase 16's own full `go test -race -short ./...` (14/14) and full vitest (1826/1826) at f1e7280d, reported by the orchestrator | not re-run here; root package re-tested clean after the later `cmd_cli.go`/`cmd_share.go` edits |
+| Playwright | not re-run: no covered frontend production file changed since the last run (2026-11-22) |
+
+No failure, no new gap. Status stays `passed`.
 
 ## Goal Achievement
 
@@ -291,4 +325,6 @@ No gaps. Phase 15 changed only the desktop peer-tab "Session ended" verdict in t
 ---
 
 _Verified: 2026-11-23 (re-verification after Phase 15)_
+_Verifier: Claude (gsd-verifier)_
+_Re-verified: 2026-11-23 (after Phase 16, at HEAD 3c09f851)_
 _Verifier: Claude (gsd-verifier)_
