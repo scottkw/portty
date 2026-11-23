@@ -6,15 +6,15 @@ current_phase: 14
 current_phase_name: mobile-web-app
 status: executing
 stopped_at: Phase 13 complete, ready to plan Phase 14
-last_updated: "2026-11-23T01:09:12.393Z"
+last_updated: "2026-11-23T01:19:36.079Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 14 execution started
-state_head: ab5e7cde94e0cb4847ab5624e9e6f73778a3dac1
+state_head: 48f3b06aa8e936977c5b1217484a7d6fce7d1f1e
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 54
-  completed_plans: 50
+  completed_plans: 51
   percent: 83
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 14 (mobile-web-app) — EXECUTING
-Plan: 10 of 14
+Plan: 11 of 14
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 14 execution started
 
@@ -134,6 +134,7 @@ Last activity: 2026-11-22 — Phase 14 execution started
 | Phase 14 P08 | 35min | 3 tasks | 13 files |
 | Phase 14 P09 | 20min | 3 tasks | 10 files |
 | Phase 14 P10 | 35min | 3 tasks | 13 files |
+| Phase 14 P11 | 45min | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -300,6 +301,8 @@ Recent decisions affecting current work:
 - [Phase 14]: 14-06: vmwhois keeps the real tailnet server and changes only the WhoIs answer via $HOME/p14/whois-mode (other/pass/fault, unknown fails closed); this Mac's own node always passes
 - [Phase 14]: 14-08: the unreachable banner always carries Reload on a phone; reconnecting only while connectStuck
 - [Phase 14]: 14-10: KeyBar disarms Ctrl before send so the input transform never double-maps bar bytes; canWrite undefined (info failed) shows the bar
+- [Phase 14]: 14-11: pinch setSize sends deltas against the size the pinch last asked for (pinchSizeRef), because the rendered fontSize lags between renders
+- [Phase 14]: 14-11: the stuck-viewport heal hides the root, forces reflow, and restores display next frame; [ASSUMED] on iOS 26 standalone until 14-13
 
 ### Pending Todos
 

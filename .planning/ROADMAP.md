@@ -175,7 +175,7 @@ Plans:
   3. **Human check (real iPhone):** with the Tailscale app connected, after the phone sleeps for several minutes or switches between Wi-Fi and cellular, the view reconnects on its own and resumes with no missing or duplicated output. Recorded as a new M-NN item in TESTING.md. The reconnect logic is unit-tested, but VMs cannot stand in for iOS suspension and the Tailscale app. (MOB-03)
   4. This repo supplies the copy and the link format for portty.app/app (what Portty is, how to open your Mac's tailnet share link, how to add it to the Home Screen) for the website repo. That page holds no token, opens no WebSocket and has no shell access, and nothing in this repo's origin check, CSP or token handling trusts portty.app. (MOB-04)
   5. Built first: a browser share link opens only for devices on the host's own Tailscale account. On the home VM, which is signed in to the same account, the link opens with no prompt. A request whose WhoIs is a different user (a stub in tests, plus a VM check with a second login or a faked WhoIs) is refused with a "This link only works on your own devices" page before any terminal data is sent. Page, info and WebSocket routes are all gated, and the check fails closed when WhoIs errors. (MOB-05)
-**Plans**: 10/14 plans executed
+**Plans**: 11/14 plans executed
 Plans:
 - [x] 14-01-PLAN.md — Wave 1: MOB-05 first: the shared WhoIs fake (webservertest) in every test-built share server and the Playwright fixture; requireSameUser on the discovery probe, info, plugin-config and the WebSocket (origin, WhoIs, cap); fixture identity switch and input drain; Playwright WebKit install (MOB-05)
 - [x] 14-02-PLAN.md — Wave 1: lone Esc: the hold seen on the Tart VMs first (E-00, E-01), then the end-of-frame flush in InputAbsorber with P9 changed on purpose (MOB-01)
@@ -187,7 +187,7 @@ Plans:
 - [x] 14-08-PLAN.md — Wave 3: Reload on phone stop, stuck and error states, the phone query, and the standalone Open PDF view with Done (MOB-03)
 - [x] 14-09-PLAN.md — Wave 4: share copy made true in seven places; docs/launcher-app.md for portty.app/app with its pin test (MOB-05, MOB-04)
 - [x] 14-10-PLAN.md — Wave 4: the key bar (Esc, Tab, Ctrl, arrows, |) through term.input with one-shot Ctrl; iPhone emulation project (MOB-01)
-- [ ] 14-11-PLAN.md — Wave 5: pinch to font with one claim, visualViewport keyboard inset and safe areas, phone chrome (MOB-01)
+- [x] 14-11-PLAN.md — Wave 5: pinch to font with one claim, visualViewport keyboard inset and safe areas, phone chrome (MOB-01)
 - [ ] 14-12-PLAN.md — Wave 6: full gate, TESTING.md Sections 2 and 4, Tart VM rows P-00..P-07 over the real tailnet (same account and probe, other account via vmwhois, fault page, WhoIs cost, lone Esc, desktop, launcher) (all)
 - [ ] 14-13-PLAN.md — Wave 6: headless iOS Simulator rows S-00..S-08 against the loopback fixture (key bar, keyboard inset, pinch, Home Screen launch URL, safe areas, Open PDF, Reload) (MOB-01, MOB-02, MOB-03)
 - [ ] 14-14-PLAN.md — Wave 7: security review, blocking-human checkpoint (real-phone M-145 look and MOB-03 reconnect; redesign route if the query is dropped), Section 5 and the verdict (all)
@@ -204,4 +204,4 @@ Plans:
 | 11. File Preview | v1.2 | 10/10 | Complete    | 2026-11-21 |
 | 12. File Path Click | v1.2 | 9/9 | Complete    | 2026-11-22 |
 | 13. Remote Localhost URLs | v1.2 | 7/7 | Complete    | 2026-11-22 |
-| 14. Mobile Web App | v1.2 | 10/14 | In Progress | - |
+| 14. Mobile Web App | v1.2 | 11/14 | In Progress | - |
