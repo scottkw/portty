@@ -8,3 +8,8 @@ due: after Phase 12
 Cause: the bar reserves the last row with DECSTBM rows 1..rows-1 (`internal/statusbar/bar.go:116`), but attach tells the remote PTY the full height: `cmd_attach.go:397-398` and `watchResize` send `rows`, not `rows-1`. The app draws on the bar's row; the bar only repaints once a second.
 
 Fix: send `rows-1` (bar shown) in the initial resize frame and on every SIGWINCH; with `--status-top` the same. Check how the PTY grid is chosen when several viewers attach (grid owner / host grid logic) — the CLI's reduced height must actually win or the app still overdraws. Add a test that the resize frame carries rows-1 when the bar is on. Also consider: no way to turn the bar off (no flag).
+
+## Resolution
+
+Resolved in Phase 15 plan 15-01 (commits 9665c805, fb0c1f2d).
+`portty attach` sends rows-1 in the initial resize frame of every connection and in every SIGWINCH claim while the bar is sized; the grid-owner model makes the claiming CLI's reduced height win (`TestHub_GridAttachBarRows`). The `--status-top` limit is recorded in TESTING.md M-153; the flag to turn the bar off stays deferred.

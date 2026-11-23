@@ -11,3 +11,8 @@ area: frontend / peer tabs
 ## Solution
 1. Once a tab has received the session-ended close, keep its ended state: don't redial on click (or map `no_such_session` to "ended" when the tab already saw "session ended").
 2. Find why the peer list errors briefly after a kill (likely the ListSessions race during teardown) and keep the last good state for a short grace.
+
+## Resolution
+
+Resolved in Phase 15 plans 15-05 (commits aff658fc, a190453d) and 15-07 (commits aa923815, 1d7a61e1).
+15-05, part 1: a peer tab that saw the session-ended close keeps the ended verdict when `no_such_session` comes back. 15-07, part 2: a refused share port is reachable with no sessions (`MetaRefused`), so the host reads "Nothing shared" instead of "Can't reach this Mac"; a timeout stays unreachable, no grace. Sidebar branch: fixed (no split todo). Live check: TESTING.md M-154.

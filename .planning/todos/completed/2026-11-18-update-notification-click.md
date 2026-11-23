@@ -9,3 +9,8 @@ audit_acknowledged:
 # Clicking the update notification may not show Portty
 
 There is no `didReceiveNotificationResponse` handler, so clicking the "Portty X is available" notification runs no app code. With the window hidden (tray-only), the click likely shows nothing. Check in a Tart VM with a notarized build (ad-hoc builds can't post notifications), then decide: show the window with the banner, or start the download.
+
+## Resolution
+
+Resolved in Phase 15 plan 15-06 (commits 58bd89bb, 955d1bb1).
+A click on the update notification shows the window and emits `update:show`, which brings the available banner back; nothing downloads until Download is pressed. Live click check: TESTING.md M-152.

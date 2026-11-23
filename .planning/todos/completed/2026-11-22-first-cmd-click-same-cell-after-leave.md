@@ -14,3 +14,8 @@ Repro (build C, office session p1 viewed in the office local tab and a home peer
 Likely cause (not proven): xterm Linkifier's same-cell memory (`_lastBufferCell`, `_activeLine`) after a mouse leave. 12-08's `PathLinksHandle.invalidate()` runs only on capability reports and terminal resizes (`frontend/src/lib/pathLinks.ts`), so a leave followed by a return to the same cell is not covered. A real pointer passes over other cells on its way back, which resets it, so the practical effect is small.
 
 Fix idea: also call `invalidate()` on `mouseleave`, or on a buffer change under the hovered cell; add a case to `frontend/src/lib/__tests__/pathLinks.linkifier.test.ts` with the real xterm Linkifier (leave, change the row, return to the same cell, Cmd-click).
+
+## Resolution
+
+Resolved in Phase 15 plan 15-04 (commit a1143a00).
+`mouseleave` invalidates the xterm Linkifier's same-cell memory, so the first Cmd-click after returning to the same cell sends the new path (real-Linkifier test in pathLinks.linkifier.test.ts).

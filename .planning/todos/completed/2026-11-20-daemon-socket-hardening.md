@@ -14,3 +14,8 @@ Small hardening items found by the Phase 9 security audit; none is an open threa
 1. chmod the socket 0600 right after listen (or umask around it); test the mode.
 2. Close every received fd in unparsed control messages.
 3. Read the old daemon's pid from `fdpass.PeerPID` on the takeover side and refuse a mismatch with the HELLO-OK value.
+
+## Resolution
+
+Resolved in Phase 15 plans 15-03 (commits 5c25a63a, 349b3784) and 15-08 (commits e08d1b90, d610b7c8).
+15-03: O-2, the control socket is 0600 at listen and tightened after COMMIT on a takeover. 15-08: O-6, the takeover refuses unless HELLO-OK's pid equals the kernel's LOCAL_PEERPID (the old daemon keeps serving); O-1, `rightsFromOOB` lets `Recv` free descriptors that arrived before a malformed control message. Real-process check: TESTING.md M-155.

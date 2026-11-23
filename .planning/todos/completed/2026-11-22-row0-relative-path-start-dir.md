@@ -14,3 +14,8 @@ Repro (fresh session, a path click needs the zsh shim):
 Effect: rows 1 and below resolve correctly, and an absolute path is unaffected. A session whose screen has scrolled does not show it (the first run's p1 had scrolled). Workaround: a leading blank line (`clear; echo; ls …`) keeps the path off row 0.
 
 Where to look: the directory log in `internal/relay` (cwd log lookup by absolute row, `internal/relay/cwd.go`) and how `Hub.PathClick` picks the entry for the clicked row; decide what directory applies to a row that was printed before the first report on the row below it. Add a test in `internal/relay/pathclick_test.go` for a report that arrives on row 1 after output on row 0.
+
+## Resolution
+
+Resolved in Phase 15 plan 15-04 (commit dc81e940).
+`History.Skip` counts the scrollback the ED 3 handler drops, so absolute rows stay monotonic and a relative path printed on row 0 after `cd; clear` resolves under the new directory (`TestPathClick_RelativeAfterClear`).

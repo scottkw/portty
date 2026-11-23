@@ -11,3 +11,8 @@ due: later
 Cause: `renderOnce` waits a fixed `sleep(100)` for a real xterm render, which is too short when the whole suite loads the machine.
 
 What to do: replace the fixed `sleep(100)` with a wait on the render itself (resolve on `term.onRender`, or poll with a timeout until the render count increases), then run the file in a loop and a full vitest run to confirm it no longer flakes. Test-only change; no product code.
+
+## Resolution
+
+Resolved in Phase 15 plan 15-04 (commit 21099b07).
+The linkifier tests wait on events (`vi.waitFor`) instead of wall-clock sleeps; 20 of 20 alone and clean in the 15-09 full vitest run.
