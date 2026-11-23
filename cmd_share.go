@@ -88,7 +88,7 @@ func cmdShare(client *daemon.DaemonClient, args []string, out io.Writer) error {
 			return fmt.Errorf("portty: couldn't start sharing: %v. Check that Tailscale is connected, then try again.", err)
 		}
 	}
-	fmt.Fprintf(out, "Shared %q.\n%s\nAnyone on your tailnet with this link has full control.\n", s.Name, resp.URL)
+	fmt.Fprintf(out, "Shared %q.\n%s\nTreat this link like a password. It only opens on devices signed in to your Tailscale account.\n", s.Name, resp.URL)
 	if resp.FirstShare {
 		host := resp.URL
 		if u, err := url.Parse(resp.URL); err == nil {

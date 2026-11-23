@@ -6,7 +6,7 @@ export const SHARE_SWITCH_LABEL = 'Share this session'
 export const SHARE_DESCRIPTION =
   'Macs signed in to your Tailscale account see it in their sidebar, and you get a link for any browser on your tailnet.'
 export const SHARE_STARTING = 'Getting a link…'
-export const SHARE_WARNING = 'Anyone on your tailnet with this link has full control.'
+export const SHARE_WARNING = 'Treat this link like a password. It only opens on devices signed in to your Tailscale account.'
 export const COPY = 'Copy'
 export const COPIED = 'Copied!'
 export const COPY_FAILED = "Couldn't copy the link. Select it and press ⌘C."

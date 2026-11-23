@@ -137,7 +137,7 @@ describe('SharePopover: turning Share on', () => {
     expect(link()!.readOnly).toBe(true)
     expect(link()!.getAttribute('spellcheck')).toBe('false')
     expect(copyBtn()!.textContent).toBe('Copy')
-    expect(state().textContent).toContain('Anyone on your tailnet with this link has full control.')
+    expect(state().textContent).toContain('Treat this link like a password. It only opens on devices signed in to your Tailscale account.')
     expect(props.onSharedChange).toHaveBeenCalledWith('s1', true)
   })
 

@@ -111,7 +111,7 @@ func TestCmdShare_PrintsLinkAndCTOnFirstShare(t *testing.T) {
 		t.Fatalf("first share printed %d lines; want 4:\n%s", len(lines), buf.String())
 	}
 	if lines[0] != `Shared "alpha".` || !strings.HasPrefix(lines[1], "https://127.0.0.1:") || !strings.Contains(lines[1], "?cap=") ||
-		lines[2] != "Anyone on your tailnet with this link has full control." ||
+		lines[2] != "Treat this link like a password. It only opens on devices signed in to your Tailscale account." ||
 		lines[3] != "The first share gets an HTTPS certificate for 127.0.0.1. That name is published in public Certificate Transparency logs." {
 		t.Fatalf("first share output:\n%s", buf.String())
 	}
