@@ -18,7 +18,7 @@ function setup(size = 13) {
   } as unknown as HTMLElement
   const h = { getSize: vi.fn(() => size), setSize: vi.fn(), onEnd: vi.fn() }
   const cleanup = attachPinchZoom(container, h)
-  cleanups.push(cleanup) // the document gesturestart listener must not leak between tests
+  cleanups.push(cleanup) // no listener may leak between tests
   return { handlers, opts, container, h, cleanup }
 }
 
@@ -112,21 +112,26 @@ describe('attachPinchZoom', () => {
     expect(h.setSize).toHaveBeenLastCalledWith(13)
   })
 
-  it('gesturestart is prevented, and the cleanup removes every listener', () => {
-    const { handlers, container, h, cleanup } = setup()
-    const g = new Event('gesturestart', { cancelable: true })
-    document.dispatchEvent(g)
-    expect(g.defaultPrevented).toBe(true)
+  it('gesturestart is prevented on the terminal container only, never on the document', () => {
+    const { handlers, container } = setup()
+    const g = { preventDefault: vi.fn() }
+    handlers.gesturestart(g)
+    expect(g.preventDefault).toHaveBeenCalled()
+    // Outside the terminal (the in-app PDF layer, the rest of the page) native pinch must survive.
+    const outside = new Event('gesturestart', { cancelable: true })
+    document.dispatchEvent(outside)
+    expect(outside.defaultPrevented).toBe(false)
+    expect((container.addEventListener as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toContain('gesturestart')
+  })
 
+  it('the cleanup removes every listener, and a pending end dies with it', () => {
+    const { handlers, container, h, cleanup } = setup()
     handlers.touchmove(ev(two(100)))
     handlers.touchend(ev([]))
     cleanup()
     vi.advanceTimersByTime(1000)
-    expect(h.onEnd).not.toHaveBeenCalled() // a pending end dies with the cleanup
+    expect(h.onEnd).not.toHaveBeenCalled()
     const removed = (container.removeEventListener as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])
-    expect(removed.sort()).toEqual(['touchcancel', 'touchend', 'touchmove', 'touchstart'])
-    const g2 = new Event('gesturestart', { cancelable: true })
-    document.dispatchEvent(g2)
-    expect(g2.defaultPrevented).toBe(false)
+    expect(removed.sort()).toEqual(['gesturestart', 'touchcancel', 'touchend', 'touchmove', 'touchstart'])
   })
 })

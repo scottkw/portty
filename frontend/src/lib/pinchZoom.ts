@@ -2,8 +2,9 @@
  * Phase 14-11 (MOB-01) — two-finger pinch changes the terminal font size.
  *
  * A pinch maps finger distance to a whole-pixel font size (size0 x d / d0, clamped to 6..32),
- * and never zooms the page: every two-touch touchmove is preventDefault'ed on a non-passive
- * listener, and iOS Safari's gesturestart is prevented as a belt. One-finger events are left
+ * and never zooms the page from the terminal: every two-touch touchmove is preventDefault'ed on a
+ * non-passive listener, and iOS Safari's gesturestart is prevented as a belt, on the container only
+ * (the rest of the page and the PDF layer keep native pinch). One-finger events are left
  * to attachTouchScroll (which releases multi-touch to the browser, so the two do not fight).
  *
  * setSize runs on every change during the pinch (the caller lays out and reports only);
@@ -83,7 +84,7 @@ export function attachPinchZoom(container: HTMLElement, h: PinchHandlers): () =>
   container.addEventListener('touchmove', onTouchMove, { passive: false })
   container.addEventListener('touchend', onTouchEnd, { passive: true })
   container.addEventListener('touchcancel', onTouchEnd, { passive: true })
-  document.addEventListener('gesturestart', onGestureStart)
+  container.addEventListener('gesturestart', onGestureStart)
 
   return () => {
     cancelTimer()
@@ -91,6 +92,6 @@ export function attachPinchZoom(container: HTMLElement, h: PinchHandlers): () =>
     container.removeEventListener('touchmove', onTouchMove)
     container.removeEventListener('touchend', onTouchEnd)
     container.removeEventListener('touchcancel', onTouchEnd)
-    document.removeEventListener('gesturestart', onGestureStart)
+    container.removeEventListener('gesturestart', onGestureStart)
   }
 }

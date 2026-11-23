@@ -2463,7 +2463,8 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
     padding-bottom: 0;
   }
   /* Phase 14-11: tight phone chrome. The lone session tab has nothing to switch to; the strip's
-     sides clear a landscape notch; the terminal gets the room; a phone never pinch-zooms the page. */
+     sides clear a landscape notch; the terminal gets the room. Page zoom is blocked on the terminal alone (the base
+     .terminal-session-container touch-action), so the PDF layer and accessibility zoom keep pinch. */
   .tab-bar--single {
     display: none;
   }
@@ -2473,9 +2474,6 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
   }
   .terminal-session-container {
     padding: 4px 8px;
-  }
-  html {
-    touch-action: pan-x pan-y;
   }
 }
 /* iOS zooms the page when a control under 16px takes focus; the xterm helper textarea is one. */

@@ -88,6 +88,14 @@ test.describe('Phase 14-11 — phone chrome on an iPhone (MOB-01)', () => {
     expect(pad).toBe('4px 8px')
   })
 
+  // WR-03: the pinch block is the terminal's alone. The page and the in-app PDF layer keep native zoom.
+  test('page zoom is blocked on the terminal container only', async ({ page }) => {
+    const ta = (sel: string) => page.locator(sel).evaluate((el) => getComputedStyle(el).touchAction)
+    expect(await ta('.terminal-session-container')).toBe('pan-y') // no pinch-zoom: the base rule, not a phone override
+    expect(await ta('html')).toBe('auto')
+    expect(await ta('.app')).toBe('auto')
+  })
+
   test('the xterm helper textarea is 16px, so iOS does not zoom on focus', async ({ page }) => {
     const size = await page.locator('.xterm-helper-textarea').evaluate((el) => getComputedStyle(el).fontSize)
     expect(size).toBe('16px')
