@@ -30,13 +30,14 @@ describe('trimLinkTail', () => {
 })
 
 describe('classifyLoopbackUrl hostile input', () => {
+  // The 30 s timeout is load headroom (about 0.5 s alone, 2026-11-23), not the bound under test; the 10,000-character inputs stay.
   it('returns null for empty, scheme only and huge input without throwing', () => {
     expect(classifyLoopbackUrl('')).toBeNull()
     expect(classifyLoopbackUrl('http://')).toBeNull()
     expect(classifyLoopbackUrl('http://localhost:8000/' + 'a'.repeat(10000) + ' ')).toBeNull()
     expect(classifyLoopbackUrl('x'.repeat(10000))).toBeNull()
     expect(classifyLoopbackUrl(')'.repeat(10000))).toBeNull()
-  })
+  }, 30_000)
 
   it('refuses whitespace and control characters in the rest', () => {
     expect(classifyLoopbackUrl('http://localhost:8000/a b')).toBeNull()

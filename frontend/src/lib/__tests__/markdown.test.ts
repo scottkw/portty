@@ -204,10 +204,11 @@ describe('renderMarkdown DoS bounds (PREV-02, T-11-25)', () => {
   })
 
   // Sizes stay under MARKDOWN_MAX_HTML_LENGTH (11-REVIEW WR-03); larger output is refused, not rendered.
+  // The 30 s timeout is load headroom (about 0.3 s alone, 2026-11-23), not the bound under test.
   it('caps an indentation-nested list too', () => {
     const src = Array.from({ length: 1_000 }, (_, i) => '  '.repeat(i) + '- x').join('\n')
     expect(depthOf(renderMarkdown(src), 'ul')).toBeLessThanOrEqual(MAX_DEPTH)
-  })
+  }, 30_000)
 
   it('keeps ordinary nesting below the cap', () => {
     const out = renderMarkdown('> > > three\n\n- a\n  - b\n    - c')
