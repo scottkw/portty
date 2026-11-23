@@ -373,6 +373,11 @@ func (e *SessionEngine) importSession(meta pty.AdoptMeta, name, workDir string, 
 
 // closeSessionFiles closes a session's PTY master and slave without
 // signalling its shell: what this process dying would do to its copies.
+//
+// Known gap (todo 2026-11-20 item 3): it closes HandoffFiles() (the dup and
+// the slave), which on a created session would miss go-pty's original master.
+// It is only called for adopted sessions today; fix it if a created-session
+// caller appears.
 func closeSessionFiles(sess *pty.Session) {
 	if master, slave, _, err := sess.HandoffFiles(); err == nil {
 		_, _ = master.Close(), slave.Close()

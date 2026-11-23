@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gopty "github.com/aymanbagabas/go-pty"
@@ -73,6 +74,11 @@ type Session struct {
 	// goroutine checks this to avoid calling cmd.Wait() on the kill path,
 	// which would race with go-pty's internal waitOnContext goroutine.
 	killed bool
+
+	// reaped is set once cmd.Wait has returned for a created session
+	// (ReapNaturalExit or killSession's wait). Its pgid may then belong to an
+	// unrelated process group, so killSession never signals it again.
+	reaped atomic.Bool
 
 	// exitCode caches the exit code once the process has exited (-1 = not set).
 	exitCode int

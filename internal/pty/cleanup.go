@@ -17,6 +17,15 @@ import (
 // Safe to call cmd.Wait() here because MarkKilled() has been set before this
 // function is called — the exit watcher goroutine checks IsKilled() and skips
 // its own cmd.Wait(), so there is no concurrent caller.
+//
+// A reaped session (cmd.Wait already returned, see Session.reaped) is never
+// signalled and never waited on again: its pgid may have been reused by an
+// unrelated process group. This mirrors killAdopted's exited guard (todo
+// 2026-11-20 item 1). Residual windows, accepted: a dismiss between the
+// child's exit and the reap signals a zombie group, which still holds its
+// pid, so no reuse can happen yet; and a second, narrower window lies between
+// cmd.Wait returning (the pid is freed) and reaped.Store(true), where a racing
+// dismiss can still signal the old pgid, a few instructions wide.
 func killSession(s *Session) error {
 	if s.exited != nil {
 		return killAdopted(s)
@@ -28,12 +37,19 @@ func killSession(s *Session) error {
 		}
 		return nil
 	}
+	if s.reaped.Load() {
+		s.closePTY()
+		if s.cancel != nil {
+			s.cancel()
+		}
+		return nil
+	}
 
 	// go-pty sets Setsid: true, which means the child's PGID == its PID.
 	pgid := s.cmd.Process.Pid
 
 	// Graceful shutdown: SIGHUP to the entire process group.
-	_ = syscall.Kill(-pgid, syscall.SIGHUP)
+	_ = signalGroup(-pgid, syscall.SIGHUP)
 
 	// Close the PTY master first — otherwise cmd.Wait() may block indefinitely
 	// waiting for the PTY slave to be closed, even after the child has exited.
@@ -53,6 +69,7 @@ func killSession(s *Session) error {
 	done := make(chan struct{})
 	go func() {
 		_ = s.cmd.Wait()
+		s.reaped.Store(true)
 		// Cache exit code under our mutex so ExitCode() can read it safely.
 		if s.cmd.ProcessState != nil {
 			s.SetExitCode(s.cmd.ProcessState.ExitCode())
@@ -64,8 +81,10 @@ func killSession(s *Session) error {
 	case <-done:
 		// Exited cleanly.
 	case <-time.After(2 * time.Second):
-		// Force kill the process group.
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		// Force kill the process group, unless the wait goroutine has reaped it.
+		if !s.reaped.Load() {
+			_ = signalGroup(-pgid, syscall.SIGKILL)
+		}
 		// Wait again after SIGKILL.
 		select {
 		case <-done:
@@ -85,7 +104,7 @@ func killSession(s *Session) error {
 }
 
 // signalGroup sends a signal to a process group; a seam so tests can see
-// which signals killAdopted sends.
+// which signals killSession and killAdopted send.
 var signalGroup = syscall.Kill
 
 // killAdopted is killSession for a session adopted in a handoff: there is no

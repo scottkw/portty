@@ -34,6 +34,7 @@ func (s *Session) ReapNaturalExit() {
 		return
 	}
 	_ = cmd.Wait()
+	s.reaped.Store(true)
 	if cmd.ProcessState != nil {
 		s.SetExitCode(cmd.ProcessState.ExitCode())
 	}

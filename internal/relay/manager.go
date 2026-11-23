@@ -71,6 +71,12 @@ func (m *HubManager) Remove(sessionID string) {
 }
 
 // Shutdown shuts down all hubs and clears the map.
+//
+// Known gap (todo 2026-11-20 item 2): it does not stop the sessions' exit
+// watchers. Each Engine.watchSessionExit stays blocked in cmd.Wait on a live
+// shell, so a KillSession after Shutdown races that Wait. Harmless in
+// production because the process exits right after Shutdown; fix only if a
+// caller needs Shutdown followed by kills. No caller does today.
 func (m *HubManager) Shutdown() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

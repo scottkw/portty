@@ -305,3 +305,47 @@ func TestKillAdopted(t *testing.T) {
 		t.Fatalf("Kill of an exited adopted session sent %v", got[before:])
 	}
 }
+
+// T-15-03: dismissing a created session whose shell already exited and was
+// reaped must signal nothing; the pgid may belong to another process by now.
+func TestKillSession_ReapedSkipsGroupSignal(t *testing.T) {
+	sent := recordSignals(t)
+	b := NewNativePTYBackend()
+	sess := startSh(t, b, `read x; exit 0`)
+	out := readAll(sess)
+	if _, err := sess.Write([]byte("\n")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	select {
+	case <-out.eof:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no EOF after the shell exited")
+	}
+	sess.ReapNaturalExit()
+	before := len(sent())
+	if err := b.Kill(sess.ID); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if got := sent(); len(got) != before {
+		t.Fatalf("Kill of a reaped session sent %v", got[before:])
+	}
+	if code := sess.ExitCode(); code != 0 {
+		t.Fatalf("ExitCode = %d, want 0", code)
+	}
+}
+
+// A running created session keeps the SIGHUP-then-SIGKILL escalation, now
+// visible through the signalGroup seam.
+func TestKillSession_RunningSignalsGroup(t *testing.T) {
+	sent := recordSignals(t)
+	b := NewNativePTYBackend()
+	sess := startSh(t, b, `sleep 30`)
+	before := len(sent())
+	if err := b.Kill(sess.ID); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	got := sent()
+	if len(got) <= before || got[before] != syscall.SIGHUP {
+		t.Fatalf("signals sent = %v, want SIGHUP first", got[before:])
+	}
+}
