@@ -29,7 +29,7 @@ covered_files:
   - "internal/webserver/input_queue_test.go"
   - "internal/webserver/resume_test.go"
   - "main.go"
-covered_digest: "v4:sha256:801ffd49cb8ecbc07b6baca429293370f94cf3e1ceb2022d058abaaae10e8632"
+covered_digest: "v4:sha256:15e369be0b0c320953fccfe41b9287e70bdb6cf163eb0a69017d400d635c6040"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
