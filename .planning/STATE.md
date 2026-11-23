@@ -6,16 +6,16 @@ current_phase: 14
 current_phase_name: mobile-web-app
 status: executing
 stopped_at: Phase 13 complete, ready to plan Phase 14
-last_updated: "2026-11-23T00:04:25.921Z"
+last_updated: "2026-11-23T00:09:17.092Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 14 execution started
-state_head: e377fbf9db61eddc4f39a24ca9bf32b5411a45ce
+state_head: ccd0e1b4ebb2e21bbc15c50dedb13afe0528db02
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 54
-  completed_plans: 44
-  percent: 81
+  completed_plans: 45
+  percent: 83
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 14 (mobile-web-app) — EXECUTING
-Plan: 5 of 14
+Plan: 6 of 14
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 14 execution started
 
@@ -129,6 +129,7 @@ Last activity: 2026-11-22 — Phase 14 execution started
 | Phase 14 P02 | 20m | 2 tasks | 5 files |
 | Phase 14 P03 | 35min | 3 tasks | 9 files |
 | Phase 14 P04 | 25min | 2 tasks | 12 files |
+| Phase 14 P05 | 40min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -291,6 +292,7 @@ Recent decisions affecting current work:
 - [Phase 14]: 14-02: a bare ESC ending a MsgInput frame is forwarded at once by InputAbsorber.Filter; the only accepted cost is a reply split exactly between ESC and the introducer (pinned by test, T-14-09); IsUserInput unchanged so a lone Esc does not claim the grid
 - [Phase 14]: 14-03: requireSameUser's body lives in sameUserStatus (0/403/503); requireSameUser and requireSameUserPage are thin writers over it
 - [Phase 14]: 14-04: shareInfoVerdict's X-Portty marker parameter is required so a forgotten call site fails tsc; CLOSE_REASON_OTHER_ACCOUNT is client-only
+- [Phase 14]: 14-05: CSP Amendment 4 is exactly manifest-src 'self'; manifest has no start_url or id; icon is full-bleed opaque RGB derived from appicon.png
 
 ### Pending Todos
 

@@ -175,13 +175,13 @@ Plans:
   3. **Human check (real iPhone):** with the Tailscale app connected, after the phone sleeps for several minutes or switches between Wi-Fi and cellular, the view reconnects on its own and resumes with no missing or duplicated output. Recorded as a new M-NN item in TESTING.md. The reconnect logic is unit-tested, but VMs cannot stand in for iOS suspension and the Tailscale app. (MOB-03)
   4. This repo supplies the copy and the link format for portty.app/app (what Portty is, how to open your Mac's tailnet share link, how to add it to the Home Screen) for the website repo. That page holds no token, opens no WebSocket and has no shell access, and nothing in this repo's origin check, CSP or token handling trusts portty.app. (MOB-04)
   5. Built first: a browser share link opens only for devices on the host's own Tailscale account. On the home VM, which is signed in to the same account, the link opens with no prompt. A request whose WhoIs is a different user (a stub in tests, plus a VM check with a second login or a faked WhoIs) is refused with a "This link only works on your own devices" page before any terminal data is sent. Page, info and WebSocket routes are all gated, and the check fails closed when WhoIs errors. (MOB-05)
-**Plans**: 4/14 plans executed
+**Plans**: 5/14 plans executed
 Plans:
 - [x] 14-01-PLAN.md — Wave 1: MOB-05 first: the shared WhoIs fake (webservertest) in every test-built share server and the Playwright fixture; requireSameUser on the discovery probe, info, plugin-config and the WebSocket (origin, WhoIs, cap); fixture identity switch and input drain; Playwright WebKit install (MOB-05)
 - [x] 14-02-PLAN.md — Wave 1: lone Esc: the hold seen on the Tart VMs first (E-00, E-01), then the end-of-frame flush in InputAbsorber with P9 changed on purpose (MOB-01)
 - [x] 14-03-PLAN.md — Wave 2: page routes gated (/app/, /sessions/{id}) with the static refusal and tailscaled-retry pages; no-cache for /app/ files outside assets/ (MOB-05, MOB-02)
 - [x] 14-04-PLAN.md — Wave 2: the SPA's refusal screen at bootstrap and in the probe, pageshow wake, connect-timeout stuck signal (MOB-05, MOB-03)
-- [ ] 14-05-PLAN.md — Wave 2: Home Screen: static manifest without start_url, full-bleed icon, head tags, CSP Amendment 4 manifest-src 'self' (MOB-02)
+- [x] 14-05-PLAN.md — Wave 2: Home Screen: static manifest without start_url, full-bleed icon, head tags, CSP Amendment 4 manifest-src 'self' (MOB-02)
 - [ ] 14-06-PLAN.md — Wave 2: release guard and check-brand lines; the VM-only vmwhois build; fixture routes for the iOS Simulator (grid, info hits, share off/on, end, PDF preview, CA) (MOB-05, MOB-02)
 - [ ] 14-07-PLAN.md — Wave 3: early headless iOS Simulator Home Screen spike (H-01: does the launch keep session and cap?) with a blocking continue-or-redesign checkpoint (MOB-02)
 - [ ] 14-08-PLAN.md — Wave 3: Reload on phone stop, stuck and error states, the phone query, and the standalone Open PDF view with Done (MOB-03)
@@ -204,4 +204,4 @@ Plans:
 | 11. File Preview | v1.2 | 10/10 | Complete    | 2026-11-21 |
 | 12. File Path Click | v1.2 | 9/9 | Complete    | 2026-11-22 |
 | 13. Remote Localhost URLs | v1.2 | 7/7 | Complete    | 2026-11-22 |
-| 14. Mobile Web App | v1.2 | 4/14 | In Progress | - |
+| 14. Mobile Web App | v1.2 | 5/14 | In Progress | - |
