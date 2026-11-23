@@ -67,6 +67,24 @@ func lookupSession(client *daemon.DaemonClient, arg string) (daemon.SessionInfo,
 	return resolveSession(sessions, arg)
 }
 
+// minDestructivePrefix is the shortest ID prefix kill and rename accept. A
+// short name abbreviation like "b" must not fall through to a hex ID prefix and
+// hit an unrelated session; 8 matches the prefixes the ambiguity error prints.
+const minDestructivePrefix = 8
+
+// lookupSessionStrict is lookupSession for destructive commands: a match by ID
+// prefix needs at least minDestructivePrefix characters.
+func lookupSessionStrict(client *daemon.DaemonClient, arg string) (daemon.SessionInfo, error) {
+	s, err := lookupSession(client, arg)
+	if err != nil {
+		return s, err
+	}
+	if s.Name != arg && s.ID != arg && len(arg) < minDestructivePrefix {
+		return daemon.SessionInfo{}, noSessionError{arg}
+	}
+	return s, nil
+}
+
 // cmdShare turns sharing on and prints the full-control link.
 //
 //	portty share <session>

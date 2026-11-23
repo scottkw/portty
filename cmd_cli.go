@@ -311,13 +311,13 @@ func cmdList(client *daemon.DaemonClient, args []string, out io.Writer) error {
 }
 
 // cmdKill terminates a session silently. The argument resolves like share and
-// attach (exact name, exact ID, unique ID prefix); an ambiguous or unknown name
-// kills nothing.
+// attach (exact name, exact ID, unique ID prefix of 8+ characters); an
+// ambiguous or unknown name kills nothing.
 func cmdKill(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: portty kill <session>")
 	}
-	s, err := lookupSession(client, args[0])
+	s, err := lookupSessionStrict(client, args[0])
 	if err != nil {
 		return err
 	}
@@ -328,13 +328,13 @@ func cmdKill(client *daemon.DaemonClient, args []string) error {
 }
 
 // cmdRename renames a session silently. The first argument resolves like
-// share and attach (exact name, exact ID, unique ID prefix); an ambiguous or
-// unknown name renames nothing.
+// share and attach (exact name, exact ID, unique ID prefix of 8+ characters); an
+// ambiguous or unknown name renames nothing.
 func cmdRename(client *daemon.DaemonClient, args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf("usage: portty rename <session> <name>")
 	}
-	s, err := lookupSession(client, args[0])
+	s, err := lookupSessionStrict(client, args[0])
 	if err != nil {
 		return err
 	}

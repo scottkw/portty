@@ -259,6 +259,28 @@ func TestCmdRename_ByName(t *testing.T) {
 	}
 }
 
+// TestCmdKillRename_ShortPrefixRefused pins that a short non-matching argument
+// (a name abbreviation that happens to be a unique hex ID prefix) kills and
+// renames nothing; share/attach still accept it.
+func TestCmdKillRename_ShortPrefixRefused(t *testing.T) {
+	client := testSetup(t)
+	id := mustCreate(t, client, "build")
+	wantNo := fmt.Sprintf(`portty: no session named %q. Run 'portty list' to see your sessions.`, id[:1])
+
+	if err := cmdKill(client, []string{id[:1]}); err == nil || err.Error() != wantNo {
+		t.Fatalf("cmdKill short prefix error = %v, want %q", err, wantNo)
+	}
+	if err := cmdRename(client, []string{id[:1], "x"}); err == nil || err.Error() != wantNo {
+		t.Fatalf("cmdRename short prefix error = %v, want %q", err, wantNo)
+	}
+	if got := sessionNames(t, client); !slices.Equal(got, []string{"build"}) {
+		t.Fatalf("short-prefix kill/rename changed sessions: %q", got)
+	}
+	if s, err := lookupSession(client, id[:1]); err != nil || s.ID != id {
+		t.Fatalf("lookupSession (share/attach path) short prefix = %v, %v; want %s", s.ID, err, id)
+	}
+}
+
 // TestCmdRename_MissingArgs verifies that missing args returns an error with "usage".
 func TestCmdRename_MissingArgs(t *testing.T) {
 	client := testSetup(t)
