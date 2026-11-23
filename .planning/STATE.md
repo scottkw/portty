@@ -4,17 +4,17 @@ milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
 current_phase: 15
 current_phase_name: v1.2 Hardening
-status: executing
-stopped_at: Completed 15-08-PLAN.md
-last_updated: "2026-11-23T14:51:31.214Z"
+status: verifying
+stopped_at: Completed 15-09-PLAN.md
+last_updated: "2026-11-23T14:59:23.896Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 15 execution started
-state_head: db0e79342aee7cef504b780179ea84146809713d
+state_head: d14f64671afe5050312f40ffe33c4f2c326ae528
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 63
-  completed_plans: 62
+  completed_plans: 63
   percent: 86
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 
 Phase: 15 (v1.2 Hardening) — EXECUTING
 Plan: 9 of 9
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-23 — Phase 15 execution started
 
 
@@ -147,6 +147,7 @@ Last activity: 2026-11-23 — Phase 15 execution started
 | Phase 15 P07 | 10min | 2 tasks | 2 files |
 | Phase 15 P06 | ~15min | 2 tasks | 6 files |
 | Phase 15 P08 | 15 min | 2 tasks | 4 files |
+| Phase 15 P09 | 50min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -333,6 +334,7 @@ Recent decisions affecting current work:
 - [Phase 15]: 15-06: update notification click shows window plus existing banner via update:show; never starts a download; delegate registered at launch
 - [Phase 15]: 15-08: takeover pid check uses its own seam takeoverPeerPID (never peerPID); a LOCAL_PEERPID lookup error refuses, never trusts HELLO-OK
 - [Phase 15]: 15-08: fdpass.rightsFromOOB walks control messages one at a time and never closes; Recv's close loop frees each fd once
+- [Phase 15]: 15-09: Phase 15 adds no test files; TESTING.md counts stay 174/122/10/1 = 307; Category BF M-152..M-155 recorded as not yet run (M-155 is a ship blocker until it passes in the VM)
 
 ### Pending Todos
 
@@ -441,8 +443,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-23T14:51:28.808Z
-Stopped at: Completed 15-08-PLAN.md
+Last session: 2026-11-23T14:59:21.452Z
+Stopped at: Completed 15-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
