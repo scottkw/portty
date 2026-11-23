@@ -60,4 +60,18 @@ test.describe('Phase 14-10 — key bar on an iPhone (MOB-01)', () => {
     await expectHex(page, '03')
     await expect(key(page, 'Ctrl')).toHaveAttribute('aria-pressed', 'false')
   })
+
+  test('the eight keys fit one row at 44 pt or more', async ({ page }) => {
+    const boxes = await page.getByRole('toolbar', { name: 'Terminal keys' }).getByRole('button').evaluateAll(
+      (els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ y: r.y, w: r.width, h: r.height, right: r.right })),
+    )
+    expect(boxes).toHaveLength(8)
+    for (const b of boxes) {
+      expect(b.w).toBeGreaterThanOrEqual(44)
+      expect(b.h).toBeGreaterThanOrEqual(44)
+      expect(b.y).toBe(boxes[0].y)
+    }
+    const vw = page.viewportSize()!.width
+    expect(Math.max(...boxes.map((b) => b.right))).toBeLessThanOrEqual(vw)
+  })
 })

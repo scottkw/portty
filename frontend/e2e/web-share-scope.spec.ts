@@ -31,6 +31,9 @@ test.describe('Phase 159-02 — web-share guest scope (WEBCHAT-03)', () => {
       await expect(page.locator('.xterm').first()).toBeVisible({ timeout: 15_000 })
       await expect(page.getByRole('button', { name: /chat/i })).toHaveCount(0)
 
+      // Phase 14-10: a desktop pointer gets no phone key bar (the phone query does not match).
+      await expect(page.getByRole('toolbar', { name: 'Terminal keys' })).toHaveCount(0)
+
       // Desktop chrome is NOT present: the Sidebar nav must not render in web mode.
       await expect(page.locator('nav[aria-label="Sessions"]')).toHaveCount(0)
       await expect(page.locator('nav[aria-label="Main navigation"]')).toHaveCount(0)

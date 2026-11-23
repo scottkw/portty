@@ -2371,3 +2371,80 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* ─── Phone key bar (Portty 14-10, MOB-01; 14-UI-SPEC "Key Bar") ───────────
+   One quiet toolbar row under the terminal. 44px hit boxes touch (no gap); the visible pill is
+   inset 2px. Accent shows only on an armed Ctrl, with a dot so color is not the only signal. */
+.keybar {
+  display: flex;
+  flex-shrink: 0;
+  box-sizing: content-box;
+  height: 44px;
+  padding: 4px env(safe-area-inset-right) calc(4px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
+  background: var(--color-toolbar);
+  border-top: 1px solid var(--color-separator);
+  overflow-x: auto;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.keybar__key {
+  position: relative;
+  isolation: isolate;
+  flex: 1 1 0;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  touch-action: manipulation;
+}
+.keybar__key::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--hub-radius-sm);
+  background: var(--color-button);
+}
+.keybar__key:active::before {
+  background: var(--color-selection-inactive);
+}
+.keybar__key--pipe {
+  font-size: 17px;
+  font-weight: 400;
+}
+.keybar__key--armed[aria-pressed="true"] {
+  color: var(--color-on-accent);
+}
+.keybar__key--armed[aria-pressed="true"]::before {
+  background: var(--color-selection-fill);
+  border-color: var(--color-selection-fill);
+}
+.keybar__key--armed[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-on-accent);
+}
+.keybar__key:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: -3px;
+}
+/* Backstop: React already renders the bar only on a phone; this keeps it off a desktop pointer. */
+@media not all and (pointer: coarse) and (hover: none) {
+  .keybar { display: none }
+}
