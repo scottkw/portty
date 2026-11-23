@@ -44,7 +44,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 - [x] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote (completed 2026-11-22)
 - [x] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent (completed 2026-11-22)
 - [x] **Phase 14: Mobile Web App** - Browser links limited to your own Tailscale account, then the share view on an iPhone: key bar, phone layout, Home Screen install, reconnect after sleep, and launcher copy for portty.app/app (completed 2026-11-22)
-- [ ] **Phase 15: v1.2 Hardening**
+- [x] **Phase 15: v1.2 Hardening** (completed 2026-11-23)
 
 ## Phase Details
 
@@ -221,7 +221,7 @@ Plans:
   7. Flaky tests are made deterministic without loosening product behaviour: pathLinks.linkifier "after a reconnect…" and TestShare_PasteBacklogKeepsViewer. The full Go and vitest suites pass once, clean.
   8. Each fixed todo moves to .planning/todos/completed/, and TESTING.md is updated per the standing rule.
 **Depends on:** Phase 14
-**Plans:** 9/9 plans executed
+**Plans:** 9/9 plans complete
 
 Plans:
 **Wave 1**
