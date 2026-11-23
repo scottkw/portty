@@ -221,7 +221,18 @@ Plans:
   7. Flaky tests are made deterministic without loosening product behaviour: pathLinks.linkifier "after a reconnect…" and TestShare_PasteBacklogKeepsViewer. The full Go and vitest suites pass once, clean.
   8. Each fixed todo moves to .planning/todos/completed/, and TESTING.md is updated per the standing rule.
 **Depends on:** Phase 14
-**Plans:** 0 plans
+**Plans:** 7 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 15 to break down)
+**Wave 1**
+- [ ] 15-01-PLAN.md — `portty attach` tells the PTY rows-1 while its bar is shown (initial frame and every SIGWINCH claim, bottom and --status-top), pinned at the frame and the hub grid owner (SC1)
+- [ ] 15-02-PLAN.md — Dismiss never signals a reaped session's process group (todo items 2-3 documented); TestKillClean_NoOrphans and TestShare_PasteBacklogKeepsViewer wait on events (SC3, SC7)
+- [ ] 15-03-PLAN.md — Daemon socket hardening: 0600 at listen and after a takeover COMMIT, takeover refuses a HELLO-OK pid the kernel does not confirm, fdpass.Recv frees fds from unparsed control messages (SC4)
+- [ ] 15-04-PLAN.md — Path click F-1 (rows stay monotonic across ED 3) and F-2 (mouseleave invalidates the Linkifier), linkifier test on vi.waitFor (SC6, SC7)
+- [ ] 15-05-PLAN.md — An ended peer tab keeps "Session ended"; a refused share port reads as reachable with nothing shared, a timeout stays "Can't reach this Mac" (SC2)
+
+**Wave 2** *(blocked on 15-05: App.tsx)*
+- [ ] 15-06-PLAN.md — Clicking the update notification shows Portty with the available banner and starts no download (native delegate, Go handler, React un-dismiss; live click is M-152) (SC5)
+
+**Wave 3** *(blocked on Waves 1-2)*
+- [ ] 15-07-PLAN.md — TESTING.md (Phase 15 note, Category BF M-152..M-154), one clean full Go -race and vitest run, nine todos moved to completed (SC7, SC8)

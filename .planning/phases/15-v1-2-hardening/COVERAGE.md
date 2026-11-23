@@ -1,0 +1,1 @@
+No external API integration: Phase 15 is a bug-fix and hardening phase over existing code; its one OS-framework touch adds a click-response callback to the macOS UserNotifications delegate Portty already registers (no new service, SDK, endpoint or package), and the detector fired on the words "Apple API" in 15-06's assumption note.
