@@ -480,7 +480,7 @@ describe('App — peer tab re-authenticates before each redial (SHAR-07)', () =>
   })
 
   // Todo 2026-11-21-ended-peer-tab-banner part 1: a tab that already saw the session-ended
-  // close reads no_such_session as ended; not_sharing is still a stopped share.
+  // close reads no_such_session and not_sharing (host's last share ended, M-154) as ended.
   async function reconnectAfterEnded(code: string) {
     const connect = vi.fn().mockReturnValueOnce(okResult).mockReturnValueOnce({ ...okResult, url: '', errorCode: code })
     const c = await mountApp({ ...baseImpl(connect), GetRelayPort: () => 5555 })
@@ -494,8 +494,13 @@ describe('App — peer tab re-authenticates before each redial (SHAR-07)', () =>
     expect(stub.verdict).toEqual({ kind: 'stop', reason: 'ended' })
   })
 
-  it('after the session-ended close, not_sharing still stops with share-stopped', async () => {
+  it('after the session-ended close, not_sharing (the host stopped its share server) stops with the ended verdict', async () => {
     await reconnectAfterEnded('not_sharing')
+    expect(stub.verdict).toEqual({ kind: 'stop', reason: 'ended' })
+  })
+
+  it('after the session-ended close, forbidden still stops with share-stopped', async () => {
+    await reconnectAfterEnded('forbidden')
     expect(stub.verdict).toEqual({ kind: 'stop', reason: 'share-stopped' })
   })
 

@@ -25,9 +25,12 @@ export function isTerminalClose(code: number, reason: string): boolean {
 // internal/daemon/types.go. Mid-gap the daemon cannot tell "Share turned off for
 // this session" from "session ended", so no_such_session reads as share-stopped,
 // except for a tab that already saw the session-ended close (sawEnded): that
-// session is gone, not unshared (todo 2026-11-21-ended-peer-tab-banner).
+// session is gone, not unshared (todo 2026-11-21-ended-peer-tab-banner). The
+// same holds for not_sharing: when the ended session was the host's last share
+// the host stops its share server and the redial is refused (M-154). forbidden
+// still stops as share-stopped: it is an access answer, not a session state.
 export function peerConnectVerdict(errorCode: string, sawEnded = false): ReconnectVerdict {
-  if (errorCode === 'no_such_session' && sawEnded) return { kind: 'stop', reason: 'ended' }
+  if (sawEnded && (errorCode === 'no_such_session' || errorCode === 'not_sharing')) return { kind: 'stop', reason: 'ended' }
   return errorCode === 'not_sharing' || errorCode === 'no_such_session' || errorCode === 'forbidden'
     ? { kind: 'stop', reason: 'share-stopped' }
     : { kind: 'retry' }
