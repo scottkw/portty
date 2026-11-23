@@ -133,8 +133,10 @@ export function WebShareSessionView({
   const phone = usePhone()
   const showKeyBar = !useProxy && phone && isActive && canWrite !== false
   // A typed character gets the armed Ctrl once; a character with no control code goes as typed.
+  // shortcut: any ESC-prefixed multi-byte payload counts as a reply, so a typed arrow or Alt key does not release Ctrl either.
   const inputTransform = (data: string): string => {
     if (!ctrlRef.current) return data
+    if (data.length > 1 && data.charCodeAt(0) === 0x1b) return data // a terminal reply or report (DA1, DSR, focus), not a key
     setCtrl(false)
     return ctrlByte(data) ?? data
   }

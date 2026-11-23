@@ -113,6 +113,15 @@ describe('WebShareSessionView key bar', () => {
       expect(typed('é')).toBe('é')
       expect(ctrlBtn().getAttribute('aria-pressed')).toBe('false')
     })
+    it('terminal replies (DA1, DSR, focus report) pass through and do not consume an armed Ctrl', () => {
+      phone(true)
+      mount({ canWrite: true })
+      arm()
+      for (const reply of ['\x1b[?62;4c', '\x1b[12;40R', '\x1b[I']) expect(typed(reply)).toBe(reply)
+      expect(ctrlBtn().getAttribute('aria-pressed')).toBe('true')
+      expect(typed('c')).toBe('\x03')
+      expect(ctrlBtn().getAttribute('aria-pressed')).toBe('false')
+    })
     it('releases Ctrl when a preview takes focus', () => {
       phone(true)
       const render = mount({ canWrite: true })
