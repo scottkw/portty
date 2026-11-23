@@ -6,16 +6,16 @@ current_phase: 14
 current_phase_name: mobile-web-app
 status: executing
 stopped_at: Phase 13 complete, ready to plan Phase 14
-last_updated: "2026-11-23T00:00:32.609Z"
+last_updated: "2026-11-23T00:04:25.921Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 14 execution started
-state_head: bd06729f74f0e6ae1cc1ce8d7f18610d89f51c79
+state_head: e377fbf9db61eddc4f39a24ca9bf32b5411a45ce
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 54
-  completed_plans: 43
-  percent: 80
+  completed_plans: 44
+  percent: 81
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 14 (mobile-web-app) — EXECUTING
-Plan: 4 of 14
+Plan: 5 of 14
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 14 execution started
 
@@ -128,6 +128,7 @@ Last activity: 2026-11-22 — Phase 14 execution started
 | Phase 14 P01 | ~1h | 3 tasks | 14 files |
 | Phase 14 P02 | 20m | 2 tasks | 5 files |
 | Phase 14 P03 | 35min | 3 tasks | 9 files |
+| Phase 14 P04 | 25min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -289,6 +290,7 @@ Recent decisions affecting current work:
 - [Phase 14]: 14-01: no WhoIs verdict cache; every gated request does its own StatusWithoutPeers and WhoIs (measurement is M-149 in 14-12, decision at 14-14)
 - [Phase 14]: 14-02: a bare ESC ending a MsgInput frame is forwarded at once by InputAbsorber.Filter; the only accepted cost is a reply split exactly between ESC and the introducer (pinned by test, T-14-09); IsUserInput unchanged so a lone Esc does not claim the grid
 - [Phase 14]: 14-03: requireSameUser's body lives in sameUserStatus (0/403/503); requireSameUser and requireSameUserPage are thin writers over it
+- [Phase 14]: 14-04: shareInfoVerdict's X-Portty marker parameter is required so a forgotten call site fails tsc; CLOSE_REASON_OTHER_ACCOUNT is client-only
 
 ### Pending Todos
 
