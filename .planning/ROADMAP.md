@@ -45,6 +45,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 - [x] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent (completed 2026-11-22)
 - [x] **Phase 14: Mobile Web App** - Browser links limited to your own Tailscale account, then the share view on an iPhone: key bar, phone layout, Home Screen install, reconnect after sleep, and launcher copy for portty.app/app (completed 2026-11-22)
 - [x] **Phase 15: v1.2 Hardening** (completed 2026-11-23)
+- [ ] **Phase 16: v1.2 Cleanup**
 
 ## Phase Details
 
@@ -238,3 +239,20 @@ Plans:
 
 **Wave 3** *(blocked on Waves 1-2)*
 - [x] 15-09-PLAN.md — TESTING.md (Phase 15 note, Category BF M-152..M-155, M-155 = TestHandoffIT plus a pre-phase upgrade chain in portty-test before ship), one clean full Go -race and vitest run, nine todos moved to completed (SC7, SC8)
+
+### Phase 16: v1.2 Cleanup
+
+**Goal:** Clear the doable tech debt from the v1.2 re-audit (.planning/v1.2-MILESTONE-AUDIT.md, 2026-11-23) before the milestone closes. Out of scope: real-Mac/release-gated checks (v12-release-checks, M-93 notarized delivery), dompurify-3418 (blocked until 2026-11-28), and the user-accepted limits (--status-top overdraw, passive CLI watch). The sidebar dot stays green for a reachable Mac with nothing shared (user decision 2026-11-23).
+**Requirements**: none new (bug fixes, tidy-ups and planning-artifact hygiene)
+**Success Criteria** (what must be TRUE):
+  1. `portty kill <name>` resolves names the way `share`/`rename` do; a test pins it. (todo 2026-11-23-kill-by-name-fails)
+  2. `Portty --version` (and `-v`) prints the version without launching the GUI; unknown flags never start the GUI. (todo 2026-11-23-version-flag-hangs)
+  3. The two DoS-bound vitest tests (localhostUrl hostile input, markdown indentation-nested list) are load-robust without loosening the bound they prove. (todo 2026-11-23-dos-bound-test-timeouts)
+  4. Phase 15 review info items are resolved or recorded: IN-02 duplicate killSession branch, IN-03 ED 3 History.Skip during alt screen, IN-06 joinPasteViewer copying dialResume; the unused `PathClickAPI` constant is removed or given a consumer.
+  5. Planning hygiene: SUMMARY `requirements-completed` lists cover INPT-01..06 (Phase 10), PREV-02/PREV-04 (Phase 11) and MOB-01..05 (Phase 14); `/gsd-secure-phase 11` produces 11-SECURITY.md; the selection-offset-and-copy todo is triaged (fixed here or explicitly carried to v1.3 with a reason).
+  6. The full Go -race and vitest suites pass once, clean; fixed todos move to completed; TESTING.md is updated per the standing rule.
+**Depends on:** Phase 15
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 16 to break down)
