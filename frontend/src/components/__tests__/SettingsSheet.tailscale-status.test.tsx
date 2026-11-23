@@ -98,7 +98,7 @@ describe('NET-01: Sharing pane Tailscale status', () => {
 
 describe('Portty 04-05: Sharing pane is the status plus one explanation', () => {
   const EXPLANATION =
-    'Share a session from the toolbar, or right-click it in the sidebar. Macs signed in to your Tailscale account see shared sessions in their sidebar, and each shared session gets a link for any browser on your tailnet. Turning Share off disconnects everyone.'
+    'Share a session from the toolbar, or right-click it in the sidebar. Macs signed in to your Tailscale account see shared sessions in their sidebar, and each shared session gets a link that opens in a browser on any device signed in to your account. Turning Share off disconnects everyone.'
 
   it('shows the explanation under the Tailscale group', async () => {
     await renderSheet(CONNECTED)

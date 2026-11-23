@@ -19,7 +19,7 @@ Portty is a macOS terminal with remote access over Tailscale.
 3. On the first Mac, turn on Share for a session (the Share button in the toolbar, or `portty share <session>`).
 4. On the second Mac, open it from **Other Macs** in the sidebar, or run `portty attach <host>:<session>` in any terminal.
 
-Any device on your tailnet can also open the session's link in a browser, and anyone with the link has full control. Turning Share off disconnects everyone.
+Any device signed in to your Tailscale account can also open the session's link in a browser, with full control. Treat the link like a password. Turning Share off disconnects everyone.
 
 ## Known Issues
 

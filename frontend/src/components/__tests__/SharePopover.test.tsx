@@ -97,7 +97,7 @@ describe('SharePopover: element and off state', () => {
     expect(sw().getAttribute('aria-checked')).toBe('false')
     expect(sw().hasAttribute('aria-disabled')).toBe(false)
     expect(state().textContent).toContain(
-      'Macs signed in to your Tailscale account see it in their sidebar, and you get a link for any browser on your tailnet.',
+      'Macs signed in to your Tailscale account see it in their sidebar, and you get a link that opens in a browser on any device signed in to your account.',
     )
     expect(state().textContent).toContain(
       'The first share gets an HTTPS certificate for office-air.tail1234.ts.net. That name is published in public Certificate Transparency logs.',

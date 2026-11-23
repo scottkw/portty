@@ -391,7 +391,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffe
                 </Row>
               </div>
               <p className="settings-sheet__footnote">
-                Share a session from the toolbar, or right-click it in the sidebar. Macs signed in to your Tailscale account see shared sessions in their sidebar, and each shared session gets a link for any browser on your tailnet. Turning Share off disconnects everyone.
+                Share a session from the toolbar, or right-click it in the sidebar. Macs signed in to your Tailscale account see shared sessions in their sidebar, and each shared session gets a link that opens in a browser on any device signed in to your account. Turning Share off disconnects everyone.
               </p>
             </div>
 
