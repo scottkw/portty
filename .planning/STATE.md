@@ -5,16 +5,16 @@ milestone_name: Previews, Remote URLs, Mobile
 current_phase: 16
 current_phase_name: v1.2 Cleanup
 status: executing
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-11-23T19:09:26.136Z"
+stopped_at: Completed 16-02-PLAN.md
+last_updated: "2026-11-23T19:18:35.424Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 16 execution started
-state_head: e6ec405049b585500b13dc9e4776f0a316826b21
+state_head: 71e4cd5eede6b0ab247bf882e0b7d6aabe4b523a
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 67
-  completed_plans: 64
+  completed_plans: 65
   percent: 88
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 16 (v1.2 Cleanup) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-11-23 — Phase 16 execution started
 
@@ -150,6 +150,7 @@ Last activity: 2026-11-23 — Phase 16 execution started
 | Phase 15 P08 | 15 min | 2 tasks | 4 files |
 | Phase 15 P09 | 50min | 3 tasks | 10 files |
 | Phase 16 P01 | 15 min | 2 tasks | 4 files |
+| Phase 16 P02 | 8 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -339,6 +340,9 @@ Recent decisions affecting current work:
 - [Phase 15]: 15-09: Phase 15 adds no test files; TESTING.md counts stay 174/122/10/1 = 307; Category BF M-152..M-155 recorded as not yet run (M-155 is a ship blocker until it passes in the VM)
 - [Phase 16]: D-01: unknown leading flags exit 2 with usage; GUI allowlist is exactly -psn_*, -NS*, -Apple*; --version/-v map to the version command
 - [Phase 16]: kill and rename resolve their session argument with lookupSession (name, ID, unique prefix); ambiguous names touch nothing
+- [Phase 16]: 16-02 IN-03: guard History.Skip with !emu.IsAltScreen() only; Clear() left unchanged
+- [Phase 16]: 16-02 IN-06: optional ping hook lives in dialResumePing; dialResume wraps it with a nil hook (Go has no optional params)
+- [Phase 16]: 16-02 DoS-bound vitest tests: 30 s per-test timeout, inputs and assertions unchanged
 
 ### Pending Todos
 
@@ -447,8 +451,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-23T19:09:25.148Z
-Stopped at: Completed 16-01-PLAN.md
+Last session: 2026-11-23T19:18:33.097Z
+Stopped at: Completed 16-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
