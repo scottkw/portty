@@ -10,6 +10,8 @@
 #     the fake Tailscale used for the Tart VM GUI check    (SHAR-01)
 #     the fake update feed of the M-92 VM update checks    (UPD)
 #     or the faked other-account WhoIs of the VM checks    (MOB-05)
+#   - an import of the WhoIs fake package (webservertest) by a non-test Go
+#     file outside the Playwright fixture and the package itself (MOB-05)
 # Every pattern spells its word with one letter in a bracket class, so the
 # pattern never matches its own text and this script never flags itself.
 #
@@ -67,6 +69,11 @@ report link "$(grep -v -E ':github\.com/scottkw/portty$' <<< "$out")"
 out=$(git grep -n -I --untracked -E 'vmpr[e]view|vmwh[o]is' -- .github build.sh scripts); rc=$?
 check_status "$rc"
 report vm-tag "$out"
+
+out=$(git grep -n -I 'internal/webserver/webserver[t]est' -- '*.go' ':!*_test.go' \
+  ':!cmd/playwright-fixture/' ':!internal/webserver/webservertest/'); rc=$?
+check_status "$rc"
+report fake-whois "$out"
 
 if (( FINDINGS > 0 )); then
   echo "FAIL: ${FINDINGS} finding(s)"
