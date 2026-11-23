@@ -201,9 +201,9 @@ func (s *handoffScene) warmSeam(ctx context.Context, domain string) error {
 }
 
 func (s *handoffScene) installSeams() {
-	f, uid, pid, watch, watchOld, alive, hx, tx := handoffFault, peerUID, peerPID, watchPeerExit, watchOldExit, pidAlive, handoffExit, takeoverExit
+	f, uid, pid, tpid, watch, watchOld, alive, hx, tx := handoffFault, peerUID, peerPID, takeoverPeerPID, watchPeerExit, watchOldExit, pidAlive, handoffExit, takeoverExit
 	s.restore = func() {
-		handoffFault, peerUID, peerPID, watchPeerExit, watchOldExit, pidAlive, handoffExit, takeoverExit = f, uid, pid, watch, watchOld, alive, hx, tx
+		handoffFault, peerUID, peerPID, takeoverPeerPID, watchPeerExit, watchOldExit, pidAlive, handoffExit, takeoverExit = f, uid, pid, tpid, watch, watchOld, alive, hx, tx
 	}
 	watchOldExit = func(int) <-chan int { return s.oldGone }
 	peerPID = func(c *net.UnixConn) (int, error) {
@@ -902,6 +902,35 @@ func TestHandoff_RefusesOtherUID(t *testing.T) {
 	checkNewHandoffFDs(t, s.lockPath, base, "after the refusal")
 	last := lastTick(ringTicks(s.old, s.ids[0]))
 	waitFor(t, "old ticks advance", 5*time.Second, func() bool { return lastTick(ringTicks(s.old, s.ids[0])) >= last+3 })
+}
+
+// T-15-08: the takeover trusts the kernel's LOCAL_PEERPID, not the pid written
+// in HELLO-OK; a mismatch or a failed lookup refuses and the old daemon serves.
+func TestHandoff_RefusesPIDMismatch(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		pid  func() (int, error)
+	}{
+		{"mismatch", func() (int, error) { return os.Getpid() + 100000, nil }},
+		{"lookup error", func() (int, error) { return 0, errors.New("no peer pid") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newHandoffScene(t, tickScript(false))
+			v := s.dialViewer(s.old.relayPort, s.ids[0], "")
+			waitTicks(t, "viewer ticks", v.ticks, 3)
+			base := handoffFDBaseline(t, s.lockPath)
+			takeoverPeerPID = func(*net.UnixConn) (int, error) { return tc.pid() }
+			n, code := s.takeover(BuildVersion)
+			if code != takeoverRefused {
+				t.Fatalf("runTakeover = %d, want %d", code, takeoverRefused)
+			}
+			if s.idx("new:returned 4") < 0 {
+				t.Error("the takeover did not return the refusal")
+			}
+			checkNewHandoffFDs(t, s.lockPath, base, "after the refusal")
+			checkOldServes(t, s, n, v, false)
+		})
+	}
 }
 
 // T-09-23: an older release cannot pull the sessions back.

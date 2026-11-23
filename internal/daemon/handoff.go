@@ -96,7 +96,7 @@ const (
 	takeoverCommitted = 0
 	takeoverFailed    = 1 // anything else
 	takeoverBusy      = 3
-	takeoverRefused   = 4 // uid, protocol version, older release
+	takeoverRefused   = 4 // uid, protocol version, older release, or a pid the kernel does not confirm
 	takeoverImport    = 5 // the state could not be loaded (incl. "share certificate unavailable")
 	takeoverTimedOut  = 6 // timed out, aborted, or the old daemon went away alive before COMMIT
 )
@@ -126,11 +126,15 @@ var (
 	// abort). After COMMIT every error on the new side is a death.
 	handoffFault func(side, step string) error
 
-	peerUID       = fdpass.PeerUID
-	peerPID       = fdpass.PeerPID
-	watchPeerExit = pty.WatchExit // old side: the takeover's exit
-	watchOldExit  = pty.WatchExit // new side: the old daemon's exit (holdInputUntilOldExits)
-	pidAlive      = func(pid int) bool {
+	peerUID = fdpass.PeerUID
+	peerPID = fdpass.PeerPID
+	// New side: the old daemon's pid as the kernel reports it for the handoff
+	// connection (LOCAL_PEERPID; the dialing side sees the accepting process).
+	// Tests replace it; never reuse peerPID, which is the old side's lookup.
+	takeoverPeerPID = fdpass.PeerPID
+	watchPeerExit   = pty.WatchExit // old side: the takeover's exit
+	watchOldExit    = pty.WatchExit // new side: the old daemon's exit (holdInputUntilOldExits)
+	pidAlive        = func(pid int) bool {
 		err := unix.Kill(pid, 0)
 		return err == nil || errors.Is(err, unix.EPERM)
 	}
@@ -888,7 +892,13 @@ func runTakeover(ctx context.Context, d takeoverDeps) int {
 		}
 		return t.readFailed(err)
 	}
-	t.oldPID = ok.PID
+	// The pid in HELLO-OK is written by the peer; only the kernel's answer is
+	// trusted. A failed lookup refuses too, never falls back to HELLO-OK.
+	kernelPID, perr := takeoverPeerPID(t.c)
+	if perr != nil || kernelPID != ok.PID {
+		return t.fail(takeoverRefused, fmt.Sprintf("HELLO-OK pid %d does not match the socket peer (%d, %v)", ok.PID, kernelPID, perr))
+	}
+	t.oldPID = kernelPID
 	if code, done := t.preStep("after-hello"); done {
 		return code
 	}
