@@ -59,19 +59,13 @@ type StyledTailLinesResponse struct {
 
 // APIVersion is the daemon API this build serves (UPGR-04). v1.0 and v1.1
 // send no "api" field and count as 1. 3 adds the preview route (PreviewAPI);
-// 4 adds path clicks (PathClickAPI); 5 adds remote localhost forwards
-// (PortProxyAPI).
+// 4 adds path clicks (viewers gate them on the replay meta's pathClick bit);
+// 5 adds remote localhost forwards (PortProxyAPI).
 const APIVersion = 5
 
 // PreviewAPI is the lowest daemon API that serves POST /sessions/{id}/preview;
 // `portty open` needs it (CONTEXT "Session id").
 const PreviewAPI = 3
-
-// PathClickAPI is the lowest daemon API whose sessions accept MsgPathClick.
-// Viewers do not read it: they follow the path-click bit on the replay meta,
-// which also covers peer and browser viewers that never see /health. It
-// documents the feature for /health and /info readers.
-const PathClickAPI = 4
 
 // PortProxyAPI is the lowest daemon API that serves POST /peers/ports. The GUI
 // checks its own daemon with it; a viewing daemon learns whether a host

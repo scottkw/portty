@@ -25,19 +25,16 @@ import (
 // child's exit and the reap signals a zombie group, which still holds its
 // pid, so no reuse can happen yet; and a second, narrower window lies between
 // cmd.Wait returning (the pid is freed) and reaped.Store(true), where a racing
-// dismiss can still signal the old pgid, a few instructions wide.
+// dismiss can still signal the old pgid, a few instructions wide. Leftover
+// members of a reaped shell's process group (background jobs still running
+// after the shell exited) are intentionally left running: the guard cannot
+// tell an empty group from a live one without extra bookkeeping (15-REVIEW
+// IN-01, accepted in 15-REVIEW-DISPOSITION.md).
 func killSession(s *Session) error {
 	if s.exited != nil {
 		return killAdopted(s)
 	}
-	if s.cmd == nil || s.cmd.Process == nil {
-		s.closePTY()
-		if s.cancel != nil {
-			s.cancel()
-		}
-		return nil
-	}
-	if s.reaped.Load() {
+	if s.cmd == nil || s.cmd.Process == nil || s.reaped.Load() {
 		s.closePTY()
 		if s.cancel != nil {
 			s.cancel()

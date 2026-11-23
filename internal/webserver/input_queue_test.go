@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"io"
 	"log"
-	"net/http"
 	"regexp"
 	"strconv"
 	"sync"
@@ -44,10 +43,7 @@ func joinPasteViewer(t *testing.T, sid string, timeout time.Duration, onPing fun
 	token := issueCapFor(t, ws, sid, "read,write")
 	ws.heartbeatEvery, ws.heartbeatTimeout = 50*time.Millisecond, timeout
 	hub, _ := ws.manager.Get(sid)
-	hdr := http.Header{}
-	hdr.Set("Origin", ws.BaseURL())
-	conn := dialWebServerWSPing(t, client, ws.BaseURL(), "/sessions/"+sid+"/ws?cap="+token, hdr, onPing)
-	conn.SetReadLimit(relay.ViewerReadLimit)
+	conn := dialResumePing(t, ws, client, sid, token, "", onPing)
 	if typ, _ := readWSFrame(t, conn); typ != relay.MsgResize {
 		t.Fatalf("first frame type 0x%02x, want grid frame", typ)
 	}

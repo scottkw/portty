@@ -47,8 +47,8 @@ func TestHealthInfo(t *testing.T) {
 
 	_, client, _ := testDaemon(t)
 	h, err = client.HealthInfo()
-	if err != nil || DaemonAPI(h) != 5 || APIVersion != 5 || PortProxyAPI != 5 || PreviewAPI != 3 || PathClickAPI != 4 {
-		t.Fatalf("this build's health = %+v, %v; want API 5 (PortProxyAPI 5, PreviewAPI 3, PathClickAPI 4)", h, err)
+	if err != nil || DaemonAPI(h) != 5 || APIVersion != 5 || PortProxyAPI != 5 || PreviewAPI != 3 {
+		t.Fatalf("this build's health = %+v, %v; want API 5 (PortProxyAPI 5, PreviewAPI 3)", h, err)
 	}
 }
 

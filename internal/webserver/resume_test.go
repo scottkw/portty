@@ -116,9 +116,16 @@ func writeOutput(t *testing.T, w io.Writer, hub *relay.Hub, s string) {
 
 func dialResume(t *testing.T, ws *WebServer, client *http.Client, sessionID, token, query string) *websocket.Conn {
 	t.Helper()
+	return dialResumePing(t, ws, client, sessionID, token, query, nil)
+}
+
+// dialResumePing is dialResume with an OnPingReceived hook. A nil hook is the
+// library default; a non-nil hook must return true or no pong is sent.
+func dialResumePing(t *testing.T, ws *WebServer, client *http.Client, sessionID, token, query string, onPing func(context.Context, []byte) bool) *websocket.Conn {
+	t.Helper()
 	hdr := http.Header{}
 	hdr.Set("Origin", ws.BaseURL())
-	conn := dialWebServerWS(t, client, ws.BaseURL(), "/sessions/"+sessionID+"/ws?cap="+token+query, hdr)
+	conn := dialWebServerWSPing(t, client, ws.BaseURL(), "/sessions/"+sessionID+"/ws?cap="+token+query, hdr, onPing)
 	conn.SetReadLimit(relay.ViewerReadLimit)
 	return conn
 }
