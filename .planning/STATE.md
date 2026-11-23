@@ -6,15 +6,15 @@ current_phase: 14
 current_phase_name: mobile-web-app
 status: executing
 stopped_at: Phase 13 complete, ready to plan Phase 14
-last_updated: "2026-11-23T02:25:59.308Z"
+last_updated: "2026-11-23T03:05:45.304Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 14 execution started
-state_head: a32e828515c9d826185fe94adc5245fb3238f146
+state_head: 2d06535bd85f48b8f4d26d6f033e7c30bd10b6ad
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 54
-  completed_plans: 53
+  completed_plans: 54
   percent: 83
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 14 (mobile-web-app) — EXECUTING
-Plan: 13 of 14
+Plan: 14 of 14
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 14 execution started
 
@@ -137,6 +137,7 @@ Last activity: 2026-11-22 — Phase 14 execution started
 | Phase 14 P11 | 45min | 3 tasks | 18 files |
 | Phase 14 P12 | 40min | 2 tasks | 3 files |
 | Phase 14 P13 | ~75min | 2 tasks | 1 files |
+| Phase 14 P14 | checkpoint run plus Task 3 (about 1 h) | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -308,6 +309,7 @@ Recent decisions affecting current work:
 - [Phase 14]: 14-12: nothing decided in the evidence plan; two gate flakes (pty G-1, linkifier), the P-04 cache rule (estimate 82.8 ms, largest p95 6.88 ms) and the vim 1.1 s timeoutlen note go to 14-14's checkpoint
 - [Phase 14]: 14-13: S-02 keyboard inset recorded FAIL on its literal 8 pt criterion (bar 85 to 117 pt above keyboard, Safari form-assist bar and URL pill between); 14-14 judges it
 - [Phase 14]: 14-13: S-04 passed, the Home Screen launch URL keeps session and cap; icon lands in the App Library only on a fresh device and dies with the share (S-07)
+- [Phase 14]: 14-14: Phase 14 verdict approved with S-02 accepted as a limit (iOS form-assist bar, user decision 2026-11-22); CSP Amendment 4 approved; UI-A accepted, UI-B keep uncached, UI-C accepted
 
 ### Pending Todos
 
