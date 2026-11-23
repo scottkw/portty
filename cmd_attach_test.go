@@ -104,6 +104,20 @@ func TestMakeClientResizeFrame(t *testing.T) {
 	}
 }
 
+// The initial report is the terminal size less the bar's reserved rows: five
+// bytes (a report, no claim byte), never wrapping on a 0- or 1-row terminal.
+func TestInitialResizeFrame(t *testing.T) {
+	for _, c := range []struct{ cols, rows, reserve, wantRows int }{
+		{90, 30, 1, 29}, {90, 30, 0, 30}, {90, 1, 1, 1}, {90, 0, 1, 0},
+	} {
+		got := initialResizeFrame(c.cols, c.rows, c.reserve)
+		want := attach.MakeClientResizeFrame(uint16(c.cols), uint16(c.wantRows))
+		if !bytes.Equal(got, want) || len(got) != 5 {
+			t.Errorf("initialResizeFrame(%d, %d, %d) = %v, want %v", c.cols, c.rows, c.reserve, got, want)
+		}
+	}
+}
+
 // TestAttachSession_DetachKey verifies that sending the detach key byte causes
 // AttachSession to return nil (clean detach without error) (CLI-07).
 func TestAttachSession_DetachKey(t *testing.T) {

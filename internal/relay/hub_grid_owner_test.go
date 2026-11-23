@@ -509,3 +509,31 @@ func TestHub_GridRevokedOrGoneViewerCannotClaim(t *testing.T) {
 			hubOwner(hub), a, hubGrid(hub), calls())
 	}
 }
+
+// Pins ROADMAP Phase 15 SC1 "if several viewers are attached, the reduced
+// height actually wins" with the sizes `portty attach` sends under its bar
+// (rows-1), under the reading that the claiming or typing viewer's reduced
+// height wins (15-CONTEXT [Attach bar], INPT-06). A passive report never
+// overrides another owner; that passive-watch case is TESTING.md M-153.
+func TestHub_GridAttachBarRows(t *testing.T) {
+	hub, calls := ownerHub(t)
+	gui := gridSub(hub, "local")
+	cli := gridSub(hub, "local")
+	grid := func(step string, want [2]int) {
+		t.Helper()
+		if g := hubGrid(hub); g != want {
+			t.Fatalf("%s: grid %v, want %v (resizeFn %v)", step, g, want, calls())
+		}
+	}
+
+	mustSize(t, hub.ClaimGrid(gui, 120, 40))
+	grid("GUI claim", [2]int{120, 40})
+	mustSize(t, hub.ResizeClient(cli, 80, 23))
+	grid("CLI report", [2]int{120, 40})
+	mustSize(t, hub.ClaimGrid(cli, 80, 23))
+	grid("CLI claim", [2]int{80, 23})
+	mustSize(t, hub.ClaimGrid(gui, 120, 40))
+	grid("GUI claim back", [2]int{120, 40})
+	mustSize(t, hub.NoteTyping(cli))
+	grid("CLI typing", [2]int{80, 23})
+}

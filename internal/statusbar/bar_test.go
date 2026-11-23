@@ -215,3 +215,38 @@ func TestBar_ViewerCountHiddenWhenOne(t *testing.T) {
 		t.Errorf("bar output should not show viewer count when count=1; got: %q", output)
 	}
 }
+
+// ReservedRows is one row once Start sized the terminal (either position),
+// none before, none when Start drew nothing, and a nil *Bar reserves none.
+func TestBar_ReservedRows(t *testing.T) {
+	if got := (*statusbar.Bar)(nil).ReservedRows(); got != 0 {
+		t.Fatalf("nil bar ReservedRows = %d, want 0", got)
+	}
+	f, err := os.CreateTemp(t.TempDir(), "notatty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.Close() })
+
+	for name, pos := range map[string]statusbar.Position{"bottom": statusbar.Bottom, "top": statusbar.Top} {
+		bar := statusbar.New(&safeBuf{}, statusbar.Options{
+			Position: pos, Fd: f.Fd(), FallbackCols: 80, FallbackRows: 24,
+		})
+		t.Cleanup(bar.Stop)
+		if got := bar.ReservedRows(); got != 0 {
+			t.Errorf("%s: before Start ReservedRows = %d, want 0", name, got)
+		}
+		bar.Start()
+		if got := bar.ReservedRows(); got != 1 {
+			t.Errorf("%s: after Start ReservedRows = %d, want 1", name, got)
+		}
+	}
+
+	var buf safeBuf
+	unsized := statusbar.New(&buf, statusbar.Options{Fd: f.Fd()})
+	t.Cleanup(unsized.Stop)
+	unsized.Start()
+	if got := unsized.ReservedRows(); got != 0 || buf.String() != "" {
+		t.Fatalf("unsized bar: ReservedRows = %d, output %q; want 0 and nothing drawn", got, buf.String())
+	}
+}
