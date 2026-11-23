@@ -93,8 +93,7 @@ describe('real xterm Linkifier (PATH-02 gap 2)', () => {
   const renderOnce = async () => {
     const before = renders
     term.refresh(0, term.rows - 1)
-    await sleep(100)
-    expect(renders, 'term.onRender fired').toBeGreaterThan(before)
+    await vi.waitFor(() => expect(renders, 'term.onRender fired').toBeGreaterThan(before), { timeout: 5000, interval: 10 })
   }
   const write = (s: string) => new Promise<void>((r) => term.write(s, () => r()))
 
@@ -140,7 +139,7 @@ describe('real xterm Linkifier (PATH-02 gap 2)', () => {
     start()
     openSession('full', true)
     await write(`${PATH}\r\n$ `)
-    await sleep(100)
+    await renderOnce()
   })
 
   afterEach(() => {
@@ -162,12 +161,10 @@ describe('real xterm Linkifier (PATH-02 gap 2)', () => {
     expect(term.options.disableStdin).toBe(true)
     await renderOnce()
     window.dispatchEvent(new Event('portty:wake'))
-    await sleep(20)
-    expect(WS.instances.length, 'the client redialed').toBe(2)
+    await vi.waitFor(() => expect(WS.instances.length, 'the client redialed').toBe(2), { timeout: 5000, interval: 10 })
     sock().onopen?.()
     openSession('delta', true)
-    await sleep(100)
-    expect(term.options.disableStdin).toBe(false)
+    await vi.waitFor(() => expect(term.options.disableStdin).toBe(false), { timeout: 5000, interval: 10 })
   }
 
   it('control: a Cmd-click on a printed path sends one path click', () => {
@@ -199,9 +196,10 @@ describe('real xterm Linkifier (PATH-02 gap 2)', () => {
   const resizeTo = async (cols: number, rows: number) => {
     const before = renders
     feed(new Uint8Array([0x02, cols >> 8, cols & 0xff, rows >> 8, rows & 0xff]))
-    await sleep(150)
-    expect(term.cols, 'the grid changed').toBe(cols)
-    expect(renders, 'term.onRender fired after the resize').toBeGreaterThan(before)
+    await vi.waitFor(() => {
+      expect(term.cols, 'the grid changed').toBe(cols)
+      expect(renders, 'term.onRender fired after the resize').toBeGreaterThan(before)
+    }, { timeout: 5000, interval: 10 })
   }
 
   it('after a resize, a Cmd-click at the same cell sends the path click with no pointer move', async () => {
@@ -246,7 +244,7 @@ describe('real xterm Linkifier (PATH-02 gap 2)', () => {
     const opened = vi.fn()
     term.loadAddon(new WebLinksAddon((_e, uri) => opened(uri)))
     await write('\r\nhttps://example.com/docs\r\n') // row 2 holds the prompt, so the URL lands on row 3
-    await sleep(100)
+    await renderOnce()
     hover(5, 3)
     click(5, 3)
     expect(opened.mock.calls).toEqual([['https://example.com/docs']])
