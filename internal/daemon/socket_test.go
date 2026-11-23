@@ -108,3 +108,19 @@ func TestCleanupStaleSocket_ActiveSocket(t *testing.T) {
 		t.Errorf("error should mention 'already running', got: %v", err)
 	}
 }
+
+// A daemon's control socket is private to its user from the moment it listens
+// (Phase 9 audit O-2), and the owner can still use it.
+func TestListenDaemonSocket_Mode0600(t *testing.T) {
+	_, client, path := testDaemon(t)
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if got := fi.Mode().Perm(); got != 0o600 {
+		t.Errorf("socket mode = %o, want 600", got)
+	}
+	if err := client.Health(); err != nil {
+		t.Errorf("Health on the 0600 socket: %v", err)
+	}
+}
