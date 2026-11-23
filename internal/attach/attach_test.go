@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -82,7 +83,7 @@ func TestWatchResize_SendsClaim(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		watchResize(ctx, conn, winch, func() (int, int, error) { s := <-sizes; return s.cols, s.rows, s.err })
+		watchResize(ctx, conn, winch, func() (int, int, error) { s := <-sizes; return s.cols, s.rows, s.err }, func() int { return 0 })
 		close(done)
 	}()
 
@@ -115,6 +116,65 @@ func TestWatchResize_SendsClaim(t *testing.T) {
 	case <-done:
 	case <-time.After(loopWait):
 		t.Fatal("the resize watcher did not stop on ctx cancel")
+	}
+}
+
+// A bar-reserved row is subtracted from the PTY height; a terminal of reserve
+// rows or fewer is reported as is so the uint16 frame never wraps.
+func TestBarRows(t *testing.T) {
+	for _, c := range []struct{ rows, reserve, want int }{
+		{30, 1, 29}, {30, 0, 30}, {2, 1, 1}, {1, 1, 1}, {0, 1, 0},
+	} {
+		if got := BarRows(c.rows, c.reserve); got != c.want {
+			t.Errorf("BarRows(%d, %d) = %d, want %d", c.rows, c.reserve, got, c.want)
+		}
+	}
+}
+
+// ROADMAP Phase 15 SC1: the SIGWINCH claim carries rows-1 while the bar is
+// shown; the reserve is read per signal.
+func TestWatchResize_ClaimsBarRows(t *testing.T) {
+	frames := make(chan []byte, 8)
+	readCtx, stopRead := context.WithCancel(context.Background())
+	t.Cleanup(stopRead)
+	f := newFakeRelay(t, func(f *fakeRelay, i int, c *websocket.Conn) {
+		for {
+			_, msg, err := c.Read(readCtx)
+			if err != nil {
+				return
+			}
+			frames <- msg
+		}
+	}, nil)
+	conn := f.dial(t)
+
+	var reserve atomic.Int32
+	reserve.Store(1)
+	winch := make(chan os.Signal, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go watchResize(ctx, conn, winch,
+		func() (int, int, error) { return 90, 30, nil },
+		func() int { return int(reserve.Load()) })
+
+	next := func() []byte {
+		t.Helper()
+		select {
+		case m := <-frames:
+			return m
+		case <-time.After(loopWait):
+			t.Fatal("no frame from the resize watcher")
+			return nil
+		}
+	}
+	winch <- syscall.SIGWINCH
+	if got, want := next(), MakeClientClaimFrame(90, 29); !bytes.Equal(got, want) {
+		t.Fatalf("frame with the bar shown = %v, want %v", got, want)
+	}
+	reserve.Store(0)
+	winch <- syscall.SIGWINCH
+	if got, want := next(), MakeClientClaimFrame(90, 30); !bytes.Equal(got, want) {
+		t.Fatalf("frame with no bar = %v, want %v", got, want)
 	}
 }
 

@@ -125,6 +125,20 @@ func (b *Bar) Start() {
 	go b.tickLoop()
 }
 
+// ReservedRows is how many terminal rows the bar takes from the PTY: one for
+// either position, none when Start could not size the terminal or b is nil.
+func (b *Bar) ReservedRows() int {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.rows > 0 {
+		return 1
+	}
+	return 0
+}
+
 func (b *Bar) tickLoop() {
 	defer b.wg.Done()
 	ticker := time.NewTicker(time.Second)

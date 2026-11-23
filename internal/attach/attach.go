@@ -171,3 +171,13 @@ func MakeClientResizeFrame(cols, rows uint16) []byte {
 func MakeClientClaimFrame(cols, rows uint16) []byte {
 	return append(MakeClientResizeFrame(cols, rows), relay.ResizeClaim)
 }
+
+// BarRows is the PTY height to report: the terminal's rows minus the rows the
+// status bar reserves. A terminal of reserve rows or fewer is reported as is,
+// so the uint16 frame can never wrap.
+func BarRows(rows, reserve int) int {
+	if reserve > 0 && rows > reserve {
+		return rows - reserve
+	}
+	return rows
+}

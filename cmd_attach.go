@@ -393,11 +393,15 @@ func runAttach(wsURL, name, hostname string, createdAt time.Time, opts attachOpt
 
 	// Initial resize so PTY dimensions match the local terminal, then the
 	// platform-specific SIGWINCH watcher (no-op on Windows), on every connection.
+	// The bar's row is subtracted (bar.ReservedRows) so a full-screen app stays
+	// off it. With --status-top an app that addresses absolute rows can still
+	// paint row 1, because the bar does not use origin mode: an accepted limit
+	// (user decision 2026-11-22).
 	onConnect := func(ctx context.Context, conn *websocket.Conn) {
 		if cols, rows, err := term.GetSize(int(os.Stdin.Fd())); err == nil {
-			_ = conn.Write(ctx, websocket.MessageBinary, attach.MakeClientResizeFrame(uint16(cols), uint16(rows)))
+			_ = conn.Write(ctx, websocket.MessageBinary, initialResizeFrame(cols, rows, bar.ReservedRows()))
 		}
-		watchResize(ctx, conn)
+		watchResize(ctx, conn, bar.ReservedRows)
 	}
 
 	// SB-05: the loop is the only source of [reconnecting] (UAT gap 1: the
@@ -452,4 +456,10 @@ func printAttachBanner(w io.Writer, name, hostname string) {
 // printDetachMessage writes the detach confirmation to w (typically os.Stderr).
 func printDetachMessage(w io.Writer) {
 	fmt.Fprintf(w, "\nDetached.\n")
+}
+
+// initialResizeFrame is the size report sent on every (re)connection: the
+// terminal's size less the rows the status bar reserves.
+func initialResizeFrame(cols, rows, reserve int) []byte {
+	return attach.MakeClientResizeFrame(uint16(cols), uint16(attach.BarRows(rows, reserve)))
 }
