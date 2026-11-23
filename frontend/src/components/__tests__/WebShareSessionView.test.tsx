@@ -238,6 +238,23 @@ describe('WebShareSessionView — pre-redial check (SHAR-07)', () => {
     unmount()
   })
 
+  it('browser path: 403 with X-Portty: 1 stops with other-account; without it, share-stopped (MOB-05)', async () => {
+    const { unmount } = mountView()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 403, headers: { 'X-Portty': '1' } })))
+    await expect((capturedTerminalProps?.beforeReconnect as Hook)()).resolves.toEqual({ kind: 'stop', reason: 'other-account' })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 403 })))
+    await expect((capturedTerminalProps?.beforeReconnect as Hook)()).resolves.toEqual({ kind: 'stop', reason: 'share-stopped' })
+    unmount()
+  })
+
+  it('passes onOtherAccount through to TerminalPanel (MOB-05)', () => {
+    const onOtherAccount = vi.fn()
+    const { unmount } = mountView({ onOtherAccount })
+    ;(capturedTerminalProps?.onOtherAccount as () => void)()
+    expect(onOtherAccount).toHaveBeenCalledTimes(1)
+    unmount()
+  })
+
   it('browser path: a probe that hangs times out after 10 s and retries (WR-06)', async () => {
     const ctrl = new AbortController()
     const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(ctrl.signal)

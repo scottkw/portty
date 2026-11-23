@@ -1,4 +1,4 @@
-import { CLOSE_REASON_SESSION_ENDED, CLOSE_REASON_SHARE_STOPPED, isTerminalClose } from './closeReasons'
+import { CLOSE_REASON_OTHER_ACCOUNT, CLOSE_REASON_SESSION_ENDED, CLOSE_REASON_SHARE_STOPPED, isTerminalClose } from './closeReasons'
 
 // Binary framing constants matching internal/relay/protocol.go
 export const MSG_OUTPUT  = 0x01  // server → client: PTY output
@@ -160,6 +160,10 @@ export function parseServerFrame(data: Uint8Array): ServerFrame {
  * at most once per wakeMinGapMs; a watchdog tick later than wakeGapMs counts as one.
  * A socket with no host frame within connectMs is dropped and retried (WR-06); it
  * is longer than the daemon proxy's 10 s upstream dial, so that path ends first.
+ * Two consecutive connect timeouts (about 30 s) report the view as stuck through
+ * onConnectStuck(true) while reconnecting continues; a host frame clears it
+ * (iOS WebKit can hold a WebSocket handshake open after a resume). pageshow wakes
+ * like online and visibilitychange; the watchdog's tick-gap path is the backstop.
  */
 export const RECONNECT = {
   minMs: 1_000,
@@ -181,7 +185,7 @@ export type RelayState = 'connecting' | 'open' | 'reconnecting' | 'stopped'
 export type ReconnectVerdict =
   | { kind: 'ok'; port?: number }
   | { kind: 'retry' }
-  | { kind: 'stop'; reason: 'share-stopped' | 'ended' }
+  | { kind: 'stop'; reason: 'share-stopped' | 'ended' | 'other-account' }
 
 /** Delay before reconnect attempt `attempt` (0-based); `rand` in [0, 1). */
 export function backoffDelayMs(attempt: number, rand: number): number {
@@ -212,6 +216,8 @@ export interface RelayClientCallbacks {
    * at this grid, scaled down when it is not the panel's own fit.
    */
   onResize?: (cols: number, rows: number) => void
+  /** MOB-03: true after two consecutive connect timeouts, false once a host frame arrives; fired on change only. */
+  onConnectStuck?: (stuck: boolean) => void
   /** SHAR-07: reconnect-mode state transitions (fired on change only). */
   onStateChange?: (state: RelayState) => void
   /** SHAR-07: the terminal must be cleared before a full replay lands on existing content. */
@@ -252,6 +258,8 @@ export class RelayClient {
   private redialing = false
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private connectTimer: ReturnType<typeof setTimeout> | null = null
+  private connectTimeouts = 0
+  private connectStuck = false
   // Bumped on every dial and abandonment: handlers of an older socket ignore their events.
   private socketGen = 0
   // Liveness (reconnect mode): armed by the first MsgPong so an older host that never
@@ -299,6 +307,7 @@ export class RelayClient {
     if (this.reconnect) {
       this.watchdog = setInterval(this.checkLiveness, 1_000)
       window.addEventListener('online', this.onWake)
+      window.addEventListener('pageshow', this.onWake)
       window.addEventListener('portty:wake', this.onSystemWake)
       document.addEventListener('visibilitychange', this.onWake)
     }
@@ -356,6 +365,7 @@ export class RelayClient {
       this._clearConnect()
       this.connectTimer = setTimeout(() => {
         this.connectTimer = null
+        if (++this.connectTimeouts >= 2) this.setConnectStuck(true)
         this.socketGen++
         ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
         ws.close()
@@ -388,6 +398,8 @@ export class RelayClient {
       if (this.reconnect && this.openedAt === 0) {
         this._clearConnect()
         this.openedAt = this.lastFrameAt
+        this.connectTimeouts = 0
+        this.setConnectStuck(false)
       }
       this.handleFrame(parseServerFrame(new Uint8Array(event.data as ArrayBuffer)))
     }
@@ -572,6 +584,12 @@ export class RelayClient {
     this.callbacks.onOpen?.()
   }
 
+  private setConnectStuck(stuck: boolean): void {
+    if (this.connectStuck === stuck) return
+    this.connectStuck = stuck
+    this.callbacks.onConnectStuck?.(stuck)
+  }
+
   private setState(state: RelayState): void {
     if (this.state === state) return
     this.state = state
@@ -600,7 +618,8 @@ export class RelayClient {
     this.redialing = false
     if (this.closedByUser || this.state !== 'reconnecting') return
     if (verdict.kind === 'stop') {
-      this.stop(1000, verdict.reason === 'share-stopped' ? CLOSE_REASON_SHARE_STOPPED : CLOSE_REASON_SESSION_ENDED)
+      const reasons = { 'share-stopped': CLOSE_REASON_SHARE_STOPPED, ended: CLOSE_REASON_SESSION_ENDED, 'other-account': CLOSE_REASON_OTHER_ACCOUNT }
+      this.stop(1000, reasons[verdict.reason])
       return
     }
     if (verdict.kind === 'retry') {
@@ -618,6 +637,8 @@ export class RelayClient {
   }
 
   private teardown(): void {
+    this.connectTimeouts = 0
+    this.connectStuck = false
     this._clearPing()
     this._clearRetry()
     this._clearConnect()
@@ -625,6 +646,7 @@ export class RelayClient {
       clearInterval(this.watchdog)
       this.watchdog = null
       window.removeEventListener('online', this.onWake)
+      window.removeEventListener('pageshow', this.onWake)
       window.removeEventListener('portty:wake', this.onSystemWake)
       document.removeEventListener('visibilitychange', this.onWake)
     }

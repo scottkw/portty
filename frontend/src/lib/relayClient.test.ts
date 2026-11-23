@@ -545,6 +545,7 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     onClose: vi.fn<(code?: number, reason?: string) => void>(),
     onStateChange: vi.fn<(s: string) => void>(),
     onReset: vi.fn<() => void>(),
+    onConnectStuck: vi.fn<(stuck: boolean) => void>(),
   })
   let cbs: ReturnType<typeof mocks>
   let client: RelayClient | null
@@ -754,6 +755,36 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     expect(cbs.onClose).not.toHaveBeenCalled()
   })
 
+  it('two consecutive connect timeouts report stuck once; one reports nothing; a host frame clears it (MOB-03)', async () => {
+    make()
+    await advance(RECONNECT.connectMs)
+    expect(cbs.onConnectStuck).not.toHaveBeenCalled()
+    await advance(1000) // backoff, redial
+    expect(count()).toBe(2)
+    await advance(RECONNECT.connectMs)
+    expect(cbs.onConnectStuck).toHaveBeenCalledTimes(1)
+    expect(cbs.onConnectStuck).toHaveBeenLastCalledWith(true)
+    await advance(2000)
+    expect(count()).toBe(3) // reconnecting continues underneath
+    await advance(RECONNECT.connectMs)
+    expect(cbs.onConnectStuck).toHaveBeenCalledTimes(1) // one call per stuck period
+    await advance(4000)
+    joined(3)
+    expect(cbs.onConnectStuck).toHaveBeenCalledTimes(2)
+    expect(cbs.onConnectStuck).toHaveBeenLastCalledWith(false)
+  })
+
+  it('a host frame between two timeouts resets the count (MOB-03)', async () => {
+    make()
+    await advance(RECONNECT.connectMs)
+    await advance(1000)
+    joined(1)
+    drop(1)
+    await advance(1000) // redial after the drop's backoff
+    await advance(RECONNECT.connectMs)
+    expect(cbs.onConnectStuck).not.toHaveBeenCalled()
+  })
+
   it('a socket that opens in time is never dropped by the connect timer (WR-06)', async () => {
     make()
     open(0)
@@ -797,6 +828,18 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
     await advance(4000)
     expect(hook).toHaveBeenCalledTimes(3)
     expect(count()).toBe(2)
+  })
+
+  it("beforeReconnect stop other-account fires onClose(1000, 'other account'), stops, and never dials again (MOB-05)", async () => {
+    make(() => Promise.resolve({ kind: 'stop', reason: 'other-account' }))
+    open(0)
+    drop(0)
+    await advance(1000)
+    expect(cbs.onClose).toHaveBeenCalledTimes(1)
+    expect(cbs.onClose).toHaveBeenCalledWith(1000, 'other account')
+    expect(cbs.onStateChange).toHaveBeenLastCalledWith('stopped')
+    await advance(120_000)
+    expect(count()).toBe(1)
   })
 
   it("beforeReconnect stop share-stopped fires onClose(1000, 'share stopped') and state stopped", async () => {
@@ -916,6 +959,22 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
       expect(count()).toBe(2)
     })
 
+    it("'pageshow' while reconnecting dials at once, and close() removes the listener (MOB-03)", async () => {
+      make()
+      open(0)
+      drop(0)
+      await advance(500)
+      expect(count()).toBe(1)
+      window.dispatchEvent(new Event('pageshow'))
+      await advance(0)
+      expect(count()).toBe(2)
+      client!.close()
+      drop(1) // a late close from the dropped socket is ignored after close()
+      window.dispatchEvent(new Event('pageshow'))
+      await advance(0)
+      expect(count()).toBe(2)
+    })
+
     it("'online' while open sends a probe, and no answer within the grace abandons the socket", async () => {
       make()
       open(0)
@@ -1026,6 +1085,18 @@ describe('RelayClient reconnect mode (SHAR-07)', () => {
       expect(count(), 'debounced across sources').toBe(3)
       await advance(1000)
       expect(count()).toBe(4)
+    })
+
+    it('an iOS-like suspend with no visibility or pageshow event still probes, abandons the silent socket and redials (MOB-03)', async () => {
+      make()
+      open(0)
+      send(0, pong)
+      const before = pingsSent(0)
+      await sleep(RECONNECT.wakeGapMs + 1000)
+      expect(pingsSent(0)).toBe(before + 1)
+      await advance(RECONNECT.probeGraceMs + 1000)
+      expect(ws(0).close).toHaveBeenCalled()
+      expect(count()).toBe(2)
     })
 
     it('while open it sends a probe after a gap shorter than the 40 s silence limit', async () => {

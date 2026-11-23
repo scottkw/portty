@@ -31,7 +31,7 @@ import type { PathLinksHandle } from '../lib/pathLinks'
 import { LinkConfirmPopover } from './LinkConfirmPopover'
 import { SessionEndedBanner, type SessionEndedBannerProps } from './SessionEndedBanner'
 import { RegenerateKeyModal } from './RegenerateKeyModal'
-import { CLOSE_REASON_SHARE_STOPPED } from '../lib/closeReasons'
+import { CLOSE_REASON_OTHER_ACCOUNT, CLOSE_REASON_SHARE_STOPPED } from '../lib/closeReasons'
 // Phase 113 UI-03 / UI-04 — iPad single-finger scrollback. xterm.js v6 has
 // no built-in touch handling; this helper attaches the missing handlers.
 import { attachTouchScroll } from '../lib/touchScrollHandler'
@@ -140,6 +140,8 @@ interface TerminalPanelProps {
   hostLabel?: string
   /** Portty 04-06: called once when a guest socket closes with the share-stopped reason. */
   onShareStopped?: () => void
+  /** Portty 14-04 (MOB-05): the reconnect probe was refused for another Tailscale account; the caller shows the refusal screen. */
+  onOtherAccount?: () => void
   /**
    * Phase 5 (SHAR-07): guest re-auth hook run before each redial (05-05 wires
    * GetRelayPort + ConnectPeerSession or the browser /info probe). Absent means
@@ -179,6 +181,7 @@ export function TerminalPanel({
   onProgressChange,
   hostLabel,
   onShareStopped,
+  onOtherAccount,
   beforeReconnect,
   hostUnreachable,
   onReconnectingChange,
@@ -189,6 +192,8 @@ export function TerminalPanel({
   // The relay onClose closure is built once at mount; read the latest callback through a ref.
   const onShareStoppedRef = useRef(onShareStopped)
   onShareStoppedRef.current = onShareStopped
+  const onOtherAccountRef = useRef(onOtherAccount)
+  onOtherAccountRef.current = onOtherAccount
   const beforeReconnectRef = useRef(beforeReconnect)
   beforeReconnectRef.current = beforeReconnect
   const onReconnectingChangeRef = useRef(onReconnectingChange)
@@ -350,6 +355,8 @@ export function TerminalPanel({
     ended: false,
   })
   const [reconnecting, setReconnecting] = useState(false)
+  // MOB-03: two connect timeouts in a row; 14-08 turns it into the Reload action.
+  const [connectStuck, setConnectStuck] = useState(false)
   // DEBT-05: the last paste a socket drop cut short, in KB (sent absent when unconfirmed); kept until dismissed.
   const [pasteNotice, setPasteNotice] = useState<{ sentKB?: number; totalKB: number } | null>(null)
   // Phase 12 PATH-02: the host refused a clicked file (unsupported type or too large). One notice at a time,
@@ -601,6 +608,7 @@ export function TerminalPanel({
       const client = new RelayClient(relayPort, sessionId, {
         onPreview: preview.feed,
         onPreviewReset: preview.discard,
+        onConnectStuck: setConnectStuck,
         onPathClickCapability: (enabled) => {
           pathClickEnabledRef.current = enabled
           pathLinksRef.current?.invalidate()
@@ -618,6 +626,11 @@ export function TerminalPanel({
           if (!isGuest) return
           // Portty 04-06: the view keeps its scrollback but takes no more input.
           term.options.disableStdin = true
+          // Portty 14-04 (MOB-05): another account is final and has its own screen, not the ended banner.
+          if (reason === CLOSE_REASON_OTHER_ACCOUNT) {
+            onOtherAccountRef.current?.()
+            return
+          }
           const shareStopped = reason === CLOSE_REASON_SHARE_STOPPED
           setSessionEnded({ ended: true, reason, shareStopped })
           if (shareStopped) onShareStoppedRef.current?.()
@@ -1333,6 +1346,7 @@ export function TerminalPanel({
     <div
       ref={containerRef}
       className="terminal-session-container"
+      data-connect-stuck={connectStuck ? 'true' : undefined}
       style={{
         flex: 1,
         width: '100%',

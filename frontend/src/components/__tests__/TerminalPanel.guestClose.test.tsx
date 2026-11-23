@@ -18,6 +18,7 @@ const hoisted = vi.hoisted(() => ({
     onClose: null as ((code: number, reason: string) => void) | null,
     onStateChange: null as ((state: string) => void) | null,
     onReset: null as (() => void) | null,
+    onConnectStuck: null as ((stuck: boolean) => void) | null,
     term: null as { options: Record<string, unknown> } | null,
   },
 }))
@@ -102,10 +103,12 @@ vi.mock('../../lib/relayClient', () => ({
       onClose?: (code: number, reason: string) => void
       onStateChange?: (state: string) => void
       onReset?: () => void
+      onConnectStuck?: (stuck: boolean) => void
     }) {
       hoisted.state.onClose = cbs.onClose ?? null
       hoisted.state.onStateChange = cbs.onStateChange ?? null
       hoisted.state.onReset = cbs.onReset ?? null
+      hoisted.state.onConnectStuck = cbs.onConnectStuck ?? null
     }
     sendInput() {}
     sendResize() {}
@@ -161,6 +164,7 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
     hoisted.state.onClose = null
     hoisted.state.onStateChange = null
     hoisted.state.onReset = null
+    hoisted.state.onConnectStuck = null
     hoisted.state.term = null
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -206,6 +210,34 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
     expect(container.textContent).toContain('Session ended — the owner stopped this session.')
     expect(onShareStopped).not.toHaveBeenCalled()
     expect(hoisted.state.term!.options.disableStdin).toBe(true)
+  })
+
+  it("'other account' calls onOtherAccount, disables stdin and shows no ended banner (MOB-05)", () => {
+    const onShareStopped = vi.fn()
+    const onOtherAccount = vi.fn()
+    flushSync(() => {
+      root.render(React.createElement(TerminalPanel, {
+        sessionId: 's1', isActive: true, relayPort: 1234, fontSize: 13,
+        onFontSizeChange: () => {}, theme: {}, remote: true,
+        hostLabel: 'office-air', onShareStopped, onOtherAccount,
+      }))
+    })
+    close('other account')
+    expect(onOtherAccount).toHaveBeenCalledTimes(1)
+    expect(onShareStopped).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain('stopped sharing')
+    expect(container.textContent).not.toContain('Session ended')
+    expect(hoisted.state.term!.options.disableStdin).toBe(true)
+  })
+
+  it('onConnectStuck is kept as connectStuck on the panel root (MOB-03, read by 14-08)', () => {
+    mountGuest(vi.fn())
+    const root0 = container.querySelector('.terminal-session-container')!
+    expect(root0.getAttribute('data-connect-stuck')).toBeNull()
+    flushSync(() => { hoisted.state.onConnectStuck!(true) })
+    expect(root0.getAttribute('data-connect-stuck')).toBe('true')
+    flushSync(() => { hoisted.state.onConnectStuck!(false) })
+    expect(root0.getAttribute('data-connect-stuck')).toBeNull()
   })
 
   it("'share stopped' with an empty host label (web page, host unknown) shows the fallback", () => {

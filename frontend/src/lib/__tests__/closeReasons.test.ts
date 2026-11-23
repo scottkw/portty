@@ -1,6 +1,6 @@
 // TS half of the close-reason pin; the Go half is internal/relay/close_reasons_test.go.
 import { describe, it, expect } from 'vitest'
-import { CLOSE_REASON_SHARE_STOPPED, CLOSE_REASON_SESSION_ENDED, isTerminalClose, peerConnectVerdict, shareInfoVerdict } from '../closeReasons'
+import { CLOSE_REASON_OTHER_ACCOUNT, CLOSE_REASON_SHARE_STOPPED, CLOSE_REASON_SESSION_ENDED, isTerminalClose, peerConnectVerdict, shareInfoVerdict } from '../closeReasons'
 
 describe('close reasons', () => {
   it('match the Go literals exactly', () => {
@@ -31,15 +31,29 @@ describe('peerConnectVerdict', () => {
 
 describe('shareInfoVerdict', () => {
   it.each([200, 204])('%i redials', (status) => {
-    expect(shareInfoVerdict(status)).toEqual({ kind: 'ok' })
+    expect(shareInfoVerdict(status, false)).toEqual({ kind: 'ok' })
   })
-  it.each([401, 403])('%i stops with share-stopped (a revoked link is never retried)', (status) => {
-    expect(shareInfoVerdict(status)).toEqual({ kind: 'stop', reason: 'share-stopped' })
+  it.each([401, 403])('%i without the marker stops with share-stopped (a revoked link is never retried)', (status) => {
+    expect(shareInfoVerdict(status, false)).toEqual({ kind: 'stop', reason: 'share-stopped' })
   })
-  it('404 stops with ended', () => {
-    expect(shareInfoVerdict(404)).toEqual({ kind: 'stop', reason: 'ended' })
+  it('401 with the marker is still share-stopped', () => {
+    expect(shareInfoVerdict(401, true)).toEqual({ kind: 'stop', reason: 'share-stopped' })
+  })
+  it('403 with the X-Portty marker stops with other-account (MOB-05)', () => {
+    expect(shareInfoVerdict(403, true)).toEqual({ kind: 'stop', reason: 'other-account' })
+  })
+  it('404 stops with ended, marker or not', () => {
+    expect(shareInfoVerdict(404, false)).toEqual({ kind: 'stop', reason: 'ended' })
+    expect(shareInfoVerdict(404, true)).toEqual({ kind: 'stop', reason: 'ended' })
   })
   it.each([500, 502, 0])('%i retries', (status) => {
-    expect(shareInfoVerdict(status)).toEqual({ kind: 'retry' })
+    expect(shareInfoVerdict(status, false)).toEqual({ kind: 'retry' })
+  })
+})
+
+describe('CLOSE_REASON_OTHER_ACCOUNT', () => {
+  it('is client-only: never a terminal close from the wire', () => {
+    expect(CLOSE_REASON_OTHER_ACCOUNT).toBe('other account')
+    expect(isTerminalClose(1000, CLOSE_REASON_OTHER_ACCOUNT)).toBe(false)
   })
 })

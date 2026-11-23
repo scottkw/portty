@@ -1338,6 +1338,7 @@ function App(): React.ReactElement {
                 fontSize={mode !== 'web' && activeWebTab ? fontSizes[activeWebTab.id] ?? terminalFont.size : undefined}
                 onFontSizeChange={mode !== 'web' && activeWebTab ? (delta) => handleFontSizeChange(activeWebTab.id, delta) : undefined}
                 hostLabel={peerHost ? shortHost(peerHost) : (mode === 'web' ? webHost : undefined)}
+                onOtherAccount={mode === 'web' ? () => setWebOtherUser(true) : undefined}
                 onShareStopped={peerHost && activeWebTab ? () => dropPeerSession(peerSnapshotHost(activeWebTab)!, wsSessionId) : undefined}
                 beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId) : undefined}
                 onReconnectingChange={peerHost ? (on) => setReconnectingHost((h) => (on ? peerHost : h === peerHost ? null : h)) : undefined}

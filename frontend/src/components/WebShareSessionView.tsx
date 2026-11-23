@@ -58,6 +58,8 @@ export interface WebShareSessionViewProps {
   hostLabel?: string
   /** Portty 04-06: the share stopped (close reason constant); the caller drops the sidebar row. */
   onShareStopped?: () => void
+  /** Portty 14-04 (MOB-05): passed through to TerminalPanel; the share server refused this device's Tailscale account. */
+  onOtherAccount?: () => void
   /** Portty 05-05: App's pre-redial re-auth for peer tabs (remote only). */
   beforeReconnect?: () => Promise<ReconnectVerdict>
   /** Passed through to TerminalPanel: the reconnecting banner shows (true) or hides (false). */
@@ -102,6 +104,7 @@ export function WebShareSessionView({
   onFontSizeChange,
   hostLabel,
   onShareStopped,
+  onOtherAccount,
   beforeReconnect,
   onReconnectingChange,
   snapshotHost,
@@ -139,7 +142,7 @@ export function WebShareSessionView({
         (res) => {
           failingSince.current = null
           setHostUnreachable(false)
-          return shareInfoVerdict(res.status)
+          return shareInfoVerdict(res.status, res.headers.get('X-Portty') === '1')
         },
         () => {
           const now = Date.now()
@@ -214,6 +217,7 @@ export function WebShareSessionView({
         wsURL={useProxy ? undefined : wsURL}
         hostLabel={hostLabel}
         onShareStopped={onShareStopped}
+        onOtherAccount={onOtherAccount}
         beforeReconnect={useProxy ? beforeReconnect : probeShare}
         hostUnreachable={hostUnreachable}
         onReconnectingChange={onReconnectingChange}

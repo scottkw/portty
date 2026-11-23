@@ -3,12 +3,13 @@
 // incomplete link shows Link No Longer Works with no tab and nothing from the URL;
 // 200 opens the terminal tab and hands it the host from the session info.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import React from 'react'
+import React, { act } from 'react'
 import { mountApp, unmountApp } from './appHarness'
 
 vi.mock('../WebShareSessionView', () => ({
-  WebShareSessionView: (p: { sessionId: string; hostLabel?: string }) =>
-    React.createElement('div', { 'data-testid': 'web-session-view', 'data-session': p.sessionId, 'data-host': p.hostLabel ?? '' }),
+  WebShareSessionView: (p: { sessionId: string; hostLabel?: string; onOtherAccount?: () => void }) =>
+    React.createElement('div', { 'data-testid': 'web-session-view', 'data-session': p.sessionId, 'data-host': p.hostLabel ?? '' },
+      React.createElement('button', { 'data-testid': 'refuse', onClick: p.onOtherAccount })),
 }))
 
 const SID = 'sess-secret-42'
@@ -50,6 +51,16 @@ describe('App web mode — link states', () => {
     expect(c.querySelectorAll('[role="tab"]').length).toBe(0)
     expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
     expect(c.textContent).not.toContain(SID)
+  })
+
+  it('a refusal from the reconnect probe replaces the open view with the own-devices screen (MOB-05)', async () => {
+    atLink(`?session=${SID}&cap=good`)
+    stubInfo(200, { id: SID, hostname: 'office-air' })
+    const c = await mountApp({})
+    const refuse = c.querySelector<HTMLButtonElement>('[data-testid="refuse"]')!
+    await act(async () => { refuse.click() })
+    expect(c.textContent).toContain('This link only works on your own devices')
+    expect(c.querySelector('[data-testid="web-session-view"]')).toBeNull()
   })
 
   it('503 opens the tab', async () => {

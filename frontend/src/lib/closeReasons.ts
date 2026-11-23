@@ -7,6 +7,12 @@ import type { ReconnectVerdict } from './relayClient'
 export const CLOSE_REASON_SHARE_STOPPED = 'share stopped'
 export const CLOSE_REASON_SESSION_ENDED = 'session ended'
 
+// Client-only close reason: the reconnect probe was refused because this device is
+// on another Tailscale account (MOB-05). No server ever sends it, so it has no Go
+// mirror and isTerminalClose does not match it; the client's own verdict mapping
+// produces it and TerminalPanel branches on it to show the refusal screen.
+export const CLOSE_REASON_OTHER_ACCOUNT = 'other account'
+
 // True only for a final close: 1000 with one of the two reasons above. Code 1000
 // alone is not enough (a client detach is also 1000), and any other code is a
 // network drop that a reconnecting client retries (SHAR-07).
@@ -27,9 +33,13 @@ export function peerConnectVerdict(errorCode: string): ReconnectVerdict {
 
 // Verdict for GET /api/sessions/{id}/info?cap= run before a browser redial. 401
 // and 403 mean the cap is revoked (never retried); 404 means the session is gone;
-// anything else (5xx, network error as 0) may heal, so retry.
-export function shareInfoVerdict(status: number): ReconnectVerdict {
+// anything else (5xx, network error as 0) may heal, so retry. A 403 that carries
+// the X-Portty marker (porttyMarker) is the same-account refusal, not a revoked
+// cap: it stops with 'other-account'. The marker is a required argument so a call
+// site cannot forget it and read a refusal as a dead link.
+export function shareInfoVerdict(status: number, porttyMarker: boolean): ReconnectVerdict {
   if (status >= 200 && status < 300) return { kind: 'ok' }
+  if (status === 403 && porttyMarker) return { kind: 'stop', reason: 'other-account' }
   if (status === 401 || status === 403) return { kind: 'stop', reason: 'share-stopped' }
   if (status === 404) return { kind: 'stop', reason: 'ended' }
   return { kind: 'retry' }
