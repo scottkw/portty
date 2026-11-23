@@ -1,54 +1,19 @@
 ---
 phase: 10-input-path-reliability
-verified: 2026-11-23T19:30:00Z
+verified: 2026-11-23T20:30:00Z
 status: passed
 score: 6/6 must-haves verified
-covered_files:
-  - ".planning/phases/10-input-path-reliability/10-01-PLAN.md"
-  - ".planning/phases/10-input-path-reliability/10-01-SUMMARY.md"
-  - ".planning/phases/10-input-path-reliability/10-02-PLAN.md"
-  - ".planning/phases/10-input-path-reliability/10-02-SUMMARY.md"
-  - ".planning/phases/10-input-path-reliability/10-03-PLAN.md"
-  - ".planning/phases/10-input-path-reliability/10-03-SUMMARY.md"
-  - ".planning/phases/10-input-path-reliability/10-04-PLAN.md"
-  - ".planning/phases/10-input-path-reliability/10-04-SUMMARY.md"
-  - ".planning/phases/10-input-path-reliability/10-05-PLAN.md"
-  - ".planning/phases/10-input-path-reliability/10-05-SUMMARY.md"
-  - ".planning/phases/10-input-path-reliability/10-06-PLAN.md"
-  - ".planning/phases/10-input-path-reliability/10-06-SUMMARY.md"
-  - ".planning/phases/10-input-path-reliability/10-07-PLAN.md"
-  - ".planning/phases/10-input-path-reliability/10-07-SUMMARY.md"
-  - "TESTING.md"
-  - "cmd_attach.go"
-  - "frontend/src/App.tsx"
-  - "frontend/src/components/Sidebar.tsx"
-  - "frontend/src/components/TabBar.tsx"
-  - "frontend/src/components/TerminalPanel.tsx"
-  - "frontend/src/components/WebShareSessionView.tsx"
-  - "frontend/src/lib/closeReasons.ts"
-  - "frontend/src/lib/relayClient.ts"
-  - "frontend/src/lib/tabs.ts"
-  - "internal/attach/attach.go"
-  - "internal/attach/attach_test.go"
-  - "internal/attach/attach_unix.go"
-  - "internal/daemon/engine_exit_test.go"
-  - "internal/daemon/handoff.go"
-  - "internal/daemon/remote_ws_proxy.go"
-  - "internal/relay/handoff_state.go"
-  - "internal/relay/hub.go"
-  - "internal/relay/hub_grid_owner_test.go"
-  - "internal/relay/input.go"
-  - "internal/relay/oscabsorb.go"
-  - "internal/relay/pong.go"
-  - "internal/relay/protocol.go"
-  - "internal/relay/server.go"
-  - "internal/webserver/csp_mw.go"
-  - "internal/webserver/input_queue_test.go"
-  - "internal/webserver/server.go"
-covered_digest: "v4:sha256:7e79e32771485ade4b7570d10877ce8a65d0a89b7d1b38b51a1baec7fbafa1af"
+covered_files: [".planning/phases/10-input-path-reliability/10-01-PLAN.md",".planning/phases/10-input-path-reliability/10-01-SUMMARY.md",".planning/phases/10-input-path-reliability/10-02-PLAN.md",".planning/phases/10-input-path-reliability/10-02-SUMMARY.md",".planning/phases/10-input-path-reliability/10-03-PLAN.md",".planning/phases/10-input-path-reliability/10-03-SUMMARY.md",".planning/phases/10-input-path-reliability/10-04-PLAN.md",".planning/phases/10-input-path-reliability/10-04-SUMMARY.md",".planning/phases/10-input-path-reliability/10-05-PLAN.md",".planning/phases/10-input-path-reliability/10-05-SUMMARY.md",".planning/phases/10-input-path-reliability/10-06-PLAN.md",".planning/phases/10-input-path-reliability/10-06-SUMMARY.md",".planning/phases/10-input-path-reliability/10-07-PLAN.md",".planning/phases/10-input-path-reliability/10-07-SUMMARY.md","TESTING.md","cmd_attach.go","frontend/src/App.tsx","frontend/src/components/Sidebar.tsx","frontend/src/components/TabBar.tsx","frontend/src/components/TerminalPanel.tsx","frontend/src/components/WebShareSessionView.tsx","frontend/src/lib/closeReasons.ts","frontend/src/lib/relayClient.ts","frontend/src/lib/tabs.ts","internal/attach/attach.go","internal/attach/attach_test.go","internal/attach/attach_unix.go","internal/daemon/engine_exit_test.go","internal/daemon/handoff.go","internal/daemon/remote_ws_proxy.go","internal/relay/handoff_state.go","internal/relay/hub.go","internal/relay/hub_grid_owner_test.go","internal/relay/input.go","internal/relay/oscabsorb.go","internal/relay/pong.go","internal/relay/protocol.go","internal/relay/server.go","internal/webserver/csp_mw.go","internal/webserver/input_queue_test.go","internal/webserver/server.go"]
+covered_digest: "v4:sha256:5967809084366564d48eef010cb76fd7a192f23ee4ac4c9b948c17cd581c217b"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
+  after_phase_16:
+    previous_digest: stale (covered files moved)
+    head: 807d950d
+    base: cc595307
+    result: passed, no truth regressed
+    moved_files: ["TESTING.md","internal/relay/hub.go","internal/webserver/input_queue_test.go",".planning/phases/10-input-path-reliability/10-02-SUMMARY.md",".planning/phases/10-input-path-reliability/10-07-SUMMARY.md"]
   previous_verified: 2026-11-23T04:08:14Z
   previous_status: passed
   reason: "stale fingerprint: Phase 15 (v1.2 Hardening) changed covered files"
@@ -78,6 +43,35 @@ accepted:
 **Verified:** 2026-11-23T19:30:00Z at HEAD c818e1e1 (branch gsd/v1.2)
 **Status:** passed
 **Re-verification:** Yes. The previous report (2026-11-23, passed 6/6, HEAD 52d960a5) went stale because Phase 15 changed covered files. Every SC and requirement was re-checked against the code at HEAD, with Phase 15's diff read line by line.
+
+## Re-verification after Phase 16 (v1.2 Cleanup)
+
+**Verified:** 2026-11-23T20:30:00Z at HEAD `807d950d` (branch gsd/v1.2). **Status:** passed, unchanged. The stored digest went stale because Phase 16 (`git diff cc595307..HEAD`) moved covered files. `gsd_run query verification.status` named: `TESTING.md`, `internal/relay/hub.go`, `internal/webserver/input_queue_test.go`, `.planning/phases/10-input-path-reliability/10-02-SUMMARY.md`, `.planning/phases/10-input-path-reliability/10-07-SUMMARY.md`. Truths that depend on none of them carry forward from the report below. All six truths hold at HEAD. Phase 16 did not touch the paste FIFO, pongs, paste-ack, host-keyed tabs, the exit test or the grid-owner model.
+
+### What Phase 16 changed in this phase's covered files
+
+| File | Phase 16 change | Effect on Phase 10 truths |
+|---|---|---|
+| `internal/webserver/input_queue_test.go` | `joinPasteViewer` now dials through the new `dialResumePing` helper (`resume_test.go`) instead of building the header, `dialWebServerWSPing` call and `SetReadLimit` itself | Test-only. `dialResumePing` sets the same Origin header, calls the same `dialWebServerWSPing` with the same `onPing` hook, and sets the same `relay.ViewerReadLimit`. The assertions of `TestShare_PasteBacklogKeepsViewer` (ping count to `start+8`, viewer count 1, 5 s ceiling) and the product heartbeat files are unchanged, so SC1 is still pinned. |
+| `internal/relay/hub.go` | ED 3 `History.Skip` guarded by `!emu.IsAltScreen()` | Touches only row bookkeeping on ED 3. The input FIFO, owed pongs, claim and grid-owner code in `hub.go` are not in the diff. |
+| `.planning/.../10-02-SUMMARY.md`, `10-07-SUMMARY.md` | frontmatter key `requirements` renamed to `requirements-completed` (16-03) | Metadata only. |
+| `TESTING.md` | Phase 16 note, Category BG | Docs. |
+
+### Checks run
+
+All at HEAD `807d950d` with `GOTOOLCHAIN=go1.26.11`, `-count=1` unless noted; targeted selections only, no full suite.
+
+| Selection | Result |
+|---|---|
+| `go build ./...`; `go vet` relay, daemon, webserver, root | rc 0 |
+| `./internal/webserver/` `-race -count=3`: `TestShare_PasteBacklogKeepsViewer\|TestShare_DeadViewerReapedBacklogDelivered\|TestRelay_LoneEscReachesPTY` | ok (3/3) |
+| `./internal/webserver/` `-race`: `TestCSP\|TestPreviewRoute\|PathClick\|Resume\|TestShare_` (the `dialResume` users) | ok |
+| `./internal/relay/` `-race`: `TestHubInput_\|TestRelay_PasteBacklogKeepsPonging\|TestWritePump_\|TestPongOwed\|Grid\|TestParseResize\|TestIsUserInput\|Claim\|TestReplayFidelity\|History\|Cwd\|PathClick\|Handoff...` | ok (156.3 s) |
+| `./internal/daemon/` `-race`: `TestCLIAttach_TypingTakesGrid\|TestRemoteWSProxy_PasteBackpressureStaysOpen\|TestExitEvent_ListSessions\|TestHandoff_*` | ok (198.7 s) |
+| `./internal/attach/` `-race`; root `TestInitialResizeFrame` | ok, ok |
+| `bash tests/check-traceability-paths.sh` | OK: 228 paths |
+
+No frontend file Phase 10 covers was edited by Phase 16, so the vitest results of the previous pass carry forward.
 
 ## What Phase 15 changed in covered files (52d960a5..HEAD)
 

@@ -1,10 +1,10 @@
 ---
 phase: 12-file-path-click
-verified: 2026-11-23T17:17:50Z
+verified: 2026-11-23T20:30:00Z
 status: passed
 score: 21/21 must-haves verified (3 by recorded user override)
-covered_files: [".planning/phases/12-file-path-click/12-01-PLAN.md", ".planning/phases/12-file-path-click/12-01-SUMMARY.md", ".planning/phases/12-file-path-click/12-02-PLAN.md", ".planning/phases/12-file-path-click/12-02-SUMMARY.md", ".planning/phases/12-file-path-click/12-03-PLAN.md", ".planning/phases/12-file-path-click/12-03-SUMMARY.md", ".planning/phases/12-file-path-click/12-04-PLAN.md", ".planning/phases/12-file-path-click/12-04-SUMMARY.md", ".planning/phases/12-file-path-click/12-05-PLAN.md", ".planning/phases/12-file-path-click/12-05-SUMMARY.md", ".planning/phases/12-file-path-click/12-06-PLAN.md", ".planning/phases/12-file-path-click/12-06-SUMMARY.md", ".planning/phases/12-file-path-click/12-07-PLAN.md", ".planning/phases/12-file-path-click/12-07-SUMMARY.md", ".planning/phases/12-file-path-click/12-08-PLAN.md", ".planning/phases/12-file-path-click/12-08-SUMMARY.md", ".planning/phases/12-file-path-click/12-09-PLAN.md", ".planning/phases/12-file-path-click/12-09-SUMMARY.md", ".planning/phases/12-file-path-click/12-REVIEW-FIX.md", ".planning/phases/12-file-path-click/12-REVIEW.md", ".planning/phases/12-file-path-click/12-SECURITY-REVIEW.md", ".planning/phases/12-file-path-click/12-SECURITY.md", ".planning/phases/12-file-path-click/12-VM-CHECKS.md", "TESTING.md", "frontend/src/App.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/components/WebShareSessionView.tsx", "frontend/src/components/__tests__/App.open-remote.test.tsx", "frontend/src/components/__tests__/TerminalPanel.pathClick.test.tsx", "frontend/src/components/__tests__/WebShareSessionView.peerLinks.test.tsx", "frontend/src/lib/__tests__/pathLinks.linkifier.test.ts", "frontend/src/lib/pathLinks.ts", "frontend/src/lib/relayClient.ts", "internal/daemon/engine.go", "internal/daemon/types.go", "internal/daemon/zshshim.go", "internal/daemon/zshshim.zsh", "internal/previewfile/previewfile.go", "internal/relay/cwd.go", "internal/relay/cwd_test.go", "internal/relay/history.go", "internal/relay/hub.go", "internal/relay/pathclick.go", "internal/relay/pathclick_test.go", "internal/relay/server.go", "internal/webserver/plugin_config.go", "internal/webserver/server.go"]
-covered_digest: "v4:sha256:9ef88be3ee68283ff38553cd737188c369628ec642e0c0fc19e33b96cdc260b1"
+covered_files: [".planning/phases/12-file-path-click/12-01-PLAN.md",".planning/phases/12-file-path-click/12-01-SUMMARY.md",".planning/phases/12-file-path-click/12-02-PLAN.md",".planning/phases/12-file-path-click/12-02-SUMMARY.md",".planning/phases/12-file-path-click/12-03-PLAN.md",".planning/phases/12-file-path-click/12-03-SUMMARY.md",".planning/phases/12-file-path-click/12-04-PLAN.md",".planning/phases/12-file-path-click/12-04-SUMMARY.md",".planning/phases/12-file-path-click/12-05-PLAN.md",".planning/phases/12-file-path-click/12-05-SUMMARY.md",".planning/phases/12-file-path-click/12-06-PLAN.md",".planning/phases/12-file-path-click/12-06-SUMMARY.md",".planning/phases/12-file-path-click/12-07-PLAN.md",".planning/phases/12-file-path-click/12-07-SUMMARY.md",".planning/phases/12-file-path-click/12-08-PLAN.md",".planning/phases/12-file-path-click/12-08-SUMMARY.md",".planning/phases/12-file-path-click/12-09-PLAN.md",".planning/phases/12-file-path-click/12-09-SUMMARY.md","TESTING.md","frontend/src/App.tsx","frontend/src/components/TerminalPanel.tsx","frontend/src/components/WebShareSessionView.tsx","frontend/src/components/__tests__/App.open-remote.test.tsx","frontend/src/components/__tests__/TerminalPanel.pathClick.test.tsx","frontend/src/components/__tests__/WebShareSessionView.peerLinks.test.tsx","frontend/src/lib/__tests__/pathLinks.linkifier.test.ts","frontend/src/lib/pathLinks.ts","frontend/src/lib/relayClient.ts","internal/daemon/engine.go","internal/daemon/types.go","internal/daemon/zshshim.go","internal/daemon/zshshim.zsh","internal/previewfile/previewfile.go","internal/relay/cwd.go","internal/relay/cwd_test.go","internal/relay/history.go","internal/relay/hub.go","internal/relay/pathclick.go","internal/relay/pathclick_test.go","internal/relay/server.go","internal/webserver/plugin_config.go","internal/webserver/server.go"]
+covered_digest: "v4:sha256:6edb25a88b70df4ba03846d26941b88bfc44913951c1bc007dd354d2481310d9"
 behavior_unverified: 0
 overrides_applied: 3
 overrides:
@@ -21,6 +21,12 @@ overrides:
     accepted_by: "user (12-09 Task 3 checkpoint, UI-2: \"Check on my Macs\")"
     accepted_at: "2026-11-22T13:31:05Z"
 re_verification:
+  after_phase_16:
+    previous_digest: stale (covered files moved)
+    head: 807d950d
+    base: cc595307
+    result: passed, no truth regressed
+    moved_files: ["TESTING.md","internal/daemon/types.go","internal/relay/cwd_test.go","internal/relay/hub.go"]
   previous_status: passed
   previous_score: 21/21
   reason: "stale fingerprint: Phase 15 (v1.2 Hardening) edited covered files after the 2026-11-23T04:07:19Z verification (HEAD 52d960a5)"
@@ -41,6 +47,34 @@ re_verification:
 **Re-verification:** Yes. The previous report (passed, 21/21, 2026-11-23T04:07:19Z at 52d960a5) went stale because Phase 15 edited files it covers. I diffed every covered file between 52d960a5 and HEAD, re-read the changed code, and re-ran targeted tests only.
 
 Phase 15 touched Phase 12's area in three planned ways (15-04) and two incidental ways. All three planned changes hold and close the two accepted findings from 12-09 (F-1, F-2) plus the test flake. Nothing else in Phase 12 regressed.
+
+## Re-verification after Phase 16 (v1.2 Cleanup)
+
+**Verified:** 2026-11-23T20:30:00Z at HEAD `807d950d` (branch gsd/v1.2). **Status:** passed, unchanged. The stored digest went stale because Phase 16 (`git diff cc595307..HEAD`) moved covered files. `gsd_run query verification.status` named: `TESTING.md`, `internal/daemon/types.go`, `internal/relay/cwd_test.go`, `internal/relay/hub.go`. Truths that depend on none of them carry forward from the report below. All 21 truths hold at HEAD (18 verified, 3 by the recorded user overrides). The one behavioural change in Phase 12's area, the alt-screen guard on the ED 3 skip, is correct and pinned by a new test.
+
+### What Phase 16 changed in this phase's covered files
+
+| File | Phase 16 change | Effect on Phase 12 truths |
+|---|---|---|
+| `internal/relay/hub.go` | ED 3 handler: `h.history.Skip(emu.ScrollbackLen())` now runs only when `!emu.IsAltScreen()` (IN-03) | The F-1 fix (monotonic rows after `clear`) still runs for the main screen. Checked against vt: `ScrollbackLen` reads the main screen's scrollback while vt's ED 3 clears only the active screen's, so on the alt screen nothing is dropped and the unguarded skip pushed rows past their real values. `History.Clear()` and `h.wraps.clear()` still run. |
+| `internal/relay/cwd_test.go` | new `TestCwd_AltScreenScrollbackEraseKeepsRows` | Adds an alt-screen case: MARK-A and MARK-B keep `/a`, `/b`, and output after leaving the alt screen resolves to `/b`. The F-1 tests (`TestCwd_ClearKeepsRowsMonotonic`, `TestCwd_ScrollbackEraseKeepsRows`, `TestPathClick_RelativeAfterClear`) are unchanged and pass. |
+| `internal/daemon/types.go` | `PathClickAPI` removed; the `APIVersion` comment now says viewers gate path clicks on the replay meta's `pathClick` bit | The constant had no consumer (the 12-05 summary says so: viewers follow the replay-meta bit). Truth 2/4 and the read-only refusal rest on the bit (`webserver/server.go:1097-1103`, `relay/server.go:207-212`), not on the constant. `APIVersion` stays 5. |
+| `TESTING.md` | Phase 16 note; the PATH-02 `client_test.go` row reworded (it no longer pins `PathClickAPI`) | Docs. Traceability gate passes. |
+
+### Checks run
+
+All at HEAD `807d950d` with `GOTOOLCHAIN=go1.26.11`, `-count=1` unless noted; targeted selections only, no full suite.
+
+| Selection | Result |
+|---|---|
+| `go build ./...`; `go vet` relay, daemon, webserver | rc 0 |
+| `./internal/relay/` `-race`: `Cwd\|PathClick\|Handoff\|History\|...` | ok (156.3 s) |
+| named: `TestCwd_AltScreenScrollbackEraseKeepsRows`, `TestCwd_ClearKeepsRowsMonotonic`, `TestCwd_ScrollbackEraseKeepsRows`, `TestPathClick_RelativeAfterClear`, `TestHandoffState_CwdRoundTrip`, `_CwdOldShape`, `_CwdValidates` (`-race -v`) | 7 PASS |
+| `./internal/webserver/` `-race`: `PathClick\|TestCSP\|...` (real share server, read vs write capability) | ok |
+| `./internal/daemon/` `-race`, incl. `Zsh\|Shim\|TestHealthInfo\|TestAPIHealth` | ok (198.7 s) |
+| `bash tests/check-traceability-paths.sh` | OK: 228 paths |
+
+No frontend file Phase 12 covers was edited by Phase 16; the vitest result of the previous pass (6 files, 133 tests) carries forward. The VM runs (C-01R..C-09R, U-01R) exercised the unchanged click, cwd and upgrade paths.
 
 ## What Phase 15 changed in covered files since the last verification
 

@@ -1,15 +1,21 @@
 ---
 phase: 09-upgrades-keep-sessions
-verified: 2026-11-23T11:30:00Z
+verified: 2026-11-23T20:30:00Z
 status: passed
 score: 5/5 must-haves verified
 re_verification: true
 previous_verified: 2026-11-22T22:15:00Z
-covered_files: [".planning/phases/09-upgrades-keep-sessions/09-01-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-01-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-02-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-02-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-03-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-03-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-04-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-04-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-05-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-05-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-06-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-06-SUMMARY.md", ".planning/phases/09-upgrades-keep-sessions/09-07-PLAN.md", ".planning/phases/09-upgrades-keep-sessions/09-07-SUMMARY.md", "TESTING.md", "app.go", "cmd_attach.go", "cmd_attach_resize.go", "cmd_cli.go", "cmd_daemon.go", "frontend/src/App.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/lib/closeReasons.ts", "frontend/src/lib/hostReconnect.ts", "internal/attach/attach.go", "internal/attach/attach_unix.go", "internal/attach/loop.go", "internal/daemon/api.go", "internal/daemon/client.go", "internal/daemon/compat_vmpreview.go", "internal/daemon/engine.go", "internal/daemon/handoff.go", "internal/daemon/handoff_test.go", "internal/daemon/handoff_vmpreview.go", "internal/daemon/ipc.go", "internal/daemon/process.go", "internal/daemon/process_unix.go", "internal/daemon/share.go", "internal/daemon/socket.go", "internal/daemon/socket_test.go", "internal/daemon/types.go", "internal/fdpass/fdpass.go", "internal/fdpass/fdpass_test.go", "internal/pty/adopt_darwin.go", "internal/pty/cleanup.go", "internal/pty/exitwatch_darwin.go", "internal/pty/native.go", "internal/pty/session.go", "internal/relay/close_reasons.go", "internal/relay/handoff_state.go", "internal/relay/history.go", "internal/relay/hub.go", "internal/relay/manager.go", "internal/relay/server.go", "internal/webserver/server.go", "terminate_darwin.go", "terminate_darwin.m"]
-covered_digest: "v4:sha256:e3d428d4a79935797a2b5c4cb634406df665dbaf2a7e2953da154b8dca0592bd"
+covered_files: [".planning/phases/09-upgrades-keep-sessions/09-01-PLAN.md",".planning/phases/09-upgrades-keep-sessions/09-01-SUMMARY.md",".planning/phases/09-upgrades-keep-sessions/09-02-PLAN.md",".planning/phases/09-upgrades-keep-sessions/09-02-SUMMARY.md",".planning/phases/09-upgrades-keep-sessions/09-03-PLAN.md",".planning/phases/09-upgrades-keep-sessions/09-03-SUMMARY.md",".planning/phases/09-upgrades-keep-sessions/09-04-PLAN.md",".planning/phases/09-upgrades-keep-sessions/09-04-SUMMARY.md",".planning/phases/09-upgrades-keep-sessions/09-05-PLAN.md",".planning/phases/09-upgrades-keep-sessions/09-05-SUMMARY.md",".planning/phases/09-upgrades-keep-sessions/09-06-PLAN.md",".planning/phases/09-upgrades-keep-sessions/09-06-SUMMARY.md",".planning/phases/09-upgrades-keep-sessions/09-07-PLAN.md",".planning/phases/09-upgrades-keep-sessions/09-07-SUMMARY.md","TESTING.md","app.go","cmd_attach.go","cmd_attach_resize.go","cmd_cli.go","cmd_daemon.go","frontend/src/App.tsx","frontend/src/components/TerminalPanel.tsx","frontend/src/lib/closeReasons.ts","frontend/src/lib/hostReconnect.ts","internal/attach/attach.go","internal/attach/attach_unix.go","internal/attach/loop.go","internal/daemon/api.go","internal/daemon/client.go","internal/daemon/compat_vmpreview.go","internal/daemon/engine.go","internal/daemon/handoff.go","internal/daemon/handoff_test.go","internal/daemon/handoff_vmpreview.go","internal/daemon/ipc.go","internal/daemon/process.go","internal/daemon/process_unix.go","internal/daemon/share.go","internal/daemon/socket.go","internal/daemon/socket_test.go","internal/daemon/types.go","internal/fdpass/fdpass.go","internal/fdpass/fdpass_test.go","internal/pty/adopt_darwin.go","internal/pty/cleanup.go","internal/pty/exitwatch_darwin.go","internal/pty/native.go","internal/pty/session.go","internal/relay/close_reasons.go","internal/relay/handoff_state.go","internal/relay/history.go","internal/relay/hub.go","internal/relay/manager.go","internal/relay/server.go","internal/webserver/server.go","terminate_darwin.go","terminate_darwin.m"]
+covered_digest: "v4:sha256:62012a946e402a0f8a594299e8d94df745705b49ad3807d92400ed9d8a307a67"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification_detail:
+  after_phase_16:
+    previous_digest: stale (covered files moved)
+    head: 807d950d
+    base: cc595307
+    result: passed, no truth regressed
+    moved_files: ["TESTING.md","cmd_cli.go","internal/daemon/types.go","internal/pty/cleanup.go","internal/relay/hub.go"]
   previous_status: passed
   previous_score: 5/5
   gaps_closed: []
@@ -23,6 +29,39 @@ re_verification_detail:
 **Verified:** 2026-11-23, at HEAD `c818e1e1` (branch gsd/v1.2), after Phase 15 (v1.2 Hardening)
 **Status:** passed, 5/5
 **Re-verification:** Yes. The 2026-11-22 report passed at `52d960a5`. It went stale because Phase 15 edited files it covers. This pass checks that no Phase 15 change broke a Phase 9 truth.
+
+## Re-verification after Phase 16 (v1.2 Cleanup)
+
+**Verified:** 2026-11-23T20:30:00Z at HEAD `807d950d` (branch gsd/v1.2). **Status:** passed, unchanged. The stored digest went stale because Phase 16 (`git diff cc595307..HEAD`) moved covered files. `gsd_run query verification.status` named: `TESTING.md`, `cmd_cli.go`, `internal/daemon/types.go`, `internal/pty/cleanup.go`, `internal/relay/hub.go`. Truths that depend on none of them carry forward from the report below. All five truths hold at HEAD. The VM evidence (V-01..V-05, M-114, M-155) exercised daemon handoff, hub resume, 1012 and hostReconnect code that Phase 16 did not edit.
+
+### What Phase 16 changed in this phase's covered files
+
+| File | Phase 16 change | Effect on Phase 9 truths |
+|---|---|---|
+| `cmd_cli.go` | usage text for kill/rename/version; `cmdKill`/`cmdRename` resolve names through `lookupSessionStrict` | The UPGR-04 CLI update-needed gate (`EnsureCLIDaemon`, `--restart-daemon`/`--keep-daemon`, the version/health text) is not in the diff. Kill and rename still end in `client.KillSession(s.ID)` / `RenameSession(s.ID, ...)`. |
+| `internal/daemon/types.go` | the unused `PathClickAPI` constant removed; `APIVersion` stays 5, `PreviewAPI` 3 | SC4 / UPGR-04 reports the API version through `APIVersion`, unchanged. `go build ./...` is clean, so nothing referenced the constant. |
+| `internal/pty/cleanup.go` | `killSession`'s two identical early-return branches merged into one condition | Read in full: the adopted path (`s.exited != nil` then `killAdopted`) is still the first branch, so a handed-over session is unaffected. The merged branch has the same body as both old ones, so it is behaviour-identical. |
+| `internal/relay/hub.go` | the ED 3 `History.Skip` is guarded by `!emu.IsAltScreen()` | Verified against vt: `ScrollbackLen` is always the main screen's, and vt's own ED 3 clears only the active screen's scrollback, so with the alt screen active nothing is dropped and the skip would be wrong. The handoff export/import of `pushed` is unchanged. |
+| `TESTING.md` | Phase 16 note, Category BG, one traceability row | Docs. `tests/check-traceability-paths.sh`: OK, 228 paths. |
+| `main.go` (not covered, checked) | `launchMode` | The daemon is spawned as `exe daemon` and `exe daemon --takeover` (`process_unix.go`), first argument not a flag, so takeover spawning is not affected. |
+
+### Checks run
+
+All at HEAD `807d950d` with `GOTOOLCHAIN=go1.26.11`, `-count=1` unless noted; targeted selections only, no full suite.
+
+| Selection | Result |
+|---|---|
+| `go build ./...`; `go vet` root, relay, daemon, pty, webserver | rc 0 |
+| `./internal/daemon/` `-race`: `TestHandoff\|TestTakeover\|TestEnsureDaemon\|TestStartDetachedTakeover\|TestTakeoverStatus\|TestStartDaemon_Cancel\|TestSessionInfo_ReportsAPIVersion\|Health\|DaemonAPI\|TestListenDaemonSocket\|...` (HandoffHappyPath, HandoffFault_*, RefusesPIDMismatch, EnsureDaemon_*) | ok (198.7 s) |
+| `./internal/relay/` `-race`: `Handoff\|Freeze\|Thaw\|Restart\|AddStaged\|Cwd\|PathClick\|...` (includes `TestHandoffState_Cwd*`, `TestCwd_AltScreenScrollbackEraseKeepsRows`) | ok (156.3 s) |
+| `./internal/fdpass/`, `./internal/attach/` `-race`, whole packages | ok, ok |
+| `./internal/pty/` `-race`, whole package | **one failure, then clean**: see "Transient" below |
+| root `-race`: `TestEnsure_DefaultSeamPassesRestartConsent\|TestQuitAll\|TestRestartConsent_MoveFailed\|TestOnTerminate_QuitsGUIOnly\|TestDaemonUpdateNeeded\|TestEnsureCLIDaemon\|TestTakeover\|TestInitialResizeFrame\|TestCmdKill\|TestLaunchMode...` | ok |
+| `bash tests/check-traceability-paths.sh` | OK: 228 paths |
+
+### Transient in `internal/pty` (not a Phase 9 regression)
+
+In the combined run (relay, daemon and pty packages one after another, with a vitest run and other verifiers on the machine) `TestKillClean_NoOrphans` failed once: `process group ... still exists after Kill` after its 5 s wait. It did not reproduce: `-race -count=5` of it and the `TestKillSession_*` tests alone passed 5/5; the whole `internal/pty` package passed 3/3 under `-race`; the compiled test binary passed 60/60 of the single test and 6/6 whole-package runs while 12 busy loops held the CPUs. Phase 16's only change in `cleanup.go` merges two identical early-return branches (read in full above), so the failure cannot come from it. The test is the timing-sensitive one Phase 15-02 hardened (G-1: marker wait plus a 5 s group-death wait). It is recorded here as a load flake rather than hidden; a follow-up could add margin to that wait.
 
 ## What Phase 15 changed in Phase 9's code (`git diff 52d960a5 HEAD`)
 

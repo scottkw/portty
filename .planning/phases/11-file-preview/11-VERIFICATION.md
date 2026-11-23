@@ -1,10 +1,10 @@
 ---
 phase: 11-file-preview
-verified: 2026-11-23T11:20:00Z
+verified: 2026-11-23T20:30:00Z
 status: passed
 score: 9/9 must-haves verified
 covered_files: [".planning/phases/11-file-preview/11-01-PLAN.md",".planning/phases/11-file-preview/11-01-SUMMARY.md",".planning/phases/11-file-preview/11-02-PLAN.md",".planning/phases/11-file-preview/11-02-SUMMARY.md",".planning/phases/11-file-preview/11-03-PLAN.md",".planning/phases/11-file-preview/11-03-SUMMARY.md",".planning/phases/11-file-preview/11-04-PLAN.md",".planning/phases/11-file-preview/11-04-SUMMARY.md",".planning/phases/11-file-preview/11-05-PLAN.md",".planning/phases/11-file-preview/11-05-SUMMARY.md",".planning/phases/11-file-preview/11-06-PLAN.md",".planning/phases/11-file-preview/11-06-SUMMARY.md",".planning/phases/11-file-preview/11-07-PLAN.md",".planning/phases/11-file-preview/11-07-SUMMARY.md",".planning/phases/11-file-preview/11-08-PLAN.md",".planning/phases/11-file-preview/11-08-SUMMARY.md",".planning/phases/11-file-preview/11-09-PLAN.md",".planning/phases/11-file-preview/11-09-SUMMARY.md",".planning/phases/11-file-preview/11-10-PLAN.md",".planning/phases/11-file-preview/11-10-SUMMARY.md","README.md","TESTING.md","app.go","app_cli_install.go","app_cli_install_test.go","cmd_cli.go","cmd_cli_test.go","cmd_open.go","cmd_open_test.go","dispatch_test.go","frontend/index.html","frontend/package.json","frontend/src/App.tsx","frontend/src/components/ImagePreview.tsx","frontend/src/components/MarkdownPreview.tsx","frontend/src/components/PdfPreview.tsx","frontend/src/components/PreviewPanel.tsx","frontend/src/components/TabBar.tsx","frontend/src/components/TerminalPanel.tsx","frontend/src/components/WebShareSessionView.tsx","frontend/src/components/__tests__/App.nav.test.tsx","frontend/src/components/__tests__/App.open-remote.test.tsx","frontend/src/components/__tests__/App.preview.test.tsx","frontend/src/components/__tests__/MarkdownPreview.test.tsx","frontend/src/components/__tests__/PreviewPanel.test.tsx","frontend/src/components/__tests__/PreviewRenderers.test.tsx","frontend/src/components/__tests__/TabBar.test.tsx","frontend/src/components/__tests__/TerminalPanel.preview.test.tsx","frontend/src/components/__tests__/WebShareSessionView.test.tsx","frontend/src/lib/__tests__/fixtures/preview-frames.json","frontend/src/lib/__tests__/fixtures/preview/hostile-external.svg","frontend/src/lib/__tests__/fixtures/preview/hostile-script.svg","frontend/src/lib/__tests__/fixtures/preview/hostile.md","frontend/src/lib/__tests__/markdown.test.ts","frontend/src/lib/__tests__/parseMarkdownInWorker.test.ts","frontend/src/lib/__tests__/previewAssembler.test.ts","frontend/src/lib/__tests__/previewStore.test.ts","frontend/src/lib/markdown.ts","frontend/src/lib/markdownSanitize.ts","frontend/src/lib/markdownWorker.ts","frontend/src/lib/parseMarkdownInWorker.ts","frontend/src/lib/previewAssembler.ts","frontend/src/lib/previewStore.ts","frontend/src/lib/relayClient.test.ts","frontend/src/lib/relayClient.ts","frontend/src/style.css","internal/daemon/api.go","internal/daemon/api_test.go","internal/daemon/client.go","internal/daemon/client_test.go","internal/daemon/clilink.go","internal/daemon/clilink_test.go","internal/daemon/engine.go","internal/daemon/preview.go","internal/daemon/preview_test.go","internal/daemon/types.go","internal/previewfile/previewfile.go","internal/previewfile/previewfile_test.go","internal/pty/native.go","internal/pty/native_test.go","internal/relay/hub.go","internal/relay/pathclick.go","internal/relay/preview.go","internal/relay/preview_test.go","internal/relay/protocol.go","internal/webserver/csp_integration_test.go","internal/webserver/csp_mw.go","internal/webserver/csp_mw_test.go","internal/webserver/files_removed_test.go","internal/webserver/input_queue_test.go","main.go","menu_test.go","testmain_test.go"]
-covered_digest: "v4:sha256:feab6684d5732a46b83a72454bb1f2f81e093630e18bebb840a8e88ef077f0a4"
+covered_digest: "v4:sha256:ce2c9287d16288ce32a50d86ef6c91a73d4d00070d3723970db32719ba31c042"
 behavior_unverified: 0
 overrides_applied: 1
 overrides:
@@ -13,6 +13,12 @@ overrides:
     accepted_by: user
     accepted_at: 2026-11-21
 re_verification:
+  after_phase_16:
+    previous_digest: stale (covered files moved)
+    head: 807d950d
+    base: cc595307
+    result: passed, no truth regressed
+    moved_files: ["TESTING.md","cmd_cli.go","cmd_cli_test.go","dispatch_test.go","frontend/src/lib/__tests__/markdown.test.ts","internal/daemon/client_test.go","internal/daemon/types.go","internal/relay/hub.go","internal/webserver/input_queue_test.go","main.go",".planning/phases/11-file-preview/11-10-SUMMARY.md"]
   previous_status: passed
   previous_verified: 2026-11-23T04:07:52Z
   previous_digest: "v4:sha256:d804bd98ff52c68abbbe7be1305c75fe6a8f51e48b032f56714994413291e912"
@@ -37,6 +43,40 @@ coincidental_reliance_items:
 **Verified:** 2026-11-23T11:20:00Z at HEAD `c818e1e1` (branch gsd/v1.2)
 **Status:** passed
 **Re-verification:** Yes (second). Pass 2 (this one) re-checked only what Phase 15 changed, see the section below. The first report (2026-11-21, `20da067a`) passed after the user resolved its five human items. The GSD tool marked it stale because Phases 12, 13 and 14 changed covered files. This pass re-checks the ROADMAP goal, SC1-SC5 and the plans' must_haves against the current code. The VM evidence (11-VM-CHECKS.md, rows at `7042f5ce` and RF-01..RF-04 at `ea8bb0e2`) is not re-run; it is still valid where the code it exercised is unchanged or moved verbatim, as recorded per change below.
+
+## Re-verification after Phase 16 (v1.2 Cleanup)
+
+**Verified:** 2026-11-23T20:30:00Z at HEAD `807d950d` (branch gsd/v1.2). **Status:** passed, unchanged. The stored digest went stale because Phase 16 (`git diff cc595307..HEAD`) moved covered files. `gsd_run query verification.status` named: `TESTING.md`, `cmd_cli.go`, `cmd_cli_test.go`, `dispatch_test.go`, `frontend/src/lib/__tests__/markdown.test.ts`, `internal/daemon/client_test.go`, `internal/daemon/types.go`, `internal/relay/hub.go`, `internal/webserver/input_queue_test.go`, `main.go`, `.planning/phases/11-file-preview/11-10-SUMMARY.md`. Truths that depend on none of them carry forward from the report below. All nine truths hold at HEAD. Phase 16's `launchMode` change cannot affect `portty open`, and its other edits are tests, a removed doc-only constant, a row-bookkeeping guard and metadata.
+
+### What Phase 16 changed in this phase's covered files
+
+| File | Phase 16 change | Effect on Phase 11 truths |
+|---|---|---|
+| `main.go` | `launchMode`: `--version`/`-v` map to the version command; an unknown leading flag exits 2 with usage; only no args and `-psn_*`/`-NS*`/`-Apple*` start the GUI | `portty open <file>` and `portty open --restart-daemon`-style calls start with a non-flag or a known CLI flag, so they still reach CLI dispatch (`TestLaunchMode`). The PREV-05 menu item (Install Command-Line Tool...) is outside `launchMode` and not in the diff. A symlinked `/usr/local/bin/portty` runs `open` unchanged. |
+| `cmd_cli.go` | usage text; kill/rename resolve by name | `cmdOpen`, the `PreviewAPI` gate and `HealthInfo` are not touched. |
+| `cmd_cli_test.go`, `dispatch_test.go` | new kill/rename name tests; `TestLaunchMode` rewritten to 18 rows and the old condition-copying flag test removed | Test-only. `TestCmdOpen_*` untouched and run again below. |
+| `internal/daemon/types.go`, `client_test.go` | `PathClickAPI` removed from the constant block and from the `TestHealthInfo` pin | `PreviewAPI = 3` and `APIVersion = 5` are unchanged and still pinned by `TestHealthInfo`, so the `portty open` gate holds. |
+| `internal/relay/hub.go` | ED 3 skip guarded by `!emu.IsAltScreen()` | Row bookkeeping only. `SendPreview`, the paced sender and the focus rule are not in the diff. |
+| `frontend/src/lib/__tests__/markdown.test.ts` | 30 s per-test timeout on the indentation-nested list case | Timeout only. The input (1,000 nested levels) and the assertion (`depthOf <= MAX_DEPTH`) are unchanged, so the WR-03/T-11-25 DoS bound is still pinned. |
+| `internal/webserver/input_queue_test.go` | helper reuse (`dialResumePing`) | Test-only; no preview path. |
+| `11-10-SUMMARY.md`, `TESTING.md` | `requirements-completed: [PREV-02, PREV-04]` frontmatter added; Phase 16 doc note | Metadata/docs. |
+
+### Checks run
+
+All at HEAD `807d950d` with `GOTOOLCHAIN=go1.26.11`, `-count=1` unless noted; targeted selections only, no full suite.
+
+| Selection | Result |
+|---|---|
+| `go build ./...`; `go vet` root, relay, daemon, webserver | rc 0 |
+| root: `TestLaunchMode\|TestCmdKill\|TestCmdRename\|TestResolveSession\|TestCmdOpen\|TestInstallCLI\|TestAppMenu\|TestCLINeedsDaemon\|...` (`-race`) | ok |
+| `./internal/relay/` `-race`, incl. `TestPreview*`, `TestHubSendPreview*`, `TestPathClick_SourceGate` | ok (156.3 s) |
+| `./internal/daemon/` `-race`, incl. `TestPreview*`, `TestCLILink*`, `TestHealthInfo`, `TestAPIHealth` | ok (198.7 s) |
+| `./internal/webserver/` `-race`: `TestCSP\|TestPreviewRoute\|...` | ok |
+| `./internal/previewfile/` `-race` | ok |
+| vitest `src/lib/__tests__/markdown.test.ts` | 38 passed |
+| `bash tests/check-traceability-paths.sh` | OK: 228 paths |
+
+The other Phase 11 frontend files were not edited by Phase 16; the 14-file preview vitest result of the previous pass carries forward.
 
 ## What changed in covered files since the first verification
 
