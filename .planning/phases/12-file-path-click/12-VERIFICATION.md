@@ -1,10 +1,10 @@
 ---
 phase: 12-file-path-click
-verified: 2026-11-22T13:54:43Z
+verified: 2026-11-23T04:07:19Z
 status: passed
 score: 21/21 must-haves verified (3 by recorded user override)
-covered_files: [".planning/phases/12-file-path-click/12-01-PLAN.md", ".planning/phases/12-file-path-click/12-01-SUMMARY.md", ".planning/phases/12-file-path-click/12-02-PLAN.md", ".planning/phases/12-file-path-click/12-02-SUMMARY.md", ".planning/phases/12-file-path-click/12-03-PLAN.md", ".planning/phases/12-file-path-click/12-03-SUMMARY.md", ".planning/phases/12-file-path-click/12-04-PLAN.md", ".planning/phases/12-file-path-click/12-04-SUMMARY.md", ".planning/phases/12-file-path-click/12-05-PLAN.md", ".planning/phases/12-file-path-click/12-05-SUMMARY.md", ".planning/phases/12-file-path-click/12-06-PLAN.md", ".planning/phases/12-file-path-click/12-06-SUMMARY.md", ".planning/phases/12-file-path-click/12-07-PLAN.md", ".planning/phases/12-file-path-click/12-07-SUMMARY.md", ".planning/phases/12-file-path-click/12-08-PLAN.md", ".planning/phases/12-file-path-click/12-08-SUMMARY.md", ".planning/phases/12-file-path-click/12-09-PLAN.md", ".planning/phases/12-file-path-click/12-09-SUMMARY.md", ".planning/phases/12-file-path-click/12-REVIEW-FIX.md", ".planning/phases/12-file-path-click/12-REVIEW.md", ".planning/phases/12-file-path-click/12-SECURITY-REVIEW.md", ".planning/phases/12-file-path-click/12-SECURITY.md", ".planning/phases/12-file-path-click/12-VM-CHECKS.md", "TESTING.md", "frontend/src/App.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/components/WebShareSessionView.tsx", "frontend/src/components/__tests__/App.open-remote.test.tsx", "frontend/src/components/__tests__/TerminalPanel.pathClick.test.tsx", "frontend/src/components/__tests__/WebShareSessionView.peerLinks.test.tsx", "frontend/src/lib/__tests__/pathLinks.linkifier.test.ts", "frontend/src/lib/pathLinks.ts", "frontend/src/lib/relayClient.ts", "internal/daemon/engine.go", "internal/daemon/zshshim.go", "internal/daemon/zshshim.zsh", "internal/previewfile/previewfile.go", "internal/relay/cwd.go", "internal/relay/hub.go", "internal/relay/pathclick.go", "internal/relay/server.go", "internal/webserver/plugin_config.go", "internal/webserver/server.go"]
-covered_digest: "v4:sha256:2353be2a6352822a342cedab732ba9b41d39c912b0a21439e3b370932e304de7"
+covered_files: [".planning/phases/12-file-path-click/12-01-PLAN.md", ".planning/phases/12-file-path-click/12-01-SUMMARY.md", ".planning/phases/12-file-path-click/12-02-PLAN.md", ".planning/phases/12-file-path-click/12-02-SUMMARY.md", ".planning/phases/12-file-path-click/12-03-PLAN.md", ".planning/phases/12-file-path-click/12-03-SUMMARY.md", ".planning/phases/12-file-path-click/12-04-PLAN.md", ".planning/phases/12-file-path-click/12-04-SUMMARY.md", ".planning/phases/12-file-path-click/12-05-PLAN.md", ".planning/phases/12-file-path-click/12-05-SUMMARY.md", ".planning/phases/12-file-path-click/12-06-PLAN.md", ".planning/phases/12-file-path-click/12-06-SUMMARY.md", ".planning/phases/12-file-path-click/12-07-PLAN.md", ".planning/phases/12-file-path-click/12-07-SUMMARY.md", ".planning/phases/12-file-path-click/12-08-PLAN.md", ".planning/phases/12-file-path-click/12-08-SUMMARY.md", ".planning/phases/12-file-path-click/12-09-PLAN.md", ".planning/phases/12-file-path-click/12-09-SUMMARY.md", ".planning/phases/12-file-path-click/12-REVIEW-FIX.md", ".planning/phases/12-file-path-click/12-REVIEW.md", ".planning/phases/12-file-path-click/12-SECURITY-REVIEW.md", ".planning/phases/12-file-path-click/12-SECURITY.md", ".planning/phases/12-file-path-click/12-VM-CHECKS.md", "TESTING.md", "frontend/src/App.tsx", "frontend/src/components/TerminalPanel.tsx", "frontend/src/components/WebShareSessionView.tsx", "frontend/src/components/__tests__/App.open-remote.test.tsx", "frontend/src/components/__tests__/TerminalPanel.pathClick.test.tsx", "frontend/src/components/__tests__/WebShareSessionView.peerLinks.test.tsx", "frontend/src/lib/__tests__/pathLinks.linkifier.test.ts", "frontend/src/lib/pathLinks.ts", "frontend/src/lib/relayClient.ts", "internal/daemon/engine.go", "internal/daemon/types.go", "internal/daemon/zshshim.go", "internal/daemon/zshshim.zsh", "internal/previewfile/previewfile.go", "internal/relay/cwd.go", "internal/relay/hub.go", "internal/relay/pathclick.go", "internal/relay/server.go", "internal/webserver/plugin_config.go", "internal/webserver/server.go"]
+covered_digest: "v4:sha256:f131e3076c018dc64765683b778c467cae5b165a8d62958c0e69dccec7a0f135"
 behavior_unverified: 0
 overrides_applied: 3
 overrides:
@@ -21,24 +21,44 @@ overrides:
     accepted_by: "user (12-09 Task 3 checkpoint, UI-2: \"Check on my Macs\")"
     accepted_at: "2026-11-22T13:31:05Z"
 re_verification:
-  previous_status: gaps_found
-  previous_score: 6/14
-  gaps_closed:
-    - "Cmd-clicking a printed path opens it in a preview tab in a home-VM peer tab on an office-VM session over the real tailnet (SC2), and the click, missing-file silence and wrong-type notice work in a desktop peer tab (C-02, C-04 peer clause)"
-    - "A viewer that lives through a reconnect, an upgrade handoff or a grid change keeps clickable path links (U-01, C-09)"
-    - "TESTING.md has Category BB with M-128..M-135 whose last-run lines point at 12-VM-CHECKS.md, and 12-SECURITY-REVIEW.md has its VM evidence and a verdict citing C-04, C-05, C-07 and C-08"
+  previous_status: passed
+  previous_score: 21/21
+  reason: "stale fingerprint: Phases 13 and 14 and the selection fix (7a37bfb4) changed covered files after the 2026-11-22T13:54:43Z verification"
+  gaps_closed: []
   gaps_remaining: []
   regressions: []
+  superseded_by_later_phases:
+    - "Phase 14 (770bfedc, 14-01): the share server's WebSocket and plugin-config routes now also require the same Tailscale account. A browser or peer viewer of the user's own account keeps path clicks unchanged; another account is refused before any stream exists. A tightening of who reaches Hub.PathClick, not a loss of the phase goal."
+    - "Phase 13 (5cad573e): pathclick.go's printed check was generalized to findMatch(predicate) for Hub.PortPrinted; findPrinted keeps the same two passes and bounds for path tokens."
+    - "Phase 13: APIVersion moved 4 to 5; PathClickAPI stays 4 and MinDaemonAPI 1."
+    - "Phase 14 lone-Esc change (659aee3a) is in the input absorber (oscabsorb.go), not the OSC 7 output path; selection fix 7a37bfb4 (terminalScale) corrects pointer mapping on a scaled pane and does not touch pathLinks.ts."
 ---
 
 # Phase 12: File Path Click Verification Report
 
 **Phase Goal:** A user can Cmd-click a file path that a program printed in the terminal and see it previewed, in local and remote sessions alike, because Portty tracks each shell's working directory.
-**Verified:** 2026-11-22T13:54:43Z
+**Verified:** 2026-11-23T04:07:19Z (HEAD 52d960a5)
 **Status:** passed
-**Re-verification:** Yes, after gap closure (12-08 code fixes, 12-09 VM re-run and user checkpoint)
+**Re-verification:** Yes. The previous report (passed, 21/21, 2026-11-22T13:54:43Z) went stale because Phases 13 and 14 and the selection fix changed covered files. I re-checked every must-have against the current code and re-ran the targeted tests.
 
-All three gaps from the first verification are closed in code, in tests I ran myself, and on real machines (VM rows C-02R, C-04R, C-09R and U-01R). Three must-haves pass only by the user's recorded decision to check them on their own Macs, because the VM rig cannot observe them (M-131, M-133). Claude Code inside a session is the same kind of manual check (M-132), but it was never a must-have.
+Nothing in the later changes breaks Phase 12. The changes to covered files are: Phase 13's refactor of the printed check into a predicate form (behaviour kept for paths), Phase 14's same-account gate on the share server (a tightening), the relay client's stuck-connect and pageshow additions, the TerminalPanel port notice and key bar, and the selection scale fix. None of them removes or bypasses path-click wiring. The three rig-limited items stay accepted by the user's 12-09 decision (M-131, M-133).
+
+## What changed in covered files since the last verification
+
+| File | Change (commit) | Effect on Phase 12 |
+|------|-----------------|--------------------|
+| `internal/relay/pathclick.go` | `findPrinted` now calls `findMatch(hasToken…, len(text))`; `firstPass`/`fallbackPass` are thin wrappers (5cad573e, Phase 13) | Same algorithm, same bounds (`len(row)+needleLen+2`). Gate at `:57-69` unchanged. PathClick tests pass |
+| `internal/relay/hub.go` | adds `portPrintedBusy` (Phase 13) | separate flag; `pathClickBusy` untouched |
+| `internal/webserver/server.go` | `requireSameUser` on the plugin-config, session and WebSocket routes (770bfedc, Phase 14); port grant/proxy routes (Phase 13) | MsgPathClick arm at `:1097-1103` unchanged (read-only still dropped). Only same-account viewers reach it now: superseded, tighter |
+| `internal/daemon/types.go` | `APIVersion = 5` (Phase 13) | `PathClickAPI = 4` kept (`:74`); viewers gate on `>= 4` |
+| `frontend/src/lib/relayClient.ts` | stuck-connect report, pageshow wake, other-account stop reason (e377fbf9, Phase 14) | capability callbacks on close, abandon and replay meta unchanged |
+| `frontend/src/components/TerminalPanel.tsx` | Phase 13 port notice beside the path notice; Phase 14 key bar, pinch, Ctrl; 7a37bfb4 scale-aware selection | `onPathClickCapability` still calls `invalidate()` (`:641-643`); `registerPathLinks` at `:1076`; still 0 `registerLinkProvider` calls (Phase 95 guard) |
+| `frontend/src/App.tsx` | Phase 13 remote-port handling, Phase 14 viewport inset | `peerPluginConfig` (`:153-159`) still passes only `webLinks`/`webLinksConfig`; used for remote tabs at `:1341` |
+| `frontend/src/components/WebShareSessionView.tsx` | Phase 14 live plugin config, key bar, own-devices screen | `isWebGuest = pluginConfig === undefined && remote !== true` (`:191`): peer tabs still never self-fetch; `effectivePluginConfig = livePluginConfig ?? pluginConfig` keeps the peer config |
+| `TESTING.md` | Phase 13/14 rows | Category BB now at `:1673`; traceability gate passes (228 paths) |
+| `12-SECURITY.md` | WR-01 accepted by the user as AR-12-09 | previous "pending" item is now an accepted risk |
+
+No change since the last verification in `zshshim.go`, `zshshim.zsh`, `engine.go`, `cwd.go`, `previewfile.go`, `relay/server.go`, `plugin_config.go`, `pathLinks.ts` or any of the Phase 12 test files.
 
 ## Goal Achievement
 
@@ -46,120 +66,86 @@ All three gaps from the first verification are closed in code, in tests I ran my
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | SC1: a new zsh session reports cwd via OSC 7 after every `cd` with no setup; other shells that emit OSC 7 are tracked; without OSC 7 an absolute path works and a relative one does nothing (PATH-01) | ✓ VERIFIED | Regression check: `zshshim.go`/`.zsh`, `cwd.go` and `engine.go` have no change since the first verification (no Go commit since 81ada526 except 30ac9abb in `pathclick.go`). C-08 shell matrix carried. U-01 no-shim session: absolute `preview`, relative `no-cwd`. U-01R: the cwd log survives C to C2 |
-| 2 | SC2: a Cmd-click on an absolute or relative path opens a preview in a local tab AND in a home-VM peer tab over the real tailnet (PATH-02) | ✓ VERIFIED | Code: `App.tsx:143-149` `peerPluginConfig` is passed at `:1323` for remote tabs; `WebShareSessionView.tsx:159` `isWebGuest = pluginConfig === undefined && remote !== true`; `TerminalPanel.tsx:867,938` registers path links. VM: C-02R `path click … conn=2 outcome=preview` from the home peer tab, home switched, office got a background tab; C-01R local; C-03R Safari |
-| 3 | SC3: a missing path does nothing; a plain click selects; URLs keep their behaviour | ✓ VERIFIED | C-01R (plain click inert, URL popover); C-04R missing and folder `outcome=missing` with the tail sha256 unchanged, now including the peer tab as clicker; C-02R a peer-tab URL opens the confirm popover |
-| 4 | SC4: the request rides the session's stream, resolves against the session's own cwd, only printed paths; the security review records it | ✓ VERIFIED | `pathclick.go:57-69` refuses nil, read-only, bad payload, departed or revoked subscribers (WR-02 fix 30ac9abb) and a busy hub. C-05R: read-only viewer gets no link and its hand-sent 0x13 leaves no log line. `12-SECURITY-REVIEW.md:172` **Verdict:** APPROVED. `12-SECURITY.md` threats_open 0 |
-| 5 | The full gate passes once on the host | ✓ VERIFIED | 12-VM-CHECKS.md re-run gate: vitest 108/1600, tsc, brand, share-removal, traceability, build-script 40/0, 13 of 14 Go packages ok. One `internal/pty` `TestKillClean_NoOrphans` flake under load: that package has no diff since 81ada526, it passed alone 5/5, and the user accepted it as G-1. My checks: 6 gap vitest files 129/129, `go test -run 'PathClick\|DepartedOrRevoked'` relay and webserver ok, traceability OK (199 paths) |
-| 6 | `ssh localhost` works inside a shimmed session (C-08 clause) | PASSED (override) | Override: rig limit, user chose "Check on my Macs" (UI-1), accepted on 2026-11-22. Manual check M-133 |
-| 7 | After a window resize a printed path is still clickable (C-09) | ✓ VERIFIED | `pathLinks.ts` `term.onResize(invalidate)`. Real-xterm tests "after a resize…" (3) pass. C-09R: narrow, widen (the click that failed in the first run), peer grid claim and restore each `outcome=preview` on the first same-point click |
-| 8 | After an upgrade, a pre-upgrade relative path is clickable at once in every surviving viewer; all reconnect with `mode=delta` (U-01) | ✓ VERIFIED | `TerminalPanel.tsx:538-541` calls `invalidate()` on every capability report (`relayClient.ts:398,525,550`). Real-xterm "after a reconnect…" tests pass. U-01R: 3/3 `mode=delta` within 1.62 s, 0 grid lines, first clicks in office, peer tab and the same Safari page all `outcome=preview` |
-| 9 | TESTING.md Section 5 Category BB M-128..M-135 and the security review verdict are written | ✓ VERIFIED | `TESTING.md:1611` `### Category BB`, M-128..M-135 at 1615-1662, 10 references to 12-VM-CHECKS.md; `12-SECURITY-REVIEW.md` has `## Gap closure (12-08)` (T-12-40..45) and `## VM evidence and verdict` citing C-04R, C-05R, C-07R and C-08 |
-| 10 | Cmd-held underline and pointer in the desktop app (C-06, UI-SPEC) | PASSED (override) | Override: Wails web view unobservable in the VMs; Safari half PASS (C-06R); user chose "Check on my Macs" (UI-2), accepted on 2026-11-22. M-131 |
-| 11 | A live light/dark switch repaints the notice with no reload (backstop) | PASSED (override) | Override: Safari PASS (C-06R, 0.9 s, same conn); app colours not readable in the VM; user UI-2, accepted on 2026-11-22. M-131 |
-| 12 | A Cmd-click in a mouse-reporting TUI previews (backstop) | ✓ VERIFIED | C-07R vim `mouse=a` `outcome=preview`, 0 SGR reports, clean quit; real-xterm test "the link refresh sends no input to a program with mouse tracking on" passes |
-| 13 | Every FAIL reaches the checkpoint; nothing is concluded before the user answers | ✓ VERIFIED | 12-09 Task 3 answer recorded in 12-VM-CHECKS.md "Task 3 decisions" and 12-09-SUMMARY; first-run FAIL rows carry `Superseded by …R` markers |
-| 14 | Click, missing-file silence, wrong-type notice and read-only refusal checked across local tab, peer tab and browser link (backstop) | ✓ VERIFIED | C-04R (office, Safari and peer tab as clickers; notices only in the clicker; silence everywhere), C-05R read-only |
-| 15 | In a real xterm 6 Terminal fed by a real RelayClient, a path under a resting pointer is Cmd-clickable at once after a 1012 close and a delta replay meta (12-08) | ✓ VERIFIED | `pathLinks.linkifier.test.ts` imports the real `Terminal`, `WebLinksAddon` and `RelayClient` (0 `vi.mock`); both reconnect tests pass in my run |
-| 16 | In a real xterm 6 Terminal, after a host grid resize a same-cell Cmd-click sends the path click and opens a URL, also after the pointer left and came back (12-08) | ✓ VERIFIED | Three "after a resize" tests, URL case included, pass in my run |
-| 17 | Each reproduction failed before its fix (12-08) | ✓ VERIFIED | RED commits 523fb5d5 and 1823a698 each change only `pathLinks.linkifier.test.ts` (git show --stat). The fixes landed in separate commits (8fd350e6, 290e5860). The first VM run is independent evidence of the bug before the fix (C-09, U-01 FAIL) |
-| 18 | The link refresh never sends input; a read-only viewer gets no link (12-08) | ✓ VERIFIED | `pathLinks.ts` dispatches with `bubbles: false`; `provideLinks` returns nothing while `enabled()` is false. Tests "…sends no input…" and "while the capability is false…" pass; C-05R |
-| 19 | A desktop peer tab registers path and URL links from this Mac's toggle and modifier, sends a modifier-click's path, makes no cross-origin request, and turns on no other addon (12-08) | ✓ VERIFIED | `WebShareSessionView.peerLinks.test.tsx` and `App.open-remote.test.tsx` pass ("fetches nothing cross-origin", "turns on no other addon"); `createFrom` passes only `webLinks`/`webLinksConfig` |
-| 20 | The browser viewer still self-fetches; no CORS header; CSPs unchanged; no Go change in 12-08 (12-08) | ✓ VERIFIED | `grep Access-Control-Allow internal/webserver` (non-test): none; `git diff 81ada526 -- frontend/index.html internal/webserver/csp_mw.go` empty; the only Go commit since 81ada526 is the 12-REVIEW WR-02 fix (30ac9abb), not 12-08; test "the browser viewer still reads the host config from its own origin" passes |
-| 21 | TESTING.md lists the two new test files in Sections 2 and 4; the traceability gate passes (12-08) | ✓ VERIFIED | `TESTING.md:36` gap-closure note, `:811-812` PATH-02 rows; `check-traceability-paths.sh` exit 0 |
+| 1 | SC1: a new zsh session reports cwd via OSC 7 after every `cd` with no setup; other shells that emit OSC 7 are tracked; without OSC 7 an absolute path works and a relative one does nothing (PATH-01) | ✓ VERIFIED | Shim, engine and `cwd.go` unchanged since last verification. `go test -run 'Zsh\|Shim' ./internal/daemon/` 18 PASS (real-zsh matrix); `-run 'Cwd\|OSC7…' ./internal/relay/` PASS. C-08 shell matrix and U-01/U-01R (no-shim: absolute `preview`, relative `no-cwd`) carried |
+| 2 | SC2: a Cmd-click on an absolute or relative path opens a preview in a local tab AND in a home-VM peer tab over the real tailnet (PATH-02) | ✓ VERIFIED | `App.tsx:153-159,1341`, `WebShareSessionView.tsx:191`, `TerminalPanel.tsx:1076`. `WebShareSessionView.peerLinks` and `App.open-remote` pass now. VM: C-01R local, C-02R peer tab, C-03R Safari. Phase 14's same-account gate leaves the user's own peer/browser viewers able to click |
+| 3 | SC3: a missing path does nothing; a plain click selects; URLs keep their behaviour | ✓ VERIFIED | C-01R, C-04R, C-02R. `TerminalPanel.pathClick` and `TerminalPanel.web-links` pass now. Selection fix 7a37bfb4 improves plain-click selection on a scaled pane; it does not change path or URL clicks |
+| 4 | SC4: the request rides the session's stream, resolves against the session's own cwd, only printed paths; the security review records it | ✓ VERIFIED | `pathclick.go:57-69` gate unchanged; printed check same algorithm via `findMatch`; imports still exclude os, os/exec, path/filepath, io/fs, syscall. Both read pumps (`relay/server.go:207-212`, `webserver/server.go:1097-1103`) drop read-only. `12-SECURITY-REVIEW.md:172` **Verdict:** APPROVED; `12-SECURITY.md` `threats_open: 0`. Phase 14 adds a same-account check ahead of the stream (superseded, tighter) |
+| 5 | The full gate passes once on the host | ✓ VERIFIED (carried) | 12-VM-CHECKS.md re-run gate (G-1 `internal/pty` flake accepted by the user). Not re-run here: five verifiers share the host, so I ran only targeted tests. Later phases ran their own full gates (Phase 14 verification: vitest 122 files / 1813 tests) |
+| 6 | `ssh localhost` works inside a shimmed session (C-08 clause) | PASSED (override) | User decision UI-1 at the 12-09 checkpoint; M-133 |
+| 7 | After a window resize a printed path is still clickable (C-09) | ✓ VERIFIED | `pathLinks.ts:151` `term.onResize(invalidate)`; the three real-xterm "after a resize" tests pass now; C-09R |
+| 8 | After an upgrade, a pre-upgrade relative path is clickable at once in every surviving viewer; all reconnect with `mode=delta` (U-01) | ✓ VERIFIED | `TerminalPanel.tsx:641-643`; real-xterm "after a reconnect" tests pass now; U-01R. The known full-suite flake of one reconnect test is a todo (`2026-11-22-linkifier-reconnect-flake.md`, fixed sleep under load); it passed in this targeted run |
+| 9 | TESTING.md Category BB M-128..M-135 and the security review verdict are written | ✓ VERIFIED | `TESTING.md:1673` `### Category BB`, 10 references to 12-VM-CHECKS.md; verdict at `12-SECURITY-REVIEW.md:172` |
+| 10 | Cmd-held underline and pointer in the desktop app (C-06, UI-SPEC) | PASSED (override) | User decision UI-2; Safari half PASS (C-06R); M-131 |
+| 11 | A live light/dark switch repaints the notice with no reload (backstop) | PASSED (override) | User decision UI-2; Safari PASS (C-06R); M-131 |
+| 12 | A Cmd-click in a mouse-reporting TUI previews (backstop) | ✓ VERIFIED | C-07R; real-xterm "sends no input to a program with mouse tracking on" passes now |
+| 13 | Every FAIL reaches the checkpoint; nothing is concluded before the user answers | ✓ VERIFIED | 12-VM-CHECKS.md "Task 3 decisions", 12-09-SUMMARY |
+| 14 | Click, missing-file silence, wrong-type notice and read-only refusal across local tab, peer tab and browser link (backstop) | ✓ VERIFIED | C-04R, C-05R; `TestPathClick_*` relay and webserver tests pass now |
+| 15 | Real xterm 6 + real RelayClient: Cmd-clickable at once after a 1012 close and delta replay (12-08) | ✓ VERIFIED | `pathLinks.linkifier.test.ts` passes now |
+| 16 | Real xterm 6: after a grid resize a same-cell Cmd-click sends the path click and opens a URL (12-08) | ✓ VERIFIED | three resize tests pass now |
+| 17 | Each reproduction failed before its fix (12-08) | ✓ VERIFIED (carried) | RED commits 523fb5d5, 1823a698; history unchanged |
+| 18 | The link refresh never sends input; a read-only viewer gets no link (12-08) | ✓ VERIFIED | `pathLinks.ts:147` `bubbles: false`; tests pass now; C-05R |
+| 19 | A desktop peer tab registers path and URL links from this Mac's settings, makes no cross-origin request, turns on no other addon (12-08) | ✓ VERIFIED | `App.tsx:153-159`; `WebShareSessionView.peerLinks`, `App.open-remote` pass now |
+| 20 | The browser viewer still self-fetches; no CORS header; CSPs unchanged by Phase 12 (12-08) | ✓ VERIFIED | no non-test `Access-Control-Allow` in `internal/webserver`; `isWebGuest` self-fetch path at `WebShareSessionView.tsx:191-222`. Phase 14 later added `manifest-src 'self'` to the share CSP with user approval (14-SECURITY-REVIEW Amendment 4): a later intentional change, not a Phase 12 regression |
+| 21 | TESTING.md lists the two new test files in Sections 2 and 4; the traceability gate passes (12-08) | ✓ VERIFIED | `bash tests/check-traceability-paths.sh` → `OK: 228 traceability paths exist` |
+
+Plan-level must-haves of 12-01..12-06 re-checked against current code: `internal/previewfile` imports no module package and has 90.1% statement coverage now (`go test -cover`); `relay/pathclick.go` imports no os/os-exec/filepath/fs/syscall; `PathClickAPI = 4` and `MinDaemonAPI` unchanged; TerminalPanel has no `registerLinkProvider` (provider only in `lib/pathLinks.ts`); the replay meta `pathClick` gating and read-only refusals are covered by the relay and webserver `PathClick` tests, which pass.
 
 **Score:** 21/21 truths verified (18 verified, 3 passed by override; 0 present but behavior-unverified)
-
-### Gap closure (previous gaps)
-
-| Gap | Previous status | Now | Evidence |
-|-----|-----------------|-----|----------|
-| 1. Desktop peer tabs get no path links (C-02, C-04 peer) | failed | closed | The peer tab gets this Mac's link settings and never makes a cross-origin fetch (code + mounted peer-tab test). C-02R and C-04R peer clauses PASS on the tailnet |
-| 2. Surviving viewers lose links after reconnect or resize (U-01, C-09) | failed | closed | `invalidate()` runs on every capability report and every resize; the real-xterm Linkifier reproductions failed at RED and pass now. U-01R and C-09R PASS |
-| 3. TESTING.md Category BB and security verdict missing | failed | closed | Category BB M-128..M-135 and the APPROVED verdict are written |
-
-### Required Artifacts
-
-| Artifact | Expected | Status | Details |
-|----------|----------|--------|---------|
-| `frontend/src/lib/pathLinks.ts` | `PathLinksHandle.invalidate()`, onResize, non-bubbling re-hover | ✓ VERIFIED | Substantive (guarded private-field reset, microtask, mouseleave tracking); wired from TerminalPanel |
-| `frontend/src/components/TerminalPanel.tsx` | the capability callback calls `invalidate()` | ✓ VERIFIED | `:540` `pathLinksRef.current?.invalidate()` |
-| `frontend/src/App.tsx` | peer tabs get this Mac's link settings only | ✓ VERIFIED | `:143-149`, `:1323` |
-| `frontend/src/components/WebShareSessionView.tsx` | no self-fetch for remote tabs | ✓ VERIFIED | `:159` |
-| `frontend/src/lib/__tests__/pathLinks.linkifier.test.ts` | real-xterm reproductions | ✓ VERIFIED | 9 tests, unmocked xterm, all pass |
-| `frontend/src/components/__tests__/WebShareSessionView.peerLinks.test.tsx` | mounted peer-tab test | ✓ VERIFIED | passes |
-| `internal/relay/pathclick.go` | Hub.PathClick with the writer, joined and not-revoked gate | ✓ VERIFIED | `:57-69`; `TestPathClick_DepartedOrRevokedRefused` passes |
-| `.planning/phases/12-file-path-click/12-VM-CHECKS.md` | re-run rows C-00R..C-07R, C-09R, U-01R | ✓ VERIFIED | all PASS with log lines; cleanup; Task 3 decisions |
-| `TESTING.md` | Sections 2, 4, 5 for Phase 12 | ✓ VERIFIED | Category BB present; the traceability gate passes |
-| `.planning/phases/12-file-path-click/12-SECURITY-REVIEW.md` | gap-closure section and verdict | ✓ VERIFIED | `**Verdict:** APPROVED` |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| TerminalPanel | pathLinks | `onPathClickCapability` calls `invalidate()` | ✓ WIRED | `TerminalPanel.tsx:538-541`; `relayClient.ts:398,525,550` call it on close, abandon and every replay meta |
-| pathLinks | xterm Linkifier | `_lastBufferCell` and `_activeLine` reset plus a non-bubbling mousemove | ✓ WIRED | pinned by "xterm 6 still has the Linkifier fields the refresh resets" |
-| App | WebShareSessionView | `pluginConfig={isRemoteWebTab ? peerPluginConfig : …}` | ✓ WIRED | `App.tsx:1323` |
-| Desktop peer tab | registerPathLinks | `pluginConfig.webLinks` from this Mac | ✓ WIRED | Previously NOT_WIRED; C-02R |
-| Peer/browser/local viewer | Hub.PathClick | 0x13 on the session stream | ✓ WIRED | C-01R conn=1, C-02R conn=2, C-03R conn=4 |
-| 12-SECURITY-REVIEW.md | 12-VM-CHECKS.md | the verdict cites C-04R, C-05R, C-07R and C-08 | ✓ WIRED | line 172 |
-| TESTING.md M-128..M-135 | 12-VM-CHECKS.md | last-run lines | ✓ WIRED | 10 references |
+| TerminalPanel | pathLinks | `onPathClickCapability` calls `invalidate()` | ✓ WIRED | `TerminalPanel.tsx:641-643` |
+| TerminalPanel | relay stream | `onClick: clientRef.current?.sendPathClick` | ✓ WIRED | `TerminalPanel.tsx:1079` |
+| App | WebShareSessionView | `pluginConfig={isRemoteWebTab ? peerPluginConfig : …}` | ✓ WIRED | `App.tsx:1341` |
+| Peer/browser viewer | Hub.PathClick | share server read pump, write cap only | ✓ WIRED | `webserver/server.go:1097-1103`, behind `requireSameUser` (Phase 14) |
+| Local viewer | Hub.PathClick | relay read pump | ✓ WIRED | `relay/server.go:207-212` |
+| Hub.PathClick | printed check | `findPrinted` → `findMatch(hasToken)` | ✓ WIRED | refactor shared with Phase 13 `PortPrinted` |
+| 12-SECURITY-REVIEW.md | 12-VM-CHECKS.md | verdict cites C-04R, C-05R, C-07R, C-08 | ✓ WIRED | line 172 |
 
-### Data-Flow Trace (Level 4)
-
-| Artifact | Data Variable | Source | Produces Real Data | Status |
-|----------|---------------|--------|--------------------|--------|
-| TerminalPanel (local tab) | `pluginConfig.webLinks` | App state from the Wails binding | yes | ✓ FLOWING |
-| TerminalPanel (browser) | `pluginConfig.webLinks` | same-origin `/api/plugin-config` | yes | ✓ FLOWING |
-| TerminalPanel (desktop peer tab) | `pluginConfig.webLinks` | `peerPluginConfig` from this Mac's `pluginConfig` state | yes | ✓ FLOWING (was DISCONNECTED) |
-| pathLinks `enabled()` | `pathClickEnabledRef` | replay meta `pathClick` on every join | yes | ✓ FLOWING; xterm cache now refreshed |
-
-### Behavioral Spot-Checks
+### Behavioral Spot-Checks (run now, targeted only)
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Gap tests and regressions | `pnpm vitest run` pathLinks.linkifier, WebShareSessionView.peerLinks, App.open-remote, TerminalPanel.pathClick, pathLinks, TerminalPanel.web-links | 6 files, 129 tests passed | ✓ PASS |
-| Host path-click, including WR-02 | `go test -count=1 -run 'PathClick\|DepartedOrRevoked' ./internal/relay/ ./internal/webserver/` | ok, ok | ✓ PASS |
-| Traceability | `bash tests/check-traceability-paths.sh` | OK: 199 paths | ✓ PASS |
-| Two-Mac behaviour | not re-run by me; 12-VM-CHECKS.md re-run rows used as evidence | 10/10 PASS | see truths |
-
-### Probe Execution
-
-Not applicable. The phase declares no `scripts/*/tests/probe-*.sh`. Its runnable evidence is the VM rows and the named tests above.
+| Host path click, cwd log, printed check, WR-02 | `GOTOOLCHAIN=go1.26.11 go test -count=1 -run 'PathClick\|DepartedOrRevoked\|Cwd\|OSC7\|FindPrinted' ./internal/relay/ ./internal/webserver/` | ok, ok; 33 PASS, 0 FAIL | ✓ PASS |
+| zsh shim | `go test -count=1 -run 'Zsh\|Shim' ./internal/daemon/` | ok; 18 PASS | ✓ PASS |
+| previewfile | `go test -count=1 -cover ./internal/previewfile/` | ok, 90.1% | ✓ PASS |
+| Viewer | `vitest run` pathLinks.linkifier, pathLinks, WebShareSessionView.peerLinks, App.open-remote, TerminalPanel.pathClick, TerminalPanel.web-links (node v24.22.1, NO_COLOR=1) | 6 files, 129 tests passed | ✓ PASS |
+| Traceability | `bash tests/check-traceability-paths.sh` | OK: 228 paths | ✓ PASS |
+| Two-Mac behaviour | not re-run (no tailnet or VM use allowed in this pass); 12-VM-CHECKS.md re-run rows carried | 10/10 PASS | carried |
 
 ### Requirements Coverage
 
-| Requirement | Source Plan | Description | Status | Evidence |
-|-------------|-------------|-------------|--------|----------|
-| PATH-01 | 12-02, 12-03, 12-07, 12-09 | cwd via OSC 7; zsh emits it; other shells that emit it work | ✓ SATISFIED | Truth 1; C-08 (ssh clause by override); U-01/U-01R cwd log carried |
-| PATH-02 | 12-01, 12-04, 12-05, 12-06, 12-07, 12-08, 12-09 | Cmd-click previews printed paths in local and remote sessions alike; only printed paths; missing does nothing | ✓ SATISFIED | Truths 2-4, 7, 8, 14-21; C-01R..C-05R, C-09R, U-01R |
-
-No orphaned requirements: REQUIREMENTS.md maps only PATH-01 and PATH-02 to Phase 12, and both are claimed by plans. REQUIREMENTS.md still marks both "Pending"; marking them complete is left to the orchestrator.
+| Requirement | Source Plan | Status | Evidence |
+|-------------|-------------|--------|----------|
+| PATH-01 | 12-02, 12-03, 12-07, 12-09 | ✓ SATISFIED | Truth 1; code unchanged; shim and cwd tests pass |
+| PATH-02 | 12-01, 12-04..12-09 | ✓ SATISFIED | Truths 2-4, 7, 8, 14-21 |
 
 ### Anti-Patterns Found
 
-| File | Line | Pattern | Severity | Impact |
-|------|------|---------|----------|--------|
-| phase-modified source files | - | TBD/FIXME/XXX/TODO/HACK | none found | - |
-| `frontend/src/lib/pathLinks.ts` | invalidate | private xterm fields `_core.linkifier._lastBufferCell/_activeLine` | ℹ️ Info | Guarded (no throw) and pinned by a test that fails if an xterm upgrade renames them (T-12-44) |
-| `internal/relay/pathclick.go` | 57-69 | WR-02 fix landed after VM build C (3a8972a6) | ℹ️ Info | A tightening (more refusals), covered by `TestPathClick_DepartedOrRevokedRefused`, which I ran. Not exercised in the VMs |
+| File | Pattern | Severity | Impact |
+|------|---------|----------|--------|
+| `frontend/src/lib/pathLinks.ts` | private xterm fields `_lastBufferCell`/`_activeLine` | ℹ️ Info | guarded and pinned by a test (T-12-44); unchanged |
+| `frontend/src/lib/__tests__/pathLinks.linkifier.test.ts` | fixed `sleep(100)` render wait | ℹ️ Info | flakes under full-suite load; todo `2026-11-22-linkifier-reconnect-flake.md`; test-only |
 
-### Accepted and pending items (not gaps)
+### Accepted items (not gaps)
 
-- **F-1** (a relative path printed on screen row 0 of a never-scrolled session resolves against the start directory) and **F-2** (the first Cmd-click after the pointer returns to the same cell whose text changed sends nothing): the user accepted both as todos (AR-12-07). Todo files exist in `.planning/todos/pending/`.
-- **G-1** (`internal/pty` flake): accepted as unrelated by the user.
-- **WR-01** (a relative click resolves against the newest print of that text): a recorded 12-CONTEXT design choice ("last occurrence"). It does not loosen the printed check, and the user's decision is pending in 12-SECURITY.md. Not a gap.
-- **Manual checks** on the user's Macs: M-131 (desktop underline, dark repaint), M-132 (Claude Code), M-133 (`ssh localhost`).
+- **F-1** (row-0 relative path resolves against the start directory) and **F-2** (first click after returning to the same cell): accepted as todos (AR-12-07); todo files in `.planning/todos/pending/`.
+- **WR-01** (a relative click resolves against the newest print of that text): accepted by the user on 2026-11-22 (AR-12-09 in 12-SECURITY.md). It was pending in the previous report.
+- **G-1** (`internal/pty` flake): accepted as unrelated.
+- **Manual checks** on the user's Macs: M-131 (desktop underline, dark repaint), M-132 (Claude Code), M-133 (`ssh localhost`) (AR-12-08).
+- **Linkifier reconnect test flake** under full-suite load: tracked todo, test timing only; passed in this targeted run.
 
 ### Human Verification Required
 
-None outstanding for this verdict. The three rig-limited items were decided by the user at the 12-09 checkpoint and are carried as overrides above. They remain manual regression checks M-131..M-133 in TESTING.md Section 5.
+None outstanding for this verdict. The three rig-limited items were decided by the user at the 12-09 checkpoint and are carried as overrides.
 
 ### Gaps Summary
 
-No gaps remain. Gap 1 (peer tabs) and Gap 2 (surviving viewers) are fixed in the frontend with real-xterm reproductions that failed before and pass after, and both are confirmed on the two-VM tailnet rig. Gap 3 (TESTING.md Category BB and the security verdict) is written. The phase goal holds: local tabs, desktop peer tabs and browser viewers preview printed paths, and they keep doing so across reconnects, upgrades and resizes. The host keeps the PREV-03 contract.
+No gaps. Every Phase 12 must-have still holds in the current code. Later phases tightened who can reach the path-click handler (same Tailscale account, Phase 14) and refactored the printed check for reuse (Phase 13) without changing how it treats paths. The targeted Go and vitest suites for path clicks, cwd tracking and the zsh shim pass at HEAD 52d960a5.
 
 ---
 
-_Verified: 2026-11-22T13:54:43Z_
+_Verified: 2026-11-23T04:07:19Z_
 _Verifier: Claude (gsd-verifier)_
