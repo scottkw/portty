@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -69,39 +70,6 @@ func TestDispatchNoArgs(t *testing.T) {
 	// the condition is correct and doesn't panic.
 }
 
-// TestDispatchFlagRouting verifies that flags (other than help) route to GUI.
-func TestDispatchFlagRouting(t *testing.T) {
-	cases := []struct {
-		arg    string
-		isGUI  bool
-		isHelp bool
-	}{
-		{"--help", false, true},
-		{"-h", false, true},
-		{"--verbose", true, false},
-		{"-v", true, false},
-		{"list", false, false},
-		{"daemon", false, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.arg, func(t *testing.T) {
-			args := []string{"portty", tc.arg}
-			isFlag := strings.HasPrefix(args[1], "-")
-			isHelp := args[1] == "--help" || args[1] == "-h"
-
-			if tc.isHelp && !isHelp {
-				t.Errorf("%q should be detected as help", tc.arg)
-			}
-			if tc.isGUI && (!isFlag || isHelp) {
-				t.Errorf("%q should route to GUI (isFlag=%v, isHelp=%v)", tc.arg, isFlag, isHelp)
-			}
-			if !tc.isGUI && !tc.isHelp && isFlag {
-				t.Errorf("%q should NOT route to GUI", tc.arg)
-			}
-		})
-	}
-}
-
 // TestRunCLI_UnknownCommand verifies the exact message runCLI prints for an
 // unknown command (runCLI itself calls os.Exit, so the builder is tested).
 func TestRunCLI_UnknownCommand(t *testing.T) {
@@ -112,29 +80,51 @@ func TestRunCLI_UnknownCommand(t *testing.T) {
 }
 
 // TestLaunchMode pins how main routes a launch. Finder, the Dock, `open` and
-// login items start the app with no arguments; that must be a GUI launch and
-// never index past the argument list (VM G-04 found a panic there).
+// login items start the app with no arguments or only macOS launch-services
+// arguments; those must be GUI launches and never index past the argument list
+// (VM G-04 found a panic there). Any other leading flag is a usage error, so a
+// CLI-only call over SSH never starts the GUI (16-CONTEXT D-01).
 func TestLaunchMode(t *testing.T) {
 	cases := []struct {
-		name    string
-		args    []string
-		mode    int
-		wantErr bool
+		name     string
+		args     []string
+		mode     int
+		wantErr  string // exact error text; empty means no error
+		wantArgs []string
 	}{
-		{"no args", nil, modeGUI, false},
-		{"empty", []string{}, modeGUI, false},
-		{"other flag", []string{"-NSDocumentRevisionsDebugMode"}, modeGUI, false},
-		{"help", []string{"--help"}, modeHelp, false},
-		{"short help", []string{"-h"}, modeHelp, false},
-		{"command", []string{"list"}, modeCLI, false},
-		{"restart flag first", []string{restartDaemonFlag, "list"}, modeCLI, false},
-		{"bare restart flag", []string{restartDaemonFlag}, modeCLI, true},
+		{"no args", nil, modeGUI, "", nil},
+		{"empty", []string{}, modeGUI, "", nil},
+		{"launch services NS", []string{"-NSDocumentRevisionsDebugMode"}, modeGUI, "", nil},
+		{"launch services psn", []string{"-psn_0_12345"}, modeGUI, "", nil},
+		{"launch services Apple", []string{"-ApplePersistenceIgnoreState"}, modeGUI, "", nil},
+		{"launch services Apple languages", []string{"-AppleLanguages"}, modeGUI, "", nil},
+		{"help", []string{"--help"}, modeHelp, "", nil},
+		{"short help", []string{"-h"}, modeHelp, "", nil},
+		{"long version", []string{"--version"}, modeCLI, "", []string{"version"}},
+		{"short version", []string{"-v"}, modeCLI, "", []string{"version"}},
+		{"unknown long flag", []string{"--verbose"}, modeHelp, `unknown flag "--verbose"`, nil},
+		{"unknown short flag", []string{"-x"}, modeHelp, `unknown flag "-x"`, nil},
+		{"bare double dash", []string{"--"}, modeHelp, `unknown flag "--"`, nil},
+		{"near miss psn", []string{"-psn"}, modeHelp, `unknown flag "-psn"`, nil},
+		{"command", []string{"list"}, modeCLI, "", nil},
+		{"restart flag first", []string{restartDaemonFlag, "list"}, modeCLI, "", nil},
+		{"keep flag first", []string{keepDaemonFlag, "list"}, modeCLI, "", nil},
+		{"bare restart flag", []string{restartDaemonFlag}, modeCLI, "needs a command", nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			mode, _, err := launchMode(c.args)
-			if mode != c.mode || (err != nil) != c.wantErr {
-				t.Fatalf("launchMode(%q) = %d, %v; want %d, err=%v", c.args, mode, err, c.mode, c.wantErr)
+			mode, cliArgs, err := launchMode(c.args)
+			if mode != c.mode {
+				t.Fatalf("launchMode(%q) mode = %d, want %d (err=%v)", c.args, mode, c.mode, err)
+			}
+			switch {
+			case c.wantErr == "" && err != nil:
+				t.Fatalf("launchMode(%q) unexpected error: %v", c.args, err)
+			case c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)):
+				t.Fatalf("launchMode(%q) error = %v, want it to contain %q", c.args, err, c.wantErr)
+			}
+			if c.wantArgs != nil && !slices.Equal(cliArgs, c.wantArgs) {
+				t.Fatalf("launchMode(%q) cliArgs = %q, want %q", c.args, cliArgs, c.wantArgs)
 			}
 		})
 	}

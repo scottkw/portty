@@ -1,8 +1,10 @@
 // Portty — unified binary: desktop GUI, CLI commands, and daemon mode.
 //
-// Dispatch strategy (locked in STATE.md):
-//   - No args, or first arg starts with "-" (except --help/-h) → GUI
+// Dispatch strategy (D-01 in .planning/phases/16-v1-2-cleanup/16-CONTEXT.md):
+//   - No args, or a macOS launch-services argument (-psn_*, -NS*, -Apple*) → GUI
 //   - --help or -h → print usage and exit
+//   - --version or -v → the version command (never starts the GUI or the daemon)
+//   - Any other leading flag → print the error and usage to stderr, exit 2
 //   - Otherwise → CLI command dispatch
 //
 // Build for production:  wails build
@@ -52,7 +54,13 @@ func main() {
 
 	switch mode, cliArgs, err := launchMode(os.Args[1:]); mode {
 	case modeHelp:
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "portty: %v\n", err)
+		}
 		usage()
+		if err != nil {
+			os.Exit(2)
+		}
 	case modeGUI:
 		runGUI()
 	default:
@@ -71,8 +79,13 @@ const (
 )
 
 // launchMode decides how a process with these arguments (os.Args[1:]) runs.
-// No args, or a leading flag other than help and the CLI daemon flags, is a GUI
-// launch (Finder, Dock, `open` and login items pass none).
+// No args is a GUI launch, as is a leading macOS launch-services argument
+// (-psn_*, -NS*, -Apple*): Finder, the Dock, `open` and login items pass none
+// or only these shapes. --help/-h prints usage, --version/-v is the version
+// command, and the CLI daemon flags typed first run their command. Every other
+// leading flag is a usage error (modeHelp with an error), so a CLI-only call
+// such as `Portty --version` over SSH never starts the GUI (todo
+// 2026-11-23-version-flag-hangs; 16-CONTEXT D-01).
 func launchMode(args []string) (int, []string, error) {
 	if len(args) == 0 || !strings.HasPrefix(args[0], "-") {
 		if len(args) == 0 {
@@ -83,11 +96,18 @@ func launchMode(args []string) (int, []string, error) {
 	switch args[0] {
 	case "--help", "-h":
 		return modeHelp, nil, nil
+	case "--version", "-v":
+		return modeCLI, []string{"version"}, nil
 	case restartDaemonFlag, keepDaemonFlag: // a CLI flag typed before the command, never a GUI launch (WR-04)
 		cliArgs, err := flagFirstArgs(args)
 		return modeCLI, cliArgs, err
 	}
-	return modeGUI, nil, nil
+	for _, p := range []string{"-psn_", "-NS", "-Apple"} {
+		if strings.HasPrefix(args[0], p) {
+			return modeGUI, nil, nil
+		}
+	}
+	return modeHelp, nil, fmt.Errorf("unknown flag %q", args[0])
 }
 
 func runGUI() {

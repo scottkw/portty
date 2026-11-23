@@ -34,7 +34,7 @@ Commands:
   unshare <session>                           Stop sharing a session and disconnect viewers
   open <file>                                 Show an image, PDF or Markdown file in a preview tab
   health                                      Check Tailscale health status
-  version                                     Print the Portty version
+  version                                     Print the Portty version (also --version, -v)
   settings                                    Open the settings panel
   daemon <subcommand>                         Manage the background daemon
     daemon run                                Run daemon in foreground
