@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
-current_phase: 16
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 16 complete — all phases complete
-last_updated: "2026-11-23T20:51:07.297Z"
+last_updated: "2026-11-23T21:51:08.780Z"
 last_activity: 2026-11-23
-last_activity_desc: Phase 16 complete
-state_head: 1e476af0eccd6610a89b58aab7eb773e48bf6d1d
+last_activity_desc: Milestone v1.2 completed and archived
+state_head: e332bcc55437b76abd2b8f36acb42523e3da9d41
 progress:
   total_phases: 8
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 67
   completed_plans: 67
-  percent: 88
+  percent: 100
+current_phase: 16
 ---
 
 # Project State
@@ -24,15 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-23)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** v1.2 milestone close (all 8 phases complete; audit next)
+**Current focus:** Planning next milestone (v1.2 shipped as v1.2.0; v1.2.1 dompurify patch on/after 2026-11-28)
 
 ## Current Position
 
-Phase: 16
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-11-23 - Completed quick task 261123-kcr: unshare requires an 8-character minimum ID prefix like kill/rename (cmd_share.go lookupSessionStrict), with a test
-
+Phase: Milestone v1.2 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-23 — Milestone v1.2 completed and archived
 
 ## Performance Metrics
 
@@ -401,6 +400,13 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 | Category | Item | Status | Deferred At | Milestone |
 |----------|------|--------|-------------|-----------|
+| debug_sessions | dead-viewer-backlog | awaiting_human_verify | 2026-11-23 | v1.2 |
+| debug_sessions | pty-fd-leak | awaiting_human_verify | 2026-11-23 | v1.2 |
+| todos | 2026-11-21-dompurify-3418.md | (presence-only) — v1.2.1 patch on/after 2026-11-28 | 2026-11-23 | v1.2 |
+| todos | 2026-11-21-v12-release-checks.md | (presence-only) | 2026-11-23 | v1.2 |
+| deferred_items | 12/deferred-items.md: From 12-03 (installed portty shadows test fixture; resolved in-text) | acknowledged | 2026-11-23 | v1.2 |
+| deferred_items | 14/deferred-items.md: From 14-01 (Firefox selection-offset copy; resolved in-text at 9b3e6b2a) | acknowledged | 2026-11-23 | v1.2 |
+| deferred_items | 14/deferred-items.md: From 14-08 (pathLinks linkifier reconnect flake) | acknowledged | 2026-11-23 | v1.2 |
 | debug_sessions | long-output-gap-flake | awaiting_human_verify | 2026-11-18 | v1.0 |
 | uat_gaps | 01/01-UAT.md | passed | 2026-11-18 | v1.0 |
 | uat_gaps | 02/02-UAT.md | testing | 2026-11-18 | v1.0 |

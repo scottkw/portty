@@ -1,5 +1,32 @@
 # Milestones
 
+## v1.2 Previews, Remote URLs, Mobile (Shipped: 2026-11-23)
+
+**Phases completed:** 8 phases, 67 plans, 25 tasks
+
+**Delivered:** Upgrading Portty no longer costs a session: the new daemon takes over live shells and history and viewers carry on by themselves. Remote sessions got easier to work in: `portty open` and Cmd-click preview images, PDFs and Markdown; remote `localhost` links open in the normal browser through a consented tailnet proxy; and the share view works on an iPhone (key bar, Home Screen, reconnect after sleep), limited to the host's own Tailscale account. Released as v1.2.0.
+
+**Closeout:** override_closeout. Re-audit tech_debt, 26/26 requirements (UPGR-01..05, INPT-01..06, PREV-01..05, PATH-01..02, URL-01..03, MOB-01..05), 14/14 integration, 7/7 flows; W-2 fixed after the audit (quick 261123-kcr). Phase verifications marked stale only by a TESTING.md note edit after re-verification. dompurify 3.4.18 deferred to v1.2.1 (14-day rule, user decision 2026-11-23). Known verification overrides: 7 newly acknowledged (1 more resolved in place), 25 carried forward from a prior close (see STATE.md Deferred Items).
+
+**Key accomplishments:**
+- A hub can be frozen at a read boundary, exported to gob-able plain data (ring with its end offset, history, modes, wraps, charset state, grid, an emulator seed that carries the main screen behind a full-screen app) and rebuilt as a staged hub whose deltas, renders and continuations equal a reference hub's; viewers can be told 1012 service restart.
+- The INPT-05 flake was caught failing 3 of 20 times in a full-package `-race -count=20` run, at the "running" assertion. Its cause is that the exit watcher had already stopped the PTY-less spy session. The test is now split into a real-PTY running case and a stopped case that waits for the exit watcher. The split passes 200 of 200 runs under -race, and the whole repo passes one `-race -short` run.
+- Every new session gets `PORTTY_SESSION_ID=<its id>` (generated before spawn, required over any inherited value) and `PATH=<configDir>/bin:<daemon PATH>`, where `<configDir>/bin/portty` is an atomically refreshed symlink to this build's resolved executable.
+- `portty open <file>` reads the file in the shell, checks the type by content (or by extension plus content for SVG and Markdown), and posts the bytes, base name, MIME type and a path-derived key to the daemon hosting the session. It never starts or restarts that daemon. Portty ▸ Install Command-Line Tool… links `/usr/local/bin/portty` to this copy through the macOS admin prompt, and never replaces anything already at that path.
+- `portty open`'s file checks now live in the leaf package internal/previewfile (stat, non-blocking open, descriptor re-check, bounded read, type sniff, symlink-resolved key), with every CLI line unchanged, and the preview name cleaner moved to relay as CleanPreviewName.
+- Every new Portty zsh session now reports its working directory with OSC 7 through an embedded `.zshenv` shim the daemon writes atomically and verifies before pointing ZDOTDIR at it, leaving the user's own startup files untouched and in their normal order.
+- The relay hub parses OSC 7 inside the live emulator write and keeps a bounded log of directory changes keyed to absolute output rows, so each retained line resolves to the directory in effect when it was printed, and the log crosses upgrade handoffs.
+- A write-capable viewer's MsgPathClick (0x13 plus the clicked text) now makes the host preview the file in every viewer, focused for the clicker, but only for text the session itself printed as a whole token, resolved against the directory in effect at the row it was printed, through `previewfile.Open`.
+- Browser and peer viewers with a write capability can now Cmd-click printed paths through the share server's read pump, a read-only capability's click reaches nothing, the daemon reports API 4, and 12-SECURITY-REVIEW.md records the PREV-03 amendment and its argument.
+- Every TerminalPanel (local tab, peer tab, browser viewer) now underlines path-like text under a held Cmd/Ctrl and sends a modifier-click to the host as one 0x13 frame on the session's own socket, but only after the host's replay meta said path clicks are available; a refused type or size shows a fixed 5-second notice in the clicking pane.
+- Absolute output rows stay monotonic across ED 3 (History.Skip counts the dropped emulator scrollback), the first Cmd-click after leave-and-return to a changed cell works (mouseleave calls invalidate), and the real-Linkifier tests wait on events instead of sleeps.
+- A peer tab that already saw the session-ended close now remembers it on the Tab (`sessionEnded`), and `peerConnectVerdict` maps a later `no_such_session` to `ended` instead of `share-stopped`, so clicking the tab again shows "Session ended" rather than "stopped sharing".
+- ED 3 inside the alternate screen no longer double-counts main-screen scrollback (path-click rows), plus the IN-02/IN-06 tidy-ups, the unused PathClickAPI constant removed, and 30 s timeouts on two load-sensitive vitest cases.
+- SUMMARY frontmatter `requirements-completed` now covers INPT-01..06, PREV-01..05 and MOB-01..05 for the audit's summary-extract reader, each backed by a passed VERIFICATION.md, and the selection-offset todo records its 7a37bfb4 triage.
+- TESTING.md records Phase 16 (Section 2 note, PATH-02 row fixed, Category BG with M-156), IN-02/IN-03/IN-06 are marked fixed, the full Go `-race` and vitest suites passed once and clean (14 of 14 packages, 1826 of 1826 tests), and the three fixed todos are in completed.
+
+---
+
 ## v1.1 Hardening (Shipped: 2026-11-19)
 
 **Phases completed:** 2 phases (7 Hardening, 8 Debt Cleanup), 11 plans

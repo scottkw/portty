@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: "go test -race -count=20 ./internal/daemon/ held 1,059 /dev/ptmx fds in one daemon.test process until kern.tty.ptmx_max (511) was exhausted; later tests failed with `open pty: device not configured`. Is the PTY fd leak in the product (internal/pty, engine, Phase 9 dup/adopt) or only in the tests?"
 created: 2026-11-20T20:00:00Z
 updated: 2026-11-20T21:25:00Z
+audit_acknowledged:
+  milestone: v1.2
+  at: 2026-11-23
+  status: awaiting_human_verify
 ---
 
 ## Current Focus

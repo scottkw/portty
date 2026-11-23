@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: "go test -race -count=10 -run '^TestShare_DeadViewerReapedBacklogDelivered$' ./internal/webserver/ fails 4 of 10 on gsd/v1.2 (a4a81f1e): input_queue_test.go:175: input idle at the reap, want the backlog still queued behind the blocked PTY. Is a reaped viewer's queued paste discarded (product bug, INPT-01) or is it a test race?"
 created: 2026-11-21T00:00:00Z
 updated: 2026-11-21T16:40:00Z
+audit_acknowledged:
+  milestone: v1.2
+  at: 2026-11-23
+  status: awaiting_human_verify
 ---
 
 ## Current Focus
