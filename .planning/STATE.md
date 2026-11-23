@@ -4,17 +4,17 @@ milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
 current_phase: 16
 current_phase_name: v1.2 Cleanup
-status: completed
-stopped_at: Phase 15 complete; v1.2 re-audited (tech_debt); Phase 16 v1.2 Cleanup added — next /gsd-autonomous --from 16
-last_updated: "2026-11-23T19:04:42.212Z"
+status: executing
+stopped_at: Completed 16-01-PLAN.md
+last_updated: "2026-11-23T19:09:26.136Z"
 last_activity: 2026-11-23
-last_activity_desc: Phase 15 complete
-state_head: cc595307517b08596a5b0e16dd3a94f631508c93
+last_activity_desc: Phase 16 execution started
+state_head: e6ec405049b585500b13dc9e4776f0a316826b21
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 67
-  completed_plans: 63
+  completed_plans: 64
   percent: 88
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-18)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 15 — v1.2 Hardening
+**Current focus:** Phase 16 — v1.2 Cleanup
 
 ## Current Position
 
-Phase: 16 (v1.2 Cleanup) — READY TO EXECUTE
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-11-23 — Phase 15 complete
+Phase: 16 (v1.2 Cleanup) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-11-23 — Phase 16 execution started
 
 
 ## Performance Metrics
@@ -149,6 +149,7 @@ Last activity: 2026-11-23 — Phase 15 complete
 | Phase 15 P06 | ~15min | 2 tasks | 6 files |
 | Phase 15 P08 | 15 min | 2 tasks | 4 files |
 | Phase 15 P09 | 50min | 3 tasks | 10 files |
+| Phase 16 P01 | 15 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -336,6 +337,8 @@ Recent decisions affecting current work:
 - [Phase 15]: 15-08: takeover pid check uses its own seam takeoverPeerPID (never peerPID); a LOCAL_PEERPID lookup error refuses, never trusts HELLO-OK
 - [Phase 15]: 15-08: fdpass.rightsFromOOB walks control messages one at a time and never closes; Recv's close loop frees each fd once
 - [Phase 15]: 15-09: Phase 15 adds no test files; TESTING.md counts stay 174/122/10/1 = 307; Category BF M-152..M-155 recorded as not yet run (M-155 is a ship blocker until it passes in the VM)
+- [Phase 16]: D-01: unknown leading flags exit 2 with usage; GUI allowlist is exactly -psn_*, -NS*, -Apple*; --version/-v map to the version command
+- [Phase 16]: kill and rename resolve their session argument with lookupSession (name, ID, unique prefix); ambiguous names touch nothing
 
 ### Pending Todos
 
@@ -444,9 +447,9 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-23T17:27:36.217Z
-Stopped at: Phase 15 complete; v1.2 re-audited (tech_debt); Phase 16 v1.2 Cleanup added — next /gsd-autonomous --from 16
-Resume file: .planning/v1.2-MILESTONE-AUDIT.md
+Last session: 2026-11-23T19:09:25.148Z
+Stopped at: Completed 16-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
