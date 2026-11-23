@@ -360,6 +360,17 @@ func TestCwd_ScrollbackEraseKeepsRows(t *testing.T) {
 	wantCwd(t, h, "docs-z", "/proj")
 }
 
+// ED 3 while the alternate screen is active leaves the main screen's scrollback
+// in place, so it must not be counted as dropped (15-REVIEW IN-03).
+func TestCwd_AltScreenScrollbackEraseKeepsRows(t *testing.T) {
+	h := cwdHub(t, 80, 10)
+	feedHubs(osc7("/a")+"MARK-A\r\n"+fillerLines(3)+osc7("/b")+"MARK-B\r\n"+fillerLines(12)+
+		"\x1b[?1049h"+"\x1b[3J"+"\x1b[?1049l"+"AFTER\r\n", 4096, h)
+	wantCwd(t, h, "MARK-A", "/a")
+	wantCwd(t, h, "MARK-B", "/b")
+	wantCwd(t, h, "AFTER", "/b")
+}
+
 func TestCwd_HistoryTrimKeepsFloor(t *testing.T) {
 	h := cwdHub(t, 80, 24)
 	h.history = NewHistory(50, HistoryMaxBytes)

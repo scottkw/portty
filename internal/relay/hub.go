@@ -1301,8 +1301,14 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 			// vt's own ED 3 handler runs after this one and drops exactly these
 			// undrained lines; counting them keeps output after a `clear` from
 			// reusing rows older cwd records cover (F-1, todo
-			// 2026-11-22-row0-relative-path-start-dir).
-			h.history.Skip(emu.ScrollbackLen())
+			// 2026-11-22-row0-relative-path-start-dir). vt's ED 3 clears the
+			// current screen's scrollback, while ScrollbackLen is always the main
+			// screen's, so with the alternate screen active nothing of the main
+			// screen is dropped and counting it would push rows past their real
+			// values (15-REVIEW IN-03).
+			if !emu.IsAltScreen() {
+				h.history.Skip(emu.ScrollbackLen())
+			}
 			h.wraps.clear()
 		}
 		// IN-02: ED 0 from home and ED 1 erase row 0's start without a
