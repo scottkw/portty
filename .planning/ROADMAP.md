@@ -221,7 +221,7 @@ Plans:
   7. Flaky tests are made deterministic without loosening product behaviour: pathLinks.linkifier "after a reconnect…" and TestShare_PasteBacklogKeepsViewer. The full Go and vitest suites pass once, clean.
   8. Each fixed todo moves to .planning/todos/completed/, and TESTING.md is updated per the standing rule.
 **Depends on:** Phase 14
-**Plans:** 6/9 plans executed
+**Plans:** 7/9 plans executed
 
 Plans:
 **Wave 1**
@@ -233,7 +233,7 @@ Plans:
 - [x] 15-07-PLAN.md — A refused share port reads as reachable with nothing shared; a timeout stays "Can't reach this Mac"; no grace (SC2)
 
 **Wave 2** *(15-06 blocked on 15-05: App.tsx; 15-08 blocked on 15-03: handoff.go)*
-- [ ] 15-06-PLAN.md — Clicking the update notification shows Portty with the available banner and starts no download (native delegate, Go handler, React un-dismiss; live click is M-152) (SC5)
+- [x] 15-06-PLAN.md — Clicking the update notification shows Portty with the available banner and starts no download (native delegate, Go handler, React un-dismiss; live click is M-152) (SC5)
 - [ ] 15-08-PLAN.md — Takeover refuses a HELLO-OK pid the kernel does not confirm (O-6) and fdpass.Recv frees fds from unparsed control messages (O-1); daemon and fdpass packages pass once (SC4)
 
 **Wave 3** *(blocked on Waves 1-2)*
