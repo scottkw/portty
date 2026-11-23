@@ -680,6 +680,31 @@ func TestHandoff_HappyPath(t *testing.T) {
 	}
 }
 
+// A socket inherited from a pre-fix daemon (0755) is tightened to 0600 once
+// the takeover commits (Phase 9 audit O-2, post-COMMIT best effort).
+func TestHandoff_TightensSocketMode(t *testing.T) {
+	s := newHandoffScene(t, tickScript(false))
+	if fi, err := os.Stat(s.socket); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("scene socket before = %v, %v; want 0600", fi, err)
+	}
+	if err := os.Chmod(s.socket, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, code := s.takeover(BuildVersion); code != takeoverCommitted {
+		t.Fatalf("runTakeover = %d, want committed (events %v)", code, s.events)
+	}
+	s.waitExit(s.oldExits, "old daemon", 0)
+
+	fi, err := os.Stat(s.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o600 {
+		t.Errorf("socket mode after the takeover = %o, want 600", got)
+	}
+}
+
 // W5: a viewer that never answers the close handshake delays the old
 // daemon's exit by the restart drain, no more.
 func TestHandoff_RestartDrainBounded(t *testing.T) {

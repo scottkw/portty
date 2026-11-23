@@ -837,9 +837,10 @@ type importedSession struct {
 // takeover is runTakeover's state: everything received, so that a failure
 // before COMMIT can give it all back.
 type takeover struct {
-	a      *API
-	c      *net.UnixConn
-	oldPID int
+	a          *API
+	c          *net.UnixConn
+	oldPID     int
+	socketPath string
 
 	health webserver.TailscaleHealth
 	certOK bool
@@ -861,7 +862,7 @@ type takeover struct {
 // runs the serve loop (serveDaemon). On any other code everything received
 // was closed and the old daemon keeps serving.
 func runTakeover(ctx context.Context, d takeoverDeps) int {
-	t := &takeover{a: d.api}
+	t := &takeover{a: d.api, socketPath: d.socketPath}
 	// W4: before HELLO, so outside the freeze and the old side's READY timer.
 	t.warmCert(ctx)
 
@@ -1324,6 +1325,7 @@ func (t *takeover) commit(withCommitted bool) int {
 		}
 	}
 	_ = t.c.Close()
+	tightenSocketMode(t.socketPath)
 	log.Printf("handoff: committed: serving %d sessions handed over by pid %d", len(t.sessions), t.oldPID)
 	return takeoverCommitted
 }

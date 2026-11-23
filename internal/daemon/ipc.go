@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"time"
@@ -24,6 +25,15 @@ func listenDaemonSocket(path string) (net.Listener, error) {
 		return nil, fmt.Errorf("daemon socket: set mode %o on %s: %w", daemonSocketMode, path, err)
 	}
 	return ln, nil
+}
+
+// tightenSocketMode sets a received socket to daemonSocketMode: one inherited
+// from a pre-fix daemon keeps its old mode. It runs after COMMIT, so a failure
+// is only logged and never costs the moved sessions.
+func tightenSocketMode(path string) {
+	if err := os.Chmod(path, daemonSocketMode); err != nil {
+		log.Printf("handoff: could not set the daemon socket to %o: %v", daemonSocketMode, err)
+	}
 }
 
 func dialDaemonSocket(ctx context.Context, path string) (net.Conn, error) {
