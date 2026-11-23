@@ -20,8 +20,44 @@ async function inputHex(page: Page): Promise<string> {
 test.describe('Phase 14-10 — key bar on an iPhone (MOB-01)', () => {
   test.beforeEach(async ({ page }) => { await openShare(page) })
 
+  // tap() in WebKit's iPhone emulation dispatches pointerdown (and a click with detail 1), so no
+  // synthetic pointerdown fallback is needed. Each hex is exact: one tap sends once.
+  const key = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
+  const expectHex = (page: Page, hex: string) => expect.poll(() => inputHex(page), { timeout: 2_000 }).toBe(hex)
+
   test('tapping Esc reaches the shell as 1b', async ({ page }) => {
-    await page.getByRole('button', { name: 'Esc', exact: true }).tap()
-    await expect.poll(() => inputHex(page), { timeout: 2_000 }).toContain('1b')
+    await key(page, 'Esc').tap()
+    await expectHex(page, '1b')
+  })
+
+  test('Tab sends 09', async ({ page }) => {
+    await key(page, 'Tab').tap()
+    await expectHex(page, '09')
+  })
+
+  test('the pipe key sends 7c', async ({ page }) => {
+    await key(page, 'Vertical bar').tap()
+    await expectHex(page, '7c')
+  })
+
+  test('Up sends 1b5b41', async ({ page }) => {
+    await key(page, 'Up arrow').tap()
+    await expectHex(page, '1b5b41')
+  })
+
+  test('Ctrl then Up sends 1b5b313b3541 and Ctrl releases', async ({ page }) => {
+    await key(page, 'Ctrl').tap()
+    await expect(key(page, 'Ctrl')).toHaveAttribute('aria-pressed', 'true')
+    await key(page, 'Up arrow').tap()
+    await expectHex(page, '1b5b313b3541')
+    await expect(key(page, 'Ctrl')).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  test('Ctrl then typing c on the keyboard sends 03 and Ctrl releases', async ({ page }) => {
+    await key(page, 'Ctrl').tap()
+    await page.locator('.xterm-helper-textarea').focus()
+    await page.keyboard.type('c')
+    await expectHex(page, '03')
+    await expect(key(page, 'Ctrl')).toHaveAttribute('aria-pressed', 'false')
   })
 })

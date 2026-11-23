@@ -107,6 +107,8 @@ function App(): React.ReactElement {
   const [webOtherUser, setWebOtherUser] = useState(false)
   // Host label from the cap-verified session info, for the stopped-sharing banner.
   const [webHost, setWebHost] = useState('')
+  // Portty 14-10: the web viewer's capability has write (from /info perms); undefined until known or when the call failed.
+  const [webCanWrite, setWebCanWrite] = useState<boolean | undefined>(undefined)
   // NAV-03: both modes start with no tabs. Desktop init restores running
   // sessions as tabs; web mode opens the ?session= view (effect below).
   const [tabs, setTabs] = useState<Tab[]>([])
@@ -957,8 +959,9 @@ function App(): React.ReactElement {
           return
         }
         if (res.ok) {
-          const info = await res.json().catch(() => null) as { hostname?: unknown } | null
+          const info = await res.json().catch(() => null) as { hostname?: unknown; perms?: unknown } | null
           if (!cancelled && typeof info?.hostname === 'string') setWebHost(info.hostname)
+          if (!cancelled && typeof info?.perms === 'string') setWebCanWrite(info.perms.split(',').includes('write'))
         }
         if (!cancelled) openWebSessionTab(sessionId)
       })
@@ -1344,6 +1347,7 @@ function App(): React.ReactElement {
                 onReconnectingChange={peerHost ? (on) => setReconnectingHost((h) => (on ? peerHost : h === peerHost ? null : h)) : undefined}
                 snapshotHost={peerHost && activeWebTab ? peerSnapshotHost(activeWebTab) : undefined}
                 isActive={!activePreview}
+                canWrite={mode === 'web' ? webCanWrite : undefined}
                 onPreview={(ev) => handlePreview(sessionTabId, ev)}
               />
               </ErrorBoundary>

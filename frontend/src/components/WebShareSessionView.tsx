@@ -73,6 +73,8 @@ export interface WebShareSessionViewProps {
   onPreview?: (event: PreviewEvent) => void
   /** Phase 11: false while App keeps this view mounted but hidden behind one of its previews. Default true. */
   isActive?: boolean
+  /** Portty 14-10: false when the capability has no write (no key bar); undefined (info call failed) shows it, the server still drops the input. */
+  canWrite?: boolean
 }
 
 // Review it3 IN-02: AbortSignal.timeout is missing before Safari 16 / Chrome 103, and
@@ -113,6 +115,7 @@ export function WebShareSessionView({
   snapshotHost,
   onPreview,
   isActive = true,
+  canWrite,
 }: WebShareSessionViewProps): React.ReactElement {
   // FIX-03 (plan 09) RC-A transport switch. When true, the terminal routes
   // through the daemon proxy (remote:true, wsURL undefined).
@@ -125,7 +128,7 @@ export function WebShareSessionView({
   const [ctrlArmed, setCtrlArmedState] = useState(false)
   const setCtrl = (armed: boolean) => { ctrlRef.current = armed; setCtrlArmedState(armed) }
   const phone = usePhone()
-  const showKeyBar = !useProxy && phone && isActive
+  const showKeyBar = !useProxy && phone && isActive && canWrite !== false
   // A typed character gets the armed Ctrl once; a character with no control code goes as typed.
   const inputTransform = (data: string): string => {
     if (!ctrlRef.current) return data
