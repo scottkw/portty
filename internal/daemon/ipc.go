@@ -15,8 +15,10 @@ const daemonSocketMode os.FileMode = 0o600
 
 // listenDaemonSocket binds the socket and then chmods it to 0600. The brief
 // bind-to-chmod window is fenced by the 0700 parent directory that
-// DefaultSocketPath enforces (no other user can traverse to the inode), and
-// the daemon also checks the peer UID. It deliberately does not touch the
+// DefaultSocketPath enforces (no other user can traverse to the inode); the
+// control socket itself has no peer-UID check (only the handoff socket does),
+// so a custom socket path in a looser directory gets no such fence. It
+// deliberately does not touch the
 // process-wide umask: the daemon forks shells and creates files on other
 // goroutines, and a changed umask would leak into them.
 func listenDaemonSocket(path string) (net.Listener, error) {
