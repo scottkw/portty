@@ -5,6 +5,9 @@ import { TerminalPanel } from './TerminalPanel'
 import type { ReconnectVerdict } from '../lib/relayClient'
 import type { PreviewEvent } from '../lib/previewAssembler'
 import { shareInfoVerdict } from '../lib/closeReasons'
+import { KeyBar } from './KeyBar'
+import { ctrlByte } from '../lib/ctrlMap'
+import { usePhone } from '../lib/phoneQuery'
 import { DEFAULT_TERMINAL_FONT_SIZE, parseTerminalFont, terminalFontFamily } from '../lib/terminalFont'
 
 type PluginSettings = daemon.PluginSettings
@@ -115,6 +118,24 @@ export function WebShareSessionView({
   // through the daemon proxy (remote:true, wsURL undefined).
   const useProxy = remote === true
 
+  // Portty 14-10 (MOB-01): the phone key bar and its one-shot Ctrl. The ref is what the input
+  // transform reads (it runs inside xterm's onData, outside React's render); the state drives the key.
+  const keyInputRef = useRef<{ send(seq: string): void; applicationCursor(): boolean } | null>(null)
+  const ctrlRef = useRef(false)
+  const [ctrlArmed, setCtrlArmedState] = useState(false)
+  const setCtrl = (armed: boolean) => { ctrlRef.current = armed; setCtrlArmedState(armed) }
+  const phone = usePhone()
+  const showKeyBar = !useProxy && phone && isActive
+  // A typed character gets the armed Ctrl once; a character with no control code goes as typed.
+  const inputTransform = (data: string): string => {
+    if (!ctrlRef.current) return data
+    setCtrl(false)
+    return ctrlByte(data) ?? data
+  }
+  // Ctrl never outlives its view: unmount, or a preview taking focus.
+  useEffect(() => { if (!isActive) setCtrl(false) }, [isActive])
+  useEffect(() => () => { ctrlRef.current = false }, [])
+
   // Phase 168 FIX-01/FIX-03 — baseURL seam. Defaults to window.location.origin
   // (today's native web-share guest behavior, unchanged). FIX-03 (plan 03)
   // passes a different peer's origin for in-app remote-peer tabs; apiBaseURL
@@ -223,7 +244,17 @@ export function WebShareSessionView({
         onReconnectingChange={onReconnectingChange}
         snapshotHost={snapshotHost}
         onPreview={onPreview}
+        keyInputRef={keyInputRef}
+        inputTransform={inputTransform}
       />
+      {showKeyBar && (
+        <KeyBar
+          send={(seq) => keyInputRef.current?.send(seq)}
+          applicationCursor={() => keyInputRef.current?.applicationCursor() ?? false}
+          ctrlArmed={ctrlArmed}
+          onCtrlChange={setCtrl}
+        />
+      )}
     </div>
   )
 }

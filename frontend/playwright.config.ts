@@ -32,14 +32,23 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      testIgnore: /mobile-.*\.spec\.ts$/,
     },
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
+      testIgnore: /mobile-.*\.spec\.ts$/,
     },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+      testIgnore: /mobile-.*\.spec\.ts$/,
+    },
+    // Phase 14 (MOB-01): the phone key bar needs a coarse, hover-less pointer: WebKit's iPhone profile.
+    {
+      name: 'iphone',
+      use: { ...devices['iPhone 15'] },
+      testMatch: /mobile-.*\.spec\.ts$/,
     },
   ],
 })

@@ -157,6 +157,10 @@ interface TerminalPanelProps {
   snapshotHost?: string
   /** Phase 11: this panel's preview events (one assembler per RelayClient); unmount fails an in-flight one. */
   onPreview?: (event: PreviewEvent) => void
+  /** Portty 14-10 (MOB-01): filled with the key bar's seam while mounted: send(seq) is term.input(seq, true) (a no-op under disableStdin, as typing is). */
+  keyInputRef?: React.MutableRefObject<{ send(seq: string): void; applicationCursor(): boolean } | null>
+  /** Portty 14-10: applied to typed and key-bar data before it goes to the relay (an armed Ctrl). */
+  inputTransform?: (data: string) => string
 }
 
 /**
@@ -188,6 +192,8 @@ export function TerminalPanel({
   onReconnectingChange,
   snapshotHost,
   onPreview,
+  keyInputRef,
+  inputTransform,
 }: TerminalPanelProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   // The relay onClose closure is built once at mount; read the latest callback through a ref.
@@ -201,6 +207,8 @@ export function TerminalPanel({
   onReconnectingChangeRef.current = onReconnectingChange
   const onPreviewRef = useRef(onPreview)
   onPreviewRef.current = onPreview
+  const inputTransformRef = useRef(inputTransform)
+  inputTransformRef.current = inputTransform
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   // POL-04: deferred theme ref — stashes the theme when the panel is hidden (isActive=false)
@@ -569,6 +577,12 @@ export function TerminalPanel({
 
     termRef.current = term
     fitAddonRef.current = fitAddon
+    if (keyInputRef) {
+      keyInputRef.current = {
+        send: (seq) => term.input(seq, true),
+        applicationCursor: () => term.modes.applicationCursorKeysMode,
+      }
+    }
 
     // Phase 157 VIEW-04: compute isGuest from props captured in this effect
     // closure (same lifetime as the relay connection — one RelayClient per session).
@@ -689,7 +703,7 @@ export function TerminalPanel({
       // Wire terminal input to relay (TERM-05: paste support via terminal.onData).
       // INPT-06: xterm's own resizes are not sent: in follow mode they are the
       // server's grid, and reports carry measureFit's result (reportFit).
-      const disposeData = term.onData((data) => client.sendInput(data))
+      const disposeData = term.onData((data) => client.sendInput(inputTransformRef.current ? inputTransformRef.current(data) : data))
       live = { client, disposeData, preview }
     }
     const pendingSave = snapSerializer ? awaitPeerSave(snapKey) : null
@@ -804,6 +818,7 @@ export function TerminalPanel({
       termRef.current = null
       fitAddonRef.current = null
       clientRef.current = null
+      if (keyInputRef) keyInputRef.current = null
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // onFontSizeChange + pluginConfig?.unicode11 intentionally omitted: mount
