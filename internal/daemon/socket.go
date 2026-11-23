@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -10,14 +11,19 @@ import (
 
 // DefaultSocketPath returns the Unix socket path for the Portty daemon:
 // daemon.sock in os.UserConfigDir()/portty (~/Library/Application Support/portty
-// on macOS). The parent directory is created 0700 if it does not already exist.
+// on macOS). The parent directory is created 0700, and an existing one is
+// tightened to 0700 (MkdirAll leaves a looser mode alone).
 func DefaultSocketPath() string {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		base = os.TempDir()
 	}
 	dir := filepath.Join(base, "portty")
-	_ = os.MkdirAll(dir, 0700)
+	if err := os.MkdirAll(dir, 0700); err == nil {
+		if err := os.Chmod(dir, 0700); err != nil {
+			log.Printf("daemon: could not set %s to 0700: %v", dir, err)
+		}
+	}
 	return filepath.Join(dir, "daemon.sock")
 }
 

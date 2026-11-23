@@ -6,20 +6,32 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
+	"syscall"
 	"time"
 )
 
 // daemonSocketMode is the mode of the daemon control socket: it is private to
 // its user (write access to every shell). The 0700 parent directory is the
-// second fence.
+// second fence (DefaultSocketPath tightens it).
 const daemonSocketMode os.FileMode = 0o600
 
+// umaskMu serialises the process-wide umask change around the bind.
+var umaskMu sync.Mutex
+
 func listenDaemonSocket(path string) (net.Listener, error) {
+	// Bind under a 0177 umask so the socket inode is created 0600, not
+	// 0777&^umask: there is no window in which it is wider. The umask is
+	// restored before anything else runs, on the error path too.
+	umaskMu.Lock()
+	old := syscall.Umask(0o177)
 	ln, err := net.Listen("unix", path)
+	syscall.Umask(old)
+	umaskMu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	// Never serve on a wider mode: a failed chmod fails the start.
+	// Belt and braces: never serve on a wider mode; a failed chmod fails the start.
 	if err := os.Chmod(path, daemonSocketMode); err != nil {
 		ln.Close()
 		return nil, fmt.Errorf("daemon socket: set mode %o on %s: %w", daemonSocketMode, path, err)
