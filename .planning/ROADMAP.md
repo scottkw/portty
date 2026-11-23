@@ -252,7 +252,13 @@ Plans:
   5. Planning hygiene: SUMMARY `requirements-completed` lists cover INPT-01..06 (Phase 10), PREV-02/PREV-04 (Phase 11) and MOB-01..05 (Phase 14); `/gsd-secure-phase 11` produces 11-SECURITY.md; the selection-offset-and-copy todo is triaged (fixed here or explicitly carried to v1.3 with a reason).
   6. The full Go -race and vitest suites pass once, clean; fixed todos move to completed; TESTING.md is updated per the standing rule.
 **Depends on:** Phase 15
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 16 to break down)
+**Wave 1**
+- [ ] 16-01-PLAN.md — Wave 1: CLI: `--version`/`-v` run the version command, unknown leading flags print error plus usage and exit 2 with the `-psn_`/`-NS`/`-Apple` GUI allowlist (D-01, TestLaunchMode per shape, built-binary check); `portty kill`/`rename` resolve names via lookupSession (SC1, SC2)
+- [ ] 16-02-PLAN.md — Wave 1: Review items and tests: IN-03 IsAltScreen guard with a red-first cwd_test case, IN-02 merged killSession branch plus the IN-01 sentence, IN-06 dialResumePing, PathClickAPI removed, 30 s per-test timeouts on the two DoS-bound vitest cases (SC3, SC4)
+- [ ] 16-03-PLAN.md — Wave 1: Planning hygiene: SUMMARY `requirements-completed` for INPT-01..06, PREV-02/PREV-04 and MOB-01..05 read back through summary-extract; selection-offset todo triage recorded (SC5)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 16-04-PLAN.md — Wave 2: TESTING.md (Section 2 note, PATH-02 row, Category BG M-156), IN-02/03/06 dispositions, one clean full Go -race and vitest run, three todos to completed (SC4, SC6); orchestrator then runs `/gsd-secure-phase 11` (SC5)

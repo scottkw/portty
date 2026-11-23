@@ -2,17 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
-current_phase: 15
+current_phase: 16
+current_phase_name: v1.2 Cleanup
 status: completed
 stopped_at: Phase 15 complete; v1.2 re-audited (tech_debt); Phase 16 v1.2 Cleanup added — next /gsd-autonomous --from 16
-last_updated: "2026-11-23T17:27:36.392Z"
+last_updated: "2026-11-23T19:04:42.212Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 15 complete
-state_head: cd5ddf1fdd887f00e9424613d55db63c35595985
+state_head: cc595307517b08596a5b0e16dd3a94f631508c93
 progress:
   total_phases: 8
   completed_phases: 7
-  total_plans: 63
+  total_plans: 67
   completed_plans: 63
   percent: 88
 ---
@@ -28,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 
 ## Current Position
 
-Phase: 15
+Phase: 16 (v1.2 Cleanup) — READY TO EXECUTE
 Plan: Not started
 Status: All phases complete
 Last activity: 2026-11-23 — Phase 15 complete
