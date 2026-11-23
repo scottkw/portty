@@ -20,3 +20,4 @@ One row per finding from the final review (iteration 3), plus the warnings fixed
 | IN-04: non-Portty tailnet peers refusing the share port read as "Nothing shared" | info | accepted | Known limit of 15-07 decision; sidebar only lists probe-marked Portty peers |
 | IN-05: notification delegate registered after launch; cold-launch click unproven | info | open | Covered by TESTING.md M-152 (must include the relaunch step) at /gsd-verify-work |
 | IN-06: `joinPasteViewer` copies `dialResume` | info | open | Test-helper duplication only |
+| IN-07: TestHandoffIT compares B's /health API with the test binary's APIVersion (same-commit assumption) | info | accepted | M-114/M-155 build A, B and the test binary from one commit by procedure |

@@ -1,8 +1,8 @@
 ---
 phase: 15-v1-2-hardening
-reviewed: 2026-11-23T17:05:00Z
+reviewed: 2026-11-23T18:00:00Z
 depth: standard
-files_reviewed: 46
+files_reviewed: 47
 files_reviewed_list:
   - TESTING.md
   - app_update.go
@@ -26,6 +26,7 @@ files_reviewed_list:
   - internal/attach/attach_unix.go
   - internal/daemon/engine.go
   - internal/daemon/handoff.go
+  - internal/daemon/handoff_it_test.go
   - internal/daemon/handoff_test.go
   - internal/daemon/ipc.go
   - internal/daemon/socket.go
@@ -53,8 +54,8 @@ files_reviewed_list:
   - tray_objc_darwin.m
 findings:
   critical: 0
-  warning: 1
-  info: 6
+  warning: 0
+  info: 7
   total: 7
   necessity: 0
 status: issues_found
@@ -62,43 +63,28 @@ status: issues_found
 
 # Phase 15: Code Review Report
 
-**Reviewed:** 2026-11-23T17:05:00Z
+**Reviewed:** 2026-11-23T18:00:00Z
 **Depth:** standard
-**Files Reviewed:** 46
+**Files Reviewed:** 47
 **Status:** issues_found
 
 ## Summary
 
-Iteration 3 (final) of the `--auto` loop. `git diff --stat cc7e67fb~1 HEAD` outside `.planning` shows only `internal/daemon/ipc.go` and `internal/daemon/socket_test.go` changed, so the other 44 files keep their earlier assessment. The necessity reference was not re-read because no new code outside the fix was assessed; no necessity findings.
+Iteration 4 (incremental). Scope since 6d95ea64: 9a277a74 (comment-only fix in `internal/daemon/ipc.go`), 1c8d3a09 (`TestHandoffIT` compares `/health` API with `APIVersion`), and 7ca43451 (`peerConnectVerdict` maps `not_sharing` to `ended` after a session-ended close). The other files keep their earlier assessment. The necessity reference was not re-read; no necessity findings.
 
-**Verification of cc7e67fb**
-- The process-wide umask is gone. `grep` finds no `syscall.Umask` or `umaskMu` anywhere in the repo. The previous WR-01 (umask leaking into forked shells and concurrent `Mkdir` calls) is resolved.
-- `listenDaemonSocket` is `net.Listen`, then `os.Chmod(0600)`. A failed chmod closes the listener and fails the start, so the socket is never served wider than 0600. This matches the old behaviour, and the only caller is `API.Start` (`api.go:319`).
-- `DefaultSocketPath` creates the config dir 0700 and tightens an existing one (`socket.go:16-28`). On the production path that closes the bind-to-chmod window, because another user cannot traverse to the inode.
-- `go vet ./internal/daemon` is clean. `TestListenDaemonSocket_Mode0600`, `TestDefaultSocketPath_TightensExistingDir`, `TestSocketPath*` and `TestTestMain_IsolatesConfigDir` pass with `GOTOOLCHAIN=go1.26.11`. Removing `TestListenDaemonSocket_RestoresUmask` was correct, since it tested code that no longer exists.
-- One claim in the new comment does not hold (WR-01 below). It does not change runtime behaviour, but it misstates the security model.
+**Verification of 7ca43451**
+- Could `ended` now wrongly show for a live session that was unshared after an earlier ended close? No. `sawEnded` is `!!activeWebTab?.sessionEnded` (`App.tsx:1363`). The only writer is `markPeerSessionEnded` (`App.tsx:1053-1056`), keyed by `peerSnapshotHost` and session id, so it is per tab and per session. It fires only on the guest's session-ended close, which the relay sends from the write pump on `hub.Done` (`internal/relay/pong.go:77`); share-off sends `share stopped` instead (`daemon/share.go:353,370`, `webserver/server.go:987`). A session whose hub is done cannot come back under the same id, so for that tab "not shared now" and "gone" are the same fact, and a later `not_sharing` (409, `peer_connect.go:169-171`, either an empty share list or ECONNREFUSED) adds no information. The old behaviour was the bug M-154 reproduced.
+- A host that is down or asleep returns `unreachable` (502) or times out, not `not_sharing`, and `unreachable` still retries after the ended close (tested). ECONNREFUSED on a live host that merely stopped its share server maps to `not_sharing`, which is the M-154 case.
+- `forbidden` stays `share-stopped`. That is a deliberate access answer (different tailnet account or revoked), and a tab that ended and is now forbidden showing "stopped sharing" is acceptable.
+- Tests: `closeReasons.test.ts` covers `no_such_session` and `not_sharing` with `sawEnded` true, `forbidden` and `unreachable` unchanged with it true, and the no-flag mapping for `not_sharing`, `no_such_session`, `forbidden`. `App.open-remote.test.tsx` drives the real `reconnectPeerTab` through the stub for `no_such_session`, `not_sharing` and `forbidden` after `fire-session-ended`, and keeps the no-flag `it.each` (still `share-stopped`). The two layers agree. Both files pass (72 tests, vitest 4.1.0). The comment block on `peerConnectVerdict` was updated with the change and is accurate. The CLI counterpart `peerVerdict` (`cmd_attach.go:236`) is unaffected: a session-ended close is terminal there and does not redial.
 
-No Critical findings. IN-01 to IN-06 are carried forward unchanged from the previous review.
+**Verification of 1c8d3a09 and 9a277a74**
+- `APIVersion` is `5` (`types.go:64`); the stale literal `2` is gone and the failure message now prints the expected value. The test is env-gated and skipped here; `go vet ./internal/daemon` is clean. See IN-07 for what the change gives up.
+- The `ipc.go` comment now states that the control socket has no peer-UID check and that a custom path in a looser directory gets no 0700 fence. That resolves the accuracy half of the previous WR-01.
 
-## Warnings
+**Resolved: WR-01 (iteration 3)**, the `listenDaemonSocket` comment citing a non-existent peer-UID check. Fixed in 9a277a74. The optional parent-directory enforcement in `Start` was not adopted; the comment now documents the limit honestly and the production path is covered by `DefaultSocketPath`, so no open finding remains.
 
-### WR-01: The `listenDaemonSocket` comment cites a peer-UID check that does not exist on the control socket, and the 0700 fence is assumed rather than enforced
-
-**File:** `internal/daemon/ipc.go:16-21` (comment), `internal/daemon/api.go:313-324` (`Start`), `internal/daemon/socket.go:21-26`
-**Issue:** The comment, and the commit message of cc7e67fb, say the bind-to-chmod window is fenced by the 0700 parent directory "and the daemon also checks the peer UID". The only `peerUID` use is in `serveHandoff` (`handoff.go:465`), which guards the takeover handshake. The control socket is served by plain `http.Serve(ln, a.handler)` (`api.go:310, 324`) with no `ConnState`, `ConnContext` or peer-credential check. `grep` for `PeerUID`/`Getuid` in non-test code finds only the handoff site. So for control-socket requests the protection is the 0600 mode and the 0700 directory, and nothing else. A future change that loosens the directory would be justified by a check that is not there.
-
-The fence also depends on callers. `Start(socketPath)` validates only the path length and does not check that the parent directory is private. `DefaultSocketPath` ignores a `MkdirAll` failure, and an `os.Chmod` failure is only logged (`socket.go:23-26`). If the chmod fails, for example on a directory owned by another uid, the daemon still binds in a directory it did not secure. The earlier review suggested stat-ing the parent and rejecting group/other bits. That was not adopted, so the guarantee has no enforcement point. For the production path (the user's own `~/Library/Application Support/portty`) the exposure is a microsecond window inside a 0700 directory the user owns. This is a robustness and accuracy defect, not an exploitable hole.
-**Fix:** Correct the comment to say what is true. For example: "The bind-to-chmod window is fenced only by the 0700 parent directory; the control socket does not check the peer UID (only the handoff handshake does)." Then add a cheap enforcement in `Start`, or at the top of `listenDaemonSocket`, that fails closed:
-
-```go
-fi, err := os.Stat(filepath.Dir(path))
-if err != nil { return nil, err }
-if fi.Mode().Perm()&0o077 != 0 {
-	return nil, fmt.Errorf("daemon socket: parent dir %s is mode %o; refusing to bind", filepath.Dir(path), fi.Mode().Perm())
-}
-```
-
-Tests that bind under `shortSocketPath` temp dirs need to create those dirs 0700 (`MkdirTemp` already does).
+No Critical or Warning findings. IN-01 to IN-06 are carried forward unchanged; IN-07 is new.
 
 ## Info
 
@@ -148,8 +134,14 @@ if s.cmd == nil || s.cmd.Process == nil || s.reaped.Load() {
 **Issue:** Carried forward, unchanged. To pass an `OnPingReceived` hook, `joinPasteViewer` re-implements `dialResume` (Origin header, URL, `SetReadLimit`), so a later change to `dialResume` would silently diverge for the paste tests only.
 **Fix:** Give `dialResume` an optional ping hook and have `joinPasteViewer` use it.
 
+### IN-07: `TestHandoffIT` now compares a prebuilt binary's API against the test binary's own constant
+
+**File:** `internal/daemon/handoff_it_test.go:64-65`
+**Issue:** The test drives prebuilt binaries (`PORTTY_HANDOFF_IT_B`) but now asserts `h.API == APIVersion`, where `APIVersion` is compiled into the test binary, not read from B. If B is built from a different commit than the tests, the check fails or passes by coincidence, and a regression that bumps or lowers `APIVersion` in both is no longer pinned here. The hard-coded literal rotted (the M-155 finding), so a constant is the right direction, and `client_test.go:50` still pins `APIVersion != 5` in process, so the number is guarded elsewhere. This only matters if the rig builds B from a different tree.
+**Fix:** State in the `TestHandoffIT` doc comment that A, B, BFAULT and the test must be built from the same commit, or have the rig script pass the expected API through an env var (`PORTTY_HANDOFF_IT_API`) read by the test.
+
 ---
 
-_Reviewed: 2026-11-23T17:05:00Z_
+_Reviewed: 2026-11-23T18:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
