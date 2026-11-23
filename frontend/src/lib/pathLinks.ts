@@ -110,7 +110,6 @@ export function registerPathLinks(term: Terminal, opts: PathLinkOptions): PathLi
     pointerInside = true
     setMod(isModifierPressed(e, opts.modifier()))
   }
-  const onLeave = () => { pointerInside = false }
   const onLost = () => setMod(false) // a Cmd keyup is lost on Cmd-Tab
 
   window.addEventListener('keydown', onKey, true)
@@ -120,7 +119,6 @@ export function registerPathLinks(term: Terminal, opts: PathLinkOptions): PathLi
   const el = term.element!
   el.addEventListener('mousemove', onMove, true)
   const screen = el.querySelector('.xterm-screen') ?? el
-  screen.addEventListener('mouseleave', onLeave)
 
   // xterm's Linkifier caches each row's provider reply and remembers the last hovered cell, so a link
   // that was not offered when a row was last asked (capability off during a drop) or was cleared (a
@@ -129,6 +127,8 @@ export function registerPathLinks(term: Terminal, opts: PathLinkOptions): PathLi
   //    which would undo synchronous work.
   //  - Private fields `_lastBufferCell` and `_activeLine` (xterm 6 has no public way to reset them):
   //    guarded, never throws inside a resize handler; pathLinks.linkifier.test.ts pins the names.
+  //  - A mouseleave also drops the same-cell memory, so returning to the same cell after its text changed
+  //    asks for the link again (F-2).
   //  - Non-bubbling mousemove on .xterm-screen: the Linkifier hears it, but xterm's mouse-report
   //    listener is a bubble-phase listener on term.element, so a mouse-tracking program gets no input.
   const invalidate = () => queueMicrotask(() => {
@@ -149,6 +149,8 @@ export function registerPathLinks(term: Terminal, opts: PathLinkOptions): PathLi
     } finally { refreshing = false }
   })
   const resizeSub = term.onResize(invalidate)
+  const onLeave = () => { pointerInside = false; invalidate() }
+  screen.addEventListener('mouseleave', onLeave)
 
   const provider = term.registerLinkProvider({
     provideLinks(y, callback) {

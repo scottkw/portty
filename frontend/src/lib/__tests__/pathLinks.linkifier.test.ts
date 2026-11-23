@@ -226,6 +226,21 @@ describe('real xterm Linkifier (PATH-02 gap 2)', () => {
     expect(pathClicks()).toEqual([PATH, PATH])
   })
 
+  // F-2 (todo 2026-11-22-first-cmd-click-same-cell-after-leave): xterm ignores a move to the cell it last
+  // saw, and clears its link on mouseleave, so returning to that cell after its text changed asked for no link.
+  it('after leaving and returning to the same cell with changed text, the first Cmd-click sends the new path', async () => {
+    assertRig()
+    hover(3, 1)
+    click(3, 1)
+    expect(pathClicks()).toEqual([PATH])
+    screen.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
+    await write('\x1b[1;1H\x1b[2Kdocs/other.png')
+    await renderOnce()
+    hover(3, 1)
+    click(3, 1)
+    expect(pathClicks()).toEqual([PATH, 'docs/other.png'])
+  })
+
   it('after a resize, a Cmd-click on a URL at the same cell opens it', async () => {
     assertRig()
     const opened = vi.fn()
