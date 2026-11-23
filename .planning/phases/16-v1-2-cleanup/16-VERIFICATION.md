@@ -1,9 +1,10 @@
 ---
 phase: 16-v1-2-cleanup
-verified: 2026-11-23T13:45:00Z
-status: gaps_found
-score: 5/6 must-haves verified
+verified: 2026-11-23T14:05:00Z
+status: human_needed
+score: 6/6 must-haves verified
 covered_files:
+  - ".planning/phases/11-file-preview/11-SECURITY.md"
   - ".planning/phases/16-v1-2-cleanup/16-01-PLAN.md"
   - ".planning/phases/16-v1-2-cleanup/16-01-SUMMARY.md"
   - ".planning/phases/16-v1-2-cleanup/16-02-PLAN.md"
@@ -28,30 +29,28 @@ covered_files:
   - "internal/webserver/input_queue_test.go"
   - "internal/webserver/resume_test.go"
   - "main.go"
-covered_digest: "v4:sha256:e711919bbb40eb0932f07a94d67d70d88425398e856dfa534304c510eec0daf7"
+covered_digest: "v4:sha256:801ffd49cb8ecbc07b6baca429293370f94cf3e1ceb2022d058abaaae10e8632"
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "SC5: `/gsd-secure-phase 11` produces 11-SECURITY.md"
-    status: failed
-    reason: "No 11-SECURITY.md exists in .planning/phases/11-file-preview/ (only the older 11-SECURITY-REVIEW.md). Known and expected: the orchestrator runs the command after this verification. Every other clause of SC5 is met."
-    artifacts:
-      - path: ".planning/phases/11-file-preview/11-SECURITY.md"
-        issue: "missing"
-    missing:
-      - "Run /gsd-secure-phase 11 (a command, not a replan), then re-verify SC5 only"
+re_verification:
+  previous_status: gaps_found
+  previous_score: 5/6
+  gaps_closed:
+    - "SC5: `/gsd-secure-phase 11` produces 11-SECURITY.md"
+  gaps_remaining: []
+  regressions: []
 human_verification:
-  - test: "M-156 (TESTING.md Category BG): launch Portty from Finder, Dock, `open -a Portty`, `open -a Portty --args -NSDocumentRevisionsDebugMode YES` and `-ApplePersistenceIgnoreState YES` in the Tart VM `portty-test`; over SSH run `Portty --version`, `-v`, `--bogus` with `echo $?` and `pgrep -x Portty` before and after; rename and kill by name with `portty rename`/`portty kill`, including a duplicate name"
-    expected: "Every launch shows the window; --version and -v print the version and exit 0; --bogus prints `portty: unknown flag \"--bogus\"` plus usage and exits 2; no new Portty process for any CLI call; rename and kill by name act on the named session; a duplicate name is refused and both sessions remain"
+  - test: "M-156 (TESTING.md Category BG): launch Portty from Finder, Dock, `open -a Portty`, `open -a Portty --args -NSDocumentRevisionsDebugMode YES` and `-ApplePersistenceIgnoreState YES` in the Tart VM `portty-test`; over SSH run `Portty --version`, `-v`, `--bogus` with `echo $?` and `pgrep -x Portty` before and after; rename and kill by name with `portty rename`/`portty kill`, including a duplicate name and a 4-character ID prefix"
+    expected: "Every launch shows the window; --version and -v print the version and exit 0; --bogus prints `portty: unknown flag \"--bogus\"` plus usage and exits 2; no new Portty process for any CLI call; rename and kill by name act on the named session; a duplicate name is refused and both sessions remain; a 4-character ID prefix is refused with `no session named` and the session remains"
     why_human: "Real LaunchServices launches of a signed bundle cannot run in process or on the user's Mac. launchMode is table-tested in process, but the entry point for Finder, Dock, open and login items on the remote Mac is a costly-to-get-wrong path (D-01, rock-solid priority). Recorded in TESTING.md as not yet run; must PASS before ship."
 ---
 
 # Phase 16: v1.2 Cleanup Verification Report
 
-**Phase Goal:** Clear the doable tech debt from the v1.2 re-audit before the milestone closes (CLI kill-by-name, `--version`/unknown flags, load-robust DoS tests, Phase 15 review info items, planning hygiene, one clean full suite run, TESTING.md).
+**Phase Goal:** Clear the doable tech debt from the v1.2 re-audit before the milestone closes (CLI kill-by-name, `--version`/unknown flags, load-robust DoS tests, Phase 15 review info items, planning hygiene, one clean full suite run, TESTING.md). Out of scope: real-Mac/release-gated checks, dompurify-3418, user-accepted limits.
 **Verified:** 2026-11-23
-**Status:** gaps_found (one gap, a pending command, not a code defect)
-**Re-verification:** No, initial verification
+**Status:** human_needed (all automated truths verified; one planned real-bundle launch check remains before ship)
+**Re-verification:** Yes, after gap closure (SC5 11-SECURITY.md; TESTING.md drift)
 
 ## Goal Achievement
 
@@ -59,64 +58,72 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | `portty kill <name>` resolves names like share/rename; a test pins it | VERIFIED | `cmd_cli.go` cmdKill and cmdRename call `lookupSessionStrict` (wraps `lookupSession`; names and full IDs always pass, ID prefixes need 8+ chars). Re-ran under `-race`: `TestCmdKill_ByName`, `TestCmdRename_ByName`, `TestCmdKillRename_ShortPrefixRefused`, `TestResolveSession` all PASS. Todo moved to `todos/completed` with Resolution. |
-| 2 | `Portty --version`/`-v` prints the version with no GUI; unknown flags never start the GUI | VERIFIED in process; real launch check pending (see human verification) | `main.go` `launchMode`: `--version`/`-v` map to `[version]` (modeCLI, and `cliNeedsDaemon` skips the daemon for `version`); the allowlist is exactly `-psn_`, `-NS`, `-Apple`; anything else returns modeHelp plus error, and `main` prints it plus usage and exits 2. `TestLaunchMode` (18 rows, including near-miss `-psn` and bare `--`) PASS. I did not run the built binary: any mistake would start the GUI on this host. |
-| 3 | The two DoS-bound vitest tests are load-robust without loosening the bound | VERIFIED | `git diff` shows only `, 30_000` and a comment added to each `it`; inputs (`repeat(10000)`, `length: 1_000`) and `expect` lines unchanged; `localhostUrl.ts`/`markdown.ts` untouched. Re-ran the two files: 2 passed, 70 tests. Full run under load (16-04): both pass. |
-| 4 | Phase 15 IN-02, IN-03, IN-06 resolved or recorded; `PathClickAPI` removed or consumed | VERIFIED | IN-03: `hub.go` guards `History.Skip` with `!emu.IsAltScreen()`; `TestCwd_AltScreenScrollbackEraseKeepsRows` PASS (RED-first per SUMMARY). IN-02: `cleanup.go` has one merged `if s.cmd == nil \|\| s.cmd.Process == nil \|\| s.reaped.Load()`; IN-01 sentence present; `TestKillSession_*` PASS. IN-06: `dialResumePing` used by `joinPasteViewer`; `TestShare_PasteBacklogKeepsViewer`, `TestWSS_ResumeDeltaAfterReconnect` PASS. `git grep PathClickAPI -- '*.go'` exits 1; `APIVersion` still 5, `TestHealthInfo` PASS. 15-REVIEW-DISPOSITION rows marked fixed. |
-| 5 | Planning hygiene: SUMMARY `requirements-completed` covers INPT-01..06, PREV-02/04, MOB-01..05; `/gsd-secure-phase 11` produces 11-SECURITY.md; selection-offset todo triaged | PARTIAL: FAILED on 11-SECURITY.md | Read back through `summary-extract`: Phase 10 union INPT-01..06 (10-01, 10-02, 10-07), Phase 11 gains PREV-02/PREV-04 on 11-10 (PREV-01/03/05 already on 11-03, 11-08), Phase 14 MOB-01..05 on 14-14. Selection-offset todo has a `## Resolution` naming 7a37bfb4 and its evidence. **`.planning/phases/11-file-preview/11-SECURITY.md` does not exist** (only `11-SECURITY-REVIEW.md`). Expected to be produced by the orchestrator next; not done yet. |
-| 6 | Full Go -race and vitest pass once, clean; fixed todos move to completed; TESTING.md updated per standing rule | VERIFIED (with a documentation warning) | 16-04 logs (`tmp.sAUD92yTnm`): `t2-done` = "every command exited 0"; 14 `ok` packages, no FAIL; vitest 122 files / 1826 tests passed. That run preceded the post-review fixes (c8158c94, 0e08afca), so I re-ran the full root package `-race -short`: ok (27.8 s); go vet and gofmt clean; `check-traceability-paths.sh`: OK, 228 paths. The three todos are in `todos/completed`; only dompurify-3418 and v12-release-checks remain pending (both out of scope). TESTING.md has the Phase 16 Section 2 note, a corrected PATH-02 row and Category BG M-156. |
+| 1 | `portty kill <name>` resolves names like share/rename; a test pins it | VERIFIED | `cmd_cli.go` cmdKill (line 320) and cmdRename (337) call `lookupSessionStrict` (`cmd_share.go:77`, wraps `lookupSession`; names and full IDs pass, ID prefixes need `minDestructivePrefix` = 8). Re-run at HEAD under `-race`: `TestCmdKill_ByName`, `TestCmdRename_ByName`, `TestCmdKillRename_ShortPrefixRefused`, `TestResolveSession` PASS (root package ok). Todo in completed. |
+| 2 | `Portty --version`/`-v` prints the version with no GUI; unknown flags never start the GUI | VERIFIED in process; real launch pending (M-156) | `TestLaunchMode` PASS at HEAD (18 rows). `main.go` unchanged since the last run. I did not run the built binary: a mistake would start the GUI on this host. |
+| 3 | The two DoS-bound vitest tests are load-robust without loosening the bound | VERIFIED | `30_000` timeouts present at `localhostUrl.test.ts:40` and `markdown.test.ts:211`; re-ran the two files: 2 files, 70 tests passed. |
+| 4 | Phase 15 IN-02, IN-03, IN-06 resolved or recorded; `PathClickAPI` removed or consumed | VERIFIED | Re-run at HEAD under `-race`: `TestCwd_AltScreenScrollbackEraseKeepsRows` (relay), `TestKillSession_*` (pty), `TestShare_PasteBacklogKeepsViewer`, `TestWSS_ResumeDeltaAfterReconnect` (webserver), `TestHealthInfo` (daemon): all ok. `git grep PathClickAPI -- '*.go'` exits 1 (no hits). |
+| 5 | Planning hygiene: SUMMARY `requirements-completed` covers INPT-01..06, PREV-02/04, MOB-01..05; `/gsd-secure-phase 11` produces 11-SECURITY.md; selection-offset todo triaged | VERIFIED | `.planning/phases/11-file-preview/11-SECURITY.md` exists and is tracked in git (commit 0253edd3): frontmatter `status: verified`, `threats_open: 0`, audit trail 45 threats / 45 closed / 0 open; T-11-CR01 registered retroactively (high, mitigate, closed). I spot-checked its evidence at HEAD: `frontend/index.html:8` carries `frame-src blob:; child-src blob:; worker-src 'self'`, pinned verbatim by `PreviewRenderers.test.tsx:197`; `PreviewMaxBytes = 20_000_000` and `PreviewWindow = 16` in `internal/relay/preview.go`. One accepted risk (AR-11-01, T-11-26) is documented with rationale and acceptor. SUMMARY frontmatter read-back: 10-01 INPT-05, 10-02 INPT-04, 10-07 INPT-01..06, 11-10 PREV-02/PREV-04, 14-14 MOB-01..05 all present. Selection-offset todo (`2026-11-21-selection-offset-and-copy.md`) is in `.planning/todos/completed` with a Resolution. |
+| 6 | Full Go -race and vitest pass once, clean; fixed todos move to completed; TESTING.md updated per standing rule | VERIFIED | 16-04 logs recorded a clean full run (14 `ok` packages, vitest 1826 passed); the post-review root-package re-run was ok in the earlier verification. At HEAD: `go vet .` clean, `gofmt -l` empty, `bash tests/check-traceability-paths.sh` = OK: 228. Pending todos left: only dompurify-3418 and v12-release-checks (both out of scope). The earlier TESTING.md drift is fixed (see below). |
 
-**Score:** 5/6 truths verified (SC5 partial: the SUMMARY and triage clauses pass, the 11-SECURITY.md clause does not exist yet).
+**Score:** 6/6 truths verified (M-156 is a human check recorded as a must-pass before ship, not a failed truth).
+
+### Gap Closure Re-check
+
+| Prior gap / warning | Resolution | Evidence |
+|---|---|---|
+| SC5: 11-SECURITY.md missing | CLOSED | File present and committed, `status: verified`, `threats_open: 0`; contents checked as above. |
+| WARNING: TESTING.md Phase 16 note omitted post-review tests | CLOSED | Commit 57cb9ca2: the note now lists `TestCmdKillRename_ShortPrefixRefused` under cmd_cli_test.go and `TestResolveSession` empty-argument rejection under cmd_share_test.go. M-156 step 3 adds the 4-character prefix attempt and step 4 the `no session named` expectation plus the 8-character rule. Matches `lookupSessionStrict` (`len(arg) < minDestructivePrefix` returns `noSessionError`). Traceability script OK: 228. |
+
+Only docs changed between the previous verification and HEAD (git diff 4f581e08..HEAD: 11-SECURITY.md and TESTING.md); no Go or frontend source moved, and the re-run spot-checks above confirm no regression.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `main.go` launchMode | version mapping, allowlist, usage error | VERIFIED | substantive and wired in `main()` (error print plus exit 2) |
-| `cmd_cli.go` / `cmd_share.go` | kill/rename by name | VERIFIED | `lookupSessionStrict` is called by both |
-| `dispatch_test.go` | TestLaunchMode table | VERIFIED | 18 rows, passes |
-| `internal/relay/hub.go`, `cwd_test.go` | IN-03 guard and test | VERIFIED | |
-| `internal/pty/cleanup.go` | IN-02 merge | VERIFIED | |
-| `internal/webserver/resume_test.go`, `input_queue_test.go` | dialResumePing | VERIFIED | |
-| `internal/daemon/types.go` | PathClickAPI removed | VERIFIED | |
-| Two vitest files | 30 s timeouts | VERIFIED | |
-| `TESTING.md` | Phase 16 note, M-156 | VERIFIED (see warning) | |
-| `.planning/phases/11-file-preview/11-SECURITY.md` | secure-phase output | MISSING | pending orchestrator step |
+| `main.go` launchMode | version mapping, allowlist, usage error | VERIFIED | `TestLaunchMode` passes |
+| `cmd_cli.go` / `cmd_share.go` | kill/rename by name | VERIFIED | `lookupSessionStrict` used by both |
+| `dispatch_test.go`, `cmd_cli_test.go`, `cmd_share_test.go` | pinning tests | VERIFIED | pass under `-race` |
+| `internal/relay/hub.go`, `cwd_test.go` | IN-03 guard and test | VERIFIED | test passes |
+| `internal/pty/cleanup.go` | IN-02 merge | VERIFIED | `TestKillSession_*` pass |
+| `internal/webserver/resume_test.go`, `input_queue_test.go` | dialResumePing | VERIFIED | pass |
+| `internal/daemon/types.go` | PathClickAPI removed | VERIFIED | no hits; `TestHealthInfo` passes |
+| Two vitest files | 30 s timeouts | VERIFIED | present, pass |
+| `TESTING.md` | Phase 16 note, M-156 | VERIFIED | current with post-review tests |
+| `.planning/phases/11-file-preview/11-SECURITY.md` | secure-phase output | VERIFIED | exists, tracked, verified, 0 open |
 
 ### Key Link Verification
 
 | From | To | Via | Status |
 |------|----|-----|--------|
-| `main()` | `launchMode` | switch on mode, error to stderr, exit 2 | WIRED |
-| `launchMode` | version command | `[]string{"version"}` to `runCLI`, `cliNeedsDaemon("version")` false | WIRED |
-| `cmdKill`/`cmdRename` | daemon | resolved `s.ID` only, from the daemon's own list | WIRED |
+| `main()` | `launchMode` | switch on mode, error to stderr, exit 2 | WIRED (unchanged; table test passes) |
+| `cmdKill`/`cmdRename` | `lookupSessionStrict` then `client.KillSession`/`RenameSession(s.ID)` | direct calls | WIRED |
 | `joinPasteViewer` | `dialResumePing` | direct call | WIRED |
 
 ### Requirements Coverage
 
-All four PLAN files declare `requirements: []`, matching the ROADMAP ("none new"). No IDs to cross-reference and no orphans: REQUIREMENTS.md maps no ID to Phase 16. Side check: INPT-01..06, PREV-01..05, MOB-01..05 are all `[x]`/Complete in REQUIREMENTS.md and now all appear in some SUMMARY `requirements-completed`.
+All four PLAN files declare `requirements: []`, matching the ROADMAP ("none new"); REQUIREMENTS.md maps no ID to Phase 16, so there are no orphans.
 
 ### Anti-Patterns Found
 
-No TBD/FIXME/XXX/TODO/HACK markers added by the phase's non-planning diff. No stubs.
+None added by this phase. The only changes since the last run are documentation.
 
-### Warnings and Info (not blockers)
+### Info (not blockers)
 
-- **WARNING, TESTING.md drift:** the post-review fixes added `TestCmdKillRename_ShortPrefixRefused` (cmd_cli_test.go) and an empty-argument row in `TestResolveSession` (cmd_share_test.go), but the TESTING.md Phase 16 note lists only `TestCmdKill_ByName` and `TestCmdRename_ByName` for those files, and does not list cmd_share_test.go. The M-156 text also does not mention the 8-character minimum for ID prefixes on kill and rename. The standing rule asks for updates when tests are added; a one-line fix.
-- **INFO, REVIEW-FIX inaccuracy:** 16-REVIEW-FIX.md says the redundant `arg != ""` guard in the prefix pass was dropped, but `cmd_share.go` still contains `if arg != "" && strings.HasPrefix(s.ID, arg)`. The review disposition correctly records it as open (harmless).
-- **INFO, carried review items:** IN-01 (name shadows full ID), IN-02 (ED 3 in alt screen still clears hub history) stay open with reasons in 16-REVIEW-DISPOSITION.md. IN-05 of Phase 15 stays open deliberately (not in SC4).
-- **INFO, pre-existing:** `14-04-SUMMARY.md` frontmatter is not parseable YAML (`summary-extract` errors on it). Not touched by Phase 16, its list is empty, and the Phase 14 union read-back succeeds per file for 14-14. A whole-phase reader that iterates every SUMMARY would trip on it.
+- 16-REVIEW-FIX.md says a redundant `arg != ""` guard was dropped, but `cmd_share.go` still has it. Harmless, recorded as open in 16-REVIEW-DISPOSITION.md.
+- Carried review items IN-01 (name shadows full ID) and IN-02 (ED 3 in alt screen still clears hub history) stay open with reasons in the disposition file.
+- `11-SECURITY.md` Notes record two grep-only gates (T-11-24, the App.tsx half of T-11-33) and VM node names/100.x addresses in 11-SPIKE.md and 11-VM-CHECKS.md as candidate redaction. Non-blocking, pre-existing Phase 11 evidence.
+- `14-04-SUMMARY.md` frontmatter is not parseable YAML (pre-existing, not touched by Phase 16).
 
 ### Human Verification Required
 
-1. **M-156, Tart VM launch check**
-   **Test:** see frontmatter and TESTING.md Category BG.
-   **Expected:** every launch path opens the window, `--version`/`-v` exit 0, `--bogus` exits 2, no new process for CLI calls, kill/rename by name work, duplicate names refused.
-   **Why human:** real LaunchServices launches of a signed bundle cannot be driven in process, and must not run on this host.
+1. **M-156, Tart VM launch check (before ship)**
+   **Test:** TESTING.md Category BG, M-156: launch from Finder, Dock, `open -a Portty` (plus the two `--args` forms) in the Tart VM `portty-test`; over SSH run `--version`, `-v`, `--bogus` with exit codes and `pgrep -x Portty`; rename and kill by name, a duplicate name, and a 4-character ID prefix.
+   **Expected:** every launch path opens the window; `--version`/`-v` exit 0; `--bogus` exits 2 with the usage error; no new process for CLI calls; kill/rename by name work; duplicate name and short ID prefix are refused and the sessions remain.
+   **Why human:** real LaunchServices launches of a signed bundle cannot be driven in process and must not run on this host. TESTING.md records it as "not yet run; must PASS before ship".
 
 ### Gaps Summary
 
-One gap: `11-SECURITY.md` for Phase 11 does not exist, so SC5 is not fully met. This is the known sequencing, closed by running `/gsd-secure-phase 11` and re-checking that file exists; no replan is needed. Everything else holds against the code: the CLI fixes, launch dispatch, review items and DoS-test timeouts are present, wired and passing when re-run; the hygiene frontmatter reads back correctly; the full suites were clean (the root package re-run after the review fixes). M-156 remains a required human check before ship.
+No gaps. The one prior gap (11-SECURITY.md) is closed with a committed, verified artifact whose spot-checked evidence holds at HEAD, and the TESTING.md drift warning is fixed. SC1-SC4 and SC6 hold at HEAD (targeted `-race` Go tests, vitest, go vet, gofmt and the traceability script all clean). The status is `human_needed` solely because M-156 is a required real-bundle check that automation cannot perform.
 
 ---
 
