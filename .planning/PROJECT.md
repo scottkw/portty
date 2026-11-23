@@ -110,6 +110,8 @@ v1.1 Hardening shipped 2026-11-19 (Phases 7-8, 16/16 requirements). See `.planni
 | Remote localhost URLs proxied over the tailnet into the normal browser, no embedded browser | Wails v2 has a single web view; the proxy covers the real need (remote dev servers) | — Pending (v1.2 Phase 13) |
 | Path click previews only paths the session printed | Keeps "no generic remote file-read API" | — Pending (v1.2 Phase 12) |
 | Upgrades hand live sessions to the new daemon; DEBT-08 consent stays as the fallback | Upgrading the unattended office Mac must never cost a session | — Pending (v1.2 Phase 9) |
+| Hardening checks fail toward the old daemon (takeover refuses an unconfirmed pid; socket 0600 with no process-wide umask) | A false refusal costs a consent prompt; a leaked umask or wrong pid could cost the remote Mac | ✓ Good — Phase 15; real two-build upgrade chain passed in the VM (M-155) |
+| The viewer you type in sets the PTY size, also for `portty attach` (rows-1 under its bar) | One grid-owner rule for every viewer; a passive CLI watching a taller GUI grid keeps today's behaviour | ✓ Good — Phase 15 (user decision 2026-11-23) |
 
 ## Evolution
 
@@ -129,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-18 after starting v1.1 milestone*
+*Last updated: 2026-11-23 after Phase 15 (v1.2 Hardening)*
