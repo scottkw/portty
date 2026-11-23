@@ -27,7 +27,7 @@ decisions:
   - "Safari pastes are DOM paste events (DataTransfer): Safari under WebDriver ignores real key events"
   - "Browser zoom was driven with Safari's View > Zoom In after ending the WebDriver session (Stop Session); WebDriver key actions cannot zoom"
   - "R-05's FAIL row is kept, with the post-fix re-run row below it (as Phase 9 kept V-05b's)"
-requirements: [INPT-01, INPT-02, INPT-03, INPT-04, INPT-05, INPT-06]
+requirements-completed: [INPT-01, INPT-02, INPT-03, INPT-04, INPT-05, INPT-06]  # key renamed by Phase 16 (16-03) so summary-extract reads it; 10-VERIFICATION.md passed
 metrics:
   duration: "~3 h (03:06 to 06:10 UTC), including three SC5 runs of ~31 min each and two coordinator round trips"
   completed: 2026-11-21

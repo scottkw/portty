@@ -28,7 +28,7 @@ decisions:
   - "Peer tab id is __websession__<host>/<sessionId>, host = peerSnapshotHost(tab) (MagicDNS name, else hostname); the hostless web bootstrap tab keeps __websession__<sessionId>"
   - "The connect-failed peer tab now carries connectHost, so the re-click's retry finds the same tab id"
   - "Sidebar highlight compares the tab's peerHost with the row's peer hostname (as planned), plus the session id"
-requirements: [INPT-04]
+requirements-completed: [INPT-04]  # key renamed by Phase 16 (16-03) so summary-extract reads it; 10-VERIFICATION.md passed
 metrics:
   duration: ~45m
   completed: 2026-11-20
