@@ -33,6 +33,19 @@ function pointerDown(el: HTMLElement) {
 const click = (el: HTMLElement, detail: number) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail })) })
 
 describe('KeyBar', () => {
+  it('adds keybar--kb-up only while the keyboard is up', () => {
+    const render = (keyboardUp?: boolean) => {
+      container = document.createElement('div')
+      document.body.appendChild(container)
+      root = createRoot(container)
+      act(() => root!.render(<KeyBar send={() => {}} applicationCursor={() => false} ctrlArmed={false} onCtrlChange={() => {}} keyboardUp={keyboardUp} />))
+      return container.querySelector('.keybar')!
+    }
+    expect(render().className).toBe('keybar')
+    act(() => root!.unmount()); container!.remove()
+    expect(render(true).className).toBe('keybar keybar--kb-up')
+  })
+
   it('is a labelled horizontal toolbar of eight keys in order', () => {
     mount()
     const bar = container!.querySelector('[role="toolbar"]')!

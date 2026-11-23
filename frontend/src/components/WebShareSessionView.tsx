@@ -75,6 +75,8 @@ export interface WebShareSessionViewProps {
   isActive?: boolean
   /** Portty 14-10: false when the capability has no write (no key bar); undefined (info call failed) shows it, the server still drops the input. */
   canWrite?: boolean
+  /** Portty 14-11: the on-screen keyboard is up (App, from visualViewport); the key bar drops its bottom inset. */
+  keyboardUp?: boolean
 }
 
 // Review it3 IN-02: AbortSignal.timeout is missing before Safari 16 / Chrome 103, and
@@ -116,6 +118,7 @@ export function WebShareSessionView({
   onPreview,
   isActive = true,
   canWrite,
+  keyboardUp,
 }: WebShareSessionViewProps): React.ReactElement {
   // FIX-03 (plan 09) RC-A transport switch. When true, the terminal routes
   // through the daemon proxy (remote:true, wsURL undefined).
@@ -265,6 +268,7 @@ export function WebShareSessionView({
           applicationCursor={() => keyInputRef.current?.applicationCursor() ?? false}
           ctrlArmed={ctrlArmed}
           onCtrlChange={setCtrl}
+          keyboardUp={keyboardUp}
         />
       )}
     </div>

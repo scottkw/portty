@@ -9,6 +9,8 @@ import { SettingsSheet, type Appearance } from './components/SettingsSheet'
 import { stripAnsi } from './lib/stripAnsi'
 import { sanitizeFilename } from './lib/sanitizeFilename'
 import { detectMode, readWebModeParams } from './lib/webMode'
+import { usePhone } from './lib/phoneQuery'
+import { useVisualViewportInset } from './lib/visualViewportInset'
 import {
   CreateSession,
   ListSessions,
@@ -109,6 +111,9 @@ function App(): React.ReactElement {
   const [webHost, setWebHost] = useState('')
   // Portty 14-10: the web viewer's capability has write (from /info perms); undefined until known or when the call failed.
   const [webCanWrite, setWebCanWrite] = useState<boolean | undefined>(undefined)
+  // Portty 14-11 (MOB-01): on a phone in the browser, the root follows the visual viewport so the key bar rides above the keyboard.
+  const phone = usePhone()
+  const { keyboardUp } = useVisualViewportInset(mode === 'web' && phone)
   // NAV-03: both modes start with no tabs. Desktop init restores running
   // sessions as tabs; web mode opens the ?session= view (effect below).
   const [tabs, setTabs] = useState<Tab[]>([])
@@ -1348,6 +1353,7 @@ function App(): React.ReactElement {
                 snapshotHost={peerHost && activeWebTab ? peerSnapshotHost(activeWebTab) : undefined}
                 isActive={!activePreview}
                 canWrite={mode === 'web' ? webCanWrite : undefined}
+                keyboardUp={mode === 'web' ? keyboardUp : undefined}
                 onPreview={(ev) => handlePreview(sessionTabId, ev)}
               />
               </ErrorBoundary>

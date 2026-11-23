@@ -9,6 +9,8 @@ interface KeyBarProps {
   applicationCursor: () => boolean
   ctrlArmed: boolean
   onCtrlChange: (armed: boolean) => void
+  /** 14-11: the on-screen keyboard covers the home indicator, so the bar drops its bottom safe-area inset. */
+  keyboardUp?: boolean
 }
 
 /**
@@ -17,7 +19,7 @@ interface KeyBarProps {
  * up) and on a click with detail 0 (VoiceOver, a hardware keyboard); a touch tap's own click has
  * detail >= 1 and is ignored, so one tap sends once. Ctrl is one-shot: it arms, the next key gets it.
  */
-export function KeyBar({ send, applicationCursor, ctrlArmed, onCtrlChange }: KeyBarProps): React.ReactElement {
+export function KeyBar({ send, applicationCursor, ctrlArmed, onCtrlChange, keyboardUp }: KeyBarProps): React.ReactElement {
   // Disarm first: the transform on the input path then sees an unarmed Ctrl for these bytes.
   const fire = (seq: () => string) => {
     const bytes = seq()
@@ -41,7 +43,7 @@ export function KeyBar({ send, applicationCursor, ctrlArmed, onCtrlChange }: Key
   const icon = (I: typeof ArrowUpIcon) => <I width={20} height={20} aria-hidden="true" />
 
   return (
-    <div className="keybar" role="toolbar" aria-label="Terminal keys" aria-orientation="horizontal">
+    <div className={`keybar${keyboardUp ? ' keybar--kb-up' : ''}`} role="toolbar" aria-label="Terminal keys" aria-orientation="horizontal">
       {key('Esc', 'Esc', () => fire(() => ESC))}
       {key('Tab', 'Tab', () => fire(() => TAB))}
       {key('Ctrl', 'Ctrl', () => onCtrlChange(!ctrlArmed), { armed: ctrlArmed })}

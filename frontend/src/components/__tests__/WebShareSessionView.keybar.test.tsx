@@ -80,6 +80,14 @@ describe('WebShareSessionView key bar', () => {
     expect(bar()).toBeNull()
   })
 
+  it('keyboardUp reaches the bar as keybar--kb-up', () => {
+    phone(true)
+    const render = mount({ canWrite: true })
+    expect(bar()!.classList.contains('keybar--kb-up')).toBe(false)
+    render({ canWrite: true, keyboardUp: true })
+    expect(bar()!.classList.contains('keybar--kb-up')).toBe(true)
+  })
+
   describe('inputTransform', () => {
     it('passes data through when Ctrl is not armed', () => {
       phone(true)

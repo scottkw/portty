@@ -110,7 +110,8 @@ textarea {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  /* 14-11: a phone in the browser sets --vv-height/--vv-top from visualViewport (the keyboard shrinks it); unset everywhere else. */
+  height: var(--vv-height, 100%);
   width: 100%;
 }
 
@@ -2447,4 +2448,18 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
 /* Backstop: React already renders the bar only on a phone; this keeps it off a desktop pointer. */
 @media not all and (pointer: coarse) and (hover: none) {
   .keybar { display: none }
+}
+
+/* Phase 14-11 (MOB-01): phone chrome. The root follows the visual viewport and clears the status
+   bar; with the keyboard up the bar sits right on it, with no home-indicator inset. */
+@media (pointer: coarse) and (hover: none) {
+  .app {
+    box-sizing: border-box;
+    position: relative;
+    top: var(--vv-top, 0px);
+    padding-top: env(safe-area-inset-top);
+  }
+  .keybar--kb-up {
+    padding-bottom: 0;
+  }
 }
