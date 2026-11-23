@@ -55,3 +55,21 @@ Screenshots (not committed), directory `/var/folders/lb/2__vrh3n2n155kwhrvz08lv8
 - `pgrep -x Simulator` was empty at the end; no host defaults were changed; no product code was changed.
 - `cmd/playwright-fixture/dist` (gitignored) now holds a fresh copy of `frontend/dist`; it is not staged.
 - The screenshot directory above is kept for the checkpoint; 14-14 deletes it with the other screenshots.
+
+## Spike decision
+
+**Decision:** continue
+
+Date: 2026-11-22. The user's word: "continue". They accepted that the Home Screen icon works while the share it was added from stays on, and that after the share is stopped and started again (new token) the icon must be added again from the new link.
+
+What it sets:
+
+- 14-09, 14-10 and 14-11 run next. No redesign; `/gsd-discuss-phase 14` is not needed for the Home Screen flow.
+- 14-14 asks for one real-phone look at M-145 (not the full M-145, because the rig answered H-01).
+- The re-add-after-re-share behaviour is accepted as the current design. The deferred "icon that survives re-sharing: token-less `start_url` plus same-account token fetch" stays deferred.
+
+Notes the spike leaves for later plans:
+
+- **14-09 (launcher copy).** Safari on iOS 26 has no toolbar Share button. Share is under the "..." More menu, and "Add to Home Screen" is behind View More in the share sheet. Safari also shows a one-time tip popover first. The launcher text should say the icon stops working when sharing is turned off and must be added again from the new link.
+- **14-13 (full simulator run).** Repeat S-04 with these labels: More (`MoreMenuButton`), Share, View More, the `Add to Home Screen` cell. On a fresh device the new icon is not put on the Home Screen. It lands only in the App Library, in an automatic "Webclips" folder, one swipe left of the Home Screen. Add share-off and re-share rows for the icon (it showed Link No Longer Works both times in this spike).
+- **14-14 (real phone).** Say where the icon lands on the phone (Home Screen page or App Library only), and check the re-add-after-re-share behaviour once there.
