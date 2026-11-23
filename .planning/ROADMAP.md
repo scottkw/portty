@@ -45,7 +45,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 - [x] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent (completed 2026-11-22)
 - [x] **Phase 14: Mobile Web App** - Browser links limited to your own Tailscale account, then the share view on an iPhone: key bar, phone layout, Home Screen install, reconnect after sleep, and launcher copy for portty.app/app (completed 2026-11-22)
 - [x] **Phase 15: v1.2 Hardening** (completed 2026-11-23)
-- [ ] **Phase 16: v1.2 Cleanup**
+- [x] **Phase 16: v1.2 Cleanup** (completed 2026-11-23)
 
 ## Phase Details
 
@@ -252,7 +252,7 @@ Plans:
   5. Planning hygiene: SUMMARY `requirements-completed` lists cover INPT-01..06 (Phase 10), PREV-02/PREV-04 (Phase 11) and MOB-01..05 (Phase 14); `/gsd-secure-phase 11` produces 11-SECURITY.md; the selection-offset-and-copy todo is triaged (fixed here or explicitly carried to v1.3 with a reason).
   6. The full Go -race and vitest suites pass once, clean; fixed todos move to completed; TESTING.md is updated per the standing rule.
 **Depends on:** Phase 15
-**Plans:** 4/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
