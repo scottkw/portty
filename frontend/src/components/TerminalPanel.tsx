@@ -32,7 +32,7 @@ import { LinkConfirmPopover } from './LinkConfirmPopover'
 import { SessionEndedBanner, type SessionEndedBannerProps } from './SessionEndedBanner'
 import { usePhone } from '../lib/phoneQuery'
 import { RegenerateKeyModal } from './RegenerateKeyModal'
-import { CLOSE_REASON_OTHER_ACCOUNT, CLOSE_REASON_SHARE_STOPPED } from '../lib/closeReasons'
+import { CLOSE_REASON_OTHER_ACCOUNT, CLOSE_REASON_SESSION_ENDED, CLOSE_REASON_SHARE_STOPPED } from '../lib/closeReasons'
 // Phase 113 UI-03 / UI-04 — iPad single-finger scrollback. xterm.js v6 has
 // no built-in touch handling; this helper attaches the missing handlers.
 import { attachTouchScroll } from '../lib/touchScrollHandler'
@@ -142,6 +142,8 @@ interface TerminalPanelProps {
   hostLabel?: string
   /** Portty 04-06: called once when a guest socket closes with the share-stopped reason. */
   onShareStopped?: () => void
+  /** The guest socket closed with the session-ended reason; the caller remembers it for the tab. */
+  onSessionEnded?: () => void
   /** Portty 14-04 (MOB-05): the reconnect probe was refused for another Tailscale account; the caller shows the refusal screen. */
   onOtherAccount?: () => void
   /**
@@ -187,6 +189,7 @@ export function TerminalPanel({
   onProgressChange,
   hostLabel,
   onShareStopped,
+  onSessionEnded,
   onOtherAccount,
   beforeReconnect,
   hostUnreachable,
@@ -200,6 +203,8 @@ export function TerminalPanel({
   // The relay onClose closure is built once at mount; read the latest callback through a ref.
   const onShareStoppedRef = useRef(onShareStopped)
   onShareStoppedRef.current = onShareStopped
+  const onSessionEndedRef = useRef(onSessionEnded)
+  onSessionEndedRef.current = onSessionEnded
   const onOtherAccountRef = useRef(onOtherAccount)
   onOtherAccountRef.current = onOtherAccount
   const beforeReconnectRef = useRef(beforeReconnect)
@@ -663,6 +668,7 @@ export function TerminalPanel({
           const shareStopped = reason === CLOSE_REASON_SHARE_STOPPED
           setSessionEnded({ ended: true, reason, shareStopped })
           if (shareStopped) onShareStoppedRef.current?.()
+          if (reason === CLOSE_REASON_SESSION_ENDED) onSessionEndedRef.current?.()
         },
         // INPT-06: every panel shows the session at the server's grid (0x02) →
         // term.resize + scale recompute. 05-12: applyHostGrid queues the resize

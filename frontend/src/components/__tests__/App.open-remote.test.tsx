@@ -26,7 +26,7 @@ import { peerSnapshotKey, putPeerSnapshot, takePeerSnapshot } from '../../lib/pe
 const stub = vi.hoisted(() => ({ mounts: 0, verdict: undefined as unknown, throwFor: '' }))
 
 vi.mock('../WebShareSessionView', () => ({
-  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; beforeReconnect?: () => Promise<unknown>; onReconnectingChange?: (on: boolean) => void; snapshotHost?: string; fontSize?: number; onFontSizeChange?: (delta: number) => void; pluginConfig?: Record<string, unknown> | null }) => {
+  WebShareSessionView: (p: { sessionId: string; baseURL?: string; capToken: string; hostLabel?: string; remote?: boolean; onShareStopped?: () => void; onSessionEnded?: () => void; beforeReconnect?: () => Promise<unknown>; onReconnectingChange?: (on: boolean) => void; snapshotHost?: string; fontSize?: number; onFontSizeChange?: (delta: number) => void; pluginConfig?: Record<string, unknown> | null }) => {
     React.useEffect(() => { stub.mounts++ }, [])
     if (p.sessionId === stub.throwFor) throw new SyntaxError(`bad URL wss://x/ws?cap=${p.capToken}`)
     return React.createElement('div', {
@@ -45,6 +45,7 @@ vi.mock('../WebShareSessionView', () => ({
     },
     React.createElement('button', { type: 'button', 'data-testid': 'fire-font-up', onClick: () => p.onFontSizeChange?.(+1) }),
     React.createElement('button', { type: 'button', 'data-testid': 'fire-share-stopped', onClick: () => p.onShareStopped?.() }),
+    React.createElement('button', { type: 'button', 'data-testid': 'fire-session-ended', onClick: () => p.onSessionEnded?.() }),
     React.createElement('button', { type: 'button', 'data-testid': 'fire-before-reconnect', onClick: () => { void p.beforeReconnect?.().then((v) => { stub.verdict = v }) } }),
     React.createElement('button', { type: 'button', 'data-testid': 'fire-reconnecting', onClick: () => p.onReconnectingChange?.(true) }),
     React.createElement('button', { type: 'button', 'data-testid': 'fire-reconnected', onClick: () => p.onReconnectingChange?.(false) }))
@@ -475,6 +476,26 @@ describe('App — peer tab re-authenticates before each redial (SHAR-07)', () =>
   it.each(['not_sharing', 'no_such_session', 'forbidden'])('errorCode %s stops with the stopped-sharing verdict', async (code) => {
     const connect = vi.fn().mockReturnValueOnce(okResult).mockReturnValueOnce({ ...okResult, url: '', errorCode: code })
     await openThenReconnect(connect)
+    expect(stub.verdict).toEqual({ kind: 'stop', reason: 'share-stopped' })
+  })
+
+  // Todo 2026-11-21-ended-peer-tab-banner part 1: a tab that already saw the session-ended
+  // close reads no_such_session as ended; not_sharing is still a stopped share.
+  async function reconnectAfterEnded(code: string) {
+    const connect = vi.fn().mockReturnValueOnce(okResult).mockReturnValueOnce({ ...okResult, url: '', errorCode: code })
+    const c = await mountApp({ ...baseImpl(connect), GetRelayPort: () => 5555 })
+    await click(peerRow(c)!)
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-session-ended"]')!)
+    await click(c.querySelector<HTMLButtonElement>('[data-testid="fire-before-reconnect"]')!)
+  }
+
+  it('after the session-ended close, no_such_session stops with the ended verdict', async () => {
+    await reconnectAfterEnded('no_such_session')
+    expect(stub.verdict).toEqual({ kind: 'stop', reason: 'ended' })
+  })
+
+  it('after the session-ended close, not_sharing still stops with share-stopped', async () => {
+    await reconnectAfterEnded('not_sharing')
     expect(stub.verdict).toEqual({ kind: 'stop', reason: 'share-stopped' })
   })
 

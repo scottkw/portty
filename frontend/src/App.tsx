@@ -1021,11 +1021,11 @@ function App(): React.ReactElement {
   // connect re-checks same-account access and Share, refills this daemon's cap
   // store, and the relay port may be new after a daemon restart. It must not
   // touch tabs: changing the view's key would remount it and drop the buffer.
-  const reconnectPeerTab = useCallback(async (host: string, sessionId: string): Promise<ReconnectVerdict> => {
+  const reconnectPeerTab = useCallback(async (host: string, sessionId: string, sawEnded: boolean): Promise<ReconnectVerdict> => {
     try {
       const port = await GetRelayPort()
       const result = await ConnectPeerSession(host, sessionId)
-      return result.errorCode ? peerConnectVerdict(result.errorCode) : { kind: 'ok', port }
+      return result.errorCode ? peerConnectVerdict(result.errorCode, sawEnded) : { kind: 'ok', port }
     } catch {
       return { kind: 'retry' }
     }
@@ -1042,6 +1042,15 @@ function App(): React.ReactElement {
     // INPT-04: host plus session; another Mac's tab with the same id stays live.
     setTabs((prev) => prev.map((t) => (
       t.type === 'web-session' && t.peerHost && peerSnapshotHost(t) === host && t.sessionId === sessionId ? { ...t, shareStopped: true } : t
+    )))
+  }, [])
+
+  // 15-05: the guest got the session-ended close. Remember it on the tab so a later
+  // no_such_session from ConnectPeerSession reads as ended, not stopped sharing.
+  // The flag lives on the Tab (not the panel) because the panel remounts on a tab switch.
+  const markPeerSessionEnded = useCallback((host: string, sessionId: string) => {
+    setTabs((prev) => prev.map((t) => (
+      t.type === 'web-session' && t.peerHost && peerSnapshotHost(t) === host && t.sessionId === sessionId ? { ...t, sessionEnded: true } : t
     )))
   }, [])
 
@@ -1348,7 +1357,8 @@ function App(): React.ReactElement {
                 hostLabel={peerHost ? shortHost(peerHost) : (mode === 'web' ? webHost : undefined)}
                 onOtherAccount={mode === 'web' ? () => setWebOtherUser(true) : undefined}
                 onShareStopped={peerHost && activeWebTab ? () => dropPeerSession(peerSnapshotHost(activeWebTab)!, wsSessionId) : undefined}
-                beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId) : undefined}
+                onSessionEnded={peerHost && activeWebTab ? () => markPeerSessionEnded(peerSnapshotHost(activeWebTab)!, wsSessionId) : undefined}
+                beforeReconnect={peerHost ? () => reconnectPeerTab(activeWebTab?.connectHost ?? peerHost, wsSessionId, !!activeWebTab?.sessionEnded) : undefined}
                 onReconnectingChange={peerHost ? (on) => setReconnectingHost((h) => (on ? peerHost : h === peerHost ? null : h)) : undefined}
                 snapshotHost={peerHost && activeWebTab ? peerSnapshotHost(activeWebTab) : undefined}
                 isActive={!activePreview}

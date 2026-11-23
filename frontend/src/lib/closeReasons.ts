@@ -22,10 +22,12 @@ export function isTerminalClose(code: number, reason: string): boolean {
 
 // Verdict for a failed ConnectPeerSession run before a GUI redial (errorCode is
 // non-empty; the caller handles success). Codes mirror PeerErr* in
-// internal/daemon/types.go. no_such_session also means share-stopped: mid-gap the
-// daemon cannot tell "Share turned off for this session" from "session ended",
-// and "<host> stopped sharing this session." is true for both.
-export function peerConnectVerdict(errorCode: string): ReconnectVerdict {
+// internal/daemon/types.go. Mid-gap the daemon cannot tell "Share turned off for
+// this session" from "session ended", so no_such_session reads as share-stopped,
+// except for a tab that already saw the session-ended close (sawEnded): that
+// session is gone, not unshared (todo 2026-11-21-ended-peer-tab-banner).
+export function peerConnectVerdict(errorCode: string, sawEnded = false): ReconnectVerdict {
+  if (errorCode === 'no_such_session' && sawEnded) return { kind: 'stop', reason: 'ended' }
   return errorCode === 'not_sharing' || errorCode === 'no_such_session' || errorCode === 'forbidden'
     ? { kind: 'stop', reason: 'share-stopped' }
     : { kind: 'retry' }

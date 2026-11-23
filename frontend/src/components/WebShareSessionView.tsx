@@ -61,6 +61,8 @@ export interface WebShareSessionViewProps {
   hostLabel?: string
   /** Portty 04-06: the share stopped (close reason constant); the caller drops the sidebar row. */
   onShareStopped?: () => void
+  /** Portty 15-05: called when a guest socket closes with the session-ended reason. */
+  onSessionEnded?: () => void
   /** Portty 14-04 (MOB-05): passed through to TerminalPanel; the share server refused this device's Tailscale account. */
   onOtherAccount?: () => void
   /** Portty 05-05: App's pre-redial re-auth for peer tabs (remote only). */
@@ -111,6 +113,7 @@ export function WebShareSessionView({
   onFontSizeChange,
   hostLabel,
   onShareStopped,
+  onSessionEnded,
   onOtherAccount,
   beforeReconnect,
   onReconnectingChange,
@@ -256,6 +259,7 @@ export function WebShareSessionView({
         wsURL={useProxy ? undefined : wsURL}
         hostLabel={hostLabel}
         onShareStopped={onShareStopped}
+        onSessionEnded={onSessionEnded}
         onOtherAccount={onOtherAccount}
         beforeReconnect={useProxy ? beforeReconnect : probeShare}
         hostUnreachable={hostUnreachable}

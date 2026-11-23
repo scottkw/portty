@@ -35,6 +35,8 @@ export interface Tab {
   connectFailed?: boolean
   /** The host stopped sharing this peer tab's session; a row click reconnects (WR-06). */
   shareStopped?: boolean
+  /** This peer tab saw the session-ended close; a later no_such_session reads as ended. */
+  sessionEnded?: boolean
   /** Phase 11: a preview tab's session tab id (its owner). A preview's sessionId is its own tab id. */
   ownerTabId?: string
   /** Phase 11: a preview tab's file type (its icon). */
