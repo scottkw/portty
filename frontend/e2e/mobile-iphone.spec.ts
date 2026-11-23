@@ -75,3 +75,27 @@ test.describe('Phase 14-10 — key bar on an iPhone (MOB-01)', () => {
     expect(Math.max(...boxes.map((b) => b.right))).toBeLessThanOrEqual(vw)
   })
 })
+
+test.describe('Phase 14-11 — phone chrome on an iPhone (MOB-01)', () => {
+  test.beforeEach(async ({ page }) => { await openShare(page) })
+
+  test('with only the session tab, the tab strip is not shown', async ({ page }) => {
+    await expect(page.locator('.tab-bar')).toBeHidden()
+  })
+
+  test('terminal padding is 4px 8px', async ({ page }) => {
+    const pad = await page.locator('.terminal-session-container').evaluate((el) => getComputedStyle(el).padding)
+    expect(pad).toBe('4px 8px')
+  })
+
+  test('the xterm helper textarea is 16px, so iOS does not zoom on focus', async ({ page }) => {
+    const size = await page.locator('.xterm-helper-textarea').evaluate((el) => getComputedStyle(el).fontSize)
+    expect(size).toBe('16px')
+  })
+
+  test('the key bar is the last row, below the terminal area', async ({ page }) => {
+    const bar = await page.getByRole('toolbar', { name: 'Terminal keys' }).boundingBox()
+    const term = await page.locator('.terminal-session-container').boundingBox()
+    expect(bar!.y).toBeGreaterThanOrEqual(term!.y + term!.height - 1)
+  })
+})

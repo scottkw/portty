@@ -691,3 +691,26 @@ describe('TabBar preview tabs (PREV-01, PREV-04)', () => {
     expect(raw).not.toMatch(/innerHTML|dangerouslySetInnerHTML/)
   })
 })
+
+describe('TabBar: single-tab class (Portty 14-11)', () => {
+  const web = { id: '__websession__s', name: 'Session', sessionId: 's', type: 'web-session' as const }
+  const one = [web]
+  const two = [web, { id: 'p-a', name: 'diagram.png', sessionId: 's', type: 'preview' as const, ownerTabId: web.id, previewKind: 'image' as const }]
+  const cleanups: Array<() => void> = []
+  afterEach(() => { cleanups.splice(0).forEach((c) => c()) })
+  const bar = (overrides: TabBarOverrides) => {
+    const { container, root } = renderTabBarWithTabs(overrides)
+    cleanups.push(() => { flushSync(() => root.unmount()); container.remove() })
+    return container.querySelector('.tab-bar')!
+  }
+
+  it('is present with webMode and exactly one tab', () => {
+    expect(bar({ webMode: true, tabs: one, activeId: web.id }).classList.contains('tab-bar--single')).toBe(true)
+  })
+  it('is absent with a second tab (a preview), so the strip shows again', () => {
+    expect(bar({ webMode: true, tabs: two, activeId: web.id }).classList.contains('tab-bar--single')).toBe(false)
+  })
+  it('is absent without webMode, even with one tab (the desktop app keeps its strip)', () => {
+    expect(bar({ tabs: one, activeId: web.id }).classList.contains('tab-bar--single')).toBe(false)
+  })
+})

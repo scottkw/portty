@@ -188,7 +188,8 @@ export function TabBar({
   }
 
   return (
-    <div className={`tab-bar${sidebarHidden ? ' tab-bar--sidebar-hidden' : ''}`}>
+    // 14-11: a phone with only the session tab has nothing to switch to, so CSS hides the strip (a preview tab brings it back).
+    <div className={`tab-bar${sidebarHidden ? ' tab-bar--sidebar-hidden' : ''}${webMode && tabs.length === 1 ? ' tab-bar--single' : ''}`}>
       {sidebarHidden && (
         <button
           type="button"

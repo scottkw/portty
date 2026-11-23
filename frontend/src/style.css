@@ -2462,4 +2462,28 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
   .keybar--kb-up {
     padding-bottom: 0;
   }
+  /* Phase 14-11: tight phone chrome. The lone session tab has nothing to switch to; the strip's
+     sides clear a landscape notch; the terminal gets the room; a phone never pinch-zooms the page. */
+  .tab-bar--single {
+    display: none;
+  }
+  .tab-bar {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+  .terminal-session-container {
+    padding: 4px 8px;
+  }
+  html {
+    touch-action: pan-x pan-y;
+  }
+}
+/* iOS zooms the page when a control under 16px takes focus; the xterm helper textarea is one. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select,
+  .xterm-helper-textarea {
+    font-size: 16px;
+  }
 }
