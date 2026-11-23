@@ -13,6 +13,15 @@ Evidence from the two Tart VMs over the real tailnet. This file starts with plan
 - **WebGL and dotfile rules:** WebGL was switched off in each VM's `settings.json` for the run (`~/p907/webgl.sh off`, backup first, restored after, checked with `cmp`) even though the AX rows turned out not to be available; the sha256 of each VM user's `~/.zshrc` and `~/.zsh_history` was recorded before the rows (private copies in a `mktemp -d` directory) and compared at the Cleanup.
 - **Real machine safety:** the VMs' sidebars also list the user's own Mac under "Other Macs"; no row touched it (it was never clicked, shared to or typed into). Nothing ran on the host except `tart ip`, SSH and file writes in this repo.
 
+**14-12 additions (the after rows, the gate and the builds):**
+
+- **Base commit for 14-12:** `a121c3fd` (gsd/v1.2: all of 14-01..14-11 plus this plan's TESTING.md commit; its product code is identical to `a0f88200`). The P rows below run on builds from this tree.
+- **Builds:** HEAD (`v1.2.0-vm14`) and W14 (`v1.2.0-vm14w`, the `vmwhois` tag) built on the host in this checkout after one `pnpm run build`, ad-hoc signed; the helper `p14dev` built in a temporary worktree. Versions, sha256 and signatures are in "Builds (14-12)". W14 is installed only on the office VM for P-02 and is removed by the Cleanup.
+- **Helper `p14dev`:** `-whois-bench -n <N> -addr <ip>` (VM-only; it never ran on the host). It prints p50, p95 and max for `StatusWithoutPeers` and `WhoIs` against the VM's own tailscaled, the answering node's numeric user ID, the self user ID, and whether that node is the self node. No names, no other output. Source never committed.
+- **The key reader:** `~/p14/keys.zsh` in the office VM, rewritten as 14-02 described (14-02's cleanup removed it).
+- **Phone-check rule:** the last thing this plan does is leave one shared session `phone` (a tick counter) running on the office VM on HEAD, its link only in a 0600 file in a host `mktemp -d` directory; 14-14 ends it in every outcome. See "Phone check (left running for 14-14)".
+- **`vmwhois` mode file:** `$HOME/p14/whois-mode` in the office VM (`other`, `pass`, `fault`; a missing file means `other`).
+
 ## Before rows (14-02)
 
 Timings are read on the office VM's clock (the `keys.log` lines); the "sent" times are the sending VM's clock, both UTC, and the two VM clocks agree to within a few ms (row E-01: ESC sent at `23:48:02.137` from the home VM, `x` at `23:48:05.237`, the office log's two bytes at `23:48:05.230`).
@@ -33,3 +42,73 @@ Run after E-01, on both VMs.
 - Dotfiles: home `~/.zshrc` and `~/.zsh_history` equal to the values recorded before (`e3b0c44298fc1c14…`, `6b678cce73175753…`). Office `~/.zshrc` equal; `~/.zsh_history` had changed to `d0416f94d46b75359cc298d61ac24680978c642bd455097de8a36b41b56d9c4f` when `e00`'s shell ended, so it was restored from the private copy after every session was gone: now `e09568dbf568fc9a…`, equal to the value before.
 - The installed Phase 13 HEAD build (`dev`, sha256 `a01ae0e147c03409…`) relaunched on both VMs with `open --stderr` into a fresh private directory: office GUI 39844 / daemon 39846 and home GUI 32450 / daemon 32452, `/health` `{"status":"ok","version":"dev","api":5,"handoff":1}` on both, GUI stderr 0 bytes, 0 sessions. Both VMs still on the tailnet (`tailscale status` in each lists the other as active).
 - The VMs themselves were never stopped, suspended or rebooted; no `tailscale down`, `logout` or auth key. Nothing was built or installed. The two fresh private directories from the final relaunch each hold only a 0-byte `gui.err`.
+
+## Gate (14-12)
+
+Run once on the host, 2026-11-23 01:23:46 to 01:30:32 UTC, `GOTOOLCHAIN=go1.26.11`, nvm node v24.22.1 first on PATH, `NO_COLOR=1`, each step's exit code recorded and no output piped through `tail` or `head`. Logs: `/var/folders/lb/2__vrh3n2n155kwhrvz08lv80000gn/T/tmp.lZuXernbL5` (`gate-*.log`, `rc.txt`, `rerun-*.log`).
+
+| Step | Exit code | Result |
+|------|-----------|--------|
+| `go build ./...`, `go vet ./...` | 0, 0 | clean |
+| `go test -race -short -count=1 ./...` | **1** | 13 package lines `ok`, one FAIL: `internal/pty` `TestKillClean_NoOrphans` (`native_test.go:287: process group 72715 still exists after Kill`), 0.53 s inside a 21.98 s package run that ran in parallel with the 247 s daemon and 215 s relay packages. 0 `--- SKIP` lines. See "G-1 re-run" below |
+| `go test -tags vmwhois -count=1 -run VMWhoIs ./internal/daemon/` | 0 | `ok` |
+| `pnpm install --frozen-lockfile` | 0 | clean |
+| `pnpm vitest run` | **1** | 121 of 122 files and 1808 of 1809 tests passed; one FAIL: `src/lib/__tests__/pathLinks.linkifier.test.ts` "after a reconnect, another cell of the same row offers the link" (`term.onRender fired: expected 2 to be greater than 2`), the 14-08 deferred flake (`deferred-items.md`). See "Linkifier re-run" below |
+| `tsc --noEmit` | 0 | clean |
+| `tests/check-brand.sh`, `check-share-removal.sh`, `check-traceability-paths.sh` | 0, 0, 0 | clean; 228 traceability paths exist |
+| `tests/build-script.test.sh` | 0 | 40 passed, 0 failed |
+| Playwright (`PHASE_93_FIXTURE_REBUILD=1`, all projects including `iphone`) | 0 | 52 passed, 31 skipped, 0 failed; 11 of the passes are the `iphone` project |
+
+`frontend/src/wailsjs` was restored after the build-script test and after the builds (empty `git status`).
+
+**G-1 re-run (evidence).** After the gate, `go test -race -short -count=5 -run TestKillClean_NoOrphans ./internal/pty/` passed (exit 0, `ok ... 3.574s`). This is the same test, assertion and symptom as Phase 12's G-1 and Phase 13's, accepted by the user on 2026-11-22 as a timing flake under load. `internal/pty` has no diff since `9574fd49` (`git log 9574fd49..HEAD -- internal/pty` is empty). Nothing was patched.
+
+**Linkifier re-run (evidence).** `vitest run src/lib/__tests__/pathLinks.linkifier.test.ts` alone passed (9 of 9). Its failing test waits a fixed `sleep(100)` for a real xterm render; it passed 9 of 9 alone when 14-08 hit it, and the file imports nothing Phase 14 touched. Not patched.
+
+Both are findings for 14-14, not decided here. The gate ran once; these two re-runs are evidence only. The VM rows do not depend on either test.
+
+## Builds (14-12)
+
+Host, in this checkout after one `pnpm --dir frontend run build`, in a shell with the `wailsjs` restore trap, `GOTOOLCHAIN=go1.26.11 wails build -s -platform darwin/arm64 -tags wailsassets -ldflags "-X main.Version=<v>"` (W14 adds the `vmwhois` tag). `codesign -dv` on both: `Signature=adhoc`, `TeamIdentifier=not set`. `frontend/src/wailsjs` restored after the builds. p14dev: `GOOS=darwin GOARCH=arm64 go build` in a detached worktree at HEAD (`cmd/p14dev` written into the tree, never committed); the worktree and its directory were removed after the binary was copied out (0 `p14-help` worktrees registered). The VM-side sha256 values are recorded in P-00.
+
+| App | Version | Signature | Host binary sha256 |
+|-----|---------|-----------|--------------------|
+| HEAD | v1.2.0-vm14 | `Signature=adhoc`, `TeamIdentifier=not set` | `95ac988e504dd54648779691089b3e468e5db9ccef4f37be003573a2dd3dcdcb` |
+| W14 (`vmwhois`) | v1.2.0-vm14w | `Signature=adhoc`, `TeamIdentifier=not set` | `e78236d24228a28c9ffdeb8e3165e767dacfa09295decdebeaf838b62a6ed7ae` |
+| p14dev (helper, not part of the product) | n/a | n/a | `b3b549a43a08899617d17b4f80b627fb4d49052cc325bd220550ab0a71fc9071` |
+
+## Playwright emulation rows
+
+From the gate's single Playwright run (`gate-e2e.log`, the iPhone 15 device descriptor on WebKit for the `iphone` project; chromium, firefox and webkit for the others). These are emulation, not a phone: no real touch hardware, keyboard or Safari chrome. The simulator and real phone rows are 14-13 and 14-14. The manifest test is chromium only (it reads `Page.getAppManifest`); the same spec skips on firefox and webkit.
+
+| Check | Result | Spec and test | Evidence |
+|-------|--------|---------------|----------|
+| I-01 | PASS | `e2e/mobile-iphone.spec.ts:28` on `iphone`: key bar: tapping Esc reaches the shell as 1b | gate-e2e.log line 109, test 73, 790ms, listed with the passing mark |
+| I-02 | PASS | `e2e/mobile-iphone.spec.ts:33` on `iphone`: key bar: Tab sends 09 | gate-e2e.log line 110, test 74, 474ms, listed with the passing mark |
+| I-03 | PASS | `e2e/mobile-iphone.spec.ts:38` on `iphone`: key bar: the pipe key sends 7c | gate-e2e.log line 111, test 75, 443ms, listed with the passing mark |
+| I-04 | PASS | `e2e/mobile-iphone.spec.ts:43` on `iphone`: key bar: Up sends 1b5b41 | gate-e2e.log line 112, test 76, 460ms, listed with the passing mark |
+| I-05 | PASS | `e2e/mobile-iphone.spec.ts:48` on `iphone`: key bar: Ctrl then Up sends 1b5b313b3541 and Ctrl releases | gate-e2e.log line 113, test 77, 503ms, listed with the passing mark |
+| I-06 | PASS | `e2e/mobile-iphone.spec.ts:56` on `iphone`: key bar: Ctrl then typing c on the keyboard sends 03 and Ctrl releases | gate-e2e.log line 114, test 78, 453ms, listed with the passing mark |
+| I-07 | PASS | `e2e/mobile-iphone.spec.ts:64` on `iphone`: key bar: the eight keys fit one row at 44 pt or more | gate-e2e.log line 115, test 79, 405ms, listed with the passing mark |
+| I-08 | PASS | `e2e/mobile-iphone.spec.ts:82` on `iphone`: phone chrome: with only the session tab, the tab strip is not shown | gate-e2e.log line 116, test 80, 370ms, listed with the passing mark |
+| I-09 | PASS | `e2e/mobile-iphone.spec.ts:86` on `iphone`: phone chrome: terminal padding is 4px 8px | gate-e2e.log line 117, test 81, 400ms, listed with the passing mark |
+| I-10 | PASS | `e2e/mobile-iphone.spec.ts:91` on `iphone`: phone chrome: the xterm helper textarea is 16px, so iOS does not zoom on focus | gate-e2e.log line 118, test 82, 396ms, listed with the passing mark |
+| I-11 | PASS | `e2e/mobile-iphone.spec.ts:96` on `iphone`: phone chrome: the key bar is the last row, below the terminal area | gate-e2e.log line 119, test 83, 392ms, listed with the passing mark |
+| I-12 | PASS | `e2e/web-same-user.spec.ts:25` on `chromium`: same-account gate: another account gets the refusal page and no session data | gate-e2e.log line 43, test 19, 139ms, listed with the passing mark |
+| I-13 | PASS | `e2e/web-same-user.spec.ts:42` on `chromium`: same-account gate: a tailscaled fault gets the retry page, and Try again reloads the same URL | gate-e2e.log line 44, test 20, 252ms, listed with the passing mark |
+| I-14 | PASS | `e2e/web-same-user.spec.ts:58` on `chromium`: same-account gate: the same account opens the share view | gate-e2e.log line 45, test 21, 248ms, listed with the passing mark |
+| I-15 | PASS | `e2e/web-same-user.spec.ts:25` on `firefox`: same-account gate: another account gets the refusal page and no session data | gate-e2e.log line 71, test 43, 313ms, listed with the passing mark |
+| I-16 | PASS | `e2e/web-same-user.spec.ts:42` on `firefox`: same-account gate: a tailscaled fault gets the retry page, and Try again reloads the same URL | gate-e2e.log line 72, test 44, 548ms, listed with the passing mark |
+| I-17 | PASS | `e2e/web-same-user.spec.ts:58` on `firefox`: same-account gate: the same account opens the share view | gate-e2e.log line 73, test 45, 358ms, listed with the passing mark |
+| I-18 | PASS | `e2e/web-same-user.spec.ts:25` on `webkit`: same-account gate: another account gets the refusal page and no session data | gate-e2e.log line 99, test 67, 280ms, listed with the passing mark |
+| I-19 | PASS | `e2e/web-same-user.spec.ts:42` on `webkit`: same-account gate: a tailscaled fault gets the retry page, and Try again reloads the same URL | gate-e2e.log line 100, test 68, 488ms, listed with the passing mark |
+| I-20 | PASS | `e2e/web-same-user.spec.ts:58` on `webkit`: same-account gate: the same account opens the share view | gate-e2e.log line 101, test 69, 371ms, listed with the passing mark |
+| I-21 | PASS | `e2e/web-csp.spec.ts:49` on `chromium`: web-csp: Chromium parses /app/manifest.json under the share CSP | gate-e2e.log line 36, test 12, 273ms, listed with the passing mark |
+| I-22 | PASS | `e2e/web-share-scope.spec.ts:23` on `chromium`: web-share-scope: web-share /app/ guest sees the scoped session surface, NOT the desktop Sidebar (the test carries the desktop no-key-bar assertion: no toolbar named "Terminal keys") | gate-e2e.log line 46, test 22, 249ms, listed with the passing mark |
+| I-23 | PASS | `e2e/web-share-scope.spec.ts:23` on `firefox`: web-share-scope: web-share /app/ guest sees the scoped session surface, NOT the desktop Sidebar (the test carries the desktop no-key-bar assertion: no toolbar named "Terminal keys") | gate-e2e.log line 74, test 46, 435ms, listed with the passing mark |
+| I-24 | PASS | `e2e/web-share-scope.spec.ts:23` on `webkit`: web-share-scope: web-share /app/ guest sees the scoped session surface, NOT the desktop Sidebar (the test carries the desktop no-key-bar assertion: no toolbar named "Terminal keys") | gate-e2e.log line 102, test 70, 389ms, listed with the passing mark |
+
+## VM rows (14-12)
+
+| Check | Result | What was checked | Evidence |
+|-------|--------|------------------|----------|
