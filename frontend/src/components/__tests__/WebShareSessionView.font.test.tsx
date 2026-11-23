@@ -16,6 +16,14 @@ vi.mock('../TerminalPanel', () => ({
 
 import { WebShareSessionView } from '../WebShareSessionView'
 import { DEFAULT_TERMINAL_FONT_SIZE } from '../../lib/terminalFont'
+import { PHONE_QUERY } from '../../lib/phoneQuery'
+
+const realMatchMedia = window.matchMedia
+function phone(on: boolean) {
+  window.matchMedia = ((media: string) => ({
+    matches: on && media === PHONE_QUERY, media, addEventListener() {}, removeEventListener() {},
+  })) as unknown as typeof window.matchMedia
+}
 
 let root: Root | null = null
 let container: HTMLDivElement | null = null
@@ -28,10 +36,11 @@ function mount(props: Partial<React.ComponentProps<typeof WebShareSessionView>> 
 }
 const unmount = () => { act(() => root?.unmount()); container?.remove(); root = null; container = null }
 
-afterEach(() => { unmount(); hoisted.props = null })
+afterEach(() => { unmount(); hoisted.props = null; window.matchMedia = realMatchMedia })
 
 describe('WebShareSessionView browser-guest font', () => {
   it('+3 from the host font renders the panel 3 px larger, and a remount returns to the host size', () => {
+    phone(true)
     mount()
     expect(hoisted.props!.fontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE)
     act(() => hoisted.props!.onFontSizeChange(3))
@@ -41,7 +50,18 @@ describe('WebShareSessionView browser-guest font', () => {
     expect(hoisted.props!.fontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE)
   })
 
+  // TerminalPanel calls onFontSizeChange for Shift+= and Shift+-; a font that does not change never
+  // re-runs its font effect, so there is no claim either (INPT-06).
+  it('desktop browser: Shift+= and Shift+- (onFontSizeChange) change nothing', () => {
+    phone(false)
+    mount()
+    const change = hoisted.props!.onFontSizeChange
+    act(() => { change(1); change(-1); change(5) })
+    expect(hoisted.props!.fontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE)
+  })
+
   it('several deltas before a render add up, and the size clamps to 6..32', () => {
+    phone(true)
     mount()
     const change = hoisted.props!.onFontSizeChange // the first closure, as Shift+= and a pinch hold it
     act(() => { change(1); change(1); change(1) })

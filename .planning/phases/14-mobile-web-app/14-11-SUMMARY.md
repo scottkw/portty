@@ -113,9 +113,9 @@ Untouched. It patches xterm's one `_mouseService` once per Terminal after `term.
 
 Test file note: `visualViewportInset.test.ts` uses `React.createElement` (the plan names a `.ts` file, which cannot hold JSX).
 
-## Behaviour note
+## Follow-up fix: desktop Shift+=/- stay no-ops
 
-In the browser guest, `Shift+=` and `Shift+-` were swallowed no-ops; because the guest `onFontSizeChange` fallback now exists (as the plan specifies), they now change the in-memory font too, claiming at the new fit like a desktop peer tab's Cmd+/Cmd-. That is a small change on the desktop browser view; flagged for review against "desktop browser view unchanged".
+The guest `onFontSizeChange` fallback briefly made Shift+= and Shift+- change the font in the desktop browser share view, against SC1 ("the desktop browser view is unchanged"). Fixed after the plan's tasks: WebShareSessionView now uses the in-memory fallback only when `usePhone()` is true; on a desktop browser it is the no-op it was. Pinch on a phone is unaffected. `WebShareSessionView.font.test.tsx` pins both (desktop: the delta calls leave `fontSize` unchanged, so TerminalPanel's font effect never runs and there is no claim; phone: the deltas apply, clamp and reset on remount). Touched vitest files (WebShareSessionView, TerminalPanel.pinch: 57 tests) and tsc pass; log `/var/folders/lb/2__vrh3n2n155kwhrvz08lv80000gn/T/tmp.LYul9SLFzd`. The full suites were not re-run.
 
 ## Not verified here (backstop, 14-13 and 14-14)
 

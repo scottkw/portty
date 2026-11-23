@@ -227,8 +227,9 @@ export function WebShareSessionView({
   // the fetched/SSE config, else the defaults.
   const hostFont = parseTerminalFont((livePluginConfig as { terminalFont?: unknown } | null)?.terminalFont)
   const effectiveFontFamily = fontFamily ?? (hostFont ? terminalFontFamily(hostFont.family) : terminalFontFamily(''))
-  // 14-11 (MOB-01): the browser guest has no font props, so a pinch (or Shift+=/-) lives here in
-  // memory only: a reload or relaunch returns to the host's font. Never stored on the phone.
+  // 14-11 (MOB-01): the browser guest has no font props, so a pinch lives here in memory only: a
+  // reload or relaunch returns to the host's font. Never stored on the phone. Phones only: on a
+  // desktop browser Shift+=/- stay the no-ops they were (SC1: the desktop browser view is unchanged).
   const [pinchFontSize, setPinchFontSize] = useState<number | null>(null)
   const effectiveFontSize = fontSize ?? pinchFontSize ?? hostFont?.size ?? DEFAULT_TERMINAL_FONT_SIZE
   const effectiveFontSizeRef = useRef(effectiveFontSize)
@@ -246,7 +247,7 @@ export function WebShareSessionView({
         relayPort={relayPort}
         fontFamily={effectiveFontFamily}
         fontSize={effectiveFontSize}
-        onFontSizeChange={onFontSizeChange ?? guestFontSizeChange}
+        onFontSizeChange={onFontSizeChange ?? (phone ? guestFontSizeChange : () => {})}
         theme={theme ?? {}}
         pluginConfig={effectivePluginConfig}
         remote={useProxy}
