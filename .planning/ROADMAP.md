@@ -212,7 +212,7 @@ Plans:
 **Goal:** Close the bugs and test flakes found during v1.2 so the milestone ships clean. Source: the pending todos in .planning/todos/pending/. dompurify-3418 is blocked until 2026-11-28, and v12-release-checks needs the user on a real Mac; both are out of scope here.
 **Requirements**: none new (bug fixes and hardening against existing behaviour)
 **Success Criteria** (what must be TRUE):
-  1. `portty attach` with its status bar shown tells the remote PTY rows-1, initially and on every resize, so a full-screen app (e.g. Claude Code) never draws over the bar. If several viewers are attached, the reduced height actually wins. A test pins it. (todo 2026-11-21-attach-statusbar-overwritten)
+  1. `portty attach` with its status bar shown tells the remote PTY rows-1, initially and on every resize, so a full-screen app (e.g. Claude Code) never draws over the bar. If several viewers are attached, the reduced height wins once the CLI viewer claims or types (INPT-06; a CLI that only watches a taller GUI-owned grid keeps today's behaviour, accepted by the user 2026-11-23). A test pins it. (todo 2026-11-21-attach-statusbar-overwritten)
   2. Clicking an already-ended peer tab shows the "session ended" state, not "stopped sharing". (todo 2026-11-21-ended-peer-tab-banner)
   3. Dismissing a naturally exited session never signals a stale process group, and the other items in todo 2026-11-20-killsession-stale-pgid are resolved.
   4. The Phase 9 audit's daemon socket hardening items are done or recorded as accepted, each with a reason. (todo 2026-11-20-daemon-socket-hardening)

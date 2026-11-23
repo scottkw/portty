@@ -34,6 +34,9 @@ Close the bugs and test flakes found during v1.2 so the milestone ships clean. S
 - [Path click] F-1 fix site moves from the cwd lookup to row numbering: research reproduced that a same-write ED 3 (`ESC[3J` after `ESC[2J`) drops emulator scrollback without counting it in History.Pushed(), so absolute rows run backwards. Fix: History.Skip(emu.ScrollbackLen()) in the hub's CSI J handler; cwd.go and Hub.PathClick stay unchanged; the test still lives in internal/relay/pathclick_test.go.
 - [Socket hardening] Also best-effort chmod 0600 on the socket after a successful takeover COMMIT, so a socket created by a pre-fix daemon is tightened on the first upgrade; failure is logged, never fatal.
 
+### User decision (2026-11-23, plan-check escalation)
+- [Attach bar] SC1 scope confirmed by the user: the bar's reduced height wins once the CLI viewer claims (resize) or types (INPT-06: the viewer you type in sets the size). A CLI that only watches while a GUI tab owns a taller grid keeps today's behaviour and may still be overdrawn; accepted, not a Phase 15 defect. ROADMAP SC1 amended to match.
+
 ### Claude's Discretion
 - Notification click behaviour (user said "You decide"): show window + banner chosen, recorded above.
 - Sidebar handling and --status-top (user said "You decide"): recorded under Post-research decisions.
