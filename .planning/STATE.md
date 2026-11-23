@@ -6,15 +6,15 @@ current_phase: 15
 current_phase_name: v1.2 Hardening
 status: executing
 stopped_at: Phase 14 complete — all phases complete
-last_updated: "2026-11-23T14:15:32.543Z"
+last_updated: "2026-11-23T14:22:41.632Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 15 execution started
-state_head: fb0c1f2dd88c30e1abbc15230a0ecf5c5d5a706a
+state_head: adcd338c0c1902fc3ccee454ffd876b9d9b84ecf
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 63
-  completed_plans: 55
+  completed_plans: 56
   percent: 86
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 15 (v1.2 Hardening) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-11-23 — Phase 15 execution started
 
@@ -140,6 +140,7 @@ Last activity: 2026-11-23 — Phase 15 execution started
 | Phase 14 P13 | ~75min | 2 tasks | 1 files |
 | Phase 14 P14 | checkpoint run plus Task 3 (about 1 h) | 3 tasks | 6 files |
 | Phase 15 P01 | ~10m | 2 tasks | 9 files |
+| Phase 15 P02 | 25min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -316,6 +317,8 @@ Recent decisions affecting current work:
 - [Phase 14]: 14-13: S-04 passed, the Home Screen launch URL keeps session and cap; icon lands in the App Library only on a fresh device and dies with the share (S-07)
 - [Phase 14]: 14-14: Phase 14 verdict approved with S-02 accepted as a limit (iOS form-assist bar, user decision 2026-11-22); CSP Amendment 4 approved; UI-A accepted, UI-B keep uncached, UI-C accepted
 - [Phase 15]: 15-01: watchResize takes a reserve func so rows-1 is tested through the real SIGWINCH loop; Bar.ReservedRows is 1 only once Start sized the terminal
+- [Phase 15]: 15-02: Session.reaped is set explicitly after cmd.Wait, never inferred from ExitCode; killSession skips signals and a second Wait on a reaped session
+- [Phase 15]: 15-02: todo 2026-11-20 items 2 and 3 documented at HubManager.Shutdown and closeSessionFiles, not fixed (no caller today)
 
 ### Pending Todos
 
@@ -424,7 +427,7 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-23T14:15:31.876Z
+Last session: 2026-11-23T14:22:39.563Z
 Stopped at: Phase 14 complete — all phases complete
 Resume: 1) branch `worktree-agent-a725d63afb58130ac` holds `cdf95204` (review iteration 2 doc) and `d9d4764c` (WR-02 it2 fix, gates NOT yet run); rebase it onto gsd/v1.2 and fix the remaining four (WR-01 it2, IN-01..03 it2) with gsd-code-fixer, then gates. 2) Re-run TestHandoffIT plus V-01, V-02 and V-05b on the Tart VMs (both stopped; start with `tart run --no-graphics <name> &`). 3) gsd-verifier, mark UPGR-01..05, phase.complete 9. Then Phase 10.
 Resume file: None
