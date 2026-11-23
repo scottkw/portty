@@ -5,16 +5,16 @@ milestone_name: Previews, Remote URLs, Mobile
 current_phase: 15
 current_phase_name: v1.2 Hardening
 status: executing
-stopped_at: Completed 15-05-PLAN.md
-last_updated: "2026-11-23T14:40:02.283Z"
+stopped_at: Completed 15-07-PLAN.md
+last_updated: "2026-11-23T14:42:22.544Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 15 execution started
-state_head: a190453df687b08e5ab50f3251975bc2ab3a264d
+state_head: 1d7a61e1224e50fa0a6e08547352343f3bbfc1c9
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 63
-  completed_plans: 59
+  completed_plans: 60
   percent: 86
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 ## Current Position
 
 Phase: 15 (v1.2 Hardening) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
 Last activity: 2026-11-23 — Phase 15 execution started
 
@@ -144,6 +144,7 @@ Last activity: 2026-11-23 — Phase 15 execution started
 | Phase 15 P03 | 2 min | 2 tasks | 4 files |
 | Phase 15 P04 | 14 min | 3 tasks | 6 files |
 | Phase 15 P05 | 8min | 2 tasks | 8 files |
+| Phase 15 P07 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -326,6 +327,7 @@ Recent decisions affecting current work:
 - [Phase 15]: 15-04: F-1 fixed in row numbering (History.Skip in the ED 3 handler); Hub.PathClick and cwdLog.at unchanged
 - [Phase 15]: 15-04: linkifier test keeps one 20 ms sleep for the no-input window; all other waits use vi.waitFor
 - [Phase 15]: 15-05: ended peer tab flag lives on the Tab (survives panel remount); no_such_session maps to ended only after the session-ended close, not_sharing/forbidden stay share-stopped
+- [Phase 15]: 15-07: refused share port (ECONNREFUSED) is reachable with zero sessions via MetaRefused; timeout stays unreachable; no grace; no IP retry on refusal
 
 ### Pending Todos
 
@@ -434,8 +436,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-23T14:39:59.908Z
-Stopped at: Completed 15-05-PLAN.md
+Last session: 2026-11-23T14:42:20.164Z
+Stopped at: Completed 15-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

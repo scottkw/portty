@@ -221,7 +221,7 @@ Plans:
   7. Flaky tests are made deterministic without loosening product behaviour: pathLinks.linkifier "after a reconnect…" and TestShare_PasteBacklogKeepsViewer. The full Go and vitest suites pass once, clean.
   8. Each fixed todo moves to .planning/todos/completed/, and TESTING.md is updated per the standing rule.
 **Depends on:** Phase 14
-**Plans:** 5/9 plans executed
+**Plans:** 6/9 plans executed
 
 Plans:
 **Wave 1**
@@ -230,7 +230,7 @@ Plans:
 - [x] 15-03-PLAN.md — Daemon socket mode (O-2): 0600 at listen (fail closed) and a best-effort tighten after a takeover COMMIT (SC4)
 - [x] 15-04-PLAN.md — Path click F-1 (rows stay monotonic across ED 3) and F-2 (mouseleave invalidates the Linkifier), linkifier test on vi.waitFor (SC6, SC7)
 - [x] 15-05-PLAN.md — An ended peer tab keeps "Session ended" when clicked again (ended flag feeds the reconnect verdict) (SC2)
-- [ ] 15-07-PLAN.md — A refused share port reads as reachable with nothing shared; a timeout stays "Can't reach this Mac"; no grace (SC2)
+- [x] 15-07-PLAN.md — A refused share port reads as reachable with nothing shared; a timeout stays "Can't reach this Mac"; no grace (SC2)
 
 **Wave 2** *(15-06 blocked on 15-05: App.tsx; 15-08 blocked on 15-03: handoff.go)*
 - [ ] 15-06-PLAN.md — Clicking the update notification shows Portty with the available banner and starts no download (native delegate, Go handler, React un-dismiss; live click is M-152) (SC5)
