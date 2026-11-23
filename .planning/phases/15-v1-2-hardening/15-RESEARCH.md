@@ -74,7 +74,7 @@ Two risks need planner attention. The `--status-top` bar cannot be protected by 
 |------------|-------------|----------------|-----------|
 | Attach tells the PTY rows-1 | CLI process (`cmd_attach.go`, `internal/attach`) | Relay hub (grid owner) | The CLI knows whether its bar is shown; the hub already decides which viewer's size becomes the PTY grid |
 | Ended-peer-tab verdict | Browser/Client (React: `closeReasons.ts`, `App.tsx`, `TerminalPanel.tsx`) | Daemon (`ConnectPeerSession` error code) | The daemon only reports `no_such_session`; what it means depends on what this tab already saw |
-| Sidebar peer grace | Browser/Client (poll state in `App.tsx`/`sidebarPeers.ts`) | Daemon `tailnetCache` (30 s) | The stale discovery cache is daemon-side, but the decision is local UI state |
+| Sidebar refused-vs-unreachable | Go fetch layer (`internal/tailnet` sessions fetch, called from app.go) | Daemon `tailnetCache` (30 s) | Updated per 15-CONTEXT.md Post-research decisions [Sidebar]: classify at the fetch site, no UI grace |
 | Skip stale pgid signal | Daemon PTY layer (`internal/pty`) | Engine exit watcher | Only the PTY session knows whether its child was reaped |
 | Socket mode, fd closing, pid check | Daemon IPC (`internal/daemon`, `internal/fdpass`) | OS (unix socket, `LOCAL_PEERPID`) | Kernel-attested identity is the trust anchor |
 | Notification click | Native macOS shell (`tray_objc_darwin.m`) | Go app (`app_update.go`), React banner | ObjC receives the click, Go shows the window, React un-dismisses the banner |
@@ -425,20 +425,24 @@ Not a rename/refactor/migration phase; omitted. One data-shape note: `History.pu
 | A5 | Absolute `CUP` is not offset without DECOM, so `--status-top` still overdraws row 1 for absolute-addressing apps | Pitfall 1 | If wrong, Top is also fully fixed; the manual VM check would show it |
 | A6 | Clicking the notification activates the app with Accessory activation policy (tray-only) once `showWindow` runs `setDockVisible(true)` | Item E | Window may not come forward; VM check, then add `activateIgnoringOtherApps` |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **G-1 flake (`TestKillClean_NoOrphans`) and SC7.**
    - What we know: it failed in the full run in Phases 12, 13 and 14, passes alone, and the user accepted it as unrelated. Item C edits the same package.
    - What's unclear: whether the user wants it made deterministic here (replace its two fixed sleeps with `WaitFor`) or kept as the documented re-run precedent.
    - Recommendation: make it deterministic (test-only, tiny, same spirit as H); otherwise plan the documented re-run `-count=5`.
+   - RESOLVED: make it deterministic (15-CONTEXT.md Post-research decisions, [Flakes]).
 2. **`--status-top` and DECOM.**
    - What we know: rows-1 stops overdraw at the bottom row only; Top needs origin mode for absolute-addressing apps.
    - What's unclear: whether the user accepts Top as a recorded limit.
    - Recommendation: ship rows-1 for both, record the Top limit in TESTING.md M-153 and the SUMMARY; do not add DECOM now.
+   - RESOLVED: ship rows-1 for both; Top overdraw recorded as an accepted limit (15-CONTEXT.md Post-research decisions, [Attach bar]).
 3. **Takeover of a pre-fix daemon's socket mode.**
    - What we know: the first upgrade from an older daemon keeps its 0755 socket (the listener fd is passed, not recreated).
    - What's unclear: whether a one-line `os.Chmod(socketPath, 0o600)` after COMMIT is wanted. Recommendation: yes, best-effort and logged; the parent dir is 0700 either way, so this is documentation accuracy, not an open threat.
+   - RESOLVED: yes, best-effort post-COMMIT chmod 0600, logged, never fatal (15-CONTEXT.md Post-research decisions, [Socket hardening]).
 4. **Grace length for B2** (A3/A4). Recommendation: 35 s, pure function, injectable clock.
+   - RESOLVED (superseded): no time-based grace; a refused connection reads as reachable with 0 shared sessions, a timeout stays unreachable, classified at the internal/tailnet fetch site (15-CONTEXT.md Post-research decisions, [Sidebar]).
 
 ## Environment Availability
 
