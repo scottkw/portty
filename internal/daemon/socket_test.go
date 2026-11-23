@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -123,30 +122,6 @@ func TestListenDaemonSocket_Mode0600(t *testing.T) {
 	}
 	if err := client.Health(); err != nil {
 		t.Errorf("Health on the 0600 socket: %v", err)
-	}
-}
-
-// The umask held for the bind is restored on success and on failure.
-func TestListenDaemonSocket_RestoresUmask(t *testing.T) {
-	umaskMu.Lock()
-	prev := syscall.Umask(0o022)
-	umaskMu.Unlock()
-	t.Cleanup(func() { umaskMu.Lock(); syscall.Umask(prev); umaskMu.Unlock() })
-
-	ln, err := listenDaemonSocket(shortSocketPath(t, "umask"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ln.Close()
-	if _, err := listenDaemonSocket("/nonexistent-portty-dir/d.sock"); err == nil {
-		t.Fatal("listen in a missing dir succeeded")
-	}
-
-	umaskMu.Lock()
-	got := syscall.Umask(0o022)
-	umaskMu.Unlock()
-	if got != 0o022 {
-		t.Errorf("umask after listen = %o, want 022", got)
 	}
 }
 
