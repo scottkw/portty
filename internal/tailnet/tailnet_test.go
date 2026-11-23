@@ -797,6 +797,16 @@ func TestMetaStatus_TriState(t *testing.T) {
 			t.Fatalf("status = %v err = %v, want MetaRefused with ECONNREFUSED", status, err)
 		}
 	})
+	t.Run("timeout", func(t *testing.T) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+		defer srv.Close()
+		client := *srv.Client()
+		client.Timeout = 200 * time.Millisecond
+		_, status, err := FetchPeerSessionsMetaWithClient(ctx, srv.URL, &client)
+		if status != MetaUnreachable || err == nil || errors.Is(err, syscall.ECONNREFUSED) {
+			t.Fatalf("status = %v err = %v, want MetaUnreachable with a non-refused error", status, err)
+		}
+	})
 }
 
 func TestFetchPeerCap(t *testing.T) {
