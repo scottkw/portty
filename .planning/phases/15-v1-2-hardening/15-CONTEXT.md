@@ -27,8 +27,15 @@ Close the bugs and test flakes found during v1.2 so the milestone ships clean. S
 - [Path click] Q: "F-2: first Cmd-click on the same cell after leave + text change" → Selected: "Call PathLinksHandle.invalidate() on mouseleave; add a real-xterm-Linkifier case (leave, change row, return to same cell, Cmd-click) to pathLinks.linkifier.test.ts" — one event hook
 - [Flakes] Q: "How to make the two flaky tests deterministic?" → Selected: "Wait on events, not wall-clock: renderOnce resolves on term.onRender (with timeout); TestShare_PasteBacklogKeepsViewer's heartbeat limit becomes load-robust (event wait or scaled) without changing product heartbeat behaviour; then a loop run plus one clean full Go (-race) and vitest run" — test-only
 
+### Post-research decisions (2026-11-22)
+- [Sidebar] Research found the brief "Can't reach this Mac" is not a ListSessions race: the host's share server stops when its last share ends (share.go:355) while the viewer's probe cache lives 30 s, so the meta fetch is refused. Decision: no time-based grace. A refused connection (TCP RST: the host answered, no share server listening) means the host is reachable with 0 shared sessions; only a timeout/no-route stays "Can't reach this Mac". If refused vs timeout can't be told apart reliably at the fetch site, split to a new todo instead of adding a grace.
+- [Attach bar] --status-top: ship rows-1 for both positions; record the top-bar overdraw by apps using absolute row addressing (no origin mode) as an accepted, documented limit. Bottom (default) is fully fixed.
+- [Flakes] Also make internal/pty TestKillClean_NoOrphans (G-1, failed in Phases 12-14 full runs) deterministic with testutil.WaitFor, so SC7's clean full run is real.
+- [Socket hardening] Also best-effort chmod 0600 on the socket after a successful takeover COMMIT, so a socket created by a pre-fix daemon is tightened on the first upgrade; failure is logged, never fatal.
+
 ### Claude's Discretion
 - Notification click behaviour (user said "You decide"): show window + banner chosen, recorded above.
+- Sidebar handling and --status-top (user said "You decide"): recorded under Post-research decisions.
 
 </decisions>
 
