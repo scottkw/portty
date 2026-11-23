@@ -1,6 +1,8 @@
 ---
 phase: 14-mobile-web-app
-verified: 2026-11-22T21:45:00Z
+verified: 2026-11-22T22:15:00Z
+re_verification: true
+previous_verified: 2026-11-22T21:45:00Z
 status: passed
 score: 5/5 must-haves verified
 covered_files:
@@ -122,7 +124,7 @@ covered_files:
   - "web/embed.go"
   - "web/service-retry.html"
   - "web/user-refused.html"
-covered_digest: "v4:sha256:dfc69f3a6bd872bb4dbb75de1509187e2c85fd9c2e1af9c6f4252a7d5d1804ed"
+covered_digest: "v4:sha256:be2069b37299bd68e1f04cef4ec72e05d107596a16827e27f704058423d4d4b7"
 behavior_unverified: 0
 overrides_applied: 0
 accepted_limits: # Recorded in the user's own words in 14-VM-CHECKS.md "User decisions"; not gaps
@@ -146,14 +148,24 @@ post_run_fixes: # 14-REVIEW-FIX.md, committed after every VM, simulator and real
   - id: IN-02
     new_device_evidence_needed: false
     reason: "Cleanup-only (cancel the heal frame, never leave .app hidden); unit-tested."
+post_verification_changes: # UI-REVIEW fixes committed after the first verification (cdaff2ce); re-checked in this run
+  - id: UI-REVIEW key bar pressed class (dee38c70)
+    new_device_evidence_needed: false
+    reason: "Visual-only: adds keybar__key--down on pointerdown, cleared on up/cancel/leave; send path unchanged. KeyBar.test.tsx, style.keybar.test.ts and iPhone emulation 12/12 pass."
+  - id: UI-REVIEW manifest theme_color dropped (85c683d7)
+    new_device_evidence_needed: false
+    reason: "Status bar colour now set only by the two media-query theme-color meta tags in index.html. No CSP change; homeScreen.test.ts and web-csp.spec.ts (manifest parses, no theme_color, zero violations) pass."
+  - id: UI-REVIEW aria-hidden on the | glyph (924ad01e)
+    new_device_evidence_needed: false
+    reason: "Accessibility-only: the button keeps aria-label 'Vertical bar'; the pipe still sends 7c (iPhone emulation test passes)."
 ---
 
 # Phase 14: Mobile Web App Verification Report
 
 **Phase Goal:** The user can drive a shared session from an iPhone. The share view fits the phone, adds the keys iOS lacks, installs to the Home Screen and picks up again after the phone sleeps or changes network. The host Mac serves all of it over the tailnet, and portty.app/app is only a static launcher page.
-**Verified:** 2026-11-22
+**Verified:** 2026-11-22 (re-verified 22:15 UTC; first verified 21:45 UTC)
 **Status:** passed
-**Re-verification:** No (initial verification)
+**Re-verification:** Yes (2026-11-22, before v1.2 close). The first report (status passed) went stale because later commits changed covered files. The only non-planning changes since `cdaff2ce` are the three UI-REVIEW fixes (`dee38c70`, `85c683d7`, `924ad01e`) in `KeyBar.tsx`, `style.css`, `manifest.json` and their tests. No Go file, CSP, gate, relay or reconnect code changed, so every row below still holds against the current code; this run re-ran the targeted tests listed under Behavioral Spot-Checks. Intended behaviour Phase 14 itself changed (the discovery probe and every session route gated by `requireSameUser`; the lone-Esc end-of-frame flush with P9 changed on purpose) is the behaviour judged here. The terminal selection fix `7a37bfb4` predates the first verification and touches no Phase 14 must-have.
 
 ## Goal Achievement
 
@@ -206,12 +218,13 @@ All 14 plans' frontmatter truths were checked against the code and the evidence 
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Gate, CSP, absorber, tailnet probe | `go test -race -count=1 ./internal/webserver/ ./internal/relay/ ./internal/tailnet/` | ok / ok / ok | PASS |
+| Gate, CSP, origin, static pages (re-run, targeted) | `GOTOOLCHAIN=go1.26.11 go test -count=1 -run 'WhoIs\|SameUser\|Gate\|AppStatic\|CSP\|Csp\|Origin\|Manifest\|UserRefused\|ServiceRetry' ./internal/webserver/` | ok, 46 tests passed | PASS |
+| Lone-Esc absorber (re-run, targeted) | `go test -count=1 -run 'Absorb\|Esc\|P9' ./internal/relay/` | ok, 17 tests passed | PASS |
 | vmwhois modes | `go test -tags vmwhois -run TestVMWhoIs_Modes ./internal/daemon/` | PASS | PASS |
 | Launcher copy, release guard, share CLI | `go test -run 'TestLauncherCopy\|TestNoFakeWhoIsInRelease\|TestShare' .` | ok | PASS |
-| Frontend unit suite (full, once) | `NO_COLOR=1 npx vitest run` (node v24.22.1) | 122 files, 1813 tests passed | PASS |
+| Frontend unit files (re-run, targeted; no full suite) | `NO_COLOR=1 npx vitest run` on 18 named Phase 14 files (KeyBar, homeScreen, style.keybar, style.mobile, WebShareSessionView keybar/base, ctrlMap, pinchZoom, visualViewportInset, phoneQuery, closeReasons, relayClient, UserRefused, TerminalPanel pinch/reconnect, App.webLink, ErrorBoundary, PreviewRenderers) (node v24.22.1) | 18 files, 326 tests passed | PASS |
 | iPhone emulation | `npx playwright test --project=iphone e2e/mobile-iphone.spec.ts` | 12 passed | PASS |
-| Gate pages, manifest under CSP, desktop scope | `npx playwright test --project=webkit --project=chromium web-same-user web-csp web-share-scope` | 13 passed | PASS |
+| Gate pages, manifest under CSP, desktop scope | `npx playwright test --project=webkit --project=chromium e2e/web-csp.spec.ts e2e/web-same-user.spec.ts e2e/web-share-scope.spec.ts` | 13 passed, 1 skipped | PASS |
 | Types | `npx tsc --noEmit` | exit 0 | PASS |
 | Guards | `bash tests/check-traceability-paths.sh`; `bash tests/check-brand.sh` | OK; OK | PASS |
 
@@ -251,9 +264,9 @@ None outstanding. The real-phone items, PHONE-1 (M-145) and PHONE-2 (M-148/MOB-0
 
 ### Gaps Summary
 
-No gaps. Every roadmap success criterion has evidence in code and passing tests, and the iOS-only behaviours (Home Screen launch, keyboard inset, sleep and network-switch reconnect) are backed by simulator rows and the user's real-iPhone checks. The known flakes (G-1, linkifier) are tracked and did not fail in this run.
+No gaps. Re-verification found no regression: the only code changed since the first verification is the three UI-REVIEW fixes, which touch the key bar's pressed look, the | glyph's accessibility and the manifest's theme_color, and their targeted tests and the iPhone emulation pass. Every roadmap success criterion has evidence in code and passing tests, and the iOS-only behaviours (Home Screen launch, keyboard inset, sleep and network-switch reconnect) are backed by simulator rows and the user's real-iPhone checks. Accepted limits (S-02, UI-A, UI-B, UI-C) stay accepted in the user's words. The known flakes (G-1, linkifier) are tracked and were not exercised by this targeted run.
 
 ---
 
-_Verified: 2026-11-22_
+_Verified: 2026-11-22 (re-verification before v1.2 close)_
 _Verifier: Claude (gsd-verifier)_
