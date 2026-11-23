@@ -141,6 +141,9 @@ Last activity: 2026-11-22 — Phase 14 complete
 
 ## Accumulated Context
 
+### Roadmap Evolution
+- Phase 15 added: v1.2 Hardening (close pending v1.2 todos and flakes before milestone close; 2026-11-22)
+
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.

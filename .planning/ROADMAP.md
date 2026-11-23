@@ -44,6 +44,7 @@ Full details: `.planning/milestones/v1.1-ROADMAP.md`. Audit: `.planning/mileston
 - [x] **Phase 12: File Path Click** - OSC 7 working-directory tracking, and Cmd-click on a printed file path previews it, local and remote (completed 2026-11-22)
 - [x] **Phase 13: Remote Localhost URLs** - Remote `localhost:PORT` links open in the normal browser through a token-gated tailnet proxy with per-port consent (completed 2026-11-22)
 - [x] **Phase 14: Mobile Web App** - Browser links limited to your own Tailscale account, then the share view on an iPhone: key bar, phone layout, Home Screen install, reconnect after sleep, and launcher copy for portty.app/app (completed 2026-11-22)
+- [ ] **Phase 15: v1.2 Hardening**
 
 ## Phase Details
 
@@ -205,3 +206,22 @@ Plans:
 | 12. File Path Click | v1.2 | 9/9 | Complete    | 2026-11-22 |
 | 13. Remote Localhost URLs | v1.2 | 7/7 | Complete    | 2026-11-22 |
 | 14. Mobile Web App | v1.2 | 14/14 | Complete    | 2026-11-22 |
+
+### Phase 15: v1.2 Hardening
+
+**Goal:** Close the bugs and test flakes found during v1.2 so the milestone ships clean. Source: the pending todos in .planning/todos/pending/. dompurify-3418 is blocked until 2026-11-28, and v12-release-checks needs the user on a real Mac; both are out of scope here.
+**Requirements**: none new (bug fixes and hardening against existing behaviour)
+**Success Criteria** (what must be TRUE):
+  1. `portty attach` with its status bar shown tells the remote PTY rows-1, initially and on every resize, so a full-screen app (e.g. Claude Code) never draws over the bar. If several viewers are attached, the reduced height actually wins. A test pins it. (todo 2026-11-21-attach-statusbar-overwritten)
+  2. Clicking an already-ended peer tab shows the "session ended" state, not "stopped sharing". (todo 2026-11-21-ended-peer-tab-banner)
+  3. Dismissing a naturally exited session never signals a stale process group, and the other items in todo 2026-11-20-killsession-stale-pgid are resolved.
+  4. The Phase 9 audit's daemon socket hardening items are done or recorded as accepted, each with a reason. (todo 2026-11-20-daemon-socket-hardening)
+  5. Clicking the "Portty X is available" notification brings Portty forward. (todo 2026-11-18-update-notification-click)
+  6. A relative path printed on row 0 of a never-scrolled session resolves against the directory it was printed in (F-1). The first Cmd-click after the pointer returns to the same cell whose text changed sends the path click (F-2).
+  7. Flaky tests are made deterministic without loosening product behaviour: pathLinks.linkifier "after a reconnect…" and TestShare_PasteBacklogKeepsViewer. The full Go and vitest suites pass once, clean.
+  8. Each fixed todo moves to .planning/todos/completed/, and TESTING.md is updated per the standing rule.
+**Depends on:** Phase 14
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 15 to break down)
