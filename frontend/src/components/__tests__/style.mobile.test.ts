@@ -48,8 +48,10 @@ describe('Phase 14-11: phone chrome CSS', () => {
     expect(r).toContain('top: var(--vv-top, 0px)')
     expect(css).toMatch(/\.app \{[^}]*height: var\(--vv-height, 100%\)/)
   })
-  it('html allows only panning, so the page cannot zoom', () => {
-    expect(rule(phone, 'html')).toContain('touch-action: pan-x pan-y')
+  it('page zoom is blocked on the terminal container only: no html rule, the container allows only panning', () => {
+    expect(phone).not.toMatch(/\bhtml\s*\{/)
+    expect(css).not.toMatch(/\n\s*(html|body|\.app)\s*\{[^}]*touch-action/)
+    expect(css).toMatch(/\n\.terminal-session-container \{[^}]*touch-action: pan-y;/)
   })
   it('the key bar drops its bottom inset with the keyboard up', () => {
     expect(rule(phone, '.keybar--kb-up')).toContain('padding-bottom: 0')
