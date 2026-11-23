@@ -27,6 +27,15 @@ describe('peerConnectVerdict', () => {
   it.each(['unreachable', 'tailscale_off', 'unknown_host', 'ambiguous', 'multiple', 'something_new'])('%s retries', (code) => {
     expect(peerConnectVerdict(code)).toEqual({ kind: 'retry' })
   })
+  it('no_such_session after the session-ended close stops with ended', () => {
+    expect(peerConnectVerdict('no_such_session', true)).toEqual({ kind: 'stop', reason: 'ended' })
+  })
+  it.each(['not_sharing', 'forbidden'])('%s stays share-stopped after the session-ended close', (code) => {
+    expect(peerConnectVerdict(code, true)).toEqual({ kind: 'stop', reason: 'share-stopped' })
+  })
+  it('unreachable still retries after the session-ended close', () => {
+    expect(peerConnectVerdict('unreachable', true)).toEqual({ kind: 'retry' })
+  })
 })
 
 describe('shareInfoVerdict', () => {

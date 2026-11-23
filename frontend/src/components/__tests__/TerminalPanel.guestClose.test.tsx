@@ -159,6 +159,8 @@ vi.mock('@xterm/addon-webgl', () => ({
 describe('TerminalPanel guest close (SHAR-04)', () => {
   let container: HTMLElement
   let root: Root
+  // vi.clearAllMocks in afterEach resets its calls between cases.
+  const onSessionEnded = vi.fn()
 
   beforeEach(() => {
     hoisted.state.onClose = null
@@ -183,7 +185,7 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
       root.render(React.createElement(TerminalPanel, {
         sessionId: 's1', isActive: true, relayPort: 1234, fontSize: 13,
         onFontSizeChange: () => {}, theme: {}, remote: true,
-        hostLabel, onShareStopped,
+        hostLabel, onShareStopped, onSessionEnded,
       }))
     })
     expect(hoisted.state.onClose, 'RelayClient got an onClose callback').not.toBeNull()
@@ -200,6 +202,7 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
     expect(container.textContent).toContain('office-air stopped sharing this session.')
     expect(container.textContent).not.toContain('Session ended')
     expect(onShareStopped).toHaveBeenCalledTimes(1)
+    expect(onSessionEnded).not.toHaveBeenCalled()
     expect(hoisted.state.term!.options.disableStdin).toBe(true)
   })
 
@@ -209,6 +212,7 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
     close('session ended')
     expect(container.textContent).toContain('Session ended — the owner stopped this session.')
     expect(onShareStopped).not.toHaveBeenCalled()
+    expect(onSessionEnded).toHaveBeenCalledTimes(1)
     expect(hoisted.state.term!.options.disableStdin).toBe(true)
   })
 
@@ -219,12 +223,13 @@ describe('TerminalPanel guest close (SHAR-04)', () => {
       root.render(React.createElement(TerminalPanel, {
         sessionId: 's1', isActive: true, relayPort: 1234, fontSize: 13,
         onFontSizeChange: () => {}, theme: {}, remote: true,
-        hostLabel: 'office-air', onShareStopped, onOtherAccount,
+        hostLabel: 'office-air', onShareStopped, onOtherAccount, onSessionEnded,
       }))
     })
     close('other account')
     expect(onOtherAccount).toHaveBeenCalledTimes(1)
     expect(onShareStopped).not.toHaveBeenCalled()
+    expect(onSessionEnded).not.toHaveBeenCalled()
     expect(container.textContent).not.toContain('stopped sharing')
     expect(container.textContent).not.toContain('Session ended')
     expect(hoisted.state.term!.options.disableStdin).toBe(true)
