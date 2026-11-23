@@ -114,6 +114,15 @@ func onTrayUpdate() {
 	}
 }
 
+//export onNotificationClick
+func onNotificationClick(identifier *C.char) {
+	id := C.GoString(identifier) // copy now: the C string is only valid during this callback
+	app := trayCallbackApp       // captured before the goroutine, like onTrayQuit
+	if app != nil {
+		go app.handleNotificationClick(id) // the native callback must return at once
+	}
+}
+
 // setTrayUpdateItem sets the tray menu's update item title; "" removes the item.
 func setTrayUpdateItem(title string) {
 	ct := C.CString(title)

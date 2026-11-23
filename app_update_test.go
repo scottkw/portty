@@ -100,6 +100,7 @@ type updateHarness struct {
 
 	mu      sync.Mutex
 	events  []updater.Status
+	names   []string // every emitted event name, update:status or not
 	notes   []string
 	tray    []string
 	dialogs []string // "Title|Message|Buttons|Default|Cancel"
@@ -137,11 +138,12 @@ func newUpdateHarness(t *testing.T) *updateHarness {
 		waiting: make(chan time.Duration, 1), ticks: make(chan time.Time)}
 	h.app = &App{
 		emitEventFunc: func(name string, data any) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.names = append(h.names, name)
 			if name != "update:status" {
 				return
 			}
-			h.mu.Lock()
-			defer h.mu.Unlock()
 			h.events = append(h.events, data.(updater.Status))
 		},
 		sendNotificationFunc: func(id, title, body string) {
@@ -699,5 +701,49 @@ func TestUpdatePoller_ClockSetBack(t *testing.T) {
 	h.tick(t)
 	if c, _ := h.gh.counts(); c != 2 {
 		t.Errorf("%d requests an hour later, want 2 (the daily cadence resumes)", c)
+	}
+}
+
+// eventCount is how many times the event name was emitted.
+func (h *updateHarness) eventCount(name string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n := 0
+	for _, got := range h.names {
+		if got == name {
+			n++
+		}
+	}
+	return n
+}
+
+// A click on the update notification brings Portty forward and asks for the banner; it must not
+// start the update (CONTEXT decision 2026-11-22).
+func TestNotificationClick_ShowsWindowAndBanner(t *testing.T) {
+	h := newUpdateHarness(t)
+	h.app.handleNotificationClick("portty.update-available")
+	if n := h.showCount(); n != 1 {
+		t.Errorf("shows = %d, want 1", n)
+	}
+	if n := h.eventCount("update:show"); n != 1 {
+		t.Errorf("update:show emitted %d times, want 1", n)
+	}
+	if _, assets := h.gh.counts(); assets != 0 {
+		t.Errorf("%d asset downloads after a click, want 0", assets)
+	}
+	if n := h.states("downloading"); n != 0 {
+		t.Errorf("%d downloading status events after a click, want 0", n)
+	}
+}
+
+func TestNotificationClick_IgnoresOtherIDs(t *testing.T) {
+	h := newUpdateHarness(t)
+	h.app.handleNotificationClick("portty.quit-gui-only")
+	h.app.handleNotificationClick("")
+	if n := h.showCount(); n != 0 {
+		t.Errorf("shows = %d, want 0", n)
+	}
+	if n := h.eventCount("update:show"); n != 0 {
+		t.Errorf("update:show emitted %d times, want 0", n)
 	}
 }

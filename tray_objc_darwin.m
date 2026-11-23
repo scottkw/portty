@@ -14,6 +14,7 @@ extern void onTrayShow(void);
 extern void onTrayQuit(void);
 extern void onTraySession(int idx);
 extern void onTrayUpdate(void);
+extern void onNotificationClick(char *identifier);
 
 // Forward-declare hasValidBundleIdentifier (defined below, near sendNotification)
 // so registerNotificationDelegate, which comes before that definition, can call it.
@@ -81,6 +82,7 @@ static PorttyMenuDelegate *menuDelegate = nil;
 // UNUserNotificationCenterDelegate, UNUserNotificationCenter suppresses
 // banners/sounds for the foreground app by default, silently swallowing the
 // notification even when authorization was granted and delivery succeeded.
+// It also routes a click on a notification body to Go (onNotificationClick).
 @interface PorttyNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
 
@@ -91,6 +93,17 @@ static PorttyMenuDelegate *menuDelegate = nil;
     completionHandler(UNNotificationPresentationOptionBanner |
                        UNNotificationPresentationOptionList |
                        UNNotificationPresentationOptionSound);
+}
+
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+ didReceiveNotificationResponse:(UNNotificationResponse *)response
+          withCompletionHandler:(void (^)(void))completionHandler {
+    @autoreleasepool {
+        if ([response.actionIdentifier isEqualToString:UNNotificationDefaultActionIdentifier]) {
+            onNotificationClick((char *)[response.notification.request.identifier UTF8String]);
+        }
+    }
+    completionHandler(); // always, or the system waits on us
 }
 @end
 
@@ -160,6 +173,10 @@ void initStatusItem(const void *d1, int n1, const void *d2, int n2) {
             // Hide Dock icon — Wails overrides LSUIElement by setting its own
             // activation policy, so we must set accessory mode programmatically.
             [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+
+            // Register at launch so a click on a notification from an earlier run
+            // reaches the delegate; idempotent and bundle-guarded.
+            registerNotificationDelegate();
         });
     }
 }

@@ -121,6 +121,10 @@ func (a *App) onUpdateStatus(st updater.Status) {
 	}
 }
 
+// updateNotificationID identifies the update-available notification; handleNotificationClick
+// matches it.
+const updateNotificationID = "portty.update-available"
+
 func notifiedVersionPath() string { return filepath.Join(configDir(), "update_notified") }
 
 // notifyUpdateOnce sends one native notification per new version. A read error counts as not
@@ -130,7 +134,7 @@ func (a *App) notifyUpdateOnce(version string) {
 	if strings.TrimSpace(string(b)) == version {
 		return
 	}
-	a.sendNotificationFunc("portty.update-available", "Portty", "Version "+version+" is available.")
+	a.sendNotificationFunc(updateNotificationID, "Portty", "Version "+version+" is available.")
 	rememberNotified(version)
 	log.Printf("update: notified %s", version)
 }
@@ -236,6 +240,17 @@ func (a *App) showWindow() {
 		runtime.WindowShow(a.ctx)
 		a.setDockVisible(true)
 	}
+}
+
+// handleNotificationClick runs when the user clicks a notification. For the update notification it
+// brings Portty forward and asks the UI to show the update banner even if it was dismissed. It must
+// never start the update: the user presses the banner's button for that (CONTEXT decision 2026-11-22).
+func (a *App) handleNotificationClick(id string) {
+	if id != updateNotificationID {
+		return
+	}
+	a.showWindow()
+	a.emitEvent("update:show", nil)
 }
 
 // setTrayUpdate sets the tray's update item title ("" hides it).
