@@ -2,19 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.2
 milestone_name: Previews, Remote URLs, Mobile
-current_phase: 14
+current_phase: 15
+current_phase_name: v1.2 Hardening
 status: completed
 stopped_at: Phase 14 complete — all phases complete
-last_updated: "2026-11-23T03:35:09.424Z"
+last_updated: "2026-11-23T14:10:32.574Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 14 complete
-state_head: cdaff2ce3766f1111ac294e6c2b7aecdb97267ee
+state_head: fde56c6b03788f676c074d4e2c05e25cf6999e6e
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 6
-  total_plans: 54
+  total_plans: 63
   completed_plans: 54
-  percent: 100
+  percent: 86
 ---
 
 # Project State
@@ -28,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 
 ## Current Position
 
-Phase: 14
+Phase: 15 (v1.2 Hardening) — READY TO EXECUTE
 Plan: Not started
 Status: All phases complete
 Last activity: 2026-11-22 — Phase 14 complete
@@ -421,10 +422,10 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-21T22:32:50.036Z
+Last session: 2026-11-23T04:18:09.418Z
 Stopped at: Phase 14 complete — all phases complete
 Resume: 1) branch `worktree-agent-a725d63afb58130ac` holds `cdf95204` (review iteration 2 doc) and `d9d4764c` (WR-02 it2 fix, gates NOT yet run); rebase it onto gsd/v1.2 and fix the remaining four (WR-01 it2, IN-01..03 it2) with gsd-code-fixer, then gates. 2) Re-run TestHandoffIT plus V-01, V-02 and V-05b on the Tart VMs (both stopped; start with `tart run --no-graphics <name> &`). 3) gsd-verifier, mark UPGR-01..05, phase.complete 9. Then Phase 10.
-Resume file: None
+Resume file: .planning/phases/15-v1-2-hardening/15-UI-SPEC.md
 
 ## Operator Next Steps
 
