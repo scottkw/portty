@@ -336,6 +336,30 @@ func TestCwd_SurvivesResizeAndClear(t *testing.T) {
 	check("report after ESC[3J", "MARK-G", "MARK-F")
 }
 
+// F-1 (todo 2026-11-22-row0-relative-path-start-dir): zsh `clear` writes ED 2
+// then ED 3 in one write. ED 2 pushes the screen into the emulator's
+// scrollback and ED 3 drops it before it is drained into history, so those
+// lines must still count in History.Pushed or output after the clear reuses
+// rows that older directory records cover.
+func TestCwd_ClearKeepsRowsMonotonic(t *testing.T) {
+	h := cwdHub(t, 80, 24)
+	feedHubs(osc7("/start")+"% cd proj\r\n"+osc7("/proj")+"% clear; ls\r\n"+
+		"\x1b[H\x1b[2J\x1b[3J"+"docs-x\r\ndocs-y\r\n"+osc7("/proj")+"% ", 4096, h)
+	wantCwd(t, h, "docs-x", "/proj")
+	wantCwd(t, h, "docs-y", "/proj")
+}
+
+// ED 3 in the same write as lines that scrolled into the emulator's scrollback
+// drops those lines too.
+func TestCwd_ScrollbackEraseKeepsRows(t *testing.T) {
+	h := cwdHub(t, 80, 10)
+	// The report sits after the filler, on a row the dropped lines pushed
+	// past: unfixed, docs-z's row falls back below it and resolves to /start.
+	feedHubs(osc7("/start")+"% cd proj\r\n"+fillerLines(12)+osc7("/proj")+
+		"\x1b[3J"+"docs-z\r\n"+osc7("/proj"), 4096, h)
+	wantCwd(t, h, "docs-z", "/proj")
+}
+
 func TestCwd_HistoryTrimKeepsFloor(t *testing.T) {
 	h := cwdHub(t, 80, 24)
 	h.history = NewHistory(50, HistoryMaxBytes)

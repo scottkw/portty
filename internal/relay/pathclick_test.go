@@ -432,6 +432,27 @@ func TestPathClick_Relative(t *testing.T) {
 	}
 }
 
+// F-1: a relative path printed on row 0 after `cd proj; clear` resolves
+// against proj, the directory it was printed in, not the start directory.
+func TestPathClick_RelativeAfterClear(t *testing.T) {
+	root := t.TempDir()
+	start, proj := filepath.Join(root, "start"), filepath.Join(root, "proj")
+	if err := os.MkdirAll(start, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	xPNG := pcWrite(t, filepath.Join(proj, "docs"), "x.png", pcPNG)
+
+	hub, ch := pcHub(t, 200, 24)
+	sub, _ := previewSub()
+	hub.Subscribe(sub)
+	feedHubs(osc7(start)+"% cd proj\r\n"+osc7(proj)+"% clear; ls\r\n"+
+		"\x1b[H\x1b[2J\x1b[3J"+"docs/x.png\r\n"+osc7(proj)+"% ", 4096, hub)
+
+	if hd := pcPreviewed(t, hub, ch, sub, "docs/x.png"); hd.Key != pcKey(t, xPNG) {
+		t.Errorf("click previewed %q (key %s), want %s", hd.Name, hd.Key, xPNG)
+	}
+}
+
 func TestPathClick_NewestOccurrenceWins(t *testing.T) {
 	root := t.TempDir()
 	a, b := filepath.Join(root, "a"), filepath.Join(root, "b")

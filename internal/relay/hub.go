@@ -1298,6 +1298,11 @@ func (h *Hub) newLiveEmulator(cols, rows int) *xvt.Emulator {
 		n, _, _ := params.Param(0, 0)
 		if n == 3 {
 			h.history.Clear()
+			// vt's own ED 3 handler runs after this one and drops exactly these
+			// undrained lines; counting them keeps output after a `clear` from
+			// reusing rows older cwd records cover (F-1, todo
+			// 2026-11-22-row0-relative-path-start-dir).
+			h.history.Skip(emu.ScrollbackLen())
 			h.wraps.clear()
 		}
 		// IN-02: ED 0 from home and ED 1 erase row 0's start without a

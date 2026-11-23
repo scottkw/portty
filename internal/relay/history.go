@@ -67,10 +67,16 @@ func (h *History) Push(line string, wrapped bool) {
 	}
 }
 
-// Clear drops every line and releases the storage.
+// Clear drops every line and releases the storage. It leaves pushed alone, so
+// the absolute row numbering stays monotonic.
 func (h *History) Clear() {
 	h.lines, h.wrapped, h.head, h.bytes = nil, nil, 0, 0
 }
+
+// Skip counts n lines that were dropped before they reached history (ED 3
+// erasing emulator scrollback that was never drained), so Pushed keeps the
+// absolute row numbering monotonic.
+func (h *History) Skip(n int) { h.pushed += uint64(n) }
 
 // Len returns the number of retained lines.
 func (h *History) Len() int { return len(h.lines) - h.head }
