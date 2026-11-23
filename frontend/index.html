@@ -6,8 +6,13 @@
          can't navigate the iframe to a page that posts to Wails' frame-agnostic IPC handler.
          Frames and workers only: no default-src or script-src, so Wails' injected scripts are untouched. -->
     <meta http-equiv="Content-Security-Policy" content="frame-src blob:; child-src blob:; worker-src 'self'" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Portty" />
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1C1C1E" media="(prefers-color-scheme: dark)" />
     <title>Portty</title>
     <style>
       :root { color-scheme: light dark; }
