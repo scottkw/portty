@@ -10,3 +10,8 @@ Lead (unproven): `TerminalPanel.tsx` `recomputeScale` sets `term.element.style.t
 Copy: the native Edit menu exists (`main.go:191`). Check whether the drag went to the TUI as mouse reports (mouse tracking on, so xterm made no selection to copy; on macOS Option-drag forces an xterm selection), or whether the selection is cleared by output or redraw. Also check whether the clipboard addon (OSC 52) is on for this tab.
 
 Repro first: scaled panel (two viewers at different sizes), drag near the bottom, compare the selected row with the pointer row. Plain shell vs. Claude Code. Desktop and Safari.
+
+## Resolution
+Fixed at 7a37bfb4 (selection follows the pointer on a scaled pane; Option-drag selects under a mouse TUI) and filed here at 52d960a5.
+Evidence: TESTING.md M-136 (PASS 2026-11-21, build from 7a37bfb4), frontend/e2e/selection-offset.spec.ts and frontend/src/lib/terminalScale.test.ts; debug record .planning/debug/resolved/selection-offset-copy.md.
+Triage recorded by Phase 16 (16-03): no code change, nothing carried to v1.3.

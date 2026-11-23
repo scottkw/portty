@@ -26,6 +26,7 @@ decisions:
   - "P-07's one 200 (GET /app/sessions/<id>/preview) is the /app/* SPA fallback, byte-identical to GET /app/ (11-04 Deviation 1); recorded as PASS with the evidence"
   - "hostile-external.svg is refused by portty open (DOCTYPE internal subset); its fetch vectors were tested with the same file minus the DOCTYPE block"
   - "P-08c: the run has no VM password, so the user typed it into the prompt over Screen Sharing; the orchestrator verified the link and `portty list`; PASS"
+requirements-completed: [PREV-02, PREV-04]  # added by Phase 16 (16-03); delivered across 11-06, 11-07 and 11-09 and proven at this gate; 11-VERIFICATION.md truths 3, 5 and 8 (passed; PREV-02 desktop look: deferred, accepted)
 metrics:
   duration: "~55 min"
   completed: 2026-11-21

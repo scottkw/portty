@@ -34,7 +34,7 @@ key-files:
 key-decisions:
   - "Decision: accept-limit (the user's 'Approve (Recommended)' answer, which carried one accepted limit, S-02); verdict approved"
   - "CSP Amendment 4 (manifest-src 'self' only) approved; UI-A accepted; UI-B keep uncached; UI-C accepted"
-requirements-completed: []  # plan rule: requirements.mark-complete is not run here
+requirements-completed: [MOB-01, MOB-02, MOB-03, MOB-04, MOB-05]  # set by Phase 16 (16-03) from 14-VERIFICATION.md SC1-SC5 (passed); this plan's checkpoint approved the phase
 ---
 
 # Phase 14 Plan 14: Security review, the checkpoint and the phase verdict Summary
