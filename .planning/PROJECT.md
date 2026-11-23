@@ -112,6 +112,8 @@ v1.1 Hardening shipped 2026-11-19 (Phases 7-8, 16/16 requirements). See `.planni
 | Upgrades hand live sessions to the new daemon; DEBT-08 consent stays as the fallback | Upgrading the unattended office Mac must never cost a session | — Pending (v1.2 Phase 9) |
 | Hardening checks fail toward the old daemon (takeover refuses an unconfirmed pid; socket 0600 with no process-wide umask) | A false refusal costs a consent prompt; a leaked umask or wrong pid could cost the remote Mac | ✓ Good — Phase 15; real two-build upgrade chain passed in the VM (M-155) |
 | The viewer you type in sets the PTY size, also for `portty attach` (rows-1 under its bar) | One grid-owner rule for every viewer; a passive CLI watching a taller GUI grid keeps today's behaviour | ✓ Good — Phase 15 (user decision 2026-11-23) |
+| Unknown leading flags are a usage error (exit 2); only no-args and macOS launch arguments (`-psn_*`, `-NS*`, `-Apple*`) start the GUI | A CLI call over SSH must never start a GUI, and a Finder/Dock/login-item launch on the remote Mac must never be refused | ✓ Good — Phase 16 (user decision 2026-11-23); every launch path passed in the VM (M-156) |
+| `portty kill`/`rename` resolve names like share/attach, but need at least 8 characters for an ID prefix | A one-letter abbreviation of a name must never kill an unrelated session | ✓ Good — Phase 16 (code review WR-01) |
 
 ## Evolution
 
@@ -131,4 +133,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-23 after Phase 15 (v1.2 Hardening)*
+*Last updated: 2026-11-23 after Phase 16 (v1.2 Cleanup)*
