@@ -61,6 +61,7 @@ A throwaway end-to-end path (ScreenCaptureKit → VideoToolbox H.264 → pion/we
 - Research constraints carry over: subagents never contact the host's tailscaled or 100.x addresses (VM rows go through the VMs), and host experiments never mount, copy or modify the user's real files (~/Downloads, /Applications); scratch-only, detach anything attached.
 - Matrix must include per-browser full ICE vs ICE-lite results (C3), the 2560 px / 30 fps default cap measurement (C4), Constrained Baseline decode (C5), and AudioConverter Opus (C7).
 - File-the-entitlement todo stays with the user; not a spike deliverable.
+- User answers after phase research (2026-11-24): the office Mac runs macOS 27.2.x, same as the VMs and this host, so VM lock-screen and permission rows transfer (no extra office-Mac row needed for version mismatch). The host run's viewer is a VM browser (not the iPhone); the iPhone Safari row runs separately against a VM. Chrome row: try Chrome in the VM first; if it will not install or run there, fall back to Chrome on the host opening only the spike's test page.
 
 </specifics>
 
