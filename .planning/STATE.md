@@ -1,20 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v1.2
-status: Awaiting next milestone
-stopped_at: Phase 16 complete — all phases complete
-last_updated: "2026-11-24T15:34:12.504Z"
-last_activity: 2026-11-23
-last_activity_desc: Milestone v1.2 completed and archived
-state_head: 8a44e0c119863be0a55f1b2d67cc3e206609b455
+milestone: v2.0
+milestone_name: Desktop Sharing
+status: planning
+last_updated: "2026-11-24T20:02:01.099Z"
+last_activity: 2026-11-24
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 67
-  completed_plans: 67
-  percent: 100
-milestone_name: Previews, Remote URLs, Mobile
-current_phase: 16
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,11 @@ See: .planning/PROJECT.md (updated 2026-11-23)
 
 ## Current Position
 
-Phase: Milestone v1.2 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-11-23 — Milestone v1.2 completed and archived
+Status: Defining requirements
+Last activity: 2026-11-24 — Milestone v2.0 started
+
 
 ## Performance Metrics
 

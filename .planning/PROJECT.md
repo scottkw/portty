@@ -12,10 +12,21 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 
 v1.2 Previews, Remote URLs, Mobile shipped 2026-11-23 (Phases 9-16, 26/26 requirements), released as v1.2.0. v1.1 Hardening shipped 2026-11-19 and was the first public GitHub release (v1.1.0). See `.planning/MILESTONES.md`.
 
-## Next
+## Current Milestone: v2.0 Desktop Sharing
 
-- **v1.2.1 patch:** move `dompurify` 3.4.17 → 3.4.18+ on or after 2026-11-28, once 3.4.18 is 14 days old (todo `dompurify-3418`; the advisory's SAFE_FOR_TEMPLATES mode is not used by our config, so v1.2.0 shipped without it by user decision 2026-11-23).
-- **Next milestone:** not yet defined. Start with `/gsd-new-milestone`.
+**Goal:** Use the office Mac's whole desktop from home (in the Portty app, a browser, or an iPhone) as easily as its terminal today, and let Portty updates install themselves.
+
+**Target features:**
+- DMG self-install: in-app updates verify, replace `/Applications/Portty.app`, relaunch and delete the DMG (sessions survive via the v1.2 handoff); a first launch from the mounted DMG moves itself to `/Applications`, ejects and trashes the download
+- Desktop sharing over WebRTC (pion/webrtc in the Go daemon; ScreenCaptureKit capture, hardware H.264), viewed in the Portty app, a browser link, and the iPhone share view
+- Full mouse/keyboard control; the sharer picks a window or a display; switch displays mid-session
+- Two modes: always-available for your own tailnet Macs (unattended), and click-to-share links that other tailnet people can join
+- Clipboard sync, audio, multiple simultaneous viewers, adaptive quality (sharp when still, smooth when moving)
+- Remote unlock of a locked Mac (feasibility to be proven by research; macOS restricts lock-screen capture and input)
+
+**Why not macOS Screen Sharing:** one app with the terminal, browser and iPhone viewers, smoother video, and the corporate office Mac restricts Screen Sharing/Remote Management. The user can grant Screen Recording and Accessibility there.
+
+**Also pending:** v1.2.1 patch moves `dompurify` 3.4.17 → 3.4.18+ on or after 2026-11-28 (todo `dompurify-3418`).
 
 ## Requirements
 
@@ -53,6 +64,12 @@ v1.2 Previews, Remote URLs, Mobile shipped 2026-11-23 (Phases 9-16, 26/26 requir
 - ✓ iPhone share view (key bar, phone layout, Home Screen, reconnect after sleep), launcher copy for portty.app/app, browser links limited to the host's Tailscale account (MOB-01..05) — v1.2
 
 ### Active
+
+- [ ] DMG self-install for updates and first launch, with cleanup (v2.0)
+- [ ] WebRTC desktop sharing with full control in app, browser and iPhone, two share modes, clipboard, audio, multi-viewer, display switch, adaptive quality (v2.0)
+- [ ] Remote unlock of a locked shared Mac, if research shows it is feasible (v2.0)
+
+Carried over:
 
 - [ ] Overnight two-Mac test (VERF-01, M-84) and lid-sleep / AP-switch test (M-85): deferred by the user at v1.0 close
 - [ ] Deferred two-Mac UI checks from Phases 2–4 (peer attach, live share state, VoiceOver, README on GitHub)
@@ -118,6 +135,8 @@ v1.2 Previews, Remote URLs, Mobile shipped 2026-11-23 (Phases 9-16, 26/26 requir
 | Upgrades hand live sessions to the new daemon; DEBT-08 consent stays as the fallback | Upgrading the unattended office Mac must never cost a session | ✓ Good — v1.2 Phase 9 |
 | Hardening checks fail toward the old daemon (takeover refuses an unconfirmed pid; socket 0600 with no process-wide umask) | A false refusal costs a consent prompt; a leaked umask or wrong pid could cost the remote Mac | ✓ Good — Phase 15; real two-build upgrade chain passed in the VM (M-155) |
 | The viewer you type in sets the PTY size, also for `portty attach` (rows-1 under its bar) | One grid-owner rule for every viewer; a passive CLI watching a taller GUI grid keeps today's behaviour | ✓ Good — Phase 15 (user decision 2026-11-23) |
+| Desktop sharing over WebRTC (pion) inside Portty, tailnet only with no STUN/TURN/cloud | One app for terminal + desktop, browser and iPhone viewers, smoother than VNC; corp Mac restricts Screen Sharing (user decision 2026-11-24) | — Pending (v2.0) |
+| Click-to-share desktop links may be opened by other people on the tailnet, not only the host's own account | User wants to show a desktop to tailnet colleagues; widens MOB-05 for desktop links only (user decision 2026-11-24) | — Pending (v2.0) |
 | Unknown leading flags are a usage error (exit 2); only no-args and macOS launch arguments (`-psn_*`, `-NS*`, `-Apple*`) start the GUI | A CLI call over SSH must never start a GUI, and a Finder/Dock/login-item launch on the remote Mac must never be refused | ✓ Good — Phase 16 (user decision 2026-11-23); every launch path passed in the VM (M-156) |
 | `portty kill`/`rename`/`unshare` resolve names like share/attach, but need at least 8 characters for an ID prefix | A one-letter abbreviation of a name must never kill or unshare an unrelated session | ✓ Good — Phase 16 (code review WR-01); unshare added by quick 261123-kcr (audit W-2) |
 
@@ -139,4 +158,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-23 after v1.2 milestone*
+*Last updated: 2026-11-24 after starting milestone v2.0 Desktop Sharing*
