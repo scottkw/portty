@@ -91,7 +91,7 @@ Carried over:
 ## Context
 
 - **Origin:** Warp session sharing drops after an idle period, and the user can't reconnect. Warp offers no setting to change that. Portty replaces Warp sharing for office→home control.
-- **Codebase:** Forked from AgentHub (`~/dev/agenthub`, github.com/scottkw/agenthub) with full git history. Go 1.26 + Wails v2 + React/Vite frontend, `tailscale.com` tsnet, coder/websocket, go-pty. Internal packages after v1.0: attach, capability, daemon, pty, relay, statusbar, tailnet, testutil, updater, wakewatch, webserver.
+- **Codebase:** Forked from AgentHub (`~/dev/agenthub`, github.com/scottkw/agenthub) with full git history. Go 1.26 + Wails v2 + React/Vite frontend, the system tailscaled via LocalAPI (no tsnet; the share server binds the tailnet IP), coder/websocket, go-pty. Internal packages after v1.0: attach, capability, daemon, pty, relay, statusbar, tailnet, testutil, updater, wakewatch, webserver.
 - **State after v1.0 (2026-11-18):** six phases shipped; strip-down, tabs + sidebar, rebrand, one-click share, overnight survival, release updates. Daemon single-instance lock + GUI/CLI respawn; viewer replay with offset resume. Release pipeline signs, notarizes and staples the .app and DMG.
 - **State after v1.2 (2026-11-23):** upgrades hand live sessions to the new daemon (fd passing, two-phase commit); preview tabs, path click, remote localhost proxy and the iPhone share view all ride the session's authenticated stream or the token-gated tailnet share server. New internal packages: fdpass, previewfile.
 - **Known debt:** see `.planning/milestones/v1.2-MILESTONE-AUDIT.md` (and earlier audits) and STATE.md Deferred Items (two-Mac checks, real-release checks, ~10 todos incl. leftover AgentHub plugin-banner code).
@@ -103,7 +103,7 @@ Carried over:
 
 - **License**: MIT. Keep the root `LICENSE` (MIT, "Copyright (c) 2026 Ken Scott"). README and package metadata (e.g. `frontend/package.json` `license`) state MIT — the user requires the code to be MIT licensed
 - **Platform**: macOS only (Apple Silicon MacBook Airs). Both target machines are Macs.
-- **Tech stack**: Keep the inherited stack (Go/Wails/React/tsnet). This is a strip-down, not a rewrite.
+- **Tech stack**: Keep the inherited stack (Go/Wails/React, system tailscaled). v2.0 adds pion/webrtc and native macOS capture (ScreenCaptureKit, VideoToolbox, CGEvent).
 - **Network**: Remote access only over the user's tailnet. No new relay servers or cloud dependencies.
 - **Security**: Keep token-gated, tailnet-only share links and the CSP intact through the refactor. Remote write access to a shell is powerful.
 - **Deletion discipline**: Chesterton's Fence. Read each piece and know why it exists before removing it, especially in daemon, relay, and capability code shared between kept and removed features.
@@ -136,6 +136,8 @@ Carried over:
 | Hardening checks fail toward the old daemon (takeover refuses an unconfirmed pid; socket 0600 with no process-wide umask) | A false refusal costs a consent prompt; a leaked umask or wrong pid could cost the remote Mac | ✓ Good — Phase 15; real two-build upgrade chain passed in the VM (M-155) |
 | The viewer you type in sets the PTY size, also for `portty attach` (rows-1 under its bar) | One grid-owner rule for every viewer; a passive CLI watching a taller GUI grid keeps today's behaviour | ✓ Good — Phase 15 (user decision 2026-11-23) |
 | Desktop sharing over WebRTC (pion) inside Portty, tailnet only with no STUN/TURN/cloud | One app for terminal + desktop, browser and iPhone viewers, smoother than VNC; corp Mac restricts Screen Sharing (user decision 2026-11-24) | — Pending (v2.0) |
+| v2.0 targets Apple Silicon only, minimum macOS 14 | Both Macs are Apple Silicon; native capture makes universal cgo builds costly; 14 enables newer ScreenCaptureKit and the persistent-capture entitlement path (user decision 2026-11-24) | — Pending (v2.0) |
+| Click-to-share guests are view-only until the sharer allows control per person | Guests are other people on the tailnet with write access to a desktop (user decision 2026-11-24) | — Pending (v2.0) |
 | Click-to-share desktop links may be opened by other people on the tailnet, not only the host's own account | User wants to show a desktop to tailnet colleagues; widens MOB-05 for desktop links only (user decision 2026-11-24) | — Pending (v2.0) |
 | Unknown leading flags are a usage error (exit 2); only no-args and macOS launch arguments (`-psn_*`, `-NS*`, `-Apple*`) start the GUI | A CLI call over SSH must never start a GUI, and a Finder/Dock/login-item launch on the remote Mac must never be refused | ✓ Good — Phase 16 (user decision 2026-11-23); every launch path passed in the VM (M-156) |
 | `portty kill`/`rename`/`unshare` resolve names like share/attach, but need at least 8 characters for an ID prefix | A one-letter abbreviation of a name must never kill or unshare an unrelated session | ✓ Good — Phase 16 (code review WR-01); unshare added by quick 261123-kcr (audit W-2) |
