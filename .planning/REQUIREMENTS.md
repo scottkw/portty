@@ -98,11 +98,52 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| FEAS-01 | Phase 17 | Pending |
+| FEAS-02 | Phase 17 | Pending |
+| UPD-05 | Phase 18 | Pending |
+| UPD-06 | Phase 18 | Pending |
+| UPD-07 | Phase 18 | Pending |
+| UPD-08 | Phase 18 | Pending |
+| UPD-09 | Phase 18 | Pending |
+| DPRM-01 | Phase 19 | Pending |
+| DPRM-02 | Phase 19 | Pending |
+| DPRM-03 | Phase 19 | Pending |
+| DPRM-04 | Phase 19 | Pending |
+| DESK-01 | Phase 19 | Pending |
+| DESK-02 | Phase 19 | Pending |
+| DESK-03 | Phase 19 | Pending |
+| DESK-04 | Phase 19 | Pending |
+| DESK-05 | Phase 20 | Pending |
+| DESK-06 | Phase 20 | Pending |
+| DESK-07 | Phase 23 | Pending |
+| DCTL-01 | Phase 20 | Pending |
+| DCTL-02 | Phase 20 | Pending |
+| DCTL-03 | Phase 20 | Pending |
+| DCTL-04 | Phase 22 | Pending |
+| DCTL-05 | Phase 20 | Pending |
+| DCTL-06 | Phase 20 | Pending |
+| DCTL-07 | Phase 23 | Pending |
+| DVWR-01 | Phase 21 | Pending |
+| DVWR-02 | Phase 19 | Pending |
+| DVWR-03 | Phase 21 | Pending |
+| DVWR-04 | Phase 21 | Pending |
+| DSHR-01 | Phase 19 | Pending |
+| DSHR-02 | Phase 19 | Pending |
+| DSHR-03 | Phase 22 | Pending |
+| DSHR-04 | Phase 22 | Pending |
+| DSHR-05 | Phase 22 | Pending |
+| DSHR-06 | Phase 22 | Pending |
+| DSHR-07 | Phase 22 | Pending |
+| DSHR-08 | Phase 19 | Pending |
+| UNLK-01 | Phase 23 | Pending (gated by FEAS-01: ship or cut) |
+| REL-01 | Phase 23 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 39 total
-- Mapped to phases: 0 (filled by roadmap)
+- Mapped to phases: 39
+- Unmapped: 0
+- Per phase: 17 (2), 18 (5), 19 (12), 20 (7), 21 (3), 22 (6), 23 (4)
 
 ---
 *Requirements defined: 2026-11-24*
-*Last updated: 2026-11-24 after initial definition*
+*Last updated: 2026-11-24 after roadmap creation (traceability filled, Phases 17-23)*

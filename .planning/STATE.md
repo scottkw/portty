@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Desktop Sharing
 status: planning
-last_updated: "2026-11-24T20:02:01.099Z"
+last_updated: "2026-11-24T21:00:00.000Z"
 last_activity: 2026-11-24
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-23)
+See: .planning/PROJECT.md (updated 2026-11-24)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Planning next milestone (v1.2 shipped as v1.2.0; v1.2.1 dompurify patch on/after 2026-11-28)
+**Current focus:** v2.0 Desktop Sharing, Phase 17 Desktop Feasibility Spike (v1.2.1 dompurify patch still due on/after 2026-11-28)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-11-24 — Milestone v2.0 started
+Phase: 17 of 23 (Desktop Feasibility Spike); v2.0 runs Phases 17-23 (7 phases)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-24 — v2.0 roadmap created (7 phases, 39/39 requirements mapped)
+
+Progress: [░░░░░░░░░░] 0%
 
 
 ## Performance Metrics
@@ -153,6 +155,7 @@ Last activity: 2026-11-24 — Milestone v2.0 started
 ## Accumulated Context
 
 ### Roadmap Evolution
+- v2.0 Desktop Sharing roadmap created 2026-11-24: Phases 17-23 (spike, self-install, unattended viewing, control, app and iPhone viewers, click-to-share, audio/quality/unlock/release); 39/39 requirements mapped
 - Phase 15 added: v1.2 Hardening (close pending v1.2 todos and flakes before milestone close; 2026-11-22)
 
 ### Decisions
@@ -160,6 +163,13 @@ Last activity: 2026-11-24 — Milestone v2.0 started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [Roadmap v2.0]: Phase 17 (real-Mac spike) gates the capture-host architecture (research conflict C1) and UNLK-01; Phase 19 is not planned until FEAS-02 is recorded
+- [Roadmap v2.0]: Self-install (Phase 18) is independent of the spike and lands before the first release that bundles a capture helper
+- [Roadmap v2.0]: Order is own-account always-available viewing in the browser (19), then control (20), app and iPhone viewers (21), click-to-share (22), audio/adaptive quality/unlock/release (23)
+- [Roadmap v2.0]: Window share (DESK-05, DCTL-05) ships with control in Phase 20, because window coordinates and click confinement live in the input mapping
+- [Roadmap v2.0]: DCTL-04 (last typer holds control ~2 s, physical input wins) ships with click-to-share in Phase 22, where the sharer sits at the Mac while a guest controls
+- [Roadmap v2.0]: UNLK-01 sits in Phase 23 with two outcomes: ship it if Phase 17 proved lock-screen capture and typing, else cut it and document "works while awake and unlocked"
+- [Roadmap v2.0]: 7 phases at coarse granularity (39 requirements, new media stack, four viewer surfaces, security widening); Phases 20 and 21 can merge if the user wants fewer
 - [Roadmap]: Strip-down before rebrand, so the rename (about 179 files reference "agenthub" today) touches the smallest tree
 - [Roadmap]: Navigation before rebrand, so help and in-app text are rewritten once against the final UI
 - [Roadmap]: NAV-02 (peer sessions in sidebar) ships with Hub removal so GUI remote attach never regresses (it currently lives in Hub remote cards)
@@ -355,6 +365,12 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
+- [v2.0 Phase 17]: Capture host (bundled helper vs in-daemon, research C1) is unresolved until the spike records FEAS-02; Phase 19 planning waits on it
+- [v2.0]: Apple's persistent-content-capture entitlement request is not filed yet; until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
+- [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
+- [v2.0 REL-01]: v1.2.x updaters look only for `portty-v<ver>-darwin-universal.dmg` and identifier `portty-v<ver>-darwin-universal` (internal/updater/update.go DMGAssetName, install.go Clean, release.yml); an arm64-only rename would strand v1.2 installs unless the old name stays or both ship
+- [v2.0 Phase 18]: Self-install only helps upgrades from a build that contains it; v1.2.x to the first self-install build still goes through Reveal-in-Finder
+
 - [Phase 4]: User confirmed 2026-11-16 that both Macs are on the same Tailscale account (same login, so the same numeric user ID for the WhoIs gate). Remaining risk: a node that is ACL-tagged is refused by design; check `tailscale status` shows no tags on either Mac during the two-Mac UAT (M-80).
 
 
@@ -461,11 +477,12 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-23T19:28:50.235Z
-Stopped at: Phase 16 complete — all phases complete
+Last session: 2026-11-24
+Stopped at: v2.0 roadmap created (Phases 17-23); ready to plan Phase 17
 Resume file: None
 
 ## Operator Next Steps
 
 
-- Start the next milestone with /gsd-new-milestone
+- Discuss and plan Phase 17 (Desktop Feasibility Spike): /gsd-discuss-phase 17, then /gsd-plan-phase 17
+- Phase 18 (Self-Installing Updates) is independent of the spike and can be planned alongside it
