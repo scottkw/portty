@@ -91,7 +91,7 @@ Plans:
 - [ ] 17-02-PLAN.md — ScreenCaptureKit capture and vmprobe; Spike.app signed inside-out (Developer ID); permission-probe kit for every launch path
 - [ ] 17-03-PLAN.md — R00 (SCK in the Tart guest) and row routing; R10 grant across a same-identity rebuild and bundle swap
 - [ ] 17-04-PLAN.md — Helper shape (SMAppService): attribution, Settings entries, AX, GUI closed, SSH kickstart
-- [ ] 17-05-PLAN.md — In-daemon shape: LaunchAgent (ProcessType sub-rows), GUI spawn, SSH spawn, SSH kickstart
+- [ ] 17-05-PLAN.md — In-daemon shape: LaunchAgent (ProcessType reference rows), GUI spawn, SSH spawn, SSH kickstart
 - [ ] 17-06-PLAN.md — Lock-screen frames, typing and continuity per shape; provisional FEAS-02 pick
 - [ ] 17-07-PLAN.md — VM re-key (user); live desktop over the tailnet in Safari (full vs lite), join latency, binding
 - [ ] 17-08-PLAN.md — Chrome over the tailnet; WebRTC in a throwaway Wails v2 shell

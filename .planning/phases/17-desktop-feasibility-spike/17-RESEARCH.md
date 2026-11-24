@@ -466,18 +466,23 @@ No swiftc (build on the host and `tar`-copy, as `vdeploy.sh` does), no ffmpeg (c
 | A15 | A wake via `IOPMAssertionDeclareUserActivity` works in the VM's virtual display | R18 | Row is host-only (already planned) |
 | A16 | Wails WKWebView behaves like a bare WKWebView for RTCPeerConnection | R13 | Row answers it directly |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **What macOS does the office Mac run?**
+1. **What macOS does the office Mac run?** (RESOLVED)
    - What we know: unknown (CONTEXT); the host and VMs are 27.2.x.
    - What's unclear: lock UI and permission differences.
    - Recommendation: record per row; ask the user for `sw_vers` during the first checkpoint and add M-NN items if it differs.
-2. **Does SCK work in the Tart guest at all?**
+   - **Resolution:** the user answered after research (CONTEXT `<specifics>`, "User answers after phase research (2026-11-24)"): the office Mac runs macOS 27.2.x, the same as the VMs and this host, so the VM lock-screen and permission rows transfer and no extra office-Mac row is needed for a version mismatch. The matrix still records the macOS version of every row (17-01).
+2. **Does SCK work in the Tart guest at all?** (RESOLVED)
    - Recommendation: R00 first; plan carries the conditional host scope.
-3. **Who is the viewer in the host run?** The VMs can view the host over the tailnet only if they are up; the iPhone can.
+   - **Resolution:** answered by method, not by assumption: row R00 runs first in the guest (17-03), and its verdict fills the matrix `## Routing` table that sends each later row to VM, VM-synthetic, host-run or follow-up. No plan depends on guessing the outcome.
+3. **Who is the viewer in the host run?** (RESOLVED) The VMs can view the host over the tailnet only if they are up; the iPhone can.
    - Recommendation: iPhone is the required viewer (also R14); VM home Safari optional, record whether VMs were running during the perf window.
-4. **Does the user want Chrome row evidence from the host's Chrome?** Needed only if the VM Chrome install fails.
-5. **Does SMAppService registration need `/Applications`?** Answered by R02 on first run.
+   - **Resolution:** the user answered (CONTEXT `<specifics>`, 2026-11-24): the host run's viewer is a VM browser (VM home's Safari), not the iPhone; the iPhone Safari row (R14) runs separately against a VM (17-11). This supersedes the recommendation above. VM home's CPU is recorded separately during the perf window.
+4. **Does the user want Chrome row evidence from the host's Chrome?** (RESOLVED) Needed only if the VM Chrome install fails.
+   - **Resolution:** the user answered (CONTEXT `<specifics>`, 2026-11-24): try Chrome in the VM first; if it will not install or run there, fall back to Chrome on the host opening only the spike's test page (17-08 marks R12 ROUTED:host-run; 17-11 runs the fallback inside the user-gated window with a throwaway profile).
+5. **Does SMAppService registration need `/Applications`?** (RESOLVED) Answered by R02 on first run.
+   - **Resolution:** answered by method: row R02 (17-04) registers from `~/ptest` first, records Enabled or RequiresApproval, and copies Spike.app into the guest's own /Applications only if registration needs it (never the host's), recording which path worked.
 
 ## Environment Availability
 
