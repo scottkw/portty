@@ -23,7 +23,7 @@ Any device signed in to your Tailscale account can also open the session's link 
 
 ## Use It From Your iPhone
 
-Open a shared session's link in Safari on an iPhone signed in to the same Tailscale account. The view fits the phone, adds a key bar (Esc, Tab, Ctrl, arrows, `|`), and pinch changes the font size. Add it to the Home Screen to open the session full screen. It picks up again after the phone sleeps or changes network. Step-by-step: [docs/launcher-app.md](docs/launcher-app.md), also at https://portty.app/app.
+Open a shared session's link in Safari on an iPhone signed in to the same Tailscale account. The view fits the phone, adds a key bar (Esc, Tab, Ctrl, arrows, `|`), and pinch changes the font size. Add it to the Home Screen to open the session full screen. It picks up again after the phone sleeps or changes network. Step-by-step: [docs/launcher-app.md](docs/launcher-app.md).
 
 ## Preview Files
 
