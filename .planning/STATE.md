@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v1.2
 status: Awaiting next milestone
 stopped_at: Phase 16 complete — all phases complete
-last_updated: "2026-11-23T22:14:47.341Z"
+last_updated: "2026-11-24T15:34:12.504Z"
 last_activity: 2026-11-23
 last_activity_desc: Milestone v1.2 completed and archived
-state_head: 9a21f65b2492bce1a1a919f0ae485f196b452f03
+state_head: 8a44e0c119863be0a55f1b2d67cc3e206609b455
 progress:
   total_phases: 8
   completed_phases: 8
@@ -394,6 +394,7 @@ Recent decisions affecting current work:
 | 6 | Share dialog: 12px gap between link cards | 2026-11-16 | 09da9268 | — |
 | 261123-kcr | unshare requires an 8-character minimum ID prefix like kill/rename (cmd_share.go lookupSessionStrict), with a test | 2026-11-23 | 1e476af0 | [261123-kcr-unshare-requires-an-8-character-minimum-](./quick/261123-kcr-unshare-requires-an-8-character-minimum-/) |
 | 8 | CI fixes for v1.2.0: frontend/dist before go test; fdpass openFds via Readdirnames | 2026-11-23 | 9a21f65b | — |
+| 9 | Remove portty.app/app link from README iPhone section | 2026-11-24 | 8a44e0c1 | — |
 
 ## Deferred Items
 
