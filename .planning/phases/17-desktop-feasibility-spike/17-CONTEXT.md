@@ -23,13 +23,16 @@ A throwaway end-to-end path (ScreenCaptureKit → VideoToolbox H.264 → pion/we
 ### Capture-host decision method (FEAS-02)
 - Two tiny permission probes, one per shape: (a) a helper inside a test .app bundle launched as a LaunchAgent via SMAppService, (b) capture inside the daemon-style process (same signed binary spawned detached, also respawned from an SSH session). Each records where macOS attributes the Screen Recording and Accessibility grants (`launchctl procinfo` responsible process, TCC list entry), whether capture works with the GUI closed, and across lock/unlock. The full video pipeline runs in only one shape. — **Reversibility:** costly — the result fixes the process architecture, bundle layout, signing and TCC identity every later phase builds on.
 
+### Portty-app check substitution
+- User accepted (2026-11-24): the ROADMAP SC2 "Portty app" connection row is answered by a throwaway Wails v2 shell (same WKWebView engine and the app's CSP meta), not the real Portty app. Real-app integration (bundle id, React UI, signalling) is proven in Phase 21 (DVWR-01).
+
 ### Timebox
 - No timebox: every matrix row gets a real answer before Phase 19 planning. Rows that genuinely cannot be answered by a spike (e.g. the real 30-day re-approval prompt) are answered with the strongest available evidence and an explicit M-NN follow-up.
 
 ### Decided autonomously
 - [Spike code] Q: "Where does spike code live?" → Selected: "A separate Go module under `spike/desktop/`, never imported by the app module, removed or archived when the phase closes" — throwaway by design
 - [Signing] Q: "How are spike binaries signed?" → Selected: "With the user's Developer ID Application identity (team S2K7P43927), so TCC behaviour matches a real release; never ad-hoc" — a build flag
-- [Monthly re-approval] Q: "How is the monthly Screen Recording re-approval measured?" → Selected: "Read the grant's stored expiry/consent timestamp and record observed behaviour; the real 30-day prompt becomes an M-NN item" — observation only
+- [Monthly re-approval] Q: "How is the monthly Screen Recording re-approval measured?" → Selected: "Read the grant's stored expiry/consent timestamp and record observed behaviour; the real 30-day prompt becomes an M-NN item" — observation only. SUPERSEDED 2026-11-24 by user decision: backdating the approval record or jumping the clock IS allowed, but only inside a disposable VM clone that is off the tailnet; the host and the tailnet VMs are never written
 - [Viewer] Q: "What does the test viewer look like?" → Selected: "One plain HTML page served by the spike, vanilla RTCPeerConnection, no React" — thrown away
 
 ### Claude's Discretion
