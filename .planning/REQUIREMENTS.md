@@ -75,6 +75,7 @@
 ## Future Requirements
 
 - Data-channel cursor (client-drawn) if baked-in cursor lag is measured as a problem
+- HEVC (H.265) when every viewer supports it, H.264 fallback (user: "Not now", revisit after v2.0)
 - H.264 High profile if a measured sharpness gain and confirmed decode in Chrome/Safari/WKWebView
 - Direct-touch mode on iPhone (trackpad mode first)
 - Persistent-content-capture entitlement wiring (provisioning profile in signing) once Apple grants it

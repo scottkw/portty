@@ -68,6 +68,6 @@ A throwaway end-to-end path (ScreenCaptureKit → VideoToolbox H.264 → pion/we
 <deferred>
 ## Deferred Ideas
 
-None — discussion stayed within phase scope.
+- HEVC (H.265) over WebRTC: user chose "Not now" (2026-11-24). v2.0 stays H.264 Constrained Baseline only; no HEVC spike row. Revisit after v2.0.
 
 </deferred>
