@@ -1,7 +1,7 @@
 Phase 17 plan 17-11: host run notes (R14 iPhone row, host run on this MacBook Air, revoke log)
 No address, token, tailnet domain, account or host name is in this file. The host's tailnet address is written as 100.x.x.N; the user's home path as <home>.
 
-host run: go (session 2, 2026-11-25: ran with the Screen Recording grant the user added by hand; the spike crashed at about ready+66 s, see "Session 2"; session 1 was skip, user-not-approved, see "Host run")
+host run: go (session 3, 2026-11-25: ran the full 180 s schedule to the end with the nil-font fix and the grant the user re-added by hand, see "Session 3"; session 2 crashed at about ready+66 s, see "Session 2"; session 1 was skip, user-not-approved, see "Host run")
 typing: none
 tailnet: used
 R01-host path-before: derp
@@ -123,4 +123,70 @@ Read-only check of the system TCC database (sqlite3 -readonly on /Library/Applic
   17:03:57: tccutil reset Accessibility app.portty.spike rc=0; rows for portty after: 0. The probe was not run again.
 Settings list: the Screen & System Audio Recording list is drawn from these rows, so the user-added Portty Spike entry should no longer be listed. Not looked at on screen (the host screen is not read); the user can confirm by eye.
 Residue: pgrep -f 'build/Spike.app' rc=1; no spike launchd label; nothing installed in launchd or SMAppService; no file under ~/Downloads or /Applications touched. After the revoke the host made no further tailnet contact. VMs left running.
+typing: none (no key-input flag, no key event posted, nothing typed on this Mac).
+
+== Session 3 (2026-11-25, re-run after the nil-font fix, commit bf95b9a6) ==
+User action: after the fix the user re-added spike/desktop/build/Spike.app by hand in System Settings > Screen & System Audio Recording, Do Not Disturb on, and typed "go again". The orchestrator checked at 17:49:34 UTC with the non-prompting preflight: sr_preflight true, ax false, pe false, and the binary carries the "chart text skipped" string. Spike.app was not rebuilt after that check.
+Command: the same DEFAULT variant (a) as session 2 (no --request, no --allow-input, --allow-keycodes, --type-at or --type-keycodes), fresh 32-hex token, new scratch directory:
+  open -n --stdout <scratch>/hostrun.out --stderr <scratch>/hostrun.err spike/desktop/build/Spike.app --args host-run --bind 100.x.x.N --token <T> --evidence-dir <scratch>/hostrun --pattern --dump-at 15s --motion-at 45s --motion-for 60s --sleep-at 120s --wake-after 20s --duration 180s
+  Evidence: evidence/r18-r20-host-timeline-session3.jsonl (the spike's timeline, bind written as 100.x.x.1, no token) and evidence/r01-host-report-safari-lite.json (the VM home Safari viewer report; the server and Safari leave the pair addresses null).
+Segments, wall clock UTC:
+  baseline (no network, top -l 3 -s 5)   17:51:13 to 17:51:25
+  measured run: open                     17:51:25.5 (timeline start); capture running ("ready") at 17:51:27.4 (timeline ms 1894)
+  motion on / off                        17:52:12.4 (ms 46895) / 17:53:12.4 (ms 106894), the full 60 s
+  pmset displaysleepnow                  17:53:27.46 (ms 121969)
+  Mac in system sleep                    17:53:33 to 17:53:51 (pmset -g log: "Entering Sleep state due to 'Idle Sleep'", on battery, 18 s)
+  display on, wake                       17:53:51 (pmset -g log: "Wake from Deep Idle ... due to ... keyboard/UserActivity")
+  lock cleared                           17:53:53.17 (ms 133214)
+  spike's scheduled wake call            17:54:01.85 (ms 141895), 10 s after the Mac was already awake
+  last timeline line                     17:54:41.86 (ms 181898, both viewers closed at shutdown)
+  spike process exit                     17:54:42 (gone at the script's next 0.5 s pgrep poll); exit rc not captured (open -n does not wait)
+  revoke, probes, extra reset, guard     17:54:42 to 17:54:44
+  total host window                      17:51:13 to 17:54:44, 3.5 min
+Outcome: the run completed. The process ran the whole schedule and exited at the end of its duration. hostrun.err has 9 lines and no crash dump; it has no "spike: chart text skipped" line, so the nil font did not come back in this run (or came back only before the cached font was made; the guard would have logged it either way). The end came at ready+194 s by the wall clock rather than ready+180 s: the spike's timers run on the monotonic clock, which stops while the Mac sleeps (the 18 s of system sleep; the perf ticker shows the same gap, ms 126.9 at 17:53:32 then ms 131.9 at 17:53:51).
+What the frame at ready+15 s showed (raw-1.png, read, then deleted, not committed): the test chart over the whole display, the capture indicator and the pointer; no dialog this time (session 2's '"Spike" is requesting to bypass the system private window picker' dialog did not appear) and no notification banner.
+
+R20-host numbers (36 perf lines of r18-r20-host-timeline-session3.jsonl; windows by perf-sample end time; n = 1 run):
+  encoder: com.apple.videotoolbox.videoencoder.ave.avc, hardware true (first perf line), session 2560 x 1664
+  captured size: 2560 x 1664; static.h264 (11 frames): Constrained Baseline, level 50, 2560 x 1664 (ffprobe)
+  static window (ready+0 to +45 s, 9 samples): Complete fps mean 4.53 (min 3.40, max 11.20), 204 Complete and 1123 Idle; encode latency 204 samples, mean 14.31 ms, per-sample p95 median 30.02 ms, max 41.73 ms; own CPU mean 2.13 percent of one core (max 7.59); RSS 75 to 85 MB
+  motion window (ready+45 to +105 s, 12 samples, the full 60 s): Complete fps mean 29.15 (min 28.40, max 29.39) against the 30 fps cap, 1749 Complete and 5 Idle; encode latency 1748 samples, mean 12.85 ms, per-sample p95 median 20.94 ms, max 37.11 ms; own CPU mean 27.03 percent of one core (max 28.05); RSS 94.0 MB at the start of motion, 92.9 MB at the end (no growth)
+  after motion, before the sleep (3 samples): 3.87 fps, latency mean 15.33 ms, own CPU 1.48 percent
+  after the sleep (11 samples): 0 Complete frames, capture running false to the end; own CPU 0.9 to 3.5 percent; RSS 87 to 94 MB
+  top -l 3 -s 5 (process names and CPU only), second sample of each set:
+    baseline 17:51:20: 8.0 percent user, 10.68 sys, 81.31 idle; kernel_task 34.2, a Tart VM 10.7, WindowServer 5.3
+    static 17:51:52: 30.24 user, 14.97 sys, 54.77 idle; a Tart VM 175.2 (VM home's Safari decoding 2560 x 1664), kernel_task 38.6, com.apple.gpusw 22.1, WindowServer 4.3; the spike is not in the top 12
+    motion 17:52:38: 24.56 user, 23.49 sys, 51.93 idle; a Tart VM 75.5, kernel_task 58.0, WindowServer 41.3, com.apple.gpusw 18.2, spike 18.1, socketfilterfw 11.1, Tailscale 10.7
+    System-wide figures are dominated by the two Tart VMs; read the spike's own CPU and WindowServer.
+  thermal: pmset -g therm before the run and at ready+108 s: no thermal warning, no performance warning, no CPU power status recorded
+  sharpness (static window): raw-1.png against the first frame of static.h264 decoded with ffmpeg, both 2560 x 1664, no scaling (same commands as session 2):
+    SSIM R 0.999213, G 0.999404, B 0.999364, All 0.999327; luma only Y 0.999406; PSNR average 48.93 dB
+  raw-1.png, the decoded frame and static.h264 were deleted from the scratchpad after the numbers were taken; none is committed.
+
+R01-host:
+  tailscale ping -c 5 from VM home toward 100.x.x.N, ready+1 s: 5 pongs via DERP, 38 to 58 ms, "direct connection not established"
+  same, after the R01 report arrived (ready+105 s): 5 pongs via DERP, 39 to 52 ms, "direct connection not established"
+  viewer report (evidence/r01-host-report-safari-lite.json, VM home Safari 27.2, ice=lite, 95 s, stored at 17:53:12): iceConnectionState connected, connectedMs 1770, firstFrameMs 2372, framesDecoded 1853, framesDropped 0, 2560 x 1664, codec video/H264 profile-level-id=42e01f, totalDecodeTime 25.04 s (13.5 ms per frame), jitter buffer 0.153 s per frame, data-channel RTT median 45 ms; selected pair local prflx, remote host port 47801 udp, both addresses null (Safari hides them); server side: peer connected over ICE-lite and viewer_connected at timeline ms 11272 (ready+9.4 s)
+  Result: frames decoded through the motion window (1853 over 95 s) on the real Mac, but the path is DERP before and after, so the SC1 clause "no STUN, TURN or cloud server involved" is not shown on the real Mac.
+
+R18-host (display sleep at ready+120 s, scheduled wake 20 s later):
+  stream: pmset displaysleepnow at ms 121969; frame status none at +0.44 s, then stopped with SCError -3815 "Failed to find any displays or windows to capture" at +0.70 s (ms 122670); lock set and display asleep at the next 1 s poll (+0.95 s, the Mac locks at once on display sleep).
+  system sleep: 5.5 s after the display went off the Mac entered system sleep (pmset -g log 17:53:33 "Entering Sleep state due to 'Idle Sleep'", on battery at 49 percent), so the spike process, its server and its scheduled wake were all suspended. The spike holds no system-sleep assertion in the default run (flag keep-awake false). The only PreventUserIdleSystemSleep holder before the sleep was a caffeinate from the agent tooling (not the spike); its process ended at 17:53:27, the same second as the display sleep, and a replacement caffeinate held one again from 17:53:28 per the assertion listing, yet the log's summary flag PrevIdle was set at 17:53:29 and idle sleep still went ahead at 17:53:33. Why is not established (the replacement's assertion may not have registered before the sleep); either way a display-off on battery took this Mac to system sleep within seconds.
+  wake: the Mac woke at 17:53:51 from the keyboard / trackpad (pmset -g log "keyboard/UserActivity"; display read awake at ms 131926) and the lock cleared at 17:53:53.17, 1.3 s later. The spike typed nothing (no key-input flag), so the wake and the unlock came from outside the spike, most likely the user at the Mac; this note cannot see how. The spike's own wake call (IOPMAssertionDeclareUserActivity "portty spike: wake", IOReturn 0) ran at 17:54:01.85, after the Mac was awake, because its timer is on the monotonic clock that stopped during the sleep; pmset -g log shows it created then and released when the process ended (ClientDied 17:54:41).
+  stream after the wake: no restart. Capture running false and 0 Complete frames in every perf sample from the sleep to the end (11 samples, 55 s), no first_frame_after_wake line. Same as R18-vm in VM office: the stream ends with -3815 at display sleep and does not come back by itself.
+  R18 viewer: VM home Safari opened the R18 link at ready+125 s; the ssh call that opened it hung until the Mac woke, so the viewer joined at 17:53:57.5 (ms 137572, peer connected ice=lite), after the unlock. Its 45 s page reports at its end, and the server closed both peers at 17:54:41.86 as the run ended, so no R18 report was stored (the race the 45 s page lost by about a second). What that viewer saw is therefore not recorded; by R18-vm it would be the cached last picture.
+  assertions (pmset -g assertions at ready+60, at the wake 17:53:52 and at 17:53:55): the spike holds none during the run until its wake call; at the wake: UserIsActive from WindowServer and powerd, studentd NetworkClientActive, mDNSResponder MaintenanceWake.
+  Result: frames do not come back after the wake without a stream restart (NO-GO by the row's rule, as R18-vm), and on battery the display sleep put the whole Mac to sleep within 6 s, which also suspends the server and any timer: Phase 19 needs a system-sleep assertion while a viewer watches, or a restart on -3815 after wake, and cannot rely on a monotonic timer across sleep.
+
+== Revoke, session 3 (17:54:42 to 17:54:44) ==
+VM home Safari quit (rc 0). pkill on the build path (nothing left; the spike had already exited).
+tccutil reset ScreenCapture app.portty.spike  rc=0  "Successfully reset ScreenCapture approval status for app.portty.spike"
+tccutil reset Accessibility app.portty.spike  rc=0  "Successfully reset Accessibility approval status for app.portty.spike"
+tccutil reset PostEvent app.portty.spike      rc=0  "Successfully reset PostEvent approval status for app.portty.spike"
+open -n -W spike/desktop/build/Spike.app --args probe --preflight-only --label host-postrevoke  rc=0 at 17:54:43.998: {"sr_preflight":false,"ax_trusted":false,"post_event_preflight":false}
+System TCC database (sqlite3 -readonly), rows for portty or Spike after the probe: kTCCServiceAccessibility | app.portty.spike | auth_value 0 | auth_reason 4 | 17:54:44 (the probe's denied row again, as in session 2). Reset again at once: tccutil reset Accessibility app.portty.spike rc=0 at 17:54:44; rows for portty or Spike after: none.
+spike status: {"plist":"app.portty.spike.helper.plist","status":"NotFound","verb":"status"}
+Guard pgrep (host): sentinel rc=0; after kill rc=1.
+launchctl print gui/<uid>/app.portty.spike.daemon and .helper: rc=113 each ("Bad request.").
+Residue: pgrep -f 'build/Spike.app' rc=1; no spike launchd label; nothing installed in launchd or SMAppService; no file under ~/Downloads or /Applications touched. Token, raw-1.png, static.h264 and the decoded frame deleted from the scratchpad. After the revoke the host made no further tailnet contact. VMs left running.
 typing: none (no key-input flag, no key event posted, nothing typed on this Mac).
