@@ -5,16 +5,16 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: v2.0 roadmap created (Phases 17-23); ready to plan Phase 17
-last_updated: "2026-11-25T02:12:10.205Z"
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-11-25T02:30:48.959Z"
 last_activity: 2026-11-24
-last_activity_desc: v2.0 roadmap created (7 phases, 39/39 requirements mapped)
-state_head: dc2f1500d18f3dc5a634f1f4da29131d6cf56df4
+last_activity_desc: Phase 17 execution started
+state_head: 30d84f22f35dfe90143c26bebbac7639bb1c6be9
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 12
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-24)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** v2.0 Desktop Sharing, Phase 17 Desktop Feasibility Spike (v1.2.1 dompurify patch still due on/after 2026-11-28)
+**Current focus:** Phase 17 — Desktop Feasibility Spike
 
 ## Current Position
 
-Phase: 17 (Desktop Feasibility Spike) — READY TO EXECUTE
-Plan: Not started
+Phase: 17 (Desktop Feasibility Spike) — EXECUTING
+Plan: 2 of 12
 Status: Ready to execute
-Last activity: 2026-11-24 — v2.0 roadmap created (7 phases, 39/39 requirements mapped)
+Last activity: 2026-11-24 — Phase 17 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -156,6 +156,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 16 P02 | 8 min | 3 tasks | 9 files |
 | Phase 16 P03 | 6 min | 2 tasks | 5 files |
 | Phase 16 P04 | 25 min | 3 tasks | 5 files |
+| Phase 17 P01 | 13 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -358,6 +359,9 @@ Recent decisions affecting current work:
 - [Phase 16]: 16-02 DoS-bound vitest tests: 30 s per-test timeout, inputs and assertions unchanged
 - [Phase 16]: 16-03: PREV-02/PREV-04 recorded on 11-10 and MOB-01..05 on 14-14 as requirements-completed, each citing its passed VERIFICATION.md inline; selection-offset todo triaged as already fixed at 7a37bfb4
 - [Phase 16]: IN-05 stays open: M-152's relaunch step is not the cold launch-from-notification path; PathClickAPI removal recorded in the TESTING.md note, not the Phase 15 disposition
+- [Phase 17]: 17-01: FEAS-02 decision rule committed verbatim in 17-SPIKE-MATRIX.md before any probe ran
+- [Phase 17]: 17-01: spike serve calls startEncoder separately from startSource (the planned startSource signature has no bitrate)
+- [Phase 17]: 17-01: viewer page served no-store with no referrer because the token is in its URL; /report treats a null frameJpeg as absent
 
 ### Pending Todos
 
@@ -482,8 +486,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-24
-Stopped at: v2.0 roadmap created (Phases 17-23); ready to plan Phase 17
+Last session: 2026-11-25T02:30:48.921Z
+Stopped at: Completed 17-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

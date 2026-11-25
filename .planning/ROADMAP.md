@@ -84,11 +84,11 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
      (FEAS-01)
   3. The capture-host decision (bundled helper or in-daemon) is written down with the evidence behind it before Phase 19 is planned. Every no-go names the requirement it changes or cuts, for example UNLK-01, or DVWR-01 falling back to a browser link. (FEAS-02)
   4. No spike code reaches the shipping build. Release builds and the full terminal test suite are unchanged by this phase.
-**Plans**: 12 plans
+**Plans**: 1/12 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 17-01-PLAN.md — Tracer: synthetic frames → VideoToolbox → pion → receiver on loopback; matrix skeleton with the FEAS-02 decision rule; SC4 baseline
+- [x] 17-01-PLAN.md — Tracer: synthetic frames → VideoToolbox → pion → receiver on loopback; matrix skeleton with the FEAS-02 decision rule; SC4 baseline
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 17-02-PLAN.md — ScreenCaptureKit capture and vmprobe; Spike.app signed inside-out (Developer ID); permission-probe kit for every launch path
@@ -209,7 +209,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 17. Desktop Feasibility Spike | v2.0 | 0/12 | Planned | - |
+| 17. Desktop Feasibility Spike | v2.0 | 1/12 | In Progress | - |
 | 18. Self-Installing Updates | v2.0 | 0/TBD | Not started | - |
 | 19. Unattended Desktop Viewing | v2.0 | 0/TBD | Not started | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
