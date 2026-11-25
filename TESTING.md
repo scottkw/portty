@@ -35,6 +35,8 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 > Note: Quick 261123-kcr (unshare 8-character ID prefix minimum, v1.2 audit Integration W-2, no new requirement IDs): counts from `git ls-files` unchanged — Go **174**, vitest **122**, Playwright **10**, build-script **1**, total **307** (no new test files). Edited in place: cmd_share_test.go (`TestCmdUnshare_ShortPrefixRefused`: unshare refuses an ID prefix under 8 characters (1 and 7) with the no-session copy and leaves the session shared; an 8-character prefix stops sharing; share/attach still resolve the short prefix).
 
+> Note: Portty Phase 17 (desktop feasibility spike, FEAS-01, FEAS-02): Go **175**, vitest **122**, Playwright **10**, build-script **1**, total **308** (counts from `git ls-files`; no new test files in any suite: the one new `*_test.go`, spike/desktop/hostrun_test.go from 17-10, belongs to the spike module and is not run by the root `go test ./...`, so the Go row in the table above stays at 174). `spike/desktop/` is an archived nested Go module outside every suite and build (root `go list ./...` lists no spike package). Not automated: Section 5 Category BH, M-157..M-164.
+
 > Note: Portty Phase 16 (v1.2 cleanup, no new requirement IDs): Go **174**, vitest **122**, Playwright **10**, build-script **1**, total **307** (counts from `git ls-files`; no new test files). Edited in place: dispatch_test.go (16-01: `TestLaunchMode`'s 18 rows for `--version`/`-v`, the `-psn_`/`-NS`/`-Apple` GUI allowlist with a near miss, and unknown flags as usage errors; the old flag-routing test that re-implemented the dispatch condition is removed), cmd_cli_test.go (16-01: `TestCmdKill_ByName`, `TestCmdRename_ByName`: names resolve like share/attach, duplicate names are refused; post-review WR-01 `TestCmdKillRename_ShortPrefixRefused`: kill and rename refuse an ID prefix under 8 characters while share/attach still resolve it), cmd_share_test.go (post-review WR-02: `TestResolveSession` rejects an empty argument even when an unnamed session exists), internal/relay/cwd_test.go (16-02: `TestCwd_AltScreenScrollbackEraseKeepsRows`, IN-03), internal/webserver/resume_test.go and internal/webserver/input_queue_test.go (16-02: `dialResumePing`, shared by `joinPasteViewer`, IN-06), internal/daemon/client_test.go (16-02: `TestHealthInfo` no longer pins the removed path-click constant), frontend/src/lib/__tests__/localhostUrl.test.ts and frontend/src/lib/__tests__/markdown.test.ts (16-02: explicit 30 s per-test timeouts on the two DoS-bound cases; inputs and assertions unchanged). Not automated: Section 5 Category BG, M-156.
 
 > Note: Portty Phase 15 (v1.2 hardening, no new requirement IDs): Go **174**, vitest **122**, Playwright **10**, build-script **1**, total **307** (counts from `git ls-files`; no new test files). Edited in place: internal/attach/attach_test.go (15-01: `TestBarRows`, `TestWatchResize_ClaimsBarRows`: rows-1 in every SIGWINCH claim while the bar is sized, never wrapping a 0- or 1-row terminal), internal/statusbar/bar_test.go (`TestBar_ReservedRows`), cmd_attach_test.go (`TestInitialResizeFrame`: rows-1 in the first resize frame of a connection), internal/relay/hub_grid_owner_test.go (`TestHub_GridAttachBarRows`: the claiming CLI's reduced height wins the grid, a GUI claim takes it back), internal/pty/adopt_test.go (15-02: `TestKillSession_ReapedSkipsGroupSignal`, `TestKillSession_RunningSignalsGroup`: a reaped created session is never signalled or re-waited), internal/pty/native_test.go (`TestKillClean_NoOrphans` waits on a marker line and on the group's death, G-1, no fixed sleep), internal/webserver/input_queue_test.go and capability_helpers_test.go (15-02: `TestShare_PasteBacklogKeepsViewer` counts answered pings through the `dialWebServerWSPing` hook with a 5 s ceiling), internal/daemon/socket_test.go (15-03: `TestListenDaemonSocket_Mode0600`), internal/daemon/handoff_test.go (15-03 `TestHandoff_TightensSocketMode`: an inherited 0755 socket reads 0600 after COMMIT; 15-08 `TestHandoff_RefusesPIDMismatch`: a HELLO-OK pid that differs from the kernel's LOCAL_PEERPID, or a failed lookup, refuses the takeover and the old daemon keeps serving), internal/fdpass/fdpass_test.go (15-08: `TestRightsFromOOB`: descriptors before a malformed control message are returned so `Recv` closes them), internal/relay/cwd_test.go (15-04: `TestCwd_ClearKeepsRowsMonotonic`, `TestCwd_ScrollbackEraseKeepsRows`: ED 3 keeps absolute rows monotonic), internal/relay/pathclick_test.go (`TestPathClick_RelativeAfterClear`: F-1), frontend/src/lib/__tests__/pathLinks.linkifier.test.ts (15-04: the F-2 case, a first Cmd-click on the same cell after the pointer left, and event-based waits), frontend/src/components/__tests__/App.open-remote.test.tsx, frontend/src/lib/__tests__/closeReasons.test.ts and frontend/src/components/__tests__/TerminalPanel.guestClose.test.tsx (15-05: `no_such_session` after the session-ended close is the ended verdict; `not_sharing` and `forbidden` stay share-stopped; `onSessionEnded` fires only for that close), internal/tailnet/tailnet_test.go (15-07: `TestMetaStatus_TriState` refused and timeout, `TestFetchAllPeerSessionsMeta_RefusedIsReachableEmpty`: a refused share port is reachable with no sessions, a timeout stays unreachable), app_update_test.go (15-06: `TestNotificationClick_ShowsWindowAndBanner`, `TestNotificationClick_IgnoresOtherIDs`) and frontend/src/components/__tests__/App.update.test.tsx (`update:show` brings the dismissed banner back and downloads nothing). Not automated: Section 5 Category BF, M-152..M-155.
@@ -1897,6 +1899,74 @@ Rig: the Tart VM `portty-test` (never stopped for hours, never logged out, never
   - _Last run:_ 2026-11-23, **PASS** in `portty-test` (macOS 27.2), build `v1.2.0-vm17` from 57cb9ca2 installed with `rm -rf` and `ditto`. Step 1: Finder double-click, Dock reopen after closing the window, cold launch from a pinned Dock icon, `open -a Portty` and both `--args` forms (GUI argv carried `-NSDocumentRevisionsDebugMode YES` / `-ApplePersistenceIgnoreState YES`) each showed `AXWindow Title=Portty`. Step 2: `--version` and `-v` printed `v1.2.0-vm17` rc 0, `--bogus` printed the unknown-flag line and usage rc 2, `pgrep -x Portty` 0 before and after each. Step 3: duplicate `shell` refused with the `more than one session is named` line (both remained); rename by full ID and by name worked; a 4-character ID prefix was refused by rename and kill with `no session named`; kill by name and by an 8-character prefix worked. VM Dock and test app restored afterwards.
   - _Why not automatable:_ real LaunchServices launches of a signed bundle, which must not happen on the user's Mac; covered in process by `TestLaunchMode` (dispatch_test.go), `TestCmdKill_ByName` and `TestCmdRename_ByName` (cmd_cli_test.go) and 16-01's built-binary run.
   - _Source:_ 16-01-PLAN.md and 16-01-SUMMARY.md; 16-CONTEXT D-01; todos 2026-11-23-version-flag-hangs and 2026-11-23-kill-by-name-fails.
+
+### Category BH — v2.0 Desktop Feasibility Spike (Phase 17)
+
+Rig: the user's office Mac (the shared Mac, macOS 27.2.x) and personal MacBook Air (the viewer), both on the user's tailnet. Probes are rebuilt from `spike/desktop` with `bash spike/desktop/bundle/build.sh` (Developer ID identity, never ad-hoc; `--shell` builds the throwaway Wails viewer shell). Nothing here runs without the owner's go on that Mac, and only the spike's own test chart is captured on a personal Mac. Afterwards revoke with `tccutil reset ScreenCapture app.portty.spike`, `tccutil reset Accessibility app.portty.spike` and `tccutil reset PostEvent app.portty.spike`, `launchctl bootout gui/$(id -u)/app.portty.spike.daemon` and remove its plist. Never commit tokens, tailnet addresses or real desktop frames. Results feed `.planning/phases/17-desktop-feasibility-spike/17-SPIKE-MATRIX.md`; each item names its row. Recorded by 17-12; the real-Mac items run when Phase 19 is verified, M-160 after a real 30-day wait.
+
+- **M-157** The office Mac and the home Mac reach each other on a direct tailnet path, and the desktop stream uses it with no STUN, TURN or cloud server (DESK-02, SC1).
+  1. On the office Mac start the spike in the daemon shape (path B LaunchAgent with `serve --source sck` bound to its tailnet address and a fresh token).
+  2. On the home Mac run `tailscale ping -c 5 <office Mac>` before and after a 15 s Safari viewer session (`ice=lite`), and keep a packet capture on the office Mac for UDP ports 3478, 5353 and 19302 during the session.
+  3. PASS when: both pings read direct (no "via DERP"), frames decode at the captured size, the selected pair is on tailnet addresses, `lsof` shows only the tailnet address, and no spike packet goes to 3478, 5353 or 19302.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the two real Macs on the user's tailnet; the test VMs always connect via DERP (test-rig limit, accepted at the 17-12 closure checkpoint).
+  - _Source:_ 17-SPIKE-MATRIX.md row R01 (R01-vm, R01-host)
+
+- **M-158** A daemon started from an SSH shell gets no Accessibility of its own when the SSH daemon wrapper holds none (DSHR-01; documents why the product never starts the daemon from SSH).
+  1. At the office Mac's keyboard (not over SSH), turn off Accessibility for sshd-keygen-wrapper in System Settings, with the spike daemon's own Accessibility grant on.
+  2. From an SSH shell start `Spike.app/Contents/MacOS/spike probe-loop --ax-move` with nohup, let it run 30 s, then turn sshd-keygen-wrapper's Accessibility back to its earlier state at the keyboard.
+  3. PASS when: the SSH-started process reads ax_trusted false (or posts no event) and tccd names sshd-keygen-wrapper, not app.portty.spike, while a launchd-started daemon (`launchctl kickstart`) posts with the app's own grant.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the case needs the SSH wrapper's grant off, which removes the SSH tools that would turn it back on; only a person at the Mac can run it (accepted at the 17-12 closure checkpoint).
+  - _Source:_ 17-SPIKE-MATRIX.md row R08 (R08-D)
+
+- **M-159** The office Mac's display idle and system sleep policy, and what a viewer sees across display sleep and wake there (DPRM-04).
+  1. On the office Mac record `pmset -g` and `pmset -g assertions` on battery and on power.
+  2. With a viewer connected, let the display sleep (`pmset displaysleepnow`), wait 20 s, wake from the keyboard and unlock.
+  3. PASS when: the record shows whether the office Mac locks and enters system sleep after display sleep (as the MacBook Air did 5.5 s later) and the time to the first frame after the wake with the daemon's display-awake and system-sleep assertions held, or the stream restart after SCError -3815.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ real display and power hardware of the office Mac; R18 ran only on the personal MacBook Air.
+  - _Source:_ 17-SPIKE-MATRIX.md row R18 (R18-host)
+
+- **M-160** The real 30-day Screen Recording re-approval prompt on the office Mac, and what capture does while it waits (DPRM-03).
+  1. Note the date the office Mac's capture host was first approved (the approval store's LastAlerted).
+  2. After 30 days, with the daemon capturing and a viewer connected, watch the office Mac's screen and the stream.
+  3. PASS when: the prompt's wording and buttons are recorded, frames are counted before, during and after the prompt, and the detection DPRM-03 uses (store read or nudge plus frame check) reports "waiting for approval at the Mac".
+  - _Last run:_ not yet run
+  - _Why not automatable:_ a real 30-day wait on the real Mac; the spike backdated the store in a disposable clone, which raised the bypass-picker prompt but not the real monthly one.
+  - _Source:_ 17-SPIKE-MATRIX.md row R19
+
+- **M-161** The office Mac's hardware H.264 encoder at its native display size and 30 fps: CPU, latency and sharpness (DESK-01, DESK-07).
+  1. On the office Mac run the spike's host-run with the test chart moving for 95 s and a viewer joined.
+  2. Read the timeline's encoder readback, CPU, encode latency and the viewer's decode and drop counts.
+  3. PASS when: the encoder reads back hardware, frames hold near 30 fps at the native size with no drops in the motion window, and the numbers are recorded next to R20-host's.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the office Mac's real encoder; R20 ran only on the personal MacBook Air.
+  - _Source:_ 17-SPIKE-MATRIX.md row R20 (R20-host)
+
+- **M-162** System audio capture from the Mac's real output device reaches the viewer (DCTL-07).
+  1. On a real Mac play a known sound through the built-in speakers or headphones while `opusprobe --source sck` runs 10 s, then a 5 s run in silence.
+  2. Read buffer counts, peak sample and Opus packet sizes.
+  3. PASS when: the sound run gives buffers with a non-zero peak and full-size packets, and the silent run gives peak 0 and silence packets.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the VM has only a virtual output device; the real device needs a real Mac.
+  - _Source:_ 17-SPIKE-MATRIX.md row R21
+
+- **M-163** On the office Mac the in-daemon capture host is attributed and listed as in the VMs, and the grant is confirmed by preflight polling (FA-1; DPRM-01).
+  1. On the office Mac, after a clean reset, bootstrap the spike daemon's LaunchAgent and let it request Screen Recording and Accessibility.
+  2. Answer each dialog, then poll the non-prompting preflight every 10 s for 3 minutes; if it stays false, add the grant by hand in System Settings and poll again.
+  3. PASS when: tccd names app.portty.spike as the accessing identity for ScreenCapture, Accessibility and PostEvent, System Settings lists Spike under Screen and System Audio Recording and Accessibility and the LaunchAgent under Login Items (signing developer's name), and the record says which grant path made preflight read true.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ real TCC prompts on the office Mac; every attribution row (R02 to R09) ran only in a VM, and in host session 1 an Allow click did not make preflight read true.
+  - _Source:_ 17-SPIKE-MATRIX.md row R04 (FA-1 in `## FEAS-02 decision`; R09-B)
+
+- **M-164** The office Mac's Tailscale mode: network extension or userspace networking (milestone research gap).
+  1. On the office Mac read how Tailscale runs (the app's network extension or a userspace `tailscaled`), and whether a `utun` interface carries the Mac's tailnet address.
+  2. Start the spike's serve bound to that address and join from the home Mac.
+  3. PASS when: the mode is recorded, a network-extension Mac binds the tailnet address and serves the viewer, and for userspace mode the record notes that a kernel-bound socket cannot reach the tailnet (Phase 19 must detect it and refuse with a clear message).
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the office Mac's own Tailscale install, which no test rig reproduces.
+  - _Source:_ 17-SPIKE-MATRIX.md row R01 (M-164 in `## FEAS-02 decision`)
 
 ---
 
