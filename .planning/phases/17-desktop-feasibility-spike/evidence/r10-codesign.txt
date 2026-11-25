@@ -1,0 +1,26 @@
+R10: same-identity rebuild plus RENAME_SWAP bundle swap, VM office (guest macOS 27.2, build 26B123), guest clock GMT 2026-11-25
+Account name in the guest path replaced with USER. The session objects inside r10-before.json and r10-after.json have the user names and the session UUID replaced with REDACTED.
+
+== before (bundle already holding the Screen Recording grant from R00)
+codesign -d -r- ~/ptest/Spike.app:
+designated => identifier "app.portty.spike" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = S2K7P43927
+CFBundleVersion: 20261125024318
+Probe: open -n ~/ptest/Spike.app --args probe --label r10-before --out /tmp/spike-evidence/r10-before.json --capture-seconds 5 (guest 02:52:05, pid 1300, no other spike process running)
+Result: sr_preflight true; 32 Complete and 112 Idle frames, ioSurface true, first frame 60 ms. No dialog appeared: the bypass-the-system-private-window-picker prompt that R00 raised and had Allow clicked did not return on this launch of the same bundle.
+
+== rebuild and swap
+Host: bash spike/desktop/bundle/build.sh (same Developer ID identity, team S2K7P43927, new CFBundleVersion 20261125025233, codesign --verify --strict passes).
+Guest: bundle copied to ~/ptest/Spike.new.app; Spike.app was 20261125024318 and Spike.new.app 20261125025233.
+Swap run over SSH (filesystem only, no TCC call, no spike process running): ~/ptest/Spike.new.app/Contents/MacOS/spike swap ~/ptest/Spike.new.app ~/ptest/Spike.app, exit 0.
+After the swap: ~/ptest/Spike.app is 20261125025233 and ~/ptest/Spike.new.app is 20261125024318 (the old bundle). codesign --verify --strict on the swapped ~/ptest/Spike.app passes.
+
+== after
+codesign -d -r- ~/ptest/Spike.app:
+designated => identifier "app.portty.spike" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = S2K7P43927
+CFBundleVersion: 20261125025233
+Probe: open -n ~/ptest/Spike.app --args probe --label r10-after --out /tmp/spike-evidence/r10-after.json --capture-seconds 5 (guest 02:52:51, pid 1439, no other spike process running)
+Result: sr_preflight true; 28 Complete and 110 Idle frames, ioSurface true, first frame 28 ms.
+Prompt observation: screenshots at about 3 s, 9 s and 14 s after the launch show the Finder desktop only; the first one shows the purple screen-recording indicator in the menu bar while the stream ran. No Screen Recording prompt and no bypass-picker prompt appeared.
+tccd (filtered to pid 1439, not committed as a separate file): kTCCServiceScreenCapture asked through replayd for identifier app.portty.spike, authValue=2 (allowed), the same attribution and answer as the R00 measuring run.
+Old bundle ~/ptest/Spike.new.app removed afterwards; the guest holds only the swapped ~/ptest/Spike.app.
+designated requirement unchanged: yes

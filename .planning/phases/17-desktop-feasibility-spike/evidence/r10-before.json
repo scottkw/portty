@@ -1,0 +1,67 @@
+{
+  "label": "r10-before",
+  "time": "2026-11-25T02:52:05.131727Z",
+  "pid": 1300,
+  "ppid": 1,
+  "pgid": 1300,
+  "sid": 1,
+  "executable": "/Users/USER/ptest/Spike.app/Contents/MacOS/spike",
+  "macos": {
+    "version": "27.2",
+    "build": "26B123"
+  },
+  "managername": "Aqua",
+  "session": {
+    "CGSSessionUniqueSessionUUID": "REDACTED",
+    "kCGSessionLoginDoneKey": true,
+    "kCGSessionLongUserNameKey": "REDACTED",
+    "kCGSSessionAuditIDKey": 100002,
+    "kCGSSessionGroupIDKey": 20,
+    "kCGSSessionLoginwindowSafeLogin": false,
+    "kCGSSessionOnConsoleKey": true,
+    "kCGSSessionSystemSafeBoot": false,
+    "kCGSSessionUserIDKey": 501,
+    "kCGSSessionUserNameKey": "REDACTED",
+    "kSCSecuritySessionID": 100002
+  },
+  "sr_preflight": true,
+  "displays": [
+    {
+      "height": 1440,
+      "id": 1,
+      "main": 1,
+      "pointHeight": 720,
+      "pointWidth": 1280,
+      "width": 2560
+    }
+  ],
+  "capture": {
+    "completeFps": 6.3984830263158443,
+    "encodeLatencyMs": {
+      "max": 91.372458333333327,
+      "mean": 15.593346666666669,
+      "p95": 70.495166666666677
+    },
+    "firstFrameMs": 59.773375000000001,
+    "height": 1440,
+    "ioSurface": 1,
+    "ioSurfaceFrames": 32,
+    "latestDisplayTime": 7591212000,
+    "mainDisplayMatched": 1,
+    "pixelFormat": "420v",
+    "running": 1,
+    "status": {
+      "blank": 0,
+      "complete": 32,
+      "idle": 112,
+      "started": 0,
+      "stopped": 0,
+      "suspended": 0,
+      "unknown": 0
+    },
+    "width": 2560,
+    "withAudio": 0
+  },
+  "ax_trusted": false,
+  "post_event_preflight": false
+}
