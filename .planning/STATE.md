@@ -454,6 +454,7 @@ Recent decisions affecting current work:
 | 261123-kcr | unshare requires an 8-character minimum ID prefix like kill/rename (cmd_share.go lookupSessionStrict), with a test | 2026-11-23 | 1e476af0 | [261123-kcr-unshare-requires-an-8-character-minimum-](./quick/261123-kcr-unshare-requires-an-8-character-minimum-/) |
 | 8 | CI fixes for v1.2.0: frontend/dist before go test; fdpass openFds via Readdirnames | 2026-11-23 | 9a21f65b | — |
 | 9 | Remove portty.app/app link from README iPhone section | 2026-11-24 | 8a44e0c1 | — |
+| 10 | Re-enable e2e.yml (disabled after a billing-blocked run, not a workflow fault); add workflow_dispatch; first dispatch green | 2026-11-25 | 5123a3b2 | — |
 
 ## Deferred Items
 
