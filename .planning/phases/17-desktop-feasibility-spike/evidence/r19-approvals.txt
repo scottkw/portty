@@ -1,0 +1,70 @@
+rig: spike-r19 (vanilla 27.2 clone, no tailnet identity)
+sw_vers in the clone: macOS 27.2, build 26B123
+off-tailnet checks, run in the clone before any write: /usr/local/bin/tailscale absent, /Applications/Tailscale.app absent, pgrep -x tailscaled exits 1
+clone tailnet: none
+
+R19: Screen Recording approval store on macOS 27.2, and what an aged (31 day) approval does to capture
+plan 17-09 Task 3, run 2026-11-25 (guest UTC clock, never changed). User paths are redacted to /Users/USER/. The host, portty-test and portty-test-2 were never written and the store was never read on the host. The clone ran as the second macOS VM next to portty-test and was deleted at the end.
+
+== rig notes
+- ssh into the clone with the shared VM key, key pushed once over admin/admin with expect. The clone's system TCC database (read with sudo in the clone) already held Full Disk Access for /usr/libexec/sshd-keygen-wrapper and nothing else useful (no Screen Recording, no Accessibility, no PostEvent for the ssh chain), so the click tool, axdump and screencapture over ssh did not work here.
+- The screen was driven through the Virtualization.framework VNC server (tart run --vnc-experimental, a one-shot RFB client in the scratchpad, framebuffer 2048x1536). Starting it makes tart open a Screen Sharing window on the host; that window was closed at once and never connected. Passwords typed were the clone's local admin/admin, inside the clone only.
+- The clone has a "disk almost full" banner (50 GB image); irrelevant to the rows.
+- The clock was not changed: the store was writable, so the plan's clock-jump fallback was not needed.
+
+== grant (as in 17-03)
+- open -n Spike.app --args probe --request in the clone raised the first prompt: title "Screen Recording", text: "Spike" would like to record this computer's screen and audio. Grant access to this application in Privacy & Security settings, located in System Settings. Buttons: Open System Settings, Deny.
+- System Settings opened on "Screen & System Audio Recording" with a Spike row (off) and a second section "System Audio Recording Only" (empty). Turning Spike on asked for the local password ("Privacy & Security is trying to modify your system settings") and then showed Spike on.
+- The next launch of the probe (capture started) raised the second prompt, and this is the monthly one: "Spike" is requesting to bypass the system private window picker and directly access your screen and audio. This will allow Spike to record your screen and system audio, including personal or sensitive information that may be visible or audible. Buttons: Allow, Open System Settings. Frames flowed while it was pending; the dialog stays on screen after the process exits. After Allow, the next launches did not prompt.
+- sr_preflight true on the relaunch, Complete frames in every capture.
+
+== the approval store
+path: ~/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist (container group.com.apple.replayd; other items in the container: .com.apple.containermanagerd.metadata.plist and an empty Library/ with Application Scripts, Application Support, Caches, Preferences; no other approval file). Mode 600, owned by the login user.
+readability: readable over ssh with plutil -p, but only because sshd-keygen-wrapper holds Full Disk Access in this clone. A non-FDA app (Terminal.app running plutil -p on the file) got "you don't have permission to view it" with no prompt. So the product's capture host cannot read the store without Full Disk Access, and this row does not give a store-read detection that works for an ordinary app.
+key shape: the key is the app bundle as a file URL with a trailing slash (file:///Users/USER/ptest/Spike.app/), not an executable path. Only the spike's entry existed.
+value shape (a dict of five items, other apps' entries not present):
+  kScreenCaptureAlertableUsageCount  integer
+  kScreenCaptureApprovalLastAlerted  date
+  kScreenCaptureApprovalLastUsed     date
+  kScreenCapturePrivacyHintDate      date
+  kScreenCapturePrivacyHintPolicy    integer 2592000 (30 days in seconds)
+first entry, written the moment the first capture started after the grant and the second prompt appeared (04:51:52): UsageCount 1, LastAlerted = LastUsed = 04:51:52, PrivacyHintDate = LastAlerted + 30 days, Policy 2592000. Allow did not change it.
+
+== refresh behaviour
+- A relaunch through open (04:53:06) moved LastUsed to the relaunch time and raised UsageCount from 1 to 2. LastAlerted and PrivacyHintDate did not move. Every later capture start raised UsageCount by one and set LastUsed, and nothing else moved while the entry was fresh.
+- So the 30 day clock is anchored on LastAlerted (when the prompt was last raised), not on use: using the app does not push the prompt away.
+- A test of plutil keypath escaping ran on a copy of the store (/tmp, not the store); plutil -replace with escaped dots in the key (Spike\.app) works.
+
+== writes (every one in spike-r19; times are the guest clock, 2026-11-25)
+write[spike-r19]: 04:54:16 plutil -replace <Spike.app entry>.{kScreenCaptureApprovalLastAlerted,kScreenCaptureApprovalLastUsed} -date now-31d and .kScreenCapturePrivacyHintDate -date now-1d <store>
+write[spike-r19]: 04:54:16 killall replayd (launchd restarted it, pid 400 to 1204)
+write[spike-r19]: 04:57:06 plutil -replace <Spike.app entry>.{kScreenCaptureApprovalLastAlerted,kScreenCaptureApprovalLastUsed} -date now and .kScreenCapturePrivacyHintDate -date now+30d <store> (restore a fresh entry)
+write[spike-r19]: 04:57:26 plutil -replace <Spike.app entry>.{kScreenCaptureApprovalLastAlerted,kScreenCaptureApprovalLastUsed} -date now-31d and .kScreenCapturePrivacyHintDate -date now-1d <store>
+write[spike-r19]: 04:57:26 killall replayd (pid 1204 to 2876)
+write[spike-r19]: 04:59:44 plutil -replace <Spike.app entry>.{kScreenCaptureApprovalLastAlerted,kScreenCaptureApprovalLastUsed} -date now and .kScreenCapturePrivacyHintDate -date now+30d <store> (restore a fresh entry)
+write[spike-r19]: 05:00:04 killall replayd (pid 2876 to 8133)
+write[spike-r19]: 05:01:24 plutil -replace <Spike.app entry>.{kScreenCaptureApprovalLastAlerted,kScreenCaptureApprovalLastUsed} -date now-31d and .kScreenCapturePrivacyHintDate -date now-1d <store>
+write[spike-r19]: 05:01:24 killall replayd (pid 8133 to 10801)
+write[spike-r19]: 05:03:38 plutil -replace <Spike.app entry>.{kScreenCaptureApprovalLastAlerted,kScreenCaptureApprovalLastUsed} -date now-31d and .kScreenCapturePrivacyHintDate -date now-1d <store>
+(The plan's step order was changed on purpose: the backdate was written after the stream was running, so a running stream really started under a valid entry. Records are in r19-stream.jsonl, one line per 2 s, slimmed to label, time, sr_preflight, streamRunning, the per-record status delta and any stream error. The screen was animated (a Terminal window printing the date every 50 ms) in every run except the first, because a still screen gives no frames after a few seconds, see row R22.)
+
+== runs and results (frame counts are per 2 s record; Blank and Suspended were 0 in every run; no stream error in any run)
+R19 (label R19, still screen, entry backdated and replayd restarted at 04:54:16): the screen was still, so the stream gave 26 Complete and 81 Idle frames in total and the last frames arrived at 04:54:01, before the first write. This run only shows the still-screen signature (no frames, streamRunning true, no error). Not usable for the approval question.
+R19-c1 (control, running stream, valid entry, only replayd restarted at 05:00:04, no backdate): frames ran at about 33 Complete and 25 Idle per record, the last non-zero record was 05:00:08, then 0 Complete and 0 Idle for the 28 records to the end of the run (more than 55 s). streamRunning stayed true and no error was delivered. A replayd restart alone silently freezes a running stream.
+R19-a (running stream, backdate and replayd restart at 04:57:26, animated screen): the same as the control. About 33 and 25 per record until the restart, last non-zero record 04:57:30, then 0 and 0 for the 54 records to the end (about 108 s). streamRunning true, no error, no prompt on screen in the screenshots taken at 3, 49 and 103 s after the restart. The menu bar capture indicator was shown in the first of them and gone in the later two, so a dead stream is visible on screen as a missing indicator (seen by eye, not measured). The store stayed backdated (nothing re-evaluated it: LastAlerted 2026-10-25 and PrivacyHintDate 2026-11-24 at the end of the run, UsageCount 4).
+R19-d (running stream, backdate only, no replayd restart, 05:03:38, animated screen): frames kept coming at about 34 Complete and 25 Idle per record for the 76 s that followed (1639 Complete and 1168 Idle in the whole run), no prompt, no error, store unchanged. A running stream is not touched by an aged entry on its own.
+R19-b (fresh start with the entry backdated and replayd restarted at 05:01:24, animated screen): 05:01:29 the probe started a fresh stream and the second prompt ("Spike" is requesting to bypass the system private window picker and directly access your screen and audio, Allow or Open System Settings) appeared at once. Frames flowed anyway, about 32 Complete and 26 Idle per record, 1037 Complete and 808 Idle over 65 s, no error, with the dialog still pending; it stayed on screen after the process was stopped. At the moment the prompt was raised replayd rewrote the entry: LastAlerted and LastUsed became the launch time (05:01:29), PrivacyHintDate became that time plus 30 days, UsageCount went from 5 to 6.
+
+== reading
+- The prompt that comes back monthly is the "bypass the system private window picker" one (second prompt of 17-03), raised on a capture start once the entry's LastAlerted is older than the 30 day policy; the entry is then reset to now.
+- The prompt does not stop capture while it is pending: the stream keeps delivering Complete frames. Status counts therefore cannot show "waiting for approval at the Mac".
+- A replayd restart freezes a running stream with no error and running still true. The aged entry makes no visible difference to a running stream.
+
+== zero-frame check (no Complete frame for N seconds while the display is awake and unlocked)
+- It would NOT have caught the expired approval: with an aged entry a fresh start delivered frames the whole time (R19-b).
+- It WOULD catch a replayd restart on a running stream (R19-a and R19-c1 went to 0 Complete and 0 Idle within about 6 s of the restart and never recovered), but it cannot tell that from a still screen: a still screen gives Idle frames for about 6 s and then nothing as well (R19 first run, R22). A usable check needs a nudge: move the pointer or draw something, and treat "no Complete frame within a second of a nudge" as a dead stream, then restart the stream. That design is not measured here.
+- A store read is the only signal measured that predicts the prompt (compare LastAlerted plus 30 days with now), and it needs Full Disk Access for the process that reads it; a non-FDA app is refused without a prompt. The prompt itself shows as a dialog window; detecting that window was not measured.
+
+== not claimed
+- The real 30 day prompt on the office Mac was not observed; this is a backdated entry in a clone. Whether replayd also raises the prompt in the middle of a stream when the 30 days pass while it runs is not known (backdating a running stream did nothing). Left as a follow-up on the real Mac.
+- Nothing here was measured for the in-daemon capture host versus the helper: R19 is measured once, for the app launched with open, and is not a FEAS-02 input.
