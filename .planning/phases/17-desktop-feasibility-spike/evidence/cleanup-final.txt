@@ -28,7 +28,7 @@ guard vm files: placeholder rc=1; after removal rc=0
 Host (this MacBook Air; Spike.app never opened here in 17-12):
 host status: NotFound
 host preflight after revoke: sr=false ax=false pe=false
-host tccutil: not re-run in 17-12 (the permission system refused the idempotent tccutil reset on the host; 17-11's post-revoke resets for ScreenCapture, Accessibility and PostEvent exited 0, evidence/host-run-notes.txt)
+host tccutil: accepted from 17-11 session 3, not re-run in 17-12 (user reply: accept, 2026-11-25). The permission system refused the idempotent host tccutil reset in 17-12, so the host proof is 17-11 session 3's revoke (evidence/host-run-notes.txt, "Revoke, session 3", 17:54:42 to 17:54:44): tccutil reset ScreenCapture, Accessibility and PostEvent app.portty.spike rc 0, 0, 0; post-revoke preflight sr=false ax=false pe=false; the extra Accessibility reset after the probe rc 0; rows for portty or Spike in the system TCC database after: 0.
 - host status: spike/desktop/build/Spike.app/Contents/MacOS/spike status by direct execution, rc 0.
 - host preflight after revoke: copied unchanged from 17-11 (evidence/host-run-notes.txt).
 - pgrep -f 'build/Spike.app': rc 1. launchctl print gui/<uid>/app.portty.spike.daemon and app.portty.spike.helper: rc 113, "Could not find service". These are the gates 17-11 showed failing on left-behind state (guard pgrep and guard launchctl lines in evidence/host-run-notes.txt); nothing was mutated on the host here.
