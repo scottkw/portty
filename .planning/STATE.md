@@ -5,16 +5,16 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: Completed 17-11-PLAN.md (session 3 host run)
-last_updated: "2026-11-25T18:01:02.364Z"
+stopped_at: Completed 17-12-PLAN.md
+last_updated: "2026-11-25T18:45:13.566Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 17 execution started
-state_head: f8b10d2ef2e2e2cc2e9a5ec44e66358374c1a824
+state_head: 4cccd1d95ff32fa279bc841402be6a7381127701
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 17 (Desktop Feasibility Spike) — EXECUTING
-Plan: 11 of 12
+Plan: 12 of 12
 Status: Ready to execute
 Last activity: 2026-11-24 — Phase 17 execution started
 
@@ -167,6 +167,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 17 P08 | 35min | 3 tasks | 14 files |
 | Phase 17 P10 | 35 min | 2 tasks | 10 files |
 | Phase 17 P11 | 30min | 3 tasks | 12 files |
+| Phase 17 P12 | 43min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -392,6 +393,10 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-11: host Screen Recording not approved within 120 s; R01-host, R18-host, R20-host and base rows R01, R18, R20 PARTIAL (user-skip, user-not-approved); host revoked and proven clean
 - [Phase 17]: 17-11 session 2 (user added the grant by hand): the host-run spike crashed at about ready+66 s (SIGTRAP on the main thread in spk_app_run, native frame unknown); R20-host numbers for 20 s of motion (hardware AVC, 2560 x 1664, 29.10 fps, latency mean 12.69 ms, own CPU 29.6 percent, SSIM 0.999024), R01-host pings DERP both times and no viewer report, R18-host not reached; all three stay PARTIAL; host revoked, no app.portty.spike TCC rows left
 - [Phase 17]: 17-11 session 3 (after the nil-font fix bf95b9a6): full 180 s host run completed, no 'chart text skipped' line; R20 GO (hardware AVC, 2560 x 1664, 60 s motion at 29.15 fps, latency mean 12.85 ms, own CPU 27.0 percent, SSIM 0.999327); R18 NO-GO (stream ends with -3815 0.7 s after display sleep and does not return after the wake; on battery the Mac idle-slept 5.5 s after the display); R01 PARTIAL (1853 frames decoded from the real Mac, but DERP both pings); host revoked, no spike TCC rows left
+- [Phase 17]: FEAS-02 DECIDED: capture host in-daemon (rule row 7); capture, encode and WebRTC serve run in the existing daemon on its legacy LaunchAgent, one TCC identity, no helper bundle
+- [Phase 17]: CLI respawns the daemon only through launchd (launchctl kickstart, R07-B GO); an SSH-started daemon is attributed to sshd-keygen-wrapper (R06 NO-GO)
+- [Phase 17]: UNLK-01 feasible (R15-R17 GO): ship, not cut
+- [Phase 17]: 17-12 host tccutil proof accepted from 17-11 session 3 revoke (user reply: accept); permission system refused the host reset in 17-12
 
 ### Pending Todos
 
@@ -404,7 +409,6 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- [v2.0 Phase 17]: Capture host (bundled helper vs in-daemon, research C1) is unresolved until the spike records FEAS-02; Phase 19 planning waits on it
 - [v2.0]: Apple's persistent-content-capture entitlement request is not filed yet; until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
 - [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
 - [v2.0 REL-01]: v1.2.x updaters look only for `portty-v<ver>-darwin-universal.dmg` and identifier `portty-v<ver>-darwin-universal` (internal/updater/update.go DMGAssetName, install.go Clean, release.yml); an arm64-only rename would strand v1.2 installs unless the old name stays or both ship
@@ -517,8 +521,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-25T18:01:02.318Z
-Stopped at: Completed 17-11-PLAN.md (session 3 host run)
+Last session: 2026-11-25T18:44:58.433Z
+Stopped at: Completed 17-12-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

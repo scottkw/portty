@@ -8,8 +8,8 @@
 
 ### Feasibility spike (FEAS)
 
-- [ ] **FEAS-01**: On a real Mac, a throwaway end-to-end path (ScreenCaptureKit → VideoToolbox H.264 → pion → browser) shows the desktop live over the tailnet, with a recorded go/no-go for: which process holds Screen Recording/Accessibility (helper vs daemon, incl. SSH-spawned daemon), WebRTC in the Wails web view, browser connections over the Tailscale interface (Chrome, Safari, Portty app, iPhone Safari), lock-screen capture and CGEvent typing, display sleep/wake, monthly re-approval behaviour, CPU/latency on the MacBook Air, Opus audio encode
-- [ ] **FEAS-02**: The capture-host decision (separate bundled helper vs in-daemon) is recorded with evidence before the capture host is built
+- [x] **FEAS-01**: On a real Mac, a throwaway end-to-end path (ScreenCaptureKit → VideoToolbox H.264 → pion → browser) shows the desktop live over the tailnet, with a recorded go/no-go for: which process holds Screen Recording/Accessibility (helper vs daemon, incl. SSH-spawned daemon), WebRTC in the Wails web view, browser connections over the Tailscale interface (Chrome, Safari, Portty app, iPhone Safari), lock-screen capture and CGEvent typing, display sleep/wake, monthly re-approval behaviour, CPU/latency on the MacBook Air, Opus audio encode
+- [x] **FEAS-02**: The capture-host decision (separate bundled helper vs in-daemon) is recorded with evidence before the capture host is built
 
 ### Self-install (UPD — continues v1.0 UPD-01..04)
 
@@ -99,8 +99,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FEAS-01 | Phase 17 | In Progress |
-| FEAS-02 | Phase 17 | In Progress |
+| FEAS-01 | Phase 17 | Complete |
+| FEAS-02 | Phase 17 | Complete |
 | UPD-05 | Phase 18 | Pending |
 | UPD-06 | Phase 18 | Pending |
 | UPD-07 | Phase 18 | Pending |
