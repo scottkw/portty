@@ -1,7 +1,7 @@
 ---
 phase: 17-desktop-feasibility-spike
 verified: 2026-11-25T19:30:00Z
-status: human_needed
+status: passed
 score: 4/4 must-haves verified (1 by override)
 covered_files:
   - .planning/phases/17-desktop-feasibility-spike/17-01-PLAN.md
@@ -209,3 +209,8 @@ No blocking gaps. The phase goal holds in the codebase and evidence. A real end-
 
 _Verified: 2026-11-25T19:30:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+
+## Human sign-off
+
+2026-11-25: the user replied "ok" to signing off the four judgment-tier prohibitions (redaction, no host tailnet contact outside the 17-11 window, no real password typed on the host, no spike leftovers on the host). Status: passed.

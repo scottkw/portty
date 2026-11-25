@@ -55,7 +55,7 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
 
 **Holds for every phase:** Terminal sessions and their upgrade handoff never regress. Reliability comes first, because nobody can get to the unattended office Mac to fix it. Links stay token-gated and tailnet-only. There is no STUN, TURN, relay or cloud dependency. The CSP stays unchanged except for what a recorded security review approves. The stack stays Wails v2, the look stays macOS-native, and simplicity is the default. Every phase that adds, renames or removes tests updates TESTING.md: the Section 2 manifest, Section 4 traceability rows (repo-relative paths, checked with `bash tests/check-traceability-paths.sh`), and Section 5 M-NN items for anything the Tart VMs cannot prove. Capture, hardware encode, TCC, lock-screen, display and iPhone checks run on the user's real Macs as M-NN rows. The Tart VMs have no hardware encoder or TCC automation, and research subagents never touch this host's live tailscaled.
 
-- [ ] **Phase 17: Desktop Feasibility Spike** - A throwaway capture → encode → pion → browser path on a real Mac settles every risky assumption with a recorded go/no-go, and the capture-host architecture is decided from that evidence
+- [x] **Phase 17: Desktop Feasibility Spike** - A throwaway capture → encode → pion → browser path on a real Mac settles every risky assumption with a recorded go/no-go, and the capture-host architecture is decided from that evidence (completed 2026-11-25)
 - [ ] **Phase 18: Self-Installing Updates** - Update verifies, replaces `/Applications/Portty.app`, relaunches, cleans up the DMG and rolls back a version that won't start; a first launch from a mounted DMG moves itself into place; sessions survive
 - [ ] **Phase 19: Unattended Desktop Viewing** - Always-available desktop for your own Macs: guided permissions, live view in Chrome and Safari with nobody at the Mac, visible state, display kept awake, automatic reconnect, media on the tailnet only
 - [ ] **Phase 20: Remote Control** - Pointer, keyboard, Send-keys menu and explicit clipboard from any viewer; the sharer picks a display or a single window and switches displays mid-session
@@ -84,7 +84,7 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
      (FEAS-01)
   3. The capture-host decision (bundled helper or in-daemon) is written down with the evidence behind it before Phase 19 is planned. Every no-go names the requirement it changes or cuts, for example UNLK-01, or DVWR-01 falling back to a browser link. (FEAS-02)
   4. No spike code reaches the shipping build. Release builds and the full terminal test suite are unchanged by this phase.
-**Plans**: 12/12 plans executed
+**Plans**: 12/12 plans complete
 
 Plans:
 **Wave 1**
@@ -145,9 +145,9 @@ Plans:
 **Requirements**: DPRM-01, DPRM-02, DPRM-03, DPRM-04, DESK-01, DESK-02, DESK-03, DESK-04, DSHR-01, DSHR-02, DSHR-08, DVWR-02
 **Success Criteria** (what must be TRUE):
   1. Portty guides the user through granting Screen Recording and Accessibility, and a test capture confirms both work. With always-available desktop on, the user's own devices (same Tailscale account) open the Mac's live desktop from a link in desktop Chrome and Safari. The picture is sharp on Retina and fitted to the window, with the Portty GUI quit and nobody at the Mac. (DPRM-01, DSHR-01, DESK-01, DVWR-02)
-  2. The host and every viewer see the desktop's real state: permission missing, waiting for approval at the Mac, display asleep, locked, or streaming to N viewers. When the Screen Recording approval lapses, Portty shows "waiting for approval at the Mac" and sends a native notification. The display wakes when a viewer connects and stays awake while any viewer is connected, except for lid-closed sleep. (DPRM-02, DPRM-03, DPRM-04)
+  2. The host and every viewer see the desktop's real state: permission missing, waiting for approval at the Mac, display asleep, locked, or streaming to N viewers. When the Screen Recording approval lapses, Portty shows "waiting for approval at the Mac" and sends a native notification. While any viewer is connected the display stays awake (display-awake and system-sleep assertions, lid-closed sleep excepted), and a stream ended by display sleep restarts by itself after the wake, tested on battery. (DPRM-02, DPRM-03, DPRM-04)
   3. Several viewers can watch at once, and a new viewer gets a picture right away. Each viewer comes back by itself after a network drop, Mac sleep and wake, or a Portty upgrade, showing "Reconnecting" in the meantime. Always-available links, including one saved to an iPhone Home Screen, keep working across daemon restarts and upgrades. (DESK-03, DESK-04, DSHR-02)
-  4. Desktop media stays on the tailnet. No STUN, TURN or cloud server is contacted, and no desktop socket binds a non-tailnet address; tests assert both. A desktop link never opens a terminal session and a terminal link never opens the desktop; cross-token tests refuse both. (DESK-02, DSHR-08)
+  4. Desktop media stays on the tailnet. No STUN, TURN or cloud server is contacted, and no desktop socket binds a non-tailnet address; tests assert both. The office Mac and the home Mac reach each other on a direct tailnet path (tailscale ping reads direct). A desktop link never opens a terminal session and a terminal link never opens the desktop; cross-token tests refuse both. (DESK-02, DSHR-08)
   5. Terminal sessions never regress. With the desktop share on, a Portty upgrade still hands every terminal session to the new daemon with PIDs and history intact. Turning the desktop share on or off never takes the share server away from terminal viewers, and the reverse holds too. (DSHR-02, DESK-03; guards the validated UPGR-01..05)
 **Plans**: TBD
 **Notes**: The largest change to existing code is the share server's lifetime: it must stay up while either a terminal share or the desktop share needs it. Its handoff path changes too. Desktop sessions are not handed off; they reconnect.
@@ -209,7 +209,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 17. Desktop Feasibility Spike | v2.0 | 12/12 | In Progress | - |
+| 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
 | 18. Self-Installing Updates | v2.0 | 0/TBD | Not started | - |
 | 19. Unattended Desktop Viewing | v2.0 | 0/TBD | Not started | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
