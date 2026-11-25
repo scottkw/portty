@@ -11,6 +11,9 @@
 # Signing identity: SPIKE_SIGN_ID, default the Developer ID Application
 # identity of team S2K7P43927. Ad-hoc ("-") and any other team are refused,
 # because TCC behaviour must match a real release.
+#
+# build.sh --shell builds and signs the throwaway Wails v2 shell instead
+# (wailsshell/build/bin/SpikeShell.app, bundle id app.portty.spike.shell).
 set -euo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -27,6 +30,32 @@ fi
 if [[ "$ID" != *"($TEAM)" ]]; then
   echo "build.sh: signing identity '$ID' is not team $TEAM" >&2
   exit 2
+fi
+
+if [[ "${1:-}" == "--shell" ]]; then
+  SHELL_DIR="$SPIKE_DIR/wailsshell"
+  SHELL_APP="$SHELL_DIR/build/bin/SpikeShell.app"
+  REPO_ROOT=$(git -C "$SPIKE_DIR" rev-parse --show-toplevel)
+  # The app's own CSP meta element, read-only; never invented here.
+  CSP=$(grep -m1 -E '^[[:space:]]*<meta http-equiv="Content-Security-Policy"[^>]*>[[:space:]]*$' "$REPO_ROOT/frontend/index.html" || true)
+  if [[ -z "$CSP" ]]; then
+    echo "build.sh --shell: frontend/index.html has no Content-Security-Policy meta element" >&2
+    exit 1
+  fi
+  # wails build may write frontend/wailsjs; the repo-walking release tests scan .js and .ts anywhere.
+  trap 'rm -rf "$SHELL_DIR/frontend/wailsjs"' EXIT
+  rm -rf "$SHELL_DIR/frontend/dist" "$SHELL_DIR/build/bin"
+  mkdir -p "$SHELL_DIR/frontend/dist"
+  awk -v csp="$CSP" '{ print } /<head>/ && !done { print csp; done = 1 }' "$SPIKE_DIR/viewer.html" > "$SHELL_DIR/frontend/dist/index.html"
+  grep -q 'Content-Security-Policy' "$SHELL_DIR/frontend/dist/index.html"
+  (cd "$SHELL_DIR" && GOTOOLCHAIN=local "$HOME/go/bin/wails" build -s -skipbindings -platform darwin/arm64)
+  plutil -replace CFBundleIdentifier -string app.portty.spike.shell "$SHELL_APP/Contents/Info.plist"
+  codesign --force --options runtime --timestamp \
+    --entitlements "$HERE/entitlements.plist" \
+    --sign "$ID" "$SHELL_APP"
+  codesign --verify --strict --verbose=2 "$SHELL_APP"
+  codesign -dv "$SHELL_APP" 2>&1 | grep -E '^(Identifier|TeamIdentifier)=|^CodeDirectory .*flags='
+  exit 0
 fi
 
 GOTOOLCHAIN=local CGO_ENABLED=1 GOARCH=arm64 go -C "$SPIKE_DIR" build -o build/spike .
