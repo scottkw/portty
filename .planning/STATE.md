@@ -5,16 +5,16 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: Completed 17-06-PLAN.md
-last_updated: "2026-11-25T04:22:42.346Z"
+stopped_at: Completed 17-09-PLAN.md
+last_updated: "2026-11-25T05:09:26.845Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 17 execution started
-state_head: 4305cac1a193727f0a58287dcbd0afc75cc6bd44
+state_head: 9d68f2745829569ab67aab6d4567316c8c1c6b8e
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 12
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 17 (Desktop Feasibility Spike) — EXECUTING
-Plan: 7 of 12
+Plan: 8 of 12
 Status: Ready to execute
 Last activity: 2026-11-24 — Phase 17 execution started
 
@@ -162,6 +162,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 17 P04 | 17 min | 2 tasks | 7 files |
 | Phase 17 P05 | 31min | 2 tasks | 10 files |
 | Phase 17 P06 | 36min | 2 tasks | 14 files |
+| Phase 17 P09 | 33 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -378,6 +379,7 @@ Recent decisions affecting current work:
 - [Phase 17]: R09-B counts 3 Settings entries (Screen Recording, Accessibility, Login Items), equal to R09-A; the daemon needs one TCC key (Bundle ID), the helper two
 - [Phase 17]: 17-06: R15 and R17 GO for both shapes with the display held awake; the unaided lock loses the SCK stream at about 31 s (SCError -3815) when the guest display turns off
 - [Phase 17]: 17-06: provisional FEAS-02 outcome in-daemon by row 7, Pipeline shape: daemon; R16-B PARTIAL (typing unlocked 2 of 3 daemon attempts, 3 of 3 helper attempts)
+- [Phase 17]: 17-09: R21 GO (AudioConverter Opus at 960 frames per packet, SCK delivers system audio in the guest); R19 PARTIAL (monthly prompt is the picker-bypass dialog on a fresh start with an aged approval, frames flow under it, a replayd restart silently freezes a running stream, so a zero-frame check alone cannot detect expiry)
 
 ### Pending Todos
 
@@ -502,8 +504,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-25T04:22:42.304Z
-Stopped at: Completed 17-06-PLAN.md
+Last session: 2026-11-25T05:09:26.820Z
+Stopped at: Completed 17-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
