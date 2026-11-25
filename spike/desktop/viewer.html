@@ -162,6 +162,8 @@
     cv.height = Math.round(v.videoHeight * scale);
     cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
     frameJpeg = cv.toDataURL('image/jpeg', 0.7);
+    // A canvas that cannot read back (Safari in the GPU-less Tart VMs) returns "data:,"; send null, which the server accepts.
+    if (!frameJpeg.startsWith('data:image/jpeg')) { frameJpeg = null; }
   }
 
   const report = {
