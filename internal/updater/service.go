@@ -14,7 +14,7 @@ import (
 
 // Status is what the banner, the alerts and the tray render; the app emits it as update:status
 // on every change. State: idle | checking | current | available | downloading | verifying |
-// revealed. Error is set (with state available) after a failed download, verify or reveal.
+// installing | relaunching | revealed. Error is set (with state available) after a failed download, verify or reveal.
 type Status struct {
 	State   string `json:"state"`
 	Current string `json:"current"`
@@ -40,6 +40,11 @@ type Service struct {
 	Client  *http.Client // NewDownloadClient
 	Run     Runner
 	Now     func() time.Time // nil: time.Now
+
+	// Bundle is the running Portty.app; "" keeps the reveal flow. StartInstaller writes the job,
+	// starts the detached installer and quits the GUI; nil keeps the reveal flow too.
+	Bundle         string
+	StartInstaller func(Job) error
 
 	checkMu sync.Mutex // one Check at a time; a second waits, then runs (a cheap 304)
 	mu      sync.Mutex
@@ -70,7 +75,9 @@ func (s *Service) Status() Status {
 	return s.status()
 }
 
-func busy(state string) bool { return state == "downloading" || state == "verifying" }
+func busy(state string) bool {
+	return state == "downloading" || state == "verifying" || state == "installing" || state == "relaunching"
+}
 
 // checkTimeout bounds one Check. It starts once the Check holds checkMu, so a check queued behind
 // another still gets the whole budget.
@@ -223,6 +230,9 @@ func (s *Service) Download() (Status, error) {
 		_ = os.Remove(path)
 		return fail("verify", "The download didn't pass the signature check, so Portty deleted it.")
 	}
+	if s.Bundle != "" && s.StartInstaller != nil {
+		return s.install(rel, path, now(), fail)
+	}
 	if err := Reveal(vctx, s.Run, path); err != nil {
 		log.Printf("update: reveal failed")
 		return fail("reveal", "Portty couldn't show the download in Finder.")
@@ -231,4 +241,57 @@ func (s *Service) Download() (Status, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.set(Status{State: "revealed", Latest: rel.Version}), nil
+}
+
+const (
+	installFailedText      = "Portty couldn't install the update, so the download is shown in Finder."
+	installerStartFailText = "Portty couldn't start the installer, so the download is shown in Finder."
+)
+
+// install stages the verified DMG beside the running bundle and hands it to the detached
+// installer, which quits nothing itself: StartInstaller quits the GUI once the installer is up.
+// Every failure before that falls back to the reveal flow with a message (UPD-09).
+func (s *Service) install(rel Release, path string, now time.Time, fail func(kind, text string) (Status, error)) (Status, error) {
+	s.mu.Lock()
+	s.set(Status{State: "installing", Latest: rel.Version})
+	s.mu.Unlock()
+	// Staging gets its own deadline, like verify: it must not eat into the download's.
+	ictx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	staged, err := Stage(ictx, s.Run, StageInput{DMG: path, Target: s.Bundle, MountRoot: s.Dir, NewVersion: rel.Version})
+	if err != nil {
+		log.Printf("update: %v", err) // names the failed step
+		return s.revealFallback(path, rel, now, installFailedText, fail)
+	}
+	s.mu.Lock()
+	s.set(Status{State: "relaunching", Latest: rel.Version})
+	s.mu.Unlock()
+	job := Job{V: JobVersion, Kind: KindUpdate, OldPID: os.Getpid(), Target: s.Bundle, Staged: staged,
+		OldVersion: s.Current, NewVersion: rel.Version, DMG: path}
+	if err := s.StartInstaller(job); err != nil {
+		log.Printf("update: installer start failed")
+		_ = os.RemoveAll(filepath.Dir(staged))
+		return s.revealFallback(path, rel, now, installerStartFailText, fail)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.status(), nil
+}
+
+// revealFallback is where every install failure ends: the DMG's quarantine goes back on (Stage
+// cleared it) and the DMG is shown in Finder, as before self-install, with text in the banner.
+func (s *Service) revealFallback(path string, rel Release, now time.Time, text string, fail func(kind, text string) (Status, error)) (Status, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := Quarantine(ctx, s.Run, path, now); err != nil {
+		log.Printf("update: quarantine restore failed")
+	}
+	if err := Reveal(ctx, s.Run, path); err != nil {
+		log.Printf("update: reveal failed")
+		return fail("reveal", "Portty couldn't show the download in Finder.")
+	}
+	log.Printf("update: revealed %s", filepath.Base(path))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.set(Status{State: "revealed", Latest: rel.Version, Error: text}), nil
 }
