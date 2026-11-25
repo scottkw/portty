@@ -1,0 +1,60 @@
+r01-network.txt: R01-vm network evidence (plan 17-07 Task 3)
+Captured 2026-11-24 (guest clocks show 2026-11-25 GMT) inside the Tart guests over the Tart LAN SSH. The host never contacted its own tailscaled or a tailnet address.
+shape: daemon (serve is the `agent --config` entry of the path B LaunchAgent plist app.portty.spike.daemon, source sck, bound to the VM office tailnet address)
+Viewer: Safari 27.2 in VM home, plain http, ICE-lite session (row R11, tag safari), report evidence/r11-report-safari-lite.json.
+Redaction: tailnet addresses are 100.x.x.office and 100.x.x.home, node names are <office-node> and <home-node>, the token never appears.
+
+== lsof -nP -iUDP -iTCP -a -p <serve pid>, taken 8 s into the lite session
+COMMAND   PID  USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+spike   10033 admin    6u  IPv4 0xb3acf8938ea502d3      0t0  UDP 100.x.x.office:47801
+spike   10033 admin    7u  IPv4 0xec9f810022a0dfb7      0t0  TCP 100.x.x.office:47800 (LISTEN)
+spike   10033 admin   14u  IPv4  0xca7d1115d013f83      0t0  TCP 100.x.x.office:47800->100.x.x.home:49663 (ESTABLISHED)
+every socket of the spike is on the single tailnet address; no wildcard or LAN socket
+
+== tcpdump -i pktap,all -k NP -n -l 'udp port 3478 or udp port 5353 or udp port 19302', started in VM office just before the Safari session and stopped after the path-after ping
+24 packets captured by the filter, 20 attributed to process tailscaled and 4 with an empty process field (inbound IPv6 replies to tailscaled's own source port).
+Process field "spike": 0 spike lines.
+Port 5353: 0 lines. Port 19302: 0 lines. Every port 3478 line is the Tailscale daemon's own endpoint discovery toward Tailscale infrastructure, not spike traffic.
+The spike opens no outbound socket of its own: its only sockets are the three in the lsof section, and the page was created with iceServers [] (no STUN or TURN configured).
+
+== tailscale ping -c 5 from VM home to the VM office tailnet address, before the Safari session
+pong from <office-node> (100.x.x.office) via DERP(mia) in 57ms
+pong from <office-node> (100.x.x.office) via DERP(mia) in 64ms
+pong from <office-node> (100.x.x.office) via DERP(mia) in 54ms
+pong from <office-node> (100.x.x.office) via DERP(mia) in 57ms
+pong from <office-node> (100.x.x.office) via DERP(mia) in 54ms
+direct connection not established
+
+== tailscale ping -c 5 from VM home to the VM office tailnet address, after the Safari session
+pong from <office-node> (100.x.x.office) via DERP(mia) in 82ms
+pong from <office-node> (100.x.x.office) via DERP(mia) in 52ms
+pong from <office-node> (100.x.x.office) via DERP(mia) in 55ms
+pong from <office-node> (100.x.x.office) via DERP(mia) in 56ms
+pong from <office-node> (100.x.x.office) via DERP(mia) in 56ms
+direct connection not established
+
+== path classification (last pong line of each ping run, per the plan rule: direct = via <ip>:<port>, derp = via DERP(...), none = no pong)
+path-before: derp
+path-after: derp
+
+== supplementary: tcpdump -i utun4 -n -c 14 'udp port 47801' in VM office (utun4 is the tailnet interface per `route get`)
+Taken at 05:20:20 guest time while the lite Safari page was still open (its peer port 61885 equals selectedPair.localPort in the lite report); 14 of 134 packets that matched, 0 dropped.
+IP 100.x.x.home.61885 > 100.x.x.office.47801: UDP, length 70
+IP 100.x.x.home.61885 > 100.x.x.office.47801: UDP, length 70
+IP 100.x.x.home.61885 > 100.x.x.office.47801: UDP, length 112
+IP 100.x.x.home.61885 > 100.x.x.office.47801: UDP, length 65
+IP 100.x.x.office.47801 > 100.x.x.home.61885: UDP, length 64
+IP 100.x.x.office.47801 > 100.x.x.home.61885: UDP, length 65
+IP 100.x.x.home.61885 > 100.x.x.office.47801: UDP, length 70
+IP 100.x.x.office.47801 > 100.x.x.home.61885: UDP, length 42
+IP 100.x.x.office.47801 > 100.x.x.home.61885: UDP, length 46
+IP 100.x.x.office.47801 > 100.x.x.home.61885: UDP, length 48
+IP 100.x.x.office.47801 > 100.x.x.home.61885: UDP, length 1210
+IP 100.x.x.office.47801 > 100.x.x.home.61885: UDP, length 1210
+IP 100.x.x.office.47801 > 100.x.x.home.61885: UDP, length 1210
+IP 100.x.x.office.47801 > 100.x.x.home.61885: UDP, length 1210
+The WebRTC STUN checks, DTLS and 1210-byte RTP packets all run between the two tailnet addresses, so the media rides the Tailscale interface. The viewer's selectedPair addresses are null because Safari hides candidate addresses in getStats, which is why this capture stands in for the candidate-pair address check.
+
+== result
+R01-vm PARTIAL: the desktop was decoded live over the tailnet (see r11-report-safari-lite.json) with no STUN, TURN or cloud server in the spike, but both tailscale ping runs went via a Tailscale DERP relay (path-before derp, path-after derp), and Safari hides the candidate addresses.
+SC1 clause "no STUN, TURN or cloud server involved" is not shown on a direct tailnet path: the Tailscale DERP relay was in the path.
