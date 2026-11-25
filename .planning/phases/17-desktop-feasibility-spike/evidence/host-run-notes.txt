@@ -1,11 +1,11 @@
 Phase 17 plan 17-11: host run notes (R14 iPhone row, host run on this MacBook Air, revoke log)
 No address, token, tailnet domain, account or host name is in this file. The host's tailnet address is written as 100.x.x.N; the user's home path as <home>.
 
-host run: skip (user-not-approved: the user said go, but the Screen Recording grant for Portty Spike was not given within the 120 s approval window, so the measured run never started)
+host run: go (session 2, 2026-11-25: ran with the Screen Recording grant the user added by hand; the spike crashed at about ready+66 s, see "Session 2"; session 1 was skip, user-not-approved, see "Host run")
 typing: none
 tailnet: used
-R01-host path-before: not measured (host run did not start; no viewer opened, no ping taken)
-R01-host path-after: not measured (host run did not start; no viewer opened, no ping taken)
+R01-host path-before: derp
+R01-host path-after: derp
 host preflight after revoke: sr=false ax=false pe=false
 host status after revoke: NotFound
 guard pgrep (host): sentinel rc=0; after kill rc=1
@@ -61,3 +61,66 @@ Guard pgrep (host): bash -c 'exec -a build/Spike.app.guard /bin/sleep 120' in th
 Guard launchctl (VM office, never on this Mac): a plist /tmp/app.portty.spike.guard.plist written with plutil (Label app.portty.spike.guard, /bin/sleep 600, no RunAtLoad, no KeepAlive) bootstrapped into gui/501 (rc 0); launchctl print took the "still loaded" branch (rc 0); bootout rc 0 and plist deleted; print then rc 113 "Could not find service "app.portty.spike.guard" in domain for user gui: 501".
 Residue after: pgrep -f 'build/Spike.app' rc=1; launchctl print gui/<uid>/app.portty.spike.daemon rc=113 and .helper rc=113, each "Bad request." then "Could not find service ... in domain for user gui: <uid>".
 After the revoke the host made no further contact with any tailnet address. VMs left running.
+
+== Session 2 (2026-11-25, re-run after the user added the grant by hand) ==
+User action: after session 1 the user added spike/desktop/build/Spike.app by hand in System Settings > Screen & System Audio Recording and typed "go again". Do Not Disturb on. The orchestrator checked at 16:55:55 UTC with a non-prompting `open -n -W Spike.app --args probe --preflight-only`: sr_preflight true, ax false, pe false. Spike.app was not rebuilt (same CFBundleVersion 20261125055429 as session 1), so the grant still matched the binary.
+Command (DEFAULT variant (a), no --request, no --allow-input, --allow-keycodes, --type-at or --type-keycodes):
+  open -n --stdout <scratch>/hostrun.out --stderr <scratch>/hostrun.err spike/desktop/build/Spike.app --args host-run --bind 100.x.x.N --token <T> --evidence-dir <scratch>/hostrun --pattern --dump-at 15s --motion-at 45s --motion-for 60s --sleep-at 120s --wake-after 20s --duration 180s
+  Fresh 32-hex token, scratch directory in the session scratchpad. Evidence: evidence/r18-r20-host-timeline.jsonl (the spike's timeline; it writes the bind address as 100.x.x.1 and holds no token).
+Segments, wall clock UTC:
+  baseline (no network, top -l 3 -s 5)   16:58:15 to 16:58:27
+  measured run: open                     16:58:27.5 (timeline start); capture running ("ready") at 16:58:29.4 (timeline ms 1907)
+  spike process exit                     between 16:59:34.4 (last timeline line, ms 66909) and 16:59:37 (the crash dump's write time on hostrun.err): about ready+66 s, about 20 s into the motion window
+  script kept to the schedule until      17:01:25 (pgrep then read the spike gone)
+  revoke, probes, guard                  17:01:25 to 17:01:33
+  extra Accessibility reset              17:03:57 (see Revoke, session 2)
+  total host window                      16:58:15 to 17:01:33, 3.3 min, plus the 17:03:57 reset
+Outcome: the spike crashed. hostrun.err ends with a Go crash dump:
+  SIGTRAP: trace trap
+  PC=0x1a6ab3e7c m=0 sigcode=0
+  signal arrived during cgo execution
+  goroutine 1 [syscall, locked to thread]: runtime.cgocall -> main._Cfunc_spk_app_run() -> main.appRun (spike/desktop/bridge_darwin.go:225) -> main.hostRunCmd (spike/desktop/hostrun.go:703) -> main.dispatch -> main.run -> main.main
+  So the trap came from native code on the main thread inside the AppKit run loop (spk_app_run), at a PC in the shared system libraries. Go's own signal handler printed the dump and exited, so no .ips crash report was written (~/Library/Logs/DiagnosticReports has none). `log show` gave no entries without extra rights, so the native frame that trapped is not known. The same command line ran the full 180 s three times in VM office (17-10) without a crash.
+  The stderr before the dump: serve listening (http and udp on 100.x.x.N, source sck, width 2560, height 1600, fps 30, tls false), peer state connecting then connected (ice=lite) at 16:58:37-38, frame dumped raw-1.png meanLuma 225.6 at 16:58:44. No error line before the trap.
+What the frame at ready+15 s showed (raw-1.png, read, then deleted, not committed): the test chart over the whole display, plus the macOS dialog '"Spike" is requesting to bypass the system private window picker and directly access your screen and audio.' with Allow and Open System Settings, over the middle of the chart. This is the same second dialog R00 saw in VM office. The run did not wait for it: frames were Complete before and after. Whether the user clicked it, and when, is not known; that click (or the dialog closing) is one candidate trigger for the trap and needs the user's account.
+Not reached because of the crash: motion off at ready+105 s, display sleep at ready+120 s, the wake call at ready+140 s, the end at ready+180 s. The spike never ran pmset displaysleepnow and never declared user activity, so this run did not sleep, wake or lock the Mac's display. No frame_status stopped line, no sleep/wake lines in the timeline (events seen: start, sr_preflight, lock initial unlocked, display initial awake, frame_status, viewer_connected, motion on, perf).
+
+R20-host numbers (from the 14 perf lines of r18-r20-host-timeline.jsonl; n = 1 run):
+  encoder: com.apple.videotoolbox.videoencoder.ave.avc, hardware true (first perf line), session 2560 x 1664
+  captured size: 2560 x 1664 (this display's native size; the 2560 px width cap did not downscale; the serve line's height 1600 is the configured value, the frames and the H.264 stream are 1664 high). static.h264: Constrained Baseline, level 50, 2560 x 1664 (ffprobe).
+  static window (ready+0 to +45 s, 9 perf samples of 5 s): Complete fps mean 4.76 (min 2.40, max 10.80), 214 Complete and 1105 Idle frames (a clock region on the chart changes about twice a second, the rest is still); encode latency 213 samples, mean 20.94 ms, per-sample p95 median 29.12 ms, max 349.08 ms (in the first 5 s, start-up and the viewer joining); own CPU mean 2.35 percent of one core (max 8.01), RSS about 84 MB.
+  motion window (ready+45 s to the crash, 4 perf samples, 20 s of the planned 60 s): Complete fps mean 29.10 (min 28.60, max 29.40) against the 30 fps cap, 582 Complete and 4 Idle frames; encode latency 582 samples, mean 12.69 ms, per-sample p95 median 20.66 ms, max 30.20 ms; own CPU mean 29.57 percent of one core (max 29.97), RSS 98 MB.
+  top -l 3 -s 5 (process names and CPU only), second sample of each set:
+    baseline 16:58:15: 7.13 percent user, 8.70 sys, 84.16 idle; kernel_task 22.2, bluetoothd 16.2, runningboardd 7.9, a Tart VM 6.3, WindowServer 4.6
+    static, started ready+18 s: 28.49 user, 13.59 sys, 57.90 idle; a Tart VM 153.8 (VM home's Safari decoding the 2560 x 1664 stream), kernel_task 33.1, com.apple.gpusw 20.8, WindowServer 5.0; the spike is not in the top 12
+    motion, started ready+63 s (16:59:32 to 16:59:37, the spike crashed inside this sample): 23.40 user, 17.16 sys, 59.79 idle; a Tart VM 69.7, kernel_task 41.3, WindowServer 35.0, com.apple.gpusw 17.7; the spike is not listed (it had exited by the end of the sample); VTEncoderXPCService and replayd are not in the top 12
+    The third motion sample (16:59:37 to 16:59:42) is after the crash and is not used. System-wide figures are dominated by the two Tart VMs; read the spike's own CPU and WindowServer, not the idle percentage.
+  thermal: pmset -g therm before the run and at ready+108 s (after the crash): no thermal warning, no performance warning, no CPU power status recorded.
+  sharpness (static window): raw-1.png (cached Complete frame at ready+15 s, RGB) against the first frame of static.h264 decoded with ffmpeg, both 2560 x 1664, no scaling:
+    ffmpeg -i raw-1.png -i decoded.png -lavfi "[0:v]format=rgb24[a];[1:v]format=rgb24[b];[a][b]ssim" -f null -
+    SSIM R 0.998800, G 0.999288, B 0.998983, All 0.999024; luma only (format=gray on both) Y 0.999313; PSNR average 48.02 dB
+  Both host frames (raw-1.png, decoded.png) and static.h264 were deleted from the scratchpad after the numbers were taken; none is committed.
+
+R01-host:
+  tailscale ping -c 5 from VM home toward 100.x.x.N, ready+1 s (before the viewer): 5 pongs via DERP, 37 to 74 ms, "direct connection not established"
+  same, after: the R01 report never arrived, so the after-ping ran at ready+176 s (the script's wait ran out): 5 pongs via DERP, 38 to 65 ms, "direct connection not established"
+  viewer: VM home Safari opened the R01 link (ice=lite, 95 s) at ready+3 s; the server logged peer state connected (ice=lite) and viewer_connected at timeline ms 11164 (ready+9.3 s). The page's report goes to the server at the end of its 95 s; the server had crashed by then, so no R01 report exists and the viewer side (frames decoded, fps, selected pair) is not recorded. The R18 link at ready+123 s opened onto a dead server. VM home Safari was quit afterwards.
+  Result: the path is DERP both times, so the SC1 clause "no STUN, TURN or cloud server involved" is not shown on the real Mac either, and the viewer-side decode is not recorded.
+
+R18-host: not reached. The display sleep was scheduled at ready+120 s; the spike crashed at about ready+66 s.
+
+== Revoke, session 2 (17:01:25 to 17:01:33, then 17:03:57) ==
+VM home Safari quit (rc 0). pkill on the build path (nothing left; the spike had already exited).
+tccutil reset ScreenCapture app.portty.spike  rc=0  "Successfully reset ScreenCapture approval status for app.portty.spike"
+tccutil reset Accessibility app.portty.spike  rc=0  "Successfully reset Accessibility approval status for app.portty.spike"
+tccutil reset PostEvent app.portty.spike      rc=0  "Successfully reset PostEvent approval status for app.portty.spike"
+open -n -W spike/desktop/build/Spike.app --args probe --preflight-only --label host-postrevoke  rc=0 at 17:01:32: {"sr_preflight":false,"ax_trusted":false,"post_event_preflight":false}
+spike status: {"plist":"app.portty.spike.helper.plist","status":"NotFound","verb":"status"}
+Guard pgrep (host): sentinel rc=0; after kill rc=1.
+launchctl print gui/<uid>/app.portty.spike.daemon and .helper: rc=113 each, "Bad request." then "Could not find service".
+Read-only check of the system TCC database (sqlite3 -readonly on /Library/Application Support/com.apple.TCC/TCC.db), rows whose client matches portty or Spike:
+  after the resets: no kTCCServiceScreenCapture row for app.portty.spike (the row the user's manual add created is gone), but one row kTCCServiceAccessibility | app.portty.spike | auth_value 0 (denied) | auth_reason 4 (system set) | last_modified 17:01:32, the second the post-revoke probe ran. The probe's AXIsProcessTrusted check made tccd write a denied row after the reset. It grants nothing; it may show Portty Spike, switched off, in Settings > Accessibility. (Session 1's revoke ran the same probe, so it probably left the same row; that was not checked then.)
+  17:03:57: tccutil reset Accessibility app.portty.spike rc=0; rows for portty after: 0. The probe was not run again.
+Settings list: the Screen & System Audio Recording list is drawn from these rows, so the user-added Portty Spike entry should no longer be listed. Not looked at on screen (the host screen is not read); the user can confirm by eye.
+Residue: pgrep -f 'build/Spike.app' rc=1; no spike launchd label; nothing installed in launchd or SMAppService; no file under ~/Downloads or /Applications touched. After the revoke the host made no further tailnet contact. VMs left running.
+typing: none (no key-input flag, no key event posted, nothing typed on this Mac).
