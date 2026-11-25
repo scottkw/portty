@@ -128,6 +128,8 @@ Other specifics:
 - Open office-Mac follow-ups this phase rests on: M-157 (direct path), M-159 (office display sleep policy), M-160 (the real 30-day prompt), M-161 (encoder at native size), M-163 (FA-1 attribution and preflight), M-164 (Tailscale mode).
 - Research rules carry over: subagents never contact the host's tailscaled or 100.x addresses; nothing mounts, copies or modifies ~/Downloads or /Applications on the host; capture checks run in the VMs, or on the user's Macs with their go-ahead.
 
+- Office Mac facts (user, 2026-11-25): the user is CTO and configures the office Mac themselves; it mirrors the personal Mac. Read from the personal Mac: Tailscale is the standalone app (io.tailscale.ipn.macsys, Developer ID, not App Store; CLI at /usr/local/bin/tailscale), answering M-164. Power policy (pmset -g custom): system sleep 1 min and display sleep 10 min on both battery and AC, Low Power Mode on battery, Power Nap on. So the Mac idle-sleeps right after the display sleeps, matching R18-host; DPRM-04's system-sleep assertion is mandatory, not optional (M-159 context).
+
 </specifics>
 
 <deferred>
