@@ -1,0 +1,32 @@
+rig-tailnet.txt: Phase 17 plan 07, Task 1 (tailnet state of the two Tart VMs)
+Captured 2026-11-24 inside each guest over the Tart LAN SSH. The host never contacted its own tailscaled or any tailnet address.
+Redaction: no node keys, tailnet-lock public keys, tailnet domain, tailnet addresses or account names appear below.
+
+== VM office (Tart portty-test, capture host)
+ProductName:	macOS
+ProductVersion:	27.2
+BuildVersion:	26B123
+tailscale status --self --json: BackendState Running, Self.Online true, Self.HostName portty-vm-office, Health []
+tailscale lock status: Tailnet Lock ENABLED, "This node is accessible under Tailnet Lock" with a direct node signature
+re-key needed: no
+
+== VM home (Tart portty-test-2, viewer; booted by this task, it had been stopped for about one day)
+ProductName:	macOS
+ProductVersion:	27.2
+BuildVersion:	26B123
+tailscale status --self --json: BackendState Running, Self.Online true, Self.HostName portty-vm-home
+tailscale lock status: Tailnet Lock ENABLED, "This node is accessible under Tailnet Lock" with a direct node signature
+re-key needed: no
+
+== Reachability probe (run inside VM home, 3 pings to the VM office tailnet address, address redacted)
+pong from portty-vm-office (100.x) via DERP(mia) in 206ms
+pong from portty-vm-office (100.x) via DERP(mia) in 54ms
+pong from portty-vm-office (100.x) via DERP(mia) in 57ms
+direct connection not established
+note: this is only the boot-time probe; the R01 before/after path classification is measured in Task 3 and recorded in r01-network.txt.
+
+== Decision
+Both guests already report BackendState Running, Self.Online true and are signed under Tailnet Lock (the ephemeral nodes survived the one-day stop of portty-test-2).
+Plan 17-07 Task 1 action: "If both guests already report Online true and unlocked by Tailnet Lock, write that in rig-tailnet.txt and skip Task 2 with the reason."
+Task 2 (user re-key and lock sign) is therefore skipped, reason: both VMs are already on the tailnet and signed; no re-key is needed.
+The lock-sign line shape, for the record if a later re-key is ever needed: tailscale lock sign nodekey:<redacted> tlpub:<redacted>

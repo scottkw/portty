@@ -9,7 +9,7 @@ How to read: each row in `## Rows` is one question with the rig it runs on, its 
 | Rig | Machine | macOS | Notes |
 |-----|---------|-------|-------|
 | VM office | Tart VM `portty-test`, the shared Mac (capture host) | 27.2, build 26B123 (`sw_vers` in the guest, 2026-11-24, evidence/r00-rig.txt) | stands in for the office Mac, which the user says runs 27.2.x, so VM lock and permission rows transfer |
-| VM home | Tart VM `portty-test-2`, the viewer | 27.2 per CONTEXT; `sw_vers` recorded at first use | browsers, Wails shell, viewer side of every tailnet row |
+| VM home | Tart VM `portty-test-2`, the viewer | 27.2, build 26B123 (`sw_vers` in the guest, 2026-11-24, evidence/rig-tailnet.txt) | browsers, Wails shell, viewer side of every tailnet row |
 | Host | MacBook Air (Apple M3), this host | 27.2.1, build 26B131 (`sw_vers`, 2026-11-24) | real hardware encoder and display sleep; anything that raises a prompt runs only in the user-gated window (17-11) |
 | Vanilla clone | optional disposable clone of the vanilla 27.2 image, off the tailnet | same as the image; `sw_vers` recorded at first use | R19 backdating only |
 
