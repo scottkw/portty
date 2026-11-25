@@ -138,15 +138,15 @@ Plans:
   2. When N+1 fails to start or never reports healthy, Portty puts build N back in `/Applications` and runs it by itself, with sessions intact, and says the update did not take. (UPD-07)
   3. Opening Portty from a mounted, quarantined DMG moves it to `/Applications` (or `~/Applications` when `/Applications` is not writable), relaunches from there, ejects the DMG and moves the downloaded DMG to the Trash. Two copies never end up running. (UPD-08)
   4. Every install failure (target not writable, App Management refusal, mount or copy failure, disk full) falls back to today's Reveal-in-Finder flow with a clear message. No relaunch ever stops at a Gatekeeper dialog. (UPD-09)
-**Plans**: 1/9 plans executed
+**Plans**: 3/9 plans executed
 
 Plans:
 **Wave 1**
 - [x] 18-01-PLAN.md — Tracer: Update on N stages, hands off to a detached installer copy, swaps, relaunches, waits for health, deletes the DMG (in-process); staging-seam and installer-seam hardening
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 18-08-PLAN.md — VM rig and R1-lite (the tracer on real macOS); probes P1, P2, P7, P8 before any plan that consumes them
-- [ ] 18-04-PLAN.md — Banner and alert copy: Update button, installing and restarting states, revealed-with-error warning, no tray offer after a failed install
+- [x] 18-08-PLAN.md — VM rig and R1-lite (the tracer on real macOS); probes P1, P2, P7, P8 before any plan that consumes them
+- [x] 18-04-PLAN.md — Banner and alert copy: Update button, installing and restarting states, revealed-with-error warning, no tray offer after a failed install
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 18-03-PLAN.md — UPD-07 rollback: GUI-alive health, guarded kills, keep-daemon relaunch, "did not take" message, failed version remembered; VM rows R2-A..R2-D
@@ -250,7 +250,7 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
-| 18. Self-Installing Updates | v2.0 | 1/9 | In Progress | - |
+| 18. Self-Installing Updates | v2.0 | 3/9 | In Progress | - |
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 0/TBD | Not started | - |
 | 19. Unattended Desktop Viewing | v2.0 | 0/TBD | Not started | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
