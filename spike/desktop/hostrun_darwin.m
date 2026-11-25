@@ -35,7 +35,16 @@ static BOOL gMotionWanted;
 	return NSMakeRect(NSMaxX(b) - w - 20, 20, w, NSHeight(b) * 0.55);
 }
 
+// A nil font or color would throw in the @{} literal inside the CA commit, where AppKit
+// traps (+[NSApplication _crashOnException:], SIGTRAP) instead of reporting: the 17-11
+// host run died that way. Skip the text and say so once on stderr.
 - (void)drawText:(NSString *)s at:(NSPoint)p font:(NSFont *)f color:(NSColor *)c {
+	if (f == nil || c == nil) {
+		static BOOL logged;
+		if (!logged) fprintf(stderr, "spike: chart text skipped, nil %s\n", f == nil ? "font" : "color");
+		logged = YES;
+		return;
+	}
 	[s drawAtPoint:p withAttributes:@{NSFontAttributeName : f, NSForegroundColorAttributeName : c}];
 }
 
@@ -99,7 +108,8 @@ static BOOL gMotionWanted;
 	CGFloat lineH = 18;
 	long first = (long)(t * 120 / lineH);
 	CGFloat off = fmod(t * 120, lineH);
-	NSFont *f = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
+	static NSFont *f; // made once and held, not looked up 60 times a second; retried while nil
+	if (f == nil) f = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
 	for (int i = 0; i < (int)(NSHeight(m) / lineH) + 2; i++) {
 		NSString *s = [NSString stringWithFormat:@"line %06ld  scrolling text column", first + i];
 		[self drawText:s at:NSMakePoint(NSMinX(m) + 8, NSMinY(m) + i * lineH - off) font:f color:[NSColor blackColor]];
