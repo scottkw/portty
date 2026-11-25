@@ -1,0 +1,82 @@
+R16-B rerun (17-12 closure checkpoint, user reply 2026-11-25: rerun R16-B, about 10 more daemon-typed unlock tries in VM office only)
+====================================================================================================
+
+Rig: VM office (Tart portty-test), macOS 27.2 (26B123). Nothing ran on the host.
+Procedure: 17-06's R16-B procedure, unchanged (scratch script r16run.sh B per try):
+  - guest lock enabled for this run only: sysadminctl -screenLock immediate (status: screenLock delay is immediate);
+    restored afterwards with sysadminctl -screenLock off (status: screenLock is off).
+  - the path B LaunchAgent (Contents/MacOS/spike agent, launchctl bootstrap gui/501) runs
+    probe-loop --interval 1s --duration 90s --png-every 5 --stream --capture-seconds 0
+    --type-after 40s --type-keycodes 0,2,46,34,45,36 (the VM's public password as key codes, then Return,
+    posted with CGEventPost at the HID tap, key down and up 60 ms apart).
+  - a guest script locks the guest at record 15 with the click tool (Ctrl+Cmd+Q) and then touches nothing,
+    so the only keys after the lock come from the daemon, 27 s after the lock (before the display turns off, R15).
+  - after each try: launchctl bootout, plist removed; if still locked, the guest is unlocked with caffeinate -u
+    and the click tool (recovery, not counted).
+  - new for the rerun: loginwindow's unified log (process == "loginwindow") from the try's start, filtered to
+    keyPressed, loginPressed, the authorization result and the failure lines, to find the cause of a failure.
+Every record of every try: ppid 1, managername Aqua, ax_trusted true, post_event_preflight true.
+
+Per try (lock = first record with CGSSessionScreenIsLocked; keys = the record with the typed field):
+  try 1 (label B-typerr1): lock 18:06:18, keys 18:06:45, unlocked; keys seen at a hidden password field before the first auth: 1; loginwindow: authorization succeeded
+  try 2 (label B-typerr2): lock 18:08:46, keys 18:09:13, unlocked; keys seen at a hidden password field before the first auth: 1; loginwindow: authorization succeeded
+  try 3 (label B-typerr3): lock 18:10:27, keys 18:10:54, STILL LOCKED; keys seen at a hidden password field before the first auth: 6; loginwindow: authorization failed: -60005
+  try 4 (label B-typerr4): lock 18:12:16, keys 18:12:43, unlocked; keys seen at a hidden password field before the first auth: 1; loginwindow: authorization succeeded
+  try 5 (label B-typerr5): lock 18:13:57, keys 18:14:24, unlocked; keys seen at a hidden password field before the first auth: 1; loginwindow: authorization succeeded
+  try 6 (label B-typerr6): lock 18:15:37, keys 18:16:04, unlocked; keys seen at a hidden password field before the first auth: 1; loginwindow: authorization succeeded
+  try 7 (label B-typerr7): lock 18:17:17, keys 18:17:44, unlocked; keys seen at a hidden password field before the first auth: 1; loginwindow: authorization succeeded
+  try 8 (label B-typerr8): lock 18:18:58, keys 18:19:25, unlocked; keys seen at a hidden password field before the first auth: 1; loginwindow: authorization succeeded
+  try 9 (label B-typerr9): lock 18:20:38, keys 18:21:05, unlocked; keys seen at a hidden password field before the first auth: 1; loginwindow: authorization succeeded
+  try 10 (label B-typerr10): lock 18:22:18, keys 18:22:45, unlocked; keys seen at a hidden password field before the first auth: 1; loginwindow: authorization succeeded
+
+result: 9 of 10 unlocked (tries 1, 2, 4 to 10, each in the record of the typing); try 3 stayed locked.
+with 17-06 (2 of 3): the daemon unlocked 11 of 13 tries; the helper 3 of 3 (R16-A).
+
+cause of the failure (try 3), from loginwindow's own log:
+  On every success loginwindow logs exactly one keyPressed line, "View is hidden password field length = 0":
+  the first key reveals the lock screen's password field, and the remaining keys go into the now-visible field;
+  loginPressed and "Screensaver authorization succeeded" follow about 1 s later.
+  On try 3 loginwindow logged that line for all six keys (the field stayed hidden through the whole sequence),
+  then "return in secure textfield", loginPressed with an empty field, "Screensaver authorization failed: -60005"
+  and "INCORRECT password". So every key event was delivered to loginwindow (no event was lost and the posting
+  process had its grants); the keys arrived while the password field was still hidden, the reveal did not
+  happen in time, and the password was submitted empty. This matches 17-06's failed attempt (B-type), whose
+  frames showed an empty Enter Password field after the typing.
+  It is a loginwindow UI race, not a property of the shape: the posting code is the same as the helper's.
+
+closes: R16-B GO. CGEvent typing from the in-daemon capture host unlocks the guest (9 of 10 here, 11 of 13 in all);
+the one failure mode is known and detectable (CGSSessionScreenIsLocked stays set; loginwindow says INCORRECT password).
+Phase 23 constraint (UNLK-01): send one key (or a user-activity wake) first and wait until the password field is
+up before typing the password, then check CGSSessionScreenIsLocked and retry once on failure; a retry was not
+measured here, and a failed try counts toward the account's failed-attempt limit.
+
+loginwindow excerpts (try 1, a success; try 3, the failure, then the recovery unlock by the click tool at 18:11:54):
+== try 1
+18:06:18.495 -[LWScreenLock startUnlock:] |      _numFailedAuthAttempts = 0
+18:06:43.201 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+18:06:44.262 -[LWDefaultScreenLockUI loginPressed:] | 	 Attempt #: 1
+18:06:44.627 -[LWScreenLockAuthentication _authCopyRights...] | Screensaver authorization succeeded
+18:06:44.627 -[LWScreenLockAuthentication _authCopyRights...] | Returning: 0
+== try 3
+18:10:26.648 -[LWScreenLock startUnlock:] |      _numFailedAuthAttempts = 0
+18:10:52.036 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+18:10:52.233 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+18:10:52.451 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+18:10:52.663 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+18:10:52.844 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+18:10:53.073 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+18:10:53.074 -[LWDefaultScreenLockUI keyPressed:] | 	 return in secure textfield
+18:10:53.076 -[LWDefaultScreenLockUI loginPressed:] | 	 Attempt #: 1
+18:10:55.181 -[LWScreenLockAuthentication _authCopyRights...] | Screensaver authorization failed: -60005, looking for auth error
+18:10:55.181 -[LWScreenLockAuthentication _authCopyRights...] | Returning: 9
+18:10:55.181 -[LWDefaultScreenLockUI authFailWithMessage:numFailedAttempts:] | enter. INCORRECT password
+18:10:55.182 -[LWDefaultScreenLockUI authFailWithMessage:numFailedAttempts:] | 	 setEnabled:YES
+18:10:55.182 -[LWDefaultScreenLockUI authFailWithMessage:numFailedAttempts:] | 	 Set _windowControllerActionInProgress = NO
+18:10:55.182 -[LWDefaultScreenLockUI authFailWithMessage:numFailedAttempts:] | Show Hints disabled, authentication failed, do not show the password help
+18:11:50.603 -[LWScreenLock startUnlock:] |      _numFailedAuthAttempts = 0
+18:11:54.730 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+18:11:56.683 -[LWDefaultScreenLockUI loginPressed:] | 	 Attempt #: 1
+18:11:57.019 -[LWScreenLockAuthentication _authCopyRights...] | Screensaver authorization succeeded
+18:11:57.019 -[LWScreenLockAuthentication _authCopyRights...] | Returning: 0
+
+Record of the failed try: evidence/r16-B-rerun-try3.jsonl (redacted: executable path, session UUID and user names).
