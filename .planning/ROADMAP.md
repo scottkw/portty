@@ -57,11 +57,12 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
 
 - [x] **Phase 17: Desktop Feasibility Spike** - A throwaway capture → encode → pion → browser path on a real Mac settles every risky assumption with a recorded go/no-go, and the capture-host architecture is decided from that evidence (completed 2026-11-25)
 - [ ] **Phase 18: Self-Installing Updates** - Update verifies, replaces `/Applications/Portty.app`, relaunches, cleans up the DMG and rolls back a version that won't start; a first launch from a mounted DMG moves itself into place; sessions survive
+- [ ] **Phase 18.1: Apple Silicon Release Pipeline** (INSERTED) - One arm64-only build published under both DMG names, inside-out signing with the v1.2 designated requirement, every nested binary signed, notarized and verified in CI, minimum macOS 14 enforced at build time
 - [ ] **Phase 19: Unattended Desktop Viewing** - Always-available desktop for your own Macs: guided permissions, live view in Chrome and Safari with nobody at the Mac, visible state, display kept awake, automatic reconnect, media on the tailnet only
 - [ ] **Phase 20: Remote Control** - Pointer, keyboard, Send-keys menu and explicit clipboard from any viewer; the sharer picks a display or a single window and switches displays mid-session
 - [ ] **Phase 21: Portty App and iPhone Viewers** - A Desktop tab opened from the sidebar in the Portty app, with Cmd shortcuts forwarded in control mode, and an iPhone viewer with trackpad mode and touch controls
 - [ ] **Phase 22: Click-to-Share for Tailnet People** - A desktop link other tailnet people can open, an Admit prompt by tailnet identity, view-only until granted, instant stop and revoke, a "shared with N" indicator, an audit log, and soft control hand-off
-- [ ] **Phase 23: Audio, Adaptive Quality, Unlock and Release** - System audio (starts muted), sharp-when-still and smooth-when-moving video, remote unlock shipped or cut per the spike, and a signed, notarized Apple Silicon release hardened on real Macs
+- [ ] **Phase 23: Audio, Adaptive Quality, Unlock and Release** - System audio (starts muted), sharp-when-still and smooth-when-moving video, remote unlock shipped or cut per the spike, real-Mac hardening, and the v2.0 release (rc.1 dry run, then the real tag) on the Phase 18.1 pipeline
 
 ## Phase Details
 
@@ -163,6 +164,21 @@ Plans:
 **Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 18-09-PLAN.md — Final VM mover matrix R4-a..R4-g on the same build; TESTING.md Category BI M-165..M-169; closure record with M-169 and SC1's office-Mac half human_needed
 
+### Phase 18.1: Apple Silicon Release Pipeline (INSERTED)
+
+**Goal**: The release pipeline builds Portty once for Apple Silicon only, with minimum macOS 14, and publishes that build under both DMG names, so installed v1.2.x copies and builds from Phase 18 on both find, verify and install it. CI signs every Mach-O inside out without changing the TCC identity, and notarizes and verifies the result. Pulled forward from Phase 23 (user approved 2026-11-25) because none of it depends on Phases 19-22.
+**Depends on**: Phase 18 (its updater accepts the `portty-vX.Y.Z-darwin-arm64.dmg` name alongside the universal one)
+**Requirements**: REL-01
+**Success Criteria** (what must be TRUE):
+  1. release.yml and build.yml build with `wails build -platform darwin/arm64`, and release builds set both CGO_CFLAGS and CGO_LDFLAGS to `-mmacosx-version-min=14.0` (build.sh too). build.yml checks every Mach-O's minos is 14.0 or later and that it has only an arm64 slice, so a PR catches a regression. build/darwin/Info.plist has LSMinimumSystemVersion 14.0. (REL-01)
+  2. One arm64 build is published as both `portty-vX.Y.Z-darwin-universal.dmg` and `portty-vX.Y.Z-darwin-arm64.dmg`. Each DMG is signed with `--identifier` equal to its name without .dmg, notarized, stapled and checked the way the updater checks it, and both are in checksums.txt. An installed v1.2.x copy still finds, verifies and installs the release through the universal name. (REL-01)
+  3. Signing is inside out per Mach-O (no `codesign --deep`), keeps identifier `app.portty.Portty`, hardened runtime, timestamp and the unchanged entitlements file, and CI fails on unsigned code, the wrong team, a missing runtime flag, a non-arm64 slice, a minos below 14.0 or a designated requirement that differs from v1.2's. The signing step is written so a provisioning profile and the persistent-content-capture entitlement can be added later without other changes; the profile is added only once Apple grants request T558S9Q5B3. (REL-01)
+  4. release_workflow_test.go and the other release tests pin both asset names, identifier equals name for each, the arm64-only build flag, no `--deep` and the verify loop. If the build.yml matrix context changes, TESTING.md Section 3 and the branch protection on `main` move to the new check name in the same change. (REL-01)
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 18.1 to break down)
+
 ### Phase 19: Unattended Desktop Viewing
 **Goal**: Turn on always-available desktop on the office Mac once, then open its live desktop from home in Chrome or Safari any time, with nobody at the Mac and the GUI closed. Permissions are guided, the desktop's state is always visible, and the display stays awake while someone is watching. Viewers reconnect by themselves, desktop media never leaves the tailnet, and terminal sessions and their upgrade handoff are untouched.
 **Depends on**: Phase 17 (the capture-host decision, FEAS-02)
@@ -215,26 +231,27 @@ Plans:
 **UI hint**: yes
 
 ### Phase 23: Audio, Adaptive Quality, Unlock and Release
-**Goal**: Viewers hear the shared Mac, and the picture adapts to what is on screen and to the network. Remote unlock either ships, if Phase 17 proved it, or is cut and documented. v2.0 ships as a signed, notarized Apple Silicon release, and hardening on real Macs shows it is safe to leave running unattended.
-**Depends on**: Phase 22. The UNLK-01 outcome is set by Phase 17's lock-screen results.
-**Requirements**: DCTL-07, DESK-07, UNLK-01, REL-01
+**Goal**: Viewers hear the shared Mac, and the picture adapts to what is on screen and to the network. Remote unlock either ships, if Phase 17 proved it, or is cut and documented. Hardening on real Macs shows v2.0 is safe to leave running unattended, and v2.0 ships through the Phase 18.1 release pipeline after a v2.0.0-rc.1 dry run.
+**Depends on**: Phase 22 and Phase 18.1 (the release pipeline). The UNLK-01 outcome is set by Phase 17's lock-screen results.
+**Requirements**: DCTL-07, DESK-07, UNLK-01 (REL-01 moved to Phase 18.1 on 2026-11-25; this phase runs the v2.0 release on that pipeline)
 **Success Criteria** (what must be TRUE):
   1. A viewer hears the shared Mac's audio along with the picture. Audio starts muted on the viewer, with one tap or click to unmute. (DCTL-07)
   2. The picture is sharp, with small text readable, when the screen is still, and stays smooth while scrolling or dragging windows. It adapts as the network gets worse or better without stalling other viewers. (DESK-07)
   3. Remote unlock has one of two outcomes, set by the Phase 17 evidence. If it is feasible, a viewer on the host's own account sees the lock screen of a locked, logged-in Mac and types the password to unlock it. The password is never stored or logged, and click-to-share guests never get unlock. If it is not feasible, the requirement is cut and the docs say "unattended desktop works while the Mac is awake and unlocked". (UNLK-01)
-  4. Releases are Apple Silicon only with minimum macOS 14, and CI signs, notarizes and verifies every nested binary in the app. An installed v1.2.x copy still finds, verifies and installs the first v2.0 release. v1.2's updater looks only for `portty-v<ver>-darwin-universal.dmg` and that signing identifier, so the naming must stay compatible or both names must ship. (REL-01)
-  5. On a real Mac, a two-build upgrade with a live desktop viewer and live terminal sessions keeps every terminal session and brings the desktop viewer back by itself. A one-hour desktop soak on the office Mac ends with no crash, leak or stuck state. (REL-01, DESK-03)
+  4. A `v2.0.0-rc.1` draft release (never offered to installed copies) runs the Phase 18.1 pipeline end to end and both DMGs verify, then the real v2.0 release ships. An installed v1.2.x copy updates to v2.0 through the universal name, and a Phase 18 build updates through self-install. (release run of the REL-01 pipeline built in Phase 18.1)
+  5. On a real Mac, a two-build upgrade with a live desktop viewer and live terminal sessions keeps every terminal session and brings the desktop viewer back by itself. A one-hour desktop soak on the office Mac ends with no crash, leak or stuck state. (DESK-03, final hardening)
 **Plans**: TBD
 **UI hint**: yes
 
 ## Progress
 
-**Execution Order:** Phases run in numeric order: 17 → 18 → 19 → 20 → 21 → 22 → 23. Phase 18 does not depend on Phase 17 and can run alongside it.
+**Execution Order:** Phases run in numeric order: 17 → 18 → 18.1 → 19 → 20 → 21 → 22 → 23. Phase 18.1 depends only on Phase 18. Phase 18 does not depend on Phase 17 and can run alongside it.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
 | 18. Self-Installing Updates | v2.0 | 1/9 | In Progress | - |
+| 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 0/TBD | Not started | - |
 | 19. Unattended Desktop Viewing | v2.0 | 0/TBD | Not started | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
 | 21. Portty App and iPhone Viewers | v2.0 | 0/TBD | Not started | - |

@@ -137,7 +137,7 @@
 | DSHR-07 | Phase 22 | Pending |
 | DSHR-08 | Phase 19 | Pending |
 | UNLK-01 | Phase 23 | Pending (feasible per FEAS-01: ships) |
-| REL-01 | Phase 23 | Pending |
+| REL-01 | Phase 18.1 | Pending (moved from Phase 23 on 2026-11-25; Phase 23 ships v2.0 on this pipeline) |
 
 **Coverage:**
 - v2.0 requirements: 39 total

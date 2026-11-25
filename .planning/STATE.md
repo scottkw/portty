@@ -6,16 +6,16 @@ current_phase: 18
 current_phase_name: Self-Installing Updates
 status: executing
 stopped_at: Phase 17 complete, ready to plan Phase 18
-last_updated: "2026-11-25T22:22:23.189Z"
+last_updated: "2026-11-25T22:55:52.056Z"
 last_activity: 2026-11-25
 last_activity_desc: Phase 18 execution started
-state_head: 8ec50e45b4568af9785b499a2454c384becc073d
+state_head: bd893eb6417e059f32616a7cfded9ba720e8fc55
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 1
   total_plans: 21
-  completed_plans: 12
-  percent: 14
+  completed_plans: 13
+  percent: 13
 ---
 
 # Project State
@@ -34,7 +34,7 @@ Plan: 1 of 9
 Status: Executing Phase 18
 Last activity: 2026-11-25 — Phase 18 execution started
 
-Progress: [█░░░░░░░░░] 14%
+Progress: [█░░░░░░░░░] 13%
 
 
 ## Performance Metrics
@@ -175,6 +175,7 @@ Progress: [█░░░░░░░░░] 14%
 ### Roadmap Evolution
 - v2.0 Desktop Sharing roadmap created 2026-11-24: Phases 17-23 (spike, self-install, unattended viewing, control, app and iPhone viewers, click-to-share, audio/quality/unlock/release); 39/39 requirements mapped
 - Phase 15 added: v1.2 Hardening (close pending v1.2 todos and flakes before milestone close; 2026-11-22)
+- Phase 18.1 inserted after Phase 18: Apple Silicon Release Pipeline: REL-01 and Phase 23's release items pulled forward (user approved 2026-11-25); depends on Phase 18
 
 ### Decisions
 
