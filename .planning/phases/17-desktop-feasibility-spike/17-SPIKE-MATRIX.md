@@ -8,7 +8,7 @@ How to read: each row in `## Rows` is one question with the rig it runs on, its 
 
 | Rig | Machine | macOS | Notes |
 |-----|---------|-------|-------|
-| VM office | Tart VM `portty-test`, the shared Mac (capture host) | 27.2 per CONTEXT; `sw_vers` recorded at first use | stands in for the office Mac, which the user says runs 27.2.x, so VM lock and permission rows transfer |
+| VM office | Tart VM `portty-test`, the shared Mac (capture host) | 27.2, build 26B123 (`sw_vers` in the guest, 2026-11-24, evidence/r00-rig.txt) | stands in for the office Mac, which the user says runs 27.2.x, so VM lock and permission rows transfer |
 | VM home | Tart VM `portty-test-2`, the viewer | 27.2 per CONTEXT; `sw_vers` recorded at first use | browsers, Wails shell, viewer side of every tailnet row |
 | Host | MacBook Air (Apple M3), this host | 27.2.1, build 26B131 (`sw_vers`, 2026-11-24) | real hardware encoder and display sleep; anything that raises a prompt runs only in the user-gated window (17-11) |
 | Vanilla clone | optional disposable clone of the vanilla 27.2 image, off the tailnet | same as the image; `sw_vers` recorded at first use | R19 backdating only |
@@ -35,33 +35,33 @@ GO, NO-GO, PARTIAL, PENDING, ROUTED:host-run, ranked GO > PARTIAL > NO-GO.
 
 ## Routing
 
-Runs in is PENDING until 17-03 fills it from R00 with VM, VM-synthetic, host-run or follow-up. The Reason column holds the default rig until then.
+Filled by 17-03 from R00, which is GO (frames, IOSurface and a hardware H.264 session all work in the guest, evidence/r00-vmprobe.json), so the VM office carries the capture-dependent rows and the host run stays at its RESEARCH minimum. Runs in holds one of VM, VM-synthetic, host-run or follow-up; a row that also has a second part says so in Reason. No row uses VM-synthetic: it is reserved for frames failing while the permission path works, which did not happen. R15 and R16 stay in VM (CONTEXT Test rig); the real-Mac variants RESEARCH proposed for them are not used. Only 17-06 may move R16 elsewhere, and only if the guest cannot deliver CGEvents to its lock screen for a guest-specific reason.
 
 | Row | Runs in | Reason |
 |-----|---------|--------|
-| R01 | PENDING | default: VM office to VM home Safari; host to iPhone |
-| R02 | PENDING | default: VM office |
-| R03 | PENDING | default: VM office |
-| R04 | PENDING | default: VM office |
-| R05 | PENDING | default: VM office |
-| R06 | PENDING | default: VM office |
-| R07 | PENDING | default: VM office |
-| R08 | PENDING | default: VM office |
-| R09 | PENDING | default: VM office |
-| R10 | PENDING | default: VM office |
-| R11 | PENDING | default: VM home |
-| R12 | PENDING | default: VM home, or host Chrome as the user-run fallback |
-| R13 | PENDING | default: VM home with the throwaway shell |
-| R14 | PENDING | default: user session against a VM |
-| R15 | PENDING | default: VM office; host run for the real Mac |
-| R16 | PENDING | default: VM office; host run for one harmless character |
-| R17 | PENDING | default: VM office |
-| R18 | PENDING | default: host run; VM best effort |
-| R19 | PENDING | default: VM office; backdating only on the vanilla clone |
-| R20 | PENDING | default: host run |
-| R21 | PENDING | default: host for encode; VM or host for capture |
-| R22 | PENDING | default: VM office or host |
-| R23 | PENDING | default: same runs as R01 |
+| R01 | VM | R00 GO: VM office serves a live SCK stream to VM home Safari; the host-to-iPhone part is the user-gated session (17-11) |
+| R02 | VM | R00 GO: the helper can be attributed and can capture in the guest |
+| R03 | VM | R00 GO: helper capture with the GUI quit is measurable in the guest |
+| R04 | VM | R00 GO: the legacy LaunchAgent daemon with the GUI closed is measurable in the guest |
+| R05 | VM | R00 GO: GUI-spawned daemon grant sharing is measurable in the guest |
+| R06 | VM | R00 GO: SSH nohup respawn is measurable in the guest (the guest has an SSH session by construction) |
+| R07 | VM | R00 GO: launchctl kickstart over SSH, helper (R07-A) and daemon (R07-B), in the guest |
+| R08 | VM | R00 GO: Accessibility attribution per launch path, guest TCC attributes like the host (R00 tccd lines name app.portty.spike through replayd) |
+| R09 | VM | R00 GO: Settings list entries read with axdump; the guest already showed the Spike entry in Screen and System Audio Recording |
+| R10 | VM | R00 GO and the grant exists: rebuild, swap and re-capture run in the guest (Task 2 of 17-03) |
+| R11 | VM | browser side needs a live stream, not a real desktop: VM home Safari against VM office SCK |
+| R12 | VM | VM home with Chrome if installed there; host Chrome opening only the spike page stays the user-run fallback |
+| R13 | VM | VM home with the throwaway Wails shell |
+| R14 | VM | the user's iPhone against the VM office stream over the tailnet (user session), no host run needed for capture |
+| R15 | VM | R00 GO: frames arrive in the guest so the lock-screen frame behaviour is measured there; the guest runs 27.2 like the office Mac, so it transfers; host-side frames of a locked real Mac are not taken |
+| R16 | VM | CONTEXT Test rig: CGEvent typing at the guest lock screen from the capture-host process (admin password is public); not routed to the real Mac by this plan |
+| R17 | VM | R00 GO: CGSession lock key and stream continuity across lock and unlock in the guest |
+| R18 | host-run | needs real display hardware; VM best-effort reference row R18-vm records the guest numbers |
+| R19 | VM | R00 GO: approval store and the new bypass-picker prompt are read in the guest; backdating only on the vanilla clone |
+| R20 | host-run | real hardware encoder, CPU and sharpness at 2560 px and 30 fps; the guest has a paravirtualized hardware encoder, so VM reference row R20-vm records its numbers |
+| R21 | VM | SCK system-audio capture in the guest; the Opus encode part needs no TCC and already ran on the host (opusprobe) |
+| R22 | VM | R00 GO: join-on-a-still-screen is measured against the guest SCK stream |
+| R23 | VM | same runs as R01 |
 
 ## FEAS-02 decision rule
 
@@ -122,7 +122,7 @@ End of FEAS-02 decision rule.
 
 | ID | Question | Rig + macOS | Procedure | Result | Evidence file | If NO-GO, requirement changed | Follow-up M-NN |
 |----|----------|-------------|-----------|--------|---------------|-------------------------------|----------------|
-| R00 | Do ScreenCaptureKit frames (status Complete, IOSurface-backed) and a VideoToolbox H.264 session work inside a Tart guest? | VM office, macOS 27.2.x | vmprobe started with open in the guest (17-03). GO when frames reach status Complete, ioSurface is true, and an H.264 session reads back hardware or software | PENDING | - | Moves R02-R10, R15-R17, R19, R22 to the host run; no requirement changes | - |
+| R00 | Do ScreenCaptureKit frames (status Complete, IOSurface-backed) and a VideoToolbox H.264 session work inside a Tart guest? | VM office, macOS 27.2 (26B123) | vmprobe started with open in the guest (pid 992) after the Screen Recording grant was driven in System Settings (the first run, with --request, was refused with SCError -3801 until the toggle was on). GO when frames reach status Complete, ioSurface is true, and an H.264 session reads back hardware or software. Measured: 28 Complete and 104 Idle frames in 5 s, 0 Blank, ioSurface true, first frame 383 ms, 2560 x 1440 at 420v, encoder paravirtualized:com.apple.videotoolbox.videoencoder.ave.avc reads back hardware, 29 access units that ffprobe reads as Constrained Baseline level 50, PNG shows the guest desktop (mean luma 235). Prompt 1 named Spike with Open System Settings and Deny; macOS 27.2 then raised a second dialog, Spike requesting to bypass the system private window picker (Allow or Open System Settings), while frames kept flowing. Other files: evidence/r00-frame.png, r00-ffprobe.txt, r00-tcc.log, r00-rig.txt | GO | evidence/r00-vmprobe.json | Moves R02-R10, R15-R17, R19, R22 to the host run; no requirement changes | - |
 | R01 | Does the desktop show live on another device over the tailnet with no STUN, TURN or cloud server? | VM office to VM home Safari; host to iPhone, macOS 27.2.x | Viewer report, lsof on the UDP socket, tcpdump for ports 3478 and 5353. GO when frames decode with fps and size recorded, the selected pair is a tailnet address, lsof shows only the tailnet ip and port, and no packet leaves for 3478 or 5353 | PENDING | - | Whole milestone premise; fall back to Plan B (H.264 over WSS plus WebCodecs) from PITFALLS; DESK-02 wording | - |
 | R02 | Helper (SMAppService agent): where is the Screen Recording grant attributed, does capture work, does a Settings list entry appear? | VM office, macOS 27.2.x | Register from the app, capture, tccd lines filtered to the probe pid, sfltool dump. GO when the responsible process is the helper identity, frames are Complete and the entry appears in Screen Recording | PENDING | - | Helper shape rejected (FEAS-02) | - |
 | R03 | Does the helper still capture with the GUI app quit? | VM office, macOS 27.2.x | Same as R02 after killing the registrar app. GO when frames stay Complete | PENDING | - | DSHR-01 under the helper shape | - |
