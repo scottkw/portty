@@ -1,0 +1,59 @@
+# R07-A attribution evidence: SSH launchctl kickstart -k of the SMAppService helper (guest macOS 27.2, build 26B123)
+# Redactions: /Users/<name> is /Users/USER. tccd lines are joined by msgID to the new helper pid only.
+
+## kickstart
+# T1 = 2026-11-25 03:10:15 guest time, run in an SSH session (SSH_CONNECTION set, launchctl managername in that shell: Background)
+pre-kickstart helper pid: 2643 (started 03:08:12 by SMAppService register, label A-guiclosed)
++ launchctl kickstart -k gui/501/app.portty.spike.helper
+kickstart_rc=0 (no output)
+post-kickstart helper pid: 2736 (new pid differs from 2643), config agent-A.json relabelled A-kickstart
+no process with path Spike.app/Contents/MacOS/spike (the registrar) ran at any point of this run
+
+## launchctl print
+# gui/501/app.portty.spike.helper at 03:11, after the kickstart
+	path = (submitted by smd.94)
+	type = Submitted
+	managed_by = com.apple.xpc.ServiceManagement
+	state = running
+	runs = 2
+	pid = 2736
+	last exit code = 1
+	spawn type = interactive (4)
+	job state = running
+# last exit code = 1 is the pid 2643 that kickstart -k stopped
+
+## procinfo
+# sudo launchctl procinfo 2736 excerpt
+program path = /Users/USER/ptest/Spike.app/Contents/Helpers/spike-helper
+	ppid = 1
+	start date = 2026-11-25 03:10:15
+	session id = 100002
+responsible pid = 2736
+responsible unique pid = 2736
+responsible path = /Users/USER/ptest/Spike.app/Contents/Helpers/spike-helper
+
+## managername and session per record
+# every record of pid 2736 (19 records, 03:10:15 to 03:11:45): managername Aqua, ppid 1, sid 1, kCGSSessionOnConsoleKey true, session audit id 100002 (same session as the GUI login)
+records=19 managername=Aqua ppid=1 sid=1 onConsole=true securitySessionID=100002 sr_preflight=true ax_trusted=true complete_frames_min=23 max=25
+
+## tccd
+# AUTHREQ lines for pid 2736 since T1: every answer is authValue=2 (allowed), no Modify event and no prompt
+--- accessing pid 2736: first message per service and requester, then each change of authValue/authReason ---
+2026-11-25 03:10:15.626 Df tccd[165:581d] [com.apple.TCC:access] AUTHREQ_CTX: msgID=449.1111, function=TCCAccessRequest, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:10:15.626 Df tccd[165:581d] [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=449.1111, attribution={accessing={TCCDProcess: identifier=app.portty.spike.helper, pid=2736, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/Helpers/spike-helper}, requesting={TCCDProcess: identifier=com.apple.replayd, pid=449, auid=501, euid=501, binary_path=/usr/libexec/replayd}, },
+2026-11-25 03:10:15.630 Df tccd[165:581d] [com.apple.TCC:access] AUTHREQ_RESULT: msgID=449.1111, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:10:15.871 Df tccd[165:581d] [com.apple.TCC:access] AUTHREQ_CTX: msgID=326.69, function=<private>, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:10:15.871 Df tccd[165:581d] [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=326.69, attribution={accessing={TCCDProcess: identifier=app.portty.spike.helper, pid=2736, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/Helpers/spike-helper}, requesting={TCCDProcess: identifier=com.apple.audio.coreaudiod, pid=326, auid=202, euid=202, binary_path=/usr/sbin/coreaudiod}, },
+2026-11-25 03:10:15.876 Df tccd[165:581d] [com.apple.TCC:access] AUTHREQ_RESULT: msgID=326.69, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:10:18.986 Df tccd[165:581d] [com.apple.TCC:access] AUTHREQ_CTX: msgID=2736.3, function=<private>, service=kTCCServiceAccessibility, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:10:18.986 Df tccd[165:581d] [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=2736.3, attribution={accessing={TCCDProcess: identifier=app.portty.spike.helper, pid=2736, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/Helpers/spike-helper}, requesting={TCCDProcess: identifier=app.portty.spike.helper, pid=2736, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/Helpers/spike-helper}, },
+2026-11-25 03:10:18.991 Df tccd[165:581d] [com.apple.TCC:access] AUTHREQ_RESULT: msgID=2736.3, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+--- responsible-executable lines for the helper pids ---
+2026-11-25 03:08:12.418 I  tccd[165:4cce] [com.apple.TCC:access] BUNDLE_ATTRIBUTION: validation of responsible executable /Users/USER/ptest/Spike.app/Contents/Helpers/spike-helper is Valid (secure) (NoNetworkAccess | FastExecutableValidation (has runtime validation)), status: 0
+2026-11-25 03:08:12.634 I  tccd[361:4ff3] [com.apple.TCC:access] BUNDLE_ATTRIBUTION: validation of responsible executable /Users/USER/ptest/Spike.app/Contents/Helpers/spike-helper is Valid (secure) (NoNetworkAccess | FastExecutableValidation (has runtime validation)), status: 0
+2026-11-25 03:10:15.618 I  tccd[165:581d] [com.apple.TCC:access] BUNDLE_ATTRIBUTION: validation of responsible executable /Users/USER/ptest/Spike.app/Contents/Helpers/spike-helper is Valid (secure) (NoNetworkAccess | FastExecutableValidation (has runtime validation)), status: 0
+
+--- TCC rows touched for the spike (Modify and Delete events) ---
