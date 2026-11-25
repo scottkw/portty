@@ -87,18 +87,44 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
 **Plans**: 12 plans
 
 Plans:
+**Wave 1**
 - [ ] 17-01-PLAN.md — Tracer: synthetic frames → VideoToolbox → pion → receiver on loopback; matrix skeleton with the FEAS-02 decision rule; SC4 baseline
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 17-02-PLAN.md — ScreenCaptureKit capture and vmprobe; Spike.app signed inside-out (Developer ID); permission-probe kit for every launch path
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 17-03-PLAN.md — R00 (SCK in the Tart guest) and row routing; R10 grant across a same-identity rebuild and bundle swap
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 17-04-PLAN.md — Helper shape (SMAppService): attribution, Settings entries, AX, GUI closed, SSH kickstart
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 17-05-PLAN.md — In-daemon shape: LaunchAgent (ProcessType reference rows), GUI spawn, SSH spawn, SSH kickstart
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 17-06-PLAN.md — Lock-screen frames, typing and continuity per shape; provisional FEAS-02 pick
-- [ ] 17-07-PLAN.md — VM re-key (user); live desktop over the tailnet in Safari (full vs lite), join latency, binding
-- [ ] 17-08-PLAN.md — Chrome over the tailnet; WebRTC in a throwaway Wails v2 shell
+
+**Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 17-09-PLAN.md — AudioConverter Opus and SCK audio; monthly re-approval store and expiry behaviour
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 17-07-PLAN.md — VM re-key (user); live desktop over the tailnet in Safari (full vs lite), join latency, binding
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [ ] 17-08-PLAN.md — Chrome over the tailnet; WebRTC in a throwaway Wails v2 shell
+
+**Wave 10** *(blocked on Wave 9 completion)*
 - [ ] 17-10-PLAN.md — host-run (test chart, perf timeline, scheduled sleep/wake) and a VM rehearsal
+
+**Wave 11** *(blocked on Wave 10 completion)*
 - [ ] 17-11-PLAN.md — User session: iPhone row, then the user-started run on the MacBook Air; revoke
+
+**Wave 12** *(blocked on Wave 11 completion)*
 - [ ] 17-12-PLAN.md — FEAS-02 decision, requirement changes, TESTING.md Category BH, VM cleanup, SC4 proof, archive
+
+**Cross-cutting constraints:** <!-- gsd:generated -->
+- Probe runs never overlap: before each run no other spike process runs in the guest, and each record carries the pid used to filter its tccd lines
 
 **Notes**: File Apple's persistent-content-capture entitlement request alongside the spike. Until Apple grants it, someone at the office Mac has to approve Screen Recording about once a month, and DPRM-03 makes that visible.
 
