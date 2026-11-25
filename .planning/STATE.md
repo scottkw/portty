@@ -5,16 +5,16 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: Completed 17-02-PLAN.md
-last_updated: "2026-11-25T02:45:25.487Z"
+stopped_at: Completed 17-03-PLAN.md
+last_updated: "2026-11-25T02:55:11.332Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 17 execution started
-state_head: b6e76dc68f804b5aff64d6d700156de233fe1cec
+state_head: 12b63d949955eb27a710496578c0be4195828a19
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 12
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 17 (Desktop Feasibility Spike) — EXECUTING
-Plan: 3 of 12
+Plan: 4 of 12
 Status: Ready to execute
 Last activity: 2026-11-24 — Phase 17 execution started
 
@@ -158,6 +158,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 16 P04 | 25 min | 3 tasks | 5 files |
 | Phase 17 P01 | 13 min | 2 tasks | 10 files |
 | Phase 17 P02 | 14 min | 3 tasks | 11 files |
+| Phase 17 P03 | 12 min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -367,6 +368,8 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-02: forceKeyframe calls spk_request_refresh, re-sending the cached picture as an IDR while a stream runs (PLI, FIR, viewer join)
 - [Phase 17]: 17-02: probe-loop --stream starts one SCStream once and never restarts it, so a failed or stopped stream is observed, not re-prompted
 - [Phase 17]: 17-02: bare spike prints usage and exits 0 (the plan's own verify pipes it into grep under pipefail)
+- [Phase 17]: R00 GO in the Tart guest (macOS 27.2, 26B123): SCK frames, IOSurface and a hardware H.264 session work, so capture-dependent rows stay in the VM and only R18 and R20 route to host-run
+- [Phase 17]: R10 GO: Screen Recording grant and designated requirement survive a same-identity rebuild and RENAME_SWAP; macOS 27.2 also raises a bypass-private-window-picker prompt once per bundle (characterise in R19)
 
 ### Pending Todos
 
@@ -491,8 +494,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-25T02:45:25.448Z
-Stopped at: Completed 17-02-PLAN.md
+Last session: 2026-11-25T02:55:11.288Z
+Stopped at: Completed 17-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
