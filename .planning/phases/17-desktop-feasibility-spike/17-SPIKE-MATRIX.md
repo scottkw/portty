@@ -1,0 +1,172 @@
+# Phase 17 Spike Matrix
+
+Purpose: the go/no-go matrix for the desktop feasibility spike (FEAS-01) and the capture-host decision it feeds (FEAS-02). Phase 17, plan 17-01 wrote this skeleton and the FEAS-02 decision rule before any probe ran; later plans fill the rows.
+
+How to read: each row in `## Rows` is one question with the rig it runs on, its procedure (which also says what GO means), its result, the evidence file that backs the result, the requirement a NO-GO changes, and a follow-up M-NN item when something stays open. Raw artifacts live under `evidence/`. `## FEAS-02 decision rule` was fixed before the first probe and is not edited afterwards; `## FEAS-02 decision` is written last, by 17-12.
+
+## Rigs
+
+| Rig | Machine | macOS | Notes |
+|-----|---------|-------|-------|
+| VM office | Tart VM `portty-test`, the shared Mac (capture host) | 27.2 per CONTEXT; `sw_vers` recorded at first use | stands in for the office Mac, which the user says runs 27.2.x, so VM lock and permission rows transfer |
+| VM home | Tart VM `portty-test-2`, the viewer | 27.2 per CONTEXT; `sw_vers` recorded at first use | browsers, Wails shell, viewer side of every tailnet row |
+| Host | MacBook Air (Apple M3), this host | 27.2.1, build 26B131 (`sw_vers`, 2026-11-24) | real hardware encoder and display sleep; anything that raises a prompt runs only in the user-gated window (17-11) |
+| Vanilla clone | optional disposable clone of the vanilla 27.2 image, off the tailnet | same as the image; `sw_vers` recorded at first use | R19 backdating only |
+
+## Evidence rules
+
+- File naming: `<row>-<what>[-<variant>].<ext>` under `evidence/`.
+- Redact before committing: tailnet names, 100.x addresses, tokens, user and host names. The spike server redacts viewer reports itself (`100.x.x.<n>`, `lan.<n>`).
+- tccd log excerpts are filtered to the probe pid; never paste a whole log.
+- Frames are at most 1280 px wide. No `.h264` files in git; keep ffprobe text only.
+- Host-run frames are limited to the spike's own test pattern. Lock-screen frames of the host are never committed.
+- A row's Result stays PENDING until its evidence file exists under `evidence/`.
+
+## Result vocabulary
+
+GO, NO-GO, PARTIAL, PENDING, ROUTED:host-run, ranked GO > PARTIAL > NO-GO.
+
+- Every GO, NO-GO or PARTIAL cites, in its own Evidence cell, an evidence file that exists.
+- PARTIAL means only that the row ran and could not be fully answered, or that the user skipped it at a checkpoint.
+- Every PARTIAL carries a follow-up. During the phase the Follow-up cell holds `basis: ran; follow-up: <reason>` or `basis: user-skip; follow-up: <reason>` (a user-skip row cites the evidence file that records the skip). 17-12 replaces each `follow-up: <reason>` with its assigned M-NNN.
+- No literal pipe characters inside cells.
+- A row stays PENDING until its evidence file exists; an interrupted run never yields GO.
+- ROUTED:host-run marks a row (or part of one) that moves to the user-gated host run.
+
+## Routing
+
+Runs in is PENDING until 17-03 fills it from R00 with VM, VM-synthetic, host-run or follow-up. The Reason column holds the default rig until then.
+
+| Row | Runs in | Reason |
+|-----|---------|--------|
+| R01 | PENDING | default: VM office to VM home Safari; host to iPhone |
+| R02 | PENDING | default: VM office |
+| R03 | PENDING | default: VM office |
+| R04 | PENDING | default: VM office |
+| R05 | PENDING | default: VM office |
+| R06 | PENDING | default: VM office |
+| R07 | PENDING | default: VM office |
+| R08 | PENDING | default: VM office |
+| R09 | PENDING | default: VM office |
+| R10 | PENDING | default: VM office |
+| R11 | PENDING | default: VM home |
+| R12 | PENDING | default: VM home, or host Chrome as the user-run fallback |
+| R13 | PENDING | default: VM home with the throwaway shell |
+| R14 | PENDING | default: user session against a VM |
+| R15 | PENDING | default: VM office; host run for the real Mac |
+| R16 | PENDING | default: VM office; host run for one harmless character |
+| R17 | PENDING | default: VM office |
+| R18 | PENDING | default: host run; VM best effort |
+| R19 | PENDING | default: VM office; backdating only on the vanilla clone |
+| R20 | PENDING | default: host run |
+| R21 | PENDING | default: host for encode; VM or host for capture |
+| R22 | PENDING | default: VM office or host |
+| R23 | PENDING | default: same runs as R01 |
+
+## FEAS-02 decision rule
+
+Ordering: GO > PARTIAL > NO-GO. "A is worse than B" means A ranks strictly lower than B; "A is no worse than B" means A ranks equal or higher.
+
+Unanswered inputs: a row that still reads PENDING or ROUTED:host-run when the rule is evaluated counts as PARTIAL. 17-06 evaluates the rule provisionally; 17-12 evaluates it again after every row is closed, and that evaluation is the decision.
+
+Terms (the two core terms are three-valued, YES, NO or OPEN; the other four are true or false):
+- DAEMON-CORE: YES when R04 is GO; NO when R04 is NO-GO; OPEN otherwise. R04 is the legacy LaunchAgent daemon with the GUI closed: Complete frames and one attribution identity.
+- HELPER-CORE: YES when R02 and R03 are both GO; NO when R02 or R03 is NO-GO; OPEN otherwise. R02 is the SMAppService helper attributed and capturing; R03 is the helper still capturing with the GUI quit.
+- DAEMON-LISTED: R09-B is GO (the in-daemon identity is listed and revocable in System Settings).
+- DAEMON-RESPAWN: R06 is GO or R07-B is GO (a CLI or SSH respawn of the daemon works, directly or through launchd).
+- HELPER-RESPAWN: R07-A is GO (an SSH kickstart restarts the helper through launchd).
+- DAEMON-LOCK-OK: R17-B is no worse than R17-A.
+
+Evaluate the table from row 1 down and stop at the first row whose condition holds; that row's outcome is the result. Row 9 always holds, so every combination of results has exactly one outcome. Rows 4 to 9 are reached only when DAEMON-CORE and HELPER-CORE are both YES. NO-GO comes only from row 1, so only when both cores are answered NO; a core row that is PARTIAL, PENDING or ROUTED:host-run gives OPEN, never NO-GO.
+
+| # | Condition | Outcome |
+|---|-----------|---------|
+| 1 | DAEMON-CORE is NO and HELPER-CORE is NO | NO-GO for unattended viewing (names DSHR-01) |
+| 2 | DAEMON-CORE is OPEN or HELPER-CORE is OPEN | OPEN: no capture host yet (see OPEN below) |
+| 3 | one core is YES and the other is NO | the shape whose core is YES (in-daemon for DAEMON-CORE, helper for HELPER-CORE) |
+| 4 | DAEMON-LISTED false | helper |
+| 5 | DAEMON-RESPAWN false and HELPER-RESPAWN true | helper |
+| 6 | DAEMON-LOCK-OK false | helper |
+| 7 | DAEMON-RESPAWN true | in-daemon |
+| 8 | the tiebreaker counts differ | the shape with the lower count |
+| 9 | catch-all: no earlier row held | in-daemon |
+
+OPEN: not a decision, and it never cuts DSHR-01. In the provisional evaluation (17-06) the decision section lists each open core row and the plan that will answer it (a ROUTED:host-run part goes to the 17-11 session), and the pipeline shape comes from the clause below. In the final evaluation (17-12) OPEN stops the plan at a checkpoint with two choices: re-run the open core rows with the procedure of the plan that measured them and evaluate again, or the user names the capture host, recorded as `Capture host: <helper or in-daemon> (user decision; rule outcome OPEN)` with `Decided by row: 2` and the open rows written into `## FEAS-02 decision` as risks Phase 19 must design around.
+
+Pipeline shape: 17-06 writes `Pipeline shape: helper` or `Pipeline shape: daemon`, and every pipeline row from 17-07 on runs in that shape and records it as `shape: helper` or `shape: daemon` in its Procedure cell. Outcome helper gives helper and in-daemon gives daemon; NO-GO or OPEN gives the shape with the higher core rank, a shape's core rank being its worst core row (daemon: R04; helper: the worse of R02 and R03); equal ranks give daemon.
+
+Shape flip: when the final outcome, or the user's choice after OPEN, names the other shape than the `Pipeline shape:` line (in-daemon matches daemon), 17-12 re-runs the shape-dependent rows R01-vm, R22 and R23 in the final shape before it writes the decision, and none of their results measured in the other shape may stay GO. R11 to R14 test the browser side (ICE mode, decode, data channel) against the same serve code; they record their shape for the record only.
+
+Tiebreaker: applied at row 8 and nowhere else, so only when both shapes capture unattended, the daemon identity is listed, its lock continuity is no worse than the helper's, and neither shape has a working respawn route. Per shape, count the spike's Screen Recording, Accessibility and Login Items entries in System Settings (R09-A for the helper, R09-B for the daemon, both measured per shape before 17-06); the lower count wins; equal counts fall through to row 9.
+
+When row 3 decides, every term the chosen shape failed (DAEMON-LISTED, a respawn route, DAEMON-LOCK-OK) is written into `## FEAS-02 decision` as a constraint Phase 19 must design around.
+
+Not evidence: crash isolation is recorded in `## FEAS-02 decision` as a non-measured argument only and never changes the outcome.
+
+### Drift from RESEARCH
+
+RESEARCH ("Decision rule for FEAS-02") reads: prefer in-daemon only if R04 is GO and R06 or R07 is GO; choose the helper if R04 fails, the in-daemon identity is not in Settings, or R06 and R07 both fail and the product needs SSH-triggered respawn; R09 counts as the tiebreaker; crash isolation is not evidence. This table differs as follows, each for the reason given.
+1. R07 is split. RESEARCH's single R07 is a kickstart of path A or B; the spike measures them separately (R07-A helper, R07-B daemon). Only R07-B is a respawn route for the in-daemon shape, so DAEMON-RESPAWN reads R06 or R07-B, and R07-A is the helper's own route (HELPER-RESPAWN).
+2. "The product needs SSH-triggered respawn" is taken as true: Portty's CLI respawns its daemon today (internal/daemon/process_unix.go), and the office Mac cannot be fixed by hand from home. Row 5 picks the helper only when the helper actually has a respawn route; when neither shape has one, switching to the helper gains nothing, so the tiebreaker decides (row 8).
+3. Lock continuity (row 6, R17-A versus R17-B) is added: CONTEXT's FEAS-02 method records each shape "across lock/unlock"; the RESEARCH rule predates that decision.
+4. HELPER-CORE includes R03: CONTEXT's method records "whether capture works with the GUI closed" for each shape; R04 is already the daemon's GUI-closed check and R03 is the helper's.
+5. Row 3 comes before the comparison rows: a shape that cannot capture unattended cannot be the capture host, so when only one shape's core is YES it wins even where a RESEARCH helper clause (an unlisted daemon identity) points the other way; the failed terms become Phase 19 constraints.
+6. The tiebreaker is placed at row 8 and counts only the per-shape R09 entries: RESEARCH names the R09 count without placing it. R19 approval keys are not counted: R19 is measured once, in a disposable clone (CONTEXT), not per shape, and RESEARCH ties monthly approvals to the identity count ("two identities means two monthly approvals") that R09 already measures per shape. Equal counts fall to row 9, in-daemon, which is RESEARCH's stated preference (one TCC identity, no helper artifacts).
+7. PENDING and ROUTED:host-run inputs count as PARTIAL so the provisional evaluation in 17-06 is defined for every state; RESEARCH did not cover unanswered rows.
+8. The core terms are three-valued and an unresolved core gives OPEN (row 2), never NO-GO: RESEARCH cuts nothing for missing evidence, and cutting DSHR-01 because a row ran but could not be answered would fit the decision to a gap instead of a result.
+9. The pipeline-shape and shape-flip clauses are added: CONTEXT runs the full video pipeline in only one shape, so that shape must be defined for every provisional outcome, and a later change of outcome must not leave the shape-dependent rows measured only in the shape that lost.
+
+End of FEAS-02 decision rule.
+
+## Rows
+
+| ID | Question | Rig + macOS | Procedure | Result | Evidence file | If NO-GO, requirement changed | Follow-up M-NN |
+|----|----------|-------------|-----------|--------|---------------|-------------------------------|----------------|
+| R00 | Do ScreenCaptureKit frames (status Complete, IOSurface-backed) and a VideoToolbox H.264 session work inside a Tart guest? | VM office, macOS 27.2.x | vmprobe started with open in the guest (17-03). GO when frames reach status Complete, ioSurface is true, and an H.264 session reads back hardware or software | PENDING | - | Moves R02-R10, R15-R17, R19, R22 to the host run; no requirement changes | - |
+| R01 | Does the desktop show live on another device over the tailnet with no STUN, TURN or cloud server? | VM office to VM home Safari; host to iPhone, macOS 27.2.x | Viewer report, lsof on the UDP socket, tcpdump for ports 3478 and 5353. GO when frames decode with fps and size recorded, the selected pair is a tailnet address, lsof shows only the tailnet ip and port, and no packet leaves for 3478 or 5353 | PENDING | - | Whole milestone premise; fall back to Plan B (H.264 over WSS plus WebCodecs) from PITFALLS; DESK-02 wording | - |
+| R02 | Helper (SMAppService agent): where is the Screen Recording grant attributed, does capture work, does a Settings list entry appear? | VM office, macOS 27.2.x | Register from the app, capture, tccd lines filtered to the probe pid, sfltool dump. GO when the responsible process is the helper identity, frames are Complete and the entry appears in Screen Recording | PENDING | - | Helper shape rejected (FEAS-02) | - |
+| R03 | Does the helper still capture with the GUI app quit? | VM office, macOS 27.2.x | Same as R02 after killing the registrar app. GO when frames stay Complete | PENDING | - | DSHR-01 under the helper shape | - |
+| R04 | Daemon via the legacy LaunchAgent (the production always-on path) with the GUI closed: Complete frames and one attribution identity? | VM office, macOS 27.2.x | Bootstrap the legacy plist, close the GUI, capture. GO when Complete frames arrive with no GUI process and tccd names one identity. The launchd throttle numbers go to the reference rows R04-none and R04-interactive | PENDING | - | In-daemon shape rejected; DSHR-01 architecture | - |
+| R05 | Daemon spawned by the GUI (Setsid): whose grant does it use? | VM office, macOS 27.2.x | Registrar app spawns the daemon with Setsid, capture, tccd lines. GO when the responsible process is the spike app and the daemon shares its grant | PENDING | - | In-daemon shape: a GUI-spawned daemon needs its own grant; DSHR-01 architecture | - |
+| R06 | Daemon respawned over SSH (nohup) with the GUI closed: what happens? | VM office, macOS 27.2.x | ssh then nohup the daemon, capture, tccd lines. GO when capture works under a named identity; otherwise record what is attributed | PENDING | - | If R06 and R07-B both fail: the daemon is never respawned from CLI or SSH, the CLI kickstarts launchd instead (DSHR-01, DPRM-01) | - |
+| R07 | Does launchctl kickstart over SSH restart the helper (R07-A) or the daemon (R07-B) in the Aqua session? | VM office, macOS 27.2.x | Kickstart the job over SSH, check the session type and attribution. GO when the job runs in Aqua and attribution is the job identity | PENDING | - | Same as R06: SSH respawn stays unsolved | - |
+| R08 | Accessibility attribution per launch path (CGEvent effect, AXIsProcessTrusted, tccd)? | VM office, macOS 27.2.x | Post one harmless event from each path, read AXIsProcessTrusted and tccd. GO when the post takes effect and the attribution is named | PENDING | - | DCTL-* under the shape | - |
+| R09 | Which Settings list entries does each shape create (plain Mach-O versus bundle path, count, names; R09-A helper, R09-B daemon)? | VM office, macOS 27.2.x | AX tree dump of System Settings with axdump. GO when the entry is present and revocable | PENDING | - | DPRM-01 onboarding copy; helper versus daemon identity count | - |
+| R10 | Does the grant survive a re-sign with the same identity and a bundle swap (RENAME_SWAP)? | VM office, macOS 27.2.x | Capture, rebuild and re-sign, swap the bundle, capture again, compare codesign requirements. GO when capture still works after the swap with no new prompt | PENDING | - | REL-01 signing rule; Phase 18 swap | - |
+| R11 | Safari on macOS: full versus lite ICE (C3) and Constrained Baseline decode under a 42e01f SDP (C5)? | VM home, macOS 27.2.x | Viewer page with ice=lite and ice=full against the live stream. GO per mode when ICE connects, frames decode and the profile is recorded | PENDING | - | Browser-specific ICE default (C3, C5); SPS patch fallback | - |
+| R12 | Chrome: full versus lite ICE (C3) and decode (C5)? | VM home with Chrome installed there, or host Chrome opening only the spike page as the user-run fallback | Viewer page with ice=lite and ice=full. GO per mode when ICE connects, frames decode and the profile is recorded | PENDING | - | Browser-specific ICE default (C3, C5); SPS patch fallback | - |
+| R13 | Does WebRTC video, H.264 receive and the data channel work inside a Wails WKWebView (origin wails://), and who owns any Local Network prompt? | VM home with the throwaway shell, macOS 27.2.x | Load the viewer page in the shell and read its report. GO when the report shows decoded frames and a control-channel round trip; the prompt text is recorded. Answers the ROADMAP Portty-app bullet through the accepted substitution | PENDING | - | DVWR-01 falls back to opening the browser link | - |
+| R14 | iPhone Safari (and Home Screen): connection over the tailnet, full versus lite (C3)? | iPhone against VM office, user session | The user opens the spike link on the phone; the page posts its report. GO when frames decode on the phone | PENDING | - | DVWR-03 viewer path; Plan B | - |
+| R15 | What does SCK deliver while the screen is locked (status counts; black, lock UI or stale)? | VM office; host run for the real Mac, macOS 27.2.x | Keep a stream running through a lock, one PNG per second, per-status counts. GO when the frames show the lock UI rather than black or stale pixels | PENDING | - | UNLK-01 cut (works while awake and unlocked) | - |
+| R16 | Does CGEvent typing from the capture-host process unlock the screen? | VM office (admin password is public); host run for one harmless character, macOS 27.2.x | Type the password as key events from the capture-host process at the lock screen. GO when the unlock succeeds in the VM and the character appears on the host | PENDING | - | UNLK-01 cut | - |
+| R17 | Lock detection and stream continuity across lock and unlock (R17-A helper, R17-B daemon)? | VM office, macOS 27.2.x | Record the CGSession dictionary before, during and after, and the stream state per transition. GO when CGSSessionScreenIsLocked appears and clears and the stream state per transition is recorded | PENDING | - | DPRM-02 locked-state source | - |
+| R18 | Display sleep and wake: stream behaviour, wake by a user-activity assertion, time to first frame? | Host run; VM best effort as the reference row R18-vm | Sleep the display, wake from the viewer, time the first frame. GO when the wake brings frames back within a recorded time | PENDING | - | DPRM-04 limited to keep-awake-while-viewing | - |
+| R19 | Approval store: where it lives, its key, timestamp refresh, and behaviour when backdated? | VM office; backdating only on the vanilla clone, macOS 27.2.x | Read the store, relaunch, backdate by 31 days, restart replayd, record prompt and frame behaviour. GO when the store is documented and the backdated behaviour is observed; the real 30-day prompt is an M-NN | PENDING | - | DPRM-03 detection method (zero-frame heuristic versus store read) | - |
+| R20 | Hardware encoder CPU, encode latency and sharpness at the default 2560 px, 30 fps cap (C4)? | Host run (real hardware); VM reference row R20-vm, macOS 27.2.1 | Test pattern at 2560 px and 30 fps for 60 s with top, pmset therm, self-timing and SSIM. GO when UsingHardwareAcceleratedVideoEncoder is true and CPU, latency and SSIM numbers are recorded | PENDING | - | DESK-01 and DESK-07 resolution and fps cap | - |
+| R21 | Does AudioConverter produce Opus (C7), and does SCK deliver system audio? | Host for encode; VM or host run for capture, macOS 27.2.x | opusprobe on a sine source, then an audio capture run. GO when packets carry 960 frames and capture delivers audio buffers | PENDING | - | DCTL-07 cut or libopus (C7) | - |
+| R22 | Does a joining viewer get a picture within about 1 s on a still screen (cached frame plus forced IDR)? | VM office or host, macOS 27.2.x | Join a viewer to an idle screen and time the first frame from the server and viewer clocks. GO when the picture arrives within about 1 s with no screen change | PENDING | - | DESK-04 design requirement | - |
+| R23 | Is media bound only to one tailnet IP, and does --bind refuse 0.0.0.0, :: and non-100.64/10 addresses unless --allow-lan? | Same runs as R01 | lsof on the UDP socket plus the refusal loop from 17-01. GO when the mux is bound to one tailnet IP and every unsafe bind exits 2 before opening a socket | PENDING | - | DESK-02 test design | - |
+| T0 | Does the loopback pipeline (synthetic source, VideoToolbox, pion, token-gated /offer, Go receiver) decode as Constrained Baseline? | Host, macOS 27.2.1, loopback only | spike selftest then ffprobe on the received stream. GO when ffprobe reads Constrained Baseline with at least one frame | GO | evidence/t0-loopback.txt | none (tracer) | - |
+
+Sub-rows: when a row runs in several shapes, browsers or rigs, later plans add rows `Rnn-<variant>` (for example R07-A, R11-lite, R15-host) directly below the base row, and the base row's Result is the worst of its sub-rows (GO > PARTIAL > NO-GO) with no exception.
+
+Reference rows are fixed now and are not sub-rows: R04-none and R04-interactive (launchd throttle numbers under each ProcessType setting) and R18-vm and R20-vm (VM reference numbers for the two real-Mac rows) record numbers and never set their base row's Result. No other row may be declared a reference row later.
+
+## SC2 coverage
+
+Each ROADMAP Phase 17 success criterion 2 bullet maps to rows:
+
+- Permission holder (launchd helper or daemon, including a daemon respawned over SSH, and with the GUI closed): R02-R09, with R10 for the grant across a rebuild.
+- WebRTC video and data channel inside the Wails web view: R13.
+- Connections over the Tailscale interface from Chrome, Safari, the Portty app and iPhone Safari, with full ICE versus ICE-lite per browser: Safari R11, Chrome R12, iPhone R14, the live path and tailnet-only evidence R01 and R23. Portty app: R13 through the user-accepted SpikeShell substitution, a throwaway Wails v2 shell with the same WKWebView engine and the app's CSP meta, accepted by the user on 2026-11-24 (CONTEXT `### Portty-app check substitution`), with the real app proven in Phase 21 (DVWR-01).
+- Lock-screen frames and CGEvent typing on the office Mac's macOS: R15, R16 and R17.
+- Display sleep and wake: R18.
+- Monthly Screen Recording re-approval: R19.
+- CPU, latency and sharpness at 2560 px and 30 fps: R20.
+- Opus audio encode: R21.
+
+Also covered: first picture on viewer join R22, and the C3, C4, C5 and C7 conflicts inside R11, R12, R14, R20 and R21.
+
+## FEAS-02 decision
+
+Status: PENDING

@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -37,6 +38,9 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
+
+//go:embed viewer.html
+var viewerHTML []byte
 
 // h264Fmtp advertises 42e01f (what browsers offer) although the VideoToolbox
 // bitstream says 42c0xx: pion matches only the first two profile bytes.
@@ -239,6 +243,7 @@ func runServe(ctx context.Context, o serveOpts, ready chan<- listenInfo) error {
 
 func (s *server) routes() http.Handler {
 	m := http.NewServeMux()
+	m.HandleFunc("GET /viewer.html", s.gate(s.viewer))
 	m.HandleFunc("POST /offer", s.gate(s.offer))
 	m.HandleFunc("POST /report", s.gate(s.report))
 	return m
@@ -253,6 +258,14 @@ func (s *server) gate(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// viewer serves the embedded page; the token sits in its URL, so no referrer and no cache.
+func (s *server) viewer(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	_, _ = w.Write(viewerHTML)
 }
 
 // pump feeds access units to the shared track with wall-clock durations.
@@ -475,9 +488,11 @@ func (s *server) report(w http.ResponseWriter, r *http.Request) {
 	base := fmt.Sprintf("%s-report-%s-%s-%d", row, tag, iceMode, time.Now().Unix())
 	if raw, ok := doc["frameJpeg"]; ok {
 		delete(doc, "frameJpeg")
-		if err := s.writeFrame(filepath.Join(s.opts.evidenceDir, base+".jpg"), raw); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+		if string(raw) != "null" { // the page sends null when no frame arrived
+			if err := s.writeFrame(filepath.Join(s.opts.evidenceDir, base+".jpg"), raw); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 	}
 	clean, err := json.MarshalIndent(doc, "", "  ")
