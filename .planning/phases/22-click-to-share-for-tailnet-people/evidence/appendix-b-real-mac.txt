@@ -1,0 +1,12 @@
+Appendix B real-Mac physical-input check (22-RESEARCH.md Appendix B)
+Date: 2026-11-25. Host: the user's MacBook Air (Apple Silicon), macOS 27.2.1.
+Probe: phystap (listen-only kCGSessionEventTap, mask types 1-13 + scroll), granted only Device Control and Data Access (Accessibility) for the phystap binary itself; Input Monitoring NOT granted. Launched by launchd (launchctl submit), so phystap was its own responsible process; the user's terminal app held no grant during the run.
+User action: moved the trackpad, clicked, and typed a few letters in a normal app.
+Result (1067 events, key codes never recorded):
+  903 type=5  (mouseMoved)   userData=0x0
+   80 type=10 (keyDown)      userData=0x0
+   80 type=11 (keyUp)        userData=0x0
+    2 type=1/2 (left down/up) userData=0x0
+  srcPID=0 on all 1067 events. No TAP DISABLED line.
+Conclusion: on a real Mac, hardware input reaches a listen-only tap under Accessibility only (no Input Monitoring prompt) and carries no Portty tag (userData 0), so the "untagged = local" rule detects physical input. Secure Keyboard Entry case (b) and tagged Portty posts (c) were not exercised in this run; (c) is covered by the VM evidence, (b) by the VM measurement in 22-RESEARCH.md finding 3.
+Cleanup: probe stopped (launchctl remove), output deleted; the user removes phystap from the permission list.
