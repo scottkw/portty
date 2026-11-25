@@ -1,0 +1,18 @@
+p18-state row=R1-lite-before vm_utc=2026-11-25T22:46:47Z
+installed_version=1.8.0
+gui_pid_count=1
+daemon_version=v1.8.0
+attached_images=1
+cache_dmgs=0
+staging_dirs=0
+--- gui pids and executables
+83966 /Applications/Portty.app/Contents/MacOS/Portty
+--- daemon pids and executables
+83969 /Applications/Portty.app/Contents/MacOS/Portty
+--- attached images
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/d1b36c40ecf011c1a2dfeacc93215881ad4cf525.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+--- update cache
+ls: ~/Library/Caches/app.portty.Portty/updates: No such file or directory
+--- staging dirs
+--- update.log tail
+tail: ~/Library/Application Support/portty/update.log: No such file or directory
