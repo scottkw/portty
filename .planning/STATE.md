@@ -5,16 +5,16 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: Completed 17-04-PLAN.md
-last_updated: "2026-11-25T03:13:39.847Z"
+stopped_at: Completed 17-05-PLAN.md
+last_updated: "2026-11-25T03:44:54.752Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 17 execution started
-state_head: d91b3fb6cb42bd55775a5787c512d8c9b28f72ad
+state_head: caaa0afb0ac7dac225bf4ba3ee356f41a04deac7
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 12
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 17 (Desktop Feasibility Spike) — EXECUTING
-Plan: 5 of 12
+Plan: 6 of 12
 Status: Ready to execute
 Last activity: 2026-11-24 — Phase 17 execution started
 
@@ -160,6 +160,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 17 P02 | 14 min | 3 tasks | 11 files |
 | Phase 17 P03 | 12 min | 2 tasks | 9 files |
 | Phase 17 P04 | 17 min | 2 tasks | 7 files |
+| Phase 17 P05 | 31min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -372,6 +373,8 @@ Recent decisions affecting current work:
 - [Phase 17]: R00 GO in the Tart guest (macOS 27.2, 26B123): SCK frames, IOSurface and a hardware H.264 session work, so capture-dependent rows stay in the VM and only R18 and R20 route to host-run
 - [Phase 17]: R10 GO: Screen Recording grant and designated requirement survive a same-identity rebuild and RENAME_SWAP; macOS 27.2 also raises a bypass-private-window-picker prompt once per bundle (characterise in R19)
 - [Phase 17]: 17-04: R02 is GO although the helper holds two TCC identities (Screen Recording on the parent bundle app.portty.spike, Accessibility and PostEvent on the helper path); R09-A counts 3 Settings entries for the FEAS-02 tiebreaker
+- [Phase 17]: R06 SSH nohup respawn recorded NO-GO: tccd's subject is sshd-keygen-wrapper and the no-grant control got SCError -3801; R07-B launchd kickstart is GO so DAEMON-RESPAWN holds
+- [Phase 17]: R09-B counts 3 Settings entries (Screen Recording, Accessibility, Login Items), equal to R09-A; the daemon needs one TCC key (Bundle ID), the helper two
 
 ### Pending Todos
 
@@ -496,8 +499,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-25T03:13:39.806Z
-Stopped at: Completed 17-04-PLAN.md
+Last session: 2026-11-25T03:44:54.710Z
+Stopped at: Completed 17-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

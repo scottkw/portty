@@ -84,7 +84,7 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
      (FEAS-01)
   3. The capture-host decision (bundled helper or in-daemon) is written down with the evidence behind it before Phase 19 is planned. Every no-go names the requirement it changes or cuts, for example UNLK-01, or DVWR-01 falling back to a browser link. (FEAS-02)
   4. No spike code reaches the shipping build. Release builds and the full terminal test suite are unchanged by this phase.
-**Plans**: 4/12 plans executed
+**Plans**: 5/12 plans executed
 
 Plans:
 **Wave 1**
@@ -100,7 +100,7 @@ Plans:
 - [x] 17-04-PLAN.md — Helper shape (SMAppService): attribution, Settings entries, AX, GUI closed, SSH kickstart
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 17-05-PLAN.md — In-daemon shape: LaunchAgent (ProcessType reference rows), GUI spawn, SSH spawn, SSH kickstart
+- [x] 17-05-PLAN.md — In-daemon shape: LaunchAgent (ProcessType reference rows), GUI spawn, SSH spawn, SSH kickstart
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 17-06-PLAN.md — Lock-screen frames, typing and continuity per shape; provisional FEAS-02 pick
@@ -209,7 +209,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 17. Desktop Feasibility Spike | v2.0 | 4/12 | In Progress | - |
+| 17. Desktop Feasibility Spike | v2.0 | 5/12 | In Progress | - |
 | 18. Self-Installing Updates | v2.0 | 0/TBD | Not started | - |
 | 19. Unattended Desktop Viewing | v2.0 | 0/TBD | Not started | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
