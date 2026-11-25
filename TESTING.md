@@ -315,7 +315,7 @@ The entire CI suite IS the regression suite. No build tags, no relocated files â
 ### CI Workflow Mapping
 
 - `build.yml` (runs on push + PR): a single macOS job (`macos-latest`) running the brand gate (`tests/check-brand.sh`), the share removal gate (`tests/check-share-removal.sh`), Go tests (race detector), build-script tests, vitest, the traceability path-check step and `scripts/verify-icons.sh`, then the Wails build
-- `e2e.yml` (runs on push/PR to `main`): Playwright cross-browser (chromium, firefox, webkit)
+- `e2e.yml` (runs on push/PR to `main`): Playwright cross-browser (chromium, firefox, webkit). **The workflow is disabled in GitHub Actions** (`gh workflow list --all` shows `e2e  disabled_manually`, verified 2026-11-25; its last runs, on 2026-11-14 Dependabot PRs, failed in 3-4 s), so it produces no `playwright` check today
 - `release.yml` (runs on `v*` tags): builds, signs and notarizes Portty.app, then notarizes and staples the hdiutil DMG and checks it like the in-app updater (codesign, Team S2K7P43927, spctl) before publishing it plus checksums. There is no distribute workflow.
 
 ---
@@ -326,7 +326,7 @@ Branch protection requires both CI check contexts to pass before a PR can merge.
 
 ### Apply Protection
 
-CI is currently disabled on the repository; the user must re-apply this protection (with the two contexts below) when CI is re-enabled.
+CI status (verified 2026-11-25): Actions are enabled and `build.yml` runs on every push and PR (the last runs on `main` and on the phase branch succeeded; `main`'s head commit carries a successful `build (portty, darwin/universal, macos-latest)` check run, app `github-actions`, id 15368). `release.yml` is active. Only `e2e.yml` is disabled (`disabled_manually`), so no `playwright` check exists on `main`. Branch protection on `main` is not applied (`GET .../branches/main/protection` returns 404 "Branch not protected"). Applying the command below as written would require a `playwright` check that never reports, blocking every PR, until `e2e.yml` is re-enabled or `playwright` is dropped from `checks[]`.
 
 ```bash
 gh api repos/scottkw/portty/branches/main/protection \
@@ -368,7 +368,7 @@ gh api repos/scottkw/portty/branches/main/protection --method DELETE
 
 **Warning sign:** A new PR passes CI but the "required checks" status badge shows an unknown check name.
 
-Portty 03-06 renamed the build.yml matrix entry, so the required context changed. Re-apply protection with the command above when CI is re-enabled (a manual step for the user; branch protection on a private repository may need a paid plan).
+Portty 03-06 renamed the build.yml matrix entry, so the required context changed. Re-apply protection with the command above (the repository is public, so no paid plan is needed; see the CI status note under Apply Protection about the `playwright` context).
 
 ---
 
