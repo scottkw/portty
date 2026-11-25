@@ -161,6 +161,12 @@ func Quarantine(ctx context.Context, run Runner, path string, now time.Time) err
 // this only after the DMG verify chain (UPD-09) or the app signature and Team check passed.
 func ClearQuarantine(ctx context.Context, run Runner, path string) error {
 	_, _ = run(ctx, "/usr/bin/xattr", "-dr", "com.apple.quarantine", path)
+	// ditto --noqtn does not strip the flag and xattr -dr can miss files, so the listing is the
+	// proof (Pitfall 3). A listing that fails counts as a flag still there: fail closed.
+	out, err := run(ctx, "/usr/bin/xattr", "-lr", path)
+	if err != nil || bytes.Contains(out, []byte("com.apple.quarantine")) {
+		return fmt.Errorf("%w: quarantine", ErrInstall)
+	}
 	return nil
 }
 

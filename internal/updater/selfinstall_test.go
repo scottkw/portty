@@ -99,14 +99,12 @@ func (f *siRelease) run(_ context.Context, name string, args ...string) ([]byte,
 		}
 		return nil, os.WriteFile(filepath.Join(app, "version"), []byte(f.ver()), 0o644)
 	case base == "hdiutil" && args[0] == "detach":
+		// fail "detach" is an hdiutil that reports an error although the volume is gone.
+		err := os.RemoveAll(filepath.Join(last, BundleName))
 		if f.fail == "detach" {
 			return []byte(f.failOut), errors.New("exit status 1")
 		}
-		dir := last
-		if last == "-force" {
-			dir = args[len(args)-1]
-		}
-		return nil, os.RemoveAll(filepath.Join(dir, BundleName))
+		return nil, err
 	case base == "ditto":
 		if f.fail == "ditto" {
 			return []byte(f.failOut), errors.New("exit status 1")
@@ -322,5 +320,171 @@ func TestSafeRunner_RefusesUnderTest(t *testing.T) {
 	}
 	if _, err := run(context.Background(), "/usr/bin/codesign", "x"); err != nil || !ran {
 		t.Errorf("codesign: err = %v, ran = %v", err, ran)
+	}
+}
+
+// siLeftovers lists .Portty-update-* folders beside the target and mnt-* folders under the cache.
+func siLeftovers(f *siFix) []string {
+	var left []string
+	for _, pat := range []string{filepath.Join(f.root, StagingPrefix+"*"), filepath.Join(f.dir, "mnt-*")} {
+		m, _ := filepath.Glob(pat)
+		left = append(left, m...)
+	}
+	return left
+}
+
+func TestSelfInstall_StageFailureReveals(t *testing.T) {
+	for _, c := range []struct{ name, fail, out string }{
+		{"attach", "hdiutil", ""},
+		{"app team check", "dvv-app", "Identifier=app.portty.Portty\n"},
+		{"ditto", "ditto", ""},
+		{"detach", "detach", ""},
+		{"quarantine still listed", "xattr-list", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			detachPause = 0
+			f := newSiFix(t)
+			f.rel.fail, f.rel.failOut = c.fail, c.out
+			st := f.download(t)
+			if st.State != "revealed" || st.Error == "" {
+				t.Errorf("status = %+v, want revealed with an error text", st)
+			}
+			if f.started != 0 {
+				t.Errorf("StartInstaller ran %d times", f.started)
+			}
+			if n := f.rel.called("/usr/bin/open", "-R"); n != 1 {
+				t.Errorf("Reveal ran %d times", n)
+			}
+			if n := f.rel.called("xattr", "-w", "com.apple.quarantine"); n != 2 { // Verify, then the fallback
+				t.Errorf("quarantine written %d times, want 2", n)
+			}
+			if left := siLeftovers(f); len(left) != 0 {
+				t.Errorf("left behind: %v", left)
+			}
+			if m, _ := filepath.Glob(filepath.Join(f.dir, "*.dmg")); len(m) != 1 {
+				t.Errorf("DMG in the cache = %v, want the kept download", m)
+			}
+			if siMarker(t, f.target) != "1.0.0" {
+				t.Error("installed app changed")
+			}
+			if c.fail == "dvv-app" && f.rel.called("xattr", "-dr", StagingPrefix) != 0 {
+				t.Errorf("an app that failed its check was un-quarantined: %v", f.rel.recorded())
+			}
+		})
+	}
+}
+
+func TestSelfInstall_StartFailureReveals(t *testing.T) {
+	f := newSiFix(t)
+	f.startErr = errors.New("spawn failed")
+	st := f.download(t)
+	if st.State != "revealed" || st.Error != installerStartFailText {
+		t.Errorf("status = %+v", st)
+	}
+	if f.started != 1 {
+		t.Errorf("StartInstaller ran %d times", f.started)
+	}
+	if left := siLeftovers(f); len(left) != 0 {
+		t.Errorf("left behind: %v", left)
+	}
+	if n := f.rel.called("xattr", "-w", "com.apple.quarantine"); n != 2 {
+		t.Errorf("quarantine written %d times, want 2", n)
+	}
+}
+
+func TestSelfInstall_RevealFailureAvailable(t *testing.T) {
+	f := newSiFix(t)
+	f.startErr = errors.New("spawn failed")
+	f.rel.fail = "open"
+	st := f.download(t)
+	if st.State != "available" || st.Error != "Portty couldn't show the download in Finder." {
+		t.Errorf("status = %+v", st)
+	}
+	if n := f.rel.called("xattr", "-w", "com.apple.quarantine"); n != 2 {
+		t.Errorf("quarantine written %d times, want 2 (it goes back before Reveal)", n)
+	}
+}
+
+func TestSelfInstall_SecondDownloadIsNoOp(t *testing.T) {
+	for _, stage := range []string{"installing", "relaunching"} {
+		t.Run(stage, func(t *testing.T) {
+			f := newSiFix(t)
+			entered, release := make(chan struct{}), make(chan struct{})
+			block := func() { close(entered); <-release }
+			if stage == "installing" {
+				var once sync.Once
+				f.svc.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+					if strings.HasSuffix(name, "hdiutil") && args[0] == "attach" {
+						once.Do(block)
+					}
+					return f.rel.run(ctx, name, args...)
+				}
+			} else {
+				f.svc.StartInstaller = func(Job) error { f.started++; block(); return nil }
+			}
+			if _, err := f.svc.Check(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan Status)
+			go func() { st, _ := f.svc.Download(); done <- st }()
+			<-entered
+			checks := len(f.gh.checks())
+			want := f.svc.Status()
+			if want.State != stage {
+				t.Fatalf("state = %s, want %s", want.State, stage)
+			}
+			if st, _ := f.svc.Download(); st != want {
+				t.Errorf("second Download = %+v, want %+v", st, want)
+			}
+			if st, err := f.svc.Check(context.Background()); st != want || err != nil || len(f.gh.checks()) != checks {
+				t.Errorf("Check during install = %+v, %v (GitHub asked: %v)", st, err, len(f.gh.checks()) != checks)
+			}
+			close(release)
+			<-done
+			if stage == "relaunching" && f.started != 1 {
+				t.Errorf("StartInstaller ran %d times", f.started)
+			}
+			if n := f.rel.called("hdiutil", "attach"); n > 1 {
+				t.Errorf("image attached %d times", n)
+			}
+		})
+	}
+}
+
+func TestStage_DetachIdempotent(t *testing.T) {
+	detachPause = 0
+	var calls []string
+	mk := func(failFirst int, force bool) Runner {
+		n := 0
+		return func(_ context.Context, _ string, args ...string) ([]byte, error) {
+			calls = append(calls, strings.Join(args, " "))
+			n++
+			if n <= failFirst || (!force && slices.Contains(args, "-force")) {
+				return nil, errors.New("exit status 1")
+			}
+			return nil, nil
+		}
+	}
+	ctx := context.Background()
+
+	gone := filepath.Join(t.TempDir(), "mnt-gone")
+	if err := Detach(ctx, mk(0, true), gone); err != nil || len(calls) != 0 {
+		t.Errorf("missing mount dir: err = %v, hdiutil calls = %v", err, calls)
+	}
+
+	dir := t.TempDir()
+	calls = nil
+	if err := Detach(ctx, mk(2, true), dir); err != nil || len(calls) != 3 {
+		t.Errorf("fails twice then succeeds: err = %v, calls = %v", err, calls)
+	}
+
+	dir = t.TempDir()
+	calls = nil
+	err := Detach(ctx, mk(100, false), dir)
+	if !errors.Is(err, ErrInstall) || !strings.Contains(err.Error(), "detach") {
+		t.Errorf("keeps failing: err = %v", err)
+	}
+	if len(calls) != 4 || !strings.Contains(calls[3], "-force") || strings.Contains(strings.Join(calls[:3], ""), "-force") {
+		t.Errorf("want 3 plain tries then one -force, got %v", calls)
 	}
 }

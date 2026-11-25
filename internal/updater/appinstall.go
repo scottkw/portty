@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -39,9 +40,33 @@ func Mount(ctx context.Context, run Runner, dmg, mountDir string) error {
 	return nil
 }
 
-// Detach ejects the image at mountDir and removes the folder.
+// detachPause is the wait between detach attempts; a var so tests do not wait.
+var detachPause = time.Second
+
+// Detach ejects the image at mountDir and removes the folder. A folder that is already gone is
+// success (a repeated cleanup must not fail a good install); a busy image gets three plain tries
+// a second apart, then one -force.
 func Detach(ctx context.Context, run Runner, mountDir string) error {
-	if _, err := run(ctx, "/usr/bin/hdiutil", "detach", mountDir); err != nil {
+	if _, err := os.Lstat(mountDir); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	var err error
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+			case <-time.After(detachPause):
+			}
+		}
+		if _, err = run(ctx, "/usr/bin/hdiutil", "detach", mountDir); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		_, err = run(ctx, "/usr/bin/hdiutil", "detach", "-force", mountDir)
+	}
+	if err != nil {
+		_ = os.Remove(mountDir) // fails harmlessly while the image is still mounted
 		return installErr("detach")
 	}
 	if err := os.Remove(mountDir); err != nil && !errors.Is(err, os.ErrNotExist) {

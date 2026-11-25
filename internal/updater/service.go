@@ -75,7 +75,9 @@ func (s *Service) Status() Status {
 	return s.status()
 }
 
-func busy(state string) bool { return state == "downloading" || state == "verifying" }
+func busy(state string) bool {
+	return state == "downloading" || state == "verifying" || state == "installing" || state == "relaunching"
+}
 
 // checkTimeout bounds one Check. It starts once the Check holds checkMu, so a check queued behind
 // another still gets the whole budget.
