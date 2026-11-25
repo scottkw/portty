@@ -5,16 +5,16 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-11-25T02:30:48.959Z"
+stopped_at: Completed 17-02-PLAN.md
+last_updated: "2026-11-25T02:45:25.487Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 17 execution started
-state_head: 30d84f22f35dfe90143c26bebbac7639bb1c6be9
+state_head: b6e76dc68f804b5aff64d6d700156de233fe1cec
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 12
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 17 (Desktop Feasibility Spike) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 Status: Ready to execute
 Last activity: 2026-11-24 — Phase 17 execution started
 
@@ -157,6 +157,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 16 P03 | 6 min | 2 tasks | 5 files |
 | Phase 16 P04 | 25 min | 3 tasks | 5 files |
 | Phase 17 P01 | 13 min | 2 tasks | 10 files |
+| Phase 17 P02 | 14 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -362,6 +363,10 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-01: FEAS-02 decision rule committed verbatim in 17-SPIKE-MATRIX.md before any probe ran
 - [Phase 17]: 17-01: spike serve calls startEncoder separately from startSource (the planned startSource signature has no bitrate)
 - [Phase 17]: 17-01: viewer page served no-store with no referrer because the token is in its URL; /report treats a null frameJpeg as absent
+- [Phase 17]: 17-02: spk_sck_start sizes and recreates the VideoToolbox session at the real capture size, leaving server.go untouched
+- [Phase 17]: 17-02: forceKeyframe calls spk_request_refresh, re-sending the cached picture as an IDR while a stream runs (PLI, FIR, viewer join)
+- [Phase 17]: 17-02: probe-loop --stream starts one SCStream once and never restarts it, so a failed or stopped stream is observed, not re-prompted
+- [Phase 17]: 17-02: bare spike prints usage and exits 0 (the plan's own verify pipes it into grep under pipefail)
 
 ### Pending Todos
 
@@ -486,8 +491,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-25T02:30:48.921Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-11-25T02:45:25.448Z
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
