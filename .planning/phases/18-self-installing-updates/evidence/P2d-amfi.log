@@ -1,0 +1,10 @@
+Timestamp                       Thread     Type        Activity             PID    TTL  
+2026-11-25 22:57:37.422784+0000 0x7adf4    Default     0x0                  74653  0    amfid: ~/Library/Application Support/portty/update/run-1921082905/portty-installer not valid: Error Domain=AppleMobileFileIntegrityError Code=-420 "The signature on the file is invalid" UserInfo={NSURL=file://~/Library/Application%20Support/portty/update/run-1921082905/portty-installer, NSLocalizedDescription=The signature on the file is invalid}
+2026-11-25 22:57:37.436929+0000 0x7dad8    Default     0x0                  0      0    kernel: (AppleMobileFileIntegrity) AMFI: When validating ~/Library/Application Support/portty/update/run-1921082905/portty-installer:
+  The code contains a Team ID, but validating its signature failed.
+Please check your system log.
+2026-11-25 22:57:37.437000+0000 0x7dad8    Default     0x0                  0      0    kernel: mac_vnode_check_signature: ~/Library/Application Support/portty/update/run-1921082905/portty-installer: code signature validation failed fatally: When validating ~/Library/Application Support/portty/update/run-1921082905/portty-installer:
+  The code contains a Team ID, but validating its signature failed.
+Please check your system log.
+2026-11-25 22:57:37.437080+0000 0x7dad8    Default     0x0                  0      0    kernel: proc 1454: load code signature error 4 for file "portty-installer"
+2026-11-25 22:57:37.440055+0000 0x7dad9    Default     0x0                  0      0    kernel: (AppleSystemPolicy) ASP: Security policy would not allow process: 1454, ~/Library/Application Support/portty/update/run-1921082905/portty-installer
