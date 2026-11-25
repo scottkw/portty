@@ -1,0 +1,65 @@
+Phase 17 plan 17-11: host run plan (what the host session will do, install, capture and commit)
+Written before the user's go. No address, token or domain is in this file.
+
+tailnet: used
+typing: none
+
+Host: this MacBook Air, macOS 27.2.1 (26B131), Apple Silicon. Spike build: spike/desktop/build/Spike.app, CFBundleVersion 20261125055429, codesign --verify --strict passes, same binary as the one rehearsed in VM office (17-10).
+
+== Before the go (done, nothing touched the host's screen, TCC or tailnet)
+- Host build verified (codesign strict), no spike process on the host.
+- VM office (portty-test) runs the pipeline in the daemon shape (Pipeline shape: daemon) with a fresh token for the iPhone row (R14). Four iPhone links go to the user in the checkpoint message only, never into a file: iphone-safari and iphone-homescreen, each with ice=lite and ice=full.
+- Both VMs are Running and Online on the tailnet.
+
+== Routing (from the matrix ## Routing table)
+- Runs in host-run: R18 (display sleep and wake) and R20 (hardware-encoder CPU, latency, sharpness at the default 2560 px, 30 fps).
+- R01-host is the live desktop of this Mac shown in VM home's Safari over the tailnet (roadmap SC1); it rides in the same run.
+- R15: routed to VM, not host-run. No R15-host row, no lock-screen PNG dump, the run uses a single dump at 15 s.
+- R16: routed to VM, not host-run. No R16-host row. No key-input flag is passed and no key event is posted.
+- R12: ran in VM home (GO). The host Chrome fallback is not needed and does not run.
+- No other row is routed here. Session 2 (needs go2): nothing.
+
+== What the run installs on this Mac
+- Nothing in launchd, no LaunchAgent plist in ~/Library/LaunchAgents, no SMAppService registration. The spike runs as a GUI app started with `open -n` from the repo build folder (launch path: GUI app via open; picked shape not used), so the throttling a launchd job adds is not in the numbers (R04-none and R04-interactive in the VM show that effect).
+- macOS asks once for Screen Recording for "Portty Spike" (app.portty.spike). The user approves it in System Settings. No Accessibility, PostEvent or Input Monitoring prompt appears because no key-input flag is used.
+- macOS may ask for Local Network on the first bind to the tailnet address.
+- Nothing is written under ~/Downloads or /Applications. Scratch files live in the session scratchpad and are deleted.
+
+== The run (offsets in seconds from the moment the capture is running, about 2 s after open)
+- Default command: open -n spike/desktop/build/Spike.app --args host-run --bind <this Mac's tailnet IP> --token <fresh token> --evidence-dir <scratch>/hostrun --pattern --dump-at 15s --motion-at 45s --motion-for 60s --sleep-at 120s --wake-after 20s --duration 180s. The first launch adds --request and --duration 150s to raise the prompt, then it is quit; the measured run has no --request.
+- Baseline before the run: 30 s of top, pmset -g therm, pmset -g assertions (no network).
+- 0-45 s: static test chart; a raw dump and a 3 s H.264 segment at 15 s (for SSIM).
+- 45-105 s: the chart's motion region moves.
+- 120 s: display sleep. The SCK stream is expected to end (SCError -3815) and not come back, as in the VM. A missing first_frame_after_wake line is the R18-host result, not a failed run.
+- 140 s: wake call; because this Mac locks immediately, the wake lands on the lock screen.
+- 180 s: the run ends. The user unlocks by hand.
+- Viewer: VM home's Safari opens the R01 link at about 5 s (row R01, tag safari-host, ice=lite, 95 s) and the R18 link at about 125 s (row R18, tag safari-host-wake, 45 s). Inside VM home, `tailscale ping -c 5` toward this Mac's address runs once just before the R01 link opens and once just after its report arrives (R01-host path-before, path-after). R01-host is GO only when both read direct.
+- Samples: top at about 20 s (static) and 65 s (motion), pmset -g therm at about 110 s. VM office's pipeline is stopped during the perf window; VM home's CPU is recorded separately.
+- Do Not Disturb should be on before the run, because a notification banner can sit above the chart and be captured.
+
+== Revoke (inside the go window, right after the run)
+- Quit every spike process (matched on the build path only).
+- tccutil reset ScreenCapture app.portty.spike
+- tccutil reset Accessibility app.portty.spike
+- tccutil reset PostEvent app.portty.spike
+  Each exits 0 or the plan stops. The helper identity app.portty.spike.helper was not used, so it is not reset.
+- Proof, each of which fails on error: `open -n -W spike/desktop/build/Spike.app --args probe --preflight-only` reads all three services false; `spike status` reads NotRegistered or NotFound; pgrep -f 'build/Spike.app' exits 1; launchctl print for app.portty.spike.daemon and .helper says it could not find the service.
+- Guard mutations: a sentinel process whose argv contains build/Spike.app is started on this Mac, the exact pgrep gate must exit 0, then the sentinel is killed by PID and the gate must exit 1. The launchctl guard runs only in VM office (a throwaway LaunchAgent, never on this Mac).
+- After the revoke the host makes no further tailnet contact.
+
+== What is committed and what is not
+- Committed: numbers (R20), the host-run timeline (no address or token), VM home's reports for R01 and the wake window (selectedPair remote address already redacted), a viewer frame of the chart only if it shows nothing else, the iPhone reports, the revoke log.
+- Not committed: any frame of this Mac's real desktop, the lock screen (never dumped), any frame showing something other than the chart, any address, token or account or host name. Every frame is read before anything is committed, and every host frame is deleted from the scratchpad.
+- The spike never types or logs a password on this Mac.
+
+== Time budget (minutes)
+- Baseline: 0.5
+- Prompt approval (at most 2): 2
+- Measured run: 3
+- Chrome fallback: 0 (not routed)
+- Routed sub-checks beyond R18, R20 and R01: 0
+- Revoke, residue probes and guard sentinel: 1
+Total session 1: 6.5 min
+
+Session 2 (needs go2):
+- none
