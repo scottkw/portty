@@ -102,7 +102,8 @@ func proxy(base, token, ice, row, tag string) http.Handler {
 			http.Error(w, "body too large or unreadable", http.StatusRequestEntityTooLarge)
 			return
 		}
-		log.Printf("wailsshell: %s from origin %q, body %d bytes", r.URL.Path, r.Header.Get("Origin"), len(body))
+		// The page's origin as the asset server sees it: Host is the wails:// authority, Referer the page URL.
+		log.Printf("wailsshell: %s host %q referer %q origin %q, body %d bytes", r.URL.Path, r.Host, r.Referer(), r.Header.Get("Origin"), len(body))
 		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, base+r.URL.Path+"?"+q, bytes.NewReader(body))
 		if err != nil {
 			http.Error(w, "bad upstream request", http.StatusInternalServerError)
