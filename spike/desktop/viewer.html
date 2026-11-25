@@ -16,6 +16,7 @@
 <p>
   <input id="keys" type="text" placeholder="type here to send key:&lt;keycode&gt;" size="32">
   <button id="wake" type="button">Wake</button>
+  <button id="play" type="button">Tap to play</button>
 </p>
 <pre id="state">starting</pre>
 <pre id="out"></pre>
@@ -46,7 +47,18 @@
   pc.addTransceiver('video', { direction: 'recvonly' });
   const dc = pc.createDataChannel('control');
 
-  pc.ontrack = (e) => { v.srcObject = e.streams[0] || new MediaStream([e.track]); };
+  let playNote = 'play: not tried';
+  const tryPlay = () => {
+    const p = v.play();
+    if (p && p.then) { p.then(() => { playNote = 'play: ok'; }, (err) => { playNote = 'play: ' + err.name; }); }
+  };
+  pc.ontrack = (e) => { v.srcObject = e.streams[0] || new MediaStream([e.track]); tryPlay(); };
+  document.getElementById('play').addEventListener('click', tryPlay);
+  const diagEl = document.createElement('pre');
+  stateEl.after(diagEl);
+  setInterval(() => {
+    diagEl.textContent = playNote + ' | paused=' + v.paused + ' readyState=' + v.readyState + ' size=' + v.videoWidth + 'x' + v.videoHeight;
+  }, 500);
   pc.oniceconnectionstatechange = () => {
     const s = pc.iceConnectionState;
     if ((s === 'connected' || s === 'completed') && connectedMs === null) {

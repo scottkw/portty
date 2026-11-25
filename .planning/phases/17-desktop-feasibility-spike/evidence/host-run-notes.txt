@@ -1,0 +1,63 @@
+Phase 17 plan 17-11: host run notes (R14 iPhone row, host run on this MacBook Air, revoke log)
+No address, token, tailnet domain, account or host name is in this file. The host's tailnet address is written as 100.x.x.N; the user's home path as <home>.
+
+host run: skip (user-not-approved: the user said go, but the Screen Recording grant for Portty Spike was not given within the 120 s approval window, so the measured run never started)
+typing: none
+tailnet: used
+R01-host path-before: not measured (host run did not start; no viewer opened, no ping taken)
+R01-host path-after: not measured (host run did not start; no viewer opened, no ping taken)
+host preflight after revoke: sr=false ax=false pe=false
+host status after revoke: NotFound
+guard pgrep (host): sentinel rc=0; after kill rc=1
+guard launchctl (vm-office): app.portty.spike.guard loaded rc=0; after bootout Could not find service
+
+== User reply at the Task 2 checkpoint (2026-11-25) ==
+- Do Not Disturb on.
+- "go <address>": explicit go for the host run, with this Mac's tailnet IPv4 from `tailscale ip -4` (address not recorded here). No type-ok (typing was not offered: R16 is routed to VM).
+- "iphone done", iOS 27.2.1 (read from the iPhone Chrome user agent; iPhone Safari's user agent is frozen at "iPhone OS 18_7" with "Version/27.2").
+
+== R14: iPhone against VM office (daemon shape) ==
+shape: daemon (VM office, path B LaunchAgent, serve --source sck bound to the VM office tailnet address, fresh token, plain http). Reports copied from VM office /tmp/spike-evidence/reports into evidence/r14-iphone-reports.json (12 reports, a JSON array, each with its source file name) and evidence/r14-frame-*.jpg (7 viewer frames, all of VM office's screen). The server redacts addresses; iPhone Safari reports remoteAddress null.
+First attempts (iPhone Safari and the Home Screen page, also iPhone Chrome CriOS 158 and desktop Chrome 158 on this Mac opening the same link): ICE connected and frames decoded on every client (6 to 7 frames with a static VM screen; 258 frames at 17 fps once a ticking Terminal clock ran on the VM screen), but on iOS the <video> element never showed a picture (firstFrameMs null, no frame JPEG). Desktop Chrome rendered (firstFrameMs 2395 lite, 1203 full, with a JPEG).
+Cause: iOS did not start playback despite autoplay, muted and playsinline. The viewer page was changed (spike/desktop/viewer.html: explicit v.play() in ontrack, a "Tap to play" button when play() is refused, a diag line), Spike.app rebuilt and signed with bundle/build.sh, redeployed to VM office. The page was still black on load; after the user tapped "Tap to play" the VM desktop showed.
+After the change (all with a user tap, all with a frame JPEG):
+  iphone-safari lite       framesDecoded 295, firstFrameMs 9084 (includes the wait for the tap), 19 fps, connectedMs 294, RTT median 63 ms, 0 dropped   (R14-report-iphone-safari-lite-1795622539)
+  iphone-safari full       framesDecoded 266, firstFrameMs 2223, 13 fps   (R14-report-iphone-safari-full-1795622737)
+  iphone-homescreen lite   framesDecoded 307, firstFrameMs 4471, 22 fps; and 324 frames, firstFrameMs 2815, 24 fps   (1795622903, 1795622952)
+  iphone-homescreen full   framesDecoded 202, firstFrameMs 1189   (1795623050)
+Codec on every report: video/H264, sdpFmtpLine level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f, 2560 x 1440. decoderImplementation and powerEfficientDecoder null (Safari does not expose them). Selected pair: local prflx, remote host on UDP 47801.
+Finding: iOS (Safari and the Home Screen web app, iOS 27.2.1) decodes the stream in both ICE modes but needs a user gesture to start playback; the Phase 21 DVWR-03 viewer must start video from a tap.
+
+== Host run (this MacBook Air, macOS 27.2.1 build 26B131) ==
+Before the run: VM office's pipeline stopped with the stop script (no spike process left in the guest), its Terminal clock window closed and the temporary files removed; the VM office token and address files deleted from the scratchpad.
+Segments, wall clock UTC:
+  baseline (no network)          16:17:25 to 16:17:57   0.5 min (budget 0.5)
+  prompt launch and approval     16:17:57 to 16:19:59   2.0 min (budget 2): not approved
+  measured run                   not started            0 min   (budget 3)
+  revoke, probes, guard          16:19:59 to 16:20:03   0.1 min (budget 1)
+  total                          16:17:25 to 16:20:03   2.6 min (budget 6.5)
+Baseline: top -l 4 -s 10 -stats pid,command,cpu -o cpu -n 12, fourth sample: system 13.60 percent user, 11.54 percent sys, 74.85 percent idle; com.apple.Virtualization.VirtualMachine 57.8 and 4.6 (the two Tart VMs), kernel_task 30.9, com.apple.gpusw 24.4, spotlightknowledged 5.1, the Claude Code CLI 4.2, WindowServer 4.1, bluetoothd 3.5, tailscale 3.4. pmset -g therm: no thermal warning, no performance warning, no CPU power status recorded. pmset -g assertions: PreventUserIdleDisplaySleep 0, PreventUserIdleSystemSleep 1 (powerd and a caffeinate the session runs).
+Prompt launch: open -n --stdout <scratch>/req.out --stderr <scratch>/req.err spike/desktop/build/Spike.app --args host-run --bind 100.x.x.N --token <T> --request --duration 150s --evidence-dir <scratch>/req (no key-input flag). The spike's timeline: sr_preflight granted false, requested true, then it exited with "this app has no Screen Recording grant: grant it in System Settings, then start again" (it does not serve without the grant). A log stream on subsystem com.apple.TCC ran from before the launch; filtered to the spike's pid it reads:
+  AUTHREQ_CTX service=kTCCServiceScreenCapture preflight=yes -> AUTHREQ_RESULT authValue=1
+  AUTHREQ_CTX service=kTCCServiceScreenCapture preflight=no  -> AUTHREQ_RESULT authValue=0
+  "Notifying for access kTCCServiceScreenCapture for target PID[<spike pid>], responsiblePID[<spike pid>], responsiblePath: <home>/dev/portty/spike/desktop/build/Spike.app/..."
+  "Service kTCCServiceScreenCapture does not allow prompting; returning denied."
+  REQUEST function=TCCAccessLaunchDisclosurePromptIfNeeded
+  In VM office (R00) the same --request launch raised a dialog naming Spike. On this Mac tccd took its notify path and returned denied without a dialog of its own. Whether a notification or Settings prompt reached the screen is not known from the log (Do Not Disturb was on, and the user may have been away from the screen); the user's observation is not recorded.
+Approval detection: every 8 s a non-prompting `open -n -W Spike.app --args probe --preflight-only` read sr_preflight; it stayed false for 122 s (14 polls). No AUTHREQ_RESULT authValue=2 line for the spike appeared. Per the orchestrator's instruction the plan did not wait longer and did not raise a new checkpoint: the rows close as user-not-approved and cleanup ran.
+Not measured (host run did not start): R01-host, R18-host, R20-host. No viewer was opened in VM home toward this Mac (Safari in VM home was quit anyway), no tailscale ping was taken, no frame was captured on this Mac, no SSIM, no perf timeline. No host frame exists, so none was read or deleted.
+typing: none. No key-input flag was passed; no key event was posted.
+R12 host Chrome fallback: not routed, not run. Session 2: none planned.
+
+== Revoke (16:19:59 to 16:20:03, inside the go window) ==
+Quit every spike process (pkill matching the build path).
+tccutil reset ScreenCapture app.portty.spike  rc=0  "Successfully reset ScreenCapture approval status for app.portty.spike"
+tccutil reset Accessibility app.portty.spike  rc=0  "Successfully reset Accessibility approval status for app.portty.spike"
+tccutil reset PostEvent app.portty.spike      rc=0  "Successfully reset PostEvent approval status for app.portty.spike"
+The helper identity app.portty.spike.helper was not used; it was not reset.
+open -n -W spike/desktop/build/Spike.app --args probe --preflight-only --label host-postrevoke --out <scratch>/postrevoke.json  rc=0: {"label":"host-postrevoke","sr_preflight":false,"ax_trusted":false,"post_event_preflight":false}
+spike/desktop/build/Spike.app/Contents/MacOS/spike status (direct execution, no TCC API): {"plist":"app.portty.spike.helper.plist","status":"NotFound","verb":"status"}
+Guard pgrep (host): bash -c 'exec -a build/Spike.app.guard /bin/sleep 120' in the background; pgrep -f 'build/Spike.app' rc=0 with the sentinel; sentinel killed by PID; pgrep rc=1.
+Guard launchctl (VM office, never on this Mac): a plist /tmp/app.portty.spike.guard.plist written with plutil (Label app.portty.spike.guard, /bin/sleep 600, no RunAtLoad, no KeepAlive) bootstrapped into gui/501 (rc 0); launchctl print took the "still loaded" branch (rc 0); bootout rc 0 and plist deleted; print then rc 113 "Could not find service "app.portty.spike.guard" in domain for user gui: 501".
+Residue after: pgrep -f 'build/Spike.app' rc=1; launchctl print gui/<uid>/app.portty.spike.daemon rc=113 and .helper rc=113, each "Bad request." then "Could not find service ... in domain for user gui: <uid>".
+After the revoke the host made no further contact with any tailnet address. VMs left running.
