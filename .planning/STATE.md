@@ -6,10 +6,10 @@ current_phase: 18
 current_phase_name: Self-Installing Updates
 status: executing
 stopped_at: Phase 17 complete, ready to plan Phase 18
-last_updated: "2026-11-25T22:18:57.116Z"
+last_updated: "2026-11-25T22:22:23.189Z"
 last_activity: 2026-11-25
-last_activity_desc: Phase 17 complete, transitioned to Phase 18
-state_head: 9a8d958e8ac4bcdaf067636ace2b5944d3fa6f3f
+last_activity_desc: Phase 18 execution started
+state_head: 8ec50e45b4568af9785b499a2454c384becc073d
 progress:
   total_phases: 7
   completed_phases: 1
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-24)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 17 — Desktop Feasibility Spike
+**Current focus:** Phase 18 — Self-Installing Updates
 
 ## Current Position
 
-Phase: 18 (Self-Installing Updates) — READY TO EXECUTE
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-11-25 — Phase 17 complete, transitioned to Phase 18
+Phase: 18 (Self-Installing Updates) — EXECUTING
+Plan: 1 of 9
+Status: Executing Phase 18
+Last activity: 2026-11-25 — Phase 18 execution started
 
 Progress: [█░░░░░░░░░] 14%
 
