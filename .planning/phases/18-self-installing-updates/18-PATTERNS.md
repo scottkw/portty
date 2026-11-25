@@ -110,7 +110,7 @@ cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 cmd.Env = append(os.Environ(), ...)
 logFile, err := openDaemonLog(daemonConfigDir()) // cmd.Stdout/Stderr = logFile
 ```
-Installer spawn: same `Setsid: true`, cwd `/`, log to `update.log`; exe is the copied binary in `<configDir>/update/<rand>/portty-installer`.
+Installer spawn: same `Setsid: true`, cwd `/`, log to `update.log`; exe is `Contents/MacOS/Portty` inside a `ditto` copy of the whole running bundle at `<configDir>/update/run-*/Portty.app` (revised 2026-11-25: a lone executable copy is killed by AMFI on Developer ID builds, row P2d; see 18-CONTEXT and 18-10).
 
 **Health seam:** `daemon.NewDaemonClient(sock).HealthInfo()` (`process.go:253-262` shows its use) with `Version == "v"+newVersion`; `GetDaemonVersion()` exists too. Injected as a `Healthy` func from package main.
 **Swap:** `unix.RenamexNp(staged, target, unix.RENAME_SWAP)`; `os.Rename` when target is absent (RESEARCH "Atomic swap" skeleton).

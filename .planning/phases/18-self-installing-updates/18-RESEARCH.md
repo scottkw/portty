@@ -201,6 +201,7 @@ Every one ends in: cleanup, re-set DMG quarantine (if cleared), existing `Reveal
 
 ### Pattern 2: Detached installer subcommand, binary copied out of the bundle
 **What:** `portty install-update <job.json>` dispatches in `runCLI` before the daemon-ensure step (add it to the `cliNeedsDaemon` skip list, not in `usage`), like `daemon --takeover`: "internal, so not in the usage". The GUI copies `os.Executable()` to `<configDir>/update/<rand>/portty-installer` (0700, new file, never overwritten in place), spawns it with `Setsid: true`, cwd `/`, stdout/stderr to `update.log`. **Why a copy:** the bundle at the target is renamed away; a process whose exec path lives in it must not be the one doing the work. The copy is a fresh file with the original signature bytes. [ASSUMED: runs without a signature kill, App Management attribution still team S2K7P43927, probe P2]
+**Update 2026-11-25:** A1 was CONTRADICTED for Developer ID builds by probe P2d (18-VM-CHECKS.md row P2d, `evidence/P2d-amfi.log`): AMFI kills a lone copy of the executable at exec (`Code=-420`) because the signature binds the bundle's Info.plist. Superseded by a whole-bundle copy: the GUI copies the running Portty.app with `ditto` into the job's run folder and starts `install-update` from that copy's Contents/MacOS/Portty (18-CONTEXT.md [Installer], revised 2026-11-25; plan 18-10; VM row P2d-bundle).
 **Test guard:** like `spawnTakeover`, the spawn seam must refuse under `testing.Testing()` ("the child would take the user's real daemon", `process.go`); inject it.
 
 ### Pattern 3: Job file in, result file out (no sockets, no argv flags)
@@ -405,7 +406,7 @@ svc.Quit = a.onTerminate
 
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
-| A1 | The installer copy (fresh file, original signature bytes) runs from the config dir without a code-signature kill, and its App Management attribution is still Team S2K7P43927 | Pattern 2 | Installer cannot start or every swap is refused; fall back to running the installer from the staged new bundle (N+1 code does the swap) |
+| A1 | The installer copy (fresh file, original signature bytes) runs from the config dir without a code-signature kill, and its App Management attribution is still Team S2K7P43927 | Pattern 2 | Installer cannot start or every swap is refused; fall back to running the installer from the staged new bundle (N+1 code does the swap). **CONTRADICTED 2026-11-25 (P2d, Developer ID); superseded by the whole-bundle copy, see the Pattern 2 update and row P2d-bundle** |
 | A2 | App Management denials surface as EPERM and plain permission failures as EACCES | Pattern 1 table | Wrong fallback text only; both still reveal |
 | A3 | Mounting a quarantined DMG with `hdiutil attach` (and copying out) can raise an OS dialog; clearing the DMG's quarantine before attach prevents it | Pitfall 2, Pattern 8 | If clearing the DMG quarantine does not help, the install flow needs a different mount approach; if it is unneeded, drop the extra step |
 | A4 | `NSFileManager trashItem` works from the non-AppKit installer process with no TCC prompt for the old bundle in `/Applications` | Standard Stack | Old bundle stays aside; sweep deletes it later (Open Question O4) |
