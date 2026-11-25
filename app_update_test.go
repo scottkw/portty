@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -434,7 +435,7 @@ func (h *updateHarness) oneDialog(t *testing.T) string {
 	return d[0]
 }
 
-const availableAlert = "Version 9.9.9 is available.|You have version 1.0.0.|Download Later|Download|Later"
+const availableAlert = "Version 9.9.9 is available.|You have version 1.0.0.|Update Later|Update|Later"
 
 func TestManualUpdateCheck_UpToDate(t *testing.T) {
 	h := newUpdateHarness(t)
@@ -464,10 +465,10 @@ func TestManualUpdateCheck_AvailableLater(t *testing.T) {
 	}
 }
 
-func TestManualUpdateCheck_AvailableDownload(t *testing.T) {
+func TestManualUpdateCheck_AvailableUpdate(t *testing.T) {
 	h := newUpdateHarness(t)
 	h.gh.set("9.9.9", 0)
-	h.answer = "Download"
+	h.answer = "Update"
 	h.app.checkForUpdatesManually()
 	if got := h.oneDialog(t); got != availableAlert {
 		t.Errorf("alert %q", got)
@@ -476,7 +477,7 @@ func TestManualUpdateCheck_AvailableDownload(t *testing.T) {
 		t.Errorf("%d window shows, want 1", h.showCount())
 	}
 	if st := h.app.GetUpdateStatus(); st.State != "revealed" {
-		t.Errorf("after Download: %+v", st)
+		t.Errorf("after Update: %+v", st)
 	}
 }
 
@@ -545,15 +546,97 @@ func (h *updateHarness) blockDownload(t *testing.T) func() {
 	return finish
 }
 
-func TestManualUpdateCheck_WhileDownloading(t *testing.T) {
+// holdAt makes h available and runs a Download whose install is held at state: "downloading" in
+// the asset handler, "installing" in the first hdiutil attach, "relaunching" in StartInstaller.
+// The returned func releases the hold and waits for the Download to finish; a held installer then
+// fails, which falls back to the reveal flow.
+func (h *updateHarness) holdAt(t *testing.T, state string) func() {
+	t.Helper()
+	if state == "downloading" {
+		return h.blockDownload(t)
+	}
+	h.gh.set("9.9.9", 0)
+	if _, err := h.app.updates.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entered, release, done := make(chan struct{}, 1), make(chan struct{}), make(chan struct{})
+	hold := func() { entered <- struct{}{}; <-release }
+	h.app.updates.Bundle = filepath.Join(t.TempDir(), "Portty.app")
+	h.app.updates.StartInstaller = func(updater.Job) error {
+		if state == "relaunching" {
+			hold()
+		}
+		return errors.New("installer held")
+	}
+	h.app.updates.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		switch {
+		case strings.HasSuffix(name, "hdiutil") && args[0] == "attach":
+			if err := os.Mkdir(filepath.Join(args[len(args)-2], updater.BundleName), 0o700); err != nil {
+				return nil, err
+			}
+			if state == "installing" {
+				hold()
+			}
+		case strings.HasSuffix(name, "hdiutil") && args[0] == "detach":
+			return nil, os.RemoveAll(args[len(args)-1])
+		case strings.HasSuffix(name, "ditto"):
+			return nil, os.MkdirAll(args[len(args)-1], 0o700)
+		}
+		return fakeUpdateRun(ctx, name, args...)
+	}
+	go func() { h.app.DownloadUpdate(); close(done) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("the install never reached %s", state)
+	}
+	if got := h.app.GetUpdateStatus().State; got != state {
+		t.Fatalf("held status %q, want %q", got, state)
+	}
+	var once sync.Once
+	finish := func() { once.Do(func() { close(release); <-done }) }
+	t.Cleanup(finish)
+	return finish
+}
+
+func TestManualUpdateCheck_WhileUpdating(t *testing.T) {
+	for _, state := range []string{"downloading", "installing", "relaunching"} {
+		t.Run(state, func(t *testing.T) {
+			h := newUpdateHarness(t)
+			finish := h.holdAt(t, state)
+			h.app.checkForUpdatesManually()
+			want := "Portty is updating to version 9.9.9.|It will restart by itself when the update is installed.|OK|OK|"
+			if got := h.oneDialog(t); got != want {
+				t.Errorf("alert %q, want %q", got, want)
+			}
+			finish()
+		})
+	}
+}
+
+func TestManualUpdateCheck_WhileVerifying(t *testing.T) {
 	h := newUpdateHarness(t)
-	finish := h.blockDownload(t)
+	h.gh.set("9.9.9", 0)
+	if _, err := h.app.updates.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entered, release, done := make(chan struct{}, 1), make(chan struct{}), make(chan struct{})
+	h.app.updates.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if strings.HasSuffix(name, "codesign") {
+			entered <- struct{}{}
+			<-release
+		}
+		return fakeUpdateRun(ctx, name, args...)
+	}
+	go func() { h.app.DownloadUpdate(); close(done) }()
+	<-entered
 	h.app.checkForUpdatesManually()
-	want := "Portty is downloading version 9.9.9.|It will be shown in Finder once it's verified.|OK|OK|"
+	want := "Portty is updating to version 9.9.9.|It will restart by itself when the update is installed.|OK|OK|"
 	if got := h.oneDialog(t); got != want {
 		t.Errorf("alert %q, want %q", got, want)
 	}
-	finish()
+	close(release)
+	<-done
 }
 
 func TestTrayUpdate_FollowsStatus(t *testing.T) {
@@ -571,6 +654,29 @@ func TestTrayUpdate_FollowsStatus(t *testing.T) {
 	}
 	if got := h.trayList(); len(got) != 2 || got[1] != "" {
 		t.Errorf("tray after current %q", got)
+	}
+}
+
+// A failed or rolled-back install ends revealed with an Error: the tray stops offering that version
+// (the banner shows the failure), while the other states keep the item.
+func TestTrayUpdate_HiddenAfterFailedInstall(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		st   updater.Status
+		want string
+	}{
+		{"revealed with error", updater.Status{State: "revealed", Latest: "9.9.9", Error: "Portty couldn't install the update, so the download is shown in Finder."}, ""},
+		{"revealed", updater.Status{State: "revealed", Latest: "9.9.9"}, "Update Available…"},
+		{"available", updater.Status{State: "available", Latest: "9.9.9"}, "Update Available…"},
+		{"available with download error", updater.Status{State: "available", Latest: "9.9.9", Error: "Portty couldn't download version 9.9.9. Try again later."}, "Update Available…"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newUpdateHarness(t)
+			h.app.onUpdateStatus(c.st)
+			if got := h.trayList(); len(got) != 1 || got[0] != c.want {
+				t.Errorf("tray %q, want [%q]", got, c.want)
+			}
+		})
 	}
 }
 
@@ -599,7 +705,21 @@ func TestTrayUpdate_OfferUpdate(t *testing.T) {
 		}
 		finish()
 	})
-	t.Run("revealed", func(t *testing.T) { // IN-04: Download shows the kept DMG again
+	for _, state := range []string{"installing", "relaunching"} {
+		t.Run(state, func(t *testing.T) {
+			h := newUpdateHarness(t)
+			finish := h.holdAt(t, state)
+			h.app.offerUpdate()
+			if h.showCount() != 1 || len(h.dialogList()) != 0 {
+				t.Errorf("%d shows, dialogs %q; want one show, no alert", h.showCount(), h.dialogList())
+			}
+			if _, assets := h.gh.counts(); assets != 1 {
+				t.Errorf("%d asset requests, want 1 (no second download)", assets)
+			}
+			finish()
+		})
+	}
+	t.Run("revealed", func(t *testing.T) { // IN-04: Update shows the kept DMG again
 		h := newUpdateHarness(t)
 		h.gh.set("9.9.9", 0)
 		if _, err := h.app.updates.Check(context.Background()); err != nil {
@@ -608,7 +728,7 @@ func TestTrayUpdate_OfferUpdate(t *testing.T) {
 		if st := h.app.DownloadUpdate(); st.State != "revealed" {
 			t.Fatalf("DownloadUpdate = %+v", st)
 		}
-		h.answer = "Download"
+		h.answer = "Update"
 		h.app.offerUpdate()
 		if got := h.oneDialog(t); got != availableAlert {
 			t.Errorf("alert %q", got)

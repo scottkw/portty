@@ -1,5 +1,5 @@
 // Portty 06-03 (UPD-01, UPD-03): the real App follows Go's update status. It reads
-// GetUpdateStatus on mount, then update:status events, and the banner's Download
+// GetUpdateStatus on mount, then update:status events, and the banner's Update
 // calls DownloadUpdate. Go reports progress, verifying and "shown in Finder" back
 // through events; the UI never acts on the binding's result.
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -23,16 +23,16 @@ afterEach(async () => {
 })
 
 describe('App — update banner follows Go (06-03)', () => {
-  it('an available status from GetUpdateStatus shows the banner with Download', async () => {
+  it('an available status from GetUpdateStatus shows the banner with Update', async () => {
     const c = await mountApp({ GetUpdateStatus: () => available })
     expect(c.textContent).toContain('Portty 9.9.9 is available.')
-    expect(button(c, 'Download')).toBeDefined()
+    expect(button(c, 'Update')).toBeDefined()
   })
 
   it('Download calls DownloadUpdate once', async () => {
     const download = vi.fn(() => available)
     const c = await mountApp({ GetUpdateStatus: () => available, DownloadUpdate: download })
-    await act(async () => { button(c, 'Download')!.click() })
+    await act(async () => { button(c, 'Update')!.click() })
     await flush()
     expect(download).toHaveBeenCalledTimes(1)
   })
@@ -52,7 +52,27 @@ describe('App — update banner follows Go (06-03)', () => {
 
     await fire({ state: 'revealed' })
     expect(c.textContent).toContain('Portty 9.9.9 is verified and shown in Finder.')
-    expect(button(c, 'Download')).toBeUndefined()
+    expect(button(c, 'Update')).toBeUndefined()
+  })
+
+  it('installing and relaunching events render Installing and Restarting with no action button', async () => {
+    const c = await mountApp({ GetUpdateStatus: () => available })
+    await fire({ state: 'installing' })
+    expect(c.textContent).toContain('Installing Portty 9.9.9…')
+    expect(button(c, 'Update')).toBeUndefined()
+    await fire({ state: 'relaunching' })
+    expect(c.textContent).toContain('Restarting Portty 9.9.9…')
+    expect(button(c, 'Update')).toBeUndefined()
+  })
+
+  it("a revealed event with an error renders the warning with Go's text", async () => {
+    const c = await mountApp({ GetUpdateStatus: () => available })
+    const error = "Portty couldn't install the update, so the download is shown in Finder."
+    await fire({ state: 'revealed', error })
+    expect(c.textContent).toContain(error)
+    expect(c.querySelector('.banner--warning')).not.toBeNull()
+    expect(button(c, 'Update')).toBeUndefined()
+    expect(button(c, 'Try Again')).toBeUndefined()
   })
 
   it('a GetUpdateStatus reply that lands after a newer event does not roll the banner back', async () => {
@@ -62,7 +82,7 @@ describe('App — update banner follows Go (06-03)', () => {
     await act(async () => { reply(available) })
     await flush()
     expect(c.textContent).toContain('Downloading Portty 9.9.9… 25%')
-    expect(button(c, 'Download')).toBeUndefined()
+    expect(button(c, 'Update')).toBeUndefined()
   })
 
   it('no status and no events render no update banner', async () => {
@@ -89,7 +109,7 @@ describe('App — update banner rules (06-03)', () => {
     const c = await mountApp({ GetUpdateStatus: () => available })
     await fire({ state: 'checking', latest: '' })
     expect(c.textContent).toContain('Portty 9.9.9 is available.')
-    expect(button(c, 'Download')).toBeDefined()
+    expect(button(c, 'Update')).toBeDefined()
     await fire({ state: 'current', latest: '' })
     expect(c.textContent).not.toContain('Portty 9.9.9')
   })
@@ -120,14 +140,24 @@ describe('App — update banner rules (06-03)', () => {
     expect(c.textContent).toContain('Verifying Portty 9.9.10…')
   })
 
+  it('an installing event brings back a dismissed banner, and relaunching keeps it', async () => {
+    const c = await mountApp({ GetUpdateStatus: () => available })
+    await dismiss(c)
+    expect(c.textContent).not.toContain('Portty 9.9.9')
+    await fire({ state: 'installing' })
+    expect(c.textContent).toContain('Installing Portty 9.9.9…')
+    await fire({ state: 'relaunching' })
+    expect(c.textContent).toContain('Restarting Portty 9.9.9…')
+  })
+
   it('Try Again in the error state calls DownloadUpdate once more', async () => {
     const download = vi.fn(() => available)
     const c = await mountApp({ GetUpdateStatus: () => available, DownloadUpdate: download })
-    await act(async () => { button(c, 'Download')!.click() })
+    await act(async () => { button(c, 'Update')!.click() })
     const error = "The download didn't pass the signature check, so Portty deleted it."
     await fire({ state: 'available', error })
     expect(c.textContent).toContain(error)
-    expect(button(c, 'Download')).toBeUndefined()
+    expect(button(c, 'Update')).toBeUndefined()
     await act(async () => { button(c, 'Try Again')!.click() })
     await flush()
     expect(download).toHaveBeenCalledTimes(2)
@@ -142,7 +172,7 @@ describe('App — update banner rules (06-03)', () => {
     await act(async () => { wailsEvents.get('update:show')!() })
     await flush()
     expect(c.textContent).toContain('Portty 9.9.9 is available.')
-    expect(button(c, 'Download')).toBeDefined()
+    expect(button(c, 'Update')).toBeDefined()
     expect(download).not.toHaveBeenCalled()
   })
 

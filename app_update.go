@@ -115,11 +115,14 @@ func (a *App) autoCheck(ctx context.Context) bool {
 
 // onUpdateStatus is the Service's Emit. It runs under the service mutex, so it must not block:
 // emitEvent and the tray setter both return at once. The tray offers the update while a newer
-// version is known and is left alone during a check.
+// version is known and is left alone during a check. A revealed status with an Error is a failed
+// or rolled-back install: the banner shows it, and the tray stops offering that version.
 func (a *App) onUpdateStatus(st updater.Status) {
 	a.emitEvent("update:status", st)
 	switch {
 	case st.State == "checking":
+	case st.State == "revealed" && st.Error != "":
+		a.setTrayUpdate("")
 	case st.Latest != "":
 		a.setTrayUpdate("Update Available…")
 	default:
@@ -160,8 +163,10 @@ func (a *App) GetUpdateStatus() updater.Status {
 	return a.updates.Status()
 }
 
-// DownloadUpdate downloads, verifies and reveals the available update (UPD-03); the banner's and
-// the alert's Download buttons both call it. A failure is in the returned Status.Error.
+// DownloadUpdate downloads, verifies and installs the available update, falling back to showing
+// the verified DMG in Finder when the install fails (UPD-03, UPD-05); the banner's and the alert's
+// Update buttons both call it. A failure is in the returned Status.Error. The binding keeps its
+// name: renaming it would only churn the generated bindings.
 func (a *App) DownloadUpdate() updater.Status {
 	if a.updates == nil {
 		return a.GetUpdateStatus()
@@ -181,8 +186,8 @@ func (a *App) checkForUpdatesManually() {
 	switch {
 	case err != nil:
 		a.alert("Couldn't check for updates.", err.Error())
-	case st.State == "downloading" || st.State == "verifying":
-		a.alert("Portty is downloading version "+st.Latest+".", "It will be shown in Finder once it's verified.")
+	case busyState(st.State):
+		a.alert("Portty is updating to version "+st.Latest+".", "It will restart by itself when the update is installed.")
 	case st.State == "available":
 		rememberNotified(st.Latest) // the alert already told the user; no notification for it later
 		a.offerDownload(st)
@@ -191,26 +196,35 @@ func (a *App) checkForUpdatesManually() {
 	}
 }
 
+// busyState is a state in which an update is in flight and a second one must not start.
+func busyState(state string) bool {
+	switch state {
+	case "downloading", "verifying", "installing", "relaunching":
+		return true
+	}
+	return false
+}
+
 // offerUpdate is the tray item's action: offer a known update, or show the window with the
-// banner while one downloads.
+// banner while one is in flight.
 func (a *App) offerUpdate() {
 	st := a.GetUpdateStatus()
 	switch st.State {
 	case "available", "revealed":
 		a.showWindow()
 		a.offerDownload(st)
-	case "downloading", "verifying":
+	case "downloading", "verifying", "installing", "relaunching":
 		a.showWindow()
 	}
 }
 
-// offerDownload asks Download or Later; Download shows the window, where the banner tracks progress.
+// offerDownload asks Update or Later; Update shows the window, where the banner tracks progress.
 func (a *App) offerDownload(st updater.Status) {
 	choice := a.dialog(runtime.MessageDialogOptions{
 		Type: runtime.InfoDialog, Title: "Version " + st.Latest + " is available.", Message: "You have version " + st.Current + ".",
-		Buttons: []string{"Download", "Later"}, DefaultButton: "Download", CancelButton: "Later",
+		Buttons: []string{"Update", "Later"}, DefaultButton: "Update", CancelButton: "Later",
 	})
-	if choice == "Download" {
+	if choice == "Update" {
 		a.showWindow()
 		a.DownloadUpdate()
 	}

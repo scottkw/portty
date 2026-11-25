@@ -867,7 +867,7 @@ function App(): React.ReactElement {
     if (mode === 'web') return // Phase 120-06: the updater is Wails-only.
     const apply = (s: UpdateStatus | null) => {
       if (!s || s.state === 'checking') return // the daily re-check never flickers the banner
-      if (s.state === 'downloading') setDismissedUpdate(null) // a started download brings the banner back
+      if (s.state === 'downloading' || s.state === 'installing' || s.state === 'relaunching') setDismissedUpdate(null) // a started download or install brings the banner back
       setUpdateStatus(s)
     }
     // The snapshot's reply can land after a newer event; once an event has arrived, drop it.
@@ -881,7 +881,7 @@ function App(): React.ReactElement {
 
   const showUpdateBanner =
     updateStatus !== null &&
-    ['available', 'downloading', 'verifying', 'revealed'].includes(updateStatus.state) &&
+    ['available', 'downloading', 'verifying', 'installing', 'relaunching', 'revealed'].includes(updateStatus.state) &&
     updateStatus.latest !== dismissedUpdate
 
   // Phase 155-03 — open (or focus) the WebShareSessionView tab for a web-share
