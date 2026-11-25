@@ -63,7 +63,11 @@ User delegated: 'I don't need to answer a bunch of questions' (2026-11-25). Clau
 - Guest page states: Waiting for <Mac> to let you in, Not admitted, View only, You have control, <name> is controlling, Sharing has ended. Reason: plain words; the requirement text already uses "view-only".
 - A pending admission times out after 5 minutes with Not admitted; at most one pending prompt per (user, node) and 8 per share. Reason: stops prompt spam without a config knob.
 - A denied or revoked person cannot knock again for the rest of that share. Reason: prevents a refused guest from re-prompting the sharer.
-
+- After research (2026-11-25, user delegated): local input is detected with a listen-only event tap under the existing Accessibility grant (VM-proven: no Input Monitoring prompt); any event without Portty's tag counts as local; CGEventTapIsEnabled is checked after creation; the mask includes drag types. HID idle time is not used (injected events reset it).
+- After research: while Secure Event Input is on, physical typing is invisible to the tap; accept the weaker keyboard half and show a GUI warning, rather than drop all remote keys.
+- After research: guests get their own asset route behind requireTailnetPeer (the /app/ bundle is same-user only); join/leave signal lives in the Admit sheet, tray icon and tray line, not banners (macOS may silence notifications while the screen is shared); Stop and Revoke close all peers concurrently and also close hijacked WebSockets; media is tied to the guest's node identity, not address strings; guest names are stripped of bidi and control characters.
+- After research: any controller input takes or renews the 2 s lease and others' pointer moves are dropped while it is held; deny and revoke are keyed by user ID; at most 2 pending Admit requests per user; audit lines carry a reason field and graceful leaves are logged.
+- Real-Mac follow-up: the research Appendix B 2-minute physical-input check runs on a real Mac as an M-NN item (needs Terminal Accessibility temporarily).
 </decisions>
 
 <code_context>
