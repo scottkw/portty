@@ -21,7 +21,7 @@ status: all_fixed
 - Skipped: 0
 - WR-06 is a necessity finding and is out of scope. I left it alone; see the note below. IN-01..IN-07 were not attempted.
 
-**Where verification ran:** in the main checkout `/Users/ken/dev/portty`, on branch `gsd/phase-01-plain-macos-terminal`. No worktree was used, because the orchestrator's root-pin guard requires the main checkout. The results can be reproduced from the main checkout.
+**Where verification ran:** in the main checkout `the repo root`, on branch `gsd/phase-01-plain-macos-terminal`. No worktree was used, because the orchestrator's root-pin guard requires the main checkout. The results can be reproduced from the main checkout.
 
 **Gates after the last fix (HEAD e47fe583):**
 - `go build ./... && go vet ./...` passed.

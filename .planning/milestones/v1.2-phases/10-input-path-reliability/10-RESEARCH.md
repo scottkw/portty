@@ -51,7 +51,7 @@
 
 ## Project Constraints (from CLAUDE.md)
 
-- **TESTING.md is the canonical regression home** (`/Users/ken/dev/portty/CLAUDE.md`): every phase that adds/renames/removes tests updates Section 2 (suite manifest, no build tags, no file moves), Section 5 (new `M-NN` for anything not automatable: native GUI, remote peer, live PTY), Section 4 (a traceability row per new test file for a v4.0+ requirement; path column is a repo-relative `.go/.ts/.tsx/.sh` path only; run `bash tests/check-traceability-paths.sh`), Section 3 only if `build.yml` matrix changes. Next free manual id is **M-116**; the last category is **AY** (TESTING.md:1338, M-115 at :1402).
+- **TESTING.md is the canonical regression home** (`CLAUDE.md`): every phase that adds/renames/removes tests updates Section 2 (suite manifest, no build tags, no file moves), Section 5 (new `M-NN` for anything not automatable: native GUI, remote peer, live PTY), Section 4 (a traceability row per new test file for a v4.0+ requirement; path column is a repo-relative `.go/.ts/.tsx/.sh` path only; run `bash tests/check-traceability-paths.sh`), Section 3 only if `build.yml` matrix changes. Next free manual id is **M-116**; the last category is **AY** (TESTING.md:1338, M-115 at :1402).
 - **Chesterton's Fence** (both CLAUDE.md files): articulate why code exists before deleting it. Applied below to the settle window, `ResizeClient`'s origin gate and the min-among-local arbiter.
 - **Silent fallbacks**: "`or {}` converts hard failures into silent corruption. Let it crash." The recommended designs return errors (dead input writer returns an error to the pump) instead of swallowing.
 - **Premature abstraction**: need 3 real examples. Hence one small `InputConn` type and one `PongOwed` type, each used by exactly the two pumps that exist today (two examples, but they are the same code today, copy-pasted: extracting is removing a duplicate, not speculating).
@@ -112,7 +112,7 @@ No new packages. Everything is the inherited stack. Versions confirmed by readin
 
 **Installation:** none.
 
-**Version verification:** `npm view`/`pip index` do not apply (no installs). coder/websocket v1.8.15 source is in the module cache at `/Users/ken/go/pkg/mod/github.com/coder/websocket@v1.8.15` and was read directly.
+**Version verification:** `npm view`/`pip index` do not apply (no installs). coder/websocket v1.8.15 source is in the module cache at `~/go/pkg/mod/github.com/coder/websocket@v1.8.15` and was read directly.
 
 ## Package Legitimacy Audit
 

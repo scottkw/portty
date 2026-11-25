@@ -20,7 +20,7 @@ status: all_fixed
 - Fixed: 9
 - Skipped: 0
 
-**Where verification ran:** in the main checkout `/Users/ken/dev/portty`, on branch `gsd/phase-01-plain-macos-terminal`. No worktree was used. The orchestrator's root-pin guard requires the git toplevel to be the main checkout and says to commit on this branch, and a hand-rolled worktree would also have no `node_modules` for the frontend gates. All results below can be reproduced from the main checkout.
+**Where verification ran:** in the main checkout `the repo root`, on branch `gsd/phase-01-plain-macos-terminal`. No worktree was used. The orchestrator's root-pin guard requires the git toplevel to be the main checkout and says to commit on this branch, and a hand-rolled worktree would also have no `node_modules` for the frontend gates. All results below can be reproduced from the main checkout.
 
 **Gates after the last fix (HEAD 4a41c8ee):**
 - `go build ./... && go vet ./...` passed.

@@ -140,7 +140,7 @@ Test: `TestRestartDaemonFlagPlacement`. A scratch build also checked the daemon-
 
 ## Verification
 
-All gates ran in the isolated worktree `/Users/ken/dev/portty/.claude/worktrees/agent-a651f65b9a85a14e1` at 1fed8e72, with `GOTOOLCHAIN=go1.26.11`. They ran once, and no rerun was needed:
+All gates ran in the isolated worktree `.claude/worktrees/agent-a651f65b9a85a14e1` at 1fed8e72, with `GOTOOLCHAIN=go1.26.11`. They ran once, and no rerun was needed:
 
 - `go build ./...` OK, `go vet ./...` OK
 - `go test -race -short ./...`: rc 0; ok for portty, internal/attach, capability, daemon, pty, relay, release, statusbar, tailnet, updater, wakewatch and webserver

@@ -58,7 +58,7 @@ Two risks need planner attention. The `--status-top` bar cannot be protected by 
 
 ## Project Constraints (from CLAUDE.md)
 
-- **TESTING.md standing rule** (`/Users/ken/dev/portty/CLAUDE.md`): new test files go in Section 2 (manifest + counts note), a Section 4 row per new test file covering a later-milestone requirement (path column is a repo-relative `.go/.ts/.tsx/.sh` path only), a Section 5 `M-NN` item for anything not automatable, and run `bash tests/check-traceability-paths.sh` before committing (baseline today: `OK: 228 traceability paths exist`).
+- **TESTING.md standing rule** (`CLAUDE.md`): new test files go in Section 2 (manifest + counts note), a Section 4 row per new test file covering a later-milestone requirement (path column is a repo-relative `.go/.ts/.tsx/.sh` path only), a Section 5 `M-NN` item for anything not automatable, and run `bash tests/check-traceability-paths.sh` before committing (baseline today: `OK: 228 traceability paths exist`).
 - **Chesterton's Fence / deletion discipline:** read before removing; Phase 15 should delete nothing. Item C deliberately keeps `killAdopted` and the `exited` guard.
 - **Silent fallbacks:** "`or {}` converts hard failures into silent corruption". For O-6, a `PeerPID` error must refuse the takeover, never fall back to trusting HELLO-OK.
 - **Reliability first** (memory): a hardening change that can fail must fail toward the old daemon keeping its sessions.
@@ -507,7 +507,7 @@ The CSP, capability tokens and tailnet-only binding are not touched by any item.
 ## Sources
 
 ### Primary (HIGH confidence, files read this session)
-- `/Users/ken/dev/portty/.planning/phases/15-v1-2-hardening/15-CONTEXT.md`, `15-UI-SPEC.md`; the nine todos under `.planning/todos/pending/`; `.planning/config.json`
+- `.planning/phases/15-v1-2-hardening/15-CONTEXT.md`, `15-UI-SPEC.md`; the nine todos under `.planning/todos/pending/`; `.planning/config.json`
 - Go: `cmd_attach.go`, `cmd_attach_resize.go`, `internal/attach/{attach.go,attach_unix.go,attach_test.go,loop.go}`, `internal/statusbar/bar.go`, `internal/relay/{hub.go,history.go,cwd.go,pathclick.go,cwd_test.go,pathclick_test.go,server.go}`, `internal/webserver/{server.go,input_queue_test.go,capability_helpers_test.go}`, `internal/pty/{cleanup.go,session.go,reap_other.go,adopt_test.go,native_test.go}`, `internal/daemon/{ipc.go,handoff.go,engine.go,share.go,tailnet_cache.go,api.go,socket.go,socket_test.go,handoff_test.go}`, `internal/fdpass/{fdpass.go,fdpass_test.go}`, `internal/tailnet/sessions.go`, `app.go`, `app_update.go`, `tray.go`, `tray_objc_darwin.m`, `notification_darwin.go`
 - Frontend: `src/lib/{pathLinks.ts,closeReasons.ts,relayClient.ts,sidebarPeers.ts,tabs.ts}`, `src/components/{TerminalPanel.tsx,SessionEndedBanner.tsx,UpdateBanner.tsx,Sidebar.tsx,TabBar.tsx,WebShareSessionView.tsx}`, `src/App.tsx`, `src/lib/__tests__/pathLinks.linkifier.test.ts`, `frontend/package.json`, `frontend/vite.config.ts`
 - Third-party source on disk: `golang.org/x/sys@v0.46.0/unix/sockcmsg_unix.go`, `github.com/coder/websocket@v1.8.15/dial.go`, `frontend/node_modules/@xterm/xterm/src/browser/Linkifier.ts`

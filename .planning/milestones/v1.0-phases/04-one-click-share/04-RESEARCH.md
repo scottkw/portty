@@ -66,7 +66,7 @@
 
 ## Project Constraints (from CLAUDE.md)
 
-From `/Users/ken/dev/CLAUDE.md`, `/Users/ken/dev/portty/CLAUDE.md` and `/Users/ken/dev/portty/.claude/CLAUDE.md`:
+From `~/dev/CLAUDE.md`, `CLAUDE.md` and `.claude/CLAUDE.md`:
 
 - **TESTING.md standing rule.** Every plan that adds, renames or removes tests updates TESTING.md: Section 2 manifest counts, Section 4 traceability rows (path column is a repo-relative `.go/.ts/.tsx/.sh` path only), and Section 5 manual items for things that can't be automated. Run `bash tests/check-traceability-paths.sh` before committing. It fails on any path that no longer exists, so **a plan that deletes a test file must delete its Section 4 rows in the same commit**.
 - **Chesterton's Fence.** Read each piece and know why it exists before removing it, especially daemon, relay and capability code that kept and removed features share. The "Shared with kept features" column in the removal inventory exists for this.
@@ -110,7 +110,7 @@ No new dependencies. One dependency leaves.
 ### Core (already pinned, verified in go.mod this session)
 | Library | Version | Purpose | Notes |
 |---------|---------|---------|-------|
-| `tailscale.com` | v1.98.3 | `client/local.Client` WhoIs, StatusWithoutPeers, GetCertificate, CertPair | [VERIFIED: go.mod line `tailscale.com v1.98.3`; API read from `/Users/ken/go/pkg/mod/tailscale.com@v1.98.3/client/local/local.go:319-361`] |
+| `tailscale.com` | v1.98.3 | `client/local.Client` WhoIs, StatusWithoutPeers, GetCertificate, CertPair | [VERIFIED: go.mod line `tailscale.com v1.98.3`; API read from `~/go/pkg/mod/tailscale.com@v1.98.3/client/local/local.go:319-361`] |
 | `github.com/coder/websocket` | v1.8.15 | WS server/client, `CloseError{Code, Reason}` | [VERIFIED: go.mod; `close.go:65-68` `type CloseError struct { Code StatusCode; Reason string }`] |
 | Go | go.mod `go 1.26.4`; local toolchain go1.27.4 | — | [VERIFIED: `go version`] |
 
@@ -652,7 +652,7 @@ Orchestrator resolutions, 2026-11-16 (recorded in 04-CONTEXT.md):
 | Go toolchain | build/tests | ✓ | go1.27.4 (go.mod 1.26.4) | — |
 | Node | frontend tests | ✓ | v24.22.1 | — |
 | pnpm | frontend tests | ✓ | 12.6.0 | — |
-| wails CLI | full app build | ✓ | /Users/ken/go/bin/wails | — |
+| wails CLI | full app build | ✓ | ~/go/bin/wails | — |
 | tailscale CLI/daemon (host) | manual checks only | ✓ | /usr/local/bin/tailscale | Tests use fakes |
 | Tart VM `portty-test` | native popover check | per memory; no Tailscale inside | — | Fake Tailscale health in VM |
 | Second Mac on same tailnet account | SHAR-01/03/04/06 end-to-end | ✗ in this environment | — | Deferred two-Mac UAT (TESTING.md Section 5) |

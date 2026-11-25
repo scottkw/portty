@@ -105,7 +105,7 @@ None. No new endpoints or trust-boundary changes. T-02-34: the blocked Start cli
 
 ## Needs VM check
 
-Built app: `/Users/ken/dev/portty/build/bin/agenthub.app` (M-66 in TESTING.md). In Light, then Dark:
+Built app: `build/bin/agenthub.app` (M-66 in TESTING.md). In Light, then Dark:
 
 1. ⌘, opens one sheet under the toolbar, 720×560. On the 720pt-tall VM screen it fits (max height `100vh - 104px` = 616), and only the pane content scrolls, with the header and Done always visible. No Settings tab appears.
 2. Pane tabs: the selected tab has a grey fill and blue icon and label. Mouse and ←/→ (after focusing a tab) switch panes, and the centred title follows.

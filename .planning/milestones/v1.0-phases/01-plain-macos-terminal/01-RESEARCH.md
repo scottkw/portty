@@ -62,7 +62,7 @@ The UI-SPEC locks the visible copy and status visuals. Planners must follow it v
 
 ## Project Constraints (from CLAUDE.md)
 
-From `/Users/ken/dev/CLAUDE.md` (global), `./CLAUDE.md` and `./.claude/CLAUDE.md` (project):
+From `~/dev/CLAUDE.md` (global), `./CLAUDE.md` and `./.claude/CLAUDE.md` (project):
 
 - **Chesterton's Fence:** before removing anything, articulate why it exists. "Can't explain it? Don't touch it." The project CLAUDE.md repeats this for daemon, relay and capability code shared between kept and removed features. The Coupling Map below is written for this rule.
 - **Silent fallbacks forbidden:** `or {}` style fallbacks that hide failures are not allowed. Let it crash. (Relevant: the webserver 404 sentinel, the shell resolver, and the bell-text decode.)

@@ -200,7 +200,7 @@ All steps use absolute-path system tools through the existing `updater.Runner` (
 
 ### First launch from the mounted DMG (move to /Applications, eject, trash)
 
-- **Detect:** `os.Executable()` under a mount point listed by `hdiutil info -plist` (`system-entities[].mount-point`); the same JSON gives `image-path`, the source `.dmg` (Apple DTS: there is no public API; `hdiutil info -plist` is the sanctioned route). Verified: this Mac currently lists `/Users/ken/Downloads/portty-v1.1.0-darwin-universal.dmg` as an image path.
+- **Detect:** `os.Executable()` under a mount point listed by `hdiutil info -plist` (`system-entities[].mount-point`); the same JSON gives `image-path`, the source `.dmg` (Apple DTS: there is no public API; `hdiutil info -plist` is the sanctioned route). Verified: this Mac currently lists `~/Downloads/portty-v1.1.0-darwin-universal.dmg` as an image path.
 - **Do:** same stage, clear-quarantine, verify, swap-or-move steps as above (if `/Applications/Portty.app` does not exist, a plain rename of the staged copy suffices); launch the installed copy with a flag naming the mount point and DMG path.
 - **Eject and trash from the new instance**, not the one running off the volume: `hdiutil detach` fails while the old process executes from it. Trash the downloaded DMG with `NSWorkspace recycleURLs:completionHandler:` (ObjC, matching existing `.m` files; supports Put Back, no Automation prompt). Avoid `osascript tell Finder`, which asks for Automation consent.
 - **Downloads folder TCC:** touching a file in `~/Downloads` may produce a one-time "access files in your Downloads folder" prompt for Portty. Treat a refusal as non-fatal (install still succeeded; leave the DMG).

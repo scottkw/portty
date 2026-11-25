@@ -12,7 +12,7 @@ All analog paths below are git-tracked (checked with `git ls-files`), except the
 |---|---|---|---|---|
 | `spike/desktop/go.mod`, `go.sum` | config | n/a | root `go.mod` (go directive/toolchain pin) | role-match |
 | `spike/desktop/main.go` (subcommands `vmprobe`, `probe`, `daemon-probe`, `register`, `serve`, `host-run`) | entrypoint | request-response / batch | `internal/daemon/process_unix.go` (spawns `exe daemon`) | partial |
-| `spike/desktop/capture_darwin.m` + `.go` (SCStream, PNG dump) | utility (cgo bridge) | streaming | `/Users/ken/dev/portty/appearance_darwin.m` + `appearance_darwin.go` | role-match (bridge shape only) |
+| `spike/desktop/capture_darwin.m` + `.go` (SCStream, PNG dump) | utility (cgo bridge) | streaming | `appearance_darwin.m` + `appearance_darwin.go` | role-match (bridge shape only) |
 | `spike/desktop/encode_darwin.m` + `.go` (VT H.264) | utility (cgo bridge) | streaming/transform | `appearance_darwin.m` + `.go` | role-match |
 | `spike/desktop/opus_darwin.m` + `.go` (AudioConverter) | utility (cgo bridge) | transform | `appearance_darwin.m` + `.go` | role-match |
 | `spike/desktop/sess_darwin.m` + `.go` (CGSession, AX, IOPM, SMAppService) | utility (cgo bridge) | request-response | `terminate_darwin.m` + `terminate_darwin.go` | role-match |
@@ -30,7 +30,7 @@ All analog paths below are git-tracked (checked with `git ls-files`), except the
 
 ### cgo ObjC bridge files: `capture_darwin.*`, `encode_darwin.*`, `opus_darwin.*`, `sess_darwin.*`
 
-**Analog:** `/Users/ken/dev/portty/appearance_darwin.go` and `appearance_darwin.m` (also `terminate_darwin.*`, `about_darwin.*`, `tray_objc_darwin.m`).
+**Analog:** `appearance_darwin.go` and `appearance_darwin.m` (also `terminate_darwin.*`, `about_darwin.*`, `tray_objc_darwin.m`).
 
 **Go side: cgo preamble** (appearance_darwin.go:1-14). The Go file declares the C prototypes and links frameworks; the ObjC lives in a sibling `.m` so cgo compiles it once:
 ```go
@@ -70,7 +70,7 @@ Copy: one C function per capability, `dispatch_async` (never `dispatch_sync`) on
 
 ### `spike/desktop/main.go` (entrypoint, subcommands) and the launch-path code
 
-**Analog:** `/Users/ken/dev/portty/internal/daemon/process_unix.go:23-54` (GUI-spawned Setsid path C, as production does it).
+**Analog:** `internal/daemon/process_unix.go:23-54` (GUI-spawned Setsid path C, as production does it).
 ```go
 func startDetachedDaemon(exe string) (exited <-chan struct{}, kill func(), err error) {
 	cmd := exec.Command(exe, "daemon")
@@ -98,7 +98,7 @@ Copy for path C: `exec.Command(exe, "daemon-probe")` + `Setsid: true` + stdout/s
 
 ### `spike/desktop/server.go` (service, request-response + streaming)
 
-**Analog:** `/Users/ken/dev/portty/internal/webserver/server.go:345-380` (tailnet bind guard) and `internal/webserver/whois.go` (LocalAPI WhoIs; the spike does NOT call it, per RESEARCH "spike never queries LocalAPI").
+**Analog:** `internal/webserver/server.go:345-380` (tailnet bind guard) and `internal/webserver/whois.go` (LocalAPI WhoIs; the spike does NOT call it, per RESEARCH "spike never queries LocalAPI").
 
 **Bind-address check to copy, but stricter** (server.go:348-380):
 ```go
@@ -122,7 +122,7 @@ Spike difference (R23): the production check only warns; the spike's `--bind` mu
 
 ### `spike/desktop/packaging/sign.sh` and bundle templates
 
-**Analog:** `/Users/ken/dev/portty/.github/workflows/release.yml:205-210` and `/Users/ken/dev/portty/build/entitlements.plist`.
+**Analog:** `.github/workflows/release.yml:205-210` and `build/entitlements.plist`.
 ```bash
 codesign --deep --force --verbose \
   --options runtime \
@@ -147,13 +147,13 @@ Helper plist and bundle layout: take verbatim from RESEARCH "SMAppService helper
 
 ### `.gitignore` (edit)
 
-**Analog:** existing lines in `/Users/ken/dev/portty/.gitignore` (`/portty`, `build/bin/`). Add one line `spike/desktop/build/` in the same commit as the spike scaffold. Note the working tree already shows `.gitignore` modified and an untracked `agenthub` entry and `.ignore`; do not fold those into the spike commit.
+**Analog:** existing lines in `.gitignore` (`/portty`, `build/bin/`). Add one line `spike/desktop/build/` in the same commit as the spike scaffold. Note the working tree already shows `.gitignore` modified and an untracked `agenthub` entry and `.ignore`; do not fold those into the spike commit.
 
 ---
 
 ### `TESTING.md` (edit): new Category BH, M-157 onward
 
-**Analog:** Category BG block, `/Users/ken/dev/portty/TESTING.md:1888-1900`. Exact shape to copy:
+**Analog:** Category BG block, `TESTING.md:1888-1900`. Exact shape to copy:
 ```markdown
 ### Category BG — v1.2 Cleanup (Phase 16)
 
@@ -179,7 +179,7 @@ Also add a Phase 17 note in the Section 2 header notes (like the line-38 note fo
 
 ### VM drive scripts (scratch use)
 
-**Analog:** `/Users/ken/.local/share/portty-vm-tools/` (outside the repo; do not track copies of these into `spike/`).
+**Analog:** `~/.local/share/portty-vm-tools/` (outside the repo; do not track copies of these into `spike/`).
 
 `vm.sh` (whole file) is the SSH wrapper; note the VM IP is hard-coded and must be updated after each boot via `tart ip`:
 ```bash
@@ -196,7 +196,7 @@ Gotchas: both scripts hard-code a stale scratchpad path in `S=` (an old session 
 ## Shared Patterns
 
 ### check-brand gate
-**Source:** `/Users/ken/dev/portty/tests/check-brand.sh:34-67`
+**Source:** `tests/check-brand.sh:34-67`
 **Apply to:** every tracked file under `spike/` and `TESTING.md` (the gate skips only `.planning/`).
 Banned in tracked files outside `.planning/`: the old product name (case-insensitive, also in file names; note the untracked `agenthub` dir already at the repo root is not tracked, so not flagged), the macOS package manager name and "install/tap" phrasing (`internal/daemon/path.go` exempt), any `github.com/scottkw/<repo>` link other than `portty`, the VM-only build tags (`vmpr`+`eview`, `vmwh`+`ois`) under `.github`, `build.sh`, `scripts`, and an import of the `webservertest` package by non-test Go. Also never write the ffmpeg absolute path (it contains the banned word); call `ffmpeg` from PATH. When describing the banned words in notes under `spike/`, split or avoid them. Run `bash tests/check-brand.sh` before and after.
 
@@ -205,7 +205,7 @@ Banned in tracked files outside `.planning/`: the old product name (case-insensi
 **Apply to:** all `spike/desktop/**/*.go`. Own `go.mod` (module `portty-spike-desktop`); never import `portty/...` packages; copy small helpers rather than import. Gate: `go list ./...` at repo root lists no `spike` package; `git diff main --stat` outside `spike/`, `.planning/`, `TESTING.md`, `.gitignore` is empty; no change to `release.yml`, `build/`, `Info.plist`.
 
 ### Fail loudly
-**Source:** project `/Users/ken/dev/CLAUDE.md` ("Silent Fallbacks"). **Apply to:** all probes. Record the NSError code/domain and exit non-zero; no `or {}` style defaults.
+**Source:** project `~/dev/CLAUDE.md` ("Silent Fallbacks"). **Apply to:** all probes. Record the NSError code/domain and exit non-zero; no `or {}` style defaults.
 
 ### Go conventions
 `go fmt`, context-aware functions (`ctx context.Context` first arg), `log/slog` key/value logging as in `internal/webserver`. Test command baseline: `GOTOOLCHAIN=go1.26.11 go test -race -short ./...`.

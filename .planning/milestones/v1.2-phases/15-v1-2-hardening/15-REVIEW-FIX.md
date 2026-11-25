@@ -1,7 +1,7 @@
 ---
 phase: 15-v1-2-hardening
 fixed_at: 2026-11-23T15:25:00Z
-review_path: /Users/ken/dev/portty/.planning/phases/15-v1-2-hardening/15-REVIEW.md
+review_path: .planning/phases/15-v1-2-hardening/15-REVIEW.md
 iteration: 3
 findings_in_scope: 1
 fixed: 1
@@ -12,7 +12,7 @@ status: all_fixed
 # Phase 15: Code Review Fix Report
 
 **Fixed at:** 2026-11-23T15:25:00Z
-**Source review:** /Users/ken/dev/portty/.planning/phases/15-v1-2-hardening/15-REVIEW.md
+**Source review:** .planning/phases/15-v1-2-hardening/15-REVIEW.md
 **Iteration:** 3
 
 **Summary:**

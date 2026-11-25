@@ -58,7 +58,7 @@
 
 ## Project Constraints (from CLAUDE.md)
 
-- `./CLAUDE.md` chain read: `/Users/ken/dev/CLAUDE.md`, `/Users/ken/dev/portty/CLAUDE.md`, `/Users/ken/dev/portty/.claude/CLAUDE.md`. Directives that bear on this phase:
+- `./CLAUDE.md` chain read: `~/dev/CLAUDE.md`, `CLAUDE.md`, `.claude/CLAUDE.md`. Directives that bear on this phase:
 - **TESTING.md is the regression home.** Every phase that adds tests updates it: Section 2 manifest counts, Section 4 traceability rows (path column is a repo-relative file path only, `.go/.ts/.tsx/.sh`), Section 5 manual `M-NN` items for anything not automatable. Run `bash tests/check-traceability-paths.sh` before committing. Last Category is AZ (M-116..M-120); this phase is Category BA starting at M-121. Current counts: Go 152, vitest 95, Playwright 7, build-script 1, total 255 [VERIFIED: TESTING.md:24-36].
 - **Chesterton's Fence / deletion discipline**; **security: keep token-gated tailnet-only share links and the CSP intact**; **macOS only**; **keep inherited stack** (Go/Wails/React/tsnet); **no new relay servers or cloud dependencies**.
 - Python/FastAPI rules are irrelevant here. Frontend: pnpm, TypeScript, ESLint + Prettier. Go: `ctx` aware, `go fmt`, golangci-lint.

@@ -61,7 +61,7 @@ Scope note: WR-04 carries `**Category:** necessity`, which `critical_warning` no
 
 ## Verification
 
-All gates ran in the main checkout (`/Users/ken/dev/portty`, branch `gsd/phase-03-portty-brand`) after the last fix commit. There was no worktree.
+All gates ran in the main checkout (`the repo root`, branch `gsd/phase-03-portty-brand`) after the last fix commit. There was no worktree.
 
 - `go build ./... && go vet ./... && go test -race -short ./...`: passed, no failing packages
 - `pnpm -C frontend exec tsc --noEmit`: passed
