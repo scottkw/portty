@@ -5,6 +5,9 @@ area: release
 files: []
 ---
 
+## Status
+FILED 2026-11-25 via https://developer.apple.com/contact/request/persistent-content-capture/ — Request ID T558S9Q5B3. App ID app.portty.Portty registered in Certificates, Identifiers & Profiles the same day (form rejects unregistered bundle IDs). App Store URL field: GitHub releases page; App Apple ID: N/A (Developer ID). Waiting on Apple (reported weeks to 2+ months). When granted: Phase 23 adds the provisioning profile to signing (Future Requirements).
+
 ## Problem
 macOS 15+ asks monthly to re-approve Screen Recording. On the unattended office Mac nobody can click it, so desktop sharing stops until someone is at the Mac. The restricted entitlement `com.apple.developer.persistent-content-capture` is the only Apple-sanctioned fix; requests reportedly take 2+ months.
 
