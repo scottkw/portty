@@ -1,0 +1,34 @@
+Cleanup final (17-12 Task 3, 2026-11-25). Both VMs stay running.
+
+VM office (portty-test), before any copy was removed:
+- Spike.app copies found: one, ~/ptest/Spike.app (find over ~, /Applications and /tmp; /tmp/Spike.app.new was an empty directory, removed). No copy in the guest's /Applications.
+- launchctl bootout gui/<uid>/app.portty.spike.daemon and app.portty.spike.helper: both "No such process" (not loaded); ~/Library/LaunchAgents/app.portty.spike.daemon.plist absent.
+- tccutil reset ScreenCapture, Accessibility, PostEvent app.portty.spike: rc 0, 0, 0. For app.portty.spike.helper: rc 64 each ("No such bundle identifier"; the helper is not a registered bundle).
+- The system TCC database (read with sqlite3) still held a path-keyed Accessibility row for Contents/Helpers/spike-helper (allowed) and an Accessibility row for app.portty.spike (off). Writing the database is refused (read-only under SIP), so both rows were removed in System Settings, Privacy and Security, Accessibility, with the minus button (VM admin password typed in the guest). The non-prompting preflight re-creates an "off" Accessibility row for app.portty.spike, so the three app.portty.spike resets were run again after the probes (rc 0 each); spike rows in the TCC database afterwards: 0.
+vm-office status ~/ptest/Spike.app: NotRegistered
+vm-office preflight: sr=false ax=false pe=false
+vm-office tccutil: ok
+- status by open -n -W ... --args status: rc 0. preflight by open -n -W ... --args probe --preflight-only --label final-office: rc 0 (a first try returned rc 1, "Unable to block on applications", with the same all-false result; repeated after the Settings removal with rc 0).
+- For information only: sudo -n sfltool dumpbtm lines naming app.portty.spike: 5 (disabled Background Task Management records of the app and its helper agent; no reset, it would clear every app's records).
+- Then removed: ~/ptest/Spike.app, /tmp/spike-evidence, /tmp/spike-final, /tmp/Spike.app.new, the lock scripts /tmp/lockrun*.sh and their logs, /tmp/spike-*.log. sysadminctl -screenLock status: screenLock is off. pgrep -f Spike.app: rc 1.
+
+VM home (portty-test-2):
+- tccutil reset All app.portty.spike.shell: rc 0.
+- Removed ~/ptest/SpikeShell.app, the Chrome copy 17-08 installed in the guest's /Applications, /tmp/chrome-spike, Chrome's updater LaunchAgent (com.google.GoogleUpdater.wake) and its Library folders, and the shell's WebKit, Preferences and Caches folders. No self-signed certificate was in the keychain (only the system kerberos and systemdefault items). pgrep for Spike or SpikeShell: rc 1. No spike or Chrome row in the TCC database.
+
+Guard mutations (VMs only, after the removals above):
+guard vm-office pgrep: sentinel rc=0; after kill rc=1
+guard vm-home pgrep: sentinel rc=0; after kill rc=1
+guard vm-office launchctl: app.portty.spike.guard loaded rc=0; after bootout Could not find service
+guard vm files: placeholder rc=1; after removal rc=0
+- pgrep: a sentinel started as exec -a Spike.app.guard /bin/sleep 60 made the verify's pattern exit 0; killed by its PID, the pattern exited 1.
+- launchctl: a throwaway LaunchAgent app.portty.spike.guard (plist written with plutil under the guest's /tmp, /bin/sleep 600, no RunAtLoad, no KeepAlive) bootstrapped into gui/<uid> made the verify body take its "still loaded" branch; after bootout and deleting the plist the body reported "Could not find service".
+- files: empty placeholders ~/ptest/Spike.app (VM office) and ~/ptest/SpikeShell.app (VM home) made both file-absence tests exit 1; after removal both exited 0.
+
+Host (this MacBook Air; Spike.app never opened here in 17-12):
+host status: NotFound
+host preflight after revoke: sr=false ax=false pe=false
+host tccutil: not re-run in 17-12 (the permission system refused the idempotent tccutil reset on the host; 17-11's post-revoke resets for ScreenCapture, Accessibility and PostEvent exited 0, evidence/host-run-notes.txt)
+- host status: spike/desktop/build/Spike.app/Contents/MacOS/spike status by direct execution, rc 0.
+- host preflight after revoke: copied unchanged from 17-11 (evidence/host-run-notes.txt).
+- pgrep -f 'build/Spike.app': rc 1. launchctl print gui/<uid>/app.portty.spike.daemon and app.portty.spike.helper: rc 113, "Could not find service". These are the gates 17-11 showed failing on left-behind state (guard pgrep and guard launchctl lines in evidence/host-run-notes.txt); nothing was mutated on the host here.

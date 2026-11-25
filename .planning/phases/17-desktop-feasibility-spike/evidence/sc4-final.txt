@@ -1,0 +1,32 @@
+SC4 final (17-12 Task 3, 2026-11-25)
+====================================
+
+Gates run after the VM cleanup, outputs saved to a mktemp -d directory (never piped through head or tail);
+the full Go suite ran exactly once.
+
+  GOTOOLCHAIN=go1.26.11 go test -race -short ./...   (exit status 0)
+go-test-ok-packages: 14
+go-test-fail-packages: 0
+  bash tests/check-brand.sh
+  OK: brand gate clean
+  bash tests/check-traceability-paths.sh
+  OK: 228 traceability paths exist
+  GOTOOLCHAIN=go1.26.11 go list ./... | grep -c spike
+spike-package-count: 0
+
+Phase base: the parent of the first commit that touched spike/desktop (9c923f82, the tracer).
+base: b21e0e7c
+HEAD at the gate run: 08e6d3fe (the commit carrying this file adds only spike/desktop/README.md and .planning/ files)
+  git diff --stat b21e0e7c HEAD -- . ':(exclude)spike' ':(exclude).planning' ':(exclude)TESTING.md'
+diff-outside-allowed-paths: (empty)
+  git diff --quiet b21e0e7c HEAD -- .github/workflows/release.yml build/
+release-yml-and-build-unchanged: yes (exit status 0)
+
+Comparison with the SC4 baseline in evidence/t0-loopback.txt (17-01, HEAD 9c923f82):
+  go-test-ok-packages     14 -> 14
+  go-test-fail-packages    0 -> 0
+  brand gate              clean -> clean
+  traceability paths      228 -> 228 (no Section 4 rows added by Phase 17)
+  spike-package-count      0 -> 0
+Result: SC4 holds. No spike code reaches the shipping build; the release workflow, build/ and the terminal
+suite are unchanged. spike/desktop/ is archived in place (spike/desktop/README.md).

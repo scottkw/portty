@@ -4,6 +4,8 @@ Purpose: the go/no-go matrix for the desktop feasibility spike (FEAS-01) and the
 
 Results (17-12, 2026-11-25): 24 base rows: 19 GO, 2 NO-GO (R06, R18), 3 PARTIAL (R01 and R08 user-accepted at the closure checkpoint, R19 context-unanswerable); 30 sub-rows: 25 GO, 2 NO-GO (R18-vm, R18-host), 3 PARTIAL (R01-vm, R01-host, R08-D). Rigs: VM office and VM home (Tart, macOS 27.2, 26B123) and the host MacBook Air (Apple M3, macOS 27.2.1, 26B131). FEAS-02: DECIDED, capture host in-daemon (rule row 7).
 
+SC4 (17-12): holds. Go suite 14 ok and 0 failed packages, brand gate clean, 228 traceability paths, 0 spike packages in the root module, nothing outside spike/, .planning/ and TESTING.md changed since the phase base, release.yml and build/ unchanged (evidence/sc4-final.txt). spike/desktop archived in place (README.md). VMs cleaned and still running (evidence/cleanup-final.txt).
+
 How to read: each row in `## Rows` is one question with the rig it runs on, its procedure (which also says what GO means), its result, the evidence file that backs the result, the requirement a NO-GO changes, and a follow-up M-NN item when something stays open. Raw artifacts live under `evidence/`. `## FEAS-02 decision rule` was fixed before the first probe and is not edited afterwards; `## FEAS-02 decision` is written last, by 17-12.
 
 ## Rigs
