@@ -1054,6 +1054,37 @@ const char *spk_sck_stats(void) {
 	return jsonC(o, &gStatsData);
 }
 
+// Encode latency of the samples recorded since `since` (the "next" of the
+// previous call, 0 for the first): {"n","mean","p95","max","next"}, plus
+// "truncated" when the ring had already dropped some of them. host-run reads it
+// once per perf sample so its static and motion windows get their own figures.
+static NSData *gLatData;
+const char *spk_sck_lat_since(long since) {
+	pthread_mutex_lock(&gStatLock);
+	long total = gLatN;
+	long first = since < 0 || since > total ? 0 : since;
+	BOOL truncated = total - first > kLatRing;
+	if (truncated) first = total - kLatRing;
+	long n = total - first;
+	double *lat = n > 0 ? malloc(n * sizeof(double)) : NULL;
+	for (long i = 0; i < n && lat != NULL; i++) lat[i] = gLat[(first + i) % kLatRing];
+	pthread_mutex_unlock(&gStatLock);
+
+	NSMutableDictionary *o = [NSMutableDictionary dictionaryWithDictionary:@{@"n" : @(lat != NULL ? n : 0), @"next" : @(total)}];
+	if (truncated) o[@"truncated"] = @YES;
+	if (lat != NULL) {
+		double sum = 0;
+		for (long i = 0; i < n; i++) sum += lat[i];
+		qsort(lat, (size_t)n, sizeof(double), cmpDouble);
+		long p95 = (long)ceil(0.95 * n) - 1;
+		o[@"mean"] = @(sum / n);
+		o[@"p95"] = @(lat[p95 < 0 ? 0 : p95]);
+		o[@"max"] = @(lat[n - 1]);
+		free(lat);
+	}
+	return jsonC(o, &gLatData);
+}
+
 const char *spk_png_error(void) {
 	return gPngErr;
 }

@@ -19,6 +19,7 @@ const usage = `usage: spike <command> [flags]
 
 commands:
   serve       run the pion server (token-gated viewer, /offer, /report)
+  host-run    serve --source sck with a test chart, a timeline and scheduled display sleep, wake and typing
   selftest    run synthetic frames through the encoder and pion to a Go receiver
   vmprobe     R00: ScreenCaptureKit frames, IOSurface and VideoToolbox encoders (--encoders-only is host-safe)
   probe       one probe record: ids, session, TCC answers, capture (--no-tcc is host-safe; --preflight-only never prompts)
@@ -47,6 +48,8 @@ func dispatch(ctx context.Context, cmd string, args []string) (found bool, err e
 	switch cmd {
 	case "serve":
 		err = serve(ctx, args)
+	case "host-run":
+		err = hostRunCmd(ctx, args)
 	case "selftest":
 		err = selftest(ctx, args)
 	case "vmprobe":

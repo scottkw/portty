@@ -94,6 +94,11 @@ type serveOpts struct {
 	tlsKey      string
 	spsPatch    bool
 	quietToken  bool // selftest keeps its throwaway token off stdout
+
+	// Optional host-run hooks; serve leaves them nil.
+	control   func(dc *webrtc.DataChannel, msg string) bool // true when msg was handled
+	peerState func(peer, state string)                      // peer is a per-offer counter, state a PeerConnectionState
+	tap       func(au accessUnit)                           // every access unit, just before it is written to the track
 }
 
 // listenInfo tells an in-process caller where the server ended up (ports may be 0 in opts).
@@ -108,6 +113,8 @@ type server struct {
 	bind  netip.Addr
 	mux   *ice.UDPMuxDefault
 	track *webrtc.TrackLocalStaticSample
+
+	peerSeq atomic.Uint64
 
 	mu  sync.Mutex
 	pcs map[*webrtc.PeerConnection]struct{}
@@ -280,6 +287,9 @@ func (s *server) pump(ctx context.Context) {
 			if s.opts.spsPatch {
 				patchSPS(au.data)
 			}
+			if s.opts.tap != nil {
+				s.opts.tap(au)
+			}
 			if err := s.track.WriteSample(media.Sample{Data: au.data, Duration: now.Sub(last)}); err != nil {
 				slog.Error("write sample", "err", err)
 			}
@@ -378,14 +388,23 @@ func (s *server) offer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go rtcpLoop(sender)
+	peer := strconv.FormatUint(s.peerSeq.Add(1), 10)
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		if dc.Label() != "control" {
 			return
 		}
-		dc.OnMessage(func(m webrtc.DataChannelMessage) { handleControl(dc, m) })
+		dc.OnMessage(func(m webrtc.DataChannelMessage) {
+			if s.opts.control != nil && m.IsString && s.opts.control(dc, string(m.Data)) {
+				return
+			}
+			handleControl(dc, m)
+		})
 	})
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
 		slog.Info("peer state", "state", st.String(), "ice", iceMode)
+		if s.opts.peerState != nil {
+			s.opts.peerState(peer, st.String())
+		}
 		switch st {
 		case webrtc.PeerConnectionStateConnected:
 			forceKeyframe() // a joining viewer needs an IDR now
@@ -444,7 +463,7 @@ func rtcpLoop(sender *webrtc.RTPSender) {
 }
 
 // handleControl answers ping:<n> with pong:<n> and ignores everything else.
-// Input (key, wake) arrives behind --allow-input in a later plan.
+// host-run handles wake, motion and key messages before this (opts.control).
 func handleControl(dc *webrtc.DataChannel, m webrtc.DataChannelMessage) {
 	if !m.IsString {
 		return

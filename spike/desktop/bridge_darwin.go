@@ -9,9 +9,10 @@ package main
 // files such as appearance_darwin.m.
 
 /*
+#include <stdint.h>
 #include <stdlib.h>
 #cgo darwin CFLAGS: -x objective-c -fobjc-arc -mmacosx-version-min=14.0
-#cgo darwin LDFLAGS: -framework Foundation -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework ScreenCaptureKit -framework CoreGraphics -framework ImageIO -framework ApplicationServices -framework IOKit -framework ServiceManagement -framework AudioToolbox
+#cgo darwin LDFLAGS: -framework Foundation -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework ScreenCaptureKit -framework CoreGraphics -framework ImageIO -framework ApplicationServices -framework IOKit -framework ServiceManagement -framework AudioToolbox -framework AppKit
 
 // Implemented in media_darwin.m. Every int result is 0 or an OSStatus.
 int spk_encoder_start(int width, int height, int fps, int bitrate);
@@ -33,6 +34,18 @@ const char *spk_displays(void);
 // Opus and system audio, also in media_darwin.m (JSON results as above).
 const char *spk_opus_sine(int seconds);
 const char *spk_audio_stats(void);
+
+// Encode latency of the samples since a previous "next" (media_darwin.m).
+const char *spk_sck_lat_since(long since);
+
+// Implemented in hostrun_darwin.m (host-run: test chart, app loop, process accounting).
+void spk_chart_show(int show);
+void spk_chart_motion(int on);
+void spk_app_run(void);
+void spk_app_stop(void);
+int spk_display_asleep(void);
+int spk_rusage_ticks(uint64_t *user, uint64_t *sys, uint64_t *rss);
+void spk_mach_timebase(uint32_t *numer, uint32_t *denom);
 
 // Implemented in sys_darwin.m.
 int spk_sr_preflight(void);
@@ -193,4 +206,47 @@ func smapp(verb, plist string) string {
 	defer C.free(unsafe.Pointer(cv))
 	defer C.free(unsafe.Pointer(cp))
 	return C.GoString(C.spk_smapp(cv, cp))
+}
+
+// userActivity declares user activity, which wakes a sleeping display; the IOReturn, 0 on success.
+func userActivity() int { return int(C.spk_user_activity()) }
+
+// displayAwake holds or releases a no-display-sleep assertion; the IOReturn.
+func displayAwake(on bool) int { return int(C.spk_display_awake(cBool(on))) }
+
+// latSince returns the pinned latency-window JSON for the samples after since.
+func latSince(since int64) string { return C.GoString(C.spk_sck_lat_since(C.long(since))) }
+
+func chartShow(on bool) { C.spk_chart_show(cBool(on)) }
+
+func chartMotion(on bool) { C.spk_chart_motion(cBool(on)) }
+
+// appRun blocks running NSApplication on the calling thread (the main one) until appStop.
+func appRun() { C.spk_app_run() }
+
+func appStop() { C.spk_app_stop() }
+
+func displayAsleep() bool { return C.spk_display_asleep() != 0 }
+
+func cBool(b bool) C.int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// rusageTicks returns this process's user and system CPU time (mach ticks) and resident bytes.
+func rusageTicks() (user, sys, rss uint64, err error) {
+	var u, s, r C.uint64_t
+	if rc := C.spk_rusage_ticks(&u, &s, &r); rc != 0 {
+		return 0, 0, 0, fmt.Errorf("proc_pid_rusage failed (code %d)", int(rc))
+	}
+	return uint64(u), uint64(s), uint64(r), nil
+}
+
+// machTimebase returns the mach_timebase_info numerator and denominator.
+func machTimebase() (numer, denom uint32) {
+	var n, d C.uint32_t
+	C.spk_mach_timebase(&n, &d)
+	return uint32(n), uint32(d)
 }
