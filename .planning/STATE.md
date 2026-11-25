@@ -5,16 +5,16 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: Completed 17-09-PLAN.md
-last_updated: "2026-11-25T05:09:26.845Z"
+stopped_at: Completed 17-07-PLAN.md
+last_updated: "2026-11-25T05:26:22.577Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 17 execution started
-state_head: 9d68f2745829569ab67aab6d4567316c8c1c6b8e
+state_head: 3754d5bba78312f57cd4f7d69ba1480d3168312e
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 12
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -163,6 +163,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 17 P05 | 31min | 2 tasks | 10 files |
 | Phase 17 P06 | 36min | 2 tasks | 14 files |
 | Phase 17 P09 | 33 min | 3 tasks | 9 files |
+| Phase 17 P07 | 16 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -380,6 +381,7 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-06: R15 and R17 GO for both shapes with the display held awake; the unaided lock loses the SCK stream at about 31 s (SCError -3815) when the guest display turns off
 - [Phase 17]: 17-06: provisional FEAS-02 outcome in-daemon by row 7, Pipeline shape: daemon; R16-B PARTIAL (typing unlocked 2 of 3 daemon attempts, 3 of 3 helper attempts)
 - [Phase 17]: 17-09: R21 GO (AudioConverter Opus at 960 frames per packet, SCK delivers system audio in the guest); R19 PARTIAL (monthly prompt is the picker-bypass dialog on a fresh start with an aged approval, frames flow under it, a replayd restart silently freezes a running stream, so a zero-frame check alone cannot detect expiry)
+- [Phase 17]: 17-07: R01-vm is PARTIAL on a DERP-relayed tailnet path (SC1 clause not shown); R11 lite and full, R22 and R23 GO; viewer.html sends null when canvas readback fails
 
 ### Pending Todos
 
@@ -504,8 +506,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-25T05:09:26.820Z
-Stopped at: Completed 17-09-PLAN.md
+Last session: 2026-11-25T05:26:22.551Z
+Stopped at: Completed 17-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
