@@ -2,6 +2,7 @@
 # p18-rig.sh: two-build VM rig for the Phase 18 self-installing update (18-08).
 #
 #   build VERSION OUTDIR   host: wails build a vmpreview app of VERSION into OUTDIR/Portty.app
+#   sign APP_DIR           host: Developer ID sign APP_DIR/Portty.app like release.yml (scratch copies only)
 #   deploy-n APP           VM: wipe Portty and its update leftovers, install the host app dir APP
 #   dmg APP VERSION        VM: make ~/p18/portty-vVERSION-darwin-universal.dmg from the host app dir APP
 #   feed VERSION           VM: (re)start fakegh serving that DMG as the newer release on 127.0.0.1:8788
@@ -49,6 +50,24 @@ cmd_build() {
     -ldflags "-X main.Version=v$ver"
   mkdir -p "$out"
   cp -R build/bin/Portty.app "$out/Portty.app"
+}
+
+cmd_sign() {
+  [ $# -eq 1 ] && [ -d "$1/Portty.app/Contents" ] || die "usage: sign APP_DIR (signs APP_DIR/Portty.app)"
+  local dir scratch hash
+  dir=$(cd "$1" && pwd -P)
+  scratch=$(mkdir -p "$SCRATCH" && cd "$SCRATCH" && pwd -P)
+  case "$dir/" in "$scratch"/*) ;; *) die "sign: APP_DIR must be under the rig scratch dir $SCRATCH" ;; esac
+  # Read-only lookup; the identity is picked by team ID and never printed.
+  hash=$(security find-identity -v -p codesigning | awk '/"Developer ID Application: .*\(S2K7P43927\)"$/ {print $2; exit}')
+  if [ -z "$hash" ]; then
+    echo "identity=none"
+    return 1
+  fi
+  echo "identity=found"
+  # release.yml's "Sign .app with hardened runtime" step, verbatim apart from the identity.
+  cd "$ROOT"
+  codesign --deep --force --verbose --options runtime --timestamp --entitlements build/entitlements.plist --sign "$hash" "$dir/Portty.app"
 }
 
 cmd_deploy_n() {
@@ -111,6 +130,7 @@ imgs=$(hdiutil info | grep '^image-path' || true)
 echo "attached_images=$(printf '%s' "$imgs" | grep -c . || true)"
 echo "cache_dmgs=$(count "$CACHE"/*.dmg)"
 echo "staging_dirs=$(( $(count /Applications/.Portty-update-*) + $(count "$HOME"/Applications/.Portty-update-*) ))"
+echo "run_dirs=$(count "$CFG"/update/run-*)"
 echo "--- gui pids and executables"
 for p in $guis; do echo "$p $(ps -p "$p" -o args= | cut -d' ' -f1)"; done
 echo "--- daemon pids and executables"
@@ -121,6 +141,8 @@ echo "--- update cache"
 ls -la "$CACHE" 2>&1
 echo "--- staging dirs"
 ls -d /Applications/.Portty-update-* "$HOME"/Applications/.Portty-update-* 2>/dev/null
+echo "--- run dirs"
+ls -d "$CFG"/update/run-* 2>/dev/null
 echo "--- update.log tail"
 tail -n 30 "$CFG/update.log" 2>&1
 exit 0
@@ -145,11 +167,12 @@ sub=${1:-}
 [ $# -gt 0 ] && shift
 case "$sub" in
   build) cmd_build "$@" ;;
+  sign) cmd_sign "$@" ;;
   deploy-n) cmd_deploy_n "$@" ;;
   dmg) cmd_dmg "$@" ;;
   feed) cmd_feed "$@" ;;
   state) cmd_state "$@" ;;
   quit-gui) cmd_quit_gui ;;
   clean) cmd_clean ;;
-  *) die "usage: $0 build|deploy-n|dmg|feed|state|quit-gui|clean ..." ;;
+  *) die "usage: $0 build|sign|deploy-n|dmg|feed|state|quit-gui|clean ..." ;;
 esac

@@ -59,8 +59,8 @@ func bundleForUpdates() string {
 }
 
 // installerStartWait bounds spawn to started marker only: the download, verify, staging and the
-// installer copy all happen before the clock starts. 18-10 Task 2 measures spawn-to-marker on a
-// signed build in the VM; the deadline keeps at least 2x headroom over it.
+// installer copy all happen before the clock starts. 18-10 Task 2 measured spawn-to-marker at
+// 417 ms on a Developer ID build in the VM (row P2d-bundle), so 3 s keeps over 2x headroom.
 const installerStartWait = 3 * time.Second
 
 // installerCopyTimeout bounds copyBundle (ditto, the codesign check, the quarantine strip).

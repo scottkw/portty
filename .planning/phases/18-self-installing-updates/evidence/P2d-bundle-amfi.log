@@ -1,0 +1,4 @@
+Timestamp                       (process)[PID]    
+2026-11-25 23:46:24.458423+0000  localhost mds[122]: [com.apple.libsystem.sandbox:] sandbox_extension_issue_file failed for /System/Volumes/Data~/Library/Application Support/portty/update/run-105523544/started: 2 (No such file or directory)
+2026-11-25 23:46:24.856629+0000  localhost mds[122]: [com.apple.libsystem.sandbox:] sandbox_extension_issue_file failed for /System/Volumes/Data~/Library/Application Support/portty/update/run-105523544/Portty.app: 2 (No such file or directory)
+2026-11-25 23:46:25.501121+0000  localhost mds[122]: [com.apple.libsystem.sandbox:] sandbox_extension_issue_file failed for /System/Volumes/Data~/Library/Application Support/portty/update/run-105523544/job.json: 2 (No such file or directory)
