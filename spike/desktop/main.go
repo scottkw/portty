@@ -1,6 +1,7 @@
 // Command spike is the throwaway desktop-feasibility binary: a pion server
-// (serve) and its loopback receiver (selftest). It is a separate module and is
-// never imported by the app.
+// (serve), its loopback receiver (selftest), and the R00 and permission probes
+// every launch path runs. It is a separate module and is never imported by the
+// app.
 package main
 
 import (
@@ -17,9 +18,17 @@ import (
 const usage = `usage: spike <command> [flags]
 
 commands:
-  serve     run the pion server (token-gated viewer, /offer, /report)
-  selftest  run synthetic frames through the encoder and pion to a Go receiver
-  vmprobe   R00: ScreenCaptureKit frames, IOSurface and VideoToolbox encoders (--encoders-only is host-safe)
+  serve       run the pion server (token-gated viewer, /offer, /report)
+  selftest    run synthetic frames through the encoder and pion to a Go receiver
+  vmprobe     R00: ScreenCaptureKit frames, IOSurface and VideoToolbox encoders (--encoders-only is host-safe)
+  probe       one probe record: ids, session, TCC answers, capture (--no-tcc is host-safe; --preflight-only never prompts)
+  probe-loop  a probe record every --interval, appended as JSONL (--stream keeps one SCStream)
+  agent       run the subcommand named by --config <json> (the launchd entry of both plists)
+  spawn       re-exec this binary detached in its own session: spawn [--quit-after] -- <argv>
+  register    SMAppService register of the helper agent plist
+  unregister  SMAppService unregister of the helper agent plist
+  status      SMAppService status of the helper agent plist (no TCC call)
+  swap        exchange two paths atomically (RENAME_SWAP): swap <a> <b>
 `
 
 func newFlagSet(name string) *flag.FlagSet {
@@ -32,23 +41,44 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
 }
 
+// dispatch runs one subcommand; found is false for an unknown name.
+func dispatch(ctx context.Context, cmd string, args []string) (found bool, err error) {
+	switch cmd {
+	case "serve":
+		err = serve(ctx, args)
+	case "selftest":
+		err = selftest(ctx, args)
+	case "vmprobe":
+		err = vmprobe(ctx, args)
+	case "probe":
+		err = probeCmd(ctx, args)
+	case "probe-loop":
+		err = probeLoop(ctx, args)
+	case "agent":
+		err = agent(ctx, args)
+	case "spawn":
+		err = spawn(ctx, args)
+	case "register", "unregister", "status":
+		err = smappCmd(cmd)(ctx, args)
+	case "swap":
+		err = swap(ctx, args)
+	default:
+		return false, nil
+	}
+	return true, err
+}
+
 func run(args []string, stderr io.Writer) int {
-	if len(args) == 0 {
+	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
+		// A bare invocation is a request for help, so it exits 0.
 		_, _ = fmt.Fprint(stderr, usage)
-		return 2
+		return 0
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	var err error
-	switch args[0] {
-	case "serve":
-		err = serve(ctx, args[1:])
-	case "selftest":
-		err = selftest(ctx, args[1:])
-	case "vmprobe":
-		err = vmprobe(ctx, args[1:])
-	default:
+	found, err := dispatch(ctx, args[0], args[1:])
+	if !found {
 		_, _ = fmt.Fprintf(stderr, "spike: unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}

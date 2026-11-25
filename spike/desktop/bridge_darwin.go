@@ -11,7 +11,7 @@ package main
 /*
 #include <stdlib.h>
 #cgo darwin CFLAGS: -x objective-c -fobjc-arc -mmacosx-version-min=14.0
-#cgo darwin LDFLAGS: -framework Foundation -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework ScreenCaptureKit -framework CoreGraphics -framework ImageIO -framework ApplicationServices
+#cgo darwin LDFLAGS: -framework Foundation -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework ScreenCaptureKit -framework CoreGraphics -framework ImageIO -framework ApplicationServices -framework IOKit -framework ServiceManagement
 
 // Implemented in media_darwin.m. Every int result is 0 or an OSStatus.
 int spk_encoder_start(int width, int height, int fps, int bitrate);
@@ -33,6 +33,15 @@ const char *spk_displays(void);
 // Implemented in sys_darwin.m.
 int spk_sr_preflight(void);
 int spk_sr_request(void);
+int spk_ax_trusted(int prompt);
+int spk_post_event_preflight(void);
+int spk_post_event_request(void);
+int spk_mouse_nudge(void);
+int spk_post_keycodes(const int *codes, int n);
+const char *spk_session_dict(void);
+int spk_user_activity(void);
+int spk_display_awake(int on);
+const char *spk_smapp(const char *verb, const char *plistName);
 */
 import "C"
 
@@ -128,4 +137,43 @@ func dumpPNG(path string) (float64, error) {
 		return 0, fmt.Errorf("%s (code %d)", C.GoString(C.spk_png_error()), int(luma))
 	}
 	return luma, nil
+}
+
+// The next four return 1 or 0, and -1 when the call itself could not be made.
+
+func axTrusted(prompt bool) int {
+	p := 0
+	if prompt {
+		p = 1
+	}
+	return int(C.spk_ax_trusted(C.int(p)))
+}
+
+func postEventPreflight() int { return int(C.spk_post_event_preflight()) }
+
+func postEventRequest() int { return int(C.spk_post_event_request()) }
+
+func mouseNudge() int { return int(C.spk_mouse_nudge()) }
+
+// postKeycodes posts key down and up per code; 0 on success.
+func postKeycodes(codes []int) int {
+	if len(codes) == 0 {
+		return 0
+	}
+	cs := make([]C.int, len(codes))
+	for i, c := range codes {
+		cs[i] = C.int(c)
+	}
+	return int(C.spk_post_keycodes(&cs[0], C.int(len(cs))))
+}
+
+func sessionDict() string { return C.GoString(C.spk_session_dict()) }
+
+// smapp runs register, unregister or status on an SMAppService agent plist and
+// returns its JSON ({"status": ..., "error": ...}).
+func smapp(verb, plist string) string {
+	cv, cp := C.CString(verb), C.CString(plist)
+	defer C.free(unsafe.Pointer(cv))
+	defer C.free(unsafe.Pointer(cp))
+	return C.GoString(C.spk_smapp(cv, cp))
 }
