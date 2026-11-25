@@ -12,6 +12,7 @@
 #     or the faked other-account WhoIs of the VM checks    (MOB-05)
 #   - a developer home path (/Users/<name>/) in any tracked file,
 #     .planning/ included; placeholders and /Users/admin (VM) are allowed
+#   - a real tailnet address (100.64.0.0/10) in .planning/ or TESTING.md
 #   - an import of the WhoIs fake package (webservertest) by a non-test Go
 #     file outside the Playwright fixture and the package itself (MOB-05)
 # Every pattern spells its word with one letter in a bracket class, so the
@@ -84,6 +85,13 @@ report fake-whois "$out"
 out=$(git grep -n -I -o -E '/User[s]/[a-z][a-z0-9._-]{2,}/' -- .); rc=$?
 check_status "$rc"
 report home-path "$(grep -v -E ':/Users/(admin|shared|user|name)/$' <<< "$out")"
+
+# A real tailnet (100.64.0.0/10) address in planning or test docs: write
+# 100.x.x.N instead. Code fixtures are out of scope; 100.64.0.x examples pass.
+out=$(git grep -n -I -o -E '(^|[^0-9.])10[0]\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}' \
+  -- .planning TESTING.md); rc=$?
+check_status "$rc"
+report tailnet-ip "$(grep -v -E '100\.64\.0\.[0-9]{1,3}$' <<< "$out")"
 
 if (( FINDINGS > 0 )); then
   echo "FAIL: ${FINDINGS} finding(s)"

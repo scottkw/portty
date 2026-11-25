@@ -1308,7 +1308,7 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
 
 ### Category AT — Overnight Survival (SHAR-07, VERF-01)
 
-The user requires Portty to be rock solid: a session must survive network glitches, network and Wi-Fi access-point switches, and sleep/wake with no manual reattach. M-84 and M-85 are **deferred-capable**: at Phase 5 verification the user decides whether M-84 (the real overnight run, VERF-01 as written) or M-85 (the accelerated sleep/wake run) gates VERF-01, or defers both. Claude runs M-86 and M-87 in the Tart VMs (Safari through dev-browser); only the two-Mac items need the user. Two Tart VMs are on the tailnet for two-machine runs: `portty-test` (office role, tailnet name `portty-vm-office-2`, 100.103.7.20) and `portty-test-2` (home role, `portty-vm-home-3`, 100.78.170.1).
+The user requires Portty to be rock solid: a session must survive network glitches, network and Wi-Fi access-point switches, and sleep/wake with no manual reattach. M-84 and M-85 are **deferred-capable**: at Phase 5 verification the user decides whether M-84 (the real overnight run, VERF-01 as written) or M-85 (the accelerated sleep/wake run) gates VERF-01, or defers both. Claude runs M-86 and M-87 in the Tart VMs (Safari through dev-browser); only the two-Mac items need the user. Two Tart VMs are on the tailnet for two-machine runs: `portty-test` (office role, tailnet name `portty-vm-office-2`, 100.x.x.N) and `portty-test-2` (home role, `portty-vm-home-3`, 100.x.x.N).
 
 Caveats a user can trip over (all by design or known, none a failure by itself):
 - zsh `clear` sends `ESC[3J`, which empties the history a reattach replays.
