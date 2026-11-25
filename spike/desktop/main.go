@@ -23,6 +23,7 @@ commands:
   vmprobe     R00: ScreenCaptureKit frames, IOSurface and VideoToolbox encoders (--encoders-only is host-safe)
   probe       one probe record: ids, session, TCC answers, capture (--no-tcc is host-safe; --preflight-only never prompts)
   probe-loop  a probe record every --interval, appended as JSONL (--stream keeps one SCStream)
+  opusprobe   R21: AudioConverter Opus encode of a sine (host-safe) or of ScreenCaptureKit system audio (--source sck)
   agent       run the subcommand named by --config <json> (the launchd entry of both plists)
   spawn       re-exec this binary detached in its own session: spawn [--quit-after] -- <argv>
   register    SMAppService register of the helper agent plist
@@ -54,6 +55,8 @@ func dispatch(ctx context.Context, cmd string, args []string) (found bool, err e
 		err = probeCmd(ctx, args)
 	case "probe-loop":
 		err = probeLoop(ctx, args)
+	case "opusprobe":
+		err = opusProbe(ctx, args)
 	case "agent":
 		err = agent(ctx, args)
 	case "spawn":

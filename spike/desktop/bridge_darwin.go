@@ -11,7 +11,7 @@ package main
 /*
 #include <stdlib.h>
 #cgo darwin CFLAGS: -x objective-c -fobjc-arc -mmacosx-version-min=14.0
-#cgo darwin LDFLAGS: -framework Foundation -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework ScreenCaptureKit -framework CoreGraphics -framework ImageIO -framework ApplicationServices -framework IOKit -framework ServiceManagement
+#cgo darwin LDFLAGS: -framework Foundation -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework ScreenCaptureKit -framework CoreGraphics -framework ImageIO -framework ApplicationServices -framework IOKit -framework ServiceManagement -framework AudioToolbox
 
 // Implemented in media_darwin.m. Every int result is 0 or an OSStatus.
 int spk_encoder_start(int width, int height, int fps, int bitrate);
@@ -29,6 +29,10 @@ double spk_dump_png(const char *path);
 const char *spk_png_error(void);
 const char *spk_encoder_list(void);
 const char *spk_displays(void);
+
+// Opus and system audio, also in media_darwin.m (JSON results as above).
+const char *spk_opus_sine(int seconds);
+const char *spk_audio_stats(void);
 
 // Implemented in sys_darwin.m.
 int spk_sr_preflight(void);
@@ -106,6 +110,15 @@ func startSource(name string, width, height, fps int) error {
 	}
 }
 
+// startSCKAudio starts the main-display capture with system audio on, small and
+// slow on the video side: opusprobe measures the audio path, not the picture.
+func startSCKAudio() error {
+	if rc := C.spk_sck_start(640, 5, 1); rc != 0 {
+		return fmt.Errorf("spk_sck_start with audio: code %d (%s)", int(rc), sckStats())
+	}
+	return nil
+}
+
 func stopSource() { C.spk_source_stop() }
 
 // forceKeyframe answers a PLI, FIR or viewer join. With a capture stream it
@@ -119,6 +132,10 @@ func encoderInfo() string { return C.GoString(C.spk_encoder_info()) }
 // Each of these returns a pinned JSON value (see the plan's Pinned JSON keys).
 
 func sckStats() string { return C.GoString(C.spk_sck_stats()) }
+
+func opusSine(seconds int) string { return C.GoString(C.spk_opus_sine(C.int(seconds))) }
+
+func audioStats() string { return C.GoString(C.spk_audio_stats()) }
 
 func encoderList() string { return C.GoString(C.spk_encoder_list()) }
 

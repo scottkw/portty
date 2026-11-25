@@ -966,3 +966,64 @@ func swap(_ context.Context, args []string) error {
 	}
 	return emitJSON("", map[string]any{"verb": "swap", "a": a, "b": b}, false)
 }
+
+// opusProbe is R21. --source sine encodes a generated tone and calls no TCC or
+// SCK API (host-safe). --source sck captures system audio for --seconds and
+// reports what ScreenCaptureKit delivered and what the Opus encoder made of it.
+// The record is written before any failure is returned, and the exit is
+// non-zero when encoding fails or no packet is produced.
+func opusProbe(ctx context.Context, args []string) error {
+	fs := newFlagSet("opusprobe")
+	var source, out string
+	var seconds int
+	fs.StringVar(&source, "source", "sine", "sine or sck")
+	fs.IntVar(&seconds, "seconds", 10, "length in seconds")
+	fs.StringVar(&out, "out", "", "also write the record to this file")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("%w: %v", errUsage, err)
+	}
+	if (source != "sine" && source != "sck") || seconds <= 0 || fs.NArg() > 0 {
+		return fmt.Errorf("%w: --source is sine or sck, --seconds must be positive", errUsage)
+	}
+
+	var rec map[string]any
+	var packets float64
+	if source == "sine" {
+		if err := json.Unmarshal([]byte(opusSine(seconds)), &rec); err != nil {
+			return fmt.Errorf("unreadable opus result: %w", err)
+		}
+		packets, _ = rec["packets"].(float64)
+	} else {
+		rec = map[string]any{}
+		startErr := startSCKAudio()
+		if startErr == nil {
+			select {
+			case <-time.After(time.Duration(seconds) * time.Second):
+			case <-ctx.Done():
+				rec["interrupted"] = true
+			}
+		} else {
+			rec["startError"] = startErr.Error()
+		}
+		var audio, capture map[string]any
+		if err := json.Unmarshal([]byte(audioStats()), &audio); err != nil {
+			return fmt.Errorf("unreadable audio stats: %w", err)
+		}
+		if err := json.Unmarshal([]byte(sckStats()), &capture); err != nil {
+			return fmt.Errorf("unreadable capture stats: %w", err)
+		}
+		stopSource()
+		rec["audio"], rec["capture"] = audio, capture
+		packets, _ = audio["packets"].(float64)
+	}
+	rec["source"], rec["seconds"] = source, seconds
+	rec["time"] = time.Now().UTC().Format(time.RFC3339)
+	rec["macos"] = macosStep()
+	if err := emitJSON(out, rec, false); err != nil {
+		return err
+	}
+	if packets == 0 {
+		return errors.New("no Opus packet was produced (see the record)")
+	}
+	return nil
+}

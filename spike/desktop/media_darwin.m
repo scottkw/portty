@@ -11,6 +11,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <ImageIO/ImageIO.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
+#import <AudioToolbox/AudioToolbox.h>
 #import <mach/mach_time.h>
 #import <pthread.h>
 
@@ -466,12 +467,312 @@ void spk_request_refresh(void) {
 	});
 }
 
+// Opus through AudioToolbox's AudioConverter (C7: no libopus unless this fails).
+// 48 kHz float32 interleaved stereo in, one 960-frame (20 ms) raw Opus packet out
+// per AudioConverterFillComplexBuffer call. Used by spk_opus_sine and by the
+// ScreenCaptureKit audio output; each user owns one spkOpus.
+enum { kOpusFrames = 960, kOpusRate = 48000, kOpusBitrate = 96000, kOpusMaxPacket = 4096 };
+static const OSStatus kOpusNoMoreInput = 'nmor';
+
+typedef struct {
+	AudioConverterRef conv;
+	float *acc; // PCM waiting for a full block, interleaved stereo
+	size_t accFrames, accCap;
+	long packets, bytes, frames, errors;
+	int firstPacketBytes, firstToc, primeFrames, framesPerPacket;
+	OSStatus lastStatus;
+} spkOpus;
+
+typedef struct {
+	const float *pcm;
+	UInt32 frames;
+	BOOL used;
+} opusFeedCtx;
+
+static OSStatus opusInput(AudioConverterRef c, UInt32 *ioN, AudioBufferList *ioData,
+                          AudioStreamPacketDescription **desc, void *ud) {
+	opusFeedCtx *f = ud;
+	if (f->used) {
+		*ioN = 0;
+		return kOpusNoMoreInput;
+	}
+	f->used = YES;
+	ioData->mNumberBuffers = 1;
+	ioData->mBuffers[0].mNumberChannels = 2;
+	ioData->mBuffers[0].mDataByteSize = f->frames * 8;
+	ioData->mBuffers[0].mData = (void *)f->pcm;
+	*ioN = f->frames;
+	return noErr;
+}
+
+static OSStatus opusCreate(spkOpus *o) {
+	memset(o, 0, sizeof *o);
+	AudioStreamBasicDescription in = {0}, out = {0};
+	in.mSampleRate = kOpusRate;
+	in.mFormatID = kAudioFormatLinearPCM;
+	in.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+	in.mBytesPerPacket = 8;
+	in.mFramesPerPacket = 1;
+	in.mBytesPerFrame = 8;
+	in.mChannelsPerFrame = 2;
+	in.mBitsPerChannel = 32;
+	out.mSampleRate = kOpusRate;
+	out.mFormatID = kAudioFormatOpus;
+	out.mChannelsPerFrame = 2;
+	out.mFramesPerPacket = kOpusFrames;
+	OSStatus st = AudioConverterNew(&in, &out, &o->conv);
+	if (st != noErr) {
+		o->conv = NULL;
+		return st;
+	}
+	UInt32 br = kOpusBitrate;
+	if ((st = AudioConverterSetProperty(o->conv, kAudioConverterEncodeBitRate, sizeof br, &br)) != noErr) return st;
+	// Read back what the converter really made; nothing is assumed.
+	AudioStreamBasicDescription got = {0};
+	UInt32 sz = sizeof got;
+	if ((st = AudioConverterGetProperty(o->conv, kAudioConverterCurrentOutputStreamDescription, &sz, &got)) != noErr) return st;
+	o->framesPerPacket = (int)got.mFramesPerPacket;
+	AudioConverterPrimeInfo pi = {0};
+	sz = sizeof pi;
+	if (AudioConverterGetProperty(o->conv, kAudioConverterPrimeInfo, &sz, &pi) == noErr) o->primeFrames = (int)pi.leadingFrames;
+	return noErr;
+}
+
+static void opusDispose(spkOpus *o) {
+	if (o->conv != NULL) AudioConverterDispose(o->conv);
+	o->conv = NULL;
+	free(o->acc);
+	o->acc = NULL;
+	o->accFrames = o->accCap = 0;
+}
+
+static void opusEncodeBlock(spkOpus *o, const float *pcm) {
+	opusFeedCtx f = {pcm, kOpusFrames, NO};
+	uint8_t out[kOpusMaxPacket];
+	AudioStreamPacketDescription pd = {0};
+	AudioBufferList abl;
+	abl.mNumberBuffers = 1;
+	abl.mBuffers[0].mNumberChannels = 0;
+	abl.mBuffers[0].mDataByteSize = sizeof out;
+	abl.mBuffers[0].mData = out;
+	UInt32 n = 1;
+	OSStatus st = AudioConverterFillComplexBuffer(o->conv, opusInput, &f, &n, &abl, &pd);
+	if (st != noErr && st != kOpusNoMoreInput) {
+		o->lastStatus = st;
+		o->errors++;
+		return;
+	}
+	if (n == 0) return; // the converter wants more input before its next packet
+	if (o->packets == 0) {
+		o->firstPacketBytes = (int)pd.mDataByteSize;
+		o->firstToc = pd.mDataByteSize > 0 ? out[pd.mStartOffset] : -1;
+	}
+	o->packets++;
+	o->bytes += pd.mDataByteSize;
+}
+
+// Appends PCM and encodes every full 960-frame block.
+static void opusFeed(spkOpus *o, const float *pcm, size_t frames) {
+	o->frames += (long)frames;
+	if (o->accFrames + frames > o->accCap) {
+		size_t cap = o->accFrames + frames + kOpusFrames;
+		float *grown = realloc(o->acc, cap * 8);
+		if (grown == NULL) {
+			o->errors++;
+			o->lastStatus = kAudioConverterErr_UnspecifiedError;
+			return;
+		}
+		o->acc = grown;
+		o->accCap = cap;
+	}
+	memcpy(o->acc + o->accFrames * 2, pcm, frames * 8);
+	o->accFrames += frames;
+	size_t off = 0;
+	while (o->accFrames - off >= kOpusFrames) {
+		opusEncodeBlock(o, o->acc + off * 2);
+		off += kOpusFrames;
+	}
+	memmove(o->acc, o->acc + off * 2, (o->accFrames - off) * 8);
+	o->accFrames -= off;
+}
+
+static NSMutableDictionary *opusDict(const spkOpus *o) {
+	double secs = (double)o->frames / kOpusRate;
+	NSMutableDictionary *d = [NSMutableDictionary dictionary];
+	d[@"packets"] = @(o->packets);
+	d[@"framesPerPacket"] = @(o->framesPerPacket);
+	d[@"primeFrames"] = @(o->primeFrames);
+	d[@"firstPacketBytes"] = @(o->firstPacketBytes);
+	d[@"firstPacketToc"] = @(o->firstToc);
+	d[@"totalBytes"] = @(o->bytes);
+	d[@"inputFrames"] = @(o->frames);
+	d[@"avgKbps"] = @(secs > 0 ? o->bytes * 8.0 / secs / 1000.0 : 0.0);
+	d[@"osStatus"] = @((int)o->lastStatus);
+	d[@"encodeErrors"] = @(o->errors);
+	return d;
+}
+
+static NSData *gOpusData, *gAudData;
+
+// Encodes a generated 440 Hz sine for `seconds` and returns the pinned JSON
+// (`packets`, `framesPerPacket` always present). No TCC or SCK call.
+const char *spk_opus_sine(int seconds) {
+	spkOpus o;
+	OSStatus st = opusCreate(&o);
+	if (st != noErr) {
+		NSMutableDictionary *d = opusDict(&o);
+		d[@"osStatus"] = @((int)st);
+		d[@"error"] = @"AudioConverter setup for Opus failed";
+		opusDispose(&o);
+		return jsonC(d, &gOpusData);
+	}
+	float block[kOpusFrames * 2];
+	double phase = 0, step = 2.0 * M_PI * 440.0 / kOpusRate;
+	long blocks = (long)seconds * kOpusRate / kOpusFrames;
+	for (long b = 0; b < blocks; b++) {
+		for (int i = 0; i < kOpusFrames; i++) {
+			float v = (float)(0.5 * sin(phase));
+			phase += step;
+			block[2 * i] = v;
+			block[2 * i + 1] = v;
+		}
+		opusFeed(&o, block, kOpusFrames);
+	}
+	NSMutableDictionary *d = opusDict(&o);
+	opusDispose(&o);
+	return jsonC(d, &gOpusData);
+}
+
+// SCK audio statistics. gAudLock guards gAud and gAudOpus; the audio handler and
+// the Go-facing reader both touch them. Kept after a stream stops.
+typedef struct {
+	long buffers, frames, errors;
+	double firstBufferMs; // negative until the first buffer
+	double peak;          // largest absolute sample seen; 0 means only silence
+	uint64_t startMach;
+	int fmtChannels, fmtBits, fmtNonInterleaved;
+	double fmtRate;
+	char err[160];
+} audioStats;
+static audioStats gAud;
+static spkOpus gAudOpus;
+static pthread_mutex_t gAudLock = PTHREAD_MUTEX_INITIALIZER;
+static dispatch_queue_t gAudQueue;
+
+static void audioFail(const char *msg) {
+	gAud.errors++;
+	snprintf(gAud.err, sizeof gAud.err, "%s", msg);
+}
+
+// Turns one SCK audio buffer into interleaved float32 stereo and feeds the encoder.
+static void handleAudio(CMSampleBufferRef sb) {
+	uint64_t now = mach_absolute_time();
+	CMFormatDescriptionRef fd = CMSampleBufferGetFormatDescription(sb);
+	const AudioStreamBasicDescription *a = fd != NULL ? CMAudioFormatDescriptionGetStreamBasicDescription(fd) : NULL;
+	pthread_mutex_lock(&gAudLock);
+	gAud.buffers++;
+	if (gAud.firstBufferMs < 0) gAud.firstBufferMs = machToMs(now - gAud.startMach);
+	if (a == NULL) {
+		audioFail("audio sample buffer has no stream description");
+		pthread_mutex_unlock(&gAudLock);
+		return;
+	}
+	gAud.fmtRate = a->mSampleRate;
+	gAud.fmtChannels = (int)a->mChannelsPerFrame;
+	gAud.fmtBits = (int)a->mBitsPerChannel;
+	gAud.fmtNonInterleaved = (a->mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
+	BOOL isFloat = a->mFormatID == kAudioFormatLinearPCM && (a->mFormatFlags & kAudioFormatFlagIsFloat) && a->mBitsPerChannel == 32;
+	if (!isFloat || a->mChannelsPerFrame != 2 || a->mSampleRate != kOpusRate) {
+		audioFail("audio buffer is not 48 kHz float32 stereo");
+		pthread_mutex_unlock(&gAudLock);
+		return;
+	}
+	size_t need = 0;
+	CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(sb, &need, NULL, 0, NULL, NULL, 0, NULL);
+	AudioBufferList *abl = need > 0 ? malloc(need) : NULL;
+	CMBlockBufferRef bb = NULL;
+	OSStatus st = abl != NULL ? CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(sb, NULL, abl, need, NULL, NULL, 0, &bb)
+	                          : kCMSampleBufferError_ArrayTooSmall;
+	size_t n = (size_t)CMSampleBufferGetNumSamples(sb);
+	float *pcm = st == noErr && n > 0 ? malloc(n * 8) : NULL;
+	if (pcm == NULL) {
+		audioFail("could not read the audio buffer list");
+		pthread_mutex_unlock(&gAudLock);
+		free(abl);
+		if (bb != NULL) CFRelease(bb);
+		return;
+	}
+	BOOL planar = gAud.fmtNonInterleaved;
+	BOOL shapeOk = planar ? abl->mNumberBuffers == 2 : abl->mNumberBuffers == 1;
+	if (!shapeOk) {
+		audioFail("unexpected audio buffer count for the stream format");
+	} else {
+		for (size_t i = 0; i < n; i++) {
+			float l = planar ? ((const float *)abl->mBuffers[0].mData)[i] : ((const float *)abl->mBuffers[0].mData)[2 * i];
+			float r = planar ? ((const float *)abl->mBuffers[1].mData)[i] : ((const float *)abl->mBuffers[0].mData)[2 * i + 1];
+			pcm[2 * i] = l;
+			pcm[2 * i + 1] = r;
+			if (fabsf(l) > gAud.peak) gAud.peak = fabsf(l);
+			if (fabsf(r) > gAud.peak) gAud.peak = fabsf(r);
+		}
+		gAud.frames += (long)n;
+		if (gAudOpus.conv != NULL) opusFeed(&gAudOpus, pcm, n);
+	}
+	pthread_mutex_unlock(&gAudLock);
+	free(pcm);
+	free(abl);
+	if (bb != NULL) CFRelease(bb);
+}
+
+// Fresh audio state for one capture; creates the encoder when audio is wanted.
+static OSStatus audioReset(int withAudio) {
+	pthread_mutex_lock(&gAudLock);
+	opusDispose(&gAudOpus);
+	memset(&gAud, 0, sizeof gAud);
+	memset(&gAudOpus, 0, sizeof gAudOpus);
+	gAud.firstBufferMs = -1;
+	OSStatus st = noErr;
+	if (withAudio) {
+		gAud.startMach = mach_absolute_time();
+		st = opusCreate(&gAudOpus);
+		if (st != noErr) audioFail("AudioConverter setup for Opus failed");
+	}
+	pthread_mutex_unlock(&gAudLock);
+	return st;
+}
+
+// Pinned `audio` object: buffers received, frames, packets out, bytes, kbps,
+// first-buffer ms, errors, plus the peak sample and the buffer format seen.
+const char *spk_audio_stats(void) {
+	pthread_mutex_lock(&gAudLock);
+	NSMutableDictionary *o = opusDict(&gAudOpus);
+	o[@"audioBuffers"] = @(gAud.buffers);
+	o[@"frames"] = @(gAud.frames);
+	o[@"kbps"] = o[@"avgKbps"];
+	[o removeObjectForKey:@"avgKbps"];
+	if (gAud.firstBufferMs >= 0) o[@"firstBufferMs"] = @(gAud.firstBufferMs);
+	o[@"peak"] = @(gAud.peak);
+	o[@"errors"] = @(gAud.errors);
+	if (gAud.err[0] != 0) o[@"lastError"] = @(gAud.err);
+	if (gAud.buffers > 0) {
+		o[@"bufferFormat"] = @{@"sampleRate" : @(gAud.fmtRate), @"channels" : @(gAud.fmtChannels), @"bits" : @(gAud.fmtBits),
+		                       @"nonInterleaved" : @(gAud.fmtNonInterleaved != 0)};
+	}
+	pthread_mutex_unlock(&gAudLock);
+	return jsonC(o, &gAudData);
+}
+
 @interface SpkSCKHandler : NSObject <SCStreamOutput, SCStreamDelegate>
 @end
 
 @implementation SpkSCKHandler
 - (void)stream:(SCStream *)stream didOutputSampleBuffer:(CMSampleBufferRef)sb ofType:(SCStreamOutputType)type {
-	if (type != SCStreamOutputTypeScreen || sb == NULL) return;
+	if (sb == NULL) return;
+	if (type == SCStreamOutputTypeAudio) {
+		handleAudio(sb);
+		return;
+	}
+	if (type != SCStreamOutputTypeScreen) return;
 	CFArrayRef atts = CMSampleBufferGetSampleAttachmentsArray(sb, false);
 	NSDictionary *d = (atts != NULL && CFArrayGetCount(atts) > 0) ? (__bridge NSDictionary *)CFArrayGetValueAtIndex(atts, 0) : nil;
 	NSNumber *statusNum = d[SCStreamFrameInfoStatus];
@@ -528,6 +829,10 @@ static NSError *startStream(SCContentFilter *filter, SCStreamConfiguration *cfg)
 		gStream = nil;
 		return err;
 	}
+	if (gAudQueue != nil && ![gStream addStreamOutput:gHandler type:SCStreamOutputTypeAudio sampleHandlerQueue:gAudQueue error:&err]) {
+		gStream = nil;
+		return err;
+	}
 	__block NSError *startErr = nil;
 	dispatch_semaphore_t sem = dispatch_semaphore_create(0);
 	[gStream startCaptureWithCompletionHandler:^(NSError *e) {
@@ -557,13 +862,18 @@ int spk_sck_start(int widthCap, int fps, int withAudio) {
 	pthread_mutex_lock(&gStatLock);
 	memset(&gSt, 0, sizeof gSt);
 	gSt.firstFrameMs = -1;
-	gSt.withAudio = withAudio; // stored for the audio plan; no audio output is added yet
+	gSt.withAudio = withAudio;
 	gLatN = 0;
 	if (gLatest != NULL) {
 		CVPixelBufferRelease(gLatest);
 		gLatest = NULL;
 	}
 	pthread_mutex_unlock(&gStatLock);
+	OSStatus audioSt = audioReset(withAudio);
+	if (audioSt != noErr) {
+		recordErrorText(@"OSStatus", (int)audioSt, @"AudioConverter setup for Opus failed");
+		return (int)audioSt;
+	}
 
 	CGMainDisplayID(); // connect to the window server before SCK asks
 	NSError *err = nil;
@@ -599,6 +909,7 @@ int spk_sck_start(int widthCap, int fps, int withAudio) {
 
 	gHandler = [[SpkSCKHandler alloc] init];
 	gSCKQueue = dispatch_queue_create("spike.sck", DISPATCH_QUEUE_SERIAL);
+	gAudQueue = withAudio ? dispatch_queue_create("spike.sck.audio", DISPATCH_QUEUE_SERIAL) : nil;
 	SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
 	SCStreamConfiguration *cfg = [[SCStreamConfiguration alloc] init];
 	cfg.width = (size_t)w;
@@ -608,6 +919,12 @@ int spk_sck_start(int widthCap, int fps, int withAudio) {
 	cfg.queueDepth = 5;
 	cfg.showsCursor = YES;
 	cfg.colorMatrix = kCGDisplayStreamYCbCrMatrix_ITU_R_709_2;
+	if (withAudio) {
+		cfg.capturesAudio = YES;
+		cfg.sampleRate = kOpusRate;
+		cfg.channelCount = 2;
+		cfg.excludesCurrentProcessAudio = YES;
+	}
 	pthread_mutex_lock(&gStatLock);
 	snprintf(gSt.pixelFormat, sizeof gSt.pixelFormat, "420v");
 	gSt.startMach = mach_absolute_time();
@@ -624,6 +941,7 @@ int spk_sck_start(int widthCap, int fps, int withAudio) {
 		err = startStream(filter, cfg);
 		if (err != nil) {
 			gSCKQueue = nil;
+			gAudQueue = nil;
 			return failStart(err);
 		}
 	}
@@ -671,6 +989,14 @@ static void stopSCK(void) {
 	if (q != nil) {
 		dispatch_sync(q, ^{}); // let a handler already in flight finish before the encoder goes
 		gSCKQueue = nil;
+	}
+	dispatch_queue_t aq = gAudQueue;
+	if (aq != nil) {
+		dispatch_sync(aq, ^{}); // same for an audio handler in flight
+		gAudQueue = nil;
+		pthread_mutex_lock(&gAudLock);
+		opusDispose(&gAudOpus); // the counters stay for spk_audio_stats
+		pthread_mutex_unlock(&gAudLock);
 	}
 	gHandler = nil;
 }
