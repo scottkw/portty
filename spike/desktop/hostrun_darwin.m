@@ -40,7 +40,9 @@ static BOOL gMotionWanted;
 }
 
 // Sample text at 9, 11, 13, 16 and 20 pt, black on white and white on black.
-- (CGFloat)drawPanel:(NSRect)r fg:(NSColor *)fg bg:(NSColor *)bg {
+- (void)drawPanel:(NSRect)r fg:(NSColor *)fg bg:(NSColor *)bg {
+	[NSGraphicsContext saveGraphicsState];
+	[NSBezierPath clipRect:r];
 	[bg setFill];
 	NSRectFill(r);
 	CGFloat y = NSMinY(r) + 8;
@@ -55,7 +57,7 @@ static BOOL gMotionWanted;
 			y += pt * 1.5;
 		}
 	}
-	return y + 8;
+	[NSGraphicsContext restoreGraphicsState];
 }
 
 - (void)drawStatic {
@@ -63,10 +65,10 @@ static BOOL gMotionWanted;
 	NSRectFill(self.bounds);
 	NSRect b = self.bounds;
 	CGFloat panelW = NSWidth(b) * 0.30;
-	CGFloat bottom = 0;
-	CGFloat h1 = [self drawPanel:NSMakeRect(20, 20, panelW, 330) fg:[NSColor blackColor] bg:[NSColor whiteColor]];
-	CGFloat h2 = [self drawPanel:NSMakeRect(20 + panelW + 20, 20, panelW, 330) fg:[NSColor whiteColor] bg:[NSColor blackColor]];
-	bottom = MAX(h1, h2);
+	CGFloat panelH = 250; // the five sizes, two lines each
+	[self drawPanel:NSMakeRect(20, 20, panelW, panelH) fg:[NSColor blackColor] bg:[NSColor whiteColor]];
+	[self drawPanel:NSMakeRect(20 + panelW + 20, 20, panelW, panelH) fg:[NSColor whiteColor] bg:[NSColor blackColor]];
+	CGFloat bottom = 20 + panelH;
 
 	// A one-pixel line grid, every 20 points, lines aligned to device pixels.
 	CGFloat px = 1.0 / (self.window.backingScaleFactor > 0 ? self.window.backingScaleFactor : 1.0);
@@ -76,13 +78,13 @@ static BOOL gMotionWanted;
 	for (CGFloat y = 0; y <= NSHeight(grid); y += 20) NSRectFill(NSMakeRect(NSMinX(grid), NSMinY(grid) + y, NSWidth(grid), px));
 
 	// A gray ramp of 16 steps.
-	NSRect ramp = NSMakeRect(NSMaxX(grid) + 40, NSMinY(grid), 640, 60);
+	NSRect ramp = NSMakeRect(NSMaxX(grid) + 40, NSMinY(grid), 400, 60);
 	for (int i = 0; i < 16; i++) {
 		[[NSColor colorWithCalibratedWhite:i / 15.0 alpha:1.0] setFill];
 		NSRectFill(NSMakeRect(NSMinX(ramp) + i * NSWidth(ramp) / 16, NSMinY(ramp), NSWidth(ramp) / 16 + 1, NSHeight(ramp)));
 	}
 	[self drawText:@"PORTTY SPIKE TEST CHART - this window covers the display while the spike runs"
-	            at:NSMakePoint(NSMinX(ramp), NSMaxY(ramp) + 12)
+	            at:NSMakePoint(NSMinX(grid), NSMaxY(grid) + 20)
 	          font:[NSFont boldSystemFontOfSize:16]
 	         color:[NSColor blackColor]];
 }
