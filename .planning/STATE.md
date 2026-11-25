@@ -390,6 +390,7 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-10: host-run exits before serving when Screen Recording is not granted; typing needs --allow-input and a listed keycode, refused at parse time otherwise
 - [Phase 17]: 17-11: R14 GO; iOS Safari and Home Screen start video only from a user tap, so the DVWR-03 iPhone viewer must start playback from a tap
 - [Phase 17]: 17-11: host Screen Recording not approved within 120 s; R01-host, R18-host, R20-host and base rows R01, R18, R20 PARTIAL (user-skip, user-not-approved); host revoked and proven clean
+- [Phase 17]: 17-11 session 2 (user added the grant by hand): the host-run spike crashed at about ready+66 s (SIGTRAP on the main thread in spk_app_run, native frame unknown); R20-host numbers for 20 s of motion (hardware AVC, 2560 x 1664, 29.10 fps, latency mean 12.69 ms, own CPU 29.6 percent, SSIM 0.999024), R01-host pings DERP both times and no viewer report, R18-host not reached; all three stay PARTIAL; host revoked, no app.portty.spike TCC rows left
 
 ### Pending Todos
 
@@ -406,6 +407,7 @@ Recent decisions affecting current work:
 - [v2.0]: Apple's persistent-content-capture entitlement request is not filed yet; until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
 - [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
 - [v2.0 REL-01]: v1.2.x updaters look only for `portty-v<ver>-darwin-universal.dmg` and identifier `portty-v<ver>-darwin-universal` (internal/updater/update.go DMGAssetName, install.go Clean, release.yml); an arm64-only rename would strand v1.2 installs unless the old name stays or both ship
+- [v2.0 Phase 17]: Host-run spike crashed on the real MacBook Air at about ready+66 s (SIGTRAP on the main thread inside spk_app_run, 20 s into the motion window; the "bypass the system private window picker" dialog was on screen). Not seen in VM office. Native frame unknown (Go's handler printed the dump, no .ips). R01-host, R18-host, R20-host stay PARTIAL until it is found and the host run is redone
 - [v2.0 Phase 18]: Self-install only helps upgrades from a build that contains it; v1.2.x to the first self-install build still goes through Reveal-in-Finder
 
 - [Phase 4]: User confirmed 2026-11-16 that both Macs are on the same Tailscale account (same login, so the same numeric user ID for the WhoIs gate). Remaining risk: a node that is ACL-tagged is refused by design; check `tailscale status` shows no tags on either Mac during the two-Mac UAT (M-80).
