@@ -1,0 +1,23 @@
+R21: AudioConverter Opus encode and ScreenCaptureKit system-audio capture
+plan 17-09 Task 2, run 2026-11-25 (UTC), rig: VM office (portty-test)
+
+guest macOS: 27.2 (build 26B123)
+guest audio device: Apple Virtual Sound Device (default input and output, 2 channels, 48000 Hz, built-in transport)
+host macOS: 27.2.1 (build 26B131), host result from 'opusprobe --source sine' (no TCC, no capture)
+
+== host, sine 5 s (spike opusprobe --source sine --seconds 5)
+{"avgKbps":55.3808,"encodeErrors":0,"firstPacketBytes":442,"firstPacketToc":252,"framesPerPacket":960,"inputFrames":240000,"macos":{"build":"26B131","version":"27.2.1"},"osStatus":0,"packets":250,"primeFrames":312,"seconds":5,"source":"sine","time":"2026-11-25T04:41:41Z","totalBytes":34613}
+
+== guest, sine 10 s (open -n Spike.app --args opusprobe --source sine --seconds 10)
+{"avgKbps":54.9832,"encodeErrors":0,"firstPacketBytes":442,"firstPacketToc":252,"framesPerPacket":960,"inputFrames":480000,"macos":{"build":"26B123","version":"27.2"},"osStatus":0,"packets":500,"primeFrames":312,"seconds":10,"source":"sine","time":"2026-11-25T04:42:23Z","totalBytes":68729}
+
+== guest, SCK system audio 10 s while a sound loops (afplay Ping.aiff, 15 repeats; open -n Spike.app --args opusprobe --source sck --seconds 10)
+{"audio":{"audioBuffers":501,"bufferFormat":{"bits":32,"channels":2,"nonInterleaved":1,"sampleRate":48000},"encodeErrors":0,"errors":0,"firstBufferMs":524.3528333333334,"firstPacketBytes":3,"firstPacketToc":252,"frames":480960,"framesPerPacket":960,"inputFrames":480960,"kbps":50.53413173652695,"osStatus":0,"packets":501,"peak":0.29652756452560425,"primeFrames":312,"totalBytes":63294},"capture":{"completeFps":0.5996686730636545,"encodeLatencyMs":{"max":120.19170833333332,"mean":99.3325625,"p95":120.19170833333332},"firstFrameMs":244.55066666666664,"height":360,"ioSurface":1,"ioSurfaceFrames":6,"latestDisplayTime":166702012000,"mainDisplayMatched":1,"pixelFormat":"420v","running":1,"status":{"blank":0,"complete":6,"idle":44,"started":0,"stopped":0,"suspended":0,"unknown":0},"width":640,"withAudio":1},"macos":{"build":"26B123","version":"27.2"},"seconds":10,"source":"sck","time":"2026-11-25T04:42:45Z"}
+
+== guest, SCK system audio 5 s control with no sound playing
+{"audio":{"audioBuffers":252,"bufferFormat":{"bits":32,"channels":2,"nonInterleaved":1,"sampleRate":48000},"encodeErrors":0,"errors":0,"firstBufferMs":430.2899583333333,"firstPacketBytes":3,"firstPacketToc":252,"frames":241920,"framesPerPacket":960,"inputFrames":241920,"kbps":1.2,"osStatus":0,"packets":252,"peak":0,"primeFrames":312,"totalBytes":756},"capture":{"status":{"blank":0,"complete":6,"idle":20,"started":0,"stopped":0,"suspended":0,"unknown":0}},"macos":{"build":"26B123","version":"27.2"},"seconds":5,"source":"sck"}
+
+== reading
+encode: framesPerPacket 960 (20 ms at 48 kHz), 500 packets for 10 s in the guest and 250 for 5 s on the host, 54 to 55 kbps average for a sine at the 96 kbps target, prime frames 312, first packet 442 bytes with TOC byte 252 (0xfc), no OSStatus error, same on the host and in the guest.
+capture: with a sound playing the guest delivered 501 audio buffers (480960 frames, 48 kHz float32 stereo, non-interleaved) in 10 s, first buffer 524 ms after the start, peak sample 0.297, 501 Opus packets of 960 frames, no capture error. The control with no sound delivered 252 audio buffers, peak 0, and 3-byte (silence) packets only, so the audio buffers carry the system output and not noise.
+audio buffers keep arriving while the screen is still: the same run shows only 6 Complete video frames in 10 s at 5 fps.
