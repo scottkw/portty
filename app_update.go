@@ -27,14 +27,20 @@ var (
 	updateEvery                          = 24 * time.Hour
 )
 
+// updateRunner runs every update tool. SafeRunner refuses hdiutil, open and ditto in a test
+// binary; only the VM-only vmpreview build (18-08) wraps it further.
+var updateRunner updater.Runner = updater.SafeRunner(updater.ExecRunner)
+
 func (a *App) newUpdateService() *updater.Service {
 	return &updater.Service{
-		Checker: &updater.Checker{API: updateAPI, Repo: updater.Repo, HTTP: updater.NewCheckClient(updateAPI), Allow: updateAllow},
-		Current: strings.TrimPrefix(Version, "v"),
-		Emit:    a.onUpdateStatus,
-		Dir:     updateCacheDir(),
-		Client:  updater.NewDownloadClient(updateAllow),
-		Run:     updater.ExecRunner,
+		Checker:        &updater.Checker{API: updateAPI, Repo: updater.Repo, HTTP: updater.NewCheckClient(updateAPI), Allow: updateAllow},
+		Current:        strings.TrimPrefix(Version, "v"),
+		Emit:           a.onUpdateStatus,
+		Dir:            updateCacheDir(),
+		Client:         updater.NewDownloadClient(updateAllow),
+		Run:            updateRunner,
+		Bundle:         bundleForUpdates(),
+		StartInstaller: a.startInstaller,
 	}
 }
 

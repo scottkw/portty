@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"testing"
 	"time"
 )
 
@@ -143,11 +144,39 @@ func Verify(ctx context.Context, run Runner, path, teamID, assetName string, now
 	if err != nil || !bytes.Contains(out, []byte(": accepted")) || !hasLine(out, "source=Notarized Developer ID") {
 		return fmt.Errorf("%w: spctl", ErrVerify)
 	}
-	flag := fmt.Sprintf("0081;%x;Portty;", now.Unix())
-	if _, err := run(ctx, "/usr/bin/xattr", "-w", "com.apple.quarantine", flag, path); err != nil {
+	if err := Quarantine(ctx, run, path, now); err != nil {
 		return fmt.Errorf("%w: quarantine", ErrVerify)
 	}
 	return nil
+}
+
+// Quarantine flags path as downloaded by Portty at now, the way a browser would.
+func Quarantine(ctx context.Context, run Runner, path string, now time.Time) error {
+	flag := fmt.Sprintf("0081;%x;Portty;", now.Unix())
+	_, err := run(ctx, "/usr/bin/xattr", "-w", "com.apple.quarantine", flag, path)
+	return err
+}
+
+// ClearQuarantine removes com.apple.quarantine from path and everything below it. Callers do
+// this only after the DMG verify chain (UPD-09) or the app signature and Team check passed.
+func ClearQuarantine(ctx context.Context, run Runner, path string) error {
+	_, _ = run(ctx, "/usr/bin/xattr", "-dr", "com.apple.quarantine", path)
+	return nil
+}
+
+// SafeRunner is base, except that a test binary never runs hdiutil, open or ditto: those mount
+// disk images, start apps and copy over the user's files (T-18-08). ExecRunner itself is
+// unchanged for the env-gated TestRealDMG.
+func SafeRunner(base Runner) Runner {
+	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if testing.Testing() {
+			switch name {
+			case "/usr/bin/hdiutil", "/usr/bin/open", "/usr/bin/ditto":
+				return nil, fmt.Errorf("refusing to run %s from a test binary", filepath.Base(name))
+			}
+		}
+		return base(ctx, name, args...)
+	}
 }
 
 // Reveal selects the verified DMG in Finder (open -R). UPD-03 says reveal, where GIFsmith opened
