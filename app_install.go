@@ -4,9 +4,9 @@ package main
 // installer (cmd_install_update.go) that replaces it.
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -43,6 +43,9 @@ func runningBundle() (string, error) {
 	return bundleFromExecutable(exe)
 }
 
+// runningBundleFunc is a var for tests.
+var runningBundleFunc = runningBundle
+
 // bundleForUpdates is the bundle self-install replaces, or "" for a dev build or test binary,
 // which keeps the reveal flow. The log line says why, so a release build cannot lose
 // self-install silently.
@@ -55,50 +58,98 @@ func bundleForUpdates() string {
 	return bundle
 }
 
-// startInstaller writes the job, starts a detached copy of this binary on it and, once the copy
-// reports it is running, quits the GUI only (daemon and sessions untouched). Any failure before
-// that leaves this process running and returns an error, and the Service falls back to Reveal.
+// installerStartWait bounds spawn to started marker only: the download, verify, staging and the
+// installer copy all happen before the clock starts. 18-10 Task 2 measured spawn-to-marker at
+// 417 ms on a Developer ID build in the VM (row P2d-bundle), so 3 s keeps over 2x headroom.
+const installerStartWait = 3 * time.Second
+
+// installerCopyTimeout bounds copyBundle (ditto, the codesign check, the quarantine strip).
+const installerCopyTimeout = 2 * time.Minute
+
+// installerStartWaitFor is installerStartWait; tests lower it.
+var installerStartWaitFor = installerStartWait
+
+// startInstaller starts install-update from a whole copy of the running Portty.app in a fresh
+// run folder and, once the copy reports it is running, quits the GUI only (daemon and sessions
+// untouched). Any failure before that removes the run folder, leaves this process running, names
+// the failed step in update.log and returns an error, and the Service falls back to Reveal.
 func (a *App) startInstaller(j updater.Job) error {
+	run := ""
+	fail := func(step string, err error) error {
+		if run != "" {
+			_ = os.RemoveAll(run)
+		}
+		updateLogf("update: installer not started: %s", step)
+		return fmt.Errorf("installer not started: %s: %w", step, err)
+	}
+	src, err := runningBundleFunc()
+	if err != nil {
+		return fail("bundle", err)
+	}
 	work := updateWorkDir()
 	if err := os.MkdirAll(work, 0o700); err != nil {
-		return err
+		return fail("workdir", err)
 	}
-	run, err := os.MkdirTemp(work, "run-")
-	if err != nil {
-		return err
+	if run, err = os.MkdirTemp(work, "run-"); err != nil {
+		return fail("workdir", err)
 	}
 	jobPath := filepath.Join(run, "job.json")
-	bin := filepath.Join(run, "portty-installer")
 	if err := updater.WriteJob(jobPath, j); err != nil {
-		_ = os.RemoveAll(run)
-		return err
+		return fail("job", err)
 	}
-	if err := copyExecutable(bin); err != nil {
-		_ = os.RemoveAll(run)
-		return err
-	}
-	proc, err := spawnInstallerFunc(bin, jobPath)
+	helper := filepath.Join(run, updater.BundleName)
+	copyStart := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), installerCopyTimeout)
+	step, err := copyBundleFunc(ctx, src, helper)
+	cancel()
 	if err != nil {
-		_ = os.RemoveAll(run)
-		return err
+		return fail(step, err)
+	}
+	copyTook := time.Since(copyStart)
+	spawnStart := time.Now()
+	proc, err := spawnInstallerFunc(filepath.Join(helper, updater.BundleExecutable), jobPath)
+	if err != nil {
+		return fail("spawn", err)
 	}
 	marker := filepath.Join(run, updater.StartedMarker)
-	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+	for deadline := spawnStart.Add(installerStartWaitFor); ; time.Sleep(50 * time.Millisecond) {
 		if _, err := os.Stat(marker); err == nil {
 			break
 		}
 		if !time.Now().Before(deadline) {
 			_ = proc.Kill()
 			_, _ = proc.Wait()
-			_ = os.RemoveAll(run)
-			return errors.New("the installer did not report that it started")
+			return fail("no-marker", errors.New("the installer did not report that it started"))
 		}
 	}
+	startTook := time.Since(spawnStart)
 	_ = proc.Release()
-	log.Printf("update: installer started")
+	updateLogf("update: installer started (copy %dms, start %dms)", copyTook.Milliseconds(), startTook.Milliseconds())
 	a.onTerminate() // GUI-only quit: shutdown never stops the daemon
 	return nil
 }
+
+// copyBundle copies the whole running bundle src to dst with ditto (signature, sealed resources
+// and xattrs kept), checks the copy's signature and Team, then removes the copy's quarantine
+// flag. It returns the failed step (copy, copy-check, quarantine) with the error. The whole
+// bundle, because a Developer ID signature binds Info.plist and a lone executable outside its
+// bundle dies at exec (P2d). The copy is checked before its flag is removed (UPD-09). src is
+// only ditto's source and is never modified.
+func copyBundle(ctx context.Context, src, dst string) (string, error) {
+	if _, err := updateRunner(ctx, "/usr/bin/ditto", src, dst); err != nil {
+		return "copy", err
+	}
+	if err := updater.VerifyApp(ctx, updateRunner, dst); err != nil {
+		return "copy-check", err
+	}
+	if err := updater.ClearQuarantine(ctx, updateRunner, dst); err != nil {
+		return "quarantine", err
+	}
+	return "", nil
+}
+
+// copyBundleFunc is a var for tests.
+var copyBundleFunc = copyBundle
 
 // spawnInstallerFunc is a var for tests.
 var spawnInstallerFunc = spawnInstaller
@@ -134,25 +185,16 @@ func openUpdateLog() (*os.File, error) {
 	return os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 }
 
-// copyExecutable copies this binary to dst, a new file (0700) outside the bundle being replaced:
-// the process that swaps the bundle must not run from inside it.
-func copyExecutable(dst string) error {
-	exe, err := os.Executable()
+// updateLogf logs the line and appends it to update.log without rotating (only spawnInstaller
+// rotates, before the child opens the file): a LaunchServices-launched GUI's stderr goes
+// nowhere. Callers pass step names and numbers only, never a path.
+func updateLogf(format string, args ...any) {
+	line := fmt.Sprintf(format, args...)
+	log.Print(line)
+	f, err := os.OpenFile(filepath.Join(configDir(), "update.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
-		return err
+		return
 	}
-	src, err := os.Open(exe)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = src.Close() }()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, src); err != nil {
-		_ = out.Close()
-		return fmt.Errorf("copy executable: %w", err)
-	}
-	return out.Close()
+	_, _ = fmt.Fprintln(f, line)
+	_ = f.Close()
 }
