@@ -11,6 +11,7 @@ import { BrowserOpenURL } from '../../wailsjs/wailsjs/runtime/runtime'
 
 const available: UpdateStatus = { state: 'available', current: '1.0.0', latest: '2.0.0', done: 0, total: 0, error: '' }
 const signatureError = "The download didn't pass the signature check, so Portty deleted it."
+const revealedError = "Portty couldn't install the update, so the download is shown in Finder."
 
 const states: UpdateStatus[] = [
   available,
@@ -18,6 +19,9 @@ const states: UpdateStatus[] = [
   { ...available, state: 'verifying' },
   { ...available, state: 'revealed' },
   { ...available, error: signatureError },
+  { ...available, state: 'installing' },
+  { ...available, state: 'relaunching' },
+  { ...available, state: 'revealed', error: revealedError },
 ]
 
 function renderUpdateBanner(
@@ -63,11 +67,12 @@ describe('UpdateBanner', () => {
     expect(banner.querySelector('svg.banner__icon')?.getAttribute('aria-hidden')).toBe('true')
   })
 
-  it('available shows "Portty X is available." and Download calls onDownload', () => {
+  it('available shows "Portty X is available." and Update calls onDownload', () => {
     const onDownload = vi.fn()
     ;({ container, root } = renderUpdateBanner(available, vi.fn(), undefined, onDownload))
     expect(container.textContent).toContain('Portty 2.0.0 is available.')
-    flushSync(() => { button('Download')!.click() })
+    expect(button('Download')).toBeUndefined()
+    flushSync(() => { button('Update')!.click() })
     expect(onDownload).toHaveBeenCalledOnce()
   })
 
@@ -78,7 +83,7 @@ describe('UpdateBanner', () => {
     expect(p.getAttribute('aria-label')).toBe('Download progress')
     expect(p.value).toBe(10)
     expect(p.max).toBe(40)
-    expect(button('Download')).toBeUndefined()
+    expect(button('Update')).toBeUndefined()
   })
 
   it('downloading with total 0 shows 0% and no NaN', () => {
@@ -99,6 +104,31 @@ describe('UpdateBanner', () => {
     expect(container.querySelector('.banner__action')).toBeNull()
   })
 
+  it('installing shows its text on the info variant with no action button, dismiss kept', () => {
+    ;({ container, root } = renderUpdateBanner(states[5], vi.fn()))
+    expect(container.textContent).toContain('Installing Portty 2.0.0…')
+    expect(container.querySelector('.banner')!.classList.contains('banner--info')).toBe(true)
+    expect(container.querySelector('.banner__action')).toBeNull()
+    expect(container.querySelector('.banner__dismiss')).not.toBeNull()
+  })
+
+  it('relaunching shows its text on the info variant with no action button', () => {
+    ;({ container, root } = renderUpdateBanner(states[6], vi.fn()))
+    expect(container.textContent).toContain('Restarting Portty 2.0.0…')
+    expect(container.querySelector('.banner')!.classList.contains('banner--info')).toBe(true)
+    expect(container.querySelector('.banner__action')).toBeNull()
+  })
+
+  it("revealed with an error shows Go's text on the warning variant with no action button", () => {
+    ;({ container, root } = renderUpdateBanner(states[7], vi.fn()))
+    expect(container.textContent).toContain(revealedError)
+    expect(container.textContent).not.toContain('verified and shown in Finder')
+    const banner = container.querySelector('.banner')!
+    expect(banner.classList.contains('banner--warning')).toBe(true)
+    expect(banner.classList.contains('banner--info')).toBe(false)
+    expect(container.querySelector('.banner__action')).toBeNull()
+  })
+
   it("an error shows Go's text on the warning variant with Try Again calling onDownload", () => {
     const onDownload = vi.fn()
     ;({ container, root } = renderUpdateBanner(states[4], vi.fn(), undefined, onDownload))
@@ -107,12 +137,12 @@ describe('UpdateBanner', () => {
     const banner = container.querySelector('.banner')!
     expect(banner.classList.contains('banner--warning')).toBe(true)
     expect(banner.classList.contains('banner--info')).toBe(false)
-    expect(button('Download')).toBeUndefined()
+    expect(button('Update')).toBeUndefined()
     flushSync(() => { button('Try Again')!.click() })
     expect(onDownload).toHaveBeenCalledOnce()
   })
 
-  it.each(states.map((s) => [s.error ? 'error' : s.state, s] as const))(
+  it.each(states.map((s) => [s.error ? `${s.state} error` : s.state, s] as const))(
     '%s keeps the XMarkIcon Dismiss, role alert, aria-live polite and className, and opens no URL',
     (_name, status) => {
       ;({ container, root } = renderUpdateBanner(status, vi.fn(), 'banner-exit'))
