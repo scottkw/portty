@@ -26,6 +26,7 @@ Clicking Update installs the new Portty by itself: the DMG that already passes t
 - [Rollback] Q: "What counts as a failed update?" → Selected: "The new GUI must report healthy (daemon reachable at the new version) within about 60 s; otherwise the old copy is put back and relaunched and the user is told the update did not take" — a timeout and a local signal, easy to tune
 - [Gatekeeper] Q: "How is a Gatekeeper stop avoided on relaunch?" → Selected: "Quarantine is removed from the installed copy only after the existing verify chain passes; relaunch via `open` of the installed path" — local install step
 - [Assets] Q: "Which DMG names does the updater accept?" → Selected: "The existing universal name plus the Apple Silicon-only name REL-01 will publish, so builds from this phase on still find Phase 23 releases" — a lookup list in internal/updater
+  - User-confirmed 2026-11-25: the Apple Silicon-only name is `portty-vX.Y.Z-darwin-arm64.dmg`, accepted alongside the universal name (user answer "portty-vX.Y.Z-darwin-arm64.dmg (Recommended)", 2026-11-25). This name is now human-settled, so no planning checkpoint asks for it again.
 - [Mover] Q: "How is 'running from a mounted DMG' detected?" → Selected: "Bundle path under /Volumes on a read-only disk-image volume (hdiutil info), with the DMG's backing file found from hdiutil info for trashing" — detection helper, replaceable
 
 ### Claude's Discretion
