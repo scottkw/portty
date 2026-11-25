@@ -60,7 +60,11 @@ User delegated: 'I don't need to answer a bunch of questions' (2026-11-25). Clau
 - Over the video the local pointer is a small dot, with the real cursor visible in the frames. Reason: immediate feedback without hiding the baked-in cursor.
 - A Fullscreen button enters fullscreen and, in Chrome, requests Keyboard Lock so Cmd and Esc chords reach the Mac; Safari gets fullscreen only. Reason: uses the platform where it exists, no workarounds (research STACK note).
 - While locked, the bar shows Locked and the control items are greyed out. Reason: matches the Phase 19 state wording and the accepted lock gate.
-
+- After research (2026-11-25, user delegated): every key message also carries the typed character and the Caps Lock state now (cheap now, costly later); whether printable keys fall back to the typed character on a layout mismatch is decided during planning.
+- After research: Lock Screen in the Send-keys menu sits behind a confirm dialog that says remote unlock is not available until a later release.
+- After research: the Ctrl to Cmd option swaps the two keys (Ctrl sends Cmd and Cmd sends Ctrl), matching how other remote-desktop tools present it.
+- After research: in a window share, every click first checks which window is on top at that point, so a floating panel or banner over the shared window never receives it (reliability first); Cmd+Tab and Cmd+Space are disabled in window shares.
+- After research: clipboard chunks are capped near 16 KiB of text so a chunk plus its JSON wrapper stays under the share server's 32768-byte read limit.
 </decisions>
 
 <code_context>
