@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -61,6 +62,10 @@ type Result struct {
 	DMG        string `json:"dmg"`
 }
 
+// wantUID is the owner a job or result file must have; a var so a test can fake a foreign owner
+// without root.
+var wantUID = os.Getuid
+
 // WriteJob writes j to a new file at path (0600, never overwriting).
 func WriteJob(path string, j Job) error {
 	b, err := json.Marshal(j)
@@ -78,19 +83,51 @@ func WriteJob(path string, j Job) error {
 	return f.Close()
 }
 
-// ReadJob reads and validates the job file at path.
-func ReadJob(path string) (Job, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+// maxControlFile caps a job or result file; a real one is a few hundred bytes.
+const maxControlFile = 64 << 10
+
+// readOwnFile reads path only if Portty could have written it: a regular file (never a symlink or
+// a FIFO), owned by wantUID, with no mode bits beyond 0600, between 1 byte and 64 KiB. Errors
+// carry the reason and never the path.
+func readOwnFile(path string) ([]byte, error) {
+	// O_NOFOLLOW refuses a symlink; O_NONBLOCK keeps a FIFO from blocking the open.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return Job{}, jobErr("unreadable")
+		return nil, jobErr("unreadable")
 	}
 	defer func() { _ = f.Close() }()
-	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
-		return Job{}, jobErr("not a regular file")
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		return nil, jobErr("not a regular file")
 	}
-	b, err := io.ReadAll(f)
+	if fi.Mode().Perm()&^0o600 != 0 {
+		return nil, jobErr("mode")
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != wantUID() {
+		return nil, jobErr("owner")
+	}
+	if fi.Size() == 0 || fi.Size() > maxControlFile {
+		return nil, jobErr("size")
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxControlFile+1))
+	if err != nil || len(b) > maxControlFile {
+		return nil, jobErr("unreadable")
+	}
+	return b, nil
+}
+
+// isDir reports whether path is a real directory, not a symlink to one.
+func isDir(path string) bool {
+	fi, err := os.Lstat(path)
+	return err == nil && fi.IsDir()
+}
+
+// ReadJob reads and validates the job file at path (T-18-02): only a job Portty wrote for a real
+// Portty.app and the staging folder beside it is returned.
+func ReadJob(path string) (Job, error) {
+	b, err := readOwnFile(path)
 	if err != nil {
-		return Job{}, jobErr("unreadable")
+		return Job{}, err
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
@@ -109,8 +146,21 @@ func ReadJob(path string) (Job, error) {
 			return Job{}, jobErr("bundle path")
 		}
 	}
+	if j.OldPID < 2 {
+		return Job{}, jobErr("pid")
+	}
+	stagingDir := filepath.Dir(j.Staged)
+	if filepath.Dir(stagingDir) != filepath.Dir(j.Target) || !strings.HasPrefix(filepath.Base(stagingDir), StagingPrefix) {
+		return Job{}, jobErr("staging folder")
+	}
+	if !isDir(j.Target) || !isDir(j.Staged) {
+		return Job{}, jobErr("bundle missing")
+	}
 	if newer, err := Compare(j.NewVersion, j.OldVersion); err != nil || newer <= 0 {
 		return Job{}, jobErr("versions")
+	}
+	if match, _ := filepath.Match("portty-v*-darwin-*.dmg", filepath.Base(j.DMG)); !match || !filepath.IsAbs(j.DMG) || filepath.Clean(j.DMG) != j.DMG {
+		return Job{}, jobErr("dmg")
 	}
 	return j, nil
 }
@@ -139,18 +189,25 @@ func WriteResult(path string, r Result) error {
 }
 
 // TakeResult reads the result file once and removes it. A missing file is (zero, false, nil).
+// A file Portty did not write (see readOwnFile) or one that does not parse is removed and
+// returned as an ErrJob error, so it cannot stay and trip every start.
 func TakeResult(path string) (Result, bool, error) {
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
 		return Result{}, false, nil
 	}
+	b, err := readOwnFile(path)
 	_ = os.Remove(path)
 	if err != nil {
-		return Result{}, false, jobErr("result unreadable")
+		return Result{}, false, err
 	}
 	var r Result
 	if err := json.Unmarshal(b, &r); err != nil || r.V != 1 {
 		return Result{}, false, jobErr("result malformed")
+	}
+	switch r.Outcome {
+	case OutcomeUpdated, OutcomeFailed, OutcomeRolledBack:
+	default:
+		return Result{}, false, jobErr("result outcome")
 	}
 	return r, true, nil
 }

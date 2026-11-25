@@ -1,7 +1,9 @@
 package updater
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -448,6 +450,281 @@ func TestSelfInstall_SecondDownloadIsNoOp(t *testing.T) {
 				t.Errorf("image attached %d times", n)
 			}
 		})
+	}
+}
+
+// siJobFix makes a valid job on disk: an installed bundle, a staging sibling and a DMG name.
+func siJobFix(t *testing.T) (Job, string) {
+	t.Helper()
+	root := t.TempDir()
+	target := siBundle(t, root, "1.0.0")
+	staged := siBundle(t, filepath.Join(root, StagingPrefix+"abc123"), "9.9.9")
+	j := Job{V: JobVersion, Kind: KindUpdate, OldPID: os.Getpid(), Target: target, Staged: staged,
+		OldVersion: "1.0.0", NewVersion: "9.9.9", DMG: filepath.Join(root, "updates", "portty-v9.9.9-darwin-universal.dmg")}
+	return j, root
+}
+
+// siWriteFile writes b to a fresh file at path with exactly mode.
+func siWriteFile(t *testing.T, path string, b []byte, mode os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, b, mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestJob_RoundTripAndRejects(t *testing.T) {
+	j, root := siJobFix(t)
+	path := filepath.Join(t.TempDir(), "job.json")
+	if err := WriteJob(path, j); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ReadJob(path); err != nil || got != j {
+		t.Fatalf("round trip = %+v, %v", got, err)
+	}
+	if err := WriteJob(path, j); err == nil {
+		t.Error("WriteJob overwrote an existing job file")
+	}
+
+	field := func(k string, v any) func(Job, string) ([]byte, os.FileMode) {
+		return func(j Job, _ string) ([]byte, os.FileMode) {
+			var m map[string]any
+			b, _ := json.Marshal(j)
+			_ = json.Unmarshal(b, &m)
+			m[k] = v
+			b, _ = json.Marshal(m)
+			return b, 0o600
+		}
+	}
+	valid := func(mutate func(*Job)) func(Job, string) ([]byte, os.FileMode) {
+		return func(j Job, _ string) ([]byte, os.FileMode) {
+			mutate(&j)
+			b, _ := json.Marshal(j)
+			return b, 0o600
+		}
+	}
+	sub := func(parts ...string) string { return filepath.Join(append([]string{root}, parts...)...) }
+
+	for _, c := range []struct {
+		name string
+		make func(j Job, root string) ([]byte, os.FileMode)
+		pre  func(t *testing.T) // changes the disk before the job is read
+	}{
+		{"mode 0644", func(j Job, _ string) ([]byte, os.FileMode) { b, _ := json.Marshal(j); return b, 0o644 }, nil},
+		{"mode 0660", func(j Job, _ string) ([]byte, os.FileMode) { b, _ := json.Marshal(j); return b, 0o660 }, nil},
+		{"empty", func(Job, string) ([]byte, os.FileMode) { return nil, 0o600 }, nil},
+		{"over 64 KiB", func(j Job, _ string) ([]byte, os.FileMode) {
+			b, _ := json.Marshal(j)
+			return append(b, bytes.Repeat([]byte(" "), 64<<10)...), 0o600
+		}, nil},
+		{"not json", func(Job, string) ([]byte, os.FileMode) { return []byte("{"), 0o600 }, nil},
+		{"unknown field", field("extra", "x"), nil},
+		{"v 2", field("v", 2), nil},
+		{"kind mover", field("kind", "mover"), nil},
+		{"oldPid 1", field("oldPid", 1), nil},
+		{"oldPid 0", field("oldPid", 0), nil},
+		{"relative target", valid(func(j *Job) { j.Target = "Portty.app" }), nil},
+		{"relative staged", valid(func(j *Job) { j.Staged = "x/Portty.app" }), nil},
+		{"unclean target", valid(func(j *Job) { j.Target = root + "/x/../" + BundleName }), nil},
+		{"unclean staged", valid(func(j *Job) {
+			j.Staged = root + "/" + StagingPrefix + "abc123/../" + StagingPrefix + "abc123/" + BundleName
+		}), nil},
+		{"target base", valid(func(j *Job) { j.Target = sub("Other.app") }), func(t *testing.T) { siBundle2(t, sub("Other.app")) }},
+		{"staged base", valid(func(j *Job) { j.Staged = sub(StagingPrefix+"abc123", "Other.app") }), func(t *testing.T) { siBundle2(t, sub(StagingPrefix+"abc123", "Other.app")) }},
+		{"staged not beside target", valid(func(j *Job) { j.Staged = sub("elsewhere", StagingPrefix+"abc123", BundleName) }), func(t *testing.T) { siBundle(t, sub("elsewhere", StagingPrefix+"abc123"), "9.9.9") }},
+		{"staging dir prefix", valid(func(j *Job) { j.Staged = sub("stage", BundleName) }), func(t *testing.T) { siBundle(t, sub("stage"), "9.9.9") }},
+		{"target missing", func(j Job, _ string) ([]byte, os.FileMode) { b, _ := json.Marshal(j); return b, 0o600 }, func(t *testing.T) { _ = os.RemoveAll(sub(BundleName)) }},
+		{"target symlink", func(j Job, _ string) ([]byte, os.FileMode) { b, _ := json.Marshal(j); return b, 0o600 }, func(t *testing.T) {
+			real := t.TempDir()
+			_ = os.RemoveAll(sub(BundleName))
+			if err := os.Symlink(real, sub(BundleName)); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"staged missing", func(j Job, _ string) ([]byte, os.FileMode) { b, _ := json.Marshal(j); return b, 0o600 }, func(t *testing.T) { _ = os.RemoveAll(sub(StagingPrefix + "abc123")) }},
+		{"staged symlink", func(j Job, _ string) ([]byte, os.FileMode) { b, _ := json.Marshal(j); return b, 0o600 }, func(t *testing.T) {
+			real := t.TempDir()
+			_ = os.RemoveAll(sub(StagingPrefix+"abc123", BundleName))
+			if err := os.Symlink(real, sub(StagingPrefix+"abc123", BundleName)); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"old version", valid(func(j *Job) { j.OldVersion = "one" }), nil},
+		{"new version", valid(func(j *Job) { j.NewVersion = "9.9" }), nil},
+		{"new version equal", valid(func(j *Job) { j.NewVersion = j.OldVersion }), nil},
+		{"new version older", valid(func(j *Job) { j.NewVersion = "0.9.0" }), nil},
+		{"relative dmg", valid(func(j *Job) { j.DMG = "portty-v9.9.9-darwin-universal.dmg" }), nil},
+		{"dmg name", valid(func(j *Job) { j.DMG = sub("evil.dmg") }), nil},
+		{"dmg not a dmg", valid(func(j *Job) { j.DMG = sub("portty-v9.9.9-darwin-universal.zip") }), nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			j, root = siJobFix(t) // sub reads root: every row gets a fresh tree
+			if c.pre != nil {
+				c.pre(t)
+			}
+			b, mode := c.make(j, root)
+			p := filepath.Join(t.TempDir(), "job.json")
+			siWriteFile(t, p, b, mode)
+			if _, err := ReadJob(p); !errors.Is(err, ErrJob) {
+				t.Errorf("ReadJob = %v, want ErrJob", err)
+			}
+		})
+	}
+
+	t.Run("symlinked job file", func(t *testing.T) {
+		j, _ := siJobFix(t)
+		real := filepath.Join(t.TempDir(), "real.json")
+		if err := WriteJob(real, j); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(t.TempDir(), "job.json")
+		if err := os.Symlink(real, link); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ReadJob(link); !errors.Is(err, ErrJob) {
+			t.Errorf("ReadJob = %v, want ErrJob", err)
+		}
+	})
+	t.Run("directory", func(t *testing.T) {
+		if _, err := ReadJob(t.TempDir()); !errors.Is(err, ErrJob) {
+			t.Errorf("ReadJob = %v, want ErrJob", err)
+		}
+	})
+	t.Run("foreign owner", func(t *testing.T) {
+		j, _ := siJobFix(t)
+		p := filepath.Join(t.TempDir(), "job.json")
+		if err := WriteJob(p, j); err != nil {
+			t.Fatal(err)
+		}
+		defer func(old func() int) { wantUID = old }(wantUID)
+		wantUID = func() int { return os.Getuid() + 1 }
+		if _, err := ReadJob(p); !errors.Is(err, ErrJob) {
+			t.Errorf("ReadJob = %v, want ErrJob", err)
+		}
+	})
+}
+
+// siBundle2 makes an empty directory at path (a bundle-shaped directory with another name).
+func siBundle2(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResult_TakeOnceAndRejects(t *testing.T) {
+	good := Result{V: 1, Outcome: OutcomeUpdated, OldVersion: "1.0.0", NewVersion: "9.9.9", DMG: "/x/portty-v9.9.9-darwin-universal.dmg"}
+	path := filepath.Join(t.TempDir(), "update-result.json")
+	if r, ok, err := TakeResult(path); ok || err != nil || r != (Result{}) {
+		t.Fatalf("missing file = %+v, %v, %v", r, ok, err)
+	}
+	if err := WriteResult(path, good); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("result file = %v, %v; want 0600", fi, err)
+	}
+	if r, ok, err := TakeResult(path); !ok || err != nil || r != good {
+		t.Fatalf("TakeResult = %+v, %v, %v", r, ok, err)
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Error("result file not removed")
+	}
+	if _, ok, _ := TakeResult(path); ok {
+		t.Error("result returned twice")
+	}
+
+	body := func(mutate func(m map[string]any)) []byte {
+		b, _ := json.Marshal(good)
+		var m map[string]any
+		_ = json.Unmarshal(b, &m)
+		mutate(m)
+		b, _ = json.Marshal(m)
+		return b
+	}
+	for _, c := range []struct {
+		name  string
+		write func(t *testing.T, p string)
+	}{
+		{"symlink", func(t *testing.T, p string) {
+			real := filepath.Join(t.TempDir(), "real.json")
+			siWriteFile(t, real, body(func(map[string]any) {}), 0o600)
+			if err := os.Symlink(real, p); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"directory", func(t *testing.T, p string) { siBundle2(t, p) }},
+		{"group readable", func(t *testing.T, p string) { siWriteFile(t, p, body(func(map[string]any) {}), 0o640) }},
+		{"other readable", func(t *testing.T, p string) { siWriteFile(t, p, body(func(map[string]any) {}), 0o604) }},
+		{"empty", func(t *testing.T, p string) { siWriteFile(t, p, nil, 0o600) }},
+		{"not json", func(t *testing.T, p string) { siWriteFile(t, p, []byte("nope"), 0o600) }},
+		{"v 2", func(t *testing.T, p string) { siWriteFile(t, p, body(func(m map[string]any) { m["v"] = 2 }), 0o600) }},
+		{"unknown outcome", func(t *testing.T, p string) {
+			siWriteFile(t, p, body(func(m map[string]any) { m["outcome"] = "exploded" }), 0o600)
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "update-result.json")
+			c.write(t, p)
+			if _, ok, err := TakeResult(p); ok || !errors.Is(err, ErrJob) {
+				t.Errorf("TakeResult = %v, %v; want an ErrJob error", ok, err)
+			}
+			if _, err := os.Lstat(p); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("refused file not removed: %v", err)
+			}
+		})
+	}
+	t.Run("foreign owner", func(t *testing.T) {
+		p := filepath.Join(t.TempDir(), "update-result.json")
+		if err := WriteResult(p, good); err != nil {
+			t.Fatal(err)
+		}
+		defer func(old func() int) { wantUID = old }(wantUID)
+		wantUID = func() int { return os.Getuid() + 1 }
+		if _, ok, err := TakeResult(p); ok || !errors.Is(err, ErrJob) {
+			t.Errorf("TakeResult = %v, %v", ok, err)
+		}
+	})
+}
+
+func TestSelfInstall_DMGAlreadyGone(t *testing.T) {
+	f := newSiFix(t)
+	f.envDo = func(env *InstallerEnv) {
+		open := env.Open
+		env.Open = func(ctx context.Context, app string) error {
+			if m, _ := filepath.Glob(filepath.Join(f.dir, "*.dmg")); len(m) != 1 {
+				t.Errorf("DMG should still be there when the app opens: %v", m)
+			}
+			_ = os.Remove(filepath.Join(f.dir, DMGAssetName("9.9.9"))) // eject-and-delete by hand, mid-install
+			return open(ctx, app)
+		}
+	}
+	f.download(t)
+	if f.result.Outcome != OutcomeUpdated {
+		t.Errorf("result = %+v, want updated", f.result)
+	}
+	if siMarker(t, f.target) != "9.9.9" {
+		t.Error("new version not installed")
+	}
+}
+
+func TestSelfInstall_HealthMissWritesFailed(t *testing.T) {
+	f := newSiFix(t)
+	f.envDo = func(env *InstallerEnv) {
+		env.Open = func(context.Context, string) error { return nil } // the daemon stays at the old version
+	}
+	f.download(t)
+	r := f.result
+	if r.Outcome != OutcomeFailed || r.Reason != "health" || r.OldVersion != "1.0.0" || r.NewVersion != "9.9.9" {
+		t.Errorf("result = %+v", r)
+	}
+	if m, _ := filepath.Glob(filepath.Join(f.dir, "*.dmg")); len(m) != 1 {
+		t.Errorf("DMG should be kept when health fails: %v", m)
+	}
+	if got, ok, err := TakeResult(f.resPath); !ok || err != nil || got != r {
+		t.Errorf("result file = %+v, %v, %v", got, ok, err)
 	}
 }
 
