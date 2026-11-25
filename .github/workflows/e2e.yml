@@ -13,6 +13,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Manual runs on any branch (e.g. a phase branch before its PR exists).
+  workflow_dispatch:
 
 jobs:
   playwright:
