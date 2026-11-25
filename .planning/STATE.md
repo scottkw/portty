@@ -410,7 +410,7 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- [v2.0]: Apple's persistent-content-capture entitlement request is not filed yet; until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
+- [v2.0]: Apple's persistent-content-capture entitlement request: filed, awaiting Apple (filed 2026-11-25, Request ID T558S9Q5B3, App ID app.portty.Portty; reported waits weeks to 2+ months); until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
 - [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
 - [v2.0 REL-01]: v1.2.x updaters look only for `portty-v<ver>-darwin-universal.dmg` and identifier `portty-v<ver>-darwin-universal` (internal/updater/update.go DMGAssetName, install.go Clean, release.yml); an arm64-only rename would strand v1.2 installs unless the old name stays or both ship
 - [v2.0 Phase 17]: Host display sleep: on battery a display sleep took the MacBook Air to system idle sleep within 6 s (17-11 session 3), suspending the capture server, and the SCK stream does not resume after the wake (R18 NO-GO). Phase 19 needs a system-sleep and display-awake assertion while a viewer watches, or a stream restart on -3815, and its own battery test. (The 17-11 session 2 host-run crash is resolved: nil font fixed in bf95b9a6, session 3 ran the full schedule.)
