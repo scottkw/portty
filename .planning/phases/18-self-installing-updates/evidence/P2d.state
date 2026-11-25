@@ -1,0 +1,20 @@
+p18-state row=P2d vm_utc=2026-11-25T22:57:50Z
+installed_version=1.1.90
+gui_pid_count=1
+daemon_version=v1.1.90
+attached_images=1
+cache_dmgs=1
+staging_dirs=0
+--- gui pids and executables
+1100 /Applications/Portty.app/Contents/MacOS/Portty
+--- daemon pids and executables
+1102 /Applications/Portty.app/Contents/MacOS/Portty
+--- attached images
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/d1b36c40ecf011c1a2dfeacc93215881ad4cf525.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+--- update cache
+total 31752
+drwx------  3 admin  staff        96 Nov 25 22:57 .
+drwxr-xr-x  5 admin  staff       160 Nov 25 22:50 ..
+-rw-------@ 1 admin  staff  16255466 Nov 25 22:57 portty-v1.2.0-darwin-universal.dmg
+--- staging dirs
+--- update.log tail
