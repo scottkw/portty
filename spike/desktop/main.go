@@ -19,6 +19,7 @@ const usage = `usage: spike <command> [flags]
 commands:
   serve     run the pion server (token-gated viewer, /offer, /report)
   selftest  run synthetic frames through the encoder and pion to a Go receiver
+  vmprobe   R00: ScreenCaptureKit frames, IOSurface and VideoToolbox encoders (--encoders-only is host-safe)
 `
 
 func newFlagSet(name string) *flag.FlagSet {
@@ -45,6 +46,8 @@ func run(args []string, stderr io.Writer) int {
 		err = serve(ctx, args[1:])
 	case "selftest":
 		err = selftest(ctx, args[1:])
+	case "vmprobe":
+		err = vmprobe(ctx, args[1:])
 	default:
 		_, _ = fmt.Fprintf(stderr, "spike: unknown command %q\n\n%s", args[0], usage)
 		return 2
