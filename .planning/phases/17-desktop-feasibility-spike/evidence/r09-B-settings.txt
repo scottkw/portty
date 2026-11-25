@@ -1,0 +1,43 @@
+# R09-B: System Settings entries created by the in-daemon shape (guest macOS 27.2, build 26B123)
+# Source: ~/ptest/axdump com.apple.systempreferences, one dump per pane, taken 2026-11-25 03:19:50 guest time while the daemon ran (pid 3402) with all grants given;
+# a baseline set was dumped at 03:16 before the daemon was first loaded. Only the rows that belong to the spike are kept; other apps in the same lists are dropped.
+# The daemon is the plain Spike.app/Contents/MacOS/spike Mach-O run by a legacy LaunchAgent plist (no helper, no GUI process). The signing developer's name is replaced by DEVELOPER.
+
+## Summary
+| List (pane) | Entry name shown | Identity it is keyed to | Toggle | Revoked and restored live | Count |
+|---|---|---|---|---|---|
+| Privacy and Security, Screen and System Audio Recording | Spike (generic icon) | Bundle ID app.portty.spike (tccd Modify events name identifier_type Bundle ID) | AXSwitch, Value=1 | yes: off at 03:21:15 stopped frames in the running daemon (SCError -3801 from the record at 03:21:15), on at 03:21:35 restored them (Complete from 03:21:40), no restart | 1 |
+| Privacy and Security, Accessibility | Spike (generic icon) | Bundle ID app.portty.spike, the same key as Screen Recording (tccd Modify events name identifier_type Bundle ID) | AXSwitch, Value=1 | yes: off at 03:21:55 made the pointer nudge fail in the running daemon for 4 records, on at 03:22:17 restored it, no restart | 1 |
+| General, Login Items and Extensions, Background App Activity | DEVELOPER (generic icon), not Spike; status text "Not running in background" even while the daemon ran | the legacy agent app.portty.spike.daemon, grouped under a developer record (sfltool entry Type legacy agent, Parent Identifier = the developer) | AXSwitch, Value=1 | yes: off at 03:22:56 made launchd stop the job at once and remove it (launchctl print: could not find service), on at 03:23:12 started it again (pid 3723), no password | 1 |
+
+Spike entries in Screen Recording, Accessibility and Login Items: 1 + 1 + 1 = 3 (the tiebreaker count for the daemon shape). R09-A, the helper, also counts 3.
+Plain Mach-O versus bundle: the bare Mach-O inside the app bundle is NOT listed by its own path. tccd resolves it to the enclosing bundle (BUNDLE_ATTRIBUTION: main executable for candidateBundle Spike.app), so Settings lists the bundle as Spike for both Privacy panes, and one TCC key (Bundle ID app.portty.spike) serves Screen Recording and Accessibility. The helper shape needed two keys (a bundle for Screen Recording, a path for Accessibility).
+Login Items: the row is named after the signing developer, not after the app, because the legacy plist has no bundle association; a Phase 19 onboarding text that says "Spike" would not match what the user sees there. A banner named it on first load: "Software from DEVELOPER can run in the background."
+
+## Prompts seen while measuring this row
+Screen Recording prompt at the first record (03:16:36): "Spike" would like to record this computer's screen and audio, Open System Settings or Deny. Opening Settings from it lands on the Screen and System Audio Recording pane with the Spike row off.
+No Accessibility prompt dialog appeared in any screenshot; the request created the Accessibility row (off) and the executor turned it on. The first Screen Recording toggle after the pane was opened fresh needed the guest login password (Privacy and Security unlock sheet, at 03:18 and again at 03:21); the toggle back on, every Accessibility toggle and the Login Items toggle needed none.
+
+## Baseline before the daemon was loaded (03:16, after tccutil reset for app.portty.spike)
+# Screen and System Audio Recording: sshd-keygen-wrapper, Transom. No Spike row.
+# Accessibility: spike-helper (a leftover path-keyed row from 17-04's helper runs; tccutil cannot reset it because the helper is not a bundle id), sshd-keygen-wrapper, Transom. It is not counted for the daemon.
+# Login Items, Background App Activity: Portty, Spike ("Last ran in background today", the helper's leftover record from 17-04), tailscaled, Transom. No developer-named row.
+# After the daemon was loaded the Screen Recording and Accessibility lists each gained one Spike row and the Login Items list gained one DEVELOPER row; nothing else changed.
+
+## AX excerpt: Screen and System Audio Recording (Privacy_ScreenCapture), pid 3402 running
+# rows named Spike: 1
+           AXStaticText Value=Spike @230,179 65x24
+           AXCheckBox [AXSwitch] Value=1 @644,185 36x16
+
+## AX excerpt: Accessibility (Privacy_Accessibility), pid 3402 running
+# rows named Spike: 1 (new); spike-helper is the 17-04 leftover
+           AXStaticText Value=Spike @230,185 65x24
+           AXCheckBox [AXSwitch] Value=1 @644,191 36x16
+           AXStaticText Value=spike-helper @230,222 108x24
+           AXCheckBox [AXSwitch] Value=1 @644,228 36x16
+
+## AX excerpt: Login Items, Background App Activity (LoginItems-Settings.extension), pid 3402 running
+# rows named after the developer: 1; the separate row named Spike is the 17-04 helper's leftover (Last ran in background today)
+       AXStaticText Value=DEVELOPER @274,379 59x18
+       AXStaticText Value=Not running in background @274,399 139x16
+       AXCheckBox [AXSwitch] Value=1 @644,380 36x16

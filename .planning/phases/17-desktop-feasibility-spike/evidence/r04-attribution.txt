@@ -1,0 +1,323 @@
+# R04 attribution evidence: the daemon as a legacy LaunchAgent with the GUI closed (guest macOS 27.2, build 26B123)
+# Redactions: /Users/<name> is /Users/USER; the signing developer's name is DEVELOPER; no log lines other than those joined by msgID to a daemon pid are kept.
+# Daemon: app.portty.spike.daemon, a plist shaped like the one internal/daemon/service.go installs through kardianos (no ProcessType key, KeepAlive false, RunAtLoad true),
+# program = Spike.app/Contents/MacOS/spike agent --config agent-B.json (probe-loop, label B). No Spike.app GUI process ran at any time: every record has ppid 1 and managername Aqua.
+# Pids: 3092 (first bootstrap, grants not yet given), 3402 (after bootout and bootstrap, grants in place), 3723 (restarted by launchd when the Login Items toggle was turned back on).
+
+## timeline
+# T0 = 2026-11-25 03:16:36 guest time. Clean start first: tccutil reset of ScreenCapture, Accessibility and PostEvent for app.portty.spike (tccutil cannot name the helper, see r09-B-settings.txt).
+# 03:16:36 launchctl bootstrap gui/501 <plist> from the SSH shell: exit 0, no refusal, no sudo needed. pid 3092 starts, ppid 1.
+# 03:16:36 first record: sr_preflight false, SCError -3801, ax_trusted false. Prompt on screen: Screen Recording, "Spike" would like to record this computer's screen and audio, buttons Open System Settings and Deny
+#          (name shown: Spike, the bundle name; same wording as 17-03 and 17-04). A banner also said "Software from DEVELOPER can run in the background" and a second one "Spike can run in the background".
+#          No Accessibility dialog appeared in any screenshot; AXIsProcessTrustedWithOptions created the Accessibility row (off) instead.
+# 03:18:15 Screen Recording toggle on (guest login password typed in the guest). The same pid 3092 captured 26 Complete frames in the record that started at 03:18:16, no restart.
+# 03:18:54 Accessibility toggle on (no password sheet this time). The one-point nudge took effect from the record that started at 03:18:51 (the post runs after the 3 s capture); cached ax_trusted and post_event_preflight stayed false for pid 3092.
+# 03:19:30 launchctl bootout then bootstrap (not kickstart). pid 3402: sr_preflight, ax_trusted and post_event_preflight true from its first record, Complete frames in every record until 03:21:10 (21 of 21).
+# 03:21:15 Screen Recording off: -3801 from the record at 03:21:15 to 03:21:35; on at 03:21:35: Complete again from 03:21:40, same pid.
+# 03:21:55 Accessibility off: nudge false in 4 records (03:21:55 to 03:22:10); on at 03:22:17: nudge true again, same pid. (The nudge at 03:21:35 reads false only because the executor's own click moved the pointer in that second.)
+# 03:22:56 Login Items toggle off: launchd stopped the job at once and removed it (launchctl print: could not find service); the plist stayed on disk. On at 03:23:12: the job was started again by launchd, pid 3723, no password.
+# 03:23:46 launchctl bootout, job removed for the ProcessType runs (r04-processtype.txt).
+
+## tccd
+# Source: /usr/bin/log show --info --debug, subsystem com.apple.TCC, 03:16:30 to 03:26:00. msgID lines for each daemon pid, joined by msgID; per service and requester the first message and every change of authValue.
+# Reading: tccd names ONE accessing identity, app.portty.spike (binary Spike.app/Contents/MacOS/spike), for ScreenCapture (requested through com.apple.replayd and by the process itself), for PostEvent (requested through
+# com.apple.WindowServer), for Accessibility and ListenEvent (requested by the process itself) and for the audio probe (com.apple.audio.coreaudiod). authValue 0 before the grants, 2 after; authReason 4 is the user's setting.
+# The Notifying lines and the BUNDLE_ATTRIBUTION lines show tccd resolving the bare Mach-O to its bundle (responsiblePID is the daemon pid itself, responsiblePath Spike.app); the rows are keyed to Bundle ID app.portty.spike.
+
+--- pid 3092 (requesting or accessing): first message per service and requester, then each change of authValue/authReason ---
+2026-11-25 03:16:36.357334 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3092.1, function=<private>, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.357340 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3092.1, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:16:36.367141 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3092.1, authValue=1, authReason=5, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:16:36.367670 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3092.2, function=<private>, service=kTCCServiceScreenCapture, preflight=no, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.367675 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3092.2, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:16:36.371528 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3092.2, authValue=0, authReason=5, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:16:36.397871 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=449.1271, function=TCCAccessRequest, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.397880 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=449.1271, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.replayd, pid=449, auid=501, euid=501, binary_path=/usr/libexec/replayd}, },
+2026-11-25 03:16:36.403260 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=449.1271, authValue=1, authReason=5, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:16:36.404039 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=449.1272, function=TCCAccessRequest, service=kTCCServiceScreenCapture, preflight=no, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.404048 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=449.1272, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.replayd, pid=449, auid=501, euid=501, binary_path=/usr/libexec/replayd}, },
+2026-11-25 03:16:36.423349 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=449.1272, authValue=0, authReason=5, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:16:36.438424 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3092.3, function=<private>, service=kTCCServiceListenEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.438441 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3092.3, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:16:36.445316 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3092.3, authValue=1, authReason=5, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:16:36.470601 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.582, function=<private>, service=kTCCServiceListenEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.470610 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.582, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:16:36.476821 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.582, authValue=1, authReason=5, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:16:36.498884 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=449.1273, function=TCCAccessRequest, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.498897 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=449.1273, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.replayd, pid=449, auid=501, euid=501, binary_path=/usr/libexec/replayd}, },
+2026-11-25 03:16:36.507612 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=449.1273, authValue=0, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:16:36.516915 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3092.4, function=<private>, service=kTCCServiceAccessibility, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.516924 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3092.4, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:16:36.523217 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3092.4, authValue=1, authReason=5, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:16:36.532333 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3092.6, function=<private>, service=kTCCServicePostEvent, preflight=no, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.532341 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3092.6, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:16:36.541196 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3092.6, authValue=0, authReason=5, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:16:36.543494 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.584, function=<private>, service=kTCCServicePostEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:16:36.543503 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.584, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:16:36.550070 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.584, authValue=0, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:18:16.367831 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=449.1366, function=TCCAccessRequest, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:18:16.367843 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=449.1366, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.replayd, pid=449, auid=501, euid=501, binary_path=/usr/libexec/replayd}, },
+2026-11-25 03:18:16.374392 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=449.1366, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:18:16.590735 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=326.71, function=<private>, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:18:16.590744 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=326.71, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.audio.coreaudiod, pid=326, auid=202, euid=202, binary_path=/usr/sbin/coreaudiod}, },
+2026-11-25 03:18:16.594918 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=326.71, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:18:59.521475 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.666, function=<private>, service=kTCCServicePostEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:18:59.521484 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.666, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:18:59.526605 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.666, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:18:59.527473 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.667, function=<private>, service=kTCCServiceListenEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:18:59.527482 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.667, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3092, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:18:59.531882 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.667, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+--- pid 3402 (requesting or accessing): first message per service and requester, then each change of authValue/authReason ---
+2026-11-25 03:19:30.346438 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3402.1, function=<private>, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:19:30.346444 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3402.1, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:19:30.354795 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3402.1, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:19:30.361160 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=449.1480, function=TCCAccessRequest, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:19:30.361168 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=449.1480, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.replayd, pid=449, auid=501, euid=501, binary_path=/usr/libexec/replayd}, },
+2026-11-25 03:19:30.365401 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=449.1480, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:19:30.379959 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3402.2, function=<private>, service=kTCCServiceListenEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:19:30.379965 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3402.2, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:19:30.384205 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3402.2, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:19:30.385223 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.668, function=<private>, service=kTCCServiceListenEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:19:30.385231 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.668, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:19:30.389054 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.668, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:19:30.561951 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=326.73, function=<private>, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:19:30.561959 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=326.73, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.audio.coreaudiod, pid=326, auid=202, euid=202, binary_path=/usr/sbin/coreaudiod}, },
+2026-11-25 03:19:30.566319 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=326.73, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:19:33.688553 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3402.4, function=<private>, service=kTCCServiceAccessibility, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:19:33.688563 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3402.4, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:19:33.695765 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3402.4, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:19:33.697678 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3402.5, function=<private>, service=kTCCServicePostEvent, preflight=no, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:19:33.697684 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3402.5, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:19:33.702547 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3402.5, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:19:33.704046 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.670, function=<private>, service=kTCCServicePostEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:19:33.704056 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.670, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:19:33.708627 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.670, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:21:15.468023 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=449.1639, function=TCCAccessRequest, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:21:15.468094 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=449.1639, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.replayd, pid=449, auid=501, euid=501, binary_path=/usr/libexec/replayd}, },
+2026-11-25 03:21:15.502911 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=449.1639, authValue=0, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:21:40.355619 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=449.1661, function=TCCAccessRequest, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:21:40.355632 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=449.1661, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.replayd, pid=449, auid=501, euid=501, binary_path=/usr/libexec/replayd}, },
+2026-11-25 03:21:40.362707 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=449.1661, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:21:58.490671 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.732, function=<private>, service=kTCCServicePostEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:21:58.490682 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.732, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:21:58.495853 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.732, authValue=0, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:22:18.457340 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.738, function=<private>, service=kTCCServicePostEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:22:18.457350 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.738, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3402, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:22:18.463934 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.738, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+--- pid 3723 (requesting or accessing): first message per service and requester, then each change of authValue/authReason ---
+2026-11-25 03:23:12.858420 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3723.1, function=<private>, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:23:12.858427 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3723.1, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3723, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:23:12.869108 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3723.1, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:23:12.879065 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=449.1779, function=TCCAccessRequest, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:23:12.879077 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=449.1779, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3723, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.replayd, pid=449, auid=501, euid=501, binary_path=/usr/libexec/replayd}, },
+2026-11-25 03:23:12.884452 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=449.1779, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:23:12.906368 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3723.2, function=<private>, service=kTCCServiceListenEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:23:12.906374 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3723.2, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3723, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:23:12.912791 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3723.2, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:23:12.914121 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.756, function=<private>, service=kTCCServiceListenEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:23:12.914130 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.756, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3723, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:23:12.918774 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.756, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:23:13.122330 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=326.75, function=<private>, service=kTCCServiceScreenCapture, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:23:13.122339 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=326.75, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3723, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.audio.coreaudiod, pid=326, auid=202, euid=202, binary_path=/usr/sbin/coreaudiod}, },
+2026-11-25 03:23:13.127293 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=326.75, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:23:16.232877 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3723.4, function=<private>, service=kTCCServiceAccessibility, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:23:16.232886 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3723.4, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3723, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=app.portty.spike, pid=3723, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:23:16.241676 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3723.4, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:23:16.243439 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=3723.5, function=<private>, service=kTCCServicePostEvent, preflight=no, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:23:16.243445 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=3723.5, attribution={requesting={TCCDProcess: identifier=app.portty.spike, pid=3723, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, },
+2026-11-25 03:23:16.247956 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=3723.5, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+2026-11-25 03:23:16.249381 tccd: [com.apple.TCC:access] AUTHREQ_CTX: msgID=169.758, function=<private>, service=kTCCServicePostEvent, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-25 03:23:16.249392 tccd: [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=169.758, attribution={accessing={TCCDProcess: identifier=app.portty.spike, pid=3723, auid=501, euid=501, binary_path=/Users/USER/ptest/Spike.app/Contents/MacOS/spike}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=169, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+2026-11-25 03:23:16.253585 tccd: [com.apple.TCC:access] AUTHREQ_RESULT: msgID=169.758, authValue=2, authReason=4, authVersion=1, desired_auth=0, error=(null),
+
+--- responsible-executable lines for the daemon pids ---
+2026-11-25 03:16:36.371490 tccd: [com.apple.TCC:access] Notifying for access  kTCCServiceScreenCapture for target PID[3092], responsiblePID[3092], responsiblePath: /Users/USER/ptest/Spike.app to UID: 501
+2026-11-25 03:16:36.423314 tccd: [com.apple.TCC:access] Notifying for access  kTCCServiceScreenCapture for target PID[449], responsiblePID[3092], responsiblePath: /Users/USER/ptest/Spike.app to UID: 501
+2026-11-25 03:16:36.541143 tccd: [com.apple.TCC:access] Notifying for access  kTCCServicePostEvent for target PID[3092], responsiblePID[3092], responsiblePath: /Users/USER/ptest/Spike.app to UID: 501
+
+--- BUNDLE_ATTRIBUTION lines for the daemon executable ---
+2026-11-25 03:16:36.363291 tccd: [com.apple.TCC:access] BUNDLE_ATTRIBUTION: /Users/USER/ptest/Spike.app/Contents/MacOS/spike is main executable for candidateBundle(/Users/USER/ptest/Spike.app).
+2026-11-25 03:16:36.363298 tccd: [com.apple.TCC:access] BUNDLE_ATTRIBUTION: executable path file:///Users/USER/ptest/Spike.app/Contents/MacOS/spike resolves to attributed bundle: file:///Users/USER/ptest/Spike.app/
+
+--- TCC rows touched for the spike (Modify and Delete events) ---
+2026-11-25 03:16:36.407569 tccd: [com.apple.TCC:events] Publishing <TCCDEvent: type=Modify, service=kTCCServiceScreenCapture, identifier_type=Bundle ID, identifier=app.portty.spike>
+2026-11-25 03:16:36.546513 tccd: [com.apple.TCC:events] Publishing <TCCDEvent: type=Modify, service=kTCCServiceAccessibility, identifier_type=Bundle ID, identifier=app.portty.spike>
+2026-11-25 03:18:15.705576 tccd: [com.apple.TCC:events] Publishing <TCCDEvent: type=Modify, service=kTCCServiceScreenCapture, identifier_type=Bundle ID, identifier=app.portty.spike>
+2026-11-25 03:18:54.850665 tccd: [com.apple.TCC:events] Publishing <TCCDEvent: type=Modify, service=kTCCServiceAccessibility, identifier_type=Bundle ID, identifier=app.portty.spike>
+2026-11-25 03:21:15.470117 tccd: [com.apple.TCC:events] Publishing <TCCDEvent: type=Modify, service=kTCCServiceScreenCapture, identifier_type=Bundle ID, identifier=app.portty.spike>
+2026-11-25 03:21:35.528359 tccd: [com.apple.TCC:events] Publishing <TCCDEvent: type=Modify, service=kTCCServiceScreenCapture, identifier_type=Bundle ID, identifier=app.portty.spike>
+2026-11-25 03:21:55.191231 tccd: [com.apple.TCC:events] Publishing <TCCDEvent: type=Modify, service=kTCCServiceAccessibility, identifier_type=Bundle ID, identifier=app.portty.spike>
+2026-11-25 03:22:17.994223 tccd: [com.apple.TCC:events] Publishing <TCCDEvent: type=Modify, service=kTCCServiceAccessibility, identifier_type=Bundle ID, identifier=app.portty.spike>
+
+## launchctl print
+# gui/501/app.portty.spike.daemon while pid 3092 ran (after the first bootstrap; the inherited environment is dropped)
+gui/501/app.portty.spike.daemon = {
+	active count = 1
+	path = /Users/USER/Library/LaunchAgents/app.portty.spike.daemon.plist
+	type = LaunchAgent
+	state = running
+	program = /Users/USER/ptest/Spike.app/Contents/MacOS/spike
+	arguments = {
+		/Users/USER/ptest/Spike.app/Contents/MacOS/spike
+		agent
+		--config
+		/tmp/spike-evidence/agent-B.json
+	}
+	stdout path = /tmp/spike-daemon.log
+	stderr path = /tmp/spike-daemon.log
+	domain = gui/501 [100002]
+	asid = 100002
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 1
+	pid = 3092
+	immediate reason = speculative
+	forks = 34
+	execs = 1
+	last exit code = (never exited)
+}
+# After the Login Items off and on cycle the job is shown as: type = Submitted, managed_by = com.apple.xpc.ServiceManagement, path = (submitted by smd.94), spawn type = daemon (3), domain gui/501, asid 100002 (see procinfo below).
+
+## procinfo
+# sudo launchctl procinfo 3092 excerpt (launchd job, ppid 1)
+program path = /Users/USER/ptest/Spike.app/Contents/MacOS/spike
+	ppid = 1
+	pgid = 3092
+	start date = 2026-11-25 03:16:36
+	session id = 100002
+	audit flags = has_graphic_access,has_tty,has_console_access,has_authenticated
+responsible pid = 3092
+responsible unique pid = 3092
+(the full output also printed the environment vector, which names no spike-specific variable apart from XPC_SERVICE_NAME => app.portty.spike.daemon, and a sandbox line: sandboxed = no)
+
+# sudo launchctl procinfo 3723 excerpt and launchctl print (after the Login Items toggle restarted the job)
+program path = /Users/USER/ptest/Spike.app/Contents/MacOS/spike
+argument vector = {
+	[0] = /Users/USER/ptest/Spike.app/Contents/MacOS/spike
+	[1] = agent
+	[2] = --config
+	[3] = /tmp/spike-evidence/agent-B.json
+	ppid = 1
+	flags = 64-bit
+	start date = 2026-11-25 03:23:12
+	session id = 100002
+	flags = has_graphic_access,has_tty,has_console_access,has_authenticated
+responsible pid = 3723
+responsible unique pid = 3723
+responsible path = /Users/USER/ptest/Spike.app/Contents/MacOS/spike
+	checked allocations flags = 0x0
+	sanitizer flags = 0x0
+
+## plist
+# plutil -p of ~/Library/LaunchAgents/app.portty.spike.daemon.plist as loaded (no ProcessType key)
+{
+	[0] = /Users/USER/ptest/Spike.app/Contents/MacOS/spike
+	[1] = agent
+	[2] = --config
+	[3] = /tmp/spike-evidence/agent-B.json
+	ppid = 1
+	flags = 64-bit
+	start date = 2026-11-25 03:23:12
+	session id = 100002
+	flags = has_graphic_access,has_tty,has_console_access,has_authenticated
+responsible pid = 3723
+responsible unique pid = 3723
+responsible path = /Users/USER/ptest/Spike.app/Contents/MacOS/spike
+	checked allocations flags = 0x0
+	sanitizer flags = 0x0
+
+  PID  PPID   SESS COMM
+ 3723     1      0 /Users/USER/ptest/Spike.app/Contents/MacOS/spike
+
+	path = (submitted by smd.94)
+	type = Submitted
+	managed_by = com.apple.xpc.ServiceManagement
+	state = running
+	stdout path = /tmp/spike-daemon.log
+	stderr path = /tmp/spike-daemon.log
+	domain = gui/501 [100002]
+	asid = 100002
+	runs = 1
+	pid = 3723
+	immediate reason = speculative
+	last exit code = (never exited)
+		type = resource
+		state = active
+		type = jetsam
+		state = active
+	spawn type = daemon (3)
+	job state = running
+
+{
+  "Disabled" => false
+  "KeepAlive" => false
+  "Label" => "app.portty.spike.daemon"
+  "ProgramArguments" => [
+    0 => "/Users/USER/ptest/Spike.app/Contents/MacOS/spike"
+    1 => "agent"
+    2 => "--config"
+    3 => "/tmp/spike-evidence/agent-B.json"
+  ]
+  "RunAtLoad" => true
+  "SessionCreate" => false
+  "StandardErrorPath" => "/tmp/spike-daemon.log"
+  "StandardOutPath" => "/tmp/spike-daemon.log"
+}
+
+## sfltool
+# sudo sfltool dumpbtm, only the entries for the daemon (UUIDs dropped, user home reduced to /Users/501, developer name replaced)
+# The legacy agent is grouped under a developer entry; System Settings names the Login Items row after the developer, not after Spike.
+ #2:
+                 Name: DEVELOPER
+       Developer Name: DEVELOPER
+                 Type: developer (0x20)
+                Flags: [  ] (0)
+          Disposition: [disabled, allowed, not notified] (0x2)
+           Identifier: DEVELOPER
+                  URL: (null)
+           Generation: 3
+ #3:
+                 Name: Spike
+       Developer Name: DEVELOPER
+      Team Identifier: S2K7P43927
+                 Type: legacy agent (0x10008)
+                Flags: [ legacy ] (0x1)
+          Disposition: [enabled, allowed, notified] (0xb)
+           Identifier: 8.app.portty.spike.daemon
+                  URL: /Users/USER/Library/LaunchAgents/app.portty.spike.daemon.plist
+      Executable Path: /Users/USER/ptest/Spike.app/Contents/MacOS/spike
+           Generation: 5
+    Parent Identifier: DEVELOPER

@@ -1,0 +1,36 @@
+# R04-none and R04-interactive: launchd ProcessType reference numbers (guest macOS 27.2, build 26B123)
+# Reference rows only: they record numbers and never set R04's Result (matrix "Reference rows").
+# Rig: Tart guest portty-test (paravirtualized video encoder, no real display), the legacy LaunchAgent app.portty.spike.daemon bootstrapped from ~/Library/LaunchAgents with
+# `launchctl bootstrap gui/501`, program Spike.app/Contents/MacOS/spike agent --config agent-B.json, the config naming `vmprobe --seconds 30 --out <dir>` (SCK stream plus a VideoToolbox
+# H.264 session, completeFps and encodeLatencyMs from spk_sck_stats). No GUI process ran. Workload for both runs: ScreenSaverEngine (pid 3796, the stock video screen saver)
+# started with `open -a ScreenSaverEngine` at about 03:23:50 and still running through both runs, so both saw the same kind of full-screen motion. Screen lock is off in the guest.
+
+## Runs (one run each, n = 1)
+| | R04-none (production shape) | R04-interactive |
+|---|---|---|
+| started (guest time) | 03:24:01 | 03:24:54 |
+| pid | 3825 | 3872 |
+| ProcessType key in the loaded plist | absent (`plutil -extract ProcessType raw` fails: no value at that key path) | `Interactive` (inserted with `plutil -insert ProcessType -string Interactive`; `plutil -p` shows "ProcessType" => "Interactive") |
+| `launchctl print` spawn type | daemon (3) | interactive (4) |
+| job exit | last exit code = 0, runs = 1 | last exit code = 0, runs = 1 |
+| Complete frames in 30 s | 857 | 858 |
+| Idle frames / Blank frames | 9 / 0 | 9 / 0 |
+| Complete frames per second | 28.57 | 28.60 |
+| encode latency mean (ms) | 16.87 | 19.14 |
+| encode latency p95 (ms) | 33.15 | 35.69 |
+| encode latency max (ms) | 39.77 | 50.49 |
+| first frame (ms) | 101.2 | 29.1 |
+| capture size and format | 2560 x 1440, 420v, IOSurface-backed | same |
+| encoder | paravirtualized:com.apple.videotoolbox.videoencoder.ave.avc, hardware true | same |
+| sr_preflight | true | true |
+
+## Reading
+# The ProcessType key took effect: launchd reports spawn type daemon (3) for the production shape and interactive (4) with the key (the helper runs as interactive (4) in 17-04's r07-A-attribution.txt).
+# In this guest the two runs are indistinguishable in throughput: 28.57 against 28.60 Complete frames per second, both close to the 30 fps cap the probe asks for, with no Blank frames.
+# Encode latency was a little higher with Interactive (mean 19.1 against 16.9 ms), the opposite of a throttle effect, and within what one run each cannot separate from noise.
+# So the VM shows no launchd light-resource-limit throttle on an unspecified ProcessType for a daemon with the GUI closed. It does not show that real hardware behaves the same:
+# the guest has no real display or hardware encoder contention, and one 30 s run per setting cannot expose a throttle that engages after minutes or under CPU pressure.
+# Consequence for Phase 19: setting ProcessType Interactive is cheap and was harmless here, but nothing in this evidence makes it a requirement for the daemon shape.
+
+## Restored state
+# After the second run: launchctl bootout, then `plutil -remove ProcessType` on the guest plist. `plutil -extract ProcessType raw` fails again (production shape), ScreenSaverEngine stopped, no Spike process left.
