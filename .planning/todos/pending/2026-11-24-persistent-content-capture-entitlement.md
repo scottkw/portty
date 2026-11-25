@@ -11,7 +11,8 @@ macOS 15+ asks monthly to re-approve Screen Recording. On the unattended office 
 ## Solution
 User files the request from the Apple Developer account (user said "I'll file it now", 2026-11-24). Non-blocking for v2.0; once granted, add the provisioning profile to the signing pipeline (see .planning/research/SUMMARY.md).
 
-## Process (looked up 2026-11-24)
+## Process (looked up 2026-11-24; corrected 2026-11-25)
+- CORRECT FORM (2026-11-25): https://developer.apple.com/contact/request/persistent-content-capture/ (Apple Developer sign-in required). Apple describes the entitlement as for VNC / remote-screen apps. The generic developer.apple.com/contact page has no Entitlements option.
 - No public request form confirmed. Apple DTS (Quinn, forums thread 816646): escalation path for entitlement requests is developer.apple.com/contact → Development and Technical → Entitlements. Check the signed-in developer account for a request option.
 - Reported waits (developers, not Apple): weeks to 2+ months, little correspondence.
 - Restricted entitlement is tied to an App ID; each executable signed with it needs its own App ID + embedded provisioning profile (DTS).
