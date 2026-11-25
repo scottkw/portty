@@ -8,7 +8,7 @@
 |---|---|---|---|---|---|
 | Privacy and Security, Screen and System Audio Recording | Spike (generic icon) | Bundle ID app.portty.spike (tccd Modify events name identifier_type Bundle ID) | AXSwitch, Value=1 | yes: off at 03:21:15 stopped frames in the running daemon (SCError -3801 from the record at 03:21:15), on at 03:21:35 restored them (Complete from 03:21:40), no restart | 1 |
 | Privacy and Security, Accessibility | Spike (generic icon) | Bundle ID app.portty.spike, the same key as Screen Recording (tccd Modify events name identifier_type Bundle ID) | AXSwitch, Value=1 | yes: off at 03:21:55 made the pointer nudge fail in the running daemon for 4 records, on at 03:22:17 restored it, no restart | 1 |
-| General, Login Items and Extensions, Background App Activity | DEVELOPER (generic icon), not Spike; status text "Not running in background" even while the daemon ran | the legacy agent app.portty.spike.daemon, grouped under a developer record (sfltool entry Type legacy agent, Parent Identifier = the developer) | AXSwitch, Value=1 | yes: off at 03:22:56 made launchd stop the job at once and remove it (launchctl print: could not find service), on at 03:23:12 started it again (pid 3723), no password | 1 |
+| General, Login Items and Extensions, Background App Activity | DEVELOPER (generic icon), not Spike; the status text did not follow the process: "Running in background" right after the first load, "Not running in background" after the bootout and bootstrap cycle while the daemon ran (this dump), "Running in background" again at 03:38 | the legacy agent app.portty.spike.daemon, grouped under a developer record (sfltool entry Type legacy agent, Parent Identifier = the developer) | AXSwitch, Value=1 | yes: off at 03:22:56 made launchd stop the job at once and remove it (launchctl print: could not find service), on at 03:23:12 started it again (pid 3723), no password | 1 |
 
 Spike entries in Screen Recording, Accessibility and Login Items: 1 + 1 + 1 = 3 (the tiebreaker count for the daemon shape). R09-A, the helper, also counts 3.
 Plain Mach-O versus bundle: the bare Mach-O inside the app bundle is NOT listed by its own path. tccd resolves it to the enclosing bundle (BUNDLE_ATTRIBUTION: main executable for candidateBundle Spike.app), so Settings lists the bundle as Spike for both Privacy panes, and one TCC key (Bundle ID app.portty.spike) serves Screen Recording and Accessibility. The helper shape needed two keys (a bundle for Screen Recording, a path for Accessibility).
@@ -37,7 +37,7 @@ No Accessibility prompt dialog appeared in any screenshot; the request created t
            AXCheckBox [AXSwitch] Value=1 @644,228 36x16
 
 ## AX excerpt: Login Items, Background App Activity (LoginItems-Settings.extension), pid 3402 running
-# rows named after the developer: 1; the separate row named Spike is the 17-04 helper's leftover (Last ran in background today)
+# rows named after the developer: 1 (status text "Not running in background" in this dump although pid 3402 ran); the separate row named Spike is the 17-04 helper's leftover (Last ran in background today)
        AXStaticText Value=DEVELOPER @274,379 59x18
        AXStaticText Value=Not running in background @274,399 139x16
        AXCheckBox [AXSwitch] Value=1 @644,380 36x16
