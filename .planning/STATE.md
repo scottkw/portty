@@ -5,16 +5,16 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: Completed 17-10-PLAN.md
-last_updated: "2026-11-25T06:13:52.012Z"
+stopped_at: Completed 17-11-PLAN.md
+last_updated: "2026-11-25T16:23:46.014Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 17 execution started
-state_head: 54c4784a4c81f29d61870711e4321627cd01aa40
+state_head: bbafab377831f57d6e00da2f2c42e37995871fc6
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 17 (Desktop Feasibility Spike) — EXECUTING
-Plan: 10 of 12
+Plan: 11 of 12
 Status: Ready to execute
 Last activity: 2026-11-24 — Phase 17 execution started
 
@@ -166,6 +166,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 17 P07 | 16 min | 3 tasks | 9 files |
 | Phase 17 P08 | 35min | 3 tasks | 14 files |
 | Phase 17 P10 | 35 min | 2 tasks | 10 files |
+| Phase 17 P11 | 30min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -387,6 +388,8 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-08: R12 Chrome and R13 Wails web view are GO over the tailnet in both ICE modes; the shell's Local Network prompt names SpikeShell and, while unanswered, leaves media at ICE new (real Portty app prompt is a Phase 21 check)
 - [Phase 17]: 17-10: R18-vm is NO-GO against its own criterion: display sleep ends the SCK stream (-3815) and wake does not bring frames back; no restart-after-wake flag added
 - [Phase 17]: 17-10: host-run exits before serving when Screen Recording is not granted; typing needs --allow-input and a listed keycode, refused at parse time otherwise
+- [Phase 17]: 17-11: R14 GO; iOS Safari and Home Screen start video only from a user tap, so the DVWR-03 iPhone viewer must start playback from a tap
+- [Phase 17]: 17-11: host Screen Recording not approved within 120 s; R01-host, R18-host, R20-host and base rows R01, R18, R20 PARTIAL (user-skip, user-not-approved); host revoked and proven clean
 
 ### Pending Todos
 
@@ -511,8 +514,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-25T06:13:51.981Z
-Stopped at: Completed 17-10-PLAN.md
+Last session: 2026-11-25T16:23:45.970Z
+Stopped at: Completed 17-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
