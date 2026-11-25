@@ -5,16 +5,16 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: Completed 17-05-PLAN.md
-last_updated: "2026-11-25T03:44:54.752Z"
+stopped_at: Completed 17-06-PLAN.md
+last_updated: "2026-11-25T04:22:42.346Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 17 execution started
-state_head: caaa0afb0ac7dac225bf4ba3ee356f41a04deac7
+state_head: 4305cac1a193727f0a58287dcbd0afc75cc6bd44
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 12
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 17 (Desktop Feasibility Spike) — EXECUTING
-Plan: 6 of 12
+Plan: 7 of 12
 Status: Ready to execute
 Last activity: 2026-11-24 — Phase 17 execution started
 
@@ -161,6 +161,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 17 P03 | 12 min | 2 tasks | 9 files |
 | Phase 17 P04 | 17 min | 2 tasks | 7 files |
 | Phase 17 P05 | 31min | 2 tasks | 10 files |
+| Phase 17 P06 | 36min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -375,6 +376,8 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-04: R02 is GO although the helper holds two TCC identities (Screen Recording on the parent bundle app.portty.spike, Accessibility and PostEvent on the helper path); R09-A counts 3 Settings entries for the FEAS-02 tiebreaker
 - [Phase 17]: R06 SSH nohup respawn recorded NO-GO: tccd's subject is sshd-keygen-wrapper and the no-grant control got SCError -3801; R07-B launchd kickstart is GO so DAEMON-RESPAWN holds
 - [Phase 17]: R09-B counts 3 Settings entries (Screen Recording, Accessibility, Login Items), equal to R09-A; the daemon needs one TCC key (Bundle ID), the helper two
+- [Phase 17]: 17-06: R15 and R17 GO for both shapes with the display held awake; the unaided lock loses the SCK stream at about 31 s (SCError -3815) when the guest display turns off
+- [Phase 17]: 17-06: provisional FEAS-02 outcome in-daemon by row 7, Pipeline shape: daemon; R16-B PARTIAL (typing unlocked 2 of 3 daemon attempts, 3 of 3 helper attempts)
 
 ### Pending Todos
 
@@ -499,8 +502,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-25T03:44:54.710Z
-Stopped at: Completed 17-05-PLAN.md
+Last session: 2026-11-25T04:22:42.304Z
+Stopped at: Completed 17-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
