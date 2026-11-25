@@ -589,7 +589,7 @@ func probeStream(ctx context.Context, o probeOpts, rec *ProbeRecord) {
 	rec.Capture = json.RawMessage(stats)
 	var parsed struct {
 		Status  statusCounts    `json:"status"`
-		Running bool            `json:"running"`
+		Running int             `json:"running"` // sckStats emits 0 or 1, not a JSON boolean
 		Error   json.RawMessage `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(stats), &parsed); err != nil {
@@ -598,12 +598,13 @@ func probeStream(ctx context.Context, o probeOpts, rec *ProbeRecord) {
 	}
 	rec.Delta = parsed.Status.sub(st.prev)
 	st.prev = parsed.Status
-	rec.StreamRunning = &parsed.Running
+	running := parsed.Running != 0
+	rec.StreamRunning = &running
 	if len(parsed.Error) > 0 {
 		rec.LatestError = parsed.Error
 		rec.fail("capture: stream error")
 	}
-	if parsed.Running {
+	if running {
 		dumpRecordPNG(o.pngPath, rec)
 	}
 }
