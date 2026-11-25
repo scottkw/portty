@@ -59,7 +59,12 @@ User delegated: 'I don't need to answer a bunch of questions' (2026-11-25). Clau
 - The Unlock field appears in the browser, iPhone and Portty app viewers alike (each gets it from the shared DesktopView). Reason: the user's main remote device may be any of them.
 - Release notes for v2.0 state "Apple Silicon and macOS 14 or later only" at the top. Reason: v1.2.x updaters do not check architecture or OS and would offer the update anyway.
 - The adaptive behaviour has no user-facing quality setting. Reason: the requirement asks for automatic adaptation, and radical simplicity.
-
+- After research (2026-11-25, user delegated): clicks are also blocked while the Mac is locked (matches Phase 20; a stray click on the lock screen's keyboard-layout menu could corrupt the typed password); the unlock box is the only input while locked. The wake key produces no character.
+- After research: audio goes to every viewer that sees the picture, including guests and muted viewers; the share sheet says so.
+- After research: unlock is rate-limited to one try about every 5 s; 3 failures pause remote unlock for about 15 minutes.
+- After research: if the 'someone is at the keyboard' signal is unavailable, the Mac re-locks anyway (fail secure).
+- After research: a v2.0.0-rc.1 draft-release dry run is planned before the real release; pushing that tag stays the user's call at that time.
+- After research: release builds set both CGO_CFLAGS and CGO_LDFLAGS to -mmacosx-version-min=14.0 (Wails forces 10.13 otherwise), and build.yml checks every Mach-O's minos so a PR catches it.
 </decisions>
 
 <code_context>

@@ -66,7 +66,8 @@ User delegated: 'I don't need to answer a bunch of questions' (2026-11-25). Clau
 - State wording for host and viewers: Needs permission, Waiting for approval at the Mac, Display asleep, Locked, Streaming to N viewers; viewers also show Reconnecting. Reason: the requirement text already uses these phrases.
 - Lapse notification: one native notification per lapse (Portty desktop needs approval at the Mac), none on recovery. Reason: avoids noise on an unattended Mac.
 - Host state is shown in the Settings Desktop group and as one line in the tray menu, with no new tray icon state in Phase 19 (the shared-with-N indicator with Stop is DSHR-06, Phase 22). Reason: radical simplicity.
-
+- USER DECISION after research (2026-11-25, 'Only while plugged in'): while always-available desktop is on and the Mac is on AC power, the daemon holds a system-sleep assertion so the Mac stays reachable (the display may still sleep); on battery it sleeps normally. Viewer-connected display-awake assertions (DPRM-04) are unchanged. Rationale: the office Mac's power policy idle-sleeps 1 min after display sleep, and nothing can wake a sleeping Mac over the tailnet.
+- After research (user delegated): permission state is read by a short-lived child process (portty daemon perm-probe) and confirmed by effect, never by in-process preflight calls (they cache their first answer); 'awaiting approval' is classified only after a stream restart; product code never uses launchctl kickstart -k; desktop.json carries iat so the copied link survives restarts.
 </decisions>
 
 <code_context>
