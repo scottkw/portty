@@ -26,6 +26,9 @@ A throwaway end-to-end path (ScreenCaptureKit → VideoToolbox H.264 → pion/we
 ### Portty-app check substitution
 - User accepted (2026-11-24): the ROADMAP SC2 "Portty app" connection row is answered by a throwaway Wails v2 shell (same WKWebView engine and the app's CSP meta), not the real Portty app. Real-app integration (bundle id, React UI, signalling) is proven in Phase 21 (DVWR-01).
 
+### UI safety gate waiver
+- User decision (2026-11-24, during wave 1): the UI safety gate (execute:wave:post ui.safety-gate) is waived for Phase 17. spike/desktop/viewer.html and any spike shell UI are throwaway test tooling, not product UI, so no UI-SPEC.md. Product UI phases (19-22) still get UI-SPECs.
+
 ### Timebox
 - No timebox: every matrix row gets a real answer before Phase 19 planning. Rows that genuinely cannot be answered by a spike (e.g. the real 30-day re-approval prompt) are answered with the strongest available evidence and an explicit M-NN follow-up.
 
