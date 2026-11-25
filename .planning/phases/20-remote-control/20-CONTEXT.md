@@ -65,6 +65,8 @@ User delegated: 'I don't need to answer a bunch of questions' (2026-11-25). Clau
 - After research: the Ctrl to Cmd option swaps the two keys (Ctrl sends Cmd and Cmd sends Ctrl), matching how other remote-desktop tools present it.
 - After research: in a window share, every click first checks which window is on top at that point, so a floating panel or banner over the shared window never receives it (reliability first); Cmd+Tab and Cmd+Space are disabled in window shares.
 - After research: clipboard chunks are capped near 16 KiB of text so a chunk plus its JSON wrapper stays under the share server's 32768-byte read limit.
+- After Phase 21 research (2026-11-25, user delegated): every Cmd chord is sent as press then release (as noVNC does), because macOS never sends key-up for a normal key while Cmd is held; Phase 21 tests it.
+- After Phase 21 research: the input protocol also carries a relative pointer move and the daemon reports the cursor position, so the iPhone trackpad mode does not drift (cheap now, costly after it ships).
 </decisions>
 
 <code_context>

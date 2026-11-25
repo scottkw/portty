@@ -129,7 +129,7 @@ Other specifics:
 - Research rules carry over: subagents never contact the host's tailscaled or 100.x addresses; nothing mounts, copies or modifies ~/Downloads or /Applications on the host; capture checks run in the VMs, or on the user's Macs with their go-ahead.
 
 - Office Mac facts (user, 2026-11-25): the user is CTO and configures the office Mac themselves; it mirrors the personal Mac. Read from the personal Mac: Tailscale is the standalone app (io.tailscale.ipn.macsys, Developer ID, not App Store; CLI at /usr/local/bin/tailscale), answering M-164. Power policy (pmset -g custom): system sleep 1 min and display sleep 10 min on both battery and AC, Low Power Mode on battery, Power Nap on. So the Mac idle-sleeps right after the display sleeps, matching R18-host; DPRM-04's system-sleep assertion is mandatory, not optional (M-159 context).
-
+- Seams later phases reuse (from Phase 21 research, 2026-11-25): build the /desktop/ viewer with a pluggable connection, a hook before redial and a wake event; fix web-mode detection so a /desktop/ page is not read as the Wails shell (today any path outside /app/ is); prove video plays under the strict share CSP (no media-src today); the web-app manifest has no start_url, so saved Home Screen links keep their token; desktop proxy errors distinguish rejected token, desktop off and unreachable.
 </specifics>
 
 <deferred>

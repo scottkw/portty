@@ -55,7 +55,11 @@ User delegated: 'I don't need to answer a bunch of questions' (2026-11-25). Clau
 - iPhone soft keyboard: a keyboard button in a slim bottom bar focuses a hidden input, and composed text goes as Phase 20 text messages. A desktop key bar sits above the keyboard with Esc, Tab, one-shot Ctrl, Opt and Cmd, the arrows, and Phase 20's Send-keys menu. Reason: iOS gives no reliable key codes (research FEATURES), and this reuses the Phase 14 key-bar look.
 - After the phone sleeps, the viewer reconnects by itself. If iOS needs a new tap to play, it shows the same Tap to start overlay as the first load. Reason: one familiar recovery screen.
 - The iPhone layout is full-bleed video with safe-area insets and the Phase 14 visualViewport keyboard inset, with no sidebar. Reason: the phone has no room for chrome, and the patterns exist.
-
+- After research (2026-11-25, user delegated): control mode first tries blocking keys in the Desktop tab's own key handler (no native code, no menu swap that could get stuck); a first-wave probe in the real app in the Tart VMs decides; fallbacks in order: blank menu shortcuts in place, then rebuild the menu. Ctrl+Option+Cmd+Return stays the release chord; Esc is not used.
+- After research: Cmd+V keeps the accepted decision (pastes the home clipboard in the Portty app, via Phase 20's explicit paste message, then the key); browsers follow Phase 20's plain-key behaviour.
+- After research: a Desktop tab disconnects after its window has been hidden for about 2 minutes and reconnects when shown, so a hidden Portty window does not keep the office display awake.
+- After research: no Wake Lock on the iPhone viewer.
+- After research: the seams Phase 21 reuses (pluggable connection, pre-redial hook, wake event, mode detection, CSP video check, manifest without start_url, distinct proxy errors) are requested from Phase 19 (noted in 19-CONTEXT); any not delivered are built in Phase 21's first wave.
 </decisions>
 
 <code_context>
