@@ -11,9 +11,11 @@ requires:
 provides:
   - "R14 GO: iPhone Safari and the Home Screen web app (iOS 27.2.1) connect to VM office over the tailnet and decode H.264 42e01f in both ICE-lite and full ICE; iOS needs a user tap to start playback"
   - "viewer.html: explicit play() on track, a Tap to play button and a playback diag line"
-  - "R01-host, R18-host, R20-host PARTIAL. Session 1: Screen Recording grant not given within 120 s, run never started. Session 2 (grant added by the user by hand): the spike crashed at about ready+66 s (SIGTRAP on the main thread in spk_app_run)"
-  - "R20-host real-silicon numbers for 20 s of motion: hardware AVC encoder, 2560 x 1664, 29.10 Complete fps, encode latency mean 12.69 ms (p95 median 20.66), own CPU 29.6 percent of one core, SSIM 0.999024 (luma 0.999313)"
-  - "R01-host: tailscale ping from VM home read DERP before and after; the viewer connected over ICE-lite but no viewer report exists (server crashed). R18-host not reached"
+  - "Session 3 (after the nil-font fix bf95b9a6): the full 180 s host run completed on this MacBook Air, no crash, no 'chart text skipped' line"
+  - "R20-host GO (R20 GO): hardware AVC encoder, 2560 x 1664, full 60 s motion at 29.15 Complete fps, encode latency mean 12.85 ms (p95 median 20.94), own CPU 27.0 percent of one core, RSS flat at about 93 MB, SSIM 0.999327 (luma 0.999406), no thermal warning"
+  - "R18-host NO-GO (R18 NO-GO): SCK stream ends with -3815 0.7 s after display sleep and does not come back after the wake; on battery the Mac went into system idle sleep 5.5 s after the display, suspending the server and the spike's monotonic-clock wake timer"
+  - "R01-host PARTIAL: VM home Safari decoded 1853 frames (0 dropped) of the real Mac's display through the motion window, but tailscale ping read DERP before and after, so the no-relay clause of SC1 is still not shown"
+  - "Sessions 1 and 2 (history): session 1 grant not given within 120 s; session 2 crashed at about ready+66 s (nil font in drawText:, fixed in bf95b9a6)"
   - "Host revoked and proven clean: tccutil resets rc 0, post-revoke preflight all false, status NotFound, pgrep rc 1, launchctl Could not find service, both guard mutations shown"
   - "Matrix fix: R15-R17 VM results moved from the Routing table back into Rows"
 affects: [17-12, DVWR-03, DPRM-04, DESK-01, DESK-07, FEAS-01]
@@ -21,10 +23,10 @@ affects: [17-12, DVWR-03, DPRM-04, DESK-01, DESK-07, FEAS-01]
 actuals:
   tokens: 13896
   tasks: 3
-  commits: 3
+  commits: 7
 plan_head_before: 91408414c2c078a5d4c06432ac82f4619ea35673
-plan_head_after: a87c496d
-# commits measured: git rev-list --count 91408414..a87c496d = 3 (bbafab37, 43011602, a87c496d); session 2 adds a87c496d and its docs commit
+plan_head_after: f8b10d2e
+# commits measured: git rev-list --count 91408414..f8b10d2e = 7 (322c2357, bbafab37, 43011602, a87c496d, 4b4fc9f5, bf95b9a6, f8b10d2e); session 3's docs commit follows
 
 tech-stack:
   added: []
@@ -36,6 +38,8 @@ key-files:
     - .planning/phases/17-desktop-feasibility-spike/evidence/r14-iphone-reports.json
     - .planning/phases/17-desktop-feasibility-spike/evidence/r14-frame-iphone-*.jpg (7 frames of VM office's screen)
     - .planning/phases/17-desktop-feasibility-spike/evidence/r18-r20-host-timeline.jsonl (session 2 host-run timeline, no address or token)
+    - .planning/phases/17-desktop-feasibility-spike/evidence/r18-r20-host-timeline-session3.jsonl (session 3 host-run timeline, full run)
+    - .planning/phases/17-desktop-feasibility-spike/evidence/r01-host-report-safari-lite.json (session 3 viewer report, addresses null)
   modified:
     - spike/desktop/viewer.html
     - .planning/phases/17-desktop-feasibility-spike/17-SPIKE-MATRIX.md
@@ -44,6 +48,7 @@ key-decisions:
   - "R14 GO with the finding that iOS (Safari and Home Screen) starts video only from a user gesture; the Phase 21 DVWR-03 iPhone viewer must start playback from a tap"
   - "Screen Recording not approved within 120 s: per the orchestrator, no new checkpoint; R01-host, R18-host, R20-host and the R01, R18, R20 base rows close PARTIAL with basis user-skip (user-not-approved), follow-up re-run the host sequence in a new user-approved session"
   - "Session 2 crash: rows stay PARTIAL with basis ran; no re-run and no code change in this plan (a rebuild would void the user's manual grant, and a new host run needs a new go); grant revoked right after"
+  - "Session 3: R20 GO and R18 NO-GO (the wake does not bring frames back without a stream restart, as R18-vm); R01 stays PARTIAL on the DERP path. Phase 19 must hold a system-sleep and display-awake assertion while a viewer watches (on battery a display-off idle-slept this Mac in 5.5 s) or restart the stream on -3815, and must not time across sleep with a monotonic timer"
 
 duration: 30min
 completed: 2026-11-25
@@ -51,7 +56,7 @@ completed: 2026-11-25
 
 # Phase 17 Plan 11: iPhone row and host run Summary
 
-**R14 GO on iPhone (iOS 27.2.1) in both ICE modes once a tap starts playback. The host run on this MacBook Air did not start in session 1 (no grant within 120 s); in session 2, with the grant the user added by hand, the spike crashed at about ready+66 s, after 20 s of motion: R20-host has real hardware-encoder numbers for that window (29.10 fps, 12.69 ms mean latency, 29.6 percent of one core, SSIM 0.999), R01-host pinged over DERP both times, R18-host was not reached. All three stay PARTIAL, and the host was revoked with no spike TCC rows left.**
+**R14 GO on iPhone (iOS 27.2.1) in both ICE modes once a tap starts playback. On this MacBook Air the third host session ran the full 180 s schedule after the nil-font fix: R20 GO (hardware AVC, 60 s of motion at 29.15 fps, 12.85 ms mean encode latency, 27.0 percent of one core, SSIM 0.9993), R18 NO-GO (the stream ends with -3815 at display sleep and does not return after the wake; on battery the Mac also idle-slept 5.5 s after the display), R01 still PARTIAL (VM home Safari decoded 1853 frames from the real Mac, but over DERP). The host was revoked with no spike TCC rows left.**
 
 ## Performance
 
@@ -75,12 +80,24 @@ completed: 2026-11-25
 - R18-host: the sleep was due at ready+120 s, and the spike died first. The run never slept, woke or locked the display.
 - Revoke: three `tccutil reset ... app.portty.spike` rc 0, post-revoke preflight all false, status NotFound, pgrep guard rc 0 then 1, no launchd labels. A read-only look at the system TCC database found no ScreenCapture row (the user's manual entry is gone), but the post-revoke probe had written a denied Accessibility row (auth_value 0, system set) at 17:01:32. A second `tccutil reset Accessibility app.portty.spike` (rc 0) cleared it: 0 rows left.
 
+## Session 3 (re-run after the nil-font fix, 2026-11-25)
+
+- Host window 17:51:13 to 17:54:44 UTC (3.5 min). Same default command line (a), fresh token, Spike.app not rebuilt after the orchestrator's 17:49:34 preflight (sr true, ax false, pe false).
+- The run completed: spike exit at 17:54:42 UTC (last timeline line 17:54:41.86), 36 perf lines, no crash dump, no "spike: chart text skipped" line in hostrun.err. The end came 14 s late by the wall clock because the spike's timers use the monotonic clock, which stopped during 18 s of system sleep.
+- The ready+15 s frame showed only the test chart, the capture indicator and the pointer: no bypass-picker dialog this time and no notification. Read, then deleted with static.h264.
+- R20-host: see provides. Static window 4.53 fps (still chart), latency mean 14.31 ms, own CPU 2.13 percent; top in motion: WindowServer 41.3, spike 18.1. No thermal warning.
+- R18-host: displaysleepnow at ready+120.1 s, -3815 0.70 s later, locked and asleep at the next poll; system idle sleep 17:53:33 to 17:53:51 on battery; woken by keyboard or trackpad (pmset log) and unlocked 1.3 s later, not by the spike; the spike's wake call ran 10 s after that; 0 Complete frames for the remaining 55 s. The R18 viewer joined after the unlock and its report was lost to the shutdown race.
+- R01-host: pings DERP before (38 to 58 ms) and after (39 to 52 ms); viewer report: connected 1770 ms, first frame 2372 ms, 1853 frames decoded, 0 dropped, 2560 x 1664, 42e01f, RTT median 45 ms.
+- Revoke 17:54:42 to 17:54:44: three tccutil resets rc 0, post-revoke preflight all false, the probe's denied Accessibility row found and reset again at once (0 rows), status NotFound, pgrep guard rc 0 then 1, no launchd labels.
+
 ## Task Commits
 
 1. Task 1: host-run plan, `322c2357`
 2. Task 2: user checkpoint (go, DND on, iPhone done, iOS 27.2.1), no commit
 3. Task 3: R14, host attempt, revoke, matrix, `bbafab37`
-4. Task 3 session 2: host run with the manual grant (crash), revoke, matrix and notes, `a87c496d`
+4. Task 3 session 2: host run with the manual grant (crash), revoke, matrix and notes, `a87c496d` (docs `4b4fc9f5`)
+5. Crash diagnosis and spike fix (nil font in drawText:), `bf95b9a6`
+6. Task 3 session 3: full host run, revoke, matrix and notes, `f8b10d2e`
 
 ## Deviations from Plan
 
@@ -105,7 +122,8 @@ completed: 2026-11-25
 
 - On this Mac, tccd did not show a Screen Recording dialog for the `--request` launch. It notified and returned denied, while the same launch in VM office (R00) raised a dialog. The log cannot say whether anything reached the screen. Do Not Disturb was on, and the user may have been at a locked screen. The user's observation is needed.
 
-- Session 2: the spike crashed on real hardware at about ready+66 s, in the AppKit run loop on the main thread. The same command line ran 180 s three times in VM office. Candidates: the private-window-picker dialog (the user's click on it, or the dialog closing), or the real display's 2560 x 1664 size and motion. Neither is shown. Next time, set GOTRACEBACK=crash or use a native crash reporter so a symbolicated report exists.
+- Session 2: the spike crashed on real hardware at about ready+66 s, in the AppKit run loop on the main thread. Resolved: a transient nil font reached an unchecked dictionary literal in drawText: (evidence/host-run-crash-diagnosis.txt); fixed in bf95b9a6, and session 3 ran the full schedule with no "chart text skipped" line, so the nil did not recur this time.
+- Session 3: on battery, a display sleep took this Mac to system idle sleep within 6 s even though another process held a PreventUserIdleSystemSleep assertion (why it did not hold is not established). Anything that must keep serving across a display sleep needs a stronger assertion and its own test on battery.
 - The post-revoke probe (AXIsProcessTrusted) writes a denied Accessibility row after `tccutil reset`. The revoke order should reset after the last probe, or the probe should skip the AX check.
 
 ## Known Stubs
@@ -114,10 +132,11 @@ None.
 
 ## Next Phase Readiness
 
-- 17-12 has R14 GO and R01, R18 and R20 PARTIAL (user-skip). SC1's real-Mac part (the live desktop of a real Mac with no STUN, TURN or cloud server) has not been shown. FEAS-01 and FEAS-02 are not marked complete here.
-- To close the host rows: find the session 2 crash (in VM office first, with the dialog clicked at different times), then re-run the 17-11 host sequence in a new user-approved session. Adding the app by hand in System Settings works where `--request` cannot prompt on this Mac. Running from VM home to this Mac also needs a direct tailnet path, or SC1's clause stays unshown.
+- 17-12 has R14 GO, R20 GO, R18 NO-GO (fallback DPRM-04 limited to keep-awake-while-viewing) and R01 PARTIAL. The real Mac's desktop was shown live over the tailnet, but over DERP, so SC1's "no STUN, TURN or cloud server" clause is still not shown. FEAS-01 and FEAS-02 are not marked complete here.
+- To close R01: a run with a direct tailnet path between the viewer and this Mac (both pings direct). Adding the app by hand in System Settings works where `--request` cannot prompt on this Mac.
 
 ## Self-Check: PASSED
+- Session 3: FOUND evidence/r18-r20-host-timeline-session3.jsonl, evidence/r01-host-report-safari-lite.json; FOUND commit f8b10d2e; verify script VERIFY-OK (GORUN=yes, TS=no); leak scan clean on the new evidence, notes and matrix
 - FOUND: evidence/host-run-notes.txt, evidence/r14-iphone-reports.json, 7 r14-frame jpgs, 17-SPIKE-MATRIX.md rows R01-host, R14-safari, R14-homescreen, R18-host, R20-host
 - FOUND: commits 322c2357, bbafab37 in HEAD's history
 - Task 3 verify script: VERIFY-OK (GORUN=no, TS=no)

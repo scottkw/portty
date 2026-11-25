@@ -5,11 +5,11 @@ milestone_name: Desktop Sharing
 current_phase: 17
 current_phase_name: Desktop Feasibility Spike
 status: executing
-stopped_at: Completed 17-11-PLAN.md
-last_updated: "2026-11-25T16:23:46.014Z"
+stopped_at: Completed 17-11-PLAN.md (session 3 host run)
+last_updated: "2026-11-25T18:01:02.364Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 17 execution started
-state_head: bbafab377831f57d6e00da2f2c42e37995871fc6
+state_head: f8b10d2ef2e2e2cc2e9a5ec44e66358374c1a824
 progress:
   total_phases: 7
   completed_phases: 0
@@ -391,6 +391,7 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-11: R14 GO; iOS Safari and Home Screen start video only from a user tap, so the DVWR-03 iPhone viewer must start playback from a tap
 - [Phase 17]: 17-11: host Screen Recording not approved within 120 s; R01-host, R18-host, R20-host and base rows R01, R18, R20 PARTIAL (user-skip, user-not-approved); host revoked and proven clean
 - [Phase 17]: 17-11 session 2 (user added the grant by hand): the host-run spike crashed at about ready+66 s (SIGTRAP on the main thread in spk_app_run, native frame unknown); R20-host numbers for 20 s of motion (hardware AVC, 2560 x 1664, 29.10 fps, latency mean 12.69 ms, own CPU 29.6 percent, SSIM 0.999024), R01-host pings DERP both times and no viewer report, R18-host not reached; all three stay PARTIAL; host revoked, no app.portty.spike TCC rows left
+- [Phase 17]: 17-11 session 3 (after the nil-font fix bf95b9a6): full 180 s host run completed, no 'chart text skipped' line; R20 GO (hardware AVC, 2560 x 1664, 60 s motion at 29.15 fps, latency mean 12.85 ms, own CPU 27.0 percent, SSIM 0.999327); R18 NO-GO (stream ends with -3815 0.7 s after display sleep and does not return after the wake; on battery the Mac idle-slept 5.5 s after the display); R01 PARTIAL (1853 frames decoded from the real Mac, but DERP both pings); host revoked, no spike TCC rows left
 
 ### Pending Todos
 
@@ -407,7 +408,7 @@ Recent decisions affecting current work:
 - [v2.0]: Apple's persistent-content-capture entitlement request is not filed yet; until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
 - [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
 - [v2.0 REL-01]: v1.2.x updaters look only for `portty-v<ver>-darwin-universal.dmg` and identifier `portty-v<ver>-darwin-universal` (internal/updater/update.go DMGAssetName, install.go Clean, release.yml); an arm64-only rename would strand v1.2 installs unless the old name stays or both ship
-- [v2.0 Phase 17]: Host-run spike crashed on the real MacBook Air at about ready+66 s (SIGTRAP on the main thread inside spk_app_run, 20 s into the motion window; the "bypass the system private window picker" dialog was on screen). Not seen in VM office. Native frame unknown (Go's handler printed the dump, no .ips). R01-host, R18-host, R20-host stay PARTIAL until it is found and the host run is redone
+- [v2.0 Phase 17]: Host display sleep: on battery a display sleep took the MacBook Air to system idle sleep within 6 s (17-11 session 3), suspending the capture server, and the SCK stream does not resume after the wake (R18 NO-GO). Phase 19 needs a system-sleep and display-awake assertion while a viewer watches, or a stream restart on -3815, and its own battery test. (The 17-11 session 2 host-run crash is resolved: nil font fixed in bf95b9a6, session 3 ran the full schedule.)
 - [v2.0 Phase 18]: Self-install only helps upgrades from a build that contains it; v1.2.x to the first self-install build still goes through Reveal-in-Finder
 
 - [Phase 4]: User confirmed 2026-11-16 that both Macs are on the same Tailscale account (same login, so the same numeric user ID for the WhoIs gate). Remaining risk: a node that is ACL-tagged is refused by design; check `tailscale status` shows no tags on either Mac during the two-Mac UAT (M-80).
@@ -516,8 +517,8 @@ Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verificat
 
 ## Session Continuity
 
-Last session: 2026-11-25T16:23:45.970Z
-Stopped at: Completed 17-11-PLAN.md
+Last session: 2026-11-25T18:01:02.318Z
+Stopped at: Completed 17-11-PLAN.md (session 3 host run)
 Resume file: None
 
 ## Operator Next Steps
