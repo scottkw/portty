@@ -6,7 +6,7 @@
 // units cross into Go once each through goScreencapAccessUnit.
 //
 // One capture stream per process: the stream functions share file-level state
-// and the Go caller (DisplaySource) serialises them.
+// and the Go caller serialises them (nativeMu in media_darwin.go).
 
 #import <Foundation/Foundation.h>
 #import <CoreMedia/CoreMedia.h>
@@ -16,12 +16,12 @@
 #import <ImageIO/ImageIO.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <unistd.h>
+#import <stdatomic.h>
 
 // Exported from media_darwin.go. The handle is a runtime/cgo.Handle.
 extern void goScreencapAccessUnit(uintptr_t handle, void *avcc, int avccLen, void *sps, int spsLen,
                                   void *pps, int ppsLen, int keyframe, int width, int height);
 extern void goScreencapStreamError(uintptr_t handle, int code, char *msg);
-extern void goScreencapFrameSeen(uintptr_t handle);
 
 enum { kPCFPS = 30, kPCQueueDepth = 5 };
 
@@ -430,7 +430,6 @@ static int pcMainDisplay(int maxLong, SCContentFilter **filter, int *w, int *h, 
 		if (status == nil || status.integerValue != SCFrameStatusComplete) return;
 		CVPixelBufferRef pb = CMSampleBufferGetImageBuffer(sb);
 		if (pb == NULL) return;
-		goScreencapFrameSeen(self.handle);
 		OSStatus st = [self.enc encode:pb pts:CMSampleBufferGetPresentationTimeStamp(sb)];
 		if (st != noErr) pcReport(self.handle, (int)st, "encoding a captured frame failed");
 	} @catch (NSException *e) {
@@ -604,15 +603,20 @@ int pc_still_capture(int maxLong, uint8_t **out, int *n, char *errbuf, int errle
 		cfg.height = (size_t)h;
 		__block CGImageRef image = NULL;
 		__block NSError *err = nil;
+		// 0 pending, 1 handler done, 2 caller gave up: whoever comes second
+		// releases a late image, so a completion after the timeout does not leak it.
+		__block atomic_int st = 0;
 		dispatch_semaphore_t sem = dispatch_semaphore_create(0);
 		[SCScreenshotManager captureImageWithFilter:filter
 		                              configuration:cfg
 		                          completionHandler:^(CGImageRef img, NSError *e) {
 			                          if (img != NULL) image = CGImageRetain(img);
 			                          err = e;
+			                          if (atomic_exchange(&st, 1) == 2 && image != NULL) CGImageRelease(image);
 			                          dispatch_semaphore_signal(sem);
 		                          }];
 		if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC)) != 0) {
+			if (atomic_exchange(&st, 2) == 1 && image != NULL) CGImageRelease(image);
 			pcSetErr(errbuf, errlen, @"the screenshot timed out");
 			return kPCTimeoutErr;
 		}

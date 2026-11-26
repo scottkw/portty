@@ -17,7 +17,7 @@ package screencap
 int pc_encode_synthetic(uintptr_t handle, int frames, int width, int height, int force, int rebuildAt, int rebuildW, int rebuildH, int *hardware);
 
 // Capture. Each returns 0 or an error code (SCK codes pass through, else OSStatus);
-// the char buffer receives a message. One stream per process: DisplaySource serialises.
+// the char buffer receives a message. One stream per process: nativeMu serialises.
 int pc_stream_start(uintptr_t handle, int fps, int maxLong, int bitrate, double keyframeSecs, char *errbuf, int errlen);
 void pc_stream_stop(void);
 int pc_encoder_force_keyframe(void);
@@ -56,7 +56,6 @@ const (
 type sink struct {
 	au   func(AccessUnit)
 	err  func(error)
-	seen func()
 	last atomic.Int64 // unix nanos of the previous unit, for Duration
 }
 
@@ -139,9 +138,8 @@ func encodeSyntheticForTest(frames, width, height int, force, rebuildAt int, reb
 	var units []AccessUnit
 	var errs []error
 	h := cgo.NewHandle(&sink{
-		au:   func(au AccessUnit) { units = append(units, au) },
-		err:  func(err error) { errs = append(errs, err) },
-		seen: func() {},
+		au:  func(au AccessUnit) { units = append(units, au) },
+		err: func(err error) { errs = append(errs, err) },
 	})
 	defer h.Delete()
 	var hw C.int = -1
@@ -155,30 +153,27 @@ func encodeSyntheticForTest(frames, width, height int, force, rebuildAt int, reb
 	return units, errors.Join(errs...)
 }
 
-//export goScreencapFrameSeen
-func goScreencapFrameSeen(h C.uintptr_t) {
-	defer func() { _ = recover() }()
-	if s := lookup(uintptr(h)); s != nil {
-		s.seen()
-	}
-}
-
 // errBufLen is the size of the message buffer the C side fills on failure.
 const errBufLen = 256
 
 // stillCeiling is how long CaptureStill waits (UI-SPEC Test Capture give-up).
 const stillCeiling = 15 * time.Second
 
+// nativeMu serialises every call into the ObjC stream state, which is one per
+// process (gStream, gEnc). d.mu alone is not enough: the Manager builds a fresh
+// DisplaySource per run and an old run's start may still be in flight.
+// Lock order: d.mu, then nativeMu.
+var nativeMu sync.Mutex
+
 // DisplaySource is the Source for the main display: ScreenCaptureKit capture
 // at Retina size into a VideoToolbox H.264 encoder. Start, Stop, Rebuild and
-// ForceKeyframe are serialised by mu, because the ObjC side holds one stream
-// per process, so only one DisplaySource may be running at a time.
+// ForceKeyframe are serialised by mu per source and by nativeMu across
+// sources, because the ObjC side holds one stream per process.
 type DisplaySource struct {
 	mu      sync.Mutex
 	running bool
 	handle  cgo.Handle
 	hw      atomic.Int32 // encoder readback: 1 hardware, 0 software, -1 unknown
-	seen    atomic.Int64 // Complete frames captured since Start
 
 	emitMu sync.Mutex // guards closed and channel sends
 	closed bool
@@ -244,10 +239,11 @@ func (d *DisplaySource) Start(ctx context.Context, cfg Config) error {
 	d.frames = make(chan AccessUnit, 8)
 	d.errs = make(chan error, 4)
 	d.emitMu.Unlock()
-	d.seen.Store(0)
-	d.handle = cgo.NewHandle(&sink{au: d.emit, err: d.emitErr, seen: func() { d.seen.Add(1) }})
+	d.handle = cgo.NewHandle(&sink{au: d.emit, err: d.emitErr})
 
 	var msg [errBufLen]C.char
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
 	rc := C.pc_stream_start(C.uintptr_t(d.handle), C.int(cfg.FPS), C.int(cfg.MaxLongEdge), C.int(cfg.BitrateBps), C.double(cfg.KeyframeInterval.Seconds()), &msg[0], errBufLen)
 	if rc != 0 {
 		d.handle.Delete()
@@ -270,7 +266,9 @@ func (d *DisplaySource) Stop() error {
 		return ErrNotRunning
 	}
 	d.running = false
+	nativeMu.Lock()
 	C.pc_stream_stop() // returns only once no callback can run any more
+	nativeMu.Unlock()
 	d.handle.Delete()
 	d.closeChannels()
 	return nil
@@ -299,6 +297,8 @@ func (d *DisplaySource) ForceKeyframe() {
 	if !d.running {
 		return
 	}
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
 	if rc := C.pc_encoder_force_keyframe(); rc != 0 {
 		d.emitErr(mapSCKError(int(rc), "forcing a keyframe failed"))
 	}
@@ -312,6 +312,8 @@ func (d *DisplaySource) Rebuild(width, height int) error {
 	if !d.running {
 		return ErrNotRunning
 	}
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
 	if rc := C.pc_encoder_rebuild(C.int(width), C.int(height)); rc != 0 {
 		return mapSCKError(int(rc), "rebuilding the encoder failed")
 	}
@@ -332,9 +334,6 @@ func (d *DisplaySource) HardwareEncoder() (hardware, known bool) {
 	}
 	return false, false
 }
-
-// FramesSeen is the number of Complete frames captured since Start.
-func (d *DisplaySource) FramesSeen() int64 { return d.seen.Load() }
 
 func (d *DisplaySource) noteEncoder() {
 	hw := int32(C.pc_encoder_hardware())
