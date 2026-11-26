@@ -39,6 +39,11 @@ var (
 	defaultNewDesktopSource = screencap.NewDisplaySource
 )
 
+// desktopTestDeps, when set (by TestMain only), adjusts the Manager's Deps
+// before it is built, so daemon tests never read the host's lock, display or
+// power state. nil in production.
+var desktopTestDeps func(*desktop.Deps)
+
 // desktopNotifier posts a native notification for the Manager (19-11 sets it
 // from the daemon, 19-14 adds the GUI side). Read at call time, so setting it
 // after the Manager started still takes effect.
@@ -443,10 +448,14 @@ func (a *API) startDesktopManager(h webserver.TailscaleHealth) *ShareError {
 	} else if errors.Is(err, syscall.EADDRINUSE) {
 		return &ShareError{ShareErrPortInUse, fmt.Sprintf("UDP port %d is in use", port)}
 	}
-	mgr, err := desktop.NewManager(desktop.Deps{
+	deps := desktop.Deps{
 		Bind: addr, MediaPort: port, NewSource: newSource, SourceConfig: screencap.DefaultConfig(),
 		ConfigDir: a.engine.configDir, Notify: notifyDesktop,
-	})
+	}
+	if desktopTestDeps != nil {
+		desktopTestDeps(&deps)
+	}
+	mgr, err := desktop.NewManager(deps)
 	if err != nil {
 		return &ShareError{ShareErrStartFailed, err.Error()}
 	}

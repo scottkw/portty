@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/scottkw/portty/internal/desktop"
 )
 
 // realHome and testHome are HOME before and after TestMain moved it.
@@ -15,6 +17,15 @@ var realHome, testHome string
 // runDaemonCore's test bound the real socket and lock. /tmp, not TMPDIR, so
 // DefaultSocketPath fits the 103-char sun_path limit.
 func TestMain(m *testing.M) {
+	// Daemon tests never read the host's lock, display or power state and never
+	// take a power assertion (the host may be locked while tests run).
+	desktopTestDeps = func(d *desktop.Deps) {
+		no := func() (bool, error) { return false, nil }
+		hold := func(string) (func() error, error) { return func() error { return nil }, nil }
+		d.Lock, d.DisplayAsleep, d.OnAC = no, no, no
+		d.HoldDisplay, d.HoldSystem = hold, hold
+		d.DeclareActivity = func(string) error { return nil }
+	}
 	if mode := os.Getenv(takeoverHelperEnv); mode != "" {
 		helperTakeover(mode) // a fake `daemon --takeover` started by a status-pipe test
 	}
