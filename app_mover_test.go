@@ -372,3 +372,62 @@ func TestRunMover_InstallerStartFailureLogsNoPath(t *testing.T) {
 		})
 	}
 }
+
+// Quick 261126-dfn: a failed or rolled-back install this DMG's app left behind is shown once,
+// before anything is copied or a job is written, even about this same version (the user is
+// retrying this DMG). The log names no path. A keepDaemon result is put back for the installed
+// copy's next start (WR-04).
+func TestRunMover_ShowsEarlierResultOnce(t *testing.T) {
+	dmg := filepath.Join(os.TempDir(), "portty-v9.9.9-darwin-universal.dmg")
+	for _, c := range []struct {
+		name  string
+		r     updater.Result
+		title string // "" when nothing is shown
+		kept  bool   // the result file is put back
+	}{
+		{"failed first install, same version", updater.Result{Outcome: updater.OutcomeFailed, NewVersion: "9.9.9", Reason: "reverify"},
+			"Portty couldn't install version 9.9.9.", false},
+		{"rolled back with keepDaemon", updater.Result{Outcome: updater.OutcomeRolledBack, OldVersion: "1.0.0", NewVersion: "9.9.9", Reason: "health", KeepDaemon: true, DMG: dmg},
+			"The update to Portty 9.9.9 didn't take. Portty 1.0.0 is still installed.", true},
+		{"updated", updater.Result{Outcome: updater.OutcomeUpdated, OldVersion: "1.0.0", NewVersion: "9.9.9"}, "", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newMoverFix(t)
+			c.r.V = 1
+			if err := updater.WriteResult(installResultPath(), c.r); err != nil {
+				t.Fatal(err)
+			}
+			show := f.a.messageDialogFunc
+			f.a.messageDialogFunc = func(o runtime.MessageDialogOptions) (string, error) {
+				f.mu.Lock()
+				early := len(f.jobs) == 0 && !slices.ContainsFunc(f.calls, func(s string) bool { return strings.Contains(s, "ditto") })
+				f.mu.Unlock()
+				if !early {
+					t.Errorf("dialog %q came after the copy or the job", o.Title)
+				}
+				return show(o)
+			}
+			f.runMover()
+			f.mu.Lock()
+			dialogs, jobs := slices.Clone(f.dialogs), len(f.jobs)
+			f.mu.Unlock()
+			if c.title == "" && len(dialogs) != 0 {
+				t.Errorf("dialogs = %+v, want none", dialogs)
+			}
+			if c.title != "" && (len(dialogs) != 1 || dialogs[0].Type != runtime.InfoDialog || dialogs[0].Title != c.title) {
+				t.Errorf("dialogs = %+v, want one alert %q", dialogs, c.title)
+			}
+			if jobs != 1 {
+				t.Errorf("jobs = %d, want the move to go on", jobs)
+			}
+			r, ok, err := updater.TakeResult(installResultPath())
+			if err != nil || ok != c.kept || (ok && r != c.r) {
+				t.Errorf("result file after = %+v, %v, %v; want kept %v", r, ok, err, c.kept)
+			}
+			b, _ := os.ReadFile(bcLogPath())
+			if !strings.Contains(string(b), "mover: earlier result "+c.r.Outcome) || strings.Contains(string(b), "/") {
+				t.Errorf("update.log = %q; want the earlier result and no path", b)
+			}
+		})
+	}
+}
