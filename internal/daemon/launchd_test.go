@@ -19,6 +19,10 @@ import (
 	"time"
 )
 
+// pidLineMissing as a fake job's pid prints a running job with no pid line, as
+// a changed `launchctl print` format would.
+const pidLineMissing = -1
+
 // fakeLaunchd is a fake launchd domain behind the launchctl seam: it records
 // every call, tracks loaded jobs (label -> pid) and disabled labels, and can
 // fail one subcommand. It never touches the real launchd.
@@ -58,6 +62,9 @@ func (f *fakeLaunchd) run(_ context.Context, args ...string) ([]byte, error) {
 		pid, ok := f.jobs[label(args[1])]
 		if !ok {
 			return []byte(`Could not find service "` + label(args[1]) + `" in domain for user gui: 501`), errors.New("exit status 113")
+		}
+		if pid == pidLineMissing {
+			return fmt.Appendf(nil, "%s = {\n\tstate = running\n}\n", label(args[1])), nil
 		}
 		if pid > 0 {
 			return fmt.Appendf(nil, "%s = {\n\tstate = running\n\tpid = %d\n}\n", label(args[1]), pid), nil
@@ -847,5 +854,34 @@ func TestAgentControl_InPackage(t *testing.T) {
 	}
 	if err := AgentControl("frobnicate"); err == nil || !strings.Contains(err.Error(), "frobnicate") {
 		t.Errorf("unknown action = %v", err)
+	}
+}
+
+// WR-04: a running job whose `launchctl print` output has no pid line the
+// parser understands (a format change in a macOS update) counts as running:
+// no reload, uninstall or legacy cleanup boots it out.
+func TestLaunchd_UnparsedPidCountsAsRunning(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newFakeLaunchd(t)
+	ctx := context.Background()
+	if _, err := EnsureAgent(ctx, testExe); err != nil {
+		t.Fatal(err)
+	}
+	writePlistFile(t, LegacyLabel)
+	f.setJob(LaunchdLabel, pidLineMissing)
+	f.setJob(LegacyLabel, pidLineMissing)
+	f.reset()
+
+	if state, err := EnsureAgent(ctx, "/Applications/Moved.app/Contents/MacOS/Portty"); err != nil || state != AgentReloadDeferred {
+		t.Errorf("EnsureAgent with a changed plist = %v, %v; want AgentReloadDeferred", state, err)
+	}
+	if err := uninstallAgent(ctx); !errors.Is(err, ErrAgentRunning) {
+		t.Errorf("uninstall = %v, want ErrAgentRunning", err)
+	}
+	if done, err := LegacyCleanup(ctx, 88); err != nil || done {
+		t.Errorf("LegacyCleanup = %v, %v; want not done", done, err)
+	}
+	if len(f.mutating()) != 0 {
+		t.Errorf("a job of unknown liveness was touched: %v", f.mutating())
 	}
 }

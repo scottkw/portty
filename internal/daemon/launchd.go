@@ -150,10 +150,18 @@ func unsafeExe(exe string) bool {
 	return strings.HasPrefix(exe, "/Volumes/") || strings.Contains(exe, "/AppTranslocation/")
 }
 
-var pidRE = regexp.MustCompile(`(?m)^\s*pid = (\d+)\s*$`)
+var (
+	pidRE  = regexp.MustCompile(`(?m)^\s*pid = (\d+)\s*$`)
+	idleRE = regexp.MustCompile(`(?m)^\s*state = not running\s*$`)
+)
 
-// jobLoaded reports whether launchd has label loaded and its running pid (0
-// when idle).
+// pidUnknown is a loaded job's pid when `launchctl print` neither names one
+// nor says the job is not running (a changed output format). It counts as
+// running: a misread must never let a bootout end a daemon holding sessions.
+const pidUnknown = -1
+
+// jobLoaded reports whether launchd has label loaded and its running pid: 0
+// only when launchd says the job is not running, pidUnknown when it cannot be told.
 func jobLoaded(ctx context.Context, label string) (loaded bool, pid int, err error) {
 	out, err := runLaunchctl(ctx, "print", agentTarget(label))
 	if bytes.Contains(out, []byte("Could not find service")) {
@@ -163,13 +171,19 @@ func jobLoaded(ctx context.Context, label string) (loaded bool, pid int, err err
 		return false, 0, lcFail("print", out, err)
 	}
 	if m := pidRE.FindSubmatch(out); m != nil {
-		pid, _ = strconv.Atoi(string(m[1]))
+		if pid, err := strconv.Atoi(string(m[1])); err == nil && pid > 0 {
+			return true, pid, nil
+		}
 	}
-	return true, pid, nil
+	if idleRE.Match(out) {
+		return true, 0, nil
+	}
+	return true, pidUnknown, nil
 }
 
 // AgentLoaded reports whether the daemon's job is loaded, whether the user
-// disabled it in Login Items, and its running pid (0 when idle).
+// disabled it in Login Items, and its running pid (0 when idle, pidUnknown
+// when it may be running).
 func AgentLoaded(ctx context.Context) (loaded, disabled bool, pid int, err error) {
 	if loaded, pid, err = jobLoaded(ctx, LaunchdLabel); err != nil {
 		return false, false, 0, err
@@ -239,7 +253,7 @@ func EnsureAgent(ctx context.Context, exe string) (AgentState, error) {
 	// be read back, so a rewrite now would make a later call think nothing changed.
 	// shortcut: a daemon that never goes idle never picks up a changed plist;
 	// upgrade to comparing `launchctl print`'s program arguments if that bites.
-	if changed && loaded && pid > 0 {
+	if changed && loaded && pid != 0 {
 		return AgentReloadDeferred, nil
 	}
 	if changed {
@@ -336,7 +350,7 @@ func LegacyCleanup(ctx context.Context, lockHolderPID int) (done bool, err error
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return false, err
 	}
-	if pid > 0 && (pid == lockHolderPID || lockHolderPID <= 0) {
+	if pid == pidUnknown || pid > 0 && (pid == lockHolderPID || lockHolderPID <= 0) {
 		return false, nil
 	}
 	if loaded {
@@ -384,7 +398,7 @@ func uninstallAgent(ctx context.Context) error {
 	if err != nil {
 		return wrapLaunchctl(err)
 	}
-	if pid > 0 {
+	if pid != 0 {
 		return ErrAgentRunning
 	}
 	if loaded {
