@@ -1,0 +1,68 @@
+R4-c log, 1.8.1 rig build of e03f4ef1 (DMG), 18-09
+--- menu-bar items (AXExtrasMenuBar per app.portty.Portty process)
+pid=43991 exe=/Applications/Portty.app/Contents/MacOS/Portty menubar_items=1
+menubar_items_total=1
+=== during-prompt capture
+portty procs: []
+apps: /Applications=1.8.0 ~/Applications=
+trash Portty*.app=0 trash dmgs=0 downloads: .localized 
+volumes:  portty images: 0
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+tickA=5c4554199259ac54f4f63936863d3e74 vimB=d011541c20f5767e706cdfad9a368c68
+session tickA 5c4554199259ac54f4f63936863d3e74
+session vimB d011541c20f5767e706cdfad9a368c68
+gui 43991
+daemon 43993
+shell 44011 ppid 43993
+shell 44016 ppid 43993
+vim 44040 ppid 44016
+06:06:24.050Z dmg in Downloads: 7941560 ~/Downloads/portty-v1.8.1-darwin-arm64.dmg xattrs: [com.apple.FinderInfo: deviddsk com.apple.macl:  ]
+06:06:25.593Z open dmg
+06:06:26.206Z volume: /Volumes/Portty/Portty.app mount: apfs, local, nodev, nosuid, read-only, journaled, noowners, mounted by admin
+06:06:26.306Z open app (T0)
+06:06:26.889Z open rc=0
+--- dialog at 06:06:29
+pid=43991 exe=/Applications/Portty.app/Contents/MacOS/Portty menubar_items=1
+pid=44373 exe=/Volumes/Portty/Portty.app/Contents/MacOS/Portty menubar_items=0
+menubar_items_total=1
+windows: Portty||L3; Finder|Portty|L0; Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:06:30.142
+press pid=44373 rc=0
+portty procs: [43991:/Applications/Portty.app/Contents/MacOS/Portty  43993:/Applications/Portty.app/Contents/MacOS/Portty daemon ]
+apps: /Applications=1.8.0 ~/Applications=
+trash Portty*.app=0 trash dmgs=0 downloads: .localized portty-v1.8.1-darwin-arm64.dmg 
+volumes: /Volumes/Portty  portty images: 1
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+session tickA 5c4554199259ac54f4f63936863d3e74
+session vimB d011541c20f5767e706cdfad9a368c68
+gui 43991
+daemon 43993
+shell 44011 ppid 43993
+shell 44016 ppid 43993
+vim 44040 ppid 44016
+=== after
+extra vm_utc=2026-11-26T06:06:51Z
+portty procs: [43991:/Applications/Portty.app/Contents/MacOS/Portty  43993:/Applications/Portty.app/Contents/MacOS/Portty daemon ]
+apps: /Applications=1.8.0 ~/Applications=
+trash Portty*.app=0 trash dmgs=0 downloads: .localized portty-v1.8.1-darwin-arm64.dmg 
+volumes: /Volumes/Portty  portty images: 1
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+--- trash (Portty bundles and DMGs: name, version or size, ctime UTC)
+--- /Applications/Portty.app: version 1.8.0 Info.plist mtime 2026-11-26T05:11:50 quarantine lines 0
+--- AppTranslocation mounts: 0
+--- update.log
+cat: ~/Library/Application Support/portty/update.log: No such file or directory
+--- result file: none
+--- timeline (0.4 s poller, changes only)
+06:06:24.243Z guis=[43991:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[43993:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=0 vol=gone app=1.8.0 home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:06:27.623Z guis=[43991:/Applications/Portty.app/Contents/MacOS/Portty 44373:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[43993:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=1 vol=mounted app=1.8.0 home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:06:30.713Z guis=[43991:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[43993:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=1 vol=mounted app=1.8.0 home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+--- window list (1 s, changes only)
+06:06:24.218Z Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:06:27.537Z Finder|Portty|L0; Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:06:28.711Z Portty||L3; Finder|Portty|L0; Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:06:31.072Z Portty|Portty|L0; Finder|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- tccd Downloads-service lines, 06:06:22 to 06:06:50 UTC

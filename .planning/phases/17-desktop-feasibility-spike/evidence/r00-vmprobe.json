@@ -1,0 +1,225 @@
+{
+  "pid": 992,
+  "hv_vmm_present": 1,
+  "macos": {
+    "version": "27.2",
+    "build": "26B123"
+  },
+  "sr_preflight": true,
+  "displays": [
+    {
+      "height": 1440,
+      "id": 1,
+      "main": 1,
+      "pointHeight": 720,
+      "pointWidth": 1280,
+      "width": 2560
+    }
+  ],
+  "capture": {
+    "completeFps": 5.59870590578576,
+    "encodeLatencyMs": {
+      "max": 425.19029166666667,
+      "mean": 38.799229166666684,
+      "p95": 87.237833333333327
+    },
+    "firstFrameMs": 383.44974999999999,
+    "height": 1440,
+    "ioSurface": 1,
+    "ioSurfaceFrames": 28,
+    "latestDisplayTime": 2919212000,
+    "mainDisplayMatched": 1,
+    "pixelFormat": "420v",
+    "running": 1,
+    "status": {
+      "blank": 0,
+      "complete": 28,
+      "idle": 104,
+      "started": 0,
+      "stopped": 0,
+      "suspended": 0,
+      "unknown": 0
+    },
+    "width": 2560,
+    "withAudio": 0
+  },
+  "png": "/tmp/spike-evidence/r00/r00-frame.png",
+  "luma": 235.0211614257801,
+  "encoders": [
+    {
+      "codec": "24-bit RGB",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.24rgb",
+      "name": "Apple 24-bit RGB"
+    },
+    {
+      "codec": "32-bit ARGB",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.32argb",
+      "name": "Apple 32-bit ARGB"
+    },
+    {
+      "codec": "Apple ProRes 422",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.prores-422",
+      "name": "Apple ProRes 422"
+    },
+    {
+      "codec": "Apple ProRes 422 HQ",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.prores-422hq",
+      "name": "Apple ProRes 422 HQ"
+    },
+    {
+      "codec": "Apple ProRes 422 LT",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.prores-422lt",
+      "name": "Apple ProRes 422 LT"
+    },
+    {
+      "codec": "Apple ProRes 422 Proxy",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.prores-422proxy",
+      "name": "Apple ProRes 422 Proxy"
+    },
+    {
+      "codec": "Apple ProRes 4444",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.prores-4444",
+      "name": "Apple ProRes 4444"
+    },
+    {
+      "codec": "Apple ProRes 4444 XQ",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.prores-4444xq",
+      "name": "Apple ProRes 4444 XQ"
+    },
+    {
+      "codec": "AppleProResHW 422",
+      "hardware": true,
+      "id": "paravirtualized:com.apple.videotoolbox.videoencoder.appleproreshw.422",
+      "name": "paravirtualized:AppleProRes 422 Encoder - HW"
+    },
+    {
+      "codec": "AppleProResHW 422 HQ",
+      "hardware": true,
+      "id": "paravirtualized:com.apple.videotoolbox.videoencoder.appleproreshw.422hq",
+      "name": "paravirtualized:AppleProRes 422 HQ Encoder - HW"
+    },
+    {
+      "codec": "AppleProResHW 422 LT",
+      "hardware": true,
+      "id": "paravirtualized:com.apple.videotoolbox.videoencoder.appleproreshw.422lt",
+      "name": "paravirtualized:AppleProRes 422 LT Encoder - HW"
+    },
+    {
+      "codec": "AppleProResHW 422 Proxy",
+      "hardware": true,
+      "id": "paravirtualized:com.apple.videotoolbox.videoencoder.appleproreshw.422proxy",
+      "name": "paravirtualized:AppleProRes 422 Proxy Encoder - HW"
+    },
+    {
+      "codec": "AppleProResHW 4444",
+      "hardware": true,
+      "id": "paravirtualized:com.apple.videotoolbox.videoencoder.appleproreshw.4444",
+      "name": "paravirtualized:AppleProRes 4444 Encoder - HW"
+    },
+    {
+      "codec": "AppleProResHW 4444 XQ",
+      "hardware": true,
+      "id": "paravirtualized:com.apple.videotoolbox.videoencoder.appleproreshw.4444xq",
+      "name": "paravirtualized:AppleProRes 4444 XQ Encoder - HW"
+    },
+    {
+      "codec": "Depth",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.depth-hevc:com.apple.videotoolbox.videoencoder.hevc.vcp",
+      "name": "Apple Depth (HEVC)-Apple HEVC (SW)"
+    },
+    {
+      "codec": "Depth",
+      "hardware": true,
+      "id": "com.apple.videotoolbox.videoencoder.depth-hevc:paravirtualized:com.apple.videotoolbox.videoencoder.ave.hevc",
+      "name": "Apple Depth (HEVC)-paravirtualized:Apple Video Encoder - HEVC family"
+    },
+    {
+      "codec": "Disparity",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.disparity-hevc:com.apple.videotoolbox.videoencoder.hevc.vcp",
+      "name": "Apple Disparity (HEVC)-Apple HEVC (SW)"
+    },
+    {
+      "codec": "Disparity",
+      "hardware": true,
+      "id": "com.apple.videotoolbox.videoencoder.disparity-hevc:paravirtualized:com.apple.videotoolbox.videoencoder.ave.hevc",
+      "name": "Apple Disparity (HEVC)-paravirtualized:Apple Video Encoder - HEVC family"
+    },
+    {
+      "codec": "H.263",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.h263",
+      "name": "Apple H.263 (SW)"
+    },
+    {
+      "codec": "H.264",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.h264",
+      "name": "Apple H.264 (SW)"
+    },
+    {
+      "codec": "H.264",
+      "hardware": true,
+      "id": "paravirtualized:com.apple.videotoolbox.videoencoder.ave.avc",
+      "name": "paravirtualized:Apple Video Encoder - AVC family"
+    },
+    {
+      "codec": "HEVC",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.hevc.vcp",
+      "name": "Apple HEVC (SW)"
+    },
+    {
+      "codec": "HEVC",
+      "hardware": true,
+      "id": "paravirtualized:com.apple.videotoolbox.videoencoder.ave.hevc",
+      "name": "paravirtualized:Apple Video Encoder - HEVC family"
+    },
+    {
+      "codec": "JPEG",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.jpeg",
+      "name": "Apple JPEG"
+    },
+    {
+      "codec": "JPEG",
+      "hardware": true,
+      "id": "paravirtualized:com.apple.videotoolbox.videoencoder.jpeg.ajpeg",
+      "name": "paravirtualized:JPEG Video Encoder"
+    },
+    {
+      "codec": "Muxed Alpha",
+      "hardware": false,
+      "id": "com.apple.videotoolbox.videoencoder.hevc-with-alpha:com.apple.videotoolbox.videoencoder.hevc.vcp",
+      "name": "Apple Muxed Alpha-Apple HEVC (SW)"
+    },
+    {
+      "codec": "Muxed Alpha",
+      "hardware": true,
+      "id": "com.apple.videotoolbox.videoencoder.hevc-with-alpha:paravirtualized:com.apple.videotoolbox.videoencoder.ave.hevc",
+      "name": "Apple Muxed Alpha-paravirtualized:Apple Video Encoder - HEVC family"
+    }
+  ],
+  "encoder": {
+    "encoderId": "paravirtualized:com.apple.videotoolbox.videoencoder.ave.avc",
+    "hardware": true,
+    "width": 2560,
+    "height": 1440,
+    "lastStatus": 0
+  },
+  "h264": {
+    "path": "/tmp/spike-evidence/r00/r00.h264",
+    "bytes": 704701,
+    "accessUnits": 29,
+    "keyframes": 2
+  }
+}

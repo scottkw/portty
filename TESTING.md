@@ -15,7 +15,7 @@ This document is the single source of truth for Portty's regression test program
 4. **Manual Regression Checklist** — human-intervention behaviors that cannot be automated
 5. **Standing Convention** — the per-phase rule every executor must follow
 
-The traceability table is machine-validated by `tests/check-traceability-paths.sh`, which runs in CI as part of the `build (portty, darwin/universal, macos-latest)` job and exits 1 if any mapped path no longer exists on disk.
+The traceability table is machine-validated by `tests/check-traceability-paths.sh`, which runs in CI as part of the `build (portty, darwin/arm64, macos-latest)` job and exits 1 if any mapped path no longer exists on disk.
 
 ---
 
@@ -25,15 +25,21 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 | Group | Count | Location | Run Command | Guards |
 |-------|-------|----------|-------------|--------|
-| Go unit/integration | **174** `*_test.go` files | `internal/`, repo root | `GOTOOLCHAIN=go1.26.11 go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
+| Go unit/integration | **182** `*_test.go` files | `internal/`, repo root | `GOTOOLCHAIN=go1.26.11 go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
 | vitest (frontend) | **122** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers), the browser share viewer's input framing (`web/assets/terminal.js`) |
 | Playwright e2e | **10** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (the guest sees only the terminal: WEBCHAT-03, CHAT-01), live light/dark (THEM-01), selection under the pointer on a scaled pane and Option-drag selection under a mouse-capturing TUI (selection-offset-copy), the same-account gate on the page routes (refusal page, retry page, same-account open, chromium/firefox/webkit), and the phone surface in WebKit's iPhone 15 emulation (`iphone` project: key bar bytes, 44 pt keys, phone chrome) |
-| build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **307** | — | — | — |
+| build-script | **2** `build-script.test.sh`, `verify-bundle.test.sh` | `tests/` | `bash tests/build-script.test.sh && bash tests/verify-bundle.test.sh` | Go build + Wails asset embedding; release bundle gates (arm64 only, minos 14.0, team, hardened runtime, timestamp, entitlements, v1.2 designated requirement) and the inside-out sign order (REL-01) |
+| **Total** | **316** | — | — | — |
 
 > **Toolchain:** Go commands in this repo run with `GOTOOLCHAIN=go1.26.11`, the `toolchain` line in go.mod. With a newer Go installed, `GOTOOLCHAIN=auto` never downgrades to the pin, so set it by hand (`build.sh` exports it from go.mod unless the caller already set one). The root package refuses to compile under Go 1.27 (`toolchain_guard.go`, build tag `go1.27`) because tailscale.com v1.98.3's JSON decoding breaks with Go 1.27's encoding/json (tailcfg's `format:nano` tag), a run-time failure the compiler would not catch. When tailscale.com is upgraded, run `TestTailscaleJSON_FormatTagCanary` under the new Go first, then remove the go.mod toolchain line and toolchain_guard.go together.
 
+> Note: Portty Phase 18.1 (Apple Silicon release pipeline, REL-01): Go **182**, vitest **122**, Playwright **10**, build-script **2** (+1: tests/verify-bundle.test.sh), total **316** (counts from `git ls-files`; the Go count leaves out spike/). Edited in place: internal/updater/release_workflow_test.go (18.1-03: new `TestReleaseWorkflow_Arm64Build`, `TestReleaseWorkflow_InsideOutSigning`, `TestBuildWorkflow_Arm64MinOS14`, `TestVerifyBundle_PinsTeamAndDR`, `TestReleaseWorkflow_SignTimeout`, `TestReleaseWorkflow_ChecksumsAndNotes`; rewritten with their names kept for the two-name publish: `TestReleaseWorkflow_DMGName`, `TestReleaseWorkflow_NotarizesAndStaplesDMG`) and tests/build-script.test.sh (18.1-01/02: darwin/arm64 platform, both macOS 14 CGO exports, the gate and sign-script calls, no deep signing). Not automated: Section 5 Category BI.1, M-172 (the first tag run; SC2 runtime proof deferred to Phase 23 rc.1).
+
+> Note: Portty Phase 18 (self-installing updates, UPD-05..UPD-09): Go **182** (+8: internal/updater/selfinstall_test.go, internal/updater/appinstall_test.go, internal/updater/installer_test.go, internal/updater/outcome_test.go, internal/updater/mover_test.go, cmd_install_update_test.go, app_install_test.go, app_mover_test.go), vitest unchanged (edited in place: UpdateBanner.test.tsx, App.update.test.tsx), Playwright **10**, build-script **1**, total **315** (counts from `git ls-files`; the Go count leaves out spike/). build-script stays **1** in this note and the table: tests/verify-bundle.test.sh is Phase 18.1's file, already merged on this branch, and 18.1-04 records it (build-script **2**). Edited in place: internal/updater/update_test.go (18-02: `TestDMGAssetNames`, `TestLatestAcceptsArm64Name`, `TestLatestPrefersFirstName`, `TestLatestInvalidPreferredAsset`; the Apple Silicon-only asset name `portty-vX.Y.Z-darwin-arm64.dmg`, user-confirmed 2026-11-25), internal/updater/install_test.go (18-02: `TestClean` removes arm64 DMGs too), internal/updater/service_test.go (18-02: `TestService_CheckKeepsRevealedSameVersion`, `TestService_CheckSkipsFailedVersion`, `TestService_ManualCheckOffersSkipped`, `TestService_CheckUnreadableSkipSuppressesOffer`), app_update_test.go (18-04: `TestManualUpdateCheck_AvailableUpdate` and `TestManualUpdateCheck_WhileUpdating`, renamed from `_AvailableDownload` and `_WhileDownloading`; new `TestManualUpdateCheck_WhileVerifying` and `TestTrayUpdate_HiddenAfterFailedInstall`). 18-10's installer-copy tests (`TestBundleFromExecutable`, `TestStartInstaller_CopiesRunningBundle`, `TestStartInstaller_FailureCleansUp`, `TestCopyBundle_ChecksBeforeUnquarantine`) live in cmd_install_update_test.go, 18-03's `TestParseGUIPids` in installer_test.go, and 18-05's Trash and sweep tests in app_install_test.go, so they add no files. Not automated: Section 5 Category BI, M-165..M-169 (plus M-170 and M-171, two any-Mac checks from the 18-09 carry-overs).
+
 > Note: Quick 261123-kcr (unshare 8-character ID prefix minimum, v1.2 audit Integration W-2, no new requirement IDs): counts from `git ls-files` unchanged — Go **174**, vitest **122**, Playwright **10**, build-script **1**, total **307** (no new test files). Edited in place: cmd_share_test.go (`TestCmdUnshare_ShortPrefixRefused`: unshare refuses an ID prefix under 8 characters (1 and 7) with the no-session copy and leaves the session shared; an 8-character prefix stops sharing; share/attach still resolve the short prefix).
+
+> Note: Portty Phase 17 (desktop feasibility spike, FEAS-01, FEAS-02): Go **175**, vitest **122**, Playwright **10**, build-script **1**, total **308** (counts from `git ls-files`; no new test files in any suite: the one new `*_test.go`, spike/desktop/hostrun_test.go from 17-10, belongs to the spike module and is not run by the root `go test ./...`, so the Go row in the table above stays at 174). `spike/desktop/` is an archived nested Go module outside every suite and build (root `go list ./...` lists no spike package). Not automated: Section 5 Category BH, M-157..M-164.
 
 > Note: Portty Phase 16 (v1.2 cleanup, no new requirement IDs): Go **174**, vitest **122**, Playwright **10**, build-script **1**, total **307** (counts from `git ls-files`; no new test files). Edited in place: dispatch_test.go (16-01: `TestLaunchMode`'s 18 rows for `--version`/`-v`, the `-psn_`/`-NS`/`-Apple` GUI allowlist with a near miss, and unknown flags as usage errors; the old flag-routing test that re-implemented the dispatch condition is removed), cmd_cli_test.go (16-01: `TestCmdKill_ByName`, `TestCmdRename_ByName`: names resolve like share/attach, duplicate names are refused; post-review WR-01 `TestCmdKillRename_ShortPrefixRefused`: kill and rename refuse an ID prefix under 8 characters while share/attach still resolve it), cmd_share_test.go (post-review WR-02: `TestResolveSession` rejects an empty argument even when an unnamed session exists), internal/relay/cwd_test.go (16-02: `TestCwd_AltScreenScrollbackEraseKeepsRows`, IN-03), internal/webserver/resume_test.go and internal/webserver/input_queue_test.go (16-02: `dialResumePing`, shared by `joinPasteViewer`, IN-06), internal/daemon/client_test.go (16-02: `TestHealthInfo` no longer pins the removed path-click constant), frontend/src/lib/__tests__/localhostUrl.test.ts and frontend/src/lib/__tests__/markdown.test.ts (16-02: explicit 30 s per-test timeouts on the two DoS-bound cases; inputs and assertions unchanged). Not automated: Section 5 Category BG, M-156.
 
@@ -312,19 +318,19 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 ### CI Workflow Mapping
 
-- `build.yml` (runs on push + PR): a single macOS job (`macos-latest`) running the brand gate (`tests/check-brand.sh`), the share removal gate (`tests/check-share-removal.sh`), Go tests (race detector), build-script tests, vitest, the traceability path-check step and `scripts/verify-icons.sh`, then the Wails build
-- `e2e.yml` (runs on push/PR to `main`): Playwright cross-browser (chromium, firefox, webkit)
-- `release.yml` (runs on `v*` tags): builds, signs and notarizes Portty.app, then notarizes and staples the hdiutil DMG and checks it like the in-app updater (codesign, Team S2K7P43927, spctl) before publishing it plus checksums. There is no distribute workflow.
+- `build.yml` (runs on push + PR): a single macOS job (`macos-latest`) running the brand gate (`tests/check-brand.sh`), the share removal gate (`tests/check-share-removal.sh`), Go tests (race detector), build-script tests, vitest, the bundle gate tests (`tests/verify-bundle.test.sh`), the traceability path-check step and `scripts/verify-icons.sh`, then the Wails build for darwin/arm64 with both macOS 14 CGO flags and `scripts/verify-bundle.sh` on the built bundle
+- `e2e.yml` (runs on push/PR to `main`): Playwright cross-browser (chromium, firefox, webkit). The workflow is active again (re-enabled 2026-11-25, quick task 10) and reports a `playwright` check; that check is not a required check (Section 3)
+- `release.yml` (runs on `v*` tags): builds once for darwin/arm64 (minos 14.0), gates the unsigned bundle, signs every Mach-O inside out with `scripts/sign-bundle.sh`, gates team, hardened runtime, timestamp, entitlements and the v1.2 designated requirement (`verify-bundle.sh --signed`) and notarization (`--notarized`), then publishes that one build as `portty-vX.Y.Z-darwin-universal.dmg` and `portty-vX.Y.Z-darwin-arm64.dmg`, each signed with its own name as identifier, notarized, stapled and checked like the in-app updater, plus a `checksums.txt` holding exactly those two. There is no distribute workflow.
 
 ---
 
 ## 3. Merge Gate: How to Apply Branch Protection
 
-Branch protection requires both CI check contexts to pass before a PR can merge. Admin direct push to `main` is allowed (preserves the GSD `.planning/` doc-commit flow). No PR review requirement.
+Branch protection requires the one build check context to pass before a PR can merge. Admin direct push to `main` is allowed (preserves the GSD `.planning/` doc-commit flow). No PR review requirement.
 
 ### Apply Protection
 
-CI is currently disabled on the repository; the user must re-apply this protection (with the two contexts below) when CI is re-enabled.
+CI status (verified 2026-11-25): Actions are enabled and `build.yml` runs on every push and PR. Phase 18.1 renamed the matrix context to `build (portty, darwin/arm64, macos-latest)` (app `github-actions`, id 15368); `main` reports it after the 18.1 merge. `release.yml` is active. `e2e.yml` is active again (re-enabled 2026-11-25): it had been disabled after its 2026-11-14 runs failed in 3-4 s with no steps, because GitHub refused to start the job over an account billing failure (check-run annotation), not because of the workflow or the tests. It runs on push and PR to `main` and on manual `workflow_dispatch`; its `playwright` check stays out of the required set by decision (CONTEXT 2026-11-25: it runs, but is not a merge gate). Branch protection on `main` was not applied as of 2026-11-25 (`GET .../branches/main/protection` returned 404 "Branch not protected"); it is applied after the merge only through the 18.1-04 approval checkpoint, and only once `main` carries a successful `build (portty, darwin/arm64, macos-latest)` check run. Alternative (only after main carries a successful `playwright` check run): add a second `checks` entry for the `playwright` context, app_id 15368.
 
 ```bash
 gh api repos/scottkw/portty/branches/main/protection \
@@ -335,13 +341,14 @@ gh api repos/scottkw/portty/branches/main/protection \
   "required_status_checks": {
     "strict": false,
     "checks": [
-      {"context": "build (portty, darwin/universal, macos-latest)", "app_id": 15368},
-      {"context": "playwright", "app_id": 15368}
+      {"context": "build (portty, darwin/arm64, macos-latest)", "app_id": 15368}
     ]
   },
   "enforce_admins": false,
   "required_pull_request_reviews": null,
-  "restrictions": null
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
 }
 EOF
 ```
@@ -352,6 +359,8 @@ EOF
 - `enforce_admins: false` — admin (scottkw) can push directly to `main` without CI; this preserves the GSD `.planning/` doc-commit flow
 - `required_pull_request_reviews: null` — no PR review requirement
 - `restrictions: null` — no user/team push restrictions
+- `allow_force_pushes: false`, `allow_deletions: false` — no history rewrite or branch deletion on `main`
+- Only the build check is required (CONTEXT decision 2026-11-25); the `playwright` check is not a merge gate
 - GitHub Actions `app_id: 15368` — verified 2026-06-21 from live check-runs API
 
 ### Roll Back Protection
@@ -366,7 +375,7 @@ gh api repos/scottkw/portty/branches/main/protection --method DELETE
 
 **Warning sign:** A new PR passes CI but the "required checks" status badge shows an unknown check name.
 
-Portty 03-06 renamed the build.yml matrix entry, so the required context changed. Re-apply protection with the command above when CI is re-enabled (a manual step for the user; branch protection on a private repository may need a paid plan).
+Portty 18.1 renamed the build.yml matrix entry to darwin/arm64 (`build (portty, darwin/arm64, macos-latest)`). Protection is applied, or re-applied, with the command above only after that context has reported on `main`.
 
 ---
 
@@ -532,7 +541,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | BRND-06 | app_update_release_test.go | Go | Portty 06-04: `TestUpdateDefaults_ReleaseBuild` — the release build checks https://api.github.com with the GitHub allowlist and the 10 s / 1 h / 24 h cadence (build tag `!vmpreview`, because the VM-only updates_vmpreview.go overrides them) |
 | UPD-03 | internal/updater/install_test.go | Go | Portty 06-01: `TestFlow_CheckDownloadVerifyReveal`, `TestDownload` (0600 file with the quarantine flag), `TestDownloadDigestMismatch`, `TestDownloadSize`, `TestDownloadBadName`, `TestDownloadShortBody`, `TestDownloadRedirects` (every hop allowlisted), `TestVerify` / `TestVerifyFailures` (codesign, Team S2K7P43927, signing identifier = asset name without .dmg (an older Portty or another product of the team is refused, WR-01), spctl, each failure named by step), `TestReveal`, `TestClean` |
 | UPD-03 | internal/updater/real_darwin_test.go | Go | Portty 06-01 (darwin, env-gated, skipped without inputs): `TestRealDMG` runs the real codesign/spctl on `UPDATE_REAL_DMG` (optionally `UPDATE_REAL_BAD_DMG`, `UPDATE_REAL_REVEAL=1`); run on the host with GIFsmith v1.0.1's notarized DMG (accepted under its own identifier `Gifsmith-1.0.1-arm64`, refused at the identifier step under a Portty asset name, WR-01), a byte-flipped copy (codesign), an unsigned UDZO (codesign) and an ad-hoc copy (team); `TestReleaseJSON` checks a real release JSON (`UPDATE_RELEASE_JSON`, `UPDATE_DMG_PATH`) — M-93 runs both on the first release |
-| UPD-03 | internal/updater/release_workflow_test.go | Go | Portty 06-01: `TestReleaseWorkflow_DMGName` (portty-vX.Y.Z-darwin-universal.dmg), `TestReleaseWorkflow_DMGName` also checks the DMG is signed with `--identifier "portty-${VERSION}-darwin-universal"`; `TestReleaseWorkflow_NotarizesAndStaplesDMG` (the DMG is notarized, stapled and verified like the in-app updater, identifier included, before upload), `TestReleaseWorkflow_PrereleaseFlag`, `TestReleaseWorkflow_VMOnlyFakesGated` (validate runs tests/check-brand.sh; the built binary is checked for the VM-only fake feed address before it is tarred, WR-02) |
+| UPD-03 | internal/updater/release_workflow_test.go | Go | Portty 06-01: `TestReleaseWorkflow_DMGName` (the one build is published as portty-vX.Y.Z-darwin-universal.dmg and portty-vX.Y.Z-darwin-arm64.dmg, each signed with its own name as `--identifier`, Phase 18.1-03); `TestReleaseWorkflow_NotarizesAndStaplesDMG` (the DMG is notarized, stapled and verified like the in-app updater, identifier included, before upload), `TestReleaseWorkflow_PrereleaseFlag`, `TestReleaseWorkflow_VMOnlyFakesGated` (validate runs tests/check-brand.sh; the built binary is checked for the VM-only fake feed address before it is tarred, WR-02) |
 | UPD-01 | internal/updater/service_test.go | Go | Portty 06-02: `TestService_CheckAvailable` (available status with current and latest), `TestService_CheckSerialized`, `TestService_CheckQueuedGetsOwnBudget` (a check queued behind a slow one gets its full timeout once it has its turn, IN-03) |
 | UPD-03 | internal/updater/service_test.go | Go | Portty 06-02: `TestService_DownloadReveals` (downloading progress, verifying, revealed; verify and reveal run on their own 2-minute deadline, IN-02), `TestService_DownloadFailures` (digest, signature and reveal failures back to available with the error text; a failed file is deleted; empty Dir; retry), `TestService_DownloadNotAvailable`, `TestService_DownloadOneAtATime`, `TestService_DownloadAfterRevealRevealsAgain` (a second Download after a reveal shows the kept DMG again; a removed file is fetched afresh, IN-04), `TestService_ErrorTextsHaveNoURLOrPath` |
 | UPD-04 | internal/updater/service_test.go | Go | Portty 06-02: `TestService_CheckQuietOutcomes` (404, draft, prerelease and the same version, with or without a DMG, give current), `TestService_CheckNewerNotInstallable` (a newer release with no, an uploading or an undigested DMG is a check error that keeps the previous status, WR-04), `TestService_CheckFailures` (a failure restores the previous status) |
@@ -540,10 +549,34 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | UPD-02 | app_update_test.go | Go | Portty 06-02: `TestManualUpdateCheck_UpToDate`, `TestManualUpdateCheck_AvailableLater`, `TestManualUpdateCheck_AvailableDownload`, `TestManualUpdateCheck_Error`, `TestManualUpdateCheck_DevBuild`, `TestManualUpdateCheck_WhileDownloading`, `TestManualUpdateCheck_NotReady` (a newer release without its DMG is "isn't ready", not up to date, WR-04) (the native alert texts and buttons) |
 | UPD-04 | app_update_test.go | Go | Portty 06-02: `TestUpdatePoller_FailureRetriedHourlyAndQuiet` (500 and 403 retried on the next tick with no banner, notification or alert), `TestUpdatePoller_NotReadyRetriedHourly` (a newer release without its DMG is retried quietly on the next tick, WR-04), `TestDownloadUpdate_BindingRunsDownload`, `TestUpdateHarness_IsolatesUserFiles` (the harness sets a temp HOME, so update_notified and the updates folder never touch the real user's files, WR-03) |
 | UPD-02 | menu_test.go | Go | Portty 06-02: `TestAppMenu_Structure` — Help has "Portty Help" and "Check for Updates…" |
-| UPD-01 | frontend/src/components/__tests__/UpdateBanner.test.tsx | vitest | Portty 06-03: available shows "Portty X is available." and Download calls onDownload; Dismiss; info variant |
-| UPD-03 | frontend/src/components/__tests__/UpdateBanner.test.tsx | vitest | Portty 06-03: downloading percent and progress bar (no NaN at total 0), Verifying with no action, "verified and shown in Finder", Go's error text on the warning variant with Try Again |
+| UPD-01 | frontend/src/components/__tests__/UpdateBanner.test.tsx | vitest | Portty 06-03: available shows "Portty X is available." and Download calls onDownload; Dismiss; info variant; Portty 18-04: the button is Update; Go installs and reveals only on failure |
+| UPD-03 | frontend/src/components/__tests__/UpdateBanner.test.tsx | vitest | Portty 06-03: downloading percent and progress bar (no NaN at total 0), Verifying with no action, "verified and shown in Finder", Go's error text on the warning variant with Try Again; Portty 18-04: the button is Update; Go installs and reveals only on failure |
 | UPD-01 | frontend/src/components/__tests__/App.update.test.tsx | vitest | Portty 06-03: GetUpdateStatus on mount and `update:status` events drive the banner; checking leaves it, current and idle hide it; a dismissal holds until a newer version or a download; a GetUpdateStatus reply that lands after a newer event is dropped (IN-06); web mode never subscribes |
-| UPD-03 | frontend/src/components/__tests__/App.update.test.tsx | vitest | Portty 06-03: Download calls DownloadUpdate once; downloading, verifying and revealed events render progress, Verifying and shown in Finder; Try Again calls DownloadUpdate once more |
+| UPD-03 | frontend/src/components/__tests__/App.update.test.tsx | vitest | Portty 06-03: Download calls DownloadUpdate once; downloading, verifying and revealed events render progress, Verifying and shown in Finder; Try Again calls DownloadUpdate once more; Portty 18-04: the button is Update; Go installs and reveals only on failure |
+| UPD-05 | internal/updater/selfinstall_test.go | Go | Portty 18-01: `TestSelfInstall_UpdateHappyPath` (Stage, hand-off, swap, relaunch, health: the target holds the new version and the result says updated), `TestSwap_ExchangesBundles`, `TestSafeRunner_RefusesUnderTest`, `TestSelfInstall_StartFailureReveals`, `TestSelfInstall_SecondDownloadIsNoOp`, `TestJob_RoundTripAndRejects`, `TestResult_TakeOnceAndRejects` |
+| UPD-05 | cmd_install_update_test.go | Go | Portty 18-01: `TestInstallUpdate_HiddenFromUsage`, `TestInstallUpdate_LaunchModeIsCLI`, `TestInstallUpdate_BadJobExits1`, `TestSpawnInstaller_RefusesUnderTest`, `TestOpenApp_RefusesUnderTest`; Portty 18-10: `TestBundleFromExecutable`, `TestStartInstaller_CopiesRunningBundle` (the installer runs from a whole-bundle copy of the running app in the run folder, not a lone executable; P2d-bundle), `TestStartInstaller_FailureCleansUp`, `TestCopyBundle_ChecksBeforeUnquarantine` |
+| UPD-05 | internal/updater/installer_test.go | Go | Portty 18-03: `TestInstaller_HealthNeedsGUIAndSteadyDaemon` (a GUI plus the new daemon answering for HealthStable), `TestInstaller_NeverSignalsDaemon`, `TestInstaller_QuitTimeoutKillsOnlyOldGUI`, `TestInstaller_OpenRetriesThenSucceeds` (A9 relaunch retry), `TestParseGUIPids` (only no-argument or launch-services launches of the bundle executable by this user count as GUIs; another account's GUI never does, 18 WR-01); quick 261126-e29: an unprovable quit-timeout pid now relaunches the target (`TestInstaller_QuitTimeoutKillsOnlyOldGUI`) |
+| UPD-05 | app_install_test.go | Go | Portty 18-03: `TestConsumeInstallResult_UpdatedAndBadFilesChangeNothing` (an updated result, or a missing, malformed, wrong-mode (0644) or symlinked result file, changes nothing at the next start) |
+| UPD-06 | internal/updater/selfinstall_test.go | Go | Portty 18-01: `TestSelfInstall_UpdateHappyPath` (the cache DMG and its mount folder are gone after the update), `TestSelfInstall_DMGAlreadyGone`, `TestStage_DetachIdempotent` |
+| UPD-06 | internal/updater/installer_test.go | Go | Portty 18-05: `TestInstaller_TrashesOldAfterHealthOnly` (the old bundle goes to the Trash only after health), `TestInstaller_TrashFailureKeepsOldAside` |
+| UPD-06 | app_install_test.go | Go | Portty 18-05: `TestTrashItem_RefusesUnderTest`, `TestSweep_StagingDirs`, `TestSweep_TrashRefusedKeepsCopyAside`, `TestSweep_RunDirs`, `TestSweep_StaleRunDirWithBundleCopy`, `TestSweep_Mounts`, `TestSweepParents_Dedupes` (the startup sweep trashes stale staging folders older than 1 h, removes stale run folders and detaches leftover mounts); quick 261126-e29: `TestSweep_FailedNewCopyRemoved` (a stale staged copy newer than the installed one is deleted; old or unprovable copies still go to the Trash) |
+| UPD-07 | internal/updater/installer_test.go | Go | Portty 18-03: `TestInstaller_HealthDeadlineRollsBack`, `TestInstaller_GUIExitRollsBackEarly`, `TestInstaller_ResultWrittenBeforeOpen`, `TestInstaller_OpenPersistentFailureRollsBack`, `TestInstaller_RollbackRelaunchFailureWritesFailed` |
+| UPD-07 | internal/updater/selfinstall_test.go | Go | Portty 18-01 (assertion changed in 18-03): `TestSelfInstall_HealthMissWritesFailed` now expects `rolled-back` |
+| UPD-07 | internal/updater/outcome_test.go | Go | Portty 18-03: `TestShowResult_RevealsKeptDMG`, `TestShowResult_NoUsableDMG`, `TestShowResult_RecordsSkipWithoutDMG`, `TestShowResult_UpdatedRecordsNothing`, `TestSkippedVersion_UnreadableIsError` (a rolled-back or failed version is recorded as skipped and its kept DMG revealed) |
+| UPD-07 | app_install_test.go | Go | Portty 18-03: `TestConsumeInstallResult_TellsUser` (a rolled-back or failed result ends revealed with its sentence and posts one notification with no path in it; the result file is consumed), `TestConsumeInstallResult_KeepDaemonPolicyOnce` (after a rollback against the newer daemon, the first ensure keeps that daemon with no handoff and no restart question; later ensures use today's consent) |
+| UPD-07 | internal/updater/service_test.go | Go | Portty 18-02: `TestService_CheckSkipsFailedVersion`, `TestService_ManualCheckOffersSkipped`, `TestService_CheckUnreadableSkipSuppressesOffer` (the automatic check does not offer a version that just failed again; a manual check still does) |
+| UPD-07 | app_update_test.go | Go | Portty 18-04: `TestTrayUpdate_HiddenAfterFailedInstall` (the tray offer is hidden for a revealed status with an error) |
+| UPD-08 | internal/updater/mover_test.go | Go | Portty 18-06: `TestParseHdiutilInfo` (the `hdiutilInfoP6` fixture captured in the VM), `TestDetectDMGRun` (a launch from `/Volumes`, AppTranslocation as a guard), `TestInstalledVersion`, `TestExistingCopy`, `TestMoveTarget` (`/Applications`, or `~/Applications` when it is not writable) |
+| UPD-08 | internal/updater/installer_test.go | Go | Portty 18-06: `TestJob_MoveKinds`, `TestInstaller_MoveNoCopyLeavesNoStagingDir`, `TestInstaller_MoveReplaceOlder`, `TestInstaller_MoveReplaceUnhealthyRollsBack`, `TestInstaller_MoveFirstInstallUnhealthy`, `TestInstaller_MoveDetachFailureNeverTrashesImage`, `TestInstaller_MoveImageGuard`, `TestInstaller_MoveQuitTimeoutTouchesNothing`, `TestInstaller_OpenInstalledTrashesDMG`, `TestInstaller_OpenInstalledOpenFailure`, `TestInstaller_MoverResultBeforeTrashRunDirAfter` (result and relaunch before the DMG Trash, run folder removed after it: refinement A2), `TestInstaller_MoverTrashFailureKeepsOutcome` (Don't Allow keeps the DMG and the outcome), `TestInstaller_MoverTrashBounded` (60 s cap); quick 261126-dfn: `TestInstaller_MoverFailureLeavesSomethingToActOn` (with no GUI left, the installer also posts "Portty couldn't install version X." once through osascript, including a DMG GUI quit-timeout); quick 261126-e29: `TestInstaller_MoverCarriesKeepDaemon` (a mover job's keepDaemon survives into every result) |
+| UPD-08 | app_mover_test.go | Go | Portty 18-06: `TestMoverStartup_DMGRunSkipsDaemonTrayAndWindow`, `TestMoverStartup_NoRunKeepsNormalPath`, `TestRunMover_NoCopyMovesWithoutAsking`, `TestRunMover_UnwritableSystemUsesHomeApplications`, `TestRunMover_OlderCopyAsks` (the Replace question), `TestRunMover_SameOrNewerOpensInstalled`, `TestRunMover_UnreadableVersionAsks`, `TestRunMover_StagingFailureAlerts`; quick 261126-dfn: `TestRunMover_ShowsEarlierResultOnce` (an earlier failed or rolled-back result, even for the same version, is alerted once before any copy or job; a keepDaemon result is put back; update.log names no path); quick 261126-e29: `TestRunMover_ShowsEarlierResultOnce` also checks that the job carries keepDaemon |
+| UPD-09 | internal/updater/appinstall_test.go | Go | Portty 18-02: `TestPreflight`, `TestCheckSpace`, `TestFreeBytesAndAppSize`, `TestVerifyApp`, `TestCheckStagedApp` (version, identifier, Team, spctl and a `--version` smoke run before any swap), `TestCopyApp`, `TestInstallFailureText` (one sentence per failure kind), `TestService_InstallFailuresReveal`, `TestService_SafetyFailureNeverLaunches`, `TestService_FallbackWithoutDMG`, `TestService_PreflightBeforeStaging` |
+| UPD-09 | internal/updater/selfinstall_test.go | Go | Portty 18-01: `TestSelfInstall_StageFailureReveals`, `TestSelfInstall_RevealFailureAvailable` (a staging or start failure falls back to the reveal; a failed reveal returns to available) |
+| UPD-09 | internal/updater/service_test.go | Go | Portty 18-02: `TestService_CheckKeepsRevealedSameVersion` (a check does not replace a revealed failure for the same version) |
+| UPD-09 | internal/updater/update_test.go | Go | Portty 18-02: `TestDMGAssetNames`, `TestLatestAcceptsArm64Name`, `TestLatestPrefersFirstName`, `TestLatestInvalidPreferredAsset`; the Apple Silicon-only asset name `portty-vX.Y.Z-darwin-arm64.dmg` (user-confirmed 2026-11-25) is accepted beside the universal name; `TestLatestNotInstallable`'s missing-asset case now uses an x86_64 name |
+| UPD-09 | internal/updater/install_test.go | Go | Portty 18-02: `TestClean` (edited in place) removes arm64 DMGs and their `.part` files as well as universal ones; x86_64 files and folders with either name stay |
+| UPD-09 | frontend/src/components/__tests__/UpdateBanner.test.tsx | vitest | Portty 18-04: available shows "Portty X is available." and Update calls onDownload; installing and relaunching show their text on the info variant with no action button (dismiss kept); revealed with an error shows Go's sentence on the warning variant with no action button |
+| UPD-09 | frontend/src/components/__tests__/App.update.test.tsx | vitest | Portty 18-04: an available status from GetUpdateStatus shows the banner with Update; installing and relaunching events render Installing and Restarting with no action button; a revealed event with an error renders the warning with Go's text; an installing event brings back a dismissed banner, and relaunching keeps it |
+| UPD-09 | app_update_test.go | Go | Portty 18-04: `TestManualUpdateCheck_AvailableUpdate` (Update and Later), `TestManualUpdateCheck_WhileUpdating`, `TestManualUpdateCheck_WhileVerifying` ("Portty is updating to version X."), `TestTrayUpdate_HiddenAfterFailedInstall` |
 | BRND-02 | tray_test.go | Go | Portty 03-03: TestTrayIconAsset — six tray states, 1x 18×18 and @2x 36×36, embedded from the brand files |
 | BRND-02 | app_set_tray_progress_test.go | Go | Portty 03-03: trayIconBytesForState returns the matching 1x and @2x pair; error wins over progress |
 | BRND-02 | scripts/verify-icons.sh | build-script | Portty 03-03: app icon 1024, iconset 10 @2x-named files, icns from iconutil, tray sizes, six Portty title logos, generators and portty-brand/ absent (sips, no ImageMagick) |
@@ -556,7 +589,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | SHAR-03 | frontend/src/components/__tests__/WebShareSessionView.plugin-config.test.tsx | vitest | Quick 261116-ku9 R1: a web guest renders with the fetched host `terminalFont` (quoted family plus stack, size), an SSE frame updates both, explicit `fontFamily`/`fontSize` props win, an invalid value falls back to the default stack and 13 |
 | BRND-01 | frontend/src/components/__tests__/QuitConfirmModal.test.tsx | vitest | Portty 03-05: dialog title "Quit Portty?" in source and rendered |
 | BRND-03 | frontend/src/components/__tests__/NewSessionModal.test.tsx | vitest | Portty 03-05: folder memory under portty:lastWorkDir (fresh start, no migration) |
-| BRND-06 | frontend/src/components/__tests__/UpdateBanner.test.tsx | vitest | Portty 06-03 (replaces the 03-05 row): the banner never opens a URL; Download calls onDownload and Go downloads only from the scottkw/portty allowlist |
+| BRND-06 | frontend/src/components/__tests__/UpdateBanner.test.tsx | vitest | Portty 06-03 (replaces the 03-05 row): the banner never opens a URL; Download calls onDownload and Go downloads only from the scottkw/portty allowlist; Portty 18-04: the button is Update; Go installs and reveals only on failure |
 | BRND-05 | tests/check-brand.sh | build-script | Portty 03-06: zero case-insensitive hits for the old product name in tracked content and file names outside .planning/ (bracket-class patterns, so the script never matches itself); runs in build.yml |
 | BRND-06 | tests/check-brand.sh | build-script | Portty 03-06: no github.com/scottkw/ link other than scottkw/portty |
 | DIST-03 | tests/check-brand.sh | build-script | Portty 03-06: no mention of the macOS package manager outside internal/daemon/path.go and path_test.go (Tailscale PATH code); packaging/ absent |
@@ -878,6 +911,9 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | MOB-04 | cmd_share_test.go | Go | Portty 14-09: the `portty share` printed warning is the new sentence (the link only opens on devices signed in to your Tailscale account) |
 | MOB-04 | frontend/src/components/__tests__/SharePopover.test.tsx | vitest | Portty 14-09: the Share popover description and warning match the new copy |
 | MOB-04 | frontend/src/components/__tests__/SettingsSheet.tailscale-status.test.tsx | vitest | Portty 14-09: the Settings Sharing footnote matches the new copy |
+| REL-01 | tests/verify-bundle.test.sh | build-script | Portty 18.1-01/02: unsigned fixtures built with cc at test time (good bundle, minos 15.0 pass; minos 11.0, two-slice, x86_64-only, nested helper at 11.0 named by path, no Mach-O, old plist minimum, wrong bundle id, usage errors) and the signed cases (real ad-hoc fixtures; a fake codesign on PATH, one mutation per case, each failing with only its own tag: team, runtime flag, timestamp, identifier, designated requirement, entitlements, verify), `sign-bundle.sh` four-call inside-out sign order, no deep signing, entitlements file pin, `SIGN_IDENTITY` unset |
+| REL-01 | tests/build-script.test.sh | build-script | Portty 18.1-01/02: build.sh builds darwin/arm64 with both CGO exports at `-mmacosx-version-min=14.0`, calls `scripts/verify-bundle.sh`, and `--sign` goes through `scripts/sign-bundle.sh` and `verify-bundle.sh --signed` with no deep signing (Section 13) |
+| REL-01 | internal/updater/release_workflow_test.go | Go | Portty 18.1-03: `TestReleaseWorkflow_Arm64Build` (darwin/arm64 build, both CGO flags at 14.0, bundle gate before the tar), `TestReleaseWorkflow_InsideOutSigning` (sign-bundle.sh, verify-bundle.sh --signed, --notarized, no `--deep`), `TestBuildWorkflow_Arm64MinOS14` (build.yml context and flags), `TestVerifyBundle_PinsTeamAndDR` (Team ID, bundle id and designated requirement in verify-bundle.sh equal the Go constants), `TestReleaseWorkflow_DMGName` (both names from one suffix list equal `DMGAssetNames`), `TestReleaseWorkflow_NotarizesAndStaplesDMG`, `TestReleaseWorkflow_SignTimeout`, `TestReleaseWorkflow_ChecksumsAndNotes` (two-line checksums, Apple Silicon note); the local two-name DMG rehearsal was a task verify, not a committed test |
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 
 ---
@@ -1306,7 +1342,7 @@ The VIEW-01..05 behavioral proof for the web guest and the desktop guest relies 
 
 ### Category AT — Overnight Survival (SHAR-07, VERF-01)
 
-The user requires Portty to be rock solid: a session must survive network glitches, network and Wi-Fi access-point switches, and sleep/wake with no manual reattach. M-84 and M-85 are **deferred-capable**: at Phase 5 verification the user decides whether M-84 (the real overnight run, VERF-01 as written) or M-85 (the accelerated sleep/wake run) gates VERF-01, or defers both. Claude runs M-86 and M-87 in the Tart VMs (Safari through dev-browser); only the two-Mac items need the user. Two Tart VMs are on the tailnet for two-machine runs: `portty-test` (office role, tailnet name `portty-vm-office-2`, 100.103.7.20) and `portty-test-2` (home role, `portty-vm-home-3`, 100.78.170.1).
+The user requires Portty to be rock solid: a session must survive network glitches, network and Wi-Fi access-point switches, and sleep/wake with no manual reattach. M-84 and M-85 are **deferred-capable**: at Phase 5 verification the user decides whether M-84 (the real overnight run, VERF-01 as written) or M-85 (the accelerated sleep/wake run) gates VERF-01, or defers both. Claude runs M-86 and M-87 in the Tart VMs (Safari through dev-browser); only the two-Mac items need the user. Two Tart VMs are on the tailnet for two-machine runs: `portty-test` (office role, tailnet name `portty-vm-office-2`, 100.x.x.N) and `portty-test-2` (home role, `portty-vm-home-3`, 100.x.x.N).
 
 Caveats a user can trip over (all by design or known, none a failure by itself):
 - zsh `clear` sends `ESC[3J`, which empties the history a reattach replays.
@@ -1404,12 +1440,13 @@ Caveats a user can trip over (all by design or known, none a failure by itself):
   - _Last run:_ 2026-11-18, build 5cfa6b4d plus the 06-04 seam (f562372e): U-01..U-06 all PASS; evidence in .planning/phases/06-release-updates/06-VM-CHECKS.md. The ad-hoc wails build may not post notifications (`Notifications are not allowed for this application`), so delivery was checked only as one dispatch per version; M-93 checks delivery.
   - _Why not automatable:_ the native NSAlert, the notification, Finder's reveal and the real codesign/spctl need a GUI session on real macOS. The logic is covered by the Section 4 UPD rows.
   - _Source:_ 06-CONTEXT.md specifics (fake GitHub in a Tart VM through a build seam; reject an unsigned DMG; reveal in Finder); 06-04-PLAN.md.
+  - _Note (Phase 18):_ from Phase 18 the banner button is Update and installs the new version itself; U-05's reveal applies only to install failures (M-168). U-01 and U-03's Download wording is now Update.
 
 - **M-93** First tagged release, end to end (Portty 06-04; on the real Macs at the first `v*` tag).
   - _Preconditions:_ scottkw/portty is public, and the release workflow's Actions secrets and `release` environment exist.
   1. The release job's "Verify DMG like the in-app updater" step passed.
   2. On the host, with the downloaded release DMG: `UPDATE_REAL_DMG=<dmg> GOTOOLCHAIN=go1.26.11 go test -run TestRealDMG ./internal/updater` and `UPDATE_RELEASE_JSON=<saved releases/latest JSON> UPDATE_DMG_PATH=<dmg> GOTOOLCHAIN=go1.26.11 go test -run TestReleaseJSON ./internal/updater` pass (not skipped).
-  3. On the home Mac, an installed older release shows the update banner about 10 s after launch and a delivered notification attributed to Portty; Help → Check for Updates… offers the new version; Download reveals the DMG in Finder, and it opens and installs.
+  3. On the home Mac, an installed older release shows the update banner about 10 s after launch and a delivered notification attributed to Portty; Help → Check for Updates… offers the new version; from Phase 18, Update installs the new version and relaunches it (the DMG is revealed in Finder only when the install fails, M-168). An older release without self-install still reveals the DMG, which opens and installs.
   - _Why not automatable:_ needs the real signed and notarized release on GitHub and a real installed older version.
   - _Source:_ 06-04-PLAN.md; M-41 for notification delivery on a signed build.
 
@@ -1897,6 +1934,152 @@ Rig: the Tart VM `portty-test` (never stopped for hours, never logged out, never
   - _Last run:_ 2026-11-23, **PASS** in `portty-test` (macOS 27.2), build `v1.2.0-vm17` from 57cb9ca2 installed with `rm -rf` and `ditto`. Step 1: Finder double-click, Dock reopen after closing the window, cold launch from a pinned Dock icon, `open -a Portty` and both `--args` forms (GUI argv carried `-NSDocumentRevisionsDebugMode YES` / `-ApplePersistenceIgnoreState YES`) each showed `AXWindow Title=Portty`. Step 2: `--version` and `-v` printed `v1.2.0-vm17` rc 0, `--bogus` printed the unknown-flag line and usage rc 2, `pgrep -x Portty` 0 before and after each. Step 3: duplicate `shell` refused with the `more than one session is named` line (both remained); rename by full ID and by name worked; a 4-character ID prefix was refused by rename and kill with `no session named`; kill by name and by an 8-character prefix worked. VM Dock and test app restored afterwards.
   - _Why not automatable:_ real LaunchServices launches of a signed bundle, which must not happen on the user's Mac; covered in process by `TestLaunchMode` (dispatch_test.go), `TestCmdKill_ByName` and `TestCmdRename_ByName` (cmd_cli_test.go) and 16-01's built-binary run.
   - _Source:_ 16-01-PLAN.md and 16-01-SUMMARY.md; 16-CONTEXT D-01; todos 2026-11-23-version-flag-hangs and 2026-11-23-kill-by-name-fails.
+
+### Category BH — v2.0 Desktop Feasibility Spike (Phase 17)
+
+Rig: the user's office Mac (the shared Mac, macOS 27.2.x) and personal MacBook Air (the viewer), both on the user's tailnet. Probes are rebuilt from `spike/desktop` with `bash spike/desktop/bundle/build.sh` (Developer ID identity, never ad-hoc; `--shell` builds the throwaway Wails viewer shell). Nothing here runs without the owner's go on that Mac, and only the spike's own test chart is captured on a personal Mac. Afterwards revoke with `tccutil reset ScreenCapture app.portty.spike`, `tccutil reset Accessibility app.portty.spike` and `tccutil reset PostEvent app.portty.spike`, `launchctl bootout gui/$(id -u)/app.portty.spike.daemon` and remove its plist. Never commit tokens, tailnet addresses or real desktop frames. Results feed `.planning/phases/17-desktop-feasibility-spike/17-SPIKE-MATRIX.md`; each item names its row. Recorded by 17-12; the real-Mac items run when Phase 19 is verified, M-160 after a real 30-day wait.
+
+- **M-157** The office Mac and the home Mac reach each other on a direct tailnet path, and the desktop stream uses it with no STUN, TURN or cloud server (DESK-02, SC1).
+  1. On the office Mac start the spike in the daemon shape (path B LaunchAgent with `serve --source sck` bound to its tailnet address and a fresh token).
+  2. On the home Mac run `tailscale ping -c 5 <office Mac>` before and after a 15 s Safari viewer session (`ice=lite`), and keep a packet capture on the office Mac for UDP ports 3478, 5353 and 19302 during the session.
+  3. PASS when: both pings read direct (no "via DERP"), frames decode at the captured size, the selected pair is on tailnet addresses, `lsof` shows only the tailnet address, and no spike packet goes to 3478, 5353 or 19302.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the two real Macs on the user's tailnet; the test VMs always connect via DERP (test-rig limit, accepted at the 17-12 closure checkpoint).
+  - _Source:_ 17-SPIKE-MATRIX.md row R01 (R01-vm, R01-host)
+
+- **M-158** A daemon started from an SSH shell gets no Accessibility of its own when the SSH daemon wrapper holds none (DSHR-01; documents why the product never starts the daemon from SSH).
+  1. At the office Mac's keyboard (not over SSH), turn off Accessibility for sshd-keygen-wrapper in System Settings, with the spike daemon's own Accessibility grant on.
+  2. From an SSH shell start `Spike.app/Contents/MacOS/spike probe-loop --ax-move` with nohup, let it run 30 s, then turn sshd-keygen-wrapper's Accessibility back to its earlier state at the keyboard.
+  3. PASS when: the SSH-started process reads ax_trusted false (or posts no event) and tccd names sshd-keygen-wrapper, not app.portty.spike, while a launchd-started daemon (`launchctl kickstart`) posts with the app's own grant.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the case needs the SSH wrapper's grant off, which removes the SSH tools that would turn it back on; only a person at the Mac can run it (accepted at the 17-12 closure checkpoint).
+  - _Source:_ 17-SPIKE-MATRIX.md row R08 (R08-D)
+
+- **M-159** The office Mac's display idle and system sleep policy, and what a viewer sees across display sleep and wake there (DPRM-04).
+  1. On the office Mac record `pmset -g` and `pmset -g assertions` on battery and on power.
+  2. With a viewer connected, let the display sleep (`pmset displaysleepnow`), wait 20 s, wake from the keyboard and unlock.
+  3. PASS when: the record shows whether the office Mac locks and enters system sleep after display sleep (as the MacBook Air did 5.5 s later) and the time to the first frame after the wake with the daemon's display-awake and system-sleep assertions held, or the stream restart after SCError -3815.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ real display and power hardware of the office Mac; R18 ran only on the personal MacBook Air.
+  - _Source:_ 17-SPIKE-MATRIX.md row R18 (R18-host)
+
+- **M-160** The real 30-day Screen Recording re-approval prompt on the office Mac, and what capture does while it waits (DPRM-03).
+  1. Note the date the office Mac's capture host was first approved (the approval store's LastAlerted).
+  2. After 30 days, with the daemon capturing and a viewer connected, watch the office Mac's screen and the stream.
+  3. PASS when: the prompt's wording and buttons are recorded, frames are counted before, during and after the prompt, and the detection DPRM-03 uses (store read or nudge plus frame check) reports "waiting for approval at the Mac".
+  - _Last run:_ not yet run
+  - _Why not automatable:_ a real 30-day wait on the real Mac; the spike backdated the store in a disposable clone, which raised the bypass-picker prompt but not the real monthly one.
+  - _Source:_ 17-SPIKE-MATRIX.md row R19
+
+- **M-161** The office Mac's hardware H.264 encoder at its native display size and 30 fps: CPU, latency and sharpness (DESK-01, DESK-07).
+  1. On the office Mac run the spike's host-run with the test chart moving for 95 s and a viewer joined.
+  2. Read the timeline's encoder readback, CPU, encode latency and the viewer's decode and drop counts.
+  3. PASS when: the encoder reads back hardware, frames hold near 30 fps at the native size with no drops in the motion window, and the numbers are recorded next to R20-host's.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the office Mac's real encoder; R20 ran only on the personal MacBook Air.
+  - _Source:_ 17-SPIKE-MATRIX.md row R20 (R20-host)
+
+- **M-162** System audio capture from the Mac's real output device reaches the viewer (DCTL-07).
+  1. On a real Mac play a known sound through the built-in speakers or headphones while `opusprobe --source sck` runs 10 s, then a 5 s run in silence.
+  2. Read buffer counts, peak sample and Opus packet sizes.
+  3. PASS when: the sound run gives buffers with a non-zero peak and full-size packets, and the silent run gives peak 0 and silence packets.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the VM has only a virtual output device; the real device needs a real Mac.
+  - _Source:_ 17-SPIKE-MATRIX.md row R21
+
+- **M-163** On the office Mac the in-daemon capture host is attributed and listed as in the VMs, and the grant is confirmed by preflight polling (FA-1; DPRM-01).
+  1. On the office Mac, after a clean reset, bootstrap the spike daemon's LaunchAgent and let it request Screen Recording and Accessibility.
+  2. Answer each dialog, then poll the non-prompting preflight every 10 s for 3 minutes; if it stays false, add the grant by hand in System Settings and poll again.
+  3. PASS when: tccd names app.portty.spike as the accessing identity for ScreenCapture, Accessibility and PostEvent, System Settings lists Spike under Screen and System Audio Recording and Accessibility and the LaunchAgent under Login Items (signing developer's name), and the record says which grant path made preflight read true.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ real TCC prompts on the office Mac; every attribution row (R02 to R09) ran only in a VM, and in host session 1 an Allow click did not make preflight read true.
+  - _Source:_ 17-SPIKE-MATRIX.md row R04 (FA-1 in `## FEAS-02 decision`; R09-B)
+
+- **M-164** The office Mac's Tailscale mode: network extension or userspace networking (milestone research gap).
+  1. On the office Mac read how Tailscale runs (the app's network extension or a userspace `tailscaled`), and whether a `utun` interface carries the Mac's tailnet address.
+  2. Start the spike's serve bound to that address and join from the home Mac.
+  3. PASS when: the mode is recorded, a network-extension Mac binds the tailnet address and serves the viewer, and for userspace mode the record notes that a kernel-bound socket cannot reach the tailnet (Phase 19 must detect it and refuse with a clear message).
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the office Mac's own Tailscale install, which no test rig reproduces.
+  - _Source:_ 17-SPIKE-MATRIX.md row R01 (M-164 in `## FEAS-02 decision`)
+
+### Category BI — Self-Installing Updates (UPD-05..UPD-09)
+
+Rig: two ad-hoc rig builds of one commit, 1.8.0 (N) and 1.8.1 (N+1), made with `.planning/phases/18-self-installing-updates/rig/p18-rig.sh build` (`-tags "wailsassets vmpreview"`, `-ldflags "-X main.Version=vX.Y.Z"`, `wails.json` productVersion patched per build so the two Info.plists differ, restored after; `GOTOOLCHAIN=go1.26.11`). The `vmpreview` tag points the update check at fakegh (`cmd/fakegh`) on `127.0.0.1:8788` inside the VM. It reads `$HOME/p18/verify-mode` (`adhoc`: fakes only the codesign and spctl answers an ad-hoc build cannot pass; every other tool runs for real) and `$HOME/p18/fault` (VM-only faults: `exit-before-daemon`, `exit-after-daemon`, `hang-before-quit`). It is never used in a release build (`tests/check-brand.sh` keeps it out of scripts/, build.sh and .github). Everything runs in Tart VM `portty-test` (macOS 27.2) through `vm.sh`: `deploy-n`, `dmg`, `feed`, `state ROW`, `quit-gui`, `clean`. Sessions come from the installed CLI and the expect driver, the GUI is read with `axdump`, and dialog buttons are pressed with an AXPress helper. Evidence is in `.planning/phases/18-self-installing-updates/18-VM-CHECKS.md`, with the rig captures `evidence/ROW.state` (header `p18-state row=ROW`) and per-row timelines and logs under `evidence/`. VM limits to keep in mind: Gatekeeper assessments are disabled in the guest (`spctl --status`: `assessments disabled`), so an spctl "accepted" there is not an enforcement result. SIP refuses `chflags` and `chmod` on `/Applications`. On macOS 27.2 `hdiutil attach -mountpoint` and `hdiutil detach` print deprecation warnings (use `diskutil image attach` / `diskutil eject`) but still work; `updater.Mount` uses that same command (deferred finding).
+
+- **M-165** VM update path: one click on the banner's Update installs N+1 with sessions alive (UPD-05, UPD-06; Portty 18-01, 18-03, 18-05, 18-07, 18-08, 18-10; Claude runs it in portty-test).
+  1. `deploy-n` N, start fakegh offering N+1, launch, make two sessions (a 1 s shell ticker after 300 `HIST-s1-n` lines, and a vim timer), share the ticker session (loopback link kept in a 0600 file, never printed).
+  2. Start the 0.4 s process poller, the 1 s window lister and the axdump banner poller; click Update once; run `state ROW-before` and `state ROW`.
+  3. Repeat the plain update 6 times from a fresh N (A9-fix) and once with a Developer ID N (`p18-rig.sh sign`, `verify-mode` removed, feed serving the real published v1.2.0 DMG) for P2d-bundle and R3. For F6, SIGKILL the installer after the swap and before health, then open Portty by hand.
+  4. PASS when: exactly one GUI at N+1 from `/Applications`, daemon `/health` at `vN+1`, the same session ids and shell pids, a fresh viewer shows the full history with gapless ticks, the share link answers 302/200 before and after and 401 for a wrong token, the old bundle is in the Trash, the cache DMG is gone (`cache_dmgs=0`), no staging or run dir is left, no dialog appears, and `update.log` holds no path. The installer runs from the whole-bundle copy in `update/run-*` (P2d-bundle; a lone executable copy is killed by AMFI under a Team ID, P2d). Every relaunch ends with a GUI (A9-fix: `installer: open attempt 1 failed` followed by a successful retry is fine). After F6, the next launch takes the sessions over and the sweep trashes the leftovers once they are older than 1 h.
+  - _Last run:_ 2026-11-26, build `e03f4ef1`: R1 PASS (history 300/300, ticks gapless, share 302/200/401 before and after, click to daemon `v1.8.1` 4.95 s), R3 PASS (Developer ID 1.1.90 to the real v1.2.0, un-granted, no AMFI kill, no dialog), F6 PASS. Earlier builds: P2d-bundle CONFIRMED 2026-11-25 on `d132e572`; A9-fix PASS 2026-11-26 on `b968a6ef` (run 5 hit the race and the retry recovered it); R1-lite PASS 2026-11-25 (18-08 tree on `32b69fc3`). Evidence: 18-VM-CHECKS.md rows R1-lite, P2d-bundle, A9-fix, R1, R3, F6.
+  - _Why not automatable:_ the real LaunchServices relaunch, AMFI, App Management, the Trash and a live daemon takeover need a GUI session on real macOS. The logic is covered by the Section 4 UPD-05 and UPD-06 rows.
+  - _Source:_ 18-CONTEXT.md [Installer], 18-08-PLAN.md, 18-07-PLAN.md, 18-10-PLAN.md.
+
+- **M-166** VM rollback: a broken N+1 puts N back by itself (UPD-07; Portty 18-03, 18-07; Claude runs it in portty-test).
+  1. As M-165 steps 1-2, with `~/p18/fault` written before the click: R2-A `exit-before-daemon vN+1`, R2-B `exit-after-daemon vN+1`, R2-D `hang-before-quit vN`. For R2-C, set `chflags uchg /Applications/Portty.app` after the banner and before the click, and clear it after.
+  2. Write the deadline W before the click (click-to-new-GUI + HealthTimeout 60 s + StopWait 5 s + KillWait 2 s + 30 s).
+  3. PASS when: R2-A and R2-B roll back (`installer: rolled-back gui-exited`) within W with N installed and one GUI. The sessions keep their shell pids, in R2-B through the committed N+1 daemon with no DEBT-08 restart dialog. The banner shows `Portty N+1 didn't start, so Portty put version N back. The download is shown in Finder.` with the kept DMG revealed and `skip-version` set, and the automatic check does not offer N+1 again. R2-C ends `failed swap` with N relaunched and `Portty couldn't install version N+1. The download is shown in Finder.` R2-D kills only the old GUI after QuitWait (20 s) and the update completes.
+  - _Last run:_ 2026-11-26: R2-A PASS (click-to-rollback 3.52 s, W=100.3 s) and R2-B PASS (3.23 s) on `e03f4ef1`; R2-C and R2-D PASS on `b968a6ef`. Evidence: 18-VM-CHECKS.md rows R2-A to R2-D.
+  - _Why not automatable:_ a real GUI that exits or hangs, LaunchServices and the daemon takeover in a GUI session; the logic is covered by the Section 4 UPD-07 rows.
+  - _Source:_ 18-03-PLAN.md, 18-07-PLAN.md.
+
+- **M-167** VM first launch from a DMG: the mover installs Portty and leaves one copy running (UPD-08; Portty 18-06, 18-09; Claude runs it in portty-test).
+  1. Make the N+1 DMG in the VM (`p18-rig.sh dmg`), copy it to the VM's `~/Downloads` as `portty-vX.Y.Z-darwin-arm64.dmg`, open it like Finder (`open` on the file), then `open /Volumes/Portty/Portty.app`. Empty the Trash and `~/Downloads` of Portty items before each row, and reset the Downloads consent service-wide (`tccutil reset SystemPolicyDownloadsFolder`) before a prompt run.
+  2. Rows: R4-a no installed copy; R4-b N installed and running with two sessions, Replace; R4-c the same, Cancel; R4-d N+1 installed; R4-e `/Applications` not writable (SIP refuses chmod in the guest, so the opened app is given an access() interposer through `open --env DYLD_INSERT_LIBRARIES=...`); R4-f a browser-style quarantine flag on the DMG; R4-g a second run from the same DMG after R4-a.
+  3. After each row read the menu-bar item count (AXExtrasMenuBar of every `app.portty.Portty` process) and run `state ROW`.
+  4. PASS when: R4-a installs to `/Applications`, relaunches from there, detaches the volume and moves the DMG to the Trash, leaving no staging dir. The only dialog is macOS's one-time Downloads prompt, which comes after the result is written and is accepted (user decision 2026-11-25; Don't Allow keeps the DMG and the install still succeeds, R4-smoke-deny-a2). R4-b shows `Replace Portty N in Applications?` / `This copy is version N+1.` in front of every window, then installs N+1 with the same shell pids and puts N and the DMG in the Trash. R4-c opens the installed N, stages nothing and leaves the DMG mounted and in `~/Downloads`. R4-d and R4-g open the installed copy unchanged (version, mtime), detach the volume and trash the DMG. R4-e installs to `~/Applications/Portty.app`. R4-f is not translocated, shows only the system's first-launch confirmation, and leaves the installed copy with no quarantine flag and no dialog on relaunch. Every row ends with exactly one GUI and one menu-bar item.
+  - _Last run:_ 2026-11-26, build `e03f4ef1`: R4-a to R4-g PASS; R4-e-sandbox OBSERVED (a sandbox-exec mechanism stops the installer from running `/bin/ps`, a rig artifact); R4-f-gatekeeper BLOCKED (assessments disabled in the guest; the real Gatekeeper path is M-169 part 1). R4-smoke PASS 2026-11-26 on `79be910c`. Evidence: 18-VM-CHECKS.md rows R4-smoke, R4-smoke-deny-a2, R4-a to R4-g.
+  - _Why not automatable:_ a mounted disk image, Finder's open, LaunchServices, the system's first-launch and Downloads dialogs and a real Trash need a GUI session on real macOS; the logic is covered by the Section 4 UPD-08 rows.
+  - _Source:_ 18-CONTEXT.md [Mover] and the Downloads-prompt decision (option A with refinement A2), 18-06-PLAN.md, 18-09-PLAN.md.
+
+- **M-168** VM install failures reveal the download with a clear sentence and keep Portty running (UPD-09; Portty 18-02, 18-07; Claude runs it in portty-test).
+  1. From a fresh N with the banner up, force one failure per row before the click: F1 N running from a root-owned 755 folder; F2 N on a 40 MB APFS image with under twice the app's size free; F3 fakegh serving random bytes under the DMG name; F4 an N+1 whose bundle version does not match; F5 `chflags uchg` on the bundle (swap) and on `~/Applications` (staging); F7 a kqueue helper that makes the new staging folder read-only before `ditto` writes into it.
+  2. PASS when: each row shows its own sentence on the warning banner: F1 `Portty doesn't have permission to replace itself from this account. The download is shown in Finder.`; F2 `There isn't enough free disk space to install the update. ...`; F3 `Portty couldn't open the download. ...`; F4 `The new version didn't pass the safety check, so it wasn't installed. ...`; F5 `Portty couldn't install version N+1. ...` (swap) and the permission sentence (staging); F7 `Portty couldn't copy the new version. ...`. Finder's `updates` window comes to the front with the DMG selected and its quarantine back on (`0081;...;Portty;`). The GUI stays up at N, nothing is swapped, and no staging dir or `mnt-*` is left (F5a's verified copy stays for the sweep).
+  - _Last run:_ 2026-11-26, build `e03f4ef1`: F1, F2, F3, F4, F5, F7 PASS (side rows F5b-attempt1, F7-unreadable and F7-race-lost OBSERVED). Evidence: 18-VM-CHECKS.md rows F1 to F7.
+  - _Residual risk:_ a genuine Developer-ID App Management denial is forced in the VM only by its errno (F5's `uchg`). It is seen for real only in P2d-bundle or R3, where macOS granted the same-Team exception and nothing was refused, and otherwise in M-169 part 1.
+  - _Why not automatable:_ Finder's reveal, real disk-full and permission refusals and the native banner need a GUI session on real macOS; the logic is covered by the Section 4 UPD-09 rows.
+  - _Source:_ 18-02-PLAN.md, 18-07-PLAN.md.
+
+- **M-169** The office Mac, real releases (UPD-05..UPD-09; the owner runs it, the only office-Mac item in this category).
+  - _Part 1, at the first self-installing release:_ on the office Mac with an installed v1.2.x running two ticking sessions (one with scrollback history) and a share link open from the home Mac over the tailnet, download the release DMG (`portty-vX.Y.Z-darwin-arm64.dmg`) in a browser, so it is quarantined and notarized. Open it in Finder and open Portty from the volume. Answer the Replace question with Replace. Accept the one-time Downloads prompt if it appears (user decision 2026-11-25).
+  - _Part 2, at the release after that:_ with two ticking sessions and the share link open from the home Mac, click Update in the banner once.
+  - PASS when: a dialog appears only when replacing (part 1: the one Replace question, plus at most the system's first-launch confirmation for the downloaded app and the one-time Downloads prompt). The sessions keep their shell pids and their history, and the share link opens from the home Mac over the tailnet before and after. The DMG is ejected and in the Trash (part 1) or deleted from the update cache (part 2), and the old app is in the Trash. No Gatekeeper or App Management dialog appears on the relaunch. If R3 or P2d-bundle had been BLOCKED, the App Management outcome would be recorded here (both ran: the kernel registered the same-Team AppBundles exception and nothing was refused).
+  - _Last run:_ not yet run.
+  - Phase 18 closes with M-169 human_needed: ROADMAP SC1's office-Mac half (Update clicked in the banner on the office Mac) stays unmet until part 2 runs; part 1 (the mover Replace path) is not counted as that proof.
+  - _Why not automatable:_ needs real signed and notarized releases on GitHub (two of them for part 2), the office Mac's real Gatekeeper, App Management and tailnet, and the owner's sessions. The VM has Gatekeeper assessments disabled and ad-hoc builds.
+  - _Source:_ 18-09-PLAN.md flagged decisions; ROADMAP Phase 18 SC1; STATE blocker (self-install only helps upgrades from a build that has it).
+
+- **M-170** The one-time Downloads-folder prompt on a real Mac, Developer ID release (UPD-08; Portty 18-06, 18-09; any real Mac, the home Mac is enough; not an office-Mac item).
+  1. Move any installed Portty aside and reset the Downloads consent with `tccutil reset SystemPolicyDownloadsFolder`. The bundle-scoped form (`... app.portty.Portty`) fails with -10814 once no app has that bundle id.
+  2. Download the release DMG in a browser to `~/Downloads`, open it in Finder and open Portty from the volume.
+  3. PASS when: Portty is installed and running from `/Applications` before the prompt `“Portty” would like to access files in your Downloads folder.` appears. Allow puts the DMG in the Trash within a few seconds. On a repeat after a reset, Don't Allow keeps the DMG in `~/Downloads` and Portty stays installed and running. A later first install of a newer release DMG asks no second time (the consent belongs to the Developer ID app, while each ad-hoc rig build is asked again).
+  - _Last run:_ not yet run on a real Mac. VM evidence (ad-hoc): R4-smoke and R4-a (Allow), R4-smoke-deny-a2 (Don't Allow), 2026-11-26.
+  - _Why not automatable:_ a real TCC prompt for a Developer ID app on a real Mac; the VM shows it only for ad-hoc rig builds.
+  - _Source:_ user decision 2026-11-25 (18-CONTEXT.md, REQUIREMENTS UPD-08), refinement A2 (18-06-SUMMARY.md).
+
+- **M-171** Finder's Put Back for the old Portty the installer moved to the Trash (UPD-05, UPD-06; Portty 18-05, 18-09; any real Mac; not an office-Mac item).
+  1. After an update (banner Update or a mover Replace), open the Trash in Finder and select the old `Portty.app` (or `Portty HH-MM-SS-mmm.app`).
+  2. Record whether File → Put Back is offered and, if used, where it restores the app. Then drag the old app out of the Trash into a scratch folder and open it.
+  3. PASS when: the dragged-out copy opens as the older version (the documented recovery), and Put Back's state is recorded either way.
+  - _Last run:_ not yet run. Unchecked in the VM: driving Finder needs an Automation grant (`osascript` to Finder returned -1743 and no grant was made), and the installer's DesktopServices could not write the Trash's `.DS_Store` (`NSCocoaErrorDomain Code=513`, P3), which is where Finder keeps Put Back data. Put Back may therefore be greyed out.
+  - _Why not automatable:_ Finder UI on a real Mac, and an Automation grant the rig does not make.
+  - _Source:_ 18-VM-CHECKS.md row P3; 18-05-SUMMARY.md; 18-07-SUMMARY.md open finding 5.
+
+### Category BI.1 — Apple Silicon Release Pipeline (REL-01, Phase 18.1)
+
+Phase 18.1 sits between Phase 18 and Phase 19; the one item below is the first tag run of the arm64 release pipeline.
+
+- **M-172** First tag run of the Apple Silicon release pipeline (REL-01; first run is Phase 23's v2.0.0-rc.1 draft; carries ROADMAP SC2's deferred runtime proof).
+  - _Preconditions:_ the release environment's secrets exist; a user pushes the rc tag (Phase 23).
+  1. The Release run passes "Release bundle is arm64-only with minos 14.0 (REL-01)", "Sign .app with hardened runtime" (`sign-bundle.sh` and `verify-bundle.sh --signed`), "Notarize .app" (`--notarized`), the three DMG steps for both names and the checksum step.
+  2. The draft release holds both DMGs and a two-line `checksums.txt`, and its notes start with "Apple Silicon and macOS 14 or later only."
+  3. Download both DMGs into a scratch directory (never `~/Downloads`), run `UPDATE_REAL_DMG=<dmg> GOTOOLCHAIN=go1.26.11 go test -run TestRealDMG ./internal/updater` for each (not skipped), mount each read-only on a scratch mountpoint and check the app's `codesign -d -r-` designated line equals v1.2's, `lipo -archs` prints `arm64` and `vtool -show-build` shows minos 14.0, then detach.
+  4. At the real v2.0 release, an installed v1.2.x copy finds, verifies and installs it through the universal name (with M-93).
+  - PASS when all hold. SC2 runtime proof deferred to Phase 23 rc.1 (this item is its deferred runtime proof).
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ needs a pushed tag, the release secrets, Apple's notary service and an installed older copy; local tests prove the gates with fixtures, a host Developer ID signature and an un-notarized two-name DMG rehearsal.
+  - _Source:_ 18.1-02-PLAN.md, 18.1-03-PLAN.md.
 
 ---
 

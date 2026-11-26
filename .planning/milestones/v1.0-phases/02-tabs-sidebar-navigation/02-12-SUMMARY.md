@@ -140,7 +140,7 @@ Browser checks use the dev-browser skill. Native checks need the built app with 
 
 ## Needs VM check
 
-Built app: `/Users/ken/dev/portty/build/bin/agenthub.app` (code from 3a9d4534; TESTING.md-only commit after it). In Light, then Dark:
+Built app: `build/bin/agenthub.app` (code from 3a9d4534; TESTING.md-only commit after it). In Light, then Dark:
 
 1. **Focus ring:** Tab through toolbar buttons, the Share button, sidebar rows, tab labels and × buttons, a dialog's buttons and fields, Settings pane tabs, switches and fields, the find bar's buttons and input, the Funnel panel's Disable and hold buttons, and the expiry select. Each shows the same soft blue 3px ring. Sidebar rows and tab labels draw it inside their edge. A mouse click shows no ring, except in text fields. Context menu items still show the blue selection fill rather than a ring.
 2. **Tab rename field:** double-click a tab name. The field now shows the focus ring. Check that the ring is not clipped badly by the tab pill. If it looks wrong, restoring `outline: none` on `.tab__rename-input` is a one-line change and the gate still passes.

@@ -1,0 +1,34 @@
+R00 rig record, VM office (Tart guest portty-test), 2026-11-24 evening local, guest clock GMT 2026-11-25 02:47 to 02:50
+Host names, account names and tailnet names are not recorded here.
+
+== Guest identity (sw_vers, sysctl, ioreg)
+ProductName:		macOS
+ProductVersion:		27.2
+BuildVersion:		26B123
+kern.hv_vmm_present: 1
+hw.model: VirtualMac2,1
+machdep.cpu.brand_string: Apple M3 (Virtual)
+GPU: AppleParavirtGPU (IOKit class), Metal plugin AppleParavirtGPUMetalIOGPUFamily
+
+== system_profiler SPDisplaysDataType
+Prints an empty list in the guest ({"SPDisplaysDataType": []}, also with -json). The paravirtual GPU is not reported by system_profiler.
+Display facts come from the probe instead (ScreenCaptureKit SCShareableContent): one display, id 1, main, 2560 x 1440 pixels, 1280 x 720 points (scale 2).
+Metal support: not read from system_profiler; the paravirtual GPU driver above is the Metal plugin, and VideoToolbox lists paravirtualized hardware encoders (see r00-vmprobe.json).
+
+== Screen lock and sleep settings (rig disabled them earlier)
+sysadminctl -screenLock status: screenLock is off
+pmset -g: sleep 0, disksleep 0, displaysleep 0 (system sleep held off by powerd)
+
+== Rig steps
+1. portty-test was stopped; started it with `tart run --no-graphics portty-test` in the background. tart ip and SSH answered within seconds. Scratch copies of the VM tools (vm-office.sh, vshot-office.sh) were written to the session scratchpad with the current guest IP; ~/ptest/click and ~/ptest/axdump were already in the guest. The VM is left running.
+2. Deploy: tar of spike/desktop/build/Spike.app piped into ~/ptest in the guest. codesign --verify --strict passes in the guest. The tar copy carries no quarantine attribute, so Gatekeeper showed no dialog on any open (RESEARCH A8 did not fire; no notarization needed for the guest).
+3. State reset: `tccutil reset ScreenCapture app.portty.spike` and `tccutil reset Accessibility app.portty.spike` both answered "No such bundle identifier" (error -10814) because the app had not been launched yet, so there was no state to reset. `pgrep -f Spike.app` printed nothing before every launch.
+4. Grant run (T0 = guest 2026-11-25 02:47:51): `open -n ~/ptest/Spike.app --args vmprobe --request --out /tmp/spike-evidence/r00a --seconds 5` (probe pid 807, started with open, never executed from the SSH shell).
+   Prompt 1, text exactly: "Screen Recording" window, "\"Spike\" would like to record this computer's screen and audio." / "Grant access to this application in Privacy & Security settings, located in System Settings." Buttons: Open System Settings, Deny. The name shown is "Spike", not "Portty Spike".
+   The run finished in under a second with SCError -3801 (SCStreamErrorDomain, "The user declined TCCs for application, window, display capture"): sr_preflight false, sr_request false, no displays. The encoder step still worked (hardware H.264 session at 1280 x 720). The prompt stayed on screen after the process exited.
+   Clicked Open System Settings (click 703 307). System Settings opened on Privacy and Security, Screen & System Audio Recording, with a list entry "Spike" (generic icon, toggle off) next to two pre-existing entries.
+   Clicked the Spike toggle (click 961 193). A password sheet appeared ("Privacy & Security is trying to modify your system settings", user field Demo). Typed the guest admin password as key codes 0 2 46 34 45 then Return (36). The toggle turned on. No "Quit & Reopen" sheet appeared (no spike process was running). Closed System Settings with the red close button.
+5. Measuring run (guest 02:48:47): confirmed `pgrep -f Spike.app` printed nothing, then `open -n ~/ptest/Spike.app --args vmprobe --out /tmp/spike-evidence/r00 --seconds 5` (probe pid 992, recorded in r00-vmprobe.json). It exited by itself within 40 s.
+   Result: sr_preflight true; one display 2560 x 1440; 28 Complete frames and 104 Idle in the 5 s window, 0 Blank, 0 Suspended; ioSurface 1; first frame 383 ms; encode latency mean 38.8 ms, p95 87.2 ms, max 425 ms; hardware H.264 encoder paravirtualized:com.apple.videotoolbox.videoencoder.ave.avc at 2560 x 1440; 29 access units, 2 keyframes; the PNG shows the guest desktop (mean luma 235.0).
+6. Prompt 2 (new on macOS 27.2): the measuring run, although already allowed in Screen Recording, raised a second system dialog over the desktop, visible in the captured frame: "\"Spike\" is requesting to bypass the system private window picker and directly access your screen and audio." / "This will allow Spike to record your screen and system audio, including personal or sensitive information that may be visible or audible." Buttons: Allow, Open System Settings. Frames kept arriving with the dialog pending, and the menu bar showed the purple screen-recording indicator. The dialog stayed after the process exited; clicked Allow (click 640 412) and it went away. Whether this prompt returns on later launches is checked in R10 (r10-before and r10-after) and is the monthly-style prompt R19 must characterise.
+7. tccd lines for the grant run (pid 807) and the measuring run (pid 992) are in r00-tcc.log, filtered by msgID to the probe pids. ScreenCapture attribution is identifier=app.portty.spike, asked through replayd; the same identifier asks for ListenEvent preflight.

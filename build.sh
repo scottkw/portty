@@ -10,7 +10,7 @@ SIGN="false"
 usage() {
   echo "Usage: build.sh --platform macos [--sign]"
   echo ""
-  echo "  --platform macos     Build macOS universal binary (.app bundle)"
+  echo "  --platform macos     Build the macOS Apple Silicon (arm64) app bundle, macOS 14 or later"
   echo "  --sign               Code-sign and notarize the macOS build (requires credentials)"
   exit 1
 }
@@ -82,11 +82,16 @@ fi
 
 build_macos() {
   local VERSION="${BUILD_VERSION:-dev}"
-  echo "==> Building macOS (darwin/universal) version=${VERSION}"
-  "$WAILS" build -platform darwin/universal -clean \
+  # Wails v2.10.2 adds -mmacosx-version-min=10.13 only when the variable lacks one, and both
+  # are needed: CFLAGS alone leaves the linked minos at 11.0 (23-RESEARCH Pattern 9).
+  export CGO_CFLAGS="-mmacosx-version-min=14.0"
+  export CGO_LDFLAGS="-mmacosx-version-min=14.0"
+  echo "==> Building macOS (darwin/arm64, macOS 14+) version=${VERSION}"
+  "$WAILS" build -platform darwin/arm64 -clean \
     -ldflags "-X main.Version=${VERSION}" \
     -tags wailsassets
   echo "==> macOS build complete: build/bin/Portty.app"
+  bash "$(dirname "$0")/scripts/verify-bundle.sh" build/bin/Portty.app
 
   if [[ "$SIGN" == "true" ]]; then
     sign_and_notarize "build/bin/Portty.app"
@@ -128,18 +133,13 @@ sign_and_notarize() {
     exit 1
   fi
 
-  # Step 1: Deep sign with hardened runtime
+  # Step 1: Sign every Mach-O inside out, then the bundle (hardened runtime, timestamp)
   echo "==> Signing $APP"
-  codesign --deep --force --verbose \
-    --options runtime \
-    --timestamp \
-    --entitlements "$ENTITLEMENTS" \
-    --sign "$IDENTITY" \
-    "$APP"
+  SIGN_IDENTITY="$IDENTITY" ENTITLEMENTS="$ENTITLEMENTS" bash "$(dirname "$0")/scripts/sign-bundle.sh" "$APP"
 
-  # Step 2: Verify signature
+  # Step 2: Verify the signature gates (team, runtime, timestamp, identifier, designated requirement)
   echo "==> Verifying signature"
-  codesign --verify --deep --strict --verbose=2 "$APP"
+  bash "$(dirname "$0")/scripts/verify-bundle.sh" "$APP" --signed
 
   # Step 3: Create zip for notarytool (ditto preserves macOS metadata; NOT zip -r)
   local ZIP="build/bin/portty-notarize.zip"

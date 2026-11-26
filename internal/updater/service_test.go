@@ -1,11 +1,13 @@
 package updater
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -645,9 +647,135 @@ func TestService_ErrorTextsHaveNoURLOrPath(t *testing.T) {
 		_, err := f.svc.Check(context.Background())
 		texts = append(texts, err.Error())
 	}
+	// Every install failure mode (UPD-09), each with its own sentence.
+	seen := map[string]string{}
+	for mode := range aiInstallTexts {
+		if mode == "permission" && os.Getuid() == 0 {
+			continue
+		}
+		t.Run(mode, func(t *testing.T) { // its own cleanups, so a fault does not leak into the next mode
+			f, st, _ := aiInstallFailure(t, mode)
+			if st.Error == "" || seen[st.Error] != "" {
+				t.Errorf("text %q is empty or shared with %s", st.Error, seen[st.Error])
+			}
+			seen[st.Error] = mode
+			texts = append(texts, st.Error)
+			if strings.Contains(st.Error, f.root) || strings.Contains(st.Error, f.dir) || strings.Contains(st.Error, f.gh.URL) {
+				t.Errorf("%q holds a path or the server URL", st.Error)
+			}
+		})
+	}
 	for _, s := range texts {
 		if s == "" || strings.Contains(s, "://") || strings.Contains(s, string(filepath.Separator)) {
 			t.Errorf("error text %q is empty or holds a URL or a path", s)
 		}
+	}
+}
+
+// revealedFailure puts f's Service in the state 18-03's ShowResult leaves after a failed install of
+// v: revealed with an Error, s.rel knowing only the version and the DMG name.
+func (f svcFix) revealedFailure(v string) Status {
+	f.svc.mu.Lock()
+	defer f.svc.mu.Unlock()
+	f.svc.rel = Release{Version: v, DMG: Asset{Name: DMGAssetName(v)}}
+	return f.svc.set(Status{State: "revealed", Latest: v, Error: failedText(v)})
+}
+
+func (f svcFix) emitted(state string) bool { return strings.Contains(f.ev.states(), state) }
+
+func TestService_CheckKeepsRevealedSameVersion(t *testing.T) {
+	f := newSvc(t)
+	want := f.revealedFailure("9.9.9")
+	f.ev.reset()
+	f.gh.set(f.gh.rel("9.9.9"), 0)
+	if st, err := f.svc.Check(context.Background()); err != nil || st != want {
+		t.Errorf("Check = %+v, %v; want the revealed failure %+v kept", st, err, want)
+	}
+	if f.emitted("available") {
+		t.Errorf("emitted %s", f.ev.states())
+	}
+	f.gh.set(f.gh.rel("9.9.10"), 0)
+	if st, err := f.svc.Check(context.Background()); err != nil || st.State != "available" || st.Latest != "9.9.10" || st.Error != "" {
+		t.Errorf("Check of a newer version = %+v, %v; want available 9.9.10", st, err)
+	}
+}
+
+func TestService_CheckSkipsFailedVersion(t *testing.T) {
+	f := newSvc(t)
+	f.svc.skipVersion("9.9.9")
+	want := f.revealedFailure("9.9.9")
+	f.gh.set(f.gh.rel("9.9.9"), 0)
+	if st, err := f.svc.Check(context.Background()); err != nil || st != want {
+		t.Errorf("Check = %+v, %v; want the revealed failure kept", st, err)
+	}
+
+	// After a restart (a fresh Service on the same cache folder) or without the DMG: quiet.
+	g := newSvc(t)
+	g.svc.Dir = f.dir
+	g.gh.set(g.gh.rel("9.9.9"), 0)
+	if st, err := g.svc.Check(context.Background()); err != nil || st.State != "current" || st.Latest != "" {
+		t.Errorf("fresh Check = %+v, %v; want current with no Latest", st, err)
+	}
+	if g.emitted("available") {
+		t.Errorf("emitted %s", g.ev.states())
+	}
+	if st, _ := g.svc.Download(); st.State != "current" || g.gh.assets.Load() != 0 {
+		t.Errorf("Download after a skipped check = %+v, %d asset requests", st, g.gh.assets.Load())
+	}
+	g.gh.set(g.gh.rel("9.9.10"), 0)
+	if st, err := g.svc.Check(context.Background()); err != nil || st.State != "available" || st.Latest != "9.9.10" {
+		t.Errorf("Check of a newer version = %+v, %v; want available 9.9.10", st, err)
+	}
+}
+
+func TestService_ManualCheckOffersSkipped(t *testing.T) {
+	f := newSvc(t)
+	f.svc.skipVersion("9.9.9")
+	f.gh.set(f.gh.rel("9.9.9"), 0)
+	if st, err := f.svc.Check(ManualCheck(context.Background())); err != nil || st.State != "available" || st.Latest != "9.9.9" {
+		t.Errorf("manual Check = %+v, %v; want available 9.9.9", st, err)
+	}
+	// From the revealed failure banner too: the user asked, so the version is offered for a retry.
+	f.revealedFailure("9.9.9")
+	if st, err := f.svc.Check(ManualCheck(context.Background())); err != nil || st.State != "available" || st.Latest != "9.9.9" || st.Error != "" {
+		t.Errorf("manual Check from revealed = %+v, %v; want available 9.9.9", st, err)
+	}
+	// An automatic check then keeps the offer the user asked for.
+	if st, err := f.svc.Check(context.Background()); err != nil || st.State != "available" || st.Latest != "9.9.9" {
+		t.Errorf("automatic Check after the manual offer = %+v, %v; want it kept", st, err)
+	}
+}
+
+func TestService_CheckUnreadableSkipSuppressesOffer(t *testing.T) {
+	for name, spoil := range map[string]func(rec string) error{
+		"directory":     func(rec string) error { return os.Mkdir(rec, 0o700) },
+		"not a version": func(rec string) error { return os.WriteFile(rec, []byte("garbage\n"), 0o600) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newSvc(t)
+			if err := os.MkdirAll(f.dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := spoil(filepath.Join(f.dir, skipFile)); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			log.SetOutput(&buf) // Check logs under its own goroutine only, so no lock is needed
+			t.Cleanup(func() { log.SetOutput(os.Stderr) })
+			f.gh.set(f.gh.rel("9.9.10"), 0)
+			if st, err := f.svc.Check(context.Background()); err != nil || st.State != "current" || st.Latest != "" {
+				t.Errorf("automatic Check = %+v, %v; want current with no Latest", st, err)
+			}
+			if f.emitted("available") {
+				t.Errorf("emitted %s", f.ev.states())
+			}
+			logged := buf.String()
+			if !strings.Contains(logged, "update: skip record unreadable, automatic offer suppressed: ") || strings.Contains(logged, f.dir) {
+				t.Errorf("log = %q; want the suppression logged without a path", logged)
+			}
+			if st, err := f.svc.Check(ManualCheck(context.Background())); err != nil || st.State != "available" || st.Latest != "9.9.10" {
+				t.Errorf("manual Check = %+v, %v; want available 9.9.10", st, err)
+			}
+		})
 	}
 }

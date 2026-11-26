@@ -12,10 +12,21 @@ A terminal session started on one Mac can be attached to from another Mac (or a 
 
 v1.2 Previews, Remote URLs, Mobile shipped 2026-11-23 (Phases 9-16, 26/26 requirements), released as v1.2.0. v1.1 Hardening shipped 2026-11-19 and was the first public GitHub release (v1.1.0). See `.planning/MILESTONES.md`.
 
-## Next
+## Current Milestone: v2.0 Desktop Sharing
 
-- **v1.2.1 patch:** move `dompurify` 3.4.17 → 3.4.18+ on or after 2026-11-28, once 3.4.18 is 14 days old (todo `dompurify-3418`; the advisory's SAFE_FOR_TEMPLATES mode is not used by our config, so v1.2.0 shipped without it by user decision 2026-11-23).
-- **Next milestone:** not yet defined. Start with `/gsd-new-milestone`.
+**Goal:** Use the office Mac's whole desktop from home (in the Portty app, a browser, or an iPhone) as easily as its terminal today, and let Portty updates install themselves.
+
+**Target features:**
+- DMG self-install: in-app updates verify, replace `/Applications/Portty.app`, relaunch and delete the DMG (sessions survive via the v1.2 handoff); a first launch from the mounted DMG moves itself to `/Applications`, ejects and trashes the download
+- Desktop sharing over WebRTC (pion/webrtc in the Go daemon; ScreenCaptureKit capture, hardware H.264), viewed in the Portty app, a browser link, and the iPhone share view
+- Full mouse/keyboard control; the sharer picks a window or a display; switch displays mid-session
+- Two modes: always-available for your own tailnet Macs (unattended), and click-to-share links that other tailnet people can join
+- Clipboard sync, audio, multiple simultaneous viewers, adaptive quality (sharp when still, smooth when moving)
+- Remote unlock of a locked Mac (feasibility to be proven by research; macOS restricts lock-screen capture and input)
+
+**Why not macOS Screen Sharing:** one app with the terminal, browser and iPhone viewers, smoother video, and the corporate office Mac restricts Screen Sharing/Remote Management. The user can grant Screen Recording and Accessibility there.
+
+**Also pending:** v1.2.1 patch moves `dompurify` 3.4.17 → 3.4.18+ on or after 2026-11-28 (todo `dompurify-3418`).
 
 ## Requirements
 
@@ -54,6 +65,12 @@ v1.2 Previews, Remote URLs, Mobile shipped 2026-11-23 (Phases 9-16, 26/26 requir
 
 ### Active
 
+- [ ] DMG self-install for updates and first launch, with cleanup (v2.0)
+- [ ] WebRTC desktop sharing with full control in app, browser and iPhone, two share modes, clipboard, audio, multi-viewer, display switch, adaptive quality (v2.0)
+- [ ] Remote unlock of a locked shared Mac, if research shows it is feasible (v2.0)
+
+Carried over:
+
 - [ ] Overnight two-Mac test (VERF-01, M-84) and lid-sleep / AP-switch test (M-85): deferred by the user at v1.0 close
 - [ ] Deferred two-Mac UI checks from Phases 2–4 (peer attach, live share state, VoiceOver, README on GitHub)
 - [ ] M-93 on a real Mac: notarized DMG verify + reveal and delivered update notification (repo is public and v1.1.0 shipped through CI)
@@ -74,7 +91,7 @@ v1.2 Previews, Remote URLs, Mobile shipped 2026-11-23 (Phases 9-16, 26/26 requir
 ## Context
 
 - **Origin:** Warp session sharing drops after an idle period, and the user can't reconnect. Warp offers no setting to change that. Portty replaces Warp sharing for office→home control.
-- **Codebase:** Forked from AgentHub (`~/dev/agenthub`, github.com/scottkw/agenthub) with full git history. Go 1.26 + Wails v2 + React/Vite frontend, `tailscale.com` tsnet, coder/websocket, go-pty. Internal packages after v1.0: attach, capability, daemon, pty, relay, statusbar, tailnet, testutil, updater, wakewatch, webserver.
+- **Codebase:** Forked from AgentHub (`~/dev/agenthub`, github.com/scottkw/agenthub) with full git history. Go 1.26 + Wails v2 + React/Vite frontend, the system tailscaled via LocalAPI (no tsnet; the share server binds the tailnet IP), coder/websocket, go-pty. Internal packages after v1.0: attach, capability, daemon, pty, relay, statusbar, tailnet, testutil, updater, wakewatch, webserver.
 - **State after v1.0 (2026-11-18):** six phases shipped; strip-down, tabs + sidebar, rebrand, one-click share, overnight survival, release updates. Daemon single-instance lock + GUI/CLI respawn; viewer replay with offset resume. Release pipeline signs, notarizes and staples the .app and DMG.
 - **State after v1.2 (2026-11-23):** upgrades hand live sessions to the new daemon (fd passing, two-phase commit); preview tabs, path click, remote localhost proxy and the iPhone share view all ride the session's authenticated stream or the token-gated tailnet share server. New internal packages: fdpass, previewfile.
 - **Known debt:** see `.planning/milestones/v1.2-MILESTONE-AUDIT.md` (and earlier audits) and STATE.md Deferred Items (two-Mac checks, real-release checks, ~10 todos incl. leftover AgentHub plugin-banner code).
@@ -86,7 +103,7 @@ v1.2 Previews, Remote URLs, Mobile shipped 2026-11-23 (Phases 9-16, 26/26 requir
 
 - **License**: MIT. Keep the root `LICENSE` (MIT, "Copyright (c) 2026 Ken Scott"). README and package metadata (e.g. `frontend/package.json` `license`) state MIT — the user requires the code to be MIT licensed
 - **Platform**: macOS only (Apple Silicon MacBook Airs). Both target machines are Macs.
-- **Tech stack**: Keep the inherited stack (Go/Wails/React/tsnet). This is a strip-down, not a rewrite.
+- **Tech stack**: Keep the inherited stack (Go/Wails/React, system tailscaled). v2.0 adds pion/webrtc and native macOS capture (ScreenCaptureKit, VideoToolbox, CGEvent).
 - **Network**: Remote access only over the user's tailnet. No new relay servers or cloud dependencies.
 - **Security**: Keep token-gated, tailnet-only share links and the CSP intact through the refactor. Remote write access to a shell is powerful.
 - **Deletion discipline**: Chesterton's Fence. Read each piece and know why it exists before removing it, especially in daemon, relay, and capability code shared between kept and removed features.
@@ -118,6 +135,10 @@ v1.2 Previews, Remote URLs, Mobile shipped 2026-11-23 (Phases 9-16, 26/26 requir
 | Upgrades hand live sessions to the new daemon; DEBT-08 consent stays as the fallback | Upgrading the unattended office Mac must never cost a session | ✓ Good — v1.2 Phase 9 |
 | Hardening checks fail toward the old daemon (takeover refuses an unconfirmed pid; socket 0600 with no process-wide umask) | A false refusal costs a consent prompt; a leaked umask or wrong pid could cost the remote Mac | ✓ Good — Phase 15; real two-build upgrade chain passed in the VM (M-155) |
 | The viewer you type in sets the PTY size, also for `portty attach` (rows-1 under its bar) | One grid-owner rule for every viewer; a passive CLI watching a taller GUI grid keeps today's behaviour | ✓ Good — Phase 15 (user decision 2026-11-23) |
+| Desktop sharing over WebRTC (pion) inside Portty, tailnet only with no STUN/TURN/cloud | One app for terminal + desktop, browser and iPhone viewers, smoother than VNC; corp Mac restricts Screen Sharing (user decision 2026-11-24) | — Pending (v2.0) |
+| v2.0 targets Apple Silicon only, minimum macOS 14 | Both Macs are Apple Silicon; native capture makes universal cgo builds costly; 14 enables newer ScreenCaptureKit and the persistent-capture entitlement path (user decision 2026-11-24) | — Pending (v2.0) |
+| Click-to-share guests are view-only until the sharer allows control per person | Guests are other people on the tailnet with write access to a desktop (user decision 2026-11-24) | — Pending (v2.0) |
+| Click-to-share desktop links may be opened by other people on the tailnet, not only the host's own account | User wants to show a desktop to tailnet colleagues; widens MOB-05 for desktop links only (user decision 2026-11-24) | — Pending (v2.0) |
 | Unknown leading flags are a usage error (exit 2); only no-args and macOS launch arguments (`-psn_*`, `-NS*`, `-Apple*`) start the GUI | A CLI call over SSH must never start a GUI, and a Finder/Dock/login-item launch on the remote Mac must never be refused | ✓ Good — Phase 16 (user decision 2026-11-23); every launch path passed in the VM (M-156) |
 | `portty kill`/`rename`/`unshare` resolve names like share/attach, but need at least 8 characters for an ID prefix | A one-letter abbreviation of a name must never kill or unshare an unrelated session | ✓ Good — Phase 16 (code review WR-01); unshare added by quick 261123-kcr (audit W-2) |
 
@@ -139,4 +160,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-23 after v1.2 milestone*
+*Last updated: 2026-11-24 after starting milestone v2.0 Desktop Sharing*

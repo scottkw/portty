@@ -138,7 +138,7 @@ The Task 1 departures from the plan text (dispatch_async instead of direct/dispa
 | `bash tests/build-script.test.sh` | 37 passed, 0 failed |
 | `bash tests/check-traceability-paths.sh` | OK: 92 traceability paths exist |
 | `bash scripts/grep-gate.sh` | PASS: all action refs SHA-pinned |
-| `wails build -platform darwin/arm64 -tags wailsassets` | built `/Users/ken/dev/portty/build/bin/agenthub.app`; wailsjs tree restored, `git status --porcelain -- frontend/src/wailsjs` empty |
+| `wails build -platform darwin/arm64 -tags wailsassets` | built `build/bin/agenthub.app`; wailsjs tree restored, `git status --porcelain -- frontend/src/wailsjs` empty |
 | Acceptance: `useColorScheme(override` / `GetAppearance` in App.tsx / `**M-68**` / THEM-01 appearance_settings row / `data-appearance` in style.css | 1 / 1 / 1 / 1 / 0 |
 
 ## End-of-phase human-check list addition

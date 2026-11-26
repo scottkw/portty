@@ -8,10 +8,10 @@ jobs:
       fail-fast: false
       matrix:
         # Single entry kept as a matrix so the required check context name
-        # "build (portty, darwin/universal, macos-latest)" stays stable.
+        # "build (portty, darwin/arm64, macos-latest)" stays stable (TESTING.md Section 3).
         build:
           - name: portty
-            platform: darwin/universal
+            platform: darwin/arm64
             os: macos-latest
 
     runs-on: ${{ matrix.build.os }}
@@ -47,6 +47,9 @@ jobs:
       - name: Run build script tests
         run: bash tests/build-script.test.sh
 
+      - name: Run bundle gate tests (REL-01)
+        run: bash tests/verify-bundle.test.sh
+
       - name: Setup pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
@@ -77,11 +80,17 @@ jobs:
 
       - name: Build with Wails
         shell: bash
+        env:
+          CGO_CFLAGS: "-mmacosx-version-min=14.0"
+          CGO_LDFLAGS: "-mmacosx-version-min=14.0"
         run: wails build -platform ${{ matrix.build.platform }} -tags wailsassets
+
+      - name: Bundle is arm64-only with minos 14.0 (REL-01)
+        run: bash scripts/verify-bundle.sh build/bin/Portty.app
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: portty-darwin-universal
+          name: portty-darwin-arm64
           path: build/bin/Portty.app
           if-no-files-found: error

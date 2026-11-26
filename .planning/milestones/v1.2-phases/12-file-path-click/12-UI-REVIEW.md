@@ -79,11 +79,11 @@ Defects and gaps:
 Skipped: no shadcn, no `components.json`, no third-party registries.
 
 ## Files Audited
-- /Users/ken/dev/portty/.planning/phases/12-file-path-click/12-UI-SPEC.md
-- /Users/ken/dev/portty/.planning/phases/12-file-path-click/12-VM-CHECKS.md
-- /Users/ken/dev/portty/frontend/src/lib/pathLinks.ts
-- /Users/ken/dev/portty/frontend/src/components/SessionEndedBanner.tsx
-- /Users/ken/dev/portty/frontend/src/components/TerminalPanel.tsx (path link registration, notice state, render slot)
-- /Users/ken/dev/portty/frontend/src/style.css (`.banner`, `.session-ended-banner`, banner-info tokens)
-- /Users/ken/dev/portty/frontend/src/App.tsx and WebShareSessionView.tsx (grepped for path-click wiring only; no UI changes of note)
+- .planning/phases/12-file-path-click/12-UI-SPEC.md
+- .planning/phases/12-file-path-click/12-VM-CHECKS.md
+- frontend/src/lib/pathLinks.ts
+- frontend/src/components/SessionEndedBanner.tsx
+- frontend/src/components/TerminalPanel.tsx (path link registration, notice state, render slot)
+- frontend/src/style.css (`.banner`, `.session-ended-banner`, banner-info tokens)
+- frontend/src/App.tsx and WebShareSessionView.tsx (grepped for path-click wiring only; no UI changes of note)
 - Not read in full: 12-CONTEXT.md and 12-0*-SUMMARY.md (UI-SPEC and VM evidence were sufficient for the contract comparison)

@@ -1,0 +1,36 @@
+# R09-A: System Settings entries created by the helper shape (guest macOS 27.2, build 26B123)
+# Source: ~/ptest/axdump com.apple.systempreferences, one dump per pane, taken 2026-11-25 03:02 guest time while the helper ran (pid 2156) with all three toggles on.
+# Only the rows that belong to the spike are kept; other apps in the same lists are dropped.
+
+## Summary
+| List (pane) | Entry name shown | Identity it is keyed to | Toggle | Revoked and restored live | Count |
+|---|---|---|---|---|---|
+| Privacy and Security, Screen and System Audio Recording | Spike (generic icon) | Bundle ID app.portty.spike (tccd Modify events name identifier_type Bundle ID) | AXSwitch, Value=1 | yes: off at 03:02:45 stopped frames in the running helper (SCError -3801 from the next record), on at 03:03:14 restored them with no restart | 1 |
+| Privacy and Security, Accessibility | spike-helper (plain executable icon) | Path of the helper binary (tccd Modify events name identifier_type Path) | AXSwitch, Value=1 | yes: off at 02:59:20 made the pointer nudge fail in the running helper (post_event authValue 0), on at 02:59:29 restored it, no restart | 1 |
+| General, Login Items and Extensions, Background App Activity | Spike (generic icon), Running in background | the SMAppService agent app.portty.spike.helper under parent app.portty.spike (sfltool entry #5, Type agent) | AXSwitch, Value=1 | yes: off at 03:03:49 killed the helper at once and SMAppService status became RequiresApproval, on at 03:04:05 started it again (pid 2441) and status read Enabled | 1 |
+
+Spike entries in Screen Recording, Accessibility and Login Items: 1 + 1 + 1 = 3 (the tiebreaker count for the helper shape).
+No Settings password was needed to turn the Login Items toggle off or on. The Privacy and Security panes showed an admin password sheet when a pane was opened fresh and a toggle was clicked; the first Accessibility change, made right after the Screen Recording one in the same Settings session, did not.
+The Login Items pane shows no separate entry for the helper binary: the row named Spike is the helper agent's parent app. A row under Open at Login was not created.
+A banner appeared on registration: App Background Activity, Spike can run in the background. You can manage background activity in Login Items and Extensions.
+
+## AX excerpt: Screen and System Audio Recording (Privacy_ScreenCapture)
+# rows named Spike: 1
+         AXRow [AXOutlineRow] @522,173 468x37
+          AXCell @522,173 468x37
+           AXStaticText Value=Spike @530,179 65x24
+           AXCheckBox [AXSwitch] Value=1 @944,185 36x16
+
+## AX excerpt: Accessibility (Privacy_Accessibility)
+# rows named spike-helper: 1
+         AXRow [AXOutlineRow] @522,179 468x37
+          AXCell @522,179 468x37
+           AXStaticText Value=spike-helper @530,185 108x24
+           AXCheckBox [AXSwitch] Value=1 @944,191 36x16
+
+## AX excerpt: Login Items, Background App Activity (LoginItems-Settings.extension)
+# rows named Spike: 1
+       AXStaticText Value=Spike @574,436 33x18
+       AXStaticText Value=Running in background @588,457 120x16
+       AXCheckBox [AXSwitch] Value=1 @944,438 36x16
+

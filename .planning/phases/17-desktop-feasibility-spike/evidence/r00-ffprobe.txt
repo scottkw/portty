@@ -1,0 +1,5 @@
+profile=Constrained Baseline
+level=50
+width=2560
+height=1440
+nb_read_frames=29

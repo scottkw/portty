@@ -1,0 +1,37 @@
+# P3 (A4): tccd in the R1-trash window (log show --start 02:05:25 --end 02:06:30 UTC, process tccd): 4921 lines
+# services named:  258 kTCCServiceAccessibility; 8 kTCCServiceCalendar; 1 kTCCServiceCamera; 2 kTCCServiceDeveloperTool; 93 kTCCServiceListenEvent; 4 kTCCServiceMicrophone; 2 kTCCServicePostEvent; 8 kTCCServiceReminders; 29 kTCCServiceScreenCapture; 3 kTCCServiceSystemPolicyAllFiles; 2 kTCCServiceVoiceBanking;
+# (Accessibility, ListenEvent, ScreenCapture: the rig's axdump, click and window pollers; none is a Portty request)
+# the only SystemPolicy request naming the installer (pid 53304): a sandboxd preflight for AllFiles, answered without a prompt
+2026-11-26 02:05:35.921 Df tccd[73642:a5a3f] [com.apple.TCC:access] REQUEST: tccd_uid=0, sender_pid=74599, sender_uid=0, sender_auid=-1, function=TCCAccessRequest, msgID=74599.68
+2026-11-26 02:05:35.922 Df tccd[73642:a5a3f] [com.apple.TCC:access] AUTHREQ_CTX: msgID=74599.68, function=TCCAccessRequest, service=kTCCServiceSystemPolicyAllFiles, preflight=yes, query=1, client_dict=(null), daemon_dict=<private>
+2026-11-26 02:05:35.922 Df tccd[73642:a5a3f] [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=74599.68, attribution={responsible={TCCDProcess: identifier=app.portty.Portty, pid=53304, auid=501, euid=501, responsible_path=/Applications/.Portty-update-3808924895/Portty.app/Contents/MacOS/Portty, binary_path=~/Library/Application Support/portty/update/run-3924719655/Portty.app/Contents/MacOS/Portty}, accessing={TCCDProcess: identifier=app.portty.Portty, pid=53304, auid=501, euid=501, binary_path=~/Library/Application Support/portty/update/run-3924719655/Portty.app/Contents/MacOS/Portty}, requesting={TCCDProcess: identifier=com.apple.sandboxd, pid=74599, auid=0, euid=0, binary_path=/usr/libexec/sandboxd}, },
+2026-11-26 02:05:35.925 Df tccd[73642:a5a3f] [com.apple.TCC:access] AUTHREQ_SUBJECT: msgID=74599.68, subject=app.portty.Portty,
+2026-11-26 02:05:35.926 Df tccd[73642:a5a3f] [com.apple.TCC:access] AUTHREQ_RESULT: msgID=74599.68, authValue=0, authReason=5, authVersion=1, desired_auth=0, error=(null),
+2026-11-26 02:05:35.926 Df tccd[73642:a5a3f] [com.apple.TCC:access] REPLY: (0) function=TCCAccessRequest, msgID=74599.68
+# kTCCServiceSystemPolicyAppBundles lines: 0
+# lines with 'prompt' naming Portty: each is the GUI's per-launch TCCAccessLaunchDisclosurePromptIfNeeded (N+1 GUI pid 53334 at +1.5 s, before the Trash move at about +5 s); the same line appears on the plain S1 launch (pid 55442) and no window appeared in the R1-trash window poll
+2026-11-26 02:05:32.354 Df tccd[73443:a5c8e] [com.apple.TCC:access] REQUEST: tccd_uid=501, sender_pid=53334, sender_uid=501, sender_auid=501, function=TCCAccessLaunchDisclosurePromptIfNeeded, msgID=53334.2
+2026-11-26 02:05:32.356 Df tccd[73443:a5c8e] [com.apple.TCC:managed_settings] #ManagedTCCDefaults showing the prompt for app.portty.Portty
+2026-11-26 02:05:32.358 Df tccd[73443:a5c8e] [com.apple.TCC:access] REPLY: (501) function=TCCAccessLaunchDisclosurePromptIfNeeded, msgID=53334.2
+2026-11-26 02:05:34.234 Df tccd[73443:a5de0] [com.apple.TCC:access] REQUEST: tccd_uid=501, sender_pid=53460, sender_uid=501, sender_auid=501, function=TCCAccessLaunchDisclosurePromptIfNeeded, msgID=53460.2
+2026-11-26 02:05:34.237 Df tccd[73443:a5de0] [com.apple.TCC:access] REPLY: (501) function=TCCAccessLaunchDisclosurePromptIfNeeded, msgID=53460.2
+2026-11-26 02:07:51.117 Df tccd[73443:a73dc] [com.apple.TCC:access] REQUEST: tccd_uid=501, sender_pid=55442, sender_uid=501, sender_auid=501, function=TCCAccessLaunchDisclosurePromptIfNeeded, msgID=55442.2
+2026-11-26 02:07:51.120 Df tccd[73443:a73dc] [com.apple.TCC:managed_settings] #ManagedTCCDefaults showing the prompt for app.portty.Portty
+2026-11-26 02:07:51.123 Df tccd[73443:a73dc] [com.apple.TCC:access] REPLY: (501) function=TCCAccessLaunchDisclosurePromptIfNeeded, msgID=55442.2
+# installer (pid 53304) DesktopServices lines during the Trash move: the move succeeded; only its write of the Trash's .DS_Store (where Finder keeps Put Back data) was refused
+2026-11-26 02:05:35.927 E  Portty[53304:a609f] [com.apple.DesktopServices:CopyEngine] TCFURLInfo::TranslateRawPOSIXError [2: No such file or directory] -> -43 (fnfErr - `File not found`), path: 'N/A'
+2026-11-26 02:05:35.927 E  Portty[53304:a609f] [com.apple.DesktopServices:CopyEngine] TCFURLInfo::TranslateRawPOSIXError [2: No such file or directory] -> -43 (fnfErr - `File not found`), path: 'N/A'
+2026-11-26 02:05:35.929 E  Portty[53304:a609f] [com.apple.DesktopServices:CopyEngine] TCFURLInfo::TranslateRawPOSIXError [2: No such file or directory] -> -43 (fnfErr - `File not found`), path: 'N/A'
+2026-11-26 02:05:35.931 E  Portty[53304:a609f] [com.apple.DesktopServices:CopyEngine] TCFURLInfo::TranslateRawPOSIXError [1: Operation not permitted] -> -5000 (afpAccessDenied - `Insufficient access privileges for operation`), path: 'N/A'
+2026-11-26 02:05:35.932 E  Portty[53304:a609f] [com.apple.DesktopServices:CopyEngine] TCFURLInfo::TranslateCFError -- status: afpAccessDenied
+	 CFError: Error Domain=NSCocoaErrorDomain Code=513 "You don’t have permission to save the file “.DS_Store” in the folder “Trash”." UserInfo={NSURL=file:///.file/id=6571367.795341, NSFilePath=~/.Trash/.DS_Store, NSUnderlyingError=0x76e2c60f90 {Error Domain=NSPOSIXErrorDomain Code=1 "Opera
+# ~/.Trash at 02:08 UTC (after S1)
+total 0
+drwx------+  5 admin  staff   160 Nov 26 02:07 .
+drwxr-x---+ 69 admin  staff  2208 Nov 26 02:05 ..
+-rw-r--r--   1 admin  staff     0 Nov 26 02:05 .DS_Store
+drwxr-xr-x@  3 admin  staff    96 Nov 26 02:03 Portty 02-07-51-507.app
+	com.apple.macl	  72 
+	com.apple.metadata:_kMDItemLastOutOfSpotlightEngagementDate	  50 
+drwxr-xr-x@  3 admin  admin    96 Nov 26 02:03 Portty.app
+	com.apple.macl	  72 

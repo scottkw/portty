@@ -1,0 +1,42 @@
+R12 Chrome record (plan 17-08 Task 1)
+Captured 2026-11-24 (guest clocks show 2026-11-25 GMT, 05:29 to 05:32) inside the Tart guests over the Tart LAN SSH. The host never contacted its own tailscaled or a tailnet address.
+Tailnet skip: none recorded (no evidence file holds a line starting `user skip (tailnet re-key):`). Both guests reported BackendState Running and Self.Online true before the run.
+shape: daemon (serve is the `agent --config` entry of the path B LaunchAgent plist app.portty.spike.daemon on VM office, source sck, bound to the VM office tailnet address only; lsof showed UDP 47801 and TCP 47800 on that one address; fresh 128-bit token for this run)
+Redaction: no tailnet address, tailnet domain, token or account name appears below.
+
+== Chrome install in VM home (inside the guest only; the host's Downloads and Applications were not touched)
+1. download: curl -fL https://dl.google.com/chrome/mac/universal/stable/GGRO/googlechrome.dmg -> /tmp/chrome.dmg, curl rc 0, 289260301 bytes
+2. attach: hdiutil attach -nobrowse -mountpoint /tmp/chromedmg /tmp/chrome.dmg -> ok, volume holds Google Chrome.app
+3. signature on the mounted image: `codesign --verify --strict "/tmp/chromedmg/Google Chrome.app"` FAILED (rc 1): "resource fork, Finder information, or similar detritus not allowed" in the Google Chrome Framework subcomponent. This is an extended-attribute complaint about the mounted volume, not a signature mismatch: `codesign --verify --deep` on the same mounted app passed (rc 0), and `codesign -dv` printed Identifier=com.google.Chrome and TeamIdentifier=EQHXZ8M8AV.
+4. copy without extended attributes: `ditto --norsrc --noextattr "/tmp/chromedmg/Google Chrome.app" "/tmp/chrome-stage/Google Chrome.app"` rc 0, then `codesign --verify --strict --deep --verbose=2` on the copy: "valid on disk" and "satisfies its Designated Requirement" (rc 0); `codesign -dv` on the copy: Identifier=com.google.Chrome, TeamIdentifier=EQHXZ8M8AV. The copy was verified, not assumed: if stripping attributes had changed signed content, step 4 would have failed.
+   spctl -a -t exec on the copy: accepted, source=Notarized Developer ID, override=security disabled (the guest has Gatekeeper assessment switched off, so spctl's "accepted" rests on the notarization source line, not on enforcement).
+5. install: `ditto` of the verified copy into the guest's /Applications/Google Chrome.app, rc 0; strict deep verify of the installed app rc 0; TeamIdentifier=EQHXZ8M8AV (checked before Chrome ran); version 158.0.8127.89.
+6. cleanup: DMG detached ("disk6" ejected), /tmp/chrome.dmg, /tmp/chrome-stage and the mountpoint deleted.
+
+== Run (Chrome in VM home against the VM office spike)
+Launch: open -na "Google Chrome" --args --user-data-dir=/tmp/chrome-spike --no-first-run --no-default-browser-check "http://<office tailnet address>:47800/viewer.html?t=<token>&row=R12&tag=chrome&ice=<lite|full>&secs=15"
+Page origin: plain http (Chrome's address bar read "Not Secure"); RTCPeerConnection existed and worked on http, so no TLS fallback was needed.
+
+Prompt (macOS Local Network, owned by Google Chrome), text as shown:
+  Title: Allow "Google Chrome" to find devices on local networks?
+  Body:  This will allow you to select from available devices and display content on them.
+  Buttons: Don't Allow, Allow
+It was on screen already in the first screenshot taken about 6 s after launch, with the page showing `ice: connected`. I left it unanswered through both runs, so both reports were taken with the prompt pending; the connection and the decode did not wait for the answer. After the full run I clicked Allow in the guest GUI and the prompt closed. I did not run a third session after Allow, so what Don't Allow would do is not measured.
+Other guest banners seen (not prompts): two `"Google Chrome" Notifications` banners, and `App Background Activity: "GoogleUpdater" can run in the background`.
+
+lite (report r12-report-chrome-lite.json, frame r12-frame-chrome-lite.jpg, 1280 x 720):
+  iceConnectionState connected, connectedMs 933, firstFrameMs 2378, framesDecoded 7, framesDropped 0, 2560 x 1440
+  codec video/H264, sdpFmtpLine level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f
+  totalDecodeTime 0.035 s, decoderImplementation null (Chrome did not expose it), rttMedianMs 54.8
+  selectedPair: local prflx, remote host, remote address redacted by the server to 100.x.x.<n>, UDP, remote port 47801 (Chrome reports candidate addresses; Safari reported null)
+full (report r12-report-chrome-full.json):
+  iceConnectionState connected, connectedMs 418, firstFrameMs 889, framesDecoded 6, framesDropped 0, 2560 x 1440
+  codec: the same entry as lite (profile-level-id=42e01f)
+  totalDecodeTime 0.097 s, decoderImplementation null, rttMedianMs 59.7
+  selectedPair: same shape as lite
+lite versus full: both connect, decode and carry the data channel; the codec entry is identical. The timing difference (first frame 2378 ms against 889 ms) is one run each on a DERP-relayed path with a pending OS prompt on the first run, so it is not evidence that ICE mode matters; no profile mismatch and no SPS patch needed.
+
+Frame (r12-frame-chrome-lite.jpg, the viewer's own canvas readback, which works in Chrome): it shows the VM office desktop: the System Settings Login Items pane, a Finder window and the install-command-line-tools dialog, with the 5:31 AM clock. It is a frame of the VM, not of the host desktop.
+
+== Result
+R12 lite GO, R12 full GO, R12 base GO (worst of the two). Chrome stays in VM home at /Applications/Google Chrome.app with the throwaway profile /tmp/chrome-spike (both removed in 17-12 cleanup); Chrome was quit.

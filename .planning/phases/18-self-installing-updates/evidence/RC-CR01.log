@@ -1,0 +1,76 @@
+RC-CR01 log: the 1.8.1 DMG kept in Portty's update cache after RC-R2A, opened by hand; post-fix rig builds of 83df1e1f
+--- pids-before.txt
+session tickA d137aba756c503065df172383dea9942
+session vimB e24af7ae77ae16e17c1714077fe07f6b
+daemon 67206
+gui 67687
+shell 67268 ppid 67206
+shell 67273 ppid 67206
+vim 67297 ppid 67273
+--- run.txt
+07:05:10.887Z cache dmg: 7944605 bytes, quarantine: 0081;6b07d9df;Portty;
+07:05:12.424Z open dmg
+07:05:13.032Z volume: /Volumes/Portty/Portty.app mount: apfs, local, nodev, nosuid, read-only, journaled, noowners, quarantine, mounted by admin
+07:05:13.071Z open app (T0)
+07:05:13.172Z open rc=0
+07:05:17.219Z windows: CoreServicesUIAgent||L8; Finder|Portty|L0; Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- gk-dialog.txt
+AXStaticText Value=“Portty” is an app downloaded from the Internet. Are you sure you want to open i @531,201 218x58
+AXStaticText Value=This item is on the disk image “portty-v1.8.1-darwin-universal.dmg”. Portty down @531,267 218x58
+AXCheckBox Title=Don’t warn me when opening applications on this disk image Value=0 @531,339 219x39
+AXButton Description=Help @729,113 30x30
+AXButton Title=Open @525,393 230x30
+AXButton Title=Show Disk Image @525,427 230x30
+AXButton Title=Cancel @525,461 230x30
+--- dialog-note.txt
+First-launch dialog (CoreServicesUIAgent, layer 8) pressed Open with axpress at 07:05:28.
+Portty alert from the DMG GUI 69506 (window "Portty" at layer 3, read from a VM screenshot):
+  "Replace Portty 1.8.0 in Applications?" / "This copy is version 1.8.1." / buttons Cancel, Replace.
+No "Portty couldn't move itself to the Applications folder." alert at any point.
+--- replace.txt
+07:06:23 press Replace
+press pid=69506 rc=0
+07:06:31
+update: installer started (copy 13ms, start 313ms)
+2026/11/26 07:03:59 vmpreview: verify-mode adhoc
+vmpreview: fault exit-before-daemon
+2026/11/26 07:03:59 installer: rolled-back gui-exited
+update: result rolled-back 1.8.0 to 1.8.1 gui-exited
+update: installer started (copy 35ms, start 312ms)
+2026/11/26 07:06:24 vmpreview: verify-mode adhoc
+2026/11/26 07:06:24 installer: open attempt 1 failed
+2026/11/26 07:06:29 installer: updated 
+2026/11/26 07:06:29 installer: dmg kept: not a Portty download
+--- pids-after.txt
+session tickA d137aba756c503065df172383dea9942
+session vimB e24af7ae77ae16e17c1714077fe07f6b
+gui 76840
+daemon 76881
+shell 67268 ppid 1
+shell 67273 ppid 1
+vim 67297 ppid 67273
+--- extra.txt
+cache: portty-v1.8.1-darwin-universal.dmg skip-version 
+volumes: 
+portty images: 0
+trash: .DS_Store Portty.app 
+pid=76840 exe=/Applications/Portty.app/Contents/MacOS/Portty menubar_items=1
+menubar_items_total=1
+--- timeline.txt
+07:05:11.025Z guis=[67687:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[67206:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=0 vol=gone app=1.8.0 home_app= staging=0 run_dirs=0 result= dl_dmg=0 trash_dmg=0 trash_app=0
+07:05:13.267Z guis=[67687:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[67206:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=1 vol=mounted app=1.8.0 home_app= staging=0 run_dirs=0 result= dl_dmg=0 trash_dmg=0 trash_app=0
+07:05:13.782Z guis=[67687:/Applications/Portty.app/Contents/MacOS/Portty 69506:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[67206:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=1 vol=mounted app=1.8.0 home_app= staging=0 run_dirs=0 result= dl_dmg=0 trash_dmg=0 trash_app=0
+07:06:23.838Z guis=[67687:/Applications/Portty.app/Contents/MacOS/Portty 69506:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[67206:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=1 vol=mounted app=1.8.0 home_app= staging=1 run_dirs=1 result= dl_dmg=0 trash_dmg=0 trash_app=0
+07:06:24.552Z guis=[67687:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[67206:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[76697 ] image=1 vol=mounted app=1.8.0 home_app= staging=1 run_dirs=1 result= dl_dmg=0 trash_dmg=0 trash_app=0
+07:06:25.082Z guis=[] daemons=[67206:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[76697 ] image=0 vol=gone app=1.8.1 home_app= staging=1 run_dirs=1 result= dl_dmg=0 trash_dmg=0 trash_app=0
+07:06:26.503Z guis=[76840:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[76881:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[76697 ] image=0 vol=gone app=1.8.1 home_app= staging=1 run_dirs=1 result= dl_dmg=0 trash_dmg=0 trash_app=0
+07:06:29.706Z guis=[76840:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[76881:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=0 result=updated dl_dmg=0 trash_dmg=0 trash_app=1
+--- wins.txt
+07:05:11.000Z Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:05:13.271Z Finder|Portty|L0; Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:05:14.358Z CoreServicesUIAgent||L8; Finder|Portty|L0; Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:05:28.531Z Finder|Portty|L0; Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:05:29.647Z Portty||L3; Finder|Portty|L0; Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:06:23.838Z Finder|Portty|L0; Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:06:24.962Z Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:06:27.542Z Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603

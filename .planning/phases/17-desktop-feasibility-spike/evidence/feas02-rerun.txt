@@ -1,0 +1,5 @@
+rerun: not needed (final outcome in-daemon matches the Pipeline shape: daemon line 17-06 wrote; R01-vm, R22 and R23 were measured in the daemon shape)
+
+17-12 Task 1, 2026-11-25. The final evaluation of the FEAS-02 decision rule on the closed rows gives the same
+outcome as 17-06's provisional one (row 7, in-daemon), so the shape-flip clause does not apply and no
+shape-dependent row is re-run.

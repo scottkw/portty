@@ -1,0 +1,33 @@
+{
+  "codec": {
+    "mimeType": "video/H264",
+    "sdpFmtpLine": "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
+  },
+  "connectedMs": 523,
+  "decoderImplementation": null,
+  "firstFrameMs": 1198,
+  "frameHeight": 1440,
+  "frameWidth": 2560,
+  "framesDecoded": 7,
+  "framesDropped": 0,
+  "framesPerSecond": null,
+  "ice": "full",
+  "iceConnectionState": "connected",
+  "jitterBufferDelay": 2.585034,
+  "jitterBufferEmittedCount": 7,
+  "powerEfficientDecoder": null,
+  "row": "R11",
+  "rttMedianMs": 57,
+  "selectedPair": {
+    "localType": "prflx",
+    "localAddress": null,
+    "localPort": 51543,
+    "remoteType": "host",
+    "remoteAddress": null,
+    "remotePort": 47801,
+    "protocol": "udp"
+  },
+  "tag": "safari",
+  "totalDecodeTime": 0.11702299999999999,
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15"
+}

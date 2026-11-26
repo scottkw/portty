@@ -1,0 +1,21 @@
+r23-bind.txt: R23, bind scope of the running spike (plan 17-07 Task 3)
+Captured 2026-11-24 inside VM office (Tart portty-test) over the Tart LAN SSH.
+shape: daemon (serve is the `agent --config` entry of the path B LaunchAgent plist app.portty.spike.daemon; argv serve --source sck --bind <tailnet IP>)
+The tailnet address is replaced by 100.x.x.office; the token never appears.
+
+== lsof -nP -iUDP -iTCP -a -p <serve pid>
+COMMAND  PID  USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+spike   9720 admin    6u  IPv4 0x5baaabbbdabf4c47      0t0  UDP 100.x.x.office:47801
+spike   9720 admin    7u  IPv4 0x3c245498b09c31ea      0t0  TCP 100.x.x.office:47800 (LISTEN)
+sockets held by the serve process: 2 (one UDP, one TCP), both on the single tailnet address, none on 0.0.0.0, :: or the LAN address
+
+== wildcard refusals (run from SSH while the pipeline was up; each refused before any socket or capture opened)
+$ spike serve --source synthetic --bind 0.0.0.0 --duration 1s
+spike serve: bind address refused: 0.0.0.0 is a wildcard address
+bind 0.0.0.0: exit code 2
+$ spike serve --source synthetic --bind :: --duration 1s
+spike serve: bind address refused: :: is a wildcard address
+bind ::: exit code 2
+
+== result
+R23 GO: the running spike is bound to one tailnet address only (UDP 47801, TCP 47800), and serve refuses 0.0.0.0 and :: with exit code 2 inside the guest.

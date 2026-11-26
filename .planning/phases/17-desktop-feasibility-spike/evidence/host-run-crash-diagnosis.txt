@@ -1,0 +1,38 @@
+17-11 session 2 host-run crash (SIGTRAP during cgo in spk_app_run, about ready+66 s): diagnosis and spike fix.
+Diagnosed 2026-11-25 from the host's own artifacts (read only: the crash dump's registers and the unified log); every run was in VM office. No Spike run and no capture on the host.
+
+Native frame that trapped
+  PC (crash dump) resolves, in the same boot (same shared-cache slide), to +[NSApplication _crashOnException:] + 0x10c in AppKit; lr is + 0x104; x23 points at the os_log format "%{public}@".
+  So the SIGTRAP is AppKit's deliberate trap for an Objective-C exception, not a memory fault, not a Go signal, not SCK or VideoToolbox.
+
+The exception (host unified log, `log show --info --debug --predicate 'processID == <pid>'`, at the crash second)
+  FAULT NSInvalidArgumentException (the reason text is private in the log)
+  -[__NSPlaceholderDictionary initWithObjects:forKeys:count:]
+  +[NSDictionary dictionaryWithObjects:forKeys:count:]
+  -[SpkChartView drawText:at:font:color:] + 152       (the @{NSFontAttributeName: f, NSForegroundColorAttributeName: c} literal)
+  -[SpkChartView drawMotion:] + 424                   (the 60 Hz scrolling text column)
+  _NSViewDrawRect ... -[NSViewBackingLayer display]
+  CA::Layer::display_if_needed <- CA::Context::commit_transaction <- CA::Transaction::flush_as_runloop_observer <- stepTransactionFlush
+  CFRunLoop ... -[NSApplication run] <- spk_app_run
+  No other line from the spike between motion on (ready+45 s) and the exception. The 17-11 note that `log show` had no entries was a query without --info --debug and the pid predicate.
+
+Root cause
+  drawMotion: asked +[NSFont monospacedSystemFontOfSize:13 weight:] for the font on every frame and passed it unchecked into a dictionary literal. Once, on the host, about 23 s (about 1,400 frames) into motion, a nil reached the literal (the font; +[NSColor blackColor] is a shared constant). The literal throws, and inside the Core Animation commit AppKit does not report an exception: it calls _crashOnException, which traps. Go's handler printed "signal arrived during cgo execution" and exited, so no .ips was written and stderr had no ObjC line.
+  Two conditions together: a transient nil from the system font call (host only; cause not visible, the reason is private) AND an unchecked literal in a context where any exception is fatal (spike code). The fix removes the second, so the first can no longer crash the run.
+
+Mechanism reproduced (VM office, macOS 27.2, scratch micro copy of the motion path, not the spike)
+  nil font injected at frame 300, unguarded literal: exit 133 (SIGTRAP); the VM log shows the same FAULT, the same placeholder-dictionary frame and the same CA commit frames as the host.
+  same injection with the guard: 24 text lines skipped, the run continues, exit 0.
+Natural nil not reproduced in the VM
+  font call on 8 threads for 20 s: 3.5 million calls, 0 nil; again during a live 60 Hz chart: 3.2 million, 0 nil; chart 45 s under simulated warn then critical memory pressure: 0 nil.
+  The three 17-10 VM runs (3 x 60 s of motion) never hit it either. Host-only conditions at the time: memory pressure at the warn level (two Tart VMs running), an external display, the real WindowServer and GPU.
+
+Spike fix (spike/desktop/hostrun_darwin.m only)
+  drawText: skips the text when the font or color is nil and writes "spike: chart text skipped, nil font|color" once to stderr; no exception can reach the CA commit.
+  drawMotion: makes the 13 pt mono font once and holds it (retried while nil), so the 60 Hz path no longer calls the font factory.
+  The chart looks the same (same font, color, text and timing), so captured frames, fps, encode latency, CPU and RSS figures are comparable with every earlier run; 17-10 VM rows and the R14 iPhone row are unaffected. Host rows R01, R18 and R20 stay PARTIAL until a new host run.
+VM check of the rebuilt, signed Spike.app (VM office, loopback bind, no viewer, motion from ready+10 s for 150 s, duration 170 s)
+  ran to the end (last perf line at ready+172 s, 35 perf lines), motion on at ready+12 s and off at ready+162 s (about 9,000 motion frames), no "chart text skipped" line, no crash; motion fps mean 28.09 against the 30 cap, own CPU in motion mean 16.0 percent, RSS 89.5 MB at start and 87.9 MB at the end (no growth). The chart (screenshot) looked as before.
+  This shows the fix does not break the chart. It cannot show the host trigger is gone, because the VM never produced the nil.
+
+For the next host run: a stderr line "spike: chart text skipped" means the nil came back and was absorbed; say which object it names.

@@ -1,0 +1,62 @@
+R4-e-sandbox log, 1.8.1 rig build of e03f4ef1 (DMG), 18-09
+--- menu-bar items (AXExtrasMenuBar per app.portty.Portty process)
+pid=50140 exe=~/Applications/Portty.app/Contents/MacOS/Portty menubar_items=1
+menubar_items_total=1
+=== during-prompt capture
+portty procs: []
+apps: /Applications= ~/Applications=
+trash Portty*.app=0 trash dmgs=0 downloads: .localized 
+volumes:  portty images: 0
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+chmod: Unable to change file mode on /Applications: Operation not permitted
+chmod rc=1
+drwxrwxr-x  7 root  admin  sunlnk 224 Nov 26 06:07 /Applications
+writable
+06:08:47.384Z dmg in Downloads: 7941560 ~/Downloads/portty-v1.8.1-darwin-arm64.dmg
+06:08:48.936Z open dmg
+06:08:49.539Z volume: /Volumes/Portty/Portty.app
+06:08:49.562Z inside the profile: test -w /Applications rc=1; outside: rc=0
+06:08:49.601Z exec app under the profile (T0)
+06:08:49.627Z started pid 49958
+portty procs: [50083:~/Library/Application Support/portty/update/run-2149670887/Portty.app/Contents/MacOS/Portty 50140:~/Applications/Portty.app/Contents/MacOS/Portty  50189:~/Applications/Portty.app/Contents/MacOS/Portty daemon ]
+apps: /Applications= ~/Applications=1.8.1
+trash Portty*.app=0 trash dmgs=0 downloads: .localized portty-v1.8.1-darwin-arm64.dmg 
+volumes:  portty images: 0
+staging: 0 run dirs: 1
+/Applications mode: drwxrwxr-x root:admin
+2026/11/26 06:08:50 vmpreview: verify-mode adhoc
+2026/11/26 06:08:51 update: installer started (copy 26ms, start 344ms)
+=== after
+extra vm_utc=2026-11-26T06:11:21Z
+portty procs: [50140:~/Applications/Portty.app/Contents/MacOS/Portty  50189:~/Applications/Portty.app/Contents/MacOS/Portty daemon ]
+apps: /Applications= ~/Applications=1.8.1
+trash Portty*.app=0 trash dmgs=0 downloads: .localized portty-v1.8.1-darwin-arm64.dmg 
+volumes:  portty images: 0
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+--- trash (Portty bundles and DMGs: name, version or size, ctime UTC)
+--- ~/Applications/Portty.app: version 1.8.1 Info.plist mtime 2026-11-26T05:12:00 quarantine lines 0
+--- AppTranslocation mounts: 0
+--- update.log
+update: installer started (copy 26ms, start 344ms)
+2026/11/26 06:08:51 vmpreview: verify-mode adhoc
+2026/11/26 06:09:51 installer: failed health
+--- result file: {"v":1,"outcome":"failed","oldVersion":"","newVersion":"1.8.1","reason":"health","keepDaemon":false,"dmg":""}
+--- timeline (0.4 s poller, changes only)
+06:08:47.552Z guis=[] daemons=[] installer=[] image=0 vol=gone app= home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:08:50.121Z guis=[49958:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=1 vol=mounted app= home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:08:50.913Z guis=[49958:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=1 vol=mounted app= home_app= staging=1 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:08:51.576Z guis=[49958:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[50083 ] image=1 vol=mounted app= home_app= staging=1 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:08:52.623Z guis=[50140:~/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[50083 ] image=0 vol=gone app= home_app=1.8.1 staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:08:53.242Z guis=[50140:~/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[50189:~/Applications/Portty.app/Contents/MacOS/Portty ] installer=[50083 ] image=0 vol=gone app= home_app=1.8.1 staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+--- window list (1 s, changes only)
+06:08:47.526Z Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:08:50.115Z Finder|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:08:52.848Z Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:08:54.068Z Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- tccd Downloads-service lines, 06:08:45 to 06:10:00 UTC
+=== cause of "failed health" (run after the row, same profile)
+sandbox-exec -p PROFILE /bin/ps -ww -o pid=,args= -p 50140  ->  sandbox-exec: execvp() of '/bin/ps' failed: Operation not permitted
+ps -ww -o pid=,args= -p 50140 (outside the profile)  ->  50140 ~/Applications/Portty.app/Contents/MacOS/Portty
+sandbox-exec -p PROFILE curl --unix-socket .../daemon.sock http://localhost/health  ->  {"status":"ok","version":"v1.8.1","api":5,"handoff":1}

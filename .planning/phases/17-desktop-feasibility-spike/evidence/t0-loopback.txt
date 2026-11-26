@@ -1,0 +1,54 @@
+T0 tracer: synthetic frames to a pion receiver on loopback (plan 17-01)
+=====================================================================
+
+What ran: `spike selftest --out build/t0 --seconds 5` on the host. One process starts an
+in-process `serve` on 127.0.0.1 (synthetic source, VideoToolbox H.264, token-gated /offer,
+single UDP mux, mDNS off, no ICE servers) and a Go pion receiver that offers recvonly video
+plus the "control" data channel. No Screen Recording API and no address other than
+127.0.0.1 was touched.
+
+Spike commit: 9c923f82 (feat(17-01) tracer)
+Host: Mac15,12, Apple M3
+sw_vers: ProductName macOS, ProductVersion 27.2.1, BuildVersion 26B131
+
+Received stream, decoded by ffprobe (profile and frames read):
+  ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=profile,nb_read_frames -of csv=p=0 t0-loopback.h264
+  Constrained Baseline,150
+  (1280x800, level 3.2; the stream itself is not committed)
+
+Selftest report (t0-loopback-report.json):
+  connectedMs   218.916
+  packets       437
+  bytes         396203
+  accessUnits   150
+  rttMedianMs   1.091   (data channel ping:<n> to pong:<n>)
+  encoder       {"encoderId":"com.apple.videotoolbox.videoencoder.ave.avc","hardware":true,"width":1280,"height":800,"lastStatus":0}
+
+Reading: the hardware encoder (hardware: true) produced Constrained Baseline H.264; the SDP
+advertised profile-level-id 42e01f and pion negotiated it; 150 access units arrived for a
+5 s run at 30 fps; the control channel answered ping with pong.
+
+Bind guard (exit status 2, before any socket opens): 0.0.0.0, ::, 192.168.1.10 and 8.8.8.8
+are all refused by `spike serve --bind`.
+
+SC4 baseline
+============
+
+The root module with spike/desktop present (the spike is a nested module; the root module
+lists no spike package). Full output was saved to a scratch directory, not piped through
+head or tail.
+
+  bash tests/check-brand.sh
+  OK: brand gate clean
+  bash tests/check-traceability-paths.sh
+  OK: 228 traceability paths exist
+  GOTOOLCHAIN=go1.26.11 go test -race -short ./...   (exit status 0)
+go-test-ok-packages: 14
+go-test-fail-packages: 0
+  GOTOOLCHAIN=go1.26.11 go list ./... | grep -c spike
+spike-package-count: 0
+git rev-parse --short HEAD: 9c923f82
+
+The two repo-walking release tests (TestSER03_NoAutoSavePatterns, TestPRG_OffPath_NoProgressLogic)
+walk the whole repo including spike/ and passed in the same run, and again in the 17-01
+Task 1 verify.

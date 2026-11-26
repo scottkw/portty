@@ -1,0 +1,33 @@
+{
+  "codec": {
+    "mimeType": "video/H264",
+    "sdpFmtpLine": "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
+  },
+  "connectedMs": 434,
+  "decoderImplementation": null,
+  "firstFrameMs": 875,
+  "frameHeight": 1440,
+  "frameWidth": 2560,
+  "framesDecoded": 5,
+  "framesDropped": 0,
+  "framesPerSecond": null,
+  "ice": "lite",
+  "iceConnectionState": "connected",
+  "jitterBufferDelay": 1.021634,
+  "jitterBufferEmittedCount": 5,
+  "powerEfficientDecoder": null,
+  "row": "adhoc",
+  "rttMedianMs": 59,
+  "selectedPair": {
+    "localType": "prflx",
+    "localAddress": null,
+    "localPort": 59623,
+    "remoteType": "host",
+    "remoteAddress": null,
+    "remotePort": 47801,
+    "protocol": "udp"
+  },
+  "tag": "viewer",
+  "totalDecodeTime": 0.101239,
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) wails.io"
+}

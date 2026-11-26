@@ -14,7 +14,7 @@ import (
 
 // Status is what the banner, the alerts and the tray render; the app emits it as update:status
 // on every change. State: idle | checking | current | available | downloading | verifying |
-// revealed. Error is set (with state available) after a failed download, verify or reveal.
+// installing | relaunching | revealed. Error is set (with state available) after a failed download, verify or reveal.
 type Status struct {
 	State   string `json:"state"`
 	Current string `json:"current"`
@@ -24,8 +24,9 @@ type Status struct {
 	Error   string `json:"error"`
 }
 
-// Error is a failed check or download. Kind is check, download, verify or reveal; Text is shown
-// to people and never holds a URL or a path.
+// Error is a failed check or download. Kind is check, download, verify, install (an install
+// failure with nothing left to reveal) or reveal; Text is shown to people and never holds a URL
+// or a path.
 type Error struct{ Kind, Text string }
 
 func (e *Error) Error() string { return e.Text }
@@ -40,6 +41,11 @@ type Service struct {
 	Client  *http.Client // NewDownloadClient
 	Run     Runner
 	Now     func() time.Time // nil: time.Now
+
+	// Bundle is the running Portty.app; "" keeps the reveal flow. StartInstaller writes the job,
+	// starts the detached installer and quits the GUI; nil keeps the reveal flow too.
+	Bundle         string
+	StartInstaller func(Job) error
 
 	checkMu sync.Mutex // one Check at a time; a second waits, then runs (a cheap 304)
 	mu      sync.Mutex
@@ -70,23 +76,38 @@ func (s *Service) Status() Status {
 	return s.status()
 }
 
-func busy(state string) bool { return state == "downloading" || state == "verifying" }
+// Busy is a state in which an update is in flight and a second one must not start.
+func Busy(state string) bool {
+	return state == "downloading" || state == "verifying" || state == "installing" || state == "relaunching"
+}
 
 // checkTimeout bounds one Check. It starts once the Check holds checkMu, so a check queued behind
 // another still gets the whole budget.
 var checkTimeout = 30 * time.Second
 
+type manualKey struct{}
+
+// ManualCheck marks ctx as a check the user asked for (Help > Check for Updates…). Only such a
+// check offers a version whose install failed or rolled back, or retries one from the failure
+// banner.
+func ManualCheck(ctx context.Context) context.Context {
+	return context.WithValue(ctx, manualKey{}, true)
+}
+
 // Check asks GitHub for the latest release, within checkTimeout of getting its turn. While a
 // download runs it returns the status at once.
 // A failure, or a newer release without an installable DMG yet, restores the previous status and
 // returns *Error kind check.
+// An automatic check never offers the version a failed install recorded (skippedVersion), nor
+// any version while that record is unreadable: it keeps the failure banner or settles on current.
 func (s *Service) Check(ctx context.Context) (Status, error) {
+	manual := ctx.Value(manualKey{}) != nil
 	s.checkMu.Lock()
 	defer s.checkMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 	s.mu.Lock()
-	if busy(s.st.State) {
+	if Busy(s.st.State) {
 		defer s.mu.Unlock()
 		return s.status(), nil
 	}
@@ -98,6 +119,11 @@ func (s *Service) Check(ctx context.Context) (Status, error) {
 	newer := 0
 	if found {
 		newer, err = Compare(rel.Version, s.Current)
+	}
+	var skipped string
+	var skipErr error
+	if newer > 0 && !manual {
+		skipped, skipErr = s.skippedVersion()
 	}
 
 	s.mu.Lock()
@@ -119,9 +145,22 @@ func (s *Service) Check(ctx context.Context) (Status, error) {
 		return s.set(prev), &Error{Kind: "check", Text: text}
 	case !found:
 		log.Printf("update: no published release")
-	case newer > 0 && prev.State == "revealed" && rel == s.rel:
-		// Same release as the DMG already verified and revealed: stay revealed so Download shows it again.
+	case newer > 0 && !manual && prev.State == "revealed" && rel.Version == s.rel.Version:
+		// Same version as the DMG already revealed, also a failure banner ShowResult set after a
+		// relaunch (its s.rel knows only the version and DMG name): stay revealed so Download shows
+		// it again. The full release replaces that partial one, in case the DMG is gone by then.
+		s.rel = rel
 		return s.set(prev), nil
+	case newer > 0 && !manual && (skipErr != nil || rel.Version == skipped):
+		if skipErr != nil {
+			log.Printf("update: skip record unreadable, automatic offer suppressed: %v", skipErr)
+		}
+		if prev.Latest == rel.Version && (prev.State == "revealed" || prev.State == "available") {
+			return s.set(prev), nil // the failure banner, or an offer the user asked for by hand
+		}
+		if skipErr == nil {
+			log.Printf("update: v%s not offered again after a failed install", rel.Version)
+		}
 	case newer > 0:
 		log.Printf("update: %s available", rel.Version)
 		s.rel = rel
@@ -223,6 +262,9 @@ func (s *Service) Download() (Status, error) {
 		_ = os.Remove(path)
 		return fail("verify", "The download didn't pass the signature check, so Portty deleted it.")
 	}
+	if s.Bundle != "" && s.StartInstaller != nil {
+		return s.install(rel, path, now(), fail)
+	}
 	if err := Reveal(vctx, s.Run, path); err != nil {
 		log.Printf("update: reveal failed")
 		return fail("reveal", "Portty couldn't show the download in Finder.")
@@ -231,4 +273,102 @@ func (s *Service) Download() (Status, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.set(Status{State: "revealed", Latest: rel.Version}), nil
+}
+
+// errInstallerStart is a StartInstaller failure, for its banner text.
+var errInstallerStart = errors.New("installer start")
+
+// installFailureTexts gives each install failure cause its own sentence; none holds a path or URL.
+var installFailureTexts = []struct {
+	err  error
+	text string
+}{
+	{ErrNoWrite, "Portty doesn't have permission to replace itself from this account."},
+	{ErrAppManagement, "macOS didn't allow Portty to replace itself."},
+	{ErrMount, "Portty couldn't open the download."},
+	{ErrCopy, "Portty couldn't copy the new version."},
+	{ErrNoSpace, "There isn't enough free disk space to install the update."},
+	{ErrSafety, "The new version didn't pass the safety check, so it wasn't installed."},
+	{ErrLocation, "Portty can't update itself from where it's running. Move Portty to the Applications folder first."},
+	{ErrDetach, "Portty couldn't eject the download."},
+	{errInstallerStart, "Portty couldn't start the installer."},
+}
+
+// InstallFailureReason is the cause's sentence for an install that failed with err, with nothing
+// about where the download is (the mover's alert adds its own advice).
+func InstallFailureReason(err error) string {
+	for _, t := range installFailureTexts {
+		if errors.Is(err, t.err) {
+			return t.text
+		}
+	}
+	return "Portty couldn't install the update."
+}
+
+// installFailureText is the banner text for an install that failed with err: the cause's
+// sentence, then where the download is (revealed) or what to do (not revealed).
+func installFailureText(err error, revealed bool) string {
+	text := InstallFailureReason(err)
+	if revealed {
+		return text + " The download is shown in Finder."
+	}
+	return text + " Try again later."
+}
+
+// install checks the running bundle's location, stages the verified DMG beside it and hands it to
+// the detached installer, which quits nothing itself: StartInstaller quits the GUI once the
+// installer is up. Every failure before that falls back to the reveal flow with a message (UPD-09).
+func (s *Service) install(rel Release, path string, now time.Time, fail func(kind, text string) (Status, error)) (Status, error) {
+	s.mu.Lock()
+	s.set(Status{State: "installing", Latest: rel.Version})
+	s.mu.Unlock()
+	if err := Preflight(s.Bundle); err != nil {
+		log.Printf("update: %v", err)
+		return s.revealFallback(path, rel, now, err, fail)
+	}
+	// Staging gets its own deadline, like verify: it must not eat into the download's.
+	ictx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	staged, err := Stage(ictx, s.Run, StageInput{DMG: path, Target: s.Bundle, MountRoot: s.Dir, NewVersion: rel.Version})
+	if err != nil {
+		log.Printf("update: %v", err) // names the failed step
+		return s.revealFallback(path, rel, now, err, fail)
+	}
+	s.mu.Lock()
+	s.set(Status{State: "relaunching", Latest: rel.Version})
+	s.mu.Unlock()
+	job := Job{V: JobVersion, Kind: KindUpdate, OldPID: os.Getpid(), Target: s.Bundle, Staged: staged,
+		OldVersion: s.Current, NewVersion: rel.Version, DMG: path}
+	if err := s.StartInstaller(job); err != nil {
+		log.Printf("update: installer start failed")
+		_ = os.RemoveAll(filepath.Dir(staged))
+		return s.revealFallback(path, rel, now, errInstallerStart, fail)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.status(), nil
+}
+
+// revealFallback is where every install failure ends: the DMG's quarantine goes back on (Stage
+// cleared it) and the DMG is shown in Finder, as before self-install, with cause's text in the
+// banner. A DMG that is gone by now is not revealed: the state returns to available.
+func (s *Service) revealFallback(path string, rel Release, now time.Time, cause error, fail func(kind, text string) (Status, error)) (Status, error) {
+	if _, err := os.Lstat(path); err != nil {
+		log.Printf("update: download gone, nothing to reveal")
+		return fail("install", installFailureText(cause, false))
+	}
+	text := installFailureText(cause, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := Quarantine(ctx, s.Run, path, now); err != nil {
+		log.Printf("update: quarantine restore failed")
+	}
+	if err := Reveal(ctx, s.Run, path); err != nil {
+		log.Printf("update: reveal failed")
+		return fail("reveal", "Portty couldn't show the download in Finder.")
+	}
+	log.Printf("update: revealed %s", filepath.Base(path))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.set(Status{State: "revealed", Latest: rel.Version, Error: text}), nil
 }

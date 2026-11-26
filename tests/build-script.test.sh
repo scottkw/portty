@@ -233,12 +233,29 @@ assert_file_contains_regex "contains sign_and_notarize function" \
 echo ""
 echo "=== Section 9: Static pattern checks — build tool invocations ==="
 
-# wails build for macOS: "$WAILS" build -platform darwin/universal -clean
-assert_file_contains_literal "contains 'darwin/universal'" \
-  "darwin/universal" "$BUILD_SH"
+# wails build for macOS: "$WAILS" build -platform darwin/arm64 -clean (Apple Silicon only, macOS 14)
+assert_file_contains_literal "contains 'darwin/arm64'" \
+  "darwin/arm64" "$BUILD_SH"
 
 assert_file_contains_literal "contains wails build -clean (macOS path)" \
-  "build -platform darwin/universal -clean" "$BUILD_SH"
+  "build -platform darwin/arm64 -clean" "$BUILD_SH"
+
+assert_file_contains_literal "exports CGO_CFLAGS at macOS 14" \
+  'export CGO_CFLAGS="-mmacosx-version-min=14.0"' "$BUILD_SH"
+
+assert_file_contains_literal "exports CGO_LDFLAGS at macOS 14" \
+  'export CGO_LDFLAGS="-mmacosx-version-min=14.0"' "$BUILD_SH"
+
+assert_file_contains_literal "runs the bundle gate on the built app" \
+  'scripts/verify-bundle.sh" build/bin/Portty.app' "$BUILD_SH"
+
+# Negation: the universal platform must be ABSENT from build.sh
+output=$(grep -c 'darwin/universal' "$BUILD_SH" || true)
+if [[ "$output" -eq 0 ]]; then
+  pass "build.sh contains no darwin/universal reference"
+else
+  fail "build.sh still builds darwin/universal" "matches: $output"
+fi
 
 # ---------------------------------------------------------------------------
 # Section 10: Static pattern checks — notarization pipeline
@@ -308,6 +325,34 @@ assert_file_contains_literal "build.sh contains go list -m pin pattern" \
 # Positive: WAILS_PINNED_VER sanity gate present (Pitfall 5 defense)
 assert_file_contains_literal "build.sh gates on WAILS_PINNED_VER" \
   "WAILS_PINNED_VER" "$BUILD_SH"
+
+# ---------------------------------------------------------------------------
+# Section 13: Signing — inside-out signing and the signed gate, never deep signing
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Section 13: Signing — sign-bundle.sh and verify-bundle.sh --signed ==="
+
+SIGN_BUNDLE_SH="$SCRIPT_DIR/../scripts/sign-bundle.sh"
+
+assert_file_contains_literal "build.sh signs through scripts/sign-bundle.sh" \
+  'scripts/sign-bundle.sh' "$BUILD_SH"
+
+assert_file_contains_literal "build.sh verifies the signature with verify-bundle.sh --signed" \
+  'scripts/verify-bundle.sh" "$APP" --signed' "$BUILD_SH"
+
+output=$(grep -c -- '--deep' "$BUILD_SH" || true)
+if [[ "$output" -eq 0 ]]; then
+  pass "build.sh has no deep codesign flag"
+else
+  fail "build.sh contains --deep" "matches: $output"
+fi
+
+output=$(grep -v '^[[:space:]]*#' "$SIGN_BUNDLE_SH" | grep -c -- '--deep' || true)
+if [[ "$output" -eq 0 ]]; then
+  pass "sign-bundle.sh has no deep codesign flag on non-comment lines"
+else
+  fail "sign-bundle.sh contains --deep" "matches: $output"
+fi
 
 # ---------------------------------------------------------------------------
 # Summary

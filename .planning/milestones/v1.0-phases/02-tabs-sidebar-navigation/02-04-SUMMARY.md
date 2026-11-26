@@ -141,7 +141,7 @@ Not run by this executor. The orchestrator does native GUI checks in the Tart VM
 
 ## Needs VM check
 
-Built app: `/Users/ken/dev/portty/build/bin/agenthub.app`. Quit any installed AgentHub and stop its daemon first.
+Built app: `build/bin/agenthub.app`. Quit any installed AgentHub and stop its daemon first.
 1. Launch: no Welcome, Hub or Help tab appears. Running sessions restore as tabs. With none, the terminal area is blank (the empty state comes in 02-08).
 2. `agenthub new ~` from a terminal: the row appears under "This Mac" within 3 s. Clicking rows focuses or opens their tab, and the row turns blue.
 3. The Hide Sidebar button at the right end of the sidebar strip hides the sidebar. The tab bar then shows a Show Sidebar button, and the first tab starts clear of the traffic lights (80px inset). ⌃⌘S toggles both ways, and clicks on these buttons never start a window drag.

@@ -1,0 +1,49 @@
+R13 record: WebRTC inside the Wails web view (plan 17-08 Task 3)
+Captured 2026-11-24 (guest clocks show 2026-11-25 GMT, 05:35 to 05:39) inside the Tart guests over the Tart LAN SSH. The host never contacted its own tailscaled or a tailnet address, and SpikeShell was never opened on the host.
+Tailnet skip: none recorded (no evidence file holds a line starting `user skip (tailnet re-key):`). Both guests reported BackendState Running and Self.Online true.
+shape: daemon (serve is the `agent --config` entry of the path B LaunchAgent plist app.portty.spike.daemon on VM office, source sck, bound to the VM office tailnet address only; fresh 128-bit token for this run, deleted at the end)
+Redaction: no tailnet address, tailnet domain, token or account name appears below.
+
+Substitution: SpikeShell stands in for Portty.app on the ROADMAP SC2 "Portty app" connection item, because Portty.app has no Desktop tab until Phase 21 (DVWR-01, which proves the real app) and SC4 forbids spike code in it; user-accepted 2026-11-24 (CONTEXT Portty-app check substitution, commit 12fd20cd).
+Reproduced: the Wails version (v2.10.2); the WKWebView reached through the Wails AssetServer with embedded assets, so the page runs in the wails:// origin; the app's Content-Security-Policy meta tag (build.sh --shell copies it from frontend/index.html at build time); the app's two network entitlements (network.client, network.server); Developer ID hardened-runtime signing (team S2K7P43927).
+Not reproduced: the bundle id app.portty.Portty (SpikeShell is app.portty.spike.shell, so the Local Network prompt and any TCC identity name SpikeShell, not Portty); the app's React frontend and Wails bindings (the shell has none); the app's window options (hidden-inset title bar, transparent web view); the app's signalling path (the shell's Go-side proxy of POST /offer and /report is what production plans, not what the app has today); also the app's Info.plist NSAppTransportSecurity NSAllowsLocalNetworking key, which the shell's generated Info.plist lacks (it matters only for the --navigate fallback, which did not run).
+
+== Build (Task 2, same session)
+bash spike/desktop/bundle/build.sh --shell: built in about 8 s, bundle id set to app.portty.spike.shell, signed with the Developer ID identity (TeamIdentifier=S2K7P43927, flags runtime), codesign --verify --strict passed, generated frontend/wailsjs not present. Deployed to VM home ~/ptest/SpikeShell.app by tar over SSH, codesign --verify --strict passed in the guest.
+
+== Page origin (wails:// for the proxied mode)
+The Go proxy logs the request the asset server hands it. Every /offer and /report call from the final build logged: host "wails", referer "wails://wails/". So the page ran at wails://wails/ and its fetches went to the shell's Go handler, not to the network. Origin header: empty (a same-origin request carries none). The page text read through the accessibility tree (axdump) was "done, report stored" after each run, and the report's userAgent ends in "wails.io".
+The --navigate fallback (http origin) did not run: the proxied mode connected, so there was nothing to fall back from. The custom-scheme POST body reached the proxy intact in every attempt (/offer 4946 to 5208 bytes, /report 524 to 772 bytes).
+RTCPeerConnection existed and worked in the web view.
+
+== Attempts in order
+1. lite, first launch of the first build (05:36:08). A macOS Local Network prompt owned by SpikeShell was on screen in the first screenshot, about 8 s after launch, after the proxy had forwarded /offer (05:36:13). Text as shown:
+     Title: Allow "SpikeShell" to find devices on local networks?
+     Body:  This will allow the app to discover, connect to, and collect data from devices on your networks.
+     Buttons: Don't Allow, Allow
+   Prompt owner: SpikeShell (the shell's own bundle name), not WebKit and not the spike. I left it unanswered. The page negotiated (the Go proxy relayed /offer and the answer came back, the server logged peer state connecting) and stored its report through the proxy, but ICE never moved past "new": iceConnectionState new, framesDecoded 0, codec null, connectedMs null. The server logged the peer as failed about 30 s later. So with the prompt pending, signalling through the Go side worked and the media path did not. The page is one-shot, so it did not recover by itself after I answered.
+   (This attempt's report is described here and not kept as a file.)
+2. I clicked Allow in the guest GUI, quit the shell and launched it again, lite (05:37:15, same first build): connected, framesDecoded 4, 2560 x 1440, firstFrameMs 1111, connectedMs 438. So the page needed a fresh load after the answer; the answer persisted for the relaunch.
+3. I rebuilt the shell to log host and referer (the origin proof above), redeployed it over the old app, and launched lite again (05:38:01): the prompt did NOT appear again, so the grant survived a rebuild and swap with the same signing identity. This is the final lite run, kept as r13-report-wails-lite.json.
+4. full (05:38:29, the same final build): kept as r13-report-wails-full.json.
+
+== Final runs
+lite (r13-report-wails-lite.json):
+  iceConnectionState connected, connectedMs 430, firstFrameMs 767, framesDecoded 5, framesDropped 0, 2560 x 1440
+  codec video/H264, sdpFmtpLine level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f (no profile mismatch, so no --sps-patch run was needed)
+  totalDecodeTime 0.059 s, decoderImplementation null (WebKit does not expose it)
+  data-channel round trip: rttMedianMs 59, so the control channel carried ping and pong replies
+  selectedPair: local prflx, remote host, UDP, remote port 47801, addresses null (WebKit reports none, as Safari did)
+full (r13-report-wails-full.json):
+  iceConnectionState connected, connectedMs 434, firstFrameMs 875, framesDecoded 5, framesDropped 0, 2560 x 1440
+  codec: the same entry as lite; totalDecodeTime 0.101 s; decoderImplementation null; rttMedianMs 59; selectedPair as lite
+  The ICE mode of this run is shown by the server log (`peer state state=connected ice=full` at 05:38:30) and the file name, not by the report: the report's own "ice" field reads "lite" because the page, loaded at wails://wails/ with no query string, defaults to lite, while the Go proxy sets ice=full on the /offer and /report calls it forwards. The same holds for the report's "row" (adhoc) and "tag" (viewer); the stored file names carry R13 and wails.
+lite versus full: both connect, decode and carry the data channel; the codec entry is identical. Differences in timing (767 ms against 875 ms to first frame) are within the run-to-run spread of the earlier rows.
+
+Frame: the report holds no frame (no .jpg was stored), so the viewer sent null, which is what it does when canvas readback returns "data:," as in these GPU-less guests in 17-07; I did not test the readback separately inside the shell. r13-frame-wails-lite.jpg is a screenshot (1280 x 720) of VM home taken during the final lite run: the SpikeShell window shows the VM office desktop live (System Settings Login Items, a Finder window, the command-line-tools dialog) with the 5:38 AM clock, and three guest notification banners (GoogleUpdater background activity, two Google Chrome notification banners). It is a frame of the VM, not of the host desktop.
+
+== Cleanup
+Pipeline stopped (agent booted out, LaunchAgent plist and daemon log deleted), the token removed from the guest agent config and from the session scratchpad, a scan of the guest report directory and agent config for a 32-hex string found nothing, SpikeShell quit (no SpikeShell or spike process in either guest). ~/ptest/SpikeShell.app stays in VM home for 17-12 cleanup.
+
+== Result
+R13-lite GO, R13-full GO, R13 base GO: RTCPeerConnection, H.264 receive and the data channel work inside the Wails web view, in the wails:// origin, through a Go-side proxy of /offer and /report. Caveats the row carries: a Local Network prompt owned by the app's own name appears at first use and, while it is unanswered, the media path stays at ICE "new" (the Portty app will raise it under its own bundle id); the report's ice, row and tag fields reflect the page URL, not the proxy's settings.

@@ -101,16 +101,16 @@ Not applicable. `components.json` is absent and the contract's Registry table li
 
 ## Files Audited
 
-- `/Users/ken/dev/portty/.planning/phases/15-v1-2-hardening/15-UI-SPEC.md`
-- `/Users/ken/dev/portty/.planning/phases/15-v1-2-hardening/15-CONTEXT.md`
-- `/Users/ken/dev/portty/.planning/phases/15-v1-2-hardening/15-01-SUMMARY.md`, `15-04-SUMMARY.md`, `15-06-SUMMARY.md`, `15-07-SUMMARY.md`
-- `/Users/ken/dev/portty/TESTING.md` (Category BF, M-152 to M-155)
-- `/Users/ken/dev/portty/frontend/src/components/UpdateBanner.tsx`
-- `/Users/ken/dev/portty/frontend/src/components/SessionEndedBanner.tsx`
-- `/Users/ken/dev/portty/frontend/src/components/Sidebar.tsx`
-- `/Users/ken/dev/portty/frontend/src/components/TerminalPanel.tsx` (ended-banner wiring, lines 379, 668-670, 1413-1420)
-- `/Users/ken/dev/portty/frontend/src/App.tsx` (`update:show` at 878, `markPeerSessionEnded` at 1050-1056)
-- `/Users/ken/dev/portty/frontend/src/lib/closeReasons.ts` (`peerConnectVerdict`)
-- `/Users/ken/dev/portty/frontend/src/style.css` (banner 1253-1340, sidebar muted 513-545, token blocks 2074-2133)
-- `/Users/ken/dev/portty/app_update.go` (notification text, line 137)
-- `/Users/ken/dev/portty/frontend/src/components/__tests__/Sidebar.test.tsx` (pin for "Nothing shared", 281-285)
+- `.planning/phases/15-v1-2-hardening/15-UI-SPEC.md`
+- `.planning/phases/15-v1-2-hardening/15-CONTEXT.md`
+- `.planning/phases/15-v1-2-hardening/15-01-SUMMARY.md`, `15-04-SUMMARY.md`, `15-06-SUMMARY.md`, `15-07-SUMMARY.md`
+- `TESTING.md` (Category BF, M-152 to M-155)
+- `frontend/src/components/UpdateBanner.tsx`
+- `frontend/src/components/SessionEndedBanner.tsx`
+- `frontend/src/components/Sidebar.tsx`
+- `frontend/src/components/TerminalPanel.tsx` (ended-banner wiring, lines 379, 668-670, 1413-1420)
+- `frontend/src/App.tsx` (`update:show` at 878, `markPeerSessionEnded` at 1050-1056)
+- `frontend/src/lib/closeReasons.ts` (`peerConnectVerdict`)
+- `frontend/src/style.css` (banner 1253-1340, sidebar muted 513-545, token blocks 2074-2133)
+- `app_update.go` (notification text, line 137)
+- `frontend/src/components/__tests__/Sidebar.test.tsx` (pin for "Nothing shared", 281-285)

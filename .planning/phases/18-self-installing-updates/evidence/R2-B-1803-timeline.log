@@ -1,0 +1,21 @@
+# R2-B timeline (VM pollers; seconds relative to the Update click at 00:17:21 UTC; transitions only)
+# poll (0.4 s): GUI pids (no-argument Portty.app executables), daemon pids, installer pid, installed version, daemon /health version
+-2.04 00:17:19 gui=42083, dmn=42093, inst= iv=1.8.0 dv=v1.8.0
++0.99 00:17:22 gui=42083, dmn=42093, inst=42552, iv=1.8.0 dv=v1.8.0
++1.58 00:17:23 gui=42584, dmn=42093, inst=42552, iv=1.8.1 dv=v1.8.0
++2.85 00:17:24 gui=42584, dmn=42093, inst=42552, iv=1.8.1 dv=v1.8.1
++3.40 00:17:24 gui=42663, dmn=42627, inst= iv=1.8.0 dv=v1.8.1
+# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines (the poller grepped for Restart, background service, AXDialog, AXSheet too)
+-2.04 00:17:19 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++1.28 00:17:22
++2.58 00:17:24
++4.26 00:17:25
++5.77 00:17:27 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|
++7.02 00:17:28 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--warning" ) @288,82 952x41|AXStaticText Value=Portty 1.8.1 didn't start, so Portty put version 1.8.0 back. The download is sho DOMClassList=( ) @328,94 507x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++14.87 00:17:36 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
+# win (CGWindowList, 1 s): on-screen windows owner/layer/title
+-2.01 00:17:19 Portty/0/Portty | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++1.54 00:17:23 Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++4.38 00:17:25 Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++5.72 00:17:27 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
+# samples: poll       50, ax       24, win       23; ax samples matching 'background service' or 'Restart Now': 0

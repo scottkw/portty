@@ -1,0 +1,14 @@
+closure checkpoint: held
+R01-vm: user-accepted (test-rig limit; the two VMs always connect via DERP; the direct path is checked between the real Macs in Phase 19; reply: ok)
+R01-host: user-accepted (same test-rig limit: the path from VM home to the host was DERP; live frames proven, 1853 decoded, 0 dropped; reply: ok)
+R08-D: user-accepted (the product never starts the daemon from SSH, R06 NO-GO, the CLI uses launchctl kickstart; the no-sshd-Accessibility case cannot be tested over SSH; reply: ok)
+R16-B: rerun (GO: 9 of 10 daemon-typed unlocks in VM office, 11 of 13 with 17-06; the failure's cause is in loginwindow's log: the keys arrived while the password field was still hidden and the password was submitted empty; evidence/r16-B-rerun.txt)
+
+Checkpoint held 2026-11-25 by 17-12 Task 1. Rows put to the user: R01-vm, R01-host (both PARTIAL, DERP path),
+R08-D (PARTIAL, no-grant control not run) and R16-B (PARTIAL, one of three tries left the guest locked).
+No row was PENDING or ROUTED:host-run with nothing run for it. The proposal the user answered "ok" to:
+accept R01-vm, R01-host and R08-D with the reasons above; rerun R16-B (about 10 more daemon-typed unlock
+tries in VM office only, 17-06 procedure, no host involvement).
+Base rows follow the worst of their sub-rows: R01 PARTIAL (user-accepted), R08 PARTIAL (user-accepted), R16 GO.
+R19 closes PARTIAL as basis: context-unanswerable (the real 30-day prompt only; every other part answered in
+evidence/r19-approvals.txt). R21 stays GO; the real output device check is a follow-up, not a gap in the row.

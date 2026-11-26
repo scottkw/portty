@@ -1,0 +1,58 @@
+# R3 timeline (VM pollers; seconds relative to the Update click at 05:23:31 UTC; transitions only)
+# poll (0.4 s): GUI pids, daemon pids, installer pid, installed version, daemon /health version
+-1.94 05:23:29 gui=99508, dmn=99518, inst= iv=1.1.90 dv=v1.1.90
++13.55 05:23:45 gui=99508, dmn=99518, inst=1877, iv=1.1.90 dv=v1.1.90
++14.69 05:23:46 gui= dmn=99518, inst=1877, iv=1.2.0 dv=v1.1.90
++15.66 05:23:47 gui=1978, dmn=99518, inst=1877, iv=1.2.0 dv=v1.1.90
++17.03 05:23:48 gui=1978, dmn=2049,99518, inst=1877, iv=1.2.0 dv=v1.1.90
++17.68 05:23:49 gui=1978, dmn=2049, inst=1877, iv=1.2.0 dv=v1.2.0
++21.02 05:23:52 gui=1978, dmn=2049, inst= iv=1.2.0 dv=v1.2.0
++33.93 05:24:05 gui=1978, dmn=2049, inst=3785, iv=1.2.0 dv=v1.2.0
++34.50 05:24:06 gui=1978, dmn=2049, inst= iv=1.2.0 dv=v1.2.0
++39.88 05:24:11 gui=1978, dmn=2049, inst=4418, iv=1.2.0 dv=v1.2.0
++40.37 05:24:11 gui=1978, dmn=2049, inst= iv=1.2.0 dv=v1.2.0
+# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines
+-2.00 05:23:29 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Portty 1.2.0 is available. DOMClassList=( ) @328,94 133x16|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++1.49 05:23:33 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Installing Portty 1.2.0… DOMClassList=( ) @328,94 128x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++13.99 05:23:45
++15.12 05:23:46
++16.89 05:23:48
++18.11 05:23:49
++20.38 05:23:51 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|
+# win (CGWindowList, 1 s): on-screen windows owner/layer/title, all apps
+-2.04 05:23:29 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++14.96 05:23:46 Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++18.72 05:23:50 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
+# samples: poll 83, ax 42, win 40; ax samples matching background service, Restart Now, AXDialog or AXSheet: 0
+# before: session tickA 0b7f7513b4807e6b2975593d929b9d41;session vimB 5f8d64bc131b8ec6175cc3146d4c9a0e;gui 99508;daemon 99518;shell 99582 ppid 99518;shell 99587 ppid 99518;vim 99610 ppid 99587;
+# after:  session tickA 0b7f7513b4807e6b2975593d929b9d41;session vimB 5f8d64bc131b8ec6175cc3146d4c9a0e;gui 1978;daemon 2049;shell 99582 ppid 1;shell 99587 ppid 1;vim 99610 ppid 99587;
+# extra
+marker poller (0.1 s): run dir, installer ps line, started marker, GUI pid set, update.log lines (missing-file errors before the first log line dropped)
+05:23:29.591Z guis [99508 ]
+05:23:44.998Z run_dir_created run-62867070
+05:23:45.071Z ps  1877 ~/Library/Application Support/portty/update/run-62867070/Portty.app/Contents/MacOS/Portty install-update ~/Library/Application Support/portty/update/run-62867070/job.json
+05:23:45.560Z marker run-62867070/started
+05:23:46.252Z guis []
+05:23:46.560Z log update: installer started (copy 165ms, start 416ms)
+05:23:47.214Z guis [1978 ]
+05:23:52.502Z log 2026/11/26 05:23:52 installer: updated 
+05:23:52.695Z run_dir_gone
+real spctl and codesign on the installed copy (the staged copy renamed into place), VM 05:24 UTC. The guest has Gatekeeper assessments disabled (spctl --status: assessments disabled), so 'accepted' is not an enforcement result; the source line is still evaluated
+/Applications/Portty.app: accepted
+source=Notarized Developer ID
+override=security disabled
+origin=Developer ID Application: NAME (S2K7P43927)
+spctl rc=0
+quarantine lines on the installed copy: 0
+Identifier=app.portty.Portty
+Authority=Developer ID Application: NAME (S2K7P43927)
+Authority=Developer ID Certification Authority
+TeamIdentifier=S2K7P43927
+2026/11/26 05:23:48.986778 handoff: cert warm took 647ms (ok=true)
+2026/11/26 05:23:48.987998 handoff: takeover pid 2049 (build "v1.2.0") accepted
+2026/11/26 05:23:48.995604 handoff: committed: serving 2 sessions handed over by pid 99518
+2026/11/26 05:23:48.996321 handoff: committed: 2 sessions moved to pid 2049 in 9ms; exiting
+.localized
+# update.log
+update: installer started (copy 165ms, start 416ms)
+2026/11/26 05:23:52 installer: updated 

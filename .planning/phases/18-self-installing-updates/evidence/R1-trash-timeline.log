@@ -1,0 +1,20 @@
+# R1-trash timeline (VM pollers; seconds relative to the Update click at 02:05:30 UTC; transitions only)
+# poll (0.4 s): GUI pids, daemon pids, installer pid, installed version, daemon /health version
+-2.02 02:05:28 gui=52880, dmn=52890, inst= iv=1.8.0 dv=v1.8.0
++0.96 02:05:31 gui=52880, dmn=52890, inst=53304, iv=1.8.0 dv=v1.8.0
++1.44 02:05:32 gui=53334, dmn=52890, inst=53304, iv=1.8.1 dv=v1.8.0
++2.09 02:05:32 gui=53334, dmn=53362, inst=53304, iv=1.8.1 dv=v1.8.1
++5.59 02:05:36 gui=53334, dmn=53362, inst= iv=1.8.1 dv=v1.8.1
+# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines
+-2.02 02:05:28 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++1.18 02:05:32
++2.25 02:05:33
++3.32 02:05:34 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|
+# win (CGWindowList, 1 s): on-screen windows owner/layer/title, all apps (a TCC prompt or an App Management notification would show here)
+-1.93 02:05:28 Portty/0/Portty | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++1.39 02:05:32 Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++3.69 02:05:34 Portty/0/Portty | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
+# samples: poll       65, ax       29, win       28; ax samples matching background service, Restart Now, AXDialog or AXSheet: 0
+# before: session tickA 6eacb6b72b6ea7e71c15c1c0c0ec2997;session vimB 3d3c25f88ec619800bf75e81d11d3b51;gui 52880;daemon 52890;shell 52957 ppid 52890;shell 52962 ppid 52890;vim 52985 ppid 52962;
+# after:  session tickA 6eacb6b72b6ea7e71c15c1c0c0ec2997;session vimB 3d3c25f88ec619800bf75e81d11d3b51;gui 53334;daemon 53362;shell 52957 ppid 1;shell 52962 ppid 1;vim 52985 ppid 52962;
+# fresh attach replay after the update (02:06:31 UTC): tickA TICK 0..73, 74 lines, gaps=0; vimB scrolled to VTICK 73, vim still pid 52985

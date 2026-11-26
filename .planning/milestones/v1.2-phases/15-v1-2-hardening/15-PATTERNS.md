@@ -50,7 +50,7 @@ Post-research decisions in CONTEXT.md override RESEARCH.md where they differ:
 
 ### Item A: attach sends rows-1
 
-**Analog (frames):** `/Users/ken/dev/portty/internal/attach/attach.go` L155-173. Add `BarRows` here, right after these two functions.
+**Analog (frames):** `internal/attach/attach.go` L155-173. Add `BarRows` here, right after these two functions.
 
 ```go
 func MakeClientResizeFrame(cols, rows uint16) []byte {
@@ -66,7 +66,7 @@ func MakeClientClaimFrame(cols, rows uint16) []byte {
 }
 ```
 
-**Resize watcher** (`/Users/ken/dev/portty/internal/attach/attach_unix.go` L15-45). Keep `watchResize(ctx, conn, winch, size)` unchanged and apply the reserve in the closure that `WatchResize` passes:
+**Resize watcher** (`internal/attach/attach_unix.go` L15-45). Keep `watchResize(ctx, conn, winch, size)` unchanged and apply the reserve in the closure that `WatchResize` passes:
 
 ```go
 func WatchResize(ctx context.Context, conn *websocket.Conn) {
@@ -81,7 +81,7 @@ func WatchResize(ctx context.Context, conn *websocket.Conn) {
 //   conn.Write(ctx, websocket.MessageBinary, MakeClientClaimFrame(uint16(cols), uint16(rows)))
 ```
 
-**Call site** (`/Users/ken/dev/portty/cmd_attach.go` L394-401):
+**Call site** (`cmd_attach.go` L394-401):
 
 ```go
 onConnect := func(ctx context.Context, conn *websocket.Conn) {
@@ -92,11 +92,11 @@ onConnect := func(ctx context.Context, conn *websocket.Conn) {
 }
 ```
 
-**Bar reserve analog** (`/Users/ken/dev/portty/internal/statusbar/bar.go` L103-117). Start stores `b.rows` under `b.mu` only when `getSize` succeeded, so `ReservedRows()` is `b.rows > 0 ? 1 : 0` under `b.mu`, and a nil `*Bar` returns 0. Take the reserve after `Start`, not from `bar != nil` (Pitfall 3). Test with `Options.FallbackCols/FallbackRows` (bar.go L36-37).
+**Bar reserve analog** (`internal/statusbar/bar.go` L103-117). Start stores `b.rows` under `b.mu` only when `getSize` succeeded, so `ReservedRows()` is `b.rows > 0 ? 1 : 0` under `b.mu`, and a nil `*Bar` returns 0. Take the reserve after `Start`, not from `bar != nil` (Pitfall 3). Test with `Options.FallbackCols/FallbackRows` (bar.go L36-37).
 
-**Test analog** (`/Users/ken/dev/portty/internal/attach/attach_test.go` L60-117): `watchResize` driven with a `sizes` channel and `winch` channel, asserted with `bytes.Equal(got, MakeClientClaimFrame(...))`. Add a sibling where the size closure subtracts `BarRows(rows, 1)` and expects `MakeClientClaimFrame(90, 29)` from 90x30, plus reserve 0 expecting 30. Table-test `BarRows` for rows 0, 1, 2 and reserve 0 (Pitfall 2, uint16 wrap).
+**Test analog** (`internal/attach/attach_test.go` L60-117): `watchResize` driven with a `sizes` channel and `winch` channel, asserted with `bytes.Equal(got, MakeClientClaimFrame(...))`. Add a sibling where the size closure subtracts `BarRows(rows, 1)` and expects `MakeClientClaimFrame(90, 29)` from 90x30, plus reserve 0 expecting 30. Table-test `BarRows` for rows 0, 1, 2 and reserve 0 (Pitfall 2, uint16 wrap).
 
-**Hub-level pin:** copy the shape of `TestHub_GridTypingClaims` in `/Users/ken/dev/portty/internal/relay/hub_grid_owner_test.go`. Sequence: GUI owner 120x40, CLI reports 80x23 (grid stays), CLI claims 80x23 (grid 80x23), GUI reclaims (120x40).
+**Hub-level pin:** copy the shape of `TestHub_GridTypingClaims` in `internal/relay/hub_grid_owner_test.go`. Sequence: GUI owner 120x40, CLI reports 80x23 (grid stays), CLI claims 80x23 (grid 80x23), GUI reclaims (120x40).
 
 **`--status-top`:** add a comment at the call site that Top ships rows-1 and absolute-CUP apps can still overdraw row 1 (no DECOM). That is the accepted, documented limit (Pitfall 1).
 
@@ -104,7 +104,7 @@ onConnect := func(ctx context.Context, conn *websocket.Conn) {
 
 ### Item B1: ended peer tab (frontend verdict mapping)
 
-**Analog:** `/Users/ken/dev/portty/frontend/src/lib/closeReasons.ts` L20-32.
+**Analog:** `frontend/src/lib/closeReasons.ts` L20-32.
 
 ```ts
 export function peerConnectVerdict(errorCode: string): ReconnectVerdict {
@@ -137,7 +137,7 @@ Extend with `peerConnectVerdict('no_such_session', true)` equal to `{ kind: 'sto
 
 ### Item B2: sidebar "Can't reach this Mac" (refused vs timeout)
 
-No time-based grace (post-research decision). The closest analog is the fetch path in `/Users/ken/dev/portty/internal/tailnet/sessions.go`:
+No time-based grace (post-research decision). The closest analog is the fetch path in `internal/tailnet/sessions.go`:
 
 ```go
 // L44-55
@@ -160,7 +160,7 @@ Frontend consumer is unchanged: `App.tsx` ~L798-806 `setRemotePeers(peers ?? [])
 
 ### Item C: stale pgid on dismiss
 
-**Analog:** `/Users/ken/dev/portty/internal/pty/cleanup.go`. Created path (L20-45) signals without a guard, and `killAdopted` (L87-125) has the guard and the seam.
+**Analog:** `internal/pty/cleanup.go`. Created path (L20-45) signals without a guard, and `killAdopted` (L87-125) has the guard and the seam.
 
 ```go
 // L36 (created path, the unguarded signal; SIGKILL at ~L68 is the same)
@@ -180,7 +180,7 @@ if alive() {
 
 Change: add `reaped` (an `atomic.Bool` is simplest) on `Session`. Set it after `cmd.Wait()` returns in `ReapNaturalExit` (`reap_other.go` L19-41) and in `killSession`'s own wait goroutine. Gate both created-path signals on `!s.reaped.Load()`, and route them through `signalGroup`. Do not infer reaped from `ExitCode() != -1` (Research Item C). Only one `Wait` caller at a time (Pitfall 5).
 
-**Test analog:** `/Users/ken/dev/portty/internal/pty/adopt_test.go` L229-250 (`recordSignals`) and the second half of `TestKillAdopted` L296-309:
+**Test analog:** `internal/pty/adopt_test.go` L229-250 (`recordSignals`) and the second half of `TestKillAdopted` L296-309:
 
 ```go
 before := len(sent())
@@ -198,7 +198,7 @@ Build the created session with `startSh(t, b, "read x; exit 0")` (`native_test.g
 
 ### Item G-1: `TestKillClean_NoOrphans` deterministic
 
-**Analog (helper):** `/Users/ken/dev/portty/internal/testutil/wait.go`: `WaitFor(t testing.TB, timeout, cond func() bool, msg string, args ...any)`, polling every 10 ms. Replace the two sleeps in `/Users/ken/dev/portty/internal/pty/native_test.go` L251-290:
+**Analog (helper):** `internal/testutil/wait.go`: `WaitFor(t testing.TB, timeout, cond func() bool, msg string, args ...any)`, polling every 10 ms. Replace the two sleeps in `internal/pty/native_test.go` L251-290:
 
 ```go
 time.Sleep(200 * time.Millisecond)   // -> WaitFor on the sleep child being up
@@ -212,7 +212,7 @@ Keep the final `killSignal0(-pgid)` assertion. For the "child up" condition, use
 
 ### Item D: socket hardening
 
-**O-2** (`/Users/ken/dev/portty/internal/daemon/ipc.go` L10-12):
+**O-2** (`internal/daemon/ipc.go` L10-12):
 
 ```go
 func listenDaemonSocket(path string) (net.Listener, error) {
@@ -222,7 +222,7 @@ func listenDaemonSocket(path string) (net.Listener, error) {
 
 Change: after a successful listen, `os.Chmod(path, 0o600)`. On failure close the listener and return the error. `os` is already imported. Test in `socket_test.go` style: `shortSocketPath(t, "mode")` (`/tmp/dtestN_name`, avoids the 103-char sun_path limit), listen, `os.Stat(path)` mode `& 0o777 == 0o600`. Post-COMMIT chmod in `handoff.go`: best-effort `os.Chmod(d.socketPath, 0o600)`, with the error `log.Printf`'d and never returned. Follow the existing `log.Printf("handoff: ...")` style.
 
-**O-1** (`/Users/ken/dev/portty/internal/fdpass/fdpass.go` L76-100). The gap is `ParseSocketControlMessage` returning `nil, err` and dropping the fds parsed so far:
+**O-1** (`internal/fdpass/fdpass.go` L76-100). The gap is `ParseSocketControlMessage` returning `nil, err` and dropping the fds parsed so far:
 
 ```go
 var fds []int
@@ -252,7 +252,7 @@ if after := openFds(t); after != before { t.Fatalf("open fds %d after ..., want 
 
 For `rightsFromOOB`, feed `unix.UnixRights(fdA, fdB)` followed by garbage bytes. Assert err != nil, then the returned fds are closed by the caller and `fcntl(F_GETFD)` gives EBADF. Keep `TestRecv_TruncatedClosesFds` and `TestRecv_CountMismatch` green.
 
-**O-6** (`/Users/ken/dev/portty/internal/daemon/handoff.go` L873-890; seams at ~L128-131):
+**O-6** (`internal/daemon/handoff.go` L873-890; seams at ~L128-131):
 
 ```go
 var ok hsHelloOK
@@ -283,7 +283,7 @@ A `PeerPID` error refuses (fails toward the old daemon keeping its sessions). Ch
 
 ### Item E: update-notification click
 
-**ObjC analog** (`/Users/ken/dev/portty/tray_objc_darwin.m` L84-95, L104-117). Add a second delegate method inside the same `@implementation`, keeping the `willPresent` form:
+**ObjC analog** (`tray_objc_darwin.m` L84-95, L104-117). Add a second delegate method inside the same `@implementation`, keeping the `willPresent` form:
 
 ```objc
 @implementation PorttyNotificationDelegate
@@ -297,7 +297,7 @@ A `PeerPID` error refuses (fails toward the old daemon keeping its sessions). Ch
 
 New method: `userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:`. If `response.actionIdentifier` equals `UNNotificationDefaultActionIdentifier`, call `onNotificationClick((char *)[response.notification.request.identifier UTF8String])` inside `@autoreleasepool`, and always call `completionHandler()`. Declare `extern void onNotificationClick(char *identifier);` beside the existing forward declarations (~L13-16). Call `registerNotificationDelegate()` from tray init, not only from `sendNotification` (~L296). It is idempotent and bundle-guarded (see the `hasValidBundleIdentifier` early return and the `@try/@catch` swallow pattern at L104-117). The Apple selector names are [ASSUMED] until the VM check.
 
-**Go export analog** (`/Users/ken/dev/portty/tray.go` L109-115):
+**Go export analog** (`tray.go` L109-115):
 
 ```go
 //export onTrayUpdate
@@ -311,7 +311,7 @@ func onTrayUpdate() {
 
 `onNotificationClick(id *C.char)` copies this: capture `app := trayCallbackApp`, convert `C.GoString(id)` on the callback thread, then `go app.handleNotificationClick(idStr)`.
 
-**Go handler** (`/Users/ken/dev/portty/app_update.go`, near `showWindow` L229-238). Unexported so Wails does not bind it:
+**Go handler** (`app_update.go`, near `showWindow` L229-238). Unexported so Wails does not bind it:
 
 ```go
 func (a *App) handleNotificationClick(id string) {
@@ -325,7 +325,7 @@ It never calls `DownloadUpdate`. The id string must match `notifyUpdateOnce`'s i
 
 **Go test analog** (`app_update_test.go` L160-175): the harness `showWindowFunc` increments `h.shows` under `h.mu`. Add: click with the update id gives `shows == 1` and one `update:show` emit (see the `emitEventFunc` capture used elsewhere in that file); an unknown id does nothing; no download started.
 
-**Frontend** (`/Users/ken/dev/portty/frontend/src/App.tsx` L865-878), add beside the `update:status` subscription:
+**Frontend** (`frontend/src/App.tsx` L865-878), add beside the `update:status` subscription:
 
 ```tsx
 const offUpdate = EventsOn('update:status', (s: UpdateStatus | null) => { gotEvent = true; apply(s) })
@@ -335,13 +335,13 @@ return () => { offUpdate() }
 
 New: `const offShow = EventsOn('update:show', () => setDismissedUpdate(null))`, and call `offShow()` in the same cleanup. Vitest case in `App.update.test.tsx`: dismiss, emit `update:show`, banner visible in "available" state, `DownloadUpdate` not called.
 
-**Manual:** TESTING.md Section 5 item M-152 (notarized VM build, hide the window, click the notice). Per the standing rule in `/Users/ken/dev/portty/CLAUDE.md`.
+**Manual:** TESTING.md Section 5 item M-152 (notarized VM build, hide the window, click the notice). Per the standing rule in `CLAUDE.md`.
 
 ---
 
 ### Item F: F-1 relative path after `ESC[3J`
 
-**Analog (fix site):** `/Users/ken/dev/portty/internal/relay/hub.go` L1297-1302 and `/Users/ken/dev/portty/internal/relay/history.go` L71-73:
+**Analog (fix site):** `internal/relay/hub.go` L1297-1302 and `internal/relay/history.go` L71-73:
 
 ```go
 emu.RegisterCsiHandler('J', func(params ansi.Params) bool {
@@ -360,7 +360,7 @@ func (h *History) Clear() {
 
 Change: add `func (h *History) Skip(n int) { h.pushed += uint64(n) }`, and in the handler after `Clear()` call `h.history.Skip(emu.ScrollbackLen())`. vt's own handler runs after ours and drops exactly those lines. This is prototyped and validated in RESEARCH Item F. Do not change `Hub.PathClick`/`cwdLog.at`. The defect is row numbering, not the lookup.
 
-**Test analog** (`/Users/ken/dev/portty/internal/relay/cwd_test.go` L18-60): `cwdHub(t, cols, rows)`, `osc7(dir)`, `cwdRowOfLocked`, `cwdOf`, `wantCwd(t, h, marker, want)`. Feed the repro bytes:
+**Test analog** (`internal/relay/cwd_test.go` L18-60): `cwdHub(t, cols, rows)`, `osc7(dir)`, `cwdRowOfLocked`, `cwdOf`, `wantCwd(t, h, marker, want)`. Feed the repro bytes:
 
 `osc7("/start")+"% cd proj\r\n"+osc7("/proj")+"% clear; ls\r\n"+"\x1b[H\x1b[2J\x1b[3J"+"docs-x\r\ndocs-y\r\n"+osc7("/proj")+"% "`
 
@@ -370,7 +370,7 @@ Expect `docs-x` and `docs-y` both resolve to `/proj`. Add an `ED3`-alone variant
 
 ### Item G: F-2 first Cmd-click on the same cell
 
-**Analog:** `/Users/ken/dev/portty/frontend/src/lib/pathLinks.ts` L113 and L134-150.
+**Analog:** `frontend/src/lib/pathLinks.ts` L113 and L134-150.
 
 ```ts
 const onLeave = () => { pointerInside = false }
@@ -391,7 +391,7 @@ Change: `onLeave` sets `pointerInside = false; invalidate()`. `invalidate` is a 
 
 ### Item H1: vitest flake (`renderOnce`)
 
-**Analog:** `/Users/ken/dev/portty/frontend/src/lib/__tests__/pathLinks.linkifier.test.ts` L93-98:
+**Analog:** `frontend/src/lib/__tests__/pathLinks.linkifier.test.ts` L93-98:
 
 ```ts
 const renderOnce = async () => {
@@ -406,7 +406,7 @@ Replace with `await vi.waitFor(() => expect(renders, 'term.onRender fired').toBe
 
 ### Item H2: Go flake `TestShare_PasteBacklogKeepsViewer`
 
-**Analog:** `/Users/ken/dev/portty/internal/webserver/input_queue_test.go` L28-45 (`joinPasteViewer`: `ws.heartbeatEvery, ws.heartbeatTimeout = 50*time.Millisecond, timeout`) and the test at L94-155 (`const timeout = 500 * time.Millisecond`, hold `3 * timeout`). Change the per-ping ceiling to 5 s (keep `heartbeatEvery` 50 ms), and replace the wall-clock hold with an event wait counting client-received pings through `websocket.DialOptions.OnPingReceived` (coder/websocket v1.8.15). Add the optional dial variant next to `dialWebServerWS` in `capability_helpers_test.go` (~L213-229). Event-wait pattern: `testutil.WaitFor(t, timeout, cond, msg)` as in `/Users/ken/dev/portty/internal/testutil/wait.go`. Leave `TestShare_DeadViewerReapedBacklogDelivered` (100 ms timeout) untouched. Product code (`relay.Heartbeat`) is untouched.
+**Analog:** `internal/webserver/input_queue_test.go` L28-45 (`joinPasteViewer`: `ws.heartbeatEvery, ws.heartbeatTimeout = 50*time.Millisecond, timeout`) and the test at L94-155 (`const timeout = 500 * time.Millisecond`, hold `3 * timeout`). Change the per-ping ceiling to 5 s (keep `heartbeatEvery` 50 ms), and replace the wall-clock hold with an event wait counting client-received pings through `websocket.DialOptions.OnPingReceived` (coder/websocket v1.8.15). Add the optional dial variant next to `dialWebServerWS` in `capability_helpers_test.go` (~L213-229). Event-wait pattern: `testutil.WaitFor(t, timeout, cond, msg)` as in `internal/testutil/wait.go`. Leave `TestShare_DeadViewerReapedBacklogDelivered` (100 ms timeout) untouched. Product code (`relay.Heartbeat`) is untouched.
 
 ---
 
@@ -436,7 +436,7 @@ t.Cleanup(func() { signalGroup = prev })
 **Source:** `App.tsx` L865-878: `EventsOn(name, handler)` returns an unsubscribe closure, collected in the `useEffect` cleanup. Apply to the `update:show` handler.
 
 ### TESTING.md standing rule (every task that adds or changes tests)
-**Source:** `/Users/ken/dev/portty/CLAUDE.md`. For new test files, update Section 2 counts and add a `> Note: Portty Phase 15 ...` line, and add a Section 4 row per new test file (repo-relative path only, reuse existing IDs such as INPT-01, INPT-06, PATH-01, PATH-02, UPGR-01, UPD-01). Add M-NN items from M-152 (notification click, attach full-screen app check, `--status-top` limit) to Section 5. Run `bash tests/check-traceability-paths.sh` (baseline `OK: 228 traceability paths exist`).
+**Source:** `CLAUDE.md`. For new test files, update Section 2 counts and add a `> Note: Portty Phase 15 ...` line, and add a Section 4 row per new test file (repo-relative path only, reuse existing IDs such as INPT-01, INPT-06, PATH-01, PATH-02, UPGR-01, UPD-01). Add M-NN items from M-152 (notification click, attach full-screen app check, `--status-top` limit) to Section 5. Run `bash tests/check-traceability-paths.sh` (baseline `OK: 228 traceability paths exist`).
 
 ### Commands (from RESEARCH)
 `GOTOOLCHAIN=go1.26.11 go test -race -short -count=1 ./internal/<pkg>/...` (root package: `.`). Frontend: `cd frontend && pnpm exec vitest run <file>`, `pnpm exec tsc --noEmit`. Phase gate: one clean `go test -race -short -count=1 ./...` and `pnpm test`.

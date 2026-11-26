@@ -144,6 +144,19 @@ func TestSameUserGate_WebSocket(t *testing.T) {
 		t.Fatal("hub missing")
 	}
 	good := ws.BaseURL()
+	// waitSubscribers polls until the hub counts want subscribers. The server
+	// writes the 101 before it joins the hub, so a dial can return before the
+	// subscriber is counted; reading the count once races that join.
+	waitSubscribers := func(t *testing.T, want int) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for hub.SubscriberCount() != want {
+			if time.Now().After(deadline) {
+				t.Fatalf("subscribers = %d, want %d after 5s", hub.SubscriberCount(), want)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
 
 	t.Run("same", func(t *testing.T) {
 		resp, conn, err := gateDial(t, ws, client, webservertest.Same, sid, tok, good)
@@ -153,14 +166,13 @@ func TestSameUserGate_WebSocket(t *testing.T) {
 		if resp.StatusCode != http.StatusSwitchingProtocols {
 			t.Errorf("status = %d, want 101", resp.StatusCode)
 		}
+		// The accepted viewer must join, then leave once its socket closes, so
+		// the refusal rows below measure only their own effect.
+		waitSubscribers(t, 1)
+		conn.CloseNow()
+		waitSubscribers(t, 0)
 	})
-	// Wait for the same-user subscriber (if still counted) to leave, so the
-	// refusal rows measure only their own effect.
-	deadline := time.Now().Add(3 * time.Second)
-	for hub.SubscriberCount() > 0 && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
-	}
-	base := hub.SubscriberCount()
+	const base = 0
 
 	for _, c := range gateRefusals {
 		t.Run(c.name, func(t *testing.T) {

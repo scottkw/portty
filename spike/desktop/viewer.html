@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>spike viewer</title>
+<style>
+  body { font: 13px/1.4 -apple-system, system-ui, sans-serif; margin: 12px; background: #fff; color: #111; }
+  video { width: 100%; max-width: 960px; background: #000; display: block; }
+  pre { white-space: pre-wrap; word-break: break-all; }
+  @media (prefers-color-scheme: dark) { body { background: #111; color: #eee; } }
+</style>
+</head>
+<body>
+<video id="v" autoplay playsinline muted></video>
+<p>
+  <input id="keys" type="text" placeholder="type here to send key:&lt;keycode&gt;" size="32">
+  <button id="wake" type="button">Wake</button>
+  <button id="play" type="button">Tap to play</button>
+</p>
+<pre id="state">starting</pre>
+<pre id="out"></pre>
+<script>
+(async function () {
+  // Params: t token, row, tag, ice (lite|full), secs (default 10), s base URL for fetches.
+  const q = new URLSearchParams(location.search);
+  const tok = q.get('t') || '';
+  const row = q.get('row') || 'adhoc';
+  const tag = q.get('tag') || 'viewer';
+  const ice = q.get('ice') === 'full' ? 'full' : 'lite';
+  const secs = Math.max(1, parseInt(q.get('secs') || '10', 10) || 10);
+  const base = q.get('s') || '';
+  const enc = encodeURIComponent;
+
+  const v = document.getElementById('v');
+  const stateEl = document.getElementById('state');
+  const outEl = document.getElementById('out');
+  const setState = (s) => { stateEl.textContent = s; };
+
+  const t0 = performance.now();
+  let connectedMs = null;
+  let firstFrameMs = null;
+  const rtts = [];
+  const sent = new Map();
+
+  const pc = new RTCPeerConnection({ iceServers: [] });
+  pc.addTransceiver('video', { direction: 'recvonly' });
+  const dc = pc.createDataChannel('control');
+
+  let playNote = 'play: not tried';
+  const tryPlay = () => {
+    const p = v.play();
+    if (p && p.then) { p.then(() => { playNote = 'play: ok'; }, (err) => { playNote = 'play: ' + err.name; }); }
+  };
+  pc.ontrack = (e) => { v.srcObject = e.streams[0] || new MediaStream([e.track]); tryPlay(); };
+  document.getElementById('play').addEventListener('click', tryPlay);
+  const diagEl = document.createElement('pre');
+  stateEl.after(diagEl);
+  setInterval(() => {
+    diagEl.textContent = playNote + ' | paused=' + v.paused + ' readyState=' + v.readyState + ' size=' + v.videoWidth + 'x' + v.videoHeight;
+  }, 500);
+  pc.oniceconnectionstatechange = () => {
+    const s = pc.iceConnectionState;
+    if ((s === 'connected' || s === 'completed') && connectedMs === null) {
+      connectedMs = Math.round(performance.now() - t0);
+    }
+    setState('ice: ' + s);
+  };
+
+  const markFirstFrame = () => {
+    if (firstFrameMs === null) { firstFrameMs = Math.round(performance.now() - t0); }
+  };
+  if (typeof v.requestVideoFrameCallback === 'function') {
+    v.requestVideoFrameCallback(markFirstFrame);
+  } else {
+    v.addEventListener('loadeddata', markFirstFrame, { once: true });
+  }
+
+  let pingN = 0;
+  let pingTimer = null;
+  dc.onopen = () => {
+    pingTimer = setInterval(() => {
+      pingN += 1;
+      sent.set(String(pingN), performance.now());
+      dc.send('ping:' + pingN);
+    }, 1000);
+  };
+  dc.onmessage = (e) => {
+    if (typeof e.data !== 'string' || e.data.indexOf('pong:') !== 0) { return; }
+    const n = e.data.slice(5);
+    if (sent.has(n)) { rtts.push(performance.now() - sent.get(n)); sent.delete(n); }
+  };
+
+  const send = (msg) => { if (dc.readyState === 'open') { dc.send(msg); } };
+  document.getElementById('keys').addEventListener('keydown', (e) => { send('key:' + e.keyCode); });
+  document.getElementById('wake').addEventListener('click', () => { send('wake'); });
+
+  const median = (a) => {
+    if (a.length === 0) { return null; }
+    const s = a.slice().sort((x, y) => x - y);
+    return Math.round(s[Math.floor(s.length / 2)] * 100) / 100;
+  };
+  const orNull = (x) => (x === undefined ? null : x);
+  const orZero = (x) => (x === undefined ? 0 : x);
+
+  // Negotiate: non-trickle offer, answer back from the spike.
+  let failure = null;
+  try {
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise((resolve) => {
+      if (pc.iceGatheringState === 'complete') { resolve(); return; }
+      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') { resolve(); } };
+      setTimeout(resolve, 2500);
+    });
+    const resp = await fetch(base + '/offer?t=' + enc(tok) + '&ice=' + enc(ice), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pc.localDescription),
+    });
+    if (!resp.ok) { throw new Error('/offer answered ' + resp.status); }
+    await pc.setRemoteDescription(await resp.json());
+    setState('negotiated, collecting for ' + secs + ' s');
+    await new Promise((resolve) => setTimeout(resolve, secs * 1000));
+  } catch (err) {
+    failure = String(err);
+    setState('failed: ' + failure);
+  }
+  if (pingTimer !== null) { clearInterval(pingTimer); }
+
+  // Collect getStats into one flat object; every pinned key is always present.
+  const stats = await pc.getStats();
+  let transport = null;
+  let inbound = null;
+  const pairs = [];
+  const codecs = {};
+  const cands = {};
+  stats.forEach((s) => {
+    if (s.type === 'transport') { transport = s; }
+    else if (s.type === 'candidate-pair') { pairs.push(s); }
+    else if (s.type === 'inbound-rtp' && (s.kind || s.mediaType) === 'video') { inbound = s; }
+    else if (s.type === 'codec') { codecs[s.id] = s; }
+    else if (s.type === 'local-candidate' || s.type === 'remote-candidate') { cands[s.id] = s; }
+  });
+  let pair = null;
+  if (transport && transport.selectedCandidatePairId) { pair = stats.get(transport.selectedCandidatePairId) || null; }
+  if (!pair) {
+    pair = pairs.find((p) => p.nominated && p.state === 'succeeded') ||
+           pairs.find((p) => p.state === 'succeeded') || null;
+  }
+  let selectedPair = null;
+  if (pair) {
+    const l = cands[pair.localCandidateId] || {};
+    const r = cands[pair.remoteCandidateId] || {};
+    selectedPair = {
+      localType: orNull(l.candidateType),
+      localAddress: orNull(l.address !== undefined ? l.address : l.ip),
+      localPort: orNull(l.port),
+      remoteType: orNull(r.candidateType),
+      remoteAddress: orNull(r.address !== undefined ? r.address : r.ip),
+      remotePort: orNull(r.port),
+      protocol: orNull(l.protocol),
+    };
+  }
+  const i = inbound || {};
+  const c = inbound && inbound.codecId ? codecs[inbound.codecId] : null;
+  const codec = c ? { mimeType: orNull(c.mimeType), sdpFmtpLine: orNull(c.sdpFmtpLine) } : null;
+
+  // Current frame, at most 1280 px wide, as a JPEG data URL (null when no frame arrived).
+  let frameJpeg = null;
+  if (v.videoWidth > 0 && v.videoHeight > 0) {
+    const scale = Math.min(1, 1280 / v.videoWidth);
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(v.videoWidth * scale);
+    cv.height = Math.round(v.videoHeight * scale);
+    cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+    frameJpeg = cv.toDataURL('image/jpeg', 0.7);
+    // A canvas that cannot read back (Safari in the GPU-less Tart VMs) returns "data:,"; send null, which the server accepts.
+    if (!frameJpeg.startsWith('data:image/jpeg')) { frameJpeg = null; }
+  }
+
+  const report = {
+    row: row,
+    tag: tag,
+    ice: ice,
+    userAgent: navigator.userAgent,
+    iceConnectionState: pc.iceConnectionState,
+    connectedMs: connectedMs,
+    firstFrameMs: firstFrameMs,
+    rttMedianMs: median(rtts),
+    selectedPair: selectedPair,
+    framesDecoded: orZero(i.framesDecoded),
+    framesDropped: orZero(i.framesDropped),
+    frameWidth: orNull(i.frameWidth),
+    frameHeight: orNull(i.frameHeight),
+    framesPerSecond: orNull(i.framesPerSecond),
+    jitterBufferDelay: orNull(i.jitterBufferDelay),
+    jitterBufferEmittedCount: orNull(i.jitterBufferEmittedCount),
+    totalDecodeTime: orNull(i.totalDecodeTime),
+    decoderImplementation: orNull(i.decoderImplementation),
+    powerEfficientDecoder: orNull(i.powerEfficientDecoder),
+    codec: codec,
+    frameJpeg: frameJpeg,
+  };
+  outEl.textContent = JSON.stringify(Object.assign({}, report, { frameJpeg: frameJpeg === null ? null : '(sent)' }), null, 2);
+
+  try {
+    const resp = await fetch(base + '/report?t=' + enc(tok) + '&row=' + enc(row) + '&tag=' + enc(tag) + '&ice=' + enc(ice), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(report),
+    });
+    if (!resp.ok) { throw new Error('/report answered ' + resp.status); }
+    setState((failure === null ? 'done' : 'failed: ' + failure) + ', report stored');
+  } catch (err) {
+    setState('report not stored: ' + String(err));
+  }
+})();
+</script>
+</body>
+</html>

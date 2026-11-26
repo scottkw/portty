@@ -1,0 +1,35 @@
+RC-WR04-stall follow-up (gsd-debug rc-wr04-stall): guest unified log around the 'stall', read 2026-11-26 15:40 UTC on portty-test
+Command: /usr/bin/log show --style compact --start '2026-11-26 07:05:00' --end '2026-11-26 07:32:00' (line counts per minute, then the lines around the gap)
+--- lines per minute (guest clock)
+07:05 46054 | 07:06 46793 | 07:07 52691 | 07:08 51401 | 07:09 7411 | 07:10 423 | 07:11..07:26 0 | 07:27 15603 | 07:28 9770 | 07:29 10240
+--- timed NTP 'Received time' lines, 05:00-07:10 (guest clock, then the time NTP gave)
+05:14:01 -> 05:14:00 | 05:34:55 -> 05:34:55 | 05:58:28 -> 05:58:28 | 06:22:41 -> 06:22:41 | 06:47:07 -> 06:47:07 | 07:10:02 -> 07:27:05
+--- lines around the gap (IPs redacted)
+2026-11-26 07:10:02.959 Df kernel[0:f1f25] [com.apple.xnu.net.udp:] udp_connection_summary [<IPv4-redacted>:62715<-><IPv4-redacted>:123] interface: en0 (skipped: 0)
+2026-11-26 07:10:02.959 E  timed[138:f1f25] [com.apple.timed:text] errno is 0 Undefined error: 0
+2026-11-26 07:10:02.960 Df timed[138:f1f25] [com.apple.timed:data] cmd,ntpPacket,result,11,t1,83abe191.712b0856,t2,eeb25dc9.38626848,t3,eeb25dc9.3862f8ae,t4,83abe191.78b0c026,leap,00,delay,00.00,dispersion,00.0c,
+2026-11-26 07:10:02.960 Df timed[138:f1f25] [com.apple.timed:data] cmd,fetchTime,num,2,result,11,mach,2181539320628,tv_sec,1795678025,tv_usec,220255,delay,0.029376,dispersion,0.000183,more,1,ip,<ip>,port,123,slept,0,use_service_port
+2026-11-26 07:10:02.960 Df timed[138:f1f25] [com.apple.timed:text] NTP failed 4 times, switching off of high source port.
+2026-11-26 07:10:02.969 Df timed[138:f1f25] [com.apple.timed:data] cmd,SYNC,rtc_s,1795678024.772938013,unc_s,0.000500000,mach,2181539556065
+2026-11-26 07:10:02.970 Df timed[138:fd9b7] [com.apple.timed:text] Received time Thu Nov 26 07:27:05 2026±0.03 from "NTP"
+2026-11-26 07:10:02.970 Df timed[138:fd9b7] [com.apple.timed:data] cmd,T,src,NTP,rtc_s,1795678024.716027498,rtc_unc_s,0.000000000,t_s,817370825.188018799,unc_s,0.029610829,mach,2181538190211
+2026-11-26 07:10:02.970 A  runningboardd[175:fd85a] (RunningBoard) invalidateAssertionWithIdentifier
+2026-11-26 07:10:02.971 Df runningboardd[175:fd85a] [com.apple.runningboard:ttl] Invalidating assertion 175-108-28869 (target:[osservice<com.apple.timed(266)>:138]) from originator [osservice<com.apple.powerd>:108]
+2026-11-26 07:10:02.971 Df timed[138:fd9b7] [com.apple.timed:data] TDTF,SynthesizedClock,rtc,1795678024.716027,utc,817370825.189370,utcUnc,0.024557,sf,1.00000360,sfUnc,0.00000931,utcSfCov,0.00037444,logNoise,-13.555955,timeRtc,1795678024.71
+2026-11-26 07:10:02.972 Df timed[138:fd9b7] [com.apple.timed:data] cmd,checkActiveTimeSourceRequired,rtc_s,1795678025.275413,bb_want_unc_s,inf,want_unc_s,0.050000,bb_want_rtc_s,inf,want_rtc_s,1795679296.856159
+2026-11-26 07:10:02.972 Df timed[138:fd9b7] [com.apple.timed:text] Want active time in 21.19min. Remaining retry interval: 14.997931min.
+2026-11-26 07:10:02.972 Df timed[138:fd9b7] [com.apple.timed:text] Unscheduling wanted job
+2026-11-26 07:10:02.972 Df timed[138:fd9b7] [com.apple.timed:text] Scheduling wanted job to fire in 1271.580745 seconds
+2026-11-26 07:10:02.973 Df kernel[0:fd892] [System Event] [2181539636822] [INFO] [Subsystem: nvram] [Event: write] com.apple.System.rtc-offset as data with size 7
+2026-11-26 07:10:02.973 Df kernel[0:fd892] [System Event] [2181539643182] [INFO] [Subsystem: nvram] [Event: sync] triggered
+2026-11-26 07:10:02.978 A  opendirectoryd[134:348] (SystemCache) Kernel: kauth_membership_check
+2026-11-26 07:10:02.978 Df kernel[0:fd892] [System Event] [2181539760226] [INFO] [Subsystem: nvram] [Event: sync] completed with ret=00000000
+2026-11-26 07:27:05.265 Ts [0:0] === system wallclock time adjusted
+2026-11-26 07:27:05.267 Df dasd[146:fd98a] [com.apple.xpc:connection] [0x7b98fab980] activating connection: mach=true listener=false peer=false name=com.apple.coreduetd.knowledge
+2026-11-26 07:27:05.268 Df dasd[146:fd98a] [com.apple.xpc:connection] [0x7b98fab980] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+2026-11-26 07:27:05.268 Df timed[138:fd9b7] [com.apple.settimeofday:] settimeofday({0x6b07df49,0x3cdf6}) == 0
+2026-11-26 07:27:05.268 Df timed[138:fd9b7] [com.apple.timed:text] Setting system time to Thu Nov 26 07:27:05 2026 from TMTimeSynthesizer
+2026-11-26 07:27:05.268 Df dasd[146:fd98a] [com.apple.xpc:connection] [0x7b98fab980] activating connection: mach=true listener=false peer=false name=com.apple.coreduetd.knowledge
+2026-11-26 07:27:05.268 A  runningboardd[175:fd85a] (RunningBoard) acquireAssertionWithDescriptor
+2026-11-26 07:27:05.268 Df dasd[146:fd98a] [com.apple.xpc:connection] [0x7b98fab980] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+2026-11-26 07:27:05.269 Df runningboardd[175:fd85a] [com.apple.runningboard:ttl] Acquiring assertion targeting [osservice<com.apple.timed(266)>:138] from originator [osservice<com.apple.powerd>:108] with description <RBSAssertionDescriptor|

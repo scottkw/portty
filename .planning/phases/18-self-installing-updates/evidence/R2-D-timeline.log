@@ -1,0 +1,20 @@
+# R2-D timeline (VM pollers; seconds relative to the Update click at 00:20:39 UTC; transitions only)
+# poll (0.4 s): GUI pids (no-argument Portty.app executables), daemon pids, installer pid, installed version, daemon /health version
+-2.02 00:20:37 gui=45836, dmn=45844, inst= iv=1.8.0 dv=v1.8.0
++1.10 00:20:40 gui=45836, dmn=45844, inst=46237, iv=1.8.0 dv=v1.8.0
++21.76 00:21:01 gui= dmn=45844, inst=46237, iv=1.8.1 dv=v1.8.0
++23.44 00:21:03 gui=47387, dmn=45844, inst=46237, iv=1.8.1 dv=v1.8.1
++24.08 00:21:03 gui=47387, dmn=47443, inst=46237, iv=1.8.1 dv=v1.8.1
++27.16 00:21:06 gui=47387, dmn=47443, inst= iv=1.8.1 dv=v1.8.1
+# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines (the poller grepped for Restart, background service, AXDialog, AXSheet too)
+-2.01 00:20:37 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++1.32 00:20:41 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Restarting Portty 1.8.1… DOMClassList=( ) @328,94 134x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++22.33 00:21:02
++23.53 00:21:03
++24.63 00:21:04
++26.18 00:21:05 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|
+# win (CGWindowList, 1 s): on-screen windows owner/layer/title
+-1.98 00:20:37 Portty/0/Portty | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++22.41 00:21:02 Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++25.77 00:21:05 Portty/0/Portty | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
+# samples: poll       91, ax       45, win       42; ax samples matching 'background service' or 'Restart Now': 0

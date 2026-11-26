@@ -1,42 +1,42 @@
 ---
 gsd_state_version: "1.0"
-milestone: v1.2
-status: Awaiting next milestone
-stopped_at: Phase 16 complete — all phases complete
-last_updated: "2026-11-24T15:34:12.504Z"
-last_activity: 2026-11-23
-last_activity_desc: Milestone v1.2 completed and archived
-state_head: 8a44e0c119863be0a55f1b2d67cc3e206609b455
+milestone: v2.0
+milestone_name: Desktop Sharing
+current_phase: "18.1"
+current_phase_name: Apple Silicon Release Pipeline
+status: executing
+stopped_at: Phase 18 complete (human verification deferred), Phase 18.1 next
+last_updated: "2026-11-26T16:47:39.965Z"
+last_activity: 2026-11-26
+last_activity_desc: "Phase 18 (with 17 and 18.1) shipped as PR #11"
+state_head: 50fd9656b7e6ffc3cb259e04a24daaa48f2cd403
 progress:
   total_phases: 8
-  completed_phases: 8
-  total_plans: 67
-  completed_plans: 67
-  percent: 100
-milestone_name: Previews, Remote URLs, Mobile
-current_phase: 16
+  completed_phases: 2
+  total_plans: 21
+  completed_plans: 13
+  percent: 13
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-23)
+See: .planning/PROJECT.md (updated 2026-11-24)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Planning next milestone (v1.2 shipped as v1.2.0; v1.2.1 dompurify patch on/after 2026-11-28)
+**Current focus:** Phase 18 — Self-Installing Updates
 
 ## Current Position
 
-Phase: Milestone v1.2 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-11-23 — Milestone v1.2 completed and archived
+Phase: 18.1 (Apple Silicon Release Pipeline) — next
+Status: Phase 18 complete 2026-11-26 (verification human_needed, deferred; see Deferred Verification)
+Last activity: 2026-11-26 -- Phase 18 (with 17 and 18.1) shipped as PR #11
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 90
+- Total plans completed: 102
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -55,6 +55,7 @@ Last activity: 2026-11-23 — Milestone v1.2 completed and archived
 | 14 | 14 | - | - |
 | 15 | 9 | - | - |
 | 16 | 4 | - | - |
+| 17 | 12 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -152,17 +153,38 @@ Last activity: 2026-11-23 — Milestone v1.2 completed and archived
 | Phase 16 P02 | 8 min | 3 tasks | 9 files |
 | Phase 16 P03 | 6 min | 2 tasks | 5 files |
 | Phase 16 P04 | 25 min | 3 tasks | 5 files |
+| Phase 17 P01 | 13 min | 2 tasks | 10 files |
+| Phase 17 P02 | 14 min | 3 tasks | 11 files |
+| Phase 17 P03 | 12 min | 2 tasks | 9 files |
+| Phase 17 P04 | 17 min | 2 tasks | 7 files |
+| Phase 17 P05 | 31min | 2 tasks | 10 files |
+| Phase 17 P06 | 36min | 2 tasks | 14 files |
+| Phase 17 P09 | 33 min | 3 tasks | 9 files |
+| Phase 17 P07 | 16 min | 3 tasks | 9 files |
+| Phase 17 P08 | 35min | 3 tasks | 14 files |
+| Phase 17 P10 | 35 min | 2 tasks | 10 files |
+| Phase 17 P11 | 30min | 3 tasks | 12 files |
+| Phase 17 P12 | 43min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
+- v2.0 Desktop Sharing roadmap created 2026-11-24: Phases 17-23 (spike, self-install, unattended viewing, control, app and iPhone viewers, click-to-share, audio/quality/unlock/release); 39/39 requirements mapped
 - Phase 15 added: v1.2 Hardening (close pending v1.2 todos and flakes before milestone close; 2026-11-22)
+- Phase 18.1 inserted after Phase 18: Apple Silicon Release Pipeline: REL-01 and Phase 23's release items pulled forward (user approved 2026-11-25); depends on Phase 18
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [Roadmap v2.0]: Phase 17 (real-Mac spike) gates the capture-host architecture (research conflict C1) and UNLK-01; Phase 19 is not planned until FEAS-02 is recorded
+- [Roadmap v2.0]: Self-install (Phase 18) is independent of the spike and lands before the first release that bundles a capture helper
+- [Roadmap v2.0]: Order is own-account always-available viewing in the browser (19), then control (20), app and iPhone viewers (21), click-to-share (22), audio/adaptive quality/unlock/release (23)
+- [Roadmap v2.0]: Window share (DESK-05, DCTL-05) ships with control in Phase 20, because window coordinates and click confinement live in the input mapping
+- [Roadmap v2.0]: DCTL-04 (last typer holds control ~2 s, physical input wins) ships with click-to-share in Phase 22, where the sharer sits at the Mac while a guest controls
+- [Roadmap v2.0]: UNLK-01 sits in Phase 23 with two outcomes: ship it if Phase 17 proved lock-screen capture and typing, else cut it and document "works while awake and unlocked"
+- [Roadmap v2.0]: 7 phases at coarse granularity (39 requirements, new media stack, four viewer surfaces, security widening); Phases 20 and 21 can merge if the user wants fewer
 - [Roadmap]: Strip-down before rebrand, so the rename (about 179 files reference "agenthub" today) touches the smallest tree
 - [Roadmap]: Navigation before rebrand, so help and in-app text are rewritten once against the final UI
 - [Roadmap]: NAV-02 (peer sessions in sidebar) ships with Hub removal so GUI remote attach never regresses (it currently lives in Hub remote cards)
@@ -346,6 +368,33 @@ Recent decisions affecting current work:
 - [Phase 16]: 16-02 DoS-bound vitest tests: 30 s per-test timeout, inputs and assertions unchanged
 - [Phase 16]: 16-03: PREV-02/PREV-04 recorded on 11-10 and MOB-01..05 on 14-14 as requirements-completed, each citing its passed VERIFICATION.md inline; selection-offset todo triaged as already fixed at 7a37bfb4
 - [Phase 16]: IN-05 stays open: M-152's relaunch step is not the cold launch-from-notification path; PathClickAPI removal recorded in the TESTING.md note, not the Phase 15 disposition
+- [Phase 17]: 17-01: FEAS-02 decision rule committed verbatim in 17-SPIKE-MATRIX.md before any probe ran
+- [Phase 17]: 17-01: spike serve calls startEncoder separately from startSource (the planned startSource signature has no bitrate)
+- [Phase 17]: 17-01: viewer page served no-store with no referrer because the token is in its URL; /report treats a null frameJpeg as absent
+- [Phase 17]: 17-02: spk_sck_start sizes and recreates the VideoToolbox session at the real capture size, leaving server.go untouched
+- [Phase 17]: 17-02: forceKeyframe calls spk_request_refresh, re-sending the cached picture as an IDR while a stream runs (PLI, FIR, viewer join)
+- [Phase 17]: 17-02: probe-loop --stream starts one SCStream once and never restarts it, so a failed or stopped stream is observed, not re-prompted
+- [Phase 17]: 17-02: bare spike prints usage and exits 0 (the plan's own verify pipes it into grep under pipefail)
+- [Phase 17]: R00 GO in the Tart guest (macOS 27.2, 26B123): SCK frames, IOSurface and a hardware H.264 session work, so capture-dependent rows stay in the VM and only R18 and R20 route to host-run
+- [Phase 17]: R10 GO: Screen Recording grant and designated requirement survive a same-identity rebuild and RENAME_SWAP; macOS 27.2 also raises a bypass-private-window-picker prompt once per bundle (characterise in R19)
+- [Phase 17]: 17-04: R02 is GO although the helper holds two TCC identities (Screen Recording on the parent bundle app.portty.spike, Accessibility and PostEvent on the helper path); R09-A counts 3 Settings entries for the FEAS-02 tiebreaker
+- [Phase 17]: R06 SSH nohup respawn recorded NO-GO: tccd's subject is sshd-keygen-wrapper and the no-grant control got SCError -3801; R07-B launchd kickstart is GO so DAEMON-RESPAWN holds
+- [Phase 17]: R09-B counts 3 Settings entries (Screen Recording, Accessibility, Login Items), equal to R09-A; the daemon needs one TCC key (Bundle ID), the helper two
+- [Phase 17]: 17-06: R15 and R17 GO for both shapes with the display held awake; the unaided lock loses the SCK stream at about 31 s (SCError -3815) when the guest display turns off
+- [Phase 17]: 17-06: provisional FEAS-02 outcome in-daemon by row 7, Pipeline shape: daemon; R16-B PARTIAL (typing unlocked 2 of 3 daemon attempts, 3 of 3 helper attempts)
+- [Phase 17]: 17-09: R21 GO (AudioConverter Opus at 960 frames per packet, SCK delivers system audio in the guest); R19 PARTIAL (monthly prompt is the picker-bypass dialog on a fresh start with an aged approval, frames flow under it, a replayd restart silently freezes a running stream, so a zero-frame check alone cannot detect expiry)
+- [Phase 17]: 17-07: R01-vm is PARTIAL on a DERP-relayed tailnet path (SC1 clause not shown); R11 lite and full, R22 and R23 GO; viewer.html sends null when canvas readback fails
+- [Phase 17]: 17-08: R12 Chrome and R13 Wails web view are GO over the tailnet in both ICE modes; the shell's Local Network prompt names SpikeShell and, while unanswered, leaves media at ICE new (real Portty app prompt is a Phase 21 check)
+- [Phase 17]: 17-10: R18-vm is NO-GO against its own criterion: display sleep ends the SCK stream (-3815) and wake does not bring frames back; no restart-after-wake flag added
+- [Phase 17]: 17-10: host-run exits before serving when Screen Recording is not granted; typing needs --allow-input and a listed keycode, refused at parse time otherwise
+- [Phase 17]: 17-11: R14 GO; iOS Safari and Home Screen start video only from a user tap, so the DVWR-03 iPhone viewer must start playback from a tap
+- [Phase 17]: 17-11: host Screen Recording not approved within 120 s; R01-host, R18-host, R20-host and base rows R01, R18, R20 PARTIAL (user-skip, user-not-approved); host revoked and proven clean
+- [Phase 17]: 17-11 session 2 (user added the grant by hand): the host-run spike crashed at about ready+66 s (SIGTRAP on the main thread in spk_app_run, native frame unknown); R20-host numbers for 20 s of motion (hardware AVC, 2560 x 1664, 29.10 fps, latency mean 12.69 ms, own CPU 29.6 percent, SSIM 0.999024), R01-host pings DERP both times and no viewer report, R18-host not reached; all three stay PARTIAL; host revoked, no app.portty.spike TCC rows left
+- [Phase 17]: 17-11 session 3 (after the nil-font fix bf95b9a6): full 180 s host run completed, no 'chart text skipped' line; R20 GO (hardware AVC, 2560 x 1664, 60 s motion at 29.15 fps, latency mean 12.85 ms, own CPU 27.0 percent, SSIM 0.999327); R18 NO-GO (stream ends with -3815 0.7 s after display sleep and does not return after the wake; on battery the Mac idle-slept 5.5 s after the display); R01 PARTIAL (1853 frames decoded from the real Mac, but DERP both pings); host revoked, no spike TCC rows left
+- [Phase 17]: FEAS-02 DECIDED: capture host in-daemon (rule row 7); capture, encode and WebRTC serve run in the existing daemon on its legacy LaunchAgent, one TCC identity, no helper bundle
+- [Phase 17]: CLI respawns the daemon only through launchd (launchctl kickstart, R07-B GO); an SSH-started daemon is attributed to sshd-keygen-wrapper (R06 NO-GO)
+- [Phase 17]: UNLK-01 feasible (R15-R17 GO): ship, not cut
+- [Phase 17]: 17-12 host tccutil proof accepted from 17-11 session 3 revoke (user reply: accept); permission system refused the host reset in 17-12
 
 ### Pending Todos
 
@@ -357,6 +406,15 @@ Recent decisions affecting current work:
 - [2026-11-17] [relay] Strip remaining reply-eliciting terminal queries from the catch-up replay — [todo file](.planning/todos/pending/2026-11-17-strip-more-terminal-queries-from-replay.md)
 
 ### Blockers/Concerns
+
+- [v2.0 Phase 18, RESOLVED 2026-11-26]: RC-WR04-stall was not a session stall: the portty-test guest clock was stepped forward 17 min by NTP (timed) mid-row, so wall-clock deltas showed a fake gap; ticks ran steadily (0.985/s) and nothing was held. Evidence: phases/18-self-installing-updates/evidence/RC-WR04-clockstep.log, debug/resolved/rc-wr04-stall.md (c06f8b65). Rig lesson: check the timed log or use monotonic/tick counts before calling a VM time gap a hang.
+- [v2.0]: Apple's persistent-content-capture entitlement request: filed, awaiting Apple (filed 2026-11-25, Request ID T558S9Q5B3, App ID app.portty.Portty; reported waits weeks to 2+ months); until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
+- [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
+- [v2.0 REL-01]: v1.2.x updaters look only for `portty-v<ver>-darwin-universal.dmg` and identifier `portty-v<ver>-darwin-universal` (internal/updater/update.go DMGAssetName, install.go Clean, release.yml); an arm64-only rename would strand v1.2 installs unless the old name stays or both ship
+- [v2.0 Phase 17]: Host display sleep: on battery a display sleep took the MacBook Air to system idle sleep within 6 s (17-11 session 3), suspending the capture server, and the SCK stream does not resume after the wake (R18 NO-GO). Phase 19 needs a system-sleep and display-awake assertion while a viewer watches, or a stream restart on -3815, and its own battery test. (The 17-11 session 2 host-run crash is resolved: nil font fixed in bf95b9a6, session 3 ran the full schedule.)
+- [v2.0 Phase 18]: Self-install only helps upgrades from a build that contains it; v1.2.x to the first self-install build still goes through Reveal-in-Finder
+- [v2.0 Phase 19]: Planned 2026-11-25. 17 plans in 8 waves (19-01..19-17). UI-SPEC approved. Ready to execute after Phases 18 and 18.1. The daemon starts only through launchd; the GUI shows a repair state instead of spawning a daemon. Lapse notification: the GUI sends while it runs, the daemon sends otherwise, one claim per lapse
+- [v2.0 Phase 18.1]: Planned 2026-11-25. 4 plans in 4 sequential waves (18.1-01..18.1-04): arm64/macOS 14 build plus bundle gate, inside-out signing with the v1.2 DR pin, release.yml publishing both DMG names, then TESTING.md and the branch protection checkpoint. 18.1-03 waits for Phase 18's 18-02 (DMGAssetNames); 18.1-04 waits for 18-09 and stops at a merge checkpoint before the protection PUT. SC2 runtime proof is deferred to Phase 23 rc.1
 
 - [Phase 4]: User confirmed 2026-11-16 that both Macs are on the same Tailscale account (same login, so the same numeric user ID for the WhoIs gate). Remaining risk: a node that is ACL-tagged is refused by design; check `tailscale status` shows no tags on either Mac during the two-Mac UAT (M-80).
 
@@ -395,6 +453,10 @@ Recent decisions affecting current work:
 | 261123-kcr | unshare requires an 8-character minimum ID prefix like kill/rename (cmd_share.go lookupSessionStrict), with a test | 2026-11-23 | 1e476af0 | [261123-kcr-unshare-requires-an-8-character-minimum-](./quick/261123-kcr-unshare-requires-an-8-character-minimum-/) |
 | 8 | CI fixes for v1.2.0: frontend/dist before go test; fdpass openFds via Readdirnames | 2026-11-23 | 9a21f65b | — |
 | 9 | Remove portty.app/app link from README iPhone section | 2026-11-24 | 8a44e0c1 | — |
+| 10 | Re-enable e2e.yml (disabled after a billing-blocked run, not a workflow fault); add workflow_dispatch; first dispatch green | 2026-11-25 | 017ec8c6 | — |
+| 261126-dfn | Phase 18 follow-up: a late first-install failure from a DMG posts "Portty couldn't install version X." from the installer (osascript; Script Editor icon), and mover mode shows an earlier failed result once before retrying; VM row QT-WR02 PENDING (needs a VM with no installed Portty) | 2026-11-26 | 504b7287 | [261126-dfn-late-install-failure-notice](./quick/261126-dfn-late-install-failure-notice/) |
+| 261126-wsg | Fix flaky TestSameUserGate_WebSocket: the same-user subtest now waits for its subscriber to join the hub, then leave after close (the 101 precedes hub.Join); -race -count=200 clean | 2026-11-26 | d6120016 | [261126-wsg-flaky-same-user-gate-websocket-test](./quick/261126-wsg-flaky-same-user-gate-websocket-test/) |
+| 261126-e29 | Apply accepted ponytail-review fixes (quit-timeout relaunch, put-back keepDaemon, sweep removes failed new copies, one daemon client) and deletions (StageFrom, Busy, IsDir, installer-start var, repeated release-notes line) | 2026-11-26 | a40e8ae8 | [261126-e29-apply-accepted-ponytail-review-fixes-and](./quick/261126-e29-apply-accepted-ponytail-review-fixes-and/) |
 
 ## Deferred Items
 
@@ -453,6 +515,7 @@ Items acknowledged and deferred at milestone close, most recent first:
 | 4 | verification_deferred_human | /gsd-verify-work 4 |
 | 5 | verification_deferred_human | /gsd-verify-work 5 |
 | 6 | verification_deferred_human | /gsd-verify-work 6 |
+| 18 | verification_deferred_human | /gsd-verify-work 18 |
 
 Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appearance, VoiceOver) need both Macs. The user deferred them on 2026-11-16 ("push that UAT until later and move on"). Item 1 passed.
 
@@ -460,15 +523,18 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 
 Phase 5: VM matrix, post-review regression, iteration-3 spot check and browser view all ran on two Tart VMs over the real tailnet. Two-physical-Mac items M-84 (overnight reattach, VERF-01 gate) and M-85 (lid sleep + real Wi-Fi AP switch) deferred by the user on 2026-11-18 ("Defer, keep going"). The milestone audit lists them.
 
+Phase 18: verification human_needed (14/15, no blocking gaps); closed 2026-11-26 by user decision. Tracked in 18-UAT.md: M-169 parts 1-2 on the office Mac (SC1's office-Mac half), real Gatekeeper enforcement (VM assessments disabled), M-170 Downloads prompt with a Developer ID release, M-171 Finder Put Back.
+
 Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verification 7/7, human_needed. Real-release items (M-93: first v* tag CI run with DMG identifier signing, notarize and staple; notarized DMG verify and reveal; delivered notification) need a public repo and release secrets, so they wait for the first real release. U-06 noasset re-run after WR-04 is still to do in the VM.
 
 ## Session Continuity
 
-Last session: 2026-11-23T19:28:50.235Z
-Stopped at: Phase 16 complete — all phases complete
+Last session: 2026-11-25T18:44:58.433Z
+Stopped at: Phase 17 complete, ready to plan Phase 18
 Resume file: None
 
 ## Operator Next Steps
 
 
-- Start the next milestone with /gsd-new-milestone
+- Discuss and plan Phase 17 (Desktop Feasibility Spike): /gsd-discuss-phase 17, then /gsd-plan-phase 17
+- Phase 18 (Self-Installing Updates) is independent of the spike and can be planned alongside it

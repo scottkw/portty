@@ -1,0 +1,22 @@
+p18-state row=R1-lite vm_utc=2026-11-25T22:50:33Z
+installed_version=1.8.1
+gui_pid_count=1
+daemon_version=v1.8.1
+attached_images=1
+cache_dmgs=0
+staging_dirs=1
+--- gui pids and executables
+89670 /Applications/Portty.app/Contents/MacOS/Portty
+--- daemon pids and executables
+89694 /Applications/Portty.app/Contents/MacOS/Portty
+--- attached images
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/d1b36c40ecf011c1a2dfeacc93215881ad4cf525.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+--- update cache
+total 0
+drwx------  2 admin  staff   64 Nov 25 22:50 .
+drwxr-xr-x  5 admin  staff  160 Nov 25 22:50 ..
+--- staging dirs
+/Applications/.Portty-update-3020685341
+--- update.log tail
+2026/11/25 22:50:20 vmpreview: verify-mode adhoc
+2026/11/25 22:50:25 installer: updated 

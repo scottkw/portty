@@ -1,0 +1,33 @@
+{
+  "codec": {
+    "mimeType": "video/H264",
+    "sdpFmtpLine": "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
+  },
+  "connectedMs": 933,
+  "decoderImplementation": null,
+  "firstFrameMs": 2378,
+  "frameHeight": 1440,
+  "frameWidth": 2560,
+  "framesDecoded": 7,
+  "framesDropped": 0,
+  "framesPerSecond": null,
+  "ice": "lite",
+  "iceConnectionState": "connected",
+  "jitterBufferDelay": 1.396567,
+  "jitterBufferEmittedCount": 7,
+  "powerEfficientDecoder": null,
+  "row": "R12",
+  "rttMedianMs": 54.8,
+  "selectedPair": {
+    "localType": "prflx",
+    "localAddress": "",
+    "localPort": 64880,
+    "remoteType": "host",
+    "remoteAddress": "100.x.x.1",
+    "remotePort": 47801,
+    "protocol": "udp"
+  },
+  "tag": "chrome",
+  "totalDecodeTime": 0.034527999999999996,
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36"
+}

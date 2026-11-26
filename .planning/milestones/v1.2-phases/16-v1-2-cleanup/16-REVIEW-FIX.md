@@ -1,7 +1,7 @@
 ---
 phase: 16-v1-2-cleanup
 fixed_at: 2026-11-23T00:00:00Z
-review_path: /Users/ken/dev/portty/.planning/phases/16-v1-2-cleanup/16-REVIEW.md
+review_path: .planning/phases/16-v1-2-cleanup/16-REVIEW.md
 iteration: 1
 findings_in_scope: 2
 fixed: 2
@@ -12,7 +12,7 @@ status: all_fixed
 # Phase 16: Code Review Fix Report
 
 **Fixed at:** 2026-11-23
-**Source review:** /Users/ken/dev/portty/.planning/phases/16-v1-2-cleanup/16-REVIEW.md
+**Source review:** .planning/phases/16-v1-2-cleanup/16-REVIEW.md
 **Iteration:** 1
 
 **Summary:**

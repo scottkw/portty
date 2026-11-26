@@ -1,0 +1,36 @@
+p18-state row=F7 vm_utc=2026-11-26T05:48:34Z
+installed_version=1.8.0
+gui_pid_count=1
+daemon_version=v1.8.0
+attached_images=1
+cache_dmgs=1
+staging_dirs=1
+run_dirs=0
+trash_portty=4
+--- gui pids and executables
+27399 /Applications/Portty.app/Contents/MacOS/Portty
+--- daemon pids and executables
+26942 /Applications/Portty.app/Contents/MacOS/Portty
+--- attached images
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/d1b36c40ecf011c1a2dfeacc93215881ad4cf525.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+--- update cache
+total 15520
+drwx------  4 admin  staff      128 Nov 26 05:48 .
+drwxr-xr-x  5 admin  staff      160 Nov 25 22:50 ..
+-rw-------@ 1 admin  staff  7941567 Nov 26 05:48 portty-v1.8.1-darwin-universal.dmg
+-rw-------  1 admin  staff        6 Nov 26 05:48 skip-version
+--- staging dirs
+/Applications/.Portty-update-3019163974
+--- run dirs
+--- trash: Portty bundles, version, ctime (the move into the Trash; 18-05)
+Portty 05-23-52-331.app 1.1.90 2026-11-26T05:23:52
+Portty 05-38-24-381.app 1.8.0 2026-11-26T05:38:32
+Portty 05-43-41-057.app 1.8.0 2026-11-26T05:43:51
+Portty.app 1.8.0 2026-11-26T05:19:52
+--- update.log tail
+update: installer started (copy 21ms, start 413ms)
+2026/11/26 05:48:22 vmpreview: verify-mode adhoc
+2026/11/26 05:48:22 installer: swap failed
+2026/11/26 05:48:22 installer: failed swap
+2026/11/26 05:48:22 installer: open attempt 1 failed
+update: result failed 1.8.0 to 1.8.1 swap

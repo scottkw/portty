@@ -1,0 +1,8 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "SpikeShell",
+  "outputfilename": "SpikeShell",
+  "frontend:install": "",
+  "frontend:build": "",
+  "assetdir": "frontend/dist"
+}

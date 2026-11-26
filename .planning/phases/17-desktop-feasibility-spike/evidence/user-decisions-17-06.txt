@@ -1,0 +1,3 @@
+User decisions after plan 17-06 (2026-11-24), recorded by the orchestrator:
+- R15 and R17: user confirmed GO with the limit (capture and stream continuity hold while the display is held awake; unaided display sleep ~31 s after lock ends the SCK stream with -3815). Phase 19 must hold a display-awake assertion while viewed (DPRM-04).
+- R16: user chose keep PARTIAL (helper 3/3, daemon 2/3). Re-test daemon unlock reliability later; the 17-12 closure checkpoint asks again.

@@ -240,7 +240,7 @@ Add `window.addEventListener('pageshow', this.onWake)` and remove it in the matc
 
 ### `TESTING.md` (docs, standing rule)
 
-**Analog:** Phase 13 note (TESTING.md :36) and the M-NN items (:1723-1743). Per `/Users/ken/dev/portty/CLAUDE.md`: add new test files to Section 2, traceability rows to Section 4 (repo-relative `.go/.ts/.tsx/.sh` paths only), M-145..M-150 to Section 5; run `bash tests/check-traceability-paths.sh` before committing.
+**Analog:** Phase 13 note (TESTING.md :36) and the M-NN items (:1723-1743). Per `CLAUDE.md`: add new test files to Section 2, traceability rows to Section 4 (repo-relative `.go/.ts/.tsx/.sh` paths only), M-145..M-150 to Section 5; run `bash tests/check-traceability-paths.sh` before committing.
 
 ## Shared Patterns
 

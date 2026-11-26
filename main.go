@@ -243,6 +243,9 @@ func runCLI(args []string) {
 		return
 	}
 	cmd := args[0]
+	if cmd == installUpdateCmd { // internal: no daemon flags, no daemon ensure, no usage entry
+		os.Exit(runInstallUpdateFunc(args[1:]))
+	}
 	var forceRestart, keepDaemon bool
 	var err error
 	if cmd != "open" { // open ignores both daemon flags (cmdOpen drops them) and never restarts the daemon

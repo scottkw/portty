@@ -1,0 +1,54 @@
+R4-d log, 1.8.1 rig build of e03f4ef1 (DMG), 18-09
+--- menu-bar items (AXExtrasMenuBar per app.portty.Portty process)
+pid=47238 exe=/Applications/Portty.app/Contents/MacOS/Portty menubar_items=1
+menubar_items_total=1
+=== during-prompt capture
+portty procs: [46709:zsh -c ]
+apps: /Applications=1.8.1 ~/Applications=
+trash Portty*.app=0 trash dmgs=0 downloads: .localized 
+volumes:  portty images: 0
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+installed before: 1.8.1 Info.plist mtime 2026-11-26T05:12:00 bundle mtime 2026-11-26T05:12:00 inode 810688 exe sha 646cb1713d6d4b87
+06:07:16.081Z dmg in Downloads: 7941560 ~/Downloads/portty-v1.8.1-darwin-arm64.dmg xattrs: [com.apple.FinderInfo: deviddsk com.apple.macl:  ]
+06:07:17.624Z open dmg
+06:07:18.228Z volume: /Volumes/Portty/Portty.app mount: apfs, local, nodev, nosuid, read-only, journaled, noowners, mounted by admin
+06:07:18.260Z open app (T0)
+06:07:18.482Z open rc=0
+installed after: 1.8.1 Info.plist mtime 2026-11-26T05:12:00 bundle mtime 2026-11-26T05:12:00 inode 810688 exe sha 646cb1713d6d4b87
+portty procs: [47238:/Applications/Portty.app/Contents/MacOS/Portty  47287:/Applications/Portty.app/Contents/MacOS/Portty daemon ]
+apps: /Applications=1.8.1 ~/Applications=
+trash Portty*.app=0 trash dmgs=1 downloads: .localized 
+volumes:  portty images: 0
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+=== after
+extra vm_utc=2026-11-26T06:07:44Z
+portty procs: [47238:/Applications/Portty.app/Contents/MacOS/Portty  47287:/Applications/Portty.app/Contents/MacOS/Portty daemon ]
+apps: /Applications=1.8.1 ~/Applications=
+trash Portty*.app=0 trash dmgs=1 downloads: .localized 
+volumes:  portty images: 0
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+--- trash (Portty bundles and DMGs: name, version or size, ctime UTC)
+portty-v1.8.1-darwin-arm64.dmg 7941560 06:07:32
+--- /Applications/Portty.app: version 1.8.1 Info.plist mtime 2026-11-26T05:12:00 quarantine lines 0
+--- AppTranslocation mounts: 0
+--- update.log
+update: installer started (copy 52ms, start 342ms)
+2026/11/26 06:07:20 installer: opened 
+update: result opened 1.8.1 to 1.8.1 
+--- result file: none
+--- timeline (0.4 s poller, changes only)
+06:07:16.324Z guis=[] daemons=[] installer=[] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:07:18.014Z guis=[] daemons=[] installer=[] image=1 vol=gone app=1.8.1 home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:07:18.744Z guis=[47069:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=1 vol=mounted app=1.8.1 home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:07:19.941Z guis=[] daemons=[] installer=[47182 ] image=1 vol=mounted app=1.8.1 home_app= staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+06:07:20.561Z guis=[47238:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=0 result=opened dl_dmg=0 trash_dmg=1 trash_app=0
+06:07:21.353Z guis=[47238:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[47287:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=0 result= dl_dmg=0 trash_dmg=1 trash_app=0
+--- window list (1 s, changes only)
+06:07:16.260Z Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:07:18.786Z Finder|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:07:21.279Z Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+06:07:22.714Z Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- tccd Downloads-service lines, 06:07:14 to 06:07:45 UTC
