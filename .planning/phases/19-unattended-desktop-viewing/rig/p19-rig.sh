@@ -24,6 +24,9 @@
 #   assertions             office: pmset assertions naming Portty
 #   lsof-desktop           office: the daemon's UDP/TCP sockets, tailnet address shown generically
 #   pcap START|STOP        office: tcpdump counts for UDP 3478, 19302, 5353 by process
+#   perm-poll SECS         office: GET /desktop/permissions every 2 s, timestamped
+#   tcc-log MINUTES        office: tccd log lines naming app.portty.Portty
+#   notif-list             office: Portty's records in the notification database, with a count
 #
 # It lives under .planning on purpose (like p18-rig.sh): tests/check-brand.sh keeps the
 # vmpreview tag out of scripts/, build.sh and .github. Every launchctl call, kill, rm and
@@ -448,6 +451,51 @@ EOF
   esac
 }
 
+# perm-poll SECS: GET /desktop/permissions on the office daemon every 2 s, one line per answer
+# (guest epoch seconds, so a flip can be timed against the click that caused it).
+cmd_perm_poll() {
+  local secs=${1:-60}
+  require_vm
+  vmsh "$secs" <<'EOF' | scrub
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+end=$(( $(date +%s) + $1 ))
+while [ "$(date +%s)" -lt "$end" ]; do
+  echo "p19-perm epoch=$(date +%s) $(curl -s -m 5 --unix-socket "$SOCK" http://localhost/desktop/permissions)"
+  sleep 2
+done
+exit 0
+EOF
+}
+
+# tcc-log MINUTES: what tccd logged about Portty in the last MINUTES in the office VM; the long
+# hex identifiers are cut so the lines read as one decision each.
+cmd_tcc_log() {
+  local mins=${1:-5}
+  require_vm
+  vmsh "$mins" <<'EOF' | scrub
+log show --last "${1}m" --predicate 'subsystem == "com.apple.TCC"' --style compact 2>/dev/null |
+  grep -i 'app.portty.Portty' | sed -E 's/[0-9a-f]{16,}/HEX/g' | cut -c1-260
+exit 0
+EOF
+}
+
+# notif-list: Portty's records in the office user's notification database (sqlite3, read-only),
+# title and body decoded; the count line is what V1 compares before and after a lapse.
+cmd_notif_list() {
+  require_vm
+  vmsh <<'EOF' | scrub
+D="$HOME/Library/Group Containers/group.com.apple.usernoted/db2/db"
+sqlite3 -readonly "$D" "select r.rec_id, a.identifier, datetime(r.delivered_date + 978307200, 'unixepoch'), hex(r.data) from record r join app a on a.app_id = r.app_id where lower(a.identifier) like '%portty%' order by r.rec_id;" 2>&1 |
+while IFS='|' read -r id app dt hex; do
+  printf '%s' "$hex" | xxd -r -p > /tmp/p19-notif.plist
+  echo "rec=$id app=$app delivered_utc=$dt id=[$(plutil -extract req.iden raw -o - /tmp/p19-notif.plist 2>/dev/null)] title=[$(plutil -extract req.titl raw -o - /tmp/p19-notif.plist 2>/dev/null)] body=[$(plutil -extract req.body raw -o - /tmp/p19-notif.plist 2>/dev/null)]"
+done
+rm -f /tmp/p19-notif.plist
+echo "p19-notif-count=$(sqlite3 -readonly "$D" "select count(*) from record r join app a on a.app_id = r.app_id where lower(a.identifier) like '%portty%';" 2>&1)"
+exit 0
+EOF
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case "$sub" in
@@ -467,5 +515,8 @@ case "$sub" in
   assertions) cmd_assertions ;;
   lsof-desktop) cmd_lsof_desktop ;;
   pcap) cmd_pcap "$@" ;;
-  *) die "usage: $0 build|deploy|start-gui|sessions|state|quit-gui|quit-all|legacy-plist|clean|enable-desktop|safari-stats|safari-close|chrome-stats|assertions|lsof-desktop|pcap ..." ;;
+  perm-poll) cmd_perm_poll "$@" ;;
+  tcc-log) cmd_tcc_log "$@" ;;
+  notif-list) cmd_notif_list ;;
+  *) die "usage: $0 build|deploy|start-gui|sessions|state|quit-gui|quit-all|legacy-plist|clean|enable-desktop|safari-stats|safari-close|chrome-stats|assertions|lsof-desktop|pcap|perm-poll|tcc-log|notif-list ..." ;;
 esac

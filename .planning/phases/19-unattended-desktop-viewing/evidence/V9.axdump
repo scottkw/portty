@@ -1,0 +1,7 @@
+# V9: the two URL constants from app_desktop.go opened with /usr/bin/open in portty-test (System Settings quit first); axdump of the System Settings window after 4 s
+url: x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture
+AXWindow [AXStandardWindow] Title=Screen & System Audio Recording @-30,46 740x625
+           AXStaticText Value=Portty @230,179 69x24
+url: x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility
+AXWindow [AXStandardWindow] Title=Device Control and Data Access @-30,46 740x625
+           AXStaticText Value=Portty @230,185 69x24

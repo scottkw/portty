@@ -1,0 +1,9 @@
+daemon pid 57296
+--- unified log from the daemon pid, lines mentioning notification, last 12 minutes (the ObjC block logs 'dispatching native notification' first thing)
+2026-11-26 19:44:36.198 Df Portty[57296:14e0b7] [com.apple.coreaudio:AMCP] System_Input_Processing_Notification_Handler.mm:456   System_Input_Processing_Notification_Handler::is_vi_available(): Voice isolation DSP is ava
+(end)
+--- any process: Portty dispatch, delivery or authorization lines, last 12 minutes
+2026-11-26 19:46:43.624 Df log[59168:14f45b] [com.apple.log:] log run noninteractively, parent: 59146 (bash), args: 'log' 'show' '--last' '12m' '--style' 'compact' '--predicate' 'eventMessage CONTAINS 'Portty: dispatchin
+2026-11-26 19:47:09.103 Df log[59391:14f6a8] [com.apple.log:] log run noninteractively, parent: 59377 (bash), args: 'log' 'show' '--last' '12m' '--style' 'compact' '--predicate' 'eventMessage CONTAINS 'Portty: dispatchin
+(end)
+--- usernoted settings for the bundle

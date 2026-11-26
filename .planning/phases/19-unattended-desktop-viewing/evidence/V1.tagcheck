@@ -1,0 +1,5 @@
+# T-19-42 on the real binaries (host-side grep of the two built app bundles; nothing was run on the host)
+plain build 19.1.0 binary (tags: wailsassets), occurrences of the debug route text desktop/debug/lapse: 0
+vmdesktop build 19.1.1 binary (tags: wailsassets vmdesktop), occurrences: 2
+# In portty-test, with the plain 19.1.0 build installed and running under launchd:
+POST /desktop/debug/lapse on the daemon socket: http=404

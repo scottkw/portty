@@ -1,0 +1,10 @@
+p19-safari t=1 stats=null title=Portty
+p19-safari t=2 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":17,"frameWidth":2560,"frameHeight":1440,"bytesReceived":154446,"cspViolations":0} title=Portty Desktop (debug fd=17 fw=2560 csp=0 st=streaming)
+p19-safari t=4 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":17,"frameWidth":2560,"frameHeight":1440,"bytesReceived":154446,"cspViolations":0} title=Portty Desktop (debug fd=17 fw=2560 csp=0 st=streaming)
+p19-safari t=5 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":17,"frameWidth":2560,"frameHeight":1440,"bytesReceived":154446,"cspViolations":0} title=Portty Desktop (debug fd=17 fw=2560 csp=0 st=streaming)
+p19-safari t=6 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":18,"frameWidth":2560,"frameHeight":1440,"bytesReceived":272199,"cspViolations":0} title=Portty Desktop (debug fd=18 fw=2560 csp=0 st=streaming)
+p19-safari t=7 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":18,"frameWidth":2560,"frameHeight":1440,"bytesReceived":272199,"cspViolations":0} title=Portty Desktop (debug fd=18 fw=2560 csp=0 st=streaming)
+p19-safari t=8 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":18,"frameWidth":2560,"frameHeight":1440,"bytesReceived":272199,"cspViolations":0} title=Portty Desktop (debug fd=18 fw=2560 csp=0 st=streaming)
+p19-safari t=9 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":18,"frameWidth":2560,"frameHeight":1440,"bytesReceived":299573,"cspViolations":0} title=Portty Desktop (debug fd=18 fw=2560 csp=0 st=streaming)
+p19-safari t=10 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":18,"frameWidth":2560,"frameHeight":1440,"bytesReceived":389953,"cspViolations":0} title=Portty Desktop (debug fd=18 fw=2560 csp=0 st=streaming)
