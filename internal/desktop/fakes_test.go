@@ -225,6 +225,13 @@ func (s *fakeSource) emit(kf bool) {
 	}
 }
 
+// closeErrs closes the Errors channel alone (DisplaySource closes it at Stop).
+func (s *fakeSource) closeErrs() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	close(s.errs)
+}
+
 // fail reports err on the source's Errors channel.
 func (s *fakeSource) fail(err error) {
 	s.mu.Lock()

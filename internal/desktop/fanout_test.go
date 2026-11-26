@@ -501,3 +501,20 @@ func TestFanout_RTPTimestampFollowsCaptureTime(t *testing.T) {
 		t.Errorf("stamp step after a 14 h gap = %d, want %d (mod 2^32)", got, want)
 	}
 }
+
+// WR-06: a closed Errors channel is not an error. The fan-out stops reading it
+// instead of logging "capture error <nil>" on every pass (a busy loop when
+// only that channel is closed), and frames keep flowing.
+func TestFanout_ClosedErrorsChannelIsQuiet(t *testing.T) {
+	logs := captureLogs(t)
+	r := newRig(t)
+	r.join()
+	r.src.last().closeErrs()
+	time.Sleep(100 * time.Millisecond)
+	if n := logs.count("capture error"); n != 0 {
+		t.Fatalf("logged %d capture errors for a closed Errors channel, want 0", n)
+	}
+	before := r.env.mgr.FramesSeenForTest()
+	r.src.last().emit(false)
+	eventually(t, 5*time.Second, "a frame after the Errors channel closed", func() bool { return r.env.mgr.FramesSeenForTest() > before })
+}

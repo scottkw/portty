@@ -802,7 +802,11 @@ func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 				continue
 			}
 			m.writeUnit(au.Keyframe, packetize(pkt, au))
-		case err := <-errs:
+		case err, ok := <-errs:
+			if !ok {
+				errs = nil // a nil channel never fires; the frames case ends the loop
+				continue
+			}
 			slog.Warn("desktop: capture error", "err", err)
 			m.noteSourceError(err)
 			m.pushIfChanged(context.Background())
