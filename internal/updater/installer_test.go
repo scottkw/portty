@@ -1069,8 +1069,10 @@ func TestInstaller_OpenInstalledOpenFailure(t *testing.T) {
 var moverOutcome = map[string]string{KindMove: OutcomeUpdated, KindOpenInstalled: OutcomeOpened}
 
 // The Trash of a DMG in ~/Downloads can wait on the system's Downloads prompt (18-06 R4-smoke,
-// decision option A), so the final result is written and the run folder removed before it.
-func TestInstaller_MoverResultAndRunDirBeforeTrash(t *testing.T) {
+// decision option A), so the final result is written before it. The run folder holds the
+// installer's own executable, and tccd refuses without a prompt once that is gone
+// (R4-smoke-rundir-first), so the folder is removed only after the Trash returns.
+func TestInstaller_MoverResultBeforeTrashRunDirAfter(t *testing.T) {
 	for _, c := range []struct {
 		name     string
 		kind     string
@@ -1086,7 +1088,7 @@ func TestInstaller_MoverResultAndRunDirBeforeTrash(t *testing.T) {
 			env.RemoveRunDir = func() { _ = os.RemoveAll(runDir) }
 			trash := env.Trash
 			var atTrash Result
-			var hadResult, runDirLeft bool
+			var hadResult, runDirAtTrash bool
 			env.Trash = func(p string) error {
 				if p == f.job.ImagePath {
 					b, err := os.ReadFile(f.resPath())
@@ -1094,7 +1096,7 @@ func TestInstaller_MoverResultAndRunDirBeforeTrash(t *testing.T) {
 						atTrash = rbDecode(t, b)
 					}
 					_, err = os.Lstat(runDir)
-					runDirLeft = err == nil
+					runDirAtTrash = err == nil
 				}
 				return trash(p)
 			}
@@ -1108,8 +1110,11 @@ func TestInstaller_MoverResultAndRunDirBeforeTrash(t *testing.T) {
 			if !hadResult || atTrash.Outcome != r.Outcome {
 				t.Errorf("result file at the image Trash = %+v (present %v), want %s written first", atTrash, hadResult, r.Outcome)
 			}
-			if runDirLeft {
-				t.Error("run folder still there when the image Trash was called")
+			if !runDirAtTrash {
+				t.Error("run folder already removed when the image Trash was called (tccd cannot prompt)")
+			}
+			if _, err := os.Lstat(runDir); err == nil {
+				t.Error("run folder left after the Trash returned")
 			}
 			if len(f.opens) != 1 {
 				t.Errorf("opens = %+v, want one relaunch before the Trash", f.opens)
@@ -1148,6 +1153,8 @@ func TestInstaller_MoverTrashBounded(t *testing.T) {
 	t.Cleanup(func() { trashWait = old })
 	f := newMoveFix(t, KindMove, false)
 	env := f.env()
+	removed := false
+	env.RemoveRunDir = func() { removed = true }
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	env.Trash = func(string) error { <-release; return nil }
@@ -1167,5 +1174,8 @@ func TestInstaller_MoverTrashBounded(t *testing.T) {
 	}
 	if f.logged("dmg kept") != 1 {
 		t.Errorf("logs = %q, want one dmg kept", f.logs)
+	}
+	if !removed {
+		t.Error("run folder not removed after the Trash wait ran out")
 	}
 }
