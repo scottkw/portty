@@ -2,14 +2,14 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Desktop Sharing
-current_phase: 18.1
+current_phase: "18.1"
 current_phase_name: Apple Silicon Release Pipeline
 status: executing
 stopped_at: Phase 18 complete (human verification deferred), Phase 18.1 next
-last_updated: "2026-11-25T22:55:52.056Z"
+last_updated: "2026-11-26T16:33:55.859Z"
 last_activity: 2026-11-26
 last_activity_desc: Phase 18 closed with human_needed items tracked in 18-UAT.md
-state_head: bd893eb6417e059f32616a7cfded9ba720e8fc55
+state_head: a40e8ae8a0be660f7b30e010190640cae76802b8
 progress:
   total_phases: 8
   completed_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 
 Phase: 18.1 (Apple Silicon Release Pipeline) — next
 Status: Phase 18 complete 2026-11-26 (verification human_needed, deferred; see Deferred Verification)
-Last activity: 2026-11-26 — Phase 18 closed; late first-install failure message fix runs as a quick task
+Last activity: 2026-11-26 - Completed quick task 261126-e29: Apply accepted ponytail-review fixes and deletions
 
 ## Performance Metrics
 
@@ -456,6 +456,7 @@ Recent decisions affecting current work:
 | 10 | Re-enable e2e.yml (disabled after a billing-blocked run, not a workflow fault); add workflow_dispatch; first dispatch green | 2026-11-25 | 017ec8c6 | — |
 | 261126-dfn | Phase 18 follow-up: a late first-install failure from a DMG posts "Portty couldn't install version X." from the installer (osascript; Script Editor icon), and mover mode shows an earlier failed result once before retrying; VM row QT-WR02 PENDING (needs a VM with no installed Portty) | 2026-11-26 | 504b7287 | [261126-dfn-late-install-failure-notice](./quick/261126-dfn-late-install-failure-notice/) |
 | 261126-wsg | Fix flaky TestSameUserGate_WebSocket: the same-user subtest now waits for its subscriber to join the hub, then leave after close (the 101 precedes hub.Join); -race -count=200 clean | 2026-11-26 | d6120016 | [261126-wsg-flaky-same-user-gate-websocket-test](./quick/261126-wsg-flaky-same-user-gate-websocket-test/) |
+| 261126-e29 | Apply accepted ponytail-review fixes (quit-timeout relaunch, put-back keepDaemon, sweep removes failed new copies, one daemon client) and deletions (StageFrom, Busy, IsDir, installer-start var, repeated release-notes line) | 2026-11-26 | a40e8ae8 | [261126-e29-apply-accepted-ponytail-review-fixes-and](./quick/261126-e29-apply-accepted-ponytail-review-fixes-and/) |
 
 ## Deferred Items
 
