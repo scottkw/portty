@@ -152,3 +152,16 @@ func TestConsumeInstallResult_UpdatedAndBadFilesChangeNothing(t *testing.T) {
 		})
 	}
 }
+
+func TestTrashItem_RefusesUnderTest(t *testing.T) {
+	p := filepath.Join(t.TempDir(), updater.BundleName)
+	if err := os.Mkdir(p, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := trashItem(p); err == nil {
+		t.Fatal("trashItem succeeded in a test binary")
+	}
+	if _, err := os.Lstat(p); err != nil {
+		t.Errorf("the refused path was moved: %v", err)
+	}
+}
