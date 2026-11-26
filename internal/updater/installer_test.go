@@ -1000,11 +1000,15 @@ func TestInstaller_MoveFirstInstallUnhealthy(t *testing.T) {
 	if n := f.rel.called("open -R"); n != 0 {
 		t.Errorf("revealed %d times while the new GUI runs", n)
 	}
+	if n := f.rel.called("osascript"); n != 0 {
+		t.Errorf("posted %d notices while the new GUI runs", n)
+	}
 }
 
 // WR-02: a mover failure after the DMG's GUI quit must leave the user something to act on: the
 // installed copy (or, with none, the DMG) revealed in Finder, a result the next start can read and
-// no quarantine-cleared staging copy that no GUI would ever sweep.
+// no quarantine-cleared staging copy that no GUI would ever sweep. With no GUI left to read the
+// result, the installer also posts the failure itself (quick 261126-dfn).
 func TestInstaller_MoverFailureLeavesSomethingToActOn(t *testing.T) {
 	for _, c := range []struct {
 		name     string
@@ -1021,6 +1025,8 @@ func TestInstaller_MoverFailureLeavesSomethingToActOn(t *testing.T) {
 			func(f *rbFix) string { return f.job.Target }},
 		{"open-installed never opens", KindOpenInstalled, func(f *rbFix) { f.openErr = func(bool, int) error { return errors.New("exit status 1") } }, "open",
 			func(f *rbFix) string { return f.job.Target }},
+		{"first install, DMG GUI never quits", KindMove, func(f *rbFix) { f.alive[400] = true }, "quit-timeout",
+			func(f *rbFix) string { return f.job.ImagePath }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newMoveFix(t, c.kind, false)
@@ -1035,7 +1041,11 @@ func TestInstaller_MoverFailureLeavesSomethingToActOn(t *testing.T) {
 			if n := f.rel.called("open -R " + c.revealed(f)); n != 1 || f.rel.called("open -R") != 1 {
 				t.Errorf("calls = %q, want one reveal of %s", f.rel.recorded(), c.revealed(f))
 			}
-			if c.kind == KindMove && c.reason != "open" && !f.stagingGone() {
+			notice := "Portty couldn't install version " + f.job.NewVersion + "."
+			if n := f.rel.called("/usr/bin/osascript", "display notification (item 1 of argv)", notice); n != 1 || f.rel.called("osascript") != 1 {
+				t.Errorf("calls = %q, want one notice %q", f.rel.recorded(), notice)
+			}
+			if c.kind == KindMove && c.reason != "open" && c.reason != "quit-timeout" && !f.stagingGone() {
 				t.Error("staging copy left after a failed first install")
 			}
 		})

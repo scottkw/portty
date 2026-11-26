@@ -395,7 +395,8 @@ func relaunch(ctx context.Context, env InstallerEnv, app string, launchEnv ...st
 // gets there, its GUI exits, or it never opens, its GUI is stopped, the old bundle is swapped back
 // and relaunched, and the daemon is left alone (UPD-07). Every outcome is written to
 // env.ResultPath before any relaunch of the old app. On success the old bundle goes to the Trash.
-// A mover job that ends with no GUI running reveals the installed copy, or the DMG, in Finder.
+// A mover job that ends failed with no GUI running reveals the installed copy, or the DMG, in
+// Finder, and posts the failure.
 // Logs carry step names only.
 func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	r := Result{V: 1, OldVersion: j.OldVersion, NewVersion: j.NewVersion, DMG: j.DMG}
@@ -413,7 +414,7 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	}
 	// revealLeft: a mover job ends after the DMG's GUI quit and its volume was ejected, so when no
 	// GUI of the target runs, the user is shown the installed copy in Finder, or with none the DMG
-	// to open again; the result tells the next start why (WR-02).
+	// to open again (WR-02), and the failure is posted, since no GUI may ever read the result.
 	revealLeft := func() {
 		if pids, err := env.GUIPids(exe); !mover || err != nil || len(pids) > 0 {
 			return
@@ -426,6 +427,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 		defer cancel()
 		if p == "" || Reveal(rctx, env.Run, p) != nil {
 			env.Logf("installer: nothing revealed")
+		}
+		if body, ok := ResultText(r); ok && Notify(rctx, env.Run, body) != nil {
+			env.Logf("installer: failure notice not posted")
 		}
 	}
 	// finishOpen writes the outcome, then relaunches whatever the target holds. A rollback whose
@@ -514,7 +518,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	for env.Alive(j.OldPID) {
 		if ctx.Err() != nil || !env.Now().Before(quitBy) {
 			if mover { // the DMG's GUI has no daemon or sessions and quits itself: never killed
-				return finish(OutcomeFailed, "quit-timeout")
+				finish(OutcomeFailed, "quit-timeout")
+				revealLeft()
+				return r
 			}
 			pids, err := env.GUIPids(exe)
 			if err != nil || !slices.Contains(pids, j.OldPID) {

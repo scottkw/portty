@@ -171,14 +171,14 @@ func ClearQuarantine(ctx context.Context, run Runner, path string) error {
 	return nil
 }
 
-// SafeRunner is base, except that a test binary never runs hdiutil, open or ditto: those mount
-// disk images, start apps and copy over the user's files (T-18-08). ExecRunner itself is
+// SafeRunner is base, except that a test binary never runs hdiutil, open, ditto or osascript:
+// those mount disk images, start apps, copy over the user's files and post notifications (T-18-08). ExecRunner itself is
 // unchanged for the env-gated TestRealDMG.
 func SafeRunner(base Runner) Runner {
 	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		if testing.Testing() {
 			switch name {
-			case "/usr/bin/hdiutil", "/usr/bin/open", "/usr/bin/ditto":
+			case "/usr/bin/hdiutil", "/usr/bin/open", "/usr/bin/ditto", "/usr/bin/osascript":
 				return nil, fmt.Errorf("refusing to run %s from a test binary", filepath.Base(name))
 			}
 		}
@@ -193,6 +193,29 @@ func Reveal(ctx context.Context, run Runner, path string) error {
 		return fmt.Errorf("%w: %v", ErrReveal, err)
 	}
 	return nil
+}
+
+// Notify posts a notification titled Portty with osascript. The mover's installer uses it when no
+// GUI is left to tell a failure (quick 261126-dfn): started straight from its run-* copy, outside
+// LaunchServices and with no run loop, it cannot use UNUserNotificationCenter, which also only
+// shows a permission prompt to an app never authorized (a first install). body goes in as argv,
+// never into the script text.
+func Notify(ctx context.Context, run Runner, body string) error {
+	_, err := run(ctx, "/usr/bin/osascript", "-e", "on run argv", "-e",
+		`display notification (item 1 of argv) with title "Portty"`, "-e", "end run", body)
+	return err
+}
+
+// ResultText is the sentence a failed or rolled-back result tells the user; false for any other
+// outcome.
+func ResultText(r Result) (string, bool) {
+	switch r.Outcome {
+	case OutcomeRolledBack:
+		return "The update to Portty " + r.NewVersion + " didn't take. Portty " + r.OldVersion + " is still installed.", true
+	case OutcomeFailed:
+		return "Portty couldn't install version " + r.NewVersion + ".", true
+	}
+	return "", false
 }
 
 // Clean removes Portty's own update files (every DMGAssetNames pattern and its .part) from dir;

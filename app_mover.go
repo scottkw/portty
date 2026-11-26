@@ -81,12 +81,39 @@ func statfsOrigin(path string) (string, error) {
 	return unix.ByteSliceToString(st.Mntfromname[:]), nil
 }
 
+// showEarlierResult takes the result an earlier install left and, for a failed or rolled-back
+// one, tells it in an alert, before runMover stages anything or its installer overwrites the
+// file (quick 261126-dfn). Mover mode never runs consumeInstallResult, and a result about this
+// same version still counts: the user is retrying this DMG. A keepDaemon result is put back, so
+// the installed copy's next start still keeps the daemon that holds the sessions (WR-04).
+func (a *App) showEarlierResult() {
+	res, ok, err := updater.TakeResult(installResultPath())
+	if err != nil {
+		updateLogf("mover: earlier result ignored: %v", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	updateLogf("mover: earlier result %s %s to %s %s", res.Outcome, res.OldVersion, res.NewVersion, res.Reason) // never res.DMG, a path
+	if res.KeepDaemon && updater.WriteResult(installResultPath(), res) != nil {
+		updateLogf("mover: earlier result not put back")
+	}
+	body, ok := updater.ResultText(res)
+	if _, verr := updater.ParseVersion(res.NewVersion); !ok || verr != nil {
+		return
+	}
+	a.setDockVisible(true) // Pitfall 10, as in runMover
+	a.alert(body, "")
+}
+
 // runMover moves the DMG's Portty into place (P4: a second GUI may be running from an installed
 // copy). No copy: stage beside /Applications/Portty.app (or ~/Applications) without asking. An
 // older copy: ask first, then stage beside it; Cancel opens it and quits, leaving the DMG alone.
 // A same or newer copy: open it (never a downgrade). The staged copy passes the update's checks
 // before its quarantine is cleared. Any failure shows why, reveals the app on the volume and quits.
 func (a *App) runMover(r updater.DMGRun) {
+	a.showEarlierResult()
 	version := strings.TrimPrefix(Version, "v")
 	system, home := moverRoots()
 	ctx, cancel := context.WithTimeout(context.Background(), moverStageTimeout)
