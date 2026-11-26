@@ -60,6 +60,7 @@ type rbFix struct {
 	// detaches holds, for each hdiutil detach the mover kinds run, how many swaps came before it.
 	detaches []int
 	rel      *siRelease // the fake tools behind runner (newMoveFix)
+	resDir   string     // holds the result file (a mover job has no cache DMG beside it)
 }
 
 // rbMarker is siMarker for a path that may not be a fake bundle (a DMG, or nothing): "" then.
@@ -98,6 +99,7 @@ func newRbFix(t *testing.T) *rbFix {
 		killOK:   map[int]bool{},
 		runner:   (&siRelease{}).run,
 		trashDir: t.TempDir(),
+		resDir:   filepath.Dir(dmg),
 	}
 	f.now = f.start
 	daemon := "v1.0.0"
@@ -112,7 +114,7 @@ func newRbFix(t *testing.T) *rbFix {
 	return f
 }
 
-func (f *rbFix) resPath() string { return filepath.Join(filepath.Dir(f.job.DMG), "update-result.json") }
+func (f *rbFix) resPath() string { return filepath.Join(f.resDir, "update-result.json") }
 
 func (f *rbFix) env() InstallerEnv {
 	return InstallerEnv{
