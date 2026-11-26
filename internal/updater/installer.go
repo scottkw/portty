@@ -322,7 +322,7 @@ type InstallerEnv struct {
 	GUIPids       func(exe string) ([]int, error)
 	DaemonVersion func() (string, error)
 	Trash         func(path string) error
-	RemoveRunDir  func() // the mover kinds call it after the result, before the DMG Trash; may be nil
+	RemoveRunDir  func() // the mover kinds call it after the DMG Trash returns or times out; may be nil
 	ResultPath    string
 	Now           func() time.Time
 	Sleep         func(time.Duration)
@@ -493,15 +493,17 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 			detached = true
 		}
 	}
-	// finishTrash writes the outcome, removes the run folder, then moves the DMG Portty was launched
-	// from to the Trash (UPD-08): only after its volume was ejected, and only while it still passes
-	// imageFileOK. A DMG already gone is fine. Trashing a file in ~/Downloads can wait on the
-	// system's one-time Downloads prompt (18-06 R4-smoke), so everything is recorded first and the
-	// wait is bounded; an unanswered or refused prompt keeps the DMG and changes no outcome.
+	// finishTrash writes the outcome, then moves the DMG Portty was launched from to the Trash
+	// (UPD-08): only after its volume was ejected, and only while it still passes imageFileOK. A DMG
+	// already gone is fine. Trashing a file in ~/Downloads can wait on the system's one-time
+	// Downloads prompt (18-06 R4-smoke), so the outcome is recorded first and the wait is bounded;
+	// an unanswered or refused prompt keeps the DMG and changes no outcome. The run folder goes
+	// last: it holds this installer's executable, and tccd refuses without a prompt once that is
+	// deleted (R4-smoke-rundir-first).
 	finishTrash := func(outcome string) Result {
 		finish(outcome, "")
 		if env.RemoveRunDir != nil {
-			env.RemoveRunDir()
+			defer env.RemoveRunDir()
 		}
 		switch {
 		case !detached || env.Trash == nil:
