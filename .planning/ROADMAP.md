@@ -138,7 +138,7 @@ Plans:
   2. When N+1 fails to start or never reports healthy, Portty puts build N back in `/Applications` and runs it by itself, with sessions intact, and says the update did not take. (UPD-07)
   3. Opening Portty from a mounted, quarantined DMG moves it to `/Applications` (or `~/Applications` when `/Applications` is not writable), relaunches from there, ejects the DMG and moves the downloaded DMG to the Trash. Two copies never end up running. (UPD-08)
   4. Every install failure (target not writable, App Management refusal, mount or copy failure, disk full) falls back to today's Reveal-in-Finder flow with a clear message. No relaunch ever stops at a Gatekeeper dialog. (UPD-09)
-**Plans**: 7/10 plans executed
+**Plans**: 10/10 plans executed
 
 Plans:
 **Wave 1**
@@ -159,13 +159,13 @@ Plans:
 - [x] 18-05-PLAN.md — UPD-06: old app to the Trash after health, startup sweep of interrupted installs; P3, R1-trash, S1
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 18-06-PLAN.md — UPD-08 mover: probes P4-P6, disk-image launch detection, installer move kinds (DMG trashed on every install path), mover mode with the Replace question; R4-smoke
+- [x] 18-06-PLAN.md — UPD-08 mover: probes P4-P6, disk-image launch detection, installer move kinds (DMG trashed on every install path), mover mode with the Replace question; R4-smoke
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 18-07-PLAN.md — Final VM matrix on one build: R1 with history and share link, R2-A/R2-B in derived windows, R3, F1-F7, every row backed by a rig capture; HealthTimeout tuning
+- [x] 18-07-PLAN.md — Final VM matrix on one build: R1 with history and share link, R2-A/R2-B in derived windows, R3, F1-F7, every row backed by a rig capture; HealthTimeout tuning
 
 **Wave 8** *(blocked on Wave 7 completion)*
-- [ ] 18-09-PLAN.md — Final VM mover matrix R4-a..R4-g on the same build; TESTING.md Category BI M-165..M-169; closure record with M-169 and SC1's office-Mac half human_needed
+- [x] 18-09-PLAN.md — Final VM mover matrix R4-a..R4-g on the same build; TESTING.md Category BI M-165..M-169; closure record with M-169 and SC1's office-Mac half human_needed
 
 ### Phase 18.1: Apple Silicon Release Pipeline (INSERTED)
 
@@ -297,7 +297,7 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
-| 18. Self-Installing Updates | v2.0 | 7/10 | In Progress | - |
+| 18. Self-Installing Updates | v2.0 | 10/10 | In Progress | - |
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 2/4 | In Progress | - |
 | 19. Unattended Desktop Viewing | v2.0 | 0/17 | Planned | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
