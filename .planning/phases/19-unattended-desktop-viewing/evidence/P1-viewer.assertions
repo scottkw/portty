@@ -1,0 +1,8 @@
+p19-assertions vm_utc=2026-11-26T19:25:46Z
+Now drawing from 'AC Power'
+   PreventUserIdleDisplaySleep    1
+   PreventUserIdleSystemSleep     1
+   pid 41613(Portty): [0x0001f3640001a6e6] 00:08:14 PreventUserIdleSystemSleep named: "Portty desktop viewer connected"  
+   pid 41613(Portty): [0x0001f34d0001a6e1] 00:08:37 PreventUserIdleSystemSleep named: "Portty always-available desktop on AC power"  
+   pid 41613(Portty): [0x0001f3640005a6e5] 00:08:14 PreventUserIdleDisplaySleep named: "Portty desktop viewer connected"  
+   pid 169(WindowServer): [0x0000001200098045] 00:03:31 UserIsActive named: "com.apple.iohideventsystem.queue.tickle.nxevent service:IOHIDSystem pid:41613 process:Portty"  

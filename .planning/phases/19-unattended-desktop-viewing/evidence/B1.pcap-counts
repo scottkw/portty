@@ -1,0 +1,5 @@
+p19-pcap total_packets=30
+p19-pcap portty_packets=0
+p19-pcap by_process:
+  28 tailscaled
+note: the 28 attributed packets are the tailscale daemon's own STUN probes (UDP 3478). The 2 unattributed packets are inbound STUN replies from port 3478 to the tailscale daemon's own port. No packet is from Portty and none is on UDP 19302 or 5353. Capture: tcpdump -i pktap,all -k NP, filter "udp port 3478 or udp port 19302 or udp port 5353", 30 s with one Safari viewer streaming (evidence/B1.viewer).
