@@ -457,6 +457,7 @@ Recent decisions affecting current work:
 | 261126-dfn | Phase 18 follow-up: a late first-install failure from a DMG posts "Portty couldn't install version X." from the installer (osascript; Script Editor icon), and mover mode shows an earlier failed result once before retrying; VM row QT-WR02 PENDING (needs a VM with no installed Portty) | 2026-11-26 | 504b7287 | [261126-dfn-late-install-failure-notice](./quick/261126-dfn-late-install-failure-notice/) |
 | 261126-wsg | Fix flaky TestSameUserGate_WebSocket: the same-user subtest now waits for its subscriber to join the hub, then leave after close (the 101 precedes hub.Join); -race -count=200 clean | 2026-11-26 | d6120016 | [261126-wsg-flaky-same-user-gate-websocket-test](./quick/261126-wsg-flaky-same-user-gate-websocket-test/) |
 | 261126-e29 | Apply accepted ponytail-review fixes (quit-timeout relaunch, put-back keepDaemon, sweep removes failed new copies, one daemon client) and deletions (StageFrom, Busy, IsDir, installer-start var, repeated release-notes line) | 2026-11-26 | a40e8ae8 | [261126-e29-apply-accepted-ponytail-review-fixes-and](./quick/261126-e29-apply-accepted-ponytail-review-fixes-and/) |
+| 261126-fw6 | 18.1 review CR-01 (build.sh --sign ends with verify-bundle.sh --notarized), WR-01 (jq missing fails closed), WR-02 (per-file fake codesign, --notarized cases), WR-03 (sign-bundle names a missing plist key); deterministic SharePopover Copied! test (50/50); mover takes back a stale keepDaemon result before installing a newer copy (WR-04 kept); VM row QT-FW6 PENDING (portty-test busy with Phase 19) | 2026-11-26 | 4eb9de0e | [261126-fw6-18-1-review-fixes-flaky-sharepopover-mov](./quick/261126-fw6-18-1-review-fixes-flaky-sharepopover-mov/) |
 
 ## Deferred Items
 
@@ -526,7 +527,7 @@ Phase 5: VM matrix, post-review regression, iteration-3 spot check and browser v
 
 Phase 18: verification human_needed (14/15, no blocking gaps); closed 2026-11-26 by user decision. Tracked in 18-UAT.md: M-169 parts 1-2 on the office Mac (SC1's office-Mac half), real Gatekeeper enforcement (VM assessments disabled), M-170 Downloads prompt with a Developer ID release, M-171 Finder Put Back.
 
-Phase 18.1: verification human_needed (3/4); closed 2026-11-26 by user decision. Tracked in 18.1-UAT.md: M-172, the SC2 runtime proof (first tag run of release.yml, both DMGs notarized, stapled and verified, v1.2.x updates through the universal name), runs at the Phase 23 v2.0.0-rc.1 dry run. Review findings CR-01 and WR-01..03 go to a follow-up quick task.
+Phase 18.1: verification human_needed (3/4); closed 2026-11-26 by user decision. Tracked in 18.1-UAT.md: M-172, the SC2 runtime proof (first tag run of release.yml, both DMGs notarized, stapled and verified, v1.2.x updates through the universal name), runs at the Phase 23 v2.0.0-rc.1 dry run. Review findings CR-01 and WR-01..03 fixed by quick 261126-fw6.
 
 Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verification 7/7, human_needed. Real-release items (M-93: first v* tag CI run with DMG identifier signing, notarize and staple; notarized DMG verify and reveal; delivered notification) need a public repo and release secrets, so they wait for the first real release. U-06 noasset re-run after WR-04 is still to do in the VM.
 
