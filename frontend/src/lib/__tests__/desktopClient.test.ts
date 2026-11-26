@@ -212,6 +212,7 @@ describe('backoff and unreachable', () => {
     await e.clock.advance(30000 - e.clock.t)
     expect(kinds(e)).toEqual(['reconnecting', 'unreachable'])
     const n = e.transports.length
+    lastT(e).dropWith(1006)
     await e.clock.advance(10000)
     expect(e.transports.length).toBeGreaterThan(n)
     expect(kinds(e)).toEqual(['reconnecting', 'unreachable'])
@@ -221,10 +222,10 @@ describe('backoff and unreachable', () => {
     const e = setup()
     e.client.start()
     await e.clock.advance(30000)
-    expect(kinds(e)).toEqual(['unreachable'])
+    expect(kinds(e)).toEqual(['reconnecting', 'unreachable'])
     await handshake(e)
     lastPC(e).fireTrack()
-    expect(kinds(e)).toEqual(['unreachable', 'streaming'])
+    expect(kinds(e)).toEqual(['reconnecting', 'unreachable', 'streaming'])
     const n = e.transports.length
     lastT(e).dropWith(1006)
     await e.clock.advance(999)
