@@ -1,0 +1,10 @@
+# A9-fix run 5 (VM portty-test, ad-hoc rig 1.8.0 to 1.8.1): /usr/bin/log show --style syslog, 00:24:04 to 00:24:12 UTC, predicate procNotFound / does not exist / -600; then that run's update.log
+Timestamp                       (process)[PID]    
+2026-11-26 00:24:06.777876+0000  localhost CoreServicesUIAgent[74809]: (LaunchServices) [com.apple.launchservices:open] Error Error Domain=NSOSStatusErrorDomain Code=-600 "procNotFound: no eligible process with specified descriptor" UserInfo={_LSLine=393, _LSFunction=_LSAnnotateAndSendAppleEventWithOptions, _LSFile=LSOpenCore.mm, _LSErrorMessage=procNotFound} attempting to send event 'aevt'/'rapp' [0x0,32b32b "Portty"]
+2026-11-26 00:24:06.777897+0000  localhost CoreServicesUIAgent[74809]: (LaunchServices) [com.apple.launchservices:default] LAUNCH: Launch failed in CSUI with error Error Domain=NSOSStatusErrorDomain Code=-600 "procNotFound: no eligible process with specified descriptor" UserInfo={_LSLine=393, _LSFunction=_LSAnnotateAndSendAppleEventWithOptions, _LSFile=LSOpenCore.mm, _LSErrorMessage=procNotFound}
+2026-11-26 00:24:06.779359+0000  localhost launchservicesd[137]: (RunningBoardServices) [com.apple.runningboard:assertion] Error acquiring assertion: <Error Domain=RBSAssertionErrorDomain Code=2 "Specified target process 49684 does not exist" UserInfo={NSLocalizedFailureReason=Specified target process 49684 does not exist}>
+--- update.log (run 5)
+update: installer started (copy 23ms, start 414ms)
+2026/11/26 00:24:06 vmpreview: verify-mode adhoc
+2026/11/26 00:24:06 installer: open attempt 1 failed
+2026/11/26 00:24:13 installer: updated 

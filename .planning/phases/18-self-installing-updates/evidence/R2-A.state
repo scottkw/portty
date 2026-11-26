@@ -1,0 +1,28 @@
+p18-state row=R2-A vm_utc=2026-11-26T00:15:57Z
+installed_version=1.8.0
+gui_pid_count=1
+daemon_version=v1.8.0
+attached_images=1
+cache_dmgs=1
+staging_dirs=0
+run_dirs=0
+--- gui pids and executables
+40913 /Applications/Portty.app/Contents/MacOS/Portty
+--- daemon pids and executables
+40393 /Applications/Portty.app/Contents/MacOS/Portty
+--- attached images
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/d1b36c40ecf011c1a2dfeacc93215881ad4cf525.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+--- update cache
+total 15480
+drwx------  4 admin  staff      128 Nov 26 00:15 .
+drwxr-xr-x  5 admin  staff      160 Nov 25 22:50 ..
+-rw-------@ 1 admin  staff  7917651 Nov 26 00:15 portty-v1.8.1-darwin-universal.dmg
+-rw-------  1 admin  staff        6 Nov 26 00:15 skip-version
+--- staging dirs
+--- run dirs
+--- update.log tail
+update: installer started (copy 25ms, start 415ms)
+2026/11/26 00:15:28 vmpreview: verify-mode adhoc
+vmpreview: fault exit-before-daemon
+2026/11/26 00:15:30 installer: rolled-back gui-exited
+update: result rolled-back 1.8.0 to 1.8.1 gui-exited
