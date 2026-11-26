@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # p19-rig.sh: VM rig for the Phase 19 launchd start model (19-07), modelled on p18-rig.sh.
 #
-#   build VERSION OUTDIR [--tags TAGS] [--sign adhoc|devid]
+#   build VERSION OUTDIR [--tags TAGS] [--sign adhoc|devid] [--skip-frontend]
 #                          host: wails build of the current tree, version patched like p18-rig.sh
 #   deploy APP [--keep-daemon]
 #                          VM: quit the GUIs, Quit All the daemon through its socket (unless
@@ -68,12 +68,13 @@ health() { curl -s -m 3 --unix-socket "$SOCK" http://localhost/health 2>/dev/nul
 
 cmd_build() {
   [ $# -ge 2 ] || die "usage: build VERSION OUTDIR [--tags TAGS] [--sign adhoc|devid]"
-  local ver=$1 out=$2 tags="wailsassets vmpreview" sign=adhoc
+  local ver=$1 out=$2 tags="wailsassets vmpreview" sign=adhoc skipfe=
   shift 2
   while [ $# -gt 0 ]; do
     case "$1" in
       --tags) tags=$2; shift 2 ;;
       --sign) sign=$2; shift 2 ;;
+      --skip-frontend) skipfe=-s; shift ;; # reuse an existing frontend/dist (the build needs no pnpm)
       *) die "build: unknown option $1" ;;
     esac
   done
@@ -88,7 +89,7 @@ cmd_build() {
   # Without this, two rig builds share Info.plist's 0.1.0.
   jq --arg v "$ver" '.info.productVersion = $v' wails.json > wails.json.p19tmp
   mv wails.json.p19tmp wails.json
-  GOTOOLCHAIN=go1.26.11 wails build -platform darwin/arm64 -tags "$tags" \
+  GOTOOLCHAIN=go1.26.11 wails build $skipfe -platform darwin/arm64 -tags "$tags" \
     -ldflags "-X main.Version=v$ver"
   mkdir -p "$out"
   cp -R build/bin/Portty.app "$out/Portty.app"
