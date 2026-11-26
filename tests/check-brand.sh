@@ -5,11 +5,12 @@
 #   - a github.com/scottkw/ link to any repo but portty    (BRND-06)
 #   - a mention of the macOS package manager, outside the
 #     Tailscale PATH code in internal/daemon/path.go       (DIST-03)
-#   - the VM-only vmpreview or vmwhois build tag in .github, build.sh or
-#     scripts, tracked or untracked: release builds must never carry
+#   - the VM-only vmpreview, vmwhois or vmdesktop build tag in .github,
+#     build.sh or scripts, tracked or untracked: release builds must never carry
 #     the fake Tailscale used for the Tart VM GUI check    (SHAR-01)
 #     the fake update feed of the M-92 VM update checks    (UPD)
-#     or the faked other-account WhoIs of the VM checks    (MOB-05)
+#     the faked other-account WhoIs of the VM checks       (MOB-05)
+#     or the simulated approval lapse of the VM checks     (DPRM-03)
 #   - a developer home path (/Users/<name>/) in any tracked file,
 #     .planning/ included; placeholders and /Users/admin (VM) are allowed
 #   - a real tailnet address (100.64.0.0/10) in .planning/ or TESTING.md
@@ -69,7 +70,7 @@ out=$(git grep -n -I -o -E 'github\.com/scottkw/[A-Za-z0-9_.-]+' -- ':!.planning
 check_status "$rc"
 report link "$(grep -v -E ':github\.com/scottkw/portty$' <<< "$out")"
 
-out=$(git grep -n -I --untracked -E 'vmpr[e]view|vmwh[o]is' -- .github build.sh scripts); rc=$?
+out=$(git grep -n -I --untracked -E 'vmpr[e]view|vmwh[o]is|vmd[e]sktop' -- .github build.sh scripts); rc=$?
 check_status "$rc"
 report vm-tag "$out"
 

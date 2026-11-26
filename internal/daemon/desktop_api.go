@@ -112,12 +112,19 @@ func (a *API) serverNeededLocked() bool {
 	return len(a.shares) > 0 || a.desktopCfg.AlwaysAvailable
 }
 
+// extraDesktopRoutes lets a build-tagged file add routes without touching the
+// release code (desktop_vmdesktop.go, VM-only). It is empty in every release build.
+var extraDesktopRoutes []func(*API, *http.ServeMux)
+
 func (a *API) registerDesktopRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /desktop", a.handleGetDesktop)
 	mux.HandleFunc("PUT /desktop", a.handlePutDesktop)
 	mux.HandleFunc("GET /desktop/link", a.handleGetDesktopLink)
 	mux.HandleFunc("GET /desktop/permissions", a.handleDesktopPermissions)
 	mux.HandleFunc("POST /desktop/test-capture", a.handleDesktopTestCapture)
+	for _, add := range extraDesktopRoutes {
+		add(a, mux)
+	}
 }
 
 func (a *API) handleGetDesktop(w http.ResponseWriter, _ *http.Request) {
