@@ -267,7 +267,7 @@ func (d desktopAdapter) manager() *desktop.Manager {
 	return d.a.desktopMgr
 }
 
-func (d desktopAdapter) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
+func (d desktopAdapter) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, admit func() bool) {
 	m := d.manager()
 	if m == nil {
 		// On with no Manager yet (a handoff or a poller retry in progress) is not
@@ -279,7 +279,7 @@ func (d desktopAdapter) ServeDesktopViewer(ctx context.Context, c *websocket.Con
 		_ = c.Close(desktop.CloseDesktopOff, "desktop off")
 		return
 	}
-	m.ServeDesktopViewer(ctx, c)
+	m.ServeDesktopViewer(ctx, c, admit)
 }
 
 // Full lets the route answer 429 before any upgrade.
@@ -716,6 +716,14 @@ func (a *API) handleDesktopPermissions(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(os.Stderr, "daemon: desktop permission probe failed: %v\n", err)
 		writeCode(w, http.StatusServiceUnavailable, codeProbeFailed)
 		return
+	}
+	// The live state follows the sheet's poll, not the 5-minute idle probe, so
+	// Settings and the tray stop saying Needs permission once it is granted.
+	a.mu.RLock()
+	mgr := a.desktopMgr
+	a.mu.RUnlock()
+	if mgr != nil {
+		mgr.RefreshPermissions(r.Context())
 	}
 	writeJSON(w, http.StatusOK, DesktopPermissionsResponse{SR: p.SR, AX: p.AX})
 }

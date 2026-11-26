@@ -12,9 +12,12 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 
 	"github.com/scottkw/portty/internal/desktop"
+	"github.com/scottkw/portty/internal/screencap"
 )
 
 // fakeClock drives Deps.Now so the keyframe coalescer is tested without
@@ -468,4 +471,50 @@ func TestFanout_PLIStormCoalesced(t *testing.T) {
 	if n < 1 || n > 2 {
 		t.Errorf("50 PLIs forced %d keyframes, want 1 or 2", n)
 	}
+}
+
+// WR-02: each unit carries the gap since the previous one, so its RTP stamp
+// must be the previous stamp plus its own gap: a frame after a 5 s idle gap is
+// stamped 5 s later, not the frame after it. A gap past the 32-bit tick range
+// (about 13.25 h) wraps instead of saturating.
+func TestFanout_RTPTimestampFollowsCaptureTime(t *testing.T) {
+	pkt := rtp.NewPacketizer(1200, 96, 1, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), 90000)
+	unit := func(d time.Duration) uint32 {
+		ps := desktop.PacketizeForTest(pkt, screencap.AccessUnit{Data: []byte{0, 0, 0, 1, 0x41, 0x9a}, Duration: d})
+		if len(ps) == 0 {
+			t.Fatal("no packets")
+		}
+		return ps[0].Timestamp
+	}
+	a := unit(33 * time.Millisecond)
+	b := unit(5 * time.Second) // arrived after a 5 s still screen
+	c := unit(33 * time.Millisecond)
+	if got := b - a; got != 450000 {
+		t.Errorf("stamp step after a 5 s gap = %d ticks, want 450000", got)
+	}
+	if got := c - b; got != 2970 {
+		t.Errorf("stamp step after a 33 ms gap = %d ticks, want 2970", got)
+	}
+	long := 14 * time.Hour
+	d := unit(long)
+	if got, want := d-c, uint32(uint64(long/time.Second)*90000); got != want {
+		t.Errorf("stamp step after a 14 h gap = %d, want %d (mod 2^32)", got, want)
+	}
+}
+
+// WR-06: a closed Errors channel is not an error. The fan-out stops reading it
+// instead of logging "capture error <nil>" on every pass (a busy loop when
+// only that channel is closed), and frames keep flowing.
+func TestFanout_ClosedErrorsChannelIsQuiet(t *testing.T) {
+	logs := captureLogs(t)
+	r := newRig(t)
+	r.join()
+	r.src.last().closeErrs()
+	time.Sleep(100 * time.Millisecond)
+	if n := logs.count("capture error"); n != 0 {
+		t.Fatalf("logged %d capture errors for a closed Errors channel, want 0", n)
+	}
+	before := r.env.mgr.FramesSeenForTest()
+	r.src.last().emit(false)
+	eventually(t, 5*time.Second, "a frame after the Errors channel closed", func() bool { return r.env.mgr.FramesSeenForTest() > before })
 }

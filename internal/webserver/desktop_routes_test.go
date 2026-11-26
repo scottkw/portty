@@ -28,7 +28,7 @@ type fakeDesktopBackend struct {
 
 func (b *fakeDesktopBackend) DesktopGrant() (string, bool) { return b.grant, !b.off.Load() }
 func (b *fakeDesktopBackend) Full() bool                   { return b.full.Load() }
-func (b *fakeDesktopBackend) ServeDesktopViewer(_ context.Context, c *websocket.Conn) {
+func (b *fakeDesktopBackend) ServeDesktopViewer(_ context.Context, c *websocket.Conn, _ func() bool) {
 	b.calls.Add(1)
 	_ = c.Close(websocket.StatusNormalClosure, "")
 }

@@ -260,6 +260,25 @@ describe('Tap to start', () => {
     expect(card()?.querySelector('h1')?.textContent).not.toBe('Tap to start')
   })
 
+  it('keeps the Tap to Start and Reload Page buttons outside the live status region', async () => {
+    play.mockRejectedValueOnce(new DOMException('blocked', 'NotAllowedError'))
+    render()
+    status({ kind: 'streaming' })
+    await act(async () => client().emit('track', {} as MediaStream))
+    const live = region()
+    const tap = container.querySelector('button')!
+    expect(tap.textContent).toBe('Tap to Start')
+    expect(card()?.contains(tap)).toBe(true)
+    expect(live.contains(tap)).toBe(false)
+    expect(live.textContent).toContain('Tap to start')
+    status({ kind: 'unreachable' })
+    const reload = container.querySelector('button')!
+    expect(reload.textContent).toBe('Reload Page')
+    expect(region()).toBe(live) // the region persists, so the change is announced
+    expect(live.contains(reload)).toBe(false)
+    expect(live.textContent).toContain("Can't reach this Mac")
+  })
+
   it('stays on the card when play() is rejected again', async () => {
     play.mockRejectedValue(new DOMException('blocked', 'NotAllowedError'))
     render()

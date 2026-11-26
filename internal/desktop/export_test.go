@@ -6,10 +6,16 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 
 	"github.com/scottkw/portty/internal/screencap"
 )
+
+// PacketizeForTest is the fan-out's per-unit RTP step.
+func PacketizeForTest(p rtp.Packetizer, au screencap.AccessUnit) []*rtp.Packet {
+	return packetize(p, au)
+}
 
 // KeyframeCoalesce lets the external tests step a fake clock past the window.
 const KeyframeCoalesce = keyframeCoalesce

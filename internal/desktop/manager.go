@@ -27,6 +27,7 @@ import (
 	"net/netip"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -230,15 +231,17 @@ type Manager struct {
 	d Deps
 
 	// mu guards the lifecycle (socket, API, capture source) and is held across
-	// a source stop. vmu guards the viewer set and the last picture size; the
+	// a source stop, never across a source start (a native start can block for
+	// about 35 s). vmu guards the viewer set and the last picture size; the
 	// fan-out goroutine takes only vmu, so a stop that waits for it under mu
 	// cannot deadlock. Lock order: mu, then vmu.
-	mu     sync.Mutex
-	ctx    context.Context
-	conn   *net.UDPConn
-	mux    ice.UDPMux
-	api    *webrtc.API
-	closed bool
+	mu       sync.Mutex
+	ctx      context.Context
+	conn     *net.UDPConn
+	mux      ice.UDPMux
+	api      *webrtc.API
+	closed   atomic.Bool // atomic so Close never waits on mu to set it
+	starting bool        // a source start is in flight outside mu
 	// wrapConn, set only by tests, wraps the media socket before the mux.
 	wrapConn func(net.PacketConn) net.PacketConn
 	src      screencap.Source
@@ -365,7 +368,7 @@ func NewManager(d Deps) (*Manager, error) {
 func (m *Manager) Start(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.closed {
+	if m.closed.Load() {
 		return errors.New("desktop: manager closed")
 	}
 	if m.api != nil {
@@ -455,9 +458,10 @@ func newViewerID() (string, error) {
 
 // ServeDesktopViewer runs one viewer's signalling session on an accepted
 // WebSocket until it closes. The route layer has already checked Origin,
-// account and token. Logs carry counts, viewer ID prefixes and error codes
+// account and token; admit re-checks the token when the viewer joins (nil
+// admits nobody). Logs carry counts, viewer ID prefixes and error codes
 // only: never a token, SDP or address.
-func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
+func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, admit func() bool) {
 	defer recoverLog()
 	defer func() { _ = c.CloseNow() }()
 	c.SetReadLimit(readLimit)
@@ -498,7 +502,11 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	offerDeadline := time.Now().Add(offerTimeout)
 	var offer string
 	for offer == "" {
-		in, err := read(ctx, c, time.Until(offerDeadline))
+		rem := time.Until(offerDeadline)
+		if rem <= 0 {
+			return // read treats a zero wait as unbounded: pings must not extend the handshake
+		}
+		in, err := read(ctx, c, rem)
 		if err != nil {
 			if errors.Is(err, errBadMessage) {
 				reject(ctx, c, errCodeBadMessage)
@@ -550,9 +558,13 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 
 	// Capture starts only after a successful answer, so a refused offer never
 	// starts the source.
-	if err := m.join(v); err != nil {
+	if err := m.join(v, admit); err != nil {
 		if errors.Is(err, errFull) {
 			_ = c.Close(CloseFull, "full")
+			return
+		}
+		if errors.Is(err, errRevoked) {
+			_ = c.Close(CloseTokenRejected, "token rejected")
 			return
 		}
 		slog.Warn("desktop: join failed", "viewer", id[:8], "err", err)
@@ -586,53 +598,82 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	}
 }
 
-var errFull = errors.New("desktop: viewer cap reached")
+var (
+	errFull    = errors.New("desktop: viewer cap reached")
+	errRevoked = errors.New("desktop: token no longer valid")
+)
 
-// join registers v and starts capture for the first viewer.
-func (m *Manager) join(v *viewer) error {
+// join registers v and starts capture for the first viewer. admit is the
+// token re-check: a key regenerated during the handshake refuses v here.
+func (m *Manager) join(v *viewer, admit func() bool) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.closed {
+	if m.closed.Load() {
+		m.mu.Unlock()
 		return errors.New("desktop: manager closed")
 	}
 	if m.Full() {
+		m.mu.Unlock()
 		return errFull
 	}
-	// Remote activity lights a dark display before capture starts; the first
-	// viewer takes the display and system assertions, held until the last leaves.
-	m.declareActivity()
-	first := m.Viewers() == 0
-	if first {
-		m.takeViewerHolds()
-	}
-	if m.src == nil && !m.isPaused() {
-		// A viewer that cannot be served yet (no Screen Recording grant, no
-		// display) still joins: it is told why, and the state loop retries.
-		if err := m.startSourceLocked(); err != nil && !errors.Is(err, screencap.ErrPermissionDenied) && !errors.Is(err, screencap.ErrNoDisplay) {
-			if first {
-				m.releaseViewerHolds()
-			}
-			return err
-		}
-	}
+	// Checked in the same vmu hold as the registration: CloseAll takes vmu too,
+	// so a revocation either finds v or this check sees the new key. Registered
+	// before capture starts, so a start that finishes after every viewer left
+	// knows nobody is waiting for it.
 	m.vmu.Lock()
+	if admit == nil || !admit() {
+		m.vmu.Unlock()
+		m.mu.Unlock()
+		return errRevoked
+	}
 	m.viewers[v.ID] = v
 	m.vmu.Unlock()
+	// Remote activity lights a dark display before capture starts; viewers hold
+	// the display and system assertions until the last leaves (a join retries
+	// one that failed).
+	m.declareActivity()
+	m.takeViewerHolds()
+	start := m.src == nil && !m.starting && !m.isPaused()
+	if start {
+		m.starting = true
+	}
+	m.mu.Unlock()
 	m.kickLoop()
+	if !start {
+		return nil
+	}
+	// A viewer that cannot be served yet (no Screen Recording grant, no
+	// display) stays joined: it is told why, and the state loop retries.
+	if err := m.startSource(); err != nil && !errors.Is(err, screencap.ErrPermissionDenied) && !errors.Is(err, screencap.ErrNoDisplay) {
+		m.leave(v)
+		return err
+	}
 	return nil
 }
 
-// startSourceLocked (m.mu held) starts a fresh source and its fan-out. A start
-// error is classified (-3801 needs permission, -3815 no display) before it is
-// returned. Every viewer waits for the new source's first keyframe.
-func (m *Manager) startSourceLocked() error {
+// startSource starts a fresh source and its fan-out; the caller set m.starting
+// under mu. The native start runs without mu: it can block for about 35 s (a
+// pending macOS dialog), and joins, leaves, keyframes, the state loop and
+// Close must not wait behind it (WR-01). A start error is classified (-3801
+// needs permission, -3815 no display) before it is returned. Every viewer
+// waits for the new source's first keyframe.
+func (m *Manager) startSource() error {
 	src := m.d.NewSource()
 	sctx, cancel := context.WithCancel(m.ctx)
 	now := m.d.Now().Round(0)
-	if err := src.Start(sctx, m.d.SourceConfig); err != nil {
+	err := src.Start(sctx, m.d.SourceConfig)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.starting = false
+	if err != nil {
 		cancel()
 		m.noteStartFailure(err, now)
 		return err
+	}
+	if m.closed.Load() || m.Viewers() == 0 {
+		// Stopped or abandoned while starting: nobody to serve, nothing recorded.
+		cancel()
+		_ = src.Stop()
+		return nil
 	}
 	m.src, m.srcStop = src, cancel
 	m.fanDone = make(chan struct{})
@@ -647,15 +688,17 @@ func (m *Manager) startSourceLocked() error {
 }
 
 // restartSource stops the source, if any, and starts a new one (stall recovery,
-// wake, retry). It does nothing without a viewer.
+// wake, retry). It does nothing without a viewer or while a start is in flight.
 func (m *Manager) restartSource() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.closed || m.Viewers() == 0 {
+	if m.closed.Load() || m.Viewers() == 0 || m.starting {
+		m.mu.Unlock()
 		return nil
 	}
 	m.stopSourceLocked()
-	return m.startSourceLocked()
+	m.starting = true
+	m.mu.Unlock()
+	return m.startSource()
 }
 
 // leave unregisters v and stops capture when it was the last viewer (capture
@@ -678,7 +721,8 @@ func (m *Manager) leave(v *viewer) {
 }
 
 // stopSourceLocked (m.mu held) stops the source and waits for the fan-out to
-// drain; holding mu serialises a stop against the next join's start.
+// drain. A start in flight is not stopped here: it finds no viewer (or a
+// closed Manager) when it finishes and stops itself.
 func (m *Manager) stopSourceLocked() {
 	if m.src == nil {
 		return
@@ -755,15 +799,28 @@ func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 				// display is dark: the viewer is shown the state instead.
 				continue
 			}
-			// shortcut: the timestamp step truncates to whole ticks, exact at 30 fps
-			// (3000); fractional-tick drift if a source ever runs at an odd rate.
-			m.writeUnit(au.Keyframe, pkt.Packetize(au.Data, uint32(au.Duration.Seconds()*float64(h264Capability.ClockRate))))
-		case err := <-errs:
+			m.writeUnit(au.Keyframe, packetize(pkt, au))
+		case err, ok := <-errs:
+			if !ok {
+				errs = nil // a nil channel never fires; the frames case ends the loop
+				continue
+			}
 			slog.Warn("desktop: capture error", "err", err)
 			m.noteSourceError(err)
 			m.pushIfChanged(context.Background())
 		}
 	}
+}
+
+// packetize stamps au at its own capture time. Duration is the gap since the
+// previous unit, and pion stamps a unit before it adds its samples, so the
+// clock is advanced first (WR-02). Integer ticks wrap mod 2^32 as RTP
+// timestamps do, so an idle gap of any length stays well-defined.
+// shortcut: each step truncates to whole 90 kHz ticks (under 11 us a unit).
+func packetize(pkt rtp.Packetizer, au screencap.AccessUnit) []*rtp.Packet {
+	rate, d := uint64(h264Capability.ClockRate), au.Duration
+	pkt.SkipSamples(uint32(uint64(d/time.Second)*rate + uint64(d%time.Second)*rate/uint64(time.Second)))
+	return pkt.Packetize(au.Data, 0)
 }
 
 // writeUnit sends one access unit's packets to every viewer whose media path
@@ -878,19 +935,18 @@ func (m *Manager) CloseAll(code websocket.StatusCode, reason string) {
 
 // Close ends every viewer, stops capture and releases the media socket.
 func (m *Manager) Close() error {
-	m.mu.Lock()
-	if m.closed {
-		m.mu.Unlock()
+	if !m.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	m.closed = true
+	// First, before taking mu or closing any viewer: a close handshake can take
+	// seconds and the process may exit first (Quit All, an upgrade's 1 s drain).
+	// With closed set no start records captureActive again (noteStartSuccess
+	// checks it under the state file's lock), so this stays false and the next
+	// process counts no abnormal exit. A real crash never reaches this line.
+	m.noteCaptureStopped()
+	m.mu.Lock()
 	cancel, done := m.loopCancel, m.loopDone
 	m.mu.Unlock()
-	// Before any viewer is closed: a close handshake can take seconds and the
-	// process may exit first (Quit All, an upgrade's 1 s drain). With closed set
-	// nothing starts a source again, so this stays false and the next process
-	// counts no abnormal exit. A real crash never reaches this line.
-	m.noteCaptureStopped()
 	if cancel != nil {
 		cancel()
 		<-done

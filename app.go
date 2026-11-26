@@ -1855,7 +1855,15 @@ func (a *App) refreshTrayState() {
 func (a *App) claimAndPostLapse(st daemon.DesktopStatusResponse) {
 	seq := int64(st.LapseSeq)
 	tried := a.lapseTried.Load()
-	if st.State != "awaiting_approval" || seq <= tried || st.LapseSeq <= st.LapseClaimedSeq {
+	awaiting := st.State == "awaiting_approval"
+	if !awaiting || seq < tried {
+		// The lapse is over, or LapseSeq restarted (a new daemon or a rebuilt
+		// Manager): the next lapse is claimed whatever its number.
+		if a.lapseTried.CompareAndSwap(tried, 0) {
+			tried = 0
+		}
+	}
+	if !awaiting || seq <= tried || st.LapseSeq <= st.LapseClaimedSeq {
 		return
 	}
 	if !a.lapseTried.CompareAndSwap(tried, seq) {

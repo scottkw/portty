@@ -179,7 +179,10 @@ func TestAgentControl_Actions(t *testing.T) {
 			if !loaded {
 				return []byte("Could not find service"), errors.New("exit status 113")
 			}
-			return []byte(fmt.Sprintf("pid = %d\n", jobPid)), nil
+			if jobPid == 0 { // launchd's idle output names no pid (WR-04: no pid line is not idle)
+				return []byte("state = not running\n"), nil
+			}
+			return []byte(fmt.Sprintf("state = running\npid = %d\n", jobPid)), nil
 		case "print-disabled":
 			return []byte("disabled services = {\n}\n"), nil
 		case "bootstrap":

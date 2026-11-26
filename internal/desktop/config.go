@@ -78,6 +78,9 @@ func LoadConfig(dir string) (Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return Config{}, fmt.Errorf("%w: %v", ErrConfigUnsafe, err)
 	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return Config{}, unsafeConfig("trailing data")
+	}
 	if c.SchemaVersion != ConfigSchemaVersion {
 		return Config{}, unsafeConfig("schemaVersion %d, want %d", c.SchemaVersion, ConfigSchemaVersion)
 	}

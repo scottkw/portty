@@ -149,6 +149,8 @@ func (w *world) counts() (nudges, declares, released int) {
 // emit gives it, so a stalled stream is a source that is simply quiet.
 type fakeSource struct {
 	startErr error
+	block    chan struct{} // when set, Start waits for it to close (a start held by a macOS dialog)
+	entered  chan struct{} // told when Start begins waiting on block
 
 	mu       sync.Mutex
 	frames   chan screencap.AccessUnit
@@ -161,6 +163,10 @@ type fakeSource struct {
 }
 
 func (s *fakeSource) Start(context.Context, screencap.Config) error {
+	if s.block != nil {
+		s.entered <- struct{}{}
+		<-s.block
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.startErr != nil {
@@ -219,6 +225,13 @@ func (s *fakeSource) emit(kf bool) {
 	}
 }
 
+// closeErrs closes the Errors channel alone (DisplaySource closes it at Stop).
+func (s *fakeSource) closeErrs() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	close(s.errs)
+}
+
 // fail reports err on the source's Errors channel.
 func (s *fakeSource) fail(err error) {
 	s.mu.Lock()
@@ -240,13 +253,15 @@ type sources struct {
 	all      []*fakeSource
 	startErr error // Start error of the next sources, nil for none
 	hw       bool  // wrap new sources as software-encoder reporters
+	block    chan struct{}
+	entered  chan struct{}
 }
 
 func (r *sources) factory() func() screencap.Source {
 	return func() screencap.Source {
 		s := &fakeSource{}
 		r.mu.Lock()
-		s.startErr = r.startErr
+		s.startErr, s.block, s.entered = r.startErr, r.block, r.entered
 		r.all = append(r.all, s)
 		r.mu.Unlock()
 		if r.hw {
@@ -261,6 +276,15 @@ func (r *sources) setStartErr(err error) {
 	r.mu.Lock()
 	r.startErr = err
 	r.mu.Unlock()
+}
+
+// setBlock makes the next sources' Start wait until block closes; the returned
+// channel receives once per Start that is waiting.
+func (r *sources) setBlock(block chan struct{}) <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.block, r.entered = block, make(chan struct{}, 8)
+	return r.entered
 }
 
 func (r *sources) count() int {
