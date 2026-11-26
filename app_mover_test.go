@@ -375,8 +375,9 @@ func TestRunMover_InstallerStartFailureLogsNoPath(t *testing.T) {
 
 // Quick 261126-dfn: a failed or rolled-back install this DMG's app left behind is shown once,
 // before anything is copied or a job is written, even about this same version (the user is
-// retrying this DMG). The log names no path. A keepDaemon result is put back for the installed
-// copy's next start (WR-04).
+// retrying this DMG). The log names no path. A keepDaemon result rides in the job (WR-04); its
+// put-back file is taken again once a move job of a version at or above it starts (quick
+// 261126-fw6, TestRunMover_StaleKeepDaemon covers the paths that keep it).
 func TestRunMover_ShowsEarlierResultOnce(t *testing.T) {
 	dmg := filepath.Join(os.TempDir(), "portty-v9.9.9-darwin-universal.dmg")
 	for _, c := range []struct {
@@ -388,7 +389,7 @@ func TestRunMover_ShowsEarlierResultOnce(t *testing.T) {
 		{"failed first install, same version", updater.Result{Outcome: updater.OutcomeFailed, NewVersion: "9.9.9", Reason: "reverify"},
 			"Portty couldn't install version 9.9.9.", false},
 		{"rolled back with keepDaemon", updater.Result{Outcome: updater.OutcomeRolledBack, OldVersion: "1.0.0", NewVersion: "9.9.9", Reason: "health", KeepDaemon: true, DMG: dmg},
-			"The update to Portty 9.9.9 didn't take. Portty 1.0.0 is still installed.", true},
+			"The update to Portty 9.9.9 didn't take. Portty 1.0.0 is still installed.", false},
 		{"updated", updater.Result{Outcome: updater.OutcomeUpdated, OldVersion: "1.0.0", NewVersion: "9.9.9"}, "", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -430,6 +431,82 @@ func TestRunMover_ShowsEarlierResultOnce(t *testing.T) {
 			b, _ := os.ReadFile(bcLogPath())
 			if !strings.Contains(string(b), "mover: earlier result "+c.r.Outcome) || strings.Contains(string(b), "/") {
 				t.Errorf("update.log = %q; want the earlier result and no path", b)
+			}
+		})
+	}
+}
+
+// Quick 261126-fw6: a keepDaemon result an earlier rollback left (its relaunch failed, so no GUI
+// took it) is for the older installed copy's next start. A move job that installs a version at or
+// above the rollback's new version takes it back before the installer starts: the new copy would
+// read it first, keep the older daemon, never pass the health check and roll back. The job still
+// carries keepDaemon for a relaunch of the older copy. Every path that leaves the installed copy in
+// place, a possibly newer kept daemon (WR-04: never offer its restart) and an installer that never
+// starts all keep the file.
+func TestRunMover_StaleKeepDaemon(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		installed string // "" for no installed copy
+		answer    string
+		earlier   string // the rolled-back result's new version
+		startErr  error
+		wantKind  string // "" when no job runs
+		wantFile  bool   // the keepDaemon result is still on disk afterwards
+	}{
+		{"replace older copy: taken back", "1.0.0", "Replace", "9.9.9", nil, updater.KindMove, false},
+		{"replace older copy after an older failed update: taken back", "1.0.0", "Replace", "2.0.0", nil, updater.KindMove, false},
+		{"first install: taken back", "", "", "9.9.9", nil, updater.KindMove, false},
+		{"kept daemon may be newer than this DMG: kept", "1.0.0", "Replace", "10.0.0", nil, updater.KindMove, true},
+		{"Cancel opens the installed copy: kept", "1.0.0", "Cancel", "9.9.9", nil, "", true},
+		{"same version installed opens it: kept", "9.9.9", "", "9.9.9", nil, updater.KindOpenInstalled, true},
+		{"installer never starts: put back", "1.0.0", "Replace", "9.9.9", errors.New("spawn"), updater.KindMove, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newMoverFix(t)
+			if c.installed != "" {
+				f.install(c.installed)
+			}
+			f.answer = c.answer
+			earlier := updater.Result{V: 1, Outcome: updater.OutcomeFailed, OldVersion: "1.0.0", NewVersion: c.earlier,
+				Reason: "health", KeepDaemon: true}
+			if err := updater.WriteResult(installResultPath(), earlier); err != nil {
+				t.Fatal(err)
+			}
+			var onDisk []bool // whether the result file was on disk as each job started
+			f.a.moverStartFunc = func(j updater.Job) error {
+				_, err := os.Lstat(installResultPath())
+				f.mu.Lock()
+				f.jobs = append(f.jobs, j)
+				onDisk = append(onDisk, err == nil)
+				f.mu.Unlock()
+				if c.startErr != nil {
+					return c.startErr
+				}
+				f.a.onTerminate()
+				return nil
+			}
+			f.runMover()
+			f.mu.Lock()
+			jobs, disk := slices.Clone(f.jobs), slices.Clone(onDisk)
+			f.mu.Unlock()
+			if c.wantKind == "" {
+				if len(jobs) != 0 {
+					t.Fatalf("jobs = %+v, want none", jobs)
+				}
+			} else {
+				if len(jobs) != 1 || jobs[0].Kind != c.wantKind {
+					t.Fatalf("jobs = %+v, want one %s", jobs, c.wantKind)
+				}
+				if !jobs[0].KeepDaemon {
+					t.Error("job keepDaemon = false: a relaunch of the older copy must still keep the daemon")
+				}
+				if wantDisk := c.wantKind == updater.KindOpenInstalled || c.wantFile && c.startErr == nil; disk[0] != wantDisk {
+					t.Errorf("result file on disk at job start = %v, want %v", disk[0], wantDisk)
+				}
+			}
+			r, ok, err := updater.TakeResult(installResultPath())
+			if err != nil || ok != c.wantFile || (ok && r != earlier) {
+				t.Errorf("result file after = %+v, %v, %v; want kept %v", r, ok, err, c.wantFile)
 			}
 		})
 	}

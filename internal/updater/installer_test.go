@@ -546,16 +546,20 @@ func TestInstaller_MoverCarriesKeepDaemon(t *testing.T) {
 			f.alive[400] = true
 			return f
 		}, true, OutcomeFailed, "quit-timeout"},
+		// Quick 261126-fw6: healthy means a GUI and the daemon both run the new version, so the
+		// job's keepDaemon, meant for a relaunch of the older copy, never reaches the next start.
+		{"move healthy update drops it", func(t *testing.T) *rbFix { return newMoveFix(t, KindMove, true) }, true, OutcomeUpdated, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := c.fix(t)
 			f.job.KeepDaemon = c.keep
+			wantKeep := c.keep && c.want != OutcomeUpdated
 			r := f.run()
-			if r.Outcome != c.want || r.Reason != c.wantR || r.KeepDaemon != c.keep {
-				t.Errorf("result = %+v, want %s %q keepDaemon %v", r, c.want, c.wantR, c.keep)
+			if r.Outcome != c.want || r.Reason != c.wantR || r.KeepDaemon != wantKeep {
+				t.Errorf("result = %+v, want %s %q keepDaemon %v", r, c.want, c.wantR, wantKeep)
 			}
-			if got, ok := f.fileResult(); !ok || got.Outcome != c.want || got.KeepDaemon != c.keep {
-				t.Errorf("result file = %+v, %v, want keepDaemon %v", got, ok, c.keep)
+			if got, ok := f.fileResult(); !ok || got.Outcome != c.want || got.KeepDaemon != wantKeep {
+				t.Errorf("result file = %+v, %v, want keepDaemon %v", got, ok, wantKeep)
 			}
 		})
 	}
