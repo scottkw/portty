@@ -1,0 +1,107 @@
+RC-WR04 log: rollback (fault exit-after-daemon v1.8.1) with the result write failing; post-fix rig builds of 83df1e1f
+--- notes.txt
+Blocker: before the click (07:07, N running), update-result.json was made a directory holding one file
+(keep). WriteResult makes its temp file in the config folder, then renames it onto the result path; the
+rename onto a non-empty directory fails, so only the result write fails. The N+1 GUI's TakeResult cannot
+remove a non-empty directory, so it stayed for the installer. No chmod: the config folder also holds
+daemon.sock, daemon.log and update.log, and its mode was never changed (drwx------ admin:staff before
+and after).
+
+Fresh viewers: the first try at 07:08:32 used the installed 1.8.0 CLI without --keep-daemon. That CLI
+asked the 1.8.1 daemon for a takeover and the downgrade wall refused it (daemon.log 07:08:32 "refused a
+takeover from build v1.8.0"; same as the R2-B capture note in 18-07); the sessions were unaffected. The
+helper then blocked on its FIFO write until it was killed at 07:27:43. Later viewers use
+`attach --keep-daemon` (cli-keep.exp).
+
+Session output stall (OBSERVED, cause not established): the first --keep-daemon viewers at 07:28:19 and
+07:28:25 replayed tickA up to TICK 228 and vimB up to VTICK 234. Both tickers started about 07:07:35 and
+tick once a second, so both stopped producing output at about 07:11:25 and stayed stopped until about
+07:28:24. The shells and vim kept their pids throughout. Ticks are gapless across the stall, so the
+processes were held (blocked), not killed or restarted. Output resumed right after a viewer joined:
+TICK 281 at 07:29:18, TICK 950 at 07:40:37 (669 ticks in 679 s), VTICK 964 at 07:40:42. A 2 s monitor
+(the ticker shell's sleep child, plus the queued bytes on unix sockets) ran 07:29:57-07:40:54 and saw no
+second stall and 0 queued bytes. daemon.log has no line between 07:08:32 and 07:28:19. Nothing the rig
+did lines up with 07:11:25: the last click was 07:07:47, and the hung helper never connected to the
+daemon. Display sleep is 0 and the screensaver idle time is 0 in this guest. Not a WR-04 criterion
+(shells kept, same pids, under the 1.8.1 daemon). Reported for a follow-up soak test.
+--- blocker.txt
+drwx------ admin:staff ~/Library/Application Support/portty
+total 8
+drwxr-xr-x   3 admin  staff   96 Nov 26 07:07 .
+drwx------@ 13 admin  staff  416 Nov 26 07:07 ..
+-rw-r--r--   1 admin  staff    8 Nov 26 07:07 keep
+bin capability.key ct_disclosed daemon.lock daemon.log daemon.log.1 daemon.sock settings.json update_notified update-result.json zsh --- click.txt
+click 1795676867.516 07:07:47
+--- pids-before.txt
+session tickA 8afa939870b5cfd73b5ff974704d5875
+session vimB 716459cbde2d5c9323683e08664e4956
+gui 78283
+daemon 78291
+shell 78357 ppid 78291
+shell 78362 ppid 78291
+vim 78387 ppid 78362
+--- pids-after.txt
+session tickA 8afa939870b5cfd73b5ff974704d5875
+session vimB 716459cbde2d5c9323683e08664e4956
+daemon 78771
+gui 78805
+shell 78357 ppid 1
+shell 78362 ppid 1
+vim 78387 ppid 78362
+--- update.log
+update: installer started (copy 15ms, start 263ms)
+2026/11/26 07:07:48 vmpreview: verify-mode adhoc
+update: result ignored: update job refused: not a regular file
+vmpreview: fault exit-after-daemon
+2026/11/26 07:07:49 installer: result not written
+2026/11/26 07:07:49 installer: rolled-back gui-exited
+2026/11/26 07:07:49 installer: keepDaemon passed as PORTTY_KEEP_DAEMON_ONCE in the launch environment
+update: keep daemon once: set in the launch environment by the installer
+update: result ignored: update job refused: not a regular file
+--- after-60s.txt
+07:08:32
+GUI 78805 exec env has PORTTY_KEEP_DAEMON_ONCE=1: 1; daemon 78771 env has it: 0
+installed 1.8.0; daemon /health v1.8.1
+ax now (dialog/restart/background lines): 0
+windows: Portty|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+
+[exited with code 0]
+--- fresh.txt
+07:28:24 fresh tickA (attach --keep-daemon): replay bytes=3049 rc=0
+hist distinct=0 has_HIST-s1-1=0 has_HIST-s1-300=0; ticks TICK 0..224 lines=225 gaps=0
+07:28:30 fresh vimB (attach --keep-daemon): replay bytes=16951 rc=0
+vimB fresh replay: last VTICK 234; alt-screen switches=1
+session tickA 8afa939870b5cfd73b5ff974704d5875
+session vimB 716459cbde2d5c9323683e08664e4956
+daemon 78771
+gui 78805
+shell 78357 ppid 1
+shell 78362 ppid 1
+vim 78387 ppid 78362
+78771 /Applications/Portty.app/Contents/MacOS/Portty daemon --takeover
+78805 /Applications/Portty.app/Contents/MacOS/Portty
+--- daemonlog.txt
+2026/11/26 07:07:51.556249 viewer-diag: join session=8afa9398 conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/26 07:07:51.556440 viewer-diag: replay session=8afa9398 conn=1 mode=full bytes=552 resume=false
+2026/11/26 07:07:51.579960 viewer-diag: join session=716459cb conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/26 07:07:51.580275 viewer-diag: replay session=716459cb conn=1 mode=full bytes=4983 resume=false
+2026/11/26 07:07:51.646317 viewer-diag: grid session=8afa9398 100x29 -> 87x29 by=local client="" conn=1 why=claim
+2026/11/26 07:08:32.978347 handoff: cert warm took 0ms (ok=true)
+2026/11/26 07:08:32.978735 handoff: refused a takeover from build "v1.8.0": an older release cannot take the sessions
+2026/11/26 07:08:32.978824 handoff: the running daemon refused: an older release cannot take the sessions
+2026/11/26 07:28:19.964050 viewer-diag: join session=8afa9398 conn=2 origin=local from= client="" viewers=2 web=0
+2026/11/26 07:28:19.964287 viewer-diag: replay session=8afa9398 conn=2 mode=full bytes=2270 resume=false
+2026/11/26 07:28:23.945335 viewer-diag: leave session=8afa9398 conn=2 origin=local client="" viewers=1
+2026/11/26 07:28:25.066441 viewer-diag: join session=716459cb conn=2 origin=local from= client="" viewers=2 web=0
+2026/11/26 07:28:25.067407 viewer-diag: replay session=716459cb conn=2 mode=full bytes=16004 resume=false
+2026/11/26 07:28:29.053210 viewer-diag: leave session=716459cb conn=2 origin=local client="" viewers=1
+--- flow1.txt
+07:29:57 loop=running shell=[Ss - ] vim=[S+ - ]
+07:30:40 loop=no-sleep-child shell=[Ss - ] vim=[S+ - ]
+07:30:42 loop=running shell=[Ss - ] vim=[S+ - ]
+--- flow2.txt
+07:31:30 loop=running queued recv=0 send=0 sockets_nonzero=0
+--- restore.txt
+temp files left by WriteResult: 0
+restored: update-result.json present=no; config dir drwx------ admin:staff
+07:40:54

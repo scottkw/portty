@@ -107,6 +107,19 @@ None of this was run in the VM. These paths change real-system behaviour that un
 - **WR-01:** `ps -o pid=,uid=,args=` on the VM's macOS. The column format matched on the host, and a health-check row (R1) would confirm it.
 - **WR-02:** the Finder reveal after a failed mover install, for example a first install with the staged copy's codesign broken.
 
+## Post-review VM re-check
+
+These rows ran in VM `portty-test` on new rig builds of `83df1e1f` (the post-fix tree): N = 1.8.0 and N+1 = 1.8.1, ad-hoc, `verify-mode` `adhoc`, un-granted. The full rows, the method and the end state are in 18-VM-CHECKS.md. The evidence is in `evidence/RC-*`.
+
+| Row | Covers | Verdict | Key evidence |
+| --- | --- | --- | --- |
+| RC-R1 | regression of the update path; WR-01 on macOS 27.2 | PASS | 1.8.1 installed, 1 GUI, daemon `v1.8.1`, same shell pids, old app in the Trash, run_dirs=0, no dialog. `installer: updated` means the uid-filtered `ps` parse found the new GUI and the health check passed (click-to-healthy 3.45 s). |
+| RC-R2A | regression of the rollback | PASS | Rolled back at +2.76 s, well inside W = 100.45 s. Daemon still `v1.8.0`, same shells, warning banner, DMG kept. |
+| RC-CR01 | CR-01 | PASS | The cache DMG opened by hand got `Replace Portty 1.8.0 in Applications?`. Replace swapped the app in (`installer: updated`), then `dmg kept: not a Portty download`. No "couldn't move itself" alert. |
+| RC-WR04 | WR-04 | PASS | update.log has `result not written`, then `keepDaemon passed as PORTTY_KEEP_DAEMON_ONCE`. `ps -E` shows the variable in N's launch environment, and N logged `keep daemon once: set in the launch environment`. No restart dialog in any axdump sample. Sessions kept their shells under the 1.8.1 daemon. The blocker directory was removed afterwards. |
+| RC-WR04-stall | (seen during RC-WR04) | OBSERVED | Both sessions' output stalled for about 17 min (about 07:11:25 to 07:28:24) and resumed when a CLI viewer joined. Same pids, no gaps. Cause not established, and it did not recur over a further 11 min. Recommended: a soak test with only a GUI viewer attached. |
+| RC-WR02 | WR-02 | PASS | The installer's re-verify failed after the DMG GUI quit. Finder `Downloads` came to the front with the DMG selected, nothing was installed, and no `.Portty-update-*` was left. The next manual launch (a copy installed by hand) logged `result not shown: not newer than this version`, as designed. |
+
 ---
 
 _Fixed: 2026-11-26T06:54:47Z_
