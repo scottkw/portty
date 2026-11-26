@@ -8,16 +8,38 @@ import (
 )
 
 // These tests keep .github/workflows/release.yml in step with this package: the DMG it publishes
-// must be the one DMGAssetName names, and it must pass Verify before it reaches a release.
+// must be the one DMGAssetName names, and it must pass Verify before it reaches a release. They
+// also pin build.yml and the bundle scripts' identity constants (REL-01).
 
-func readWorkflow(t *testing.T) string {
+func readRepoFile(t *testing.T, rel string) string {
 	t.Helper()
-	b, err := os.ReadFile("../../.github/workflows/release.yml")
+	b, err := os.ReadFile("../../" + rel)
 	if err != nil {
-		t.Fatalf("ReadFile release.yml: %v", err)
+		t.Fatalf("ReadFile %s: %v", rel, err)
 	}
 	return string(b)
 }
+
+func readWorkflow(t *testing.T) string {
+	t.Helper()
+	return readRepoFile(t, ".github/workflows/release.yml")
+}
+
+// before reports whether a occurs in s and b occurs after it.
+func before(s, a, b string) bool {
+	i := strings.Index(s, a)
+	return i >= 0 && strings.Contains(s[i+len(a):], b)
+}
+
+const (
+	cgoCFlags   = `CGO_CFLAGS: "-mmacosx-version-min=14.0"`
+	cgoLDFlags  = `CGO_LDFLAGS: "-mmacosx-version-min=14.0"`
+	releaseGate = "Release bundle is arm64-only with minos 14.0 (REL-01)"
+	buildGate   = "Bundle is arm64-only with minos 14.0 (REL-01)"
+	// v1.2.0's designated requirement (18.1-RESEARCH Gap 4). The office Mac's TCC grants are keyed
+	// to it, so every release must keep it.
+	v12DesignatedRequirement = `designated => identifier "app.portty.Portty" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = ` + TeamID
+)
 
 var jobKeyRE = regexp.MustCompile(`(?m)^  [A-Za-z0-9_-]+:\s*$`)
 
@@ -137,5 +159,104 @@ func TestReleaseWorkflow_VMOnlyFakesGated(t *testing.T) {
 	}
 	if s := step(t, b, strings.TrimSuffix(strings.TrimPrefix(gate, "- name: "), "\n")); !strings.Contains(s, "grep -ac '127.0.0.1:8788' \"$BIN\"") {
 		t.Errorf("the gate does not grep the binary for the fake feed address:\n%s", s)
+	}
+}
+
+func TestReleaseWorkflow_Arm64Build(t *testing.T) {
+	wf := readWorkflow(t)
+	b := job(t, wf, "build-macos")
+	build := step(t, b, "Build macOS app")
+	for _, want := range []string{"wails build -platform darwin/arm64 -tags wailsassets", cgoCFlags, cgoLDFlags} {
+		if !strings.Contains(build, want) {
+			t.Errorf("Build macOS app lacks %q:\n%s", want, build)
+		}
+	}
+	if strings.Contains(wf, "darwin/universal") {
+		t.Error("release.yml still names the universal platform")
+	}
+	gate := step(t, b, releaseGate)
+	if !strings.Contains(gate, "run: bash scripts/verify-bundle.sh build/bin/Portty.app") {
+		t.Errorf("the unsigned bundle gate does not run verify-bundle.sh:\n%s", gate)
+	}
+	if !before(b, "- name: Build macOS app\n", "- name: "+releaseGate) || !before(b, "- name: "+releaseGate, "- name: Tar .app bundle") {
+		t.Error("the bundle gate is not between the build and the tar step")
+	}
+	for _, j := range []string{b, job(t, wf, "sign-macos")} {
+		if !strings.Contains(j, "name: portty-darwin-arm64-unsigned\n") {
+			t.Error("the unsigned artifact is not portty-darwin-arm64-unsigned on both the upload and the download side")
+		}
+	}
+}
+
+func TestReleaseWorkflow_InsideOutSigning(t *testing.T) {
+	wf := readWorkflow(t)
+	if !strings.Contains(job(t, wf, "validate"), "run: bash tests/verify-bundle.test.sh") {
+		t.Error("the validate job does not run tests/verify-bundle.test.sh")
+	}
+	if strings.Contains(wf, "--deep") {
+		t.Error("release.yml signs or verifies with --deep")
+	}
+	j := job(t, wf, "sign-macos")
+	sign := step(t, j, "Sign .app with hardened runtime")
+	if !before(sign, "bash scripts/sign-bundle.sh build/bin/Portty.app", "bash scripts/verify-bundle.sh build/bin/Portty.app --signed") {
+		t.Errorf("the sign step must run sign-bundle.sh and then the --signed gate:\n%s", sign)
+	}
+	if !strings.Contains(sign, `SIGN_IDENTITY="$MACOS_CERTIFICATE_NAME"`) {
+		t.Errorf("the sign step does not pass the certificate name as SIGN_IDENTITY:\n%s", sign)
+	}
+	notarize := step(t, j, "Notarize .app")
+	if !before(notarize, "xcrun stapler staple build/bin/Portty.app", "bash scripts/verify-bundle.sh build/bin/Portty.app --notarized") {
+		t.Errorf("the --notarized gate must follow the staple:\n%s", notarize)
+	}
+	if !before(j, "- name: Sign .app with hardened runtime\n", "- name: Notarize .app\n") ||
+		!before(j, "- name: Notarize .app\n", "- name: Create and sign DMG\n") {
+		t.Error("sign-macos steps are not ordered sign, notarize, DMG")
+	}
+}
+
+func TestBuildWorkflow_Arm64MinOS14(t *testing.T) {
+	wf := readRepoFile(t, ".github/workflows/build.yml")
+	b := job(t, wf, "build")
+	for _, want := range []string{"platform: darwin/arm64", "build (portty, darwin/arm64, macos-latest)", "name: portty-darwin-arm64\n"} {
+		if !strings.Contains(wf, want) {
+			t.Errorf("build.yml lacks %q", want)
+		}
+	}
+	if strings.Contains(wf, "darwin/universal") {
+		t.Error("build.yml still names the universal platform")
+	}
+	if s := step(t, b, "Build with Wails"); !strings.Contains(s, cgoCFlags) || !strings.Contains(s, cgoLDFlags) {
+		t.Errorf("Build with Wails lacks the macOS 14 CGO variables:\n%s", s)
+	}
+	if s := step(t, b, buildGate); !strings.Contains(s, "run: bash scripts/verify-bundle.sh build/bin/Portty.app") {
+		t.Errorf("the bundle gate does not run verify-bundle.sh:\n%s", s)
+	}
+	if !before(b, "- name: Build with Wails\n", "- name: "+buildGate) || !before(b, "- name: "+buildGate, "- name: Upload macOS artifact\n") {
+		t.Error("the bundle gate is not between the build and the upload")
+	}
+	if s := step(t, b, "Run bundle gate tests (REL-01)"); !strings.Contains(s, "run: bash tests/verify-bundle.test.sh") {
+		t.Errorf("the gate tests step does not run tests/verify-bundle.test.sh:\n%s", s)
+	}
+}
+
+func TestVerifyBundle_PinsTeamAndDR(t *testing.T) {
+	v := readRepoFile(t, "scripts/verify-bundle.sh")
+	for _, want := range []string{
+		`TEAM_ID="` + TeamID + `"`,
+		`BUNDLE_ID="app.portty.Portty"`,
+		"DESIGNATED_REQUIREMENT='" + v12DesignatedRequirement + "'",
+	} {
+		if !strings.Contains(v, want) {
+			t.Errorf("verify-bundle.sh lacks %q", want)
+		}
+	}
+	sign := readRepoFile(t, "scripts/sign-bundle.sh")
+	if !strings.Contains(sign, `BUNDLE_ID="app.portty.Portty"`) {
+		t.Error(`sign-bundle.sh lacks BUNDLE_ID="app.portty.Portty"`)
+	}
+	for _, line := range strings.Split(sign, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") && strings.Contains(line, "--deep") {
+			t.Errorf("sign-bundle.sh signs with --deep: %s", line)
+		}
 	}
 }
