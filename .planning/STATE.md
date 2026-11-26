@@ -395,6 +395,7 @@ Recent decisions affecting current work:
 - [Phase 17]: CLI respawns the daemon only through launchd (launchctl kickstart, R07-B GO); an SSH-started daemon is attributed to sshd-keygen-wrapper (R06 NO-GO)
 - [Phase 17]: UNLK-01 feasible (R15-R17 GO): ship, not cut
 - [Phase 17]: 17-12 host tccutil proof accepted from 17-11 session 3 revoke (user reply: accept); permission system refused the host reset in 17-12
+- [Phase 20]: planned 2026-11-26 while Phase 19 executes: 11 plans in 7 waves (UI-SPEC approved); 20-09 gated on 19-12 and 19-15, 20-10 on 19-13 and 19-14, 20-11 on 19-16 (SUMMARY.md preconditions); M-NN numbers computed at execution after Phase 19's
 
 ### Pending Todos
 

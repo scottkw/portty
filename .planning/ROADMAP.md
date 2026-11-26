@@ -249,7 +249,33 @@ Plans:
   2. A viewer types text with shortcuts and non-ASCII characters (accents, emoji, input-method text) and it arrives as typed. No key or modifier stays held after the viewer loses focus, closes or disconnects. A Send-keys menu sends Cmd+Tab, Cmd+Space and Lock Screen, and an optional Ctrl→Cmd swap serves viewers on non-Mac keyboards. (DCTL-02, DCTL-03)
   3. The sharer picks a whole display or a single window to share, and displays can be switched mid-session without the viewer reconnecting. In a window share, the window comes to the front when controlled and clicks never land outside it. (DESK-05, DESK-06, DCTL-05)
   4. Text copies from the shared Mac to the viewer, and pastes from the viewer to the shared Mac, only by an explicit action and never in the background. Items a password manager marks as concealed never sync. (DCTL-06)
-**Plans**: TBD
+**Plans**: 0/11 plans executed
+
+Plans:
+**Wave 1**
+- [ ] 20-01-PLAN.md — Tracer: a click on the `input` data channel reaches the event bridge at the right global point (stale epoch and locked presses dropped); tagged private-source bridge, closed key table, text chunking, own-account rights in hello; wire contract frozen in golden files
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 20-02-PLAN.md — Daemon input: keys and text, release-all on every trigger plus 3 s dead-man, press-only gates, optimistic Lock Screen, click count, wheel, relative move with cursor report, rate limits, "Control needs Accessibility" state
+- [ ] 20-03-PLAN.md — Display and window picker and mid-session switch on the running stream (no renegotiation): epoch bump, fallback to main display, resize, still-frame fallback
+- [ ] 20-06-PLAN.md — Viewer input layer: channel before offer, pointer and keyboard capture, IME, Cmd-chord tap rule, Ctrl/Cmd swap, release chord, release triggers and heartbeat
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 20-04-PLAN.md — Window-share confinement: AX focus gate, raise-then-drop with verified raise ladder, clamped moves, topmost hit test, raise-failed and minimized states
+- [ ] 20-07-PLAN.md — Control bar: picker, standalone Send Keys menu with Lock Screen confirm, swap toggle, View Only / Control, Full Screen with Keyboard Lock, availability table
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 20-05-PLAN.md — Daemon clipboard: read on request only, types checked first (concealed/transient never read), 16 KiB chunks under the read limit, strict reassembly, per-viewer rights
+- [ ] 20-08-PLAN.md — Clipboard UI (Safari-safe write, Copy and Paste fallback popovers, notices) and persistent state chips
+
+**Wave 5** *(blocked on Wave 4 completion; needs 19-12 and 19-15 merged)*
+- [ ] 20-09-PLAN.md — Tart VM proof of all real-macOS control rows and the PASTE_ROW verdict (user checkpoints for VM permission clicks)
+
+**Wave 6** *(blocked on Wave 5 completion; needs 19-13 and 19-14 merged)*
+- [ ] 20-10-PLAN.md — Host side: Settings Showing row, Control needs Accessibility, changed Phase 19 strings, tray window-only suffix, conditional Paste from Other Apps row
+
+**Wave 7** *(blocked on Wave 6 completion; needs 19-16 merged)*
+- [ ] 20-11-PLAN.md — TESTING.md: Sections 2 and 4 plus a Phase 20 Section 5 category numbered after Phase 19's last M-NN
 **UI hint**: yes
 
 ### Phase 21: Portty App and iPhone Viewers
@@ -300,7 +326,7 @@ Plans:
 | 18. Self-Installing Updates | v2.0 | 10/10 | Complete    | 2026-11-26 |
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
 | 19. Unattended Desktop Viewing | v2.0 | 12/17 | In Progress | - |
-| 20. Remote Control | v2.0 | 0/TBD | Not started | - |
+| 20. Remote Control | v2.0 | 0/11 | Planned | - |
 | 21. Portty App and iPhone Viewers | v2.0 | 0/TBD | Not started | - |
 | 22. Click-to-Share for Tailnet People | v2.0 | 0/TBD | Not started | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/TBD | Not started | - |
