@@ -3,6 +3,8 @@ package updater
 import (
 	"os"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -71,6 +73,16 @@ func step(t *testing.T, j, name string) string {
 	return s
 }
 
+// dmgSuffixes reads the single suffix list from release.yml's workflow-level env.
+func dmgSuffixes(t *testing.T, wf string) []string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^env:\n  DMG_SUFFIXES: "([^"]+)"\n`).FindStringSubmatch(wf)
+	if m == nil {
+		t.Fatal("release.yml has no workflow-level env: DMG_SUFFIXES line")
+	}
+	return strings.Fields(m[1])
+}
+
 func TestReleaseWorkflow_DMGName(t *testing.T) {
 	wf := readWorkflow(t)
 	if !strings.Contains(wf, "tags:\n      - 'v*'") {
@@ -80,20 +92,33 @@ func TestReleaseWorkflow_DMGName(t *testing.T) {
 	if !strings.Contains(create, `VERSION="${GITHUB_REF_NAME}"`) {
 		t.Errorf("VERSION is not set from GITHUB_REF_NAME:\n%s", create)
 	}
-	m := regexp.MustCompile(`DMG_NAME="([^"]+)"`).FindStringSubmatch(create)
-	if m == nil {
-		t.Fatalf("no DMG_NAME in:\n%s", create)
+	// Every published name must be one the updater looks for, in the same order (universal first).
+	var got []string
+	for _, suffix := range dmgSuffixes(t, wf) {
+		got = append(got, "portty-v1.2.3-"+suffix+".dmg")
 	}
-	if got := strings.ReplaceAll(m[1], "${VERSION}", "v1.2.3"); got != DMGAssetName("1.2.3") {
-		t.Errorf("tag v1.2.3 publishes %q, the updater looks for %q", got, DMGAssetName("1.2.3"))
+	if want := DMGAssetNames("1.2.3"); !slices.Equal(got, want) {
+		t.Errorf("tag v1.2.3 publishes %q, the updater looks for %q", got, want)
 	}
-	// Verify requires the signing identifier to be the asset name without .dmg.
-	id := regexp.MustCompile(`codesign --force --timestamp --identifier "([^"]+)"`).FindStringSubmatch(create)
-	if id == nil {
-		t.Fatalf("the DMG is not signed with an explicit --identifier:\n%s", create)
+	for _, want := range []string{
+		`for SUFFIX in $DMG_SUFFIXES; do`,
+		`NAME="portty-${VERSION}-${SUFFIX}"`,
+		// Verify requires the signing identifier to be the asset name without .dmg.
+		`codesign --force --timestamp --identifier "${NAME}"`,
+	} {
+		if !strings.Contains(create, want) {
+			t.Errorf("Create and sign DMG lacks %q:\n%s", want, create)
+		}
 	}
-	if got := strings.ReplaceAll(id[1], "${VERSION}", "v1.2.3") + ".dmg"; got != DMGAssetName("1.2.3") {
-		t.Errorf("tag v1.2.3 signs identifier %q, Verify wants the asset name %q without .dmg", id[1], DMGAssetName("1.2.3"))
+	if n := strings.Count(create, "hdiutil create"); n != 1 {
+		t.Errorf("the image must be created once and copied, got %d hdiutil create", n)
+	}
+	// The universal name appears once, in DMG_SUFFIXES; no step spells a suffix after the version.
+	if n := strings.Count(wf, "darwin-universal"); n != 1 {
+		t.Errorf("release.yml names darwin-universal %d times, want once (DMG_SUFFIXES)", n)
+	}
+	if loc := regexp.MustCompile(`VERSION\}?-darwin-`).FindStringIndex(wf); loc != nil {
+		t.Errorf("a step spells a DMG suffix after the version instead of looping DMG_SUFFIXES: %q", wf[loc[0]:loc[1]])
 	}
 }
 
@@ -116,12 +141,19 @@ func TestReleaseWorkflow_NotarizesAndStaplesDMG(t *testing.T) {
 		}
 		pos += i + len(want)
 	}
+	n := step(t, j, "Notarize and staple DMG")
+	for _, want := range []string{`for SUFFIX in $DMG_SUFFIXES; do`, `DMG="build/bin/${NAME}.dmg"`} {
+		if !strings.Contains(n, want) {
+			t.Errorf("Notarize and staple DMG lacks %q:\n%s", want, n)
+		}
+	}
 	v := step(t, j, strings.TrimSuffix(strings.TrimPrefix(verify, "- name: "), "\n"))
 	for _, want := range []string{
 		`codesign --verify --strict "$DMG"`,
 		"codesign -dvv",
 		"'TeamIdentifier=" + TeamID + "'",
-		`grep -qx "Identifier=portty-${VERSION}-darwin-universal" <<< "$DVV"`,
+		`for SUFFIX in $DMG_SUFFIXES; do`,
+		`grep -qx "Identifier=${NAME}" <<< "$DVV"`,
 		"spctl -a -t open --context context:primary-signature",
 		"': accepted'",
 		"'source=Notarized Developer ID'",
@@ -159,6 +191,40 @@ func TestReleaseWorkflow_VMOnlyFakesGated(t *testing.T) {
 	}
 	if s := step(t, b, strings.TrimSuffix(strings.TrimPrefix(gate, "- name: "), "\n")); !strings.Contains(s, "grep -ac '127.0.0.1:8788' \"$BIN\"") {
 		t.Errorf("the gate does not grep the binary for the fake feed address:\n%s", s)
+	}
+}
+
+// Three notarization waits (.app and every DMG), each capped at 60 minutes, plus overhead.
+func TestReleaseWorkflow_SignTimeout(t *testing.T) {
+	wf := readWorkflow(t)
+	m := regexp.MustCompile(`timeout-minutes: (\d+)`).FindStringSubmatch(job(t, wf, "sign-macos"))
+	if m == nil {
+		t.Fatal("sign-macos has no timeout-minutes")
+	}
+	got, _ := strconv.Atoi(m[1])
+	if want := 60*(1+len(dmgSuffixes(t, wf))) + 20; got < want {
+		t.Errorf("sign-macos timeout-minutes is %d, want at least %d", got, want)
+	}
+}
+
+func TestReleaseWorkflow_ChecksumsAndNotes(t *testing.T) {
+	j := job(t, readWorkflow(t), "publish")
+	sums := step(t, j, "Generate SHA256 checksums")
+	for _, want := range []string{
+		"sha256sum *.dmg > checksums.txt",
+		"for SUFFIX in $DMG_SUFFIXES; do",
+		"portty-${GITHUB_REF_NAME}-${SUFFIX}.dmg",
+		"wc -l",
+	} {
+		if !strings.Contains(sums, want) {
+			t.Errorf("checksum step lacks %q:\n%s", want, sums)
+		}
+	}
+	up := step(t, j, "Upload to GitHub Release")
+	for _, want := range []string{"body: |", "Apple Silicon and macOS 14 or later only."} {
+		if !strings.Contains(up, want) {
+			t.Errorf("upload step lacks %q", want)
+		}
 	}
 }
 
