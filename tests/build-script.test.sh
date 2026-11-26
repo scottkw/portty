@@ -233,12 +233,29 @@ assert_file_contains_regex "contains sign_and_notarize function" \
 echo ""
 echo "=== Section 9: Static pattern checks — build tool invocations ==="
 
-# wails build for macOS: "$WAILS" build -platform darwin/universal -clean
-assert_file_contains_literal "contains 'darwin/universal'" \
-  "darwin/universal" "$BUILD_SH"
+# wails build for macOS: "$WAILS" build -platform darwin/arm64 -clean (Apple Silicon only, macOS 14)
+assert_file_contains_literal "contains 'darwin/arm64'" \
+  "darwin/arm64" "$BUILD_SH"
 
 assert_file_contains_literal "contains wails build -clean (macOS path)" \
-  "build -platform darwin/universal -clean" "$BUILD_SH"
+  "build -platform darwin/arm64 -clean" "$BUILD_SH"
+
+assert_file_contains_literal "exports CGO_CFLAGS at macOS 14" \
+  'export CGO_CFLAGS="-mmacosx-version-min=14.0"' "$BUILD_SH"
+
+assert_file_contains_literal "exports CGO_LDFLAGS at macOS 14" \
+  'export CGO_LDFLAGS="-mmacosx-version-min=14.0"' "$BUILD_SH"
+
+assert_file_contains_literal "runs the bundle gate on the built app" \
+  'scripts/verify-bundle.sh" build/bin/Portty.app' "$BUILD_SH"
+
+# Negation: the universal platform must be ABSENT from build.sh
+output=$(grep -c 'darwin/universal' "$BUILD_SH" || true)
+if [[ "$output" -eq 0 ]]; then
+  pass "build.sh contains no darwin/universal reference"
+else
+  fail "build.sh still builds darwin/universal" "matches: $output"
+fi
 
 # ---------------------------------------------------------------------------
 # Section 10: Static pattern checks — notarization pipeline
