@@ -38,6 +38,9 @@ export function GetSessionTailLines(id: string, n: number): Promise<string[]>
 // Daemon error and retry bound methods
 export function GetDaemonError(): Promise<string>
 export function RetryDaemon(): Promise<void>
+// 19-17 — what puts the daemon back under launchd: "login_items", "move_to_applications", "open_app", "rehome_pending" or "".
+export function GetDaemonRepair(): Promise<string>
+export function OpenLoginItems(): Promise<void>
 // DEBT-08 — the version-mismatch restart prompt: the session count to ask about (0: none; -1: unknown).
 export function GetDaemonRestartPrompt(): Promise<number>
 export function AnswerDaemonRestart(restart: boolean): Promise<void>

@@ -5,13 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/scottkw/portty/internal/daemon"
@@ -196,6 +199,11 @@ type App struct {
 	detectMoverFunc func() (updater.DMGRun, bool)
 	// moverStartFunc hands a mover job to the installer and quits the GUI; nil means a.startInstaller.
 	moverStartFunc func(updater.Job) error
+
+	// repairKind is the string GetDaemonRepair reports for a daemon that is not
+	// under launchd ("" when none): set by the ensure's OnFallback and by an
+	// unusable EnsureAgent, cleared once launchd runs the daemon. Always a string.
+	repairKind atomic.Value
 }
 
 // defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
@@ -351,6 +359,7 @@ func (a *App) startDaemon(socketPath string) {
 	if a.startupDone != nil {
 		defer close(a.startupDone)
 	}
+	a.prepareAgent()
 	if err := a.ensure()(socketPath); err != nil {
 		a.daemonErr.Store(&err)
 		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
@@ -359,6 +368,108 @@ func (a *App) startDaemon(socketPath string) {
 		a.launchedAt = time.Now()
 		a.applyStoredAppearance()
 	}
+}
+
+// Seams for the launchd-first start; tests swap them so no real launchctl runs.
+var (
+	ensureAgentFunc    = daemon.EnsureAgent
+	executablePathFunc = os.Executable
+	// openSystemURL opens one System Settings URL; it refuses under a test binary.
+	openSystemURL = func(url string) error {
+		if testing.Testing() {
+			return errors.New("refusing to open System Settings from a test binary")
+		}
+		return exec.Command("/usr/bin/open", url).Run()
+	}
+)
+
+// openURLLoginItems is System Settings > General > Login Items (macOS 13+).
+const openURLLoginItems = "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
+
+// Repair kinds GetDaemonRepair reports; 19-13 shows them in Settings.
+const (
+	repairLoginItems         = "login_items"
+	repairOpenApp            = "open_app"
+	repairMoveToApplications = "move_to_applications"
+
+	reasonDiskImage = "running from a disk image"
+)
+
+// repairKindFor maps a typed agent error from the ensure to a repair kind.
+// Anything unexpected still reads as needing repair, never as silent.
+func repairKindFor(err error) string {
+	switch {
+	case errors.Is(err, daemon.ErrAgentUnsafePath):
+		return repairMoveToApplications
+	case errors.Is(err, daemon.ErrAgentMissing):
+		return repairOpenApp
+	default: // disabled, refused, launchctl failures
+		return repairLoginItems
+	}
+}
+
+// installedExecutable resolves the running executable and reports whether it
+// is the installed Portty.app (/Applications or ~/Applications), the only
+// bundle allowed to write the production LaunchAgent. The reason names the
+// failed rule, never a path.
+func installedExecutable() (exe string, ok bool, reason string) {
+	exe, err := executablePathFunc()
+	if err != nil {
+		return "", false, "executable path unknown"
+	}
+	if r, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = r
+	}
+	if strings.HasPrefix(exe, "/Volumes/") || strings.Contains(exe, "/AppTranslocation/") {
+		return exe, false, reasonDiskImage
+	}
+	const rel = "Applications/Portty.app/Contents/MacOS/Portty"
+	if exe == "/"+rel {
+		return exe, true, ""
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		if r, err := filepath.EvalSymlinks(home); err == nil {
+			home = r
+		}
+		if exe == filepath.Join(home, rel) {
+			return exe, true, ""
+		}
+	}
+	return exe, false, "not the installed Portty.app in Applications"
+}
+
+// prepareAgent installs or refreshes the LaunchAgent before the ensure, for an
+// installed bundle only. An unusable agent is not fatal: the ensure falls back
+// to the detached spawn. It is still recorded as a repair, because a daemon
+// that is already running makes the ensure start nothing and fall back to nothing.
+func (a *App) prepareAgent() {
+	exe, ok, reason := installedExecutable()
+	if !ok {
+		log.Printf("daemon: launchd agent not written: %s", reason)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	state, err := ensureAgentFunc(ctx, exe)
+	if err != nil {
+		log.Printf("daemon: launchd agent: %v", err)
+		a.repairKind.Store(repairKindFor(err))
+		return
+	}
+	log.Printf("daemon: launchd agent: ready (state %d)", state)
+}
+
+// GetDaemonRepair says what the desktop must do to put the daemon back under
+// launchd: "login_items", "move_to_applications", "open_app", or "" for
+// nothing. It never blocks terminals; Settings shows it as needs repair.
+func (a *App) GetDaemonRepair() string {
+	k, _ := a.repairKind.Load().(string)
+	return k
+}
+
+// OpenLoginItems opens System Settings at Login Items. The URL is fixed.
+func (a *App) OpenLoginItems() error {
+	return openSystemURL(openURLLoginItems)
 }
 
 // ensure returns the EnsureDaemon seam, or daemon.EnsureDaemon with the GUI's
@@ -390,8 +501,22 @@ func (a *App) ensure() func(socketPath string) error {
 		if a.keepDaemonOnce.Swap(false) { // just rolled back: keep whichever daemon holds the sessions
 			opts = daemon.EnsureOptions{Restart: func(daemon.RestartQuestion) bool { return false }, NoHandoff: true}
 		}
+		// A start that falls back is surfaced as a repair; a start that goes through
+		// launchd clears one. A daemon that was already up started nothing, so it
+		// changes no repair state here (startDaemon reads its /health instead).
+		_, healthErr := daemonHealthOf(socketPath)
+		wasDown := healthErr != nil
+		fellBack := false
+		opts.OnFallback = func(reason error) {
+			fellBack = true
+			a.repairKind.Store(repairKindFor(reason))
+			log.Printf("daemon: started without launchd: %v", reason)
+		}
 		if err := ensureDaemon(ctx, socketPath, opts); err != nil {
 			return err
+		}
+		if wasDown && !fellBack {
+			a.repairKind.Store("")
 		}
 		if err := ctx.Err(); err != nil { // Quit All: no more calls to a daemon that may be hung (V-05b)
 			return err
