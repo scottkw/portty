@@ -790,8 +790,11 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   border-radius: 8px;
   background: var(--color-field);
 }
+/* Stacked, per the contract: the thumbnail, then the caption 8px under it. */
 .desktop-setup__result {
+  flex-direction: column;
   align-items: flex-start;
+  gap: 8px;
 }
 .settings-sheet__header {
   flex-shrink: 0;
