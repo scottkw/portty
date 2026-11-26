@@ -231,7 +231,7 @@ The button opens the setup sheet. The ellipsis follows the house rule: only item
 
 ### Footnote and inline errors
 
-Footnote (`.settings-sheet__footnote`, 8px below the group): **While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording again about once a month, at the Mac. The first time Chrome opens the link, it may ask to find devices on your local network. Choose Allow.**
+Footnote (`.settings-sheet__footnote`, 8px below the group): **While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording again about once a month, at the Mac. The first time Chrome opens the link, it may ask to find devices nearby. Choose Allow.**
 
 Inline errors, one slot under the group, `role="alert"` (copy in Copywriting Contract).
 
@@ -376,7 +376,7 @@ Messages sit on a `--color-popover` surface (chip or card), never on the video i
 
 | State | Where and how | Icon | Heading (card, 17/600) or chip text (13/400) | Body (card, 13/400, secondary) | Action |
 |-------|---------------|------|----------------------------------------------|--------------------------------|--------|
-| Connecting (before the first frame, also a join) | Card, centered, no scrim | `ComputerDesktopIcon` | **Connecting…** | **Waiting for the first picture from your Mac. If your browser asks to find devices on your local network, choose Allow.** | none |
+| Connecting (before the first frame, also a join) | Card, centered, no scrim | `ComputerDesktopIcon` | **Connecting…** | **Waiting for the first picture from your Mac. If your browser asks to find devices nearby, choose Allow.** | none |
 | Streaming | No card. A **chip** top-center, `top: calc(8px + env(safe-area-inset-top))`, shows for 3 seconds after the first frame and again whenever the count changes, then fades (150 ms; instant under `prefers-reduced-motion: reduce`) | none | **Streaming to 1 viewer** / **Streaming to N viewers** | | none |
 | Locked | Chip, top-center, stays while locked. The lock screen is visible behind it because the stream keeps flowing | `LockClosedIcon` 16px | **Locked** | | none |
 | Needs permission | Card, centered, scrim over the last frame if any | `ExclamationTriangleIcon` | **Needs permission** | **Portty doesn't have permission to show this Mac's screen. On the Mac, open Portty, go to Settings, then Sharing, and choose Set Up Permissions.** | none |
@@ -428,7 +428,7 @@ Writing rules (Phase 2, 4, 14): sentence case for descriptions, headings and chi
 | Link row description | **Open it in Chrome or Safari on a device signed in to your Tailscale account. Treat it like a password.** |
 | Copy button | **Copy Link** then **Copied!** (2 s) |
 | Permissions row | **Permissions** / **Screen Recording and Accessibility.** / **Granted** / **Needs permission** / **Review Permissions…** / **Set Up Permissions…** |
-| Settings footnote | **While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording again about once a month, at the Mac. The first time Chrome opens the link, it may ask to find devices on your local network. Choose Allow.** |
+| Settings footnote | **While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording again about once a month, at the Mac. The first time Chrome opens the link, it may ask to find devices nearby. Choose Allow.** |
 | Setup sheet title | **Set Up Desktop Sharing** |
 | Setup intro | **Portty needs two permissions to show this Mac's screen. Grant them here, once, while you are at the Mac.** |
 | Setup rows | **Screen Recording** / **Accessibility**; **Granted** / **Not granted**; button **Open System Settings** |
@@ -446,7 +446,7 @@ Writing rules (Phase 2, 4, 14): sentence case for descriptions, headings and chi
 | Error: copy failed | **Couldn't copy the link. Try again.** |
 | Tray lines | **Desktop: Needs permission** / **Desktop: Waiting for approval at the Mac** / **Desktop: Display asleep** / **Desktop: Locked** / **Desktop: Locked, streaming to N viewers** / **Desktop: Ready** / **Desktop: Streaming to N viewers** / **Desktop: Waiting for Tailscale** |
 | Lapse notification | Title **Portty**, body **Portty desktop needs approval at the Mac.** |
-| Viewer: connecting | **Connecting…** / **Waiting for the first picture from your Mac. If your browser asks to find devices on your local network, choose Allow.** |
+| Viewer: connecting | **Connecting…** / **Waiting for the first picture from your Mac. If your browser asks to find devices nearby, choose Allow.** |
 | Viewer: states | The viewer column of the Surface 5 states table |
 | Viewer: error, rejected token | **This desktop link no longer works** / **The link is incomplete or has been replaced. On the Mac, open Portty, go to Settings, then Sharing, and use Copy Link under Desktop.** |
 | Viewer: error, desktop off | **Desktop sharing is off on this Mac** / **Turn on Always-available desktop in Portty's Settings, under Sharing, then copy the link from there.** |
@@ -543,7 +543,7 @@ Empty-state and error-state copy lives in `## Copywriting Contract`; rows here r
 | empty | Tray menu with always-available off | ✅ covered | No Desktop line; the menu is unchanged |
 | populated | Lapse notification text and dedupe (GUI running) | ✅ covered | One per lapse with a stable id, none on recovery; the text is fixed in the Copywriting Contract |
 | populated | Lapse notification posted by the daemon with the GUI closed | 🧪 backstop | Delivery under the daemon's bundle identity is unmeasured (RESEARCH C6, V1); checked in the Tart VM with a notarized build and recorded as a TESTING.md Section 5 item |
-| loading | Viewer before the first frame | ✅ covered | The Connecting card, with the local-network hint |
+| loading | Viewer before the first frame | ✅ covered | The Connecting card, with the find-devices hint |
 | loading | Viewer on iOS or a browser that blocks autoplay | ✅ covered | The Tap to Start card; one tap starts playback |
 | error | Viewer: rejected token, desktop off, unreachable | ✅ covered | Three distinct headings and bodies; the first two are final, the third keeps retrying |
 | populated | Viewer in each desktop state | ✅ covered | Needs permission, Waiting for approval, Display asleep show a card; Locked a chip; Streaming a transient chip |

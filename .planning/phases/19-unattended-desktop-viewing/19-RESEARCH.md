@@ -563,16 +563,21 @@ Not a rename or refactor phase, but it migrates start-model state, so the same q
 | A17 | Detecting userspace Tailscale via "tailnet IP not on a local interface" | Pattern 4 | False refusal/accept |
 | A18 | A `!darwin` stub for `internal/screencap` keeps `go vet` portable | Structure | Build noise only |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should always-available hold a system-sleep assertion permanently (not only while a viewer is connected)?**
    - What we know: DPRM-04 and CONTEXT scope assertions to "first viewer join to last leave"; a sleeping Mac cannot be woken from the tailnet (REQUIREMENTS Out of Scope); R18-host showed the Mac idle-sleeps within seconds of display sleep on battery.
    - What's unclear: whether "any time" (SC1) means the Mac must be kept awake by Portty or by the user's Energy settings. This is a product choice, not decided in CONTEXT.
    - Recommendation: keep CONTEXT's scope, put an Energy-settings hint in the Desktop group footnote, and surface "Can't reach this Mac" in the viewer. Raise it with the user if M-159 shows the office Mac sleeps overnight.
+   - **RESOLVED:** user decision after research (19-CONTEXT, "Only while plugged in", 2026-11-25): with always-available on and the Mac on AC power the daemon holds a system-sleep assertion; on battery it sleeps normally. Implemented in 19-05 (OnACPower, HoldSystemAwake) and 19-09 (AC-only assertion), checked in 19-12 row P1 and the battery item in 19-16.
 2. **What is the actual behaviour of the real 30-day prompt?** Frames flowed through the aged-approval prompt in the VM (R19-b), but the real monthly prompt was never observed (M-160). Plan the detector so (c) and (d) can be tuned after M-160 without schema changes.
+   - **RESOLVED (owner: M-160):** the detector's timings are constants in 19-09 (signal d not adopted); the real prompt's behaviour is measured by M-160 on the office Mac, referenced from TESTING.md Category BJ (19-16).
 3. **Does the monthly dialog block remote clicks?** Phase 20 will have control; whether a synthetic click can press "Allow" in a system dialog is unknown. Not Phase 19's decision; note for Phase 20.
+   - **RESOLVED (owner: Phase 20):** Phase 19 has no input path; the question belongs to Phase 20's control work (20-RESEARCH Open Question 3).
 4. **Is "Remote Desktop" a separate TCC row on the shipping office Mac?** Seen in macOS 27 betas only (CITED forum); not in the 27.2 VMs. M-163 confirms.
+   - **RESOLVED (owner: M-163):** 19-16 rewords M-163 to the fresh-process probe and effect check and records which TCC rows the office Mac lists.
 5. **Is bootstrap of a user LaunchAgent allowed on the corporate Mac, and can Login Items be disabled by policy?** Unknown; C4-5 keeps a detached-spawn fallback.
+   - **RESOLVED (C4-5 not adopted):** CONTEXT locks one launchd start path, so a refused bootstrap or a job disabled in Login Items is a repair state with an Open Login Items button (19-02 typed errors, 19-17 GUI), never a detached spawn; 19-07 row V2(d) checks it in the VM, and the office Mac's policy is observed in the M-163 run (19-16).
 
 ### Measurements to schedule early (VM rows, no host side effects)
 Run in the disposable Tart VMs only (R00 GO), using the R19 vanilla-clone method for approval-prompt work (the approval store was writable there; backdating raised the prompt at once). Do not use `tailscale down`.
