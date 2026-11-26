@@ -10,6 +10,7 @@ package main
 
 int hasValidBundleIdentifier(void);
 void sendNotification(const char *identifier, const char *title, const char *body);
+int notificationUsesMainQueue(void);
 */
 import "C"
 
@@ -24,6 +25,14 @@ import (
 // process (Phase 167 M-41 regression).
 func hasAppBundleID() bool {
 	return C.hasValidBundleIdentifier() != 0
+}
+
+// notificationUsesMainQueue reports whether the native notification work hops to
+// the main dispatch queue (only while an NSApplication runs, i.e. in the GUI);
+// everywhere else, including the headless launchd daemon, it runs on a private
+// queue because nothing services the main one.
+func notificationUsesMainQueue() bool {
+	return C.notificationUsesMainQueue() != 0
 }
 
 // sendNotification sends a macOS notification using UNUserNotificationCenter.

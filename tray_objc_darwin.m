@@ -313,6 +313,28 @@ int hasValidBundleIdentifier(void) {
     return [[NSBundle mainBundle] bundleIdentifier] != nil ? 1 : 0;
 }
 
+// notificationUsesMainQueue is true only while an NSApplication is running, i.e.
+// in the GUI: only then is the main dispatch queue serviced. The headless
+// launchd daemon (a Go main thread, no run loop) never services it, so a block
+// queued there never ran and its lapse notification vanished (VM row V1).
+int notificationUsesMainQueue(void) {
+    return [NSApp isRunning] ? 1 : 0;
+}
+
+// runNotificationBlock queues a notification step where it can run: the main
+// queue in the GUI (unchanged), a private serial queue everywhere else.
+// UNUserNotificationCenter is not main-thread-only.
+static void runNotificationBlock(dispatch_block_t block) {
+    if (notificationUsesMainQueue()) {
+        dispatch_async(dispatch_get_main_queue(), block);
+        return;
+    }
+    static dispatch_queue_t q;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ q = dispatch_queue_create("app.portty.notifications", DISPATCH_QUEUE_SERIAL); });
+    dispatch_async(q, block);
+}
+
 // sendNotification sends a macOS notification using UNUserNotificationCenter.
 // Requests permission lazily on first call; no-ops if the user denies.
 // The identifier is caller-supplied so concurrent notifications (e.g. two
@@ -333,8 +355,8 @@ void sendNotification(const char *identifier, const char *title, const char *bod
     NSString *nsIdentifier = [NSString stringWithUTF8String:identifier];
     NSString *nsTitle = [NSString stringWithUTF8String:title];
     NSString *nsBody  = [NSString stringWithUTF8String:body];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"Portty: dispatching native notification for identifier %@", nsIdentifier);
+    runNotificationBlock(^{
+        NSLog(@"Portty: dispatching native notification for identifier %@ (main queue: %d)", nsIdentifier, notificationUsesMainQueue());
         registerNotificationDelegate();
         @try {
             UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
@@ -344,7 +366,7 @@ void sendNotification(const char *identifier, const char *title, const char *bod
                     NSLog(@"Portty: notification authorization NOT granted for identifier %@ (error=%@)", nsIdentifier, error);
                     return;
                 }
-                dispatch_async(dispatch_get_main_queue(), ^{
+                runNotificationBlock(^{
                     @try {
                         UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
                         content.title = nsTitle;
