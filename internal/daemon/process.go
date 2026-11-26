@@ -119,8 +119,39 @@ var (
 	serveStep       = serveDaemon
 )
 
-// shouldRehome is a stub until Task 3's GREEN commit.
-func shouldRehome(h HealthResponse, build string) bool { return false }
+// shouldRehome reports whether the launchd job's daemon (this build) may take
+// over the daemon h describes: healthy, speaking this HandoffVersion, not
+// itself launchd-managed (a managed one is never a target) and not newer than
+// build (a downgrade handoff is unsupported, olderRelease).
+func shouldRehome(h HealthResponse, build string) bool {
+	return h.Status == "ok" && !h.Launchd && h.Handoff == HandoffVersion &&
+		(h.Version == build || olderRelease(h.Version, build))
+}
+
+// rehome runs in a launchd-started daemon that lost the lock to another
+// daemon: after an upgrade the GUI-spawned takeover daemon is unmanaged, so
+// this daemon takes its sessions over with the v1 handoff and serves them, and
+// the daemon is launchd-managed again. Any other outcome returns, and the
+// caller exits 0: a non-zero exit would have launchd retry every 10 s, freezing
+// writes each time. HandoffVersion stays 1.
+func rehome(ctx context.Context, socketPath, lockPath string) {
+	if !ManagedByLaunchd(ctx) {
+		return
+	}
+	h, err := NewDaemonClient(socketPath).WithContext(ctx).HealthInfo()
+	if err != nil || !shouldRehome(h, BuildVersion) {
+		return
+	}
+	launchdManaged = true
+	engine := NewSessionEngine()
+	api := NewAPI(engine)
+	code := runTakeoverStep(ctx, takeoverDeps{socketPath: socketPath, lockPath: lockPath, api: api, build: BuildVersion})
+	if code != takeoverCommitted {
+		fmt.Fprintf(os.Stderr, "daemon: re-home not done: %s\n", moveFailedReason(code))
+		return
+	}
+	serveStep(ctx, api, engine, socketPath)
+}
 
 // runDaemonCore is the blocking core of the daemon. It creates a SessionEngine,
 // starts the API (with relay server inside), and blocks until ctx is cancelled.
@@ -131,10 +162,12 @@ func runDaemonCore(ctx context.Context) {
 	socketPath := DefaultSocketPath()
 	// WR-05: the lock comes before any socket cleanup or bind. A daemon that
 	// cannot get it within the wait leaves the running one alone.
-	lock, err := lockDaemon(filepath.Join(filepath.Dir(socketPath), "daemon.lock"), lockWait)
+	lockPath := filepath.Join(filepath.Dir(socketPath), "daemon.lock")
+	lock, err := lockDaemon(lockPath, lockWait)
 	if err != nil {
 		if errors.Is(err, syscall.EWOULDBLOCK) { // another daemon: exit 0, launchd leaves it
 			fmt.Fprintf(os.Stderr, "daemon: already running (lock: %v)\n", err)
+			rehome(ctx, socketPath, lockPath)
 			return
 		}
 		fmt.Fprintf(os.Stderr, "daemon: lock: %v\n", err)

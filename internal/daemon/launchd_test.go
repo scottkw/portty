@@ -749,6 +749,20 @@ func TestLaunchd_UnsafePath(t *testing.T) {
 	}
 }
 
+// T-19-06: the executable is XML-escaped into the plist, never spliced raw.
+func TestRenderAgentPlist_Escapes(t *testing.T) {
+	data, err := RenderAgentPlist("/Applications/A&B <x>.app/Contents/MacOS/Portty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args, _ := plistDict(t, data)["ProgramArguments"].([]string); len(args) != 2 || args[0] != "/Applications/A&B <x>.app/Contents/MacOS/Portty" {
+		t.Errorf("ProgramArguments = %v, want the exe round-tripped through XML escaping", args)
+	}
+	if strings.Contains(string(data), "<x>") {
+		t.Error("the executable's markup reached the plist unescaped")
+	}
+}
+
 func TestLaunchctl_RefusesUnderTest(t *testing.T) {
 	if out, err := defaultLaunchctl(context.Background(), "print", "gui/0/none"); err == nil || out != nil {
 		t.Fatalf("defaultLaunchctl under a test binary = %q, %v; want a refusal", out, err)
