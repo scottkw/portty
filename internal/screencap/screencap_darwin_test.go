@@ -1,6 +1,7 @@
 package screencap
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"slices"
@@ -58,6 +59,32 @@ func TestDisplaySource_SelectSurface(t *testing.T) {
 	}
 	if err := src.SelectSurface(Surface{Kind: SurfaceDisplay, ID: 3}); !errors.Is(err, ErrSurfaceUnsupported) {
 		t.Errorf("another display = %v, want ErrSurfaceUnsupported", err)
+	}
+}
+
+// A full queue drops a delta and never a keyframe, and keeps order.
+func TestDisplaySource_EmitWhenFull(t *testing.T) {
+	d := &DisplaySource{frames: make(chan AccessUnit, 2)}
+	unit := func(b byte, key bool) AccessUnit { return AccessUnit{Data: []byte{b}, Keyframe: key} }
+	drain := func() (got []byte) {
+		for len(d.frames) > 0 {
+			got = append(got, (<-d.frames).Data[0])
+		}
+		return got
+	}
+
+	d.emit(unit(1, true))
+	d.emit(unit(2, false))
+	d.emit(unit(3, false)) // full: the new delta is dropped
+	if got := drain(); !bytes.Equal(got, []byte{1, 2}) {
+		t.Errorf("delta into a full queue: queue = %v, want [1 2]", got)
+	}
+
+	d.emit(unit(4, false))
+	d.emit(unit(5, false))
+	d.emit(unit(6, true)) // full: a keyframe evicts the oldest unit
+	if got := drain(); !bytes.Equal(got, []byte{5, 6}) {
+		t.Errorf("keyframe into a full queue: queue = %v, want [5 6]", got)
 	}
 }
 
