@@ -4,15 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/scottkw/portty/internal/desktop"
+	"github.com/scottkw/portty/internal/screencap"
 )
 
 // 19-11: GET /desktop/permissions and POST /desktop/test-capture. The probe is
@@ -88,4 +93,121 @@ func TestDesktopPermissions_EndToEnd(t *testing.T) {
 	if rec := doDesktop(api, http.MethodPost, "/desktop/test-capture"); rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/jpeg" {
 		t.Fatalf("POST test-capture = %d %q; want 200 image/jpeg", rec.Code, rec.Header().Get("Content-Type"))
 	}
+}
+
+// DPRM-01 / T-19-41: overlapping asks (the sheet polling, the state loop, a
+// second window) share one child spawn.
+func TestDesktopPermissions_SharedSpawn(t *testing.T) {
+	api, _ := shareTestDaemon(t)
+	var spawns atomic.Int32
+	slow := func(context.Context, string, ...string) ([]byte, error) {
+		spawns.Add(1)
+		time.Sleep(100 * time.Millisecond)
+		return []byte(`{"sr":true,"ax":false,"pe":false}`), nil
+	}
+	t.Cleanup(SetDesktopPermsForTest(desktop.NewProberWithRunner(slow)))
+
+	var wg sync.WaitGroup
+	for range 5 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rec := doDesktop(api, http.MethodGet, "/desktop/permissions")
+			if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"sr":true`) {
+				t.Errorf("GET /desktop/permissions = %d %s; want 200 with sr true", rec.Code, rec.Body)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := spawns.Load(); n != 1 {
+		t.Fatalf("five overlapping asks ran %d child spawns, want 1", n)
+	}
+}
+
+// Research C1: "not granted" must mean the OS said so. A probe that fails, or
+// prints something other than the three-key line, is probe_failed, never
+// {sr:false}.
+func TestDesktopPermissions_ProbeFailure(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	prints := func(s string) func(context.Context, string, ...string) ([]byte, error) {
+		return func(context.Context, string, ...string) ([]byte, error) { return []byte(s), nil }
+	}
+	for name, run := range map[string]func(context.Context, string, ...string) ([]byte, error){
+		"child fails":    func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("exit status 1") },
+		"malformed":      prints(`{"sr":tru`),
+		"missing key":    prints(`{"sr":true,"ax":true}`),
+		"unknown key":    prints(`{"sr":true,"ax":true,"pe":true,"x":1}`),
+		"empty":          prints(``),
+		"trailing lines": prints("{\"sr\":true,\"ax\":true,\"pe\":true}\n{}"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Cleanup(SetDesktopPermsForTest(desktop.NewProberWithRunner(run)))
+			rec := doDesktop(api, http.MethodGet, "/desktop/permissions")
+			if rec.Code != http.StatusServiceUnavailable || strings.TrimSpace(rec.Body.String()) != `{"code":"probe_failed"}` {
+				t.Fatalf("GET = %d %q; want 503 {\"code\":\"probe_failed\"}", rec.Code, rec.Body)
+			}
+			if sr, ax, err := client.DesktopPermissions(); err == nil || sr || ax {
+				t.Fatalf("client.DesktopPermissions = %v %v %v; want an error", sr, ax, err)
+			}
+		})
+	}
+}
+
+// The Test Capture error codes, and what a failure must not do: record an
+// approval (NoteTestCapture writes the state file; a failure leaves none).
+func TestDesktopTestCapture_Codes(t *testing.T) {
+	api, client := shareTestDaemon(t)
+	stateFile := filepath.Join(api.engine.configDir, "desktop-state.json")
+	for _, tc := range []struct {
+		name     string
+		capture  func(ctx context.Context, _ int) ([]byte, error)
+		wantCode string
+		wantHTTP int
+	}{
+		{"permission", func(context.Context, int) ([]byte, error) {
+			return nil, fmt.Errorf("start: %w", screencap.ErrPermissionDenied)
+		}, "needs_permission", http.StatusConflict},
+		{"ceiling", func(ctx context.Context, _ int) ([]byte, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}, "timeout", http.StatusGatewayTimeout},
+		{"other", func(context.Context, int) ([]byte, error) { return nil, errors.New("encoder exploded") }, "capture_failed", http.StatusInternalServerError},
+		{"no display", func(context.Context, int) ([]byte, error) { return nil, screencap.ErrNoDisplay }, "capture_failed", http.StatusInternalServerError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Cleanup(SetDesktopCaptureForTest(tc.capture, 100*time.Millisecond))
+			rec := doDesktop(api, http.MethodPost, "/desktop/test-capture")
+			if rec.Code != tc.wantHTTP || strings.TrimSpace(rec.Body.String()) != `{"code":"`+tc.wantCode+`"}` {
+				t.Fatalf("POST = %d %q; want %d code %s", rec.Code, rec.Body, tc.wantHTTP, tc.wantCode)
+			}
+			if jpeg, code, err := client.DesktopTestCapture(); jpeg != nil || code != tc.wantCode || err != nil {
+				t.Fatalf("client = %d bytes, code %q, err %v; want code %s", len(jpeg), code, err, tc.wantCode)
+			}
+			if _, err := os.Stat(stateFile); err == nil {
+				t.Fatal("a failed test capture wrote desktop-state.json (recorded an approval)")
+			}
+		})
+	}
+}
+
+// A good Test Capture clears a tripped crash-loop breaker on a running Manager
+// (NoteTestCapture alone only clears the file).
+func TestDesktopTestCapture_ClearsBreaker(t *testing.T) {
+	e := newDesktopEnv(t)
+	now := time.Now().Unix()
+	state := fmt.Sprintf(`{"schemaVersion":1,"approvalSeenAt":0,"captureActive":false,"abnormalExits":[%d,%d,%d]}`, now, now, now)
+	if err := os.WriteFile(filepath.Join(e.api.engine.configDir, "desktop-state.json"), []byte(state), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.mustOn(t)
+	if st := e.status(t); st.State != string(desktop.StateCapturePaused) {
+		t.Fatalf("with three recent abnormal exits the state is %q, want capture_paused", st.State)
+	}
+	t.Cleanup(SetDesktopCaptureForTest(func(context.Context, int) ([]byte, error) { return fakeJPEG, nil }, 0))
+	if _, code, err := e.client.DesktopTestCapture(); err != nil || code != "" {
+		t.Fatalf("test capture: code %q, err %v", code, err)
+	}
+	eventually(t, 5*time.Second, "capture_paused to clear after a good test capture", func() bool {
+		return e.status(t).State != string(desktop.StateCapturePaused)
+	})
 }
