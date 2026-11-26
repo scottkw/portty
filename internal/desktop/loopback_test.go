@@ -63,6 +63,10 @@ type tracerEnv struct {
 	base    string // https://127.0.0.1:<port>
 	client  *http.Client
 
+	srcW, srcH int // synthetic source size, default 1280x800
+	mediaPort  int // the Manager's UDP port
+	preStart   func(*desktop.Manager)
+
 	mu      sync.Mutex
 	sources []*screencap.SyntheticSource
 }
@@ -140,12 +144,16 @@ func freeUDPPort(t *testing.T) int {
 	return c.LocalAddr().(*net.UDPAddr).Port
 }
 
+// tracerOpt adjusts the test server before the Manager is built: it may set
+// env.srcW/srcH/preStart and edit the Manager's Deps.
+type tracerOpt func(env *tracerEnv, d *desktop.Deps)
+
 // newTracerServer starts a loopback share server (self-signed cert, fake
 // same-user WhoIs, a one-file app bundle) and a Manager on a synthetic source.
-func newTracerServer(t *testing.T) *tracerEnv {
+func newTracerServer(t *testing.T, opts ...tracerOpt) *tracerEnv {
 	t.Helper()
 	desktop.AllowLoopbackForTest()
-	env := &tracerEnv{key: make([]byte, 32)}
+	env := &tracerEnv{key: make([]byte, 32), srcW: 1280, srcH: 800, mediaPort: freeUDPPort(t)}
 	if _, err := rand.Read(env.key); err != nil {
 		t.Fatal(err)
 	}
@@ -161,19 +169,26 @@ func newTracerServer(t *testing.T) *tracerEnv {
 	ws.SetSigningKey(env.key)
 	ws.SetStaticAppFS(fstest.MapFS{"index.html": {Data: []byte(indexHTML)}})
 
-	mgr, err := desktop.NewManager(desktop.Deps{
+	deps := desktop.Deps{
 		Bind:      netip.MustParseAddr("127.0.0.1"),
-		MediaPort: freeUDPPort(t),
+		MediaPort: env.mediaPort,
 		NewSource: func() screencap.Source {
-			s := screencap.NewSyntheticSource(1280, 800)
+			s := screencap.NewSyntheticSource(env.srcW, env.srcH)
 			env.mu.Lock()
 			env.sources = append(env.sources, s)
 			env.mu.Unlock()
 			return s
 		},
-	})
+	}
+	for _, o := range opts {
+		o(env, &deps)
+	}
+	mgr, err := desktop.NewManager(deps)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if env.preStart != nil {
+		env.preStart(mgr)
 	}
 	if err := mgr.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -255,8 +270,9 @@ func hasAll(types []int, want ...int) bool {
 // loopbackClient is a pion viewer: a recvonly H.264 transceiver that
 // depacketizes the first received access units into Annex-B.
 type loopbackClient struct {
-	pc  *webrtc.PeerConnection
-	aus chan []byte
+	pc   *webrtc.PeerConnection
+	aus  chan []byte
+	ssrc atomic.Uint32 // the received track's SSRC, set by OnTrack
 }
 
 func newLoopbackClient(t *testing.T) *loopbackClient {
@@ -280,6 +296,7 @@ func newLoopbackClient(t *testing.T) *loopbackClient {
 	}
 	lc := &loopbackClient{pc: pc, aus: make(chan []byte, 64)}
 	pc.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		lc.ssrc.Store(uint32(track.SSRC()))
 		var h264 codecs.H264Packet
 		var au []byte
 		for {
