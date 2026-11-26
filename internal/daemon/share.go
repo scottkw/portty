@@ -66,7 +66,7 @@ func shareStatus(code string) int {
 		return http.StatusNotFound
 	case ShareErrTailscaleOff:
 		return http.StatusServiceUnavailable
-	case ShareErrHTTPSOff, ShareErrPortInUse:
+	case ShareErrHTTPSOff, ShareErrPortInUse, ShareErrUserspace:
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
@@ -211,8 +211,14 @@ func (a *API) shareOn(ctx context.Context, id string) (ShareResponse, *ShareErro
 	ws.AddGrant(id, rec.grantID)
 	a.shares[id] = rec
 
-	// The first share publishes the tailnet name in Certificate Transparency
-	// logs; the GUI reads this acknowledgement with HasCTDisclosure.
+	return ShareResponse{Shared: true, URL: shareURL(ws, id, rec.token), FirstShare: a.recordCTDisclosure()}, nil
+}
+
+// recordCTDisclosure reports whether this is the first share of any kind. The
+// first one publishes the tailnet name in Certificate Transparency logs; the
+// GUI reads this acknowledgement with HasCTDisclosure. Terminal shares and the
+// desktop share it, so only one of them is ever "first".
+func (a *API) recordCTDisclosure() bool {
 	ack := filepath.Join(a.engine.configDir, "ct_disclosed")
 	_, statErr := os.Stat(ack)
 	first := errors.Is(statErr, os.ErrNotExist)
@@ -221,7 +227,7 @@ func (a *API) shareOn(ctx context.Context, id string) (ShareResponse, *ShareErro
 			fmt.Fprintf(os.Stderr, "daemon: record CT acknowledgement: %v\n", err)
 		}
 	}
-	return ShareResponse{Shared: true, URL: shareURL(ws, id, rec.token), FirstShare: first}, nil
+	return first
 }
 
 // startShareServer builds, wires and starts a share server, then installs it.
@@ -247,6 +253,9 @@ func (a *API) startShareServer(
 		return &ShareError{ShareErrStartFailed, err.Error()}
 	}
 	a.installShareServer(ws)
+	a.mu.Lock()
+	a.shareBuiltIP, a.shareBuiltDomain = h.IP, h.Domain
+	a.mu.Unlock()
 	return nil
 }
 
@@ -293,6 +302,9 @@ func (a *API) wireShareServer(ws *webserver.WebServer, h webserver.TailscaleHeal
 	// The relay accepts Origins naming its own port, so a proxied request to it
 	// (Phase 13 port routes) would pass that check; never grant or proxy it.
 	ws.SetDeniedPorts(a.relayPort)
+	// The /desktop/ routes read the always-available grant and viewers through
+	// the daemon, so they follow turn-off and key changes without a restart.
+	ws.SetDesktopBackend(a.desktopBackend())
 }
 
 // installShareServer makes a started share server this daemon's, with a
@@ -336,7 +348,7 @@ func (a *API) mintShareRecord(id string) (shareRecord, error) {
 
 // unshareLocked drops the session's record, revokes its grants, closes its
 // web viewers with relay.CloseReasonShareStopped and stops the share server
-// when nothing is shared. Shared by share-off, session exit and kill. Caller
+// when neither a terminal share nor the desktop needs it. Shared by share-off, session exit and kill. Caller
 // holds a.mu.
 // Order matters: grants clear before the kick so a viewer subscribing
 // mid-revoke fails its post-subscribe re-check, and the kick precedes Stop
@@ -352,10 +364,25 @@ func (a *API) unshareLocked(id string) {
 	if hub, ok := a.engine.Manager().Get(id); ok {
 		hub.RevokeWebViewers(relay.CloseReasonShareStopped)
 	}
-	if ws != nil && len(a.shares) == 0 {
+	a.stopServerIfIdleLocked()
+}
+
+// stopServerIfIdleLocked stops the share server when neither a terminal share
+// nor the always-available desktop needs it (serverNeededLocked). Caller holds
+// a.mu.
+func (a *API) stopServerIfIdleLocked() {
+	if a.webServer != nil && !a.serverNeededLocked() {
+		a.stopServerLocked()
+	}
+}
+
+// stopServerLocked stops the share server unconditionally. Caller holds a.mu.
+func (a *API) stopServerLocked() {
+	if ws := a.webServer; ws != nil {
 		_ = ws.Stop()
 		a.engine.SetPluginSettingsListener(nil)
 		a.webServer = nil
+		a.shareBuiltIP, a.shareBuiltDomain = "", ""
 	}
 }
 

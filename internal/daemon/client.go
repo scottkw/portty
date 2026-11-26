@@ -403,6 +403,59 @@ func (c *DaemonClient) SetSessionShared(id string, shared bool) (ShareResponse, 
 	return out, nil
 }
 
+// DesktopStatus reads the always-available desktop's state.
+func (c *DaemonClient) DesktopStatus() (DesktopStatusResponse, error) {
+	var resp DesktopStatusResponse
+	err := c.doJSON(http.MethodGet, "/desktop", nil, &resp)
+	return resp, err
+}
+
+// SetDesktopAlwaysAvailable turns the desktop link on or off. Refusals come
+// back as *ShareError carrying a stable code (tailscale_off, https_off,
+// tailscale_userspace, port_in_use, start_failed).
+func (c *DaemonClient) SetDesktopAlwaysAvailable(on bool) (DesktopResponse, error) {
+	b, err := json.Marshal(DesktopRequest{AlwaysAvailable: on})
+	if err != nil {
+		return DesktopResponse{}, err
+	}
+	resp, err := c.doRetrying(c.http, time.Now().Add(frozenRetryBudget), func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(c.reqCtx(), http.MethodPut, c.base+"/desktop", bytes.NewReader(b))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		return req, err
+	})
+	if err != nil {
+		return DesktopResponse{}, fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		var e ShareErrorResponse
+		if json.Unmarshal(body, &e) == nil && e.Error != "" {
+			return DesktopResponse{}, &ShareError{Code: e.Error, Detail: e.Detail}
+		}
+		return DesktopResponse{}, fmt.Errorf("daemon API PUT desktop: status %d: %s", resp.StatusCode, body)
+	}
+	var out DesktopResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return DesktopResponse{}, fmt.Errorf("decode response: %w", err)
+	}
+	return out, nil
+}
+
+// DesktopLink returns the always-available link; an error while the desktop is
+// off or its server is not running.
+func (c *DaemonClient) DesktopLink() (string, error) {
+	var out struct {
+		URL string `json:"url"`
+	}
+	if err := c.doJSON(http.MethodGet, "/desktop/link", nil, &out); err != nil {
+		return "", err
+	}
+	return out.URL, nil
+}
+
 // SendPreview errors, one per refusal the CLI words differently (11-08).
 var (
 	ErrPreviewNoSession   = errors.New("no such session")
