@@ -46,10 +46,12 @@ func runInstallUpdate(args []string) int {
 	}
 	sock := daemon.DefaultSocketPath()
 	env := updater.InstallerEnv{
-		Run:   updateRunner,
-		Swap:  updater.Swap,
-		Open:  openApp,
-		Alive: pidAlive,
+		Run:     updateRunner,
+		Swap:    updater.Swap,
+		Open:    openApp,
+		Alive:   pidAlive,
+		Signal:  syscall.Kill,
+		GUIPids: realGUIPids,
 		DaemonVersion: func() (string, error) {
 			h, err := daemon.NewDaemonClient(sock).HealthInfo()
 			return h.Version, err
@@ -84,6 +86,18 @@ func openApp(ctx context.Context, app string) error {
 func pidAlive(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// realGUIPids lists the Portty GUIs running from exe (updater.ParseGUIPids over ps output); the
+// installer signals only these.
+func realGUIPids(exe string) ([]int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "/bin/ps", "-axww", "-o", "pid=,args=").Output()
+	if err != nil {
+		return nil, err
+	}
+	return updater.ParseGUIPids(out, exe), nil
 }
 
 func installResultPath() string { return filepath.Join(configDir(), "update-result.json") }
