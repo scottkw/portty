@@ -93,6 +93,7 @@ func TestDesktopConfig_Unsafe(t *testing.T) {
 			}
 			write(t, dir, good+string(pad), 0o600)
 		}},
+		{"trailing data", func(t *testing.T, dir string) { write(t, dir, good+`{}`, 0o600) }},
 		{"schemaVersion 2", func(t *testing.T, dir string) {
 			write(t, dir, `{"schemaVersion":2,"alwaysAvailable":true,"grantID":"abc","iat":1}`, 0o600)
 		}},
