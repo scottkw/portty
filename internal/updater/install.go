@@ -120,8 +120,9 @@ func ExecRunner(ctx context.Context, name string, args ...string) ([]byte, error
 	return exec.CommandContext(ctx, name, args...).CombinedOutput()
 }
 
+// hasLine reports whether out has line as a whole line; whitespace around a line is ignored.
 func hasLine(out []byte, line string) bool {
-	return slices.Contains(strings.Split(string(bytes.ReplaceAll(out, []byte("\r"), nil)), "\n"), line)
+	return slices.ContainsFunc(strings.Split(string(out), "\n"), func(l string) bool { return strings.TrimSpace(l) == line })
 }
 
 // Verify checks the downloaded DMG's signature, Team ID, signing identifier and notarization, then
