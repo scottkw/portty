@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -22,13 +24,22 @@ const (
 
 	OutcomeUpdated    = "updated"
 	OutcomeFailed     = "failed"
-	OutcomeRolledBack = "rolled-back" // produced from 18-03
+	OutcomeRolledBack = "rolled-back"
 
 	StartedMarker = "started" // the installer's first effect, in the job file's folder
 
 	QuitWait      = 20 * time.Second // how long the installer waits for the old GUI to exit
 	HealthTimeout = 60 * time.Second // the new version's daemon must answer within this
 	HealthStable  = 3 * time.Second  // and keep answering this long
+
+	StopWait = 5 * time.Second // SIGTERM to a GUI, then this long before SIGKILL
+	KillWait = 2 * time.Second // and this long for SIGKILL to land
+
+	// A relaunch right after the old GUI exits can be refused while LaunchServices still holds
+	// the dead pid (-600 procNotFound, 18-VM-CHECKS.md row A9), so every relaunch is retried.
+	OpenAttempts  = 6
+	OpenRetryWait = time.Second
+	OpenTimeout   = 10 * time.Second // per try, so a stuck open cannot eat the health window
 )
 
 // ErrJob wraps every refused job or result file. Messages never carry a path.
@@ -212,9 +223,8 @@ func TakeResult(path string) (Result, bool, error) {
 	return r, true, nil
 }
 
-// InstallerEnv is every effect RunInstaller has, so tests run it with fakes. Signal, GUIPids and
-// Trash have no caller until 18-03 (rollback) and 18-05 (Trash the old bundle); they are declared
-// now so the one fake env TestSelfInstall_UpdateHappyPath builds serves every later plan.
+// InstallerEnv is every effect RunInstaller has, so tests run it with fakes. Signal is only ever
+// sent to pids GUIPids returned (T-18-14); Trash has no caller until 18-05.
 type InstallerEnv struct {
 	Run           Runner
 	Swap          func(staged, target string) error
@@ -232,11 +242,59 @@ type InstallerEnv struct {
 
 const installerPoll = 200 * time.Millisecond
 
-// RunInstaller waits for the old GUI to exit, re-verifies the staged app, swaps it in, relaunches
-// it and waits for its daemon to report the new version; then it deletes the DMG. Every outcome
-// is written to env.ResultPath. The old bundle stays at j.Staged. Logs carry step names only.
+// ParseGUIPids returns the pids in `ps -o pid=,args=` output whose process is a Portty GUI run
+// from exe: args exactly exe, or exe followed by a launch-services argument (-psn_, -NS, -Apple,
+// the shapes main.launchMode starts the GUI for). The daemon, the installer and CLI clients run
+// from the same executable carry a subcommand, so they are never listed and never signalled.
+func ParseGUIPids(psOut []byte, exe string) []int {
+	var pids []int
+	for _, line := range strings.Split(string(psOut), "\n") {
+		pidStr, args, ok := strings.Cut(strings.TrimSpace(line), " ")
+		pid, err := strconv.Atoi(pidStr)
+		if !ok || err != nil || pid < 2 {
+			continue
+		}
+		args = strings.TrimLeft(args, " ")
+		if args != exe {
+			rest, ok := strings.CutPrefix(args, exe+" ")
+			if !ok || !slices.ContainsFunc([]string{"-psn_", "-NS", "-Apple"}, func(p string) bool { return strings.HasPrefix(rest, p) }) {
+				continue
+			}
+		}
+		pids = append(pids, pid)
+	}
+	return pids
+}
+
+// relaunch opens app, up to OpenAttempts tries OpenRetryWait apart, each under OpenTimeout. The
+// tries ignore ctx's own deadline: skipping a relaunch would leave no GUI, and each try is bounded.
+func relaunch(ctx context.Context, env InstallerEnv, app string) error {
+	var err error
+	for i := 1; i <= OpenAttempts; i++ {
+		octx, cancel := context.WithTimeout(context.WithoutCancel(ctx), OpenTimeout)
+		err = env.Open(octx, app)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		env.Logf("installer: open attempt %d failed", i)
+		if i < OpenAttempts {
+			env.Sleep(OpenRetryWait)
+		}
+	}
+	return err
+}
+
+// RunInstaller waits for the old GUI to exit (SIGKILL after QuitWait, only when ps proves it is the
+// installed Portty's GUI), re-verifies the staged app, swaps it in, relaunches it and waits for a
+// GUI plus a daemon steadily at the new version; then it deletes the DMG. If the new version never
+// gets there, its GUI exits, or it never opens, its GUI is stopped, the old bundle is swapped back
+// and relaunched, and the daemon is left alone (UPD-07). Every outcome is written to
+// env.ResultPath before any relaunch of the old app. On success the old bundle stays at j.Staged.
+// Logs carry step names only.
 func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	r := Result{V: 1, OldVersion: j.OldVersion, NewVersion: j.NewVersion, DMG: j.DMG}
+	exe := filepath.Join(j.Target, BundleExecutable)
 	finish := func(outcome, reason string) Result {
 		r.Outcome, r.Reason = outcome, reason
 		if err := WriteResult(env.ResultPath, r); err != nil {
@@ -245,39 +303,108 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 		env.Logf("installer: %s %s", outcome, reason)
 		return r
 	}
-	reopen := func() { // the old GUI is gone and the old bundle is still in place: bring it back
-		if err := env.Open(ctx, j.Target); err != nil {
-			env.Logf("installer: reopen failed")
+	// finishOpen writes the outcome, then relaunches whatever the target holds. A rollback whose
+	// relaunch fails becomes failed (keepDaemon kept), so the next manual launch still says why.
+	finishOpen := func(outcome, reason string) Result {
+		finish(outcome, reason)
+		if err := relaunch(ctx, env, j.Target); err != nil {
+			if outcome == OutcomeRolledBack {
+				finish(OutcomeFailed, reason)
+			}
+			env.Logf("installer: relaunch failed, result kept for the next launch")
 		}
+		return r
+	}
+	// waitGone polls until GUIPids lists none of pids or d passes, and returns those still listed.
+	waitGone := func(pids []int, d time.Duration) []int {
+		for by := env.Now().Add(d); ; env.Sleep(installerPoll) {
+			if now, err := env.GUIPids(exe); err == nil {
+				pids = slices.DeleteFunc(pids, func(p int) bool { return !slices.Contains(now, p) })
+				if len(pids) == 0 {
+					return nil
+				}
+			}
+			if !env.Now().Before(by) {
+				return pids
+			}
+		}
+	}
+	rollback := func(reason string) Result {
+		// SIGTERM is the GUI-only quit (UPGR-05); a daemon that took over keeps the sessions.
+		if pids, err := env.GUIPids(exe); err == nil && len(pids) > 0 {
+			for _, p := range pids {
+				_ = env.Signal(p, syscall.SIGTERM)
+			}
+			if left := waitGone(pids, StopWait); len(left) > 0 {
+				for _, p := range left {
+					_ = env.Signal(p, syscall.SIGKILL)
+				}
+				if len(waitGone(left, KillWait)) > 0 {
+					env.Logf("installer: new GUI still running")
+				}
+			}
+		}
+		if err := env.Swap(j.Staged, j.Target); err != nil {
+			env.Logf("installer: swap back failed")
+			return finishOpen(OutcomeFailed, "swap-back") // the target still holds the verified new bundle
+		}
+		// The staging folder now holds the failed new copy Portty made, never the user's app.
+		if dir := filepath.Dir(j.Staged); strings.HasPrefix(filepath.Base(dir), StagingPrefix) {
+			if err := os.RemoveAll(dir); err != nil {
+				env.Logf("installer: failed copy not removed")
+			}
+		}
+		r.KeepDaemon = true
+		return finishOpen(OutcomeRolledBack, reason)
 	}
 
 	quitBy := env.Now().Add(QuitWait)
 	for env.Alive(j.OldPID) {
 		if ctx.Err() != nil || !env.Now().Before(quitBy) {
-			return finish(OutcomeFailed, "quit-timeout")
+			pids, err := env.GUIPids(exe)
+			if err != nil || !slices.Contains(pids, j.OldPID) {
+				return finish(OutcomeFailed, "quit-timeout") // not provably our GUI: touch nothing
+			}
+			_ = env.Signal(j.OldPID, syscall.SIGKILL)
+			env.Logf("installer: old GUI killed after quit timeout")
+			for by := env.Now().Add(KillWait); env.Alive(j.OldPID); env.Sleep(installerPoll) {
+				if !env.Now().Before(by) {
+					return finish(OutcomeFailed, "quit-timeout")
+				}
+			}
+			break
 		}
 		env.Sleep(installerPoll)
 	}
 	if err := VerifyApp(ctx, env.Run, j.Staged); err != nil {
 		env.Logf("installer: %v", err)
-		reopen()
-		return finish(OutcomeFailed, "reverify")
+		return finishOpen(OutcomeFailed, "reverify")
 	}
 	if err := env.Swap(j.Staged, j.Target); err != nil {
 		env.Logf("installer: swap failed")
-		reopen()
-		return finish(OutcomeFailed, "swap")
+		return finishOpen(OutcomeFailed, "swap")
 	}
-	if err := env.Open(ctx, j.Target); err != nil {
+	if err := relaunch(ctx, env, j.Target); err != nil {
 		env.Logf("installer: open failed")
-		return finish(OutcomeFailed, "open")
+		return rollback("open")
 	}
 
 	want := "v" + j.NewVersion
 	deadline := env.Now().Add(HealthTimeout)
-	var since time.Time // when the daemon first answered with the new version, without a break
+	var since time.Time // when a GUI and the new daemon were first both up, without a break
+	seenGUI, noGUI := false, 0
 	for {
-		if v, err := env.DaemonVersion(); err == nil && v == want {
+		pids, perr := env.GUIPids(exe)
+		gui := perr == nil && len(pids) > 0
+		switch {
+		case gui:
+			seenGUI, noGUI = true, 0
+		case perr == nil && seenGUI:
+			if noGUI++; noGUI >= 2 {
+				return rollback("gui-exited")
+			}
+		}
+		if v, err := env.DaemonVersion(); err == nil && v == want && gui {
 			if since.IsZero() {
 				since = env.Now()
 			}
@@ -288,7 +415,7 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 			since = time.Time{}
 		}
 		if ctx.Err() != nil || !env.Now().Before(deadline) {
-			return finish(OutcomeFailed, "health") // 18-03 turns this into a rollback
+			return rollback("health")
 		}
 		env.Sleep(installerPoll)
 	}

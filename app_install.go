@@ -125,6 +125,9 @@ func (a *App) startInstaller(j updater.Job) error {
 	startTook := time.Since(spawnStart)
 	_ = proc.Release()
 	updateLogf("update: installer started (copy %dms, start %dms)", copyTook.Milliseconds(), startTook.Milliseconds())
+	if vmFaultHook != nil {
+		vmFaultHook("before-quit")
+	}
 	a.onTerminate() // GUI-only quit: shutdown never stops the daemon
 	return nil
 }
@@ -197,4 +200,49 @@ func updateLogf(format string, args ...any) {
 	}
 	_, _ = fmt.Fprintln(f, line)
 	_ = f.Close()
+}
+
+// updateResultNotificationID identifies the notification about a rolled-back or failed install.
+const updateResultNotificationID = "portty.update-result"
+
+// vmFaultHook is nil in release builds; only the VM-only vmpreview build sets it, to make a rig
+// build fail at a named stage (before-quit, before-daemon, after-daemon) for the rollback rows.
+var vmFaultHook func(stage string)
+
+// consumeInstallResult takes the installer's result once, at startup before the daemon is
+// ensured. A rollback's keepDaemon makes the next ensure keep whichever daemon holds the sessions
+// and ask nothing (a newer release's daemon cannot hand them back, handoff.go). A rolled-back or
+// failed install is told to the user: the banner with the kept DMG revealed, and a notification
+// (UPD-07). A missing or refused result file changes nothing.
+func (a *App) consumeInstallResult() {
+	r, ok, err := updater.TakeResult(installResultPath())
+	if err != nil {
+		updateLogf("update: result ignored: %v", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	updateLogf("update: result %s %s to %s %s", r.Outcome, r.OldVersion, r.NewVersion, r.Reason)
+	if r.KeepDaemon {
+		a.keepDaemonOnce.Store(true)
+	}
+	var body string
+	switch r.Outcome {
+	case updater.OutcomeRolledBack:
+		body = "The update to Portty " + r.NewVersion + " didn't take. Portty " + r.OldVersion + " is still installed."
+	case updater.OutcomeFailed:
+		body = "Portty couldn't install version " + r.NewVersion + "."
+	default:
+		return
+	}
+	_, nerr := updater.ParseVersion(r.NewVersion)
+	if _, oerr := updater.ParseVersion(r.OldVersion); nerr != nil || oerr != nil {
+		updateLogf("update: result versions malformed")
+		return
+	}
+	if a.updates != nil {
+		a.updates.ShowResult(context.Background(), r)
+	}
+	a.sendNotificationFunc(updateResultNotificationID, "Portty", body)
 }

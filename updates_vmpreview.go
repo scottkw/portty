@@ -13,6 +13,14 @@
 // this file on purpose: any binary that carries the bypass also carries the
 // 127.0.0.1:8788 feed address that release.yml refuses in a shipped binary.
 // Any other file content, or no file, runs the real tools.
+//
+// And the VM-only fault hooks for the rollback rows (18-03): $HOME/p18/fault holds
+// "MODE VERSION" and acts only in the build whose main.Version is exactly VERSION, so the
+// rolled-back build never trips. exit-before-daemon and exit-after-daemon exit the GUI (status 3)
+// around its startup daemon ensure; hang-before-quit blocks the GUI forever right after the
+// installer reports it started, before the GUI quits. A file, not the environment, because
+// LaunchServices starts the relaunched GUI without the installer's environment. Same file as the
+// feed address for the same reason as the verify bypass: it never reaches a release build.
 
 package main
 
@@ -38,6 +46,28 @@ func init() {
 	updateTick = 15 * time.Second
 	updateEvery = 2 * time.Minute
 	updateRunner = vmVerifyRunner(updateRunner)
+	vmFaultHook = vmFault
+}
+
+// vmFault runs the fault $HOME/p18/fault names when its stage comes and its version is this one.
+func vmFault(stage string) {
+	home, _ := os.UserHomeDir()
+	b, err := os.ReadFile(filepath.Join(home, "p18", "fault"))
+	if err != nil {
+		return
+	}
+	mode, ver, ok := strings.Cut(strings.TrimSpace(string(b)), " ")
+	if !ok || ver != Version {
+		return
+	}
+	switch {
+	case mode == "exit-before-daemon" && stage == "before-daemon", mode == "exit-after-daemon" && stage == "after-daemon":
+		updateLogf("vmpreview: fault %s", mode)
+		os.Exit(3)
+	case mode == "hang-before-quit" && stage == "before-quit":
+		updateLogf("vmpreview: fault %s", mode)
+		select {}
+	}
 }
 
 var vmAdhocOnce sync.Once

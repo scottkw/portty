@@ -182,6 +182,12 @@ type App struct {
 	// updateNeeded is the version of a daemon below MinDaemonAPI ("" when
 	// compatible), for the Update needed banner (UPGR-04). Guarded by restartMu.
 	updateNeeded string
+
+	// keepDaemonOnce is set by consumeInstallResult after a rollback: the next ensure keeps the
+	// running daemon and asks nothing. That daemon may be the newer release's, which an older
+	// release cannot take sessions from (the downgrade-handoff wall, handoff.go), and restarting
+	// it would end them (UPD-05, UPD-07).
+	keepDaemonOnce atomic.Bool
 }
 
 // defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
@@ -284,6 +290,9 @@ func (a *App) startup(ctx context.Context) {
 	// A logout, restart or shutdown must never be cancelled by the quit modal.
 	installTerminateHook()
 
+	// Before the daemon is ensured: a rollback's result decides how the first ensure runs.
+	a.consumeInstallResult()
+
 	// Start system tray icon immediately — it must be visible regardless of
 	// daemon state. The poller will set the error icon if daemon is unreachable.
 	a.initTray()
@@ -292,7 +301,13 @@ func (a *App) startup(ctx context.Context) {
 	// a.client was set in NewApp and is never reassigned, so the pollers read
 	// it lock-free and RetryDaemon only has to bring the daemon up. While it is
 	// down, calls fail and pollers retry.
+	if vmFaultHook != nil {
+		vmFaultHook("before-daemon")
+	}
 	a.startDaemon(daemon.DefaultSocketPath())
+	if vmFaultHook != nil {
+		vmFaultHook("after-daemon")
+	}
 
 	// One app-wide exit watcher closes tabs for every exited session (TERM-05).
 	a.startExitWatcher(ctx)
@@ -351,7 +366,11 @@ func (a *App) ensure() func(socketPath string) error {
 		a.restartMu.Lock()
 		approved := a.restartApproved != 0
 		a.restartMu.Unlock()
-		if err := ensureDaemon(ctx, socketPath, daemon.EnsureOptions{Restart: a.restartConsent, NoHandoff: approved}); err != nil {
+		opts := daemon.EnsureOptions{Restart: a.restartConsent, NoHandoff: approved}
+		if a.keepDaemonOnce.Swap(false) { // just rolled back: keep whichever daemon holds the sessions
+			opts = daemon.EnsureOptions{Restart: func(daemon.RestartQuestion) bool { return false }, NoHandoff: true}
+		}
+		if err := ensureDaemon(ctx, socketPath, opts); err != nil {
 			return err
 		}
 		if err := ctx.Err(); err != nil { // Quit All: no more calls to a daemon that may be hung (V-05b)
