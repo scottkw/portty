@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// nalTypes lists the NAL unit types of an Annex-B buffer.
-func nalTypes(b []byte) []int {
+// startCodeNALTypes lists the NAL unit types of an Annex-B buffer.
+func startCodeNALTypes(b []byte) []int {
 	var out []int
 	for i := 0; i+4 < len(b); i++ {
 		if bytes.Equal(b[i:i+4], startCode) {
@@ -59,7 +59,7 @@ func TestSynthetic_RebuildChangesSize(t *testing.T) {
 	if au.Width != 1280 || au.Height != 800 {
 		t.Fatalf("no unit at the new size, last %dx%d", au.Width, au.Height)
 	}
-	if got := nalTypes(au.Data); !au.Keyframe || len(got) != 3 || got[0] != 7 || got[1] != 8 || got[2] != 5 {
+	if got := startCodeNALTypes(au.Data); !au.Keyframe || len(got) != 3 || got[0] != 7 || got[1] != 8 || got[2] != 5 {
 		t.Errorf("first unit at the new size: keyframe=%v NAL types %v, want a keyframe with 7, 8, 5", au.Keyframe, got)
 	}
 	for range 3 {
