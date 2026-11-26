@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -23,7 +24,10 @@ import (
 	"github.com/pion/webrtc/v4"
 
 	"github.com/scottkw/portty/internal/desktop"
+	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/screencap"
+	"github.com/scottkw/portty/internal/webserver"
+	"github.com/scottkw/portty/internal/webserver/webservertest"
 )
 
 const desktopTestIndex = "<!doctype html><div id=root></div>"
@@ -369,5 +373,451 @@ func TestDesktopAPI_OnLinkStreamTracer(t *testing.T) {
 	})
 	if st := e.status(t); st.Tailscale != "ok" {
 		t.Errorf("status tailscale = %q, want ok", st.Tailscale)
+	}
+}
+
+// --- Task 2 helpers --------------------------------------------------------
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = l.Close() }()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+func (e *desktopEnv) lastSource() *screencap.SyntheticSource {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.sources) == 0 {
+		return nil
+	}
+	return e.sources[len(e.sources)-1]
+}
+
+// waitClosed waits for the signalling socket to end and returns its close code.
+func (v *desktopViewer) waitClosed(t *testing.T, within time.Duration) int {
+	t.Helper()
+	select {
+	case <-v.done:
+		return int(v.code.Load())
+	case <-time.After(within):
+		t.Fatalf("viewer socket still open after %v", within)
+		return 0
+	}
+}
+
+// fixedPortShareServer is loopbackShareServer on a chosen port, so two daemons
+// built one after the other serve the same host:port (what a restart does with
+// the real fixed port 7444).
+func fixedPortShareServer(port int, built *atomic.Int32) func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error) {
+	return func(_ webserver.TailscaleHealth, m *relay.HubManager) (*webserver.WebServer, error) {
+		built.Add(1)
+		cfg, err := webserver.GenerateSelfSignedCert("127.0.0.1")
+		if err != nil {
+			return nil, err
+		}
+		ws, err := webserver.NewWebServer(webserver.Config{BindIP: "127.0.0.1", Port: port, FQDN: "127.0.0.1", TLSConfig: cfg}, m)
+		if err != nil {
+			return nil, err
+		}
+		ws.SetWhoIsClientForTest(webservertest.SameUser())
+		return ws, nil
+	}
+}
+
+// manualDesktopAPI builds a daemon on an existing config dir with its seams set
+// BEFORE Start, as a restarted daemon has them, and starts it.
+func manualDesktopAPI(t *testing.T, dir string, health func(context.Context) webserver.TailscaleHealth, newServer func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error), media int, poll time.Duration) (*API, *DaemonClient, *desktopEnv) {
+	t.Helper()
+	return manualDesktopAPIAddrs(t, dir, health, newServer, loopbackAddrs, media, poll)
+}
+
+func manualDesktopAPIAddrs(t *testing.T, dir string, health func(context.Context) webserver.TailscaleHealth, newServer func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error), addrs func() ([]net.Addr, error), media int, poll time.Duration) (*API, *DaemonClient, *desktopEnv) {
+	t.Helper()
+	desktop.AllowLoopbackForTest()
+	useTestAppBundle(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	engine := NewSessionEngine()
+	engine.configDir = dir
+	engine.SetSpawnCommandForTest("/bin/cat", nil)
+	api := NewAPI(engine)
+	if err := api.BootstrapCapabilityState(); err != nil {
+		t.Fatal(err)
+	}
+	env := &desktopEnv{api: api, media: media}
+	api.SetShareSeamsForTest(health, newServer, noWarm)
+	api.SetDesktopSeamsForTest(addrs, env.newSource, media)
+	if poll > 0 {
+		api.desktopPollEvery = poll
+	}
+	sock := shortSocketPath(t, "m.sock")
+	if err := api.Start(sock); err != nil {
+		t.Fatalf("api.Start: %v", err)
+	}
+	t.Cleanup(func() { _ = api.Stop() })
+	t.Cleanup(func() { killAllSessions(engine) })
+	env.client = NewDaemonClient(sock)
+	time.Sleep(10 * time.Millisecond)
+	return api, env.client, env
+}
+
+func desktopUp(api *API) bool {
+	api.mu.RLock()
+	defer api.mu.RUnlock()
+	return api.webServer != nil && api.desktopMgr != nil
+}
+
+func mustSaveConfig(t *testing.T, dir string, c desktop.Config) {
+	t.Helper()
+	if err := desktop.SaveConfig(dir, c); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// --- Task 2 tests ----------------------------------------------------------
+
+func TestDesktopAPI_Refusals(t *testing.T) {
+	cases := []struct {
+		name   string
+		code   string
+		health func(context.Context) webserver.TailscaleHealth
+		addrs  func() ([]net.Addr, error)
+	}{
+		{"tailscale off", ShareErrTailscaleOff, func(context.Context) webserver.TailscaleHealth { return webserver.TailscaleHealth{} }, loopbackAddrs},
+		{"https off", ShareErrHTTPSOff, func(context.Context) webserver.TailscaleHealth {
+			return webserver.TailscaleHealth{Connected: true, IP: "127.0.0.1"}
+		}, loopbackAddrs},
+		{"userspace", ShareErrUserspace, healthyTailnet, func() ([]net.Addr, error) {
+			return []net.Addr{&net.IPNet{IP: net.IPv4(192, 168, 1, 5), Mask: net.CIDRMask(24, 32)}}, nil
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newDesktopEnv(t)
+			e.api.SetShareSeamsForTest(c.health, loopbackShareServer, noWarm)
+			e.api.SetDesktopSeamsForTest(c.addrs, e.newSource, e.media)
+			_, err := e.client.SetDesktopAlwaysAvailable(true)
+			var serr *ShareError
+			if !errors.As(err, &serr) || serr.Code != c.code {
+				t.Fatalf("PUT /desktop on = %v; want a ShareError with code %q", err, c.code)
+			}
+			if _, statErr := os.Stat(e.configPath()); !errors.Is(statErr, os.ErrNotExist) {
+				t.Errorf("desktop.json exists after a refusal (stat err %v)", statErr)
+			}
+			if shareServerRunning(e.api) {
+				t.Error("share server is running after a refusal")
+			}
+			if st := e.status(t); st.AlwaysAvailable || st.State != "off" {
+				t.Errorf("status after a refusal = %+v; want off", st)
+			}
+		})
+	}
+}
+
+func TestDesktopAPI_OffClosesViewers(t *testing.T) {
+	e := newDesktopEnv(t)
+	// A terminal share keeps the server up, so the old link can still be asked.
+	id := newShareSession(t, e.client)
+	termLink := mustShare(t, e.client, id)
+	on := e.mustOn(t)
+
+	v := connectViewer(t, on.URL)
+	v.waitIDR(t, 10*time.Second)
+	src := e.lastSource()
+
+	if _, err := e.client.SetDesktopAlwaysAvailable(false); err != nil {
+		t.Fatalf("PUT /desktop off: %v", err)
+	}
+	if code := v.waitClosed(t, 10*time.Second); code != 4410 {
+		t.Errorf("viewer closed with %d, want 4410", code)
+	}
+	cfg, err := desktop.LoadConfig(e.api.engine.configDir)
+	if err != nil || cfg.AlwaysAvailable || cfg.GrantID != "" {
+		t.Errorf("desktop.json after off = %+v, %v; want alwaysAvailable false and no grantID", cfg, err)
+	}
+	if code, body := desktopPageStatus(t, on.URL); code != http.StatusGone || !strings.HasPrefix(body, "off|") {
+		t.Errorf("old link after off = %d %q; want 410 with X-Portty-Desktop: off", code, body)
+	}
+	eventually(t, 3*time.Second, "the capture source to stop", func() bool {
+		select {
+		case _, ok := <-src.Frames():
+			return !ok
+		default:
+			return false
+		}
+	})
+	if !shareServerRunning(e.api) {
+		t.Error("desktop off stopped the server a terminal share still needs")
+	}
+	if code, _ := linkStatus(t, termLink.URL); code != http.StatusFound {
+		t.Errorf("terminal link after desktop off = %d, want 302", code)
+	}
+	if _, err := e.client.DesktopLink(); err == nil {
+		t.Error("GET /desktop/link after off succeeded, want an error")
+	}
+	if st := e.status(t); st.AlwaysAvailable || st.State != "off" {
+		t.Errorf("status after off = %+v; want off", st)
+	}
+}
+
+func TestDesktopAPI_OffStopsServerWhenNothingElseNeedsIt(t *testing.T) {
+	e := newDesktopEnv(t)
+	e.mustOn(t)
+	if _, err := e.client.SetDesktopAlwaysAvailable(false); err != nil {
+		t.Fatal(err)
+	}
+	if shareServerRunning(e.api) {
+		t.Error("server still running with the desktop off and no terminal share")
+	}
+	if _, err := e.client.SetDesktopAlwaysAvailable(false); err != nil {
+		t.Errorf("a second off = %v; want it harmless", err)
+	}
+}
+
+func TestDesktopAPI_RegenerateKey(t *testing.T) {
+	e := newDesktopEnv(t)
+	old := e.mustOn(t)
+	v := connectViewer(t, old.URL)
+	v.waitIDR(t, 10*time.Second)
+
+	if err := e.client.RegenerateSigningKey(); err != nil {
+		t.Fatalf("RegenerateSigningKey: %v", err)
+	}
+	if code := v.waitClosed(t, 10*time.Second); code != 4401 {
+		t.Errorf("viewer closed with %d, want 4401", code)
+	}
+	if code, body := desktopPageStatus(t, old.URL); code != http.StatusUnauthorized || !strings.HasPrefix(body, "token|") {
+		t.Errorf("old link after regeneration = %d %q; want 401 with X-Portty-Desktop: token", code, body)
+	}
+	fresh, err := e.client.DesktopLink()
+	if err != nil || fresh == old.URL {
+		t.Fatalf("Copy Link after regeneration = %q, %v; want a new URL", fresh, err)
+	}
+	if code, _ := desktopPageStatus(t, fresh); code != http.StatusOK {
+		t.Errorf("new link = %d, want 200", code)
+	}
+}
+
+func TestDesktopAPI_LinkStableAcrossRestart(t *testing.T) {
+	e := newDesktopEnv(t)
+	var built atomic.Int32
+	port := freeTCPPort(t)
+	e.api.SetShareSeamsForTest(healthyTailnet, fixedPortShareServer(port, &built), noWarm)
+	a := e.mustOn(t)
+	dir := e.api.engine.configDir
+	if err := e.api.Stop(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Daemon B: same config dir (capability.key, desktop.json), same address.
+	b, bClient, _ := manualDesktopAPI(t, dir, healthyTailnet, fixedPortShareServer(port, &built), e.media, 0)
+	eventually(t, 10*time.Second, "B's poller to bring the desktop up", func() bool { return desktopUp(b) })
+	got, err := bClient.DesktopLink()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != a.URL {
+		t.Fatalf("link after restart differs from the saved link:\n before %s\n after  %s", a.URL, got)
+	}
+	if code, _ := desktopPageStatus(t, a.URL); code != http.StatusOK {
+		t.Errorf("saved link on the restarted daemon = %d, want 200", code)
+	}
+}
+
+func TestDesktopAPI_PollerStartsAtDaemonStart(t *testing.T) {
+	dir := t.TempDir()
+	mustSaveConfig(t, dir, desktop.Config{AlwaysAvailable: true, GrantID: "0123456789abcdef0123456789abcdef", IAT: 1_700_000_000})
+	var (
+		connected atomic.Bool
+		domain    atomic.Value
+		built     atomic.Int32
+	)
+	domain.Store("127.0.0.1")
+	health := func(context.Context) webserver.TailscaleHealth {
+		if !connected.Load() {
+			return webserver.TailscaleHealth{}
+		}
+		return webserver.TailscaleHealth{Connected: true, HasCerts: true, IP: "127.0.0.1", Domain: domain.Load().(string)}
+	}
+	port := freeTCPPort(t)
+	api, client, _ := manualDesktopAPI(t, dir, health, fixedPortShareServer(port, &built), freeUDPPort(t), 20*time.Millisecond)
+
+	// Tailscale is down: several ticks pass and nothing starts.
+	time.Sleep(150 * time.Millisecond)
+	if shareServerRunning(api) || desktopUp(api) || built.Load() != 0 {
+		t.Fatal("something started while Tailscale was off")
+	}
+	if st, err := client.DesktopStatus(); err != nil || !st.AlwaysAvailable || st.Tailscale != "off" || st.State != "idle" {
+		t.Fatalf("status while Tailscale is off = %+v, %v; want always-available, idle, tailscale off", st, err)
+	}
+
+	connected.Store(true)
+	eventually(t, 5*time.Second, "the poller to start the server and the Manager", func() bool { return desktopUp(api) })
+	link, err := client.DesktopLink()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := desktopPageStatus(t, link); code != http.StatusOK {
+		t.Fatalf("saved link after the poller started it = %d, want 200", code)
+	}
+
+	// The tailnet name changes: both are rebuilt and the link still opens.
+	api.mu.RLock()
+	oldMgr := api.desktopMgr
+	api.mu.RUnlock()
+	domain.Store("renamed.example")
+	eventually(t, 5*time.Second, "the poller to restart both", func() bool {
+		api.mu.RLock()
+		defer api.mu.RUnlock()
+		return api.desktopMgr != nil && api.desktopMgr != oldMgr && api.webServer != nil
+	})
+	if built.Load() != 2 {
+		t.Errorf("share server built %d times, want 2 (start, then the restart)", built.Load())
+	}
+	if code, _ := desktopPageStatus(t, link); code != http.StatusOK {
+		t.Errorf("saved link after the restart = %d, want 200", code)
+	}
+}
+
+func TestDesktopAPI_PollerIgnoresOffAndUserspace(t *testing.T) {
+	var asked atomic.Int32
+	health := func(ctx context.Context) webserver.TailscaleHealth {
+		asked.Add(1)
+		return healthyTailnet(ctx)
+	}
+	// Off: the poller never asks Tailscale anything.
+	api, _, _ := manualDesktopAPI(t, t.TempDir(), health, loopbackShareServer, freeUDPPort(t), 10*time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
+	if asked.Load() != 0 || shareServerRunning(api) {
+		t.Fatalf("poller with the desktop off asked health %d times / started a server", asked.Load())
+	}
+
+	// On, but the address is on no interface: recorded, nothing starts.
+	dir2 := t.TempDir()
+	mustSaveConfig(t, dir2, desktop.Config{AlwaysAvailable: true, GrantID: "ab", IAT: 1})
+	noAddrs := func() ([]net.Addr, error) { return nil, nil }
+	api2, client2, _ := manualDesktopAPIAddrs(t, dir2, healthyTailnet, loopbackShareServer, noAddrs, freeUDPPort(t), 10*time.Millisecond)
+	eventually(t, 3*time.Second, "userspace to be recorded", func() bool {
+		st, err := client2.DesktopStatus()
+		return err == nil && st.Tailscale == "userspace"
+	})
+	if shareServerRunning(api2) || desktopUp(api2) {
+		t.Error("the poller started the desktop on a userspace Tailscale")
+	}
+}
+
+func TestDesktopAPI_ViewerCapRefusedBeforeUpgrade(t *testing.T) {
+	e := newDesktopEnv(t)
+	on := e.mustOn(t)
+	viewers := make([]*desktopViewer, 0, desktop.MaxViewers)
+	for i := 0; i < desktop.MaxViewers; i++ {
+		viewers = append(viewers, connectViewer(t, on.URL))
+	}
+	eventually(t, 5*time.Second, "the status to say 8 viewers", func() bool { return e.status(t).Viewers == desktop.MaxViewers })
+
+	// A ninth, with a valid token and Origin, as a browser would send it.
+	wsURL, origin, err := desktopWSURL(on.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodGet, strings.Replace(wsURL, "wss://", "https://", 1), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+	req.Header.Set("Origin", origin)
+	resp, err := insecureClient().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Upgrade") != "" {
+		t.Fatalf("ninth viewer = %d (Upgrade %q); want 429 with no upgrade", resp.StatusCode, resp.Header.Get("Upgrade"))
+	}
+	// The eight keep streaming and the count is unchanged.
+	for i, v := range viewers {
+		select {
+		case <-v.aus:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("viewer %d stopped receiving video", i)
+		}
+	}
+	if st := e.status(t); st.Viewers != desktop.MaxViewers || st.State != "streaming" {
+		t.Errorf("status = %+v; want streaming with 8 viewers", st)
+	}
+}
+
+func TestDesktopAPI_StatusReportsLaunchd(t *testing.T) {
+	e := newDesktopEnv(t)
+	old := launchdManaged
+	t.Cleanup(func() { launchdManaged = old })
+	for _, managed := range []bool{true, false} {
+		launchdManaged = managed
+		st := e.status(t)
+		if st.Launchd != managed {
+			t.Errorf("launchd = %v with the managed flag %v", st.Launchd, managed)
+		}
+		if st.AlwaysAvailable || st.State != "off" {
+			t.Errorf("status %+v: the launchd flag changed alwaysAvailable or state", st)
+		}
+	}
+	e.mustOn(t)
+	launchdManaged = false
+	if st := e.status(t); st.Launchd || !st.AlwaysAvailable || st.State != "idle" {
+		t.Errorf("status of a fallback-started daemon with the desktop on = %+v; want launchd false, on, idle", st)
+	}
+}
+
+func TestDesktopAPI_BadConfigIsExplicit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		mode os.FileMode
+	}{
+		{"malformed JSON", `{"schemaVersion":1,`, 0o600},
+		{"wrong mode", `{"schemaVersion":1,"alwaysAvailable":true,"grantID":"ab","iat":1}`, 0o644},
+		{"unknown schema", `{"schemaVersion":7,"alwaysAvailable":true,"grantID":"ab","iat":1}`, 0o600},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			p := filepath.Join(dir, desktop.ConfigFile)
+			if err := os.WriteFile(p, []byte(tc.body), tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(p, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			api, client, _ := manualDesktopAPI(t, dir, healthyTailnet, loopbackShareServer, freeUDPPort(t), 10*time.Millisecond)
+
+			st, err := client.DesktopStatus()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.AlwaysAvailable || st.Reason == "" {
+				t.Fatalf("status = %+v; want always-available off with a reason", st)
+			}
+			// Turning it on does not replace the file either.
+			if _, err := client.SetDesktopAlwaysAvailable(true); err == nil {
+				t.Error("PUT on with an unusable desktop.json succeeded")
+			}
+			time.Sleep(60 * time.Millisecond) // several poller ticks
+			if shareServerRunning(api) || desktopUp(api) {
+				t.Error("something started with an unusable desktop.json")
+			}
+			got, err := os.ReadFile(p)
+			if err != nil || string(got) != tc.body {
+				t.Errorf("desktop.json was rewritten: %q, %v", got, err)
+			}
+			if fi, _ := os.Stat(p); fi.Mode().Perm() != tc.mode {
+				t.Errorf("desktop.json mode changed to %o", fi.Mode().Perm())
+			}
+		})
 	}
 }
