@@ -77,14 +77,11 @@ while IFS= read -r -d '' f; do
   fi
 
   if [[ -n "$MODE" ]]; then
-    if ! codesign --verify --strict "$f" >/dev/null 2>&1; then
-      fail "unsigned $rel (codesign --verify --strict)"
-    else
-      info="$(codesign -dvv "$f" 2>&1)"
-      grep -qxF "TeamIdentifier=$TEAM_ID" <<<"$info" || fail "team $rel is not $TEAM_ID"
-      grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' <<<"$info" || fail "runtime $rel lacks the hardened runtime flag"
-      grep -q '^Timestamp=' <<<"$info" || fail "timestamp $rel has no secure timestamp"
-    fi
+    codesign --verify --strict "$f" >/dev/null 2>&1 || fail "unsigned $rel (codesign --verify --strict)"
+    info="$(codesign -dvv "$f" 2>&1)"
+    grep -qxF "TeamIdentifier=$TEAM_ID" <<<"$info" || fail "team $rel is not $TEAM_ID"
+    grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' <<<"$info" || fail "runtime $rel lacks the hardened runtime flag"
+    grep -q '^Timestamp=' <<<"$info" || fail "timestamp $rel has no secure timestamp"
   fi
 done < <(find "$APP" -type f -print0)
 

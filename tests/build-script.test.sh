@@ -327,6 +327,34 @@ assert_file_contains_literal "build.sh gates on WAILS_PINNED_VER" \
   "WAILS_PINNED_VER" "$BUILD_SH"
 
 # ---------------------------------------------------------------------------
+# Section 13: Signing — inside-out signing and the signed gate, never deep signing
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Section 13: Signing — sign-bundle.sh and verify-bundle.sh --signed ==="
+
+SIGN_BUNDLE_SH="$SCRIPT_DIR/../scripts/sign-bundle.sh"
+
+assert_file_contains_literal "build.sh signs through scripts/sign-bundle.sh" \
+  'scripts/sign-bundle.sh' "$BUILD_SH"
+
+assert_file_contains_literal "build.sh verifies the signature with verify-bundle.sh --signed" \
+  'scripts/verify-bundle.sh" "$APP" --signed' "$BUILD_SH"
+
+output=$(grep -c -- '--deep' "$BUILD_SH" || true)
+if [[ "$output" -eq 0 ]]; then
+  pass "build.sh has no deep codesign flag"
+else
+  fail "build.sh contains --deep" "matches: $output"
+fi
+
+output=$(grep -v '^[[:space:]]*#' "$SIGN_BUNDLE_SH" | grep -c -- '--deep' || true)
+if [[ "$output" -eq 0 ]]; then
+  pass "sign-bundle.sh has no deep codesign flag on non-comment lines"
+else
+  fail "sign-bundle.sh contains --deep" "matches: $output"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""
