@@ -55,7 +55,7 @@
 
 ### Share modes & trust (DSHR)
 
-- [ ] **DSHR-01**: User can turn on always-available desktop; their own devices (same Tailscale account) can open it any time with nobody at the Mac and the GUI closed; the daemon runs under launchd only (the CLI restarts it with `launchctl kickstart`; a daemon started from an SSH shell is unsupported)
+- [ ] **DSHR-01**: User can turn on always-available desktop; their own devices (same Tailscale account) can open it any time with nobody at the Mac and the GUI closed; the daemon runs under launchd as its primary path (GUI and CLI start it with `launchctl kickstart`). If macOS refuses, disables or can't bootstrap the agent, Portty falls back to a detached daemon start so terminals still work, and the desktop shows needs repair, with the unattended guarantee degraded (amended by user decision 2026-11-25, "Start it anyway")
 - [ ] **DSHR-02**: Always-available links, including iPhone Home Screen links, survive daemon restarts and upgrades
 - [ ] **DSHR-03**: Share Desktop creates a link that other tailnet people can open; terminal links stay limited to the host's own account
 - [ ] **DSHR-04**: Each guest waits at an Admit prompt showing their tailnet identity; guests are view-only until the sharer allows control (and clipboard) for that person

@@ -577,7 +577,7 @@ Not a rename or refactor phase, but it migrates start-model state, so the same q
 4. **Is "Remote Desktop" a separate TCC row on the shipping office Mac?** Seen in macOS 27 betas only (CITED forum); not in the 27.2 VMs. M-163 confirms.
    - **RESOLVED (owner: M-163):** 19-16 rewords M-163 to the fresh-process probe and effect check and records which TCC rows the office Mac lists.
 5. **Is bootstrap of a user LaunchAgent allowed on the corporate Mac, and can Login Items be disabled by policy?** Unknown; C4-5 keeps a detached-spawn fallback.
-   - **RESOLVED (C4-5 not adopted):** CONTEXT locks one launchd start path, so a refused bootstrap or a job disabled in Login Items is a repair state with an Open Login Items button (19-02 typed errors, 19-17 GUI), never a detached spawn; 19-07 row V2(d) checks it in the VM, and the office Mac's policy is observed in the M-163 run (19-16).
+   - **RESOLVED (C4-5 adopted by USER DECISION 2026-11-25, "Start it anyway"):** launchd is the primary start path; a refused bootstrap or a job disabled in Login Items falls back to the detached spawn so terminals start (19-02, 19-17), the desktop shows needs repair with Open Login Items and the unattended guarantee degraded (19-13); 19-07 row V2(d) checks it in the VM, and the office Mac's policy is observed in the M-163 run (19-16).
 
 ### Measurements to schedule early (VM rows, no host side effects)
 Run in the disposable Tart VMs only (R00 GO), using the R19 vanilla-clone method for approval-prompt work (the approval store was writable there; backdating raised the prompt at once). Do not use `tailscale down`.

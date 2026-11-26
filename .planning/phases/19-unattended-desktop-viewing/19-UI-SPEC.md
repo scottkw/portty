@@ -229,6 +229,18 @@ When the state is `needs_permission`, row 2 gets a Caption description under the
 
 The button opens the setup sheet. The ellipsis follows the house rule: only items that open a dialog.
 
+**Row 5, Background service (amendment, USER DECISION 2026-11-25 "Start it anyway").** Shown only while always-available is on and the daemon status reports `launchd: false` (Portty started its background service without launchd, so the desktop is not kept reachable after Portty quits or the Mac restarts). Terminals are unaffected and get no message. Label `Background service`; control: `.ts-status` warn dot plus **Needs repair**; the description and button depend on the repair kind from `GetDaemonRepair`:
+
+| Repair kind | Description (Caption, secondary) | Button |
+|-------------|----------------------------------|--------|
+| `login_items` (agent disabled or refused, or launchctl failed) | **Portty's background service is turned off in Login Items, so this Mac's desktop is only reachable while Portty is open.** | **Open Login Items** (secondary; opens System Settings at Login Items) |
+| `move_to_applications` (Portty runs from a disk image) | **Portty is running from a disk image, so this Mac's desktop is only reachable while Portty is open. Move Portty to Applications, then open it again.** | none |
+| `open_app` (the agent is not installed) | **Portty's background service isn't installed, so this Mac's desktop is only reachable while Portty is open. Open Portty.app from Applications once to install it.** | none |
+| `rehome_pending` (the agent works and Portty is still moving the running service under it) | **Portty is still moving its background service under macOS's control. It keeps trying.** | none |
+| empty (none of the above, for example the retries ran out) | **Portty's background service isn't running under macOS's control. Quit and reopen Portty to try again.** | none |
+
+The row disappears as soon as status reports `launchd: true`. The tray line and the viewers are unchanged (the viewers keep showing the desktop's normal state).
+
 ### Footnote and inline errors
 
 Footnote (`.settings-sheet__footnote`, 8px below the group): **While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording again about once a month, at the Mac. The first time Chrome opens the link, it may ask to find devices nearby. Choose Allow.**
@@ -428,6 +440,7 @@ Writing rules (Phase 2, 4, 14): sentence case for descriptions, headings and chi
 | Link row description | **Open it in Chrome or Safari on a device signed in to your Tailscale account. Treat it like a password.** |
 | Copy button | **Copy Link** then **Copied!** (2 s) |
 | Permissions row | **Permissions** / **Screen Recording and Accessibility.** / **Granted** / **Needs permission** / **Review Permissions…** / **Set Up Permissions…** |
+| Background service row (amendment 2026-11-25) | **Background service** / **Needs repair** / the five descriptions in Surface 1 Row 5 / button **Open Login Items** |
 | Settings footnote | **While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording again about once a month, at the Mac. The first time Chrome opens the link, it may ask to find devices nearby. Choose Allow.** |
 | Setup sheet title | **Set Up Desktop Sharing** |
 | Setup intro | **Portty needs two permissions to show this Mac's screen. Grant them here, once, while you are at the Mac.** |
