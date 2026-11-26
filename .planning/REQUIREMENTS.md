@@ -16,7 +16,7 @@
 - [ ] **UPD-05**: After the user clicks Update and the DMG passes the existing checks (SHA-256, Team ID, signing identifier, notarization), Portty replaces itself in `/Applications` and relaunches; terminal sessions survive (v1.2 takeover)
 - [ ] **UPD-06**: The update DMG is ejected and deleted after a successful install
 - [ ] **UPD-07**: If the new version fails to start, Portty rolls back to the previous version by itself
-- [ ] **UPD-08**: Opening Portty from a mounted DMG moves it to `/Applications` (or `~/Applications` if not writable), relaunches from there, ejects the DMG, and moves the downloaded DMG to the Trash
+- [ ] **UPD-08**: Opening Portty from a mounted DMG moves it to `/Applications` (or `~/Applications` if not writable), relaunches from there, ejects the DMG, and moves the downloaded DMG to the Trash (a DMG in `~/Downloads` may raise macOS's one-time Downloads-folder access prompt; Don't Allow keeps the DMG and the install still succeeds — user decision 2026-11-25)
 - [ ] **UPD-09**: Any install failure falls back to today's Reveal-in-Finder flow with a clear message; a relaunch never stops at a Gatekeeper dialog
 
 ### Permissions & state (DPRM)
