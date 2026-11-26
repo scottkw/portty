@@ -716,8 +716,8 @@ func TestSelfInstall_HealthMissWritesFailed(t *testing.T) {
 		env.Open = func(context.Context, string) error { return nil } // the daemon stays at the old version
 	}
 	f.download(t)
-	r := f.result
-	if r.Outcome != OutcomeFailed || r.Reason != "health" || r.OldVersion != "1.0.0" || r.NewVersion != "9.9.9" {
+	r := f.result // 18-03: a health miss rolls back
+	if r.Outcome != OutcomeRolledBack || r.Reason != "health" || r.OldVersion != "1.0.0" || r.NewVersion != "9.9.9" {
 		t.Errorf("result = %+v", r)
 	}
 	if m, _ := filepath.Glob(filepath.Join(f.dir, "*.dmg")); len(m) != 1 {
