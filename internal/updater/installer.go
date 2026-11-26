@@ -336,16 +336,20 @@ const installerPoll = 200 * time.Millisecond
 // trashWait bounds the DMG Trash, which can wait on an unanswered Downloads prompt; a var for tests.
 var trashWait = time.Minute
 
-// ParseGUIPids returns the pids in `ps -o pid=,args=` output whose process is a Portty GUI run
-// from exe: args exactly exe, or exe followed by a launch-services argument (-psn_, -NS, -Apple,
-// the shapes main.launchMode starts the GUI for). The daemon, the installer and CLI clients run
-// from the same executable carry a subcommand, so they are never listed and never signalled.
-func ParseGUIPids(psOut []byte, exe string) []int {
+// ParseGUIPids returns the pids in `ps -o pid=,uid=,args=` output whose process is a Portty GUI
+// run from exe by uid: args exactly exe, or exe followed by a launch-services argument (-psn_,
+// -NS, -Apple, the shapes main.launchMode starts the GUI for). The daemon, the installer and CLI
+// clients run from the same executable carry a subcommand, so they are never listed and never
+// signalled. Neither is another account's GUI (fast user switching): it must not pass the health
+// check or draw a signal (WR-01).
+func ParseGUIPids(psOut []byte, exe string, uid int) []int {
 	var pids []int
 	for _, line := range strings.Split(string(psOut), "\n") {
-		pidStr, args, ok := strings.Cut(strings.TrimSpace(line), " ")
+		pidStr, rest, ok := strings.Cut(strings.TrimSpace(line), " ")
+		uidStr, args, ok2 := strings.Cut(strings.TrimLeft(rest, " "), " ")
 		pid, err := strconv.Atoi(pidStr)
-		if !ok || err != nil || pid < 2 {
+		u, uerr := strconv.Atoi(uidStr)
+		if !ok || !ok2 || err != nil || uerr != nil || pid < 2 || u != uid {
 			continue
 		}
 		args = strings.TrimLeft(args, " ")

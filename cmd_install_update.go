@@ -93,16 +93,16 @@ func pidAlive(pid int) bool {
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
-// realGUIPids lists the Portty GUIs running from exe (updater.ParseGUIPids over ps output); the
-// installer signals only these.
+// realGUIPids lists this user's Portty GUIs running from exe (updater.ParseGUIPids over ps
+// output); the installer health-checks and signals only these.
 func realGUIPids(exe string) ([]int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "/bin/ps", "-axww", "-o", "pid=,args=").Output()
+	out, err := exec.CommandContext(ctx, "/bin/ps", "-axww", "-o", "pid=,uid=,args=").Output()
 	if err != nil {
 		return nil, err
 	}
-	return updater.ParseGUIPids(out, exe), nil
+	return updater.ParseGUIPids(out, exe, os.Getuid()), nil
 }
 
 func installResultPath() string { return filepath.Join(configDir(), "update-result.json") }

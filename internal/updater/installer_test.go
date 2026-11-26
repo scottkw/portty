@@ -566,26 +566,34 @@ func TestParseGUIPids(t *testing.T) {
 	exe := "/Applications/Portty.app/Contents/MacOS/Portty"
 	run := "/home-fake/Library/Application Support/portty/update/run-123/"
 	ps := strings.Join([]string{
-		"  PID ARGS",
-		"  101 " + exe,
-		"  102 " + exe + " -psn_0_12345",
-		"  103 " + exe + " daemon",
-		"  104 " + exe + " daemon --takeover",
-		"  105 " + exe + " install-update /tmp/job.json",
-		"  106 /Applications/Portty.app.old/Contents/MacOS/Portty",
-		"  107 " + exe + "X",
-		"  108 " + run + "Portty.app/Contents/MacOS/Portty install-update " + run + "job.json",
-		"  109 " + exe + " attach main", // a CLI client run from the bundle is not a GUI
-		"  110 /bin/zsh",
+		"  PID   UID ARGS",
+		"  101   501 " + exe,
+		"  102   501 " + exe + " -psn_0_12345",
+		"  103   501 " + exe + " daemon",
+		"  104   501 " + exe + " daemon --takeover",
+		"  105   501 " + exe + " install-update /tmp/job.json",
+		"  106   501 /Applications/Portty.app.old/Contents/MacOS/Portty",
+		"  107   501 " + exe + "X",
+		"  108   501 " + run + "Portty.app/Contents/MacOS/Portty install-update " + run + "job.json",
+		"  109   501 " + exe + " attach main", // a CLI client run from the bundle is not a GUI
+		"  110   501 /bin/zsh",
+		"  111   502 " + exe, // WR-01: another account's GUI (fast user switching) is never this user's
+		"  112   502 " + exe + " -psn_0_999",
+		"  113     0 " + exe,
+		"  114  x501 " + exe,
+		"  115 " + exe, // no uid column
 		"",
 		"garbage",
 	}, "\n")
-	if got := ParseGUIPids([]byte(ps), exe); !slices.Equal(got, []int{101, 102}) {
+	if got := ParseGUIPids([]byte(ps), exe, 501); !slices.Equal(got, []int{101, 102}) {
 		t.Errorf("ParseGUIPids = %v, want [101 102]", got)
 	}
+	if got := ParseGUIPids([]byte(ps), exe, 502); !slices.Equal(got, []int{111, 112}) {
+		t.Errorf("uid 502: ParseGUIPids = %v, want [111 112]", got)
+	}
 	spaced := "/Volumes/My Apps/Portty.app/Contents/MacOS/Portty"
-	out := "  201 " + spaced + "\n  202 " + spaced + " daemon\n  203 /Volumes/My\n"
-	if got := ParseGUIPids([]byte(out), spaced); !slices.Equal(got, []int{201}) {
+	out := "  201 501 " + spaced + "\n  202 501 " + spaced + " daemon\n  203 501 /Volumes/My\n"
+	if got := ParseGUIPids([]byte(out), spaced, 501); !slices.Equal(got, []int{201}) {
 		t.Errorf("path with a space: ParseGUIPids = %v, want [201]", got)
 	}
 }
