@@ -113,6 +113,15 @@ var (
 	startAPI                 = (*API).Start
 )
 
+// Seams of the re-home: the in-process takeover and the serve tail.
+var (
+	runTakeoverStep = runTakeover
+	serveStep       = serveDaemon
+)
+
+// shouldRehome is a stub until Task 3's GREEN commit.
+func shouldRehome(h HealthResponse, build string) bool { return false }
+
 // runDaemonCore is the blocking core of the daemon. It creates a SessionEngine,
 // starts the API (with relay server inside), and blocks until ctx is cancelled.
 // Using a context parameter allows it to be driven by either signal handling
