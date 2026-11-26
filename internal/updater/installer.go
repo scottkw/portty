@@ -224,7 +224,7 @@ func TakeResult(path string) (Result, bool, error) {
 }
 
 // InstallerEnv is every effect RunInstaller has, so tests run it with fakes. Signal is only ever
-// sent to pids GUIPids returned (T-18-14); Trash has no caller until 18-05.
+// sent to pids GUIPids returned (T-18-14); Trash only to the old bundle after health (18-05).
 type InstallerEnv struct {
 	Run           Runner
 	Swap          func(staged, target string) error
@@ -290,7 +290,7 @@ func relaunch(ctx context.Context, env InstallerEnv, app string) error {
 // GUI plus a daemon steadily at the new version; then it deletes the DMG. If the new version never
 // gets there, its GUI exits, or it never opens, its GUI is stopped, the old bundle is swapped back
 // and relaunched, and the daemon is left alone (UPD-07). Every outcome is written to
-// env.ResultPath before any relaunch of the old app. On success the old bundle stays at j.Staged.
+// env.ResultPath before any relaunch of the old app. On success the old bundle goes to the Trash.
 // Logs carry step names only.
 func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	r := Result{V: 1, OldVersion: j.OldVersion, NewVersion: j.NewVersion, DMG: j.DMG}
@@ -418,6 +418,16 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 			return rollback("health")
 		}
 		env.Sleep(installerPoll)
+	}
+	// Healthy: the old bundle (at j.Staged since the swap) goes to the Trash, recoverable by hand,
+	// never deleted. Only a Portty.app inside a staging folder beside the target is trashed; a
+	// refused Trash keeps it aside for the next GUI start's sweep to retry.
+	if dir := filepath.Dir(j.Staged); env.Trash != nil && strings.HasPrefix(filepath.Base(dir), StagingPrefix) && filepath.Dir(dir) == filepath.Dir(j.Target) {
+		if err := env.Trash(j.Staged); err != nil {
+			env.Logf("installer: old copy kept aside: %v", err)
+		} else if err := os.Remove(dir); err != nil {
+			env.Logf("installer: staging folder not removed")
+		}
 	}
 	if err := os.Remove(j.DMG); err != nil && !errors.Is(err, os.ErrNotExist) {
 		env.Logf("installer: dmg not removed")

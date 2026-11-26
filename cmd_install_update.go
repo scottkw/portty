@@ -52,6 +52,7 @@ func runInstallUpdate(args []string) int {
 		Alive:   pidAlive,
 		Signal:  syscall.Kill,
 		GUIPids: realGUIPids,
+		Trash:   trashItem,
 		DaemonVersion: func() (string, error) {
 			h, err := daemon.NewDaemonClient(sock).HealthInfo()
 			return h.Version, err

@@ -309,6 +309,9 @@ func (a *App) startup(ctx context.Context) {
 		vmFaultHook("after-daemon")
 	}
 
+	// Clean what an interrupted install left behind (UPD-06), off the startup path.
+	go sweepUpdateLeftovers(ctx, time.Now())
+
 	// One app-wide exit watcher closes tabs for every exited session (TERM-05).
 	a.startExitWatcher(ctx)
 

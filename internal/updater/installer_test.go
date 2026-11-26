@@ -53,6 +53,18 @@ type rbFix struct {
 	openErr func(newApp bool, n int) error // n counts Opens from 1
 	swapErr func(n int) error
 	guiFn   func() []int // when set, GUIPids lists this instead of gui
+	// Trash moves the path into trashDir (a fake Finder Trash) unless trashErr is set.
+	trashDir string
+	trashErr error
+	trashed  []rbTrash
+}
+
+// rbTrash is one Trash call with what the bundles held at that moment.
+type rbTrash struct {
+	path      string
+	at        time.Duration
+	pathVer   string // marker of the bundle being trashed
+	targetVer string // marker of the installed bundle
 }
 
 const rbDaemonPid = 300
@@ -68,14 +80,15 @@ func newRbFix(t *testing.T) *rbFix {
 		t.Fatal(err)
 	}
 	f := &rbFix{
-		t:      t,
-		job:    Job{V: JobVersion, Kind: KindUpdate, OldPID: 400, Target: target, Staged: staged, OldVersion: "1.0.0", NewVersion: "9.9.9", DMG: dmg},
-		start:  time.Unix(1000, 0),
-		listed: map[int]bool{},
-		alive:  map[int]bool{rbDaemonPid: true},
-		termOK: map[int]bool{},
-		killOK: map[int]bool{},
-		runner: (&siRelease{}).run,
+		t:        t,
+		job:      Job{V: JobVersion, Kind: KindUpdate, OldPID: 400, Target: target, Staged: staged, OldVersion: "1.0.0", NewVersion: "9.9.9", DMG: dmg},
+		start:    time.Unix(1000, 0),
+		listed:   map[int]bool{},
+		alive:    map[int]bool{rbDaemonPid: true},
+		termOK:   map[int]bool{},
+		killOK:   map[int]bool{},
+		runner:   (&siRelease{}).run,
+		trashDir: t.TempDir(),
 	}
 	f.now = f.start
 	daemon := "v1.0.0"
@@ -151,9 +164,15 @@ func (f *rbFix) env() InstallerEnv {
 			return slices.Clone(pids), nil
 		},
 		DaemonVersion: func() (string, error) { return f.daemonV() },
-		Trash:         func(string) error { return nil },
-		ResultPath:    f.resPath(),
-		Now:           func() time.Time { return f.now },
+		Trash: func(path string) error {
+			f.trashed = append(f.trashed, rbTrash{path, f.now.Sub(f.start), siMarker(f.t, path), siMarker(f.t, f.job.Target)})
+			if f.trashErr != nil {
+				return f.trashErr
+			}
+			return os.Rename(path, filepath.Join(f.trashDir, fmt.Sprintf("%s %d", BundleName, len(f.trashed))))
+		},
+		ResultPath: f.resPath(),
+		Now:        func() time.Time { return f.now },
 		Sleep: func(d time.Duration) {
 			f.sleeps = append(f.sleeps, d)
 			f.now = f.now.Add(d)
@@ -557,5 +576,103 @@ func TestParseGUIPids(t *testing.T) {
 	out := "  201 " + spaced + "\n  202 " + spaced + " daemon\n  203 /Volumes/My\n"
 	if got := ParseGUIPids([]byte(out), spaced); !slices.Equal(got, []int{201}) {
 		t.Errorf("path with a space: ParseGUIPids = %v, want [201]", got)
+	}
+}
+
+func TestInstaller_TrashesOldAfterHealthOnly(t *testing.T) {
+	t.Run("healthy", func(t *testing.T) {
+		f := newRbFix(t)
+		r := f.run()
+		if r.Outcome != OutcomeUpdated {
+			t.Fatalf("result = %+v", r)
+		}
+		if len(f.trashed) != 1 {
+			t.Fatalf("Trash calls = %+v, want exactly one", f.trashed)
+		}
+		tr := f.trashed[0]
+		if tr.path != f.job.Staged || tr.pathVer != "1.0.0" || tr.targetVer != "9.9.9" {
+			t.Errorf("trashed %+v; want the old 1.0.0 bundle at the staged path with 9.9.9 installed", tr)
+		}
+		if tr.at < HealthStable {
+			t.Errorf("trashed at %v, before the %v health window could pass", tr.at, HealthStable)
+		}
+		if !f.stagingGone() {
+			t.Error("the empty staging folder was not removed")
+		}
+		if siMarker(t, f.job.Target) != "9.9.9" {
+			t.Error("the new version is not installed")
+		}
+	})
+	for name, set := range map[string]func(f *rbFix){
+		"health rollback": func(f *rbFix) { f.onOpen = func(bool) { f.gui = []int{500}; f.alive[500] = true } },
+		"open rollback": func(f *rbFix) {
+			f.openErr = func(newApp bool, _ int) error {
+				if newApp {
+					return errors.New("exit status 1")
+				}
+				return nil
+			}
+		},
+		"gui exited": func(f *rbFix) {
+			f.onOpen = func(bool) {}
+			n := 0
+			f.guiFn = func() []int {
+				if n++; n == 1 {
+					return []int{500}
+				}
+				return nil
+			}
+		},
+		"swap failed":  func(f *rbFix) { f.swapErr = func(int) error { return errors.New("EPERM") } },
+		"reverify":     func(f *rbFix) { f.runner = (&siRelease{fail: "codesign"}).run },
+		"quit timeout": func(f *rbFix) { f.alive[400] = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newRbFix(t)
+			set(f)
+			if r := f.run(); r.Outcome == OutcomeUpdated {
+				t.Fatalf("result = %+v, want a non-updated outcome", r)
+			}
+			if len(f.trashed) != 0 {
+				t.Errorf("Trash calls = %+v on a non-updated outcome", f.trashed)
+			}
+		})
+	}
+	t.Run("staged path outside a staging folder", func(t *testing.T) {
+		f := newRbFix(t)
+		other := filepath.Join(filepath.Dir(f.job.Target), "elsewhere")
+		if err := os.Rename(filepath.Dir(f.job.Staged), other); err != nil {
+			t.Fatal(err)
+		}
+		f.job.Staged = filepath.Join(other, BundleName)
+		if r := f.run(); r.Outcome != OutcomeUpdated {
+			t.Fatalf("result = %+v", r)
+		}
+		if len(f.trashed) != 0 {
+			t.Errorf("Trash calls = %+v for a path whose parent lacks the staging prefix", f.trashed)
+		}
+	})
+}
+
+func TestInstaller_TrashFailureKeepsOldAside(t *testing.T) {
+	f := newRbFix(t)
+	f.trashErr = errors.New("trash refused")
+	r := f.run()
+	if r.Outcome != OutcomeUpdated {
+		t.Fatalf("result = %+v; a refused Trash must not change the outcome", r)
+	}
+	if got, ok := f.fileResult(); !ok || got.Outcome != OutcomeUpdated {
+		t.Errorf("result file = %+v, %v", got, ok)
+	}
+	if len(f.trashed) != 1 || f.stagingGone() || siMarker(t, f.job.Staged) != "1.0.0" {
+		t.Errorf("trashed %+v; want one attempt and the old bundle still aside in its staging folder", f.trashed)
+	}
+	if f.logged("installer: old copy kept aside") != 1 {
+		t.Errorf("logs = %q", f.logs)
+	}
+	for _, l := range f.logs {
+		if strings.Contains(l, "/") {
+			t.Errorf("log line carries a path: %q", l)
+		}
 	}
 }

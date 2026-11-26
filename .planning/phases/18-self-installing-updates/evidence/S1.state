@@ -1,0 +1,31 @@
+p18-state row=S1 vm_utc=2026-11-26T02:08:30Z
+installed_version=1.8.1
+gui_pid_count=1
+daemon_version=v1.8.1
+attached_images=1
+cache_dmgs=0
+staging_dirs=1
+run_dirs=0
+trash_portty=2
+--- gui pids and executables
+55442 /Applications/Portty.app/Contents/MacOS/Portty
+--- daemon pids and executables
+53362 /Applications/Portty.app/Contents/MacOS/Portty
+--- attached images
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/d1b36c40ecf011c1a2dfeacc93215881ad4cf525.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+--- update cache
+total 0
+drwx------  2 admin  staff   64 Nov 26 02:07 .
+drwxr-xr-x  5 admin  staff  160 Nov 25 22:50 ..
+--- staging dirs
+/Applications/.Portty-update-fresh1
+--- run dirs
+--- trash: Portty bundles, version, ctime (the move into the Trash; 18-05)
+Portty 02-07-51-507.app 1.8.1 2026-11-26T02:08:05
+Portty.app 1.8.0 2026-11-26T02:05:46
+--- update.log tail
+update: installer started (copy 16ms, start 265ms)
+2026/11/26 02:05:32 vmpreview: verify-mode adhoc
+2026/11/26 02:05:35 installer: updated 
+update: result updated 1.8.0 to 1.8.1 
+update: sweep trashed 1, kept aside 0, run dirs removed 1, mounts detached 1

@@ -131,6 +131,7 @@ echo "attached_images=$(printf '%s' "$imgs" | grep -c . || true)"
 echo "cache_dmgs=$(count "$CACHE"/*.dmg)"
 echo "staging_dirs=$(( $(count /Applications/.Portty-update-*) + $(count "$HOME"/Applications/.Portty-update-*) ))"
 echo "run_dirs=$(count "$CFG"/update/run-*)"
+echo "trash_portty=$(count "$HOME"/.Trash/Portty*.app)"
 echo "--- gui pids and executables"
 for p in $guis; do echo "$p $(ps -p "$p" -o args= | cut -d' ' -f1)"; done
 echo "--- daemon pids and executables"
@@ -143,6 +144,10 @@ echo "--- staging dirs"
 ls -d /Applications/.Portty-update-* "$HOME"/Applications/.Portty-update-* 2>/dev/null
 echo "--- run dirs"
 ls -d "$CFG"/update/run-* 2>/dev/null
+echo "--- trash: Portty bundles, version, ctime (the move into the Trash; 18-05)"
+for t in "$HOME"/.Trash/Portty*.app; do
+  [ -d "$t" ] && echo "$(basename "$t") $(plutil -extract CFBundleShortVersionString raw "$t/Contents/Info.plist" 2>/dev/null) $(stat -f %Sc -t %Y-%m-%dT%H:%M:%S "$t")"
+done
 echo "--- update.log tail"
 tail -n 30 "$CFG/update.log" 2>&1
 exit 0
