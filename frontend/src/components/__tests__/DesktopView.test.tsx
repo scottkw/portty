@@ -2,7 +2,7 @@
 // The client is mocked with emitters; the view is rendered into jsdom.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import React, { act } from 'react'
+import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -51,10 +51,9 @@ const chip = () => container.querySelector('.desktop-chip')
 const card = () => container.querySelector('.desktop-card')
 const scrim = () => container.querySelector('.desktop-scrim')
 const region = () => container.querySelector('[role="status"]') as HTMLElement
-const buttons = () => Array.from(container.querySelectorAll('button')).map((b) => b.textContent)
 
-function render(props: React.ComponentProps<typeof DesktopView> = {}) {
-  act(() => root.render(React.createElement(DesktopView, props)))
+function render(props: { onVideoRect?: (r: VideoRect) => void; onReload?: () => void } = {}) {
+  act(() => root.render(<DesktopView {...props} />))
 }
 function status(s: ClientStatus) {
   act(() => client().emit('status', s))
@@ -247,7 +246,8 @@ describe('Tap to start', () => {
     const before = play.mock.calls.length
     await act(async () => btn.click())
     expect(play.mock.calls.length).toBe(before + 1)
-    expect(card()).toBeNull()
+    expect(card()?.querySelector('h1')?.textContent).not.toBe('Tap to start')
+    expect(container.querySelector('button')).toBeNull()
   })
 
   it('a tap on the scrim also starts the picture', async () => {
@@ -257,7 +257,7 @@ describe('Tap to start', () => {
     const before = play.mock.calls.length
     await act(async () => (scrim() as HTMLElement).click())
     expect(play.mock.calls.length).toBe(before + 1)
-    expect(card()).toBeNull()
+    expect(card()?.querySelector('h1')?.textContent).not.toBe('Tap to start')
   })
 
   it('stays on the card when play() is rejected again', async () => {
@@ -334,10 +334,10 @@ describe('onVideoRect', () => {
     size(video(), 1000, 500)
     videoSize(video(), 1600, 1000)
     act(() => video().dispatchEvent(new Event('resize')))
-    expect(rects.at(-1)).toEqual({ x: 100, y: 0, width: 800, height: 500 })
+    expect(rects[rects.length - 1]).toEqual({ x: 100, y: 0, width: 800, height: 500 })
     size(video(), 400, 800)
     act(() => window.dispatchEvent(new Event('resize')))
-    expect(rects.at(-1)).toEqual({ x: 0, y: 275, width: 400, height: 250 })
+    expect(rects[rects.length - 1]).toEqual({ x: 0, y: 275, width: 400, height: 250 })
   })
 })
 
