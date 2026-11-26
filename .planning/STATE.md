@@ -454,6 +454,7 @@ Recent decisions affecting current work:
 | 8 | CI fixes for v1.2.0: frontend/dist before go test; fdpass openFds via Readdirnames | 2026-11-23 | 9a21f65b | — |
 | 9 | Remove portty.app/app link from README iPhone section | 2026-11-24 | 8a44e0c1 | — |
 | 10 | Re-enable e2e.yml (disabled after a billing-blocked run, not a workflow fault); add workflow_dispatch; first dispatch green | 2026-11-25 | 017ec8c6 | — |
+| 261126-dfn | Phase 18 follow-up: a late first-install failure from a DMG posts "Portty couldn't install version X." from the installer (osascript; Script Editor icon), and mover mode shows an earlier failed result once before retrying; VM row QT-WR02 PENDING (portty-test busy with the debug soak) | 2026-11-26 | 504b7287 | [261126-dfn-late-install-failure-notice](./quick/261126-dfn-late-install-failure-notice/) |
 
 ## Deferred Items
 
