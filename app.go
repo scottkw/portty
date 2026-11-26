@@ -70,6 +70,7 @@ type App struct {
 	client           *daemon.DaemonClient  // only daemon communication field; set in NewApp, before Wails starts any goroutine (nil only in tests)
 	trayInit         bool                  // true once initTray has been called
 	lastTrayQuartile atomic.Int32          // Phase 98 PRG-03 — last applied tray progress quartile [0..4]; -1 = unset. Atomic because written by Wails RPC goroutine (SetTrayProgress) and read by startTrayPoller goroutine via trayIconBytesForState (CR-01).
+	lapseTried       atomic.Int64          // highest desktop LapseSeq this GUI tried to claim; refreshTrayState runs on the poller and on RPC goroutines, so atomic
 	daemonErr        atomic.Pointer[error] // non-nil when EnsureDaemon failed; atomic: Retry writes it while init reads it (IN-08)
 	quitting         atomic.Bool           // set first by QuitAll and shutdown: beforeClose allows exit and the poller never respawns (WR-04)
 	cliInstalling    atomic.Bool           // one Install Command-Line Tool… run at a time (11-REVIEW IN-01)
@@ -1836,12 +1837,33 @@ func (a *App) refreshTrayState() {
 	desktopLine := "" // an unreachable daemon or a failed read clears the line
 	if connected {
 		sessions = a.ListSessions()
-		if st, err := a.client.DesktopStatus(); err == nil {
+		// gui=1 tells the daemon this GUI is running, which makes it the lapse sender.
+		if st, err := a.client.DesktopStatusAsGUI(); err == nil {
 			desktopLine = desktopTrayLine(st)
+			a.claimAndPostLapse(st)
 		}
 	}
 	a.updateTray(sessions, connected)
 	a.setTrayDesktopLine(desktopLine)
+}
+
+// claimAndPostLapse is the GUI half of the lapse notification's one-sender rule
+// (CONTEXT: the GUI when it runs, otherwise the daemon): a new lapse in
+// awaiting_approval is claimed once, and only the winner posts, so a lapse the
+// daemon already took posts nothing here. A failed claim is not retried; the
+// daemon posts itself if no claim reaches it.
+func (a *App) claimAndPostLapse(st daemon.DesktopStatusResponse) {
+	seq := int64(st.LapseSeq)
+	tried := a.lapseTried.Load()
+	if st.State != "awaiting_approval" || seq <= tried || st.LapseSeq <= st.LapseClaimedSeq {
+		return
+	}
+	if !a.lapseTried.CompareAndSwap(tried, seq) {
+		return // another refresh took this lapse
+	}
+	if won, err := a.client.ClaimDesktopLapse(st.LapseSeq); err == nil && won {
+		a.sendNotificationFunc("portty.desktop-approval-lapse", "Portty", "Portty desktop needs approval at the Mac.")
+	}
 }
 
 // checkTailscaleHealth runs one health check and emits "tailscale:health" when
