@@ -581,6 +581,17 @@ func (h *updateHarness) holdAt(t *testing.T, state string) func() {
 			return nil, os.RemoveAll(args[len(args)-1])
 		case strings.HasSuffix(name, "ditto"):
 			return nil, os.MkdirAll(args[len(args)-1], 0o700)
+		// The staged app's checks (18-02): its own identifier, version, minimum macOS and smoke run.
+		case strings.HasSuffix(name, "codesign") && args[0] == "-dvv" && strings.HasSuffix(args[len(args)-1], ".app"):
+			return []byte("Identifier=" + updater.AppIdentifier + "\nTeamIdentifier=" + updater.TeamID + "\n"), nil
+		case strings.HasSuffix(name, "plutil") && args[1] == "CFBundleShortVersionString":
+			return []byte("9.9.9\n"), nil
+		case strings.HasSuffix(name, "plutil") && args[1] == "LSMinimumSystemVersion":
+			return []byte("14.0\n"), nil
+		case strings.HasSuffix(name, "sw_vers"):
+			return []byte("27.2\n"), nil
+		case strings.HasSuffix(name, "/"+updater.BundleExecutable):
+			return []byte("v9.9.9\n"), nil
 		}
 		return fakeUpdateRun(ctx, name, args...)
 	}

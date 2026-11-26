@@ -73,9 +73,18 @@ func Compare(a, b string) (int, error) {
 	return 0, nil
 }
 
-// DMGAssetName is the only release asset Portty downloads: release.yml's
-// portty-${GITHUB_REF_NAME}-darwin-universal.dmg for a vX.Y.Z tag.
+// DMGAssetName is the preferred release asset: release.yml's
+// portty-${GITHUB_REF_NAME}-darwin-universal.dmg for a vX.Y.Z tag. DMGAssetNames lists every
+// accepted name.
 func DMGAssetName(v string) string { return "portty-v" + v + "-darwin-universal.dmg" }
+
+// DMGAssetNames is every release asset name Portty downloads, in order of preference: the
+// universal DMG, then the Apple Silicon-only portty-vX.Y.Z-darwin-arm64.dmg the user confirmed on
+// 2026-11-25 (18-CONTEXT [Assets]). Installed builds search for exactly these names. Phase 23 must
+// sign the arm64 DMG with --identifier equal to its name without .dmg, which Verify requires.
+func DMGAssetNames(v string) []string {
+	return []string{DMGAssetName(v), "portty-v" + v + "-darwin-arm64.dmg"}
+}
 
 // GitHubAllow allows https to this repo's release downloads and the two asset CDN hosts
 // GitHub redirects them to; hosts are compared exactly, never by suffix.
@@ -195,25 +204,29 @@ func (c *Checker) parse(body []byte) (Release, bool, error) {
 		return Release{}, false, nil
 	}
 	rel := Release{Version: strings.TrimPrefix(r.Tag, "v")}
-	name := DMGAssetName(rel.Version) // built from the validated version, never taken from JSON
-	for _, a := range r.Assets {
-		if a.Name != name {
-			continue
+	// Names are built from the validated version, never taken from JSON. The first name present is
+	// the release's DMG: an invalid one is an incomplete release, never a fall-through to the next.
+	names := DMGAssetNames(rel.Version)
+	for _, name := range names {
+		for _, a := range r.Assets {
+			if a.Name != name {
+				continue
+			}
+			m := sha256RE.FindStringSubmatch(a.Digest)
+			u, err := url.Parse(a.URL)
+			switch {
+			case a.State != "uploaded":
+				return rel, false, fmt.Errorf("%w: asset state %q", ErrNotInstallable, a.State)
+			case a.Size < 1 || a.Size > MaxDMGBytes:
+				return rel, false, fmt.Errorf("%w: asset size %d", ErrNotInstallable, a.Size)
+			case m == nil:
+				return rel, false, fmt.Errorf("%w: no sha256 digest", ErrNotInstallable)
+			case err != nil || !c.Allow(u):
+				return rel, false, fmt.Errorf("%w: download URL not allowed", ErrNotInstallable)
+			}
+			rel.DMG = Asset{Name: name, URL: a.URL, Size: a.Size, SHA256: m[1]}
+			return rel, true, nil
 		}
-		m := sha256RE.FindStringSubmatch(a.Digest)
-		u, err := url.Parse(a.URL)
-		switch {
-		case a.State != "uploaded":
-			return rel, false, fmt.Errorf("%w: asset state %q", ErrNotInstallable, a.State)
-		case a.Size < 1 || a.Size > MaxDMGBytes:
-			return rel, false, fmt.Errorf("%w: asset size %d", ErrNotInstallable, a.Size)
-		case m == nil:
-			return rel, false, fmt.Errorf("%w: no sha256 digest", ErrNotInstallable)
-		case err != nil || !c.Allow(u):
-			return rel, false, fmt.Errorf("%w: download URL not allowed", ErrNotInstallable)
-		}
-		rel.DMG = Asset{Name: name, URL: a.URL, Size: a.Size, SHA256: m[1]}
-		return rel, true, nil
 	}
-	return rel, false, fmt.Errorf("%w: no %s asset", ErrNotInstallable, name)
+	return rel, false, fmt.Errorf("%w: no %s asset", ErrNotInstallable, strings.Join(names, " or "))
 }

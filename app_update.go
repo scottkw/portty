@@ -182,7 +182,7 @@ func (a *App) checkForUpdatesManually() {
 		a.alert("This build doesn't check for updates.", "Only release builds of Portty check GitHub for new versions.")
 		return
 	}
-	st, err := a.updates.Check(context.Background()) // its own budget starts after any running check
+	st, err := a.updates.Check(updater.ManualCheck(context.Background())) // its own budget starts after any running check
 	switch {
 	case err != nil:
 		a.alert("Couldn't check for updates.", err.Error())
