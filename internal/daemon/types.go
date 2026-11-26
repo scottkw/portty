@@ -135,6 +135,9 @@ const (
 	ShareErrHTTPSOff     = "https_off"
 	ShareErrPortInUse    = "port_in_use"
 	ShareErrStartFailed  = "start_failed"
+	// ShareErrUserspace: Tailscale runs in userspace networking, so the tailnet
+	// address is on no local interface and the desktop cannot bind it (19-08).
+	ShareErrUserspace = "tailscale_userspace"
 )
 
 // ShareError is a share failure with a stable code for the CLI and GUI copy.
