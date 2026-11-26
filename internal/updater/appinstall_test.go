@@ -305,9 +305,6 @@ func TestInstallFailureText(t *testing.T) {
 			}
 		}
 	}
-	if installerStartFailText != installFailureText(errInstallerStart, true) {
-		t.Errorf("installerStartFailText = %q", installerStartFailText)
-	}
 }
 
 // aiInstallFailure drives one Download into a self-install that fails in mode, on a Service with

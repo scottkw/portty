@@ -135,8 +135,8 @@ func readOwnFile(path string) ([]byte, error) {
 	return b, nil
 }
 
-// isDir reports whether path is a real directory, not a symlink to one.
-func isDir(path string) bool {
+// IsDir reports whether path is a real directory, never a symlink to one.
+func IsDir(path string) bool {
 	fi, err := os.Lstat(path)
 	return err == nil && fi.IsDir()
 }
@@ -179,7 +179,7 @@ func ReadJob(path string) (Job, error) {
 	if filepath.Dir(stagingDir) != filepath.Dir(j.Target) || !strings.HasPrefix(filepath.Base(stagingDir), StagingPrefix) {
 		return Job{}, jobErr("staging folder")
 	}
-	if !isDir(j.Target) || !isDir(j.Staged) {
+	if !IsDir(j.Target) || !IsDir(j.Staged) {
 		return Job{}, jobErr("bundle missing")
 	}
 	if newer, err := Compare(j.NewVersion, j.OldVersion); err != nil || newer <= 0 {
@@ -225,7 +225,7 @@ func checkMoveJob(j Job) error {
 	}
 	_, err := os.Lstat(j.Target)
 	exists := err == nil
-	if (exists && !isDir(j.Target)) || (err != nil && !errors.Is(err, os.ErrNotExist)) {
+	if (exists && !IsDir(j.Target)) || (err != nil && !errors.Is(err, os.ErrNotExist)) {
 		return jobErr("bundle missing")
 	}
 	if j.Kind == KindOpenInstalled {
@@ -239,7 +239,7 @@ func checkMoveJob(j Job) error {
 	}
 	stagingDir := filepath.Dir(j.Staged)
 	if !filepath.IsAbs(j.Staged) || filepath.Clean(j.Staged) != j.Staged || filepath.Base(j.Staged) != BundleName ||
-		filepath.Dir(stagingDir) != filepath.Dir(j.Target) || !strings.HasPrefix(filepath.Base(stagingDir), StagingPrefix) || !isDir(j.Staged) {
+		filepath.Dir(stagingDir) != filepath.Dir(j.Target) || !strings.HasPrefix(filepath.Base(stagingDir), StagingPrefix) || !IsDir(j.Staged) {
 		return jobErr("staging folder")
 	}
 	if !exists {
@@ -407,7 +407,7 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	r := Result{V: 1, OldVersion: j.OldVersion, NewVersion: j.NewVersion, DMG: j.DMG, KeepDaemon: j.KeepDaemon}
 	exe := filepath.Join(j.Target, BundleExecutable)
 	mover := j.Kind == KindMove || j.Kind == KindOpenInstalled
-	existed := isDir(j.Target) // false only for a mover's first install
+	existed := IsDir(j.Target) // false only for a mover's first install
 	written := false           // whether the last finish wrote its result
 	finish := func(outcome, reason string) Result {
 		r.Outcome, r.Reason = outcome, reason
@@ -425,7 +425,7 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 			return
 		}
 		p := j.Target
-		if !isDir(p) {
+		if !IsDir(p) {
 			p = j.ImagePath
 		}
 		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), OpenTimeout)
@@ -442,7 +442,7 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	// A keepDaemon the result file could not carry rides in the launch environment (WR-04).
 	finishOpen := func(outcome, reason string) Result {
 		finish(outcome, reason)
-		if !isDir(j.Target) { // a mover's first install that failed before its swap: nothing to open
+		if !IsDir(j.Target) { // a mover's first install that failed before its swap: nothing to open
 			// Its staging folder holds only Portty's own checked, quarantine-cleared copy (there
 			// is no app beside it), and no installed GUI will ever run to sweep it.
 			if dir := filepath.Dir(j.Staged); strings.HasPrefix(filepath.Base(dir), StagingPrefix) {

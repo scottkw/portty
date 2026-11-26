@@ -281,7 +281,7 @@ func Stage(ctx context.Context, run Runner, in StageInput) (string, error) {
 	if err := Mount(ctx, run, in.DMG, mnt); err != nil {
 		return "", err
 	}
-	staged, err := stageFrom(ctx, run, filepath.Join(mnt, BundleName), in.Target, in.NewVersion)
+	staged, err := StageFrom(ctx, run, filepath.Join(mnt, BundleName), in.Target, in.NewVersion)
 	if derr := Detach(ctx, run, mnt); err == nil {
 		err = derr
 	}
@@ -294,15 +294,18 @@ func Stage(ctx context.Context, run Runner, in StageInput) (string, error) {
 	return staged, nil
 }
 
-// stageFrom verifies the mounted app, checks the space, copies it, strips the copy's quarantine
-// and checks the copy. It returns the staged path even on error so Stage can remove it.
-func stageFrom(ctx context.Context, run Runner, mounted, target, version string) (string, error) {
+// StageFrom verifies the mounted app, checks the space, copies it, strips the copy's quarantine
+// and checks the copy. Stage and the mover share it. It returns the staged path even on error once
+// the copy exists, so the caller can remove its folder.
+func StageFrom(ctx context.Context, run Runner, mounted, target, version string) (string, error) {
 	if err := VerifyApp(ctx, run, mounted); err != nil {
 		return "", err
 	}
 	size, err := AppSize(mounted)
 	if err != nil {
-		return "", installErr(ErrMount, "app-size")
+		// AppSize reads the copy source, which is already mounted on both paths, so this is a copy
+		// failure; ErrMount's "couldn't open the download" would wrongly suggest a mount problem.
+		return "", installErr(ErrCopy, "app-size")
 	}
 	if err := CheckSpace(filepath.Dir(target), 2*size); err != nil {
 		return "", err

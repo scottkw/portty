@@ -127,7 +127,7 @@ func InstalledVersion(ctx context.Context, run Runner, app string) (string, erro
 // Applications folder, else "". A symlink is not a copy.
 func ExistingCopy(system, home string) string {
 	for _, p := range []string{filepath.Join(system, BundleName), filepath.Join(home, "Applications", BundleName)} {
-		if isDir(p) {
+		if IsDir(p) {
 			return p
 		}
 	}

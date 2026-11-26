@@ -225,7 +225,7 @@ func TestRunMover_NoCopyMovesWithoutAsking(t *testing.T) {
 		j.ImagePath != f.run.ImagePath || j.MountPoint != f.run.MountPoint || j.DMG != "" {
 		t.Errorf("job = %+v", j)
 	}
-	if filepath.Dir(filepath.Dir(j.Staged)) != f.system || !strings.HasPrefix(filepath.Base(filepath.Dir(j.Staged)), updater.StagingPrefix) || !isRealDir(j.Staged) {
+	if filepath.Dir(filepath.Dir(j.Staged)) != f.system || !strings.HasPrefix(filepath.Base(filepath.Dir(j.Staged)), updater.StagingPrefix) || !updater.IsDir(j.Staged) {
 		t.Errorf("staged = %q, want a copy in a staging folder beside the target", j.Staged)
 	}
 }

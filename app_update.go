@@ -186,7 +186,7 @@ func (a *App) checkForUpdatesManually() {
 	switch {
 	case err != nil:
 		a.alert("Couldn't check for updates.", err.Error())
-	case busyState(st.State):
+	case updater.Busy(st.State):
 		a.alert("Portty is updating to version "+st.Latest+".", "It will restart by itself when the update is installed.")
 	case st.State == "available":
 		rememberNotified(st.Latest) // the alert already told the user; no notification for it later
@@ -196,24 +196,15 @@ func (a *App) checkForUpdatesManually() {
 	}
 }
 
-// busyState is a state in which an update is in flight and a second one must not start.
-func busyState(state string) bool {
-	switch state {
-	case "downloading", "verifying", "installing", "relaunching":
-		return true
-	}
-	return false
-}
-
 // offerUpdate is the tray item's action: offer a known update, or show the window with the
 // banner while one is in flight.
 func (a *App) offerUpdate() {
 	st := a.GetUpdateStatus()
-	switch st.State {
-	case "available", "revealed":
+	switch {
+	case st.State == "available" || st.State == "revealed":
 		a.showWindow()
 		a.offerDownload(st)
-	case "downloading", "verifying", "installing", "relaunching":
+	case updater.Busy(st.State):
 		a.showWindow()
 	}
 }

@@ -185,32 +185,10 @@ func (a *App) runMover(r updater.DMGRun) {
 		fail(err)
 		return
 	}
-	if err := updater.VerifyApp(ctx, updateRunner, r.Bundle); err != nil {
+	var err error
+	if staged, err = updater.StageFrom(ctx, updateRunner, r.Bundle, target, version); err != nil {
 		fail(err)
 		return
-	}
-	size, err := updater.AppSize(r.Bundle)
-	if err != nil {
-		fail(fmt.Errorf("%w: app-size", updater.ErrCopy))
-		return
-	}
-	if err := updater.CheckSpace(filepath.Dir(target), 2*size); err != nil {
-		fail(err)
-		return
-	}
-	if staged, err = updater.CopyApp(ctx, updateRunner, r.Bundle, target); err != nil {
-		fail(err)
-		return
-	}
-	for _, check := range []func() error{
-		func() error { return updater.ClearQuarantine(ctx, updateRunner, staged) },
-		func() error { return updater.VerifyApp(ctx, updateRunner, staged) },
-		func() error { return updater.CheckStagedApp(ctx, updateRunner, staged, version) },
-	} {
-		if err := check(); err != nil {
-			fail(err)
-			return
-		}
 	}
 	job.Staged = staged
 	if err := start(job); err != nil {

@@ -275,7 +275,7 @@ func sweepDirs(ctx context.Context, now time.Time, parents []string, work, cache
 	// parent. The installed copy is checked first, so a parent without one runs no tool.
 	newerThanInstalled := func(app, parent string) bool {
 		installed := filepath.Join(parent, updater.BundleName)
-		if !isRealDir(installed) {
+		if !updater.IsDir(installed) {
 			return false
 		}
 		dctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -294,7 +294,7 @@ func sweepDirs(ctx context.Context, now time.Time, parents []string, work, cache
 	var trashed, kept, runs, detached, removed int
 	for _, parent := range parents {
 		for _, dir := range entries(parent, updater.StagingPrefix, true) {
-			if app := filepath.Join(dir, updater.BundleName); isRealDir(app) {
+			if app := filepath.Join(dir, updater.BundleName); updater.IsDir(app) {
 				if newerThanInstalled(app, parent) {
 					if err := os.RemoveAll(dir); err != nil {
 						updateLogf("update: sweep: failed copy not removed")
@@ -322,7 +322,7 @@ func sweepDirs(ctx context.Context, now time.Time, parents []string, work, cache
 	}
 	if cache != "" {
 		for _, dir := range entries(cache, "mnt-", false) {
-			if !isRealDir(filepath.Join(dir, updater.BundleName)) {
+			if !updater.IsDir(filepath.Join(dir, updater.BundleName)) {
 				_ = os.Remove(dir)
 				continue
 			}
@@ -336,12 +336,6 @@ func sweepDirs(ctx context.Context, now time.Time, parents []string, work, cache
 	if trashed+kept+removed+runs+detached > 0 {
 		updateLogf("update: sweep trashed %d, kept aside %d, failed copies removed %d, run dirs removed %d, mounts detached %d", trashed, kept, removed, runs, detached)
 	}
-}
-
-// isRealDir reports whether path is a directory, not a symlink to one.
-func isRealDir(path string) bool {
-	fi, err := os.Lstat(path)
-	return err == nil && fi.IsDir()
 }
 
 // updateResultNotificationID identifies the notification about a rolled-back or failed install.

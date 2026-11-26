@@ -76,7 +76,8 @@ func (s *Service) Status() Status {
 	return s.status()
 }
 
-func busy(state string) bool {
+// Busy is a state in which an update is in flight and a second one must not start.
+func Busy(state string) bool {
 	return state == "downloading" || state == "verifying" || state == "installing" || state == "relaunching"
 }
 
@@ -106,7 +107,7 @@ func (s *Service) Check(ctx context.Context) (Status, error) {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 	s.mu.Lock()
-	if busy(s.st.State) {
+	if Busy(s.st.State) {
 		defer s.mu.Unlock()
 		return s.status(), nil
 	}
@@ -313,8 +314,6 @@ func installFailureText(err error, revealed bool) string {
 	}
 	return text + " Try again later."
 }
-
-var installerStartFailText = installFailureText(errInstallerStart, true)
 
 // install checks the running bundle's location, stages the verified DMG beside it and hands it to
 // the detached installer, which quits nothing itself: StartInstaller quits the GUI once the

@@ -382,7 +382,7 @@ func TestSelfInstall_StartFailureReveals(t *testing.T) {
 	f := newSiFix(t)
 	f.startErr = errors.New("spawn failed")
 	st := f.download(t)
-	if st.State != "revealed" || st.Error != installerStartFailText {
+	if st.State != "revealed" || st.Error != installFailureText(errInstallerStart, true) {
 		t.Errorf("status = %+v", st)
 	}
 	if f.started != 1 {
