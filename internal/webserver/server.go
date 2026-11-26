@@ -131,6 +131,10 @@ type WebServer struct {
 	// capability route. Set once before Start via SetShareTokenProvider.
 	shareToken func(sessionID string) (string, bool)
 
+	// desktop backs the /desktop/ routes (desktop_routes.go). Set once before
+	// Start via SetDesktopBackend; nil means the always-available link is off.
+	desktop DesktopBackend
+
 	// revokeSignals holds one channel per session, closed by ClearGrants so
 	// long-lived streams end at once on revoke. Guarded by ws.mu.
 	revokeSignals map[string]chan struct{}
@@ -735,6 +739,9 @@ func (ws *WebServer) setupRoutes() {
 		}
 		stripped.ServeHTTP(w, r)
 	})))
+
+	// Phase 19: the always-available desktop link (/desktop/ and /desktop/ws).
+	ws.setupDesktopRoutes(mux)
 }
 
 // serveIndex serves the React bundle's index.html with the correct
