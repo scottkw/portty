@@ -116,6 +116,12 @@ The plan names builds 19.0.5 and 19.0.6; the office VM already held 19.1.3 from 
 | F4 | DESK-03, DSHR-02 | Saved the link inside the VM; a Safari viewer open; `kill -9` of the launchd daemon; poll `/health` and the viewer; then Quit All, GUI start, compare `GET /desktop/link` with the saved text | PASS | Attempt 2 (`F4-a.link`, `F4-b.kill`, `F4-b.viewers`, `F4-b.state`, `F4-c.link`, `F4-c.viewers`): killed at guest epoch 710, `/health` answered `launchd:true` with a new pid at 711 (launchd's KeepAlive), the viewer read `reconnecting` once and `streaming` with frames from 713, no reload, same link; after Quit All and a GUI start `GET /desktop/link` equals the saved text (`same: yes`) and the viewer streams again. Attempt 1 (`F4-a1.state`, `F4-b1.kill`, `F4-b1.viewers`, `F4-breaker.txt`): the daemon and the viewer came back as fast, but the new daemon's capture was paused (`capture_paused`, `framesDecoded` 0 for 70 s): its crash breaker already held three abnormal exits, two of them from the F5 upgrades; a Test Capture from the setup sheet reset it and attempt 2 ran from a clean budget. This is the defect in the findings, not a launchd or link problem |
 | F6 | DESK-04, DSHR-02 | Desktop on, terminal share on, a desktop viewer and a terminal viewer open: desktop switched off in Settings; later desktop on and the terminal share off in the Share popover | PASS | `evidence/F6-a.viewers` and `F6-b.viewers`: after the desktop went off the terminal page kept receiving ticks (TICK 1827 to 1845 over 14 polls, `breaks:0`) while `GET /desktop` read `alwaysAvailable:false, state:off`; `F6-c.viewers`: after the terminal share went off the terminal page stopped (last tick 2188, session `webEnabled:false`) and the desktop viewer kept decoding (framesDecoded 903 to 1151 over 12 polls), `GET /desktop` `streaming`, the share server still listening. Turning the desktop off revokes its link by design (CONTEXT): the old link then shows `This desktop link no longer works`, so after turning it on again `enable-desktop` fetched the new link before the viewer rejoined |
 | F12 | DESK-03 (CONTEXT: off page) | A desktop viewer open; Always-available turned off in Settings; read the open page, then reload the same link | PASS | `evidence/F12-b.page`: the open page shows the off card (`Desktop sharing is off on this Mac`, the text pointing at Settings, Sharing); after a reload the static page, title `Portty`, same text, no player; `F6-b.viewers`/`F6-b.ui`: viewers 0, the Settings switch off, the Desktop rows gone. The debug status does NOT read `desktop_off`: the viewer stops its debug ticker when it shows the off card, so `__desktopStats` and the title stay at the last streaming values; the DOM is the reliable read |
+| F7 | DPRM-04 (VM half), DPRM-02 | A Safari viewer streaming with an animated screen (a Portty terminal tab printing the time every 50 ms); `pmset displaysleepnow` in portty-test; 14 s later `caffeinate -u -t 2` (a user-activity wake); once-a-second reads of the viewer | PASS | `evidence/F7.viewers`, `F7.cmds`: sleep at guest epoch 631, the viewer read `display_asleep` at the first poll after (634, within 3 s; `GET /desktop` read `display_asleep` too), wake at 645, the viewer read `streaming` and framesDecoded rose from 250 to 268 at 647, 2 s after the wake (the time to the first new frame), and kept receiving frames. A first run on a still screen (`F7-still.viewers`, `F7-still.cmds`) showed the same states but no new frames after the wake, because ScreenCaptureKit sends nothing while nothing changes (framesDecoded 58 for 50 s even through a pointer click); that run proves nothing about frames, so the row was repeated with motion on the screen. Daemon log at the sleep: `capture error err="screencap: no display: Failed to find any displays or windows to capture"`, then it recovered |
+| F8 | DPRM-02 | The same viewer; `lock` (Ctrl+Cmd+Q through the click tool), 20 s, `unlock` (the VM's public password typed as key codes) | PASS | `evidence/F8.viewers`, `F8.cmds`: `GET /desktop` `locked:true, state:locked` 3 s after the key press, the viewer read `locked` with framesDecoded rising from 323 to 601 over the 33 s the screen stayed locked (live lock-screen frames, no stall, no reconnect), and after the unlock typing `streaming` with `locked:false` |
+| F9 | DPRM-01 (V10) | Screen Recording turned off for Portty in System Settings (the pane opened by URL, the switch clicked, the password sheet answered with key codes, Later on Quit and Reopen) while a viewer streamed; then the capture was restarted (the viewer left and rejoined); then the switch turned back on | PARTIAL | `evidence/F9-off.viewers`, `F9-off.cmds`, `F9-restart.txt`, `F9-on.cmds`, `F9-on.viewers`, `F9-on2.viewers`: `GET /desktop/permissions` read `sr:false` at once, but the running stream kept going (state `streaming`, framesDecoded rising for 70 s): macOS keeps an already authorised capture alive until it restarts, so no `needs_permission` appeared within 20 s while streaming (neither an error nor the watchdog found it). At the next capture start (the viewer rejoined) the state read `needs_permission` within 9 s and stayed so; after the switch went back on `sr:true` and the state returned to `streaming` with frames within 5 s, with no viewer reconnect needed (the retry loop found it). What the VM cannot show as the plan words it: needs_permission while a stream is live. A revoked grant is therefore noticed at the next restart, not immediately |
+| F10 | DPRM-02 (V5) | A stream with an animated screen; `killall replayd` (sudo) in portty-test | PASS | `evidence/F10.viewers`, `F10.cmds`: replayd pid 74528 before, 69084 after (launchd restarted it); the viewer's framesDecoded kept rising at the same cadence (84 to 97 over 40 s) with no `reconnecting`, the state stayed `streaming`, and the daemon log has no new capture error after the kill: the stream was not interrupted at all (the only log lines are the earlier permission-denied retries from F9) |
+| F11 | DPRM-02 | A still screen (animation stopped) with one freshly joined viewer for 62 s | PASS | `evidence/F11.viewers`, `F11.cmds`: 62 of 62 polls `streaming`, the daemon log gained no line in the window: 0 nudge lines, 0 `awaiting_approval`, 0 stall lines; `GET /desktop` `streaming`, `lapseSeq 0`. The first frame came 2.2 s after the page loaded |
+| F13 | DPRM-03 | Build 19.2.4 with `--tags "wailsassets vmdesktop"` Developer ID deployed; `POST /desktop/debug/lapse` with the GUI running; `DELETE`; GUI quit, 15 s, `POST` again; then the untagged build 19.2.5 deployed | PASS | `evidence/F13-gui.txt`: daemon log `waiting for approval at the Mac lapse=1 detector=simulated gui=true`, `lapse claimed lapse=1 by=gui`; the GUI's log shows the native notification dispatched (`main queue: 1`) and accepted; one `Added notification request` in the unified log; the notification record was replaced (id `portty.desktop-approval-lapse`, delivered 21:43:32). `evidence/F13-daemon.txt`: GUI processes 0, `lapse claimed lapse=2 by=daemon`, the daemon dispatched it (`main queue: 0`) and it was accepted, one more request in the unified log, the record replaced again (delivered 21:44:04). Exactly one notification per lapse and the sender follows the GUI. `F13-tagcheck.txt`: the untagged 19.2.5 answers 404 to the debug route and has no route text, so no tagged build stays installed |
 
 ## Findings from 19-15 (F5)
 
@@ -133,3 +139,61 @@ The plan names builds 19.0.5 and 19.0.6; the office VM already held 19.1.3 from 
 - **Turning the desktop off revokes the link by design.** After off and on again the old link shows `This desktop link no longer works`; a saved Home Screen link on the owner's phone dies if the switch is ever flipped (the footnote says so: `Turning this off stops every saved desktop link`).
 - **Join times over DERP are 1 to 3.6 s, not 2 s (F2).** See the row; the 2 s target belongs to the direct path the office Mac has.
 - **Test Capture in the setup sheet resets the breaker and brings the stream back** (`GET /desktop` went from `capture_paused` to `streaming` within 2 s with the viewer still open); that part of the 19-11 and 19-09 design works.
+- **F9 and the OS.** A revoked Screen Recording grant does not stop a running capture on macOS 27.2; it takes effect at the next capture start. For the owner this means a revoke is not noticed until the stream restarts (a viewer leaving and rejoining, an upgrade, a display sleep), then the desktop shows Needs permission. That is OS behaviour, not a Portty fault, and it is why the plan's 20 s clause could not hold.
+- **The setup sheet's wording for a missing permission was not exercised on 27.2.** Both permissions were granted for every row, so the how-to that names the panes (00ce7a25) never showed; the pane titles it should name were read from System Settings (`Screen & System Audio Recording`, `Device Control and Data Access`, F1). That wording is an owner or 19-16 check with a permission turned off.
+- **VM end state.** Both guests running on the tailnet. portty-test: the untagged Developer ID build 19.2.5, the launchd daemon running, GUI quit, always-available off, no tagged build installed (F13-tagcheck), Screen Recording and Accessibility granted. portty-test-2: Safari and Chrome closed, pf anchor `com.apple/p19` empty and pf disabled, link files removed from both guests. Nothing was stopped; no `tailscale down`; the host contacted no tailnet address, link or guest browser.
+
+## Closure
+
+Phase 19 VM record, closed by plan 19-15. Every row in this file with its verdict (V1 was re-run as V1b after the fix and is superseded by it):
+
+| Row | Plan | Verdict |
+|-----|------|---------|
+| L1 | 19-07 | PASS |
+| V2 | 19-07 | PASS |
+| V3 | 19-07 | PASS |
+| V4 | 19-07 | PASS |
+| K1 | 19-07 | PASS |
+| C1 | 19-07 | PASS |
+| LG1 | 19-07 | PASS |
+| S1 | 19-07 | PASS |
+| M1 | 19-12 | PASS |
+| V7 | 19-12 | PASS |
+| B1 | 19-12 | PASS |
+| P1 | 19-12 | PASS |
+| V6 | 19-12 | PASS |
+| V9 | 19-12 | PASS |
+| V1 | 19-12 | FAIL (daemon notification not delivered with the GUI quit; fixed in 19-14, superseded by V1b and F13) |
+| V8 | 19-12 | not run (signal d not adopted in 19-09) |
+| V1b | 19-14 | PASS |
+| F1 | 19-15 | PASS |
+| F2 | 19-15 | PARTIAL (all three viewers decode and read viewers 3; first frame 1.1 to 3.6 s over DERP, the 2 s target is the owner's direct-path M-157) |
+| F3 | 19-15 | PASS |
+| F4 | 19-15 | PASS (after a Test Capture reset; see the crash-breaker defect) |
+| F5 | 19-15 | PASS (tick-gap clause 3 s in the recorded run, 4 s in two earlier attempts, cause not proven) |
+| F6 | 19-15 | PASS |
+| F7 | 19-15 | PASS |
+| F8 | 19-15 | PASS |
+| F9 | 19-15 | PARTIAL (a revoke is noticed at the next capture start, not while streaming: macOS keeps a running capture alive) |
+| F10 | 19-15 | PASS |
+| F11 | 19-15 | PASS |
+| F12 | 19-15 | PASS |
+| F13 | 19-15 | PASS |
+
+**Accepted amendment to DSHR-01 (USER DECISION 2026-11-25, "Start it anyway"):** launchd is the primary start; a daemon started without launchd (the agent disabled in Login Items) is surfaced as degraded with the Background service Needs repair row and the Open Login Items button, never refused. Evidence: V2 (d) (disabled agent, fallback daemon, two ticking sessions, then enable and a re-home that kept both shells), C1 (agent removed, `portty list` says what to do and still starts a daemon), and F1 (the Settings row, its description, the button opening Login Items, and the row clearing after `launchctl enable` and a GUI restart with the session ids kept).
+
+**Open defect for the owner (not a gap in the rows above):** a clean daemon stop (upgrade handoff, Quit All) with a desktop viewer attached is counted as a crash and three in an hour pause capture until Test Capture is run at the Mac. Evidence in `F4-breaker.txt` and the F4 row; recommended fix in the F1 to F12 findings. Not fixed in this plan.
+
+Owner-run items on the office Mac that 19-16 records in TESTING.md. The VMs cannot show any of them, so each is `human_needed`, not a gap:
+
+1. **human_needed:** the daemon-posted lapse notification with the GUI closed, on a notarized build on the office Mac (the VM rows V1b and F13 pass on a Developer ID build; V1 failed first and is superseded, so this item is only the notarized-build and real-banner confirmation, listed first so it is not folded into a pass).
+2. **human_needed:** the direct tailnet path between the office and home Macs, no STUN, TURN or cloud server, and the first-frame time on it (existing M-157; also settles the F2 2 s target).
+3. **human_needed:** the battery display-sleep test with a viewer connected and the AC assertion released on battery (DPRM-04; the VM has no battery).
+4. **human_needed:** Retina sharpness of the stream at the office display's native size (existing M-161).
+5. **human_needed:** the iPhone Home Screen link across a daemon restart and across an upgrade (the link text survives both in F4 and F5; the phone itself is not in the VMs).
+6. **human_needed:** the real 30-day Screen Recording re-approval prompt and what capture does while it waits (existing M-160).
+7. **human_needed:** the office Mac's display sleep policy and what a viewer sees across display sleep and wake there (existing M-159; F7 covers the VM half).
+8. **human_needed:** FA-1 attribution and a fresh probe on the office Mac, reworded: the in-daemon capture host is listed under Portty in Screen Recording and the grant is read live (existing M-163; V6 covers the VM half).
+9. **human_needed:** the office Mac's Tailscale mode, network extension or userspace networking, and the Settings refusal for userspace (existing M-164).
+10. **human_needed:** how the Desktop group, the setup sheet and the 256 x 160 capture box look in a real window, and the macOS-native feel (19-13 G8; WebKit screenshots are blank in the VMs), including the setup sheet's how-to wording with a permission turned off (see the findings).
+11. **human_needed:** repeat the F5 upgrade with a viewer attached on the office Mac and read the shell tick gap (3 to 4 s in the VM, cause unproven).

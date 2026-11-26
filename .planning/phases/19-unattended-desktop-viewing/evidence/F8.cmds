@@ -1,0 +1,4 @@
+lock: pressed at guest epoch 1795728735; GET /desktop locked=true
+GET /desktop while locked: {"state":"locked","viewers":1,"locked":true}
+unlock: typed at guest epoch 1795728768; GET /desktop locked=false
+GET /desktop after unlock: {"state":"streaming","viewers":1,"locked":false}

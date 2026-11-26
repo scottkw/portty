@@ -1,0 +1,11 @@
+replayd before: 74528 
+killall replayd at guest epoch 1795729152
+replayd after: 69084 
+2026/11/26 21:36:42.898843 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:36:52.941615 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:37:02.998812 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:37:13.600129 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:37:23.653336 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:37:33.723503 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:37:43.801127 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:37:53.847231 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
