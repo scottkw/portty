@@ -201,7 +201,7 @@ var moveParents = func() []string {
 var volumesRoot = "/Volumes/"
 
 // checkMoveJob holds a mover job (UPD-08) to a Portty.app directly in an allowed Applications
-// folder, the DMG Portty was launched from, a mount point under /Volumes/ and its kind's version
+// folder, a clean absolute image path (or none), a mount point under /Volumes/ and its kind's version
 // rule: move installs a first copy or replaces a strictly older one; open-installed only opens a
 // same or newer installed copy (never a downgrade, T-18-28).
 func checkMoveJob(j Job) error {
@@ -212,7 +212,9 @@ func checkMoveJob(j Job) error {
 	if j.DMG != "" {
 		return jobErr("dmg")
 	}
-	if !imageFileOK(j.ImagePath) {
+	// The image path only feeds the DMG Trash, which re-checks imageFileOK and keeps any DMG that
+	// fails it (Portty's update cache, a renamed or another account's DMG): never a refusal (CR-01).
+	if ip := j.ImagePath; ip != "" && (!filepath.IsAbs(ip) || filepath.Clean(ip) != ip) {
 		return jobErr("image path")
 	}
 	if mp := j.MountPoint; !filepath.IsAbs(mp) || filepath.Clean(mp) != mp || !strings.HasPrefix(mp, volumesRoot) {

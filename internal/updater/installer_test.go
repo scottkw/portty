@@ -805,27 +805,27 @@ func TestJob_MoveKinds(t *testing.T) {
 				f.job.Staged = siBundle(t, filepath.Join(t.TempDir(), StagingPrefix+"z"), "9.9.9")
 			}},
 		{name: "a dmg cache path", kind: KindMove, mutate: func(_ *testing.T, f *rbFix) { f.job.DMG = f.job.ImagePath }},
-		{name: "image path not a release asset", kind: KindMove,
+		{name: "image path not a release asset", kind: KindMove, ok: true,
 			mutate: func(t *testing.T, f *rbFix) {
 				p := filepath.Join(t.TempDir(), "notes.dmg")
 				_ = os.WriteFile(p, nil, 0o644)
 				f.job.ImagePath = p
 			}},
-		{name: "image path a directory", kind: KindMove,
+		{name: "image path a directory", kind: KindMove, ok: true,
 			mutate: func(t *testing.T, f *rbFix) {
 				p := filepath.Join(t.TempDir(), "portty-v9.9.9-darwin-universal.dmg")
 				_ = os.Mkdir(p, 0o755)
 				f.job.ImagePath = p
 			}},
-		{name: "image path a symlink", kind: KindMove,
+		{name: "image path a symlink", kind: KindMove, ok: true,
 			mutate: func(t *testing.T, f *rbFix) {
 				p := filepath.Join(t.TempDir(), "portty-v9.9.9-darwin-universal.dmg")
 				_ = os.Symlink(f.job.ImagePath, p)
 				f.job.ImagePath = p
 			}},
-		{name: "image path missing", kind: KindOpenInstalled,
+		{name: "image path missing", kind: KindOpenInstalled, ok: true,
 			mutate: func(_ *testing.T, f *rbFix) { _ = os.Remove(f.job.ImagePath) }},
-		{name: "image path in the update cache", kind: KindMove,
+		{name: "image path in the update cache", kind: KindMove, ok: true,
 			mutate: func(t *testing.T, f *rbFix) {
 				dir := filepath.Join(t.TempDir(), AppIdentifier, "updates")
 				_ = os.MkdirAll(dir, 0o700)
@@ -835,6 +835,10 @@ func TestJob_MoveKinds(t *testing.T) {
 			}},
 		{name: "image path relative", kind: KindMove,
 			mutate: func(_ *testing.T, f *rbFix) { f.job.ImagePath = "portty-v9.9.9-darwin-universal.dmg" }},
+		{name: "image path not clean", kind: KindMove,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.ImagePath += "/../x.dmg" }},
+		{name: "image path empty", kind: KindMove, ok: true,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.ImagePath = "" }},
 		{name: "mount point outside /Volumes", kind: KindMove,
 			mutate: func(t *testing.T, f *rbFix) { f.job.MountPoint = t.TempDir() }},
 		{name: "mount point not clean", kind: KindOpenInstalled,
@@ -994,6 +998,36 @@ func TestInstaller_MoveImageGuard(t *testing.T) {
 			}
 			if f.imageTrashed() != 0 {
 				t.Errorf("trashed %+v: a file this user does not own", f.trashed)
+			}
+		})
+		// CR-01: the Reveal fallback shows the user the DMG in Portty's own update cache, so a
+		// launch from it must still move; only the Trash skips that DMG.
+		t.Run(kind+" image in the update cache", func(t *testing.T) {
+			f := newMoveFix(t, kind, false)
+			dir := filepath.Join(t.TempDir(), AppIdentifier, "updates")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			p := filepath.Join(dir, filepath.Base(f.job.ImagePath))
+			if err := os.Rename(f.job.ImagePath, p); err != nil {
+				t.Fatal(err)
+			}
+			f.job.ImagePath = p
+			jobPath := filepath.Join(t.TempDir(), "job.json")
+			if err := WriteJob(jobPath, f.job); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ReadJob(jobPath); err != nil {
+				t.Fatalf("ReadJob refused a launch from the update cache: %v", err)
+			}
+			if r := f.run(); r.Outcome != moverOutcome[kind] {
+				t.Fatalf("result = %+v, want %s", r, moverOutcome[kind])
+			}
+			if kind == KindMove && (f.swaps != 1 || siMarker(t, f.job.Target) != "9.9.9") {
+				t.Errorf("swaps = %d; want the new copy installed", f.swaps)
+			}
+			if _, err := os.Lstat(p); err != nil || f.imageTrashed() != 0 {
+				t.Errorf("cache DMG trashed or gone (%v), trashed %+v", err, f.trashed)
 			}
 		})
 		t.Run(kind+" image gone", func(t *testing.T) {
