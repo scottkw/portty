@@ -204,6 +204,16 @@ type App struct {
 	// under launchd ("" when none): set by the ensure's OnFallback and by an
 	// unusable EnsureAgent, cleared once launchd runs the daemon. Always a string.
 	repairKind atomic.Value
+
+	// diskImageLaunch is set by startDaemon when the GUI runs from a disk image or an
+	// App Translocation path: the repair is then to move it to Applications.
+	diskImageLaunch atomic.Bool
+
+	// Re-home retry (see rehomeIfUnmanaged), guarded by rehomeMu.
+	rehomeMu       sync.Mutex
+	rehomeArmed    bool
+	rehomeAttempts int
+	rehomeNext     time.Time
 }
 
 // defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
@@ -373,6 +383,9 @@ func (a *App) startDaemon(socketPath string) {
 // Seams for the launchd-first start; tests swap them so no real launchctl runs.
 var (
 	ensureAgentFunc    = daemon.EnsureAgent
+	kickstartFunc      = daemon.Kickstart
+	agentLoadedFunc    = daemon.AgentLoaded
+	legacyCleanupFunc  = daemon.LegacyCleanup
 	executablePathFunc = os.Executable
 	// openSystemURL opens one System Settings URL; it refuses under a test binary.
 	openSystemURL = func(url string) error {
@@ -1771,3 +1784,15 @@ func (a *App) startHealthPoller(ctx context.Context) {
 		}
 	}()
 }
+
+// Re-home retry schedule: gaps after the 1st..4th attempts, then every
+// rehomeEvery, at most rehomeMaxAttempts attempts per GUI run.
+var rehomeBackoff = []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute}
+
+const (
+	rehomeEvery       = 10 * time.Minute
+	rehomeMaxAttempts = 8
+)
+
+// rehomeIfUnmanaged is the tray tick's re-home retry.
+func (a *App) rehomeIfUnmanaged(now time.Time) {}
