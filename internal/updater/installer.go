@@ -322,6 +322,7 @@ type InstallerEnv struct {
 	GUIPids       func(exe string) ([]int, error)
 	DaemonVersion func() (string, error)
 	Trash         func(path string) error
+	RemoveRunDir  func()
 	ResultPath    string
 	Now           func() time.Time
 	Sleep         func(time.Duration)
@@ -329,6 +330,8 @@ type InstallerEnv struct {
 }
 
 const installerPoll = 200 * time.Millisecond
+
+var trashWait = time.Minute
 
 // ParseGUIPids returns the pids in `ps -o pid=,args=` output whose process is a Portty GUI run
 // from exe: args exactly exe, or exe followed by a launch-services argument (-psn_, -NS, -Apple,

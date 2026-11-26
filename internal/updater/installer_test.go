@@ -1064,3 +1064,108 @@ func TestInstaller_OpenInstalledOpenFailure(t *testing.T) {
 		t.Errorf("trashed = %+v after a failed open", f.trashed)
 	}
 }
+
+// moverOutcome is the outcome a successful mover job of each kind ends with.
+var moverOutcome = map[string]string{KindMove: OutcomeUpdated, KindOpenInstalled: OutcomeOpened}
+
+// The Trash of a DMG in ~/Downloads can wait on the system's Downloads prompt (18-06 R4-smoke,
+// decision option A), so the final result is written and the run folder removed before it.
+func TestInstaller_MoverResultAndRunDirBeforeTrash(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		kind     string
+		existing bool
+	}{{"move, no copy", KindMove, false}, {"move, replace", KindMove, true}, {"open-installed", KindOpenInstalled, false}} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newMoveFix(t, c.kind, c.existing)
+			runDir := filepath.Join(t.TempDir(), "run-1")
+			if err := os.Mkdir(runDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			env := f.env()
+			env.RemoveRunDir = func() { _ = os.RemoveAll(runDir) }
+			trash := env.Trash
+			var atTrash Result
+			var hadResult, runDirLeft bool
+			env.Trash = func(p string) error {
+				if p == f.job.ImagePath {
+					b, err := os.ReadFile(f.resPath())
+					if hadResult = err == nil; hadResult {
+						atTrash = rbDecode(t, b)
+					}
+					_, err = os.Lstat(runDir)
+					runDirLeft = err == nil
+				}
+				return trash(p)
+			}
+			r := RunInstaller(context.Background(), f.job, env)
+			if r.Outcome != moverOutcome[c.kind] {
+				t.Fatalf("result = %+v", r)
+			}
+			if f.imageTrashed() != 1 {
+				t.Fatalf("trashed = %+v, want the image once", f.trashed)
+			}
+			if !hadResult || atTrash.Outcome != r.Outcome {
+				t.Errorf("result file at the image Trash = %+v (present %v), want %s written first", atTrash, hadResult, r.Outcome)
+			}
+			if runDirLeft {
+				t.Error("run folder still there when the image Trash was called")
+			}
+			if len(f.opens) != 1 {
+				t.Errorf("opens = %+v, want one relaunch before the Trash", f.opens)
+			}
+		})
+	}
+}
+
+// A refused Trash (Don't Allow on the Downloads prompt) keeps the DMG and changes no outcome.
+func TestInstaller_MoverTrashFailureKeepsOutcome(t *testing.T) {
+	for _, kind := range []string{KindMove, KindOpenInstalled} {
+		t.Run(kind, func(t *testing.T) {
+			f := newMoveFix(t, kind, false)
+			f.trashErr = errors.New("you don't have permission")
+			r := f.run()
+			if r.Outcome != moverOutcome[kind] {
+				t.Fatalf("result = %+v, want %s", r, moverOutcome[kind])
+			}
+			if got, ok := f.fileResult(); !ok || got.Outcome != moverOutcome[kind] {
+				t.Errorf("result file = %+v, %v", got, ok)
+			}
+			if _, err := os.Lstat(f.job.ImagePath); err != nil {
+				t.Errorf("DMG gone after a refused Trash: %v", err)
+			}
+			if f.logged("dmg kept") != 1 {
+				t.Errorf("logs = %q, want one dmg kept", f.logs)
+			}
+		})
+	}
+}
+
+// An unanswered Downloads prompt must not hold the installer: it gives up after trashWait.
+func TestInstaller_MoverTrashBounded(t *testing.T) {
+	old := trashWait
+	trashWait = 20 * time.Millisecond
+	t.Cleanup(func() { trashWait = old })
+	f := newMoveFix(t, KindMove, false)
+	env := f.env()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	env.Trash = func(string) error { <-release; return nil }
+	done := make(chan Result, 1)
+	go func() { done <- RunInstaller(context.Background(), f.job, env) }()
+	var r Result
+	select {
+	case r = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunInstaller still waiting on the Trash")
+	}
+	if r.Outcome != OutcomeUpdated {
+		t.Fatalf("result = %+v", r)
+	}
+	if got, ok := f.fileResult(); !ok || got.Outcome != OutcomeUpdated {
+		t.Errorf("result file = %+v, %v", got, ok)
+	}
+	if f.logged("dmg kept") != 1 {
+		t.Errorf("logs = %q, want one dmg kept", f.logs)
+	}
+}
