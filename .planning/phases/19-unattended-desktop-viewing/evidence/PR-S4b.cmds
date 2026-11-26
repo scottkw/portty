@@ -1,0 +1,17 @@
+== baseline
+p19-breaker epoch=1795735338 {"captureActive":true,"abnormalExits":0}
+p19-desk epoch=1795735338 {"state":"streaming","viewers":1}
+== kill -9 the launchd daemon
+kill at epoch 1795735338
+p19-health epoch=1795735341 {"version":"v19.4.0","launchd":true}
+p19-health epoch=1795735343 {"version":"v19.4.0","launchd":true}
+p19-health epoch=1795735345 {"version":"v19.4.0","launchd":true}
+p19-health epoch=1795735348 {"version":"v19.4.0","launchd":true}
+p19-health epoch=1795735350 {"version":"v19.4.0","launchd":true}
+p19-health epoch=1795735352 {"version":"v19.4.0","launchd":true}
+p19-breaker epoch=1795735367 {"captureActive":true,"abnormalExits":1}
+p19-desk epoch=1795735367 {"state":"streaming","viewers":1}
+== test capture reset
+test-capture HTTP 200
+p19-breaker epoch=1795735371 {"captureActive":true,"abnormalExits":0}
+p19-desk epoch=1795735371 {"state":"streaming","viewers":1}

@@ -1,0 +1,7 @@
+p19-attach-replay-sample (first 3, last 2 lines of ~/p19/dump.txt)
+TICK 1 1795735489
+TICK 2 1795735490
+TICK 3 1795735491
+TICK 182 1795735688
+TICK 183 1795735689
+p19-attach-replay lines=199 first_tick=1 last_tick=199 breaks=0 lines_before_epoch_1795735527=35 first_epoch_age_vs_ep0_s=38

@@ -189,6 +189,20 @@ Orchestrator-dispatched gap fix after this plan closed (deviation-class, no new 
 - **End state.** Both VMs running; portty-test on the untagged 19.3.1, always-available off, shares off, breaker `captureActive:false, abnormalExits:0`, no pf rules, link files removed from both guests, Safari closed.
 - **Process note.** The terminal share link of the test session was produced and read only inside the guests through the daemon API, never printed; evidence was grepped for 100.x addresses, ts.net names, `cap=`, `token` and home paths (clean).
 
+## Post-review smoke
+
+Orchestrator-dispatched re-proof after the code-review fixes (`779d5924` CR-01 admit check on join, `a0279fd3` WR-01 unlocked capture start, `202b8425`/`db033df0` WR-04, `5a0ec826` WR-02, `e3377af2` WR-07), which changed the live desktop join path after the final matrix. Deviation-class, no new SUMMARY. Rows S1 to S5 are in `19-VM-CHECKS.md` under `## Post-review smoke`, evidence `evidence/PR-S*` (prefixed because 19-07 already has an S1 row).
+
+- **Builds.** Developer ID untagged 19.4.0 (N) and 19.4.1 (N+1) from the review-fixed tree (HEAD `99c09837`), `frontend/dist` built in the worktree.
+- **S1 PASS:** always-available on, Safari in portty-test-2 decodes live 2560 x 1440 frames, state `streaming`, `cspViolations` 0, tailnet-only sockets.
+- **S2 PASS:** Chrome joined while Safari watched; both decoded, viewers 2, Chrome's first frame 1 s after it connected, Safari's longest flat run 4 s (3 s before the join).
+- **S3 PASS:** regenerating the signing key closed both viewers within 0.3 s, `GET /desktop` stayed at viewers 0, the old link is refused on reload (Safari) and in a fresh Chrome tab, the new link from `GET /desktop/link` streams in Safari. The daemon does not log the close code, so 4401 is read from Safari's token-rejected card and, for Chrome, from the stopped debug ticker, zero viewers and the refused fresh tab.
+- **S4 PASS:** Quit All plus a GUI start left `abnormalExits` 0 and the viewer returned on the same page; a SIGKILL counted exactly 1 and the viewer returned within 4 s; a Test Capture reset it.
+- **S5 PASS:** upgrade 19.4.0 to 19.4.1 with a viewer and one ticking shell: shell pid unchanged, abnormalExits 0 on every read, the viewer returned after about 2 s at the daemon, the session replay holds TICK 1 to 183 unbroken across the handoff.
+- **Deviations.** (1) Two rig subcommands added, `refresh-link` and `desk-poll`, in `rig/p19-rig.sh`; the first S3 `desk-poll` run lost its state column to a quoting slip (fixed; the state was read again afterwards, and the daemon log lines from that run are kept). (2) S5's history was read with a CLI attach replay, not the 19-15 xterm-buffer reader, because no terminal share link was made and the tail endpoint is clamped to 20 lines. (3) No product code changed; no security FAIL; no terminal-session regression.
+- **Process note.** A read-only `tailscale status` in the first state check printed tailnet peer host names and the account label into the transcript (addresses were masked by the check, names were not). No link or token was printed, nothing of it reached a file or a commit (evidence grepped for 100.x addresses, ts.net names, `cap=` and home paths: clean).
+- **End state.** Both VMs running. portty-test on the untagged 19.4.1 under launchd (`launchd:true`), GUI quit, always-available off, breaker `captureActive:false, abnormalExits:0`, permissions granted, test session deleted, link files removed. portty-test-2: Safari and Chrome closed, no safaridriver, link files removed.
+
 ## Known Stubs
 
 None.
