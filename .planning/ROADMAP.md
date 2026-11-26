@@ -177,7 +177,7 @@ Plans:
   2. One arm64 build is published as both `portty-vX.Y.Z-darwin-universal.dmg` and `portty-vX.Y.Z-darwin-arm64.dmg`. Each DMG is signed with `--identifier` equal to its name without .dmg, notarized, stapled and checked the way the updater checks it, and both are in checksums.txt. An installed v1.2.x copy still finds, verifies and installs the release through the universal name. (REL-01)
   3. Signing is inside out per Mach-O (no `codesign --deep`), keeps identifier `app.portty.Portty`, hardened runtime, timestamp and the unchanged entitlements file, and CI fails on unsigned code, the wrong team, a missing runtime flag, a non-arm64 slice, a minos below 14.0 or a designated requirement that differs from v1.2's. The signing step is written so a provisioning profile and the persistent-content-capture entitlement can be added later without other changes; the profile is added only once Apple grants request T558S9Q5B3. (REL-01)
   4. release_workflow_test.go and the other release tests pin both asset names, identifier equals name for each, the arm64-only build flag, no `--deep` and the verify loop. If the build.yml matrix context changes, TESTING.md Section 3 and the branch protection on `main` move to the new check name in the same change. (REL-01)
-**Plans**: 2/4 plans executed
+**Plans**: 3/4 plans executed
 
 Plans:
 **Wave 1**
@@ -187,7 +187,7 @@ Plans:
 - [x] 18.1-02-PLAN.md — Inside-out signing (scripts/sign-bundle.sh, entitlement-ready, no deep signing) and the --signed/--notarized gate pinning team, hardened runtime, timestamp, entitlements and the v1.2 designated requirement; proven with the host Developer ID on a scratch copy; build.sh signs through both
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 18.1-03-PLAN.md — release.yml: arm64 build with macOS 14 flags, bundle gates, inside-out signing; one build published as both DMG names from one suffix list (identifier = name, notarized, stapled, verified, checksums, release-notes line, 210-min timeout); Go pins against DMGAssetNames (needs Phase 18's 18-02)
+- [x] 18.1-03-PLAN.md — release.yml: arm64 build with macOS 14 flags, bundle gates, inside-out signing; one build published as both DMG names from one suffix list (identifier = name, notarized, stapled, verified, checksums, release-notes line, 210-min timeout); Go pins against DMGAssetNames (needs Phase 18's 18-02)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 18.1-04-PLAN.md — TESTING.md (REL-01 rows, build-script group of 2, renamed check context and one-check protection payload, Category BI.1 first-tag-run item); merge checkpoint, then the delegated branch protection on main, recorded in Section 3
@@ -298,7 +298,7 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
 | 18. Self-Installing Updates | v2.0 | 10/10 | Complete    | 2026-11-26 |
-| 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 2/4 | In Progress | - |
+| 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 3/4 | In Progress | - |
 | 19. Unattended Desktop Viewing | v2.0 | 0/17 | Planned | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
 | 21. Portty App and iPhone Viewers | v2.0 | 0/TBD | Not started | - |
