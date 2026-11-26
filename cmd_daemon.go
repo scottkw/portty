@@ -11,14 +11,14 @@ import (
 
 // serviceControlFunc is the function used to control the service. Package-level var
 // allows test injection of a mock.
-var serviceControlFunc = daemon.ServiceControl
+var serviceControlFunc = daemon.AgentControl
 
 // runTakeoverFunc runs `portty daemon --takeover`; a var for tests.
 var runTakeoverFunc = daemon.RunTakeover
 
 // cmdDaemon dispatches daemon subcommands: install, uninstall, start, stop, run.
-// When called with no arguments, it runs the daemon directly (backward compat
-// with EnsureDaemon's startDetachedDaemon which spawns `exe daemon`).
+// When called with no arguments, it runs the daemon directly: launchd starts
+// `portty daemon` (the LaunchAgent), and so does EnsureDaemon's fallback spawn.
 func cmdDaemon(args []string, out io.Writer) error {
 	if len(args) == 0 {
 		// No subcommand: run daemon directly (backward compat with EnsureDaemon).

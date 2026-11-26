@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -156,5 +160,77 @@ func TestCmdDaemon_TakeoverRoutes(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("bogus reached RunTakeover (%d calls)", calls)
+	}
+}
+
+// DSHR-01: install, uninstall, start and stop now drive Portty's own
+// LaunchAgent through launchctl (a fake here: HOME is a temp dir and the real
+// launchd is never reached). stop is `kill SIGTERM` (the daemon exits 0 and
+// launchd leaves it down); uninstall refuses while the job runs.
+func TestAgentControl_Actions(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	var calls [][]string
+	jobPid, loaded := 0, false
+	t.Cleanup(daemon.SetLaunchctlForTest(func(_ context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch args[0] {
+		case "print":
+			if !loaded {
+				return []byte("Could not find service"), errors.New("exit status 113")
+			}
+			return []byte(fmt.Sprintf("pid = %d\n", jobPid)), nil
+		case "print-disabled":
+			return []byte("disabled services = {\n}\n"), nil
+		case "bootstrap":
+			loaded = true
+		case "bootout":
+			loaded = false
+		}
+		return nil, nil
+	}))
+	target := fmt.Sprintf("gui/%d/%s", os.Getuid(), daemon.LaunchdLabel)
+	agent, err := daemon.AgentPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := func() []string { return calls[len(calls)-1] }
+
+	var out bytes.Buffer
+	if err := cmdDaemon([]string{"install"}, &out); err != nil || !loaded {
+		t.Fatalf("install: %v, job loaded %v", err, loaded)
+	}
+	if _, err := os.Stat(agent); err != nil {
+		t.Fatalf("install wrote no plist: %v", err)
+	}
+	calls = nil
+	if err := cmdDaemon([]string{"start"}, &out); err != nil || len(calls) != 1 || !slices.Equal(last(), []string{"kickstart", target}) {
+		t.Fatalf("start: %v, calls %v; want one plain kickstart", err, calls)
+	}
+	calls = nil
+	if err := cmdDaemon([]string{"stop"}, &out); err != nil || len(calls) != 1 || !slices.Equal(last(), []string{"kill", "SIGTERM", target}) {
+		t.Fatalf("stop: %v, calls %v; want kill SIGTERM", err, calls)
+	}
+
+	jobPid = 4242
+	calls = nil
+	err = cmdDaemon([]string{"uninstall"}, &out)
+	if err == nil || !strings.Contains(err.Error(), "Run portty daemon stop first, then uninstall.") {
+		t.Fatalf("uninstall of a running job = %v, want the stop-first message", err)
+	}
+	if _, serr := os.Stat(agent); serr != nil || !loaded {
+		t.Fatalf("a running job's uninstall changed things: plist err %v, loaded %v, calls %v", serr, loaded, calls)
+	}
+
+	jobPid = 0
+	if err := cmdDaemon([]string{"uninstall"}, &out); err != nil || loaded {
+		t.Fatalf("uninstall of an idle job: %v, loaded %v", err, loaded)
+	}
+	if _, serr := os.Stat(agent); serr == nil {
+		t.Fatal("uninstall left the plist")
+	}
+	for _, c := range calls {
+		if slices.Contains(c, "-k") {
+			t.Fatalf("a launchctl call carries the kill flag: %v", c)
+		}
 	}
 }
