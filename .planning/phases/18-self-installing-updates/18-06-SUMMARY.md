@@ -38,10 +38,14 @@ key-files:
     - .planning/phases/18-self-installing-updates/evidence/R4-smoke.state
     - .planning/phases/18-self-installing-updates/evidence/R4-smoke-deny.state
     - .planning/phases/18-self-installing-updates/evidence/R4-smoke-extra.log
+    - .planning/phases/18-self-installing-updates/evidence/R4-smoke-before.state
+    - .planning/phases/18-self-installing-updates/evidence/R4-smoke-rundir-first.state
+    - .planning/phases/18-self-installing-updates/evidence/R4-smoke-rundir-first.log
   modified:
     - internal/updater/installer.go
     - internal/updater/installer_test.go
     - internal/updater/service.go
+    - cmd_install_update.go
     - app.go
     - .planning/phases/18-self-installing-updates/18-VM-CHECKS.md
 
@@ -68,6 +72,36 @@ completed: 2026-11-26
 ---
 
 # Phase 18 Plan 06: First launch from a DMG moves Portty into place (STOPPED at R4-smoke)
+
+## STOP 2 (re-execution after decision option A, 2026-11-26): the run-folder order kills the prompt
+
+**What I did:** I applied option A test-first. RED is `c24700c5` and GREEN is `135c5e20`. On the move and open-installed kinds, the installer now writes its final result, calls `env.RemoveRunDir`, and only then trashes the DMG. The relaunch still comes first, and the Trash runs in a goroutine bounded by `trashWait` (60 s). The unit tests pass, including `-race`. Then I ran R4-smoke on a 1.8.1 rig build of `135c5e20` (row R4-smoke-rundir-first).
+
+**What happened:** The move worked again: 1.8.1 ran from `/Applications`, with one GUI and its daemon there, the volume ejected, and no staging dir. The result `updated` was written at 04:43:57. But **no Downloads prompt appeared**. Removing the run folder deletes the installer's own executable, because the installer runs from `run-*/Portty.app`. tccd then logged `proc_pidpath_audittoken() failed from PID[73924]: (#2) No such file or directory` and refused the access without asking, with 0 `AUTHREQ_PROMPTING` lines. The Trash returned "you don't have permission" at once, the installer logged `dmg kept` and exited, and the DMG stayed in `~/Downloads`. With this order, a DMG in Downloads is never trashed and the user is never asked. The decision expected a prompt followed by Allow and the Trash, so its two parts cannot both hold. Under RULE 0 I did not run the Allow or Don't Allow runs, and I did not change the order on my own.
+
+**Options:**
+
+| Option | Change | Pros | Cons |
+| --- | --- | --- | --- |
+| A2 (recommended) | Keep "result written before the Trash" and the 60 s bound, but remove the run folder **after** the Trash returns or the bound expires. This moves one call in `finishTrash`, and the tests change to "result before Trash, run dir after". | The prompt works, as in the first R4-smoke, where tccd resolved the run-* binary. An unanswered prompt still leaves the outcome recorded, and the bound means the run dir lives at most about 60 s after the result. If the process dies first, the GUI's startup sweep removes run-* dirs older than its age floor. | It amends the decision's "run folder removed before the Trash". The run dir exists while the prompt is up, but nothing reads it then. |
+| B2 | Keep the order as committed and accept that a Downloads DMG is never trashed. Make that explicit in code (skip the Trash for a DMG under `~/Downloads`) and amend UPD-08. | No prompt ever. | It relies on, or replaces, a TCC failure mode. UPD-08's "moves the downloaded DMG to the Trash" would almost never happen. This is old option B again. |
+| C2 | Have the relaunched GUI (`/Applications/Portty.app`, a stable path) trash the DMG named in the result file. | The prompt is attributed to the installed app. | A new result field, a GUI-side copy of the image guard, and the trash moves out of the installer. Much more change than A2. |
+
+**Recommendation: A2.** It keeps everything the decision asked for, except where the run folder is removed, and the evidence says that one point cannot hold. Once you choose, a continuation needs to: move one line (A2), update the ordering test, rebuild, and run R4-smoke (Allow) and the Don't Allow re-check under the decision's PASS rule.
+
+**Commits in this re-execution:** `c24700c5` test(18-06) RED, `135c5e20` fix(18-06) GREEN, plus the docs commit that carries this section, the R4-smoke-rundir-first row and its evidence.
+
+**RED evidence (#3770):** `go test -v -run TestInstaller_Mover ./internal/updater/` exited 1. TestInstaller_MoverResultAndRunDirBeforeTrash failed in all 3 subtests ("result file at the image Trash ... present false", "run folder still there"), and TestInstaller_MoverTrashBounded failed after blocking 5 s. TestInstaller_MoverTrashFailureKeepsOutcome passed: it guards the existing Don't Allow behaviour. The classifier returned RED_EVIDENCE_OK. Semantic assessment: the target compiled (with inert stubs for the new field and var) and failed on the planned ordering assertions.
+
+**Verification of the code (fixed tree, `135c5e20`):** gofmt is clean, `go vet ./internal/updater/ .` passes, golangci-lint `--new-from-rev=c714c8ef` reports 0 issues, `GOTOOLCHAIN=go1.26.11 go test -race -count=1 ./internal/updater/ .` passes, and check-brand is clean.
+
+**VM end state (STOP 2):** `portty-test` is running. `/Applications/Portty.app` is the 1.8.1 rig build of `135c5e20`, running (GUI 74447 and daemon 74463), with no sessions. `~/Downloads` holds `portty-v1.8.1-darwin-universal.dmg` (the refused Trash left it). No Portty volume is attached, and the Trash has no Portty items. `~/p18` holds the rig DMG, verify-mode, the run scripts, wins.js and axpress. The Downloads consent has no Portty entry (it was reset, and no prompt was ever answered). fakegh is not running. I did not restore the 1.8.0 rig or clean `~/p18`, so the continuation can re-run from here. `portty-test-2` was not touched, and neither VM was stopped.
+
+**For later plans (18-09):** the first install from a DMG in Downloads shows the system prompt "“Portty” would like to access files in your Downloads folder." once (A5), so TESTING.md's manual checklist needs an item for it. Its exact expected behaviour depends on the option chosen above.
+
+---
+
+## STOP 1 (first execution)
 
 **Opening Portty from a mounted DMG now installs it: mover mode starts before any daemon, tray or window work, stages a checked copy, and hands it to the installer. The installer ejects the volume, puts the copy in /Applications, relaunches it and trashes the DMG. In the VM the move itself worked end to end in under 9 s. But trashing a DMG that sits in `~/Downloads` raises the macOS prompt "“Portty” would like to access files in your Downloads folder.", and the installer waits on it. That breaks two R4-smoke PASS conditions (no dialog, DMG in the Trash within 60 s), so the plan stopped for a decision.**
 

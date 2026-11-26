@@ -1,0 +1,47 @@
+r4-smoke rundir-first extra vm_utc=2026-11-26T04:46:03Z build=1.8.1 rig of 135c5e20
+--- timeline (0.4 s poller, changes only)
+04:43:39.897Z guis=[] daemons=[] installer=[] image=0 vol=gone app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0
+04:43:42.529Z guis=[] daemons=[] installer=[] image=2 vol=mounted app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0
+04:43:44.520Z guis=[73829:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=2 vol=mounted app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0
+04:43:45.458Z guis=[73829:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[73924 ] image=2 vol=mounted app= staging=1 run_dirs=1 result= dl_dmg=1 trash_dmg=0
+04:43:46.056Z guis=[] daemons=[] installer=[73924 ] image=2 vol=mounted app= staging=1 run_dirs=1 result= dl_dmg=1 trash_dmg=0
+04:43:52.188Z guis=[] daemons=[] installer=[73924 ] image=2 vol=gone app= staging=1 run_dirs=1 result= dl_dmg=1 trash_dmg=0
+04:43:55.171Z guis=[] daemons=[] installer=[73924 ] image=0 vol=gone app=1.8.1 staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0
+04:43:56.928Z guis=[74447:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[74463:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[73924 ] image=0 vol=gone app=1.8.1 staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0
+04:43:58.366Z guis=[74447:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[74463:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=0 vol=gone app=1.8.1 staging=0 run_dirs=0 result=updated dl_dmg=1 trash_dmg=0
+--- window list (1 s, changes only)
+04:43:39.804Z Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+04:43:43.044Z Finder|Portty|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+04:43:55.112Z Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+04:43:57.051Z Portty|Portty|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- tccd, 04:43:56 to 04:43:59 UTC, lines naming the installer pid 73924 or the Downloads service
+2026-11-26 04:43:57.412050+0000  localhost tccd[73642]: [com.apple.TCC:access] proc_pidpath_audittoken() failed from PID[73924]: (#2) No such file or directory
+2026-11-26 04:43:57.413063+0000  localhost tccd[73443]: [com.apple.TCC:access] proc_pidpath_audittoken() failed from PID[73924]: (#2) No such file or directory
+2026-11-26 04:43:57.425468+0000  localhost tccd[73642]: [com.apple.TCC:access] proc_pidpath_audittoken() failed from PID[73924]: (#2) No such file or directory
+2026-11-26 04:43:57.426872+0000  localhost tccd[73642]: [com.apple.TCC:access] proc_pidpath_audittoken() failed from PID[73924]: (#2) No such file or directory
+2026-11-26 04:43:57.427593+0000  localhost tccd[73443]: [com.apple.TCC:access] proc_pidpath_audittoken() failed from PID[73924]: (#2) No such file or directory
+2026-11-26 04:43:57.431263+0000  localhost tccd[73642]: [com.apple.TCC:access] proc_pidpath_audittoken() failed from PID[73924]: (#2) No such file or directory
+2026-11-26 04:43:57.431822+0000  localhost tccd[73443]: [com.apple.TCC:access] proc_pidpath_audittoken() failed from PID[73924]: (#2) No such file or directory
+--- tccd AUTHREQ_PROMPTING lines 04:43:40 to 04:45:30 UTC: 0
+--- downloads: .localized portty-v1.8.1-darwin-universal.dmg 
+--- trash dmg: 0
+--- installer processes: 0
+during-prompt capture at 04:44:59.532Z
+--- prompt (AX of UserNotificationCenter)
+--- windows: Portty|Portty|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- installer processes (pid, elapsed, args)
+--- result file (mtime UTC, content)
+mtime=04:43:57
+{"v":1,"outcome":"updated","oldVersion":"","newVersion":"1.8.1","reason":"","keepDaemon":false,"dmg":""}
+--- run dirs: 0
+--- update.log tail
+update: installer started (copy 44ms, start 442ms)
+2026/11/26 04:43:52 vmpreview: verify-mode adhoc
+2026/11/26 04:43:57 installer: updated 
+2026/11/26 04:43:57 installer: dmg kept: trash: “portty-v1.8.1-darwin-universal.dmg” couldn’t be moved to the trash because you don’t have permission to access it.
+--- downloads: .localized portty-v1.8.1-darwin-universal.dmg 
+--- trash dmg: 0
+--- gui and daemon
+74447 /Applications/Portty.app/Contents/MacOS/Portty
+74463 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- installed: 1.8.1 volume: gone images naming portty: 0 staging: 0
