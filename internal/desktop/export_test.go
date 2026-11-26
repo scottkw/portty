@@ -44,6 +44,22 @@ func PickStateForTest(paused, perm, asleep, awaiting, locked bool, viewers int) 
 	return pickState(stateFlags{paused: paused, perm: perm, asleep: asleep, awaiting: awaiting, locked: locked}, viewers)
 }
 
+// RuntimeState is desktop-state.json's content.
+type RuntimeState = runtimeState
+
+// ReadRuntimeStateForTest reads and validates the state file in dir.
+func ReadRuntimeStateForTest(dir string) (RuntimeState, error) { return readRuntimeState(dir) }
+
+// WriteRuntimeStateForTest writes the state file the way the Manager does.
+func WriteRuntimeStateForTest(dir string, rs RuntimeState) error { return writeRuntimeState(dir, rs) }
+
+// EnterAwaitingForTest is the transition every detector (watchdog, probe) goes
+// through; who names the detector in the log.
+func (m *Manager) EnterAwaitingForTest(who string) { m.enterAwaiting(who) }
+
+// TickForTest runs one state-loop pass synchronously.
+func (m *Manager) TickForTest(ctx context.Context) { m.tick(ctx) }
+
 // DecodeProbeForTest exposes the strict perm-probe decoder.
 func DecodeProbeForTest(out []byte) (screencap.Permissions, error) { return decodeProbe(out) }
 

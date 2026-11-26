@@ -180,6 +180,12 @@ func (s *fakeSource) SelectSurface(screencap.Surface) error {
 }
 func (s *fakeSource) Rebuild(int, int) error { return nil }
 
+func (s *fakeSource) isStopped() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stopped
+}
+
 func (s *fakeSource) ForceKeyframe() {
 	s.mu.Lock()
 	s.forced++
@@ -193,10 +199,10 @@ func (s *fakeSource) emit(kf bool) {
 	if !s.started || s.stopped {
 		return
 	}
-	au := screencap.AccessUnit{Width: 1280, Height: 800, Duration: 33 * time.Millisecond, Data: []byte{0, 0, 0, 1, 0x41, 1}}
+	au := screencap.AccessUnit{Width: 1280, Height: 800, Duration: 33 * time.Millisecond, Data: []byte{0, 0, 0, 1, 0x41, 0x9a, 0x24, 0x6c, 0x41, 0x4f}}
 	if kf {
 		au.Keyframe = true
-		au.Data = []byte{0, 0, 0, 1, 0x67, 0x42, 0xe0, 0x1f, 0, 0, 0, 1, 0x68, 0xce, 0x3c, 0x80, 0, 0, 0, 1, 0x65, 0x88}
+		au.Data = []byte{0, 0, 0, 1, 0x67, 0x42, 0xe0, 0x1f, 0xda, 0x05, 0x00, 0x7d, 0xb0, 0x11, 0, 0, 0, 1, 0x68, 0xce, 0x3c, 0x80, 0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00, 0x33, 0xff}
 	}
 	select {
 	case s.frames <- au:
@@ -252,6 +258,12 @@ func (r *sources) count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.all)
+}
+
+func (r *sources) first() *fakeSource {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.all[0]
 }
 
 func (r *sources) last() *fakeSource {

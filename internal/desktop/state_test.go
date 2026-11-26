@@ -76,13 +76,16 @@ func TestState_Precedence(t *testing.T) {
 	}
 }
 
-func newBareManager(t *testing.T, w *world) *desktop.Manager {
+func newBareManager(t *testing.T, w *world, mods ...func(*desktop.Deps)) *desktop.Manager {
 	t.Helper()
 	d := desktop.Deps{
 		Bind: netip.MustParseAddr("100.64.0.1"), MediaPort: 7444,
 		NewSource: func() screencap.Source { return screencap.NewSyntheticSource(64, 64) },
 	}
 	w.opt()(nil, &d)
+	for _, f := range mods {
+		f(&d)
+	}
 	m, err := desktop.NewManager(d)
 	if err != nil {
 		t.Fatal(err)
