@@ -38,7 +38,7 @@ function RegenerateKeyModal({
   onConfirm,
   onCancel,
   title = 'Regenerate Signing Key?',
-  body = 'This immediately invalidates ALL shared links across ALL sessions. Anyone currently using a shared terminal will be disconnected. You will need to re-share sessions to give access again.',
+  body = 'This immediately invalidates ALL shared links across ALL sessions. Anyone currently using a shared terminal will be disconnected. You will need to re-share sessions, and copy a new desktop link, to give access again.',
   confirmLabel = 'Invalidate All Links',
   actingLabel = 'Invalidating…',
   cancelLabel = 'Keep Links',

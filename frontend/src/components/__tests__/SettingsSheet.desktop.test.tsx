@@ -517,8 +517,8 @@ describe('footnote', () => {
   })
 })
 
-describe('DSHR-01 prohibition: no link text, QR code, toolbar button or sidebar entry', () => {
-  it('shows no field, image or canvas in the Desktop group', async () => {
+describe('DSHR-01 prohibition: the link is never displayed', () => {
+  it('shows no field, picture or canvas in the Desktop group (Copy Link only)', async () => {
     await mountOn()
     const group = row('Link')!.closest('.settings-group')!
     expect(group.querySelector('input, textarea, img, canvas, svg, [contenteditable]')).toBeNull()

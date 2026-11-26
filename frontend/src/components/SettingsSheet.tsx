@@ -756,7 +756,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffe
                       </button>
                     )}
                 </Row>
-                <Row label="Session keys" description="Regenerating signs out every browser and Mac attached to your sessions.">
+                <Row label="Session keys" description="Regenerating signs out every browser and Mac attached to your sessions, and stops every saved desktop link.">
                   <button type="button" className="button button--secondary" onClick={() => setShowRegenModal(true)}>
                     Regenerate…
                   </button>
