@@ -61,7 +61,7 @@ func adoptNullStdio(path string) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	for _, fd := range []int{1, 2} {
 		_ = syscall.Dup2(int(f.Fd()), fd)
 	}
