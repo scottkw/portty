@@ -455,6 +455,7 @@ Recent decisions affecting current work:
 | 9 | Remove portty.app/app link from README iPhone section | 2026-11-24 | 8a44e0c1 | — |
 | 10 | Re-enable e2e.yml (disabled after a billing-blocked run, not a workflow fault); add workflow_dispatch; first dispatch green | 2026-11-25 | 017ec8c6 | — |
 | 261126-dfn | Phase 18 follow-up: a late first-install failure from a DMG posts "Portty couldn't install version X." from the installer (osascript; Script Editor icon), and mover mode shows an earlier failed result once before retrying; VM row QT-WR02 PENDING (needs a VM with no installed Portty) | 2026-11-26 | 504b7287 | [261126-dfn-late-install-failure-notice](./quick/261126-dfn-late-install-failure-notice/) |
+| 261126-wsg | Fix flaky TestSameUserGate_WebSocket: the same-user subtest now waits for its subscriber to join the hub, then leave after close (the 101 precedes hub.Join); -race -count=200 clean | 2026-11-26 | d6120016 | [261126-wsg-flaky-same-user-gate-websocket-test](./quick/261126-wsg-flaky-same-user-gate-websocket-test/) |
 
 ## Deferred Items
 
