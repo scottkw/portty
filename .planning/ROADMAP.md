@@ -177,11 +177,11 @@ Plans:
   2. One arm64 build is published as both `portty-vX.Y.Z-darwin-universal.dmg` and `portty-vX.Y.Z-darwin-arm64.dmg`. Each DMG is signed with `--identifier` equal to its name without .dmg, notarized, stapled and checked the way the updater checks it, and both are in checksums.txt. An installed v1.2.x copy still finds, verifies and installs the release through the universal name. (REL-01)
   3. Signing is inside out per Mach-O (no `codesign --deep`), keeps identifier `app.portty.Portty`, hardened runtime, timestamp and the unchanged entitlements file, and CI fails on unsigned code, the wrong team, a missing runtime flag, a non-arm64 slice, a minos below 14.0 or a designated requirement that differs from v1.2's. The signing step is written so a provisioning profile and the persistent-content-capture entitlement can be added later without other changes; the profile is added only once Apple grants request T558S9Q5B3. (REL-01)
   4. release_workflow_test.go and the other release tests pin both asset names, identifier equals name for each, the arm64-only build flag, no `--deep` and the verify loop. If the build.yml matrix context changes, TESTING.md Section 3 and the branch protection on `main` move to the new check name in the same change. (REL-01)
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 18.1-01-PLAN.md — Tracer: build.sh builds arm64-only for macOS 14 (both CGO flags) and the new scripts/verify-bundle.sh proves it on the real bundle; Info.plist 14.0; build.yml builds darwin/arm64 and runs the gate and its fixture tests on every PR (context build (portty, darwin/arm64, macos-latest))
+- [x] 18.1-01-PLAN.md — Tracer: build.sh builds arm64-only for macOS 14 (both CGO flags) and the new scripts/verify-bundle.sh proves it on the real bundle; Info.plist 14.0; build.yml builds darwin/arm64 and runs the gate and its fixture tests on every PR (context build (portty, darwin/arm64, macos-latest))
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 18.1-02-PLAN.md — Inside-out signing (scripts/sign-bundle.sh, entitlement-ready, no deep signing) and the --signed/--notarized gate pinning team, hardened runtime, timestamp, entitlements and the v1.2 designated requirement; proven with the host Developer ID on a scratch copy; build.sh signs through both
@@ -298,7 +298,7 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
 | 18. Self-Installing Updates | v2.0 | 7/10 | In Progress | - |
-| 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 0/4 | Planned | - |
+| 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 1/4 | In Progress | - |
 | 19. Unattended Desktop Viewing | v2.0 | 0/17 | Planned | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
 | 21. Portty App and iPhone Viewers | v2.0 | 0/TBD | Not started | - |
