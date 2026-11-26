@@ -320,6 +320,12 @@ func (a *API) setDesktopTS(ts string) {
 	a.mu.Unlock()
 }
 
+func (a *API) desktopTSValue() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.desktopTS
+}
+
 // desktopTailnet runs the health check the desktop needs and records the
 // verdict for GET /desktop. The refusals are shareOn's two plus userspace.
 func (a *API) desktopTailnet(
@@ -582,8 +588,8 @@ func (a *API) runDesktopPoller(ctx context.Context) {
 	}
 }
 
-// desktopTick is one poll. With always-available off it does nothing and asks
-// Tailscale nothing. a.mu is never held across health, cert or network work.
+// desktopTick is one poll. With always-available off it only rechecks a
+// recorded Tailscale refusal. a.mu is never held across health, cert or network work.
 func (a *API) desktopTick(ctx context.Context) {
 	defer func() { // a bug here must not take the daemon down
 		if r := recover(); r != nil {
@@ -598,6 +604,12 @@ func (a *API) desktopTick(ctx context.Context) {
 	health, newServer, warmCert, ifaceAddrs := a.shareHealth, a.newShareServer, a.warmCert, a.interfaceAddrs
 	a.mu.RUnlock()
 	if !on {
+		// A refusal recorded at a turn-on attempt (userspace, Tailscale off,
+		// HTTPS off) is rechecked so a fixed Tailscale unblocks the switch
+		// within one poll; with no refusal recorded, off asks nothing.
+		if ts := a.desktopTSValue(); ts != "" && ts != "ok" {
+			_, _ = a.desktopTailnet(ctx, health, ifaceAddrs)
+		}
 		return
 	}
 	h, serr := a.desktopTailnet(ctx, health, ifaceAddrs)

@@ -821,3 +821,30 @@ func TestDesktopAPI_BadConfigIsExplicit(t *testing.T) {
 		})
 	}
 }
+
+// 19-13 finding: a userspace refusal recorded at a turn-on attempt must not
+// stick while the desktop stays off; the next poll rechecks it, so a fixed
+// Tailscale unblocks the switch without a daemon restart. Nothing starts.
+func TestDesktopAPI_UserspaceRefusalClearsWhileOff(t *testing.T) {
+	e := newDesktopEnv(t)
+	e.api.SetShareSeamsForTest(healthyTailnet, loopbackShareServer, noWarm)
+	e.api.SetDesktopSeamsForTest(func() ([]net.Addr, error) {
+		return []net.Addr{&net.IPNet{IP: net.IPv4(192, 168, 1, 5), Mask: net.CIDRMask(24, 32)}}, nil
+	}, e.newSource, e.media)
+	if _, err := e.client.SetDesktopAlwaysAvailable(true); err == nil {
+		t.Fatal("PUT /desktop on succeeded on a userspace Tailscale")
+	}
+	if st := e.status(t); st.Tailscale != "userspace" {
+		t.Fatalf("Tailscale = %q after the refusal; want userspace", st.Tailscale)
+	}
+
+	e.api.SetDesktopSeamsForTest(loopbackAddrs, e.newSource, e.media) // the user fixed Tailscale
+	e.api.desktopTick(context.Background())
+	st := e.status(t)
+	if st.Tailscale != "ok" {
+		t.Errorf("Tailscale = %q after a poll with the address local; want ok", st.Tailscale)
+	}
+	if st.AlwaysAvailable || st.State != "off" || shareServerRunning(e.api) {
+		t.Errorf("the recheck turned something on: %+v, server running %v", st, shareServerRunning(e.api))
+	}
+}
