@@ -9,7 +9,12 @@ import {
   GetTerminalFont,
   SetTerminalFont,
   RegenerateSigningKey,
+  GetDesktopStatus,
+  SetDesktopAlwaysAvailable,
+  GetDesktopLink,
+  type DesktopStatusResult,
 } from '../wailsjs/go/main/App'
+import { ClipboardSetText } from '../wailsjs/wailsjs/runtime/runtime'
 import { Cog6ToothIcon, LockClosedIcon, SignalIcon } from '@heroicons/react/24/outline'
 import { RegenerateKeyModal } from './RegenerateKeyModal'
 import { PluginsSection, type PluginToggleKind } from './PluginsSection'
@@ -70,6 +75,150 @@ function Row({ label, htmlFor, description, descriptionId, children }: {
       </div>
       {children != null && <div className="settings-row__control">{children}</div>}
     </div>
+  )
+}
+
+/** How often the Desktop group asks the daemon for its state while the Sharing pane is open. */
+export const DESKTOP_POLL_MS = 2000
+/** How long Copy Link reads "Copied!". */
+export const COPIED_MS = 2000
+
+const viewersText = (n: number): string => `${n} viewer${n === 1 ? '' : 's'}`
+
+/**
+ * The one wording table for the desktop's state (19-UI-SPEC Surface 1 Row 2):
+ * `text` and `dot` are the Settings Status row, `tray` is the tray line (the Go
+ * mirror in tray_common.go reads the same column). `tray` is null when there is
+ * nothing to show. A reply with an errorCode means the daemon did not answer.
+ */
+export function desktopStatusText(
+  s: DesktopStatusResult,
+  _tailscaleOff: boolean,
+): { text: string; dot: 'on' | 'warn' | 'off' | null; tray: string | null } {
+  if (s.errorCode) return { text: 'Checking…', dot: null, tray: null }
+  switch (s.state) {
+    case 'idle':
+      return { text: 'Ready. Nobody is watching.', dot: 'on', tray: 'Desktop: Ready' }
+    case 'streaming':
+      return {
+        text: `Streaming to ${viewersText(s.viewers)}`,
+        dot: 'on',
+        tray: `Desktop: Streaming to ${viewersText(s.viewers)}`,
+      }
+    default:
+      return { text: 'Checking…', dot: null, tray: null }
+  }
+}
+
+/** The Desktop group in Settings ▸ Sharing: switch, live status, Copy Link. */
+function DesktopGroup({ active }: { active: boolean }): React.ReactElement {
+  const [status, setStatus] = useState<DesktopStatusResult | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [busy, setBusy] = useState<'starting' | 'stopping' | null>(null)
+  const [copied, setCopied] = useState(false)
+  const busyRef = useRef(false)
+  const askSeq = useRef(0)
+  const alive = useRef(true)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+      if (copiedTimer.current) clearTimeout(copiedTimer.current)
+    }
+  }, [])
+
+  // One read of the daemon's state. The latest answer wins; a failed read keeps
+  // the last good state but marks it unanswered, so the row says Checking….
+  async function readStatus(): Promise<void> {
+    const seq = ++askSeq.current
+    const r = await GetDesktopStatus().catch(() => null)
+    if (!alive.current || seq !== askSeq.current) return
+    setLoaded(true)
+    if (r && !r.errorCode) setStatus(r)
+    else setStatus((prev) => (prev ? { ...prev, errorCode: 'unavailable' } : null))
+  }
+
+  useEffect(() => {
+    if (!active) return
+    const tick = (): void => { if (!busyRef.current) void readStatus() }
+    tick()
+    const timer = setInterval(tick, DESKTOP_POLL_MS)
+    return () => clearInterval(timer)
+  }, [active])
+
+  async function handleToggle(): Promise<void> {
+    if (busyRef.current) return
+    const turnOn = !(status?.alwaysAvailable ?? false)
+    busyRef.current = true
+    setBusy(turnOn ? 'starting' : 'stopping')
+    try {
+      await SetDesktopAlwaysAvailable(turnOn)
+      await readStatus()
+    } finally {
+      busyRef.current = false
+      if (alive.current) setBusy(null)
+    }
+  }
+
+  async function handleCopy(): Promise<void> {
+    // The link is read only now, goes straight to the clipboard and is never kept or shown.
+    const r = await GetDesktopLink()
+    if (!r?.url) return
+    await ClipboardSetText(r.url)
+    setCopied(true)
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+    copiedTimer.current = setTimeout(() => setCopied(false), COPIED_MS)
+  }
+
+  const on = busy === 'starting' ? true : busy === 'stopping' ? false : (status?.alwaysAvailable ?? false)
+  const shown = status ?? ({ alwaysAvailable: false, state: '', viewers: 0, errorCode: 'unavailable' } as DesktopStatusResult)
+  const row2 = busy === 'starting'
+    ? { text: 'Getting a link…', dot: null }
+    : desktopStatusText(shown, false)
+  const copyBlocked = busy === 'starting'
+
+  return (
+    <>
+      <div className="settings-section">Desktop</div>
+      <div className="settings-group">
+        <Row
+          label="Always-available desktop"
+          htmlFor="desktopAlways"
+          description={on
+            ? 'Turning this off stops every saved desktop link.'
+            : "Open this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."}
+        >
+          <Switch
+            id="desktopAlways"
+            checked={on}
+            saving={busy !== null || !loaded}
+            onChange={() => void handleToggle()}
+          />
+        </Row>
+        {on && (
+          <Row label="Status">
+            <span className="ts-status">
+              {row2.dot && <span className={`ts-status__dot ts-status__dot--${row2.dot === 'on' ? 'ok' : row2.dot === 'warn' ? 'warn' : 'error'}`} aria-hidden="true" />}
+              <span className="ts-status__text" aria-live="polite">{row2.text}</span>
+            </span>
+          </Row>
+        )}
+        {on && (
+          <Row label="Link" description="Open it in Chrome or Safari on a device signed in to your Tailscale account. Treat it like a password.">
+            <button
+              type="button"
+              className="button button--secondary button--copy"
+              aria-disabled={copyBlocked}
+              onClick={() => { if (!copyBlocked) void handleCopy() }}
+            >
+              {copied ? 'Copied!' : 'Copy Link'}
+            </button>
+          </Row>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -393,6 +542,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffe
               <p className="settings-sheet__footnote">
                 Share a session from the toolbar, or right-click it in the sidebar. Macs signed in to your Tailscale account see shared sessions in their sidebar, and each shared session gets a link that opens in a browser on any device signed in to your account. Turning Share off disconnects everyone.
               </p>
+              <DesktopGroup active={pane === 'sharing'} />
             </div>
 
             <div role="tabpanel" id="settings-pane-security" aria-labelledby="settings-tab-security" hidden={pane !== 'security'}>

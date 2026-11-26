@@ -2,7 +2,10 @@ package main
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
+
+	"github.com/scottkw/portty/internal/daemon"
 )
 
 // app_desktop.go: the GUI side of the desktop permission setup (19-11). The
@@ -71,4 +74,83 @@ func (a *App) OpenDesktopPermissionPane(kind string) error {
 		return openSystemURL(paneAccessibility)
 	}
 	return fmt.Errorf("unknown permission pane %q", kind)
+}
+
+// The Settings ▸ Sharing Desktop group (19-13). Like the share bindings these
+// never throw: a failure is an ErrorCode (and a detail for the inline error).
+
+// DesktopStatusResult is GetDesktopStatus' answer: the daemon's view of the
+// always-available desktop. ErrorCode is "unavailable" when the daemon cannot
+// be asked; the other fields are then zero and mean nothing.
+type DesktopStatusResult struct {
+	AlwaysAvailable  bool   `json:"alwaysAvailable"`
+	State            string `json:"state"`
+	Viewers          int    `json:"viewers"`
+	Locked           bool   `json:"locked"`
+	ApproachingLapse bool   `json:"approachingLapse"`
+	Tailscale        string `json:"tailscale"`
+	Launchd          bool   `json:"launchd"`
+	Reason           string `json:"reason"`
+	ErrorCode        string `json:"errorCode"`
+}
+
+// DesktopResult is SetDesktopAlwaysAvailable's answer. FirstShare is true when
+// this call recorded the Certificate Transparency acknowledgement.
+type DesktopResult struct {
+	AlwaysAvailable bool   `json:"alwaysAvailable"`
+	FirstShare      bool   `json:"firstShare"`
+	ErrorCode       string `json:"errorCode"`
+	ErrorDetail     string `json:"errorDetail"`
+}
+
+// DesktopLinkResult is GetDesktopLink's answer: the link, or an ErrorCode.
+type DesktopLinkResult struct {
+	URL       string `json:"url"`
+	ErrorCode string `json:"errorCode"`
+}
+
+// GetDesktopStatus reads the daemon's desktop state.
+func (a *App) GetDesktopStatus() DesktopStatusResult {
+	if a.client == nil {
+		return DesktopStatusResult{ErrorCode: "unavailable"}
+	}
+	s, err := a.client.DesktopStatus()
+	if err != nil {
+		return DesktopStatusResult{ErrorCode: "unavailable"}
+	}
+	return DesktopStatusResult{
+		AlwaysAvailable: s.AlwaysAvailable, State: s.State, Viewers: s.Viewers, Locked: s.Locked,
+		ApproachingLapse: s.ApproachingLapse, Tailscale: s.Tailscale, Launchd: s.Launchd, Reason: s.Reason,
+	}
+}
+
+// SetDesktopAlwaysAvailable turns the always-available desktop on or off. A
+// refusal keeps the daemon's code (tailscale_off, https_off, tailscale_userspace,
+// port_in_use, start_failed) and detail; an unreachable daemon is "unavailable".
+func (a *App) SetDesktopAlwaysAvailable(on bool) DesktopResult {
+	if a.client == nil {
+		return DesktopResult{ErrorCode: "unavailable", ErrorDetail: "daemon not connected"}
+	}
+	resp, err := a.client.SetDesktopAlwaysAvailable(on)
+	if err == nil {
+		return DesktopResult{AlwaysAvailable: resp.AlwaysAvailable, FirstShare: resp.FirstShare}
+	}
+	var se *daemon.ShareError
+	if errors.As(err, &se) {
+		return DesktopResult{ErrorCode: se.Code, ErrorDetail: se.Detail}
+	}
+	return DesktopResult{ErrorCode: "unavailable", ErrorDetail: err.Error()}
+}
+
+// GetDesktopLink returns the always-available link. The UI fetches it only on
+// Copy Link, writes it to the clipboard and never shows or keeps it.
+func (a *App) GetDesktopLink() DesktopLinkResult {
+	if a.client == nil {
+		return DesktopLinkResult{ErrorCode: "unavailable"}
+	}
+	url, err := a.client.DesktopLink()
+	if err != nil {
+		return DesktopLinkResult{ErrorCode: "unavailable"}
+	}
+	return DesktopLinkResult{URL: url}
 }

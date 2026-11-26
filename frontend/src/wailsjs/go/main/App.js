@@ -105,6 +105,10 @@ export const OpenRemotePort          = (sessionID, rawURL, consent) => Call('mai
 export const GetDesktopPermissions   = ()                   => Call('main.App.GetDesktopPermissions', [])
 export const RunDesktopTestCapture   = ()                   => Call('main.App.RunDesktopTestCapture', [])
 export const OpenDesktopPermissionPane = (kind)             => Call('main.App.OpenDesktopPermissionPane', [kind])
+// Portty 19-13: the Settings ▸ Sharing Desktop group. None rejects; failures are errorCode results.
+export const GetDesktopStatus         = ()                   => Call('main.App.GetDesktopStatus', [])
+export const SetDesktopAlwaysAvailable = (on)                => Call('main.App.SetDesktopAlwaysAvailable', [on])
+export const GetDesktopLink           = ()                   => Call('main.App.GetDesktopLink', [])
 
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export const RegenerateSigningKey    = ()                => Call('main.App.RegenerateSigningKey', [])

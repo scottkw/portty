@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -113,4 +115,68 @@ func TestOpenDesktopPermissionPane(t *testing.T) {
 	if err := a.OpenDesktopPermissionPane("screen"); err == nil || !strings.Contains(err.Error(), "test binary") {
 		t.Errorf("the real opener under go test = %v, want a refusal", err)
 	}
+}
+
+// fakeDesktopDaemon answers the three /desktop routes the Settings bindings
+// call on the daemon socket, so the bindings are tested against real HTTP
+// without a daemon, a tailnet or any capture.
+func fakeDesktopDaemon(t *testing.T, putStatus int, putBody string) *App {
+	t.Helper()
+	sock := respawnHome(t)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /desktop", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"alwaysAvailable":true,"state":"streaming","viewers":2,"locked":true,"approachingLapse":true,"lapseSeq":3,"tailscale":"ok","launchd":true,"reason":"r"}`))
+	})
+	mux.HandleFunc("PUT /desktop", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(putStatus)
+		_, _ = w.Write([]byte(putBody))
+	})
+	mux.HandleFunc("GET /desktop/link", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"url":"https://example.invalid/desktop/tok"}`))
+	})
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+	return &App{client: daemon.NewDaemonClient(sock)}
+}
+
+// DSHR-01 / DPRM-02: the Desktop group's three bindings carry the daemon's
+// answer, keep a refusal's code and detail, and never throw.
+func TestDesktopSettingsBindings(t *testing.T) {
+	t.Run("status, on and link", func(t *testing.T) {
+		a := fakeDesktopDaemon(t, 200, `{"alwaysAvailable":true,"firstShare":true}`)
+		want := DesktopStatusResult{AlwaysAvailable: true, State: "streaming", Viewers: 2, Locked: true, ApproachingLapse: true, Tailscale: "ok", Launchd: true, Reason: "r"}
+		if got := a.GetDesktopStatus(); got != want {
+			t.Errorf("GetDesktopStatus = %+v, want %+v", got, want)
+		}
+		if got := a.SetDesktopAlwaysAvailable(true); got != (DesktopResult{AlwaysAvailable: true, FirstShare: true}) {
+			t.Errorf("SetDesktopAlwaysAvailable(true) = %+v", got)
+		}
+		if got := a.GetDesktopLink(); got != (DesktopLinkResult{URL: "https://example.invalid/desktop/tok"}) {
+			t.Errorf("GetDesktopLink = %+v", got)
+		}
+	})
+	t.Run("a refusal keeps its code and detail", func(t *testing.T) {
+		a := fakeDesktopDaemon(t, 400, `{"error":"https_off","detail":"certs are off"}`)
+		if got := a.SetDesktopAlwaysAvailable(true); got != (DesktopResult{ErrorCode: "https_off", ErrorDetail: "certs are off"}) {
+			t.Errorf("SetDesktopAlwaysAvailable = %+v, want https_off with its detail", got)
+		}
+	})
+	t.Run("nil client and dead daemon are unavailable", func(t *testing.T) {
+		for name, a := range map[string]*App{"nil": {}, "dead": {client: daemon.NewDaemonClient(respawnHome(t))}} {
+			if got := a.GetDesktopStatus(); got != (DesktopStatusResult{ErrorCode: "unavailable"}) {
+				t.Errorf("%s: GetDesktopStatus = %+v", name, got)
+			}
+			if got := a.SetDesktopAlwaysAvailable(false); got.ErrorCode != "unavailable" || got.ErrorDetail == "" {
+				t.Errorf("%s: SetDesktopAlwaysAvailable = %+v", name, got)
+			}
+			if got := a.GetDesktopLink(); got != (DesktopLinkResult{ErrorCode: "unavailable"}) {
+				t.Errorf("%s: GetDesktopLink = %+v", name, got)
+			}
+		}
+	})
 }
