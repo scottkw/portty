@@ -52,6 +52,13 @@ type Prober struct {
 // NewProber returns a Prober that spawns this executable.
 func NewProber() *Prober { return &Prober{run: runChild, now: time.Now} }
 
+// NewProberWithRunner is NewProber with the child spawn replaced, so a caller
+// in another package (the daemon's endpoint tests) can drive a real Prober, its
+// cache and its shared spawn, without ever running a child.
+func NewProberWithRunner(run func(ctx context.Context, exe string, args ...string) ([]byte, error)) *Prober {
+	return &Prober{run: run, now: time.Now}
+}
+
 var defaultProber = NewProber()
 
 // DefaultProber is the one shared instance, so the onboarding endpoint and the

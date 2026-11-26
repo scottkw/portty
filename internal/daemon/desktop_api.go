@@ -116,6 +116,8 @@ func (a *API) registerDesktopRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /desktop", a.handleGetDesktop)
 	mux.HandleFunc("PUT /desktop", a.handlePutDesktop)
 	mux.HandleFunc("GET /desktop/link", a.handleGetDesktopLink)
+	mux.HandleFunc("GET /desktop/permissions", a.handleDesktopPermissions)
+	mux.HandleFunc("POST /desktop/test-capture", a.handleDesktopTestCapture)
 }
 
 func (a *API) handleGetDesktop(w http.ResponseWriter, _ *http.Request) {
@@ -574,4 +576,113 @@ func (a *API) desktopUpToDate(h webserver.TailscaleHealth) bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.webServer != nil && a.desktopMgr != nil && !a.desktopMovedLocked(h)
+}
+
+// Onboarding endpoints (19-11). Both run in the daemon, the process that holds
+// the Screen Recording grant: the GUI's own preflight and capture would answer
+// for the GUI's bundle, not for the one that streams.
+
+const (
+	// testCaptureMaxLongEdge bounds the Test Capture thumbnail (it crosses the
+	// socket and is shown at 256 x 160).
+	testCaptureMaxLongEdge = 512
+	// testCaptureCeiling is how long a Test Capture may take: a macOS 27.2 dialog
+	// can hold a capture, and the sheet must not wait for ever.
+	testCaptureCeiling = 15 * time.Second
+)
+
+// Seams, package-level so the tests restore them (SetDesktopPermsForTest and
+// SetDesktopCaptureForTest).
+var (
+	// desktopProber is the shared fresh-process reader: overlapping asks (the
+	// sheet polling, the state loop) share one child spawn.
+	desktopProber = desktop.DefaultProber()
+	// defaultCaptureStill is the real JPEG still; it refuses under a test binary.
+	defaultCaptureStill = screencap.CaptureStill
+	captureCeiling      = testCaptureCeiling
+)
+
+// SetDesktopPermsForTest replaces the permission reader; the returned func restores it.
+func SetDesktopPermsForTest(p *desktop.Prober) func() {
+	old := desktopProber
+	desktopProber = p
+	return func() { desktopProber = old }
+}
+
+// SetDesktopCaptureForTest replaces the still capture and its ceiling (0 keeps
+// the default); the returned func restores both.
+func SetDesktopCaptureForTest(fn func(ctx context.Context, maxLongEdge int) ([]byte, error), ceiling time.Duration) func() {
+	oldFn, oldCeil := defaultCaptureStill, captureCeiling
+	defaultCaptureStill = fn
+	if ceiling > 0 {
+		captureCeiling = ceiling
+	}
+	return func() { defaultCaptureStill, captureCeiling = oldFn, oldCeil }
+}
+
+// DesktopPermissionsResponse is GET /desktop/permissions. Accessibility is
+// reported because the sheet shows it; the pointer-event read stays internal.
+type DesktopPermissionsResponse struct {
+	SR bool `json:"sr"`
+	AX bool `json:"ax"`
+}
+
+// Codes of the onboarding endpoints' error bodies, {"code": ...}.
+const (
+	codeProbeFailed     = "probe_failed"
+	codeNeedsPermission = "needs_permission"
+	codeTimeout         = "timeout"
+	codeCaptureFailed   = "capture_failed"
+)
+
+func writeCode(w http.ResponseWriter, status int, code string) {
+	writeJSON(w, status, map[string]string{"code": code})
+}
+
+// handleDesktopPermissions answers the live grants. A probe failure is an
+// explicit error, never a default false: "not granted" must mean the OS said so
+// (research C1).
+func (a *API) handleDesktopPermissions(w http.ResponseWriter, r *http.Request) {
+	p, err := desktopProber.Read(r.Context())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: desktop permission probe failed: %v\n", err)
+		writeCode(w, http.StatusServiceUnavailable, codeProbeFailed)
+		return
+	}
+	writeJSON(w, http.StatusOK, DesktopPermissionsResponse{SR: p.SR, AX: p.AX})
+}
+
+// handleDesktopTestCapture takes one still of the main display and returns it
+// as a JPEG. A success records the approval and clears the crash-loop breaker:
+// a capture that works is the evidence that clears it. The picture is never
+// written to disk or logged (T-19-39).
+func (a *API) handleDesktopTestCapture(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), captureCeiling)
+	defer cancel()
+	jpeg, err := defaultCaptureStill(ctx, testCaptureMaxLongEdge)
+	switch {
+	case err == nil:
+	case errors.Is(err, screencap.ErrPermissionDenied):
+		writeCode(w, http.StatusConflict, codeNeedsPermission)
+		return
+	case errors.Is(err, context.DeadlineExceeded):
+		writeCode(w, http.StatusGatewayTimeout, codeTimeout)
+		return
+	default:
+		fmt.Fprintf(os.Stderr, "daemon: desktop test capture failed: %v\n", err)
+		writeCode(w, http.StatusInternalServerError, codeCaptureFailed)
+		return
+	}
+	if err := desktop.NoteTestCapture(a.engine.configDir, time.Now()); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: desktop test capture not recorded: %v\n", err)
+	}
+	a.mu.RLock()
+	mgr := a.desktopMgr
+	a.mu.RUnlock()
+	if mgr != nil {
+		_ = mgr.ResetBreaker()
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(jpeg)
 }

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/screencap"
 )
 
 func TestCmdDaemon_ServiceActions(t *testing.T) {
@@ -231,6 +232,69 @@ func TestAgentControl_Actions(t *testing.T) {
 	for _, c := range calls {
 		if slices.Contains(c, "-k") {
 			t.Fatalf("a launchctl call carries the kill flag: %v", c)
+		}
+	}
+}
+
+// DPRM-01: `portty daemon perm-probe` is the child the daemon's Prober spawns.
+// It prints exactly one JSON line with the three keys and starts nothing.
+func TestCmdDaemon_PermProbe(t *testing.T) {
+	oldProbe, oldRun, oldWire := permProbeFunc, runDaemonFunc, wireDesktopNotifier
+	t.Cleanup(func() { permProbeFunc, runDaemonFunc, wireDesktopNotifier = oldProbe, oldRun, oldWire })
+	started := 0
+	runDaemonFunc = func() { started++ }
+	wireDesktopNotifier = func() { started++ }
+	permProbeFunc = func() (screencap.Permissions, error) {
+		return screencap.Permissions{SR: true, AX: false, PE: false}, nil
+	}
+
+	var buf bytes.Buffer
+	if err := cmdDaemon([]string{"perm-probe"}, &buf); err != nil {
+		t.Fatalf("cmdDaemon(perm-probe): %v", err)
+	}
+	if got, want := buf.String(), `{"sr":true,"ax":false,"pe":false}`+"\n"; got != want {
+		t.Fatalf("output %q, want %q", got, want)
+	}
+	if started != 0 {
+		t.Fatalf("perm-probe started %d daemon or notifier hooks, want 0", started)
+	}
+
+	permProbeFunc = func() (screencap.Permissions, error) { return screencap.Permissions{}, errors.New("boom") }
+	buf.Reset()
+	if err := cmdDaemon([]string{"perm-probe"}, &buf); err == nil || buf.Len() != 0 {
+		t.Fatalf("a failed read gave err %v and output %q, want an error and no output", err, buf.String())
+	}
+}
+
+// CONTEXT [Permissions]: the daemon is the designated sender when no GUI runs,
+// so its native sender is wired before it starts, in the three entry cases only.
+func TestCmdDaemon_WiresDesktopNotifier(t *testing.T) {
+	oldRun, oldTake, oldWire, oldCtl := runDaemonFunc, runTakeoverFunc, wireDesktopNotifier, serviceControlFunc
+	t.Cleanup(func() {
+		runDaemonFunc, runTakeoverFunc, wireDesktopNotifier, serviceControlFunc = oldRun, oldTake, oldWire, oldCtl
+	})
+	var events []string
+	wireDesktopNotifier = func() { events = append(events, "wire") }
+	runDaemonFunc = func() { events = append(events, "daemon") }
+	runTakeoverFunc = func() { events = append(events, "takeover") }
+	serviceControlFunc = func(string) error { return nil }
+
+	for _, tc := range []struct {
+		args []string
+		want []string
+	}{
+		{nil, []string{"wire", "daemon"}},
+		{[]string{"run"}, []string{"wire", "daemon"}},
+		{[]string{"--takeover"}, []string{"wire", "takeover"}},
+		{[]string{"install"}, nil},
+		{[]string{"start"}, nil},
+	} {
+		events = nil
+		if err := cmdDaemon(tc.args, &bytes.Buffer{}); err != nil {
+			t.Fatalf("cmdDaemon(%v): %v", tc.args, err)
+		}
+		if !slices.Equal(events, tc.want) {
+			t.Errorf("cmdDaemon(%v) events %v, want %v", tc.args, events, tc.want)
 		}
 	}
 }

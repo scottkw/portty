@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/screencap"
 )
 
 // serviceControlFunc is the function used to control the service. Package-level var
@@ -16,22 +17,49 @@ var serviceControlFunc = daemon.AgentControl
 // runTakeoverFunc runs `portty daemon --takeover`; a var for tests.
 var runTakeoverFunc = daemon.RunTakeover
 
+// runDaemonFunc runs the daemon in this process; a var for tests.
+var runDaemonFunc = daemon.RunDaemon
+
+// wireDesktopNotifier gives the daemon the native sender for the desktop's
+// once-per-lapse notification. The daemon posts only when no running GUI claims
+// the lapse (CONTEXT [Permissions]: the GUI when it runs, otherwise the daemon).
+// A var for tests.
+var wireDesktopNotifier = func() { daemon.SetDesktopNotifier(sendNotification) }
+
+// permProbeFunc reads the live permissions without prompting; a var for tests.
+var permProbeFunc = screencap.Preflight
+
 // cmdDaemon dispatches daemon subcommands: install, uninstall, start, stop, run.
 // When called with no arguments, it runs the daemon directly: launchd starts
 // `portty daemon` (the LaunchAgent), and so does EnsureDaemon's fallback spawn.
 func cmdDaemon(args []string, out io.Writer) error {
 	if len(args) == 0 {
 		// No subcommand: run daemon directly (backward compat with EnsureDaemon).
-		daemon.RunDaemon()
+		wireDesktopNotifier()
+		runDaemonFunc()
 		return nil
 	}
 	switch args[0] {
 	case "run":
-		daemon.RunDaemon()
+		wireDesktopNotifier()
+		runDaemonFunc()
 		return nil
 	case "--takeover": // internal, so not in the usage: only EnsureDaemon spawns it (09-05)
+		wireDesktopNotifier()
 		runTakeoverFunc()
 		return nil
+	case "perm-probe": // internal, so not in the usage: only the daemon's Prober spawns it (19-09)
+		// A fresh process is the only honest reader of the live grants: a long-running
+		// one keeps the first answer it got (research C1). One JSON line, no other effect.
+		p, err := permProbeFunc()
+		if err != nil {
+			return fmt.Errorf("portty daemon perm-probe: %w", err)
+		}
+		return json.NewEncoder(out).Encode(struct {
+			SR bool `json:"sr"`
+			AX bool `json:"ax"`
+			PE bool `json:"pe"`
+		}{p.SR, p.AX, p.PE})
 	case "install":
 		if err := serviceControlFunc("install"); err != nil {
 			return fmt.Errorf("portty daemon install: %w", err)
