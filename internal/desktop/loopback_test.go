@@ -385,14 +385,26 @@ func TestDesktopTracer_LoopbackStream(t *testing.T) {
 	answer := readType(ctx, t, conn, "answer")
 	lc.accept(t, answer["sdp"].(string))
 
-	// The first access unit carries SPS (7), PPS (8) and an IDR slice (5).
-	select {
-	case au := <-lc.aus:
-		if types := nalTypes(au); !hasAll(types, 7, 8, 5) {
-			t.Fatalf("first access unit has NAL types %v, no SPS+PPS+IDR (7, 8, 5)", types)
+	// Within 5 s a keyframe access unit arrives, carrying SPS (7), PPS (8) and
+	// an IDR slice (5) together. A delta unit (type 1) may precede it: the
+	// source ticks while the viewer's SRTP comes up, so one can slip out before
+	// the keyframe forced on connect. A decoder drops it, and an IDR without
+	// SPS and PPS is the failure.
+	deadline := time.After(5 * time.Second)
+	for keyframe := false; !keyframe; {
+		select {
+		case au := <-lc.aus:
+			types := nalTypes(au)
+			if !hasAll(types, 5) {
+				continue
+			}
+			if !hasAll(types, 7, 8, 5) {
+				t.Fatalf("keyframe access unit has NAL types %v, want SPS+PPS+IDR (7, 8, 5)", types)
+			}
+			keyframe = true
+		case <-deadline:
+			t.Fatal("no keyframe access unit within 5s")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("no access unit within 5s")
 	}
 
 	st := readType(ctx, t, conn, "state")
