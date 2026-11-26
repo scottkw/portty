@@ -44,6 +44,12 @@ func runInstallUpdate(args []string) int {
 		log.Printf("install-update: started marker not written")
 		return 1
 	}
+	// The run folder holds the job and this running copy; remove it only if it is ours.
+	removeRunDir := func() {
+		if filepath.Dir(jobDir) == updateWorkDir() && strings.HasPrefix(filepath.Base(jobDir), "run-") {
+			_ = os.RemoveAll(jobDir)
+		}
+	}
 	sock := daemon.DefaultSocketPath()
 	env := updater.InstallerEnv{
 		Run:     updateRunner,
@@ -57,18 +63,16 @@ func runInstallUpdate(args []string) int {
 			h, err := daemon.NewDaemonClient(sock).HealthInfo()
 			return h.Version, err
 		},
-		ResultPath: installResultPath(),
-		Now:        time.Now,
-		Sleep:      time.Sleep,
-		Logf:       log.Printf,
+		RemoveRunDir: removeRunDir,
+		ResultPath:   installResultPath(),
+		Now:          time.Now,
+		Sleep:        time.Sleep,
+		Logf:         log.Printf,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), updater.QuitWait+updater.HealthTimeout+2*time.Minute)
 	defer cancel()
 	res := updater.RunInstaller(ctx, job, env)
-	// The run folder holds the job and this running copy; remove it only if it is ours.
-	if filepath.Dir(jobDir) == updateWorkDir() && strings.HasPrefix(filepath.Base(jobDir), "run-") {
-		_ = os.RemoveAll(jobDir)
-	}
+	removeRunDir() // the paths that never reach the mover's DMG Trash; a no-op otherwise
 	if res.Outcome == updater.OutcomeUpdated {
 		return 0
 	}
