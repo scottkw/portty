@@ -330,7 +330,7 @@ Branch protection requires the one build check context to pass before a PR can m
 
 ### Apply Protection
 
-CI status (verified 2026-11-25): Actions are enabled and `build.yml` runs on every push and PR. Phase 18.1 renamed the matrix context to `build (portty, darwin/arm64, macos-latest)` (app `github-actions`, id 15368); `main` reports it after the 18.1 merge. `release.yml` is active. `e2e.yml` is active again (re-enabled 2026-11-25): it had been disabled after its 2026-11-14 runs failed in 3-4 s with no steps, because GitHub refused to start the job over an account billing failure (check-run annotation), not because of the workflow or the tests. It runs on push and PR to `main` and on manual `workflow_dispatch`; its `playwright` check stays out of the required set by decision (CONTEXT 2026-11-25: it runs, but is not a merge gate). Branch protection on `main` was not applied as of 2026-11-25 (`GET .../branches/main/protection` returned 404 "Branch not protected"); it is applied after the merge only through the 18.1-04 approval checkpoint, and only once `main` carries a successful `build (portty, darwin/arm64, macos-latest)` check run. Alternative (only after main carries a successful `playwright` check run): add a second `checks` entry for the `playwright` context, app_id 15368.
+CI status (verified 2026-11-25): Actions are enabled and `build.yml` runs on every push and PR. Phase 18.1 renamed the matrix context to `build (portty, darwin/arm64, macos-latest)` (app `github-actions`, id 15368); `main` reports it after the 18.1 merge. `release.yml` is active. `e2e.yml` is active again (re-enabled 2026-11-25): it had been disabled after its 2026-11-14 runs failed in 3-4 s with no steps, because GitHub refused to start the job over an account billing failure (check-run annotation), not because of the workflow or the tests. It runs on push and PR to `main` and on manual `workflow_dispatch`; its `playwright` check stays out of the required set by decision (CONTEXT 2026-11-25: it runs, but is not a merge gate). Branch protection on `main` was not applied as of 2026-11-25 (`GET .../branches/main/protection` returned 404 "Branch not protected"); it was applied on 2026-11-26 after the 18.1 merge, through the 18.1-04 approval checkpoint, once `main` carried a successful `build (portty, darwin/arm64, macos-latest)` check run (see the **Applied:** line below). Alternative (only after main carries a successful `playwright` check run): add a second `checks` entry for the `playwright` context, app_id 15368.
 
 ```bash
 gh api repos/scottkw/portty/branches/main/protection \
@@ -352,6 +352,8 @@ gh api repos/scottkw/portty/branches/main/protection \
 }
 EOF
 ```
+
+**Applied:** 2026-11-26, Phase 18.1, settings delegated by the user 2026-11-25, approved at the 18.1-04 checkpoint ("apply"); Claude ran the PUT above once, after PR #11 merged (merge commit `3c53d67d`) and `main` showed a successful `build (portty, darwin/arm64, macos-latest)` check run. `GET repos/scottkw/portty/branches/main/protection` returned: required check `build (portty, darwin/arm64, macos-latest)` (app 15368) as the only check, strict false, enforce_admins false, no required reviews, no restrictions, allow_force_pushes false, allow_deletions false.
 
 **Key field rationale:**
 - `checks[]` with `app_id` — current GitHub format (`contexts[]` is deprecated)
