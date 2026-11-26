@@ -717,6 +717,14 @@ func (a *API) handleDesktopPermissions(w http.ResponseWriter, r *http.Request) {
 		writeCode(w, http.StatusServiceUnavailable, codeProbeFailed)
 		return
 	}
+	// The live state follows the sheet's poll, not the 5-minute idle probe, so
+	// Settings and the tray stop saying Needs permission once it is granted.
+	a.mu.RLock()
+	mgr := a.desktopMgr
+	a.mu.RUnlock()
+	if mgr != nil {
+		mgr.RefreshPermissions(r.Context())
+	}
 	writeJSON(w, http.StatusOK, DesktopPermissionsResponse{SR: p.SR, AX: p.AX})
 }
 

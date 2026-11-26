@@ -153,6 +153,42 @@ func TestDesktopPermissions_ProbeFailure(t *testing.T) {
 	}
 }
 
+// WR-03: the setup sheet's permission poll refreshes the desktop state at
+// once, so Settings and the tray stop saying Needs permission the moment
+// Screen Recording is granted, not at the next 5-minute idle probe.
+func TestDesktopPermissions_PollRefreshesState(t *testing.T) {
+	var granted atomic.Bool
+	answer := func(context.Context, string, ...string) ([]byte, error) {
+		return fmt.Appendf(nil, `{"sr":%v,"ax":true,"pe":true}`, granted.Load()), nil
+	}
+	old := desktopTestDeps
+	desktopTestDeps = func(d *desktop.Deps) {
+		old(d)
+		d.Probe = func(context.Context) (screencap.Permissions, error) {
+			return screencap.Permissions{SR: granted.Load(), AX: true, PE: true}, nil
+		}
+	}
+	t.Cleanup(func() { desktopTestDeps = old })
+	e := newDesktopEnv(t)
+	e.mustOn(t)
+
+	t.Cleanup(SetDesktopPermsForTest(desktop.NewProberWithRunner(answer)))
+	if rec := doDesktop(e.api, http.MethodGet, "/desktop/permissions"); rec.Code != http.StatusOK {
+		t.Fatalf("GET /desktop/permissions = %d", rec.Code)
+	}
+	if st := e.status(t); st.State != string(desktop.StateNeedsPermission) {
+		t.Fatalf("state after a not-granted poll = %q, want needs_permission", st.State)
+	}
+	granted.Store(true)
+	t.Cleanup(SetDesktopPermsForTest(desktop.NewProberWithRunner(answer))) // a fresh cache
+	if rec := doDesktop(e.api, http.MethodGet, "/desktop/permissions"); rec.Code != http.StatusOK {
+		t.Fatalf("GET /desktop/permissions = %d", rec.Code)
+	}
+	if st := e.status(t); st.State == string(desktop.StateNeedsPermission) {
+		t.Fatalf("state right after a granted poll = %q, want it cleared", st.State)
+	}
+}
+
 // The Test Capture error codes, and what a failure must not do: record an
 // approval (NoteTestCapture writes the state file; a failure leaves none).
 func TestDesktopTestCapture_Codes(t *testing.T) {
