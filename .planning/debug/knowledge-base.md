@@ -14,3 +14,13 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Recurrence guard:** frontend/e2e/selection-offset.spec.ts (scaled and unscaled drags, the TUI mouse-report row, Option-drag + copy under mouse tracking); frontend/src/lib/terminalScale.test.ts "unscalePointer" and "compensatePointerScale"; a console.warn if an xterm upgrade drops `_core._mouseService`; TESTING.md M-136. Pattern: any CSS transform on term.element (or an ancestor) breaks xterm's pointer math; check pointer-to-cell mapping whenever a pane is scaled.
 ---
 
+
+## rc-wr04-stall — "sessions stalled ~17 min" in a VM row was a guest wall-clock step
+- **Date:** 2026-11-26
+- **Error patterns:** session stalled, output stopped, ticks gapless, same pids, resumed when viewer joined, daemon.log gap, VM row, guest clock, timed, NTP, settimeofday
+- **Root cause(s):** the Tart guest's clock fell ~17 min behind its RTC (VM not running for a while) and timed stepped it forward mid-row (guest 07:10:02 -> 07:27:05); tick arithmetic on guest wall-clock timestamps read the step as a stall
+- **Fix:** none in code; evidence in .planning/phases/18-self-installing-updates/evidence/RC-WR04-clockstep.log
+- **Files changed:** none (docs only)
+- **Why not caught:** the rig derives elapsed time from guest `date`; nothing checks for clock steps
+- **Recurrence guard:** before treating a VM-row time gap as a product stall, run `/usr/bin/log show --predicate 'process == "timed" AND eventMessage CONTAINS "Received time"'` over the window and look for a guest log line-count hole
+---
