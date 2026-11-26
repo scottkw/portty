@@ -5,6 +5,13 @@ on:
     tags:
       - 'v*'
 
+# These are published asset names every installed copy looks for. v1.2.x updaters know only the
+# universal one; builds from Phase 18 on try universal first, then arm64. Both are the same
+# arm64-only build. Keep in step with updater.DMGAssetNames (pinned by release_workflow_test.go);
+# drop the universal name only in a later release, once both Macs run a Phase 18 or later build.
+env:
+  DMG_SUFFIXES: "darwin-universal darwin-arm64"
+
 jobs:
   validate:
     runs-on: macos-latest
@@ -21,6 +28,11 @@ jobs:
       # build.yml runs this too, but a v* tag can point at a commit that never passed it.
       - name: Brand gate (BRND-05, BRND-06, DIST-03, VM-only build tag)
         run: bash tests/check-brand.sh
+
+      # A v* tag may point at a commit build.yml never checked; the gates are only trustworthy if
+      # their fixture tests pass.
+      - name: Run bundle gate tests (REL-01)
+        run: bash tests/verify-bundle.test.sh
 
       # TestNoFakeWhoIsInRelease lists the wailsassets build, whose embed pattern
       # needs frontend/dist to exist.
@@ -96,9 +108,13 @@ jobs:
           [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag $GITHUB_REF_NAME is not vX.Y.Z[-suffix]"; exit 1; }
           jq --arg v "$V" '.info.productVersion = $v' wails.json > wails.json.tmp && mv wails.json.tmp wails.json
 
+      # Wails otherwise forces a 10.13 deployment target (23-RESEARCH Pattern 9); Portty needs 14.0.
       - name: Build macOS app
+        env:
+          CGO_CFLAGS: "-mmacosx-version-min=14.0"
+          CGO_LDFLAGS: "-mmacosx-version-min=14.0"
         run: |
-          wails build -platform darwin/universal -tags wailsassets \
+          wails build -platform darwin/arm64 -tags wailsassets \
             -ldflags "-X main.Version=${GITHUB_REF_NAME}"
 
       # The VM-only fake update feed (cmd/fakegh's address) must never reach a release binary.
@@ -112,6 +128,9 @@ jobs:
       - name: Copy branded ICNS into bundle
         run: |
           cp build/darwin/iconfile.icns build/bin/Portty.app/Contents/Resources/iconfile.icns
+
+      - name: Release bundle is arm64-only with minos 14.0 (REL-01)
+        run: bash scripts/verify-bundle.sh build/bin/Portty.app
 
       # CRITICAL: tar .app BEFORE upload — actions/upload-artifact zips and strips symlinks/+x bits
       # (90-RESEARCH.md Pitfall 1 lines 471-477)
@@ -131,7 +150,7 @@ jobs:
       - name: Upload unsigned .app bundle + attestation bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: portty-darwin-universal-unsigned
+          name: portty-darwin-arm64-unsigned
           path: |
             build/bin/Portty.app.tar.gz
             build/bin/attestation.json
@@ -140,7 +159,7 @@ jobs:
   sign-macos:
     needs: [build-macos]
     runs-on: macos-latest
-    timeout-minutes: 150 # two notarization waits (.app and DMG), each capped at 60m below
+    timeout-minutes: 210 # three notarization waits (.app and two DMGs), each capped at 60m below
     environment: release
     permissions:
       contents: read
@@ -161,7 +180,7 @@ jobs:
       - name: Download unsigned .app bundle + attestation bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: portty-darwin-universal-unsigned
+          name: portty-darwin-arm64-unsigned
           path: artifacts/
 
       - name: Verify internal attestation
@@ -201,14 +220,14 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: \
             -s -k "$MACOS_CI_KEYCHAIN_PWD" build.keychain
 
+      # Signs inside out, one codesign per Mach-O, identifier app.portty.Portty. The gate fails on the
+      # wrong team, a missing runtime flag, no timestamp, changed entitlements, a non-arm64 slice, a
+      # minos below 14.0 or a designated requirement other than v1.2's (the office Mac's grants
+      # depend on it).
       - name: Sign .app with hardened runtime
         run: |
-          codesign --deep --force --verbose \
-            --options runtime \
-            --timestamp \
-            --entitlements build/entitlements.plist \
-            --sign "$MACOS_CERTIFICATE_NAME" \
-            build/bin/Portty.app
+          SIGN_IDENTITY="$MACOS_CERTIFICATE_NAME" bash scripts/sign-bundle.sh build/bin/Portty.app
+          bash scripts/verify-bundle.sh build/bin/Portty.app --signed
 
       - name: Notarize .app
         run: |
@@ -221,25 +240,44 @@ jobs:
             --keychain-profile "portty-notarize" \
             --wait --timeout 60m
           xcrun stapler staple build/bin/Portty.app
+          bash scripts/verify-bundle.sh build/bin/Portty.app --notarized
 
       - name: Create and sign DMG
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          DMG_NAME="portty-${VERSION}-darwin-universal.dmg"
-          hdiutil create -volname "Portty" -srcfolder build/bin/Portty.app -ov -format UDZO "build/bin/${DMG_NAME}"
+          # Create the image once under the first name and copy it, so no intermediate file
+          # matches portty-*.dmg. Signing comes after the copy: each name gets its own identifier.
+          FIRST=""
+          for SUFFIX in $DMG_SUFFIXES; do
+            NAME="portty-${VERSION}-${SUFFIX}"
+            DMG="build/bin/${NAME}.dmg"
+            if [ -z "$FIRST" ]; then
+              hdiutil create -volname "Portty" -srcfolder build/bin/Portty.app -ov -format UDZO "$DMG"
+              FIRST="$DMG"
+            else
+              cp "$FIRST" "$DMG"
+            fi
+          done
           # The in-app updater requires the DMG's signing identifier to be its asset name without
           # .dmg, which binds the file to this version (no rollback or cross-product swap).
-          codesign --force --timestamp --identifier "portty-${VERSION}-darwin-universal" \
-            --sign "$MACOS_CERTIFICATE_NAME" "build/bin/${DMG_NAME}"
+          for SUFFIX in $DMG_SUFFIXES; do
+            NAME="portty-${VERSION}-${SUFFIX}"
+            DMG="build/bin/${NAME}.dmg"
+            codesign --force --timestamp --identifier "${NAME}" \
+              --sign "$MACOS_CERTIFICATE_NAME" "$DMG"
+          done
 
       # Runs before "Cleanup keychain": the portty-notarize profile lives in build.keychain.
       - name: Notarize and staple DMG
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          DMG="build/bin/portty-${VERSION}-darwin-universal.dmg"
-          xcrun notarytool submit "$DMG" --keychain-profile "portty-notarize" --wait --timeout 60m
-          xcrun stapler staple "$DMG"
-          xcrun stapler validate "$DMG"
+          for SUFFIX in $DMG_SUFFIXES; do
+            NAME="portty-${VERSION}-${SUFFIX}"
+            DMG="build/bin/${NAME}.dmg"
+            xcrun notarytool submit "$DMG" --keychain-profile "portty-notarize" --wait --timeout 60m
+            xcrun stapler staple "$DMG"
+            xcrun stapler validate "$DMG"
+          done
 
       # The in-app updater (internal/updater Verify) rejects any DMG that fails
       # these checks, so a release must never ship one. The Team ID is
@@ -248,16 +286,19 @@ jobs:
       - name: Verify DMG like the in-app updater
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          DMG="build/bin/portty-${VERSION}-darwin-universal.dmg"
-          codesign --verify --strict "$DMG"
-          DVV=$(codesign -dvv "$DMG" 2>&1)
-          echo "$DVV"
-          grep -qx 'TeamIdentifier=S2K7P43927' <<< "$DVV" || { echo "FAIL: DMG is not signed by Team S2K7P43927"; exit 1; }
-          grep -qx "Identifier=portty-${VERSION}-darwin-universal" <<< "$DVV" || { echo "FAIL: DMG identifier is not portty-${VERSION}-darwin-universal"; exit 1; }
-          SPCTL=$(spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1) || { echo "$SPCTL"; echo "FAIL: spctl rejected the DMG"; exit 1; }
-          echo "$SPCTL"
-          grep -q ': accepted' <<< "$SPCTL" || { echo "FAIL: spctl did not accept the DMG"; exit 1; }
-          grep -qx 'source=Notarized Developer ID' <<< "$SPCTL" || { echo "FAIL: the DMG is not notarized"; exit 1; }
+          for SUFFIX in $DMG_SUFFIXES; do
+            NAME="portty-${VERSION}-${SUFFIX}"
+            DMG="build/bin/${NAME}.dmg"
+            codesign --verify --strict "$DMG"
+            DVV=$(codesign -dvv "$DMG" 2>&1)
+            echo "$DVV"
+            grep -qx 'TeamIdentifier=S2K7P43927' <<< "$DVV" || { echo "FAIL: $DMG is not signed by Team S2K7P43927"; exit 1; }
+            grep -qx "Identifier=${NAME}" <<< "$DVV" || { echo "FAIL: $DMG identifier is not ${NAME}"; exit 1; }
+            SPCTL=$(spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1) || { echo "$SPCTL"; echo "FAIL: spctl rejected $DMG"; exit 1; }
+            echo "$SPCTL"
+            grep -q ': accepted' <<< "$SPCTL" || { echo "FAIL: spctl did not accept $DMG"; exit 1; }
+            grep -qx 'source=Notarized Developer ID' <<< "$SPCTL" || { echo "FAIL: $DMG is not notarized"; exit 1; }
+          done
 
       - name: Cleanup keychain
         if: always()
@@ -294,6 +335,11 @@ jobs:
           # .json bundles and the unsigned Portty.app.tar.gz intermediate.
           sha256sum *.dmg > checksums.txt
           cat checksums.txt
+          # Exactly the published names, nothing else (no stray image or zip).
+          [ "$(wc -l < checksums.txt | tr -d ' ')" = "$(set -- $DMG_SUFFIXES; echo $#)" ] || { echo "FAIL: checksums.txt does not hold exactly one line per DMG"; exit 1; }
+          for SUFFIX in $DMG_SUFFIXES; do
+            grep -q "portty-${GITHUB_REF_NAME}-${SUFFIX}.dmg\$" checksums.txt || { echo "FAIL: checksums.txt lacks portty-${GITHUB_REF_NAME}-${SUFFIX}.dmg"; exit 1; }
+          done
 
       - name: Release build-provenance attestation
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
@@ -303,6 +349,9 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
+          body: |
+            Apple Silicon and macOS 14 or later only.
+            This release needs macOS 14 or later on an Apple Silicon Mac.
           files: |
             artifacts/*.dmg
             artifacts/checksums.txt

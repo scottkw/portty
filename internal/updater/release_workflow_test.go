@@ -3,21 +3,45 @@ package updater
 import (
 	"os"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 // These tests keep .github/workflows/release.yml in step with this package: the DMG it publishes
-// must be the one DMGAssetName names, and it must pass Verify before it reaches a release.
+// must be the one DMGAssetName names, and it must pass Verify before it reaches a release. They
+// also pin build.yml and the bundle scripts' identity constants (REL-01).
 
-func readWorkflow(t *testing.T) string {
+func readRepoFile(t *testing.T, rel string) string {
 	t.Helper()
-	b, err := os.ReadFile("../../.github/workflows/release.yml")
+	b, err := os.ReadFile("../../" + rel)
 	if err != nil {
-		t.Fatalf("ReadFile release.yml: %v", err)
+		t.Fatalf("ReadFile %s: %v", rel, err)
 	}
 	return string(b)
 }
+
+func readWorkflow(t *testing.T) string {
+	t.Helper()
+	return readRepoFile(t, ".github/workflows/release.yml")
+}
+
+// before reports whether a occurs in s and b occurs after it.
+func before(s, a, b string) bool {
+	i := strings.Index(s, a)
+	return i >= 0 && strings.Contains(s[i+len(a):], b)
+}
+
+const (
+	cgoCFlags   = `CGO_CFLAGS: "-mmacosx-version-min=14.0"`
+	cgoLDFlags  = `CGO_LDFLAGS: "-mmacosx-version-min=14.0"`
+	releaseGate = "Release bundle is arm64-only with minos 14.0 (REL-01)"
+	buildGate   = "Bundle is arm64-only with minos 14.0 (REL-01)"
+	// v1.2.0's designated requirement (18.1-RESEARCH Gap 4). The office Mac's TCC grants are keyed
+	// to it, so every release must keep it.
+	v12DesignatedRequirement = `designated => identifier "app.portty.Portty" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = ` + TeamID
+)
 
 var jobKeyRE = regexp.MustCompile(`(?m)^  [A-Za-z0-9_-]+:\s*$`)
 
@@ -49,6 +73,16 @@ func step(t *testing.T, j, name string) string {
 	return s
 }
 
+// dmgSuffixes reads the single suffix list from release.yml's workflow-level env.
+func dmgSuffixes(t *testing.T, wf string) []string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^env:\n  DMG_SUFFIXES: "([^"]+)"\n`).FindStringSubmatch(wf)
+	if m == nil {
+		t.Fatal("release.yml has no workflow-level env: DMG_SUFFIXES line")
+	}
+	return strings.Fields(m[1])
+}
+
 func TestReleaseWorkflow_DMGName(t *testing.T) {
 	wf := readWorkflow(t)
 	if !strings.Contains(wf, "tags:\n      - 'v*'") {
@@ -58,20 +92,33 @@ func TestReleaseWorkflow_DMGName(t *testing.T) {
 	if !strings.Contains(create, `VERSION="${GITHUB_REF_NAME}"`) {
 		t.Errorf("VERSION is not set from GITHUB_REF_NAME:\n%s", create)
 	}
-	m := regexp.MustCompile(`DMG_NAME="([^"]+)"`).FindStringSubmatch(create)
-	if m == nil {
-		t.Fatalf("no DMG_NAME in:\n%s", create)
+	// Every published name must be one the updater looks for, in the same order (universal first).
+	var got []string
+	for _, suffix := range dmgSuffixes(t, wf) {
+		got = append(got, "portty-v1.2.3-"+suffix+".dmg")
 	}
-	if got := strings.ReplaceAll(m[1], "${VERSION}", "v1.2.3"); got != DMGAssetName("1.2.3") {
-		t.Errorf("tag v1.2.3 publishes %q, the updater looks for %q", got, DMGAssetName("1.2.3"))
+	if want := DMGAssetNames("1.2.3"); !slices.Equal(got, want) {
+		t.Errorf("tag v1.2.3 publishes %q, the updater looks for %q", got, want)
 	}
-	// Verify requires the signing identifier to be the asset name without .dmg.
-	id := regexp.MustCompile(`codesign --force --timestamp --identifier "([^"]+)"`).FindStringSubmatch(create)
-	if id == nil {
-		t.Fatalf("the DMG is not signed with an explicit --identifier:\n%s", create)
+	for _, want := range []string{
+		`for SUFFIX in $DMG_SUFFIXES; do`,
+		`NAME="portty-${VERSION}-${SUFFIX}"`,
+		// Verify requires the signing identifier to be the asset name without .dmg.
+		`codesign --force --timestamp --identifier "${NAME}"`,
+	} {
+		if !strings.Contains(create, want) {
+			t.Errorf("Create and sign DMG lacks %q:\n%s", want, create)
+		}
 	}
-	if got := strings.ReplaceAll(id[1], "${VERSION}", "v1.2.3") + ".dmg"; got != DMGAssetName("1.2.3") {
-		t.Errorf("tag v1.2.3 signs identifier %q, Verify wants the asset name %q without .dmg", id[1], DMGAssetName("1.2.3"))
+	if n := strings.Count(create, "hdiutil create"); n != 1 {
+		t.Errorf("the image must be created once and copied, got %d hdiutil create", n)
+	}
+	// The universal name appears once, in DMG_SUFFIXES; no step spells a suffix after the version.
+	if n := strings.Count(wf, "darwin-universal"); n != 1 {
+		t.Errorf("release.yml names darwin-universal %d times, want once (DMG_SUFFIXES)", n)
+	}
+	if loc := regexp.MustCompile(`VERSION\}?-darwin-`).FindStringIndex(wf); loc != nil {
+		t.Errorf("a step spells a DMG suffix after the version instead of looping DMG_SUFFIXES: %q", wf[loc[0]:loc[1]])
 	}
 }
 
@@ -94,12 +141,19 @@ func TestReleaseWorkflow_NotarizesAndStaplesDMG(t *testing.T) {
 		}
 		pos += i + len(want)
 	}
+	n := step(t, j, "Notarize and staple DMG")
+	for _, want := range []string{`for SUFFIX in $DMG_SUFFIXES; do`, `DMG="build/bin/${NAME}.dmg"`} {
+		if !strings.Contains(n, want) {
+			t.Errorf("Notarize and staple DMG lacks %q:\n%s", want, n)
+		}
+	}
 	v := step(t, j, strings.TrimSuffix(strings.TrimPrefix(verify, "- name: "), "\n"))
 	for _, want := range []string{
 		`codesign --verify --strict "$DMG"`,
 		"codesign -dvv",
 		"'TeamIdentifier=" + TeamID + "'",
-		`grep -qx "Identifier=portty-${VERSION}-darwin-universal" <<< "$DVV"`,
+		`for SUFFIX in $DMG_SUFFIXES; do`,
+		`grep -qx "Identifier=${NAME}" <<< "$DVV"`,
 		"spctl -a -t open --context context:primary-signature",
 		"': accepted'",
 		"'source=Notarized Developer ID'",
@@ -137,5 +191,138 @@ func TestReleaseWorkflow_VMOnlyFakesGated(t *testing.T) {
 	}
 	if s := step(t, b, strings.TrimSuffix(strings.TrimPrefix(gate, "- name: "), "\n")); !strings.Contains(s, "grep -ac '127.0.0.1:8788' \"$BIN\"") {
 		t.Errorf("the gate does not grep the binary for the fake feed address:\n%s", s)
+	}
+}
+
+// Three notarization waits (.app and every DMG), each capped at 60 minutes, plus overhead.
+func TestReleaseWorkflow_SignTimeout(t *testing.T) {
+	wf := readWorkflow(t)
+	m := regexp.MustCompile(`timeout-minutes: (\d+)`).FindStringSubmatch(job(t, wf, "sign-macos"))
+	if m == nil {
+		t.Fatal("sign-macos has no timeout-minutes")
+	}
+	got, _ := strconv.Atoi(m[1])
+	if want := 60*(1+len(dmgSuffixes(t, wf))) + 20; got < want {
+		t.Errorf("sign-macos timeout-minutes is %d, want at least %d", got, want)
+	}
+}
+
+func TestReleaseWorkflow_ChecksumsAndNotes(t *testing.T) {
+	j := job(t, readWorkflow(t), "publish")
+	sums := step(t, j, "Generate SHA256 checksums")
+	for _, want := range []string{
+		"sha256sum *.dmg > checksums.txt",
+		"for SUFFIX in $DMG_SUFFIXES; do",
+		"portty-${GITHUB_REF_NAME}-${SUFFIX}.dmg",
+		"wc -l",
+	} {
+		if !strings.Contains(sums, want) {
+			t.Errorf("checksum step lacks %q:\n%s", want, sums)
+		}
+	}
+	up := step(t, j, "Upload to GitHub Release")
+	for _, want := range []string{"body: |", "Apple Silicon and macOS 14 or later only."} {
+		if !strings.Contains(up, want) {
+			t.Errorf("upload step lacks %q", want)
+		}
+	}
+}
+
+func TestReleaseWorkflow_Arm64Build(t *testing.T) {
+	wf := readWorkflow(t)
+	b := job(t, wf, "build-macos")
+	build := step(t, b, "Build macOS app")
+	for _, want := range []string{"wails build -platform darwin/arm64 -tags wailsassets", cgoCFlags, cgoLDFlags} {
+		if !strings.Contains(build, want) {
+			t.Errorf("Build macOS app lacks %q:\n%s", want, build)
+		}
+	}
+	if strings.Contains(wf, "darwin/universal") {
+		t.Error("release.yml still names the universal platform")
+	}
+	gate := step(t, b, releaseGate)
+	if !strings.Contains(gate, "run: bash scripts/verify-bundle.sh build/bin/Portty.app") {
+		t.Errorf("the unsigned bundle gate does not run verify-bundle.sh:\n%s", gate)
+	}
+	if !before(b, "- name: Build macOS app\n", "- name: "+releaseGate) || !before(b, "- name: "+releaseGate, "- name: Tar .app bundle") {
+		t.Error("the bundle gate is not between the build and the tar step")
+	}
+	for _, j := range []string{b, job(t, wf, "sign-macos")} {
+		if !strings.Contains(j, "name: portty-darwin-arm64-unsigned\n") {
+			t.Error("the unsigned artifact is not portty-darwin-arm64-unsigned on both the upload and the download side")
+		}
+	}
+}
+
+func TestReleaseWorkflow_InsideOutSigning(t *testing.T) {
+	wf := readWorkflow(t)
+	if !strings.Contains(job(t, wf, "validate"), "run: bash tests/verify-bundle.test.sh") {
+		t.Error("the validate job does not run tests/verify-bundle.test.sh")
+	}
+	if strings.Contains(wf, "--deep") {
+		t.Error("release.yml signs or verifies with --deep")
+	}
+	j := job(t, wf, "sign-macos")
+	sign := step(t, j, "Sign .app with hardened runtime")
+	if !before(sign, "bash scripts/sign-bundle.sh build/bin/Portty.app", "bash scripts/verify-bundle.sh build/bin/Portty.app --signed") {
+		t.Errorf("the sign step must run sign-bundle.sh and then the --signed gate:\n%s", sign)
+	}
+	if !strings.Contains(sign, `SIGN_IDENTITY="$MACOS_CERTIFICATE_NAME"`) {
+		t.Errorf("the sign step does not pass the certificate name as SIGN_IDENTITY:\n%s", sign)
+	}
+	notarize := step(t, j, "Notarize .app")
+	if !before(notarize, "xcrun stapler staple build/bin/Portty.app", "bash scripts/verify-bundle.sh build/bin/Portty.app --notarized") {
+		t.Errorf("the --notarized gate must follow the staple:\n%s", notarize)
+	}
+	if !before(j, "- name: Sign .app with hardened runtime\n", "- name: Notarize .app\n") ||
+		!before(j, "- name: Notarize .app\n", "- name: Create and sign DMG\n") {
+		t.Error("sign-macos steps are not ordered sign, notarize, DMG")
+	}
+}
+
+func TestBuildWorkflow_Arm64MinOS14(t *testing.T) {
+	wf := readRepoFile(t, ".github/workflows/build.yml")
+	b := job(t, wf, "build")
+	for _, want := range []string{"platform: darwin/arm64", "build (portty, darwin/arm64, macos-latest)", "name: portty-darwin-arm64\n"} {
+		if !strings.Contains(wf, want) {
+			t.Errorf("build.yml lacks %q", want)
+		}
+	}
+	if strings.Contains(wf, "darwin/universal") {
+		t.Error("build.yml still names the universal platform")
+	}
+	if s := step(t, b, "Build with Wails"); !strings.Contains(s, cgoCFlags) || !strings.Contains(s, cgoLDFlags) {
+		t.Errorf("Build with Wails lacks the macOS 14 CGO variables:\n%s", s)
+	}
+	if s := step(t, b, buildGate); !strings.Contains(s, "run: bash scripts/verify-bundle.sh build/bin/Portty.app") {
+		t.Errorf("the bundle gate does not run verify-bundle.sh:\n%s", s)
+	}
+	if !before(b, "- name: Build with Wails\n", "- name: "+buildGate) || !before(b, "- name: "+buildGate, "- name: Upload macOS artifact\n") {
+		t.Error("the bundle gate is not between the build and the upload")
+	}
+	if s := step(t, b, "Run bundle gate tests (REL-01)"); !strings.Contains(s, "run: bash tests/verify-bundle.test.sh") {
+		t.Errorf("the gate tests step does not run tests/verify-bundle.test.sh:\n%s", s)
+	}
+}
+
+func TestVerifyBundle_PinsTeamAndDR(t *testing.T) {
+	v := readRepoFile(t, "scripts/verify-bundle.sh")
+	for _, want := range []string{
+		`TEAM_ID="` + TeamID + `"`,
+		`BUNDLE_ID="app.portty.Portty"`,
+		"DESIGNATED_REQUIREMENT='" + v12DesignatedRequirement + "'",
+	} {
+		if !strings.Contains(v, want) {
+			t.Errorf("verify-bundle.sh lacks %q", want)
+		}
+	}
+	sign := readRepoFile(t, "scripts/sign-bundle.sh")
+	if !strings.Contains(sign, `BUNDLE_ID="app.portty.Portty"`) {
+		t.Error(`sign-bundle.sh lacks BUNDLE_ID="app.portty.Portty"`)
+	}
+	for _, line := range strings.Split(sign, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") && strings.Contains(line, "--deep") {
+			t.Errorf("sign-bundle.sh signs with --deep: %s", line)
+		}
 	}
 }
