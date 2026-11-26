@@ -15,6 +15,16 @@
 #   legacy-plist           VM: write and bootstrap the old kardianos portty-daemon agent
 #   clean                  VM: Quit All, bootout and remove both plists, remove the app and ~/p19
 #
+# 19-12 (real media path; office = portty-test captures, home = portty-test-2 views; vm2 is the
+# ssh helper for the home VM):
+#   enable-desktop         office: PUT /desktop on; the link goes to ~/p19/link.txt in both guests
+#   safari-stats [SECS] [keep|reuse]   home: safaridriver, open the link#debug, print __desktopStats
+#   safari-close           home: end a kept Safari session
+#   chrome-stats [SECS]    home: Chrome (temporary profile, DevTools on loopback), print page titles
+#   assertions             office: pmset assertions naming Portty
+#   lsof-desktop           office: the daemon's UDP/TCP sockets, tailnet address shown generically
+#   pcap START|STOP        office: tcpdump counts for UDP 3478, 19302, 5353 by process
+#
 # It lives under .planning on purpose (like p18-rig.sh): tests/check-brand.sh keeps the
 # vmpreview tag out of scripts/, build.sh and .github. Every launchctl call, kill, rm and
 # /Applications write runs inside the Tart VM through vm.sh; the host side only builds, signs
@@ -279,6 +289,165 @@ exit 0
 EOF
 }
 
+# ---- 19-12: the real media path, office (capture) to home (viewer) -------------------------------
+# Everything below acts inside the two VMs. The share link goes office -> home through one ssh
+# pipe and is only ever written to ~/p19/link.txt in each guest; no output carries it, a
+# tailnet address or a tailnet name (scrub below).
+
+VM2_NAME="${P19_VM2_NAME:-portty-test-2}"
+# vm2 runs a command inside the home VM with the same key vm.sh uses (its address from tart).
+vm2() {
+  ssh -i "$HOME/.ssh/transom_demo_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR "admin@$(tart ip "$VM2_NAME")" "$@"
+}
+vm2sh() { vm2 bash -s -- "$@"; }
+require_vm2() {
+  tart list | awk -v n="$VM2_NAME" '$2 == n && $NF == "running" {f = 1} END {exit !f}' ||
+    die "$VM2_NAME is not running (tart list)"
+}
+# scrub: the VM home shows as ~; tailnet addresses, names and capability tokens never survive.
+scrub() {
+  sed -E -e 's#/Users/[A-Za-z0-9._-]*#~#g' -e 's#100\.[0-9]+\.[0-9]+\.[0-9]+#100.x.x.N#g' \
+    -e 's#[A-Za-z0-9.-]+\.ts\.net#TAILNET-NAME#g' -e 's#cap=[^& "]*#CAP-REDACTED#g'
+}
+
+cmd_enable_desktop() {
+  require_vm
+  require_vm2
+  vmsh <<EOF | scrub
+$VM_COMMON
+mkdir -p ~/p19; chmod 700 ~/p19
+resp=\$(curl -s -m 90 -X PUT --unix-socket "\$SOCK" -H 'Content-Type: application/json' -d '{"alwaysAvailable":true}' http://localhost/desktop)
+printf '%s' "\$resp" | jq -r '.url // empty' > ~/p19/link.txt
+chmod 600 ~/p19/link.txt
+echo "enable-desktop: \$(printf '%s' "\$resp" | jq -c 'del(.url)' 2>&1) link_bytes=\$(wc -c < ~/p19/link.txt | tr -d ' ')"
+exit 0
+EOF
+  [ "$(vm 'wc -c < ~/p19/link.txt | tr -d " "')" -gt 0 ] || die "enable-desktop: the daemon returned no link"
+  vm 'cat ~/p19/link.txt' |
+    vm2 'mkdir -p ~/p19 && chmod 700 ~/p19 && cat > ~/p19/link.txt && chmod 600 ~/p19/link.txt && echo "link_bytes_home=$(wc -c < ~/p19/link.txt | tr -d " ")"'
+}
+
+# safari-stats [SECS] [keep|reuse]: Safari in the home VM through safaridriver. Default opens the
+# link with #debug, prints window.__desktopStats and the page title once a second for SECS (20)
+# and closes the session; keep leaves the session (and the viewer) open, reuse polls it again.
+cmd_safari_stats() {
+  local secs=${1:-20} mode=${2:-}
+  require_vm2
+  vm2sh "$secs" "$mode" <<'EOF' | scrub
+secs=$1; mode=$2
+D=http://127.0.0.1:4444
+if [ "$mode" != reuse ]; then
+  echo admin | sudo -S -p '' safaridriver --enable >/dev/null 2>&1
+  pkill -x safaridriver 2>/dev/null; sleep 1
+  safaridriver -p 4444 >~/p19/safaridriver.log 2>&1 &
+  sleep 2
+  SID=$(curl -s -m 60 -X POST $D/session -d '{"capabilities":{"alwaysMatch":{"browserName":"safari"}}}' | jq -r '.value.sessionId // empty')
+  [ -n "$SID" ] || { echo "safari-stats: no session"; tail -3 ~/p19/safaridriver.log; exit 1; }
+  echo "$SID" > ~/p19/safari.sid
+  curl -s -m 60 -X POST $D/session/$SID/url -d "$(jq -nc --arg u "$(cat ~/p19/link.txt)#debug" '{url:$u}')" >/dev/null
+fi
+SID=$(cat ~/p19/safari.sid)
+for i in $(seq 1 $secs); do
+  s=$(curl -s -m 10 -X POST $D/session/$SID/execute/sync -d '{"script":"return JSON.stringify(window.__desktopStats||null)","args":[]}' | jq -r '.value|tostring')
+  t=$(curl -s -m 10 $D/session/$SID/title | jq -r '.value|tostring')
+  echo "p19-safari t=$i stats=$s title=$t"
+  sleep 1
+done
+if [ "$mode" != keep ] && [ "$mode" != reuse ]; then
+  curl -s -m 10 -X DELETE $D/session/$SID >/dev/null; pkill -x safaridriver; rm -f ~/p19/safari.sid
+fi
+exit 0
+EOF
+}
+
+cmd_safari_close() {
+  require_vm2
+  vm2sh <<'EOF'
+[ -f ~/p19/safari.sid ] && curl -s -m 10 -X DELETE http://127.0.0.1:4444/session/$(cat ~/p19/safari.sid) >/dev/null
+pkill -x safaridriver; rm -f ~/p19/safari.sid
+echo "safari session closed"
+exit 0
+EOF
+}
+
+# chrome-stats [SECS]: Chrome with a temporary profile and DevTools on 127.0.0.1 in the home VM;
+# prints the page titles (the viewer's debug title carries fd, fw, csp, st) once a second.
+cmd_chrome_stats() {
+  local secs=${1:-20}
+  require_vm2
+  vm2sh "$secs" <<'EOF' | scrub
+secs=$1
+pkill -f p19-chrome-profile 2>/dev/null; sleep 1
+rm -rf /tmp/p19-chrome-profile
+open -na "Google Chrome" --args --user-data-dir=/tmp/p19-chrome-profile --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check "$(cat ~/p19/link.txt)#debug"
+for i in $(seq 1 $secs); do
+  sleep 1
+  echo "p19-chrome t=$i titles=$(curl -s -m 3 http://127.0.0.1:9222/json | jq -r '[.[]|select(.type=="page")|.title]|join(" | ")')"
+done
+pkill -f p19-chrome-profile
+exit 0
+EOF
+}
+
+# assertions: the Portty power assertions in the office VM (pmset), plus the power source.
+cmd_assertions() {
+  require_vm
+  vmsh <<'EOF' | scrub
+echo "p19-assertions vm_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+pmset -g batt | head -1
+pmset -g assertions | grep -E 'Portty|PreventUserIdle(System|Display)Sleep +[0-9]'
+exit 0
+EOF
+}
+
+# lsof-desktop: the office daemon's UDP and TCP sockets, the VM's tailnet address shown as
+# "tailnet address".
+cmd_lsof_desktop() {
+  require_vm
+  vmsh <<EOF | scrub
+$VM_COMMON
+tip=\$(/usr/local/bin/tailscale ip -4 | head -1)
+for p in \$(daemon_pids); do
+  echo "p19-lsof daemon pid \$p"
+  lsof -nP -a -p \$p -iUDP -iTCP 2>/dev/null | sed -e "s#\$tip#tailnet address#g"
+done
+exit 0
+EOF
+}
+
+# pcap START|STOP: tcpdump in the office VM for the STUN, TURN-alt and mDNS ports, with the
+# process behind each packet (pktap, -k NP). STOP prints counts only, never packet contents.
+cmd_pcap() {
+  require_vm
+  case "${1:-}" in
+    START)
+      vmsh <<'EOF'
+mkdir -p ~/p19
+echo admin | sudo -S -p '' sh -c 'pkill tcpdump; rm -f '"$HOME"'/p19/b1.pcap'
+echo admin | sudo -S -p '' sh -c 'nohup tcpdump -i pktap,all -k NP -n -w '"$HOME"'/p19/b1.pcap "udp port 3478 or udp port 19302 or udp port 5353" >'"$HOME"'/p19/tcpdump.log 2>&1 &'
+sleep 2
+echo "pcap started"
+exit 0
+EOF
+      ;;
+    STOP)
+      vmsh <<'EOF' | scrub
+echo admin | sudo -S -p '' pkill -INT tcpdump
+sleep 2
+f=$HOME/p19/b1.pcap
+echo "p19-pcap total_packets=$(tcpdump -r $f -n 2>/dev/null | wc -l | tr -d ' ')"
+echo "p19-pcap portty_packets=$(tcpdump -r $f -k NP -n 2>/dev/null | grep -c '(proc Portty:')"
+echo "p19-pcap by_process:"
+tcpdump -r $f -k NP -n 2>/dev/null | sed -nE 's/.*\(proc ([^:)]*):.*/\1/p' | sort | uniq -c
+exit 0
+EOF
+      ;;
+    *) die "usage: pcap START|STOP" ;;
+  esac
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case "$sub" in
@@ -291,5 +460,12 @@ case "$sub" in
   quit-all) cmd_quit_all ;;
   legacy-plist) cmd_legacy_plist ;;
   clean) cmd_clean ;;
-  *) die "usage: $0 build|deploy|start-gui|sessions|state|quit-gui|quit-all|legacy-plist|clean ..." ;;
+  enable-desktop) cmd_enable_desktop ;;
+  safari-stats) cmd_safari_stats "$@" ;;
+  safari-close) cmd_safari_close ;;
+  chrome-stats) cmd_chrome_stats "$@" ;;
+  assertions) cmd_assertions ;;
+  lsof-desktop) cmd_lsof_desktop ;;
+  pcap) cmd_pcap "$@" ;;
+  *) die "usage: $0 build|deploy|start-gui|sessions|state|quit-gui|quit-all|legacy-plist|clean|enable-desktop|safari-stats|safari-close|chrome-stats|assertions|lsof-desktop|pcap ..." ;;
 esac

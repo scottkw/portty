@@ -1,0 +1,50 @@
+p19-state row=M1 vm_utc=2026-11-26T19:18:21Z epoch=1795720701
+installed_version=19.1.0
+--- launchd app.portty.Portty.daemon
+plist_exists=yes
+{   "AbandonProcessGroup" => true   "KeepAlive" => {     "SuccessfulExit" => false   }   "Label" => "app.portty.Portty.daemon"   "ProgramArguments" => [     0 => "/Applications/Portty.app/Contents/MacOS/Portty"     1 => "daemon"   ]   "RunAtLoad" => true } 
+	state = running
+	runs = 7
+	pid = 41613
+	last exit code = 0
+		state = active
+		state = active
+--- launchd portty-daemon
+plist_exists=no
+Could not find service "portty-daemon" in domain for user gui: 501
+--- launchctl print-disabled (portty labels)
+		"app.portty.Portty.daemon" => enabled
+		"portty-daemon" => enabled
+--- processes (pid ppid etime args)
+41613     1       03:47 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- health
+{"status":"ok","version":"v19.1.0","api":5,"handoff":1,"launchd":true,"pid":41613}
+
+daemon_pids=41613
+daemon 41613 ppid=1 xpc_service_name=app.portty.Portty.daemon
+--- sessions (id, shell pid, alive, ticks, last file tick age, max gap s, last pty tick age)
+--- daemon.log.1 / daemon.log (mtime, size) and daemon.log tail
+daemon.log 177 bytes mtime 19:17:50
+daemon.log.1 325 bytes mtime 18:32:42
+2026/11/26 19:17:33.363024 INFO desktop: viewer joined viewer=b3ca12b4 viewers=1
+2026/11/26 19:17:50.739216 WARN desktop: nudge failed err="the pointer did not move and return"
+--- gui.log tail (open --stderr, from start-gui; update-check noise dropped)
+2026/11/26 18:21:02 daemon: launchd agent: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
+2026/11/26 18:21:02 daemon: started without launchd: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
+2026/11/26 18:22:26 daemon: launchd agent: ready (state 0)
+2026/11/26 18:22:26 daemon: re-home requested
+2026/11/26 18:26:12 daemon: launchd agent: ready (state 0)
+2026/11/26 18:26:13 daemon: re-home requested
+2026/11/26 18:27:28 daemon: launchd agent: ready (state 0)
+2026/11/26 18:27:28 daemon: re-home requested
+2026/11/26 18:27:28 daemon: legacy agent cleanup deferred to the next start
+2026/11/26 18:28:41 daemon: launchd agent: ready (state 0)
+2026/11/26 18:28:41 daemon: re-home requested
+2026/11/26 18:28:41 daemon: legacy agent cleanup deferred to the next start
+2026/11/26 18:29:06 daemon: launchd agent: ready (state 0)
+2026/11/26 18:30:17 daemon: launchd agent: ready (state 0)
+2026/11/26 18:31:46 daemon: launchd agent: ready (state 0)
+2026/11/26 18:32:40 daemon: launchd agent: ready (state 0)
+2026/11/26 18:32:40 daemon: re-home requested
+2026/11/26 19:14:34 daemon: launchd agent: ready (state 0)
+2026/11/26 19:14:45 update: up to date

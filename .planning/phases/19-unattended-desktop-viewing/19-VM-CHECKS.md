@@ -36,3 +36,20 @@ Evidence files are in `evidence/` (written by `p19-rig.sh state ROW`; home paths
 - **Not checked here:** that the Login Items URL (`x-apple.systempreferences:com.apple.LoginItems-Settings.extension`) opens the right pane on macOS 27.2, and the Settings needs-repair row; both need the Settings UI and are 19-13 / 19-15 F1 work (the plan scopes them out of 19-07).
 - Tick gaps are measured in whole epoch seconds from a 1 s sleep loop, so an undisturbed shell reads a max gap of 1 to 2.
 - The GUI's stderr is captured by starting it with `open --stderr` (rig `start-gui`), from row V2 on.
+
+# Plan 19-12: the real media path, power, permission and notification rows (macOS 27.2)
+
+Rig: the same `p19-rig.sh` (new subcommands `enable-desktop`, `safari-stats`, `safari-close`, `chrome-stats`, `assertions`, `lsof-desktop`, `pcap`, `vm2` ssh helper). Roles: portty-test = office (captures, runs Portty under launchd), portty-test-2 = home (views). Both guests were Running on the tailnet before the first row (each sees the other); the guests connect through DERP, so the direct path is not judged here (office-Mac M-row, 19-16). All viewer traffic originated inside portty-test-2; the host never contacted a tailnet address, the share link or the host's tailscaled. The share link went office to home through one ssh pipe into `~/p19/link.txt` in each guest and is in no evidence file.
+
+| Build | Version | Tags | Signing |
+|-------|---------|------|---------|
+| N | 19.1.0 | `wailsassets` (no VM tag, real tailnet) | Developer ID, hardened runtime, `build/entitlements.plist`, identifier app.portty.Portty |
+
+| Row | Requirement | Steps (short) | Verdict | Evidence |
+|-----|-------------|---------------|---------|----------|
+| M1 | DVWR-02, DESK-01, DPRM-01 | deploy N to portty-test (launchd job from the GUI start); `GET /desktop/permissions` read `{sr:false, ax:false}`; `POST /desktop/test-capture` (409) raised the system Screen Recording prompt, Open System Settings, toggled Portty on (admin password), Later on Quit and Reopen; permissions read `sr:true` at once; test capture 200 (512x288 JPEG); opened the Accessibility pane, answered the picker-bypass dialog with Allow, toggled Portty on; permissions `{sr:true, ax:true}`; `enable-desktop`; GUI quit (SIGTERM); Safari in portty-test-2 through safaridriver opened the link with `#debug` | PASS | `evidence/M1.state`: only the launchd daemon (pid 41613, ppid 1, XPC_SERVICE_NAME the label, `/health launchd:true`), no `Portty` GUI process; `evidence/M1.safari` (14 polls, a kept session): status streaming, state streaming, viewers 1, framesDecoded rising (28, 29, ... on 1 s polls), frameWidth 2560 x 1440, cspViolations 0; first connect (20 polls, not saved): connecting at 2 s, streaming at 3 s, 16 frames and 2560 x 1440 at 4 s, 19 frames at 20 s; the VM display is 2560 x 1440 pixels (`screencapture` native size), so the capture width equals the frame width; `evidence/M1-thumb.jpg` (the VM's own screen). The daemon logs no capture size, so the display's native size stands in for "the width the daemon logged" |
+<!-- 19-12 rows -->
+
+## Findings from 19-12
+
+<!-- 19-12 findings -->
