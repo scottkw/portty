@@ -56,7 +56,7 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
 **Holds for every phase:** Terminal sessions and their upgrade handoff never regress. Reliability comes first, because nobody can get to the unattended office Mac to fix it. Links stay token-gated and tailnet-only. There is no STUN, TURN, relay or cloud dependency. The CSP stays unchanged except for what a recorded security review approves. The stack stays Wails v2, the look stays macOS-native, and simplicity is the default. Every phase that adds, renames or removes tests updates TESTING.md: the Section 2 manifest, Section 4 traceability rows (repo-relative paths, checked with `bash tests/check-traceability-paths.sh`), and Section 5 M-NN items for anything the Tart VMs cannot prove. Capture, hardware encode, TCC, lock-screen, display and iPhone checks run on the user's real Macs as M-NN rows. The Tart VMs have no hardware encoder or TCC automation, and research subagents never touch this host's live tailscaled.
 
 - [x] **Phase 17: Desktop Feasibility Spike** - A throwaway capture → encode → pion → browser path on a real Mac settles every risky assumption with a recorded go/no-go, and the capture-host architecture is decided from that evidence (completed 2026-11-25)
-- [ ] **Phase 18: Self-Installing Updates** - Update verifies, replaces `/Applications/Portty.app`, relaunches, cleans up the DMG and rolls back a version that won't start; a first launch from a mounted DMG moves itself into place; sessions survive
+- [x] **Phase 18: Self-Installing Updates** - Update verifies, replaces `/Applications/Portty.app`, relaunches, cleans up the DMG and rolls back a version that won't start; a first launch from a mounted DMG moves itself into place; sessions survive (completed 2026-11-26; human verification deferred, see 18-UAT.md)
 - [ ] **Phase 18.1: Apple Silicon Release Pipeline** (INSERTED) - One arm64-only build published under both DMG names, inside-out signing with the v1.2 designated requirement, every nested binary signed, notarized and verified in CI, minimum macOS 14 enforced at build time
 - [ ] **Phase 19: Unattended Desktop Viewing** - Always-available desktop for your own Macs: guided permissions, live view in Chrome and Safari with nobody at the Mac, visible state, display kept awake, automatic reconnect, media on the tailnet only
 - [ ] **Phase 20: Remote Control** - Pointer, keyboard, Send-keys menu and explicit clipboard from any viewer; the sharer picks a display or a single window and switches displays mid-session
@@ -297,7 +297,7 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
-| 18. Self-Installing Updates | v2.0 | 10/10 | In Progress | - |
+| 18. Self-Installing Updates | v2.0 | 10/10 | Complete    | 2026-11-26 |
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 2/4 | In Progress | - |
 | 19. Unattended Desktop Viewing | v2.0 | 0/17 | Planned | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |

@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Desktop Sharing
-current_phase: 18
-current_phase_name: Self-Installing Updates
+current_phase: 18.1
+current_phase_name: Apple Silicon Release Pipeline
 status: executing
-stopped_at: Phase 17 complete, ready to plan Phase 18
+stopped_at: Phase 18 complete (human verification deferred), Phase 18.1 next
 last_updated: "2026-11-25T22:55:52.056Z"
-last_activity: 2026-11-25
-last_activity_desc: Phase 18 execution started
+last_activity: 2026-11-26
+last_activity_desc: Phase 18 closed with human_needed items tracked in 18-UAT.md
 state_head: bd893eb6417e059f32616a7cfded9ba720e8fc55
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 21
   completed_plans: 13
   percent: 13
@@ -29,13 +29,9 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 
 ## Current Position
 
-Phase: 18 (Self-Installing Updates) — EXECUTING
-Plan: 1 of 9
-Status: Executing Phase 18
-Last activity: 2026-11-25 — Phase 18 execution started
-
-Progress: [█░░░░░░░░░] 13%
-
+Phase: 18.1 (Apple Silicon Release Pipeline) — next
+Status: Phase 18 complete 2026-11-26 (verification human_needed, deferred; see Deferred Verification)
+Last activity: 2026-11-26 — Phase 18 closed; late first-install failure message fix runs as a quick task
 
 ## Performance Metrics
 
@@ -411,6 +407,7 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
+- [v2.0 Phase 18, tracked 2026-11-26]: RC-WR04-stall (18-VM-CHECKS.md, OBSERVED, cause unknown): during a keep-daemon rollback run in portty-test both sessions' output stalled about 17 min (same pids, no gaps) and resumed when a CLI viewer attached. Verifier: no Phase 18 code was running when it began; likely pre-existing daemon/relay or VM behaviour, but Phase 18 creates the setup (older GUI on a newer kept daemon). A separate debug soak (GUI viewer only, same-version and keep-daemon pairs) investigates it in parallel. Reliability-first: keep open until the soak reports.
 - [v2.0]: Apple's persistent-content-capture entitlement request: filed, awaiting Apple (filed 2026-11-25, Request ID T558S9Q5B3, App ID app.portty.Portty; reported waits weeks to 2+ months); until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
 - [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
 - [v2.0 REL-01]: v1.2.x updaters look only for `portty-v<ver>-darwin-universal.dmg` and identifier `portty-v<ver>-darwin-universal` (internal/updater/update.go DMGAssetName, install.go Clean, release.yml); an arm64-only rename would strand v1.2 installs unless the old name stays or both ship
@@ -515,12 +512,15 @@ Items acknowledged and deferred at milestone close, most recent first:
 | 4 | verification_deferred_human | /gsd-verify-work 4 |
 | 5 | verification_deferred_human | /gsd-verify-work 5 |
 | 6 | verification_deferred_human | /gsd-verify-work 6 |
+| 18 | verification_deferred_human | /gsd-verify-work 18 |
 
 Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appearance, VoiceOver) need both Macs. The user deferred them on 2026-11-16 ("push that UAT until later and move on"). Item 1 passed.
 
 Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHub; repo private) cannot run in the VM; deferred on 2026-11-16 the same way. M-71 and M-72 passed in the VM.
 
 Phase 5: VM matrix, post-review regression, iteration-3 spot check and browser view all ran on two Tart VMs over the real tailnet. Two-physical-Mac items M-84 (overnight reattach, VERF-01 gate) and M-85 (lid sleep + real Wi-Fi AP switch) deferred by the user on 2026-11-18 ("Defer, keep going"). The milestone audit lists them.
+
+Phase 18: verification human_needed (14/15, no blocking gaps); closed 2026-11-26 by user decision. Tracked in 18-UAT.md: M-169 parts 1-2 on the office Mac (SC1's office-Mac half), real Gatekeeper enforcement (VM assessments disabled), M-170 Downloads prompt with a Developer ID release, M-171 Finder Put Back.
 
 Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verification 7/7, human_needed. Real-release items (M-93: first v* tag CI run with DMG identifier signing, notarize and staple; notarized DMG verify and reveal; delivered notification) need a public repo and release secrets, so they wait for the first real release. U-06 noasset re-run after WR-04 is still to do in the VM.
 
