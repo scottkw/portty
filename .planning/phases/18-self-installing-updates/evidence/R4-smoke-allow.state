@@ -1,0 +1,26 @@
+p18-state row=R4-smoke-allow vm_utc=2026-11-26T04:54:30Z
+installed_version=1.8.1
+gui_pid_count=1
+daemon_version=v1.8.1
+attached_images=1
+cache_dmgs=0
+staging_dirs=0
+run_dirs=0
+trash_portty=0
+--- gui pids and executables
+83340 /Applications/Portty.app/Contents/MacOS/Portty
+--- daemon pids and executables
+83358 /Applications/Portty.app/Contents/MacOS/Portty
+--- attached images
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/d1b36c40ecf011c1a2dfeacc93215881ad4cf525.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+--- update cache
+total 0
+drwx------  2 admin  staff   64 Nov 26 02:07 .
+drwxr-xr-x  5 admin  staff  160 Nov 25 22:50 ..
+--- staging dirs
+--- run dirs
+--- trash: Portty bundles, version, ctime (the move into the Trash; 18-05)
+--- update.log tail
+update: installer started (copy 56ms, start 460ms)
+2026/11/26 04:53:12 vmpreview: verify-mode adhoc
+2026/11/26 04:53:17 installer: updated 

@@ -1,0 +1,67 @@
+04:53:06.285Z dmg in Downloads: 7940308 ~/Downloads/portty-v1.8.1-darwin-universal.dmg xattrs: [com.apple.FinderInfo com.apple.macl ]
+04:53:07.829Z open dmg
+04:53:08.489Z volume: /Volumes/Portty/Portty.app
+04:53:08.529Z open app (T0)
+04:53:08.672Z open rc=0
+during-prompt capture at 04:53:19.267Z
+--- prompt (AX of UserNotificationCenter)
+ AXStaticText Value=“Portty” would like to access files in your Downloads folder. @531,220 218x39
+ AXStaticText @531,127 2x20
+ AXButton Description=Help @729,132 30x30
+ AXButton Title=Don’t Allow @525,274 112x30
+ AXButton Title=Allow @643,274 112x30
+--- windows: UserNotificationCenter||L8; Portty|Portty|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- installer processes (pid, elapsed, args)
+83239       00:09 ~/Library/Application Support/portty/update/run-3759046786/Portty.app/Contents/MacOS/Portty install-update ~/Library/Application Support/portty/update/run-3759046786/job.json
+--- result file (mtime UTC, content)
+mtime=04:53:17
+{"v":1,"outcome":"updated","oldVersion":"","newVersion":"1.8.1","reason":"","keepDaemon":false,"dmg":""}
+--- run dirs: 1
+--- update.log tail
+update: installer started (copy 56ms, start 460ms)
+2026/11/26 04:53:12 vmpreview: verify-mode adhoc
+2026/11/26 04:53:17 installer: updated 
+--- downloads: .localized portty-v1.8.1-darwin-universal.dmg 
+--- trash dmg: 0
+--- gui and daemon
+83340 /Applications/Portty.app/Contents/MacOS/Portty
+83358 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- installed: 1.8.1 volume: gone images naming portty: 0 staging: 0
+R4-smoke extra vm_utc=2026-11-26T04:53:53Z build=1.8.1 rig of 79be910c
+--- trash (dmg entries, size, ctime)
+portty-v1.8.1-darwin-universal.dmg 7940308 04:53:38
+--- downloads: .localized 
+--- installer processes: 0
+--- run dirs: 0
+--- home Applications Portty: 0
+--- /Applications staging dirs: 0
+--- installed app quarantine lines: 0
+--- hdiutil images naming portty: 0
+--- update.log tail
+update: installer started (copy 56ms, start 460ms)
+2026/11/26 04:53:12 vmpreview: verify-mode adhoc
+2026/11/26 04:53:17 installer: updated 
+--- timeline (0.4 s poller, changes only)
+04:53:06.545Z guis=[] daemons=[] installer=[] image=0 vol=gone app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0
+04:53:08.307Z guis=[] daemons=[] installer=[] image=2 vol=gone app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0
+04:53:09.622Z guis=[83141:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=2 vol=mounted app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0
+04:53:11.168Z guis=[83141:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=2 vol=mounted app= staging=1 run_dirs=1 result= dl_dmg=1 trash_dmg=0
+04:53:12.178Z guis=[] daemons=[] installer=[83239 ] image=2 vol=mounted app= staging=1 run_dirs=1 result= dl_dmg=1 trash_dmg=0
+04:53:15.606Z guis=[] daemons=[] installer=[83239 ] image=0 vol=gone app=1.8.1 staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0
+04:53:18.623Z guis=[83340:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[83358:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[83239 ] image=0 vol=gone app=1.8.1 staging=0 run_dirs=1 result=updated dl_dmg=1 trash_dmg=0
+04:53:36.933Z guis=[83340:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[83358:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=0 vol=gone app=1.8.1 staging=0 run_dirs=0 result=updated dl_dmg=0 trash_dmg=1
+--- window list (1 s, changes only)
+04:53:06.471Z Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+04:53:09.399Z Finder|Portty|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+04:53:15.975Z Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+04:53:18.471Z UserNotificationCenter||L8; Portty|Portty|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+04:53:36.703Z Portty|Portty|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- tccd Downloads-service lines, 04:53:00 to 04:54:00 UTC
+2026-11-26 04:53:17.772617+0000  localhost tccd[73443]: [com.apple.TCC:access] AUTHREQ_PROMPTING: msgID=74599.145, service=kTCCServiceSystemPolicyDownloadsFolder, subject=Sub:{app.portty.Portty}Resp:{TCCDProcess: identifier=app.portty.Portty, pid=83239, auid=501, euid=501, binary_path=~/Library/Application Support/portty/update/run-3759046786/Portty.app/Contents/MacOS/Portty},
+2026-11-26 04:53:34.959091+0000  localhost tccd[73443]: [com.apple.TCC:events] Publishing <TCCDEvent: type=Create, service=kTCCServiceSystemPolicyDownloadsFolder, identifier_type=Bundle ID, identifier=app.portty.Portty> to 4 subscribers: {
+    490 = "<TCCDEventSubscriber: token=490, state=Passed, csid=com.apple.photolibraryd>";
+    475 = "<TCCDEventSubscriber: token=475, state=Initial, csid=(null)>";
+    491 = "<TCCDEventSubscriber: token=491, state=Passed, csid=com.apple.chronod>";
+    480 = "<TCCDEventSubscriber: token=480, state=Initial, csid=(null)>";
+}
+--- tccd proc_pidpath failures, 04:53:00 to 04:54:00 UTC: 0

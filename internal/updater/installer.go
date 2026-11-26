@@ -322,6 +322,7 @@ type InstallerEnv struct {
 	GUIPids       func(exe string) ([]int, error)
 	DaemonVersion func() (string, error)
 	Trash         func(path string) error
+	RemoveRunDir  func() // the mover kinds call it after the DMG Trash returns or times out; may be nil
 	ResultPath    string
 	Now           func() time.Time
 	Sleep         func(time.Duration)
@@ -329,6 +330,9 @@ type InstallerEnv struct {
 }
 
 const installerPoll = 200 * time.Millisecond
+
+// trashWait bounds the DMG Trash, which can wait on an unanswered Downloads prompt; a var for tests.
+var trashWait = time.Minute
 
 // ParseGUIPids returns the pids in `ps -o pid=,args=` output whose process is a Portty GUI run
 // from exe: args exactly exe, or exe followed by a launch-services argument (-psn_, -NS, -Apple,
@@ -489,9 +493,18 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 			detached = true
 		}
 	}
-	// trashImage moves the DMG Portty was launched from to the Trash (UPD-08): only after its volume
-	// was ejected, and only while it still passes imageFileOK. A DMG already gone is fine.
-	trashImage := func() {
+	// finishTrash writes the outcome, then moves the DMG Portty was launched from to the Trash
+	// (UPD-08): only after its volume was ejected, and only while it still passes imageFileOK. A DMG
+	// already gone is fine. Trashing a file in ~/Downloads can wait on the system's one-time
+	// Downloads prompt (18-06 R4-smoke), so the outcome is recorded first and the wait is bounded;
+	// an unanswered or refused prompt keeps the DMG and changes no outcome. The run folder goes
+	// last: it holds this installer's executable, and tccd refuses without a prompt once that is
+	// deleted (R4-smoke-rundir-first).
+	finishTrash := func(outcome string) Result {
+		finish(outcome, "")
+		if env.RemoveRunDir != nil {
+			defer env.RemoveRunDir()
+		}
 		switch {
 		case !detached || env.Trash == nil:
 		case !imageFileOK(j.ImagePath):
@@ -499,18 +512,25 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 				env.Logf("installer: dmg kept: not a Portty download")
 			}
 		default:
-			if err := env.Trash(j.ImagePath); err != nil {
-				env.Logf("installer: dmg kept: %v", err)
+			done := make(chan error, 1)
+			go func() { done <- env.Trash(j.ImagePath) }()
+			select {
+			case err := <-done:
+				if err != nil {
+					env.Logf("installer: dmg kept: %v", err)
+				}
+			case <-time.After(trashWait):
+				env.Logf("installer: dmg kept: no answer to the Trash within %v", trashWait)
 			}
 		}
+		return r
 	}
 	if j.Kind == KindOpenInstalled {
 		if err := relaunch(ctx, env, j.Target); err != nil {
 			env.Logf("installer: open failed")
 			return finish(OutcomeFailed, "open")
 		}
-		trashImage()
-		return finish(OutcomeOpened, "")
+		return finishTrash(OutcomeOpened)
 	}
 	if mover && existed {
 		stopGUIs() // a GUI of the older installed copy (P4: opening the DMG's app starts a second GUI)
@@ -574,8 +594,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 		}
 	}
 	if mover {
-		trashImage()
-	} else if err := os.Remove(j.DMG); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return finishTrash(OutcomeUpdated)
+	}
+	if err := os.Remove(j.DMG); err != nil && !errors.Is(err, os.ErrNotExist) {
 		env.Logf("installer: dmg not removed")
 	}
 	return finish(OutcomeUpdated, "")
