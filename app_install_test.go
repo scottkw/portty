@@ -236,8 +236,6 @@ func TestSweep_StagingDirs(t *testing.T) {
 	s := newSwSweep(t)
 	stale := filepath.Join(s.parent, updater.StagingPrefix+"stale")
 	staleApp := s.mkBundle(stale, updater.BundleName, 2*time.Hour)
-	staged := filepath.Join(s.parent, updater.StagingPrefix+"staged")
-	stagedApp := s.mkBundle(staged, "Portty.staged", 2*time.Hour)
 	fresh := filepath.Join(s.parent, updater.StagingPrefix+"fresh")
 	s.mkBundle(fresh, updater.BundleName, sweepAge-time.Minute)
 	other := filepath.Join(s.parent, "Portty-update-old")
@@ -260,11 +258,10 @@ func TestSweep_StagingDirs(t *testing.T) {
 
 	s.run()
 
-	slices.Sort(s.trashed)
-	if want := []string{stagedApp, staleApp}; !slices.Equal(s.trashed, want) {
+	if want := []string{staleApp}; !slices.Equal(s.trashed, want) {
 		t.Errorf("trashed %v, want %v", s.trashed, want)
 	}
-	if swExists(stale) || swExists(staged) {
+	if swExists(stale) {
 		t.Error("an emptied stale staging dir was not removed")
 	}
 	for _, p := range []string{filepath.Join(fresh, updater.BundleName), filepath.Join(other, updater.BundleName), link, filepath.Join(elsewhere, updater.BundleName), filepath.Join(linked, updater.BundleName)} {

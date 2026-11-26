@@ -237,9 +237,9 @@ func sweepUpdateLeftovers(ctx context.Context, now time.Time) {
 	sweepDirs(ctx, now, sweepParents(), updateWorkDir(), updateCacheDir())
 }
 
-// sweepDirs: in parents, a .Portty-update-* dir older than sweepAge has its Portty.app and
-// Portty.staged moved to the Trash (never deleted; a refused Trash leaves them for the next
-// start) and is then removed if empty. In work, run-* dirs older than sweepAge are removed: they
+// sweepDirs: in parents, a .Portty-update-* dir older than sweepAge has its Portty.app moved to
+// the Trash (never deleted; a refused Trash leaves it for the next start) and is then removed if
+// empty. In work, run-* dirs older than sweepAge are removed: they
 // hold only Portty's own job file, marker and installer copy, never the user's app. In cache,
 // mnt-* dirs are detached (no age floor: no stage runs in a process that is just starting).
 // Symlinks are never followed or touched.
@@ -261,11 +261,8 @@ func sweepDirs(ctx context.Context, now time.Time, parents []string, work, cache
 	var trashed, kept, runs, detached int
 	for _, parent := range parents {
 		for _, dir := range entries(parent, updater.StagingPrefix, true) {
-			for _, name := range []string{updater.BundleName, "Portty.staged"} {
-				if !isRealDir(filepath.Join(dir, name)) {
-					continue
-				}
-				if err := trashItemFunc(filepath.Join(dir, name)); err != nil {
+			if app := filepath.Join(dir, updater.BundleName); isRealDir(app) {
+				if err := trashItemFunc(app); err != nil {
 					kept++
 					updateLogf("update: sweep: old copy kept aside: %v", err)
 				} else {
