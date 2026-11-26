@@ -19,6 +19,7 @@ int pc_encode_synthetic(uintptr_t handle, int frames, int width, int height, int
 import "C"
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -130,3 +131,27 @@ func encodeSyntheticForTest(frames, width, height int, force, rebuildAt int, reb
 	// callback has run and the slices are quiescent.
 	return units, errors.Join(errs...)
 }
+
+// RED skeleton for Task 2: every method is a stub the tests fail against.
+
+// DisplaySource captures the main display (stub).
+type DisplaySource struct{}
+
+var _ Source = (*DisplaySource)(nil)
+
+// NewDisplaySource returns a Source for the main display (stub).
+func NewDisplaySource() Source { return &DisplaySource{} }
+
+func (d *DisplaySource) Start(ctx context.Context, cfg Config) error { return nil }
+func (d *DisplaySource) Stop() error                                 { return nil }
+func (d *DisplaySource) Frames() <-chan AccessUnit                   { return make(chan AccessUnit) }
+func (d *DisplaySource) Errors() <-chan error                        { return make(chan error) }
+func (d *DisplaySource) SelectSurface(s Surface) error               { return errors.New("not implemented") }
+func (d *DisplaySource) ForceKeyframe()                              {}
+func (d *DisplaySource) Rebuild(width, height int) error             { return nil }
+
+// CaptureStill returns a JPEG of the main display (stub).
+func CaptureStill(ctx context.Context, maxLongEdge int) ([]byte, error) { return nil, nil }
+
+// mapSCKError maps a ScreenCaptureKit error code (stub).
+func mapSCKError(code int, msg string) error { return nil }

@@ -1,8 +1,10 @@
 package screencap
 
 import (
+	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +27,51 @@ func hasNALs(data []byte, want ...int) bool {
 		}
 	}
 	return true
+}
+
+func TestDisplaySource_RefusesUnderTest(t *testing.T) {
+	src := NewDisplaySource()
+	if err := src.Start(context.Background(), DefaultConfig()); !errors.Is(err, ErrRefusedInTest) {
+		t.Fatalf("Start under test = %v, want ErrRefusedInTest", err)
+	}
+	if src.Frames() != nil || src.Errors() != nil {
+		t.Error("a refused Start must open no channel")
+	}
+	if err := src.Stop(); !errors.Is(err, ErrNotRunning) {
+		t.Errorf("Stop on an unstarted source = %v, want ErrNotRunning", err)
+	}
+}
+
+func TestCaptureStill_RefusesUnderTest(t *testing.T) {
+	if b, err := CaptureStill(context.Background(), 1280); !errors.Is(err, ErrRefusedInTest) || b != nil {
+		t.Fatalf("CaptureStill under test = %d bytes, %v; want ErrRefusedInTest", len(b), err)
+	}
+}
+
+func TestDisplaySource_SelectSurface(t *testing.T) {
+	src := NewDisplaySource()
+	if err := src.SelectSurface(Surface{Kind: SurfaceDisplay}); err != nil {
+		t.Errorf("main display: %v", err)
+	}
+	if err := src.SelectSurface(Surface{Kind: SurfaceWindow, ID: 7}); !errors.Is(err, ErrSurfaceUnsupported) {
+		t.Errorf("window = %v, want ErrSurfaceUnsupported", err)
+	}
+	if err := src.SelectSurface(Surface{Kind: SurfaceDisplay, ID: 3}); !errors.Is(err, ErrSurfaceUnsupported) {
+		t.Errorf("another display = %v, want ErrSurfaceUnsupported", err)
+	}
+}
+
+func TestMapSCKError(t *testing.T) {
+	if err := mapSCKError(-3801, "denied"); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("-3801 = %v, want ErrPermissionDenied", err)
+	}
+	if err := mapSCKError(-3815, "no display"); !errors.Is(err, ErrNoDisplay) {
+		t.Errorf("-3815 = %v, want ErrNoDisplay", err)
+	}
+	err := mapSCKError(-3805, "stream stopped")
+	if err == nil || errors.Is(err, ErrPermissionDenied) || errors.Is(err, ErrNoDisplay) || !strings.Contains(err.Error(), "-3805") {
+		t.Errorf("other code = %v, want a non-sentinel error naming -3805", err)
+	}
 }
 
 // TestEncoder_SyntheticFramesTracer pushes synthetic NV12 frames through the
