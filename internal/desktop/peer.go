@@ -51,14 +51,17 @@ type engineSummary struct {
 	Lite         bool
 	NetworkTypes []webrtc.NetworkType
 	MDNS         ice.MulticastDNSMode
+	SCTPMax      uint32
 }
 
 // newSettingEngine is the one place the media path is hardened (T-19-10):
-// ICE-lite on the one UDP mux, UDP4 only, no mDNS, and the bind address as the
-// only candidate.
+// ICE-lite on the one UDP mux, UDP4 only, no mDNS, the bind address as the only
+// candidate, and a small SCTP message limit (T-19-12; pion closes a channel
+// that exceeds it).
 func newSettingEngine(mux ice.UDPMux, bind netip.Addr) (webrtc.SettingEngine, engineSummary) {
-	sum := engineSummary{Lite: true, NetworkTypes: []webrtc.NetworkType{webrtc.NetworkTypeUDP4}, MDNS: ice.MulticastDNSModeDisabled}
+	sum := engineSummary{Lite: true, NetworkTypes: []webrtc.NetworkType{webrtc.NetworkTypeUDP4}, MDNS: ice.MulticastDNSModeDisabled, SCTPMax: 8192}
 	se := webrtc.SettingEngine{}
+	se.SetSCTPMaxMessageSize(8192)
 	se.SetICEUDPMux(mux)
 	se.SetLite(sum.Lite)
 	se.SetNetworkTypes(sum.NetworkTypes)
@@ -118,6 +121,16 @@ func (m *Manager) answer(ctx context.Context, v *viewer, offerSDP string) (*webr
 		return fail(fmt.Errorf("desktop: add track: %w", err))
 	}
 	v.track = track
+	// The Phase 19 hook closes whatever channel arrives. It is set before the
+	// offer is applied so a channel in the offer is never missed.
+	hook := m.d.OnDataChannel
+	if hook == nil {
+		hook = CloseDataChannel
+	}
+	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
+		defer recoverLog()
+		hook(v.Viewer, dc)
+	})
 	// PLI and FIR from the viewer ask for a keyframe; the loop also keeps the
 	// interceptors reading. It ends when the sender is closed.
 	go func() {

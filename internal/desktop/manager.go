@@ -45,7 +45,12 @@ const ProtocolVersion = 1
 const (
 	CloseTokenRejected websocket.StatusCode = 4401
 	CloseDesktopOff    websocket.StatusCode = 4410
+	CloseFull          websocket.StatusCode = 4429 // the viewer cap is reached
 )
+
+// MaxViewers is the most viewers one Manager serves at once (T-19-11). A
+// further viewer is refused, so it sees the viewer's normal retrying state.
+const MaxViewers = 8
 
 // State is what the desktop link is doing, pushed to viewers and the host GUI.
 // 19-01 only produces idle and streaming; 19-09 derives the rest.
@@ -150,7 +155,10 @@ type Deps struct {
 	NewSource    func() screencap.Source // a fresh source per capture run
 	SourceConfig screencap.Config
 	ConfigDir    string
-	Now          func() time.Time
+	Now          func() time.Time // also drives the keyframe coalescer
+	// OnDataChannel receives a data channel a viewer created before its
+	// offer. nil means CloseDataChannel: Phase 19 is view-only.
+	OnDataChannel DataChannelHook
 	// Notify posts a native notification. Used from 19-09 on; nil means log-only.
 	Notify func(id, title, body string)
 }
@@ -325,6 +333,13 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	defer func() { _ = c.CloseNow() }()
 	c.SetReadLimit(readLimit)
 
+	// A full house is refused before any handshake work; join checks again for
+	// viewers that were mid-handshake together.
+	if m.Full() {
+		_ = c.Close(CloseFull, "full")
+		return
+	}
+
 	// hello
 	in, err := read(ctx, c, helloTimeout)
 	if err != nil {
@@ -407,6 +422,10 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	// Capture starts only after a successful answer, so a refused offer never
 	// starts the source.
 	if err := m.join(v); err != nil {
+		if errors.Is(err, errFull) {
+			_ = c.Close(CloseFull, "full")
+			return
+		}
 		slog.Warn("desktop: join failed", "viewer", id[:8], "err", err)
 		_ = c.Close(websocket.StatusInternalError, "capture unavailable")
 		return
@@ -438,12 +457,17 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	}
 }
 
+var errFull = errors.New("desktop: viewer cap reached")
+
 // join registers v and starts capture for the first viewer.
 func (m *Manager) join(v *viewer) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
 		return errors.New("desktop: manager closed")
+	}
+	if m.Full() {
+		return errFull
 	}
 	if m.src == nil {
 		src := m.d.NewSource()
@@ -618,6 +642,10 @@ func (m *Manager) broadcastState(ctx context.Context) {
 	st := m.Status()
 	m.broadcast(ctx, msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked})
 }
+
+// Full reports whether the viewer cap is reached. The route checks it before
+// upgrading a socket so a viewer past the cap gets HTTP 429.
+func (m *Manager) Full() bool { return m.Viewers() >= MaxViewers }
 
 // Viewers reports how many viewers are connected.
 func (m *Manager) Viewers() int {
