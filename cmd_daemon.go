@@ -11,7 +11,7 @@ import (
 
 // serviceControlFunc is the function used to control the service. Package-level var
 // allows test injection of a mock.
-var serviceControlFunc = daemon.ServiceControl
+var serviceControlFunc = daemon.AgentControl
 
 // runTakeoverFunc runs `portty daemon --takeover`; a var for tests.
 var runTakeoverFunc = daemon.RunTakeover

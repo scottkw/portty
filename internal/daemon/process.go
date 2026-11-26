@@ -100,6 +100,19 @@ func reportTakeover(status *os.File, code int) {
 	_ = status.Close()
 }
 
+// Seams of runDaemonCore: the exit and the four steps whose failure is fatal,
+// so a test can fail one without a real daemon. daemonExit is how a startup
+// failure reaches launchd: KeepAlive SuccessfulExit false restarts only a
+// non-zero exit.
+var (
+	daemonExit               = os.Exit
+	lockWait                 = 2 * time.Second
+	cleanupStaleSocket       = CleanupStaleSocket
+	bootstrapCapabilityState = (*API).BootstrapCapabilityState
+	startRelay               = (*API).StartRelay
+	startAPI                 = (*API).Start
+)
+
 // runDaemonCore is the blocking core of the daemon. It creates a SessionEngine,
 // starts the API (with relay server inside), and blocks until ctx is cancelled.
 // Using a context parameter allows it to be driven by either signal handling
@@ -109,14 +122,14 @@ func runDaemonCore(ctx context.Context) {
 	socketPath := DefaultSocketPath()
 	// WR-05: the lock comes before any socket cleanup or bind. A daemon that
 	// cannot get it within the wait leaves the running one alone.
-	lock, err := lockDaemon(filepath.Join(filepath.Dir(socketPath), "daemon.lock"), 2*time.Second)
+	lock, err := lockDaemon(filepath.Join(filepath.Dir(socketPath), "daemon.lock"), lockWait)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: already running (lock: %v)\n", err)
 		return
 	}
 	defer lock.Close() // held for the process lifetime
 	launchdManaged = ManagedByLaunchd(ctx)
-	if err := CleanupStaleSocket(socketPath); err != nil {
+	if err := cleanupStaleSocket(socketPath); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: %v\n", err)
 		return
 	}
@@ -128,20 +141,20 @@ func runDaemonCore(ctx context.Context) {
 	// server can start. A missing key here is fatal
 	// — without it, requireCapability would 401 every request and the daemon
 	// is effectively a brick for web access.
-	if err := api.BootstrapCapabilityState(); err != nil {
+	if err := bootstrapCapabilityState(api); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: bootstrap capability state: %v\n", err)
 		return
 	}
 
 	// Start the relay TCP server inside the daemon.
-	relayPort, err := api.StartRelay()
+	relayPort, err := startRelay(api)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: start relay: %v\n", err)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "daemon: relay listening on port %d\n", relayPort)
 
-	if err := api.Start(socketPath); err != nil {
+	if err := startAPI(api, socketPath); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: start api: %v\n", err)
 		return
 	}

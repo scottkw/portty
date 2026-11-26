@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -27,6 +29,13 @@ type fakeLaunchd struct {
 	disabled    map[string]bool
 	failOn      map[string]error // subcommand -> error
 	onKickstart func()
+	bootouts    []bootoutRec
+}
+
+// bootoutRec is a booted-out job and the pid it had at the time.
+type bootoutRec struct {
+	label string
+	pid   int
 }
 
 func newFakeLaunchd(t *testing.T) *fakeLaunchd {
@@ -65,6 +74,7 @@ func (f *fakeLaunchd) run(_ context.Context, args ...string) ([]byte, error) {
 	case "bootstrap":
 		f.jobs[strings.TrimSuffix(filepath.Base(args[2]), ".plist")] = 0
 	case "bootout":
+		f.bootouts = append(f.bootouts, bootoutRec{label(args[1]), f.jobs[label(args[1])]})
 		delete(f.jobs, label(args[1]))
 	case "kickstart":
 		if f.onKickstart != nil {
@@ -101,6 +111,19 @@ func (f *fakeLaunchd) reset() {
 	f.mu.Lock()
 	f.calls = nil
 	f.mu.Unlock()
+}
+
+func (f *fakeLaunchd) setJob(label string, pid int) {
+	f.mu.Lock()
+	f.jobs[label] = pid
+	f.mu.Unlock()
+}
+
+func (f *fakeLaunchd) hasJob(label string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.jobs[label]
+	return ok
 }
 
 func kickstartTarget() string { return fmt.Sprintf("gui/%d/%s", os.Getuid(), LaunchdLabel) }
@@ -280,5 +303,520 @@ func TestLaunchd_StartTracer(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"launchd":true`) {
 		t.Errorf("health body %s lacks \"launchd\":true", rec.Body.String())
+	}
+}
+
+const (
+	unsafeTestExe = "/Volumes/Portty/Portty.app/Contents/MacOS/Portty"
+	launchctlText = "macOS didn't let Portty start its background service. Check Portty in System Settings, General, Login Items, then try again."
+)
+
+func writePlistFile(t *testing.T, label string) string {
+	t.Helper()
+	p, err := plistPath(label)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("<plist/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// startRig is a start with no daemon answering: a fake launchd, a refusing
+// socket, and a fallback spawn recorder; either a kickstart or the fallback
+// brings a fake ready daemon up at the socket.
+type startRig struct {
+	f         *fakeLaunchd
+	sock      string
+	fallbacks []string
+	reasons   []error
+	stderr    *bytes.Buffer
+}
+
+func newStartRig(t *testing.T, exe string) *startRig {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	r := &startRig{f: newFakeLaunchd(t), sock: refusingSocket(t, "rig"), stderr: &bytes.Buffer{}}
+	old := executablePath
+	executablePath = func() (string, error) { return exe, nil }
+	t.Cleanup(func() { executablePath = old })
+	r.f.onKickstart = func() { serveDaemonAfter(t, r.sock, 0) }
+	t.Cleanup(SetFallbackSpawnForTest(func(e string) (<-chan struct{}, func(), error) {
+		r.fallbacks = append(r.fallbacks, e)
+		serveDaemonAfter(t, r.sock, 0)
+		return nil, nil, nil
+	}))
+	return r
+}
+
+func (r *startRig) ensure(mode StartMode) error {
+	h := testHooks(nil)
+	h.stderr = r.stderr
+	return ensureDaemon(context.Background(), r.sock, EnsureOptions{Start: mode, OnFallback: func(e error) { r.reasons = append(r.reasons, e) }}, h)
+}
+
+// DSHR-01 as amended ("Start it anyway"): launchd first for the GUI and the
+// CLI; the detached spawn only after a typed agent error, reported through
+// OnFallback, and with the repair sentence on stderr for the CLI.
+func TestEnsureDaemon_KickstartFirstFallbackOnTypedError(t *testing.T) {
+	cases := []struct {
+		name  string
+		exe   string
+		setup func(t *testing.T, r *startRig)
+		want  error // nil: a kickstart and no fallback
+	}{
+		{"loaded and enabled", testExe, func(t *testing.T, r *startRig) { r.f.setJob(LaunchdLabel, 0) }, nil},
+		{"not installed", testExe, func(t *testing.T, r *startRig) {}, ErrAgentMissing},
+		{"disabled in Login Items", testExe, func(t *testing.T, r *startRig) { r.f.disabled[LaunchdLabel] = true }, ErrAgentDisabled},
+		{"bootstrap refused", testExe, func(t *testing.T, r *startRig) {
+			writePlistFile(t, LaunchdLabel)
+			r.f.failOn["bootstrap"] = errors.New("bootstrap refused")
+		}, ErrAgentRefused},
+		{"disk image", unsafeTestExe, func(t *testing.T, r *startRig) { r.f.setJob(LaunchdLabel, 0) }, ErrAgentUnsafePath},
+	}
+	for _, mode := range []StartMode{StartGUI, StartCLI} {
+		for _, tc := range cases {
+			t.Run(fmt.Sprintf("mode%d/%s", mode, tc.name), func(t *testing.T) {
+				r := newStartRig(t, tc.exe)
+				tc.setup(t, r)
+				if err := r.ensure(mode); err != nil {
+					t.Fatalf("ensureDaemon: %v", err)
+				}
+				kicks := 0
+				for _, c := range r.f.mutating() {
+					if c[0] == "kickstart" {
+						kicks++
+					}
+				}
+				if tc.want == nil {
+					if want := fmt.Sprint([][]string{{"kickstart", kickstartTarget()}}); fmt.Sprint(r.f.mutating()) != want {
+						t.Errorf("launchctl calls = %v, want %s", r.f.mutating(), want)
+					}
+					if len(r.fallbacks) != 0 || len(r.reasons) != 0 || r.stderr.Len() != 0 {
+						t.Errorf("fallbacks %v, reasons %v, stderr %q; want none", r.fallbacks, r.reasons, r.stderr)
+					}
+					return
+				}
+				if len(r.reasons) != 1 || !errors.Is(r.reasons[0], tc.want) {
+					t.Fatalf("OnFallback got %v, want one %v", r.reasons, tc.want)
+				}
+				if !slices.Equal(r.fallbacks, []string{tc.exe}) {
+					t.Errorf("fallback spawns = %v, want one for %s", r.fallbacks, tc.exe)
+				}
+				if kicks != 0 {
+					t.Errorf("kickstart ran %d times though the agent is unusable", kicks)
+				}
+				if got := r.stderr.String(); (mode == StartCLI) != strings.Contains(got, tc.want.Error()) {
+					t.Errorf("mode %d stderr %q: the repair sentence %q must appear for the CLI only", mode, got, tc.want)
+				}
+			})
+		}
+	}
+}
+
+// Any launchctl failure on the start path falls back, wrapping the cause
+// under ErrAgentLaunchctl; only the fallback spawn failing fails the start.
+func TestEnsureDaemon_LaunchctlErrorsFallBack(t *testing.T) {
+	boom := errors.New("launchctl exploded")
+	for _, sub := range []string{"print", "print-disabled", "kickstart"} {
+		t.Run(sub, func(t *testing.T) {
+			r := newStartRig(t, testExe)
+			r.f.setJob(LaunchdLabel, 0)
+			r.f.failOn[sub] = boom
+			if err := r.ensure(StartGUI); err != nil {
+				t.Fatalf("ensureDaemon: %v", err)
+			}
+			if len(r.reasons) != 1 || !errors.Is(r.reasons[0], ErrAgentLaunchctl) || !errors.Is(r.reasons[0], boom) {
+				t.Fatalf("OnFallback got %v, want ErrAgentLaunchctl wrapping the cause", r.reasons)
+			}
+			if len(r.fallbacks) != 1 {
+				t.Errorf("fallback spawns = %d, want 1", len(r.fallbacks))
+			}
+		})
+	}
+	t.Run("fallback fails", func(t *testing.T) {
+		r := newStartRig(t, testExe)
+		r.f.failOn["print"] = boom
+		spawnErr := errors.New("cannot exec")
+		t.Cleanup(SetFallbackSpawnForTest(func(string) (<-chan struct{}, func(), error) { return nil, nil, spawnErr }))
+		if err := r.ensure(StartGUI); !errors.Is(err, spawnErr) {
+			t.Fatalf("ensureDaemon = %v, want the fallback's error", err)
+		}
+	})
+}
+
+// T-19-09: with no recorder injected, the detached spawn refuses from a test
+// binary, and so does the launchctl seam: no process and no launchd call.
+func TestEnsureDaemon_FallbackRefusesUnderTest(t *testing.T) {
+	if _, _, err := fallbackSpawn(os.Args[0]); err == nil || !strings.Contains(err.Error(), "test binary") {
+		t.Fatalf("fallbackSpawn from a test binary = %v, want the refusal", err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	err := ensureDaemon(context.Background(), refusingSocket(t, "refuse"), EnsureOptions{}, testHooks(nil))
+	if err == nil || !strings.Contains(err.Error(), "refusing to spawn a daemon from a test binary") {
+		t.Fatalf("ensureDaemon in a test binary = %v, want the spawn refusal", err)
+	}
+}
+
+func TestAgentErrors_RepairText(t *testing.T) {
+	for err, want := range map[error]string{
+		ErrAgentLaunchctl:  launchctlText,
+		ErrAgentRefused:    launchctlText,
+		ErrAgentRunning:    "Portty's background service is running. Run portty daemon stop first, then uninstall.",
+		ErrAgentMissing:    "Portty's background service isn't installed. Open Portty.app from Applications once to install it.",
+		ErrAgentDisabled:   "Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.",
+		ErrAgentUnsafePath: "Portty is running from a disk image. Move it to Applications, then open it again.",
+	} {
+		if err.Error() != want {
+			t.Errorf("%q, want %q", err.Error(), want)
+		}
+	}
+	f := newFakeLaunchd(t)
+	boom := errors.New("kickstart exploded")
+	f.failOn["kickstart"] = boom
+	err := Kickstart(context.Background())
+	if !errors.Is(err, ErrAgentLaunchctl) || !errors.Is(err, boom) || !strings.HasPrefix(err.Error(), launchctlText+" (") || !strings.Contains(err.Error(), "kickstart exploded") {
+		t.Errorf("Kickstart error = %q, want the sentence then the wrapped error", err)
+	}
+}
+
+// UPGR with a launchd job: the CLI moves a stale daemon's sessions by asking
+// launchd (the job's daemon re-homes them); with no usable agent it prints the
+// repair sentence and uses today's takeover; the GUI keeps its takeover.
+func TestEnsureDaemon_CLIHandoffAsksLaunchd(t *testing.T) {
+	setup := func(t *testing.T) (*fakeDaemon, *fakeLaunchd) {
+		useBuild(t, "v2")
+		t.Setenv("HOME", t.TempDir())
+		fd := startFakeDaemon(t, HandoffVersion, twoLive)
+		f := newFakeLaunchd(t)
+		f.setJob(LaunchdLabel, 0)
+		f.onKickstart = func() { fd.setVersion("v2") } // the job's daemon took the sessions over
+		return fd, f
+	}
+	run := func(fd *fakeDaemon, mode StartMode, takeover func(string) (int, <-chan int, error)) (asked *[]RestartQuestion, stderr string, err error) {
+		policy, asked := recordPolicy(false)
+		var buf bytes.Buffer
+		h := testHooks(takeover)
+		h.stderr = &buf
+		err = ensureDaemon(context.Background(), fd.path, EnsureOptions{Restart: policy, Start: mode}, h)
+		return asked, buf.String(), err
+	}
+
+	t.Run("usable agent", func(t *testing.T) {
+		fd, f := setup(t)
+		var spawns atomic.Int64
+		asked, _, err := run(fd, StartCLI, fd.takeoverAfter(0, 0, "v2", &spawns))
+		if err != nil || spawns.Load() != 0 || len(*asked) != 0 || fd.shutdown.Load() {
+			t.Fatalf("err %v, takeover spawns %d, asked %v, shutdown %v; want nil, 0, none, false", err, spawns.Load(), *asked, fd.shutdown.Load())
+		}
+		if want := fmt.Sprint([][]string{{"kickstart", kickstartTarget()}}); fmt.Sprint(f.mutating()) != want {
+			t.Errorf("launchctl calls = %v, want %s", f.mutating(), want)
+		}
+	})
+	t.Run("agent disabled", func(t *testing.T) {
+		fd, f := setup(t)
+		f.disabled[LaunchdLabel] = true
+		var spawns atomic.Int64
+		asked, stderr, err := run(fd, StartCLI, fd.takeoverAfter(0, 0, "v2", &spawns))
+		if err != nil || spawns.Load() != 1 || len(*asked) != 0 {
+			t.Fatalf("err %v, takeover spawns %d, asked %v; want nil, 1, none", err, spawns.Load(), *asked)
+		}
+		if !strings.Contains(stderr, ErrAgentDisabled.Error()) {
+			t.Errorf("stderr %q lacks the repair sentence", stderr)
+		}
+		if len(f.mutating()) != 0 {
+			t.Errorf("launchctl mutated with the agent disabled: %v", f.mutating())
+		}
+	})
+	t.Run("GUI keeps its takeover", func(t *testing.T) {
+		fd, f := setup(t)
+		var spawns atomic.Int64
+		if _, _, err := run(fd, StartGUI, fd.takeoverAfter(0, 0, "v2", &spawns)); err != nil || spawns.Load() != 1 {
+			t.Fatalf("err %v, takeover spawns %d; want nil, 1", err, spawns.Load())
+		}
+		if len(f.subcommands()) != 0 {
+			t.Errorf("the GUI handoff called launchctl: %v", f.subcommands())
+		}
+	})
+	t.Run("the old daemon is the job", func(t *testing.T) {
+		fd, f := setup(t)
+		fd.launchd.Store(true)
+		var spawns atomic.Int64
+		asked, _, err := run(fd, StartCLI, fd.takeoverAfter(0, 0, "v2", &spawns))
+		if err != nil || spawns.Load() != 0 || len(*asked) != 1 || (*asked)[0].MoveFailed == "" {
+			t.Fatalf("err %v, spawns %d, asked %+v; want nil, 0, one question with a move-failed reason", err, spawns.Load(), *asked)
+		}
+		if len(f.mutating()) != 0 {
+			t.Errorf("kickstart cannot move a running job's sessions, yet launchctl mutated: %v", f.mutating())
+		}
+	})
+}
+
+func TestLegacyCleanup_Ordering(t *testing.T) {
+	legacyTarget := fmt.Sprintf("gui/%d/%s", os.Getuid(), LegacyLabel)
+	cases := []struct {
+		name     string
+		file     bool
+		job      int // -1: not loaded
+		holder   int
+		boot     bool
+		wantDone bool
+	}{
+		{"legacy holds the lock", true, 77, 77, false, false},
+		{"another process holds the lock", true, 77, 88, true, true},
+		{"nothing left", false, -1, 88, false, true},
+		{"plist without a job", true, -1, 88, false, true},
+		{"running job, holder unknown", true, 77, 0, false, false},
+		{"idle job", true, 0, 88, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			f := newFakeLaunchd(t)
+			path := ""
+			if tc.file {
+				path = writePlistFile(t, LegacyLabel)
+			}
+			if tc.job >= 0 {
+				f.setJob(LegacyLabel, tc.job)
+			}
+			done, err := LegacyCleanup(context.Background(), tc.holder)
+			if err != nil || done != tc.wantDone {
+				t.Fatalf("LegacyCleanup = %v, %v; want %v, nil", done, err, tc.wantDone)
+			}
+			if tc.file && fileExists(path) {
+				t.Error("the legacy plist is still on disk")
+			}
+			want := [][]string(nil)
+			if tc.boot {
+				want = [][]string{{"bootout", legacyTarget}}
+			}
+			if fmt.Sprint(f.mutating()) != fmt.Sprint(want) {
+				t.Errorf("launchctl calls = %v, want %v", f.mutating(), want)
+			}
+		})
+	}
+	t.Run("print fails", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		f := newFakeLaunchd(t)
+		f.failOn["print"] = errors.New("boom")
+		path := writePlistFile(t, LegacyLabel)
+		if done, err := LegacyCleanup(context.Background(), 88); err == nil || done {
+			t.Errorf("LegacyCleanup = %v, %v; want an error", done, err)
+		}
+		if !fileExists(path) {
+			t.Error("the plist was removed though the job's state is unknown")
+		}
+	})
+}
+
+// Research Pitfall 5: while the legacy job's process holds the lock only the
+// file goes; the bootout waits for a start after the holder changed.
+func TestLegacyCleanup_EndState(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newFakeLaunchd(t)
+	path := writePlistFile(t, LegacyLabel)
+	f.setJob(LegacyLabel, 77)
+	ctx := context.Background()
+
+	if done, err := LegacyCleanup(ctx, 77); err != nil || done {
+		t.Fatalf("first start: %v, %v; want not done", done, err)
+	}
+	if fileExists(path) || !f.hasJob(LegacyLabel) {
+		t.Fatalf("after the first start: plist exists %v, job loaded %v; want the file gone and the job untouched", fileExists(path), f.hasJob(LegacyLabel))
+	}
+	if done, err := LegacyCleanup(ctx, 88); err != nil || !done {
+		t.Fatalf("later start: %v, %v; want done", done, err)
+	}
+	if fileExists(path) {
+		t.Error("the legacy plist is back")
+	}
+	if loaded, _, err := jobLoaded(ctx, LegacyLabel); err != nil || loaded {
+		t.Errorf("legacy job loaded %v (%v) after the end state, want not found", loaded, err)
+	}
+}
+
+// T-19-05: no kill flag anywhere, and bootout only for an idle agent job or
+// the legacy job under the ordering rule; uninstall refuses while it runs.
+func TestLaunchd_NoKillFlag(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newFakeLaunchd(t)
+	ctx := context.Background()
+	t.Cleanup(func() { executablePath = os.Executable })
+	executablePath = func() (string, error) { return testExe, nil }
+
+	steps := []func() error{
+		func() error { _, err := EnsureAgent(ctx, testExe); return err },
+		func() error { _, err := EnsureAgent(ctx, "/Applications/Other.app/Contents/MacOS/Portty"); return err }, // idle: reload
+		func() error { f.setJob(LaunchdLabel, 99); _, err := EnsureAgent(ctx, testExe); return err },             // running: deferred
+		func() error { return Kickstart(ctx) },
+		func() error { return AgentControl("start") },
+		func() error { f.setJob(LegacyLabel, 77); _, err := LegacyCleanup(ctx, 77); return err },
+		func() error { _, err := LegacyCleanup(ctx, 88); return err },
+	}
+	for i, step := range steps {
+		if err := step(); err != nil {
+			t.Fatalf("step %d: %v", i, err)
+		}
+	}
+	if err := AgentControl("uninstall"); !errors.Is(err, ErrAgentRunning) { // the agent job still has pid 99
+		t.Fatalf("uninstall of a running job = %v, want ErrAgentRunning", err)
+	}
+	f.setJob(LaunchdLabel, 0)
+	if err := AgentControl("uninstall"); err != nil {
+		t.Fatalf("uninstall of an idle job: %v", err)
+	}
+
+	for _, c := range f.calls {
+		for _, a := range c {
+			if a == "-k" || strings.HasPrefix(a, "-") {
+				t.Errorf("launchctl call %v carries a flag", c)
+			}
+		}
+	}
+	for _, b := range f.bootouts {
+		if b.pid != 0 && b.label != LegacyLabel {
+			t.Errorf("booted out %s while it had pid %d", b.label, b.pid)
+		}
+	}
+	// 1 reload of the idle agent, the legacy job once its holder changed, the idle agent at uninstall.
+	if len(f.bootouts) != 3 {
+		t.Errorf("bootouts = %+v, want 3", f.bootouts)
+	}
+}
+
+func TestLaunchd_ReloadDeferredWhileRunning(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newFakeLaunchd(t)
+	ctx := context.Background()
+	if _, err := EnsureAgent(ctx, testExe); err != nil {
+		t.Fatal(err)
+	}
+	f.setJob(LaunchdLabel, 4242)
+	f.reset()
+	other := "/Applications/Moved.app/Contents/MacOS/Portty"
+	state, err := EnsureAgent(ctx, other)
+	if err != nil || state != AgentReloadDeferred {
+		t.Fatalf("EnsureAgent while running = %v, %v; want AgentReloadDeferred", state, err)
+	}
+	if len(f.mutating()) != 0 {
+		t.Errorf("a running job was touched: %v", f.mutating())
+	}
+	// Idle again: the changed plist is applied with bootout then bootstrap.
+	f.setJob(LaunchdLabel, 0)
+	if state, err := EnsureAgent(ctx, other); err != nil || state != AgentReady {
+		t.Fatalf("EnsureAgent once idle = %v, %v", state, err)
+	}
+	if got := f.subcommands(); !slices.Equal(got, []string{"print", "print-disabled", "print", "print-disabled", "bootout", "bootstrap"}) {
+		t.Errorf("calls = %v", got)
+	}
+}
+
+func TestLaunchd_UnsafePath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newFakeLaunchd(t)
+	for _, exe := range []string{unsafeTestExe, "/private/var/folders/x/AppTranslocation/ABC/d/Portty.app/Contents/MacOS/Portty"} {
+		if _, err := EnsureAgent(context.Background(), exe); !errors.Is(err, ErrAgentUnsafePath) {
+			t.Errorf("EnsureAgent(%s) = %v, want ErrAgentUnsafePath", exe, err)
+		}
+	}
+	if p, _ := AgentPath(); fileExists(p) || len(f.calls) != 0 {
+		t.Errorf("an unsafe executable wrote a plist or called launchctl: %v", f.calls)
+	}
+	if _, err := EnsureAgent(context.Background(), "relative/Portty"); err == nil {
+		t.Error("a relative executable was accepted")
+	}
+}
+
+func TestLaunchctl_RefusesUnderTest(t *testing.T) {
+	if out, err := defaultLaunchctl(context.Background(), "print", "gui/0/none"); err == nil || out != nil {
+		t.Fatalf("defaultLaunchctl under a test binary = %q, %v; want a refusal", out, err)
+	}
+}
+
+func TestAgentPath_RefusesRealHomeUnderTest(t *testing.T) {
+	t.Setenv("HOME", "/Users/someone")
+	f := newFakeLaunchd(t)
+	if _, err := AgentPath(); !errors.Is(err, ErrAgentUnsafePath) {
+		t.Fatalf("AgentPath with a home outside the temp dir = %v, want ErrAgentUnsafePath", err)
+	}
+	if _, err := EnsureAgent(context.Background(), testExe); !errors.Is(err, ErrAgentUnsafePath) {
+		t.Fatalf("EnsureAgent = %v, want ErrAgentUnsafePath", err)
+	}
+	if len(f.calls) != 0 || fileExists("/Users/someone/Library/LaunchAgents") {
+		t.Errorf("nothing may be written or called: %v", f.calls)
+	}
+	t.Setenv("HOME", "")
+	if _, err := AgentPath(); err == nil {
+		t.Error("AgentPath with no HOME returned no error")
+	}
+}
+
+// The portty daemon <action> commands, in-package so they count toward
+// launchd.go's coverage.
+func TestAgentControl_InPackage(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newFakeLaunchd(t)
+	t.Cleanup(func() { executablePath = os.Executable })
+	executablePath = func() (string, error) { return testExe, nil }
+	target := kickstartTarget()
+
+	if err := AgentControl("install"); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	agent, _ := AgentPath()
+	if !fileExists(agent) || !f.hasJob(LaunchdLabel) {
+		t.Fatalf("install left plist %v, job loaded %v", fileExists(agent), f.hasJob(LaunchdLabel))
+	}
+
+	f.reset()
+	if err := AgentControl("start"); err != nil || fmt.Sprint(f.mutating()) != fmt.Sprint([][]string{{"kickstart", target}}) {
+		t.Fatalf("start = %v, calls %v; want only the plain kickstart", err, f.mutating())
+	}
+	f.reset()
+	if err := AgentControl("stop"); err != nil || fmt.Sprint(f.mutating()) != fmt.Sprint([][]string{{"kill", "SIGTERM", target}}) {
+		t.Fatalf("stop = %v, calls %v; want kill SIGTERM", err, f.mutating())
+	}
+	f.failOn["kill"] = errors.New("no such process")
+	if err := AgentControl("stop"); !errors.Is(err, ErrAgentLaunchctl) {
+		t.Errorf("a failing stop = %v, want ErrAgentLaunchctl", err)
+	}
+	delete(f.failOn, "kill")
+
+	// A running job: uninstall refuses and changes nothing.
+	legacy := writePlistFile(t, LegacyLabel)
+	f.setJob(LaunchdLabel, 321)
+	f.reset()
+	if err := AgentControl("uninstall"); !errors.Is(err, ErrAgentRunning) {
+		t.Fatalf("uninstall of a running job = %v, want ErrAgentRunning", err)
+	}
+	if len(f.mutating()) != 0 || !fileExists(agent) || !fileExists(legacy) {
+		t.Errorf("uninstall changed things while running: calls %v, agent %v, legacy %v", f.mutating(), fileExists(agent), fileExists(legacy))
+	}
+	// Idle: the job is booted out and both plists go.
+	f.setJob(LaunchdLabel, 0)
+	f.reset()
+	if err := AgentControl("uninstall"); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if f.hasJob(LaunchdLabel) || fileExists(agent) || fileExists(legacy) {
+		t.Errorf("after uninstall: job loaded %v, agent plist %v, legacy plist %v", f.hasJob(LaunchdLabel), fileExists(agent), fileExists(legacy))
+	}
+	// Nothing installed: uninstall is a clean no-op.
+	if err := AgentControl("uninstall"); err != nil {
+		t.Errorf("uninstall with nothing installed: %v", err)
+	}
+	f.failOn["print"] = errors.New("boom")
+	if err := AgentControl("uninstall"); err == nil {
+		t.Error("uninstall with an unreadable job state succeeded")
+	}
+	if err := AgentControl("frobnicate"); err == nil || !strings.Contains(err.Error(), "frobnicate") {
+		t.Errorf("unknown action = %v", err)
 	}
 }

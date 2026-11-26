@@ -35,12 +35,12 @@ const (
 // the desktop shows; none names a path. ErrAgentLaunchctl and ErrAgentRefused
 // are wrapped with the underlying launchctl error.
 var (
-	ErrAgentUnsafePath = errors.New("Portty is running from a disk image. Move it to Applications, then open it again.")                                                //nolint:staticcheck // user-facing sentence
-	ErrAgentMissing    = errors.New("Portty's background service isn't installed. Open Portty.app from Applications once to install it.")                                //nolint:staticcheck // user-facing sentence
+	ErrAgentUnsafePath = errors.New("Portty is running from a disk image. Move it to Applications, then open it again.")                                                  //nolint:staticcheck // user-facing sentence
+	ErrAgentMissing    = errors.New("Portty's background service isn't installed. Open Portty.app from Applications once to install it.")                                 //nolint:staticcheck // user-facing sentence
 	ErrAgentDisabled   = errors.New("Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.") //nolint:staticcheck // user-facing sentence
-	ErrAgentRefused    = errors.New("macOS didn't let Portty start its background service. Check Portty in System Settings, General, Login Items, then try again.")      //nolint:staticcheck // user-facing sentence
-	ErrAgentLaunchctl  = errors.New("macOS didn't let Portty start its background service. Check Portty in System Settings, General, Login Items, then try again.")      //nolint:staticcheck // user-facing sentence
-	ErrAgentRunning    = errors.New("Portty's background service is running. Run portty daemon stop first, then uninstall.")                                             //nolint:staticcheck // user-facing sentence
+	ErrAgentRefused    = errors.New("macOS didn't let Portty start its background service. Check Portty in System Settings, General, Login Items, then try again.")       //nolint:staticcheck // user-facing sentence
+	ErrAgentLaunchctl  = errors.New("macOS didn't let Portty start its background service. Check Portty in System Settings, General, Login Items, then try again.")       //nolint:staticcheck // user-facing sentence
+	ErrAgentRunning    = errors.New("Portty's background service is running. Run portty daemon stop first, then uninstall.")                                              //nolint:staticcheck // user-facing sentence
 )
 
 // launchctlFunc runs launchctl with args and returns its combined output.
@@ -229,14 +229,21 @@ func EnsureAgent(ctx context.Context, exe string) (AgentState, error) {
 	}
 	have, _ := os.ReadFile(path)
 	changed := !bytes.Equal(have, want)
+	loaded, disabled, pid, err := AgentLoaded(ctx)
+	if err != nil {
+		return AgentReady, wrapLaunchctl(err)
+	}
+	// The file stays as it is while the job runs: launchd's loaded copy cannot
+	// be read back, so a rewrite now would make a later call think nothing changed.
+	// shortcut: a daemon that never goes idle never picks up a changed plist;
+	// upgrade to comparing `launchctl print`'s program arguments if that bites.
+	if changed && loaded && pid > 0 {
+		return AgentReloadDeferred, nil
+	}
 	if changed {
 		if err := writeAtomic(path, want); err != nil {
 			return AgentReady, err
 		}
-	}
-	loaded, disabled, pid, err := AgentLoaded(ctx)
-	if err != nil {
-		return AgentReady, wrapLaunchctl(err)
 	}
 	if disabled {
 		return AgentReady, ErrAgentDisabled
@@ -244,8 +251,6 @@ func EnsureAgent(ctx context.Context, exe string) (AgentState, error) {
 	switch {
 	case !loaded:
 		return AgentReady, bootstrapAgent(ctx, path)
-	case changed && pid > 0:
-		return AgentReloadDeferred, nil
 	case changed:
 		if out, err := runLaunchctl(ctx, "bootout", agentTarget(LaunchdLabel)); err != nil {
 			return AgentReady, fmt.Errorf("%w (%w)", ErrAgentRefused, lcFail("bootout", out, err))
@@ -309,3 +314,11 @@ func ManagedByLaunchd(ctx context.Context) bool {
 	_, pid, err := jobLoaded(ctx, LaunchdLabel)
 	return err == nil && pid == os.Getpid()
 }
+
+// LegacyCleanup is a stub until Task 2's GREEN commit.
+func LegacyCleanup(ctx context.Context, lockHolderPID int) (done bool, err error) {
+	return false, errors.New("not implemented")
+}
+
+// AgentControl is a stub until Task 2's GREEN commit.
+func AgentControl(action string) error { return errors.New("not implemented") }
