@@ -63,7 +63,13 @@ type rig struct {
 
 func newRig(t *testing.T, opts ...tracerOpt) *rig {
 	t.Helper()
-	w, src := newWorld(), &sources{}
+	return newRigWorld(t, newWorld(), opts...)
+}
+
+// newRigWorld is newRig with a world the test already set up (OnAC at Start).
+func newRigWorld(t *testing.T, w *world, opts ...tracerOpt) *rig {
+	t.Helper()
+	src := &sources{}
 	env := newTracerServer(t, append([]tracerOpt{w.opt(), src.opt()}, opts...)...)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	t.Cleanup(cancel)

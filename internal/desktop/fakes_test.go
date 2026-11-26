@@ -38,6 +38,8 @@ type world struct {
 
 type notification struct{ id, title, body string }
 
+func errBoom(s string) error { return errors.New(s) }
+
 func newWorld() *world {
 	return &world{clock: newFakeClock(), perms: screencap.Permissions{SR: true, AX: true, PE: true}, approvalErr: errors.New("store unreadable")}
 }
@@ -128,6 +130,13 @@ func (w *world) notified() []notification {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return append([]notification(nil), w.notifies...)
+}
+
+// held returns the assertion names taken so far and how many were released.
+func (w *world) held() (display, system []string, released int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]string(nil), w.holdDisplays...), append([]string(nil), w.holdSystems...), w.released
 }
 
 func (w *world) counts() (nudges, declares, released int) {
