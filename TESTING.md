@@ -15,7 +15,7 @@ This document is the single source of truth for Portty's regression test program
 4. **Manual Regression Checklist** — human-intervention behaviors that cannot be automated
 5. **Standing Convention** — the per-phase rule every executor must follow
 
-The traceability table is machine-validated by `tests/check-traceability-paths.sh`, which runs in CI as part of the `build (portty, darwin/universal, macos-latest)` job and exits 1 if any mapped path no longer exists on disk.
+The traceability table is machine-validated by `tests/check-traceability-paths.sh`, which runs in CI as part of the `build (portty, darwin/arm64, macos-latest)` job and exits 1 if any mapped path no longer exists on disk.
 
 ---
 
@@ -28,10 +28,12 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 | Go unit/integration | **182** `*_test.go` files | `internal/`, repo root | `GOTOOLCHAIN=go1.26.11 go test -race -short ./...` | Daemon API, relay wire framing, capability model, PTY, webserver, status, tailnet; security fuzz targets (seed corpora run as tests) |
 | vitest (frontend) | **122** `*.test.ts/tsx` files | `frontend/src/` | `cd frontend && pnpm test` | React component render contracts (sidebar, tabs, toolbar, dialogs, Settings sheet, banners), UI state, CSS token source gates (no literal colour outside the token blocks), lib adapters (relay, remote, sidebar peers), the browser share viewer's input framing (`web/assets/terminal.js`) |
 | Playwright e2e | **10** `*.spec.ts` files | `frontend/e2e/` | `cd frontend && pnpm exec playwright test` | Web surface: CSP, web-links toggle, plugin hot-swap, vendored xterm addons, web-share guest scope (the guest sees only the terminal: WEBCHAT-03, CHAT-01), live light/dark (THEM-01), selection under the pointer on a scaled pane and Option-drag selection under a mouse-capturing TUI (selection-offset-copy), the same-account gate on the page routes (refusal page, retry page, same-account open, chromium/firefox/webkit), and the phone surface in WebKit's iPhone 15 emulation (`iphone` project: key bar bytes, 44 pt keys, phone chrome) |
-| build-script | **1** `build-script.test.sh` | `tests/` | `bash tests/build-script.test.sh` | Go build + Wails asset embedding |
-| **Total** | **315** | — | — | — |
+| build-script | **2** `build-script.test.sh`, `verify-bundle.test.sh` | `tests/` | `bash tests/build-script.test.sh && bash tests/verify-bundle.test.sh` | Go build + Wails asset embedding; release bundle gates (arm64 only, minos 14.0, team, hardened runtime, timestamp, entitlements, v1.2 designated requirement) and the inside-out sign order (REL-01) |
+| **Total** | **316** | — | — | — |
 
 > **Toolchain:** Go commands in this repo run with `GOTOOLCHAIN=go1.26.11`, the `toolchain` line in go.mod. With a newer Go installed, `GOTOOLCHAIN=auto` never downgrades to the pin, so set it by hand (`build.sh` exports it from go.mod unless the caller already set one). The root package refuses to compile under Go 1.27 (`toolchain_guard.go`, build tag `go1.27`) because tailscale.com v1.98.3's JSON decoding breaks with Go 1.27's encoding/json (tailcfg's `format:nano` tag), a run-time failure the compiler would not catch. When tailscale.com is upgraded, run `TestTailscaleJSON_FormatTagCanary` under the new Go first, then remove the go.mod toolchain line and toolchain_guard.go together.
+
+> Note: Portty Phase 18.1 (Apple Silicon release pipeline, REL-01): Go **182**, vitest **122**, Playwright **10**, build-script **2** (+1: tests/verify-bundle.test.sh), total **316** (counts from `git ls-files`; the Go count leaves out spike/). Edited in place: internal/updater/release_workflow_test.go (18.1-03: new `TestReleaseWorkflow_Arm64Build`, `TestReleaseWorkflow_InsideOutSigning`, `TestBuildWorkflow_Arm64MinOS14`, `TestVerifyBundle_PinsTeamAndDR`, `TestReleaseWorkflow_SignTimeout`, `TestReleaseWorkflow_ChecksumsAndNotes`; rewritten with their names kept for the two-name publish: `TestReleaseWorkflow_DMGName`, `TestReleaseWorkflow_NotarizesAndStaplesDMG`) and tests/build-script.test.sh (18.1-01/02: darwin/arm64 platform, both macOS 14 CGO exports, the gate and sign-script calls, no deep signing). Not automated: Section 5 Category BI.1, M-172 (the first tag run; SC2 runtime proof deferred to Phase 23 rc.1).
 
 > Note: Portty Phase 18 (self-installing updates, UPD-05..UPD-09): Go **182** (+8: internal/updater/selfinstall_test.go, internal/updater/appinstall_test.go, internal/updater/installer_test.go, internal/updater/outcome_test.go, internal/updater/mover_test.go, cmd_install_update_test.go, app_install_test.go, app_mover_test.go), vitest unchanged (edited in place: UpdateBanner.test.tsx, App.update.test.tsx), Playwright **10**, build-script **1**, total **315** (counts from `git ls-files`; the Go count leaves out spike/). build-script stays **1** in this note and the table: tests/verify-bundle.test.sh is Phase 18.1's file, already merged on this branch, and 18.1-04 records it (build-script **2**). Edited in place: internal/updater/update_test.go (18-02: `TestDMGAssetNames`, `TestLatestAcceptsArm64Name`, `TestLatestPrefersFirstName`, `TestLatestInvalidPreferredAsset`; the Apple Silicon-only asset name `portty-vX.Y.Z-darwin-arm64.dmg`, user-confirmed 2026-11-25), internal/updater/install_test.go (18-02: `TestClean` removes arm64 DMGs too), internal/updater/service_test.go (18-02: `TestService_CheckKeepsRevealedSameVersion`, `TestService_CheckSkipsFailedVersion`, `TestService_ManualCheckOffersSkipped`, `TestService_CheckUnreadableSkipSuppressesOffer`), app_update_test.go (18-04: `TestManualUpdateCheck_AvailableUpdate` and `TestManualUpdateCheck_WhileUpdating`, renamed from `_AvailableDownload` and `_WhileDownloading`; new `TestManualUpdateCheck_WhileVerifying` and `TestTrayUpdate_HiddenAfterFailedInstall`). 18-10's installer-copy tests (`TestBundleFromExecutable`, `TestStartInstaller_CopiesRunningBundle`, `TestStartInstaller_FailureCleansUp`, `TestCopyBundle_ChecksBeforeUnquarantine`) live in cmd_install_update_test.go, 18-03's `TestParseGUIPids` in installer_test.go, and 18-05's Trash and sweep tests in app_install_test.go, so they add no files. Not automated: Section 5 Category BI, M-165..M-169 (plus M-170 and M-171, two any-Mac checks from the 18-09 carry-overs).
 
@@ -316,19 +318,19 @@ The entire CI suite IS the regression suite. No build tags, no relocated files �
 
 ### CI Workflow Mapping
 
-- `build.yml` (runs on push + PR): a single macOS job (`macos-latest`) running the brand gate (`tests/check-brand.sh`), the share removal gate (`tests/check-share-removal.sh`), Go tests (race detector), build-script tests, vitest, the traceability path-check step and `scripts/verify-icons.sh`, then the Wails build
-- `e2e.yml` (runs on push/PR to `main`): Playwright cross-browser (chromium, firefox, webkit). **The workflow is disabled in GitHub Actions** (`gh workflow list --all` shows `e2e  disabled_manually`, verified 2026-11-25; its last runs, on 2026-11-14 Dependabot PRs, failed in 3-4 s), so it produces no `playwright` check today
-- `release.yml` (runs on `v*` tags): builds, signs and notarizes Portty.app, then notarizes and staples the hdiutil DMG and checks it like the in-app updater (codesign, Team S2K7P43927, spctl) before publishing it plus checksums. There is no distribute workflow.
+- `build.yml` (runs on push + PR): a single macOS job (`macos-latest`) running the brand gate (`tests/check-brand.sh`), the share removal gate (`tests/check-share-removal.sh`), Go tests (race detector), build-script tests, vitest, the bundle gate tests (`tests/verify-bundle.test.sh`), the traceability path-check step and `scripts/verify-icons.sh`, then the Wails build for darwin/arm64 with both macOS 14 CGO flags and `scripts/verify-bundle.sh` on the built bundle
+- `e2e.yml` (runs on push/PR to `main`): Playwright cross-browser (chromium, firefox, webkit). The workflow is active again (re-enabled 2026-11-25, quick task 10) and reports a `playwright` check; that check is not a required check (Section 3)
+- `release.yml` (runs on `v*` tags): builds once for darwin/arm64 (minos 14.0), gates the unsigned bundle, signs every Mach-O inside out with `scripts/sign-bundle.sh`, gates team, hardened runtime, timestamp, entitlements and the v1.2 designated requirement (`verify-bundle.sh --signed`) and notarization (`--notarized`), then publishes that one build as `portty-vX.Y.Z-darwin-universal.dmg` and `portty-vX.Y.Z-darwin-arm64.dmg`, each signed with its own name as identifier, notarized, stapled and checked like the in-app updater, plus a `checksums.txt` holding exactly those two. There is no distribute workflow.
 
 ---
 
 ## 3. Merge Gate: How to Apply Branch Protection
 
-Branch protection requires both CI check contexts to pass before a PR can merge. Admin direct push to `main` is allowed (preserves the GSD `.planning/` doc-commit flow). No PR review requirement.
+Branch protection requires the one build check context to pass before a PR can merge. Admin direct push to `main` is allowed (preserves the GSD `.planning/` doc-commit flow). No PR review requirement.
 
 ### Apply Protection
 
-CI status (verified 2026-11-25): Actions are enabled and `build.yml` runs on every push and PR (the last runs on `main` and on the phase branch succeeded; `main`'s head commit carries a successful `build (portty, darwin/universal, macos-latest)` check run, app `github-actions`, id 15368). `release.yml` is active. `e2e.yml` is active again (re-enabled 2026-11-25): it had been disabled after its 2026-11-14 runs failed in 3-4 s with no steps, because GitHub refused to start the job over an account billing failure (check-run annotation), not because of the workflow or the tests. It runs on push and PR to `main` and on manual `workflow_dispatch` from any branch; the first dispatch on the phase branch passed (`playwright` job: 52 passed, 32 skipped, ubuntu-24.04). `main` gets a `playwright` check on its next push or PR. Branch protection on `main` is not applied (`GET .../branches/main/protection` returns 404 "Branch not protected"); apply the command below only after `main` carries a successful `playwright` check run.
+CI status (verified 2026-11-25): Actions are enabled and `build.yml` runs on every push and PR. Phase 18.1 renamed the matrix context to `build (portty, darwin/arm64, macos-latest)` (app `github-actions`, id 15368); `main` reports it after the 18.1 merge. `release.yml` is active. `e2e.yml` is active again (re-enabled 2026-11-25): it had been disabled after its 2026-11-14 runs failed in 3-4 s with no steps, because GitHub refused to start the job over an account billing failure (check-run annotation), not because of the workflow or the tests. It runs on push and PR to `main` and on manual `workflow_dispatch`; its `playwright` check stays out of the required set by decision (CONTEXT 2026-11-25: it runs, but is not a merge gate). Branch protection on `main` was not applied as of 2026-11-25 (`GET .../branches/main/protection` returned 404 "Branch not protected"); it is applied after the merge only through the 18.1-04 approval checkpoint, and only once `main` carries a successful `build (portty, darwin/arm64, macos-latest)` check run. Alternative (only after main carries a successful `playwright` check run): add a second `checks` entry for the `playwright` context, app_id 15368.
 
 ```bash
 gh api repos/scottkw/portty/branches/main/protection \
@@ -339,13 +341,14 @@ gh api repos/scottkw/portty/branches/main/protection \
   "required_status_checks": {
     "strict": false,
     "checks": [
-      {"context": "build (portty, darwin/universal, macos-latest)", "app_id": 15368},
-      {"context": "playwright", "app_id": 15368}
+      {"context": "build (portty, darwin/arm64, macos-latest)", "app_id": 15368}
     ]
   },
   "enforce_admins": false,
   "required_pull_request_reviews": null,
-  "restrictions": null
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
 }
 EOF
 ```
@@ -356,6 +359,8 @@ EOF
 - `enforce_admins: false` — admin (scottkw) can push directly to `main` without CI; this preserves the GSD `.planning/` doc-commit flow
 - `required_pull_request_reviews: null` — no PR review requirement
 - `restrictions: null` — no user/team push restrictions
+- `allow_force_pushes: false`, `allow_deletions: false` — no history rewrite or branch deletion on `main`
+- Only the build check is required (CONTEXT decision 2026-11-25); the `playwright` check is not a merge gate
 - GitHub Actions `app_id: 15368` — verified 2026-06-21 from live check-runs API
 
 ### Roll Back Protection
@@ -370,7 +375,7 @@ gh api repos/scottkw/portty/branches/main/protection --method DELETE
 
 **Warning sign:** A new PR passes CI but the "required checks" status badge shows an unknown check name.
 
-Portty 03-06 renamed the build.yml matrix entry, so the required context changed. Re-apply protection with the command above (the repository is public, so no paid plan is needed; see the CI status note under Apply Protection about the `playwright` context).
+Portty 18.1 renamed the build.yml matrix entry to darwin/arm64 (`build (portty, darwin/arm64, macos-latest)`). Protection is applied, or re-applied, with the command above only after that context has reported on `main`.
 
 ---
 
@@ -536,7 +541,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | BRND-06 | app_update_release_test.go | Go | Portty 06-04: `TestUpdateDefaults_ReleaseBuild` — the release build checks https://api.github.com with the GitHub allowlist and the 10 s / 1 h / 24 h cadence (build tag `!vmpreview`, because the VM-only updates_vmpreview.go overrides them) |
 | UPD-03 | internal/updater/install_test.go | Go | Portty 06-01: `TestFlow_CheckDownloadVerifyReveal`, `TestDownload` (0600 file with the quarantine flag), `TestDownloadDigestMismatch`, `TestDownloadSize`, `TestDownloadBadName`, `TestDownloadShortBody`, `TestDownloadRedirects` (every hop allowlisted), `TestVerify` / `TestVerifyFailures` (codesign, Team S2K7P43927, signing identifier = asset name without .dmg (an older Portty or another product of the team is refused, WR-01), spctl, each failure named by step), `TestReveal`, `TestClean` |
 | UPD-03 | internal/updater/real_darwin_test.go | Go | Portty 06-01 (darwin, env-gated, skipped without inputs): `TestRealDMG` runs the real codesign/spctl on `UPDATE_REAL_DMG` (optionally `UPDATE_REAL_BAD_DMG`, `UPDATE_REAL_REVEAL=1`); run on the host with GIFsmith v1.0.1's notarized DMG (accepted under its own identifier `Gifsmith-1.0.1-arm64`, refused at the identifier step under a Portty asset name, WR-01), a byte-flipped copy (codesign), an unsigned UDZO (codesign) and an ad-hoc copy (team); `TestReleaseJSON` checks a real release JSON (`UPDATE_RELEASE_JSON`, `UPDATE_DMG_PATH`) — M-93 runs both on the first release |
-| UPD-03 | internal/updater/release_workflow_test.go | Go | Portty 06-01: `TestReleaseWorkflow_DMGName` (portty-vX.Y.Z-darwin-universal.dmg), `TestReleaseWorkflow_DMGName` also checks the DMG is signed with `--identifier "portty-${VERSION}-darwin-universal"`; `TestReleaseWorkflow_NotarizesAndStaplesDMG` (the DMG is notarized, stapled and verified like the in-app updater, identifier included, before upload), `TestReleaseWorkflow_PrereleaseFlag`, `TestReleaseWorkflow_VMOnlyFakesGated` (validate runs tests/check-brand.sh; the built binary is checked for the VM-only fake feed address before it is tarred, WR-02) |
+| UPD-03 | internal/updater/release_workflow_test.go | Go | Portty 06-01: `TestReleaseWorkflow_DMGName` (the one build is published as portty-vX.Y.Z-darwin-universal.dmg and portty-vX.Y.Z-darwin-arm64.dmg, each signed with its own name as `--identifier`, Phase 18.1-03); `TestReleaseWorkflow_NotarizesAndStaplesDMG` (the DMG is notarized, stapled and verified like the in-app updater, identifier included, before upload), `TestReleaseWorkflow_PrereleaseFlag`, `TestReleaseWorkflow_VMOnlyFakesGated` (validate runs tests/check-brand.sh; the built binary is checked for the VM-only fake feed address before it is tarred, WR-02) |
 | UPD-01 | internal/updater/service_test.go | Go | Portty 06-02: `TestService_CheckAvailable` (available status with current and latest), `TestService_CheckSerialized`, `TestService_CheckQueuedGetsOwnBudget` (a check queued behind a slow one gets its full timeout once it has its turn, IN-03) |
 | UPD-03 | internal/updater/service_test.go | Go | Portty 06-02: `TestService_DownloadReveals` (downloading progress, verifying, revealed; verify and reveal run on their own 2-minute deadline, IN-02), `TestService_DownloadFailures` (digest, signature and reveal failures back to available with the error text; a failed file is deleted; empty Dir; retry), `TestService_DownloadNotAvailable`, `TestService_DownloadOneAtATime`, `TestService_DownloadAfterRevealRevealsAgain` (a second Download after a reveal shows the kept DMG again; a removed file is fetched afresh, IN-04), `TestService_ErrorTextsHaveNoURLOrPath` |
 | UPD-04 | internal/updater/service_test.go | Go | Portty 06-02: `TestService_CheckQuietOutcomes` (404, draft, prerelease and the same version, with or without a DMG, give current), `TestService_CheckNewerNotInstallable` (a newer release with no, an uploading or an undigested DMG is a check error that keeps the previous status, WR-04), `TestService_CheckFailures` (a failure restores the previous status) |
@@ -906,6 +911,9 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | MOB-04 | cmd_share_test.go | Go | Portty 14-09: the `portty share` printed warning is the new sentence (the link only opens on devices signed in to your Tailscale account) |
 | MOB-04 | frontend/src/components/__tests__/SharePopover.test.tsx | vitest | Portty 14-09: the Share popover description and warning match the new copy |
 | MOB-04 | frontend/src/components/__tests__/SettingsSheet.tailscale-status.test.tsx | vitest | Portty 14-09: the Settings Sharing footnote matches the new copy |
+| REL-01 | tests/verify-bundle.test.sh | build-script | Portty 18.1-01/02: unsigned fixtures built with cc at test time (good bundle, minos 15.0 pass; minos 11.0, two-slice, x86_64-only, nested helper at 11.0 named by path, no Mach-O, old plist minimum, wrong bundle id, usage errors) and the signed cases (real ad-hoc fixtures; a fake codesign on PATH, one mutation per case, each failing with only its own tag: team, runtime flag, timestamp, identifier, designated requirement, entitlements, verify), `sign-bundle.sh` four-call inside-out sign order, no deep signing, entitlements file pin, `SIGN_IDENTITY` unset |
+| REL-01 | tests/build-script.test.sh | build-script | Portty 18.1-01/02: build.sh builds darwin/arm64 with both CGO exports at `-mmacosx-version-min=14.0`, calls `scripts/verify-bundle.sh`, and `--sign` goes through `scripts/sign-bundle.sh` and `verify-bundle.sh --signed` with no deep signing (Section 13) |
+| REL-01 | internal/updater/release_workflow_test.go | Go | Portty 18.1-03: `TestReleaseWorkflow_Arm64Build` (darwin/arm64 build, both CGO flags at 14.0, bundle gate before the tar), `TestReleaseWorkflow_InsideOutSigning` (sign-bundle.sh, verify-bundle.sh --signed, --notarized, no `--deep`), `TestBuildWorkflow_Arm64MinOS14` (build.yml context and flags), `TestVerifyBundle_PinsTeamAndDR` (Team ID, bundle id and designated requirement in verify-bundle.sh equal the Go constants), `TestReleaseWorkflow_DMGName` (both names from one suffix list equal `DMGAssetNames`), `TestReleaseWorkflow_NotarizesAndStaplesDMG`, `TestReleaseWorkflow_SignTimeout`, `TestReleaseWorkflow_ChecksumsAndNotes` (two-line checksums, Apple Silicon note); the local two-name DMG rehearsal was a task verify, not a committed test |
 BUG-07 (#127, Phase 176-03): no traceability row added — the live dev-browser repro returned a DOES-NOT-REPRODUCE verdict (BRANCH B), so no code or test changed. Closure evidence lives in `176-03-SUMMARY.md` (screenshot + computed-style/geometry readout of `.hub-card__preview-line` and its child spans) rather than a new/updated test file.
 
 ---
@@ -2057,6 +2065,21 @@ Rig: two ad-hoc rig builds of one commit, 1.8.0 (N) and 1.8.1 (N+1), made with `
   - _Last run:_ not yet run. Unchecked in the VM: driving Finder needs an Automation grant (`osascript` to Finder returned -1743 and no grant was made), and the installer's DesktopServices could not write the Trash's `.DS_Store` (`NSCocoaErrorDomain Code=513`, P3), which is where Finder keeps Put Back data. Put Back may therefore be greyed out.
   - _Why not automatable:_ Finder UI on a real Mac, and an Automation grant the rig does not make.
   - _Source:_ 18-VM-CHECKS.md row P3; 18-05-SUMMARY.md; 18-07-SUMMARY.md open finding 5.
+
+### Category BI.1 — Apple Silicon Release Pipeline (REL-01, Phase 18.1)
+
+Phase 18.1 sits between Phase 18 and Phase 19; the one item below is the first tag run of the arm64 release pipeline.
+
+- **M-172** First tag run of the Apple Silicon release pipeline (REL-01; first run is Phase 23's v2.0.0-rc.1 draft; carries ROADMAP SC2's deferred runtime proof).
+  - _Preconditions:_ the release environment's secrets exist; a user pushes the rc tag (Phase 23).
+  1. The Release run passes "Release bundle is arm64-only with minos 14.0 (REL-01)", "Sign .app with hardened runtime" (`sign-bundle.sh` and `verify-bundle.sh --signed`), "Notarize .app" (`--notarized`), the three DMG steps for both names and the checksum step.
+  2. The draft release holds both DMGs and a two-line `checksums.txt`, and its notes start with "Apple Silicon and macOS 14 or later only."
+  3. Download both DMGs into a scratch directory (never `~/Downloads`), run `UPDATE_REAL_DMG=<dmg> GOTOOLCHAIN=go1.26.11 go test -run TestRealDMG ./internal/updater` for each (not skipped), mount each read-only on a scratch mountpoint and check the app's `codesign -d -r-` designated line equals v1.2's, `lipo -archs` prints `arm64` and `vtool -show-build` shows minos 14.0, then detach.
+  4. At the real v2.0 release, an installed v1.2.x copy finds, verifies and installs it through the universal name (with M-93).
+  - PASS when all hold. SC2 runtime proof deferred to Phase 23 rc.1 (this item is its deferred runtime proof).
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ needs a pushed tag, the release secrets, Apple's notary service and an installed older copy; local tests prove the gates with fixtures, a host Developer ID signature and an un-notarized two-name DMG rehearsal.
+  - _Source:_ 18.1-02-PLAN.md, 18.1-03-PLAN.md.
 
 ---
 
