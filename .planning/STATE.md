@@ -6,10 +6,10 @@ current_phase: "18.1"
 current_phase_name: Apple Silicon Release Pipeline
 status: executing
 stopped_at: Phase 18 complete (human verification deferred), Phase 18.1 next
-last_updated: "2026-11-26T16:33:55.859Z"
+last_updated: "2026-11-26T16:47:39.965Z"
 last_activity: 2026-11-26
-last_activity_desc: Phase 18 closed with human_needed items tracked in 18-UAT.md
-state_head: a40e8ae8a0be660f7b30e010190640cae76802b8
+last_activity_desc: "Phase 18 (with 17 and 18.1) shipped as PR #11"
+state_head: 50fd9656b7e6ffc3cb259e04a24daaa48f2cd403
 progress:
   total_phases: 8
   completed_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 
 Phase: 18.1 (Apple Silicon Release Pipeline) — next
 Status: Phase 18 complete 2026-11-26 (verification human_needed, deferred; see Deferred Verification)
-Last activity: 2026-11-26 - Completed quick task 261126-e29: Apply accepted ponytail-review fixes and deletions
+Last activity: 2026-11-26 -- Phase 18 (with 17 and 18.1) shipped as PR #11
 
 ## Performance Metrics
 
