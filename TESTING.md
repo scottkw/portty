@@ -2004,6 +2004,7 @@ Rig: the user's office Mac (the shared Mac, macOS 27.2.x) and personal MacBook A
   - _Last run:_ not yet run
   - _Why not automatable:_ the two real Macs on the user's tailnet; the test VMs always connect via DERP (test-rig limit, accepted at the 17-12 closure checkpoint).
   - _Source:_ 17-SPIKE-MATRIX.md row R01 (R01-vm, R01-host)
+  - _From Phase 19:_ run it with Portty's always-available desktop instead of the spike: the link's media rides the direct path (no STUN, TURN or cloud server, DESK-02), checked with `lsof` and the packet capture as above; M-173 step 3 settles the first-frame time on it.
 
 - **M-158** A daemon started from an SSH shell gets no Accessibility of its own when the SSH daemon wrapper holds none (DSHR-01; documents why the product never starts the daemon from SSH).
   1. At the office Mac's keyboard (not over SSH), turn off Accessibility for sshd-keygen-wrapper in System Settings, with the spike daemon's own Accessibility grant on.
@@ -2020,6 +2021,7 @@ Rig: the user's office Mac (the shared Mac, macOS 27.2.x) and personal MacBook A
   - _Last run:_ not yet run
   - _Why not automatable:_ real display and power hardware of the office Mac; R18 ran only on the personal MacBook Air.
   - _Source:_ 17-SPIKE-MATRIX.md row R18 (R18-host)
+  - _From Phase 19:_ run it with Portty's always-available desktop instead of the spike: the product holds the display and system-sleep assertions for a viewer and the AC-only assertion (DPRM-04); M-174 is the battery version of this item.
 
 - **M-160** The real 30-day Screen Recording re-approval prompt on the office Mac, and what capture does while it waits (DPRM-03).
   1. Note the date the office Mac's capture host was first approved (the approval store's LastAlerted).
@@ -2028,6 +2030,7 @@ Rig: the user's office Mac (the shared Mac, macOS 27.2.x) and personal MacBook A
   - _Last run:_ not yet run
   - _Why not automatable:_ a real 30-day wait on the real Mac; the spike backdated the store in a disposable clone, which raised the bypass-picker prompt but not the real monthly one.
   - _Source:_ 17-SPIKE-MATRIX.md row R19
+  - _From Phase 19:_ run it with Portty's always-available desktop instead of the spike: the product's lapse detection (DPRM-03) must show Waiting for approval at the Mac in Settings, the tray and the viewer, and the lapse notification is M-176.
 
 - **M-161** The office Mac's hardware H.264 encoder at its native display size and 30 fps: CPU, latency and sharpness (DESK-01, DESK-07).
   1. On the office Mac run the spike's host-run with the test chart moving for 95 s and a viewer joined.
@@ -2036,6 +2039,7 @@ Rig: the user's office Mac (the shared Mac, macOS 27.2.x) and personal MacBook A
   - _Last run:_ not yet run
   - _Why not automatable:_ the office Mac's real encoder; R20 ran only on the personal MacBook Air.
   - _Source:_ 17-SPIKE-MATRIX.md row R20 (R20-host)
+  - _From Phase 19:_ run it with Portty's always-available desktop instead of the spike: read the capture size (DESK-01, at most 2560 on the long side) and the viewer's frame width in the `#debug` read-out; M-173 checks the sharpness.
 
 - **M-162** System audio capture from the Mac's real output device reaches the viewer (DCTL-07).
   1. On a real Mac play a known sound through the built-in speakers or headphones while `opusprobe --source sck` runs 10 s, then a 5 s run in silence.
@@ -2045,10 +2049,10 @@ Rig: the user's office Mac (the shared Mac, macOS 27.2.x) and personal MacBook A
   - _Why not automatable:_ the VM has only a virtual output device; the real device needs a real Mac.
   - _Source:_ 17-SPIKE-MATRIX.md row R21
 
-- **M-163** On the office Mac the in-daemon capture host is attributed and listed as in the VMs, and the grant is confirmed by preflight polling (FA-1; DPRM-01).
+- **M-163** On the office Mac the in-daemon capture host is attributed and listed as in the VMs, and the grant is confirmed by a fresh-process probe (`portty daemon perm-probe`) or by effect (Test Capture), not by preflight polling in a long-running process (FA-1; DPRM-01).
   1. On the office Mac, after a clean reset, bootstrap the spike daemon's LaunchAgent and let it request Screen Recording and Accessibility.
-  2. Answer each dialog, then poll the non-prompting preflight every 10 s for 3 minutes; if it stays false, add the grant by hand in System Settings and poll again.
-  3. PASS when: tccd names app.portty.spike as the accessing identity for ScreenCapture, Accessibility and PostEvent, System Settings lists Spike under Screen and System Audio Recording and Accessibility and the LaunchAgent under Login Items (signing developer's name), and the record says which grant path made preflight read true.
+  2. Answer each dialog, then read the grant every 10 s for 3 minutes with a fresh-process probe (`portty daemon perm-probe`, a new process each time) or by effect (the setup sheet's Test Capture); a long-running process's own check is cached and is not evidence. If it stays false, add the grant by hand in System Settings and read again.
+  3. PASS when: tccd names app.portty.spike as the accessing identity for ScreenCapture, Accessibility and PostEvent, System Settings lists Spike under Screen and System Audio Recording and Accessibility and the LaunchAgent under Login Items (signing developer's name), and the record says which grant path made the fresh probe or Test Capture read true.
   - _Last run:_ not yet run
   - _Why not automatable:_ real TCC prompts on the office Mac; every attribution row (R02 to R09) ran only in a VM, and in host session 1 an Allow click did not make preflight read true.
   - _Source:_ 17-SPIKE-MATRIX.md row R04 (FA-1 in `## FEAS-02 decision`; R09-B)
@@ -2060,6 +2064,7 @@ Rig: the user's office Mac (the shared Mac, macOS 27.2.x) and personal MacBook A
   - _Last run:_ not yet run
   - _Why not automatable:_ the office Mac's own Tailscale install, which no test rig reproduces.
   - _Source:_ 17-SPIKE-MATRIX.md row R01 (M-164 in `## FEAS-02 decision`)
+  - _From Phase 19:_ run it with Portty's always-available desktop instead of the spike: in userspace-networking mode the Settings switch is refused with the userspace sentence and the daemon does not start the desktop (`TestDesktopAPI_PollerIgnoresOffAndUserspace`, `TestDesktopAPI_UserspaceRefusalClearsWhileOff` and the Settings test cover the logic).
 
 ### Category BI — Self-Installing Updates (UPD-05..UPD-09)
 
@@ -2138,6 +2143,71 @@ Phase 18.1 sits between Phase 18 and Phase 19; the one item below is the first t
   - _Last run:_ not yet run.
   - _Why not automatable:_ needs a pushed tag, the release secrets, Apple's notary service and an installed older copy; local tests prove the gates with fixtures, a host Developer ID signature and an un-notarized two-name DMG rehearsal.
   - _Source:_ 18.1-02-PLAN.md, 18.1-03-PLAN.md.
+
+### Category BJ — Unattended Desktop Viewing (Phase 19)
+
+Rig: the user's office Mac and personal MacBook Air (the viewer) on the user's tailnet, plus the user's iPhone with Tailscale on; Portty installed from a Developer ID build or the first v2.0 release. Nothing here runs without the owner at the Mac, and no token, link or address is written down: links go from the office Mac to the other devices through a private channel and are deleted afterwards. The VM rows these items extend are in `.planning/phases/19-unattended-desktop-viewing/19-VM-CHECKS.md` (each item names its rows as _Source_); only what a VM cannot show is here. DSHR-01 as amended by the user on 2026-11-25 ("Start it anyway"): launchd primary; a fallback-started daemon is surfaced as degraded (Background service, Needs repair). M-176 is human_needed and stays visible here: the daemon-posted lapse notification with the GUI closed, on a notarized build. Phase 19 also turns M-157, M-159, M-160, M-161, M-163 and M-164 from spike checks into product checks (a line under each says how). Phase 20 numbers its items after M-179.
+
+- **M-173** The office Mac's always-available desktop works end to end with the Portty window quit, viewed from the home Mac in Chrome and Safari, sharp on the Retina display (DESK-01, DESK-02, DESK-03, DVWR-02, DSHR-01, DSHR-02, DPRM-01; the owner runs it; human_needed).
+  1. On the office Mac, with Portty installed and running, open Settings and check that the Desktop group shows no Background service row (the daemon is launchd-managed; Portty is listed in Login Items). Turn Always-available desktop on, use Set Up Permissions to grant Screen Recording and Accessibility, run Test Capture until it shows the thumbnail, and Copy Link.
+  2. Send the link to the home Mac privately. Quit Portty from the menu bar so no Portty window or menu-bar item is left. On the home Mac open the link in Chrome, then in Safari, each with `#debug` added to the address.
+  3. Leave both open for 2 minutes, then look at the office Mac's screen in each viewer at full size and at the browser's zoom of 100 %.
+  PASS when: both browsers show the office Mac's screen with the Portty window closed; the debug read-out shows frames decoded rising, a frame width equal to the office display's native pixel width, `cspViolations` 0, and `Streaming to 2 viewers`; text on the office Mac's screen is sharp (no blur from scaling) on the Retina display; the first frame arrives within about 2 s on the direct path (settles VM row F2's 1.1 to 3.6 s over DERP; see M-157); the Settings step showed no Background service row.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the office Mac's real Retina display, its real tailnet direct path and a person at the Mac for the permission prompts; the VMs always connect via DERP and show only a 2560 x 1440 virtual display.
+  - _Source:_ 19-VM-CHECKS.md rows M1, V7, L1, V4, F1, F2 and UI-SPEC "UI Considerations" (Retina sharpness).
+
+- **M-174** On battery the desktop lets the display sleep without a viewer, holds it awake with one, and a joining viewer lights a sleeping display (DPRM-04; the owner runs it; human_needed).
+  1. On the office Mac (or the home Mac as a stand-in if the office Mac is always on power) unplug power with Always-available desktop on and no viewer. Run `pmset -g assertions` and record it.
+  2. Open the desktop link from the other Mac and record `pmset -g assertions` again; close the viewer, wait 15 s and record it a third time.
+  3. With the viewer closed let the display sleep (`pmset displaysleepnow`), wait 20 s, then open the link from the other Mac. Plug power back in and record `pmset -g assertions` once more with no viewer.
+  PASS when: on battery with no viewer there is no Portty "always-available desktop on AC power" assertion and the display sleeps by the Mac's own policy; with the viewer there are two Portty "desktop viewer connected" assertions (system sleep and display sleep) and they are gone 15 s after the viewer closes; joining while the display sleeps lights the display and the first frame arrives within a few seconds; on power with no viewer the "always-available desktop on AC power" system-sleep assertion is held.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ a real battery and power source; the VM has no battery, so row P1 shows only the on-power half.
+  - _Source:_ 19-VM-CHECKS.md rows P1 and F7 (the VM halves), 19-09-SUMMARY.md.
+
+- **M-175** An iPhone Home Screen link is named Portty Desktop, starts from a tap, and keeps working after a daemon restart and after an upgrade (DESK-03, DSHR-02, DVWR-02; the owner runs it; human_needed).
+  1. On the office Mac turn Always-available desktop on and Copy Link. On the iPhone (Tailscale on) open the link in Safari, tap Share, Add to Home Screen, and read the suggested name before saving.
+  2. Open the Home Screen icon. If the picture does not start, tap Tap to Start. Then on the office Mac choose Quit All and open Portty again, and open the icon again. Repeat after an upgrade of Portty on the office Mac.
+  PASS when: the suggested and saved name is "Portty Desktop"; the icon opens the viewer without asking for a login and shows the office Mac's screen after at most one tap; the same icon works after the daemon restart and after the upgrade with no new link. Do not turn the desktop switch off during this item: that revokes every saved desktop link by design (the Settings footnote says so).
+  - _Last run:_ not yet run
+  - _Why not automatable:_ a physical iPhone and iOS's Home Screen behaviour (name taken from the page, token kept on launch); the VM rows show the link text surviving both events but not the phone.
+  - _Source:_ 19-VM-CHECKS.md rows F4 and F5 (link text unchanged), UI-SPEC "UI Considerations" (iPhone Home Screen name and relaunch).
+
+- **M-176** The daemon delivers the desktop-approval lapse notification itself when the Portty window is closed, on a notarized build (DPRM-03; the owner runs it; human_needed, listed here so it is not folded into a pass).
+  1. Install the notarized release on the office Mac, allow notifications for Portty when macOS asks, turn Always-available desktop on, and quit the Portty window so only the background service runs.
+  2. Get a lapse. Either wait for the real monthly Screen Recording re-approval prompt (the same wait as M-160), or install a Developer ID build made with the `vmdesktop` tag (never published; the rig in 19-VM-CHECKS.md row F13 builds one), post the simulated lapse through its debug route, then reinstall the untagged build.
+  3. Read the notification that appears, then open the Portty window and cause a second lapse the same way.
+  PASS when: with the window closed one banner appears with the title "Portty" and the text "Portty desktop needs approval at the Mac."; with the window open only one banner appears, posted by the window; a second lapse replaces the first banner rather than stacking another. If no banner appears with the window closed, that is a defect to fix, not a gap to accept. The VM rows V1b and F13 passed on a Developer ID build after the first run (V1) failed and was fixed in 19-14, so what is open here is the banner itself and the notarized build, which a VM guest cannot show.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the real on-screen banner under the daemon's bundle identity on a notarized build; the VM guest screen reads blank and the VM rows stand in with the notification database and the unified log.
+  - _Source:_ 19-VM-CHECKS.md rows V1 (failed, superseded), V1b and F13; UI-SPEC "UI Considerations" (lapse notification posted by the daemon with the GUI closed).
+
+- **M-177** An upgrade on the office Mac with a desktop viewer attached and live terminal sessions (DSHR-01, DSHR-02, DESK-03, DPRM-03; the owner runs it; human_needed; repeats VM row F5b on the real Mac and reads the tick gap).
+  1. On the office Mac with Always-available desktop on, start two sessions (one that prints a counter every second after 300 history lines) and open both the desktop link and a terminal share link from the home Mac in Safari.
+  2. Install the next version over the running one (M-169's update path, or the DMG replace) and watch both pages for 2 minutes; then open Settings on the office Mac.
+  PASS when: both shells keep their pids and the counter shows no missing or repeated number except one pause of at most a few seconds at the moment the new daemon first starts (the VM showed 3 to 4 s with the cause unproven; record the length you see); the history is intact; the desktop viewer shows Reconnecting at most twice, about 35 s apart, and returns to streaming on the same link with no reload; Settings does not say "Paused after repeated errors" and the Desktop status reads Ready or Streaming; the Desktop group still shows no Background service row afterwards.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ the office Mac's real upgrade, its own tailnet path and the owner's sessions; the VM run (rows F5 and F5b) used a Developer ID build over DERP and could not name the cause of the pause.
+  - _Source:_ 19-VM-CHECKS.md rows F5 and F5b and the "Findings from 19-15 (F5)" section.
+
+- **M-178** The Safari consoles on the home Mac and on the iPhone show no Content Security Policy violation on the /desktop/ page (DVWR-02; the owner runs it; human_needed).
+  1. On the home Mac, in Safari's Develop menu, turn on the Web Inspector for the desktop page, open the link and leave the Console tab open for 2 minutes while the picture streams.
+  2. Repeat on the iPhone: connect it to the home Mac by cable (or Wi-Fi debugging), open the link in iPhone Safari, choose the iPhone in the Develop menu and read its Console. Do the same from the Home Screen icon of M-175 if the inspector offers it.
+  PASS when: neither console shows a line starting "Refused to" (script, style, connect, media or manifest), and the page still streams.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ real Safari on macOS and iOS with Web Inspector; the VM rows V7 and M1 read `cspViolations` 0 in Safari and Chrome, and the Chrome end-to-end test `TestDesktopCSP_E2E` runs only with the `e2e` tag.
+  - _Source:_ 19-VM-CHECKS.md rows M1 and V7; 19-06-SUMMARY.md.
+
+- **M-179** How the Desktop group, the setup sheet, the tray line and the viewer look in real windows (DPRM-01, DPRM-02, DSHR-01; the owner runs it; human_needed; the VM's WebKit screenshots are blank, so no one has seen these).
+  1. On the office Mac open Settings, Sharing, in light and then dark appearance. Look at the Desktop group (switch, Status, Link, Permissions, Background service when shown) against the other groups: spacing, alignment, dimming while Getting a link, and the macOS-native feel.
+  2. At the dialog's normal 560 px height, find the Background service row (to see it, disable Portty's background item in System Settings, Login Items, and restart Portty) and scroll to its Open Login Items button; decide whether the scroll is acceptable.
+  3. Turn off Screen Recording and Accessibility for Portty, open Set Up Permissions and read the how-to lines; run Test Capture with Screen Recording on and look at the 256 x 160 thumbnail box (a wide and a tall display if you have both). Re-enable both grants.
+  4. With the desktop on, open the menu-bar menu with no viewer and with a viewer attached, then look at a viewer's chip and cards in the home Mac's browser and on the iPhone in light and dark.
+  PASS when: the group looks like part of the Settings sheet in both appearances; the Background service button is reachable by scrolling and the owner accepts that (or asks for a taller dialog); the how-to names panes that exist in System Settings (Screen & System Audio Recording, Device Control and Data Access on macOS 27) and wraps in 4 lines or fewer; the thumbnail sits in its fixed box without cropping or moving the layout; the tray shows one dimmed, unclickable Desktop line ("Desktop: Ready", "Desktop: Streaming to 1 viewer"); the viewer's chip and cards read clearly over the black letterbox in light and dark.
+  - _Last run:_ not yet run
+  - _Why not automatable:_ visual judgement of real WebKit and AppKit rendering, which the VM cannot screenshot and the host may not run; structure is covered by `SettingsSheet.desktop.test.tsx`, `DesktopSetupSheet.test.tsx`, `DesktopView.test.tsx` and `TestDesktopTrayLine`.
+  - _Source:_ 19-13-SUMMARY.md gap G8, 19-14-SUMMARY.md (tray line not observed), 19-VM-CHECKS.md findings (Background service row below the fold; setup sheet wording not exercised), UI-SPEC "UI Considerations" (appearance backstop).
 
 ---
 
