@@ -345,13 +345,8 @@ func (a *App) consumeInstallResult() {
 	if r.KeepDaemon {
 		a.keepDaemonOnce.Store(true)
 	}
-	var body string
-	switch r.Outcome {
-	case updater.OutcomeRolledBack:
-		body = "The update to Portty " + r.NewVersion + " didn't take. Portty " + r.OldVersion + " is still installed."
-	case updater.OutcomeFailed:
-		body = "Portty couldn't install version " + r.NewVersion + "."
-	default:
+	body, ok := updater.ResultText(r)
+	if !ok {
 		return
 	}
 	_, nerr := updater.ParseVersion(r.NewVersion)
