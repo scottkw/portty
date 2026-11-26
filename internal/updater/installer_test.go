@@ -799,7 +799,9 @@ func TestJob_MoveKinds(t *testing.T) {
 				}
 			}},
 		{name: "staged not beside the target", kind: KindMove,
-			mutate: func(t *testing.T, f *rbFix) { f.job.Staged = siBundle(t, filepath.Join(t.TempDir(), StagingPrefix+"z"), "9.9.9") }},
+			mutate: func(t *testing.T, f *rbFix) {
+				f.job.Staged = siBundle(t, filepath.Join(t.TempDir(), StagingPrefix+"z"), "9.9.9")
+			}},
 		{name: "a dmg cache path", kind: KindMove, mutate: func(_ *testing.T, f *rbFix) { f.job.DMG = f.job.ImagePath }},
 		{name: "image path not a release asset", kind: KindMove,
 			mutate: func(t *testing.T, f *rbFix) {
