@@ -47,6 +47,24 @@ describe('detectMode', () => {
   })
 })
 
+describe('detectMode desktopview (Phase 19)', () => {
+  it('returns "desktopview" for /desktop, /desktop/ and /desktop/?cap=x', () => {
+    expect(detectMode(loc('/desktop'))).toBe('desktopview')
+    expect(detectMode(loc('/desktop/'))).toBe('desktopview')
+    expect(detectMode(loc('/desktop/', '?cap=x'))).toBe('desktopview')
+    expect(detectMode(loc('/desktop/anything/else'))).toBe('desktopview')
+  })
+
+  it('respects the /desktop boundary: /desktops and /foo/desktop/ stay "desktop"', () => {
+    expect(detectMode(loc('/desktops'))).toBe('desktop')
+    expect(detectMode(loc('/foo/desktop/'))).toBe('desktop')
+  })
+
+  it('leaves /app/ as "web"', () => {
+    expect(detectMode(loc('/app/'))).toBe('web')
+  })
+})
+
 describe('readWebModeParams', () => {
   it('returns { sessionId: null, capToken: null } when search is empty', () => {
     expect(readWebModeParams(loc('/app/', ''))).toEqual({ sessionId: null, capToken: null })
