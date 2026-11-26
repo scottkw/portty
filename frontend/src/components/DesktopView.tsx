@@ -240,35 +240,42 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
     <div className="desktop-view">
       {video}
       {scrim && <div className="desktop-scrim" onClick={needsTap ? startPlay : undefined} />}
-      <div role="status" aria-live="polite" className="desktop-status">
-        {chip && (
-          <div className={chip.fading ? 'desktop-chip desktop-chip--fading' : 'desktop-chip'}>
-            {chip.Icon && <chip.Icon className="desktop-chip__icon" aria-hidden="true" />}
-            {chip.text}
-          </div>
-        )}
-        {card && (
-          <div className="desktop-card">
-            <card.Icon className="desktop-card__icon" aria-hidden="true" />
-            <h1 className="desktop-card__heading">{card.heading}</h1>
-            <p className="desktop-card__body">{card.body}</p>
-            {cardKey === 'tap' && (
-              <button type="button" className="button button--primary desktop-card__action" autoFocus onClick={startPlay}>
-                Tap to Start
-              </button>
+      <div className="desktop-status">
+        {/* The wrapper and the live region stay mounted, so every change is announced.
+            The region holds text only; the card's buttons sit beside it, so an update
+            never re-reads a control and focus is never inside the region. */}
+        <div className={card ? 'desktop-card' : undefined}>
+          <div role="status" aria-live="polite" className="desktop-status__text">
+            {chip && (
+              <div className={chip.fading ? 'desktop-chip desktop-chip--fading' : 'desktop-chip'}>
+                {chip.Icon && <chip.Icon className="desktop-chip__icon" aria-hidden="true" />}
+                {chip.text}
+              </div>
             )}
-            {cardKey === 'unreachable' && (
-              <button
-                type="button"
-                className="button button--secondary desktop-card__action"
-                onClick={onReload ?? (() => window.location.reload())}
-              >
-                Reload Page
-              </button>
+            {card && (
+              <>
+                <card.Icon className="desktop-card__icon" aria-hidden="true" />
+                <h1 className="desktop-card__heading">{card.heading}</h1>
+                <p className="desktop-card__body">{card.body}</p>
+              </>
             )}
+            {!chip && !card && status.kind === 'streaming' && <span className="visually-hidden">Streaming</span>}
           </div>
-        )}
-        {!chip && !card && status.kind === 'streaming' && <span className="visually-hidden">Streaming</span>}
+          {cardKey === 'tap' && (
+            <button type="button" className="button button--primary desktop-card__action" autoFocus onClick={startPlay}>
+              Tap to Start
+            </button>
+          )}
+          {cardKey === 'unreachable' && (
+            <button
+              type="button"
+              className="button button--secondary desktop-card__action"
+              onClick={onReload ?? (() => window.location.reload())}
+            >
+              Reload Page
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

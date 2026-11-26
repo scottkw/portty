@@ -2630,6 +2630,13 @@ html:has(.desktop-view) body {
   text-align: center;
   pointer-events: auto;
 }
+/* The card's text column (the live region); its buttons follow it in the card. */
+.desktop-status__text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: stretch;
+}
 .desktop-card__icon {
   width: 24px;
   height: 24px;
