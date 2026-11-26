@@ -272,7 +272,9 @@ describe('SharePopover: turning Share off', () => {
 
 describe('SharePopover: Copy', () => {
   it('Copy writes the full link and reads Copied! for 2 s', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    // Plain fake timers: the clock moves only when advanced below. With shouldAdvanceTime a slow
+    // runner moved it on its own and the 2 s reset fired before the 1999 ms check.
+    vi.useFakeTimers()
     vi.mocked(GetSessionShare).mockResolvedValue(on)
     await render({ shared: true })
     await click(copyBtn()!)
