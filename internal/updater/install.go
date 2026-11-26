@@ -195,8 +195,8 @@ func Reveal(ctx context.Context, run Runner, path string) error {
 	return nil
 }
 
-// Clean removes Portty's own update files (portty-v*-darwin-universal.dmg and .part) from dir; other
-// files stay. A missing dir is fine.
+// Clean removes Portty's own update files (every DMGAssetNames pattern and its .part) from dir;
+// other files stay. A missing dir is fine.
 func Clean(dir string) error {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -205,11 +205,18 @@ func Clean(dir string) error {
 	if err != nil {
 		return err
 	}
+	ours := func(n string) bool {
+		for _, pat := range DMGAssetNames("*") {
+			dmg, _ := filepath.Match(pat, n)
+			part, _ := filepath.Match(pat+".part", n)
+			if dmg || part {
+				return true
+			}
+		}
+		return false
+	}
 	for _, e := range entries {
-		n := e.Name()
-		dmg, _ := filepath.Match("portty-v*-darwin-universal.dmg", n)
-		part, _ := filepath.Match("portty-v*-darwin-universal.dmg.part", n)
-		if (dmg || part) && e.Type().IsRegular() {
+		if n := e.Name(); ours(n) && e.Type().IsRegular() {
 			if err := os.Remove(filepath.Join(dir, n)); err != nil {
 				return err
 			}

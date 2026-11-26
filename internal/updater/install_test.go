@@ -349,13 +349,16 @@ func TestVerifyFailures(t *testing.T) {
 
 func TestClean(t *testing.T) {
 	dir := t.TempDir()
-	for _, n := range []string{testDMG, "portty-v1.2.0-darwin-universal.dmg.part", "keep.txt", "portty-v1.1.0-darwin-arm64.dmg"} {
+	for _, n := range []string{testDMG, "portty-v1.2.0-darwin-universal.dmg.part", "keep.txt",
+		"portty-v1.1.0-darwin-arm64.dmg", "portty-v1.2.0-darwin-arm64.dmg.part", "portty-v1.1.0-darwin-x86_64.dmg"} {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.Mkdir(filepath.Join(dir, "portty-v9-darwin-universal.dmg"), 0o700); err != nil {
-		t.Fatal(err)
+	for _, d := range []string{"portty-v9-darwin-universal.dmg", "portty-v9-darwin-arm64.dmg"} { // folders stay
+		if err := os.Mkdir(filepath.Join(dir, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := Clean(dir); err != nil {
 		t.Fatal(err)
@@ -365,7 +368,7 @@ func TestClean(t *testing.T) {
 	for _, e := range entries {
 		left = append(left, e.Name())
 	}
-	if want := []string{"keep.txt", "portty-v1.1.0-darwin-arm64.dmg", "portty-v9-darwin-universal.dmg"}; !slices.Equal(left, want) {
+	if want := []string{"keep.txt", "portty-v1.1.0-darwin-x86_64.dmg", "portty-v9-darwin-arm64.dmg", "portty-v9-darwin-universal.dmg"}; !slices.Equal(left, want) {
 		t.Errorf("left %v, want %v", left, want)
 	}
 	if err := Clean(filepath.Join(dir, "missing")); err != nil {

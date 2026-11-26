@@ -47,6 +47,44 @@ func TestDMGAssetName(t *testing.T) {
 	}
 }
 
+// The arm64 name was confirmed by the user on 2026-11-25 (18-CONTEXT [Assets]).
+func TestDMGAssetNames(t *testing.T) {
+	want := []string{"portty-v1.2.3-darwin-universal.dmg", "portty-v1.2.3-darwin-arm64.dmg"}
+	if got := DMGAssetNames("1.2.3"); !slices.Equal(got, want) {
+		t.Errorf("DMGAssetNames = %q, want %q", got, want)
+	}
+}
+
+const arm64Name = "portty-v1.1.0-darwin-arm64.dmg"
+
+func TestLatestAcceptsArm64Name(t *testing.T) {
+	c, _ := serve(t, 200, release("v1.1.0", asset("portty-v1.1.0-darwin-x86_64.dmg"), asset(arm64Name)))
+	rel, found, err := c.Latest(context.Background())
+	if err != nil || !found || rel.DMG.Name != arm64Name || !strings.HasSuffix(rel.DMG.URL, "/"+arm64Name) {
+		t.Errorf("Latest = %+v, %v, %v; want the arm64 DMG", rel, found, err)
+	}
+}
+
+func TestLatestPrefersFirstName(t *testing.T) {
+	for _, order := range [][]string{{arm64Name, DMGAssetName("1.1.0")}, {DMGAssetName("1.1.0"), arm64Name}} {
+		c, _ := serve(t, 200, release("v1.1.0", asset(order[0]), asset(order[1])))
+		rel, found, err := c.Latest(context.Background())
+		if err != nil || !found || rel.DMG.Name != DMGAssetName("1.1.0") {
+			t.Errorf("assets %q: Latest = %+v, %v, %v; want the universal DMG", order, rel, found, err)
+		}
+	}
+}
+
+func TestLatestInvalidPreferredAsset(t *testing.T) {
+	bad := asset(DMGAssetName("1.1.0"))
+	bad["state"] = "starter"
+	c, _ := serve(t, 200, release("v1.1.0", asset(arm64Name), bad))
+	rel, found, err := c.Latest(context.Background())
+	if !errors.Is(err, ErrNotInstallable) || found || rel.DMG.Name != "" {
+		t.Errorf("Latest = %+v, %v, %v; want an incomplete release, not the arm64 DMG", rel, found, err)
+	}
+}
+
 const digest = "sha256:" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 func asset(name string) map[string]any {
@@ -169,7 +207,8 @@ func TestLatestNotInstallable(t *testing.T) {
 		return a
 	}
 	cases := map[string][]map[string]any{
-		"missing":     {asset("portty-v1.1.0-darwin-arm64.dmg")},
+		"missing":     {asset("portty-v1.1.0-darwin-x86_64.dmg")}, // arm64 is accepted since 18-02
+		"arm64 older": {asset("portty-v1.0.0-darwin-arm64.dmg")},
 		"traversal":   {asset("../" + name)},
 		"zip":         {asset(name + ".zip")},
 		"starter":     {mod("state", "starter")},
