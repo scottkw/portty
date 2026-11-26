@@ -186,15 +186,17 @@ type Manager struct {
 	// a source stop. vmu guards the viewer set and the last picture size; the
 	// fan-out goroutine takes only vmu, so a stop that waits for it under mu
 	// cannot deadlock. Lock order: mu, then vmu.
-	mu      sync.Mutex
-	ctx     context.Context
-	conn    *net.UDPConn
-	mux     ice.UDPMux
-	api     *webrtc.API
-	closed  bool
-	src     screencap.Source
-	srcStop context.CancelFunc
-	fanDone chan struct{}
+	mu     sync.Mutex
+	ctx    context.Context
+	conn   *net.UDPConn
+	mux    ice.UDPMux
+	api    *webrtc.API
+	closed bool
+	// wrapConn, set only by tests, wraps the media socket before the mux.
+	wrapConn func(net.PacketConn) net.PacketConn
+	src      screencap.Source
+	srcStop  context.CancelFunc
+	fanDone  chan struct{}
 
 	vmu      sync.Mutex
 	viewers  map[ViewerID]*viewer
@@ -213,7 +215,7 @@ type Manager struct {
 // NewManager validates d.
 func NewManager(d Deps) (*Manager, error) {
 	if !d.Bind.IsValid() {
-		return nil, errors.New("desktop: Deps.Bind is not a valid address")
+		return nil, ErrNoTailnetAddr
 	}
 	if d.MediaPort <= 0 || d.MediaPort > 65535 {
 		return nil, errors.New("desktop: Deps.MediaPort out of range")
@@ -230,8 +232,8 @@ func NewManager(d Deps) (*Manager, error) {
 	return &Manager{d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer)}, nil
 }
 
-// Start binds the media socket and builds the pion API. 19-03 wraps the bind
-// with the tailnet-only check and a retry.
+// Start binds the media socket (tailnet address only, a busy port retried) and
+// builds the pion API.
 func (m *Manager) Start(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -241,11 +243,15 @@ func (m *Manager) Start(ctx context.Context) error {
 	if m.api != nil {
 		return errors.New("desktop: manager already started")
 	}
-	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: m.d.Bind.AsSlice(), Port: m.d.MediaPort})
+	conn, err := listenMedia(ctx, m.d.Bind, m.d.MediaPort)
 	if err != nil {
-		return fmt.Errorf("desktop: listen media socket: %w", err)
+		return err
 	}
-	mux := ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: conn})
+	var pconn net.PacketConn = conn
+	if m.wrapConn != nil {
+		pconn = m.wrapConn(conn)
+	}
+	mux := ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: pconn})
 	api, err := newAPI(mux, m.d.Bind)
 	if err != nil {
 		_ = mux.Close()

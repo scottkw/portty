@@ -126,10 +126,10 @@ func TestListenMedia_RetriesWhileBusy(t *testing.T) {
 
 	shortRetry(t, 50*time.Millisecond, 5*time.Second)
 	held, port := hold()
-	go func() {
+	go func(c *net.UDPConn) {
 		time.Sleep(600 * time.Millisecond)
-		_ = held.Close()
-	}()
+		_ = c.Close()
+	}(held)
 	start := time.Now()
 	c, err := listenMedia(context.Background(), lo, port)
 	if err != nil {

@@ -34,18 +34,24 @@ func TestPeer_AnswerHasOneHostCandidate(t *testing.T) {
 	writeJSON(ctx, t, conn, map[string]any{"type": "offer", "sdp": lc.offer(t)})
 	sdp := readType(ctx, t, conn, "answer")["sdp"].(string)
 
-	var cands []string
+	// pion writes every candidate twice, as component 1 (RTP) and 2 (RTCP);
+	// with rtcp-mux the second is ignored. So: one candidate, whatever the
+	// component, and each of the two lines is a udp host candidate on the
+	// media socket.
+	want := "udp host 127.0.0.1 " + strconv.Itoa(env.mediaPort)
+	seen := map[string]bool{}
 	for _, l := range strings.Split(sdp, "\r\n") {
-		if strings.HasPrefix(l, "a=candidate:") {
-			cands = append(cands, l)
+		if !strings.HasPrefix(l, "a=candidate:") {
+			continue
 		}
+		f := strings.Fields(l) // a=candidate:<found> <comp> udp <prio> <ip> <port> typ host ...
+		if len(f) < 8 || f[6] != "typ" {
+			t.Fatalf("unparseable candidate line %q", l)
+		}
+		seen[strings.ToLower(f[2])+" "+f[7]+" "+f[4]+" "+f[5]] = true
 	}
-	if len(cands) != 1 {
-		t.Fatalf("answer has %d candidates, want exactly 1: %q", len(cands), cands)
-	}
-	f := strings.Fields(cands[0]) // a=candidate:<found> <comp> udp <prio> <ip> <port> typ host
-	if len(f) < 8 || !strings.EqualFold(f[2], "udp") || f[4] != "127.0.0.1" || f[5] != strconv.Itoa(env.mediaPort) || f[6] != "typ" || f[7] != "host" {
-		t.Errorf("candidate %q, want a udp host candidate on 127.0.0.1 port %d", cands[0], env.mediaPort)
+	if len(seen) != 1 || !seen[want] {
+		t.Errorf("answer candidates %v, want exactly one: %q", seen, want)
 	}
 	if !strings.Contains(sdp, "a=ice-lite") {
 		t.Error("answer lacks a=ice-lite")

@@ -45,19 +45,35 @@ func AllowLoopbackForTest() {
 	allowLoopbackForTest.Store(true)
 }
 
-// newAPI builds the pion API every viewer's PeerConnection shares: ICE-lite on
-// the one UDP mux, UDP4 only, no mDNS, only the bind address as a candidate,
-// and exactly one video codec.
-func newAPI(mux ice.UDPMux, bind netip.Addr) (*webrtc.API, error) {
+// engineSummary records what newSettingEngine applied, because pion's
+// SettingEngine has no getters and the tests assert on these.
+type engineSummary struct {
+	Lite         bool
+	NetworkTypes []webrtc.NetworkType
+	MDNS         ice.MulticastDNSMode
+}
+
+// newSettingEngine is the one place the media path is hardened (T-19-10):
+// ICE-lite on the one UDP mux, UDP4 only, no mDNS, and the bind address as the
+// only candidate.
+func newSettingEngine(mux ice.UDPMux, bind netip.Addr) (webrtc.SettingEngine, engineSummary) {
+	sum := engineSummary{Lite: true, NetworkTypes: []webrtc.NetworkType{webrtc.NetworkTypeUDP4}, MDNS: ice.MulticastDNSModeDisabled}
 	se := webrtc.SettingEngine{}
 	se.SetICEUDPMux(mux)
-	se.SetLite(true)
-	se.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
-	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	se.SetLite(sum.Lite)
+	se.SetNetworkTypes(sum.NetworkTypes)
+	se.SetICEMulticastDNSMode(sum.MDNS)
 	se.SetIPFilter(func(ip net.IP) bool { return ip.Equal(bind.AsSlice()) })
 	if allowLoopbackForTest.Load() {
 		se.SetIncludeLoopbackCandidate(true)
 	}
+	return se, sum
+}
+
+// newAPI builds the pion API every viewer's PeerConnection shares, with exactly
+// one video codec.
+func newAPI(mux ice.UDPMux, bind netip.Addr) (*webrtc.API, error) {
+	se, _ := newSettingEngine(mux, bind)
 
 	me := &webrtc.MediaEngine{}
 	if err := me.RegisterCodec(webrtc.RTPCodecParameters{

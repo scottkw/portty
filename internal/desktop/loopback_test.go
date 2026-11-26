@@ -279,6 +279,9 @@ func newLoopbackClient(t *testing.T) *loopbackClient {
 	t.Helper()
 	se := webrtc.SettingEngine{}
 	se.SetIncludeLoopbackCandidate(true)
+	// Loopback only: the viewer has exactly one address, whatever interfaces
+	// the machine running the test has.
+	se.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
 	se.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	me := &webrtc.MediaEngine{}
