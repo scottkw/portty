@@ -54,7 +54,6 @@ type fanViewer struct {
 	viewers   int
 	state     string
 	locked    bool
-	states    []string // every state message in order
 	w, h      int
 	sizeCount int
 	closeCode websocket.StatusCode
@@ -105,7 +104,6 @@ func (v *fanViewer) read(ctx context.Context) {
 			v.viewers = int(m["viewers"].(float64))
 			v.state, _ = m["state"].(string)
 			v.locked, _ = m["locked"].(bool)
-			v.states = append(v.states, v.state)
 		case "size":
 			v.w, v.h = int(m["w"].(float64)), int(m["h"].(float64))
 			v.sizeCount++
@@ -119,13 +117,6 @@ func (v *fanViewer) lastState() (state string, viewers int, locked bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return v.state, v.viewers, v.locked
-}
-
-// stateHistory returns every state message received so far.
-func (v *fanViewer) stateHistory() []string {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	return append([]string(nil), v.states...)
 }
 
 func (v *fanViewer) stateViewers() int {

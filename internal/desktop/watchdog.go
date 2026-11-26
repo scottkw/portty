@@ -66,7 +66,7 @@ func (w *watchdog) reset() { *w = watchdog{noAXLog: w.noAXLog} }
 // watchdogStep advances the machine one step.
 func (m *Manager) watchdogStep(ctx context.Context, now time.Time) {
 	m.smu.Lock()
-	blocked := m.paused || m.permDenied || m.asleep || m.noDisplay
+	blocked := m.paused || m.permDenied || m.asleep || m.noDisplay || !m.wakeAt.IsZero()
 	last, frames, awaiting, awaitSeq := m.lastFrameAt, m.frames, m.awaiting, m.awaitSeq
 	m.smu.Unlock()
 	m.mu.Lock()
@@ -296,13 +296,24 @@ func (m *Manager) lapseDueCheck(now time.Time) {
 	}
 }
 
-// ensureSource retries a capture start that failed or whose source ended while
-// a viewer waits (permission granted since, display back).
+// ensureSource retries a capture start that failed, or restarts a source that
+// ended or reported no display, while a viewer waits (permission granted since,
+// display back). A paused breaker or a sleeping display waits.
 func (m *Manager) ensureSource(now time.Time) {
 	m.mu.Lock()
-	need := m.src == nil && !m.closed
+	dead := false // the source ended by itself (its frames channel closed)
+	if m.src != nil {
+		select {
+		case <-m.fanDone:
+			dead = true
+		default:
+		}
+	}
+	gone := m.src == nil || dead
+	closed := m.closed
 	m.mu.Unlock()
 	m.smu.Lock()
+	need := (gone || m.noDisplay) && !closed
 	ready := !m.paused && !m.asleep && !now.Before(m.nextStartAt)
 	m.smu.Unlock()
 	if need && ready {

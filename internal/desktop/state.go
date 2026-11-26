@@ -166,10 +166,12 @@ func (m *Manager) stateLoop(ctx context.Context, wake <-chan wakewatch.Reason, d
 		case <-ctx.Done():
 			t.Stop()
 			return
-		case _, ok := <-wake:
+		case r, ok := <-wake:
 			t.Stop()
 			if !ok {
 				wake = nil
+			} else {
+				m.noteWake(r)
 			}
 		case <-m.kick:
 			t.Stop()
@@ -199,6 +201,8 @@ func (m *Manager) tick(ctx context.Context) {
 	m.smu.Unlock()
 
 	m.refreshApproval(ctx, now, false)
+	m.refreshAC(now, false)
+	m.processWake(now)
 	if m.Viewers() == 0 {
 		m.idleProbe(ctx, now, false)
 		m.wd.reset()
