@@ -134,6 +134,38 @@ func TestConsumeInstallResult_TellsUser(t *testing.T) {
 	}
 }
 
+// WR-02: a mover's failed first install has no old version and must still be told; a failed
+// result about a version this Portty already is (an open-installed whose open failed, or a copy
+// installed by hand since) is stale and only logged.
+func TestConsumeInstallResult_MoverResults(t *testing.T) {
+	t.Run("first install, no old version", func(t *testing.T) {
+		a, notes := rbApp(t)
+		a.updates = &updater.Service{Current: "1.8.0", Dir: t.TempDir()}
+		rbWriteResult(t, updater.Result{Outcome: updater.OutcomeFailed, NewVersion: "1.8.1", Reason: "reverify"})
+		a.consumeInstallResult()
+		if len(*notes) != 1 || (*notes)[0].body != "Portty couldn't install version 1.8.1." {
+			t.Errorf("notifications = %+v", *notes)
+		}
+	})
+	t.Run("not newer than this Portty", func(t *testing.T) {
+		old := Version
+		Version = "v1.8.1"
+		t.Cleanup(func() { Version = old })
+		for _, r := range []updater.Result{
+			{Outcome: updater.OutcomeFailed, OldVersion: "1.8.1", NewVersion: "1.8.1", Reason: "open"},
+			{Outcome: updater.OutcomeFailed, NewVersion: "1.8.0", Reason: "swap"},
+		} {
+			a, notes := rbApp(t)
+			a.updates = &updater.Service{Current: "1.8.1", Dir: t.TempDir()}
+			rbWriteResult(t, r)
+			a.consumeInstallResult()
+			if len(*notes) != 0 || a.updates.Status().State != "idle" {
+				t.Errorf("%+v: notifications %+v, status %+v; want nothing shown", r, *notes, a.updates.Status())
+			}
+		}
+	})
+}
+
 func TestConsumeInstallResult_UpdatedAndBadFilesChangeNothing(t *testing.T) {
 	cases := map[string]func(t *testing.T){
 		"updated": func(t *testing.T) {

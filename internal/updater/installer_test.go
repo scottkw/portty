@@ -997,6 +997,49 @@ func TestInstaller_MoveFirstInstallUnhealthy(t *testing.T) {
 	if got, ok := f.fileResult(); !ok || got.Outcome != OutcomeFailed {
 		t.Errorf("result file = %+v, %v", got, ok)
 	}
+	if n := f.rel.called("open -R"); n != 0 {
+		t.Errorf("revealed %d times while the new GUI runs", n)
+	}
+}
+
+// WR-02: a mover failure after the DMG's GUI quit must leave the user something to act on: the
+// installed copy (or, with none, the DMG) revealed in Finder, a result the next start can read and
+// no quarantine-cleared staging copy that no GUI would ever sweep.
+func TestInstaller_MoverFailureLeavesSomethingToActOn(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		kind     string
+		set      func(f *rbFix)
+		reason   string
+		revealed func(f *rbFix) string
+	}{
+		{"first install reverify", KindMove, func(f *rbFix) { f.rel.fail = "codesign" }, "reverify",
+			func(f *rbFix) string { return f.job.ImagePath }},
+		{"first install swap", KindMove, func(f *rbFix) { f.swapErr = func(int) error { return errors.New("EPERM") } }, "swap",
+			func(f *rbFix) string { return f.job.ImagePath }},
+		{"first install never opens", KindMove, func(f *rbFix) { f.openErr = func(bool, int) error { return errors.New("exit status 1") } }, "open",
+			func(f *rbFix) string { return f.job.Target }},
+		{"open-installed never opens", KindOpenInstalled, func(f *rbFix) { f.openErr = func(bool, int) error { return errors.New("exit status 1") } }, "open",
+			func(f *rbFix) string { return f.job.Target }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newMoveFix(t, c.kind, false)
+			c.set(f)
+			r := f.run()
+			if r.Outcome != OutcomeFailed || r.Reason != c.reason {
+				t.Fatalf("result = %+v, want failed %s", r, c.reason)
+			}
+			if got, ok := f.fileResult(); !ok || got != r {
+				t.Errorf("result file = %+v, %v", got, ok)
+			}
+			if n := f.rel.called("open -R " + c.revealed(f)); n != 1 || f.rel.called("open -R") != 1 {
+				t.Errorf("calls = %q, want one reveal of %s", f.rel.recorded(), c.revealed(f))
+			}
+			if c.kind == KindMove && c.reason != "open" && !f.stagingGone() {
+				t.Error("staging copy left after a failed first install")
+			}
+		})
+	}
 }
 
 func TestInstaller_MoveDetachFailureNeverTrashesImage(t *testing.T) {

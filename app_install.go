@@ -355,8 +355,16 @@ func (a *App) consumeInstallResult() {
 		return
 	}
 	_, nerr := updater.ParseVersion(r.NewVersion)
-	if _, oerr := updater.ParseVersion(r.OldVersion); nerr != nil || oerr != nil {
+	_, oerr := updater.ParseVersion(r.OldVersion)
+	firstInstall := r.Outcome == updater.OutcomeFailed && r.OldVersion == "" // a mover's, with no old copy (WR-02)
+	if nerr != nil || (oerr != nil && !firstInstall) {
 		updateLogf("update: result versions malformed")
+		return
+	}
+	// About a version this Portty already is or passed (an open-installed whose open failed, a
+	// copy installed by hand since): telling it would name an install nobody is waiting on.
+	if c, err := updater.Compare(r.NewVersion, strings.TrimPrefix(Version, "v")); err == nil && c <= 0 {
+		updateLogf("update: result not shown: not newer than this version")
 		return
 	}
 	if a.updates != nil {

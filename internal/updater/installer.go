@@ -395,6 +395,7 @@ func relaunch(ctx context.Context, env InstallerEnv, app string, launchEnv ...st
 // gets there, its GUI exits, or it never opens, its GUI is stopped, the old bundle is swapped back
 // and relaunched, and the daemon is left alone (UPD-07). Every outcome is written to
 // env.ResultPath before any relaunch of the old app. On success the old bundle goes to the Trash.
+// A mover job that ends with no GUI running reveals the installed copy, or the DMG, in Finder.
 // Logs carry step names only.
 func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	r := Result{V: 1, OldVersion: j.OldVersion, NewVersion: j.NewVersion, DMG: j.DMG}
@@ -410,12 +411,37 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 		env.Logf("installer: %s %s", outcome, reason)
 		return r
 	}
+	// revealLeft: a mover job ends after the DMG's GUI quit and its volume was ejected, so when no
+	// GUI of the target runs, the user is shown the installed copy in Finder, or with none the DMG
+	// to open again; the result tells the next start why (WR-02).
+	revealLeft := func() {
+		if pids, err := env.GUIPids(exe); !mover || err != nil || len(pids) > 0 {
+			return
+		}
+		p := j.Target
+		if !isDir(p) {
+			p = j.ImagePath
+		}
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), OpenTimeout)
+		defer cancel()
+		if p == "" || Reveal(rctx, env.Run, p) != nil {
+			env.Logf("installer: nothing revealed")
+		}
+	}
 	// finishOpen writes the outcome, then relaunches whatever the target holds. A rollback whose
 	// relaunch fails becomes failed (keepDaemon kept), so the next manual launch still says why.
 	// A keepDaemon the result file could not carry rides in the launch environment (WR-04).
 	finishOpen := func(outcome, reason string) Result {
 		finish(outcome, reason)
 		if !isDir(j.Target) { // a mover's first install that failed before its swap: nothing to open
+			// Its staging folder holds only Portty's own checked, quarantine-cleared copy (there
+			// is no app beside it), and no installed GUI will ever run to sweep it.
+			if dir := filepath.Dir(j.Staged); strings.HasPrefix(filepath.Base(dir), StagingPrefix) {
+				if err := os.RemoveAll(dir); err != nil {
+					env.Logf("installer: failed copy not removed")
+				}
+			}
+			revealLeft()
 			return r
 		}
 		var launchEnv []string
@@ -428,6 +454,7 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 				finish(OutcomeFailed, reason)
 			}
 			env.Logf("installer: relaunch failed, result kept for the next launch")
+			revealLeft()
 		}
 		return r
 	}
@@ -464,7 +491,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	}
 	rollback := func(reason string) Result {
 		if !existed { // a first install has no older copy to restore: the verified new one stays
-			return finish(OutcomeFailed, reason)
+			finish(OutcomeFailed, reason)
+			revealLeft()
+			return r
 		}
 		stopGUIs()
 		if err := env.Swap(j.Staged, j.Target); err != nil {
@@ -547,7 +576,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	if j.Kind == KindOpenInstalled {
 		if err := relaunch(ctx, env, j.Target); err != nil {
 			env.Logf("installer: open failed")
-			return finish(OutcomeFailed, "open")
+			finish(OutcomeFailed, "open")
+			revealLeft()
+			return r
 		}
 		return finishTrash(OutcomeOpened)
 	}
