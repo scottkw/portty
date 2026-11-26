@@ -1,21 +1,30 @@
-# R2-B timeline (VM pollers; seconds relative to the Update click at 00:17:21 UTC; transitions only)
-# poll (0.4 s): GUI pids (no-argument Portty.app executables), daemon pids, installer pid, installed version, daemon /health version
--2.04 00:17:19 gui=42083, dmn=42093, inst= iv=1.8.0 dv=v1.8.0
-+0.99 00:17:22 gui=42083, dmn=42093, inst=42552, iv=1.8.0 dv=v1.8.0
-+1.58 00:17:23 gui=42584, dmn=42093, inst=42552, iv=1.8.1 dv=v1.8.0
-+2.85 00:17:24 gui=42584, dmn=42093, inst=42552, iv=1.8.1 dv=v1.8.1
-+3.40 00:17:24 gui=42663, dmn=42627, inst= iv=1.8.0 dv=v1.8.1
-# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines (the poller grepped for Restart, background service, AXDialog, AXSheet too)
--2.04 00:17:19 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
-+1.28 00:17:22
-+2.58 00:17:24
-+4.26 00:17:25
-+5.77 00:17:27 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|
-+7.02 00:17:28 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--warning" ) @288,82 952x41|AXStaticText Value=Portty 1.8.1 didn't start, so Portty put version 1.8.0 back. The download is sho DOMClassList=( ) @328,94 507x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
-+14.87 00:17:36 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
-# win (CGWindowList, 1 s): on-screen windows owner/layer/title
--2.01 00:17:19 Portty/0/Portty | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
-+1.54 00:17:23 Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
-+4.38 00:17:25 Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
-+5.72 00:17:27 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
-# samples: poll       50, ax       24, win       23; ax samples matching 'background service' or 'Restart Now': 0
+# R2-B timeline (VM pollers; seconds relative to the Update click at 05:16:03 UTC; transitions only)
+# poll (0.4 s): GUI pids, daemon pids, installer pid, installed version, daemon /health version
+-2.04 05:16:01 gui=94256, dmn=94266, inst= iv=1.8.0 dv=v1.8.0
++0.97 05:16:04 gui=94256, dmn=94266, inst=94658, iv=1.8.0 dv=v1.8.0
++1.60 05:16:05 gui= dmn=94266, inst=94658, iv=1.8.1 dv=v1.8.0
++2.67 05:16:06 gui=94693, dmn=94717, inst=94658, iv=1.8.1 dv=v1.8.1
++3.23 05:16:06 gui=94767, dmn=94717, inst= iv=1.8.0 dv=v1.8.1
+# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines
+-2.05 05:16:01 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Portty 1.8.1 is available. DOMClassList=( ) @328,94 132x16|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++1.21 05:16:04 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Restarting Portty 1.8.1… DOMClassList=( ) @328,94 134x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++2.56 05:16:06
++3.83 05:16:07
++5.42 05:16:09 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|
++6.64 05:16:10 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--warning" ) @288,82 952x41|AXStaticText Value=Portty 1.8.1 didn't start, so Portty put version 1.8.0 back. The download is sho DOMClassList=( ) @328,94 507x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
+# win (CGWindowList, 1 s): on-screen windows owner/layer/title, all apps
+-2.02 05:16:01 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++1.57 05:16:05 Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++5.45 05:16:09 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
+# samples: poll 50, ax 24, win 23; ax samples matching background service, Restart Now, AXDialog or AXSheet: 0
+# before: session tickA fed83bd128994e28bd1dd16e6de8b76d;session vimB 2119b1bfcb388fa69227b8d597a11d6f;gui 94256;daemon 94266;shell 94327 ppid 94266;shell 94332 ppid 94266;vim 94356 ppid 94332;
+# after:  session tickA fed83bd128994e28bd1dd16e6de8b76d;session vimB 2119b1bfcb388fa69227b8d597a11d6f;daemon 94717;gui 94767;shell 94327 ppid 1;shell 94332 ppid 1;vim 94356 ppid 94332;
+# extra
+W=100.3 s (R1 click-to-new-GUI 3.34 + HealthTimeout 60 + StopWait 5 + KillWait 2 + 30), written 05:16:00 before the click
+capture note: the row script's 1.8.0 CLI 'portty list --json --local' (no --keep-daemon) asked the 1.8.1 daemon for a takeover at 05:16:29 and 05:16:38; the downgrade wall refused both (daemon.log: refused a takeover from build "v1.8.0": an older release cannot take the sessions); sessions unaffected; pids-after re-read with --keep-daemon at 05:18 UTC
+# update.log
+update: installer started (copy 20ms, start 413ms)
+2026/11/26 05:16:05 vmpreview: verify-mode adhoc
+vmpreview: fault exit-after-daemon
+2026/11/26 05:16:06 installer: rolled-back gui-exited
+update: result rolled-back 1.8.0 to 1.8.1 gui-exited
