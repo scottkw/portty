@@ -107,5 +107,5 @@ export const RunDesktopTestCapture   = ()                   => Call('main.App.Ru
 export const OpenDesktopPermissionPane = (kind)             => Call('main.App.OpenDesktopPermissionPane', [kind])
 
 // Phase 87 capability bound methods (SEC-01..SEC-05)
-export const RegenerateSigningKey   = ()                   => Call('main.App.RegenerateSigningKey', [])
+export const RegenerateSigningKey    = ()                => Call('main.App.RegenerateSigningKey', [])
 
