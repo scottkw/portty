@@ -1828,14 +1828,20 @@ func (a *App) refreshTrayState() {
 		// Startup failed — tray is visible but daemon is unreachable.
 		// Show error icon and appropriate tooltip.
 		a.updateTray(nil, false)
+		a.setTrayDesktopLine("")
 		return
 	}
 	connected := a.client.Health() == nil
 	var sessions []SessionInfo
+	desktopLine := "" // an unreachable daemon or a failed read clears the line
 	if connected {
 		sessions = a.ListSessions()
+		if st, err := a.client.DesktopStatus(); err == nil {
+			desktopLine = desktopTrayLine(st)
+		}
 	}
 	a.updateTray(sessions, connected)
+	a.setTrayDesktopLine(desktopLine)
 }
 
 // checkTailscaleHealth runs one health check and emits "tailscale:health" when

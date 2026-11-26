@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/scottkw/portty/internal/daemon"
 )
 
 // TestTrayTooltip verifies the tooltip string formatting with em dash.
@@ -27,7 +29,7 @@ func TestTrayTooltip(t *testing.T) {
 // TestBuildMenuItemsEmpty verifies menu structure with no sessions:
 // Open Portty, separator, separator, Quit Portty (4 items total).
 func TestBuildMenuItemsEmpty(t *testing.T) {
-	items := BuildMenuItems(nil)
+	items := BuildMenuItems(nil, "")
 	if len(items) != 4 {
 		t.Fatalf("expected 4 items with no sessions, got %d", len(items))
 	}
@@ -53,7 +55,7 @@ func TestBuildMenuItemsWithSessions(t *testing.T) {
 		{ID: "id-1", Name: "Session 1"},
 		{ID: "id-2", Name: "Session 2"},
 	}
-	items := BuildMenuItems(sessions)
+	items := BuildMenuItems(sessions, "")
 	if len(items) != 6 {
 		t.Fatalf("expected 6 items with 2 sessions, got %d", len(items))
 	}
@@ -91,7 +93,7 @@ func TestBuildMenuItemsLabels(t *testing.T) {
 		for i := range sessions {
 			sessions[i] = SessionInfo{ID: fmt.Sprintf("id-%d", i), Name: fmt.Sprintf("Session %d", i+1)}
 		}
-		items := BuildMenuItems(sessions)
+		items := BuildMenuItems(sessions, "")
 		if items[0].Label != "Open Portty" {
 			t.Errorf("n=%d: items[0].Label = %q, want Open Portty", n, items[0].Label)
 		}
@@ -123,5 +125,70 @@ func TestQuitToMenuBarBody(t *testing.T) {
 	}
 	if quitNotificationID != "portty.quit-gui-only" || quitNotificationTitle != "Portty" {
 		t.Errorf("notification id/title = %q/%q, want portty.quit-gui-only/Portty", quitNotificationID, quitNotificationTitle)
+	}
+}
+
+// TestBuildMenuItems_DesktopLine pins the layout: no line is exactly today's
+// four items, a line adds one inert info item between the sessions and Quit.
+func TestBuildMenuItems_DesktopLine(t *testing.T) {
+	if got := BuildMenuItems(nil, ""); len(got) != 4 {
+		t.Fatalf("no desktop line: %d items, want 4", len(got))
+	}
+	got := BuildMenuItems(nil, "Desktop: Ready")
+	want := []MenuItem{
+		{Kind: MenuItemAction, Label: "Open Portty"},
+		{Kind: MenuItemSeparator},
+		{Kind: MenuItemSeparator},
+		{Kind: MenuItemInfo, Label: "Desktop: Ready"},
+		{Kind: MenuItemSeparator},
+		{Kind: MenuItemAction, Label: "Quit Portty"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d items %+v, want %d", len(got), got, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("item %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	// With sessions the line still sits right before the last separator and Quit.
+	withS := BuildMenuItems([]SessionInfo{{ID: "a", Name: "one"}}, "Desktop: Ready")
+	n := len(withS)
+	if withS[n-3].Kind != MenuItemInfo || withS[n-2].Kind != MenuItemSeparator || withS[n-1].Label != "Quit Portty" {
+		t.Errorf("tail of the menu = %+v", withS[n-3:])
+	}
+}
+
+// TestDesktopTrayLine pins every Go string against the 19-UI-SPEC Tray column.
+func TestDesktopTrayLine(t *testing.T) {
+	st := func(state string, viewers int, ts string) daemon.DesktopStatusResponse {
+		return daemon.DesktopStatusResponse{AlwaysAvailable: true, State: state, Viewers: viewers, Tailscale: ts}
+	}
+	tests := []struct {
+		name string
+		in   daemon.DesktopStatusResponse
+		want string
+	}{
+		{"off", daemon.DesktopStatusResponse{State: "streaming", Viewers: 2}, ""},
+		{"needs permission", st("needs_permission", 0, "ok"), "Desktop: Needs permission"},
+		{"awaiting", st("awaiting_approval", 0, "ok"), "Desktop: Waiting for approval at the Mac"},
+		{"asleep", st("display_asleep", 0, "ok"), "Desktop: Display asleep"},
+		{"paused", st("capture_paused", 0, "ok"), "Desktop: Paused after repeated errors"},
+		{"locked", st("locked", 0, "ok"), "Desktop: Locked"},
+		{"locked 1", st("locked", 1, "ok"), "Desktop: Locked, streaming to 1 viewer"},
+		{"locked 2", st("locked", 2, "ok"), "Desktop: Locked, streaming to 2 viewers"},
+		{"idle", st("idle", 0, "ok"), "Desktop: Ready"},
+		{"idle before first check", st("idle", 0, ""), "Desktop: Ready"},
+		{"streaming 1", st("streaming", 1, "ok"), "Desktop: Streaming to 1 viewer"},
+		{"streaming 2", st("streaming", 2, "ok"), "Desktop: Streaming to 2 viewers"},
+		{"tailscale off", st("streaming", 2, "off"), "Desktop: Waiting for Tailscale"},
+		{"tailscale userspace", st("idle", 0, "userspace"), "Desktop: Waiting for Tailscale"},
+		{"tailscale https off", st("idle", 0, "https_off"), "Desktop: Waiting for Tailscale"},
+		{"unknown state", st("mystery", 0, "ok"), ""},
+	}
+	for _, tt := range tests {
+		if got := desktopTrayLine(tt.in); got != tt.want {
+			t.Errorf("%s: desktopTrayLine = %q, want %q", tt.name, got, tt.want)
+		}
 	}
 }

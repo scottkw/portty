@@ -25,6 +25,7 @@ NSMutableArray *menuSessionNames = nil;
 NSMutableArray *menuSessionIDs = nil;
 BOOL daemonConnected = YES;
 NSString *trayUpdateTitle = nil; // "Update Available…" while a newer version is known; nil or empty hides the item
+NSString *trayDesktopTitle = nil; // "Desktop: ..." line while always-available is on; nil or empty hides it
 
 // PorttyMenuDelegate rebuilds the menu on every open so it always reflects
 // the current session list without a separate polling update path.
@@ -63,6 +64,18 @@ NSString *trayUpdateTitle = nil; // "Update Available…" while a newer version 
             item.tag = (NSInteger)i;
             [menu addItem:item];
         }
+    }
+
+    if (trayDesktopTitle.length > 0) {
+        // Inert state line: no target or action, disabled so it reads dimmed.
+        [menu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *desktopItem = [[NSMenuItem alloc]
+            initWithTitle:trayDesktopTitle
+            action:NULL
+            keyEquivalent:@""];
+        desktopItem.enabled = NO;
+        [menu addItem:desktopItem];
+        [desktopItem release]; // MRC: the menu retains it
     }
 
     [menu addItem:[NSMenuItem separatorItem]];
@@ -274,6 +287,18 @@ void setTrayUpdateItem(const char *title) {
             // MRC: the global owns its string; release the previous one.
             [trayUpdateTitle release];
             trayUpdateTitle = [t retain];
+        });
+    }
+}
+
+// setTrayDesktopTitle sets the desktop line for the menu delegate; "" hides it.
+void setTrayDesktopTitle(const char *title) {
+    @autoreleasepool {
+        // Copy synchronously — title is a Go pointer freed after cgo returns.
+        NSString *t = [NSString stringWithUTF8String:title];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [trayDesktopTitle release];
+            trayDesktopTitle = [t retain];
         });
     }
 }

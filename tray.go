@@ -16,6 +16,7 @@ void updateTrayIcon(const void *d1, int n1, const void *d2, int n2);
 void updateTrayTooltip(const char *tooltip);
 void setTraySessionData(const char **names, const char **ids, int count);
 void setTrayUpdateItem(const char *title);
+void setTrayDesktopTitle(const char *title);
 void setDockVisible(int visible);
 */
 import "C"
@@ -128,6 +129,13 @@ func setTrayUpdateItem(title string) {
 	ct := C.CString(title)
 	C.setTrayUpdateItem(ct)
 	C.free(unsafe.Pointer(ct))
+}
+
+// setTrayDesktopLine sets the tray menu's dimmed desktop line; "" removes it.
+func (a *App) setTrayDesktopLine(line string) {
+	cl := C.CString(line)
+	C.setTrayDesktopTitle(cl)
+	C.free(unsafe.Pointer(cl))
 }
 
 // setDockVisible shows or hides the macOS Dock icon by toggling the application
