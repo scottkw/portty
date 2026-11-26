@@ -85,6 +85,8 @@ type HealthResponse struct {
 	Version string `json:"version,omitempty"`
 	API     int    `json:"api,omitempty"`     // absent: 1, the v1.0/v1.1 route set
 	Handoff int    `json:"handoff,omitempty"` // absent: cannot hand off its sessions
+	Launchd bool   `json:"launchd,omitempty"` // started by launchd; absent or false: unmanaged (a fallback or takeover daemon)
+	PID     int    `json:"pid,omitempty"`     // the daemon's pid, so a caller can tell whose job holds the lock
 }
 
 // RelayPortResponse is the response body for GET /relay-port.

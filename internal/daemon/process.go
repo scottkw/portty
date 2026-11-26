@@ -22,6 +22,11 @@ import (
 // builds and restart them.
 var BuildVersion string
 
+// launchdManaged is whether launchd started this daemon (GET /health
+// "launchd"). Set once at daemon start, before the API serves; a takeover
+// daemon (RunTakeover) leaves it false.
+var launchdManaged bool
+
 // RunDaemon is the daemon's main entry point. It creates a signal context and
 // delegates to runDaemonCore. Called from main.go when os.Args[1] == "daemon".
 func RunDaemon() {
@@ -110,6 +115,7 @@ func runDaemonCore(ctx context.Context) {
 		return
 	}
 	defer lock.Close() // held for the process lifetime
+	launchdManaged = ManagedByLaunchd(ctx)
 	if err := CleanupStaleSocket(socketPath); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: %v\n", err)
 		return
@@ -213,6 +219,42 @@ type RestartPolicy func(RestartQuestion) bool
 type EnsureOptions struct {
 	Restart   RestartPolicy
 	NoHandoff bool
+	// Start says who is asking; the zero value is the GUI. Every start tries
+	// the launchd job first (launchctl kickstart); the CLI also prints a
+	// repair sentence before it falls back.
+	Start StartMode
+	// OnFallback is called once, with the typed agent error, just before a
+	// start falls back to the detached spawn: the daemon it starts is not
+	// launchd-managed, which callers surface as needs-repair.
+	OnFallback func(reason error)
+}
+
+// StartMode is the caller of EnsureDaemon.
+type StartMode int
+
+const (
+	StartGUI StartMode = iota
+	StartCLI
+)
+
+// executablePath is os.Executable; a var so tests choose the running binary.
+var executablePath = os.Executable
+
+// fallbackSpawn starts the daemon detached, outside launchd. Only a typed
+// agent error leads here. A test binary never starts one: the child re-runs
+// the test binary, outlives the test and holds the user's real socket.
+var fallbackSpawn = func(exe string) (<-chan struct{}, func(), error) {
+	if testing.Testing() {
+		return nil, nil, errors.New("refusing to spawn a daemon from a test binary")
+	}
+	return startDetachedDaemon(exe)
+}
+
+// SetFallbackSpawnForTest replaces the fallback spawn; restore puts it back.
+func SetFallbackSpawnForTest(fn func(exe string) (<-chan struct{}, func(), error)) (restore func()) {
+	old := fallbackSpawn
+	fallbackSpawn = fn
+	return func() { fallbackSpawn = old }
 }
 
 // EnsureDaemon checks if the daemon is reachable on socketPath. If not, it
@@ -327,19 +369,21 @@ func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h 
 	if err := ctx.Err(); err != nil {
 		return err // cancelled before a spawn: never spawn
 	}
-	// A test binary must never spawn a detached daemon: the child re-runs the
-	// test binary, outlives the test, and holds the user's real socket.
-	if testing.Testing() {
-		return fmt.Errorf("EnsureDaemon: refusing to spawn a daemon from a test binary")
-	}
-
-	exe, err := os.Executable()
+	exe, err := executablePath()
 	if err != nil {
 		return fmt.Errorf("EnsureDaemon: locate binary: %w", err)
 	}
 
+	// launchd first: the detached spawn (fallbackSpawn) only when the agent
+	// cannot be used. A test binary reaches the kickstart through an injected
+	// launchctl recorder; its default refuses.
 	return startDaemon(ctx, client, h.readyWait, filepath.Join(filepath.Dir(socketPath), "daemon.lock"),
-		func() (<-chan struct{}, func(), error) { return startDetachedDaemon(exe) })
+		func() (<-chan struct{}, func(), error) {
+			if agentStartable(ctx, exe) == nil {
+				return nil, nil, Kickstart(ctx)
+			}
+			return fallbackSpawn(exe)
+		})
 }
 
 // handOff starts a takeover and waits for its outcome code; no clock decides
