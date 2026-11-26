@@ -1,0 +1,7 @@
+before: guest_epoch=1795730833 state_file: {"captureActive":true,"abnormalExits":0,"exits":null} {"state":"streaming","alwaysAvailable":true,"viewers":1}
+kill -9 daemon pid 82347 at guest epoch 1795730839
+health answers again at guest epoch 1795730841: {"version":"v19.3.1","launchd":true} (new pid: 83441)
+after kill: guest_epoch=1795730886 state_file: {"captureActive":true,"abnormalExits":1,"exits":[1795730840]} {"state":"streaming","alwaysAvailable":true,"viewers":1}
+== reset: Test Capture
+test-capture HTTP 200
+after reset: guest_epoch=1795730887 state_file: {"captureActive":true,"abnormalExits":0,"exits":null} {"state":"streaming","alwaysAvailable":true,"viewers":1}

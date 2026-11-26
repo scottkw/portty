@@ -1,0 +1,28 @@
+upgrade start guest epoch 1795730640
+{"status":"ok","version":"v19.3.0","api":5,"handoff":1,"launchd":true,"pid":81484}
+
+-- +9s: guest_epoch=1795730646 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.0","launchd":true,"pid":81484}
+-- +18s: guest_epoch=1795730654 state_file: {"captureActive":false,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +27s: guest_epoch=1795730661 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +36s: guest_epoch=1795730669 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +45s: guest_epoch=1795730676 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +54s: guest_epoch=1795730684 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +63s: guest_epoch=1795730691 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +72s: guest_epoch=1795730699 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +81s: guest_epoch=1795730706 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +90s: guest_epoch=1795730713 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +99s: guest_epoch=1795730721 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+-- +108s: guest_epoch=1795730728 state_file: {"captureActive":true,"abnormalExits":0,"exits":null}
+   health: {"version":"v19.3.1","launchd":true,"pid":82347}
+after: guest_epoch=1795730782 state_file: {"captureActive":true,"abnormalExits":0,"exits":null} {"state":"streaming","alwaysAvailable":true,"viewers":1}
