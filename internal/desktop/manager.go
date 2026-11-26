@@ -25,13 +25,15 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/pion/ice/v4"
+	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
-	"github.com/pion/webrtc/v4/pkg/media"
 
 	"github.com/scottkw/portty/internal/screencap"
 )
@@ -43,7 +45,12 @@ const ProtocolVersion = 1
 const (
 	CloseTokenRejected websocket.StatusCode = 4401
 	CloseDesktopOff    websocket.StatusCode = 4410
+	CloseFull          websocket.StatusCode = 4429 // the viewer cap is reached
 )
+
+// MaxViewers is the most viewers one Manager serves at once (T-19-11). A
+// further viewer is refused, so it sees the viewer's normal retrying state.
+const MaxViewers = 8
 
 // State is what the desktop link is doing, pushed to viewers and the host GUI.
 // 19-01 only produces idle and streaming; 19-09 derives the rest.
@@ -60,6 +67,14 @@ const (
 	StateStreaming        State = "streaming"
 	StateCapturePaused    State = "capture_paused"
 )
+
+// keyframeCoalesce is the shortest gap between forced keyframes. Joins, PLI
+// and FIR all go through requestKeyframe, so a storm of requests costs the
+// encoder at most one keyframe per window plus one deferred to the window end.
+const keyframeCoalesce = time.Second
+
+// outboundMTU is the RTP payload budget per packet (pion's own default).
+const outboundMTU = 1200
 
 // Handshake bounds (T-19-03): the hello must arrive within helloTimeout, the
 // offer within offerTimeout after it, and no frame may exceed readLimit.
@@ -140,7 +155,10 @@ type Deps struct {
 	NewSource    func() screencap.Source // a fresh source per capture run
 	SourceConfig screencap.Config
 	ConfigDir    string
-	Now          func() time.Time
+	Now          func() time.Time // also drives the keyframe coalescer
+	// OnDataChannel receives a data channel a viewer created before its
+	// offer. nil means CloseDataChannel: Phase 19 is view-only.
+	OnDataChannel DataChannelHook
 	// Notify posts a native notification. Used from 19-09 on; nil means log-only.
 	Notify func(id, title, body string)
 }
@@ -156,43 +174,56 @@ type Status struct {
 	Reason           string
 }
 
+// viewer is one connected viewer: its public record, signalling socket,
+// PeerConnection and outbound track. ready and armed are guarded by Manager.vmu.
 type viewer struct {
-	id string
-	ws *websocket.Conn
-	pc *webrtc.PeerConnection
+	Viewer
+	ws    *websocket.Conn
+	pc    *webrtc.PeerConnection
+	track *webrtc.TrackLocalStaticRTP
+	ready bool // the media path is up (PeerConnection Connected)
+	armed bool // a keyframe has been written to this viewer, deltas may follow
 }
 
 // Manager owns the media socket, the shared track, the capture source and the
 // connected viewers.
 type Manager struct {
-	d     Deps
-	track *webrtc.TrackLocalStaticSample
+	d Deps
 
 	// mu guards the lifecycle (socket, API, capture source) and is held across
 	// a source stop. vmu guards the viewer set and the last picture size; the
 	// fan-out goroutine takes only vmu, so a stop that waits for it under mu
 	// cannot deadlock. Lock order: mu, then vmu.
-	mu      sync.Mutex
-	ctx     context.Context
-	conn    *net.UDPConn
-	mux     ice.UDPMux
-	api     *webrtc.API
-	closed  bool
-	src     screencap.Source
-	srcStop context.CancelFunc
-	fanDone chan struct{}
+	mu     sync.Mutex
+	ctx    context.Context
+	conn   *net.UDPConn
+	mux    ice.UDPMux
+	api    *webrtc.API
+	closed bool
+	// wrapConn, set only by tests, wraps the media socket before the mux.
+	wrapConn func(net.PacketConn) net.PacketConn
+	src      screencap.Source
+	srcStop  context.CancelFunc
+	fanDone  chan struct{}
 
 	vmu      sync.Mutex
-	viewers  map[string]*viewer
+	viewers  map[ViewerID]*viewer
 	sizeW    int
 	sizeH    int
 	sizeKnow bool
+
+	// kmu guards the keyframe coalescer; it is a leaf lock (never held while
+	// taking another).
+	kmu       sync.Mutex
+	kfLast    time.Time
+	kfPending bool
+	kfTimer   *time.Timer
 }
 
-// NewManager validates d and creates the shared track.
+// NewManager validates d.
 func NewManager(d Deps) (*Manager, error) {
 	if !d.Bind.IsValid() {
-		return nil, errors.New("desktop: Deps.Bind is not a valid address")
+		return nil, ErrNoTailnetAddr
 	}
 	if d.MediaPort <= 0 || d.MediaPort > 65535 {
 		return nil, errors.New("desktop: Deps.MediaPort out of range")
@@ -206,17 +237,11 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.SourceConfig == (screencap.Config{}) {
 		d.SourceConfig = screencap.DefaultConfig()
 	}
-	track, err := webrtc.NewTrackLocalStaticSample(
-		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, SDPFmtpLine: h264Fmtp},
-		"video", "portty-desktop")
-	if err != nil {
-		return nil, fmt.Errorf("desktop: shared track: %w", err)
-	}
-	return &Manager{d: d, track: track, ctx: context.Background(), viewers: make(map[string]*viewer)}, nil
+	return &Manager{d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer)}, nil
 }
 
-// Start binds the media socket and builds the pion API. 19-03 wraps the bind
-// with the tailnet-only check and a retry.
+// Start binds the media socket (tailnet address only, a busy port retried) and
+// builds the pion API.
 func (m *Manager) Start(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -226,11 +251,15 @@ func (m *Manager) Start(ctx context.Context) error {
 	if m.api != nil {
 		return errors.New("desktop: manager already started")
 	}
-	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: m.d.Bind.AsSlice(), Port: m.d.MediaPort})
+	conn, err := listenMedia(ctx, m.d.Bind, m.d.MediaPort)
 	if err != nil {
-		return fmt.Errorf("desktop: listen media socket: %w", err)
+		return err
 	}
-	mux := ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: conn})
+	var pconn net.PacketConn = conn
+	if m.wrapConn != nil {
+		pconn = m.wrapConn(conn)
+	}
+	mux := ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: pconn})
 	api, err := newAPI(mux, m.d.Bind)
 	if err != nil {
 		_ = mux.Close()
@@ -304,6 +333,13 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	defer func() { _ = c.CloseNow() }()
 	c.SetReadLimit(readLimit)
 
+	// A full house is refused before any handshake work; join checks again for
+	// viewers that were mid-handshake together.
+	if m.Full() {
+		_ = c.Close(CloseFull, "full")
+		return
+	}
+
 	// hello
 	in, err := read(ctx, c, helloTimeout)
 	if err != nil {
@@ -357,18 +393,25 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 		}
 	}
 
-	pc, answerSDP, err := m.answer(ctx, offer)
+	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: RightsViewOnly, JoinedAt: m.d.Now()}, ws: c}
+	pc, answerSDP, err := m.answer(ctx, v, offer)
 	if err != nil {
 		slog.Warn("desktop: offer failed", "viewer", id[:8])
 		reject(ctx, c, errCodeOfferFailed)
 		return
 	}
-	v := &viewer{id: id, ws: c, pc: pc}
+	v.pc = pc
 	defer func() { _ = pc.Close() }()
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
 		switch st {
 		case webrtc.PeerConnectionStateConnected:
-			m.forceKeyframe() // a joining viewer needs an IDR once its media path is up
+			// The viewer gets nothing until a keyframe written after this point,
+			// so ask for one now. (A request at join would be wasted: the media
+			// path is not up yet, and it would use up the coalescing window.)
+			m.vmu.Lock()
+			v.ready = true
+			m.vmu.Unlock()
+			m.requestKeyframe("connected")
 		case webrtc.PeerConnectionStateFailed:
 			// Close the socket so the viewer rebuilds from scratch, not a zombie
 			// that keeps capture running.
@@ -379,6 +422,10 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	// Capture starts only after a successful answer, so a refused offer never
 	// starts the source.
 	if err := m.join(v); err != nil {
+		if errors.Is(err, errFull) {
+			_ = c.Close(CloseFull, "full")
+			return
+		}
 		slog.Warn("desktop: join failed", "viewer", id[:8], "err", err)
 		_ = c.Close(websocket.StatusInternalError, "capture unavailable")
 		return
@@ -410,12 +457,17 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	}
 }
 
+var errFull = errors.New("desktop: viewer cap reached")
+
 // join registers v and starts capture for the first viewer.
 func (m *Manager) join(v *viewer) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
 		return errors.New("desktop: manager closed")
+	}
+	if m.Full() {
+		return errFull
 	}
 	if m.src == nil {
 		src := m.d.NewSource()
@@ -429,9 +481,8 @@ func (m *Manager) join(v *viewer) error {
 		go m.fanOut(src, m.fanDone)
 	}
 	m.vmu.Lock()
-	m.viewers[v.id] = v
+	m.viewers[v.ID] = v
 	m.vmu.Unlock()
-	m.src.ForceKeyframe()
 	return nil
 }
 
@@ -440,14 +491,14 @@ func (m *Manager) join(v *viewer) error {
 func (m *Manager) leave(v *viewer) {
 	m.mu.Lock()
 	m.vmu.Lock()
-	delete(m.viewers, v.id)
+	delete(m.viewers, v.ID)
 	n := len(m.viewers)
 	m.vmu.Unlock()
 	if n == 0 {
 		m.stopSourceLocked()
 	}
 	m.mu.Unlock()
-	slog.Info("desktop: viewer left", "viewer", v.id[:8], "viewers", n)
+	slog.Info("desktop: viewer left", "viewer", string(v.ID)[:8], "viewers", n)
 	m.broadcastState(context.Background())
 }
 
@@ -466,7 +517,39 @@ func (m *Manager) stopSourceLocked() {
 	m.vmu.Unlock()
 }
 
-func (m *Manager) forceKeyframe() {
+// requestKeyframe asks the source for a keyframe, coalesced: at most one per
+// keyframeCoalesce by Deps.Now. A request inside the window schedules one
+// deferred keyframe at the window's end and later requests ride on it.
+func (m *Manager) requestKeyframe(reason string) {
+	m.kmu.Lock()
+	if m.kfPending {
+		m.kmu.Unlock()
+		return
+	}
+	now := m.d.Now()
+	if since := now.Sub(m.kfLast); !m.kfLast.IsZero() && since < keyframeCoalesce {
+		m.kfPending = true
+		m.kfTimer = time.AfterFunc(keyframeCoalesce-since, m.fireKeyframe)
+		m.kmu.Unlock()
+		return
+	}
+	m.kfLast = now
+	m.kmu.Unlock()
+	slog.Debug("desktop: keyframe", "reason", reason)
+	m.forceKeyframeNow()
+}
+
+// fireKeyframe is the deferred half of requestKeyframe.
+func (m *Manager) fireKeyframe() {
+	defer recoverLog()
+	m.kmu.Lock()
+	m.kfPending = false
+	m.kfLast = m.d.Now()
+	m.kmu.Unlock()
+	m.forceKeyframeNow()
+}
+
+func (m *Manager) forceKeyframeNow() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.src != nil {
@@ -474,11 +557,13 @@ func (m *Manager) forceKeyframe() {
 	}
 }
 
-// fanOut writes every access unit of src to the shared track until Frames
-// closes, announcing a changed picture size to the viewers.
+// fanOut packetizes every access unit of src once and writes it to each
+// viewer's track until Frames closes, announcing a changed picture size to the
+// viewers. SSRC and payload type are set per viewer by its track.
 func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 	defer close(done)
 	defer recoverLog()
+	pkt := rtp.NewPacketizer(outboundMTU, 0, 0, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), h264Capability.ClockRate)
 	frames, errs := src.Frames(), src.Errors()
 	for {
 		select {
@@ -489,11 +574,34 @@ func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 			if m.noteSize(au.Width, au.Height) {
 				m.broadcast(context.Background(), msgSize{Type: typeSize, W: au.Width, H: au.Height})
 			}
-			if err := m.track.WriteSample(media.Sample{Data: au.Data, Duration: au.Duration}); err != nil {
-				slog.Warn("desktop: write sample", "err", err)
-			}
+			// shortcut: the timestamp step truncates to whole ticks, exact at 30 fps
+			// (3000); fractional-tick drift if a source ever runs at an odd rate.
+			m.writeUnit(au.Keyframe, pkt.Packetize(au.Data, uint32(au.Duration.Seconds()*float64(h264Capability.ClockRate))))
 		case err := <-errs:
 			slog.Warn("desktop: capture error", "err", err)
+		}
+	}
+}
+
+// writeUnit sends one access unit's packets to every viewer whose media path
+// is up. A viewer is armed by the first keyframe after that and receives no
+// delta before it, so no decoder ever starts on a picture it cannot show.
+func (m *Manager) writeUnit(keyframe bool, pkts []*rtp.Packet) {
+	m.vmu.Lock()
+	targets := make([]*viewer, 0, len(m.viewers))
+	for _, v := range m.viewers {
+		if !v.ready || (!v.armed && !keyframe) {
+			continue
+		}
+		v.armed = true
+		targets = append(targets, v)
+	}
+	m.vmu.Unlock()
+	for _, v := range targets {
+		for _, p := range pkts {
+			// A write error means that viewer's PeerConnection is closing; its
+			// socket close removes it, and the others must still be served.
+			_ = v.track.WriteRTP(p)
 		}
 	}
 }
@@ -535,11 +643,28 @@ func (m *Manager) broadcastState(ctx context.Context) {
 	m.broadcast(ctx, msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked})
 }
 
+// Full reports whether the viewer cap is reached. The route checks it before
+// upgrading a socket so a viewer past the cap gets HTTP 429.
+func (m *Manager) Full() bool { return m.Viewers() >= MaxViewers }
+
 // Viewers reports how many viewers are connected.
 func (m *Manager) Viewers() int {
 	m.vmu.Lock()
 	defer m.vmu.Unlock()
 	return len(m.viewers)
+}
+
+// ViewerList returns a copy of every connected viewer's record, oldest first.
+// Later phases read rights from it.
+func (m *Manager) ViewerList() []Viewer {
+	m.vmu.Lock()
+	out := make([]Viewer, 0, len(m.viewers))
+	for _, v := range m.viewers {
+		out = append(out, v.Viewer)
+	}
+	m.vmu.Unlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].JoinedAt.Before(out[j].JoinedAt) })
+	return out
 }
 
 // Status returns the link's state. 19-09 derives the other states here.
@@ -581,6 +706,11 @@ func (m *Manager) Close() error {
 	m.mu.Unlock()
 
 	m.CloseAll(websocket.StatusServiceRestart, "server stopping")
+	m.kmu.Lock()
+	if m.kfTimer != nil {
+		m.kfTimer.Stop()
+	}
+	m.kmu.Unlock()
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
