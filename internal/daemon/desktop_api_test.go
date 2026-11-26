@@ -231,6 +231,13 @@ func newPionViewer(t *testing.T) (*webrtc.PeerConnection, chan []byte) {
 // connectViewer runs hello, offer and answer for one viewer and keeps reading
 // the signalling socket so a close code is observed.
 func connectViewer(t *testing.T, link string) *desktopViewer {
+	return connectViewerMode(t, link, false)
+}
+
+// connectViewerMode is connectViewer; with stall set nobody reads the socket
+// after the handshake, so a close frame is never answered and the server's
+// close handshake blocks.
+func connectViewerMode(t *testing.T, link string, stall bool) *desktopViewer {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -259,6 +266,10 @@ func connectViewer(t *testing.T, link string) *desktopViewer {
 
 	v := &desktopViewer{conn: conn, pc: pc, aus: aus, done: make(chan struct{})}
 	v.code.Store(-1)
+	if stall {
+		t.Cleanup(func() { _ = conn.CloseNow() })
+		return v
+	}
 	go func() {
 		defer close(v.done)
 		for {

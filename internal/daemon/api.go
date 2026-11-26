@@ -424,6 +424,9 @@ func (a *API) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok", Version: BuildVersion, API: APIVersion, Handoff: HandoffVersion, Launchd: launchdManaged, PID: os.Getpid()})
 }
 
+// shutdownExit is how /shutdown ends the process; a test replaces it.
+var shutdownExit = os.Exit
+
 func (a *API) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 	if f, ok := w.(http.Flusher); ok {
@@ -431,7 +434,7 @@ func (a *API) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	}
 	go func() {
 		time.Sleep(50 * time.Millisecond)
-		os.Exit(0)
+		shutdownExit(0)
 	}()
 }
 
