@@ -57,6 +57,15 @@ type rbFix struct {
 	trashDir string
 	trashErr error
 	trashed  []rbTrash
+	// detaches holds, for each hdiutil detach the mover kinds run, how many swaps came before it.
+	detaches []int
+	rel      *siRelease // the fake tools behind runner (newMoveFix)
+}
+
+// rbMarker is siMarker for a path that may not be a fake bundle (a DMG, or nothing): "" then.
+func rbMarker(path string) string {
+	b, _ := os.ReadFile(filepath.Join(path, "version"))
+	return string(b)
 }
 
 // rbTrash is one Trash call with what the bundles held at that moment.
@@ -165,7 +174,7 @@ func (f *rbFix) env() InstallerEnv {
 		},
 		DaemonVersion: func() (string, error) { return f.daemonV() },
 		Trash: func(path string) error {
-			f.trashed = append(f.trashed, rbTrash{path, f.now.Sub(f.start), siMarker(f.t, path), siMarker(f.t, f.job.Target)})
+			f.trashed = append(f.trashed, rbTrash{path, f.now.Sub(f.start), rbMarker(path), rbMarker(f.job.Target)})
 			if f.trashErr != nil {
 				return f.trashErr
 			}
@@ -674,5 +683,380 @@ func TestInstaller_TrashFailureKeepsOldAside(t *testing.T) {
 		if strings.Contains(l, "/") {
 			t.Errorf("log line carries a path: %q", l)
 		}
+	}
+}
+
+// newMoveFix is rbFix with a mover job (UPD-08). The target's folder is the only allowed
+// Applications folder, the volume is a fake mount in a temp "/Volumes/", and the image is a
+// user-owned DMG in a temp folder. For KindMove, existing keeps the installed 1.0.0 (a Replace);
+// otherwise there is no installed copy. KindOpenInstalled keeps the installed copy, has no staged
+// copy and offers the same version.
+func newMoveFix(t *testing.T, kind string, existing bool) *rbFix {
+	t.Helper()
+	f := newRbFix(t)
+	root := filepath.Dir(f.job.Target)
+	vols := t.TempDir() + "/"
+	oldParents, oldVols, oldPause := moveParents, volumesRoot, detachPause
+	moveParents = func() []string { return []string{root} }
+	volumesRoot, detachPause = vols, 0
+	t.Cleanup(func() { moveParents, volumesRoot, detachPause = oldParents, oldVols, oldPause })
+
+	mnt := filepath.Join(vols, "Portty")
+	siBundle(t, mnt, "9.9.9")
+	img := filepath.Join(t.TempDir(), "portty-v9.9.9-darwin-universal.dmg")
+	if err := os.WriteFile(img, []byte("dmg"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.rel = &siRelease{}
+	f.runner = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "/usr/bin/hdiutil" && len(args) > 0 && args[0] == "detach" {
+			f.detaches = append(f.detaches, f.swaps)
+		}
+		return f.rel.run(ctx, name, args...)
+	}
+	f.job.Kind, f.job.DMG, f.job.ImagePath, f.job.MountPoint = kind, "", img, mnt
+	switch {
+	case kind == KindOpenInstalled:
+		if err := os.RemoveAll(filepath.Dir(f.job.Staged)); err != nil {
+			t.Fatal(err)
+		}
+		f.job.Staged, f.job.OldVersion, f.job.NewVersion = "", "1.0.0", "1.0.0"
+	case !existing:
+		if err := os.RemoveAll(f.job.Target); err != nil {
+			t.Fatal(err)
+		}
+		f.job.OldVersion = ""
+	}
+	return f
+}
+
+func (f *rbFix) imageTrashed() int {
+	n := 0
+	for _, tr := range f.trashed {
+		if tr.path == f.job.ImagePath {
+			n++
+		}
+	}
+	return n
+}
+
+func (f *rbFix) mountGone() bool {
+	_, err := os.Lstat(f.job.MountPoint)
+	return errors.Is(err, os.ErrNotExist)
+}
+
+func TestJob_MoveKinds(t *testing.T) {
+	read := func(t *testing.T, j Job) error {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "job.json")
+		if err := WriteJob(path, j); err != nil {
+			t.Fatal(err)
+		}
+		got, err := ReadJob(path)
+		if err == nil && got != j {
+			t.Errorf("round trip = %+v, want %+v", got, j)
+		}
+		return err
+	}
+	for _, c := range []struct {
+		name     string
+		kind     string
+		existing bool
+		mutate   func(t *testing.T, f *rbFix)
+		ok       bool
+	}{
+		{name: "move, no copy", kind: KindMove, ok: true},
+		{name: "move, older copy", kind: KindMove, existing: true, ok: true},
+		{name: "open-installed, same version", kind: KindOpenInstalled, ok: true},
+		{name: "open-installed, newer installed", kind: KindOpenInstalled, ok: true,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.OldVersion = "2.0.0" }},
+
+		{name: "move, no copy but an old version", kind: KindMove,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.OldVersion = "1.0.0" }},
+		{name: "move, copy but no old version", kind: KindMove, existing: true,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.OldVersion = "" }},
+		{name: "move, downgrade", kind: KindMove, existing: true,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.OldVersion = "9.9.9" }},
+		{name: "open-installed, older installed", kind: KindOpenInstalled,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.OldVersion = "0.9.0" }},
+		{name: "open-installed with a staged copy", kind: KindOpenInstalled,
+			mutate: func(t *testing.T, f *rbFix) {
+				f.job.Staged = siBundle(t, filepath.Join(filepath.Dir(f.job.Target), StagingPrefix+"x"), "1.0.0")
+			}},
+		{name: "open-installed, nothing installed", kind: KindOpenInstalled,
+			mutate: func(t *testing.T, f *rbFix) { _ = os.RemoveAll(f.job.Target) }},
+		{name: "target outside the Applications folders", kind: KindMove,
+			mutate: func(t *testing.T, f *rbFix) {
+				other := t.TempDir()
+				staged := siBundle(t, filepath.Join(other, StagingPrefix+"y"), "9.9.9")
+				f.job.Target, f.job.Staged = filepath.Join(other, BundleName), staged
+			}},
+		{name: "target a symlink", kind: KindMove, existing: true,
+			mutate: func(t *testing.T, f *rbFix) {
+				_ = os.RemoveAll(f.job.Target)
+				if err := os.Symlink(t.TempDir(), f.job.Target); err != nil {
+					t.Fatal(err)
+				}
+			}},
+		{name: "staged not beside the target", kind: KindMove,
+			mutate: func(t *testing.T, f *rbFix) { f.job.Staged = siBundle(t, filepath.Join(t.TempDir(), StagingPrefix+"z"), "9.9.9") }},
+		{name: "a dmg cache path", kind: KindMove, mutate: func(_ *testing.T, f *rbFix) { f.job.DMG = f.job.ImagePath }},
+		{name: "image path not a release asset", kind: KindMove,
+			mutate: func(t *testing.T, f *rbFix) {
+				p := filepath.Join(t.TempDir(), "notes.dmg")
+				_ = os.WriteFile(p, nil, 0o644)
+				f.job.ImagePath = p
+			}},
+		{name: "image path a directory", kind: KindMove,
+			mutate: func(t *testing.T, f *rbFix) {
+				p := filepath.Join(t.TempDir(), "portty-v9.9.9-darwin-universal.dmg")
+				_ = os.Mkdir(p, 0o755)
+				f.job.ImagePath = p
+			}},
+		{name: "image path a symlink", kind: KindMove,
+			mutate: func(t *testing.T, f *rbFix) {
+				p := filepath.Join(t.TempDir(), "portty-v9.9.9-darwin-universal.dmg")
+				_ = os.Symlink(f.job.ImagePath, p)
+				f.job.ImagePath = p
+			}},
+		{name: "image path missing", kind: KindOpenInstalled,
+			mutate: func(_ *testing.T, f *rbFix) { _ = os.Remove(f.job.ImagePath) }},
+		{name: "image path in the update cache", kind: KindMove,
+			mutate: func(t *testing.T, f *rbFix) {
+				dir := filepath.Join(t.TempDir(), AppIdentifier, "updates")
+				_ = os.MkdirAll(dir, 0o700)
+				p := filepath.Join(dir, "portty-v9.9.9-darwin-universal.dmg")
+				_ = os.WriteFile(p, nil, 0o600)
+				f.job.ImagePath = p
+			}},
+		{name: "image path relative", kind: KindMove,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.ImagePath = "portty-v9.9.9-darwin-universal.dmg" }},
+		{name: "mount point outside /Volumes", kind: KindMove,
+			mutate: func(t *testing.T, f *rbFix) { f.job.MountPoint = t.TempDir() }},
+		{name: "mount point not clean", kind: KindOpenInstalled,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.MountPoint += "/../Portty" }},
+		{name: "mount point is the volumes folder", kind: KindMove,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.MountPoint = filepath.Clean(volumesRoot) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newMoveFix(t, c.kind, c.existing)
+			if c.mutate != nil {
+				c.mutate(t, f)
+			}
+			err := read(t, f.job)
+			if c.ok && err != nil {
+				t.Fatalf("ReadJob refused a good job: %v", err)
+			}
+			if !c.ok && !errors.Is(err, ErrJob) {
+				t.Fatalf("ReadJob = %v, want an ErrJob refusal", err)
+			}
+			if err != nil && strings.Contains(err.Error(), "/") {
+				t.Errorf("error carries a path: %v", err)
+			}
+		})
+	}
+}
+
+func TestInstaller_MoveNoCopyLeavesNoStagingDir(t *testing.T) {
+	f := newMoveFix(t, KindMove, false)
+	r := f.run()
+	if r.Outcome != OutcomeUpdated {
+		t.Fatalf("result = %+v", r)
+	}
+	if len(f.detaches) == 0 || f.detaches[0] != 0 || !f.mountGone() {
+		t.Errorf("detaches = %v (swaps before each), mount gone %v; want the volume ejected before the swap", f.detaches, f.mountGone())
+	}
+	if siMarker(t, f.job.Target) != "9.9.9" {
+		t.Error("the new copy is not installed")
+	}
+	left, _ := filepath.Glob(filepath.Join(filepath.Dir(f.job.Target), StagingPrefix+"*"))
+	if len(left) != 0 {
+		t.Errorf("staging dirs left beside the target: %v", left)
+	}
+	if len(f.opens) != 1 || f.opens[0].app != f.job.Target {
+		t.Errorf("opens = %+v, want exactly one of the target", f.opens)
+	}
+	if len(f.trashed) != 1 || f.imageTrashed() != 1 {
+		t.Errorf("trashed = %+v, want only the image path", f.trashed)
+	}
+	if len(f.signals) != 0 {
+		t.Errorf("signals = %+v; a first install stops nothing", f.signals)
+	}
+}
+
+func TestInstaller_MoveReplaceOlder(t *testing.T) {
+	f := newMoveFix(t, KindMove, true)
+	f.gui = []int{450} // the installed copy's GUI is running (P4)
+	f.alive[450] = true
+	f.swapErr = func(n int) error {
+		if n == 1 && f.alive[450] {
+			t.Error("swapped while the installed GUI still ran")
+		}
+		return nil
+	}
+	r := f.run()
+	if r.Outcome != OutcomeUpdated {
+		t.Fatalf("result = %+v", r)
+	}
+	if len(f.signals) == 0 || f.signals[0].pid != 450 || f.signals[0].sig != syscall.SIGTERM {
+		t.Errorf("signals = %+v; want SIGTERM to the installed GUI first", f.signals)
+	}
+	if len(f.detaches) == 0 || f.detaches[0] != 0 {
+		t.Errorf("detaches = %v; want the volume ejected before the swap", f.detaches)
+	}
+	if len(f.trashed) != 2 || f.trashed[0].path != f.job.Staged || f.trashed[0].pathVer != "1.0.0" || f.trashed[1].path != f.job.ImagePath {
+		t.Fatalf("trashed = %+v; want the old 1.0.0 bundle, then the image", f.trashed)
+	}
+	if f.trashed[0].at < HealthStable {
+		t.Errorf("old copy trashed at %v, before health", f.trashed[0].at)
+	}
+}
+
+func TestInstaller_MoveReplaceUnhealthyRollsBack(t *testing.T) {
+	f := newMoveFix(t, KindMove, true)
+	f.onOpen = func(bool) { f.gui = []int{500}; f.alive[500] = true } // the daemon never reaches 9.9.9
+	r := f.run()
+	if r.Outcome != OutcomeRolledBack || r.Reason != "health" || !r.KeepDaemon {
+		t.Fatalf("result = %+v, want rolled-back health with keepDaemon", r)
+	}
+	if siMarker(t, f.job.Target) != "1.0.0" || !f.stagingGone() {
+		t.Error("the old copy was not put back, or the failed copy was left")
+	}
+	if f.imageTrashed() != 0 || len(f.trashed) != 0 {
+		t.Errorf("trashed = %+v on a rollback", f.trashed)
+	}
+}
+
+func TestInstaller_MoveFirstInstallUnhealthy(t *testing.T) {
+	f := newMoveFix(t, KindMove, false)
+	f.onOpen = func(bool) { f.gui = []int{500}; f.alive[500] = true }
+	r := f.run()
+	if r.Outcome != OutcomeFailed || r.Reason != "health" {
+		t.Fatalf("result = %+v, want failed health", r)
+	}
+	if siMarker(t, f.job.Target) != "9.9.9" {
+		t.Error("the verified new copy was not left installed")
+	}
+	if len(f.trashed) != 0 || len(f.signals) != 0 {
+		t.Errorf("trashed %+v, signals %+v; want neither", f.trashed, f.signals)
+	}
+	if got, ok := f.fileResult(); !ok || got.Outcome != OutcomeFailed {
+		t.Errorf("result file = %+v, %v", got, ok)
+	}
+}
+
+func TestInstaller_MoveDetachFailureNeverTrashesImage(t *testing.T) {
+	for _, kind := range []string{KindMove, KindOpenInstalled} {
+		t.Run(kind, func(t *testing.T) {
+			f := newMoveFix(t, kind, false)
+			f.rel.fail = "detach"
+			r := f.run()
+			if want := map[string]string{KindMove: OutcomeUpdated, KindOpenInstalled: OutcomeOpened}[kind]; r.Outcome != want {
+				t.Fatalf("result = %+v, want %s: a failed eject does not stop the install", r, want)
+			}
+			if f.imageTrashed() != 0 {
+				t.Errorf("trashed = %+v after a failed detach", f.trashed)
+			}
+			if f.logged("detach") == 0 {
+				t.Errorf("logs = %q, want the failed detach logged", f.logs)
+			}
+		})
+	}
+}
+
+func TestInstaller_MoveImageGuard(t *testing.T) {
+	for _, kind := range []string{KindMove, KindOpenInstalled} {
+		t.Run(kind+" asset name", func(t *testing.T) {
+			f := newMoveFix(t, kind, false)
+			p := filepath.Join(filepath.Dir(f.job.ImagePath), "Notes.dmg")
+			if err := os.Rename(f.job.ImagePath, p); err != nil {
+				t.Fatal(err)
+			}
+			f.job.ImagePath = p
+			if r := f.run(); r.Outcome == OutcomeFailed {
+				t.Fatalf("result = %+v", r)
+			}
+			if f.imageTrashed() != 0 {
+				t.Errorf("trashed %+v: a file without the asset name", f.trashed)
+			}
+		})
+		t.Run(kind+" image owned by someone else", func(t *testing.T) {
+			f := newMoveFix(t, kind, false)
+			old := wantUID
+			wantUID = func() int { return old() + 1 }
+			t.Cleanup(func() { wantUID = old })
+			if r := f.run(); r.Outcome == OutcomeFailed {
+				t.Fatalf("result = %+v", r)
+			}
+			if f.imageTrashed() != 0 {
+				t.Errorf("trashed %+v: a file this user does not own", f.trashed)
+			}
+		})
+		t.Run(kind+" image gone", func(t *testing.T) {
+			f := newMoveFix(t, kind, false)
+			on := f.onOpen
+			f.onOpen = func(newApp bool) { _ = os.Remove(f.job.ImagePath); on(newApp) } // the user trashed it meanwhile
+			r := f.run()
+			if want := map[string]string{KindMove: OutcomeUpdated, KindOpenInstalled: OutcomeOpened}[kind]; r.Outcome != want {
+				t.Fatalf("result = %+v, want %s", r, want)
+			}
+			if f.logged("dmg kept") != 0 {
+				t.Errorf("logs = %q; a DMG already gone is not an error", f.logs)
+			}
+		})
+	}
+}
+
+func TestInstaller_MoveQuitTimeoutTouchesNothing(t *testing.T) {
+	f := newMoveFix(t, KindMove, true)
+	f.alive[400] = true // the DMG's GUI never exits
+	f.gui = []int{400}  // even if ps listed it from the target, the mover never kills it
+	r := f.run()
+	if r.Outcome != OutcomeFailed || r.Reason != "quit-timeout" {
+		t.Fatalf("result = %+v", r)
+	}
+	if len(f.signals) != 0 || f.swaps != 0 || len(f.detaches) != 0 || len(f.opens) != 0 || len(f.trashed) != 0 {
+		t.Errorf("signals %+v, swaps %d, detaches %v, opens %+v, trashed %+v; want nothing changed", f.signals, f.swaps, f.detaches, f.opens, f.trashed)
+	}
+	if siMarker(t, f.job.Target) != "1.0.0" || f.mountGone() {
+		t.Error("the installed copy or the volume was touched")
+	}
+}
+
+func TestInstaller_OpenInstalledTrashesDMG(t *testing.T) {
+	f := newMoveFix(t, KindOpenInstalled, false)
+	r := f.run()
+	if r.Outcome != OutcomeOpened {
+		t.Fatalf("result = %+v", r)
+	}
+	if len(f.detaches) == 0 || !f.mountGone() {
+		t.Error("the volume was not ejected")
+	}
+	if len(f.opens) != 1 || f.opens[0].app != f.job.Target {
+		t.Errorf("opens = %+v, want exactly one of the installed copy", f.opens)
+	}
+	if len(f.trashed) != 1 || f.imageTrashed() != 1 {
+		t.Errorf("trashed = %+v, want the image path exactly once and never the installed bundle", f.trashed)
+	}
+	if f.swaps != 0 || len(f.signals) != 0 || siMarker(t, f.job.Target) != "1.0.0" {
+		t.Error("the installed copy was touched")
+	}
+	if got, ok := f.fileResult(); !ok || got.Outcome != OutcomeOpened {
+		t.Errorf("result file = %+v, %v", got, ok)
+	}
+}
+
+func TestInstaller_OpenInstalledOpenFailure(t *testing.T) {
+	f := newMoveFix(t, KindOpenInstalled, false)
+	f.openErr = func(bool, int) error { return errors.New("exit status 1") }
+	r := f.run()
+	if r.Outcome != OutcomeFailed || r.Reason != "open" {
+		t.Fatalf("result = %+v", r)
+	}
+	if len(f.opens) != OpenAttempts {
+		t.Errorf("opens = %d, want %d tries", len(f.opens), OpenAttempts)
+	}
+	if len(f.trashed) != 0 {
+		t.Errorf("trashed = %+v after a failed open", f.trashed)
 	}
 }
