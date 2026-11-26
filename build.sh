@@ -133,18 +133,13 @@ sign_and_notarize() {
     exit 1
   fi
 
-  # Step 1: Deep sign with hardened runtime
+  # Step 1: Sign every Mach-O inside out, then the bundle (hardened runtime, timestamp)
   echo "==> Signing $APP"
-  codesign --deep --force --verbose \
-    --options runtime \
-    --timestamp \
-    --entitlements "$ENTITLEMENTS" \
-    --sign "$IDENTITY" \
-    "$APP"
+  SIGN_IDENTITY="$IDENTITY" ENTITLEMENTS="$ENTITLEMENTS" bash "$(dirname "$0")/scripts/sign-bundle.sh" "$APP"
 
-  # Step 2: Verify signature
+  # Step 2: Verify the signature gates (team, runtime, timestamp, identifier, designated requirement)
   echo "==> Verifying signature"
-  codesign --verify --deep --strict --verbose=2 "$APP"
+  bash "$(dirname "$0")/scripts/verify-bundle.sh" "$APP" --signed
 
   # Step 3: Create zip for notarytool (ditto preserves macOS metadata; NOT zip -r)
   local ZIP="build/bin/portty-notarize.zip"
