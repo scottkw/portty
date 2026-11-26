@@ -222,6 +222,12 @@ func (d desktopAdapter) manager() *desktop.Manager {
 func (d desktopAdapter) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	m := d.manager()
 	if m == nil {
+		// On with no Manager yet (a handoff or a poller retry in progress) is not
+		// off: 4410 is final for the viewer, 1013 makes it retry.
+		if _, on := d.DesktopGrant(); on {
+			_ = c.Close(websocket.StatusTryAgainLater, "desktop starting")
+			return
+		}
 		_ = c.Close(desktop.CloseDesktopOff, "desktop off")
 		return
 	}
