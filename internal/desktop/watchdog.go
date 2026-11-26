@@ -56,6 +56,7 @@ type watchdog struct {
 	seq       uint64    // the frame counter when the phase began
 	nextCheck time.Time // no stall check before this
 	retry     bool      // the restart in flight is an awaiting retry
+	noAX      bool      // the stall was handled without a nudge (no Accessibility)
 	noAXLog   bool
 }
 
@@ -97,6 +98,9 @@ func (m *Manager) watchdogStep(ctx context.Context, now time.Time) {
 			w.phase, w.at = wdNudged, now
 			return
 		}
+		// Without Accessibility a still screen cannot be told from a frozen stream,
+		// so restarting is rationed: one restart per awaitingRetry, not per stall.
+		w.noAX = true
 		m.restartForStall(now)
 	case wdNudged:
 		if frames > w.seq {
@@ -170,6 +174,9 @@ func (m *Manager) frameCount() uint64 {
 func (m *Manager) stallRecovered() {
 	w := &m.wd
 	w.phase, w.retry, w.nextCheck = wdIdle, false, time.Time{}
+	if w.noAX {
+		w.noAX, w.nextCheck = false, m.d.Now().Round(0).Add(awaitingRetry)
+	}
 	m.smu.Lock()
 	m.awaiting = false
 	m.lapseDue = time.Time{}

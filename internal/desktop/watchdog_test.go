@@ -271,6 +271,18 @@ func TestWatchdog_NoAXNeverAwaiting(t *testing.T) {
 	r.join()
 	r.w.set(func() { r.w.perms.AX = false })
 
+	// A still screen without Accessibility must not be restarted over and over:
+	// the stream restarts once, comes back with a frame, and is left alone for 60 s.
+	r.settle(6 * time.Second)
+	eventually(t, 3*time.Second, "one restart", func() bool { return r.src.count() == 2 })
+	before := r.env.mgr.FramesSeenForTest()
+	r.src.last().emit(true)
+	eventually(t, 3*time.Second, "frame handled", func() bool { return r.env.mgr.FramesSeenForTest() > before })
+	r.settle(30 * time.Second)
+	if r.src.count() != 2 {
+		t.Fatalf("restarted %d times in 30 s on a still screen without Accessibility, want once", r.src.count()-1)
+	}
+
 	for i := 0; i < 3; i++ {
 		n := r.src.count()
 		r.settle(61 * time.Second)
