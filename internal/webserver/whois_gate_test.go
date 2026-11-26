@@ -169,7 +169,7 @@ func TestSameUserGate_WebSocket(t *testing.T) {
 		// The accepted viewer must join, then leave once its socket closes, so
 		// the refusal rows below measure only their own effect.
 		waitSubscribers(t, 1)
-		conn.CloseNow()
+		_ = conn.CloseNow()
 		waitSubscribers(t, 0)
 	})
 	const base = 0
@@ -376,5 +376,46 @@ func TestSameUserGate_PagesNameNoAccount(t *testing.T) {
 		if bytes.Contains(body, []byte(sid)) || bytes.Contains(body, []byte(tok)) {
 			t.Errorf("%s: response echoes the session id or capability", c.name)
 		}
+	}
+}
+
+// TestSameUserGate_DesktopRoutes: /desktop/ refuses another account like every
+// terminal route, before any token check (DVWR-02). Each row carries a valid
+// desktop token, so the refusal can only come from WhoIs.
+func TestSameUserGate_DesktopRoutes(t *testing.T) {
+	e := newDesktopEnv(t)
+	tok := desktopToken(t, "g1")
+	page := "/desktop/?cap=" + tok
+
+	if resp := gateGet(t, e.ws, e.client, webservertest.Same, page); resp.StatusCode != http.StatusOK {
+		t.Fatalf("same user, page: status %d, want 200", resp.StatusCode)
+	}
+	if resp := gateGet(t, e.ws, e.client, webservertest.Same, "/desktop/check?cap="+tok); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("same user, check: status %d, want 204", resp.StatusCode)
+	}
+	if resp := e.upgrade(t, "/desktop/ws?cap="+tok); resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("same user, socket: status %d, want 101", resp.StatusCode)
+	}
+
+	for _, c := range gateRefusals {
+		t.Run(c.name, func(t *testing.T) {
+			checkPage(t, gateGet(t, e.ws, e.client, c.id, page), c)
+			checkGateAnswer(t, gateGet(t, e.ws, e.client, c.id, "/desktop/check?cap="+tok), c)
+			resp := e.upgrade(t, "/desktop/ws?cap="+tok)
+			checkGateAnswer(t, resp, c)
+			if resp.Header.Get("Upgrade") != "" {
+				t.Errorf("%s: socket upgraded", c.name)
+			}
+		})
+	}
+	// The gate runs before the token: another account with no token, a garbage
+	// token or a stale one still gets the user refusal, never a token answer.
+	for _, bad := range []string{"", "garbage", desktopToken(t, "old")} {
+		other := gateCase{"other-bad-token", 0, http.StatusForbidden, true}
+		checkPage(t, gateGet(t, e.ws, e.client, webservertest.Other, "/desktop/?cap="+bad), other)
+		checkGateAnswer(t, gateGet(t, e.ws, e.client, webservertest.Other, "/desktop/check?cap="+bad), other)
+	}
+	if n := e.backend.calls.Load(); n != 1 {
+		t.Errorf("backend saw %d sockets, want only the same user's one", n)
 	}
 }
