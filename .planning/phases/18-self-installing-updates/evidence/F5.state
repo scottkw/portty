@@ -1,0 +1,28 @@
+p18-state row=F5 vm_utc=2026-11-26T05:41:39Z
+installed_version=1.8.0
+gui_pid_count=1
+daemon_version=v1.8.0
+attached_images=1
+cache_dmgs=1
+staging_dirs=0
+run_dirs=0
+trash_portty=3
+--- gui pids and executables
+19923 ~/Applications/Portty.app/Contents/MacOS/Portty
+--- daemon pids and executables
+19933 ~/Applications/Portty.app/Contents/MacOS/Portty
+--- attached images
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/d1b36c40ecf011c1a2dfeacc93215881ad4cf525.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+--- update cache
+total 15512
+drwx------  3 admin  staff       96 Nov 26 05:41 .
+drwxr-xr-x  5 admin  staff      160 Nov 25 22:50 ..
+-rw-------@ 1 admin  staff  7941567 Nov 26 05:41 portty-v1.8.1-darwin-universal.dmg
+--- staging dirs
+--- run dirs
+--- trash: Portty bundles, version, ctime (the move into the Trash; 18-05)
+Portty 05-23-52-331.app 1.1.90 2026-11-26T05:23:52
+Portty 05-38-24-381.app 1.8.0 2026-11-26T05:38:32
+Portty.app 1.8.0 2026-11-26T05:19:52
+--- update.log tail
+tail: ~/Library/Application Support/portty/update.log: No such file or directory

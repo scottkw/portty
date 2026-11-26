@@ -1,0 +1,52 @@
+# F7-unreadable timeline (VM pollers; seconds relative to the Update click at 05:43:35 UTC; transitions only)
+# poll (0.4 s): GUI pids, daemon pids, installer pid, installed version, daemon /health version
+-1.97 05:43:33 gui=20967, dmn=20976, inst= iv=1.8.0 dv=v1.8.0
++1.04 05:43:36 gui=20967, dmn=20976, inst=21327, iv=1.8.0 dv=v1.8.0
++1.71 05:43:36 gui= dmn=20976, inst=21327, iv=1.8.1 dv=v1.8.0
++2.71 05:43:37 gui=21367, dmn= inst=21327, iv=1.8.1 dv=v1.8.1
++3.23 05:43:38 gui=21367, dmn=21396, inst=21327, iv=1.8.1 dv=v1.8.1
++6.14 05:43:41 gui=21367, dmn=21396, inst= iv=1.8.1 dv=v1.8.1
+# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines
+-2.02 05:43:33 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Portty 1.8.1 is available. DOMClassList=( ) @328,94 132x16|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++1.23 05:43:36 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Restarting Portty 1.8.1… DOMClassList=( ) @328,94 134x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++2.67 05:43:37
++3.77 05:43:38
++5.02 05:43:40 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|
+# win (CGWindowList, 1 s): on-screen windows owner/layer/title, all apps
+-1.99 05:43:33 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++1.71 05:43:36 Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++4.24 05:43:39 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
+# samples: poll 199, ax 91, win 88; ax samples matching background service, Restart Now, AXDialog or AXSheet: 0
+# before: gui 20967;daemon 20976;
+# after:  gui 21367;daemon 21396;
+# extra
+05:45:11 banner (axdump2, full values):
+quarantine on the cached DMG: xattr: No such file: ~/Library/Caches/app.portty.Portty/updates/portty-v1.8.1-darwin-universal.dmg
+update cache: 
+mnt dirs: 0; attached images naming the cache: 0
+staging dirs (/Applications, /Applications/*, ~/Applications, ~/small): 0
+run dirs: 0
+Finder windows (axdump com.apple.finder, windows and the DMG's icon):
+AXWindow [AXStandardWindow] Title=updates @37,59 920x436
+AXWindow [AXStandardWindow] Title=Applications @8,30 788x690
+AXWindow [AXStandardWindow] Title=app.portty.Portty @268,106 920x436
+AXWindow [AXStandardWindow] Title=admin @239,77 920x436
+update.log:
+update: installer started (copy 21ms, start 415ms)
+2026/11/26 05:43:36 vmpreview: verify-mode adhoc
+2026/11/26 05:43:41 installer: updated 
+after the row: /Applications/Portty.app has no Contents/Resources/p18-unreadable (ls: No such file or directory)
+the same DMG mounted again (noowners, read-only): the file is there, mode ----------, and cat says Permission denied
+ditto of that mounted app into a scratch folder: 'ditto: .../Contents/Resources/p18-unreadable: Permission denied', ditto rc=0 (the file is skipped)
+ditto of a plain folder holding a mode-000 directory: 'Permission denied', ditto rc=0; ditto into a read-only (0500) parent: 'Permission denied', ditto rc=1
+real codesign on copies of the published v1.2.0 app (VM):
+resource used: Contents/Resources/iconfile.icns
+intact copy: codesign --verify --deep --strict rc=0
+~/p18/cs/a/Portty.app: a sealed resource is missing or invalid
+copy missing that file (what the skipped ditto file leaves): rc=1
+~/p18/cs/b/Portty.app: Permission denied
+source with that file mode 000 (what VerifyApp on the mounted app sees)
+# update.log
+update: installer started (copy 21ms, start 415ms)
+2026/11/26 05:43:36 vmpreview: verify-mode adhoc
+2026/11/26 05:43:41 installer: updated 
