@@ -125,3 +125,31 @@ func TestRefreshTray_SkipsClaimedLapse(t *testing.T) {
 		t.Fatalf("claims %v, notifications %+v; want none", f.claims, *notes)
 	}
 }
+
+// WR-07: LapseSeq is per Manager and restarts after a daemon restart or a
+// rebuilt Manager. The GUI still claims each new lapse (a lower number, or the
+// same number after the state left awaiting_approval) instead of leaving it to
+// the daemon's 15 s fallback.
+func TestRefreshTray_ClaimsAfterLapseSeqRestarts(t *testing.T) {
+	f := &fakeLapseDaemon{
+		script: []daemon.DesktopStatusResponse{
+			lapseStatus("awaiting_approval", 3, 0), // the GUI claims 3
+			lapseStatus("awaiting_approval", 1, 0), // a new daemon's first lapse, seen straight away
+			lapseStatus("idle", 0, 0),              // and another new daemon
+			lapseStatus("awaiting_approval", 1, 0), // its first lapse: the same number as the last claim
+		},
+		answers: []bool{true, true, true},
+	}
+	a, notes := newLapseApp(t, f)
+	for range f.script {
+		a.refreshTrayState()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if fmt.Sprint(f.claims) != "[3 1 1]" {
+		t.Fatalf("claims = %v, want [3 1 1]", f.claims)
+	}
+	if len(*notes) != 3 {
+		t.Fatalf("notifications = %d, want 3", len(*notes))
+	}
+}
