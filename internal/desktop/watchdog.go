@@ -151,7 +151,7 @@ func (m *Manager) watchdogStep(ctx context.Context, now time.Time) {
 }
 
 // restartForStall restarts the stream. A failed start was classified by
-// startSourceLocked (needs_permission, display_asleep); the machine goes idle
+// startSource (needs_permission, display_asleep); the machine goes idle
 // and waits out the retry delay.
 func (m *Manager) restartForStall(now time.Time) {
 	w := &m.wd
@@ -317,7 +317,7 @@ func (m *Manager) ensureSource(now time.Time) {
 		}
 	}
 	gone := m.src == nil || dead
-	closed := m.closed
+	closed := m.closed.Load()
 	m.mu.Unlock()
 	m.smu.Lock()
 	need := (gone || m.noDisplay) && !closed

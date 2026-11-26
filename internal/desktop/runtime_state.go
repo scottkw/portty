@@ -260,7 +260,9 @@ func (m *Manager) noteStartSuccess(src screencap.Source, now time.Time) {
 		}
 	}
 	rs, ok := m.persist(func(rs *runtimeState) {
-		rs.CaptureActive = true
+		// Read under rtMu, which Close's clear also takes: a Close that set the
+		// flag first is never undone by a start finishing after it.
+		rs.CaptureActive = !m.closed.Load()
 		rs.noteApproval(now)
 	})
 	m.smu.Lock()
