@@ -127,7 +127,11 @@ dpids=$(ps -axww -o pid=,args= | awk '$2 ~ /\/Portty\.app\/Contents\/MacOS\/Port
 dv=$(curl -s -m 3 --unix-socket "$CFG/daemon.sock" http://localhost/health 2>/dev/null | sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p')
 echo "daemon_version=$dv"
 imgs=$(hdiutil info | grep '^image-path' || true)
-echo "attached_images=$(printf '%s' "$imgs" | grep -c . || true)"
+# macOS keeps its PKI trust-store asset (under /System/Library/AssetsV2) attached; it is not a
+# Portty image, so attached_images leaves it out (18-09) and system_images counts it.
+sysimgs=$(printf '%s\n' "$imgs" | grep -c ': /System/Library/AssetsV2/' || true)
+echo "attached_images=$(( $(printf '%s' "$imgs" | grep -c . || true) - sysimgs ))"
+echo "system_images=$sysimgs"
 echo "cache_dmgs=$(count "$CACHE"/*.dmg)"
 echo "staging_dirs=$(( $(count /Applications/.Portty-update-*) + $(count "$HOME"/Applications/.Portty-update-*) ))"
 echo "run_dirs=$(count "$CFG"/update/run-*)"
