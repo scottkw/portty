@@ -158,17 +158,17 @@ sign_and_notarize() {
   xcrun notarytool submit "$ZIP" \
     --keychain-profile "portty-notarize" \
     --wait
+  rm -f "$ZIP"
 
   # Step 6: Staple notarization ticket to .app
   echo "==> Stapling notarization ticket"
   xcrun stapler staple "$APP"
 
-  # Step 7: Final verification with spctl (exit 0 = Gatekeeper accepted)
-  echo "==> Verifying with spctl"
-  spctl --assess --verbose=2 --type install "$APP"
+  # Step 7: Stapled ticket and Gatekeeper gate, the same one release.yml runs. (spctl
+  # --type install is the installer-package context and rejects a notarized .app.)
+  echo "==> Verifying notarization"
+  bash "$(dirname "$0")/scripts/verify-bundle.sh" "$APP" --notarized
 
-  # Cleanup
-  rm -f "$ZIP"
   echo "==> macOS build signed and notarized: $APP"
 }
 

@@ -28,7 +28,8 @@ if [[ ! -f "$ENTITLEMENTS" ]]; then
 fi
 
 PLIST="$APP/Contents/Info.plist"
-plist_get() { plutil -extract "$1" raw -o - "$PLIST" 2>/dev/null; }
+# Non-fatal under set -e: a missing key reads as empty so the explicit errors below fire.
+plist_get() { plutil -extract "$1" raw -o - "$PLIST" 2>/dev/null || true; }
 [[ -f "$PLIST" ]] || { echo "ERROR: $PLIST is missing" >&2; exit 1; }
 GOT_ID="$(plist_get CFBundleIdentifier)"
 if [[ "$GOT_ID" != "$BUNDLE_ID" ]]; then
@@ -36,6 +37,7 @@ if [[ "$GOT_ID" != "$BUNDLE_ID" ]]; then
   exit 1
 fi
 EXEC_NAME="$(plist_get CFBundleExecutable)"
+[[ -n "$EXEC_NAME" ]] || { echo "ERROR: CFBundleExecutable is missing from $PLIST; nothing signed" >&2; exit 1; }
 MAIN="Contents/MacOS/$EXEC_NAME"
 
 # Enumerate Mach-O files the way verify-bundle.sh does (find + file, never a path list). Nested

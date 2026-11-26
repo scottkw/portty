@@ -7,7 +7,8 @@
 # hardened runtime, secure timestamp; the bundle: identifier, designated requirement pinned to
 # v1.2.0's, entitlements equal to build/entitlements.plist, overridable with ENTITLEMENTS).
 # --notarized adds the stapled ticket and Gatekeeper check. Run by build.sh, build.yml and
-# release.yml.
+# release.yml. Needs plutil, file, lipo, vtool; --signed and --notarized also need codesign and
+# jq (a missing jq fails the gate), --notarized xcrun stapler and spctl.
 # Exit: 0 ok, 1 gate failed, 2 usage.
 set -uo pipefail
 
@@ -98,10 +99,15 @@ if [[ -n "$MODE" ]]; then
   grep -qxF "Identifier=$BUNDLE_ID" <<<"$info" || fail "identifier of the bundle is not $BUNDLE_ID"
   dr="$(codesign -d -r- "$APP" 2>&1 | grep '^designated => ')"
   [[ "$dr" == "$DESIGNATED_REQUIREMENT" ]] || fail "designated requirement differs from v1.2's: $dr"
-  norm() { plutil -convert json -o - - | jq -S .; }
-  want="$(norm <"$ENTITLEMENTS" 2>&1)"
-  got="$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | norm 2>&1)"
-  [[ -n "$want" && "$got" == "$want" ]] || fail "entitlements of the bundle differ from $ENTITLEMENTS"
+  # Fail closed: without jq both sides would be the same error text and compare equal.
+  if ! command -v jq >/dev/null 2>&1; then
+    fail "entitlements gate needs jq on PATH (not found); entitlements not checked"
+  else
+    norm() { plutil -convert json -o - - | jq -S .; }
+    want="$(norm <"$ENTITLEMENTS" 2>/dev/null)"
+    got="$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | norm 2>/dev/null)"
+    [[ -n "$want" && "$got" == "$want" ]] || fail "entitlements of the bundle differ from $ENTITLEMENTS"
+  fi
 fi
 
 if [[ "$MODE" == "--notarized" ]]; then

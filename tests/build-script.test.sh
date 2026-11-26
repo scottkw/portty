@@ -273,8 +273,14 @@ assert_file_contains_literal "contains --wait flag (critical: avoids exit-0 fals
 assert_file_contains_literal "contains ditto -c -k --keepParent (not zip -r)" \
   "ditto -c -k --keepParent" "$BUILD_SH"
 
-assert_file_contains_regex "contains spctl --assess" \
-  "spctl.*--assess" "$BUILD_SH"
+assert_file_contains_literal "build.sh gates notarization with verify-bundle.sh --notarized (CR-01)" \
+  'scripts/verify-bundle.sh" "$APP" --notarized' "$BUILD_SH"
+
+if grep -qE 'spctl.*--type install' "$BUILD_SH"; then
+  fail "build.sh never assesses the .app with spctl --type install (rejects a notarized app, CR-01)"
+else
+  pass "build.sh never assesses the .app with spctl --type install (rejects a notarized app, CR-01)"
+fi
 
 assert_file_contains_literal "contains stapler staple" \
   "stapler staple" "$BUILD_SH"
