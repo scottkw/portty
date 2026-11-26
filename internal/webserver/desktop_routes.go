@@ -14,9 +14,12 @@ import (
 // DesktopBackend is what the /desktop/ routes need from the desktop Manager's
 // owner. DesktopGrant returns the current always-available grant ID and whether
 // the link is on; ServeDesktopViewer runs one viewer's signalling session.
+// admit reports whether the viewer's token still verifies under the current
+// signing key; the backend calls it again just before the viewer joins, so a
+// key regenerated during the handshake cuts that viewer off too (CR-01).
 type DesktopBackend interface {
 	DesktopGrant() (grantID string, on bool)
-	ServeDesktopViewer(ctx context.Context, c *websocket.Conn)
+	ServeDesktopViewer(ctx context.Context, c *websocket.Conn, admit func() bool)
 }
 
 // SetDesktopBackend installs the desktop backend. Set once before Start; not
@@ -182,5 +185,12 @@ func (ws *WebServer) handleDesktopWS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	ws.desktop.ServeDesktopViewer(r.Context(), conn)
+	// Only the key is re-checked: it takes a leaf lock, safe under the Manager's
+	// locks. A grant change (off, then on) closes the old Manager anyway.
+	token := r.URL.Query().Get("cap")
+	admit := func() bool {
+		_, err := capability.VerifyDesktop(token, ws.currentSigningKey())
+		return err == nil
+	}
+	ws.desktop.ServeDesktopViewer(r.Context(), conn, admit)
 }

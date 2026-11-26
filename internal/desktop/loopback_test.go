@@ -48,9 +48,9 @@ type testBackend struct {
 
 func (b *testBackend) DesktopGrant() (string, bool) { return b.grant, !b.off.Load() }
 
-func (b *testBackend) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
+func (b *testBackend) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, admit func() bool) {
 	b.calls.Add(1)
-	b.mgr.ServeDesktopViewer(ctx, c)
+	b.mgr.ServeDesktopViewer(ctx, c, admit)
 }
 
 // tracerEnv is a loopback share server with a desktop Manager behind it.
@@ -628,5 +628,50 @@ func TestDesktopProtocol_Rejects(t *testing.T) {
 	eventually(t, 2*time.Second, "no viewers", func() bool { return env.mgr.Viewers() == 0 })
 	if n := env.sourceCount(); n != 0 {
 		t.Errorf("capture started %d times without a good offer, want 0", n)
+	}
+}
+
+// CR-01: a viewer past the token check but still in its handshake when the
+// signing key is regenerated is not in the viewer set, so CloseAll misses it.
+// Its join must re-check the token and refuse it with 4401, before capture.
+func TestDesktopWS_RegeneratedKeyRefusesHandshakingViewer(t *testing.T) {
+	env := newTracerServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	c, _, err := env.dial(ctx, env.token(t, "g1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.CloseNow() })
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1})
+	readType(ctx, t, c, "hello")
+
+	// What the regenerate handler does: swap the key, then close every viewer.
+	newKey := make([]byte, 32)
+	if _, err := rand.Read(newKey); err != nil {
+		t.Fatal(err)
+	}
+	env.ws.SetSigningKey(newKey)
+	env.mgr.CloseAll(desktop.CloseTokenRejected, "token rejected")
+
+	lc := newLoopbackClient(t)
+	writeJSON(ctx, t, c, map[string]any{"type": "offer", "sdp": lc.offer(t)})
+	for {
+		_, b, err := c.Read(ctx)
+		if err != nil {
+			if got := websocket.CloseStatus(err); got != desktop.CloseTokenRejected {
+				t.Fatalf("close status %d (err %v), want 4401", got, err)
+			}
+			break
+		}
+		if strings.Contains(string(b), `"answer"`) {
+			t.Fatal("the viewer was answered after the signing key was regenerated")
+		}
+	}
+	if n := env.mgr.Viewers(); n != 0 {
+		t.Errorf("viewers = %d after the refused join, want 0", n)
+	}
+	if n := env.sourceCount(); n != 0 {
+		t.Errorf("capture started %d times for a revoked viewer, want 0", n)
 	}
 }

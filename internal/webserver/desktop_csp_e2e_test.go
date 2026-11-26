@@ -37,8 +37,8 @@ import (
 type e2eBackend struct{ mgr *desktop.Manager }
 
 func (b e2eBackend) DesktopGrant() (string, bool) { return "g1", true }
-func (b e2eBackend) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
-	b.mgr.ServeDesktopViewer(ctx, c)
+func (b e2eBackend) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, admit func() bool) {
+	b.mgr.ServeDesktopViewer(ctx, c, admit)
 }
 
 func e2eSelfSignedTLS(t *testing.T) *tls.Config {

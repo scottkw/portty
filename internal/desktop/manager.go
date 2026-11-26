@@ -455,9 +455,10 @@ func newViewerID() (string, error) {
 
 // ServeDesktopViewer runs one viewer's signalling session on an accepted
 // WebSocket until it closes. The route layer has already checked Origin,
-// account and token. Logs carry counts, viewer ID prefixes and error codes
+// account and token; admit re-checks the token when the viewer joins (nil
+// admits nobody). Logs carry counts, viewer ID prefixes and error codes
 // only: never a token, SDP or address.
-func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
+func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, admit func() bool) {
 	defer recoverLog()
 	defer func() { _ = c.CloseNow() }()
 	c.SetReadLimit(readLimit)
@@ -550,9 +551,13 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 
 	// Capture starts only after a successful answer, so a refused offer never
 	// starts the source.
-	if err := m.join(v); err != nil {
+	if err := m.join(v, admit); err != nil {
 		if errors.Is(err, errFull) {
 			_ = c.Close(CloseFull, "full")
+			return
+		}
+		if errors.Is(err, errRevoked) {
+			_ = c.Close(CloseTokenRejected, "token rejected")
 			return
 		}
 		slog.Warn("desktop: join failed", "viewer", id[:8], "err", err)
@@ -586,10 +591,14 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
 	}
 }
 
-var errFull = errors.New("desktop: viewer cap reached")
+var (
+	errFull    = errors.New("desktop: viewer cap reached")
+	errRevoked = errors.New("desktop: token no longer valid")
+)
 
-// join registers v and starts capture for the first viewer.
-func (m *Manager) join(v *viewer) error {
+// join registers v and starts capture for the first viewer. admit is the
+// token re-check: a key regenerated during the handshake refuses v here.
+func (m *Manager) join(v *viewer, admit func() bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -597,6 +606,9 @@ func (m *Manager) join(v *viewer) error {
 	}
 	if m.Full() {
 		return errFull
+	}
+	if admit == nil || !admit() {
+		return errRevoked // before capture starts for a viewer that cannot stay
 	}
 	// Remote activity lights a dark display before capture starts; the first
 	// viewer takes the display and system assertions, held until the last leaves.
@@ -615,7 +627,18 @@ func (m *Manager) join(v *viewer) error {
 			return err
 		}
 	}
+	// Checked again in the same vmu hold as the registration: CloseAll takes vmu
+	// too, so a revocation either finds v or this check sees the new key.
 	m.vmu.Lock()
+	if !admit() {
+		m.vmu.Unlock()
+		if first {
+			m.stopSourceLocked()
+			m.noteCaptureStopped()
+			m.releaseViewerHolds()
+		}
+		return errRevoked
+	}
 	m.viewers[v.ID] = v
 	m.vmu.Unlock()
 	m.kickLoop()

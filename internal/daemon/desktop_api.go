@@ -267,7 +267,7 @@ func (d desktopAdapter) manager() *desktop.Manager {
 	return d.a.desktopMgr
 }
 
-func (d desktopAdapter) ServeDesktopViewer(ctx context.Context, c *websocket.Conn) {
+func (d desktopAdapter) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, admit func() bool) {
 	m := d.manager()
 	if m == nil {
 		// On with no Manager yet (a handoff or a poller retry in progress) is not
@@ -279,7 +279,7 @@ func (d desktopAdapter) ServeDesktopViewer(ctx context.Context, c *websocket.Con
 		_ = c.Close(desktop.CloseDesktopOff, "desktop off")
 		return
 	}
-	m.ServeDesktopViewer(ctx, c)
+	m.ServeDesktopViewer(ctx, c, admit)
 }
 
 // Full lets the route answer 429 before any upgrade.
