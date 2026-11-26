@@ -232,6 +232,7 @@ type swSweep struct {
 	trashErr            error
 	trashed             []string
 	runs                []string
+	versions            map[string]string // app path -> CFBundleShortVersionString plutil answers; absent: an error
 }
 
 func newSwSweep(t *testing.T) *swSweep {
@@ -250,6 +251,12 @@ func newSwSweep(t *testing.T) *swSweep {
 		s.runs = append(s.runs, name+" "+strings.Join(args, " "))
 		if name == "/usr/bin/hdiutil" && len(args) == 2 && args[0] == "detach" {
 			return nil, os.RemoveAll(filepath.Join(args[1], updater.BundleName))
+		}
+		if name == "/usr/bin/plutil" && len(args) == 4 && args[1] == "CFBundleShortVersionString" {
+			if v, ok := s.versions[filepath.Dir(filepath.Dir(args[3]))]; ok {
+				return []byte(v + "\n"), nil
+			}
+			return nil, errors.New("no version")
 		}
 		return nil, errors.New("unexpected tool")
 	}
@@ -324,6 +331,45 @@ func TestSweep_StagingDirs(t *testing.T) {
 	}
 	if len(s.runs) != 0 {
 		t.Errorf("tools run: %v", s.runs)
+	}
+}
+
+// A stale staged copy strictly newer than the installed Portty.app beside it is Portty's own new
+// copy that never went in: it is deleted, not sent to the user's Trash. Every copy that is not
+// provably that (older, equal, unreadable) still goes to the Trash.
+func TestSweep_FailedNewCopyRemoved(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // update.log goes to a temp config folder
+	s := newSwSweep(t)
+	installed := s.mkBundle(s.parent, updater.BundleName, 2*time.Hour)
+	s.versions = map[string]string{installed: "1.0.0"}
+	mk := func(name, version string, age time.Duration) (dir, app string) {
+		dir = filepath.Join(s.parent, updater.StagingPrefix+name)
+		app = s.mkBundle(dir, updater.BundleName, age)
+		if version != "" {
+			s.versions[app] = version
+		}
+		return dir, app
+	}
+	newDir, newApp := mk("new", "2.0.0", 2*time.Hour)
+	_, oldApp := mk("old", "0.9.0", 2*time.Hour)
+	_, unreadableApp := mk("unreadable", "", 2*time.Hour)
+	_, sameApp := mk("same", "1.0.0", 2*time.Hour)
+	freshDir, freshApp := mk("fresh", "2.0.0", sweepAge-time.Minute)
+
+	s.run()
+
+	if swExists(newDir) || slices.Contains(s.trashed, newApp) {
+		t.Errorf("the newer staged copy: dir exists %v, trashed %v; want it deleted, not trashed", swExists(newDir), s.trashed)
+	}
+	if want := []string{oldApp, sameApp, unreadableApp}; !slices.Equal(s.trashed, want) { // sweep order is by name
+		t.Errorf("trashed %v, want %v", s.trashed, want)
+	}
+	if !swExists(freshDir) || !swExists(freshApp) || !swExists(installed) {
+		t.Error("a fresh staging dir or the installed copy was touched")
+	}
+	b, _ := os.ReadFile(bcLogPath())
+	if strings.Contains(string(b), "/") {
+		t.Errorf("update.log = %q; want no path", b)
 	}
 }
 

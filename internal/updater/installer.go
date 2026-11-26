@@ -65,6 +65,9 @@ type Job struct {
 	DMG        string `json:"dmg"`
 	ImagePath  string `json:"imagePath,omitempty"`
 	MountPoint string `json:"mountPoint,omitempty"`
+	// KeepDaemon is a keepDaemon from an earlier result that the mover put back; every result for
+	// this job keeps it (WR-04).
+	KeepDaemon bool `json:"keepDaemon,omitempty"`
 }
 
 // Result is what the installer reports. The next GUI takes it once with TakeResult.
@@ -395,11 +398,13 @@ func relaunch(ctx context.Context, env InstallerEnv, app string, launchEnv ...st
 // gets there, its GUI exits, or it never opens, its GUI is stopped, the old bundle is swapped back
 // and relaunched, and the daemon is left alone (UPD-07). Every outcome is written to
 // env.ResultPath before any relaunch of the old app. On success the old bundle goes to the Trash.
+// A quit timeout whose old pid ps cannot prove is Portty's GUI sends no signal, writes the failed
+// result and relaunches the target, so an unattended Mac always ends with a GUI.
 // A mover job that ends failed with no GUI running reveals the installed copy, or the DMG, in
 // Finder, and posts the failure.
 // Logs carry step names only.
 func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
-	r := Result{V: 1, OldVersion: j.OldVersion, NewVersion: j.NewVersion, DMG: j.DMG}
+	r := Result{V: 1, OldVersion: j.OldVersion, NewVersion: j.NewVersion, DMG: j.DMG, KeepDaemon: j.KeepDaemon}
 	exe := filepath.Join(j.Target, BundleExecutable)
 	mover := j.Kind == KindMove || j.Kind == KindOpenInstalled
 	existed := isDir(j.Target) // false only for a mover's first install
@@ -524,7 +529,10 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 			}
 			pids, err := env.GUIPids(exe)
 			if err != nil || !slices.Contains(pids, j.OldPID) {
-				return finish(OutcomeFailed, "quit-timeout") // not provably our GUI: touch nothing
+				// Not provably our GUI: no signal. Relaunch whatever the target holds, so an
+				// unattended Mac is never left without a GUI; open without -n only brings a
+				// still-running copy forward.
+				return finishOpen(OutcomeFailed, "quit-timeout")
 			}
 			_ = env.Signal(j.OldPID, syscall.SIGKILL)
 			env.Logf("installer: old GUI killed after quit timeout")

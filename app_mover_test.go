@@ -409,7 +409,7 @@ func TestRunMover_ShowsEarlierResultOnce(t *testing.T) {
 			}
 			f.runMover()
 			f.mu.Lock()
-			dialogs, jobs := slices.Clone(f.dialogs), len(f.jobs)
+			dialogs, jobs := slices.Clone(f.dialogs), slices.Clone(f.jobs)
 			f.mu.Unlock()
 			if c.title == "" && len(dialogs) != 0 {
 				t.Errorf("dialogs = %+v, want none", dialogs)
@@ -417,8 +417,11 @@ func TestRunMover_ShowsEarlierResultOnce(t *testing.T) {
 			if c.title != "" && (len(dialogs) != 1 || dialogs[0].Type != runtime.InfoDialog || dialogs[0].Title != c.title) {
 				t.Errorf("dialogs = %+v, want one alert %q", dialogs, c.title)
 			}
-			if jobs != 1 {
-				t.Errorf("jobs = %d, want the move to go on", jobs)
+			if len(jobs) != 1 {
+				t.Fatalf("jobs = %d, want the move to go on", len(jobs))
+			}
+			if jobs[0].KeepDaemon != c.r.KeepDaemon {
+				t.Errorf("job keepDaemon = %v, want %v: the installer's own result must not drop it", jobs[0].KeepDaemon, c.r.KeepDaemon)
 			}
 			r, ok, err := updater.TakeResult(installResultPath())
 			if err != nil || ok != c.kept || (ok && r != c.r) {

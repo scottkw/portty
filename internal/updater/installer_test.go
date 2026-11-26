@@ -512,8 +512,50 @@ func TestInstaller_QuitTimeoutKillsOnlyOldGUI(t *testing.T) {
 			if name == "not listed" && len(f.signals) != 0 {
 				t.Errorf("signals = %+v, want none for an unlisted pid", f.signals)
 			}
-			if f.swaps != 0 || len(f.opens) != 0 || siMarker(t, f.job.Target) != "1.0.0" || f.stagingGone() {
-				t.Errorf("touched the install: swaps %d, opens %d", f.swaps, len(f.opens))
+			if f.swaps != 0 || siMarker(t, f.job.Target) != "1.0.0" || f.stagingGone() {
+				t.Errorf("touched the install: swaps %d", f.swaps)
+			}
+			if name != "not listed" {
+				if len(f.opens) != 0 {
+					t.Errorf("opens = %+v, want none after a SIGKILL that did not land", f.opens)
+				}
+				return
+			}
+			// An unprovable pid is never signalled, but the unattended Mac must still end with a GUI:
+			// the target is relaunched once, after the failed result was written.
+			if len(f.opens) != 1 || f.opens[0].app != f.job.Target || f.opens[0].newApp || !f.opens[0].hasRes ||
+				f.opens[0].res.Outcome != OutcomeFailed || f.opens[0].res.Reason != "quit-timeout" {
+				t.Errorf("opens = %+v, want one relaunch of the old target with the failed result on disk", f.opens)
+			}
+		})
+	}
+}
+
+func TestInstaller_MoverCarriesKeepDaemon(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		fix   func(t *testing.T) *rbFix
+		keep  bool
+		want  string
+		wantR string
+	}{
+		{"open-installed keeps it", func(t *testing.T) *rbFix { return newMoveFix(t, KindOpenInstalled, false) }, true, OutcomeOpened, ""},
+		{"open-installed control", func(t *testing.T) *rbFix { return newMoveFix(t, KindOpenInstalled, false) }, false, OutcomeOpened, ""},
+		{"move quit-timeout keeps it", func(t *testing.T) *rbFix {
+			f := newMoveFix(t, KindMove, true)
+			f.alive[400] = true
+			return f
+		}, true, OutcomeFailed, "quit-timeout"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := c.fix(t)
+			f.job.KeepDaemon = c.keep
+			r := f.run()
+			if r.Outcome != c.want || r.Reason != c.wantR || r.KeepDaemon != c.keep {
+				t.Errorf("result = %+v, want %s %q keepDaemon %v", r, c.want, c.wantR, c.keep)
+			}
+			if got, ok := f.fileResult(); !ok || got.Outcome != c.want || got.KeepDaemon != c.keep {
+				t.Errorf("result file = %+v, %v, want keepDaemon %v", got, ok, c.keep)
 			}
 		})
 	}

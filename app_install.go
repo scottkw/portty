@@ -247,9 +247,12 @@ func sweepUpdateLeftovers(ctx context.Context, now time.Time) {
 	sweepDirs(ctx, now, sweepParents(), updateWorkDir(), updateCacheDir())
 }
 
-// sweepDirs: in parents, a .Portty-update-* dir older than sweepAge has its Portty.app moved to
-// the Trash (never deleted; a refused Trash leaves it for the next start) and is then removed if
-// empty. In work, run-* dirs older than sweepAge are removed: they
+// sweepDirs: in parents, a .Portty-update-* dir older than sweepAge has its Portty.app handled in
+// one of two ways. Only an old bundle goes to the Trash (18-CONTEXT; a refused Trash leaves it for
+// the next start). A staged copy whose version is readable and strictly newer than the real
+// installed Portty.app beside it is Portty's own new copy that never went in, so it is deleted.
+// Anything unprovable (no installed copy, an unreadable or equal version) is trashed, never
+// deleted. The staging dir is then removed if empty. In work, run-* dirs older than sweepAge are removed: they
 // hold only Portty's own job file, marker and installer copy, never the user's app. In cache,
 // mnt-* dirs are detached (no age floor: no stage runs in a process that is just starting).
 // Symlinks are never followed or touched.
@@ -268,10 +271,38 @@ func sweepDirs(ctx context.Context, now time.Time, parents []string, work, cache
 		}
 		return out
 	}
-	var trashed, kept, runs, detached int
+	// newerThanInstalled: app is a staged copy strictly newer than the real installed Portty.app in
+	// parent. The installed copy is checked first, so a parent without one runs no tool.
+	newerThanInstalled := func(app, parent string) bool {
+		installed := filepath.Join(parent, updater.BundleName)
+		if !isRealDir(installed) {
+			return false
+		}
+		dctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		staged, err := updater.InstalledVersion(dctx, updateRunner, app)
+		if err != nil {
+			return false
+		}
+		have, err := updater.InstalledVersion(dctx, updateRunner, installed)
+		if err != nil {
+			return false
+		}
+		c, err := updater.Compare(staged, have)
+		return err == nil && c > 0
+	}
+	var trashed, kept, runs, detached, removed int
 	for _, parent := range parents {
 		for _, dir := range entries(parent, updater.StagingPrefix, true) {
 			if app := filepath.Join(dir, updater.BundleName); isRealDir(app) {
+				if newerThanInstalled(app, parent) {
+					if err := os.RemoveAll(dir); err != nil {
+						updateLogf("update: sweep: failed copy not removed")
+					} else {
+						removed++
+					}
+					continue
+				}
 				if err := trashItemFunc(app); err != nil {
 					kept++
 					updateLogf("update: sweep: old copy kept aside: %v", err)
@@ -302,8 +333,8 @@ func sweepDirs(ctx context.Context, now time.Time, parents []string, work, cache
 			cancel()
 		}
 	}
-	if trashed+kept+runs+detached > 0 {
-		updateLogf("update: sweep trashed %d, kept aside %d, run dirs removed %d, mounts detached %d", trashed, kept, runs, detached)
+	if trashed+kept+removed+runs+detached > 0 {
+		updateLogf("update: sweep trashed %d, kept aside %d, failed copies removed %d, run dirs removed %d, mounts detached %d", trashed, kept, removed, runs, detached)
 	}
 }
 

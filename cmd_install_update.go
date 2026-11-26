@@ -51,6 +51,10 @@ func runInstallUpdate(args []string) int {
 		}
 	}
 	sock := daemon.DefaultSocketPath()
+	// One client for the whole health poll. The exiting old daemon drops its connections (see
+	// answersAfterDrop in internal/daemon/client.go) and the pooled transport then dials the
+	// socket's new owner; a stale answer is only the old version, so it delays health, never fakes it.
+	dc := daemon.NewDaemonClient(sock)
 	env := updater.InstallerEnv{
 		Run:     updateRunner,
 		Swap:    updater.Swap,
@@ -60,7 +64,7 @@ func runInstallUpdate(args []string) int {
 		GUIPids: realGUIPids,
 		Trash:   trashItem,
 		DaemonVersion: func() (string, error) {
-			h, err := daemon.NewDaemonClient(sock).HealthInfo()
+			h, err := dc.HealthInfo()
 			return h.Version, err
 		},
 		RemoveRunDir: removeRunDir,

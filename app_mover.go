@@ -85,15 +85,16 @@ func statfsOrigin(path string) (string, error) {
 // one, tells it in an alert, before runMover stages anything or its installer overwrites the
 // file (quick 261126-dfn). Mover mode never runs consumeInstallResult, and a result about this
 // same version still counts: the user is retrying this DMG. A keepDaemon result is put back, so
-// the installed copy's next start still keeps the daemon that holds the sessions (WR-04).
-func (a *App) showEarlierResult() {
+// the installed copy's next start still keeps the daemon that holds the sessions (WR-04), and its
+// keepDaemon is returned for runMover's job, so the installer's own result keeps it too.
+func (a *App) showEarlierResult() (keepDaemon bool) {
 	res, ok, err := updater.TakeResult(installResultPath())
 	if err != nil {
 		updateLogf("mover: earlier result ignored: %v", err)
-		return
+		return false
 	}
 	if !ok {
-		return
+		return false
 	}
 	updateLogf("mover: earlier result %s %s to %s %s", res.Outcome, res.OldVersion, res.NewVersion, res.Reason) // never res.DMG, a path
 	if res.KeepDaemon && updater.WriteResult(installResultPath(), res) != nil {
@@ -101,10 +102,11 @@ func (a *App) showEarlierResult() {
 	}
 	body, ok := updater.ResultText(res)
 	if _, verr := updater.ParseVersion(res.NewVersion); !ok || verr != nil {
-		return
+		return res.KeepDaemon
 	}
 	a.setDockVisible(true) // Pitfall 10, as in runMover
 	a.alert(body, "")
+	return res.KeepDaemon
 }
 
 // runMover moves the DMG's Portty into place (P4: a second GUI may be running from an installed
@@ -112,8 +114,9 @@ func (a *App) showEarlierResult() {
 // older copy: ask first, then stage beside it; Cancel opens it and quits, leaving the DMG alone.
 // A same or newer copy: open it (never a downgrade). The staged copy passes the update's checks
 // before its quarantine is cleared. Any failure shows why, reveals the app on the volume and quits.
+// An earlier result's keepDaemon rides in the job, so the installer's result keeps it (WR-04).
 func (a *App) runMover(r updater.DMGRun) {
-	a.showEarlierResult()
+	keep := a.showEarlierResult()
 	version := strings.TrimPrefix(Version, "v")
 	system, home := moverRoots()
 	ctx, cancel := context.WithTimeout(context.Background(), moverStageTimeout)
@@ -135,7 +138,7 @@ func (a *App) runMover(r updater.DMGRun) {
 		start = a.startInstaller
 	}
 	job := updater.Job{V: updater.JobVersion, Kind: updater.KindMove, OldPID: os.Getpid(), NewVersion: version,
-		ImagePath: r.ImagePath, MountPoint: r.MountPoint}
+		ImagePath: r.ImagePath, MountPoint: r.MountPoint, KeepDaemon: keep}
 
 	target := updater.ExistingCopy(system, home)
 	if target != "" {
