@@ -271,11 +271,20 @@ type Manager struct {
 	pushed       msgState // the last state message broadcast
 	pushedKnown  bool
 	lastProbeAt  time.Time
-	paused       bool // the crash-loop breaker is open (capture_paused)
-	awaiting     bool // the stall watchdog classified waiting for approval
-	approaching  bool // the approval record is 27 to 30 days old
-	lapseSeq     int  // approval lapses so far
-	lapseClaimed int  // the last lapse whose notification has a sender
+	frames       uint64    // access units seen, for "a frame since" checks
+	awaitSeq     uint64    // frames when the open lapse began (or its last retry ended)
+	noDisplay    bool      // SCK said there is no display (-3815); sticky until a start succeeds
+	nextStartAt  time.Time // no start retry before this
+	rtOff        bool      // desktop-state.json is unreadable: nothing is written to it
+	approvalSeen time.Time // Portty's own record of the last fresh approval
+	approvalAt   time.Time // when the approval signals were last refreshed
+	guiSeenAt    time.Time // the GUI's last NoteGUISeen
+	lapseDue     time.Time // the daemon claims the open lapse at this time if the GUI has not
+	paused       bool      // the crash-loop breaker is open (capture_paused)
+	awaiting     bool      // the stall watchdog classified waiting for approval
+	approaching  bool      // the approval record is 27 to 30 days old
+	lapseSeq     int       // approval lapses so far
+	lapseClaimed int       // the last lapse whose notification has a sender
 
 	// lmu guards the Locked() cache; a leaf lock.
 	lmu       sync.Mutex
@@ -283,6 +292,8 @@ type Manager struct {
 	lockVal   bool
 	lockKnown bool
 
+	tickMu                sync.Mutex // one state-loop pass at a time; also guards wd
+	wd                    watchdog
 	kick                  chan struct{} // a join or leave: re-pace the loop and tick now
 	tickViewers, tickIdle time.Duration // the state loop's cadence (tests shorten it)
 	loopCancel            context.CancelFunc
@@ -333,10 +344,12 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.ApprovalStore == nil {
 		d.ApprovalStore = defaultApprovalStore
 	}
-	return &Manager{
+	m := &Manager{
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
-	}, nil
+	}
+	m.loadRuntimeState()
+	return m, nil
 }
 
 // Start binds the media socket (tailnet address only, a busy port retried) and
@@ -576,22 +589,54 @@ func (m *Manager) join(v *viewer) error {
 	if m.Full() {
 		return errFull
 	}
-	if m.src == nil {
-		src := m.d.NewSource()
-		sctx, cancel := context.WithCancel(m.ctx)
-		if err := src.Start(sctx, m.d.SourceConfig); err != nil {
-			cancel()
+	if m.src == nil && !m.isPaused() {
+		// A viewer that cannot be served yet (no Screen Recording grant, no
+		// display) still joins: it is told why, and the state loop retries.
+		if err := m.startSourceLocked(); err != nil && !errors.Is(err, screencap.ErrPermissionDenied) && !errors.Is(err, screencap.ErrNoDisplay) {
 			return err
 		}
-		m.src, m.srcStop = src, cancel
-		m.fanDone = make(chan struct{})
-		go m.fanOut(src, m.fanDone)
 	}
 	m.vmu.Lock()
 	m.viewers[v.ID] = v
 	m.vmu.Unlock()
 	m.kickLoop()
 	return nil
+}
+
+// startSourceLocked (m.mu held) starts a fresh source and its fan-out. A start
+// error is classified (-3801 needs permission, -3815 no display) before it is
+// returned. Every viewer waits for the new source's first keyframe.
+func (m *Manager) startSourceLocked() error {
+	src := m.d.NewSource()
+	sctx, cancel := context.WithCancel(m.ctx)
+	now := m.d.Now().Round(0)
+	if err := src.Start(sctx, m.d.SourceConfig); err != nil {
+		cancel()
+		m.noteStartFailure(err, now)
+		return err
+	}
+	m.src, m.srcStop = src, cancel
+	m.fanDone = make(chan struct{})
+	m.vmu.Lock()
+	for _, v := range m.viewers {
+		v.armed = false
+	}
+	m.vmu.Unlock()
+	m.noteStartSuccess(src, now)
+	go m.fanOut(src, m.fanDone)
+	return nil
+}
+
+// restartSource stops the source, if any, and starts a new one (stall recovery,
+// wake, retry). It does nothing without a viewer.
+func (m *Manager) restartSource() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed || m.Viewers() == 0 {
+		return nil
+	}
+	m.stopSourceLocked()
+	return m.startSourceLocked()
 }
 
 // leave unregisters v and stops capture when it was the last viewer (capture
@@ -604,6 +649,7 @@ func (m *Manager) leave(v *viewer) {
 	m.vmu.Unlock()
 	if n == 0 {
 		m.stopSourceLocked()
+		m.noteCaptureStopped()
 	}
 	m.mu.Unlock()
 	m.kickLoop()
@@ -828,6 +874,7 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.stopSourceLocked()
+	m.noteCaptureStopped()
 	m.vmu.Lock()
 	for _, v := range m.viewers {
 		_ = v.pc.Close()

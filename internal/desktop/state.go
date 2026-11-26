@@ -66,7 +66,7 @@ func (m *Manager) deriveState() Status {
 }
 
 func (m *Manager) flagsLocked() stateFlags {
-	return stateFlags{paused: m.paused, perm: m.permDenied, asleep: m.asleep, awaiting: m.awaiting, locked: m.locked}
+	return stateFlags{paused: m.paused, perm: m.permDenied, asleep: m.asleep || m.noDisplay, awaiting: m.awaiting, locked: m.locked}
 }
 
 // noteReason records why a read or action failed (shown in Status.Reason) and
@@ -137,6 +137,7 @@ func (m *Manager) noteFrame() {
 	now := m.d.Now().Round(0)
 	m.smu.Lock()
 	m.lastFrameAt = now
+	m.frames++
 	m.permDenied = false
 	m.smu.Unlock()
 }
@@ -181,6 +182,8 @@ func (m *Manager) stateLoop(ctx context.Context, wake <-chan wakewatch.Reason, d
 // tick is one pass of the loop: read the display and the lock, probe
 // permissions when idle, and push the state if it changed.
 func (m *Manager) tick(ctx context.Context) {
+	m.tickMu.Lock()
+	defer m.tickMu.Unlock()
 	now := m.d.Now().Round(0)
 	if a, err := m.d.DisplayAsleep(); err != nil {
 		m.noteReason("display", err)
@@ -195,9 +198,15 @@ func (m *Manager) tick(ctx context.Context) {
 	m.locked = locked
 	m.smu.Unlock()
 
+	m.refreshApproval(ctx, now, false)
 	if m.Viewers() == 0 {
 		m.idleProbe(ctx, now, false)
+		m.wd.reset()
+	} else {
+		m.ensureSource(now)
+		m.watchdogStep(ctx, now)
 	}
+	m.lapseDueCheck(now)
 	m.pushIfChanged(ctx)
 }
 

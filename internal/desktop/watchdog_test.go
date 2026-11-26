@@ -3,6 +3,7 @@ package desktop_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -75,7 +76,11 @@ func (r *rig) join() *fanViewer {
 	n := r.src.count()
 	v := r.env.join(r.ctx, r.t, r.env.token(r.t, "g1"))
 	eventually(r.t, 5*time.Second, "capture start", func() bool { return r.src.count() > n && r.env.mgr.Viewers() > 0 })
+	// Wait until the Manager has counted the frame: it stamps it with the fake
+	// clock when it handles it, so a clock step must not overtake it.
+	before := r.env.mgr.FramesSeenForTest()
 	r.src.last().emit(true)
+	eventually(r.t, 5*time.Second, "first frame handled", func() bool { return r.env.mgr.FramesSeenForTest() > before })
 	return v
 }
 
@@ -102,7 +107,7 @@ func (r *rig) state() desktop.State { return r.env.mgr.Status().State }
 // untilNudges waits until the Manager has nudged n times.
 func (r *rig) untilNudges(n int) {
 	r.t.Helper()
-	eventually(r.t, 3*time.Second, "nudge count", func() bool { return r.nudges() == n })
+	eventually(r.t, 3*time.Second, fmt.Sprintf("nudge count %d (is %d, state %+v)", n, r.nudges(), r.env.mgr.Status()), func() bool { return r.nudges() == n })
 }
 
 // drive runs the stall to the point where the watchdog classifies awaiting
@@ -133,9 +138,9 @@ func TestWatchdog_StillScreenNudges(t *testing.T) {
 	if r.src.count() != 1 {
 		t.Fatalf("a frame after the nudge is a still screen: no restart, got %d sources", r.src.count())
 	}
-	r.settle(29 * time.Second)
+	r.settle(28 * time.Second)
 	if r.nudges() != 1 {
-		t.Fatalf("second nudge after only 29 s, want a 30 s wait (nudges %d)", r.nudges())
+		t.Fatalf("second nudge only 29 s after the first, want a 30 s wait (nudges %d)", r.nudges())
 	}
 	r.settle(2 * time.Second)
 	r.untilNudges(2)

@@ -57,6 +57,9 @@ func WriteRuntimeStateForTest(dir string, rs RuntimeState) error { return writeR
 // through; who names the detector in the log.
 func (m *Manager) EnterAwaitingForTest(who string) { m.enterAwaiting(who) }
 
+// FramesSeenForTest is how many access units the fan-out has handled.
+func (m *Manager) FramesSeenForTest() uint64 { return m.frameCount() }
+
 // TickForTest runs one state-loop pass synchronously.
 func (m *Manager) TickForTest(ctx context.Context) { m.tick(ctx) }
 
