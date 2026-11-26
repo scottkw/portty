@@ -1,0 +1,6 @@
+# before: desktop on, terminal share on, one desktop viewer and one terminal viewer (home VM)
+p19-both t=1 epoch=1795726985 desk=["streaming","streaming",1,3269] term={"len":1818,"first":1,"last":1812,"lastEpoch":1795726984,"count":1812,"breaks":0}
+p19-both t=2 epoch=1795726987 desk=["streaming","streaming",1,3297] term={"len":1820,"first":1,"last":1814,"lastEpoch":1795726987,"count":1814,"breaks":0}
+p19-both t=3 epoch=1795726989 desk=["streaming","streaming",1,3317] term={"len":1822,"first":1,"last":1816,"lastEpoch":1795726989,"count":1816,"breaks":0}
+p19-both t=4 epoch=1795726991 desk=["streaming","streaming",1,3329] term={"len":1823,"first":1,"last":1817,"lastEpoch":1795726990,"count":1817,"breaks":0}
+sessions: [{"id":"debd9ff3","webEnabled":true,"viewerCount":1},{"id":"ce152707","webEnabled":false,"viewerCount":0}]

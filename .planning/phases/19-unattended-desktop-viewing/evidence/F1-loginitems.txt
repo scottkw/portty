@@ -1,0 +1,6 @@
+clickby: clicked 'AXButton Title=Open Login Items DOMClassList=(     button,     "button' at 874,455
+AXWindow [AXStandardWindow] Title=Login Items @-30,46 740x625
+AXHeading Description=Open at Login @232,110 87x18
+AXHeading Description=Background App Activity @232,306 156x18
+AXHeading Description=Extensions @232,628 69x18
+AXStaticText Value=Login Items @287,46 411x52

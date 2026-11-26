@@ -1,0 +1,4 @@
+pmset displaysleepnow at guest epoch 1795728631
+GET /desktop during sleep: {"state":"display_asleep","viewers":1,"locked":false}
+pmset -g powerstate: 
+caffeinate -u -t 2 (user-activity wake) at guest epoch 1795728645

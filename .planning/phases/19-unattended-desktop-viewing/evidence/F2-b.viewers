@@ -1,0 +1,12 @@
+# F2-b-home-safari and Chrome with all three viewers open
+p19-safari t=1 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":433,"frameWidth":2560,"frameHeight":1440,"bytesReceived":5210929,"cspViolations":0} title=Portty Desktop (debug fd=433 fw=2560 csp=0 st=streaming)
+p19-safari t=2 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":443,"frameWidth":2560,"frameHeight":1440,"bytesReceived":5213849,"cspViolations":0} title=Portty Desktop (debug fd=450 fw=2560 csp=0 st=streaming)
+p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":456,"frameWidth":2560,"frameHeight":1440,"bytesReceived":5287932,"cspViolations":0} title=Portty Desktop (debug fd=456 fw=2560 csp=0 st=streaming)
+p19-safari t=4 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":464,"frameWidth":2560,"frameHeight":1440,"bytesReceived":5297104,"cspViolations":0} title=Portty Desktop (debug fd=464 fw=2560 csp=0 st=streaming)
+p19-chrome t=1 epoch=1795726580 titles=Portty Desktop (debug fd=511 fw=2560 csp=0 st=streaming)
+p19-chrome t=2 epoch=1795726581 titles=Portty Desktop (debug fd=529 fw=2560 csp=0 st=streaming)
+p19-chrome t=3 epoch=1795726583 titles=Portty Desktop (debug fd=541 fw=2560 csp=0 st=streaming)
+GET /desktop: {"state":"streaming","viewers":3}
+p19-safari t=1 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":597,"frameWidth":2560,"frameHeight":1440,"bytesReceived":1374411,"cspViolations":0} title=Portty Desktop (debug fd=597 fw=2560 csp=0 st=streaming)
+p19-safari t=2 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":597,"frameWidth":2560,"frameHeight":1440,"bytesReceived":1374411,"cspViolations":0} title=Portty Desktop (debug fd=598 fw=2560 csp=0 st=streaming)
+p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":602,"frameWidth":2560,"frameHeight":1440,"bytesReceived":1501280,"cspViolations":0} title=Portty Desktop (debug fd=602 fw=2560 csp=0 st=streaming)

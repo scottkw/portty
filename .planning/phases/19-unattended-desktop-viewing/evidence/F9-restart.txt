@@ -1,0 +1,24 @@
+# viewer leaves (reload to the off-then-on page is not needed: navigate to about:blank) and rejoins with Screen Recording off; guest epochs
+p19-both t=1 epoch=1795728962 desk=["streaming","streaming",1,1195] term={"len":
+p19-both t=2 epoch=1795728964 desk=["streaming","streaming",1,1201] term={"len":
+p19-both t=3 epoch=1795728965 desk=["streaming","streaming",1,1201] term={"len":
+viewer leaves at guest epoch 1795728966
+p19-page title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+epoch=1795728975 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728976 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728978 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728980 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728981 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728983 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728984 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728986 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728988 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728989 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728991 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728992 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728994 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+epoch=1795728996 perms={"sr":false,"ax":true} {"state":"needs_permission","viewers":1,"reason":null}
+p19-safari t=1 stats={"status":"streaming","state":"needs_permission","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+p19-safari t=2 stats={"status":"streaming","state":"needs_permission","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+p19-safari t=3 stats={"status":"streaming","state":"needs_permission","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+p19-safari t=4 stats={"status":"streaming","state":"needs_permission","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)

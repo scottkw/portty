@@ -1,0 +1,7 @@
+# F12: the open desktop viewer after desktop off (no reload), then after a reload of the same link
+## no reload
+p19-page title=Portty Desktop (debug fd=3387 fw=2560 csp=0 st=streaming)
+p19-page text=Desktop sharing is off on this Mac Turn on Always-available desktop in Portty's Settings, under Sharing, then copy the link from there.
+## reload
+p19-page title=Portty
+p19-page text=Portty Desktop sharing is off on this Mac Turn on Always-available desktop in Portty's Settings, under Sharing, then copy the link from there.

@@ -1,0 +1,14 @@
+session 03572289 ticks_in_window=73
+session 099ccb60 ticks_in_window=71
+session 11e1059f ticks_in_window=73
+session 81c06f07 ticks_in_window=73
+session bc45c2e2 ticks_in_window=79
+session ce152707 ticks_in_window=71
+  tick gap 3 s ending at +21
+session d2b56d91 ticks_in_window=79
+session debd9ff3 ticks_in_window=70
+  tick gap 3 s ending at +21
+session f3ca7d04 ticks_in_window=71
+  tick gap 3 s ending at +21
+builtin monitor: samples=369 max_gap_s=0.55
+exec monitor: samples=685 max_exec_latency_s=0.31
