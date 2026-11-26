@@ -188,6 +188,14 @@ type App struct {
 	// release cannot take sessions from (the downgrade-handoff wall, handoff.go), and restarting
 	// it would end them (UPD-05, UPD-07).
 	keepDaemonOnce atomic.Bool
+
+	// moverMode is set when this GUI runs from a mounted DMG (UPD-08): it only moves itself into
+	// place and quits, never starting the daemon, tray, pollers or window (app_mover.go).
+	moverMode atomic.Bool
+	// detectMoverFunc is the mover detection seam; nil means a.detectMover.
+	detectMoverFunc func() (updater.DMGRun, bool)
+	// moverStartFunc hands a mover job to the installer and quits the GUI; nil means a.startInstaller.
+	moverStartFunc func(updater.Job) error
 }
 
 // defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
@@ -242,6 +250,9 @@ func (a *App) awaitStartup() bool {
 // Shows the window unless the persisted start-minimized preference is set.
 // Falls back to showing the window when the daemon is unreachable (safe default).
 func (a *App) domReady(ctx context.Context) {
+	if a.moverMode.Load() { // mover mode never shows the window
+		return
+	}
 	startMinimized := false
 	ready := true
 	if a.startupDone != nil {
@@ -289,6 +300,12 @@ func (a *App) startup(ctx context.Context) {
 	}()
 	// A logout, restart or shutdown must never be cancelled by the quit modal.
 	installTerminateHook()
+
+	// A launch from a mounted DMG moves itself into place before anything that would pin the
+	// volume (a daemon, the tray, the pollers) starts (UPD-08).
+	if a.startMover() {
+		return
+	}
 
 	// Before the daemon is ensured: a rollback's result decides how the first ensure runs.
 	a.consumeInstallResult()

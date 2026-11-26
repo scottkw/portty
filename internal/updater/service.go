@@ -293,16 +293,21 @@ var installFailureTexts = []struct {
 	{errInstallerStart, "Portty couldn't start the installer."},
 }
 
+// InstallFailureReason is the cause's sentence for an install that failed with err, with nothing
+// about where the download is (the mover's alert adds its own advice).
+func InstallFailureReason(err error) string {
+	for _, t := range installFailureTexts {
+		if errors.Is(err, t.err) {
+			return t.text
+		}
+	}
+	return "Portty couldn't install the update."
+}
+
 // installFailureText is the banner text for an install that failed with err: the cause's
 // sentence, then where the download is (revealed) or what to do (not revealed).
 func installFailureText(err error, revealed bool) string {
-	text := "Portty couldn't install the update."
-	for _, t := range installFailureTexts {
-		if errors.Is(err, t.err) {
-			text = t.text
-			break
-		}
-	}
+	text := InstallFailureReason(err)
 	if revealed {
 		return text + " The download is shown in Finder."
 	}

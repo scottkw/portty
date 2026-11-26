@@ -21,10 +21,15 @@ import (
 const (
 	JobVersion = 1
 	KindUpdate = "update"
+	// The mover's kinds (UPD-08): place or replace the app from a mounted DMG, or open the same
+	// or newer installed copy instead.
+	KindMove          = "move"
+	KindOpenInstalled = "open-installed"
 
 	OutcomeUpdated    = "updated"
 	OutcomeFailed     = "failed"
 	OutcomeRolledBack = "rolled-back"
+	OutcomeOpened     = "opened" // open-installed: the installed copy was opened, nothing replaced
 
 	StartedMarker = "started" // the installer's first effect, in the job file's folder
 
@@ -149,7 +154,14 @@ func ReadJob(path string) (Job, error) {
 	if j.V != JobVersion {
 		return Job{}, jobErr("version")
 	}
-	if j.Kind != KindUpdate {
+	switch j.Kind {
+	case KindMove, KindOpenInstalled:
+		if j.OldPID < 2 {
+			return Job{}, jobErr("pid")
+		}
+		return j, checkMoveJob(j)
+	case KindUpdate:
+	default:
 		return Job{}, jobErr("kind")
 	}
 	for _, p := range []string{j.Target, j.Staged} {
@@ -174,6 +186,82 @@ func ReadJob(path string) (Job, error) {
 		return Job{}, jobErr("dmg")
 	}
 	return j, nil
+}
+
+// moveParents are the folders a mover job may target; a var so tests use temp dirs.
+var moveParents = func() []string {
+	dirs := []string{"/Applications"}
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, "Applications"))
+	}
+	return dirs
+}
+
+// volumesRoot is where a disk image's mount point must be; a var so tests use a temp dir.
+var volumesRoot = "/Volumes/"
+
+// checkMoveJob holds a mover job (UPD-08) to a Portty.app directly in an allowed Applications
+// folder, the DMG Portty was launched from, a mount point under /Volumes/ and its kind's version
+// rule: move installs a first copy or replaces a strictly older one; open-installed only opens a
+// same or newer installed copy (never a downgrade, T-18-28).
+func checkMoveJob(j Job) error {
+	if !filepath.IsAbs(j.Target) || filepath.Clean(j.Target) != j.Target || filepath.Base(j.Target) != BundleName ||
+		!slices.Contains(moveParents(), filepath.Dir(j.Target)) {
+		return jobErr("bundle path")
+	}
+	if j.DMG != "" {
+		return jobErr("dmg")
+	}
+	if !imageFileOK(j.ImagePath) {
+		return jobErr("image path")
+	}
+	if mp := j.MountPoint; !filepath.IsAbs(mp) || filepath.Clean(mp) != mp || !strings.HasPrefix(mp, volumesRoot) {
+		return jobErr("mount point")
+	}
+	_, err := os.Lstat(j.Target)
+	exists := err == nil
+	if (exists && !isDir(j.Target)) || (err != nil && !errors.Is(err, os.ErrNotExist)) {
+		return jobErr("bundle missing")
+	}
+	if j.Kind == KindOpenInstalled {
+		if !exists || j.Staged != "" {
+			return jobErr("bundle missing")
+		}
+		if c, err := Compare(j.OldVersion, j.NewVersion); err != nil || c < 0 {
+			return jobErr("versions")
+		}
+		return nil
+	}
+	stagingDir := filepath.Dir(j.Staged)
+	if !filepath.IsAbs(j.Staged) || filepath.Clean(j.Staged) != j.Staged || filepath.Base(j.Staged) != BundleName ||
+		filepath.Dir(stagingDir) != filepath.Dir(j.Target) || !strings.HasPrefix(filepath.Base(stagingDir), StagingPrefix) || !isDir(j.Staged) {
+		return jobErr("staging folder")
+	}
+	if !exists {
+		if _, err := ParseVersion(j.NewVersion); err != nil || j.OldVersion != "" {
+			return jobErr("versions")
+		}
+		return nil
+	}
+	if c, err := Compare(j.NewVersion, j.OldVersion); err != nil || c <= 0 {
+		return jobErr("versions")
+	}
+	return nil
+}
+
+// imageFileOK reports whether path may be the DMG the mover trashes (T-18-25): an absolute, clean
+// path outside Portty's update cache to a regular file this user owns, named like a release asset.
+func imageFileOK(path string) bool {
+	match, _ := filepath.Match("portty-v*-darwin-*.dmg", filepath.Base(path))
+	if !match || !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.Contains(path, "/"+AppIdentifier+"/") {
+		return false
+	}
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) == wantUID()
 }
 
 // WriteResult writes r to path through a temp file and a rename, so a reader never sees half of it.
@@ -216,7 +304,7 @@ func TakeResult(path string) (Result, bool, error) {
 		return Result{}, false, jobErr("result malformed")
 	}
 	switch r.Outcome {
-	case OutcomeUpdated, OutcomeFailed, OutcomeRolledBack:
+	case OutcomeUpdated, OutcomeFailed, OutcomeRolledBack, OutcomeOpened:
 	default:
 		return Result{}, false, jobErr("result outcome")
 	}
@@ -295,6 +383,8 @@ func relaunch(ctx context.Context, env InstallerEnv, app string) error {
 func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	r := Result{V: 1, OldVersion: j.OldVersion, NewVersion: j.NewVersion, DMG: j.DMG}
 	exe := filepath.Join(j.Target, BundleExecutable)
+	mover := j.Kind == KindMove || j.Kind == KindOpenInstalled
+	existed := isDir(j.Target) // false only for a mover's first install
 	finish := func(outcome, reason string) Result {
 		r.Outcome, r.Reason = outcome, reason
 		if err := WriteResult(env.ResultPath, r); err != nil {
@@ -307,6 +397,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	// relaunch fails becomes failed (keepDaemon kept), so the next manual launch still says why.
 	finishOpen := func(outcome, reason string) Result {
 		finish(outcome, reason)
+		if !isDir(j.Target) { // a mover's first install that failed before its swap: nothing to open
+			return r
+		}
 		if err := relaunch(ctx, env, j.Target); err != nil {
 			if outcome == OutcomeRolledBack {
 				finish(OutcomeFailed, reason)
@@ -329,8 +422,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 			}
 		}
 	}
-	rollback := func(reason string) Result {
-		// SIGTERM is the GUI-only quit (UPGR-05); a daemon that took over keeps the sessions.
+	// stopGUIs stops the GUIs running from the target. SIGTERM is the GUI-only quit (UPGR-05); a
+	// daemon keeps the sessions.
+	stopGUIs := func() {
 		if pids, err := env.GUIPids(exe); err == nil && len(pids) > 0 {
 			for _, p := range pids {
 				_ = env.Signal(p, syscall.SIGTERM)
@@ -340,10 +434,16 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 					_ = env.Signal(p, syscall.SIGKILL)
 				}
 				if len(waitGone(left, KillWait)) > 0 {
-					env.Logf("installer: new GUI still running")
+					env.Logf("installer: GUI still running")
 				}
 			}
 		}
+	}
+	rollback := func(reason string) Result {
+		if !existed { // a first install has no older copy to restore: the verified new one stays
+			return finish(OutcomeFailed, reason)
+		}
+		stopGUIs()
 		if err := env.Swap(j.Staged, j.Target); err != nil {
 			env.Logf("installer: swap back failed")
 			return finishOpen(OutcomeFailed, "swap-back") // the target still holds the verified new bundle
@@ -361,6 +461,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	quitBy := env.Now().Add(QuitWait)
 	for env.Alive(j.OldPID) {
 		if ctx.Err() != nil || !env.Now().Before(quitBy) {
+			if mover { // the DMG's GUI has no daemon or sessions and quits itself: never killed
+				return finish(OutcomeFailed, "quit-timeout")
+			}
 			pids, err := env.GUIPids(exe)
 			if err != nil || !slices.Contains(pids, j.OldPID) {
 				return finish(OutcomeFailed, "quit-timeout") // not provably our GUI: touch nothing
@@ -376,6 +479,42 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 		}
 		env.Sleep(installerPoll)
 	}
+	// The mover ejects the volume first, so a later failure never leaves it mounted. A failed eject
+	// does not stop the install; it only keeps the DMG out of the Trash.
+	detached := false
+	if mover {
+		if err := Detach(ctx, env.Run, j.MountPoint); err != nil {
+			env.Logf("installer: %v", err)
+		} else {
+			detached = true
+		}
+	}
+	// trashImage moves the DMG Portty was launched from to the Trash (UPD-08): only after its volume
+	// was ejected, and only while it still passes imageFileOK. A DMG already gone is fine.
+	trashImage := func() {
+		switch {
+		case !detached || env.Trash == nil:
+		case !imageFileOK(j.ImagePath):
+			if _, err := os.Lstat(j.ImagePath); !errors.Is(err, os.ErrNotExist) {
+				env.Logf("installer: dmg kept: not a Portty download")
+			}
+		default:
+			if err := env.Trash(j.ImagePath); err != nil {
+				env.Logf("installer: dmg kept: %v", err)
+			}
+		}
+	}
+	if j.Kind == KindOpenInstalled {
+		if err := relaunch(ctx, env, j.Target); err != nil {
+			env.Logf("installer: open failed")
+			return finish(OutcomeFailed, "open")
+		}
+		trashImage()
+		return finish(OutcomeOpened, "")
+	}
+	if mover && existed {
+		stopGUIs() // a GUI of the older installed copy (P4: opening the DMG's app starts a second GUI)
+	}
 	if err := VerifyApp(ctx, env.Run, j.Staged); err != nil {
 		env.Logf("installer: %v", err)
 		return finishOpen(OutcomeFailed, "reverify")
@@ -383,6 +522,11 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	if err := env.Swap(j.Staged, j.Target); err != nil {
 		env.Logf("installer: swap failed")
 		return finishOpen(OutcomeFailed, "swap")
+	}
+	if !existed { // a plain rename left the staging folder empty; never RemoveAll here
+		if err := os.Remove(filepath.Dir(j.Staged)); err != nil {
+			env.Logf("installer: staging folder not removed")
+		}
 	}
 	if err := relaunch(ctx, env, j.Target); err != nil {
 		env.Logf("installer: open failed")
@@ -422,14 +566,16 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	// Healthy: the old bundle (at j.Staged since the swap) goes to the Trash, recoverable by hand,
 	// never deleted. Only a Portty.app inside a staging folder beside the target is trashed; a
 	// refused Trash keeps it aside for the next GUI start's sweep to retry.
-	if dir := filepath.Dir(j.Staged); env.Trash != nil && strings.HasPrefix(filepath.Base(dir), StagingPrefix) && filepath.Dir(dir) == filepath.Dir(j.Target) {
+	if dir := filepath.Dir(j.Staged); existed && env.Trash != nil && strings.HasPrefix(filepath.Base(dir), StagingPrefix) && filepath.Dir(dir) == filepath.Dir(j.Target) {
 		if err := env.Trash(j.Staged); err != nil {
 			env.Logf("installer: old copy kept aside: %v", err)
 		} else if err := os.Remove(dir); err != nil {
 			env.Logf("installer: staging folder not removed")
 		}
 	}
-	if err := os.Remove(j.DMG); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if mover {
+		trashImage()
+	} else if err := os.Remove(j.DMG); err != nil && !errors.Is(err, os.ErrNotExist) {
 		env.Logf("installer: dmg not removed")
 	}
 	return finish(OutcomeUpdated, "")
