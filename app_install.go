@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -200,6 +202,108 @@ func updateLogf(format string, args ...any) {
 	}
 	_, _ = fmt.Fprintln(f, line)
 	_ = f.Close()
+}
+
+// sweepAge is how old a staging or run dir must be before the startup sweep touches it. An
+// installer lives at most QuitWait + HealthTimeout + 2 minutes, so an hour never catches a live one.
+const sweepAge = time.Hour
+
+// trashItemFunc is a var for tests.
+var trashItemFunc = trashItem
+
+// sweepParents is every folder a Portty.app and its staging dirs can sit in: the running
+// bundle's parent, /Applications and ~/Applications, deduped.
+func sweepParents() []string {
+	var dirs []string
+	if b, err := runningBundleFunc(); err == nil {
+		dirs = append(dirs, filepath.Dir(b))
+	}
+	dirs = append(dirs, "/Applications")
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, "Applications"))
+	}
+	var out []string
+	for _, d := range dirs {
+		if d = filepath.Clean(d); !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// sweepUpdateLeftovers cleans what an interrupted install left behind (UPD-06). It runs once per
+// normal GUI start, in the background after the daemon is up.
+func sweepUpdateLeftovers(ctx context.Context, now time.Time) {
+	sweepDirs(ctx, now, sweepParents(), updateWorkDir(), updateCacheDir())
+}
+
+// sweepDirs: in parents, a .Portty-update-* dir older than sweepAge has its Portty.app and
+// Portty.staged moved to the Trash (never deleted; a refused Trash leaves them for the next
+// start) and is then removed if empty. In work, run-* dirs older than sweepAge are removed: they
+// hold only Portty's own job file, marker and installer copy, never the user's app. In cache,
+// mnt-* dirs are detached (no age floor: no stage runs in a process that is just starting).
+// Symlinks are never followed or touched.
+func sweepDirs(ctx context.Context, now time.Time, parents []string, work, cache string) {
+	cutoff := now.Add(-sweepAge)
+	// entries lists the real dirs in dir named prefix*; with stale, only those older than cutoff.
+	entries := func(dir, prefix string, stale bool) []string {
+		des, _ := os.ReadDir(dir) // a missing folder has nothing to sweep
+		var out []string
+		for _, de := range des {
+			p := filepath.Join(dir, de.Name())
+			fi, err := os.Lstat(p)
+			if strings.HasPrefix(de.Name(), prefix) && err == nil && fi.IsDir() && (!stale || fi.ModTime().Before(cutoff)) {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+	var trashed, kept, runs, detached int
+	for _, parent := range parents {
+		for _, dir := range entries(parent, updater.StagingPrefix, true) {
+			for _, name := range []string{updater.BundleName, "Portty.staged"} {
+				if !isRealDir(filepath.Join(dir, name)) {
+					continue
+				}
+				if err := trashItemFunc(filepath.Join(dir, name)); err != nil {
+					kept++
+					updateLogf("update: sweep: old copy kept aside: %v", err)
+				} else {
+					trashed++
+				}
+			}
+			_ = os.Remove(dir) // fails harmlessly while a copy is still inside
+		}
+	}
+	if work != "" {
+		for _, dir := range entries(work, "run-", true) {
+			if os.RemoveAll(dir) == nil {
+				runs++
+			}
+		}
+	}
+	if cache != "" {
+		for _, dir := range entries(cache, "mnt-", false) {
+			if !isRealDir(filepath.Join(dir, updater.BundleName)) {
+				_ = os.Remove(dir)
+				continue
+			}
+			dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			if updater.Detach(dctx, updateRunner, dir) == nil {
+				detached++
+			}
+			cancel()
+		}
+	}
+	if trashed+kept+runs+detached > 0 {
+		updateLogf("update: sweep trashed %d, kept aside %d, run dirs removed %d, mounts detached %d", trashed, kept, runs, detached)
+	}
+}
+
+// isRealDir reports whether path is a directory, not a symlink to one.
+func isRealDir(path string) bool {
+	fi, err := os.Lstat(path)
+	return err == nil && fi.IsDir()
 }
 
 // updateResultNotificationID identifies the notification about a rolled-back or failed install.
