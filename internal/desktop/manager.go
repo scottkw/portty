@@ -36,6 +36,7 @@ import (
 	"github.com/pion/webrtc/v4"
 
 	"github.com/scottkw/portty/internal/screencap"
+	"github.com/scottkw/portty/internal/wakewatch"
 )
 
 // ProtocolVersion is the signalling protocol version in hello.
@@ -161,16 +162,54 @@ type Deps struct {
 	OnDataChannel DataChannelHook
 	// Notify posts a native notification. Used from 19-09 on; nil means log-only.
 	Notify func(id, title, body string)
+
+	// The native reads and actions below default (when nil) to the screencap
+	// bridges and the real prober, so a host that does not care wires nothing;
+	// tests replace every one with a fake.
+	Lock            func() (bool, error)                                     // is the session screen locked
+	DisplayAsleep   func() (bool, error)                                     // is the main display asleep
+	OnAC            func() (bool, error)                                     // is the Mac on AC power
+	HoldDisplay     func(name string) (release func() error, err error)      // PreventUserIdleDisplaySleep
+	HoldSystem      func(name string) (release func() error, err error)      // PreventUserIdleSystemSleep
+	DeclareActivity func(name string) error                                  // remote user activity (lights a dark display)
+	Nudge           func() (bool, error)                                     // one-point pointer move and return
+	Probe           func(ctx context.Context) (screencap.Permissions, error) // fresh-child permission read
+	Wake            <-chan wakewatch.Reason                                  // nil means wakewatch.Watch on the Manager's context
+	ApprovalStore   func(ctx context.Context) (time.Time, error)             // replayd's LastAlerted date, if readable
 }
 
-// Status is the desktop link's state as the host sees it. 19-01 fills State
-// (idle or streaming) and Viewers; 19-09 derives the rest.
+// Package-level defaults for the Deps seams.
+var (
+	defaultLock          = screencap.SessionLocked
+	defaultDisplayAsleep = screencap.DisplayAsleep
+	defaultOnAC          = screencap.OnACPower
+	defaultNudge         = screencap.NudgePointer
+	defaultDeclare       = screencap.DeclareRemoteUserActivity
+	defaultHoldDisplay   = holdFunc(screencap.HoldDisplayAwake)
+	defaultHoldSystem    = holdFunc(screencap.HoldSystemAwake)
+	defaultApprovalStore = readApprovalStore
+)
+
+func holdFunc(take func(string) (screencap.PowerAssertion, error)) func(string) (func() error, error) {
+	return func(name string) (func() error, error) {
+		a, err := take(name)
+		if err != nil {
+			return nil, err
+		}
+		return a.Release, nil
+	}
+}
+
+// Status is the desktop link's state as the host sees it. Locked is an
+// attribute that coexists with Viewers. LapseSeq counts approval lapses and
+// LapseClaimedSeq is the last one whose notification has a sender.
 type Status struct {
 	State            State
 	Viewers          int
 	Locked           bool
 	ApproachingLapse bool
 	LapseSeq         int
+	LapseClaimedSeq  int
 	Reason           string
 }
 
@@ -218,6 +257,36 @@ type Manager struct {
 	kfLast    time.Time
 	kfPending bool
 	kfTimer   *time.Timer
+
+	// smu guards the derived-state flags below; it is a leaf lock (never held
+	// while taking another, never across a native call). Every state transition
+	// goes through a method that holds it, which serialises the stall watchdog,
+	// the idle probe and the display read against each other.
+	smu          sync.Mutex
+	lastFrameAt  time.Time // wall clock of the last access unit
+	permDenied   bool      // Screen Recording is off (needs_permission)
+	asleep       bool      // the main display is asleep (display_asleep)
+	locked       bool      // the session screen is locked (attribute)
+	reasons      map[string]string
+	pushed       msgState // the last state message broadcast
+	pushedKnown  bool
+	lastProbeAt  time.Time
+	paused       bool // the crash-loop breaker is open (capture_paused)
+	awaiting     bool // the stall watchdog classified waiting for approval
+	approaching  bool // the approval record is 27 to 30 days old
+	lapseSeq     int  // approval lapses so far
+	lapseClaimed int  // the last lapse whose notification has a sender
+
+	// lmu guards the Locked() cache; a leaf lock.
+	lmu       sync.Mutex
+	lockAt    time.Time
+	lockVal   bool
+	lockKnown bool
+
+	kick                  chan struct{} // a join or leave: re-pace the loop and tick now
+	tickViewers, tickIdle time.Duration // the state loop's cadence (tests shorten it)
+	loopCancel            context.CancelFunc
+	loopDone              chan struct{}
 }
 
 // NewManager validates d.
@@ -237,7 +306,37 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.SourceConfig == (screencap.Config{}) {
 		d.SourceConfig = screencap.DefaultConfig()
 	}
-	return &Manager{d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer)}, nil
+	if d.Lock == nil {
+		d.Lock = defaultLock
+	}
+	if d.DisplayAsleep == nil {
+		d.DisplayAsleep = defaultDisplayAsleep
+	}
+	if d.OnAC == nil {
+		d.OnAC = defaultOnAC
+	}
+	if d.HoldDisplay == nil {
+		d.HoldDisplay = defaultHoldDisplay
+	}
+	if d.HoldSystem == nil {
+		d.HoldSystem = defaultHoldSystem
+	}
+	if d.DeclareActivity == nil {
+		d.DeclareActivity = defaultDeclare
+	}
+	if d.Nudge == nil {
+		d.Nudge = defaultNudge
+	}
+	if d.Probe == nil {
+		d.Probe = DefaultProber().Read
+	}
+	if d.ApprovalStore == nil {
+		d.ApprovalStore = defaultApprovalStore
+	}
+	return &Manager{
+		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
+		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
+	}, nil
 }
 
 // Start binds the media socket (tailnet address only, a busy port retried) and
@@ -267,6 +366,14 @@ func (m *Manager) Start(ctx context.Context) error {
 		return err
 	}
 	m.ctx, m.conn, m.mux, m.api = ctx, conn, mux, api
+
+	lctx, cancel := context.WithCancel(ctx)
+	m.loopCancel, m.loopDone = cancel, make(chan struct{})
+	wake := m.d.Wake
+	if wake == nil {
+		wake = wakewatch.Watch(lctx)
+	}
+	go m.stateLoop(lctx, wake, m.loopDone)
 	return nil
 }
 
@@ -483,6 +590,7 @@ func (m *Manager) join(v *viewer) error {
 	m.vmu.Lock()
 	m.viewers[v.ID] = v
 	m.vmu.Unlock()
+	m.kickLoop()
 	return nil
 }
 
@@ -498,6 +606,7 @@ func (m *Manager) leave(v *viewer) {
 		m.stopSourceLocked()
 	}
 	m.mu.Unlock()
+	m.kickLoop()
 	slog.Info("desktop: viewer left", "viewer", string(v.ID)[:8], "viewers", n)
 	m.broadcastState(context.Background())
 }
@@ -571,6 +680,7 @@ func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 			if !ok {
 				return
 			}
+			m.noteFrame()
 			if m.noteSize(au.Width, au.Height) {
 				m.broadcast(context.Background(), msgSize{Type: typeSize, W: au.Width, H: au.Height})
 			}
@@ -640,7 +750,11 @@ func (m *Manager) broadcast(ctx context.Context, v any) {
 
 func (m *Manager) broadcastState(ctx context.Context) {
 	st := m.Status()
-	m.broadcast(ctx, msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked})
+	msg := msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked}
+	m.smu.Lock()
+	m.pushed, m.pushedKnown = msg, true
+	m.smu.Unlock()
+	m.broadcast(ctx, msg)
 }
 
 // Full reports whether the viewer cap is reached. The route checks it before
@@ -667,14 +781,8 @@ func (m *Manager) ViewerList() []Viewer {
 	return out
 }
 
-// Status returns the link's state. 19-09 derives the other states here.
-func (m *Manager) Status() Status {
-	n := m.Viewers()
-	if n > 0 {
-		return Status{State: StateStreaming, Viewers: n}
-	}
-	return Status{State: StateIdle}
-}
+// Status returns the link's derived state (state.go).
+func (m *Manager) Status() Status { return m.deriveState() }
 
 // CloseAll closes every viewer socket with code and reason.
 func (m *Manager) CloseAll(code websocket.StatusCode, reason string) {
@@ -703,7 +811,12 @@ func (m *Manager) Close() error {
 		return nil
 	}
 	m.closed = true
+	cancel, done := m.loopCancel, m.loopDone
 	m.mu.Unlock()
+	if cancel != nil {
+		cancel()
+		<-done
+	}
 
 	m.CloseAll(websocket.StatusServiceRestart, "server stopping")
 	m.kmu.Lock()
