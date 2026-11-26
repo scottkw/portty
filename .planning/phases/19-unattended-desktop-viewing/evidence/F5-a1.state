@@ -1,0 +1,78 @@
+p19-state row=F5-a1 vm_utc=2026-11-26T20:37:48Z epoch=1795725468
+installed_version=19.2.0
+--- launchd app.portty.Portty.daemon
+plist_exists=yes
+{   "AbandonProcessGroup" => true   "KeepAlive" => {     "SuccessfulExit" => false   }   "Label" => "app.portty.Portty.daemon"   "ProgramArguments" => [     0 => "/Applications/Portty.app/Contents/MacOS/Portty"     1 => "daemon"   ]   "RunAtLoad" => true } 
+	state = running
+	runs = 12
+	pid = 77622
+	last exit code = 0
+		state = active
+		state = active
+--- launchd portty-daemon
+plist_exists=no
+Could not find service "portty-daemon" in domain for user gui: 501
+--- launchctl print-disabled (portty labels)
+		"app.portty.Portty.daemon" => enabled
+		"portty-daemon" => enabled
+--- processes (pid ppid etime args)
+77622     1       10:00 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- health
+{"status":"ok","version":"v19.2.0","api":5,"handoff":1,"launchd":true,"pid":77622}
+
+daemon_pids=77622
+daemon 77622 ppid=1 xpc_service_name=app.portty.Portty.daemon
+--- sessions (id, shell pid, alive, ticks, last file tick age, max gap s, last pty tick age)
+session debd9ff3982e6a8e5774146e13ea900e shell_pid=78233 alive=yes ticks=492 last_age=1 max_gap=2 pty_last_tick="TICK 492 1795725467" pty_age=1
+session ce15270732920c77774657b70635f4d8 shell_pid=78295 alive=yes ticks=491 last_age=0 max_gap=2 pty_last_tick="TICK 491 1795725468" pty_age=0
+--- daemon.log.1 / daemon.log (mtime, size) and daemon.log tail
+daemon.log 2305 bytes mtime 20:37:42
+daemon.log.1 0 bytes mtime 20:14:50
+2026/11/26 20:28:50.590803 viewer-diag: join session=debd9ff3 conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/26 20:28:50.593768 viewer-diag: replay session=debd9ff3 conn=1 mode=full bytes=0 resume=false
+2026/11/26 20:28:50.593932 viewer-diag: grid session=debd9ff3 0x0 -> 100x29 by=local client="" conn=1 why=bootstrap
+2026/11/26 20:28:56.592805 viewer-diag: leave session=debd9ff3 conn=1 origin=local client="" viewers=0
+2026/11/26 20:28:56.665713 viewer-diag: join session=ce152707 conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/26 20:28:56.665802 viewer-diag: replay session=ce152707 conn=1 mode=full bytes=213 resume=false
+2026/11/26 20:28:56.666046 viewer-diag: grid session=ce152707 0x0 -> 100x29 by=local client="" conn=1 why=bootstrap
+2026/11/26 20:29:02.669920 viewer-diag: leave session=ce152707 conn=1 origin=local client="" viewers=0
+2026/11/26 20:29:07.038842 viewer-diag: join session=debd9ff3 conn=2 origin=local from= client="" viewers=1 web=0
+2026/11/26 20:29:07.039043 viewer-diag: replay session=debd9ff3 conn=2 mode=full bytes=1008 resume=false
+2026/11/26 20:30:57.028838 INFO desktop: viewer joined viewer=38fc7e14 viewers=1
+2026/11/26 20:31:28.374565 viewer-diag: join session=debd9ff3 conn=3 origin=web from=100.x.x.N client="" viewers=2 web=1
+2026/11/26 20:31:28.376317 viewer-diag: replay session=debd9ff3 conn=3 mode=full bytes=3826 resume=false
+2026/11/26 20:31:28.478603 viewer-diag: web resize session=debd9ff3 conn=3 cols=56 rows=22 claim=false
+2026/11/26 20:36:55.628194 viewer-diag: input total session=debd9ff3 conn=3 frames=0 bytes=0 resizes=2
+2026/11/26 20:36:55.629094 viewer-diag: leave session=debd9ff3 conn=3 origin=web client="" viewers=1
+2026/11/26 20:36:55.743831 INFO desktop: viewer left viewer=38fc7e14 viewers=0
+2026/11/26 20:37:05.355642 INFO desktop: viewer joined viewer=12fcfeff viewers=1
+2026/11/26 20:37:15.997586 viewer-diag: join session=debd9ff3 conn=4 origin=web from=100.x.x.N client="" viewers=2 web=1
+2026/11/26 20:37:15.998211 viewer-diag: replay session=debd9ff3 conn=4 mode=full bytes=10800 resume=false
+2026/11/26 20:37:16.091974 viewer-diag: web resize session=debd9ff3 conn=4 cols=56 rows=9 claim=false
+2026/11/26 20:37:42.026177 viewer-diag: leave session=debd9ff3 conn=2 origin=local client="" viewers=1
+--- gui.log tail (open --stderr, from start-gui; update-check noise dropped)
+2026/11/26 18:28:41 daemon: re-home requested
+2026/11/26 18:28:41 daemon: legacy agent cleanup deferred to the next start
+2026/11/26 18:29:06 daemon: launchd agent: ready (state 0)
+2026/11/26 18:30:17 daemon: launchd agent: ready (state 0)
+2026/11/26 18:31:46 daemon: launchd agent: ready (state 0)
+2026/11/26 18:32:40 daemon: launchd agent: ready (state 0)
+2026/11/26 18:32:40 daemon: re-home requested
+2026/11/26 19:14:34 daemon: launchd agent: ready (state 0)
+2026/11/26 19:14:45 update: up to date
+2026/11/26 19:43:31 daemon: launchd agent: ready (state 0)
+EnsureDaemon: version mismatch (daemon="v19.1.0", binary="v19.1.1"), restarting
+2026/11/26 19:43:41 update: up to date
+2026/11/26 19:47:54 daemon: launchd agent: ready (state 0)
+2026/11/26 19:48:05 update: up to date
+2026/11/26 20:11:44 daemon: launchd agent: ready (state 0)
+EnsureDaemon: version mismatch (daemon="v19.1.0", binary="v19.1.2"), restarting
+2026/11/26 20:11:55 update: up to date
+2026/11/26 20:13:51 daemon: launchd agent: ready (state 0)
+2026/11/26 20:14:01 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026-11-26 20:14:01.456 Portty[71188:1405705] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 1)
+2026-11-26 20:14:01.475 Portty[71188:1405761] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+2026/11/26 20:14:01 update: up to date
+2026/11/26 20:14:50 daemon: launchd agent: ready (state 0)
+2026/11/26 20:27:48 daemon: launchd agent: ready (state 0)
+2026/11/26 20:27:59 update: up to date

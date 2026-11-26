@@ -1,0 +1,5 @@
+p19-both t=1 epoch=1795725862 desk=["streaming","streaming",1,4491] term={"len":855,"first":1,"last":849,"lastEpoch":1795725861,"count":849,"breaks":0}
+p19-both t=2 epoch=1795725863 desk=["streaming","streaming",1,4492] term={"len":856,"first":1,"last":850,"lastEpoch":1795725862,"count":850,"breaks":0}
+p19-both t=3 epoch=1795725864 desk=["streaming","streaming",1,4492] term={"len":857,"first":1,"last":851,"lastEpoch":1795725863,"count":851,"breaks":0}
+p19-both t=4 epoch=1795725865 desk=["streaming","streaming",1,4492] term={"len":859,"first":1,"last":853,"lastEpoch":1795725865,"count":853,"breaks":0}
+p19-both t=5 epoch=1795725867 desk=["streaming","streaming",1,4492] term={"len":860,"first":1,"last":854,"lastEpoch":1795725867,"count":854,"breaks":0}

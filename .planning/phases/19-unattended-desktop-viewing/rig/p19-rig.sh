@@ -337,10 +337,14 @@ EOF
 # and closes the session; keep leaves the session (and the viewer) open, reuse polls it again.
 cmd_safari_stats() {
   local secs=${1:-20} mode=${2:-}
-  require_vm2
-  vm2sh "$secs" "$mode" <<'EOF' | scrub
+  svreq
+  svsh "$secs" "$mode" <<'EOF' | scrub
 secs=$1; mode=$2
 D=http://127.0.0.1:4444
+# 19-15: with a second (terminal) window open, reuse reads the desktop window
+if [ "$mode" = reuse ] && [ -f ~/p19/win-desktop.txt ]; then
+  curl -s -m 10 -X POST $D/session/$(cat ~/p19/safari.sid)/window -d "$(jq -nc --arg h "$(cat ~/p19/win-desktop.txt)" '{handle:$h}')" >/dev/null
+fi
 if [ "$mode" != reuse ]; then
   echo admin | sudo -S -p '' safaridriver --enable >/dev/null 2>&1
   pkill -x safaridriver 2>/dev/null; sleep 1
@@ -366,10 +370,10 @@ EOF
 }
 
 cmd_safari_close() {
-  require_vm2
-  vm2sh <<'EOF'
+  svreq
+  svsh <<'EOF'
 [ -f ~/p19/safari.sid ] && curl -s -m 10 -X DELETE http://127.0.0.1:4444/session/$(cat ~/p19/safari.sid) >/dev/null
-pkill -x safaridriver; rm -f ~/p19/safari.sid
+pkill -x safaridriver; rm -f ~/p19/safari.sid ~/p19/win-desktop.txt ~/p19/win-term.txt
 echo "safari session closed"
 exit 0
 EOF
@@ -497,6 +501,217 @@ exit 0
 EOF
 }
 
+# ---- 19-15: the final matrix -------------------------------------------------------------------
+# Viewer Safari: home by default; P19_SAFARI_ON=office runs the same commands in the office VM
+# (F2's third viewer opens its own link there).
+svsh() { if [ "${P19_SAFARI_ON:-home}" = office ]; then vmsh "$@"; else vm2sh "$@"; fi; }
+svreq() { if [ "${P19_SAFARI_ON:-home}" = office ]; then require_vm; else require_vm2; fi; }
+
+# safari-wins: with a kept Safari session on the desktop link, open the terminal share link
+# (~/p19/term-link.txt in the home VM) in a second window next to it, so neither window is
+# occluded and Safari does not throttle either page. readterm.js is shipped to the guest.
+cmd_safari_wins() {
+  require_vm2
+  vm2 'cat > ~/p19/readterm.js' < "$HERE/readterm.js"
+  vm2sh <<'EOF' | scrub
+D=http://127.0.0.1:4444
+SID=$(cat ~/p19/safari.sid) || exit 1
+sw() { curl -s -m 10 -X POST $D/session/$SID/window -d "$(jq -nc --arg h "$1" '{handle:$h}')" >/dev/null; }
+curl -s -m 10 $D/session/$SID/window | jq -r '.value' > ~/p19/win-desktop.txt
+curl -s -m 10 -X POST $D/session/$SID/window/rect -d '{"x":0,"y":30,"width":620,"height":600}' >/dev/null
+NEW=$(curl -s -m 20 -X POST $D/session/$SID/window/new -d '{"type":"window"}' | jq -r '.value.handle')
+echo "$NEW" > ~/p19/win-term.txt
+sw "$NEW"
+curl -s -m 10 -X POST $D/session/$SID/window/rect -d '{"x":640,"y":30,"width":620,"height":330}' >/dev/null
+curl -s -m 60 -X POST $D/session/$SID/url -d "$(jq -nc --arg u "$(cat ~/p19/term-link.txt)" '{url:$u}')" >/dev/null
+sleep 4
+sw "$(cat ~/p19/win-desktop.txt)"
+echo "safari-wins: desktop window and terminal window open"
+exit 0
+EOF
+}
+
+# safari-both SECS: once a second, the desktop window's [status, state, viewers, framesDecoded]
+# and the terminal window's buffer facts (readterm.js), with the guest epoch.
+cmd_safari_both() {
+  local secs=${1:-20}
+  require_vm2
+  vm2sh "$secs" <<'EOF' | scrub
+secs=$1
+D=http://127.0.0.1:4444
+SID=$(cat ~/p19/safari.sid); DH=$(cat ~/p19/win-desktop.txt); TH=$(cat ~/p19/win-term.txt)
+sw() { curl -s -m 10 -X POST $D/session/$SID/window -d "$(jq -nc --arg h "$1" '{handle:$h}')" >/dev/null; }
+ex() { curl -s -m 20 -X POST $D/session/$SID/execute/sync -d "$1"; }
+TERMJS=$(jq -nc --rawfile s ~/p19/readterm.js '{script:$s,args:[]}')
+STATJS='{"script":"return JSON.stringify(window.__desktopStats||null)","args":[]}'
+for i in $(seq 1 $secs); do
+  e=$(date +%s)
+  sw "$DH"; s=$(ex "$STATJS" | jq -r '.value|tostring' | jq -c '[.status,.state,.viewers,.framesDecoded]' 2>/dev/null)
+  sw "$TH"; t=$(ex "$TERMJS" | jq -r '.value|tostring' 2>/dev/null)
+  echo "p19-both t=$i epoch=$e desk=${s:-?} term=${t:-?}"
+  sleep 1
+done
+sw "$DH"
+exit 0
+EOF
+}
+
+# safari-page: the desktop window's visible text and title (the static off page and the cards).
+cmd_safari_page() {
+  svreq
+  svsh <<'EOF' | scrub
+D=http://127.0.0.1:4444
+SID=$(cat ~/p19/safari.sid)
+[ -f ~/p19/win-desktop.txt ] && curl -s -m 10 -X POST $D/session/$SID/window -d "$(jq -nc --arg h "$(cat ~/p19/win-desktop.txt)" '{handle:$h}')" >/dev/null
+[ "${1:-}" = reload ] && curl -s -m 30 -X POST $D/session/$SID/refresh -d '{}' >/dev/null && sleep 3
+echo "p19-page title=$(curl -s -m 10 $D/session/$SID/title | jq -r '.value|tostring')"
+echo "p19-page text=$(curl -s -m 10 -X POST $D/session/$SID/execute/sync -d '{"script":"return document.body.innerText.replace(/\\s+/g,\" \").slice(0,300)","args":[]}' | jq -r '.value|tostring')"
+exit 0
+EOF
+}
+
+# chrome-open / chrome-titles SECS / chrome-close: a Chrome viewer that stays open between reads.
+cmd_chrome_open() {
+  require_vm2
+  vm2sh <<'EOF'
+pkill -f p19-chrome-profile 2>/dev/null; sleep 1
+rm -rf /tmp/p19-chrome-profile
+open -na "Google Chrome" --args --user-data-dir=/tmp/p19-chrome-profile --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check \
+  --window-position=640,380 --window-size=620,330 "$(cat ~/p19/link.txt)#debug"
+echo "chrome-open: started at guest epoch $(date +%s)"
+exit 0
+EOF
+}
+cmd_chrome_titles() {
+  local secs=${1:-10}
+  require_vm2
+  vm2sh "$secs" <<'EOF' | scrub
+for i in $(seq 1 $1); do
+  echo "p19-chrome t=$i epoch=$(date +%s) titles=$(curl -s -m 3 http://127.0.0.1:9222/json | jq -r '[.[]|select(.type=="page")|.title]|join(" | ")')"
+  sleep 1
+done
+exit 0
+EOF
+}
+cmd_chrome_close() {
+  require_vm2
+  vm2sh <<'EOF'
+pkill -f p19-chrome-profile; rm -rf /tmp/p19-chrome-profile
+echo "chrome closed"
+exit 0
+EOF
+}
+
+# pf-block / pf-unblock: drop traffic between the home VM and the office VM's tailnet address,
+# with pf in the home VM (anchor com.apple/p19, which /etc/pf.conf already evaluates). The
+# address is resolved inside the VM and never printed. Never `tailscale down`.
+cmd_pf_block() {
+  require_vm2
+  vm2sh <<'EOF'
+su() { echo admin | sudo -S -p '' "$@"; }
+ip=$(/usr/local/bin/tailscale ip -4 portty-vm-office | head -1)
+[ -n "$ip" ] || { echo "pf-block: could not resolve the office VM"; exit 1; }
+printf 'block drop quick from any to %s\nblock drop quick from %s to any\n' "$ip" "$ip" > /tmp/p19.rules
+su pfctl -q -f /etc/pf.conf 2>/dev/null
+su pfctl -q -a com.apple/p19 -f /tmp/p19.rules
+su pfctl -E 2>&1 | awk '/Token/{print $NF}' >> /tmp/p19.tokens
+su pfctl -q -k 0.0.0.0/0 -k "$ip" 2>/dev/null; su pfctl -q -k "$ip" 2>/dev/null
+echo "pf-block: anchor com.apple/p19 holds $(su pfctl -a com.apple/p19 -s rules 2>/dev/null | wc -l | tr -d ' ') rules at guest epoch $(date +%s)"
+exit 0
+EOF
+}
+cmd_pf_unblock() {
+  require_vm2
+  vm2sh <<'EOF'
+su() { echo admin | sudo -S -p '' "$@"; }
+su pfctl -q -a com.apple/p19 -F all 2>/dev/null
+for t in $(cat /tmp/p19.tokens 2>/dev/null); do su pfctl -q -X "$t" 2>/dev/null; done
+rm -f /tmp/p19.tokens /tmp/p19.rules
+echo "pf-unblock: anchor rules=$(su pfctl -a com.apple/p19 -s rules 2>/dev/null | wc -l | tr -d ' ') at guest epoch $(date +%s); $(su pfctl -s info 2>/dev/null | head -1)"
+exit 0
+EOF
+}
+
+# lock / unlock (office, the 17-06 method): Ctrl+Cmd+Q through the click tool; unlock types the
+# VM's public password as key codes (a d m i n, then Return) after a user-activity wake.
+cmd_lock() {
+  require_vm
+  vmsh <<'EOF'
+~/ptest/click2 key 12 cmd ctrl
+sleep 3
+echo "lock: pressed at guest epoch $(date +%s); GET /desktop locked=$(curl -s -m 3 --unix-socket "$HOME/Library/Application Support/portty/daemon.sock" http://localhost/desktop | jq -r .locked)"
+exit 0
+EOF
+}
+cmd_unlock() {
+  require_vm
+  vmsh <<'EOF'
+caffeinate -u -t 2; sleep 1
+for k in 0 2 46 34 45 36; do ~/ptest/click2 key $k; sleep 0.2; done
+sleep 3
+echo "unlock: typed at guest epoch $(date +%s); GET /desktop locked=$(curl -s -m 3 --unix-socket "$HOME/Library/Application Support/portty/daemon.sock" http://localhost/desktop | jq -r .locked)"
+exit 0
+EOF
+}
+
+# tick-gaps START END (guest epochs): the ticking shells' gaps over 2 s inside the window, so a
+# gap is attributed to the right moment (state's max_gap covers the whole file). Also reports the
+# tty-less 0.2 s builtin monitor (~/p19/mon.txt) and the fork+exec latency monitor
+# (~/p19/exec.txt) if they run; both are started by hand in the guest, see 19-VM-CHECKS.md F5.
+cmd_tick_gaps() {
+  [ $# -eq 2 ] || die "usage: tick-gaps START_EPOCH END_EPOCH"
+  require_vm
+  vmsh "$1" "$2" <<'EOF'
+s=$1; e=$2
+for f in ~/p19/tick-*.txt; do
+  n=$(awk -v s=$s -v e=$e '$3>=s && $3<=e' "$f" | wc -l | tr -d ' ')
+  [ "$n" -gt 0 ] || continue
+  echo "session $(basename "$f" .txt | sed -E 's/tick-(.{8}).*/\1/') ticks_in_window=$n"
+  awk -v s=$s -v e=$e '$3>=s && $3<=e && NR>1 && $3-prev>2 {print "  tick gap " $3-prev " s ending at +" $3-s} {prev=$3}' "$f"
+done
+if [ -f ~/p19/mon.txt ]; then
+  echo "builtin monitor: samples=$(awk -v s=$s -v e=$e '$1>=s && $1<=e' ~/p19/mon.txt | wc -l | tr -d ' ') max_gap_s=$(awk -v s=$s -v e=$e '$1>=s && $1<=e && NR>1 {if ($1-prev>m) m=$1-prev} {prev=$1} END {printf "%.2f", m}' ~/p19/mon.txt)"
+fi
+if [ -f ~/p19/exec.txt ]; then
+  echo "exec monitor: samples=$(awk -v s=$s -v e=$e '$1>=s && $1<=e' ~/p19/exec.txt | wc -l | tr -d ' ') max_exec_latency_s=$(awk -v s=$s -v e=$e '$1>=s && $1<=e {if ($2>m) m=$2} END {printf "%.2f", m}' ~/p19/exec.txt)"
+  awk -v s=$s -v e=$e '$1>=s && $1<=e && $2>0.5 {printf "  slow exec %.2f s at +%.1f\n", $2, $1-s}' ~/p19/exec.txt | head -12
+fi
+exit 0
+EOF
+}
+
+# pbpaste-check (office): says only whether the clipboard holds the desktop link, its length and
+# whether it equals the daemon's own link (compared in the guest); then clears the clipboard.
+cmd_pbpaste_check() {
+  require_vm
+  vmsh <<'EOF'
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+c=$(pbpaste)
+if printf '%s' "$c" | grep -q '/desktop/?cap='; then yes=yes; else yes=no; fi
+cur=$(curl -s -m 5 --unix-socket "$SOCK" http://localhost/desktop/link | jq -r '.url // empty' 2>/dev/null)
+same=no; [ -n "$cur" ] && [ "$c" = "$cur" ] && same=yes
+echo "desktop link on clipboard: $yes (length ${#c}); same as the daemon's link: $same"
+pbcopy < /dev/null
+exit 0
+EOF
+}
+
+# tray-items (office): the GUI's status item menu, read through Accessibility with the axtray
+# helper (tray.swift, built on the host and copied to ~/p19/axtray on first use). It opens the
+# menu, prints every titled item with enabled=yes/no, and closes it again.
+cmd_tray_items() {
+  require_vm
+  if ! vm '[ -x ~/p19/axtray ]'; then
+    local tmp
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/p19-axtray.XXXXXX")
+    swiftc -O "$HERE/tray.swift" -o "$tmp/axtray" 2>&1 | grep -v warning || true
+    vm 'mkdir -p ~/p19 && cat > ~/p19/axtray && chmod +x ~/p19/axtray' < "$tmp/axtray"
+    rm -rf "$tmp"
+  fi
+  vm '~/p19/axtray app.portty.Portty' | scrub
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case "$sub" in
@@ -519,5 +734,18 @@ case "$sub" in
   perm-poll) cmd_perm_poll "$@" ;;
   tcc-log) cmd_tcc_log "$@" ;;
   notif-list) cmd_notif_list ;;
-  *) die "usage: $0 build|deploy|start-gui|sessions|state|quit-gui|quit-all|legacy-plist|clean|enable-desktop|safari-stats|safari-close|chrome-stats|assertions|lsof-desktop|pcap|perm-poll|tcc-log|notif-list ..." ;;
+  safari-wins) cmd_safari_wins ;;
+  safari-both) cmd_safari_both "$@" ;;
+  safari-page) cmd_safari_page "$@" ;;
+  chrome-open) cmd_chrome_open ;;
+  chrome-titles) cmd_chrome_titles "$@" ;;
+  chrome-close) cmd_chrome_close ;;
+  pf-block) cmd_pf_block ;;
+  pf-unblock) cmd_pf_unblock ;;
+  lock) cmd_lock ;;
+  unlock) cmd_unlock ;;
+  pbpaste-check) cmd_pbpaste_check ;;
+  tray-items) cmd_tray_items ;;
+  tick-gaps) cmd_tick_gaps "$@" ;;
+  *) die "usage: $0 build|deploy|start-gui|sessions|state|quit-gui|quit-all|legacy-plist|clean|enable-desktop|safari-stats|safari-close|chrome-stats|assertions|lsof-desktop|pcap|perm-poll|tcc-log|notif-list|safari-wins|safari-both|safari-page|chrome-open|chrome-titles|chrome-close|pf-block|pf-unblock|lock|unlock|pbpaste-check|tray-items ..." ;;
 esac

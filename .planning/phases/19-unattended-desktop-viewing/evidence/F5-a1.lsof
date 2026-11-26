@@ -1,0 +1,22 @@
+p19-lsof daemon pid 77622
+COMMAND   PID  USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+Portty  77622 admin    7u  IPv4 0xd05a69aabda9d92f      0t0  TCP 127.0.0.1:59067 (LISTEN)
+Portty  77622 admin    9u  IPv4 0x5325140dfdd2cefb      0t0  TCP tailnet address:7444->100.x.x.N:61112 (ESTABLISHED)
+Portty  77622 admin   10u  IPv4 0x8432f0ffb595a0c9      0t0  TCP tailnet address:7444->100.x.x.N:61113 (ESTABLISHED)
+Portty  77622 admin   12u  IPv4 0xfcd36987204d6845      0t0  TCP tailnet address:7444->100.x.x.N:61048 (ESTABLISHED)
+Portty  77622 admin   14u  IPv4  0x6f4fd4bddcb17c7      0t0  TCP tailnet address:7444->100.x.x.N:61158 (ESTABLISHED)
+Portty  77622 admin   16u  IPv4 0xf25dfc98f6d6b5fc      0t0  TCP tailnet address:7444->100.x.x.N:61171 (ESTABLISHED)
+Portty  77622 admin   21u  IPv4 0x98f0956d8147a6d7      0t0  TCP tailnet address:7444 (LISTEN)
+Portty  77622 admin   25u  IPv4 0x576e1a6b84ab8c98      0t0  UDP tailnet address:7444
+Portty  77622 admin   74u  IPv4 0xf0887f9d82094acc      0t0  TCP tailnet address:7444->100.x.x.N:61177 (ESTABLISHED)
+Portty  77622 admin   78u  IPv4 0x22869f350f5693b2      0t0  TCP tailnet address:7444->100.x.x.N:61030 (ESTABLISHED)
+Portty  77622 admin   81u  IPv4  0x5cdaaf8bf0d5d73      0t0  TCP tailnet address:7444->100.x.x.N:61034 (ESTABLISHED)
+Portty  77622 admin  101u  IPv4 0xd4e9d18d97935260      0t0  TCP tailnet address:7444->100.x.x.N:61086 (ESTABLISHED)
+Portty  77622 admin  110u  IPv4 0xd92145b3a77a14cb      0t0  TCP tailnet address:59697->100.x.x.N:7444 (SYN_SENT)
+Portty  77622 admin  114u  IPv4 0x580f5ef96940c221      0t0  TCP tailnet address:7444->100.x.x.N:61100 (ESTABLISHED)
+Portty  77622 admin  117u  IPv4 0x50f5502d4a2a0109      0t0  TCP tailnet address:7444->100.x.x.N:61087 (ESTABLISHED)
+Portty  77622 admin  118u  IPv4 0xd5b9251439ecb9b7      0t0  TCP tailnet address:7444->100.x.x.N:61111 (ESTABLISHED)
+Portty  77622 admin  120u  IPv4 0x7365d4ff59ad7ba5      0t0  TCP tailnet address:7444->100.x.x.N:61040 (ESTABLISHED)
+Portty  77622 admin  125u  IPv4 0x9513593318aed7eb      0t0  TCP tailnet address:59680->100.x.x.N:7444 (SYN_SENT)
+Portty  77622 admin  126u  IPv4 0xefc6a0b5a399be40      0t0  TCP tailnet address:7444->100.x.x.N:61110 (ESTABLISHED)
+Portty  77622 admin  130u  IPv4 0x6a01b43418bbe946      0t0  TCP tailnet address:7444->100.x.x.N:61041 (ESTABLISHED)
