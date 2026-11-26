@@ -27,6 +27,7 @@ type rbOpen struct {
 	res     Result
 	newApp  bool // the target held the new version when it was opened
 	retries int  // Sleep(OpenRetryWait) calls before this Open
+	env     []string
 }
 
 // rbFix drives RunInstaller with a fake clock, a fake process table and real bundles on disk
@@ -128,11 +129,11 @@ func (f *rbFix) env() InstallerEnv {
 			}
 			return Swap(staged, target)
 		},
-		Open: func(ctx context.Context, app string) error {
+		Open: func(ctx context.Context, app string, launchEnv ...string) error {
 			if _, ok := ctx.Deadline(); !ok {
 				f.t.Error("Open called without a per-try deadline")
 			}
-			o := rbOpen{app: app, newApp: siMarker(f.t, f.job.Target) == f.job.NewVersion}
+			o := rbOpen{app: app, newApp: siMarker(f.t, f.job.Target) == f.job.NewVersion, env: launchEnv}
 			for _, d := range f.sleeps {
 				if d == OpenRetryWait {
 					o.retries++
@@ -439,6 +440,43 @@ func TestInstaller_ResultWrittenBeforeOpen(t *testing.T) {
 			}
 		})
 	}
+}
+
+// WR-04: keepDaemon must reach the relaunched old GUI even when the result file cannot be
+// written (a full disk): it then rides in the launch environment. Any other open carries none.
+func TestInstaller_RollbackKeepDaemonWithoutResultFile(t *testing.T) {
+	keep := []string{KeepDaemonEnv + "=1"}
+	t.Run("result not written", func(t *testing.T) {
+		f := newRbFix(t)
+		blocker := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		f.resDir = filepath.Join(blocker, "sub") // WriteResult cannot create its temp file here
+		f.onOpen = func(bool) { f.gui = []int{500}; f.alive[500] = true }
+		r := f.run()
+		if r.Outcome != OutcomeRolledBack || !r.KeepDaemon {
+			t.Fatalf("result = %+v", r)
+		}
+		if len(f.opens) != 2 || f.opens[0].env != nil || !f.opens[0].newApp || f.opens[1].newApp || !slices.Equal(f.opens[1].env, keep) {
+			t.Errorf("opens = %+v; want the new app with no env, then the old app with %v", f.opens, keep)
+		}
+		if f.logged("installer: result not written") == 0 || f.logged(KeepDaemonEnv) != 1 {
+			t.Errorf("logs = %q", f.logs)
+		}
+	})
+	t.Run("result written", func(t *testing.T) {
+		f := newRbFix(t)
+		f.onOpen = func(bool) { f.gui = []int{500}; f.alive[500] = true }
+		if r := f.run(); r.Outcome != OutcomeRolledBack {
+			t.Fatalf("result = %+v", r)
+		}
+		for i, o := range f.opens {
+			if o.env != nil {
+				t.Errorf("open %d env = %v, want none", i+1, o.env)
+			}
+		}
+	})
 }
 
 func TestInstaller_QuitTimeoutKillsOnlyOldGUI(t *testing.T) {

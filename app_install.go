@@ -326,6 +326,13 @@ var vmFaultHook func(stage string)
 // failed install is told to the user: the banner with the kept DMG revealed, and a notification
 // (UPD-07). A missing or refused result file changes nothing.
 func (a *App) consumeInstallResult() {
+	// A rollback that could not write its result passes keepDaemon in this launch's environment
+	// (WR-04). Unset at once, so a daemon this GUI spawns never inherits it.
+	if os.Getenv(updater.KeepDaemonEnv) == "1" {
+		_ = os.Unsetenv(updater.KeepDaemonEnv)
+		updateLogf("update: keep daemon once: set in the launch environment by the installer")
+		a.keepDaemonOnce.Store(true)
+	}
 	r, ok, err := updater.TakeResult(installResultPath())
 	if err != nil {
 		updateLogf("update: result ignored: %v", err)

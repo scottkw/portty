@@ -318,7 +318,7 @@ func TakeResult(path string) (Result, bool, error) {
 type InstallerEnv struct {
 	Run           Runner
 	Swap          func(staged, target string) error
-	Open          func(ctx context.Context, app string) error
+	Open          func(ctx context.Context, app string, env ...string) error // env: NAME=VALUE for the launched app
 	Alive         func(pid int) bool
 	Signal        func(pid int, sig syscall.Signal) error
 	GUIPids       func(exe string) ([]int, error)
@@ -332,6 +332,12 @@ type InstallerEnv struct {
 }
 
 const installerPoll = 200 * time.Millisecond
+
+// KeepDaemonEnv=1 in the relaunched old GUI's environment is a rollback's keepDaemon when the
+// result file could not be written (a full disk, an unwritable config folder): the launch
+// environment needs no disk, where a retry or a second marker file would fail the same way
+// (WR-04). It only ever keeps the running daemon and asks nothing, the safe direction.
+const KeepDaemonEnv = "PORTTY_KEEP_DAEMON_ONCE"
 
 // trashWait bounds the DMG Trash, which can wait on an unanswered Downloads prompt; a var for tests.
 var trashWait = time.Minute
@@ -366,11 +372,11 @@ func ParseGUIPids(psOut []byte, exe string, uid int) []int {
 
 // relaunch opens app, up to OpenAttempts tries OpenRetryWait apart, each under OpenTimeout. The
 // tries ignore ctx's own deadline: skipping a relaunch would leave no GUI, and each try is bounded.
-func relaunch(ctx context.Context, env InstallerEnv, app string) error {
+func relaunch(ctx context.Context, env InstallerEnv, app string, launchEnv ...string) error {
 	var err error
 	for i := 1; i <= OpenAttempts; i++ {
 		octx, cancel := context.WithTimeout(context.WithoutCancel(ctx), OpenTimeout)
-		err = env.Open(octx, app)
+		err = env.Open(octx, app, launchEnv...)
 		cancel()
 		if err == nil {
 			return nil
@@ -395,9 +401,10 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	exe := filepath.Join(j.Target, BundleExecutable)
 	mover := j.Kind == KindMove || j.Kind == KindOpenInstalled
 	existed := isDir(j.Target) // false only for a mover's first install
+	written := false           // whether the last finish wrote its result
 	finish := func(outcome, reason string) Result {
 		r.Outcome, r.Reason = outcome, reason
-		if err := WriteResult(env.ResultPath, r); err != nil {
+		if written = WriteResult(env.ResultPath, r) == nil; !written {
 			env.Logf("installer: result not written")
 		}
 		env.Logf("installer: %s %s", outcome, reason)
@@ -405,12 +412,18 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	}
 	// finishOpen writes the outcome, then relaunches whatever the target holds. A rollback whose
 	// relaunch fails becomes failed (keepDaemon kept), so the next manual launch still says why.
+	// A keepDaemon the result file could not carry rides in the launch environment (WR-04).
 	finishOpen := func(outcome, reason string) Result {
 		finish(outcome, reason)
 		if !isDir(j.Target) { // a mover's first install that failed before its swap: nothing to open
 			return r
 		}
-		if err := relaunch(ctx, env, j.Target); err != nil {
+		var launchEnv []string
+		if r.KeepDaemon && !written {
+			launchEnv = []string{KeepDaemonEnv + "=1"}
+			env.Logf("installer: keepDaemon passed as %s in the launch environment", KeepDaemonEnv)
+		}
+		if err := relaunch(ctx, env, j.Target, launchEnv...); err != nil {
 			if outcome == OutcomeRolledBack {
 				finish(OutcomeFailed, reason)
 			}

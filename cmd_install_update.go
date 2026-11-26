@@ -80,11 +80,16 @@ func runInstallUpdate(args []string) int {
 }
 
 // openApp is a plain `open APP`, no -n: LaunchServices never starts a second copy of a running app.
-func openApp(ctx context.Context, app string) error {
+// Each env entry (NAME=VALUE) is passed with open's --env to the launched app.
+func openApp(ctx context.Context, app string, env ...string) error {
 	if testing.Testing() {
 		return errors.New("refusing to open an app from a test binary")
 	}
-	return exec.CommandContext(ctx, "/usr/bin/open", app).Run()
+	var args []string
+	for _, e := range env {
+		args = append(args, "--env", e)
+	}
+	return exec.CommandContext(ctx, "/usr/bin/open", append(args, app)...).Run()
 }
 
 // pidAlive is kill(pid, 0): EPERM still means the process exists.

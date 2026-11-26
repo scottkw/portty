@@ -75,6 +75,27 @@ func TestConsumeInstallResult_KeepDaemonPolicyOnce(t *testing.T) {
 	}
 }
 
+// WR-04: with no result file (its write failed), the installer's launch environment still sets
+// the keep-daemon policy, and the variable is gone before a daemon could inherit it.
+func TestConsumeInstallResult_KeepDaemonFromLaunchEnv(t *testing.T) {
+	opts := rbSwapEnsure(t)
+	a, notes := rbApp(t)
+	t.Setenv(updater.KeepDaemonEnv, "1")
+	a.consumeInstallResult()
+	if _, set := os.LookupEnv(updater.KeepDaemonEnv); set {
+		t.Error("keep-daemon variable left in the GUI's environment")
+	}
+	if err := a.ensure()("sock"); err != nil {
+		t.Fatal(err)
+	}
+	if first := (*opts)[0]; !first.NoHandoff || first.Restart == nil || first.Restart(question(2)) || a.GetDaemonRestartPrompt() != 0 {
+		t.Errorf("first ensure: NoHandoff %v, prompt %d; want the keep-daemon policy", first.NoHandoff, a.GetDaemonRestartPrompt())
+	}
+	if len(*notes) != 0 {
+		t.Errorf("notifications = %+v", *notes)
+	}
+}
+
 func TestConsumeInstallResult_TellsUser(t *testing.T) {
 	for _, c := range []struct {
 		outcome, body string
