@@ -70,7 +70,7 @@
 
 ### Release (REL)
 
-- [ ] **REL-01**: Releases are Apple Silicon only with minimum macOS 14; every nested binary is signed, notarized and verified in CI
+- [x] **REL-01**: Releases are Apple Silicon only with minimum macOS 14; every nested binary is signed, notarized and verified in CI
 
 ## Future Requirements
 
@@ -137,7 +137,7 @@
 | DSHR-07 | Phase 22 | Pending |
 | DSHR-08 | Phase 19 | Pending |
 | UNLK-01 | Phase 23 | Pending (feasible per FEAS-01: ships) |
-| REL-01 | Phase 18.1 | Pending (moved from Phase 23 on 2026-11-25; Phase 23 ships v2.0 on this pipeline) |
+| REL-01 | Phase 18.1 | Complete (moved from Phase 23 on 2026-11-25; Phase 23 ships v2.0 on this pipeline; M-172 rc.1 run deferred) |
 
 **Coverage:**
 - v2.0 requirements: 39 total

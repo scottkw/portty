@@ -57,7 +57,7 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
 
 - [x] **Phase 17: Desktop Feasibility Spike** - A throwaway capture → encode → pion → browser path on a real Mac settles every risky assumption with a recorded go/no-go, and the capture-host architecture is decided from that evidence (completed 2026-11-25)
 - [x] **Phase 18: Self-Installing Updates** - Update verifies, replaces `/Applications/Portty.app`, relaunches, cleans up the DMG and rolls back a version that won't start; a first launch from a mounted DMG moves itself into place; sessions survive (completed 2026-11-26; human verification deferred, see 18-UAT.md)
-- [ ] **Phase 18.1: Apple Silicon Release Pipeline** (INSERTED) - One arm64-only build published under both DMG names, inside-out signing with the v1.2 designated requirement, every nested binary signed, notarized and verified in CI, minimum macOS 14 enforced at build time
+- [x] **Phase 18.1: Apple Silicon Release Pipeline** (INSERTED) - One arm64-only build published under both DMG names, inside-out signing with the v1.2 designated requirement, every nested binary signed, notarized and verified in CI, minimum macOS 14 enforced at build time (completed 2026-11-26; SC2 runtime proof deferred to Phase 23 rc.1, see 18.1-UAT.md)
 - [ ] **Phase 19: Unattended Desktop Viewing** - Always-available desktop for your own Macs: guided permissions, live view in Chrome and Safari with nobody at the Mac, visible state, display kept awake, automatic reconnect, media on the tailnet only
 - [ ] **Phase 20: Remote Control** - Pointer, keyboard, Send-keys menu and explicit clipboard from any viewer; the sharer picks a display or a single window and switches displays mid-session
 - [ ] **Phase 21: Portty App and iPhone Viewers** - A Desktop tab opened from the sidebar in the Portty app, with Cmd shortcuts forwarded in control mode, and an iPhone viewer with trackpad mode and touch controls
@@ -298,7 +298,7 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
 | 18. Self-Installing Updates | v2.0 | 10/10 | Complete    | 2026-11-26 |
-| 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | In Progress | - |
+| 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
 | 19. Unattended Desktop Viewing | v2.0 | 0/17 | Planned | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
 | 21. Portty App and iPhone Viewers | v2.0 | 0/TBD | Not started | - |

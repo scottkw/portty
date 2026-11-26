@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Desktop Sharing
-current_phase: "18.1"
-current_phase_name: Apple Silicon Release Pipeline
+current_phase: 19
+current_phase_name: Unattended Desktop Viewing
 status: executing
-stopped_at: Phase 18 complete (human verification deferred), Phase 18.1 next
+stopped_at: Phase 18.1 complete (M-172 deferred to Phase 23 rc.1), Phase 19 executing
 last_updated: "2026-11-26T16:47:39.965Z"
 last_activity: 2026-11-26
-last_activity_desc: "Phase 18 (with 17 and 18.1) shipped as PR #11"
+last_activity_desc: "Phase 18.1 closed (M-172 deferred to Phase 23 rc.1); Phase 19 executing"
 state_head: 50fd9656b7e6ffc3cb259e04a24daaa48f2cd403
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 21
   completed_plans: 13
   percent: 13
@@ -25,13 +25,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-24)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 18 — Self-Installing Updates
+**Current focus:** Phase 19 — Unattended Desktop Viewing
 
 ## Current Position
 
-Phase: 18.1 (Apple Silicon Release Pipeline) — next
-Status: Phase 18 complete 2026-11-26 (verification human_needed, deferred; see Deferred Verification)
-Last activity: 2026-11-26 -- Phase 18 (with 17 and 18.1) shipped as PR #11
+Phase: 19 (Unattended Desktop Viewing) — EXECUTING
+Status: Phase 18.1 complete 2026-11-26 (verification human_needed 3/4, SC2 deferred to M-172 at Phase 23 rc.1; see Deferred Verification)
+Last activity: 2026-11-26 -- Phase 18.1 closed with M-172 tracked in 18.1-UAT.md; Phase 19 executing
 
 ## Performance Metrics
 
@@ -516,6 +516,7 @@ Items acknowledged and deferred at milestone close, most recent first:
 | 5 | verification_deferred_human | /gsd-verify-work 5 |
 | 6 | verification_deferred_human | /gsd-verify-work 6 |
 | 18 | verification_deferred_human | /gsd-verify-work 18 |
+| 18.1 | verification_deferred_human | /gsd-verify-work 18.1 |
 
 Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appearance, VoiceOver) need both Macs. The user deferred them on 2026-11-16 ("push that UAT until later and move on"). Item 1 passed.
 
@@ -524,6 +525,8 @@ Phase 3 UAT items M-70 (two Macs), M-73 (signed build) and M-74 (README on GitHu
 Phase 5: VM matrix, post-review regression, iteration-3 spot check and browser view all ran on two Tart VMs over the real tailnet. Two-physical-Mac items M-84 (overnight reattach, VERF-01 gate) and M-85 (lid sleep + real Wi-Fi AP switch) deferred by the user on 2026-11-18 ("Defer, keep going"). The milestone audit lists them.
 
 Phase 18: verification human_needed (14/15, no blocking gaps); closed 2026-11-26 by user decision. Tracked in 18-UAT.md: M-169 parts 1-2 on the office Mac (SC1's office-Mac half), real Gatekeeper enforcement (VM assessments disabled), M-170 Downloads prompt with a Developer ID release, M-171 Finder Put Back.
+
+Phase 18.1: verification human_needed (3/4); closed 2026-11-26 by user decision. Tracked in 18.1-UAT.md: M-172, the SC2 runtime proof (first tag run of release.yml, both DMGs notarized, stapled and verified, v1.2.x updates through the universal name), runs at the Phase 23 v2.0.0-rc.1 dry run. Review findings CR-01 and WR-01..03 go to a follow-up quick task.
 
 Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verification 7/7, human_needed. Real-release items (M-93: first v* tag CI run with DMG identifier signing, notarize and staple; notarized DMG verify and reveal; delivered notification) need a public repo and release secrets, so they wait for the first real release. U-06 noasset re-run after WR-04 is still to do in the VM.
 
