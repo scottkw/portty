@@ -1,0 +1,32 @@
+# F1 timeline (VM pollers; seconds relative to the Update click at 05:31:06 UTC; transitions only)
+# poll (0.4 s): GUI pids, daemon pids, installer pid, installed version, daemon /health version
+-1.90 05:31:04 gui=9168, dmn=9171, inst= iv= dv=v1.8.0
+# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines
+-1.99 05:31:04 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Portty 1.8.1 is available. DOMClassList=( ) @328,94 132x16|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++1.27 05:31:07 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--warning" ) @288,82 952x41|AXStaticText Value=Portty doesn't have permission to replace itself from this account. The download DOMClassList=( ) @328,94 564x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
+# win (CGWindowList, 1 s): on-screen windows owner/layer/title, all apps
+-1.91 05:31:04 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++0.60 05:31:07 Finder/0/updates | Portty/0/Portty | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
+# samples: poll 18, ax 9, win 8; ax samples matching background service, Restart Now, AXDialog or AXSheet: 0
+# before: gui 9168;daemon 9171;
+# after:  gui 9168;daemon 9171;
+# extra
+05:32:11 banner (axdump2, full values):
+AXGroup [AXApplicationAlert] DOMClassList=(     banner,     "banner--warning" ) @288,82 952x41
+AXStaticText Value=Portty doesn't have permission to replace itself from this account. The download is shown in Finder. DOMClassList=( ) @328,94 564x16
+AXButton Title=Dismiss Description=Dismiss DOMClassList=(     "banner__dismiss" ) @1200,90 24x24
+AXHeading Title=No Open Sessions Value=2 DOMClassList=(     "empty-state__heading" ) @691,358 146x23
+quarantine on the cached DMG: 0081;6b07c41a;Portty;
+update cache: portty-v1.8.1-darwin-universal.dmg 
+mnt dirs: 0; attached images naming the cache: 0
+staging dirs (/Applications, /Applications/*, ~/Applications, ~/small): 0
+run dirs: 0
+Finder windows (axdump com.apple.finder, windows and the DMG's icon):
+AXWindow [AXStandardWindow] Title=updates @37,59 920x436
+AXImage Title=portty-v1.8.1-darwin-universal.dmg Description=portty-v1.8.1-darwin-universal.dmg @247,125 64x64
+AXWindow [AXStandardWindow] Title=Applications @8,30 788x690
+AXWindow [AXStandardWindow] Title=app.portty.Portty @268,106 920x436
+AXWindow [AXStandardWindow] Title=admin @239,77 920x436
+update.log:
+cat: ~/Library/Application Support/portty/update.log: No such file or directory
+# update.log
