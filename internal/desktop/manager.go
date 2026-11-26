@@ -797,15 +797,24 @@ func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 				// display is dark: the viewer is shown the state instead.
 				continue
 			}
-			// shortcut: the timestamp step truncates to whole ticks, exact at 30 fps
-			// (3000); fractional-tick drift if a source ever runs at an odd rate.
-			m.writeUnit(au.Keyframe, pkt.Packetize(au.Data, uint32(au.Duration.Seconds()*float64(h264Capability.ClockRate))))
+			m.writeUnit(au.Keyframe, packetize(pkt, au))
 		case err := <-errs:
 			slog.Warn("desktop: capture error", "err", err)
 			m.noteSourceError(err)
 			m.pushIfChanged(context.Background())
 		}
 	}
+}
+
+// packetize stamps au at its own capture time. Duration is the gap since the
+// previous unit, and pion stamps a unit before it adds its samples, so the
+// clock is advanced first (WR-02). Integer ticks wrap mod 2^32 as RTP
+// timestamps do, so an idle gap of any length stays well-defined.
+// shortcut: each step truncates to whole 90 kHz ticks (under 11 us a unit).
+func packetize(pkt rtp.Packetizer, au screencap.AccessUnit) []*rtp.Packet {
+	rate, d := uint64(h264Capability.ClockRate), au.Duration
+	pkt.SkipSamples(uint32(uint64(d/time.Second)*rate + uint64(d%time.Second)*rate/uint64(time.Second)))
+	return pkt.Packetize(au.Data, 0)
 }
 
 // writeUnit sends one access unit's packets to every viewer whose media path
