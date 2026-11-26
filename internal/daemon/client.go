@@ -410,6 +410,22 @@ func (c *DaemonClient) DesktopStatus() (DesktopStatusResponse, error) {
 	return resp, err
 }
 
+// DesktopStatusAsGUI is DesktopStatus from the running GUI: it also tells the
+// daemon the GUI is present, which makes the GUI the lapse notification's sender.
+func (c *DaemonClient) DesktopStatusAsGUI() (DesktopStatusResponse, error) {
+	var resp DesktopStatusResponse
+	err := c.doJSON(http.MethodGet, "/desktop?gui=1", nil, &resp)
+	return resp, err
+}
+
+// ClaimDesktopLapse asks to be the sender of lapse seq's notification; true
+// means this caller won and must post it.
+func (c *DaemonClient) ClaimDesktopLapse(seq int) (bool, error) {
+	var resp LapseClaimResponse
+	err := c.doJSON(http.MethodPost, "/desktop/lapse-claim", lapseClaimRequest{LapseSeq: seq}, &resp)
+	return resp.Claimed, err
+}
+
 // SetDesktopAlwaysAvailable turns the desktop link on or off. Refusals come
 // back as *ShareError carrying a stable code (tailscale_off, https_off,
 // tailscale_userspace, port_in_use, start_failed).

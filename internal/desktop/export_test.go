@@ -53,10 +53,6 @@ func ReadRuntimeStateForTest(dir string) (RuntimeState, error) { return readRunt
 // WriteRuntimeStateForTest writes the state file the way the Manager does.
 func WriteRuntimeStateForTest(dir string, rs RuntimeState) error { return writeRuntimeState(dir, rs) }
 
-// EnterAwaitingForTest is the transition every detector (watchdog, probe) goes
-// through; who names the detector in the log.
-func (m *Manager) EnterAwaitingForTest(who string) { m.enterAwaiting(who) }
-
 // FramesSeenForTest is how many access units the fan-out has handled.
 func (m *Manager) FramesSeenForTest() uint64 { return m.frameCount() }
 

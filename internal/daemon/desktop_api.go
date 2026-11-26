@@ -92,6 +92,7 @@ type DesktopStatusResponse struct {
 	Locked           bool   `json:"locked"`
 	ApproachingLapse bool   `json:"approachingLapse"`
 	LapseSeq         int    `json:"lapseSeq"`
+	LapseClaimedSeq  int    `json:"lapseClaimedSeq"`
 	Tailscale        string `json:"tailscale"`
 	Launchd          bool   `json:"launchd"`
 	Reason           string `json:"reason,omitempty"`
@@ -127,15 +128,19 @@ func (a *API) registerDesktopRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /desktop/link", a.handleGetDesktopLink)
 	mux.HandleFunc("GET /desktop/permissions", a.handleDesktopPermissions)
 	mux.HandleFunc("POST /desktop/test-capture", a.handleDesktopTestCapture)
+	mux.HandleFunc("POST /desktop/lapse-claim", a.handleDesktopLapseClaim)
 	for _, add := range extraDesktopRoutes {
 		add(a, mux)
 	}
 }
 
-func (a *API) handleGetDesktop(w http.ResponseWriter, _ *http.Request) {
+func (a *API) handleGetDesktop(w http.ResponseWriter, r *http.Request) {
 	a.mu.RLock()
 	cfg, cfgErr, mgr, ts := a.desktopCfg, a.desktopErr, a.desktopMgr, a.desktopTS
 	a.mu.RUnlock()
+	if mgr != nil && r.URL.Query().Get("gui") == "1" {
+		mgr.NoteGUISeen() // the GUI's 5 s tray poll: the lapse sender rule reads this
+	}
 	resp := DesktopStatusResponse{State: string(desktop.StateOff), Tailscale: ts, Launchd: launchdManaged}
 	if cfgErr != nil {
 		resp.Reason = cfgErr.Error()
@@ -147,12 +152,41 @@ func (a *API) handleGetDesktop(w http.ResponseWriter, _ *http.Request) {
 			st := mgr.Status()
 			resp.State, resp.Viewers, resp.Locked = string(st.State), st.Viewers, st.Locked
 			resp.ApproachingLapse, resp.LapseSeq = st.ApproachingLapse, st.LapseSeq
+			resp.LapseClaimedSeq = st.LapseClaimedSeq
 			if st.Reason != "" {
 				resp.Reason = st.Reason
 			}
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// lapseClaimRequest is the POST /desktop/lapse-claim body.
+type lapseClaimRequest struct {
+	LapseSeq int `json:"lapseSeq"`
+}
+
+// LapseClaimResponse answers it: Claimed is true for exactly one caller per
+// lapse, so only that caller posts the notification.
+type LapseClaimResponse struct {
+	Claimed bool `json:"claimed"`
+}
+
+// handleDesktopLapseClaim lets the running GUI take the right to notify a lapse
+// (CONTEXT: the GUI when it runs, otherwise the daemon). With no Manager nothing
+// is claimed.
+func (a *API) handleDesktopLapseClaim(w http.ResponseWriter, r *http.Request) {
+	var req lapseClaimRequest
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	a.mu.RLock()
+	mgr := a.desktopMgr
+	a.mu.RUnlock()
+	writeJSON(w, http.StatusOK, LapseClaimResponse{Claimed: mgr != nil && mgr.ClaimLapse(req.LapseSeq, "gui")})
 }
 
 func (a *API) handlePutDesktop(w http.ResponseWriter, r *http.Request) {

@@ -28,3 +28,14 @@ func TestHasAppBundleID_FalseWhenUnbundled(t *testing.T) {
 func TestSendNotification_NoBundleReturnsCleanly(t *testing.T) {
 	sendNotification("portty.test", "Portty", "test")
 }
+
+// TestNotificationUsesMainQueue_FalseWithoutApplication pins the V1 fix's
+// decision: with no NSApplication running (the launchd daemon, a go-test
+// binary) notification work must not hop to the main queue, which nothing
+// services. The GUI answers true because the Wails app runs NSApplication; that
+// side is shown on a real build, not here. Nothing is posted.
+func TestNotificationUsesMainQueue_FalseWithoutApplication(t *testing.T) {
+	if notificationUsesMainQueue() {
+		t.Fatal("notificationUsesMainQueue() = true with no NSApplication running; the daemon's notifications would be queued on a main queue nobody services (VM row V1)")
+	}
+}

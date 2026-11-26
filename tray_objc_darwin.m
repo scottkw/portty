@@ -25,6 +25,7 @@ NSMutableArray *menuSessionNames = nil;
 NSMutableArray *menuSessionIDs = nil;
 BOOL daemonConnected = YES;
 NSString *trayUpdateTitle = nil; // "Update Available…" while a newer version is known; nil or empty hides the item
+NSString *trayDesktopTitle = nil; // "Desktop: ..." line while always-available is on; nil or empty hides it
 
 // PorttyMenuDelegate rebuilds the menu on every open so it always reflects
 // the current session list without a separate polling update path.
@@ -63,6 +64,18 @@ NSString *trayUpdateTitle = nil; // "Update Available…" while a newer version 
             item.tag = (NSInteger)i;
             [menu addItem:item];
         }
+    }
+
+    if (trayDesktopTitle.length > 0) {
+        // Inert state line: no target or action, disabled so it reads dimmed.
+        [menu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *desktopItem = [[NSMenuItem alloc]
+            initWithTitle:trayDesktopTitle
+            action:NULL
+            keyEquivalent:@""];
+        desktopItem.enabled = NO;
+        [menu addItem:desktopItem];
+        [desktopItem release]; // MRC: the menu retains it
     }
 
     [menu addItem:[NSMenuItem separatorItem]];
@@ -278,6 +291,18 @@ void setTrayUpdateItem(const char *title) {
     }
 }
 
+// setTrayDesktopTitle sets the desktop line for the menu delegate; "" hides it.
+void setTrayDesktopTitle(const char *title) {
+    @autoreleasepool {
+        // Copy synchronously — title is a Go pointer freed after cgo returns.
+        NSString *t = [NSString stringWithUTF8String:title];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [trayDesktopTitle release];
+            trayDesktopTitle = [t retain];
+        });
+    }
+}
+
 // hasValidBundleIdentifier reports whether the running process has a valid
 // app-bundle identifier. UNUserNotificationCenter requires one; an unbundled
 // process (e.g. `wails dev`, a `go test` binary) has none, and calling into
@@ -286,6 +311,28 @@ void setTrayUpdateItem(const char *title) {
 // that aborts the whole process (Phase 167 M-41 regression).
 int hasValidBundleIdentifier(void) {
     return [[NSBundle mainBundle] bundleIdentifier] != nil ? 1 : 0;
+}
+
+// notificationUsesMainQueue is true only while an NSApplication is running, i.e.
+// in the GUI: only then is the main dispatch queue serviced. The headless
+// launchd daemon (a Go main thread, no run loop) never services it, so a block
+// queued there never ran and its lapse notification vanished (VM row V1).
+int notificationUsesMainQueue(void) {
+    return [NSApp isRunning] ? 1 : 0;
+}
+
+// runNotificationBlock queues a notification step where it can run: the main
+// queue in the GUI (unchanged), a private serial queue everywhere else.
+// UNUserNotificationCenter is not main-thread-only.
+static void runNotificationBlock(dispatch_block_t block) {
+    if (notificationUsesMainQueue()) {
+        dispatch_async(dispatch_get_main_queue(), block);
+        return;
+    }
+    static dispatch_queue_t q;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ q = dispatch_queue_create("app.portty.notifications", DISPATCH_QUEUE_SERIAL); });
+    dispatch_async(q, block);
 }
 
 // sendNotification sends a macOS notification using UNUserNotificationCenter.
@@ -308,8 +355,8 @@ void sendNotification(const char *identifier, const char *title, const char *bod
     NSString *nsIdentifier = [NSString stringWithUTF8String:identifier];
     NSString *nsTitle = [NSString stringWithUTF8String:title];
     NSString *nsBody  = [NSString stringWithUTF8String:body];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"Portty: dispatching native notification for identifier %@", nsIdentifier);
+    runNotificationBlock(^{
+        NSLog(@"Portty: dispatching native notification for identifier %@ (main queue: %d)", nsIdentifier, notificationUsesMainQueue());
         registerNotificationDelegate();
         @try {
             UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
@@ -319,7 +366,7 @@ void sendNotification(const char *identifier, const char *title, const char *bod
                     NSLog(@"Portty: notification authorization NOT granted for identifier %@ (error=%@)", nsIdentifier, error);
                     return;
                 }
-                dispatch_async(dispatch_get_main_queue(), ^{
+                runNotificationBlock(^{
                     @try {
                         UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
                         content.title = nsTitle;
