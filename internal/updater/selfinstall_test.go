@@ -129,6 +129,8 @@ func (f *siRelease) run(_ context.Context, name string, args ...string) ([]byte,
 		return []byte("v" + f.ver() + "\n"), nil
 	case base == "open" && slices.Contains(args, "-R"): // Reveal; every other open must go through the installer's env
 		return broken("open")
+	case base == "osascript": // Notify
+		return broken("osascript")
 	}
 	return nil, errors.New("siRelease: unexpected call " + name)
 }
@@ -312,7 +314,7 @@ func TestSafeRunner_RefusesUnderTest(t *testing.T) {
 	ran := false
 	base := func(context.Context, string, ...string) ([]byte, error) { ran = true; return nil, nil }
 	run := SafeRunner(base)
-	for _, tool := range []string{"/usr/bin/hdiutil", "/usr/bin/open", "/usr/bin/ditto"} {
+	for _, tool := range []string{"/usr/bin/hdiutil", "/usr/bin/open", "/usr/bin/ditto", "/usr/bin/osascript"} {
 		if _, err := run(context.Background(), tool, "x"); err == nil || !strings.Contains(err.Error(), filepath.Base(tool)) {
 			t.Errorf("%s: err = %v", tool, err)
 		}
