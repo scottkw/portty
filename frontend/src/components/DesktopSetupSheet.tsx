@@ -121,7 +121,7 @@ function DesktopSetupSheetContent({ onClose, returnFocusTo }: Omit<DesktopSetupS
             <PermissionRow
               label="Accessibility"
               granted={ax}
-              howTo="Open System Settings, go to Privacy & Security, then Accessibility, and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac."
+              howTo="Open System Settings, go to Privacy & Security, then Device Control and Data Access (called Accessibility on earlier macOS), and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac."
               onOpen={() => openPane('accessibility')}
             />
           </div>

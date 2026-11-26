@@ -446,7 +446,7 @@ Writing rules (Phase 2, 4, 14): sentence case for descriptions, headings and chi
 | Setup intro | **Portty needs two permissions to show this Mac's screen. Grant them here, once, while you are at the Mac.** |
 | Setup rows | **Screen Recording** / **Accessibility**; **Granted** / **Not granted**; button **Open System Settings** |
 | Screen Recording how-to | **Open System Settings, go to Privacy & Security, then Screen & System Audio Recording, and turn on Portty.** |
-| Accessibility how-to | **Open System Settings, go to Privacy & Security, then Accessibility, and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac.** |
+| Accessibility how-to | **Open System Settings, go to Privacy & Security, then Device Control and Data Access (called Accessibility on earlier macOS), and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac.** |
 | Test Capture | **Test Capture** / **Capturing…** / **Test Again**; blocked line **Turn on Screen Recording first.**; success **Capture works. This is what viewers will see.** |
 | Test Capture failure (error state) | **Couldn't capture the screen. Check that Screen Recording is on above. If a macOS dialog is waiting on the screen, choose Allow, then try again.** |
 | Setup notes | The two notes under Surface 2 (macOS 27.2 dialog, Login Items) |

@@ -23,7 +23,7 @@ const openPane = vi.mocked(App.OpenDesktopPermissionPane)
 
 const SR_HOWTO = 'Open System Settings, go to Privacy & Security, then Screen & System Audio Recording, and turn on Portty.'
 const AX_HOWTO =
-  'Open System Settings, go to Privacy & Security, then Accessibility, and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac.'
+  'Open System Settings, go to Privacy & Security, then Device Control and Data Access (called Accessibility on earlier macOS), and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac.'
 const NOTE_1 =
   'macOS 27.2 and later show a dialog the first time Portty captures the screen, asking whether it may bypass the system private window picker. Choose Allow. It does not come back.'
 const NOTE_2 =
