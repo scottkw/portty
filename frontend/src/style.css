@@ -765,6 +765,34 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   padding: 0;
   overflow: hidden;
 }
+/* Set Up Desktop Sharing (19-11, styled in 19-13): wide enough that the how-to lines wrap to 3 lines or fewer. */
+.dialog--setup {
+  width: 560px;
+  max-width: calc(100% - 48px);
+}
+/* The Test Capture result: a 256x160 box (16:10) for the daemon's JPEG, or its placeholder while capturing. */
+.desktop-setup__thumb {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 256px;
+  height: 160px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--color-terminal-bg);
+}
+.desktop-setup__placeholder {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 256px;
+  height: 160px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 8px;
+  background: var(--color-field);
+}
+.desktop-setup__result {
+  align-items: flex-start;
+}
 .settings-sheet__header {
   flex-shrink: 0;
   display: flex;
@@ -885,6 +913,11 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   line-height: 16px;
   color: var(--color-text-secondary);
 }
+/* A second Caption line inside a description (the CT line under the desktop switch). */
+.settings-row__note {
+  display: block;
+  margin-top: 8px;
+}
 .settings-row__control {
   flex-shrink: 0;
   display: flex;
@@ -906,6 +939,10 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 .settings-row .button[aria-disabled='true'] {
   opacity: var(--opacity-disabled);
+}
+/* Copy Link keeps the width of "Copied!" so the label change does not move it. */
+.settings-row .button.button--copy {
+  min-width: 76px;
 }
 .settings-input {
   height: 24px;
@@ -1211,8 +1248,14 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 .ts-status__dot--ok    { background: var(--color-status-on); }
 .ts-status__dot--error { background: var(--color-status-off); }
+/* Needs action at the Mac (19-13): Needs permission, Waiting for approval, Needs repair. */
+.ts-status__dot--warn  { background: var(--color-status-warn); }
 .ts-status__text {
   color: var(--color-text-secondary);
+}
+/* The word "Granted", as "Acknowledged" does (.settings-row__success). */
+.ts-status__text--granted {
+  color: var(--color-success-text);
 }
 
 /* ─── Banner stack container (Phase 81 — BAN-01/BAN-02) ─────────── */

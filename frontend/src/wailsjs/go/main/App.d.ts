@@ -208,6 +208,41 @@ export function RunDesktopTestCapture(): Promise<TestCaptureResult>
 // kind rejects without opening anything.
 export function OpenDesktopPermissionPane(kind: string): Promise<void>
 
+// Portty 19-13: the Settings ▸ Sharing Desktop group. None throws.
+// GetDesktopStatus: errorCode 'unavailable' means the daemon cannot be asked
+// (the other fields mean nothing). state is the daemon enum (off, needs_permission,
+// awaiting_approval, display_asleep, locked, idle, streaming, capture_paused);
+// tailscale is ok, off, https_off, userspace or '' before the first check;
+// launchd is false while the daemon runs without launchd.
+export interface DesktopStatusResult {
+  alwaysAvailable: boolean
+  state: string
+  viewers: number
+  locked: boolean
+  approachingLapse: boolean
+  tailscale: string
+  launchd: boolean
+  reason: string
+  errorCode: string
+}
+export function GetDesktopStatus(): Promise<DesktopStatusResult>
+// SetDesktopAlwaysAvailable: errorCode is a daemon refusal (tailscale_off,
+// https_off, tailscale_userspace, port_in_use, start_failed) or 'unavailable';
+// firstShare is true when this call recorded the CT acknowledgement.
+export interface DesktopResult {
+  alwaysAvailable: boolean
+  firstShare: boolean
+  errorCode: string
+  errorDetail: string
+}
+export function SetDesktopAlwaysAvailable(on: boolean): Promise<DesktopResult>
+// GetDesktopLink: fetched only on Copy Link, never rendered or kept.
+export interface DesktopLinkResult {
+  url: string
+  errorCode: string
+}
+export function GetDesktopLink(): Promise<DesktopLinkResult>
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export function RegenerateSigningKey(): Promise<void>
 

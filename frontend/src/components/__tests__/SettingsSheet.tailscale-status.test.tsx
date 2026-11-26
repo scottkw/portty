@@ -107,10 +107,13 @@ describe('Portty 04-05: Sharing pane is the status plus one explanation', () => 
 
   it('has only the Tailscale row: no server, port, URL, credential or reminder controls', async () => {
     await renderSheet(makeHealth())
-    expect(sharing().querySelectorAll('.settings-row')).toHaveLength(1)
-    expect(sharing().querySelector('button, input, [role="switch"], img')).toBeNull()
+    // Phase 19 (19-13) adds the Desktop group below the footnote on purpose; the
+    // terminal-sharing group above it is still the Tailscale row alone.
+    const tailscaleGroup = sharing().querySelector('.settings-group')!
+    expect(tailscaleGroup.querySelectorAll('.settings-row')).toHaveLength(1)
+    expect(tailscaleGroup.querySelector('button, input, [role="switch"], img')).toBeNull()
     for (const gone of ['Web server', 'Start Server', 'Port', 'Password', 'Username', 'Ask before']) {
-      expect(sharing().textContent).not.toContain(gone)
+      expect(tailscaleGroup.textContent).not.toContain(gone)
     }
   })
 
