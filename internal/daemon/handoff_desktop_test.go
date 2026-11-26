@@ -2,8 +2,14 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -130,4 +136,192 @@ func TestHandoffDesktop_SessionsAndLinkSurvive(t *testing.T) {
 	}
 	fresh := connectViewer(t, link)
 	fresh.waitIDR(t, 5*time.Second)
+}
+
+// A v1.2 old daemon (nothing shared) passes no listener while the new daemon's
+// desktop.json says on: the handoff commits, and the poller starts the server
+// and the Manager once the old daemon has exited. Simulated by turning the
+// desktop on in desktop.json after the old API loaded its (empty) setting.
+func TestHandoffDesktop_NoListenerFromOldSide(t *testing.T) {
+	logs := captureDiag(t)
+	d, _ := newDesktopHandoff(t, false, tickScript(false))
+	s := d.handoffScene
+	gid, err := desktop.NewGrantID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := desktop.Config{SchemaVersion: desktop.ConfigSchemaVersion, AlwaysAvailable: true, GrantID: gid, IAT: time.Now().Unix()}
+	if err := desktop.SaveConfig(s.cfg, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	n, code := d.runTakeover(BuildVersion)
+	if code != takeoverCommitted {
+		t.Fatalf("runTakeover = %d, want 0 (events %v)", code, s.events)
+	}
+	s.waitExit(s.oldExits, "old daemon", 0)
+	if !strings.Contains(string(logs.bytes()), "always-available server starts after the old daemon exits") {
+		t.Errorf("finalize did not take the no-listener branch; log:\n%s", logs.bytes())
+	}
+	eventually(t, 10*time.Second, "the poller to bring up the server and the Manager", n.hasDesktopMgr)
+	link := n.desktopLink(t)
+	if code, _ := desktopPageStatus(t, link); code != 200 {
+		t.Errorf("desktop page = %d, want 200", code)
+	}
+	if sess, ok := n.engine.registry.Get(s.ids[0]); !ok || sess.Pid() != s.pids[0] {
+		t.Errorf("session pid after = %v, want %d", sess, s.pids[0])
+	}
+}
+
+// A handoff that rolls back before COMMIT leaves the old daemon's desktop
+// alone: same Manager, viewer still connected and streaming, no 1012.
+func TestHandoffDesktop_RollbackKeepsDesktop(t *testing.T) {
+	d, link := newDesktopHandoff(t, true, tickScript(false))
+	s := d.handoffScene
+	v := connectViewer(t, link)
+	v.waitIDR(t, 10*time.Second)
+	s.old.mu.RLock()
+	mgr := s.old.desktopMgr
+	s.old.mu.RUnlock()
+
+	s.failAt("old:after-ready-before-commit", errors.New("injected"))
+	if _, code := d.runTakeover(BuildVersion); code == takeoverCommitted {
+		t.Fatalf("runTakeover committed despite the fault (events %v)", s.events)
+	}
+	waitFor(t, "the old daemon to resume", 5*time.Second, func() bool { return !s.old.frozen.Load() })
+
+	s.old.mu.RLock()
+	same := s.old.desktopMgr == mgr && mgr != nil
+	s.old.mu.RUnlock()
+	if !same {
+		t.Error("the old daemon's desktop Manager changed or was dropped by a rollback")
+	}
+	select {
+	case <-v.done:
+		t.Fatalf("the desktop viewer was closed (code %d) by a rollback", v.code.Load())
+	case <-time.After(300 * time.Millisecond):
+	}
+	got, err := s.client.DesktopStatus()
+	if err != nil || got.Viewers != 1 || got.State != string(desktop.StateStreaming) {
+		t.Errorf("desktop status after rollback = %+v, %v; want streaming with 1 viewer", got, err)
+	}
+	for len(v.aus) > 0 {
+		<-v.aus
+	}
+	select {
+	case <-v.aus:
+	case <-time.After(5 * time.Second):
+		t.Error("no more video after the rollback")
+	}
+}
+
+// DESK-02: the takeover never takes another address or port. While the old
+// Manager holds the media socket the takeover's attempt reports port_in_use and
+// binds nothing; once the old one is closed the same address and port are
+// bound by the new owner.
+func TestHandoffDesktop_MediaPortRetry(t *testing.T) {
+	d, _ := newDesktopHandoff(t, true, tickScript(false))
+	n := d.takeoverAPI() // loads the same desktop.json: on
+	ctx := context.Background()
+
+	n.desktopTick(ctx)
+	n.desktopTick(ctx)
+	if n.hasDesktopMgr() {
+		t.Fatal("the takeover bound the media port while the old daemon still held it")
+	}
+	d.old.closeDesktopForHandoff()
+
+	n.desktopTick(ctx)
+	if !n.hasDesktopMgr() {
+		t.Fatal("the takeover did not bind the media port once the old daemon released it")
+	}
+	n.mu.RLock()
+	builtIP := n.desktopBuiltIP
+	n.mu.RUnlock()
+	if builtIP != "127.0.0.1" {
+		t.Errorf("Manager built for %q, want the tailnet address 127.0.0.1", builtIP)
+	}
+	// The one socket it holds is the same address and port the old one had.
+	c, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: d.env.media})
+	if err == nil {
+		_ = c.Close()
+	}
+	if !errors.Is(err, syscall.EADDRINUSE) {
+		t.Errorf("binding %d/udp again = %v, want EADDRINUSE (held by the new owner)", d.env.media, err)
+	}
+}
+
+func readCaptureActive(t *testing.T, dir string) (active bool, exits int) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, "desktop-state.json"))
+	if err != nil {
+		t.Fatalf("read desktop-state.json: %v", err)
+	}
+	var st struct {
+		CaptureActive bool    `json:"captureActive"`
+		AbnormalExits []int64 `json:"abnormalExits"`
+	}
+	if err := json.Unmarshal(b, &st); err != nil {
+		t.Fatal(err)
+	}
+	return st.CaptureActive, len(st.AbnormalExits)
+}
+
+// After COMMITTED the old daemon has stopped capture cleanly, so the takeover's
+// Manager counts no abnormal exit.
+func TestHandoffDesktop_OldSideClearsCaptureActive(t *testing.T) {
+	d, link := newDesktopHandoff(t, true, tickScript(false))
+	s := d.handoffScene
+	v := connectViewer(t, link)
+	v.waitIDR(t, 10*time.Second)
+	eventually(t, 5*time.Second, "captureActive to be recorded", func() bool {
+		a, _ := readCaptureActive(t, s.cfg)
+		return a
+	})
+
+	n, code := d.runTakeover(BuildVersion)
+	if code != takeoverCommitted {
+		t.Fatalf("runTakeover = %d, want 0 (events %v)", code, s.events)
+	}
+	s.waitExit(s.oldExits, "old daemon", 0)
+	if active, _ := readCaptureActive(t, s.cfg); active {
+		t.Error("captureActive is still true after the old daemon handed off")
+	}
+	eventually(t, 10*time.Second, "the takeover's Manager", n.hasDesktopMgr)
+	if active, exits := readCaptureActive(t, s.cfg); active || exits != 0 {
+		t.Errorf("state after the takeover's Manager started: captureActive=%v abnormalExits=%d, want false and 0", active, exits)
+	}
+}
+
+// With no terminal share and always-available off, no share listener is passed
+// (as before this phase); either of the two reasons to keep the server passes it.
+func TestHandoffDesktop_DesktopOffNoListener(t *testing.T) {
+	d, _ := newDesktopHandoff(t, false, tickScript(false))
+	s := d.handoffScene
+	pass := func() (hsGlobal, int) {
+		g, conns, err := (&oldHandoff{a: s.old, frozen: s.old.engine.handoffEntries()}).global()
+		if err != nil {
+			t.Fatalf("global: %v", err)
+		}
+		return g, len(conns)
+	}
+	if g, n := pass(); g.ShareListener || n != 3 || len(g.Shares) != 0 {
+		t.Errorf("nothing shared, desktop off: ShareListener=%v fds=%d shares=%d, want false 3 0", g.ShareListener, n, len(g.Shares))
+	}
+	mustShare(t, s.client, s.ids[0])
+	if g, n := pass(); !g.ShareListener || n != 4 || len(g.Shares) != 1 {
+		t.Errorf("one terminal share: ShareListener=%v fds=%d shares=%d, want true 4 1", g.ShareListener, n, len(g.Shares))
+	}
+	if _, err := s.client.SetSessionShared(s.ids[0], false); err != nil {
+		t.Fatal(err)
+	}
+	if g, n := pass(); g.ShareListener || n != 3 {
+		t.Errorf("share turned off again: ShareListener=%v fds=%d, want false 3", g.ShareListener, n)
+	}
+	if _, err := s.client.SetDesktopAlwaysAvailable(true); err != nil {
+		t.Fatal(err)
+	}
+	if g, n := pass(); !g.ShareListener || n != 4 || len(g.Shares) != 0 {
+		t.Errorf("desktop on, no share: ShareListener=%v fds=%d shares=%d, want true 4 0", g.ShareListener, n, len(g.Shares))
+	}
 }
