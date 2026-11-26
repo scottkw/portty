@@ -1,0 +1,97 @@
+RC-WR02 log: failed first install from the DMG (installer re-verify fails), no installed copy; post-fix 1.8.1 rig build of 83df1e1f
+--- notes.txt
+Method: a first install from the DMG in ~/Downloads (release asset name, unquarantined), with no
+installed copy. A VM-side watcher wrote "off" to ~/p18/verify-mode as soon as the installer process
+existed (07:41:43.284). The DMG GUI runs all its checks before it spawns the installer (VerifyApp,
+CheckStagedApp, and the installer copy's copy-check), so those checks ran with "adhoc". The installer's
+re-verify of the staged copy then ran the real codesign against this ad-hoc build and failed with
+app-team. That is the re-verify branch of RunInstaller, and it reaches finishOpen and revealLeft with no
+copy installed. The F4 approach (a mismatched bundle version) would fail CheckStagedApp in the DMG GUI,
+before any installer runs, and never reach revealLeft, so it was not used.
+
+What the user sees: the DMG GUI's window, then no Portty window (the GUI quit after the installer
+started; the poller shows no Portty GUI from 07:41:43.7). No Portty alert or dialog. At 07:41:55.6 a
+Finder window "Downloads" comes to the front with portty-v1.8.1-darwin-arm64.dmg selected (screenshot,
+and Finder AX: AXWindow Title=Downloads, the DMG's name field). The volume is ejected. Nothing explains
+why, unless the user reads update.log.
+(The Finder "Portty" volume window stayed until the eject at about +12 s; in R4-a the eject took 1.5 s.
+No eject failure was logged.)
+
+Next manual launch: the user drags Portty from the DMG into /Applications (ditto from the remounted
+volume) and opens it. The installed 1.8.1 takes the result:
+"update: result failed  to 1.8.1 reverify" (the old version is empty), then
+"update: result not shown: not newer than this version". No banner and no notification appear, as the
+WR-02 fix designed for a copy installed by hand at the same version.
+Not run: opening the DMG's app again instead. That starts mover mode, which never reads the result
+(startMover returns before consumeInstallResult). Its installer would then overwrite the failed result,
+so the user would never see it.
+--- prep.txt
+portty procs: []
+apps: /Applications= ~/Applications=
+trash Portty*.app=0 trash dmgs=0 downloads: .localized 
+volumes:  portty images: 0
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+zsh:1: no matches found: ~/.Trash/Portty*.app
+Successfully reset SystemPolicyDownloadsFolder
+trash: .DS_Store  downloads: .localized  verify-mode: adhoc fault: 1-missing
+--- run.txt
+07:41:40.047Z dmg in Downloads: 7944605 ~/Downloads/portty-v1.8.1-darwin-arm64.dmg xattrs: [com.apple.FinderInfo: deviddsk com.apple.macl:  ]
+07:41:41.592Z open dmg
+07:41:42.165Z volume: /Volumes/Portty/Portty.app mount: apfs, local, nodev, nosuid, read-only, journaled, noowners, mounted by admin
+07:41:42.186Z open app (T0)
+07:41:42.286Z open rc=0
+07:41:54.181Z result outcome: failed
+07:41:43.284Z installer seen; verify-mode now: off
+--- check.txt
+07:42:05.159Z check
+verify-mode: off
+result file: {"v":1,"outcome":"failed","oldVersion":"","newVersion":"1.8.1","reason":"reverify","keepDaemon":false,"dmg":""}
+/Applications Portty items: 0 ()
+~/Applications Portty items: 0
+run dirs: 0
+volumes:  portty images: 0
+Downloads: .localized portty-v1.8.1-darwin-arm64.dmg  Trash: .DS_Store 
+Portty processes: 
+windows: Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+Finder front window and selection:
+  33:37: execution error: Not authorized to send Apple events to Finder. (-1743)
+Finder AX (windows, the DMG's icon):
+AXWindow [AXStandardWindow] Title=Downloads @66,88 920x436
+AXTextField Value=portty-v1.8.1-darwin-arm64.dmg @288,174 205x21
+AXWindow [AXStandardWindow] Title=updates @37,59 920x436
+AXWindow [AXStandardWindow] Title=Applications @8,30 788x690
+AXWindow [AXStandardWindow] Title=app.portty.Portty @268,106 920x436
+AXWindow [AXStandardWindow] Title=admin @239,77 920x436
+update.log:
+update: installer started (copy 19ms, start 186ms)
+2026/11/26 07:41:54 installer: install failed: safety check: app-team
+2026/11/26 07:41:54 installer: failed reverify
+--- timeline.txt
+       3
+07:41:40.246Z guis=[] daemons=[] installer=[] image=0 vol=gone app= home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+07:41:42.512Z guis=[84809:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=1 vol=mounted app= home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+07:41:43.144Z guis=[84809:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=1 vol=mounted app= home_app= staging=1 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+07:41:43.710Z guis=[] daemons=[] installer=[84960 ] image=1 vol=mounted app= home_app= staging=1 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+07:41:54.188Z guis=[] daemons=[] installer=[84960 ] image=0 vol=gone app= home_app= staging=1 run_dirs=1 result=failed dl_dmg=1 trash_dmg=0 trash_app=0
+07:41:54.723Z guis=[] daemons=[] installer=[] image=0 vol=gone app= home_app= staging=0 run_dirs=0 result=failed dl_dmg=1 trash_dmg=0 trash_app=0
+--- wins.txt
+07:41:40.186Z Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:41:42.509Z Finder|Portty|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:41:54.515Z Finder|updates|L0; Finder|Portty|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+07:41:55.647Z Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- install.txt
+07:42:58.814Z volume mounted; copying Portty.app to /Applications (ditto, as a Finder drag)
+hdiutil: WARNING: 'hdiutil detach ...' is deprecated. Please use 'diskutil eject ...' instead.
+07:42:59.185Z volume detached
+07:42:59.218Z open /Applications/Portty.app
+07:43:11.339Z Portty processes: 91793:/Applications/Portty.app/Contents/MacOS/Portty  91795:/Applications/Portty.app/Contents/MacOS/Portty daemon 
+result file now: none
+banner and dialogs (axdump2):
+windows: Portty|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+update.log:
+update: installer started (copy 19ms, start 186ms)
+2026/11/26 07:41:54 installer: install failed: safety check: app-team
+2026/11/26 07:41:54 installer: failed reverify
+update: result failed  to 1.8.1 reverify
+update: result not shown: not newer than this version

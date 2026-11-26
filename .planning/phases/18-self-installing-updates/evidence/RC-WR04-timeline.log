@@ -1,0 +1,31 @@
+# RC-WR04 timeline (VM pollers; seconds relative to the Update click at 07:07:47 UTC; transitions only)
+# poll (0.4 s): GUI pids, daemon pids, installer pid, installed version, daemon /health version
+-2.03 07:07:45 gui=78283, dmn=78291, inst= iv=1.8.0 dv=v1.8.0
++0.84 07:07:48 gui=78283, dmn=78291, inst=78719, iv=1.8.0 dv=v1.8.0
++1.60 07:07:49 gui=78739, dmn=78291, inst=78719, iv=1.8.1 dv=v1.8.1
++2.08 07:07:49 gui= dmn=78771, inst=78719, iv=1.8.1 dv=v1.8.1
++2.66 07:07:50 gui=78805, dmn=78771, inst= iv=1.8.0 dv=v1.8.1
+# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines
+-2.05 07:07:45 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Portty 1.8.1 is available. DOMClassList=( ) @328,94 132x16|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++1.13 07:07:48
++2.18 07:07:49
++3.24 07:07:50
++4.30 07:07:51 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|
++12.75 07:08:00 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Portty 1.8.1 is available. DOMClassList=( ) @328,94 132x16|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
+# win (CGWindowList, 1 s): on-screen windows owner/layer/title, all apps
+-2.02 07:07:45 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++1.25 07:07:48 Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++3.75 07:07:51 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
+# samples: poll 56, ax 25, win 24; ax samples matching background service, Restart Now, AXDialog or AXSheet: 0
+# before: session tickA 8afa939870b5cfd73b5ff974704d5875;session vimB 716459cbde2d5c9323683e08664e4956;gui 78283;daemon 78291;shell 78357 ppid 78291;shell 78362 ppid 78291;vim 78387 ppid 78362;
+# after:  session tickA 8afa939870b5cfd73b5ff974704d5875;session vimB 716459cbde2d5c9323683e08664e4956;daemon 78771;gui 78805;shell 78357 ppid 1;shell 78362 ppid 1;vim 78387 ppid 78362;
+# update.log
+update: installer started (copy 15ms, start 263ms)
+2026/11/26 07:07:48 vmpreview: verify-mode adhoc
+update: result ignored: update job refused: not a regular file
+vmpreview: fault exit-after-daemon
+2026/11/26 07:07:49 installer: result not written
+2026/11/26 07:07:49 installer: rolled-back gui-exited
+2026/11/26 07:07:49 installer: keepDaemon passed as PORTTY_KEEP_DAEMON_ONCE in the launch environment
+update: keep daemon once: set in the launch environment by the installer
+update: result ignored: update job refused: not a regular file

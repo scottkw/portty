@@ -1,0 +1,34 @@
+# RC-R1 timeline (VM pollers; seconds relative to the Update click at 07:02:21 UTC; transitions only)
+# poll (0.4 s): GUI pids, daemon pids, installer pid, installed version, daemon /health version
+-2.03 07:02:19 gui=64860, dmn=64869, inst= iv=1.8.0 dv=v1.8.0
++1.58 07:02:23 gui= dmn=64869, inst=65327, iv=1.8.1 dv=v1.8.0
++3.45 07:02:24 gui=65403, dmn=65436, inst=65327, iv=1.8.1 dv=v1.8.1
++6.80 07:02:28 gui=65403, dmn=65436, inst= iv=1.8.1 dv=v1.8.1
+# ax (axdump of app.portty.Portty, ~1 s): window, banner and dialog lines
+-2.05 07:02:19 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Portty 1.8.1 is available. DOMClassList=( ) @328,94 132x16|AXButton Title=Update DOMClassList=( "banner__action" ) @1148,94 44x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++1.15 07:02:22 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|AXGroup [AXApplicationAlert] DOMClassList=( banner, "banner--info" ) @288,82 952x41|AXStaticText Value=Restarting Portty 1.8.1… DOMClassList=( ) @328,94 134x16|AXButton Title=Dismiss Description=Dismiss DOMClassList=( "banner__dismiss" ) @1200,90 24x24|
++2.17 07:02:23 app not running|
++3.41 07:02:24
++4.56 07:02:26 AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690|
+# win (CGWindowList, 1 s): on-screen windows owner/layer/title, all apps
+-2.01 07:02:19 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++1.60 07:02:23 Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
++5.08 07:02:26 Portty/0/Portty | Finder/0/updates | Finder/0/Applications | Finder/0/app.portty.Portty | Finder/0/admin | Finder/-2147483603/ | WindowManager/-2147483624/Wallpaper
+# samples: poll 62, ax 29, win 28; ax samples matching background service, Restart Now, AXDialog or AXSheet: 0
+# before: session tickA 7c540a0111fbceb215ef1fd1520195ae;session vimB e0c33342c9b2812af9923f9aaf77f190;gui 64860;daemon 64869;shell 64938 ppid 64869;shell 64943 ppid 64869;vim 64968 ppid 64943;
+# after:  session tickA 7c540a0111fbceb215ef1fd1520195ae;session vimB e0c33342c9b2812af9923f9aaf77f190;gui 65403;daemon 65436;shell 64938 ppid 1;shell 64943 ppid 1;vim 64968 ppid 64943;
+# share-before
+share rc=0 url_file_bytes=290 mode=600 form=https://127.0.0.1:7444/sessions/ID?cap=TOKEN
+07:02:18 share link=302 link_followed=200 wrong_token=401
+# share-after
+07:02:51 share link=302 link_followed=200 wrong_token=401
+# fresh
+07:02:56 fresh tickA: replay bytes=5009
+hist distinct=300 has_HIST-s1-1=1 has_HIST-s1-300=1; ticks TICK 0..44 lines=45 gaps=0
+07:03:01 fresh vimB: replay bytes=7244
+vimB fresh replay: last VTICK 53; alt-screen switches=1
+# update.log
+update: installer started (copy 18ms, start 314ms)
+2026/11/26 07:02:22 vmpreview: verify-mode adhoc
+2026/11/26 07:02:23 installer: open attempt 1 failed
+2026/11/26 07:02:28 installer: updated 
