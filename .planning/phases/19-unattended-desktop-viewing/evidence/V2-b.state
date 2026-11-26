@@ -1,0 +1,48 @@
+p19-state row=V2-b vm_utc=2026-11-26T18:22:52Z epoch=1795717372
+installed_version=19.0.1
+--- launchd app.portty.Portty.daemon
+plist_exists=yes
+{   "AbandonProcessGroup" => true   "KeepAlive" => {     "SuccessfulExit" => false   }   "Label" => "app.portty.Portty.daemon"   "ProgramArguments" => [     0 => "/Applications/Portty.app/Contents/MacOS/Portty"     1 => "daemon"   ]   "RunAtLoad" => true } 
+	state = running
+	runs = 3
+	pid = 18934
+	last exit code = 0
+		state = active
+		state = active
+--- launchd portty-daemon
+plist_exists=no
+Could not find service "portty-daemon" in domain for user gui: 501
+--- launchctl print-disabled (portty labels)
+		"app.portty.Portty.daemon" => enabled
+		"portty-daemon" => enabled
+--- processes (pid ppid etime args)
+18918     1       00:27 /Applications/Portty.app/Contents/MacOS/Portty
+18934     1       00:26 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- health
+{"status":"ok","version":"v19.0.1","api":5,"handoff":1,"launchd":true,"pid":18934}
+
+daemon_pids=18934
+daemon 18934 ppid=1 xpc_service_name=app.portty.Portty.daemon
+--- sessions (id, shell pid, alive, ticks, last file tick age, max gap s, last pty tick age)
+session bc45c2e2c61b1b329a000e947c2fef7c shell_pid=18516 alive=yes ticks=73 last_age=0 max_gap=2 pty_last_tick="TICK 73 1795717372" pty_age=0
+session d2b56d91377bb35b04fc4f4985a483ea shell_pid=18551 alive=yes ticks=67 last_age=0 max_gap=2 pty_last_tick="TICK 67 1795717372" pty_age=0
+--- daemon.log.1 / daemon.log (mtime, size) and daemon.log tail
+daemon.log 1200 bytes mtime 18:22:28
+daemon.log.1 119 bytes mtime 18:21:02
+2026/11/26 18:21:36.126036 viewer-diag: join session=bc45c2e2 conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/26 18:21:36.126185 viewer-diag: replay session=bc45c2e2 conn=1 mode=full bytes=212 resume=false
+2026/11/26 18:21:36.126338 viewer-diag: grid session=bc45c2e2 0x0 -> 100x29 by=local client="" conn=1 why=bootstrap
+2026/11/26 18:21:42.122136 viewer-diag: leave session=bc45c2e2 conn=1 origin=local client="" viewers=0
+2026/11/26 18:21:42.220800 viewer-diag: join session=d2b56d91 conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/26 18:21:42.220929 viewer-diag: replay session=d2b56d91 conn=1 mode=full bytes=213 resume=false
+2026/11/26 18:21:42.221325 viewer-diag: grid session=d2b56d91 0x0 -> 100x29 by=local client="" conn=1 why=bootstrap
+2026/11/26 18:21:48.211916 viewer-diag: leave session=d2b56d91 conn=1 origin=local client="" viewers=0
+2026/11/26 18:22:28.727703 handoff: takeover pid 18934 (build "v19.0.1") accepted
+2026/11/26 18:22:28.741849 viewer-diag: restart session=bc45c2e2 viewers=0
+2026/11/26 18:22:28.741898 viewer-diag: restart session=d2b56d91 viewers=0
+2026/11/26 18:22:28.741917 handoff: committed: 2 sessions moved to pid 18934 in 15ms; exiting
+--- gui.log tail (open --stderr, from start-gui; update-check noise dropped)
+2026/11/26 18:21:02 daemon: launchd agent: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
+2026/11/26 18:21:02 daemon: started without launchd: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
+2026/11/26 18:22:26 daemon: launchd agent: ready (state 0)
+2026/11/26 18:22:26 daemon: re-home requested

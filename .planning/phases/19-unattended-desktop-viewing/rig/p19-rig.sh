@@ -219,7 +219,7 @@ for L in \$LABEL portty-daemon; do
   echo "--- launchd \$L"
   echo "plist_exists=\$([ -f "\$HOME/Library/LaunchAgents/\$L.plist" ] && echo yes || echo no)"
   [ -f "\$HOME/Library/LaunchAgents/\$L.plist" ] && plutil -p "\$HOME/Library/LaunchAgents/\$L.plist" | tr '\n' ' ' && echo
-  launchctl print "gui/\$UIDN/\$L" 2>&1 | grep -E '^[[:space:]]*(state|pid|last exit code|runs) = |Could not find service' | head -8
+  launchctl print "gui/\$UIDN/\$L" 2>&1 | grep -E '^[[:space:]]*(state|pid|last exit code|last terminating signal|runs) = |Could not find service' | head -8
 done
 echo "--- launchctl print-disabled (portty labels)"
 launchctl print-disabled "gui/\$UIDN" 2>&1 | grep -i 'portty' | grep -v spike
@@ -248,10 +248,11 @@ for id in \$ids; do
   page=-; [ -n "\$ptick" ] && page=\$((now - \$(echo \$ptick | cut -d' ' -f3)))
   echo "session \$id shell_pid=\$spid alive=\$alive \$stats pty_last_tick=\"\$ptick\" pty_age=\$page"
 done
-echo "--- daemon.log tail"
+echo "--- daemon.log.1 / daemon.log (mtime, size) and daemon.log tail"
+for f in daemon.log daemon.log.1; do stat -f "\$f %z bytes mtime %Sm" -t %T "\$CFG/\$f" 2>&1; done
 tail -n 25 "\$CFG/daemon.log" 2>&1
-echo "--- gui.log tail (open --stderr, from start-gui)"
-tail -n 25 ~/p19/gui.log 2>&1
+echo "--- gui.log tail (open --stderr, from start-gui; update-check noise dropped)"
+grep -v 'update: check failed' ~/p19/gui.log 2>&1 | tail -n 25
 exit 0
 EOF
   cat "$tmp"

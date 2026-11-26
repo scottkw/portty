@@ -1,0 +1,24 @@
+p19-state row=V2-disabled-pre vm_utc=2026-11-26T18:20:51Z epoch=1795717251
+installed_version=19.0.1
+--- launchd app.portty.Portty.daemon
+plist_exists=yes
+{   "AbandonProcessGroup" => true   "KeepAlive" => {     "SuccessfulExit" => false   }   "Label" => "app.portty.Portty.daemon"   "ProgramArguments" => [     0 => "/Applications/Portty.app/Contents/MacOS/Portty"     1 => "daemon"   ]   "RunAtLoad" => true } 
+	state = not running
+	runs = 2
+	last exit code = 0
+		state = active
+		state = active
+--- launchd portty-daemon
+plist_exists=no
+Could not find service "portty-daemon" in domain for user gui: 501
+--- launchctl print-disabled (portty labels)
+		"app.portty.Portty.daemon" => disabled
+		"portty-daemon" => enabled
+--- processes (pid ppid etime args)
+--- health
+
+daemon_pids=
+--- sessions (id, shell pid, alive, ticks, last file tick age, max gap s, last pty tick age)
+--- daemon.log tail
+--- gui.log tail (open --stderr, from start-gui)
+tail: ~/p19/gui.log: No such file or directory

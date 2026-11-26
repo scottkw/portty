@@ -1,0 +1,29 @@
+p19-state row=V2-disabled vm_utc=2026-11-26T18:21:11Z epoch=1795717271
+installed_version=19.0.1
+--- launchd app.portty.Portty.daemon
+plist_exists=yes
+{   "AbandonProcessGroup" => true   "KeepAlive" => {     "SuccessfulExit" => false   }   "Label" => "app.portty.Portty.daemon"   "ProgramArguments" => [     0 => "/Applications/Portty.app/Contents/MacOS/Portty"     1 => "daemon"   ]   "RunAtLoad" => true } 
+	state = not running
+	runs = 2
+	last exit code = 0
+		state = active
+		state = active
+--- launchd portty-daemon
+plist_exists=no
+Could not find service "portty-daemon" in domain for user gui: 501
+--- launchctl print-disabled (portty labels)
+		"app.portty.Portty.daemon" => disabled
+		"portty-daemon" => enabled
+--- processes (pid ppid etime args)
+18339     1       00:11 /Applications/Portty.app/Contents/MacOS/Portty
+18361 18339       00:10 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- health
+{"status":"ok","version":"v19.0.1","api":5,"handoff":1,"pid":18361}
+
+daemon_pids=18361
+daemon 18361 ppid=18339 xpc_service_name=application.app.portty.Portty.827335.827342
+--- sessions (id, shell pid, alive, ticks, last file tick age, max gap s, last pty tick age)
+--- daemon.log tail
+--- gui.log tail (open --stderr, from start-gui)
+2026/11/26 18:21:02 daemon: launchd agent: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
+2026/11/26 18:21:02 daemon: started without launchd: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
