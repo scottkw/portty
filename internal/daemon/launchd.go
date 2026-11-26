@@ -376,6 +376,11 @@ func AgentControl(action string) error {
 		if err != nil {
 			return err
 		}
+		// As the GUI's installedExecutable: a symlink path in the plist made the
+		// two keep rewriting each other's plist.
+		if r, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+			exe = r
+		}
 		_, err = EnsureAgent(ctx, exe)
 		return err
 	case "uninstall":

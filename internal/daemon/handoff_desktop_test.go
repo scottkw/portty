@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -17,6 +18,8 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/scottkw/portty/internal/desktop"
+	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/webserver"
 )
 
 // desktopHandoff is a handoff scene with the always-available desktop on in the
@@ -170,6 +173,49 @@ func TestHandoffDesktop_NoListenerFromOldSide(t *testing.T) {
 	}
 	if sess, ok := n.engine.registry.Get(s.ids[0]); !ok || sess.Pid() != s.pids[0] {
 		t.Errorf("session pid after = %v, want %d", sess, s.pids[0])
+	}
+}
+
+// Quick 261126-oq0: with only always-available needing the share server, a
+// takeover that cannot build it (newServer fails) or is handed a listener it
+// refuses (CheckListener) still commits; the sessions matter more and the
+// poller starts the server after the old daemon exits.
+func TestHandoffDesktop_UnusableServerStillCommits(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		newServer func(*testing.T) func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error)
+	}{
+		{"newServer fails", func(*testing.T) func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error) {
+			return func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error) {
+				return nil, errors.New("injected")
+			}
+		}},
+		{"listener refused", func(t *testing.T) func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error) {
+			var built atomic.Int32
+			return fixedPortShareServer(freeTCPPort(t), &built) // never the received listener's port
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := captureDiag(t)
+			d, _ := newDesktopHandoff(t, true, tickScript(false))
+			s := d.handoffScene
+			n := d.takeoverAPI()
+			n.SetShareSeamsForTest(healthyTailnet, tc.newServer(t), s.warmSeam)
+			code := runTakeover(context.Background(), takeoverDeps{socketPath: s.socket, lockPath: s.lockPath, api: n, build: BuildVersion})
+			if code != takeoverCommitted {
+				t.Fatalf("runTakeover = %d, want 0 (events %v)", code, s.events)
+			}
+			s.waitExit(s.oldExits, "old daemon", 0)
+			if !strings.Contains(string(logs.bytes()), "always-available server starts after the old daemon exits") {
+				t.Errorf("finalize did not take the desktop-only branch; log:\n%s", logs.bytes())
+			}
+			if sess, ok := n.engine.registry.Get(s.ids[0]); !ok || sess.Pid() != s.pids[0] {
+				t.Errorf("session pid after = %v, want %d", sess, s.pids[0])
+			}
+			if err := syscall.Kill(s.pids[0], 0); err != nil {
+				t.Errorf("shell (pid %d) is gone: %v", s.pids[0], err)
+			}
+		})
 	}
 }
 

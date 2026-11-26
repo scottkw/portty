@@ -859,3 +859,31 @@ func TestDesktopAPI_UserspaceRefusalClearsWhileOff(t *testing.T) {
 		t.Errorf("the recheck turned something on: %+v, server running %v", st, shareServerRunning(e.api))
 	}
 }
+
+// Quick 261126-oq0: a poll that has to start the share server warms the
+// certificate before it takes the write gate (as desktopOn does), so a
+// handoff's 1 s drain never waits on a 20 s warm-up.
+func TestDesktopAPI_TickWarmsCertOutsideWriteGate(t *testing.T) {
+	e := newDesktopEnv(t)
+	var warmed, held atomic.Bool
+	e.api.SetShareSeamsForTest(healthyTailnet, loopbackShareServer, func(context.Context, string) error {
+		warmed.Store(true)
+		if !e.api.writeGate.TryLock() {
+			held.Store(true)
+		} else {
+			e.api.writeGate.Unlock()
+		}
+		return nil
+	})
+	e.api.mu.Lock()
+	e.api.desktopCfg = desktop.Config{SchemaVersion: desktop.ConfigSchemaVersion, AlwaysAvailable: true, GrantID: "0123456789abcdef0123456789abcdef", IAT: 1_700_000_000}
+	e.api.mu.Unlock()
+
+	e.api.desktopTick(context.Background())
+	if !desktopUp(e.api) {
+		t.Fatal("the tick did not bring the desktop up")
+	}
+	if !warmed.Load() || held.Load() {
+		t.Errorf("cert warm-up: called %v, write gate held %v; want called outside the gate", warmed.Load(), held.Load())
+	}
+}

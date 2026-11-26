@@ -600,7 +600,7 @@ func (a *API) desktopTick(ctx context.Context) {
 		return
 	}
 	a.mu.RLock()
-	on := a.desktopCfg.AlwaysAvailable
+	on, running := a.desktopCfg.AlwaysAvailable, a.webServer != nil
 	health, newServer, warmCert, ifaceAddrs := a.shareHealth, a.newShareServer, a.warmCert, a.interfaceAddrs
 	a.mu.RUnlock()
 	if !on {
@@ -618,6 +618,13 @@ func (a *API) desktopTick(ctx context.Context) {
 	}
 	if a.desktopUpToDate(h) {
 		return
+	}
+	if !running { // as desktopOn: the warm-up can take seconds, so it runs outside the write gate
+		if serr := warmShareCert(ctx, warmCert, h.Domain); serr != nil {
+			fmt.Fprintf(os.Stderr, "daemon: desktop not started: %s\n", serr.Code)
+			return
+		}
+		warmCert = func(context.Context, string) error { return nil }
 	}
 	if !a.enterWrite() {
 		return

@@ -168,11 +168,12 @@ func NewAPI(engine *SessionEngine) *API {
 //
 // WR-01 (it2): the drain is short, so no slow route may hold the gate.
 // /peers/connect only caches a peer's cap, which no handoff moves; PUT share
-// takes the gate itself after its slow health check and cert warm-up.
+// and PUT /desktop take the gate themselves after their slow health check and
+// cert warm-up.
 func (a *API) freezeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL.Path == "/handoff" ||
-			r.URL.Path == "/peers/connect" || r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/share") {
+			r.URL.Path == "/peers/connect" || r.Method == http.MethodPut && (strings.HasSuffix(r.URL.Path, "/share") || r.URL.Path == "/desktop") {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -1225,10 +1225,15 @@ func (t *takeover) finalize() error {
 	newServer := a.newShareServer
 	a.mu.RUnlock()
 	ws, err := newServer(t.health, a.engine.Manager())
-	if err != nil {
-		return err
+	if err == nil {
+		err = ws.CheckListener(t.shareLn) // WR-05: before COMMIT, so the old daemon keeps serving
 	}
-	if err := ws.CheckListener(t.shareLn); err != nil { // WR-05: before COMMIT, so the old daemon keeps serving
+	if err != nil {
+		if desktopOnly {
+			log.Printf("handoff: share server unusable (%v); always-available server starts after the old daemon exits", err)
+			t.dropShares()
+			return nil
+		}
 		return err
 	}
 	// wireShareServer denies a.relayPort, but commit serves the relay (and sets
