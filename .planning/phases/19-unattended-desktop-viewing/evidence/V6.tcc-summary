@@ -1,0 +1,16 @@
+# V6: tccd log for the V6 window, 2026-11-26 19:28:00 to 19:33:59 guest UTC, GUI quit, launchd daemon only (rig: tcc-log 20, then reduced; the full extract was 1235 lines)
+# Predicate: subsystem == "com.apple.TCC", lines naming app.portty.Portty
+
+lines naming app.portty.Portty in the window: 1235
+distinct pids named identifier=app.portty.Portty: 137 (the long-lived launchd job, plus 136 other pids that each appear once or twice, as one fresh perm-probe child per probe would; the attribution sample below names the daemon as the child's responsible process; the log does not carry the command line)
+binary_path of the named process: /Applications/Portty.app/Contents/MacOS/Portty (136 lines)
+lines containing "prompt" (case-insensitive) in the window: 0
+com.apple.TCC:events lines `type=Modify, service=kTCCServiceScreenCapture, identifier=app.portty.Portty`: 4 (the two off and two on toggles of the polls above)
+kTCCServiceAccessibility lines: 136, each "attempted to call TCCAccessRequest" at error level from a distinct fresh pid (the Accessibility read of each probe child); none produced a prompt or a dialog (see V6.quiet)
+
+sample, first Modify event:
+2026-11-26 19:28:41.982 Df tccd [com.apple.TCC:events] Publishing <TCCDEvent: type=Modify, service=kTCCServiceScreenCapture, identifier_type=Bundle ID, identifier=app.portty.Portty> to 0 subscribers
+sample, an attribution for a probe child (responsible process is the daemon):
+2026-11-26 19:28:22.582 Df tccd [com.apple.TCC:access] AUTHREQ_ATTRIBUTION: msgID=48873.1, attribution={responsible={TCCDProcess: identifier=app.portty.Portty, pid=41613 ...
+sample, a probe child's Accessibility read:
+2026-11-26 19:28:22.590 E tccd [com.apple.TCC:access] TCCDProcess: identifier=app.portty.Portty, pid=48873, binary_path=/Applications/Portty.app/Contents/MacOS/Portty attempted to call TCCAccessRequest for kTCCServiceAccessibility
