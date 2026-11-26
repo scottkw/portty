@@ -886,6 +886,11 @@ func (m *Manager) Close() error {
 	m.closed = true
 	cancel, done := m.loopCancel, m.loopDone
 	m.mu.Unlock()
+	// Before any viewer is closed: a close handshake can take seconds and the
+	// process may exit first (Quit All, an upgrade's 1 s drain). With closed set
+	// nothing starts a source again, so this stays false and the next process
+	// counts no abnormal exit. A real crash never reaches this line.
+	m.noteCaptureStopped()
 	if cancel != nil {
 		cancel()
 		<-done
@@ -901,7 +906,6 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.stopSourceLocked()
-	m.noteCaptureStopped()
 	m.releaseAllHolds()
 	m.vmu.Lock()
 	for _, v := range m.viewers {

@@ -50,8 +50,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/coder/websocket"
-
 	"github.com/scottkw/portty/internal/desktop"
 	"github.com/scottkw/portty/internal/fdpass"
 	"github.com/scottkw/portty/internal/pty"
@@ -825,7 +823,8 @@ func (a *API) closeDesktopForHandoff() {
 	a.desktopMgr, a.desktopBuiltIP, a.desktopBuiltDomain = nil, "", ""
 	a.mu.Unlock()
 	if mgr != nil {
-		mgr.CloseAll(websocket.StatusServiceRestart, "server restarting")
+		// Close clears captureActive first, then sends the same 1012 to every
+		// viewer. A CloseAll here would put the slow handshakes ahead of the flag.
 		_ = mgr.Close()
 	}
 }
