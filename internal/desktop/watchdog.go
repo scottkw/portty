@@ -122,6 +122,11 @@ func (m *Manager) watchdogStep(ctx context.Context, now time.Time) {
 			return
 		}
 		if !m.axOn(ctx) {
+			if w.retry { // the lapse stays open: the new stream's own frame is not recovery
+				m.noteAwaitSeq(m.frameCount())
+				w.phase, w.retry, w.at, w.nextCheck = wdAwaiting, false, now, now.Add(awaitingRetry)
+				return
+			}
 			w.phase, w.nextCheck = wdIdle, now.Add(awaitingRetry)
 			return
 		}

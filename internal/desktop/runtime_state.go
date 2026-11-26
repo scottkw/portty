@@ -99,6 +99,9 @@ func writeRuntimeState(dir string, rs runtimeState) error {
 	}
 	tmp := f.Name()
 	_, err = f.Write(b)
+	if err == nil {
+		err = f.Sync() // a power cut after the rename must not leave an empty file
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

@@ -265,6 +265,36 @@ func TestWatchdog_AwaitingApprovalOnce(t *testing.T) {
 	}
 }
 
+// Quick 261126-oq0: during a lapse retry, an Accessibility probe that fails
+// (AX off, or a probe error) must keep the lapse open. The frame the restarted
+// stream emits on its own is not recovery: the state stays awaiting approval,
+// LapseSeq stays 1 and no second notification is posted.
+func TestWatchdog_RetryProbeFailKeepsLapse(t *testing.T) {
+	r := newRig(t)
+	r.join()
+	r.driveToAwaiting()
+	eventually(t, 3*time.Second, "awaiting_approval", func() bool { return r.state() == desktop.StateAwaitingApproval })
+
+	n := r.src.count()
+	r.settle(60 * time.Second)
+	eventually(t, 3*time.Second, "restart retry", func() bool { return r.src.count() > n })
+	before := r.env.mgr.FramesSeenForTest()
+	eventually(t, 3*time.Second, "the restarted stream's own frame", func() bool {
+		r.src.last().emit(true)
+		return r.env.mgr.FramesSeenForTest() > before
+	})
+	r.w.set(func() { r.w.perms.AX = false })
+	r.settle(2100 * time.Millisecond)
+	r.settle(2100 * time.Millisecond)
+
+	if st := r.env.mgr.Status(); st.State != desktop.StateAwaitingApproval || st.LapseSeq != 1 {
+		t.Fatalf("after a failed probe in the retry: %+v, want still awaiting with LapseSeq 1", st)
+	}
+	if got := r.w.notified(); len(got) != 1 {
+		t.Fatalf("%d notifications, want 1", len(got))
+	}
+}
+
 func TestWatchdog_NoAXNeverAwaiting(t *testing.T) {
 	logs := captureLogs(t)
 	r := newRig(t)
