@@ -502,7 +502,11 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 	offerDeadline := time.Now().Add(offerTimeout)
 	var offer string
 	for offer == "" {
-		in, err := read(ctx, c, time.Until(offerDeadline))
+		rem := time.Until(offerDeadline)
+		if rem <= 0 {
+			return // read treats a zero wait as unbounded: pings must not extend the handshake
+		}
+		in, err := read(ctx, c, rem)
 		if err != nil {
 			if errors.Is(err, errBadMessage) {
 				reject(ctx, c, errCodeBadMessage)
