@@ -15,6 +15,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -315,10 +317,88 @@ func ManagedByLaunchd(ctx context.Context) bool {
 	return err == nil && pid == os.Getpid()
 }
 
-// LegacyCleanup is a stub until Task 2's GREEN commit.
+// LegacyCleanup removes the kardianos agent `portty daemon install` used to
+// write (label portty-daemon). Its plist file always goes; its job is booted
+// out only when its process is not the lock holder, since bootout SIGTERMs
+// that process and a daemon holding the lock holds every terminal session
+// (research Pitfall 5). An unknown holder (lockHolderPID <= 0) counts as the
+// holder. done is true once the job and the file are both gone; false means
+// call again at the next start, when the holder may have changed.
 func LegacyCleanup(ctx context.Context, lockHolderPID int) (done bool, err error) {
-	return false, errors.New("not implemented")
+	path, err := plistPath(LegacyLabel)
+	if err != nil {
+		return false, err
+	}
+	loaded, pid, err := jobLoaded(ctx, LegacyLabel)
+	if err != nil {
+		return false, err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, err
+	}
+	if pid > 0 && (pid == lockHolderPID || lockHolderPID <= 0) {
+		return false, nil
+	}
+	if loaded {
+		if out, err := runLaunchctl(ctx, "bootout", agentTarget(LegacyLabel)); err != nil {
+			return false, lcFail("bootout", out, err)
+		}
+	}
+	return true, nil
 }
 
-// AgentControl is a stub until Task 2's GREEN commit.
-func AgentControl(action string) error { return errors.New("not implemented") }
+// launchctlTimeout bounds one `portty daemon <action>`.
+const launchctlTimeout = 10 * time.Second
+
+// AgentControl is `portty daemon install|uninstall|start|stop`, on Portty's
+// own LaunchAgent. stop is a SIGTERM to the job's process: the daemon exits 0
+// and KeepAlive SuccessfulExit false leaves it down.
+func AgentControl(action string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), launchctlTimeout)
+	defer cancel()
+	switch action {
+	case "install":
+		exe, err := executablePath()
+		if err != nil {
+			return err
+		}
+		_, err = EnsureAgent(ctx, exe)
+		return err
+	case "uninstall":
+		return uninstallAgent(ctx)
+	case "start":
+		return Kickstart(ctx)
+	case "stop":
+		if out, err := runLaunchctl(ctx, "kill", "SIGTERM", agentTarget(LaunchdLabel)); err != nil {
+			return wrapLaunchctl(lcFail("kill", out, err))
+		}
+		return nil
+	}
+	return fmt.Errorf("unknown daemon action %q", action)
+}
+
+// uninstallAgent boots the idle job out and removes both plists. A running
+// job is refused: ending it would end every session its daemon holds.
+func uninstallAgent(ctx context.Context) error {
+	loaded, pid, err := jobLoaded(ctx, LaunchdLabel)
+	if err != nil {
+		return wrapLaunchctl(err)
+	}
+	if pid > 0 {
+		return ErrAgentRunning
+	}
+	if loaded {
+		if out, err := runLaunchctl(ctx, "bootout", agentTarget(LaunchdLabel)); err != nil {
+			return wrapLaunchctl(lcFail("bootout", out, err))
+		}
+	}
+	path, err := AgentPath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	_, err = LegacyCleanup(ctx, 0)
+	return err
+}

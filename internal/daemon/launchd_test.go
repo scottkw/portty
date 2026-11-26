@@ -451,6 +451,21 @@ func TestEnsureDaemon_LaunchctlErrorsFallBack(t *testing.T) {
 	})
 }
 
+// A Quit All that cancels while launchctl runs makes that call fail; it is no
+// agent error, so nothing is spawned.
+func TestEnsureDaemon_CancelDuringLaunchctlSpawnsNothing(t *testing.T) {
+	r := newStartRig(t, testExe)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(SetLaunchctlForTest(func(context.Context, ...string) ([]byte, error) {
+		cancel()
+		return nil, errors.New("signal: killed")
+	}))
+	err := ensureDaemon(ctx, r.sock, EnsureOptions{OnFallback: func(e error) { r.reasons = append(r.reasons, e) }}, testHooks(nil))
+	if !errors.Is(err, context.Canceled) || len(r.fallbacks) != 0 || len(r.reasons) != 0 {
+		t.Fatalf("err %v, fallbacks %v, reasons %v; want a cancel and no spawn", err, r.fallbacks, r.reasons)
+	}
+}
+
 // T-19-09: with no recorder injected, the detached spawn refuses from a test
 // binary, and so does the launchctl seam: no process and no launchd call.
 func TestEnsureDaemon_FallbackRefusesUnderTest(t *testing.T) {

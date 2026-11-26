@@ -124,13 +124,19 @@ func runDaemonCore(ctx context.Context) {
 	// cannot get it within the wait leaves the running one alone.
 	lock, err := lockDaemon(filepath.Join(filepath.Dir(socketPath), "daemon.lock"), lockWait)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "daemon: already running (lock: %v)\n", err)
+		if errors.Is(err, syscall.EWOULDBLOCK) { // another daemon: exit 0, launchd leaves it
+			fmt.Fprintf(os.Stderr, "daemon: already running (lock: %v)\n", err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "daemon: lock: %v\n", err)
+		daemonExit(1)
 		return
 	}
 	defer lock.Close() // held for the process lifetime
 	launchdManaged = ManagedByLaunchd(ctx)
 	if err := cleanupStaleSocket(socketPath); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: %v\n", err)
+		daemonExit(1)
 		return
 	}
 
@@ -143,6 +149,7 @@ func runDaemonCore(ctx context.Context) {
 	// is effectively a brick for web access.
 	if err := bootstrapCapabilityState(api); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: bootstrap capability state: %v\n", err)
+		daemonExit(1)
 		return
 	}
 
@@ -150,12 +157,14 @@ func runDaemonCore(ctx context.Context) {
 	relayPort, err := startRelay(api)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: start relay: %v\n", err)
+		daemonExit(1)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "daemon: relay listening on port %d\n", relayPort)
 
 	if err := startAPI(api, socketPath); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: start api: %v\n", err)
+		daemonExit(1)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "daemon: listening on %s\n", socketPath)
@@ -271,8 +280,11 @@ func SetFallbackSpawnForTest(fn func(exe string) (<-chan struct{}, func(), error
 }
 
 // EnsureDaemon checks if the daemon is reachable on socketPath. If not, it
-// spawns a detached daemon subprocess using the current binary with "daemon"
-// as the first argument, then polls until the daemon is ready (waitForDaemon).
+// starts it through launchd (launchctl kickstart of Portty's LaunchAgent) and
+// polls until the daemon is ready (waitForDaemon). Only a typed agent error
+// (ErrAgentMissing, ErrAgentRefused, ErrAgentDisabled, ErrAgentUnsafePath,
+// ErrAgentLaunchctl) falls back to a detached daemon subprocess of the current
+// binary, after opts.OnFallback has been told; that daemon is not launchd-managed.
 // A daemon from another build is restarted, after opts.Restart agrees when it
 // has live sessions. When the policy says no, EnsureDaemon returns nil with
 // the old daemon still running: the policy's own "no" is the caller's signal.
@@ -328,7 +340,11 @@ func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h 
 			n := liveSessions(client)
 			moveFailed := ""
 			if n != 0 && !opts.NoHandoff && health.Handoff == HandoffVersion {
-				done, reason, err := handOff(ctx, client, h)
+				hh := h
+				if opts.Start == StartCLI {
+					hh.spawnTakeover = cliTakeover(ctx, client, h, health)
+				}
+				done, reason, err := handOff(ctx, client, hh)
 				if done || err != nil {
 					return err
 				}
@@ -387,16 +403,74 @@ func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h 
 		return fmt.Errorf("EnsureDaemon: locate binary: %w", err)
 	}
 
-	// launchd first: the detached spawn (fallbackSpawn) only when the agent
-	// cannot be used. A test binary reaches the kickstart through an injected
-	// launchctl recorder; its default refuses.
+	// launchd first: the detached spawn (fallbackSpawn) only after a typed agent
+	// error, so terminals always start; the error is surfaced, never silent.
+	// A test binary reaches the kickstart through an injected launchctl
+	// recorder; its default refuses.
 	return startDaemon(ctx, client, h.readyWait, filepath.Join(filepath.Dir(socketPath), "daemon.lock"),
 		func() (<-chan struct{}, func(), error) {
-			if agentStartable(ctx, exe) == nil {
-				return nil, nil, Kickstart(ctx)
+			err := agentStartable(ctx, exe)
+			if err == nil {
+				if err = Kickstart(ctx); err == nil {
+					return nil, nil, nil
+				}
+			}
+			if cerr := ctx.Err(); cerr != nil {
+				return nil, nil, cerr // a cancelled launchctl call is no agent error: spawn nothing
+			}
+			if opts.OnFallback != nil {
+				opts.OnFallback(err)
+			}
+			if opts.Start == StartCLI {
+				_, _ = fmt.Fprintf(h.stderr, "portty: %v\n", err)
 			}
 			return fallbackSpawn(exe)
 		})
+}
+
+// cliTakeover is the CLI's spawnTakeover: it moves a stale daemon's sessions
+// by asking launchd, whose daemon re-homes them (runDaemonCore). With no usable
+// agent it prints the repair sentence and takes over the way the GUI does. If
+// the old daemon is the launchd job itself there is no second job to re-home
+// from, so the move reports failed and the restart question follows.
+func cliTakeover(ctx context.Context, client *DaemonClient, h ensureHooks, old HealthResponse) func(string) (int, <-chan int, error) {
+	return func(exe string) (int, <-chan int, error) {
+		out := make(chan int, 1)
+		if old.Launchd {
+			out <- takeoverFailed
+			return 0, out, nil
+		}
+		if err := agentStartable(ctx, exe); err != nil {
+			_, _ = fmt.Fprintf(h.stderr, "portty: %v\n", err)
+			return h.spawnTakeover(exe)
+		}
+		go func() { out <- launchdTakeover(ctx, client, h.readyWait) }()
+		return 0, out, nil
+	}
+}
+
+// launchdTakeover kickstarts the job and waits, up to wait, for this build's
+// daemon to answer: it took the sessions over. The outcome code is
+// takeoverCommitted or takeoverFailed; no clock decides a handoff's result, it
+// only bounds how long a job that never re-homes is waited for.
+func launchdTakeover(ctx context.Context, client *DaemonClient, wait time.Duration) int {
+	if err := Kickstart(ctx); err != nil {
+		return takeoverFailed
+	}
+	deadline := time.Now().Add(wait)
+	for {
+		if v, err := client.GetDaemonVersion(); err == nil && !StaleVersion(v) {
+			return takeoverCommitted
+		}
+		if !time.Now().Before(deadline) {
+			return takeoverFailed
+		}
+		select {
+		case <-ctx.Done():
+			return takeoverFailed
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
 
 // handOff starts a takeover and waits for its outcome code; no clock decides

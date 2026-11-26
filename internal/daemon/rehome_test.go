@@ -17,7 +17,7 @@ func shortHome(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(d) })
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
 	t.Setenv("HOME", d)
 	t.Setenv("XDG_CONFIG_HOME", d)
 	t.Setenv("XPC_SERVICE_NAME", "")
@@ -82,7 +82,7 @@ func TestRunDaemonCore_ExitCodes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer lock.Close()
+		defer func() { _ = lock.Close() }()
 		runDaemonCore(context.Background())
 		if len(*codes) != 0 {
 			t.Fatalf("daemonExit calls = %v, want none (exit 0, launchd leaves it down)", *codes)
