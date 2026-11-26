@@ -341,7 +341,7 @@ func TestRunMover_InstallerStartFailureLogsNoPath(t *testing.T) {
 		bundle      error
 		copyErr     error
 	}{
-		{name: "bundle", bundle: &os.PathError{Op: "lstat", Path: "/Users/someone/Applications/Portty.app", Err: os.ErrNotExist},
+		{name: "bundle", bundle: &os.PathError{Op: "lstat", Path: "/home-fake/Applications/Portty.app", Err: os.ErrNotExist},
 			alert: "Portty couldn't install the update."},
 		{name: "copy-check", copyErr: fmt.Errorf("%w: app-codesign", updater.ErrSafety),
 			alert: "The new version didn't pass the safety check, so it wasn't installed."},
