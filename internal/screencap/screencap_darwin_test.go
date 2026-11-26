@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -85,6 +88,121 @@ func TestDisplaySource_EmitWhenFull(t *testing.T) {
 	d.emit(unit(6, true)) // full: a keyframe evicts the oldest unit
 	if got := drain(); !bytes.Equal(got, []byte{5, 6}) {
 		t.Errorf("keyframe into a full queue: queue = %v, want [5 6]", got)
+	}
+}
+
+// Every bridge that holds the Mac awake, posts an event or reads TCC refuses
+// inside a test binary; the three pure reads are safe and just must not fail.
+func TestSysBridges_RefuseUnderTest(t *testing.T) {
+	if _, err := HoldDisplayAwake("test"); !errors.Is(err, ErrRefusedInTest) {
+		t.Errorf("HoldDisplayAwake = %v, want ErrRefusedInTest", err)
+	}
+	if _, err := HoldSystemAwake("test"); !errors.Is(err, ErrRefusedInTest) {
+		t.Errorf("HoldSystemAwake = %v, want ErrRefusedInTest", err)
+	}
+	if err := DeclareRemoteUserActivity("test"); !errors.Is(err, ErrRefusedInTest) {
+		t.Errorf("DeclareRemoteUserActivity = %v, want ErrRefusedInTest", err)
+	}
+	if moved, err := NudgePointer(); !errors.Is(err, ErrRefusedInTest) || moved {
+		t.Errorf("NudgePointer = %v, %v; want false, ErrRefusedInTest", moved, err)
+	}
+	if _, err := Preflight(); !errors.Is(err, ErrRefusedInTest) {
+		t.Errorf("Preflight = %v, want ErrRefusedInTest", err)
+	}
+
+	locked, err := SessionLocked()
+	if err != nil {
+		t.Errorf("SessionLocked: %v", err)
+	}
+	asleep, err := DisplayAsleep()
+	if err != nil {
+		t.Errorf("DisplayAsleep: %v", err)
+	}
+	ac, err := OnACPower()
+	if err != nil {
+		t.Errorf("OnACPower: %v", err)
+	}
+	t.Logf("reads (not asserted): locked=%v displayAsleep=%v onAC=%v", locked, asleep, ac)
+}
+
+func TestNudgeDirection(t *testing.T) {
+	const minX, maxX = 0.0, 1470.0
+	for name, c := range map[string]struct{ x, want float64 }{
+		"right edge":    {maxX - 0.5, -1},
+		"left edge":     {minX, 1},
+		"mid screen":    {735, 1},
+		"just inside":   {maxX - 2.5, 1},
+		"within a step": {maxX - 1, -1},
+	} {
+		if got := nudgeDelta(c.x, minX, maxX); got != c.want {
+			t.Errorf("%s: nudgeDelta(%v) = %v, want %v", name, c.x, got, c.want)
+		}
+	}
+	if got := nudgeDelta(0.5, 0, 1); got != 1 {
+		t.Errorf("a display narrower than the step still gets +1, got %v", got)
+	}
+}
+
+// The live permission reads exist in exactly one file, because a long-running
+// process caches the first answer (research C1); no prompting variant exists.
+func TestPreflightSymbols_OnlyInPreflightFile(t *testing.T) {
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for ; ; root = filepath.Dir(root) {
+		if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
+			break
+		}
+		if root == filepath.Dir(root) {
+			t.Fatal("go.mod not found above the test directory")
+		}
+	}
+	const home = "internal/screencap/preflight_darwin.m"
+	reads := []string{"CGPreflightScreenCaptureAccess", "AXIsProcessTrusted", "CGPreflightPostEventAccess"}
+	banned := []string{"CGRequestScreenCaptureAccess", "CGRequestPostEventAccess", "kAXTrustedCheckOptionPrompt"}
+	sourceExt := map[string]bool{".go": true, ".m": true, ".h": true, ".c": true, ".swift": true, ".ts": true, ".tsx": true, ".js": true, ".sh": true, ".md": true, ".yml": true, ".yaml": true}
+	skipDir := map[string]bool{".git": true, "node_modules": true, "spike": true, ".claude": true, ".planning": true}
+
+	found := map[string][]string{} // symbol -> files
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if skipDir[d.Name()] || rel == "frontend/dist" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !sourceExt[filepath.Ext(path)] || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, sym := range append(slices.Clone(reads), banned...) {
+			if bytes.Contains(data, []byte(sym)) {
+				found[sym] = append(found[sym], rel)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sym := range reads {
+		if !slices.Equal(found[sym], []string{home}) {
+			t.Errorf("%s found in %v, want only %s", sym, found[sym], home)
+		}
+	}
+	for _, sym := range banned {
+		if len(found[sym]) > 0 {
+			t.Errorf("prompting API %s found in %v", sym, found[sym])
+		}
 	}
 }
 
