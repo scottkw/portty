@@ -202,7 +202,7 @@ Plans:
   3. Several viewers can watch at once, and a new viewer gets a picture right away. Each viewer comes back by itself after a network drop, Mac sleep and wake, or a Portty upgrade, showing "Reconnecting" in the meantime. Always-available links, including one saved to an iPhone Home Screen, keep working across daemon restarts and upgrades. (DESK-03, DESK-04, DSHR-02)
   4. Desktop media stays on the tailnet. No STUN, TURN or cloud server is contacted, and no desktop socket binds a non-tailnet address; tests assert both. The office Mac and the home Mac reach each other on a direct tailnet path (tailscale ping reads direct). A desktop link never opens a terminal session and a terminal link never opens the desktop; cross-token tests refuse both. (DESK-02, DSHR-08)
   5. Terminal sessions never regress. With the desktop share on, a Portty upgrade still hands every terminal session to the new daemon with PIDs and history intact. Turning the desktop share on or off never takes the share server away from terminal viewers, and the reverse holds too. (DSHR-02, DESK-03; guards the validated UPGR-01..05)
-**Plans**: 6/17 plans executed
+**Plans**: 10/17 plans executed
 
 Plans:
 **Wave 1**
@@ -216,10 +216,10 @@ Plans:
 - [x] 19-17-PLAN.md — GUI on the launchd start path: agent install from installed bundles, repair state with Open Login Items, re-home retry
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 19-06-PLAN.md — Browser viewer: desktopview mode, desktopClient (pluggable transport, pre-redial hook, wake events, backoff), DesktopView states and video rect, CSP e2e
-- [ ] 19-07-PLAN.md — VM launchd rows (install, kickstart, repair state, re-home, stop, legacy end state)
-- [ ] 19-08-PLAN.md — Daemon wiring: desktop.json, /desktop API, serverNeeded(), health poller, userspace refusal, revocation, production DisplaySource
-- [ ] 19-09-PLAN.md — State and recovery: precedence and push, Locked(), stall watchdog, lapse signals and one-sender claim, viewer and AC-only assertions, restart after wake, crash-loop breaker
+- [x] 19-06-PLAN.md — Browser viewer: desktopview mode, desktopClient (pluggable transport, pre-redial hook, wake events, backoff), DesktopView states and video rect, CSP e2e
+- [x] 19-07-PLAN.md — VM launchd rows (install, kickstart, repair state, re-home, stop, legacy end state)
+- [x] 19-08-PLAN.md — Daemon wiring: desktop.json, /desktop API, serverNeeded(), health poller, userspace refusal, revocation, production DisplaySource
+- [x] 19-09-PLAN.md — State and recovery: precedence and push, Locked(), stall watchdog, lapse signals and one-sender claim, viewer and AC-only assertions, restart after wake, crash-loop breaker
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 19-10-PLAN.md — Handoff with the desktop on: listener passed under serverNeeded, viewers reconnect, HandoffVersion stays 1
@@ -299,7 +299,7 @@ Plans:
 | 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
 | 18. Self-Installing Updates | v2.0 | 10/10 | Complete    | 2026-11-26 |
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
-| 19. Unattended Desktop Viewing | v2.0 | 6/17 | In Progress | - |
+| 19. Unattended Desktop Viewing | v2.0 | 10/17 | In Progress | - |
 | 20. Remote Control | v2.0 | 0/TBD | Not started | - |
 | 21. Portty App and iPhone Viewers | v2.0 | 0/TBD | Not started | - |
 | 22. Click-to-Share for Tailnet People | v2.0 | 0/TBD | Not started | - |
