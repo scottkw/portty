@@ -556,10 +556,35 @@ exit 0
 EOF
 }
 
+# safari-join: reload the desktop window (a fresh join) and poll the debug counters every ~0.2 s
+# until the first frame is decoded; prints milliseconds since the page finished loading. Used by
+# F2 (each viewer decodes within 2 s of joining).
+cmd_safari_join() {
+  svreq
+  svsh <<'EOF' | scrub
+D=http://127.0.0.1:4444
+SID=$(cat ~/p19/safari.sid)
+[ -f ~/p19/win-desktop.txt ] && curl -s -m 10 -X POST $D/session/$SID/window -d "$(jq -nc --arg h "$(cat ~/p19/win-desktop.txt)" '{handle:$h}')" >/dev/null
+ms() { perl -MTime::HiRes=time -e 'printf "%d", time*1000'; }
+curl -s -m 60 -X POST $D/session/$SID/url -d "$(jq -nc --arg u "$(cat ~/p19/link.txt)#debug" '{url:$u}')" >/dev/null
+t0=$(ms)
+first=
+for i in $(seq 1 60); do
+  s=$(curl -s -m 10 -X POST $D/session/$SID/execute/sync -d '{"script":"return JSON.stringify(window.__desktopStats||null)","args":[]}' | jq -r '.value|tostring' | jq -c '[.status,.viewers,.framesDecoded]' 2>/dev/null)
+  n=$(( $(ms) - t0 ))
+  echo "p19-join +${n}ms $s"
+  fd=$(echo "$s" | jq -r '.[2]' 2>/dev/null)
+  if [ -z "$first" ] && [ "${fd:-0}" != null ] && [ "${fd:-0}" -gt 0 ] 2>/dev/null; then first=$n; echo "p19-join first_frame_ms=$first"; break; fi
+  sleep 0.1
+done
+exit 0
+EOF
+}
+
 # safari-page: the desktop window's visible text and title (the static off page and the cards).
 cmd_safari_page() {
   svreq
-  svsh <<'EOF' | scrub
+  svsh "${1:-}" <<'EOF' | scrub
 D=http://127.0.0.1:4444
 SID=$(cat ~/p19/safari.sid)
 [ -f ~/p19/win-desktop.txt ] && curl -s -m 10 -X POST $D/session/$SID/window -d "$(jq -nc --arg h "$(cat ~/p19/win-desktop.txt)" '{handle:$h}')" >/dev/null
@@ -737,6 +762,7 @@ case "$sub" in
   safari-wins) cmd_safari_wins ;;
   safari-both) cmd_safari_both "$@" ;;
   safari-page) cmd_safari_page "$@" ;;
+  safari-join) cmd_safari_join ;;
   chrome-open) cmd_chrome_open ;;
   chrome-titles) cmd_chrome_titles "$@" ;;
   chrome-close) cmd_chrome_close ;;

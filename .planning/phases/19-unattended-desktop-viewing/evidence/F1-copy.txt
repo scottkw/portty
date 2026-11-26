@@ -1,0 +1,3 @@
+# F1: Copy Link, then the clipboard check (link compared inside the VM; only yes/no and a length are kept)
+desktop link on clipboard: yes (length 243); same as the daemon's link: yes
+       AXButton Title=Copied! DOMClassList=(     button,     "button--secondary",     "button--copy" ) @865,465 76x24

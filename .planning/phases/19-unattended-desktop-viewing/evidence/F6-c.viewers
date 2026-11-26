@@ -1,0 +1,22 @@
+# before the terminal share is turned off (desktop on, viewer streaming)
+p19-both t=1 epoch=1795727398 desk=["streaming","streaming",1,735] term={"len":2189,"first":1,"last":2183,"lastEpoch":1795727397,"count":2183,"breaks":0}
+p19-both t=2 epoch=1795727399 desk=["streaming","streaming",1,750] term={"len":2191,"first":1,"last":2185,"lastEpoch":1795727399,"count":2185,"breaks":0}
+p19-both t=3 epoch=1795727401 desk=["streaming","streaming",1,785] term={"len":2192,"first":1,"last":2186,"lastEpoch":1795727400,"count":2186,"breaks":0}
+turn terminal share off at guest epoch 1795727402
+clickby: clicked 'AXCheckBox [AXSwitch] Title=Share this session Value=1 DOMIdentifier=s' at 1192,106
+# after the terminal share is turned off
+p19-both t=1 epoch=1795727408 desk=["streaming","streaming",1,903] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=2 epoch=1795727410 desk=["streaming","streaming",1,934] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=3 epoch=1795727411 desk=["streaming","streaming",1,951] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=4 epoch=1795727412 desk=["streaming","streaming",1,969] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=5 epoch=1795727413 desk=["streaming","streaming",1,987] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=6 epoch=1795727415 desk=["streaming","streaming",1,1023] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=7 epoch=1795727416 desk=["streaming","streaming",1,1042] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=8 epoch=1795727417 desk=["streaming","streaming",1,1060] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=9 epoch=1795727418 desk=["streaming","streaming",1,1080] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=10 epoch=1795727420 desk=["streaming","streaming",1,1116] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=11 epoch=1795727421 desk=["streaming","streaming",1,1134] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+p19-both t=12 epoch=1795727422 desk=["streaming","streaming",1,1151] term={"len":2194,"first":1,"last":2188,"lastEpoch":1795727403,"count":2188,"breaks":0}
+sessions: [{"id":"debd9ff3","webEnabled":false,"viewerCount":0},{"id":"ce152707","webEnabled":false,"viewerCount":0}]
+GET /desktop: {"alwaysAvailable":true,"state":"streaming","viewers":1}
+lsof 7444 listeners: 2

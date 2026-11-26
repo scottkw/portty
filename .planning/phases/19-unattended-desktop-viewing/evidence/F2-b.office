@@ -1,0 +1,13 @@
+# F2-b-office-safari: Safari in the office VM opens its own link (guest epoch of the office VM per poll)
+p19-safari t=1 stats=null title=Portty
+p19-safari t=2 stats={"status":"connecting","state":"","viewers":0,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=connecting)
+p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":106062,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+p19-safari t=4 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":130476,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+p19-safari t=5 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":11,"frameWidth":2560,"frameHeight":1440,"bytesReceived":262074,"cspViolations":0} title=Portty Desktop (debug fd=11 fw=2560 csp=0 st=streaming)
+p19-safari t=6 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":24,"frameWidth":2560,"frameHeight":1440,"bytesReceived":333734,"cspViolations":0} title=Portty Desktop (debug fd=24 fw=2560 csp=0 st=streaming)
+p19-safari t=7 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":39,"frameWidth":2560,"frameHeight":1440,"bytesReceived":343542,"cspViolations":0} title=Portty Desktop (debug fd=39 fw=2560 csp=0 st=streaming)
+p19-safari t=8 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":50,"frameWidth":2560,"frameHeight":1440,"bytesReceived":354576,"cspViolations":0} title=Portty Desktop (debug fd=50 fw=2560 csp=0 st=streaming)
+p19-safari t=9 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":81,"frameWidth":2560,"frameHeight":1440,"bytesReceived":431754,"cspViolations":0} title=Portty Desktop (debug fd=81 fw=2560 csp=0 st=streaming)
+p19-safari t=10 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":90,"frameWidth":2560,"frameHeight":1440,"bytesReceived":439722,"cspViolations":0} title=Portty Desktop (debug fd=90 fw=2560 csp=0 st=streaming)
+p19-safari t=11 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":101,"frameWidth":2560,"frameHeight":1440,"bytesReceived":445852,"cspViolations":0} title=Portty Desktop (debug fd=101 fw=2560 csp=0 st=streaming)
+p19-safari t=12 stats={"status":"streaming","state":"streaming","viewers":3,"framesDecoded":115,"frameWidth":2560,"frameHeight":1440,"bytesReceived":516286,"cspViolations":0} title=Portty Desktop (debug fd=133 fw=2560 csp=0 st=streaming)

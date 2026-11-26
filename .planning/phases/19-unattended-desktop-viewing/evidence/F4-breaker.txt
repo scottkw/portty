@@ -1,0 +1,6 @@
+# desktop-state.json read after F4 attempt 1 (guest epochs; abnormalExits are the capture-active flags a process left behind)
+# 1795725533 = F5 attempt 1, takeover daemon start (old daemon had not cleared captureActive before the takeover read it)
+# 1795725911 = F5 attempt 2, same
+# 1795727457 = the kill -9 of F4 attempt 1
+{"schemaVersion":1,"captureActive":false,"abnormalExits":[1795725533,1795725911,1795727457]}
+# daemon log: WARN desktop: previous capture ended abnormally recent=3 / ERROR desktop: capture paused after repeated abnormal exits; a successful Test Capture resumes it exits=3

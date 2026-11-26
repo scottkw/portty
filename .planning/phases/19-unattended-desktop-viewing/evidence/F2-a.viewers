@@ -1,0 +1,5 @@
+# F2-a: one viewer (Safari in the home VM) before the others join
+p19-safari t=1 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":108,"frameWidth":2560,"frameHeight":1440,"bytesReceived":2798559,"cspViolations":0} title=Portty Desktop (debug fd=108 fw=2560 csp=0 st=streaming)
+p19-safari t=2 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":109,"frameWidth":2560,"frameHeight":1440,"bytesReceived":2837398,"cspViolations":0} title=Portty Desktop (debug fd=109 fw=2560 csp=0 st=streaming)
+p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":109,"frameWidth":2560,"frameHeight":1440,"bytesReceived":2837398,"cspViolations":0} title=Portty Desktop (debug fd=109 fw=2560 csp=0 st=streaming)
+GET /desktop: {"state":"streaming","viewers":1}

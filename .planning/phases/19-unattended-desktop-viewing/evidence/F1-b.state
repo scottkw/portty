@@ -1,0 +1,57 @@
+p19-state row=F1-b vm_utc=2026-11-26T21:18:10Z epoch=1795727890
+installed_version=19.2.3
+--- launchd app.portty.Portty.daemon
+plist_exists=yes
+{   "AbandonProcessGroup" => true   "KeepAlive" => {     "SuccessfulExit" => false   }   "Label" => "app.portty.Portty.daemon"   "ProgramArguments" => [     0 => "/Applications/Portty.app/Contents/MacOS/Portty"     1 => "daemon"   ]   "RunAtLoad" => true } 
+	state = not running
+	runs = 18
+	last exit code = 0
+		state = active
+		state = active
+--- launchd portty-daemon
+plist_exists=no
+Could not find service "portty-daemon" in domain for user gui: 501
+--- launchctl print-disabled (portty labels)
+		"app.portty.Portty.daemon" => disabled
+		"portty-daemon" => enabled
+--- processes (pid ppid etime args)
+36753     1       00:08 /Applications/Portty.app/Contents/MacOS/Portty
+36779 36753       00:08 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- health
+{"status":"ok","version":"v19.2.3","api":5,"handoff":1,"pid":36779}
+
+daemon_pids=36779
+daemon 36779 ppid=36753 xpc_service_name=application.app.portty.Portty.836795.836802
+--- sessions (id, shell pid, alive, ticks, last file tick age, max gap s, last pty tick age)
+--- daemon.log.1 / daemon.log (mtime, size) and daemon.log tail
+daemon.log 298 bytes mtime 21:18:04
+daemon.log.1 284 bytes mtime 21:18:02
+2026/11/26 21:18:03.396091 WARN desktop: previous capture ended abnormally recent=3
+2026/11/26 21:18:03.396437 ERROR desktop: capture paused after repeated abnormal exits; a successful Test Capture resumes it exits=3
+2026/11/26 21:18:04.710851 INFO desktop: viewer joined viewer=703917f0 viewers=1
+--- gui.log tail (open --stderr, from start-gui; update-check noise dropped)
+2026/11/26 20:11:55 update: up to date
+2026/11/26 20:13:51 daemon: launchd agent: ready (state 0)
+2026/11/26 20:14:01 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026-11-26 20:14:01.456 Portty[71188:1405705] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 1)
+2026-11-26 20:14:01.475 Portty[71188:1405761] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+2026/11/26 20:14:01 update: up to date
+2026/11/26 20:14:50 daemon: launchd agent: ready (state 0)
+2026/11/26 20:27:48 daemon: launchd agent: ready (state 0)
+2026/11/26 20:27:59 update: up to date
+2026/11/26 20:38:49 daemon: launchd agent: ready (state 0)
+2026/11/26 20:38:53 daemon: re-home requested
+2026/11/26 20:39:03 update: up to date
+2026/11/26 20:39:23 daemon: re-home requested
+2026/11/26 20:45:09 daemon: launchd agent: ready (state 0)
+2026/11/26 20:45:11 daemon: re-home requested
+2026/11/26 20:45:21 update: up to date
+2026/11/26 20:45:41 daemon: re-home requested
+2026/11/26 20:49:28 daemon: launchd agent: ready (state 0)
+2026/11/26 20:49:31 daemon: re-home requested
+2026/11/26 20:49:42 update: up to date
+2026/11/26 20:50:01 daemon: re-home requested
+2026/11/26 21:16:44 daemon: launchd agent: ready (state 0)
+2026/11/26 21:16:55 update: up to date
+2026/11/26 21:18:02 daemon: launchd agent: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
+2026/11/26 21:18:02 daemon: started without launchd: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.

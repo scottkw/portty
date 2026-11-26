@@ -1,0 +1,16 @@
+AXGroup [AXApplicationDialog] Title=Sharing Description=Sharing DOMClassList=(     dialog,     "dialog--settings" ) @280,82 720x560
+AXStaticText Value=Always-available desktop DOMClassList=(     "settings-row__label" ) @322,349 569x18
+AXStaticText Value=Always-available desktop DOMClassList=( ) @322,350 154x16
+AXGroup DOMClassList=(     "settings-row__description" ) @322,367 569x16
+AXCheckBox [AXSwitch] Title=Always-available desktop Value=1 DOMIdentifier=desktopAlways DOMClassList=(     switch ) @903,355 38x22
+AXStaticText Value=Status DOMClassList=( ) @322,409 39x17
+AXGroup [AXApplicationGroup] DOMClassList=(     "ts-status__text" ) @819,409 123x17
+AXStaticText Value=Streaming to 1 viewer DOMClassList=( ) @819,410 122x15
+AXGroup DOMClassList=(     "settings-row__description" ) @322,470 521x32
+AXButton Title=Copy Link DOMClassList=(     button,     "button--secondary",     "button--copy" ) @855,465 87x24
+AXStaticText Value=Permissions DOMClassList=( ) @322,528 74x16
+AXGroup DOMClassList=(     "settings-row__description" ) @322,545 382x16
+AXGroup [AXApplicationGroup] DOMClassList=(     "ts-status__text",     "ts-status__text--granted" ) @731,536 46x16
+AXStaticText Value=Granted DOMClassList=( ) @731,536 47x16
+AXButton Title=Review Permissions… DOMClassList=(     button,     "button--secondary" ) @785,532 157x24
+AXButton Title=Done DOMClassList=(     button,     "button--primary" ) @903,601 80x29

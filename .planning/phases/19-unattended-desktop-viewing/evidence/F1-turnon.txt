@@ -1,0 +1,4 @@
++256ms AXCheckBox [AXSwitch] Title=Always-available desktop Value=0|
++1647ms CLICKED
++1825ms AXCheckBox [AXSwitch] Title=Always-available desktop Value=1|AXStaticText Value=Getting a link…|AXButton Title=Copy Link|
++2538ms AXCheckBox [AXSwitch] Title=Always-available desktop Value=1|AXStaticText Value=Ready. Nobody is watching.|AXButton Title=Copy Link|
