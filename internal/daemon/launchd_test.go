@@ -770,7 +770,7 @@ func TestLaunchctl_RefusesUnderTest(t *testing.T) {
 }
 
 func TestAgentPath_RefusesRealHomeUnderTest(t *testing.T) {
-	t.Setenv("HOME", "/Users/someone")
+	t.Setenv("HOME", "/nonexistent-home/someone")
 	f := newFakeLaunchd(t)
 	if _, err := AgentPath(); !errors.Is(err, ErrAgentUnsafePath) {
 		t.Fatalf("AgentPath with a home outside the temp dir = %v, want ErrAgentUnsafePath", err)
@@ -778,7 +778,7 @@ func TestAgentPath_RefusesRealHomeUnderTest(t *testing.T) {
 	if _, err := EnsureAgent(context.Background(), testExe); !errors.Is(err, ErrAgentUnsafePath) {
 		t.Fatalf("EnsureAgent = %v, want ErrAgentUnsafePath", err)
 	}
-	if len(f.calls) != 0 || fileExists("/Users/someone/Library/LaunchAgents") {
+	if len(f.calls) != 0 || fileExists("/nonexistent-home/someone/Library/LaunchAgents") {
 		t.Errorf("nothing may be written or called: %v", f.calls)
 	}
 	t.Setenv("HOME", "")
