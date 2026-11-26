@@ -58,6 +58,7 @@ type tracerEnv struct {
 	ws      *webserver.WebServer
 	mgr     *desktop.Manager
 	backend *testBackend
+	who     *webservertest.WhoIs
 	key     []byte
 	base    string // https://127.0.0.1:<port>
 	client  *http.Client
@@ -73,6 +74,12 @@ func (e *tracerEnv) lastSource() *screencap.SyntheticSource {
 		return nil
 	}
 	return e.sources[len(e.sources)-1]
+}
+
+func (e *tracerEnv) sourceCount() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.sources)
 }
 
 func (e *tracerEnv) token(t *testing.T, grant string) string {
@@ -149,7 +156,8 @@ func newTracerServer(t *testing.T) *tracerEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ws.SetWhoIsClientForTest(webservertest.SameUser())
+	env.who = webservertest.SameUser()
+	ws.SetWhoIsClientForTest(env.who)
 	ws.SetSigningKey(env.key)
 	ws.SetStaticAppFS(fstest.MapFS{"index.html": {Data: []byte(indexHTML)}})
 
@@ -408,4 +416,185 @@ func TestDesktopTracer_LoopbackStream(t *testing.T) {
 			return false
 		}
 	})
+}
+
+// upgradeRequest is a browser-shaped WebSocket upgrade request.
+func (e *tracerEnv) upgradeRequest(t *testing.T, tok, origin string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, e.base+"/desktop/ws?cap="+tok, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+	}
+	return e.client.Do(req)
+}
+
+// TestDesktopWS_RefusesBeforeUpgrade: every refused request ends before the
+// 101, and the backend never sees a socket. Origin is checked before the token
+// is read, and the account gate runs before the token check (DVWR-02).
+func TestDesktopWS_RefusesBeforeUpgrade(t *testing.T) {
+	env := newTracerServer(t)
+	good := env.token(t, "g1")
+	session, err := capability.Sign(capability.Claims{SID: "s1", Perms: "read,write", GrantID: "g1", V: 1}, env.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := capability.SignPort(capability.PortClaims{SID: "s1", Port: 8000, GrantID: "g1", Kind: capability.PortTokenKind, V: 1}, env.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	refused := func(name, tok, origin string, wantStatus int) {
+		t.Helper()
+		resp, err := env.upgradeRequest(t, tok, origin)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusSwitchingProtocols || resp.Header.Get("Upgrade") != "" {
+			t.Errorf("%s: upgraded (status %d)", name, resp.StatusCode)
+		}
+		if resp.StatusCode != wantStatus {
+			t.Errorf("%s: status %d, want %d", name, resp.StatusCode, wantStatus)
+		}
+	}
+
+	refused("no cap", "", env.base, http.StatusUnauthorized)
+	refused("malformed cap", "not-a-token", env.base, http.StatusUnauthorized)
+	refused("session capability", session, env.base, http.StatusUnauthorized)
+	refused("port token", port, env.base, http.StatusUnauthorized)
+	refused("stale grant", env.token(t, "old"), env.base, http.StatusUnauthorized)
+
+	// Origin comes first: a cross-site page gets 403 even with garbage as the
+	// token, so the token was never read; a missing Origin is refused too.
+	refused("cross-site origin", good, "https://evil.example", http.StatusForbidden)
+	refused("cross-site origin, bad token", "not-a-token", "https://evil.example", http.StatusForbidden)
+	refused("no origin", good, "", http.StatusForbidden)
+
+	// The account gate runs before the token check: another account gets 403
+	// with a perfectly good token, on the socket and on the page.
+	env.who.Set(webservertest.Other)
+	refused("other account", good, env.base, http.StatusForbidden)
+	resp, err := env.client.Get(env.base + "/desktop/?cap=" + good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("other account on the page: status %d, want 403", resp.StatusCode)
+	}
+	env.who.Set(webservertest.Same)
+
+	// The link switched off refuses a token that is otherwise good.
+	env.backend.off.Store(true)
+	refused("link off", good, env.base, http.StatusUnauthorized)
+	env.backend.off.Store(false)
+
+	// A session capability does not open the page either.
+	resp, err = env.client.Get(env.base + "/desktop/?cap=" + session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("session capability on the page: status %d, want 401", resp.StatusCode)
+	}
+
+	if n := env.backend.calls.Load(); n != 0 {
+		t.Errorf("backend saw %d sockets, want 0", n)
+	}
+}
+
+// expectRejected reads until the server's error message with the given code
+// arrives, then expects the socket to close with a protocol error.
+func expectRejected(ctx context.Context, t *testing.T, c *websocket.Conn, code string) {
+	t.Helper()
+	m := readType(ctx, t, c, "error")
+	if m["code"] != code {
+		t.Errorf("error code %v, want %q", m["code"], code)
+	}
+	_, _, err := c.Read(ctx)
+	if got := websocket.CloseStatus(err); got != websocket.StatusProtocolError {
+		t.Errorf("after error %q: close status %d (err %v), want 1002", code, got, err)
+	}
+}
+
+// TestDesktopProtocol_Rejects: what the v1 protocol refuses, with its fixed
+// error code, and that nothing before a good offer starts the source.
+func TestDesktopProtocol_Rejects(t *testing.T) {
+	env := newTracerServer(t)
+	tok := env.token(t, "g1")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	open := func() *websocket.Conn {
+		t.Helper()
+		c, _, err := env.dial(ctx, tok)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = c.CloseNow() })
+		return c
+	}
+	hello := map[string]any{"type": "hello", "v": 1}
+
+	c := open()
+	writeJSON(ctx, t, c, map[string]any{"type": "offer", "sdp": "x"})
+	expectRejected(ctx, t, c, "bad_message") // first message is not hello
+
+	c = open()
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 2})
+	expectRejected(ctx, t, c, "version")
+
+	c = open()
+	if err := c.Write(ctx, websocket.MessageText, []byte("not json")); err != nil {
+		t.Fatal(err)
+	}
+	expectRejected(ctx, t, c, "bad_message")
+
+	c = open()
+	writeJSON(ctx, t, c, hello)
+	readType(ctx, t, c, "hello")
+	writeJSON(ctx, t, c, hello) // a second hello before the offer
+	expectRejected(ctx, t, c, "bad_message")
+
+	c = open()
+	writeJSON(ctx, t, c, hello)
+	readType(ctx, t, c, "hello")
+	writeJSON(ctx, t, c, map[string]any{"type": "ping", "n": 7})
+	if pong := readType(ctx, t, c, "pong"); pong["n"] != float64(7) {
+		t.Errorf("pong %v, want n 7", pong)
+	}
+
+	// An SDP pion cannot parse.
+	writeJSON(ctx, t, c, map[string]any{"type": "offer", "sdp": "this is not sdp"})
+	expectRejected(ctx, t, c, "offer_failed")
+
+	// An empty offer.
+	c = open()
+	writeJSON(ctx, t, c, hello)
+	readType(ctx, t, c, "hello")
+	writeJSON(ctx, t, c, map[string]any{"type": "offer"})
+	expectRejected(ctx, t, c, "bad_message")
+
+	// A frame over the 32 KiB read limit closes the socket.
+	c = open()
+	if err := c.Write(ctx, websocket.MessageText, []byte(strings.Repeat("a", 40<<10))); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := c.Read(ctx)
+	if got := websocket.CloseStatus(err); got != websocket.StatusMessageTooBig {
+		t.Errorf("oversized frame: close status %d (err %v), want 1009", got, err)
+	}
+
+	eventually(t, 2*time.Second, "no viewers", func() bool { return env.mgr.Viewers() == 0 })
+	if n := env.sourceCount(); n != 0 {
+		t.Errorf("capture started %d times without a good offer, want 0", n)
+	}
 }
