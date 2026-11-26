@@ -424,14 +424,28 @@ func (a *API) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok", Version: BuildVersion, API: APIVersion, Handoff: HandoffVersion, Launchd: launchdManaged, PID: os.Getpid()})
 }
 
+// shutdownExit is how /shutdown ends the process; a test replaces it.
+var shutdownExit = os.Exit
+
+// shutdownDesktopGrace bounds how long /shutdown waits for the desktop to stop
+// (Manager.Close clears captureActive first, so a late exit still counts clean).
+// Short: a replacement daemon waits on the lock for this process to go.
+const shutdownDesktopGrace = 500 * time.Millisecond
+
 func (a *API) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
 	go func() {
+		stopped := make(chan struct{})
+		go func() { defer close(stopped); a.stopDesktop() }()
+		select {
+		case <-stopped:
+		case <-time.After(shutdownDesktopGrace):
+		}
 		time.Sleep(50 * time.Millisecond)
-		os.Exit(0)
+		shutdownExit(0)
 	}()
 }
 
