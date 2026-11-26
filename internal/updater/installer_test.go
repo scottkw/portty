@@ -27,6 +27,7 @@ type rbOpen struct {
 	res     Result
 	newApp  bool // the target held the new version when it was opened
 	retries int  // Sleep(OpenRetryWait) calls before this Open
+	env     []string
 }
 
 // rbFix drives RunInstaller with a fake clock, a fake process table and real bundles on disk
@@ -128,11 +129,11 @@ func (f *rbFix) env() InstallerEnv {
 			}
 			return Swap(staged, target)
 		},
-		Open: func(ctx context.Context, app string) error {
+		Open: func(ctx context.Context, app string, launchEnv ...string) error {
 			if _, ok := ctx.Deadline(); !ok {
 				f.t.Error("Open called without a per-try deadline")
 			}
-			o := rbOpen{app: app, newApp: siMarker(f.t, f.job.Target) == f.job.NewVersion}
+			o := rbOpen{app: app, newApp: siMarker(f.t, f.job.Target) == f.job.NewVersion, env: launchEnv}
 			for _, d := range f.sleeps {
 				if d == OpenRetryWait {
 					o.retries++
@@ -441,6 +442,43 @@ func TestInstaller_ResultWrittenBeforeOpen(t *testing.T) {
 	}
 }
 
+// WR-04: keepDaemon must reach the relaunched old GUI even when the result file cannot be
+// written (a full disk): it then rides in the launch environment. Any other open carries none.
+func TestInstaller_RollbackKeepDaemonWithoutResultFile(t *testing.T) {
+	keep := []string{KeepDaemonEnv + "=1"}
+	t.Run("result not written", func(t *testing.T) {
+		f := newRbFix(t)
+		blocker := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		f.resDir = filepath.Join(blocker, "sub") // WriteResult cannot create its temp file here
+		f.onOpen = func(bool) { f.gui = []int{500}; f.alive[500] = true }
+		r := f.run()
+		if r.Outcome != OutcomeRolledBack || !r.KeepDaemon {
+			t.Fatalf("result = %+v", r)
+		}
+		if len(f.opens) != 2 || f.opens[0].env != nil || !f.opens[0].newApp || f.opens[1].newApp || !slices.Equal(f.opens[1].env, keep) {
+			t.Errorf("opens = %+v; want the new app with no env, then the old app with %v", f.opens, keep)
+		}
+		if f.logged("installer: result not written") == 0 || f.logged(KeepDaemonEnv) != 1 {
+			t.Errorf("logs = %q", f.logs)
+		}
+	})
+	t.Run("result written", func(t *testing.T) {
+		f := newRbFix(t)
+		f.onOpen = func(bool) { f.gui = []int{500}; f.alive[500] = true }
+		if r := f.run(); r.Outcome != OutcomeRolledBack {
+			t.Fatalf("result = %+v", r)
+		}
+		for i, o := range f.opens {
+			if o.env != nil {
+				t.Errorf("open %d env = %v, want none", i+1, o.env)
+			}
+		}
+	})
+}
+
 func TestInstaller_QuitTimeoutKillsOnlyOldGUI(t *testing.T) {
 	t.Run("listed: killed, install continues", func(t *testing.T) {
 		f := newRbFix(t)
@@ -566,26 +604,34 @@ func TestParseGUIPids(t *testing.T) {
 	exe := "/Applications/Portty.app/Contents/MacOS/Portty"
 	run := "/home-fake/Library/Application Support/portty/update/run-123/"
 	ps := strings.Join([]string{
-		"  PID ARGS",
-		"  101 " + exe,
-		"  102 " + exe + " -psn_0_12345",
-		"  103 " + exe + " daemon",
-		"  104 " + exe + " daemon --takeover",
-		"  105 " + exe + " install-update /tmp/job.json",
-		"  106 /Applications/Portty.app.old/Contents/MacOS/Portty",
-		"  107 " + exe + "X",
-		"  108 " + run + "Portty.app/Contents/MacOS/Portty install-update " + run + "job.json",
-		"  109 " + exe + " attach main", // a CLI client run from the bundle is not a GUI
-		"  110 /bin/zsh",
+		"  PID   UID ARGS",
+		"  101   501 " + exe,
+		"  102   501 " + exe + " -psn_0_12345",
+		"  103   501 " + exe + " daemon",
+		"  104   501 " + exe + " daemon --takeover",
+		"  105   501 " + exe + " install-update /tmp/job.json",
+		"  106   501 /Applications/Portty.app.old/Contents/MacOS/Portty",
+		"  107   501 " + exe + "X",
+		"  108   501 " + run + "Portty.app/Contents/MacOS/Portty install-update " + run + "job.json",
+		"  109   501 " + exe + " attach main", // a CLI client run from the bundle is not a GUI
+		"  110   501 /bin/zsh",
+		"  111   502 " + exe, // WR-01: another account's GUI (fast user switching) is never this user's
+		"  112   502 " + exe + " -psn_0_999",
+		"  113     0 " + exe,
+		"  114  x501 " + exe,
+		"  115 " + exe, // no uid column
 		"",
 		"garbage",
 	}, "\n")
-	if got := ParseGUIPids([]byte(ps), exe); !slices.Equal(got, []int{101, 102}) {
+	if got := ParseGUIPids([]byte(ps), exe, 501); !slices.Equal(got, []int{101, 102}) {
 		t.Errorf("ParseGUIPids = %v, want [101 102]", got)
 	}
+	if got := ParseGUIPids([]byte(ps), exe, 502); !slices.Equal(got, []int{111, 112}) {
+		t.Errorf("uid 502: ParseGUIPids = %v, want [111 112]", got)
+	}
 	spaced := "/Volumes/My Apps/Portty.app/Contents/MacOS/Portty"
-	out := "  201 " + spaced + "\n  202 " + spaced + " daemon\n  203 /Volumes/My\n"
-	if got := ParseGUIPids([]byte(out), spaced); !slices.Equal(got, []int{201}) {
+	out := "  201 501 " + spaced + "\n  202 501 " + spaced + " daemon\n  203 501 /Volumes/My\n"
+	if got := ParseGUIPids([]byte(out), spaced, 501); !slices.Equal(got, []int{201}) {
 		t.Errorf("path with a space: ParseGUIPids = %v, want [201]", got)
 	}
 }
@@ -805,27 +851,27 @@ func TestJob_MoveKinds(t *testing.T) {
 				f.job.Staged = siBundle(t, filepath.Join(t.TempDir(), StagingPrefix+"z"), "9.9.9")
 			}},
 		{name: "a dmg cache path", kind: KindMove, mutate: func(_ *testing.T, f *rbFix) { f.job.DMG = f.job.ImagePath }},
-		{name: "image path not a release asset", kind: KindMove,
+		{name: "image path not a release asset", kind: KindMove, ok: true,
 			mutate: func(t *testing.T, f *rbFix) {
 				p := filepath.Join(t.TempDir(), "notes.dmg")
 				_ = os.WriteFile(p, nil, 0o644)
 				f.job.ImagePath = p
 			}},
-		{name: "image path a directory", kind: KindMove,
+		{name: "image path a directory", kind: KindMove, ok: true,
 			mutate: func(t *testing.T, f *rbFix) {
 				p := filepath.Join(t.TempDir(), "portty-v9.9.9-darwin-universal.dmg")
 				_ = os.Mkdir(p, 0o755)
 				f.job.ImagePath = p
 			}},
-		{name: "image path a symlink", kind: KindMove,
+		{name: "image path a symlink", kind: KindMove, ok: true,
 			mutate: func(t *testing.T, f *rbFix) {
 				p := filepath.Join(t.TempDir(), "portty-v9.9.9-darwin-universal.dmg")
 				_ = os.Symlink(f.job.ImagePath, p)
 				f.job.ImagePath = p
 			}},
-		{name: "image path missing", kind: KindOpenInstalled,
+		{name: "image path missing", kind: KindOpenInstalled, ok: true,
 			mutate: func(_ *testing.T, f *rbFix) { _ = os.Remove(f.job.ImagePath) }},
-		{name: "image path in the update cache", kind: KindMove,
+		{name: "image path in the update cache", kind: KindMove, ok: true,
 			mutate: func(t *testing.T, f *rbFix) {
 				dir := filepath.Join(t.TempDir(), AppIdentifier, "updates")
 				_ = os.MkdirAll(dir, 0o700)
@@ -835,6 +881,10 @@ func TestJob_MoveKinds(t *testing.T) {
 			}},
 		{name: "image path relative", kind: KindMove,
 			mutate: func(_ *testing.T, f *rbFix) { f.job.ImagePath = "portty-v9.9.9-darwin-universal.dmg" }},
+		{name: "image path not clean", kind: KindMove,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.ImagePath += "/../x.dmg" }},
+		{name: "image path empty", kind: KindMove, ok: true,
+			mutate: func(_ *testing.T, f *rbFix) { f.job.ImagePath = "" }},
 		{name: "mount point outside /Volumes", kind: KindMove,
 			mutate: func(t *testing.T, f *rbFix) { f.job.MountPoint = t.TempDir() }},
 		{name: "mount point not clean", kind: KindOpenInstalled,
@@ -947,6 +997,49 @@ func TestInstaller_MoveFirstInstallUnhealthy(t *testing.T) {
 	if got, ok := f.fileResult(); !ok || got.Outcome != OutcomeFailed {
 		t.Errorf("result file = %+v, %v", got, ok)
 	}
+	if n := f.rel.called("open -R"); n != 0 {
+		t.Errorf("revealed %d times while the new GUI runs", n)
+	}
+}
+
+// WR-02: a mover failure after the DMG's GUI quit must leave the user something to act on: the
+// installed copy (or, with none, the DMG) revealed in Finder, a result the next start can read and
+// no quarantine-cleared staging copy that no GUI would ever sweep.
+func TestInstaller_MoverFailureLeavesSomethingToActOn(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		kind     string
+		set      func(f *rbFix)
+		reason   string
+		revealed func(f *rbFix) string
+	}{
+		{"first install reverify", KindMove, func(f *rbFix) { f.rel.fail = "codesign" }, "reverify",
+			func(f *rbFix) string { return f.job.ImagePath }},
+		{"first install swap", KindMove, func(f *rbFix) { f.swapErr = func(int) error { return errors.New("EPERM") } }, "swap",
+			func(f *rbFix) string { return f.job.ImagePath }},
+		{"first install never opens", KindMove, func(f *rbFix) { f.openErr = func(bool, int) error { return errors.New("exit status 1") } }, "open",
+			func(f *rbFix) string { return f.job.Target }},
+		{"open-installed never opens", KindOpenInstalled, func(f *rbFix) { f.openErr = func(bool, int) error { return errors.New("exit status 1") } }, "open",
+			func(f *rbFix) string { return f.job.Target }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newMoveFix(t, c.kind, false)
+			c.set(f)
+			r := f.run()
+			if r.Outcome != OutcomeFailed || r.Reason != c.reason {
+				t.Fatalf("result = %+v, want failed %s", r, c.reason)
+			}
+			if got, ok := f.fileResult(); !ok || got != r {
+				t.Errorf("result file = %+v, %v", got, ok)
+			}
+			if n := f.rel.called("open -R " + c.revealed(f)); n != 1 || f.rel.called("open -R") != 1 {
+				t.Errorf("calls = %q, want one reveal of %s", f.rel.recorded(), c.revealed(f))
+			}
+			if c.kind == KindMove && c.reason != "open" && !f.stagingGone() {
+				t.Error("staging copy left after a failed first install")
+			}
+		})
+	}
 }
 
 func TestInstaller_MoveDetachFailureNeverTrashesImage(t *testing.T) {
@@ -994,6 +1087,36 @@ func TestInstaller_MoveImageGuard(t *testing.T) {
 			}
 			if f.imageTrashed() != 0 {
 				t.Errorf("trashed %+v: a file this user does not own", f.trashed)
+			}
+		})
+		// CR-01: the Reveal fallback shows the user the DMG in Portty's own update cache, so a
+		// launch from it must still move; only the Trash skips that DMG.
+		t.Run(kind+" image in the update cache", func(t *testing.T) {
+			f := newMoveFix(t, kind, false)
+			dir := filepath.Join(t.TempDir(), AppIdentifier, "updates")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			p := filepath.Join(dir, filepath.Base(f.job.ImagePath))
+			if err := os.Rename(f.job.ImagePath, p); err != nil {
+				t.Fatal(err)
+			}
+			f.job.ImagePath = p
+			jobPath := filepath.Join(t.TempDir(), "job.json")
+			if err := WriteJob(jobPath, f.job); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ReadJob(jobPath); err != nil {
+				t.Fatalf("ReadJob refused a launch from the update cache: %v", err)
+			}
+			if r := f.run(); r.Outcome != moverOutcome[kind] {
+				t.Fatalf("result = %+v, want %s", r, moverOutcome[kind])
+			}
+			if kind == KindMove && (f.swaps != 1 || siMarker(t, f.job.Target) != "9.9.9") {
+				t.Errorf("swaps = %d; want the new copy installed", f.swaps)
+			}
+			if _, err := os.Lstat(p); err != nil || f.imageTrashed() != 0 {
+				t.Errorf("cache DMG trashed or gone (%v), trashed %+v", err, f.trashed)
 			}
 		})
 		t.Run(kind+" image gone", func(t *testing.T) {

@@ -201,7 +201,7 @@ var moveParents = func() []string {
 var volumesRoot = "/Volumes/"
 
 // checkMoveJob holds a mover job (UPD-08) to a Portty.app directly in an allowed Applications
-// folder, the DMG Portty was launched from, a mount point under /Volumes/ and its kind's version
+// folder, a clean absolute image path (or none), a mount point under /Volumes/ and its kind's version
 // rule: move installs a first copy or replaces a strictly older one; open-installed only opens a
 // same or newer installed copy (never a downgrade, T-18-28).
 func checkMoveJob(j Job) error {
@@ -212,7 +212,9 @@ func checkMoveJob(j Job) error {
 	if j.DMG != "" {
 		return jobErr("dmg")
 	}
-	if !imageFileOK(j.ImagePath) {
+	// The image path only feeds the DMG Trash, which re-checks imageFileOK and keeps any DMG that
+	// fails it (Portty's update cache, a renamed or another account's DMG): never a refusal (CR-01).
+	if ip := j.ImagePath; ip != "" && (!filepath.IsAbs(ip) || filepath.Clean(ip) != ip) {
 		return jobErr("image path")
 	}
 	if mp := j.MountPoint; !filepath.IsAbs(mp) || filepath.Clean(mp) != mp || !strings.HasPrefix(mp, volumesRoot) {
@@ -316,7 +318,7 @@ func TakeResult(path string) (Result, bool, error) {
 type InstallerEnv struct {
 	Run           Runner
 	Swap          func(staged, target string) error
-	Open          func(ctx context.Context, app string) error
+	Open          func(ctx context.Context, app string, env ...string) error // env: NAME=VALUE for the launched app
 	Alive         func(pid int) bool
 	Signal        func(pid int, sig syscall.Signal) error
 	GUIPids       func(exe string) ([]int, error)
@@ -331,19 +333,29 @@ type InstallerEnv struct {
 
 const installerPoll = 200 * time.Millisecond
 
+// KeepDaemonEnv=1 in the relaunched old GUI's environment is a rollback's keepDaemon when the
+// result file could not be written (a full disk, an unwritable config folder): the launch
+// environment needs no disk, where a retry or a second marker file would fail the same way
+// (WR-04). It only ever keeps the running daemon and asks nothing, the safe direction.
+const KeepDaemonEnv = "PORTTY_KEEP_DAEMON_ONCE"
+
 // trashWait bounds the DMG Trash, which can wait on an unanswered Downloads prompt; a var for tests.
 var trashWait = time.Minute
 
-// ParseGUIPids returns the pids in `ps -o pid=,args=` output whose process is a Portty GUI run
-// from exe: args exactly exe, or exe followed by a launch-services argument (-psn_, -NS, -Apple,
-// the shapes main.launchMode starts the GUI for). The daemon, the installer and CLI clients run
-// from the same executable carry a subcommand, so they are never listed and never signalled.
-func ParseGUIPids(psOut []byte, exe string) []int {
+// ParseGUIPids returns the pids in `ps -o pid=,uid=,args=` output whose process is a Portty GUI
+// run from exe by uid: args exactly exe, or exe followed by a launch-services argument (-psn_,
+// -NS, -Apple, the shapes main.launchMode starts the GUI for). The daemon, the installer and CLI
+// clients run from the same executable carry a subcommand, so they are never listed and never
+// signalled. Neither is another account's GUI (fast user switching): it must not pass the health
+// check or draw a signal (WR-01).
+func ParseGUIPids(psOut []byte, exe string, uid int) []int {
 	var pids []int
 	for _, line := range strings.Split(string(psOut), "\n") {
-		pidStr, args, ok := strings.Cut(strings.TrimSpace(line), " ")
+		pidStr, rest, ok := strings.Cut(strings.TrimSpace(line), " ")
+		uidStr, args, ok2 := strings.Cut(strings.TrimLeft(rest, " "), " ")
 		pid, err := strconv.Atoi(pidStr)
-		if !ok || err != nil || pid < 2 {
+		u, uerr := strconv.Atoi(uidStr)
+		if !ok || !ok2 || err != nil || uerr != nil || pid < 2 || u != uid {
 			continue
 		}
 		args = strings.TrimLeft(args, " ")
@@ -360,11 +372,11 @@ func ParseGUIPids(psOut []byte, exe string) []int {
 
 // relaunch opens app, up to OpenAttempts tries OpenRetryWait apart, each under OpenTimeout. The
 // tries ignore ctx's own deadline: skipping a relaunch would leave no GUI, and each try is bounded.
-func relaunch(ctx context.Context, env InstallerEnv, app string) error {
+func relaunch(ctx context.Context, env InstallerEnv, app string, launchEnv ...string) error {
 	var err error
 	for i := 1; i <= OpenAttempts; i++ {
 		octx, cancel := context.WithTimeout(context.WithoutCancel(ctx), OpenTimeout)
-		err = env.Open(octx, app)
+		err = env.Open(octx, app, launchEnv...)
 		cancel()
 		if err == nil {
 			return nil
@@ -383,32 +395,66 @@ func relaunch(ctx context.Context, env InstallerEnv, app string) error {
 // gets there, its GUI exits, or it never opens, its GUI is stopped, the old bundle is swapped back
 // and relaunched, and the daemon is left alone (UPD-07). Every outcome is written to
 // env.ResultPath before any relaunch of the old app. On success the old bundle goes to the Trash.
+// A mover job that ends with no GUI running reveals the installed copy, or the DMG, in Finder.
 // Logs carry step names only.
 func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	r := Result{V: 1, OldVersion: j.OldVersion, NewVersion: j.NewVersion, DMG: j.DMG}
 	exe := filepath.Join(j.Target, BundleExecutable)
 	mover := j.Kind == KindMove || j.Kind == KindOpenInstalled
 	existed := isDir(j.Target) // false only for a mover's first install
+	written := false           // whether the last finish wrote its result
 	finish := func(outcome, reason string) Result {
 		r.Outcome, r.Reason = outcome, reason
-		if err := WriteResult(env.ResultPath, r); err != nil {
+		if written = WriteResult(env.ResultPath, r) == nil; !written {
 			env.Logf("installer: result not written")
 		}
 		env.Logf("installer: %s %s", outcome, reason)
 		return r
 	}
+	// revealLeft: a mover job ends after the DMG's GUI quit and its volume was ejected, so when no
+	// GUI of the target runs, the user is shown the installed copy in Finder, or with none the DMG
+	// to open again; the result tells the next start why (WR-02).
+	revealLeft := func() {
+		if pids, err := env.GUIPids(exe); !mover || err != nil || len(pids) > 0 {
+			return
+		}
+		p := j.Target
+		if !isDir(p) {
+			p = j.ImagePath
+		}
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), OpenTimeout)
+		defer cancel()
+		if p == "" || Reveal(rctx, env.Run, p) != nil {
+			env.Logf("installer: nothing revealed")
+		}
+	}
 	// finishOpen writes the outcome, then relaunches whatever the target holds. A rollback whose
 	// relaunch fails becomes failed (keepDaemon kept), so the next manual launch still says why.
+	// A keepDaemon the result file could not carry rides in the launch environment (WR-04).
 	finishOpen := func(outcome, reason string) Result {
 		finish(outcome, reason)
 		if !isDir(j.Target) { // a mover's first install that failed before its swap: nothing to open
+			// Its staging folder holds only Portty's own checked, quarantine-cleared copy (there
+			// is no app beside it), and no installed GUI will ever run to sweep it.
+			if dir := filepath.Dir(j.Staged); strings.HasPrefix(filepath.Base(dir), StagingPrefix) {
+				if err := os.RemoveAll(dir); err != nil {
+					env.Logf("installer: failed copy not removed")
+				}
+			}
+			revealLeft()
 			return r
 		}
-		if err := relaunch(ctx, env, j.Target); err != nil {
+		var launchEnv []string
+		if r.KeepDaemon && !written {
+			launchEnv = []string{KeepDaemonEnv + "=1"}
+			env.Logf("installer: keepDaemon passed as %s in the launch environment", KeepDaemonEnv)
+		}
+		if err := relaunch(ctx, env, j.Target, launchEnv...); err != nil {
 			if outcome == OutcomeRolledBack {
 				finish(OutcomeFailed, reason)
 			}
 			env.Logf("installer: relaunch failed, result kept for the next launch")
+			revealLeft()
 		}
 		return r
 	}
@@ -445,7 +491,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	}
 	rollback := func(reason string) Result {
 		if !existed { // a first install has no older copy to restore: the verified new one stays
-			return finish(OutcomeFailed, reason)
+			finish(OutcomeFailed, reason)
+			revealLeft()
+			return r
 		}
 		stopGUIs()
 		if err := env.Swap(j.Staged, j.Target); err != nil {
@@ -528,7 +576,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 	if j.Kind == KindOpenInstalled {
 		if err := relaunch(ctx, env, j.Target); err != nil {
 			env.Logf("installer: open failed")
-			return finish(OutcomeFailed, "open")
+			finish(OutcomeFailed, "open")
+			revealLeft()
+			return r
 		}
 		return finishTrash(OutcomeOpened)
 	}

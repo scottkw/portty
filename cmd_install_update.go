@@ -80,11 +80,16 @@ func runInstallUpdate(args []string) int {
 }
 
 // openApp is a plain `open APP`, no -n: LaunchServices never starts a second copy of a running app.
-func openApp(ctx context.Context, app string) error {
+// Each env entry (NAME=VALUE) is passed with open's --env to the launched app.
+func openApp(ctx context.Context, app string, env ...string) error {
 	if testing.Testing() {
 		return errors.New("refusing to open an app from a test binary")
 	}
-	return exec.CommandContext(ctx, "/usr/bin/open", app).Run()
+	var args []string
+	for _, e := range env {
+		args = append(args, "--env", e)
+	}
+	return exec.CommandContext(ctx, "/usr/bin/open", append(args, app)...).Run()
 }
 
 // pidAlive is kill(pid, 0): EPERM still means the process exists.
@@ -93,16 +98,16 @@ func pidAlive(pid int) bool {
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
-// realGUIPids lists the Portty GUIs running from exe (updater.ParseGUIPids over ps output); the
-// installer signals only these.
+// realGUIPids lists this user's Portty GUIs running from exe (updater.ParseGUIPids over ps
+// output); the installer health-checks and signals only these.
 func realGUIPids(exe string) ([]int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "/bin/ps", "-axww", "-o", "pid=,args=").Output()
+	out, err := exec.CommandContext(ctx, "/bin/ps", "-axww", "-o", "pid=,uid=,args=").Output()
 	if err != nil {
 		return nil, err
 	}
-	return updater.ParseGUIPids(out, exe), nil
+	return updater.ParseGUIPids(out, exe, os.Getuid()), nil
 }
 
 func installResultPath() string { return filepath.Join(configDir(), "update-result.json") }

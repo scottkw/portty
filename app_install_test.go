@@ -75,6 +75,27 @@ func TestConsumeInstallResult_KeepDaemonPolicyOnce(t *testing.T) {
 	}
 }
 
+// WR-04: with no result file (its write failed), the installer's launch environment still sets
+// the keep-daemon policy, and the variable is gone before a daemon could inherit it.
+func TestConsumeInstallResult_KeepDaemonFromLaunchEnv(t *testing.T) {
+	opts := rbSwapEnsure(t)
+	a, notes := rbApp(t)
+	t.Setenv(updater.KeepDaemonEnv, "1")
+	a.consumeInstallResult()
+	if _, set := os.LookupEnv(updater.KeepDaemonEnv); set {
+		t.Error("keep-daemon variable left in the GUI's environment")
+	}
+	if err := a.ensure()("sock"); err != nil {
+		t.Fatal(err)
+	}
+	if first := (*opts)[0]; !first.NoHandoff || first.Restart == nil || first.Restart(question(2)) || a.GetDaemonRestartPrompt() != 0 {
+		t.Errorf("first ensure: NoHandoff %v, prompt %d; want the keep-daemon policy", first.NoHandoff, a.GetDaemonRestartPrompt())
+	}
+	if len(*notes) != 0 {
+		t.Errorf("notifications = %+v", *notes)
+	}
+}
+
 func TestConsumeInstallResult_TellsUser(t *testing.T) {
 	for _, c := range []struct {
 		outcome, body string
@@ -111,6 +132,38 @@ func TestConsumeInstallResult_TellsUser(t *testing.T) {
 			}
 		})
 	}
+}
+
+// WR-02: a mover's failed first install has no old version and must still be told; a failed
+// result about a version this Portty already is (an open-installed whose open failed, or a copy
+// installed by hand since) is stale and only logged.
+func TestConsumeInstallResult_MoverResults(t *testing.T) {
+	t.Run("first install, no old version", func(t *testing.T) {
+		a, notes := rbApp(t)
+		a.updates = &updater.Service{Current: "1.8.0", Dir: t.TempDir()}
+		rbWriteResult(t, updater.Result{Outcome: updater.OutcomeFailed, NewVersion: "1.8.1", Reason: "reverify"})
+		a.consumeInstallResult()
+		if len(*notes) != 1 || (*notes)[0].body != "Portty couldn't install version 1.8.1." {
+			t.Errorf("notifications = %+v", *notes)
+		}
+	})
+	t.Run("not newer than this Portty", func(t *testing.T) {
+		old := Version
+		Version = "v1.8.1"
+		t.Cleanup(func() { Version = old })
+		for _, r := range []updater.Result{
+			{Outcome: updater.OutcomeFailed, OldVersion: "1.8.1", NewVersion: "1.8.1", Reason: "open"},
+			{Outcome: updater.OutcomeFailed, NewVersion: "1.8.0", Reason: "swap"},
+		} {
+			a, notes := rbApp(t)
+			a.updates = &updater.Service{Current: "1.8.1", Dir: t.TempDir()}
+			rbWriteResult(t, r)
+			a.consumeInstallResult()
+			if len(*notes) != 0 || a.updates.Status().State != "idle" {
+				t.Errorf("%+v: notifications %+v, status %+v; want nothing shown", r, *notes, a.updates.Status())
+			}
+		}
+	})
 }
 
 func TestConsumeInstallResult_UpdatedAndBadFilesChangeNothing(t *testing.T) {
@@ -236,8 +289,6 @@ func TestSweep_StagingDirs(t *testing.T) {
 	s := newSwSweep(t)
 	stale := filepath.Join(s.parent, updater.StagingPrefix+"stale")
 	staleApp := s.mkBundle(stale, updater.BundleName, 2*time.Hour)
-	staged := filepath.Join(s.parent, updater.StagingPrefix+"staged")
-	stagedApp := s.mkBundle(staged, "Portty.staged", 2*time.Hour)
 	fresh := filepath.Join(s.parent, updater.StagingPrefix+"fresh")
 	s.mkBundle(fresh, updater.BundleName, sweepAge-time.Minute)
 	other := filepath.Join(s.parent, "Portty-update-old")
@@ -260,11 +311,10 @@ func TestSweep_StagingDirs(t *testing.T) {
 
 	s.run()
 
-	slices.Sort(s.trashed)
-	if want := []string{stagedApp, staleApp}; !slices.Equal(s.trashed, want) {
+	if want := []string{staleApp}; !slices.Equal(s.trashed, want) {
 		t.Errorf("trashed %v, want %v", s.trashed, want)
 	}
-	if swExists(stale) || swExists(staged) {
+	if swExists(stale) {
 		t.Error("an emptied stale staging dir was not removed")
 	}
 	for _, p := range []string{filepath.Join(fresh, updater.BundleName), filepath.Join(other, updater.BundleName), link, filepath.Join(elsewhere, updater.BundleName), filepath.Join(linked, updater.BundleName)} {

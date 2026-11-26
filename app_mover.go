@@ -29,7 +29,7 @@ var moverRoots = func() (system, home string) {
 }
 
 // openAppPathFunc opens an installed Portty (Cancel on the Replace question); a var for tests.
-var openAppPathFunc = openApp
+var openAppPathFunc = func(ctx context.Context, app string) error { return openApp(ctx, app) }
 
 // moverStageTimeout bounds the checks and the copy, as Stage's deadline does for an update.
 const moverStageTimeout = 5 * time.Minute

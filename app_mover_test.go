@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -329,5 +330,45 @@ func TestRunMover_StagingFailureAlerts(t *testing.T) {
 	staging, _ := filepath.Glob(filepath.Join(f.system, updater.StagingPrefix+"*"))
 	if len(staging) != 0 {
 		t.Errorf("staging left after a failure: %v", staging)
+	}
+}
+
+// WR-03: an installer that never started must not write a path into update.log, while the
+// alert still finds the cause's sentence through the wrapped error.
+func TestRunMover_InstallerStartFailureLogsNoPath(t *testing.T) {
+	for _, tc := range []struct {
+		name, alert string
+		bundle      error
+		copyErr     error
+	}{
+		{name: "bundle", bundle: &os.PathError{Op: "lstat", Path: "/home-fake/Applications/Portty.app", Err: os.ErrNotExist},
+			alert: "Portty couldn't install the update."},
+		{name: "copy-check", copyErr: fmt.Errorf("%w: app-codesign", updater.ErrSafety),
+			alert: "The new version didn't pass the safety check, so it wasn't installed."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newMoverFix(t)
+			f.a.moverStartFunc = nil // the real startInstaller, with failing seams
+			running := bcFakeBundle(t)
+			bcSwap(t,
+				func() (string, error) { return running, tc.bundle },
+				func(context.Context, string, string) (string, error) {
+					return "copy-check", tc.copyErr
+				},
+				func(string, string) (*os.Process, error) {
+					t.Error("spawned an installer")
+					return nil, errors.New("no")
+				})
+			f.runMover()
+			b, err := os.ReadFile(bcLogPath())
+			if err != nil || !strings.Contains(string(b), "mover: installer not started: "+tc.name) || strings.Contains(string(b), "/") {
+				t.Errorf("update.log = %q, %v; want the step and no path", b, err)
+			}
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if n := len(f.dialogs); n == 0 || !strings.HasPrefix(f.dialogs[n-1].Message, tc.alert) {
+				t.Errorf("dialogs = %+v, want the alert to start with %q", f.dialogs, tc.alert)
+			}
+		})
 	}
 }

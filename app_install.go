@@ -71,6 +71,16 @@ const installerCopyTimeout = 2 * time.Minute
 // installerStartWaitFor is installerStartWait; tests lower it.
 var installerStartWaitFor = installerStartWait
 
+// installerStartErr names the step that failed; the cause (often a *PathError naming a home
+// path) stays reachable for errors.Is but out of Error(), which update.log gets (WR-03).
+type installerStartErr struct {
+	step  string
+	cause error
+}
+
+func (e *installerStartErr) Error() string { return "installer not started: " + e.step }
+func (e *installerStartErr) Unwrap() error { return e.cause }
+
 // startInstaller starts install-update from a whole copy of the running Portty.app in a fresh
 // run folder and, once the copy reports it is running, quits the GUI only (daemon and sessions
 // untouched). Any failure before that removes the run folder, leaves this process running, names
@@ -82,7 +92,7 @@ func (a *App) startInstaller(j updater.Job) error {
 			_ = os.RemoveAll(run)
 		}
 		updateLogf("update: installer not started: %s", step)
-		return fmt.Errorf("installer not started: %s: %w", step, err)
+		return &installerStartErr{step, err}
 	}
 	src, err := runningBundleFunc()
 	if err != nil {
@@ -237,9 +247,9 @@ func sweepUpdateLeftovers(ctx context.Context, now time.Time) {
 	sweepDirs(ctx, now, sweepParents(), updateWorkDir(), updateCacheDir())
 }
 
-// sweepDirs: in parents, a .Portty-update-* dir older than sweepAge has its Portty.app and
-// Portty.staged moved to the Trash (never deleted; a refused Trash leaves them for the next
-// start) and is then removed if empty. In work, run-* dirs older than sweepAge are removed: they
+// sweepDirs: in parents, a .Portty-update-* dir older than sweepAge has its Portty.app moved to
+// the Trash (never deleted; a refused Trash leaves it for the next start) and is then removed if
+// empty. In work, run-* dirs older than sweepAge are removed: they
 // hold only Portty's own job file, marker and installer copy, never the user's app. In cache,
 // mnt-* dirs are detached (no age floor: no stage runs in a process that is just starting).
 // Symlinks are never followed or touched.
@@ -261,11 +271,8 @@ func sweepDirs(ctx context.Context, now time.Time, parents []string, work, cache
 	var trashed, kept, runs, detached int
 	for _, parent := range parents {
 		for _, dir := range entries(parent, updater.StagingPrefix, true) {
-			for _, name := range []string{updater.BundleName, "Portty.staged"} {
-				if !isRealDir(filepath.Join(dir, name)) {
-					continue
-				}
-				if err := trashItemFunc(filepath.Join(dir, name)); err != nil {
+			if app := filepath.Join(dir, updater.BundleName); isRealDir(app) {
+				if err := trashItemFunc(app); err != nil {
 					kept++
 					updateLogf("update: sweep: old copy kept aside: %v", err)
 				} else {
@@ -319,6 +326,13 @@ var vmFaultHook func(stage string)
 // failed install is told to the user: the banner with the kept DMG revealed, and a notification
 // (UPD-07). A missing or refused result file changes nothing.
 func (a *App) consumeInstallResult() {
+	// A rollback that could not write its result passes keepDaemon in this launch's environment
+	// (WR-04). Unset at once, so a daemon this GUI spawns never inherits it.
+	if os.Getenv(updater.KeepDaemonEnv) == "1" {
+		_ = os.Unsetenv(updater.KeepDaemonEnv)
+		updateLogf("update: keep daemon once: set in the launch environment by the installer")
+		a.keepDaemonOnce.Store(true)
+	}
 	r, ok, err := updater.TakeResult(installResultPath())
 	if err != nil {
 		updateLogf("update: result ignored: %v", err)
@@ -341,8 +355,16 @@ func (a *App) consumeInstallResult() {
 		return
 	}
 	_, nerr := updater.ParseVersion(r.NewVersion)
-	if _, oerr := updater.ParseVersion(r.OldVersion); nerr != nil || oerr != nil {
+	_, oerr := updater.ParseVersion(r.OldVersion)
+	firstInstall := r.Outcome == updater.OutcomeFailed && r.OldVersion == "" // a mover's, with no old copy (WR-02)
+	if nerr != nil || (oerr != nil && !firstInstall) {
 		updateLogf("update: result versions malformed")
+		return
+	}
+	// About a version this Portty already is or passed (an open-installed whose open failed, a
+	// copy installed by hand since): telling it would name an install nobody is waiting on.
+	if c, err := updater.Compare(r.NewVersion, strings.TrimPrefix(Version, "v")); err == nil && c <= 0 {
+		updateLogf("update: result not shown: not newer than this version")
 		return
 	}
 	if a.updates != nil {

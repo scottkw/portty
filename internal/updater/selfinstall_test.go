@@ -196,7 +196,7 @@ func newSiFix(t *testing.T) *siFix {
 		env := InstallerEnv{
 			Run:  f.rel.run,
 			Swap: Swap,
-			Open: func(_ context.Context, app string) error {
+			Open: func(_ context.Context, app string, _ ...string) error {
 				f.mu.Lock()
 				defer f.mu.Unlock()
 				f.opened = append(f.opened, app)
@@ -693,12 +693,12 @@ func TestSelfInstall_DMGAlreadyGone(t *testing.T) {
 	f := newSiFix(t)
 	f.envDo = func(env *InstallerEnv) {
 		open := env.Open
-		env.Open = func(ctx context.Context, app string) error {
+		env.Open = func(ctx context.Context, app string, launchEnv ...string) error {
 			if m, _ := filepath.Glob(filepath.Join(f.dir, "*.dmg")); len(m) != 1 {
 				t.Errorf("DMG should still be there when the app opens: %v", m)
 			}
 			_ = os.Remove(filepath.Join(f.dir, DMGAssetName("9.9.9"))) // eject-and-delete by hand, mid-install
-			return open(ctx, app)
+			return open(ctx, app, launchEnv...)
 		}
 	}
 	f.download(t)
@@ -713,7 +713,7 @@ func TestSelfInstall_DMGAlreadyGone(t *testing.T) {
 func TestSelfInstall_HealthMissWritesFailed(t *testing.T) {
 	f := newSiFix(t)
 	f.envDo = func(env *InstallerEnv) {
-		env.Open = func(context.Context, string) error { return nil } // the daemon stays at the old version
+		env.Open = func(context.Context, string, ...string) error { return nil } // the daemon stays at the old version
 	}
 	f.download(t)
 	r := f.result // 18-03: a health miss rolls back
