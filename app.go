@@ -376,8 +376,102 @@ func (a *App) startDaemon(socketPath string) {
 		a.emitEvent("daemon:error", err.Error())
 	} else {
 		a.launchedAt = time.Now()
+		a.afterEnsure(socketPath)
 		a.applyStoredAppearance()
 	}
+}
+
+// afterEnsure reads the daemon's /health once after a successful start. A
+// daemon under launchd needs no repair. One that is not (a fallback, or a
+// takeover left by an upgrade) gets a re-home kickstart, retried by the tray
+// tick. The legacy kardianos agent is cleaned up either way; a false result is
+// retried at the next GUI start, and nothing here fails startup.
+func (a *App) afterEnsure(socketPath string) {
+	h, err := daemonHealthOf(socketPath)
+	if err != nil {
+		return
+	}
+	if h.Launchd {
+		a.repairKind.Store("")
+	} else {
+		a.rehomeAttempt(time.Now())
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	switch done, err := legacyCleanupFunc(ctx, h.PID); {
+	case err != nil:
+		log.Printf("daemon: legacy agent cleanup: %v", err)
+	case !done:
+		log.Printf("daemon: legacy agent cleanup deferred to the next start")
+	}
+}
+
+// requestRehome kickstarts the agent's job when it is loaded and enabled, so a
+// daemon that is not under launchd hands its sessions to the job (19-02). It
+// reports whether a later retry can help: not for a disabled or unloaded agent
+// (the repair is the user's or the next start's), yes for a launchctl error.
+func (a *App) requestRehome() (retry bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	loaded, disabled, _, err := agentLoadedFunc(ctx)
+	switch {
+	case err != nil:
+		log.Printf("daemon: re-home: %v", err)
+		return true
+	case disabled:
+		a.repairKind.Store(repairLoginItems)
+		return false
+	case !loaded:
+		return false
+	}
+	if err := kickstartFunc(ctx); err != nil {
+		log.Printf("daemon: re-home: %v", err)
+		return true
+	}
+	log.Printf("daemon: re-home requested")
+	return true
+}
+
+// rehomeAttempt makes one re-home attempt and schedules the next, or stops the
+// retry for this GUI run.
+func (a *App) rehomeAttempt(now time.Time) {
+	retry := a.requestRehome()
+	a.rehomeMu.Lock()
+	defer a.rehomeMu.Unlock()
+	a.rehomeAttempts++
+	a.rehomeArmed = retry && a.rehomeAttempts < rehomeMaxAttempts
+	if !a.rehomeArmed {
+		return
+	}
+	gap := rehomeEvery
+	if a.rehomeAttempts <= len(rehomeBackoff) {
+		gap = rehomeBackoff[a.rehomeAttempts-1]
+	}
+	a.rehomeNext = now.Add(gap)
+}
+
+// rehomeIfUnmanaged is the tray tick's re-home retry. It reads health only
+// when an attempt is due, and stops for this GUI run once the daemon reports
+// launchd. A daemon that does not answer is the respawn's to bring back.
+func (a *App) rehomeIfUnmanaged(now time.Time) {
+	a.rehomeMu.Lock()
+	due := a.rehomeArmed && !now.Before(a.rehomeNext)
+	a.rehomeMu.Unlock()
+	if !due || a.quitting.Load() {
+		return
+	}
+	h, err := daemonHealthOf(daemon.DefaultSocketPath())
+	if err != nil {
+		return
+	}
+	if h.Launchd {
+		a.rehomeMu.Lock()
+		a.rehomeArmed = false
+		a.rehomeMu.Unlock()
+		a.repairKind.Store("")
+		return
+	}
+	a.rehomeAttempt(now)
 }
 
 // Seams for the launchd-first start; tests swap them so no real launchctl runs.
@@ -457,6 +551,7 @@ func installedExecutable() (exe string, ok bool, reason string) {
 // that is already running makes the ensure start nothing and fall back to nothing.
 func (a *App) prepareAgent() {
 	exe, ok, reason := installedExecutable()
+	a.diskImageLaunch.Store(reason == reasonDiskImage)
 	if !ok {
 		log.Printf("daemon: launchd agent not written: %s", reason)
 		return
@@ -476,8 +571,18 @@ func (a *App) prepareAgent() {
 // launchd: "login_items", "move_to_applications", "open_app", or "" for
 // nothing. It never blocks terminals; Settings shows it as needs repair.
 func (a *App) GetDaemonRepair() string {
-	k, _ := a.repairKind.Load().(string)
-	return k
+	if a.diskImageLaunch.Load() {
+		return repairMoveToApplications
+	}
+	if k, _ := a.repairKind.Load().(string); k != "" {
+		return k
+	}
+	a.rehomeMu.Lock()
+	defer a.rehomeMu.Unlock()
+	if a.rehomeArmed {
+		return "rehome_pending"
+	}
+	return ""
 }
 
 // OpenLoginItems opens System Settings at Login Items. The URL is fixed.
@@ -1704,6 +1809,7 @@ func (a *App) startTrayPoller(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				a.respawnDaemonIfDown(time.Now())
+				a.rehomeIfUnmanaged(time.Now())
 				a.refreshTrayState()
 			case <-ctx.Done():
 				return
@@ -1793,6 +1899,3 @@ const (
 	rehomeEvery       = 10 * time.Minute
 	rehomeMaxAttempts = 8
 )
-
-// rehomeIfUnmanaged is the tray tick's re-home retry.
-func (a *App) rehomeIfUnmanaged(now time.Time) {}
