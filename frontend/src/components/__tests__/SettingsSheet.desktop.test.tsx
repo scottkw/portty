@@ -270,6 +270,8 @@ describe('refusals (Interaction Contract 2)', () => {
   it('a userspace refusal from the daemon blocks the switch at once', async () => {
     await mountOn({ alwaysAvailable: false, state: 'off' })
     setDesktop.mockResolvedValue({ alwaysAvailable: false, firstShare: false, errorCode: 'tailscale_userspace', errorDetail: '' })
+    // The daemon records the verdict, so its next status says userspace.
+    getStatus.mockResolvedValue(status({ alwaysAvailable: false, state: 'off', tailscale: 'userspace' }))
     await click(desktopSwitch())
     expect(desktopSwitch().getAttribute('aria-checked')).toBe('false')
     expect(description('Always-available desktop')).toBe(USERSPACE_SENTENCE)
@@ -380,7 +382,7 @@ describe('Permissions row (DPRM-01)', () => {
     await mountOn()
     const r = row('Permissions')!
     expect(r.querySelector('.ts-status__text')!.textContent).toBe('Checking…')
-    expect(r.querySelector('.ts-status__dot')!.className).toBe('ts-status__dot')
+    expect(r.querySelector('.ts-status__dot')).toBeNull()
     expect(r.querySelector('button')!.textContent).toBe('Set Up Permissions…')
   })
 

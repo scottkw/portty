@@ -12,11 +12,15 @@ import {
   GetDesktopStatus,
   SetDesktopAlwaysAvailable,
   GetDesktopLink,
+  GetDesktopPermissions,
+  GetDaemonRepair,
+  OpenLoginItems,
   type DesktopStatusResult,
 } from '../wailsjs/go/main/App'
 import { ClipboardSetText } from '../wailsjs/wailsjs/runtime/runtime'
 import { Cog6ToothIcon, LockClosedIcon, SignalIcon } from '@heroicons/react/24/outline'
 import { RegenerateKeyModal } from './RegenerateKeyModal'
+import { DesktopSetupSheet } from './DesktopSetupSheet'
 import { PluginsSection, type PluginToggleKind } from './PluginsSection'
 import { Switch } from './Switch'
 import { TAILSCALE_OFF_REASON, type TailscaleHealth } from '../lib/tailscale'
@@ -83,39 +87,111 @@ export const DESKTOP_POLL_MS = 2000
 /** How long Copy Link reads "Copied!". */
 export const COPIED_MS = 2000
 
+const USERSPACE_SENTENCE =
+  "Tailscale is running in userspace-networking mode, so Portty can't open a desktop connection. Switch Tailscale to its standard mode, then try again."
+const DESKTOP_OFF_DESCRIPTION =
+  "Open this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
+const DESKTOP_FOOTNOTE =
+  'While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording again about once a month, at the Mac. The first time Chrome opens the link, it may ask to find devices nearby. Choose Allow.'
+const COPY_FAILED = "Couldn't copy the link. Try again."
+
+// The Background service row's description by GetDaemonRepair kind (19-UI-SPEC Row 5).
+const REPAIR_TEXT: Record<string, string> = {
+  login_items: "Portty's background service is turned off in Login Items, so this Mac's desktop is only reachable while Portty is open.",
+  move_to_applications: "Portty is running from a disk image, so this Mac's desktop is only reachable while Portty is open. Move Portty to Applications, then open it again.",
+  open_app: "Portty's background service isn't installed, so this Mac's desktop is only reachable while Portty is open. Open Portty.app from Applications once to install it.",
+  rehome_pending: "Portty is still moving its background service under macOS's control. It keeps trying.",
+}
+const REPAIR_DEFAULT = "Portty's background service isn't running under macOS's control. Quit and reopen Portty to try again."
+
 const viewersText = (n: number): string => `${n} viewer${n === 1 ? '' : 's'}`
+
+// A thrown Error stringifies as "Error: …" and the detail often ends in its own
+// period; strip both so the fixed sentence reads "…: <detail>. Check…".
+const cleanDetail = (d: string): string => d.trim().replace(/^Error:\s*/, '').replace(/\.+$/, '')
+
+type DotKind = 'on' | 'warn' | 'off'
+const DOT_CLASS: Record<DotKind, string> = { on: 'ok', warn: 'warn', off: 'error' }
 
 /**
  * The one wording table for the desktop's state (19-UI-SPEC Surface 1 Row 2):
  * `text` and `dot` are the Settings Status row, `tray` is the tray line (the Go
  * mirror in tray_common.go reads the same column). `tray` is null when there is
- * nothing to show. A reply with an errorCode means the daemon did not answer.
+ * nothing to show. `tailscaleOff` is GUI-derived and wins over every state; a
+ * reply with an errorCode means the daemon did not answer.
  */
 export function desktopStatusText(
   s: DesktopStatusResult,
-  _tailscaleOff: boolean,
-): { text: string; dot: 'on' | 'warn' | 'off' | null; tray: string | null } {
+  tailscaleOff: boolean,
+): { text: string; dot: DotKind | null; tray: string | null } {
+  if (tailscaleOff) return { text: 'Waiting for Tailscale', dot: 'warn', tray: 'Desktop: Waiting for Tailscale' }
   if (s.errorCode) return { text: 'Checking…', dot: null, tray: null }
+  const row = (text: string, dot: DotKind, tray = text) => ({ text, dot, tray: `Desktop: ${tray}` })
   switch (s.state) {
-    case 'idle':
-      return { text: 'Ready. Nobody is watching.', dot: 'on', tray: 'Desktop: Ready' }
-    case 'streaming':
-      return {
-        text: `Streaming to ${viewersText(s.viewers)}`,
-        dot: 'on',
-        tray: `Desktop: Streaming to ${viewersText(s.viewers)}`,
-      }
-    default:
-      return { text: 'Checking…', dot: null, tray: null }
+    case 'needs_permission': return row('Needs permission', 'warn')
+    case 'awaiting_approval': return row('Waiting for approval at the Mac', 'warn')
+    case 'display_asleep': return row('Display asleep', 'off')
+    case 'locked':
+      return s.viewers > 0
+        ? row(`Locked, streaming to ${viewersText(s.viewers)}`, 'off')
+        : row('Locked', 'off')
+    case 'idle': return row('Ready. Nobody is watching.', 'on', 'Ready')
+    case 'streaming': return row(`Streaming to ${viewersText(s.viewers)}`, 'on')
+    case 'capture_paused':
+      return row('Paused after repeated errors. Run Test Capture to resume.', 'warn', 'Paused after repeated errors')
+    default: return { text: 'Checking…', dot: null, tray: null }
   }
 }
 
-/** The Desktop group in Settings ▸ Sharing: switch, live status, Copy Link. */
-function DesktopGroup({ active }: { active: boolean }): React.ReactElement {
+/** The line under the Status row for the states that need the user to act at the Mac. */
+function desktopStatusNote(s: DesktopStatusResult, waiting: boolean): string | undefined {
+  if (waiting || s.errorCode) return undefined
+  if (s.state === 'needs_permission') return 'Choose Set Up Permissions below to turn on Screen Recording.'
+  if (s.state === 'awaiting_approval') {
+    return "macOS is asking for approval on this Mac's screen. Someone at the Mac needs to click Allow, or approve Portty in System Settings."
+  }
+  if (s.approachingLapse && (s.state === 'idle' || s.state === 'streaming' || s.state === 'locked')) {
+    return 'macOS will ask for approval again soon. Someone needs to approve it at the Mac.'
+  }
+  return undefined
+}
+
+// Stands in for the daemon's status before its first answer (and after a turn-on
+// whose status read failed): off, or on with a state nobody knows yet.
+const NO_STATUS: DesktopStatusResult = {
+  alwaysAvailable: false, state: '', viewers: 0, locked: false, approachingLapse: false,
+  tailscale: '', launchd: false, reason: '', errorCode: '',
+}
+
+/** The 8px dot; no dot at all while the answer is unknown (the words carry the state). */
+function StatusDot({ kind }: { kind: DotKind | null }): React.ReactElement | null {
+  return kind ? <span className={`ts-status__dot ts-status__dot--${DOT_CLASS[kind]}`} aria-hidden="true" /> : null
+}
+
+interface DesktopGroupProps {
+  /** The Sharing pane is showing: poll the daemon only then. */
+  active: boolean
+  tailscaleHealth: TailscaleHealth | null
+  ctDisclosed: boolean
+  ctLoaded: boolean
+  /** A turn-on just recorded the CT acknowledgement in the daemon: read it again. */
+  onTurnedOn: () => void
+  /** Open the setup sheet; focus goes back to returnTo when it closes. */
+  onOpenSetup: (returnTo: HTMLElement | null) => void
+  /** Bumped when the setup sheet closes, so the grants are read again. */
+  setupClosedCount: number
+}
+
+/** The Desktop group in Settings ▸ Sharing (19-UI-SPEC Surface 1). */
+function DesktopGroup({ active, tailscaleHealth, ctDisclosed, ctLoaded, onTurnedOn, onOpenSetup, setupClosedCount }: DesktopGroupProps): React.ReactElement {
   const [status, setStatus] = useState<DesktopStatusResult | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState<'starting' | 'stopping' | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  // null: not read yet, or the read failed. A failed read is never "missing".
+  const [perms, setPerms] = useState<{ sr: boolean; ax: boolean } | null>(null)
+  const [repair, setRepair] = useState('')
   const busyRef = useRef(false)
   const askSeq = useRef(0)
   const alive = useRef(true)
@@ -136,8 +212,23 @@ function DesktopGroup({ active }: { active: boolean }): React.ReactElement {
     const r = await GetDesktopStatus().catch(() => null)
     if (!alive.current || seq !== askSeq.current) return
     setLoaded(true)
-    if (r && !r.errorCode) setStatus(r)
-    else setStatus((prev) => (prev ? { ...prev, errorCode: 'unavailable' } : null))
+    if (!r || r.errorCode) {
+      setStatus((prev) => (prev ? { ...prev, errorCode: 'unavailable' } : null))
+      return
+    }
+    setStatus(r)
+    if (r.alwaysAvailable && !r.launchd) {
+      const kind = await GetDaemonRepair().catch(() => '')
+      if (alive.current) setRepair(kind ?? '')
+    }
+  }
+
+  async function readPerms(): Promise<{ sr: boolean; ax: boolean } | null> {
+    const r = await GetDesktopPermissions().catch(() => null)
+    if (!alive.current || !r || r.errorCode) return null
+    const p = { sr: r.sr, ax: r.ax }
+    setPerms(p)
+    return p
   }
 
   useEffect(() => {
@@ -148,36 +239,93 @@ function DesktopGroup({ active }: { active: boolean }): React.ReactElement {
     return () => clearInterval(timer)
   }, [active])
 
+  useEffect(() => {
+    if (active) void readPerms()
+  }, [active, setupClosedCount])
+
   async function handleToggle(): Promise<void> {
     if (busyRef.current) return
     const turnOn = !(status?.alwaysAvailable ?? false)
     busyRef.current = true
+    setError(null)
     setBusy(turnOn ? 'starting' : 'stopping')
+    let missing = false
     try {
-      await SetDesktopAlwaysAvailable(turnOn)
+      const r = await SetDesktopAlwaysAvailable(turnOn).catch((err) => ({
+        alwaysAvailable: !turnOn, firstShare: false, errorCode: 'unavailable', errorDetail: String(err),
+      }))
+      if (r?.errorCode) {
+        if (r.errorCode === 'tailscale_userspace') {
+          // Not an error line: the switch is blocked with the userspace sentence.
+          setStatus((prev) => ({ ...(prev ?? NO_STATUS), tailscale: 'userspace' }))
+        } else if (!turnOn) {
+          setError(`Couldn't turn off desktop sharing: ${cleanDetail(r.errorDetail)}. Try again.`)
+        } else if (r.errorCode === 'https_off') {
+          setError("Couldn't turn on desktop sharing: HTTPS certificates are off for your tailnet. Turn on HTTPS on the DNS page of the Tailscale admin console, then try again.")
+        } else {
+          setError(`Couldn't turn on desktop sharing: ${cleanDetail(r.errorDetail)}. Check that Tailscale is connected, then try again.`)
+        }
+      } else if (turnOn) {
+        setStatus((prev) => ({ ...(prev ?? NO_STATUS), alwaysAvailable: true }))
+        onTurnedOn()
+        const p = await readPerms()
+        missing = !!p && !(p.sr && p.ax)
+      }
       await readStatus()
     } finally {
       busyRef.current = false
       if (alive.current) setBusy(null)
     }
+    if (missing && alive.current) onOpenSetup(document.getElementById('desktopAlways'))
   }
 
   async function handleCopy(): Promise<void> {
-    // The link is read only now, goes straight to the clipboard and is never kept or shown.
-    const r = await GetDesktopLink()
-    if (!r?.url) return
-    await ClipboardSetText(r.url)
+    setError(null)
+    try {
+      // The link is read only now, goes straight to the clipboard and is never kept or shown.
+      const r = await GetDesktopLink()
+      if (!r?.url || (await ClipboardSetText(r.url)) === false) throw new Error('copy failed')
+    } catch {
+      if (alive.current) setError(COPY_FAILED)
+      return
+    }
+    if (!alive.current) return
     setCopied(true)
     if (copiedTimer.current) clearTimeout(copiedTimer.current)
     copiedTimer.current = setTimeout(() => setCopied(false), COPIED_MS)
   }
 
-  const on = busy === 'starting' ? true : busy === 'stopping' ? false : (status?.alwaysAvailable ?? false)
-  const shown = status ?? ({ alwaysAvailable: false, state: '', viewers: 0, errorCode: 'unavailable' } as DesktopStatusResult)
+  const tailscaleOff = !!tailscaleHealth && !tailscaleHealth.connected
+  const userspace = status?.tailscale === 'userspace'
+  const reallyOn = status?.alwaysAvailable ?? false
+  const on = busy === 'starting' ? true : busy === 'stopping' ? false : reallyOn
+  const waiting = tailscaleOff || userspace
+  const shown = status ?? NO_STATUS
   const row2 = busy === 'starting'
     ? { text: 'Getting a link…', dot: null }
-    : desktopStatusText(shown, false)
-  const copyBlocked = busy === 'starting'
+    : desktopStatusText(shown, waiting)
+  const note = busy === 'starting' ? undefined : desktopStatusNote(shown, waiting)
+  const copyBlocked = busy === 'starting' || row2.text === 'Waiting for Tailscale'
+
+  // Turning on is refused while Tailscale cannot carry it; turning off never is.
+  const blockedReason = !on && busy === null ? (tailscaleOff ? TAILSCALE_OFF_REASON : userspace ? USERSPACE_SENTENCE : null) : null
+  const showCT = ctLoaded && !ctDisclosed && !!tailscaleHealth?.domain
+  const description = blockedReason
+    ?? (reallyOn && busy === null
+      ? 'Turning this off stops every saved desktop link.'
+      : (
+        <>
+          {DESKTOP_OFF_DESCRIPTION}
+          {showCT && (
+            <span className="settings-row__note">
+              The first time, this gets an HTTPS certificate for {tailscaleHealth!.domain}. That name is published in public Certificate Transparency logs.
+            </span>
+          )}
+        </>
+      ))
+
+  const permState = perms === null ? null : perms.sr && perms.ax
+  const showRepair = reallyOn && !!status && !status.launchd
 
   return (
     <>
@@ -186,21 +334,22 @@ function DesktopGroup({ active }: { active: boolean }): React.ReactElement {
         <Row
           label="Always-available desktop"
           htmlFor="desktopAlways"
-          description={on
-            ? 'Turning this off stops every saved desktop link.'
-            : "Open this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."}
+          description={description}
+          descriptionId={blockedReason ? 'desktop-reason' : undefined}
         >
           <Switch
             id="desktopAlways"
             checked={on}
             saving={busy !== null || !loaded}
+            blocked={!!blockedReason}
+            describedBy={blockedReason ? 'desktop-reason' : undefined}
             onChange={() => void handleToggle()}
           />
         </Row>
         {on && (
-          <Row label="Status">
+          <Row label="Status" description={note}>
             <span className="ts-status">
-              {row2.dot && <span className={`ts-status__dot ts-status__dot--${row2.dot === 'on' ? 'ok' : row2.dot === 'warn' ? 'warn' : 'error'}`} aria-hidden="true" />}
+              <StatusDot kind={row2.dot} />
               <span className="ts-status__text" aria-live="polite">{row2.text}</span>
             </span>
           </Row>
@@ -217,7 +366,37 @@ function DesktopGroup({ active }: { active: boolean }): React.ReactElement {
             </button>
           </Row>
         )}
+        <Row label="Permissions" description="Screen Recording and Accessibility.">
+          <span className="ts-status">
+            <StatusDot kind={permState === null ? null : permState ? 'on' : 'warn'} />
+            <span className={`ts-status__text${permState ? ' ts-status__text--granted' : ''}`} aria-live="polite">
+              {permState === null ? 'Checking…' : permState ? 'Granted' : 'Needs permission'}
+            </span>
+          </span>
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={(e) => onOpenSetup(e.currentTarget)}
+          >
+            {permState ? 'Review Permissions…' : 'Set Up Permissions…'}
+          </button>
+        </Row>
+        {showRepair && (
+          <Row label="Background service" description={REPAIR_TEXT[repair] ?? REPAIR_DEFAULT}>
+            <span className="ts-status">
+              <StatusDot kind="warn" />
+              <span className="ts-status__text">Needs repair</span>
+            </span>
+            {repair === 'login_items' && (
+              <button type="button" className="button button--secondary" onClick={() => void OpenLoginItems().catch(() => {})}>
+                Open Login Items
+              </button>
+            )}
+          </Row>
+        )}
       </div>
+      <p className="settings-sheet__footnote">{DESKTOP_FOOTNOTE}</p>
+      {error && <p className="settings-sheet__error" role="alert">{error}</p>}
     </>
   )
 }
@@ -257,7 +436,12 @@ function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffe
 
   // Certificate Transparency acknowledgement (Security pane)
   const [ctDisclosed, setCTDisclosed] = useState(false)
+  const [ctLoaded, setCTLoaded] = useState(false)
   const [ctError, setCTError] = useState<string | null>(null)
+
+  // Set Up Desktop Sharing sheet (19-11), opened from the Desktop group.
+  const [setup, setSetup] = useState<{ returnTo: HTMLElement | null } | null>(null)
+  const [setupClosedCount, setSetupClosedCount] = useState(0)
 
   // Start-minimized toggle state (TRAY-01)
   const [startMinimized, setStartMinimized] = useState(false)
@@ -271,9 +455,12 @@ function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffe
   const [regenError, setRegenError] = useState<string | null>(null)
 
   // Load the CT acknowledgement on mount.
-  useEffect(() => {
-    HasCTDisclosure().then(setCTDisclosed).catch((err) => console.error('[SettingsSheet] HasCTDisclosure:', err))
-  }, [])
+  function readCTDisclosure(): void {
+    HasCTDisclosure()
+      .then((v) => { setCTDisclosed(v); setCTLoaded(true) })
+      .catch((err) => console.error('[SettingsSheet] HasCTDisclosure:', err))
+  }
+  useEffect(readCTDisclosure, [])
 
   // Load start-minimized preference on mount (TRAY-01/TRAY-03).
   useEffect(() => {
@@ -542,7 +729,15 @@ function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffe
               <p className="settings-sheet__footnote">
                 Share a session from the toolbar, or right-click it in the sidebar. Macs signed in to your Tailscale account see shared sessions in their sidebar, and each shared session gets a link that opens in a browser on any device signed in to your account. Turning Share off disconnects everyone.
               </p>
-              <DesktopGroup active={pane === 'sharing'} />
+              <DesktopGroup
+                active={pane === 'sharing'}
+                tailscaleHealth={tailscaleHealth}
+                ctDisclosed={ctDisclosed}
+                ctLoaded={ctLoaded}
+                onTurnedOn={readCTDisclosure}
+                onOpenSetup={(returnTo) => setSetup({ returnTo })}
+                setupClosedCount={setupClosedCount}
+              />
             </div>
 
             <div role="tabpanel" id="settings-pane-security" aria-labelledby="settings-tab-security" hidden={pane !== 'security'}>
@@ -580,7 +775,12 @@ function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffe
         </div>
       </div>
 
-      {/* Confirms sit after the sheet in the DOM, so they are the topmost modal for Esc and Tab. */}
+      {/* Confirms and the setup sheet sit after the sheet in the DOM, so they are the topmost modal for Esc and Tab. */}
+      <DesktopSetupSheet
+        open={setup !== null}
+        onClose={() => { setSetup(null); setSetupClosedCount((c) => c + 1) }}
+        returnFocusTo={setup?.returnTo}
+      />
       <RegenerateKeyModal
         isOpen={showRegenModal}
         onConfirm={handleRegenerateSigningKey}
