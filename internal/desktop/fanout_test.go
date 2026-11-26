@@ -52,6 +52,8 @@ type fanViewer struct {
 
 	mu        sync.Mutex
 	viewers   int
+	state     string
+	locked    bool
 	w, h      int
 	sizeCount int
 	closeCode websocket.StatusCode
@@ -100,12 +102,21 @@ func (v *fanViewer) read(ctx context.Context) {
 		switch m["type"] {
 		case "state":
 			v.viewers = int(m["viewers"].(float64))
+			v.state, _ = m["state"].(string)
+			v.locked, _ = m["locked"].(bool)
 		case "size":
 			v.w, v.h = int(m["w"].(float64)), int(m["h"].(float64))
 			v.sizeCount++
 		}
 		v.mu.Unlock()
 	}
+}
+
+// lastState returns the latest state message's state, viewer count and lock flag.
+func (v *fanViewer) lastState() (state string, viewers int, locked bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.state, v.viewers, v.locked
 }
 
 func (v *fanViewer) stateViewers() int {

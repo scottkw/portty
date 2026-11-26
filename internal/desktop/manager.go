@@ -36,6 +36,7 @@ import (
 	"github.com/pion/webrtc/v4"
 
 	"github.com/scottkw/portty/internal/screencap"
+	"github.com/scottkw/portty/internal/wakewatch"
 )
 
 // ProtocolVersion is the signalling protocol version in hello.
@@ -53,7 +54,7 @@ const (
 const MaxViewers = 8
 
 // State is what the desktop link is doing, pushed to viewers and the host GUI.
-// 19-01 only produces idle and streaming; 19-09 derives the rest.
+// state.go derives it from the flags the state loop and the watchdog keep.
 type State string
 
 // The state enum. capture_paused is the crash-loop breaker's state.
@@ -159,18 +160,56 @@ type Deps struct {
 	// OnDataChannel receives a data channel a viewer created before its
 	// offer. nil means CloseDataChannel: Phase 19 is view-only.
 	OnDataChannel DataChannelHook
-	// Notify posts a native notification. Used from 19-09 on; nil means log-only.
+	// Notify posts the approval-lapse notification when the daemon is its sender; nil means log-only.
 	Notify func(id, title, body string)
+
+	// The native reads and actions below default (when nil) to the screencap
+	// bridges and the real prober, so a host that does not care wires nothing;
+	// tests replace every one with a fake.
+	Lock            func() (bool, error)                                     // is the session screen locked
+	DisplayAsleep   func() (bool, error)                                     // is the main display asleep
+	OnAC            func() (bool, error)                                     // is the Mac on AC power
+	HoldDisplay     func(name string) (release func() error, err error)      // PreventUserIdleDisplaySleep
+	HoldSystem      func(name string) (release func() error, err error)      // PreventUserIdleSystemSleep
+	DeclareActivity func(name string) error                                  // remote user activity (lights a dark display)
+	Nudge           func() (bool, error)                                     // one-point pointer move and return
+	Probe           func(ctx context.Context) (screencap.Permissions, error) // fresh-child permission read
+	Wake            <-chan wakewatch.Reason                                  // nil means wakewatch.Watch on the Manager's context
+	ApprovalStore   func(ctx context.Context) (time.Time, error)             // replayd's LastAlerted date, if readable
 }
 
-// Status is the desktop link's state as the host sees it. 19-01 fills State
-// (idle or streaming) and Viewers; 19-09 derives the rest.
+// Package-level defaults for the Deps seams.
+var (
+	defaultLock          = screencap.SessionLocked
+	defaultDisplayAsleep = screencap.DisplayAsleep
+	defaultOnAC          = screencap.OnACPower
+	defaultNudge         = screencap.NudgePointer
+	defaultDeclare       = screencap.DeclareRemoteUserActivity
+	defaultHoldDisplay   = holdFunc(screencap.HoldDisplayAwake)
+	defaultHoldSystem    = holdFunc(screencap.HoldSystemAwake)
+	defaultApprovalStore = readApprovalStore
+)
+
+func holdFunc(take func(string) (screencap.PowerAssertion, error)) func(string) (func() error, error) {
+	return func(name string) (func() error, error) {
+		a, err := take(name)
+		if err != nil {
+			return nil, err
+		}
+		return a.Release, nil
+	}
+}
+
+// Status is the desktop link's state as the host sees it. Locked is an
+// attribute that coexists with Viewers. LapseSeq counts approval lapses and
+// LapseClaimedSeq is the last one whose notification has a sender.
 type Status struct {
 	State            State
 	Viewers          int
 	Locked           bool
 	ApproachingLapse bool
 	LapseSeq         int
+	LapseClaimedSeq  int
 	Reason           string
 }
 
@@ -218,6 +257,55 @@ type Manager struct {
 	kfLast    time.Time
 	kfPending bool
 	kfTimer   *time.Timer
+
+	// smu guards the derived-state flags below; it is a leaf lock (never held
+	// while taking another, never across a native call). Every state transition
+	// goes through a method that holds it, which serialises the stall watchdog,
+	// the idle probe and the display read against each other.
+	smu          sync.Mutex
+	lastFrameAt  time.Time // wall clock of the last access unit
+	permDenied   bool      // Screen Recording is off (needs_permission)
+	asleep       bool      // the main display is asleep (display_asleep)
+	locked       bool      // the session screen is locked (attribute)
+	reasons      map[string]string
+	pushed       msgState // the last state message broadcast
+	pushedKnown  bool
+	lastProbeAt  time.Time
+	frames       uint64    // access units seen, for "a frame since" checks
+	awaitSeq     uint64    // frames when the open lapse began (or its last retry ended)
+	noDisplay    bool      // SCK said there is no display (-3815); sticky until a start succeeds
+	nextStartAt  time.Time // no start retry before this
+	rtOff        bool      // desktop-state.json is unreadable: nothing is written to it
+	approvalSeen time.Time // Portty's own record of the last fresh approval
+	approvalAt   time.Time // when the approval signals were last refreshed
+	guiSeenAt    time.Time // the GUI's last NoteGUISeen
+	lapseDue     time.Time // the daemon claims the open lapse at this time if the GUI has not
+	paused       bool      // the crash-loop breaker is open (capture_paused)
+	awaiting     bool      // the stall watchdog classified waiting for approval
+	approaching  bool      // the approval record is 27 to 30 days old
+	lapseSeq     int       // approval lapses so far
+	lapseClaimed int       // the last lapse whose notification has a sender
+
+	// pmu guards the power assertions (power.go); native calls run under it.
+	pmu        sync.Mutex
+	relDisplay func() error // the viewer display assertion, nil when not held
+	relSystem  func() error // the viewer system-sleep assertion
+	relAC      func() error // the always-available AC system-sleep assertion
+	acAt       time.Time    // when the AC state was last read
+	wakeAt     time.Time    // a wake awaiting its stream restart (guarded by smu)
+
+	// lmu guards the Locked() cache; a leaf lock.
+	lmu       sync.Mutex
+	lockAt    time.Time
+	lockVal   bool
+	lockKnown bool
+
+	tickMu                sync.Mutex // one state-loop pass at a time; also guards wd
+	wd                    watchdog
+	kick                  chan struct{} // a join or leave: re-pace the loop and tick now
+	tickViewers, tickIdle time.Duration // the state loop's cadence (tests shorten it)
+	loopCancel            context.CancelFunc
+	loopDone              chan struct{}
 }
 
 // NewManager validates d.
@@ -237,7 +325,39 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.SourceConfig == (screencap.Config{}) {
 		d.SourceConfig = screencap.DefaultConfig()
 	}
-	return &Manager{d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer)}, nil
+	if d.Lock == nil {
+		d.Lock = defaultLock
+	}
+	if d.DisplayAsleep == nil {
+		d.DisplayAsleep = defaultDisplayAsleep
+	}
+	if d.OnAC == nil {
+		d.OnAC = defaultOnAC
+	}
+	if d.HoldDisplay == nil {
+		d.HoldDisplay = defaultHoldDisplay
+	}
+	if d.HoldSystem == nil {
+		d.HoldSystem = defaultHoldSystem
+	}
+	if d.DeclareActivity == nil {
+		d.DeclareActivity = defaultDeclare
+	}
+	if d.Nudge == nil {
+		d.Nudge = defaultNudge
+	}
+	if d.Probe == nil {
+		d.Probe = DefaultProber().Read
+	}
+	if d.ApprovalStore == nil {
+		d.ApprovalStore = defaultApprovalStore
+	}
+	m := &Manager{
+		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
+		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
+	}
+	m.loadRuntimeState()
+	return m, nil
 }
 
 // Start binds the media socket (tailnet address only, a busy port retried) and
@@ -267,6 +387,15 @@ func (m *Manager) Start(ctx context.Context) error {
 		return err
 	}
 	m.ctx, m.conn, m.mux, m.api = ctx, conn, mux, api
+
+	lctx, cancel := context.WithCancel(ctx)
+	m.loopCancel, m.loopDone = cancel, make(chan struct{})
+	wake := m.d.Wake
+	if wake == nil {
+		wake = wakewatch.Watch(lctx)
+	}
+	m.refreshAC(m.d.Now().Round(0), true)
+	go m.stateLoop(lctx, wake, m.loopDone)
 	return nil
 }
 
@@ -469,21 +598,64 @@ func (m *Manager) join(v *viewer) error {
 	if m.Full() {
 		return errFull
 	}
-	if m.src == nil {
-		src := m.d.NewSource()
-		sctx, cancel := context.WithCancel(m.ctx)
-		if err := src.Start(sctx, m.d.SourceConfig); err != nil {
-			cancel()
+	// Remote activity lights a dark display before capture starts; the first
+	// viewer takes the display and system assertions, held until the last leaves.
+	m.declareActivity()
+	first := m.Viewers() == 0
+	if first {
+		m.takeViewerHolds()
+	}
+	if m.src == nil && !m.isPaused() {
+		// A viewer that cannot be served yet (no Screen Recording grant, no
+		// display) still joins: it is told why, and the state loop retries.
+		if err := m.startSourceLocked(); err != nil && !errors.Is(err, screencap.ErrPermissionDenied) && !errors.Is(err, screencap.ErrNoDisplay) {
+			if first {
+				m.releaseViewerHolds()
+			}
 			return err
 		}
-		m.src, m.srcStop = src, cancel
-		m.fanDone = make(chan struct{})
-		go m.fanOut(src, m.fanDone)
 	}
 	m.vmu.Lock()
 	m.viewers[v.ID] = v
 	m.vmu.Unlock()
+	m.kickLoop()
 	return nil
+}
+
+// startSourceLocked (m.mu held) starts a fresh source and its fan-out. A start
+// error is classified (-3801 needs permission, -3815 no display) before it is
+// returned. Every viewer waits for the new source's first keyframe.
+func (m *Manager) startSourceLocked() error {
+	src := m.d.NewSource()
+	sctx, cancel := context.WithCancel(m.ctx)
+	now := m.d.Now().Round(0)
+	if err := src.Start(sctx, m.d.SourceConfig); err != nil {
+		cancel()
+		m.noteStartFailure(err, now)
+		return err
+	}
+	m.src, m.srcStop = src, cancel
+	m.fanDone = make(chan struct{})
+	m.vmu.Lock()
+	for _, v := range m.viewers {
+		v.armed = false
+	}
+	m.vmu.Unlock()
+	m.noteStartSuccess(src, now)
+	go m.fanOut(src, m.fanDone)
+	return nil
+}
+
+// restartSource stops the source, if any, and starts a new one (stall recovery,
+// wake, retry). It does nothing without a viewer.
+func (m *Manager) restartSource() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed || m.Viewers() == 0 {
+		return nil
+	}
+	m.stopSourceLocked()
+	return m.startSourceLocked()
 }
 
 // leave unregisters v and stops capture when it was the last viewer (capture
@@ -496,8 +668,11 @@ func (m *Manager) leave(v *viewer) {
 	m.vmu.Unlock()
 	if n == 0 {
 		m.stopSourceLocked()
+		m.noteCaptureStopped()
+		m.releaseViewerHolds()
 	}
 	m.mu.Unlock()
+	m.kickLoop()
 	slog.Info("desktop: viewer left", "viewer", string(v.ID)[:8], "viewers", n)
 	m.broadcastState(context.Background())
 }
@@ -571,14 +746,22 @@ func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 			if !ok {
 				return
 			}
+			m.noteFrame()
 			if m.noteSize(au.Width, au.Height) {
 				m.broadcast(context.Background(), msgSize{Type: typeSize, W: au.Width, H: au.Height})
+			}
+			if m.isAsleep() {
+				// A cached frame re-encoded for a joiner is stale while the
+				// display is dark: the viewer is shown the state instead.
+				continue
 			}
 			// shortcut: the timestamp step truncates to whole ticks, exact at 30 fps
 			// (3000); fractional-tick drift if a source ever runs at an odd rate.
 			m.writeUnit(au.Keyframe, pkt.Packetize(au.Data, uint32(au.Duration.Seconds()*float64(h264Capability.ClockRate))))
 		case err := <-errs:
 			slog.Warn("desktop: capture error", "err", err)
+			m.noteSourceError(err)
+			m.pushIfChanged(context.Background())
 		}
 	}
 }
@@ -640,7 +823,11 @@ func (m *Manager) broadcast(ctx context.Context, v any) {
 
 func (m *Manager) broadcastState(ctx context.Context) {
 	st := m.Status()
-	m.broadcast(ctx, msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked})
+	msg := msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked}
+	m.smu.Lock()
+	m.pushed, m.pushedKnown = msg, true
+	m.smu.Unlock()
+	m.broadcast(ctx, msg)
 }
 
 // Full reports whether the viewer cap is reached. The route checks it before
@@ -667,14 +854,8 @@ func (m *Manager) ViewerList() []Viewer {
 	return out
 }
 
-// Status returns the link's state. 19-09 derives the other states here.
-func (m *Manager) Status() Status {
-	n := m.Viewers()
-	if n > 0 {
-		return Status{State: StateStreaming, Viewers: n}
-	}
-	return Status{State: StateIdle}
-}
+// Status returns the link's derived state (state.go).
+func (m *Manager) Status() Status { return m.deriveState() }
 
 // CloseAll closes every viewer socket with code and reason.
 func (m *Manager) CloseAll(code websocket.StatusCode, reason string) {
@@ -703,7 +884,12 @@ func (m *Manager) Close() error {
 		return nil
 	}
 	m.closed = true
+	cancel, done := m.loopCancel, m.loopDone
 	m.mu.Unlock()
+	if cancel != nil {
+		cancel()
+		<-done
+	}
 
 	m.CloseAll(websocket.StatusServiceRestart, "server stopping")
 	m.kmu.Lock()
@@ -715,6 +901,8 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.stopSourceLocked()
+	m.noteCaptureStopped()
+	m.releaseAllHolds()
 	m.vmu.Lock()
 	for _, v := range m.viewers {
 		_ = v.pc.Close()
