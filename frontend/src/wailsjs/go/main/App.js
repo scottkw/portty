@@ -100,6 +100,12 @@ export const ConnectPeerSession      = (host, sessionID)    => Call('main.App.Co
 // Portty 13-05: returns RemotePortResult and never throws.
 export const OpenRemotePort          = (sessionID, rawURL, consent) => Call('main.App.OpenRemotePort', [sessionID, rawURL, consent])
 
+// Portty 19-11: the Set Up Desktop Sharing sheet. The first two return result
+// objects and never throw; OpenDesktopPermissionPane rejects for an unknown kind.
+export const GetDesktopPermissions   = ()                   => Call('main.App.GetDesktopPermissions', [])
+export const RunDesktopTestCapture   = ()                   => Call('main.App.RunDesktopTestCapture', [])
+export const OpenDesktopPermissionPane = (kind)             => Call('main.App.OpenDesktopPermissionPane', [kind])
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
-export const RegenerateSigningKey    = ()                   => Call('main.App.RegenerateSigningKey', [])
+export const RegenerateSigningKey    = ()                => Call('main.App.RegenerateSigningKey', [])
 

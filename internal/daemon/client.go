@@ -456,6 +456,44 @@ func (c *DaemonClient) DesktopLink() (string, error) {
 	return out.URL, nil
 }
 
+// DesktopPermissions reads the live Screen Recording and Accessibility grants
+// from the daemon's fresh-process probe. A failed probe is an error, never
+// false, false.
+func (c *DaemonClient) DesktopPermissions() (sr, ax bool, err error) {
+	var out DesktopPermissionsResponse
+	if err := c.doJSON(http.MethodGet, "/desktop/permissions", nil, &out); err != nil {
+		return false, false, err
+	}
+	return out.SR, out.AX, nil
+}
+
+// DesktopTestCapture asks the daemon for one still of the main display. A
+// refusal the daemon words (needs_permission, timeout, capture_failed) comes
+// back as code with a nil error; err is for a call that did not complete.
+func (c *DaemonClient) DesktopTestCapture() (jpeg []byte, code string, err error) {
+	resp, err := c.doRetrying(c.http, time.Now().Add(frozenRetryBudget), func() (*http.Request, error) {
+		return http.NewRequestWithContext(c.reqCtx(), http.MethodPost, c.base+"/desktop/test-capture", nil)
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, "", fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode == http.StatusOK {
+		return body, "", nil
+	}
+	var e struct {
+		Code string `json:"code"`
+	}
+	if json.Unmarshal(body, &e) == nil && e.Code != "" {
+		return nil, e.Code, nil
+	}
+	return nil, "", fmt.Errorf("daemon API POST desktop/test-capture: status %d", resp.StatusCode)
+}
+
 // SendPreview errors, one per refusal the CLI words differently (11-08).
 var (
 	ErrPreviewNoSession   = errors.New("no such session")

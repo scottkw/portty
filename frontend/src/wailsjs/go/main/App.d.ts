@@ -185,6 +185,29 @@ export interface RemotePortResult {
 }
 export function OpenRemotePort(sessionID: string, rawURL: string, consent: boolean): Promise<RemotePortResult>
 
+// Portty 19-11: the Set Up Desktop Sharing sheet. The daemon holds the grants,
+// so it reads them (a fresh probe process, never a cached answer) and takes the
+// test capture. None of the three throws.
+// GetDesktopPermissions: errorCode is '' (sr/ax are the OS's live answer) or
+// 'unavailable' (not known: daemon unreachable or its probe failed).
+export interface DesktopPermissionsResult {
+  sr: boolean
+  ax: boolean
+  errorCode: string
+}
+export function GetDesktopPermissions(): Promise<DesktopPermissionsResult>
+// RunDesktopTestCapture: imageDataURL is a data:image/jpeg URL (a 512 px
+// still), or errorCode is needs_permission, timeout, capture_failed or
+// unavailable.
+export interface TestCaptureResult {
+  imageDataURL: string
+  errorCode: string
+}
+export function RunDesktopTestCapture(): Promise<TestCaptureResult>
+// OpenDesktopPermissionPane: kind is 'screen' or 'accessibility'; any other
+// kind rejects without opening anything.
+export function OpenDesktopPermissionPane(kind: string): Promise<void>
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export function RegenerateSigningKey(): Promise<void>
 
