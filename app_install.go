@@ -71,6 +71,16 @@ const installerCopyTimeout = 2 * time.Minute
 // installerStartWaitFor is installerStartWait; tests lower it.
 var installerStartWaitFor = installerStartWait
 
+// installerStartErr names the step that failed; the cause (often a *PathError naming a home
+// path) stays reachable for errors.Is but out of Error(), which update.log gets (WR-03).
+type installerStartErr struct {
+	step  string
+	cause error
+}
+
+func (e *installerStartErr) Error() string { return "installer not started: " + e.step }
+func (e *installerStartErr) Unwrap() error { return e.cause }
+
 // startInstaller starts install-update from a whole copy of the running Portty.app in a fresh
 // run folder and, once the copy reports it is running, quits the GUI only (daemon and sessions
 // untouched). Any failure before that removes the run folder, leaves this process running, names
@@ -82,7 +92,7 @@ func (a *App) startInstaller(j updater.Job) error {
 			_ = os.RemoveAll(run)
 		}
 		updateLogf("update: installer not started: %s", step)
-		return fmt.Errorf("installer not started: %s: %w", step, err)
+		return &installerStartErr{step, err}
 	}
 	src, err := runningBundleFunc()
 	if err != nil {
