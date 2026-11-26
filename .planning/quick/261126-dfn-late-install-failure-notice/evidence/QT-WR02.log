@@ -1,0 +1,280 @@
+QT-WR02 log: late first-install failure notice and the mover's earlier-result alert; 1.8.1 rig build of 65925382 (executable sha256 778bd91d75024767...), DMG sha256 79c13a8e7ce211a2...
+--- notes
+VM portty-test (macOS 27.2), user admin. Prior state: the RC-WR02 end state (post-fix 1.8.1 rig build of
+83df1e1f, executable sha256 f6a9cb6c8b92f3e5..., GUI and daemon running, no sessions). It was copied to
+~/qtwr02-bak (app and config files), removed by r9.sh prep none, and restored afterwards (same sha256,
+GUI and daemon started, no sessions, update.log/update_notified/settings.json/daemon.log* put back,
+Downloads consent reset, ~/p18 and the backup removed).
+Method: RC-WR02's (p18rc/vm/wr02.sh run): the DMG copied into ~/Downloads as the release asset name,
+unquarantined, opened, then `open /Volumes/Portty/Portty.app` (T0). A watcher flips ~/p18/verify-mode
+from adhoc to off the moment the installer process exists, so only the installer's re-verify runs the
+real codesign on the ad-hoc copy and fails. Notification evidence: `log show` of usernoted and
+NotificationCenter over the row window, then Notification Center opened (click on the menu-bar clock)
+and read with axdump. Step 2: the DMG re-opened from ~/Downloads and its app opened again, with
+verify-mode back to adhoc; the alert read with axdump and a screenshot before OK.
+Focus caveat: the VM has a Focus (Do Not Disturb) on from before this row (moon in the menu bar, an
+activity-manager assertion in ~/Library/DoNotDisturb/DB/Assertions.json). usernoted presented the
+notice as a banner, and NotificationCenter then muted the on-screen banner ("muted by DND suppression:
+delay") and added it to the history. So no banner was drawn on screen in this run; the notice was
+delivered and is in Notification Center. The Focus was left as it was.
+Clock: timed's last NTP receipt before and during the row was in step (16:40:55, received == log
+time); no "Received time" or adjustment between 16:40:55 and 16:47:18. No step inside the row.
+The step-1 0.4 s poller timeline was overwritten by step 2's poller (same file); step 1 is covered by
+run.txt, check.txt, update.log, the usernoted lines and the screenshots.
+--- prep.txt
+portty procs: []
+apps: /Applications= ~/Applications=
+trash Portty*.app=0 trash dmgs=0 downloads: .localized 
+volumes:  portty images: 0
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+Successfully reset SystemPolicyDownloadsFolder
+trash: .DS_Store  downloads: .localized  verify-mode: adhoc
+windows: Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- run.txt
+16:43:37.916Z capture started tag=run secs=70
+16:43:39.000Z dmg in Downloads: 7946875 ~/Downloads/portty-v1.8.1-darwin-arm64.dmg xattrs: [com.apple.FinderInfo: deviddsk com.apple.macl:  ]
+16:43:40.554Z open dmg
+16:43:41.517Z volume: /Volumes/Portty/Portty.app mount: apfs, local, nodev, nosuid, read-only, journaled, noowners, mounted by admin
+16:43:41.838Z open app (T0)
+16:43:42.032Z open rc=0
+16:43:48.066Z result outcome: failed
+16:43:44.781Z installer seen; verify-mode now: off
+--- check.txt
+16:43:54.280Z check
+verify-mode: off
+result file: {"v":1,"outcome":"failed","oldVersion":"","newVersion":"1.8.1","reason":"reverify","keepDaemon":false,"dmg":""}
+/Applications Portty items: 0 ()
+~/Applications Portty items: 0
+run dirs: 0
+volumes:  portty images: 0
+Downloads: .localized portty-v1.8.1-darwin-arm64.dmg  Trash: .DS_Store 
+Portty processes: 
+windows: Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+Finder front window and selection:
+  33:37: execution error: Not authorized to send Apple events to Finder. (-1743)
+Finder AX (windows, the DMG's icon):
+AXWindow [AXStandardWindow] Title=Downloads @66,88 920x436
+AXTextField Value=portty-v1.8.1-darwin-arm64.dmg @288,174 205x21
+AXWindow [AXStandardWindow] Title=updates @37,59 920x436
+AXWindow [AXStandardWindow] Title=Applications @8,30 788x690
+AXWindow [AXStandardWindow] Title=app.portty.Portty @268,106 920x436
+AXWindow [AXStandardWindow] Title=admin @239,77 920x436
+update.log:
+update: installer started (copy 39ms, start 326ms)
+2026/11/26 16:43:47 installer: install failed: safety check: app-team
+2026/11/26 16:43:47 installer: failed reverify
+--- usernoted-run.txt
+2026-11-26 16:43:45.502583+0000  localhost NotificationCenter[86669]: (TCC) Created Activity ID: 0x4529a2, Description: TCCAccessRequest() IPC
+2026-11-26 16:43:45.502596+0000  localhost NotificationCenter[86669]: (libxpc.dylib) [com.apple.xpc:connection] [0x7cd10ba1c0] activating connection: mach=true listener=false peer=false name=com.apple.tccd.system
+2026-11-26 16:43:45.511721+0000  localhost NotificationCenter[86669]: (libxpc.dylib) [com.apple.xpc:connection] [0x7cd10ba1c0] invalidated after the last release of the connection object
+2026-11-26 16:43:45.667882+0000  localhost usernoted[373]: (libxpc.dylib) [com.apple.xpc:connection] [0x7be4595b80] activating connection: mach=false listener=false peer=true name=com.apple.usernotifications.usernotificationservice.peer[357].0x7be4595b80
+2026-11-26 16:43:45.670789+0000  localhost usernoted[373]: (Security) Created Activity ID: 0x44ddb4, Description: SecKeyVerifySignature
+2026-11-26 16:43:45.670923+0000  localhost usernoted[373]: (Security) Created Activity ID: 0x44ddb5, Description: SecTrustEvaluateIfNecessary
+2026-11-26 16:43:45.672590+0000  localhost usernoted[373]: [com.apple.unc:server] Connection com.apple.mdmclient.usernotifications.v2 with path: /usr/libexec/mdmclient
+2026-11-26 16:43:45.677417+0000  localhost usernoted[373]: (UserNotificationsCore) [com.apple.usernotificationsd:NotificationEventManager] Settings changed for source identifiers: ["com.apple.mdmclient.usernotifications.v2"]
+2026-11-26 16:43:45.677572+0000  localhost usernoted[373]: [com.apple.unc:application] Authorization set for com.apple.mdmclient.usernotifications.v2 to allow: YES critical: NO provisionally: NO
+2026-11-26 16:43:46.149046+0000  localhost NotificationCenter[86669]: (TCC) Created Activity ID: 0x4529a3, Description: TCCAccessRequest() IPC
+2026-11-26 16:43:46.149068+0000  localhost NotificationCenter[86669]: (libxpc.dylib) [com.apple.xpc:connection] [0x7cd10ba1c0] activating connection: mach=true listener=false peer=false name=com.apple.tccd.system
+2026-11-26 16:43:46.168135+0000  localhost NotificationCenter[86669]: (libxpc.dylib) [com.apple.xpc:connection] [0x7cd10ba1c0] invalidated after the last release of the connection object
+2026-11-26 16:43:46.877184+0000  localhost NotificationCenter[86669]: (TCC) Created Activity ID: 0x4529a4, Description: TCCAccessRequest() IPC
+2026-11-26 16:43:46.877198+0000  localhost NotificationCenter[86669]: (libxpc.dylib) [com.apple.xpc:connection] [0x7cd10ba1c0] activating connection: mach=true listener=false peer=false name=com.apple.tccd.system
+2026-11-26 16:43:46.886415+0000  localhost NotificationCenter[86669]: (libxpc.dylib) [com.apple.xpc:connection] [0x7cd10ba1c0] invalidated after the last release of the connection object
+2026-11-26 16:43:47.889207+0000  localhost NotificationCenter[86669]: (TCC) Created Activity ID: 0x4529a5, Description: TCCAccessRequest() IPC
+2026-11-26 16:43:47.889223+0000  localhost NotificationCenter[86669]: (libxpc.dylib) [com.apple.xpc:connection] [0x7cd10ba1c0] activating connection: mach=true listener=false peer=false name=com.apple.tccd.system
+2026-11-26 16:43:47.901872+0000  localhost NotificationCenter[86669]: (libxpc.dylib) [com.apple.xpc:connection] [0x7cd10ba1c0] invalidated after the last release of the connection object
+2026-11-26 16:43:48.016441+0000  localhost osascript[4248]: (libxpc.dylib) [com.apple.xpc:connection] [0x76d4d0c640] activating connection: mach=true listener=false peer=false name=com.apple.distributed_notifications@Uv3
+2026-11-26 16:43:48.170222+0000  localhost usernoted[373]: (Security) Created Activity ID: 0x44ddb6, Description: SecKeyVerifySignature
+2026-11-26 16:43:48.170418+0000  localhost usernoted[373]: (Security) Created Activity ID: 0x44ddb7, Description: SecTrustEvaluateIfNecessary
+2026-11-26 16:43:48.172966+0000  localhost usernoted[373]: (libxpc.dylib) [com.apple.xpc:connection] [0x7be4594c80] activating connection: mach=false listener=false peer=true name=com.apple.usernoted.daemon_client.peer[4248].0x7be4594c80
+2026-11-26 16:43:48.176253+0000  localhost usernoted[373]: (Security) Created Activity ID: 0x44ddb8, Description: SecKeyVerifySignature
+2026-11-26 16:43:48.176408+0000  localhost usernoted[373]: (Security) Created Activity ID: 0x44ddb9, Description: SecTrustEvaluateIfNecessary
+2026-11-26 16:43:48.178257+0000  localhost usernoted[373]: [com.apple.unc:server] Connection com.apple.ScriptEditor2 with path: /usr/bin/osascript
+2026-11-26 16:43:48.179047+0000  localhost NotificationCenter[86669]: [com.apple.unc:application] Looking up app info for com.apple.ScriptEditor2
+2026-11-26 16:43:48.181628+0000  localhost NotificationCenter[86669]: [com.apple.unc:application] Found info for com.apple.ScriptEditor2 at <private>. app name: Script Editor
+2026-11-26 16:43:48.185293+0000  localhost usernoted[373]: [com.apple.unc:application] Record <NotificationRecord app:"com.apple.ScriptEditor2" ident:"DA39-A3EE" req:"" uuid:"76E0CD32" source:"75B7493B" alertStyle:"banner" staticCategory:"<LEGACY options=(legacyBehavior, hiddenPreviewShowsTitle) actions=[
+    <ACTION style=button title=''>
+  ]>" <response action: closed actIdent:  foreground: true text: nil> > ineligible for pipeline due to requestIneligibleForUserNotification(hasAnonymousIdentifier)
+2026-11-26 16:43:48.185342+0000  localhost usernoted[373]: [com.apple.unc:application] <NotificationRecord app:"com.apple.ScriptEditor2" ident:"DA39-A3EE" req:"" uuid:"76E0CD32" source:"75B7493B" alertStyle:"banner" staticCategory:"<LEGACY options=(legacyBehavior, hiddenPreviewShowsTitle) actions=[
+    <ACTION style=button title=''>
+  ]>" <response action: closed actIdent:  foreground: true text: nil> > successfully processed by pipeline, scheduled for delivery.
+2026-11-26 16:43:48.186113+0000  localhost usernoted[373]: [com.apple.unc:application] Delivering <NotificationRecord app:"com.apple.ScriptEditor2" ident:"DA39-A3EE" req:"" uuid:"76E0CD32" source:"75B7493B" alertStyle:"banner" staticCategory:"<LEGACY options=(legacyBehavior, hiddenPreviewShowsTitle) actions=[
+    <ACTION style=button title=''>
+  ]>" <response action: closed actIdent:  foreground: true text: nil> > to [ .alert .lockScreen .notificationCenter ]: askBeforePresenting: false, effectiveStyle: banner, hasSound: false, shouldPresent: true
+2026-11-26 16:43:48.186239+0000  localhost usernoted[373]: [com.apple.unc:application] Presenting <NotificationRecord app:"com.apple.ScriptEditor2" ident:"DA39-A3EE" req:"" uuid:"76E0CD32" source:"75B7493B" alertStyle:"banner" staticCategory:"<LEGACY options=(legacyBehavior, hiddenPreviewShowsTitle) actions=[
+    <ACTION style=button title=''>
+  ]>" <response action: closed actIdent:  foreground: true text: nil> > as banner (["badge", "sound", "alert"])
+2026-11-26 16:43:48.186563+0000  localhost NotificationCenter[86669]: [com.apple.unc:application] addAction: present for com.apple.ScriptEditor2: ["76E0CD32"]
+2026-11-26 16:43:48.186633+0000  localhost usernoted[373]: [com.apple.unc:application] actually deliver 76E0CD32: deliveredChanged: true, alertsChanged: false, shouldPresent: true, askBeforePresenting: false
+2026-11-26 16:43:48.187671+0000  localhost NotificationCenter[86669]: (DoNotDisturb) Created Activity ID: 0x4529a6, Description: com.apple.donotdisturb.DNDEventBehaviorResolutionService.resolveEvent
+2026-11-26 16:43:48.187908+0000  localhost NotificationCenter[86669]: (DoNotDisturb) [com.apple.donotdisturb:BehaviorResolution] [com.apple.private.nc.dnd:0F1BC6F2-EC77-4C06-A965-FF37BF3BD4AA] Resolving behavior for event, details=<DNDMutableClientEventDetails: 0x7cd2138800; identifier: ''; bundleIdentifier: com.apple.ScriptEdit
+2026-11-26 16:43:48.192570+0000  localhost usernoted[373]: (libxpc.dylib) [com.apple.xpc:connection] [0x7be4594c80] invalidated because the client process (pid 4248) either cancelled the connection or exited
+2026-11-26 16:43:48.203372+0000  localhost NotificationCenter[86669]: [com.apple.unc:application] addAction: addDelivered for com.apple.ScriptEditor2: ["76E0CD32"]
+2026-11-26 16:43:48.203802+0000  localhost NotificationCenter[86669]: (DoNotDisturb) [com.apple.donotdisturb:BehaviorResolution] [com.apple.private.nc.dnd:0F1BC6F2-EC77-4C06-A965-FF37BF3BD4AA] Resolved event behavior=<DNDClientEventBehavior: 0x7cd11b3c40; interruptionSuppression: delay delivery; intelligentBehavior: unused; reso
+2026-11-26 16:43:48.203810+0000  localhost NotificationCenter[86669]: [com.apple.unc:banner] Resolved interruption suppression for DA39-A3EE as delay
+2026-11-26 16:43:48.203817+0000  localhost NotificationCenter[86669]: [com.apple.unc:dnd] Creating context for DA39-A3EE, interruptionSuppression: delay from source: calculated
+2026-11-26 16:43:48.203948+0000  localhost NotificationCenter[86669]: [com.apple.unc:application] _handleAction: present for com.apple.ScriptEditor2: ["76E0CD32"]
+2026-11-26 16:43:48.204013+0000  localhost NotificationCenter[86669]: [com.apple.unc:banner] DA39-A3EE (76E0CD32) muted by DND suppression: delay
+2026-11-26 16:43:48.204250+0000  localhost NotificationCenter[86669]: [com.apple.unc:banner] addOrUpdate(record: 76E0CD32, present: true): listItem: com.apple.ScriptEditor2:76E0CD32, alertStyle: banner, muted: true, forceAsAlert: false, pinned: false, canDisplayWhileCenterIsClosed: false
+2026-11-26 16:43:48.204409+0000  localhost NotificationCenter[86669]: [com.apple.unc:banner] addOrUpdate listItem: com.apple.ScriptEditor2:76E0CD32, canDisplayWhileCenterIsClosed: false, visibility: [history, alert, muted, lockscreen, allowsScreenWake], readCount: 0
+2026-11-26 16:43:48.204420+0000  localhost NotificationCenter[86669]: [com.apple.unc:application] Adding notification to storage: com.apple.ScriptEditor2:76E0CD32
+2026-11-26 16:43:48.204591+0000  localhost NotificationCenter[86669]: [com.apple.unc:banner] [com.apple.ScriptEditor2:76E0CD32] added to history with groupingIdentifier <private>, readCount: 0
+2026-11-26 16:43:48.204713+0000  localhost NotificationCenter[86669]: [com.apple.unc:dnd] Not playing sound for <NotificationRecord app:"com.apple.ScriptEditor2" ident:"DA39-A3EE" req:"" uuid:"76E0CD32" source:"75B7493B" alertStyle:"banner" staticCategory:"<LEGACY options=(legacyBehavior, hiddenPreviewShowsTitle) actions=[
+    <ACTION style=button title=''>
+  ]>" <response action: closed actIdent:  foreground: true text: nil> >: consoleConnected: true, isMuted: true, hasSound: false, darkWake: false
+2026-11-26 16:43:48.204723+0000  localhost NotificationCenter[86669]: [com.apple.unc:application] _handleAction: addDelivered for com.apple.ScriptEditor2: ["76E0CD32"]
+2026-11-26 16:43:48.204770+0000  localhost NotificationCenter[86669]: [com.apple.unc:banner] addOrUpdate(record: 76E0CD32, present: false): listItem: com.apple.ScriptEditor2:76E0CD32, alertStyle: banner, muted: true, forceAsAlert: false, pinned: false, canDisplayWhileCenterIsClosed: false
+2026-11-26 16:43:48.204807+0000  localhost NotificationCenter[86669]: [com.apple.unc:banner] [com.apple.ScriptEditor2:76E0CD32] updating existing notification with content from 76E0CD32
+--- nc-history-ax.txt
+AXWindow [AXSystemDialog] Title=Notification Center @0,0 1280x720
+AXGroup [AXNotificationCenterAlertStack] Description=Portty, Portty, The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still in @920,42 344x74
+AXStaticText Value=Portty @978,54 39x16
+AXStaticText Value=The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still installed. @978,71 270x32
+AXGroup [AXNotificationCenterBannerStack] Description=Script Editor, Portty, Portty couldn't install version 1.8.1., stacked @920,130 344x58
+AXStaticText Value=Portty @978,142 39x16
+AXStaticText Value=Portty couldn't install version 1.8.1. @978,159 209x16
+AXButton Description=Edit Widgets @1032,212 87x24
+AXMenuButton Title=Clear Notifications… @1127,212 24x24
+AXWindow [AXUnknown] Title=Featured @8,218 360x180
+AXGroup Description=Photos @16,226 344x164
+AXImage Description=ContentUnavailablePhotosIcon @156,256 64x64
+AXWindow [AXUnknown] Title=Forecast @188,38 180x180
+AXGroup Description=Weather @196,46 164x164
+AXUnknown Description=New York, 45° Fahrenheit, Rain, High Wind Warning & 2 More, High of 52° Fahrenhe @214,64 122x128
+AXWindow [AXUnknown] Title=Month @8,38 180x180
+AXGroup Description=Calendar @16,46 164x164
+AXUnknown Description=THURSDAY, NOVEMBER 26 @29,64 138x128
+--- reopen.txt
+16:45:45.579Z before: result file: {"v":1,"outcome":"failed","oldVersion":"","newVersion":"1.8.1","reason":"reverify","keepDaemon":false,"dmg":""}
+16:45:47.113Z open dmg
+16:45:47.770Z volume: /Volumes/Portty/Portty.app
+16:45:47.800Z open app (T0)
+16:45:48.081Z open rc=0
+16:45:50.252Z alert capture
+--- axdump app.portty.Portty (dialog text and buttons)
+AXWindow [AXDialog] Description=alert @510,153 260x198
+AXStaticText Value=Portty couldn't install version 1.8.1. @531,252 218x39
+AXStaticText @531,159 2x20
+AXButton Title=OK @525,306 230x30
+--- windows: Portty||L3; Finder|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- result file now: none
+--- staging: 0 run dirs: 0 /Applications/Portty.app: no
+--- installer procs: 
+--- update.log
+update: installer started (copy 39ms, start 326ms)
+2026/11/26 16:43:47 installer: install failed: safety check: app-team
+2026/11/26 16:43:47 installer: failed reverify
+mover: earlier result failed  to 1.8.1 reverify
+--- after-ok.txt
+16:46:05.400Z press OK
+press pid=8434 rc=0
+16:46:16.836Z after
+portty procs: [9875:~/Library/Application Support/portty/update/run-2078563943/Portty.app/Contents/MacOS/Portty ]
+apps: /Applications= ~/Applications=
+trash Portty*.app=0 trash dmgs=0 downloads: .localized portty-v1.8.1-darwin-arm64.dmg 
+volumes: /Volumes/Portty  portty images: 1
+staging: 1 run dirs: 1
+/Applications mode: drwxrwxr-x root:admin
+--- update.log
+update: installer started (copy 39ms, start 326ms)
+2026/11/26 16:43:47 installer: install failed: safety check: app-team
+2026/11/26 16:43:47 installer: failed reverify
+mover: earlier result failed  to 1.8.1 reverify
+update: installer started (copy 39ms, start 273ms)
+--- result: none
+--- windows: Finder|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- after-ok2.txt
+16:46:48
+portty procs: [9875:~/Library/Application Support/portty/update/run-2078563943/Portty.app/Contents/MacOS/Portty 10892:/Applications/Portty.app/Contents/MacOS/Portty  10918:/Applications/Portty.app/Contents/MacOS/Portty daemon ]
+apps: /Applications=1.8.1 ~/Applications=
+trash Portty*.app=0 trash dmgs=0 downloads: .localized portty-v1.8.1-darwin-arm64.dmg 
+volumes:  portty images: 0
+staging: 0 run dirs: 1
+/Applications mode: drwxrwxr-x root:admin
+update: installer started (copy 39ms, start 326ms)
+2026/11/26 16:43:47 installer: install failed: safety check: app-team
+2026/11/26 16:43:47 installer: failed reverify
+mover: earlier result failed  to 1.8.1 reverify
+update: installer started (copy 39ms, start 273ms)
+2026/11/26 16:46:17 vmpreview: verify-mode adhoc
+2026/11/26 16:46:22 installer: updated 
+--- result: {"v":1,"outcome":"updated","oldVersion":"","newVersion":"1.8.1","reason":"","keepDaemon":false,"dmg":""}
+windows: UserNotificationCenter||L8; Portty|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+16:46:06.161Z guis=[8434:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=1 vol=mounted app= home_app= staging=1 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:06.862Z guis=[] daemons=[] installer=[9875 ] image=1 vol=mounted app= home_app= staging=1 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:19.690Z guis=[] daemons=[] installer=[9875 ] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:20.321Z guis=[10892:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[10918:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[9875 ] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:22.667Z guis=[10892:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[10918:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[9875 ] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=1 result=updated dl_dmg=1 trash_dmg=0 trash_app=0
+--- after-allow.txt
+prompt: AXStaticText Value=“Portty” would like to access files in your Downloads folder. @531,220 218x39|AXStaticText @531,127 2x20|AXButton Description=Help @729,132 30x30|AXButton Title=Don’t Allow @525,274 112x30|AXButton Title=Allow @643,274 112x30|
+press pid=998 rc=0
+16:47:08
+portty procs: [10892:/Applications/Portty.app/Contents/MacOS/Portty  10918:/Applications/Portty.app/Contents/MacOS/Portty daemon ]
+apps: /Applications=1.8.1 ~/Applications=
+trash Portty*.app=0 trash dmgs=1 downloads: .localized 
+volumes:  portty images: 0
+staging: 0 run dirs: 0
+/Applications mode: drwxrwxr-x root:admin
+update: installer started (copy 39ms, start 326ms)
+2026/11/26 16:43:47 installer: install failed: safety check: app-team
+2026/11/26 16:43:47 installer: failed reverify
+mover: earlier result failed  to 1.8.1 reverify
+update: installer started (copy 39ms, start 273ms)
+2026/11/26 16:46:17 vmpreview: verify-mode adhoc
+2026/11/26 16:46:22 installer: updated 
+--- result: {"v":1,"outcome":"updated","oldVersion":"","newVersion":"1.8.1","reason":"","keepDaemon":false,"dmg":""}
+windows: Portty|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+stopped
+--- reopen-timeline.txt
+16:45:45.806Z guis=[] daemons=[] installer=[] image=0 vol=gone app= home_app= staging=0 run_dirs=0 result=failed dl_dmg=1 trash_dmg=0 trash_app=0
+16:45:48.653Z guis=[8434:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=1 vol=mounted app= home_app= staging=0 run_dirs=0 result=failed dl_dmg=1 trash_dmg=0 trash_app=0
+16:45:50.027Z guis=[8434:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=1 vol=mounted app= home_app= staging=0 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:06.161Z guis=[8434:/Volumes/Portty/Portty.app/Contents/MacOS/Portty ] daemons=[] installer=[] image=1 vol=mounted app= home_app= staging=1 run_dirs=0 result= dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:06.862Z guis=[] daemons=[] installer=[9875 ] image=1 vol=mounted app= home_app= staging=1 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:19.690Z guis=[] daemons=[] installer=[9875 ] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:20.321Z guis=[10892:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[10918:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[9875 ] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=1 result= dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:22.667Z guis=[10892:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[10918:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[9875 ] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=1 result=updated dl_dmg=1 trash_dmg=0 trash_app=0
+16:46:58.427Z guis=[10892:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[10918:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[9875 ] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=0 result=updated dl_dmg=0 trash_dmg=1 trash_app=0
+16:46:59.068Z guis=[10892:/Applications/Portty.app/Contents/MacOS/Portty ] daemons=[10918:/Applications/Portty.app/Contents/MacOS/Portty ] installer=[] image=0 vol=gone app=1.8.1 home_app= staging=0 run_dirs=0 result=updated dl_dmg=0 trash_dmg=1 trash_app=0
+--- reopen-wins.txt
+16:45:45.758Z Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+16:45:48.598Z Finder|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+16:45:50.264Z Portty||L3; Finder|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+16:46:06.038Z Finder|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+16:46:20.003Z Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+16:46:21.685Z Portty|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+16:46:23.057Z UserNotificationCenter||L8; Portty|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+16:46:59.218Z Portty|Portty|L0; Finder|Downloads|L0; Finder|updates|L0; Finder|Applications|L0; Finder|app.portty.Portty|L0; Finder|admin|L0; Finder||L-2147483603
+--- clock.txt
+778bd91d75024767bacd961062759c2d4e1d7cf72d61f12026897f53ca4d8292  /Applications/Portty.app/Contents/MacOS/Portty
+2026-11-26 16:40:55.827032+0000  localhost timed[138]: [com.apple.timed:text] Received time Thu Nov 26 16:40:55 2026±0.03 from "NTP"
+timed lines above (since 16:30 UTC)
+2026-11-26 15:29:06.803798+0000  localhost timed[138]: [com.apple.timed:text] Received time Thu Nov 26 15:29:06 2026±0.03 from "NTP"
+2026-11-26 15:52:49.472130+0000  localhost timed[138]: [com.apple.timed:text] Received time Thu Nov 26 15:52:49 2026±0.03 from "NTP"
+2026-11-26 16:16:30.661385+0000  localhost timed[138]: [com.apple.timed:text] Received time Thu Nov 26 16:16:30 2026±0.03 from "NTP"
+2026-11-26 16:40:55.827032+0000  localhost timed[138]: [com.apple.timed:text] Received time Thu Nov 26 16:40:55 2026±0.03 from "NTP"
+--- restore.txt
+Successfully reset SystemPolicyDownloadsFolder
+f6a9cb6c8b92f3e56f7a25d6893db33e0bc2afbc7e8fb47858315d1f21584416  /Applications/Portty.app/Contents/MacOS/Portty
+15146 zsh -c CFG="$HOME/Library/Application Support/portty"; bash ~/p18/r9.sh prep none >/dev/null; ditto ~/qtwr02-bak/Portty.app /Applications/Portty.app; for f in update.log update_notified settings.json daemon.log daemon.log.1; do cp -p ~/qtwr02-bak/cfg/$f "$CFG/$f"; done; tccutil reset SystemPolicyDownloadsFolder; open /Applications/Portty.app; sleep 8; shasum -a 256 /Applications/Portty.app/Contents/MacOS/Portty; ps -axww -o pid=,args= | grep "[P]ortty.app/Contents/MacOS/Portty"; /Applications/Portty.app/Contents/MacOS/Portty list; cat "$CFG/update.log"; ls "$CFG"/update-result.json 2>&1; stat -f %Sp "$CFG"; ls -A ~/Downloads ~/.Trash; hdiutil info | grep -c "image-path.*portty"; ls -d /Applications/.Portty-update-* ~/Applications/Portty.app 2>&1; pgrep -x fakegh || echo "no fakegh"
+15205 /Applications/Portty.app/Contents/MacOS/Portty
+15211 /Applications/Portty.app/Contents/MacOS/Portty daemon
+HOST  ID  NAME  STATUS
+update: installer started (copy 19ms, start 186ms)
+2026/11/26 07:41:54 installer: install failed: safety check: app-team
+2026/11/26 07:41:54 installer: failed reverify
+update: result failed  to 1.8.1 reverify
+update: result not shown: not newer than this version
+ls: ~/Library/Application Support/portty/update-result.json: No such file or directory
+drwx------
+~/.Trash:
+.DS_Store
+
+~/Downloads:
+.localized
+0
+no fakegh
+ls: ~/p18: No such file or directory
+ls: ~/qtwr02-bak: No such file or directory
+15205 /Applications/Portty.app/Contents/MacOS/Portty
+15211 /Applications/Portty.app/Contents/MacOS/Portty daemon
