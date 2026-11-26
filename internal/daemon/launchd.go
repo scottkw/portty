@@ -81,8 +81,8 @@ func lcFail(op string, out []byte, err error) error {
 func wrapLaunchctl(err error) error { return fmt.Errorf("%w (%w)", ErrAgentLaunchctl, err) }
 
 // RenderAgentPlist is the LaunchAgent plist for the daemon at exe. No
-// ProcessType key (research R04) and no log paths (the daemon opens
-// daemon.log itself). KeepAlive SuccessfulExit false restarts only a failed
+// ProcessType key (research R04) and no log paths (launchd leaves stdio on
+// /dev/null and startDaemonLog points it at daemon.log). KeepAlive SuccessfulExit false restarts only a failed
 // exit; Quit All and `portty daemon stop` exit 0 and stay down.
 func RenderAgentPlist(exe string) ([]byte, error) {
 	if !filepath.IsAbs(exe) {

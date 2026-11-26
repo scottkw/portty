@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -117,5 +118,30 @@ func TestDaemonLog_GridChangeLandsInFile(t *testing.T) {
 		if !strings.Contains(string(got), want) {
 			t.Fatalf("daemon.log lacks %q:\n%s", want, got)
 		}
+	}
+}
+
+// 19-07 finding: launchd starts the daemon with stdio on /dev/null, so
+// startDaemonLog must point it at daemon.log. The check runs in a child copy
+// of the test binary whose stdio is /dev/null (exec.Cmd's default), so this
+// process's own stderr is never redirected.
+func TestStartDaemonLog_AdoptsDevNullStderr(t *testing.T) {
+	if dir := os.Getenv("PORTTY_TEST_NULL_STDIO_DIR"); dir != "" {
+		startDaemonLog(dir)
+		log.Print("launchd-managed line")
+		os.Exit(0)
+	}
+	dir := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestStartDaemonLog_AdoptsDevNullStderr$")
+	cmd.Env = append(os.Environ(), "PORTTY_TEST_NULL_STDIO_DIR="+dir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("child: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "daemon.log"))
+	if err != nil {
+		t.Fatalf("daemon.log: %v", err)
+	}
+	if !strings.Contains(string(got), "launchd-managed line") {
+		t.Fatalf("daemon.log lacks the child's log line:\n%s", got)
 	}
 }

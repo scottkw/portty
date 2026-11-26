@@ -29,9 +29,14 @@ func openDaemonLog(dir string) (*os.File, error) {
 // daemon that is really starting rotates. If stderr is dir/daemon.log, the
 // file so far (the previous run plus this run's startup lines) becomes
 // daemon.log.1 and the log package writes through a size-capped writer.
-// Any other stderr (a terminal, a service manager) is left alone.
+// A stderr of /dev/null (launchd's default for the LaunchAgent, whose plist
+// has no log paths) is first pointed at dir/daemon.log, so a launchd-managed
+// daemon logs like the detached one (19-07 finding: under launchd every
+// relay, handoff and re-home line was lost). Any other stderr (a terminal) is
+// left alone.
 func startDaemonLog(dir string) {
 	path := filepath.Join(dir, "daemon.log")
+	adoptNullStdio(path)
 	cur, err1 := os.Stderr.Stat()
 	onDisk, err2 := os.Stat(path)
 	if err1 != nil || err2 != nil || !os.SameFile(cur, onDisk) {
@@ -42,6 +47,24 @@ func startDaemonLog(dir string) {
 	d.rotate()
 	d.mu.Unlock()
 	log.SetOutput(d)
+}
+
+// adoptNullStdio points stdout and stderr at path when stderr is /dev/null.
+// Best effort: on any error the daemon keeps running with its stdio as is.
+func adoptNullStdio(path string) {
+	cur, err1 := os.Stderr.Stat()
+	null, err2 := os.Stat(os.DevNull)
+	if err1 != nil || err2 != nil || !os.SameFile(cur, null) {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	for _, fd := range []int{1, 2} {
+		_ = syscall.Dup2(int(f.Fd()), fd)
+	}
 }
 
 // daemonLog writes to out and, when the next write would pass max bytes,
