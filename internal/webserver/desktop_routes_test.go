@@ -3,6 +3,7 @@ package webserver
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -38,12 +39,20 @@ type desktopEnv struct {
 	ws      *WebServer
 	client  *http.Client
 	backend *fakeDesktopBackend
+	pp      *ppEnv
 }
 
+// newDesktopEnv builds on the port-proxy env, so one server also has a live
+// session (ppSID) with a write capability, plugin settings and the port routes:
+// everything the cross-token matrix needs next to the desktop routes.
 func newDesktopEnv(t *testing.T) *desktopEnv {
 	t.Helper()
-	ws, client := testServer(t)
-	ws.SetSigningKey(capTestKey)
+	pp := newPPEnv(t, ppOpts{})
+	ws := pp.ws
+	ws.SetSessionResolver(func(id string) (string, string, string, bool) {
+		return "Session", "running", "host", id == ppSID
+	})
+	ws.SetPluginSettingsProvider(func() []byte { return []byte(`{}`) })
 	manifest, err := os.ReadFile("../../frontend/public/manifest.json")
 	if err != nil {
 		t.Fatal(err)
@@ -55,9 +64,7 @@ func newDesktopEnv(t *testing.T) *desktopEnv {
 	})
 	b := &fakeDesktopBackend{grant: "g1"}
 	ws.SetDesktopBackend(b)
-	c := *client
-	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &desktopEnv{ws: ws, client: &c, backend: b}
+	return &desktopEnv{ws: ws, client: pp.client, backend: b, pp: pp}
 }
 
 func (e *desktopEnv) get(t *testing.T, path string) (*http.Response, []byte) {
@@ -66,7 +73,7 @@ func (e *desktopEnv) get(t *testing.T, path string) (*http.Response, []byte) {
 	if err != nil {
 		t.Fatalf("GET %s: %v", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	return resp, body
 }
@@ -87,7 +94,7 @@ func (e *desktopEnv) upgrade(t *testing.T, path string) *http.Response {
 	if err != nil {
 		t.Fatalf("upgrade %s: %v", path, err)
 	}
-	t.Cleanup(func() { resp.Body.Close() })
+	t.Cleanup(func() { _ = resp.Body.Close() })
 	return resp
 }
 
@@ -206,5 +213,87 @@ func TestDesktopRoutes_NoBackendIsOff(t *testing.T) {
 	resp, _ := e.get(t, "/desktop/check?cap="+desktopToken(t, "g1"))
 	if resp.StatusCode != http.StatusGone || resp.Header.Get("X-Portty-Desktop") != "off" {
 		t.Errorf("no backend: %d %q, want 410 off", resp.StatusCode, resp.Header.Get("X-Portty-Desktop"))
+	}
+}
+
+// TestDesktopRoutes_CSPPinned: /desktop/ carries exactly the policy of /app/ and
+// /sessions/{id}, and no media-src: the desktop needs no CSP amendment.
+func TestDesktopRoutes_CSPPinned(t *testing.T) {
+	e := newDesktopEnv(t)
+	desktop, _ := e.get(t, "/desktop/?cap="+desktopToken(t, "g1"))
+	app, _ := e.get(t, "/app/")
+	session, _ := e.get(t, "/sessions/"+ppSID+"?cap="+e.pp.capTok)
+	want := desktop.Header.Get("Content-Security-Policy")
+	if want == "" {
+		t.Fatal("/desktop/ has no Content-Security-Policy")
+	}
+	if got := app.Header.Get("Content-Security-Policy"); got != want {
+		t.Errorf("/app/ CSP %q differs from /desktop/ %q", got, want)
+	}
+	if got := session.Header.Get("Content-Security-Policy"); got != want {
+		t.Errorf("/sessions/{id} CSP %q differs from /desktop/ %q", got, want)
+	}
+	if strings.Contains(want, "media-src") {
+		t.Errorf("/desktop/ CSP names media-src: %q", want)
+	}
+}
+
+// TestDesktopRoutes_RedirectNoSlash: the no-slash URL redirects with the query
+// kept byte for byte, so a token with an encoded character survives.
+func TestDesktopRoutes_RedirectNoSlash(t *testing.T) {
+	e := newDesktopEnv(t)
+	resp, _ := e.get(t, "/desktop?cap=a%2Bb")
+	if resp.StatusCode != http.StatusMovedPermanently {
+		t.Fatalf("status %d, want 301", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/desktop/?cap=a%2Bb" {
+		t.Errorf("Location %q, want /desktop/?cap=a%%2Bb", loc)
+	}
+}
+
+// TestDesktopRoutes_ManifestAndCaching: the manifest has no start_url and no id,
+// so a Home Screen launch opens the exact saved link with its token; only the
+// entry document is no-store, hashed assets carry no Cache-Control override.
+func TestDesktopRoutes_ManifestAndCaching(t *testing.T) {
+	e := newDesktopEnv(t)
+	good := desktopToken(t, "g1")
+
+	resp, body := e.get(t, "/desktop/manifest.json")
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		t.Fatalf("manifest: %d %q, want 200 JSON", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["scope"] != "./" || m["display"] != "standalone" {
+		t.Errorf("manifest scope %v display %v, want ./ and standalone", m["scope"], m["display"])
+	}
+	for _, k := range []string{"start_url", "id"} {
+		if _, ok := m[k]; ok {
+			t.Errorf("manifest has %q: a saved Home Screen link would lose its token", k)
+		}
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("manifest Cache-Control %q, want no-cache", got)
+	}
+
+	if resp, _ := e.get(t, "/desktop/assets/index-abc.js"); resp.StatusCode != http.StatusOK || resp.Header.Get("Cache-Control") != "" {
+		t.Errorf("hashed asset: %d Cache-Control %q, want 200 and none", resp.StatusCode, resp.Header.Get("Cache-Control"))
+	}
+
+	resp, _ = e.get(t, "/desktop/?cap="+good)
+	if resp.Header.Get("Cache-Control") != "no-store" || resp.Header.Get("Referrer-Policy") != "no-referrer" {
+		t.Errorf("entry: Cache-Control %q Referrer-Policy %q, want no-store and no-referrer",
+			resp.Header.Get("Cache-Control"), resp.Header.Get("Referrer-Policy"))
+	}
+
+	// A directory URL is the entry document, never a listing.
+	resp, body = e.get(t, "/desktop/assets/?cap="+good)
+	if resp.StatusCode != http.StatusOK || string(body) != fakeIndexHTML {
+		t.Errorf("/desktop/assets/: %d %q, want the index", resp.StatusCode, body)
+	}
+	if resp, body = e.get(t, "/desktop/assets/"); strings.Contains(string(body), "index-abc.js") || resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("/desktop/assets/ without a token: %d, want 401 and no listing", resp.StatusCode)
 	}
 }

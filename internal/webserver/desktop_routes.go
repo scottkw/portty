@@ -97,8 +97,8 @@ func writeDesktopRefusal(w http.ResponseWriter, o desktopOutcome, page bool) {
 }
 
 // setupDesktopRoutes registers the /desktop/ route family: the SPA bundle, the
-// signalling WebSocket and the check endpoint. GET /desktop (no slash) is left
-// to ServeMux, which redirects it to /desktop/ with the query kept.
+// signalling WebSocket and the check endpoint. GET /desktop (no slash) redirects
+// to /desktop/ with the query kept.
 func (ws *WebServer) setupDesktopRoutes(mux *http.ServeMux) {
 	// The bundle sits behind cspHeaders and the same-user page gate, exactly as
 	// /sessions/{id} does, before any token work. Only the entry document needs
@@ -134,6 +134,17 @@ func (ws *WebServer) setupDesktopRoutes(mux *http.ServeMux) {
 		}
 		http.StripPrefix("/desktop/", http.FileServerFS(appFS)).ServeHTTP(w, r)
 	})))
+
+	// ServeMux's own subtree redirect answers 307 here; the contract is 301 with
+	// the query kept byte for byte. A fixed same-origin Location, so no open
+	// redirect, and it carries nothing the request did not already hold.
+	mux.HandleFunc("GET /desktop", func(w http.ResponseWriter, r *http.Request) {
+		loc := "/desktop/"
+		if r.URL.RawQuery != "" {
+			loc += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, loc, http.StatusMovedPermanently)
+	})
 
 	// Origin, then account, then token, all before Accept: a refused request
 	// never reaches a 101.
