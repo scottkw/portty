@@ -737,6 +737,44 @@ cmd_tray_items() {
   vm '~/p19/axtray app.portty.Portty' | scrub
 }
 
+# ---- 19-15 post-review smoke ---------------------------------------------------------------------
+
+# refresh-link: after a key regeneration (or any change), fetch GET /desktop/link in the office VM into
+# ~/p19/link.txt (the previous text is kept as ~/p19/link-old.txt) and pipe it to the home VM the same way
+# enable-desktop does. The link only ever travels through guest files.
+cmd_refresh_link() {
+  require_vm
+  require_vm2
+  vmsh <<EOF | scrub
+$VM_COMMON
+cp ~/p19/link.txt ~/p19/link-old.txt 2>/dev/null
+curl -s -m 10 --unix-socket "\$SOCK" http://localhost/desktop/link | jq -r ".url // empty" > ~/p19/link.txt
+chmod 600 ~/p19/link.txt ~/p19/link-old.txt
+echo "refresh-link: link_bytes=\$(wc -c < ~/p19/link.txt | tr -d " ") same_as_old=\$(cmp -s ~/p19/link.txt ~/p19/link-old.txt && echo yes || echo no)"
+exit 0
+EOF
+  vm "cat ~/p19/link.txt" |
+    vm2 "cat ~/p19/link.txt > ~/p19/link-old.txt 2>/dev/null; cat > ~/p19/link.txt && chmod 600 ~/p19/link.txt ~/p19/link-old.txt && echo link_bytes_home=\$(wc -c < ~/p19/link.txt | tr -d \" \")"
+}
+
+# desk-poll SECS: once a second in the office VM, GET /desktop (state, viewers) and the new daemon.log
+# lines (viewer joined/left, close codes), with the guest epoch.
+cmd_desk_poll() {
+  local secs=${1:-10}
+  require_vm
+  vmsh "$secs" <<EOF | scrub
+$VM_COMMON
+L="\$CFG/daemon.log"; n0=\$(wc -l < "\$L" | tr -d " ")
+for i in \$(seq 1 \$1); do
+  echo "p19-desk epoch=\$(date +%s) \$(curl -s -m 3 --unix-socket "\$SOCK" http://localhost/desktop | jq -c '{state,viewers,reason}' 2>&1)"
+  sleep 1
+done
+echo "--- daemon.log lines since the start"
+tail -n +\$((n0+1)) "\$L" | cut -c1-220
+exit 0
+EOF
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case "$sub" in
@@ -773,5 +811,7 @@ case "$sub" in
   pbpaste-check) cmd_pbpaste_check ;;
   tray-items) cmd_tray_items ;;
   tick-gaps) cmd_tick_gaps "$@" ;;
-  *) die "usage: $0 build|deploy|start-gui|sessions|state|quit-gui|quit-all|legacy-plist|clean|enable-desktop|safari-stats|safari-close|chrome-stats|assertions|lsof-desktop|pcap|perm-poll|tcc-log|notif-list|safari-wins|safari-both|safari-page|chrome-open|chrome-titles|chrome-close|pf-block|pf-unblock|lock|unlock|pbpaste-check|tray-items ..." ;;
+  refresh-link) cmd_refresh_link ;;
+  desk-poll) cmd_desk_poll "$@" ;;
+  *) die "usage: $0 build|deploy|start-gui|sessions|state|quit-gui|quit-all|legacy-plist|clean|enable-desktop|safari-stats|safari-close|chrome-stats|assertions|lsof-desktop|pcap|perm-poll|tcc-log|notif-list|safari-wins|safari-both|safari-page|chrome-open|chrome-titles|chrome-close|pf-block|pf-unblock|lock|unlock|pbpaste-check|tray-items|refresh-link|desk-poll ..." ;;
 esac
