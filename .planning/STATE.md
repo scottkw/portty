@@ -407,7 +407,7 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- [v2.0 Phase 18, tracked 2026-11-26]: RC-WR04-stall (18-VM-CHECKS.md, OBSERVED, cause unknown): during a keep-daemon rollback run in portty-test both sessions' output stalled about 17 min (same pids, no gaps) and resumed when a CLI viewer attached. Verifier: no Phase 18 code was running when it began; likely pre-existing daemon/relay or VM behaviour, but Phase 18 creates the setup (older GUI on a newer kept daemon). A separate debug soak (GUI viewer only, same-version and keep-daemon pairs) investigates it in parallel. Reliability-first: keep open until the soak reports.
+- [v2.0 Phase 18, RESOLVED 2026-11-26]: RC-WR04-stall was not a session stall: the portty-test guest clock was stepped forward 17 min by NTP (timed) mid-row, so wall-clock deltas showed a fake gap; ticks ran steadily (0.985/s) and nothing was held. Evidence: phases/18-self-installing-updates/evidence/RC-WR04-clockstep.log, debug/resolved/rc-wr04-stall.md (c06f8b65). Rig lesson: check the timed log or use monotonic/tick counts before calling a VM time gap a hang.
 - [v2.0]: Apple's persistent-content-capture entitlement request: filed, awaiting Apple (filed 2026-11-25, Request ID T558S9Q5B3, App ID app.portty.Portty; reported waits weeks to 2+ months); until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
 - [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
 - [v2.0 REL-01]: v1.2.x updaters look only for `portty-v<ver>-darwin-universal.dmg` and identifier `portty-v<ver>-darwin-universal` (internal/updater/update.go DMGAssetName, install.go Clean, release.yml); an arm64-only rename would strand v1.2 installs unless the old name stays or both ship
@@ -454,7 +454,7 @@ Recent decisions affecting current work:
 | 8 | CI fixes for v1.2.0: frontend/dist before go test; fdpass openFds via Readdirnames | 2026-11-23 | 9a21f65b | — |
 | 9 | Remove portty.app/app link from README iPhone section | 2026-11-24 | 8a44e0c1 | — |
 | 10 | Re-enable e2e.yml (disabled after a billing-blocked run, not a workflow fault); add workflow_dispatch; first dispatch green | 2026-11-25 | 017ec8c6 | — |
-| 261126-dfn | Phase 18 follow-up: a late first-install failure from a DMG posts "Portty couldn't install version X." from the installer (osascript; Script Editor icon), and mover mode shows an earlier failed result once before retrying; VM row QT-WR02 PENDING (portty-test busy with the debug soak) | 2026-11-26 | 504b7287 | [261126-dfn-late-install-failure-notice](./quick/261126-dfn-late-install-failure-notice/) |
+| 261126-dfn | Phase 18 follow-up: a late first-install failure from a DMG posts "Portty couldn't install version X." from the installer (osascript; Script Editor icon), and mover mode shows an earlier failed result once before retrying; VM row QT-WR02 PENDING (needs a VM with no installed Portty) | 2026-11-26 | 504b7287 | [261126-dfn-late-install-failure-notice](./quick/261126-dfn-late-install-failure-notice/) |
 
 ## Deferred Items
 
