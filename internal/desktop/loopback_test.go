@@ -505,7 +505,7 @@ func TestDesktopWS_RefusesBeforeUpgrade(t *testing.T) {
 
 	// The link switched off refuses a token that is otherwise good.
 	env.backend.off.Store(true)
-	refused("link off", good, env.base, http.StatusUnauthorized)
+	refused("link off", good, env.base, http.StatusGone)
 	env.backend.off.Store(false)
 
 	// A session capability does not open the page either.
