@@ -212,6 +212,23 @@ func TestPower_HoldFailureContinues(t *testing.T) {
 	firstUnitIsKeyframe(t, s, sv, "viewer on a software encoder")
 }
 
+// IN-01: a viewer hold that failed is taken again by the next join, not only
+// when the viewer count goes from zero to one.
+func TestPower_FailedHoldRetriedOnNextJoin(t *testing.T) {
+	r := newRig(t)
+	r.w.set(func() { r.w.holdDisplayErr = errBoom("display hold refused") })
+	r.join()
+	if d, _, _ := r.w.held(); len(d) != 0 {
+		t.Fatalf("display holds %v while refused, want none", d)
+	}
+	r.w.set(func() { r.w.holdDisplayErr = nil })
+	r.env.join(r.ctx, t, r.env.token(t, "g1"))
+	eventually(t, 3*time.Second, "the display hold taken by the second join", func() bool {
+		d, _, _ := r.w.held()
+		return len(d) == 1
+	})
+}
+
 func TestPower_WallClockOnly(t *testing.T) {
 	// A two hour jump (a sleep) is acted on at the next tick: the stalled
 	// stream is nudged at once, with no timer waiting on a monotonic clock.

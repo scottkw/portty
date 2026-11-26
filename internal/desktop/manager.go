@@ -625,15 +625,13 @@ func (m *Manager) join(v *viewer, admit func() bool) error {
 		m.mu.Unlock()
 		return errRevoked
 	}
-	first := len(m.viewers) == 0
 	m.viewers[v.ID] = v
 	m.vmu.Unlock()
-	// Remote activity lights a dark display before capture starts; the first
-	// viewer takes the display and system assertions, held until the last leaves.
+	// Remote activity lights a dark display before capture starts; viewers hold
+	// the display and system assertions until the last leaves (a join retries
+	// one that failed).
 	m.declareActivity()
-	if first {
-		m.takeViewerHolds()
-	}
+	m.takeViewerHolds()
 	start := m.src == nil && !m.starting && !m.isPaused()
 	if start {
 		m.starting = true

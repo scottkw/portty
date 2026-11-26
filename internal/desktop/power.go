@@ -37,8 +37,8 @@ func (m *Manager) declareActivity() {
 }
 
 // takeViewerHolds takes the viewer's display and system assertions (m.mu held,
-// the first viewer joining). One that is already held is not taken again, one
-// that failed is tried again on the next join.
+// on every join). One that is already held is not taken again, one that failed
+// is tried again on the next join.
 func (m *Manager) takeViewerHolds() {
 	m.pmu.Lock()
 	defer m.pmu.Unlock()
