@@ -29,15 +29,38 @@ export function controlReducer(
 /** What the Mac's own clipboard held when a Cmd+V was typed (the ReadHomeClipboard binding's answer). */
 export type HomeClipboard = { outcome: 'ok' | 'concealed' | 'empty' | 'too_large' | 'failed'; text?: string }
 
-export const PASTE_NOTICES = { concealed: '', too_large: '', failed: '' }
+/** The words for a Cmd+V that sends nothing (UI-SPEC Copywriting Contract; the last two are Phase 20's strings). */
+export const PASTE_NOTICES = {
+  concealed: 'Your clipboard holds a hidden item (password manager); not sent',
+  too_large: 'Your clipboard text is too large to send (limit 1 MB)',
+  failed: "Couldn't send to the Mac. Try again.",
+} as const
 
-export function isPasteChord(_e: Pick<KeyboardEvent, 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): boolean {
-  return false
+/** Cmd+V on the physical key with no other modifier; Cmd+Shift+V and the like stay plain keys. */
+export function isPasteChord(e: Pick<KeyboardEvent, 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): boolean {
+  return e.code === 'KeyV' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey
 }
 
+/**
+ * What a captured Cmd+V does, from the home clipboard and the text last sent in this tab: the text to send
+ * (null for none), whether the key goes out, and the notice. Text the user already pasted is not sent again,
+ * so copying on the Mac and pasting there keeps working. A concealed item, oversize text, a failed read or an
+ * outcome this does not know sends nothing and no key (fail closed).
+ */
 export function pasteDecision(
-  _read: HomeClipboard,
-  _lastSent: string | null,
+  read: HomeClipboard,
+  lastSent: string | null,
 ): { send: string | null; key: boolean; notice: string | null } {
-  return { send: null, key: false, notice: null }
+  switch (read.outcome) {
+    case 'ok':
+      return { send: read.text && read.text !== lastSent ? read.text : null, key: true, notice: null }
+    case 'empty':
+      return { send: null, key: true, notice: null }
+    case 'concealed':
+      return { send: null, key: false, notice: PASTE_NOTICES.concealed }
+    case 'too_large':
+      return { send: null, key: false, notice: PASTE_NOTICES.too_large }
+    default:
+      return { send: null, key: false, notice: PASTE_NOTICES.failed }
+  }
 }

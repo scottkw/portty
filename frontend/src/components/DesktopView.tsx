@@ -120,7 +120,7 @@ const CARDS: Record<CardKey, { Icon: Icon; heading: string; body: string }> = {
 export interface DesktopControlHandle {
   releaseAll(): void
   releaseKeyboard(): void
-  notify(text: string, kind: 'status' | 'alert'): void
+  notify(text: string, kind: 'status' | 'alert', dwell?: number): void
 }
 
 /** What a host may replace on a card: its words, and the label of its one action. */
@@ -667,7 +667,7 @@ export function DesktopView({
       // The user's own doing (a tab switch, a click away), so no Held keys notice.
       releaseAll: () => inputCtl.current?.releaseAll('blur'),
       releaseKeyboard: () => inputRef.current?.blur(),
-      notify: (text, kind) => pushNotice({ Icon: InformationCircleIcon, text, dwell: 3000, alert: kind === 'alert' }),
+      notify: (text, kind, dwell = 3000) => pushNotice({ Icon: InformationCircleIcon, text, dwell, alert: kind === 'alert' }),
     }),
     [pushNotice],
   )
