@@ -8,18 +8,8 @@ import * as copy from '../lib/shareDesktopCopy'
 export const ADMIT_GUARD_MS = 600
 
 interface AdmitSheetProps {
-  /** Every guest waiting at Admit; the oldest is shown. */
+  /** Every guest waiting at Admit, in the daemon's arrival order; the first is shown. */
   pending: SharePending[]
-}
-
-/** Oldest connection first, then id, the Watching list's order. */
-function oldest(pending: SharePending[]): SharePending {
-  return pending.reduce((a, b) => {
-    const ta = Date.parse(a.since)
-    const tb = Date.parse(b.since)
-    if (ta !== tb && !Number.isNaN(ta) && !Number.isNaN(tb)) return ta < tb ? a : b
-    return a.id <= b.id ? a : b
-  })
 }
 
 /**
@@ -30,7 +20,11 @@ function oldest(pending: SharePending[]): SharePending {
  */
 export function AdmitSheet({ pending }: AdmitSheetProps): React.ReactElement | null {
   if (pending.length === 0) return null
-  return <AdmitSheetContent request={oldest(pending)} others={pending.length - 1} />
+  // The daemon's order (Seq), not `since`: that has whole seconds and would let a later knock take the screen.
+  const request = pending[0]
+  // One instance per person, so focus starts on the dialog again for each (a stray Return must not admit
+  // the next one). Keyed by login and device, not request id: a re-knock must not restart the guard.
+  return <AdmitSheetContent key={`${request.loginName}\n${request.nodeName}`} request={request} others={pending.length - 1} />
 }
 
 function AdmitSheetContent({ request, others }: { request: SharePending; others: number }): React.ReactElement {
