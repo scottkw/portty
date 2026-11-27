@@ -221,7 +221,7 @@ func (g *GuestShare) Knock(id Identity) (*Request, error) {
 		a.live = nil
 		g.mu.Unlock()
 		if old != nil {
-			old.closeFn()
+			go old.closeFn() // a half-open old socket must not hold up this knock's hello
 		}
 		return r, nil
 	}
@@ -446,7 +446,8 @@ func (g *GuestShare) End(reason string) {
 func (g *GuestShare) Ended() <-chan struct{} { return g.endedCh }
 
 // attach records v as the live connection of key; a different one already
-// recorded is closed, so a grant never serves two connections.
+// recorded is closed, on its own goroutine, so a grant never serves two
+// connections and the new one never waits on the old one's close.
 func (g *GuestShare) attach(key AdmissionKey, id ViewerID, closeFn func()) {
 	g.mu.Lock()
 	a := g.admitted[key]
@@ -458,7 +459,7 @@ func (g *GuestShare) attach(key AdmissionKey, id ViewerID, closeFn func()) {
 	a.live = &liveViewer{id: id, closeFn: closeFn}
 	g.mu.Unlock()
 	if old != nil && old.id != id {
-		old.closeFn()
+		go old.closeFn()
 	}
 }
 

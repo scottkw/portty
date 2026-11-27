@@ -241,8 +241,8 @@ func TestGuestShare_ReadmitsTheSameKeyWithItsGrantsAndClosesTheOlderSocket(t *te
 	if !r.gs.SetGrants(key, desktop.RightsControl|desktop.RightsClipboard|desktop.RightsSurface) {
 		t.Fatal("SetGrants: the key was not admitted")
 	}
-	var closed int
-	r.gs.AttachForTest(key, "v1", func() { closed++ })
+	closed := make(chan struct{}, 2)
+	r.gs.AttachForTest(key, "v1", func() { closed <- struct{}{} })
 
 	requestsBefore := r.count("admit_request")
 	again := mustKnock(t, r.gs, 1001, "nodeA")
@@ -254,8 +254,10 @@ func TestGuestShare_ReadmitsTheSameKeyWithItsGrantsAndClosesTheOlderSocket(t *te
 	if out.Grants != desktop.RightsControl|desktop.RightsClipboard {
 		t.Errorf("stored grants %v, want control and clipboard only", out.Grants)
 	}
-	if closed != 1 {
-		t.Errorf("the older socket was closed %d times, want 1", closed)
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the older socket was not closed")
 	}
 	if got := r.count("admit_request"); got != requestsBefore {
 		t.Errorf("a re-admission fired admit_request")
@@ -350,6 +352,48 @@ func TestGuestShare_EventsCarryTheSanitizedIdentity(t *testing.T) {
 		if e.Ident.DisplayName != "Ada Lovelace" || e.Ident.NodeName != "mac book" || e.RequestID != req.ID {
 			t.Errorf("event %+v: want the sanitized names and the request ID", e)
 		}
+	}
+}
+
+// WR-05: closing the replaced connection never holds up the knock (or the
+// attach) that replaces it: a half-open old socket can take seconds to close.
+func TestGuestShare_ReplacedConnectionClosesWithoutBlocking(t *testing.T) {
+	r := newShareRig(t)
+	first := mustKnock(t, r.gs, 1001, "nodeA")
+	if err := r.gs.Admit(first.ID); err != nil {
+		t.Fatal(err)
+	}
+	key := desktop.AdmissionKey{UserID: 1001, StableID: "stable-nodeA"}
+	release := make(chan struct{})
+	defer close(release)
+	closing := make(chan desktop.ViewerID, 2)
+	stuck := func(id desktop.ViewerID) func() {
+		return func() { closing <- id; <-release }
+	}
+	r.gs.AttachForTest(key, "v1", stuck("v1"))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mustKnock(t, r.gs, 1001, "nodeA")          // the reconnect replaces v1
+		r.gs.AttachForTest(key, "v2", stuck("v2")) // nothing recorded now: no close
+		r.gs.AttachForTest(key, "v3", stuck("v3")) // replaces v2
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Knock or attach waited for the replaced connection to close")
+	}
+	got := map[desktop.ViewerID]bool{}
+	for range 2 {
+		select {
+		case id := <-closing:
+			got[id] = true
+		case <-time.After(2 * time.Second):
+			t.Fatalf("closed %v, want v1 and v2", got)
+		}
+	}
+	if !got["v1"] || !got["v2"] {
+		t.Errorf("closed %v, want v1 and v2", got)
 	}
 }
 

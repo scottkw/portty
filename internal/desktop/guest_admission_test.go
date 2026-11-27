@@ -128,6 +128,37 @@ func TestGuestViewer_ReconnectIsAdmittedAtOnceAndTheOlderSocketCloses(t *testing
 	}
 }
 
+// TestGuestViewer_ReconnectIsNotHeldUpByASilentOldSocket (WR-05): the usual
+// reconnect leaves a half-open old socket that never answers the close. The new
+// connection's hello must not wait for that handshake, and the old viewer is cut
+// (view-only at once) and leaves.
+func TestGuestViewer_ReconnectIsNotHeldUpByASilentOldSocket(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, withGuestInput(&fakeInputBridge{}))
+	old := e.joinGuestAs(ctx, t, 1001, "nodeA", false) // never reads: never answers the close
+	c := e.dial(ctx, t, 1001, "nodeA")
+	start := time.Now()
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"input": 1}})
+	readType(ctx, t, c, "hello")
+	if d := time.Since(start); d >= 2*time.Second {
+		t.Errorf("the reconnect's hello took %v behind the old socket's close, want under 2 s", d)
+	}
+	for _, v := range e.mgr.ViewerList() {
+		if v.ID == old.viewerID() && v.Rights != desktop.RightsViewOnly {
+			t.Errorf("the replaced viewer still has rights %v", v.Rights)
+		}
+	}
+	eventually(t, 9*time.Second, "the replaced viewer to leave", func() bool {
+		for _, v := range e.mgr.ViewerList() {
+			if v.ID == old.viewerID() {
+				return false
+			}
+		}
+		return true
+	})
+}
+
 func TestGuestViewer_SecondNodeOfAnAdmittedUserWaits(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
