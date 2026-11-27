@@ -79,7 +79,9 @@ function ShareDesktopSheetContent({ onClose, tailscaleHealth, state, stoppedNoti
   const sawActive = useRef(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useDialogFocus(dialogRef, { onCancel: onClose, initialFocus: 'primary' })
+  // Done is inert while checking or starting, and Esc follows it (useDialogFocus reads the latest onCancel).
+  const inert = phase === 'checking' || phase === 'starting'
+  useDialogFocus(dialogRef, { onCancel: () => { if (!inert) onClose() }, initialFocus: 'primary' })
 
   const tailscaleOff = !!tailscaleHealth && !tailscaleHealth.connected
 
@@ -238,7 +240,6 @@ function ShareDesktopSheetContent({ onClose, tailscaleHealth, state, stoppedNoti
   const blocked = offNow || blocker === 'userspace'
   const reason = blocker === 'userspace' && !tailscaleOff ? USERSPACE_SENTENCE : offNow ? TAILSCALE_OFF_REASON : null
   const status = tailscaleOff ? { text: copy.STATUS_WAITING_FOR_TAILSCALE, dot: 'warn' as const } : STATUS_ROWS[desktopState]
-  const inert = phase === 'checking' || phase === 'starting'
   const host = (tailscaleHealth?.domain ?? '').replace(/\.ts\.net$/, '')
   const showCT = acknowledged === false && !!tailscaleHealth?.domain
 
