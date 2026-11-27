@@ -443,6 +443,8 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   // Guest mode: what the hello offered, kept until admission lets the offer start (once per connection).
   let helloInput = false
   let offered = false
+  // Guest mode: the socket is up and waiting at Admit, so a wake must ping it like a streaming one.
+  let waiting = false
   let hasPicture = false
   // Per peer connection: a picture needs both the track and ICE connected. ontrack fires
   // on setRemoteDescription, long before (or without) any media path.
@@ -633,6 +635,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     hadHello = false
     helloInput = false
     offered = false
+    waiting = false
     let t: SignalTransport
     try {
       t = makeTransport()
@@ -822,9 +825,11 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           if (m.state === 'waiting') {
             // Waiting at Admit with the socket up is not an unreachable Mac, and not a lost picture.
             unreachableTimer = cancel(unreachableTimer)
+            waiting = true
             if (status.kind === 'reconnecting' || status.kind === 'unreachable') setStatus({ kind: 'connecting' })
             emit('admission', { state: 'waiting' })
           } else if (m.state === 'admitted' && !offered) {
+            waiting = false
             emit('admission', { state: 'admitted' })
             armUnreachable()
             await beginOffer(g)
@@ -966,7 +971,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   function onWake(reason: WakeReason) {
     emit('wake', reason)
     if (!running) return
-    if (status.kind === 'streaming' && transport) {
+    if ((status.kind === 'streaming' || waiting) && transport) {
       // A dead iOS socket can still read OPEN, so ask and wait for the answer.
       if (pendingPing !== null) return
       const g = gen

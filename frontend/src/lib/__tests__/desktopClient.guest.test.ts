@@ -218,6 +218,24 @@ describe('guest waits then offers (tracer)', () => {
     expect(e.statuses.map((s) => s.kind)).not.toContain('unreachable')
   })
 
+  it('a wake while waiting at Admit pings; a pong keeps the socket and no answer redials', async () => {
+    const e = setup()
+    await hello(e)
+    lastT(e).recv({ type: 'admission', state: 'waiting' })
+    await settle()
+    e.client.wake('visibility')
+    const ping = lastT(e).sent.find((m) => m.type === 'ping')
+    expect(ping).toEqual({ type: 'ping', n: expect.any(Number) })
+    lastT(e).recv({ type: 'pong', n: ping!.n })
+    await e.clock.advance(RECONNECT.pingTimeoutMs + 1)
+    expect(e.transports).toHaveLength(1)
+
+    e.client.wake('pageshow')
+    expect(lastT(e).types().filter((x) => x === 'ping')).toHaveLength(2)
+    await e.clock.advance(RECONNECT.pingTimeoutMs + 1)
+    expect(e.transports.length).toBeGreaterThan(1)
+  })
+
   it('reports unreachable about 30 s after admission when no picture ever comes', async () => {
     const e = setup()
     await hello(e)
