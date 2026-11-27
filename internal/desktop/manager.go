@@ -129,6 +129,8 @@ type msgState struct {
 	State   State  `json:"state"`
 	Viewers int    `json:"viewers"`
 	Locked  bool   `json:"locked"`
+	// Audio is "failed" while audio capture or encoding has failed; omitted otherwise.
+	Audio string `json:"audio,omitempty"`
 }
 
 type msgSize struct {
@@ -281,8 +283,11 @@ type viewer struct {
 	ws    *websocket.Conn
 	pc    *webrtc.PeerConnection
 	track *webrtc.TrackLocalStaticRTP
-	ready bool // the media path is up (PeerConnection Connected)
-	armed bool // a keyframe has been written to this viewer, deltas may follow
+	// audio is the viewer's Opus track, nil when it did not offer audio (audio.go).
+	audio    *webrtc.TrackLocalStaticRTP
+	audioCap int  // the viewer's hello caps audio, 1 when it can play audio
+	ready    bool // the media path is up (PeerConnection Connected)
+	armed    bool // a keyframe has been written to this viewer, deltas may follow
 
 	inputCap int                 // the viewer's hello caps input, 1 when it can send input
 	in       *viewerInput        // its input state, guarded by Manager.in.mu
@@ -321,6 +326,10 @@ type Manager struct {
 	src      screencap.Source
 	srcStop  context.CancelFunc
 	fanDone  chan struct{}
+	// audioDone is closed when audioOut has ended; nil when the source has no audio.
+	audioDone chan struct{}
+	// audioFail is set while audio capture or encoding has failed (audio.go).
+	audioFail atomic.Bool
 
 	// in is the input path's state (input.go).
 	in inputState
@@ -660,7 +669,7 @@ func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, a
 	rights := RightsOwnAccount
 	hello := msgHello{
 		Type: typeHello, V: ProtocolVersion, Viewer: id,
-		Caps: map[string]int{"video": 1, "input": 1},
+		Caps: map[string]int{"video": 1, "input": 1, "audio": 1},
 		Rights: map[string]bool{
 			"control":   rights&RightsControl != 0,
 			"clipboard": rights&RightsClipboard != 0,
@@ -671,7 +680,7 @@ func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, a
 		return
 	}
 
-	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeOwn, Identity: ident}, ws: c, inputCap: inputCap, in: &viewerInput{}}
+	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeOwn, Identity: ident}, ws: c, inputCap: inputCap, audioCap: in.Caps["audio"], in: &viewerInput{}}
 	v.setRightsBits(rights)
 	m.serveAdmitted(ctx, c, v, admit, nil)
 }
@@ -960,6 +969,13 @@ func (m *Manager) startSource() error {
 	m.vmu.Unlock()
 	m.noteStartSuccess(src, now)
 	go m.fanOut(src, m.fanDone)
+	if as, ok := src.(screencap.AudioSource); ok {
+		// A new capture run starts with a clean audio state: a failure it has is
+		// still queued on AudioErrors and sets the flag again.
+		m.audioFail.Store(false)
+		m.audioDone = make(chan struct{})
+		go m.audioOut(sctx, as, m.audioDone)
+	}
 	return nil
 }
 
@@ -1012,7 +1028,10 @@ func (m *Manager) stopSourceLocked() {
 	m.srcStop()
 	_ = m.src.Stop()
 	<-m.fanDone
-	m.src, m.srcStop, m.fanDone = nil, nil, nil
+	if m.audioDone != nil {
+		<-m.audioDone
+	}
+	m.src, m.srcStop, m.fanDone, m.audioDone = nil, nil, nil, nil
 	m.vmu.Lock()
 	m.sizeKnow = false
 	m.vmu.Unlock()
@@ -1161,8 +1180,7 @@ func (m *Manager) broadcast(ctx context.Context, v any) {
 }
 
 func (m *Manager) broadcastState(ctx context.Context) {
-	st := m.Status()
-	msg := msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked}
+	msg := m.stateMsg(m.Status())
 	m.smu.Lock()
 	m.pushed, m.pushedKnown = msg, true
 	m.smu.Unlock()

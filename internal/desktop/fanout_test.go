@@ -57,6 +57,7 @@ type fanViewer struct {
 	viewers   int
 	state     string
 	locked    bool
+	audio     string // the state message's audio field, "" when absent
 	w, h      int
 	sizeCount int
 	closeCode websocket.StatusCode
@@ -113,6 +114,7 @@ func (v *fanViewer) read(ctx context.Context) {
 			v.viewers = int(m["viewers"].(float64))
 			v.state, _ = m["state"].(string)
 			v.locked, _ = m["locked"].(bool)
+			v.audio, _ = m["audio"].(string)
 		case "size":
 			v.w, v.h = int(m["w"].(float64)), int(m["h"].(float64))
 			v.sizeCount++
@@ -126,6 +128,13 @@ func (v *fanViewer) lastState() (state string, viewers int, locked bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return v.state, v.viewers, v.locked
+}
+
+// lastAudio returns the audio field of the latest state message.
+func (v *fanViewer) lastAudio() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.audio
 }
 
 func (v *fanViewer) stateViewers() int {
@@ -341,8 +350,8 @@ func TestFanout_HelloCapsForwardCompatible(t *testing.T) {
 	defer func() { _ = c.CloseNow() }()
 	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1, "teleport": 1}})
 	caps, _ := readType(ctx, t, c, "hello")["caps"].(map[string]any)
-	if len(caps) != 2 || caps["video"] != float64(1) || caps["input"] != float64(1) {
-		t.Errorf("hello reply caps %v, want exactly {video:1, input:1} (the unknown teleport cap is not echoed)", caps)
+	if len(caps) != 3 || caps["video"] != float64(1) || caps["input"] != float64(1) || caps["audio"] != float64(1) {
+		t.Errorf("hello reply caps %v, want exactly {video:1, input:1, audio:1} (the unknown teleport cap is not echoed)", caps)
 	}
 
 	c2, _, err := env.dial(ctx, tok)
@@ -371,8 +380,8 @@ func TestHello_RightsAndInputCap(t *testing.T) {
 	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1}})
 	hello := readType(ctx, t, c, "hello")
 	caps, _ := hello["caps"].(map[string]any)
-	if len(caps) != 2 || caps["video"] != float64(1) || caps["input"] != float64(1) {
-		t.Errorf("hello caps %v, want exactly {video:1, input:1}", caps)
+	if len(caps) != 3 || caps["video"] != float64(1) || caps["input"] != float64(1) || caps["audio"] != float64(1) {
+		t.Errorf("hello caps %v, want exactly {video:1, input:1, audio:1}", caps)
 	}
 	rights, _ := hello["rights"].(map[string]any)
 	if len(rights) != 3 || rights["control"] != true || rights["clipboard"] != true || rights["surface"] != true {

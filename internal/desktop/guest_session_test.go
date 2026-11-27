@@ -22,6 +22,8 @@ import (
 type guestSession struct {
 	*surfViewer
 	ident desktop.Identity
+	lc    *loopbackClient
+	hello map[string]any // the server hello
 
 	cmu    sync.Mutex
 	code   websocket.StatusCode
@@ -54,8 +56,15 @@ func (e *guestEnv) joinGuest(ctx context.Context, t *testing.T, uid int64, node 
 // after the join, so it never answers a close handshake.
 func (e *guestEnv) joinGuestAs(ctx context.Context, t *testing.T, uid int64, node string, read bool) *guestSession {
 	t.Helper()
+	return e.joinGuestCaps(ctx, t, uid, node, read, map[string]int{"video": 1, "input": 1})
+}
+
+// joinGuestCaps is joinGuestAs with the capabilities the guest's hello declares;
+// extra runs on the guest's pion client before its offer is made.
+func (e *guestEnv) joinGuestCaps(ctx context.Context, t *testing.T, uid int64, node string, read bool, caps map[string]int, extra ...func(*loopbackClient)) *guestSession {
+	t.Helper()
 	c := e.dial(ctx, t, uid, node)
-	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1}})
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": caps})
 	hello := readType(ctx, t, c, "hello")
 	if m := readType(ctx, t, c, "admission"); m["state"] != "waiting" && m["state"] != "admitted" {
 		t.Fatalf("admission state %v", m["state"])
@@ -77,6 +86,9 @@ func (e *guestEnv) joinGuestAs(ctx context.Context, t *testing.T, uid int64, nod
 	e.peer = func(string) (int64, string, error) { return uid, ident.StableID, nil }
 	e.mu.Unlock()
 	lc := newLoopbackClient(t)
+	for _, f := range extra {
+		f(lc)
+	}
 	dc, err := lc.pc.CreateDataChannel("input", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +99,7 @@ func (e *guestEnv) joinGuestAs(ctx context.Context, t *testing.T, uid int64, nod
 	lc.accept(t, readType(ctx, t, c, "answer")["sdp"].(string))
 	g := &guestSession{
 		surfViewer: &surfViewer{id: hello["viewer"].(string), conn: c, dc: dc},
-		ident:      ident, closed: make(chan struct{}),
+		ident:      ident, closed: make(chan struct{}), lc: lc, hello: hello,
 	}
 	if read {
 		go g.run(ctx)

@@ -60,6 +60,10 @@ type sink struct {
 	au   func(AccessUnit)
 	err  func(error)
 	last atomic.Int64 // unix nanos of the previous unit, for Duration
+	// audio and audioErr receive the Opus packets and audio failures of
+	// audio_darwin.go; nil for a sink that has no audio.
+	audio    func(AudioPacket)
+	audioErr func(error)
 }
 
 // lookup returns the sink behind a callback's handle, or nil if it is gone.
@@ -180,13 +184,18 @@ type DisplaySource struct {
 	maxLong int          // the size cap of the running capture, for a switch
 	hw      atomic.Int32 // encoder readback: 1 hardware, 0 software, -1 unknown
 
-	emitMu sync.Mutex // guards closed and channel sends
-	closed bool
-	frames chan AccessUnit
-	errs   chan error
+	emitMu    sync.Mutex // guards closed and channel sends
+	closed    bool
+	frames    chan AccessUnit
+	errs      chan error
+	audio     chan AudioPacket
+	audioErrs chan error
 }
 
-var _ Source = (*DisplaySource)(nil)
+var (
+	_ Source      = (*DisplaySource)(nil)
+	_ AudioSource = (*DisplaySource)(nil)
+)
 
 // NewDisplaySource returns a Source that captures the main display until told otherwise.
 func NewDisplaySource() Source {
@@ -272,8 +281,10 @@ func (d *DisplaySource) Start(ctx context.Context, cfg Config) error {
 	d.closed = false
 	d.frames = make(chan AccessUnit, 8)
 	d.errs = make(chan error, 4)
+	d.audio = make(chan AudioPacket, 16)
+	d.audioErrs = make(chan error, 4)
 	d.emitMu.Unlock()
-	d.handle = cgo.NewHandle(&sink{au: d.emit, err: d.emitErr})
+	d.handle = cgo.NewHandle(&sink{au: d.emit, err: d.emitErr, audio: d.emitAudio, audioErr: d.emitAudioErr})
 
 	var msg [errBufLen]C.char
 	nativeMu.Lock()
@@ -283,7 +294,7 @@ func (d *DisplaySource) Start(ctx context.Context, cfg Config) error {
 		d.handle.Delete()
 		d.closeChannels()
 		d.emitMu.Lock()
-		d.frames, d.errs = nil, nil
+		d.frames, d.errs, d.audio, d.audioErrs = nil, nil, nil, nil
 		d.emitMu.Unlock()
 		return mapSCKError(int(rc), C.GoString(&msg[0]))
 	}
@@ -322,6 +333,23 @@ func (d *DisplaySource) Errors() <-chan error {
 	d.emitMu.Lock()
 	defer d.emitMu.Unlock()
 	return d.errs
+}
+
+// AudioPackets delivers the system audio as Opus, one 20 ms packet each; it is
+// nil until a Start succeeds and is closed by Stop. A packet is dropped when
+// nobody keeps up (audio is real time).
+func (d *DisplaySource) AudioPackets() <-chan AudioPacket {
+	d.emitMu.Lock()
+	defer d.emitMu.Unlock()
+	return d.audio
+}
+
+// AudioErrors delivers audio failures (ErrAudioUnavailable); the picture keeps
+// streaming. Closed by Stop.
+func (d *DisplaySource) AudioErrors() <-chan error {
+	d.emitMu.Lock()
+	defer d.emitMu.Unlock()
+	return d.audioErrs
 }
 
 // ForceKeyframe re-encodes the cached frame as an IDR (a still screen yields
@@ -422,6 +450,32 @@ func (d *DisplaySource) emitErr(err error) {
 	}
 }
 
+// emitAudio queues a packet without ever blocking the audio queue; a full
+// channel drops it.
+func (d *DisplaySource) emitAudio(p AudioPacket) {
+	d.emitMu.Lock()
+	defer d.emitMu.Unlock()
+	if d.closed {
+		return
+	}
+	select {
+	case d.audio <- p:
+	default:
+	}
+}
+
+func (d *DisplaySource) emitAudioErr(err error) {
+	d.emitMu.Lock()
+	defer d.emitMu.Unlock()
+	if d.closed {
+		return
+	}
+	select {
+	case d.audioErrs <- err:
+	default:
+	}
+}
+
 func (d *DisplaySource) closeChannels() {
 	d.emitMu.Lock()
 	defer d.emitMu.Unlock()
@@ -429,6 +483,8 @@ func (d *DisplaySource) closeChannels() {
 		d.closed = true
 		close(d.frames)
 		close(d.errs)
+		close(d.audio)
+		close(d.audioErrs)
 	}
 }
 

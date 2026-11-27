@@ -74,7 +74,7 @@ func newSettingEngine(mux ice.UDPMux, bind netip.Addr) (webrtc.SettingEngine, en
 }
 
 // newAPI builds the pion API every viewer's PeerConnection shares, with exactly
-// one video codec.
+// one video codec and one audio codec (Opus, audio.go).
 func newAPI(mux ice.UDPMux, bind netip.Addr) (*webrtc.API, error) {
 	se, _ := newSettingEngine(mux, bind)
 
@@ -84,6 +84,12 @@ func newAPI(mux ice.UDPMux, bind netip.Addr) (*webrtc.API, error) {
 		PayloadType:        102,
 	}, webrtc.RTPCodecTypeVideo); err != nil {
 		return nil, fmt.Errorf("desktop: register h264: %w", err)
+	}
+	if err := me.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: opusCapability,
+		PayloadType:        111,
+	}, webrtc.RTPCodecTypeAudio); err != nil {
+		return nil, fmt.Errorf("desktop: register opus: %w", err)
 	}
 	ir := &interceptor.Registry{}
 	if err := webrtc.RegisterDefaultInterceptors(me, ir); err != nil {
@@ -121,6 +127,29 @@ func (m *Manager) answer(ctx context.Context, v *viewer, offerSDP string) (*webr
 		return fail(fmt.Errorf("desktop: add track: %w", err))
 	}
 	v.track = track
+	// Audio only for a viewer that both says it can play it and offered an audio
+	// m-line, so pion never has to add one the viewer did not ask for. Added before
+	// the offer is applied, like the video track.
+	if v.audioCap == 1 && offersAudio(offerSDP) {
+		at, err := webrtc.NewTrackLocalStaticRTP(opusCapability, "audio", "portty-desktop")
+		if err != nil {
+			return fail(fmt.Errorf("desktop: audio track: %w", err))
+		}
+		asender, err := pc.AddTrack(at)
+		if err != nil {
+			return fail(fmt.Errorf("desktop: add audio track: %w", err))
+		}
+		v.audio = at
+		// Nothing arrives that matters, but the interceptors only work while RTCP is read.
+		go func() {
+			defer recoverLog()
+			for {
+				if _, _, err := asender.ReadRTCP(); err != nil {
+					return
+				}
+			}
+		}()
+	}
 	// The Phase 19 hook closes whatever channel arrives. It is set before the
 	// offer is applied so a channel in the offer is never missed.
 	hook := m.d.OnDataChannel
@@ -166,5 +195,5 @@ func (m *Manager) answer(ctx context.Context, v *viewer, offerSDP string) (*webr
 	case <-ctx.Done():
 		return fail(ctx.Err())
 	}
-	return pc, pc.LocalDescription().SDP, nil
+	return pc, ensureOpusStereo(pc.LocalDescription().SDP), nil
 }

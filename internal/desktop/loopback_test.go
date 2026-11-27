@@ -23,6 +23,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/pion/ice/v4"
+	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 
@@ -280,6 +281,14 @@ type loopbackClient struct {
 	pc   *webrtc.PeerConnection
 	aus  chan []byte
 	ssrc atomic.Uint32 // the received track's SSRC, set by OnTrack
+
+	// audio is every RTP packet of a received audio track; videoStream and
+	// audioStream are the stream IDs the two tracks arrived with (audio_test.go).
+	audio       chan *rtp.Packet
+	videoStream atomic.Value // string
+	audioStream atomic.Value // string
+	// munge, when set, rewrites the offer SDP before it is sent.
+	munge func(string) string
 }
 
 func newLoopbackClient(t *testing.T) *loopbackClient {
@@ -304,8 +313,22 @@ func newLoopbackClient(t *testing.T) *loopbackClient {
 	if _, err := pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}); err != nil {
 		t.Fatal(err)
 	}
-	lc := &loopbackClient{pc: pc, aus: make(chan []byte, 64)}
+	lc := &loopbackClient{pc: pc, aus: make(chan []byte, 64), audio: make(chan *rtp.Packet, 256)}
 	pc.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		if track.Kind() == webrtc.RTPCodecTypeAudio {
+			lc.audioStream.Store(track.StreamID())
+			for {
+				pkt, _, err := track.ReadRTP()
+				if err != nil {
+					return
+				}
+				select {
+				case lc.audio <- pkt:
+				default:
+				}
+			}
+		}
+		lc.videoStream.Store(track.StreamID())
 		lc.ssrc.Store(uint32(track.SSRC()))
 		var h264 codecs.H264Packet
 		var au []byte
@@ -343,7 +366,11 @@ func (lc *loopbackClient) offer(t *testing.T) string {
 		t.Fatal(err)
 	}
 	<-gathered
-	return lc.pc.LocalDescription().SDP
+	sdp := lc.pc.LocalDescription().SDP
+	if lc.munge != nil {
+		sdp = lc.munge(sdp)
+	}
+	return sdp
 }
 
 func (lc *loopbackClient) accept(t *testing.T, sdp string) {
