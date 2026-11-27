@@ -260,6 +260,7 @@ type QualityStats struct {
 	Step       int
 	Slow       int
 	NoFeedback int
+	Still      bool // the screen is still: the picture was refined and is being kept alive
 }
 
 // qViewer is the controller's record of one viewer.
@@ -278,7 +279,6 @@ type qualityController struct {
 	m         *Manager
 	tickEvery time.Duration                // tests shorten it before Start
 	tickMu    sync.Mutex                   // one tick at a time
-	lastUnit  atomic.Int64                 // unix nanos of the last access unit (23-03's still machine builds on it)
 	told      func(id ViewerID, slow bool) // set by tests: sees every slow message
 
 	mu      sync.Mutex // guards everything below
@@ -287,7 +287,8 @@ type qualityController struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 	state   ladderState
-	fullFPS int // the capture's frame rate at ladder position 0
+	fullFPS int          // the capture's frame rate at ladder position 0
+	still   stillMachine // sharp when still (still.go)
 
 	// What the source has actually been told, so a tick sends only a change.
 	appliedBps  int
@@ -342,6 +343,7 @@ func (q *qualityController) start(ctx context.Context, src screencap.Source) {
 	q.src, q.state, q.fullFPS = src, ladderState{Target: ceilingBps}, full
 	q.appliedBps, q.appliedFPS, q.appliedStep, q.retryAt = 0, full, 0, time.Time{}
 	q.baseW, q.baseH = 0, 0
+	q.still = stillMachine{}
 	q.cancel, q.done = cancel, make(chan struct{})
 	done := q.done
 	q.mu.Unlock()
@@ -409,6 +411,42 @@ func (q *qualityController) tick() {
 		q.tell(n)
 	}
 	q.apply(now, p)
+	q.stepStill(now, p.src)
+}
+
+// stepStill runs the still machine and asks the source for what it says, outside
+// q.mu: the source may take a moment in the native layer.
+func (q *qualityController) stepStill(now time.Time, src screencap.Source) {
+	ss, ok := src.(screencap.StillSource)
+	if !ok {
+		return
+	}
+	ready, asleep := q.m.anyReady(), q.m.isAsleep()
+	q.mu.Lock()
+	act, target := q.still.step(now, ready, asleep), q.state.Target
+	q.mu.Unlock()
+	var err error
+	switch act {
+	case stillRefine:
+		err = ss.Refine(refineBps(target))
+	case stillIdleRefresh:
+		err = ss.IdleRefresh()
+	}
+	if err != nil {
+		slog.Warn("desktop: still refresh failed", "err", err)
+	}
+}
+
+// anyReady reports whether any viewer's media path is up.
+func (m *Manager) anyReady() bool {
+	m.vmu.Lock()
+	defer m.vmu.Unlock()
+	for _, v := range m.viewers {
+		if v.ready {
+			return true
+		}
+	}
+	return false
 }
 
 // decideLocked is the lock-holding half of a tick.
@@ -598,10 +636,20 @@ func (q *qualityController) firePLI() {
 	q.m.requestKeyframe("pli")
 }
 
-// noteUnit is the fan-out's per-unit hook. It records the unit's time and reports
-// whether the unit counts as a captured frame for the Phase 19 stall watchdog.
-func (m *Manager) noteUnit(screencap.AccessUnit) bool {
-	m.q.lastUnit.Store(m.d.Now().UnixNano())
+// noteUnit is the fan-out's per-unit hook. A fresh capture ends stillness; refine
+// and idle-refresh units re-encode the cached picture, so they neither end it nor
+// count as a captured frame for the Phase 19 stall watchdog (the return value).
+// Join and PLI keyframes keep their Phase 19 counting.
+func (m *Manager) noteUnit(au screencap.AccessUnit) bool {
+	switch au.Kind {
+	case screencap.UnitRefine, screencap.UnitIdle:
+		return false
+	case screencap.UnitFresh:
+		now := m.d.Now()
+		m.q.mu.Lock()
+		m.q.still.fresh(now)
+		m.q.mu.Unlock()
+	}
 	return true
 }
 
@@ -615,6 +663,7 @@ func (m *Manager) QualityStats() QualityStats {
 		FPS:       fpsFor(q.state.Level, max(q.fullFPS, 1)),
 		LongEdge:  ladderEdges[resStep(q.state.Level)],
 		Step:      q.state.Level,
+		Still:     q.still.still,
 	}
 	for _, v := range q.viewers {
 		if v.slow.Slow {
