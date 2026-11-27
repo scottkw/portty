@@ -286,12 +286,12 @@ Plans:
   1. In the Portty app on another Mac, the sidebar lists a peer's desktop next to its sessions. Clicking it opens a Desktop tab that shows and controls that desktop, with the same state and reconnect behaviour as the browser viewer. If Phase 17 found WebRTC unusable in the Wails web view, the row opens the browser link instead and the docs say so. (DVWR-01)
   2. In control mode in a Desktop tab, Cmd+W, Cmd+Q and Cmd+C go to the remote Mac instead of closing the tab, quitting Portty or copying locally. Leaving control mode gives Portty its shortcuts back. (DVWR-04)
   3. On an iPhone, in Safari or from the Home Screen, the viewer offers trackpad mode, pinch-zoom, long-press for right-click, two-finger scroll and the soft keyboard, and it picks up again after the phone sleeps. (DVWR-03)
-**Plans**: 4/13 plans executed
+**Plans**: 5/13 plans executed
 
 Plans:
 **Wave 1**
 - [x] 21-01-PLAN.md — Office side: `X-Portty-Desktop: always` on the sessions meta answer, same-user `POST /api/peer/desktop/cap`, desktop token provider, tailnet header reader and `FetchPeerDesktopCap`
-- [ ] 21-02-PLAN.md — Key-routing probe in the real Portty.app in portty-test-2 (page-level, then blank-in-place, then menu rebuild); writes KEYROUTE, CMDKEYUP, RELEASE_CHORD, HIDDEN_VISIBILITY verdicts (user checkpoint)
+- [x] 21-02-PLAN.md — Key-routing probe in the real Portty.app in portty-test-2 (page-level, then blank-in-place, then menu rebuild); writes KEYROUTE, CMDKEYUP, RELEASE_CHORD, HIDDEN_VISIBILITY verdicts (user checkpoint)
 - [x] 21-03-PLAN.md — iPhone gesture engine and zoom/pan math as pure code (relative moves, host-side pointer)
 - [x] 21-04-PLAN.md — Sidebar Desktop row with muted state line and the `desktop` tab type and tab chrome (frontend only)
 - [x] 21-05-PLAN.md — Desktop tab connection logic: key refresh before redial, check mapping, Local Network watcher, 2-minute hidden pause, app card copy
@@ -357,6 +357,6 @@ Plans:
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 4/11 | In Progress | - |
-| 21. Portty App and iPhone Viewers | v2.0 | 4/13 | In Progress | - |
+| 21. Portty App and iPhone Viewers | v2.0 | 5/13 | In Progress | - |
 | 22. Click-to-Share for Tailnet People | v2.0 | 0/TBD | Not started | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/TBD | Not started | - |
