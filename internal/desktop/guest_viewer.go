@@ -128,9 +128,13 @@ func (m *Manager) ServeGuestViewer(ctx context.Context, c *websocket.Conn, admit
 		gs.Withdraw(req)
 		return
 	}
-	if send(ctx, c, msgAdmission{Type: typeAdmission, State: admissionWaiting}) != nil {
-		gs.Withdraw(req)
-		return
+	select {
+	case <-req.done: // a re-admission is already answered: no waiting card
+	default:
+		if send(ctx, c, msgAdmission{Type: typeAdmission, State: admissionWaiting}) != nil {
+			gs.Withdraw(req)
+			return
+		}
 	}
 
 	out, pend, ok := m.guestWait(ctx, c, gs, req)
