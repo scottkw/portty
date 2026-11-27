@@ -17,6 +17,7 @@ void updateTrayTooltip(const char *tooltip);
 void setTraySessionData(const char **names, const char **ids, int count);
 void setTrayUpdateItem(const char *title);
 void setTrayDesktopTitle(const char *title);
+void setTrayShareState(int active, const char *title);
 void setDockVisible(int visible);
 */
 import "C"
@@ -115,6 +116,22 @@ func onTrayUpdate() {
 	}
 }
 
+//export onTrayShareDesktop
+func onTrayShareDesktop() {
+	app := trayCallbackApp // captured before the goroutine, like onTrayQuit
+	if app != nil {
+		go app.shareDesktopFromTray() // the menu callback must return at once
+	}
+}
+
+//export onTrayStopSharing
+func onTrayStopSharing() {
+	app := trayCallbackApp // captured before the goroutine, like onTrayQuit
+	if app != nil {
+		go app.stopSharingFromTray()
+	}
+}
+
 //export onNotificationClick
 func onNotificationClick(identifier *C.char) {
 	id := C.GoString(identifier) // copy now: the C string is only valid during this callback
@@ -128,6 +145,18 @@ func onNotificationClick(identifier *C.char) {
 func setTrayUpdateItem(title string) {
 	ct := C.CString(title)
 	C.setTrayUpdateItem(ct)
+	C.free(unsafe.Pointer(ct))
+}
+
+// setTrayShareState sets the click-to-share slot of the tray menu: active shows
+// title and Stop Sharing, inactive shows Share Desktop….
+func setTrayShareState(active bool, title string) {
+	ct := C.CString(title)
+	a := C.int(0)
+	if active {
+		a = 1
+	}
+	C.setTrayShareState(a, ct)
 	C.free(unsafe.Pointer(ct))
 }
 
