@@ -2591,6 +2591,8 @@ html:has(.desktop-view) body {
   left: 0;
   right: 0;
   width: fit-content;
+  /* Long chip text wraps at 480px and is never truncated. */
+  max-width: min(480px, calc(100% - 48px));
   margin: 0 auto;
   min-height: 32px;
   padding: 8px 12px;
@@ -2720,10 +2722,10 @@ html:has(.desktop-view) body {
 .desktop-dot[hidden] {
   display: none;
 }
-/* The notice chip: the Phase 19 chip metrics, one slot below the state chip, wrapping and never truncating. */
+/* The notice chip: the Phase 19 chip metrics, one slot below the state chip, wrapping and never truncating.
+   --desktop-chip-h is the state chip's measured height (set by the view when it wraps past one line). */
 .desktop-chip--notice {
-  top: calc(48px + env(safe-area-inset-top));
-  max-width: min(480px, calc(100% - 48px));
+  top: calc(8px + var(--desktop-chip-h, 32px) + 8px + env(safe-area-inset-top));
 }
 @media (prefers-reduced-motion: reduce) {
   .desktop-chip--notice {
@@ -2895,7 +2897,7 @@ html:has(.desktop-view) body {
   top: calc(52px + env(safe-area-inset-top));
 }
 .desktop-view--bar .desktop-chip--notice {
-  top: calc(92px + env(safe-area-inset-top));
+  top: calc(52px + var(--desktop-chip-h, 32px) + 8px + env(safe-area-inset-top));
 }
 
 /* ─── Desktop clipboard popovers (Phase 20-08, 20-UI-SPEC Surface D) ──

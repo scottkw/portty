@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
   ClipboardDocumentCheckIcon,
@@ -279,6 +279,8 @@ export function DesktopView({
   // The one open popover. The Copy popover holds the Mac's text for as long as it is open: memory only, never logged.
   const [popover, setPopover] = useState<{ kind: 'copy'; text: string } | { kind: 'paste' } | null>(null)
   const clipboardBtnRef = useRef<HTMLButtonElement>(null)
+  const chipRef = useRef<HTMLDivElement>(null)
+  const [chipH, setChipH] = useState(0)
   const showBarRef = useRef(false)
   const barMenuOpenRef = useRef(false)
   const [fullscreen, setFullscreen] = useState(false)
@@ -735,6 +737,18 @@ export function DesktopView({
   useEffect(() => {
     if (!showBar) setPopover(null)
   }, [showBar])
+
+  // The notice chip sits below the state chip, so it needs the state chip's height once that wraps.
+  const measureChip = useCallback(() => {
+    const h = chipRef.current?.offsetHeight ?? 0
+    setChipH((prev) => (prev === h ? prev : h))
+  }, [])
+  useLayoutEffect(measureChip)
+  useEffect(() => {
+    window.addEventListener('resize', measureChip)
+    return () => window.removeEventListener('resize', measureChip)
+  }, [measureChip])
+
   if (status.kind === 'other_account') return <UserRefused />
   const scrim = (cardKey !== null && cardKey !== 'connecting') || chip?.Icon === ArrowPathIcon
   const card = cardKey ? CARDS[cardKey] : null
@@ -767,14 +781,17 @@ export function DesktopView({
         />
       </div>
       {scrim && <div className="desktop-scrim" onClick={needsTap ? startPlay : undefined} />}
-      <div className="desktop-status">
+      <div
+        className="desktop-status"
+        style={chipH > 32 ? ({ '--desktop-chip-h': `${chipH}px` } as React.CSSProperties) : undefined}
+      >
         {/* The wrapper and the live region stay mounted, so every change is announced.
             The region holds text only; the card's buttons sit beside it, so an update
             never re-reads a control and focus is never inside the region. */}
         <div className={card ? 'desktop-card' : undefined}>
           <div role="status" aria-live="polite" className="desktop-status__text">
             {chip && (
-              <div className={chip.fading ? 'desktop-chip desktop-chip--fading' : 'desktop-chip'}>
+              <div ref={chipRef} className={chip.fading ? 'desktop-chip desktop-chip--fading' : 'desktop-chip'}>
                 {chip.Icon && <chip.Icon className="desktop-chip__icon" aria-hidden="true" />}
                 {chip.text}
               </div>
