@@ -22,7 +22,7 @@ result: pass (2026-11-27, iPhone 16 Pro, Chrome for iOS, office VM as the shared
 
 ### 2. M-195 iPhone tap-then-drag a window, two-finger scroll direction
 expected: Window moves by its title bar; two fingers scroll in the direction the fingers move
-result: retry: tap-then-drag failed during heavy lag (host load avg 36 from parallel test runs, VM software encode); two-finger scroll not yet run. Re-run with the host idle
+result: pass (2026-11-27, build v23.8.2 = 6ea4e35e, office VM): tap-then-drag moves the window (fixed in fecaa066: stale cursor report + rest-before-move); two-finger scroll passes (an open Fonts panel had absorbed it earlier)
 
 ### 3. M-196 iPhone pinch to 5x, pan-follow, reset, no Safari tab overview
 expected: Pinch zooms to 5x and back; two-finger double-tap and Fit to Screen reset; Safari tab overview never opens
@@ -30,7 +30,7 @@ result: pass (2026-11-27, Chrome for iOS)
 
 ### 4. M-197 iPhone soft keyboard, Backspace, Return, armed modifiers
 expected: Typing, Backspace and Return work; an armed modifier sends a chord; the form-assist bar gap is the accepted one
-result: fail (2026-11-27, Chrome for iOS): typing, Backspace, Return pass; key row showed only intermittently and tapping Cmd dismissed the keyboard, so Cmd+A could not be sent. Fix ddcc2b48 (debug/phone-keyrow-keyboard.md); re-check on the iPhone in Safari and Chrome
+result: pass (2026-11-27, build v23.8.2): key row appears every time, Cmd then a selects all, Esc/Tab/arrow keep or restore the bar (fixes ddcc2b48, 6ea4e35e). Earlier run failed: see debug/resolved/phone-keyrow-*.md
 
 ### 5. M-198 iPhone Send Keys, Lock Screen confirm, surface picker
 expected: Cmd+Tab goes to the Mac; Lock Screen asks first; picker lists the office Mac's displays
