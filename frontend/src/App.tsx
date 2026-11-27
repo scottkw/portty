@@ -1445,6 +1445,7 @@ function App(): React.ReactElement {
             onPluginToggleSideEffect={handlePluginToggleSideEffect}
             onAppearanceChange={setAppearance}
             onTerminalFontChange={setTerminalFont}
+            share={{ active: share.state.active, viewers: share.state.viewers.length, onOpen: share.openSheet }}
           />
         )}
         {/* Phase 22: after the Settings sheet in the DOM, so it is topmost when opened from Settings. */}

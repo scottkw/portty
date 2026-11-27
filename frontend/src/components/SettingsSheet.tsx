@@ -24,6 +24,15 @@ import { DesktopSetupSheet } from './DesktopSetupSheet'
 import { PluginsSection, type PluginToggleKind } from './PluginsSection'
 import { Switch } from './Switch'
 import { Row } from './SettingsRow'
+import {
+  MANAGE_SHARING_ACTION,
+  SECURITY_KEYS_DESCRIPTION as SESSION_KEYS_DESCRIPTION,
+  SETTINGS_ROW_DESCRIPTION,
+  SETTINGS_ROW_TITLE,
+  SHARE_CT_LINE,
+  SHARE_DESKTOP_ACTION,
+  sharedWithPeople,
+} from '../lib/shareDesktopCopy'
 import { TAILSCALE_OFF_REASON, USERSPACE_SENTENCE, type TailscaleHealth } from '../lib/tailscale'
 import { shortHost } from '../lib/sidebarPeers'
 import { useDialogFocus } from '../lib/useDialogFocus'
@@ -40,7 +49,18 @@ interface SettingsSheetProps {
   onAppearanceChange?: (appearance: Appearance) => void
   // Quick 261116-ku9 R1: notifies App.tsx after the Terminal Font is saved.
   onTerminalFontChange?: (font: TerminalFont) => void
+  // Phase 22: the click-to-share the sharer started and how to open its sheet (Row 6).
+  share?: ShareRowProps
 }
+
+/** What Row 6 needs of the click-to-share: whether one is active, how many are watching, and the way to its sheet. */
+interface ShareRowProps {
+  active: boolean
+  viewers: number
+  onOpen: () => void
+}
+
+const NO_SHARE_ROW: ShareRowProps = { active: false, viewers: 0, onOpen: () => {} }
 
 export type Appearance = 'system' | 'light' | 'dark'
 
@@ -158,10 +178,61 @@ interface DesktopGroupProps {
   onOpenSetup: (returnTo: HTMLElement | null) => void
   /** Bumped when the setup sheet closes, so the grants are read again. */
   setupClosedCount: number
+  share: ShareRowProps
+}
+
+/**
+ * Row 6 (22-UI-SPEC Surface 1): Share Desktop… while not sharing (the Certificate Transparency
+ * line until acknowledged; blocked with the Tailscale reason when not connected), the viewer
+ * count and Manage Sharing… while sharing. Opening is never blocked while a share runs.
+ */
+function ShareDesktopRow({ share, tailscaleOff, ctDisclosed, ctLoaded, domain }: {
+  share: ShareRowProps
+  tailscaleOff: boolean
+  ctDisclosed: boolean
+  ctLoaded: boolean
+  domain: string
+}): React.ReactElement {
+  if (share.active) {
+    return (
+      <Row label={SETTINGS_ROW_TITLE}>
+        <span className="ts-status">
+          <StatusDot kind="on" />
+          <span className="ts-status__text">{sharedWithPeople(share.viewers)}</span>
+        </span>
+        <button type="button" className="button button--secondary" onClick={share.onOpen}>{MANAGE_SHARING_ACTION}</button>
+      </Row>
+    )
+  }
+  const showCT = ctLoaded && !ctDisclosed && !!domain
+  return (
+    <Row
+      label={SETTINGS_ROW_TITLE}
+      descriptionId="share-desktop-row-description"
+      description={tailscaleOff
+        ? TAILSCALE_OFF_REASON
+        : (
+          <>
+            {SETTINGS_ROW_DESCRIPTION}
+            {showCT && <span className="settings-row__note">{SHARE_CT_LINE(domain.replace(/\.ts\.net$/, ''))}</span>}
+          </>
+        )}
+    >
+      <button
+        type="button"
+        className="button button--secondary"
+        aria-disabled={tailscaleOff}
+        aria-describedby={tailscaleOff ? 'share-desktop-row-description' : undefined}
+        onClick={() => { if (!tailscaleOff) share.onOpen() }}
+      >
+        {SHARE_DESKTOP_ACTION}
+      </button>
+    </Row>
+  )
 }
 
 /** The Desktop group in Settings ▸ Sharing (19-UI-SPEC Surface 1). */
-function DesktopGroup({ active, tailscaleHealth, ctDisclosed, ctLoaded, onTurnedOn, onOpenSetup, setupClosedCount }: DesktopGroupProps): React.ReactElement {
+function DesktopGroup({ active, tailscaleHealth, ctDisclosed, ctLoaded, onTurnedOn, onOpenSetup, setupClosedCount, share }: DesktopGroupProps): React.ReactElement {
   const [status, setStatus] = useState<DesktopStatusResult | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState<'starting' | 'stopping' | null>(null)
@@ -383,6 +454,7 @@ function DesktopGroup({ active, tailscaleHealth, ctDisclosed, ctLoaded, onTurned
             )}
           </Row>
         )}
+        <ShareDesktopRow share={share} tailscaleOff={tailscaleOff} ctDisclosed={ctDisclosed} ctLoaded={ctLoaded} domain={tailscaleHealth?.domain ?? ''} />
       </div>
       <p className="settings-sheet__footnote">{DESKTOP_FOOTNOTE}</p>
       {error && <p className="settings-sheet__error" role="alert">{error}</p>}
@@ -401,7 +473,7 @@ export function SettingsSheet(props: SettingsSheetProps): React.ReactElement | n
   return <SettingsSheetContent {...props} />
 }
 
-function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffect, onAppearanceChange, onTerminalFontChange }: SettingsSheetProps): React.ReactElement {
+function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffect, onAppearanceChange, onTerminalFontChange, share = NO_SHARE_ROW }: SettingsSheetProps): React.ReactElement {
   const [pane, setPane] = useState<Pane>('general')
   const [appearance, setAppearanceState] = useState<Appearance>('system')
   const [appearanceLoaded, setAppearanceLoaded] = useState(false)
@@ -726,6 +798,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffe
                 onTurnedOn={readCTDisclosure}
                 onOpenSetup={(returnTo) => setSetup({ returnTo })}
                 setupClosedCount={setupClosedCount}
+                share={share}
               />
             </div>
 
@@ -745,7 +818,7 @@ function SettingsSheetContent({ onClose, tailscaleHealth, onPluginToggleSideEffe
                       </button>
                     )}
                 </Row>
-                <Row label="Session keys" description="Regenerating signs out every browser and Mac attached to your sessions, and stops every saved desktop link.">
+                <Row label="Session keys" description={SESSION_KEYS_DESCRIPTION}>
                   <button type="button" className="button button--secondary" onClick={() => setShowRegenModal(true)}>
                     Regenerate…
                   </button>

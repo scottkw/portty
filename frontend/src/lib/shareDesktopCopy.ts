@@ -62,6 +62,7 @@ export const STATUS_DISPLAY_ASLEEP = 'Display asleep'
 export const STATUS_CAPTURE_PAUSED = 'Paused after repeated errors. Run Test Capture to resume.'
 export const STATUS_WAITING_FOR_TAILSCALE = 'Waiting for Tailscale'
 export const SET_UP_PERMISSIONS = 'Set Up Permissions…'
+export const SHARE_STATUS_LABEL = 'Status'
 
 // ---- Admit sheet (Surface 3) ----
 export const ADMIT_TITLE = 'Someone Wants to Watch Your Desktop'
