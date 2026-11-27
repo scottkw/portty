@@ -131,6 +131,17 @@ int pc_input_cursor(double *x, double *y) {
 	}
 }
 
+// 1 when the global point lies on an active display, 0 when it lies on none.
+int pc_point_on_display(double x, double y) {
+	@try {
+		uint32_t count = 0;
+		if (CGGetDisplaysWithPoint(CGPointMake(x, y), 0, NULL, &count) != kCGErrorSuccess) return kPCInputNilErr;
+		return count > 0 ? 1 : 0;
+	} @catch (NSException *e) {
+		return kPCInputExceptionErr;
+	}
+}
+
 // A display's bounds in global points, top-left origin, negative origins kept.
 // id 0 is the main display.
 int pc_display_bounds(uint32_t id, double *x, double *y, double *w, double *h) {

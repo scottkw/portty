@@ -15,6 +15,7 @@ int pc_input_text(const uint16_t *units, int n);
 int pc_input_scroll(int dx, int dy, uint64_t flags);
 int pc_input_cursor(double *x, double *y);
 int pc_display_bounds(uint32_t id, double *x, double *y, double *w, double *h);
+int pc_point_on_display(double x, double y);
 */
 import "C"
 
@@ -132,4 +133,18 @@ func DisplayBounds(id uint32) (x, y, w, h float64, err error) {
 		return 0, 0, 0, 0, inputErr("reading the display bounds", rc)
 	}
 	return float64(cx), float64(cy), float64(cw), float64(ch), nil
+}
+
+// PointOnDisplay reports whether the global point (x, y) in points lies on any
+// active display. It refuses under testing.Testing(), like every host read the
+// desktop tests replace with a fake.
+func PointOnDisplay(x, y float64) (bool, error) {
+	if testing.Testing() {
+		return false, ErrRefusedInTest
+	}
+	rc := C.pc_point_on_display(C.double(x), C.double(y))
+	if rc < 0 {
+		return false, inputErr("finding the display under a point", rc)
+	}
+	return rc == 1, nil
 }

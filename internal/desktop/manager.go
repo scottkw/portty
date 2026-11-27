@@ -186,6 +186,9 @@ type Deps struct {
 	// DisplayBounds reads a display's global bounds in points (id 0 is the main
 	// display); nil means screencap.DisplayBounds.
 	DisplayBounds func(id uint32) (x, y, w, h float64, err error)
+	// PointOnDisplay reports whether a global point lies on any active display;
+	// nil means screencap.PointOnDisplay (which refuses under tests).
+	PointOnDisplay func(x, y float64) (bool, error)
 	// MainDisplayID is the main display's real ID, which a surface message
 	// carries so a viewer can match it to the list; nil means screencap.MainDisplayID.
 	MainDisplayID func() uint32
@@ -414,6 +417,9 @@ func NewManager(d Deps) (*Manager, error) {
 	}
 	if d.DisplayBounds == nil {
 		d.DisplayBounds = screencap.DisplayBounds
+	}
+	if d.PointOnDisplay == nil {
+		d.PointOnDisplay = screencap.PointOnDisplay
 	}
 	if d.MainDisplayID == nil {
 		d.MainDisplayID = screencap.MainDisplayID
