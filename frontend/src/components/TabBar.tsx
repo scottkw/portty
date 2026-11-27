@@ -4,6 +4,7 @@ import {
   ChevronRightIcon,
   DocumentIcon,
   DocumentTextIcon,
+  ComputerDesktopIcon,
   GlobeAltIcon,
   PhotoIcon,
   PlusIcon,
@@ -20,7 +21,7 @@ export interface Tab {
   id: string
   name: string
   sessionId: string
-  type?: 'terminal' | 'web-session' | 'preview'
+  type?: 'terminal' | 'web-session' | 'preview' | 'desktop'
   /** Phase 168-03 (FIX-03) — per-tab remote peer origin for 'web-session' tabs
    *  opened via handleOpenRemoteSession. undefined for the app's own web-share
    *  bootstrap tab (which falls back to the mount-stable webParams). */
@@ -103,7 +104,14 @@ interface TabBarProps {
    * can turn Share off (04-09, user decision 2026-11-17).
    */
   shareDisabled?: boolean
+  /**
+   * 21-08: the active Desktop tab's two-line label (who owns the keyboard, and the way out). Shown in the
+   * trailing chip slot only while a Desktop tab is active; null or absent shows nothing.
+   */
+  desktopLabel?: { line1: string; line2: string; controlling: boolean; tooltip: string } | null
 }
+
+const DESKTOP_LABEL_DESC_ID = 'desktop-label-description'
 
 /** A local terminal tab (no type, or 'terminal'): the only kind with Rename and End Session…. */
 function isLocal(tab: Tab): boolean {
@@ -131,6 +139,7 @@ export function TabBar({
   onShare,
   shared = false,
   shareDisabled = false,
+  desktopLabel = null,
   shareOpen = false,
   sharePopoverId,
   shareButtonRef,
@@ -262,7 +271,9 @@ export function TabBar({
                   setMenu({ tab, x: e.clientX, y: e.clientY, invoker: e.currentTarget })
                 }}
               >
-                {peer && <GlobeAltIcon className="tab__remote-icon" aria-hidden="true" />}
+                {peer && (tab.type === 'desktop'
+                  ? <ComputerDesktopIcon className="tab__remote-icon" aria-hidden="true" />
+                  : <GlobeAltIcon className="tab__remote-icon" aria-hidden="true" />)}
                 {isPreview && <PreviewIcon kind={tab.previewKind} />}
                 <span
                   className="tab__name"
@@ -344,6 +355,23 @@ export function TabBar({
       )}
       {!webMode && activeTab?.type === 'web-session' && (
         <span className="toolbar-chip">On {activeTab.name.split(' › ')[0]}</span>
+      )}
+      {!webMode && activeTab?.type === 'desktop' && desktopLabel && (
+        <>
+          <span
+            className="toolbar-chip toolbar-chip--desktop"
+            role="status"
+            aria-live="polite"
+            title={desktopLabel.tooltip}
+            aria-describedby={DESKTOP_LABEL_DESC_ID}
+            data-control={desktopLabel.controlling ? 'on' : undefined}
+          >
+            <span className="toolbar-chip__line1">{desktopLabel.line1}</span>
+            <span className="toolbar-chip__line2">{desktopLabel.line2}</span>
+          </span>
+          {/* Outside the live region, so a change of state does not read the whole tooltip again. */}
+          <span id={DESKTOP_LABEL_DESC_ID} className="visually-hidden">{desktopLabel.tooltip}</span>
+        </>
       )}
 
       {menu && (

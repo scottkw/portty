@@ -531,3 +531,125 @@ describe('Sidebar: local row menu and rename (Portty 02-08)', () => {
     expect(c.querySelector('input')).toBeNull()
   })
 })
+
+// Phase 21-04 (DVWR-01): the Desktop row.
+describe('Sidebar: Desktop row (DVWR-01)', () => {
+  it('a peer with desktop true shows Desktop first and the click calls onOpenDesktop with that peer', () => {
+    const p = { ...peer('office-air.example.ts.net', true, [['s1', 'build']]), desktop: true }
+    const onOpenDesktop = vi.fn()
+    const { c } = render({ peerView: peerView(false, true, [p]), onOpenDesktop })
+    const rowsOf = peerRows(c, 'office-air')
+    expect(rowsOf.map((r) => r.textContent)).toEqual(['Desktop', 'build'])
+    expect(rowsOf[0].compareDocumentPosition(rowsOf[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(rowsOf[0].querySelector('svg.sidebar__row-icon')).not.toBeNull()
+    expect(rowsOf[0].querySelector('.peer-dot')).not.toBeNull()
+    act(() => rowsOf[0].click())
+    expect(onOpenDesktop).toHaveBeenCalledTimes(1)
+    expect(onOpenDesktop).toHaveBeenCalledWith(p)
+  })
+
+  const withDesktop = (host: string, extra: Partial<RemotePeerSessions> = {}): RemotePeerSessions => ({
+    ...peer(host, true, []),
+    desktop: true,
+    ...extra,
+  })
+  const desktopRow = (c: HTMLElement, host: string) => peerRows(c, host).find((r) => r.textContent === 'Desktop')
+
+  it('shows no Desktop row for desktop undefined, desktop false, an unreachable peer, or without onOpenDesktop', () => {
+    const cases: [RemotePeerSessions, boolean][] = [
+      [peer('a.example.ts.net', true, [['s1', 'x']]), true],
+      [{ ...peer('a.example.ts.net', true, [['s1', 'x']]), desktop: false }, true],
+      [{ ...peer('a.example.ts.net', false), desktop: true }, true],
+      [withDesktop('a.example.ts.net'), false],
+    ]
+    for (const [p, withCb] of cases) {
+      const { c } = render({ peerView: peerView(false, true, [p]), onOpenDesktop: withCb ? vi.fn() : undefined })
+      expect(desktopRow(c, 'a')).toBeUndefined()
+      act(() => root!.unmount())
+      container!.remove()
+    }
+  })
+
+  it('an unreachable peer with desktop true keeps only the can\'t-reach line', () => {
+    const { c } = render({ peerView: peerView(false, true, [{ ...peer('a.example.ts.net', false), desktop: true }]), onOpenDesktop: vi.fn() })
+    expect(mutedText(c)).toEqual(["Can't reach this Mac. Check that it's awake and on your tailnet."])
+  })
+
+  it('Nothing shared shows only without sessions and without a Desktop row', () => {
+    const only = render({ peerView: peerView(false, true, [withDesktop('a.example.ts.net')]), onOpenDesktop: vi.fn() })
+    expect(desktopRow(only.c, 'a')).toBeDefined()
+    expect(mutedText(only.c)).not.toContain('Nothing shared')
+    act(() => root!.unmount())
+    container!.remove()
+    const none = render({ peerView: peerView(false, true, [withDesktop('a.example.ts.net', { desktop: false })]), onOpenDesktop: vi.fn() })
+    expect(mutedText(none.c)).toContain('Nothing shared')
+  })
+
+  it.each([
+    ['awaiting_approval', 'Waiting for approval at the Mac'],
+    ['display_asleep', 'Display asleep'],
+    ['locked', 'Locked'],
+    ['needs_permission', 'Needs permission'],
+    ['capture_paused', 'Desktop paused'],
+  ] as const)('desktopStates %s mutes the row and shows "%s" directly under it, linked by aria-describedby', (state, line) => {
+    const p = withDesktop('a.example.ts.net', { dnsName: 'a.example.ts.net' })
+    const onOpenDesktop = vi.fn()
+    const { c } = render({ peerView: peerView(false, true, [p]), onOpenDesktop, desktopStates: { 'a.example.ts.net': state } })
+    const row = desktopRow(c, 'a')!
+    expect(row.getAttribute('data-muted')).toBe('true')
+    const muted = row.closest('li')!.nextElementSibling as HTMLElement
+    expect(muted.className).toBe('sidebar__muted')
+    expect(muted.textContent).toBe(line)
+    expect(row.getAttribute('aria-describedby')).toBe(muted.id)
+    // Still a working button while muted.
+    act(() => row.click())
+    expect(onOpenDesktop).toHaveBeenCalledWith(p)
+  })
+
+  it('with no state the row has no data-muted, no aria-describedby and no line', () => {
+    const { c } = render({ peerView: peerView(false, true, [withDesktop('a.example.ts.net')]), onOpenDesktop: vi.fn(), desktopStates: { 'other.example.ts.net': 'locked' } })
+    const row = desktopRow(c, 'a')!
+    expect(row.hasAttribute('data-muted')).toBe(false)
+    expect(row.hasAttribute('aria-describedby')).toBe(false)
+    expect(mutedText(c)).toEqual([])
+  })
+
+  it('the row is a real button, so Enter and Space activate it natively', () => {
+    const { c } = render({ peerView: peerView(false, true, [withDesktop('a.example.ts.net')]), onOpenDesktop: vi.fn() })
+    expect(desktopRow(c, 'a')!.tagName).toBe('BUTTON')
+    expect(desktopRow(c, 'a')!.getAttribute('type')).toBe('button')
+  })
+
+  it('aria-current marks the row only while that peer\'s Desktop tab is active', () => {
+    const p = withDesktop('a.example.ts.net', { dnsName: 'a.example.ts.net' })
+    const base = { id: 'desktop:a.example.ts.net', name: 'a › Desktop', sessionId: 'desktop:a.example.ts.net', type: 'desktop' as const, peerHost: 'a.example.ts.net' }
+    const mine = render({ peerView: peerView(false, true, [p]), onOpenDesktop: vi.fn(), activeTab: { ...base, connectHost: 'a.example.ts.net' } })
+    expect(desktopRow(mine.c, 'a')!.getAttribute('aria-current')).toBe('page')
+    act(() => root!.unmount())
+    container!.remove()
+    const other = render({ peerView: peerView(false, true, [p]), onOpenDesktop: vi.fn(), activeTab: { ...base, connectHost: 'b.example.ts.net' } })
+    expect(desktopRow(other.c, 'a')!.hasAttribute('aria-current')).toBe(false)
+    act(() => root!.unmount())
+    container!.remove()
+    const term = render({ peerView: peerView(false, true, [p]), onOpenDesktop: vi.fn(), activeTab: { id: 't', name: 't', sessionId: 't' } })
+    expect(desktopRow(term.c, 'a')!.hasAttribute('aria-current')).toBe(false)
+  })
+
+  it('two peers with desktops give each group a Desktop row first', () => {
+    const v = peerView(false, true, [
+      withDesktop('a.example.ts.net', { sessions: [{ id: 's1', name: 'one', status: 'running', url: 'u' }] }),
+      withDesktop('b.example.ts.net', { sessions: [{ id: 's2', name: 'two', status: 'running', url: 'u' }] }),
+    ])
+    const { c } = render({ peerView: v, onOpenDesktop: vi.fn() })
+    expect(peerRows(c, 'a').map((r) => r.textContent)).toEqual(['Desktop', 'one'])
+    expect(peerRows(c, 'b').map((r) => r.textContent)).toEqual(['Desktop', 'two'])
+  })
+
+  it('a peer whose desktop flag disappears loses the row on the next render', () => {
+    const { c, props } = render({ peerView: peerView(false, true, [withDesktop('a.example.ts.net')]), onOpenDesktop: vi.fn() })
+    expect(desktopRow(c, 'a')).toBeDefined()
+    act(() => root!.render(<Sidebar {...props} peerView={peerView(false, true, [withDesktop('a.example.ts.net', { desktop: false })])} />))
+    expect(desktopRow(c, 'a')).toBeUndefined()
+  })
+})
+

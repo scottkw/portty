@@ -53,7 +53,7 @@ const DISCONNECTED: TailscaleHealth = { connected: false, hasCerts: false, ip: '
 function status(over: Partial<App.DesktopStatusResult> = {}): App.DesktopStatusResult {
   return {
     alwaysAvailable: true, state: 'idle', viewers: 0, locked: false, approachingLapse: false,
-    tailscale: 'ok', launchd: true, reason: '', errorCode: '', ...over,
+    tailscale: 'ok', launchd: true, reason: '', surfaceKind: '', surfaceName: '', control: '', errorCode: '', ...over,
   }
 }
 
@@ -171,7 +171,7 @@ describe('DSHR-01 tracer: turn on, watch the state, copy the link', () => {
 // ---- Task 2: every state, refusal and error -------------------------------
 
 const OFF_DESCRIPTION =
-  "Open this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
+  "View and control this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
 const USERSPACE_SENTENCE =
   "Tailscale is running in userspace-networking mode, so Portty can't open a desktop connection. Switch Tailscale to its standard mode, then try again."
 const FOOTNOTE =
@@ -403,6 +403,69 @@ describe('Permissions row (DPRM-01)', () => {
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1)
     expect(getPerms.mock.calls.length).toBeGreaterThan(reads + 1)
     expect(row('Permissions')!.querySelector('.ts-status__text')!.textContent).toBe('Needs permission')
+  })
+})
+
+// 20-UI-SPEC Surface E: the host sees what is shared, whether control works, and
+// consent copy that says the link can control the Mac (T-20-47).
+describe('Showing row (20-10)', () => {
+  const showing = () => row('Showing')?.querySelector('[aria-live="polite"]')
+
+  it.each([
+    [{ surfaceKind: 'display', surfaceName: 'Main Display' }, 'Main Display'],
+    [{ surfaceKind: 'display', surfaceName: 'Display 2' }, 'Display 2'],
+    [{ surfaceKind: 'window', surfaceName: 'Terminal — zsh' }, 'Window: Terminal — zsh'],
+  ])('%j reads %s directly under Status, in an aria-live region', async (over, text) => {
+    await mountOn({ state: 'streaming', viewers: 1, control: 'ok', ...over })
+    expect(showing()!.textContent).toBe(text)
+    expect(showing()!.className).toContain('settings-row__description')
+    const labels = Array.from(sharing().querySelectorAll('.settings-row__label')).map((l) => l.textContent)
+    expect(labels.indexOf('Showing')).toBe(labels.indexOf('Status') + 1)
+  })
+
+  it('is absent while nobody is watching', async () => {
+    await mountOn({ state: 'idle', viewers: 0 })
+    expect(row('Showing')).toBeNull()
+  })
+
+  it('appears with the first viewer and goes with the last', async () => {
+    await mountOn({ state: 'idle' })
+    getStatus.mockResolvedValue(status({ state: 'streaming', viewers: 1, surfaceKind: 'window', surfaceName: 'Notes' }))
+    await tick(2000)
+    expect(showing()!.textContent).toBe('Window: Notes')
+    getStatus.mockResolvedValue(status({ state: 'idle' }))
+    await tick(2000)
+    expect(row('Showing')).toBeNull()
+  })
+})
+
+describe('Permissions row and control (20-10)', () => {
+  it('control needs_accessibility turns the row warn with the Set Up Permissions… copy', async () => {
+    await mountOn({ state: 'streaming', viewers: 1, control: 'needs_accessibility' })
+    const r = row('Permissions')!
+    expect(r.querySelector('.settings-row__description')!.textContent).toBe('Control needs Accessibility. Choose Set Up Permissions…')
+    expect(r.querySelector('.ts-status__text')!.textContent).toBe('Needs permission')
+    expect(r.querySelector('.ts-status__dot--warn')).not.toBeNull()
+    expect(r.querySelector('button')!.textContent).toBe('Set Up Permissions…')
+  })
+
+  it('returns to Granted and Review Permissions… when control works again', async () => {
+    await mountOn({ state: 'streaming', viewers: 1, control: 'needs_accessibility' })
+    getStatus.mockResolvedValue(status({ state: 'streaming', viewers: 1, control: 'ok' }))
+    await tick(2000)
+    const r = row('Permissions')!
+    expect(r.querySelector('.settings-row__description')!.textContent).toBe('Screen Recording and Accessibility.')
+    expect(r.querySelector('.ts-status__text')!.textContent).toBe('Granted')
+    expect(r.querySelector('button')!.textContent).toBe('Review Permissions…')
+  })
+})
+
+describe('consent copy says the link can control the Mac (T-20-47)', () => {
+  it('Row 3 reads the new sentence', async () => {
+    await mountOn({ state: 'idle' })
+    expect(description('Link')).toBe(
+      'Open it in Chrome or Safari on a device signed in to your Tailscale account. It can control this Mac, so treat it like a password.',
+    )
   })
 })
 

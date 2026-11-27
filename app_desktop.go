@@ -91,7 +91,12 @@ type DesktopStatusResult struct {
 	Tailscale        string `json:"tailscale"`
 	Launchd          bool   `json:"launchd"`
 	Reason           string `json:"reason"`
-	ErrorCode        string `json:"errorCode"`
+	// SurfaceKind ("display" or "window"), SurfaceName and Control ("ok" or
+	// "needs_accessibility") are set only while viewers are connected.
+	SurfaceKind string `json:"surfaceKind"`
+	SurfaceName string `json:"surfaceName"`
+	Control     string `json:"control"`
+	ErrorCode   string `json:"errorCode"`
 }
 
 // DesktopResult is SetDesktopAlwaysAvailable's answer. FirstShare is true when
@@ -118,10 +123,15 @@ func (a *App) GetDesktopStatus() DesktopStatusResult {
 	if err != nil {
 		return DesktopStatusResult{ErrorCode: "unavailable"}
 	}
-	return DesktopStatusResult{
+	res := DesktopStatusResult{
 		AlwaysAvailable: s.AlwaysAvailable, State: s.State, Viewers: s.Viewers, Locked: s.Locked,
 		ApproachingLapse: s.ApproachingLapse, Tailscale: s.Tailscale, Launchd: s.Launchd, Reason: s.Reason,
+		Control: s.Control,
 	}
+	if s.Surface != nil {
+		res.SurfaceKind, res.SurfaceName = s.Surface.Kind, s.Surface.Name
+	}
+	return res
 }
 
 // SetDesktopAlwaysAvailable turns the always-available desktop on or off. A

@@ -52,16 +52,24 @@ func TestCaptureStill_RefusesUnderTest(t *testing.T) {
 	}
 }
 
+// On a stopped source SelectSurface only records the surface (no native call);
+// a window and any display ID are accepted now, an unknown kind is not.
 func TestDisplaySource_SelectSurface(t *testing.T) {
 	src := NewDisplaySource()
-	if err := src.SelectSurface(Surface{Kind: SurfaceDisplay}); err != nil {
-		t.Errorf("main display: %v", err)
+	for _, s := range []Surface{{Kind: SurfaceDisplay}, {Kind: SurfaceWindow, ID: 7}, {Kind: SurfaceDisplay, ID: 3}} {
+		if err := src.SelectSurface(s); err != nil {
+			t.Errorf("SelectSurface(%+v) = %v, want it recorded", s, err)
+		}
 	}
-	if err := src.SelectSurface(Surface{Kind: SurfaceWindow, ID: 7}); !errors.Is(err, ErrSurfaceUnsupported) {
-		t.Errorf("window = %v, want ErrSurfaceUnsupported", err)
+	if err := src.SelectSurface(Surface{Kind: SurfaceKind(9)}); !errors.Is(err, ErrSurfaceUnsupported) {
+		t.Errorf("unknown kind = %v, want ErrSurfaceUnsupported", err)
 	}
-	if err := src.SelectSurface(Surface{Kind: SurfaceDisplay, ID: 3}); !errors.Is(err, ErrSurfaceUnsupported) {
-		t.Errorf("another display = %v, want ErrSurfaceUnsupported", err)
+}
+
+// ListSurfaces never asks ScreenCaptureKit for shareable content under go test.
+func TestListSurfaces_RefusesUnderTest(t *testing.T) {
+	if list, err := ListSurfaces(context.Background()); !errors.Is(err, ErrRefusedInTest) || list != nil {
+		t.Fatalf("ListSurfaces under test = %v, %v, want ErrRefusedInTest", list, err)
 	}
 }
 
@@ -286,5 +294,58 @@ func TestEncoder_SyntheticFramesTracer(t *testing.T) {
 		if units[i].Width != 640 || units[i].Height != 400 {
 			t.Errorf("unit %d is %dx%d after the rebuild, want 640x400", i, units[i].Width, units[i].Height)
 		}
+	}
+}
+
+// TestObjC_EntryPointsDrainAutoreleasePool (M-07): cgo calls run on Go threads,
+// which have no autorelease pool and never exit, so anything an entry point
+// autoreleases would leak for the daemon's life. Every entry point Phase 20
+// added or touched wraps its body in @autoreleasepool. Source check only.
+func TestObjC_EntryPointsDrainAutoreleasePool(t *testing.T) {
+	entries := map[string][]string{
+		"input_darwin.m":      {"pc_input_mouse", "pc_input_key", "pc_input_text", "pc_input_scroll", "pc_input_cursor", "pc_point_on_display", "pc_display_bounds"},
+		"pasteboard_darwin.m": {"pc_pb_behavior", "pc_pb_read", "pc_pb_write"},
+		"window_darwin.m":     {"pc_ax_focus", "pc_window_info", "pc_window_minimized", "pc_window_raise", "pc_window_topmost"},
+		"media_darwin.m":      {"pc_stream_start", "pc_stream_stop", "pc_stream_select", "pc_list_surfaces", "pc_still_capture", "pc_main_display_id"},
+		"sys_darwin.m":        {"pc_pointer_nudge"},
+	}
+	for file, names := range entries {
+		for _, name := range names {
+			body := objcFunc(t, file, name)
+			open := strings.Index(body, "{\n") // the signature may span lines
+			first := strings.TrimSpace(strings.SplitN(body[open+2:], "\n", 2)[0])
+			if first != "@autoreleasepool {" {
+				t.Errorf("%s: %s does not open with @autoreleasepool (first line %q)", file, name, first)
+			}
+		}
+	}
+}
+
+// TestEncoder_RebuildFailureRestoresOldSize: a failed rebuild must bring the
+// encoder back at the old size, or _session stays NULL and every later rebuild
+// returns kVTInvalidSessionErr. Source check only: no test can make VideoToolbox
+// fail.
+func TestEncoder_RebuildFailureRestoresOldSize(t *testing.T) {
+	b, err := os.ReadFile("media_darwin.m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	start := strings.Index(src, "- (OSStatus)rebuildWidth:(int)w height:(int)h {") // the definition, not the @interface line
+	if start < 0 {
+		t.Fatal("rebuildWidth:height: not found in media_darwin.m")
+	}
+	end := strings.Index(src[start:], "\n}\n")
+	if end < 0 {
+		t.Fatal("end of rebuildWidth:height: not found in media_darwin.m")
+	}
+	body := src[start : start+end]
+	if n := strings.Count(body, "createSessionLocked"); n != 2 {
+		t.Fatalf("rebuildWidth:height: calls createSessionLocked %d times, want 2 (rebuild, then restore)", n)
+	}
+	first := strings.Index(body, "createSessionLocked")
+	last := strings.LastIndex(body, "createSessionLocked")
+	if restore := strings.Index(body, "_w = oldW"); restore < first || restore > last {
+		t.Errorf("_w = oldW must sit between the two createSessionLocked calls (at %d, calls at %d and %d)", restore, first, last)
 	}
 }

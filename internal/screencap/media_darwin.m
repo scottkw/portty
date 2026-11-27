@@ -23,7 +23,7 @@ extern void goScreencapAccessUnit(uintptr_t handle, void *avcc, int avccLen, voi
                                   void *pps, int ppsLen, int keyframe, int width, int height);
 extern void goScreencapStreamError(uintptr_t handle, int code, char *msg);
 
-enum { kPCFPS = 30, kPCQueueDepth = 5 };
+enum { kPCFPS = 30, kPCQueueDepth = 5, kPCDisplayKind = 0, kPCWindowKind = 1 };
 
 // Codes of our own, outside the OSStatus and SCError ranges we pass through.
 enum {
@@ -31,6 +31,7 @@ enum {
 	kPCNilErr = -90002,
 	kPCParamSetsErr = -90003,
 	kPCTimeoutErr = -90004,
+	kPCNoSurfaceErr = -90005, // the display or window to share is not there (any more)
 	kSCKNoDisplay = -3815, // SCStreamErrorNoDisplayList: also what we report when the main display is not listed
 };
 
@@ -265,11 +266,20 @@ static OSStatus pcSet(VTCompressionSessionRef s, CFStringRef key, CFTypeRef valu
 	[_lock lock];
 	@try {
 		if (_session == NULL) return kVTInvalidSessionErr;
+		int oldW = _w, oldH = _h;
 		[self teardownLocked]; // flushes the old size's units before the new session starts
 		_w = w;
 		_h = h;
 		_forceNext = YES;
-		return [self createSessionLocked];
+		OSStatus st = [self createSessionLocked];
+		if (st != noErr) {
+			// A failed rebuild keeps a working encoder at the old size instead of a
+			// NULL session that every later rebuild refuses.
+			_w = oldW;
+			_h = oldH;
+			(void)[self createSessionLocked];
+		}
+		return st;
 	} @catch (NSException *e) {
 		return kPCExceptionErr;
 	} @finally {
@@ -374,16 +384,21 @@ static void pcCaptureSize(double pw, double ph, int maxLong, int *w, int *h) {
 	*h = ((int)lround(ph * f)) & ~1;
 }
 
-// Resolves the main display (CGMainDisplayID) to a content filter and its
-// capture size: display points times the filter's pointPixelScale, capped.
-// Returns 0 or an error code (SCK codes pass through; text in errbuf).
-static int pcMainDisplay(int maxLong, SCContentFilter **filter, int *w, int *h, char *errbuf, int errlen) {
+// Resolves a surface to a content filter and its capture size. kind 0 is a
+// display (id 0 is CGMainDisplayID): display points times the filter's
+// pointPixelScale. kind 1 is a window by CGWindowID, looked up with
+// onScreenWindowsOnly:NO so a minimized or off-screen window is still found:
+// its frame times pointPixelScale. Both are capped to maxLong on the long edge
+// with even sides. Returns 0 or an error code (SCK codes pass through; text in
+// errbuf, never a window title).
+static int pcResolveSurface(int kind, uint32_t sid, int maxLong, SCContentFilter **filter, int *w, int *h, char *errbuf,
+                            int errlen) {
 	CGDirectDisplayID main = CGMainDisplayID(); // also connects to the window server before SCK asks
 	__block SCShareableContent *content = nil;
 	__block NSError *err = nil;
 	dispatch_semaphore_t sem = dispatch_semaphore_create(0);
 	[SCShareableContent getShareableContentExcludingDesktopWindows:NO
-	                                           onScreenWindowsOnly:YES
+	                                           onScreenWindowsOnly:kind == kPCWindowKind ? NO : YES
 	                                             completionHandler:^(SCShareableContent *c, NSError *e) {
 		                                             content = c;
 		                                             err = e;
@@ -397,20 +412,56 @@ static int pcMainDisplay(int maxLong, SCContentFilter **filter, int *w, int *h, 
 		pcSetErr(errbuf, errlen, err.localizedDescription ?: @"SCShareableContent returned nothing");
 		return err != nil && err.code != 0 ? (int)err.code : kPCNilErr;
 	}
-	SCDisplay *display = nil;
-	for (SCDisplay *d in content.displays) {
-		if (d.displayID == main) display = d;
+	SCContentFilter *f = nil;
+	double pw = 0, ph = 0;
+	if (kind == kPCWindowKind) {
+		SCWindow *win = nil;
+		for (SCWindow *c in content.windows) {
+			if (c.windowID == sid) win = c;
+		}
+		if (win == nil) {
+			pcSetErr(errbuf, errlen, @"the window is not in the shareable content");
+			return kPCNoSurfaceErr;
+		}
+		f = [[SCContentFilter alloc] initWithDesktopIndependentWindow:win];
+		pw = win.frame.size.width * f.pointPixelScale;
+		ph = win.frame.size.height * f.pointPixelScale;
+	} else {
+		CGDirectDisplayID want = sid == 0 ? main : (CGDirectDisplayID)sid;
+		SCDisplay *display = nil;
+		for (SCDisplay *d in content.displays) {
+			if (d.displayID == want) display = d;
+		}
+		if (display == nil) {
+			pcSetErr(errbuf, errlen, sid == 0 ? @"the main display is not in the shareable content" : @"the display is not in the shareable content");
+			return sid == 0 ? kSCKNoDisplay : kPCNoSurfaceErr;
+		}
+		f = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
+		pw = display.width * f.pointPixelScale;
+		ph = display.height * f.pointPixelScale;
 	}
-	if (display == nil) {
-		pcSetErr(errbuf, errlen, @"the main display is not in the shareable content");
-		return kSCKNoDisplay;
+	pcCaptureSize(pw, ph, maxLong, w, h);
+	if (*w < 2 || *h < 2) {
+		pcSetErr(errbuf, errlen, @"the surface has no size");
+		return kPCNoSurfaceErr;
 	}
-	SCContentFilter *f = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
-	double scale = f.pointPixelScale;
-	pcCaptureSize(display.width * scale, display.height * scale, maxLong, w, h);
 	*filter = f;
 	return 0;
 }
+
+@class PCStreamHandler;
+static SCStream *gStream;
+static SCStreamConfiguration *gConfig;
+static SCContentFilter *gFilter;
+static PCStreamHandler *gHandler;
+static PCEncoder *gEnc;
+static dispatch_queue_t gQueue;
+// Set from a surface switch's encoder rebuild until its new filter is in place:
+// a frame in that window shows the old surface (scaled), so it is dropped.
+static _Atomic int gSwitching;
+// Frames the encoder took at the size of the current configuration, so a
+// switch can tell whether its new surface has delivered one.
+static _Atomic uint64_t gEncoded;
 
 @interface PCStreamHandler : NSObject <SCStreamOutput, SCStreamDelegate>
 @property(nonatomic) uintptr_t handle;
@@ -429,9 +480,13 @@ static int pcMainDisplay(int maxLong, SCContentFilter **filter, int *w, int *h, 
 		// Idle, blank and suspended frames carry no new picture.
 		if (status == nil || status.integerValue != SCFrameStatusComplete) return;
 		CVPixelBufferRef pb = CMSampleBufferGetImageBuffer(sb);
-		if (pb == NULL) return;
+		if (pb == NULL || atomic_load(&gSwitching)) return;
 		OSStatus st = [self.enc encode:pb pts:CMSampleBufferGetPresentationTimeStamp(sb)];
-		if (st != noErr) pcReport(self.handle, (int)st, "encoding a captured frame failed");
+		if (st != noErr) {
+			pcReport(self.handle, (int)st, "encoding a captured frame failed");
+		} else if (gConfig != nil && CVPixelBufferGetWidth(pb) == gConfig.width && CVPixelBufferGetHeight(pb) == gConfig.height) {
+			atomic_fetch_add(&gEncoded, 1);
+		}
 	} @catch (NSException *e) {
 		pcReport(self.handle, kPCExceptionErr, "exception in the capture frame handler");
 	}
@@ -446,106 +501,107 @@ static int pcMainDisplay(int maxLong, SCContentFilter **filter, int *w, int *h, 
 }
 @end
 
-static SCStream *gStream;
-static SCStreamConfiguration *gConfig;
-static PCStreamHandler *gHandler;
-static PCEncoder *gEnc;
-static dispatch_queue_t gQueue;
-
-// Starts capturing the main display into a fresh encoder at the capture size.
+// Starts capturing a surface (kind 0 display, 1 window; display id 0 is the
+// main display) into a fresh encoder at the capture size.
 // Returns 0 or an error code: SCK codes pass through (-3801 no Screen
 // Recording grant, -3815 no display), OSStatus for the encoder.
-int pc_stream_start(uintptr_t handle, int fps, int maxLong, int bitrate, double keyframeSecs, char *errbuf,
-                    int errlen) {
-	@try {
-		if (gStream != nil) {
-			pcSetErr(errbuf, errlen, @"a capture stream is already running");
-			return kPCNilErr;
-		}
-		SCContentFilter *filter = nil;
-		int w = 0, h = 0;
-		int rc = pcMainDisplay(maxLong, &filter, &w, &h, errbuf, errlen);
-		if (rc != 0) return rc;
+int pc_stream_start(uintptr_t handle, int kind, uint32_t sid, int fps, int maxLong, int bitrate, double keyframeSecs,
+                    char *errbuf, int errlen) {
+	@autoreleasepool {
+		@try {
+			if (gStream != nil) {
+				pcSetErr(errbuf, errlen, @"a capture stream is already running");
+				return kPCNilErr;
+			}
+			SCContentFilter *filter = nil;
+			int w = 0, h = 0;
+			int rc = pcResolveSurface(kind, sid, maxLong, &filter, &w, &h, errbuf, errlen);
+			if (rc != 0) return rc;
 
-		PCEncoder *enc = [[PCEncoder alloc] init];
-		enc.handle = handle;
-		OSStatus st = [enc startWidth:w height:h fps:fps bitrate:bitrate keySecs:keyframeSecs];
-		if (st != noErr) {
-			pcSetErr(errbuf, errlen, @"starting the encoder failed");
-			return (int)st;
-		}
+			PCEncoder *enc = [[PCEncoder alloc] init];
+			enc.handle = handle;
+			OSStatus st = [enc startWidth:w height:h fps:fps bitrate:bitrate keySecs:keyframeSecs];
+			if (st != noErr) {
+				pcSetErr(errbuf, errlen, @"starting the encoder failed");
+				return (int)st;
+			}
 
-		SCStreamConfiguration *cfg = [[SCStreamConfiguration alloc] init];
-		cfg.width = (size_t)w;
-		cfg.height = (size_t)h;
-		cfg.minimumFrameInterval = CMTimeMake(1, fps);
-		cfg.queueDepth = kPCQueueDepth;
-		cfg.showsCursor = YES;
-		cfg.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
-		cfg.colorMatrix = kCGDisplayStreamYCbCrMatrix_ITU_R_709_2;
+			SCStreamConfiguration *cfg = [[SCStreamConfiguration alloc] init];
+			cfg.width = (size_t)w;
+			cfg.height = (size_t)h;
+			cfg.minimumFrameInterval = CMTimeMake(1, fps);
+			cfg.queueDepth = kPCQueueDepth;
+			cfg.showsCursor = YES;
+			cfg.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+			cfg.colorMatrix = kCGDisplayStreamYCbCrMatrix_ITU_R_709_2;
 
-		PCStreamHandler *hnd = [[PCStreamHandler alloc] init];
-		hnd.handle = handle;
-		hnd.enc = enc;
-		dispatch_queue_t q = dispatch_queue_create("portty.screencap", DISPATCH_QUEUE_SERIAL);
-		SCStream *s = [[SCStream alloc] initWithFilter:filter configuration:cfg delegate:hnd];
-		NSError *err = nil;
-		if (s == nil || ![s addStreamOutput:hnd type:SCStreamOutputTypeScreen sampleHandlerQueue:q error:&err]) {
-			[enc stop];
-			pcSetErr(errbuf, errlen, err.localizedDescription ?: @"adding the stream output failed");
-			return err != nil && err.code != 0 ? (int)err.code : kPCNilErr;
-		}
-		__block NSError *startErr = nil;
-		dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-		[s startCaptureWithCompletionHandler:^(NSError *e) {
-			startErr = e;
-			dispatch_semaphore_signal(sem);
-		}];
-		if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC)) != 0) {
-			[s stopCaptureWithCompletionHandler:^(NSError *e) {
+			PCStreamHandler *hnd = [[PCStreamHandler alloc] init];
+			hnd.handle = handle;
+			hnd.enc = enc;
+			dispatch_queue_t q = dispatch_queue_create("portty.screencap", DISPATCH_QUEUE_SERIAL);
+			SCStream *s = [[SCStream alloc] initWithFilter:filter configuration:cfg delegate:hnd];
+			NSError *err = nil;
+			if (s == nil || ![s addStreamOutput:hnd type:SCStreamOutputTypeScreen sampleHandlerQueue:q error:&err]) {
+				[enc stop];
+				pcSetErr(errbuf, errlen, err.localizedDescription ?: @"adding the stream output failed");
+				return err != nil && err.code != 0 ? (int)err.code : kPCNilErr;
+			}
+			__block NSError *startErr = nil;
+			dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+			[s startCaptureWithCompletionHandler:^(NSError *e) {
+				startErr = e;
+				dispatch_semaphore_signal(sem);
 			}];
-			[enc stop];
-			pcSetErr(errbuf, errlen, @"starting capture timed out");
-			return kPCTimeoutErr;
+			if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC)) != 0) {
+				[s stopCaptureWithCompletionHandler:^(NSError *e) {
+				}];
+				[enc stop];
+				pcSetErr(errbuf, errlen, @"starting capture timed out");
+				return kPCTimeoutErr;
+			}
+			if (startErr != nil) {
+				[enc stop];
+				pcSetErr(errbuf, errlen, startErr.localizedDescription ?: @"starting capture failed");
+				return startErr.code != 0 ? (int)startErr.code : kPCNilErr;
+			}
+			gStream = s;
+			gConfig = cfg;
+			gFilter = filter;
+			gHandler = hnd;
+			gEnc = enc;
+			gQueue = q;
+			return 0;
+		} @catch (NSException *e) {
+			pcSetErr(errbuf, errlen, @"exception starting capture");
+			return kPCExceptionErr;
 		}
-		if (startErr != nil) {
-			[enc stop];
-			pcSetErr(errbuf, errlen, startErr.localizedDescription ?: @"starting capture failed");
-			return startErr.code != 0 ? (int)startErr.code : kPCNilErr;
-		}
-		gStream = s;
-		gConfig = cfg;
-		gHandler = hnd;
-		gEnc = enc;
-		gQueue = q;
-		return 0;
-	} @catch (NSException *e) {
-		pcSetErr(errbuf, errlen, @"exception starting capture");
-		return kPCExceptionErr;
 	}
 }
 
 // Stops capture, lets a frame handler already in flight finish, then closes
 // the encoder (which flushes its last units). Safe to call with nothing running.
 void pc_stream_stop(void) {
-	@try {
-		SCStream *s = gStream;
-		if (s != nil) {
-			dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-			[s stopCaptureWithCompletionHandler:^(NSError *e) {
-				dispatch_semaphore_signal(sem);
-			}];
-			dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+	@autoreleasepool {
+		@try {
+			SCStream *s = gStream;
+			if (s != nil) {
+				dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+				[s stopCaptureWithCompletionHandler:^(NSError *e) {
+					dispatch_semaphore_signal(sem);
+				}];
+				dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+			}
+			if (gQueue != nil) dispatch_sync(gQueue, ^{});
+			[gEnc stop];
+		} @catch (NSException *e) {
 		}
-		if (gQueue != nil) dispatch_sync(gQueue, ^{});
-		[gEnc stop];
-	} @catch (NSException *e) {
+		gStream = nil;
+		gConfig = nil;
+		gFilter = nil;
+		gHandler = nil;
+		gEnc = nil;
+		gQueue = nil;
 	}
-	gStream = nil;
-	gConfig = nil;
-	gHandler = nil;
-	gEnc = nil;
-	gQueue = nil;
 }
 
 int pc_encoder_force_keyframe(void) {
@@ -581,6 +637,194 @@ int pc_encoder_rebuild(int w, int h) {
 	}
 }
 
+// Puts a new size and filter on the running stream, in Apple's order: the
+// configuration first, then the content filter, each bounded by 5 s. Returns 0
+// or an error code.
+static int pcApplySurface(SCContentFilter *filter, int w, int h) {
+	gConfig.width = (size_t)w;
+	gConfig.height = (size_t)h;
+	__block NSError *cfgErr = nil;
+	dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+	[gStream updateConfiguration:gConfig
+	           completionHandler:^(NSError *e) {
+		           cfgErr = e;
+		           dispatch_semaphore_signal(sem);
+	           }];
+	if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) != 0) return kPCTimeoutErr;
+	if (cfgErr != nil) return cfgErr.code != 0 ? (int)cfgErr.code : kPCNilErr;
+	__block NSError *filterErr = nil;
+	dispatch_semaphore_t sem2 = dispatch_semaphore_create(0);
+	[gStream updateContentFilter:filter
+	           completionHandler:^(NSError *e) {
+		           filterErr = e;
+		           dispatch_semaphore_signal(sem2);
+	           }];
+	if (dispatch_semaphore_wait(sem2, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) != 0) return kPCTimeoutErr;
+	if (filterErr != nil) return filterErr.code != 0 ? (int)filterErr.code : kPCNilErr;
+	return 0;
+}
+
+// Encodes one still of filter as the first (key) frame after a switch, for a
+// surface that has nothing moving on it (SCK delivers frames only on change).
+static void pcEncodeStill(SCContentFilter *filter, int w, int h) {
+	SCStreamConfiguration *cfg = [[SCStreamConfiguration alloc] init];
+	cfg.width = (size_t)w;
+	cfg.height = (size_t)h;
+	cfg.showsCursor = YES;
+	cfg.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+	cfg.colorMatrix = kCGDisplayStreamYCbCrMatrix_ITU_R_709_2;
+	__block CMSampleBufferRef sample = NULL;
+	// 0 pending, 1 handler done, 2 caller gave up: whoever comes second releases
+	// a late sample.
+	__block atomic_int st = 0;
+	dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+	[SCScreenshotManager captureSampleBufferWithFilter:filter
+	                                     configuration:cfg
+	                                 completionHandler:^(CMSampleBufferRef sb, NSError *e) {
+		                                 if (sb != NULL) sample = (CMSampleBufferRef)CFRetain(sb);
+		                                 if (atomic_exchange(&st, 1) == 2 && sample != NULL) CFRelease(sample);
+		                                 dispatch_semaphore_signal(sem);
+	                                 }];
+	if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) != 0) {
+		if (atomic_exchange(&st, 2) == 1 && sample != NULL) CFRelease(sample);
+		NSLog(@"screencap: the still frame for a switch timed out");
+		return;
+	}
+	CVPixelBufferRef pb = sample == NULL ? NULL : CMSampleBufferGetImageBuffer(sample);
+	if (pb == NULL) {
+		if (sample != NULL) CFRelease(sample);
+		NSLog(@"screencap: the still frame for a switch had no picture");
+		return;
+	}
+	NSLog(@"screencap: switch used a still frame");
+	[gEnc encode:pb pts:CMClockGetTime(CMClockGetHostTimeClock())];
+	CFRelease(sample);
+}
+
+// Switches the running stream to another surface (kind 0 display, 1 window).
+// The encoder is rebuilt at the new size first, which also drops its cached
+// frame, so the old surface is never re-presented; frames are held back from the
+// start of the rebuild until the new filter is in place. If the new surface has
+// not delivered a frame within 1 s, a still of it is encoded as the keyframe. A
+// failed switch puts the old surface back. Returns 0 or an error code.
+int pc_stream_select(int kind, uint32_t sid, int maxLong, char *errbuf, int errlen) {
+	@autoreleasepool {
+		@try {
+			if (gStream == nil || gEnc == nil || gConfig == nil || gFilter == nil) {
+				pcSetErr(errbuf, errlen, @"no capture stream is running");
+				return kPCNilErr;
+			}
+			SCContentFilter *filter = nil;
+			int w = 0, h = 0;
+			int rc = pcResolveSurface(kind, sid, maxLong, &filter, &w, &h, errbuf, errlen);
+			if (rc != 0) return rc;
+			SCContentFilter *oldFilter = gFilter;
+			int oldW = (int)gConfig.width, oldH = (int)gConfig.height;
+			atomic_store(&gSwitching, 1);
+			OSStatus st = [gEnc rebuildWidth:w height:h];
+			if (st != noErr) {
+				atomic_store(&gSwitching, 0);
+				pcSetErr(errbuf, errlen, @"rebuilding the encoder failed");
+				return (int)st;
+			}
+			rc = pcApplySurface(filter, w, h);
+			if (rc != 0) {
+				if ([gEnc rebuildWidth:oldW height:oldH] == noErr) (void)pcApplySurface(oldFilter, oldW, oldH);
+				atomic_store(&gSwitching, 0);
+				pcSetErr(errbuf, errlen, @"switching the shared surface failed");
+				return rc;
+			}
+			gFilter = filter;
+			uint64_t before = atomic_load(&gEncoded);
+			atomic_store(&gSwitching, 0);
+			for (int i = 0; i < 100 && atomic_load(&gEncoded) == before; i++) usleep(10000);
+			if (atomic_load(&gEncoded) == before) pcEncodeStill(filter, w, h);
+			return 0;
+		} @catch (NSException *e) {
+			atomic_store(&gSwitching, 0);
+			pcSetErr(errbuf, errlen, @"exception switching the shared surface");
+			return kPCExceptionErr;
+		}
+	}
+}
+
+// Lists every active display and every window as JSON in a malloc'd buffer the
+// caller frees: {"main":id,"displays":[{id,x,y,w,h}],"windows":[{id,pid,app,
+// title,layer,x,y,w,h,onScreen}]}, in points. Filtering and naming are Go's
+// (BuildSurfaces). Returns 0 or an error code.
+int pc_list_surfaces(char **json, int *n, char *errbuf, int errlen) {
+	@autoreleasepool {
+		@try {
+			CGDirectDisplayID main = CGMainDisplayID(); // connects to the window server before SCK asks
+			__block SCShareableContent *content = nil;
+			__block NSError *err = nil;
+			dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+			[SCShareableContent getShareableContentExcludingDesktopWindows:YES
+			                                           onScreenWindowsOnly:NO
+			                                             completionHandler:^(SCShareableContent *c, NSError *e) {
+				                                             content = c;
+				                                             err = e;
+				                                             dispatch_semaphore_signal(sem);
+			                                             }];
+			if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC)) != 0) {
+				pcSetErr(errbuf, errlen, @"SCShareableContent timed out");
+				return kPCTimeoutErr;
+			}
+			if (content == nil) {
+				pcSetErr(errbuf, errlen, err.localizedDescription ?: @"SCShareableContent returned nothing");
+				return err != nil && err.code != 0 ? (int)err.code : kPCNilErr;
+			}
+			NSMutableArray *displays = [NSMutableArray array];
+			CGDirectDisplayID ids[16];
+			uint32_t count = 0;
+			if (CGGetActiveDisplayList(16, ids, &count) == kCGErrorSuccess) {
+				for (uint32_t i = 0; i < count; i++) {
+					CGRect b = CGDisplayBounds(ids[i]);
+					[displays addObject:@{
+						@"id" : @(ids[i]),
+						@"x" : @(b.origin.x),
+						@"y" : @(b.origin.y),
+						@"w" : @(b.size.width),
+						@"h" : @(b.size.height)
+					}];
+				}
+			}
+			NSMutableArray *windows = [NSMutableArray array];
+			for (SCWindow *w in content.windows) {
+				SCRunningApplication *app = w.owningApplication;
+				[windows addObject:@{
+					@"id" : @(w.windowID),
+					@"pid" : @(app != nil ? app.processID : 0),
+					@"app" : app.applicationName ?: @"",
+					@"title" : w.title ?: @"",
+					@"layer" : @(w.windowLayer),
+					@"x" : @(w.frame.origin.x),
+					@"y" : @(w.frame.origin.y),
+					@"w" : @(w.frame.size.width),
+					@"h" : @(w.frame.size.height),
+					@"onScreen" : @(w.isOnScreen)
+				}];
+			}
+			NSError *jerr = nil;
+			NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"main" : @(main), @"displays" : displays, @"windows" : windows}
+			                                               options:0
+			                                                 error:&jerr];
+			if (data == nil) {
+				pcSetErr(errbuf, errlen, @"encoding the surface list failed");
+				return kPCNilErr;
+			}
+			*n = (int)data.length;
+			*json = malloc(data.length);
+			if (*json == NULL) return kPCNilErr;
+			memcpy(*json, data.bytes, data.length);
+			return 0;
+		} @catch (NSException *e) {
+			pcSetErr(errbuf, errlen, @"exception listing surfaces");
+			return kPCExceptionErr;
+		}
+	}
+}
+
 // 1 hardware, 0 software, -1 unknown or no encoder.
 int pc_encoder_hardware(void) {
 	@try {
@@ -593,59 +837,72 @@ int pc_encoder_hardware(void) {
 // One JPEG (quality 0.8) of the main display, at most maxLong px on the long
 // edge, in a malloc'd buffer the caller frees. Returns 0 or an error code.
 int pc_still_capture(int maxLong, uint8_t **out, int *n, char *errbuf, int errlen) {
-	@try {
-		SCContentFilter *filter = nil;
-		int w = 0, h = 0;
-		int rc = pcMainDisplay(maxLong, &filter, &w, &h, errbuf, errlen);
-		if (rc != 0) return rc;
-		SCStreamConfiguration *cfg = [[SCStreamConfiguration alloc] init];
-		cfg.width = (size_t)w;
-		cfg.height = (size_t)h;
-		__block CGImageRef image = NULL;
-		__block NSError *err = nil;
-		// 0 pending, 1 handler done, 2 caller gave up: whoever comes second
-		// releases a late image, so a completion after the timeout does not leak it.
-		__block atomic_int st = 0;
-		dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-		[SCScreenshotManager captureImageWithFilter:filter
-		                              configuration:cfg
-		                          completionHandler:^(CGImageRef img, NSError *e) {
-			                          if (img != NULL) image = CGImageRetain(img);
-			                          err = e;
-			                          if (atomic_exchange(&st, 1) == 2 && image != NULL) CGImageRelease(image);
-			                          dispatch_semaphore_signal(sem);
-		                          }];
-		if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC)) != 0) {
-			if (atomic_exchange(&st, 2) == 1 && image != NULL) CGImageRelease(image);
-			pcSetErr(errbuf, errlen, @"the screenshot timed out");
-			return kPCTimeoutErr;
-		}
-		if (image == NULL) {
-			pcSetErr(errbuf, errlen, err.localizedDescription ?: @"the screenshot returned no image");
-			return err != nil && err.code != 0 ? (int)err.code : kPCNilErr;
-		}
-		CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
-		CGImageDestinationRef dest = CGImageDestinationCreateWithData(data, CFSTR("public.jpeg"), 1, NULL);
-		NSDictionary *props = pcDict1((__bridge id)kCGImageDestinationLossyCompressionQuality, @0.8);
-		int result = kPCNilErr;
-		if (dest != NULL && props != nil) {
-			CGImageDestinationAddImage(dest, image, (__bridge CFDictionaryRef)props);
-			if (CGImageDestinationFinalize(dest)) {
-				*n = (int)CFDataGetLength(data);
-				*out = malloc((size_t)*n);
-				if (*out != NULL) {
-					memcpy(*out, CFDataGetBytePtr(data), (size_t)*n);
-					result = 0;
+	@autoreleasepool {
+		@try {
+			SCContentFilter *filter = nil;
+			int w = 0, h = 0;
+			int rc = pcResolveSurface(kPCDisplayKind, 0, maxLong, &filter, &w, &h, errbuf, errlen);
+			if (rc != 0) return rc;
+			SCStreamConfiguration *cfg = [[SCStreamConfiguration alloc] init];
+			cfg.width = (size_t)w;
+			cfg.height = (size_t)h;
+			__block CGImageRef image = NULL;
+			__block NSError *err = nil;
+			// 0 pending, 1 handler done, 2 caller gave up: whoever comes second
+			// releases a late image, so a completion after the timeout does not leak it.
+			__block atomic_int st = 0;
+			dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+			[SCScreenshotManager captureImageWithFilter:filter
+			                              configuration:cfg
+			                          completionHandler:^(CGImageRef img, NSError *e) {
+				                          if (img != NULL) image = CGImageRetain(img);
+				                          err = e;
+				                          if (atomic_exchange(&st, 1) == 2 && image != NULL) CGImageRelease(image);
+				                          dispatch_semaphore_signal(sem);
+			                          }];
+			if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC)) != 0) {
+				if (atomic_exchange(&st, 2) == 1 && image != NULL) CGImageRelease(image);
+				pcSetErr(errbuf, errlen, @"the screenshot timed out");
+				return kPCTimeoutErr;
+			}
+			if (image == NULL) {
+				pcSetErr(errbuf, errlen, err.localizedDescription ?: @"the screenshot returned no image");
+				return err != nil && err.code != 0 ? (int)err.code : kPCNilErr;
+			}
+			CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
+			CGImageDestinationRef dest = CGImageDestinationCreateWithData(data, CFSTR("public.jpeg"), 1, NULL);
+			NSDictionary *props = pcDict1((__bridge id)kCGImageDestinationLossyCompressionQuality, @0.8);
+			int result = kPCNilErr;
+			if (dest != NULL && props != nil) {
+				CGImageDestinationAddImage(dest, image, (__bridge CFDictionaryRef)props);
+				if (CGImageDestinationFinalize(dest)) {
+					*n = (int)CFDataGetLength(data);
+					*out = malloc((size_t)*n);
+					if (*out != NULL) {
+						memcpy(*out, CFDataGetBytePtr(data), (size_t)*n);
+						result = 0;
+					}
 				}
 			}
+			if (result != 0) pcSetErr(errbuf, errlen, @"encoding the screenshot as JPEG failed");
+			if (dest != NULL) CFRelease(dest);
+			CFRelease(data);
+			CGImageRelease(image);
+			return result;
+		} @catch (NSException *e) {
+			pcSetErr(errbuf, errlen, @"exception taking the screenshot");
+			return kPCExceptionErr;
 		}
-		if (result != 0) pcSetErr(errbuf, errlen, @"encoding the screenshot as JPEG failed");
-		if (dest != NULL) CFRelease(dest);
-		CFRelease(data);
-		CGImageRelease(image);
-		return result;
-	} @catch (NSException *e) {
-		pcSetErr(errbuf, errlen, @"exception taking the screenshot");
-		return kPCExceptionErr;
+	}
+}
+
+// The main display's CGDirectDisplayID (a plain window-server read, no capture).
+uint32_t pc_main_display_id(void) {
+	@autoreleasepool {
+		@try {
+			return (uint32_t)CGMainDisplayID();
+		} @catch (NSException *e) {
+			return 0;
+		}
 	}
 }

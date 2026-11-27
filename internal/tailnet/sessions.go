@@ -40,6 +40,27 @@ type PeerSessionMetaGroup struct {
 	DNSName   string                 `json:"dnsName"` // MagicDNS FQDN, no trailing dot: the unambiguous connect key
 	Reachable bool                   `json:"reachable"`
 	Sessions  []ShareableSessionMeta `json:"sessions"`
+	// Desktop is true when the peer's meta answer carried DesktopHeader: DesktopAlways,
+	// i.e. its always-available desktop is on.
+	Desktop bool `json:"desktop"`
+}
+
+// DesktopHeader is the response header on GET /api/sessions/meta that says the
+// peer's always-available desktop is on. Only the exact value DesktopAlways means
+// so: a later value is ignored, never misread. The /desktop/ routes use the same
+// header name for their refusal reason (values token and off); the two never share
+// a response.
+const (
+	DesktopHeader = "X-Portty-Desktop"
+	DesktopAlways = "always"
+)
+
+// PeerMeta is one peer's GET /api/sessions/meta answer: the session list, how the
+// peer answered, and whether it announced an always-available desktop.
+type PeerMeta struct {
+	Sessions []ShareableSessionMeta
+	Status   MetaStatus
+	Desktop  bool
 }
 
 // MetaStatus says how a peer answered GET /api/sessions/meta.
@@ -64,17 +85,21 @@ const (
 var (
 	ErrPeerForbidden = errors.New("peer refused access")
 	ErrPeerNotShared = errors.New("session is not shared")
+	// ErrPeerDesktopOff: the peer answered 404 to the desktop cap request, so its
+	// always-available desktop is off (or its signing key does not exist yet).
+	ErrPeerDesktopOff = errors.New("peer desktop is off")
 )
 
 // doFetchSessionsMeta performs the HTTP GET and JSON decode for /api/sessions/meta.
 // If host is non-empty, it is set as the request Host header (used for IP-fallback
-// TLS validation). On MetaOK the slice is non-nil (possibly empty). err carries the
-// transport or decode error for MetaUnreachable and the transport error for
-// MetaRefused (the daemon's peer connect route reads ECONNREFUSED from it).
-func doFetchSessionsMeta(ctx context.Context, url string, client *http.Client, host string) ([]ShareableSessionMeta, MetaStatus, error) {
+// TLS validation). On MetaOK the slice is non-nil (possibly empty) and Desktop is
+// true only when DesktopHeader equals DesktopAlways. err carries the transport or
+// decode error for MetaUnreachable and the transport error for MetaRefused (the
+// daemon's peer connect route reads ECONNREFUSED from it).
+func doFetchSessionsMeta(ctx context.Context, url string, client *http.Client, host string) (PeerMeta, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, MetaUnreachable, err
+		return PeerMeta{Status: MetaUnreachable}, err
 	}
 	if host != "" {
 		req.Host = host
@@ -82,36 +107,47 @@ func doFetchSessionsMeta(ctx context.Context, url string, client *http.Client, h
 	resp, err := client.Do(req)
 	if err != nil {
 		if errors.Is(err, syscall.ECONNREFUSED) {
-			return nil, MetaRefused, err
+			return PeerMeta{Status: MetaRefused}, err
 		}
-		return nil, MetaUnreachable, err
+		return PeerMeta{Status: MetaUnreachable}, err
 	}
 	defer resp.Body.Close()
+	// The forbidden branch comes first: a different-account Mac never yields Desktop.
 	if resp.StatusCode == http.StatusForbidden && resp.Header.Get(MarkerHeader) == MarkerValue {
-		return nil, MetaForbidden, nil
+		return PeerMeta{Status: MetaForbidden}, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, MetaUnreachable, fmt.Errorf("meta: unexpected status %d", resp.StatusCode)
+		return PeerMeta{Status: MetaUnreachable}, fmt.Errorf("meta: unexpected status %d", resp.StatusCode)
 	}
 	items := []ShareableSessionMeta{}
 	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
-		return nil, MetaUnreachable, err
+		return PeerMeta{Status: MetaUnreachable}, err
 	}
 	if items == nil { // body was JSON null
 		items = []ShareableSessionMeta{}
 	}
-	return items, MetaOK, nil
+	return PeerMeta{
+		Sessions: items,
+		Status:   MetaOK,
+		Desktop:  strings.TrimSpace(resp.Header.Get(DesktopHeader)) == DesktopAlways,
+	}, nil
 }
 
-// FetchPeerSessionsMeta fetches /api/sessions/meta from a single peer over HTTPS.
+// FetchPeerSessionsMeta is FetchPeerMeta without the desktop flag.
+func FetchPeerSessionsMeta(ctx context.Context, peer Peer) ([]ShareableSessionMeta, MetaStatus) {
+	m := FetchPeerMeta(ctx, peer)
+	return m.Sessions, m.Status
+}
+
+// FetchPeerMeta fetches /api/sessions/meta from a single peer over HTTPS.
 // Uses TLS 1.2 minimum and a 5-second timeout.
 //
 // Tries the DNS name first, then (only when unreachable) falls back to the first
 // TailscaleIP with ServerName set to the FQDN for certificate validation
 // (Pitfall 6: fresh client per IP-fallback call).
-func FetchPeerSessionsMeta(ctx context.Context, peer Peer) ([]ShareableSessionMeta, MetaStatus) {
+func FetchPeerMeta(ctx context.Context, peer Peer) PeerMeta {
 	if !LiveAllowed() {
-		return nil, MetaUnreachable
+		return PeerMeta{Status: MetaUnreachable}
 	}
 	fqdn := strings.TrimSuffix(peer.DNSName, ".")
 	client := &http.Client{
@@ -121,10 +157,10 @@ func FetchPeerSessionsMeta(ctx context.Context, peer Peer) ([]ShareableSessionMe
 		},
 	}
 	url := fmt.Sprintf("https://%s:%d/api/sessions/meta", fqdn, DefaultProbePort)
-	sessions, status, _ := doFetchSessionsMeta(ctx, url, client, "")
+	meta, _ := doFetchSessionsMeta(ctx, url, client, "")
 	// Only MetaUnreachable falls back to the IP: a refusal by the DNS name is the
 	// host's own answer (nothing shared), so retrying by IP would not change it.
-	if status == MetaUnreachable && len(peer.TailscaleIPs) > 0 {
+	if meta.Status == MetaUnreachable && len(peer.TailscaleIPs) > 0 {
 		// The TailscaleIP may include a port (e.g. in test environments); parse it.
 		ipHost, ipPort, err := net.SplitHostPort(peer.TailscaleIPs[0])
 		var ipURL string
@@ -145,18 +181,18 @@ func FetchPeerSessionsMeta(ctx context.Context, peer Peer) ([]ShareableSessionMe
 				TLSClientConfig: &tls.Config{ServerName: fqdn, MinVersion: tls.VersionTLS12},
 			},
 		}
-		sessions, status, _ = doFetchSessionsMeta(ctx, ipURL, ipClient, hostHeader)
+		meta, _ = doFetchSessionsMeta(ctx, ipURL, ipClient, hostHeader)
 	}
-	if status != MetaOK {
-		return nil, status
+	if meta.Status != MetaOK {
+		return PeerMeta{Status: meta.Status}
 	}
 	// Enrich URL if empty (defensive — the webserver sets it, but guard for stubs).
-	for i := range sessions {
-		if sessions[i].URL == "" {
-			sessions[i].URL = fmt.Sprintf("https://%s:%d/sessions/%s", fqdn, DefaultProbePort, sessions[i].ID)
+	for i := range meta.Sessions {
+		if meta.Sessions[i].URL == "" {
+			meta.Sessions[i].URL = fmt.Sprintf("https://%s:%d/sessions/%s", fqdn, DefaultProbePort, meta.Sessions[i].ID)
 		}
 	}
-	return sessions, MetaOK
+	return meta
 }
 
 // FetchPeerSessionsMetaWithClient fetches baseURL + /api/sessions/meta with the
@@ -164,6 +200,12 @@ func FetchPeerSessionsMeta(ctx context.Context, peer Peer) ([]ShareableSessionMe
 // MetaUnreachable and MetaRefused; the daemon's peer connect route reads
 // ECONNREFUSED from it to tell a refused port apart.
 func FetchPeerSessionsMetaWithClient(ctx context.Context, baseURL string, client *http.Client) ([]ShareableSessionMeta, MetaStatus, error) {
+	m, err := FetchPeerMetaWithClient(ctx, baseURL, client)
+	return m.Sessions, m.Status, err
+}
+
+// FetchPeerMetaWithClient is FetchPeerSessionsMetaWithClient with the desktop flag.
+func FetchPeerMetaWithClient(ctx context.Context, baseURL string, client *http.Client) (PeerMeta, error) {
 	return doFetchSessionsMeta(ctx, baseURL+"/api/sessions/meta", client, "")
 }
 
@@ -203,6 +245,43 @@ func FetchPeerCap(ctx context.Context, baseURL, sessionID string, client *http.C
 	return body.Cap, nil
 }
 
+// FetchPeerDesktopCap asks a same-account peer for its standing always-available
+// desktop token via POST /api/peer/desktop/cap, a twin of FetchPeerCap. Returns
+// ErrPeerForbidden on 403 and ErrPeerDesktopOff on 404: always-available is off on
+// that Mac (turning it off kills the token) or it has no signing key yet. The
+// token is never part of an error.
+func FetchPeerDesktopCap(ctx context.Context, baseURL string, client *http.Client) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/peer/desktop/cap", strings.NewReader("{}"))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("peer desktop cap: %w", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusForbidden:
+		return "", ErrPeerForbidden
+	case http.StatusNotFound:
+		return "", ErrPeerDesktopOff
+	default:
+		return "", fmt.Errorf("peer desktop cap: unexpected status %d", resp.StatusCode)
+	}
+	var body struct {
+		Cap string `json:"cap"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body); err != nil {
+		return "", fmt.Errorf("peer desktop cap: decode response: %w", err)
+	}
+	if body.Cap == "" {
+		return "", errors.New("peer desktop cap: empty capability")
+	}
+	return body.Cap, nil
+}
+
 // FetchAllPeerSessionsMeta fetches shareable-session metadata from all given peers
 // concurrently (max 5 goroutines). Unreachable peers stay in the result
 // (Reachable=false, Sessions=[]) and so do reachable peers with zero sessions
@@ -210,10 +289,19 @@ func FetchPeerCap(ctx context.Context, baseURL, sessionID string, client *http.C
 // zero sessions: its share server is stopped because nothing is shared. Peers that answer MetaForbidden (different Tailscale account) are
 // dropped entirely. Results are sorted by Hostname for determinism.
 func FetchAllPeerSessionsMeta(ctx context.Context, peers []Peer) []PeerSessionMetaGroup {
-	return fetchAllPeerSessionsMeta(ctx, peers, FetchPeerSessionsMeta)
+	return fetchAllPeerMeta(ctx, peers, FetchPeerMeta)
 }
 
+// fetchAllPeerSessionsMeta is the two-value fetch seam: fetchAllPeerMeta with
+// Desktop always false.
 func fetchAllPeerSessionsMeta(ctx context.Context, peers []Peer, fetch func(context.Context, Peer) ([]ShareableSessionMeta, MetaStatus)) []PeerSessionMetaGroup {
+	return fetchAllPeerMeta(ctx, peers, func(ctx context.Context, p Peer) PeerMeta {
+		sessions, status := fetch(ctx, p)
+		return PeerMeta{Sessions: sessions, Status: status}
+	})
+}
+
+func fetchAllPeerMeta(ctx context.Context, peers []Peer, fetch func(context.Context, Peer) PeerMeta) []PeerSessionMetaGroup {
 	var mu sync.Mutex
 	groups := make([]PeerSessionMetaGroup, 0, len(peers))
 
@@ -222,7 +310,8 @@ func fetchAllPeerSessionsMeta(ctx context.Context, peers []Peer, fetch func(cont
 	for _, p := range peers {
 		p := p
 		g.Go(func() error {
-			sessions, status := fetch(gctx, p)
+			m := fetch(gctx, p)
+			sessions, status := m.Sessions, m.Status
 			if status == MetaForbidden {
 				return nil
 			}
@@ -235,6 +324,7 @@ func fetchAllPeerSessionsMeta(ctx context.Context, peers []Peer, fetch func(cont
 				DNSName:   strings.TrimSuffix(p.DNSName, "."),
 				Reachable: status == MetaOK || status == MetaRefused,
 				Sessions:  sessions,
+				Desktop:   m.Desktop,
 			})
 			mu.Unlock()
 			return nil

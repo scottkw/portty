@@ -66,6 +66,7 @@ type tracerEnv struct {
 	srcW, srcH int // synthetic source size, default 1280x800
 	mediaPort  int // the Manager's UDP port
 	preStart   func(*desktop.Manager)
+	startCtx   context.Context // the context passed to Manager.Start, default Background
 
 	mu      sync.Mutex
 	sources []*screencap.SyntheticSource
@@ -190,7 +191,11 @@ func newTracerServer(t *testing.T, opts ...tracerOpt) *tracerEnv {
 	if env.preStart != nil {
 		env.preStart(mgr)
 	}
-	if err := mgr.Start(context.Background()); err != nil {
+	startCtx := env.startCtx
+	if startCtx == nil {
+		startCtx = context.Background()
+	}
+	if err := mgr.Start(startCtx); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = mgr.Close() })

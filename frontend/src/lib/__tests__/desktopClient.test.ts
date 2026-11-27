@@ -4,8 +4,15 @@
 // window, transport and peer connection): no real socket, timer or network.
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
+  CLIP_CHUNK_BYTES,
+  CLIP_FRAME_MAX,
+  CLIP_MAX_BYTES,
+  CLIP_TIMEOUT_MS,
   RECONNECT,
+  chunkClipText,
   createDesktopClient,
   defaultDesktopWsUrl,
   fetchCheck,
@@ -67,8 +74,24 @@ class FakeTransport implements SignalTransport {
   last(type: string) { return [...this.sent].reverse().find((m) => m.type === type) }
 }
 
+class FakeChannel {
+  readyState = 'connecting'
+  bufferedAmount = 0
+  sent: string[] = []
+  onopen: (() => void) | null = null
+  onclose: (() => void) | null = null
+  onmessage: ((e: { data: unknown }) => void) | null = null
+  constructor(readonly label: string, readonly init: unknown) {}
+  send(d: string) { this.sent.push(d) }
+  open() { this.readyState = 'open'; this.onopen?.() }
+  close() { this.readyState = 'closed'; this.onclose?.() }
+  recv(m: unknown) { this.onmessage?.({ data: typeof m === 'string' ? m : JSON.stringify(m) }) }
+}
+
 class FakePC {
   closed = false
+  calls: string[] = []
+  channels: FakeChannel[] = []
   connectionState = 'new'
   iceGatheringState = 'complete'
   localDescription: { sdp: string } | null = null
@@ -78,12 +101,22 @@ class FakePC {
   onconnectionstatechange: (() => void) | null = null
   onicegatheringstatechange: (() => void) | null = null
   addTransceiver(kind: string, init: unknown) { this.transceivers.push([kind, init]) }
-  async createOffer() { return { type: 'offer', sdp: 'fake-offer-sdp' } }
+  createDataChannel(label: string, init: unknown) {
+    this.calls.push('createDataChannel')
+    const ch = new FakeChannel(label, init)
+    this.channels.push(ch)
+    return ch
+  }
+  async createOffer() {
+    this.calls.push('createOffer')
+    return { type: 'offer', sdp: 'fake-offer-sdp' } }
   async setLocalDescription(d: { sdp: string }) { this.localDescription = d }
   async setRemoteDescription(d: { type: string; sdp: string }) { this.remote = d }
   close() { this.closed = true }
   async getStats() { return new Map() }
   fireTrack() { this.ontrack?.({ streams: [{ id: 'stream' }], track: {} }) }
+  /** A real picture: the track arrived and ICE connected. */
+  fireStreaming() { this.fireTrack(); this.setConn('connected') }
   setConn(s: string) { this.connectionState = s; this.onconnectionstatechange?.() }
 }
 
@@ -135,7 +168,7 @@ async function streaming(over: Partial<DesktopClientOptions> = {}) {
   const e = setup(over)
   e.client.start()
   await handshake(e)
-  lastPC(e).fireTrack()
+  lastPC(e).fireStreaming()
   return e
 }
 
@@ -149,7 +182,7 @@ describe('transport injection', () => {
     e.client.start()
     const t = lastT(e)
     t.open()
-    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1 } })
+    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
     t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } })
     await settle()
     expect(t.sent[1]).toEqual({ type: 'offer', sdp: 'fake-offer-sdp' })
@@ -173,7 +206,7 @@ describe('transport injection', () => {
     e.client.on('size', (s) => got.push(['size', s]))
     e.client.start()
     await handshake(e)
-    lastPC(e).fireTrack()
+    lastPC(e).fireStreaming()
     lastT(e).recv({ type: 'state', state: 'locked', viewers: 2, locked: true })
     lastT(e).recv({ type: 'state', state: 'rm -rf', viewers: 1, locked: false })
     lastT(e).recv({ type: 'size', w: 2560, h: 1600 })
@@ -224,7 +257,7 @@ describe('backoff and unreachable', () => {
     await e.clock.advance(30000)
     expect(kinds(e)).toEqual(['reconnecting', 'unreachable'])
     await handshake(e)
-    lastPC(e).fireTrack()
+    lastPC(e).fireStreaming()
     expect(kinds(e)).toEqual(['reconnecting', 'unreachable', 'streaming'])
     const n = e.transports.length
     lastT(e).dropWith(1006)
@@ -449,6 +482,544 @@ describe('ICE', () => {
     await e.clock.advance(1000)
     expect(e.transports.length).toBe(2)
     expect(e.pcs[0].closed).toBe(true)
+  })
+})
+
+/** A handshake whose server hello offers the input channel, with rights. */
+async function handshakeWithInput(e: Env, rights: object = { control: true, clipboard: true, surface: true }) {
+  const t = lastT(e)
+  t.open()
+  t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1, input: 1 }, rights })
+  await settle()
+  t.recv({ type: 'answer', sdp: 'fake-answer-sdp' })
+  await settle()
+}
+
+describe('input data channel (Phase 20-06)', () => {
+  it('with server caps input 1 creates one ordered channel labelled input before createOffer', async () => {
+    const e = setup()
+    e.client.start()
+    await handshakeWithInput(e)
+    const pc = lastPC(e) as unknown as FakePC
+    expect(pc.channels).toHaveLength(1)
+    expect(pc.channels[0].label).toBe('input')
+    expect(pc.channels[0].init).toEqual({ ordered: true })
+    expect(pc.calls.indexOf('createDataChannel')).toBeLessThan(pc.calls.indexOf('createOffer'))
+  })
+
+  it('without server input caps no channel is created and sendInput says no', async () => {
+    const e = setup()
+    e.client.start()
+    await handshake(e)
+    expect((lastPC(e) as unknown as FakePC).channels).toHaveLength(0)
+    expect(e.client.sendInput({ t: 'hb' })).toBe(false)
+  })
+
+  it('sendInput is false until the channel opens, then sends JSON; a droppable move is skipped over 64 KiB', async () => {
+    const e = setup()
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    expect(e.client.sendInput({ t: 'hb' })).toBe(false)
+    ch.open()
+    expect(e.client.sendInput({ t: 'hb' })).toBe(true)
+    expect(ch.sent).toEqual(['{"t":"hb"}'])
+    ch.bufferedAmount = 65537
+    expect(e.client.sendInput({ t: 'move', x: 0, y: 0, e: 1 }, true)).toBe(false)
+    expect(e.client.sendInput({ t: 'release' })).toBe(true)
+    expect(ch.sent).toEqual(['{"t":"hb"}', '{"t":"release"}'])
+  })
+
+  it('reports the channel opening and closing, and the closing of a torn-down connection once', async () => {
+    const e = setup()
+    const got: boolean[] = []
+    e.client.on('input', (v) => got.push(v.open))
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    ch.open()
+    ch.close()
+    expect(got).toEqual([true, false])
+    ;(lastPC(e) as unknown as FakePC).channels[0].open()
+    lastT(e).dropWith(1006)
+    expect(got).toEqual([true, false, true, false])
+  })
+
+  it('emits the rights the hello grants, missing fields false', async () => {
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('rights', (r) => got.push(r))
+    e.client.start()
+    await handshakeWithInput(e, { control: true })
+    expect(got).toEqual([{ control: true, clipboard: false, surface: false }])
+  })
+
+  it('learns the surface epoch from a surface message and forgets it with the connection', async () => {
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('surface', (s) => got.push(s))
+    e.client.start()
+    await handshakeWithInput(e)
+    expect(e.client.currentEpoch()).toBeNull()
+    lastT(e).recv({ type: 'surface', e: 2, kind: 'window', id: 4242, name: 'Terminal', w: 1280, h: 800, reason: '' })
+    expect(e.client.currentEpoch()).toBe(2)
+    expect(got).toEqual([{ e: 2, kind: 'window', id: 4242, name: 'Terminal', w: 1280, h: 800, reason: '' }])
+    lastT(e).recv({ type: 'surface', e: 'x', kind: 'window', id: 1, name: 'n', w: 1, h: 1 })
+    lastT(e).recv({ type: 'surface', e: 5, kind: 'monitor', id: 1, name: 'n', w: 1, h: 1 })
+    expect(e.client.currentEpoch()).toBe(2)
+    lastT(e).recv({ type: 'surface', e: 3, kind: 'display', id: 1, name: 'Main', w: 1470, h: 956, reason: '<b>' })
+    expect((got[1] as { reason: string }).reason).toBe('')
+    lastT(e).dropWith(1006)
+    expect(e.client.currentEpoch()).toBeNull()
+  })
+
+  it('turns the golden server lines control-ok, control-needs-accessibility and cursor into typed events', async () => {
+    const lines = readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/input-v1.jsonl'), 'utf8')
+      .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: object })
+    const wire = (name: string) => lines.find((l) => l.name === name)!.wire
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('control', (c) => got.push(['control', c]))
+    e.client.on('cursor', (c) => got.push(['cursor', c]))
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    ch.recv(wire('control-ok'))
+    ch.recv(wire('control-needs-accessibility'))
+    ch.recv(wire('cursor'))
+    expect(got).toEqual([
+      ['control', { input: 'ok', window: '' }],
+      ['control', { input: 'needs_accessibility', window: 'raise_failed' }],
+      ['cursor', { x: 0.5, y: 0.25, e: 1 }],
+    ])
+  })
+
+  it('drops unknown control values, a non-finite cursor, binary and non-JSON frames', async () => {
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('control', (c) => got.push(c))
+    e.client.on('cursor', (c) => got.push(c))
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    ch.recv({ t: 'control', input: 'rm -rf', window: '' })
+    ch.recv({ t: 'control', input: 'ok', window: '<img>' })
+    ch.recv({ t: 'cursor', x: 'a', y: 0, e: 1 })
+    ch.recv({ t: 'cursor', x: 0, y: 0, e: 1.5 })
+    ch.recv({ t: 'teleport' })
+    ch.recv('not json')
+    ch.recv(null)
+    ch.onmessage?.({ data: new ArrayBuffer(4) })
+    expect(got).toEqual([{ input: 'ok', window: '' }])
+  })
+
+  it('send puts a signalling message on the socket', async () => {
+    const e = setup()
+    e.client.start()
+    await handshake(e)
+    e.client.send({ type: 'surfaces' })
+    expect(lastT(e).last('surfaces')).toEqual({ type: 'surfaces' })
+  })
+})
+
+describe('surface list and select (Phase 20-07)', () => {
+  const golden = () =>
+    readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/signal-v1.jsonl'), 'utf8')
+      .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: object })
+  const wire = (name: string) => golden().find((l) => l.name === name)!.wire
+
+  async function connected() {
+    const e = setup()
+    e.client.start()
+    await handshakeWithInput(e)
+    return e
+  }
+
+  it('requestSurfaces sends the golden surfaces request and resolves with the reply (golden surfaces line)', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    expect(lastT(e).last('surfaces')).toEqual(wire('surfaces-request'))
+    lastT(e).recv(wire('surfaces'))
+    await expect(p).resolves.toEqual({
+      displays: [
+        { id: 1, name: 'Main Display', w: 1470, h: 956, main: true },
+        { id: 2, name: 'Display 2', w: 1920, h: 1080, main: false },
+      ],
+      windows: [{ id: 4242, app: 'Terminal', title: 'zsh', name: 'Terminal \u2014 zsh' }],
+    })
+  })
+
+  it('emits a surfaces event for a good reply', async () => {
+    const e = await connected()
+    const got: unknown[] = []
+    e.client.on('surfaces', (s) => got.push(s))
+    lastT(e).recv(wire('surfaces'))
+    expect(got).toHaveLength(1)
+  })
+
+  it('a reply with error list_failed rejects', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    lastT(e).recv(wire('surfaces-error'))
+    await expect(p).rejects.toThrow('list_failed')
+  })
+
+  it('rejects after 5 s with no reply, and a late reply does nothing', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    const done = vi.fn()
+    p.catch(done)
+    await e.clock.advance(4999)
+    expect(done).not.toHaveBeenCalled()
+    await e.clock.advance(1)
+    await expect(p).rejects.toThrow('timeout')
+    lastT(e).recv(wire('surfaces'))
+  })
+
+  it('rejects when there is no connection to ask', async () => {
+    const e = setup()
+    await expect(e.client.requestSurfaces()).rejects.toThrow('not connected')
+  })
+
+  it('a dropped connection rejects what is waiting', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    lastT(e).dropWith(1006)
+    await expect(p).rejects.toThrow('not connected')
+  })
+
+  it('keeps only typed fields from the list: strings as strings, ids and sizes as integers, junk dropped', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    lastT(e).recv({
+      type: 'surfaces',
+      displays: [{ id: 1, name: 'Main Display', w: 1470, h: 956, main: true }, { id: 'x', name: 'bad', w: 1, h: 1 }, { id: 3, name: 7, w: 1.5, h: 1 }, null],
+      windows: [{ id: 9, app: 'A', title: '<img src=x onerror=alert(1)>', name: 'A \u2014 <img src=x onerror=alert(1)>' }, { id: 1.5, name: 'z' }, { id: 4, name: 12 }],
+    })
+    await expect(p).resolves.toEqual({
+      displays: [{ id: 1, name: 'Main Display', w: 1470, h: 956, main: true }],
+      windows: [{ id: 9, app: 'A', title: '<img src=x onerror=alert(1)>', name: 'A \u2014 <img src=x onerror=alert(1)>' }],
+    })
+  })
+
+  it('selectSurface sends the golden select line for a window and for a display', async () => {
+    const e = await connected()
+    e.client.selectSurface('window', 4242)
+    expect(lastT(e).last('select')).toEqual(wire('select-window'))
+    e.client.selectSurface('display', 0)
+    expect(lastT(e).last('select')).toEqual(wire('select-main'))
+  })
+
+  it('select_failed emits selectFailed with its code (golden line)', async () => {
+    const e = await connected()
+    const got: unknown[] = []
+    e.client.on('selectFailed', (v) => got.push(v))
+    lastT(e).recv(wire('select-failed'))
+    expect(got).toEqual([{ code: 'switch_failed' }])
+    lastT(e).recv({ type: 'select_failed', code: 7 })
+    expect(got[1]).toEqual({ code: '' })
+  })
+})
+
+describe('picture means ICE connected, not ontrack (Phase 19 review follow-up)', () => {
+  it('a track alone is announced to the page but is not a picture', async () => {
+    const e = setup()
+    const tracks: unknown[] = []
+    e.client.on('track', (s) => tracks.push(s))
+    e.client.start()
+    await handshake(e)
+    lastPC(e).fireTrack()
+    expect(tracks).toHaveLength(1)
+    expect(kinds(e)).toEqual([])
+  })
+
+  it.each(['track first', 'connected first'] as const)('streaming starts once both the track and ICE connected are in (%s)', async (order) => {
+    const e = setup()
+    e.client.start()
+    await handshake(e)
+    if (order === 'track first') {
+      lastPC(e).fireTrack()
+      expect(kinds(e)).toEqual([])
+      lastPC(e).setConn('connected')
+    } else {
+      lastPC(e).setConn('connected')
+      expect(kinds(e)).toEqual([])
+      lastPC(e).fireTrack()
+    }
+    expect(kinds(e)).toEqual(['streaming'])
+  })
+
+  it('ICE failing after every ontrack still backs off 1, 2, 4 s instead of restarting at 1 s', async () => {
+    const e = setup()
+    e.client.start()
+    let n = 1
+    for (const ms of [1000, 2000, 4000]) {
+      await handshake(e)
+      lastPC(e).fireTrack()
+      lastPC(e).setConn('failed')
+      await e.clock.advance(ms - 1)
+      expect(e.transports.length, `no redial before ${ms} ms`).toBe(n)
+      await e.clock.advance(1)
+      expect(e.transports.length, `redial at ${ms} ms`).toBe(++n)
+    }
+  })
+
+  it("ICE that never connects ends in Can't reach this Mac after 30 s, never in streaming", async () => {
+    const e = setup()
+    e.client.start()
+    for (let i = 0; i < 6; i++) {
+      await handshake(e)
+      lastPC(e).fireTrack()
+      await e.clock.advance(5000) // ICE trying, the way a real browser does for about 30 s
+      lastPC(e).setConn('failed')
+      await e.clock.advance(RECONNECT.delaysMs[Math.min(i, RECONNECT.delaysMs.length - 1)])
+    }
+    expect(kinds(e)).toContain('unreachable')
+    expect(kinds(e)).not.toContain('streaming')
+  })
+})
+
+describe('clipboard transfer (Phase 20-08)', () => {
+  const golden = () =>
+    readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/signal-v1.jsonl'), 'utf8')
+      .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: Record<string, unknown> })
+  const wire = (name: string) => golden().find((l) => l.name === name)!.wire
+  /** The golden server line, answering the transfer the client just started. */
+  const reply = (name: string, xid: string, over: object = {}) => ({ ...wire(name), xid, ...over })
+  const enc = (s: string) => new TextEncoder().encode(s).length
+
+  async function connected() {
+    const e = setup()
+    e.client.start()
+    await handshakeWithInput(e)
+    return e
+  }
+  const sentXid = (e: Env, type: string) => (lastT(e).last(type) as { xid: string }).xid
+
+  describe('copyFromMac', () => {
+    it('sends the golden clip_get shape and resolves ok with the assembled text (golden clip_data and clip_result lines)', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const sent = lastT(e).last('clip_get') as Record<string, unknown>
+      expect(Object.keys(sent).sort()).toEqual(Object.keys(wire('clip-get')).sort())
+      expect(typeof sent.xid).toBe('string')
+      lastT(e).recv(reply('clip-data', sent.xid as string))
+      lastT(e).recv(reply('clip-result-ok', sent.xid as string))
+      await expect(p).resolves.toEqual({ outcome: 'ok', text: 'hello' })
+    })
+
+    it('joins several chunks in seq order', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      lastT(e).recv({ type: 'clip_data', xid, seq: 0, total: 2, len: 7, text: 'hel' })
+      lastT(e).recv({ type: 'clip_data', xid, seq: 1, total: 2, len: 7, text: 'lo, ' })
+      lastT(e).recv(reply('clip-result-ok', xid))
+      await expect(p).resolves.toEqual({ outcome: 'ok', text: 'hello, ' })
+    })
+
+    it('counts bytes, not characters: a multi-byte text must match len', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      lastT(e).recv({ type: 'clip_data', xid, seq: 0, total: 1, len: enc('é☃😀'), text: 'é☃😀' })
+      lastT(e).recv(reply('clip-result-ok', xid))
+      await expect(p).resolves.toEqual({ outcome: 'ok', text: 'é☃😀' })
+    })
+
+    it.each([
+      ['a gap (0 then 2 of 3)', [[0, 3], [2, 3]]],
+      ['a duplicate (0 then 0)', [[0, 2], [0, 2]]],
+      ['a changed total', [[0, 2], [1, 3]]],
+    ])('fails on %s', async (_n, seqs) => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      for (const [seq, total] of seqs) lastT(e).recv({ type: 'clip_data', xid, seq, total, len: 6, text: 'ab' })
+      lastT(e).recv(reply('clip-result-ok', xid))
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('fails when len does not match the assembled bytes, or a changed len, or a missing chunk at the end', async () => {
+      for (const frames of [
+        [{ seq: 0, total: 1, len: 6, text: 'hello' }],
+        [{ seq: 0, total: 2, len: 5, text: 'he' }, { seq: 1, total: 2, len: 6, text: 'llo' }],
+        [{ seq: 0, total: 2, len: 5, text: 'hel' }],
+        [],
+      ]) {
+        const e = await connected()
+        const p = e.client.copyFromMac()
+        const xid = sentXid(e, 'clip_get')
+        for (const f of frames) lastT(e).recv({ type: 'clip_data', xid, ...f })
+        lastT(e).recv(reply('clip-result-ok', xid))
+        await expect(p).resolves.toEqual({ outcome: 'failed' })
+      }
+    })
+
+    it('fails on a chunk over 16384 bytes, over len, over the 1 MiB cap, or with a non-string text', async () => {
+      for (const f of [
+        { seq: 0, total: 1, len: CLIP_CHUNK_BYTES + 1, text: 'a'.repeat(CLIP_CHUNK_BYTES + 1) },
+        { seq: 0, total: 1, len: 3, text: 'abcd' },
+        { seq: 0, total: 1, len: CLIP_MAX_BYTES + 1, text: 'a' },
+        { seq: 0, total: 1, len: 1, text: 7 },
+      ]) {
+        const e = await connected()
+        const p = e.client.copyFromMac()
+        lastT(e).recv({ type: 'clip_data', xid: sentXid(e, 'clip_get'), ...f })
+        await expect(p).resolves.toEqual({ outcome: 'failed' })
+      }
+    })
+
+    it('answers concealed, empty, waiting_approval and too_large with no text (golden concealed and waiting lines)', async () => {
+      for (const [line, outcome] of [['clip-result-concealed', 'concealed'], ['clip-result-waiting', 'waiting_approval']] as const) {
+        const e = await connected()
+        const p = e.client.copyFromMac()
+        lastT(e).recv(reply(line, sentXid(e, 'clip_get')))
+        await expect(p).resolves.toEqual({ outcome })
+      }
+      for (const outcome of ['empty', 'too_large', 'failed', 'forbidden', 'busy']) {
+        const e = await connected()
+        const p = e.client.copyFromMac()
+        lastT(e).recv({ type: 'clip_result', xid: sentXid(e, 'clip_get'), outcome })
+        await expect(p).resolves.toEqual({ outcome })
+      }
+    })
+
+    it('an unknown outcome is a failure, and a message for another xid is ignored', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      lastT(e).recv({ type: 'clip_data', xid: 'other', seq: 0, total: 1, len: 5, text: 'hello' })
+      lastT(e).recv({ type: 'clip_result', xid: 'other', outcome: 'concealed' })
+      lastT(e).recv({ type: 'clip_result', xid, outcome: 'whatever' })
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('a text that arrived is dropped when the result is not ok', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      lastT(e).recv({ type: 'clip_data', xid, seq: 0, total: 1, len: 5, text: 'hello' })
+      lastT(e).recv({ type: 'clip_result', xid, outcome: 'failed' })
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('times out as failed after CLIP_TIMEOUT_MS, and a late answer does nothing', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      const done = vi.fn()
+      void p.then(done)
+      await e.clock.advance(CLIP_TIMEOUT_MS - 1)
+      expect(done).not.toHaveBeenCalled()
+      await e.clock.advance(1)
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+      lastT(e).recv(reply('clip-result-ok', xid))
+      // a new transfer is free to start
+      void e.client.copyFromMac()
+      expect(lastT(e).sent.filter((m) => m.type === 'clip_get')).toHaveLength(2)
+    })
+
+    it('a dropped connection resolves failed at once', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      lastT(e).dropWith(1006)
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('is failed with nothing sent when there is no connection', async () => {
+      const e = setup()
+      await expect(e.client.copyFromMac()).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('answers busy at once, sending nothing, while another transfer is in flight', async () => {
+      const e = await connected()
+      void e.client.copyFromMac()
+      await expect(e.client.copyFromMac()).resolves.toEqual({ outcome: 'busy' })
+      await expect(e.client.pasteToMac('x')).resolves.toEqual({ outcome: 'busy' })
+      expect(lastT(e).sent.filter((m) => m.type === 'clip_get' || m.type === 'clip_put')).toHaveLength(1)
+    })
+  })
+
+  describe('pasteToMac', () => {
+    it('sends clip_put in the golden shape, one xid, seq from 0, total and len on every chunk, and resolves on clip_result', async () => {
+      const e = await connected()
+      const p = e.client.pasteToMac('hello, ')
+      const puts = lastT(e).sent.filter((m) => m.type === 'clip_put')
+      expect(puts).toHaveLength(1)
+      expect(Object.keys(puts[0]).sort()).toEqual(Object.keys(wire('clip-put-0')).sort())
+      expect(puts[0]).toMatchObject({ seq: 0, total: 1, len: 7, text: 'hello, ' })
+      lastT(e).recv({ type: 'clip_result', xid: puts[0].xid, outcome: 'ok' })
+      await expect(p).resolves.toEqual({ outcome: 'ok' })
+    })
+
+    it('splits a long text: contiguous seq, the same xid, total and len, texts that join back, every chunk at most 16384 bytes', async () => {
+      const e = await connected()
+      const text = 'é☃😀 abc'.repeat(6000)
+      void e.client.pasteToMac(text)
+      const puts = lastT(e).sent.filter((m) => m.type === 'clip_put') as { xid: string; seq: number; total: number; len: number; text: string }[]
+      expect(puts.length).toBeGreaterThan(1)
+      expect(new Set(puts.map((m) => m.xid)).size).toBe(1)
+      expect(puts.map((m) => m.seq)).toEqual(puts.map((_, i) => i))
+      expect(new Set(puts.map((m) => m.total))).toEqual(new Set([puts.length]))
+      expect(new Set(puts.map((m) => m.len))).toEqual(new Set([enc(text)]))
+      expect(puts.map((m) => m.text).join('')).toBe(text)
+      for (const m of puts) {
+        expect(enc(m.text)).toBeLessThanOrEqual(CLIP_CHUNK_BYTES)
+        expect(enc(JSON.stringify(m))).toBeLessThanOrEqual(CLIP_FRAME_MAX)
+      }
+    })
+
+    it('sends nothing for an empty text (empty) or one over 1 MiB (too_large); exactly 1 MiB is sent', async () => {
+      const e = await connected()
+      await expect(e.client.pasteToMac('')).resolves.toEqual({ outcome: 'empty' })
+      await expect(e.client.pasteToMac('a'.repeat(CLIP_MAX_BYTES + 1))).resolves.toEqual({ outcome: 'too_large' })
+      await expect(e.client.pasteToMac('é'.repeat(CLIP_MAX_BYTES / 2 + 1))).resolves.toEqual({ outcome: 'too_large' })
+      expect(lastT(e).sent.filter((m) => m.type === 'clip_put')).toHaveLength(0)
+      void e.client.pasteToMac('a'.repeat(CLIP_MAX_BYTES))
+      expect(lastT(e).sent.filter((m) => m.type === 'clip_put').length).toBeGreaterThan(60)
+    })
+
+    it('resolves the daemon outcome, a timeout, and a dropped connection as failed', async () => {
+      const e = await connected()
+      const p1 = e.client.pasteToMac('abc')
+      lastT(e).recv({ type: 'clip_result', xid: sentXid(e, 'clip_put'), outcome: 'forbidden' })
+      await expect(p1).resolves.toEqual({ outcome: 'forbidden' })
+      const p2 = e.client.pasteToMac('abc')
+      await e.clock.advance(CLIP_TIMEOUT_MS)
+      await expect(p2).resolves.toEqual({ outcome: 'failed' })
+      const p3 = e.client.pasteToMac('abc')
+      lastT(e).dropWith(1006)
+      await expect(p3).resolves.toEqual({ outcome: 'failed' })
+    })
+  })
+
+  describe('chunkClipText', () => {
+    it('gives 1 chunk for 16384 ASCII bytes and 2 for 16385', () => {
+      expect(chunkClipText('a'.repeat(16384))).toHaveLength(1)
+      expect(chunkClipText('a'.repeat(16385))).toHaveLength(2)
+      expect(chunkClipText('')).toEqual([])
+    })
+
+    it('never splits a code point: 16383 a then é (2 bytes) moves é to the next chunk, and an astral pair stays whole', () => {
+      const c = chunkClipText('a'.repeat(16383) + 'é')
+      expect(c).toEqual(['a'.repeat(16383), 'é'])
+      const emoji = 'a'.repeat(16382) + '😀'
+      expect(chunkClipText(emoji)).toEqual(['a'.repeat(16382), '😀'])
+    })
+
+    it('keeps every encoded frame at most 30000 bytes: 20000 double quotes, and control characters that escape to six', () => {
+      for (const t of ['"'.repeat(20000), '\u0001'.repeat(16000), '\n'.repeat(20000), 'x"'.repeat(30000)]) {
+        const chunks = chunkClipText(t)
+        expect(chunks.join('')).toBe(t)
+        for (const [seq, text] of chunks.entries()) {
+          const frame = JSON.stringify({ type: 'clip_put', xid: 'x999999', seq, total: chunks.length, len: enc(t), text })
+          expect(enc(frame)).toBeLessThanOrEqual(CLIP_FRAME_MAX)
+          expect(enc(text)).toBeLessThanOrEqual(CLIP_CHUNK_BYTES)
+        }
+      }
+      expect(chunkClipText('"'.repeat(20000)).length).toBeGreaterThan(1)
+    })
   })
 })
 

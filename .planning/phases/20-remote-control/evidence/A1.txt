@@ -1,0 +1,13 @@
+== before: permissions {"sr":true,"ax":true}, control {"control_input":"ok"}
+== tccutil reset Accessibility app.portty.Portty (inside the office VM)
+Successfully reset Accessibility approval status for app.portty.Portty
+permissions after the reset: {"sr":true,"ax":false}
+== three pointer moves over the stage through the viewer (WebDriver)
+  after move to 300,200: control_input=ok
+  after move to 520,330: control_input=ok
+  after move to 640,260: control_input=needs_accessibility
+  after move to 420,400: control_input=needs_accessibility
+== viewer page
+urn together. Control needs Accessibility. On the Mac, allow Portty in Privacy & Security. Main Display View Only Control Control needs AccessibilityControl needs Accessibility
+daemon counters: {"control_input":"needs_accessibility","counters":{"btn":20,"covered":2,"effect_hit":5,"effect_miss":3,"hb":53,"key":171,"locked":1,"move":16,"not_held":6,"raising":1,"text":7,"unknown_code":6,"wheel":8,"window_chord":1,"window_unavailable":2}}
+permissions: {"sr":true,"ax":false}

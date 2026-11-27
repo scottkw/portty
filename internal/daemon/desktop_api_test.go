@@ -887,3 +887,47 @@ func TestDesktopAPI_TickWarmsCertOutsideWriteGate(t *testing.T) {
 		t.Errorf("cert warm-up: called %v, write gate held %v; want called outside the gate", warmed.Load(), held.Load())
 	}
 }
+
+// windowSource is the synthetic source that, unlike it, accepts a window
+// selection, so a window share can be driven without ScreenCaptureKit.
+type windowSource struct{ *screencap.SyntheticSource }
+
+func (windowSource) SelectSurface(screencap.Surface) error { return nil }
+
+// 20-10: GET /desktop carries the shared surface and the control state, only
+// while viewers are connected (UI-SPEC Surface E).
+func TestDesktopAPI_StatusSurfaceAndControl(t *testing.T) {
+	window := screencap.SurfaceInfo{Kind: screencap.SurfaceWindow, ID: 42, Name: "Terminal — zsh", App: "Terminal", Title: "zsh", W: 800, H: 600, OnScreen: true}
+	old := desktopTestDeps
+	desktopTestDeps = func(d *desktop.Deps) {
+		old(d)
+		d.ListSurfaces = func(context.Context) ([]screencap.SurfaceInfo, error) {
+			return []screencap.SurfaceInfo{window}, nil
+		}
+	}
+	t.Cleanup(func() { desktopTestDeps = old })
+	e := newDesktopEnv(t)
+	e.api.SetDesktopSeamsForTest(loopbackAddrs, func() screencap.Source {
+		return windowSource{screencap.NewSyntheticSource(1280, 800)}
+	}, e.media)
+	resp := e.mustOn(t)
+
+	if st := e.status(t); st.Surface != nil || st.Control != "" {
+		t.Fatalf("status with no viewers = surface %+v control %q; want neither", st.Surface, st.Control)
+	}
+
+	v := connectViewer(t, resp.URL)
+	v.waitIDR(t, 10*time.Second)
+	eventually(t, 3*time.Second, "a display share with one viewer", func() bool {
+		st := e.status(t)
+		return st.Viewers == 1 && st.Surface != nil && *st.Surface == DesktopSurface{Kind: "display", Name: "Main Display"} && st.Control == "ok"
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	writeWS(ctx, t, v.conn, map[string]any{"type": "select", "kind": "window", "id": 42})
+	eventually(t, 3*time.Second, "a window share with one viewer", func() bool {
+		st := e.status(t)
+		return st.Surface != nil && *st.Surface == DesktopSurface{Kind: "window", Name: "Terminal — zsh"} && st.Control == "ok"
+	})
+}

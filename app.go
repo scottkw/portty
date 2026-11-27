@@ -60,6 +60,9 @@ type RemotePeerSessions struct {
 	DNSName   string          `json:"dnsName"` // what ConnectPeerSession should be given (WR-05)
 	Reachable bool            `json:"reachable"`
 	Sessions  []RemoteSession `json:"sessions"`
+	// Desktop is true when the peer's always-available desktop is on (21-07): the
+	// sidebar shows the Desktop header from it without another request.
+	Desktop bool `json:"desktop"`
 }
 
 // App holds all application state and exposes the Wails-bound methods.
@@ -306,6 +309,8 @@ func (a *App) startup(ctx context.Context) {
 	// Frontend.Run creates the window before starting OnStartup, so it exists here.
 	// It is still hidden (StartHidden), and the serial main queue runs this before the later WindowShow.
 	applySidebarMaterial()
+	// A covered window still reads visible to the web view; the Desktop tab needs to know (21-08).
+	startWindowOcclusionObserver()
 
 	// UPGR-05: Wails' signal.Start (run before OnStartup) routes SIGTERM to the
 	// quit modal, and its one-shot listener swallows every later SIGTERM. Undo
@@ -1703,8 +1708,12 @@ func (a *App) GetRemoteSessionsWithMeta() []RemotePeerSessions {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	groups := tailnet.FetchAllPeerSessionsMeta(ctx, peers)
+	return remotePeersFromGroups(tailnet.FetchAllPeerSessionsMeta(ctx, peers))
+}
 
+// remotePeersFromGroups maps the tailnet probe groups to the binding type. A
+// group with no sessions keeps an empty (never nil) slice so it encodes as [].
+func remotePeersFromGroups(groups []tailnet.PeerSessionMetaGroup) []RemotePeerSessions {
 	results := make([]RemotePeerSessions, 0, len(groups))
 	for _, g := range groups {
 		sessions := make([]RemoteSession, 0, len(g.Sessions))
@@ -1721,6 +1730,7 @@ func (a *App) GetRemoteSessionsWithMeta() []RemotePeerSessions {
 			DNSName:   g.DNSName,
 			Reachable: g.Reachable,
 			Sessions:  sessions,
+			Desktop:   g.Desktop,
 		})
 	}
 	return results

@@ -13,6 +13,9 @@
 
 enum { kSysExceptionErr = -90001, kSysNilErr = -90002 };
 
+// The marker input_darwin.m writes into every event Portty posts.
+extern int64_t pc_event_marker(void);
+
 // *locked is 1 while the screen is locked. The session dictionary carries the
 // lock key only while locked; a NULL dictionary (no window server session) is
 // an error, never "unlocked".
@@ -135,6 +138,7 @@ int pc_pointer_state(double *x, double *minX, double *maxX) {
 static int pcMoveTo(CGEventSourceRef src, CGPoint to) {
 	CGEventRef move = CGEventCreateMouseEvent(src, kCGEventMouseMoved, to, kCGMouseButtonLeft);
 	if (move == NULL) return 0;
+	CGEventSetIntegerValueField(move, kCGEventSourceUserData, pc_event_marker());
 	CGEventPost(kCGHIDEventTap, move);
 	CFRelease(move);
 	usleep(50 * 1000);
@@ -149,19 +153,21 @@ static int pcMoveTo(CGEventSourceRef src, CGPoint to) {
 // back to where it started, 0 when the move was blocked or the return failed.
 // A private event source keeps the physical modifier state out of the events.
 int pc_pointer_nudge(double dx, int *ok) {
-	@try {
-		CGEventRef here = CGEventCreate(NULL);
-		if (here == NULL) return kSysNilErr;
-		CGPoint p = CGEventGetLocation(here);
-		CFRelease(here);
-		CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStatePrivate);
-		if (src == NULL) return kSysNilErr;
-		int moved = pcMoveTo(src, CGPointMake(p.x + dx, p.y));
-		int back = pcMoveTo(src, p); // always attempted, so the pointer is never left displaced
-		CFRelease(src);
-		*ok = moved && back ? 1 : 0;
-		return 0;
-	} @catch (NSException *e) {
-		return kSysExceptionErr;
+	@autoreleasepool {
+		@try {
+			CGEventRef here = CGEventCreate(NULL);
+			if (here == NULL) return kSysNilErr;
+			CGPoint p = CGEventGetLocation(here);
+			CFRelease(here);
+			CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStatePrivate);
+			if (src == NULL) return kSysNilErr;
+			int moved = pcMoveTo(src, CGPointMake(p.x + dx, p.y));
+			int back = pcMoveTo(src, p); // always attempted, so the pointer is never left displaced
+			CFRelease(src);
+			*ok = moved && back ? 1 : 0;
+			return 0;
+		} @catch (NSException *e) {
+			return kSysExceptionErr;
+		}
 	}
 }

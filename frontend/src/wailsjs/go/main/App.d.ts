@@ -90,6 +90,8 @@ export interface RemotePeerSessions {
   /** Phase 130 — true when the peer responded to the /api/sessions/meta probe; false when unreachable. */
   reachable: boolean
   sessions: RemoteSession[]
+  /** Portty 21-07 — true when the peer's always-available desktop is on. */
+  desktop: boolean
 }
 
 // Phase 130 — the sidebar peer poll in App.tsx.
@@ -172,6 +174,34 @@ export interface PeerConnectResult {
 }
 export function ConnectPeerSession(host: string, sessionID: string): Promise<PeerConnectResult>
 
+// Portty 21-07: have the daemon hold a peer's desktop token and return the loopback URL the
+// Desktop tab points at. Never throws: errorCode is a POST /peers/desktop code (tailscale_off,
+// unknown_host, forbidden, desktop_off, unreachable) or unreachable when the daemon cannot be
+// reached. url is ws://127.0.0.1:<relay port>/api/relay/remote-desktop/<host>/ws and carries no
+// token; it is filled whenever the relay port is known, also when errorCode is set.
+export interface PeerDesktopResult {
+  host: string
+  url: string
+  errorCode: string
+}
+export function ConnectPeerDesktop(host: string): Promise<PeerDesktopResult>
+
+// Portty 21-09: the Mac's own clipboard text for a Cmd+V typed in control mode. Never rejects. outcome
+// is ok (text set), concealed (a password manager item: text is empty), empty (no plain text),
+// too_large (over 1 MB: text is empty) or failed (a refused read). Call it only from that Cmd+V.
+export interface HomeClipboardResult {
+  outcome: string
+  text: string
+}
+export function ReadHomeClipboard(): Promise<HomeClipboardResult>
+
+// Portty 21-07: open the peer's desktop link in the default browser from Go (the link carries the
+// token and never reaches the web view). Resolves '' or an error code; call it only from a click.
+export function OpenPeerDesktopInBrowser(host: string): Promise<string>
+
+// Portty 21-07: open System Settings at Privacy and Security, Local Network.
+export function OpenLocalNetworkSettings(): Promise<void>
+
 // Portty 13-05: open a remote session's localhost URL through a loopback forward on this Mac. Never
 // rejects: status is 'open' (url is http://localhost:<port><rest>), 'consent' (host and port set,
 // nothing bound), or '' with errorCode one of bad_url, no_cap, refused, host_outdated, port_in_use,
@@ -223,6 +253,11 @@ export interface DesktopStatusResult {
   tailscale: string
   launchd: boolean
   reason: string
+  // surfaceKind is display or window, control is ok or needs_accessibility;
+  // all three are '' unless viewers are connected.
+  surfaceKind: string
+  surfaceName: string
+  control: string
   errorCode: string
 }
 export function GetDesktopStatus(): Promise<DesktopStatusResult>

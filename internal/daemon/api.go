@@ -80,6 +80,10 @@ type API struct {
 	// daemon restart wipes the cache (Phase 122-01 / REMOTE-01).
 	remoteCaps *RemoteCapStore
 
+	// desktopCaps holds each peer's standing desktop token for the loopback
+	// desktop proxy and the peer-desktop connect route. In-memory only (desktop_caps.go).
+	desktopCaps *DesktopCapStore
+
 	// portForwards holds the loopback forwards for remote localhost URLs and
 	// the consent behind them (portforward.go). In-memory only.
 	portForwards *PortForwards
@@ -130,6 +134,7 @@ func NewAPI(engine *SessionEngine) *API {
 		mux:          http.NewServeMux(),
 		tailnetCache: &tailnetCache{},
 		remoteCaps:   NewRemoteCapStore(),
+		desktopCaps:  NewDesktopCapStore(),
 		portForwards: newPortForwards(),
 
 		shares:         map[string]shareRecord{},
@@ -167,13 +172,14 @@ func NewAPI(engine *SessionEngine) *API {
 // after the snapshot.
 //
 // WR-01 (it2): the drain is short, so no slow route may hold the gate.
-// /peers/connect only caches a peer's cap, which no handoff moves; PUT share
+// /peers/connect and /peers/desktop only cache a peer's token, which no handoff
+// moves; PUT share
 // and PUT /desktop take the gate themselves after their slow health check and
 // cert warm-up.
 func (a *API) freezeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL.Path == "/handoff" ||
-			r.URL.Path == "/peers/connect" || r.Method == http.MethodPut && (strings.HasSuffix(r.URL.Path, "/share") || r.URL.Path == "/desktop") {
+			r.URL.Path == "/peers/connect" || r.URL.Path == "/peers/desktop" || r.Method == http.MethodPut && (strings.HasSuffix(r.URL.Path, "/share") || r.URL.Path == "/desktop") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -246,6 +252,11 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /tailnet/peers", a.handleTailnetPeers)
 	// Connect to a session shared from another Mac (CLI attach and the GUI).
 	a.mux.HandleFunc("POST /peers/connect", a.handlePeerConnect)
+	// Fetch a peer's standing desktop token into memory for the loopback desktop proxy.
+	a.mux.HandleFunc("POST /peers/desktop", a.handlePeerDesktop)
+	// The browser link of a held peer desktop, token included. Socket only,
+	// like /handoff and /preview: the relay port is reachable by browser pages.
+	a.mux.HandleFunc("GET /peers/desktop/link", a.handlePeerDesktopLink)
 	// Open a loopback forward for a clicked remote localhost URL. Socket only,
 	// like /handoff and /preview: the relay port is reachable by browser pages.
 	a.mux.HandleFunc("POST /peers/ports", a.handlePortOpen)

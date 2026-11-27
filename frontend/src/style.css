@@ -2543,8 +2543,8 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
    message sits on a popover chip or card. The video carries only
    object-fit: the browser downsamples the stream to the window's device
    pixels, so nothing else may touch its size or sampling. */
-html:has(.desktop-view),
-html:has(.desktop-view) body {
+html:has(.desktop-view:not(.desktop-view--embedded)),
+html:has(.desktop-view:not(.desktop-view--embedded)) body {
   background: var(--color-viewer-bg);
   overscroll-behavior: none;
 }
@@ -2591,6 +2591,8 @@ html:has(.desktop-view) body {
   left: 0;
   right: 0;
   width: fit-content;
+  /* Long chip text wraps at 480px and is never truncated. */
+  max-width: min(480px, calc(100% - 48px));
   margin: 0 auto;
   min-height: 32px;
   padding: 8px 12px;
@@ -2667,5 +2669,461 @@ html:has(.desktop-view) body {
 @media (prefers-reduced-motion: reduce) {
   .desktop-chip {
     transition: none;
+  }
+}
+
+/* ─── Desktop control layer (Phase 20-06, 20-UI-SPEC Surface A) ──────
+   The stage fills the padded box and owns every pointer and key listener of
+   a viewer that may control the Mac. The hidden input receives the keys and
+   the input-method composition; it is visually hidden but focusable. */
+.desktop-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  touch-action: manipulation;
+}
+.desktop-stage__input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  overflow: hidden;
+  resize: none;
+  caret-color: transparent;
+}
+/* A viewer that is controlling draws its own dot in place of the arrow; a paused one keeps the arrow. */
+.desktop-stage--live {
+  cursor: none;
+}
+/* The keyboard is captured: a 2px inset ring, present or absent, never animated. */
+.desktop-ring {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 2px var(--color-selection-fill);
+  pointer-events: none;
+}
+/* The local pointer, drawn on the animation frame of the move; a shape, not a text surface. */
+.desktop-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-viewer-bg);
+  border-radius: 50%;
+  background: var(--color-on-accent);
+  pointer-events: none;
+}
+.desktop-dot[hidden] {
+  display: none;
+}
+/* The notice chip: the Phase 19 chip metrics, one slot below the state chip, wrapping and never truncating.
+   --desktop-chip-h is the state chip's measured height (set by the view when it wraps past one line). */
+.desktop-chip--notice {
+  top: calc(8px + var(--desktop-chip-h, 32px) + 8px + env(safe-area-inset-top));
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-chip--notice {
+    transition: none;
+  }
+}
+
+/* ─── Desktop control bar (Phase 20-07, 20-UI-SPEC Surface B) ─────────
+   A floating top-center toolbar, 36px tall in a reserved 44px row; chips sit below
+   that row on a viewer that may control. Hidden it is transparent and click-through
+   but stays in the tab order, and :focus-within shows it. Tokens only. */
+.desktop-overlay {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.desktop-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  height: 36px;
+  max-width: calc(100% - 48px);
+  padding: 0 4px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 8px;
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-text);
+  pointer-events: auto;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.desktop-bar--hidden {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+}
+.desktop-bar--hidden:focus-within {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.desktop-bar__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: default;
+}
+.desktop-bar__item:hover {
+  background: var(--color-control-hover);
+}
+.desktop-bar__item[aria-disabled='true'],
+.desktop-bar .share-seg[aria-disabled='true'] {
+  opacity: var(--opacity-disabled);
+}
+.desktop-bar__item[aria-disabled='true']:hover {
+  background: transparent;
+}
+.desktop-bar__item:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+/* On: the selected fill and the 1px border stay, and a check mark replaces the icon, so it never relies on colour. */
+.desktop-bar__toggle.is-on {
+  background: var(--color-segment-selected);
+  border-color: var(--color-control-border);
+}
+.desktop-bar__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.desktop-bar__name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desktop-bar__divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  flex-shrink: 0;
+  background: var(--color-separator);
+}
+/* Below 880px every item except the picker and the Control segments is icon-only; each keeps its aria-label and title. */
+@media (max-width: 879px) {
+  .desktop-bar__item {
+    padding: 0 8px;
+  }
+  .desktop-bar__label {
+    display: none;
+  }
+}
+.desktop-bar__picker {
+  min-width: 0;
+  padding: 0 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-bar {
+    transition: none;
+  }
+}
+
+/* The bar's menus: the context menu look with a check column, right-aligned hints, group labels and captions. */
+.desktop-menu {
+  min-width: 200px;
+  max-width: 360px;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+}
+.desktop-menu .context-menu__item {
+  gap: 8px;
+}
+.desktop-menu__check {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.desktop-menu__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desktop-menu__hint {
+  flex-shrink: 0;
+  margin-left: 16px;
+  color: var(--color-text-secondary);
+}
+.context-menu__item:focus .desktop-menu__hint {
+  color: inherit;
+}
+.desktop-menu__label {
+  padding: 4px 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+.desktop-menu__caption {
+  padding: 4px 12px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+
+/* A viewer that may control has the bar row (44px) at the top: the chips sit below it. */
+.desktop-view--bar .desktop-chip {
+  top: calc(52px + env(safe-area-inset-top));
+}
+.desktop-view--bar .desktop-chip--notice {
+  top: calc(52px + var(--desktop-chip-h, 32px) + 8px + env(safe-area-inset-top));
+}
+
+/* ─── Desktop clipboard popovers (Phase 20-08, 20-UI-SPEC Surface D) ──
+   The Copy fallback and the Paste popover: a non-modal dialog 4px under the Clipboard
+   button. Portaled to the body (or the full-screen element), so it sets its own selection
+   and sits above the bar. Tokens only. */
+.desktop-popover {
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
+  width: 320px;
+  max-width: calc(100% - 48px);
+  padding: 16px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 10px;
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-text);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.desktop-popover__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.desktop-popover__text {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+/* Long clipboard text scrolls inside the box, from 160px. */
+.desktop-popover__textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  max-height: 160px;
+  margin-top: 12px;
+  padding: 8px;
+  overflow-y: auto;
+  resize: none;
+  border: 1px solid var(--color-control-border);
+  border-radius: 6px;
+  background: var(--color-field);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 18px;
+}
+.desktop-popover__textarea:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+.desktop-popover__error {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-error-text);
+}
+.desktop-popover__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.desktop-popover .button[aria-disabled='true'] {
+  opacity: var(--opacity-disabled);
+}
+
+/* ─── Desktop tab in the Portty app (Phase 21-08, 21-UI-SPEC Surface 2) ──
+   The tab paints its own opaque viewer background, because the app window is translucent and the
+   letterbox must never show the wallpaper. A tab behind another tab is hidden with opacity and
+   pointer-events (never display: none), so its video keeps decoding. Tokens only. */
+.desktop-tab {
+  position: absolute;
+  inset: 0;
+  background: var(--color-viewer-bg);
+}
+.desktop-tab--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+/* Contained by the tab, not fixed to the window; no safe-area padding in the app. */
+.desktop-view--embedded {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  background: var(--color-viewer-bg);
+}
+
+/* Toolbar label of the Desktop tab (21-UI-SPEC "Toolbar label"). Fixed width in every state, so entering or
+   leaving control mode never reflows the tab strip. Line 1 (the host) ends with an ellipsis; line 2 never truncates. */
+.toolbar-chip--desktop {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  width: 232px;
+  max-width: 232px;
+  height: 36px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border-radius: var(--hub-radius-sm);
+  overflow: visible;
+}
+.toolbar-chip--desktop .toolbar-chip__line1 {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  color: var(--color-text);
+}
+.toolbar-chip--desktop .toolbar-chip__line2 {
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+/* The one accent fill in the tab chrome: the keyboard belongs to the other Mac. */
+.toolbar-chip--desktop[data-control="on"] {
+  background: var(--color-selection-fill);
+  color: var(--color-on-accent);
+}
+.toolbar-chip--desktop[data-control="on"] .toolbar-chip__line1 {
+  font-weight: 600;
+  color: var(--color-on-accent);
+}
+.toolbar-chip--desktop[data-control="on"] .toolbar-chip__line2 {
+  color: var(--color-on-accent);
+}
+
+/* A Desktop row whose Mac reports a muted state (Needs permission, Display asleep, ...): the line under it
+   carries the words, the row's own name and icon go quiet. The selected pill keeps its on-accent text. */
+.sidebar__row[data-muted="true"]:not([aria-current="page"]) .sidebar__row-name,
+.sidebar__row[data-muted="true"]:not([aria-current="page"]) .sidebar__row-icon {
+  color: var(--color-text-secondary);
+}
+
+/* ─── iPhone viewer (Phase 21-10, 21-UI-SPEC Surface 4) ──────────────
+   The /desktop/ page on a phone: the stage above one slot that holds the bottom bar or the key bar.
+   The root follows the visual viewport so the slot sits right on the keyboard; the stage clips the
+   zoomed picture and takes every touch itself (no page scroll, no page zoom). Tokens only. */
+.desktop-view--phone {
+  display: flex;
+  flex-direction: column;
+  top: var(--vv-top, 0px);
+  bottom: auto;
+  height: var(--vv-height, 100%);
+  padding: env(safe-area-inset-top) 0 0;
+}
+.desktop-view--phone .desktop-stage {
+  flex: 1 1 0;
+  min-height: 0;
+  width: auto;
+  height: auto;
+  margin: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  overflow: hidden;
+  touch-action: none;
+}
+/* The slot is the .keybar box. It stays above the scrim, so the bar is usable under a card. */
+.desktop-phone__slot {
+  position: relative;
+  z-index: 3;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+.desktop-phone__bar {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* Ten keys share 360pt, so a key may shrink to 36px; the bottom bar's four items are wider than that. */
+.desktop-phone__key {
+  flex: 1 1 0;
+  min-width: 36px;
+  gap: 4px;
+  padding: 0 4px;
+}
+.desktop-phone__key[aria-disabled="true"] {
+  opacity: var(--opacity-disabled);
+}
+.desktop-phone__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Real and focusable, never display: none, or iOS will not open the keyboard for it. 16px stops iOS zooming the page. */
+.desktop-phone__input {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: 16px;
+  caret-color: transparent;
+}
+/* A shape cue on the picture: no text sits on it. */
+.desktop-ripple {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border: 2px solid var(--color-on-accent);
+  border-radius: 50%;
+  outline: 1px solid var(--color-viewer-bg);
+  pointer-events: none;
+  animation: desktop-ripple-fade 150ms linear forwards;
+}
+.desktop-ripple[hidden] {
+  display: none;
+}
+@keyframes desktop-ripple-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-ripple {
+    animation: none;
   }
 }

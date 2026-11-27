@@ -1,10 +1,13 @@
 import { readWebModeParams } from './webMode'
+import { MOVE_BUFFER_LIMIT, utf8Len } from './desktopInput'
 
 /**
  * Phase 19-06 — the /desktop/ viewer's connection. One signalling WebSocket
  * (protocol v1, 19-01) plus one RTCPeerConnection that receives the Mac's
- * screen as a video track. View only: no data channel, no input, no key
- * listeners (control is Phase 20).
+ * screen as a video track. Phase 20-06 adds the ordered `input` data channel
+ * (offered only when the server hello carries caps input 1), the rights the
+ * hello grants and the surface epoch that input must carry. The client never
+ * listens to keys or pointers: desktopInput.ts does, over the stage.
  *
  * Pure TypeScript with no React and no Wails imports, so the Phase 21 Wails
  * Desktop tab can reuse it: the transport, the liveness check, the pre-redial
@@ -71,12 +74,140 @@ export interface DesktopSizeMsg {
   h: number
 }
 
+/** What the server hello says this viewer may do (20-01 rights map; a missing field is false). */
+export interface DesktopRights {
+  control: boolean
+  clipboard: boolean
+  surface: boolean
+}
+
+export type SurfaceKind = 'display' | 'window'
+export type SurfaceReason = '' | 'window_closed' | 'display_gone'
+
+/** The shared surface and its epoch (20-03). Input must carry `e` or the daemon drops it. */
+export interface DesktopSurfaceMsg {
+  e: number
+  kind: SurfaceKind
+  id: number
+  name: string
+  w: number
+  h: number
+  reason: SurfaceReason
+}
+
+/** One entry of the daemon's surface list (20-03). Names are the Mac's own text: render as text, never markup. */
+export interface SurfaceDisplayInfo {
+  id: number
+  name: string
+  w: number
+  h: number
+  main: boolean
+}
+export interface SurfaceWindowInfo {
+  id: number
+  app: string
+  title: string
+  /** `App — Title`, as the daemon formats it. */
+  name: string
+}
+export interface DesktopSurfacesMsg {
+  displays: SurfaceDisplayInfo[]
+  windows: SurfaceWindowInfo[]
+}
+
+export type ControlInput = 'ok' | 'needs_accessibility'
+export type ControlWindow = '' | 'raise_failed' | 'minimized'
+
+/** The daemon's control state, pushed on the input channel (20-02, 20-04). */
+export interface DesktopControlMsg {
+  input: ControlInput
+  window: ControlWindow
+}
+
+/** Where the Mac's pointer is after a relative move (20-02); normalised like input. */
+export interface DesktopCursorMsg {
+  x: number
+  y: number
+  e: number
+}
+
 export interface DesktopEvents {
   track: MediaStream
   state: DesktopStateMsg
   size: DesktopSizeMsg
   status: ClientStatus
   wake: WakeReason
+  rights: DesktopRights
+  /** The input data channel opened or closed. */
+  input: { open: boolean }
+  surface: DesktopSurfaceMsg
+  /** A good reply to a surfaces request. */
+  surfaces: DesktopSurfacesMsg
+  /** The daemon refused or failed a select (`code` is its reason, '' when not a string). */
+  selectFailed: { code: string }
+  control: DesktopControlMsg
+  cursor: DesktopCursorMsg
+}
+
+/** What the daemon answered for a clipboard transfer (20-01 clip_result outcomes). */
+export type ClipOutcome = 'ok' | 'concealed' | 'empty' | 'too_large' | 'waiting_approval' | 'failed' | 'forbidden' | 'busy'
+export interface ClipResult {
+  outcome: ClipOutcome
+  /** The Mac's text, only with outcome ok on a copy. Held in memory for the caller; never logged. */
+  text?: string
+}
+
+/** Clipboard limits (20-CONTEXT [Limits]): a chunk's text, an encoded frame (under the 32768-byte read limit), the whole text, the wait. */
+export const CLIP_CHUNK_BYTES = 16384
+export const CLIP_FRAME_MAX = 30000
+export const CLIP_MAX_BYTES = 1048576
+export const CLIP_TIMEOUT_MS = 20000
+// A sane bound on `total` from the wire: 1 MiB in the smallest chunks a JSON-escaped frame allows is about 210.
+const CLIP_MAX_CHUNKS = 1024
+// What a clip_put frame carries besides its text (type, xid, seq, total, len), rounded up.
+const CLIP_FRAME_OVERHEAD = 256
+const CLIP_OUTCOMES: ReadonlySet<string> = new Set<ClipOutcome>([
+  'ok', 'concealed', 'empty', 'too_large', 'waiting_approval', 'failed', 'forbidden', 'busy',
+])
+
+const utf8Encoder = new TextEncoder()
+/** UTF-8 length of a string as the daemon counts it. */
+export const clipByteLength = (s: string): number => utf8Encoder.encode(s).length
+
+/** Bytes this code point takes inside a JSON string as JSON.stringify writes it. */
+function jsonBytes(cp: number): number {
+  if (cp === 0x22 || cp === 0x5c) return 2
+  if (cp < 0x20) return cp === 8 || cp === 9 || cp === 10 || cp === 12 || cp === 13 ? 2 : 6
+  if (cp >= 0xd800 && cp <= 0xdfff) return 6 // a lone surrogate is written as \udXXX
+  return utf8Len(cp)
+}
+
+/**
+ * Cuts text for clip_put: at code-point boundaries, at most CLIP_CHUNK_BYTES of UTF-8 per chunk,
+ * and few enough JSON-escaped bytes that each encoded frame stays at most CLIP_FRAME_MAX.
+ */
+export function chunkClipText(s: string): string[] {
+  const escBudget = CLIP_FRAME_MAX - CLIP_FRAME_OVERHEAD
+  const out: string[] = []
+  let cur = ''
+  let raw = 0
+  let esc = 0
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!
+    const r = utf8Len(cp)
+    const e = jsonBytes(cp)
+    if (cur !== '' && (raw + r > CLIP_CHUNK_BYTES || esc + e > escBudget)) {
+      out.push(cur)
+      cur = ''
+      raw = 0
+      esc = 0
+    }
+    cur += ch
+    raw += r
+    esc += e
+  }
+  if (cur !== '') out.push(cur)
+  return out
 }
 
 export interface DesktopClient {
@@ -84,6 +215,28 @@ export interface DesktopClient {
   stop(): void
   /** Lets a host shell inject its own wake (Phase 21 calls wake('external') from its tab). */
   wake(reason: WakeReason): void
+  /** A signalling message (select, clipboard); input goes through sendInput. */
+  send(msg: object): void
+  /**
+   * One message on the input channel. False when the channel is not open, or, for a droppable
+   * message (a move), when more than MOVE_BUFFER_LIMIT bytes are already queued. Presses,
+   * releases and wheel are never droppable.
+   */
+  sendInput(msg: object, droppable?: boolean): boolean
+  /** The surface epoch last announced by the server, or null until the first surface message. */
+  currentEpoch(): number | null
+  /** Asks for the displays and windows. Resolves on the next reply; rejects on an error reply, a dropped connection or after 5 s. */
+  requestSurfaces(): Promise<DesktopSurfacesMsg>
+  /** Picks a surface; the answer is a `surface` event for every viewer, or `selectFailed` for this one. Display id 0 is the main display. */
+  selectSurface(kind: SurfaceKind, id: number): void
+  /**
+   * Asks the Mac for its clipboard text (clip_get) and collects the chunks in order. Never rejects:
+   * a gap, a duplicate, a length mismatch, a dropped connection or CLIP_TIMEOUT_MS is outcome failed;
+   * a transfer already in flight is busy. Call it only inside the user's own click.
+   */
+  copyFromMac(): Promise<ClipResult>
+  /** Sends text to the Mac's clipboard as clip_put chunks. Empty is `empty` and over CLIP_MAX_BYTES is `too_large`, with nothing sent. Never rejects. */
+  pasteToMac(text: string): Promise<{ outcome: ClipOutcome }>
   on<K extends keyof DesktopEvents>(event: K, cb: (v: DesktopEvents[K]) => void): () => void
 }
 
@@ -94,6 +247,7 @@ export const RECONNECT = {
   helloTimeoutMs: 10000,
   gatherTimeoutMs: 3000,
   iceDisconnectedMs: 2000,
+  surfacesTimeoutMs: 5000,
 }
 
 /** wss://<same host>/desktop/ws?cap=<token from the page URL>. */
@@ -141,6 +295,8 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
 
   const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
     track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
+    rights: new Set(), input: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
+    control: new Set(), cursor: new Set(),
   }
   function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
     for (const cb of [...listeners[event]]) cb(v)
@@ -162,6 +318,12 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   let pc: RTCPeerConnection | null = null
   let hadHello = false
   let hasPicture = false
+  // Per peer connection: a picture needs both the track and ICE connected. ontrack fires
+  // on setRemoteDescription, long before (or without) any media path.
+  let gotTrack = false
+  let iceUp = false
+  let inputChannel: RTCDataChannel | null = null
+  let epoch: number | null = null
   let attempt = 0
   let pingN = 0
   let pendingPing: number | null = null
@@ -180,12 +342,81 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     return null
   }
 
+  // One clipboard transfer at a time (the daemon allows one per viewer and answers busy otherwise).
+  interface ClipXfer {
+    xid: string
+    kind: 'get' | 'put'
+    resolve: (r: ClipResult) => void
+    timer: unknown
+    // Assembly of a copy: the next expected seq, the announced total and len, bytes so far, the pieces.
+    next: number
+    total: number
+    len: number
+    bytes: number
+    parts: string[]
+  }
+  let clipXfer: ClipXfer | null = null
+  let xidN = 0
+  function endClip(outcome: ClipOutcome, text?: string) {
+    const x = clipXfer
+    if (!x) return
+    clipXfer = null
+    clock.clearTimeout(x.timer)
+    x.resolve(text === undefined ? { outcome } : { outcome, text })
+  }
+  function startClip(kind: 'get' | 'put', go: (xid: string, t: SignalTransport) => void): Promise<ClipResult> {
+    if (clipXfer) return Promise.resolve({ outcome: 'busy' })
+    const t = transport
+    if (!t || !hadHello) return Promise.resolve({ outcome: 'failed' })
+    return new Promise<ClipResult>((resolve) => {
+      const xid = `x${++xidN}`
+      const x: ClipXfer = {
+        xid, kind, resolve, next: 0, total: 0, len: 0, bytes: 0, parts: [],
+        timer: clock.setTimeout(() => endClip('failed'), CLIP_TIMEOUT_MS),
+      }
+      clipXfer = x
+      try {
+        go(xid, t)
+      } catch {
+        endClip('failed')
+      }
+    })
+  }
+
+  interface ListWait {
+    resolve: (m: DesktopSurfacesMsg) => void
+    reject: (e: Error) => void
+    timer: unknown
+  }
+  let listWaits: ListWait[] = []
+  /** Ends every waiting requestSurfaces: with the list, or with the reason it will not come. */
+  function settleLists(result: DesktopSurfacesMsg | Error) {
+    const waits = listWaits
+    listWaits = []
+    for (const w of waits) {
+      clock.clearTimeout(w.timer)
+      if (result instanceof Error) w.reject(result)
+      else w.resolve(result)
+    }
+  }
+
   /** Close the current socket and peer connection and their timers. Never redials. */
   function teardown() {
     helloTimer = cancel(helloTimer)
     iceTimer = cancel(iceTimer)
     pingTimer = cancel(pingTimer)
     pendingPing = null
+    gotTrack = false
+    iceUp = false
+    epoch = null
+    settleLists(new Error('not connected'))
+    endClip('failed')
+    // The viewer must release what it holds when its channel goes, so say so now: a closed
+    // peer connection reports its channel only after the generation has moved on.
+    if (inputChannel) {
+      inputChannel = null
+      emit('input', { open: false })
+    }
     const t = transport
     const p = pc
     transport = null
@@ -276,7 +507,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     }
     transport = t
     t.onOpen(() => {
-      if (g === gen) t.send({ type: 'hello', v: 1, caps: { video: 1 } })
+      if (g === gen) t.send({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
     })
     t.onMessage((m) => {
       if (g === gen) void handle(g, m)
@@ -335,22 +566,70 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   }
 
   function onTrack(e: RTCTrackEvent) {
+    gotTrack = true
+    emit('track', e.streams[0] ?? new MediaStream([e.track]))
+    maybePicture()
+  }
+
+  /** The picture is here only once the track is in and ICE has connected (never on ontrack alone). */
+  function maybePicture() {
+    if (!gotTrack || !iceUp) return
     hasPicture = true
     attempt = 0
     unreachableTimer = cancel(unreachableTimer)
-    emit('track', e.streams[0] ?? new MediaStream([e.track]))
     setStatus({ kind: 'streaming' })
   }
 
   function onIceState(g: number, s: RTCPeerConnectionState) {
     if (g !== gen) return
-    if (s === 'connected') iceTimer = cancel(iceTimer)
-    else if (s === 'failed') failConnection()
+    if (s === 'connected') {
+      iceTimer = cancel(iceTimer)
+      iceUp = true
+      maybePicture()
+    } else if (s === 'failed') failConnection()
     else if (s === 'disconnected' && iceTimer === null) {
       iceTimer = clock.setTimeout(() => {
         iceTimer = null
         if (g === gen) failConnection()
       }, RECONNECT.iceDisconnectedMs)
+    }
+  }
+
+  function openInputChannel(g: number, conn: RTCPeerConnection) {
+    const ch = conn.createDataChannel('input', { ordered: true })
+    ch.onopen = () => {
+      if (g !== gen) return
+      inputChannel = ch
+      emit('input', { open: true })
+    }
+    ch.onclose = () => {
+      if (g !== gen || inputChannel !== ch) return
+      inputChannel = null
+      emit('input', { open: false })
+    }
+    ch.onmessage = (ev) => {
+      if (g === gen) onInputMessage(ev.data)
+    }
+  }
+
+  /** Server messages on the input channel: only known enum values and finite numbers are taken (T-20-33). */
+  function onInputMessage(data: unknown) {
+    if (typeof data !== 'string') return
+    let m: Record<string, unknown>
+    try {
+      m = JSON.parse(data)
+    } catch {
+      return
+    }
+    if (typeof m !== 'object' || m === null) return
+    if (m.t === 'control') {
+      if (m.input !== 'ok' && m.input !== 'needs_accessibility') return
+      const win = m.window === 'raise_failed' || m.window === 'minimized' ? m.window : ''
+      emit('control', { input: m.input, window: win })
+    } else if (m.t === 'cursor') {
+      if (Number.isFinite(m.x) && Number.isFinite(m.y) && Number.isInteger(m.e)) {
+        emit('cursor', { x: m.x as number, y: m.y as number, e: m.e as number })
+      }
     }
   }
 
@@ -369,6 +648,10 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
             if (g === gen) onTrack(e)
           }
           conn.onconnectionstatechange = () => onIceState(g, conn.connectionState)
+          const rights = (m.rights ?? {}) as Record<string, unknown>
+          emit('rights', { control: rights.control === true, clipboard: rights.clipboard === true, surface: rights.surface === true })
+          // Before addTransceiver and createOffer, so the offer carries an application m-line.
+          if ((m.caps as Record<string, unknown> | undefined)?.input === 1) openInputChannel(g, conn)
           conn.addTransceiver('video', { direction: 'recvonly' })
           await conn.setLocalDescription(await conn.createOffer())
           await gathered(conn)
@@ -387,6 +670,78 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
             emit('state', { state: m.state as DesktopState, viewers: lastViewers, locked: m.locked === true })
           }
           break
+        case 'surface': {
+          const kind = m.kind
+          if (!Number.isInteger(m.e) || (m.e as number) < 1 || (kind !== 'display' && kind !== 'window')) break
+          if (!Number.isInteger(m.id) || !Number.isInteger(m.w) || !Number.isInteger(m.h)) break
+          epoch = m.e as number
+          emit('surface', {
+            e: epoch,
+            kind,
+            id: m.id as number,
+            name: typeof m.name === 'string' ? m.name : '',
+            w: m.w as number,
+            h: m.h as number,
+            reason: m.reason === 'window_closed' || m.reason === 'display_gone' ? m.reason : '',
+          })
+          break
+        }
+        case 'surfaces': {
+          const list = parseSurfaces(m)
+          if (list === null) {
+            settleLists(new Error(m.error === 'forbidden' ? 'forbidden' : 'list_failed'))
+            break
+          }
+          emit('surfaces', list)
+          settleLists(list)
+          break
+        }
+        case 'select_failed':
+          emit('selectFailed', { code: typeof m.code === 'string' ? m.code : '' })
+          break
+        case 'clip_data': {
+          const x = clipXfer
+          if (!x || x.kind !== 'get' || m.xid !== x.xid) break
+          const { seq, total, len, text } = m
+          if (!Number.isInteger(seq) || !Number.isInteger(total) || !Number.isInteger(len) || typeof text !== 'string') {
+            endClip('failed')
+            break
+          }
+          if ((total as number) < 1 || (total as number) > CLIP_MAX_CHUNKS || (len as number) < 1 || (len as number) > CLIP_MAX_BYTES) {
+            endClip('failed')
+            break
+          }
+          // Every chunk must agree with the first on total and len, and arrive as the next seq.
+          if (x.next === 0) {
+            x.total = total as number
+            x.len = len as number
+          } else if (total !== x.total || len !== x.len) {
+            endClip('failed')
+            break
+          }
+          const n = clipByteLength(text)
+          if (seq !== x.next || (seq as number) >= x.total || n > CLIP_CHUNK_BYTES || x.bytes + n > x.len) {
+            endClip('failed')
+            break
+          }
+          x.parts.push(text)
+          x.next++
+          x.bytes += n
+          break
+        }
+        case 'clip_result': {
+          const x = clipXfer
+          if (!x || m.xid !== x.xid) break
+          const outcome: ClipOutcome = typeof m.outcome === 'string' && CLIP_OUTCOMES.has(m.outcome) ? (m.outcome as ClipOutcome) : 'failed'
+          if (x.kind === 'get' && outcome === 'ok') {
+            // ok means every chunk came, in order, and add up to the announced length.
+            if (x.next === 0 || x.next !== x.total || x.bytes !== x.len) endClip('failed')
+            else endClip('ok', x.parts.join(''))
+            break
+          }
+          endClip(outcome)
+          break
+        }
         case 'size':
           if (Number.isInteger(m.w) && Number.isInteger(m.h)) emit('size', { w: m.w as number, h: m.h as number })
           break
@@ -496,12 +851,80 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     },
     stop: shutdown,
     wake: onWake,
+    send(msg) {
+      transport?.send(msg)
+    },
+    sendInput(msg, droppable = false) {
+      const ch = inputChannel
+      if (!ch || ch.readyState !== 'open') return false
+      if (droppable && ch.bufferedAmount > MOVE_BUFFER_LIMIT) return false
+      ch.send(JSON.stringify(msg))
+      return true
+    },
+    currentEpoch: () => epoch,
+    requestSurfaces() {
+      return new Promise<DesktopSurfacesMsg>((resolve, reject) => {
+        if (!transport || !hadHello) {
+          reject(new Error('not connected'))
+          return
+        }
+        const wait: ListWait = {
+          resolve,
+          reject,
+          timer: clock.setTimeout(() => {
+            listWaits = listWaits.filter((w) => w !== wait)
+            reject(new Error('timeout'))
+          }, RECONNECT.surfacesTimeoutMs),
+        }
+        listWaits.push(wait)
+        transport.send({ type: 'surfaces' })
+      })
+    },
+    selectSurface(kind, id) {
+      transport?.send({ type: 'select', kind, id })
+    },
+    copyFromMac() {
+      return startClip('get', (xid, t) => t.send({ type: 'clip_get', xid }))
+    },
+    pasteToMac(text) {
+      const len = clipByteLength(text)
+      if (len === 0) return Promise.resolve({ outcome: 'empty' })
+      if (len > CLIP_MAX_BYTES) return Promise.resolve({ outcome: 'too_large' })
+      const chunks = chunkClipText(text)
+      return startClip('put', (xid, t) => {
+        chunks.forEach((c, seq) => t.send({ type: 'clip_put', xid, seq, total: chunks.length, len, text: c }))
+      })
+    },
     on(event, cb) {
       const set = listeners[event] as Set<typeof cb>
       set.add(cb)
       return () => set.delete(cb)
     },
   }
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+
+/** A surfaces reply: only typed fields are kept (T-20-35). Null for an error reply or a malformed list. */
+function parseSurfaces(m: Record<string, unknown>): DesktopSurfacesMsg | null {
+  if (m.error !== undefined || !Array.isArray(m.displays) || !Array.isArray(m.windows)) return null
+  const displays: SurfaceDisplayInfo[] = []
+  for (const d of m.displays) {
+    if (!isObj(d) || !Number.isInteger(d.id) || typeof d.name !== 'string') continue
+    if (!Number.isInteger(d.w) || !Number.isInteger(d.h)) continue
+    displays.push({ id: d.id as number, name: d.name, w: d.w as number, h: d.h as number, main: d.main === true })
+  }
+  const windows: SurfaceWindowInfo[] = []
+  for (const w of m.windows) {
+    if (!isObj(w) || !Number.isInteger(w.id) || typeof w.name !== 'string') continue
+    windows.push({
+      id: w.id as number,
+      app: typeof w.app === 'string' ? w.app : '',
+      title: typeof w.title === 'string' ? w.title : '',
+      name: w.name,
+    })
+  }
+  return { displays, windows }
 }
 
 export async function fetchCheck(loc: Location = window.location): Promise<CheckVerdict> {

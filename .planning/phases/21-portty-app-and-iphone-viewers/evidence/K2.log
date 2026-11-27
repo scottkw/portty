@@ -1,0 +1,3 @@
+466 408822 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=ta
+467 408913 KEYDOWN KeyC key="c" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=ta
+468 409978 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=ta

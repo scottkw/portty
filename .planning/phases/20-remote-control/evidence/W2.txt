@@ -1,0 +1,16 @@
+Fonts panel over the window: cgwin owner=TextEdit pid=95992 layer=3 id=3079 @300,200 470x250;cgwin owner=TextEdit pid=95992 layer=0 id=3077 @106,86 66x20;cgwin owner=TextEdit pid=95992 layer=0 id=3074 @100,80 640x420;
+counters before: {"btn":12,"effect_hit":1,"hb":36,"key":158,"locked":1,"move":6,"not_held":2,"text":7,"unknown_code":6,"wheel":8,"window_unavailable":2}
+-- click through the viewer on the Fonts panel (global 500,300 = window point 0.625,0.5238)
+safari-click viewport=500,312
+counters after: {"btn":12,"effect_hit":2,"hb":36,"key":158,"locked":1,"move":7,"not_held":3,"raising":1,"text":7,"unknown_code":6,"wheel":8,"window_unavailable":2}
+selrange loc=0 len=0
+-- click through the viewer in the text area not covered by the panel (global 150,450)
+safari-click viewport=62,500
+counters after: {"btn":14,"effect_hit":3,"hb":36,"key":158,"locked":1,"move":8,"not_held":3,"raising":1,"text":7,"unknown_code":6,"wheel":8,"window_unavailable":2}
+selrange loc=5 len=0
+-- Cmd+Tab (pseudo-viewer, same gate) in the window share
+counters after: {"btn":14,"effect_hit":3,"hb":37,"key":160,"locked":1,"move":8,"not_held":4,"raising":1,"text":7,"unknown_code":6,"wheel":8,"window_chord":1,"window_unavailable":2}
+ax-front epoch=1795747623 front: TextEdit pid=95992
+nd and Return together. Streaming TextEdit — Untitled View Only Control
+{"btn":14,"covered":1,"effect_hit":4,"hb":37,"key":160,"locked":1,"move":9,"not_held":5,"raising":1,"text":7,"unknown_code":6,"wheel":8,"window_chord":1,"window_unavailable":2}
+selrange loc=5 len=0

@@ -1,0 +1,12 @@
+TextEdit window id=3097 (untouched: nothing types into it, no pointer over it)
+{"select_failed":""}
+idle 12 s on the display share, window untouched
+listener on, videoWidth=2560
+{"select_failed":"","surface":{"epoch":16,"h":420,"id":3097,"kind":"window","w":640},"elapsed_ms":642}
+select sent at 1795748008.70, answered at 1795748009.42
+Safari resize events (guest epoch s): [1795748009.54]
+Chrome title samples around the switch (guest epoch, title):
+1795748007.32 fd=1991 fw=2560 csp=0 st=streaming)
+1795748009.53 fd=2011 fw=1280 csp=0 st=streaming)
+daemon log lines since the idle started:
+2026/11/27 02:53:29.374681 INFO desktop: surface switched kind=window viewers=2

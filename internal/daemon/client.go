@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/scottkw/portty/internal/tailnet"
@@ -280,6 +281,82 @@ func (c *DaemonClient) ShutdownDaemon() error {
 		return fmt.Errorf("daemon API POST /shutdown: status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// errNotStale: the daemon answering is this build's, so a restart must not
+// stop it (a takeover moved the sessions to it).
+var errNotStale = errors.New("the daemon answering is this build's; not stopping it")
+
+// shutdownIfStale is a restart's /shutdown (DEBT-08): it reads /health and
+// posts /shutdown over one connection, so the post can only reach the process
+// whose version it checked, and it stops that process only if it is from
+// another build (errNotStale otherwise). Unlike ShutdownDaemon it never sends
+// on a second connection: a handoff that commits while the post waits out the
+// freeze drops the connection, and the sessions' new daemon serves the socket.
+// A dropped or unreadable connection is no answer and stops nothing.
+func (c *DaemonClient) shutdownIfStale() error {
+	tr, ok := c.http.Transport.(*http.Transport)
+	if !ok || tr.DialContext == nil {
+		return errors.New("daemon client has no socket dialer")
+	}
+	conn, err := tr.DialContext(c.reqCtx(), "unix", "daemon")
+	if err != nil {
+		return err
+	}
+	var used atomic.Bool
+	pinned := &http.Transport{
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			if used.Swap(true) {
+				return nil, errors.New("connection to the checked daemon closed")
+			}
+			return conn, nil
+		},
+		MaxConnsPerHost: 1,
+	}
+	defer func() {
+		pinned.CloseIdleConnections()
+		if !used.Load() {
+			conn.Close()
+		}
+	}()
+	hc := &http.Client{Transport: pinned, Timeout: 2 * time.Second}
+	send := func(method, path string) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(c.reqCtx(), method, c.base+path, nil)
+		if err != nil {
+			return nil, err
+		}
+		return hc.Do(req)
+	}
+	resp, err := send(http.MethodGet, "/health")
+	if err != nil {
+		return err
+	}
+	var h HealthResponse
+	err = json.NewDecoder(resp.Body).Decode(&h)
+	_, _ = io.Copy(io.Discard, resp.Body) // to EOF, or the transport drops the pinned connection
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	if !StaleVersion(h.Version) {
+		return errNotStale
+	}
+	deadline := time.Now().Add(frozenRetryBudget)
+	for {
+		resp, err := send(http.MethodPost, "/shutdown")
+		if err != nil {
+			return err
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") == "" {
+			return nil
+		}
+		if time.Now().Add(time.Second).After(deadline) {
+			return fmt.Errorf("daemon API POST /shutdown: status %d", resp.StatusCode)
+		}
+		time.Sleep(time.Second) // frozen for a handoff: ask the same process again
+	}
 }
 
 // answersAfterDrop reports whether, after err ended a /shutdown, a daemon
@@ -585,6 +662,54 @@ func (c *DaemonClient) ConnectPeer(host, session string) (PeerConnectResponse, e
 		return PeerConnectResponse{}, fmt.Errorf("decode response: %w", err)
 	}
 	return out, nil
+}
+
+// ConnectPeerDesktop asks the daemon to fetch host's standing desktop token into
+// its memory (POST /peers/desktop). The answer carries the peer's full MagicDNS
+// name and short name, never the token. Failures come back as *PeerConnectError.
+func (c *DaemonClient) ConnectPeerDesktop(host string) (PeerDesktopResponse, error) {
+	b, err := json.Marshal(PeerDesktopRequest{Host: host})
+	if err != nil {
+		return PeerDesktopResponse{}, err
+	}
+	resp, err := c.http.Post(c.base+"/peers/desktop", "application/json", bytes.NewReader(b))
+	if err != nil {
+		return PeerDesktopResponse{}, fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		var e PeerConnectErrorResponse
+		if json.Unmarshal(body, &e) == nil && e.Error != "" {
+			return PeerDesktopResponse{}, &PeerConnectError{Code: e.Error, Detail: e.Detail, Hosts: e.Hosts, Sessions: e.Sessions}
+		}
+		return PeerDesktopResponse{}, fmt.Errorf("daemon API POST /peers/desktop: status %d: %s", resp.StatusCode, body)
+	}
+	var out PeerDesktopResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return PeerDesktopResponse{}, fmt.Errorf("decode response: %w", err)
+	}
+	return out, nil
+}
+
+// PeerDesktopLink returns the browser link (base URL + /desktop/?cap=<token>) of
+// the desktop held for host (GET /peers/desktop/link). It makes no network call
+// on the daemon; an error means no token is held.
+func (c *DaemonClient) PeerDesktopLink(host string) (string, error) {
+	resp, err := c.http.Get(c.base + "/peers/desktop/link?host=" + url.QueryEscape(host))
+	if err != nil {
+		return "", fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("daemon API GET /peers/desktop/link: status %d: %s", resp.StatusCode, bytes.TrimSpace(body))
+	}
+	var out PeerDesktopLinkResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+	return out.URL, nil
 }
 
 // PortOpenError is a POST /peers/ports failure with a stable PortErr* code.

@@ -18,12 +18,15 @@ int pc_encode_synthetic(uintptr_t handle, int frames, int width, int height, int
 
 // Capture. Each returns 0 or an error code (SCK codes pass through, else OSStatus);
 // the char buffer receives a message. One stream per process: nativeMu serialises.
-int pc_stream_start(uintptr_t handle, int fps, int maxLong, int bitrate, double keyframeSecs, char *errbuf, int errlen);
+int pc_stream_start(uintptr_t handle, int kind, uint32_t id, int fps, int maxLong, int bitrate, double keyframeSecs, char *errbuf, int errlen);
+int pc_stream_select(int kind, uint32_t id, int maxLong, char *errbuf, int errlen);
+int pc_list_surfaces(char **json, int *n, char *errbuf, int errlen);
 void pc_stream_stop(void);
 int pc_encoder_force_keyframe(void);
 int pc_encoder_rebuild(int w, int h);
 int pc_encoder_hardware(void);
 int pc_still_capture(int maxLong, uint8_t **out, int *n, char *errbuf, int errlen);
+uint32_t pc_main_display_id(void);
 */
 import "C"
 
@@ -165,14 +168,16 @@ const stillCeiling = 15 * time.Second
 // Lock order: d.mu, then nativeMu.
 var nativeMu sync.Mutex
 
-// DisplaySource is the Source for the main display: ScreenCaptureKit capture
-// at Retina size into a VideoToolbox H.264 encoder. Start, Stop, Rebuild and
+// DisplaySource is the Source for a display or a window: ScreenCaptureKit
+// capture at Retina size into a VideoToolbox H.264 encoder. Start, Stop, Rebuild and
 // ForceKeyframe are serialised by mu per source and by nativeMu across
 // sources, because the ObjC side holds one stream per process.
 type DisplaySource struct {
 	mu      sync.Mutex
 	running bool
 	handle  cgo.Handle
+	surface Surface      // what is captured (running) or will be at the next Start
+	maxLong int          // the size cap of the running capture, for a switch
 	hw      atomic.Int32 // encoder readback: 1 hardware, 0 software, -1 unknown
 
 	emitMu sync.Mutex // guards closed and channel sends
@@ -183,25 +188,51 @@ type DisplaySource struct {
 
 var _ Source = (*DisplaySource)(nil)
 
-// NewDisplaySource returns a Source that captures the main display.
+// NewDisplaySource returns a Source that captures the main display until told otherwise.
 func NewDisplaySource() Source {
 	d := &DisplaySource{}
 	d.hw.Store(-1)
 	return d
 }
 
-// checkSurface accepts only the main display (ID 0); windows are Phase 20.
+// checkSurface accepts a display (ID 0 is the main display) or a window.
 func checkSurface(s Surface) error {
-	if s.Kind != SurfaceDisplay || s.ID != 0 {
+	if s.Kind != SurfaceDisplay && s.Kind != SurfaceWindow {
 		return ErrSurfaceUnsupported
 	}
 	return nil
 }
 
-// SelectSurface accepts the main display and refuses anything else.
-func (d *DisplaySource) SelectSurface(s Surface) error { return checkSurface(s) }
+// SelectSurface switches a running capture to the display or window s (the
+// encoder is rebuilt at the new size and the next unit is a keyframe), and on a
+// stopped source records s for the next Start. A failed switch leaves the old
+// surface streaming.
+func (d *DisplaySource) SelectSurface(s Surface) error {
+	if err := checkSurface(s); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.running {
+		d.surface = s
+		return nil
+	}
+	if testing.Testing() {
+		return ErrRefusedInTest
+	}
+	var msg [errBufLen]C.char
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
+	if rc := C.pc_stream_select(C.int(s.Kind), C.uint32_t(s.ID), C.int(d.maxLong), &msg[0], errBufLen); rc != 0 {
+		return mapSCKError(int(rc), C.GoString(&msg[0]))
+	}
+	d.surface = s
+	d.noteEncoder()
+	return nil
+}
 
-// Start captures the main display with cfg's fps, size cap, bitrate and
+// Start captures cfg.Surface (the surface recorded by SelectSurface when cfg
+// names none, else the main display) with cfg's fps, size cap, bitrate and
 // keyframe ceiling (zero values take the defaults). It blocks until the stream
 // is running or has failed; -3801 comes back as ErrPermissionDenied and -3815
 // as ErrNoDisplay. Stop ends the capture; ctx is only checked before starting.
@@ -219,6 +250,9 @@ func (d *DisplaySource) Start(ctx context.Context, cfg Config) error {
 	defer d.mu.Unlock()
 	if d.running {
 		return errors.New("screencap: display source already started")
+	}
+	if cfg.Surface != (Surface{}) {
+		d.surface = cfg.Surface
 	}
 	def := DefaultConfig()
 	if cfg.FPS <= 0 {
@@ -244,7 +278,7 @@ func (d *DisplaySource) Start(ctx context.Context, cfg Config) error {
 	var msg [errBufLen]C.char
 	nativeMu.Lock()
 	defer nativeMu.Unlock()
-	rc := C.pc_stream_start(C.uintptr_t(d.handle), C.int(cfg.FPS), C.int(cfg.MaxLongEdge), C.int(cfg.BitrateBps), C.double(cfg.KeyframeInterval.Seconds()), &msg[0], errBufLen)
+	rc := C.pc_stream_start(C.uintptr_t(d.handle), C.int(d.surface.Kind), C.uint32_t(d.surface.ID), C.int(cfg.FPS), C.int(cfg.MaxLongEdge), C.int(cfg.BitrateBps), C.double(cfg.KeyframeInterval.Seconds()), &msg[0], errBufLen)
 	if rc != 0 {
 		d.handle.Delete()
 		d.closeChannels()
@@ -254,6 +288,7 @@ func (d *DisplaySource) Start(ctx context.Context, cfg Config) error {
 		return mapSCKError(int(rc), C.GoString(&msg[0]))
 	}
 	d.running = true
+	d.maxLong = cfg.MaxLongEdge
 	d.noteEncoder()
 	return nil
 }
@@ -320,6 +355,9 @@ func (d *DisplaySource) Rebuild(width, height int) error {
 	d.noteEncoder()
 	return nil
 }
+
+// MainDisplayID is the main display's CGDirectDisplayID (0 if it cannot be read).
+func MainDisplayID() uint32 { return uint32(C.pc_main_display_id()) }
 
 // HardwareEncoder reports the readback taken after the encoder session was
 // created or last rebuilt. known is false when the encoder did not say. A
@@ -423,6 +461,46 @@ func CaptureStill(ctx context.Context, maxLongEdge int) ([]byte, error) {
 	select {
 	case r := <-done:
 		return r.jpeg, r.err
+	case <-ctx.Done():
+		// The goroutine finishes on its own, frees its buffer and fills the buffered channel.
+		return nil, ctx.Err()
+	}
+}
+
+// surfaceListCeiling is how long ListSurfaces waits for ScreenCaptureKit.
+const surfaceListCeiling = 15 * time.Second
+
+// ListSurfaces lists every display and the normal windows that can be shared,
+// in the order BuildSurfaces gives (main display first, windows by app and
+// title). It makes one ScreenCaptureKit request (15 s ceiling) and, like every
+// real bridge, refuses under testing.Testing(). Nothing it logs names a window.
+func ListSurfaces(ctx context.Context) ([]SurfaceInfo, error) {
+	if testing.Testing() {
+		return nil, ErrRefusedInTest
+	}
+	ctx, cancel := context.WithTimeout(ctx, surfaceListCeiling)
+	defer cancel()
+	type result struct {
+		list []SurfaceInfo
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		var out *C.char
+		var n C.int
+		var msg [errBufLen]C.char
+		rc := C.pc_list_surfaces(&out, &n, &msg[0], errBufLen)
+		if rc != 0 {
+			done <- result{err: mapSCKError(int(rc), C.GoString(&msg[0]))}
+			return
+		}
+		defer C.free(unsafe.Pointer(out))
+		list, err := decodeSurfaces(C.GoBytes(unsafe.Pointer(out), n))
+		done <- result{list: list, err: err}
+	}()
+	select {
+	case r := <-done:
+		return r.list, r.err
 	case <-ctx.Done():
 		// The goroutine finishes on its own, frees its buffer and fills the buffered channel.
 		return nil, ctx.Err()

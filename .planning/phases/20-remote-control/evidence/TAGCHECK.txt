@@ -1,0 +1,5 @@
+## tag check after the untagged build (host 03:20:30Z)
+health: {"status":"ok","version":"v20.9.4","api":5,"handoff":1,"launchd":true,"pid":99487}
+permissions: {"sr":true,"ax":true}
+POST /desktop/debug/vm20 -> HTTP 404
+route text in the installed binary: 0

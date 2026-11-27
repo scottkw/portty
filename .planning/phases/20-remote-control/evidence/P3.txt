@@ -1,0 +1,11 @@
+viewer page after the grant (A2 clears the chip with no viewer action): urn together. Streaming Main Display View Only Control
+permissions: {"sr":true,"ax":true}
+== probe pbread
+  set: types: public.utf8-plain-text,NSStringPboardType
+{"outcome":"ok","bytes":7,"text":"p3 text","error":"","elapsed_ms":1}
+== viewer Copy from Mac (menu opened and item picked with JS click, as P2)
+picked
+2026/11/27 03:17:28.373104 INFO desktop: clipboard viewer=5a2340e4 outcome=ok bytes=7
+windows other than the app's own after the reads:
+== System Settings: Privacy & Security panes mentioning paste/pasteboard
+(grep done)

@@ -28,8 +28,10 @@ let root: Root
 let seen: boolean[]
 let displays: string[]
 
+let probeOpts: Parameters<typeof useVisualViewportInset>[1]
+
 function Probe({ enabled }: { enabled: boolean }) {
-  const { keyboardUp } = useVisualViewportInset(enabled)
+  const { keyboardUp } = useVisualViewportInset(enabled, probeOpts)
   seen.push(keyboardUp)
   return null
 }
@@ -39,6 +41,7 @@ const setInner = (h: number) => Object.defineProperty(window, 'innerHeight', { v
 const kbUp = () => seen[seen.length - 1]
 
 beforeEach(() => {
+  probeOpts = undefined
   vi.useFakeTimers()
   vv = new StubVV()
   frames = []
@@ -202,5 +205,54 @@ describe('useVisualViewportInset', () => {
       flushFrames()
       expect(displays).toEqual([])
     })
+  })
+})
+
+describe('useVisualViewportInset with a root and field of its own (Phase 21-10)', () => {
+  let desk: HTMLElement
+  let field: HTMLInputElement
+  let deskDisplays: string[]
+
+  beforeEach(() => {
+    probeOpts = { rootSelector: '.desktop-view', fieldSelector: '.desktop-phone__input' }
+    desk = document.createElement('div')
+    desk.className = 'desktop-view'
+    deskDisplays = []
+    let d = ''
+    Object.defineProperty(desk.style, 'display', { get: () => d, set: (v: string) => { d = v; deskDisplays.push(v) }, configurable: true })
+    field = document.createElement('input')
+    field.className = 'desktop-phone__input'
+    document.body.append(desk, field)
+  })
+  afterEach(() => { desk.remove(); field.remove() })
+
+  it('sizes the chosen root and leaves .app alone', () => {
+    mount(true)
+    flushFrames()
+    expect(desk.style.getPropertyValue('--vv-height')).toBe('800px')
+    expect(appEl.style.getPropertyValue('--vv-height')).toBe('')
+    vv.height = 400
+    act(() => { vv.dispatchEvent(new Event('resize')) })
+    flushFrames()
+    expect(desk.style.getPropertyValue('--vv-height')).toBe('400px')
+    expect(kbUp()).toBe(true)
+  })
+
+  it('heals on the chosen field and ignores the terminal helper textarea', () => {
+    const helper = document.createElement('textarea')
+    helper.className = 'xterm-helper-textarea'
+    document.body.appendChild(helper)
+    mount(true)
+    flushFrames()
+    vv.height = 500
+    act(() => { helper.dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
+    act(() => { vi.advanceTimersByTime(500) })
+    expect(deskDisplays).toEqual([])
+    act(() => { field.dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
+    act(() => { vi.advanceTimersByTime(140) })
+    expect(deskDisplays).toEqual(['none'])
+    flushFrames()
+    expect(deskDisplays).toEqual(['none', ''])
+    helper.remove()
   })
 })

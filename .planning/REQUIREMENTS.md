@@ -32,18 +32,18 @@
 - [x] **DESK-02**: Desktop media stays on the tailnet: no STUN/TURN/cloud, no desktop socket binds a non-tailnet address, and the two real Macs reach each other on a direct tailnet path
 - [x] **DESK-03**: Viewer reconnects by itself after a network drop, Mac sleep/wake or Portty upgrade, showing "Reconnecting"
 - [x] **DESK-04**: Several viewers can watch one share at once; a new viewer gets a picture right away
-- [ ] **DESK-05**: Sharer picks a whole display or a single window to share
-- [ ] **DESK-06**: Displays can be switched mid-session
+- [x] **DESK-05**: Sharer picks a whole display or a single window to share
+- [x] **DESK-06**: Displays can be switched mid-session
 - [ ] **DESK-07**: Picture is sharp when the screen is still and smooth when moving, adapting to the network
 
 ### Control (DCTL)
 
-- [ ] **DCTL-01**: Viewer with control can move, click, scroll and drag; the pointer lands at the right spot on Retina displays
-- [ ] **DCTL-02**: Viewer can type, including shortcuts and non-ASCII text; no keys stay stuck after blur or disconnect
-- [ ] **DCTL-03**: Viewer can send Cmd+Tab, Cmd+Space and Lock Screen from a Send-keys menu; optional Ctrl→Cmd swap for non-Mac viewers
+- [x] **DCTL-01**: Viewer with control can move, click, scroll and drag; the pointer lands at the right spot on Retina displays
+- [x] **DCTL-02**: Viewer can type, including shortcuts and non-ASCII text; no keys stay stuck after blur or disconnect
+- [x] **DCTL-03**: Viewer can send Cmd+Tab, Cmd+Space and Lock Screen from a Send-keys menu; optional Ctrl→Cmd swap for non-Mac viewers
 - [ ] **DCTL-04**: With several controlling viewers, whoever typed last holds control for about 2 s; physical input at the Mac always wins
-- [ ] **DCTL-05**: In a window share, the window is raised when controlled and clicks are confined to it
-- [ ] **DCTL-06**: Viewer can copy text from and paste text to the shared Mac by explicit action; concealed (password-manager) items never sync
+- [x] **DCTL-05**: In a window share, the window is raised when controlled and clicks are confined to it
+- [x] **DCTL-06**: Viewer can copy text from and paste text to the shared Mac by explicit action; concealed (password-manager) items never sync
 - [ ] **DCTL-07**: Viewer hears the shared Mac's audio; it starts muted on the viewer with tap to unmute
 
 ### Viewers (DVWR)
@@ -114,15 +114,15 @@
 | DESK-02 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | DESK-03 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | DESK-04 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
-| DESK-05 | Phase 20 | Pending |
-| DESK-06 | Phase 20 | Pending |
+| DESK-05 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
+| DESK-06 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
 | DESK-07 | Phase 23 | Pending |
-| DCTL-01 | Phase 20 | Pending |
-| DCTL-02 | Phase 20 | Pending |
-| DCTL-03 | Phase 20 | Pending |
+| DCTL-01 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
+| DCTL-02 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
+| DCTL-03 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
 | DCTL-04 | Phase 22 | Pending |
-| DCTL-05 | Phase 20 | Pending |
-| DCTL-06 | Phase 20 | Pending |
+| DCTL-05 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md; key-gate limit M-05 accepted for Phase 20) |
+| DCTL-06 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
 | DCTL-07 | Phase 23 | Pending |
 | DVWR-01 | Phase 21 | Pending |
 | DVWR-02 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |

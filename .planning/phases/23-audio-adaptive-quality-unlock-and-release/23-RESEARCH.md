@@ -594,36 +594,38 @@ done >> soak.csv
 | A19 | `vnet` composes with Phase 19's UDP mux seam | Pattern 10 | Use the UDP shaper |
 | A20 | macos-latest remains arm64 for the life of the phase | Standard Stack | Build flag or runner label change |
 
-## Open Questions / User Decisions Needed
+## Open Questions / User Decisions Needed (RESOLVED)
 
-1. **Pointer input while locked (conflicts with Phase 20).**
+All ten items below were resolved after research (2026-11-25/26); each carries its resolution inline. Where CONTEXT and this file disagree, CONTEXT wins.
+
+1. **Pointer input while locked (conflicts with Phase 20).** RESOLVED: CONTEXT Claude's Discretion "After research": clicks are also blocked while the Mac is locked (matches Phase 20); the unlock box is the only input while locked. Owned by 23-05 (lock-time rule tests) and 23-07 (blocked-input notice).
    - What we know: U-2 lets own-account pointer pass while locked; 20-CONTEXT drops all pointer and key input while locked and says Phase 23 opens only a dedicated unlock path. The keyboard-only unlock path needs no pointer. The lock screen has an input-source menu that could change the layout.
    - What's unclear: whether any pointer need exists at the lock screen.
    - Recommendation: drop pointer input from every viewer while locked, matching Phase 20, and revisit only if a concrete need appears. Needs a user yes before planning edits U-2.
 
-2. **Audio reaches guests and muted viewers.**
+2. **Audio reaches guests and muted viewers.** RESOLVED: CONTEXT "After research": audio goes to every viewer that sees the picture, including guests and muted viewers; the share sheet says so. Owned by 23-01 and 23-06 Task 3.
    - What we know: Discretion says guests hear audio like the picture and there is no host switch; audio is sent whether or not the viewer unmutes.
    - Recommendation: keep the decision, add one line in the Share Desktop sheet ("Guests can hear this Mac's audio"). A per-viewer audio gate is optional later.
 
-3. **Unlock throttle (new).**
+3. **Unlock throttle (new).** RESOLVED: CONTEXT "After research": one try about every 5 s; 3 failures pause remote unlock for about 15 minutes. Owned by 23-04 Task 3.
    - Recommendation: one submit per about 5 s, and 3 consecutive failed submits pause Unlock for about 15 min. Tunable constants, daemon-side. Accept or drop.
 
-4. **Re-lock signal source.**
+4. **Re-lock signal source.** RESOLVED: CONTEXT "After research": if the someone-is-at-the-keyboard signal is unavailable, the Mac re-locks anyway (fail secure). Owned by 23-05 Task 2.
    - Recommendation: arm only after a Portty-performed unlock; use Phase 22's physical-input signal; if absent at execute time, re-lock anyway (fail secure). Confirm the fail-secure default.
 
-5. **Release-candidate dry run.**
+5. **Release-candidate dry run.** RESOLVED: CONTEXT "After research": a v2.0.0-rc.1 draft-release dry run is planned before the real release; pushing tags stays the user's call. Owned by 23-13 (rc.1 and rc.2) and 23-15.
    - Recommendation: push `v2.0.0-rc.1` (draft, never offered) and verify both DMGs before the real tag. The user pushes the tag.
 
-6. **Branch protection.**
+6. **Branch protection.** RESOLVED: moved to Phase 18.1 (complete); protection is applied and the build.yml context does not change in Phase 23.
    - What we know: none is applied today. Recommendation: update TESTING.md for the new context name; decide separately whether to enable protection at all.
 
-7. **Opus bitrate.** 64 kbps (CONTEXT) vs the spike's tested 96 kbps. Recommendation: keep 64 kbps, verify in a VM probe, fall back to 96 if the converter rejects it.
+7. **Opus bitrate.** RESOLVED: CONTEXT [Audio] Opus parameters (about 64 kbps); 23-01 Task 2 reads the bit rate back and falls back to 96 kbps if the converter refuses 64 kbps. 64 kbps (CONTEXT) vs the spike's tested 96 kbps. Recommendation: keep 64 kbps, verify in a VM probe, fall back to 96 if the converter rejects it.
 
-8. **Release notes mechanism.** Recommendation: add a `body_path` to the publish step so the "Apple Silicon and macOS 14 or later only" line cannot be forgotten.
+8. **Release notes mechanism.** RESOLVED: moved to Phase 18.1 (complete); release.yml already writes the "Apple Silicon and macOS 14 or later only." body, verified at 23-13 R-02. Recommendation: add a `body_path` to the publish step so the "Apple Silicon and macOS 14 or later only" line cannot be forgotten.
 
-9. **Phases 19-22 are unbuilt.** The plan text should name interfaces from the contract checklist and the planner should re-validate paths and symbols when those phases land. Recommendation: put the release workstream in the first wave since it does not depend on them.
+9. **Phases 19-22 are unbuilt.** RESOLVED (stale): Phases 19 and 20 are built; every Phase 23 plan opens with hard `test -f` SUMMARY guards and an assumptions table for whatever of Phases 20-22 is still unmerged at execution. The plan text should name interfaces from the contract checklist and the planner should re-validate paths and symbols when those phases land. Recommendation: put the release workstream in the first wave since it does not depend on them.
 
-10. **VM availability.** Both Tart VMs showed "running" in `tart list`, but `tart ip portty-test` printed "no IP address found" and `tart exec portty-test /usr/bin/sw_vers` timed out after 20 s (no observation; not investigated further). Every VM item above is unverified until the rig is healthy.
+10. **VM availability.** RESOLVED: gated at execution by the VM precondition hard gates in 23-09 and 23-10 (both VMs must answer over ssh without being started or stopped; a missing VM stops the plan for the user). Both Tart VMs showed "running" in `tart list`, but `tart ip portty-test` printed "no IP address found" and `tart exec portty-test /usr/bin/sw_vers` timed out after 20 s (no observation; not investigated further). Every VM item above is unverified until the rig is healthy.
 
 ## Environment Availability
 

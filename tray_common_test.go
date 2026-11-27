@@ -159,6 +159,34 @@ func TestBuildMenuItems_DesktopLine(t *testing.T) {
 	}
 }
 
+// TestDesktopTrayLine_WindowOnly pins the 20-UI-SPEC Surface E suffix: only a
+// single shared window with viewers, and never on a locked Mac.
+func TestDesktopTrayLine_WindowOnly(t *testing.T) {
+	st := func(state string, viewers int, kind string) daemon.DesktopStatusResponse {
+		r := daemon.DesktopStatusResponse{AlwaysAvailable: true, State: state, Viewers: viewers, Tailscale: "ok"}
+		if kind != "" {
+			r.Surface = &daemon.DesktopSurface{Kind: kind, Name: "Terminal — zsh"}
+		}
+		return r
+	}
+	tests := []struct {
+		name string
+		in   daemon.DesktopStatusResponse
+		want string
+	}{
+		{"window 1", st("streaming", 1, "window"), "Desktop: Streaming to 1 viewer, window only"},
+		{"window 2", st("streaming", 2, "window"), "Desktop: Streaming to 2 viewers, window only"},
+		{"window locked", st("locked", 2, "window"), "Desktop: Locked, streaming to 2 viewers"},
+		{"display", st("streaming", 2, "display"), "Desktop: Streaming to 2 viewers"},
+		{"no surface", st("streaming", 2, ""), "Desktop: Streaming to 2 viewers"},
+	}
+	for _, tt := range tests {
+		if got := desktopTrayLine(tt.in); got != tt.want {
+			t.Errorf("%s: desktopTrayLine = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
 // TestDesktopTrayLine pins every Go string against the 19-UI-SPEC Tray column.
 func TestDesktopTrayLine(t *testing.T) {
 	st := func(state string, viewers int, ts string) daemon.DesktopStatusResponse {

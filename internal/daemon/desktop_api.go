@@ -96,6 +96,18 @@ type DesktopStatusResponse struct {
 	Tailscale        string `json:"tailscale"`
 	Launchd          bool   `json:"launchd"`
 	Reason           string `json:"reason,omitempty"`
+	// Surface and Control are additive (Phase 20) and only set while viewers are
+	// connected: what is shared, and "ok" or "needs_accessibility" for remote
+	// control. Older readers ignore both.
+	Surface *DesktopSurface `json:"surface,omitempty"`
+	Control string          `json:"control,omitempty"`
+}
+
+// DesktopSurface is the shared surface as the host shows it: Kind is "display"
+// or "window", Name is the picker's name for it.
+type DesktopSurface struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
 }
 
 // DesktopRequest is the PUT /desktop body.
@@ -155,6 +167,16 @@ func (a *API) handleGetDesktop(w http.ResponseWriter, r *http.Request) {
 			resp.LapseClaimedSeq = st.LapseClaimedSeq
 			if st.Reason != "" {
 				resp.Reason = st.Reason
+			}
+			// The control state is measured by effect and only moves while a viewer
+			// sends input, so with nobody watching there is nothing true to report.
+			if st.Viewers > 0 {
+				info := mgr.CurrentSurface()
+				resp.Surface = &DesktopSurface{Kind: "display", Name: info.Name}
+				if info.Kind == screencap.SurfaceWindow {
+					resp.Surface.Kind = "window"
+				}
+				resp.Control, _ = mgr.ControlState()
 			}
 		}
 	}

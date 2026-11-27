@@ -23,7 +23,7 @@ const openPane = vi.mocked(App.OpenDesktopPermissionPane)
 
 const SR_HOWTO = 'Open System Settings, go to Privacy & Security, then Screen & System Audio Recording, and turn on Portty.'
 const AX_HOWTO =
-  'Open System Settings, go to Privacy & Security, then Device Control and Data Access (called Accessibility on earlier macOS), and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac.'
+  'Open System Settings, go to Privacy & Security, then Device Control and Data Access (called Accessibility on earlier macOS), and turn on Portty. Portty uses it to let your other devices control this Mac, and to tell a still screen from an unapproved one.'
 const NOTE_1 =
   'macOS 27.2 and later show a dialog the first time Portty captures the screen, asking whether it may bypass the system private window picker. Choose Allow. It does not come back.'
 const NOTE_2 =
@@ -265,8 +265,10 @@ describe('DesktopSetupSheet dialog', () => {
     const title = document.getElementById(dialog.getAttribute('aria-labelledby')!)
     expect(title?.textContent).toBe('Set Up Desktop Sharing')
     const text = dialog.textContent ?? ''
-    expect(text).toContain("Portty needs two permissions to show this Mac's screen. Grant them here, once, while you are at the Mac.")
+    expect(text).toContain("Portty needs two permissions to show and control this Mac's screen. Grant them here, once, while you are at the Mac.")
     expect(text).toContain("Checks that Portty can see this Mac's main display.")
+    // 20-VM-CHECKS PASTE_ROW: none, so no paste row ships (the VM raised no paste alert).
+    expect(text).not.toContain('Paste from Other Apps')
     expect(text).toContain(NOTE_1)
     expect(text).toContain(NOTE_2)
   })

@@ -30,12 +30,12 @@ export function tabLabel(tab: { name: string; sessionId: string; type?: string }
 }
 
 /**
- * A peer tab's '<host> › <session>' name split for display ("session · host"),
+ * A peer tab's (web-session or desktop) '<host> › <session>' name split for display ("session · host"),
  * or null for any other tab. The host is a single DNS label, so the first
  * separator is the right one even if the session name contains one.
  */
 export function peerTabParts(tab: { name: string; type?: string; peerHost?: string }): { host: string; session: string } | null {
-  if (tab.type !== 'web-session' || !tab.peerHost) return null
+  if ((tab.type !== 'web-session' && tab.type !== 'desktop') || !tab.peerHost) return null
   const i = tab.name.indexOf(' › ')
   return i === -1 ? null : { host: tab.name.slice(0, i), session: tab.name.slice(i + 3) }
 }
@@ -49,6 +49,14 @@ export function peerTabParts(tab: { name: string; type?: string; peerHost?: stri
  */
 export function webSessionTabId(sessionId: string, host?: string): string {
   return host ? `__websession__${host}/${sessionId}` : `__websession__${sessionId}`
+}
+
+/**
+ * DVWR-01: a peer's Desktop tab id. One per peer, keyed by the connect host (MagicDNS name,
+ * else hostname); the 'desktop:' prefix cannot collide with a `__websession__` or terminal id.
+ */
+export function desktopTabId(connectHost: string): string {
+  return `desktop:${connectHost}`
 }
 
 /** IN-05: the session id of a hostless web-session tab id; null for a peer tab's `host/id`. */

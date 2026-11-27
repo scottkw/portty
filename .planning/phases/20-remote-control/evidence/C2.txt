@@ -1,0 +1,141 @@
+## $ p20-rig.sh front TextEdit  (host 02:30:33Z)
+front: TextEdit pid=93184
+
+## $ p20-rig.sh probe control  (host 02:30:37Z)
+{"control_input":"ok","control_window":"","counters":{"btn":10,"hb":14,"key":126,"move":5,"unknown_code":6},"elapsed_ms":0,"op":"control","pseudo_counters":{"hb":14,"key":32}}
+
+
+## $ p20-rig.sh safari-menu Send Keys  (host 02:30:40Z)
+null
+safari-menu: clicked [Send Keys]
+
+## $ p20-rig.sh safari-menu Lock Screen…  (host 02:30:47Z)
+{"error":"unknown command","message":"The command 'POST /session/B8FE2519-52E8-49E0-A0AD-CD0CCA03C417/element/no' was not found.","stacktrace":""}
+safari-menu: clicked [Lock Screen…]
+
+## $ p20-rig.sh safari-js return document.body.innerText.slice(0,400)  (host 02:30:54Z)
+While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together.
+Streaming
+Main Display
+View Only
+Control
+Cmd+Tab
+Cmd+Space
+Lock Screen…
+Ctrl+Cmd+Q
+
+## $ p20-rig.sh safari-menu Lock Screen  (host 02:30:57Z)
+{"error":"unknown command","message":"The command 'POST /session/B8FE2519-52E8-49E0-A0AD-CD0CCA03C417/element/no' was not found.","stacktrace":""}
+safari-menu: clicked [Lock Screen]
+
+## $ p20-rig.sh p19 desk-poll 5  (host 02:31:04Z)
+p19-desk epoch=1795746667 {"state":"streaming","viewers":1,"reason":null}
+p19-desk epoch=1795746668 {"state":"streaming","viewers":1,"reason":null}
+p19-desk epoch=1795746669 {"state":"streaming","viewers":1,"reason":null}
+p19-desk epoch=1795746670 {"state":"streaming","viewers":1,"reason":null}
+p19-desk epoch=1795746671 {"state":"streaming","viewers":1,"reason":null}
+--- daemon.log lines since the start
+
+## $ p20-rig.sh safari-menu Lock Screen…  (host 02:31:21Z)
+null
+safari-menu: clicked [Lock Screen…]
+
+## $ p20-rig.sh safari-js return document.body.innerText.slice(0,500)  (host 02:31:29Z)
+While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together.
+Streaming
+Main Display
+View Only
+Control
+Lock This Mac
+
+The Mac will lock and stay locked until someone unlocks it at the Mac. Remote unlock isn't available yet.
+
+Don't Lock
+Lock Screen
+
+## $ p20-rig.sh probe control  (host 02:31:37Z)
+{"control_input":"ok","control_window":"","counters":{"btn":10,"hb":14,"key":126,"move":5,"unknown_code":6},"elapsed_ms":0,"op":"control","pseudo_counters":{"hb":14,"key":32}}
+
+
+## $ p20-rig.sh safari-menu Lock Screen  (host 02:31:40Z)
+null
+safari-menu: clicked [Lock Screen]
+
+## $ p20-rig.sh p19 desk-poll 5  (host 02:31:46Z)
+p19-desk epoch=1795746710 {"state":"locked","viewers":1,"reason":null}
+p19-desk epoch=1795746711 {"state":"locked","viewers":1,"reason":null}
+p19-desk epoch=1795746712 {"state":"locked","viewers":1,"reason":null}
+p19-desk epoch=1795746714 {"state":"locked","viewers":1,"reason":null}
+p19-desk epoch=1795746715 {"state":"locked","viewers":1,"reason":null}
+--- daemon.log lines since the start
+
+## $ p20-rig.sh probe control  (host 02:31:56Z)
+{"control_input":"ok","control_window":"","counters":{"btn":10,"hb":14,"key":132,"move":5,"unknown_code":6},"elapsed_ms":0,"op":"control","pseudo_counters":{"hb":14,"key":32}}
+
+
+## $ p20-rig.sh safari-js return JSON.stringify({text:document.body.innerText.slice(0,300), active:document.activeElement.tagName+"."+document.activeElement.className})  (host 02:32:08Z)
+{"text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together.\nLocked\nMain Display\nView Only\nControl\nLockedLockedLockedLocked","active":"BUTTON.desktop-bar__item"}
+
+## $ p20-rig.sh safari-type abc  (host 02:32:11Z)
+
+## $ p20-rig.sh probe control  (host 02:32:16Z)
+{"control_input":"ok","control_window":"","counters":{"btn":10,"hb":14,"key":132,"move":5,"unknown_code":6},"elapsed_ms":0,"op":"control","pseudo_counters":{"hb":14,"key":32}}
+
+
+## $ p20-rig.sh probe key {"code":"KeyA","down":true}  (host 02:32:19Z)
+{"counters":{"btn":10,"hb":15,"key":132,"locked":1,"move":5,"unknown_code":6},"elapsed_ms":12,"op":"key"}
+
+
+## $ p20-rig.sh probe key {"code":"KeyA","down":false}  (host 02:32:22Z)
+{"counters":{"btn":10,"hb":16,"key":132,"locked":1,"move":5,"not_held":1,"unknown_code":6},"elapsed_ms":14,"op":"key"}
+
+
+## $ p20-rig.sh probe control  (host 02:32:25Z)
+{"control_input":"ok","control_window":"","counters":{"btn":10,"hb":16,"key":132,"locked":1,"move":5,"not_held":1,"unknown_code":6},"elapsed_ms":0,"op":"control","pseudo_counters":{"hb":16,"key":32,"locked":1,"not_held":1}}
+
+
+## $ p20-rig.sh ax find loginwindow field  (host 02:32:28Z)
+hit role=AXTextField title=[] desc=[] @573,634 133x18
+
+## $ p20-rig.sh ax-front  (host 02:32:31Z)
+ax-front epoch=1795746754 front: loginwindow pid=172
+cgwin owner=loginwindow pid=172 layer=2004 id=2969 @0,0 1280x720
+cgwin owner=loginwindow pid=172 layer=2001 id=2968 @-15000,-15000 30000x30000
+cgwin owner=TextEdit pid=93184 layer=0 id=2903 @100,80 640x420
+cgwin owner=Install Command Line Developer  pid=15855 layer=0 id=2296 @409,160 461x203
+cgwin owner=WindowManager pid=372 layer=-2147483624 id=12 @0,0 1280x720
+cgwin owner=Wallpaper pid=377 layer=-2147483625 id=593 @0,0 1280x720
+
+## $ p20-rig.sh ax find loginwindow textfield  (host 02:32:51Z)
+hit role=AXTextField title=[] desc=[] valueChars=0 @573,634 133x18
+
+## $ p20-rig.sh p19 unlock  (host 02:32:54Z)
+unlock: typed at guest epoch 1795746786; GET /desktop locked=false
+
+## $ p20-rig.sh p19 desk-poll 3  (host 02:33:08Z)
+p19-desk epoch=1795746791 {"state":"streaming","viewers":1,"reason":null}
+p19-desk epoch=1795746792 {"state":"streaming","viewers":1,"reason":null}
+p19-desk epoch=1795746793 {"state":"streaming","viewers":1,"reason":null}
+--- daemon.log lines since the start
+
+## $ p20-rig.sh ax-front  (host 02:33:14Z)
+ax-front epoch=1795746797 front: TextEdit pid=93184
+cgwin owner=TextEdit pid=93184 layer=0 id=2903 @100,80 640x420
+cgwin owner=Install Command Line Developer  pid=15855 layer=0 id=2296 @409,160 461x203
+cgwin owner=WindowManager pid=372 layer=-2147483624 id=12 @0,0 1280x720
+cgwin owner=Wallpaper pid=377 layer=-2147483625 id=593 @0,0 1280x720
+
+safari-menu: click at guest epoch 1795746846.68
+1795746847.26 false
+1795746847.62 true
+## $ p20-rig.sh p19 unlock  (host 02:34:13Z)
+unlock: typed at guest epoch 1795746865; GET /desktop locked=false
+
+## $ p20-rig.sh p19 desk-poll 2  (host 02:34:28Z)
+p19-desk epoch=1795746870 {"state":"streaming","viewers":1,"reason":null}
+p19-desk epoch=1795746872 {"state":"streaming","viewers":1,"reason":null}
+--- daemon.log lines since the start
+
+## $ p20-rig.sh front TextEdit  (host 02:34:33Z)
+front: TextEdit pid=93184
+

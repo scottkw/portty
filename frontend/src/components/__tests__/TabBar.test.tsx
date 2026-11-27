@@ -714,3 +714,74 @@ describe('TabBar: single-tab class (Portty 14-11)', () => {
     expect(bar({ tabs: one, activeId: web.id }).classList.contains('tab-bar--single')).toBe(false)
   })
 })
+
+// Phase 21-04 (DVWR-01): the Desktop tab's entry chrome.
+describe('TabBar desktop tab (DVWR-01)', () => {
+  it('a desktop tab renders Desktop · host with the desktop icon and a Close Desktop · host button', () => {
+    const { container, root } = renderTabBarWithTabs({
+      tabs: [{ id: 'desktop:office-air.example.ts.net', name: 'office-air › Desktop', sessionId: 'desktop:office-air.example.ts.net', type: 'desktop', peerHost: 'office-air.example.ts.net' }],
+      activeId: 'desktop:office-air.example.ts.net',
+    })
+    const tab = container.querySelector('[role="tab"]')!
+    expect(tab.textContent).toBe('Desktop · office-air')
+    expect(tab.querySelector('.tab__host')?.textContent).toBe(' · office-air')
+    expect(tab.querySelector('svg.tab__remote-icon')?.getAttribute('aria-hidden')).toBe('true')
+    expect(tab.querySelector('.peer-dot')).not.toBeNull()
+    expect(tab.closest('.tab')?.getAttribute('title')).toBe('Desktop · office-air')
+    expect(tab.closest('.tab')?.querySelector('.tab__close')?.getAttribute('aria-label')).toBe('Close Desktop · office-air')
+    act(() => root.unmount())
+    container.remove()
+  })
+})
+
+describe('TabBar: the Desktop tab toolbar label (Portty 21-08)', () => {
+  const label = { line1: 'On office-air', line2: 'Click the picture to control', controlling: false, tooltip: 'While you control office-air, every key goes to that Mac.' }
+  const desktopTabs = [
+    { id: 'shell', name: 'shell', sessionId: 'shell' },
+    { id: 'desktop:office-air.ts.net', name: 'office-air › Desktop', sessionId: 'desktop:office-air.ts.net', type: 'desktop' as const, peerHost: 'office-air', connectHost: 'office-air.ts.net' },
+  ]
+  let container: HTMLDivElement
+  let root: ReturnType<typeof createRoot>
+  afterEach(() => {
+    flushSync(() => root.unmount())
+    container.remove()
+  })
+
+  it('an active Desktop tab shows the two-line status label with its tooltip, described by a hidden copy of it', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs: desktopTabs, activeId: 'desktop:office-air.ts.net', desktopLabel: label }))
+    const chip = container.querySelector<HTMLElement>('.toolbar-chip.toolbar-chip--desktop')!
+    expect(chip).not.toBeNull()
+    expect(chip.getAttribute('role')).toBe('status')
+    expect(chip.getAttribute('aria-live')).toBe('polite')
+    expect(chip.getAttribute('title')).toBe(label.tooltip)
+    expect(chip.hasAttribute('data-control')).toBe(false)
+    expect(chip.textContent).toBe('On office-airClick the picture to control')
+    const desc = container.querySelector<HTMLElement>(`#${chip.getAttribute('aria-describedby')}`)
+    expect(desc?.textContent).toBe(label.tooltip)
+    expect(desc?.classList.contains('visually-hidden')).toBe(true)
+  })
+
+  it('while controlling the chip carries data-control on', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      tabs: desktopTabs,
+      activeId: 'desktop:office-air.ts.net',
+      desktopLabel: { ...label, line1: 'Controlling office-air', line2: 'Release: Ctrl+Option+Cmd+Shift+Return', controlling: true },
+    }))
+    expect(container.querySelector('.toolbar-chip--desktop')?.getAttribute('data-control')).toBe('on')
+  })
+
+  it('no label for a local tab, or for a Desktop tab that is not active', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs: desktopTabs, activeId: 'shell', desktopLabel: label }))
+    expect(container.querySelector('.toolbar-chip--desktop')).toBeNull()
+  })
+
+  it('a web-session tab still shows the plain On <host> chip', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      tabs: [{ id: '__websession__p', name: 'home-air › s', sessionId: 's', type: 'web-session', peerHost: 'home-air' }],
+      activeId: '__websession__p',
+      desktopLabel: null,
+    }))
+    expect(container.querySelector('.toolbar-chip')?.textContent).toBe('On home-air')
+    expect(container.querySelector('.toolbar-chip--desktop')).toBeNull()
+  })
+})

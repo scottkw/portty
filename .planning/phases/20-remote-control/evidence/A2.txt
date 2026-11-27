@@ -1,0 +1,13 @@
+== revoke again and flip the state with three viewer moves (as A1)
+Successfully reset Accessibility approval status for app.portty.Portty
+control_input before the grant: needs_accessibility; permissions {"sr":true,"ax":false}
+== grant in System Settings (office, inside the VM) while polling every 0.5 s; the viewer is left alone
+granted: Modify Settings pressed at 1795749370.5
+no match
+1795749358.5 perm={"sr":true,"ax":false} input=needs_accessibility
+1795749361.1 perm={"sr":true,"ax":true} input=needs_accessibility
+1795749365.1 perm={"sr":true,"ax":true} input=ok
+1795749366.8 perm= input=ok
+1795749369.6 perm={"sr":true,"ax":true} input=ok
+1795749372.4 perm= input=ok
+1795749375.6 perm={"sr":true,"ax":true} input=ok

@@ -93,7 +93,11 @@ func desktopTrayLine(st daemon.DesktopStatusResponse) string {
 		}
 		return "Desktop: Locked"
 	case "streaming":
-		return "Desktop: Streaming to " + viewerCount(st.Viewers)
+		line := "Desktop: Streaming to " + viewerCount(st.Viewers)
+		if st.Viewers > 0 && st.Surface != nil && st.Surface.Kind == "window" {
+			line += ", window only"
+		}
+		return line
 	case "idle":
 		return "Desktop: Ready"
 	}
