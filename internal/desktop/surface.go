@@ -319,7 +319,8 @@ func (m *Manager) handleSelect(ctx context.Context, v *viewer, kind string, id u
 // that is not running only records the choice). A failed switch keeps the old
 // surface and still tells every viewer, with the new epoch, so nobody stays
 // paused. A non-empty reason marks a fallback: the old surface is gone, so the
-// new one is recorded even when the switch fails (a restart then starts on it).
+// new one is recorded even when the switch fails, and the source is restarted
+// on it (M-01).
 func (m *Manager) applySurface(ctx context.Context, sel screencap.Surface, info screencap.SurfaceInfo, reason string) error {
 	m.bumpEpoch()
 	m.releaseHeldAll("surface")
@@ -332,10 +333,15 @@ func (m *Manager) applySurface(ctx context.Context, sel screencap.Surface, info 
 		m.setSurface(sel, info)
 	}
 	m.mu.Unlock()
-	if err != nil {
+	switch {
+	case err != nil && reason != "":
+		// The source is still on the vanished surface: restart it on the one
+		// just recorded, so the picture and the input mapping agree.
+		slog.Warn("desktop: fallback switch failed, restarting the source", "kind", kindName(sel.Kind), "err", err)
+		_ = m.restartSource() // a failure was classified and delays the next try
+	case err != nil:
 		slog.Warn("desktop: surface switch failed", "kind", kindName(sel.Kind), "err", err)
-		reason = ""
-	} else {
+	default:
 		slog.Info("desktop: surface switched", "kind", kindName(sel.Kind), "viewers", m.Viewers())
 	}
 	m.broadcast(ctx, m.surfaceMsg(reason))

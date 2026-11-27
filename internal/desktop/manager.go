@@ -773,8 +773,18 @@ func (m *Manager) startSource() error {
 	sctx, cancel := context.WithCancel(m.ctx)
 	now := m.d.Now().Round(0)
 	cfg := m.d.SourceConfig
-	cfg.Surface = m.surfaceSel() // a restart keeps the surface; a first start after the last viewer left is the main display
+	// A restart keeps the surface; a first start after the last viewer left is the main display.
+	var cfgInfo screencap.SurfaceInfo
+	cfg.Surface, cfgInfo = m.currentSurface()
 	err := src.Start(sctx, cfg)
+	resync := false
+	defer func() {
+		// After mu is released: viewers learn what the stream really shows.
+		if resync {
+			m.releaseHeldAll("surface")
+			m.broadcast(m.ctx, m.surfaceMsg(""))
+		}
+	}()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
@@ -792,7 +802,12 @@ func (m *Manager) startSource() error {
 	// A select that ran while this start was in flight only recorded its choice.
 	if cur := m.surfaceSel(); cur != cfg.Surface {
 		if err := src.SelectSurface(cur); err != nil {
+			// The stream shows cfg.Surface: record it, so input never maps onto
+			// a surface the viewers cannot see (M-01).
 			slog.Warn("desktop: surface switch after start failed", "err", err)
+			m.setSurface(cfg.Surface, cfgInfo)
+			m.bumpEpoch()
+			resync = true
 		}
 	}
 	m.src, m.srcStop = src, cancel
