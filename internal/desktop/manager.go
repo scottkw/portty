@@ -7,11 +7,13 @@
 //
 //	viewer to server: hello {v, caps} first, then offer {sdp} (complete,
 //	non-trickle), and ping {n} at any time.
-//	server to viewer: hello {v, viewer, caps}, answer {sdp}, state {state,
-//	viewers, locked}, size {w, h}, pong {n}, error {code}.
+//	server to viewer: hello {v, viewer, caps, rights}, answer {sdp}, state
+//	{state, viewers, locked}, size {w, h}, pong {n}, error {code}.
 //
 // Unknown caps keys and unknown message types after the offer are ignored, so
-// Phase 20 adds an "input" capability without a version bump. Close codes:
+// Phase 20 adds an "input" capability (and the rights map) without a version
+// bump; testdata/signal-v1.jsonl and input-v1.jsonl freeze the v1 additions.
+// Close codes:
 // 4401 token rejected, 4410 desktop off, 1012 server restarting.
 package desktop
 
@@ -111,6 +113,8 @@ type msgHello struct {
 	V      int            `json:"v"`
 	Viewer string         `json:"viewer,omitempty"`
 	Caps   map[string]int `json:"caps,omitempty"`
+	// Rights is what this viewer may do (control, clipboard, surface).
+	Rights map[string]bool `json:"rights,omitempty"`
 }
 
 type msgAnswer struct {
@@ -541,7 +545,17 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		return
 	}
 	inputCap := in.Caps["input"]
-	if err := send(ctx, c, msgHello{Type: typeHello, V: ProtocolVersion, Viewer: id, Caps: map[string]int{"video": 1}}); err != nil {
+	rights := RightsOwnAccount
+	hello := msgHello{
+		Type: typeHello, V: ProtocolVersion, Viewer: id,
+		Caps: map[string]int{"video": 1, "input": 1},
+		Rights: map[string]bool{
+			"control":   rights&RightsControl != 0,
+			"clipboard": rights&RightsClipboard != 0,
+			"surface":   rights&RightsSurface != 0,
+		},
+	}
+	if err := send(ctx, c, hello); err != nil {
 		return
 	}
 
@@ -577,7 +591,7 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		}
 	}
 
-	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: RightsViewOnly, JoinedAt: m.d.Now()}, ws: c, inputCap: inputCap, in: &viewerInput{}}
+	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now()}, ws: c, inputCap: inputCap, in: &viewerInput{}}
 	pc, answerSDP, err := m.answer(ctx, v, offer)
 	if err != nil {
 		slog.Warn("desktop: offer failed", "viewer", id[:8])

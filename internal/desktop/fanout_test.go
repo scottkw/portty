@@ -199,8 +199,8 @@ func TestFanout_ThreeViewersEachGetKeyframe(t *testing.T) {
 		t.Fatalf("ViewerList has %d entries, want 3", got)
 	}
 	for _, rec := range env.mgr.ViewerList() {
-		if rec.Rights != desktop.RightsViewOnly || rec.ID == "" || rec.JoinedAt.IsZero() {
-			t.Errorf("viewer record %+v, want an ID, view-only rights and a join time", rec)
+		if rec.Rights != desktop.RightsOwnAccount || rec.ID == "" || rec.JoinedAt.IsZero() {
+			t.Errorf("viewer record %+v, want an ID, own-account rights and a join time", rec)
 		}
 	}
 }
@@ -272,7 +272,7 @@ func TestFanout_SizeEventOnRebuild(t *testing.T) {
 }
 
 // TestFanout_DataChannelHook: a data channel the viewer creates before its
-// offer reaches the server's hook with the viewer's identity (view-only); with
+// offer reaches the server's hook with the viewer's identity (own-account); with
 // no hook the Phase 19 default closes it. The answer carries the 8192-byte
 // SCTP message limit.
 func TestFanout_DataChannelHook(t *testing.T) {
@@ -305,8 +305,8 @@ func TestFanout_DataChannelHook(t *testing.T) {
 	select {
 	case g := <-hooked:
 		list := env.mgr.ViewerList()
-		if g.label != "input" || g.v.Rights != desktop.RightsViewOnly || len(list) != 1 || g.v.ID != list[0].ID {
-			t.Errorf("hook got %+v, viewer list %+v; want label input, view-only, the connected viewer", g, list)
+		if g.label != "input" || g.v.Rights != desktop.RightsOwnAccount || len(list) != 1 || g.v.ID != list[0].ID {
+			t.Errorf("hook got %+v, viewer list %+v; want label input, own-account rights, the connected viewer", g, list)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the data-channel hook was not called")
@@ -339,10 +339,10 @@ func TestFanout_HelloCapsForwardCompatible(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = c.CloseNow() }()
-	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1}})
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1, "teleport": 1}})
 	caps, _ := readType(ctx, t, c, "hello")["caps"].(map[string]any)
-	if len(caps) != 1 || caps["video"] != float64(1) {
-		t.Errorf("hello reply caps %v, want exactly {video:1}", caps)
+	if len(caps) != 2 || caps["video"] != float64(1) || caps["input"] != float64(1) {
+		t.Errorf("hello reply caps %v, want exactly {video:1, input:1} (the unknown teleport cap is not echoed)", caps)
 	}
 
 	c2, _, err := env.dial(ctx, tok)
@@ -352,6 +352,37 @@ func TestFanout_HelloCapsForwardCompatible(t *testing.T) {
 	defer func() { _ = c2.CloseNow() }()
 	writeJSON(ctx, t, c2, map[string]any{"type": "hello", "v": 2})
 	expectRejected(ctx, t, c2, "version")
+}
+
+// TestHello_RightsAndInputCap: a viewer reached through the same-user /desktop/
+// route is told caps {video:1, input:1} and rights {control, clipboard, surface}
+// all true, and the daemon records it as an own-account viewer.
+func TestHello_RightsAndInputCap(t *testing.T) {
+	env := newTracerServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	tok := env.token(t, "g1")
+
+	c, _, err := env.dial(ctx, tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.CloseNow() }()
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1}})
+	hello := readType(ctx, t, c, "hello")
+	caps, _ := hello["caps"].(map[string]any)
+	if len(caps) != 2 || caps["video"] != float64(1) || caps["input"] != float64(1) {
+		t.Errorf("hello caps %v, want exactly {video:1, input:1}", caps)
+	}
+	rights, _ := hello["rights"].(map[string]any)
+	if len(rights) != 3 || rights["control"] != true || rights["clipboard"] != true || rights["surface"] != true {
+		t.Errorf("hello rights %v, want exactly {control, clipboard, surface} all true", rights)
+	}
+
+	env.join(ctx, t, tok)
+	if list := env.mgr.ViewerList(); len(list) != 1 || list[0].Rights != desktop.RightsOwnAccount {
+		t.Errorf("ViewerList %+v, want one viewer with RightsOwnAccount", list)
+	}
 }
 
 // TestFanout_ViewerCap: the ninth viewer is closed with 4429 "full", before a

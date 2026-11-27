@@ -9,13 +9,25 @@ import (
 // ViewerID names one connected viewer for the life of its signalling socket.
 type ViewerID string
 
-// Rights is what a viewer may do beyond watching. Phase 19 only has view-only;
-// Phase 20 adds input rights behind a host-side check, so the field exists
-// before any code consults it.
+// Rights is what a viewer may do beyond watching, as a bit set. A viewer
+// reached through the same-user /desktop/ route (the own-account viewer) gets
+// RightsOwnAccount. Guests of a later phase start at RightsViewOnly and gain
+// bits at runtime: rights are daemon runtime state, never token claims.
 type Rights uint8
 
-// RightsViewOnly is the only right Phase 19 grants.
+// RightsViewOnly is no right at all: watching only.
 const RightsViewOnly Rights = 0
+
+// The rights bits, as announced to a viewer in the hello's rights map.
+const (
+	RightsControl   Rights = 1 << 0 // pointer, keyboard and text input
+	RightsClipboard Rights = 1 << 1 // copy from and paste to the Mac
+	RightsSurface   Rights = 1 << 2 // choose which display or window is shared
+
+	// RightsOwnAccount is everything: own-account viewers have full control
+	// with no grant step.
+	RightsOwnAccount = RightsControl | RightsClipboard | RightsSurface
+)
 
 // Viewer is the identity and rights record the Manager keeps per connected
 // viewer. Later phases read it through Manager.ViewerList.
