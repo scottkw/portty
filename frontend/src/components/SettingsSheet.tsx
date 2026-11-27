@@ -88,7 +88,7 @@ export const DESKTOP_POLL_MS = 2000
 export const COPIED_MS = 2000
 
 const DESKTOP_OFF_DESCRIPTION =
-  "View and control this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
+  "View and control this Mac's screen, and hear its sound, from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
 const DESKTOP_FOOTNOTE =
   'While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording again about once a month, at the Mac. The first time Chrome opens the link, it may ask to find devices nearby. Choose Allow.'
 const COPY_FAILED = "Couldn't copy the link. Try again."

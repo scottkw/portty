@@ -101,6 +101,7 @@ describe('Settings Row 6: Share Desktop', () => {
     expect(r).not.toBeNull()
     expect(group().lastElementChild).toBe(r)
     expect(r.querySelector('.settings-row__description')!.textContent).toContain(copy.SETTINGS_ROW_DESCRIPTION)
+    expect(r.querySelector('.settings-row__description')!.textContent).toContain('Show your screen and sound to someone')
   })
 
   it('Share Desktop… opens the sheet', async () => {
