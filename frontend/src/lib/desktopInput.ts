@@ -296,6 +296,17 @@ export function createDesktopInput(
     return (ev.shiftKey ? 1 : 0) | (ctrl ? 2 : 0) | (ev.altKey ? 4 : 0) | (meta ? 8 : 0)
   }
 
+  /** macOS drops the keyup of a key released while Cmd is down, so Cmd going down or up lets go of held non-modifiers. */
+  function releaseUnderCmd(ev: KeyboardEvent) {
+    if (ev.code !== 'MetaLeft' && ev.code !== 'MetaRight') return
+    for (const [code, sent] of forwarded) {
+      if (MODIFIER_CODES.has(code)) continue
+      forwarded.delete(code)
+      send(encodeKey(sent, false, false, maskOf(ev, sent !== code), ev.getModifierState('CapsLock'), '', Math.round(now())))
+    }
+    syncHeartbeat()
+  }
+
   function onKeyDown(ev: KeyboardEvent) {
     if (!control) return
     if (isReleaseChord(ev)) {
@@ -307,6 +318,7 @@ export function createDesktopInput(
     // The input method owns it: Safari fires compositionend before the committing keydown, so only 229 is reliable.
     if (ev.isComposing || ev.keyCode === 229 || ev.key === 'Dead') return
     ev.preventDefault()
+    releaseUnderCmd(ev)
     if (!canSend()) return
     const swapped = swapOn
     const sent = swapped ? swapCode(ev.code) : ev.code
@@ -325,6 +337,7 @@ export function createDesktopInput(
 
   function onKeyUp(ev: KeyboardEvent) {
     if (!control) return
+    releaseUnderCmd(ev)
     const sent = forwarded.get(ev.code)
     if (sent === undefined) return
     forwarded.delete(ev.code)
