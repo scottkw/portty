@@ -340,7 +340,7 @@ describe('two fingers: scroll, pinch zoom, pan-follow, reset', () => {
     client().sendInput.mockClear()
     const [a, b] = pinchTo(300)
     expect(video().style.transform).toBe('translate(-1000px, -500px) scale(3)')
-    expect(video().style.transformOrigin).toBe('0px 0px')
+    expect(video().style.transformOrigin).toBe('0 0')
     expect(video().style.willChange).toBe('transform')
     touch('touchend', [b], [a])
     expect(video().style.willChange).toBe('')
@@ -355,7 +355,9 @@ describe('two fingers: scroll, pinch zoom, pan-follow, reset', () => {
   })
 
   it('two two-finger taps return the video to 1x', () => {
-    pinchTo(200)
+    const [pa, pb] = pinchTo(200)
+    touch('touchend', [pb], [pa])
+    touch('touchend', [], [pb])
     expect(video().style.transform).not.toBe('')
     const tapTwo = () => {
       const [a, b] = two(480, 250, 520, 250)
@@ -382,8 +384,8 @@ describe('two fingers: scroll, pinch zoom, pan-follow, reset', () => {
   it('a rotation resets the zoom to 1x', () => {
     pinchTo(200)
     expect(video().style.transform).not.toBe('')
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 844 })
-    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 390 })
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 })
     act(() => {
       window.dispatchEvent(new Event('resize'))
     })
