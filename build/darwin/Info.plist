@@ -68,5 +68,7 @@
             <key>NSAllowsLocalNetworking</key>
             <true/>
         </dict>
+        <key>NSLocalNetworkUsageDescription</key>
+        <string>Portty needs this to show your other Mac's desktop in a tab.</string>
     </dict>
 </plist>
