@@ -162,6 +162,10 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   let pc: RTCPeerConnection | null = null
   let hadHello = false
   let hasPicture = false
+  // Per peer connection: a picture needs both the track and ICE connected. ontrack fires
+  // on setRemoteDescription, long before (or without) any media path.
+  let gotTrack = false
+  let iceUp = false
   let attempt = 0
   let pingN = 0
   let pendingPing: number | null = null
@@ -186,6 +190,8 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     iceTimer = cancel(iceTimer)
     pingTimer = cancel(pingTimer)
     pendingPing = null
+    gotTrack = false
+    iceUp = false
     const t = transport
     const p = pc
     transport = null
@@ -335,17 +341,27 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   }
 
   function onTrack(e: RTCTrackEvent) {
+    gotTrack = true
+    emit('track', e.streams[0] ?? new MediaStream([e.track]))
+    maybePicture()
+  }
+
+  /** The picture is here only once the track is in and ICE has connected (never on ontrack alone). */
+  function maybePicture() {
+    if (!gotTrack || !iceUp) return
     hasPicture = true
     attempt = 0
     unreachableTimer = cancel(unreachableTimer)
-    emit('track', e.streams[0] ?? new MediaStream([e.track]))
     setStatus({ kind: 'streaming' })
   }
 
   function onIceState(g: number, s: RTCPeerConnectionState) {
     if (g !== gen) return
-    if (s === 'connected') iceTimer = cancel(iceTimer)
-    else if (s === 'failed') failConnection()
+    if (s === 'connected') {
+      iceTimer = cancel(iceTimer)
+      iceUp = true
+      maybePicture()
+    } else if (s === 'failed') failConnection()
     else if (s === 'disconnected' && iceTimer === null) {
       iceTimer = clock.setTimeout(() => {
         iceTimer = null

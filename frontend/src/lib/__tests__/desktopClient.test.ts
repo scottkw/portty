@@ -84,6 +84,8 @@ class FakePC {
   close() { this.closed = true }
   async getStats() { return new Map() }
   fireTrack() { this.ontrack?.({ streams: [{ id: 'stream' }], track: {} }) }
+  /** A real picture: the track arrived and ICE connected. */
+  fireStreaming() { this.fireTrack(); this.setConn('connected') }
   setConn(s: string) { this.connectionState = s; this.onconnectionstatechange?.() }
 }
 
@@ -135,7 +137,7 @@ async function streaming(over: Partial<DesktopClientOptions> = {}) {
   const e = setup(over)
   e.client.start()
   await handshake(e)
-  lastPC(e).fireTrack()
+  lastPC(e).fireStreaming()
   return e
 }
 
@@ -173,7 +175,7 @@ describe('transport injection', () => {
     e.client.on('size', (s) => got.push(['size', s]))
     e.client.start()
     await handshake(e)
-    lastPC(e).fireTrack()
+    lastPC(e).fireStreaming()
     lastT(e).recv({ type: 'state', state: 'locked', viewers: 2, locked: true })
     lastT(e).recv({ type: 'state', state: 'rm -rf', viewers: 1, locked: false })
     lastT(e).recv({ type: 'size', w: 2560, h: 1600 })
@@ -224,7 +226,7 @@ describe('backoff and unreachable', () => {
     await e.clock.advance(30000)
     expect(kinds(e)).toEqual(['reconnecting', 'unreachable'])
     await handshake(e)
-    lastPC(e).fireTrack()
+    lastPC(e).fireStreaming()
     expect(kinds(e)).toEqual(['reconnecting', 'unreachable', 'streaming'])
     const n = e.transports.length
     lastT(e).dropWith(1006)
@@ -449,6 +451,64 @@ describe('ICE', () => {
     await e.clock.advance(1000)
     expect(e.transports.length).toBe(2)
     expect(e.pcs[0].closed).toBe(true)
+  })
+})
+
+describe('picture means ICE connected, not ontrack (Phase 19 review follow-up)', () => {
+  it('a track alone is announced to the page but is not a picture', async () => {
+    const e = setup()
+    const tracks: unknown[] = []
+    e.client.on('track', (s) => tracks.push(s))
+    e.client.start()
+    await handshake(e)
+    lastPC(e).fireTrack()
+    expect(tracks).toHaveLength(1)
+    expect(kinds(e)).toEqual([])
+  })
+
+  it.each(['track first', 'connected first'] as const)('streaming starts once both the track and ICE connected are in (%s)', async (order) => {
+    const e = setup()
+    e.client.start()
+    await handshake(e)
+    if (order === 'track first') {
+      lastPC(e).fireTrack()
+      expect(kinds(e)).toEqual([])
+      lastPC(e).setConn('connected')
+    } else {
+      lastPC(e).setConn('connected')
+      expect(kinds(e)).toEqual([])
+      lastPC(e).fireTrack()
+    }
+    expect(kinds(e)).toEqual(['streaming'])
+  })
+
+  it('ICE failing after every ontrack still backs off 1, 2, 4 s instead of restarting at 1 s', async () => {
+    const e = setup()
+    e.client.start()
+    let n = 1
+    for (const ms of [1000, 2000, 4000]) {
+      await handshake(e)
+      lastPC(e).fireTrack()
+      lastPC(e).setConn('failed')
+      await e.clock.advance(ms - 1)
+      expect(e.transports.length, `no redial before ${ms} ms`).toBe(n)
+      await e.clock.advance(1)
+      expect(e.transports.length, `redial at ${ms} ms`).toBe(++n)
+    }
+  })
+
+  it("ICE that never connects ends in Can't reach this Mac after 30 s, never in streaming", async () => {
+    const e = setup()
+    e.client.start()
+    for (let i = 0; i < 6; i++) {
+      await handshake(e)
+      lastPC(e).fireTrack()
+      await e.clock.advance(5000) // ICE trying, the way a real browser does for about 30 s
+      lastPC(e).setConn('failed')
+      await e.clock.advance(RECONNECT.delaysMs[Math.min(i, RECONNECT.delaysMs.length - 1)])
+    }
+    expect(kinds(e)).toContain('unreachable')
+    expect(kinds(e)).not.toContain('streaming')
   })
 })
 
