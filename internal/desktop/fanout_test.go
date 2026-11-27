@@ -361,8 +361,8 @@ func TestFanout_HelloCapsForwardCompatible(t *testing.T) {
 	defer func() { _ = c.CloseNow() }()
 	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1, "teleport": 1}})
 	caps, _ := readType(ctx, t, c, "hello")["caps"].(map[string]any)
-	if len(caps) != 3 || caps["video"] != float64(1) || caps["input"] != float64(1) || caps["audio"] != float64(1) {
-		t.Errorf("hello reply caps %v, want exactly {video:1, input:1, audio:1} (the unknown teleport cap is not echoed)", caps)
+	if len(caps) != 4 || caps["video"] != float64(1) || caps["input"] != float64(1) || caps["audio"] != float64(1) || caps["unlock"] != float64(1) {
+		t.Errorf("hello reply caps %v, want exactly {video:1, input:1, audio:1, unlock:1} (the unknown teleport cap is not echoed)", caps)
 	}
 
 	c2, _, err := env.dial(ctx, tok)
@@ -391,8 +391,8 @@ func TestHello_RightsAndInputCap(t *testing.T) {
 	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1}})
 	hello := readType(ctx, t, c, "hello")
 	caps, _ := hello["caps"].(map[string]any)
-	if len(caps) != 3 || caps["video"] != float64(1) || caps["input"] != float64(1) || caps["audio"] != float64(1) {
-		t.Errorf("hello caps %v, want exactly {video:1, input:1, audio:1}", caps)
+	if len(caps) != 4 || caps["video"] != float64(1) || caps["input"] != float64(1) || caps["audio"] != float64(1) || caps["unlock"] != float64(1) {
+		t.Errorf("hello caps %v, want exactly {video:1, input:1, audio:1, unlock:1} (unlock is own-account only)", caps)
 	}
 	rights, _ := hello["rights"].(map[string]any)
 	if len(rights) != 3 || rights["control"] != true || rights["clipboard"] != true || rights["surface"] != true {

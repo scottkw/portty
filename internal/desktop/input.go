@@ -306,7 +306,14 @@ func (m *Manager) acceptDataChannel(v Viewer, dc *webrtc.DataChannel) {
 	dc.OnMessage(func(dm webrtc.DataChannelMessage) {
 		defer recoverLog()
 		if !dm.IsString {
-			m.countInput("malformed")
+			// Binary: only an unlock request (type byte 0x01, then the password
+			// bytes), handed over without a string conversion (unlock.go).
+			if len(dm.Data) > 0 && dm.Data[0] == unlockMsgType {
+				m.handleUnlockBytes(vw, dm.Data)
+			} else {
+				clear(dm.Data)
+				m.countInput("malformed")
+			}
 			return
 		}
 		msg, err := parseInput(dm.Data)

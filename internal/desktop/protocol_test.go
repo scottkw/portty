@@ -130,6 +130,7 @@ var signalShapes = []signalShape{
 	{"server", "clip_data", [][]string{{"xid", "seq", "total", "len", "text"}}},
 	{"server", "clip_result", [][]string{{"xid", "outcome"}}},
 	{"server", "quality", [][]string{{"slow"}}},
+	{"server", "unlock", [][]string{{"state", "failures"}}},
 }
 
 // TestProtocolGolden_SignalShapes: every signalling line is a JSON object of a
