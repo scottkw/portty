@@ -23,7 +23,7 @@ import (
 )
 
 // PeerErrDesktopOff is the PeerConnectError code for a peer whose desktop is
-// off: its cap route answered 404 or its share port refused the connection.
+// off: its cap route answered 404. A refused share port is unreachable, not off.
 const PeerErrDesktopOff = "desktop_off"
 
 // PeerDesktopRequest is the body of POST /peers/desktop.
