@@ -117,7 +117,10 @@ export function isReleaseChord(e: Pick<KeyboardEvent, 'ctrlKey' | 'altKey' | 'me
   return e.ctrlKey && e.altKey && e.metaKey && e.code === 'Enter'
 }
 
-const utf8Len = (cp: number) => (cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4)
+/** UTF-8 bytes of one code point. */
+export const utf8Len = (cp: number) => (cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4)
+/** `ev.buttons` bit of each `ev.button` index (0 left, 1 middle, 2 right). */
+const BUTTON_BIT = [1, 4, 2]
 const JOINER = /^[‍︎️\p{M}]$/u
 
 /**
@@ -245,8 +248,28 @@ export function createDesktopInput(
     }
   }
 
+  /**
+   * Pointer Events deliver a second button's press and release as pointermove and fire
+   * pointerup only for the last button, so every held button that `ev.buttons` no longer
+   * shows (or that is `up`) is released here. Returns whether anything was released.
+   */
+  function releaseGone(ev: PointerEvent, up: number): boolean {
+    const gone = [...buttons].filter((b) => b === up || !(ev.buttons & BUTTON_BIT[b]))
+    if (gone.length === 0) return false
+    for (const b of gone) buttons.delete(b)
+    syncHeartbeat()
+    pending = null
+    const e = getEpoch()
+    const at = locate(ev.clientX, ev.clientY)
+    // A release always goes out; without a position or epoch the daemon's own release stands in.
+    if (at && e !== null) for (const b of gone) send(encodeBtn(b, false, at.x, at.y, e, Math.round(now())))
+    else send(RELEASE)
+    return true
+  }
+
   function onPointerMove(ev: PointerEvent) {
     if (!control) return
+    releaseGone(ev, -1) // before locate: a release is never skipped when the rect is unknown
     const at = locate(ev.clientX, ev.clientY)
     if (!at) return
     // The system candidate window opens beside the pointer, so the hidden input follows it.
@@ -257,14 +280,7 @@ export function createDesktopInput(
   }
 
   function onPointerUp(ev: PointerEvent) {
-    if (!buttons.delete(ev.button)) return
-    syncHeartbeat()
-    pending = null
-    const e = getEpoch()
-    const at = locate(ev.clientX, ev.clientY)
-    // A release always goes out; without a position or epoch the daemon's own release stands in.
-    if (at && e !== null) send(encodeBtn(ev.button, false, at.x, at.y, e, Math.round(now())))
-    else send(RELEASE)
+    releaseGone(ev, ev.button)
   }
 
   function onPointerLeave() {

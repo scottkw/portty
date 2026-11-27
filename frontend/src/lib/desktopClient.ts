@@ -1,5 +1,5 @@
 import { readWebModeParams } from './webMode'
-import { MOVE_BUFFER_LIMIT } from './desktopInput'
+import { MOVE_BUFFER_LIMIT, utf8Len } from './desktopInput'
 
 /**
  * Phase 19-06 — the /desktop/ viewer's connection. One signalling WebSocket
@@ -174,13 +174,12 @@ const utf8Encoder = new TextEncoder()
 /** UTF-8 length of a string as the daemon counts it. */
 export const clipByteLength = (s: string): number => utf8Encoder.encode(s).length
 
-const utf8Of = (cp: number) => (cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4)
 /** Bytes this code point takes inside a JSON string as JSON.stringify writes it. */
 function jsonBytes(cp: number): number {
   if (cp === 0x22 || cp === 0x5c) return 2
   if (cp < 0x20) return cp === 8 || cp === 9 || cp === 10 || cp === 12 || cp === 13 ? 2 : 6
   if (cp >= 0xd800 && cp <= 0xdfff) return 6 // a lone surrogate is written as \udXXX
-  return utf8Of(cp)
+  return utf8Len(cp)
 }
 
 /**
@@ -195,7 +194,7 @@ export function chunkClipText(s: string): string[] {
   let esc = 0
   for (const ch of s) {
     const cp = ch.codePointAt(0)!
-    const r = utf8Of(cp)
+    const r = utf8Len(cp)
     const e = jsonBytes(cp)
     if (cur !== '' && (raw + r > CLIP_CHUNK_BYTES || esc + e > escBudget)) {
       out.push(cur)

@@ -202,9 +202,25 @@ describe('pointer moves', () => {
     expect(h.msgs()).toEqual([])
     h.stage.dispatchEvent(ptr('pointerdown', 500, 250))
     h.sent.length = 0
-    h.stage.dispatchEvent(ptr('pointermove', 20, 600))
+    h.stage.dispatchEvent(ptr('pointermove', 20, 600, { button: -1, buttons: 1 }))
     h.frame()
     expect(h.msgs()).toEqual([{ t: 'move', x: 0, y: 1, e: 7 }])
+  })
+
+  it('a left button lifted while the right is still down is released, and nothing stays held', () => {
+    const h = harness()
+    created.push(h.ctl)
+    h.stage.dispatchEvent(ptr('pointerdown', 500, 250))
+    // Pointer Events report the second button's press and the left release as pointermove.
+    h.stage.dispatchEvent(ptr('pointermove', 500, 250, { button: 2, buttons: 3 }))
+    h.stage.dispatchEvent(ptr('pointermove', 500, 250, { button: 0, buttons: 2 }))
+    h.stage.dispatchEvent(ptr('pointerup', 500, 250, { button: 2, buttons: 0 }))
+    expect(h.msgs()).toEqual([
+      { t: 'btn', b: 0, d: true, x: 0.5, y: 0.5, e: 7, ts: 1000 },
+      { t: 'btn', b: 0, d: false, x: 0.5, y: 0.5, e: 7, ts: 1000 },
+    ])
+    expect(h.ctl.held()).toBe(0)
+    expect(h.intervals.size).toBe(0)
   })
 
   it('the release of a drag that ended outside the picture still arrives, clamped', () => {

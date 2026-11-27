@@ -855,8 +855,14 @@ export function DesktopView({
     pictureCb.current?.(picture)
   }, [picture])
   // A popover belongs to the bar: when the bar goes (a card covers the picture), so does it.
+  // A menu open when the bar went would otherwise block the copy/paste fallback popover
+  // (the barMenuOpenRef guard) after the bar returns.
   useEffect(() => {
-    if (!showBar) setPopover(null)
+    if (!showBar) {
+      setPopover(null)
+      barMenuOpenRef.current = false
+      setBarMenuOpen(false)
+    }
   }, [showBar])
 
   // The notice chip sits below the state chip, so it needs the state chip's height once that wraps.
