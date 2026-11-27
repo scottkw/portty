@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -57,6 +58,9 @@ const (
 // is the real one and tests inject a fake. Only that goroutine calls it.
 type InputBridge interface {
 	PostMouse(kind screencap.MouseKind, x, y float64, button, clickState, dx, dy int, flags uint64) error
+	PostKey(vk uint16, down bool, flags uint64, autorepeat bool) error
+	PostText(units []uint16) error
+	PostScroll(dx, dy int, flags uint64) error
 	CursorLocation() (x, y float64, err error)
 }
 
@@ -180,15 +184,20 @@ func (t inputTarget) point(nx, ny float64) (x, y float64) {
 // viewerInput is one viewer's input state, guarded by Manager.in.mu.
 type viewerInput struct {
 	fifo         []inputMsg
-	held         map[int]struct{} // browser buttons held
-	lastX, lastY float64          // the last mapped global point
+	held         map[int]struct{}  // browser buttons held
+	keys         map[uint16]string // kVK of every key held, with the code it came from
+	lastX, lastY float64           // the last mapped global point
 	haveLast     bool
-	closed       bool // the viewer's input life is over: nothing more is accepted
+	closed       bool              // the viewer's input life is over: nothing more is accepted
+	counts       map[string]uint64 // kinds and drop reasons only, for the summary at leave
 }
 
-// release is one queued let-go for the input goroutine; a non-nil flush is
-// closed when it is reached instead.
+// release is one queued let-go for the input goroutine (a key when key is set,
+// else a button); a non-nil flush is closed when it is reached instead.
 type release struct {
+	key    bool
+	vk     uint16
+	flags  uint64
 	button int // CG button
 	x, y   float64
 	flush  chan struct{}
@@ -226,6 +235,23 @@ func (m *Manager) wakeInput() {
 func (m *Manager) countInput(name string) {
 	m.in.mu.Lock()
 	m.in.counts[name]++
+	m.in.mu.Unlock()
+}
+
+// bump adds one to counts[name], making the map when it is nil.
+func bump(counts map[string]uint64, name string) map[string]uint64 {
+	if counts == nil {
+		counts = make(map[string]uint64)
+	}
+	counts[name]++
+	return counts
+}
+
+// countFor counts name for v and for the Manager.
+func (m *Manager) countFor(v *viewer, name string) {
+	m.in.mu.Lock()
+	m.in.counts[name]++
+	v.in.counts = bump(v.in.counts, name)
 	m.in.mu.Unlock()
 }
 
@@ -356,7 +382,7 @@ func (m *Manager) runInput() bool {
 			close(rel.flush)
 			return true
 		}
-		m.postMouse(screencap.MouseUp, rel.x, rel.y, rel.button, 1, 0, 0)
+		m.postRelease(rel)
 		return true
 	}
 	m.handleInput(v, msg)
@@ -367,6 +393,14 @@ func (m *Manager) postMouse(kind screencap.MouseKind, x, y float64, button, clic
 	if err := m.d.Input.PostMouse(kind, x, y, button, clickState, dx, dy, 0); err != nil {
 		m.countInput("post_failed")
 	}
+}
+
+func (m *Manager) postRelease(r release) {
+	if !r.key {
+		m.postMouse(screencap.MouseUp, r.x, r.y, r.button, 1, 0, 0)
+		return
+	}
+	m.postKey(r.vk, false, r.flags, false)
 }
 
 // cgButton maps a browser button index to the bridge's button (0 left, 1 right, 2 other).
@@ -397,6 +431,10 @@ func (m *Manager) handleInput(v *viewer, msg inputMsg) {
 		} else {
 			m.handleButtonUp(v, msg)
 		}
+	case inKey:
+		m.handleKey(v, msg)
+	case inText:
+		m.handleText(v, msg)
 	case inRelease:
 		m.releaseHeld(v, "release")
 	case inHB:
@@ -407,19 +445,13 @@ func (m *Manager) handleInput(v *viewer, msg inputMsg) {
 
 // gate returns the target when a press or move may proceed, else counts the
 // drop reason and returns false.
-func (m *Manager) gate(msg inputMsg) (inputTarget, bool) {
+func (m *Manager) gate(v *viewer, msg inputMsg) (inputTarget, bool) {
 	t := m.target()
-	switch {
-	case !t.ok:
-		m.countInput("no_target")
-	case msg.E != t.epoch:
-		m.countInput("stale_epoch")
-	case m.Locked():
-		m.countInput("locked")
-	default:
-		return t, true
+	if !t.ok {
+		m.countFor(v, "no_target")
+		return t, false
 	}
-	return t, false
+	return t, m.allowed(v, msg)
 }
 
 // moveTo records the viewer's new mapped point and returns the movement from
@@ -431,6 +463,7 @@ func (m *Manager) moveTo(v *viewer, x, y float64, press int) (dx, dy, drag int, 
 	vi := v.in
 	if vi.closed || m.closed.Load() {
 		m.in.counts["closing"]++
+		vi.counts = bump(vi.counts, "closing")
 		return 0, 0, -1, false
 	}
 	if vi.haveLast {
@@ -447,7 +480,7 @@ func (m *Manager) moveTo(v *viewer, x, y float64, press int) (dx, dy, drag int, 
 }
 
 func (m *Manager) handleMove(v *viewer, msg inputMsg) {
-	t, ok := m.gate(msg)
+	t, ok := m.gate(v, msg)
 	if !ok {
 		return
 	}
@@ -456,7 +489,7 @@ func (m *Manager) handleMove(v *viewer, msg inputMsg) {
 	if !ok {
 		return
 	}
-	m.countInput(inMove)
+	m.countFor(v, inMove)
 	if drag >= 0 {
 		m.postMouse(screencap.MouseDragged, x, y, cgButton(drag), 0, dx, dy)
 		return
@@ -465,7 +498,7 @@ func (m *Manager) handleMove(v *viewer, msg inputMsg) {
 }
 
 func (m *Manager) handlePress(v *viewer, msg inputMsg) {
-	t, ok := m.gate(msg)
+	t, ok := m.gate(v, msg)
 	if !ok {
 		return
 	}
@@ -476,7 +509,7 @@ func (m *Manager) handlePress(v *viewer, msg inputMsg) {
 	if !ok {
 		return
 	}
-	m.countInput(inBtn)
+	m.countFor(v, inBtn)
 	m.postMouse(screencap.MouseDown, x, y, cgButton(msg.B), 1, dx, dy)
 }
 
@@ -489,13 +522,96 @@ func (m *Manager) handleButtonUp(v *viewer, msg inputMsg) {
 		delete(vi.held, msg.B)
 	} else {
 		m.in.counts["not_held"]++
+		vi.counts = bump(vi.counts, "not_held")
 	}
 	m.in.mu.Unlock()
 	if !held {
 		return
 	}
-	m.countInput(inBtn)
+	m.countFor(v, inBtn)
 	m.postMouse(screencap.MouseUp, x, y, cgButton(msg.B), 1, 0, 0)
+}
+
+// postKey posts one key event.
+func (m *Manager) postKey(vk uint16, down bool, flags uint64, repeat bool) {
+	if err := m.d.Input.PostKey(vk, down, flags, repeat); err != nil {
+		m.countInput("post_failed")
+	}
+}
+
+// holdKey records vk as held before it is posted, under the lock a release
+// snapshots with, and returns the flags to post (the viewer's held modifiers
+// plus alpha-shift when caps). why is "" on success, "closing" when the
+// viewer's input life is over and "not_held" for a repeat of a key it does not
+// hold (a repeat must never press a key that a release already let go of).
+func (m *Manager) holdKey(v *viewer, vk uint16, msg inputMsg) (flags uint64, why string) {
+	m.in.mu.Lock()
+	defer m.in.mu.Unlock()
+	vi := v.in
+	if vi.closed || m.closed.Load() {
+		return 0, "closing"
+	}
+	if _, held := vi.keys[vk]; !held {
+		if msg.R {
+			return 0, "not_held"
+		}
+		if vi.keys == nil {
+			vi.keys = make(map[uint16]string, 4)
+		}
+		vi.keys[vk] = msg.Code
+	}
+	flags = modFlags(vi.keys)
+	if msg.Caps {
+		flags |= screencap.FlagAlphaShift
+	}
+	return flags, ""
+}
+
+func (m *Manager) handleKey(v *viewer, msg inputMsg) {
+	vk, ok := screencap.KeyCode(msg.Code)
+	if !ok {
+		m.countFor(v, "unknown_code")
+		return
+	}
+	if !msg.D {
+		m.in.mu.Lock()
+		_, held := v.in.keys[vk]
+		delete(v.in.keys, vk)
+		flags := modFlags(v.in.keys)
+		m.in.mu.Unlock()
+		if !held {
+			m.countFor(v, "not_held")
+			return
+		}
+		if msg.Caps {
+			flags |= screencap.FlagAlphaShift
+		}
+		m.countFor(v, inKey)
+		m.postKey(vk, false, flags, false)
+		return
+	}
+	if !m.allowed(v, msg) {
+		return
+	}
+	flags, why := m.holdKey(v, vk, msg)
+	if why != "" {
+		m.countFor(v, why)
+		return
+	}
+	m.countFor(v, inKey)
+	m.postKey(vk, true, flags, msg.R)
+}
+
+func (m *Manager) handleText(v *viewer, msg inputMsg) {
+	if !m.allowed(v, msg) {
+		return
+	}
+	m.countFor(v, inText)
+	for _, chunk := range screencap.UTF16Chunks(msg.S, screencap.MaxTextUnits) {
+		if err := m.d.Input.PostText(chunk); err != nil {
+			m.countInput("post_failed")
+		}
+	}
 }
 
 // releaseHeld lets go of everything v holds (the input goroutine only).
@@ -504,16 +620,41 @@ func (m *Manager) releaseHeld(v *viewer, reason string) {
 	rels := m.takeHeldLocked(v.in)
 	m.in.mu.Unlock()
 	for _, r := range rels {
-		m.postMouse(screencap.MouseUp, r.x, r.y, r.button, 1, 0, 0)
+		m.postRelease(r)
 	}
 	if len(rels) > 0 {
-		slog.Debug("desktop: input released", "reason", reason, "buttons", len(rels))
+		slog.Debug("desktop: input released", "reason", reason, "released", len(rels))
 	}
 }
 
-// takeHeldLocked clears vi's held set and returns one release per button.
+// modFlags is the CGEventFlags of the modifier keys in keys.
+func modFlags(keys map[uint16]string) (f uint64) {
+	for _, code := range keys {
+		f |= screencap.ModifierFlag(code)
+	}
+	return f
+}
+
+// takeHeldLocked clears vi's held keys and buttons and returns one release for
+// each, in the order they are let go: keys that are not modifiers, then
+// modifiers, then buttons.
 func (m *Manager) takeHeldLocked(vi *viewerInput) []release {
 	var out []release
+	vks := make([]uint16, 0, len(vi.keys))
+	for vk := range vi.keys {
+		vks = append(vks, vk)
+	}
+	slices.Sort(vks)
+	for _, mods := range []bool{false, true} {
+		for _, vk := range vks {
+			code, held := vi.keys[vk]
+			if !held || screencap.IsModifierCode(code) != mods {
+				continue
+			}
+			delete(vi.keys, vk)
+			out = append(out, release{key: true, vk: vk, flags: modFlags(vi.keys)})
+		}
+	}
 	for b := range 3 {
 		if _, ok := vi.held[b]; ok {
 			out = append(out, release{button: cgButton(b), x: vi.lastX, y: vi.lastY})
@@ -551,7 +692,7 @@ func (m *Manager) endViewerInput(v *viewer, reason string) {
 	m.in.mu.Unlock()
 	if len(rels) > 0 {
 		m.wakeInput()
-		slog.Debug("desktop: input released", "reason", reason, "buttons", len(rels))
+		slog.Debug("desktop: input released", "reason", reason, "released", len(rels))
 	}
 }
 

@@ -3,6 +3,7 @@ package desktop_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -41,6 +42,7 @@ type fakeInputBridge struct {
 	curX   float64
 	curY   float64
 	curErr error
+	stuck  bool // the pointer ignores posted moves (Accessibility not granted)
 }
 
 func (f *fakeInputBridge) record(c bridgeCall) {
@@ -50,6 +52,11 @@ func (f *fakeInputBridge) record(c bridgeCall) {
 }
 
 func (f *fakeInputBridge) PostMouse(kind screencap.MouseKind, x, y float64, button, clickState, dx, dy int, flags uint64) error {
+	f.mu.Lock()
+	if !f.stuck && (kind == screencap.MouseMoved || kind == screencap.MouseDragged) {
+		f.curX, f.curY = x, y
+	}
+	f.mu.Unlock()
 	f.record(bridgeCall{Op: "mouse", Kind: kind, X: x, Y: y, Button: button, Click: clickState, DX: dx, DY: dy, Flags: flags})
 	return nil
 }
@@ -273,5 +280,76 @@ func TestInput_CloseReleasesHeld(t *testing.T) {
 	calls := fb.snapshot()
 	if len(calls) != 2 || calls[1].Kind != screencap.MouseUp || calls[1].Button != 1 {
 		t.Errorf("calls after Close = %+v, want the right-button press then its MouseUp", calls)
+	}
+}
+
+// TestInputTracer_KeyHeldReleasedOnClose: a key typed in the viewer is pressed
+// with the right kVK and flags, released when its input channel closes, and a
+// closing socket releases keys before the modifiers that were held under them.
+func TestInputTracer_KeyHeldReleasedOnClose(t *testing.T) {
+	fb := &fakeInputBridge{}
+	var locked atomic.Bool
+	env := newTracerServer(t, withFakeInput(fb, &locked, newFakeClock()))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	v := env.joinInput(ctx, t, env.token(t, "g1"))
+	v.send(t, map[string]any{"t": "key", "code": "KeyA", "d": true, "r": false, "m": 0, "k": "a"})
+	calls := fb.waitFor(t, 1)
+	if c := calls[0]; c.Op != "key" || c.VK != 0x00 || !c.Down || c.Flags != 0 || c.Repeat {
+		t.Fatalf("key down = %+v, want KeyA (0x00) down with flags 0", c)
+	}
+	if err := v.dc.Close(); err != nil {
+		t.Fatal(err)
+	}
+	calls = fb.waitFor(t, 2)
+	if c := calls[1]; c.Op != "key" || c.VK != 0x00 || c.Down {
+		t.Errorf("after the channel closed: %+v, want KeyA up", c)
+	}
+
+	v2 := env.joinInput(ctx, t, env.token(t, "g1"))
+	v2.send(t, map[string]any{"t": "key", "code": "MetaLeft", "d": true, "m": 8})
+	v2.send(t, map[string]any{"t": "key", "code": "KeyA", "d": true, "m": 8})
+	fb.waitFor(t, 4)
+	_ = v2.conn.CloseNow()
+	calls = fb.waitFor(t, 6)
+	meta, a := uint16(0x37), uint16(0x00)
+	want := []struct {
+		vk    uint16
+		down  bool
+		flags uint64
+	}{{meta, true, screencap.FlagCommand}, {a, true, screencap.FlagCommand}, {a, false, screencap.FlagCommand}, {meta, false, 0}}
+	for i, w := range want {
+		if c := calls[2+i]; c.Op != "key" || c.VK != w.vk || c.Down != w.down || c.Flags != w.flags {
+			t.Errorf("call %d = %+v, want key %#x down=%v flags %#x", 2+i, c, w.vk, w.down, w.flags)
+		}
+	}
+}
+
+// TestInput_TextChunksToBridge: text is posted in chunks of at most 20 UTF-16
+// units; an empty text and one over 1024 bytes post nothing and are counted.
+func TestInput_TextChunksToBridge(t *testing.T) {
+	fb := &fakeInputBridge{}
+	var locked atomic.Bool
+	env := newTracerServer(t, withFakeInput(fb, &locked, newFakeClock()))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	v := env.joinInput(ctx, t, env.token(t, "g1"))
+
+	v.send(t, map[string]any{"t": "text", "s": strings.Repeat("a", 45)})
+	v.send(t, map[string]any{"t": "text", "s": ""})
+	v.send(t, map[string]any{"t": "text", "s": strings.Repeat("a", 1025)})
+	v.send(t, map[string]any{"t": "text", "s": "\u00e9"})
+	calls := fb.waitFor(t, 4)
+	for i, n := range []int{20, 20, 5, 1} {
+		if c := calls[i]; c.Op != "text" || len(c.Units) != n {
+			t.Errorf("call %d = %+v, want a text post of %d units", i, c, n)
+		}
+	}
+	if n := counter(env, "malformed"); n != 2 {
+		t.Errorf("malformed = %d, want 2 (the empty and the 1025-byte text)", n)
+	}
+	if n := len(fb.snapshot()); n != 4 {
+		t.Errorf("%d bridge calls, want 4", n)
 	}
 }
