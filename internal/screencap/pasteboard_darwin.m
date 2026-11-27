@@ -23,18 +23,20 @@ enum { kPCPbOK = 0, kPCPbConcealed = 1, kPCPbEmpty = 2, kPCPbTooLarge = 3, kPCPb
 // 2 alwaysAllow, 3 alwaysDeny, -1 when this macOS has no such setting (it
 // arrived in 15.4). Read by key so an older SDK still compiles.
 int pc_pb_behavior(void) {
-	@try {
-		NSPasteboard *pb = [NSPasteboard generalPasteboard];
-		if (pb == nil || ![pb respondsToSelector:NSSelectorFromString(@"accessBehavior")]) {
+	@autoreleasepool {
+		@try {
+			NSPasteboard *pb = [NSPasteboard generalPasteboard];
+			if (pb == nil || ![pb respondsToSelector:NSSelectorFromString(@"accessBehavior")]) {
+				return -1;
+			}
+			id v = [pb valueForKey:@"accessBehavior"];
+			if (![v isKindOfClass:[NSNumber class]]) {
+				return -1;
+			}
+			return (int)[(NSNumber *)v integerValue];
+		} @catch (NSException *e) {
 			return -1;
 		}
-		id v = [pb valueForKey:@"accessBehavior"];
-		if (![v isKindOfClass:[NSNumber class]]) {
-			return -1;
-		}
-		return (int)[(NSNumber *)v integerValue];
-	} @catch (NSException *e) {
-		return -1;
 	}
 }
 
@@ -85,44 +87,48 @@ static int pcPbReadOnce(NSPasteboard *pb, int maxBytes, int *outcome, char **tex
 // retried once; a second change refuses (kPCPbChangedErr) rather than risk
 // handing out content whose type was never checked.
 int pc_pb_read(int maxBytes, int *outcome, char **text, int *n) {
-	*outcome = kPCPbEmpty;
-	*text = NULL;
-	*n = 0;
-	@try {
-		if (pc_pb_behavior() == 3) {
-			*outcome = kPCPbDenied;
-			return 0;
-		}
-		NSPasteboard *pb = [NSPasteboard generalPasteboard];
-		if (pb == nil) {
-			return kPCPbNilErr;
-		}
-		for (int attempt = 0; attempt < 2; attempt++) {
-			BOOL changed = NO;
-			int rc = pcPbReadOnce(pb, maxBytes, outcome, text, n, &changed);
-			if (rc != 0 || !changed) {
-				return rc;
+	@autoreleasepool {
+		*outcome = kPCPbEmpty;
+		*text = NULL;
+		*n = 0;
+		@try {
+			if (pc_pb_behavior() == 3) {
+				*outcome = kPCPbDenied;
+				return 0;
 			}
-			*outcome = kPCPbEmpty;
+			NSPasteboard *pb = [NSPasteboard generalPasteboard];
+			if (pb == nil) {
+				return kPCPbNilErr;
+			}
+			for (int attempt = 0; attempt < 2; attempt++) {
+				BOOL changed = NO;
+				int rc = pcPbReadOnce(pb, maxBytes, outcome, text, n, &changed);
+				if (rc != 0 || !changed) {
+					return rc;
+				}
+				*outcome = kPCPbEmpty;
+			}
+			return kPCPbChangedErr;
+		} @catch (NSException *e) {
+			return kPCPbExceptionErr;
 		}
-		return kPCPbChangedErr;
-	} @catch (NSException *e) {
-		return kPCPbExceptionErr;
 	}
 }
 
 // Replaces the pasteboard's contents with one plain string. It never types
 // into an app.
 int pc_pb_write(const char *utf8, int n) {
-	@try {
-		NSString *s = [[NSString alloc] initWithBytes:utf8 length:(NSUInteger)n encoding:NSUTF8StringEncoding];
-		NSPasteboard *pb = [NSPasteboard generalPasteboard];
-		if (s == nil || pb == nil) {
-			return kPCPbNilErr;
+	@autoreleasepool {
+		@try {
+			NSString *s = [[NSString alloc] initWithBytes:utf8 length:(NSUInteger)n encoding:NSUTF8StringEncoding];
+			NSPasteboard *pb = [NSPasteboard generalPasteboard];
+			if (s == nil || pb == nil) {
+				return kPCPbNilErr;
+			}
+			[pb clearContents];
+			return [pb setString:s forType:NSPasteboardTypeString] ? 0 : kPCPbWriteErr;
+		} @catch (NSException *e) {
+			return kPCPbExceptionErr;
 		}
-		[pb clearContents];
-		return [pb setString:s forType:NSPasteboardTypeString] ? 0 : kPCPbWriteErr;
-	} @catch (NSException *e) {
-		return kPCPbExceptionErr;
 	}
 }

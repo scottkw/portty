@@ -135,70 +135,76 @@ static AXUIElementRef pcApp(pid_t pid) {
 }
 
 int pc_ax_focus(int *pid, double *x, double *y, double *w, double *h, int *ok) {
-	@try {
-		pcAXInit();
-		pid_t p = 0;
-		CGRect f = CGRectZero;
-		BOOL have = NO;
-		AXError e = pcFocusRead(&p, &f, &have);
-		if (e != kAXErrorSuccess) return (int)e;
-		*ok = have ? 1 : 0;
-		if (have) {
-			*pid = p;
-			*x = f.origin.x;
-			*y = f.origin.y;
-			*w = f.size.width;
-			*h = f.size.height;
+	@autoreleasepool {
+		@try {
+			pcAXInit();
+			pid_t p = 0;
+			CGRect f = CGRectZero;
+			BOOL have = NO;
+			AXError e = pcFocusRead(&p, &f, &have);
+			if (e != kAXErrorSuccess) return (int)e;
+			*ok = have ? 1 : 0;
+			if (have) {
+				*pid = p;
+				*x = f.origin.x;
+				*y = f.origin.y;
+				*w = f.size.width;
+				*h = f.size.height;
+			}
+			return 0;
+		} @catch (NSException *ex) {
+			return kPCWindowExceptionErr;
 		}
-		return 0;
-	} @catch (NSException *ex) {
-		return kPCWindowExceptionErr;
 	}
 }
 
 // The frame, owner and on-screen flag of one window by its CGWindowID; a window
 // that no longer exists is kPCWindowNilErr.
 int pc_window_info(uint32_t wid, int *pid, double *x, double *y, double *w, double *h, int *onScreen) {
-	@try {
-		CFArrayRef raw = CGWindowListCopyWindowInfo(kCGWindowListOptionIncludingWindow, wid);
-		if (raw == NULL) return kPCWindowNilErr;
-		NSArray *list = CFBridgingRelease(raw);
-		for (NSDictionary *d in list) {
-			if ([d[(id)kCGWindowNumber] unsignedIntValue] != wid) continue;
-			CGRect r;
-			CFDictionaryRef bounds = (__bridge CFDictionaryRef)d[(id)kCGWindowBounds];
-			if (bounds == NULL || !CGRectMakeWithDictionaryRepresentation(bounds, &r)) return kPCWindowNilErr;
-			*pid = [d[(id)kCGWindowOwnerPID] intValue];
-			*x = r.origin.x;
-			*y = r.origin.y;
-			*w = r.size.width;
-			*h = r.size.height;
-			*onScreen = [d[(id)kCGWindowIsOnscreen] boolValue] ? 1 : 0;
-			return 0;
+	@autoreleasepool {
+		@try {
+			CFArrayRef raw = CGWindowListCopyWindowInfo(kCGWindowListOptionIncludingWindow, wid);
+			if (raw == NULL) return kPCWindowNilErr;
+			NSArray *list = CFBridgingRelease(raw);
+			for (NSDictionary *d in list) {
+				if ([d[(id)kCGWindowNumber] unsignedIntValue] != wid) continue;
+				CGRect r;
+				CFDictionaryRef bounds = (__bridge CFDictionaryRef)d[(id)kCGWindowBounds];
+				if (bounds == NULL || !CGRectMakeWithDictionaryRepresentation(bounds, &r)) return kPCWindowNilErr;
+				*pid = [d[(id)kCGWindowOwnerPID] intValue];
+				*x = r.origin.x;
+				*y = r.origin.y;
+				*w = r.size.width;
+				*h = r.size.height;
+				*onScreen = [d[(id)kCGWindowIsOnscreen] boolValue] ? 1 : 0;
+				return 0;
+			}
+			return kPCWindowNilErr;
+		} @catch (NSException *ex) {
+			return kPCWindowExceptionErr;
 		}
-		return kPCWindowNilErr;
-	} @catch (NSException *ex) {
-		return kPCWindowExceptionErr;
 	}
 }
 
 int pc_window_minimized(int pid, double x, double y, double w, double h, const char *title, int *minimized) {
-	@try {
-		pcAXInit();
-		AXUIElementRef app = pcApp((pid_t)pid);
-		if (app == NULL) return kPCWindowNilErr;
-		AXUIElementRef win = pcFindAXWindow(app, CGRectMake(x, y, w, h), title);
-		CFRelease(app);
-		if (win == NULL) return kPCWindowNilErr;
-		CFTypeRef v = NULL;
-		AXError e = AXUIElementCopyAttributeValue(win, kAXMinimizedAttribute, &v);
-		CFRelease(win);
-		if (e != kAXErrorSuccess || v == NULL) return e != kAXErrorSuccess ? (int)e : kPCWindowNilErr;
-		*minimized = (v == kCFBooleanTrue) ? 1 : 0;
-		CFRelease(v);
-		return 0;
-	} @catch (NSException *ex) {
-		return kPCWindowExceptionErr;
+	@autoreleasepool {
+		@try {
+			pcAXInit();
+			AXUIElementRef app = pcApp((pid_t)pid);
+			if (app == NULL) return kPCWindowNilErr;
+			AXUIElementRef win = pcFindAXWindow(app, CGRectMake(x, y, w, h), title);
+			CFRelease(app);
+			if (win == NULL) return kPCWindowNilErr;
+			CFTypeRef v = NULL;
+			AXError e = AXUIElementCopyAttributeValue(win, kAXMinimizedAttribute, &v);
+			CFRelease(win);
+			if (e != kAXErrorSuccess || v == NULL) return e != kAXErrorSuccess ? (int)e : kPCWindowNilErr;
+			*minimized = (v == kCFBooleanTrue) ? 1 : 0;
+			CFRelease(v);
+			return 0;
+		} @catch (NSException *ex) {
+			return kPCWindowExceptionErr;
+		}
 	}
 }
 
@@ -235,36 +241,38 @@ static void pcAXRaise(pid_t pid, CGRect want, const char *title, BOOL front) {
 // Returns the first rung (1 Accessibility, 2 NSWorkspace, 3 NSRunningApplication)
 // that confirmed focus, else kPCRaiseFailed.
 int pc_window_raise(int pid, double x, double y, double w, double h, const char *title) {
-	@try {
-		pcAXInit();
-		CGRect want = CGRectMake(x, y, w, h);
-		pcAXRaise((pid_t)pid, want, title, YES);
-		if (pcFocusConfirmed((pid_t)pid, want)) return 1;
+	@autoreleasepool {
+		@try {
+			pcAXInit();
+			CGRect want = CGRectMake(x, y, w, h);
+			pcAXRaise((pid_t)pid, want, title, YES);
+			if (pcFocusConfirmed((pid_t)pid, want)) return 1;
 
-		NSRunningApplication *ra = [NSRunningApplication runningApplicationWithProcessIdentifier:(pid_t)pid];
-		NSURL *url = ra.bundleURL;
-		if (url != nil) {
-			NSWorkspaceOpenConfiguration *cfg = [NSWorkspaceOpenConfiguration configuration];
-			cfg.activates = YES;
-			dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-			[[NSWorkspace sharedWorkspace] openApplicationAtURL:url
-			                                      configuration:cfg
-			                                  completionHandler:^(NSRunningApplication *app, NSError *err) {
-				dispatch_semaphore_signal(sem);
-			}];
-			dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC));
-			pcAXRaise((pid_t)pid, want, title, NO);
-			if (pcFocusConfirmed((pid_t)pid, want)) return 2;
-		}
+			NSRunningApplication *ra = [NSRunningApplication runningApplicationWithProcessIdentifier:(pid_t)pid];
+			NSURL *url = ra.bundleURL;
+			if (url != nil) {
+				NSWorkspaceOpenConfiguration *cfg = [NSWorkspaceOpenConfiguration configuration];
+				cfg.activates = YES;
+				dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+				[[NSWorkspace sharedWorkspace] openApplicationAtURL:url
+				                                      configuration:cfg
+				                                  completionHandler:^(NSRunningApplication *app, NSError *err) {
+					dispatch_semaphore_signal(sem);
+				}];
+				dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC));
+				pcAXRaise((pid_t)pid, want, title, NO);
+				if (pcFocusConfirmed((pid_t)pid, want)) return 2;
+			}
 
-		if (ra != nil) {
-			[ra activateWithOptions:NSApplicationActivateAllWindows];
-			pcAXRaise((pid_t)pid, want, title, NO);
-			if (pcFocusConfirmed((pid_t)pid, want)) return 3;
+			if (ra != nil) {
+				[ra activateWithOptions:NSApplicationActivateAllWindows];
+				pcAXRaise((pid_t)pid, want, title, NO);
+				if (pcFocusConfirmed((pid_t)pid, want)) return 3;
+			}
+			return kPCRaiseFailed;
+		} @catch (NSException *ex) {
+			return kPCWindowExceptionErr;
 		}
-		return kPCRaiseFailed;
-	} @catch (NSException *ex) {
-		return kPCWindowExceptionErr;
 	}
 }
 
@@ -272,31 +280,33 @@ int pc_window_raise(int pid, double x, double y, double w, double h, const char 
 // skipping fully transparent windows and the window server's own. outID is 0
 // when nothing is there. Owner pid, layer and frame come from the same entry.
 int pc_window_topmost(double x, double y, uint32_t *outID, int *pid, int *layer, double *fx, double *fy, double *fw, double *fh) {
-	@try {
-		*outID = 0;
-		CFArrayRef raw = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
-		if (raw == NULL) return kPCWindowNilErr;
-		NSArray *list = CFBridgingRelease(raw);
-		for (NSDictionary *d in list) {
-			NSNumber *alpha = d[(id)kCGWindowAlpha];
-			if (alpha != nil && alpha.doubleValue <= 0) continue;
-			if ([d[(id)kCGWindowOwnerName] isEqualToString:@"Window Server"]) continue;
-			CGRect r;
-			CFDictionaryRef bounds = (__bridge CFDictionaryRef)d[(id)kCGWindowBounds];
-			if (bounds == NULL || !CGRectMakeWithDictionaryRepresentation(bounds, &r)) continue;
-			if (x >= CGRectGetMinX(r) && x < CGRectGetMaxX(r) && y >= CGRectGetMinY(r) && y < CGRectGetMaxY(r)) {
-				*outID = [d[(id)kCGWindowNumber] unsignedIntValue];
-				*pid = [d[(id)kCGWindowOwnerPID] intValue];
-				*layer = [d[(id)kCGWindowLayer] intValue];
-				*fx = r.origin.x;
-				*fy = r.origin.y;
-				*fw = r.size.width;
-				*fh = r.size.height;
-				return 0;
+	@autoreleasepool {
+		@try {
+			*outID = 0;
+			CFArrayRef raw = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+			if (raw == NULL) return kPCWindowNilErr;
+			NSArray *list = CFBridgingRelease(raw);
+			for (NSDictionary *d in list) {
+				NSNumber *alpha = d[(id)kCGWindowAlpha];
+				if (alpha != nil && alpha.doubleValue <= 0) continue;
+				if ([d[(id)kCGWindowOwnerName] isEqualToString:@"Window Server"]) continue;
+				CGRect r;
+				CFDictionaryRef bounds = (__bridge CFDictionaryRef)d[(id)kCGWindowBounds];
+				if (bounds == NULL || !CGRectMakeWithDictionaryRepresentation(bounds, &r)) continue;
+				if (x >= CGRectGetMinX(r) && x < CGRectGetMaxX(r) && y >= CGRectGetMinY(r) && y < CGRectGetMaxY(r)) {
+					*outID = [d[(id)kCGWindowNumber] unsignedIntValue];
+					*pid = [d[(id)kCGWindowOwnerPID] intValue];
+					*layer = [d[(id)kCGWindowLayer] intValue];
+					*fx = r.origin.x;
+					*fy = r.origin.y;
+					*fw = r.size.width;
+					*fh = r.size.height;
+					return 0;
+				}
 			}
+			return 0;
+		} @catch (NSException *ex) {
+			return kPCWindowExceptionErr;
 		}
-		return 0;
-	} @catch (NSException *ex) {
-		return kPCWindowExceptionErr;
 	}
 }
