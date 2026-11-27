@@ -80,7 +80,7 @@ func (m *Manager) lookupViewer(id ViewerID) *viewer {
 // matters: rights go first so nothing the viewer sends is honoured (clipboard
 // included), then its input life ends and the input goroutine is waited for (a
 // message it was handling finishes before this returns, and none is started
-// after), then the person is deny-listed (a guest
+// after), then the arbiter forgets it, then the person is deny-listed (a guest
 // revoked by the sharer), then media and finally the socket.
 func (m *Manager) cutViewer(v *viewer, code websocket.StatusCode, reason string, deny bool) {
 	if !v.cut.CompareAndSwap(false, true) {
@@ -89,12 +89,14 @@ func (m *Manager) cutViewer(v *viewer, code websocket.StatusCode, reason string,
 	v.setRightsBits(RightsViewOnly)
 	m.endViewerInput(v, "revoked")
 	m.flushInput()
+	m.arb.forget(v.ID)
 	if deny && v.gs != nil {
 		v.gs.RevokeUser(v.Identity.UserID)
 	}
 	if v.pc != nil {
 		_ = v.pc.Close()
 	}
+	m.syncTap()
 	go closeSocket(v.ws, code, reason)
 }
 

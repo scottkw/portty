@@ -214,6 +214,16 @@ type Deps struct {
 	// every guest, an own-account viewer is never checked.
 	PeerIdentity func(ctx context.Context, addr string) (userID int64, stableID string, err error)
 
+	// Physical reports what the listen-only input tap knows about the person at
+	// the Mac; nil means TapPhysicalSource. StartTap, StopTap and TapState drive
+	// that tap (nil means the screencap functions; StartTap refuses under tests)
+	// and SecureInputOn reads Secure Event Input. Tests replace every one.
+	Physical      PhysicalSource
+	StartTap      func() error
+	StopTap       func()
+	TapState      func() (running, enabled bool)
+	SecureInputOn func() bool
+
 	// The native reads and actions below default (when nil) to the screencap
 	// bridges and the real prober, so a host that does not care wires nothing;
 	// tests replace every one with a fake.
@@ -281,6 +291,8 @@ type viewer struct {
 	gs       *GuestShare // the share a guest was admitted to; nil for an own-account viewer
 	mediaCut atomic.Bool // a media identity check already cut this guest
 	cut      atomic.Bool // CloseViewer or CloseGuests already cut this viewer
+	// leaseReady is set once the answer is sent: lease messages start then.
+	leaseReady atomic.Bool
 
 	// rights is the live Rights, changed by SetRights and read by the press gate
 	// and the clipboard handlers; Viewer.Rights is only the starting record.
@@ -321,6 +333,11 @@ type Manager struct {
 
 	// clip is the clipboard's state (clipboard.go).
 	clip clipState
+
+	// arb decides who may type right now (arbiter.go); lease is what viewers are
+	// told about it and the input tap's life cycle (lease.go).
+	arb   *arbiter
+	lease leaseCtl
 
 	// rmu serialises SetRights, so the live bits and the admission's stored grants
 	// stay in the same order; a leaf lock.
@@ -451,6 +468,21 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.Window == nil {
 		d.Window = screencap.NewWindowBridge()
 	}
+	if d.Physical == nil {
+		d.Physical = TapPhysicalSource()
+	}
+	if d.StartTap == nil {
+		d.StartTap = screencap.StartInputTap
+	}
+	if d.StopTap == nil {
+		d.StopTap = screencap.StopInputTap
+	}
+	if d.TapState == nil {
+		d.TapState = screencap.InputTapState
+	}
+	if d.SecureInputOn == nil {
+		d.SecureInputOn = screencap.SecureInputOn
+	}
 	if d.Pasteboard == nil {
 		d.Pasteboard = screencap.NewPasteboard()
 	}
@@ -458,6 +490,9 @@ func NewManager(d Deps) (*Manager, error) {
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
 	}
+	m.arb = newArbiter(d.Now, d.Physical)
+	m.lease.kick = make(chan struct{}, 1)
+	m.lease.sent = make(map[ViewerID]msgLease)
 	m.in.epoch.Store(1)
 	m.in.counts = make(map[string]uint64)
 	m.in.wake = make(chan struct{}, 1)
@@ -508,6 +543,8 @@ func (m *Manager) Start(ctx context.Context) error {
 	go m.surfaceLoop(lctx, m.surf.done)
 	m.win.done = make(chan struct{})
 	go m.windowLoop(lctx, m.win.done)
+	m.lease.done = make(chan struct{})
+	go m.leaseLoop(lctx, m.lease.done)
 
 	// The input goroutine outlives the state loop's context, and the caller's:
 	// the daemon cancels ctx before it calls Close, and Close drains the queued
@@ -771,6 +808,8 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 		defer v.gs.detach(key, v.ID)
 	}
 	joined = true
+	m.syncTap() // the first controller starts the tap before its first press
+	m.kickLease()
 	if m.d.OnViewerJoin != nil {
 		m.d.OnViewerJoin(v.Viewer)
 	}
@@ -778,6 +817,8 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 	if err := send(ctx, c, msgAnswer{Type: typeAnswer, SDP: answerSDP}); err != nil {
 		return
 	}
+	v.leaseReady.Store(true) // lease messages follow the answer, never precede it
+	m.kickLease()
 	m.broadcastState(ctx)
 	if w, h, ok := m.size(); ok {
 		_ = send(ctx, c, msgSize{Type: typeSize, W: w, H: h})
@@ -940,6 +981,7 @@ func (m *Manager) restartSource() error {
 // only runs while someone is watching).
 func (m *Manager) leave(v *viewer) {
 	m.ReleaseViewer(v.ID, "left")
+	m.arb.forget(v.ID)
 	m.clip.drop(v.ID)
 	m.mu.Lock()
 	m.vmu.Lock()
@@ -953,6 +995,8 @@ func (m *Manager) leave(v *viewer) {
 		m.releaseViewerHolds()
 	}
 	m.mu.Unlock()
+	m.syncTap()
+	m.kickLease()
 	m.kickLoop()
 	slog.Info("desktop: viewer left", "viewer", string(v.ID)[:8], "viewers", n)
 	m.broadcastState(context.Background())
@@ -1199,14 +1243,16 @@ func (m *Manager) Close() error {
 		m.in.mu.Unlock()
 	}
 	m.mu.Lock()
-	cancel, done, surfDone, winDone := m.loopCancel, m.loopDone, m.surf.done, m.win.done
+	cancel, done, surfDone, winDone, leaseDone := m.loopCancel, m.loopDone, m.surf.done, m.win.done, m.lease.done
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
 		<-done
 		<-surfDone
 		<-winDone
+		<-leaseDone
 	}
+	m.syncTap() // closed is set: no controller counts, so the tap stops
 
 	m.CloseAll(websocket.StatusServiceRestart, "server stopping")
 	m.kmu.Lock()

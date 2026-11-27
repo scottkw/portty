@@ -51,8 +51,11 @@ func (m *Manager) SetRights(id ViewerID, control, clipboard bool) error {
 	}
 	m.rmu.Unlock()
 	if old&RightsControl != 0 && r&RightsControl == 0 {
+		m.arb.forget(v.ID)
 		m.queueReleaseHeld(v, "grant_revoked")
 	}
+	m.syncTap() // control on starts the tap, the last controller off stops it
+	m.kickLease()
 	_ = send(context.Background(), v.ws, msgRights{Type: typeRights, Rights: rightsMap(r)})
 	return nil
 }

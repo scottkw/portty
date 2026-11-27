@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +14,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/scottkw/portty/internal/desktop"
+	"github.com/scottkw/portty/internal/screencap"
 )
 
 // guestSession is an admitted guest with an open input channel. It reuses
@@ -23,6 +27,11 @@ type guestSession struct {
 	code   websocket.StatusCode
 	reason string
 	closed chan struct{}
+}
+
+// healthyPhysical is a tap that is running and has seen nobody at the Mac.
+func healthyPhysical() screencap.PhysicalReading {
+	return screencap.PhysicalReading{Healthy: true}
 }
 
 // withGuestInput gives a guest env a fake input bridge, a display for the
@@ -61,6 +70,12 @@ func (e *guestEnv) joinGuestAs(ctx context.Context, t *testing.T, uid int64, nod
 		return false
 	})
 	readType(ctx, t, c, "rights")
+	// The media check asks tailscaled who owns the peer address; every loopback
+	// guest has the same one, so the fake answers for the guest joining now (guests
+	// are joined one at a time, each waited for until its channel is open).
+	e.mu.Lock()
+	e.peer = func(string) (int64, string, error) { return uid, ident.StableID, nil }
+	e.mu.Unlock()
 	lc := newLoopbackClient(t)
 	dc, err := lc.pc.CreateDataChannel("input", nil)
 	if err != nil {
@@ -136,4 +151,42 @@ func rightsIs(control, clipboard bool) func(map[string]any) bool {
 		r, _ := m["rights"].(map[string]any)
 		return r["control"] == control && r["clipboard"] == clipboard
 	}
+}
+
+// ownViewer connects an own-account viewer, with an open input channel, to the
+// guestEnv's Manager through a bare route.
+func (e *guestEnv) ownViewer(ctx context.Context, t *testing.T) *surfViewer {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		e.mgr.ServeDesktopViewer(r.Context(), c, func() bool { return true })
+	}))
+	t.Cleanup(srv.Close)
+	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.CloseNow() })
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1}})
+	hello := readType(ctx, t, c, "hello")
+	lc := newLoopbackClient(t)
+	dc, err := lc.pc.CreateDataChannel("input", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := make(chan struct{})
+	dc.OnOpen(func() { close(open) })
+	writeJSON(ctx, t, c, map[string]any{"type": "offer", "sdp": lc.offer(t)})
+	lc.accept(t, readType(ctx, t, c, "answer")["sdp"].(string))
+	v := &surfViewer{id: hello["viewer"].(string), conn: c, dc: dc}
+	go v.read(ctx)
+	select {
+	case <-open:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the input channel did not open")
+	}
+	return v
 }

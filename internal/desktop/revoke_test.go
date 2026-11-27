@@ -3,9 +3,6 @@ package desktop_test
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -232,36 +229,6 @@ func TestGuestRevoke_ConcurrentAndRepeatedCallsReleaseOnce(t *testing.T) {
 	if n := e.leaves.Load(); n != 1 {
 		t.Errorf("OnViewerLeave fired %d times, want 1", n)
 	}
-}
-
-// ownViewer connects an own-account viewer to the guestEnv's Manager.
-func (e *guestEnv) ownViewer(ctx context.Context, t *testing.T) {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			return
-		}
-		e.mgr.ServeDesktopViewer(r.Context(), c, func() bool { return true })
-	}))
-	t.Cleanup(srv.Close)
-	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = c.CloseNow() })
-	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1}})
-	readType(ctx, t, c, "hello")
-	lc := newLoopbackClient(t)
-	writeJSON(ctx, t, c, map[string]any{"type": "offer", "sdp": lc.offer(t)})
-	lc.accept(t, readType(ctx, t, c, "answer")["sdp"].(string))
-	go func() {
-		for {
-			if _, _, err := c.Read(ctx); err != nil {
-				return
-			}
-		}
-	}()
 }
 
 // TestGuestStop_ThreeSilentPeersDoNotHoldItUp: three guests that never answer

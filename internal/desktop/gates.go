@@ -43,8 +43,9 @@ func (m *Manager) takeToken(v *viewer) bool {
 
 // pressAllowed decides whether v's press, move, wheel or text msg may post and
 // names the drop reason when not: no_right, locked, stale_epoch, no_accessibility, the window
-// gate's reasons (window.go), rate. A token
-// is spent only by a press that passed every other check.
+// gate's reasons (window.go), the arbiter's (physical, physical_unknown,
+// lease_held; lease.go), rate. The lease is taken, and a token spent, only by
+// a press that passed every other check.
 func (m *Manager) pressAllowed(v *viewer, msg inputMsg) (ok bool, reason string) {
 	switch {
 	case m.rightsOf(v)&RightsControl == 0:
@@ -63,6 +64,9 @@ func (m *Manager) pressAllowed(v *viewer, msg inputMsg) (ok bool, reason string)
 		if ok, why := m.windowAllows(msg); !ok {
 			return false, why
 		}
+	}
+	if ok, why := m.decideLease(v, msg); !ok {
+		return false, why
 	}
 	if !m.takeToken(v) {
 		return false, "rate"
