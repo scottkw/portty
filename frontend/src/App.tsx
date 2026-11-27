@@ -8,6 +8,7 @@ import { Sidebar } from './components/Sidebar'
 import { SettingsSheet, type Appearance } from './components/SettingsSheet'
 import { ShareDesktopSheet } from './components/ShareDesktopSheet'
 import { AdmitSheet } from './components/AdmitSheet'
+import { ShareBanner } from './components/ShareBanner'
 import { useDesktopShare, NO_SHARE_EVENTS } from './lib/desktopShare'
 import { stripAnsi } from './lib/stripAnsi'
 import { sanitizeFilename } from './lib/sanitizeFilename'
@@ -150,6 +151,8 @@ function App(): React.ReactElement {
   const tailscaleOff = tailscaleHealth !== null && !tailscaleHealth.connected
   // Phase 22 click-to-share: the tray, a notification or Settings opens the sheet. No Wails events in web mode.
   const share = useDesktopShare(mode === 'web' ? NO_SHARE_EVENTS : undefined)
+  // Secure Event Input blinds the physical-input check only while someone could be typing remotely.
+  const secureInputBanner = share.state.secureInput && share.state.anyController
   const [daemonError, setDaemonError] = useState<string | null>(null)
   // Plugin settings state (PLUG-03): updated by GetPluginSettings on mount
   // and by the EventsOn('settings:plugins') subscription. Threaded into every
@@ -1265,9 +1268,14 @@ function App(): React.ReactElement {
           ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
           saveBanner !== null ||
           shareFailure !== null ||
+          secureInputBanner ||
+          share.stoppedNotice ||
           pluginToggleBanners.length > 0) && (
           <div className="banner-stack">
             {tailscaleOff && <TailscaleBanner />}
+            {secureInputBanner && <ShareBanner kind="secure-input" />}
+            {/* closeSheet is the dismiss: it clears the notice, and the sheet cannot be open under a click here. */}
+            {share.stoppedNotice && <ShareBanner kind="stopped" onShare={share.openSheet} onDismiss={share.closeSheet} />}
             {/* UPGR-04: no action here may end sessions; relaunching hands off or asks (DEBT-08). */}
             {updateNeeded !== '' && (
               <div className="banner banner--warning" role="status">
@@ -1606,6 +1614,7 @@ function App(): React.ReactElement {
         <QuitConfirmModal
           isOpen={showQuitModal}
           sessions={quitSessions}
+          sharing={share.state.active}
           onQuitGUI={() => { setShowQuitModal(false); void QuitGUIOnly() }}
           onQuitAll={() => { setShowQuitModal(false); void QuitAll() }}
           onCancel={() => setShowQuitModal(false)}

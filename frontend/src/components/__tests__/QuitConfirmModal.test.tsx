@@ -130,4 +130,36 @@ describe('QuitConfirmModal behaviour (Portty 02-09, LOOK-01)', () => {
     })
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
+
+  describe('share warning (22-11)', () => {
+    const SENTENCE = 'Quitting also stops sharing your desktop and disconnects everyone watching.'
+    function mountSharing(sharing: boolean | undefined) {
+      container = document.createElement('div')
+      document.body.appendChild(container)
+      root = createRoot(container)
+      act(() => {
+        root.render(
+          <QuitConfirmModal isOpen sessions={[{ id: 'a', name: 'shell 1' }]} sharing={sharing} onQuitGUI={vi.fn()} onQuitAll={vi.fn()} onCancel={vi.fn()} />,
+        )
+      })
+    }
+
+    it('with sharing true the sentence sits right under the session count and all three choices remain', () => {
+      mountSharing(true)
+      const paragraphs = Array.from(container.querySelectorAll('.dialog__body > p')).map((p) => p.textContent)
+      expect(paragraphs.slice(0, 2)).toEqual(['You have 1 active session running.', SENTENCE])
+      expect(Array.from(container.querySelectorAll('.dialog__buttons button')).map((b) => b.textContent)).toEqual([
+        'Keep Running', 'Quit GUI Only', 'Quit Everything',
+      ])
+    })
+
+    it('with sharing false or absent the sentence is not shown', () => {
+      mountSharing(false)
+      expect(container.textContent).not.toContain('stops sharing')
+      act(() => root.unmount())
+      container.remove()
+      mountSharing(undefined)
+      expect(container.textContent).not.toContain('stops sharing')
+    })
+  })
 })
