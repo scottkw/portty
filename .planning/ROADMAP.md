@@ -379,12 +379,12 @@ Every plan opens with a hard `test -f` gate on the upstream 20-/21-/22- SUMMARY.
   3. Remote unlock has one of two outcomes, set by the Phase 17 evidence. If it is feasible, a viewer on the host's own account sees the lock screen of a locked, logged-in Mac and types the password to unlock it. The password is never stored or logged, and click-to-share guests never get unlock. If it is not feasible, the requirement is cut and the docs say "unattended desktop works while the Mac is awake and unlocked". (UNLK-01)
   4. A `v2.0.0-rc.1` draft release (never offered to installed copies) runs the Phase 18.1 pipeline end to end and both DMGs verify, then the real v2.0 release ships. An installed v1.2.x copy updates to v2.0 through the universal name, and a Phase 18 build updates through self-install. (release run of the REL-01 pipeline built in Phase 18.1)
   5. On a real Mac, a two-build upgrade with a live desktop viewer and live terminal sessions keeps every terminal session and brings the desktop viewer back by itself. A one-hour desktop soak on the office Mac ends with no crash, leak or stuck state. (DESK-03, final hardening)
-**Plans**: 0/16 plans executed
+**Plans**: 2/16 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 23-01-PLAN.md — Daemon audio: same SCStream, AudioConverter Opus ~64 kbps stereo track, audio failure never touches the picture (DCTL-07)
-- [ ] 23-06-PLAN.md — Browser sound: audio transceiver + stereo=1 munge, DesktopSoundButton starting muted, hint, host strings (DCTL-07)
+- [x] 23-01-PLAN.md — Daemon audio: same SCStream, AudioConverter Opus ~64 kbps stereo track, audio failure never touches the picture (DCTL-07)
+- [x] 23-06-PLAN.md — Browser sound: audio transceiver + stereo=1 munge, DesktopSoundButton starting muted, hint, host strings (DCTL-07)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 23-02-PLAN.md — Adaptive bitrate: pion TWCC/GCC starting at max, minimum-of-viewers with hysteresis, bitrate→fps→resolution ladder via encoder rebuild, slow-viewer exclusion (DESK-07)
@@ -438,4 +438,4 @@ Plans:
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
 | 21. Portty App and iPhone Viewers | v2.0 | 13/13 | Complete    | 2026-11-27 |
 | 22. Click-to-Share for Tailnet People | v2.0 | 11/13 | In Progress | - |
-| 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/16 | Not started | - |
+| 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 2/16 | In Progress | - |
