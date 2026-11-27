@@ -129,7 +129,7 @@ func fakeDesktopDaemon(t *testing.T, putStatus int, putBody string) *App {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /desktop", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"alwaysAvailable":true,"state":"streaming","viewers":2,"locked":true,"approachingLapse":true,"lapseSeq":3,"tailscale":"ok","launchd":true,"reason":"r"}`))
+		_, _ = w.Write([]byte(`{"alwaysAvailable":true,"state":"streaming","viewers":2,"locked":true,"approachingLapse":true,"lapseSeq":3,"tailscale":"ok","launchd":true,"reason":"r","surface":{"kind":"window","name":"Terminal — zsh"},"control":"needs_accessibility"}`))
 	})
 	mux.HandleFunc("PUT /desktop", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(putStatus)
@@ -144,12 +144,24 @@ func fakeDesktopDaemon(t *testing.T, putStatus int, putBody string) *App {
 	return &App{client: daemon.NewDaemonClient(sock)}
 }
 
+// 20-10: the binding maps the daemon's additive surface and control fields.
+func TestApp_GetDesktopStatusSurfaceAndControl(t *testing.T) {
+	a := fakeDesktopDaemon(t, 200, `{}`)
+	got := a.GetDesktopStatus()
+	if got.SurfaceKind != "window" || got.SurfaceName != "Terminal — zsh" || got.Control != "needs_accessibility" {
+		t.Errorf("GetDesktopStatus surface %q %q control %q; want window, Terminal — zsh, needs_accessibility", got.SurfaceKind, got.SurfaceName, got.Control)
+	}
+}
+
 // DSHR-01 / DPRM-02: the Desktop group's three bindings carry the daemon's
 // answer, keep a refusal's code and detail, and never throw.
 func TestDesktopSettingsBindings(t *testing.T) {
 	t.Run("status, on and link", func(t *testing.T) {
 		a := fakeDesktopDaemon(t, 200, `{"alwaysAvailable":true,"firstShare":true}`)
-		want := DesktopStatusResult{AlwaysAvailable: true, State: "streaming", Viewers: 2, Locked: true, ApproachingLapse: true, Tailscale: "ok", Launchd: true, Reason: "r"}
+		want := DesktopStatusResult{
+			AlwaysAvailable: true, State: "streaming", Viewers: 2, Locked: true, ApproachingLapse: true, Tailscale: "ok", Launchd: true, Reason: "r",
+			SurfaceKind: "window", SurfaceName: "Terminal — zsh", Control: "needs_accessibility",
+		}
 		if got := a.GetDesktopStatus(); got != want {
 			t.Errorf("GetDesktopStatus = %+v, want %+v", got, want)
 		}
