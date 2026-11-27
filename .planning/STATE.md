@@ -6,16 +6,16 @@ current_phase: 21
 current_phase_name: Portty App and iPhone Viewers
 status: executing
 stopped_at: Phase 20 complete (real-Mac verification deferred, see 20-UAT.md), Phase 21 executing
-last_updated: "2026-11-27T00:21:12.139Z"
+last_updated: "2026-11-27T14:21:02.810Z"
 last_activity: 2026-11-27
-last_activity_desc: "Phase 20 closed (human_needed 4/4, M-180..M-193 tracked in 20-UAT.md); Phase 21 executing"
-state_head: 1b1c40202ebb8523477cabb40325617d01516c12
+last_activity_desc: "Quick 261127-bb7 (Phase 20 ponytail-review fixes); Phase 21 executing"
+state_head: 951908f487e7202c67a9819e930e7cb2e83c70a2
 progress:
   total_phases: 8
   completed_phases: 5
-  total_plans: 67
-  completed_plans: 43
-  percent: 50
+  total_plans: 96
+  completed_plans: 62
+  percent: 63
 ---
 
 # Project State
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 21 (Portty App and iPhone Viewers) — EXECUTING
-Status: Phase 20 complete 2026-11-27 (verification human_needed 4/4, real-Mac items deferred; see Deferred Verification)
-Last activity: 2026-11-27 -- Phase 20 closed with M-180..M-193 tracked in 20-UAT.md; Phase 21 executing
+Status: Phase 20 complete 2026-11-27 (verification human_needed 4/4, real-Mac items deferred; see Deferred Verification); Phase 21 executing
+Last activity: 2026-11-27 - Completed quick task 261127-bb7: Phase 20 ponytail-review fixes
 
 ## Performance Metrics
 
@@ -465,6 +465,7 @@ Recent decisions affecting current work:
 | 261126-fw6 | 18.1 review CR-01 (build.sh --sign ends with verify-bundle.sh --notarized), WR-01 (jq missing fails closed), WR-02 (per-file fake codesign, --notarized cases), WR-03 (sign-bundle names a missing plist key); deterministic SharePopover Copied! test (50/50); mover takes back a stale keepDaemon result before installing a newer copy (WR-04 kept); VM row QT-FW6 PENDING (portty-test busy with Phase 19) | 2026-11-26 | 4eb9de0e | [261126-fw6-18-1-review-fixes-flaky-sharepopover-mov](./quick/261126-fw6-18-1-review-fixes-flaky-sharepopover-mov/) |
 | 261126-oq0 | Phase 19 ponytail-review fixes: PUT /desktop skips freeze gate, poller warms cert outside gate, desktop-only finalize never fails a handoff, CLI install resolves symlinks, lapse retry survives AX probe failure, runtime state fsync, process-wide native capture lock, Test Capture leak, dead FramesSeen removed | 2026-11-26 | c95728b9 | [261126-oq0-apply-accepted-phase-19-ponytail-review-](./quick/261126-oq0-apply-accepted-phase-19-ponytail-review-/) |
 | 261126-pn6 | A restart's /shutdown is pinned to the stale daemon it checked (one connection for /health and /shutdown), so a CLI --restart-daemon after launchdTakeover's 15 s timeout never stops the daemon a late launchd re-home moved the sessions to | 2026-11-26 | 9e884e05 | [261126-pn6-pin-restart-shutdown-to-stale-daemon](./quick/261126-pn6-pin-restart-shutdown-to-stale-daemon/) |
+| 261127-bb7 | Phase 20 ponytail-review fixes: encoder rebuild keeps old session on failure, chorded mouse buttons released, bar menu state reset on unmount, closed input channel unregistered, post-Close flush, repeat-after-release test, one flushInput/bridgeErr/utf8Len | 2026-11-27 | b41055f0 | [261127-bb7-apply-accepted-phase-20-ponytail-review-](./quick/261127-bb7-apply-accepted-phase-20-ponytail-review-/) |
 
 ## Deferred Items
 
