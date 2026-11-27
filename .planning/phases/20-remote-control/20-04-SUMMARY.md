@@ -141,6 +141,10 @@ Section 5 (manual, VM rows for 20-09):
 
 None seen in the three full-package runs (`TestFanout_ThreeViewersEachGetKeyframe` did not fail).
 
+## Post-VM fix (X1)
+
+VM row X1 showed a click on a pop-up menu item of the shared app dropped as `covered`. Fixed in 78ea4fc8 (test d0efd82e): `TopmostAt` now returns a `screencap.TopWindow` (ID, owner pid, layer, frame) read from the same CGWindowList entry, and `windowAllows` lets a press or scroll through when the topmost window is the shared one, or is owned by the shared window's pid and either has a layer above 0 (menus, pop-ups, popovers) or is a layer-0 window lying entirely inside the shared frame (sheets, panels). Other apps' windows and the shared app's other document windows still drop as `covered`; any read error still fails closed. No private API. The earlier "A pop-up of the shared app counts as covering" limitation above is resolved. The `topmost` VM probe op also reports pid and layer. Needs a VM recheck (M-NN candidate for 20-11).
+
 ## Self-Check: PASSED
 
 Created files exist; commits bd7b4248, 40781a4d and 9f5809a6 are on the branch.

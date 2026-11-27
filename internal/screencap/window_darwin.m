@@ -270,8 +270,8 @@ int pc_window_raise(int pid, double x, double y, double w, double h, const char 
 
 // The topmost on-screen window whose bounds contain the point, front to back,
 // skipping fully transparent windows and the window server's own. outID is 0
-// when nothing is there.
-int pc_window_topmost(double x, double y, uint32_t *outID) {
+// when nothing is there. Owner pid, layer and frame come from the same entry.
+int pc_window_topmost(double x, double y, uint32_t *outID, int *pid, int *layer, double *fx, double *fy, double *fw, double *fh) {
 	@try {
 		*outID = 0;
 		CFArrayRef raw = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
@@ -286,6 +286,12 @@ int pc_window_topmost(double x, double y, uint32_t *outID) {
 			if (bounds == NULL || !CGRectMakeWithDictionaryRepresentation(bounds, &r)) continue;
 			if (x >= CGRectGetMinX(r) && x < CGRectGetMaxX(r) && y >= CGRectGetMinY(r) && y < CGRectGetMaxY(r)) {
 				*outID = [d[(id)kCGWindowNumber] unsignedIntValue];
+				*pid = [d[(id)kCGWindowOwnerPID] intValue];
+				*layer = [d[(id)kCGWindowLayer] intValue];
+				*fx = r.origin.x;
+				*fy = r.origin.y;
+				*fw = r.size.width;
+				*fh = r.size.height;
 				return 0;
 			}
 		}

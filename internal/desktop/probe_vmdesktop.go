@@ -233,8 +233,8 @@ func (m *Manager) DebugVM20(ctx context.Context, req DebugVM20Request) (DebugVM2
 		}
 		out["found"] = found
 	case "topmost":
-		id, err := m.d.Window.TopmostAt(req.X, req.Y)
-		out["window_id"], out["error"] = id, errText(err)
+		top, err := m.d.Window.TopmostAt(req.X, req.Y)
+		out["window_id"], out["pid"], out["layer"], out["error"] = top.ID, top.PID, top.Layer, errText(err)
 	case "focus":
 		pid, x, y, w, h, ok, err := m.d.Window.Focus()
 		out["pid"], out["ok"], out["error"] = pid, ok, errText(err)

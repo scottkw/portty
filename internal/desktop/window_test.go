@@ -48,6 +48,9 @@ type fakeWindow struct {
 	minimized  bool
 	minErr     error
 	top        uint32
+	topPID     int32      // owner of the topmost window
+	topLayer   int32      // its window layer
+	topFrame   [4]float64 // its frame
 	topErr     error
 	topPoints  [][2]float64
 	raises     []raiseCall
@@ -60,7 +63,7 @@ func newFakeWindow() *fakeWindow {
 	return &fakeWindow{
 		focusPID: otherPID, focusFrame: [4]float64{0, 0, 800, 600}, focusOK: true,
 		infoPID: winPID, infoFrame: [4]float64{w.X, w.Y, w.W, w.H}, infoOnScr: true,
-		top: windowID,
+		top: windowID, topPID: winPID,
 	}
 }
 
@@ -99,11 +102,12 @@ func (f *fakeWindow) Raise(pid int32, x, y, w, h float64, title string) (int, er
 	return 1, nil
 }
 
-func (f *fakeWindow) TopmostAt(x, y float64) (uint32, error) {
+func (f *fakeWindow) TopmostAt(x, y float64) (screencap.TopWindow, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.topPoints = append(f.topPoints, [2]float64{x, y})
-	return f.top, f.topErr
+	fr := f.topFrame
+	return screencap.TopWindow{ID: f.top, PID: f.topPID, Layer: f.topLayer, X: fr[0], Y: fr[1], W: fr[2], H: fr[3]}, f.topErr
 }
 
 // focusWindow makes the shared window the focused one (frame as WindowInfo has it).
