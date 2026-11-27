@@ -27,6 +27,8 @@ func (a *API) wrapRelayWithRemoteFiles(relayServer http.Handler) http.Handler {
 	// (relay.LoopbackOriginPatterns), and the outbound Origin is injected on the
 	// upstream dial (134-RESEARCH Pattern 3).
 	mux.HandleFunc("GET /api/relay/remote/{sessionID}/ws", a.handleRemoteSessionWS)
+	// Phase 21-06: signalling-only twin for a peer's desktop, keyed by host.
+	mux.HandleFunc("GET /api/relay/remote-desktop/{host}/ws", a.handleRemoteDesktopWS)
 
 	// Everything else falls through to the relay server. Go 1.22+ mux: the "/"
 	// pattern is the least-specific match, so the explicit route above wins.

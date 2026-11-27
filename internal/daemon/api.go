@@ -80,6 +80,10 @@ type API struct {
 	// daemon restart wipes the cache (Phase 122-01 / REMOTE-01).
 	remoteCaps *RemoteCapStore
 
+	// desktopCaps holds each peer's standing desktop token for the loopback
+	// desktop proxy and the peer-desktop connect route. In-memory only (desktop_caps.go).
+	desktopCaps *DesktopCapStore
+
 	// portForwards holds the loopback forwards for remote localhost URLs and
 	// the consent behind them (portforward.go). In-memory only.
 	portForwards *PortForwards
@@ -130,6 +134,7 @@ func NewAPI(engine *SessionEngine) *API {
 		mux:          http.NewServeMux(),
 		tailnetCache: &tailnetCache{},
 		remoteCaps:   NewRemoteCapStore(),
+		desktopCaps:  NewDesktopCapStore(),
 		portForwards: newPortForwards(),
 
 		shares:         map[string]shareRecord{},
@@ -246,6 +251,8 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("GET /tailnet/peers", a.handleTailnetPeers)
 	// Connect to a session shared from another Mac (CLI attach and the GUI).
 	a.mux.HandleFunc("POST /peers/connect", a.handlePeerConnect)
+	// Fetch a peer's standing desktop token into memory for the loopback desktop proxy.
+	a.mux.HandleFunc("POST /peers/desktop", a.handlePeerDesktop)
 	// Open a loopback forward for a clicked remote localhost URL. Socket only,
 	// like /handoff and /preview: the relay port is reachable by browser pages.
 	a.mux.HandleFunc("POST /peers/ports", a.handlePortOpen)
