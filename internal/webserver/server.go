@@ -540,8 +540,9 @@ func (ws *WebServer) BaseURL() string {
 //     Origin, then WhoIs, then capability), so another account is refused
 //     before any capability work. /assets/, / and /dashboard stay open: they
 //     carry no session data.
-//   - /api/sessions/meta and POST /api/peer/sessions/{id}/cap — gated by
-//     requireSameUser (same Tailscale user via WhoIs, fail closed).
+//   - /api/sessions/meta, POST /api/peer/sessions/{id}/cap and
+//     POST /api/peer/desktop/cap — gated by requireSameUser (same Tailscale
+//     user via WhoIs, fail closed).
 //   - POST /api/peer/sessions/{id}/ports and /api/peer/sessions/{id}/ports/{port}
 //     (Phase 13) — requireSameUser, then a write capability in X-Portty-Cap;
 //     the proxy route also needs the port token (portproxy.go).
@@ -572,6 +573,12 @@ func (ws *WebServer) setupRoutes() {
 	// share's capability with nothing to type. POST + application/json only, no
 	// Access-Control-* headers, Cache-Control: no-store (whois.go handlePeerCap).
 	mux.HandleFunc("POST /api/peer/sessions/{id}/cap", ws.requireSameUser(ws.handlePeerCap))
+
+	// POST /api/peer/desktop/cap — the twin for the always-available desktop: a
+	// same-account peer daemon receives the standing desktop token. Same rules as
+	// handlePeerCap: POST + application/json only, no Access-Control-* headers,
+	// Cache-Control: no-store (whois.go handlePeerDesktopCap).
+	mux.HandleFunc("POST /api/peer/desktop/cap", ws.requireSameUser(ws.handlePeerDesktopCap))
 
 	// Phase 13, URL-02: the host half of a remote localhost URL. The grant mints
 	// a port token for a port the session printed; the proxy route forwards to
@@ -822,6 +829,14 @@ func (ws *WebServer) handleSessionsMeta(w http.ResponseWriter, r *http.Request) 
 			Status: st,
 			URL:    sessionURL,
 		})
+	}
+	// Discovery for a same-account peer's Desktop row: only requireSameUser callers
+	// get here. The body stays the bare array; a reader that ignores headers is
+	// unaffected, and a reader branches on the exact value "always".
+	if ws.desktop != nil {
+		if _, on := ws.desktop.DesktopGrant(); on {
+			w.Header().Set(tailnet.DesktopHeader, tailnet.DesktopAlways)
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(items) //nolint:errcheck
