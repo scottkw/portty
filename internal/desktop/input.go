@@ -187,7 +187,9 @@ type viewerInput struct {
 
 	lastMsgAt        time.Time // Deps.Now when the last message arrived (the dead-man's clock)
 	lastCursorReport time.Time
-	tokens           float64 // the rate bucket
+	cursorPending    *cursorReport // the newest point a throttled report skipped, sent when the window ends
+	cursorTimer      bool          // a trailing report is scheduled
+	tokens           float64       // the rate bucket
 	bucketAt         time.Time
 
 	// Click counting from viewer timestamps: the previous down, and the count
@@ -595,6 +597,7 @@ func (m *Manager) postPointer(v *viewer, kind string, x, y float64) bool {
 	}
 	m.countFor(v, kind)
 	if p.drag >= 0 {
+		m.countFor(v, "drag") // in the leave summary: moves posted with a button held (M-195)
 		m.postMouse(screencap.MouseDragged, x, y, cgButton(p.drag), 0, p.dx, p.dy, p.flags)
 		return true
 	}

@@ -235,8 +235,15 @@ export function createTrackpad(
       t0 = lt = now
       pressTimer = clock.setTimeout(() => {
         pressTimer = null
-        if (mode !== 'touching' && mode !== 'second') return
-        flushTap() // a held second touch is no longer a double-tap: release the first tap's click
+        if (mode === 'second') {
+          // Tap, then touch and hold: the button goes down now, the drag follows the finger (UI-SPEC: button
+          // down at the second touch). M-195: a finger resting on a title bar before it moves right-clicked.
+          prev = null
+          mode = 'dragging'
+          onIntent({ kind: 'dragStart', at: clock.now() })
+          return
+        }
+        if (mode !== 'touching') return
         mode = 'longPressed'
         onIntent({ kind: 'longPress', at: clock.now() })
       }, TRACKPAD.longPressMs)

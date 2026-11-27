@@ -229,6 +229,28 @@ describe('one-finger gestures reach the Mac as Phase 20 buttons', () => {
     expect(btns().map((m) => [m.b, m.d])).toEqual([[0, true], [0, false]])
   })
 
+  it('M-195: tap, then touch and rest on a title bar, then drag: left down at the cursor, relative moves, left up; no right click', () => {
+    tapAt()
+    advance(150)
+    const t = pt(100, 100)
+    touch('touchstart', [t])
+    advance(600) // the finger rests before it moves
+    expect(btns().map((m) => [m.b, m.d, m.x, m.y])).toEqual([[0, true, 0.5, 0.25]])
+    const before = wire().length
+    for (let i = 1; i <= 6; i++) {
+      advance(16)
+      touch('touchmove', [{ ...t, clientX: 100 + i * 5, clientY: 100 }])
+    }
+    const moves = wire().slice(before)
+    expect(moves.length).toBeGreaterThan(0)
+    expect(moves.every((m) => m.t === 'rmove' && m.dx! > 0)).toBe(true)
+    advance(16)
+    touch('touchend', [], [{ ...t, clientX: 130, clientY: 100 }])
+    expect(btns().map((m) => [m.b, m.d])).toEqual([[0, true], [0, false]])
+    advance(1000)
+    expect(btns().some((m) => m.b === 2)).toBe(false)
+  })
+
   it('the heartbeat runs every second while the button is held and stops after the lift', () => {
     const t = startDrag()
     client().sendInput.mockClear()
