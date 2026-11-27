@@ -575,3 +575,110 @@ func TestFanout_ClosedErrorsChannelIsQuiet(t *testing.T) {
 	r.src.last().emit(false)
 	eventually(t, 5*time.Second, "a frame after the Errors channel closed", func() bool { return r.env.mgr.FramesSeenForTest() > before })
 }
+
+// TestFanout_SourceRestartKeepsRTPSequence: a source restart (stall recovery,
+// wake, retry) keeps an existing viewer's video and audio RTP sequence numbers
+// and timestamps running on. A new random sequence per capture run made the
+// viewer's SRTP drop every packet behind the last one it accepted, leaving the
+// picture frozen until the new sequence overtook the old (up to about 40 s).
+func TestFanout_SourceRestartKeepsRTPSequence(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		sources []*audioFake
+	)
+	env := newTracerServer(t, withAudioSource(&sources, &mu))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	v := env.joinCaps(ctx, t, env.token(t, "g1"), map[string]int{"video": 1, "audio": 1}, wantAudio)
+	requireKeyframe(t, "viewer", v.firstAU(t, 5*time.Second))
+
+	var vids, auds []rtp.Header
+	collect := func() {
+		for {
+			select {
+			case h := <-v.lc.video:
+				vids = append(vids, h)
+			case p := <-v.lc.audio:
+				auds = append(auds, p.Header)
+			default:
+				return
+			}
+		}
+	}
+	eventually(t, 5*time.Second, "video and audio before the restart", func() bool { collect(); return len(vids) > 0 && len(auds) > 0 })
+	nv, na := len(vids), len(auds)
+	if err := env.mgr.RestartSourceForTest(); err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	mu.Lock()
+	runs := len(sources)
+	mu.Unlock()
+	if runs != 2 {
+		t.Fatalf("%d capture runs after the restart, want 2", runs)
+	}
+	// Units from the new run: the synthetic source sends 30 a second and the
+	// audio fake one packet every 20 ms.
+	eventually(t, 5*time.Second, "video and audio after the restart", func() bool {
+		collect()
+		return len(vids) >= nv+60 && len(auds) >= na+25
+	})
+
+	check := func(kind string, hs []rtp.Header) {
+		t.Helper()
+		for i := 1; i < len(hs); i++ {
+			// Loopback may drop a packet under -race; a restart must not jump.
+			if d := hs[i].SequenceNumber - hs[i-1].SequenceNumber; d == 0 || d > 64 {
+				t.Fatalf("%s packet %d: sequence %d after %d (step %d), want a small forward step", kind, i, hs[i].SequenceNumber, hs[i-1].SequenceNumber, d)
+			}
+			if d := hs[i].Timestamp - hs[i-1].Timestamp; d > 10*90000 {
+				t.Fatalf("%s packet %d: timestamp %d after %d (step %d), want a small forward step", kind, i, hs[i].Timestamp, hs[i-1].Timestamp, d)
+			}
+		}
+	}
+	check("video", vids)
+	check("audio", auds)
+}
+
+// TestFanout_SourceRestartStampsTheGap: the first unit of a new capture run is
+// stamped with the real time since the previous run's last unit, so the RTP
+// clock keeps following real time across a restart as it does for a still
+// screen (the new run's first unit only carries a nominal duration).
+func TestFanout_SourceRestartStampsTheGap(t *testing.T) {
+	r := newRig(t)
+	v := r.join()
+	var last rtp.Header
+	got := false
+	eventually(t, 5*time.Second, "a unit before the restart", func() bool {
+		r.src.last().emit(true)
+		time.Sleep(50 * time.Millisecond)
+		for {
+			select {
+			case last = <-v.lc.video:
+				got = true
+			default:
+				return got
+			}
+		}
+	})
+	r.w.clock.Advance(4 * time.Second) // under the watchdog's stall window
+	if err := r.env.mgr.RestartSourceForTest(); err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	eventually(t, 3*time.Second, "second capture run", func() bool { return r.src.count() == 2 })
+	var next rtp.Header
+	eventually(t, 5*time.Second, "a unit from the new run", func() bool {
+		r.src.last().emit(true)
+		select {
+		case next = <-v.lc.video:
+			return true
+		case <-time.After(50 * time.Millisecond):
+			return false
+		}
+	})
+	if d := next.SequenceNumber - last.SequenceNumber; d != 1 {
+		t.Errorf("sequence step across the restart = %d, want 1", d)
+	}
+	if d := next.Timestamp - last.Timestamp; d < 4*90000 || d > 5*90000 {
+		t.Errorf("timestamp step across a 4 s restart gap = %d ticks, want 360000..450000", d)
+	}
+}

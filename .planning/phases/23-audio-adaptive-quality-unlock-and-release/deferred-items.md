@@ -4,7 +4,9 @@ Out-of-scope discoveries logged by executors. Nothing here was fixed by the plan
 
 ## From 23-02
 
-### A source restart gives every viewer a new random RTP sequence number, and viewers freeze until it passes the old one (Phase 19, pre-existing)
+### RESOLVED: A source restart gives every viewer a new random RTP sequence number, and viewers freeze until it passes the old one (Phase 19, pre-existing)
+
+- **Resolved 2026-11-27 (debug `rtp-seq-restart-freeze`):** the video packetizer and the audio clock now live on the Manager for its life, so sequence numbers and timestamps run on across a restart, and a new run's first video unit is stamped with the real gap. Guarded by `TestFanout_SourceRestartKeepsRTPSequence` and `TestFanout_SourceRestartStampsTheGap` (internal/desktop/fanout_test.go). A browser check on the VM or a real Mac is still to run: TESTING.md M-221, `.planning/debug/rtp-seq-restart-freeze.md`.
 
 - **Where:** `internal/desktop/manager.go`, `fanOut`: `rtp.NewPacketizer(..., rtp.NewRandomSequencer(), ...)` is built per run, and a run ends with every source restart (`restartSource`: stall recovery, wake, awaiting-approval retry).
 - **What happens:** the viewers' PeerConnections, SSRC and SRTP contexts survive the restart, but the packets now start at a new random 16-bit sequence number. SRTP replay protection (and the rollover-counter estimate) on the receiving side drops packets whose sequence is behind the last one it accepted, so the picture stays frozen until the new sequence overtakes the old, up to about 40 s at 830 packets per second, or longer after a jump the receiver estimates into the wrong rollover.

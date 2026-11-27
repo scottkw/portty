@@ -971,6 +971,7 @@ The path column must contain a repo-relative file path ending in `.go`, `.ts`, `
 | DPRM-02 | frontend/src/components/__tests__/SettingsSheet.desktop.test.tsx | vitest | Portty 19-13: the wording table (`desktopStatusText`) drives the Status row, Waiting for Tailscale wins over every state, no reply reads Checking |
 | DPRM-02 | frontend/src/components/__tests__/DesktopView.test.tsx | vitest | Portty 19-06: the viewer shows Needs permission, Waiting for approval and Display asleep as cards and Locked as a chip |
 | DPRM-03 | internal/desktop/watchdog_test.go | Go | Portty 19-09: `TestWatchdog_StillScreenNudges`, `TestWatchdog_FrozenRestartRecovers`, `TestWatchdog_AwaitingApprovalOnce` (one transition to waiting for approval), `TestLapseSender_GUIClaims`, `TestLapseSender_GUISilentDaemonPosts`, `TestLapseSender_NoGUIDaemonPostsAtOnce`, `TestLapseSender_ClaimRace`, `TestApprovalRecord`, `TestBreaker`, `TestRuntimeState_File`, `TestNoteTestCapture` |
+| DPRM-03 | internal/desktop/fanout_test.go | Go | Debug rtp-seq-restart-freeze (edited in place): `TestFanout_SourceRestartKeepsRTPSequence` (video and audio RTP sequence numbers and timestamps run on across a source restart, so the viewer's SRTP keeps accepting them), `TestFanout_SourceRestartStampsTheGap` (the new run's first unit is stamped with the real gap) |
 | DPRM-03 | internal/daemon/desktop_lapse_test.go | Go | Portty 19-14: `TestDesktopLapse_PresenceAndClaim`, `TestDesktopLapse_ClaimIsAtomicAndExact`, `TestDesktopLapse_GUIRunningOneNotification`, `TestDesktopLapse_GUIQuitDaemonPosts` (the one-sender rule: the GUI when it runs, otherwise the daemon) |
 | DPRM-03 | app_lapse_test.go | Go | Portty 19-14: `TestRefreshTray_ClaimsAndPostsOnce`, `TestRefreshTray_SkipsClaimedLapse` (the GUI half of the one-sender rule) |
 | DPRM-03 | notification_darwin_test.go | Go | Portty 19-14 fix: native notifications go through a private queue when no app run loop runs, so a headless daemon delivers them (VM row V1b) |
@@ -2729,6 +2730,15 @@ Rig: the owner's office MacBook Air as the shared Mac (Portty GUI and daemon, Sh
   - _Last run:_ not yet run. Not driven in the VM (no screen reader).
   - _Why not automatable:_ the real VoiceOver speech output; the roles, names and live regions are unit-tested (`ViewerList.test.tsx` accessible names and the polite live region, `AdmitSheet.test.tsx`).
   - _Source:_ 22-10-SUMMARY.md manual candidates, 22-UI-SPEC.md accessibility rows.
+
+- **M-221** A browser viewer keeps its picture through a desktop source restart (stall recovery, wake) with no freeze (DPRM-03, DPRM-04; debug rtp-seq-restart-freeze; VM or real Mac; NOT RUN).
+  1. On the office VM or a real Mac, open Desktop from a browser viewer (Chrome and Safari) and from the Portty app; keep the picture moving.
+  2. Force a restart: sleep and wake the display, and separately let the watchdog restart a frozen stream (still screen with the pointer nudge blocked, or the vmdesktop rig's stall); note the "stall recovered" or wake line in daemon.log.
+  3. Watch each viewer for 60 s after the restart; in Chrome, chrome://webrtc-internals for the inbound video and audio: packetsReceived keeps rising, packetsLost does not jump, framesDecoded resumes.
+  PASS when: every viewer shows a moving picture within 2 s of the restart line and audio resumes; FAIL on a picture frozen for more than 2 s while daemon.log shows the stream running.
+  - _Last run:_ not yet run. The fix is proven on the host with a pion loopback viewer only (`TestFanout_SourceRestartKeepsRTPSequence`).
+  - _Why not automatable:_ a real browser's SRTP and jitter buffer and a real capture restart; pion's SRTP stands in for them in the Go test.
+  - _Source:_ .planning/debug/rtp-seq-restart-freeze.md, Phase 23 deferred-items.md (23-02).
 
 ---
 

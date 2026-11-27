@@ -127,7 +127,7 @@ func ensureOpusStereo(sdp string) string {
 func (m *Manager) audioOut(ctx context.Context, src screencap.AudioSource, done chan<- struct{}) {
 	defer close(done)
 	defer recoverLog()
-	clk := newAudioClock()
+	clk := m.aclk // continues across capture runs, like video's m.vpkt
 	pkts, errs := src.AudioPackets(), src.AudioErrors()
 	for {
 		select {

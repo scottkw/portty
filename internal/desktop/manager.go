@@ -345,6 +345,16 @@ type Manager struct {
 	audioDone chan struct{}
 	// audioFail is set while audio capture or encoding has failed (audio.go).
 	audioFail atomic.Bool
+	// vpkt and aclk number and stamp the video and audio RTP packets for the
+	// Manager's whole life, not per capture run: a viewer's track, SSRC and SRTP
+	// context outlive a source restart, and SRTP on the viewer drops packets
+	// behind the last sequence it accepted, so a new random sequence froze the
+	// picture until it overtook the old one. vlast is when the last video unit
+	// was stamped. Only fanOut (video) and audioOut (audio) touch them, one run
+	// at a time: a stop waits for both before the next start.
+	vpkt  rtp.Packetizer
+	aclk  *audioClock
+	vlast time.Time
 
 	// q is the adaptive quality controller and bwe the slot that hands each new
 	// PeerConnection's estimator to answer (quality.go, peer.go).
@@ -527,6 +537,8 @@ func NewManager(d Deps) (*Manager, error) {
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
 	}
+	m.vpkt = rtp.NewPacketizer(outboundMTU, 0, 0, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), h264Capability.ClockRate)
+	m.aclk = newAudioClock()
 	m.q = newQualityController(m)
 	m.arb = newArbiter(d.Now, d.Physical)
 	m.lease.kick = make(chan struct{}, 1)
@@ -1116,12 +1128,13 @@ func (m *Manager) forceKeyframeNow() {
 
 // fanOut packetizes every access unit of src once and writes it to each
 // viewer's track until Frames closes, announcing a changed picture size to the
-// viewers. SSRC and payload type are set per viewer by its track.
+// viewers. SSRC and payload type are set per viewer by its track; sequence and
+// timestamp continue from the previous run (m.vpkt).
 func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 	defer close(done)
 	defer recoverLog()
-	pkt := rtp.NewPacketizer(outboundMTU, 0, 0, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), h264Capability.ClockRate)
 	frames, errs := src.Frames(), src.Errors()
+	first := true
 	for {
 		select {
 		case au, ok := <-frames:
@@ -1141,7 +1154,14 @@ func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 				// display is dark: the viewer is shown the state instead.
 				continue
 			}
-			m.writeUnit(au.Keyframe, packetize(pkt, au))
+			// A run's first unit carries a nominal duration; across a restart the
+			// RTP clock follows the real gap, as it does for a still screen.
+			now := m.d.Now().Round(0)
+			if first && !m.vlast.IsZero() {
+				au.Duration = max(au.Duration, now.Sub(m.vlast))
+			}
+			first, m.vlast = false, now
+			m.writeUnit(au.Keyframe, packetize(m.vpkt, au))
 		case err, ok := <-errs:
 			if !ok {
 				errs = nil // a nil channel never fires; the frames case ends the loop

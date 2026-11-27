@@ -294,6 +294,9 @@ type loopbackClient struct {
 	answerMunge func(string) string
 	// units counts every access unit the video track delivered, drained or not.
 	units atomic.Uint64
+	// video is the header of every RTP packet the video track delivered, while
+	// there is room (the restart-continuity test reads sequence numbers).
+	video chan rtp.Header
 }
 
 func newLoopbackClient(t *testing.T) *loopbackClient {
@@ -318,7 +321,7 @@ func newLoopbackClient(t *testing.T) *loopbackClient {
 	if _, err := pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}); err != nil {
 		t.Fatal(err)
 	}
-	lc := &loopbackClient{pc: pc, aus: make(chan []byte, 64), audio: make(chan *rtp.Packet, 256)}
+	lc := &loopbackClient{pc: pc, aus: make(chan []byte, 64), audio: make(chan *rtp.Packet, 256), video: make(chan rtp.Header, 4096)}
 	pc.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		if track.Kind() == webrtc.RTPCodecTypeAudio {
 			lc.audioStream.Store(track.StreamID())
@@ -341,6 +344,10 @@ func newLoopbackClient(t *testing.T) *loopbackClient {
 			pkt, _, err := track.ReadRTP()
 			if err != nil {
 				return
+			}
+			select {
+			case lc.video <- pkt.Header:
+			default:
 			}
 			out, err := h264.Unmarshal(pkt.Payload)
 			if err != nil {
