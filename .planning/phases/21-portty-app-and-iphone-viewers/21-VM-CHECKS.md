@@ -74,3 +74,29 @@ DVWR01_VM: pass
 DVWR04_VM: pass
 PASTE_ALERT: none
 DEFERRED_UAT: label, chip and card legibility in Light and Dark over the translucent window (the guests' screenshots omit the page's DOM; contrast measured, not seen)
+
+# Plan 21-13: device results (the user's iPhone and two MacBook Airs; TESTING.md Section 5 Category BL)
+
+The owner was not available for Task 2, so by the run's standing decision every Phase 21 M-NN item is recorded DEFERRED ("deferred to user UAT, 21-UAT.md"); none was run, passed or failed. No VM row is repeated here. The items and their steps are in TESTING.md Section 5 Category BL; the release chord in every step is Ctrl+Option+Cmd+Shift+Return.
+
+| Item | Requirement | What it checks (short) | Result |
+|------|-------------|------------------------|--------|
+| M-194 | DVWR-03 | iPhone: one-finger trackpad, tap, double-tap timing, press-and-hold right click with no iOS callout | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-195 | DVWR-03 | iPhone: tap then drag a window, two-finger scroll direction | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-196 | DVWR-03 | iPhone: pinch to 5x, pan-follow, resets, no Safari tab overview | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-197 | DVWR-03 | iPhone: soft keyboard, Backspace, Return, armed modifiers, form-assist gap | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-198 | DVWR-03 | iPhone: Send Keys, Lock Screen confirm, surface picker | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-199 | DVWR-03 | iPhone: sleep and resume, the Tap to start card only when iOS needs it | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-200 | DVWR-03 | iPhone: Home Screen relaunch keeps the link, clean console under the strict CSP | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-201 | DVWR-01 | Macs: Desktop row, Local Network prompt, sharp picture, direct tailnet path | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-202 | DVWR-04 | Macs: Cmd+W, Cmd+Q, Cmd+C, the release chord, a plain click after it | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-203 | DVWR-04 | Macs: Cmd+V including a password-manager item | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-204 | DVWR-01 | Macs: hidden window lets the office display sleep after 2 minutes, on battery and on power | DEFERRED (deferred to user UAT, 21-UAT.md) |
+| M-205 | DVWR-01, DVWR-04 | Macs: label, chips and cards legible in Light and Dark over the translucent window (the `DEFERRED_UAT` line above) | DEFERRED (deferred to user UAT, 21-UAT.md) |
+
+Each requirement's status is computed from its M-NN items plus its VM closure lines (`DVWR01_VM: pass`, `DVWR04_VM: pass`; DVWR-03 has no VM closure line because its behaviour is phone-only). verified only when every item and VM row passed; partial when any item is DEFERRED and none failed; failed when any failed. None failed. No requirement is complete.
+
+DEVICE_ROWS: 0 pass, 0 fail, 12 deferred
+DVWR-01: partial (deferred M-201, M-204, M-205; DVWR01_VM pass)
+DVWR-03: partial (deferred M-194, M-195, M-196, M-197, M-198, M-199, M-200; no VM row covers it)
+DVWR-04: partial (deferred M-202, M-203, M-205; DVWR04_VM pass)
