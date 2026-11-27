@@ -149,7 +149,7 @@ func (a *API) registerDesktopRoutes(mux *http.ServeMux) {
 
 func (a *API) handleGetDesktop(w http.ResponseWriter, r *http.Request) {
 	a.mu.RLock()
-	cfg, cfgErr, mgr, ts := a.desktopCfg, a.desktopErr, a.desktopMgr, a.desktopTS
+	cfg, cfgErr, mgr, ts, guest := a.desktopCfg, a.desktopErr, a.desktopMgr, a.desktopTS, a.guestShare != nil
 	a.mu.RUnlock()
 	if mgr != nil && r.URL.Query().Get("gui") == "1" {
 		mgr.NoteGUISeen() // the GUI's 5 s tray poll: the lapse sender rule reads this
@@ -158,8 +158,10 @@ func (a *API) handleGetDesktop(w http.ResponseWriter, r *http.Request) {
 	if cfgErr != nil {
 		resp.Reason = cfgErr.Error()
 	}
-	if cfg.AlwaysAvailable {
-		resp.AlwaysAvailable = true
+	resp.AlwaysAvailable = cfg.AlwaysAvailable
+	// A guest share runs the Manager with always-available off too; its state is
+	// what the Share Desktop sheet's Status row shows the sharer.
+	if cfg.AlwaysAvailable || guest {
 		resp.State = string(desktop.StateIdle)
 		if mgr != nil {
 			st := mgr.Status()

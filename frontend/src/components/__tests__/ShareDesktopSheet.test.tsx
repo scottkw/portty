@@ -238,6 +238,16 @@ describe('ShareDesktopSheet: start and copy (tracer)', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('a rejected StopDesktopShare shows the stop error and leaves the stopping state (UI-REVIEW #6)', async () => {
+    stop.mockRejectedValueOnce(new Error('daemon gone'))
+    await mount()
+    await click(button(copy.STOP_SHARING)!)
+    expect(container.querySelector('[role="alert"]')!.textContent).toBe(copy.shareDesktopStopError('daemon gone'))
+    await click(button(copy.STOP_SHARING)!)
+    expect(stop).toHaveBeenCalledTimes(2)
+    expect(text()).toContain(copy.SHARE_NOT_SHARING_DESCRIPTION)
+  })
+
   it('a failed stop shows the error with the local detail and stays in Sharing', async () => {
     stop.mockResolvedValue({ errorCode: 'stop_failed', detail: 'daemon not connected.' })
     await mount()
@@ -291,6 +301,17 @@ describe('ShareDesktopSheet: start failures and reasons (Surface 2 table)', () =
     await click(button(copy.START_SHARING)!)
     expect(start).toHaveBeenCalledTimes(2)
     expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(text()).toContain(copy.SHARE_LINK_LABEL)
+  })
+
+  it('a rejected StartDesktopShare shows the start error and leaves Getting a link… (UI-REVIEW #6)', async () => {
+    start.mockRejectedValueOnce(new Error('daemon gone'))
+    await mount()
+    expect(container.querySelector('[role="alert"]')!.textContent).toBe(copy.shareDesktopStartError('daemon gone'))
+    expect(text()).not.toContain(copy.SHARE_STARTING)
+    expect(startBlocked()).toBe(false)
+    await click(button(copy.START_SHARING)!)
+    expect(start).toHaveBeenCalledTimes(2)
     expect(text()).toContain(copy.SHARE_LINK_LABEL)
   })
 

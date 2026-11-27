@@ -148,7 +148,8 @@ function ShareDesktopSheetContent({ onClose, tailscaleHealth, state, stoppedNoti
     setActionError(null)
     setNotice(false)
     sawActive.current = false
-    const r = await StartDesktopShare()
+    // A rejected binding is a failed start: the error shows and the sheet leaves Getting a link….
+    const r = await StartDesktopShare().catch((err: unknown) => ({ url: '', firstShare: false, errorCode: 'unavailable', detail: String(err) }))
     if (!alive.current) return
     if (r.errorCode) {
       // Tailscale off and userspace mode block the button; the rest is an inline error with a next step.
@@ -219,7 +220,7 @@ function ShareDesktopSheetContent({ onClose, tailscaleHealth, state, stoppedNoti
     if (stopping) return
     setStopping(true)
     setActionError(null)
-    const r = await StopDesktopShare()
+    const r = await StopDesktopShare().catch((err: unknown) => ({ errorCode: 'unavailable', detail: String(err) }))
     if (!alive.current) return
     setStopping(false)
     if (r.errorCode) {

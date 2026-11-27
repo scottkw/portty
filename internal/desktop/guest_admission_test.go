@@ -34,8 +34,9 @@ func TestGuestViewer_NewKnockFromTheSameNodeClosesTheWaitingOne(t *testing.T) {
 	first := e.knock(ctx, t, 1001, "nodeA")
 	e.pendingN(t, 1)
 	e.knock(ctx, t, 1001, "nodeA")
-	if code, reason := closeOf(ctx, t, first); code != websocket.StatusNormalClosure || reason != "replaced" {
-		t.Errorf("replaced socket closed %d %q, want 1000 replaced", code, reason)
+	// Final for the page that lost: it shows a card instead of retrying (which would replace the newer one).
+	if code, reason := closeOf(ctx, t, first); code != desktop.CloseGuestReplaced || reason != "replaced" {
+		t.Errorf("replaced socket closed %d %q, want 4434 replaced", code, reason)
 	}
 	if n := len(e.gs.Pending()); n != 1 {
 		t.Errorf("%d pending, want 1", n)
@@ -122,9 +123,40 @@ func TestGuestViewer_ReconnectIsAdmittedAtOnceAndTheOlderSocketCloses(t *testing
 	if got := len(e.eventsOf("admit_request")); got != requests {
 		t.Errorf("a reconnect fired admit_request")
 	}
-	if code, reason := closeOf(ctx, t, old); code != websocket.StatusNormalClosure || reason != "replaced" {
-		t.Errorf("older socket closed %d %q, want 1000 replaced", code, reason)
+	if code, reason := closeOf(ctx, t, old); code != desktop.CloseGuestReplaced || reason != "replaced" {
+		t.Errorf("older socket closed %d %q, want 4434 replaced", code, reason)
 	}
+}
+
+// TestGuestViewer_ReconnectIsNotHeldUpByASilentOldSocket (WR-05): the usual
+// reconnect leaves a half-open old socket that never answers the close. The new
+// connection's hello must not wait for that handshake, and the old viewer is cut
+// (view-only at once) and leaves.
+func TestGuestViewer_ReconnectIsNotHeldUpByASilentOldSocket(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, withGuestInput(&fakeInputBridge{}))
+	old := e.joinGuestAs(ctx, t, 1001, "nodeA", false) // never reads: never answers the close
+	c := e.dial(ctx, t, 1001, "nodeA")
+	start := time.Now()
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"input": 1}})
+	readType(ctx, t, c, "hello")
+	if d := time.Since(start); d >= 2*time.Second {
+		t.Errorf("the reconnect's hello took %v behind the old socket's close, want under 2 s", d)
+	}
+	for _, v := range e.mgr.ViewerList() {
+		if v.ID == old.viewerID() && v.Rights != desktop.RightsViewOnly {
+			t.Errorf("the replaced viewer still has rights %v", v.Rights)
+		}
+	}
+	eventually(t, 9*time.Second, "the replaced viewer to leave", func() bool {
+		for _, v := range e.mgr.ViewerList() {
+			if v.ID == old.viewerID() {
+				return false
+			}
+		}
+		return true
+	})
 }
 
 func TestGuestViewer_SecondNodeOfAnAdmittedUserWaits(t *testing.T) {

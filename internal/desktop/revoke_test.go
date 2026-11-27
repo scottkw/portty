@@ -148,6 +148,84 @@ func TestGuestRevoke_DenyListsTheUser(t *testing.T) {
 	}
 }
 
+// TestGuestRevoke_CutsEveryDeviceOfThePerson (WR-03): the person is the unit.
+// Disconnecting one row of a person watching on two devices cuts both; another
+// person stays.
+func TestGuestRevoke_CutsEveryDeviceOfThePerson(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, withGuestInput(&fakeInputBridge{}))
+	laptop := e.joinGuest(ctx, t, 1001, "nodeA")
+	phone := e.joinGuest(ctx, t, 1001, "nodeB")
+	other := e.joinGuest(ctx, t, 1002, "nodeC")
+	if err := e.mgr.CloseViewer(laptop.viewerID()); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := laptop.waitClosed(t, 5*time.Second); code != desktop.CloseGuestRevoked {
+		t.Errorf("disconnected device closed %d, want 4432", code)
+	}
+	if code, _ := phone.waitClosed(t, 5*time.Second); code != desktop.CloseGuestRevoked {
+		t.Errorf("the same person's other device closed %d, want 4432", code)
+	}
+	eventually(t, 5*time.Second, "only the other person to be left", func() bool { return e.mgr.Viewers() == 1 })
+	select {
+	case <-other.closed:
+		t.Error("another person's connection was cut")
+	default:
+	}
+}
+
+// TestGuestDeny_CutsThePersonsLiveDevices (WR-03): denying a person's second
+// device also cuts the device they are already watching on, so the deny-list
+// and the live connections agree.
+func TestGuestDeny_CutsThePersonsLiveDevices(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, withGuestInput(&fakeInputBridge{}))
+	laptop := e.joinGuest(ctx, t, 1001, "nodeA")
+	other := e.joinGuest(ctx, t, 1002, "nodeC")
+	phone := e.knock(ctx, t, 1001, "nodeB")
+	req := e.pendingN(t, 1)[0]
+	if err := e.mgr.DenyGuest(e.gs, req.ID); err != nil {
+		t.Fatal(err)
+	}
+	if code, reason := closeOf(ctx, t, phone); code != desktop.CloseGuestDenied || reason != "denied" {
+		t.Errorf("denied device closed %d %q, want 4430 denied", code, reason)
+	}
+	if code, _ := laptop.waitClosed(t, 5*time.Second); code != desktop.CloseGuestRevoked {
+		t.Errorf("the denied person's watching device closed %d, want 4432", code)
+	}
+	if err := e.mgr.DenyGuest(e.gs, req.ID); !errors.Is(err, desktop.ErrNoRequest) {
+		t.Errorf("denying an answered request = %v, want ErrNoRequest", err)
+	}
+	select {
+	case <-other.closed:
+		t.Error("another person's connection was cut")
+	default:
+	}
+}
+
+// TestGuestRevoke_GrantAfterTheCutIsRefused (IN-02): a viewer being cut stays
+// registered until its socket closes; a grant in that window must not switch
+// control or clipboard back on.
+func TestGuestRevoke_GrantAfterTheCutIsRefused(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, withGuestInput(&fakeInputBridge{}))
+	g := e.joinGuestAs(ctx, t, 1001, "nodeA", false) // never answers the close: stays registered a while
+	if err := e.mgr.CloseViewer(g.viewerID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.mgr.SetRights(g.viewerID(), true, true); !errors.Is(err, desktop.ErrNoViewer) {
+		t.Errorf("SetRights on a cut viewer = %v, want ErrNoViewer", err)
+	}
+	for _, v := range e.mgr.ViewerList() {
+		if v.ID == g.viewerID() && v.Rights != desktop.RightsViewOnly {
+			t.Errorf("a cut viewer has rights %v again", v.Rights)
+		}
+	}
+}
+
 // TestGuestRevoke_OwnAccountClosesGoingAway: an own-account device is closed
 // 1001 and is not deny-listed, so it may reconnect.
 func TestGuestRevoke_OwnAccountClosesGoingAway(t *testing.T) {

@@ -238,6 +238,7 @@ describe('guest close reasons and the check', () => {
     [4431, 'admit_timeout'],
     [4432, 'revoked'],
     [4433, 'share_ended'],
+    [4434, 'replaced'],
     [4401, 'token_invalid'],
   ]
 
@@ -347,7 +348,7 @@ describe('guest rights and lease messages', () => {
     ])
   })
 
-  it('an own-account client ignores admission, rights and lease messages', async () => {
+  it('an own-account client ignores admission and rights, and passes the lease on (WR-07)', async () => {
     const e = setup({ guest: false })
     e.client.start()
     lastT(e).open()
@@ -357,7 +358,12 @@ describe('guest rights and lease messages', () => {
     lastT(e).recv({ type: 'admission', state: 'waiting' })
     lastT(e).recv({ type: 'rights', rights: { control: true, clipboard: true, surface: true } })
     lastT(e).recv({ type: 'lease', state: 'physical' })
-    expect(e.events.map(([k]) => k)).toEqual(['rights'])
+    lastT(e).recv({ type: 'lease', state: 'unavailable' })
+    expect(e.events).toEqual([
+      ['rights', { control: false, clipboard: false, surface: false }],
+      ['lease', { state: 'physical', name: '' }],
+      ['lease', { state: 'unavailable', name: '' }],
+    ])
   })
 })
 
@@ -371,7 +377,7 @@ describe('signal-guest-v1.jsonl golden lines', () => {
     expect(lines.map((l) => l.name)).toEqual(expect.arrayContaining([
       'hello-guest', 'admission-waiting', 'admission-admitted', 'rights-view-only', 'rights-control-and-clipboard',
       'close-denied', 'close-admit-timeout', 'close-revoked', 'close-share-ended', 'close-token-invalid',
-      'close-replaced', 'close-full', 'lease-you', 'lease-other', 'lease-owner', 'lease-physical', 'lease-free',
+      'close-replaced', 'close-full', 'lease-you', 'lease-other', 'lease-owner', 'lease-physical', 'lease-unavailable', 'lease-free',
     ]))
   })
 
@@ -400,11 +406,12 @@ describe('signal-guest-v1.jsonl golden lines', () => {
       { state: 'other', name: 'Ada' },
       { state: 'owner', name: '' },
       { state: 'physical', name: '' },
+      { state: 'unavailable', name: '' },
       { state: 'free', name: '' },
     ])
   })
 
-  it('decodes each close line by its code to the reason the wire names, and replaced and full do not end the loop', async () => {
+  it('decodes each close line by its code to the reason the wire names, and only full does not end the loop', async () => {
     for (const l of named('close')) {
       const code = l.wire.close as number
       const reason = l.wire.reason as string
@@ -412,7 +419,8 @@ describe('signal-guest-v1.jsonl golden lines', () => {
       await hello(e)
       lastT(e).dropWith(code)
       const final = e.statuses.find((s) => s.kind === 'guest_final')
-      if (['denied', 'admit_timeout', 'revoked', 'share_ended', 'token_invalid'].includes(reason)) {
+      // replaced is final: a retry would knock again and replace the other tab, which would retry in turn.
+      if (['denied', 'admit_timeout', 'revoked', 'share_ended', 'token_invalid', 'replaced'].includes(reason)) {
         expect(final, l.name).toEqual({ kind: 'guest_final', reason })
       } else {
         expect(final, l.name).toBeUndefined()

@@ -19,11 +19,12 @@ import (
 const (
 	typeLease = "lease"
 
-	leaseYou      = "you"      // this viewer holds control
-	leaseOther    = "other"    // another viewer holds it (a guest holder is named)
-	leaseOwner    = "owner"    // an own-account viewer holds it; shown to guests, never named
-	leasePhysical = "physical" // the person at the Mac is using it
-	leaseFree     = "free"
+	leaseYou         = "you"         // this viewer holds control
+	leaseOther       = "other"       // another viewer holds it (a guest holder is named)
+	leaseOwner       = "owner"       // an own-account viewer holds it; shown to guests, never named
+	leasePhysical    = "physical"    // the person at the Mac is using it
+	leaseUnavailable = "unavailable" // the input tap is unhealthy: every press is dropped
+	leaseFree        = "free"
 )
 
 // tapPoll is how often the loop re-reads the tap's state and Secure Event Input.
@@ -159,6 +160,8 @@ func (m *Manager) pollTap() {
 func leaseFor(st LeaseState, r, hv *viewer) msgLease {
 	msg := msgLease{Type: typeLease}
 	switch {
+	case st.Unavailable:
+		msg.State = leaseUnavailable
 	case st.Physical:
 		msg.State = leasePhysical
 	case st.Holder == "" || hv == nil:

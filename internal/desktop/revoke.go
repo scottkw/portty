@@ -18,9 +18,10 @@ import (
 const closeCeiling = 2 * time.Second
 
 // CloseViewer cuts one viewer at once. A guest is closed 4432 revoked and its
-// person is deny-listed for the rest of the share, from every device; an
-// own-account device is closed 1001 disconnected and may reconnect through
-// always-available. Calling it twice, or while the viewer is leaving, is safe.
+// person is deny-listed for the rest of the share and cut on every device (the
+// person is the unit, as the sharer's copy says); an own-account device is
+// closed 1001 disconnected and may reconnect through always-available. Calling
+// it twice, or while the viewer is leaving, is safe.
 func (m *Manager) CloseViewer(id ViewerID) error {
 	v := m.lookupViewer(id)
 	if v == nil {
@@ -28,10 +29,46 @@ func (m *Manager) CloseViewer(id ViewerID) error {
 	}
 	if v.Mode == ModeGuest {
 		m.cutViewer(v, CloseGuestRevoked, guestReasonRevoked, true)
+		m.closeGuestUser(v.Identity.UserID)
 	} else {
 		m.cutViewer(v, websocket.StatusGoingAway, "disconnected", false)
 	}
 	return nil
+}
+
+// DenyGuest answers the waiting request reqID no. Deny is for the person
+// (GuestShare.Deny deny-lists the user), so the person's devices already
+// watching are cut too, 4432 revoked: the deny-list and the live connections
+// agree, and a watching device is not left to fail at its next reconnect.
+func (m *Manager) DenyGuest(gs *GuestShare, reqID string) error {
+	var uid int64
+	for _, p := range gs.Pending() {
+		if p.ID == reqID {
+			uid = p.Ident.UserID
+		}
+	}
+	if err := gs.Deny(reqID); err != nil {
+		return err
+	}
+	m.closeGuestUser(uid)
+	return nil
+}
+
+// closeGuestUser cuts every live guest viewer of userID, 4432 revoked. The
+// caller has deny-listed the user first, so a device still joining fails its
+// re-check in serveAdmitted.
+func (m *Manager) closeGuestUser(userID int64) {
+	m.vmu.Lock()
+	var vs []*viewer
+	for _, v := range m.viewers {
+		if v.Mode == ModeGuest && v.Identity.UserID == userID {
+			vs = append(vs, v)
+		}
+	}
+	m.vmu.Unlock()
+	for _, v := range vs {
+		m.cutViewer(v, CloseGuestRevoked, guestReasonRevoked, false)
+	}
 }
 
 // CloseViewerWith is CloseViewer with the close code and reason chosen by the

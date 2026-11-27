@@ -38,7 +38,7 @@ export type ClientStatus =
   | { kind: 'guest_final'; reason: GuestCloseReason }
 
 /** Why a guest connection ended for good (22-UI-SPEC Surface 6 close reasons). */
-export type GuestCloseReason = 'denied' | 'admit_timeout' | 'revoked' | 'share_ended' | 'token_invalid'
+export type GuestCloseReason = 'denied' | 'admit_timeout' | 'revoked' | 'share_ended' | 'token_invalid' | 'replaced'
 
 export interface SignalTransport {
   send(msg: object): void
@@ -165,8 +165,12 @@ export interface DesktopAdmissionMsg {
   state: 'waiting' | 'admitted'
 }
 
-/** Who holds the 2 s input lease, from this guest's side. `name` is set only for `other`, and is the holder's sanitized display name. */
-export type LeaseState = 'you' | 'other' | 'owner' | 'physical' | 'free'
+/**
+ * Who holds the 2 s input lease, from this viewer's side (guests and own-account controllers). `name` is set only for
+ * `other` with a guest holder, and is its sanitized display name. `unavailable`: the Mac's input tap is unhealthy, so
+ * every press is dropped.
+ */
+export type LeaseState = 'you' | 'other' | 'owner' | 'physical' | 'unavailable' | 'free'
 export interface DesktopLeaseMsg {
   state: LeaseState
   name: string
@@ -196,7 +200,7 @@ export interface DesktopEvents {
   cursor: DesktopCursorMsg
   /** Guest mode: the admission state of this connection. */
   admission: DesktopAdmissionMsg
-  /** Guest mode: the input lease. */
+  /** The input lease (a controlling guest, or an own-account controller). */
   lease: DesktopLeaseMsg
 }
 
@@ -369,9 +373,11 @@ const GUEST_CLOSE: Readonly<Record<number, GuestCloseReason>> = {
   4431: 'admit_timeout',
   4432: 'revoked',
   4433: 'share_ended',
+  // Final, not retried: a retry would knock again and replace the other tab, which would retry in turn.
+  4434: 'replaced',
 }
 
-const LEASE_STATES: ReadonlySet<string> = new Set<LeaseState>(['you', 'other', 'owner', 'physical', 'free'])
+const LEASE_STATES: ReadonlySet<string> = new Set<LeaseState>(['you', 'other', 'owner', 'physical', 'unavailable', 'free'])
 
 /** Belt and braces on a name from the wire: no control or format characters, one space between words, at most 128 characters. */
 function cleanName(v: unknown): string {
@@ -829,7 +835,8 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           if (guest) emit('rights', parseRights(m.rights))
           break
         case 'lease':
-          if (guest && typeof m.state === 'string' && LEASE_STATES.has(m.state)) {
+          // Own-account controllers hear it too: their input is dropped for the same reasons (WR-07).
+          if (typeof m.state === 'string' && LEASE_STATES.has(m.state)) {
             emit('lease', { state: m.state as LeaseState, name: m.state === 'other' ? cleanName(m.name) : '' })
           }
           break

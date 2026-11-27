@@ -171,6 +171,22 @@ describe('AdmitSheet', () => {
     expect(admit).toHaveBeenLastCalledWith('b')
   })
 
+  it('a re-knock from the same person and device (a new request id) does not restart the guard (WR-02)', async () => {
+    await render([req({ id: 'r1' })])
+    await pass(ADMIT_GUARD_MS)
+    await render([req({ id: 'r2' })])
+    expect(btn('Admit').getAttribute('aria-disabled')).toBe('false')
+    await click(btn('Deny'))
+    expect(deny).toHaveBeenCalledWith('r2')
+  })
+
+  it('the same login on another device restarts the guard', async () => {
+    await render([req({ id: 'r1' })])
+    await pass(ADMIT_GUARD_MS)
+    await render([req({ id: 'r2', nodeName: 'pat-phone' })])
+    expect(btn('Admit').getAttribute('aria-disabled')).toBe('true')
+  })
+
   it('a failed answer shows one alert and the buttons return after the guard', async () => {
     admit.mockResolvedValueOnce({ errorCode: 'unavailable', detail: 'x' })
     await render([req()])
@@ -205,12 +221,26 @@ describe('AdmitSheet', () => {
     expect(text()).toContain('3 more people are waiting.')
   })
 
-  it('shows the oldest request first', async () => {
-    await render([req({ id: 'new', displayName: 'Newer', since: '2026-11-27T10:05:00Z' }), req({ id: 'old', displayName: 'Older', since: '2026-11-27T10:00:00Z' })])
-    expect(container.querySelector('.admit__name')?.textContent).toBe('Older')
+  it("shows the first request in the daemon's (arrival) order, even when two knocked in the same second (WR-06)", async () => {
+    // The daemon sends pending in Seq order; `since` has whole seconds and ids are random, so neither may reorder it.
+    const t = '2026-11-27T10:00:00Z'
+    await render([req({ id: 'zz', displayName: 'First', nodeName: 'd1', since: t }), req({ id: 'aa', displayName: 'Second', nodeName: 'd2', since: t })])
+    expect(container.querySelector('.admit__name')?.textContent).toBe('First')
     await pass(ADMIT_GUARD_MS)
     await click(btn('Admit'))
-    expect(admit).toHaveBeenCalledWith('old')
+    expect(admit).toHaveBeenCalledWith('zz')
+  })
+
+  it('focus goes back to the dialog when the next person replaces the one answered from the keyboard (WR-06)', async () => {
+    const second = req({ id: 'b', loginName: 'second@example.com', displayName: 'Second', nodeName: 'other-laptop' })
+    await render([req({ id: 'a' }), second])
+    await pass(ADMIT_GUARD_MS)
+    btn('Admit').focus()
+    await click(btn('Admit'))
+    expect(admit).toHaveBeenCalledWith('a')
+    await render([second])
+    expect(container.querySelector('.admit__name')?.textContent).toBe('Second')
+    expect(document.activeElement).toBe(dialog())
   })
 
   it('an empty display name, or one equal to the login, makes the login the bold line with no Login name row', async () => {
