@@ -62,6 +62,7 @@ func vm20Pseudo() *viewer {
 			Viewer: Viewer{ID: "probe-vm20", Rights: RightsControl | RightsSurface | RightsClipboard},
 			in:     &viewerInput{},
 		}
+		vm20Viewer.setRightsBits(vm20Viewer.Rights)
 	}
 	return vm20Viewer
 }

@@ -47,7 +47,7 @@ func (m *Manager) takeToken(v *viewer) bool {
 // is spent only by a press that passed every other check.
 func (m *Manager) pressAllowed(v *viewer, msg inputMsg) (ok bool, reason string) {
 	switch {
-	case v.Rights&RightsControl == 0:
+	case m.rightsOf(v)&RightsControl == 0:
 		return false, "no_right"
 	case m.inputLocked():
 		return false, "locked"

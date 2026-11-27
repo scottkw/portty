@@ -9,7 +9,9 @@ type InputViewerForTest = viewer
 
 // NewInputViewerForTest returns an unregistered viewer with the given rights.
 func NewInputViewerForTest(id string, rights Rights) *InputViewerForTest {
-	return &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights}, in: &viewerInput{}}
+	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights}, in: &viewerInput{}}
+	v.setRightsBits(rights)
+	return v
 }
 
 // HandleInputForTest parses raw and handles it synchronously on the caller's
@@ -31,3 +33,6 @@ func (m *Manager) SetControlWindowForTest(s string) { m.setControlWindow(s) }
 
 // InputChannelsForTest is how many viewers' input channels the Manager counts as open.
 func (m *Manager) InputChannelsForTest() int { return len(m.inputChannels()) }
+
+// SetRightsForTest sets the live rights of an unregistered test viewer.
+func SetRightsForTest(v *InputViewerForTest, r Rights) { v.Rights = r; v.setRightsBits(r) }

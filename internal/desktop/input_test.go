@@ -444,7 +444,7 @@ func TestInput_ReleasesBypassGates(t *testing.T) {
 	}{
 		{"locked", func() { setLocked(s.locked, s.clk, true) }, func() { setLocked(s.locked, s.clk, false) }},
 		{"stale_epoch", func() { mgr.BumpEpochForTest(); epoch++ }, func() {}},
-		{"no_right", func() { s.v.Rights = desktop.RightsViewOnly }, func() { s.v.Rights = desktop.RightsOwnAccount }},
+		{"no_right", func() { desktop.SetRightsForTest(s.v, desktop.RightsViewOnly) }, func() { desktop.SetRightsForTest(s.v, desktop.RightsOwnAccount) }},
 		{"no_accessibility", func() { mgr.SetControlInputForTest(desktop.ControlNeedsAccessibility) }, func() { mgr.SetControlInputForTest(desktop.ControlOK) }},
 		{"rate", func() {
 			for range 300 {

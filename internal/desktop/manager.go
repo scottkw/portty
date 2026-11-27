@@ -280,6 +280,10 @@ type viewer struct {
 
 	gs       *GuestShare // the share a guest was admitted to; nil for an own-account viewer
 	mediaCut atomic.Bool // a media identity check already cut this guest
+
+	// rights is the live Rights, changed by SetRights and read by the press gate
+	// and the clipboard handlers; Viewer.Rights is only the starting record.
+	rights atomic.Uint32
 }
 
 // Manager owns the media socket, the shared track, the capture source and the
@@ -316,6 +320,10 @@ type Manager struct {
 
 	// clip is the clipboard's state (clipboard.go).
 	clip clipState
+
+	// rmu serialises SetRights, so the live bits and the admission's stored grants
+	// stay in the same order; a leaf lock.
+	rmu sync.Mutex
 
 	vmu      sync.Mutex
 	viewers  map[ViewerID]*viewer
@@ -626,6 +634,7 @@ func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, a
 	}
 
 	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeOwn, Identity: ident}, ws: c, inputCap: inputCap, in: &viewerInput{}}
+	v.setRightsBits(rights)
 	m.serveAdmitted(ctx, c, v, admit, nil)
 }
 
@@ -1113,12 +1122,14 @@ func (m *Manager) Viewers() int {
 }
 
 // ViewerList returns a copy of every connected viewer's record, oldest first.
-// Later phases read rights from it.
+// Rights is the live value.
 func (m *Manager) ViewerList() []Viewer {
 	m.vmu.Lock()
 	out := make([]Viewer, 0, len(m.viewers))
 	for _, v := range m.viewers {
-		out = append(out, v.Viewer)
+		vw := v.Viewer
+		vw.Rights = Rights(v.rights.Load())
+		out = append(out, vw)
 	}
 	m.vmu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].JoinedAt.Before(out[j].JoinedAt) })

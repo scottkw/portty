@@ -206,6 +206,10 @@ type release struct {
 	button int // CG button
 	x, y   float64
 	flush  chan struct{}
+	// A non-nil rv is a request to let go of everything rv holds when the input
+	// goroutine reaches it (a right was taken away); why is the log reason.
+	rv  *viewer
+	why string
 }
 
 // inputState is the Manager's input-wide state, kept here (not in manager.go)
@@ -442,6 +446,10 @@ func (m *Manager) runInput() bool {
 	if kind == 1 {
 		if rel.flush != nil {
 			close(rel.flush)
+			return true
+		}
+		if rel.rv != nil {
+			m.releaseHeld(rel.rv, rel.why)
 			return true
 		}
 		m.postRelease(rel)

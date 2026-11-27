@@ -222,7 +222,7 @@ func (m *Manager) listSurfaces(ctx context.Context) ([]screencap.SurfaceInfo, er
 // window that is on screen. Window titles go only to a viewer that may pick.
 func (m *Manager) handleSurfaces(ctx context.Context, v *viewer) {
 	reply := msgSurfaces{Type: typeSurfaces, Displays: []surfaceDisplay{}, Windows: []surfaceWindow{}}
-	if v.Rights&RightsSurface == 0 {
+	if m.rightsOf(v)&RightsSurface == 0 {
 		_ = send(ctx, v.ws, msgSurfaces{Type: typeSurfaces, Error: selectForbidden})
 		return
 	}
@@ -266,7 +266,7 @@ func failSelect(ctx context.Context, v *viewer, code string) {
 
 // handleSelect switches the share to the display or window the viewer picked.
 func (m *Manager) handleSelect(ctx context.Context, v *viewer, kind string, id uint32) {
-	if v.Rights&RightsSurface == 0 {
+	if m.rightsOf(v)&RightsSurface == 0 {
 		failSelect(ctx, v, selectForbidden)
 		return
 	}
