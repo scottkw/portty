@@ -8,7 +8,7 @@ status: executing
 stopped_at: Phase 21 complete (real-device verification deferred, see 21-UAT.md), Phase 22 executing
 last_updated: "2026-11-27T17:17:54.217Z"
 last_activity: 2026-11-27
-last_activity_desc: Phase 21 closed (human_needed 4/5, M-194..M-205 tracked in 21-UAT.md); Phase 22 executing
+last_activity_desc: "Phase 21 shipped as PR #14"
 state_head: 38dd7bf3944475b1decef22fa6afe4e4015eacee
 progress:
   total_phases: 8
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 
 Phase: 22 (Click-to-Share for Tailnet People) — EXECUTING
 Status: Phase 21 complete 2026-11-27 (verification human_needed 4/5, real-device items deferred; see Deferred Verification); Phase 22 executing
-Last activity: 2026-11-27 - Completed quick task 261127-fb9: Phase 21 ponytail-review fixes
+Last activity: 2026-11-27 -- Phase 21 shipped as PR #14
 
 ## Performance Metrics
 
