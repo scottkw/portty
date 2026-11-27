@@ -15,6 +15,8 @@ package screencap
 #include <stdlib.h>
 
 int pc_encode_synthetic(uintptr_t handle, int frames, int width, int height, int force, int rebuildAt, int rebuildW, int rebuildH, int *hardware);
+int pc_encode_synthetic_still(uintptr_t handle, int w, int h, int fps, int startBps, const uint8_t *luma, int frames, int refineBps, int mech, int *avgAfter, int *hardware);
+int pc_decode_synthetic(const uint8_t *sps, int spsLen, const uint8_t *pps, int ppsLen, const uint8_t *avcc, const int *sizes, int n, int w, int h, uint8_t *out);
 int pc_encode_synthetic_rate(uintptr_t handle, int frames, int width, int height, int fps, int changeAt, int startBps, int newBps, int rebuildAt, int paceUs, int *hardware);
 
 // Capture. Each returns 0 or an error code (SCK codes pass through, else OSStatus);
@@ -25,6 +27,8 @@ int pc_list_surfaces(char **json, int *n, char *errbuf, int errlen);
 void pc_stream_stop(void);
 int pc_encoder_force_keyframe(void);
 int pc_encoder_rebuild(int w, int h);
+int pc_encoder_refine(int bps);
+int pc_encoder_idle_refresh(void);
 int pc_encoder_set_bitrate(int bps);
 int pc_stream_set_fps(int fps);
 int pc_encoder_hardware(void);
@@ -96,7 +100,7 @@ func mapSCKError(code int, msg string) error {
 }
 
 //export goScreencapAccessUnit
-func goScreencapAccessUnit(h C.uintptr_t, avcc unsafe.Pointer, avccLen C.int, sps unsafe.Pointer, spsLen C.int, pps unsafe.Pointer, ppsLen C.int, keyframe C.int, width, height C.int) {
+func goScreencapAccessUnit(h C.uintptr_t, avcc unsafe.Pointer, avccLen C.int, sps unsafe.Pointer, spsLen C.int, pps unsafe.Pointer, ppsLen C.int, keyframe C.int, width, height, kind C.int) {
 	// A panic on a framework thread would end the daemon.
 	defer func() {
 		if r := recover(); r != nil {
@@ -123,7 +127,7 @@ func goScreencapAccessUnit(h C.uintptr_t, avcc unsafe.Pointer, avccLen C.int, sp
 	if prev := s.last.Swap(now); prev != 0 {
 		dur = max(time.Duration(now-prev), time.Millisecond)
 	}
-	s.au(AccessUnit{Data: data, Keyframe: key, Width: int(width), Height: int(height), Duration: dur})
+	s.au(AccessUnit{Data: data, Keyframe: key, Width: int(width), Height: int(height), Duration: dur, Kind: UnitKind(kind)})
 }
 
 //export goScreencapStreamError
@@ -185,6 +189,103 @@ func encodeSyntheticRateForTest(frames, width, height, fps, changeAt, startBps, 
 	return units, errors.Join(errs...)
 }
 
+// encodeSyntheticStillForTest runs the still-screen scenario on a real encoder
+// (see pc_encode_synthetic_still): frames captured luma frames (back to back in
+// luma), then a forced keyframe, a refine at refineBps by mechanism mech (negative
+// is the product's) and an idle refresh. avgAfter is the session's average
+// bitrate after the refine. Test-only: synthetic frames, no capture, no TCC.
+func encodeSyntheticStillForTest(w, h, fps, startBps int, luma []byte, frames, refineBps, mech int) (units []AccessUnit, avgAfter int, err error) {
+	var errs []error
+	handle := cgo.NewHandle(&sink{
+		au:  func(au AccessUnit) { units = append(units, au) },
+		err: func(err error) { errs = append(errs, err) },
+	})
+	defer handle.Delete()
+	if len(luma) != frames*w*h {
+		return nil, 0, fmt.Errorf("screencap: %d luma bytes for %d frames of %dx%d", len(luma), frames, w, h)
+	}
+	var hw, avg C.int = -1, 0
+	rc := C.pc_encode_synthetic_still(C.uintptr_t(handle), C.int(w), C.int(h), C.int(fps), C.int(startBps), (*C.uint8_t)(unsafe.Pointer(&luma[0])), C.int(frames), C.int(refineBps), C.int(mech), &avg, &hw)
+	syntheticHardware.Store(int32(hw))
+	if rc != 0 {
+		return nil, 0, mapSCKError(int(rc), "synthetic still encode failed")
+	}
+	return units, int(avg), errors.Join(errs...)
+}
+
+// annexBNALs splits an Annex-B unit into its NAL units (without start codes).
+func annexBNALs(b []byte) [][]byte {
+	var nals [][]byte
+	start := -1
+	for i := 0; i+2 < len(b); i++ {
+		if b[i] != 0 || b[i+1] != 0 || b[i+2] != 1 {
+			continue
+		}
+		if start >= 0 {
+			end := i
+			if end > start && b[end-1] == 0 { // the four-byte form's leading zero
+				end--
+			}
+			nals = append(nals, b[start:end])
+		}
+		start = i + 3
+		i += 2
+	}
+	if start >= 0 && start < len(b) {
+		nals = append(nals, b[start:])
+	}
+	return nals
+}
+
+// decodeSyntheticForTest decodes units, in order, through a VideoToolbox
+// decompression session and returns each picture's luma plane (Width x Height
+// bytes). The first unit must be a keyframe and every unit the same size.
+// Test-only: it decodes synthetic data this package just encoded.
+func decodeSyntheticForTest(units []AccessUnit) ([][]byte, error) {
+	if len(units) == 0 || !units[0].Keyframe {
+		return nil, errors.New("screencap: decode needs a first keyframe")
+	}
+	w, h := units[0].Width, units[0].Height
+	var sps, pps, avcc []byte
+	sizes := make([]C.int, len(units))
+	for i, u := range units {
+		if u.Width != w || u.Height != h {
+			return nil, fmt.Errorf("screencap: unit %d is %dx%d, want %dx%d", i, u.Width, u.Height, w, h)
+		}
+		before := len(avcc)
+		for _, nal := range annexBNALs(u.Data) {
+			switch nal[0] & 0x1f {
+			case 7:
+				if sps == nil {
+					sps = nal
+				}
+			case 8:
+				if pps == nil {
+					pps = nal
+				}
+			default:
+				avcc = append(avcc, byte(len(nal)>>24), byte(len(nal)>>16), byte(len(nal)>>8), byte(len(nal)))
+				avcc = append(avcc, nal...)
+			}
+		}
+		sizes[i] = C.int(len(avcc) - before)
+	}
+	if sps == nil || pps == nil {
+		return nil, errors.New("screencap: no SPS and PPS in the stream")
+	}
+	out := make([]byte, len(units)*w*h)
+	rc := C.pc_decode_synthetic((*C.uint8_t)(unsafe.Pointer(&sps[0])), C.int(len(sps)), (*C.uint8_t)(unsafe.Pointer(&pps[0])), C.int(len(pps)),
+		(*C.uint8_t)(unsafe.Pointer(&avcc[0])), &sizes[0], C.int(len(units)), C.int(w), C.int(h), (*C.uint8_t)(unsafe.Pointer(&out[0])))
+	if rc != 0 {
+		return nil, mapSCKError(int(rc), "synthetic decode failed")
+	}
+	planes := make([][]byte, len(units))
+	for i := range planes {
+		planes[i] = out[i*w*h : (i+1)*w*h]
+	}
+	return planes, nil
+}
+
 // errBufLen is the size of the message buffer the C side fills on failure.
 const errBufLen = 256
 
@@ -221,6 +322,7 @@ var (
 	_ Source        = (*DisplaySource)(nil)
 	_ AudioSource   = (*DisplaySource)(nil)
 	_ QualitySource = (*DisplaySource)(nil)
+	_ StillSource   = (*DisplaySource)(nil)
 )
 
 // NewDisplaySource returns a Source that captures the main display until told otherwise.
@@ -407,6 +509,39 @@ func (d *DisplaySource) Rebuild(width, height int) error {
 		return mapSCKError(int(rc), "rebuilding the encoder failed")
 	}
 	d.noteEncoder()
+	return nil
+}
+
+// Refine re-encodes the cached picture as a sharp keyframe at bps (a UnitRefine
+// unit) and puts the moving state's bitrate back for the next unit. It is for a
+// screen that has gone still: the controller bounds bps.
+func (d *DisplaySource) Refine(bps int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.running {
+		return ErrNotRunning
+	}
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
+	if rc := C.pc_encoder_refine(C.int(bps)); rc != 0 {
+		return mapSCKError(int(rc), "refining the picture failed")
+	}
+	return nil
+}
+
+// IdleRefresh re-encodes the cached picture as a small non-key frame (a UnitIdle
+// unit), so a still stream keeps sending packets.
+func (d *DisplaySource) IdleRefresh() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.running {
+		return ErrNotRunning
+	}
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
+	if rc := C.pc_encoder_idle_refresh(); rc != 0 {
+		return mapSCKError(int(rc), "refreshing the picture failed")
+	}
 	return nil
 }
 

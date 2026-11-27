@@ -20,7 +20,7 @@
 
 // Exported from media_darwin.go. The handle is a runtime/cgo.Handle.
 extern void goScreencapAccessUnit(uintptr_t handle, void *avcc, int avccLen, void *sps, int spsLen,
-                                  void *pps, int ppsLen, int keyframe, int width, int height);
+                                  void *pps, int ppsLen, int keyframe, int width, int height, int kind);
 extern void goScreencapStreamError(uintptr_t handle, int code, char *msg);
 extern void goScreencapAudioError(uintptr_t handle, int code, char *msg);
 
@@ -32,6 +32,20 @@ void pc_audio_handle(CMSampleBufferRef sb);
 void pc_audio_end(void);
 
 enum { kPCFPS = 30, kPCQueueDepth = 5, kPCDisplayKind = 0, kPCWindowKind = 1 };
+
+// How an access unit came to be (screencap.UnitKind): only a fresh one comes from
+// a new capture. The kind rides through the encoder as the frame's refcon.
+enum { kPCUnitFresh = 0, kPCUnitForced = 1, kPCUnitRefine = 2, kPCUnitIdle = 3 };
+
+// How a refine sharpens the cached picture (RESEARCH Pattern 5, measured in
+// encoder_quality_darwin_test.go): a bitrate raise with a forced keyframe, the
+// Quality property, or the raise with a keyframe followed by kPCRefinePasses - 1
+// P-frames of the same picture. The keyframe's own quality does not follow the
+// raised rate (VideoToolbox picks it), and the P-frames after it do, so only the
+// last mechanism clears the bar (6 dB over the moving frame and 38 dB): the
+// product uses it. The others stay so the test can show why.
+enum { kPCRefineBitrate = 0, kPCRefineQuality = 1, kPCRefineRepeated = 2, kPCRefineDefault = kPCRefineRepeated };
+enum { kPCRefinePasses = 3 };
 
 // Codes of our own, outside the OSStatus and SCError ranges we pass through.
 enum {
@@ -59,6 +73,7 @@ static void pcReport(uintptr_t handle, int code, const char *msg) {
 static void pcOutput(void *refcon, void *sourceFrameRefCon, OSStatus status, VTEncodeInfoFlags flags,
                      CMSampleBufferRef sb) {
 	uintptr_t handle = (uintptr_t)refcon;
+	int kind = (int)(intptr_t)sourceFrameRefCon;
 	@try {
 		if (status != noErr) {
 			pcReport(handle, (int)status, "encoder output callback failed");
@@ -102,7 +117,7 @@ static void pcOutput(void *refcon, void *sourceFrameRefCon, OSStatus status, VTE
 			return;
 		}
 		goScreencapAccessUnit(handle, ptr, (int)total, (void *)sps, (int)spsLen, (void *)pps, (int)ppsLen,
-		                      key ? 1 : 0, (int)dim.width, (int)dim.height);
+		                      key ? 1 : 0, (int)dim.width, (int)dim.height, kind);
 	} @catch (NSException *e) {
 		pcReport(handle, kPCExceptionErr, "exception in encoder output callback");
 	}
@@ -124,6 +139,7 @@ static OSStatus pcSet(VTCompressionSessionRef s, CFStringRef key, CFTypeRef valu
 	BOOL _limited; // a live bitrate change has set DataRateLimits; a rebuilt session keeps them
 	double _keySecs;
 	CMTime _lastPts;
+	uint64_t _lastWallNs; // host time of the last frame fed, to date a cached re-encode
 	BOOL _forceNext;
 	int _hardware; // 1 hardware, 0 software, -1 unknown
 }
@@ -131,6 +147,9 @@ static OSStatus pcSet(VTCompressionSessionRef s, CFStringRef key, CFTypeRef valu
 - (OSStatus)startWidth:(int)w height:(int)h fps:(int)fps bitrate:(int)bitrate keySecs:(double)keySecs;
 - (OSStatus)encode:(CVPixelBufferRef)pb pts:(CMTime)pts;
 - (OSStatus)forceKeyframe;
+- (OSStatus)refine:(int)bps mechanism:(int)mech;
+- (OSStatus)idleRefresh;
+- (int)averageBitrate;
 - (OSStatus)rebuildWidth:(int)w height:(int)h;
 - (OSStatus)setBitrate:(int)bps;
 - (OSStatus)setFrameRate:(int)fps;
@@ -226,6 +245,7 @@ static NSArray *pcRateLimits(int bps) {
 		_bitrate = bitrate;
 		_keySecs = keySecs;
 		_lastPts = kCMTimeInvalid;
+		_lastWallNs = 0;
 		_forceNext = NO;
 		return [self createSessionLocked];
 	} @catch (NSException *e) {
@@ -235,15 +255,24 @@ static NSArray *pcRateLimits(int bps) {
 	}
 }
 
-// Feeds one frame and keeps it as the cached picture. Lock held.
-- (OSStatus)encodeLocked:(CVPixelBufferRef)pb pts:(CMTime)pts force:(BOOL)force {
+// The timestamp for re-encoding the cached picture: the last frame's plus the real
+// time since it was fed (at least 1 ms), so the rate control sees the quiet gap as
+// the bit budget it earned rather than a burst right behind the last frame. Lock held.
+- (CMTime)cachedPtsLocked {
+	uint64_t gap = _lastWallNs == 0 ? 0 : clock_gettime_nsec_np(CLOCK_UPTIME_RAW) - _lastWallNs;
+	return CMTimeAdd(_lastPts, CMTimeMake((int64_t)MAX(gap / 1000, 1000), 1000000));
+}
+
+// Feeds one frame of the given unit kind. Lock held.
+- (OSStatus)encodeLocked:(CVPixelBufferRef)pb pts:(CMTime)pts force:(BOOL)force kind:(int)kind {
 	// The encoder wants strictly increasing timestamps.
 	if (CMTIME_IS_VALID(_lastPts) && CMTimeCompare(pts, _lastPts) <= 0) {
 		pts = CMTimeAdd(_lastPts, CMTimeMake(1, 1000));
 	}
 	_lastPts = pts;
+	_lastWallNs = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
 	NSDictionary *props = force ? pcDict1((__bridge id)kVTEncodeFrameOptionKey_ForceKeyFrame, @YES) : nil;
-	return VTCompressionSessionEncodeFrame(_session, pb, pts, kCMTimeInvalid, (__bridge CFDictionaryRef)props, NULL, NULL);
+	return VTCompressionSessionEncodeFrame(_session, pb, pts, kCMTimeInvalid, (__bridge CFDictionaryRef)props, (void *)(intptr_t)kind, NULL);
 }
 
 - (OSStatus)encode:(CVPixelBufferRef)pb pts:(CMTime)pts {
@@ -257,7 +286,7 @@ static NSArray *pcRateLimits(int bps) {
 		_cached = pb;
 		BOOL force = _forceNext;
 		_forceNext = NO;
-		return [self encodeLocked:pb pts:pts force:force];
+		return [self encodeLocked:pb pts:pts force:force kind:kPCUnitFresh];
 	} @catch (NSException *e) {
 		return kPCExceptionErr;
 	} @finally {
@@ -275,12 +304,82 @@ static NSArray *pcRateLimits(int bps) {
 			_forceNext = YES;
 			return noErr;
 		}
-		return [self encodeLocked:_cached pts:CMTimeAdd(_lastPts, CMTimeMake(1, 1000)) force:YES];
+		return [self encodeLocked:_cached pts:[self cachedPtsLocked] force:YES kind:kPCUnitForced];
 	} @catch (NSException *e) {
 		return kPCExceptionErr;
 	} @finally {
 		[_lock unlock];
 	}
+}
+
+// Sets the session's average bitrate and burst bound together. Lock held.
+- (OSStatus)setRateLocked:(int)bps {
+	OSStatus st = pcSet(_session, kVTCompressionPropertyKey_AverageBitRate, (__bridge CFTypeRef)@(bps));
+	if (st != noErr) return st;
+	st = pcSet(_session, kVTCompressionPropertyKey_DataRateLimits, (__bridge CFTypeRef)pcRateLimits(bps));
+	if (st == noErr) _limited = YES;
+	return st;
+}
+
+// Re-encodes the cached picture sharper than the moving state makes it (a screen
+// gone still): a keyframe, then (default mechanism) two P-frames that let the
+// raised rate finish the job, all UnitRefine units. Session properties only,
+// never a new session. mech picks how (kPCRefine*). The rate mechanisms put the
+// moving state's rate back before returning, so the raise lasts the one frame: the
+// encoder is flushed so the raised rate covers exactly this frame. (The Quality
+// mechanism is measured by the synthetic test only and does not restore.) With
+// nothing cached there is nothing to sharpen.
+- (OSStatus)refine:(int)bps mechanism:(int)mech {
+	[_lock lock];
+	@try {
+		if (_session == NULL) return kVTInvalidSessionErr;
+		if (_cached == NULL) return noErr;
+		if (mech < 0) mech = kPCRefineDefault;
+		int copies = mech == kPCRefineRepeated ? kPCRefinePasses : 1; // a keyframe, then P-frames of the same picture
+		OSStatus st = mech == kPCRefineQuality ? pcSet(_session, kVTCompressionPropertyKey_Quality, (__bridge CFTypeRef)@1.0)
+		                                       : [self setRateLocked:bps];
+		if (st != noErr) return st;
+		for (int i = 0; i < copies && st == noErr; i++) {
+			st = [self encodeLocked:_cached pts:[self cachedPtsLocked] force:i == 0 kind:kPCUnitRefine];
+		}
+		OSStatus fl = VTCompressionSessionCompleteFrames(_session, kCMTimeInvalid);
+		OSStatus back = mech == kPCRefineQuality ? noErr : [self setRateLocked:_bitrate];
+		return st != noErr ? st : (fl != noErr ? fl : back);
+	} @catch (NSException *e) {
+		return kPCExceptionErr;
+	} @finally {
+		[_lock unlock];
+	}
+}
+
+// Re-encodes the cached picture as an ordinary non-key frame (UnitIdle): the
+// picture has not changed, so it costs almost nothing, and it keeps a still
+// stream's packets flowing for the browser's stall detector.
+- (OSStatus)idleRefresh {
+	[_lock lock];
+	@try {
+		if (_session == NULL) return kVTInvalidSessionErr;
+		if (_cached == NULL) return noErr;
+		return [self encodeLocked:_cached pts:[self cachedPtsLocked] force:NO kind:kPCUnitIdle];
+	} @catch (NSException *e) {
+		return kPCExceptionErr;
+	} @finally {
+		[_lock unlock];
+	}
+}
+
+// The session's average bitrate as the encoder reports it (0 if unreadable).
+- (int)averageBitrate {
+	[_lock lock];
+	int v = 0;
+	CFTypeRef p = NULL;
+	if (_session != NULL && VTSessionCopyProperty(_session, kVTCompressionPropertyKey_AverageBitRate, NULL, &p) == noErr && p != NULL &&
+	    CFGetTypeID(p) == CFNumberGetTypeID()) {
+		CFNumberGetValue((CFNumberRef)p, kCFNumberIntType, &v);
+	}
+	if (p != NULL) CFRelease(p);
+	[_lock unlock];
+	return v;
 }
 
 - (OSStatus)rebuildWidth:(int)w height:(int)h {
@@ -489,6 +588,125 @@ int pc_encode_synthetic_rate(uintptr_t handle, int frames, int w, int h, int fps
 		return (int)st;
 	} @catch (NSException *e) {
 		return kPCExceptionErr;
+	}
+}
+
+// An NV12 buffer whose luma plane is a copy of `luma` (w x h, video range) and
+// whose chroma is neutral grey.
+static CVPixelBufferRef pcMakeNV12FromLuma(int w, int h, const uint8_t *luma) {
+	NSDictionary *attrs = pcDict1((__bridge id)kCVPixelBufferIOSurfacePropertiesKey, @{});
+	if (attrs == nil) return NULL;
+	CVPixelBufferRef pb = NULL;
+	if (CVPixelBufferCreate(NULL, w, h, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, (__bridge CFDictionaryRef)attrs,
+	                        &pb) != kCVReturnSuccess) {
+		return NULL;
+	}
+	CVPixelBufferLockBaseAddress(pb, 0);
+	uint8_t *y = CVPixelBufferGetBaseAddressOfPlane(pb, 0);
+	size_t ys = CVPixelBufferGetBytesPerRowOfPlane(pb, 0);
+	for (int r = 0; r < h; r++) memcpy(y + (size_t)r * ys, luma + (size_t)r * w, (size_t)w);
+	uint8_t *uv = CVPixelBufferGetBaseAddressOfPlane(pb, 1);
+	size_t uvs = CVPixelBufferGetBytesPerRowOfPlane(pb, 1);
+	for (size_t r = 0; r < CVPixelBufferGetHeightOfPlane(pb, 1); r++) memset(uv + r * uvs, 128, uvs);
+	CVPixelBufferUnlockBaseAddress(pb, 0);
+	return pb;
+}
+
+// The still-screen scenario on a real encoder: `frames` captured frames (luma
+// planes back to back in `luma`) at fps and startBps, then, with the screen
+// "still", one forced keyframe (a join), one refine at refineBps by mechanism
+// `mech` (negative: the product's), and one idle refresh. *avgAfter reads the
+// session's average bitrate back after the refine. Returns 0 or an OSStatus.
+// Not capture: no TCC is involved.
+int pc_encode_synthetic_still(uintptr_t handle, int w, int h, int fps, int startBps, const uint8_t *luma, int frames,
+                              int refineBps, int mech, int *avgAfter, int *hardware) {
+	@try {
+		PCEncoder *enc = [[PCEncoder alloc] init];
+		enc.handle = handle;
+		OSStatus st = [enc startWidth:w height:h fps:fps bitrate:startBps keySecs:4.0];
+		if (st != noErr) return (int)st;
+		*hardware = [enc hardware];
+		for (int i = 0; i < frames; i++) {
+			CVPixelBufferRef pb = pcMakeNV12FromLuma(w, h, luma + (size_t)i * w * h);
+			if (pb == NULL) {
+				st = kPCNilErr;
+				break;
+			}
+			st = [enc encode:pb pts:CMTimeMake(i, fps)];
+			CVPixelBufferRelease(pb);
+			if (st != noErr) break;
+			usleep(1000000 / fps);
+		}
+		if (st == noErr) st = [enc forceKeyframe];
+		if (st == noErr) st = [enc refine:refineBps mechanism:mech];
+		*avgAfter = [enc averageBitrate];
+		if (st == noErr) st = [enc idleRefresh];
+		[enc stop];
+		return (int)st;
+	} @catch (NSException *e) {
+		return kPCExceptionErr;
+	}
+}
+
+// Decodes n access units (AVCC, back to back, sizes[i] bytes each; the first
+// is a keyframe) through a VideoToolbox decompression session built from the
+// given SPS and PPS, and copies each picture's luma plane (w x h) to out + i*w*h.
+// Synthetic data only. Returns 0 or an OSStatus.
+int pc_decode_synthetic(const uint8_t *sps, int spsLen, const uint8_t *pps, int ppsLen, const uint8_t *avcc, const int *sizes,
+                        int n, int w, int h, uint8_t *out) {
+	@autoreleasepool {
+		@try {
+			const uint8_t *sets[2] = {sps, pps};
+			const size_t lens[2] = {(size_t)spsLen, (size_t)ppsLen};
+			CMVideoFormatDescriptionRef fd = NULL;
+			OSStatus st = CMVideoFormatDescriptionCreateFromH264ParameterSets(NULL, 2, sets, lens, 4, &fd);
+			if (st != noErr) return (int)st;
+			NSDictionary *attrs = pcDict1((__bridge id)kCVPixelBufferPixelFormatTypeKey,
+			                              @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange));
+			VTDecompressionSessionRef sess = NULL;
+			st = VTDecompressionSessionCreate(NULL, fd, NULL, (__bridge CFDictionaryRef)attrs, NULL, &sess);
+			if (st != noErr) {
+				CFRelease(fd);
+				return (int)st;
+			}
+			size_t off = 0;
+			for (int i = 0; i < n && st == noErr; i++) {
+				size_t len = (size_t)sizes[i];
+				CMBlockBufferRef bb = NULL;
+				st = CMBlockBufferCreateWithMemoryBlock(NULL, NULL, len, NULL, NULL, 0, len, 0, &bb);
+				if (st == noErr) st = CMBlockBufferReplaceDataBytes(avcc + off, bb, 0, len);
+				CMSampleBufferRef sb = NULL;
+				if (st == noErr) st = CMSampleBufferCreate(NULL, bb, true, NULL, NULL, fd, 1, 0, NULL, 1, &len, &sb);
+				if (bb != NULL) CFRelease(bb);
+				if (st != noErr) break;
+				__block OSStatus outSt = kPCNilErr; // stays an error if no picture comes back
+				uint8_t *dst = out + (size_t)i * w * h;
+				st = VTDecompressionSessionDecodeFrameWithOutputHandler(
+				    sess, sb, 0, NULL, ^(OSStatus status, VTDecodeInfoFlags flags, CVImageBufferRef img, CMTime pts, CMTime dur) {
+					    if (status != noErr || img == NULL) {
+						    outSt = status != noErr ? status : kPCNilErr;
+						    return;
+					    }
+					    if ((int)CVPixelBufferGetWidth(img) != w || (int)CVPixelBufferGetHeight(img) != h) return;
+					    CVPixelBufferLockBaseAddress(img, kCVPixelBufferLock_ReadOnly);
+					    const uint8_t *y = CVPixelBufferGetBaseAddressOfPlane(img, 0);
+					    size_t stride = CVPixelBufferGetBytesPerRowOfPlane(img, 0);
+					    for (int r = 0; r < h; r++) memcpy(dst + (size_t)r * w, y + (size_t)r * stride, (size_t)w);
+					    CVPixelBufferUnlockBaseAddress(img, kCVPixelBufferLock_ReadOnly);
+					    outSt = noErr;
+				    });
+				CFRelease(sb);
+				if (st == noErr) st = VTDecompressionSessionWaitForAsynchronousFrames(sess);
+				if (st == noErr) st = outSt;
+				off += len;
+			}
+			VTDecompressionSessionInvalidate(sess);
+			CFRelease(sess);
+			CFRelease(fd);
+			return (int)st;
+		} @catch (NSException *e) {
+			return kPCExceptionErr;
+		}
 	}
 }
 
@@ -772,6 +990,24 @@ void pc_stream_stop(void) {
 int pc_encoder_force_keyframe(void) {
 	@try {
 		return gEnc == nil ? (int)kVTInvalidSessionErr : (int)[gEnc forceKeyframe];
+	} @catch (NSException *e) {
+		return kPCExceptionErr;
+	}
+}
+
+// A still screen: re-encode the cached picture once as a sharp keyframe at bps
+// (see PCEncoder refine), then keep the stream alive with idle refreshes.
+int pc_encoder_refine(int bps) {
+	@try {
+		return gEnc == nil ? (int)kVTInvalidSessionErr : (int)[gEnc refine:bps mechanism:-1];
+	} @catch (NSException *e) {
+		return kPCExceptionErr;
+	}
+}
+
+int pc_encoder_idle_refresh(void) {
+	@try {
+		return gEnc == nil ? (int)kVTInvalidSessionErr : (int)[gEnc idleRefresh];
 	} @catch (NSException *e) {
 		return kPCExceptionErr;
 	}
