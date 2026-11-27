@@ -4,6 +4,8 @@
 // window, transport and peer connection): no real socket, timer or network.
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   RECONNECT,
   createDesktopClient,
@@ -73,10 +75,12 @@ class FakeChannel {
   sent: string[] = []
   onopen: (() => void) | null = null
   onclose: (() => void) | null = null
+  onmessage: ((e: { data: unknown }) => void) | null = null
   constructor(readonly label: string, readonly init: unknown) {}
   send(d: string) { this.sent.push(d) }
   open() { this.readyState = 'open'; this.onopen?.() }
   close() { this.readyState = 'closed'; this.onclose?.() }
+  recv(m: unknown) { this.onmessage?.({ data: typeof m === 'string' ? m : JSON.stringify(m) }) }
 }
 
 class FakePC {
@@ -562,6 +566,46 @@ describe('input data channel (Phase 20-06)', () => {
     expect((got[1] as { reason: string }).reason).toBe('')
     lastT(e).dropWith(1006)
     expect(e.client.currentEpoch()).toBeNull()
+  })
+
+  it('turns the golden server lines control-ok, control-needs-accessibility and cursor into typed events', async () => {
+    const lines = readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/input-v1.jsonl'), 'utf8')
+      .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: object })
+    const wire = (name: string) => lines.find((l) => l.name === name)!.wire
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('control', (c) => got.push(['control', c]))
+    e.client.on('cursor', (c) => got.push(['cursor', c]))
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    ch.recv(wire('control-ok'))
+    ch.recv(wire('control-needs-accessibility'))
+    ch.recv(wire('cursor'))
+    expect(got).toEqual([
+      ['control', { input: 'ok', window: '' }],
+      ['control', { input: 'needs_accessibility', window: 'raise_failed' }],
+      ['cursor', { x: 0.5, y: 0.25, e: 1 }],
+    ])
+  })
+
+  it('drops unknown control values, a non-finite cursor, binary and non-JSON frames', async () => {
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('control', (c) => got.push(c))
+    e.client.on('cursor', (c) => got.push(c))
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    ch.recv({ t: 'control', input: 'rm -rf', window: '' })
+    ch.recv({ t: 'control', input: 'ok', window: '<img>' })
+    ch.recv({ t: 'cursor', x: 'a', y: 0, e: 1 })
+    ch.recv({ t: 'cursor', x: 0, y: 0, e: 1.5 })
+    ch.recv({ t: 'teleport' })
+    ch.recv('not json')
+    ch.recv(null)
+    ch.onmessage?.({ data: new ArrayBuffer(4) })
+    expect(got).toEqual([{ input: 'ok', window: '' }])
   })
 
   it('send puts a signalling message on the socket', async () => {

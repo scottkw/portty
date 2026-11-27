@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { ClientStatus, DesktopEvents } from '../../lib/desktopClient'
-import { DesktopView, videoContentRect, type VideoRect } from '../DesktopView'
+import { DesktopView, videoContentRect, type DesktopViewProps, type VideoRect } from '../DesktopView'
 
 type Listener = (v: never) => void
 interface MockClient {
@@ -58,7 +58,7 @@ const card = () => container.querySelector('.desktop-card')
 const scrim = () => container.querySelector('.desktop-scrim')
 const region = () => container.querySelector('[role="status"]') as HTMLElement
 
-function render(props: { onVideoRect?: (r: VideoRect) => void; onReload?: () => void } = {}) {
+function render(props: DesktopViewProps = {}) {
   act(() => root.render(<DesktopView {...props} />))
 }
 function status(s: ClientStatus) {
@@ -372,6 +372,249 @@ describe('control on the stage (Phase 20-06 Task 1)', () => {
     act(() => client().emit('rights', { control: false, clipboard: false, surface: false }))
     pointerdown(stage(), 500, 250)
     expect(client().sendInput).not.toHaveBeenCalled()
+  })
+})
+
+describe('control layer (Phase 20-06 Task 3)', () => {
+  const stage = () => container.querySelector('.desktop-stage') as HTMLElement
+  const input = () => container.querySelector('textarea') as HTMLTextAreaElement
+  const ring = () => container.querySelector('.desktop-ring')
+  const dot = () => container.querySelector('.desktop-dot') as HTMLElement | null
+  const notice = () => container.querySelector('.desktop-chip--notice')
+  const LONG_HINT = 'Typing goes to the Mac. To give the keyboard back, press Ctrl+Option+Cmd+Return.'
+
+  function ownAccount() {
+    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+      Object.defineProperty(video(), a, { configurable: true, value: b })
+    }
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+  }
+  const click = () =>
+    act(() => {
+      stage().dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 }))
+    })
+  const move = (x: number, y: number) =>
+    act(() => {
+      stage().dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true, pointerId: 1 }))
+      vi.advanceTimersByTime(20)
+    })
+  const key = (code: string, k: string, init: KeyboardEventInit = {}) =>
+    act(() => {
+      input().dispatchEvent(new KeyboardEvent('keydown', { code, key: k, bubbles: true, cancelable: true, ...init }))
+    })
+  const sentTypes = () => client().sendInput.mock.calls.map((c) => (c[0] as { t: string }).t)
+
+  beforeEach(() => window.localStorage.clear())
+
+  it('an own-account viewer starts in Control with the keyboard off: stage tabindex 0 and no ring', () => {
+    render()
+    ownAccount()
+    expect(stage().getAttribute('tabindex')).toBe('0')
+    expect(stage().getAttribute('role')).toBe('application')
+    expect(stage().getAttribute('aria-describedby')).toBe('desktop-stage-hint')
+    expect(document.getElementById('desktop-stage-hint')?.textContent).toContain('press Control, Option, Command and Return together')
+    expect(ring()).toBeNull()
+    expect(notice()).toBeNull()
+  })
+
+  it('a click on the picture shows the ring and the long hint once; later captures say only Typing goes to the Mac', () => {
+    render()
+    ownAccount()
+    click()
+    expect(ring()).not.toBeNull()
+    expect(notice()?.textContent).toBe(LONG_HINT)
+    expect(window.localStorage.getItem('portty:desktop-release-hint-seen')).not.toBeNull()
+    key('Enter', 'Enter', { ctrlKey: true, altKey: true, metaKey: true })
+    expect(ring()).toBeNull()
+    expect(notice()?.textContent).toBe('Typing stays on this device')
+    click()
+    expect(ring()).not.toBeNull()
+    expect(notice()?.textContent).toBe('Typing goes to the Mac')
+  })
+
+  it('the release chord calls the host once and is never sent to the Mac', () => {
+    const onReleaseChord = vi.fn()
+    render({ onReleaseChord })
+    ownAccount()
+    click()
+    key('Enter', 'Enter', { ctrlKey: true, altKey: true, metaKey: true })
+    expect(onReleaseChord).toHaveBeenCalledTimes(1)
+    expect(sentTypes()).not.toContain('key')
+  })
+
+  it('a window blur removes the ring and shows no notice', () => {
+    render()
+    ownAccount()
+    click()
+    advance(5200)
+    expect(notice()).toBeNull()
+    act(() => window.dispatchEvent(new Event('blur')))
+    expect(ring()).toBeNull()
+    expect(notice()).toBeNull()
+  })
+
+  it('the notice dwells 3 s (5 s with the hint), then fades 150 ms and goes; a newer one replaces it', () => {
+    render()
+    ownAccount()
+    click()
+    advance(4999)
+    expect(notice()).not.toBeNull()
+    advance(1 + 150)
+    expect(notice()).toBeNull()
+    key('Enter', 'Enter', { ctrlKey: true, altKey: true, metaKey: true })
+    click()
+    expect(container.querySelectorAll('.desktop-chip--notice')).toHaveLength(1)
+    advance(2999)
+    expect(notice()).not.toBeNull()
+    advance(1 + 150)
+    expect(notice()).toBeNull()
+  })
+
+  it('View Only releases, drops the stage to tabindex -1 and hides the dot and the ring', () => {
+    render()
+    ownAccount()
+    click()
+    move(500, 250)
+    client().sendInput.mockClear()
+    render({ controlMode: 'view' })
+    expect(client().sendInput).toHaveBeenCalledWith({ t: 'release' }, false)
+    expect(stage().getAttribute('tabindex')).toBe('-1')
+    expect(ring()).toBeNull()
+    expect(dot()?.hidden).toBe(true)
+    expect(notice()?.textContent).toBe('Typing stays on this device')
+    click()
+    expect(sentTypes()).toEqual(['release'])
+  })
+
+  it('opening a menu releases everything and gives the keyboard back with a word', () => {
+    render()
+    ownAccount()
+    click()
+    client().sendInput.mockClear()
+    render({ menuOpen: true })
+    expect(sentTypes()).toContain('release')
+    expect(ring()).toBeNull()
+    expect(notice()?.textContent).toBe('Typing stays on this device')
+  })
+
+  describe('Held keys were released', () => {
+    async function holding() {
+      render()
+      ownAccount()
+      click()
+      advance(5200)
+      key('KeyA', 'a')
+    }
+
+    it.each([
+      ['the Mac locks', () => state({ state: 'locked', viewers: 1, locked: true })],
+      ['the surface epoch changes', () => {
+        act(() => client().emit('surface', { e: 1, kind: 'display', id: 1, name: 'Main Display', w: 1470, h: 956, reason: '' }))
+        act(() => client().emit('surface', { e: 2, kind: 'display', id: 1, name: 'Main Display', w: 1470, h: 956, reason: '' }))
+      }],
+      ['the connection drops', () => status({ kind: 'reconnecting' })],
+      ['the input channel closes', () => act(() => client().emit('input', { open: false }))],
+    ] as const)('shows the notice for 3 s when something was held and %s', async (_why, trigger) => {
+      await holding()
+      key('KeyA', 'a') // a repeat of the same key: still one held
+      trigger()
+      expect(notice()?.textContent).toBe('Held keys were released')
+      advance(3000 + 150)
+      expect(notice()).toBeNull()
+    })
+
+    it('shows nothing when nothing was held', () => {
+      render()
+      ownAccount()
+      advance(5200)
+      state({ state: 'locked', viewers: 1, locked: true })
+      status({ kind: 'reconnecting' })
+      act(() => client().emit('input', { open: false }))
+      expect(notice()).toBeNull()
+    })
+
+    it("a user's own blur with a key held shows no held-keys notice", async () => {
+      await holding()
+      act(() => window.dispatchEvent(new Event('blur')))
+      expect(notice()).toBeNull()
+    })
+  })
+
+  describe('the local dot', () => {
+    it('follows the pointer on the animation frame and hides on pointer leave', () => {
+      render()
+      ownAccount()
+      expect(dot()?.hidden).toBe(true)
+      move(500, 250)
+      expect(dot()?.hidden).toBe(false)
+      expect(dot()?.style.transform).toBe('translate(496px, 246px)')
+      expect(dot()?.getAttribute('aria-hidden')).toBe('true')
+      act(() => stage().dispatchEvent(new PointerEvent('pointerleave')))
+      expect(dot()?.hidden).toBe(true)
+    })
+
+    it('stays hidden while locked, and while the daemon says Control needs Accessibility', async () => {
+      render()
+      ownAccount()
+      await firstFrame()
+      state({ state: 'locked', viewers: 1, locked: true })
+      move(500, 250)
+      expect(dot()?.hidden).toBe(true)
+      state({ state: 'streaming', viewers: 1, locked: false })
+      act(() => client().emit('control', { input: 'needs_accessibility', window: '' }))
+      move(510, 250)
+      expect(dot()?.hidden).toBe(true)
+      expect(container.textContent).toContain('Control needs Accessibility. On the Mac, allow Portty in Privacy & Security.')
+      act(() => client().emit('control', { input: 'ok', window: '' }))
+      move(520, 250)
+      expect(dot()?.hidden).toBe(false)
+    })
+
+    it('is not drawn when the stage is not live: View Only', () => {
+      render()
+      ownAccount()
+      render({ controlMode: 'view' })
+      move(500, 250)
+      expect(dot()?.hidden).toBe(true)
+    })
+  })
+
+  it('shows the window chips the daemon reports and clears them with the condition', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    act(() => client().emit('control', { input: 'ok', window: 'raise_failed' }))
+    expect(chip()?.textContent).toBe("Couldn't bring the window to the front. Click the picture to try again.")
+    act(() => client().emit('control', { input: 'ok', window: 'minimized' }))
+    expect(chip()?.textContent).toBe('The shared window is minimized. Click the picture to bring it back.')
+    act(() => client().emit('control', { input: 'ok', window: '' }))
+    expect(container.querySelector('.desktop-chip:not(.desktop-chip--notice)')).toBeNull()
+  })
+
+  it('a phone gets no controller, no stage focus, no dot and no ring: the Phase 19 page', () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+    )
+    render()
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+    expect(stage().hasAttribute('tabindex')).toBe(false)
+    expect(stage().hasAttribute('role')).toBe(false)
+    expect(dot()).toBeNull()
+    expect(ring()).toBeNull()
+    click()
+    expect(client().sendInput).not.toHaveBeenCalled()
+  })
+
+  it('tells the host when control becomes available and when the keyboard is captured', () => {
+    const calls: unknown[] = []
+    render({ onControlChange: (c) => calls.push(c) })
+    ownAccount()
+    click()
+    expect(calls).toEqual([
+      { available: false, captured: false },
+      { available: true, captured: false },
+      { available: true, captured: true },
+    ])
   })
 })
 

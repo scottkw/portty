@@ -92,6 +92,8 @@ export interface DesktopInput {
   destroy(): void
 }
 
+const KEEP_FOCUS: ReadonlySet<ReleaseReason> = new Set<ReleaseReason>(['lock', 'surface', 'disconnect'])
+
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 const clampWheel = (v: number) => Math.max(-MAX_WHEEL, Math.min(MAX_WHEEL, v))
 
@@ -299,9 +301,6 @@ export function createDesktopInput(
     if (isReleaseChord(ev)) {
       ev.preventDefault()
       releaseAll('chord')
-      quietBlur = true
-      input.blur()
-      quietBlur = false
       events.onReleaseChord?.()
       return
     }
@@ -368,6 +367,13 @@ export function createDesktopInput(
     if (control) input.focus({ preventScroll: true })
   }
 
+  /** Take focus off the hidden input so the keyboard is the viewer's own again. */
+  function dropKeyboard() {
+    quietBlur = true
+    input.blur()
+    quietBlur = false
+  }
+
   function releaseAll(reason: ReleaseReason) {
     const n = held()
     buttons.clear()
@@ -379,6 +385,9 @@ export function createDesktopInput(
     }
     syncHeartbeat()
     send(RELEASE)
+    // A lock, a surface switch or a reconnect pauses control but the user still owns the keyboard;
+    // every other release hands it back, so a returning window comes back as keyboard off.
+    if (!KEEP_FOCUS.has(reason)) dropKeyboard()
     if (n > 0) events.onReleased?.(reason, n)
   }
 
@@ -414,9 +423,6 @@ export function createDesktopInput(
       control = on
       if (!on) {
         releaseAll('view-only')
-        quietBlur = true
-        input.blur()
-        quietBlur = false
         events.onDot?.(null)
       }
     },

@@ -95,6 +95,22 @@ export interface DesktopSurfaceMsg {
   reason: SurfaceReason
 }
 
+export type ControlInput = 'ok' | 'needs_accessibility'
+export type ControlWindow = '' | 'raise_failed' | 'minimized'
+
+/** The daemon's control state, pushed on the input channel (20-02, 20-04). */
+export interface DesktopControlMsg {
+  input: ControlInput
+  window: ControlWindow
+}
+
+/** Where the Mac's pointer is after a relative move (20-02); normalised like input. */
+export interface DesktopCursorMsg {
+  x: number
+  y: number
+  e: number
+}
+
 export interface DesktopEvents {
   track: MediaStream
   state: DesktopStateMsg
@@ -105,6 +121,8 @@ export interface DesktopEvents {
   /** The input data channel opened or closed. */
   input: { open: boolean }
   surface: DesktopSurfaceMsg
+  control: DesktopControlMsg
+  cursor: DesktopCursorMsg
 }
 
 export interface DesktopClient {
@@ -179,7 +197,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
 
   const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
     track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
-    rights: new Set(), input: new Set(), surface: new Set(),
+    rights: new Set(), input: new Set(), surface: new Set(), control: new Set(), cursor: new Set(),
   }
   function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
     for (const cb of [...listeners[event]]) cb(v)
@@ -429,6 +447,30 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
       if (g !== gen || inputChannel !== ch) return
       inputChannel = null
       emit('input', { open: false })
+    }
+    ch.onmessage = (ev) => {
+      if (g === gen) onInputMessage(ev.data)
+    }
+  }
+
+  /** Server messages on the input channel: only known enum values and finite numbers are taken (T-20-33). */
+  function onInputMessage(data: unknown) {
+    if (typeof data !== 'string') return
+    let m: Record<string, unknown>
+    try {
+      m = JSON.parse(data)
+    } catch {
+      return
+    }
+    if (typeof m !== 'object' || m === null) return
+    if (m.t === 'control') {
+      if (m.input !== 'ok' && m.input !== 'needs_accessibility') return
+      const win = m.window === 'raise_failed' || m.window === 'minimized' ? m.window : ''
+      emit('control', { input: m.input, window: win })
+    } else if (m.t === 'cursor') {
+      if (Number.isFinite(m.x) && Number.isFinite(m.y) && Number.isInteger(m.e)) {
+        emit('cursor', { x: m.x as number, y: m.y as number, e: m.e as number })
+      }
     }
   }
 
