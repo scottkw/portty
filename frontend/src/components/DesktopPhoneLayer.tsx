@@ -41,6 +41,10 @@ export const PHONE_FIELDS = '.desktop-phone__input, .desktop-unlock__input'
 const CURSOR_WAIT_MS = 500
 const RIPPLE_MS = 150
 const RIPPLE_PX = 24
+/** A keyboard is at least this much of the visual viewport (the same floor as visualViewportInset). */
+const KEYBOARD_MIN_PX = 100
+/** The viewport must stay keyboard-free this long before a still-focused field is blurred (rides out jitter). */
+const KEYBOARD_GONE_MS = 400
 
 /** One character kept in the hidden field so a Backspace on the soft keyboard has something to delete. */
 const SENTINEL = '\u200b'
@@ -409,6 +413,57 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
       setKeyboardUp(false)
     }
   }, [canControl, disarm, keyboardDown])
+
+  // iOS can hide the keyboard without blurring the field (tapping Esc in the key row did, in Safari), which left
+  // the key row up and Show Keyboard out of reach. A keyboard is gone when the visual viewport, having been a
+  // keyboard shorter than its tallest at this width during this focus, stays back for KEYBOARD_GONE_MS: the field
+  // is blurred then, and the blur brings the bottom bar back. The tallest height, not innerHeight, is the
+  // baseline, because Chrome for iOS can shrink the layout viewport with the keyboard; a focus that never saw a
+  // keyboard (Chrome's misses, a hardware keyboard) is never blurred from here.
+  useEffect(() => {
+    const vv = window.visualViewport
+    const field = fieldRef.current
+    if (!vv || !field || !canControl) return
+    const tallest = new Map<number, number>()
+    let sawKeyboard = false
+    let timer: number | null = null
+    const stop = () => {
+      if (timer !== null) window.clearTimeout(timer)
+      timer = null
+    }
+    const keyboardShown = () => {
+      const top = Math.max(tallest.get(window.innerWidth) ?? 0, vv.height)
+      tallest.set(window.innerWidth, top)
+      return top - vv.height > KEYBOARD_MIN_PX
+    }
+    const check = () => {
+      const shown = keyboardShown()
+      if (document.activeElement !== field || shown) {
+        if (shown) sawKeyboard = document.activeElement === field
+        stop()
+        return
+      }
+      if (!sawKeyboard || timer !== null) return
+      timer = window.setTimeout(() => {
+        timer = null
+        if (document.activeElement === field && !keyboardShown()) field.blur()
+      }, KEYBOARD_GONE_MS)
+    }
+    const reset = () => {
+      sawKeyboard = false
+      stop()
+    }
+    check()
+    vv.addEventListener('resize', check)
+    field.addEventListener('focus', reset)
+    field.addEventListener('blur', reset)
+    return () => {
+      vv.removeEventListener('resize', check)
+      field.removeEventListener('focus', reset)
+      field.removeEventListener('blur', reset)
+      stop()
+    }
+  }, [canControl])
 
   const slot = stage?.parentElement
   return (

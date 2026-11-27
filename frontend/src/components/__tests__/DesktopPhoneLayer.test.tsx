@@ -513,6 +513,42 @@ describe('the soft keyboard and the bars', () => {
     expect(byText('Cmd').getAttribute('aria-pressed')).toBe('true')
   })
 
+  // Regression from ddcc2b48 (real iPhone, Safari): tapping Esc hid the keyboard without blurring the field, so the
+  // key row stayed, the bottom bar never came back and Show Keyboard was out of reach.
+  it('keyboard hidden without a blur: once the viewport stays back at full height for 400 ms the field blurs and the bottom bar returns', () => {
+    raiseKeyboard()
+    press(byText('Cmd'))
+    viewport(768) // iOS hid the keyboard; the field still has focus
+    expect(document.activeElement).toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+    advance(399)
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+    advance(1)
+    expect(document.activeElement).not.toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop controls')
+    act(() => byText('Show Keyboard').click())
+    expect(document.activeElement).toBe(field())
+    expect(byText('Cmd').getAttribute('aria-pressed')).toBe('false') // the blur disarmed it
+  })
+
+  it('a viewport that comes back to full height for less than 400 ms (jitter, the keyboard swapping) keeps the field and the key row', () => {
+    raiseKeyboard()
+    viewport(768)
+    advance(200)
+    viewport(400)
+    advance(2000)
+    expect(document.activeElement).toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+  })
+
+  it('a field that has focus while the viewport never showed a keyboard (Chrome for iOS, a hardware keyboard) is never blurred by the viewport', () => {
+    act(() => byText('Show Keyboard').click())
+    viewport(760)
+    advance(2000)
+    expect(document.activeElement).toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+  })
+
   // M-197: tapping Cmd dismissed the iPhone keyboard, so Cmd+A could never be sent.
   it('M-197: arming a modifier keeps focus on the same hidden field: touchstart and mousedown are cancelled, no blur', () => {
     raiseKeyboard()
