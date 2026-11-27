@@ -32,6 +32,7 @@ import {
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
+import { DesktopCopyPopover, DesktopPastePopover } from './DesktopClipboardPopover'
 import { DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
 
 const TITLE = 'Portty Desktop'
@@ -275,8 +276,11 @@ export function DesktopView({
   // A clipboard transfer is in flight: both Clipboard items are greyed so two never overlap.
   const [clipBusy, setClipBusy] = useState(false)
   const clipBusyRef = useRef(false)
-  // The Mac's text when the browser refused the write (Task 2 shows it in the Copy popover). Memory only, never logged.
-  const copyFallback = useRef<string | null>(null)
+  // The one open popover. The Copy popover holds the Mac's text for as long as it is open: memory only, never logged.
+  const [popover, setPopover] = useState<{ kind: 'copy'; text: string } | { kind: 'paste' } | null>(null)
+  const clipboardBtnRef = useRef<HTMLButtonElement>(null)
+  const showBarRef = useRef(false)
+  const barMenuOpenRef = useRef(false)
   const [fullscreen, setFullscreen] = useState(false)
   // Whether the stage had the keyboard when the pointer went down on the bar (the press itself blurs it).
   const stageHadFocus = useRef(false)
@@ -536,7 +540,12 @@ export function DesktopView({
   }, [status.kind, canControl])
 
   // Opening a bar menu or dialog is a user action: release, hand the keyboard back, say so.
-  const anyMenuOpen = menuOpen || barMenuOpen
+  const anyMenuOpen = menuOpen || barMenuOpen || popover !== null
+  // At most one menu, popover or dialog: opening a bar menu closes a popover.
+  useEffect(() => {
+    if (barMenuOpen) setPopover(null)
+  }, [barMenuOpen])
+
   useEffect(() => {
     const ctl = inputCtl.current
     if (!anyMenuOpen || !ctl) return
@@ -613,6 +622,14 @@ export function DesktopView({
     }
   }
 
+  /** Opens a popover unless something else is in the way (a bar menu, or no bar). The popover is the feedback, so a Copying… notice goes. */
+  function openPopover(p: NonNullable<typeof popover>): boolean {
+    if (!showBarRef.current || barMenuOpenRef.current) return false
+    setNotice((n) => (n?.persistent ? null : n))
+    setPopover(p)
+    return true
+  }
+
   /** Copy from Mac. Runs inside the click: the browser write starts now, with a promise for the text (Safari's gesture rule). */
   function copyFromMac() {
     const client = clientRef.current
@@ -650,10 +667,7 @@ export function DesktopView({
       end()
       if (r.outcome === 'ok' && r.text) {
         if (ok) pushNotice(COPY_NOTICES.ok!)
-        else {
-          copyFallback.current = r.text
-          pushNotice(COPY_FAILED) // Task 2 opens the Copy popover here instead
-        }
+        else if (!openPopover({ kind: 'copy', text: r.text })) pushNotice(COPY_FAILED)
       } else {
         pushNotice(r.outcome === 'ok' ? COPY_NOTICES.empty! : (COPY_NOTICES[r.outcome] ?? COPY_FAILED))
       }
@@ -677,7 +691,12 @@ export function DesktopView({
   async function pasteToMac() {
     if (!clientRef.current || clipBusyRef.current) return
     const clip = navigator.clipboard
-    if (!clip?.readText) return // Task 2 opens the Paste popover here
+    if (!clip?.readText) {
+      // Still inside the menu item's own handler, where the Clipboard menu counts as open until it closes just after.
+      await Promise.resolve()
+      if (!openPopover({ kind: 'paste' })) pushNotice(PASTE_FAILED)
+      return
+    }
     clipBusyRef.current = true
     setClipBusy(true)
     let text: string
@@ -686,14 +705,13 @@ export function DesktopView({
     } catch {
       clipBusyRef.current = false
       setClipBusy(false)
-      return // Task 2 opens the Paste popover here
+      if (!openPopover({ kind: 'paste' })) pushNotice(PASTE_FAILED)
+      return
     }
     clipBusyRef.current = false
     setClipBusy(false)
     await sendToMac(text)
   }
-
-  if (status.kind === 'other_account') return <UserRefused />
 
   // One card or one chip at a time; the first that applies wins.
   const stateCard = desk ? STATE_CARDS[desk.state] : undefined
@@ -712,6 +730,12 @@ export function DesktopView({
   }
   // The bar is for a viewer that may control the Mac, while a picture is up and no card covers it.
   const showBar = canControl && cardKey === null && (status.kind === 'streaming' || status.kind === 'reconnecting')
+  showBarRef.current = showBar
+  // A popover belongs to the bar: when the bar goes (a card covers the picture), so does it.
+  useEffect(() => {
+    if (!showBar) setPopover(null)
+  }, [showBar])
+  if (status.kind === 'other_account') return <UserRefused />
   const scrim = (cardKey !== null && cardKey !== 'connecting') || chip?.Icon === ArrowPathIcon
   const card = cardKey ? CARDS[cardKey] : null
 
@@ -823,7 +847,10 @@ export function DesktopView({
               clientRef.current?.selectSurface(pick.kind, pick.id)
             }}
             sendChord={(codes) => inputCtl.current?.sendChord(codes)}
-            onMenuOpenChange={setBarMenuOpen}
+            onMenuOpenChange={(open) => {
+                barMenuOpenRef.current = open // eagerly, for a popover that opens before the next render
+                setBarMenuOpen(open)
+              }}
             onSendKeysDone={() => { if (stageHadFocus.current) inputRef.current?.focus({ preventScroll: true }) }}
             swapOn={swapOn}
             onSwapChange={toggleSwap}
@@ -834,8 +861,20 @@ export function DesktopView({
             onCopy={copyFromMac}
             onPaste={() => void pasteToMac()}
             clipBusy={clipBusy}
+            clipboardRef={clipboardBtnRef}
+            popoverOpen={popover !== null}
           />
         </div>
+      )}
+      {showBar && popover?.kind === 'copy' && (
+        <DesktopCopyPopover text={popover.text} anchor={clipboardBtnRef.current} onClose={() => setPopover(null)} />
+      )}
+      {showBar && popover?.kind === 'paste' && (
+        <DesktopPastePopover
+          anchor={clipboardBtnRef.current}
+          onSend={(text) => void sendToMac(text)}
+          onClose={() => setPopover(null)}
+        />
       )}
     </div>
   )

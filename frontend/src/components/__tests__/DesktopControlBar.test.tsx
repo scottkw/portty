@@ -276,6 +276,14 @@ describe('bar behaviour (Task 3)', () => {
     vi.useRealTimers()
   })
 
+  it('stays shown while a Copy or Paste popover is open, and hides again when it closes', () => {
+    render(props({ popoverOpen: true }))
+    adv(REVEAL_FIRST_MS + 10000)
+    expect(hidden()).toBe(false)
+    render(props({ popoverOpen: false }))
+    expect(hidden()).toBe(true)
+  })
+
   it('shows for 5 s after the first frame, then hides, and reveals again by focus', () => {
     render(props())
     expect(hidden()).toBe(false)

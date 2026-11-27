@@ -118,6 +118,8 @@ export interface DesktopControlBarProps {
   clipBusy: boolean
   /** The Clipboard button, so the host can anchor its Copy and Paste popovers under it. */
   clipboardRef?: React.RefObject<HTMLButtonElement | null>
+  /** A Copy or Paste popover is open: the bar stays shown, like for an open menu. */
+  popoverOpen?: boolean
 }
 
 type PickerList = { state: 'loading' } | { state: 'failed' } | { state: 'ready'; list: DesktopSurfacesMsg }
@@ -249,7 +251,7 @@ function BarButton({ label, avail, children, onActivate, ref, className, extra }
  */
 export function DesktopControlBar({
   state, surface, requestSurfaces, onSelectSurface, sendChord, onMenuOpenChange, onSendKeysDone,
-  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef, onCopy, onPaste, clipBusy, clipboardRef,
+  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef, onCopy, onPaste, clipBusy, clipboardRef, popoverOpen,
 }: DesktopControlBarProps): React.ReactElement {
   const barRef = useRef<HTMLDivElement>(null)
   const sendKeysBtn = useRef<HTMLButtonElement>(null)
@@ -269,7 +271,7 @@ export function DesktopControlBar({
 
   const avail = barAvailability(state)
   const windowShare = surface?.kind === 'window'
-  const menuOpen = sendKeys !== null || picker !== null || clipMenu !== null
+  const menuOpen = sendKeys !== null || picker !== null || clipMenu !== null || popoverOpen === true
   const revealed = useReveal(barRef, menuOpen, `${state.locked}|${state.accessNeeded}|${surface?.kind}:${surface?.id}`)
 
   function anchorBelow(btn: HTMLElement) {
