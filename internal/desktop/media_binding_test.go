@@ -105,7 +105,7 @@ func TestMediaBinding_LookupErrorFailsClosed(t *testing.T) {
 	c, id := connectedGuest(ctx, t, e)
 	e.setPeer(func(string) (int64, string, error) { return 0, "", errors.New("tailscaled unreachable") })
 	e.mgr.CheckMediaIdentityForTest(id, true, "100.64.0.9", 4000)
-	wantCut(ctx, t, e, c)
+	wantRetryableCut(ctx, t, e, c)
 }
 
 func TestMediaBinding_NoSelectedPairFailsClosed(t *testing.T) {
@@ -114,7 +114,23 @@ func TestMediaBinding_NoSelectedPairFailsClosed(t *testing.T) {
 	e := newGuestEnv(t, nil)
 	c, id := connectedGuest(ctx, t, e)
 	e.mgr.CheckMediaIdentityForTest(id, false, "", 0)
-	wantCut(ctx, t, e, c)
+	wantRetryableCut(ctx, t, e, c)
+}
+
+// wantRetryableCut: a check that could not reach a verdict (lookup failed, no
+// pair) still cuts, but closes 1001 so the page retries, and writes no revoked
+// audit line or deny-list entry: nobody revoked the guest.
+func wantRetryableCut(ctx context.Context, t *testing.T, e *guestEnv, c *websocket.Conn) {
+	t.Helper()
+	if code, _ := closeOf(ctx, t, c); code != websocket.StatusGoingAway {
+		t.Errorf("close %d, want 1001 (retryable)", code)
+	}
+	if got := e.eventsOf("revoked"); len(got) != 0 {
+		t.Errorf("revoked events %+v, want none", got)
+	}
+	if e.gs.IsDenied(1001) {
+		t.Error("the guest was deny-listed")
+	}
 }
 
 func TestMediaBinding_TwoMismatchesCutOnceAndReportOnce(t *testing.T) {

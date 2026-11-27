@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -50,7 +51,8 @@ func (m *Manager) checkSelectedPair(v *viewer) {
 
 // checkMediaIdentity cuts a guest whose selected pair's remote address does not
 // belong to the admitted user's admitted node. A missing pair, a missing
-// Deps.PeerIdentity and a failed lookup all cut too (fail closed). A check that
+// Deps.PeerIdentity and a failed lookup all cut too (fail closed); a missing
+// pair or a failed lookup closes 1001 (retryable) with no revoked audit line. A check that
 // ends after the viewer was cut or its PeerConnection closed (it left, was
 // revoked, or Stop cut it during the lookup) is no verdict. The cut is the
 // ordered one (cutViewer: rights, input, media, then the socket under the
@@ -63,6 +65,12 @@ func (m *Manager) checkMediaIdentity(v *viewer, pair *webrtc.ICECandidatePair) {
 		return
 	}
 	slog.Warn("desktop: guest media identity", "viewer", string(v.ID)[:8], "kind", kind)
+	if kind == "lookup_failed" || kind == "no_pair" {
+		// No verdict but not trusted either: cut, and close 1001 so the page
+		// retries, as a failed PeerConnection does. Nobody revoked the guest.
+		m.cutViewer(v, websocket.StatusGoingAway, "media failed")
+		return
+	}
 	v.gs.emit(GuestEvent{Kind: AuditRevoked, Reason: ReasonMediaIdentityMismatch, Ident: v.Identity})
 	m.cutViewer(v, CloseGuestRevoked, guestReasonRevoked)
 }
