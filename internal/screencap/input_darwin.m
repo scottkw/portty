@@ -64,6 +64,58 @@ int pc_input_mouse(int kind, double x, double y, int button, int clickState, int
 	}
 }
 
+// One key event for virtual key vk. The flags are set explicitly on every
+// event, so the Mac's physical modifier state and a stale remote one never
+// leak into it. autorepeat marks a held key's repeated keydown.
+int pc_input_key(uint16_t vk, int down, uint64_t flags, int autorepeat) {
+	@try {
+		CGEventSourceRef src = pcInputSource();
+		if (src == NULL) return kPCInputNilErr;
+		CGEventRef ev = CGEventCreateKeyboardEvent(src, (CGKeyCode)vk, down != 0);
+		if (ev == NULL) return kPCInputNilErr;
+		if (autorepeat) CGEventSetIntegerValueField(ev, kCGKeyboardEventAutorepeat, 1);
+		pcPost(ev, flags);
+		return 0;
+	} @catch (NSException *e) {
+		return kPCInputExceptionErr;
+	}
+}
+
+// Composed text as one key-down and key-up pair carrying the UTF-16 units, with
+// flags 0. n must be 1..20: longer text is chunked by the caller.
+int pc_input_text(const uint16_t *units, int n) {
+	@try {
+		if (units == NULL || n < 1 || n > 20) return kPCInputRangeErr;
+		CGEventSourceRef src = pcInputSource();
+		if (src == NULL) return kPCInputNilErr;
+		for (int down = 1; down >= 0; down--) {
+			CGEventRef ev = CGEventCreateKeyboardEvent(src, 0, down != 0);
+			if (ev == NULL) return kPCInputNilErr;
+			CGEventKeyboardSetUnicodeString(ev, (UniCharCount)n, (const UniChar *)units);
+			pcPost(ev, 0);
+		}
+		return 0;
+	} @catch (NSException *e) {
+		return kPCInputExceptionErr;
+	}
+}
+
+// A smooth (pixel) scroll. dy is the vertical wheel and dx the horizontal one,
+// in CoreGraphics sign: positive scrolls up and left.
+int pc_input_scroll(int dx, int dy, uint64_t flags) {
+	@try {
+		CGEventSourceRef src = pcInputSource();
+		if (src == NULL) return kPCInputNilErr;
+		CGEventRef ev = CGEventCreateScrollWheelEvent2(src, kCGScrollEventUnitPixel, 2, dy, dx, 0);
+		if (ev == NULL) return kPCInputNilErr;
+		CGEventSetIntegerValueField(ev, kCGScrollWheelEventIsContinuous, 1);
+		pcPost(ev, flags);
+		return 0;
+	} @catch (NSException *e) {
+		return kPCInputExceptionErr;
+	}
+}
+
 // The pointer's current global location, in points.
 int pc_input_cursor(double *x, double *y) {
 	@try {

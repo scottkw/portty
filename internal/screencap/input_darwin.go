@@ -10,6 +10,9 @@ package screencap
 
 int64_t pc_event_marker(void);
 int pc_input_mouse(int kind, double x, double y, int button, int clickState, int dx, int dy, uint64_t flags);
+int pc_input_key(uint16_t vk, int down, uint64_t flags, int autorepeat);
+int pc_input_text(const uint16_t *units, int n);
+int pc_input_scroll(int dx, int dy, uint64_t flags);
 int pc_input_cursor(double *x, double *y);
 int pc_display_bounds(uint32_t id, double *x, double *y, double *w, double *h);
 */
@@ -64,6 +67,52 @@ func (*InputBridge) PostMouse(kind MouseKind, x, y float64, button, clickState, 
 		return inputErr("posting a pointer event", rc)
 	}
 	return nil
+}
+
+// PostKey posts one key event for virtual key vk with the explicit CGEventFlags
+// modifier mask; autorepeat marks a repeated keydown.
+func (*InputBridge) PostKey(vk uint16, down bool, flags uint64, autorepeat bool) error {
+	if testing.Testing() {
+		return ErrRefusedInTest
+	}
+	if rc := C.pc_input_key(C.uint16_t(vk), b2i(down), C.uint64_t(flags), b2i(autorepeat)); rc != 0 {
+		return inputErr("posting a key event", rc)
+	}
+	return nil
+}
+
+// PostText types composed text as one key pair carrying units (at most
+// MaxTextUnits UTF-16 units; chunk longer text with UTF16Chunks).
+func (*InputBridge) PostText(units []uint16) error {
+	if len(units) < 1 || len(units) > MaxTextUnits {
+		return fmt.Errorf("screencap: text of %d units, want 1..%d", len(units), MaxTextUnits)
+	}
+	if testing.Testing() {
+		return ErrRefusedInTest
+	}
+	if rc := C.pc_input_text((*C.uint16_t)(&units[0]), C.int(len(units))); rc != 0 {
+		return inputErr("posting text", rc)
+	}
+	return nil
+}
+
+// PostScroll posts a smooth scroll in CoreGraphics sign (positive dy scrolls
+// up, positive dx left).
+func (*InputBridge) PostScroll(dx, dy int, flags uint64) error {
+	if testing.Testing() {
+		return ErrRefusedInTest
+	}
+	if rc := C.pc_input_scroll(C.int(dx), C.int(dy), C.uint64_t(flags)); rc != 0 {
+		return inputErr("posting a scroll", rc)
+	}
+	return nil
+}
+
+func b2i(b bool) C.int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // CursorLocation reads the pointer's global location in points.
