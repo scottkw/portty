@@ -171,7 +171,7 @@ describe('DSHR-01 tracer: turn on, watch the state, copy the link', () => {
 // ---- Task 2: every state, refusal and error -------------------------------
 
 const OFF_DESCRIPTION =
-  "View and control this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
+  "View and control this Mac's screen, and hear its sound, from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
 const USERSPACE_SENTENCE =
   "Tailscale is running in userspace-networking mode, so Portty can't open a desktop connection. Switch Tailscale to its standard mode, then try again."
 const FOOTNOTE =

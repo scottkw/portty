@@ -18,6 +18,7 @@ import {
   NoSymbolIcon,
   PlayIcon,
   SignalSlashIcon,
+  SpeakerXMarkIcon,
   StopIcon,
   UserIcon,
   WindowIcon,
@@ -43,6 +44,15 @@ import { UserRefused } from './UserRefused'
 import { DesktopCopyPopover, DesktopPastePopover } from './DesktopClipboardPopover'
 import { DEFAULT_RELEASE_CHORD, DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
 import { DesktopPhoneLayer } from './DesktopPhoneLayer'
+import {
+  SOUND_HINT,
+  SOUND_HINT_MS,
+  SOUND_HINT_PHONE,
+  SOUND_PLAY_REJECTED,
+  SOUND_PLAY_REJECTED_PHONE,
+  SOUND_UNAVAILABLE_NOTICE,
+  type SoundNotice,
+} from './DesktopSoundButton'
 import * as copy from '../lib/shareDesktopCopy'
 
 const TITLE = 'Portty Desktop'
@@ -249,6 +259,12 @@ const PASTE_NOTICES: Partial<Record<ClipOutcome, NoticeSpec>> = {
 const PASTE_CONCEALED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: HOME_PASTE_WORDS.concealed, dwell: 5000 }
 const PASTE_FAILED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: "Couldn't send to the Mac. Try again.", dwell: 5000, alert: true }
 
+/** The two Sound failure notices (23-UI-SPEC Surface 1); the phone's words say Tap. */
+function soundNoticeSpec(kind: SoundNotice, phone: boolean): NoticeSpec {
+  const text = kind === 'unavailable' ? SOUND_UNAVAILABLE_NOTICE : phone ? SOUND_PLAY_REJECTED_PHONE : SOUND_PLAY_REJECTED
+  return { Icon: ExclamationTriangleIcon, text, dwell: 5000, alert: true }
+}
+
 export type { ControlMode }
 
 /** Safari with storage blocked throws on the property read itself; the setting then reads as off. */
@@ -404,6 +420,14 @@ export function DesktopView({
   const [someoneUsing, setSomeoneUsing] = useState(false)
   const prevClipboard = useRef(false)
   const [hasFrame, setHasFrame] = useState(false)
+  // The server hello offered sound (23-06). Without it no Sound item is shown at all.
+  const [hasAudio, setHasAudio] = useState(false)
+  // Sound is on for this viewer. Not remembered: every page load starts muted.
+  const [soundOn, setSoundOn] = useState(false)
+  // The one-time Sound hint has been shown (or its moment passed) in this page load.
+  const hintDone = useRef(false)
+  const hintId = useRef(0)
+  const wasFailed = useRef(false)
   const [needsTap, setNeedsTap] = useState(false)
   const [chipPhase, setChipPhase] = useState<'gone' | 'shown' | 'fading'>('gone')
   // The viewer may control the Mac (the hello grants it and this is not a phone). The keyboard is not
@@ -519,15 +543,26 @@ export function DesktopView({
   }, [updateRect])
 
   // A rejected play() (autoplay policy, always on iPhone) is the Tap to start card, not an error.
+  // With sound on (a reconnect inside the page) a refusal first drops the sound and tries once more:
+  // the picture matters more, and Unmute is one click away.
   const startPlay = useCallback(() => {
     const v = videoRef.current
     if (!v) return
-    try {
-      void Promise.resolve(v.play()).then(() => setNeedsTap(false), () => setNeedsTap(true))
-    } catch {
+    const refused = () => {
+      if (!v.muted) {
+        v.muted = true
+        pushNotice(soundNoticeSpec('play-rejected', isPhone()))
+        void Promise.resolve(v.play()).then(() => setNeedsTap(false), () => setNeedsTap(true))
+        return
+      }
       setNeedsTap(true)
     }
-  }, [])
+    try {
+      void Promise.resolve(v.play()).then(() => setNeedsTap(false), refused)
+    } catch {
+      refused()
+    }
+  }, [pushNotice])
 
   useEffect(() => {
     const client = createDesktopClient(guestProp === undefined ? optionsRef.current : { ...optionsRef.current, guest: guestProp })
@@ -636,6 +671,7 @@ export function DesktopView({
         setCanClipboard(r.clipboard)
         setCanControl(true)
       }),
+      client.on('caps', ({ audio }) => setHasAudio(audio)),
       client.on('input', ({ open }) => {
         if (open) return
         inputCtl.current?.releaseAll('channel')
@@ -1028,13 +1064,35 @@ export function DesktopView({
   }
   // The bar is for a viewer that may control the Mac, while a picture is up and no card covers it.
   // A guest granted only the clipboard still has a bar, holding the Clipboard menu alone.
-  const barAllowed = canControl || canClipboard
+  // A viewer with sound and no other right still gets the bar, holding the Sound item alone. The phone's own bar holds its Sound item (23-08).
+  const soundBar = hasAudio && !phoneMode
+  const barAllowed = canControl || canClipboard || soundBar
   const showBar = barAllowed && cardKey === null && !hostCard && !hostPaused && (status.kind === 'streaming' || status.kind === 'reconnecting')
   showBarRef.current = showBar
   const picture = hasFrame && cardKey === null && !hostCard && !hostPaused
   useEffect(() => {
     pictureCb.current?.(picture)
   }, [picture])
+  // Sound (23-06). Audio failing is the daemon's state; the picture is never touched by it.
+  const audioFailed = desk?.audio === 'failed'
+  const soundNotice = useCallback((kind: SoundNotice) => pushNotice(soundNoticeSpec(kind, phoneMode)), [pushNotice, phoneMode])
+  // The one-time hint: the first time the picture is up with sound negotiated and off, never under a card.
+  // It is not repeated after a reconnect, and unmuting takes it away.
+  useEffect(() => {
+    if (hintDone.current || !picture || !hasAudio || soundOn) return
+    hintDone.current = true
+    pushNotice({ Icon: SpeakerXMarkIcon, text: phoneMode ? SOUND_HINT_PHONE : SOUND_HINT, dwell: SOUND_HINT_MS })
+    hintId.current = noticeSeq.current
+  }, [picture, hasAudio, soundOn, phoneMode, pushNotice])
+  useEffect(() => {
+    if (soundOn) setNotice((n) => (n?.id === hintId.current ? null : n))
+  }, [soundOn])
+  // Losing sound that was playing says so once; a viewer that was muted is not told.
+  useEffect(() => {
+    if (audioFailed && !wasFailed.current && soundOn) soundNotice('unavailable')
+    wasFailed.current = audioFailed
+  }, [audioFailed, soundOn, soundNotice])
+
   // A popover belongs to the bar: when the bar goes (a card covers the picture), so does it.
   // A menu open when the bar went would otherwise block the copy/paste fallback popover
   // (the barMenuOpenRef guard) after the bar returns.
@@ -1220,6 +1278,7 @@ export function DesktopView({
             popoverOpen={popover !== null}
             releaseChord={releaseChord}
             guest={guest}
+            sound={soundBar ? { video: videoRef.current, failed: audioFailed, onNotice: soundNotice, onChange: setSoundOn } : undefined}
           />
         </div>
       )}

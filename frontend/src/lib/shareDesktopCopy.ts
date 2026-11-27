@@ -8,7 +8,7 @@ export const SHARE_DESKTOP_ACTION = 'Share Desktop…'
 export const MANAGE_SHARING_ACTION = 'Manage Sharing…'
 export const SETTINGS_ROW_TITLE = 'Share Desktop'
 export const SETTINGS_ROW_DESCRIPTION =
-  'Show your screen to someone on your tailnet. They wait for you to let them in, and can only watch until you allow more.'
+  'Show your screen and sound to someone on your tailnet. They wait for you to let them in, and can only watch until you allow more.'
 export const QUIT_WARNING = 'Quitting also stops sharing your desktop and disconnects everyone watching.'
 export const SECURITY_KEYS_DESCRIPTION =
   'Regenerating signs out every browser and Mac attached to your sessions, stops every saved desktop link, and ends any desktop sharing.'
@@ -16,7 +16,7 @@ export const SECURITY_KEYS_DESCRIPTION =
 // ---- Share Desktop sheet (Surface 2) ----
 export const SHARE_SHEET_TITLE = 'Share Desktop'
 export const SHARE_NOT_SHARING_DESCRIPTION =
-  'Show your screen to someone on your tailnet. They wait at a prompt on this Mac until you let them in, and they can only watch until you allow more.'
+  'Show your screen and sound to someone on your tailnet. They wait at a prompt on this Mac until you let them in, and they can only watch until you allow more.'
 export const SHARE_CT_LINE = (host: string): string =>
   `The first time, this gets an HTTPS certificate for ${host}.ts.net. That name is published in public Certificate Transparency logs.`
 export const SHARE_STARTING = 'Getting a link…'
@@ -39,7 +39,7 @@ export const UNNAMED_VIEWER = 'Unknown viewer'
 export const grantCaption = (name: string): string =>
   `Control lets ${name} use this Mac as you, so they can do anything you can. Clipboard lets them copy text to and from this Mac.`
 export const SHARE_FOOTNOTE =
-  "Denying or disconnecting someone is final for this share. To let them back in, stop sharing and share again. Anyone watching sees everything on this screen, including this window. If someone can't open the link, your tailnet's access rules may not let them reach this Mac."
+  "Denying or disconnecting someone is final for this share. To let them back in, stop sharing and share again. Anyone watching sees everything on this screen, including this window, and hears this Mac's sound, even before they unmute. If someone can't open the link, your tailnet's access rules may not let them reach this Mac."
 export const STOP_SHARING = 'Stop Sharing'
 export const DONE = 'Done'
 export const NOT_NOW = 'Not Now'
@@ -69,7 +69,7 @@ export const ADMIT_TITLE = 'Someone Wants to Watch Your Desktop'
 export const ADMIT_LOGIN_LABEL = 'Login name'
 export const ADMIT_DEVICE_LABEL = 'Device'
 export const ADMIT_PARAGRAPH_1 =
-  'They will see your whole screen, and can only watch until you allow control. Deny is final for this share.'
+  "They will see your whole screen and hear this Mac's sound, and can only watch until you allow control. Deny is final for this share."
 export const ADMIT_PARAGRAPH_2 = "Check the login name. Anyone can set a display name that looks like someone else's."
 /** `more` is how many others are waiting besides the one shown; the line is for 1 or more. */
 export const morePeopleWaiting = (more: number): string =>

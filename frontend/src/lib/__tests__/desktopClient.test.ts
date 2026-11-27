@@ -16,6 +16,7 @@ import {
   createDesktopClient,
   defaultDesktopWsUrl,
   fetchCheck,
+  withOpusStereo,
   type CheckVerdict,
   type ClientStatus,
   type DesktopClientOptions,
@@ -88,6 +89,9 @@ class FakeChannel {
   recv(m: unknown) { this.onmessage?.({ data: typeof m === 'string' ? m : JSON.stringify(m) }) }
 }
 
+/** What the fake peer connection offers; a test sets it, afterEach restores it. */
+let offerSdp = 'fake-offer-sdp'
+
 class FakePC {
   closed = false
   calls: string[] = []
@@ -109,7 +113,7 @@ class FakePC {
   }
   async createOffer() {
     this.calls.push('createOffer')
-    return { type: 'offer', sdp: 'fake-offer-sdp' } }
+    return { type: 'offer', sdp: offerSdp } }
   async setLocalDescription(d: { sdp: string }) { this.localDescription = d }
   async setRemoteDescription(d: { type: string; sdp: string }) { this.remote = d }
   close() { this.closed = true }
@@ -172,7 +176,10 @@ async function streaming(over: Partial<DesktopClientOptions> = {}) {
   return e
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  offerSdp = 'fake-offer-sdp'
+  vi.unstubAllGlobals()
+})
 
 describe('transport injection', () => {
   it('sends hello first, then an offer carrying the injected peer connection SDP, with no real WebSocket', async () => {
@@ -182,14 +189,14 @@ describe('transport injection', () => {
     e.client.start()
     const t = lastT(e)
     t.open()
-    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
+    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, audio: 1, input: 1 } })
     t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } })
     await settle()
     expect(t.sent[1]).toEqual({ type: 'offer', sdp: 'fake-offer-sdp' })
     t.recv({ type: 'answer', sdp: 'fake-answer-sdp' })
     await settle()
     expect(lastPC(e).remote).toEqual({ type: 'answer', sdp: 'fake-answer-sdp' })
-    expect(lastPC(e).transceivers).toEqual([['video', { direction: 'recvonly' }]])
+    expect(lastPC(e).transceivers).toEqual([['video', { direction: 'recvonly' }], ['audio', { direction: 'recvonly' }]])
     expect(ws).not.toHaveBeenCalled()
   })
 
@@ -1023,6 +1030,103 @@ describe('clipboard transfer (Phase 20-08)', () => {
   })
 })
 
+describe('audio (Phase 23-06)', () => {
+  const CHROME_AUDIO = [
+    'v=0',
+    'm=video 9 UDP/TLS/RTP/SAVPF 96',
+    'a=rtpmap:96 VP8/90000',
+    'a=fmtp:96 profile-id=0',
+    'm=audio 9 UDP/TLS/RTP/SAVPF 111 63',
+    'a=rtpmap:111 opus/48000/2',
+    'a=fmtp:111 minptime=10;useinbandfec=1',
+    'a=rtpmap:63 red/48000/2',
+    'a=fmtp:63 111/111',
+    '',
+  ].join('\r\n')
+
+  it('withOpusStereo adds stereo=1 to the Opus fmtp line and touches no other line', () => {
+    const out = withOpusStereo(CHROME_AUDIO)
+    expect(out.split('\r\n')).toEqual(
+      CHROME_AUDIO.split('\r\n').map((l) => (l === 'a=fmtp:111 minptime=10;useinbandfec=1' ? 'a=fmtp:111 minptime=10;useinbandfec=1;stereo=1' : l)),
+    )
+  })
+
+  it('withOpusStereo replaces stereo=0, adds an fmtp line when there is none, and leaves a video-only offer alone', () => {
+    expect(withOpusStereo('a=rtpmap:111 opus/48000/2\r\na=fmtp:111 stereo=0;useinbandfec=1\r\n')).toBe(
+      'a=rtpmap:111 opus/48000/2\r\na=fmtp:111 useinbandfec=1;stereo=1\r\n',
+    )
+    expect(withOpusStereo('m=audio 9 RTP/AVP 111\r\na=rtpmap:111 opus/48000/2\r\na=sendrecv\r\n')).toBe(
+      'm=audio 9 RTP/AVP 111\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 stereo=1\r\na=sendrecv\r\n',
+    )
+    expect(withOpusStereo('a=rtpmap:111 opus/48000/2\na=fmtp:111 minptime=10\n')).toBe('a=rtpmap:111 opus/48000/2\na=fmtp:111 minptime=10;stereo=1\n')
+    expect(withOpusStereo('m=video 9 RTP/AVP 96\r\na=rtpmap:96 VP8/90000\r\n')).toBe('m=video 9 RTP/AVP 96\r\na=rtpmap:96 VP8/90000\r\n')
+  })
+
+  it('adds the audio recvonly transceiver after video and before createOffer, and offers stereo', async () => {
+    offerSdp = CHROME_AUDIO
+    const e = setup()
+    e.client.start()
+    await handshake(e)
+    const pc = lastPC(e)
+    expect(pc.transceivers).toEqual([['video', { direction: 'recvonly' }], ['audio', { direction: 'recvonly' }]])
+    expect(pc.localDescription?.sdp).toContain('a=fmtp:111 minptime=10;useinbandfec=1;stereo=1')
+    expect(lastT(e).sent[1]).toMatchObject({ type: 'offer' })
+    expect((lastT(e).sent[1] as { sdp: string }).sdp).toContain('stereo=1')
+  })
+
+  it('emits caps from the server hello: audio and unlock are booleans, missing is false', async () => {
+    const e = setup()
+    const seen: unknown[] = []
+    e.client.on('caps', (c) => seen.push(c))
+    e.client.start()
+    const t = lastT(e)
+    t.open()
+    t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1, audio: 1, unlock: 1 } })
+    await settle()
+    expect(seen).toEqual([{ audio: true, unlock: true }])
+    // A reconnect's hello with no audio says so.
+    t.dropWith(1006)
+    await e.clock.advance(RECONNECT.delaysMs[0])
+    lastT(e).open()
+    lastT(e).recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } })
+    await settle()
+    expect(seen[1]).toEqual({ audio: false, unlock: false })
+  })
+
+  it('carries the state message audio failed, and only that value', async () => {
+    const e = setup()
+    const seen: unknown[] = []
+    e.client.on('state', (s) => seen.push(s))
+    e.client.start()
+    await handshake(e)
+    lastT(e).recv({ type: 'state', state: 'streaming', viewers: 1, audio: 'failed' })
+    lastT(e).recv({ type: 'state', state: 'streaming', viewers: 1, audio: 'whatever' })
+    lastT(e).recv({ type: 'state', state: 'streaming', viewers: 1 })
+    expect(seen).toEqual([
+      { state: 'streaming', viewers: 1, locked: false, audio: 'failed' },
+      { state: 'streaming', viewers: 1, locked: false },
+      { state: 'streaming', viewers: 1, locked: false },
+    ])
+  })
+
+  it('an audio track alone is not a picture; the video track is, and both play from one stream', async () => {
+    const e = setup()
+    const streams: unknown[] = []
+    e.client.on('track', (s) => streams.push(s))
+    e.client.start()
+    await handshake(e)
+    const pc = lastPC(e)
+    const shared = { id: 'portty-desktop' }
+    pc.ontrack?.({ streams: [shared], track: { kind: 'audio' } })
+    pc.setConn('connected')
+    expect(streams).toEqual([])
+    expect(kinds(e)).not.toContain('streaming')
+    pc.ontrack?.({ streams: [shared], track: { kind: 'video' } })
+    expect(streams).toEqual([shared])
+    expect(kinds(e)).toContain('streaming')
+  })
+})
+
 describe('stop and scope', () => {
   it('stop closes the socket and the peer connection and removes the wake listeners', async () => {
     const e = await streaming()
@@ -1039,7 +1143,7 @@ describe('stop and scope', () => {
     const e = await streaming()
     e.client.wake('visibility')
     expect(new Set(lastT(e).types())).toEqual(new Set(['hello', 'offer', 'ping']))
-    expect(lastPC(e).transceivers).toHaveLength(1)
+    expect(lastPC(e).transceivers).toHaveLength(2)
   })
 })
 

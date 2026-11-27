@@ -139,6 +139,9 @@ describe('ShareDesktopSheet: start and copy (tracer)', () => {
     expect(text()).toContain(copy.WATCHING_HEADER)
     expect(text()).toContain(copy.WATCHING_EMPTY)
     expect(text()).toContain(copy.SHARE_FOOTNOTE)
+    // Everyone watching hears the Mac, even before they unmute; there is no audio switch (DCTL-07).
+    expect(text()).toContain("hears this Mac's sound, even before they unmute")
+    expect(container.querySelector('[role="switch"]')).toBeNull()
     // The link is never shown.
     expect(text()).not.toContain('PLACEHOLDER')
     expect(container.innerHTML).not.toContain('PLACEHOLDER')
@@ -202,6 +205,7 @@ describe('ShareDesktopSheet: start and copy (tracer)', () => {
     await mount()
     expect(start).not.toHaveBeenCalled()
     expect(text()).toContain(copy.SHARE_NOT_SHARING_DESCRIPTION)
+    expect(text()).toContain('Show your screen and sound to someone')
     expect(text()).toContain(copy.SHARE_CT_LINE('my-mac.tailnet'))
     expect(button(copy.NOT_NOW)).toBeDefined()
 

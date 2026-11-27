@@ -2827,6 +2827,24 @@ html:has(.desktop-view:not(.desktop-view--embedded)) body {
   flex-shrink: 0;
   background: var(--color-separator);
 }
+/* The Sound item (23-06): Unmute or Mute, its width fixed by a hidden copy of the wider word. Declared before the
+   880px rule below so that rule still hides the label when the bar is compact. */
+.desktop-sound__label {
+  display: inline-grid;
+}
+.desktop-sound__label > * {
+  grid-area: 1 / 1;
+}
+.desktop-sound__ghost {
+  visibility: hidden;
+}
+/* The phone's bottom bar form: 44px, icon only. */
+.desktop-sound--phone {
+  width: 44px;
+  height: 44px;
+  justify-content: center;
+  padding: 0;
+}
 /* Below 880px every item except the picker and the Control segments is icon-only; each keeps its aria-label and title. */
 @media (max-width: 879px) {
   .desktop-bar__item {

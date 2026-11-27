@@ -96,6 +96,8 @@ describe('AdmitSheet', () => {
     expect(document.getElementById(dialog()!.getAttribute('aria-labelledby')!)?.textContent).toBe(copy.ADMIT_TITLE)
     const described = dialog()!.getAttribute('aria-describedby')!.split(' ').map((id) => document.getElementById(id)?.textContent)
     expect(described).toEqual([copy.ADMIT_PARAGRAPH_1, copy.ADMIT_PARAGRAPH_2])
+    // The consent moment says sound reaches the guest too (DCTL-07).
+    expect(described[0]).toContain("hear this Mac's sound")
   })
 
   it('stray Enter, Space and Escape answer nobody and the sheet stays, even after the guard', async () => {
