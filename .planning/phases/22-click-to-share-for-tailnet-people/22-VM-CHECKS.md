@@ -54,6 +54,24 @@ A row is PASS only when every numbered condition holds. PARTIAL means a named co
 - **AR-21-01 (own-account peer filter).** Needs a node from another Tailscale account online. Recorded UNVERIFIED with SC1.
 - **Appendix B (real-Mac physical input).** Recorded PARTIAL by reference to `evidence/appendix-b-real-mac.txt`; not re-run.
 
+## User checkpoint
+
+Orchestrator decision on the user's behalf (2026-11-27). The user was not asked: the orchestrator decided these answers when it dispatched this plan, and this section records them as it gave them.
+
+What the rig read before the decision applied: the Phase 22 build (V, 22.12.0) is installed on portty-test and its daemon holds both permissions (`{"sr":true,"ax":true}`, re-read after G-01); portty-test-2 runs the Phase 21 build and needs no Phase 22 build because it only opens the guest link in Safari; the G-01 result is PASS (see Results). Both VMs answered over ssh without being started or stopped.
+
+1. **VM permissions.** Handled inside the VMs; nothing needed granting (Accessibility and Screen Recording already held on portty-test). Answer recorded: "permissions ok, handled by the executor inside the VMs (admin account), as earlier phases did".
+2. **SC1.** Answer: "skip SC1". SC1 is recorded UNVERIFIED with the reason "no second Tailscale user", never PASS, and becomes an owner-run M-NN row in 22-13. AR-21-01 (own-account peer filter) needs the same second account and is recorded UNVERIFIED with it.
+3. **Real-Mac items.** Answer: "defer" for all five; each becomes an owner-run M-NN row in 22-13:
+
+| Real-Mac item | Answer |
+|---------------|--------|
+| Tray icon variant beside the other tray icons, in a light and a dark menu bar | defer |
+| The Admit sheet arriving while typing in a terminal (no stray answer, the guard feels right) | defer |
+| A right-to-left or look-alike display name on the real Admit sheet | defer |
+| Someone is using this Mac appearing for a controlling guest while the owner types at the Mac | defer |
+| Warp check (a remote pointer warp must not eat local input) and the Secure Keyboard Entry check (banner shows on the Mac while remote keys still post) | defer |
+
 ## Build under test
 
 | Build | Version | Tags | Used for |
