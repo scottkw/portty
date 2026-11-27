@@ -82,4 +82,184 @@ describe('AdmitSheet', () => {
     expect(admit).toHaveBeenCalledWith('r1')
     expect(deny).not.toHaveBeenCalled()
   })
+
+  it('Deny and Admit are plain secondary buttons in that order; neither is primary or the default', async () => {
+    await render([req()])
+    expect(buttons().map((b) => b.textContent)).toEqual([copy.DENY, copy.ADMIT])
+    for (const b of buttons()) {
+      expect(b.classList.contains('button--secondary')).toBe(true)
+      expect(b.classList.contains('button--primary')).toBe(false)
+      expect(b.hasAttribute('data-dialog-primary')).toBe(false)
+    }
+    expect(dialog()!.getAttribute('aria-modal')).toBe('true')
+    expect(dialog()!.getAttribute('tabindex')).toBe('-1')
+    expect(document.getElementById(dialog()!.getAttribute('aria-labelledby')!)?.textContent).toBe(copy.ADMIT_TITLE)
+    const described = dialog()!.getAttribute('aria-describedby')!.split(' ').map((id) => document.getElementById(id)?.textContent)
+    expect(described).toEqual([copy.ADMIT_PARAGRAPH_1, copy.ADMIT_PARAGRAPH_2])
+  })
+
+  it('stray Enter, Space and Escape answer nobody and the sheet stays, even after the guard', async () => {
+    await render([req()])
+    await pass(ADMIT_GUARD_MS)
+    for (const k of ['Enter', ' ', 'Escape']) {
+      await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })) })
+    }
+    expect(admit).not.toHaveBeenCalled()
+    expect(deny).not.toHaveBeenCalled()
+    expect(dialog()).not.toBeNull()
+    expect(document.activeElement).toBe(dialog())
+  })
+
+  it('Tab from the dialog reaches Deny, and Shift+Tab wraps to Admit', async () => {
+    await render([req()])
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })) })
+    expect(document.activeElement).toBe(btn(copy.DENY))
+    dialog()!.focus()
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })) })
+    expect(document.activeElement).toBe(btn(copy.ADMIT))
+  })
+
+  it('both buttons are aria-disabled inside the guard and enabled after it', async () => {
+    await render([req()])
+    expect(buttons().map((b) => b.getAttribute('aria-disabled'))).toEqual(['true', 'true'])
+    await click(btn('Deny'))
+    expect(deny).not.toHaveBeenCalled()
+    await pass(ADMIT_GUARD_MS)
+    expect(buttons().map((b) => b.getAttribute('aria-disabled'))).toEqual(['false', 'false'])
+  })
+
+  it('Deny calls DenyDesktopGuest with the request id', async () => {
+    await render([req({ id: 'r9' })])
+    await pass(ADMIT_GUARD_MS)
+    await click(btn('Deny'))
+    expect(deny).toHaveBeenCalledWith('r9')
+    expect(admit).not.toHaveBeenCalled()
+  })
+
+  it('while an answer is in flight both buttons are aria-disabled and a second click does nothing', async () => {
+    let finish!: (r: App.DesktopShareActionResult) => void
+    admit.mockReturnValue(new Promise((res) => { finish = res }))
+    await render([req()])
+    await pass(ADMIT_GUARD_MS)
+    await click(btn('Admit'))
+    expect(buttons().map((b) => b.getAttribute('aria-disabled'))).toEqual(['true', 'true'])
+    await click(btn('Admit'))
+    await click(btn('Deny'))
+    expect(admit).toHaveBeenCalledTimes(1)
+    expect(deny).not.toHaveBeenCalled()
+    await act(async () => finish(ok()))
+    // Answered: this person's buttons stay off until the state line moves on.
+    expect(btn('Admit').getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('after an answer the next request replaces it in the same sheet and the guard restarts', async () => {
+    const second = req({ id: 'b', loginName: 'second@example.com', displayName: '', since: '2026-11-27T10:01:00Z' })
+    await render([req({ id: 'a' }), second])
+    await pass(ADMIT_GUARD_MS)
+    await click(btn('Admit'))
+    expect(admit).toHaveBeenCalledWith('a')
+
+    await render([second])
+    expect(container.querySelector('.admit__name')?.textContent).toBe('second@example.com')
+    expect(btn('Admit').getAttribute('aria-disabled')).toBe('true')
+    await click(btn('Admit'))
+    expect(admit).toHaveBeenCalledTimes(1)
+    await pass(ADMIT_GUARD_MS)
+    await click(btn('Admit'))
+    expect(admit).toHaveBeenLastCalledWith('b')
+  })
+
+  it('a failed answer shows one alert and the buttons return after the guard', async () => {
+    admit.mockResolvedValueOnce({ errorCode: 'unavailable', detail: 'x' })
+    await render([req()])
+    await pass(ADMIT_GUARD_MS)
+    await click(btn('Admit'))
+    const alerts = container.querySelectorAll('[role="alert"]')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].textContent).toBe(copy.ADMIT_ANSWER_ERROR)
+    expect(btn('Admit').getAttribute('aria-disabled')).toBe('true')
+    await pass(ADMIT_GUARD_MS)
+    expect(btn('Admit').getAttribute('aria-disabled')).toBe('false')
+    await click(btn('Admit'))
+    expect(admit).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+  })
+
+  it('a binding that throws counts as a failed answer', async () => {
+    deny.mockRejectedValueOnce(new Error('boom'))
+    await render([req()])
+    await pass(ADMIT_GUARD_MS)
+    await click(btn('Deny'))
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(copy.ADMIT_ANSWER_ERROR)
+  })
+
+  it('the queue line is absent for one, "1 more person" for two, "3 more people" for four', async () => {
+    const many = (n: number) => Array.from({ length: n }, (_, i) => req({ id: `q${i}`, since: `2026-11-27T10:0${i}:00Z` }))
+    await render(many(1))
+    expect(text()).not.toMatch(/waiting/)
+    await render(many(2))
+    expect(text()).toContain('1 more person is waiting.')
+    await render(many(4))
+    expect(text()).toContain('3 more people are waiting.')
+  })
+
+  it('shows the oldest request first', async () => {
+    await render([req({ id: 'new', displayName: 'Newer', since: '2026-11-27T10:05:00Z' }), req({ id: 'old', displayName: 'Older', since: '2026-11-27T10:00:00Z' })])
+    expect(container.querySelector('.admit__name')?.textContent).toBe('Older')
+    await pass(ADMIT_GUARD_MS)
+    await click(btn('Admit'))
+    expect(admit).toHaveBeenCalledWith('old')
+  })
+
+  it('an empty display name, or one equal to the login, makes the login the bold line with no Login name row', async () => {
+    await render([req({ displayName: '' })])
+    expect(container.querySelector('.admit__name')?.textContent).toBe('colleague@example.com')
+    expect(text()).not.toContain(copy.ADMIT_LOGIN_LABEL)
+    await render([req({ displayName: 'colleague@example.com' })])
+    expect(container.querySelector('.admit__name')?.textContent).toBe('colleague@example.com')
+    expect(text()).not.toContain(copy.ADMIT_LOGIN_LABEL)
+    // A display name that is only invisible characters is empty after sanitizing.
+    await render([req({ displayName: '​‮' })])
+    expect(container.querySelector('.admit__name')?.textContent).toBe('colleague@example.com')
+  })
+
+  it('a different display name shows the Login name row with the login', async () => {
+    await render([req()])
+    const rows = Array.from(container.querySelectorAll('.admit__fact')).map((r) => r.textContent)
+    expect(rows).toEqual([`${copy.ADMIT_LOGIN_LABEL}colleague@example.com`, `${copy.ADMIT_DEVICE_LABEL}pat-laptop`])
+  })
+
+  it('drops bidi and zero-width control characters and sets every name in bdi', async () => {
+    await render([req({ displayName: 'Pat‮evil​', loginName: 'a⁦b@example.com', nodeName: 'lap‮top' })])
+    expect(container.querySelector('.admit__name bdi')?.textContent).toBe('Patevil')
+    const facts = Array.from(container.querySelectorAll('.admit__fact-value bdi')).map((b) => b.textContent)
+    expect(facts).toEqual(['ab@example.com', 'laptop'])
+    expect(text()).not.toMatch(/[‮​⁦]/)
+  })
+
+  it('a 200-character login is shown in full and wraps rather than truncating', async () => {
+    const long = 'x'.repeat(196) + '@a.b'
+    await render([req({ loginName: long })])
+    expect(container.querySelector('.admit__fact-value')?.textContent).toBe(long)
+    expect(container.innerHTML).not.toMatch(/ellipsis|truncate/)
+  })
+
+  it('a request that ends moves on or closes with no message', async () => {
+    const second = req({ id: 'b', since: '2026-11-27T10:01:00Z', displayName: 'Second' })
+    await render([req({ id: 'a' }), second])
+    await render([second])
+    expect(container.querySelector('.admit__name')?.textContent).toBe('Second')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    await render([])
+    expect(dialog()).toBeNull()
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('no_request is treated as already gone, not as a failure', async () => {
+    admit.mockResolvedValueOnce({ errorCode: 'no_request', detail: '' })
+    await render([req()])
+    await pass(ADMIT_GUARD_MS)
+    await click(btn('Admit'))
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+  })
 })

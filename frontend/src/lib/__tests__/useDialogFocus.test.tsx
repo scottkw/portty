@@ -21,7 +21,7 @@ function Dialog({
   const ref = useRef<HTMLDivElement>(null)
   useDialogFocus(ref, { onCancel, initialFocus })
   return (
-    <div ref={ref} role="dialog" aria-modal="true">
+    <div ref={ref} role="dialog" aria-modal="true" tabIndex={-1}>
       {withInput && <input aria-label="field" />}
       <button tabIndex={-1}>roving</button>
       <button data-dialog-cancel="">Cancel</button>
@@ -90,6 +90,23 @@ describe('useDialogFocus', () => {
     mount(<Dialog onCancel={vi.fn()} />)
     key('Tab', true)
     expect(focusedText()).toBe('OK')
+  })
+
+  it('dialog mode focuses the dialog element itself, not a button', () => {
+    mount(<Dialog onCancel={vi.fn()} initialFocus="dialog" />)
+    expect(document.activeElement).toBe(container.querySelector('[role="dialog"]'))
+  })
+
+  it('dialog mode: Tab goes to the first item, Shift+Tab to the last, Esc still calls onCancel', () => {
+    const onCancel = vi.fn()
+    mount(<Dialog onCancel={onCancel} initialFocus="dialog" />)
+    key('Tab')
+    expect(focusedText()).toBe('field')
+    act(() => (container.querySelector('[role="dialog"]') as HTMLElement).focus())
+    key('Tab', true)
+    expect(focusedText()).toBe('OK')
+    key('Escape')
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
   it('Tab from outside the dialog moves focus back in', () => {
