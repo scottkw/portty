@@ -519,31 +519,32 @@ func (a *API) handleShareDeny(w http.ResponseWriter, r *http.Request) {
 // ended request is 404 and changes nothing.
 func (a *API) answerRequest(w http.ResponseWriter, id string, admit bool) {
 	gs := a.currentGuestShare()
-	if gs == nil {
+	var req *desktop.Request
+	if gs != nil {
+		for _, p := range gs.Pending() {
+			if p.ID == id {
+				req = &p
+				break
+			}
+		}
+	}
+	if req == nil {
+		// An unknown request writes nothing and cuts nobody.
 		writeShareErr(w, http.StatusNotFound, shareErrNoRequest, "")
 		return
 	}
 	var err error
 	if admit {
 		// The line is appended before the admission takes effect, so a crash
-		// cannot leave a guest watching with no record (DSHR-07). An unknown
-		// request writes nothing.
-		for _, p := range gs.Pending() {
-			if p.ID == id {
-				a.record(desktop.AuditAdmitted, gs.ID, desktop.AuditModeGuest, p.Ident, "")
-			}
-		}
+		// cannot leave a guest watching with no record (DSHR-07).
+		a.record(desktop.AuditAdmitted, gs.ID, desktop.AuditModeGuest, req.Ident, "")
 		err = gs.Admit(id)
 	} else if mgr := (desktopAdapter{a}).manager(); mgr != nil {
 		// Deny is for the person: their devices already watching are cut too.
-		var uid int64
-		for _, p := range gs.Pending() {
-			if p.ID == id {
-				uid = p.Ident.UserID
-			}
+		marked := a.markPersonLeaves(mgr, req.Ident.UserID, desktop.ReasonDenied)
+		if err = mgr.DenyGuest(gs, id); err != nil {
+			a.clearLeaveReasons(marked) // answered meanwhile: nobody was cut
 		}
-		a.markPersonLeaves(mgr, uid, desktop.ReasonDenied)
-		err = mgr.DenyGuest(gs, id)
 	} else {
 		err = gs.Deny(id)
 	}
@@ -639,11 +640,15 @@ func (a *API) handleShareDisconnect(w http.ResponseWriter, r *http.Request) {
 	}
 	shareID, mode := a.viewerAudit(v)
 	a.record(desktop.AuditRevoked, shareID, mode, v.Identity, desktop.ReasonRevoked)
-	a.setLeaveReason(v.ID, desktop.ReasonRevoked)
+	var marked []desktop.ViewerID
+	if a.setLeaveReason(v.ID, desktop.ReasonRevoked) {
+		marked = append(marked, v.ID)
+	}
 	if v.Mode == desktop.ModeGuest {
-		a.markPersonLeaves(mgr, v.Identity.UserID, desktop.ReasonRevoked) // CloseViewer cuts every device of the person
+		marked = append(marked, a.markPersonLeaves(mgr, v.Identity.UserID, desktop.ReasonRevoked)...) // CloseViewer cuts every device of the person
 	}
 	if err := mgr.CloseViewer(v.ID); err != nil {
+		a.clearLeaveReasons(marked) // gone meanwhile: nobody was cut
 		writeViewerErr(w, err)
 		return
 	}
@@ -652,13 +657,16 @@ func (a *API) handleShareDisconnect(w http.ResponseWriter, r *http.Request) {
 }
 
 // markPersonLeaves gives every live guest device of userID the reason its leave
-// line will carry: a revoke or a deny cuts the person on every device.
-func (a *API) markPersonLeaves(mgr *desktop.Manager, userID int64, reason string) {
+// line will carry: a revoke or a deny cuts the person on every device. It
+// returns the viewers it set a reason for, for clearLeaveReasons.
+func (a *API) markPersonLeaves(mgr *desktop.Manager, userID int64, reason string) []desktop.ViewerID {
+	var set []desktop.ViewerID
 	for _, v := range mgr.ViewerList() {
-		if v.Mode == desktop.ModeGuest && v.Identity.UserID == userID {
-			a.setLeaveReason(v.ID, reason)
+		if v.Mode == desktop.ModeGuest && v.Identity.UserID == userID && a.setLeaveReason(v.ID, reason) {
+			set = append(set, v.ID)
 		}
 	}
+	return set
 }
 
 // closeOwnViewers closes every own-account viewer with code and leaves the
@@ -849,15 +857,29 @@ func (a *API) closeAudit() {
 }
 
 // setLeaveReason records why viewer id is being closed; the first reason wins.
-func (a *API) setLeaveReason(id desktop.ViewerID, reason string) {
+// It reports whether this call set it.
+func (a *API) setLeaveReason(id desktop.ViewerID, reason string) bool {
 	sa := &a.audit
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
 	if sa.cut == nil {
 		sa.cut = map[desktop.ViewerID]string{}
 	}
-	if _, ok := sa.cut[id]; !ok {
-		sa.cut[id] = reason
+	if _, ok := sa.cut[id]; ok {
+		return false
+	}
+	sa.cut[id] = reason
+	return true
+}
+
+// clearLeaveReasons takes back reasons set for a cut that then failed, so a
+// later normal leave is not logged as denied or revoked.
+func (a *API) clearLeaveReasons(ids []desktop.ViewerID) {
+	sa := &a.audit
+	sa.mu.Lock()
+	defer sa.mu.Unlock()
+	for _, id := range ids {
+		delete(sa.cut, id)
 	}
 }
 

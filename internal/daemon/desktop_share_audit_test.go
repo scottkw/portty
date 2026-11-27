@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/pion/webrtc/v4"
 
 	"github.com/scottkw/portty/internal/desktop"
 	"github.com/scottkw/portty/internal/webserver/webservertest"
@@ -276,5 +278,89 @@ func TestShareAudit_DaemonExitLogsLeaves(t *testing.T) {
 	}
 	if leaves != 2 || stops != 1 {
 		t.Errorf("daemon exit wrote %d leaves and %d share_stop; want 2 and 1", leaves, stops)
+	}
+}
+
+// joinedNoMedia is admittedGuest, except the guest never applies the answer, so
+// ICE never connects and no media identity check runs. Two devices of one
+// person can then watch under the fake WhoIs, which answers every lookup
+// (signalling and media alike) with the one current identity.
+func joinedNoMedia(t *testing.T, e *desktopEnv, gui *shareStreamHolder, link string) (*guest, string) {
+	t.Helper()
+	g := connectGuest(t, link)
+	g.waitMsg(t, "admission", "waiting")
+	knock := gui.until(t, 5*time.Second, "the admit_request event", gui.event("admit_request"))
+	if err := e.client.AdmitDesktopGuest(knock.Viewer.ID); err != nil {
+		t.Fatalf("AdmitDesktopGuest: %v", err)
+	}
+	g.waitMsg(t, "admission", "admitted")
+	pc, _ := newPionViewer(t)
+	off, err := pc.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gathered := webrtc.GatheringCompletePromise(pc)
+	if err := pc.SetLocalDescription(off); err != nil {
+		t.Fatal(err)
+	}
+	<-gathered
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	writeWS(ctx, t, g.conn, map[string]any{"type": "offer", "sdp": pc.LocalDescription().SDP})
+	g.waitMsg(t, "answer", "")
+	join := gui.until(t, 10*time.Second, "the join event", gui.event("join"))
+	return g, join.Viewer.ID
+}
+
+// TestShareAudit_PersonCutLogsEveryDevicesLeave: a disconnect or a deny cuts
+// the person on every device, and each device's leave line says why.
+func TestShareAudit_PersonCutLogsEveryDevicesLeave(t *testing.T) {
+	for _, tc := range []struct{ name, reason string }{{"disconnect", "revoked"}, {"deny", "denied"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, who := guestEnv(t)
+			gui, start := startedShare(t, e)
+			who.Set(webservertest.Other)
+			laptop, laptopID := joinedNoMedia(t, e, gui, start.URL)
+			who.Set(webservertest.OtherSecondNode)
+			want := 1 // a denied device never joined, so only the laptop leaves
+			if tc.name == "disconnect" {
+				want = 2
+				desk, _ := joinedNoMedia(t, e, gui, start.URL)
+				if err := e.client.DisconnectDesktopViewer(laptopID); err != nil {
+					t.Fatal(err)
+				}
+				if code := desk.waitClosed(t, 5*time.Second); code != 4432 {
+					t.Errorf("the person's second device closed %d, want 4432", code)
+				}
+			} else {
+				desk := connectGuest(t, start.URL)
+				desk.waitMsg(t, "admission", "waiting")
+				knock := gui.until(t, 5*time.Second, "the admit_request event", gui.event("admit_request"))
+				if err := e.client.DenyDesktopGuest(knock.Viewer.ID); err != nil {
+					t.Fatal(err)
+				}
+				if code := desk.waitClosed(t, 5*time.Second); code != 4430 {
+					t.Errorf("the denied device closed %d, want 4430", code)
+				}
+			}
+			if code := laptop.waitClosed(t, 5*time.Second); code != 4432 {
+				t.Errorf("the watching device closed %d, want 4432", code)
+			}
+			var leaves []desktop.AuditRecord
+			eventually(t, 5*time.Second, "every leave line", func() bool {
+				leaves = leaves[:0]
+				for _, r := range e.auditRecords(t) {
+					if r.Event == "leave" {
+						leaves = append(leaves, r)
+					}
+				}
+				return len(leaves) == want
+			})
+			for _, r := range leaves {
+				if r.Reason != tc.reason {
+					t.Errorf("leave of %s: reason %q, want %q", r.NodeName, r.Reason, tc.reason)
+				}
+			}
+		})
 	}
 }
