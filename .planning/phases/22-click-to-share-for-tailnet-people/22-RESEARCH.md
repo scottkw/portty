@@ -531,22 +531,24 @@ The real binding is that pion verifies the remote DTLS certificate against the f
 | A7 | macOS banners are suppressed during ScreenCaptureKit capture because of the "when mirroring or sharing the display: Notifications Off" setting | Finding 6 | Not measured; affects only how much to rely on banners |
 | A8 | Tailnet ACLs on a corporate tailnet may block tcp/7444 and the media UDP port for guests; Portty cannot see why | Pitfall list, Open Questions | Guests fail with an unhelpful state; mitigated by the page failure copy and docs (CONTEXT specifics) |
 
-## Open Questions / Decisions Needed
+## Open Questions / Decisions Needed (RESOLVED)
 
-1. **Run the physical-input user check on a real Mac (needs the user).**
+All nine were settled after research by the CONTEXT "After research" bullets (2026-11-25, user delegated) or by planning; each carries its resolution inline.
+
+1. **Run the physical-input user check on a real Mac (needs the user).** RESOLVED (partial outcome): the Appendix B run on a real Mac (2026-11-25, evidence/appendix-b-real-mac.txt) showed untagged hardware keys and mouse at a listen-only tap under Accessibility only, with no Input Monitoring prompt; it did not cover the warp check or the Secure Keyboard Entry case. Those are planned as the owner-run real-Mac item "warp and Secure Keyboard Entry physical-input check" at the 22-12 checkpoint, recorded as an M-NN item by 22-13 (number assigned at run time) if deferred. CONTEXT After research: "Real-Mac follow-up: the research Appendix B 2-minute physical-input check runs on a real Mac as an M-NN item".
    - What we know: tag and untagged injected events are distinguishable in the VM; the physical half could not be generated (no VNC on `portty-test`/`portty-test-2`, third macOS VM refused).
    - What's unclear: that real hardware events are untagged and visible to a listen-only tap under Accessibility; that a warped move does not eat local events.
    - Recommendation: user runs Appendix B (about 2 minutes, Terminal temporarily granted Accessibility, then revoked). Record as M-NN. Do not block planning: the rule is tag-only, which fails safe.
-2. **Keyboard blind spot during Secure Event Input: accept degraded detection, or drop remote keyboard input while secure input is on?**
+2. **Keyboard blind spot during Secure Event Input: accept degraded detection, or drop remote keyboard input while secure input is on?** RESOLVED: accept and warn. CONTEXT After research: "while Secure Event Input is on, physical typing is invisible to the tap; accept the weaker keyboard half and show a GUI warning, rather than drop all remote keys" (22-05, 22-11 banner).
    - What we know: measured blind to keyDown/keyUp; mouse still seen; HID key idle still updates but cannot be told from remote posts except across pauses.
    - Recommendation: **accept and document** (remote typing into password fields is a legitimate use, and dropping it also breaks Phase 23 unlock-adjacent flows); show "Local keyboard not detected (Secure Input on)" in the GUI list while the condition holds; keep mouse physical-wins. Needs the user's nod because it weakens "always wins" for the keyboard.
-3. **Lease semantics for plain pointer moves.** Recommendation in Pattern 5 (any input takes/renews; non-holder moves dropped while held). Confirm.
-4. **Deny/revoke key: user ID (recommended) or (user, node).** CONTEXT says "person"; recommend user ID.
-5. **Per-user pending cap of 2 in addition to the CONTEXT limits.** Recommendation: yes.
-6. **Audit `reason` field and graceful-exit leave events** (additive to the v1 format, rated costly). Recommendation: add now.
-7. **Audit retention:** one `.1` file at 5 MiB. Recommendation: keep as CONTEXT; document that older history is dropped; consider two backups only if the user wants longer audit history.
-8. **Do banners survive capture? ** (A7) Plan a VM row that sends a `UNUserNotificationCenter` notification from the real app while a capture is running.
-9. **Guest asset route naming** is Phase 19's: plan must read Phase 19's final `/desktop/` asset layout before adding the guest sibling.
+3. **Lease semantics for plain pointer moves.** Recommendation in Pattern 5 (any input takes/renews; non-holder moves dropped while held). Confirm. RESOLVED: CONTEXT After research: "any controller input takes or renews the 2 s lease and others' pointer moves are dropped while it is held" (22-03, 22-05).
+4. **Deny/revoke key: user ID (recommended) or (user, node).** CONTEXT says "person"; recommend user ID. RESOLVED: user ID. CONTEXT After research: "deny and revoke are keyed by user ID" (22-04).
+5. **Per-user pending cap of 2 in addition to the CONTEXT limits.** Recommendation: yes. RESOLVED: yes. CONTEXT After research: "at most 2 pending Admit requests per user" (22-04).
+6. **Audit `reason` field and graceful-exit leave events** (additive to the v1 format, rated costly). Recommendation: add now. RESOLVED: added. CONTEXT After research: "audit lines carry a reason field and graceful leaves are logged" (22-02, 22-06).
+7. **Audit retention:** one `.1` file at 5 MiB. Recommendation: keep as CONTEXT; document that older history is dropped; consider two backups only if the user wants longer audit history. RESOLVED: one .1 file at 5 MiB as CONTEXT Audit log states ("Size-capped rotation like daemon.log (about 5 MB, one .1 file)"); planned in 22-02.
+8. **Do banners survive capture? ** (A7) Plan a VM row that sends a `UNUserNotificationCenter` notification from the real app while a capture is running. RESOLVED by measurement: CONTEXT After research makes the Admit sheet, tray icon and tray line the load-bearing signals ("join/leave signal lives in the Admit sheet, tray icon and tray line, not banners"); the banner-during-capture behaviour is measured as VM row G-07 in 22-12.
+9. **Guest asset route naming** is Phase 19's: plan must read Phase 19's final `/desktop/` asset layout before adding the guest sibling. RESOLVED: CONTEXT After research: "guests get their own asset route behind requireTailnetPeer"; 22-01 serves /desktop/guest/assets/ behind requireTailnetPeerPage, read against Phase 19's built /desktop/ layout.
 
 ## Upstream contract checks (re-verify at plan time; Phases 19-21 are unbuilt)
 

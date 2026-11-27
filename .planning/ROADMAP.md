@@ -329,7 +329,43 @@ Plans:
   3. The sharer can stop the share or revoke one viewer at any time, which ends that connection at once, and the link stops working when the share ends. The shared Mac shows join and leave notifications and a persistent "shared with N" indicator with one-click stop. (DSHR-05, DSHR-06)
   4. Every join, leave and control grant is written to a local audit log on the shared Mac. (DSHR-07)
   5. With several viewers allowed to control, whoever typed last holds control for about 2 seconds while the others wait. The person physically at the shared Mac always wins over remote input. (DCTL-04)
-**Plans**: TBD
+**Plans**: 0/13 plans executed
+
+Plans:
+**Wave 1**
+- [ ] 22-01-PLAN.md — Guest token (own HKDF key), `requireTailnetPeer(Page)`, `/desktop/guest/` page, assets and ws routes, two static pages, extended WhoIs fake, route-table and cross-token tests
+- [ ] 22-02-PLAN.md — JSON Lines audit appender (0600, 5 MiB rotation, never blocks a join) and the guest name sanitizer / Identity type
+- [ ] 22-03-PLAN.md — Listen-only event tap and Secure Event Input probe; pure arbiter: physical wins (fails closed on an unhealthy tap), 2 s lease
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 22-04-PLAN.md — Manager guest path: admission queue, limits, 5-minute timeout, deny by user ID, re-admit, no PeerConnection before Admit, media bound to the admitted node (gated on 20-04, 20-05)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 22-05-PLAN.md — Live grants (`SetRights`), revoke and Stop in the safe order with concurrent close, lease and physical-wins in `pressAllowed`, lease messages
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 22-06-PLAN.md — Daemon guest share lifecycle, GUI events stream (doubles as GUI liveness), admit/deny/rights/disconnect on the daemon socket only, audit wiring (gated on 20-10)
+- [ ] 22-07-PLAN.md — Guest page mode in DesktopView and desktopClient: guest cards, chips, close reasons, bar restrictions (gated on 20-07, 20-08, 21-08, 21-10)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 22-08-PLAN.md — GUI holds the events stream; tray slot (Share Desktop…, Desktop shared with N, Stop Sharing) and sharing icon variant
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 22-09-PLAN.md — Wails bindings, Admit brings the window forward, coalesced join/leave notifications, Quit GUI Only ends the share
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 22-10-PLAN.md — Share Desktop sheet, Watching list with grant switches, Settings row, Security string
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 22-11-PLAN.md — Admit sheet (no default button, Esc inert, 600 ms guard), Secure Event Input and Share-stopped banners, quit sentence
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [ ] 22-12-PLAN.md — Tart VM rows G-01..G-10 and SC1 on portty-test/portty-test-2 (user checkpoints: VM permission clicks, optional second Tailscale user, real-Mac items; Appendix B recorded PARTIAL)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [ ] 22-13-PLAN.md — TESTING.md (M-NN at run time), README access-rules paragraph, recorded security review 22-SECURITY.md
+
+Every plan opens with a hard `test -f` gate on the upstream 20-/21-/22- SUMMARY.md files it needs and stops if one is missing.
 **Notes**: This phase widens who can reach a desktop. MOB-05 still holds for terminal links. The phase therefore gets a recorded security review covering admit, revoke, cross-token and wrong-identity cases.
 **UI hint**: yes
 
