@@ -3,7 +3,7 @@
 // and peer connection: no real socket, timer or network. The fakes are copied
 // from desktopClient.test.ts on purpose (a test file is not imported).
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   createDesktopClient,
   type ClientStatus,
@@ -11,6 +11,7 @@ import {
   type SignalTransport,
 } from '../desktopClient'
 import {
+  connectVerdict,
   createPeerDesktopOptions,
   type PeerDesktopConnectResult,
 } from '../peerDesktop'
@@ -156,6 +157,164 @@ describe('tracer: connect, then stream over the loopback url', () => {
     expect(e.statuses.map((s) => s.kind)).toEqual(['streaming'])
     expect(e.urls).toHaveLength(1)
     for (const u of e.urls) expect(u).not.toMatch(/cap=|token=/)
+    e.client.stop()
+    e.peer.dispose()
+  })
+})
+
+const fail = (errorCode: string): PeerDesktopConnectResult => ({ host: 'office-air.example', url: '', errorCode })
+
+describe('connectVerdict', () => {
+  it.each([
+    ['', 'ok'],
+    ['forbidden', 'other_account'],
+    ['desktop_off', 'off'],
+    ['unreachable', 'retry'],
+    ['unknown_host', 'retry'],
+    ['tailscale_off', 'retry'],
+    ['anything', 'retry'],
+  ])('maps %j to %s', (code, verdict) => {
+    expect(connectVerdict(code)).toBe(verdict)
+  })
+
+  it('treats a rejected connect inside check as retry', async () => {
+    const peer = createPeerDesktopOptions({
+      host: 'office-air.example',
+      connect: vi.fn<(h: string) => Promise<PeerDesktopConnectResult>>()
+        .mockResolvedValueOnce(ok())
+        .mockRejectedValueOnce(new Error('binding gone')),
+      onLocalNetwork: () => {},
+    })
+    expect(await peer.options.check?.()).toBe('retry')
+    peer.dispose()
+  })
+})
+
+describe('connect and redial', () => {
+  it('creates no transport before the initial connect resolves', async () => {
+    let resolve: (r: PeerDesktopConnectResult) => void = () => {}
+    const e = setup(() => new Promise((r) => { resolve = r }))
+    e.client.start()
+    await settle()
+    expect(e.urls).toEqual([])
+    resolve(ok())
+    await settle()
+    expect(e.urls).toEqual([LOOPBACK])
+    e.client.stop()
+    e.peer.dispose()
+  })
+
+  it('re-runs connect before a redial and opens the next transport on the new url', async () => {
+    const second = 'ws://127.0.0.1:41999/api/relay/remote-desktop/office-air.example/ws'
+    const connect = vi.fn<(h: string) => Promise<PeerDesktopConnectResult>>()
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(ok(second))
+    const e = setup(connect)
+    e.client.start()
+    await settle()
+    await handshake(e)
+    lastPC(e).fireTrack()
+    expect(connect).toHaveBeenCalledTimes(1)
+    lastT(e).dropWith(1006)
+    await e.clock.advance(1000)
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(connect).toHaveBeenLastCalledWith('office-air.example')
+    expect(e.urls).toEqual([LOOPBACK, second])
+    e.client.stop()
+    e.peer.dispose()
+  })
+
+  it('retries after an initial unreachable with no url, using the connect that runs before the redial', async () => {
+    const connect = vi.fn<(h: string) => Promise<PeerDesktopConnectResult>>()
+      .mockResolvedValueOnce(fail('unreachable')) // the initial connect
+      .mockResolvedValueOnce(fail('unreachable')) // the client's check after the empty-url close
+      .mockResolvedValueOnce(ok()) // beforeRedial
+    const e = setup(connect)
+    e.client.start()
+    await settle()
+    expect(e.urls).toEqual([])
+    expect(e.statuses.map((s) => s.kind)).toEqual(['reconnecting'])
+    await e.clock.advance(1000)
+    expect(connect).toHaveBeenCalledTimes(3)
+    expect(e.urls).toEqual([LOOPBACK])
+    e.client.stop()
+    e.peer.dispose()
+  })
+})
+
+describe('Local Network watcher', () => {
+  /** A client whose answer has been applied (signalingState stable). */
+  async function answered() {
+    const e = setup(async () => ok())
+    e.client.start()
+    await settle()
+    await handshake(e)
+    return e
+  }
+
+  it('reports nothing at 9900 ms, then blocked once at 10000 ms and closes the transport with 4000', async () => {
+    const e = await answered()
+    await e.clock.advance(9900)
+    expect(e.blocked).toEqual([])
+    expect(lastT(e).closedWith).toBe('never')
+    await e.clock.advance(100)
+    expect(e.blocked).toEqual([true])
+    expect(lastT(e).closedWith).toBe(4000)
+    e.client.stop()
+    e.peer.dispose()
+  })
+
+  it('rebuilds on the close it forced: the client redials with a fresh connect', async () => {
+    const connect = vi.fn(async () => ok())
+    const e = setup(connect)
+    e.client.start()
+    await settle()
+    await handshake(e)
+    await e.clock.advance(10000)
+    lastT(e).dropWith(4000)
+    await e.clock.advance(1000)
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(e.urls).toHaveLength(2)
+    e.client.stop()
+    e.peer.dispose()
+  })
+
+  it('reports clear when ICE reaches checking, and never blocked afterwards', async () => {
+    const e = await answered()
+    lastPC(e).setIce('checking')
+    expect(e.blocked).toEqual([false])
+    await e.clock.advance(20000)
+    expect(e.blocked).toEqual([false])
+    e.client.stop()
+    e.peer.dispose()
+  })
+
+  it('reports blocked at once when ICE goes from new straight to failed', async () => {
+    const e = await answered()
+    lastPC(e).setIce('failed')
+    expect(e.blocked).toEqual([true])
+    e.client.stop()
+    e.peer.dispose()
+  })
+
+  it('does not report blocked when ICE goes checking then failed', async () => {
+    const e = await answered()
+    lastPC(e).setIce('checking')
+    lastPC(e).setIce('failed')
+    expect(e.blocked).toEqual([false])
+    e.client.stop()
+    e.peer.dispose()
+  })
+
+  it('does not arm before the answer is applied', async () => {
+    const e = setup(async () => ok())
+    e.client.start()
+    await settle()
+    lastT(e).open()
+    lastT(e).recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } })
+    await settle()
+    await e.clock.advance(15000)
+    expect(e.blocked).toEqual([])
     e.client.stop()
     e.peer.dispose()
   })
