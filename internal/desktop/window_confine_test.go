@@ -109,6 +109,43 @@ func TestWindow_TopmostHitDrops(t *testing.T) {
 	}
 }
 
+// TestWindow_SameAppPopupAllowed: a menu, pop-up or sheet of the shared app is
+// its own window; a press on it posts. Another app's window, and the shared
+// app's other document window, still cover.
+func TestWindow_SameAppPopupAllowed(t *testing.T) {
+	cases := []struct {
+		name  string
+		set   func(f *fakeWindow)
+		drops bool
+	}{
+		{"menu layer", func(f *fakeWindow) { f.top, f.topPID, f.topLayer = 9999, winPID, 101 }, false},
+		{"menu outside the frame", func(f *fakeWindow) {
+			f.top, f.topPID, f.topLayer, f.topFrame = 9999, winPID, 101, [4]float64{1300, 800, 300, 400}
+		}, false},
+		{"sheet inside the frame", func(f *fakeWindow) {
+			f.top, f.topPID, f.topFrame = 9999, winPID, [4]float64{300, 100, 390, 218}
+		}, false},
+		{"other document window", func(f *fakeWindow) {
+			f.top, f.topPID, f.topFrame = 9999, winPID, [4]float64{900, 500, 800, 600}
+		}, true},
+		{"other app, normal layer", func(f *fakeWindow) {
+			f.top, f.topPID, f.topFrame = 9999, otherPID, [4]float64{300, 100, 390, 218}
+		}, true},
+		{"other app, menu layer", func(f *fakeWindow) { f.top, f.topPID, f.topLayer = 9999, otherPID, 101 }, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s, fw := newWindowSync(t)
+			fw.set(c.set)
+			s.do(t, "%s", press(0.5, 0.5))
+			posted := len(s.fb.snapshot()) > 0
+			if posted == c.drops || (counter(s.env, "covered") == 1) != c.drops {
+				t.Errorf("posted = %v, covered = %d, drops = %v", posted, counter(s.env, "covered"), c.drops)
+			}
+		})
+	}
+}
+
 // TestWindow_WheelConfined: a scroll lands where the pointer is, so the pointer
 // must be inside the shared window and the window on top there.
 func TestWindow_WheelConfined(t *testing.T) {
