@@ -249,7 +249,7 @@ Plans:
   2. A viewer types text with shortcuts and non-ASCII characters (accents, emoji, input-method text) and it arrives as typed. No key or modifier stays held after the viewer loses focus, closes or disconnects. A Send-keys menu sends Cmd+Tab, Cmd+Space and Lock Screen, and an optional Ctrl→Cmd swap serves viewers on non-Mac keyboards. (DCTL-02, DCTL-03)
   3. The sharer picks a whole display or a single window to share, and displays can be switched mid-session without the viewer reconnecting. In a window share, the window comes to the front when controlled and clicks never land outside it. (DESK-05, DESK-06, DCTL-05)
   4. Text copies from the shared Mac to the viewer, and pastes from the viewer to the shared Mac, only by an explicit action and never in the background. Items a password manager marks as concealed never sync. (DCTL-06)
-**Plans**: 9/11 plans executed
+**Plans**: 10/11 plans executed
 
 Plans:
 **Wave 1**
@@ -272,7 +272,7 @@ Plans:
 - [x] 20-09-PLAN.md — Tart VM proof of all real-macOS control rows and the PASTE_ROW verdict (user checkpoints for VM permission clicks)
 
 **Wave 6** *(blocked on Wave 5 completion; needs 19-13 and 19-14 merged)*
-- [ ] 20-10-PLAN.md — Host side: Settings Showing row, Control needs Accessibility, changed Phase 19 strings, tray window-only suffix, conditional Paste from Other Apps row
+- [x] 20-10-PLAN.md — Host side: Settings Showing row, Control needs Accessibility, changed Phase 19 strings, tray window-only suffix, conditional Paste from Other Apps row
 
 **Wave 7** *(blocked on Wave 6 completion; needs 19-16 merged)*
 - [ ] 20-11-PLAN.md — TESTING.md: Sections 2 and 4 plus a Phase 20 Section 5 category numbered after Phase 19's last M-NN
@@ -392,7 +392,7 @@ Every plan opens with a hard `test -f` gate on the upstream 20-/21-/22- SUMMARY.
 | 18. Self-Installing Updates | v2.0 | 10/10 | Complete    | 2026-11-26 |
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
-| 20. Remote Control | v2.0 | 9/11 | In Progress | - |
+| 20. Remote Control | v2.0 | 10/11 | In Progress | - |
 | 21. Portty App and iPhone Viewers | v2.0 | 7/13 | In Progress | - |
 | 22. Click-to-Share for Tailnet People | v2.0 | 0/TBD | Not started | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/TBD | Not started | - |
