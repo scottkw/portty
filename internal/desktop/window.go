@@ -155,6 +155,6 @@ func (m *Manager) startRaise(wb WindowBridge, info screencap.SurfaceInfo, f rect
 			slog.Warn("desktop: window raise failed")
 			return
 		}
-		slog.Debug("desktop: window raised", "rung", rung)
+		slog.Debug("desktop: window raised", "rung", screencap.RungName(rung))
 	}()
 }
