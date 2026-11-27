@@ -10,6 +10,7 @@ void installWindowOcclusionObserver(void);
 import "C"
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -36,7 +37,27 @@ func startWindowOcclusionObserver() {
 	C.installWindowOcclusionObserver()
 }
 
-func emitWindowOcclusion(hidden bool) { windowOccludedEmit(hidden) }
+// occlusionQueue and occlusionPump hand each change from the Cocoa callback to one goroutine that
+// emits in order. Emitting inside the callback killed the real app with SIGSEGV at launch (21-11 VM
+// row D1): the callback runs on the main thread inside a cgo call, and Wails' EventsEmit from there
+// crashed in system code. Wails' own native callbacks (menus) also run user code off the main thread.
+// shortcut: a 16-deep buffer, a full one would block the main thread; a window does not change
+// occlusion that fast, upgrade to a coalescing latest-value slot if it ever does.
+var (
+	occlusionQueue = make(chan bool, 16)
+	occlusionPump  sync.Once
+)
+
+func emitWindowOcclusion(hidden bool) {
+	occlusionPump.Do(func() {
+		go func() {
+			for h := range occlusionQueue {
+				windowOccludedEmit(h)
+			}
+		}()
+	})
+	occlusionQueue <- hidden
+}
 
 // porttyWindowOcclusionChanged is called on the main thread by the observer in window_occlusion_darwin.m.
 //
