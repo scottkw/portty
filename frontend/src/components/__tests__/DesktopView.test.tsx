@@ -618,6 +618,93 @@ describe('control layer (Phase 20-06 Task 3)', () => {
   })
 })
 
+describe('control bar (Phase 20-07 Task 1)', () => {
+  const bar = () => container.querySelector('[role="toolbar"]') as HTMLElement | null
+  const stage = () => container.querySelector('.desktop-stage') as HTMLElement
+  const input = () => container.querySelector('textarea') as HTMLTextAreaElement
+  const sendKeysBtn = () => container.querySelector('button[aria-label="Send Keys"]') as HTMLButtonElement
+  const menuItem = (t: string) =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((i) => i.textContent?.startsWith(t))!
+
+  function ownAccount() {
+    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+      Object.defineProperty(video(), a, { configurable: true, value: b })
+    }
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+  }
+
+  beforeEach(() => window.localStorage.clear())
+
+  it('renders the toolbar only for a viewer that may control, and only once there is a picture', async () => {
+    render()
+    expect(bar()).toBeNull()
+    ownAccount()
+    expect(bar()).toBeNull() // connecting card
+    await firstFrame()
+    expect(bar()?.getAttribute('aria-label')).toBe('Desktop controls')
+  })
+
+  it('renders no toolbar for a viewer without the control right', async () => {
+    render()
+    act(() => client().emit('rights', { control: false, clipboard: false, surface: false }))
+    await firstFrame()
+    expect(bar()).toBeNull()
+  })
+
+  it('renders no toolbar on a phone', async () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+    )
+    render()
+    ownAccount()
+    await firstFrame()
+    expect(bar()).toBeNull()
+  })
+
+  it('Send Keys then Cmd+Tab puts one complete tap on the input channel', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    client().sendInput.mockClear()
+    act(() => sendKeysBtn().click())
+    expect(sendKeysBtn().getAttribute('aria-expanded')).toBe('true')
+    act(() => menuItem('Cmd+Tab').click())
+    const keys = client().sendInput.mock.calls.map((c) => c[0] as { t: string; code?: string; d?: boolean; m?: number })
+    expect(keys.filter((m) => m.t === 'key').map((m) => [m.code, m.d, m.m])).toEqual([
+      ['MetaLeft', true, 8], ['Tab', true, 8], ['Tab', false, 8], ['MetaLeft', false, 0],
+    ])
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+    expect(sendKeysBtn().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('returns focus to the stage after the item when the stage had the keyboard, and to the button when it did not', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    // The stage has the keyboard: a press on the picture captures it.
+    act(() => {
+      stage().dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 }))
+    })
+    expect(document.activeElement).toBe(input())
+    act(() => {
+      sendKeysBtn().dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+      sendKeysBtn().click()
+    })
+    expect(document.activeElement).not.toBe(input()) // the menu took the keyboard
+    act(() => menuItem('Cmd+Space').click())
+    expect(document.activeElement).toBe(input())
+
+    // The stage did not have it: the button gets focus back.
+    act(() => input().blur())
+    act(() => {
+      sendKeysBtn().dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+      sendKeysBtn().click()
+    })
+    act(() => menuItem('Cmd+Tab').click())
+    expect(document.activeElement).toBe(sendKeysBtn())
+  })
+})
+
 describe('videoContentRect', () => {
   it('letterboxes a wide video in a wider element', () => {
     expect(videoContentRect(1000, 500, 1600, 1000)).toEqual({ x: 100, y: 0, width: 800, height: 500 })

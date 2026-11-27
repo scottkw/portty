@@ -17,10 +17,12 @@ import {
   type ClientStatus,
   type DesktopControlMsg,
   type DesktopStateMsg,
+  type DesktopSurfaceMsg,
 } from '../lib/desktopClient'
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
+import { DesktopControlBar } from './DesktopControlBar'
 
 const TITLE = 'Portty Desktop'
 
@@ -202,6 +204,11 @@ export function DesktopView({
   const [ctlState, setCtlState] = useState<DesktopControlMsg>({ input: 'ok', window: '' })
   const [notice, setNotice] = useState<Notice | null>(null)
   const [noticeFading, setNoticeFading] = useState(false)
+  // The shared surface as the daemon last said it, and whether a bar menu or dialog is open.
+  const [surf, setSurf] = useState<DesktopSurfaceMsg | null>(null)
+  const [barMenuOpen, setBarMenuOpen] = useState(false)
+  // Whether the stage had the keyboard when the pointer went down on the bar (the press itself blurs it).
+  const stageHadFocus = useRef(false)
 
   const pushNotice = useCallback((n: Omit<Notice, 'id'>) => {
     noticeSeq.current++
@@ -331,6 +338,7 @@ export function DesktopView({
       client.on('surface', (sf) => {
         if (lastEpoch !== null && sf.e !== lastEpoch) inputCtl.current?.releaseAll('surface')
         lastEpoch = sf.e
+        setSurf(sf)
       }),
       client.on('track', (stream) => {
         const v = videoRef.current
@@ -409,12 +417,13 @@ export function DesktopView({
   }, [status.kind, canControl])
 
   // Opening a bar menu or dialog is a user action: release, hand the keyboard back, say so.
+  const anyMenuOpen = menuOpen || barMenuOpen
   useEffect(() => {
     const ctl = inputCtl.current
-    if (!menuOpen || !ctl) return
+    if (!anyMenuOpen || !ctl) return
     if (capturedRef.current) typingStays()
     ctl.releaseAll('menu')
-  }, [menuOpen, canControl, typingStays])
+  }, [anyMenuOpen, canControl, typingStays])
 
   useEffect(() => {
     changeCb.current?.({ available: canControl, captured })
@@ -437,6 +446,8 @@ export function DesktopView({
   else if (chipPhase !== 'gone' && viewers !== null && viewers >= 1) {
     chip = { text: `Streaming to ${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`, fading: chipPhase === 'fading' }
   }
+  // The bar is for a viewer that may control the Mac, while a picture is up and no card covers it.
+  const showBar = canControl && cardKey === null && (status.kind === 'streaming' || status.kind === 'reconnecting')
   const scrim = (cardKey !== null && cardKey !== 'connecting') || chip?.Icon === ArrowPathIcon
   const card = cardKey ? CARDS[cardKey] : null
 
@@ -518,6 +529,16 @@ export function DesktopView({
           )}
         </div>
       </div>
+      {showBar && (
+        <div className="desktop-overlay" onPointerDownCapture={() => { stageHadFocus.current = capturedRef.current }}>
+          <DesktopControlBar
+            windowShare={surf?.kind === 'window'}
+            sendChord={(codes) => inputCtl.current?.sendChord(codes)}
+            onMenuOpenChange={setBarMenuOpen}
+            onSendKeysDone={() => { if (stageHadFocus.current) inputRef.current?.focus({ preventScroll: true }) }}
+          />
+        </div>
+      )}
     </div>
   )
 }
