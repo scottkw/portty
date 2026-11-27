@@ -6,10 +6,10 @@ current_phase: 20
 current_phase_name: Remote Control
 status: executing
 stopped_at: Phase 19 complete (real-Mac verification deferred, see 19-UAT.md), Phase 20 executing next
-last_updated: "2026-11-26T16:47:39.965Z"
+last_updated: "2026-11-27T00:00:22.779Z"
 last_activity: 2026-11-26
-last_activity_desc: "Phase 19 closed (human_needed 5/5, M-173..M-179 tracked in 19-UAT.md); Phase 20 executing next"
-state_head: 50fd9656b7e6ffc3cb259e04a24daaa48f2cd403
+last_activity_desc: Phase 19 closed (human_needed 5/5, M-173..M-179 tracked in 19-UAT.md); Phase 20 executing next
+state_head: c95728b9870bf5b0f493a99afcc2c737e09dadfc
 progress:
   total_phases: 8
   completed_phases: 4
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 
 Phase: 20 (Remote Control) — EXECUTING (next)
 Status: Phase 19 complete 2026-11-26 (verification human_needed 5/5, real-Mac items deferred; see Deferred Verification)
-Last activity: 2026-11-26 -- Phase 19 closed with M-173..M-179 tracked in 19-UAT.md; Phase 20 executing next
+Last activity: 2026-11-26 - Completed quick task 261126-oq0: Phase 19 ponytail-review fixes (Phase 19 closed; Phase 20 executing next)
 
 ## Performance Metrics
 
@@ -459,6 +459,7 @@ Recent decisions affecting current work:
 | 261126-wsg | Fix flaky TestSameUserGate_WebSocket: the same-user subtest now waits for its subscriber to join the hub, then leave after close (the 101 precedes hub.Join); -race -count=200 clean | 2026-11-26 | d6120016 | [261126-wsg-flaky-same-user-gate-websocket-test](./quick/261126-wsg-flaky-same-user-gate-websocket-test/) |
 | 261126-e29 | Apply accepted ponytail-review fixes (quit-timeout relaunch, put-back keepDaemon, sweep removes failed new copies, one daemon client) and deletions (StageFrom, Busy, IsDir, installer-start var, repeated release-notes line) | 2026-11-26 | a40e8ae8 | [261126-e29-apply-accepted-ponytail-review-fixes-and](./quick/261126-e29-apply-accepted-ponytail-review-fixes-and/) |
 | 261126-fw6 | 18.1 review CR-01 (build.sh --sign ends with verify-bundle.sh --notarized), WR-01 (jq missing fails closed), WR-02 (per-file fake codesign, --notarized cases), WR-03 (sign-bundle names a missing plist key); deterministic SharePopover Copied! test (50/50); mover takes back a stale keepDaemon result before installing a newer copy (WR-04 kept); VM row QT-FW6 PENDING (portty-test busy with Phase 19) | 2026-11-26 | 4eb9de0e | [261126-fw6-18-1-review-fixes-flaky-sharepopover-mov](./quick/261126-fw6-18-1-review-fixes-flaky-sharepopover-mov/) |
+| 261126-oq0 | Phase 19 ponytail-review fixes: PUT /desktop skips freeze gate, poller warms cert outside gate, desktop-only finalize never fails a handoff, CLI install resolves symlinks, lapse retry survives AX probe failure, runtime state fsync, process-wide native capture lock, Test Capture leak, dead FramesSeen removed | 2026-11-26 | c95728b9 | [261126-oq0-apply-accepted-phase-19-ponytail-review-](./quick/261126-oq0-apply-accepted-phase-19-ponytail-review-/) |
 
 ## Deferred Items
 
