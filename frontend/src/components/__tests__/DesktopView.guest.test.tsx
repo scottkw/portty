@@ -120,3 +120,224 @@ describe('guest page at Admit (tracer)', () => {
     expect(vi.mocked(createDesktopClient)).toHaveBeenLastCalledWith(options)
   })
 })
+
+describe('guest cards, one at a time', () => {
+  it('Not admitted (denied): the denied body, no button, final', () => {
+    render()
+    admission('waiting')
+    status({ kind: 'guest_final', reason: 'denied' })
+    expect(heading()).toBe(copy.GUEST_CARD_NOT_ADMITTED)
+    expect(body()).toBe(copy.GUEST_CARD_DENIED_BODY)
+    expect(buttons()).toEqual([])
+    expect(container.querySelectorAll('.desktop-card')).toHaveLength(1)
+  })
+
+  it('Not admitted (no answer in 5 minutes): the timeout body and Reload Page, which reloads', () => {
+    const onReload = vi.fn()
+    render({ onReload })
+    admission('waiting')
+    status({ kind: 'guest_final', reason: 'admit_timeout' })
+    expect(heading()).toBe(copy.GUEST_CARD_NOT_ADMITTED)
+    expect(body()).toBe(copy.GUEST_CARD_TIMEOUT_BODY)
+    expect(buttons()).toEqual(['Reload Page'])
+    act(() => (container.querySelector('.desktop-card button') as HTMLButtonElement).click())
+    expect(onReload).toHaveBeenCalledTimes(1)
+  })
+
+  it('You were disconnected: final, no button', async () => {
+    render()
+    await firstFrame()
+    status({ kind: 'guest_final', reason: 'revoked' })
+    expect(heading()).toBe(copy.GUEST_CARD_REVOKED)
+    expect(body()).toBe(copy.GUEST_CARD_REVOKED_BODY)
+    expect(buttons()).toEqual([])
+  })
+
+  it('Sharing has ended: final, the scrim stays over the frozen last frame', async () => {
+    render()
+    await firstFrame()
+    expect(container.querySelector('.desktop-scrim')).toBeNull()
+    status({ kind: 'guest_final', reason: 'share_ended' })
+    expect(heading()).toBe(copy.GUEST_CARD_ENDED)
+    expect(body()).toBe(copy.GUEST_CARD_ENDED_BODY)
+    expect(buttons()).toEqual([])
+    expect(container.querySelector('.desktop-scrim')).not.toBeNull()
+    expect(video()).not.toBeNull()
+    expect(chips()).toEqual([])
+  })
+
+  it('This link no longer works: final, no button, and not the own-account card words', () => {
+    render()
+    status({ kind: 'guest_final', reason: 'token_invalid' })
+    expect(heading()).toBe(copy.GUEST_CARD_LINK)
+    expect(body()).toBe(copy.GUEST_CARD_LINK_BODY)
+    expect(buttons()).toEqual([])
+    expect(container.textContent).not.toContain('Settings')
+  })
+
+  it("Can't reach this Mac: the access-rules hint and Reload Page", () => {
+    render()
+    status({ kind: 'unreachable' })
+    expect(heading()).toBe(copy.GUEST_CARD_UNREACHABLE)
+    expect(body()).toContain("Your tailnet's access rules may also be blocking the connection.")
+    expect(buttons()).toEqual(['Reload Page'])
+  })
+
+  it('a card wraps in the live region as plain text, and the host label is set as text', () => {
+    render()
+    admission('waiting')
+    expect(container.querySelector('.desktop-card [role="status"]')?.querySelector('h1')?.textContent).toBe(copy.guestWaitingHeading('localhost'))
+    expect(container.querySelector('.desktop-card h1')?.children).toHaveLength(0)
+  })
+
+  it('a dropped connection replaces the Waiting card with Reconnecting…, and the wait resumes when the share server says so', () => {
+    render()
+    admission('waiting')
+    status({ kind: 'reconnecting' })
+    expect(card()).toBeNull()
+    expect(chips()).toEqual(['Reconnecting…'])
+    status({ kind: 'connecting' })
+    admission('waiting')
+    expect(heading()).toBe(copy.guestWaitingHeading('localhost'))
+  })
+})
+
+describe('guest chips, grants and the lease', () => {
+  const stage = () => container.querySelector('.desktop-stage') as HTMLElement
+  const ring = () => container.querySelector('.desktop-ring')
+  const notice = () => container.querySelector('.desktop-chip--notice')?.textContent
+  const rights = (r: Partial<DesktopEvents['rights']>) =>
+    act(() => client().emit('rights', { control: false, clipboard: false, surface: false, ...r }))
+  const lease = (state: DesktopEvents['lease']['state'], name = '') => act(() => client().emit('lease', { state, name }))
+
+  async function admitted(r: Partial<DesktopEvents['rights']> = {}) {
+    render()
+    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+      Object.defineProperty(video(), a, { configurable: true, value: b })
+    }
+    admission('admitted')
+    await firstFrame()
+    rights(r)
+  }
+
+  it('View only: forwards no pointer, key or clipboard input, shows no bar, and the stage is out of the tab order', async () => {
+    await admitted()
+    expect(chips()).toEqual([copy.GUEST_CHIP_VIEW_ONLY])
+    expect(stage().getAttribute('tabindex')).toBe('-1')
+    act(() => {
+      stage().dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 }))
+      stage().dispatchEvent(new PointerEvent('pointermove', { clientX: 510, clientY: 250, bubbles: true, pointerId: 1 }))
+    })
+    expect(client().sendInput).not.toHaveBeenCalled()
+    expect(container.querySelector('.desktop-bar')).toBeNull()
+    expect(container.querySelector('.desktop-dot')).toBeNull()
+    expect(ring()).toBeNull()
+  })
+
+  it('control on: the You have control chip; control off: held input is released, the ring goes, View only returns', async () => {
+    await admitted({ control: true })
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+    expect(stage().getAttribute('tabindex')).toBe('0')
+    act(() => {
+      stage().dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 }))
+    })
+    expect(ring()).not.toBeNull()
+    client().sendInput.mockClear()
+    rights({ control: false })
+    expect(client().sendInput.mock.calls.map((c) => (c[0] as { t: string }).t)).toContain('release')
+    expect(ring()).toBeNull()
+    expect(container.querySelector('.desktop-dot')).toBeNull()
+    expect(chips()).toEqual([copy.GUEST_CHIP_VIEW_ONLY])
+    expect(stage().getAttribute('tabindex')).toBe('-1')
+    rights({ control: true })
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+    expect(stage().getAttribute('tabindex')).toBe('0')
+  })
+
+  it('a clipboard grant change shows its notice for 3 s and no chip of its own', async () => {
+    await admitted()
+    rights({ clipboard: true })
+    expect(notice()).toBe(copy.GUEST_NOTICE_CLIPBOARD_ON)
+    expect(chips()).toEqual([copy.GUEST_CHIP_VIEW_ONLY])
+    act(() => { vi.advanceTimersByTime(3200) })
+    expect(notice()).toBeUndefined()
+    rights({ clipboard: true, control: true })
+    expect(notice()).toBeUndefined()
+    rights({ clipboard: false, control: true })
+    expect(notice()).toBe(copy.GUEST_NOTICE_CLIPBOARD_OFF)
+    act(() => { vi.advanceTimersByTime(3200) })
+    expect(notice()).toBeUndefined()
+  })
+
+  it('another guest holding the lease shows "<name> is controlling" as text; free and you show You have control', async () => {
+    await admitted({ control: true })
+    lease('other', '<b>Ada</b>')
+    expect(chips()).toEqual([copy.controllingChip('<b>Ada</b>')])
+    expect(container.querySelector('.desktop-chip b')).toBeNull()
+    lease('you')
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+    lease('other', 'Ada')
+    lease('free')
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+  })
+
+  it('a view-only guest never shows a lease chip', async () => {
+    await admitted()
+    lease('other', 'Ada')
+    expect(chips()).toEqual([copy.GUEST_CHIP_VIEW_ONLY])
+    lease('physical')
+    expect(chips()).toEqual([copy.GUEST_CHIP_VIEW_ONLY])
+  })
+
+  it('Someone is using this Mac stays at least 2 s even when the lease frees at once', async () => {
+    await admitted({ control: true })
+    lease('physical')
+    expect(chips()).toEqual([copy.GUEST_CHIP_SOMEONE])
+    act(() => { vi.advanceTimersByTime(500) })
+    lease('free')
+    expect(chips()).toEqual([copy.GUEST_CHIP_SOMEONE])
+    act(() => { vi.advanceTimersByTime(1400) })
+    expect(chips()).toEqual([copy.GUEST_CHIP_SOMEONE])
+    act(() => { vi.advanceTimersByTime(200) })
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+  })
+
+  it('an owner lease shows Someone is using this Mac too, so the sharer is never named, and it clears at once after 2 s', async () => {
+    await admitted({ control: true })
+    lease('owner')
+    expect(chips()).toEqual([copy.GUEST_CHIP_SOMEONE])
+    act(() => { vi.advanceTimersByTime(2500) })
+    expect(chips()).toEqual([copy.GUEST_CHIP_SOMEONE])
+    lease('free')
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+  })
+
+  it('precedence: Reconnecting over Locked over Someone over name over You have control over View only', async () => {
+    await admitted({ control: true })
+    lease('other', 'Ada')
+    expect(chips()).toEqual([copy.controllingChip('Ada')])
+    lease('physical')
+    expect(chips()).toEqual([copy.GUEST_CHIP_SOMEONE])
+    act(() => client().emit('state', { state: 'locked', viewers: 1, locked: true }))
+    expect(chips()).toEqual([copy.GUEST_CHIP_LOCKED])
+    status({ kind: 'reconnecting' })
+    expect(chips()).toEqual(['Reconnecting…'])
+  })
+
+  it('shows the Phase 19 Streaming to N viewers chip never, for any count', async () => {
+    await admitted({ control: true })
+    for (const viewers of [1, 2, 5]) {
+      act(() => client().emit('state', { state: 'streaming', viewers, locked: false }))
+      act(() => { vi.advanceTimersByTime(100) })
+      expect(container.textContent).not.toContain('Streaming to')
+    }
+  })
+
+  it('renders no identity of its own or the sharer: only the lease holder display name appears', async () => {
+    await admitted({ control: true, clipboard: true })
+    lease('other', 'Ada')
+    const text = container.textContent ?? ''
+    expect(text).toContain('Ada is controlling')
+    expect(text.replace('Ada is controlling', '')).not.toMatch(/Ada|@|login/i)
+  })
+})

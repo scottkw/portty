@@ -3,11 +3,14 @@
 // Driven through opts (fake clock, transport, peer connection): no real socket, timer or network.
 
 import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   RECONNECT,
   createDesktopClient,
   defaultGuestMode,
   defaultGuestWsUrl,
+  fetchGuestCheck,
   type CheckVerdict,
   type ClientStatus,
   type DesktopClientOptions,
@@ -226,5 +229,195 @@ describe('guest waits then offers (tracer)', () => {
     expect(e.statuses.map((s) => s.kind)).not.toContain('unreachable')
     await e.clock.advance(2)
     expect(e.statuses.map((s) => s.kind)).toContain('unreachable')
+  })
+})
+
+describe('guest close reasons and the check', () => {
+  const finals: [number, string][] = [
+    [4430, 'denied'],
+    [4431, 'admit_timeout'],
+    [4432, 'revoked'],
+    [4433, 'share_ended'],
+    [4401, 'token_invalid'],
+  ]
+
+  it.each(finals)('close %i is the final reason %s: reported once, the loop ends and nothing is redialed', async (code, reason) => {
+    const e = setup()
+    await hello(e)
+    lastT(e).recv({ type: 'admission', state: 'waiting' })
+    lastT(e).dropWith(code)
+    expect(e.statuses).toEqual([{ kind: 'guest_final', reason }])
+    await e.clock.advance(120000)
+    expect(e.transports).toHaveLength(1)
+    expect(e.check).not.toHaveBeenCalled()
+  })
+
+  it('a failed handshake is classified by the guest check: a link that is gone is final, a hiccup retries', async () => {
+    const e = setup()
+    e.check.mockResolvedValueOnce('token')
+    e.client.start()
+    lastT(e).dropWith(1006)
+    await settle()
+    expect(e.statuses).toEqual([{ kind: 'guest_final', reason: 'token_invalid' }])
+    expect(e.transports).toHaveLength(1)
+
+    const f = setup()
+    f.check.mockResolvedValue('retry')
+    f.client.start()
+    lastT(f).dropWith(1006)
+    await settle()
+    await f.clock.advance(RECONNECT.delaysMs[0])
+    expect(f.statuses.map((s) => s.kind)).toEqual(['reconnecting'])
+    expect(f.transports).toHaveLength(2)
+  })
+
+  it.each([
+    [401, 'token'],
+    [410, 'token'],
+    [403, 'token'],
+    [204, 'ok'],
+    [500, 'retry'],
+    [503, 'retry'],
+  ])('the guest check answers %i as %s, at the share server check URL', async (status, verdict) => {
+    const fetchMock = vi.fn(async () => new Response(null, { status }))
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      const loc = { host: 'h', search: '?cap=t%20k', pathname: '/desktop/guest/' } as unknown as Location
+      expect(await fetchGuestCheck(loc)).toBe(verdict)
+      expect(fetchMock.mock.calls[0]).toEqual(['/desktop/guest/check?cap=t%20k', expect.objectContaining({ cache: 'no-store' })])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('a network drop after the socket was up is Reconnecting, then Can\'t reach this Mac after 30 s of failed retries', async () => {
+    const e = setup()
+    await hello(e)
+    lastT(e).recv({ type: 'admission', state: 'admitted' })
+    await settle()
+    lastT(e).dropWith(1006)
+    expect(e.statuses.map((s) => s.kind)).toEqual(['reconnecting'])
+    await e.clock.advance(RECONNECT.unreachableAfterMs + 1)
+    expect(e.statuses.map((s) => s.kind)).toEqual(['reconnecting', 'unreachable'])
+  })
+
+  it('a reconnect that reaches Admit again leaves Reconnecting for the wait, and never reaches unreachable', async () => {
+    const e = setup()
+    await hello(e)
+    lastT(e).recv({ type: 'admission', state: 'waiting' })
+    lastT(e).dropWith(1006)
+    expect(e.statuses.map((s) => s.kind)).toEqual(['reconnecting'])
+    await e.clock.advance(RECONNECT.delaysMs[0])
+    lastT(e).open()
+    lastT(e).recv(helloMsg)
+    lastT(e).recv({ type: 'admission', state: 'waiting' })
+    await e.clock.advance(RECONNECT.unreachableAfterMs * 2)
+    expect(e.statuses.map((s) => s.kind)).toEqual(['reconnecting', 'connecting'])
+  })
+})
+
+describe('guest rights and lease messages', () => {
+  it('takes a live rights message after admission and turns each field into a boolean', async () => {
+    const e = setup()
+    await hello(e)
+    lastT(e).recv({ type: 'admission', state: 'admitted' })
+    lastT(e).recv({ type: 'rights', rights: { control: true, clipboard: 'yes', surface: 1 } })
+    lastT(e).recv({ type: 'rights' })
+    expect(e.events.filter(([k]) => k === 'rights').slice(1)).toEqual([
+      ['rights', { control: true, clipboard: false, surface: false }],
+      ['rights', noRights],
+    ])
+  })
+
+  it('keeps the name only for the holder, as clean text, and drops an unknown state', async () => {
+    const e = setup()
+    await hello(e)
+    lastT(e).recv({ type: 'lease', state: 'other', name: '  Ada\u202e  \n Lovelace\u200b ' })
+    lastT(e).recv({ type: 'lease', state: 'physical', name: 'Mallory' })
+    lastT(e).recv({ type: 'lease', state: 'other', name: 'x'.repeat(300) })
+    lastT(e).recv({ type: 'lease', state: 'other' })
+    lastT(e).recv({ type: 'lease', state: 'admin', name: 'Eve' })
+    lastT(e).recv({ type: 'lease', name: 'Eve' })
+    const leases = e.events.filter(([k]) => k === 'lease').map(([, v]) => v)
+    expect(leases).toEqual([
+      { state: 'other', name: 'Ada Lovelace' },
+      { state: 'physical', name: '' },
+      { state: 'other', name: 'x'.repeat(128) },
+      { state: 'other', name: '' },
+    ])
+  })
+
+  it('an own-account client ignores admission, rights and lease messages', async () => {
+    const e = setup({ guest: false })
+    e.client.start()
+    lastT(e).open()
+    lastT(e).recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } })
+    await settle()
+    expect(lastT(e).types()).toEqual(['hello', 'offer'])
+    lastT(e).recv({ type: 'admission', state: 'waiting' })
+    lastT(e).recv({ type: 'rights', rights: { control: true, clipboard: true, surface: true } })
+    lastT(e).recv({ type: 'lease', state: 'physical' })
+    expect(e.events.map(([k]) => k)).toEqual(['rights'])
+  })
+})
+
+// The Go side owns internal/desktop/testdata/signal-guest-v1.jsonl; every server line must decode here.
+describe('signal-guest-v1.jsonl golden lines', () => {
+  const lines = readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/signal-guest-v1.jsonl'), 'utf8')
+    .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: Record<string, unknown> })
+  const named = (prefix: string) => lines.filter((l) => l.dir === 'server' && l.name.startsWith(prefix))
+
+  it('has every kind of line the page decodes', () => {
+    expect(lines.map((l) => l.name)).toEqual(expect.arrayContaining([
+      'hello-guest', 'admission-waiting', 'admission-admitted', 'rights-view-only', 'rights-control-and-clipboard',
+      'close-denied', 'close-admit-timeout', 'close-revoked', 'close-share-ended', 'close-token-invalid',
+      'close-replaced', 'close-full', 'lease-you', 'lease-other', 'lease-owner', 'lease-physical', 'lease-free',
+    ]))
+  })
+
+  it('decodes the hello, admission and rights lines to the events the page acts on', async () => {
+    const e = setup()
+    e.client.start()
+    lastT(e).open()
+    for (const l of [...named('hello'), ...named('admission'), ...named('rights')]) lastT(e).recv(l.wire)
+    await settle()
+    expect(e.events).toEqual([
+      ['rights', noRights],
+      ['admission', { state: 'waiting' }],
+      ['admission', { state: 'admitted' }],
+      ['rights', noRights],
+      ['rights', { control: true, clipboard: true, surface: false }],
+    ])
+    expect(lastT(e).types()).toEqual(['hello', 'offer'])
+  })
+
+  it('decodes each lease line to its state, with a name only for the other holder', async () => {
+    const e = setup()
+    await hello(e)
+    for (const l of named('lease')) lastT(e).recv(l.wire)
+    expect(e.events.filter(([k]) => k === 'lease').map(([, v]) => v)).toEqual([
+      { state: 'you', name: '' },
+      { state: 'other', name: 'Ada' },
+      { state: 'owner', name: '' },
+      { state: 'physical', name: '' },
+      { state: 'free', name: '' },
+    ])
+  })
+
+  it('decodes each close line by its code to the reason the wire names, and replaced and full do not end the loop', async () => {
+    for (const l of named('close')) {
+      const code = l.wire.close as number
+      const reason = l.wire.reason as string
+      const e = setup()
+      await hello(e)
+      lastT(e).dropWith(code)
+      const final = e.statuses.find((s) => s.kind === 'guest_final')
+      if (['denied', 'admit_timeout', 'revoked', 'share_ended', 'token_invalid'].includes(reason)) {
+        expect(final, l.name).toEqual({ kind: 'guest_final', reason })
+      } else {
+        expect(final, l.name).toBeUndefined()
+        expect(e.statuses.map((s) => s.kind), l.name).toEqual(['reconnecting'])
+      }
+    }
   })
 })

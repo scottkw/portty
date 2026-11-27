@@ -19,6 +19,7 @@ import {
   PlayIcon,
   SignalSlashIcon,
   StopIcon,
+  UserIcon,
   WindowIcon,
 } from '@heroicons/react/24/outline'
 import {
@@ -31,6 +32,7 @@ import {
   type DesktopClientOptions,
   type DesktopControlMsg,
   type DesktopClient,
+  type DesktopLeaseMsg,
   type DesktopStateMsg,
   type DesktopSurfaceMsg,
 } from '../lib/desktopClient'
@@ -185,6 +187,8 @@ const SURFACE_FALLBACKS: Record<string, string | undefined> = {
   window_closed: 'The shared window closed; showing the main display',
   display_gone: 'The shared display disconnected; showing the main display',
 }
+/** "Someone is using this Mac" stays up at least this long, so a hand on the trackpad cannot make it flicker. */
+const PHYSICAL_MIN_MS = 2000
 const CHIP_SHOW_MS = 3000
 const CHIP_FADE_MS = 150
 /** A transfer that takes longer than this shows Copying from the Mac… or Sending to the Mac… until it ends. */
@@ -387,6 +391,10 @@ export function DesktopView({
   const [viewers, setViewers] = useState<number | null>(null)
   // Guest mode: where this connection stands at Admit. Null until the share server says, and again after a drop.
   const [admission, setAdmission] = useState<'waiting' | 'admitted' | null>(null)
+  // Guest mode: who holds the lease, and whether physical input at the Mac has held it for the 2 s minimum.
+  const [lease, setLease] = useState<DesktopLeaseMsg | null>(null)
+  const [someoneUsing, setSomeoneUsing] = useState(false)
+  const prevClipboard = useRef(false)
   const [hasFrame, setHasFrame] = useState(false)
   const [needsTap, setNeedsTap] = useState(false)
   const [chipPhase, setChipPhase] = useState<'gone' | 'shown' | 'fading'>('gone')
@@ -520,9 +528,39 @@ export function DesktopView({
     const phone = isPhone()
     if (phone) setPhoneClient(client)
     let lastEpoch: number | null = null
+    const dwell: { since: number; timer: ReturnType<typeof setTimeout> | null } = { since: 0, timer: null }
+    const resetLease = () => {
+      if (dwell.timer !== null) clearTimeout(dwell.timer)
+      dwell.timer = null
+      dwell.since = 0
+      setLease(null)
+      setSomeoneUsing(false)
+    }
     const offs = [
+      () => {
+        if (dwell.timer !== null) clearTimeout(dwell.timer)
+      },
       client.on('rights', (r) => {
         if (phone) setPhoneRights({ control: r.control, surface: r.surface })
+        if (guest) {
+          // Grants change live. A guest never picks the display, and the clipboard grant has no chip: a notice says it.
+          setCanSurface(false)
+          setCanClipboard(r.clipboard)
+          if (r.clipboard !== prevClipboard.current) {
+            prevClipboard.current = r.clipboard
+            pushNotice(
+              r.clipboard
+                ? { Icon: ClipboardDocumentCheckIcon, text: copy.GUEST_NOTICE_CLIPBOARD_ON, dwell: 3000 }
+                : { Icon: ClipboardIcon, text: copy.GUEST_NOTICE_CLIPBOARD_OFF, dwell: 3000 },
+            )
+          }
+          if (!r.control) {
+            // Everything held is released, the ring and dot go with the control, and the View only chip says so.
+            inputCtl.current?.setControl(false)
+            setCanControl(false)
+            resetLease()
+          } else if (inputCtl.current) setCanControl(true)
+        }
         const stage = stageRef.current
         const input = inputRef.current
         if (!r.control || phone || inputCtl.current || !stage || !input) return
@@ -577,7 +615,7 @@ export function DesktopView({
         ctl.setControl(true)
         inputCtl.current = ctl
         setSwapOn(ctl.swap())
-        setCanSurface(r.surface)
+        setCanSurface(r.surface && !guest)
         setCanClipboard(r.clipboard)
         setCanControl(true)
       }),
@@ -612,6 +650,27 @@ export function DesktopView({
       }),
       client.on('selectFailed', () => switchFailedRef.current()),
       client.on('admission', ({ state }) => setAdmission(state)),
+      client.on('lease', (l) => {
+        setLease(l)
+        const physical = l.state === 'physical' || l.state === 'owner'
+        if (dwell.timer !== null) clearTimeout(dwell.timer)
+        dwell.timer = null
+        if (physical) {
+          if (dwell.since === 0) dwell.since = Date.now()
+          setSomeoneUsing(true)
+        } else if (dwell.since !== 0) {
+          // A free lease right after physical input still leaves the chip up for the 2 s minimum.
+          const left = dwell.since + PHYSICAL_MIN_MS - Date.now()
+          const since = dwell.since
+          const done = () => {
+            if (dwell.since === since) dwell.since = 0
+            dwell.timer = null
+            setSomeoneUsing(false)
+          }
+          if (left <= 0) done()
+          else dwell.timer = setTimeout(done, left)
+        }
+      }),
       client.on('track', (stream) => {
         const v = videoRef.current
         if (!v) return
@@ -626,6 +685,11 @@ export function DesktopView({
       client.on('size', updateRect),
       client.on('status', (s) => {
         setStatus(s)
+        // What the share server said about the lost connection is stale; the next connection says it afresh.
+        if (s.kind === 'reconnecting' || s.kind === 'unreachable') {
+          setAdmission(null)
+          resetLease()
+        }
         // A state card describes the connection that is gone; the next state message replaces it.
         if (s.kind !== 'streaming' && s.kind !== 'connecting') {
           setDesk(null)
@@ -644,7 +708,7 @@ export function DesktopView({
       clientCb.current?.(null)
       setPhoneClient(null)
     }
-  }, [startPlay, updateRect, pushNotice, typingStays, guestProp])
+  }, [startPlay, updateRect, pushNotice, typingStays, guest, guestProp])
 
   // The count chip: 3 s after the first frame, and again whenever the count changes.
   useEffect(() => {
@@ -906,6 +970,9 @@ export function DesktopView({
   else if (locked) chip = { Icon: LockClosedIcon, text: 'Locked' }
   else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
   else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
+  else if (guest && canControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
+  else if (guest && canControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
+  else if (guest && canControl) chip = { Icon: CursorArrowRaysIcon, text: copy.GUEST_CHIP_CONTROL }
   else if (guest) chip = { Icon: EyeIcon, text: copy.GUEST_CHIP_VIEW_ONLY }
   else if (chipPhase !== 'gone' && viewers !== null && viewers >= 1) {
     chip = { text: `Streaming to ${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`, fading: chipPhase === 'fading' }
@@ -960,7 +1027,9 @@ export function DesktopView({
         ref={stageRef}
         {...(canControl
           ? { role: 'application', 'aria-label': 'Mac desktop', 'aria-describedby': HINT_ID, tabIndex: active ? 0 : -1 }
-          : {})}
+          : guest
+            ? { tabIndex: -1 }
+            : {})}
       >
         {video}
         {canControl && captured && <div className="desktop-ring" aria-hidden="true" />}
