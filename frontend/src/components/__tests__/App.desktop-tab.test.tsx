@@ -74,6 +74,7 @@ const peer: RemotePeerSessions = {
   sessions: [],
 }
 
+let peers: RemotePeerSessions[] = [peer]
 const connect = vi.fn(() => ({ host: 'office-air', url: LOOPBACK, errorCode: '' }))
 
 function impl() {
@@ -82,7 +83,7 @@ function impl() {
     GetRelayPort: () => 7001,
     ListSessions: () => [{ id: 'local-1', name: 'shell', state: 'running', status: 'idle' }],
     GetTailscaleStatus: () => ({ connected: true, hasCerts: true, ip: '100.64.0.1', domain: 'home-air.tail1234.ts.net' }),
-    GetRemoteSessionsWithMeta: () => [peer],
+    GetRemoteSessionsWithMeta: () => peers,
     ConnectPeerDesktop: connect,
   }
 }
@@ -105,6 +106,7 @@ beforeEach(() => {
   h.urls.length = 0
   h.panelIds.length = 0
   connect.mockClear()
+  peers = [peer]
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
   vi.stubGlobal('RTCPeerConnection', function () {
     const pc = new h.FakePC()
@@ -183,5 +185,56 @@ describe('App: the Desktop row opens a Desktop tab (DVWR-01)', () => {
     expect(shown.hasAttribute('inert')).toBe(false)
     expect(shown.hasAttribute('aria-hidden')).toBe(false)
     expect(shown.querySelector('video')).toBe(video)
+  })
+})
+
+describe('App: the tab feeds the sidebar row and closes cleanly (Task 2)', () => {
+  const muted = (c: HTMLElement) => c.querySelector('.sidebar__muted[id^="sidebar-desktop-line"]')?.textContent ?? null
+  const poll = async () => {
+    await act(async () => { window.dispatchEvent(new CustomEvent('portty:wake', { detail: 'system:wake' })) })
+    await flush()
+  }
+
+  async function connected(c: HTMLElement) {
+    await click(desktopRow(c)!)
+    const t = h.transports[0]
+    await act(async () => { t.open() })
+    await act(async () => { t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } }) })
+    await flush()
+    return t
+  }
+  const say = (t: InstanceType<typeof h.FakeTransport>, state: string, locked = false) =>
+    act(async () => { t.recv({ type: 'state', state, viewers: 0, locked }) })
+
+  it('shows the muted line for a non-ready state, clears it on streaming, and forgets it when the peer stops announcing the desktop', async () => {
+    const c = await mountApp(impl())
+    const t = await connected(c)
+    await say(t, 'display_asleep')
+    expect(muted(c)).toBe('Display asleep')
+    expect(desktopRow(c)?.getAttribute('data-muted')).toBe('true')
+    await say(t, 'streaming')
+    expect(muted(c)).toBeNull()
+    await say(t, 'needs_permission')
+    expect(muted(c)).toBe('Needs permission')
+    // The peer stops announcing the desktop: the row goes, and the old line must not come back with it.
+    peers = [{ ...peer, desktop: false }]
+    await poll()
+    expect(desktopRow(c)).toBeUndefined()
+    peers = [peer]
+    await poll()
+    expect(desktopRow(c)).toBeDefined()
+    expect(muted(c)).toBeNull()
+  })
+
+  it('closing the tab unmounts the viewer, disconnects, and activates the neighbour', async () => {
+    const c = await mountApp(impl())
+    await click(desktopRow(c)!)
+    const t = h.transports[0]
+    const close = c.querySelector<HTMLButtonElement>('button.tab__close[aria-label^="Close Desktop"]')!
+    await click(close)
+    expect(desktopTabs(c)).toHaveLength(0)
+    expect(c.querySelector('video[aria-label="Mac desktop"]')).toBeNull()
+    expect(t.closedWith).not.toBe('never')
+    expect(localTab(c).getAttribute('aria-selected')).toBe('true')
   })
 })

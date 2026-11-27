@@ -1871,3 +1871,92 @@ describe('embedding in the Portty app (Phase 21-08)', () => {
     expect(states).toEqual(['display_asleep', null])
   })
 })
+
+
+describe('app tab cards, host card and pause (Phase 21-08 Task 2)', () => {
+  const refused = { heading: "Can't open this desktop", body: 'That Mac refused the connection.', action: 'Reconnect' }
+  const hostCard = (calls: string[]) => ({
+    heading: 'Portty needs Local Network access to show this desktop',
+    body: 'Open System Settings.',
+    actions: [
+      { label: 'Open System Settings', onClick: () => calls.push('settings') },
+      { label: 'Open in Browser', onClick: () => calls.push('browser') },
+    ],
+  })
+  const buttons = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.desktop-card button'))
+
+  it("cards overrides replace one card's heading and body and leave the others", () => {
+    render({ cards: { connecting: { heading: 'Connecting here', body: 'Waiting for the other Mac.' } } })
+    expect(card()?.querySelector('h1')?.textContent).toBe('Connecting here')
+    expect(card()?.querySelector('p')?.textContent).toBe('Waiting for the other Mac.')
+    status({ kind: 'desktop_off' })
+    expect(card()?.querySelector('h1')?.textContent).toBe('Desktop sharing is off on this Mac')
+  })
+
+  it('an overridden unreachable card shows its action label wired to onReload', () => {
+    const onReload = vi.fn()
+    render({ onReload, cards: { unreachable: { heading: "Can't reach this Mac", body: 'Portty keeps trying.', action: 'Reconnect' } } })
+    status({ kind: 'unreachable' })
+    expect(buttons().map((b) => b.textContent)).toEqual(['Reconnect'])
+    act(() => buttons()[0].click())
+    expect(onReload).toHaveBeenCalledTimes(1)
+  })
+
+  it('embedded, the other-account case is the token_rejected card with its Reconnect, never the browser Refused page', () => {
+    const onReload = vi.fn()
+    render({ embedded: true, onReload, cards: { token_rejected: refused } })
+    status({ kind: 'other_account' })
+    expect(card()?.querySelector('h1')?.textContent).toBe("Can't open this desktop")
+    expect(buttons().map((b) => b.textContent)).toEqual(['Reconnect'])
+    act(() => buttons()[0].click())
+    expect(onReload).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('.link-dead')).toBeNull()
+  })
+
+  it('an overridden token_rejected card shows its Reconnect for a plain refusal too', () => {
+    render({ embedded: true, cards: { token_rejected: refused } })
+    status({ kind: 'token_rejected' })
+    expect(buttons().map((b) => b.textContent)).toEqual(['Reconnect'])
+  })
+
+  it('hostCard wins over every client card, with its actions as buttons in order, outside the live region', () => {
+    const calls: string[] = []
+    render({ hostCard: hostCard(calls) })
+    status({ kind: 'unreachable' })
+    expect(card()?.querySelector('h1')?.textContent).toBe('Portty needs Local Network access to show this desktop')
+    expect(buttons().map((b) => b.textContent)).toEqual(['Open System Settings', 'Open in Browser'])
+    expect(region().querySelector('button')).toBeNull()
+    expect(scrim()).not.toBeNull()
+    act(() => buttons()[1].click())
+    act(() => buttons()[0].click())
+    expect(calls).toEqual(['browser', 'settings'])
+  })
+
+  it('paused shows the Reconnecting chip with the scrim and no card', async () => {
+    render()
+    await firstFrame()
+    render({ paused: true })
+    expect(chip()?.textContent).toBe('Reconnecting…')
+    expect(card()).toBeNull()
+    expect(scrim()).not.toBeNull()
+    render({ paused: false })
+    expect(chip()?.textContent ?? '').not.toBe('Reconnecting…')
+  })
+
+  it('onPicture is true while a picture shows with no card over it, false under a host card', async () => {
+    const seen: boolean[] = []
+    const calls: string[] = []
+    render({ onPicture: (p) => seen.push(p) })
+    await firstFrame()
+    expect(seen[seen.length - 1]).toBe(true)
+    render({ onPicture: (p) => seen.push(p), hostCard: hostCard(calls) })
+    expect(seen[seen.length - 1]).toBe(false)
+  })
+
+  it('the style rules keep a long Local Network heading wrapping, never truncated', () => {
+    const css = readFileSync(resolve(__dirname, '../../style.css'), 'utf8')
+    const rule = css.match(/\n\.desktop-card__heading\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(rule).toMatch(/font-size:\s*17px/)
+    expect(rule).not.toMatch(/white-space:\s*nowrap|text-overflow/)
+  })
+})
