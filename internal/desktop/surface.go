@@ -148,8 +148,12 @@ func (m *Manager) setSurface(sel screencap.Surface, info screencap.SurfaceInfo) 
 		info = screencap.SurfaceInfo{} // the main display is read fresh, never cached
 	}
 	m.surf.mu.Lock()
+	changed := m.surf.sel != sel
 	m.surf.sel, m.surf.info = sel, info
 	m.surf.mu.Unlock()
+	if changed {
+		m.resetWindow()
+	}
 }
 
 // surfaceSel is what the source is told to capture.
@@ -183,16 +187,17 @@ func (m *Manager) surfaceMsg(reason string) msgSurface {
 }
 
 // target is the surface input maps onto, read fresh for every press and move:
-// a display by its bounds (id 0 is the main display). A window yields no
-// geometry yet, so presses and moves to a window share are dropped (fail
-// closed) and releases still post; the window gate and frame mapping come with
-// the window-input plan. An unreadable display leaves the geometry unknown.
+// a display by its bounds (id 0 is the main display), a window by the frame the
+// window gate last read (none until a press or move has read one; the gate then
+// decides). An unreadable display leaves the geometry unknown.
 func (m *Manager) target() inputTarget {
 	m.surf.mu.Lock()
 	sel := m.surf.sel
 	m.surf.mu.Unlock()
 	t := inputTarget{epoch: m.currentEpoch()}
-	if sel.Kind != screencap.SurfaceDisplay {
+	if sel.Kind == screencap.SurfaceWindow {
+		t.x, t.y, t.w, t.h, t.ok = m.windowFrame()
+		t.ok = t.ok && t.w >= 1 && t.h >= 1
 		return t
 	}
 	x, y, w, h, err := m.d.DisplayBounds(sel.ID)

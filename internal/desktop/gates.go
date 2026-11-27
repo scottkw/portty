@@ -40,7 +40,8 @@ func (m *Manager) takeToken(v *viewer) bool {
 }
 
 // pressAllowed decides whether v's press, move, wheel or text msg may post and
-// names the drop reason when not: no_right, locked, stale_epoch, no_accessibility, rate. A token
+// names the drop reason when not: no_right, locked, stale_epoch, no_accessibility, the window
+// gate's reasons (window.go), rate. A token
 // is spent only by a press that passed every other check.
 func (m *Manager) pressAllowed(v *viewer, msg inputMsg) (ok bool, reason string) {
 	switch {
@@ -52,7 +53,13 @@ func (m *Manager) pressAllowed(v *viewer, msg inputMsg) (ok bool, reason string)
 		return false, "stale_epoch"
 	case m.controlNeedsAccessibility():
 		return false, "no_accessibility"
-	case !m.takeToken(v):
+	}
+	if m.windowShared() {
+		if ok, why := m.windowAllows(msg); !ok {
+			return false, why
+		}
+	}
+	if !m.takeToken(v) {
 		return false, "rate"
 	}
 	return true, ""

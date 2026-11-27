@@ -353,22 +353,22 @@ func TestSurfaceTracer_SelectWindowBumpsEpoch(t *testing.T) {
 		t.Errorf("source switched to %v, want the one window", got)
 	}
 
-	// A window share has no target yet (the window gate is a later plan), so
-	// presses and moves are dropped whatever epoch they carry.
+	// This world gives the Manager no window bridge, so the window gate fails
+	// closed: a stale epoch is dropped as stale, a current one as window_unavailable.
 	a.input(t, map[string]any{"t": "move", "x": 0.5, "y": 0.5, "e": 1})
-	eventually(t, 5*time.Second, "no_target counted", func() bool { return counter(env, "no_target") == 1 })
+	eventually(t, 5*time.Second, "stale_epoch counted", func() bool { return counter(env, "stale_epoch") == 1 })
 	a.input(t, map[string]any{"t": "move", "x": 0.5, "y": 0.5, "e": 2}) // sent after the first is handled: a queued move would be replaced
-	eventually(t, 5*time.Second, "no_target counted twice", func() bool { return counter(env, "no_target") == 2 })
+	eventually(t, 5*time.Second, "window_unavailable counted", func() bool { return counter(env, "window_unavailable") == 1 })
 	if n := len(fb.snapshot()); n != 0 {
 		t.Errorf("%d bridge calls on a window share, want 0", n)
 	}
 
 	// Display 2 at origin (1470, 0): input sent with the previous epoch is
-	// dropped as stale, and a move to the middle at the new one posts at (2430, 540).
+	// dropped as stale (the second one counted), and a move to the middle at the new one posts at (2430, 540).
 	a.ask(ctx, t, map[string]any{"type": "select", "kind": "display", "id": secondID})
 	requireSurface(t, "A second display", a.wait(t, "surface", epochIs(3)), 3, "display", secondID, "Display 2", 1920, 1080, "")
 	a.input(t, map[string]any{"t": "move", "x": 0.1, "y": 0.1, "e": 2})
-	eventually(t, 5*time.Second, "stale_epoch counted", func() bool { return counter(env, "stale_epoch") == 1 })
+	eventually(t, 5*time.Second, "stale_epoch counted again", func() bool { return counter(env, "stale_epoch") == 2 })
 	a.input(t, map[string]any{"t": "move", "x": 0.5, "y": 0.5, "e": 3})
 	calls := fb.waitFor(t, 1)
 	if c := calls[0]; c.Op != "mouse" || c.Kind != screencap.MouseMoved || c.X != 2430 || c.Y != 540 {

@@ -184,6 +184,10 @@ type Deps struct {
 	// ListSurfaces lists every display and window for the picker; nil means
 	// screencap.ListSurfaces, which refuses under tests, so tests inject a fake.
 	ListSurfaces func(ctx context.Context) ([]screencap.SurfaceInfo, error)
+	// Window reads and raises the shared window for the window gate; nil fails
+	// every press to a window share closed (Task 2 of the window plan defaults
+	// it to screencap.NewWindowBridge, which refuses under tests).
+	Window WindowBridge
 	// Notify posts the approval-lapse notification when the daemon is its sender; nil means log-only.
 	Notify func(id, title, body string)
 
@@ -280,6 +284,9 @@ type Manager struct {
 
 	// surf is what the share shows (surface.go).
 	surf surfaceState
+
+	// win is the window gate's state (window.go).
+	win windowState
 
 	vmu      sync.Mutex
 	viewers  map[ViewerID]*viewer
