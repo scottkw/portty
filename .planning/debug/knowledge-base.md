@@ -24,3 +24,13 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Why not caught:** the rig derives elapsed time from guest `date`; nothing checks for clock steps
 - **Recurrence guard:** before treating a VM-row time gap as a product stall, run `/usr/bin/log show --predicate 'process == "timed" AND eventMessage CONTAINS "Received time"'` over the window and look for a guest log line-count hole
 ---
+
+## rtp-seq-restart-freeze — every desktop source restart froze existing viewers until the new random RTP sequence passed the old one
+- **Date:** 2026-11-27
+- **Error patterns:** frozen picture after stall recovered, frozen after wake, viewer receives 0 units after restart, RTP sequence, NewRandomSequencer, SRTP replay, rollover counter, restartSource, packetizer per run
+- **Root cause(s):** fanOut built a new rtp.Packetizer with rtp.NewRandomSequencer() and a new timestamp base per capture run (audioOut likewise built a new audio clock), while each viewer's track, SSRC and SRTP context outlive restartSource, so SRTP dropped every packet behind the last accepted sequence
+- **Fix:** one video packetizer (Manager.vpkt) and one audio clock (Manager.aclk) live on the Manager for its life; Manager.vlast stamps a new run's first video unit with the real gap
+- **Files changed:** internal/desktop/manager.go, internal/desktop/audio.go, internal/desktop/fanout_test.go, internal/desktop/loopback_test.go, TESTING.md
+- **Why not caught:** no test restarted the source with a viewer kept; the VM rows looked at the restart, not at an existing viewer's decoding after it
+- **Recurrence guard:** TestFanout_SourceRestartKeepsRTPSequence and TestFanout_SourceRestartStampsTheGap (pion loopback); TESTING.md M-221 (VM, Safari and Chrome PASS 2026-11-27). Pattern: anything stamped into RTP (sequence, timestamp, SSRC) belongs to the viewer's track, not to a capture run
+---
