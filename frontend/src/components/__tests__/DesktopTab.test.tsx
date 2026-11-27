@@ -16,6 +16,7 @@ interface MockClient {
   stop: ReturnType<typeof vi.fn>
   wake: ReturnType<typeof vi.fn>
   sendInput: ReturnType<typeof vi.fn>
+  pasteToMac: ReturnType<typeof vi.fn>
   emit: <K extends keyof DesktopEvents>(ev: K, v: DesktopEvents[K]) => void
 }
 
@@ -26,12 +27,14 @@ const h = vi.hoisted(() => ({
   connect: vi.fn(),
   openSettings: vi.fn(),
   openBrowser: vi.fn(),
+  readHome: vi.fn(),
 }))
 
 vi.mock('../../wailsjs/go/main/App', () => ({
   ConnectPeerDesktop: (host: string) => h.connect(host),
   OpenLocalNetworkSettings: () => h.openSettings(),
   OpenPeerDesktopInBrowser: (host: string) => h.openBrowser(host),
+  ReadHomeClipboard: () => h.readHome(),
 }))
 
 vi.mock('../../lib/peerDesktop', async (importOriginal) => {
@@ -136,6 +139,7 @@ beforeEach(() => {
   h.openSettings.mockResolvedValue(undefined)
   h.openBrowser.mockReset()
   h.openBrowser.mockResolvedValue('')
+  h.readHome.mockReset()
   onDesktopState.mockReset()
   onLabel.mockReset()
   visibility = 'visible'
@@ -417,5 +421,137 @@ describe('control mode (21-09): a click captures the keyboard and every way out 
     emit('state', { state: 'locked', viewers: 1, locked: true })
     expect(document.activeElement).toBe(input())
     expect(last()).toMatchObject({ line1: 'Controlling office-air', controlling: true })
+  })
+
+  it('Cmd+C goes out as a tap and nothing reads the home clipboard', async () => {
+    await controlling()
+    const ev = chord({ code: 'KeyC', key: 'c', metaKey: true })
+    expect(ev.defaultPrevented).toBe(true)
+    expect(sent()).toEqual(['KeyC down', 'KeyC up'])
+    expect(h.readHome).not.toHaveBeenCalled()
+  })
+
+  describe('Cmd+V pastes the home clipboard text, then the key', () => {
+    const keys = () =>
+      (client().sendInput.mock.calls as [{ t: string; code?: string; d?: boolean; m?: number }][])
+        .map(([m]) => m)
+        .filter((m) => m.t === 'key')
+    const paste = async (init: KeyboardEventInit = {}) => {
+      const ev = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, code: 'KeyV', key: 'v', metaKey: true, ...init })
+      await act(async () => { input().dispatchEvent(ev) })
+      return ev
+    }
+    const home = (outcome: string, text = '') => h.readHome.mockResolvedValue({ outcome, text })
+
+    it('different text: pasteToMac with it, then KeyV down and up with the keydown\'s modifier mask', async () => {
+      await controlling()
+      home('ok', 'hello')
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      const ev = await paste()
+      expect(ev.defaultPrevented).toBe(true)
+      expect(h.readHome).toHaveBeenCalledTimes(1)
+      expect(client().pasteToMac).toHaveBeenCalledWith('hello')
+      expect(keys().map((m) => [m.code, m.d, m.m])).toEqual([['KeyV', true, 8], ['KeyV', false, 8]])
+      const firstKey = client().sendInput.mock.calls.findIndex(([m]) => (m as { t: string }).t === 'key')
+      expect(client().pasteToMac.mock.invocationCallOrder[0]).toBeLessThan(client().sendInput.mock.invocationCallOrder[firstKey])
+    })
+
+    it('the same text again sends only the key, so copy then paste on the Mac keeps working', async () => {
+      await controlling()
+      home('ok', 'hello')
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      await paste()
+      await paste()
+      expect(client().pasteToMac).toHaveBeenCalledTimes(1)
+      expect(keys()).toHaveLength(4)
+      home('ok', 'other')
+      await paste()
+      expect(client().pasteToMac).toHaveBeenCalledTimes(2)
+      expect(client().pasteToMac).toHaveBeenLastCalledWith('other')
+    })
+
+    it('no text sends only the key', async () => {
+      await controlling()
+      home('empty')
+      await paste()
+      expect(client().pasteToMac).not.toHaveBeenCalled()
+      expect(sent()).toEqual(['KeyV down', 'KeyV up'])
+    })
+
+    it.each([
+      ['concealed', 'Your clipboard holds a hidden item (password manager); not sent'],
+      ['too_large', 'Your clipboard text is too large to send (limit 1 MB)'],
+      ['failed', "Couldn't send to the Mac. Try again."],
+    ])('%s sends nothing and no key, and says so', async (outcome, notice) => {
+      await controlling()
+      home(outcome, outcome === 'concealed' ? 'secret' : '')
+      await paste()
+      expect(client().pasteToMac).not.toHaveBeenCalled()
+      expect(keys()).toHaveLength(0)
+      expect(chip()).toBe(notice)
+    })
+
+    it('a refused or rejected read fails closed', async () => {
+      await controlling()
+      h.readHome.mockRejectedValue(new Error('boom'))
+      await paste()
+      expect(client().pasteToMac).not.toHaveBeenCalled()
+      expect(keys()).toHaveLength(0)
+      expect(chip()).toBe("Couldn't send to the Mac. Try again.")
+    })
+
+    it('a failed send sends no key, says so, and the text is not remembered as sent', async () => {
+      await controlling()
+      home('ok', 'hello')
+      client().pasteToMac.mockResolvedValue({ outcome: 'failed' })
+      await paste()
+      expect(keys()).toHaveLength(0)
+      expect(chip()).toBe("Couldn't send to the Mac. Try again.")
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      await paste()
+      expect(client().pasteToMac).toHaveBeenCalledTimes(2)
+      expect(keys()).toHaveLength(2)
+    })
+
+    it('a second Cmd+V while the first is in flight is ignored, and still never reaches the Mac as a plain key', async () => {
+      await controlling()
+      let resolve!: (v: { outcome: string; text: string }) => void
+      h.readHome.mockReturnValue(new Promise((r) => { resolve = r }))
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      await paste()
+      const second = await paste()
+      expect(second.defaultPrevented).toBe(true)
+      await act(async () => { resolve({ outcome: 'ok', text: 'hello' }) })
+      expect(h.readHome).toHaveBeenCalledTimes(1)
+      expect(client().pasteToMac).toHaveBeenCalledTimes(1)
+      expect(keys()).toHaveLength(2)
+    })
+
+    it('leaving control mode while the paste is in flight sends no key', async () => {
+      await controlling()
+      let resolve!: (v: { outcome: string; text: string }) => void
+      h.readHome.mockReturnValue(new Promise((r) => { resolve = r }))
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      await paste()
+      act(() => { window.dispatchEvent(new Event('blur')) })
+      await act(async () => { resolve({ outcome: 'ok', text: 'hello' }) })
+      expect(keys()).toHaveLength(0)
+    })
+
+    it('Cmd+Shift+V is a plain key and reads nothing', async () => {
+      await controlling()
+      await paste({ shiftKey: true })
+      expect(h.readHome).not.toHaveBeenCalled()
+      expect(sent()).toEqual(['KeyV down', 'KeyV up'])
+    })
+
+    it('Cmd+V while not controlling is Portty\'s own paste: nothing is read or sent here', async () => {
+      render()
+      ownAccount()
+      await picture()
+      await paste()
+      expect(h.readHome).not.toHaveBeenCalled()
+      expect(client().pasteToMac).not.toHaveBeenCalled()
+    })
   })
 })

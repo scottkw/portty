@@ -100,6 +100,9 @@ export const ConnectPeerSession      = (host, sessionID)    => Call('main.App.Co
 // Portty 21-07: returns PeerDesktopResult (token-free loopback url) and never throws.
 export const ConnectPeerDesktop      = (host)               => Call('main.App.ConnectPeerDesktop', [host])
 
+// Portty 21-09: returns HomeClipboardResult and never throws; only a Cmd+V in control mode calls it.
+export const ReadHomeClipboard       = ()                   => Call('main.App.ReadHomeClipboard', [])
+
 // Portty 21-07: resolves '' or an error code; the link never leaves Go.
 export const OpenPeerDesktopInBrowser = (host)              => Call('main.App.OpenPeerDesktopInBrowser', [host])
 export const OpenLocalNetworkSettings = ()                  => Call('main.App.OpenLocalNetworkSettings', [])

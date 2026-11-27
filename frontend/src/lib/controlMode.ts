@@ -25,3 +25,19 @@ export function controlReducer(
   if (native) actions.push('menuOff')
   return { controlling: false, actions }
 }
+
+/** What the Mac's own clipboard held when a Cmd+V was typed (the ReadHomeClipboard binding's answer). */
+export type HomeClipboard = { outcome: 'ok' | 'concealed' | 'empty' | 'too_large' | 'failed'; text?: string }
+
+export const PASTE_NOTICES = { concealed: '', too_large: '', failed: '' }
+
+export function isPasteChord(_e: Pick<KeyboardEvent, 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): boolean {
+  return false
+}
+
+export function pasteDecision(
+  _read: HomeClipboard,
+  _lastSent: string | null,
+): { send: string | null; key: boolean; notice: string | null } {
+  return { send: null, key: false, notice: null }
+}
