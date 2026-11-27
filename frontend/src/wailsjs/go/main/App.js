@@ -97,6 +97,9 @@ export const SetSessionShared        = (sessionID, shared)  => Call('main.App.Se
 // Portty 04-04: returns PeerConnectResult and never throws.
 export const ConnectPeerSession      = (host, sessionID)    => Call('main.App.ConnectPeerSession', [host, sessionID])
 
+// Portty 21-07: returns PeerDesktopResult (token-free loopback url) and never throws.
+export const ConnectPeerDesktop      = (host)               => Call('main.App.ConnectPeerDesktop', [host])
+
 // Portty 13-05: returns RemotePortResult and never throws.
 export const OpenRemotePort          = (sessionID, rawURL, consent) => Call('main.App.OpenRemotePort', [sessionID, rawURL, consent])
 
