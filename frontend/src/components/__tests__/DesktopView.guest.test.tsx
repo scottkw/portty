@@ -317,6 +317,19 @@ describe('guest chips, grants and the lease', () => {
     expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
   })
 
+  it('a phone guest with control sees You have control and the lease chips, not View only', async () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+    )
+    await admitted({ control: true })
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+    lease('other', 'Ada')
+    expect(chips()).toEqual([copy.controllingChip('Ada')])
+    lease('free')
+    rights({ control: false })
+    expect(chips()).toEqual([copy.GUEST_CHIP_VIEW_ONLY])
+  })
+
   it('a view-only guest never shows a lease chip', async () => {
     await admitted()
     lease('other', 'Ada')

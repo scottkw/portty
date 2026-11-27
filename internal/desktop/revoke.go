@@ -28,10 +28,14 @@ func (m *Manager) CloseViewer(id ViewerID) error {
 		return ErrNoViewer
 	}
 	if v.Mode == ModeGuest {
-		m.cutViewer(v, CloseGuestRevoked, guestReasonRevoked, true)
+		// Deny first and unconditionally: a row already cut another way (a
+		// replace, a media cut) would skip anything run inside cutViewer.
+		if v.gs != nil {
+			v.gs.RevokeUser(v.Identity.UserID)
+		}
 		m.closeGuestUser(v.Identity.UserID)
 	} else {
-		m.cutViewer(v, websocket.StatusGoingAway, "disconnected", false)
+		m.cutViewer(v, websocket.StatusGoingAway, "disconnected")
 	}
 	return nil
 }
@@ -67,7 +71,7 @@ func (m *Manager) closeGuestUser(userID int64) {
 	}
 	m.vmu.Unlock()
 	for _, v := range vs {
-		m.cutViewer(v, CloseGuestRevoked, guestReasonRevoked, false)
+		m.cutViewer(v, CloseGuestRevoked, guestReasonRevoked)
 	}
 }
 
@@ -78,7 +82,7 @@ func (m *Manager) CloseViewerWith(id ViewerID, code websocket.StatusCode, reason
 	if v == nil {
 		return ErrNoViewer
 	}
-	m.cutViewer(v, code, reason, false)
+	m.cutViewer(v, code, reason)
 	return nil
 }
 
@@ -101,7 +105,7 @@ func (m *Manager) CloseGuests(code websocket.StatusCode, reason string) {
 		go func() {
 			defer wg.Done()
 			defer recoverLog()
-			m.cutViewer(v, code, reason, false)
+			m.cutViewer(v, code, reason)
 		}()
 	}
 	wg.Wait()
@@ -117,9 +121,8 @@ func (m *Manager) lookupViewer(id ViewerID) *viewer {
 // matters: rights go first so nothing the viewer sends is honoured (clipboard
 // included), then its input life ends and the input goroutine is waited for (a
 // message it was handling finishes before this returns, and none is started
-// after), then the arbiter forgets it, then the person is deny-listed (a guest
-// revoked by the sharer), then media and finally the socket.
-func (m *Manager) cutViewer(v *viewer, code websocket.StatusCode, reason string, deny bool) {
+// after), then the arbiter forgets it, then media and finally the socket.
+func (m *Manager) cutViewer(v *viewer, code websocket.StatusCode, reason string) {
 	if !v.cut.CompareAndSwap(false, true) {
 		return
 	}
@@ -127,9 +130,6 @@ func (m *Manager) cutViewer(v *viewer, code websocket.StatusCode, reason string,
 	m.endViewerInput(v, "revoked")
 	m.flushInput()
 	m.arb.forget(v.ID)
-	if deny && v.gs != nil {
-		v.gs.RevokeUser(v.Identity.UserID)
-	}
 	if v.pc != nil {
 		_ = v.pc.Close()
 	}

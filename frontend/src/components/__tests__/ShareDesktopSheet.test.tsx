@@ -173,6 +173,26 @@ describe('ShareDesktopSheet: start and copy (tracer)', () => {
     expect(stop).not.toHaveBeenCalled()
   })
 
+  it('Esc does nothing while the sheet is checking or getting a link, as Done does', async () => {
+    let ackDone!: (v: boolean) => void
+    hasCT.mockReturnValueOnce(new Promise((r) => { ackDone = r }))
+    let started!: (v: App.DesktopShareResult) => void
+    start.mockReturnValueOnce(new Promise((r) => { started = r }))
+    const esc = () => act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    await mount()
+    await esc() // checking
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () => { ackDone(true) })
+    await tick(0)
+    expect(text()).toContain(copy.SHARE_STARTING)
+    await esc() // starting
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () => { started(okStart()) })
+    await tick(0)
+    await esc()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('a failed copy shows the inline error and no Copied!', async () => {
     clipboard.mockResolvedValue(false)
     await mount()

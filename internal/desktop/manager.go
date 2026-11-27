@@ -858,7 +858,7 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 		}
 		key := AdmissionKey{UserID: v.Identity.UserID, StableID: v.Identity.StableID}
 		// Replaced: cut (rights, held input, lease, media), then the socket under the ceiling.
-		v.gs.attach(key, v.ID, func() { m.cutViewer(v, CloseGuestReplaced, guestReasonReplaced, false) })
+		v.gs.attach(key, v.ID, func() { m.cutViewer(v, CloseGuestReplaced, guestReasonReplaced) })
 		defer v.gs.detach(key, v.ID)
 	}
 	joined = true
