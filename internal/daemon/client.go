@@ -664,6 +664,54 @@ func (c *DaemonClient) ConnectPeer(host, session string) (PeerConnectResponse, e
 	return out, nil
 }
 
+// ConnectPeerDesktop asks the daemon to fetch host's standing desktop token into
+// its memory (POST /peers/desktop). The answer carries the peer's full MagicDNS
+// name and short name, never the token. Failures come back as *PeerConnectError.
+func (c *DaemonClient) ConnectPeerDesktop(host string) (PeerDesktopResponse, error) {
+	b, err := json.Marshal(PeerDesktopRequest{Host: host})
+	if err != nil {
+		return PeerDesktopResponse{}, err
+	}
+	resp, err := c.http.Post(c.base+"/peers/desktop", "application/json", bytes.NewReader(b))
+	if err != nil {
+		return PeerDesktopResponse{}, fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		var e PeerConnectErrorResponse
+		if json.Unmarshal(body, &e) == nil && e.Error != "" {
+			return PeerDesktopResponse{}, &PeerConnectError{Code: e.Error, Detail: e.Detail, Hosts: e.Hosts, Sessions: e.Sessions}
+		}
+		return PeerDesktopResponse{}, fmt.Errorf("daemon API POST /peers/desktop: status %d: %s", resp.StatusCode, body)
+	}
+	var out PeerDesktopResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return PeerDesktopResponse{}, fmt.Errorf("decode response: %w", err)
+	}
+	return out, nil
+}
+
+// PeerDesktopLink returns the browser link (base URL + /desktop/?cap=<token>) of
+// the desktop held for host (GET /peers/desktop/link). It makes no network call
+// on the daemon; an error means no token is held.
+func (c *DaemonClient) PeerDesktopLink(host string) (string, error) {
+	resp, err := c.http.Get(c.base + "/peers/desktop/link?host=" + url.QueryEscape(host))
+	if err != nil {
+		return "", fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("daemon API GET /peers/desktop/link: status %d: %s", resp.StatusCode, bytes.TrimSpace(body))
+	}
+	var out PeerDesktopLinkResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+	return out.URL, nil
+}
+
 // PortOpenError is a POST /peers/ports failure with a stable PortErr* code.
 type PortOpenError struct{ Code string }
 

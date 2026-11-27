@@ -24,12 +24,13 @@ import (
 type fakeDesktopPeer struct {
 	srv *httptest.Server
 
-	mu       sync.Mutex
-	capPosts int
-	freshCap string           // handed out by the cap route
-	seen     []http.Header    // headers of each /desktop/ws request
-	queries  []string         // raw query of each /desktop/ws request
-	ws       http.HandlerFunc // /desktop/ws behaviour
+	mu        sync.Mutex
+	capPosts  int
+	freshCap  string           // handed out by the cap route
+	capStatus int              // the cap route answers this instead of 200 when set
+	seen      []http.Header    // headers of each /desktop/ws request
+	queries   []string         // raw query of each /desktop/ws request
+	ws        http.HandlerFunc // /desktop/ws behaviour
 }
 
 func newFakeDesktopPeer(t *testing.T, ws http.HandlerFunc) *fakeDesktopPeer {
@@ -39,8 +40,12 @@ func newFakeDesktopPeer(t *testing.T, ws http.HandlerFunc) *fakeDesktopPeer {
 	mux.HandleFunc("POST /api/peer/desktop/cap", func(w http.ResponseWriter, _ *http.Request) {
 		p.mu.Lock()
 		p.capPosts++
-		c := p.freshCap
+		c, st := p.freshCap, p.capStatus
 		p.mu.Unlock()
+		if st != 0 {
+			w.WriteHeader(st)
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]string{"cap": c})
 	})
 	mux.HandleFunc("GET /desktop/ws", func(w http.ResponseWriter, r *http.Request) {
