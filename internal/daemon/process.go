@@ -418,7 +418,13 @@ func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h 
 				return nil
 			}
 			fmt.Fprintf(h.stderr, "EnsureDaemon: version mismatch (daemon=%q, binary=%q), restarting\n", ver, BuildVersion)
-			_ = client.ShutdownDaemon()
+			// Pinned to the stale daemon it checks: a takeover that commits late
+			// (a launchd re-home past launchdTakeover's wait) put the sessions on
+			// this build's daemon, which must never get this /shutdown.
+			if err := client.shutdownIfStale(); errors.Is(err, errNotStale) {
+				fmt.Fprintf(h.stderr, "EnsureDaemon: this build's daemon answers now (the sessions moved); not restarting it\n")
+				return nil
+			}
 			// No socket cleanup here (review it3 WR-03): only the spawned
 			// daemon unlinks it, under the lock, once the old one let go.
 			// startDaemon spawns only after that (WR-07).

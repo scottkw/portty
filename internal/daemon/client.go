@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/scottkw/portty/internal/tailnet"
@@ -280,6 +281,82 @@ func (c *DaemonClient) ShutdownDaemon() error {
 		return fmt.Errorf("daemon API POST /shutdown: status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// errNotStale: the daemon answering is this build's, so a restart must not
+// stop it (a takeover moved the sessions to it).
+var errNotStale = errors.New("the daemon answering is this build's; not stopping it")
+
+// shutdownIfStale is a restart's /shutdown (DEBT-08): it reads /health and
+// posts /shutdown over one connection, so the post can only reach the process
+// whose version it checked, and it stops that process only if it is from
+// another build (errNotStale otherwise). Unlike ShutdownDaemon it never sends
+// on a second connection: a handoff that commits while the post waits out the
+// freeze drops the connection, and the sessions' new daemon serves the socket.
+// A dropped or unreadable connection is no answer and stops nothing.
+func (c *DaemonClient) shutdownIfStale() error {
+	tr, ok := c.http.Transport.(*http.Transport)
+	if !ok || tr.DialContext == nil {
+		return errors.New("daemon client has no socket dialer")
+	}
+	conn, err := tr.DialContext(c.reqCtx(), "unix", "daemon")
+	if err != nil {
+		return err
+	}
+	var used atomic.Bool
+	pinned := &http.Transport{
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			if used.Swap(true) {
+				return nil, errors.New("connection to the checked daemon closed")
+			}
+			return conn, nil
+		},
+		MaxConnsPerHost: 1,
+	}
+	defer func() {
+		pinned.CloseIdleConnections()
+		if !used.Load() {
+			conn.Close()
+		}
+	}()
+	hc := &http.Client{Transport: pinned, Timeout: 2 * time.Second}
+	send := func(method, path string) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(c.reqCtx(), method, c.base+path, nil)
+		if err != nil {
+			return nil, err
+		}
+		return hc.Do(req)
+	}
+	resp, err := send(http.MethodGet, "/health")
+	if err != nil {
+		return err
+	}
+	var h HealthResponse
+	err = json.NewDecoder(resp.Body).Decode(&h)
+	_, _ = io.Copy(io.Discard, resp.Body) // to EOF, or the transport drops the pinned connection
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	if !StaleVersion(h.Version) {
+		return errNotStale
+	}
+	deadline := time.Now().Add(frozenRetryBudget)
+	for {
+		resp, err := send(http.MethodPost, "/shutdown")
+		if err != nil {
+			return err
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") == "" {
+			return nil
+		}
+		if time.Now().Add(time.Second).After(deadline) {
+			return fmt.Errorf("daemon API POST /shutdown: status %d", resp.StatusCode)
+		}
+		time.Sleep(time.Second) // frozen for a handoff: ask the same process again
+	}
 }
 
 // answersAfterDrop reports whether, after err ended a /shutdown, a daemon
