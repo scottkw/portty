@@ -2844,6 +2844,11 @@ html:has(.desktop-view:not(.desktop-view--embedded)) body {
   height: 44px;
   justify-content: center;
   padding: 0;
+  flex: 0 0 44px;
+}
+.desktop-sound--phone .desktop-bar__icon {
+  width: 20px;
+  height: 20px;
 }
 /* Below 880px every item except the picker and the Control segments is icon-only; each keeps its aria-label and title. */
 @media (max-width: 879px) {

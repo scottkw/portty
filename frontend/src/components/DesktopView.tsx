@@ -338,6 +338,11 @@ export interface DesktopViewProps {
   hostCard?: HostCard | null
   /** The host stopped the client (a hidden window): shows the Reconnecting chip until the host clears it. */
   paused?: boolean
+  /**
+   * The app tab's playing indicator (23-08): true while this viewer's sound is on and connected; false on mute,
+   * on disconnect (a hidden-window pause included) and on unmount.
+   */
+  onSound?: (on: boolean) => void
   /** True while a picture shows and no card covers it. */
   onPicture?: (has: boolean) => void
   /** True when the stage has the keyboard (the user clicked or tabbed onto it), false when it goes. */
@@ -380,6 +385,7 @@ export function DesktopView({
   hostCard = null,
   readClipboard,
   paused: hostPaused = false,
+  onSound,
   onPicture,
   onCaptureChange,
   onModeChange,
@@ -453,6 +459,8 @@ export function DesktopView({
   const blockedShown = useRef({ episode: 0, at: 0 })
   // Sound is on for this viewer. Not remembered: every page load starts muted.
   const [soundOn, setSoundOn] = useState(false)
+  // The phone's Unlock field has focus: the bar slot is empty so the panel is the only thing above the keyboard.
+  const [unlockFocused, setUnlockFocused] = useState(false)
   // The one-time Sound hint has been shown (or its moment passed) in this page load.
   const hintDone = useRef(false)
   const hintId = useRef(0)
@@ -1184,6 +1192,34 @@ export function DesktopView({
   // Sound (23-06). Audio failing is the daemon's state; the picture is never touched by it.
   const audioFailed = desk?.audio === 'failed'
   const soundNotice = useCallback((kind: SoundNotice) => pushNotice(soundNoticeSpec(kind, phoneMode)), [pushNotice, phoneMode])
+  const phoneSound = hasAudio && phoneMode ? { video: videoRef.current, failed: audioFailed, onNotice: soundNotice, onChange: setSoundOn } : undefined
+  // The app tab's playing indicator: sound on and a live connection. Mute, a lost connection (the hidden-window pause too) and unmount clear it.
+  const playing = soundOn && status.kind === 'streaming' && !hostPaused
+  const onSoundRef = useRef(onSound)
+  onSoundRef.current = onSound
+  useEffect(() => {
+    onSoundRef.current?.(playing)
+  }, [playing])
+  useEffect(() => () => onSoundRef.current?.(false), [])
+  // A field removed while focused fires no focusout everywhere (the Mac unlocked under it): the slot comes back with the panel's end.
+  useEffect(() => {
+    if (!showUnlock) setUnlockFocused(false)
+  }, [showUnlock])
+  // Focus in the Unlock password field empties the phone's bar slot. Document-level focus events are the only way to see it:
+  // the panel is a sibling of the stage, and the field is uncontrolled.
+  useEffect(() => {
+    if (!phoneMode) return
+    const field = (e: Event) => (e.target as Element | null)?.matches?.('.desktop-unlock__input') === true
+    const on = (e: FocusEvent) => { if (field(e)) setUnlockFocused(true) }
+    const off = (e: FocusEvent) => { if (field(e)) setUnlockFocused(false) }
+    document.addEventListener('focusin', on)
+    document.addEventListener('focusout', off)
+    return () => {
+      document.removeEventListener('focusin', on)
+      document.removeEventListener('focusout', off)
+      setUnlockFocused(false)
+    }
+  }, [phoneMode])
   // The one-time hint: the first time the picture is up with sound negotiated and off, never under a card.
   // It is not repeated after a reconnect, and unmuting takes it away.
   useEffect(() => {
@@ -1265,6 +1301,8 @@ export function DesktopView({
             reconnecting={hostPaused || status.kind === 'reconnecting' || status.kind === 'unreachable'}
             onSelectSurface={pickSurface}
             guest={guest}
+            sound={phoneSound}
+            slotHidden={unlockFocused}
           />
         )}
         <span id={HINT_ID} className="visually-hidden">

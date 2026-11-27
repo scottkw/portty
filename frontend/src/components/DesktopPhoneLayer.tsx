@@ -15,7 +15,7 @@ import { createPhoneInput, type PhoneInput } from '../lib/desktopPhoneInput'
 import { attachTrackpad, type TrackpadIntent } from '../lib/touchTrackpad'
 import { useVisualViewportInset } from '../lib/visualViewportInset'
 import type { SurfacePick } from './DesktopControlBar'
-import { DesktopPhoneBars, type PhoneModifier } from './DesktopPhoneBars'
+import { DesktopPhoneBars, type DesktopPhoneBarsProps, type PhoneModifier } from './DesktopPhoneBars'
 import { videoContentRect } from './DesktopView'
 
 export interface DesktopPhoneLayerProps {
@@ -28,7 +28,14 @@ export interface DesktopPhoneLayerProps {
   onSelectSurface(pick: SurfacePick): void
   /** A guest page (22-07): passed to the bars so Send Keys offers no Lock Screen…. */
   guest?: boolean
+  /** The bottom bar's Sound item (23-08); absent when the hello offered no audio. */
+  sound?: DesktopPhoneBarsProps['sound']
+  /** The Unlock field has focus: the bar slot stays empty (23-08). */
+  slotHidden?: boolean
 }
+
+/** The fields whose keyboard shrinks the visual viewport: the hidden typing field and (23-08) the Unlock password field. */
+export const PHONE_FIELDS = '.desktop-phone__input, .desktop-unlock__input'
 
 /** A tap before the Mac's first cursor report waits this long for it, then is dropped. */
 const CURSOR_WAIT_MS = 500
@@ -62,7 +69,7 @@ function keyFor(ch: string): { code: string; shift: boolean } | null {
  * (never window or document for touches) and sends Phase 20 messages. The pointer lives on the Mac:
  * drags are relative moves, clicks use the Mac's last cursor report, and zoom never leaves the phone.
  */
-export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconnecting, onSelectSurface, guest = false }: DesktopPhoneLayerProps): React.ReactElement {
+export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconnecting, onSelectSurface, guest = false, sound, slotHidden = false }: DesktopPhoneLayerProps): React.ReactElement {
   const canControl = rights?.control === true
   const paused = locked || reconnecting
   const live = useRef({ canControl, paused })
@@ -76,7 +83,7 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
   const armedRef = useRef(armed)
   armedRef.current = armed
   const [surface, setSurface] = useState<{ kind: DesktopSurfaceMsg['kind']; id: number; name: string } | null>(null)
-  const { keyboardUp } = useVisualViewportInset(true, { rootSelector: '.desktop-view', fieldSelector: '.desktop-phone__input' })
+  const { keyboardUp } = useVisualViewportInset(true, { rootSelector: '.desktop-view', fieldSelector: PHONE_FIELDS })
 
   useEffect(() => {
     if (!stage) return
@@ -433,6 +440,8 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
             disabledReason={locked ? 'Locked' : reconnecting ? 'Reconnecting' : null}
             client={client}
             guest={guest}
+            sound={sound}
+            hidden={slotHidden}
           />,
           slot,
         )}
