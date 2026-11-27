@@ -184,6 +184,9 @@ type Deps struct {
 	// ListSurfaces lists every display and window for the picker; nil means
 	// screencap.ListSurfaces, which refuses under tests, so tests inject a fake.
 	ListSurfaces func(ctx context.Context) ([]screencap.SurfaceInfo, error)
+	// Window reads and raises the shared window for the window gate; nil means
+	// screencap.NewWindowBridge, which refuses under tests, so tests inject a fake.
+	Window WindowBridge
 	// Notify posts the approval-lapse notification when the daemon is its sender; nil means log-only.
 	Notify func(id, title, body string)
 
@@ -280,6 +283,9 @@ type Manager struct {
 
 	// surf is what the share shows (surface.go).
 	surf surfaceState
+
+	// win is the window gate's state (window.go).
+	win windowState
 
 	vmu      sync.Mutex
 	viewers  map[ViewerID]*viewer
@@ -400,6 +406,9 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.ListSurfaces == nil {
 		d.ListSurfaces = screencap.ListSurfaces
 	}
+	if d.Window == nil {
+		d.Window = screencap.NewWindowBridge()
+	}
 	m := &Manager{
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
@@ -452,6 +461,8 @@ func (m *Manager) Start(ctx context.Context) error {
 	go m.stateLoop(lctx, wake, m.loopDone)
 	m.surf.done = make(chan struct{})
 	go m.surfaceLoop(lctx, m.surf.done)
+	m.win.done = make(chan struct{})
+	go m.windowLoop(lctx, m.win.done)
 
 	// The input goroutine outlives the state loop's context: Close drains the
 	// queued releases through it before it cancels this one.
@@ -1043,12 +1054,13 @@ func (m *Manager) Close() error {
 		<-idone
 	}
 	m.mu.Lock()
-	cancel, done, surfDone := m.loopCancel, m.loopDone, m.surf.done
+	cancel, done, surfDone, winDone := m.loopCancel, m.loopDone, m.surf.done, m.win.done
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
 		<-done
 		<-surfDone
+		<-winDone
 	}
 
 	m.CloseAll(websocket.StatusServiceRestart, "server stopping")

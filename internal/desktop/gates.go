@@ -1,5 +1,7 @@
 package desktop
 
+import "github.com/scottkw/portty/internal/screencap"
+
 // gates.go: the one gate every press passes. Releases of what a viewer holds
 // never come here: a dropped release strands a key or button on an unattended
 // Mac, so only presses, moves, wheel and text are gated (a rock-solid rule).
@@ -40,7 +42,8 @@ func (m *Manager) takeToken(v *viewer) bool {
 }
 
 // pressAllowed decides whether v's press, move, wheel or text msg may post and
-// names the drop reason when not: no_right, locked, stale_epoch, no_accessibility, rate. A token
+// names the drop reason when not: no_right, locked, stale_epoch, no_accessibility, the window
+// gate's reasons (window.go), rate. A token
 // is spent only by a press that passed every other check.
 func (m *Manager) pressAllowed(v *viewer, msg inputMsg) (ok bool, reason string) {
 	switch {
@@ -52,10 +55,46 @@ func (m *Manager) pressAllowed(v *viewer, msg inputMsg) (ok bool, reason string)
 		return false, "stale_epoch"
 	case m.controlNeedsAccessibility():
 		return false, "no_accessibility"
-	case !m.takeToken(v):
+	}
+	if m.windowShared() {
+		if m.windowChord(v, msg) {
+			return false, "window_chord"
+		}
+		if ok, why := m.windowAllows(msg); !ok {
+			return false, why
+		}
+	}
+	if !m.takeToken(v) {
 		return false, "rate"
 	}
 	return true, ""
+}
+
+// windowChord reports whether msg is a key press that would act outside a
+// shared window: Cmd+Tab (app switcher), Cmd+Space (Spotlight) and Ctrl+Cmd+Q
+// (Lock Screen). The viewer's held modifiers and the mask the key carries both
+// count, so a lost Command key-down cannot let the chord through.
+func (m *Manager) windowChord(v *viewer, msg inputMsg) bool {
+	if msg.T != inKey {
+		return false
+	}
+	m.in.mu.Lock()
+	f := modFlags(v.in.keys)
+	m.in.mu.Unlock()
+	if msg.M&8 != 0 {
+		f |= screencap.FlagCommand
+	}
+	if msg.M&2 != 0 {
+		f |= screencap.FlagControl
+	}
+	cmd := f&screencap.FlagCommand != 0
+	switch msg.Code {
+	case "Tab", "Space":
+		return cmd
+	case "KeyQ":
+		return cmd && f&screencap.FlagControl != 0
+	}
+	return false
 }
 
 // allowed is pressAllowed that also counts the drop.

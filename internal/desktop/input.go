@@ -453,7 +453,8 @@ func (m *Manager) postMouse(kind screencap.MouseKind, x, y float64, button, clic
 
 func (m *Manager) postRelease(r release) {
 	if !r.key {
-		m.postMouse(screencap.MouseUp, r.x, r.y, r.button, 1, 0, 0, r.flags)
+		x, y := m.clampToWindow(r.x, r.y)
+		m.postMouse(screencap.MouseUp, x, y, r.button, 1, 0, 0, r.flags)
 		return
 	}
 	m.postKey(r.vk, false, r.flags, false)
@@ -504,14 +505,26 @@ func (m *Manager) handleInput(v *viewer, msg inputMsg) {
 }
 
 // gate returns the target when a press or move may proceed, else counts the
-// drop reason and returns false.
+// drop reason and returns false. A window share has no frame until the window
+// gate has read one, so for a window the gate runs first and the target is
+// taken after it (the press that reads the frame must not be dropped as no_target).
 func (m *Manager) gate(v *viewer, msg inputMsg) (inputTarget, bool) {
 	t := m.target()
-	if !t.ok {
+	win := m.windowShared()
+	if !t.ok && !win {
 		m.countFor(v, "no_target")
 		return t, false
 	}
-	return t, m.allowed(v, msg)
+	if !m.allowed(v, msg) {
+		return t, false
+	}
+	if win {
+		if t = m.target(); !t.ok {
+			m.countFor(v, "no_target")
+			return t, false
+		}
+	}
+	return t, true
 }
 
 // pointer is what recording a pointer move or press for a viewer yields.
@@ -631,6 +644,10 @@ func (m *Manager) handleButtonUp(v *viewer, msg inputMsg) {
 	if !held {
 		return
 	}
+	// In a window share the up lands at the point clamped to where the window
+	// is now (never dropped, so nothing stays held).
+	m.refreshWindow()
+	x, y = m.clampToWindow(x, y)
 	m.countFor(v, inBtn)
 	m.postMouse(screencap.MouseUp, x, y, cgButton(msg.B), clicks, 0, 0, flags)
 }
