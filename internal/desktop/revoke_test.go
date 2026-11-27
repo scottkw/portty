@@ -205,6 +205,27 @@ func TestGuestDeny_CutsThePersonsLiveDevices(t *testing.T) {
 	}
 }
 
+// TestGuestRevoke_GrantAfterTheCutIsRefused (IN-02): a viewer being cut stays
+// registered until its socket closes; a grant in that window must not switch
+// control or clipboard back on.
+func TestGuestRevoke_GrantAfterTheCutIsRefused(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, withGuestInput(&fakeInputBridge{}))
+	g := e.joinGuestAs(ctx, t, 1001, "nodeA", false) // never answers the close: stays registered a while
+	if err := e.mgr.CloseViewer(g.viewerID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.mgr.SetRights(g.viewerID(), true, true); !errors.Is(err, desktop.ErrNoViewer) {
+		t.Errorf("SetRights on a cut viewer = %v, want ErrNoViewer", err)
+	}
+	for _, v := range e.mgr.ViewerList() {
+		if v.ID == g.viewerID() && v.Rights != desktop.RightsViewOnly {
+			t.Errorf("a cut viewer has rights %v again", v.Rights)
+		}
+	}
+}
+
 // TestGuestRevoke_OwnAccountClosesGoingAway: an own-account device is closed
 // 1001 and is not deny-listed, so it may reconnect.
 func TestGuestRevoke_OwnAccountClosesGoingAway(t *testing.T) {
