@@ -165,15 +165,16 @@ void pc_tap_stop(void) {
 }
 
 // *running: a tap thread exists and no disable-by-user-input is pending.
-// *enabled: CGEventTapIsEnabled now. A dead tap is recreated here (the next
-// poll after the disable), and a tap that could not be recreated is retried on
-// every poll while one is wanted.
-void pc_tap_state(int *running, int *enabled) {
+// *enabled: CGEventTapIsEnabled now. With rebuild, a dead tap is recreated here
+// (the next poll after the disable), and a tap that could not be recreated is
+// retried on every poll while one is wanted. Without rebuild it only reads, so
+// the per-input-event reading never tears down or creates a tap.
+void pc_tap_state(int rebuild, int *running, int *enabled) {
 	*running = 0;
 	*enabled = 0;
 	@try {
 		pthread_mutex_lock(&g_mu);
-		if (g_wanted && (!g_running || atomic_load(&g_dead))) {
+		if (rebuild && g_wanted && (!g_running || atomic_load(&g_dead))) {
 			tapTeardownLocked();
 			tapCreateLocked();
 		}
