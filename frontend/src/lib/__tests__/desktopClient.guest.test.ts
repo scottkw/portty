@@ -348,7 +348,7 @@ describe('guest rights and lease messages', () => {
     ])
   })
 
-  it('an own-account client ignores admission, rights and lease messages', async () => {
+  it('an own-account client ignores admission and rights, and passes the lease on (WR-07)', async () => {
     const e = setup({ guest: false })
     e.client.start()
     lastT(e).open()
@@ -358,7 +358,12 @@ describe('guest rights and lease messages', () => {
     lastT(e).recv({ type: 'admission', state: 'waiting' })
     lastT(e).recv({ type: 'rights', rights: { control: true, clipboard: true, surface: true } })
     lastT(e).recv({ type: 'lease', state: 'physical' })
-    expect(e.events.map(([k]) => k)).toEqual(['rights'])
+    lastT(e).recv({ type: 'lease', state: 'unavailable' })
+    expect(e.events).toEqual([
+      ['rights', { control: false, clipboard: false, surface: false }],
+      ['lease', { state: 'physical', name: '' }],
+      ['lease', { state: 'unavailable', name: '' }],
+    ])
   })
 })
 
@@ -372,7 +377,7 @@ describe('signal-guest-v1.jsonl golden lines', () => {
     expect(lines.map((l) => l.name)).toEqual(expect.arrayContaining([
       'hello-guest', 'admission-waiting', 'admission-admitted', 'rights-view-only', 'rights-control-and-clipboard',
       'close-denied', 'close-admit-timeout', 'close-revoked', 'close-share-ended', 'close-token-invalid',
-      'close-replaced', 'close-full', 'lease-you', 'lease-other', 'lease-owner', 'lease-physical', 'lease-free',
+      'close-replaced', 'close-full', 'lease-you', 'lease-other', 'lease-owner', 'lease-physical', 'lease-unavailable', 'lease-free',
     ]))
   })
 
@@ -401,6 +406,7 @@ describe('signal-guest-v1.jsonl golden lines', () => {
       { state: 'other', name: 'Ada' },
       { state: 'owner', name: '' },
       { state: 'physical', name: '' },
+      { state: 'unavailable', name: '' },
       { state: 'free', name: '' },
     ])
   })

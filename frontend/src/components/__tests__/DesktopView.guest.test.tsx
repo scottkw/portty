@@ -222,8 +222,8 @@ describe('guest chips, grants and the lease', () => {
     act(() => client().emit('rights', { control: false, clipboard: false, surface: false, ...r }))
   const lease = (state: DesktopEvents['lease']['state'], name = '') => act(() => client().emit('lease', { state, name }))
 
-  async function admitted(r: Partial<DesktopEvents['rights']> = {}) {
-    render()
+  async function admitted(r: Partial<DesktopEvents['rights']> = {}, props: DesktopViewProps = {}) {
+    render(props)
     for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
       Object.defineProperty(video(), a, { configurable: true, value: b })
     }
@@ -289,6 +289,30 @@ describe('guest chips, grants and the lease', () => {
     lease('you')
     expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
     lease('other', 'Ada')
+    lease('free')
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+  })
+
+  it('an own-account viewer with control sees Someone is using this Mac and another holder too (WR-07)', async () => {
+    await admitted({ control: true }, { guest: false })
+    expect(chips()).toEqual([])
+    lease('physical')
+    expect(chips()).toEqual([copy.GUEST_CHIP_SOMEONE])
+    act(() => { vi.advanceTimersByTime(2100) })
+    lease('free')
+    expect(chips()).toEqual([])
+    lease('other')
+    expect(chips()).toEqual([copy.controllingChip('Someone')])
+    lease('unavailable')
+    expect(chips()).toEqual([copy.CHIP_CONTROL_UNAVAILABLE])
+    lease('free')
+    expect(chips()).toEqual([])
+  })
+
+  it('a tap that cannot tell whether someone is at the Mac shows the paused chip to a controlling guest (WR-07)', async () => {
+    await admitted({ control: true })
+    lease('unavailable')
+    expect(chips()).toEqual([copy.CHIP_CONTROL_UNAVAILABLE])
     lease('free')
     expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
   })

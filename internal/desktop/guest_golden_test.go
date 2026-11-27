@@ -77,7 +77,7 @@ func TestGuestViewer_Golden(t *testing.T) {
 			var m msgLease
 			roundTrip(l.Name, l.Wire, &m)
 			switch m.State {
-			case leaseYou, leaseOwner, leasePhysical, leaseFree:
+			case leaseYou, leaseOwner, leasePhysical, leaseUnavailable, leaseFree:
 				if m.Name != "" {
 					t.Errorf("%s: state %q must carry no name", l.Name, m.State)
 				}
@@ -116,7 +116,7 @@ func TestGuestViewer_Golden(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"admission-waiting", "admission-admitted", "rights-view-only", "rights-control-and-clipboard",
-		"lease-you", "lease-other", "lease-owner", "lease-physical", "lease-free"} {
+		"lease-you", "lease-other", "lease-owner", "lease-physical", "lease-unavailable", "lease-free"} {
 		if !seen[name] {
 			t.Errorf("golden file lacks %s", name)
 		}

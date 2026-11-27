@@ -215,6 +215,45 @@ func TestPhysical_UnhealthyTapFailsClosed(t *testing.T) {
 	r.fb.waitFor(t, 3)
 }
 
+// TestPhysical_UnhealthyTapIsToldAsUnavailable (WR-07): a tap that stays
+// unhealthy (failed to start, or disabled) drops every press, so controllers
+// are told "unavailable" instead of seeing input silently do nothing. The tap's
+// one-second settle after a start is not reported (2 s minimum).
+func TestPhysical_UnhealthyTapIsToldAsUnavailable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	e, r := newLeaseEnv(t)
+	a := e.joinGuest(ctx, t, 1001, "nodeA")
+	r.grant(t, e, a)
+
+	r.setPhysical(screencap.PhysicalReading{Healthy: false})
+	e.mgr.PushLeaseForTest(ctx)
+	r.clk.Advance(time.Second)
+	e.mgr.PushLeaseForTest(ctx)
+	if a.find("lease", leaseIs("unavailable", "")) != nil {
+		t.Fatal("an unhealthy tap was reported inside the settle time")
+	}
+	r.clk.Advance(time.Second)
+	e.mgr.PushLeaseForTest(ctx)
+	a.wait(t, "lease", leaseIs("unavailable", ""))
+
+	n := a.count("lease")
+	r.setPhysical(screencap.PhysicalReading{Healthy: true})
+	e.mgr.PushLeaseForTest(ctx)
+	eventually(t, 5*time.Second, "the next lease message", func() bool { return a.count("lease") > n })
+	a.mu.Lock()
+	var last map[string]any
+	for _, m := range a.msgs {
+		if m["type"] == "lease" {
+			last = m
+		}
+	}
+	a.mu.Unlock()
+	if !leaseIs("free", "")(last) {
+		t.Errorf("lease after the tap is healthy again = %v, want free", last)
+	}
+}
+
 // TestPhysical_SecureInputStillPosts: with Secure Event Input on and a healthy
 // tap, a granted guest's key still posts, and SecureInput() reports it for the
 // GUI warning while the tap runs.

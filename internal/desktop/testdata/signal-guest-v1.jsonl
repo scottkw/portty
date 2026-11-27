@@ -14,4 +14,5 @@
 {"name":"lease-other","dir":"server","valid":true,"wire":{"type":"lease","state":"other","name":"Ada"}}
 {"name":"lease-owner","dir":"server","valid":true,"wire":{"type":"lease","state":"owner"}}
 {"name":"lease-physical","dir":"server","valid":true,"wire":{"type":"lease","state":"physical"}}
+{"name":"lease-unavailable","dir":"server","valid":true,"wire":{"type":"lease","state":"unavailable"}}
 {"name":"lease-free","dir":"server","valid":true,"wire":{"type":"lease","state":"free"}}

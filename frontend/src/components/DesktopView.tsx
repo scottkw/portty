@@ -429,7 +429,7 @@ export function DesktopView({
   const [viewers, setViewers] = useState<number | null>(null)
   // Guest mode: where this connection stands at Admit. Null until the share server says, and again after a drop.
   const [admission, setAdmission] = useState<'waiting' | 'admitted' | null>(null)
-  // Guest mode: who holds the lease, and whether physical input at the Mac has held it for the 2 s minimum.
+  // Who holds the lease (guests and own-account controllers), and whether physical input at the Mac has held it for the 2 s minimum.
   const [lease, setLease] = useState<DesktopLeaseMsg | null>(null)
   const [someoneUsing, setSomeoneUsing] = useState(false)
   const prevClipboard = useRef(false)
@@ -1153,8 +1153,10 @@ export function DesktopView({
   else if (locked) chip = { Icon: LockClosedIcon, text: guest ? LOCKED_GUEST : 'Locked' }
   else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
   else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
-  else if (guest && canControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
-  else if (guest && canControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
+  // The lease chips are for every viewer that can control, own-account viewers included (22-UI-SPEC chip table, WR-07).
+  else if (canControl && lease?.state === 'unavailable') chip = { Icon: ExclamationTriangleIcon, text: copy.CHIP_CONTROL_UNAVAILABLE }
+  else if (canControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
+  else if (canControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
   else if (guest && canControl) chip = { Icon: CursorArrowRaysIcon, text: copy.GUEST_CHIP_CONTROL }
   else if (guest) chip = { Icon: EyeIcon, text: copy.GUEST_CHIP_VIEW_ONLY }
   else if (chipPhase !== 'gone' && viewers !== null && viewers >= 1) {

@@ -32,13 +32,19 @@ const (
 	physicalHold  = time.Second     // remote input is dropped this long after physical input
 	leaseHold     = 2 * time.Second // a lease lasts this long after its holder's last input
 	physicalDwell = 2 * time.Second // a physical episode is reported at least this long
+	// unhealthyShown is how long the tap must stay unhealthy before viewers are
+	// told control is unavailable: longer than the tap's one-second settle after
+	// a start, so a normal start never flashes it.
+	unhealthyShown = 2 * time.Second
 )
 
-// LeaseState is what viewers are told: who controls, and whether the person at
-// the Mac is using it.
+// LeaseState is what viewers are told: who controls, whether the person at
+// the Mac is using it, and whether the tap has been unhealthy for
+// unhealthyShown (every press is dropped then, physical_unknown).
 type LeaseState struct {
-	Holder   ViewerID
-	Physical bool
+	Holder      ViewerID
+	Physical    bool
+	Unavailable bool
 }
 
 type arbiter struct {
@@ -53,6 +59,8 @@ type arbiter struct {
 	// until physEnd, which is the later of lastPhys+physicalHold and
 	// physStart+physicalDwell, so a single touch cannot make it flicker.
 	physStart, lastPhys, physEnd time.Time
+
+	unhealthySince time.Time // when state first saw the current unhealthy streak; zero while healthy
 }
 
 func newArbiter(now func() time.Time, phys PhysicalSource) *arbiter {
@@ -132,8 +140,16 @@ func (a *arbiter) forget(v ViewerID) (released bool) {
 func (a *arbiter) state(now time.Time) LeaseState {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.physicalActiveLocked(a.phys(), now)
+	r := a.phys()
+	a.physicalActiveLocked(r, now)
 	s := LeaseState{Physical: now.Before(a.physEnd)}
+	switch {
+	case r.Healthy:
+		a.unhealthySince = time.Time{}
+	case a.unhealthySince.IsZero():
+		a.unhealthySince = now
+	}
+	s.Unavailable = !r.Healthy && now.Sub(a.unhealthySince) >= unhealthyShown
 	if a.holder != "" && now.Before(a.leaseEnd) {
 		s.Holder = a.holder
 	}
