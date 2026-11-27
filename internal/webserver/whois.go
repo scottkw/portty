@@ -188,3 +188,33 @@ func (ws *WebServer) handlePeerCap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(map[string]string{"cap": token}) //nolint:errcheck
 }
+
+// handlePeerDesktopCap handles POST /api/peer/desktop/cap, the twin of
+// handlePeerCap: a same-account peer daemon receives the standing
+// always-available desktop token with nothing to type. The request checks are the
+// same (JSON content type forces a CORS preflight this server never answers; body
+// capped at 8 KiB). The token comes from an optional DesktopToken method on the
+// backend, so DesktopBackend and its fakes do not change; no backend, no method or
+// "off" is a 404. Cache-Control: no-store; nothing is logged, so the token never
+// reaches a log line.
+func (ws *WebServer) handlePeerDesktopCap(w http.ResponseWriter, r *http.Request) {
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mt != "application/json" {
+		http.Error(w, "content type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
+	_, _ = io.Copy(io.Discard, http.MaxBytesReader(w, r.Body, 8<<10))
+	p, ok := ws.desktop.(interface{ DesktopToken() (string, bool) })
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	token, ok := p.DesktopToken()
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]string{"cap": token}) //nolint:errcheck
+}
