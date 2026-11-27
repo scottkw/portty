@@ -64,7 +64,7 @@ func (m *Manager) checkMediaIdentity(v *viewer, pair *webrtc.ICECandidatePair) {
 	}
 	slog.Warn("desktop: guest media identity", "viewer", string(v.ID)[:8], "kind", kind)
 	v.gs.emit(GuestEvent{Kind: AuditRevoked, Reason: ReasonMediaIdentityMismatch, Ident: v.Identity})
-	m.cutViewer(v, CloseGuestRevoked, guestReasonRevoked, false)
+	m.cutViewer(v, CloseGuestRevoked, guestReasonRevoked)
 }
 
 // mediaMismatch returns why the pair is not the admitted node's, or "" when it is.

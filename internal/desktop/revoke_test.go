@@ -148,6 +148,31 @@ func TestGuestRevoke_DenyListsTheUser(t *testing.T) {
 	}
 }
 
+// TestGuestRevoke_DisconnectOfAnAlreadyCutRowStillDenyLists: a viewer cut
+// another way (a replace, a media cut) stays in the list until its socket goes;
+// Disconnect on that row must still deny-list the person, or a reload is
+// re-admitted with the old grants.
+func TestGuestRevoke_DisconnectOfAnAlreadyCutRowStillDenyLists(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, withGuestInput(&fakeInputBridge{}))
+	g := e.joinGuestAs(ctx, t, 1001, "nodeA", false) // never answers the close: stays registered a while
+	if err := e.mgr.CloseViewerWith(g.viewerID(), desktop.CloseGuestReplaced, "replaced"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.mgr.CloseViewer(g.viewerID()); err != nil {
+		t.Fatalf("CloseViewer on the still-listed cut row: %v", err)
+	}
+	if !e.gs.IsDenied(1001) {
+		t.Fatal("the person is not deny-listed after Disconnect of an already-cut row")
+	}
+	c := e.dial(ctx, t, 1001, "nodeA")
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1}})
+	if code, _ := closeOf(ctx, t, c); code != desktop.CloseGuestDenied {
+		t.Errorf("a reconnect closed %d, want 4430", code)
+	}
+}
+
 // TestGuestRevoke_CutsEveryDeviceOfThePerson (WR-03): the person is the unit.
 // Disconnecting one row of a person watching on two devices cuts both; another
 // person stays.
