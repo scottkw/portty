@@ -150,3 +150,144 @@ describe('one-finger drag moves', () => {
     expect(normalizedDelta(40, 0, 2, 800, 500).ndx).toBeCloseTo(0.025, 9)
   })
 })
+
+// One finger down at (x,y), optionally wobbling, held for holdMs, then lifted.
+function touchFor(r: ReturnType<typeof rig>, holdMs: number, x = 100, y = 100, wobblePx = 0): void {
+  r.pad.start(ev(pt(x, y)))
+  if (wobblePx) r.pad.move(ev(pt(x + wobblePx, y)))
+  r.clock.advance(holdMs)
+  r.pad.end({ touches: [], changedTouches: [pt(x + wobblePx, y)] })
+}
+const kinds = (i: TrackpadIntent[]): string[] => i.map((x) => x.kind)
+
+describe('tap, double-tap, long-press and tap-then-drag', () => {
+  it('a 120 ms touch that moved 5 px is one tap, emitted only after the 300 ms window', () => {
+    const r = rig()
+    touchFor(r, 120, 100, 100, 5)
+    r.clock.advance(299)
+    expect(r.intents).toEqual([])
+    r.clock.advance(1)
+    expect(r.intents).toEqual([{ kind: 'tap', at: 120 }])
+    r.clock.advance(1000)
+    expect(r.intents).toHaveLength(1)
+  })
+
+  it('two taps 200 ms and 10 px apart are exactly one doubleTap with both tap times and no tap', () => {
+    const r = rig()
+    touchFor(r, 100, 100, 100) // lifts at 100
+    r.clock.advance(200)
+    touchFor(r, 100, 110, 100) // lifts at 400
+    r.clock.advance(1000)
+    expect(r.intents).toEqual([{ kind: 'doubleTap', at: [100, 400] }])
+  })
+
+  it('a second tap 350 ms after the first is two separate taps', () => {
+    const r = rig()
+    touchFor(r, 100)
+    r.clock.advance(350)
+    touchFor(r, 100)
+    r.clock.advance(1000)
+    expect(kinds(r.intents)).toEqual(['tap', 'tap'])
+  })
+
+  it('a second touch 150 ms after a tap that moves 30 px is dragStart, dragMove, dragEnd and no click', () => {
+    const r = rig()
+    touchFor(r, 100)
+    r.clock.advance(150)
+    r.pad.start(ev(pt(100, 100)))
+    for (let i = 1; i <= 6; i++) {
+      r.clock.advance(20)
+      r.pad.move(ev(pt(100 + i * 5, 100)))
+    }
+    r.pad.end({ touches: [], changedTouches: [pt(130, 100)] })
+    r.clock.advance(1000)
+    const k = kinds(r.intents)
+    expect(k[0]).toBe('dragStart')
+    expect(k.slice(1, -1).length).toBeGreaterThan(0)
+    expect(k.slice(1, -1).every((x) => x === 'dragMove')).toBe(true)
+    expect(k[k.length - 1]).toBe('dragEnd')
+    expect(k).not.toContain('tap')
+    expect(k).not.toContain('doubleTap')
+    const sum = r.intents.reduce((a, i) => a + (i.kind === 'dragMove' ? i.dx : 0), 0)
+    expect(sum).toBeGreaterThanOrEqual(30) // gain is never below 1
+  })
+
+  it('held 520 ms with 3 px of movement is one longPress at 500 ms and the lift adds nothing', () => {
+    const r = rig()
+    r.pad.start(ev(pt(100, 100)))
+    r.pad.move(ev(pt(103, 100)))
+    r.clock.advance(499)
+    expect(r.intents).toEqual([])
+    r.clock.advance(1)
+    expect(r.intents).toEqual([{ kind: 'longPress', at: 500 }])
+    r.clock.advance(20)
+    r.pad.end({ touches: [], changedTouches: [pt(103, 100)] })
+    r.clock.advance(1000)
+    expect(r.intents).toHaveLength(1)
+  })
+
+  it('a 12 px move before 500 ms cancels the long press and becomes a move', () => {
+    const r = rig()
+    r.pad.start(ev(pt(100, 100)))
+    r.clock.advance(100)
+    r.pad.move(ev(pt(112, 100)))
+    r.clock.advance(1000)
+    expect(kinds(r.intents)).toEqual(['move'])
+  })
+
+  it('boundaries: 8 px and 250 ms still tap; 9 px or 251 ms do not', () => {
+    let r = rig()
+    touchFor(r, 250, 100, 100, 8)
+    r.clock.advance(300)
+    expect(kinds(r.intents)).toEqual(['tap'])
+
+    r = rig()
+    touchFor(r, 251)
+    r.clock.advance(1000)
+    expect(r.intents).toEqual([])
+
+    r = rig()
+    touchFor(r, 100, 100, 100, 9)
+    r.clock.advance(1000)
+    expect(kinds(r.intents)).toEqual(['move'])
+  })
+
+  it('boundaries: a second touch at 300 ms and 24 px still double-taps', () => {
+    const r = rig()
+    touchFor(r, 100) // lifts at 100, tap timer due at 400
+    r.clock.advance(299)
+    r.clock.jump(1) // the touch beats the overdue timer: exactly 300 ms after the lift
+    touchFor(r, 100, 124, 100) // 24 px away
+    r.clock.advance(1000)
+    expect(kinds(r.intents)).toEqual(['doubleTap'])
+  })
+
+  it('a second tap farther than 24 px is two taps, not a double-tap', () => {
+    const r = rig()
+    touchFor(r, 100)
+    r.clock.advance(100)
+    touchFor(r, 100, 125, 100)
+    r.clock.advance(1000)
+    expect(kinds(r.intents)).toEqual(['tap', 'tap'])
+  })
+
+  it('cancel() in every pending state clears the timers and emits nothing', () => {
+    let r = rig()
+    r.pad.start(ev(pt(100, 100))) // pending long press
+    r.pad.cancel()
+    expect(r.clock.pending()).toBe(0)
+
+    r = rig()
+    touchFor(r, 100) // pending single tap
+    r.pad.cancel()
+    expect(r.clock.pending()).toBe(0)
+
+    r = rig()
+    touchFor(r, 100)
+    r.pad.start(ev(pt(100, 100))) // second touch after a tap
+    r.pad.cancel()
+    expect(r.clock.pending()).toBe(0)
+    r.clock.advance(5000)
+    expect(r.intents).toEqual([])
+  })
+})
