@@ -11,8 +11,13 @@ import {
   type SignalTransport,
 } from '../desktopClient'
 import {
+  DESKTOP_TAB_CARDS,
+  LABEL_TOOLTIP,
+  LOCAL_NETWORK_CARD,
   connectVerdict,
+  createHiddenPause,
   createPeerDesktopOptions,
+  desktopTabLabel,
   type PeerDesktopConnectResult,
 } from '../peerDesktop'
 
@@ -317,5 +322,164 @@ describe('Local Network watcher', () => {
     expect(e.blocked).toEqual([])
     e.client.stop()
     e.peer.dispose()
+  })
+})
+
+describe('hidden-window pause', () => {
+  function hiddenEnv(initial: 'visible' | 'hidden' = 'visible') {
+    const clock = new FakeClock()
+    const doc = Object.assign(new EventTarget(), { visibilityState: initial }) as unknown as Document & {
+      visibilityState: string
+    }
+    const calls: string[] = []
+    const dispose = createHiddenPause({
+      doc,
+      clock,
+      onPause: () => calls.push('pause'),
+      onResume: () => calls.push('resume'),
+    })
+    const set = (s: 'visible' | 'hidden') => {
+      doc.visibilityState = s
+      doc.dispatchEvent(new Event('visibilitychange'))
+    }
+    return { clock, doc, calls, dispose, set }
+  }
+
+  it('does nothing when the page is visible again after 119 s', async () => {
+    const h = hiddenEnv()
+    h.set('hidden')
+    await h.clock.advance(119000)
+    h.set('visible')
+    await h.clock.advance(200000)
+    expect(h.calls).toEqual([])
+  })
+
+  it('pauses exactly once at 120 s hidden, resumes on the next visible, and restarts the cycle', async () => {
+    const h = hiddenEnv()
+    h.set('hidden')
+    await h.clock.advance(120000)
+    await h.clock.advance(120000)
+    expect(h.calls).toEqual(['pause'])
+    h.set('visible')
+    expect(h.calls).toEqual(['pause', 'resume'])
+    h.set('hidden')
+    await h.clock.advance(120000)
+    expect(h.calls).toEqual(['pause', 'resume', 'pause'])
+  })
+
+  it('counts a window that is already hidden when the watcher starts', async () => {
+    const h = hiddenEnv('hidden')
+    await h.clock.advance(120000)
+    expect(h.calls).toEqual(['pause'])
+  })
+
+  it('dispose removes the listener and the pending timer', async () => {
+    const h = hiddenEnv()
+    h.set('hidden')
+    h.dispose()
+    await h.clock.advance(200000)
+    h.set('visible')
+    h.set('hidden')
+    await h.clock.advance(200000)
+    expect(h.calls).toEqual([])
+  })
+})
+
+describe('desktopTabLabel', () => {
+  const base = {
+    host: 'office-air.example.ts.net',
+    status: 'streaming' as const,
+    hasPicture: true,
+    captured: false,
+    locked: false,
+    controlAllowed: true,
+  }
+
+  it('controlling: captured shows the chord, also while locked', () => {
+    const want = { line1: 'Controlling office-air', line2: 'Release: Ctrl+Option+Cmd+Return', controlling: true }
+    expect(desktopTabLabel({ ...base, captured: true })).toEqual(want)
+    expect(desktopTabLabel({ ...base, captured: true, locked: true })).toEqual(want)
+  })
+
+  it('streaming with control allowed and the keyboard not captured says to click the picture', () => {
+    expect(desktopTabLabel(base)).toEqual({
+      line1: 'On office-air',
+      line2: 'Click the picture to control',
+      controlling: false,
+    })
+  })
+
+  it('locked and not controlling says Locked', () => {
+    expect(desktopTabLabel({ ...base, locked: true }).line2).toBe('Locked')
+  })
+
+  it('View Only says View only, and so does a Mac that does not allow control', () => {
+    expect(desktopTabLabel({ ...base, mode: 'view' }).line2).toBe('View only')
+    expect(desktopTabLabel({ ...base, controlAllowed: false }).line2).toBe('View only')
+  })
+
+  it.each(['connecting', 'reconnecting', 'unreachable', 'desktop_off', 'token_rejected', 'other_account'] as const)(
+    'status %s says Not connected, even if the keyboard was captured',
+    (status) => {
+      expect(desktopTabLabel({ ...base, status, captured: true })).toEqual({
+        line1: 'On office-air',
+        line2: 'Not connected',
+        controlling: false,
+      })
+    },
+  )
+
+  it('streaming without a picture yet says Not connected', () => {
+    expect(desktopTabLabel({ ...base, hasPicture: false }).line2).toBe('Not connected')
+  })
+
+  it('LABEL_TOOLTIP is the UI-SPEC sentence with the short host', () => {
+    expect(LABEL_TOOLTIP('office-air')).toBe(
+      "While you control office-air, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Return to get Portty's shortcuts back.",
+    )
+  })
+})
+
+describe('card copy', () => {
+  it('connecting', () => {
+    expect(DESKTOP_TAB_CARDS.connecting).toEqual({
+      heading: 'Connecting…',
+      body: 'Waiting for the first picture from the other Mac. If macOS asks to find devices on local networks, choose Allow.',
+    })
+  })
+  it('unreachable', () => {
+    expect(DESKTOP_TAB_CARDS.unreachable).toEqual({
+      heading: "Can't reach this Mac",
+      body: "Check that it's awake and on your tailnet. Portty keeps trying.",
+      action: 'Reconnect',
+    })
+  })
+  it('desktop off', () => {
+    expect(DESKTOP_TAB_CARDS.desktop_off).toEqual({
+      heading: 'Desktop sharing is off on this Mac',
+      body: "Turn on Always-available desktop in Portty's Settings, under Sharing, on that Mac.",
+    })
+  })
+  it('refused', () => {
+    expect(DESKTOP_TAB_CARDS.token_rejected).toEqual({
+      heading: "Can't open this desktop",
+      body: 'That Mac refused the connection. Check that both Macs are signed in to the same Tailscale account, then try again.',
+      action: 'Reconnect',
+    })
+  })
+  it('click to start', () => {
+    expect(DESKTOP_TAB_CARDS.tap).toEqual({
+      heading: 'Click to start',
+      body: 'Portty needs a click to start the picture.',
+      action: 'Click to Start',
+    })
+  })
+  it('Local Network', () => {
+    expect(LOCAL_NETWORK_CARD).toEqual({
+      heading: 'Portty needs Local Network access to show this desktop',
+      body: 'Open System Settings, go to Privacy & Security, then Local Network, and turn on Portty. Or open the desktop in your browser.',
+      openSettings: 'Open System Settings',
+      openBrowser: 'Open in Browser',
+    })
   })
 })
