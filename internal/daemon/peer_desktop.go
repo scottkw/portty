@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/scottkw/portty/internal/tailnet"
@@ -80,9 +79,10 @@ func (a *API) connectPeerDesktop(ctx context.Context, host string) (tailnet.Peer
 	switch {
 	case errors.Is(err, tailnet.ErrPeerForbidden):
 		return peer, &peerDesktopFail{http.StatusForbidden, PeerConnectErrorResponse{Error: PeerErrForbidden, Detail: short}}
-	case errors.Is(err, tailnet.ErrPeerDesktopOff), errors.Is(err, syscall.ECONNREFUSED):
-		// 404 is the always-available-off answer; a refused share port means the
-		// share server is not running at all. Either way the held token is stale.
+	case errors.Is(err, tailnet.ErrPeerDesktopOff):
+		// 404 is the always-available-off answer, so the held token is stale.
+		// A refused share port is not off (the peer daemon restarting or just
+		// waking): it falls to unreachable below, which the viewer retries.
 		a.desktopCaps.Delete(fqdn)
 		return peer, &peerDesktopFail{http.StatusConflict, PeerConnectErrorResponse{Error: PeerErrDesktopOff, Detail: short}}
 	case err != nil:

@@ -156,7 +156,9 @@ func TestPeerDesktop_CapRouteFailures(t *testing.T) {
 	}
 }
 
-func TestPeerDesktop_RefusedSharePortIsDesktopOff(t *testing.T) {
+// A refused share port is the peer daemon restarting or just waking, not "off":
+// only a 404 is terminal, so this stays retryable and the held token is kept.
+func TestPeerDesktop_RefusedSharePortIsRetryable(t *testing.T) {
 	peer := newFakeDesktopPeer(t, echoWS)
 	a := newViewerFor(t, peer.srv.URL)
 	peer.srv.Close()
@@ -164,11 +166,11 @@ func TestPeerDesktop_RefusedSharePortIsDesktopOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, body := postPeerDesktop(t, a, officeFQDN)
-	if e := decodeConnectErr(t, body); code != http.StatusConflict || e.Error != PeerErrDesktopOff {
-		t.Fatalf("POST = %d %s; want 409 desktop_off", code, body)
+	if e := decodeConnectErr(t, body); code != http.StatusBadGateway || e.Error != PeerErrUnreachable {
+		t.Fatalf("POST = %d %s; want 502 unreachable", code, body)
 	}
-	if _, _, _, ok := a.desktopCaps.Get(officeFQDN); ok {
-		t.Fatal("the stored token survived a refused share port")
+	if _, _, held, ok := a.desktopCaps.Get(officeFQDN); !ok || held != "previous" {
+		t.Fatal("a refused share port dropped the held token")
 	}
 }
 
