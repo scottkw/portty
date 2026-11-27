@@ -43,7 +43,7 @@ export interface DesktopTabProps {
  * browser page uses) over the loopback connection 21-05 builds from the ConnectPeerDesktop binding.
  * The tab only ever knows the host, the loopback URL and error codes: the desktop token stays in the daemon.
  */
-export function DesktopTab({ tab, onDesktopState }: DesktopTabProps): React.ReactElement {
+export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }: DesktopTabProps): React.ReactElement {
   const connectHost = tab.connectHost ?? tab.peerHost ?? ''
   const [localNetwork, setLocalNetwork] = useState(false)
   // The client was stopped because the window stayed hidden; the Reconnecting chip shows until a picture or status returns.
@@ -53,6 +53,23 @@ export function DesktopTab({ tab, onDesktopState }: DesktopTabProps): React.Reac
   const statusRef = useRef<ClientStatus['kind']>('connecting')
   const stateCb = useRef(onDesktopState)
   stateCb.current = onDesktopState
+  // What the toolbar label is made from; each piece is reported by the viewer.
+  const [view, setView] = useState<Omit<pd.DesktopTabLabelInput, 'host'>>({
+    status: 'connecting',
+    hasPicture: false,
+    captured: false,
+    locked: false,
+    mode: 'control',
+    controlAllowed: false,
+  })
+  const patch = useCallback((p: Partial<typeof view>) => setView((v) => ({ ...v, ...p })), [])
+  const labelCb = useRef(onLabel)
+  labelCb.current = onLabel
+  const label = pd.desktopTabLabel({ host: connectHost, ...view })
+  useEffect(() => {
+    // Only the active tab owns the toolbar label (like the On <host> chip).
+    labelCb.current?.(active ? { ...label, tooltip: pd.LABEL_TOOLTIP(connectHost) } : null)
+  }, [active, connectHost, label.line1, label.line2, label.controlling])
 
   // Built once per mount: the options own the first connect, so a re-render must not make another.
   const built = useRef<ReturnType<typeof pd.createPeerDesktopOptions> | null>(null)
@@ -158,8 +175,18 @@ export function DesktopTab({ tab, onDesktopState }: DesktopTabProps): React.Reac
       onStatus={(s) => {
         statusRef.current = s.kind
         setPaused(false)
+        patch({ status: s.kind })
       }}
-      onDesktopState={(s) => stateCb.current(connectHost, rowState(s))}
+      onDesktopState={(s) => {
+        stateCb.current(connectHost, rowState(s))
+        patch({ locked: s?.locked === true || s?.state === 'locked' })
+      }}
+      onPicture={(hasPicture) => patch({ hasPicture })}
+      onCaptureChange={(captured) => patch({ captured })}
+      onModeChange={(mode) => patch({ mode })}
+      onControlChange={({ available }) => patch({ controlAllowed: available })}
+      controlRef={controlRef}
+      hideCaptureNotices
     />
   )
 }

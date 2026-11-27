@@ -2988,3 +2988,53 @@ html:has(.desktop-view:not(.desktop-view--embedded)) body {
   padding: 0;
   background: var(--color-viewer-bg);
 }
+
+/* Toolbar label of the Desktop tab (21-UI-SPEC "Toolbar label"). Fixed width in every state, so entering or
+   leaving control mode never reflows the tab strip. Line 1 (the host) ends with an ellipsis; line 2 never truncates. */
+.toolbar-chip--desktop {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  width: 232px;
+  max-width: 232px;
+  height: 36px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border-radius: var(--hub-radius-sm);
+  overflow: visible;
+}
+.toolbar-chip--desktop .toolbar-chip__line1 {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  color: var(--color-text);
+}
+.toolbar-chip--desktop .toolbar-chip__line2 {
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+/* The one accent fill in the tab chrome: the keyboard belongs to the other Mac. */
+.toolbar-chip--desktop[data-control="on"] {
+  background: var(--color-selection-fill);
+  color: var(--color-on-accent);
+}
+.toolbar-chip--desktop[data-control="on"] .toolbar-chip__line1 {
+  font-weight: 600;
+  color: var(--color-on-accent);
+}
+.toolbar-chip--desktop[data-control="on"] .toolbar-chip__line2 {
+  color: var(--color-on-accent);
+}
+
+/* A Desktop row whose Mac reports a muted state (Needs permission, Display asleep, ...): the line under it
+   carries the words, the row's own name and icon go quiet. The selected pill keeps its on-accent text. */
+.sidebar__row[data-muted="true"]:not([aria-current="page"]) .sidebar__row-name,
+.sidebar__row[data-muted="true"]:not([aria-current="page"]) .sidebar__row-icon {
+  color: var(--color-text-secondary);
+}

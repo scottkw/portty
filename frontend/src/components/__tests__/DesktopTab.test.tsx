@@ -294,7 +294,13 @@ describe('the toolbar label feed (Task 3)', () => {
   const last = () => onLabel.mock.calls[onLabel.mock.calls.length - 1][0] as
     | { line1: string; line2: string; controlling: boolean; tooltip: string }
     | null
-  const ownAccount = () => emit('rights', { control: true, clipboard: true, surface: true })
+  const ownAccount = () => {
+    const video = container.querySelector('video')!
+    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+      Object.defineProperty(video, a, { configurable: true, value: b })
+    }
+    emit('rights', { control: true, clipboard: true, surface: true })
+  }
   async function picture() {
     emit('status', { kind: 'streaming' })
     emit('track', {} as MediaStream)
@@ -314,7 +320,7 @@ describe('the toolbar label feed (Task 3)', () => {
     render()
     ownAccount()
     await picture()
-    act(() => container.querySelector('.desktop-stage')!.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 5, bubbles: true, button: 0, pointerId: 1 })))
+    act(() => container.querySelector('.desktop-stage')!.dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 })))
     expect(last()).toMatchObject({ line1: 'Controlling office-air', controlling: true })
     act(() => (container.querySelector('textarea') as HTMLTextAreaElement).blur())
     emit('state', { state: 'locked', viewers: 1, locked: true })

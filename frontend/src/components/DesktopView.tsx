@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
   ClipboardDocumentCheckIcon,
@@ -260,6 +260,14 @@ export interface DesktopViewProps {
   paused?: boolean
   /** True while a picture shows and no card covers it. */
   onPicture?: (has: boolean) => void
+  /** True when the stage has the keyboard (the user clicked or tabbed onto it), false when it goes. */
+  onCaptureChange?: (captured: boolean) => void
+  /** The bar's View Only or Control choice, reported at mount and on every change. */
+  onModeChange?: (mode: ControlMode) => void
+  /** What the host shell may do in control mode: release keys, give the keyboard back, show a notice. */
+  controlRef?: React.Ref<DesktopControlHandle>
+  /** The host shows who owns the keyboard itself, so the two capture notices (Typing goes to the Mac, Typing stays on this device) never render. */
+  hideCaptureNotices?: boolean
 }
 
 /**
@@ -285,6 +293,10 @@ export function DesktopView({
   hostCard = null,
   paused: hostPaused = false,
   onPicture,
+  onCaptureChange,
+  onModeChange,
+  controlRef,
+  hideCaptureNotices = false,
 }: DesktopViewProps = {}): React.ReactElement {
   const rootRef = useRef<HTMLDivElement>(null)
   const controlSegRef = useRef<HTMLButtonElement>(null)
@@ -308,6 +320,12 @@ export function DesktopView({
   stateCb.current = onDesktopState
   const pictureCb = useRef(onPicture)
   pictureCb.current = onPicture
+  const captureCb = useRef(onCaptureChange)
+  captureCb.current = onCaptureChange
+  const modeCb = useRef(onModeChange)
+  modeCb.current = onModeChange
+  const hideCaptureRef = useRef(hideCaptureNotices)
+  hideCaptureRef.current = hideCaptureNotices
   const capturedRef = useRef(false)
   const noticeSeq = useRef(0)
 
@@ -357,10 +375,10 @@ export function DesktopView({
     setNoticeFading(false)
     setNotice({ ...n, id: noticeSeq.current })
   }, [])
-  const typingStays = useCallback(
-    () => pushNotice({ Icon: CursorArrowRaysIcon, text: 'Typing stays on this device', dwell: 3000 }),
-    [pushNotice],
-  )
+  const typingStays = useCallback(() => {
+    if (hideCaptureRef.current) return
+    pushNotice({ Icon: CursorArrowRaysIcon, text: 'Typing stays on this device', dwell: 3000 })
+  }, [pushNotice])
 
   // The label returns to the previous surface and the user is told, in words, that it did not happen.
   const switchFailed = useCallback(() => {
@@ -474,7 +492,7 @@ export function DesktopView({
             onCapture: (c) => {
               capturedRef.current = c
               setCaptured(c)
-              if (!c) return
+              if (!c || hideCaptureRef.current) return
               let seen = false
               try {
                 seen = window.localStorage.getItem(HINT_KEY) === '1'
@@ -636,6 +654,23 @@ export function DesktopView({
   useEffect(() => {
     changeCb.current?.({ available: canControl, captured })
   }, [canControl, captured])
+  useEffect(() => {
+    captureCb.current?.(captured)
+  }, [captured])
+  useEffect(() => {
+    modeCb.current?.(mode)
+  }, [mode])
+
+  useImperativeHandle(
+    controlRef,
+    () => ({
+      // The user's own doing (a tab switch, a click away), so no Held keys notice.
+      releaseAll: () => inputCtl.current?.releaseAll('blur'),
+      releaseKeyboard: () => inputRef.current?.blur(),
+      notify: (text, kind) => pushNotice({ Icon: InformationCircleIcon, text, dwell: 3000, alert: kind === 'alert' }),
+    }),
+    [pushNotice],
+  )
 
   // Leaving full screen (the button, a long Esc, the browser) lets go of the keyboard lock and every held key.
   useEffect(() => {
@@ -950,7 +985,7 @@ export function DesktopView({
               switching: switching !== null,
               mode,
               canSurface,
-              fullscreenAvailable: document.fullscreenEnabled === true,
+              fullscreenAvailable: !embedded && document.fullscreenEnabled === true,
               canClipboard,
             }}
             surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}

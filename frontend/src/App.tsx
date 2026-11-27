@@ -1058,6 +1058,18 @@ function App(): React.ReactElement {
     })
   }, [])
 
+  // Each Desktop tab's toolbar label, by tab id: a tab that stops being active reports null after the new
+  // active tab reported its own, so the label shown is the active tab's entry, never the last one reported.
+  type DesktopLabel = NonNullable<React.ComponentProps<typeof TabBar>['desktopLabel']>
+  const [desktopLabels, setDesktopLabels] = useState<Record<string, DesktopLabel | null>>({})
+  const handleDesktopLabel = useCallback((tabId: string, l: DesktopLabel | null) => {
+    setDesktopLabels((prev) => {
+      const old = prev[tabId] ?? null
+      if (old === l || (old && l && old.line1 === l.line1 && old.line2 === l.line2 && old.controlling === l.controlling)) return prev
+      return { ...prev, [tabId]: l }
+    })
+  }, [])
+
   // Portty 05-05 (SHAR-07): run before each peer-tab redial. Re-running the
   // connect re-checks same-account access and Share, refills this daemon's cap
   // store, and the relay port may be new after a daemon restart. It must not
@@ -1234,6 +1246,7 @@ function App(): React.ReactElement {
           shareButtonRef={shareButtonRef}
           shared={activeShared}
           shareDisabled={tailscaleOff && !activeShared && !sharePopoverOpen}
+          desktopLabel={activeId !== null ? desktopLabels[activeId] ?? null : null}
         />
 
         {/* INVARIANT: this gating expression must include the trigger of EVERY banner
@@ -1494,7 +1507,12 @@ function App(): React.ReactElement {
                 inert={hidden}
               >
                 <ErrorBoundary label="desktop">
-                  <DesktopTab tab={tab} active={!hidden} onDesktopState={handleDesktopState} />
+                  <DesktopTab
+                    tab={tab}
+                    active={!hidden}
+                    onDesktopState={handleDesktopState}
+                    onLabel={(l) => handleDesktopLabel(tab.id, l)}
+                  />
                 </ErrorBoundary>
               </div>
             )
