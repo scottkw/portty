@@ -2,17 +2,24 @@ package desktop
 
 // unlock.go: remote unlock (UNLK-01). An own-account viewer sends a macOS login
 // password as one binary message on the input data channel; the daemon wakes
-// the screen, types the password through the native bridge, checks the lock and
-// reports. The password lives in one daemon-owned byte buffer for the attempt
-// and is zeroed in a defer. It is never a Go string, never logged, never put in
-// an error, a message or a counter name. Guests never get the capability.
+// the screen, types the password through the native bridge, checks the lock,
+// retries once and reports. The password lives in one daemon-owned byte buffer
+// for the attempt and is zeroed in a defer. It is never a Go string, never
+// logged, never put in an error, a message or a counter name. Guests never get
+// the capability.
 //
 // The lock gate (gates.go inputLocked) is not loosened: the typer calls the
 // bridge directly and never goes through handleKey or pressAllowed.
+//
+// The throttle counts submits, not macOS checks: a failed submit counts once
+// although its retry means the Mac checked the password twice, so the pause
+// arrives after at most 6 checks. The count and the pause live in daemon memory
+// and a daemon restart resets them (macOS's own policy is the backstop).
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -33,6 +40,10 @@ const (
 	unlockKeyGap = 60 * time.Millisecond  // between typed strokes
 	unlockCheck  = 3 * time.Second        // how long after Return the lock is polled
 	unlockPoll   = 250 * time.Millisecond // between lock reads while polling
+
+	unlockSpacing     = 5 * time.Second  // no submit this soon after an attempt that typed
+	unlockPause       = 15 * time.Minute // how long unlock stays paused after the failures
+	unlockMaxFailures = 3                // consecutive failed submits that start the pause
 )
 
 // unlockWakeKey is the one key posted to reveal the password field; it must
@@ -87,20 +98,31 @@ type UnlockBridge interface {
 	SessionLocked() (bool, error)
 }
 
-// Unlock states of the {type: unlock} message.
+// States and reasons of the {type: unlock} message (the wire contract in
+// 23-01-PLAN).
 const (
 	typeUnlock = "unlock"
 
-	unlockIdle      = "idle"
-	unlockUnlocking = "unlocking"
-	unlockUnlocked  = "unlocked"
-	unlockFailed    = "failed"
-	unlockErrorSt   = "error"
+	unlockIdle        = "idle"
+	unlockUnlocking   = "unlocking"
+	unlockRetrying    = "retrying"
+	unlockUnlocked    = "unlocked"
+	unlockFailed      = "failed"
+	unlockRateLimited = "rate_limited"
+	unlockPaused      = "paused"
+	unlockRefused     = "refused"     // declined before typing: Reason says why
+	unlockUnavailable = "unavailable" // cannot type at all: Reason says why
+	unlockErrorSt     = "error"
+
+	reasonCapsLock     = "caps_lock"
+	reasonUnmappable   = "unmappable"
+	reasonUnlockAccess = "accessibility"
 )
 
-// msgUnlock tells an unlock-capable viewer where an attempt is. Failures is the
-// consecutive failed-submit count; ByPortty is true on unlocked when the daemon
-// typed the password (as opposed to someone at the Mac).
+// msgUnlock tells an unlock-capable viewer where unlock is. Failures is the
+// consecutive failed-submit count; WaitMS the remaining wait of rate_limited and
+// paused; ByPortty is true on unlocked when the daemon typed the password (as
+// opposed to someone at the Mac).
 type msgUnlock struct {
 	Type     string `json:"type"`
 	State    string `json:"state"`
@@ -112,7 +134,7 @@ type msgUnlock struct {
 
 // UnlockStats is the unlock state as the host sees it: counts and states only.
 type UnlockStats struct {
-	State       string
+	State       string // idle, unlocking, retrying or paused
 	Failures    int
 	RelockArmed bool
 }
@@ -120,11 +142,13 @@ type UnlockStats struct {
 // unlockState is the Manager's unlock bookkeeping behind one leaf mutex (never
 // held across a native call, a sleep or a send).
 type unlockState struct {
-	mu       sync.Mutex
-	running  bool   // an attempt is in flight
-	state    string // unlocking while running
-	failures int
-	armed    bool // a Portty unlock succeeded: the re-lock rule applies (23-05)
+	mu         sync.Mutex
+	running    bool   // an attempt is in flight
+	state      string // unlocking or retrying while running
+	lastEnd    time.Time
+	failures   int
+	pauseUntil time.Time
+	armed      bool // a Portty unlock succeeded: the re-lock rule applies (23-05)
 }
 
 // unlockResult is how an attempt ended.
@@ -133,7 +157,7 @@ type unlockResult int
 const (
 	ulNone     unlockResult = iota // refused or ended before typing; the submitter was told
 	ulUnlocked                     // the Mac reports unlocked
-	ulFailed                       // still locked after Return
+	ulFailed                       // still locked after the retry
 	ulError                        // the bridge failed, or the attempt panicked
 )
 
@@ -144,21 +168,39 @@ type ulRun struct {
 	typed   bool // typing began
 }
 
+// expireLocked ends a pause whose time has passed and starts the count over;
+// u.mu is held.
+func (u *unlockState) expireLocked(now time.Time) {
+	if !u.pauseUntil.IsZero() && !now.Before(u.pauseUntil) {
+		u.pauseUntil, u.failures = time.Time{}, 0
+	}
+}
+
+// viewLocked is the state a viewer is told now and its wait; u.mu is held.
+func (u *unlockState) viewLocked(now time.Time) (state string, waitMS int) {
+	u.expireLocked(now)
+	switch {
+	case u.running:
+		return u.state, 0
+	case !u.pauseUntil.IsZero():
+		return unlockPaused, int(u.pauseUntil.Sub(now).Milliseconds())
+	}
+	return unlockIdle, 0
+}
+
 // UnlockStats reports the unlock state.
 func (m *Manager) UnlockStats() UnlockStats {
 	u := &m.ul
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	st := unlockIdle
-	if u.running {
-		st = u.state
-	}
+	st, _ := u.viewLocked(m.d.Now())
 	return UnlockStats{State: st, Failures: u.failures, RelockArmed: u.armed}
 }
 
-// unlockSnapshotLocked is the message for the current state; u.mu is held.
-func (m *Manager) unlockSnapshotLocked(state string) msgUnlock {
-	return msgUnlock{Type: typeUnlock, State: state, Failures: m.ul.failures}
+// msgLocked builds a message of this state with the current failure count; u.mu
+// is held.
+func (u *unlockState) msgLocked(state, reason string, waitMS int) msgUnlock {
+	return msgUnlock{Type: typeUnlock, State: state, Failures: u.failures, Reason: reason, WaitMS: waitMS}
 }
 
 // handleUnlockBytes takes one unlock request off the input channel. data[0] is
@@ -193,36 +235,67 @@ func (m *Manager) runUnlock(v *viewer, secret secretBytes) {
 	res = m.attemptUnlock(v, secret, &r)
 }
 
-// attemptUnlock is the sequence: a fresh lock read, the single attempt slot,
-// the layout map (nothing is typed if a character has no key), release of held
-// input, the wake key, a settle, the strokes, Return, and the lock poll.
+// attemptUnlock is the sequence: a fresh lock read, the throttle and the single
+// attempt slot, the refusals that cost nothing (Accessibility, Caps Lock, a
+// character with no key), release of held input, the wake key, a settle, the
+// strokes, Return, the lock poll, and one retype if the Mac is still locked.
 func (m *Manager) attemptUnlock(v *viewer, secret secretBytes, r *ulRun) unlockResult {
 	b := m.d.Unlock
 	locked, err := b.SessionLocked()
 	if err != nil {
-		return m.unlockTell(v, unlockErrorSt, "", "unlock_error")
+		return m.unlockTell(v, unlockErrorSt, "", 0, "unlock_error")
 	}
 	if !locked {
-		return m.unlockTell(v, unlockIdle, "", "unlock_not_locked")
+		return m.unlockTell(v, unlockIdle, "", 0, "unlock_not_locked")
 	}
 
 	u := &m.ul
+	now := m.d.Now()
 	u.mu.Lock()
-	if u.running {
+	u.expireLocked(now)
+	switch {
+	case !u.pauseUntil.IsZero():
+		wait := int(u.pauseUntil.Sub(now).Milliseconds())
+		msg := u.msgLocked(unlockPaused, "", wait)
 		u.mu.Unlock()
-		return m.unlockTell(v, unlockErrorSt, "", "unlock_busy") // refined to rate_limited with the throttle
+		m.countInput("unlock_paused")
+		m.sendUnlock(v, msg)
+		return ulNone
+	case u.running || now.Before(u.lastEnd.Add(unlockSpacing)):
+		wait := unlockSpacing // the earliest a new try can start is spacing after this one ends
+		if !u.running {
+			wait = u.lastEnd.Add(unlockSpacing).Sub(now)
+		}
+		msg := u.msgLocked(unlockRateLimited, "", int(wait.Milliseconds()))
+		u.mu.Unlock()
+		m.countInput("unlock_rate_limited")
+		m.sendUnlock(v, msg)
+		return ulNone
 	}
 	u.running, u.state = true, unlockUnlocking
 	r.slot = true
 	u.mu.Unlock()
 
+	if in, _ := m.ControlState(); in == ControlNeedsAccessibility {
+		return m.unlockTell(v, unlockUnavailable, reasonUnlockAccess, 0, "unlock_refused")
+	}
+	caps, err := b.CapsLockOn()
+	switch {
+	case err != nil:
+		return m.unlockTell(v, unlockErrorSt, "", 0, "unlock_error")
+	case caps:
+		return m.unlockTell(v, unlockRefused, reasonCapsLock, 0, "unlock_refused")
+	}
 	strokes, err := b.MapRunes(secret.bytes())
 	r.strokes = strokes
-	if err != nil || len(strokes) == 0 {
-		return m.unlockTell(v, unlockErrorSt, "", "unlock_error")
+	switch {
+	case err != nil && isUnmappable(err):
+		return m.unlockTell(v, unlockRefused, reasonUnmappable, 0, "unlock_refused")
+	case err != nil || len(strokes) == 0:
+		return m.unlockTell(v, unlockErrorSt, "", 0, "unlock_error")
 	}
 
-	m.sendUnlock(nil, m.unlockMsg(unlockUnlocking, "", 0))
+	m.unlockProgress(unlockUnlocking)
 	m.releaseHeldAll("unlock")
 	if err := b.Wake(unlockWakeKey); err != nil {
 		return ulError
@@ -231,10 +304,30 @@ func (m *Manager) attemptUnlock(v *viewer, secret secretBytes, r *ulRun) unlockR
 	if !m.typeStrokes(r, strokes) {
 		return ulError
 	}
-	if m.lockedAfterReturn() {
-		return ulFailed
+	if !m.lockedAfterReturn() {
+		return ulUnlocked
 	}
-	return ulUnlocked
+	// Still locked: one retype from the same strokes, never a second.
+	m.unlockProgress(unlockRetrying)
+	if !m.typeStrokes(r, strokes) {
+		return ulError
+	}
+	if !m.lockedAfterReturn() {
+		return ulUnlocked
+	}
+	return ulFailed
+}
+
+func isUnmappable(err error) bool { return errors.Is(err, ErrUnmappable) }
+
+// unlockProgress records the running state and tells every unlock-capable viewer.
+func (m *Manager) unlockProgress(state string) {
+	u := &m.ul
+	u.mu.Lock()
+	u.state = state
+	msg := u.msgLocked(state, "", 0)
+	u.mu.Unlock()
+	m.sendUnlock(nil, msg)
 }
 
 // typeStrokes types each stroke with unlockKeyGap between them and presses
@@ -280,42 +373,49 @@ func (m *Manager) unlockSleep(d time.Duration) {
 	time.Sleep(d)
 }
 
-// unlockMsg builds a message of this state with the current failure count.
-func (m *Manager) unlockMsg(state, reason string, waitMS int) msgUnlock {
-	m.ul.mu.Lock()
-	defer m.ul.mu.Unlock()
-	msg := m.unlockSnapshotLocked(state)
-	msg.Reason, msg.WaitMS = reason, waitMS
-	return msg
-}
-
 // unlockTell answers a refusal to the submitter alone and counts it. Nothing
-// was typed, so the attempt does not count as a failure.
-func (m *Manager) unlockTell(v *viewer, state, reason, counter string) unlockResult {
+// was typed, so it does not count as a failed submit and does not start the
+// spacing window.
+func (m *Manager) unlockTell(v *viewer, state, reason string, waitMS int, counter string) unlockResult {
 	m.countInput(counter)
-	m.sendUnlock(v, m.unlockMsg(state, reason, 0))
+	u := &m.ul
+	u.mu.Lock()
+	msg := u.msgLocked(state, reason, waitMS)
+	u.mu.Unlock()
+	m.sendUnlock(v, msg)
 	return ulNone
 }
 
 // unlockEnd releases the attempt slot and reports how the attempt ended to
-// every unlock-capable viewer.
+// every unlock-capable viewer: the spacing window starts when typing began, a
+// failed submit counts once, the third in a row starts the pause, a success
+// resets the count.
 func (m *Manager) unlockEnd(v *viewer, r *ulRun, res unlockResult) {
 	u := &m.ul
+	now := m.d.Now()
 	u.mu.Lock()
 	if r.slot {
 		u.running, u.state = false, ""
+		if r.typed {
+			u.lastEnd = now
+		}
 	}
 	var msg msgUnlock
 	switch res {
 	case ulUnlocked:
 		u.failures, u.armed = 0, true
-		msg = m.unlockSnapshotLocked(unlockUnlocked)
+		msg = u.msgLocked(unlockUnlocked, "", 0)
 		msg.ByPortty = true
 	case ulFailed:
 		u.failures++
-		msg = m.unlockSnapshotLocked(unlockFailed)
+		if u.failures >= unlockMaxFailures {
+			u.pauseUntil = now.Add(unlockPause)
+			msg = u.msgLocked(unlockPaused, "", int(unlockPause.Milliseconds()))
+		} else {
+			msg = u.msgLocked(unlockFailed, "", 0)
+		}
 	case ulError:
-		msg = m.unlockSnapshotLocked(unlockErrorSt)
+		msg = u.msgLocked(unlockErrorSt, "", 0)
 	default:
 		u.mu.Unlock()
 		return
@@ -358,11 +458,8 @@ func (m *Manager) sendUnlockJoin(ctx context.Context, v *viewer) {
 	}
 	u := &m.ul
 	u.mu.Lock()
-	state := unlockIdle
-	if u.running {
-		state = u.state
-	}
-	msg := m.unlockSnapshotLocked(state)
+	state, wait := u.viewLocked(m.d.Now())
+	msg := u.msgLocked(state, "", wait)
 	u.mu.Unlock()
 	_ = send(ctx, v.ws, msg)
 }

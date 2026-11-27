@@ -56,7 +56,7 @@ func TestUnlock_GoldenLines(t *testing.T) {
 	if !seenHello {
 		t.Error("golden line hello-server-unlock is missing")
 	}
-	for _, s := range []string{unlockUnlocking, unlockUnlocked} {
+	for _, s := range []string{unlockIdle, unlockUnlocking, unlockRetrying, unlockUnlocked, unlockFailed, unlockRateLimited, unlockPaused, unlockRefused, unlockUnavailable, unlockErrorSt} {
 		if !states[s] {
 			t.Errorf("no golden line for unlock state %q", s)
 		}
