@@ -546,7 +546,7 @@ func (a *API) desktopOff() *ShareError {
 	a.startMu.Lock()
 	defer a.startMu.Unlock()
 	a.mu.RLock()
-	idle := !a.desktopCfg.AlwaysAvailable && a.desktopMgr == nil
+	idle := !a.desktopCfg.AlwaysAvailable && (a.desktopMgr == nil || a.guestShare != nil)
 	a.mu.RUnlock()
 	if idle { // already off (or a file the user must look at): nothing to clear
 		return nil
@@ -566,10 +566,17 @@ func (a *API) disableDesktop() error {
 	err := desktop.SaveConfig(a.engine.configDir, desktop.Config{})
 	a.desktopCfg = desktop.Config{}
 	mgr := a.desktopMgr
-	a.desktopMgr, a.desktopBuiltIP, a.desktopBuiltDomain = nil, "", ""
+	guest := a.guestShare != nil
+	if !guest { // a running guest share keeps the Manager (and, by serverNeededLocked, the server)
+		a.desktopMgr, a.desktopBuiltIP, a.desktopBuiltDomain = nil, "", ""
+	}
 	a.stopServerIfIdleLocked()
 	a.mu.Unlock()
-	if mgr != nil {
+	switch {
+	case mgr == nil:
+	case guest:
+		a.closeOwnViewers(mgr, desktop.CloseDesktopOff, "desktop off")
+	default:
 		mgr.CloseAll(desktop.CloseDesktopOff, "desktop off")
 		_ = mgr.Close()
 	}

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -295,4 +296,433 @@ func guestPageStatus(t *testing.T, link string) (int, string) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode, resp.Header.Get("X-Portty-Desktop")
+}
+
+// admittedGuest runs a guest through knock, admit and the offer, and returns it
+// with the viewer ID the GUI sees.
+func admittedGuest(t *testing.T, e *desktopEnv, gui *shareStreamHolder, link string) (*guest, string) {
+	t.Helper()
+	g := connectGuest(t, link)
+	g.waitMsg(t, "admission", "waiting")
+	knock := gui.until(t, 5*time.Second, "the admit_request event", gui.event("admit_request"))
+	if err := e.client.AdmitDesktopGuest(knock.Viewer.ID); err != nil {
+		t.Fatalf("AdmitDesktopGuest: %v", err)
+	}
+	g.waitMsg(t, "admission", "admitted")
+	g.offer(t)
+	join := gui.until(t, 10*time.Second, "the join event", gui.event("join"))
+	return g, join.Viewer.ID
+}
+
+// startedShare holds the stream and starts a share.
+func startedShare(t *testing.T, e *desktopEnv) (*shareStreamHolder, DesktopShareStart) {
+	t.Helper()
+	gui := holdShareStream(t, e.client)
+	start, err := e.client.StartDesktopShare()
+	if err != nil {
+		t.Fatalf("StartDesktopShare: %v", err)
+	}
+	return gui, start
+}
+
+// shareIDOf reads the share ID out of a guest link's token.
+func shareIDOf(t *testing.T, link string) string {
+	t.Helper()
+	u, err := url.Parse(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.SplitN(u.Query().Get("cap"), ".", 2)[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c struct {
+		ShareID string `json:"share_id"`
+	}
+	if err := json.Unmarshal(payload, &c); err != nil || c.ShareID == "" {
+		t.Fatalf("token payload %q: %v", payload, err)
+	}
+	return c.ShareID
+}
+
+func (e *desktopEnv) guestActive() bool { return e.api.currentGuestShare() != nil }
+
+func (e *desktopEnv) hasManager() bool {
+	e.api.mu.RLock()
+	defer e.api.mu.RUnlock()
+	return e.api.desktopMgr != nil
+}
+
+// stillOpen reports whether the viewer's socket is still open after d.
+func (v *desktopViewer) stillOpen(d time.Duration) bool {
+	select {
+	case <-v.done:
+		return false
+	case <-time.After(d):
+		return true
+	}
+}
+
+func TestDesktopShareAPI_StopCutsGuests(t *testing.T) {
+	e, _ := guestEnv(t)
+	// A terminal share keeps the server up, so the old link can still be asked.
+	termID := newShareSession(t, e.client)
+	mustShare(t, e.client, termID)
+	gui, start := startedShare(t, e)
+	g, _ := admittedGuest(t, e, gui, start.URL)
+
+	if err := e.client.StopDesktopShare(); err != nil {
+		t.Fatalf("StopDesktopShare: %v", err)
+	}
+	if code := g.waitClosed(t, 5*time.Second); code != 4433 {
+		t.Errorf("guest closed with %d, want 4433", code)
+	}
+	stop := gui.until(t, 5*time.Second, "the share_stop event", gui.event("share_stop"))
+	if stop.Reason != "share_stopped" {
+		t.Errorf("share_stop reason = %q, want share_stopped", stop.Reason)
+	}
+	gui.until(t, 5*time.Second, "an inactive state line", func(l DesktopShareLine) bool { return l.Type == "state" && !l.Active })
+	if code, why := guestPageStatus(t, start.URL); code != http.StatusGone || why != "off" {
+		t.Errorf("old link after Stop = %d %q; want 410 off", code, why)
+	}
+	if e.hasManager() {
+		t.Error("Stop left the Manager running with always-available off")
+	}
+	if !shareServerRunning(e.api) {
+		t.Error("Stop stopped the server a terminal share still needs")
+	}
+	if err := e.client.StopDesktopShare(); err != nil {
+		t.Errorf("a second Stop = %v; want it harmless", err)
+	}
+
+	again, err := e.client.StartDesktopShare()
+	if err != nil {
+		t.Fatalf("StartDesktopShare after Stop: %v", err)
+	}
+	if shareIDOf(t, again.URL) == shareIDOf(t, start.URL) {
+		t.Error("a new share reused the old share ID")
+	}
+	if code, why := guestPageStatus(t, start.URL); code != http.StatusUnauthorized || why != "token" {
+		t.Errorf("old link beside a new share = %d %q; want 401 token", code, why)
+	}
+	if code, _ := guestPageStatus(t, again.URL); code != http.StatusOK {
+		t.Errorf("new link = %d, want 200", code)
+	}
+}
+
+func TestDesktopShareAPI_StopStopsIdleServer(t *testing.T) {
+	e, _ := guestEnv(t)
+	_, start := startedShare(t, e)
+	if !shareServerRunning(e.api) || !e.hasManager() {
+		t.Fatal("a started share has no server or Manager")
+	}
+	if err := e.client.StopDesktopShare(); err != nil {
+		t.Fatal(err)
+	}
+	if shareServerRunning(e.api) || e.hasManager() {
+		t.Error("Stop left the server or Manager up with nothing else needing them")
+	}
+	if st, err := e.client.DesktopShare(); err != nil || st.Active || st.URL != "" {
+		t.Errorf("GET /desktop/share after Stop = %+v, %v", st, err)
+	}
+	_ = start
+}
+
+func TestDesktopShareAPI_StopKeepsOwnViewer(t *testing.T) {
+	e, who := guestEnv(t)
+	on := e.mustOn(t)
+	who.Set(webservertest.Same)
+	own := connectViewer(t, on.URL)
+	own.waitIDR(t, 10*time.Second)
+	who.Set(webservertest.Colleague)
+	gui, start := startedShare(t, e)
+	g, _ := admittedGuest(t, e, gui, start.URL)
+
+	if err := e.client.StopDesktopShare(); err != nil {
+		t.Fatal(err)
+	}
+	if code := g.waitClosed(t, 5*time.Second); code != 4433 {
+		t.Errorf("guest closed with %d, want 4433", code)
+	}
+	if !own.stillOpen(700 * time.Millisecond) {
+		t.Errorf("Stop closed the own-account viewer (%d)", own.code.Load())
+	}
+	if !e.hasManager() || !shareServerRunning(e.api) {
+		t.Error("Stop took down the always-available Manager or server")
+	}
+	if st := e.status(t); !st.AlwaysAvailable || st.Viewers != 1 {
+		t.Errorf("status after Stop = %+v; want always-available with the own viewer", st)
+	}
+}
+
+func TestDesktopShareAPI_RegenerateEndsShare(t *testing.T) {
+	e, _ := guestEnv(t)
+	gui, start := startedShare(t, e)
+	g, _ := admittedGuest(t, e, gui, start.URL)
+
+	if err := e.client.RegenerateSigningKey(); err != nil {
+		t.Fatalf("RegenerateSigningKey: %v", err)
+	}
+	if code := g.waitClosed(t, 5*time.Second); code != 4433 {
+		t.Errorf("guest closed with %d after regenerate, want 4433 (not 4401)", code)
+	}
+	if stop := gui.until(t, 5*time.Second, "the share_stop event", gui.event("share_stop")); stop.Reason != "key_regenerated" {
+		t.Errorf("share_stop reason = %q, want key_regenerated", stop.Reason)
+	}
+	if e.guestActive() {
+		t.Error("the guest share survived a key regeneration")
+	}
+}
+
+func TestDesktopShareAPI_AlwaysOffKeepsGuest(t *testing.T) {
+	e, who := guestEnv(t)
+	on := e.mustOn(t)
+	who.Set(webservertest.Same)
+	own := connectViewer(t, on.URL)
+	own.waitIDR(t, 10*time.Second)
+	who.Set(webservertest.Colleague)
+	gui, start := startedShare(t, e)
+	g, _ := admittedGuest(t, e, gui, start.URL)
+
+	if _, err := e.client.SetDesktopAlwaysAvailable(false); err != nil {
+		t.Fatalf("PUT /desktop off: %v", err)
+	}
+	if code := own.waitClosed(t, 5*time.Second); code != 4410 {
+		t.Errorf("own viewer closed with %d, want 4410", code)
+	}
+	select {
+	case <-g.done:
+		t.Fatalf("always-available off closed the guest (%d)", g.code.Load())
+	case <-time.After(700 * time.Millisecond):
+	}
+	if !e.hasManager() || !shareServerRunning(e.api) || !e.guestActive() {
+		t.Error("always-available off took down the Manager, the server or the share a guest is using")
+	}
+	if code, _ := guestPageStatus(t, start.URL); code != http.StatusOK {
+		t.Errorf("guest link after always-available off = %d, want 200", code)
+	}
+	if err := e.client.StopDesktopShare(); err != nil {
+		t.Fatal(err)
+	}
+	if shareServerRunning(e.api) || e.hasManager() {
+		t.Error("Stop left the server or Manager up although always-available is off")
+	}
+}
+
+func TestDesktopShareAPI_DaemonExit(t *testing.T) {
+	e, _ := guestEnv(t)
+	gui, start := startedShare(t, e)
+	g, _ := admittedGuest(t, e, gui, start.URL)
+
+	e.api.stopDesktop()
+	if code := g.waitClosed(t, 5*time.Second); code != 4433 && code != 1012 {
+		t.Errorf("guest closed with %d at daemon exit, want 4433 (or 1012 from the Manager closing)", code)
+	}
+	if e.guestActive() {
+		t.Error("the share outlived the daemon's desktop")
+	}
+}
+
+func rightsOf(m map[string]any) map[string]any {
+	r, _ := m["rights"].(map[string]any)
+	return r
+}
+
+func TestDesktopShareAPI_Rights(t *testing.T) {
+	e, who := guestEnv(t)
+	on := e.mustOn(t)
+	who.Set(webservertest.Same)
+	own := connectViewer(t, on.URL)
+	own.waitIDR(t, 10*time.Second)
+	who.Set(webservertest.Colleague)
+	gui, start := startedShare(t, e)
+	g, gid := admittedGuest(t, e, gui, start.URL)
+
+	if err := e.client.SetDesktopViewerRights(gid, true, false); err != nil {
+		t.Fatalf("SetDesktopViewerRights(guest): %v", err)
+	}
+	deadline := time.After(5 * time.Second)
+	for got := false; !got; {
+		select {
+		case m := <-g.msgs:
+			if m["type"] == "rights" && rightsOf(m)["control"] == true && rightsOf(m)["clipboard"] == false {
+				got = true
+			}
+		case <-deadline:
+			t.Fatal("the guest never got a rights message with control on")
+		}
+	}
+	gui.until(t, 5*time.Second, "a state line with control on", func(l DesktopShareLine) bool {
+		return l.Type == "state" && len(l.Viewers) > 0 && l.Viewers[len(l.Viewers)-1].Control
+	})
+
+	// The own-account viewer's ID is in the state, with mode own.
+	var ownID string
+	for _, v := range e.api.shareState().Viewers {
+		if v.Mode == "own" {
+			ownID = v.ID
+		}
+	}
+	if ownID == "" {
+		t.Fatal("the own-account viewer is not in the state")
+	}
+	if err := e.client.SetDesktopViewerRights(ownID, true, true); !isShareErr(err, "own_viewer") {
+		t.Errorf("rights on an own viewer = %v; want own_viewer", err)
+	}
+	if err := e.client.SetDesktopViewerRights("no-such-viewer", true, true); !isShareErr(err, "no_viewer") {
+		t.Errorf("rights on an unknown viewer = %v; want no_viewer", err)
+	}
+}
+
+func TestDesktopShareAPI_DisconnectViewer(t *testing.T) {
+	e, who := guestEnv(t)
+	on := e.mustOn(t)
+	who.Set(webservertest.Same)
+	own := connectViewer(t, on.URL)
+	own.waitIDR(t, 10*time.Second)
+	who.Set(webservertest.Colleague)
+	gui, start := startedShare(t, e)
+	g, gid := admittedGuest(t, e, gui, start.URL)
+
+	if err := e.client.DisconnectDesktopViewer(gid); err != nil {
+		t.Fatalf("DisconnectDesktopViewer(guest): %v", err)
+	}
+	if code := g.waitClosed(t, 5*time.Second); code != 4432 {
+		t.Errorf("revoked guest closed with %d, want 4432", code)
+	}
+	// Revoked for the rest of the share: the same person knocking again is refused.
+	again := connectGuest(t, start.URL)
+	if code := again.waitClosed(t, 5*time.Second); code != 4430 {
+		t.Errorf("a revoked person's new knock closed with %d, want 4430", code)
+	}
+
+	var ownID string
+	for _, v := range e.api.shareState().Viewers {
+		if v.Mode == "own" {
+			ownID = v.ID
+		}
+	}
+	if err := e.client.DisconnectDesktopViewer(ownID); err != nil {
+		t.Fatalf("DisconnectDesktopViewer(own): %v", err)
+	}
+	if code := own.waitClosed(t, 5*time.Second); code != 1001 {
+		t.Errorf("disconnected own viewer closed with %d, want 1001", code)
+	}
+	if err := e.client.DisconnectDesktopViewer(gid); !isShareErr(err, "no_viewer") {
+		t.Errorf("disconnecting a gone viewer = %v; want no_viewer", err)
+	}
+}
+
+func TestDesktopShareAPI_StartIsIdempotent(t *testing.T) {
+	e, _ := guestEnv(t)
+	gui, start := startedShare(t, e)
+	again, err := e.client.StartDesktopShare()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.URL != start.URL || again.FirstShare {
+		t.Errorf("second start = %+v; want the same link and no firstShare", again)
+	}
+	st, err := e.client.DesktopShare()
+	if err != nil || !st.Active || st.URL != start.URL {
+		t.Errorf("GET /desktop/share = %+v, %v; want active with the same link", st, err)
+	}
+	_ = gui
+}
+
+func TestDesktopShareAPI_ClientErrors(t *testing.T) {
+	e, _ := guestEnv(t)
+	if err := e.client.AdmitDesktopGuest("nope"); !isShareErr(err, "no_request") {
+		t.Errorf("admit with no share = %v; want no_request", err)
+	}
+	gui, _ := startedShare(t, e)
+	if err := e.client.AdmitDesktopGuest("nope"); !isShareErr(err, "no_request") {
+		t.Errorf("admit of an unknown request = %v; want no_request", err)
+	}
+	if err := e.client.DenyDesktopGuest("nope"); !isShareErr(err, "no_request") {
+		t.Errorf("deny of an unknown request = %v; want no_request", err)
+	}
+	if err := e.client.DisconnectDesktopViewer("nope"); !isShareErr(err, "no_viewer") {
+		t.Errorf("disconnect of an unknown viewer = %v; want no_viewer", err)
+	}
+	// A transport failure is a plain error, not a ShareError.
+	dead := NewDaemonClient(shortSocketPath(t, "none.sock"))
+	if err := dead.StopDesktopShare(); err == nil || isShareErr(err, "") {
+		t.Errorf("StopDesktopShare against no daemon = %v; want a transport error", err)
+	}
+	if _, err := dead.StartDesktopShare(); err == nil {
+		t.Error("StartDesktopShare against no daemon succeeded")
+	}
+	// The stream returns nil when its context ends, after at least its state line.
+	gui.cancel()
+	select {
+	case err := <-gui.done:
+		if err != nil {
+			t.Errorf("StreamDesktopShareEvents after cancel = %v; want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("StreamDesktopShareEvents did not return after its context ended")
+	}
+}
+
+func TestGuiLiveness_StreamCloseEndsShare(t *testing.T) {
+	e, _ := guestEnv(t)
+	// A terminal share keeps the server up, so the old link can still be asked.
+	mustShare(t, e.client, newShareSession(t, e.client))
+	gui, start := startedShare(t, e)
+	g, _ := admittedGuest(t, e, gui, start.URL)
+
+	gui.cancel()
+	if code := g.waitClosed(t, 2*time.Second); code != 4433 {
+		t.Errorf("guest closed with %d after the GUI left, want 4433 within 2 s", code)
+	}
+	eventually(t, 2*time.Second, "the share to end", func() bool { return !e.guestActive() })
+	// With no GUI a new share is refused, and the old link is dead.
+	if _, err := e.client.StartDesktopShare(); !isShareErr(err, "gui_required") {
+		t.Errorf("start after the GUI left = %v; want gui_required", err)
+	}
+	if code, _ := guestPageStatus(t, start.URL); code == http.StatusOK {
+		t.Error("the old guest link still opens after the GUI left")
+	}
+}
+
+func TestGuiLiveness_SecondHolderIsBusy(t *testing.T) {
+	e, _ := guestEnv(t)
+	gui, _ := startedShare(t, e)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := e.client.StreamDesktopShareEvents(ctx, func(DesktopShareLine) {})
+	if !isShareErr(err, "gui_busy") {
+		t.Fatalf("a second stream = %v; want gui_busy", err)
+	}
+	// The refused holder must not end the share the first one runs.
+	time.Sleep(200 * time.Millisecond)
+	if !e.guestActive() {
+		t.Error("a refused second stream ended the share")
+	}
+	gui.cancel()
+	eventually(t, 2*time.Second, "the first holder's exit to end the share", func() bool { return !e.guestActive() })
+}
+
+func TestGuiLiveness_HeartbeatAndCoalescing(t *testing.T) {
+	old := shareHeartbeat
+	shareHeartbeat = 50 * time.Millisecond
+	t.Cleanup(func() { shareHeartbeat = old })
+	e, _ := guestEnv(t)
+	gui := holdShareStream(t, e.client)
+	gui.until(t, 3*time.Second, "a heartbeat line", func(l DesktopShareLine) bool { return l.Type == "heartbeat" })
+	// A burst of changes is coalesced to at most 10 state lines a second.
+	for range 50 {
+		e.api.pokeShare()
+	}
+	time.Sleep(300 * time.Millisecond)
+	n := 0
+	for _, line := range gui.wire() {
+		if strings.Contains(line, `"type":"state"`) {
+			n++
+		}
+	}
+	if n > 2 { // the first line, and at most one more from the unchanged facts
+		t.Errorf("%d state lines for an unchanged state; want no repeats", n)
+	}
 }

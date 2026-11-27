@@ -844,9 +844,16 @@ func (a *API) handleRegenerateSigningKey(w http.ResponseWriter, r *http.Request)
 	}
 	mgr := a.desktopMgr
 	a.mu.Unlock()
+	// The guest link was signed under the old key too, so a running guest share
+	// ends first: its guests see 4433 share_ended, not token rejected.
+	guestEnded := a.endGuestShare(desktop.ReasonKeyRegenerated)
 	// Every desktop viewer's link was signed under the old key. Closed after
 	// a.mu is released: a close waits on the viewer's end of the handshake.
-	if mgr != nil {
+	switch {
+	case mgr == nil:
+	case guestEnded:
+		a.closeOwnViewers(mgr, desktop.CloseTokenRejected, "token rejected")
+	default:
 		mgr.CloseAll(desktop.CloseTokenRejected, "token rejected")
 	}
 	w.WriteHeader(http.StatusOK)

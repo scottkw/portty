@@ -178,6 +178,9 @@ func (a *API) registerDesktopShareRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /desktop/share", a.handleGetDesktopShare)
 	mux.HandleFunc("POST /desktop/share/requests/{id}/admit", a.handleShareAdmit)
 	mux.HandleFunc("POST /desktop/share/requests/{id}/deny", a.handleShareDeny)
+	mux.HandleFunc("DELETE /desktop/share", a.handleStopDesktopShare)
+	mux.HandleFunc("PUT /desktop/share/viewers/{id}/rights", a.handleShareRights)
+	mux.HandleFunc("DELETE /desktop/share/viewers/{id}", a.handleShareDisconnect)
 }
 
 // writeShareErr answers with the {"error": code} body the client turns back
@@ -531,22 +534,106 @@ func (a *API) answerRequest(w http.ResponseWriter, id string, admit bool) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleStopDesktopShare ends the share. Always 204: ending a share that is not
+// running is harmless.
+func (a *API) handleStopDesktopShare(w http.ResponseWriter, _ *http.Request) {
+	a.endGuestShare(desktop.ReasonShareStopped)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// shareViewer finds a connected viewer by ID.
+func (a *API) shareViewer(id string) (*desktop.Manager, desktop.Viewer, bool) {
+	mgr := desktopAdapter{a}.manager()
+	if mgr == nil {
+		return nil, desktop.Viewer{}, false
+	}
+	for _, v := range mgr.ViewerList() {
+		if string(v.ID) == id {
+			return mgr, v, true
+		}
+	}
+	return mgr, desktop.Viewer{}, false
+}
+
+// writeViewerErr maps the Manager's per-viewer errors to the route's answers.
+func writeViewerErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, desktop.ErrOwnViewer):
+		writeShareErr(w, http.StatusConflict, shareErrOwnViewer, "")
+	default:
+		writeShareErr(w, http.StatusNotFound, shareErrNoViewer, "")
+	}
+}
+
+// handleShareRights sets a guest's control and clipboard rights. An own-account
+// viewer's rights are not the sharer's to change (409); an unknown viewer is 404.
+func (a *API) handleShareRights(w http.ResponseWriter, r *http.Request) {
+	var req DesktopRightsRequest
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeShareErr(w, http.StatusBadRequest, shareErrBadRequest, "invalid request body")
+		return
+	}
+	mgr, v, ok := a.shareViewer(r.PathValue("id"))
+	switch {
+	case !ok:
+		writeShareErr(w, http.StatusNotFound, shareErrNoViewer, "")
+		return
+	case v.Mode != desktop.ModeGuest:
+		writeShareErr(w, http.StatusConflict, shareErrOwnViewer, "")
+		return
+	}
+	if err := mgr.SetRights(v.ID, req.Control, req.Clipboard); err != nil {
+		writeViewerErr(w, err)
+		return
+	}
+	a.pokeShare()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleShareDisconnect cuts one viewer: a guest is revoked for the rest of the
+// share, an own-account device is disconnected and may come back.
+func (a *API) handleShareDisconnect(w http.ResponseWriter, r *http.Request) {
+	mgr, v, ok := a.shareViewer(r.PathValue("id"))
+	if !ok {
+		writeShareErr(w, http.StatusNotFound, shareErrNoViewer, "")
+		return
+	}
+	if err := mgr.CloseViewer(v.ID); err != nil {
+		writeViewerErr(w, err)
+		return
+	}
+	a.pokeShare()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// closeOwnViewers closes every own-account viewer with code and leaves the
+// guests alone (they belong to the share, not to always-available).
+func (a *API) closeOwnViewers(mgr *desktop.Manager, code websocket.StatusCode, reason string) {
+	for _, v := range mgr.ViewerList() {
+		if v.Mode == desktop.ModeOwn {
+			_ = mgr.CloseViewerWith(v.ID, code, reason)
+		}
+	}
+}
+
 // --- how a share ends --------------------------------------------------------
 
 // endGuestShare ends the guest share, if there is one, for reason (a
 // desktop.Reason* value): the share ID is dropped first, so the link stops
 // verifying, then the share is ended, the guests are cut (they see 4433
 // share_ended), and the Manager and the server stop only when nothing else
-// needs them. Own-account viewers are untouched. Safe to call twice. Lock
-// order: startMu, then a.mu.
-func (a *API) endGuestShare(reason string) {
+// needs them. Own-account viewers are untouched. Safe to call twice; it reports
+// whether there was a share to end. Lock order: startMu, then a.mu.
+func (a *API) endGuestShare(reason string) bool {
 	a.startMu.Lock()
 	defer a.startMu.Unlock()
 	a.mu.Lock()
 	gs, mgr := a.guestShare, a.desktopMgr
 	if gs == nil {
 		a.mu.Unlock()
-		return
+		return false
 	}
 	a.guestShare = nil
 	a.mu.Unlock()
@@ -555,6 +642,9 @@ func (a *API) endGuestShare(reason string) {
 	if mgr != nil {
 		mgr.CloseGuests(desktop.CloseShareEnded, "share_ended")
 	}
+
+	a.pushShareEvent(desktop.AuditShareStop, nil, reason)
+	a.pokeShare()
 
 	// Always-available keeps the Manager; otherwise it was only here for the share.
 	a.mu.Lock()
@@ -566,11 +656,36 @@ func (a *API) endGuestShare(reason string) {
 	a.stopServerIfIdleLocked()
 	a.mu.Unlock()
 	if stop != nil {
+		// CloseGuests returns once the guests' input and media are cut; their
+		// socket closes run on their own goroutines. Closing the Manager now would
+		// put its own close code ahead of share_ended, so wait for the guests to
+		// leave (a silent peer is dropped after the Manager's 2 s ceiling).
+		waitGuestsGone(stop, guestLeaveWait)
 		stop.CloseAll(desktop.CloseDesktopOff, "desktop off")
 		_ = stop.Close()
 	}
-	a.pushShareEvent(desktop.AuditShareStop, nil, reason)
-	a.pokeShare()
+	return true
+}
+
+// guestLeaveWait bounds waitGuestsGone: longer than the Manager's close ceiling.
+const guestLeaveWait = 3 * time.Second
+
+// waitGuestsGone waits until no guest is connected to mgr, or for up to d.
+func waitGuestsGone(mgr *desktop.Manager, d time.Duration) {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		gone := true
+		for _, v := range mgr.ViewerList() {
+			if v.Mode == desktop.ModeGuest {
+				gone = false
+				break
+			}
+		}
+		if gone {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // --- what the guest routes see -----------------------------------------------
