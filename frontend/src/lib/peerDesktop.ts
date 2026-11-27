@@ -1,5 +1,6 @@
 import {
   webSocketTransport,
+  type CheckVerdict,
   type DesktopClientOptions,
   type DesktopClock,
   type SignalTransport,
@@ -23,6 +24,79 @@ export interface PeerDesktopConnectResult {
 
 /** Close code the Local Network heal uses to make the client rebuild. */
 export const LOCAL_NETWORK_CLOSE = 4000
+/** ICE still new this long after the answer is applied: Local Network is the likely cause. */
+export const LOCAL_NETWORK_MS = 10000
+
+/** What the client's liveness check makes of a connect result's error code. */
+export function connectVerdict(errorCode: string): CheckVerdict {
+  switch (errorCode) {
+    case '':
+      return 'ok'
+    case 'forbidden':
+      return 'other_account'
+    case 'desktop_off':
+      return 'off'
+    default:
+      // unreachable, unknown_host, tailscale_off or a code from a newer daemon
+      return 'retry'
+  }
+}
+
+/**
+ * Watches for a blocked Local Network. It arms when the answer is applied
+ * (signalingState becomes stable), so a slow answer is not mistaken for a
+ * blocked network. addEventListener only: the client owns the connection-state
+ * property handler.
+ */
+export function watchLocalNetwork(
+  pc: RTCPeerConnection,
+  opts: { clock: DesktopClock; timeoutMs: number; onBlocked(): void; onClear(): void },
+): () => void {
+  let timer: unknown = null
+  let armed = false
+  let sawChecking = false
+  let cleared = false
+  let blocked = false
+  const stopTimer = () => {
+    if (timer !== null) opts.clock.clearTimeout(timer)
+    timer = null
+  }
+  const block = () => {
+    if (blocked) return
+    blocked = true
+    stopTimer()
+    opts.onBlocked()
+  }
+  const onSignaling = () => {
+    if (armed || pc.signalingState !== 'stable') return
+    armed = true
+    timer = opts.clock.setTimeout(() => {
+      timer = null
+      if (pc.signalingState !== 'closed' && pc.iceConnectionState === 'new') block()
+    }, opts.timeoutMs)
+  }
+  const onIce = () => {
+    if (blocked) return
+    const s = pc.iceConnectionState
+    if (s === 'checking' || s === 'connected' || s === 'completed') {
+      sawChecking = true
+      stopTimer()
+      if (!cleared) {
+        cleared = true
+        opts.onClear()
+      }
+    } else if (s === 'failed' && !sawChecking) {
+      block()
+    }
+  }
+  pc.addEventListener('signalingstatechange', onSignaling)
+  pc.addEventListener('iceconnectionstatechange', onIce)
+  return () => {
+    stopTimer()
+    pc.removeEventListener('signalingstatechange', onSignaling)
+    pc.removeEventListener('iceconnectionstatechange', onIce)
+  }
+}
 
 export interface PeerDesktopDeps {
   host: string
@@ -107,18 +181,51 @@ export function createPeerDesktopOptions(deps: PeerDesktopDeps): {
   }
 
   const makePC = deps.makePC ?? (() => new RTCPeerConnection({ iceServers: [] }))
+  let stopWatch: () => void = () => {}
+
+  function forceRebuild() {
+    current?.close(LOCAL_NETWORK_CLOSE)
+  }
 
   return {
     options: {
       clock,
       transport: () => lazyTransport(initialPending ? initial : url),
-      createPeerConnection: makePC,
+      // A home daemon restart empties its in-memory key store and may move the
+      // relay port, so every redial asks for a fresh url first. A throw makes the
+      // client count a failed attempt; this hook never ends the loop itself.
+      beforeRedial: async () => {
+        const r = await deps.connect(deps.host)
+        // An empty url (unreachable) keeps the last good one: the proxy's own
+        // answer then drives the client's classification.
+        if (r.url) url = r.url
+      },
+      check: async () => {
+        try {
+          return connectVerdict((await deps.connect(deps.host)).errorCode)
+        } catch {
+          return 'retry'
+        }
+      },
+      createPeerConnection: () => {
+        stopWatch()
+        const pc = makePC()
+        stopWatch = watchLocalNetwork(pc, {
+          clock,
+          timeoutMs: deps.localNetworkMs ?? LOCAL_NETWORK_MS,
+          onBlocked: () => {
+            deps.onLocalNetwork(true)
+            forceRebuild()
+          },
+          onClear: () => deps.onLocalNetwork(false),
+        })
+        return pc
+      },
     },
-    forceRebuild() {
-      current?.close(LOCAL_NETWORK_CLOSE)
-    },
+    forceRebuild,
     dispose() {
       disposed = true
+      stopWatch()
       current?.close()
     },
   }
