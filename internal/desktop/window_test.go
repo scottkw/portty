@@ -113,6 +113,12 @@ func (f *fakeWindow) focusWindow() {
 	f.mu.Unlock()
 }
 
+func (f *fakeWindow) set(fn func(f *fakeWindow)) {
+	f.mu.Lock()
+	fn(f)
+	f.mu.Unlock()
+}
+
 func (f *fakeWindow) raiseCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

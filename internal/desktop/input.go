@@ -453,7 +453,8 @@ func (m *Manager) postMouse(kind screencap.MouseKind, x, y float64, button, clic
 
 func (m *Manager) postRelease(r release) {
 	if !r.key {
-		m.postMouse(screencap.MouseUp, r.x, r.y, r.button, 1, 0, 0, r.flags)
+		x, y := m.clampToWindow(r.x, r.y)
+		m.postMouse(screencap.MouseUp, x, y, r.button, 1, 0, 0, r.flags)
 		return
 	}
 	m.postKey(r.vk, false, r.flags, false)
@@ -643,6 +644,10 @@ func (m *Manager) handleButtonUp(v *viewer, msg inputMsg) {
 	if !held {
 		return
 	}
+	// In a window share the up lands at the point clamped to where the window
+	// is now (never dropped, so nothing stays held).
+	m.refreshWindow()
+	x, y = m.clampToWindow(x, y)
 	m.countFor(v, inBtn)
 	m.postMouse(screencap.MouseUp, x, y, cgButton(msg.B), clicks, 0, 0, flags)
 }
