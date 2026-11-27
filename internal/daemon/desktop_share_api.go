@@ -534,6 +534,16 @@ func (a *API) answerRequest(w http.ResponseWriter, id string, admit bool) {
 			}
 		}
 		err = gs.Admit(id)
+	} else if mgr := (desktopAdapter{a}).manager(); mgr != nil {
+		// Deny is for the person: their devices already watching are cut too.
+		var uid int64
+		for _, p := range gs.Pending() {
+			if p.ID == id {
+				uid = p.Ident.UserID
+			}
+		}
+		a.markPersonLeaves(mgr, uid, desktop.ReasonDenied)
+		err = mgr.DenyGuest(gs, id)
 	} else {
 		err = gs.Deny(id)
 	}
@@ -630,12 +640,25 @@ func (a *API) handleShareDisconnect(w http.ResponseWriter, r *http.Request) {
 	shareID, mode := a.viewerAudit(v)
 	a.record(desktop.AuditRevoked, shareID, mode, v.Identity, desktop.ReasonRevoked)
 	a.setLeaveReason(v.ID, desktop.ReasonRevoked)
+	if v.Mode == desktop.ModeGuest {
+		a.markPersonLeaves(mgr, v.Identity.UserID, desktop.ReasonRevoked) // CloseViewer cuts every device of the person
+	}
 	if err := mgr.CloseViewer(v.ID); err != nil {
 		writeViewerErr(w, err)
 		return
 	}
 	a.pokeShare()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// markPersonLeaves gives every live guest device of userID the reason its leave
+// line will carry: a revoke or a deny cuts the person on every device.
+func (a *API) markPersonLeaves(mgr *desktop.Manager, userID int64, reason string) {
+	for _, v := range mgr.ViewerList() {
+		if v.Mode == desktop.ModeGuest && v.Identity.UserID == userID {
+			a.setLeaveReason(v.ID, reason)
+		}
+	}
 }
 
 // closeOwnViewers closes every own-account viewer with code and leaves the
