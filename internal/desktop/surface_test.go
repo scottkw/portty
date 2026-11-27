@@ -1,9 +1,12 @@
 package desktop_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -470,5 +473,223 @@ func TestSurface_SwitchFailedBroadcastsUnchanged(t *testing.T) {
 	}
 	if got := env.mgr.CurrentSurface(); got.Kind != screencap.SurfaceDisplay || got.Name != "Main Display" {
 		t.Errorf("current surface after a failed switch = %+v, want the main display", got)
+	}
+}
+
+func (s *switchSource) startedWith() screencap.Surface {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.started
+}
+
+// selectWindow has A pick the terminal window and waits until it is told.
+func selectWindow(ctx context.Context, t *testing.T, a *surfViewer) {
+	t.Helper()
+	a.ask(ctx, t, map[string]any{"type": "select", "kind": "window", "id": windowID})
+	a.wait(t, "surface", epochIs(2))
+}
+
+// quiet waits long enough for two polls of the surface loop.
+func quiet() { time.Sleep(2500 * time.Millisecond) }
+
+// TestSurface_FallbackWindowClosed: the shared window disappears from the list;
+// every viewer is told the share fell back to the main display, with a bumped
+// epoch, the source was switched and frames keep flowing.
+func TestSurface_FallbackWindowClosed(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), secondSurface(), termWindow(1280, 800))
+	env := newTracerServer(t, withSurfaces(world, &fakeInputBridge{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	tok := env.token(t, "g1")
+	a := env.joinSurf(ctx, t, tok)
+	b := env.joinSurf(ctx, t, tok)
+	selectWindow(ctx, t, a)
+
+	world.setList(mainSurface(), secondSurface())
+	for who, v := range map[string]*surfViewer{"A": a, "B": b} {
+		requireSurface(t, who, v.wait(t, "surface", epochIs(3)), 3, "display", mainID, "Main Display", 1470, 956, "window_closed")
+	}
+	sel := world.last().selected()
+	if len(sel) != 2 || sel[1] != (screencap.Surface{}) {
+		t.Errorf("source switches = %v, want the window then the main display", sel)
+	}
+	before := env.mgr.FramesSeenForTest()
+	eventually(t, 5*time.Second, "frames keep flowing", func() bool { return env.mgr.FramesSeenForTest() > before+3 })
+}
+
+// TestSurface_FallbackDisplayGone: the shared second display is unplugged.
+func TestSurface_FallbackDisplayGone(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), secondSurface())
+	env := newTracerServer(t, withSurfaces(world, &fakeInputBridge{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	a := env.joinSurf(ctx, t, env.token(t, "g1"))
+	a.ask(ctx, t, map[string]any{"type": "select", "kind": "display", "id": secondID})
+	a.wait(t, "surface", epochIs(2))
+
+	world.setList(mainSurface())
+	requireSurface(t, "A", a.wait(t, "surface", epochIs(3)), 3, "display", mainID, "Main Display", 1470, 956, "display_gone")
+}
+
+// TestSurface_MinimizedIsNotClosed: a window that is still in the list but off
+// screen is no reason to fall back; its state is recorded for the window gate.
+func TestSurface_MinimizedIsNotClosed(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), termWindow(1280, 800))
+	env := newTracerServer(t, withSurfaces(world, &fakeInputBridge{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	a := env.joinSurf(ctx, t, env.token(t, "g1"))
+	selectWindow(ctx, t, a)
+
+	min := termWindow(1280, 800)
+	min.OnScreen = false
+	world.setList(mainSurface(), min)
+	eventually(t, 5*time.Second, "the minimized state recorded", func() bool { return !env.mgr.CurrentSurface().OnScreen })
+	quiet()
+	if m := a.find("surface", epochIs(3)); m != nil {
+		t.Errorf("a minimized window produced %v, want no fallback and no epoch bump", m)
+	}
+	if got := env.mgr.CurrentSurface(); got.Kind != screencap.SurfaceWindow || got.ID != windowID {
+		t.Errorf("current surface = %+v, want the window still shared", got)
+	}
+	if len(world.last().selected()) != 1 {
+		t.Errorf("source switches = %v, want only the pick", world.last().selected())
+	}
+}
+
+// TestSurface_ResizeBumpsEpoch: a resize re-selects the same window at its new
+// size under a new epoch; a pure move updates the recorded frame and nothing else.
+func TestSurface_ResizeBumpsEpoch(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), termWindow(1280, 800))
+	env := newTracerServer(t, withSurfaces(world, &fakeInputBridge{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	a := env.joinSurf(ctx, t, env.token(t, "g1"))
+	selectWindow(ctx, t, a)
+
+	moved := termWindow(1280, 800)
+	moved.X, moved.Y = 300, 300
+	world.setList(mainSurface(), moved)
+	eventually(t, 5*time.Second, "the new position recorded", func() bool { return env.mgr.CurrentSurface().X == 300 })
+	quiet()
+	if m := a.find("surface", epochIs(3)); m != nil {
+		t.Errorf("a window move produced %v, want no epoch bump", m)
+	}
+
+	world.setList(mainSurface(), termWindow(1000, 700))
+	requireSurface(t, "A", a.wait(t, "surface", epochIs(3)), 3, "window", windowID, "Terminal — zsh", 1000, 700, "")
+	a.wait(t, "size", sizeIs(1000, 700))
+	if sel := world.last().selected(); len(sel) != 2 || sel[0] != sel[1] {
+		t.Errorf("source switches = %v, want the same window selected twice", sel)
+	}
+}
+
+// TestSurface_ResetOnCaptureStop: the surface lives for one viewing session;
+// the next viewer starts on the main display and the source is started on it.
+func TestSurface_ResetOnCaptureStop(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), termWindow(1280, 800))
+	env := newTracerServer(t, withSurfaces(world, &fakeInputBridge{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	tok := env.token(t, "g1")
+	a := env.joinSurf(ctx, t, tok)
+	selectWindow(ctx, t, a)
+	_ = a.conn.CloseNow()
+	eventually(t, 5*time.Second, "the last viewer gone", func() bool { return env.mgr.Viewers() == 0 })
+
+	b := env.joinSurf(ctx, t, tok)
+	m := b.wait(t, "surface", nil)
+	if m["kind"] != "display" || m["name"] != "Main Display" || m["reason"] != "" {
+		t.Errorf("first surface of the next session = %v, want the main display", m)
+	}
+	if n := world.sourceCount(); n != 2 {
+		t.Fatalf("%d sources built, want 2", n)
+	}
+	if got := world.last().startedWith(); got != (screencap.Surface{}) {
+		t.Errorf("new source started on %+v, want the main display", got)
+	}
+}
+
+// TestSurface_RestartKeepsSurface: a stream restart while a viewer is still
+// there (a stall, a wake) captures the same window again.
+func TestSurface_RestartKeepsSurface(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), termWindow(1280, 800))
+	env := newTracerServer(t, withSurfaces(world, &fakeInputBridge{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	a := env.joinSurf(ctx, t, env.token(t, "g1"))
+	selectWindow(ctx, t, a)
+
+	if err := env.mgr.RestartSourceForTest(); err != nil {
+		t.Fatal(err)
+	}
+	if n := world.sourceCount(); n != 2 {
+		t.Fatalf("%d sources built, want 2", n)
+	}
+	if got := world.last().startedWith(); got != (screencap.Surface{Kind: screencap.SurfaceWindow, ID: windowID}) {
+		t.Errorf("restarted source started on %+v, want the window", got)
+	}
+}
+
+// TestSurface_SwitchReleasesHeld: buttons one viewer holds are released when
+// another viewer switches the surface, and the holder keeps its input life.
+func TestSurface_SwitchReleasesHeld(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), secondSurface())
+	fb := &fakeInputBridge{}
+	env := newTracerServer(t, withSurfaces(world, fb))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	tok := env.token(t, "g1")
+	a := env.joinSurf(ctx, t, tok)
+	b := env.joinSurf(ctx, t, tok)
+
+	a.input(t, map[string]any{"t": "btn", "b": 0, "d": true, "x": 0.5, "y": 0.5, "e": 1})
+	fb.waitFor(t, 1)
+	a.input(t, map[string]any{"t": "btn", "b": 2, "d": true, "x": 0.5, "y": 0.5, "e": 1})
+	fb.waitFor(t, 2)
+	b.ask(ctx, t, map[string]any{"type": "select", "kind": "display", "id": secondID})
+	calls := fb.waitFor(t, 4)
+	for i, button := range []int{0, 1} { // CG buttons of browser buttons 0 and 2
+		if c := calls[2+i]; c.Kind != screencap.MouseUp || c.Button != button {
+			t.Errorf("call %d = %+v, want a MouseUp of CG button %d", 2+i, c, button)
+		}
+	}
+
+	// A still sends: its input life did not end with the release.
+	a.wait(t, "surface", epochIs(2))
+	a.input(t, map[string]any{"t": "move", "x": 0.5, "y": 0.5, "e": 2})
+	if calls := fb.waitFor(t, 5); calls[4].Kind != screencap.MouseMoved {
+		t.Errorf("call 4 = %+v, want a move after the switch", calls[4])
+	}
+}
+
+// TestSurface_NoDesktopJSONChange: nothing about the surface is persisted.
+func TestSurface_NoDesktopJSONChange(t *testing.T) {
+	dir := t.TempDir()
+	if err := desktop.SaveConfig(dir, desktop.Config{SchemaVersion: desktop.ConfigSchemaVersion, AlwaysAvailable: true, GrantID: "g1", IAT: 1}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, desktop.ConfigFile)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	world := newSurfaceWorld(mainSurface(), secondSurface(), termWindow(1280, 800))
+	env := newTracerServer(t, withSurfaces(world, &fakeInputBridge{}), func(_ *tracerEnv, d *desktop.Deps) { d.ConfigDir = dir })
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	a := env.joinSurf(ctx, t, env.token(t, "g1"))
+	selectWindow(ctx, t, a)
+	a.ask(ctx, t, map[string]any{"type": "select", "kind": "display", "id": secondID})
+	a.wait(t, "surface", epochIs(3))
+	_ = a.conn.CloseNow()
+	eventually(t, 5*time.Second, "the last viewer gone", func() bool { return env.mgr.Viewers() == 0 })
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Errorf("desktop.json changed:\nbefore %s\nafter  %s", before, after)
 	}
 }

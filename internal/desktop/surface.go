@@ -37,6 +37,15 @@ const (
 	listFailed         = "list_failed"
 )
 
+// Why a share fell back to the main display (the reason of a surface message).
+const (
+	ReasonWindowClosed = "window_closed"
+	ReasonDisplayGone  = "display_gone"
+)
+
+// surfacePoll is how often a shared window or non-main display is checked.
+const surfacePoll = time.Second
+
 // listTimeout bounds one surface list; the native request has its own 15 s
 // ceiling, this is what a viewer waits at most.
 const listTimeout = 5 * time.Second
@@ -101,7 +110,9 @@ type surfaceState struct {
 	mu        sync.Mutex
 	sel       screencap.Surface     // what the source is told; the main display is {display, 0}
 	info      screencap.SurfaceInfo // its description; a zero Name means the main display, not read yet
-	switching bool                  // a select is in flight
+	switching bool                  // a switch (a pick or a fallback) is in flight
+
+	done chan struct{} // closed when surfaceLoop has ended; set by Start under Manager.mu
 }
 
 // mainInfo describes the main display now.
@@ -133,9 +144,26 @@ func (m *Manager) CurrentSurface() screencap.SurfaceInfo {
 }
 
 func (m *Manager) setSurface(sel screencap.Surface, info screencap.SurfaceInfo) {
+	if sel == (screencap.Surface{}) {
+		info = screencap.SurfaceInfo{} // the main display is read fresh, never cached
+	}
 	m.surf.mu.Lock()
 	m.surf.sel, m.surf.info = sel, info
 	m.surf.mu.Unlock()
+}
+
+// surfaceSel is what the source is told to capture.
+func (m *Manager) surfaceSel() screencap.Surface {
+	m.surf.mu.Lock()
+	defer m.surf.mu.Unlock()
+	return m.surf.sel
+}
+
+// resetSurface returns to the main display when the last viewer has left, and
+// bumps the epoch so nothing stamped for the old surface can land on the next.
+func (m *Manager) resetSurface() {
+	m.setSurface(screencap.Surface{}, screencap.SurfaceInfo{})
+	m.bumpEpoch()
 }
 
 func kindName(k screencap.SurfaceKind) string {
@@ -356,4 +384,85 @@ func (m *Manager) releaseHeldAll(reason string) {
 	slog.Debug("desktop: input released", "reason", reason, "buttons", n)
 	m.wakeInput()
 	m.flushInput()
+}
+
+// surfaceLoop checks, once a second while viewers watch a window or a display
+// other than the main one, that the shared surface still exists and still has
+// its size. A panic costs one pass, never the loop or the stream.
+func (m *Manager) surfaceLoop(ctx context.Context, done chan<- struct{}) {
+	defer close(done)
+	t := time.NewTicker(surfacePoll)
+	defer t.Stop()
+	failing := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			m.surfaceTick(ctx, &failing)
+		}
+	}
+}
+
+// sameSurface finds the shared surface's entry in a fresh list.
+func sameSurface(list []screencap.SurfaceInfo, sel screencap.Surface, info screencap.SurfaceInfo) (screencap.SurfaceInfo, bool) {
+	for _, s := range list {
+		if s.Kind == sel.Kind && s.ID == info.ID {
+			return s, true
+		}
+	}
+	return screencap.SurfaceInfo{}, false
+}
+
+func (m *Manager) surfaceTick(ctx context.Context, failing *bool) {
+	defer recoverLog()
+	sel, info := m.currentSurface()
+	if m.Viewers() == 0 || sel == (screencap.Surface{}) {
+		return
+	}
+	list, err := m.listSurfaces(ctx)
+	if err != nil {
+		if !*failing {
+			slog.Warn("desktop: surface poll failed")
+		}
+		*failing = true
+		return
+	}
+	*failing = false
+	cur, found := sameSurface(list, sel, info)
+	var reason string
+	switch {
+	case found && (math.Abs(cur.W-info.W) >= 1 || math.Abs(cur.H-info.H) >= 1):
+		// Resized: the same surface at its new size.
+	case found:
+		// A move or a minimize changes only the recorded frame, never the epoch.
+		if cur != info && m.surfaceSel() == sel {
+			m.setSurface(sel, cur)
+		}
+		return
+	case sel.Kind == screencap.SurfaceWindow:
+		reason = ReasonWindowClosed
+	default:
+		reason = ReasonDisplayGone
+	}
+	// A pick in flight wins; the next pass looks again.
+	if !m.beginSwitch() {
+		return
+	}
+	defer m.endSwitch()
+	if m.surfaceSel() != sel {
+		return
+	}
+	if reason == "" {
+		_ = m.applySurface(ctx, sel, cur, "")
+		return
+	}
+	// The share falls back to the main display and keeps running.
+	main := m.mainInfo()
+	for _, s := range list {
+		if s.Kind == screencap.SurfaceDisplay && s.Main {
+			main = s
+		}
+	}
+	_ = m.applySurface(ctx, screencap.Surface{}, main, reason)
 }

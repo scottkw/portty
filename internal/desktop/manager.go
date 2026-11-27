@@ -181,8 +181,8 @@ type Deps struct {
 	// MainDisplayID is the main display's real ID, which a surface message
 	// carries so a viewer can match it to the list; nil means screencap.MainDisplayID.
 	MainDisplayID func() uint32
-	// ListSurfaces lists every display and window for the picker; nil means no
-	// list is available (a surfaces request answers list_failed).
+	// ListSurfaces lists every display and window for the picker; nil means
+	// screencap.ListSurfaces, which refuses under tests, so tests inject a fake.
 	ListSurfaces func(ctx context.Context) ([]screencap.SurfaceInfo, error)
 	// Notify posts the approval-lapse notification when the daemon is its sender; nil means log-only.
 	Notify func(id, title, body string)
@@ -397,6 +397,9 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.MainDisplayID == nil {
 		d.MainDisplayID = screencap.MainDisplayID
 	}
+	if d.ListSurfaces == nil {
+		d.ListSurfaces = screencap.ListSurfaces
+	}
 	m := &Manager{
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
@@ -447,6 +450,8 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	m.refreshAC(m.d.Now().Round(0), true)
 	go m.stateLoop(lctx, wake, m.loopDone)
+	m.surf.done = make(chan struct{})
+	go m.surfaceLoop(lctx, m.surf.done)
 
 	// The input goroutine outlives the state loop's context: Close drains the
 	// queued releases through it before it cancels this one.
@@ -733,7 +738,9 @@ func (m *Manager) startSource() error {
 	src := m.d.NewSource()
 	sctx, cancel := context.WithCancel(m.ctx)
 	now := m.d.Now().Round(0)
-	err := src.Start(sctx, m.d.SourceConfig)
+	cfg := m.d.SourceConfig
+	cfg.Surface = m.surfaceSel() // a restart keeps the surface; a first start after the last viewer left is the main display
+	err := src.Start(sctx, cfg)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
@@ -747,6 +754,12 @@ func (m *Manager) startSource() error {
 		cancel()
 		_ = src.Stop()
 		return nil
+	}
+	// A select that ran while this start was in flight only recorded its choice.
+	if cur := m.surfaceSel(); cur != cfg.Surface {
+		if err := src.SelectSurface(cur); err != nil {
+			slog.Warn("desktop: surface switch after start failed", "err", err)
+		}
 	}
 	m.src, m.srcStop = src, cancel
 	m.fanDone = make(chan struct{})
@@ -785,6 +798,7 @@ func (m *Manager) leave(v *viewer) {
 	m.vmu.Unlock()
 	if n == 0 {
 		m.stopSourceLocked()
+		m.resetSurface() // the surface is per viewing session, never persisted
 		m.noteCaptureStopped()
 		m.releaseViewerHolds()
 	}
@@ -1029,11 +1043,12 @@ func (m *Manager) Close() error {
 		<-idone
 	}
 	m.mu.Lock()
-	cancel, done := m.loopCancel, m.loopDone
+	cancel, done, surfDone := m.loopCancel, m.loopDone, m.surf.done
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
 		<-done
+		<-surfDone
 	}
 
 	m.CloseAll(websocket.StatusServiceRestart, "server stopping")
