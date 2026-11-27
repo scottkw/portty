@@ -379,7 +379,7 @@ Every plan opens with a hard `test -f` gate on the upstream 20-/21-/22- SUMMARY.
   3. Remote unlock has one of two outcomes, set by the Phase 17 evidence. If it is feasible, a viewer on the host's own account sees the lock screen of a locked, logged-in Mac and types the password to unlock it. The password is never stored or logged, and click-to-share guests never get unlock. If it is not feasible, the requirement is cut and the docs say "unattended desktop works while the Mac is awake and unlocked". (UNLK-01)
   4. A `v2.0.0-rc.1` draft release (never offered to installed copies) runs the Phase 18.1 pipeline end to end and both DMGs verify, then the real v2.0 release ships. An installed v1.2.x copy updates to v2.0 through the universal name, and a Phase 18 build updates through self-install. (release run of the REL-01 pipeline built in Phase 18.1)
   5. On a real Mac, a two-build upgrade with a live desktop viewer and live terminal sessions keeps every terminal session and brings the desktop viewer back by itself. A one-hour desktop soak on the office Mac ends with no crash, leak or stuck state. (DESK-03, final hardening)
-**Plans**: 7/16 plans executed
+**Plans**: 8/16 plans executed
 
 Plans:
 **Wave 1**
@@ -398,7 +398,7 @@ Plans:
 - [x] 23-07-PLAN.md — Unlock This Mac panel (11 states), guest Locked chip, blocked-input notice, CSP e2e check (UNLK-01)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 23-08-PLAN.md — Slow connection chip, iPhone Sound item, app-tab playing indicator, phone locked-state bar rules (gated on 21-08, 21-10)
+- [x] 23-08-PLAN.md — Slow connection chip, iPhone Sound item, app-tab playing indicator, phone locked-state bar rules (gated on 21-08, 21-10)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 23-09-PLAN.md — VM proof of audio and adaptive quality (checkpoint: VM permission clicks)
@@ -438,4 +438,4 @@ Plans:
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
 | 21. Portty App and iPhone Viewers | v2.0 | 13/13 | Complete    | 2026-11-27 |
 | 22. Click-to-Share for Tailnet People | v2.0 | 13/13 | In Progress | - |
-| 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 7/16 | In Progress | - |
+| 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 8/16 | In Progress | - |
