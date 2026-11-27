@@ -53,3 +53,27 @@ A row is PASS only when every numbered condition holds. PARTIAL means a named co
 - **SC1 (DSHR-03 live two-account proof).** A second Tailscale user opens the guest link, waits at Admit, watches view-only after Admit and gets the own-devices refusal on a terminal link from the same device. Needs a second Tailscale account on the test tailnet. Not available: recorded UNVERIFIED, never PASS.
 - **AR-21-01 (own-account peer filter).** Needs a node from another Tailscale account online. Recorded UNVERIFIED with SC1.
 - **Appendix B (real-Mac physical input).** Recorded PARTIAL by reference to `evidence/appendix-b-real-mac.txt`; not re-run.
+
+## Build under test
+
+| Build | Version | Tags | Used for |
+|-------|---------|------|----------|
+| V | 22.12.0 | `wailsassets vmdesktop` | every row (HEAD `dfa1a208` of this phase branch, Developer ID, hardened runtime, identifier `app.portty.Portty`; carries the VM-only `POST /desktop/debug/vm20` probe route) |
+
+Built with `p22-rig.sh build22` (a scratch `git archive` of HEAD outside the repo; compile only on the host), installed in the office with the Phase 19 `deploy` and started with `start-gui`. The office daemon held Screen Recording and Accessibility (`GET /desktop/permissions` answered `{"sr":true,"ax":true}`) and the Certificate Transparency notice was already acknowledged, so the Share Desktop sheet starts a share by itself on open. Both VMs are on the owner's real tailnet; the rows only ever connect the two VMs to each other.
+
+## Results
+
+| Row | Requirement | Steps (short) | Verdict | Evidence |
+|-----|-------------|---------------|---------|----------|
+| G-01 | DSHR-03, DSHR-04, DSHR-06 | tray item Share Desktop… (AX press) starts the share in the GUI; the link goes by ssh pipe to a 0600 file on portty-test-2; Safari (safaridriver) opens it; Admit sheet read from Portty's AX tree; Admit pressed through AX; picture and View only chip read from the page; Stop Sharing pressed in the tray (AX) | PASS | `evidence/G-01.txt` |
+| G-02 | DSHR-04, DCTL-04 | view-only click and typing, then Allow control on the viewer row, then click and `Portty 22` | pending | |
+| G-03 | DSHR-05 | guest holds A, Disconnect on its row | pending | |
+| G-04 | DSHR-05 | two guest windows, Stop Sharing from the tray | pending | |
+| G-05 | DCTL-04 | untagged stand-in click while a guest types | pending | |
+| G-06 | DSHR-06, DCTL-04 | Terminal Secure Keyboard Entry on and off with a controller | pending | |
+| G-07 | DSHR-06 | join and leave notifications while the display is captured | pending | |
+| G-08 | DSHR-06 | tray line and icon variant | pending | |
+| G-09 | DSHR-05, DSHR-06 | SIGTERM to the GUI process during a share | pending | |
+| G-10 | DSHR-07 | audit file mode, events, no secrets | pending | |
+| G-11 | DCTL-05, DSHR-04 | window share, Spotlight opened locally, guest keys | pending | |
