@@ -93,6 +93,8 @@ class FakePC extends EventTarget {
     this.signalingState = 'closed'
   }
   fireTrack() { this.ontrack?.({ streams: [{ id: 'stream' }], track: {} }) }
+  // A picture is a track plus ICE connected (20-06), never ontrack alone.
+  fireStreaming() { this.fireTrack(); this.connectionState = 'connected'; this.onconnectionstatechange?.() }
   setSignaling(s: string) {
     this.signalingState = s
     this.dispatchEvent(new Event('signalingstatechange'))
@@ -158,7 +160,7 @@ describe('tracer: connect, then stream over the loopback url', () => {
     await settle()
     expect(e.urls).toEqual([LOOPBACK])
     await handshake(e)
-    lastPC(e).fireTrack()
+    lastPC(e).fireStreaming()
     expect(e.statuses.map((s) => s.kind)).toEqual(['streaming'])
     expect(e.urls).toHaveLength(1)
     for (const u of e.urls) expect(u).not.toMatch(/cap=|token=/)
