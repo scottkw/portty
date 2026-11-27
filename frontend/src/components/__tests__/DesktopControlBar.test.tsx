@@ -314,6 +314,39 @@ describe('bar behaviour (Task 3)', () => {
     expect(hidden()).toBe(true)
   })
 
+  it('a press where the hidden bar sits reveals it and never reaches the stage (the Mac)', () => {
+    render(props())
+    adv(REVEAL_FIRST_MS)
+    expect(hidden()).toBe(true)
+    // Wider than the middle half and taller than the 16 px zone, as with full labels.
+    bar().getBoundingClientRect = () => ({ left: 100, right: 900, top: 0, bottom: 36, width: 800, height: 36, x: 100, y: 0, toJSON: () => ({}) })
+    const stage = document.createElement('div')
+    document.body.appendChild(stage)
+    const onStage = vi.fn()
+    stage.addEventListener('pointerdown', onStage)
+    const press = (x: number, y: number) => {
+      const ev = new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true, cancelable: true })
+      act(() => { stage.dispatchEvent(ev) })
+      return ev
+    }
+    const ev = press(850, 26)
+    expect(onStage).not.toHaveBeenCalled()
+    expect(ev.defaultPrevented).toBe(true)
+    expect(hidden()).toBe(false)
+    // Once shown the bar takes its own clicks; a press below the bar row still goes to the stage.
+    press(850, 300)
+    expect(onStage).toHaveBeenCalledTimes(1)
+    stage.remove()
+  })
+
+  it('a pointermove over where the hidden bar sits reveals it', () => {
+    render(props())
+    adv(REVEAL_FIRST_MS)
+    bar().getBoundingClientRect = () => ({ left: 100, right: 900, top: 0, bottom: 36, width: 800, height: 36, x: 100, y: 0, toJSON: () => ({}) })
+    move(850, 26)
+    expect(hidden()).toBe(false)
+  })
+
   it('returning to the zone before the delay cancels the hide', () => {
     render(props())
     adv(REVEAL_FIRST_MS)

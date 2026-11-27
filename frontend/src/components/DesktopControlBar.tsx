@@ -128,13 +128,15 @@ const noop = () => {}
 
 /**
  * When the bar shows. Hidden it is transparent and click-through but stays in the tab order;
- * it shows for the top-center zone, focus inside, an open menu or dialog, and a timed flash.
+ * it shows for the top-center zone or the bar's own box, focus inside, an open menu or dialog,
+ * and a timed flash. A press on the hidden bar's box reveals it and is not forwarded to the Mac.
  */
 function useReveal(barRef: React.RefObject<HTMLDivElement | null>, menuOpen: boolean, flashKey: string): boolean {
   const [hot, setHot] = useState(false)
   const [focusIn, setFocusIn] = useState(false)
   const [flash, setFlash] = useState(false)
   const hotRef = useRef(false)
+  const shownRef = useRef(false)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flashUntil = useRef(0)
@@ -165,6 +167,17 @@ function useReveal(barRef: React.RefObject<HTMLDivElement | null>, menuOpen: boo
   }, [flashKey])
 
   useEffect(() => {
+    // Where the bar sits, hidden (8 px higher, translateY) or shown: wider and taller than the zone with full labels.
+    const inBarBox = (x: number, y: number) => {
+      const r = barRef.current?.getBoundingClientRect()
+      return !!r && r.width > 0 && x >= r.left && x <= r.right && y >= 0 && y <= r.bottom + 8
+    }
+    const reveal = () => {
+      if (hideTimer.current) clearTimeout(hideTimer.current)
+      hideTimer.current = null
+      hotRef.current = true
+      setHot(true)
+    }
     const leave = () => {
       if (!hotRef.current || hideTimer.current) return
       hideTimer.current = setTimeout(() => {
@@ -177,17 +190,22 @@ function useReveal(barRef: React.RefObject<HTMLDivElement | null>, menuOpen: boo
       const inZone =
         e.clientY < ZONE_HEIGHT_PX && e.clientX >= window.innerWidth / 4 && e.clientX <= (window.innerWidth * 3) / 4
       const overBar = e.target instanceof Node && barRef.current?.contains(e.target) === true
-      if (inZone || overBar) {
-        if (hideTimer.current) clearTimeout(hideTimer.current)
-        hideTimer.current = null
-        hotRef.current = true
-        setHot(true)
-      } else leave()
+      if (inZone || overBar || inBarBox(e.clientX, e.clientY)) reveal()
+      else leave()
+    }
+    // The hidden bar is click-through: a press where it sits would reach the stage and the Mac. It reveals the bar instead.
+    const onDown = (e: PointerEvent) => {
+      if (shownRef.current || !inBarBox(e.clientX, e.clientY)) return
+      e.preventDefault()
+      e.stopPropagation()
+      reveal()
     }
     document.addEventListener('pointermove', onMove, { passive: true })
+    document.addEventListener('pointerdown', onDown, true)
     document.documentElement.addEventListener('pointerleave', leave)
     return () => {
       document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerdown', onDown, true)
       document.documentElement.removeEventListener('pointerleave', leave)
       if (hideTimer.current) clearTimeout(hideTimer.current)
     }
@@ -209,7 +227,11 @@ function useReveal(barRef: React.RefObject<HTMLDivElement | null>, menuOpen: boo
     }
   }, [barRef])
 
-  return hot || focusIn || menuOpen || flash
+  const shown = hot || focusIn || menuOpen || flash
+  useEffect(() => {
+    shownRef.current = shown
+  }, [shown])
+  return shown
 }
 
 interface BarButtonProps {
