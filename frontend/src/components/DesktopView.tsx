@@ -31,10 +31,11 @@ import {
   type DesktopSurfaceMsg,
 } from '../lib/desktopClient'
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
-import { isPhone } from '../lib/phoneQuery'
+import { isPhone, usePhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
 import { DesktopCopyPopover, DesktopPastePopover } from './DesktopClipboardPopover'
 import { DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
+import { DesktopPhoneLayer } from './DesktopPhoneLayer'
 
 const TITLE = 'Portty Desktop'
 
@@ -329,6 +330,10 @@ export function DesktopView({
   const capturedRef = useRef(false)
   const noticeSeq = useRef(0)
 
+  // Phase 21-10: on a phone (and only there) the touch layer replaces Phase 20's controller.
+  const phoneMode = usePhone()
+  const [phoneClient, setPhoneClient] = useState<DesktopClient | null>(null)
+  const [phoneRights, setPhoneRights] = useState<{ control: boolean; surface: boolean } | null>(null)
   const [status, setStatus] = useState<ClientStatus>({ kind: 'connecting' })
   const [desk, setDesk] = useState<DesktopStateMsg | null>(null)
   const [viewers, setViewers] = useState<number | null>(null)
@@ -463,9 +468,11 @@ export function DesktopView({
     clientRef.current = client
     clientCb.current?.(client)
     const phone = isPhone()
+    if (phone) setPhoneClient(client)
     let lastEpoch: number | null = null
     const offs = [
       client.on('rights', (r) => {
+        if (phone) setPhoneRights({ control: r.control, surface: r.surface })
         const stage = stageRef.current
         const input = inputRef.current
         if (!r.control || phone || inputCtl.current || !stage || !input) return
@@ -584,6 +591,7 @@ export function DesktopView({
       client.stop()
       clientRef.current = null
       clientCb.current?.(null)
+      setPhoneClient(null)
     }
   }, [startPlay, updateRect, pushNotice, typingStays])
 
@@ -882,7 +890,7 @@ export function DesktopView({
   return (
     <div
       ref={rootRef}
-      className={`desktop-view${canControl ? ' desktop-view--bar' : ''}${embedded ? ' desktop-view--embedded' : ''}`}
+      className={`desktop-view${canControl ? ' desktop-view--bar' : ''}${embedded ? ' desktop-view--embedded' : ''}${phoneMode ? ' desktop-view--phone' : ''}`}
     >
       <div
         className={active && !inputPaused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
@@ -894,6 +902,16 @@ export function DesktopView({
         {video}
         {canControl && captured && <div className="desktop-ring" aria-hidden="true" />}
         {canControl && <div className="desktop-dot" ref={dotRef} aria-hidden="true" hidden />}
+        {phoneMode && phoneClient && (
+          <DesktopPhoneLayer
+            client={phoneClient}
+            video={videoRef.current}
+            stage={stageRef.current}
+            rights={phoneRights}
+            locked={locked}
+            reconnecting={hostPaused || status.kind === 'reconnecting' || status.kind === 'unreachable'}
+          />
+        )}
         <span id={HINT_ID} className="visually-hidden">
           While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together.
         </span>
