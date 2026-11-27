@@ -16,7 +16,7 @@ func TestGuestViewer_Golden(t *testing.T) {
 		"close-revoked":       int(CloseGuestRevoked),
 		"close-share-ended":   int(CloseShareEnded),
 		"close-token-invalid": int(CloseTokenRejected),
-		"close-replaced":      1000,
+		"close-replaced":      int(CloseGuestReplaced),
 		"close-full":          int(CloseFull),
 	}
 	reasons := map[string]string{

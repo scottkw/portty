@@ -153,6 +153,18 @@ describe('guest cards, one at a time', () => {
     expect(buttons()).toEqual([])
   })
 
+  it('Opened in another tab: final, with Reload Page to watch here instead', async () => {
+    const onReload = vi.fn()
+    render({ onReload })
+    await firstFrame()
+    status({ kind: 'guest_final', reason: 'replaced' })
+    expect(heading()).toBe(copy.GUEST_CARD_REPLACED)
+    expect(body()).toBe(copy.GUEST_CARD_REPLACED_BODY)
+    expect(buttons()).toEqual(['Reload Page'])
+    act(() => (container.querySelector('.desktop-card button') as HTMLButtonElement).click())
+    expect(onReload).toHaveBeenCalledTimes(1)
+  })
+
   it('Sharing has ended: final, the scrim stays over the frozen last frame', async () => {
     render()
     await firstFrame()

@@ -108,6 +108,9 @@ export const GUEST_CARD_REVOKED_BODY = "The person at that Mac ended your connec
 export const GUEST_CARD_ENDED = 'Sharing has ended'
 export const GUEST_CARD_ENDED_BODY =
   'The share has ended, so this link no longer works. Ask the person at that Mac for a new link.'
+export const GUEST_CARD_REPLACED = 'Opened in another tab'
+export const GUEST_CARD_REPLACED_BODY =
+  'This share is open in another tab or window on this device. Reload this page to watch here instead.'
 export const GUEST_CARD_LINK = 'This link no longer works'
 export const GUEST_CARD_LINK_BODY = 'The share has ended, or the link is incomplete. Ask the person who shared it for a new link.'
 export const GUEST_CARD_CONNECTING = 'Connecting…'

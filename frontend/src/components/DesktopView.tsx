@@ -139,23 +139,25 @@ const CARDS: Record<CardKey, { Icon: Icon; heading: string; body: string }> = {
 }
 
 /** The guest page's cards (22-UI-SPEC Surface 6); the words are shareDesktopCopy's and `mac` is set as text. */
-type GuestCardKey = 'guest_waiting' | 'guest_denied' | 'guest_timeout' | 'guest_revoked' | 'guest_ended' | 'guest_link' | 'guest_connecting' | 'guest_unreachable'
+type GuestCardKey = 'guest_waiting' | 'guest_denied' | 'guest_timeout' | 'guest_revoked' | 'guest_replaced' | 'guest_ended' | 'guest_link' | 'guest_connecting' | 'guest_unreachable'
 const guestCards = (mac: string): Record<GuestCardKey, { Icon: Icon; heading: string; body: string }> => ({
   guest_waiting: { Icon: ClockIcon, heading: copy.guestWaitingHeading(mac), body: copy.GUEST_CARD_WAITING_BODY },
   guest_denied: { Icon: NoSymbolIcon, heading: copy.GUEST_CARD_NOT_ADMITTED, body: copy.GUEST_CARD_DENIED_BODY },
   guest_timeout: { Icon: ClockIcon, heading: copy.GUEST_CARD_NOT_ADMITTED, body: copy.GUEST_CARD_TIMEOUT_BODY },
   guest_revoked: { Icon: NoSymbolIcon, heading: copy.GUEST_CARD_REVOKED, body: copy.GUEST_CARD_REVOKED_BODY },
+  guest_replaced: { Icon: ComputerDesktopIcon, heading: copy.GUEST_CARD_REPLACED, body: copy.GUEST_CARD_REPLACED_BODY },
   guest_ended: { Icon: StopIcon, heading: copy.GUEST_CARD_ENDED, body: copy.GUEST_CARD_ENDED_BODY },
   guest_link: { Icon: ExclamationTriangleIcon, heading: copy.GUEST_CARD_LINK, body: copy.GUEST_CARD_LINK_BODY },
   guest_connecting: { Icon: ComputerDesktopIcon, heading: copy.GUEST_CARD_CONNECTING, body: copy.guestConnectingBody(mac) },
   guest_unreachable: { Icon: SignalSlashIcon, heading: copy.GUEST_CARD_UNREACHABLE, body: copy.GUEST_CARD_UNREACHABLE_BODY },
 })
-/** The two guest cards that offer Reload Page. */
-const GUEST_RELOAD: ReadonlySet<GuestCardKey> = new Set<GuestCardKey>(['guest_timeout', 'guest_unreachable'])
+/** The guest cards that offer Reload Page. */
+const GUEST_RELOAD: ReadonlySet<GuestCardKey> = new Set<GuestCardKey>(['guest_timeout', 'guest_replaced', 'guest_unreachable'])
 const GUEST_FINAL_CARDS = {
   denied: 'guest_denied',
   admit_timeout: 'guest_timeout',
   revoked: 'guest_revoked',
+  replaced: 'guest_replaced',
   share_ended: 'guest_ended',
   token_invalid: 'guest_link',
 } as const

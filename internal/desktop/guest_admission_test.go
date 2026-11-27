@@ -34,8 +34,9 @@ func TestGuestViewer_NewKnockFromTheSameNodeClosesTheWaitingOne(t *testing.T) {
 	first := e.knock(ctx, t, 1001, "nodeA")
 	e.pendingN(t, 1)
 	e.knock(ctx, t, 1001, "nodeA")
-	if code, reason := closeOf(ctx, t, first); code != websocket.StatusNormalClosure || reason != "replaced" {
-		t.Errorf("replaced socket closed %d %q, want 1000 replaced", code, reason)
+	// Final for the page that lost: it shows a card instead of retrying (which would replace the newer one).
+	if code, reason := closeOf(ctx, t, first); code != desktop.CloseGuestReplaced || reason != "replaced" {
+		t.Errorf("replaced socket closed %d %q, want 4434 replaced", code, reason)
 	}
 	if n := len(e.gs.Pending()); n != 1 {
 		t.Errorf("%d pending, want 1", n)
@@ -122,8 +123,8 @@ func TestGuestViewer_ReconnectIsAdmittedAtOnceAndTheOlderSocketCloses(t *testing
 	if got := len(e.eventsOf("admit_request")); got != requests {
 		t.Errorf("a reconnect fired admit_request")
 	}
-	if code, reason := closeOf(ctx, t, old); code != websocket.StatusNormalClosure || reason != "replaced" {
-		t.Errorf("older socket closed %d %q, want 1000 replaced", code, reason)
+	if code, reason := closeOf(ctx, t, old); code != desktop.CloseGuestReplaced || reason != "replaced" {
+		t.Errorf("older socket closed %d %q, want 4434 replaced", code, reason)
 	}
 }
 

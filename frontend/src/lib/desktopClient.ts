@@ -38,7 +38,7 @@ export type ClientStatus =
   | { kind: 'guest_final'; reason: GuestCloseReason }
 
 /** Why a guest connection ended for good (22-UI-SPEC Surface 6 close reasons). */
-export type GuestCloseReason = 'denied' | 'admit_timeout' | 'revoked' | 'share_ended' | 'token_invalid'
+export type GuestCloseReason = 'denied' | 'admit_timeout' | 'revoked' | 'share_ended' | 'token_invalid' | 'replaced'
 
 export interface SignalTransport {
   send(msg: object): void
@@ -367,6 +367,8 @@ const GUEST_CLOSE: Readonly<Record<number, GuestCloseReason>> = {
   4431: 'admit_timeout',
   4432: 'revoked',
   4433: 'share_ended',
+  // Final, not retried: a retry would knock again and replace the other tab, which would retry in turn.
+  4434: 'replaced',
 }
 
 const LEASE_STATES: ReadonlySet<string> = new Set<LeaseState>(['you', 'other', 'owner', 'physical', 'free'])

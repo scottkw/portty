@@ -845,7 +845,7 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 			return
 		}
 		key := AdmissionKey{UserID: v.Identity.UserID, StableID: v.Identity.StableID}
-		v.gs.attach(key, v.ID, func() { _ = c.Close(websocket.StatusNormalClosure, guestReasonReplaced) })
+		v.gs.attach(key, v.ID, func() { _ = c.Close(CloseGuestReplaced, guestReasonReplaced) })
 		defer v.gs.detach(key, v.ID)
 	}
 	joined = true
