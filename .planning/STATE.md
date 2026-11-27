@@ -6,10 +6,10 @@ current_phase: 22
 current_phase_name: Click-to-Share for Tailnet People
 status: executing
 stopped_at: Phase 21 complete (real-device verification deferred, see 21-UAT.md), Phase 22 executing
-last_updated: "2026-11-27T14:21:02.810Z"
+last_updated: "2026-11-27T17:17:54.217Z"
 last_activity: 2026-11-27
-last_activity_desc: "Phase 21 closed (human_needed 4/5, M-194..M-205 tracked in 21-UAT.md); Phase 22 executing"
-state_head: 951908f487e7202c67a9819e930e7cb2e83c70a2
+last_activity_desc: Phase 21 closed (human_needed 4/5, M-194..M-205 tracked in 21-UAT.md); Phase 22 executing
+state_head: 38dd7bf3944475b1decef22fa6afe4e4015eacee
 progress:
   total_phases: 8
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 
 Phase: 22 (Click-to-Share for Tailnet People) — EXECUTING
 Status: Phase 21 complete 2026-11-27 (verification human_needed 4/5, real-device items deferred; see Deferred Verification); Phase 22 executing
-Last activity: 2026-11-27 -- Phase 21 closed with M-194..M-205 tracked in 21-UAT.md; Phase 22 executing
+Last activity: 2026-11-27 - Completed quick task 261127-fb9: Phase 21 ponytail-review fixes
 
 ## Performance Metrics
 
@@ -466,6 +466,7 @@ Recent decisions affecting current work:
 | 261126-oq0 | Phase 19 ponytail-review fixes: PUT /desktop skips freeze gate, poller warms cert outside gate, desktop-only finalize never fails a handoff, CLI install resolves symlinks, lapse retry survives AX probe failure, runtime state fsync, process-wide native capture lock, Test Capture leak, dead FramesSeen removed | 2026-11-26 | c95728b9 | [261126-oq0-apply-accepted-phase-19-ponytail-review-](./quick/261126-oq0-apply-accepted-phase-19-ponytail-review-/) |
 | 261126-pn6 | A restart's /shutdown is pinned to the stale daemon it checked (one connection for /health and /shutdown), so a CLI --restart-daemon after launchdTakeover's 15 s timeout never stops the daemon a late launchd re-home moved the sessions to | 2026-11-26 | 9e884e05 | [261126-pn6-pin-restart-shutdown-to-stale-daemon](./quick/261126-pn6-pin-restart-shutdown-to-stale-daemon/) |
 | 261127-bb7 | Phase 20 ponytail-review fixes: encoder rebuild keeps old session on failure, chorded mouse buttons released, bar menu state reset on unmount, closed input channel unregistered, post-Close flush, repeat-after-release test, one flushInput/bridgeErr/utf8Len | 2026-11-27 | b41055f0 | [261127-bb7-apply-accepted-phase-20-ponytail-review-](./quick/261127-bb7-apply-accepted-phase-20-ponytail-review-/) |
+| 261127-fb9 | Phase 21 ponytail-review fixes (phone picker selectFailed notice, no Swap in app tab, sendChord gate, dead props/CSS, refresh-failure close tests) | 2026-11-27 | 7b60fe5f | [261127-fb9-phase-21-ponytail-review-fixes](./quick/261127-fb9-phase-21-ponytail-review-fixes/) |
 
 ## Deferred Items
 
