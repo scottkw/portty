@@ -678,14 +678,14 @@ describe('control bar (Phase 20-07 Task 1)', () => {
     expect(bar()).toBeNull()
   })
 
-  it('renders no toolbar on a phone', async () => {
+  it('renders no floating control bar on a phone (Phase 21-10 gives it a bottom bar of its own instead)', async () => {
     vi.spyOn(window, 'matchMedia').mockImplementation(
       (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
     )
     render()
     ownAccount()
     await firstFrame()
-    expect(bar()).toBeNull()
+    expect(container.querySelector('.desktop-bar')).toBeNull()
   })
 
   it('Send Keys then Cmd+Tab puts one complete tap on the input channel', async () => {
@@ -854,7 +854,7 @@ describe('surface picker and notices (Phase 20-07 Task 2)', () => {
     expect(notice()).toBeNull()
   })
 
-  it('a phone sees the surface notices too, with no bar', async () => {
+  it('a phone sees the surface notices too, with no floating bar', async () => {
     vi.spyOn(window, 'matchMedia').mockImplementation(
       (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
     )
@@ -863,7 +863,7 @@ describe('surface picker and notices (Phase 20-07 Task 2)', () => {
     await firstFrame()
     surface()
     surface({ e: 2, kind: 'window', id: 4242, name: 'Terminal — zsh' })
-    expect(container.querySelector('[role="toolbar"]')).toBeNull()
+    expect(container.querySelector('.desktop-bar')).toBeNull()
     expect(notice()?.textContent).toBe('Showing Terminal — zsh')
     surface({ e: 3, reason: 'window_closed' })
     expect(notice()?.textContent).toBe('The shared window closed; showing the main display')
@@ -1728,7 +1728,7 @@ describe('state chips (Phase 20-08 Task 3)', () => {
   })
 
   describe('a phone', () => {
-    it('still shows the Locked chip and a Showing notice, with no bar and no Clipboard button', async () => {
+    it('still shows the Locked chip and a Showing notice, with no floating bar and no Clipboard button', async () => {
       phoneMedia()
       render()
       ownAccount()
@@ -1738,7 +1738,7 @@ describe('state chips (Phase 20-08 Task 3)', () => {
       surface({ e: 2, id: 2, name: 'Display 2' })
       expect(stateChip()?.textContent).toBe('Locked')
       expect(notice()?.textContent).toBe('Showing Display 2')
-      expect(container.querySelector('[role="toolbar"]')).toBeNull()
+      expect(container.querySelector('.desktop-bar')).toBeNull()
       expect(container.querySelector('button[aria-label="Clipboard"]')).toBeNull()
       expect(container.querySelector('.desktop-popover')).toBeNull()
     })

@@ -3038,3 +3038,92 @@ html:has(.desktop-view:not(.desktop-view--embedded)) body {
 .sidebar__row[data-muted="true"]:not([aria-current="page"]) .sidebar__row-icon {
   color: var(--color-text-secondary);
 }
+
+/* ─── iPhone viewer (Phase 21-10, 21-UI-SPEC Surface 4) ──────────────
+   The /desktop/ page on a phone: the stage above one slot that holds the bottom bar or the key bar.
+   The root follows the visual viewport so the slot sits right on the keyboard; the stage clips the
+   zoomed picture and takes every touch itself (no page scroll, no page zoom). Tokens only. */
+.desktop-view--phone {
+  display: flex;
+  flex-direction: column;
+  top: var(--vv-top, 0px);
+  bottom: auto;
+  height: var(--vv-height, 100%);
+  padding: env(safe-area-inset-top) 0 0;
+}
+.desktop-view--phone .desktop-stage {
+  flex: 1 1 0;
+  min-height: 0;
+  width: auto;
+  height: auto;
+  margin: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  overflow: hidden;
+  touch-action: none;
+}
+/* The slot is the .keybar box. It stays above the scrim, so the bar is usable under a card. */
+.desktop-phone__slot {
+  position: relative;
+  z-index: 3;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+.desktop-phone__bar {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* Ten keys share 360pt, so a key may shrink to 36px; the bottom bar's four items are wider than that. */
+.desktop-phone__key {
+  flex: 1 1 0;
+  min-width: 36px;
+  gap: 4px;
+  padding: 0 4px;
+}
+.desktop-phone__key[aria-disabled="true"] {
+  opacity: var(--opacity-disabled);
+}
+.desktop-phone__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Real and focusable, never display: none, or iOS will not open the keyboard for it. 16px stops iOS zooming the page. */
+.desktop-phone__input {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: 16px;
+  caret-color: transparent;
+}
+/* A shape cue on the picture: no text sits on it. */
+.desktop-ripple {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border: 2px solid var(--color-on-accent);
+  border-radius: 50%;
+  outline: 1px solid var(--color-viewer-bg);
+  pointer-events: none;
+  animation: desktop-ripple-fade 150ms linear forwards;
+}
+.desktop-ripple[hidden] {
+  display: none;
+}
+@keyframes desktop-ripple-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-ripple {
+    animation: none;
+  }
+}

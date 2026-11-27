@@ -14,13 +14,24 @@ const KEYBOARD_MIN_PX = 100
 // iOS reports the final visualViewport a beat after the helper textarea blurs.
 const HEAL_DELAY_MS = 140
 
-export function useVisualViewportInset(enabled: boolean): { keyboardUp: boolean } {
+export interface ViewportInsetOptions {
+  /** The element sized to the visual viewport (default the terminal app's `.app`). */
+  rootSelector?: string
+  /** The field whose blur heals a stuck viewport (default the terminal's `.xterm-helper-textarea`). */
+  fieldSelector?: string
+}
+
+// Phase 21-10: the /desktop/ phone page passes its own root and hidden field; every default is the terminal's.
+export function useVisualViewportInset(
+  enabled: boolean,
+  { rootSelector = '.app', fieldSelector = '.xterm-helper-textarea' }: ViewportInsetOptions = {},
+): { keyboardUp: boolean } {
   const [keyboardUp, setKeyboardUp] = useState(false)
 
   useEffect(() => {
     const vv = window.visualViewport
     if (!enabled || !vv) return
-    const root = document.querySelector<HTMLElement>('.app')
+    const root = document.querySelector<HTMLElement>(rootSelector)
     if (!root) return
 
     let frame = 0
@@ -39,7 +50,7 @@ export function useVisualViewportInset(enabled: boolean): { keyboardUp: boolean 
     // toggle makes WebKit lay the page out again.
     const heal = (): void => {
       healTimer = null
-      if (document.activeElement?.matches('.xterm-helper-textarea')) return
+      if (document.activeElement?.matches(fieldSelector)) return
       // The layout viewport does not shrink for the keyboard, so the live innerHeight is the baseline
       // (a remembered maximum would read a landscape rotation as a stuck keyboard).
       if (window.innerHeight - vv.height <= KEYBOARD_MIN_PX) return
@@ -48,7 +59,7 @@ export function useVisualViewportInset(enabled: boolean): { keyboardUp: boolean 
       healFrame = requestAnimationFrame(() => { healFrame = 0; root.style.display = ''; update() })
     }
     const onFocusOut = (e: FocusEvent): void => {
-      if (!(e.target as Element | null)?.matches?.('.xterm-helper-textarea')) return
+      if (!(e.target as Element | null)?.matches?.(fieldSelector)) return
       if (healTimer !== null) clearTimeout(healTimer)
       healTimer = setTimeout(heal, HEAL_DELAY_MS)
     }
@@ -69,7 +80,7 @@ export function useVisualViewportInset(enabled: boolean): { keyboardUp: boolean 
       root.style.removeProperty('--vv-top')
       setKeyboardUp(false)
     }
-  }, [enabled])
+  }, [enabled, rootSelector, fieldSelector])
 
   return { keyboardUp }
 }

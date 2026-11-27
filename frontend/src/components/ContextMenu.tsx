@@ -48,6 +48,8 @@ interface ContextMenuProps {
   onClose: () => void
   /** Extra class for a styled variant (the viewer's .desktop-menu). */
   className?: string
+  /** Phase 21-10: open upward from (x, y), for a menu anchored to a bar at the bottom of the screen. */
+  above?: boolean
 }
 
 const ENABLED = '[role^="menuitem"]:not([aria-disabled="true"])'
@@ -57,7 +59,7 @@ const ENABLED = '[role^="menuitem"]:not([aria-disabled="true"])'
  * shared by tabs and sidebar rows. Portaled to <body> so no drag region,
  * overflow clip or containing block of the invoker applies to it.
  */
-export function ContextMenu({ items, x, y, invoker, onClose, className }: ContextMenuProps): React.ReactElement {
+export function ContextMenu({ items, x, y, invoker, onClose, className, above }: ContextMenuProps): React.ReactElement {
   const menuRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ left: x, top: y })
 
@@ -75,10 +77,10 @@ export function ContextMenu({ items, x, y, invoker, onClose, className }: Contex
     const { width, height } = el.getBoundingClientRect()
     setPos({
       left: x + width > window.innerWidth ? Math.max(0, x - width) : x,
-      top: y + height > window.innerHeight ? Math.max(0, y - height) : y,
+      top: above || y + height > window.innerHeight ? Math.max(0, y - height) : y,
     })
     el.querySelector<HTMLElement>(ENABLED)?.focus()
-  }, [x, y])
+  }, [x, y, above])
 
   // A list that arrives later (the viewer's picker) gets its first item focused once it has one.
   useLayoutEffect(() => {
