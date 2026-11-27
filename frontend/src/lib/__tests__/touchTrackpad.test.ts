@@ -291,3 +291,155 @@ describe('tap, double-tap, long-press and tap-then-drag', () => {
     expect(r.intents).toEqual([])
   })
 })
+
+// Two fingers d px apart, centred on (cx, cy). Ids 0 and 1.
+const pair = (d: number, cx = 200, cy = 200): TouchPoint[] => [pt(cx - d / 2, cy, 0), pt(cx + d / 2, cy, 1)]
+// Put two fingers down the way iOS reports it: one touchstart per finger.
+function twoDown(r: ReturnType<typeof rig>, d = 60, cx = 200, cy = 200): void {
+  const [a, b] = pair(d, cx, cy)
+  r.pad.start(ev(a))
+  r.pad.start(ev(a, b))
+}
+const twoUp = (r: ReturnType<typeof rig>): void => {
+  r.pad.end({ touches: [pt(200, 200, 0)], changedTouches: [pt(230, 200, 1)] })
+  r.pad.end({ touches: [], changedTouches: [pt(200, 200, 0)] })
+}
+const sumOf = (i: TrackpadIntent[], kind: 'scroll', f: 'dx' | 'dy'): number =>
+  i.reduce((a, x) => a + (x.kind === kind ? x[f] : 0), 0)
+
+describe('two fingers: scroll versus pinch', () => {
+  it('moving together 30 px while the distance changes 4 px is scroll only, summing to the centroid travel', () => {
+    const r = rig()
+    twoDown(r)
+    for (let i = 1; i <= 3; i++) {
+      r.clock.advance(16)
+      r.pad.move(ev(...pair(60 + i * (4 / 3), 200 + i * 10, 200)))
+    }
+    twoUp(r)
+    expect(r.intents.length).toBeGreaterThan(0)
+    expect(r.intents.every((i) => i.kind === 'scroll')).toBe(true)
+    expect(sumOf(r.intents, 'scroll', 'dx')).toBeCloseTo(30, 6)
+    expect(sumOf(r.intents, 'scroll', 'dy')).toBeCloseTo(0, 6)
+  })
+
+  it('spreading 40 px while the centroid moves 3 px is pinch intents then pinchEnd, never a scroll', () => {
+    const r = rig()
+    twoDown(r, 60)
+    for (let i = 1; i <= 4; i++) {
+      r.clock.advance(16)
+      r.pad.move(ev(...pair(60 + i * 10, 200 + i * 0.75, 200)))
+    }
+    twoUp(r)
+    const k = kinds(r.intents)
+    expect(k.length).toBeGreaterThan(1)
+    expect(k.slice(0, -1).every((x) => x === 'pinch')).toBe(true)
+    expect(k[k.length - 1]).toBe('pinchEnd')
+    const last = r.intents.filter((i): i is Extract<TrackpadIntent, { kind: 'pinch' }> => i.kind === 'pinch').pop()!
+    expect(last.scale).toBeCloseTo(100 / 60, 6) // relative to the start of the gesture
+    expect(last.cx).toBeCloseTo(203, 6)
+    expect(last.cy).toBeCloseTo(200, 6)
+  })
+
+  it('the choice is made once: a pinch that later travels far never scrolls', () => {
+    const r = rig()
+    twoDown(r, 60)
+    r.pad.move(ev(...pair(80, 200, 200))) // distance +20: pinch
+    r.pad.move(ev(...pair(80, 300, 260))) // then the pair travels 100+ px
+    expect(kinds(r.intents)).toEqual(['pinch', 'pinch'])
+  })
+
+  it('exactly 12 px of distance change decides nothing; 13 px is a pinch', () => {
+    let r = rig()
+    twoDown(r, 60)
+    r.pad.move(ev(...pair(72)))
+    expect(r.intents).toEqual([])
+    r = rig()
+    twoDown(r, 60)
+    r.pad.move(ev(...pair(73)))
+    expect(kinds(r.intents)).toEqual(['pinch'])
+  })
+
+  it('a pinch gives no scroll and no pointer intent, and a finger left down after it does nothing', () => {
+    const r = rig()
+    twoDown(r, 60)
+    r.pad.move(ev(...pair(120)))
+    r.pad.end({ touches: [pt(170, 200, 0)], changedTouches: [pt(230, 200, 1)] })
+    r.pad.move(ev(pt(300, 300, 0)))
+    r.pad.end({ touches: [], changedTouches: [pt(300, 300, 0)] })
+    r.clock.advance(1000)
+    const k = kinds(r.intents)
+    expect(k).toEqual(['pinch', 'pinchEnd'])
+  })
+
+  it('two two-finger taps within 300 ms are one resetZoom; one tap emits nothing', () => {
+    let r = rig()
+    twoDown(r)
+    r.clock.advance(80)
+    twoUp(r)
+    r.clock.advance(2000)
+    expect(r.intents).toEqual([])
+
+    r = rig()
+    twoDown(r)
+    r.clock.advance(80)
+    twoUp(r)
+    r.clock.advance(150)
+    twoDown(r)
+    r.clock.advance(80)
+    twoUp(r)
+    r.clock.advance(2000)
+    expect(r.intents).toEqual([{ kind: 'resetZoom' }])
+  })
+
+  it('two-finger taps more than 300 ms apart do not reset', () => {
+    const r = rig()
+    twoDown(r)
+    r.clock.advance(80)
+    twoUp(r)
+    r.clock.advance(400)
+    twoDown(r)
+    r.clock.advance(80)
+    twoUp(r)
+    expect(r.intents).toEqual([])
+  })
+
+  it('a third finger cancels the gesture with no intent, and the next gesture still works', () => {
+    const r = rig()
+    twoDown(r)
+    const [a, b] = pair(60)
+    r.pad.start(ev(a, b, pt(220, 260, 2)))
+    r.pad.move(ev(...pair(120)))
+    r.pad.move(ev(a, b, pt(300, 300, 2)))
+    r.pad.end({ touches: [a, b], changedTouches: [pt(220, 260, 2)] })
+    r.pad.end({ touches: [a], changedTouches: [b] })
+    r.pad.end({ touches: [], changedTouches: [a] })
+    expect(r.intents).toEqual([])
+    touchFor(r, 100)
+    r.clock.advance(400)
+    expect(kinds(r.intents)).toEqual(['tap'])
+  })
+
+  it('a third finger or cancel() during a pinch ends it, so the caller can drop will-change', () => {
+    let r = rig()
+    twoDown(r, 60)
+    r.pad.move(ev(...pair(120)))
+    r.pad.start(ev(...pair(120), pt(10, 10, 2)))
+    expect(kinds(r.intents)).toEqual(['pinch', 'pinchEnd'])
+
+    r = rig()
+    twoDown(r, 60)
+    r.pad.move(ev(...pair(120)))
+    r.pad.cancel()
+    expect(kinds(r.intents)).toEqual(['pinch', 'pinchEnd'])
+  })
+
+  it('a second finger landing during a drag releases the button first', () => {
+    const r = rig()
+    touchFor(r, 100)
+    r.clock.advance(100)
+    r.pad.start(ev(pt(100, 100, 0)))
+    r.pad.move(ev(pt(130, 100, 0)))
+    r.pad.start(ev(pt(130, 100, 0), pt(190, 100, 1)))
+    expect(kinds(r.intents)).toEqual(['dragStart', 'dragMove', 'dragEnd'])
+  })
+})
