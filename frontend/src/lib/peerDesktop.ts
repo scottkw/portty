@@ -1,10 +1,12 @@
 import {
   webSocketTransport,
   type CheckVerdict,
+  type ClientStatus,
   type DesktopClientOptions,
   type DesktopClock,
   type SignalTransport,
 } from './desktopClient'
+import { shortHost } from './sidebarPeers'
 
 /**
  * Phase 21-05: the Desktop tab's connection logic. Pure TypeScript: the daemon
@@ -112,6 +114,118 @@ const realClock: DesktopClock = {
   now: () => Date.now(),
   setTimeout: (fn, ms) => setTimeout(fn, ms),
   clearTimeout: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+}
+
+/** A hidden window this long lets the office Mac's display sleep (DVWR-01). */
+export const HIDDEN_PAUSE_MS = 120000
+
+/**
+ * Calls onPause once the document has been hidden for delayMs, and onResume on
+ * the next visible. Returns a disposer that removes the listener and the timer.
+ */
+export function createHiddenPause(opts: {
+  doc: Document
+  clock: DesktopClock
+  delayMs?: number
+  onPause(): void
+  onResume(): void
+}): () => void {
+  let timer: unknown = null
+  let paused = false
+  const clear = () => {
+    if (timer !== null) opts.clock.clearTimeout(timer)
+    timer = null
+  }
+  const onChange = () => {
+    if (opts.doc.visibilityState === 'hidden') {
+      if (timer !== null || paused) return
+      timer = opts.clock.setTimeout(() => {
+        timer = null
+        paused = true
+        opts.onPause()
+      }, opts.delayMs ?? HIDDEN_PAUSE_MS)
+      return
+    }
+    clear()
+    if (paused) {
+      paused = false
+      opts.onResume()
+    }
+  }
+  opts.doc.addEventListener('visibilitychange', onChange)
+  onChange()
+  return () => {
+    clear()
+    opts.doc.removeEventListener('visibilitychange', onChange)
+  }
+}
+
+export type DesktopTabLabelInput = {
+  host: string
+  status: ClientStatus['kind']
+  hasPicture: boolean
+  captured: boolean
+  locked: boolean
+  mode?: 'view' | 'control'
+  controlAllowed: boolean
+}
+
+/** The toolbar label's two lines: who owns the keyboard (UI-SPEC toolbar label table). */
+export function desktopTabLabel(i: DesktopTabLabelInput): { line1: string; line2: string; controlling: boolean } {
+  const host = shortHost(i.host)
+  const connected = i.status === 'streaming' && i.hasPicture
+  // Control mode is off whenever the stream is not connected (UI-SPEC), so the
+  // captured flag only counts while connected.
+  if (connected && i.captured) {
+    return { line1: `Controlling ${host}`, line2: 'Release: Ctrl+Option+Cmd+Return', controlling: true }
+  }
+  let line2: string
+  if (!connected) line2 = 'Not connected'
+  else if (i.locked) line2 = 'Locked'
+  else if (i.mode === 'view' || !i.controlAllowed) line2 = 'View only'
+  else line2 = 'Click the picture to control'
+  return { line1: `On ${host}`, line2, controlling: false }
+}
+
+export function LABEL_TOOLTIP(host: string): string {
+  return `While you control ${shortHost(host)}, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Return to get Portty's shortcuts back.`
+}
+
+/** UI-SPEC Copywriting Contract, word for word. */
+export const DESKTOP_TAB_CARDS: Record<
+  'connecting' | 'unreachable' | 'desktop_off' | 'token_rejected' | 'tap',
+  { heading: string; body: string; action?: string }
+> = {
+  connecting: {
+    heading: 'Connecting…',
+    body: 'Waiting for the first picture from the other Mac. If macOS asks to find devices on local networks, choose Allow.',
+  },
+  unreachable: {
+    heading: "Can't reach this Mac",
+    body: "Check that it's awake and on your tailnet. Portty keeps trying.",
+    action: 'Reconnect',
+  },
+  desktop_off: {
+    heading: 'Desktop sharing is off on this Mac',
+    body: "Turn on Always-available desktop in Portty's Settings, under Sharing, on that Mac.",
+  },
+  token_rejected: {
+    heading: "Can't open this desktop",
+    body: 'That Mac refused the connection. Check that both Macs are signed in to the same Tailscale account, then try again.',
+    action: 'Reconnect',
+  },
+  tap: {
+    heading: 'Click to start',
+    body: 'Portty needs a click to start the picture.',
+    action: 'Click to Start',
+  },
+}
+
+export const LOCAL_NETWORK_CARD = {
+  heading: 'Portty needs Local Network access to show this desktop',
+  body: 'Open System Settings, go to Privacy & Security, then Local Network, and turn on Portty. Or open the desktop in your browser.',
+  openSettings: 'Open System Settings',
+  openBrowser: 'Open in Browser',
 }
 
 export function createPeerDesktopOptions(deps: PeerDesktopDeps): {
