@@ -41,6 +41,12 @@ var trayIconErrorBytes []byte
 //go:embed assets/tray_icon_error@2x.png
 var trayIconErrorBytes2x []byte
 
+//go:embed assets/tray_icon_sharing.png
+var trayIconSharingBytes []byte
+
+//go:embed assets/tray_icon_sharing@2x.png
+var trayIconSharingBytes2x []byte
+
 //go:embed assets/tray_icon_progress_25.png
 var trayIconProgress25Bytes []byte
 
@@ -183,10 +189,15 @@ func (a *App) setDockVisible(visible bool) {
 //
 // Error precedence (Pitfall #8): when connected=false, always returns
 // the error pair regardless of a.lastTrayQuartile to ensure daemon-
-// disconnect is not masked by a progress glyph.
+// disconnect is not masked by a progress glyph. Next comes the sharing pair
+// while anyone is connected (a.trayViewers), then the progress quartiles.
 func (a *App) trayIconBytesForState(connected bool) (x1, x2 []byte) {
 	if !connected {
 		return trayIconErrorBytes, trayIconErrorBytes2x
+	}
+	// Sharing outranks progress: who is watching is a standing fact (UI-SPEC Surface 4).
+	if a.trayViewers.Load() > 0 {
+		return trayIconSharingBytes, trayIconSharingBytes2x
 	}
 	switch a.lastTrayQuartile.Load() {
 	case 1:

@@ -42,7 +42,7 @@ check "iconfile.icns exists and is >100000 bytes (multi-entry)" \
   "test -f build/darwin/iconfile.icns && test \$(stat -f%z build/darwin/iconfile.icns) -gt 100000"
 
 # Tray icons: 1x 18x18, @2x 36x36
-for s in "" _error _progress_25 _progress_50 _progress_75 _progress_100; do
+for s in "" _error _sharing _progress_25 _progress_50 _progress_75 _progress_100; do
   check "assets/tray_icon${s}.png is 18x18" "dims assets/tray_icon${s}.png 18 18"
   check "assets/tray_icon${s}@2x.png is 36x36" "dims assets/tray_icon${s}@2x.png 36 36"
 done
