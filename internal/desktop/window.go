@@ -216,25 +216,23 @@ func (m *Manager) windowAllows(msg inputMsg) (bool, string) {
 	if err != nil {
 		return false, "window_unavailable"
 	}
-	if top.ID != info.ID && !sameAppPopup(top, info.PID, fresh) {
+	if top.ID != info.ID && !sameAppPopup(top, info.PID) {
 		return false, "covered"
 	}
 	return true, ""
 }
 
+// popUpMenuLayer is kCGPopUpMenuWindowLevel: menus, pop-up menus and their
+// popovers sit at this layer or above.
+const popUpMenuLayer = 101
+
 // sameAppPopup reports whether a window on top of the shared one is the shared
-// app's own pop-up: a menu, pop-up or popover (any layer above 0), or a sheet or
-// panel (layer 0) lying entirely inside the shared window. The app's other
-// document windows and every other app's windows are not.
-func sameAppPopup(top screencap.TopWindow, pid int32, shared rect) bool {
-	if top.PID != pid {
-		return false
-	}
-	if top.Layer != 0 {
-		return true
-	}
-	return top.X >= shared.x && top.Y >= shared.y &&
-		top.X+top.W <= shared.x+shared.w && top.Y+top.H <= shared.y+shared.h
+// app's own menu or pop-up (layer 101 and up). Nothing else is carved out
+// (T-20-21): the app's sheets, floating and modal panels (layers 0, 3, 8),
+// utility windows and other document windows, negative layers and every other
+// app's windows still cover, since a single-window capture does not show them.
+func sameAppPopup(top screencap.TopWindow, pid int32) bool {
+	return top.PID == pid && top.Layer >= popUpMenuLayer
 }
 
 // startRaise raises the shared window on its own goroutine, one at a time (a

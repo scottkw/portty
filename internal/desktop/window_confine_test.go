@@ -109,9 +109,11 @@ func TestWindow_TopmostHitDrops(t *testing.T) {
 	}
 }
 
-// TestWindow_SameAppPopupAllowed: a menu, pop-up or sheet of the shared app is
-// its own window; a press on it posts. Another app's window, and the shared
-// app's other document window, still cover.
+// TestWindow_SameAppPopupAllowed: a menu or pop-up of the shared app (a pop-up
+// menu layer, 101 and up) is its own window; a press on it posts. Everything
+// else on top covers (T-20-21): another app's window at any layer, and the
+// shared app's own sheets, panels, utility windows and other document windows,
+// which a single-window capture does not show.
 func TestWindow_SameAppPopupAllowed(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -122,9 +124,16 @@ func TestWindow_SameAppPopupAllowed(t *testing.T) {
 		{"menu outside the frame", func(f *fakeWindow) {
 			f.top, f.topPID, f.topLayer, f.topFrame = 9999, winPID, 101, [4]float64{1300, 800, 300, 400}
 		}, false},
-		{"sheet inside the frame", func(f *fakeWindow) {
+		{"above the menu layer", func(f *fakeWindow) { f.top, f.topPID, f.topLayer = 9999, winPID, 102 }, false},
+		{"same-app contained layer-0 window", func(f *fakeWindow) {
 			f.top, f.topPID, f.topFrame = 9999, winPID, [4]float64{300, 100, 390, 218}
-		}, false},
+		}, true},
+		{"same-app floating panel, layer 3", func(f *fakeWindow) {
+			f.top, f.topPID, f.topLayer, f.topFrame = 9999, winPID, 3, [4]float64{300, 100, 390, 218}
+		}, true},
+		{"same-app modal panel, layer 8", func(f *fakeWindow) { f.top, f.topPID, f.topLayer = 9999, winPID, 8 }, true},
+		{"same-app layer 100", func(f *fakeWindow) { f.top, f.topPID, f.topLayer = 9999, winPID, 100 }, true},
+		{"same-app negative layer", func(f *fakeWindow) { f.top, f.topPID, f.topLayer = 9999, winPID, -1 }, true},
 		{"other document window", func(f *fakeWindow) {
 			f.top, f.topPID, f.topFrame = 9999, winPID, [4]float64{900, 500, 800, 600}
 		}, true},
