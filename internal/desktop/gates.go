@@ -10,13 +10,38 @@ func (msg inputMsg) positional() bool {
 }
 
 // inputLocked reports whether input must be refused because the screen is
-// locked.
+// locked: Locked() (a fresh read, fail-closed) or the optimistic lock a Lock
+// Screen chord sets, which covers the lag before the poll sees the real state.
 func (m *Manager) inputLocked() bool {
-	return m.Locked()
+	m.in.mu.Lock()
+	until := m.in.lockUntil
+	m.in.mu.Unlock()
+	return m.d.Now().Before(until) || m.Locked()
+}
+
+// takeToken spends one of v's rate tokens: inputRate per second, burst inputBurst.
+func (m *Manager) takeToken(v *viewer) bool {
+	now := m.d.Now()
+	m.in.mu.Lock()
+	defer m.in.mu.Unlock()
+	vi := v.in
+	switch {
+	case vi.bucketAt.IsZero():
+		vi.tokens = inputBurst
+	case now.After(vi.bucketAt):
+		vi.tokens = min(inputBurst, vi.tokens+now.Sub(vi.bucketAt).Seconds()*inputRate)
+	}
+	vi.bucketAt = now
+	if vi.tokens < 1 {
+		return false
+	}
+	vi.tokens--
+	return true
 }
 
 // pressAllowed decides whether v's press, move, wheel or text msg may post and
-// names the drop reason when not: no_right, locked, stale_epoch.
+// names the drop reason when not: no_right, locked, stale_epoch, rate. A token
+// is spent only by a press that passed every other check.
 func (m *Manager) pressAllowed(v *viewer, msg inputMsg) (ok bool, reason string) {
 	switch {
 	case v.Rights&RightsControl == 0:
@@ -25,6 +50,8 @@ func (m *Manager) pressAllowed(v *viewer, msg inputMsg) (ok bool, reason string)
 		return false, "locked"
 	case msg.positional() && msg.E != m.currentEpoch():
 		return false, "stale_epoch"
+	case !m.takeToken(v):
+		return false, "rate"
 	}
 	return true, ""
 }
