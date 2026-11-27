@@ -765,7 +765,7 @@ describe('TabBar: the Desktop tab toolbar label (Portty 21-08)', () => {
     ;({ container, root } = renderTabBarWithTabs({
       tabs: desktopTabs,
       activeId: 'desktop:office-air.ts.net',
-      desktopLabel: { ...label, line1: 'Controlling office-air', line2: 'Release: Ctrl+Option+Cmd+Return', controlling: true },
+      desktopLabel: { ...label, line1: 'Controlling office-air', line2: 'Release: Ctrl+Option+Cmd+Shift+Return', controlling: true },
     }))
     expect(container.querySelector('.toolbar-chip--desktop')?.getAttribute('data-control')).toBe('on')
   })

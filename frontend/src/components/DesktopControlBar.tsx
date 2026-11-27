@@ -29,7 +29,9 @@ export const WINDOWS_CAPTION = "Menus and pop-ups don't appear in a window share
 const WINDOWS_CAPTION_ID = 'desktop-picker-caption'
 export const CLIPBOARD_CAPTION = "Cmd+C and Cmd+V in the picture use the Mac's own clipboard. Use these to move text between the two."
 const CLIPBOARD_CAPTION_ID = 'desktop-clipboard-caption'
-const CONTROL_TOOLTIP = 'Control: click the picture to type. To give the keyboard back, press Ctrl+Option+Cmd+Return.'
+/** The browser viewer's chord; the Portty app passes its own (Ctrl+Option+Cmd+Return is taken by the system there). */
+export const DEFAULT_RELEASE_CHORD = 'Ctrl+Option+Cmd+Return'
+const controlTooltip = (chord: string) => `Control: click the picture to type. To give the keyboard back, press ${chord}.`
 
 export type ControlMode = 'view' | 'control'
 export type BarItem = 'picker' | 'sendKeys' | 'clipboard' | 'swap' | 'control' | 'fullscreen'
@@ -120,6 +122,8 @@ export interface DesktopControlBarProps {
   clipboardRef?: React.RefObject<HTMLButtonElement | null>
   /** A Copy or Paste popover is open: the bar stays shown, like for an open menu. */
   popoverOpen?: boolean
+  /** The chord the Control tooltip names. */
+  releaseChord?: string
 }
 
 type PickerList = { state: 'loading' } | { state: 'failed' } | { state: 'ready'; list: DesktopSurfacesMsg }
@@ -273,7 +277,7 @@ function BarButton({ label, avail, children, onActivate, ref, className, extra }
  */
 export function DesktopControlBar({
   state, surface, requestSurfaces, onSelectSurface, sendChord, onMenuOpenChange, onSendKeysDone,
-  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef, onCopy, onPaste, clipBusy, clipboardRef, popoverOpen,
+  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef, onCopy, onPaste, clipBusy, clipboardRef, popoverOpen, releaseChord = DEFAULT_RELEASE_CHORD,
 }: DesktopControlBarProps): React.ReactElement {
   const barRef = useRef<HTMLDivElement>(null)
   const sendKeysBtn = useRef<HTMLButtonElement>(null)
@@ -481,7 +485,7 @@ export function DesktopControlBar({
         <button
           ref={controlRef}
           type="button"
-          title={controlGreyed ? avail.control.reason : CONTROL_TOOLTIP}
+          title={controlGreyed ? avail.control.reason : controlTooltip(releaseChord)}
           {...segment('control', controlGreyed)}
         >
           Control

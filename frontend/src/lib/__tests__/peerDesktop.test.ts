@@ -398,7 +398,7 @@ describe('desktopTabLabel', () => {
   }
 
   it('controlling: captured shows the chord, also while locked', () => {
-    const want = { line1: 'Controlling office-air', line2: 'Release: Ctrl+Option+Cmd+Return', controlling: true }
+    const want = { line1: 'Controlling office-air', line2: 'Release: Ctrl+Option+Cmd+Shift+Return', controlling: true }
     expect(desktopTabLabel({ ...base, captured: true })).toEqual(want)
     expect(desktopTabLabel({ ...base, captured: true, locked: true })).toEqual(want)
   })
@@ -437,7 +437,7 @@ describe('desktopTabLabel', () => {
 
   it('LABEL_TOOLTIP is the UI-SPEC sentence with the short host', () => {
     expect(LABEL_TOOLTIP('office-air')).toBe(
-      "While you control office-air, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Return to get Portty's shortcuts back.",
+      "While you control office-air, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Shift+Return to get Portty's shortcuts back.",
     )
   })
 })

@@ -292,6 +292,7 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
         onControlChange={({ available }) => patch({ controlAllowed: available })}
         controlRef={setHandle}
         hideCaptureNotices
+        releaseChord={pd.APP_RELEASE_CHORD}
       />
     </div>
   )

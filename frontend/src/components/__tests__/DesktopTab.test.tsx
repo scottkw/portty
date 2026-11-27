@@ -423,6 +423,25 @@ describe('control mode (21-09): a click captures the keyboard and every way out 
     expect(last()).toMatchObject({ line1: 'Controlling office-air', controlling: true })
   })
 
+  it('the app\'s release chord Ctrl+Option+Cmd+Shift+Return is never forwarded, releases, and gives the keyboard back', async () => {
+    await controlling()
+    const ev = chord({ code: 'Enter', key: 'Enter', ctrlKey: true, altKey: true, metaKey: true, shiftKey: true })
+    expect(ev.defaultPrevented).toBe(true)
+    // Only releases went out (the tab's own exit repeats the chord's, which is harmless), never a key.
+    expect(sent().length).toBeGreaterThan(0)
+    expect(sent().every((m) => m === 'release')).toBe(true)
+    expect(document.activeElement).not.toBe(input())
+    expect(last()?.controlling).toBe(false)
+  })
+
+  it('the Control segment names the same chord in its tooltip', async () => {
+    render()
+    ownAccount()
+    await picture()
+    const seg = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === 'Control')
+    expect(seg?.title).toContain('press Ctrl+Option+Cmd+Shift+Return.')
+  })
+
   it('Cmd+C goes out as a tap and nothing reads the home clipboard', async () => {
     await controlling()
     const ev = chord({ code: 'KeyC', key: 'c', metaKey: true })
