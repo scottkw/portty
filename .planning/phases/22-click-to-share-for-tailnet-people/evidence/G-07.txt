@@ -1,0 +1,50 @@
+G-07 notifications while the display is captured
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- pre: a NEW share (so the office node has not been admitted before) with one admitted guest streaming (guest VM); TextEdit frontmost so Portty is not the active app [office 1795807795.089]
+front: ax-front epoch=1795807884 front: TextEdit pid=61413
+cgwin owner=TextEdit pid=61413 layer=3 id=3870 @300,200 470x250
+cgwin owner=TextEdit pid=61413 layer=0 id=3872 @100,80 640x420
+cgwin owner=Install Command Line Developer  pid=15855 layer=0 id=2296 @409,160 461x203
+cgwin owner=WindowManager pid=372 layer=-2147483624 id=12 @0,0 1280x720
+cgwin owner=Wallpaper pid=377 layer=-2147483625 id=593 @0,0 1280x720
+guest 1 picture before anything: framesDecoded 534 -> 635
+notification records and banners before (last 6 records):
+rec=35 app=app.portty.portty delivered_utc=2026-11-26 07:04:00 id=[portty.update-result] title=[Portty] body=[The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still installed.]
+rec=50 app=app.portty.portty delivered_utc=2026-11-27 18:23:50 id=[portty.desktop-approval-lapse] title=[Portty] body=[Portty desktop needs approval at the Mac.]
+rec=70 app=app.portty.portty delivered_utc=2026-11-27 19:23:21 id=[portty.desktop-admit] title=[Portty] body=[LOGIN@REDACTED wants to see your desktop.]
+rec=75 app=app.portty.portty delivered_utc=2026-11-27 19:30:00 id=[portty.desktop-leave] title=[Portty] body=[LOGIN@REDACTED left your desktop.]
+rec=76 app=app.portty.portty delivered_utc=2026-11-27 19:30:41 id=[portty.desktop-join] title=[Portty] body=[LOGIN@REDACTED joined your desktop.]
+p19-notif-count=6
+--- 1: a second guest knocks while the display is captured (the office's own Safari, another node) [office 1795807923.150]
+pending request: 1
+Admit sheet in Portty's AX tree: seen after 0s
+notification records and banners after the knock:
+rec=35 app=app.portty.portty delivered_utc=2026-11-26 07:04:00 id=[portty.update-result] title=[Portty] body=[The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still installed.]
+rec=50 app=app.portty.portty delivered_utc=2026-11-27 18:23:50 id=[portty.desktop-approval-lapse] title=[Portty] body=[Portty desktop needs approval at the Mac.]
+rec=75 app=app.portty.portty delivered_utc=2026-11-27 19:30:00 id=[portty.desktop-leave] title=[Portty] body=[LOGIN@REDACTED left your desktop.]
+rec=76 app=app.portty.portty delivered_utc=2026-11-27 19:30:41 id=[portty.desktop-join] title=[Portty] body=[LOGIN@REDACTED joined your desktop.]
+rec=77 app=app.portty.portty delivered_utc=2026-11-27 19:32:43 id=[portty.desktop-admit] title=[Portty] body=[LOGIN@REDACTED wants to see your desktop.]
+p19-notif-count=6
+guest 1 picture after the knock: framesDecoded 1267 -> 1369
+--- 2: Admit pressed (the second guest joins) [office 1795808019.511]
+press: press: role=AXButton title=[Admit] rc=0
+viewers: [{"nodeName":"HOME","control":false},{"nodeName":"OFFICE","control":false}]
+notification records and banners after the join:
+rec=35 app=app.portty.portty delivered_utc=2026-11-26 07:04:00 id=[portty.update-result] title=[Portty] body=[The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still installed.]
+rec=50 app=app.portty.portty delivered_utc=2026-11-27 18:23:50 id=[portty.desktop-approval-lapse] title=[Portty] body=[Portty desktop needs approval at the Mac.]
+rec=75 app=app.portty.portty delivered_utc=2026-11-27 19:30:00 id=[portty.desktop-leave] title=[Portty] body=[LOGIN@REDACTED left your desktop.]
+rec=77 app=app.portty.portty delivered_utc=2026-11-27 19:32:43 id=[portty.desktop-admit] title=[Portty] body=[LOGIN@REDACTED wants to see your desktop.]
+rec=78 app=app.portty.portty delivered_utc=2026-11-27 19:33:43 id=[portty.desktop-join] title=[Portty] body=[LOGIN@REDACTED joined your desktop.]
+p19-notif-count=6
+guest 1 picture after the join: framesDecoded 1825 -> 1917
+--- 3: the second guest leaves (its Safari session ends) [office 1795808070.999]
+viewers: [{"nodeName":"HOME","control":false}]
+notification records and banners after the leave:
+rec=35 app=app.portty.portty delivered_utc=2026-11-26 07:04:00 id=[portty.update-result] title=[Portty] body=[The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still installed.]
+rec=50 app=app.portty.portty delivered_utc=2026-11-27 18:23:50 id=[portty.desktop-approval-lapse] title=[Portty] body=[Portty desktop needs approval at the Mac.]
+rec=77 app=app.portty.portty delivered_utc=2026-11-27 19:32:43 id=[portty.desktop-admit] title=[Portty] body=[LOGIN@REDACTED wants to see your desktop.]
+rec=78 app=app.portty.portty delivered_utc=2026-11-27 19:33:43 id=[portty.desktop-join] title=[Portty] body=[LOGIN@REDACTED joined your desktop.]
+rec=79 app=app.portty.portty delivered_utc=2026-11-27 19:34:32 id=[portty.desktop-leave] title=[Portty] body=[LOGIN@REDACTED left your desktop.]
+p19-notif-count=6
+guest 1 picture after the leave: framesDecoded 2319 -> 2428
+--- done [office 1795808118.729]

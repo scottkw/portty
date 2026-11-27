@@ -1,0 +1,20 @@
+G-05 physical input wins (untagged stand-in click while a guest controls)
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- pre: a share with one admitted guest holding control [office 1795802769.314]
+guest-text: ave control View Only Control
+share-status viewers: [{"mode":"guest","control":true}]
+true
+--- 1: only Portty's tagged posts: guest clicks the text area and types ab [office 1795802791.462]
+physical counter 2 -> 2 (delta 0); key counter 120 -> 124
+document: ab chars=2 utf8=2 
+--- 2: the guest types c 40 times (250 ms apart, about 12 s); an untagged stand-in click at the Mac is fired about 4 s in [office 1795802866.335]
+chip observer: observer on
+stand-in click fired between office clock 1795802892.880 and 1795802903.668
+times the guest page showed Someone is using this Mac (observer log, count and span in ms): {"n":1,"spanMs":0}
+physical counter 2 -> 4 (delta 2); key counter 124 -> 200 (40 keys sent = 80 key messages)
+document (fewer than 40 c: the ones inside the physical window were dropped): abcccccccccccccccccccccccccccccccccccccc chars=40 utf8=40 
+guest-text: ave control View Only Control
+--- 3: after 4 s without any local input the guest types d [office 1795802959.720]
+key counter 200 -> 202
+document: abccccccccccccccccccccccccccccccccccccccd chars=41 utf8=41 
+--- done [office 1795802994.974]

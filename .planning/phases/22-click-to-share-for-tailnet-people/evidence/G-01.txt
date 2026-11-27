@@ -1,0 +1,61 @@
+G-01 tracer: guest waits, is admitted on the office, watches; Stop Sharing from the tray
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- done [office 1795801559.590]
+--- pre: no share active, Share Desktop sheet closed [office 1795801569.433]
+share-status: {"type":"state","active":false,"viewers":[],"pending":[],"secureInput":false,"anyController":false}
+--- 1: the share is started from the GUI (tray item Share Desktop..., AX press; the sheet starts the share) [office 1795801591.275]
+tray before: status items: 1
+tray-item: Open Portty enabled=yes
+tray-item: Share Desktop… enabled=yes
+tray-item: Desktop: Ready enabled=no
+tray-item: Quit Portty enabled=yes
+tray press, then sheet shows Copy Link: seen after 0s
+share-status: {"type":"state","active":true,"viewers":[],"pending":[],"secureInput":false,"anyController":false}
+sheet text:
+      AXHeading Title=Share Desktop Value=2 DOMIdentifier=share-desktop-title DOMClassList=(     "dialog__title" ) @385,107 510x18
+      AXStaticText Value=Link DOMClassList=( ) @402,147 25x16
+      AXButton Title=Copy Link DOMClassList=(     button,     "button--secondary",     "button--copy" ) @792,159 87x24
+       AXStaticText Value=Watching DOMClassList=( ) @385,225 56x16
+        AXStaticText Value=Nobody is watching yet. Send the link to someone on your tailnet. DOMClassList=( ) @402,260 371x16
+      AXButton Title=Stop Sharing DOMClassList=(     button,     "button--secondary",     "share-desktop__stop" ) @385,387 112x28
+      AXButton Title=Done DOMClassList=(     button,     "button--primary" ) @815,387 80x28
+tray (sharing, nobody yet): status items: 1
+tray-item: Open Portty enabled=yes
+tray-item: Desktop shared with nobody yet enabled=yes
+tray-item: Stop Sharing enabled=yes
+tray-item: Desktop: Ready enabled=no
+tray-item: Quit Portty enabled=yes
+--- 2: the guest opens the link in Safari on the guest VM (link piped into a 0600 file, never printed) [office 1795801611.670]
+link: link_bytes_guest=236
+guest-open: p19-safari t=3 stats={"status":"connecting","state":"","viewers":0,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=connecting)
+guest-text: {"title":"Portty Desktop (debug fd=0 fw=0 csp=0 st=connecting)","text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together. Waiting for OFFICE to let you in The person at that Mac sees your name and chooses whether to let you in. This page keeps waiting for up to 5 minutes.","stats":{"status":"connecting","state":"","viewers":0,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0}}
+--- 3: the Admit sheet on the office (AX tree, names scrubbed) [office 1795801642.634]
+sheet appears: seen after 0s
+     AXGroup [AXApplicationDialog] Title=Someone Wants to Watch Your Desktop Description=Someone Wants to Watch Your Desktop DOMClassList=(     dialog,     admit ) @400,82 480x316
+      AXHeading Title=Someone Wants to Watch Your Desktop Value=2 DOMIdentifier=admit-title DOMClassList=(     "dialog__title" ) @425,107 430x18
+      AXGroup DOMClassList=(     "admit__name" ) @442,150 396x22
+      AXStaticText Value=Login name DOMClassList=( ) @442,182 66x15
+      AXStaticText Value=Device DOMClassList=( ) @442,208 39x15
+      AXGroup DOMIdentifier=admit-p1 DOMClassList=(     "admit__paragraph" ) @425,249 430x32
+      AXGroup DOMIdentifier=admit-p2 DOMClassList=(     "admit__paragraph" ) @425,289 430x32
+      AXButton Title=Deny DOMClassList=(     button,     "button--secondary" ) @655,345 96x28
+      AXButton Title=Admit DOMClassList=(     button,     "button--secondary" ) @759,345 96x28
+--- 4: Admit pressed through AX (after the 600 ms guard) [office 1795801656.183]
+press: press: role=AXButton title=[Admit] rc=0
+guest shows View only: seen after 0s
+framesDecoded: 6 then (3 s later) 10
+guest-text: {"title":"Portty Desktop (debug fd=12 fw=2560 csp=0 st=streaming)","text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together. View only. Ask the person at the Mac to allow control.","stats":{"status":"streaming","state":"streaming","viewers":1,"framesDecoded":12,"frameWidth":2560,"frameHeight":1440,"bytesReceived":228448,"cspViolations":0}}
+tray (one watching): status items: 1
+tray-item: Open Portty enabled=yes
+tray-item: Desktop shared with 1 person enabled=yes
+tray-item: Stop Sharing enabled=yes
+tray-item: Desktop: Streaming to 1 viewer enabled=no
+tray-item: Quit Portty enabled=yes
+share-status: {"type":"state","active":true,"viewers":[{"id":"6c34a1df79d7fc77","mode":"guest","displayName":"DISPLAY-NAME","loginName":"LOGIN@REDACTED","nodeName":"HOME","control":false,"clipboard":false,"since":"2026-11-27T17:47:37Z"}],"pending":[],"secureInput":false,"anyController":false}
+--- 5: Stop Sharing pressed in the tray menu (AX) [office 1795801693.979]
+tray press: status items: 1
+tray-press: Stop Sharing rc=0
+guest shows Sharing has ended: seen after 0s
+guest-text: {"title":"Portty Desktop (debug fd=31 fw=2560 csp=0 st=streaming)","text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together. Sharing has ended The share has ended, so this link no longer works. Ask the person at that Mac for a new link.","stats":{"status":"streaming","state":"streaming","viewers":1,"framesDecoded":31,"frameWidth":2560,"frameHeight":1440,"bytesReceived":496727,"cspViolations":0}}
+share-status: {"type":"state","active":false,"viewers":[],"pending":[],"secureInput":false,"anyController":false}
+--- done [office 1795801714.909]
