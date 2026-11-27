@@ -90,6 +90,8 @@ export interface RemotePeerSessions {
   /** Phase 130 — true when the peer responded to the /api/sessions/meta probe; false when unreachable. */
   reachable: boolean
   sessions: RemoteSession[]
+  /** Portty 21-07 — true when the peer's always-available desktop is on. */
+  desktop: boolean
 }
 
 // Phase 130 — the sidebar peer poll in App.tsx.
@@ -171,6 +173,25 @@ export interface PeerConnectResult {
   errorCode: string
 }
 export function ConnectPeerSession(host: string, sessionID: string): Promise<PeerConnectResult>
+
+// Portty 21-07: have the daemon hold a peer's desktop token and return the loopback URL the
+// Desktop tab points at. Never throws: errorCode is a POST /peers/desktop code (tailscale_off,
+// unknown_host, forbidden, desktop_off, unreachable) or unreachable when the daemon cannot be
+// reached. url is ws://127.0.0.1:<relay port>/api/relay/remote-desktop/<host>/ws and carries no
+// token; it is filled whenever the relay port is known, also when errorCode is set.
+export interface PeerDesktopResult {
+  host: string
+  url: string
+  errorCode: string
+}
+export function ConnectPeerDesktop(host: string): Promise<PeerDesktopResult>
+
+// Portty 21-07: open the peer's desktop link in the default browser from Go (the link carries the
+// token and never reaches the web view). Resolves '' or an error code; call it only from a click.
+export function OpenPeerDesktopInBrowser(host: string): Promise<string>
+
+// Portty 21-07: open System Settings at Privacy and Security, Local Network.
+export function OpenLocalNetworkSettings(): Promise<void>
 
 // Portty 13-05: open a remote session's localhost URL through a loopback forward on this Mac. Never
 // rejects: status is 'open' (url is http://localhost:<port><rest>), 'consent' (host and port set,
