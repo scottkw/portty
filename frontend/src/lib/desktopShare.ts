@@ -71,6 +71,8 @@ export function useDesktopShare(subscribe: ShareSubscribe = EventsOn): DesktopSh
       subscribe('desktopshare:state', (s: Partial<ShareState> | null) => {
         // Go sends [] never null, but a hand-built payload must not crash the sheet.
         setState({ ...NO_SHARE, ...s, viewers: s?.viewers ?? [], pending: s?.pending ?? [] })
+        // A new share started: the earlier "stopped" notice no longer applies.
+        if (s?.active) setStoppedNotice(false)
       }),
       subscribe('desktopshare:event', (e: ShareEvent) => setLastEvent(e)),
       subscribe('desktopshare:stopped', () => {

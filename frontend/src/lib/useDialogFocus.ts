@@ -1,6 +1,8 @@
 import { useEffect, useRef, type RefObject } from 'react'
 
-export type DialogInitialFocus = 'first-input' | 'primary' | 'cancel'
+// 'dialog': the dialog element itself (tabindex -1), so a stray Return or Space meant for what is
+// underneath activates nothing (Admit sheet, 22-UI-SPEC Surface 3).
+export type DialogInitialFocus = 'first-input' | 'primary' | 'cancel' | 'dialog'
 
 export interface DialogFocusOptions {
   onCancel: () => void
@@ -21,6 +23,7 @@ function focusables(root: HTMLElement): HTMLElement[] {
 }
 
 function initialTarget(root: HTMLElement, mode: DialogInitialFocus): HTMLElement | null {
+  if (mode === 'dialog') return root
   const input = root.querySelector<HTMLElement>(
     'input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
   )
@@ -68,7 +71,8 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, options: Dial
       const first = items[0]
       const last = items[items.length - 1]
       const current = document.activeElement as HTMLElement | null
-      const inside = current !== null && dialog.contains(current)
+      // The dialog element itself (dialog mode) counts as outside: Tab goes to the first button, Shift+Tab to the last.
+      const inside = current !== null && current !== dialog && dialog.contains(current)
       if (e.shiftKey && (!inside || current === first)) {
         e.preventDefault()
         last.focus()
