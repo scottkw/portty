@@ -121,7 +121,7 @@ func (m *Manager) ServeGuestViewer(ctx context.Context, c *websocket.Conn, admit
 
 	hello := msgHello{
 		Type: typeHello, V: ProtocolVersion, Viewer: vid,
-		Caps:   map[string]int{"video": 1, "input": 1},
+		Caps:   map[string]int{"video": 1, "input": 1, "audio": 1},
 		Rights: rightsMap(RightsViewOnly), // the rights message follows an admission
 	}
 	if send(ctx, c, hello) != nil {

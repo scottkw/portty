@@ -669,7 +669,7 @@ func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, a
 	rights := RightsOwnAccount
 	hello := msgHello{
 		Type: typeHello, V: ProtocolVersion, Viewer: id,
-		Caps: map[string]int{"video": 1, "input": 1},
+		Caps: map[string]int{"video": 1, "input": 1, "audio": 1},
 		Rights: map[string]bool{
 			"control":   rights&RightsControl != 0,
 			"clipboard": rights&RightsClipboard != 0,

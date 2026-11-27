@@ -80,3 +80,17 @@ func (m *Manager) SetTicksForTest(viewers, idle time.Duration) {
 
 // BumpEpochForTest is what a surface change does to the input epoch.
 func (m *Manager) BumpEpochForTest() uint32 { return m.bumpEpoch() }
+
+// AudioClock is the audio RTP stamping of audio.go.
+type AudioClock struct{ c *audioClock }
+
+// NewAudioClockForTest returns a fresh audio clock.
+func NewAudioClockForTest() *AudioClock { return &AudioClock{newAudioClock()} }
+
+// Packetize stamps one Opus packet that arrived at now and returns its RTP timestamp.
+func (a *AudioClock) Packetize(now time.Time) uint32 {
+	return a.c.packetize(now, screencap.AudioPacket{Data: []byte{0xf8, 0xff, 0xfe}, Samples: screencap.OpusFrames})[0].Timestamp
+}
+
+// EnsureOpusStereoForTest is the answer's Opus fmtp completion.
+func EnsureOpusStereoForTest(sdp string) string { return ensureOpusStereo(sdp) }
