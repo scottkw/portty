@@ -288,7 +288,7 @@ export interface DesktopViewProps {
    * Connection options for createDesktopClient (the loopback transport and its hooks); read once at mount.
    */
   clientOptions?: DesktopClientOptions
-  /** Inside a tab: no page title, no splash removal, and the root is contained by the tab, not fixed to the window. */
+  /** Inside a tab: no page title, no splash removal, and the root is contained by the tab, not fixed to the window. No Swap: it is Mac to Mac. */
   embedded?: boolean
   /** The client, once created, and null when it is torn down. */
   onClient?: (c: DesktopClient | null) => void
@@ -591,7 +591,7 @@ export function DesktopView({
               const v = videoRef.current
               return v ? videoContentRect(v.clientWidth, v.clientHeight, v.videoWidth, v.videoHeight) : { x: 0, y: 0, width: 0, height: 0 }
             },
-            storage: safeStorage(),
+            storage: embedded ? null : safeStorage(),
           },
           {
             // Straight to the element, on the animation frame of the move: no React render between.
@@ -725,7 +725,7 @@ export function DesktopView({
       clientCb.current?.(null)
       setPhoneClient(null)
     }
-  }, [startPlay, updateRect, pushNotice, typingStays, guest, guestProp])
+  }, [startPlay, updateRect, pushNotice, typingStays, guest, guestProp, embedded])
 
   // The count chip: 3 s after the first frame, and again whenever the count changes.
   useEffect(() => {
@@ -1195,6 +1195,7 @@ export function DesktopView({
               fullscreenAvailable: !embedded && document.fullscreenEnabled === true,
               canClipboard,
               canControl,
+              embedded,
             }}
             surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}
             requestSurfaces={() => clientRef.current?.requestSurfaces() ?? Promise.reject(new Error('not connected'))}

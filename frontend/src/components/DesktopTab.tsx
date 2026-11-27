@@ -47,8 +47,6 @@ export interface DesktopTabProps {
   onDesktopState(connectHost: string, s: DesktopRowState | null): void
   /** The toolbar label while this tab is active; null otherwise (Task 3). */
   onLabel?(l: DesktopLabel | null): void
-  /** The handle App's control mode uses to release keys and give the keyboard back (Task 3). */
-  controlRef?: React.Ref<DesktopControlHandle>
 }
 
 /**
@@ -56,7 +54,7 @@ export interface DesktopTabProps {
  * browser page uses) over the loopback connection 21-05 builds from the ConnectPeerDesktop binding.
  * The tab only ever knows the host, the loopback URL and error codes: the desktop token stays in the daemon.
  */
-export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }: DesktopTabProps): React.ReactElement {
+export function DesktopTab({ tab, active, onDesktopState, onLabel }: DesktopTabProps): React.ReactElement {
   const connectHost = tab.connectHost ?? tab.peerHost ?? ''
   const [localNetwork, setLocalNetwork] = useState(false)
   // The client was stopped because the window stayed hidden; the Reconnecting chip shows until a picture or status returns.
@@ -81,9 +79,7 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
   const handleRef = useRef<DesktopControlHandle | null>(null)
   const setHandle = useCallback((h: DesktopControlHandle | null) => {
     handleRef.current = h
-    if (typeof controlRef === 'function') controlRef(h)
-    else if (controlRef) (controlRef as React.MutableRefObject<DesktopControlHandle | null>).current = h
-  }, [controlRef])
+  }, [])
   const controlling = useRef(false)
   const control = useCallback((ev: ControlEvent) => {
     const next = controlReducer(controlling.current, ev, NATIVE_MENU)

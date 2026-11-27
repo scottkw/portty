@@ -54,6 +54,8 @@ export interface BarState {
   canControl?: boolean
   /** A guest page (22-07): the display picker is never offered. */
   guest?: boolean
+  /** The Portty app's Desktop tab, Mac to Mac: Swap is not offered. */
+  embedded?: boolean
 }
 
 export interface ItemAvailability {
@@ -86,7 +88,7 @@ export function barAvailability(s: BarState): Record<BarItem, ItemAvailability> 
       hidden: noControl,
     },
     clipboard: { ...grey(lost), hidden: !s.canClipboard },
-    swap: { ...grey(undefined), hidden: noControl },
+    swap: { ...grey(undefined), hidden: noControl || s.embedded === true },
     control: {
       ...(lost
         ? grey(lost)
@@ -476,20 +478,22 @@ export function DesktopControlBar({
   if (sendGroup.length > 0) groups.push(<React.Fragment key="send">{sendGroup}</React.Fragment>)
   if (!avail.control.hidden) groups.push(
     <React.Fragment key="mapping">
-      <BarButton
-        label="Swap Ctrl and Cmd"
-        avail={avail.swap}
-        className={swapOn ? 'desktop-bar__toggle is-on' : 'desktop-bar__toggle'}
-        onActivate={() => onSwapChange(!swapOn)}
-        extra={{ 'aria-pressed': swapOn }}
-      >
-        {swapOn ? (
-          <CheckIcon className="desktop-bar__icon" aria-hidden="true" />
-        ) : (
-          <ArrowsRightLeftIcon className="desktop-bar__icon" aria-hidden="true" />
-        )}
-        <span className="desktop-bar__label">Swap Ctrl and Cmd</span>
-      </BarButton>
+      {!avail.swap.hidden && (
+        <BarButton
+          label="Swap Ctrl and Cmd"
+          avail={avail.swap}
+          className={swapOn ? 'desktop-bar__toggle is-on' : 'desktop-bar__toggle'}
+          onActivate={() => onSwapChange(!swapOn)}
+          extra={{ 'aria-pressed': swapOn }}
+        >
+          {swapOn ? (
+            <CheckIcon className="desktop-bar__icon" aria-hidden="true" />
+          ) : (
+            <ArrowsRightLeftIcon className="desktop-bar__icon" aria-hidden="true" />
+          )}
+          <span className="desktop-bar__label">Swap Ctrl and Cmd</span>
+        </BarButton>
+      )}
       <div className="share-segbar desktop-bar__segbar" role="radiogroup" aria-label="Control mode" onKeyDown={onSegmentKeyDown}>
         <button
           ref={viewOnlyBtn}

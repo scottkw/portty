@@ -489,6 +489,18 @@ describe('control mode (21-09): a click captures the keyboard and every way out 
       expect(client().pasteToMac).toHaveBeenLastCalledWith('other')
     })
 
+    it('a remembered Swap does not turn the app tab\'s Cmd+V into Ctrl+V', async () => {
+      window.localStorage.setItem('portty:desktop-swap-ctrl-cmd', '1')
+      try {
+        await controlling()
+        home('empty')
+        await paste()
+        expect(keys().map((m) => [m.code, m.d, m.m])).toEqual([['KeyV', true, 8], ['KeyV', false, 8]])
+      } finally {
+        window.localStorage.removeItem('portty:desktop-swap-ctrl-cmd')
+      }
+    })
+
     it('no text sends only the key', async () => {
       await controlling()
       home('empty')
