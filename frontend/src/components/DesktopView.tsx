@@ -18,6 +18,7 @@ import {
   MoonIcon,
   NoSymbolIcon,
   PlayIcon,
+  SignalIcon,
   SignalSlashIcon,
   SpeakerXMarkIcon,
   StopIcon,
@@ -228,6 +229,8 @@ const WINDOW_CHIPS = {
   raise_failed: { Icon: ExclamationTriangleIcon, text: "Couldn't bring the window to the front. Click the picture to try again." },
   minimized: { Icon: WindowIcon, text: 'The shared window is minimized. Click the picture to bring it back.' },
 } as const
+/** The daemon put this viewer below its quality floor (23-UI-SPEC Surface 4). No setting, no sharpening indicator. */
+const SLOW_CHIP = { Icon: SignalIcon, text: 'Slow connection. The picture may freeze.' }
 const ACCESSIBILITY_CHIP = {
   Icon: ExclamationTriangleIcon,
   text: 'Control needs Accessibility. On the Mac, allow Portty in Privacy & Security.',
@@ -454,6 +457,8 @@ export function DesktopView({
   const hintDone = useRef(false)
   const hintId = useRef(0)
   const wasFailed = useRef(false)
+  // The daemon says this viewer is below its quality floor. It belongs to one connection, so a lost connection clears it.
+  const [slow, setSlow] = useState(false)
   const [needsTap, setNeedsTap] = useState(false)
   const [chipPhase, setChipPhase] = useState<'gone' | 'shown' | 'fading'>('gone')
   // The viewer may control the Mac (the hello grants it and this is not a phone). The keyboard is not
@@ -707,6 +712,7 @@ export function DesktopView({
         setHasAudio(audio)
         setHasUnlock(unlock && !guest)
       }),
+      client.on('quality', ({ slow: s }) => setSlow(s)),
       client.on('unlock', (m) => {
         if (m.state === 'unlocked') {
           // Success is shown when the state flips to unlocked; this only says who typed it. Never stored: a stale
@@ -792,6 +798,7 @@ export function DesktopView({
           setAdmission(null)
           resetLease()
           setUnlockMsg(null)
+          setSlow(false)
         }
         // A state card describes the connection that is gone; the next state message replaces it.
         if (s.kind !== 'streaming' && s.kind !== 'connecting') {
@@ -1152,6 +1159,7 @@ export function DesktopView({
   else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
   else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
   else if (guest && canControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
+  else if (slow) chip = SLOW_CHIP
   else if (guest && canControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
   else if (guest && canControl) chip = { Icon: CursorArrowRaysIcon, text: copy.GUEST_CHIP_CONTROL }
   else if (guest) chip = { Icon: EyeIcon, text: copy.GUEST_CHIP_VIEW_ONLY }
