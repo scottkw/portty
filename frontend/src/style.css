@@ -2986,7 +2986,6 @@ html:has(.desktop-view:not(.desktop-view--embedded)) body {
   position: absolute;
   inset: 0;
   padding: 0;
-  background: var(--color-viewer-bg);
 }
 
 /* Toolbar label of the Desktop tab (21-UI-SPEC "Toolbar label"). Fixed width in every state, so entering or
@@ -2998,7 +2997,6 @@ html:has(.desktop-view:not(.desktop-view--embedded)) body {
   width: 232px;
   max-width: 232px;
   height: 36px;
-  padding: 0 12px;
   box-sizing: border-box;
   border-radius: var(--hub-radius-sm);
   overflow: visible;

@@ -814,7 +814,7 @@ function App(): React.ReactElement {
           // A peer that answered and stopped announcing its desktop takes its muted line with it. A peer that
           // did not answer (one failed probe) says nothing: the Mac only sends its state on change.
           setDesktopStates((prev) => {
-            const keep = Object.entries(prev).filter(([host]) => !(peers ?? []).some((p) => (p.dnsName || p.hostname) === host && p.reachable && p.desktop !== true))
+            const keep = Object.entries(prev).filter(([host]) => !(peers ?? []).some((p) => desktopConnectHost(p) === host && p.reachable && p.desktop !== true))
             return keep.length === Object.keys(prev).length ? prev : Object.fromEntries(keep)
           })
         }

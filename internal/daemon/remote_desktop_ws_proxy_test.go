@@ -295,6 +295,35 @@ func TestRemoteDesktopWS_TokenRefusedTwiceCloses4401(t *testing.T) {
 	}
 }
 
+func TestRemoteDesktopWS_RefreshFailureMapsToFixedCloses(t *testing.T) {
+	cases := []struct {
+		name      string
+		capStatus int
+		code      websocket.StatusCode
+		reason    string
+	}{
+		{"off", http.StatusNotFound, closeDesktopOff, "off"},
+		{"forbidden", http.StatusForbidden, closeDesktopForbidden, "forbidden"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			peer := newFakeDesktopPeer(t, refuseWS(http.StatusUnauthorized, "token", false))
+			peer.mu.Lock()
+			peer.capStatus = tc.capStatus
+			peer.mu.Unlock()
+			env := newDesktopProxyEnv(t, peer, "tok-stale")
+			ctx := testCtx(t)
+			code, reason := wantClose(ctx, t, env.dial(ctx, t))
+			if code != tc.code || reason != tc.reason {
+				t.Fatalf("close = %d %q; want %d %q", code, reason, tc.code, tc.reason)
+			}
+			if n := peer.capPostCount(); n != 1 {
+				t.Fatalf("cap route saw %d POSTs; want exactly 1", n)
+			}
+		})
+	}
+}
+
 func TestRemoteDesktopWS_RefusalsMapToFixedCloses(t *testing.T) {
 	cases := []struct {
 		name   string

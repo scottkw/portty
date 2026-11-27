@@ -233,7 +233,6 @@ export const LOCAL_NETWORK_CARD = {
 
 export function createPeerDesktopOptions(deps: PeerDesktopDeps): {
   options: DesktopClientOptions
-  forceRebuild(): void
   dispose(): void
 } {
   const clock = deps.clock ?? realClock
@@ -339,7 +338,6 @@ export function createPeerDesktopOptions(deps: PeerDesktopDeps): {
         return pc
       },
     },
-    forceRebuild,
     dispose() {
       disposed = true
       stopWatch()

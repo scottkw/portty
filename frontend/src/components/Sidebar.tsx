@@ -241,7 +241,7 @@ export function Sidebar({
                               <PeerDot hostname={g.key} />
                             </button>
                           </li>
-                          {/* The line, not the colour, carries the state; the row stays a working button (a click is the retest). */}
+                          {/* The line, not the colour, carries the state; the row stays a working button (a click focuses the open tab, which keeps the line current). */}
                           {desktopState && <li id={desktopLineId} className="sidebar__muted">{DESKTOP_ROW_LINES[desktopState]}</li>}
                         </>
                       )}
