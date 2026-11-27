@@ -15,6 +15,16 @@ const MUTED_STATES: ReadonlySet<string> = new Set(['needs_permission', 'awaiting
 /** 21-02's KEYROUTE verdict is page: the stage's preventDefault keeps every chord off Portty's menu, so no native menu switch exists. */
 const NATIVE_MENU = false
 
+/** The only home-clipboard read in the app (the types-first Go bridge): a rejected call fails closed. */
+async function readHome(): Promise<HomeClipboard> {
+  try {
+    const r = await ReadHomeClipboard()
+    return { outcome: r.outcome as HomeClipboard['outcome'], text: r.text }
+  } catch {
+    return { outcome: 'failed' }
+  }
+}
+
 /** The sidebar's muted line for the Mac's last state; null for ready, streaming and the rest. */
 function rowState(s: DesktopStateMsg | null): DesktopRowState | null {
   if (!s) return null
@@ -119,15 +129,9 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
       const replay = {
         code: e.code, key: e.key, metaKey: true, modifierCapsLock: e.getModifierState('CapsLock'), bubbles: true, cancelable: true,
       }
-      let read: HomeClipboard
-      try {
-        const r = await ReadHomeClipboard()
-        read = { outcome: r.outcome as HomeClipboard['outcome'], text: r.text }
-      } catch {
-        read = { outcome: 'failed' }
-      }
-      const d = pasteDecision(read, lastSent.current)
+      const d = pasteDecision(await readHome(), lastSent.current)
       if (d.notice) return notice(d.notice)
+      if (!controlling.current) return // control ended while the read was in flight: nothing goes to the Mac
       if (d.send !== null) {
         let outcome: string | undefined
         try {
@@ -162,6 +166,11 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
   }, [])
   const labelCb = useRef(onLabel)
   labelCb.current = onLabel
+  // Closing the tab takes its sidebar line and toolbar label with it; the peer may keep announcing its desktop.
+  useEffect(() => () => {
+    stateCb.current(connectHost, null)
+    labelCb.current?.(null)
+  }, [connectHost])
   const label = pd.desktopTabLabel({ host: connectHost, ...view })
   useEffect(() => {
     // Only the active tab owns the toolbar label (like the On <host> chip).
@@ -269,6 +278,7 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
             { label: pd.LOCAL_NETWORK_CARD.openBrowser, onClick: () => void OpenPeerDesktopInBrowser(connectHost).catch(() => {}) },
           ],
         } : null}
+        readClipboard={readHome}
         paused={paused}
         onReload={() => void reconnect()}
         onClient={onClient}

@@ -546,7 +546,7 @@ describe('control mode (21-09): a click captures the keyboard and every way out 
       expect(keys()).toHaveLength(2)
     })
 
-    it('leaving control mode while the paste is in flight sends no key', async () => {
+    it('leaving control mode while the paste is in flight sends no text and no key', async () => {
       await controlling()
       let resolve!: (v: { outcome: string; text: string }) => void
       h.readHome.mockReturnValue(new Promise((r) => { resolve = r }))
@@ -554,7 +554,26 @@ describe('control mode (21-09): a click captures the keyboard and every way out 
       await paste()
       act(() => { window.dispatchEvent(new Event('blur')) })
       await act(async () => { resolve({ outcome: 'ok', text: 'hello' }) })
+      expect(client().pasteToMac).not.toHaveBeenCalled()
       expect(keys()).toHaveLength(0)
+    })
+
+    it("the bar's Paste to Mac reads through the same bridge, so a concealed item is never sent", async () => {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText: vi.fn(async () => 'browser') } })
+      try {
+        render()
+        ownAccount()
+        await picture()
+        home('concealed', 'secret')
+        act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Clipboard"]')!.click())
+        const item = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((i) => i.textContent === 'Paste to Mac')!
+        await act(async () => { item.click() })
+        expect(h.readHome).toHaveBeenCalledTimes(1)
+        expect(client().pasteToMac).not.toHaveBeenCalled()
+        expect(chip()).toBe('Your clipboard holds a hidden item (password manager); not sent')
+      } finally {
+        delete (navigator as unknown as { clipboard?: unknown }).clipboard
+      }
     })
 
     it('Cmd+Shift+V is a plain key and reads nothing', async () => {

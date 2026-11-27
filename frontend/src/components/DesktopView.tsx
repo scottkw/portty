@@ -38,6 +38,7 @@ import {
 } from '../lib/desktopClient'
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone, usePhone } from '../lib/phoneQuery'
+import { PASTE_NOTICES as HOME_PASTE_WORDS, type HomeClipboard } from '../lib/controlMode'
 import { UserRefused } from './UserRefused'
 import { DesktopCopyPopover, DesktopPastePopover } from './DesktopClipboardPopover'
 import { DEFAULT_RELEASE_CHORD, DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
@@ -245,6 +246,7 @@ const PASTE_NOTICES: Partial<Record<ClipOutcome, NoticeSpec>> = {
   empty: { Icon: ClipboardIcon, text: 'Your clipboard has no text', dwell: 3000 },
   too_large: { Icon: ExclamationTriangleIcon, text: 'Your clipboard text is too large to send (limit 1 MB)', dwell: 5000 },
 }
+const PASTE_CONCEALED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: HOME_PASTE_WORDS.concealed, dwell: 5000 }
 const PASTE_FAILED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: "Couldn't send to the Mac. Try again.", dwell: 5000, alert: true }
 
 export type { ControlMode }
@@ -296,6 +298,11 @@ export interface DesktopViewProps {
   onDesktopState?: (s: DesktopStateMsg | null) => void
   /** Per-card words and action label, merged over the page's copy (the app's wording has no link, page or browser). */
   cards?: Partial<Record<CardKey, CardOverride>>
+  /**
+   * Where Paste to Mac reads the viewer's clipboard. The app passes its Go bridge, which refuses concealed
+   * pasteboard items; without it the page uses navigator.clipboard.
+   */
+  readClipboard?: () => Promise<HomeClipboard>
   /** A card that wins over every client card. */
   hostCard?: HostCard | null
   /** The host stopped the client (a hidden window): shows the Reconnecting chip until the host clears it. */
@@ -340,6 +347,7 @@ export function DesktopView({
   onDesktopState,
   cards,
   hostCard = null,
+  readClipboard,
   paused: hostPaused = false,
   onPicture,
   onCaptureChange,
@@ -560,6 +568,15 @@ export function DesktopView({
             setCanControl(false)
             resetLease()
           } else if (inputCtl.current) setCanControl(true)
+        }
+        if (!guest && !phone && inputCtl.current) {
+          // A later hello (a reconnect) is the grant as it stands now: drop what it no longer allows.
+          setCanSurface(r.surface)
+          setCanClipboard(r.clipboard)
+          if (!r.control) {
+            inputCtl.current.setControl(false)
+            setCanControl(false)
+          } else setCanControl(true)
         }
         const stage = stageRef.current
         const input = inputRef.current
@@ -928,6 +945,30 @@ export function DesktopView({
   /** Paste to Mac. The read of the viewer's clipboard starts inside the click; it is sent at once. */
   async function pasteToMac() {
     if (!clientRef.current || clipBusyRef.current) return
+    if (readClipboard) {
+      clipBusyRef.current = true
+      setClipBusy(true)
+      let read: HomeClipboard
+      try {
+        read = await readClipboard()
+      } catch {
+        read = { outcome: 'failed' }
+      }
+      clipBusyRef.current = false
+      setClipBusy(false)
+      switch (read.outcome) {
+        case 'ok':
+          return sendToMac(read.text ?? '')
+        case 'empty':
+          return pushNotice(PASTE_NOTICES.empty!)
+        case 'too_large':
+          return pushNotice(PASTE_NOTICES.too_large!)
+        case 'concealed':
+          return pushNotice(PASTE_CONCEALED)
+        default:
+          return pushNotice(PASTE_FAILED)
+      }
+    }
     const clip = navigator.clipboard
     if (!clip?.readText) {
       // Still inside the menu item's own handler, where the Clipboard menu counts as open until it closes just after.
