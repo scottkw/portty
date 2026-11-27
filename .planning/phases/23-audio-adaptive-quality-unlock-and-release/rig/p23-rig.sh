@@ -15,6 +15,8 @@
 #   deploy APP               office: quit GUI and daemon, replace /Applications/Portty.app
 #   deploy-home APP          home: quit Portty, replace /Applications/Portty.app (the tab row needs the app there)
 #   start                    office: open the GUI, wait for /health
+#   tools23                  install the AX helper ~/p22/axp22 and the key poster ~/p22/key in the home VM (compiled on the host, compile only)
+#   ax-home VERB BUNDLE WORDS  the AX helper in the home VM (find, press, has), scrubbed
 # Office:
 #   stats                    GET /desktop/stats on the daemon socket, compact
 #   stats-log SECS ROW       one stats line a second for SECS seconds, saved as evidence/ROW.stats
@@ -145,6 +147,18 @@ EOF
 }
 cmd_clock() { vm "perl -MTime::HiRes=time -e 'printf q(%.2f), time'"; echo; }
 
+# tools23: compile the Phase 22 AX helper on the host (compile only) and install it as ~/p22/axp22 in the home VM.
+cmd_tools23() {
+  local tmp
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/p23-tools.XXXXXX")
+  swiftc -O "$(dirname "$P22")/axp22.swift" -o "$tmp/axp22" 2>&1 | grep -v warning || true
+  swiftc -O "$ROOT/.planning/phases/21-portty-app-and-iphone-viewers/rig/key.swift" -o "$tmp/key" 2>&1 | grep -v warning || true
+  vm2 'mkdir -p ~/p22 && cat > ~/p22/axp22 && chmod +x ~/p22/axp22' < "$tmp/axp22"
+  vm2 'cat > ~/p22/key && chmod +x ~/p22/key' < "$tmp/key"
+  rm -rf "$tmp"
+  echo "tools23: axp22 and key installed in the home VM"
+}
+
 # ---- viewers ------------------------------------------------------------------------------------
 
 cmd_open_viewer() {
@@ -210,6 +224,11 @@ n=$(curl -s -m 20 -X POST $D/session/$SID/elements -d "$(jq -nc --arg x "$(print
 EOF
 }
 
+cmd_ax_home() {
+  [ $# -ge 3 ] || die "usage: ax-home find|press|has BUNDLE WORDS"
+  vm2 "~/p22/axp22 $*" | scrub
+}
+
 cmd_ax_safari() {
   if [ -n "${1:-}" ]; then
     mkdir -p "$PHASE_DIR/evidence"
@@ -267,6 +286,7 @@ case "$sub" in
   deploy) cmd_deploy "$@" ;;
   deploy-home) cmd_deploy_home "$@" ;;
   start) cmd_start "$@" ;;
+  tools23) cmd_tools23 ;;
   stats) cmd_stats ;;
   stats-log) cmd_stats_log "$@" ;;
   stats-key) cmd_stats_key ;;
@@ -286,6 +306,7 @@ case "$sub" in
   page) cmd_page "$@" ;;
   click-label) cmd_click_label "$@" ;;
   label-has) cmd_label_has "$@" ;;
+  ax-home) cmd_ax_home "$@" ;;
   ax-safari) cmd_ax_safari "$@" ;;
   shape) cmd_shape "$@" ;;
   p22) bash "$P22" "$@" ;;
