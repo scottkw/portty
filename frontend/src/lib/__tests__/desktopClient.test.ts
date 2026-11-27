@@ -4,6 +4,8 @@
 // window, transport and peer connection): no real socket, timer or network.
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   RECONNECT,
   createDesktopClient,
@@ -67,8 +69,24 @@ class FakeTransport implements SignalTransport {
   last(type: string) { return [...this.sent].reverse().find((m) => m.type === type) }
 }
 
+class FakeChannel {
+  readyState = 'connecting'
+  bufferedAmount = 0
+  sent: string[] = []
+  onopen: (() => void) | null = null
+  onclose: (() => void) | null = null
+  onmessage: ((e: { data: unknown }) => void) | null = null
+  constructor(readonly label: string, readonly init: unknown) {}
+  send(d: string) { this.sent.push(d) }
+  open() { this.readyState = 'open'; this.onopen?.() }
+  close() { this.readyState = 'closed'; this.onclose?.() }
+  recv(m: unknown) { this.onmessage?.({ data: typeof m === 'string' ? m : JSON.stringify(m) }) }
+}
+
 class FakePC {
   closed = false
+  calls: string[] = []
+  channels: FakeChannel[] = []
   connectionState = 'new'
   iceGatheringState = 'complete'
   localDescription: { sdp: string } | null = null
@@ -78,12 +96,22 @@ class FakePC {
   onconnectionstatechange: (() => void) | null = null
   onicegatheringstatechange: (() => void) | null = null
   addTransceiver(kind: string, init: unknown) { this.transceivers.push([kind, init]) }
-  async createOffer() { return { type: 'offer', sdp: 'fake-offer-sdp' } }
+  createDataChannel(label: string, init: unknown) {
+    this.calls.push('createDataChannel')
+    const ch = new FakeChannel(label, init)
+    this.channels.push(ch)
+    return ch
+  }
+  async createOffer() {
+    this.calls.push('createOffer')
+    return { type: 'offer', sdp: 'fake-offer-sdp' } }
   async setLocalDescription(d: { sdp: string }) { this.localDescription = d }
   async setRemoteDescription(d: { type: string; sdp: string }) { this.remote = d }
   close() { this.closed = true }
   async getStats() { return new Map() }
   fireTrack() { this.ontrack?.({ streams: [{ id: 'stream' }], track: {} }) }
+  /** A real picture: the track arrived and ICE connected. */
+  fireStreaming() { this.fireTrack(); this.setConn('connected') }
   setConn(s: string) { this.connectionState = s; this.onconnectionstatechange?.() }
 }
 
@@ -135,7 +163,7 @@ async function streaming(over: Partial<DesktopClientOptions> = {}) {
   const e = setup(over)
   e.client.start()
   await handshake(e)
-  lastPC(e).fireTrack()
+  lastPC(e).fireStreaming()
   return e
 }
 
@@ -149,7 +177,7 @@ describe('transport injection', () => {
     e.client.start()
     const t = lastT(e)
     t.open()
-    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1 } })
+    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
     t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } })
     await settle()
     expect(t.sent[1]).toEqual({ type: 'offer', sdp: 'fake-offer-sdp' })
@@ -173,7 +201,7 @@ describe('transport injection', () => {
     e.client.on('size', (s) => got.push(['size', s]))
     e.client.start()
     await handshake(e)
-    lastPC(e).fireTrack()
+    lastPC(e).fireStreaming()
     lastT(e).recv({ type: 'state', state: 'locked', viewers: 2, locked: true })
     lastT(e).recv({ type: 'state', state: 'rm -rf', viewers: 1, locked: false })
     lastT(e).recv({ type: 'size', w: 2560, h: 1600 })
@@ -224,7 +252,7 @@ describe('backoff and unreachable', () => {
     await e.clock.advance(30000)
     expect(kinds(e)).toEqual(['reconnecting', 'unreachable'])
     await handshake(e)
-    lastPC(e).fireTrack()
+    lastPC(e).fireStreaming()
     expect(kinds(e)).toEqual(['reconnecting', 'unreachable', 'streaming'])
     const n = e.transports.length
     lastT(e).dropWith(1006)
@@ -449,6 +477,201 @@ describe('ICE', () => {
     await e.clock.advance(1000)
     expect(e.transports.length).toBe(2)
     expect(e.pcs[0].closed).toBe(true)
+  })
+})
+
+/** A handshake whose server hello offers the input channel, with rights. */
+async function handshakeWithInput(e: Env, rights: object = { control: true, clipboard: true, surface: true }) {
+  const t = lastT(e)
+  t.open()
+  t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1, input: 1 }, rights })
+  await settle()
+  t.recv({ type: 'answer', sdp: 'fake-answer-sdp' })
+  await settle()
+}
+
+describe('input data channel (Phase 20-06)', () => {
+  it('with server caps input 1 creates one ordered channel labelled input before createOffer', async () => {
+    const e = setup()
+    e.client.start()
+    await handshakeWithInput(e)
+    const pc = lastPC(e) as unknown as FakePC
+    expect(pc.channels).toHaveLength(1)
+    expect(pc.channels[0].label).toBe('input')
+    expect(pc.channels[0].init).toEqual({ ordered: true })
+    expect(pc.calls.indexOf('createDataChannel')).toBeLessThan(pc.calls.indexOf('createOffer'))
+  })
+
+  it('without server input caps no channel is created and sendInput says no', async () => {
+    const e = setup()
+    e.client.start()
+    await handshake(e)
+    expect((lastPC(e) as unknown as FakePC).channels).toHaveLength(0)
+    expect(e.client.sendInput({ t: 'hb' })).toBe(false)
+  })
+
+  it('sendInput is false until the channel opens, then sends JSON; a droppable move is skipped over 64 KiB', async () => {
+    const e = setup()
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    expect(e.client.sendInput({ t: 'hb' })).toBe(false)
+    ch.open()
+    expect(e.client.sendInput({ t: 'hb' })).toBe(true)
+    expect(ch.sent).toEqual(['{"t":"hb"}'])
+    ch.bufferedAmount = 65537
+    expect(e.client.sendInput({ t: 'move', x: 0, y: 0, e: 1 }, true)).toBe(false)
+    expect(e.client.sendInput({ t: 'release' })).toBe(true)
+    expect(ch.sent).toEqual(['{"t":"hb"}', '{"t":"release"}'])
+  })
+
+  it('reports the channel opening and closing, and the closing of a torn-down connection once', async () => {
+    const e = setup()
+    const got: boolean[] = []
+    e.client.on('input', (v) => got.push(v.open))
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    ch.open()
+    ch.close()
+    expect(got).toEqual([true, false])
+    ;(lastPC(e) as unknown as FakePC).channels[0].open()
+    lastT(e).dropWith(1006)
+    expect(got).toEqual([true, false, true, false])
+  })
+
+  it('emits the rights the hello grants, missing fields false', async () => {
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('rights', (r) => got.push(r))
+    e.client.start()
+    await handshakeWithInput(e, { control: true })
+    expect(got).toEqual([{ control: true, clipboard: false, surface: false }])
+  })
+
+  it('learns the surface epoch from a surface message and forgets it with the connection', async () => {
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('surface', (s) => got.push(s))
+    e.client.start()
+    await handshakeWithInput(e)
+    expect(e.client.currentEpoch()).toBeNull()
+    lastT(e).recv({ type: 'surface', e: 2, kind: 'window', id: 4242, name: 'Terminal', w: 1280, h: 800, reason: '' })
+    expect(e.client.currentEpoch()).toBe(2)
+    expect(got).toEqual([{ e: 2, kind: 'window', id: 4242, name: 'Terminal', w: 1280, h: 800, reason: '' }])
+    lastT(e).recv({ type: 'surface', e: 'x', kind: 'window', id: 1, name: 'n', w: 1, h: 1 })
+    lastT(e).recv({ type: 'surface', e: 5, kind: 'monitor', id: 1, name: 'n', w: 1, h: 1 })
+    expect(e.client.currentEpoch()).toBe(2)
+    lastT(e).recv({ type: 'surface', e: 3, kind: 'display', id: 1, name: 'Main', w: 1470, h: 956, reason: '<b>' })
+    expect((got[1] as { reason: string }).reason).toBe('')
+    lastT(e).dropWith(1006)
+    expect(e.client.currentEpoch()).toBeNull()
+  })
+
+  it('turns the golden server lines control-ok, control-needs-accessibility and cursor into typed events', async () => {
+    const lines = readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/input-v1.jsonl'), 'utf8')
+      .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: object })
+    const wire = (name: string) => lines.find((l) => l.name === name)!.wire
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('control', (c) => got.push(['control', c]))
+    e.client.on('cursor', (c) => got.push(['cursor', c]))
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    ch.recv(wire('control-ok'))
+    ch.recv(wire('control-needs-accessibility'))
+    ch.recv(wire('cursor'))
+    expect(got).toEqual([
+      ['control', { input: 'ok', window: '' }],
+      ['control', { input: 'needs_accessibility', window: 'raise_failed' }],
+      ['cursor', { x: 0.5, y: 0.25, e: 1 }],
+    ])
+  })
+
+  it('drops unknown control values, a non-finite cursor, binary and non-JSON frames', async () => {
+    const e = setup()
+    const got: unknown[] = []
+    e.client.on('control', (c) => got.push(c))
+    e.client.on('cursor', (c) => got.push(c))
+    e.client.start()
+    await handshakeWithInput(e)
+    const ch = (lastPC(e) as unknown as FakePC).channels[0]
+    ch.recv({ t: 'control', input: 'rm -rf', window: '' })
+    ch.recv({ t: 'control', input: 'ok', window: '<img>' })
+    ch.recv({ t: 'cursor', x: 'a', y: 0, e: 1 })
+    ch.recv({ t: 'cursor', x: 0, y: 0, e: 1.5 })
+    ch.recv({ t: 'teleport' })
+    ch.recv('not json')
+    ch.recv(null)
+    ch.onmessage?.({ data: new ArrayBuffer(4) })
+    expect(got).toEqual([{ input: 'ok', window: '' }])
+  })
+
+  it('send puts a signalling message on the socket', async () => {
+    const e = setup()
+    e.client.start()
+    await handshake(e)
+    e.client.send({ type: 'surfaces' })
+    expect(lastT(e).last('surfaces')).toEqual({ type: 'surfaces' })
+  })
+})
+
+describe('picture means ICE connected, not ontrack (Phase 19 review follow-up)', () => {
+  it('a track alone is announced to the page but is not a picture', async () => {
+    const e = setup()
+    const tracks: unknown[] = []
+    e.client.on('track', (s) => tracks.push(s))
+    e.client.start()
+    await handshake(e)
+    lastPC(e).fireTrack()
+    expect(tracks).toHaveLength(1)
+    expect(kinds(e)).toEqual([])
+  })
+
+  it.each(['track first', 'connected first'] as const)('streaming starts once both the track and ICE connected are in (%s)', async (order) => {
+    const e = setup()
+    e.client.start()
+    await handshake(e)
+    if (order === 'track first') {
+      lastPC(e).fireTrack()
+      expect(kinds(e)).toEqual([])
+      lastPC(e).setConn('connected')
+    } else {
+      lastPC(e).setConn('connected')
+      expect(kinds(e)).toEqual([])
+      lastPC(e).fireTrack()
+    }
+    expect(kinds(e)).toEqual(['streaming'])
+  })
+
+  it('ICE failing after every ontrack still backs off 1, 2, 4 s instead of restarting at 1 s', async () => {
+    const e = setup()
+    e.client.start()
+    let n = 1
+    for (const ms of [1000, 2000, 4000]) {
+      await handshake(e)
+      lastPC(e).fireTrack()
+      lastPC(e).setConn('failed')
+      await e.clock.advance(ms - 1)
+      expect(e.transports.length, `no redial before ${ms} ms`).toBe(n)
+      await e.clock.advance(1)
+      expect(e.transports.length, `redial at ${ms} ms`).toBe(++n)
+    }
+  })
+
+  it("ICE that never connects ends in Can't reach this Mac after 30 s, never in streaming", async () => {
+    const e = setup()
+    e.client.start()
+    for (let i = 0; i < 6; i++) {
+      await handshake(e)
+      lastPC(e).fireTrack()
+      await e.clock.advance(5000) // ICE trying, the way a real browser does for about 30 s
+      lastPC(e).setConn('failed')
+      await e.clock.advance(RECONNECT.delaysMs[Math.min(i, RECONNECT.delaysMs.length - 1)])
+    }
+    expect(kinds(e)).toContain('unreachable')
+    expect(kinds(e)).not.toContain('streaming')
   })
 })
 

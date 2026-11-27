@@ -3,13 +3,23 @@ import {
   ArrowPathIcon,
   ClockIcon,
   ComputerDesktopIcon,
+  CursorArrowRaysIcon,
   ExclamationTriangleIcon,
+  HandRaisedIcon,
   LockClosedIcon,
   MoonIcon,
   PlayIcon,
   SignalSlashIcon,
+  WindowIcon,
 } from '@heroicons/react/24/outline'
-import { createDesktopClient, type ClientStatus, type DesktopStateMsg } from '../lib/desktopClient'
+import {
+  createDesktopClient,
+  type ClientStatus,
+  type DesktopControlMsg,
+  type DesktopStateMsg,
+} from '../lib/desktopClient'
+import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
+import { isPhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
 
 const TITLE = 'Portty Desktop'
@@ -99,25 +109,85 @@ const STATE_CARDS: Partial<Record<DesktopStateMsg['state'], CardKey>> = {
   capture_paused: 'capture_paused',
 }
 
+const HINT_ID = 'desktop-stage-hint'
 const CHIP_SHOW_MS = 3000
 const CHIP_FADE_MS = 150
+
+// Notice copy is 20-UI-SPEC Surface C word for word. Every string is fixed here; the wire only picks one.
+const RELEASE_CHORD_HINT = 'Typing goes to the Mac. To give the keyboard back, press Ctrl+Option+Cmd+Return.'
+const WINDOW_CHIPS = {
+  raise_failed: { Icon: ExclamationTriangleIcon, text: "Couldn't bring the window to the front. Click the picture to try again." },
+  minimized: { Icon: WindowIcon, text: 'The shared window is minimized. Click the picture to bring it back.' },
+} as const
+const ACCESSIBILITY_CHIP = {
+  Icon: ExclamationTriangleIcon,
+  text: 'Control needs Accessibility. On the Mac, allow Portty in Privacy & Security.',
+}
+/** Releases the viewer did not choose and that the user can be told about (a user's own blur says nothing). */
+const HELD_NOTICE: ReadonlySet<ReleaseReason> = new Set<ReleaseReason>(['lock', 'surface', 'disconnect', 'channel'])
+
+interface Notice {
+  id: number
+  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
+  text: string
+  dwell: number
+  alert?: boolean
+}
+
+export type ControlMode = 'view' | 'control'
+
+/** Safari with storage blocked throws on the property read itself; the setting then reads as off. */
+function safeStorage(): Storage | null {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
 
 export interface DesktopViewProps {
   /** Phase 20 normalises pointer coordinates against this rect. */
   onVideoRect?: (r: VideoRect) => void
+  /** View Only or Control; the bar (20-07) owns the choice. Control is the default, and View Only is not remembered. */
+  controlMode?: ControlMode
+  /** A bar menu, popover or dialog is open: everything held is released and the keyboard is given back. */
+  menuOpen?: boolean
+  /** Told when the viewer's ability to control, or its keyboard capture, changes. */
+  onControlChange?: (c: { available: boolean; captured: boolean }) => void
+  /** Ctrl+Option+Cmd+Return was pressed: the host moves focus to its Control segment. */
+  onReleaseChord?: () => void
   /** Reload Page; a Home Screen web app has no browser reload. Defaults to location.reload. */
   onReload?: () => void
 }
 
 /**
  * Phase 19-06 — the /desktop/ viewer root. Owns one DesktopClient and one
- * <video> for the life of the page; no Wails imports, and view only: no
- * pointer, key or context-menu handling.
+ * <video> for the life of the page; no Wails imports. Phase 20-06 wraps the
+ * video in the stage, which owns every pointer and key listener of a viewer
+ * that may control the Mac; a phone, and a viewer without the control right,
+ * stays the view-only page.
  */
-export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): React.ReactElement {
+export function DesktopView({
+  onVideoRect,
+  onReload,
+  controlMode = 'control',
+  menuOpen = false,
+  onControlChange,
+  onReleaseChord,
+}: DesktopViewProps = {}): React.ReactElement {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const dotRef = useRef<HTMLDivElement>(null)
+  const inputCtl = useRef<DesktopInput | null>(null)
   const rectCb = useRef(onVideoRect)
   rectCb.current = onVideoRect
+  const chordCb = useRef(onReleaseChord)
+  chordCb.current = onReleaseChord
+  const changeCb = useRef(onControlChange)
+  changeCb.current = onControlChange
+  const capturedRef = useRef(false)
+  const noticeSeq = useRef(0)
 
   const [status, setStatus] = useState<ClientStatus>({ kind: 'connecting' })
   const [desk, setDesk] = useState<DesktopStateMsg | null>(null)
@@ -125,6 +195,34 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
   const [hasFrame, setHasFrame] = useState(false)
   const [needsTap, setNeedsTap] = useState(false)
   const [chipPhase, setChipPhase] = useState<'gone' | 'shown' | 'fading'>('gone')
+  // The viewer may control the Mac (the hello grants it and this is not a phone). The keyboard is not
+  // captured until a click gives the stage focus.
+  const [canControl, setCanControl] = useState(false)
+  const [captured, setCaptured] = useState(false)
+  const [ctlState, setCtlState] = useState<DesktopControlMsg>({ input: 'ok', window: '' })
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const [noticeFading, setNoticeFading] = useState(false)
+
+  const pushNotice = useCallback((n: Omit<Notice, 'id'>) => {
+    noticeSeq.current++
+    setNoticeFading(false)
+    setNotice({ ...n, id: noticeSeq.current })
+  }, [])
+  const typingStays = useCallback(
+    () => pushNotice({ Icon: CursorArrowRaysIcon, text: 'Typing stays on this device', dwell: 3000 }),
+    [pushNotice],
+  )
+
+  // A notice dwells, then fades, then goes; a newer one replaces it and restarts the clock.
+  useEffect(() => {
+    if (!notice) return
+    const fade = setTimeout(() => setNoticeFading(true), notice.dwell)
+    const gone = setTimeout(() => setNotice(null), notice.dwell + CHIP_FADE_MS)
+    return () => {
+      clearTimeout(fade)
+      clearTimeout(gone)
+    }
+  }, [notice])
 
   useEffect(() => {
     document.title = TITLE
@@ -167,7 +265,73 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
 
   useEffect(() => {
     const client = createDesktopClient()
+    const phone = isPhone()
+    let lastEpoch: number | null = null
     const offs = [
+      client.on('rights', (r) => {
+        const stage = stageRef.current
+        const input = inputRef.current
+        if (!r.control || phone || inputCtl.current || !stage || !input) return
+        const ctl = createDesktopInput(
+          stage,
+          input,
+          {
+            send: (msg, droppable = false) => client.sendInput(msg, droppable),
+            getEpoch: () => client.currentEpoch(),
+            getRect: () => {
+              const v = videoRef.current
+              return v ? videoContentRect(v.clientWidth, v.clientHeight, v.videoWidth, v.videoHeight) : { x: 0, y: 0, width: 0, height: 0 }
+            },
+            storage: safeStorage(),
+          },
+          {
+            // Straight to the element, on the animation frame of the move: no React render between.
+            onDot: (p) => {
+              const d = dotRef.current
+              if (!d) return
+              d.hidden = p === null
+              if (p) d.style.transform = `translate(${p.x - 4}px, ${p.y - 4}px)`
+            },
+            onCapture: (c) => {
+              capturedRef.current = c
+              setCaptured(c)
+              if (!c) return
+              let seen = false
+              try {
+                seen = window.localStorage.getItem(HINT_KEY) === '1'
+                if (!seen) window.localStorage.setItem(HINT_KEY, '1')
+              } catch {
+                // Storage blocked: the long hint shows each time, which is harmless.
+              }
+              pushNotice(
+                seen
+                  ? { Icon: CursorArrowRaysIcon, text: 'Typing goes to the Mac', dwell: 3000 }
+                  : { Icon: CursorArrowRaysIcon, text: RELEASE_CHORD_HINT, dwell: 5000 },
+              )
+            },
+            onReleaseChord: () => {
+              typingStays()
+              chordCb.current?.()
+            },
+            onReleased: (reason) => {
+              if (HELD_NOTICE.has(reason)) pushNotice({ Icon: HandRaisedIcon, text: 'Held keys were released', dwell: 3000 })
+            },
+          },
+        )
+        ctl.setControl(true)
+        inputCtl.current = ctl
+        setCanControl(true)
+      }),
+      client.on('input', ({ open }) => {
+        if (open) return
+        inputCtl.current?.releaseAll('channel')
+        setCtlState({ input: 'ok', window: '' })
+      }),
+      client.on('control', setCtlState),
+      client.on('surface', (sf) => {
+        if (lastEpoch !== null && sf.e !== lastEpoch) inputCtl.current?.releaseAll('surface')
+        lastEpoch = sf.e
+      }),
       client.on('track', (stream) => {
         const v = videoRef.current
         if (!v) return
@@ -188,9 +352,11 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
     client.start()
     return () => {
       for (const off of offs) off()
+      inputCtl.current?.destroy()
+      inputCtl.current = null
       client.stop()
     }
-  }, [startPlay, updateRect])
+  }, [startPlay, updateRect, pushNotice, typingStays])
 
   // The count chip: 3 s after the first frame, and again whenever the count changes.
   useEffect(() => {
@@ -217,10 +383,46 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
     />
   )
 
+  const locked = desk?.locked === true || desk?.state === 'locked'
+  const accessNeeded = ctlState.input === 'needs_accessibility'
+  const active = canControl && controlMode === 'control'
+  const paused = locked || status.kind === 'reconnecting' || status.kind === 'unreachable' || accessNeeded
+
+  useEffect(() => {
+    const ctl = inputCtl.current
+    if (!ctl) return
+    // The user choosing View Only while the keyboard was captured gives it back with a word.
+    if (!active && capturedRef.current) typingStays()
+    ctl.setControl(active)
+  }, [active, typingStays])
+
+  useEffect(() => {
+    inputCtl.current?.setPaused(paused)
+  }, [paused, canControl])
+
+  // Held input is let go of when the Mac locks or the picture is lost; the user keeps the keyboard.
+  useEffect(() => {
+    if (locked) inputCtl.current?.releaseAll('lock')
+  }, [locked, canControl])
+  useEffect(() => {
+    if (status.kind === 'reconnecting' || status.kind === 'unreachable') inputCtl.current?.releaseAll('disconnect')
+  }, [status.kind, canControl])
+
+  // Opening a bar menu or dialog is a user action: release, hand the keyboard back, say so.
+  useEffect(() => {
+    const ctl = inputCtl.current
+    if (!menuOpen || !ctl) return
+    if (capturedRef.current) typingStays()
+    ctl.releaseAll('menu')
+  }, [menuOpen, canControl, typingStays])
+
+  useEffect(() => {
+    changeCb.current?.({ available: canControl, captured })
+  }, [canControl, captured])
+
   if (status.kind === 'other_account') return <UserRefused />
 
   // One card or one chip at a time; the first that applies wins.
-  const locked = desk?.locked === true || desk?.state === 'locked'
   const stateCard = desk ? STATE_CARDS[desk.state] : undefined
   let cardKey: CardKey | null = null
   let chip: { Icon?: Icon; text: string; fading?: boolean } | null = null
@@ -230,6 +432,8 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
   else if (status.kind === 'reconnecting') chip = { Icon: ArrowPathIcon, text: 'Reconnecting…' }
   else if (!hasFrame) cardKey = 'connecting'
   else if (locked) chip = { Icon: LockClosedIcon, text: 'Locked' }
+  else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
+  else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
   else if (chipPhase !== 'gone' && viewers !== null && viewers >= 1) {
     chip = { text: `Streaming to ${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`, fading: chipPhase === 'fading' }
   }
@@ -238,7 +442,31 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
 
   return (
     <div className="desktop-view">
-      {video}
+      <div
+        className={active && !paused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
+        ref={stageRef}
+        {...(canControl
+          ? { role: 'application', 'aria-label': 'Mac desktop', 'aria-describedby': HINT_ID, tabIndex: active ? 0 : -1 }
+          : {})}
+      >
+        {video}
+        {canControl && captured && <div className="desktop-ring" aria-hidden="true" />}
+        {canControl && <div className="desktop-dot" ref={dotRef} aria-hidden="true" hidden />}
+        <span id={HINT_ID} className="visually-hidden">
+          While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together.
+        </span>
+        <textarea
+          ref={inputRef}
+          className="desktop-stage__input"
+          aria-label="Mac desktop"
+          aria-describedby={HINT_ID}
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          tabIndex={-1}
+        />
+      </div>
       {scrim && <div className="desktop-scrim" onClick={needsTap ? startPlay : undefined} />}
       <div className="desktop-status">
         {/* The wrapper and the live region stay mounted, so every change is announced.
@@ -274,6 +502,19 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
             >
               Reload Page
             </button>
+          )}
+        </div>
+        {/* The notice slot: one at a time, the newest replaces the older, directly below the state chip. */}
+        <div role="status" aria-live="polite" className="desktop-notice-slot">
+          {notice && (
+            <div
+              key={notice.id}
+              role={notice.alert ? 'alert' : undefined}
+              className={noticeFading ? 'desktop-chip desktop-chip--notice desktop-chip--fading' : 'desktop-chip desktop-chip--notice'}
+            >
+              <notice.Icon className="desktop-chip__icon" aria-hidden="true" />
+              {notice.text}
+            </div>
           )}
         </div>
       </div>
