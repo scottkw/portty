@@ -249,7 +249,7 @@ Plans:
   2. A viewer types text with shortcuts and non-ASCII characters (accents, emoji, input-method text) and it arrives as typed. No key or modifier stays held after the viewer loses focus, closes or disconnects. A Send-keys menu sends Cmd+Tab, Cmd+Space and Lock Screen, and an optional Ctrl→Cmd swap serves viewers on non-Mac keyboards. (DCTL-02, DCTL-03)
   3. The sharer picks a whole display or a single window to share, and displays can be switched mid-session without the viewer reconnecting. In a window share, the window comes to the front when controlled and clicks never land outside it. (DESK-05, DESK-06, DCTL-05)
   4. Text copies from the shared Mac to the viewer, and pastes from the viewer to the shared Mac, only by an explicit action and never in the background. Items a password manager marks as concealed never sync. (DCTL-06)
-**Plans**: 6/11 plans executed
+**Plans**: 8/11 plans executed
 
 Plans:
 **Wave 1**
@@ -265,8 +265,8 @@ Plans:
 - [x] 20-07-PLAN.md — Control bar: picker, standalone Send Keys menu with Lock Screen confirm, swap toggle, View Only / Control, Full Screen with Keyboard Lock, availability table
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 20-05-PLAN.md — Daemon clipboard: read on request only, types checked first (concealed/transient never read), 16 KiB chunks under the read limit, strict reassembly, per-viewer rights
-- [ ] 20-08-PLAN.md — Clipboard UI (Safari-safe write, Copy and Paste fallback popovers, notices) and persistent state chips
+- [x] 20-05-PLAN.md — Daemon clipboard: read on request only, types checked first (concealed/transient never read), 16 KiB chunks under the read limit, strict reassembly, per-viewer rights
+- [x] 20-08-PLAN.md — Clipboard UI (Safari-safe write, Copy and Paste fallback popovers, notices) and persistent state chips
 
 **Wave 5** *(blocked on Wave 4 completion; needs 19-12 and 19-15 merged)*
 - [ ] 20-09-PLAN.md — Tart VM proof of all real-macOS control rows and the PASTE_ROW verdict (user checkpoints for VM permission clicks)
@@ -392,7 +392,7 @@ Every plan opens with a hard `test -f` gate on the upstream 20-/21-/22- SUMMARY.
 | 18. Self-Installing Updates | v2.0 | 10/10 | Complete    | 2026-11-26 |
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
-| 20. Remote Control | v2.0 | 6/11 | In Progress | - |
+| 20. Remote Control | v2.0 | 8/11 | In Progress | - |
 | 21. Portty App and iPhone Viewers | v2.0 | 7/13 | In Progress | - |
 | 22. Click-to-Share for Tailnet People | v2.0 | 0/TBD | Not started | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/TBD | Not started | - |
