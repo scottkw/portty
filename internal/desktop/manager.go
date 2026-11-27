@@ -239,6 +239,13 @@ type Deps struct {
 	Probe           func(ctx context.Context) (screencap.Permissions, error) // fresh-child permission read
 	Wake            <-chan wakewatch.Reason                                  // nil means wakewatch.Watch on the Manager's context
 	ApprovalStore   func(ctx context.Context) (time.Time, error)             // replayd's LastAlerted date, if readable
+
+	// Unlock types a viewer's password at the lock screen; nil means
+	// screencap.NewUnlockBridge(), whose posting calls refuse under tests.
+	// UnlockSleep is the unlock sequence's wait (settle, key gap, lock poll); nil
+	// means time.Sleep, tests advance their fake clock with it.
+	Unlock      UnlockBridge
+	UnlockSleep func(time.Duration)
 }
 
 // Package-level defaults for the Deps seams.
@@ -293,6 +300,10 @@ type viewer struct {
 	in       *viewerInput        // its input state, guarded by Manager.in.mu
 	dc       *webrtc.DataChannel // its accepted input channel, guarded by Manager.vmu
 
+	// unlockCap is the explicit unlock capability: set once at hello on the
+	// own-account serve path, never derived from rights bits, so no guest has it.
+	unlockCap bool
+
 	gs       *GuestShare // the share a guest was admitted to; nil for an own-account viewer
 	mediaCut atomic.Bool // a media identity check already cut this guest
 	cut      atomic.Bool // CloseViewer or CloseGuests already cut this viewer
@@ -338,6 +349,9 @@ type Manager struct {
 
 	// in is the input path's state (input.go).
 	in inputState
+
+	// ul is remote unlock's state (unlock.go).
+	ul unlockState
 
 	// surf is what the share shows (surface.go).
 	surf surfaceState
@@ -466,6 +480,9 @@ func NewManager(d Deps) (*Manager, error) {
 	}
 	if d.Input == nil {
 		d.Input = screencap.NewInputBridge()
+	}
+	if d.Unlock == nil {
+		d.Unlock = screencap.NewUnlockBridge()
 	}
 	if d.DisplayBounds == nil {
 		d.DisplayBounds = screencap.DisplayBounds
@@ -675,7 +692,7 @@ func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, a
 	rights := RightsOwnAccount
 	hello := msgHello{
 		Type: typeHello, V: ProtocolVersion, Viewer: id,
-		Caps: map[string]int{"video": 1, "input": 1, "audio": 1},
+		Caps: map[string]int{"video": 1, "input": 1, "audio": 1, "unlock": 1}, // unlock: own-account viewers only
 		Rights: map[string]bool{
 			"control":   rights&RightsControl != 0,
 			"clipboard": rights&RightsClipboard != 0,
@@ -686,7 +703,7 @@ func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, a
 		return
 	}
 
-	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeOwn, Identity: ident}, ws: c, inputCap: inputCap, audioCap: in.Caps["audio"], in: &viewerInput{}}
+	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeOwn, Identity: ident}, ws: c, inputCap: inputCap, audioCap: in.Caps["audio"], unlockCap: true, in: &viewerInput{}}
 	v.setRightsBits(rights)
 	m.serveAdmitted(ctx, c, v, admit, nil)
 }
@@ -837,6 +854,7 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 	v.leaseReady.Store(true) // lease messages follow the answer, never precede it
 	m.kickLease()
 	m.broadcastState(ctx)
+	m.sendUnlockJoin(ctx, v)
 	if w, h, ok := m.size(); ok {
 		_ = send(ctx, c, msgSize{Type: typeSize, W: w, H: h})
 	}

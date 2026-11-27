@@ -20,3 +20,6 @@
 {"name":"state-audio-failed","dir":"server","valid":true,"wire":{"type":"state","state":"streaming","viewers":1,"locked":false,"audio":"failed"}}
 {"name":"quality-slow-true","dir":"server","valid":true,"wire":{"type":"quality","slow":true}}
 {"name":"quality-slow-false","dir":"server","valid":true,"wire":{"type":"quality","slow":false}}
+{"name":"hello-server-unlock","dir":"server","valid":true,"wire":{"type":"hello","v":1,"viewer":"0123456789abcdef","caps":{"video":1,"input":1,"audio":1,"unlock":1},"rights":{"control":true,"clipboard":true,"surface":true}}}
+{"name":"unlock-unlocking","dir":"server","valid":true,"wire":{"type":"unlock","state":"unlocking","failures":0}}
+{"name":"unlock-unlocked","dir":"server","valid":true,"wire":{"type":"unlock","state":"unlocked","failures":0,"by_portty":true}}
