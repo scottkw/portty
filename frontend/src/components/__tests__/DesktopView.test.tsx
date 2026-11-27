@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { ClientStatus, DesktopEvents } from '../../lib/desktopClient'
+import { createDesktopClient } from '../../lib/desktopClient'
 import { DesktopView, videoContentRect, type DesktopViewProps, type VideoRect } from '../DesktopView'
 
 type Listener = (v: never) => void
@@ -1822,5 +1823,222 @@ describe('style.css', () => {
     const rule = css.match(/\.desktop-view__video\s*\{([^}]*)\}/)![1]
     expect(rule).toMatch(/object-fit:\s*contain/)
     expect(rule).not.toMatch(/transform|zoom|image-rendering/)
+  })
+})
+
+describe('embedding in the Portty app (Phase 21-08)', () => {
+  it('hands clientOptions to createDesktopClient and the client to onClient, null at teardown', () => {
+    const clientOptions = { check: async () => 'ok' as const }
+    const seen: unknown[] = []
+    render({ clientOptions, onClient: (c) => seen.push(c) })
+    expect(vi.mocked(createDesktopClient)).toHaveBeenCalledWith(clientOptions)
+    expect(seen).toEqual([client()])
+    act(() => root.render(<div />))
+    expect(seen).toEqual([client(), null])
+  })
+
+  it('with no new props the page still sets its title and removes the static splash', () => {
+    document.title = 'before'
+    const splash = document.createElement('div')
+    splash.id = 'splash-static'
+    document.body.appendChild(splash)
+    render()
+    expect(document.title).toBe('Portty Desktop')
+    expect(document.getElementById('splash-static')).toBeNull()
+    expect(container.querySelector('.desktop-view--embedded')).toBeNull()
+  })
+
+  it('embedded leaves the window title and the splash alone and marks the root as contained', () => {
+    document.title = 'Portty'
+    const splash = document.createElement('div')
+    splash.id = 'splash-static'
+    document.body.appendChild(splash)
+    render({ embedded: true })
+    expect(document.title).toBe('Portty')
+    expect(document.getElementById('splash-static')).not.toBeNull()
+    expect(container.querySelector('.desktop-view')?.classList.contains('desktop-view--embedded')).toBe(true)
+    splash.remove()
+  })
+
+  it('reports each status and the Mac state through onStatus and onDesktopState, state null once the connection is gone', () => {
+    const statuses: string[] = []
+    const states: unknown[] = []
+    render({ onStatus: (s) => statuses.push(s.kind), onDesktopState: (s) => states.push(s?.state ?? null) })
+    status({ kind: 'streaming' })
+    state({ state: 'display_asleep', viewers: 1, locked: false })
+    status({ kind: 'reconnecting' })
+    expect(statuses).toEqual(['streaming', 'reconnecting'])
+    expect(states).toEqual(['display_asleep', null])
+  })
+})
+
+
+describe('app tab cards, host card and pause (Phase 21-08 Task 2)', () => {
+  const refused = { heading: "Can't open this desktop", body: 'That Mac refused the connection.', action: 'Reconnect' }
+  const hostCard = (calls: string[]) => ({
+    heading: 'Portty needs Local Network access to show this desktop',
+    body: 'Open System Settings.',
+    actions: [
+      { label: 'Open System Settings', onClick: () => calls.push('settings') },
+      { label: 'Open in Browser', onClick: () => calls.push('browser') },
+    ],
+  })
+  const buttons = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.desktop-card button'))
+
+  it("cards overrides replace one card's heading and body and leave the others", () => {
+    render({ cards: { connecting: { heading: 'Connecting here', body: 'Waiting for the other Mac.' } } })
+    expect(card()?.querySelector('h1')?.textContent).toBe('Connecting here')
+    expect(card()?.querySelector('p')?.textContent).toBe('Waiting for the other Mac.')
+    status({ kind: 'desktop_off' })
+    expect(card()?.querySelector('h1')?.textContent).toBe('Desktop sharing is off on this Mac')
+  })
+
+  it('an overridden unreachable card shows its action label wired to onReload', () => {
+    const onReload = vi.fn()
+    render({ onReload, cards: { unreachable: { heading: "Can't reach this Mac", body: 'Portty keeps trying.', action: 'Reconnect' } } })
+    status({ kind: 'unreachable' })
+    expect(buttons().map((b) => b.textContent)).toEqual(['Reconnect'])
+    act(() => buttons()[0].click())
+    expect(onReload).toHaveBeenCalledTimes(1)
+  })
+
+  it('embedded, the other-account case is the token_rejected card with its Reconnect, never the browser Refused page', () => {
+    const onReload = vi.fn()
+    render({ embedded: true, onReload, cards: { token_rejected: refused } })
+    status({ kind: 'other_account' })
+    expect(card()?.querySelector('h1')?.textContent).toBe("Can't open this desktop")
+    expect(buttons().map((b) => b.textContent)).toEqual(['Reconnect'])
+    act(() => buttons()[0].click())
+    expect(onReload).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('.link-dead')).toBeNull()
+  })
+
+  it('an overridden token_rejected card shows its Reconnect for a plain refusal too', () => {
+    render({ embedded: true, cards: { token_rejected: refused } })
+    status({ kind: 'token_rejected' })
+    expect(buttons().map((b) => b.textContent)).toEqual(['Reconnect'])
+  })
+
+  it('hostCard wins over every client card, with its actions as buttons in order, outside the live region', () => {
+    const calls: string[] = []
+    render({ hostCard: hostCard(calls) })
+    status({ kind: 'unreachable' })
+    expect(card()?.querySelector('h1')?.textContent).toBe('Portty needs Local Network access to show this desktop')
+    expect(buttons().map((b) => b.textContent)).toEqual(['Open System Settings', 'Open in Browser'])
+    expect(region().querySelector('button')).toBeNull()
+    expect(scrim()).not.toBeNull()
+    act(() => buttons()[1].click())
+    act(() => buttons()[0].click())
+    expect(calls).toEqual(['browser', 'settings'])
+  })
+
+  it('paused shows the Reconnecting chip with the scrim and no card', async () => {
+    render()
+    await firstFrame()
+    render({ paused: true })
+    expect(chip()?.textContent).toBe('Reconnecting…')
+    expect(card()).toBeNull()
+    expect(scrim()).not.toBeNull()
+    render({ paused: false })
+    expect(chip()?.textContent ?? '').not.toBe('Reconnecting…')
+  })
+
+  it('onPicture is true while a picture shows with no card over it, false under a host card', async () => {
+    const seen: boolean[] = []
+    const calls: string[] = []
+    render({ onPicture: (p) => seen.push(p) })
+    await firstFrame()
+    expect(seen[seen.length - 1]).toBe(true)
+    render({ onPicture: (p) => seen.push(p), hostCard: hostCard(calls) })
+    expect(seen[seen.length - 1]).toBe(false)
+  })
+
+  it('the style rules keep a long Local Network heading wrapping, never truncated', () => {
+    const css = readFileSync(resolve(__dirname, '../../style.css'), 'utf8')
+    const rule = css.match(/\n\.desktop-card__heading\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(rule).toMatch(/font-size:\s*17px/)
+    expect(rule).not.toMatch(/white-space:\s*nowrap|text-overflow/)
+  })
+})
+
+describe('control seams for the app tab (Phase 21-08 Task 3)', () => {
+  const stage = () => container.querySelector('.desktop-stage') as HTMLElement
+  const input = () => container.querySelector('textarea') as HTMLTextAreaElement
+  const notice = () => container.querySelector('.desktop-chip--notice')
+  function ownAccount() {
+    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+      Object.defineProperty(video(), a, { configurable: true, value: b })
+    }
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+  }
+  const click = () =>
+    act(() => {
+      stage().dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 }))
+    })
+  const sentTypes = () => client().sendInput.mock.calls.map((c) => (c[0] as { t: string }).t)
+
+  beforeEach(() => window.localStorage.clear())
+
+  it('onCaptureChange follows the keyboard: true when a click gives the stage the keyboard, false when it goes', () => {
+    const calls: boolean[] = []
+    render({ onCaptureChange: (c) => calls.push(c) })
+    ownAccount()
+    click()
+    expect(calls[calls.length - 1]).toBe(true)
+    act(() => input().blur())
+    expect(calls[calls.length - 1]).toBe(false)
+  })
+
+  it('controlRef.releaseAll sends release with no Held keys notice; releaseKeyboard gives the keyboard back; notify shows a notice', () => {
+    const ref = { current: null as import('../DesktopView').DesktopControlHandle | null }
+    const calls: boolean[] = []
+    render({ controlRef: ref, onCaptureChange: (c) => calls.push(c), hideCaptureNotices: true })
+    ownAccount()
+    click()
+    act(() => input().dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true })))
+    client().sendInput.mockClear()
+    act(() => ref.current!.releaseAll())
+    expect(sentTypes()).toContain('release')
+    expect(notice()).toBeNull()
+    act(() => ref.current!.releaseKeyboard())
+    expect(calls[calls.length - 1]).toBe(false)
+    act(() => ref.current!.notify('Nothing to paste', 'alert'))
+    expect(notice()?.textContent).toBe('Nothing to paste')
+    expect(notice()?.getAttribute('role')).toBe('alert')
+  })
+
+  it('hideCaptureNotices keeps both capture notices away and still shows Held keys were released', () => {
+    render({ hideCaptureNotices: true })
+    ownAccount()
+    click()
+    expect(notice()).toBeNull()
+    act(() => input().dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true })))
+    status({ kind: 'reconnecting' })
+    expect(notice()?.textContent).toBe('Held keys were released')
+  })
+
+  it('without hideCaptureNotices a capture still says Typing goes to the Mac', () => {
+    render()
+    ownAccount()
+    click()
+    expect(notice()?.textContent).toContain('Typing goes to the Mac')
+  })
+
+  it('onModeChange reports the bar\'s View Only and Control choice', () => {
+    const modes: string[] = []
+    render({ onModeChange: (m) => modes.push(m) })
+    expect(modes).toEqual(['control'])
+    render({ onModeChange: (m) => modes.push(m), controlMode: 'view' })
+    expect(modes).toEqual(['control', 'view'])
+  })
+
+  it('embedded never offers Full Screen, even where the web view reports it available', async () => {
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true })
+    render({ embedded: true })
+    ownAccount()
+    await firstFrame()
+    expect(container.querySelector('button[aria-label="Full Screen"], [aria-label="Full Screen"]')).toBeNull()
+    expect(container.textContent).not.toContain('Full Screen')
+    delete (document as unknown as { fullscreenEnabled?: unknown }).fullscreenEnabled
   })
 })

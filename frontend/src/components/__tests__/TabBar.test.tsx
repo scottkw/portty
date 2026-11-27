@@ -733,3 +733,55 @@ describe('TabBar desktop tab (DVWR-01)', () => {
     container.remove()
   })
 })
+
+describe('TabBar: the Desktop tab toolbar label (Portty 21-08)', () => {
+  const label = { line1: 'On office-air', line2: 'Click the picture to control', controlling: false, tooltip: 'While you control office-air, every key goes to that Mac.' }
+  const desktopTabs = [
+    { id: 'shell', name: 'shell', sessionId: 'shell' },
+    { id: 'desktop:office-air.ts.net', name: 'office-air › Desktop', sessionId: 'desktop:office-air.ts.net', type: 'desktop' as const, peerHost: 'office-air', connectHost: 'office-air.ts.net' },
+  ]
+  let container: HTMLDivElement
+  let root: ReturnType<typeof createRoot>
+  afterEach(() => {
+    flushSync(() => root.unmount())
+    container.remove()
+  })
+
+  it('an active Desktop tab shows the two-line status label with its tooltip, described by a hidden copy of it', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs: desktopTabs, activeId: 'desktop:office-air.ts.net', desktopLabel: label }))
+    const chip = container.querySelector<HTMLElement>('.toolbar-chip.toolbar-chip--desktop')!
+    expect(chip).not.toBeNull()
+    expect(chip.getAttribute('role')).toBe('status')
+    expect(chip.getAttribute('aria-live')).toBe('polite')
+    expect(chip.getAttribute('title')).toBe(label.tooltip)
+    expect(chip.hasAttribute('data-control')).toBe(false)
+    expect(chip.textContent).toBe('On office-airClick the picture to control')
+    const desc = container.querySelector<HTMLElement>(`#${chip.getAttribute('aria-describedby')}`)
+    expect(desc?.textContent).toBe(label.tooltip)
+    expect(desc?.classList.contains('visually-hidden')).toBe(true)
+  })
+
+  it('while controlling the chip carries data-control on', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      tabs: desktopTabs,
+      activeId: 'desktop:office-air.ts.net',
+      desktopLabel: { ...label, line1: 'Controlling office-air', line2: 'Release: Ctrl+Option+Cmd+Return', controlling: true },
+    }))
+    expect(container.querySelector('.toolbar-chip--desktop')?.getAttribute('data-control')).toBe('on')
+  })
+
+  it('no label for a local tab, or for a Desktop tab that is not active', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs: desktopTabs, activeId: 'shell', desktopLabel: label }))
+    expect(container.querySelector('.toolbar-chip--desktop')).toBeNull()
+  })
+
+  it('a web-session tab still shows the plain On <host> chip', () => {
+    ;({ container, root } = renderTabBarWithTabs({
+      tabs: [{ id: '__websession__p', name: 'home-air › s', sessionId: 's', type: 'web-session', peerHost: 'home-air' }],
+      activeId: '__websession__p',
+      desktopLabel: null,
+    }))
+    expect(container.querySelector('.toolbar-chip')?.textContent).toBe('On home-air')
+    expect(container.querySelector('.toolbar-chip--desktop')).toBeNull()
+  })
+})

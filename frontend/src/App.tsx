@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo, useSyncExtern
 import type { IProgressState } from '@xterm/addon-progress'
 import { TabBar, type Tab } from './components/TabBar'
 import { EmptyState } from './components/EmptyState'
-import { hostlessWebSessionId, nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from './lib/tabs'
+import { desktopTabId, hostlessWebSessionId, nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from './lib/tabs'
 import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
 import { SettingsSheet, type Appearance } from './components/SettingsSheet'
@@ -40,6 +40,8 @@ import {
 } from './wailsjs/go/main/App'
 import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
+import type { RemotePeerSessions as SidebarPeer } from './lib/remoteSession'
+import type { DesktopRowState } from './lib/sidebarPeers'
 import { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
 import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
@@ -49,7 +51,7 @@ import { menuShareError, menuStopError } from './lib/shareCopy'
 import { adaptRemoteSession } from './lib/remoteAdapter'
 import { peerConnectVerdict } from './lib/closeReasons'
 import type { ReconnectVerdict } from './lib/relayClient'
-import { peerView, shortHost } from './lib/sidebarPeers'
+import { desktopConnectHost, peerView, shortHost } from './lib/sidebarPeers'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExclamationTriangleIcon, InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { TailscaleBanner } from './components/TailscaleBanner'
@@ -58,6 +60,7 @@ import { WebShareSessionView } from './components/WebShareSessionView'
 import { LinkNoLongerWorks } from './components/LinkNoLongerWorks'
 import { UserRefused } from './components/UserRefused'
 import { TerminalPanel } from './components/TerminalPanel'
+import { DesktopTab } from './components/DesktopTab'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { UpdateBanner } from './components/UpdateBanner'
 import type { UpdateStatus } from './components/UpdateBanner'
@@ -492,6 +495,12 @@ function App(): React.ReactElement {
       window.dispatchEvent(new CustomEvent('portty:wake', { detail: reason }))
     })
 
+    // The native window occlusion (covered or uncovered): a covered window still reads visible to the
+    // web view, so the Desktop tab hears it as a window event (21-08, T-21-26).
+    const offOcclusion = EventsOn('window:occluded', (hidden: boolean) => {
+      window.dispatchEvent(new CustomEvent('portty:window-hidden', { detail: hidden === true }))
+    })
+
     // Native menu: File > New Session (Cmd+T).
     const offMenuNewSession = EventsOn('menu:new-session', () => setShowNewSessionModal(true))
     // Native menu: File > Close Tab (Cmd+W). Detach only; with no tab open it does nothing.
@@ -551,6 +560,7 @@ function App(): React.ReactElement {
       offMenuSettings()
       offMenuToggleSidebar()
       offWake()
+      offOcclusion()
     }
   }, [])
 
@@ -801,6 +811,11 @@ function App(): React.ReactElement {
         if (!cancelled) {
           setRemotePeers(peers ?? [])
           setRemoteLoaded(true)
+          // A peer that stopped announcing its desktop takes its muted line with it.
+          setDesktopStates((prev) => {
+            const keep = Object.entries(prev).filter(([host]) => (peers ?? []).some((p) => (p.dnsName || p.hostname) === host && p.desktop === true))
+            return keep.length === Object.keys(prev).length ? prev : Object.fromEntries(keep)
+          })
         }
       } catch {
         // Absorbed: the sidebar keeps its last state until the next poll succeeds.
@@ -1019,6 +1034,42 @@ function App(): React.ReactElement {
     [tabs, openWebSessionTab],
   )
 
+  // DVWR-01: a peer's Desktop row opens its one Desktop tab, or focuses it. The tab itself connects
+  // (DesktopTab calls ConnectPeerDesktop), so the tab shows its Connecting card at once.
+  const handleOpenDesktop = useCallback((peer: SidebarPeer) => {
+    const connectHost = desktopConnectHost(peer)
+    const id = desktopTabId(connectHost)
+    setTabs((prev) => (prev.some((t) => t.id === id)
+      ? prev
+      : [...prev, { id, sessionId: id, name: `${shortHost(peer.hostname)} › Desktop`, type: 'desktop', peerHost: peer.hostname, connectHost }]))
+    setActiveId(id)
+  }, [])
+
+  // The Mac's last muted state per Desktop tab (connect host), for the sidebar row's line. In memory only.
+  const [desktopStates, setDesktopStates] = useState<Record<string, DesktopRowState>>({})
+  const handleDesktopState = useCallback((host: string, s: DesktopRowState | null) => {
+    setDesktopStates((prev) => {
+      if (s === null) {
+        if (!(host in prev)) return prev
+        const { [host]: _gone, ...rest } = prev
+        return rest
+      }
+      return prev[host] === s ? prev : { ...prev, [host]: s }
+    })
+  }, [])
+
+  // Each Desktop tab's toolbar label, by tab id: a tab that stops being active reports null after the new
+  // active tab reported its own, so the label shown is the active tab's entry, never the last one reported.
+  type DesktopLabel = NonNullable<React.ComponentProps<typeof TabBar>['desktopLabel']>
+  const [desktopLabels, setDesktopLabels] = useState<Record<string, DesktopLabel | null>>({})
+  const handleDesktopLabel = useCallback((tabId: string, l: DesktopLabel | null) => {
+    setDesktopLabels((prev) => {
+      const old = prev[tabId] ?? null
+      if (old === l || (old && l && old.line1 === l.line1 && old.line2 === l.line2 && old.controlling === l.controlling)) return prev
+      return { ...prev, [tabId]: l }
+    })
+  }, [])
+
   // Portty 05-05 (SHAR-07): run before each peer-tab redial. Re-running the
   // connect re-checks same-account access and Share, refills this daemon's cap
   // store, and the relay port may be new after a daemon restart. It must not
@@ -1163,6 +1214,8 @@ function App(): React.ReactElement {
         onOpenLocal={handleOpenSessionTab}
         peerView={peerView(tailscaleOff, remoteLoaded, remotePeers, reconnectingHost)}
         onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}
+        onOpenDesktop={handleOpenDesktop}
+        desktopStates={desktopStates}
         tailscaleHealth={tailscaleHealth}
         onHide={() => setSidebarHidden(true)}
         onRename={(id, name) => void renameSession(id, name)}
@@ -1193,6 +1246,7 @@ function App(): React.ReactElement {
           shareButtonRef={shareButtonRef}
           shared={activeShared}
           shareDisabled={tailscaleOff && !activeShared && !sharePopoverOpen}
+          desktopLabel={activeId !== null ? desktopLabels[activeId] ?? null : null}
         />
 
         {/* INVARIANT: this gating expression must include the trigger of EVERY banner
@@ -1406,7 +1460,7 @@ function App(): React.ReactElement {
         )}
         {relayPort != null && relayPort > 0 &&
           tabs.map((tab) => {
-            if (tab.type === 'web-session' || tab.type === 'preview') return null
+            if (tab.type === 'web-session' || tab.type === 'preview' || tab.type === 'desktop') return null
             const isActive = tab.id === activeId
             return (
               <div
@@ -1433,6 +1487,32 @@ function App(): React.ReactElement {
                   onProgressChange={handleProgressChange}
                   onPreview={(ev) => handlePreview(tab.id, ev)}
                 />
+                </ErrorBoundary>
+              </div>
+            )
+          })}
+        {/* DVWR-01: a Desktop tab is never a terminal. Its panel stays mounted and connected behind another
+            tab: hidden with opacity and inert, never display none, so the video keeps decoding. */}
+        {relayPort != null && relayPort > 0 &&
+          tabs.map((tab) => {
+            if (tab.type !== 'desktop') return null
+            const hidden = tab.id !== activeId
+            return (
+              <div
+                key={tab.id}
+                id={`tabpanel-${tab.id}`}
+                role="tabpanel"
+                className={hidden ? 'desktop-tab desktop-tab--hidden' : 'desktop-tab'}
+                aria-hidden={hidden || undefined}
+                inert={hidden}
+              >
+                <ErrorBoundary label="desktop">
+                  <DesktopTab
+                    tab={tab}
+                    active={!hidden}
+                    onDesktopState={handleDesktopState}
+                    onLabel={(l) => handleDesktopLabel(tab.id, l)}
+                  />
                 </ErrorBoundary>
               </div>
             )

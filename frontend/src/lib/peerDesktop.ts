@@ -110,7 +110,7 @@ export interface PeerDesktopDeps {
   localNetworkMs?: number
 }
 
-const realClock: DesktopClock = {
+export const realClock: DesktopClock = {
   now: () => Date.now(),
   setTimeout: (fn, ms) => setTimeout(fn, ms),
   clearTimeout: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),

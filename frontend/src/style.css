@@ -2543,8 +2543,8 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
    message sits on a popover chip or card. The video carries only
    object-fit: the browser downsamples the stream to the window's device
    pixels, so nothing else may touch its size or sampling. */
-html:has(.desktop-view),
-html:has(.desktop-view) body {
+html:has(.desktop-view:not(.desktop-view--embedded)),
+html:has(.desktop-view:not(.desktop-view--embedded)) body {
   background: var(--color-viewer-bg);
   overscroll-behavior: none;
 }
@@ -2966,4 +2966,75 @@ html:has(.desktop-view) body {
 }
 .desktop-popover .button[aria-disabled='true'] {
   opacity: var(--opacity-disabled);
+}
+
+/* ─── Desktop tab in the Portty app (Phase 21-08, 21-UI-SPEC Surface 2) ──
+   The tab paints its own opaque viewer background, because the app window is translucent and the
+   letterbox must never show the wallpaper. A tab behind another tab is hidden with opacity and
+   pointer-events (never display: none), so its video keeps decoding. Tokens only. */
+.desktop-tab {
+  position: absolute;
+  inset: 0;
+  background: var(--color-viewer-bg);
+}
+.desktop-tab--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+/* Contained by the tab, not fixed to the window; no safe-area padding in the app. */
+.desktop-view--embedded {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  background: var(--color-viewer-bg);
+}
+
+/* Toolbar label of the Desktop tab (21-UI-SPEC "Toolbar label"). Fixed width in every state, so entering or
+   leaving control mode never reflows the tab strip. Line 1 (the host) ends with an ellipsis; line 2 never truncates. */
+.toolbar-chip--desktop {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  width: 232px;
+  max-width: 232px;
+  height: 36px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border-radius: var(--hub-radius-sm);
+  overflow: visible;
+}
+.toolbar-chip--desktop .toolbar-chip__line1 {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  color: var(--color-text);
+}
+.toolbar-chip--desktop .toolbar-chip__line2 {
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+/* The one accent fill in the tab chrome: the keyboard belongs to the other Mac. */
+.toolbar-chip--desktop[data-control="on"] {
+  background: var(--color-selection-fill);
+  color: var(--color-on-accent);
+}
+.toolbar-chip--desktop[data-control="on"] .toolbar-chip__line1 {
+  font-weight: 600;
+  color: var(--color-on-accent);
+}
+.toolbar-chip--desktop[data-control="on"] .toolbar-chip__line2 {
+  color: var(--color-on-accent);
+}
+
+/* A Desktop row whose Mac reports a muted state (Needs permission, Display asleep, ...): the line under it
+   carries the words, the row's own name and icon go quiet. The selected pill keeps its on-accent text. */
+.sidebar__row[data-muted="true"]:not([aria-current="page"]) .sidebar__row-name,
+.sidebar__row[data-muted="true"]:not([aria-current="page"]) .sidebar__row-icon {
+  color: var(--color-text-secondary);
 }
