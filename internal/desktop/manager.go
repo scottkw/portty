@@ -246,6 +246,10 @@ type Deps struct {
 	// means time.Sleep, tests advance their fake clock with it.
 	Unlock      UnlockBridge
 	UnlockSleep func(time.Duration)
+
+	// Audit writes one own-account line (unlocked, unlock_failed, relocked) to the
+	// local audit log; nil writes nothing. It never blocks and never fails.
+	Audit func(event string, id Identity, reason string)
 }
 
 // Package-level defaults for the Deps seams.
@@ -350,8 +354,10 @@ type Manager struct {
 	// in is the input path's state (input.go).
 	in inputState
 
-	// ul is remote unlock's state (unlock.go).
+	// ul is remote unlock's state (unlock.go); rl is the re-lock rule that follows
+	// a Portty unlock (relock.go).
 	ul unlockState
+	rl relockState
 
 	// surf is what the share shows (surface.go).
 	surf surfaceState
@@ -532,6 +538,7 @@ func NewManager(d Deps) (*Manager, error) {
 		m.d.OnDataChannel = m.acceptDataChannel
 	}
 	m.loadRuntimeState()
+	m.resumeRelock()
 	return m, nil
 }
 
@@ -915,6 +922,7 @@ func (m *Manager) join(v *viewer, admit func() bool) error {
 	}
 	m.viewers[v.ID] = v
 	m.vmu.Unlock()
+	m.relockViewer(true, v)
 	// Remote activity lights a dark display before capture starts; viewers hold
 	// the display and system assertions until the last leaves (a join retries
 	// one that failed).
@@ -1038,6 +1046,7 @@ func (m *Manager) leave(v *viewer) {
 		m.releaseViewerHolds()
 	}
 	m.mu.Unlock()
+	m.relockViewer(false, v)
 	m.syncTap()
 	m.kickLease()
 	m.kickLoop()

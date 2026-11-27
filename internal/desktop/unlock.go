@@ -148,7 +148,6 @@ type unlockState struct {
 	lastEnd    time.Time
 	failures   int
 	pauseUntil time.Time
-	armed      bool // a Portty unlock succeeded: the re-lock rule applies (23-05)
 }
 
 // unlockResult is how an attempt ended.
@@ -192,9 +191,10 @@ func (u *unlockState) viewLocked(now time.Time) (state string, waitMS int) {
 func (m *Manager) UnlockStats() UnlockStats {
 	u := &m.ul
 	u.mu.Lock()
-	defer u.mu.Unlock()
 	st, _ := u.viewLocked(m.d.Now())
-	return UnlockStats{State: st, Failures: u.failures, RelockArmed: u.armed}
+	failures := u.failures
+	u.mu.Unlock()
+	return UnlockStats{State: st, Failures: failures, RelockArmed: m.relockArmed()}
 }
 
 // msgLocked builds a message of this state with the current failure count; u.mu
@@ -403,7 +403,7 @@ func (m *Manager) unlockEnd(v *viewer, r *ulRun, res unlockResult) {
 	var msg msgUnlock
 	switch res {
 	case ulUnlocked:
-		u.failures, u.armed = 0, true
+		u.failures = 0
 		msg = u.msgLocked(unlockUnlocked, "", 0)
 		msg.ByPortty = true
 	case ulFailed:
@@ -421,6 +421,17 @@ func (m *Manager) unlockEnd(v *viewer, r *ulRun, res unlockResult) {
 		return
 	}
 	u.mu.Unlock()
+	// One audit line for every attempt that typed; nothing about the password goes
+	// in it. A success arms the re-lock rule before the viewer is told.
+	switch {
+	case res == ulUnlocked:
+		m.audit(AuditUnlocked, v.Identity, "")
+		m.armRelock(now)
+	case res == ulFailed:
+		m.audit(AuditUnlockFailed, v.Identity, ReasonStillLocked)
+	case res == ulError && r.typed:
+		m.audit(AuditUnlockFailed, v.Identity, ReasonUnlockError)
+	}
 	m.countInput("unlock_" + msg.State)
 	slog.Info("desktop: unlock finished", "viewer", shortID(v.ID), "outcome", msg.State)
 	m.sendUnlock(nil, msg)

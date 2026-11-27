@@ -892,6 +892,11 @@ func (a *API) flushLeaves(fallback string) {
 // the join and leave hooks and the node identity of a media peer.
 func (a *API) wireGuestDeps(d *desktop.Deps) {
 	d.OnViewerJoin, d.OnViewerLeave, d.PeerIdentity = a.onViewerJoin, a.onViewerLeave, a.peerIdentity
+	// The Manager's own events (unlocked, unlock_failed, relocked) are own-account
+	// lines with no share ID.
+	d.Audit = func(event string, id desktop.Identity, reason string) {
+		a.record(event, "", desktop.AuditModeOwn, id, reason)
+	}
 }
 
 // viewerAudit is what the audit log keeps of a viewer: guests carry their

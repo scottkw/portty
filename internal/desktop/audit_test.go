@@ -75,10 +75,12 @@ func TestAudit_ReasonKeyAndConstants(t *testing.T) {
 	reasons := []string{
 		ReasonViewerClosed, ReasonRevoked, ReasonShareStopped, ReasonGuiGone, ReasonDaemonExit,
 		ReasonKeyRegenerated, ReasonTimeout, ReasonReplaced, ReasonMediaIdentityMismatch, ReasonDenied,
+		ReasonStillLocked, ReasonUnlockError,
 	}
 	wantReasons := []string{
 		"viewer_closed", "revoked", "share_stopped", "gui_gone", "daemon_exit",
 		"key_regenerated", "timeout", "replaced", "media_identity_mismatch", "denied",
+		"still_locked", "error",
 	}
 	for i, r := range reasons {
 		if r != wantReasons[i] {
@@ -92,10 +94,12 @@ func TestAudit_ReasonKeyAndConstants(t *testing.T) {
 	events := []string{
 		AuditShareStart, AuditShareStop, AuditAdmitRequest, AuditAdmitted, AuditDenied, AuditJoin,
 		AuditLeave, AuditRevoked, AuditControlGranted, AuditControlRevoked, AuditClipboardGranted, AuditClipboardRevoked,
+		AuditUnlocked, AuditUnlockFailed, AuditRelocked,
 	}
 	wantEvents := []string{
 		"share_start", "share_stop", "admit_request", "admitted", "denied", "join",
 		"leave", "revoked", "control_granted", "control_revoked", "clipboard_granted", "clipboard_revoked",
+		"unlocked", "unlock_failed", "relocked",
 	}
 	for i, e := range events {
 		if e != wantEvents[i] {

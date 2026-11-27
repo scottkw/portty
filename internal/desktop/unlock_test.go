@@ -154,13 +154,18 @@ func (f *fakeUnlock) bufferZeroed() bool {
 type unlockRig struct {
 	*guestEnv
 	fb     *fakeUnlock
+	fi     *fakeInputBridge
 	clk    *fakeClock
 	locked atomic.Bool
 }
 
-func newUnlockRig(t *testing.T) *unlockRig {
+func newUnlockRig(t *testing.T) *unlockRig { return newUnlockRigWith(t, nil) }
+
+// newUnlockRigWith is newUnlockRig that lets a test adjust the rig's fakes and
+// the Deps last (the Manager is built right after).
+func newUnlockRigWith(t *testing.T, mod func(*unlockRig, *desktop.Deps)) *unlockRig {
 	t.Helper()
-	r := &unlockRig{clk: newFakeClock()}
+	r := &unlockRig{clk: newFakeClock(), fi: &fakeInputBridge{}}
 	r.locked.Store(true)
 	r.fb = &fakeUnlock{clk: r.clk, locked: &r.locked, unlockOnReturn: 1}
 	r.guestEnv = newGuestEnv(t, func(d *desktop.Deps) {
@@ -168,8 +173,11 @@ func newUnlockRig(t *testing.T) *unlockRig {
 		d.Lock = func() (bool, error) { return r.locked.Load(), nil }
 		d.Unlock = r.fb
 		d.UnlockSleep = r.clk.Advance
-		d.Input = &fakeInputBridge{}
+		d.Input = r.fi
 		d.DisplayBounds = testDisplay
+		if mod != nil {
+			mod(r, d)
+		}
 	})
 	return r
 }
@@ -184,13 +192,18 @@ type unlockViewer struct {
 // ownUnlockViewer joins an own-account viewer through a bare route, like
 // guestEnv.ownViewer, and keeps its hello.
 func (e *guestEnv) ownUnlockViewer(ctx context.Context, t *testing.T) *unlockViewer {
+	return e.ownUnlockViewerAs(ctx, t, desktop.Identity{})
+}
+
+// ownUnlockViewerAs is ownUnlockViewer for an own-account viewer with an identity.
+func (e *guestEnv) ownUnlockViewerAs(ctx context.Context, t *testing.T, ident desktop.Identity) *unlockViewer {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return
 		}
-		e.mgr.ServeDesktopViewer(r.Context(), c, func() bool { return true })
+		e.mgr.ServeDesktopViewerAs(r.Context(), c, func() bool { return true }, ident)
 	}))
 	t.Cleanup(srv.Close)
 	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
@@ -685,4 +698,146 @@ func TestUnlock_JoinerHearsCurrentState(t *testing.T) {
 			t.Errorf("a viewer joining an unlocked Mac heard %v", got)
 		}
 	})
+}
+
+// pressesOf is one key press, one text message and one button press: the three
+// kinds of input the lock gate must drop.
+func pressesOf(code string) []map[string]any {
+	return []map[string]any{
+		keyDown(code),
+		{"t": "text", "s": "hi"},
+		{"t": "btn", "b": 0, "d": true, "x": 0.5, "y": 0.25, "e": 1, "ts": 1000},
+	}
+}
+
+// newLockGateRig is an unlock rig whose Mac starts unlocked, with one
+// own-account viewer and one guest granted control and clipboard.
+func newLockGateRig(ctx context.Context, t *testing.T) (r *unlockRig, own *unlockViewer, guest *guestSession) {
+	t.Helper()
+	r = newUnlockRigWith(t, func(r *unlockRig, _ *desktop.Deps) { r.locked.Store(false) })
+	own = r.ownUnlockViewer(ctx, t)
+	guest = r.joinGuest(ctx, t, 1001, "nodeA")
+	if err := r.mgr.SetRights(guest.viewerID(), true, true); err != nil {
+		t.Fatal(err)
+	}
+	guest.wait(t, "rights", rightsIs(true, true))
+	return r, own, guest
+}
+
+// countCalls counts the input bridge's calls that match.
+func countCalls(fb *fakeInputBridge, match func(bridgeCall) bool) int {
+	n := 0
+	for _, c := range fb.snapshot() {
+		if match(c) {
+			n++
+		}
+	}
+	return n
+}
+
+// TestUnlockLockGate_DropsEveryViewersPresses: while the Mac reads locked, an
+// own-account viewer's key press, text and button press are dropped and counted
+// locked, and so are a guest's with control granted; nothing posts. Once the
+// Mac is unlocked a press posts again, so the gate is the lock and nothing else.
+func TestUnlockLockGate_DropsEveryViewersPresses(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	r, own, guest := newLockGateRig(ctx, t)
+	var guests, owns int
+	for _, v := range r.mgr.ViewerList() {
+		switch v.Mode {
+		case desktop.ModeGuest:
+			guests++
+		case desktop.ModeOwn:
+			owns++
+		}
+	}
+	if guests != 1 || owns != 1 {
+		t.Fatalf("connected viewers: %d guest, %d own-account, want one of each", guests, owns)
+	}
+
+	r.locked.Store(true)
+	r.clk.Advance(300 * time.Millisecond) // past the lock cache
+	for _, msg := range pressesOf("KeyB") {
+		own.input(t, msg)
+	}
+	for _, msg := range pressesOf("KeyC") {
+		guest.input(t, msg)
+	}
+	eventually(t, 5*time.Second, "all six presses counted locked", func() bool { return r.mgr.InputCounters()["locked"] == 6 })
+	settle()
+	if calls := r.fi.snapshot(); len(calls) != 0 {
+		t.Fatalf("a press posted while the Mac was locked: %+v", calls)
+	}
+
+	r.locked.Store(false)
+	r.clk.Advance(300 * time.Millisecond)
+	own.input(t, keyDown("KeyB"))
+	eventually(t, 5*time.Second, "a press after the unlock", func() bool { return keyDownPosted(r.fi, 0x0B) })
+}
+
+// TestUnlockLockGate_LockBeginReleasesHeldOnce: when the screen locks while a
+// viewer holds a key and a button, the daemon lets go of both, once; the
+// viewer's own later releases are not posted a second time. (The lease lets one
+// viewer hold at a time, so one holder with another viewer connected is the
+// most a Mac can have.)
+func TestUnlockLockGate_LockBeginReleasesHeldOnce(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	r, own, _ := newLockGateRig(ctx, t)
+
+	own.input(t, keyDown("KeyA"))
+	own.input(t, map[string]any{"t": "btn", "b": 0, "d": true, "x": 0.5, "y": 0.25, "e": 1, "ts": 1000})
+	eventually(t, 5*time.Second, "the key and the button down", func() bool {
+		return keyDownPosted(r.fi, 0x00) && countCalls(r.fi, func(c bridgeCall) bool { return c.Op == "mouse" && c.Kind == screencap.MouseDown }) == 1
+	})
+	before := len(r.fi.snapshot())
+
+	r.locked.Store(true)
+	r.clk.Advance(300 * time.Millisecond)
+	// The input goroutine's own tick sees the lock and lets go (Phase 20, kept).
+	eventually(t, 5*time.Second, "the key and the button released", func() bool { return len(r.fi.snapshot()) >= before+2 })
+	own.input(t, map[string]any{"t": "key", "d": false, "code": "KeyA", "m": 0})
+	own.input(t, map[string]any{"t": "btn", "b": 0, "d": false, "x": 0.5, "y": 0.25, "e": 1, "ts": 1100})
+	settle()
+
+	if n := countCalls(r.fi, func(c bridgeCall) bool { return c.Op == "key" && !c.Down && c.VK == 0x00 }); n != 1 {
+		t.Errorf("the key was released %d times, want once", n)
+	}
+	if n := countCalls(r.fi, func(c bridgeCall) bool { return c.Op == "mouse" && c.Kind == screencap.MouseUp }); n != 1 {
+		t.Errorf("the button was released %d times, want once", n)
+	}
+	if got := len(r.fi.snapshot()); got != before+2 {
+		t.Errorf("%d posts after the lock, want exactly the two releases", got-before)
+	}
+}
+
+// TestUnlockLockGate_AttemptDoesNotLoosenIt: presses keep being dropped while an
+// unlock attempt runs; only the attempt's own typing reaches the lock screen,
+// and it never goes through the input bridge.
+func TestUnlockLockGate_AttemptDoesNotLoosenIt(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	r := newUnlockRig(t) // the Mac starts locked
+	gate := make(chan struct{})
+	r.fb.wakeGate = gate // the attempt waits at the wake key
+	v := r.ownUnlockViewer(ctx, t)
+
+	v.submit(t, sentinelPassword)
+	v.waitUnlockStates(t, "unlocking")
+	for _, msg := range pressesOf("KeyB") {
+		v.input(t, msg)
+	}
+	eventually(t, 5*time.Second, "the presses counted locked mid-attempt", func() bool { return r.mgr.InputCounters()["locked"] == 3 })
+	if calls := r.fi.snapshot(); len(calls) != 0 {
+		t.Fatalf("a press posted during an unlock attempt: %+v", calls)
+	}
+	close(gate)
+	v.waitUnlockStates(t, "unlocking", "unlocked")
+	if calls := r.fi.snapshot(); len(calls) != 0 {
+		t.Errorf("the input bridge posted %+v; the attempt types through the unlock bridge only", calls)
+	}
+	if got := len(r.fb.snapshot()); got != len(sentinelPassword)+2 {
+		t.Errorf("unlock bridge saw %d events, want wake, the strokes and return", got)
+	}
 }
