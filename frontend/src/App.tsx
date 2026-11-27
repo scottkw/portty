@@ -6,6 +6,8 @@ import { desktopTabId, hostlessWebSessionId, nextActiveTabId, peerTabsRemoved, r
 import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
 import { SettingsSheet, type Appearance } from './components/SettingsSheet'
+import { ShareDesktopSheet } from './components/ShareDesktopSheet'
+import { useDesktopShare, NO_SHARE_EVENTS } from './lib/desktopShare'
 import { stripAnsi } from './lib/stripAnsi'
 import { sanitizeFilename } from './lib/sanitizeFilename'
 import { detectMode, readWebModeParams } from './lib/webMode'
@@ -145,6 +147,8 @@ function App(): React.ReactElement {
   const [tailscaleHealth, setTailscaleHealth] = useState<TailscaleHealth | null>(null)
   // NET-01: null means "not checked yet" (and always in web mode), which is not "off".
   const tailscaleOff = tailscaleHealth !== null && !tailscaleHealth.connected
+  // Phase 22 click-to-share: the tray, a notification or Settings opens the sheet. No Wails events in web mode.
+  const share = useDesktopShare(mode === 'web' ? NO_SHARE_EVENTS : undefined)
   const [daemonError, setDaemonError] = useState<string | null>(null)
   // Plugin settings state (PLUG-03): updated by GetPluginSettings on mount
   // and by the EventsOn('settings:plugins') subscription. Threaded into every
@@ -1441,6 +1445,16 @@ function App(): React.ReactElement {
             onPluginToggleSideEffect={handlePluginToggleSideEffect}
             onAppearanceChange={setAppearance}
             onTerminalFontChange={setTerminalFont}
+          />
+        )}
+        {/* Phase 22: after the Settings sheet in the DOM, so it is topmost when opened from Settings. */}
+        {mode !== 'web' && (
+          <ShareDesktopSheet
+            open={share.sheetOpen}
+            onClose={share.closeSheet}
+            tailscaleHealth={tailscaleHealth}
+            state={share.state}
+            stoppedNotice={share.stoppedNotice}
           />
         )}
         {showEmptyState && (

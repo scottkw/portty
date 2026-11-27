@@ -23,7 +23,8 @@ import { RegenerateKeyModal } from './RegenerateKeyModal'
 import { DesktopSetupSheet } from './DesktopSetupSheet'
 import { PluginsSection, type PluginToggleKind } from './PluginsSection'
 import { Switch } from './Switch'
-import { TAILSCALE_OFF_REASON, type TailscaleHealth } from '../lib/tailscale'
+import { Row } from './SettingsRow'
+import { TAILSCALE_OFF_REASON, USERSPACE_SENTENCE, type TailscaleHealth } from '../lib/tailscale'
 import { shortHost } from '../lib/sidebarPeers'
 import { useDialogFocus } from '../lib/useDialogFocus'
 import type { TerminalFont } from '../lib/terminalFont'
@@ -61,34 +62,11 @@ const PANES: ReadonlyArray<{ id: Pane; label: string; Icon: typeof Cog6ToothIcon
   { id: 'security', label: 'Security', Icon: LockClosedIcon },
 ]
 
-/** One grouped-form row: label and optional description on the left, control on the right. */
-function Row({ label, htmlFor, description, descriptionId, children }: {
-  label: string
-  htmlFor?: string
-  description?: React.ReactNode
-  descriptionId?: string
-  children?: React.ReactNode
-}): React.ReactElement {
-  return (
-    <div className="settings-row">
-      <div className="settings-row__text">
-        {htmlFor
-          ? <label className="settings-row__label" htmlFor={htmlFor}>{label}</label>
-          : <span className="settings-row__label">{label}</span>}
-        {description != null && <p className="settings-row__description" id={descriptionId}>{description}</p>}
-      </div>
-      {children != null && <div className="settings-row__control">{children}</div>}
-    </div>
-  )
-}
-
 /** How often the Desktop group asks the daemon for its state while the Sharing pane is open. */
 export const DESKTOP_POLL_MS = 2000
 /** How long Copy Link reads "Copied!". */
 export const COPIED_MS = 2000
 
-const USERSPACE_SENTENCE =
-  "Tailscale is running in userspace-networking mode, so Portty can't open a desktop connection. Switch Tailscale to its standard mode, then try again."
 const DESKTOP_OFF_DESCRIPTION =
   "View and control this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
 const DESKTOP_FOOTNOTE =

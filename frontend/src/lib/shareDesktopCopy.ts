@@ -35,6 +35,7 @@ export const ALLOW_CONTROL = 'Allow control'
 export const ALLOW_CLIPBOARD = 'Allow clipboard'
 export const DISCONNECT = 'Disconnect'
 export const OWN_DEVICE_LINE = 'Your own device'
+export const UNNAMED_VIEWER = 'Unknown viewer'
 export const grantCaption = (name: string): string =>
   `Control lets ${name} use this Mac as you, so they can do anything you can. Clipboard lets them copy text to and from this Mac.`
 export const SHARE_FOOTNOTE =
