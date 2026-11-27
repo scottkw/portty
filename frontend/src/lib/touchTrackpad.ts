@@ -8,6 +8,12 @@
  * Intents carry finger pixels (move and drag deltas are already multiplied by accelGain);
  * desktopCoords.normalizedDelta turns them into picture fractions. A pinch emits only local
  * zoom intents, never anything meant for the Mac. Nothing here reads the user agent.
+ *
+ * A single tap is emitted only after the 300 ms double-tap window passes with no second touch.
+ * That delay is deliberate: without it, "tap then drag" would reach the Mac as a click followed
+ * by a press inside the double-click interval, which macOS reads as a double-click drag (word
+ * selection). Cost: 300 ms on every single tap, the same trade other trackpad viewers make.
+ * iOS fires no contextmenu on a long press, so the long press (right click) is a timer.
  */
 
 export type TrackpadIntent =
@@ -64,18 +70,49 @@ export function createTrackpad(
   onIntent: (i: TrackpadIntent) => void,
   clock: TrackpadClock = realClock,
 ): { start(e: TouchLike): void; move(e: TouchLike): void; end(e: TouchLike): void; cancel(): void } {
-  // One-finger state: where the touch began, and the last point a delta was taken from.
-  let down = false
-  let sx = 0
+  // idle: nothing down. touching: one finger, still tap-sized. second: a finger that landed within
+  // the double-tap window of a tap (tap, double-tap or drag, not decided yet). moving: a pointer
+  // move. dragging: tap-then-drag. longPressed: the long press fired. tapPending: finger up, the
+  // tap is waiting out the double-tap window.
+  type Mode = 'idle' | 'touching' | 'second' | 'moving' | 'dragging' | 'longPressed' | 'tapPending'
+  let mode: Mode = 'idle'
+  let sx = 0 // where this touch began
   let sy = 0
-  let lx = 0
+  let t0 = 0 // when it began
+  let lx = 0 // the last point a delta was taken from, and when
   let ly = 0
   let lt = 0
-  let moving = false // moved past tapMovePx: this touch is a pointer move, not a tap
+  let prev: { at: number; x: number; y: number } | null = null // the lifted tap waiting to be emitted
+  let tapTimer: unknown = null
+  let pressTimer: unknown = null
 
-  const reset = (): void => {
-    down = false
-    moving = false
+  const clearTapTimer = (): void => {
+    if (tapTimer !== null) clock.clearTimeout(tapTimer)
+    tapTimer = null
+  }
+  const clearPressTimer = (): void => {
+    if (pressTimer !== null) clock.clearTimeout(pressTimer)
+    pressTimer = null
+  }
+  const flushTap = (): void => {
+    clearTapTimer()
+    if (!prev) return
+    const at = prev.at
+    prev = null
+    onIntent({ kind: 'tap', at })
+  }
+  const armTap = (): void => {
+    prev = { at: clock.now(), x: sx, y: sy }
+    mode = 'tapPending'
+    tapTimer = clock.setTimeout(() => {
+      tapTimer = null
+      flushTap()
+      mode = 'idle'
+    }, TRACKPAD.doubleTapMs)
+  }
+  // A drag in progress must end (button up on the Mac) however the gesture is torn down.
+  const endDragIfAny = (): void => {
+    if (mode === 'dragging') onIntent({ kind: 'dragEnd', at: clock.now() })
   }
 
   // Delta since the last reference point, scaled by the speed measured over that span.
@@ -95,27 +132,84 @@ export function createTrackpad(
     start(e) {
       if (e.touches.length !== 1) return
       const t = e.touches[0]
-      down = true
-      moving = false
+      clearPressTimer()
+      endDragIfAny() // a start with no preceding end: the lift was lost
+      const now = clock.now()
+      if (mode === 'tapPending' && prev && now - prev.at <= TRACKPAD.doubleTapMs) {
+        clearTapTimer()
+        mode = 'second'
+      } else {
+        flushTap() // overdue window (no-op when nothing is pending)
+        mode = 'touching'
+      }
       sx = lx = t.clientX
       sy = ly = t.clientY
-      lt = clock.now()
+      t0 = lt = now
+      pressTimer = clock.setTimeout(() => {
+        pressTimer = null
+        if (mode !== 'touching' && mode !== 'second') return
+        flushTap() // a held second touch is no longer a double-tap: release the first tap's click
+        mode = 'longPressed'
+        onIntent({ kind: 'longPress', at: clock.now() })
+      }, TRACKPAD.longPressMs)
     },
     move(e) {
-      if (!down || e.touches.length !== 1) return
+      if (e.touches.length !== 1) return
       const t = e.touches[0]
-      if (!moving) {
+      if (mode === 'touching' || mode === 'second') {
         if (Math.hypot(t.clientX - sx, t.clientY - sy) <= TRACKPAD.tapMovePx) return
-        moving = true
+        clearPressTimer()
+        if (mode === 'second') {
+          prev = null // tap then drag: the first tap is consumed, no click before the drag
+          mode = 'dragging'
+          onIntent({ kind: 'dragStart', at: clock.now() })
+        } else {
+          mode = 'moving'
+        }
+      } else if (mode !== 'moving' && mode !== 'dragging') {
+        return
       }
       const d = gainedDelta(t.clientX, t.clientY)
-      if (d.dx !== 0 || d.dy !== 0) onIntent({ kind: 'move', ...d })
+      if (d.dx !== 0 || d.dy !== 0) onIntent({ kind: mode === 'dragging' ? 'dragMove' : 'move', ...d })
     },
     end() {
-      reset()
+      clearPressTimer()
+      const now = clock.now()
+      const tapped = now - t0 <= TRACKPAD.tapMs
+      switch (mode) {
+        case 'touching':
+          if (tapped) armTap()
+          else mode = 'idle'
+          break
+        case 'second':
+          if (tapped && prev && Math.hypot(sx - prev.x, sy - prev.y) <= TRACKPAD.doubleTapPx) {
+            onIntent({ kind: 'doubleTap', at: [prev.at, now] })
+            prev = null
+            mode = 'idle'
+          } else if (tapped) {
+            flushTap() // a tap too far from the first: two taps
+            armTap()
+          } else {
+            flushTap()
+            mode = 'idle'
+          }
+          break
+        case 'dragging':
+          endDragIfAny()
+          mode = 'idle'
+          break
+        case 'moving':
+        case 'longPressed':
+          mode = 'idle'
+          break
+      }
     },
     cancel() {
-      reset()
+      clearPressTimer()
+      clearTapTimer()
+      prev = null
+      endDragIfAny() // pending states emit nothing; only a held button needs releasing
+      mode = 'idle'
     },
   }
 }
