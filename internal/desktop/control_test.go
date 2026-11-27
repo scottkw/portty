@@ -83,6 +83,28 @@ func TestControl_NeedsAccessibilityAfterThreeMisses(t *testing.T) {
 	}
 }
 
+// TestControl_OffDisplayMovesAreNotMisses: moves onto a part of the shared
+// surface that lies past every display edge are clamped by the WindowServer, so
+// the read-back differs for a good reason; they never count as misses and never
+// set needs_accessibility.
+func TestControl_OffDisplayMovesAreNotMisses(t *testing.T) {
+	fb := &fakeInputBridge{stuck: true}
+	env, v, _, _ := joinWithControl(t, fb, func(_ *tracerEnv, d *desktop.Deps) {
+		d.PointOnDisplay = func(float64, float64) (bool, error) { return false, nil }
+	})
+	eventuallyReceived(t, v, controlOKMsg)
+	for i := range 4 {
+		v.send(t, map[string]any{"t": "move", "x": 0.1 * float64(i+1), "y": 0.5, "e": 1})
+		eventually(t, 5*time.Second, "off-display check", func() bool { return counter(env, "effect_offscreen") == uint64(i+1) })
+	}
+	if n := counter(env, "effect_miss"); n != 0 {
+		t.Errorf("effect_miss = %d, want 0", n)
+	}
+	if in, _ := env.mgr.ControlState(); in != desktop.ControlOK {
+		t.Errorf("control input = %q, want ok", in)
+	}
+}
+
 // TestControl_TwoMissesThenHitStaysOK: a hit resets the miss count.
 func TestControl_TwoMissesThenHitStaysOK(t *testing.T) {
 	fb := &fakeInputBridge{stuck: true}

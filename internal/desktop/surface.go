@@ -319,7 +319,8 @@ func (m *Manager) handleSelect(ctx context.Context, v *viewer, kind string, id u
 // that is not running only records the choice). A failed switch keeps the old
 // surface and still tells every viewer, with the new epoch, so nobody stays
 // paused. A non-empty reason marks a fallback: the old surface is gone, so the
-// new one is recorded even when the switch fails (a restart then starts on it).
+// new one is recorded even when the switch fails, and the source is restarted
+// on it (M-01).
 func (m *Manager) applySurface(ctx context.Context, sel screencap.Surface, info screencap.SurfaceInfo, reason string) error {
 	m.bumpEpoch()
 	m.releaseHeldAll("surface")
@@ -332,10 +333,15 @@ func (m *Manager) applySurface(ctx context.Context, sel screencap.Surface, info 
 		m.setSurface(sel, info)
 	}
 	m.mu.Unlock()
-	if err != nil {
+	switch {
+	case err != nil && reason != "":
+		// The source is still on the vanished surface: restart it on the one
+		// just recorded, so the picture and the input mapping agree.
+		slog.Warn("desktop: fallback switch failed, restarting the source", "kind", kindName(sel.Kind), "err", err)
+		_ = m.restartSource() // a failure was classified and delays the next try
+	case err != nil:
 		slog.Warn("desktop: surface switch failed", "kind", kindName(sel.Kind), "err", err)
-		reason = ""
-	} else {
+	default:
 		slog.Info("desktop: surface switched", "kind", kindName(sel.Kind), "viewers", m.Viewers())
 	}
 	m.broadcast(ctx, m.surfaceMsg(reason))
@@ -391,6 +397,24 @@ func (m *Manager) releaseHeldAll(reason string) {
 	m.flushInput()
 }
 
+// anyButtonHeld reports whether any viewer holds a mouse button.
+func (m *Manager) anyButtonHeld() bool {
+	m.vmu.Lock()
+	vs := make([]*viewer, 0, len(m.viewers))
+	for _, v := range m.viewers {
+		vs = append(vs, v)
+	}
+	m.vmu.Unlock()
+	m.in.mu.Lock()
+	defer m.in.mu.Unlock()
+	for _, v := range vs {
+		if len(v.in.held) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // surfaceLoop checks, once a second while viewers watch a window or a display
 // other than the main one, that the shared surface still exists and still has
 // its size. A panic costs one pass, never the loop or the stream.
@@ -438,7 +462,12 @@ func (m *Manager) surfaceTick(ctx context.Context, failing *bool) {
 	var reason string
 	switch {
 	case found && (math.Abs(cur.W-info.W) >= 1 || math.Abs(cur.H-info.H) >= 1):
-		// Resized: the same surface at its new size.
+		// Resized: the same surface at its new size. Applying it releases held
+		// input, so it waits while a button is held (a drag-resize of the shared
+		// window); a later pass applies it once the button is up (M-03).
+		if m.anyButtonHeld() {
+			return
+		}
 	case found:
 		// A move or a minimize changes only the recorded frame, never the epoch.
 		if cur != info && m.surfaceSel() == sel {

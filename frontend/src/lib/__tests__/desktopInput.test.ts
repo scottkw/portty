@@ -289,6 +289,31 @@ describe('keys', () => {
     expect(h.ctl.held()).toBe(0)
   })
 
+  it('a key held when Cmd goes down is released first, since macOS swallows its keyup while Cmd is down', () => {
+    h.input.dispatchEvent(key('keydown', 'KeyS', 's'))
+    h.input.dispatchEvent(key('keydown', 'ShiftLeft', 'Shift', { shiftKey: true }))
+    h.input.dispatchEvent(key('keydown', 'MetaLeft', 'Meta', { metaKey: true, shiftKey: true }))
+    // No keyup for KeyS ever arrives.
+    h.input.dispatchEvent(key('keyup', 'MetaLeft', 'Meta', { shiftKey: true }))
+    h.input.dispatchEvent(key('keyup', 'ShiftLeft', 'Shift'))
+    expect(h.msgs()).toEqual([
+      keyMsg('KeyS', true, { k: 's' }),
+      keyMsg('ShiftLeft', true, { m: 1, k: 'Shift' }),
+      keyMsg('KeyS', false, { m: 9 }),
+      keyMsg('MetaLeft', true, { m: 9, k: 'Meta' }),
+      keyMsg('MetaLeft', false, { m: 1, k: 'Meta' }),
+      keyMsg('ShiftLeft', false, { k: 'Shift' }),
+    ])
+    expect(h.ctl.held()).toBe(0)
+  })
+
+  it('a Cmd keyup whose down was never forwarded still releases held non-modifier keys', () => {
+    h.input.dispatchEvent(key('keydown', 'KeyA', 'a'))
+    h.input.dispatchEvent(key('keyup', 'MetaRight', 'Meta'))
+    expect(h.msgs()).toEqual([keyMsg('KeyA', true, { k: 'a' }), keyMsg('KeyA', false)])
+    expect(h.ctl.held()).toBe(0)
+  })
+
   it('a keyup whose down was never forwarded sends nothing', () => {
     h.input.dispatchEvent(key('keyup', 'KeyQ', 'q'))
     expect(h.msgs()).toEqual([])

@@ -300,6 +300,38 @@ func TestInput_CloseReleasesHeld(t *testing.T) {
 	}
 }
 
+// TestInput_CloseReleasesHeldAfterStartContextCancelled: the daemon cancels the
+// context it passed to Start before it calls Close (stopDesktop). The held key
+// and button must still be released: only Close may end the input goroutine.
+func TestInput_CloseReleasesHeldAfterStartContextCancelled(t *testing.T) {
+	fb := &fakeInputBridge{}
+	var locked atomic.Bool
+	startCtx, stop := context.WithCancel(context.Background())
+	defer stop()
+	env := newTracerServer(t, withFakeInput(fb, &locked, newFakeClock()), func(e *tracerEnv, _ *desktop.Deps) {
+		e.startCtx = startCtx
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	v := env.joinInput(ctx, t, env.token(t, "g1"))
+
+	v.send(t, map[string]any{"t": "key", "code": "KeyA", "d": true, "m": 0})
+	v.send(t, map[string]any{"t": "btn", "b": 0, "d": true, "x": 0.5, "y": 0.25, "e": 1})
+	fb.waitFor(t, 2)
+	stop()
+	if err := env.mgr.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var keyUp, mouseUp bool
+	for _, c := range fb.snapshot()[2:] {
+		keyUp = keyUp || (c.Op == "key" && c.VK == 0x00 && !c.Down)
+		mouseUp = mouseUp || (c.Op == "mouse" && c.Kind == screencap.MouseUp && c.Button == 0)
+	}
+	if !keyUp || !mouseUp {
+		t.Errorf("after Close: key up %v, mouse up %v, want both (calls %+v)", keyUp, mouseUp, fb.snapshot())
+	}
+}
+
 // TestInputTracer_KeyHeldReleasedOnClose: a key typed in the viewer is pressed
 // with the right kVK and flags, released when its input channel closes, and a
 // closing socket releases keys before the modifiers that were held under them.

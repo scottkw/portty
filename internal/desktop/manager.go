@@ -186,6 +186,9 @@ type Deps struct {
 	// DisplayBounds reads a display's global bounds in points (id 0 is the main
 	// display); nil means screencap.DisplayBounds.
 	DisplayBounds func(id uint32) (x, y, w, h float64, err error)
+	// PointOnDisplay reports whether a global point lies on any active display;
+	// nil means screencap.PointOnDisplay (which refuses under tests).
+	PointOnDisplay func(x, y float64) (bool, error)
 	// MainDisplayID is the main display's real ID, which a surface message
 	// carries so a viewer can match it to the list; nil means screencap.MainDisplayID.
 	MainDisplayID func() uint32
@@ -415,6 +418,9 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.DisplayBounds == nil {
 		d.DisplayBounds = screencap.DisplayBounds
 	}
+	if d.PointOnDisplay == nil {
+		d.PointOnDisplay = screencap.PointOnDisplay
+	}
 	if d.MainDisplayID == nil {
 		d.MainDisplayID = screencap.MainDisplayID
 	}
@@ -482,9 +488,10 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.win.done = make(chan struct{})
 	go m.windowLoop(lctx, m.win.done)
 
-	// The input goroutine outlives the state loop's context: Close drains the
-	// queued releases through it before it cancels this one.
-	ictx, icancel := context.WithCancel(ctx)
+	// The input goroutine outlives the state loop's context, and the caller's:
+	// the daemon cancels ctx before it calls Close, and Close drains the queued
+	// releases through this goroutine before it cancels it. Only Close ends it.
+	ictx, icancel := context.WithCancel(context.WithoutCancel(ctx))
 	m.in.mu.Lock()
 	m.in.cancel, m.in.done = icancel, make(chan struct{})
 	m.in.mu.Unlock()
@@ -772,8 +779,18 @@ func (m *Manager) startSource() error {
 	sctx, cancel := context.WithCancel(m.ctx)
 	now := m.d.Now().Round(0)
 	cfg := m.d.SourceConfig
-	cfg.Surface = m.surfaceSel() // a restart keeps the surface; a first start after the last viewer left is the main display
+	// A restart keeps the surface; a first start after the last viewer left is the main display.
+	var cfgInfo screencap.SurfaceInfo
+	cfg.Surface, cfgInfo = m.currentSurface()
 	err := src.Start(sctx, cfg)
+	resync := false
+	defer func() {
+		// After mu is released: viewers learn what the stream really shows.
+		if resync {
+			m.releaseHeldAll("surface")
+			m.broadcast(m.ctx, m.surfaceMsg(""))
+		}
+	}()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
@@ -791,7 +808,12 @@ func (m *Manager) startSource() error {
 	// A select that ran while this start was in flight only recorded its choice.
 	if cur := m.surfaceSel(); cur != cfg.Surface {
 		if err := src.SelectSurface(cur); err != nil {
+			// The stream shows cfg.Surface: record it, so input never maps onto
+			// a surface the viewers cannot see (M-01).
 			slog.Warn("desktop: surface switch after start failed", "err", err)
+			m.setSurface(cfg.Surface, cfgInfo)
+			m.bumpEpoch()
+			resync = true
 		}
 	}
 	m.src, m.srcStop = src, cancel

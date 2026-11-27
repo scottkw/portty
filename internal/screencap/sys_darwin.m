@@ -153,19 +153,21 @@ static int pcMoveTo(CGEventSourceRef src, CGPoint to) {
 // back to where it started, 0 when the move was blocked or the return failed.
 // A private event source keeps the physical modifier state out of the events.
 int pc_pointer_nudge(double dx, int *ok) {
-	@try {
-		CGEventRef here = CGEventCreate(NULL);
-		if (here == NULL) return kSysNilErr;
-		CGPoint p = CGEventGetLocation(here);
-		CFRelease(here);
-		CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStatePrivate);
-		if (src == NULL) return kSysNilErr;
-		int moved = pcMoveTo(src, CGPointMake(p.x + dx, p.y));
-		int back = pcMoveTo(src, p); // always attempted, so the pointer is never left displaced
-		CFRelease(src);
-		*ok = moved && back ? 1 : 0;
-		return 0;
-	} @catch (NSException *e) {
-		return kSysExceptionErr;
+	@autoreleasepool {
+		@try {
+			CGEventRef here = CGEventCreate(NULL);
+			if (here == NULL) return kSysNilErr;
+			CGPoint p = CGEventGetLocation(here);
+			CFRelease(here);
+			CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStatePrivate);
+			if (src == NULL) return kSysNilErr;
+			int moved = pcMoveTo(src, CGPointMake(p.x + dx, p.y));
+			int back = pcMoveTo(src, p); // always attempted, so the pointer is never left displaced
+			CFRelease(src);
+			*ok = moved && back ? 1 : 0;
+			return 0;
+		} @catch (NSException *e) {
+			return kSysExceptionErr;
+		}
 	}
 }

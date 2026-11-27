@@ -296,3 +296,27 @@ func TestEncoder_SyntheticFramesTracer(t *testing.T) {
 		}
 	}
 }
+
+// TestObjC_EntryPointsDrainAutoreleasePool (M-07): cgo calls run on Go threads,
+// which have no autorelease pool and never exit, so anything an entry point
+// autoreleases would leak for the daemon's life. Every entry point Phase 20
+// added or touched wraps its body in @autoreleasepool. Source check only.
+func TestObjC_EntryPointsDrainAutoreleasePool(t *testing.T) {
+	entries := map[string][]string{
+		"input_darwin.m":      {"pc_input_mouse", "pc_input_key", "pc_input_text", "pc_input_scroll", "pc_input_cursor", "pc_point_on_display", "pc_display_bounds"},
+		"pasteboard_darwin.m": {"pc_pb_behavior", "pc_pb_read", "pc_pb_write"},
+		"window_darwin.m":     {"pc_ax_focus", "pc_window_info", "pc_window_minimized", "pc_window_raise", "pc_window_topmost"},
+		"media_darwin.m":      {"pc_stream_start", "pc_stream_stop", "pc_stream_select", "pc_list_surfaces", "pc_still_capture", "pc_main_display_id"},
+		"sys_darwin.m":        {"pc_pointer_nudge"},
+	}
+	for file, names := range entries {
+		for _, name := range names {
+			body := objcFunc(t, file, name)
+			open := strings.Index(body, "{\n") // the signature may span lines
+			first := strings.TrimSpace(strings.SplitN(body[open+2:], "\n", 2)[0])
+			if first != "@autoreleasepool {" {
+				t.Errorf("%s: %s does not open with @autoreleasepool (first line %q)", file, name, first)
+			}
+		}
+	}
+}

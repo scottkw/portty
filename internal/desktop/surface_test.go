@@ -49,6 +49,9 @@ type surfaceWorld struct {
 	list    []screencap.SurfaceInfo
 	listErr error
 	sources []*switchSource
+
+	startGate chan struct{} // when set, a new source's Start waits for it
+	newFail   error         // when set, a new source's SelectSurface fails with it
 }
 
 func newSurfaceWorld(list ...screencap.SurfaceInfo) *surfaceWorld {
@@ -110,12 +113,17 @@ type switchSource struct {
 	failWith error
 	delay    time.Duration
 	entered  chan struct{} // closed-by-send when a SelectSurface begins
+	gate     chan struct{} // when set, Start waits for it
 }
 
 func (s *switchSource) Start(ctx context.Context, cfg screencap.Config) error {
 	s.mu.Lock()
 	s.started = cfg.Surface
+	gate := s.gate
 	s.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
 	w, h := s.world.pixels(cfg.Surface)
 	if err := s.Rebuild(w, h); err != nil {
 		return err
@@ -169,6 +177,7 @@ func withSurfaces(w *surfaceWorld, fb *fakeInputBridge) tracerOpt {
 		d.NewSource = func() screencap.Source {
 			s := &switchSource{SyntheticSource: screencap.NewSyntheticSource(1470, 956), world: w, entered: make(chan struct{}, 1)}
 			w.mu.Lock()
+			s.gate, s.failWith = w.startGate, w.newFail
 			w.sources = append(w.sources, s)
 			w.mu.Unlock()
 			return s
@@ -531,6 +540,55 @@ func TestSurface_FallbackDisplayGone(t *testing.T) {
 	requireSurface(t, "A", a.wait(t, "surface", epochIs(3)), 3, "display", mainID, "Main Display", 1470, 956, "display_gone")
 }
 
+// TestSurface_SwitchAfterStartFailsResyncs: a pick made while a start is in
+// flight is applied once the start returns; when that switch fails, the share
+// records what the stream really shows (the main display), bumps the epoch and
+// tells the viewer, so input never maps onto the window it cannot see.
+func TestSurface_SwitchAfterStartFailsResyncs(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), termWindow(1280, 800))
+	env := newTracerServer(t, withSurfaces(world, &fakeInputBridge{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	a := env.joinSurf(ctx, t, env.token(t, "g1"))
+
+	gate := make(chan struct{})
+	world.mu.Lock()
+	world.startGate, world.newFail = gate, errors.New("update refused")
+	world.mu.Unlock()
+	restarted := make(chan error, 1)
+	go func() { restarted <- env.mgr.RestartSourceForTest() }()
+	eventually(t, 5*time.Second, "the restart building its source", func() bool { return world.sourceCount() == 2 })
+	selectWindow(ctx, t, a) // recorded only: no source is running
+	close(gate)
+	if err := <-restarted; err != nil {
+		t.Fatal(err)
+	}
+	requireSurface(t, "A", a.wait(t, "surface", epochIs(3)), 3, "display", mainID, "Main Display", 1470, 956, "")
+	if got := env.mgr.CurrentSurface(); got.Kind != screencap.SurfaceDisplay || !got.Main {
+		t.Errorf("current surface = %+v, want the main display the stream shows", got)
+	}
+}
+
+// TestSurface_FallbackSwitchFailedRestarts: the shared window closes and the
+// switch to the main display fails, so the source (still on the vanished
+// window) is restarted on the main display rather than left frozen while input
+// maps onto the main display.
+func TestSurface_FallbackSwitchFailedRestarts(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), termWindow(1280, 800))
+	env := newTracerServer(t, withSurfaces(world, &fakeInputBridge{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	a := env.joinSurf(ctx, t, env.token(t, "g1"))
+	selectWindow(ctx, t, a)
+
+	world.last().setSwitch(0, errors.New("update refused"))
+	world.setList(mainSurface())
+	requireSurface(t, "A", a.wait(t, "surface", epochIs(3)), 3, "display", mainID, "Main Display", 1470, 956, "window_closed")
+	eventually(t, 5*time.Second, "a source restarted on the main display", func() bool {
+		return world.sourceCount() == 2 && world.last().startedWith() == (screencap.Surface{})
+	})
+}
+
 // TestSurface_MinimizedIsNotClosed: a window that is still in the list but off
 // screen is no reason to fall back; its state is recorded for the window gate.
 func TestSurface_MinimizedIsNotClosed(t *testing.T) {
@@ -582,6 +640,37 @@ func TestSurface_ResizeBumpsEpoch(t *testing.T) {
 	if sel := world.last().selected(); len(sel) != 2 || sel[0] != sel[1] {
 		t.Errorf("source switches = %v, want the same window selected twice", sel)
 	}
+}
+
+// TestSurface_ResizeWaitsForHeldButton: a size change of the shared surface
+// while a viewer holds a button (a drag-resize of the shared window) does not
+// release the drag or bump the epoch; it is applied once the button is up.
+func TestSurface_ResizeWaitsForHeldButton(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), secondSurface())
+	fb := &fakeInputBridge{}
+	env := newTracerServer(t, withSurfaces(world, fb))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	a := env.joinSurf(ctx, t, env.token(t, "g1"))
+	a.ask(ctx, t, map[string]any{"type": "select", "kind": "display", "id": secondID})
+	a.wait(t, "surface", epochIs(2))
+
+	a.input(t, map[string]any{"t": "btn", "b": 0, "d": true, "x": 0.5, "y": 0.5, "e": 2})
+	fb.waitFor(t, 1)
+	resized := secondSurface()
+	resized.W, resized.H = 1280, 720
+	world.setList(mainSurface(), resized)
+	quiet()
+	if m := a.find("surface", epochIs(3)); m != nil {
+		t.Errorf("a resize during a held drag produced %v, want no epoch bump", m)
+	}
+	a.input(t, map[string]any{"t": "move", "x": 0.6, "y": 0.6, "e": 2})
+	a.input(t, map[string]any{"t": "btn", "b": 0, "d": false, "x": 0.6, "y": 0.6, "e": 2})
+	calls := fb.waitFor(t, 3)
+	if calls[1].Kind != screencap.MouseDragged || calls[2].Kind != screencap.MouseUp {
+		t.Errorf("calls = %+v, want the press, a drag, then the viewer's own MouseUp", calls)
+	}
+	requireSurface(t, "A", a.wait(t, "surface", epochIs(3)), 3, "display", secondID, resized.Name, 1280, 720, "")
 }
 
 // TestSurface_ResetOnCaptureStop: the surface lives for one viewing session;

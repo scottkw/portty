@@ -5,10 +5,10 @@ audited: 2026-11-26
 auditor: gsd-security-auditor
 asvs_level: 1
 block_on: high
-verdict: OPEN_THREATS
+verdict: SECURED
 threats_total: 52
-threats_closed: 51
-threats_open: 1
+threats_closed: 52
+threats_open: 0
 threats_open_nonblocking: 0
 unregistered_flags: 1
 ---
@@ -17,7 +17,7 @@ unregistered_flags: 1
 
 Scope: the `<threat_model>` registers of 20-01..20-11-PLAN.md (T-20-01..T-20-51, plus T-20-SC, which all eleven plans declare and is counted once here), and 20-CONTEXT.md "Input security boundaries" and "Clipboard and permissions". The audit read code at HEAD of `gsd/phase-17-desktop-feasibility-spike`, limited to the Phase 20 file list. It did not run Portty, capture, input, AX or pasteboard on the host. It ran unit tests only: `go test ./internal/desktop ./internal/screencap` passed, `go test -run Desktop ./internal/daemon` passed, the named threat tests passed in verbose mode, and 8 vitest files (410 tests) passed. It also ran `tests/check-brand.sh` (rc 0), `tests/check-traceability-paths.sh` (OK, 295 paths) and an untagged `go build ./internal/daemon` (0 vmdesktop files).
 
-Runtime evidence comes from 20-VM-CHECKS.md. Its blocking rows E1, C2, W2, D1, P2 and H1 passed. W2 was recorded before commit 78ea4fc8 (see T-20-21).
+Runtime evidence comes from 20-VM-CHECKS.md. Its blocking rows E1, C2, W2, D1, P2 and H1 passed. W2 was recorded before commit 78ea4fc8; e9dfa052 narrowed that carve-out back so W2's Fonts-panel result holds again (see T-20-21).
 
 ## Threat Verification
 
@@ -43,7 +43,7 @@ Runtime evidence comes from 20-VM-CHECKS.md. Its blocking rows E1, C2, W2, D1, P
 | T-20-18 | DoS | medium | mitigate | One switch at a time (busy); native steps bounded at 5 s; list bounded at 5 s in desktop and 15 s in native; 1 s poll; a failed switch keeps the old surface | surface.go:47,51,250-274,330-340; media_darwin.go:471-481; media_darwin.m:620,640,649,675 | CLOSED |
 | T-20-19 | Tampering | high | mitigate | ListSurfaces, Start and the switch refuse under testing.Testing() | media_darwin.go:220,240,439,478 | CLOSED |
 | T-20-20 | Info disc./Tampering | high | mitigate | Each press reads focus live from AX (system-wide focused app, not NSWorkspace) and checks both pid and frame. If focus is elsewhere, the window is raised and the press dropped. Fails closed on a nil bridge or any read error. Raise and NilBridge tests pass | window.go:144-147,155-191; internal/screencap/window_darwin.m:8,31-33,67-75 | CLOSED |
-| T-20-21 | Tampering | high | mitigate | Topmost-window hit test per press: "a covering panel or banner gets nothing" | window.go:215-221. **Gap:** sameAppPopup (window.go:229-238, commit 78ea4fc8, after the VM run) lets a click through to any same-pid window with layer != 0, including floating panels at layer 3, or to a same-pid layer-0 window inside the shared frame. See the carve-out assessment | **OPEN (blocking)** |
+| T-20-21 | Tampering | high | mitigate | Topmost-window hit test per press: "a covering panel or banner gets nothing". The same-app carve-out allows only same-pid windows at a pop-up menu layer (>= 101); same-pid sheets, floating panels (3), modal panels (8), utility windows, negative layers and contained layer-0 windows drop as covered (option (a), narrow; commit e9dfa052). TestWindow_SameAppPopupAllowed pins layer 3, 8, 100, -1 and a contained layer-0 window as covered | internal/desktop/window.go:219,225-236; internal/desktop/window_confine_test.go:112-156 | CLOSED |
 | T-20-22 | EoP | high | mitigate | Cmd+Tab, Cmd+Space and Ctrl+Cmd+Q are dropped daemon-side in window shares; held modifiers and the wire mask both count; TestWindow_ChordsDropped passes; VM row W2 counted window_chord | gates.go:60-64,74-95 | CLOSED |
 | T-20-23 | DoS | medium | mitigate | AX messaging timeout of 0.25 s; the raise runs on its own goroutine, one at a time, with a 300 ms raise_failed signal; presses drop while raising | window_darwin.m:24,33,75,133; window.go:27,175-179,244-281 | CLOSED |
 | T-20-24 | Tampering | high | mitigate | Every WindowBridge method refuses under testing.Testing() | internal/screencap/window_darwin.go:56,70,84,101,124 | CLOSED |
@@ -78,7 +78,7 @@ Runtime evidence comes from 20-VM-CHECKS.md. Its blocking rows E1, C2, W2, D1, P
 
 ## Open Threats
 
-### T-20-21 (high, blocking): the same-app carve-out widens "covered target"
+### T-20-21 (high, CLOSED in e9dfa052): the same-app carve-out widened "covered target"
 
 Declared mitigation (20-04): "Topmost-window hit test per press; a covering panel or banner gets nothing; TestWindow_TopmostHitDrops."
 
@@ -120,6 +120,8 @@ The window-share boundary matters more later. 20-CONTEXT.md marks it "costly" to
 - (a) Narrow `sameAppPopup` to pop-up-menu levels (layer >= 101, the kCGPopUpMenuWindowLevel family) plus sheets attached to the shared window. Add a TestWindow_SameAppPopupAllowed case: "same app, floating panel (layer 3) over the window drops as covered". Then re-run W2's panel click and M-186.
 - (b) The owner records an accepted risk below ("same-app windows over a shared window may receive clicks; own-account viewers only; re-review before Phase 22 grants window shares to guests") and runs M-185 and M-186.
 
+**Closed (orchestrator decision: option (a), narrow).** Commit e9dfa052 reduces `sameAppPopup` to `top.PID == pid && top.Layer >= 101` (window.go:225-236). The contained-layer-0 branch is gone and negative and 1..100 layers drop, so sheets are not carved out either (the narrower reading of (a)). TestWindow_SameAppPopupAllowed adds "same-app floating panel, layer 3", "same-app modal panel, layer 8", "same-app layer 100", "same-app negative layer" and "same-app contained layer-0 window", all `covered`; menu layers 101 and 102 still post. W2's Fonts-panel drop is the behaviour at HEAD again. M-186 (pop-up click on a real Mac) remains the owner-run confirmation for the menu case.
+
 ## Carve-out assessment (requested): does sameAppPopup widen the window-share boundary acceptably?
 
 - **Cross-app boundary (20-CONTEXT "a password manager or another app they cannot see"):** intact. The pid must match, keys stay gated by live AX focus, and other apps' menus and panels still drop.
@@ -139,7 +141,7 @@ All eleven SUMMARY.md `## Threat Flags` sections say "none beyond the register".
 
 | Flag | Source | Mapping |
 |---|---|---|
-| Post-VM same-app carve-out (78ea4fc8) changes what a window share permits | 20-VM-CHECKS.md X1 follow-up; git log; not in any SUMMARY Threat Flags section | Widens T-20-21 (open above) |
+| Post-VM same-app carve-out (78ea4fc8) changes what a window share permits | 20-VM-CHECKS.md X1 follow-up; git log; not in any SUMMARY Threat Flags section | Widened T-20-21; narrowed to pop-up menu layers in e9dfa052 (closed above) |
 
 ## Advisory (not counted, not blocking)
 

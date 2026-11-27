@@ -157,6 +157,13 @@ func (m *Manager) checkMoveEffect(gen uint64, x, y float64) {
 	if stale {
 		return
 	}
+	if on, err := m.d.PointOnDisplay(x, y); err == nil && !on {
+		// Past every display edge (a window share of a window that extends off
+		// screen): the WindowServer clamps the pointer, so a differing read-back
+		// says nothing about Accessibility (M-04). An unreadable answer checks.
+		m.countInput("effect_offscreen")
+		return
+	}
 	cx, cy, err := m.d.Input.CursorLocation()
 	if err != nil {
 		return
