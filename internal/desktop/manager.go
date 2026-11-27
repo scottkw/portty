@@ -280,6 +280,7 @@ type viewer struct {
 
 	gs       *GuestShare // the share a guest was admitted to; nil for an own-account viewer
 	mediaCut atomic.Bool // a media identity check already cut this guest
+	cut      atomic.Bool // CloseViewer or CloseGuests already cut this viewer
 
 	// rights is the live Rights, changed by SetRights and read by the press gate
 	// and the clipboard handlers; Viewer.Rights is only the starting record.
@@ -745,17 +746,31 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 		_ = c.Close(websocket.StatusInternalError, "capture unavailable")
 		return
 	}
+	joined := false
 	defer func() {
 		m.leave(v)
-		if m.d.OnViewerLeave != nil {
+		if joined && m.d.OnViewerLeave != nil {
 			m.d.OnViewerLeave(v.Viewer)
 		}
 	}()
 	if v.gs != nil {
+		// Registered above, so a Stop or revoke either finds v and cuts it or has
+		// already happened and is seen here: neither can be missed.
+		select {
+		case <-v.gs.Ended():
+			_ = c.Close(CloseShareEnded, guestReasonShareEnded)
+			return
+		default:
+		}
+		if v.gs.IsDenied(v.Identity.UserID) {
+			_ = c.Close(CloseGuestRevoked, guestReasonRevoked)
+			return
+		}
 		key := AdmissionKey{UserID: v.Identity.UserID, StableID: v.Identity.StableID}
 		v.gs.attach(key, v.ID, func() { _ = c.Close(websocket.StatusNormalClosure, guestReasonReplaced) })
 		defer v.gs.detach(key, v.ID)
 	}
+	joined = true
 	if m.d.OnViewerJoin != nil {
 		m.d.OnViewerJoin(v.Viewer)
 	}

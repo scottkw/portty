@@ -38,6 +38,13 @@ func withGuestInput(fb *fakeInputBridge) func(*desktop.Deps) {
 // input channel and returns once it is open.
 func (e *guestEnv) joinGuest(ctx context.Context, t *testing.T, uid int64, node string) *guestSession {
 	t.Helper()
+	return e.joinGuestAs(ctx, t, uid, node, true)
+}
+
+// joinGuestAs is joinGuest; with read false the guest never reads its socket
+// after the join, so it never answers a close handshake.
+func (e *guestEnv) joinGuestAs(ctx context.Context, t *testing.T, uid int64, node string, read bool) *guestSession {
+	t.Helper()
 	c := e.dial(ctx, t, uid, node)
 	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1}})
 	hello := readType(ctx, t, c, "hello")
@@ -67,7 +74,9 @@ func (e *guestEnv) joinGuest(ctx context.Context, t *testing.T, uid int64, node 
 		surfViewer: &surfViewer{id: hello["viewer"].(string), conn: c, dc: dc},
 		ident:      ident, closed: make(chan struct{}),
 	}
-	go g.run(ctx)
+	if read {
+		go g.run(ctx)
+	}
 	select {
 	case <-open:
 	case <-time.After(10 * time.Second):
