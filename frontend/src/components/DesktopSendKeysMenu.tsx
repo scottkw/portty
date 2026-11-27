@@ -22,6 +22,8 @@ export interface DesktopSendKeysMenuProps {
   windowShare: boolean
   /** Why everything is greyed, when it is (for example Locked); the items are inert. */
   disabledReason?: string
+  /** Phase 21-10: open upward from the anchor (the iPhone bars sit at the bottom of the screen). */
+  above?: boolean
 }
 
 /**
@@ -30,7 +32,7 @@ export interface DesktopSendKeysMenuProps {
  * sends Ctrl+Cmd+Q. Mounted while open; it calls onClose once everything it opened is gone.
  */
 export function DesktopSendKeysMenu({
-  anchor, invoker, onClose, sendChord, windowShare, disabledReason,
+  anchor, invoker, onClose, sendChord, windowShare, disabledReason, above,
 }: DesktopSendKeysMenuProps): React.ReactElement {
   const [menuOpen, setMenuOpen] = useState(true)
   const [confirm, setConfirm] = useState(false)
@@ -70,6 +72,7 @@ export function DesktopSendKeysMenu({
           items={items}
           x={anchor.x}
           y={anchor.y}
+          above={above}
           invoker={invoker}
           onClose={() => {
             setMenuOpen(false)

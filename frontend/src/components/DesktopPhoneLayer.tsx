@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
-import type { DesktopClient, DesktopCursorMsg } from '../lib/desktopClient'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import type { DesktopClient, DesktopCursorMsg, DesktopSurfaceMsg } from '../lib/desktopClient'
 import {
   FIT,
   normalizedDelta,
@@ -12,6 +13,8 @@ import {
 } from '../lib/desktopCoords'
 import { createPhoneInput, type PhoneInput } from '../lib/desktopPhoneInput'
 import { attachTrackpad, type TrackpadIntent } from '../lib/touchTrackpad'
+import { useVisualViewportInset } from '../lib/visualViewportInset'
+import { DesktopPhoneBars, type PhoneModifier } from './DesktopPhoneBars'
 import { videoContentRect } from './DesktopView'
 
 export interface DesktopPhoneLayerProps {
@@ -28,6 +31,27 @@ const CURSOR_WAIT_MS = 500
 const RIPPLE_MS = 150
 const RIPPLE_PX = 24
 
+/** One character kept in the hidden field so a Backspace on the soft keyboard has something to delete. */
+const SENTINEL = '\u200b'
+
+// Armed modifiers in the order they go down.
+const MODIFIER_CODES: [PhoneModifier, string][] = [['Control', 'ControlLeft'], ['Alt', 'AltLeft'], ['Meta', 'MetaLeft']]
+
+const PUNCTUATION: Record<string, string> = {
+  ' ': 'Space', '-': 'Minus', '=': 'Equal', '[': 'BracketLeft', ']': 'BracketRight', '\\': 'Backslash',
+  ';': 'Semicolon', "'": 'Quote', ',': 'Comma', '.': 'Period', '/': 'Slash', '`': 'Backquote',
+}
+
+// shortcut: shifted punctuation and non-ASCII have no code here and go as text with the modifier dropped;
+// upgrade when a device row shows someone needs Cmd+Shift+symbol from the soft keyboard.
+function keyFor(ch: string): { code: string; shift: boolean } | null {
+  if (/^[a-z]$/.test(ch)) return { code: `Key${ch.toUpperCase()}`, shift: false }
+  if (/^[A-Z]$/.test(ch)) return { code: `Key${ch}`, shift: true }
+  if (/^[0-9]$/.test(ch)) return { code: `Digit${ch}`, shift: false }
+  const code = PUNCTUATION[ch]
+  return code ? { code, shift: false } : null
+}
+
 /**
  * Phase 21-10 (DVWR-03) — the iPhone touch layer on the viewer's stage. Phase 20's controller is not
  * created on a phone, so this is the only thing that sends input from one. It listens on the stage
@@ -41,7 +65,14 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
   live.current = { canControl, paused }
   const input = useRef<PhoneInput | null>(null)
   const rippleRef = useRef<HTMLDivElement>(null)
+  const fieldRef = useRef<HTMLInputElement>(null)
+  const fit = useRef<() => void>(() => {})
   const [zoom, setZoom] = useState(1)
+  const [armed, setArmed] = useState<Set<PhoneModifier>>(() => new Set())
+  const armedRef = useRef(armed)
+  armedRef.current = armed
+  const [surface, setSurface] = useState<{ kind: DesktopSurfaceMsg['kind']; id: number; name: string } | null>(null)
+  const { keyboardUp } = useVisualViewportInset(true, { rootSelector: '.desktop-view', fieldSelector: '.desktop-phone__input' })
 
   useEffect(() => {
     if (!stage) return
@@ -170,6 +201,7 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
       }
     }
     const detach = attachTrackpad(stage, onIntent)
+    fit.current = () => applyZoom(FIT)
 
     // While zoomed the view follows the Mac's pointer so it stays 32 px inside the edge.
     const onCursor = (c: DesktopCursorMsg) => {
@@ -226,6 +258,7 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
       if (rippleTimer !== null) window.clearTimeout(rippleTimer)
       pi.destroy()
       input.current = null
+      fit.current = () => {}
       if (video) {
         video.style.transform = ''
         video.style.transformOrigin = ''
@@ -239,5 +272,164 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
     if (paused && (input.current?.held() ?? 0) > 0) input.current?.releaseAll()
   }, [paused])
 
-  return <div ref={rippleRef} className="desktop-ripple" aria-hidden="true" hidden data-zoom={zoom} />
+  useEffect(() => client.on('surface', (sf) => setSurface({ kind: sf.kind, id: sf.id, name: sf.name })), [client])
+
+  const disarm = useCallback(() => {
+    if (armedRef.current.size > 0) setArmed(new Set())
+  }, [])
+  const toggleArm = (m: PhoneModifier) =>
+    setArmed((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(m)) next.add(m)
+      return next
+    })
+
+  // The keyboard going down lets go of everything and disarms: nothing waits for a key that cannot come.
+  const keyboardDown = useCallback(() => {
+    disarm()
+    input.current?.releaseAll()
+  }, [disarm])
+  const wasUp = useRef(false)
+  useEffect(() => {
+    if (wasUp.current && !keyboardUp) keyboardDown()
+    wasUp.current = keyboardUp
+  }, [keyboardUp, keyboardDown])
+
+  const sendable = () => live.current.canControl && !live.current.paused && input.current !== null
+  const armedCodes = () => MODIFIER_CODES.filter(([m]) => armedRef.current.has(m)).map(([, code]) => code)
+
+  // One tap of a key, carrying every armed modifier (a chord of them and the key), which then disarm.
+  const sendKey = (code: string) => {
+    const pi = input.current
+    if (!pi || !sendable()) return
+    const mods = armedCodes()
+    if (mods.length > 0) pi.chord([...mods, code])
+    else pi.keyTap(code, 0)
+    disarm()
+  }
+  // Typed text goes as text; with a modifier armed the first character is a key chord instead (Cmd then c is Cmd+C).
+  const typeText = (text: string) => {
+    const pi = input.current
+    if (!pi || !sendable() || text === '') return
+    let rest = text
+    const mods = armedCodes()
+    if (mods.length > 0) {
+      const [first] = Array.from(text)
+      rest = text.slice(first.length)
+      const k = keyFor(first)
+      if (k) pi.chord([...mods, ...(k.shift ? ['ShiftLeft'] : []), k.code])
+      else pi.text(first)
+      disarm()
+    }
+    if (rest !== '') pi.text(rest)
+  }
+  // The effect below reads the latest of these through a ref, so its listeners never go stale.
+  const typing = useRef({ sendKey, typeText })
+  typing.current = { sendKey, typeText }
+
+  // The hidden field. Native listeners: React's onBeforeInput is not the browser's beforeinput.
+  useEffect(() => {
+    const field = fieldRef.current
+    if (!field || !canControl) return
+    const reset = () => {
+      field.value = SENTINEL
+      field.setSelectionRange?.(SENTINEL.length, SENTINEL.length)
+    }
+    let composing = false
+    // A beforeinput that could not be cancelled still ends in an input event, which must not send the key again.
+    let inputFollows = false
+
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.isComposing || ev.keyCode === 229) return
+      if (ev.key !== 'Backspace' && ev.key !== 'Enter') return
+      ev.preventDefault()
+      typing.current.sendKey(ev.key)
+    }
+    const onBeforeInput = (ev: InputEvent) => {
+      if (ev.isComposing) return
+      const type = ev.inputType
+      if (type === 'deleteContentBackward' || type === 'insertLineBreak' || type === 'insertParagraph') {
+        if (ev.cancelable) ev.preventDefault()
+        else inputFollows = true
+        typing.current.sendKey(type === 'deleteContentBackward' ? 'Backspace' : 'Enter')
+        reset()
+      } else if ((type === 'insertText' || type === 'insertReplacementText' || type === 'insertFromDictation') && ev.data) {
+        if (ev.cancelable) ev.preventDefault()
+        else inputFollows = true
+        typing.current.typeText(ev.data)
+      }
+    }
+    const onInput = () => {
+      if (composing) return
+      if (inputFollows) inputFollows = false
+      else if (field.value === '') typing.current.sendKey('Backspace') // the sentinel went without a beforeinput we could use
+      reset()
+    }
+    const onCompositionStart = () => {
+      composing = true
+    }
+    const onCompositionEnd = (ev: CompositionEvent) => {
+      composing = false
+      typing.current.typeText(ev.data)
+      reset()
+    }
+
+    reset()
+    field.addEventListener('focus', reset)
+    field.addEventListener('blur', keyboardDown)
+    field.addEventListener('keydown', onKeyDown)
+    field.addEventListener('beforeinput', onBeforeInput)
+    field.addEventListener('input', onInput)
+    field.addEventListener('compositionstart', onCompositionStart)
+    field.addEventListener('compositionend', onCompositionEnd)
+    return () => {
+      field.removeEventListener('focus', reset)
+      field.removeEventListener('blur', keyboardDown)
+      field.removeEventListener('keydown', onKeyDown)
+      field.removeEventListener('beforeinput', onBeforeInput)
+      field.removeEventListener('input', onInput)
+      field.removeEventListener('compositionstart', onCompositionStart)
+      field.removeEventListener('compositionend', onCompositionEnd)
+    }
+  }, [canControl, disarm, keyboardDown])
+
+  const slot = stage?.parentElement
+  return (
+    <>
+      <div ref={rippleRef} className="desktop-ripple" aria-hidden="true" hidden />
+      {canControl && (
+        <input
+          ref={fieldRef}
+          className="desktop-phone__input"
+          type="text"
+          aria-label="Type on the Mac"
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          defaultValue={SENTINEL}
+        />
+      )}
+      {slot &&
+        createPortal(
+          <DesktopPhoneBars
+            keyboardUp={keyboardUp}
+            zoom={zoom}
+            onFit={() => fit.current()}
+            onShowKeyboard={() => fieldRef.current?.focus({ preventScroll: true })}
+            onKey={sendKey}
+            armed={armed}
+            onToggleArm={toggleArm}
+            sendChord={(codes) => input.current?.chord(codes)}
+            surfaceName={surface?.name ?? null}
+            surface={surface}
+            canControl={canControl}
+            canPickSurface={rights?.surface === true}
+            disabledReason={locked ? 'Locked' : reconnecting ? 'Reconnecting' : null}
+            client={client}
+          />,
+          slot,
+        )}
+    </>
+  )
 }
